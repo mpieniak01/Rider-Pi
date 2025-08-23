@@ -1,0 +1,1 @@
+[broker] running XPUB=tcp://127.0.0.1:5556 XSUB=tcp://127.0.0.1:5555 PID=2683
