@@ -7,6 +7,7 @@
 #  - ASR (Whisper-1), publikacja "audio.transcript"
 #  - tryb standalone (domyślnie): Chat (gpt-4o-mini) + TTS (stream/mp3->mpg123)
 #  - subskrypcja "tts.speak": mów dowolny tekst wysłany po busie (wyłączone w standalone)
+#  - publikacja stanów UI: "ui.state" i eventów mowy "assistant.speech"
 #
 # ENV:
 #   OPENAI_API_KEY       (z ~/.bash_profile ładowany automatycznie jeśli brak)
@@ -82,6 +83,25 @@ except Exception as e:
 
 # bus (ZeroMQ)
 from common.bus import BusPub, BusSub, now_ts
+
+# ── PUB/SUB ───────────────────────────────────────────────────────────────────
+PUB = BusPub()              # do "audio.transcript" i innych
+SUB_TTS = BusSub("tts.speak")
+UI = BusPub()               # osobny publisher (niekonieczny, ale czytelny)
+
+def ui_state(s: str):
+    """Publikuj stan do UI ('idle','wake','record','process','speak','low_battery')."""
+    try:
+        UI.publish("ui.state", {"state": s, "ts": now_ts()})
+    except Exception:
+        pass
+
+def ui_speech(event: str, text: str = ""):
+    """Publikuj event mowy ('start'/'end') oraz krótki tekst."""
+    try:
+        UI.publish("assistant.speech", {"event": event, "text": text, "ts": now_ts()})
+    except Exception:
+        pass
 
 # psutil (opcjonalnie)
 try:
@@ -249,10 +269,6 @@ def _copy_to_recordings(src_path: str, prefix: str) -> str:
 def _has_ffmpeg() -> bool: return shutil.which("ffmpeg") is not None
 def _has_mpg123() -> bool: return shutil.which("mpg123") is not None
 
-# ── Bus: pub/sub ──────────────────────────────────────────────────────────────
-PUB = BusPub()
-SUB_TTS = BusSub("tts.speak")
-
 # ── OpenAI init ───────────────────────────────────────────────────────────────
 def init_openai() -> None:
     global client
@@ -306,7 +322,9 @@ def battery_diag():
     if pct is None: log("Bateria: nie udalo sie odczytac.")
     else:
         log(f"Bateria: {pct}%"); print(f"vol:{pct}%", flush=True)
-        if pct <= BAT_WARN_PCT: log(f"UWAGA: niski poziom baterii ({pct}%).")
+        if pct <= BAT_WARN_PCT:
+            log(f"UWAGA: niski poziom baterii ({pct}%).")
+            ui_state("low_battery")
 
 # ── Nagrywanie: VAD ──────────────────────────────────────────────────────────
 def nagraj_glos() -> str:
@@ -314,6 +332,7 @@ def nagraj_glos() -> str:
 
 def _nagraj_fixed() -> str:
     log("Nagrywanie (fixed 5 s)..."); _led(LED_RECORD)
+    ui_state("record")
     stream = AudiostreamSource(); stream.start()
     frames=[]; start=time.time(); bpf=REC_CHANNELS*REC_SAMPWIDTH; chunk=1024*bpf
     while time.time()-start < REC_DURATION_S and not _shutdown_evt.is_set():
@@ -329,6 +348,7 @@ def _nagraj_fixed() -> str:
 
 def _nagraj_vad() -> str:
     log("Nagrywanie (VAD, szybki tail)..."); _led(LED_RECORD)
+    ui_state("record")
     vad = webrtcvad.Vad(int(VAD_MODE))
     stream = AudiostreamSource(); stream.start()
     frame_ms = VAD_FRAME_MS if VAD_FRAME_MS in (10,20,30) else 20
@@ -496,6 +516,7 @@ def tts_stream(text: str) -> bool:
 def _play_ding_ms(ms: int = None):
     if not os.path.exists(DING_WAV):
         return
+    ui_state("wake")
     ms = int(os.environ.get("DING_PLAY_MS", ms if ms is not None else 200))
     try:
         cmd = ["aplay", "-q", "-D", ALSA_DEVICE]
@@ -516,6 +537,7 @@ def _play_ding_ms(ms: int = None):
 # ── Wykonanie cyklu po hotword ────────────────────────────────────────────────
 def on_wake():
     _led(LED_WAKE)
+    ui_state("wake")
     wav_path=None
     try:
         t_all0=time.time()
@@ -523,10 +545,11 @@ def on_wake():
         if KEEP_INPUT_WAV and wav_path and os.path.exists(wav_path):
             try: _copy_to_recordings(wav_path,"pytanie")
             except Exception as e: log(f"Nie zapisano kopii pytania: {e}")
-        _led(LED_PROCESS)
+        _led(LED_PROCESS); ui_state("process")
         user_text = transkrybuj(wav_path)
         log(f"Uzytkownik: {user_text}")
 
+        # PUB: audio.transcript (zawsze)
         PUB.publish("audio.transcript", {
             "text": user_text, "lang": "pl", "ts": now_ts(), "source": "voice"
         })
@@ -534,16 +557,18 @@ def on_wake():
         if VOICE_STANDALONE:
             ans = chat_reply(user_text)
             log(f"Asystent: {ans}")
+            ui_speech("start", ans); ui_state("speak")
             ok = tts_stream(ans)
+            ui_speech("end", ans)
             if not ok:
-                pass
+                log("TTS: problem z odtworzeniem (mpg123?)")
 
         t_all1=time.time(); log(f"TIMING: TOTAL={(t_all1 - t_all0):.2f}s")
     finally:
         if wav_path and os.path.exists(wav_path):
             try: os.unlink(wav_path)
             except Exception: pass
-        _led(LED_LISTEN)
+        _led(LED_LISTEN); ui_state("idle")
 
 # ── Opcjonalne score z detektora ──────────────────────────────────────────────
 def _try_get_score(detector, keyword_id):
@@ -568,7 +593,7 @@ def start_hotword_listener() -> Tuple[threading.Thread, threading.Event]:
         if not PREMIUM_LIB or not PREMIUM_MODEL:
             log("BLAD: brak lib .so lub modelu .premium — hotword wylaczony.")
             return
-        _led(LED_LISTEN)
+        _led(LED_LISTEN); ui_state("idle")
         audio_stream=None
         try:
             audio_stream = AudiostreamSource(); audio_stream.start()
@@ -621,7 +646,7 @@ def start_hotword_listener() -> Tuple[threading.Thread, threading.Event]:
                     on_wake()
                     if _shutdown_evt.is_set() or stop_flag.is_set():
                         break
-                    audio_stream = AudiostreamSource(); audio_stream.start(); _led(LED_LISTEN)
+                    audio_stream = AudiostreamSource(); audio_stream.start(); _led(LED_LISTEN); ui_state("idle")
         except Exception as e:
             log(f"BLAD watku hotword: {e}")
         finally:
@@ -662,8 +687,10 @@ def tts_subscriber_thread(stop_flag: threading.Event) -> threading.Thread:
             except Exception:
                 continue
             if text:
+                ui_speech("start", text); ui_state("speak")
                 tts_stream(text)
-                _led(LED_LISTEN)
+                ui_speech("end", text)
+                _led(LED_LISTEN); ui_state("idle")
     th = threading.Thread(target=run, daemon=True); th.start(); return th
 
 # ── Main ─────────────────────────────────────────────────────────────────────
