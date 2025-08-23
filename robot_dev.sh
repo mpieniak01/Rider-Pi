@@ -8,7 +8,8 @@
 #      broker   – uruchom broker (FG)
 #      voice    – uruchom voice  (FG)
 #      chat     – uruchom chat   (FG)
-#      all      – broker + voice (+ chat gdy VOICE_STANDALONE=0)
+#      face     – uruchom buźkę UI (Tkinter)
+#      all      – broker + voice + (chat gdy VOICE_STANDALONE=0) + face
 #      restart  – stop → all
 #      stop     – awaryjny STOP + ubij procesy + domknij okna
 #      status   – porty i działające procesy
@@ -24,6 +25,7 @@ VOICE="${ROOT}/apps/voice/main.py"
 CHAT="${ROOT}/apps/chat/main.py"
 BROKER="${ROOT}/scripts/broker.py"
 PUB="${ROOT}/scripts/pub.py"
+FACE="${ROOT}/apps/ui/face.py"
 
 log() { printf "[%(%H:%M:%S)T] %s\n" -1 "$*"; }
 
@@ -71,9 +73,10 @@ term() {
 cmd_broker_start() { log "start: broker";  exec python3 "$BROKER"; }
 cmd_voice_start()  { log "start: voice";   exec python3 "$VOICE";  }
 cmd_chat_start()   { log "start: chat";    exec python3 "$CHAT";   }
+cmd_face_start()   { log "start: face";    exec python3 "$FACE";   }
 
 cmd_all() {
-  log "start: all (broker, voice, chat?)"
+  log "start: all (broker, voice, chat?, face)"
   term "broker" "python3 '$BROKER'"
   sleep 0.3
   [[ -f "$VOICE" ]] && term "voice" "python3 '$VOICE'" || log "WARN: brak $VOICE"
@@ -82,26 +85,34 @@ cmd_all() {
   else
     [[ -f "$CHAT"  ]] && term "chat"  "python3 '$CHAT'"  || log "WARN: brak $CHAT"
   fi
+  if [[ -n "${DISPLAY:-}" ]]; then
+    [[ -f "$FACE"  ]] && term "face"  "python3 '$FACE'"  || log "WARN: brak $FACE"
+  else
+    log "headless: DISPLAY unset → pomijam 'face'"
+  fi
   log "tip: użyj 'robot_dev.sh status' aby sprawdzić porty/procesy"
 }
 
 cmd_stop() {
-  log "stop: voice/chat/broker"
+  log "stop: voice/chat/broker/face"
   if [[ -f "$PUB" ]]; then
     python3 "$PUB" control.stop '{}' 2>/dev/null || true
   fi
-  kill_of "$VOICE"; kill_of "$CHAT"; kill_of "$BROKER"
+  kill_of "$VOICE"; kill_of "$CHAT"; kill_of "$BROKER"; kill_of "$FACE"
   sleep 0.3
   pkill -KILL -f "$VOICE"  2>/dev/null || true
   pkill -KILL -f "$CHAT"   2>/dev/null || true
   pkill -KILL -f "$BROKER" 2>/dev/null || true
+  pkill -KILL -f "$FACE"   2>/dev/null || true
   # zamknij okna terminali
   pkill -f "lxterminal -t broker"  2>/dev/null || true
   pkill -f "lxterminal -t voice"   2>/dev/null || true
   pkill -f "lxterminal -t chat"    2>/dev/null || true
+  pkill -f "lxterminal -t face"    2>/dev/null || true
   pkill -f "xterm -T broker"       2>/dev/null || true
   pkill -f "xterm -T voice"        2>/dev/null || true
   pkill -f "xterm -T chat"         2>/dev/null || true
+  pkill -f "xterm -T face"         2>/dev/null || true
   log "stop: done"
 }
 
@@ -112,6 +123,7 @@ cmd_status() {
   echo "  broker:"; pids_of "$BROKER" | sed 's/^/    /' || true
   echo "  voice:";  pids_of "$VOICE"  | sed 's/^/    /' || true
   echo "  chat:";   pids_of "$CHAT"   | sed 's/^/    /' || true
+  echo "  face:";   pids_of "$FACE"   | sed 's/^/    /' || true
 }
 
 cmd_restart() { cmd_stop; sleep 0.5; cmd_all; }
@@ -122,7 +134,8 @@ Użycie:
   robot_dev.sh broker     # uruchom broker (FG)
   robot_dev.sh voice      # uruchom voice  (FG)
   robot_dev.sh chat       # uruchom chat   (FG)
-  robot_dev.sh all        # broker + voice (+ chat gdy VOICE_STANDALONE=0)
+  robot_dev.sh face       # uruchom buźkę UI (Tkinter)
+  robot_dev.sh all        # broker + voice + (chat gdy VOICE_STANDALONE=0) + face
   robot_dev.sh restart    # stop → all
   robot_dev.sh stop       # awaryjny STOP + ubij procesy + domknij okna
   robot_dev.sh status     # porty i procesy
@@ -136,6 +149,7 @@ case "$cmd" in
   broker)  cmd_broker_start ;;
   voice)   cmd_voice_start  ;;
   chat)    cmd_chat_start   ;;
+  face)    cmd_face_start   ;;
   all)     cmd_all          ;;
   restart) cmd_restart      ;;
   stop)    cmd_stop         ;;
@@ -143,4 +157,3 @@ case "$cmd" in
   help|-h|--help) cmd_help  ;;
   *) log "nieznane polecenie: $cmd"; cmd_help; exit 1 ;;
 esac
-
