@@ -1,8 +1,0 @@
-[Unit]
-Description=Robot stack (broker + voice + chat)
-Wants=robot-broker.service robot-voice.service robot-chat.service
-After=robot-broker.service robot-voice.service robot-chat.service
-
-[Install]
-WantedBy=default.target
-
