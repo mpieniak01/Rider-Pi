@@ -6,12 +6,14 @@
 #  - nasłuch hotwordu (Nyumaya premium) + VAD nagrywania
 #  - ASR (Whisper-1), publikacja "audio.transcript"
 #  - tryb standalone (domyślnie): Chat (gpt-4o-mini) + TTS (stream/mp3->mpg123)
-#  - subskrypcja "tts.speak": mów dowolny tekst wysłany po busie
+#  - subskrypcja "tts.speak": mów dowolny tekst wysłany po busie (wyłączone w standalone)
 #
 # ENV:
 #   OPENAI_API_KEY       (z ~/.bash_profile ładowany automatycznie jeśli brak)
-#   VOICE_STANDALONE=1   (domyślnie 1; ustaw 0 gdy podłączysz NLU/motion)
+#   VOICE_STANDALONE=1   (domyślnie 1; ustaw 0 gdy podłączysz NLU/motion i chat)
 #   ALSA_DEVICE=plughw:1,0
+#   TTS_OUTPUT=pulse|alsa
+#   TTS_ALSA_DEVICE=default|hw:0,0 (gdy TTS_OUTPUT=alsa; domyślnie = ALSA_DEVICE)
 #   HOTWORD_THRESHOLD=0.60  EXTRACTOR_GAIN=1.0
 #   VAD_MODE=3 VAD_FRAME_MS=20 VAD_SILENCE_TAIL_MS=300 VAD_MAX_LEN_S=4.0
 #   ENERGY_CUTOFF_DBFS=-36.0 ENERGY_TAIL_MS=180
@@ -19,17 +21,10 @@
 #   RECORDINGS_DIR=/home/pi/robot/data/recordings
 #   KEEP_INPUT_WAV=0 KEEP_OUTPUT_WAV=0
 #   DING_PLAY_MS=200  # czas trwania krótkiego "ding" (ucięcie po ms)
-#
-# Bus topics:
-#   PUB: "audio.transcript"   payload: {"text": "...", "lang": "pl", "ts": ..., "source":"voice"}
-#   SUB: "tts.speak"          payload: {"text": "..."}
 
-import os, sys, time, wave, shutil, threading, subprocess, platform, glob, math, tempfile, signal, json
-from typing import Tuple
+import os, sys, time, wave, shutil, threading, subprocess, platform, math, tempfile, signal
+from typing import Tuple, Optional
 import numpy as np
-
-
-
 
 # ── dopnij root projektu do sys.path ──────────────────────────────────────────
 PROJ_ROOT = "/home/pi/robot"
@@ -53,15 +48,16 @@ def log(msg: str) -> None:
         sys.stdout.buffer.write((time.strftime("[%H:%M:%S] ")+s+"\n").encode("utf-8","ignore"))
         sys.stdout.flush()
 
-# ── Info systemu ──────────────────────────────────────────────────────────────
-try:
-    u = platform.uname()
-    print(f"System:{u.system}", flush=True)
-    print(f"Release:{u.release}", flush=True)
-    print(f"Machine:{u.machine}", flush=True)
-    print(f"Uname:{u}", flush=True)
-except Exception:
-    pass
+# ── Info systemu: JEDNORAZOWO ────────────────────────────────────────────────
+def _print_sysinfo_once() -> None:
+    try:
+        u = platform.uname()
+        log(f"System: {u.system}")
+        log(f"Release: {u.release}")
+        log(f"Machine: {u.machine}")
+        log(f"Uname: {u}")
+    except Exception:
+        pass
 
 # ── Ścieżki i importy vendora ────────────────────────────────────────────────
 DEMOS_ROOT = "/home/pi/RaspberryPi-CM4-main/demos"
@@ -109,7 +105,7 @@ signal.signal(signal.SIGINT, _sig_handler)
 signal.signal(signal.SIGTERM, _sig_handler)
 
 # ── OPENAI KEY z ENV lub ~/.bash_profile ─────────────────────────────────────
-def _load_openai_key_from_bash_profile() -> str:
+def _load_openai_key_from_bash_profile() -> Optional[str]:
     path = os.path.expanduser("~/.bash_profile")
     if not os.path.exists(path): return None
     try:
@@ -122,7 +118,7 @@ def _load_openai_key_from_bash_profile() -> str:
         pass
     return None
 
-def _get_openai_api_key() -> str:
+def _get_openai_api_key() -> Optional[str]:
     key = os.environ.get("OPENAI_API_KEY")
     if key: return key
     key = _load_openai_key_from_bash_profile()
@@ -130,6 +126,16 @@ def _get_openai_api_key() -> str:
         os.environ["OPENAI_API_KEY"] = key
         return key
     return None
+
+# ── TTS: konfiguracja + lock + anty-duplikat ─────────────────────────────────
+_TTS_LOCK = threading.Lock()
+_TTS_LAST = {"text": None, "t": 0.0}
+def _tts_is_dup(text: str, window_s: float = 10.0) -> bool:
+    now = time.time()
+    if _TTS_LAST["text"] == text and (now - _TTS_LAST["t"]) < window_s:
+        return True
+    _TTS_LAST.update({"text": text, "t": now})
+    return False
 
 # ── Konfig ───────────────────────────────────────────────────────────────────
 def _env_float(name: str, default: float) -> float:
@@ -149,12 +155,13 @@ def _env_bool(name: str, default: bool) -> bool:
     except Exception: return default
 
 VOICE_STANDALONE = _env_bool("VOICE_STANDALONE", True)
-
-SELF_STABILIZE = _env_int("SELF_STABILIZE", 0)  # domyślnie WYŁ.
-
+SELF_STABILIZE   = _env_int("SELF_STABILIZE", 0)
 
 ALSA_DEVICE     = os.environ.get("ALSA_DEVICE","plughw:1,0")
 OPENAI_API_KEY  = _get_openai_api_key()
+
+TTS_OUTPUT       = os.environ.get("TTS_OUTPUT", "pulse").lower()   # pulse|alsa
+TTS_ALSA_DEVICE  = os.environ.get("TTS_ALSA_DEVICE", ALSA_DEVICE)
 
 ALSA_BUFFER_US     = _env_int("ALSA_BUFFER_US", 50000)
 ALSA_PERIOD_US     = _env_int("ALSA_PERIOD_US", 12000)
@@ -193,6 +200,7 @@ STREAM_TEE_OUTPUT = _env_bool("STREAM_TEE_OUTPUT", False)
 
 BAT_WARN_PCT      = _env_int("BAT_WARN_PCT", 20)
 
+# Premium lib/model Nyumaya
 PREMIUM_LIB = os.environ.get("HOTWORD_LIB_PATH")
 if PREMIUM_LIB and not os.path.exists(PREMIUM_LIB): PREMIUM_LIB = None
 if not PREMIUM_LIB:
@@ -242,7 +250,7 @@ def _has_ffmpeg() -> bool: return shutil.which("ffmpeg") is not None
 def _has_mpg123() -> bool: return shutil.which("mpg123") is not None
 
 # ── Bus: pub/sub ──────────────────────────────────────────────────────────────
-PUB = BusPub()             # bez prefixu; będziemy podawać pełne tematy
+PUB = BusPub()
 SUB_TTS = BusSub("tts.speak")
 
 # ── OpenAI init ───────────────────────────────────────────────────────────────
@@ -404,46 +412,88 @@ def chat_reply(user_text: str) -> str:
 
 # ── TTS STREAMING (mp3 -> mpg123 stdin) ───────────────────────────────────────
 def tts_stream(text: str) -> bool:
-    if not STREAM_TTS or not _has_mpg123(): return False
+    """Strumieniowy TTS: mp3 -> mpg123 (pulse preferowany, fallback alsa), z lockiem i de-dup."""
+    if not STREAM_TTS or not _has_mpg123():
+        return False
+    if _tts_is_dup(text, window_s=10.0):
+        log("TTS: pomijam duplikat tekstu.")
+        return True
+
     _led(LED_SPEAK)
     log("Synteza mowy (stream, mp3->mpg123)...")
-    t0=time.time()
-    cmd = ["mpg123","-q"]
-    if ALSA_DEVICE: cmd += ["-a", ALSA_DEVICE]
-    if abs(STREAM_PITCH) > 1e-3: cmd += ["--pitch", str(STREAM_PITCH)]
-    cmd += ["-"]
-    try:
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    except Exception as e:
-        log(f"STREAM_TTS: nie uruchomie mpg123: {e}"); return False
-    try:
-        with client.audio.speech.with_streaming_response.create(
-            model="tts-1", voice="alloy", input=text
-        ) as r:
-            first=None
-            for chunk in r.iter_bytes(8192):
-                if not chunk: continue
+    t0 = time.time()
+
+    def _build_cmd(backend: str):
+        cmd = ["mpg123", "-q", "-o", backend]
+        if backend == "alsa" and TTS_ALSA_DEVICE:
+            cmd += ["-a", TTS_ALSA_DEVICE]
+        if abs(STREAM_PITCH) > 1e-3:
+            cmd += ["--pitch", str(STREAM_PITCH)]
+        cmd += ["-"]
+        return cmd
+
+    backends_try = [TTS_OUTPUT] if TTS_OUTPUT in ("pulse", "alsa") else ["pulse", "alsa"]
+
+    with _TTS_LOCK:
+        for backend in backends_try:
+            cmd = _build_cmd(backend)
+            try:
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            except Exception as e:
+                log(f"TTS: nie uruchomię mpg123 ({backend}): {e}")
+                proc = None
+            if not proc:
+                continue
+
+            try:
+                first = None
+                with client.audio.speech.with_streaming_response.create(
+                    model="tts-1", voice="alloy", input=text
+                ) as r:
+                    for chunk in r.iter_bytes(STREAM_CHUNK):
+                        if not chunk:
+                            continue
+                        try:
+                            proc.stdin.write(chunk)  # type: ignore[union-attr]
+                            proc.stdin.flush()       # type: ignore[union-attr]
+                            if first is None:
+                                first = time.time()
+                                log(f"TIMING: TTS_TTFB={(first - t0):.2f}s")
+                        except Exception:
+                            break
+            except Exception as e:
+                log(f"STREAM_TTS błąd (backend={backend}): {e}")
                 try:
-                    proc.stdin.write(chunk); proc.stdin.flush()
-                    if first is None:
-                        first=time.time(); log(f"TIMING: TTS_TTFB={(first-t0):.2f}s")
+                    if proc.stdin: proc.stdin.close()
                 except Exception:
-                    break
-    except Exception as e:
-        log(f"STREAM_TTS blad: {e}")
-        try: proc.stdin.close(); proc.terminate()
-        except Exception: pass
+                    pass
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                continue
+
+            try:
+                if proc.stdin: proc.stdin.close()
+            except Exception:
+                pass
+            try:
+                rc = proc.wait(timeout=20)
+            except Exception:
+                rc = -1
+
+            t1 = time.time()
+            log(f"TIMING: TTS_STREAM={(t1 - t0):.2f}s")
+            if rc == 0:
+                return True
+            else:
+                err = (proc.stderr.read() if proc.stderr else b"").decode("utf-8", "ignore")
+                log(f"TTS: mpg123 rc={rc} (backend={backend}) {err.strip() if err else ''}")
+
         return False
-    try: proc.stdin.close()
-    except Exception: pass
-    try: rc = proc.wait(timeout=20)
-    except Exception: rc=-1
-    t1=time.time(); log(f"TIMING: TTS_STREAM={(t1-t0):.2f}s")
-    return rc==0
 
 # ── Krótki, nieblokujący "ding" po hotword ───────────────────────────────────
 def _play_ding_ms(ms: int = None):
-    """Krótki ‚ding’ w tle; nie blokuje wątku i nie wstrzymuje wejścia audio."""
     if not os.path.exists(DING_WAV):
         return
     ms = int(os.environ.get("DING_PLAY_MS", ms if ms is not None else 200))
@@ -477,7 +527,6 @@ def on_wake():
         user_text = transkrybuj(wav_path)
         log(f"Uzytkownik: {user_text}")
 
-        # PUB: audio.transcript (zawsze)
         PUB.publish("audio.transcript", {
             "text": user_text, "lang": "pl", "ts": now_ts(), "source": "voice"
         })
@@ -524,7 +573,8 @@ def start_hotword_listener() -> Tuple[threading.Thread, threading.Event]:
         try:
             audio_stream = AudiostreamSource(); audio_stream.start()
             extractor = FeatureExtractor(PREMIUM_LIB); detector = AudioRecognition(PREMIUM_LIB)
-            log(f"Hotword: laduje .premium: {os.path.basename(PREMIUM_MODEL)}")
+            from os.path import basename
+            log(f"Hotword: laduje .premium: {basename(PREMIUM_MODEL)}")
             keyword_id = detector.addModel(PREMIUM_MODEL, HOTWORD_THRESHOLD)
             bufsize = detector.getInputDataSize(); last_stat=time.time()
             log(f"Ustawienia: ALSA_DEVICE={ALSA_DEVICE}")
@@ -562,23 +612,13 @@ def start_hotword_listener() -> Tuple[threading.Thread, threading.Event]:
 
                 if prediction != 0 and prediction == keyword_id:
                     log("HOTWORD: wykryto.")
-                    # 1) zwolnij WEJŚCIE audio NAJPIERW
-                    try:
-                        audio_stream.stop()
-                    except Exception:
-                        pass
-                    try:
-                        del audio_stream
-                    except Exception:
-                        pass
+                    try: audio_stream.stop()
+                    except Exception: pass
+                    try: del audio_stream
+                    except Exception: pass
                     time.sleep(0.02)
-
-                    # 2) krótki, nieblokujący 'ding'
-                    _play_ding_ms()  # domyślnie 200 ms; steruj DING_PLAY_MS
-
-                    # 3) nagrywaj komendę NATYCHMIAST
+                    _play_ding_ms()
                     on_wake()
-
                     if _shutdown_evt.is_set() or stop_flag.is_set():
                         break
                     audio_stream = AudiostreamSource(); audio_stream.start(); _led(LED_LISTEN)
@@ -592,7 +632,7 @@ def start_hotword_listener() -> Tuple[threading.Thread, threading.Event]:
     th = threading.Thread(target=worker, daemon=True); th.start()
     return th, stop_flag
 
-# ── Ręczny trigger oraz SUB tts.speak ─────────────────────────────────────────
+# ── Ręczny trigger + SUB tts.speak (wyłączony w standalone) ──────────────────
 def manual_trigger_thread(stop_flag: threading.Event) -> threading.Thread:
     def manual():
         log("Ręczny trigger: ENTER = pytanie, 'q'+ENTER = wyjście.")
@@ -610,6 +650,9 @@ def manual_trigger_thread(stop_flag: threading.Event) -> threading.Thread:
 
 def tts_subscriber_thread(stop_flag: threading.Event) -> threading.Thread:
     def run():
+        if VOICE_STANDALONE:
+            log("SUB tts.speak: wyłączony w VOICE_STANDALONE=1")
+            return
         log("SUB: tts.speak")
         while not stop_flag.is_set() and not _shutdown_evt.is_set():
             topic, payload = SUB_TTS.recv(timeout_ms=200)
@@ -625,6 +668,7 @@ def tts_subscriber_thread(stop_flag: threading.Event) -> threading.Thread:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    _print_sysinfo_once()
     log("Start voice-service")
     if XGO:
         try:
@@ -640,7 +684,10 @@ if __name__ == "__main__":
     hotword_thread=None; hotword_stop=threading.Event()
     th, st = start_hotword_listener(); hotword_thread, hotword_stop = th, st
     manual_th = manual_trigger_thread(hotword_stop)
-    sub_tts_th = tts_subscriber_thread(hotword_stop)
+    if not VOICE_STANDALONE:
+        sub_tts_th = tts_subscriber_thread(hotword_stop)
+    else:
+        log("Standalone: pomijam SUB tts.speak (unikam podwójnego TTS).")
 
     try:
         while not _shutdown_evt.is_set():
