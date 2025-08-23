@@ -1,0 +1,15 @@
+cat <<EOF > .gitignore
+# Logi i nagrania
+logs/
+data/logs/
+data/recordings/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+EOF
