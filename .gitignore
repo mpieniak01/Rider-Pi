@@ -13,3 +13,6 @@ __pycache__/
 .venv/
 venv/
 EOF
+
+# Jupyter checkpoints
+**/.ipynb_checkpoints/
