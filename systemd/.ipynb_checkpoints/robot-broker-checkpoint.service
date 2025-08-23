@@ -1,0 +1,17 @@
+[Unit]
+Description=Robot voice service (hotword + VAD + ASR + opcjonalnie TTS/Chat)
+After=robot-broker.service
+Requires=robot-broker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/robot/apps/voice
+EnvironmentFile=/home/pi/robot/systemd/robot.env
+ExecStart=/usr/bin/python3 -u /home/pi/robot/apps/voice/main.py
+Restart=always
+RestartSec=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

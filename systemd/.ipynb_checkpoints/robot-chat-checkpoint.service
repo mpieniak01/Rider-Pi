@@ -1,0 +1,19 @@
+[Unit]
+Description=Robot chat service (NLU + TTS subscriber)
+After=robot-broker.service
+Requires=robot-broker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/robot/apps/chat
+EnvironmentFile=/home/pi/robot/systemd/robot.env
+# Jeśli Twój chat to osobny proces (np. /home/pi/robot/apps/chat/main.py), wpisz go tutaj.
+# Na razie możesz zostawić wyłączone lub dodać gdy gotowe.
+ExecStart=/usr/bin/python3 -u /home/pi/robot/apps/chat/main.py
+Restart=always
+RestartSec=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
