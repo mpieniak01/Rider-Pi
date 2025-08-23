@@ -13,8 +13,7 @@ Rider-Pi to projekt robota opartego na Raspberry Pi. System składa się z modu�
   /motion     – sterowanie napędem (L298N/PWM), serwami; awaryjny STOP
   /autonomy   – logika autonomii i stany zachowań; decyzje
   /vision     – przetwarzanie obrazu (kamera), obserwacje dla autonomy
-  /display    – UI: ekran/LED; reakcje na zdarzenia
-  /ui         – LCD face (xgoscreen), PID-lock, SPI takeover, Tk fallback
+  /ui         – UI, LCD face (xgoscreen), PID-lock, SPI takeover, Tk fallback
 /common       – biblioteki wspólne (np. bus.py, utils, nlu_shared)
 /scripts      – narzędzia (broker i testowe pub/sub)
 /systemd      – pliki jednostek usług (autostart – później)
