@@ -44,50 +44,22 @@ flowchart LR
   Autonomy -->|display.update| Display[apps/display]
 ```
 
-### Tematy (topics) – kontrakty i przykłady
+### Tematy i minimalne ładunki (JSON)
 
-**`audio.transcript`** (Voice → NLU)
-```json
-{
-  "text": "jedz na przód",
-  "lang": "pl",
-  "ts": 123,
-  "source": "mic|test"
-}
-```
+| Topic              | Producent → Konsument             | Payload (minimal) |
+|--------------------|-----------------------------------|-------------------|
+| `audio.transcript` | voice → nlu/chat/*                 | `{"text":"jedź na przód","lang":"pl","ts":123,"source":"voice"}` |
+| `tts.speak`        | chat/nlu → voice/ui               | `{"text":"Jadę do przodu","voice":"pl"}` |
+| `motion.cmd`       | nlu/chat/autonomy → motion        | `{"type":"drive","dir":"forward","speed":0.6,"dur":1.0}` |
+| `motion.state`     | motion → autonomy/ui/*            | `{"battery":0.82,"speed":0.0,"ts":123}` |
+| `vision.event`     | vision → autonomy/*               | `{"type":"obstacle","dist_cm":23,"ts":123}` |
+| `ui.face.set`      | nlu/chat/autonomy → ui            | `{"expr":"happy","intensity":0.7,"blink":true}` |
+| `ui.face.config`   | * → ui                            | `{"lcd_spi_hz":48000000,"backend":"lcd"}` |
+| `system.heartbeat` | każdy moduł → *                   | `{"app":"motion","pid":1234,"ver":"0.1.0","ts":123}` |
 
-**`intent`** (NLU → Autonomy)
-```json
-{
-  "name": "MOVE_FORWARD",
-  "slots": {"speed": 0.6, "duration": 1.2},
-  "ts": 124
-}
-```
-
-**`command`** (Autonomy → Motion)
-```json
-{
-  "type": "drive",
-  "left": 0.6,
-  "right": 0.6,
-  "timeout": 1200
-}
-```
-
-**`tts.speak`** (Autonomy/Chat → Voice)
-```json
-{ "text": "Jadę do przodu", "lang": "pl" }
-```
-
-**`display.update`** (Autonomy → Display)
-```json
-{ "screen": "status", "state": "moving", "battery": 0.72 }
-```
-
-> **Uwaga:** Tematy i ładunki (payload) trzymaj minimalne i spójne. Dodawaj wersjonowanie, jeśli zmieniasz strukturę (np. `"schema":"v1"`).
-
----
+> Zasady:
+> - Ładunki są **małe i spójne**; pola dodatkowe dozwolone, ale minimal powyżej.
+> - Czas `ts` w sekundach (epoch). Język domyślny: `pl`.
 
 ## Wymagania i środowisko
 - Raspberry Pi OS / Linux
@@ -95,64 +67,16 @@ flowchart LR
 - Pakiety (przykład): `pyzmq`, `RPi.GPIO`/`gpiozero`, `pydantic` (opcjonalnie do walidacji), TTS/ASR wg potrzeb
 - (Opcjonalnie) `venv`
 
-### Konfiguracja `.env` (zalecana)
-Utwórz `.env` (ignorowany w git) i wypełnij np.:
-```
-# Bus (ZeroMQ)
-BUS_PUB_PORT=5555
-BUS_SUB_PORT=5556
+## Zmienne środowiskowe (wspólne)
 
-# Voice / język
-VOICE_STANDALONE=0
-DEFAULT_LANG=pl
+- Bus: `BUS_HOST=127.0.0.1`, `BUS_PUB=5555`, `BUS_SUB=5556`
+- Locale: `LANG=pl`
+- Logi: każdy moduł loguje do `data/logs/<mod>.log` (git-ignore)
 
-# Hotword
-HOTWORD=lulu
-```
-Możesz dodać plik **`.env.example`** do repo jako szablon (bez sekretów).
+### Kolejność startu (DEV)
 
----
-
-## Uruchamianie (DEV)
-```bash
-git clone https://github.com/pppnews/Rider-Pi.git
-cd Rider-Pi
-# (opcjonalnie) python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-chmod +x robot_dev.sh
-./robot_dev.sh
-```
-
-> `robot_dev.sh` przed startem zabija stare instancje usług, a następnie podnosi broker/bus i kolejne moduły. W logach preferujemy konsolę (bez systemd na etapie DEV).
-
----
-
-## Bezpieczeństwo i tryb SAFE
-Aby uniknąć niebezpiecznych ruchów (np. po podniesieniu robota):
-- Na starcie i przy SIGINT/SIGTERM wywołuj `motors_safe_off()` (zerowanie PWM/INx); rejestruj `atexit`.
-- Rozważ **exclusive lock** (gdyby program uruchomił się podwójnie).
-- W `autonomy/motion` dodaj logikę: brak podłoża (np. czujnik VL53L0X/ultra w dół) ⇒ `SAFE_MODE=ON`, `stop_all_motors()`.
-- Komenda awaryjna „STOP/Stój” (IR/voice/topic `control.stop`) natychmiast zatrzymuje napęd.
-
----
-
-## Standard pracy (Git)
-- `main` – stabilny branch
-- `dev` – prace bieżące; PR do `main`
-- Commity: krótkie, w trybie rozkazującym (np. `Add safety lock for motion`)
-- `.gitignore` zawiera logi, nagrania, modele itp. (nie commituj sekretów). Używaj `.env`.
-
----
-
-## Plan rozwoju (TODO)
-- [ ] Moduł `common/safety.py` (SIG-handlers, atexit, ground-detect, STOP)
-- [ ] Tabela wszystkich topics + schematy w `docs/` (lub sekcja poniżej)
-- [ ] Integracja VL53L0X (detekcja podłoża) i IMU (wstrząsy/podniesienie)
-- [ ] Rozszerzenie autonomy: tryby patrol/obiekt-follow
-- [ ] Integracja z `systemd` (autostart usług produkcyjnie)
-- [ ] GitHub Actions: lint/test (opcjonalnie)
-
----
-
-## Licencja
-TBD (np. MIT). Jeśli nie chcesz pełnego open-source, pozostaw repo bez licencji (domyślnie „all rights reserved”).
-
+1. `broker`  
+2. `voice`  
+3. `nlu` i/lub `chat`  
+4. `motion`, `vision`  
+5. `ui` (LCD face)
