@@ -51,9 +51,16 @@ flowchart LR
   Voice[apps/voice] -->|audio.transcript| NLU[apps/nlu]
   NLU -->|intent| Autonomy[apps/autonomy]
   Vision[apps/vision] -->|observation| Autonomy
-  Autonomy -->|command| Motion[apps/motion]
+  Autonomy -->|motion.cmd| Motion[apps/motion]
+  Motion -->|motion.state| Autonomy
+  Motion -->|motion.state| UI[apps/ui/face]
   Autonomy -->|tts.speak| Voice
-  Autonomy -->|ui.face.set| UI[apps/ui/face]
+  Chat[apps/chat] -->|tts.speak| Voice
+  Autonomy -->|ui.face.set| UI
+  Chat -->|ui.face.set| UI
+  Voice -->|audio.transcript| UI
+  Chat -->|assistant.speech| UI
+  Any[(*)] -->|ui.face.config| UI
 ```
 
 ### Tematy i minimalne ładunki (JSON)
@@ -175,4 +182,5 @@ python3 scripts/pub.py ui.face.config '{"brow_style":"tapered","quality":"aa2x",
 - Obwiednia głowy jako **elipsa** sterowana `HEAD_KY`; brwi „tapered” (poligon, opcjonalny AA×2).
 - Parametry mimiki (usta/brwi) skalowane względem wymiaru kanwy — spójnie LCD/Tk.
 - Dodane runtime-`ui.face.config` (pozycja brwi/ust, styl brwi, jakość, SPI Hz).
-- Helper `` w root do „jednostrzałowego” startu po restarcie.
+- Helper `run_boot.sh` w root do „jednostrzałowego” startu po restarcie.
+
