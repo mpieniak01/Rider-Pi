@@ -1,11 +1,13 @@
 # Rider-Pi – Architektura projektu
 
 ## Opis ogólny
+
 Rider-Pi to projekt robota opartego na Raspberry Pi. System składa się z modułowych usług (apps) komunikujących się przez prostą magistralę wiadomości (ZeroMQ – PUB/SUB). Celem jest interaktywny, autonomiczny asystent-robot z obsługą głosu, ruchu i percepcji.
 
 ---
 
 ## Struktura katalogów
+
 ```
 /apps
   /voice      – rozpoznawanie mowy; publikacja transkryptu na busie
@@ -13,7 +15,7 @@ Rider-Pi to projekt robota opartego na Raspberry Pi. System składa się z modu�
   /motion     – sterowanie napędem (L298N/PWM), serwami; awaryjny STOP
   /autonomy   – logika autonomii i stany zachowań; decyzje
   /vision     – przetwarzanie obrazu (kamera), obserwacje dla autonomy
-  /ui         – UI, LCD face (xgoscreen), PID-lock, SPI takeover, Tk fallback
+  /ui         – UI, LCD face (xgoscreen/Tk), PID-lock, SPI takeover, elipsa HEAD_KY
 /common       – biblioteki wspólne (np. bus.py, utils, nlu_shared)
 /scripts      – narzędzia (broker i testowe pub/sub)
 /systemd      – pliki jednostek usług (autostart – później)
@@ -46,25 +48,25 @@ flowchart LR
 
 ### Tematy i minimalne ładunki (JSON)
 
-| Topic              | Producent → Konsument             | Payload (minimal) |
-|--------------------|-----------------------------------|-------------------|
-| `audio.transcript` | voice → nlu/chat/*                 | `{"text":"jedź na przód","lang":"pl","ts":123,"source":"voice"}` |
-| `tts.speak`        | chat/nlu → voice/ui               | `{"text":"Jadę do przodu","voice":"pl"}` |
-| `motion.cmd`       | nlu/chat/autonomy → motion        | `{"type":"drive","dir":"forward","speed":0.6,"dur":1.0}` |
-| `motion.state`     | motion → autonomy/ui/*            | `{"battery":0.82,"speed":0.0,"ts":123}` |
-| `vision.event`     | vision → autonomy/*               | `{"type":"obstacle","dist_cm":23,"ts":123}` |
-| `ui.face.set`      | nlu/chat/autonomy → ui            | `{"expr":"happy","intensity":0.7,"blink":true}` |
-| `ui.face.config`   | * → ui                            | `{"lcd_spi_hz":48000000,"backend":"lcd"}` |
-| `system.heartbeat` | każdy moduł → *                   | `{"app":"motion","pid":1234,"ver":"0.1.0","ts":123}` |
+| Topic              | Producent → Konsument      | Payload (minimal)                                                |
+| ------------------ | -------------------------- | ---------------------------------------------------------------- |
+| `audio.transcript` | voice → nlu/chat/\*        | `{"text":"jedź na przód","lang":"pl","ts":123,"source":"voice"}` |
+| `tts.speak`        | chat/nlu → voice/ui        | `{"text":"Jadę do przodu","voice":"pl"}`                         |
+| `motion.cmd`       | nlu/chat/autonomy → motion | `{"type":"drive","dir":"forward","speed":0.6,"dur":1.0}`         |
+| `motion.state`     | motion → autonomy/ui/\*    | `{"battery":0.82,"speed":0.0,"ts":123}`                          |
+| `vision.event`     | vision → autonomy/\*       | `{"type":"obstacle","dist_cm":23,"ts":123}`                      |
+| `ui.face.set`      | nlu/chat/autonomy → ui     | `{"expr":"happy","intensity":0.7,"blink":true}`                  |
+| `ui.face.config`   | \* → ui                    | `{"lcd_spi_hz":48000000,"backend":"lcd"}`                        |
 
-> Zasady:
-> - Ładunki są **małe i spójne**; pola dodatkowe dozwolone, ale minimal powyżej.
-> - Czas `ts` w sekundach (epoch). Język domyślny: `pl`.
+> Uwaga (stan bieżący UI): renderer `apps/ui/face.py` **subskrybuje** m.in. `ui.state`, `assistant.speech`, `audio.transcript` (wejścia do animacji, mrugnięcia i ruchu ust). Powyższa tabela definiuje docelowy model – zgodny z resztą systemu.
+
+---
 
 ## Wymagania i środowisko
+
 - Raspberry Pi OS / Linux
 - Python 3.9+
-- Pakiety (przykład): `pyzmq`, `RPi.GPIO`/`gpiozero`, `pydantic` (opcjonalnie do walidacji), TTS/ASR wg potrzeb
+- Pakiety (przykład): `pyzmq`, `RPi.GPIO`/`gpiozero`, TTS/ASR wg potrzeb
 - (Opcjonalnie) `venv`
 
 ## Zmienne środowiskowe (wspólne)
@@ -73,10 +75,37 @@ flowchart LR
 - Locale: `LANG=pl`
 - Logi: każdy moduł loguje do `data/logs/<mod>.log` (git-ignore)
 
-### Kolejność startu (DEV)
+---
 
-1. `broker`  
-2. `voice`  
-3. `nlu` i/lub `chat`  
-4. `motion`, `vision`  
+## UI (LCD Face) – uruchamianie (DEV)
+
+- Plik: `apps/ui/face.py` (dawne `face2.py`). Działa na LCD (SPI) i ma fallback Tk.
+- DEV kontroler: `./robot_dev.sh face`\
+  – skrypt **robi takeover** (zamyka domyślną appkę startową i zwalnia SPI).\
+  – jeśli autostartowa appka działa jako root i blokuje wyświetlacz, można też użyć `./robot_dev.sh takeover` przed startem UI.
+
+**ENV dla UI:**
+
+- `FACE_BACKEND`: `lcd` | `tk` (domyślnie `lcd`)
+- `FACE_GUIDE`: `1/0` – rysuje przewodnik (elipsę twarzy)
+- `FACE_HEAD_KY`: `0.90–1.20` – skala pionu elipsy (1.00 = koło; >1.0 owal; <1.0 „pełniejsza”)
+- `FACE_BENCH`: `1/0` – benchmark na STDOUT (FPS/draw/push)
+- (opc.) `FACE_LCD_ROTATE`: `0/90/180/270` (domyślnie 270)
+
+**Przykład (DEV):**
+
+```bash
+FACE_BACKEND=lcd FACE_GUIDE=1 FACE_HEAD_KY=1.12 ./robot_dev.sh face
+```
+
+---
+
+## Kolejność startu (DEV)
+
+1. `broker`
+2. `voice`
+3. `nlu` i/lub `chat`
+4. `motion`, `vision`
 5. `ui` (LCD face)
+
+> Uwaga: nie przechodzimy jeszcze na systemd/usługi – start/stop robi `robot_dev.sh`. W wersji DEV, jeśli domyślna aplikacja systemowa blokuje ekran, `robot_dev.sh face` wykonuje takeover przed startem UI.
