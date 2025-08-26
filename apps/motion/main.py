@@ -1,234 +1,302 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# apps/motion/main.py
 """
-apps/motion/main.py — Motion loop (PUB/SUB), XGO adapter, watchdog i telemetria.
-
-Sub:
-  - intent.motion  {"action":"forward|back|left|right|stop", "speed":0.4, "duration":1.5}
-    (alias wsteczny; mapujemy na kanoniczne)
-  - motion.cmd     {"type":"drive|spin|stop", ...}
-
-Pub:
-  - motion.state   {"speed":0.0, "ts":..., "reason":"periodic|dur_done|watchdog", "wd":true, "battery":0.82?}
-
-Uwaga:
-- Fizyczny ruch jest wykonywany tylko, gdy MOTION_ENABLE=1 (adapter XGO honoruje tę flagę).
-- W trybie "lease" watchdog nie przerywa ruchu (kończy się na 'dur' → dur_done).
+Pętla ruchu Rider-Pi:
+- SUB ZeroMQ (topic 'motion') z brokera (XPUB) na tcp://127.0.0.1:5556
+- sterowanie: {"type":"drive","lx":float,"az":float} / {"type":"stop"}
+- bezpieczeństwo: MOTION_ENABLE / plik-flag, E-Stop, clamp prędkości
+- watchdog: auto STOP po braku komend
+- rampa prędkości (miękki start/stop)
+- telemetria PUB 'motion.state' na broker (tcp://127.0.0.1:5555)
 """
 
-import os, sys, time, json, math
+import os
+import time
+import json
+import logging
 from typing import Optional
 
-# --- ścieżka projektu ---
-PROJ_ROOT = "/home/pi/robot"
-if PROJ_ROOT not in sys.path:
-    sys.path.insert(0, PROJ_ROOT)
+from apps.safety.estop import estop_triggered, motion_enabled, safe_speed
 
-# bezpieczne printy
-try:
-    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
-    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
-except Exception:
-    pass
+from common.pidlock import single_instance
+_PID_FD = single_instance()
 
-from common.bus import BusPub, BusSub
-from apps.motion.xgo_adapter import XgoAdapter
+# ── ENV ───────────────────────────────────────────────────────────────────────
+WATCHDOG_MS   = int(os.getenv("MOTION_WATCHDOG_MS", "500"))              # ms
+LOOP_DT       = float(os.getenv("MOTION_LOOP_DT", "0.02"))               # 50 Hz
+BUS_ADDR      = os.getenv("BUS_SUB_ADDR", "tcp://127.0.0.1:5556")        # SUB
+BUS_TOPIC     = os.getenv("MOTION_TOPIC", "motion")
+SPEED_LIMIT   = float(os.getenv("MOTION_SPEED_LIMIT", "0.6"))
+LOG_LEVEL     = os.getenv("MOTION_LOG_LEVEL", "INFO").upper()
 
-# --- BUS ---
-PUB = BusPub()
-SUB_INTENT = BusSub("intent.motion")   # alias legacy
-SUB_CMD    = BusSub("motion.cmd")      # kanoniczny
+# rampa (jednostka: jednostki/s)
+RAMP_LX       = float(os.getenv("MOTION_RAMP_LX", "1.0"))   # np. 1.0 m/s^2 (lub skala Twojej prędkości)
+RAMP_AZ       = float(os.getenv("MOTION_RAMP_AZ", "2.0"))   # np. 2.0 rad/s^2
+EPS           = float(os.getenv("MOTION_EPS", "0.01"))      # próg uznania „prawie zero”
 
-# --- XGO adapter ---
-XGO = XgoAdapter()
-HAS_XGO = XGO.ok()
+# telemetria
+STATE_PUB_ADDR   = os.getenv("BUS_PUB_ADDR", "tcp://127.0.0.1:5555")
+STATE_TOPIC      = os.getenv("MOTION_STATE_TOPIC", "motion.state")
+STATE_HZ         = float(os.getenv("MOTION_TELEM_HZ", "5.0"))
 
-# --- LED kolory (RGB) ---
-LED_IDLE   = (0, 0, 0)
-LED_ACTIVE = (60, 40, 0)   # pomarańcz
-LED_OK     = (0, 80, 0)    # zielony
-LED_ERR    = (80, 0, 0)    # czerwony
+LOG = logging.getLogger("motion")
 
-def led(color):
-    try:
-        # 1 i 0 (obie)
-        XGO.led(1, color)
-        XGO.led(0, color)
-    except Exception:
-        pass
+# ── Adapter (real/sim) ───────────────────────────────────────────────────────
+class _SimAdapter:
+    def __init__(self):
+        self._moving = False
 
-def log(msg):
-    try:
-        print(time.strftime("[%H:%M:%S]"), msg, flush=True)
-    except UnicodeEncodeError:
-        sys.stdout.buffer.write((time.strftime("[%H:%M:%S] ")+str(msg)+"\n").encode("utf-8","replace"))
-        sys.stdout.flush()
+    def move(self, lx: float = 0.0, az: float = 0.0):
+        self._moving = True
+        LOG.info(f"[SIM] move lx={lx:.3f} az={az:.3f}")
 
-def _bus_publish(topic: str, payload: dict):
-    # kompatybilnie z naszym BusPub (scripts/pub.py używa .send)
-    for m in ("send", "publish", "pub"):
-        if hasattr(PUB, m):
-            return getattr(PUB, m)(topic, payload)
-    raise AttributeError("BusPub bez send/publish/pub")
+    def stop(self):
+        if self._moving:
+            LOG.info("[SIM] STOP")
+        self._moving = False
 
-# --- Watchdog i telemetria ---
-WD_S   = float(os.getenv("MOTION_WATCHDOG_S", "1.5"))
-WD_MODE = (os.getenv("MOTION_WD_MODE", "strict") or "strict").lower().strip()  # "strict"|"lease"
-TICK_S = 0.5  # okres publikacji "periodic"
-
-last_cmd_ts: float = 0.0
-run_until_ts: Optional[float] = None
-cur_speed: float = 0.0
-cur_mode: str = "idle"   # "idle"|"drive"|"spin"
-
-def pub_state(speed: float, *, reason: Optional[str]=None):
-    msg = {"speed": float(speed), "ts": time.time()}
-    if reason:
-        msg["reason"] = reason
-    # wd info
-    if WD_S > 0:
-        msg["wd"] = (WD_MODE in ("strict", "lease"))
-    # bateria (jeśli dostępna)
-    try:
-        bat = XGO.battery()
-        if bat is not None:
-            msg["battery"] = round(float(bat), 3)  # 0..1
-    except Exception:
-        pass
-    _bus_publish("motion.state", msg)
-
-def now() -> float:
-    return time.time()
-
-# --- Mapowania legacy INTENT → kanoniczne ---
-def handle_intent(payload: dict):
-    """Obsługa starego tematu intent.motion."""
-    action = (payload.get("action") or "").lower().strip()
-    speed  = float(payload.get("speed", 0.4))
-    dur    = float(payload.get("duration", 1.0))
-
-    if action in ("forward", "fwd", "ahead"):
-        handle_cmd({"type":"drive", "dir":"forward", "speed":speed, "dur":dur})
-    elif action in ("back", "backward", "rev"):
-        handle_cmd({"type":"drive", "dir":"backward", "speed":speed, "dur":dur})
-    elif action in ("left", "turnleft"):
-        handle_cmd({"type":"spin", "dir":"left", "speed":speed, "dur":dur})
-    elif action in ("right", "turnright"):
-        handle_cmd({"type":"spin", "dir":"right", "speed":speed, "dur":dur})
-    elif action in ("stop", "halt"):
-        handle_cmd({"type":"stop"})
+def _make_adapter() -> object:
+    real_enabled = motion_enabled()
+    if real_enabled:
+        try:
+            from apps.motion.xgo_adapter import XgoAdapter  # dostosuj ścieżkę jeśli potrzeba
+            LOG.info("Init XgoAdapter (real movement ENABLED)")
+            return XgoAdapter()
+        except Exception as e:
+            LOG.warning(f"XgoAdapter niedostępny ({e}), przełączam na symulację.")
     else:
-        log(f"Motion: unknown intent.action={action}")
+        LOG.info("Ruch fizyczny wyłączony – tryb symulacji.")
+    return _SimAdapter()
 
-# --- Kanoniczne komendy ---
-def do_stop(reason: str):
-    global cur_speed, cur_mode, run_until_ts
-    try:
-        XGO.stop()
-    except Exception:
-        pass
-    cur_speed = 0.0
-    cur_mode = "idle"
-    run_until_ts = None
-    led(LED_OK if reason in ("dur_done","periodic") else LED_IDLE)
-    pub_state(0.0, reason=reason)
+# ── Telemetria ───────────────────────────────────────────────────────────────
+class MotionTelemetry:
+    def __init__(self, addr: str, topic: str, rate_hz: float):
+        self.addr = addr
+        self.topic = topic.encode("utf-8")
+        self.period = 1.0 / max(0.1, rate_hz)
+        self.last_pub = 0.0
+        self._ok = False
+        self._ctx = None
+        self._pub = None
+        try:
+            import zmq
+            self._ctx = zmq.Context.instance()
+            self._pub = self._ctx.socket(zmq.PUB)
+            self._pub.connect(self.addr)
+            self._ok = True
+            time.sleep(0.1)  # rozgrzewka
+            LOG.info(f"Telemetry PUB → {self.addr} topic='{topic}' @ {rate_hz} Hz")
+        except Exception as e:
+            LOG.warning(f"Telemetry disabled ({e})")
 
-def do_drive(dir_: str, speed: float, dur: float):
-    global cur_speed, cur_mode, run_until_ts, last_cmd_ts
-    s = max(0.0, min(1.0, float(speed)))
-    d = max(0.0, float(dur))
-    dir_norm = "forward" if dir_.lower().startswith("f") else "backward"
-    log(f"Motion: drive dir={dir_norm} speed={s} dur={d}")
-    led(LED_ACTIVE)
-    try:
-        XGO.drive(dir_norm, s, dur=d, block=False)
-    except Exception as e:
-        log(f"Motion: drive error: {e}")
-        led(LED_ERR)
-    cur_speed = s if s > 0 else 0.0
-    cur_mode = "drive" if s > 0 else "idle"
-    run_until_ts = (now() + d) if d > 0 else None
-    last_cmd_ts = now()
-    pub_state(cur_speed)
+    def maybe_publish(self, state: dict):
+        if not self._ok:
+            return
+        now = time.time()
+        if now - self.last_pub < self.period:
+            return
+        self.last_pub = now
+        try:
+            payload = json.dumps(state, ensure_ascii=False).encode("utf-8")
+            self._pub.send_multipart([self.topic, payload])
+        except Exception as e:
+            LOG.debug(f"Telemetry publish error: {e}")
 
-def do_spin(dir_: str, speed: float, dur: float, deg: Optional[float]=None):
-    global cur_speed, cur_mode, run_until_ts, last_cmd_ts
-    s = max(0.0, min(1.0, float(speed)))
-    d = max(0.0, float(dur))
-    side = "left" if dir_.lower().startswith("l") else "right"
-    log(f"Motion: spin dir={side} speed={s} dur={d}")
-    led(LED_ACTIVE)
-    try:
-        XGO.spin(side, s, dur=d, deg=deg, block=False)
-    except Exception as e:
-        log(f"Motion: spin error: {e}")
-        led(LED_ERR)
-    cur_speed = s if s > 0 else 0.0
-    cur_mode = "spin" if s > 0 else "idle"
-    run_until_ts = (now() + d) if d > 0 else None
-    last_cmd_ts = now()
-    pub_state(cur_speed)
+# ── Kontroler z rampą ────────────────────────────────────────────────────────
+class MotionController:
+    def __init__(self, robot):
+        self.robot = robot
+        self.last_cmd_ts = time.time()
+        self.stopped = True
 
-def handle_cmd(payload: dict):
-    t = (payload.get("type") or "").lower().strip()
-    if t == "stop":
-        do_stop("cmd_stop")
-        return
-    if t == "drive":
-        do_drive(payload.get("dir","forward"), float(payload.get("speed", 0.4)), float(payload.get("dur", 0.0)))
-        return
-    if t == "spin":
-        do_spin(payload.get("dir","left"), float(payload.get("speed", 0.4)), float(payload.get("dur", 0.0)), payload.get("deg"))
-        return
-    # przyszłościowo: arc/servo/action...
-    log(f"Motion: unknown cmd.type={t}")
+        # cele (target) i wyjścia (out) dla rampy
+        self.t_lx = 0.0
+        self.t_az = 0.0
+        self.o_lx = 0.0
+        self.o_az = 0.0
 
+    def _stop_immediate(self):
+        """Natychmiastowe zatrzymanie i wyzerowanie."""
+        self.t_lx = self.t_az = 0.0
+        self.o_lx = self.o_az = 0.0
+        try:
+            self.robot.stop()
+        finally:
+            self.stopped = True
+            LOG.info("MOTION: STOP")
+
+    def stop(self):
+        """Miękki STOP (rampa do zera)."""
+        self.t_lx = self.t_az = 0.0
+
+    def drive(self, lx: float, az: float):
+        # Blokady bezpieczeństwa
+        if not motion_enabled() or estop_triggered():
+            self._stop_immediate()
+            return
+
+        # Ograniczenie komend
+        lx = safe_speed(lx, SPEED_LIMIT)
+        az = safe_speed(az, SPEED_LIMIT)
+
+        # Ustaw cel rampy
+        self.t_lx = lx
+        self.t_az = az
+        self.last_cmd_ts = time.time()
+
+    def _approach(self, cur: float, tgt: float, rate: float, dt: float) -> float:
+        delta = tgt - cur
+        maxstep = rate * dt
+        if   delta > maxstep: return cur + maxstep
+        elif delta < -maxstep: return cur - maxstep
+        else: return tgt
+
+    def tick(self, dt: float):
+        # twarde zatrzymanie gdy brak pozwolenia lub E-Stop:
+        if not motion_enabled() or estop_triggered():
+            if not self.stopped:
+                self._stop_immediate()
+            else:
+                self.t_lx = self.t_az = 0.0
+                self.o_lx = self.o_az = 0.0
+            return
+
+        # watchdog: wygaszaj target do 0, jeśli dawno nie było komendy
+        if (time.time() - self.last_cmd_ts) * 1000.0 > WATCHDOG_MS:
+            self.t_lx = 0.0
+            self.t_az = 0.0
+
+        # rampa do celu
+        new_lx = self._approach(self.o_lx, self.t_lx, RAMP_LX, dt)
+        new_az = self._approach(self.o_az, self.t_az, RAMP_AZ, dt)
+
+        changed = (abs(new_lx - self.o_lx) > 1e-4) or (abs(new_az - self.o_az) > 1e-4)
+        self.o_lx, self.o_az = new_lx, new_az
+
+        if changed:
+            if abs(self.o_lx) > EPS or abs(self.o_az) > EPS:
+                self.robot.move(lx=self.o_lx, az=self.o_az)
+                self.stopped = False
+            else:
+                if not self.stopped:
+                    self._stop_immediate()
+
+# ── MotionBus (SUB) ──────────────────────────────────────────────────────────
+class MotionBus:
+    """
+    SUB ZeroMQ: odbiera ramki 'topic <json>'.
+    """
+    def __init__(self, addr: str, topic: str):
+        self.addr = addr
+        self.topic = topic.encode("utf-8")
+        self._ctx = None
+        self._sub = None
+        self._poller = None
+        self._ok = False
+        self._init()
+
+    def _init(self):
+        try:
+            import zmq
+            self._ctx = zmq.Context.instance()
+            self._sub = self._ctx.socket(zmq.SUB)
+            # self._sub.setsockopt(zmq.CONFLATE, 1)  # opcjonalnie „ostatnia wygrywa”
+            self._sub.connect(self.addr)
+            self._sub.setsockopt(zmq.SUBSCRIBE, self.topic)
+            self._poller = zmq.Poller()
+            self._poller.register(self._sub, zmq.POLLIN)
+            self._ok = True
+            LOG.info(f"MotionBus SUB connected to {self.addr} topic='{self.topic.decode()}'")
+        except Exception as e:
+            LOG.warning(f"MotionBus niedostępny ({e}). Uruchamiam bez busa.")
+            self._ok = False
+
+    def recv_nowait(self) -> Optional[dict]:
+        if not self._ok:
+            return None
+        try:
+            import zmq
+            socks = dict(self._poller.poll(timeout=0))
+            if self._sub in socks and socks[self._sub] == zmq.POLLIN:
+                raw = self._sub.recv_multipart()
+                payload_bytes = raw[1] if len(raw) >= 2 else raw[-1]
+                payload = payload_bytes.decode("utf-8", errors="replace").strip()
+                try:
+                    return json.loads(payload)
+                except json.JSONDecodeError:
+                    LOG.warning(f"Nieparsowalny payload: {payload[:200]}")
+        except Exception as e:
+            LOG.warning(f"Błąd odbioru z busa: {e}")
+        return None
+
+# ── Obsługa komend ───────────────────────────────────────────────────────────
+def _handle_cmd(ctrl: MotionController, cmd: dict):
+    LOG.debug(f"CMD: {cmd}")
+    ctype = str(cmd.get("type", "")).lower()
+    if ctype == "drive":
+        lx = float(cmd.get("lx", 0.0))
+        az = float(cmd.get("az", 0.0))
+        ctrl.drive(lx=lx, az=az)
+    elif ctype == "stop":
+        ctrl.stop()
+    else:
+        LOG.debug(f"Nieznana komenda: {cmd}")
+
+# ── Main loop ────────────────────────────────────────────────────────────────
 def main():
-    log(f"Motion: XGO {'OK' if HAS_XGO else 'stub'}")
-    log(f"Motion: start (sub intent.motion + motion.cmd) [WD={WD_S:.1f}s, mode={WD_MODE}]")
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
 
-    tick_ts = 0.0
+    robot = _make_adapter()
+    ctrl = MotionController(robot)
+    bus = MotionBus(BUS_ADDR, BUS_TOPIC)
+    telem = MotionTelemetry(STATE_PUB_ADDR, STATE_TOPIC, STATE_HZ)
+
+    LOG.info("Motion loop start")
+
     try:
+        last = time.time()
         while True:
-            # --- odbiór komend ---
-            topic1, payload1 = SUB_INTENT.recv(timeout_ms=0)
-            if topic1:
-                log(f"Motion: intent → {payload1}")
-                try:
-                    handle_intent(payload1 or {})
-                except Exception as e:
-                    led(LED_ERR); log(f"Motion: intent error: {e}")
+            # odbiór komend
+            cmd = bus.recv_nowait()
+            if cmd is not None:
+                _handle_cmd(ctrl, cmd)
 
-            topic2, payload2 = SUB_CMD.recv(timeout_ms=200)
-            if topic2:
-                log(f"Motion: cmd → {payload2}")
-                try:
-                    handle_cmd(payload2 or {})
-                except Exception as e:
-                    led(LED_ERR); log(f"Motion: cmd error: {e}")
+            # tick z dt
+            now = time.time()
+            dt = now - last
+            last = now
+            if dt <= 0 or dt > 1.0:
+                dt = LOOP_DT  # sanity
+            ctrl.tick(dt)
 
-            # --- zegar / telemetria perio. ---
-            t = now()
-            if t - tick_ts >= TICK_S:
-                tick_ts = t
-                pub_state(cur_speed, reason="periodic")
+            # telemetria
+            state = {
+                "ts": time.time(),
+                "enabled": bool(motion_enabled()),
+                "estop": bool(estop_triggered()),
+                "stopped": bool(ctrl.stopped),
+                "target": {"lx": ctrl.t_lx, "az": ctrl.t_az},
+                "output": {"lx": ctrl.o_lx, "az": ctrl.o_az},
+                "last_cmd_age_ms": int((time.time() - ctrl.last_cmd_ts) * 1000.0),
+                "watchdog_ms": WATCHDOG_MS,
+                "ramp": {"lx": RAMP_LX, "az": RAMP_AZ},
+                "limit": SPEED_LIMIT,
+            }
+            telem.maybe_publish(state)
 
-                # zakończenie po czasie (dur_done)
-                if run_until_ts and t >= run_until_ts and cur_speed > 0:
-                    do_stop("dur_done")
-
-                # watchdog strict
-                if WD_MODE == "strict" and cur_speed > 0 and WD_S > 0 and (t - last_cmd_ts) > WD_S:
-                    log("Motion: Watchdog STOP (> WD bez komend)")
-                    do_stop("watchdog")
+            time.sleep(LOOP_DT)
     except KeyboardInterrupt:
-        pass
+        LOG.info("KeyboardInterrupt – zatrzymuję ruch.")
+    except Exception as e:
+        LOG.exception(f"Błąd w pętli motion: {e}")
     finally:
         try:
-            led(LED_IDLE)
+            ctrl.stop()
         except Exception:
             pass
-        log("Motion: bye")
+        LOG.info("Motion loop stop")
 
 if __name__ == "__main__":
     main()

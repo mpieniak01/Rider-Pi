@@ -1,48 +1,58 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-apps/demos/trajectory.py — prosta trajektoria:
-  drive(fwd, 0.4, 1.2s) → spin(left, 0.5, 0.8s) → drive(fwd, 0.3, 0.8s) → stop
-"""
-import os, sys, time
+# apps/demos/trajectory.py
+import os
+import time
+import json
 
-PROJ_ROOT = "/home/pi/robot"
-if PROJ_ROOT not in sys.path:
-    sys.path.insert(0, PROJ_ROOT)
+PUB_ADDR = os.getenv("BUS_PUB_ADDR", "tcp://127.0.0.1:5555")
+TOPIC = os.getenv("MOTION_TOPIC", "motion")
+RATE_HZ = float(os.getenv("DEMO_RATE_HZ", "10"))   # częstotliwość wysyłki
+DT = 1.0 / RATE_HZ
 
-from common.bus import BusPub
-PUB = BusPub()
+SPEED_FWD = float(os.getenv("DEMO_SPEED_FWD", "0.25"))
+SPEED_ROT = float(os.getenv("DEMO_SPEED_ROT", "0.25"))
+SEG_SEC = float(os.getenv("DEMO_SEG_SEC", "2.0"))
 
-def pub(topic, payload):
-    for m in ("send","publish","pub"):
-        if hasattr(PUB, m): return getattr(PUB, m)(topic, payload)
+def _mk_pub(addr: str):
+    import zmq
+    ctx = zmq.Context.instance()
+    sock = ctx.socket(zmq.PUB)
+    sock.connect(addr)
+    return sock
 
-def step_drive(dir_, speed, dur):
-    pub("motion.cmd", {"type":"drive","dir":dir_,"speed":float(speed),"dur":float(dur)})
+def _send(sock, msg: dict):
+    payload = json.dumps(msg).encode("utf-8")
+    sock.send_multipart([TOPIC.encode("utf-8"), payload])
 
-def step_spin(dir_, speed, dur):
-    pub("motion.cmd", {"type":"spin","dir":dir_,"speed":float(speed),"dur":float(dur)})
-
-def step_stop():
-    pub("motion.cmd", {"type":"stop"})
-
-def log(msg): print(time.strftime("[%H:%M:%S]"), msg, flush=True)
+def _drive_for(sock, lx: float, az: float, dur: float):
+    t0 = time.time()
+    while time.time() - t0 < dur:
+        _send(sock, {"type": "drive", "lx": lx, "az": az})
+        time.sleep(DT)
 
 def main():
-    log("Demo trajectory: start")
+    print(f"[DEMO] Connecting PUB to {PUB_ADDR} topic='{TOPIC}'")
+    sock = _mk_pub(PUB_ADDR)
+
+    # “przebudzenie” subskrybentów
+    time.sleep(0.2)
+
     try:
-        step_stop(); time.sleep(0.1)
-        step_drive("forward", 0.4, 1.2);   time.sleep(1.25)
-        step_spin("left",    0.5, 0.8);    time.sleep(0.85)
-        step_drive("forward",0.3, 0.8);    time.sleep(0.85)
-        step_stop(); time.sleep(0.1)
-        log("Demo trajectory: done")
-        # zostaw chwilę na publikację ostatnich motion.state
-        time.sleep(0.5)
-    except KeyboardInterrupt:
-        step_stop()
+        print("[DEMO] forward")
+        _drive_for(sock, SPEED_FWD, 0.0, SEG_SEC)
+
+        print("[DEMO] spin right")
+        _drive_for(sock, 0.0, SPEED_ROT, SEG_SEC)
+
+        print("[DEMO] backward")
+        _drive_for(sock, -SPEED_FWD, 0.0, SEG_SEC)
+
+        print("[DEMO] stop")
+        _send(sock, {"type": "stop"})
+        time.sleep(0.1)
     finally:
-        log("Demo trajectory: bye")
+        # dodatkowy stop na wszelki wypadek
+        _send(sock, {"type": "stop"})
+        print("[DEMO] done")
 
 if __name__ == "__main__":
     main()
