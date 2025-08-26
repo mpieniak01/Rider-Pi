@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-apps/motion/main.py — odbiór intent.motion / motion.cmd i wykonanie akcji (DRY, nieblokujące)
+apps/motion/main.py — Motion loop (PUB/SUB), XGO adapter, watchdog i telemetria.
 
 Sub:
-  intent.motion  {"action":"forward|back|left|right|stop|sit|stand", "speed":0.4, "duration":1.5}
-  motion.cmd     {"type":"drive|spin|stop", "dir":"forward|backward|left|right", "speed":0.4, "dur":1.0}
+  - intent.motion  {"action":"forward|back|left|right|stop", "speed":0.4, "duration":1.5}
+    (alias wsteczny; mapujemy na kanoniczne)
+  - motion.cmd     {"type":"drive|spin|stop", ...}
 
 Pub:
-  motion.state   {"speed":0.0, "ts":..., "reason":"dur_done|watchdog|periodic", "wd":true?}
+  - motion.state   {"speed":0.0, "ts":..., "reason":"periodic|dur_done|watchdog", "wd":true, "battery":0.82?}
+
+Uwaga:
+- Fizyczny ruch jest wykonywany tylko, gdy MOTION_ENABLE=1 (adapter XGO honoruje tę flagę).
+- W trybie "lease" watchdog nie przerywa ruchu (kończy się na 'dur' → dur_done).
 """
 
-import os, sys, time, json
+import os, sys, time, json, math
+from typing import Optional
 
+# --- ścieżka projektu ---
 PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:
     sys.path.insert(0, PROJ_ROOT)
@@ -25,38 +32,30 @@ except Exception:
     pass
 
 from common.bus import BusPub, BusSub
+from apps.motion.xgo_adapter import XgoAdapter
 
+# --- BUS ---
 PUB = BusPub()
-SUB_INTENT = BusSub("intent.motion")   # alias (stary temat)
-SUB_CMD    = BusSub("motion.cmd")      # kanoniczny temat
+SUB_INTENT = BusSub("intent.motion")   # alias legacy
+SUB_CMD    = BusSub("motion.cmd")      # kanoniczny
 
-# XGO (opcjonalnie)
-try:
-    from xgolib import XGO
-    HAS_XGO = True
-except Exception:
-    XGO = None
-    HAS_XGO = False
+# --- XGO adapter ---
+XGO = XgoAdapter()
+HAS_XGO = XGO.ok()
 
-g_car = None
+# --- LED kolory (RGB) ---
+LED_IDLE   = (0, 0, 0)
+LED_ACTIVE = (60, 40, 0)   # pomarańcz
+LED_OK     = (0, 80, 0)    # zielony
+LED_ERR    = (80, 0, 0)    # czerwony
 
-LED_IDLE   = [0,0,0]
-LED_ACTIVE = [60,40,0]
-LED_OK     = [0,80,0]
-LED_ERR    = [80,0,0]
-
-# === runtime ===
-WATCHDOG_S      = float(os.getenv("MOTION_WATCHDOG_S", "1.5"))
-STATE_PERIOD_S  = float(os.getenv("MOTION_STATE_PERIOD_S", "0.5"))
-DEFAULT_SPEED   = float(os.getenv("MOTION_DEFAULT_SPEED", "0.5"))
-DEFAULT_DUR_S   = float(os.getenv("MOTION_DEFAULT_DUR_S", "1.0"))
-WD_MODE         = os.getenv("MOTION_WD_MODE", "strict").lower()  # "strict" | "lease"
-
-# === stan ruchu (nieblokujący) ===
-CUR_SPEED   = 0.0                # aktualna prędkość (umowna skala)
-UNTIL_TS    = 0.0                # monotoniczny deadline trwania ruchu; 0 = brak
-LAST_CMD_TS = time.monotonic()   # kiedy ostatnio przyszła komenda
-NEXT_STATE  = time.monotonic()   # kiedy wysłać kolejną telemetrię
+def led(color):
+    try:
+        # 1 i 0 (obie)
+        XGO.led(1, color)
+        XGO.led(0, color)
+    except Exception:
+        pass
 
 def log(msg):
     try:
@@ -65,182 +64,171 @@ def log(msg):
         sys.stdout.buffer.write((time.strftime("[%H:%M:%S] ")+str(msg)+"\n").encode("utf-8","replace"))
         sys.stdout.flush()
 
-def now_ts():
-    return time.time()
-
-def led(color):
-    global g_car
-    if not g_car:
-        return
-    try:
-        g_car.rider_led(1, color)
-        g_car.rider_led(0, color)
-    except Exception:
-        pass
-
-def init_xgo():
-    global g_car
-    if not HAS_XGO:
-        log("Motion: XGO lib not present — tryb stub.")
-        return
-    try:
-        g_car = XGO("xgorider")
-        log("Motion: XGO OK")
-    except Exception as e:
-        g_car = None
-        log(f"Motion: XGO init failed: {e}")
-
-# --- telemetria ---
-
 def _bus_publish(topic: str, payload: dict):
-    # kompatybilnie z Twoim BusPub (scripts/pub.py używa .send)
+    # kompatybilnie z naszym BusPub (scripts/pub.py używa .send)
     for m in ("send", "publish", "pub"):
         if hasattr(PUB, m):
             return getattr(PUB, m)(topic, payload)
-    raise AttributeError("BusPub nie ma metod send/publish/pub")
+    raise AttributeError("BusPub bez send/publish/pub")
 
-def publish_state(speed: float, **extra):
-    state = {"speed": round(float(speed), 2), "ts": now_ts()}
-    state.update(extra)
+# --- Watchdog i telemetria ---
+WD_S   = float(os.getenv("MOTION_WATCHDOG_S", "1.5"))
+WD_MODE = (os.getenv("MOTION_WD_MODE", "strict") or "strict").lower().strip()  # "strict"|"lease"
+TICK_S = 0.5  # okres publikacji "periodic"
+
+last_cmd_ts: float = 0.0
+run_until_ts: Optional[float] = None
+cur_speed: float = 0.0
+cur_mode: str = "idle"   # "idle"|"drive"|"spin"
+
+def pub_state(speed: float, *, reason: Optional[str]=None):
+    msg = {"speed": float(speed), "ts": time.time()}
+    if reason:
+        msg["reason"] = reason
+    # wd info
+    if WD_S > 0:
+        msg["wd"] = (WD_MODE in ("strict", "lease"))
+    # bateria (jeśli dostępna)
     try:
-        _bus_publish("motion.state", state)
-    except Exception as e:
-        log(f"Motion: state pub error: {e}")
+        bat = XGO.battery()
+        if bat is not None:
+            msg["battery"] = round(float(bat), 3)  # 0..1
+    except Exception:
+        pass
+    _bus_publish("motion.state", msg)
 
-# --- mapowania schematów ---
+def now() -> float:
+    return time.time()
 
-def map_intent_to_motion_state(intent: dict):
-    """
-    Stary schemat: {"action":"forward|back|left|right|stop|sit|stand","speed","duration"}
-    Zwraca: (new_speed, until_ts)
-    """
-    a = (intent.get("action") or "").lower()
-    speed = float(intent.get("speed", DEFAULT_SPEED))
-    dur   = float(intent.get("duration", DEFAULT_DUR_S))
+# --- Mapowania legacy INTENT → kanoniczne ---
+def handle_intent(payload: dict):
+    """Obsługa starego tematu intent.motion."""
+    action = (payload.get("action") or "").lower().strip()
+    speed  = float(payload.get("speed", 0.4))
+    dur    = float(payload.get("duration", 1.0))
 
-    if a in ("stop", "sit", "stand"):
-        return 0.0, 0.0
+    if action in ("forward", "fwd", "ahead"):
+        handle_cmd({"type":"drive", "dir":"forward", "speed":speed, "dur":dur})
+    elif action in ("back", "backward", "rev"):
+        handle_cmd({"type":"drive", "dir":"backward", "speed":speed, "dur":dur})
+    elif action in ("left", "turnleft"):
+        handle_cmd({"type":"spin", "dir":"left", "speed":speed, "dur":dur})
+    elif action in ("right", "turnright"):
+        handle_cmd({"type":"spin", "dir":"right", "speed":speed, "dur":dur})
+    elif action in ("stop", "halt"):
+        handle_cmd({"type":"stop"})
+    else:
+        log(f"Motion: unknown intent.action={action}")
 
-    if a == "forward":
-        return max(speed, 0.0), (time.monotonic() + max(dur, 0.0))
-    if a == "back":
-        return -max(speed, 0.0), (time.monotonic() + max(dur, 0.0))
-    if a in ("left", "right"):
-        # prosta symulacja spin/skrętu jako ruchu z dodatnią prędkością
-        return max(speed, 0.0), (time.monotonic() + max(dur, 0.0))
+# --- Kanoniczne komendy ---
+def do_stop(reason: str):
+    global cur_speed, cur_mode, run_until_ts
+    try:
+        XGO.stop()
+    except Exception:
+        pass
+    cur_speed = 0.0
+    cur_mode = "idle"
+    run_until_ts = None
+    led(LED_OK if reason in ("dur_done","periodic") else LED_IDLE)
+    pub_state(0.0, reason=reason)
 
-    return None, None
-
-def map_cmd_to_motion_state(cmd: dict):
-    """
-    Nowy schemat: {"type":"drive|spin|stop","dir":"forward|backward|left|right","speed","dur"}
-    Zwraca: (new_speed, until_ts)
-    """
-    t = (cmd.get("type") or "").lower()
-    if t == "stop":
-        return 0.0, 0.0
-
-    speed = float(cmd.get("speed", DEFAULT_SPEED))
-    dur   = float(cmd.get("dur", DEFAULT_DUR_S))
-    dirv  = (cmd.get("dir") or "").lower()
-
-    if t == "drive":
-        if dirv == "backward":
-            return -max(speed, 0.0), (time.monotonic() + max(dur, 0.0))
-        return max(speed, 0.0), (time.monotonic() + max(dur, 0.0))
-
-    if t == "spin":
-        return max(speed, 0.0), (time.monotonic() + max(dur, 0.0))
-
-    # arc/servo — dojdą później
-    return None, None
-
-# --- przyjęcie komendy (nieblokujące ustawienie stanu) ---
-
-def apply_motion(new_speed: float, until_ts: float):
-    global CUR_SPEED, UNTIL_TS
-    CUR_SPEED = float(new_speed)
-    UNTIL_TS  = float(until_ts)
+def do_drive(dir_: str, speed: float, dur: float):
+    global cur_speed, cur_mode, run_until_ts, last_cmd_ts
+    s = max(0.0, min(1.0, float(speed)))
+    d = max(0.0, float(dur))
+    dir_norm = "forward" if dir_.lower().startswith("f") else "backward"
+    log(f"Motion: drive dir={dir_norm} speed={s} dur={d}")
     led(LED_ACTIVE)
-    publish_state(CUR_SPEED)  # start ruchu
-
-def handle_payload(topic: str, payload):
-    global LAST_CMD_TS
-    LAST_CMD_TS = time.monotonic()
-
     try:
-        msg = payload if isinstance(payload, dict) else json.loads(payload)
+        XGO.drive(dir_norm, s, dur=d, block=False)
     except Exception as e:
-        log(f"Motion: bad JSON on {topic}: {e}")
+        log(f"Motion: drive error: {e}")
+        led(LED_ERR)
+    cur_speed = s if s > 0 else 0.0
+    cur_mode = "drive" if s > 0 else "idle"
+    run_until_ts = (now() + d) if d > 0 else None
+    last_cmd_ts = now()
+    pub_state(cur_speed)
+
+def do_spin(dir_: str, speed: float, dur: float, deg: Optional[float]=None):
+    global cur_speed, cur_mode, run_until_ts, last_cmd_ts
+    s = max(0.0, min(1.0, float(speed)))
+    d = max(0.0, float(dur))
+    side = "left" if dir_.lower().startswith("l") else "right"
+    log(f"Motion: spin dir={side} speed={s} dur={d}")
+    led(LED_ACTIVE)
+    try:
+        XGO.spin(side, s, dur=d, deg=deg, block=False)
+    except Exception as e:
+        log(f"Motion: spin error: {e}")
+        led(LED_ERR)
+    cur_speed = s if s > 0 else 0.0
+    cur_mode = "spin" if s > 0 else "idle"
+    run_until_ts = (now() + d) if d > 0 else None
+    last_cmd_ts = now()
+    pub_state(cur_speed)
+
+def handle_cmd(payload: dict):
+    t = (payload.get("type") or "").lower().strip()
+    if t == "stop":
+        do_stop("cmd_stop")
         return
-
-    if topic == "intent.motion" or ("action" in msg and not msg.get("type")):
-        log(f"Motion: intent → {msg}")
-        ns, ut = map_intent_to_motion_state(msg)
-    else:
-        log(f"Motion: cmd → {msg}")
-        ns, ut = map_cmd_to_motion_state(msg)
-
-    if ns is not None and ut is not None:
-        apply_motion(ns, ut)
-    else:
-        log("Motion: unsupported/ignored payload")
-
-# --- pętla główna ---
+    if t == "drive":
+        do_drive(payload.get("dir","forward"), float(payload.get("speed", 0.4)), float(payload.get("dur", 0.0)))
+        return
+    if t == "spin":
+        do_spin(payload.get("dir","left"), float(payload.get("speed", 0.4)), float(payload.get("dur", 0.0)), payload.get("deg"))
+        return
+    # przyszłościowo: arc/servo/action...
+    log(f"Motion: unknown cmd.type={t}")
 
 def main():
-    global NEXT_STATE, CUR_SPEED, UNTIL_TS
+    log(f"Motion: XGO {'OK' if HAS_XGO else 'stub'}")
+    log(f"Motion: start (sub intent.motion + motion.cmd) [WD={WD_S:.1f}s, mode={WD_MODE}]")
 
-    init_xgo()
-    log(f"Motion: start (sub intent.motion + motion.cmd) [WD={WATCHDOG_S:.1f}s, mode={WD_MODE}]")
+    tick_ts = 0.0
+    try:
+        while True:
+            # --- odbiór komend ---
+            topic1, payload1 = SUB_INTENT.recv(timeout_ms=0)
+            if topic1:
+                log(f"Motion: intent → {payload1}")
+                try:
+                    handle_intent(payload1 or {})
+                except Exception as e:
+                    led(LED_ERR); log(f"Motion: intent error: {e}")
 
-    NEXT_STATE = time.monotonic()  # telemetria co STATE_PERIOD_S
+            topic2, payload2 = SUB_CMD.recv(timeout_ms=200)
+            if topic2:
+                log(f"Motion: cmd → {payload2}")
+                try:
+                    handle_cmd(payload2 or {})
+                except Exception as e:
+                    led(LED_ERR); log(f"Motion: cmd error: {e}")
 
-    while True:
-        # odbiór najpierw z kanonicznego tematu (krótko), potem ze starego
-        topic, payload = SUB_CMD.recv(timeout_ms=10)
-        if topic is None:
-            topic, payload = SUB_INTENT.recv(timeout_ms=10)
-        if topic is not None:
-            try:
-                handle_payload(topic, payload)
-            except KeyboardInterrupt:
-                raise
-            except Exception as e:
-                led(LED_ERR)
-                log(f"Motion: error: {e}")
+            # --- zegar / telemetria perio. ---
+            t = now()
+            if t - tick_ts >= TICK_S:
+                tick_ts = t
+                pub_state(cur_speed, reason="periodic")
 
-        now_mono = time.monotonic()
+                # zakończenie po czasie (dur_done)
+                if run_until_ts and t >= run_until_ts and cur_speed > 0:
+                    do_stop("dur_done")
 
-        # 1) auto-stop po upłynięciu 'dur'
-        if UNTIL_TS and now_mono >= UNTIL_TS and CUR_SPEED != 0.0:
-            CUR_SPEED = 0.0
-            UNTIL_TS  = 0.0
-            led(LED_OK)
-            publish_state(0.0, reason="dur_done")
-
-        # 2) watchdog — brak komend > WATCHDOG_S
-        if (now_mono - LAST_CMD_TS) > WATCHDOG_S and CUR_SPEED != 0.0:
-            if WD_MODE == "lease" and UNTIL_TS and now_mono < UNTIL_TS:
-                # w trybie lease NIE przerywamy, jeśli jeszcze trwa 'dur'
-                pass
-            else:
-                CUR_SPEED = 0.0
-                UNTIL_TS  = 0.0
-                log(f"Motion: Watchdog STOP (> {WATCHDOG_S:.1f}s bez komend)")
-                led(LED_OK)
-                publish_state(0.0, wd=True, reason="watchdog")
-
-        # 3) okresowa telemetria (żeby UI widziało „życie”)
-        if now_mono >= NEXT_STATE:
-            publish_state(CUR_SPEED, reason="periodic")
-            NEXT_STATE = now_mono + STATE_PERIOD_S
-
-        time.sleep(0.005)
+                # watchdog strict
+                if WD_MODE == "strict" and cur_speed > 0 and WD_S > 0 and (t - last_cmd_ts) > WD_S:
+                    log("Motion: Watchdog STOP (> WD bez komend)")
+                    do_stop("watchdog")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        try:
+            led(LED_IDLE)
+        except Exception:
+            pass
+        log("Motion: bye")
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        led(LED_IDLE)
-        log("Motion: bye")
+    main()
