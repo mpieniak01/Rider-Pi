@@ -1,9 +1,9 @@
-# Rider-Pi – Architektura projektu (v0.4.2)
+# Rider-Pi – Architektura projektu (v0.4.3)
 
 > **Cel:** spójny opis architektury i kontraktów między modułami Rider‑Pi (PUB/SUB na ZeroMQ), tak aby łatwo rozwijać autonomię, UI i sterowanie ruchem bez tight coupling.
 
 Repo: `pppnews/Rider-Pi`\
-Status: UI/Face po refaktorze (app + renderery), broker + narzędzia PUB/SUB; **Motion**: pętla nieblokująca + watchdog (*strict/lease*), telemetria `motion.state`; **UI**: mostek `apps/ui/tts2face.py` (mapuje `tts.speak` → `ui.face.set`); **NLU v0.1**: reguły PL → `motion.cmd`.
+Status: UI/Face po refaktorze (app + renderery), broker + narzędzia PUB/SUB; **Motion**: pętla nieblokująca + watchdog (*strict/lease*), **XGO adapter** (fizyczny ruch za flagą `MOTION_ENABLE=1`), telemetria `motion.state` (w tym `battery`); **UI**: mostek `apps/ui/tts2face.py` (mapuje `tts.speak` → `ui.face.set`); **NLU v0.1**: reguły PL → `motion.cmd`.
 
 ---
 
@@ -100,17 +100,17 @@ flowchart LR
 
 ### 3.2) Tematy i minimalne ładunki (JSON)
 
-| Topic              | Producent → Konsument      | Payload (minimal)                                                      |           |                                     |
-| ------------------ | -------------------------- | ---------------------------------------------------------------------- | --------- | ----------------------------------- |
-| `audio.transcript` | voice → nlu/chat/\*        | `{ "text":"jedź naprzód", "lang":"pl", "ts":123, "source":"voice" }`   |           |                                     |
-| `tts.speak`        | chat/nlu → voice/ui        | `{ "text":"Jadę do przodu", "voice":"pl" }` *(UI przez mostek **``**)* |           |                                     |
-| `assistant.speech` | chat → ui                  | \`{ "event":"start                                                     | viseme    | end", ... }\` *(jeśli obsługiwane)* |
-| `motion.cmd`       | nlu/chat/autonomy → motion | `{ "type":"drive", "dir":"forward", "speed":0.6, "dur":1.0 }`          |           |                                     |
-| `motion.state`     | motion → autonomy/ui/\*    | \`{ "speed":0.0, "ts":123, "reason":"periodic                          | dur\_done | watchdog", "wd"\:true }\`           |
-| `vision.event`     | vision → autonomy/\*       | `{ "type":"obstacle", "dist_cm":23, "ts":123 }`                        |           |                                     |
-| `ui.face.set`      | nlu/chat/autonomy → ui     | `{ "expr":"happy", "intensity":0.7, "blink":true }`                    |           |                                     |
-| `ui.face.config`   | \* → ui                    | `{ "brow_style":"tapered", "quality":"aa2x", "brow_y_k":0.22 }`        |           |                                     |
-| `system.heartbeat` | ui/voice/motion/\* → \*    | `{ "app":"ui.face", "pid":1234, "ver":"0.3.0", "fps":12.3 }`           |           |                                     |
+| Topic              | Producent → Konsument      | Payload (minimal)                                                              |           |                                           |
+| ------------------ | -------------------------- | ------------------------------------------------------------------------------ | --------- | ----------------------------------------- |
+| `audio.transcript` | voice → nlu/chat/\*        | `{ "text":"jedź naprzód", "lang":"pl", "ts":123, "source":"voice" }`           |           |                                           |
+| `tts.speak`        | chat/nlu → voice/ui        | `{ "text":"Jadę do przodu", "voice":"pl" }` *(UI przez mostek **`tts2face`**)* |           |                                           |
+| `assistant.speech` | chat → ui                  | \`{ "event":"start                                                             | viseme    | end", ... }\` *(jeśli obsługiwane)*       |
+| `motion.cmd`       | nlu/chat/autonomy → motion | `{ "type":"drive", "dir":"forward", "speed":0.6, "dur":1.0 }`                  |           |                                           |
+| `motion.state`     | motion → autonomy/ui/\*    | \`{ "speed":0.0, "ts":123, "reason":"periodic                                  | dur\_done | watchdog", "wd"\:true, "battery":0.14 }\` |
+| `vision.event`     | vision → autonomy/\*       | `{ "type":"obstacle", "dist_cm":23, "ts":123 }`                                |           |                                           |
+| `ui.face.set`      | nlu/chat/autonomy → ui     | `{ "expr":"happy", "intensity":0.7, "blink":true }`                            |           |                                           |
+| `ui.face.config`   | \* → ui                    | `{ "brow_style":"tapered", "quality":"aa2x", "brow_y_k":0.22 }`                |           |                                           |
+| `system.heartbeat` | ui/voice/motion/\* → \*    | `{ "app":"ui.face", "pid":1234, "ver":"0.3.0", "fps":12.3 }`                   |           |                                           |
 
 **Subskrypcje UI (stan bieżący):**
 
@@ -167,6 +167,9 @@ flowchart LR
 
 - `MOTION_WATCHDOG_S` – czas bez komend po którym następuje STOP (domyślnie `1.5`).
 - `MOTION_WD_MODE` – `strict` | `lease` (domyślnie `strict`).
+- `MOTION_ENABLE` – `0|1` (domyślnie `0`); gdy `1` → włącz ruch fizyczny przez adapter XGO.
+- `XGO_PORT` – port UART (domyślnie `/dev/ttyAMA0`).
+- `XGO_VERSION` – `xgomini|xgolite|xgorider` (domyślnie `xgorider`).
 
 ---
 
@@ -263,7 +266,8 @@ python3 scripts/pub.py ui.face.config '{"brow_style":"tapered","quality":"aa2x",
   "speed": 0.0,
   "ts": 1724652345.321,
   "reason": "periodic|dur_done|watchdog",
-  "wd": true
+  "wd": true,
+  "battery": 0.14
 }
 ```
 
@@ -378,3 +382,4 @@ python3 scripts/pub.py ui.face.config  '{"quality":"aa2x"}'
 - ``** vs **``**?** Ujednolicone do `PROJECT.md`.
 - **Czy musimy używać „koperty” wiadomości?** Rekomendowana (ułatwia debug, wersjonowanie i idempotencję), ale payloady minimalne są wspierane.
 - **Czy **``** wpływa na buźkę?** Tak, przez mostek `apps/ui/tts2face` (UI subskrybuje `ui.face.set`).
+
