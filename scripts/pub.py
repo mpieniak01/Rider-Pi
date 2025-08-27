@@ -1,70 +1,42 @@
 #!/usr/bin/env python3
 """
-Demo trajektorii (PUB -> broker):
-- forward → spin right → backward → stop
+Użycie:
+  python3 scripts/pub.py motion.state '{"stopped": true, "last_cmd_age_ms": 1500}'
+  python3 scripts/pub.py vision.state '{"moving": false, "human": true}'
 ENV:
-  BUS_PUB_ADDR     (default tcp://127.0.0.1:5555)
-  MOTION_TOPIC     (default motion)
-  DEMO_RATE_HZ     (default 10)
-  DEMO_SPEED_FWD   (default 0.25)
-  DEMO_SPEED_ROT   (default 0.25)
-  DEMO_SEG_SEC     (default 2.0)
+  BUS_PUB_ADDR (default tcp://127.0.0.1:5555)
 """
-
-import os
-import time
-import json
+import os, sys, json, time, argparse
 import zmq
 
 PUB_ADDR = os.getenv("BUS_PUB_ADDR", "tcp://127.0.0.1:5555")
-TOPIC    = os.getenv("MOTION_TOPIC", "motion")
-RATE_HZ  = float(os.getenv("DEMO_RATE_HZ", "10"))
-DT       = 1.0 / RATE_HZ
-
-SPEED_FWD = float(os.getenv("DEMO_SPEED_FWD", "0.25"))
-SPEED_ROT = float(os.getenv("DEMO_SPEED_ROT", "0.25"))
-SEG_SEC   = float(os.getenv("DEMO_SEG_SEC", "2.0"))
-
-def _mk_pub(addr: str):
-    ctx = zmq.Context.instance()
-    sock = ctx.socket(zmq.PUB)
-    sock.connect(addr)
-    return sock
-
-def _send(sock, msg: dict):
-    payload = json.dumps(msg).encode("utf-8")
-    sock.send_multipart([TOPIC.encode("utf-8"), payload])
-
-def _drive_for(sock, lx: float, az: float, dur: float):
-    t0 = time.time()
-    while time.time() - t0 < dur:
-        _send(sock, {"type": "drive", "lx": lx, "az": az})
-        time.sleep(DT)
 
 def main():
-    print(f"[DEMO] Connecting PUB to {PUB_ADDR} topic='{TOPIC}'")
-    sock = _mk_pub(PUB_ADDR)
-
-    # rozgrzewka subskrybentów
-    time.sleep(0.5)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("topic")
+    ap.add_argument("payload")
+    ap.add_argument("-n", "--repeat", type=int, default=1)
+    args = ap.parse_args()
 
     try:
-        print("[DEMO] forward")
-        _drive_for(sock, SPEED_FWD, 0.0, SEG_SEC)
+        data = json.loads(args.payload)
+    except Exception:
+        data = {"text": args.payload}
 
-        print("[DEMO] spin right")
-        _drive_for(sock, 0.0, SPEED_ROT, SEG_SEC)
+    ctx = zmq.Context.instance()
+    pub = ctx.socket(zmq.PUB)
+    pub.connect(PUB_ADDR)
 
-        print("[DEMO] backward")
-        _drive_for(sock, -SPEED_FWD, 0.0, SEG_SEC)
+    time.sleep(0.2)
+    payload = json.dumps(data).encode("utf-8")
+    topic_b = args.topic.encode("utf-8")
 
-        print("[DEMO] stop")
-        _send(sock, {"type": "stop"})
-        time.sleep(0.1)
-    finally:
-        # dodatkowy stop na wszelki wypadek
-        _send(sock, {"type": "stop"})
-        print("[DEMO] done")
+    for _ in range(max(1, args.repeat)):
+        pub.send_multipart([topic_b, payload])
+        if args.repeat > 1:
+            time.sleep(0.02)
+
+    print(f"[PUB] sent → {args.topic}: {data}")
 
 if __name__ == "__main__":
     main()
