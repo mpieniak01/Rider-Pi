@@ -1,189 +1,124 @@
-# Rider‑Pi — PROJECT.md (v0.4.5)
+# Rider-Pi — PROJECT.md (v0.4.6)
 
-**Wersja:** v0.4.5  
-**Data:** 2025‑08‑27  
-**Repo:** `pppnews/Rider-Pi`  
-
-## Co nowego w v0.4.5
-- **UI Manager**: automatyczne oszczędzanie energii na ekranie producenta (SPI LCD 2")
-  - Tryb `UI_DIM_MODE=xgo` z **auto‑inicjalizacją PWM** (wykrywa `BL_PIN/BL_freq` i zakłada PWM gdy biblioteka nie robi tego sama).
-  - **DIM** (procent BL) i **OFF** (BL=0) po bezczynności; **ON/UNDIM** po aktywności.
-  - Wstrzymanie rysowania overleya przez `ui.control {"draw": false}` podczas ruchu.
-  - Hooki audio: ściszanie przy DIM, mute przy OFF, przywrócenie przy ON.
-- **Overlay** respektuje `ui.control` i nie renderuje, gdy `draw=false` (niższe CPU).
-- **Narzędzia**: proste `scripts/pub.py`, `scripts/sub_dump.py`, `scripts/volume.py`, `apps/ui/volume_hooks.sh`.
-- **Systemd**: nowa usługa `rider-ui-manager.service` + drop‑iny z ENV.
+**Wersja:** v0.4.6\
+**Data:** 2025-08-27\
+**Repo:** `pppnews/Rider-Pi`
 
 ---
 
-## Architektura (skrót)
-- **ZeroMQ broker** (XSUB↔XPUB):
-  - PUB → `tcp://127.0.0.1:5555` (tematy wychodzące)
-  - SUB → `tcp://127.0.0.1:5556` (tematy przychodzące)
-- **Tematy**:
-  - `motion` – polecenia napędu (JSON)
-  - `motion.state` – telemetria pętli ruchu
-  - `vision.state` – sygnały z kamery/algorytmów (np. `human`, `moving`)
-  - `ui.control` – sterowanie rysowaniem overleya `{ "draw": bool }`
+## Co nowego w v0.4.6
 
-Usługi (systemd):
-- `rider-broker.service` – broker ZMQ (XSUB/XPUB)
-- `rider-motion.service` – pętla ruchu (symulacja/fizyczny robot)
-- `rider-menu.service` – menu/launcher CLI (przyciski + start demo)
-- `rider-ui-manager.service` – oszczędzanie ekranu/overlay/audio (NOWE)
+- **Jednolity kontroler ekranu 2" (SPI TFT):** `scripts/lcdctl.py`
+  - Jeden plik do **ON/OFF** wyświetlacza na realnym HW.
+  - Panel (ST77xx/ILI9xx): komendy SPI\
+    **OFF** → `DISP_OFF (0x28)` + `SLP_IN (0x10)`\
+    **ON**  → `SLP_OUT (0x11)` + `DISP_ON (0x29)`
+  - Podświetlenie (BL) przez **GPIO** (domyślnie **BCM0**, `active-high=1`).
+  - Parametry przez **flagi/ENV**: `--bl`, `--bl-ah`, `--dc`, `--rst`, `--spi`, `--hz`.
+- **Test dymny:** `scripts/smoke_test.sh`
+  - Minimalny zestaw kroków: `clean → compileall → import rendererów → face(null) → (opcjonalnie) pygame`.
+  - **Eleganckie zakończenie:** trap `EXIT` ubija `apps.ui.face` i wywołuje `sudo python3 scripts/lcdctl.py off`\
+    → ekran fizycznie gaśnie po testach.
+- **UI „face”:** uproszczony wybór backendu\
+  Obecnie wspieramy **Pygame** (aliasy `lcd/tk/led/auto` mapują się na pygame) oraz **NullRenderer**.
+- **Konfiguracja BL ustalona:** realny pin **BCM0**; polaryzacja **active-high=1**.
 
 ---
 
-## Szybki start (headless)
+## Szybki start
+
 ```bash
-# Broker
-sudo systemctl enable --now rider-broker.service
+# test dymny (na końcu auto-OFF ekranu)
+chmod +x scripts/smoke_test.sh
+bash scripts/smoke_test.sh
 
-# Motion (symulacja):
-unset MOTION_ENABLE
-sudo systemctl enable --now rider-motion.service
-
-# UI Manager (XGO LCD)
-sudo cp systemd/rider-ui-manager.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now rider-ui-manager.service
-
-# Podgląd telemetrii (opcjonalnie)
-TOPIC=motion.state python3 -u scripts/sub_dump.py
+# wymuś pygame, gdy nie ma DISPLAY
+RUN_PYGAME=1 bash scripts/smoke_test.sh
 ```
 
----
+**(opcjonalnie) spójne ENV dla „face”:**
 
-## UI Manager
-Plik: `apps/ui/manager.py`  
-Cel: wstrzymywanie rysowania oraz DIM/OFF ekranu przy bezczynności i/lub ruchu robota.
-
-### Tryby wygaszania (ENV `UI_DIM_MODE`)
-- `xgo` – SPI LCD producenta (moduł `xgoscreen.LCD_2inch`)
-  - Auto‑init PWM (wykrywa `BL_PIN/BL_freq`, tworzy PWM w RPi.GPIO, podstawia pod `lcd._pwm`).
-  - `UI_XGO_BRIGHT` (domyślnie 80), `UI_XGO_DIM` (10), `UI_XGO_BLACK_DIM` (0/1 czarna klatka jako DIM fallback).
-- `vcgencmd` – HDMI przez `vcgencmd display_power 1/0`.
-- `fb` – framebuffer `/sys/class/graphics/fb0/blank` (wymaga roota); fallback gdy nie ma `vcgencmd`.
-
-### Logika rysowania
-- Gdy **ruch** (`motion.state.stopped=false`) → `ui.control { draw:false }` (overlay nie renderuje).
-- Gdy **stoi** i jest człowiek/ruch w kadrze (`vision.state`) → `draw:true` (tryb rozmowy).
-
-### ENV (domyślne) w `rider-ui-manager.service`
-```ini
-Environment=UI_DIM_MODE=xgo
-Environment=UI_INACTIVITY_DIM_SEC=30
-Environment=UI_INACTIVITY_OFF_SEC=120
-Environment=UI_XGO_BRIGHT=80
-Environment=UI_XGO_DIM=10
-Environment=UI_XGO_BLACK_DIM=0
-Environment=UI_AUDIO_DIM_PCT=20
-Environment=UI_AUDIO_OFF_MUTE=1
-```
-
-### Drop‑in (szybkie progi testowe 5/10 s)
 ```bash
-sudo mkdir -p /etc/systemd/system/rider-ui-manager.service.d
-sudo bash -c 'cat > /etc/systemd/system/rider-ui-manager.service.d/override.conf <<EOF
-[Service]
-Environment=UI_INACTIVITY_DIM_SEC=5
-Environment=UI_INACTIVITY_OFF_SEC=10
-EOF'
-sudo systemctl daemon-reload
-sudo systemctl restart rider-ui-manager.service
-systemctl show rider-ui-manager.service -p Environment | tr "\0" "\n"
+echo 'export FACE_LCD_BL_PIN=0'         >> ~/.bashrc
+echo 'export FACE_LCD_BL_ACTIVE_HIGH=1' >> ~/.bashrc
+. ~/.bashrc
 ```
 
-### Hooki audio
-- `apps/ui/volume_hooks.sh` – `dim|off|on` → woła `scripts/volume.py` (pactl/pulseaudio).
-- Możliwe ostrzeżenia o D‑Bus w trybie headless – **ignorować**.
-
 ---
 
-## Overlay (HUD)
-Plik: `apps/ui/overlay.py`  
-- Pygame (fullscreen, `SDL_VIDEODRIVER=kmsdrm`).
-- Reaguje na `ui.control` i **przestaje renderować**, gdy `draw=false`.
-- Renderuje skrót telemetrii `motion.state` i `vision.state`.
+## Sterowanie ekranem 2" (SPI)
 
----
+Plik: `scripts/lcdctl.py`
 
-## Narzędzia debug
-- **Publikacja:**
-  ```bash
-  python3 -u scripts/pub.py motion.state '{"stopped": false, "last_cmd_age_ms": 0}'
-  python3 -u scripts/pub.py motion.state '{"stopped": true, "last_cmd_age_ms": 1500}'
-  python3 -u scripts/pub.py vision.state  '{"moving": false, "human": true}'
-  ```
-- **Sniffer:**
-  ```bash
-  TOPIC=ui.control python3 -u scripts/sub_dump.py
-  TOPIC=motion.state python3 -u scripts/sub_dump.py
-  ```
-
----
-
-## Procedury testowe (runbook)
-1. **Status usług**
-   ```bash
-   sudo systemctl status --no-pager rider-broker rider-motion rider-ui-manager
-   ```
-2. **Symulacja ruchu → draw:false**
-   ```bash
-   python3 -u scripts/pub.py motion.state '{"stopped": false, "last_cmd_age_ms": 0}'
-   ```
-3. **Rozmowa (stoi + człowiek) → draw:true**
-   ```bash
-   python3 -u scripts/pub.py motion.state '{"stopped": true, "last_cmd_age_ms": 2000}'
-   python3 -u scripts/pub.py vision.state  '{"moving": false, "human": true}'
-   ```
-4. **DIM & OFF**
-   - odczekaj `UI_INACTIVITY_DIM_SEC` → wpis w journalu `DIM` i (dla xgo) `DIM -> <pct>`
-   - odczekaj `UI_INACTIVITY_OFF_SEC` → `POWER -> OFF (0%)` oraz `OFF`
-5. **Wybudzenie**
-   ```bash
-   python3 -u scripts/pub.py vision.state '{"moving": true}'
-   ```
-   Journal: `ON` + `UNDIM -> <pct>`.
-
----
-
-## Instalacja/aktualizacja usług
 ```bash
-sudo cp systemd/rider-broker.service /etc/systemd/system/
-sudo cp systemd/rider-motion.service  /etc/systemd/system/
-sudo cp systemd/rider-ui-manager.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable rider-broker rider-motion rider-ui-manager
-sudo systemctl restart rider-broker rider-motion rider-ui-manager
+# OFF: uśpij panel + zgaś podświetlenie
+sudo python3 scripts/lcdctl.py off
+
+# ON: włącz podświetlenie + wybudź panel
+sudo python3 scripts/lcdctl.py on
+
+# (opcjonalnie) jawne piny/urządzenia – domyślnie mamy BL=0, DC=25, RST=27
+sudo python3 scripts/lcdctl.py off --bl 0 --bl-ah 1 --dc 25 --rst 27 --spi /dev/spidev0.0 --hz 12000000
 ```
+
+**Skróty (opcjonalnie):**
+
+```bash
+sudo ln -sf "$(pwd)/scripts/lcdctl.py" /usr/local/bin/lcdctl
+sudo lcdctl off
+sudo lcdctl on
+```
+
+---
+
+## „Buźka” (face)
+
+```bash
+# standardowo: pygame (aliasy lcd/tk/led/auto też trafią do pygame)
+FACE_BACKEND=pygame python3 -m apps.ui.face
+
+# z domyślnym BL=0 (jeśli chcesz jawnie)
+FACE_BACKEND=pygame FACE_LCD_BL_PIN=0 FACE_LCD_BL_ACTIVE_HIGH=1 python3 -m apps.ui.face
+```
+
+---
+
+## Procedury testowe (skrót)
+
+1. **Smoke test**\
+   `bash scripts/smoke_test.sh` → na końcu ekran **OFF** (trap EXIT → `lcdctl off`).
+2. **Ręczne ON/OFF**\
+   `sudo python3 scripts/lcdctl.py on | off`
+3. **Sprawdzenie rendererów**\
+   log z testu pokazuje listę klas: `['BaseRenderer','LCDRenderer','TKRenderer']`\
+   (w praktyce używamy `PygameFaceRenderer`/`NullRenderer`).
+
+---
+
+## Zmiany w kodzie (v0.4.6)
+
+- `scripts/lcdctl.py` – **NOWY**, jedyny kontroler ekranu (SPI + GPIO BL).
+- `scripts/smoke_test.sh` – uproszczony, z **auto-OFF** via `lcdctl`.
+- `apps/ui/face.py` – wybór backendu sprowadzony do **Pygame**/**Null** (zgodność aliasów), heartbeat/bench stabilne.
 
 ---
 
 ## Rozwiązywanie problemów
-- **XGO: błąd `_pwm` przy `bl_DutyCycle`**  
-  Manager auto‑inicjuje PWM (RPi.GPIO) na `lcd.BL_PIN` z `lcd.BL_freq`. Sprawdź log: `GPIO PWM init (pin=..., freq=...)`.
-- **Brak BL w bibliotece**  
-  Ustaw `UI_XGO_BLACK_DIM=1` – DIM czarną klatką zamiast BL.
-- **HDMI (vcgencmd)**  
-  `sudo apt install -y libraspberrypi-bin` (potrzebny `vcgencmd`).
-- **Framebuffer (fb)**  
-  Wymaga roota (`User=root` w unicie) oraz `/sys/class/graphics/fb0/blank`.
-- **Audio/DBus**  
-  Ostrzeżenia „Unable to autolaunch a dbus-daemon …” w headless są nieszkodliwe.
 
----
-
-## Plan na następny krok
-- Integracja kamery: sygnały `vision.state` z realnego detektora (człowiek/ruch).
-- Konfiguracja FPS i profilu renderu w overlay (np. `UI_FPS=10`).
-- Porządki w starszych modułach (monolity → moduły), review CPU i latencji.
+- **Biały ekran po OFF**\
+  Oznaczało brak `SLP_IN/DISP_OFF`. `lcdctl.py off` wymusza sekwencję SPI → problem rozwiązany.
+- **BL nie gaśnie**\
+  Sprawdź pin/polaryzację (u nas: **BCM0**, **AH=1**).\
+  `sudo python3 scripts/lcdctl.py off --bl 0 --bl-ah 1`
+- **Brak bibliotek**\
+  `sudo apt-get install -y python3-spidev python3-rpi.gpio`
 
 ---
 
 ## Changelog
-- **v0.4.5**: UI Manager (XGO dim/off, auto PWM), overlay draw‑pause, hooki audio, unit systemd.
+
+- **v0.4.6**: `lcdctl.py` (ON/OFF panelu + BL), smoke test z auto-OFF, uproszczony `face`, BL=BCM0.
+- **v0.4.5**: (poprzedni plan z UI Managerem i dimmingiem – odłożony; zostawiamy prosty, działający ON/OFF).
 - **v0.4.4**: menedżer/launcher + demo trajektorii, porządki repo, README/PROJECT.
 - **v0.4.3**: XgoAdapter, telemetria baterii, doc: środowisko i adapter.
 
----
