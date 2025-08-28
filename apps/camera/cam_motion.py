@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 ŚCIEŻKA: apps/camera/cam_motion.py
 ROLA: Prosty detektor ruchu z opcjonalną detekcją twarzy (Haar Cascade).
