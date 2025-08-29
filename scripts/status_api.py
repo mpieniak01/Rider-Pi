@@ -101,7 +101,7 @@ DASHBOARD_HTML = """<!doctype html>
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; }
     body { margin: 0; padding: 24px; background:#0b1020; color:#e7eaf6; }
-    .wrap { max-width: 960px; margin: 0 auto; }
+    .wrap { max-width: 1024px; margin: 0 auto; }
     h1 { margin: 0 0 16px; font-weight: 700; }
     .muted { color:#9aa4c7; font-size: 14px; }
     .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:16px; }
@@ -115,6 +115,11 @@ DASHBOARD_HTML = """<!doctype html>
     .row { display:flex; justify-content: space-between; gap:8px; margin:6px 0; }
     .footer { margin-top: 18px; font-size: 12px; color:#6b748f; }
     a { color:#8ab4ff; text-decoration: none; }
+    .chart-card canvas { width: 100%; height: 180px; display:block; }
+    .legend { display:flex; gap:14px; align-items:center; font-size: 12px; color:#9aa4c7; margin-top:8px;}
+    .dot { width:10px; height:10px; border-radius: 50%; display:inline-block; }
+    .c1 { background:#4fc3f7; } /* confidence */
+    .c2 { background:#f6c945; } /* age_s */
   </style>
 </head>
 <body>
@@ -138,6 +143,15 @@ DASHBOARD_HTML = """<!doctype html>
         <div class="row"><div class="k">ts</div><div class="v" id="ts">—</div></div>
         <div class="row"><div class="k">age</div><div class="v" id="ag">—</div></div>
       </div>
+
+      <div class="card chart-card">
+        <h3>History (60 s)</h3>
+        <canvas id="chart"></canvas>
+        <div class="legend">
+          <span class="dot c1"></span> confidence (0–1)
+          <span class="dot c2" style="margin-left:18px"></span> age_s (prawa oś)
+        </div>
+      </div>
     </div>
 
     <div class="footer">© Rider-Pi • <a href="/healthz" class="mono">/healthz</a> • <a href="/state" class="mono">/state</a></div>
@@ -147,6 +161,80 @@ DASHBOARD_HTML = """<!doctype html>
 function fmtAge(x){ if(x===null||x===undefined) return "—"; try{ let s=Number(x); if(isNaN(s)) return "—"; if(s<1) return (s*1000).toFixed(0)+" ms"; if(s<60) return s.toFixed(1)+" s"; let m=Math.floor(s/60), r=s%60; return m+" min "+r.toFixed(0)+" s"; }catch(e){return "—";}}
 function fmtNum(x, d=3){ if(x===null||x===undefined) return "—"; let n=Number(x); if(isNaN(n)) return "—"; return n.toFixed(d); }
 function fmtTs(ts){ if(!ts) return "—"; try{ let d=new Date(ts*1000); return d.toLocaleString(); } catch(e){ return "—"; } }
+
+const MAX_SEC = 60;
+const series = { conf: [], age: [] };
+
+function pushPoint(arr, t, v){
+  arr.push([t, v]);
+  const cut = t - MAX_SEC;
+  while(arr.length && arr[0][0] < cut) arr.shift();
+}
+
+function drawChart(){
+  const c = document.getElementById('chart');
+  if(!c) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth || 600, H = (c.clientHeight || 180);
+  c.width = Math.floor(W * dpr); c.height = Math.floor(H * dpr);
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const PAD = 28;
+  const plotW = W - PAD*2, plotH = H - PAD*2;
+  const now = Date.now()/1000;
+  const t0 = now - MAX_SEC;
+
+  // t -> x
+  const xOf = t => PAD + ((t - t0)/MAX_SEC) * plotW;
+
+  // skale: conf (0..1), age (0..aMax)
+  const aMaxRaw = Math.max( ...series.age.map(p=> (p?.[1]||0) ), 1 );
+  const aMax = Math.min(30, Math.max(3, aMaxRaw)); // 3..30 s
+  const yConf = v => PAD + (1 - Math.max(0, Math.min(1, v))) * plotH;
+  const yAge  = v => PAD + (1 - Math.max(0, Math.min(v/aMax, 1))) * plotH;
+
+  // osie
+  ctx.strokeStyle = '#263056';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.rect(PAD, PAD, plotW, plotH);
+  ctx.stroke();
+
+  // grid poziomy (0, .5, 1 po lewej)
+  ctx.fillStyle = '#9aa4c7';
+  ctx.font = '12px system-ui';
+  [0, 0.5, 1].forEach(val=>{
+    const y = yConf(val);
+    ctx.strokeStyle='#1d2544';
+    ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(PAD+plotW, y); ctx.stroke();
+    ctx.fillText(val.toFixed(1), 6, y+4);
+  });
+  // prawa oś: age
+  [0, aMax/2, aMax].forEach((val,i)=>{
+    const y = yAge(val);
+    ctx.fillText(val.toFixed(0)+'s', W-36, y+4);
+  });
+
+  // rysuj serie
+  function drawLine(arr, yMap, color){
+    if(arr.length<2) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let moved=false;
+    for(const [t,v] of arr){
+      const x = xOf(t);
+      const y = yMap(v);
+      if(!moved){ ctx.moveTo(x,y); moved=true; } else { ctx.lineTo(x,y); }
+    }
+    ctx.stroke();
+  }
+
+  drawLine(series.conf, yConf, '#4fc3f7'); // confidence
+  drawLine(series.age,  yAge,  '#f6c945'); // age_s
+}
 
 async function refresh(){
   try{
@@ -169,11 +257,18 @@ async function refresh(){
     document.getElementById('cf').textContent = fmtNum(s.confidence ?? 0.0, 3);
     document.getElementById('ts').textContent = fmtTs(s.ts);
     document.getElementById('ag').textContent = fmtAge(s.age_s);
+
+    // historia
+    const now = Date.now()/1000;
+    pushPoint(series.conf, now, Number(s.confidence||0));
+    pushPoint(series.age,  now, Number(s.age_s||0));
+    drawChart();
   }catch(e){
-    document.getElementById('st').textContent = "error"; document.getElementById('st').className="v bad";
+    const st = document.getElementById('st');
+    if(st){ st.textContent = "error"; st.className="v bad"; }
   }
 }
-
+window.addEventListener('resize', drawChart);
 refresh();
 setInterval(refresh, 2000);
 </script>
