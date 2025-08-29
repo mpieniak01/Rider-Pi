@@ -1,0 +1,24 @@
+Unit]
+Description=Rider-Pi camera preview to 2" SPI LCD (takeover)
+After=local-fs.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/robot
+Environment=PYTHONUNBUFFERED=1
+# Domyślne ENV – można nadpisać drop-inem
+Environment=NO_TAKEOVER=1
+Environment=VISION_HUMAN=1
+Environment=VISION_FACE_EVERY=5
+#Environment=PREVIEW_ROT=270
+# Domyślnie: takeover; aby wyłączyć, dodaj drop-in z Environment=NO_TAKEOVER=1
+ExecStart=/usr/bin/python3 -m apps.camera
+# Po zatrzymaniu – zgaś ekran
+ExecStopPost=/usr/bin/python3 /home/pi/robot/scripts/lcdctl.py off
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

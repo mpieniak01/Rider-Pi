@@ -1,250 +1,254 @@
-# Rider‑Pi — projekt
+# Rider-Pi — PROJECT.md
 
-> Minimalny stos do demonstracji wizji (HAAR/SSD/hybrid) na Raspberry Pi z magistralą ZMQ, prostym **dispatcherem** i **Status API** (Flask). Gotowy do uruchomienia jako usługi systemd.
+Mały, samowystarczalny system wizyjny na Raspberry Pi z magistralą ZMQ, lekkim **dispatcherem** obecności i **mini-dashboardem** w Flasku.
+
+> **Stan:** stabilny build (29.08.2025) – broker + dispatcher + API + testy smoke/bench.
 
 ---
 
-## TL;DR (Quickstart)
+## 1) Architektura (skrót)
+
+- **Bus (ZMQ)**  
+  `scripts/broker.py` – prosty XSUB⇄XPUB.  
+  *IN/OUT porty:* `BUS_PUB_PORT` (PUB) / `BUS_SUB_PORT` (SUB).
+
+- **Producenci zdarzeń (kamera)**  
+  - `apps/camera/preview_lcd_takeover.py` – HAAR (szybkie).  
+  - `apps/camera/preview_lcd_ssd.py` – SSD (dokładniejsze, wolniejsze).  
+  - `apps/camera/preview_lcd_hybrid.py` – tracker + SSD co N.
+
+  Publikują:  
+  - `vision.face` (HAAR)  
+  - `vision.person` (SSD/hybrid)
+
+- **Dispatcher obecności**  
+  `apps/vision/dispatcher.py` – normalizacja + histereza/debouncing.  
+  Subskrybuje `vision.face/person/detections`, publikuje:
+  - `vision.state` (boolean + confidence)  
+  - `vision.dispatcher.heartbeat` (co 5 s)  
+
+- **Status API + Dashboard**  
+  `scripts/status_api.py` (Flask 1.x – zgodny na Buster/Bullseye)  
+  - `/` – mini dashboard (HTML/JS, auto-refresh co 2 s)
+  - `/healthz`, `/state`, **`/sysinfo`** (CPU/MEM/LOAD/DISK/TEMP)
+  - **`/metrics`** (Prometheus-style, opcjonalne scrapowanie)
+  - **`/events`** (SSE – podgląd ostatnich zdarzeń z busa)
+
+---
+
+## 2) Wymagane pakiety
+
+Raspberry Pi OS (libcamera):
+
 ```bash
-# 1) Klon + deps (Raspberry Pi OS)
-sudo apt-get update -y && sudo apt-get install -y \
-  python3-pip python3-flask python3-zmq libatlas-base-dev \
-  libcamera-apps git jq lsof
-
-# 2) Skonfiguruj środowisko
-tcp && cd ~/robot
-cp .env.sample .env   # potem ewentualnie edytuj porty/parametry
-
-# 3) Systemd: broker + dispatcher + status API
-sudo cp systemd/rider-*.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now rider-broker rider-dispatcher rider-api
-
-# 4) Szybki healthcheck
-curl -s http://127.0.0.1:8080/healthz | jq
-curl -s http://127.0.0.1:8080/state   | jq
-
-# 5) Smoke & bench
-a) ./scripts/smoke_test.sh 3
-b) DISABLE_LCD=1 NO_DRAW=1 BENCH_LOG=1 ./scripts/bench_detect.sh 10
+sudo apt-get update
+sudo apt-get install -y python3-flask python3-pip python3-opencv \
+                        python3-zmq python3-pil
+# (opcjonalnie Picamera2 / zależne od obrazu)
+# sudo apt-get install -y python3-picamera2
 ```
 
 ---
 
-## Struktura repo (skrócona)
-```
-robot/
-├─ apps/
-│  ├─ camera/
-│  │  ├─ preview_lcd_takeover.py   # HAAR
-│  │  ├─ preview_lcd_ssd.py        # SSD (lite)
-│  │  └─ preview_lcd_hybrid.py     # SSD + tracker (+ opcjonalnie HAAR)
-│  └─ vision/
-│     └─ dispatcher.py             # normalizacja zdarzeń + histereza -> vision.state
-├─ scripts/
-│  ├─ broker.py                    # ZMQ XSUB<->XPUB broker
-│  ├─ status_api.py                # Flask /healthz, /state
-│  ├─ bench_detect.sh              # pomiar FPS; logi [bench] ...
-│  ├─ smoke_test.sh                # krótki sanity test 3× preview
-│  ├─ camera_takeover_kill.sh      # porządne ubijanie kamerowych procesów
-│  └─ sub.py                       # subskrypcja ZMQ (debug)
-├─ systemd/
-│  ├─ rider-broker.service
-│  ├─ rider-dispatcher.service
-│  └─ rider-api.service            # Flask Status API (Wants: broker, dispatcher)
-├─ .env.sample                     # przykładowa konfiguracja środowiska
-└─ PROJECT.md                      # ten dokument
-```
+## 3) Zmienne środowiskowe (`.env`)
 
----
+W repo jest **`.env.sample`** – skopiuj jako `.env` i dopasuj:
 
-## Konfiguracja (`.env`)
-Skopiuj `.env.sample` do `.env` i dostosuj w razie potrzeby.
-
-```dotenv
-# ZMQ bus
+```ini
+# Bus (ZMQ)
 BUS_PUB_PORT=5555
 BUS_SUB_PORT=5556
 
-# LCD / podgląd
-PREVIEW_ROT=270
-DISABLE_LCD=0
-NO_DRAW=0
+# Vision dispatcher
+VISION_ON_CONSECUTIVE=3     # ile kolejnych pozytywów żeby włączyć present=true
+VISION_OFF_TTL_SEC=2.0      # czas bez pozytywnych, po którym gasimy
+VISION_MIN_SCORE=0.50       # minimalny score pozytywu
 
-# SSD / HYBRID
-SSD_EVERY=2
-SSD_SCORE=0.55
-SSD_CLASSES=person
-HYBRID_HAAR=1
+# Kamera / preview
+PREVIEW_ROT=270             # rotacja LCD (90/180/270)
+DISABLE_LCD=0               # 1 = bez rysowania na LCD (headless)
+NO_DRAW=0                   # 1 = nie rysuj ramek/tekstów (oszczędza CPU)
+SKIP_V4L2=1                 # preferuj Picamera2; gdy brak, video0
 
-# Dispatcher (histereza)
-VISION_ON_CONSECUTIVE=3
-VISION_OFF_TTL_SEC=2.0
-VISION_MIN_SCORE=0.50
+# SSD/Hybrid
+SSD_EVERY=2                 # co ile klatek uruchomić SSD
+SSD_SCORE=0.55              # minimalny score detekcji
+SSD_CLASSES=person          # whitelist klasa/klasy (CSV)
+HYBRID_HAAR=1               # hybrid: HAAR w ROI trackera (0/1)
+LOG_EVERY=10                # co ile klatek logować fps (hybrid)
 
-# Status API
+# API
 STATUS_API_PORT=8080
 ```
 
-> **Uwaga:** plik `.env` jest czytany przez unity systemd (EnvironmentFile=/home/pi/robot/.env). W repo trzymamy **`.env.sample`** (bez sekretów), a `.env` – lokalnie.
+Podgląd aktywnych ENV uruchomionej usługi:
+```bash
+PID=$(systemctl show -p MainPID --value rider-broker)
+sudo tr '\0' '\n' < /proc/$PID/environ | sort
+```
 
 ---
 
-## Usługi systemd
+## 4) Usługi systemd
 
-### rider-broker
-- uruchamia broker ZMQ (XSUB\<->XPUB) — łączy publisherów i subskrybentów.
-- adresy: `tcp://*:5555` (XSUB), `tcp://*:5556` (XPUB)
+Pliki:
+- `systemd/rider-broker.service`
+- `systemd/rider-dispatcher.service`
+- `systemd/rider-api.service`
 
-### rider-dispatcher
-- subskrybuje: `vision.face`, `vision.person`, `vision.detections`
-- normalizuje detekcje, stosuje histerezę i publikuje `vision.state`
-- **po starcie wysyła stan początkowy** (`present=false`) — żeby `/state` w API nie było puste
-- okresowo publikuje heartbeat: `vision.dispatcher.heartbeat`
-
-### rider-api
-- prosty Flask z dwoma endpointami:
-  - `GET /healthz` — status brokera/dispatchera (na podstawie *age* ostatnich wiadomości)
-  - `GET /state` — ostatni stan z `vision.state`
-- **Powiązanie**: `Wants=rider-broker.service rider-dispatcher.service` (zamiast `Requires=`), żeby API nie restartowało się na każdy restart dispatchera.
-
-#### Instalacja/zarządzanie
+Instalacja/aktualizacja:
 ```bash
 sudo cp systemd/rider-*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now rider-broker rider-dispatcher rider-api
-
-# status i logi
-systemctl --no-pager --full status rider-*
-journalctl -u rider-api -n 50 --no-pager
+systemctl --no-pager --full status rider-broker rider-dispatcher rider-api
 ```
+
+> Wszystkie jednostki ładują `/home/pi/robot/.env` przez `EnvironmentFile=` i mają krótkie `ExecStartPre=/bin/sleep 0.5` (sekwencja: broker → dispatcher → api).
 
 ---
 
-## Status API
+## 5) Endpoints API
 
-### Endpointy
-- `GET /healthz` →
-```json
-{
-  "status": "ok|degraded",
-  "uptime_s": 12.345,
-  "bus": {
-    "last_msg_age_s": 0.123,
-    "last_heartbeat_age_s": 2.345
-  }
-}
-```
-- `GET /state` →
-```json
-{
-  "present": false,
-  "confidence": 0.0,
-  "ts": 1756466761.4314544,
-  "age_s": 1.234
-}
-```
+- `GET /` – mini dashboard  
+  - karty: *Health*, *Presence*, *System* (CPU, load, mem, disk, temp)  
+  - wykres **CPU% / MEM% (60 s, 1–2 s refresh)**
+- `GET /healthz` → `{status, uptime_s, bus:{last_msg_age_s, last_heartbeat_age_s}}`
+- `GET /state`   → `{present, confidence, ts, age_s}`
+- `GET /sysinfo` → `{cpu_pct, load1/5/15, mem_* , disk_*, temp_c, ts, age_s}`
+- `GET /metrics` → Prometheus-style (`rider_*` metryki)
+- `GET /events`  → SSE (ostatnie zdarzenia z busa, do podglądu live)
 
-### Przykłady
+Przykład:
 ```bash
-PORT=${STATUS_API_PORT:-8080}
-curl -s http://127.0.0.1:$PORT/healthz | jq
-curl -s http://127.0.0.1:$PORT/state   | jq
+curl -s http://127.0.0.1:8080/healthz | jq
+curl -s http://127.0.0.1:8080/sysinfo  | jq
 ```
-
-> Jeśli `/healthz` = `degraded`, sprawdź czy dispatcher publikuje heartbeat (`vision.dispatcher.heartbeat`) oraz czy pojawił się pierwszy `vision.state` (dispatcher wysyła go przy starcie).
 
 ---
 
-## Podgląd z kamery (preview)
-Skrypty wyświetlają pogląd na LCD (jeśli `DISABLE_LCD=0` oraz zainstalowany `xgoscreen`). W testach wydajności zalecane `DISABLE_LCD=1` i `NO_DRAW=1`.
+## 6) Uruchomienie podglądu z kamery (manual)
 
 ```bash
 # HAAR
-python3 -u apps/camera/preview_lcd_takeover.py
+PREVIEW_ROT=270 python3 -u apps/camera/preview_lcd_takeover.py
 
-# SSD (co N klatek)
-SSD_EVERY=2 SSD_SCORE=0.55 SSD_CLASSES=person \
-python3 -u apps/camera/preview_lcd_ssd.py
+# SSD (co 2–3 klatki)
+PREVIEW_ROT=270 SSD_EVERY=3 SSD_SCORE=0.55 python3 -u apps/camera/preview_lcd_ssd.py
 
-# HYBRID (SSD + tracker + opcjonalnie HAAR)
-SSD_EVERY=3 HYBRID_HAAR=1 LOG_EVERY=10 \
+# HYBRID (tracker + SSD co N)
+PREVIEW_ROT=270 SSD_EVERY=3 SSD_SCORE=0.55 HYBRID_HAAR=1 LOG_EVERY=10 \
 python3 -u apps/camera/preview_lcd_hybrid.py
 ```
 
----
-
-## Dispatcher (logika obecności)
-- **Wejście**: `vision.face`, `vision.person`, `vision.detections`
-- Normalizacja do: `{kind, present, score, bbox}`
-- **Histereza**:
-  - `VISION_ON_CONSECUTIVE` — ile kolejnych pozytywów, by uznać `present=true`
-  - `VISION_OFF_TTL_SEC` — po ilu sekundach bez pozytywów `present=false`
-  - `VISION_MIN_SCORE` — minimalny score, by uznać detekcję
-- **Wyjście**: `vision.state {present, confidence, ts}` + heartbeat `vision.dispatcher.heartbeat`
+**Uwaga:** wyniki fps są niższe, gdy rysujemy na LCD – do benchmarku używaj trybu *headless* (patrz niżej).
 
 ---
 
-## Testy
+## 7) Testy: smoke & bench
 
-### Pytest
-```bash
-pytest -q
-# oczekiwane: 1 passed (prosty test importów i sanity check)
-```
-
-### Smoke test (3× krótki run podglądu)
+### Smoke (z LCD)
+Szybkie sprawdzenie, że wszystkie trzy pipeline’y (HAAR → SSD → HYBRID) startują i sprzątają kamerę/LCD:
 ```bash
 ./scripts/smoke_test.sh 3
-# oczekiwane: [SMOKE PASS]
+# [SMOKE PASS] + exit 0
 ```
 
-### Bench (FPS)
+### Bench (headless domyślnie)
+Trzy przebiegi (HAAR/SSD/HYBRID), parsowanie fps i progi PASS/FAIL:
 ```bash
 DISABLE_LCD=1 NO_DRAW=1 BENCH_LOG=1 ./scripts/bench_detect.sh 10
-# oczekiwane: [bench] PASS: all >= thresholds (HAAR>=12, SSD>=4, HYBRID>=3)
+# [bench] HAAR/SSD/HYBRID: fps=...
+# [bench] PASS: all >= thresholds (HAAR>=12, SSD>=4, HYBRID>=3)
+```
+
+**Tip:** `LOG_EVERY=10` ogranicza spam logów w hybrid.
+
+---
+
+## 8) Debug busa (narzędzia)
+
+- Subskrypcja wszystkiego:
+  ```bash
+  python3 -u scripts/sub.py
+  ```
+- Ręczne wysłanie stanu:
+  ```python
+  import os, zmq, time, json
+  s=zmq.Context.instance().socket(zmq.PUB)
+  s.connect(f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT','5555')}")
+  s.send_string("vision.state "+json.dumps({"present": True, "confidence": 0.9, "ts": time.time()}))
+  ```
+
+---
+
+## 9) LCD sanity-check
+
+Jeśli dashboard działa, ale nic nie widać na LCD – szybki test:
+```python
+from xgoscreen.LCD_2inch import LCD_2inch
+from PIL import Image, ImageDraw
+lcd = LCD_2inch(); lcd.rotation = 270
+img = Image.new("RGB",(320,240),(0,0,0))
+d = ImageDraw.Draw(img); d.rectangle([10,10,310,230], outline=(0,255,0), width=3); d.text((20,20),"LCD OK",(255,255,255))
+lcd.ShowImage(img)
 ```
 
 ---
 
-## Debugging / FAQ
+## 10) Prometheus (opcjonalnie)
 
-- **Port zajęty** (`Address already in use`):
-  ```bash
-  sudo lsof -iTCP:5555 -sTCP:LISTEN -n -P
-  sudo lsof -iTCP:5556 -sTCP:LISTEN -n -P
-  sudo lsof -iTCP:8080 -sTCP:LISTEN -n -P
-  ```
-- **API „degraded”**: zobacz logi i handshake ZMQ
-  ```bash
-  journalctl -u rider-api -n 50 --no-pager
-  python3 -u scripts/sub.py | grep -E '^vision\.'
-  ```
-- **LCD** (xgoscreen): sprawdź minimalny test z ramką (patrz historia w wątku). W testach wydajności ustaw `DISABLE_LCD=1`.
-- **Systemd**: status + logi
-  ```bash
-  systemctl --no-pager --full status rider-*
-  journalctl -u rider-broker -n 50 --no-pager
-  journalctl -u rider-dispatcher -n 50 --no-pager
-  journalctl -u rider-api -n 50 --no-pager
-  ```
+Nie wymagany. Jeśli chcesz, endpoint `/metrics` jest gotowy do scrapowania.
+Przykładowy minimalny scrap:
+```yaml
+scrape_configs:
+  - job_name: riderpi
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs: [{ targets: ['192.168.1.71:8080'] }]
+```
+Na RPi nie uruchamiamy Prometheusa (oszczędność CPU/RAM) – lepiej z zewnętrznego hosta.
 
 ---
 
-## Workflow dev
-- Gałąź `main` (jeden deweloper + AI). Tagowanie wersji **opcjonalnie** (na razie bez tagów).
-- Commit messages: `feat:`, `fix:`, `chore:`, `docs:` itp.
-- PR/Code review – w miarę rozwoju.
+## 11) FAQ / Troubleshooting
+
+- **Address already in use (tcp://*:5555)**  
+  Broker już działa. Sprawdź:
+  ```bash
+  systemctl status rider-broker
+  sudo ss -ltnp | grep ':5555\|:5556'
+  ```
+- **API bez danych z busa**  
+  Upewnij się, że `rider-dispatcher` działa i że pipeline kamery publikuje eventy.  
+  Health `status: degraded` → brak heartbeatów >10 s.
+
+- **Bench nie widzi fps (HYBRID)**  
+  Upewnij się, że `apps/camera/preview_lcd_hybrid.py` jest wykonany `chmod +x` i loguje linie `[hybrid] fps=...`.
+
+- **LCD zjada fps**  
+  Do bench używaj `DISABLE_LCD=1 NO_DRAW=1`.
 
 ---
 
-## Roadmap / TODO
-- [ ] UI `/status` (HTML + auto-refresh, wykres FPS i stan obecności)
-- [ ] `common/bus.py` (wspólny wrapper ZMQ dla preview/dispatcher/API)
-- [ ] Ujednolicenie logów (`structlog`/`logging` JSON)
-- [ ] Więcej testów: symulacje zdarzeń, testy histerezy
-- [ ] Export metryk (Prometheus) + alerts
-- [ ] Opakowanie w `setup.py`/`uv` i/lub Docker dla dev
+## 12) Roadmap (krótko)
+
+- Przyciski **Pause / Clear** wykresu + link do `/events` na dashboardzie.  
+- (opcjonalnie) prosty alarm na UI (kolory) przy wysokim CPU/MEM.  
+- Persistencja konfiguracji w `common/` i ujednolicenie importów.
+
+---
+
+## 13) Changelog (wycinek)
+
+- **2025-08-29 – stable**
+  - `scripts/status_api.py`: mini-dashboard + `/sysinfo` + wykres CPU/MEM (60 s) + `/metrics` + `/events`.
+  - `apps/vision/dispatcher.py`: debouncing/histereza + `vision.state` + heartbeat.
+  - `systemd` jednostki: broker, dispatcher, api (ENV z `.env`).
+  - Testy: `smoke_test.sh`, `bench_detect.sh` (progi PASS/FAIL).
+
+- **2025-08-28 – camera preview updates**
+  - HAAR/SSD/Hybrid, whitelist klas SSD, log fps, cleanup kill.
 
 ---
 

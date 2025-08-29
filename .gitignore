@@ -17,3 +17,4 @@ EOF
 # Jupyter checkpoints
 **/.ipynb_checkpoints/
 apps/camera/untitled*.py
+.env
