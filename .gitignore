@@ -18,3 +18,4 @@ EOF
 **/.ipynb_checkpoints/
 apps/camera/untitled*.py
 .env
+_tmp/

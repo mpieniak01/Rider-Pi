@@ -233,9 +233,9 @@ Na RPi nie uruchamiamy Prometheusa (oszczędność CPU/RAM) – lepiej z zewnęt
 
 ## 12) Roadmap (krótko)
 
-- Przyciski **Pause / Clear** wykresu + link do `/events` na dashboardzie.  
-- (opcjonalnie) prosty alarm na UI (kolory) przy wysokim CPU/MEM.  
-- Persistencja konfiguracji w `common/` i ujednolicenie importów.
+- `scripts/status_api.py` – wątek XGO telemetry + nowe pola API.
+- `scripts/xgo_client_ro.py` – read-only klient XGO (bez szarpania).
+- `PROJECT.md` – update dokumentacji.
 
 ---
 
@@ -249,6 +249,32 @@ Na RPi nie uruchamiamy Prometheusa (oszczędność CPU/RAM) – lepiej z zewnęt
 
 - **2025-08-28 – camera preview updates**
   - HAAR/SSD/Hybrid, whitelist klas SSD, log fps, cleanup kill.
+ 
+## 14) ### Nowości
+- **Dashboard mini** rozbudowany o nowe sekcje:
+  - **System**: 
+    - CPU %, Load (1/5/15m), pamięć (MB, %), dysk, OS release, kernel, temperatura, **firmware XGO**.
+  - **Devices**:
+    - Kamera (ON/OFF, fps, rotacja).
+    - LCD (ON, rot, no_draw).
+    - **XGO telemetry (via `xgo_client_ro`)**:
+      - IMU (roll, pitch, yaw) + status OK/?
+      - Pose: `upright` / `leaning` / `fallen?`
+      - Battery (%)
+      - Temp (°C)
+      - Firmware (R-1.1.6 potwierdzony).
+  - **History**: CPU/MEM wykres w czasie rzeczywistym (auto-refresh co 2s).
+- **API endpoints** `/healthz`, `/sysinfo`, `/state` uzupełnione o:
+  - `devices.xgo`: `imu_ok`, `pose`, `battery_pct`, `roll`, `pitch`, `yaw`, `age_s`
+  - `sysinfo`: `battery_pct`, `fw`, `os_release`
+- **Bezpieczny backend odczytów XGO**:
+  - `xgo_client_ro.py` → bezpieczna implementacja `read-only` (battery, IMU, fw).
+  - Wątek w `status_api.py` automatycznie publikuje telemetrię XGO.
+- Poprawki frontendu:
+  - Auto-refresh działa stabilnie.
+  - Wartości prezentowane kolorami (`ok`, `bad`, `muted`).
+  - Battery i temperatura przeniesione z **System** → **Devices**.
+  - Dodane wersje OS i firmware do **System**.
 
 ---
 
