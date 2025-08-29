@@ -4,12 +4,23 @@ After=network.target rider-broker.service rider-dispatcher.service
 Wants=rider-broker.service rider-dispatcher.service
 
 [Service]
+Type=simple
 User=pi
 WorkingDirectory=/home/pi/robot
 EnvironmentFile=/home/pi/robot/.env
 ExecStart=/usr/bin/python3 -u scripts/status_api.py
 Restart=on-failure
 RestartSec=2s
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+CapabilityBoundingSet=
+LockPersonality=yes
 
 [Install]
 WantedBy=multi-user.target
