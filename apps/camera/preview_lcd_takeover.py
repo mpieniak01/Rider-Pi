@@ -210,7 +210,8 @@ def main() -> int:
                     disp.ShowImage(black_frame())
                 except Exception:
                     pass
-                run("sudo -n python3 scripts/lcdctl.py off >/dev/null 2>&1 || sudo python3 scripts/lcdctl.py off")
+                if os.getenv("KEEP_LCD","0") != "1":
+                    run("sudo -n python3 scripts/lcdctl.py off >/dev/null 2>&1 || sudo python3 scripts/lcdctl.py off")
                 try:
                     os.close(_lk); os.unlink(LOCK_PATH)
                 except Exception:
@@ -262,6 +263,9 @@ def main() -> int:
                 fps = frames / (time.time() - t0)
                 frames = 0
                 t0 = time.time()
+                # -> linia dla benchmarku (wypisz tylko gdy BENCH_LOG=1)
+                if os.getenv("BENCH_LOG","0") == "1" and fps is not None:
+                    print(f"[bench] fps={fps:.2f} mode=HAAR", flush=True)
 
             draw_hud(frame_bgr, fps)
 
@@ -294,7 +298,8 @@ def main() -> int:
             disp.ShowImage(black_frame())
         except Exception:
             pass
-        run("sudo -n python3 scripts/lcdctl.py off >/dev/null 2>&1 || sudo python3 scripts/lcdctl.py off")
+        if os.getenv("KEEP_LCD","0") != "1":
+            run("sudo -n python3 scripts/lcdctl.py off >/dev/null 2>&1 || sudo python3 scripts/lcdctl.py off")
     return 0
 
 if __name__ == "__main__":
