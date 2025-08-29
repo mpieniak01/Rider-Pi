@@ -1,54 +1,59 @@
 #!/usr/bin/env bash
+# scripts/bench_detect.sh DUR
 set -euo pipefail
+export LC_ALL=C
 
-DUR="${1:-25}"                 # czas pomiaru [s]
-ROT="${PREVIEW_ROT:-270}"
-SCORE="${SSD_SCORE:-0.6}"
-W="${CAM_W:-640}"
-H="${CAM_H:-480}"
+DUR="${1:-10}"
+export SKIP_V4L2=1 PREVIEW_ROT="${PREVIEW_ROT:-270}"
 
-avg_from_log() {
-  local f="$1"
-  # Wyciągnij same liczby „fps=…” i policz średnią
-  if [ ! -s "$f" ]; then echo "0.00"; return; fi
-  sed -n 's/.*fps=\([0-9.][0-9.]*\).*/\1/p' "$f" \
-  | awk '{s+=$1; n++} END{if(n) printf "%.2f", s/n; else print "0.00"}'
+MIN_HAAR="${BENCH_MIN_FPS_HAAR:-12}"
+MIN_SSD="${BENCH_MIN_FPS_SSD:-4}"
+MIN_HYB="${BENCH_MIN_FPS_HYB:-3}"
+
+log() { echo "[bench] $*" >&2; }
+
+num_ge() {  # num_ge VAL MIN -> exit 0 gdy VAL>=MIN
+  python3 - "$1" "$2" <<'PY'
+import sys
+f=float(sys.argv[1]); m=float(sys.argv[2])
+sys.exit(0 if f+1e-6>=m else 1)
+PY
 }
 
-cleanup() {
-  pkill -f "apps/ui/face.py" || true
-  pkill -f "apps/camera/preview_lcd_ssd.py" || true
-  pkill -f "apps/camera/preview_lcd_takeover.py" || true
-  sudo raspi-gpio set 13 op dh || true   # na koniec podświetlenie znów ON
+run_and_parse_fps() {
+  local name="$1"; shift
+  local cmd=( "$@" )
+  local status=0
+  local out
+  out="$(timeout "${DUR}"s "${cmd[@]}" 2>&1 || status=$?)"
+  printf "%s\n" "$out" >&2
+  # wyciągnij ostatnie "fps=NNN(.M)"
+  local fps
+  fps="$(printf "%s\n" "$out" | grep -Eo 'fps=[0-9]+(\.[0-9]+)?' | tail -n1 | cut -d= -f2 || true)"
+  fps="$(printf "%s" "${fps:-}" | tr -d '[:space:]')"
+  if [ -z "$fps" ]; then
+    log "$name: no fps found"
+    return 2
+  fi
+  log "$name: fps=$fps"
+  printf "%s" "$fps"   # TYLKO liczba na stdout
+  return 0
 }
-trap cleanup EXIT
 
-echo "== Rider-Pi bench (DUR=${DUR}s, ROT=${ROT}, SSD_SCORE=${SCORE}, CAM=${W}x${H}) =="
+# 1) HAAR
+fps="$(run_and_parse_fps "HAAR" python3 -u apps/camera/preview_lcd_takeover.py)" || exit 1
+num_ge "$fps" "$MIN_HAAR" || { log "FAIL: HAAR < $MIN_HAAR"; exit 1; }
+./scripts/camera_takeover_kill.sh || true
 
-# twardy pre-kill vendorów i podświetlenie ON
-bash scripts/camera_takeover_kill.sh || true
-sudo raspi-gpio set 13 op dh || true
+# 2) SSD
+export SSD_EVERY="${SSD_EVERY:-2}" SSD_CLASSES="${SSD_CLASSES:-person}" SSD_SCORE="${SSD_SCORE:-0.55}"
+fps="$(run_and_parse_fps "SSD" python3 -u apps/camera/preview_lcd_ssd.py)" || exit 1
+num_ge "$fps" "$MIN_SSD" || { log "FAIL: SSD < $MIN_SSD"; exit 1; }
+./scripts/camera_takeover_kill.sh || true
 
-# --- SSD ---
-echo "-- SSD run --"
-: > /tmp/fps_ssd.log
-( KEEP_LCD=1 BENCH_LOG=1 SKIP_V4L2=1 PREVIEW_ROT="${ROT}" SSD_SCORE="${SCORE}" CAM_W="${W}" CAM_H="${H}" \
-  timeout "${DUR}"s python3 -u apps/camera/preview_lcd_ssd.py 2>&1 \
-  | stdbuf -oL grep -F "[bench] fps=" | tee /tmp/fps_ssd.log ) || true
-SSD_AVG="$(avg_from_log /tmp/fps_ssd.log)"
-echo "SSD_avg_fps=${SSD_AVG}"
+# 3) HYBRID
+export HYBRID_HAAR="${HYBRID_HAAR:-1}"
+fps="$(run_and_parse_fps "HYBRID" python3 -u apps/camera/preview_lcd_hybrid.py)" || exit 1
+num_ge "$fps" "$MIN_HYB" || { log "FAIL: HYBRID < $MIN_HYB"; exit 1; }
 
-# ponownie włącz BL (gdyby skrypt go zgasił)
-sudo raspi-gpio set 13 op dh || true
-sleep 0.3
-
-# --- HAAR ---
-echo "-- HAAR run --"
-: > /tmp/fps_haar.log
-( KEEP_LCD=1 BENCH_LOG=1 SKIP_V4L2=1 PREVIEW_ROT="${ROT}" VISION_HUMAN=1 VISION_FACE_EVERY=5 \
-  timeout "${DUR}"s python3 -u apps/camera/preview_lcd_takeover.py 2>&1 \
-  | stdbuf -oL grep -F "[bench] fps=" | tee /tmp/fps_haar.log ) || true
-HAAR_AVG="$(avg_from_log /tmp/fps_haar.log)"
-echo "HAAR_avg_fps=${HAAR_AVG}"
-
-echo "== RESULT ==  SSD:${SSD_AVG} fps   |   HAAR:${HAAR_AVG} fps"
+log "PASS: all >= thresholds (HAAR>=$MIN_HAAR, SSD>=$MIN_SSD, HYBRID>=$MIN_HYB)"
