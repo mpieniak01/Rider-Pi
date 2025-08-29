@@ -1,34 +1,46 @@
 #!/usr/bin/env bash
+# camera_takeover_kill.sh — free camera/SPI and light up LCD backlight
+# Safe hard-kill of preview pipelines + free busy devices.
+# BL pin: GPIO 13 (active-high)
+
 set -euo pipefail
-echo "[takeover-pre] ubijam potencjalne procesy producenta…"
 
-# procesy pythona, które mogą używać naszego LCD/kamery
-PATS=(
-  'yolostream.py'
-  'camera_dogzilla.py'
-  'xgolib'
-  'xgoedu'
-  'LCD_2inch'
-  'mediapipe'
-  'vendor_splash.py'
-)
-for p in "${PATS[@]}"; do pkill -9 -f "$p" 2>/dev/null || true; done
+echo "=== [takeover-kill] begin ==="
 
-# serwerowe porty w przykładach vendora
-sudo fuser -k 6500/tcp 7700/tcp 2>/dev/null || true
+# 1) Podświetlenie LCD (BL ON), jeśli narzędzie dostępne
+if command -v raspi-gpio >/dev/null 2>&1; then
+  raspi-gpio set 13 op dh || true
+fi
 
-# urządzenia SPI LCD (zwolnij wszystko co je trzyma)
-for d in /dev/spidev0.0 /dev/spidev0.1; do
-  [ -e "$d" ] && sudo fuser -kv "$d" 2>/dev/null || true
+# 2) (opcjonalnie) Wyłącz vendor splash — tylko jeśli plik istnieje
+if [ -f "scripts/vendor_splash.py" ]; then
+  python3 -u scripts/vendor_splash.py --off || true
+fi
+
+# 3) Zabicie naszych pipeline’ów preview
+pkill -f 'apps/camera/preview_lcd_takeover.py' || true
+pkill -f 'apps/camera/preview_lcd_ssd.py' || true
+pkill -f 'apps/camera/preview_lcd_hybrid.py' || true
+pkill -f 'preview_lcd_takeover.py' || true
+pkill -f 'preview_lcd_ssd.py' || true
+pkill -f 'preview_lcd_hybrid.py' || true
+
+# 4) Zabicie resztek libcamera/rpicam/streamerów, jeśli wiszą
+pkill -f 'libcamera' || true
+pkill -f 'rpicam-' || true
+pkill -f 'raspivid' || true
+pkill -f 'raspistill' || true
+pkill -f 'v4l2' || true
+pkill -f 'mjpg_streamer' || true
+
+# 5) Force-close uchwytów do urządzeń: SPI i kamera
+for dev in /dev/spidev0.0 /dev/spidev0.1 /dev/video0; do
+  if [ -e "$dev" ]; then
+    sudo fuser -k "$dev" 2>/dev/null || true
+  fi
 done
 
-# zatrzymaj potencjalne usługi, o ile są
-sudo systemctl stop yolostream.service 2>/dev/null || true
-sudo systemctl stop xgo* 2>/dev/null || true
+# (opcjonalnie) zwolnij uchwyty do GPIO chipów — nie szkodzi, gdy brak
+sudo fuser -k /dev/gpiochip* 2>/dev/null || true
 
-# wyczyść nasz lock
-rm -f /tmp/rider_spi_lcd.lock
-
-# podświetlenie ON
-sudo raspi-gpio set 13 op dh 2>/dev/null || true
-echo "[takeover-pre] gotowe"
+echo "=== [takeover-kill] done ==="
