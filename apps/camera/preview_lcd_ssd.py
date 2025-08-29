@@ -1,254 +1,178 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Rider-Pi — HYBRID: person (SSD) + tracking + face (HAAR) na 2" LCD
+# apps/camera/preview_lcd_ssd.py
+# Preview + MobileNet-SSD (Caffe). Publikuje vision.person dla wykryć „person”.
 
-Idea:
-- Co SSD_EVERY klatek uruchamiamy MobileNet-SSD (OpenCV DNN) i wybieramy ramkę "person".
-- Pomiędzy wywołaniami SSD używamy trackera (KCF/CSRT) do płynnego śledzenia.
-- Wewnątrz ramki "person" co FACE_EVERY klatek sprawdzamy HAAR (twarz). Jeśli jest — rysujemy.
-- Działa na Picamera2, bez TFLite. Ma BENCH_LOG i KEEP_LCD (jak pozostałe skrypty).
+import os, time, json
+from typing import Tuple, List, Set
+import numpy as np
+import cv2
 
-ENV:
-  PREVIEW_ROT    = 0|90|180|270 (domyślnie 0; u Ciebie zwykle 270)
-  SSD_SCORE      = 0.55         (próg detekcji SSD)
-  SSD_EVERY      = 3            (co ile klatek uruchamiać SSD)
-  FACE_EVERY     = 5            (co ile klatek sprawdzać twarz w ROI)
-  TRACKER        = kcf|csrt     (domyślnie kcf; csrt trochę cięższy)
-  SSD_PROTO      = ścieżka .prototxt (opcjonalnie)
-  SSD_MODEL      = ścieżka .caffemodel (opcjonalnie)
-  KEEP_LCD       = 0/1          (1 = nie gasić podświetlenia w finally)
-  BENCH_LOG      = 0/1          (1 = wypisuj "[bench] fps=…")
-"""
+# --- BUS PUB helper (ZMQ) ---
+try:
+    import zmq
+except Exception:
+    zmq = None
 
-import os, time, signal, fcntl, subprocess
-import cv2, numpy as np
-from PIL import Image
+def _bus_pub():
+    if zmq is None:
+        return None
+    ctx = zmq.Context.instance()
+    s = ctx.socket(zmq.PUB)
+    s.connect(f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT','5555')}")
+    return s
+_BUS = _bus_pub()
 
-# —— LCD / lock ——
-LOCK_PATH = "/tmp/rider_spi_lcd.lock"
-LCD_TW, LCD_TH = 320, 240
-ROT = int(os.getenv("PREVIEW_ROT", "0"))
-
-# —— SSD / HAAR / tracker parametry ——
-SCORE      = float(os.getenv("SSD_SCORE", "0.55"))
-SSD_EVERY  = max(1, int(os.getenv("SSD_EVERY", "3")))
-FACE_EVERY = max(1, int(os.getenv("FACE_EVERY", "5")))
-TRACKER    = os.getenv("TRACKER", "kcf").strip().lower()
-
-PROTOTXT = os.getenv("SSD_PROTO", "models/ssd/MobileNetSSD_deploy.prototxt")
-WEIGHTS  = os.getenv("SSD_MODEL", "models/ssd/MobileNetSSD_deploy.caffemodel")
-
-CLASSES = ["background","aeroplane","bicycle","bird","boat","bottle","bus","car",
-           "cat","chair","cow","diningtable","dog","horse","motorbike","person",
-           "pottedplant","sheep","sofa","train","tvmonitor"]
-
-STOP=False
-def _sig(sig,frm):
-    global STOP; STOP=True; raise KeyboardInterrupt
-signal.signal(signal.SIGINT,_sig); signal.signal(signal.SIGTERM,_sig)
-
-def run(cmd:str)->int:
-    try: return subprocess.call(cmd, shell=True)
-    except: return 1
-
-def lock_once():
-    fd = os.open(LOCK_PATH, os.O_RDWR|os.O_CREAT, 0o644)
+def pub(topic, payload: dict):
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX|fcntl.LOCK_NB)
-        os.ftruncate(fd,0); os.write(fd, str(os.getpid()).encode())
-    except OSError:
-        print("[preview] Inna instancja rysuje LCD — kończę.", flush=True)
-        raise SystemExit(0)
-    return fd
-
-def to_panel(pil_im: Image.Image)->Image.Image:
-    im = pil_im.rotate(ROT, expand=True) if ROT in (90,180,270) else pil_im
-    return im.resize((LCD_TW, LCD_TH), Image.BILINEAR)
-
-def black(): return Image.new("RGB",(LCD_TW,LCD_TH),(0,0,0))
-
-def open_cam(size=(320,240)):
-    from picamera2 import Picamera2
-    cam = Picamera2()
-    cfg = cam.create_preview_configuration(main={"size": size, "format":"RGB888"})
-    cam.configure(cfg)
-    cam.start(); time.sleep(0.2)
-    return cam
-
-def load_ssd():
-    if not (os.path.exists(PROTOTXT) and os.path.exists(WEIGHTS)):
-        raise FileNotFoundError(f"Brak modelu SSD: {PROTOTXT} / {WEIGHTS}")
-    net = cv2.dnn.readNetFromCaffe(PROTOTXT, WEIGHTS)
-    try:
-        net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-        net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+        if _BUS is not None:
+            _BUS.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
     except Exception:
         pass
+# --- end helper ---
+
+# --- LCD (opcjonalnie) ---
+DISABLE_LCD = os.getenv("DISABLE_LCD", "0") == "1"
+NO_DRAW = os.getenv("NO_DRAW", "0") == "1"
+
+def _lcd_init():
+    if DISABLE_LCD:
+        return None
+    try:
+        from xgoscreen.LCD_2inch import LCD_2inch
+    except Exception:
+        try:
+            import xgoscreen.LCD_2inch as lcd_mod
+            LCD_2inch = lcd_mod.LCD_2inch
+        except Exception:
+            return None
+    try:
+        lcd = LCD_2inch()
+        lcd.rotation = 270 if str(os.getenv("PREVIEW_ROT","270")) == "270" else 0
+        return lcd
+    except Exception:
+        return None
+
+_LCD = _lcd_init()
+
+def lcd_show_bgr(img_bgr: np.ndarray):
+    if _LCD is None:
+        return
+    from PIL import Image
+    img = cv2.resize(img_bgr, (320, 240), interpolation=cv2.INTER_LINEAR)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    _LCD.ShowImage(Image.fromarray(img_rgb))
+
+# --- Kamera ---
+def open_camera(size=(320,240)):
+    try:
+        from picamera2 import Picamera2
+        picam2 = Picamera2()
+        config = picam2.create_preview_configuration(main={"size": size, "format":"RGB888"})
+        picam2.configure(config)
+        picam2.start()
+        def read():
+            arr = picam2.capture_array()
+            return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+        return read, size
+    except Exception:
+        cap = cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0]); cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
+        def read():
+            return cap.read()
+        return read, size
+
+# --- SSD model ---
+CLASSES = [
+    "background","aeroplane","bicycle","bird","boat","bottle","bus","car","cat",
+    "chair","cow","diningtable","dog","horse","motorbike","person","pottedplant",
+    "sheep","sofa","train","tvmonitor"
+]
+PERSON_ID = 15
+
+def load_ssd():
+    proto = os.path.join("models","ssd","MobileNetSSD_deploy.prototxt")
+    model = os.path.join("models","ssd","MobileNetSSD_deploy.caffemodel")
+    if not (os.path.isfile(proto) and os.path.isfile(model)):
+        raise FileNotFoundError("Brak modeli SSD w models/ssd/")
+    net = cv2.dnn.readNetFromCaffe(proto, model)
     return net
 
-def create_tracker(kind="kcf"):
-    kind = (kind or "").lower()
-    def _mk(name):
-        # OpenCV różnie pakuje trackery (legacy vs nie-legacy)
-        ctor = getattr(cv2, f"{name}_create", None)
-        if ctor: return ctor()
-        legacy = getattr(cv2, "legacy", None)
-        if legacy:
-            ctor = getattr(legacy, f"{name}_create", None)
-            if ctor: return ctor()
-        return None
-    if kind == "csrt":
-        t = _mk("TrackerCSRT")
-        if t is not None: return t
-    # fallback: KCF
-    t = _mk("TrackerKCF")
-    if t is not None: return t
-    # ostateczny fallback: MOSSE (bardzo lekki)
-    t = _mk("TrackerMOSSE")
-    return t
-
-def draw(frame, person_box, face_box, fps=None):
-    if person_box is not None:
-        (x1,y1,x2,y2) = person_box
-        cv2.rectangle(frame,(x1,y1),(x2,y2),(0,0,255),2)
-        cv2.putText(frame,"person",(x1,max(12,y1-6)),cv2.FONT_HERSHEY_SIMPLEX,0.45,(0,0,255),1)
-    if face_box is not None:
-        (x,y,w,h) = face_box
-        cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
-        cv2.putText(frame,"face",(x,max(12,y-6)),cv2.FONT_HERSHEY_SIMPLEX,0.45,(0,255,0),1)
-    if fps is not None:
-        cv2.putText(frame,f"FPS {fps:.1f}",(5,14),cv2.FONT_HERSHEY_SIMPLEX,0.5,(255,255,255),1)
-
-# lekka optymalizacja
-try:
-    cv2.setUseOptimized(True)
-    cv2.setNumThreads(2)
-except Exception:
-    pass
+def parse_classes_env() -> Set[str]:
+    raw = os.getenv("SSD_CLASSES", "person")
+    return set([x.strip().lower() for x in raw.split(",") if x.strip()])
 
 def main():
-    # LCD
+    rot = int(os.getenv("PREVIEW_ROT", "270"))
+    SCORE = float(os.getenv("SSD_SCORE", "0.55"))
+    EVERY = int(os.getenv("SSD_EVERY", "2"))
+    CLW = parse_classes_env()  # whitelist nazw (np. {"person"})
+
+    read, size = open_camera((320,240))
+    net = load_ssd()
+
+    frame_id = 0
+    t0, frames = time.time(), 0
+
+    while True:
+        ok, frame = read()
+        if not ok:
+            time.sleep(0.01); continue
+
+        if rot in (90, 180, 270):
+            if rot == 90:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            elif rot == 180:
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
+            elif rot == 270:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+        out = frame.copy()
+
+        do_detect = (frame_id % max(1,EVERY) == 0)
+        detections = []
+
+        if do_detect:
+            blob = cv2.dnn.blobFromImage(cv2.resize(frame,(300,300)), 0.007843, (300,300), 127.5, swapRB=True, crop=False)
+            net.setInput(blob)
+            det = net.forward()  # shape: (1,1,N,7)
+            h, w = frame.shape[:2]
+            for i in range(det.shape[2]):
+                conf = float(det[0,0,i,2])
+                if conf < SCORE:
+                    continue
+                cls_id = int(det[0,0,i,1])
+                x1 = int(det[0,0,i,3]*w)
+                y1 = int(det[0,0,i,4]*h)
+                x2 = int(det[0,0,i,5]*w)
+                y2 = int(det[0,0,i,6]*h)
+                name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
+                if CLW and (name.lower() not in CLW):
+                    continue
+                detections.append((name, conf, (x1,y1,x2,y2)))
+
+        # rysowanie + publikacja
+        for name, conf, (x1,y1,x2,y2) in detections:
+            if not NO_DRAW:
+                cv2.rectangle(out, (x1,y1), (x2,y2), (0,255,255), 2)
+                cv2.putText(out, f"{name}:{conf:.2f}", (x1,max(0,y1-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255), 1, cv2.LINE_AA)
+            if name.lower() == "person":
+                pub("vision.person", {
+                    "present": True,
+                    "score": float(conf),
+                    "bbox": [int(x1), int(y1), int(x2-x1), int(y2-y1)]
+                })
+
+        lcd_show_bgr(out)
+
+        frame_id += 1
+        frames += 1
+        if frames % 60 == 0:
+            dt = time.time() - t0
+            fps = frames/dt if dt > 0 else 0.0
+            print(f"[ssd] fps={fps:.1f} (every={EVERY}, score>={SCORE})", flush=True)
+
+if __name__ == "__main__":
     try:
-        import xgoscreen.LCD_2inch as LCD_2inch
-    except Exception as e:
-        print("[preview] Brak xgoscreen:", e); raise SystemExit(1)
-    disp = LCD_2inch.LCD_2inch()
-    try: disp.Init()
-    except: pass
-    disp.clear(); disp.ShowImage(black())
-
-    lk = lock_once()
-    cam = None
-    try:
-        cam = open_cam((320,240))
-        net = load_ssd()
-        face_cascade = None
-        try:
-            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-        except Exception:
-            face_cascade = None
-
-        print("[preview] Start (HYBRID: SSD+TRACK+HAAR). Ctrl+C aby zakończyć.", flush=True)
-
-        t0=time.time(); n=0; fps=None
-        k=0
-        tracker=None
-        person_box=None   # (x1,y1,x2,y2) w obrazie
-        face_box=None     # (x,y,w,h) w obrazie
-
-        while not STOP:
-            rgb = cam.capture_array()
-            frame = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-
-            H,W = frame.shape[:2]
-
-            # 1) tracking każdej klatki, jeśli mamy tracker
-            tracked_ok=False
-            if tracker is not None and person_box is not None:
-                (x1,y1,x2,y2) = person_box
-                # tracker używa bbox (x,y,w,h)
-                init_box = (x1, y1, max(1,x2-x1), max(1,y2-y1))
-                ok, bb = tracker.update(frame)
-                if ok:
-                    x,y,w,h = map(int, bb)
-                    person_box = (max(0,x), max(0,y), min(W-1,x+w), min(H-1,y+h))
-                    tracked_ok=True
-                else:
-                    tracker=None
-
-            # 2) co SSD_EVERY klatek: uruchom SSD (nadpisze person_box)
-            k = (k + 1) % SSD_EVERY
-            if k == 0:
-                blob = cv2.dnn.blobFromImage(frame, 0.007843, (300,300), 127.5)
-                net.setInput(blob)
-                det = net.forward()
-                best = None
-                best_conf = -1.0
-                for i in range(det.shape[2]):
-                    conf = float(det[0,0,i,2])
-                    if conf < SCORE: continue
-                    idx = int(det[0,0,i,1])
-                    if idx != 15:     # 15 == "person" w liście CLASSES
-                        continue
-                    box = det[0,0,i,3:7]*[W,H,W,H]
-                    x1,y1,x2,y2 = box.astype("int")
-                    x1,y1 = max(0,x1), max(0,y1)
-                    x2,y2 = min(W-1,x2), min(H-1,y2)
-                    if conf > best_conf:
-                        best_conf = conf
-                        best = (x1,y1,x2,y2)
-                if best is not None:
-                    person_box = best
-                    # reinit trackera
-                    t = create_tracker(TRACKER)
-                    if t is not None:
-                        (x1,y1,x2,y2) = person_box
-                        t.init(frame, (x1,y1,max(1,x2-x1),max(1,y2-y1)))
-                        tracker = t
-                    else:
-                        tracker = None
-
-            # 3) HAAR w ROI osoby co FACE_EVERY klatek
-            face_box = None
-            if face_cascade is not None and person_box is not None and (n % FACE_EVERY == 0):
-                (x1,y1,x2,y2) = person_box
-                roi = frame[y1:y2, x1:x2]
-                if roi.size > 0:
-                    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                    faces = face_cascade.detectMultiScale(gray, 1.1, 3, minSize=(30, 30))
-                    if len(faces):
-                        # bierz największą twarz
-                        fx,fy,fw,fh = max(faces, key=lambda r: r[2]*r[3])
-                        face_box = (x1+fx, y1+fy, fw, fh)
-
-            # 4) FPS i bench log
-            n += 1
-            if n % 20 == 0:
-                fps = n / (time.time() - t0); t0 = time.time(); n = 0
-                if os.getenv("BENCH_LOG","0") == "1" and fps is not None:
-                    print(f"[bench] fps={fps:.2f} mode=HYBRID", flush=True)
-
-            # 5) rysowanie i LCD
-            draw(frame, person_box, face_box, fps)
-            out = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            disp.ShowImage(to_panel(out))
-            time.sleep(0.001)
-
+        main()
     except KeyboardInterrupt:
         pass
-    finally:
-        try: disp.ShowImage(black())
-        except: pass
-        if os.getenv("KEEP_LCD","0") != "1":
-            run("sudo -n python3 scripts/lcdctl.py off >/dev/null 2>&1 || sudo python3 scripts/lcdctl.py off")
-        try:
-            if cam: cam.stop()
-        except: pass
-        try:
-            os.close(lk); os.unlink(LOCK_PATH)
-        except: pass
-
-if __name__=="__main__":
-    main()
-
