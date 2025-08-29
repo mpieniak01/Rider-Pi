@@ -4,17 +4,28 @@
 
 ---
 
-## Co nowego w v0.4.7
-- **Camera preview (LCD 2")**: stabilizacja, rotacja, border debug, „pattern” gdy brak kamery, sprzątanie.
-- **Detekcja**:
-  - **Twarze (HAAR)** — szybkie (~15 FPS @ 320×240), włączane ENV.
-  - **MobileNet‑SSD (OpenCV DNN)** — „person” itp.; dodane: `SSD_EVERY` (detekcja co N klatek), whitelist `SSD_CLASSES`, próg `SSD_SCORE`.
-  - **EXPERIMENTAL**: **hybryda** (SSD + tracker + HAAR) — demo łączące stabilność „person” i sygnał „face”.
-- **Benchmark**: `scripts/bench_detect.sh` — porównanie FPS (SSD vs HAAR; opcjonalnie HYBRID), logi `BENCH_LOG`.
-- **Kill‑switch**: twardszy `scripts/camera_takeover_kill.sh` — ubija procesy/porty vendora i zwalnia SPI.
-- **Quality of life**: `KEEP_LCD=1` nie gasi podświetlenia po wyjściu; log linii `[bench] fps=…` w preview.
-
+**Nowe:**
+- `preview_lcd_takeover.py` (HAAR) ~15 FPS @ 320×240.
+- `preview_lcd_ssd.py` (MobileNet-SSD; `SSD_EVERY`, `SSD_CLASSES`, `SSD_SCORE`) ~5 FPS.
+- `preview_lcd_hybrid.py` (PoC: SSD+tracker+HAAR) ~4–6 FPS.
+- `camera_takeover_kill.sh`: opcjonalny `vendor_splash.py` (działa, nawet gdy pliku brak), BL=GPIO13 ON.
+- `bench_detect.sh`: logi „[bench] fps=…”, `BENCH_LOG=1`, `KEEP_LCD=1`.
 ---
+
+**Uruchamianie (skrót):**
+```bash
+export SKIP_V4L2=1 PREVIEW_ROT=270
+# HAAR fast
+python3 -u apps/camera/preview_lcd_takeover.py
+# SSD
+export SSD_EVERY=2 SSD_CLASSES=person SSD_SCORE=0.55
+python3 -u apps/camera/preview_lcd_ssd.py
+# HYBRID (PoC)
+python3 -u apps/camera/preview_lcd_hybrid.py
+# Kill / cleanup
+./scripts/camera_takeover_kill.sh
+# Bench
+export BENCH_LOG=1; ./scripts/bench_detect.sh 20
 
 ## Modele w repo
 ```
