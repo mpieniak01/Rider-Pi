@@ -1,149 +1,262 @@
-# Rider‑Pi — PROJECT.md (v0.4.7)
+# Rider‑Pi — projekt i szybki start
 
-> **Scope (v0.4.7):** kamera + LCD 2" (SPI), podgląd + detekcja, bench, mocniejszy „kill vendorów”, model(e) w repo.
+> Ten projekt to **sandbox** do ćwiczenia programowania robota Rider‑Pi (CM4 + LCD 2''). Repo nie jest oficjalnym firmware producenta.
+
+## Spis treści
+- [Struktura repozytorium](#struktura-repozytorium)
+- [Szybki start (podgląd + eventy)](#szybki-start-podgląd--eventy)
+- [Komunikacja (bus ZMQ)](#komunikacja-bus-zmq)
+- [Dispatcher wizji](#dispatcher-wizji)
+- [Podglądy kamery](#podglądy-kamery)
+- [Testy: smoke i bench](#testy-smoke-i-bench)
+- [Jednostkowe: pytest](#jednostkowe-pytest)
+- [Systemd (autostart podglądu)](#systemd-autostart-podglądu)
+- [Zmienne środowiskowe (FAQ)](#zmienne-środowiskowe-faq)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-**Nowe:**
-- `preview_lcd_takeover.py` (HAAR) ~15 FPS @ 320×240.
-- `preview_lcd_ssd.py` (MobileNet-SSD; `SSD_EVERY`, `SSD_CLASSES`, `SSD_SCORE`) ~5 FPS.
-- `preview_lcd_hybrid.py` (PoC: SSD+tracker+HAAR) ~4–6 FPS.
-- `camera_takeover_kill.sh`: opcjonalny `vendor_splash.py` (działa, nawet gdy pliku brak), BL=GPIO13 ON.
-- `bench_detect.sh`: logi „[bench] fps=…”, `BENCH_LOG=1`, `KEEP_LCD=1`.
+## Struktura repozytorium
+```
+apps/
+  camera/
+    preview_lcd_takeover.py   # HAAR face; szybki FPS
+    preview_lcd_ssd.py        # MobileNet-SSD (person)
+    preview_lcd_hybrid.py     # SSD + tracker (+ opcj. HAAR w ROI)
+  vision/
+    dispatcher.py             # łączy eventy detektorów -> vision.state
+
+common/                       # (wspólne rzeczy; prosty bus jest inline)
+
+scripts/
+  broker.py                   # prosty ZMQ XPUB/XSUB broker
+  sub.py                      # subskrybent do podglądu topiców
+  camera_takeover_kill.sh     # gasi kamerę/preview i vendor overlay
+  smoke_test.sh               # krótki test pipelines
+  bench_detect.sh             # benchmark FPS (headless domyślnie)
+
+systemd/
+  rider-camera-preview.service
+
+PROJECT.md, README.md, .gitattributes, .gitignore
+```
+
+> Uwaga: **tagów Git** nie używamy na start (1 dev + AI). Podpisy GPG wyłączone. `.gitattributes` wymusza `LF` dla `.py/.sh`.
+
 ---
 
-**Uruchamianie (skrót):**
+## Szybki start (podgląd + eventy)
+W 3 terminalach:
+
+**T1 — broker:**
 ```bash
-export SKIP_V4L2=1 PREVIEW_ROT=270
-# HAAR fast
+cd ~/robot
+python3 -u scripts/broker.py
+```
+
+**T2 — dispatcher:**
+```bash
+cd ~/robot
+python3 -u apps/vision/dispatcher.py
+```
+
+**T3 — podgląd (HAAR):**
+```bash
+cd ~/robot
+export PREVIEW_ROT=270
 python3 -u apps/camera/preview_lcd_takeover.py
-# SSD
-export SSD_EVERY=2 SSD_CLASSES=person SSD_SCORE=0.55
-python3 -u apps/camera/preview_lcd_ssd.py
-# HYBRID (PoC)
-python3 -u apps/camera/preview_lcd_hybrid.py
-# Kill / cleanup
+```
+
+Podgląd na LCD; eventy zobaczysz tak:
+```bash
+python3 -u scripts/sub.py | grep -E 'vision\.(face|person|state|dispatcher\.heartbeat)'
+```
+Zatrzymanie i sprzątanie:
+```bash
 ./scripts/camera_takeover_kill.sh
-# Bench
-export BENCH_LOG=1; ./scripts/bench_detect.sh 20
-
-## Modele w repo
-```
-models/
-├─ efficientdet_lite0.tflite        # (pod przyszłe TFLite)
-└─ ssd/
-   ├─ MobileNetSSD_deploy.prototxt
-   └─ MobileNetSSD_deploy.caffemodel
 ```
 
 ---
 
-## Uruchomienia (skrót)
-
-### Podgląd + twarz (HAAR)
+## Komunikacja (bus ZMQ)
+- Domyślne porty: `BUS_PUB_PORT=5555` (publisher), `BUS_SUB_PORT=5556` (subscriber).
+- Wszystkie moduły czytają porty z **ENV**.
+- Szybki test busa:
 ```bash
-cd ~/robot
-export SKIP_V4L2=1 PREVIEW_ROT=270 VISION_HUMAN=1 VISION_FACE_EVERY=5
-python3 -u apps/camera/preview_lcd_takeover.py
+# terminal A
+python3 -u scripts/sub.py | grep test.bus &
+# terminal B
+python3 - <<'PY'
+import os, zmq; s=zmq.Context.instance().socket(zmq.PUB)
+s.connect(f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT','5555')}")
+s.send_string('test.bus {"hi":1}')
+PY
 ```
 
-### Podgląd + obiekty (SSD)
+---
+
+## Dispatcher wizji
+Plik: `apps/vision/dispatcher.py`
+
+Zadania:
+- normalizuje eventy z topiców **IN**: `vision.face`, `vision.person`, `vision.detections` →
+  `{kind,present,score,bbox}`
+- histereza: `VISION_ON_CONSECUTIVE` pozytywów włącza `present=true`, brak pozytywów przez `VISION_OFF_TTL_SEC` gasi stan
+- publikuje topic **OUT**: `vision.state {present, confidence, ts}` + heartbeat `vision.dispatcher.heartbeat`
+
+Domyślne progi (ENV):
+```
+VISION_ON_CONSECUTIVE=3
+VISION_OFF_TTL_SEC=2.0
+VISION_MIN_SCORE=0.50
+```
+
+---
+
+## Podglądy kamery
+Trzy skrypty LCD z przełącznikami:
+
+- `preview_lcd_takeover.py` — HAAR (twarze), szybki
+- `preview_lcd_ssd.py` — MobileNet‑SSD (klasa `person` i whitelista klas)
+- `preview_lcd_hybrid.py` — SSD co N klatek + tracker (KCF domyślnie) + opcj. HAAR w ROI
+
+Wspólne **ENV**:
+```
+PREVIEW_ROT=270           # rotacja LCD (90/180/270)
+DISABLE_LCD=0             # 1 = bez rysowania na LCD (headless)
+NO_DRAW=0                 # 1 = nie rysuj ramek/tekstów (oszczędza CPU)
+SKIP_V4L2=1               # preferuj Picamera2; gdy brak, wideo0
+```
+
+Specyficzne **ENV**:
+```
+# SSD/Hybrid
+SSD_EVERY=2               # co ile klatek uruchomić SSD
+SSD_SCORE=0.55            # minimalny score detekcji
+SSD_CLASSES=person        # whitelista nazw klas (CSV)
+HYBRID_HAAR=1             # w hybrid: HAAR w ROI trackera (0/1)
+LOG_EVERY=20              # co ile klatek logować fps (hybrid)
+```
+
+Publikowane topiki:
+- `vision.face {present, score, count}` (HAAR / HAAR w ROI)
+- `vision.person {present, score, bbox}` (SSD / tracker)
+
+---
+
+## Testy: smoke i bench
+
+### Smoke (z podglądem na LCD)
 ```bash
-cd ~/robot
-export SKIP_V4L2=1 PREVIEW_ROT=270
-export SSD_EVERY=2            # detekcja co N klatek (1=każda)
-export SSD_CLASSES=person     # (opcjonalnie) tylko wybrane klasy
-export SSD_SCORE=0.55         # próg pewności
-python3 -u apps/camera/preview_lcd_ssd.py
+./scripts/smoke_test.sh 3
+# [SMOKE PASS] i exit 0
 ```
+Test uruchamia po ~3 s: HAAR → SSD → HYBRID i sprząta kamerę/LCD.
 
-### (EXPERIMENTAL) Hybryda: SSD + tracking + HAAR
+### Bench (headless domyślnie)
 ```bash
-cd ~/robot
-export SKIP_V4L2=1 PREVIEW_ROT=270
-export SSD_SCORE=0.55 SSD_EVERY=3 FACE_EVERY=5 TRACKER=kcf   # lub csrt
-python3 -u apps/camera/preview_lcd_hybrid.py
+DISABLE_LCD=1 NO_DRAW=1 BENCH_LOG=1 ./scripts/bench_detect.sh 10
+# [bench] HAAR/SSD/HYBRID: fps=...  → PASS/FAIL progów
 ```
-
-> **Uwaga:** jeśli LCD „miga”/gaśnie — to zwykle konflikt z procesami producenta. Patrz „Kill‑switch”.
+Progi (konfigurowalne):
+```
+BENCH_MIN_FPS_HAAR=12
+BENCH_MIN_FPS_SSD=4
+BENCH_MIN_FPS_HYB=3
+```
+> Tip: headless zwykle +5–20% FPS vs LCD ON.
 
 ---
 
-## Benchmark FPS
-
-### Skrypt
+## Jednostkowe: pytest
+Test logiki histerezy dispatchera:
 ```bash
-./scripts/bench_detect.sh 20    # SSD i HAAR po ~20 s
-# ENV: PREVIEW_ROT, SSD_SCORE, CAM_W/H, BENCH_LOG=1, KEEP_LCD=1 (ustawiane w środku)
+pytest -q
+# 1 passed in ...s
 ```
-
-### Przykładowy wynik (@320×240)
-```
-SSD: ~5 fps   |   HAAR: ~15 fps
-```
-
-Interpretacja: SSD (pełna detekcja) cięższy — stabilnie wykrywa „person” także bez widocznej twarzy; HAAR szybki, ale znika przy zasłonięciu twarzy.
+Plik: `tests/test_vision_dispatcher.py` (sprawdza włączenie/wyłączenie `present`).
 
 ---
 
-## Kill‑switch (przed uruchomieniem)
+## Systemd (autostart podglądu)
+Plik usługi: `systemd/rider-camera-preview.service` (przeniesiony z `apps/camera/`).
+
+Szkic (przykład):
+```ini
+[Unit]
+Description=Rider-Pi Camera Preview (HAAR)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/robot
+Environment=PREVIEW_ROT=270
+ExecStart=/usr/bin/python3 -u apps/camera/preview_lcd_takeover.py
+ExecStop=/home/pi/robot/scripts/camera_takeover_kill.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+Instalacja:
 ```bash
-bash scripts/camera_takeover_kill.sh
-sudo raspi-gpio set 13 op dh   # backlight ON
+sudo cp systemd/rider-camera-preview.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now rider-camera-preview
 ```
-Co robi: zabija typowe procesy/porty vendora (`yolostream.py`, itp.), zwalnia `/dev/spidev0.*`, czyści nasz lock.
 
 ---
 
-## Pliki w tym wydaniu
-- `apps/camera/preview_lcd_takeover.py` — podgląd + (opcjonalnie) HAAR, `BENCH_LOG`, `KEEP_LCD`.
-- `apps/camera/preview_lcd_ssd.py` — SSD (OpenCV DNN); `SSD_EVERY`, `SSD_CLASSES`, `BENCH_LOG`, `KEEP_LCD`.
-- `apps/camera/preview_lcd_hybrid.py` — **experimental**: SSD + tracker (KCF/CSRT) + HAAR.
-- `scripts/bench_detect.sh` — benchmark SSD/HAAR (i łatwe do rozszerzenia o HYBRID).
-- `scripts/camera_takeover_kill.sh` — mocniejszy pre‑kill i BL=ON.
-- `models/...` — patrz wyżej.
-
----
-
-## Zmienne środowiskowe (wybór)
-- **Preview wspólne**: `PREVIEW_ROT`, `PREVIEW_WARMUP`, `PREVIEW_BORDER`, `PREVIEW_ALPHA`, `PREVIEW_BETA`, `SKIP_V4L2`.
-- **HAAR**: `VISION_HUMAN`, `VISION_FACE_EVERY`.
-- **SSD**: `SSD_SCORE`, `SSD_EVERY`, `SSD_CLASSES`, `SSD_PROTO`, `SSD_MODEL`.
-- **Hybryda**: `TRACKER` (`kcf`/`csrt`), `FACE_EVERY`.
-- **Bench/UX**: `BENCH_LOG=1` (drukuj FPS), `KEEP_LCD=1` (nie gaś BL na końcu).
-
----
-
-## Changelog skrót
-- **v0.4.7**: preview + HAAR (bench log + KEEP_LCD), SSD (every N, whitelist), HYBRID (exp), bench script, kill‑switch hard.
-- **≤ v0.4.6**: patrz historia git.
-
----
-
-## TODO / kolejne kroki
-- Wybór ścieżki produkcyjnej: **HAAR** (interakcja) vs **SSD** (obecność osoby) vs **HYBRID** (gdy podniesiemy FPS).
-- Ewentualny powrót do TFLite (EfficientDet‑Lite0) po rozwiązaniu zależności.
-- Autonomia: unikanie przeszkód / świadomość przestrzenna (wizja: flow/size) — osobny wątek.
-
----
-
-## Dev quick actions
-```bash
-# pre‑kill i BL ON
-bash scripts/camera_takeover_kill.sh && sudo raspi-gpio set 13 op dh
-
-# HAAR
-SKIP_V4L2=1 PREVIEW_ROT=270 VISION_HUMAN=1 python3 -u apps/camera/preview_lcd_takeover.py
-
-# SSD (person‑only, co 2 klatki)
-SKIP_V4L2=1 PREVIEW_ROT=270 SSD_EVERY=2 SSD_CLASSES=person SSD_SCORE=0.55 \
-python3 -u apps/camera/preview_lcd_ssd.py
-
-# HYBRID (exp)
-SKIP_V4L2=1 PREVIEW_ROT=270 SSD_SCORE=0.55 SSD_EVERY=3 FACE_EVERY=5 TRACKER=kcf \
-python3 -u apps/camera/preview_lcd_hybrid.py
-
-# Bench
-./scripts/bench_detect.sh 20
+## Zmienne środowiskowe (FAQ)
 ```
+BUS_PUB_PORT=5555  BUS_SUB_PORT=5556
+PREVIEW_ROT=270    SKIP_V4L2=1
+DISABLE_LCD=0      NO_DRAW=0
+SSD_EVERY=2        SSD_SCORE=0.55    SSD_CLASSES=person
+HYBRID_HAAR=1      LOG_EVERY=20
+VISION_ON_CONSECUTIVE=3  VISION_OFF_TTL_SEC=2.0  VISION_MIN_SCORE=0.5
+KEEP_LCD=0         # 1 = nie wygaszaj BL po killerze
+```
+
+---
+
+## Troubleshooting
+- **Port 5555 zajęty** → broker już działa. Albo użyj istniejącego, albo `pkill -f scripts/broker.py`.
+- **„device info” na LCD** → uruchom `./scripts/camera_takeover_kill.sh`, upewnij się że nie masz `DISABLE_LCD=1`. Test LCD:
+  ```bash
+  python3 - <<'PY'
+  from xgoscreen.LCD_2inch import LCD_2inch
+  from PIL import Image, ImageDraw
+  lcd=LCD_2inch(); lcd.rotation=270
+  img=Image.new('RGB',(320,240),(0,0,0))
+  ImageDraw.Draw(img).text((20,20),'LCD OK', fill=(255,255,255))
+  lcd.ShowImage(img)
+  PY
+  ```
+- **Zero sequence expected…** (pierwsza klatka V4L2) — informacja; ignoruj.
+- **Brak `pyzmq`/`opencv-python`** → `pip3 install pyzmq opencv-python`.
+
+---
+
+### Notatki implementacyjne
+- `vendor_splash.py` wyłączany warunkowo w killerze (gdy istnieje).
+- LCD import odporny na różne struktury pakietu: `from xgoscreen.LCD_2inch import LCD_2inch` z fallbackiem.
+- Bench zbiera całe stdout i parsuje ostatnie `fps=…`; liczby zwraca „czysto”, logi na stderr.
+
+---
+
+## Publikacja zmian (Git)
+1. Zapisz pliki i sprawdź testy:
+   ```bash
+   ./scripts/smoke_test.sh 3 && \
+   DISABLE_LCD=1 NO_DRAW=1 BENCH_LOG=1 ./scripts/bench_detect.sh 10 && \
+   pytest -q
+   ```
+2. Commit & push:
+   ```bash
+   git add PROJECT.md apps/camera/preview_lcd_* scripts/bench_detect.sh scripts/camera_takeover_kill.sh
+   git commit -m "docs(PROJECT): quick start, bus, dispatcher, LCD switches; smoke/bench; troubleshooting"
+   git push
+   ```
+
 
