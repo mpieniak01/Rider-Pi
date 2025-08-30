@@ -5,12 +5,17 @@ Rider-Pi – Status API + mini dashboard (Flask 1.x compatible)
 
 Endpoints:
 - /                : dashboard (serwowany z web/view.html)
+- /control         : sterowanie ruchem (web/control.html)
 - /healthz         : status + bus ages + devices (camera/lcd/xgo)
 - /state           : last vision.state
 - /sysinfo         : CPU/MEM/LOAD/DISK/TEMP (+ history dla dashboardu) + OS info
 - /metrics         : Prometheus-style, very small set
-- /events          : SSE live bus events (vision.*, camera.*)
+- /events          : SSE live bus events (vision.*, camera.*, echo cmd.*)
 - /snapshots/<fn>  : bezpieczne serwowanie JPG (cam.jpg, proc.jpg itd.)
+- /api/move        : POST {vx,vy,yaw,duration}
+- /api/stop        : POST {}
+- /api/preset      : POST {name}
+- /api/voice       : POST {text}
 
 Zależności: flask, (opcjonalnie) pyzmq; API działa nawet bez ZMQ/XGO.
 Testowane na Python 3.9 (RPi OS).
@@ -31,17 +36,18 @@ ENV_ROT         = int(os.getenv("PREVIEW_ROT", "0") or 0)
 REFRESH_S   = 2.0
 HISTORY_LEN = 60  # ~60 punktów, ~1 pkt / sekundę
 
-# Ścieżki: katalog na snapshoty i plik HTML
-BASE_DIR   = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SNAP_DIR   = os.path.abspath(os.getenv("SNAP_DIR", os.path.join(BASE_DIR, "snapshots")))
-VIEW_HTML  = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
+# Ścieżki: katalog na snapshoty i pliki HTML
+BASE_DIR      = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+SNAP_DIR      = os.path.abspath(os.getenv("SNAP_DIR", os.path.join(BASE_DIR, "snapshots")))
+VIEW_HTML     = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
+CONTROL_HTML  = os.path.abspath(os.path.join(BASE_DIR, "web", "control.html"))
 
 app = Flask(__name__)
 
 # --- Stan wewnętrzny ---
 LAST_MSG_TS = None
 LAST_HEARTBEAT_TS = None
-# >>> dodane: pole mode trzymamy w stanie
+# trzymamy też mode (jeśli dispatcher publikuje)
 LAST_STATE = {"present": False, "confidence": 0.0, "mode": None, "ts": None}
 
 LAST_CAMERA = {  # aktualizowane z camera.heartbeat
@@ -81,6 +87,26 @@ try:
     _ZMQ_OK = True
 except Exception:
     _ZMQ_OK = False
+
+# --- lekki PUB na bus (do wysyłania komend z /api/*) ---
+try:
+    if _ZMQ_OK:
+        _ZMQ_PUB = zmq.Context.instance().socket(zmq.PUB)  # type: ignore
+        _ZMQ_PUB.connect(f"tcp://127.0.0.1:{BUS_PUB_PORT}")
+    else:
+        _ZMQ_PUB = None
+except Exception:
+    _ZMQ_PUB = None
+
+def bus_pub(topic: str, payload: dict):
+    """Wyślij prosty multipart 'topic json' na bus (jeśli pyzmq dostępne) i echo do SSE."""
+    try:
+        if _ZMQ_PUB is not None:
+            _ZMQ_PUB.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
+        # echo do SSE, by control.html / terminal widziały wysyłane komendy
+        EVENTS.append({"ts": time.time(), "topic": topic, "data": json.dumps(payload, ensure_ascii=False)})
+    except Exception:
+        pass
 
 # --- Narzędzia sysinfo (bez psutil) ---
 def _cpu_pct_sample():
@@ -205,7 +231,6 @@ def bus_sub_loop():
                     LAST_HEARTBEAT_TS = LAST_MSG_TS
 
                 elif topic == "vision.state":
-                    # >>> scalamy present/confidence/mode/ts
                     try:
                         data = json.loads(payload)
                         LAST_STATE["present"]    = bool(data.get("present", LAST_STATE["present"]))
@@ -394,7 +419,7 @@ def healthz():
         "state": {
             "present": bool(LAST_STATE.get("present", False)),
             "confidence": float(LAST_STATE.get("confidence", 0.0)),
-            "mode": LAST_STATE.get("mode"),  # <<<
+            "mode": LAST_STATE.get("mode"),
             "age_s": round(now - LAST_STATE["ts"], 3) if LAST_STATE.get("ts") else None,
         }
     }
@@ -408,7 +433,7 @@ def state():
     payload = {
         "present": bool(LAST_STATE.get("present", False)),
         "confidence": float(LAST_STATE.get("confidence", 0.0)),
-        "mode": LAST_STATE.get("mode"),  # <<<
+        "mode": LAST_STATE.get("mode"),
         "ts": ts,
         "age_s": round(age, 3) if age is not None else None,
     }
@@ -476,8 +501,8 @@ def events():
         while True:
             try:
                 time.sleep(1.0)
-                if last_idx >= len(EVENTS):
-                    continue
+                if last_idx > len(EVENTS):
+                    last_idx = max(0, len(EVENTS) - 1)
                 for i in range(last_idx, len(EVENTS)):
                     ev = EVENTS[i]
                     data = json.dumps(ev)
@@ -487,7 +512,10 @@ def events():
                 break
             except Exception:
                 time.sleep(0.5)
-    return Response(gen(), mimetype='text/event-stream')
+    resp = Response(gen(), mimetype='text/event-stream')
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['Connection'] = 'keep-alive'
+    return resp
 
 # --- Dashboard (zewnętrzny plik HTML) ---
 @app.route("/")
@@ -496,11 +524,46 @@ def dashboard():
         return Response("<h1>view.html missing</h1>", mimetype="text/html"), 404
     return send_file(VIEW_HTML)
 
+# --- Control (zewnętrzny plik HTML) ---
+@app.route("/control")
+def control_page():
+    if not os.path.isfile(CONTROL_HTML):
+        return Response("<h1>control.html missing</h1>", mimetype="text/html"), 404
+    return send_file(CONTROL_HTML)
+
+# --- API sterowania (wysyłamy komendy na bus; egzekucja po stronie motion_bridge) ---
+@app.route("/api/move", methods=["POST"])
+def api_move():
+    data = request.get_json(silent=True) or {}
+    vx  = float(data.get("vx", 0.0))
+    vy  = float(data.get("vy", 0.0))
+    yaw = float(data.get("yaw", 0.0))
+    duration = float(data.get("duration", 0.0))
+    bus_pub("cmd.move", {"vx": vx, "vy": vy, "yaw": yaw, "duration": duration, "ts": time.time()})
+    return Response(json.dumps({"ok": True}), mimetype="application/json")
+
+@app.route("/api/stop", methods=["POST"])
+def api_stop():
+    bus_pub("cmd.stop", {"ts": time.time()})
+    return Response(json.dumps({"ok": True}), mimetype="application/json")
+
+@app.route("/api/preset", methods=["POST"])
+def api_preset():
+    name = (request.get_json(silent=True) or {}).get("name")
+    bus_pub("cmd.preset", {"name": name, "ts": time.time()})
+    return Response(json.dumps({"ok": True}), mimetype="application/json")
+
+@app.route("/api/voice", methods=["POST"])
+def api_voice():
+    text = (request.get_json(silent=True) or {}).get("text", "")
+    bus_pub("cmd.voice", {"text": text, "ts": time.time()})
+    return Response(json.dumps({"ok": True}), mimetype="application/json")
+
 # --- Serwowanie snapshotów (cam.jpg / proc.jpg itd.) ---
 @app.route("/snapshots/<path:fname>")
 def snapshots_static(fname: str):
     safe = os.path.abspath(os.path.join(SNAP_DIR, fname))
-    if not safe.startswith(SNAP_DIR):
+    if os.path.commonpath([SNAP_DIR, safe]) != SNAP_DIR:
         return abort(403)
     if not os.path.isfile(safe):
         return abort(404)
