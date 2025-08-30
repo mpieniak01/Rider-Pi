@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 # apps/camera/preview_lcd_hybrid.py
 # PoC: SSD do inicjalizacji, tracker do podtrzymania, opcjonalny HAAR w ROI.
-# Publikuje vision.person (z trackera/SSD) i vision.face (HAAR).
-# + wysyła camera.heartbeat (w,h,mode,fps,lcd.{active,presenting,rot})
+# Publikuje vision.person (tracker/SSD) i vision.face (HAAR).
+# + wysyła camera.heartbeat + snapshoty RAW/proc/LCD/LCD_fb
 
 import os, time, json
 from typing import Tuple, Optional
 import numpy as np
 import cv2
 
-# --- BUS PUB ---
 from common.bus import BusPub, now_ts
 from common.cam_heartbeat import CameraHB
+from common.snap import Snapper
 
 PUB = BusPub()
 HB  = CameraHB(mode="hybrid")
+SNAP = Snapper(base_dir=os.getenv("SNAP_BASE", "/home/pi/robot/snapshots"))
 
 def pub(topic, payload: dict, add_ts: bool = False):
     try:
@@ -22,7 +23,6 @@ def pub(topic, payload: dict, add_ts: bool = False):
     except Exception:
         pass
 
-# --- LCD (opcjonalnie) ---
 DISABLE_LCD = os.getenv("DISABLE_LCD", "0") == "1"
 NO_DRAW = os.getenv("NO_DRAW", "0") == "1"
 
@@ -54,7 +54,6 @@ def lcd_show_bgr(img_bgr: np.ndarray):
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     _LCD.ShowImage(Image.fromarray(img_rgb))
 
-# --- Kamera ---
 def open_camera(size=(320,240)):
     try:
         from picamera2 import Picamera2
@@ -73,7 +72,6 @@ def open_camera(size=(320,240)):
             return cap.read()
         return read, size
 
-# --- SSD ---
 CLASSES = [
     "background","aeroplane","bicycle","bird","boat","bottle","bus","car","cat",
     "chair","cow","diningtable","dog","horse","motorbike","person","pottedplant",
@@ -89,7 +87,6 @@ def load_ssd():
     net = cv2.dnn.readNetFromCaffe(proto, model)
     return net
 
-# --- Tracker helper ---
 def create_tracker():
     typ = os.getenv("TRACKER", "KCF").upper()
     maker = None
@@ -103,7 +100,6 @@ def create_tracker():
         raise RuntimeError("OpenCV tracker API not available")
     return maker()
 
-# --- HAAR (opcjonalnie w ROI) ---
 def load_haar():
     xml = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
     clf = cv2.CascadeClassifier(xml)
@@ -112,23 +108,21 @@ def load_haar():
 def main():
     rot = int(os.getenv("PREVIEW_ROT", "270"))
     SCORE = float(os.getenv("SSD_SCORE", "0.55"))
-    EVERY = int(os.getenv("SSD_EVERY", "3"))  # rzadziej, bo mamy tracker
+    EVERY = int(os.getenv("SSD_EVERY", "3"))
     HAAR_IN_ROI = os.getenv("HYBRID_HAAR", "1") == "1"
-    LOG_EVERY = int(os.getenv("LOG_EVERY", "20"))  # częste logowanie FPS
+    LOG_EVERY = int(os.getenv("LOG_EVERY", "20"))
 
     read, size = open_camera((320,240))
     net = load_ssd()
     tracker = None
     track_ok = False
     track_bbox = None
-
     haar = load_haar() if HAAR_IN_ROI else None
 
     t0, frames, fid = time.time(), 0, 0
     fps_ema = None
     prev_t = time.time()
 
-    # pierwszy heartbeat od razu
     HB.tick(None, 0.0, presenting=not NO_DRAW)
 
     while True:
@@ -144,14 +138,14 @@ def main():
         out = frame.copy()
         h, w = out.shape[:2]
 
-        # FPS (EMA)
+        # FPS EMA
         now = time.time()
         dt = max(1e-6, now - prev_t)
         inst = 1.0 / dt
         fps_ema = inst if fps_ema is None else (0.9*fps_ema + 0.1*inst)
         prev_t = now
 
-        # 1) Update trackera
+        # tracker
         if tracker is not None:
             track_ok, box = tracker.update(out)
             if track_ok:
@@ -164,7 +158,7 @@ def main():
                 tracker = None
                 track_bbox = None
 
-        # 2) Co N klatek: SSD do (re)inicjalizacji trackera
+        # SSD co N klatek
         if fid % max(1,EVERY) == 0:
             blob = cv2.dnn.blobFromImage(cv2.resize(out,(300,300)), 0.007843, (300,300), 127.5, swapRB=True, crop=False)
             net.setInput(blob)
@@ -183,12 +177,13 @@ def main():
                 conf, (bx1,by1,bx2,by2) = best
                 if not NO_DRAW:
                     cv2.rectangle(out, (bx1,by1), (bx2,by2), (0,255,255), 2)
-                pub("vision.person", {"present": True, "score": float(conf), "bbox": [bx1,by1,bx2-bx1,by2-by1]}, add_ts=True)
+                pub("vision.person", {"present": True, "score": float(conf),
+                                      "bbox": [bx1,by1,bx2-bx1,by2-by1]}, add_ts=True)
                 tracker = create_tracker()
                 tracker.init(out, (bx1, by1, bx2-bx1, by2-by1))
                 track_bbox = (bx1, by1, bx2-bx1, by2-by1)
 
-        # 3) (opcjonalnie) HAAR w ROI
+        # HAAR w ROI
         if haar is not None and track_bbox is not None:
             x,y,tw,th = track_bbox
             x0,y0,x1,y1 = max(0,x), max(0,y), min(w, x+tw), min(h, y+th)
@@ -202,9 +197,13 @@ def main():
                 if len(faces) > 0:
                     pub("vision.face", {"present": True, "score": 0.85, "count": len(faces)}, add_ts=True)
 
-        lcd_show_bgr(out)
+        # --- SNAPSHOTS ---
+        SNAP.cam(frame)
+        SNAP.proc(out)
+        SNAP.lcd_from_frame(out)
+        SNAP.lcd_from_fb()
 
-        # heartbeat
+        lcd_show_bgr(out)
         HB.tick(out, fps_ema, presenting=not NO_DRAW)
 
         fid += 1
@@ -219,4 +218,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
-

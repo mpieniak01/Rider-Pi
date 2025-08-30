@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rider-Pi — mini dashboard</title>
+<style>
+  body{margin:0;background:#0e1a24;color:#d7e2ee;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:28px auto;padding:0 18px}
+  h1{font-size:28px;margin:0 0 8px}
+  .hint{opacity:.6;font-size:12px;margin-bottom:18px}
+
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  .card{background:#0f2233;border:1px solid #1d3548;border-radius:12px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+  .card h3{margin:0 0 10px;font-size:16px;color:#9cc8ff}
+
+  .kv{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:13px}
+  .kv div{opacity:.9}
+  .ok{color:#5fe39a} .bad{color:#ff6b6b} .muted{opacity:.6}
+
+  canvas{width:100%;height:140px;background:#0c1b28;border-radius:8px;border:1px solid #1d3548}
+  a{color:#87b7ff}
+  .legend{display:flex;gap:14px;margin-top:6px; font-size:12px; opacity:.8}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .cpu{background:#6db3ff}.mem{background:#ffd36d}
+
+  /* obrazki */
+  .thumb{background:#0c1b28;border:1px solid #1d3548;border-radius:10px;padding:8px}
+  .thumb .cap{font-size:12px;opacity:.8;margin-bottom:6px}
+  .thumb img{display:block;width:100%;height:auto;border-radius:6px}
+  @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Rider-Pi — mini dashboard</h1>
+  <div class="hint">Auto-refresh co ≈ 2 s. Endpointy: <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a></div>
+
+  <!-- RZĄD 1: System / Devices / History / Camera RAW -->
+  <div class="grid">
+    <!-- System -->
+    <div class="card">
+      <h3>System</h3>
+      <div class="kv">
+        <div>cpu</div><div id="ci_cpu" class="muted">—</div>
+        <div>load (1/5/15)</div><div id="ci_load" class="muted">—</div>
+        <div>mem</div><div id="ci_mem" class="muted">—</div>
+        <div>disk</div><div id="ci_disk" class="muted">—</div>
+        <div>os</div><div id="ci_os" class="muted">—</div>
+        <div>fw</div><div id="ci_fw" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- Devices -->
+    <div class="card">
+      <h3>Devices</h3>
+      <div class="kv">
+        <div>camera</div><div id="d_cam" class="muted">—</div>
+        <div>lcd</div><div id="d_lcd" class="muted">—</div>
+        <div>xgo.imu</div><div id="d_xgo_imu" class="muted">—</div>
+        <div>xgo.pose</div><div id="d_xgo_pose" class="muted">—</div>
+        <div>xgo.battery</div><div id="d_xgo_batt" class="muted">—</div>
+        <div>temp</div><div id="d_temp" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="card">
+      <h3>History (60 s) — CPU / MEM</h3>
+      <canvas id="chart" width="300" height="140"></canvas>
+      <div class="legend">
+        <span><i class="dot cpu"></i>cpu%</span>
+        <span><i class="dot mem"></i>mem%</span>
+      </div>
+    </div>
+
+    <!-- Camera RAW -->
+    <div class="card">
+      <h3>Camera — RAW (kamera)</h3>
+      <div class="thumb">
+        <div class="cap">surowy obraz</div>
+        <img id="img_cam" src="/snapshots/cam.jpg" alt="raw camera">
+      </div>
+    </div>
+  </div>
+
+  <!-- RZĄD 2: Health / Presence / Links / Camera PROC -->
+  <div class="grid" style="margin-top:18px">
+    <!-- Health -->
+    <div class="card">
+      <h3>Health</h3>
+      <div class="kv">
+        <div>status</div><div id="h_status" class="ok">ok</div>
+        <div>uptime</div><div id="h_uptime" class="muted">—</div>
+        <div>bus.last_msg_age</div><div id="h_msg" class="muted">—</div>
+        <div>bus.last_heartbeat_age</div><div id="h_hb" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- Presence -->
+    <div class="card">
+      <h3>Presence (vision.state)</h3>
+      <div class="kv">
+        <div>present</div><div id="p_present" class="bad">false</div>
+        <div>confidence</div><div id="p_conf" class="muted">0.000</div>
+        <div>mode</div><div id="p_mode" class="muted">—</div>
+        <div>ts</div><div id="p_ts" class="muted">—</div>
+        <div>age</div><div id="p_age" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- Links -->
+    <div class="card">
+      <h3>Links</h3>
+      <div class="kv">
+        <div>events (SSE)</div><div><a href="/events" target="_blank">/events</a></div>
+        <div>metrics</div><div><a href="/metrics" target="_blank">/metrics</a></div>
+        <div>repo</div><div><a href="https://github.com/pppnews/Rider-Pi" target="_blank">Rider-Pi</a></div>
+      </div>
+    </div>
+
+    <!-- Camera PROC -->
+    <div class="card">
+      <h3>Camera — PROC (po obróbce)</h3>
+      <div class="thumb">
+        <div class="cap">ramki / etykiety z detektora</div>
+        <img id="img_proc" src="/snapshots/proc.jpg" alt="processed camera">
+      </div>
+    </div>
+  </div>
+
+  <div class="hint" style="margin-top:14px">
+    © Rider-Pi – <a href="/healthz">/healthz</a> · <a href="/state">/state</a> · <a href="/sysinfo">/sysinfo</a>
+  </div>
+</div>
+
+<script>
+const REFRESH = 2000;
+const IMG_REFRESH = 800;
+
+const fmt = (n, d=1)=> (n==null? '—' : (typeof n==='number'? Number(n).toFixed(d): n));
+const el = id => document.getElementById(id);
+const setTxt=(id,txt)=>{const e=el(id); if(e) e.textContent=txt;}
+const setCls=(id,cls)=>{const e=el(id); if(e) e.className=cls;}
+
+function drawChart(cpuArr, memArr){
+  const c = el('chart'); if(!c) return;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  const pad=10, W=c.width-pad*2, H=c.height-pad*2;
+  ctx.strokeStyle='#1d3548'; ctx.strokeRect(pad,pad,W,H);
+  function plot(arr, color){
+    if(!arr || arr.length<2) return;
+    const n = arr.length, max=100, min=0;
+    ctx.beginPath(); ctx.lineWidth=1.2; ctx.strokeStyle=color;
+    for(let i=0;i<n;i++){
+      const x = pad + (i*(W/(n-1)));
+      const v = Math.max(min, Math.min(max, Number(arr[i]||0)));
+      const y = pad + H - ((v-min)/(max-min))*H;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  plot(cpuArr,'#6db3ff'); // cpu
+  plot(memArr,'#ffd36d'); // mem
+}
+
+function updateHealth(h){
+  setTxt('h_status', h.status || '—');
+  setCls('h_status', (h.status==='ok')? 'ok':'bad');
+
+  if(h.uptime_s!=null){
+    const s = Math.floor(h.uptime_s);
+    const HH = Math.floor(s/3600);
+    const MM = String(Math.floor((s%3600)/60)).padStart(2,'0');
+    const SS = String(s%60).padStart(2,'0');
+    setTxt('h_uptime', `${HH}:${MM}:${SS}`);
+  } else setTxt('h_uptime','—');
+
+  setTxt('h_msg', (h.bus && h.bus.last_msg_age_s!=null)? fmt(h.bus.last_msg_age_s,1)+' s':'—');
+  setTxt('h_hb',  (h.bus && h.bus.last_heartbeat_age_s!=null)? fmt(h.bus.last_heartbeat_age_s,1)+' s':'—');
+
+  if(h.devices){
+    const cam = h.devices.camera || {};
+    const resTxt = (cam.res && cam.res.length===2)? ` ${cam.res[0]}×${cam.res[1]}` : '';
+    const camTxt = (cam.on? 'ON':'OFF')
+      + (cam.mode? (' · '+cam.mode):'')
+      + resTxt
+      + (cam.fps!=null? (' · '+fmt(cam.fps,1)+' fps'):'')
+      + (cam.age_s!=null? (' · '+fmt(cam.age_s,1)+'s'):'');
+    setTxt('d_cam', camTxt); setCls('d_cam', cam.on? 'ok':'muted');
+
+    const lcd = h.devices.lcd || {};
+    const lcdTxt = (lcd.on? 'ON':'OFF')
+      + (lcd.rot!=null? (' · rot '+lcd.rot):'')
+      + (lcd.presenting? ' · presenting':'')
+      + (lcd.no_draw? ' · no_draw':'' );
+    setTxt('d_lcd', lcdTxt); setCls('d_lcd', lcd.on? 'ok':'muted');
+
+    const xgo = h.devices.xgo || {};
+    const imuTxt = (xgo.on? 'ON':'OFF')
+      + (xgo.imu_ok===true? ' · OK': (xgo.on? ' · ?':''))
+      + (xgo.age_s!=null? (' · '+fmt(xgo.age_s,1)+'s'):'');
+    setTxt('d_xgo_imu', imuTxt);
+    setCls('d_xgo_imu', (xgo.on && xgo.imu_ok)? 'ok' : (xgo.on? 'muted':'muted'));
+
+    const poseTxt = (xgo.pose!=null? String(xgo.pose):'—')
+      + (xgo.roll!=null? (` · r ${fmt(xgo.roll,1)}°`):'')
+      + (xgo.pitch!=null? (` · p ${fmt(xgo.pitch,1)}°`):'')
+      + (xgo.yaw!=null? (` · y ${fmt(xgo.yaw,1)}°`):'');
+    setTxt('d_xgo_pose', poseTxt);
+    setCls('d_xgo_pose', (xgo.pose==='upright')? 'ok' : (xgo.pose ? 'bad' : 'muted'));
+
+    const battTxt = (xgo.battery_pct!=null? `${xgo.battery_pct}%`:'—');
+    setTxt('d_xgo_batt', battTxt);
+    setCls('d_xgo_batt', (xgo.battery_pct!=null? 'ok':'muted'));
+
+    if (xgo.fw) setTxt('ci_fw', xgo.fw);
+  }
+}
+
+function updateState(s){
+  setTxt('p_present', String(!!s.present));
+  setCls('p_present', s.present? 'ok':'bad');
+  setTxt('p_conf', fmt(s.confidence,3));
+  setTxt('p_mode', s.mode || '—');
+  setTxt('p_ts', s.ts? new Date(s.ts*1000).toLocaleTimeString(): '—');
+  setTxt('p_age', (s.age_s!=null? fmt(s.age_s,1)+' s':'—'));
+}
+
+function updateSys(si){
+  if(!si) return;
+
+  // CPU
+  setTxt('ci_cpu', fmt(si.cpu_pct, 1) + '%');
+
+  // LOAD: 1/5/15 z płaskich pól
+  setTxt('ci_load',
+    `${fmt(si.load1,2)}/${fmt(si.load5,2)}/${fmt(si.load15,2)}`);
+
+  // MEM: wartości w MB + % (pola: mem_total_mb, mem_used_mb, mem_pct)
+  const mb = v => (v==null ? '—' : Number(v).toFixed(1)+' MB');
+  if (si.mem_total_mb!=null && si.mem_used_mb!=null){
+    setTxt('ci_mem',
+      `${mb(si.mem_used_mb)} / ${mb(si.mem_total_mb)} (${fmt(si.mem_pct,1)}%)`);
+  } else {
+    setTxt('ci_mem','—');
+  }
+
+  // DISK: wartości w GB + % (pola: disk_total_gb, disk_used_gb, disk_pct)
+  const gb = v => (v==null ? '—' : Number(v).toFixed(1)+' GB');
+  if (si.disk_total_gb!=null && si.disk_used_gb!=null){
+    setTxt('ci_disk',
+      `${gb(si.disk_used_gb)} / ${gb(si.disk_total_gb)} (${fmt(si.disk_pct,1)}%)`);
+  } else {
+    setTxt('ci_disk','—');
+  }
+
+  // OS release (jako jeden string)
+  setTxt('ci_os', si.os_release || '—');
+
+  // Temp na karcie Devices (jeśli jest)
+  setTxt('d_temp', (si.temp_c!=null ? fmt(si.temp_c,1)+' °C' : '—'));
+
+  // Wykresy (historia)
+  drawChart(si.hist_cpu || [], si.hist_mem || []);
+}
+
+/* auto-refresh obrazków (anti-cache) */
+function refreshImgs(){
+  const t = Date.now();
+  const cam = el('img_cam');  if (cam)  cam.src  = `/snapshots/cam.jpg?t=${t}`;
+  const pro = el('img_proc'); if (pro)  pro.src  = `/snapshots/proc.jpg?t=${t}`;
+}
+
+async function tick(){
+  try{ const h  = await (await fetch('/healthz',{cache:'no-store'})).json(); updateHealth(h);}catch(e){}
+  try{ const s  = await (await fetch('/state',{cache:'no-store'})).json();   updateState(s);}catch(e){}
+  try{ const si = await (await fetch('/sysinfo',{cache:'no-store'})).json(); updateSys(si);}catch(e){}
+}
+
+setInterval(tick, REFRESH);
+setInterval(refreshImgs, IMG_REFRESH);
+window.addEventListener('load', ()=>{ tick(); refreshImgs(); });
+</script>
+</body>
+</html>

@@ -78,28 +78,46 @@ class PresenceState:
 
 STATE = PresenceState()
 _frame = 0  # licznik dla rzadkich logów
+_LAST_MODE: str = "idle"   # ostatni znany tryb ('ssd'/'haar'/'hybrid'/...)
 
 # --- Normalizacja wejścia ---
 def normalize_event(topic: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Sprowadzamy HAAR/SSD/hybrid do: {"kind": "face"/"person", "present": bool, "score": float, "bbox": [x,y,w,h] or None}
-    Zakładamy, że detektory wysyłają przynajmniej score; gdy brak, używamy domyślnych.
+    Sprowadzamy HAAR/SSD/hybrid do:
+      {"kind": "face"/"person"/"det", "present": bool, "score": float, "bbox": [...], "mode": str}
     """
     kind = "face" if "face" in topic else ("person" if "person" in topic else "det")
+
     def _as_float(v, default=0.0):
         try:
             return float(v)
         except Exception:
             return float(default)
+
     score = _as_float(data.get("score", data.get("confidence", 1.0)), 1.0)
     present = bool(data.get("present", True))  # brak = pozytyw
     bbox = data.get("bbox")
-    return {"kind": kind, "present": present, "score": score, "bbox": bbox}
+
+    # tryb/źródło: preferuj to, co wyśle detektor; w przeciwnym razie wnioskuj z tematu
+    mode = data.get("mode")
+    if not isinstance(mode, str) or not mode:
+        if kind == "face":
+            mode = "haar"
+        elif kind == "person":
+            mode = data.get("source", "ssd")  # niektóre skrypty mogą wysłać 'source'
+        else:
+            mode = "det"
+
+    return {"kind": kind, "present": present, "score": score, "bbox": bbox, "mode": mode}
 
 def update_presence(evt: Dict[str, Any]):
     now = time.time()
-    global STATE, _frame
+    global STATE, _frame, _LAST_MODE
     _frame += 1
+
+    # zapamiętaj ostatni tryb, jeśli event coś mówi
+    if isinstance(evt.get("mode"), str) and evt["mode"]:
+        _LAST_MODE = evt["mode"]
 
     if evt["present"] and evt["score"] >= MIN_SCORE:
         STATE.consecutive_pos += 1
@@ -108,21 +126,27 @@ def update_presence(evt: Dict[str, Any]):
         STATE.confidence = max(STATE.confidence * 0.9, float(evt["score"]))
         if not STATE.present and STATE.consecutive_pos >= P_ON_N:
             STATE.present = True
-            announce_state()
+            announce_state()  # ON
     else:
         # brak pozytywów — sprawdzamy TTL
         if STATE.present and (now - STATE.last_pos_ts) >= P_OFF_TT:
             STATE.present = False
             STATE.consecutive_pos = 0
             STATE.confidence = 0.0
-            announce_state()
+            announce_state()  # OFF
 
     # okazjonalny log
     if LOG_EVERY > 0 and (_frame % LOG_EVERY == 0):
-        print(f"[dispatcher] pres={STATE.present} conf={STATE.confidence:.2f} consec={STATE.consecutive_pos}", flush=True)
+        print(f"[dispatcher] pres={STATE.present} conf={STATE.confidence:.2f} consec={STATE.consecutive_pos} mode={_LAST_MODE}", flush=True)
 
 def announce_state():
-    payload = {"present": STATE.present, "confidence": round(STATE.confidence, 3), "ts": time.time()}
+    # ogłaszamy zawsze z bieżącą godziną i ostatnim znanym trybem
+    payload = {
+        "present": STATE.present,
+        "confidence": round(STATE.confidence, 3),
+        "mode": _LAST_MODE,
+        "ts": time.time()
+    }
     pub("vision.state", payload)
     # (opcjonalnie) sygnały do innych modułów:
     # pub("autonomy.perception", {"type":"presence", **payload})

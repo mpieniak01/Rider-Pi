@@ -14,25 +14,24 @@ Mały, samowystarczalny system wizyjny na Raspberry Pi z magistralą ZMQ, lekkim
 
 - **Producenci zdarzeń (kamera)**  
   - `apps/camera/preview_lcd_takeover.py` – HAAR (szybkie).  
-  - `apps/camera/preview_lcd_ssd.py` – SSD (dokładniejsze, wolniejsze).  
-  - `apps/camera/preview_lcd_hybrid.py` – tracker + SSD co N.
-
-  Publikują:  
-  - `vision.face` (HAAR)  
-  - `vision.person` (SSD/hybrid)
+  - `apps/camera/preview_lcd_ssd.py` – SSD (dokładniejsze).  
+  - `apps/camera/preview_lcd_hybrid.py` – tracker + SSD co N.  
+  Publikują:
+  - `vision.face` (HAAR), `vision.person` (SSD/hybrid)
+  - **`camera.heartbeat`** (tryb, fps, stan LCD)
+  - (opcjonalnie) snapshoty do `snapshots/cam.jpg` (RAW) i `snapshots/proc.jpg` (po obróbce)
 
 - **Dispatcher obecności**  
   `apps/vision/dispatcher.py` – normalizacja + histereza/debouncing.  
-  Subskrybuje `vision.face/person/detections`, publikuje:
-  - `vision.state` (boolean + confidence)  
-  - `vision.dispatcher.heartbeat` (co 5 s)  
+  IN: `vision.face/person/detections` → OUT:
+  - `vision.state` (boolean + confidence + ts)
+  - `vision.dispatcher.heartbeat` (co 5 s)
 
 - **Status API + Dashboard**  
-  `scripts/status_api.py` (Flask 1.x – zgodny na Buster/Bullseye)  
-  - `/` – mini dashboard (HTML/JS, auto-refresh co 2 s)
-  - `/healthz`, `/state`, **`/sysinfo`** (CPU/MEM/LOAD/DISK/TEMP)
-  - **`/metrics`** (Prometheus-style, opcjonalne scrapowanie)
-  - **`/events`** (SSE – podgląd ostatnich zdarzeń z busa)
+  `scripts/status_api.py` (Flask 1.x) + **zewnętrzny HTML** `web/view.html`  
+  - `/` – dashboard (przegląd systemu + 2× podgląd: RAW/PROC)  
+  - `/healthz`, `/state`, `/sysinfo`, `/metrics`, `/events` (SSE)  
+  - **`/snapshots/<fn>`** – serwowanie JPG (cam.jpg, proc.jpg, lcd.jpg)
 
 ---
 
@@ -59,6 +58,10 @@ W repo jest **`.env.sample`** – skopiuj jako `.env` i dopasuj:
 BUS_PUB_PORT=5555
 BUS_SUB_PORT=5556
 
+# API
+STATUS_API_PORT=8080
+```
+
 # Vision dispatcher
 VISION_ON_CONSECUTIVE=3     # ile kolejnych pozytywów żeby włączyć present=true
 VISION_OFF_TTL_SEC=2.0      # czas bez pozytywnych, po którym gasimy
@@ -77,9 +80,13 @@ SSD_CLASSES=person          # whitelist klasa/klasy (CSV)
 HYBRID_HAAR=1               # hybrid: HAAR w ROI trackera (0/1)
 LOG_EVERY=10                # co ile klatek logować fps (hybrid)
 
-# API
-STATUS_API_PORT=8080
-```
+# Snapshoty (RAW/PROC/LCD)
+SNAPSHOT_ENABLE=1
+SNAP_CAM_EVERY=1       # co ile klatek RAW
+SNAP_PROC_EVERY=1      # co ile klatek PROC
+SNAP_LCD_EVERY=5       # co ile klatek LCD (jeśli dostępny fb)
+
+
 
 Podgląd aktywnych ENV uruchomionej usługi:
 ```bash
@@ -118,6 +125,7 @@ systemctl --no-pager --full status rider-broker rider-dispatcher rider-api
 - `GET /sysinfo` → `{cpu_pct, load1/5/15, mem_* , disk_*, temp_c, ts, age_s}`
 - `GET /metrics` → Prometheus-style (`rider_*` metryki)
 - `GET /events`  → SSE (ostatnie zdarzenia z busa, do podglądu live)
+- `GET /snapshots/<fn> → cam.jpg, proc.jpg, lcd.jpg
 
 Przykład:
 ```bash
@@ -129,16 +137,23 @@ curl -s http://127.0.0.1:8080/sysinfo  | jq
 
 ## 6) Uruchomienie podglądu z kamery (manual)
 
-```bash
-# HAAR
-PREVIEW_ROT=270 python3 -u apps/camera/preview_lcd_takeover.py
+A) Kamera + snapshoty (bez fizycznego LCD)
+cd ~/robot
+export PYTHONPATH=$PWD
+export DISABLE_LCD=1 NO_DRAW=0 PREVIEW_ROT=270
+export SNAPSHOT_ENABLE=1 SNAP_CAM_EVERY=1 SNAP_PROC_EVERY=1
+python3 -u apps/camera/preview_lcd_ssd.py
 
-# SSD (co 2–3 klatki)
-PREVIEW_ROT=270 SSD_EVERY=3 SSD_SCORE=0.55 python3 -u apps/camera/preview_lcd_ssd.py
+B) Dispatcher obecności
+cd ~/robot
+export PYTHONPATH=$PWD
+python3 -u apps/vision/dispatcher.py
 
-# HYBRID (tracker + SSD co N)
-PREVIEW_ROT=270 SSD_EVERY=3 SSD_SCORE=0.55 HYBRID_HAAR=1 LOG_EVERY=10 \
-python3 -u apps/camera/preview_lcd_hybrid.py
+C) Dashboard / API
+cd ~/robot
+export PYTHONPATH=$PWD STATUS_API_PORT=8008
+python3 -u scripts/status_api.py
+# otwórz: http://<IP_RPi>:8008/
 ```
 
 **Uwaga:** wyniki fps są niższe, gdy rysujemy na LCD – do benchmarku używaj trybu *headless* (patrz niżej).
@@ -262,6 +277,22 @@ Na RPi nie uruchamiamy Prometheusa (oszczędność CPU/RAM) – lepiej z zewnęt
     "fps": 12.3,
     "lcd": { "rot": 270, "active": true, "presenting": true, "no_draw": false }
   }
+
+# 14) Changelog (wycinek)
+
+2025-08-30
+
+ - Wydzielenie frontu do web/view.html (czystszy status_api.py).
+ - Nowy moduł common/snap.py + endpoint /snapshots/<fn>.
+ - Dashboard: dwie kolumny podglądu Camera view: RAW (cam.jpg) i PROC (proc.jpg).
+ - camera.heartbeat (tryb/fps/lcd) konsumowany w /healthz.
+ - Uporządkowane /sysinfo z historią CPU/MEM (60 pkt).
+
+2025-08-29 – stable
+
+- status_api.py: mini-dashboard + /sysinfo + /metrics + /events.
+- apps/vision/dispatcher.py: debouncing/histereza + vision.state + heartbeat.
+- Jednostki systemd, testy: smoke/bench.
 
 ---
 
