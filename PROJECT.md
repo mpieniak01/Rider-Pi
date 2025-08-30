@@ -278,6 +278,12 @@ Na RPi nie uruchamiamy Prometheusa (oszczędność CPU/RAM) – lepiej z zewnęt
     "lcd": { "rot": 270, "active": true, "presenting": true, "no_draw": false }
   }
 
+  **Uruchom podgląd SSD z zapisami snapshotów (RAW+PROC):**
+   ```bash
+   DISABLE_LCD=1 SNAPSHOT_ENABLE=1 SNAP_CAM_EVERY=1 SNAP_PROC_EVERY=1 \
+   PREVIEW_ROT=0 PYTHONPATH=/home/pi/robot \
+   python3 -u apps/camera/preview_lcd_ssd.py
+
 # 14) Changelog (wycinek)
 
 2025-08-30
@@ -287,6 +293,13 @@ Na RPi nie uruchamiamy Prometheusa (oszczędność CPU/RAM) – lepiej z zewnęt
  - Dashboard: dwie kolumny podglądu Camera view: RAW (cam.jpg) i PROC (proc.jpg).
  - camera.heartbeat (tryb/fps/lcd) konsumowany w /healthz.
  - Uporządkowane /sysinfo z historią CPU/MEM (60 pkt).
+ - *Nowe widoki kamery**:
+  - snapshoty z kamery zapisywane w `snapshots/`:
+    - `cam.jpg` → obraz RAW (bez obróbki)
+    - `proc.jpg` → obraz po obróbce (detekcja obiektów/SSD)
+  - dashboard (`web/view.html`) rozszerzony o **4 kolumnę** z dwoma kafelkami:
+    - **Camera — RAW (kamera)**  
+    - **Camera — PROC (po obróbce)**
 
 2025-08-29 – stable
 
