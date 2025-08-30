@@ -1,34 +1,26 @@
 #!/usr/bin/env python3
 # apps/camera/preview_lcd_takeover.py
 # Szybki preview na LCD + HAAR face; publikuje vision.face (present/score/count)
+# + wysyła camera.heartbeat (w,h,mode,fps,lcd.{active,presenting,rot})
 
 import os, time, json
 from typing import Tuple
 import numpy as np
 import cv2
 
-# --- BUS PUB helper (ZMQ) ---
-try:
-    import zmq
-except Exception:
-    zmq = None
+# --- BUS (multipart PUB) ---
+from common.bus import BusPub, now_ts
+from common.cam_heartbeat import CameraHB  # wspólny emiter heartbeatów
 
-def _bus_pub():
-    if zmq is None:
-        return None
-    ctx = zmq.Context.instance()
-    s = ctx.socket(zmq.PUB)
-    s.connect(f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT','5555')}")
-    return s
-_BUS = _bus_pub()
+PUB = BusPub()
+HB  = CameraHB(mode="haar")   # ten preview to tryb "haar"
 
-def pub(topic, payload: dict):
+def pub(topic: str, payload: dict, add_ts: bool = False):
+    """Wyślij wiadomość na bus (multipart [topic,json])."""
     try:
-        if _BUS is not None:
-            _BUS.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
+        PUB.publish(topic, payload, add_ts=add_ts)
     except Exception:
         pass
-# --- end helper ---
 
 # --- LCD (opcjonalnie) ---
 DISABLE_LCD = os.getenv("DISABLE_LCD", "0") == "1"
@@ -96,8 +88,18 @@ def main():
     read, size = open_camera((320,240))
     haar = load_haar()
 
+    # FPS estymacja (EMA)
+    prev_t  = time.time()
+    fps_ema = None
+
     t0 = time.time()
     frames = 0
+
+    # pierwszy heartbeat (od razu po starcie)
+    try:
+        HB.tick(None, 0.0, presenting=not NO_DRAW)
+    except Exception:
+        pass
 
     while True:
         ok, frame = read()
@@ -113,6 +115,13 @@ def main():
             elif rot == 270:
                 frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
+        # FPS (EMA)
+        now = time.time()
+        dt = max(1e-6, now - prev_t)
+        inst = 1.0 / dt
+        fps_ema = inst if fps_ema is None else (0.9 * fps_ema + 0.1 * inst)
+        prev_t = now
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
 
@@ -120,16 +129,20 @@ def main():
             for (x,y,w,h) in faces:
                 cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,0), 2)
 
-        # publikacja vision.face tylko gdy są twarze (debounce/out TTL zrobi dispatcher)
+        # publikacja vision.face tylko gdy są twarze (debounce/out TTL robi dispatcher)
         if len(faces) > 0:
-            pub("vision.face", {"present": True, "score": 0.9, "count": int(len(faces))})
+            pub("vision.face", {"present": True, "score": 0.9, "count": int(len(faces))}, add_ts=True)
 
+        # render na LCD
         lcd_show_bgr(frame)
+
+        # heartbeat kamery (co ~1 s): rozdzielczość, fps, tryb, stan LCD
+        HB.tick(frame, fps_ema, presenting=not NO_DRAW)
 
         frames += 1
         if frames % 60 == 0:
-            dt = time.time() - t0
-            fps = frames/dt if dt > 0 else 0.0
+            dt_all = time.time() - t0
+            fps = frames/dt_all if dt_all > 0 else 0.0
             print(f"[takeover] fps={fps:.1f}", flush=True)
 
 if __name__ == "__main__":
