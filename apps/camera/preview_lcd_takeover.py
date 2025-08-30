@@ -2,6 +2,7 @@
 # apps/camera/preview_lcd_takeover.py
 # Szybki preview na LCD + HAAR face; publikuje vision.face (present/score/count)
 # + wysyła camera.heartbeat (w,h,mode,fps,lcd.{active,presenting,rot})
+# + snapshoty: RAW/proc/LCD(our)/LCD_fb
 
 import os, time, json
 from typing import Tuple
@@ -11,12 +12,13 @@ import cv2
 # --- BUS (multipart PUB) ---
 from common.bus import BusPub, now_ts
 from common.cam_heartbeat import CameraHB  # wspólny emiter heartbeatów
+from common.snap import Snapper
 
 PUB = BusPub()
-HB  = CameraHB(mode="haar")   # ten preview to tryb "haar"
+HB  = CameraHB(mode="haar")
+SNAP = Snapper(base_dir=os.getenv("SNAP_BASE", "/home/pi/robot/snapshots"))
 
 def pub(topic: str, payload: dict, add_ts: bool = False):
-    """Wyślij wiadomość na bus (multipart [topic,json])."""
     try:
         PUB.publish(topic, payload, add_ts=add_ts)
     except Exception:
@@ -29,7 +31,6 @@ NO_DRAW = os.getenv("NO_DRAW", "0") == "1"
 def _lcd_init():
     if DISABLE_LCD:
         return None
-    # import klasy niezależnie od struktury pakietu
     try:
         from xgoscreen.LCD_2inch import LCD_2inch
     except Exception:
@@ -88,10 +89,8 @@ def main():
     read, size = open_camera((320,240))
     haar = load_haar()
 
-    # FPS estymacja (EMA)
     prev_t  = time.time()
     fps_ema = None
-
     t0 = time.time()
     frames = 0
 
@@ -125,19 +124,23 @@ def main():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
 
+        out = frame.copy()
         if not NO_DRAW:
             for (x,y,w,h) in faces:
-                cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,0), 2)
+                cv2.rectangle(out, (x,y), (x+w,y+h), (0,255,0), 2)
 
-        # publikacja vision.face tylko gdy są twarze (debounce/out TTL robi dispatcher)
         if len(faces) > 0:
             pub("vision.face", {"present": True, "score": 0.9, "count": int(len(faces))}, add_ts=True)
 
-        # render na LCD
-        lcd_show_bgr(frame)
+        # --- SNAPSHOTS ---
+        SNAP.cam(frame)               # RAW z kamery
+        SNAP.proc(out)                # po obróbce
+        SNAP.lcd_from_frame(out)      # co my byśmy narysowali
+        SNAP.lcd_from_fb()            # realny LCD (framebuffer), jeśli jest
 
-        # heartbeat kamery (co ~1 s): rozdzielczość, fps, tryb, stan LCD
-        HB.tick(frame, fps_ema, presenting=not NO_DRAW)
+        # render na LCD + heartbeat
+        lcd_show_bgr(out)
+        HB.tick(out, fps_ema, presenting=not NO_DRAW)
 
         frames += 1
         if frames % 60 == 0:
