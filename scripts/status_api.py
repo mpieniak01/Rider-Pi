@@ -6,7 +6,7 @@ Rider-Pi – Status API + mini dashboard (Flask 1.x compatible)
 Endpoints:
 - /            : dashboard (HTML/JS)
 - /healthz     : status + bus ages + devices (camera/lcd/xgo)
-- /state       : last vision.state
+- /state       : last vision.state (+ mode)
 - /sysinfo     : CPU/MEM/LOAD/DISK/TEMP (+ history for dashboard) + OS info
 - /metrics     : Prometheus-style, very small set
 - /events      : SSE live bus events (vision.*, camera.*)
@@ -30,23 +30,29 @@ ENV_ROT         = int(os.getenv("PREVIEW_ROT", "0") or 0)
 
 REFRESH_S   = 2.0
 HISTORY_LEN = 60  # ~60 punktów, ~1 pkt / sekundę
+CAMERA_ON_TTL_SEC = float(os.getenv("CAMERA_ON_TTL_SEC", "3.0"))  # kiedy uznajemy kamerę za ON
 
 app = Flask(__name__)
 
 # --- Stan wewnętrzny ---
 LAST_MSG_TS = None
 LAST_HEARTBEAT_TS = None
-LAST_STATE = {"present": False, "confidence": 0.0, "ts": None}
+LAST_STATE = {  # agregat: albo z vision.state, albo z vision.dispatcher.heartbeat
+    "present": False, "confidence": 0.0, "mode": None, "ts": None
+}
 
 LAST_CAMERA = {  # aktualizowane z camera.heartbeat
     "ts": None,
     "mode": None,
     "fps": None,
+    "w": None,
+    "h": None,
     "lcd": {
         "enabled_env": (not ENV_DISABLE_LCD),
         "no_draw": ENV_NO_DRAW,
         "rot": ENV_ROT,
         "active": False,
+        "presenting": None,
     },
 }
 
@@ -178,7 +184,25 @@ def _os_info():
     kernel = platform.release()
     return {"pretty": pretty, "kernel": kernel}
 
+# --- Pomocnicze: LCD stan z lcdctl ---
+
+def _lcd_state_read():
+    """Próbuje odczytać stan LCD z lcdctl; zwraca (on, presenting, rot)."""
+    try:
+        from scripts.lcdctl import lcd_is_on, lcd_is_presenting, lcd_rotation
+        on = bool(lcd_is_on())
+        presenting = bool(lcd_is_presenting())
+        rot = lcd_rotation()
+        return on, presenting, rot
+    except Exception:
+        # fallback do ostatniego znanego (z heartbeat) + ENV
+        on = (not ENV_DISABLE_LCD) and (not ENV_NO_DRAW)
+        presenting = LAST_CAMERA["lcd"].get("presenting")
+        rot = LAST_CAMERA["lcd"].get("rot", ENV_ROT)
+        return on, presenting, rot
+
 # --- Wątek SUB (bus) ---
+
 def bus_sub_loop():
     global LAST_MSG_TS, LAST_HEARTBEAT_TS, LAST_STATE, LAST_CAMERA
     if not _ZMQ_OK:
@@ -195,45 +219,71 @@ def bus_sub_loop():
 
         while True:
             try:
-                msg = sub.recv_string()
+                # --- odbiór z busa: preferuj multipart [topic, payload] ---
+                frames = sub.recv_multipart()  # <-- ZAMIANA z recv_string()
                 LAST_MSG_TS = time.time()
-                topic, payload = msg.split(" ", 1)
+
+                if len(frames) == 2:
+                    topic = frames[0].decode("utf-8", "ignore")
+                    payload = frames[1].decode("utf-8", "ignore")
+                else:
+                    # fallback: jeżeli ktoś publikuje jako jeden string "topic json"
+                    msg = frames[0].decode("utf-8", "ignore")
+                    topic, payload = (msg.split(" ", 1) + [""])[:2]
+
                 EVENTS.append({"ts": LAST_MSG_TS, "topic": topic, "data": payload})
+
                 if topic == "vision.dispatcher.heartbeat":
                     LAST_HEARTBEAT_TS = LAST_MSG_TS
+                    try:
+                        data = json.loads(payload)
+                        if isinstance(data, dict):
+                            if "present" in data:    LAST_STATE["present"]    = bool(data.get("present"))
+                            if "confidence" in data: LAST_STATE["confidence"] = float(data.get("confidence") or 0.0)
+                            if "mode" in data:       LAST_STATE["mode"]       = data.get("mode")
+                            LAST_STATE["ts"] = data.get("ts") or LAST_MSG_TS
+                    except Exception:
+                        pass
+
                 elif topic == "vision.state":
                     try:
                         data = json.loads(payload)
                         LAST_STATE = {
                             "present": bool(data.get("present", False)),
                             "confidence": float(data.get("confidence", 0.0)),
-                            "ts": data.get("ts"),
+                            "mode": data.get("mode"),
+                            "ts": data.get("ts") or LAST_MSG_TS,
                         }
                     except Exception:
                         pass
+
                 elif topic == "camera.heartbeat":
                     try:
                         data = json.loads(payload)
-                        LAST_CAMERA["ts"] = LAST_MSG_TS
+                        LAST_CAMERA["ts"]   = float(data.get("ts") or LAST_MSG_TS)
                         LAST_CAMERA["mode"] = data.get("mode")
                         LAST_CAMERA["fps"]  = data.get("fps")
+                        LAST_CAMERA["w"]    = data.get("w")
+                        LAST_CAMERA["h"]    = data.get("h")
                         lcd = data.get("lcd") or {}
                         LAST_CAMERA["lcd"].update({
                             "enabled_env": (not ENV_DISABLE_LCD),
                             "no_draw": ENV_NO_DRAW,
                             "rot": ENV_ROT,
                         })
-                        for k in ("enabled_env", "no_draw", "rot", "active"):
-                            if k in lcd:
-                                LAST_CAMERA["lcd"][k] = lcd[k]
+                        for k in ("enabled_env", "no_draw", "rot", "active", "presenting"):
+                            if k in lcd: LAST_CAMERA["lcd"][k] = lcd[k]
                     except Exception:
                         pass
+
             except Exception:
                 time.sleep(0.05)
+
     except Exception as e:
         print(f"[api] bus_sub_loop error: {e}", flush=True)
 
 # --- XGO read-only loop ---
+
 def xgo_ro_loop():
     """
     Lekki „RO” klient, odczytuje: battery/roll/pitch/yaw, liczy pose.
@@ -352,25 +402,48 @@ def healthz():
     last_msg_age = (now - LAST_MSG_TS) if LAST_MSG_TS else None
     last_hb_age  = (now - LAST_HEARTBEAT_TS) if LAST_HEARTBEAT_TS else None
 
-    # devices
+    # devices – kamera
     cam_age = (now - LAST_CAMERA["ts"]) if LAST_CAMERA["ts"] else None
-    camera_on = (cam_age is not None and cam_age <= 5.0)
+    camera_on = (cam_age is not None and cam_age <= float(os.getenv("CAMERA_ON_TTL_SEC", "3.0")))
+
+    cam_info = {
+        "on": camera_on,
+        "age_s": round(cam_age, 3) if cam_age is not None else None,
+    }
+    if camera_on:
+        cam_info.update({
+            "mode": LAST_CAMERA.get("mode"),
+            "fps":  LAST_CAMERA.get("fps"),
+        })
+    else:
+        # OFF → czyścimy szczegóły
+        cam_info.update({
+            "mode": None,
+            "fps": None,
+        })
+        # i LCD
+        LAST_CAMERA["lcd"]["active"] = False
+        LAST_CAMERA["lcd"]["presenting"] = False
 
     # xgo
     xgo_ts = LAST_XGO.get("ts")
     xgo_age = (now - xgo_ts) if xgo_ts else None
     xgo_ok = (xgo_age is not None and xgo_age <= 5.0)
 
+    # lcd – spróbuj realnego odczytu
+    lcd_on, lcd_presenting, lcd_rot = _lcd_state_read()
+
     devices = {
-        "camera": {
-            "on": camera_on,
-            "age_s": round(cam_age, 3) if cam_age is not None else None,
-            "mode": LAST_CAMERA.get("mode"),
-            "fps": LAST_CAMERA.get("fps"),
-        },
+        "camera": cam_info,
         "lcd": {
             "on": (not ENV_DISABLE_LCD) and (not ENV_NO_DRAW),
             "rot": LAST_CAMERA["lcd"].get("rot", ENV_ROT),
+            "no_draw": LAST_CAMERA["lcd"].get("no_draw", ENV_NO_DRAW),
+        },
+        "lcd": {
+            "on": bool(lcd_on) if lcd_on is not None else ((not ENV_DISABLE_LCD) and (not ENV_NO_DRAW)),
+            "presenting": lcd_presenting,
+            "rot": lcd_rot if lcd_rot is not None else LAST_CAMERA["lcd"].get("rot", ENV_ROT),
             "no_draw": LAST_CAMERA["lcd"].get("no_draw", ENV_NO_DRAW),
         },
         "xgo": {
@@ -409,6 +482,7 @@ def state():
     payload = {
         "present": bool(LAST_STATE.get("present", False)),
         "confidence": float(LAST_STATE.get("confidence", 0.0)),
+        "mode": LAST_STATE.get("mode"),
         "ts": ts,
         "age_s": round(age, 3) if age is not None else None,
     }
@@ -445,6 +519,8 @@ def metrics():
     m("rider_bus_last_msg_age_seconds", round(last_msg_age,3))
     m("rider_bus_last_heartbeat_age_seconds", round(last_hb_age,3))
     m("rider_camera_last_hb_age_seconds", round(cam_age,3))
+    if LAST_CAMERA.get("mode"):
+        m("rider_camera_mode", 1, labels={"mode": str(LAST_CAMERA.get("mode"))})
     m("rider_xgo_last_read_age_seconds", round(xgo_age,3) if xgo_age>=0 else -1)
     return Response("\n".join(lines) + "\n", mimetype="text/plain")
 
@@ -556,6 +632,7 @@ DASHBOARD_HTML = r"""
       <div class="kv">
         <div>present</div><div id="p_present" class="bad">false</div>
         <div>confidence</div><div id="p_conf" class="muted">0.000</div>
+        <div>mode</div><div id="p_mode" class="muted">—</div>
         <div>ts</div><div id="p_ts" class="muted">—</div>
         <div>age</div><div id="p_age" class="muted">—</div>
       </div>
@@ -623,8 +700,10 @@ function updateHealth(h){
 
   if(h.devices){
     const cam = h.devices.camera || {};
+    const resTxt = (cam.res && cam.res.length===2)? ` ${cam.res[0]}×${cam.res[1]}` : '';
     const camTxt = (cam.on? 'ON':'OFF')
       + (cam.mode? (' · '+cam.mode):'')
+      + resTxt
       + (cam.fps!=null? (' · '+fmt(cam.fps,1)+' fps'):'')
       + (cam.age_s!=null? (' · '+fmt(cam.age_s,1)+'s'):'');
     setTxt('d_cam', camTxt); setCls('d_cam', cam.on? 'ok':'muted');
@@ -632,6 +711,7 @@ function updateHealth(h){
     const lcd = h.devices.lcd || {};
     const lcdTxt = (lcd.on? 'ON':'OFF')
       + (lcd.rot!=null? (' · rot '+lcd.rot):'')
+      + (lcd.presenting? ' · presenting':'')
       + (lcd.no_draw? ' · no_draw':'' );
     setTxt('d_lcd', lcdTxt); setCls('d_lcd', lcd.on? 'ok':'muted');
 
@@ -662,6 +742,7 @@ function updateState(s){
   setTxt('p_present', String(!!s.present));
   setCls('p_present', s.present? 'ok':'bad');
   setTxt('p_conf', fmt(s.confidence,3));
+  setTxt('p_mode', s.mode || '—');
   setTxt('p_ts', s.ts? new Date(s.ts*1000).toLocaleTimeString(): '—');
   setTxt('p_age', (s.age_s!=null? fmt(s.age_s,1)+' s':'—'));
 }

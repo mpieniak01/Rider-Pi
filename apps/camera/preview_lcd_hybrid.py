@@ -2,34 +2,25 @@
 # apps/camera/preview_lcd_hybrid.py
 # PoC: SSD do inicjalizacji, tracker do podtrzymania, opcjonalny HAAR w ROI.
 # Publikuje vision.person (z trackera/SSD) i vision.face (HAAR).
+# + wysyła camera.heartbeat (w,h,mode,fps,lcd.{active,presenting,rot})
 
 import os, time, json
 from typing import Tuple, Optional
 import numpy as np
 import cv2
 
-# --- BUS PUB helper (ZMQ) ---
-try:
-    import zmq
-except Exception:
-    zmq = None
+# --- BUS PUB ---
+from common.bus import BusPub, now_ts
+from common.cam_heartbeat import CameraHB
 
-def _bus_pub():
-    if zmq is None:
-        return None
-    ctx = zmq.Context.instance()
-    s = ctx.socket(zmq.PUB)
-    s.connect(f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT','5555')}")
-    return s
-_BUS = _bus_pub()
+PUB = BusPub()
+HB  = CameraHB(mode="hybrid")
 
-def pub(topic, payload: dict):
+def pub(topic, payload: dict, add_ts: bool = False):
     try:
-        if _BUS is not None:
-            _BUS.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
+        PUB.publish(topic, payload, add_ts=add_ts)
     except Exception:
         pass
-# --- end helper ---
 
 # --- LCD (opcjonalnie) ---
 DISABLE_LCD = os.getenv("DISABLE_LCD", "0") == "1"
@@ -129,11 +120,16 @@ def main():
     net = load_ssd()
     tracker = None
     track_ok = False
-    track_bbox = None  # (x, y, w, h)
+    track_bbox = None
 
     haar = load_haar() if HAAR_IN_ROI else None
 
     t0, frames, fid = time.time(), 0, 0
+    fps_ema = None
+    prev_t = time.time()
+
+    # pierwszy heartbeat od razu
+    HB.tick(None, 0.0, presenting=not NO_DRAW)
 
     while True:
         ok, frame = read()
@@ -141,15 +137,19 @@ def main():
             time.sleep(0.01); continue
 
         if rot in (90, 180, 270):
-            if rot == 90:
-                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-            elif rot == 180:
-                frame = cv2.rotate(frame, cv2.ROTATE_180)
-            elif rot == 270:
-                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            if rot == 90: frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            elif rot == 180: frame = cv2.rotate(frame, cv2.ROTATE_180)
+            elif rot == 270: frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
         out = frame.copy()
         h, w = out.shape[:2]
+
+        # FPS (EMA)
+        now = time.time()
+        dt = max(1e-6, now - prev_t)
+        inst = 1.0 / dt
+        fps_ema = inst if fps_ema is None else (0.9*fps_ema + 0.1*inst)
+        prev_t = now
 
         # 1) Update trackera
         if tracker is not None:
@@ -159,8 +159,7 @@ def main():
                 track_bbox = (x, y, tw, th)
                 if not NO_DRAW:
                     cv2.rectangle(out, (x,y), (x+tw,y+th), (255, 200, 0), 2)
-                    cv2.putText(out, "track", (x, max(0,y-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,200,0), 1, cv2.LINE_AA)
-                pub("vision.person", {"present": True, "score": 0.75, "bbox": [x,y,tw,th]})
+                pub("vision.person", {"present": True, "score": 0.75, "bbox": [x,y,tw,th]}, add_ts=True)
             else:
                 tracker = None
                 track_bbox = None
@@ -173,11 +172,9 @@ def main():
             best = None
             for i in range(det.shape[2]):
                 conf = float(det[0,0,i,2])
-                if conf < SCORE:
-                    continue
+                if conf < SCORE: continue
                 cls_id = int(det[0,0,i,1])
-                if cls_id != PERSON_ID:
-                    continue
+                if cls_id != PERSON_ID: continue
                 x1 = int(det[0,0,i,3]*w); y1 = int(det[0,0,i,4]*h)
                 x2 = int(det[0,0,i,5]*w); y2 = int(det[0,0,i,6]*h)
                 if best is None or conf > best[0]:
@@ -186,13 +183,12 @@ def main():
                 conf, (bx1,by1,bx2,by2) = best
                 if not NO_DRAW:
                     cv2.rectangle(out, (bx1,by1), (bx2,by2), (0,255,255), 2)
-                    cv2.putText(out, f"person:{conf:.2f}", (bx1, max(0,by1-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255), 1, cv2.LINE_AA)
-                pub("vision.person", {"present": True, "score": float(conf), "bbox": [int(bx1),int(by1),int(bx2-bx1),int(by2-by1)]})
+                pub("vision.person", {"present": True, "score": float(conf), "bbox": [bx1,by1,bx2-bx1,by2-by1]}, add_ts=True)
                 tracker = create_tracker()
                 tracker.init(out, (bx1, by1, bx2-bx1, by2-by1))
                 track_bbox = (bx1, by1, bx2-bx1, by2-by1)
 
-        # 3) (opcjonalnie) HAAR w ROI, żeby złapać twarz
+        # 3) (opcjonalnie) HAAR w ROI
         if haar is not None and track_bbox is not None:
             x,y,tw,th = track_bbox
             x0,y0,x1,y1 = max(0,x), max(0,y), min(w, x+tw), min(h, y+th)
@@ -204,17 +200,18 @@ def main():
                     for (fx,fy,fw,fh) in faces:
                         cv2.rectangle(out, (x0+fx, y0+fy), (x0+fx+fw, y0+fy+fh), (0,255,0), 2)
                 if len(faces) > 0:
-                    pub("vision.face", {"present": True, "score": 0.85, "count": int(len(faces))})
+                    pub("vision.face", {"present": True, "score": 0.85, "count": len(faces)}, add_ts=True)
 
         lcd_show_bgr(out)
 
+        # heartbeat
+        HB.tick(out, fps_ema, presenting=not NO_DRAW)
+
         fid += 1
         frames += 1
-        # częstsze logowanie FPS, żeby bench złapał w krótkim oknie
-        LOG_EVERY = int(os.getenv("LOG_EVERY", "20"))
         if LOG_EVERY > 0 and (frames % LOG_EVERY == 0):
-            dt = time.time() - t0
-            fps = frames/dt if dt>0 else 0.0
+            dt_all = time.time() - t0
+            fps = frames/dt_all if dt_all>0 else 0.0
             print(f"[hybrid] fps={fps:.1f} (every={EVERY}, score>={SCORE})", flush=True)
 
 if __name__ == "__main__":
@@ -222,3 +219,4 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
+

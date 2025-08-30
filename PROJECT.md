@@ -231,50 +231,37 @@ Na RPi nie uruchamiamy Prometheusa (oszczędność CPU/RAM) – lepiej z zewnęt
 
 ---
 
-## 12) Roadmap (krótko)
 
-- `scripts/status_api.py` – wątek XGO telemetry + nowe pola API.
-- `scripts/xgo_client_ro.py` – read-only klient XGO (bez szarpania).
-- `PROJECT.md` – update dokumentacji.
+# 13) LCD & Camera heartbeat
 
----
+- **Heartbeat kamery** – wszystkie trzy pipeline’y (`takeover`, `ssd`, `hybrid`) publikują teraz event:
+  - `camera.heartbeat` → `{ ts, mode, fps, lcd:{rot, active, presenting, no_draw} }`
+  - dzięki temu `/healthz` i dashboard wiedzą, czy kamera działa, nawet jeśli pipeline został uruchomiony ręcznie (spoza systemd).
+  - TTL kontrolowany przez `CAMERA_ON_TTL_SEC` (domyślnie 3 s).
 
-## 13) Changelog (wycinek)
+- **Dashboard – Devices → Camera**
+  - Pokazuje teraz:
+    - tryb (`haar` / `ssd` / `hybrid`)
+    - rozdzielczość i fps
+    - stan LCD (`ON/OFF`, `rot`, `presenting`, `no_draw`)
+    - wiek ostatniego heartbeat (s).
+  - Gdy kamera jest OFF, widać czas od ostatniego heartbeat – ułatwia debug.
 
-- **2025-08-29 – stable**
-  - `scripts/status_api.py`: mini-dashboard + `/sysinfo` + wykres CPU/MEM (60 s) + `/metrics` + `/events`.
-  - `apps/vision/dispatcher.py`: debouncing/histereza + `vision.state` + heartbeat.
-  - `systemd` jednostki: broker, dispatcher, api (ENV z `.env`).
-  - Testy: `smoke_test.sh`, `bench_detect.sh` (progi PASS/FAIL).
+- **LCD**
+  - Obsługa rysowania przez `xgoscreen.LCD_2inch`.
+  - Możliwość wyłączenia całkowicie (`DISABLE_LCD=1`) lub tylko ramek (`NO_DRAW=1`).
+  - Dodana opcja rotacji (`PREVIEW_ROT=90/180/270`).
+  - Test sanity: `PROJECT.md → §9 LCD sanity-check`.
 
-- **2025-08-28 – camera preview updates**
-  - HAAR/SSD/Hybrid, whitelist klas SSD, log fps, cleanup kill.
- 
-## 14) ### Nowości
-- **Dashboard mini** rozbudowany o nowe sekcje:
-  - **System**: 
-    - CPU %, Load (1/5/15m), pamięć (MB, %), dysk, OS release, kernel, temperatura, **firmware XGO**.
-  - **Devices**:
-    - Kamera (ON/OFF, fps, rotacja).
-    - LCD (ON, rot, no_draw).
-    - **XGO telemetry (via `xgo_client_ro`)**:
-      - IMU (roll, pitch, yaw) + status OK/?
-      - Pose: `upright` / `leaning` / `fallen?`
-      - Battery (%)
-      - Temp (°C)
-      - Firmware (R-1.1.6 potwierdzony).
-  - **History**: CPU/MEM wykres w czasie rzeczywistym (auto-refresh co 2s).
-- **API endpoints** `/healthz`, `/sysinfo`, `/state` uzupełnione o:
-  - `devices.xgo`: `imu_ok`, `pose`, `battery_pct`, `roll`, `pitch`, `yaw`, `age_s`
-  - `sysinfo`: `battery_pct`, `fw`, `os_release`
-- **Bezpieczny backend odczytów XGO**:
-  - `xgo_client_ro.py` → bezpieczna implementacja `read-only` (battery, IMU, fw).
-  - Wątek w `status_api.py` automatycznie publikuje telemetrię XGO.
-- Poprawki frontendu:
-  - Auto-refresh działa stabilnie.
-  - Wartości prezentowane kolorami (`ok`, `bad`, `muted`).
-  - Battery i temperatura przeniesione z **System** → **Devices**.
-  - Dodane wersje OS i firmware do **System**.
+- **API rozszerzone o devices.camera**
+  ```json
+  "camera": {
+    "on": true,
+    "age_s": 0.25,
+    "mode": "haar",
+    "fps": 12.3,
+    "lcd": { "rot": 270, "active": true, "presenting": true, "no_draw": false }
+  }
 
 ---
 
