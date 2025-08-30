@@ -147,23 +147,47 @@ function drawChart(cpuArr, memArr){
   const c = el('chart'); if(!c) return;
   const ctx = c.getContext('2d');
   ctx.clearRect(0,0,c.width,c.height);
-  const pad=10, W=c.width-pad*2, H=c.height-pad*2;
-  ctx.strokeStyle='#1d3548'; ctx.strokeRect(pad,pad,W,H);
+
+  // padding: left=30 (na skalę), reszta=10
+  const padL=30, padT=10, padR=10, padB=10;
+  const W=c.width - padL - padR;
+  const H=c.height - padT - padB;
+
+  // ramka
+  ctx.strokeStyle='#1d3548';
+  ctx.strokeRect(padL, padT, W, H);
+
+  // skala Y (0,50,100)
+  ctx.fillStyle = '#8aa';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (let yv of [0, 50, 100]) {
+    const y = padT + H - ((yv - 0) / 100) * H;
+    ctx.beginPath();
+    ctx.moveTo(padL - 4, y);
+    ctx.lineTo(padL, y);
+    ctx.strokeStyle = '#1d3548';
+    ctx.stroke();
+    ctx.fillText(yv.toString(), padL - 6, y + 3);
+  }
+
   function plot(arr, color){
     if(!arr || arr.length<2) return;
     const n = arr.length, max=100, min=0;
     ctx.beginPath(); ctx.lineWidth=1.2; ctx.strokeStyle=color;
     for(let i=0;i<n;i++){
-      const x = pad + (i*(W/(n-1)));
+      const x = padL + (i*(W/(n-1)));
       const v = Math.max(min, Math.min(max, Number(arr[i]||0)));
-      const y = pad + H - ((v-min)/(max-min))*H;
+      const y = padT + H - ((v-min)/(max-min))*H;
       if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     }
     ctx.stroke();
   }
+
   plot(cpuArr,'#6db3ff'); // cpu
   plot(memArr,'#ffd36d'); // mem
 }
+
 
 function updateHealth(h){
   setTxt('h_status', h.status || '—');
