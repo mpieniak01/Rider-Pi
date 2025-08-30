@@ -4,10 +4,12 @@
 # + wysyła camera.heartbeat (w,h,mode,fps,lcd.{active,presenting,rot})
 # + snapshoty: RAW/proc/LCD(our)/LCD_fb
 
-import os, time, json
+import os
+import time
 from typing import Tuple
-import numpy as np
+
 import cv2
+import numpy as np
 
 # --- BUS (multipart PUB) ---
 from common.bus import BusPub, now_ts
@@ -15,8 +17,9 @@ from common.cam_heartbeat import CameraHB  # wspólny emiter heartbeatów
 from common.snap import Snapper
 
 PUB = BusPub()
-HB  = CameraHB(mode="haar")
+HB = CameraHB(mode="haar")
 SNAP = Snapper(base_dir=os.getenv("SNAP_BASE", "/home/pi/robot/snapshots"))
+
 
 def pub(topic: str, payload: dict, add_ts: bool = False):
     try:
@@ -24,9 +27,37 @@ def pub(topic: str, payload: dict, add_ts: bool = False):
     except Exception:
         pass
 
+
+# --------- ORIENTATION (wspólne) ---------
+def _env_flag(name: str, default: bool = False) -> bool:
+    return str(os.getenv(name, str(int(default)))).lower() in ("1", "true", "yes", "y", "on")
+
+
+ROT = int(os.getenv("PREVIEW_ROT", "270"))          # 0/90/180/270
+FLIP_H = _env_flag("PREVIEW_FLIP_H", False)         # poziomy
+FLIP_V = _env_flag("PREVIEW_FLIP_V", False)         # pionowy
+
+
+def apply_rotation(frame, rot: int, flip_h: bool, flip_v: bool):
+    """Znormalizuj orientację klatki: najpierw rotacja, potem ew. flip."""
+    if rot in (90, 180, 270):
+        k = {
+            90: cv2.ROTATE_90_CLOCKWISE,
+            180: cv2.ROTATE_180,
+            270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+        }[rot]
+        frame = cv2.rotate(frame, k)
+    if flip_h:
+        frame = cv2.flip(frame, 1)
+    if flip_v:
+        frame = cv2.flip(frame, 0)
+    return frame
+
+
 # --- LCD (opcjonalnie) ---
 DISABLE_LCD = os.getenv("DISABLE_LCD", "0") == "1"
 NO_DRAW = os.getenv("NO_DRAW", "0") == "1"
+
 
 def _lcd_init():
     if DISABLE_LCD:
@@ -41,40 +72,53 @@ def _lcd_init():
             return None
     try:
         lcd = LCD_2inch()
-        lcd.rotation = 270 if str(os.getenv("PREVIEW_ROT","270")) == "270" else 0
+        # LCD ma własną rotację – zostawiamy 0, bo obraz podajemy już obrócony.
+        # Jeśli chcesz korzystać z rotacji sprzętowej LCD zamiast OpenCV,
+        # ustaw tu lcd.rotation = 270 i PREVIEW_ROT=0.
+        lcd.rotation = 0
         return lcd
     except Exception:
         return None
 
+
 _LCD = _lcd_init()
+
 
 def lcd_show_bgr(img_bgr: np.ndarray):
     if _LCD is None:
         return
     from PIL import Image
+
     img = cv2.resize(img_bgr, (320, 240), interpolation=cv2.INTER_LINEAR)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     _LCD.ShowImage(Image.fromarray(img_rgb))
 
+
 # --- Kamera (Picamera2 -> fallback VideoCapture) ---
-def open_camera(size=(320,240)) -> Tuple[object, Tuple[int,int]]:
+def open_camera(size=(320, 240)) -> Tuple[object, Tuple[int, int]]:
     try:
         from picamera2 import Picamera2
+
         picam2 = Picamera2()
-        config = picam2.create_preview_configuration(main={"size": size, "format":"RGB888"})
+        config = picam2.create_preview_configuration(main={"size": size, "format": "RGB888"})
         picam2.configure(config)
         picam2.start()
+
         def read():
             arr = picam2.capture_array()
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+
         return read, size
     except Exception:
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
+
         def read():
             return cap.read()
+
         return read, size
+
 
 # --- HAAR ---
 def load_haar():
@@ -84,12 +128,12 @@ def load_haar():
         raise RuntimeError("Cannot load HAAR cascade")
     return clf
 
+
 def main():
-    rot = int(os.getenv("PREVIEW_ROT", "270"))
-    read, size = open_camera((320,240))
+    read, size = open_camera((320, 240))
     haar = load_haar()
 
-    prev_t  = time.time()
+    prev_t = time.time()
     fps_ema = None
     t0 = time.time()
     frames = 0
@@ -106,13 +150,8 @@ def main():
             time.sleep(0.01)
             continue
 
-        if rot in (90, 180, 270):
-            if rot == 90:
-                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-            elif rot == 180:
-                frame = cv2.rotate(frame, cv2.ROTATE_180)
-            elif rot == 270:
-                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        # >>> ORIENTACJA: po odczycie, zanim zrobimy cokolwiek dalej <<<
+        frame = apply_rotation(frame, ROT, FLIP_H, FLIP_V)
 
         # FPS (EMA)
         now = time.time()
@@ -122,21 +161,21 @@ def main():
         prev_t = now
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
+        faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
         out = frame.copy()
         if not NO_DRAW:
-            for (x,y,w,h) in faces:
-                cv2.rectangle(out, (x,y), (x+w,y+h), (0,255,0), 2)
+            for (x, y, w, h) in faces:
+                cv2.rectangle(out, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         if len(faces) > 0:
             pub("vision.face", {"present": True, "score": 0.9, "count": int(len(faces))}, add_ts=True)
 
-        # --- SNAPSHOTS ---
-        SNAP.cam(frame)               # RAW z kamery
-        SNAP.proc(out)                # po obróbce
-        SNAP.lcd_from_frame(out)      # co my byśmy narysowali
-        SNAP.lcd_from_fb()            # realny LCD (framebuffer), jeśli jest
+        # --- SNAPSHOTS (RAW po normalizacji orientacji) ---
+        SNAP.cam(frame)          # RAW z kamery (już po ROT/FLIP)
+        SNAP.proc(out)           # po obróbce (ramki)
+        SNAP.lcd_from_frame(out) # co byśmy narysowali
+        SNAP.lcd_from_fb()       # realny LCD (framebuffer), jeśli jest
 
         # render na LCD + heartbeat
         lcd_show_bgr(out)
@@ -145,8 +184,9 @@ def main():
         frames += 1
         if frames % 60 == 0:
             dt_all = time.time() - t0
-            fps = frames/dt_all if dt_all > 0 else 0.0
+            fps = frames / dt_all if dt_all > 0 else 0.0
             print(f"[takeover] fps={fps:.1f}", flush=True)
+
 
 if __name__ == "__main__":
     try:
