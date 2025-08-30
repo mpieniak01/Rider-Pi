@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rider-Pi — control</title>
+<style>
+  :root{--bg:#0e1a24;--card:#0f2233;--border:#1d3548;--txt:#d7e2ee;--muted:#9bb6d1;--ok:#5fe39a;--bad:#ff6b6b;--pri:#87b7ff;}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:980px;margin:28px auto;padding:0 18px}
+  h1{font-size:28px;margin:0 0 10px}
+  .hint{opacity:.7;font-size:12px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+  .card h3{margin:0 0 10px;font-size:16px;color:#9cc8ff}
+  .pad{display:grid;grid-template-columns:repeat(3,80px);grid-auto-rows:80px;gap:8px;justify-content:center}
+  button{background:#123149;border:1px solid var(--border);color:var(--txt);border-radius:10px;font-size:16px;cursor:pointer}
+  button:hover{border-color:#2c5777}
+  button:active{transform:translateY(1px)}
+  .full{grid-column:1/-1;height:42px}
+  .ok{color:var(--ok)} .bad{color:var(--bad)} .muted{color:var(--muted)}
+  .row{display:flex;gap:12px;align-items:center;margin:8px 0}
+  input[type=range]{width:220px}
+  .small{font-size:12px;opacity:.8}
+  .pill{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;margin-left:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Rider-Pi — control <span id="conn" class="pill muted">idle</span></h1>
+  <div class="hint">Sterowanie: przyciski, WSAD/strzałki, spacja = STOP. Suwaki: prędkość liniowa i obrotowa. <span class="muted">/api/move publikuje na busie i (opcjonalnie) wykonuje ruch przez motion bridge.</span></div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Joystick (WASD / strzałki)</h3>
+      <div class="row"><label>V lin (vx / vy)</label>
+        <input id="vlin" type="range" min="0" max="25" step="1" value="18">
+        <span id="vlin_v" class="muted">18</span>
+      </div>
+      <div class="row"><label>V obr (yaw)</label>
+        <input id="vyaw" type="range" min="0" max="100" step="5" value="60">
+        <span id="vyaw_v" class="muted">60</span>
+      </div>
+      <div class="row"><label>Czas (s)</label>
+        <input id="dur" type="range" min="0" max="3" step="0.1" value="0.4">
+        <span id="dur_v" class="muted">0.4</span>
+      </div>
+
+      <div class="pad" style="margin-top:10px">
+        <span></span>
+        <button onclick="go(0,-1)" title="W / ↑">▲</button>
+        <span></span>
+
+        <button onclick="go(-1,0)" title="A / ←">◄</button>
+        <button onclick="stop()" class="full" title="Spacja">STOP</button>
+        <button onclick="go(1,0)" title="D / →">►</button>
+
+        <span></span>
+        <button onclick="go(0,1)" title="S / ↓">▼</button>
+        <span></span>
+
+        <button onclick="turn(-1)" title="Q">⟲</button>
+        <button onclick="turn(1)" title="E">⟳</button>
+        <span></span>
+      </div>
+      <div class="small" style="margin-top:8px">Uwaga: wartości są normalizowane po stronie mostka do limitów XGO.</div>
+    </div>
+
+    <div class="card">
+      <h3>Presety i głos</h3>
+      <div class="row">
+        <button onclick="preset('reset')">Reset</button>
+        <button onclick="preset('upright')">Upright</button>
+        <button onclick="preset('marktime')">Mark time</button>
+        <button onclick="preset('gait_trot')">Gait: trot</button>
+        <button onclick="preset('gait_walk')">Gait: walk</button>
+      </div>
+      <div class="row">
+        <button onclick="voiceStart()">🎤 Voice start</button>
+        <button onclick="voiceStop()">■ Stop</button>
+        <span id="vstat" class="muted">voice: idle</span>
+      </div>
+
+      <div class="row">
+        <h3 style="margin:8px 0 0">Podgląd</h3>
+      </div>
+      <div class="row small">
+        <div>RAW</div>
+      </div>
+      <img id="img_raw" src="/snapshots/cam.jpg" style="width:100%;max-width:320px;border-radius:10px;border:1px solid var(--border)">
+      <div class="row small" style="margin-top:8px">
+        <div>PROC</div>
+      </div>
+      <img id="img_proc" src="/snapshots/proc.jpg" style="width:100%;max-width:320px;border-radius:10px;border:1px solid var(--border)">
+    </div>
+  </div>
+
+  <div class="hint" style="margin-top:14px">
+    ← <a href="/">dashboard</a>
+  </div>
+</div>
+
+<script>
+const REFRESH_IMG = 900; // ms
+const el = id => document.getElementById(id);
+const set = (id, t) => { const e=el(id); if(e) e.textContent=t; };
+
+// suwaki
+['vlin','vyaw','dur'].forEach(id=>{
+  const inp = el(id);
+  const out = el(id+'_v');
+  const upd = ()=> out.textContent = inp.value;
+  inp.addEventListener('input', upd); upd();
+});
+
+// auto-refresh zdjęć
+function bust(u){ return u.split('?')[0] + '?t=' + Date.now(); }
+setInterval(()=>{
+  const r = el('img_raw'); if(r) r.src = bust(r.src);
+  const p = el('img_proc'); if(p) p.src = bust(p.src);
+}, REFRESH_IMG);
+
+// API helpers
+async function post(url, obj){
+  try{
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj||{})});
+    set('conn', r.ok? 'ok':'err '+r.status);
+  }catch(e){ set('conn','net err'); }
+}
+
+function curV(){ return { vlin:+el('vlin').value, vyaw:+el('vyaw').value, dur:+el('dur').value }; }
+
+async function go(dx, dy){
+  const v = curV();
+  await post('/api/move', { vx: v.vlin * (-dy), vy: v.vlin * (-dx), yaw: 0, duration: v.dur });
+}
+async function turn(sign){
+  const v = curV();
+  await post('/api/move', { vx: 0, vy: 0, yaw: v.vyaw * sign, duration: v.dur });
+}
+async function stop(){ await post('/api/stop', {}); }
+async function preset(name){ await post('/api/preset', { name }); }
+
+// klawiatura
+window.addEventListener('keydown', (e)=>{
+  if(e.repeat) return;
+  if(e.code==='Space'){ stop(); e.preventDefault(); return; }
+  if(['KeyW','ArrowUp'].includes(e.code)) go(0,-1);
+  if(['KeyS','ArrowDown'].includes(e.code)) go(0, 1);
+  if(['KeyA','ArrowLeft'].includes(e.code)) go(-1,0);
+  if(['KeyD','ArrowRight'].includes(e.code)) go(1,0);
+  if(e.code==='KeyQ') turn(-1);
+  if(e.code==='KeyE') turn(1);
+});
+
+// voice (Web Speech API — Chrome/Edge)
+let rec=null;
+function voiceStart(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ set('vstat','voice: unsupported'); return; }
+  rec = new SR(); rec.lang='pl-PL'; rec.continuous=true; rec.interimResults=false;
+  rec.onresult = async (ev)=>{
+    const txt = ev.results[ev.results.length-1][0].transcript.trim().toLowerCase();
+    set('vstat','voice: '+txt);
+    await post('/api/voice', { text: txt });
+  };
+  rec.onend = ()=> set('vstat','voice: ended');
+  rec.start(); set('vstat','voice: listening…');
+}
+function voiceStop(){ try{ rec && rec.stop(); }catch(e){} }
+</script>
+</body>
+</html>
+
