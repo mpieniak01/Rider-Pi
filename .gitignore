@@ -19,3 +19,7 @@ EOF
 apps/camera/untitled*.py
 .env
 _tmp/
+.env
+snapshots/
+web/*.temp
+web/*.old
