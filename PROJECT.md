@@ -225,11 +225,6 @@ python3 scripts/bus_spy.py
 - Web UI: styl spójny z dashboardem, SSE `/events`, skróty klawiaturowe.
 - Jednostki systemd z `EnvironmentFile=/etc/default/rider-pi` i ujednolicone ścieżki.
 
----
-
-## Licencja
-TBD (zgodnie z repo/organizacją).
-
 
 
 ## Koncepcja 2 — Asystent AI (ChatGPT)
