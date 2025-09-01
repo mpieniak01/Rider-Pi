@@ -76,11 +76,11 @@ robot/
 ---
 
 ## Komponenty
-### 1) `scripts/broker.py`
+### 1) `services/broker.py`
 - Router magistrali: **XSUB tcp://*:5555** ⇄ **XPUB tcp://*:5556**.
 - Log startu: `INFO Broker XSUB tcp://*:5555  <->  XPUB tcp://*:5556`.
 
-### 2) `scripts/status_api.py`
+### 2) `services/status_api.py`
 - HTTP API (Flask):
   - `GET /healthz` — przegląd stanu (bus, urządzenia, tryb).
   - `POST /api/move` — `{vx, vy, yaw, duration}` (zakres −1..1, clamp do 0..1 magnitudy),
@@ -89,7 +89,7 @@ robot/
   - (kompat) `POST /control` — surowy PUB `{topic, ...}` na magistralę.
 - Publikuje / nasłuchuje: `cmd.*`, `motion.*`.
 
-### 3) `scripts/motion_bridge.py`
+### 3) `services/motion_bridge.py`
 - SUB: `cmd.move`, `cmd.stop`; wykonuje ruchy HW:
   - **forward/backward** skalar `SPEED_LINEAR`,
   - **turn_left/right** skalar `SPEED_TURN` (gdy `|yaw|>0` i `vx≈0`),
@@ -226,7 +226,7 @@ curl -s -X POST http://localhost:8080/api/stop -H 'Content-Type: application/jso
 
 ### Bus spy
 ```bash
-python3 scripts/bus_spy.py
+python3 tools/sub.py motion
 ```
 
 ### Typowe pułapki
@@ -344,7 +344,7 @@ User=pi
 WorkingDirectory=/home/pi/robot
 EnvironmentFile=/etc/default/rider-pi
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 -u /home/pi/robot/scripts/ai_agent.py
+ExecStart=/usr/bin/python3 -u /home/pi/robot/services/ai_agent.py
 Restart=always
 RestartSec=1
 StandardOutput=append:/var/log/rider-ai-agent.log
@@ -389,7 +389,7 @@ curl -s -X POST localhost:8080/api/stop -H 'Content-Type: application/json' -d '
 ```
 - **Podsłuch szyny:**
 ```bash
-python3 scripts/bus_spy.py
+python3 tools/sub.py motion
 ```
 
 ---
