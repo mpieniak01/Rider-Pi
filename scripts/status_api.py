@@ -10,12 +10,14 @@ Endpoints:
 - /state           : last vision.state
 - /sysinfo         : CPU/MEM/LOAD/DISK/TEMP (+ history dla dashboardu) + OS info
 - /metrics         : Prometheus-style, very small set
-- /events          : SSE live bus events (vision.*, camera.*, motion.bridge.*)
+- /events          : SSE live bus events (vision.*, camera.*, motion.*, cmd.*, motion.bridge.*)
 - /snapshots/<fn>  : bezpieczne serwowanie JPG (cam.jpg, proc.jpg itd.)
 - /api/move        : POST {vx,vy,yaw,duration}
 - /api/stop        : POST {}
 - /api/preset      : POST {name}
 - /api/voice       : POST {text}
+- /api/cmd         : NOWE – dowolny JSON → topic 'motion.cmd'
+- /pub             : NOWE – {topic, message:str} → raw publish
 
 Zależności: flask, (opcjonalnie) pyzmq; API działa nawet bez ZMQ/XGO.
 Testowane na Python 3.9 (RPi OS).
@@ -215,7 +217,8 @@ def bus_sub_loop():
         ctx = zmq.Context.instance()
         sub = ctx.socket(zmq.SUB)
         sub.connect(f"tcp://127.0.0.1:{BUS_SUB_PORT}")
-        for t in ("vision.", "camera.", "motion.bridge."):
+        # Słuchamy dotychczasowych i dodajemy ruch/cmd:
+        for t in ("vision.", "camera.", "motion.bridge.", "motion.", "cmd."):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
         print(f"[api] SUB connected tcp://127.0.0.1:{BUS_SUB_PORT}", flush=True)
 
@@ -223,7 +226,7 @@ def bus_sub_loop():
             try:
                 msg = sub.recv_string()
                 LAST_MSG_TS = time.time()
-                topic, payload = msg.split(" ", 1)
+                topic, payload = msg.split(" ", 1) if " " in msg else (msg, "")
                 EVENTS.append({"ts": LAST_MSG_TS, "topic": topic, "data": payload})
 
                 if topic == "vision.dispatcher.heartbeat":
@@ -536,6 +539,7 @@ def api_move():
     vy  = float(data.get("vy", 0.0))
     yaw = float(data.get("yaw", 0.0))
     duration = float(data.get("duration", 0.0))
+    # zgodnie z dotychczasowym mostem – publikujemy na 'cmd.move'
     bus_pub("cmd.move", {"vx": vx, "vy": vy, "yaw": yaw, "duration": duration, "ts": time.time()})
     return Response(json.dumps({"ok": True}), mimetype="application/json")
 
@@ -554,6 +558,66 @@ def api_preset():
 def api_voice():
     text = (request.get_json(silent=True) or {}).get("text", "")
     bus_pub("cmd.voice", {"text": text, "ts": time.time()})
+    return Response(json.dumps({"ok": True}), mimetype="application/json")
+
+# --- NOWE: ogólny endpoint komend JSON -> motion.cmd ---
+@app.route("/api/cmd", methods=["POST"])
+def api_cmd():
+    """
+    Prosta, kompatybilna mapa:
+      - drive: cmd.move {vx, yaw, duration}
+      - stop : cmd.stop {}
+      - spin : cmd.move {vx:0, yaw:±speed, duration:dur}
+    Bez żadnych dodatkowych topiców — to co już działało w Twoim bridge.
+    """
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return Response(json.dumps({"error":"JSON object expected"}), mimetype="application/json", status=400)
+
+    t = (data.get("type") or "").lower()
+    ts = time.time()
+
+    try:
+        if t == "drive":
+            vx  = float(data.get("lx") or data.get("vx") or 0.0)
+            yaw = float(data.get("az") or data.get("yaw") or 0.0)
+            dur = float(data.get("dur") or data.get("duration") or 0.0)
+            bus_pub("cmd.move", {"vx": vx, "yaw": yaw, "duration": dur, "ts": ts})
+            return Response(json.dumps({"ok": True}), mimetype="application/json")
+
+        if t == "stop":
+            bus_pub("cmd.stop", {"ts": ts})
+            return Response(json.dumps({"ok": True}), mimetype="application/json")
+
+        if t == "spin":
+            dir_ = (data.get("dir") or "").lower()
+            speed = float(data.get("speed") or 0.3)
+            dur   = float(data.get("dur") or data.get("duration") or 0.45)
+            yaw   = -abs(speed) if dir_ == "left" else +abs(speed)
+            bus_pub("cmd.move", {"vx": 0.0, "yaw": yaw, "duration": dur, "ts": ts})
+            return Response(json.dumps({"ok": True}), mimetype="application/json")
+
+        # fallback: pokaż do debug
+        bus_pub("cmd.raw", {"payload": data, "ts": ts})
+        return Response(json.dumps({"ok": True, "note": "unknown type -> cmd.raw"}), mimetype="application/json")
+
+    except Exception as e:
+        return Response(json.dumps({"error": str(e)}), mimetype="application/json", status=500)
+
+
+
+# --- NOWE: uniwersalny publish {topic, message:str} ---
+@app.route("/pub", methods=["POST"])
+def api_pub_generic():
+    data = request.get_json(silent=True) or {}
+    topic = data.get("topic")
+    message = data.get("message")
+    if not topic or message is None:
+        return Response(json.dumps({"error":"need {topic, message}"}), mimetype="application/json", status=400)
+    # message jako string (jeśli nie string – serializujemy)
+    if not isinstance(message, str):
+        message = json.dumps(message, ensure_ascii=False)
+    bus_pub(topic, {"_raw": message}) if False else _ZMQ_PUB.send_string(f"{topic} {message}")  # raw publish
     return Response(json.dumps({"ok": True}), mimetype="application/json")
 
 # --- Serwowanie snapshotów (cam.jpg / proc.jpg itd.) ---
