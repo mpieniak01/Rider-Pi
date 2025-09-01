@@ -566,6 +566,40 @@ Ta sekcja zbiera w jednym miejscu wszystkie serwisy z katalogu `systemd/` w repo
   # nasłuchuje m.in. cmd.*, motion.*, vision.*
   ```
 
+  ---
+
+## Ostatnie zmiany — obsługa skrętów (v0.4.8)
+
+- Dodano pełną obsługę skrętów **w lewo / w prawo**:
+  - `motion_bridge.py` mapuje teraz poprawnie `cmd.move {yaw}` na wywołania
+    `turnleft(step)` / `turnright(step)` (zamiast wcześniejszego `translation`).
+  - Zdefiniowano aliasy metod (`turnleft/turnright`, `step`) zgodne z FW producenta.
+
+- **Nowe skrypty testowe**:
+  - `scripts/manual_drive.py` — ręczne sterowanie z klawiatury (`f/b/l/r` + czas/impuls).
+  - `scripts/test_motion.py` — fizyczny test wszystkich kierunków (forward/back/left/right).
+  - `scripts/test_motion_bus.py` — test przez magistralę ZMQ (symulacja `/api/move`).
+
+- **Web UI (`web/control.html`)**:
+  - Przyciski **← / →** wysyłają poprawne komendy `spin` → `cmd.move {yaw}`.
+  - Skróty klawiaturowe (W/A/S/D, strzałki, spacja=STOP) obsługują wszystkie kierunki.
+
+- **Status API (`scripts/status_api.py`)**:
+  - `/api/move` przyjmuje `{vx, vy, yaw, duration}` i publikuje na bus `cmd.move`.
+  - `/api/stop` → `cmd.stop`.
+
+### Jak testować
+```bash
+# test manualny
+MOTION_ENABLE=1 python3 scripts/manual_drive.py
+
+# test fizyczny
+MOTION_ENABLE=1 python3 scripts/test_motion.py
+
+# test przez bus
+MOTION_ENABLE=1 python3 scripts/test_motion_bus.py
+
+
 ## Najczęstsze problemy i wskazówki
 - **„Address already in use” na brokerze:** porty 5555/5556 zajęte – ubij ręczne procesy i `fuser -k 5555/tcp 5556/tcp`.  
 - **Brak auto‑stopu:** upewnij się, że `SAFE_MAX_DURATION` > 0 i mostek jest zaktualizowany (log „auto_stop”).  
