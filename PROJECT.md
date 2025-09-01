@@ -50,7 +50,7 @@ Porty domyślne: **5555** (XSUB), **5556** (XPUB), **8080** (HTTP API).
 ## Struktura repo (konwencja)
 ```
 robot/
-├─ scripts/                    # runtime (broker/API/bridge/diag)
+├─ services/                    # runtime (broker/API/bridge/diag)
 │  ├─ broker.py
 │  ├─ status_api.py
 │  ├─ motion_bridge.py
@@ -113,7 +113,7 @@ robot/
 
 **Podsłuch (bus_spy):**
 ```py
-# scripts/bus_spy.py
+# tools/sub.py
 s.setsockopt_string(zmq.SUBSCRIBE, "cmd.")
 s.setsockopt_string(zmq.SUBSCRIBE, "motion.")
 s.setsockopt_string(zmq.SUBSCRIBE, "vision.")
@@ -161,7 +161,7 @@ Publikacja raw na bus: `{topic:"motion.cmd", ...}` → używaj głównie do debu
 User=pi
 WorkingDirectory=/home/pi/robot
 EnvironmentFile=/etc/default/rider-pi
-ExecStart=/usr/bin/python3 scripts/<...>.py
+ExecStart=/usr/bin/python3 services/<...>.py
 Restart=always
 RestartSec=1
 Environment=PYTHONUNBUFFERED=1
@@ -302,7 +302,7 @@ OPENAI_API_KEY=__SET_IN_ENV__
 3) Guardrail: clamp |v|≤1, `duration ≤ min(AI_MAX_DURATION, SAFE_MAX_DURATION)`, `gap ≥ AI_MIN_CMD_GAP`.  
 4) Wyślij `cmd.move`/`cmd.stop` lub poproś o doprecyzowanie.
 
-### Szkic `scripts/ai_agent.py` (esencja)
+### Szkic `services/ai_agent.py` (esencja)
 ```python
 #!/usr/bin/env python3
 import os, json, time, zmq
