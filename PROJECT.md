@@ -262,7 +262,7 @@ python3 tools/sub.py motion
 - Poprawki zgodności z Py 3.9 (adnotacje typów).
 - Szersze logowanie: `motion.bridge.event` + opcjonalny log do pliku.
 - Web UI: styl zgodny z dashboardem, SSE `/events`, skróty klawiaturowe.
-- Unity systemd z `EnvironmentFile=/etc/default/rider-pi`, spójne ścieżki (`scripts/`).
+- Unity systemd z `EnvironmentFile=/etc/default/rider-pi`, spójne ścieżki (`services/`).
 - (Kompat) `/control` w API — surowy PUB na busie dla debug/testów.
 
 ---
