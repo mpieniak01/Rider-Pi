@@ -225,13 +225,13 @@ sudo systemctl restart rider-broker.service rider-api.service rider-motion-bridg
 ## 7) Narzędzia testowe (skrót)
 ```bash
 # manualne impulsy (f/b/l/r/s/q)
-MOTION_ENABLE=1 python3 scripts/manual_drive.py
+MOTION_ENABLE=1 python3 ops/test_suite.sh
 
 # wszystkie kierunki (fizycznie)
-MOTION_ENABLE=1 python3 scripts/test_motion.py
+MOTION_ENABLE=1 python3 ops/test_suite.sh
 
 # ścieżka BUS → bridge → adapter
-MOTION_ENABLE=1 python3 scripts/test_motion_bus.py
+MOTION_ENABLE=1 python3 ops/test_suite.sh
 ```
 
 ---
