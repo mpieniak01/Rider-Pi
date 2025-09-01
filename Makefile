@@ -27,6 +27,8 @@ help:
 # ───────────────────────────────────────────────
 # DEV RUN
 broker:
+	-@sudo fuser -k 5555/tcp 5556/tcp 2>/dev/null || true
+	$(PY) services/broker.py
 	$(PY) services/broker.py
 
 api:
@@ -71,3 +73,10 @@ clean:
 
 tree:
 	@command -v tree >/dev/null 2>&1 && tree -a -I ".git" || find . -path "./.git" -prune -o -print
+
+# ───────────────────────────────────────────────
+# HEALTH CHECK
+.PHONY: health
+health:
+	@curl -fsS http://127.0.0.1:8080/health  || curl -fsS http://127.0.0.1:8080/healthz
+	@echo
