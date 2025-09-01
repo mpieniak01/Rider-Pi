@@ -39,7 +39,7 @@ def estimate_duration(text: str) -> float:
     return max(MIN_DUR, min(MAX_DUR, dur))
 
 def pub(topic, payload):
-    # zgodnie z Twoim BusPub (scripts/pub.py używa .send)
+    # zgodnie z Twoim BusPub (tools/pub.py używa .send)
     for m in ("send", "publish", "pub"):
         if hasattr(PUB, m):
             return getattr(PUB, m)(topic, payload)

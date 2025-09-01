@@ -16,7 +16,7 @@ Użycie:
   sudo python3 -u apps/camera/preview_lcd.py           # podgląd
   sudo VISION_HUMAN=1 PREVIEW_ROT=270 python3 -u apps/camera/preview_lcd.py
 
-Zakończenie: Ctrl+C – skrypt spróbuje wyłączyć ekran (scripts/lcdctl.py off).
+Zakończenie: Ctrl+C – skrypt spróbuje wyłączyć ekran (ops/lcdctl.py off).
 """
 from __future__ import annotations
 import os, sys, time, signal
@@ -113,7 +113,7 @@ def main():
             pass
         # zgaś LCD po wyjściu (best-effort)
         try:
-            os.system("sudo -n python3 scripts/lcdctl.py off >/dev/null 2>&1 || sudo python3 scripts/lcdctl.py off")
+            os.system("sudo -n python3 ops/lcdctl.py off >/dev/null 2>&1 || sudo python3 ops/lcdctl.py off")
         except Exception:
             pass
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scripts/test_motion_bus.py
+# tests/test_motion_bus.py
 """
 Tester ścieżki BUS → motion.main → adapter → robot.
 
@@ -9,7 +9,7 @@ Domyślne adresy busa:
   SUB: tcp://127.0.0.1:5556  (ENV: BUS_SUB)
 
 Uruchom:
-  MOTION_ENABLE=1 python3 scripts/test_motion_bus.py
+  MOTION_ENABLE=1 python3 tests/test_motion_bus.py
 Uwaga: pętla apps.motion.main musi być uruchomiona.
 """
 

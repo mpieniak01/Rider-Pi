@@ -2,9 +2,9 @@
 """
 E-Stop ON/OFF/STATUS przez plik-flagę, plus natychmiastowy STOP przez broker.
 Użycie:
-  python3 scripts/estop.py on
-  python3 scripts/estop.py off
-  python3 scripts/estop.py status
+  python3 ops/estop.py on
+  python3 ops/estop.py off
+  python3 ops/estop.py status
 """
 
 import sys, os, time, json

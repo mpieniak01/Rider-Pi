@@ -16,19 +16,19 @@ pass(){ printf "\033[1;32mPASS:\033[0m %s\n" "$*\n"; }
 
 cd "$ROOT"
 set +o noclobber || true
-pkill -f scripts/status_api.py || true
-pkill -f scripts/motion_bridge.py || true
-pkill -f scripts/broker.py || true
+pkill -f services/status_api.py || true
+pkill -f services/motion_bridge.py || true
+pkill -f services/broker.py || true
 sudo fuser -k ${BUS_PUB_PORT}/tcp ${BUS_SUB_PORT}/tcp || true
 rm -f "$LOG_BROKER" "$LOG_API" "$LOG_BRIDGE"
 
 say "Start broker"
-nohup python3 scripts/broker.py >> "$LOG_BROKER" 2>&1 &
+nohup python3 services/broker.py >> "$LOG_BROKER" 2>&1 &
 say "Start API"
-nohup python3 scripts/status_api.py >> "$LOG_API" 2>&1 &
+nohup python3 services/status_api.py >> "$LOG_API" 2>&1 &
 say "Start motion_bridge (DRY_RUN=1)"
 nohup env DRY_RUN=1 SPEED_LINEAR=12 SPEED_TURN=20 \
-  python3 scripts/motion_bridge.py >> "$LOG_BRIDGE" 2>&1 &
+  python3 services/motion_bridge.py >> "$LOG_BRIDGE" 2>&1 &
 
 # Czekamy aż porty się zbindowały
 say "Wait for ports"

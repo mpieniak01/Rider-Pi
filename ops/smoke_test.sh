@@ -12,7 +12,7 @@ pass() { echo "[SMOKE PASS] $*"; exit 0; }
 fail() { echo "[SMOKE FAIL] $*" >&2; exit 1; }
 
 cleanup() {
-  ./scripts/camera_takeover_kill.sh || true
+  ./ops/camera_takeover_kill.sh || true
   if [ "${KEEP}" != "1" ] && command -v raspi-gpio >/dev/null 2>&1; then
     raspi-gpio set 13 op dl || true     # BL OFF
   fi
@@ -36,12 +36,12 @@ run_with_timeout() {
 
 # 1) HAAR
 run_with_timeout "takeover (HAAR)" python3 -u apps/camera/preview_lcd_takeover.py
-./scripts/camera_takeover_kill.sh || true
+./ops/camera_takeover_kill.sh || true
 
 # 2) SSD
 export SSD_EVERY="${SSD_EVERY:-2}" SSD_CLASSES="${SSD_CLASSES:-person}" SSD_SCORE="${SSD_SCORE:-0.55}"
 run_with_timeout "SSD" python3 -u apps/camera/preview_lcd_ssd.py
-./scripts/camera_takeover_kill.sh || true
+./ops/camera_takeover_kill.sh || true
 
 # 3) HYBRID
 export HYBRID_HAAR="${HYBRID_HAAR:-1}"

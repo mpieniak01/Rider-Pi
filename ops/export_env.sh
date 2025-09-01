@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Użycie:  . scripts/export_env.sh   (kropka + spacja)
+# Użycie:  . ops/export_env.sh   (kropka + spacja)
 set -a
 [ -f .env ] && . ./.env
 set +a

@@ -13,8 +13,8 @@ if command -v raspi-gpio >/dev/null 2>&1; then
 fi
 
 # 2) (opcjonalnie) Wyłącz vendor splash — tylko jeśli plik istnieje
-if [ -f "scripts/vendor_splash.py" ]; then
-  python3 -u scripts/vendor_splash.py --off || true
+if [ -f "ops/vendor_splash.py" ]; then
+  python3 -u ops/vendor_splash.py --off || true
 fi
 
 # 3) Zabicie naszych pipeline’ów preview

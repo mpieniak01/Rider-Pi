@@ -52,7 +52,7 @@ Porty domyślne: **5555** (XSUB), **5556** (XPUB), **8080** (HTTP API).
 - Router magistrali: **XSUB tcp://*:5555** ⇄ **XPUB tcp://*:5556**.
 - Log: `INFO Broker XSUB tcp://*:5555  <->  XPUB tcp://*:5556`.
 
-### 2) `scripts/status_api.py`
+### 2) `services/status_api.py`
 - HTTP API (Flask):
   - `GET /healthz` — stan systemu (bus, urządzenia, tryb).
   - `POST /api/move` — body: `{vx, vy, yaw, duration}` (0..1),
@@ -61,7 +61,7 @@ Porty domyślne: **5555** (XSUB), **5556** (XPUB), **8080** (HTTP API).
 - Publikuje / nasłuchuje na busie tematy `cmd.*`, `motion.*`.
 - Front WWW: przyciski W/A/S/D/strzałki, suwak prędkości i czasu, log zdarzeń (SSE), dopasowany do głównego dashboardu.
 
-### 3) `scripts/motion_bridge.py`
+### 3) `services/motion_bridge.py`
 - Subskrybuje `cmd.move` i `cmd.stop`, wykonuje ruch:
   - **forward/backward** z `SPEED_LINEAR`,
   - **turn_left/right** z `SPEED_TURN` (gdy `|yaw|>0` i `vx=0`),
@@ -90,7 +90,7 @@ Porty domyślne: **5555** (XSUB), **5556** (XPUB), **8080** (HTTP API).
 
 Przykładowy podsłuch (bus spy):
 ```py
-# scripts/bus_spy.py
+# tools/bus_spy.py
 s.setsockopt_string(zmq.SUBSCRIBE, "cmd.")
 s.setsockopt_string(zmq.SUBSCRIBE, "motion.")
 s.setsockopt_string(zmq.SUBSCRIBE, "vision.")
@@ -187,7 +187,7 @@ curl -s -X POST http://localhost:8080/api/stop -H 'Content-Type: application/jso
 
 ### Bus spy
 ```bash
-python3 scripts/bus_spy.py
+python3 tools/bus_spy.py
 ```
 
 ### Typowe pułapki
@@ -562,7 +562,7 @@ Ta sekcja zbiera w jednym miejscu wszystkie serwisy z katalogu `systemd/` w repo
   ```
 - **Podsłuch szyny (debug):**
   ```bash
-  python3 scripts/bus_spy.py
+  python3 tools/bus_spy.py
   # nasłuchuje m.in. cmd.*, motion.*, vision.*
   ```
 
@@ -576,28 +576,28 @@ Ta sekcja zbiera w jednym miejscu wszystkie serwisy z katalogu `systemd/` w repo
   - Zdefiniowano aliasy metod (`turnleft/turnright`, `step`) zgodne z FW producenta.
 
 - **Nowe skrypty testowe**:
-  - `scripts/manual_drive.py` — ręczne sterowanie z klawiatury (`f/b/l/r` + czas/impuls).
-  - `scripts/test_motion.py` — fizyczny test wszystkich kierunków (forward/back/left/right).
-  - `scripts/test_motion_bus.py` — test przez magistralę ZMQ (symulacja `/api/move`).
+  - `tools/manual_drive.py` — ręczne sterowanie z klawiatury (`f/b/l/r` + czas/impuls).
+  - `tests/test_motion.py` — fizyczny test wszystkich kierunków (forward/back/left/right).
+  - `tests/test_motion_bus.py` — test przez magistralę ZMQ (symulacja `/api/move`).
 
 - **Web UI (`web/control.html`)**:
   - Przyciski **← / →** wysyłają poprawne komendy `spin` → `cmd.move {yaw}`.
   - Skróty klawiaturowe (W/A/S/D, strzałki, spacja=STOP) obsługują wszystkie kierunki.
 
-- **Status API (`scripts/status_api.py`)**:
+- **Status API (`services/status_api.py`)**:
   - `/api/move` przyjmuje `{vx, vy, yaw, duration}` i publikuje na bus `cmd.move`.
   - `/api/stop` → `cmd.stop`.
 
 ### Jak testować
 ```bash
 # test manualny
-MOTION_ENABLE=1 python3 scripts/manual_drive.py
+MOTION_ENABLE=1 python3 tools/manual_drive.py
 
 # test fizyczny
-MOTION_ENABLE=1 python3 scripts/test_motion.py
+MOTION_ENABLE=1 python3 tests/test_motion.py
 
 # test przez bus
-MOTION_ENABLE=1 python3 scripts/test_motion_bus.py
+MOTION_ENABLE=1 python3 tests/test_motion_bus.py
 
 
 ## Najczęstsze problemy i wskazówki

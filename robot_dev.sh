@@ -51,18 +51,18 @@ EOF
 }
 
 takeover () {
-  if [[ -x "$ROOT/scripts/takeover.sh" ]]; then
-    say "takeover: scripts/takeover.sh"
-    "$ROOT/scripts/takeover.sh" || true
+  if [[ -x "$ROOT/ops/camera_takeover_kill.sh" ]]; then
+    say "takeover: ops/camera_takeover_kill.sh"
+    "$ROOT/ops/camera_takeover_kill.sh" || true
   else
-    say "takeover: brak scripts/takeover.sh — pomijam"
+    say "takeover: brak ops/camera_takeover_kill.sh — pomijam"
   fi
 }
 
 start_broker () {
   say "start: broker"
   exec env BUS_HOST="$BUS_HOST" BUS_PUB="$BUS_PUB" BUS_SUB="$BUS_SUB" \
-    python3 scripts/broker.py
+    python3 services/broker.py
 }
 
 start_voice () {
@@ -102,7 +102,7 @@ start_tts2face () {
 status () {
   say "procesy (pgrep -f):"
   for pat in \
-    "scripts/broker.py" \
+    "services/broker.py" \
     "apps.voice" \
     "apps.chat" \
     "apps.ui.face" \
@@ -125,7 +125,7 @@ stop_all () {
     "apps.ui.face" \
     "apps.chat" \
     "apps.voice" \
-    "scripts/broker.py"
+    "services/broker.py"
   do
     pids="$(pgrep -f "$pat" || true)"
     if [[ -n "${pids:-}" ]]; then
@@ -141,7 +141,7 @@ stop_all () {
     "apps.ui.face" \
     "apps.chat" \
     "apps.voice" \
-    "scripts/broker.py"
+    "services/broker.py"
   do
     pids="$(pgrep -f "$pat" || true)"
     if [[ -n "${pids:-}" ]]; then
@@ -154,7 +154,7 @@ stop_all () {
 
 start_all () {
   say "all: start (bg)"
-  run_bg broker   "env BUS_HOST='$BUS_HOST' BUS_PUB='$BUS_PUB' BUS_SUB='$BUS_SUB' python3 scripts/broker.py"
+  run_bg broker   "env BUS_HOST='$BUS_HOST' BUS_PUB='$BUS_PUB' BUS_SUB='$BUS_SUB' python3 services/broker.py"
   sleep 0.2
   run_bg voice    "env BUS_HOST='$BUS_HOST' BUS_PUB='$BUS_PUB' BUS_SUB='$BUS_SUB' python3 -m apps.voice.main"
   if [[ "${VOICE_STANDALONE}" == "0" ]]; then
