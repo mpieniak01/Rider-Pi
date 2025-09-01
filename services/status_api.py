@@ -672,6 +672,41 @@ except Exception as _e:
     # nie blokuj startu serwera
     pass
 # --- end added ---
+
+
+# --- added: /control endpoint (post-reorg restore) ---
+try:
+    from flask import request, jsonify
+    import json as _json
+    import zmq
+
+    _ctx = zmq.Context.instance()
+    _ctrl_pub = _ctx.socket(zmq.PUB)
+    # publikujemy do brokera (XSUB) na 5555
+    _ctrl_pub.connect("tcp://127.0.0.1:5555")
+
+    def __rp_control():
+        # GET -> prosty ping/diagnostyka
+        if request.method == "GET":
+            return jsonify({"ok": True, "endpoint": "control", "hint": "POST JSON to publish"}), 200
+
+        # POST -> wyślij dalej na ZMQ
+        data = request.get_json(silent=True) or {}
+        topic = (data.get("topic") or "motion.cmd").encode()
+        _ctrl_pub.send_multipart([topic, _json.dumps(data).encode()])
+        return jsonify({"ok": True, "published_topic": topic.decode(), "echo": data}), 200
+
+    if hasattr(app, "add_url_rule"):
+        app.add_url_rule(
+            "/control",
+            endpoint="__rp_control",
+            view_func=__rp_control,
+            methods=["GET","POST"]
+        )
+except Exception as _e:
+    # nie blokuj startu API jeśli coś pójdzie nie tak
+    pass
+# --- end added ---
 app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
 
 # --- added by reorg fix ---

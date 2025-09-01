@@ -80,3 +80,18 @@ tree:
 health:
 	@curl -fsS http://127.0.0.1:8080/health  || curl -fsS http://127.0.0.1:8080/healthz
 	@echo
+
+# ───────────────────────────────────────────────
+# systemd helpers
+.PHONY: up down status status-all logs logs-broker logs-api enable disable
+
+up:
+	@sudo systemctl restart rider-broker.service rider-api.service
+status:
+	@systemctl --no-pager --full status rider-broker.service | sed -n '1,20p'
+	@systemctl --no-pager --full status rider-api.service    | sed -n '1,20p'
+logs-broker:
+	@journalctl -u rider-broker.service -n 120 --no-pager
+logs-api:
+	@journalctl -u rider-api.service -n 120 --no-pager
+
