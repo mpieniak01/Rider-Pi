@@ -272,7 +272,7 @@ def xgo_ro_loop():
     try:
         time.sleep(0.5)
         try:
-            from scripts.xgo_client_ro import XGOClientRO  # type: ignore
+            from tools.xgo_client_ro import XGOClientRO  # type: ignore
         except Exception as e:
             print("[api] xgo_ro_loop import error:", e, flush=True)
             return
@@ -657,3 +657,14 @@ if __name__ == "__main__":
     start_bus_sub()
     start_xgo_ro()
     app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
+
+# --- added by reorg fix ---
+try:
+    from flask import jsonify
+except Exception:
+    pass
+
+@app.route("/health")
+def _health():
+    # Prosty check: API żyje
+    return jsonify({"ok": True}), 200
