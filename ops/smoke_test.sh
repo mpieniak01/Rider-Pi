@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/smoke_test.sh — krótki test podglądu kamery + sprzątanie
+# ops/smoke_test.sh — krótki test podglądu kamery + sprzątanie
 # PASS/FAIL z exit code i jednoznacznym logiem
 
 set -euo pipefail

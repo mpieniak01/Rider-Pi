@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
 # run_boot.sh — szybki rozruch po restarcie (broker → face), bez systemd.
-# Działa zarówno z poziomu ./run_boot.sh (root projektu), jak i ./scripts/run_boot.sh
+# Działa zarówno z poziomu ./run_boot.sh (root projektu), jak i ./run_boot.sh
 #
 # Użycie:
 #   ./run_boot.sh           # broker + face (LCD)
@@ -17,7 +17,7 @@ LANG=C.UTF-8
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT=""
 for candidate in "$SCRIPT_DIR" "$SCRIPT_DIR/.." "$SCRIPT_DIR/../.."; do
-  if [[ -f "$candidate/scripts/broker.py" && -d "$candidate/apps/ui" ]]; then
+  if [[ -f "$candidate/services/broker.py" && -d "$candidate/apps/ui" ]]; then
     ROOT="$(cd "$candidate" && pwd)"; break
   fi
 done
