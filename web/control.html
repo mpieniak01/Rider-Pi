@@ -82,12 +82,12 @@
           <option value="strafe">straf (vy)</option>
         </select>
       </label>
-      <label>Prędkość <span class="muted">(0..1)</span>:
-        <input id="speed" type="range" min="0" max="1" step="0.05" value="0.6" />
-        <span id="speedVal">0.60</span>
+      <label>Prędkość skrętu <span class="muted">(0..1)</span>:
+        <input id="speedSpin" type="range" min="0" max="1" step="0.05" value="0.30" />
+        <span id="speedSpinVal">0.30</span>
       </label>
-      <label>Czas [s]:
-        <input id="duration" type="number" min="0.1" step="0.1" value="0.6" />
+      <label>Czas skrętu [s]:
+        <input id="durationSpin" type="number" min="0.1" step="0.05" value="0.45" />
       </label>
       <div class="spacer"></div>
       <button id="btnStop">■ STOP</button>
@@ -121,24 +121,29 @@
 </div>
 
 <script>
+  // ====== USTAWIENIA DOMYŚLNE (spójne z manualem) ======
+  // mały "nudge" F/B – żeby nie spadać z biurka:
+  const LIN_V = 0.05;
+  const LIN_T = 0.15;
+
   const qs = (s)=>document.querySelector(s);
-  const speedEl = qs('#speed');
-  const speedVal = qs('#speedVal');
-  const durEl = qs('#duration');
+  const spinEl = qs('#speedSpin');
+  const spinVal = qs('#speedSpinVal');
+  const durSpinEl = qs('#durationSpin');
   const lrModeEl = qs('#lrMode');
   const logEl = qs('#log');
   const apiStatus = qs('#apiStatus');
 
   function clamp(n, lo, hi){ n=Number(n)||0; return Math.max(lo, Math.min(hi, n)); }
+  spinEl.addEventListener('input', ()=> spinVal.textContent = Number(spinEl.value).toFixed(2));
 
-  speedEl.addEventListener('input', ()=> speedVal.textContent = Number(speedEl.value).toFixed(2));
-
+  // ====== HEALTH ======
   async function pingHealth(){
     try{
       const r = await fetch('/healthz', {cache:'no-store'});
       if(!r.ok) throw new Error(r.status);
-      const j = await r.json();
-      const ok = (j.status === 'ok');
+      const j = await r.json().catch(()=>({status:r.ok?'ok':'degraded'}));
+      const ok = (j.status === 'ok') || r.ok;
       apiStatus.textContent = ok ? 'ok' : 'degraded';
       apiStatus.className = ok ? 'ok' : 'warn';
     }catch(e){
@@ -148,6 +153,7 @@
   }
   setInterval(pingHealth, 1000); pingHealth();
 
+  // ====== LOG ======
   function appendLog(msg, cls="") {
     const line = document.createElement('div');
     if (cls) line.className = cls;
@@ -156,85 +162,134 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  async function sendMove(vx, vy, yaw, duration) {
-    const body = { vx, vy, yaw, duration };
+  // ====== WYSYŁKA KOMEND (z fallbackami) ======
+  async function httpPost(url, body, headers) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, headers||{}),
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    return r;
+  }
+
+  // 1) preferujemy /api/cmd {type:...} → 2) /cmd → 3) /pub {topic,message}
+  async function sendCmd(obj) {
+    const tries = [
+      {url:'/api/cmd', type:'json'},
+      {url:'/cmd',     type:'json'},
+      {url:'/pub',     type:'pub'},
+    ];
+    let lastErr = null;
+    for (const t of tries) {
+      try {
+        if (t.type === 'json') {
+          await httpPost(t.url, obj);
+        } else {
+          await httpPost(t.url, {topic:'motion.cmd', message: JSON.stringify(obj)});
+        }
+        appendLog(`cmd → ${JSON.stringify(obj)}`, 'ok');
+        return true;
+      } catch(e){ lastErr = e; }
+    }
+    appendLog(`ERROR cmd: ${lastErr ? lastErr.message : 'unknown'}`, 'err');
+    return false;
+  }
+
+  // Stary endpoint kompatybilności: /api/move {vx,vy,yaw,duration}
+  async function sendMoveLegacy(vx, vy, yaw, duration) {
     try {
-      const res = await fetch('/api/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      appendLog(`move → ${JSON.stringify(body)}`, 'ok');
-    } catch (e) {
+      await httpPost('/api/move', {vx, vy, yaw, duration});
+      appendLog(`move → ${JSON.stringify({vx,vy,yaw,duration})}`, 'ok');
+      return true;
+    } catch(e) {
       appendLog(`ERROR move: ${e.message}`, 'err');
+      return false;
     }
   }
 
-  async function sendStop() {
+  // ====== AKCJE ======
+  async function doStop() {
+    // 1) /api/stop → 2) /api/cmd stop → 3) /pub
     try {
-      const res = await fetch('/api/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      await httpPost('/api/stop', {});
       appendLog('stop', 'warn');
-    } catch (e) {
-      appendLog(`ERROR stop: ${e.message}`, 'err');
+      return;
+    } catch(_) {}
+    const ok = await sendCmd({type:'stop'});
+    if (!ok) {
+      try { await httpPost('/pub', {topic:'motion.cmd', message:'{"type":"stop"}'}); appendLog('stop(pub)', 'warn'); } catch(e){ appendLog(`ERROR stop: ${e.message}`, 'err'); }
     }
   }
 
-  // Buttons
-  qs('#btnFwd').addEventListener('click', ()=> {
-    const s = clamp(speedEl.value, 0, 1), d = clamp(durEl.value, 0.1, 5);
-    sendMove(+s, 0, 0, d);
-  });
-  qs('#btnBack').addEventListener('click', ()=> {
-    const s = clamp(speedEl.value, 0, 1), d = clamp(durEl.value, 0.1, 5);
-    sendMove(-s, 0, 0, d);
-  });
-  function leftRight(dir){ // dir: -1 for left, +1 for right
-    const s = clamp(speedEl.value, 0, 1), d = clamp(durEl.value, 0.1, 5);
+  async function goF() {
+    // mały impuls f/b (LIN_V, LIN_T) – zgodnie z manualem
+    const ok = await sendCmd({type:'drive', lx: LIN_V, az: 0.0});
+    if (!ok) await sendMoveLegacy(+LIN_V, 0, 0, LIN_T);
+    setTimeout(doStop, Math.max(50, LIN_T*1000));
+  }
+
+  async function goB() {
+    const ok = await sendCmd({type:'drive', lx: -LIN_V, az: 0.0});
+    if (!ok) await sendMoveLegacy(-LIN_V, 0, 0, LIN_T);
+    setTimeout(doStop, Math.max(50, LIN_T*1000));
+  }
+
+  async function spin(dir){ // dir: 'left' | 'right'
+    const s = clamp(spinEl.value, 0, 1), t = clamp(durSpinEl.value, 0.1, 5);
+    // 1) spróbuj komendę spin (która u nas wywołuje vendor turnleft/turnright)
+    const ok = await sendCmd({type:'spin', dir, speed:s, dur:t});
+    if (ok) { setTimeout(doStop, Math.max(100, t*1000)); return; }
+
+    // 2) fallback do starego /api/move (yaw)
     if (lrModeEl.value === 'turn') {
-      sendMove(0, 0, dir*s, d); // yaw
+      const yaw = (dir === 'left' ? -s : +s); // kierunek zgodny z poprzednią stroną (Δyaw ujemny = lewo)
+      await sendMoveLegacy(0, 0, yaw, t);
     } else {
-      sendMove(0, dir*s, 0, d); // strafe vy
+      // alternatywa: strafe vy
+      const vy = (dir === 'left' ? -s : +s);
+      await sendMoveLegacy(0, vy, 0, t);
     }
+    setTimeout(doStop, Math.max(100, t*1000));
   }
-  qs('#btnLeft').addEventListener('click', ()=> leftRight(-1));
-  qs('#btnRight').addEventListener('click', ()=> leftRight(+1));
-  qs('#btnStop').addEventListener('click', sendStop);
-  qs('#btnStop2').addEventListener('click', sendStop);
 
-  // Keyboard: single-shot on keydown (ignore repeats). keyup triggers stop.
+  // ====== BUTTONS ======
+  qs('#btnFwd').addEventListener('click', goF);
+  qs('#btnBack').addEventListener('click', goB);
+  qs('#btnLeft').addEventListener('click', ()=> spin('left'));
+  qs('#btnRight').addEventListener('click', ()=> spin('right'));
+  qs('#btnStop').addEventListener('click', doStop);
+  qs('#btnStop2').addEventListener('click', doStop);
+
+  // ====== KEYBOARD ======
   const pressed = new Set();
   function isArrow(k){ return ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k); }
   window.addEventListener('keydown', (ev)=>{
     if (ev.repeat) return;
     const k = ev.key;
-    if (isArrow(k)) ev.preventDefault(); // anty-scroll
+    if (isArrow(k)) ev.preventDefault();
     pressed.add(k);
-    if (k === ' '){ ev.preventDefault(); sendStop(); return; }
-    const s = clamp(speedEl.value, 0, 1), d = clamp(durEl.value, 0.1, 5);
-    if (k === 'w' || k === 'W' || k === 'ArrowUp')   sendMove(+s, 0, 0, d);
-    if (k === 's' || k === 'S' || k === 'ArrowDown') sendMove(-s, 0, 0, d);
-    if (k === 'a' || k === 'A' || k === 'ArrowLeft') leftRight(-1);
-    if (k === 'd' || k === 'D' || k === 'ArrowRight')leftRight(+1);
+    if (k === ' '){ ev.preventDefault(); doStop(); return; }
+    if (k === 'w' || k === 'W' || k === 'ArrowUp')   goF();
+    if (k === 's' || k === 'S' || k === 'ArrowDown') goB();
+    if (k === 'a' || k === 'A' || k === 'ArrowLeft') spin('left');
+    if (k === 'd' || k === 'D' || k === 'ArrowRight')spin('right');
   });
   window.addEventListener('keyup', (ev)=>{
     if (!pressed.has(ev.key)) return;
     pressed.delete(ev.key);
     if (['w','W','ArrowUp','s','S','ArrowDown','a','A','ArrowLeft','d','D','ArrowRight'].includes(ev.key)) {
-      sendStop();
+      doStop();
     }
   });
 
   // Awaryjny STOP przy ukryciu/wyjściu ze strony
-  document.addEventListener('visibilitychange', ()=> {
-    if (document.hidden) sendStop();
-  });
+  document.addEventListener('visibilitychange', ()=> { if (document.hidden) doStop(); });
   window.addEventListener('beforeunload', ()=> {
     try { navigator.sendBeacon('/api/stop', new Blob(['{}'], {type:'application/json'})); } catch(e){}
   });
 
-  // SSE /events
+  // ====== SSE /events ======
   try{
     const es = new EventSource('/events');
     es.onmessage = (ev)=> {

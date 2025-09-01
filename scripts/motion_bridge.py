@@ -3,19 +3,18 @@
 Rider-Pi – Motion Bridge (deadman auto-stop + debounce + RX echo + compat adapter)
 
 - Słucha:
-  * NOWE:  cmd.move {vx,vy,yaw,duration}, cmd.stop {}
+  * NOWE:  cmd.move {vx,vy,yaw|az,duration}, cmd.stop {}
   * STARE: cmd.motion.forward/backward/left/right/turn_left/turn_right/stop {speed,runtime}
-- Mapuje na wywołania XGO (różne sygnatury obsługiwane) lub DRY RUN.
-- Pivot skrętu: preferuj 'translation' (jeśli wspierane), potem aliasy turn*/rider_turn itp.
+- Mapuje na wywołania XGO; skręt bezpośrednio na vendorowe turnleft/turnright(step).
 - Publikuje: motion.bridge.event {event, detail}
 
 ENV:
 - BUS_PUB_PORT=5555, BUS_SUB_PORT=5556
 - DRY_RUN=1 (domyślnie) → nie dotyka sprzętu
-- SPEED_LINEAR=12, SPEED_TURN=20
-- SAFE_MAX_DURATION=0.6  (twardy limit czasu pojedynczego ruchu, sek.)
-- MIN_CMD_GAP=0.10       (min. odstęp między ruchami, sek. – anty „double tap”)
-- TURN_RIGHT_ALIASES, TURN_LEFT_ALIASES – lista nazw metod dla skrętu (priorytet wg kolejności)
+- SPEED_LINEAR=12                  (skala dla f/b/strafe)
+- SAFE_MAX_DURATION=0.6            (twardy limit czasu pojedynczego ruchu, sek.)
+- MIN_CMD_GAP=0.10                 (min. odstęp między ruchami, sek. – anty „double tap”)
+- TURN_STEP_MIN=20, TURN_STEP_MAX=70  (zakres kroku dla turnleft/turnright)
 """
 
 import os, time, json, signal, threading
@@ -29,20 +28,11 @@ BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
 DRY_RUN      = (os.getenv("DRY_RUN", "1") == "1")
 
 SPEED_LINEAR = float(os.getenv("SPEED_LINEAR", "12"))
-SPEED_TURN   = float(os.getenv("SPEED_TURN",   "20"))
 SAFE_MAX_DURATION = float(os.getenv("SAFE_MAX_DURATION", "0.6"))
 MIN_CMD_GAP  = float(os.getenv("MIN_CMD_GAP", "0.10"))
 
-# --- aliasy metod skrętu z ENV (pierwsze na liście mają priorytet) ---
-TURN_RIGHT_ALIASES = [s.strip() for s in os.getenv(
-    "TURN_RIGHT_ALIASES",
-    "turn,turn_by,turnright,rider_turn,turn_right,clockwise,cw,rotate_right"
-).split(",") if s.strip()]
-
-TURN_LEFT_ALIASES  = [s.strip() for s in os.getenv(
-    "TURN_LEFT_ALIASES",
-    "turn,turn_by,turnleft,rider_turn,turn_left,counterclockwise,ccw,rotate_left"
-).split(",") if s.strip()]
+TURN_STEP_MIN = int(os.getenv("TURN_STEP_MIN", "20"))
+TURN_STEP_MAX = int(os.getenv("TURN_STEP_MAX", "70"))
 
 # --- Opcjonalny sterownik XGO ---
 xgo = None
@@ -111,7 +101,7 @@ def _schedule_deadman(duration_s: float):
         _deadman_timer = t
     t.start()
 
-# --- Adapter wywołań (różne sygnatury XGO) ---
+# --- Helpery wywołań HW ---
 def _set_speed_if_possible(speed: float):
     if not xgo: return
     for m in ("set_move_speed", "set_speed", "speed", "setSpeed", "setSpd"):
@@ -131,123 +121,69 @@ def _try_call(fn, *args) -> bool:
         print("[bridge] hw call error:", e, flush=True)
         return True  # błąd runtime → nie próbuj dalej
 
-def _call_move(method_name: str, speed: float, runtime: float):
-    """
-    Wywołaj metodę ruchu z różnymi sygnaturami.
-    Ważne: NAJPIERW próbujemy wariantu ze speed, bo forward/turn* zwykle mają tylko speed.
-    """
+def _call_move(method_name: str, *args):
+    """Wywołaj metodę bez kombinowania z podpisami – podajemy to, co vendor oczekuje."""
     if DRY_RUN or not xgo:
         return
     fn = getattr(xgo, method_name, None)
     if not callable(fn):
         print(f"[bridge] hw call missing method: {method_name}", flush=True)
         return
+    _try_call(fn, *args)
 
-    # 1) (speed, runtime)
-    if _try_call(fn, speed, runtime):   return
+def _clamp01(v: float) -> float:
+    try: v = float(v)
+    except Exception: return 0.0
+    return 0.0 if v < 0 else 1.0 if v > 1 else v
 
-    # 2) set_speed + (runtime)
-    _set_speed_if_possible(speed)
-    if _try_call(fn, runtime):          return
-
-    # 3) (speed)  ← PRIORYTET
-    if _try_call(fn, speed):            return
-
-    # 4) ()
-    if _try_call(fn):                   return
-
-    print(f"[bridge] hw call: no compatible signature for {method_name}", flush=True)
-
-def _try_translation_pivot(az: float, runtime: float) -> bool:
-    """
-    Spróbuj wykonać pivot poprzez 'translation' (różne FW mają różne podpisy).
-    Zwraca True jeśli udało się wywołać jakąś wersję.
-    """
-    if DRY_RUN or not xgo: return False
-    fn = getattr(xgo, "translation", None)
-    if not callable(fn): return False
-
-    # az w [0..1]
-    az = max(0.0, min(1.0, float(az)))
-
-    # kolejno testujemy popularne warianty:
-    # - translation('z', az)
-    # - translation(az)
-    # - translation(0.0, az)  (spotykane w jednym z forków)
-    tries = [
-        ("translation('z', az)",   lambda: fn('z', az)),
-        ("translation(az)",        lambda: fn(az)),
-        ("translation(0.0, az)",   lambda: fn(0.0, az)),
-    ]
-    for label, call in tries:
-        try:
-            call()
-            print(f"[bridge] turn_right via translation az={az:.2f} t={runtime:.2f}")
-            publish_event("turn_method_used", {"dir":"right", "method": "translation"})
-            return True
-        except TypeError:
-            continue
-        except Exception as e:
-            print("[bridge] hw call error:", e, flush=True)
-            return True  # błąd runtime → przerywamy
-    return False
-
-def _pick_turn_method(direction: str) -> Optional[str]:
-    """Wybierz najlepszą metodę skrętu zgodnie z ENV i tym, co faktycznie jest w xgo."""
-    cands = (TURN_RIGHT_ALIASES if direction == "right" else TURN_LEFT_ALIASES) + [
-        # awaryjne ogólne nazwy – różne forki mają różnie:
-        "turnright" if direction == "right" else "turnleft",
-        "turn", "turn_by", "rider_turn", "turn_to",
-    ]
-    if not xgo: return None
-    for m in cands:
-        fn = getattr(xgo, m, None)
-        if callable(fn):
-            return m
-    return None
+def _yaw_to_step(yaw_abs_01: float) -> int:
+    """Mapuje |yaw| z [0..1] na krok vendorowy [TURN_STEP_MIN..TURN_STEP_MAX]."""
+    s = _clamp01(yaw_abs_01)
+    step = int(round(TURN_STEP_MIN + s * (TURN_STEP_MAX - TURN_STEP_MIN)))
+    return max(TURN_STEP_MIN, min(TURN_STEP_MAX, step))
 
 # --- Akcje wysokiego poziomu ---
-def do_forward(speed, runtime):
-    print(f"[bridge] forward speed={speed:.2f} t={runtime:.2f}")
-    _call_move("forward", speed, runtime)
+def do_forward(speed_norm, runtime):
+    # speed_norm: 0..1 → przeskaluj do SPEED_LINEAR
+    spd = SPEED_LINEAR * _clamp01(abs(speed_norm))
+    print(f"[bridge] forward v={spd:.2f} t={runtime:.2f}")
+    # w niektórych FW: forward(step) lub forward(step, t) lub forward(t)
+    # Spróbujemy najpierw (step), potem (t), potem (step,t)
+    if not DRY_RUN and xgo:
+        if hasattr(xgo, "forward"):
+            if not _try_call(getattr(xgo,"forward"), spd):
+                if not _try_call(getattr(xgo,"forward"), runtime):
+                    _try_call(getattr(xgo,"forward"), spd, runtime)
 
-def do_backward(speed, runtime):
-    print(f"[bridge] backward speed={speed:.2f} t={runtime:.2f}")
-    # w jednych FW nazywa się 'back', w innych 'backward'
-    meth = "back" if hasattr(xgo, "back") else "backward"
-    _call_move(meth, speed, runtime)
+def do_backward(speed_norm, runtime):
+    spd = SPEED_LINEAR * _clamp01(abs(speed_norm))
+    print(f"[bridge] backward v={spd:.2f} t={runtime:.2f}")
+    if not DRY_RUN and xgo:
+        meth = "back" if hasattr(xgo, "back") else ("backward" if hasattr(xgo, "backward") else None)
+        if meth:
+            if not _try_call(getattr(xgo,meth), spd):
+                if not _try_call(getattr(xgo,meth), runtime):
+                    _try_call(getattr(xgo,meth), spd, runtime)
 
-def do_left(speed, runtime):
-    print(f"[bridge] left speed={speed:.2f} t={runtime:.2f}")
-    _call_move("left", speed, runtime)
+def do_turn_left(yaw_abs_norm, runtime):
+    step = _yaw_to_step(yaw_abs_norm)
+    print(f"[bridge] turn_left step={step} t={runtime:.2f}")
+    _call_move("turnleft", step)
 
-def do_right(speed, runtime):
-    print(f"[bridge] right speed={speed:.2f} t={runtime:.2f}")
-    _call_move("right", speed, runtime)
+def do_turn_right(yaw_abs_norm, runtime):
+    step = _yaw_to_step(yaw_abs_norm)
+    print(f"[bridge] turn_right step={step} t={runtime:.2f}")
+    _call_move("turnright", step)
 
-def do_turn_left(speed, runtime):
-    # najpierw spróbuj pivotu przez translation (lewo: az>0 też obraca, kierunek zależy od FW)
-    if _try_translation_pivot(az=min(1.0, abs(speed)/max(1.0, SPEED_TURN)), runtime=runtime):
-        return
-    m = _pick_turn_method("left")
-    print(f"[bridge] turn_left speed={speed:.2f} t={runtime:.2f} method={m}")
-    if not m:
-        print("[bridge] hw call missing turn method (left)", flush=True)
-        return
-    publish_event("turn_method_used", {"dir":"left", "method": m})
-    _call_move(m, speed, runtime)
+def do_strafe_left(speed_norm, runtime):
+    spd = SPEED_LINEAR * _clamp01(abs(speed_norm))
+    print(f"[bridge] left (strafe) v={spd:.2f} t={runtime:.2f}")
+    _call_move("left", spd)
 
-def do_turn_right(speed, runtime):
-    # najpierw spróbuj pivotu przez translation (prawo)
-    if _try_translation_pivot(az=min(1.0, abs(speed)/max(1.0, SPEED_TURN)), runtime=runtime):
-        return
-    m = _pick_turn_method("right")
-    print(f"[bridge] turn_right speed={speed:.2f} t={runtime:.2f} method={m}")
-    if not m:
-        print("[bridge] hw call missing turn method (right)", flush=True)
-        return
-    publish_event("turn_method_used", {"dir":"right", "method": m})
-    _call_move(m, speed, runtime)
+def do_strafe_right(speed_norm, runtime):
+    spd = SPEED_LINEAR * _clamp01(abs(speed_norm))
+    print(f"[bridge] right (strafe) v={spd:.2f} t={runtime:.2f}")
+    _call_move("right", spd)
 
 def do_stop():
     print("[bridge] stop")
@@ -296,8 +232,13 @@ while _running:
     if topic == "cmd.move":
         vx  = float(data.get("vx", 0.0))
         vy  = float(data.get("vy", 0.0))
-        yaw = float(data.get("yaw", 0.0))
-        dur = float(data.get("duration", 0.6) or 0.6)
+        # weź 'yaw' albo fallback 'az'
+        yaw = data.get("yaw", None)
+        if yaw is None:
+            yaw = data.get("az", 0.0)
+        yaw = float(yaw or 0.0)
+
+        dur = float(data.get("duration", SAFE_MAX_DURATION) or SAFE_MAX_DURATION)
         dur = max(0.05, min(dur, SAFE_MAX_DURATION))
 
         publish_event("rx_cmd.move", {"vx": vx, "vy": vy, "yaw": yaw, "duration": dur})
@@ -309,24 +250,25 @@ while _running:
         _last_cmd_ts = now
 
         ax, ay, aw = abs(vx), abs(vy), abs(yaw)
-        if aw >= ax and aw >= ay and aw > 0:
-            # skręt – przelicz na prędkość kątową
-            if yaw >= 0:
-                do_turn_right(SPEED_TURN*aw, dur); publish_event("turn_right", {"speed": SPEED_TURN*aw, "runtime": dur})
+
+        # Priorytet: skręt (aw) > jazda liniowa (ax) > strafe (ay)
+        if aw > 1e-4 and aw >= ax and aw >= ay:
+            if yaw < 0:
+                do_turn_left(aw, dur);  publish_event("turn_left",  {"step": _yaw_to_step(aw), "runtime": dur})
             else:
-                do_turn_left (SPEED_TURN*aw, dur); publish_event("turn_left",  {"speed": SPEED_TURN*aw, "runtime": dur})
-        elif ax >= ay and ax > 0:
-            # przód/tył
+                do_turn_right(aw, dur); publish_event("turn_right", {"step": _yaw_to_step(aw), "runtime": dur})
+
+        elif ax > 1e-4 and ax >= ay:
             if vx >= 0:
-                do_forward (SPEED_LINEAR*ax, dur); publish_event("forward",  {"speed": SPEED_LINEAR*ax, "runtime": dur})
+                do_forward(ax, dur);  publish_event("forward",  {"v": ax, "runtime": dur})
             else:
-                do_backward(SPEED_LINEAR*ax, dur); publish_event("backward", {"speed": SPEED_LINEAR*ax, "runtime": dur})
-        elif ay > 0:
-            # sidestep (prawo/lewo) – jeśli FW nie wspiera, log pokaże brak metody
+                do_backward(ax, dur); publish_event("backward", {"v": ax, "runtime": dur})
+
+        elif ay > 1e-4:
             if vy >= 0:
-                do_right(SPEED_LINEAR*ay, dur);  publish_event("right", {"speed": SPEED_LINEAR*ay, "runtime": dur})
+                do_strafe_right(ay, dur); publish_event("right", {"v": ay, "runtime": dur})
             else:
-                do_left (SPEED_LINEAR*ay, dur);  publish_event("left",  {"speed": SPEED_LINEAR*ay, "runtime": dur})
+                do_strafe_left(ay, dur);  publish_event("left",  {"v": ay, "runtime": dur})
 
         _schedule_deadman(dur)
         continue
@@ -340,18 +282,22 @@ while _running:
     rt  = max(0.05, min(float(data.get("runtime", 0.6)), SAFE_MAX_DURATION))
 
     if   topic.endswith(".forward"):
-        do_forward(spd, rt); publish_event("forward", {"speed": spd, "runtime": rt}); _schedule_deadman(rt)
+        do_forward(spd if spd<=1 else spd/ max(1.0, TURN_STEP_MAX), rt); publish_event("forward", {"v": spd, "runtime": rt}); _schedule_deadman(rt)
     elif topic.endswith(".backward"):
-        do_backward(spd, rt); publish_event("backward", {"speed": spd, "runtime": rt}); _schedule_deadman(rt)
+        do_backward(spd if spd<=1 else spd/ max(1.0, TURN_STEP_MAX), rt); publish_event("backward", {"v": spd, "runtime": rt}); _schedule_deadman(rt)
     elif topic.endswith(".left"):
-        do_left(spd, rt); publish_event("left", {"speed": spd, "runtime": rt}); _schedule_deadman(rt)
+        do_strafe_left(spd if spd<=1 else min(1.0, spd/100.0), rt);  publish_event("left", {"v": spd, "runtime": rt}); _schedule_deadman(rt)
     elif topic.endswith(".right"):
-        do_right(spd, rt); publish_event("right", {"speed": spd, "runtime": rt}); _schedule_deadman(rt)
+        do_strafe_right(spd if spd<=1 else min(1.0, spd/100.0), rt); publish_event("right", {"v": spd, "runtime": rt}); _schedule_deadman(rt)
     elif topic.endswith(".turn_left"):
-        do_turn_left(spd, rt); publish_event("turn_left", {"speed": spd, "runtime": rt}); _schedule_deadman(rt)
+        # z liczb "vendorowych" zrób krok bezpieczny
+        yawn = spd if spd<=1 else min(1.0, spd/float(TURN_STEP_MAX))
+        do_turn_left(abs(yawn), rt);  publish_event("turn_left", {"step": _yaw_to_step(abs(yawn)), "runtime": rt}); _schedule_deadman(rt)
     elif topic.endswith(".turn_right"):
-        do_turn_right(spd, rt); publish_event("turn_right", {"speed": spd, "runtime": rt}); _schedule_deadman(rt)
+        yawn = spd if spd<=1 else min(1.0, spd/float(TURN_STEP_MAX))
+        do_turn_right(abs(yawn), rt); publish_event("turn_right", {"step": _yaw_to_step(abs(yawn)), "runtime": rt}); _schedule_deadman(rt)
     elif topic.endswith(".stop"):
         do_stop(); publish_event("stop", {})
 
 print("[bridge] STOP", flush=True)
+
