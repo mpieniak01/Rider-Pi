@@ -10,19 +10,19 @@ Cel:
 Wspierane środowisko:
 - Pakiet 'xgolib' (wchodzi m.in. z xgodoglib); łagodne fallbacki metod.
 
-Publiczne metody (bez side-effectów, jeśli brak HW/ENABLE):
+Publiczne metody (best-effort, brak side-effectów gdy brak HW/ENABLE):
 - ok() -> bool
 - available_methods() -> list[str]
 - stop()
-- set_stabilization(on: bool)         # ogólne imu(1/0), gdy rider_balance_* nie ma
-- enable_balance(on: bool)            # preferuj rider_balance_roll(1/0), fallback imu(1/0)
-- set_height(h: int)                  # bezpieczny clamp (70..115)
+- set_stabilization(on: bool)
+- enable_balance(on: bool)
+- set_height(h: int)
 - drive(dir: "forward"|"backward", speed: 0..1, dur: float|None = None, *, block=False)
 - spin(dir: "left"|"right", speed: 0..1, dur: float|None = None, deg: float|None = None, *, block=False)
-- action(name: str)                   # 'sit'|'stand'|'wave'|'default'
+- action(name: str)   # 'sit'|'stand'|'wave'|'default'
 - led(idx: int, rgb: tuple[int,int,int])
-- battery() -> float|None             # 0..1, None gdy brak odczytu
-- imu() -> dict|None                  # {"roll":..,"pitch":..,"yaw":..} lub None
+- battery() -> float|None   # 0..1, None gdy brak odczytu
+- imu() -> dict|None        # {"roll":..,"pitch":..,"yaw":..} lub None
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from typing import Optional, Iterable
 
 # ── Import biblioteki XGO (łagodnie) ─────────────────────────────────────────
 try:
-    from xgolib import XGO   # typowe wejście
+    from xgolib import XGO  # typowe wejście
     _HAS_XGO = True
 except Exception:
     XGO = None  # type: ignore
@@ -238,17 +238,9 @@ class XgoAdapter:
     def spin(self, dir: str, speed: float, dur: Optional[float] = None,
              deg: Optional[float] = None, *, block: bool = False) -> None:
         """
-        Obrót w miejscu (left/right).
-        Priorytet: turn_by(theta) → rider_turn(step, t) → turn(step, t) → turnleft/right(duży_krok)
-
-        Parametry środowiskowe (ENV):
-          RIDER_TURN_THETA   - domyślny kąt [deg] gdy deg=None (np. 22)
-          RIDER_TURN_MINTIME - minimalny czas ruchu [s] (np. 0.45; fallback dla dur=None)
-          RIDER_TURN_VYAW    - prędkość bazowa yaw (np. 16)
-          RIDER_TURN_K       - wzmocnienie kontrolera (np. 0.08)
-          RIDER_TURN_FLIP    - 0/1 odwrócenie znaku yaw (dopasowanie do FW)
-          TURN_FALLBACK_MIN  - min krok dla turnleft/right (np. 20)
-          TURN_FALLBACK_MAX  - max krok dla turnleft/right (np. 70)
+        Obrót w miejscu (left/right) — używa vendorowych metod turnleft/turnright,
+        bo są potwierdzone jako działające na Twoim FW.
+        speed 0..1 → skalowane do kroków 20..70 (legacy skala).
         """
         if not self.ok() or not MOTION_ENABLE:
             return
@@ -257,43 +249,15 @@ class XgoAdapter:
         if d not in ("left", "right"):
             return
 
-        # Parametry z ENV (z sensownymi domyślnymi)
-        try:    theta_env = float(os.getenv("RIDER_TURN_THETA", "14"))
-        except: theta_env = 14.0
-        try:    mintime_env = float(os.getenv("RIDER_TURN_MINTIME", os.getenv("RIDER_PULSE", "0.30")))
-        except: mintime_env = _DEFAULT_PULSE
-        try:    vyaw = int(os.getenv("RIDER_TURN_VYAW", "16"))
-        except: vyaw = 16
-        try:    k_gain = float(os.getenv("RIDER_TURN_K", "0.08"))
-        except: k_gain = 0.08
-        flip = os.getenv("RIDER_TURN_FLIP", "0") == "1"
+        # skalowanie do vendorowej skali (20..70)
+        s = self._clamp01(speed)
+        turn_step = int(round(_TURN_FALLBACK_MIN + s * (_TURN_FALLBACK_MAX - _TURN_FALLBACK_MIN)))
+        t_eff = float(dur) if dur is not None else _DEFAULT_PULSE
 
-        # Krok dla rider_turn/turn (delikatny, 1..12)
-        step_small = max(2, self._scale_to_step(speed))
-        val_small  = +step_small if d == "left" else -step_small
-        t_eff = float(dur) if dur is not None else mintime_env
-
-        # Kąt dla turn_by (stopnie); dodatni = lewo (po flip może zmienić znak)
-        theta = abs(deg) if isinstance(deg, (int, float)) and deg else theta_env
-        if (d == "right" and not flip) or (d == "left" and flip):
-            theta = -theta
-
-        # 1) Precyzyjnie: turn_by(theta, mintime, vyaw, k)
-        called = self._call("turn_by", theta, max(0.25, t_eff), vyaw, k_gain)
-
-        # 2) rider_turn(step, t)
-        if not called:
-            called = self._call("rider_turn", val_small, t_eff)
-
-        # 3) turn(step, t)
-        if not called:
-            called = self._call("turn", val_small, t_eff)
-
-        # 4) legacy turnleft/right — duża skala kroku (20..70), jak u vendora
-        if not called:
-            s = self._clamp01(speed)
-            turn_step = int(round(_TURN_FALLBACK_MIN + s * (_TURN_FALLBACK_MAX - _TURN_FALLBACK_MIN)))
-            called = self._call("turnleft", turn_step) if d == "left" else self._call("turnright", turn_step)
+        if d == "left":
+            called = self._call("turnleft", turn_step)
+        else:
+            called = self._call("turnright", turn_step)
 
         if called:
             if block and t_eff > 0:
@@ -317,4 +281,3 @@ class XgoAdapter:
             return
         if n in MAP:
             self._call("action", MAP[n], False)
-

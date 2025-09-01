@@ -10,7 +10,7 @@ Endpoints:
 - /state           : last vision.state
 - /sysinfo         : CPU/MEM/LOAD/DISK/TEMP (+ history dla dashboardu) + OS info
 - /metrics         : Prometheus-style, very small set
-- /events          : SSE live bus events (vision.*, camera.*, echo cmd.*)
+- /events          : SSE live bus events (vision.*, camera.*, motion.bridge.*)
 - /snapshots/<fn>  : bezpieczne serwowanie JPG (cam.jpg, proc.jpg itd.)
 - /api/move        : POST {vx,vy,yaw,duration}
 - /api/stop        : POST {}
@@ -99,12 +99,11 @@ except Exception:
     _ZMQ_PUB = None
 
 def bus_pub(topic: str, payload: dict):
-    """Wyślij prosty multipart 'topic json' na bus (jeśli pyzmq dostępne) i echo do SSE."""
+    """Wyślij prosty multipart 'topic json' na bus (jeśli pyzmq dostępne)."""
     try:
-        if _ZMQ_PUB is not None:
-            _ZMQ_PUB.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
-        # echo do SSE, by control.html / terminal widziały wysyłane komendy
-        EVENTS.append({"ts": time.time(), "topic": topic, "data": json.dumps(payload, ensure_ascii=False)})
+        if _ZMQ_PUB is None:
+            return
+        _ZMQ_PUB.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
     except Exception:
         pass
 
@@ -216,7 +215,7 @@ def bus_sub_loop():
         ctx = zmq.Context.instance()
         sub = ctx.socket(zmq.SUB)
         sub.connect(f"tcp://127.0.0.1:{BUS_SUB_PORT}")
-        for t in ("vision.", "camera."):
+        for t in ("vision.", "camera.", "motion.bridge."):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
         print(f"[api] SUB connected tcp://127.0.0.1:{BUS_SUB_PORT}", flush=True)
 
@@ -231,6 +230,7 @@ def bus_sub_loop():
                     LAST_HEARTBEAT_TS = LAST_MSG_TS
 
                 elif topic == "vision.state":
+                    # scalamy present/confidence/mode/ts
                     try:
                         data = json.loads(payload)
                         LAST_STATE["present"]    = bool(data.get("present", LAST_STATE["present"]))
@@ -501,8 +501,8 @@ def events():
         while True:
             try:
                 time.sleep(1.0)
-                if last_idx > len(EVENTS):
-                    last_idx = max(0, len(EVENTS) - 1)
+                if last_idx >= len(EVENTS):
+                    continue
                 for i in range(last_idx, len(EVENTS)):
                     ev = EVENTS[i]
                     data = json.dumps(ev)
@@ -512,10 +512,7 @@ def events():
                 break
             except Exception:
                 time.sleep(0.5)
-    resp = Response(gen(), mimetype='text/event-stream')
-    resp.headers['Cache-Control'] = 'no-cache'
-    resp.headers['Connection'] = 'keep-alive'
-    return resp
+    return Response(gen(), mimetype='text/event-stream')
 
 # --- Dashboard (zewnętrzny plik HTML) ---
 @app.route("/")
@@ -563,7 +560,7 @@ def api_voice():
 @app.route("/snapshots/<path:fname>")
 def snapshots_static(fname: str):
     safe = os.path.abspath(os.path.join(SNAP_DIR, fname))
-    if os.path.commonpath([SNAP_DIR, safe]) != SNAP_DIR:
+    if not safe.startswith(SNAP_DIR):
         return abort(403)
     if not os.path.isfile(safe):
         return abort(404)
