@@ -13,8 +13,8 @@ Defaults match your board (discovered during tests):
   SPI_DEV=/dev/spidev0.0, SPI_HZ=12_000_000
 
 Usage:
-  sudo python3 scripts/lcdctl.py off            # sleep panel + backlight off
-  sudo python3 scripts/lcdctl.py on             # wake panel + backlight on
+  sudo python3 ops/lcdctl.py off            # sleep panel + backlight off
+  sudo python3 ops/lcdctl.py on             # wake panel + backlight on
 
 Optional flags / environment overrides:
   --bl 0|BCM     (or env FACE_LCD_BL_PIN)
@@ -25,8 +25,8 @@ Optional flags / environment overrides:
   --hz  HZ       (or env SPI_HZ)
 
 Examples:
-  sudo FACE_LCD_BL_PIN=0 FACE_LCD_BL_ACTIVE_HIGH=1 python3 scripts/lcdctl.py off
-  sudo DC_PIN=25 RST_PIN=27 BL_PIN=0 BL_AH=1 SPI_DEV=/dev/spidev0.0 python3 scripts/lcdctl.py on
+  sudo FACE_LCD_BL_PIN=0 FACE_LCD_BL_ACTIVE_HIGH=1 python3 ops/lcdctl.py off
+  sudo DC_PIN=25 RST_PIN=27 BL_PIN=0 BL_AH=1 SPI_DEV=/dev/spidev0.0 python3 ops/lcdctl.py on
 """
 from __future__ import annotations
 import os, sys, time, argparse

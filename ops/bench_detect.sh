@@ -43,13 +43,13 @@ run_and_parse_fps() {
 # 1) HAAR
 fps="$(run_and_parse_fps "HAAR" python3 -u apps/camera/preview_lcd_takeover.py)" || exit 1
 num_ge "$fps" "$MIN_HAAR" || { log "FAIL: HAAR < $MIN_HAAR"; exit 1; }
-./scripts/camera_takeover_kill.sh || true
+./ops/camera_takeover_kill.sh || true
 
 # 2) SSD
 export SSD_EVERY="${SSD_EVERY:-2}" SSD_CLASSES="${SSD_CLASSES:-person}" SSD_SCORE="${SSD_SCORE:-0.55}"
 fps="$(run_and_parse_fps "SSD" python3 -u apps/camera/preview_lcd_ssd.py)" || exit 1
 num_ge "$fps" "$MIN_SSD" || { log "FAIL: SSD < $MIN_SSD"; exit 1; }
-./scripts/camera_takeover_kill.sh || true
+./ops/camera_takeover_kill.sh || true
 
 # 3) HYBRID
 export HYBRID_HAAR="${HYBRID_HAAR:-1}"

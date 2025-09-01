@@ -9,7 +9,7 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
 ExecStartPre=/usr/bin/fuser -k 5555/tcp 5556/tcp
-ExecStart=/usr/bin/python3 -u /home/pi/robot/scripts/broker.py
+ExecStart=/usr/bin/python3 -u /home/pi/robot/services/broker.py
 Restart=always
 RestartSec=2
 

@@ -16,7 +16,7 @@ Environment=VISION_FACE_EVERY=5
 # Domyślnie: takeover; aby wyłączyć, dodaj drop-in z Environment=NO_TAKEOVER=1
 ExecStart=/usr/bin/python3 -m apps.camera
 # Po zatrzymaniu – zgaś ekran
-ExecStopPost=/usr/bin/python3 /home/pi/robot/scripts/lcdctl.py off
+ExecStopPost=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off
 Restart=on-failure
 RestartSec=1
 

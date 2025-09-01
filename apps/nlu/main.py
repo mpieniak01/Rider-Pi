@@ -49,7 +49,7 @@ def log(msg):
     print(time.strftime("[%H:%M:%S]"), msg, flush=True)
 
 def _bus_publish(topic: str, payload: dict):
-    """Kompatybilnie z Twoim BusPub (scripts/pub.py używa .send)."""
+    """Kompatybilnie z Twoim BusPub (tools/pub.py używa .send)."""
     for m in ("send", "publish", "pub"):
         if hasattr(PUB, m):
             return getattr(PUB, m)(topic, payload)

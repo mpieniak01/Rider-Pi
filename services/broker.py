@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ZeroMQ broker XSUB↔XPUB
-- PUB-y (demo, scripts/pub.py) łączą się do tcp://*:5555
+- PUB-y (demo, tools/pub.py) łączą się do tcp://*:5555
 - SUB-y (apps/motion) łączą się do tcp://*:5556
 """
 

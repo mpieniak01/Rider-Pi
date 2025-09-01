@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 : "${PREVIEW_WARMUP:=12}"
 
 # takeover / killer
-bash scripts/camera_takeover_kill.sh
+bash ops/camera_takeover_kill.sh
 
 CMD=(sudo -E python3 -m apps.camera --rot "$PREVIEW_ROT" --warmup "$PREVIEW_WARMUP")
 [[ "$SKIP_V4L2" == "1" ]] && CMD+=(--skip-v4l2)

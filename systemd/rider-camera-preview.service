@@ -12,7 +12,7 @@ Environment=VISION_HUMAN=1
 Environment=VISION_FACE_EVERY=5
 Environment=PREVIEW_ROT=270
 ExecStart=/usr/bin/python3 -m apps.camera
-ExecStopPost=/usr/bin/python3 /home/pi/robot/scripts/lcdctl.py off
+ExecStopPost=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off
 Restart=on-failure
 RestartSec=1
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scripts/test_motion.py
+# tests/test_motion.py
 """
 Prosty tester XgoAdapter:
  - naprzód, wstecz

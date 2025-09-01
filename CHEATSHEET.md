@@ -73,7 +73,7 @@ sudo tail -n 30 /var/log/rider-motion-bridge.log | egrep 'rx_cmd.move|auto_stop|
 
 ## Podsłuch magistrali (debug)
 ```bash
-python3 scripts/bus_spy.py
+python3 tools/bus_spy.py
 # oczekuj m.in.:
 #   cmd.move {...}
 #   cmd.stop {...}
@@ -89,13 +89,13 @@ python3 scripts/bus_spy.py
 
 ```bash
 # Manualne sterowanie impulsami z klawiatury (f/b/l/r/s/q)
-MOTION_ENABLE=1 python3 scripts/manual_drive.py
+MOTION_ENABLE=1 python3 tools/manual_drive.py
 
 # Test fizyczny wszystkich kierunków (forward/back/left/right)
-MOTION_ENABLE=1 python3 scripts/test_motion.py
+MOTION_ENABLE=1 python3 tests/test_motion.py
 
 # Test ścieżki BUS → bridge → adapter (publikuje na topic 'motion.cmd' i echo)
-MOTION_ENABLE=1 python3 scripts/test_motion_bus.py
+MOTION_ENABLE=1 python3 tests/test_motion_bus.py
 ```
 
 **Parametry (domyślne w manual_drive):**
@@ -179,7 +179,7 @@ Linie warte uwagi:
   - upewnij się, że `duration` ≥ `0.35` dla krótkich impulsów testowych.
 
 - **Lewo powoduje „siadanie”**  
-  - używasz starego mostka z pivotem przez `translation`. Zaktualizuj `scripts/motion_bridge.py`
+  - używasz starego mostka z pivotem przez `translation`. Zaktualizuj `services/motion_bridge.py`
     do wersji mapującej na `turnleft/turnright(step)`.
 
 - **Brak reakcji na move**  
@@ -215,5 +215,5 @@ sudo systemctl restart rider-broker.service rider-status-api.service rider-motio
 - Łagodna krzywa dla niskich wartości yaw (sub-linear mapping przed step).
 - E-STOP/HOLD-to-MOVE w panelu WWW.
 - Więcej metryk IMU/bateria na `/healthz` i w panelu.  
-- Testy e2e i snapshot logów (`scripts/test_suite.sh`).
+- Testy e2e i snapshot logów (`ops/test_suite.sh`).
 
