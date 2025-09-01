@@ -16,6 +16,8 @@ help:
 	@echo "  robot api           # uruchom API (foreground)"
 	@echo "  robot stop-all      # zatrzymaj wszystkie usługi systemowe"
 	@echo "  robot safemode      # tryb awaryjny (kill + stop + LCD off)"
+	@echo "  robot lcd-off       # zgaś LCD (ops/lcdctl.py off)"
+	@echo "  robot vendor-kill   # ubij procesy dostawcy kamery/LCD"
 	@echo "  robot preview-ssd   # podgląd kamery SSD"
 	@echo "  robot bus-spy       # podsłuch magistrali"
 	@echo "  robot test          # uruchom testy"
@@ -28,7 +30,6 @@ help:
 # DEV RUN
 broker:
 	-@sudo fuser -k 5555/tcp 5556/tcp 2>/dev/null || true
-	$(PY) services/broker.py
 	$(PY) services/broker.py
 
 api:
@@ -45,6 +46,18 @@ safemode:
 	-$(SUDO) $(ROOT)/ops/camera_takeover_kill.sh
 	-$(SUDO) systemctl stop $(SYSTEMD_SERVICES)
 	-$(SUDO) $(PY) $(ROOT)/ops/lcdctl.py off || true
+
+# ───────────────────────────────────────────────
+# OPS HELPERS
+.PHONY: lcd-off vendor-kill
+
+lcd-off:
+	@echo "== Wyłączam LCD (uśpienie panelu) =="
+	@$(SUDO) $(PY) $(ROOT)/ops/lcdctl.py off || true
+
+vendor-kill:
+	@echo "== Ubijam procesy dostawcy kamery/LCD =="
+	@$(SUDO) bash $(ROOT)/ops/camera_takeover_kill.sh || true
 
 # ───────────────────────────────────────────────
 # TOOLS / DIAG
