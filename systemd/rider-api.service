@@ -1,26 +1,18 @@
 [Unit]
 Description=Rider-Pi Status API (Flask)
-After=network.target rider-broker.service rider-dispatcher.service
-Wants=rider-broker.service rider-dispatcher.service
+After=network.target rider-broker.service
+Wants=rider-broker.service
 
 [Service]
-Type=simple
 User=pi
+Group=pi
 WorkingDirectory=/home/pi/robot
-EnvironmentFile=/home/pi/robot/.env
-ExecStart=/usr/bin/python3 -u services/status_api.py
-Restart=on-failure
-RestartSec=2s
-
-# Hardening
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=full
-ProtectKernelTunables=yes
-ProtectControlGroups=yes
-RestrictAddressFamilies=AF_UNIX AF_INET
-CapabilityBoundingSet=
-LockPersonality=yes
+Environment=PYTHONUNBUFFERED=1
+Environment=API_HOST=0.0.0.0
+Environment=API_PORT=8080
+ExecStart=/usr/bin/python3 -u /home/pi/robot/services/status_api.py
+Restart=always
+RestartSec=1
 
 [Install]
 WantedBy=multi-user.target
