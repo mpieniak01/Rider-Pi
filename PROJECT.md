@@ -48,7 +48,7 @@ Porty domyślne: **5555** (XSUB), **5556** (XPUB), **8080** (HTTP API).
 ---
 
 ## Komponenty
-### 1) `scripts/broker.py`
+### 1) `services/broker.py`
 - Router magistrali: **XSUB tcp://*:5555** ⇄ **XPUB tcp://*:5556**.
 - Log: `INFO Broker XSUB tcp://*:5555  <->  XPUB tcp://*:5556`.
 
@@ -136,7 +136,7 @@ Wspólne:
 User=pi
 WorkingDirectory=/home/pi/robot
 EnvironmentFile=/etc/default/rider-pi
-ExecStart=/usr/bin/python3 scripts/<...>.py
+ExecStart=/usr/bin/python3 services/<...>.py
 Restart=always
 RestartSec=1
 Environment=PYTHONUNBUFFERED=1
@@ -288,7 +288,7 @@ curl -s -X POST localhost:8080/api/chat \
 # PubSub (debug): zobacz `chat.*` na /events lub bus_spy
 ```
 
-### Szkic modułu `scripts/ai_agent.py`
+### Szkic modułu `services/ai_agent.py`
 > Minimalny „szkielet” produkcyjny (stream, retry, logi, SSE) jest dłuższy — tu esencja:
 ```python
 #!/usr/bin/env python3
@@ -344,7 +344,7 @@ Requires=rider-broker.service
 User=pi
 EnvironmentFile=/etc/default/rider-pi
 WorkingDirectory=/home/pi/robot
-ExecStart=/usr/bin/python3 scripts/ai_agent.py
+ExecStart=/usr/bin/python3 services/ai_agent.py
 Restart=always
 RestartSec=1
 Environment=PYTHONUNBUFFERED=1

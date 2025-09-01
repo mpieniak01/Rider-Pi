@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scripts/demo_lemniscate.py
+# ops/demo_lemniscate.py
 # Proste demo „ósemki” (lemniskata) na prymitywach XgoAdapter:
 # w każdej iteracji: krótki yaw + krótki forward; po N krokach zmiana kierunku yaw.
 
