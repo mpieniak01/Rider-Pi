@@ -656,7 +656,23 @@ if __name__ == "__main__":
         pass
     start_bus_sub()
     start_xgo_ro()
-    app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
+    
+
+# --- added: hard alias /health for final running app ---
+try:
+    from flask import jsonify
+    if hasattr(app, "add_url_rule"):
+        app.add_url_rule(
+            "/health",
+            endpoint="__rp_health_alias",
+            view_func=lambda: (jsonify({"ok": True}), 200),
+            methods=["GET"],
+        )
+except Exception as _e:
+    # nie blokuj startu serwera
+    pass
+# --- end added ---
+app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
 
 # --- added by reorg fix ---
 try:
