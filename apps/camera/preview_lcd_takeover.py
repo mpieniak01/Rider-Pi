@@ -1,144 +1,78 @@
 #!/usr/bin/env python3
 # apps/camera/preview_lcd_takeover.py
-# Szybki preview na LCD + HAAR face; publikuje vision.face (present/score/count)
-# + wysyła camera.heartbeat (w,h,mode,fps,lcd.{active,presenting,rot})
-# + snapshoty: RAW/proc/LCD(our)/LCD_fb
 
 import os
 import time
-from typing import Tuple
-
 import cv2
 import numpy as np
+from typing import Tuple
+from PIL import Image
 
-# --- BUS (multipart PUB) ---
 from common.bus import BusPub, now_ts
-from common.cam_heartbeat import CameraHB  # wspólny emiter heartbeatów
+from common.cam_heartbeat import CameraHB
 from common.snap import Snapper
 
 PUB = BusPub()
 HB = CameraHB(mode="haar")
 SNAP = Snapper(base_dir=os.getenv("SNAP_BASE", "/home/pi/robot/snapshots"))
 
-
-def pub(topic: str, payload: dict, add_ts: bool = False):
-    try:
-        PUB.publish(topic, payload, add_ts=add_ts)
-    except Exception:
-        pass
-
-
-# --------- ORIENTATION (wspólne) ---------
-def _env_flag(name: str, default: bool = False) -> bool:
-    return str(os.getenv(name, str(int(default)))).lower() in ("1", "true", "yes", "y", "on")
-
-
-ROT = int(os.getenv("PREVIEW_ROT", "270"))          # 0/90/180/270
-FLIP_H = _env_flag("PREVIEW_FLIP_H", False)         # poziomy
-FLIP_V = _env_flag("PREVIEW_FLIP_V", False)         # pionowy
-
-
-def apply_rotation(frame, rot: int, flip_h: bool, flip_v: bool):
-    """Znormalizuj orientację klatki: najpierw rotacja, potem ew. flip."""
-    if rot in (90, 180, 270):
-        k = {
-            90: cv2.ROTATE_90_CLOCKWISE,
-            180: cv2.ROTATE_180,
-            270: cv2.ROTATE_90_COUNTERCLOCKWISE,
-        }[rot]
-        frame = cv2.rotate(frame, k)
-    if flip_h:
-        frame = cv2.flip(frame, 1)
-    if flip_v:
-        frame = cv2.flip(frame, 0)
-    return frame
-
-
-# --- LCD (opcjonalnie) ---
+ROT = int(os.getenv("PREVIEW_ROT", "270"))
 DISABLE_LCD = os.getenv("DISABLE_LCD", "0") == "1"
-NO_DRAW = os.getenv("NO_DRAW", "0") == "1"
+NO_DRAW     = os.getenv("NO_DRAW", "0") == "1"
 
+LAST_FRAME_PATH = os.environ.get("LAST_FRAME_PATH", "/home/pi/robot/data/last_frame.jpg")
+SAVE_EVERY      = int(os.environ.get("SAVE_EVERY", 2))
 
+frame_counter = 0
+
+# --- LCD init ---
 def _lcd_init():
     if DISABLE_LCD:
         return None
     try:
         from xgoscreen.LCD_2inch import LCD_2inch
-    except Exception:
-        try:
-            import xgoscreen.LCD_2inch as lcd_mod
-            LCD_2inch = lcd_mod.LCD_2inch
-        except Exception:
-            return None
-    try:
         lcd = LCD_2inch()
-        # LCD ma własną rotację – zostawiamy 0, bo obraz podajemy już obrócony.
-        # Jeśli chcesz korzystać z rotacji sprzętowej LCD zamiast OpenCV,
-        # ustaw tu lcd.rotation = 270 i PREVIEW_ROT=0.
         lcd.rotation = 0
         return lcd
     except Exception:
         return None
 
-
 _LCD = _lcd_init()
-
 
 def lcd_show_bgr(img_bgr: np.ndarray):
     if _LCD is None:
         return
-    from PIL import Image
-
     img = cv2.resize(img_bgr, (320, 240), interpolation=cv2.INTER_LINEAR)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     _LCD.ShowImage(Image.fromarray(img_rgb))
 
-
-# --- Kamera (Picamera2 -> fallback VideoCapture) ---
+# --- Camera ---
 def open_camera(size=(320, 240)) -> Tuple[object, Tuple[int, int]]:
     try:
         from picamera2 import Picamera2
-
         picam2 = Picamera2()
         config = picam2.create_preview_configuration(main={"size": size, "format": "RGB888"})
         picam2.configure(config)
         picam2.start()
-
         def read():
             arr = picam2.capture_array()
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-
         return read, size
     except Exception:
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
-
         def read():
             return cap.read()
-
         return read, size
 
-
-# --- HAAR ---
-def load_haar():
-    xml = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
-    clf = cv2.CascadeClassifier(xml)
-    if clf.empty():
-        raise RuntimeError("Cannot load HAAR cascade")
-    return clf
-
-
+# --- Main ---
 def main():
+    global frame_counter
     read, size = open_camera((320, 240))
-    haar = load_haar()
-
     prev_t = time.time()
     fps_ema = None
-    t0 = time.time()
-    frames = 0
 
-    # pierwszy heartbeat (od razu po starcie)
     try:
         HB.tick(None, 0.0, presenting=not NO_DRAW)
     except Exception:
@@ -150,43 +84,27 @@ def main():
             time.sleep(0.01)
             continue
 
-        # >>> ORIENTACJA: po odczycie, zanim zrobimy cokolwiek dalej <<<
-        frame = apply_rotation(frame, ROT, FLIP_H, FLIP_V)
-
-        # FPS (EMA)
         now = time.time()
         dt = max(1e-6, now - prev_t)
         inst = 1.0 / dt
         fps_ema = inst if fps_ema is None else (0.9 * fps_ema + 0.1 * inst)
         prev_t = now
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
         out = frame.copy()
-        if not NO_DRAW:
-            for (x, y, w, h) in faces:
-                cv2.rectangle(out, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-        if len(faces) > 0:
-            pub("vision.face", {"present": True, "score": 0.9, "count": int(len(faces))}, add_ts=True)
-
-        # --- SNAPSHOTS (RAW po normalizacji orientacji) ---
-        SNAP.cam(frame)          # RAW z kamery (już po ROT/FLIP)
-        SNAP.proc(out)           # po obróbce (ramki)
-        SNAP.lcd_from_frame(out) # co byśmy narysowali
-        SNAP.lcd_from_fb()       # realny LCD (framebuffer), jeśli jest
-
-        # render na LCD + heartbeat
         lcd_show_bgr(out)
         HB.tick(out, fps_ema, presenting=not NO_DRAW)
 
-        frames += 1
-        if frames % 60 == 0:
-            dt_all = time.time() - t0
-            fps = frames / dt_all if dt_all > 0 else 0.0
-            print(f"[takeover] fps={fps:.1f}", flush=True)
+        frame_counter += 1
+        if frame_counter % SAVE_EVERY == 0:
+            try:
+                tmp = LAST_FRAME_PATH + ".tmp"
+                Image.fromarray(cv2.cvtColor(out, cv2.COLOR_BGR2RGB)).save(tmp, "JPEG", quality=80)
+                os.replace(tmp, LAST_FRAME_PATH)
+            except Exception as e:
+                print(f"[save-frame] error: {e}", flush=True)
 
+        if frame_counter % 60 == 0:
+            print(f"[takeover] fps={fps_ema:.1f}", flush=True)
 
 if __name__ == "__main__":
     try:

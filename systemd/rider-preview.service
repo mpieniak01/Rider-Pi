@@ -1,0 +1,17 @@
+[Unit]
+Description=Rider-Pi Camera Preview + last_frame sink
+After=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/robot
+Environment=LAST_FRAME_PATH=/home/pi/robot/data/last_frame.jpg
+Environment=SAVE_EVERY=2
+Environment=LCD=0
+# jeśli chcesz LCD na stałe, zmień na LCD=1 i dodaj PREVIEW_ROT=270
+ExecStart=/usr/bin/python3 -u apps/camera/preview_lcd_takeover.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
