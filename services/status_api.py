@@ -55,9 +55,10 @@ VIEW_HTML     = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
 CONTROL_HTML  = os.path.abspath(os.path.join(BASE_DIR, "web", "control.html"))
 
 # --- Camera/vision paths & flags ---
-DATA_DIR       = os.path.abspath(os.path.join(BASE_DIR, "data"))
-LAST_FRAME     = os.path.join(DATA_DIR, "last_frame.jpg")   # pojedyncza ostatnia klatka
-VISION_ENABLED = (os.getenv("VISION_ENABLED", "0") == "1")  # off-by-default polityka
+DATA_DIR        = os.path.abspath(os.path.join(BASE_DIR, "data"))
+LAST_FRAME      = os.path.join(DATA_DIR, "last_frame.jpg")   # pojedyncza ostatnia klatka
+VISION_ENABLED  = (os.getenv("VISION_ENABLED", "0") == "1")  # off-by-default polityka
+LAST_FRESH_S    = float(os.getenv("LAST_FRESH_S", "3"))       # uznaj klatkę za świeżą, jeśli mtime <= X s
 
 # --- Services (whitelist + wrapper) ---
 ALLOWED_UNITS = {
@@ -227,7 +228,6 @@ def _os_info():
     return {"pretty": pretty, "kernel": kernel}
 
 # --- Wątek SUB (bus) ---
-
 
 def bus_sub_loop():
     """Czyta PUB/SUB: wspiera multipart [topic, payload] oraz single-frame 'topic payload'."""
@@ -481,6 +481,15 @@ def state():
     has_last = os.path.isfile(LAST_FRAME)
     last_ts = int(os.stat(LAST_FRAME).st_mtime) if has_last else None
 
+    # "vision_enabled": traktuj jako włączone, gdy ENV VISION_ENABLED=1 LUB klatka świeża
+    fresh = False
+    if last_ts is not None:
+        try:
+            fresh = (now - float(last_ts)) <= LAST_FRESH_S
+        except Exception:
+            fresh = False
+    vision_enabled = bool(VISION_ENABLED or fresh)
+
     payload = {
         "present": bool(LAST_STATE.get("present", False)),
         "confidence": float(LAST_STATE.get("confidence", 0.0)),
@@ -488,10 +497,10 @@ def state():
         "ts": ts,
         "age_s": round(age, 3) if age is not None else None,
         "camera": {
-            "vision_enabled": bool(VISION_ENABLED),
+            "vision_enabled": vision_enabled,
             "has_last_frame": bool(has_last),
             "last_frame_ts": last_ts,
-            "preview_url": "/camera/last",
+            "preview_url": f"/camera/last?t={last_ts or int(now)}",
             "placeholder_url": "/camera/placeholder"
         }
     }
@@ -528,6 +537,17 @@ def metrics():
     last_msg_age = (now - LAST_MSG_TS) if LAST_MSG_TS else -1
     last_hb_age  = (now - LAST_HEARTBEAT_TS) if LAST_HEARTBEAT_TS else -1
     cam_age = (now - LAST_CAMERA["ts"]) if LAST_CAMERA["ts"] else -1
+
+    # wiek pliku last_frame
+    if os.path.isfile(LAST_FRAME):
+        try:
+            last_ts = os.stat(LAST_FRAME).st_mtime
+            last_frame_age = max(0.0, now - float(last_ts))
+        except Exception:
+            last_frame_age = -1
+    else:
+        last_frame_age = -1
+
     xgo_age = -1
     if LAST_XGO.get("ts"):
         xgo_age = now - LAST_XGO["ts"]
@@ -548,6 +568,7 @@ def metrics():
     m("rider_bus_last_msg_age_seconds", round(last_msg_age,3))
     m("rider_bus_last_heartbeat_age_seconds", round(last_hb_age,3))
     m("rider_camera_last_hb_age_seconds", round(cam_age,3))
+    m("rider_camera_last_frame_age_seconds", round(last_frame_age,3))
     m("rider_xgo_last_read_age_seconds", round(xgo_age,3) if xgo_age>=0 else -1)
     return Response("\n".join(lines) + "\n", mimetype="text/plain")
 
@@ -577,7 +598,10 @@ def events():
 def camera_last():
     if os.path.isfile(LAST_FRAME):
         resp = make_response(send_file(LAST_FRAME, mimetype="image/jpeg"))
-        resp.headers["Cache-Control"] = "no-store, max-age=0"
+        # mocne no-cache (dla przeglądarek i pośredników)
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"]        = "no-cache"
+        resp.headers["Expires"]       = "0"
         return resp
     return Response(json.dumps({"error": "no_frame"}), mimetype="application/json", status=404)
 
@@ -820,3 +844,4 @@ if __name__ == "__main__":
     start_bus_sub()
     start_xgo_ro()
     app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
+
