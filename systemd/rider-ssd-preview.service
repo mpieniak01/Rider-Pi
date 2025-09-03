@@ -1,0 +1,26 @@
+[Unit]
+Description=Rider-Pi SSD camera preview (RAW/PROC to snapshots)
+After=network-online.target rider-broker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/robot
+
+# JPEG-i bez obrotu (dla dashboardu)
+Environment=PREVIEW_ROT=0
+# Obrót tylko na LCD
+Environment=LCD_ROT=270
+Environment=SSD_EVERY=1
+Environment=SSD_SCORE=0.45
+Environment=SSD_CLASSES=person
+Environment=SNAP_DIR=/home/pi/robot/snapshots
+
+ExecStartPre=/usr/bin/mkdir -p /home/pi/robot/snapshots
+ExecStart=/usr/bin/python3 apps/camera/preview_lcd_ssd.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=Rider-Pi Minimal Services (web + bus + dispatcher)
+Requires=multi-user.target
+After=multi-user.target
+Wants=network-online.target rider-boot-prepare.service rider-broker.service rider-api.service rider-vision.service
+
+[Install]
+WantedBy=multi-user.target
+
+

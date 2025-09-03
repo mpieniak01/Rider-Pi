@@ -9,7 +9,7 @@ OUT: vision.state, vision.dispatcher.heartbeat
 
 import os, time, json, threading
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 import zmq
 
@@ -19,9 +19,9 @@ ZMQ_ADDR_PUB = f"tcp://127.0.0.1:{BUS_PUB_PORT}"
 ZMQ_ADDR_SUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
 
 # Histereza / debouncing (ENV)
-P_ON_N    = int(os.getenv("VISION_ON_CONSECUTIVE", "3"))   # ile kolejnych pozytywów, by włączyć present=True
-P_OFF_TT  = float(os.getenv("VISION_OFF_TTL_SEC", "2.0"))  # po ilu sekundach ciszy zgasić present
-MIN_SCORE = float(os.getenv("VISION_MIN_SCORE", "0.50"))   # minimalny próg score
+P_ON_N    = int(os.getenv("VISION_ON_CONSECUTIVE", "3"))     # ile kolejnych pozytywów, by włączyć present=True
+P_OFF_TT  = float(os.getenv("VISION_OFF_TTL_SEC", "2.0"))    # po ilu sekundach ciszy zgasić present
+MIN_SCORE = float(os.getenv("VISION_MIN_SCORE", "0.50"))     # minimalny próg score
 LOG_EVERY = int(os.getenv("LOG_EVERY", "10"))
 
 PUB: Optional[zmq.Socket] = None
@@ -38,8 +38,11 @@ def zmq_sub(topics: List[str]) -> zmq.Socket:
     ctx = zmq.Context.instance()
     s = ctx.socket(zmq.SUB)
     s.connect(ZMQ_ADDR_SUB)
-    # krótki timeout, żeby nie klinować zamknięcia i mieć responsywne przerwania
-    s.setsockopt(zmq.RCVTIMEO, 1000)
+    # krótki timeout dla responsywności
+    try:
+        s.setsockopt(zmq.RCVTIMEO, 1000)
+    except Exception:
+        pass
     for t in topics:
         s.setsockopt_string(zmq.SUBSCRIBE, t)
     return s
@@ -50,29 +53,26 @@ def _json_loads(text: str) -> Dict[str, Any]:
     except Exception:
         return {"raw": text}
 
-def sub_recv() -> (str, Dict[str, Any]):
+def sub_recv() -> Tuple[str, Dict[str, Any]]:
     """
-    Odbiór z SUB — działa dla single-frame (send_string) i multipart (send_multipart).
-    Zwraca: (topic:str, data:dict)
+    Odbiór z SUB — wspiera single-frame ("topic payload") i multipart.
+    Zwraca: (topic, data:dict)
     """
     assert SUB is not None
-    parts = SUB.recv_multipart()  # list[bytes]; single-frame -> len==1
+    parts = SUB.recv_multipart()  # list[bytes]
     if not parts:
         return "", {}
     if len(parts) == 1:
-        # single frame: "topic {json}" LUB samo "topic"
-        txt = parts[0].decode("utf-8", errors="replace")
-        if " " in txt:
-            topic, payload = txt.split(" ", 1)
+        s = parts[0].decode("utf-8", "replace")
+        if " " in s:
+            topic, payload = s.split(" ", 1)
             return topic, _json_loads(payload)
-        return txt, {}
-    # multipart: [topic, payload, (opcjonalnie kolejne fragmenty payloadu)]
-    topic = parts[0].decode("utf-8", errors="replace")
+        return s, {}
+    topic = parts[0].decode("utf-8", "replace")
     try:
-        payload = "".join(p.decode("utf-8", errors="replace") for p in parts[1:])
+        payload = "".join(p.decode("utf-8", "replace") for p in parts[1:])
         return topic, _json_loads(payload)
     except Exception:
-        # binarny payload (np. JPEG) — nie przetwarzamy go tutaj
         return topic, {"raw": "<binary>"}
 
 def pub(topic: str, payload: Dict[str, Any]) -> None:
@@ -100,23 +100,42 @@ def _as_float(v, default=0.0) -> float:
     except Exception:
         return float(default)
 
+def _best_detection(items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Wybierz najlepszą detekcję z listy (preferuj person/face, najwyższy score)."""
+    if not items:
+        return None
+    # normalizuj klucz score
+    scored = []
+    for d in items:
+        sc = _as_float(d.get("score", d.get("confidence", 0.0)), 0.0)
+        lbl = (d.get("label") or d.get("class") or "").lower()
+        scored.append((sc, lbl, d))
+    # preferencja: person/face
+    scored.sort(key=lambda t: (("person" in t[1]) or ("face" in t[1]), t[0]), reverse=True)
+    return scored[0][2]
+
 def normalize_event(topic: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Sprowadzamy HAAR/SSD/hybrid do:
       {"kind": "face"/"person"/"det", "present": bool, "score": float, "bbox": [...], "mode": str}
+    Obsługuje też vision.detections z listą obiektów.
     """
+    if topic == "vision.detections":
+        items = data.get("items") or data.get("detections") or data.get("objects") or []
+        best = _best_detection(items)
+        if not best:
+            return {"kind": "det", "present": False, "score": 0.0, "bbox": None, "mode": data.get("mode") or "det"}
+        lbl = (str(best.get("label") or best.get("class") or "")).lower()
+        kind = "person" if "person" in lbl else ("face" if "face" in lbl else "det")
+        score = _as_float(best.get("score", best.get("confidence", 0.0)), 0.0)
+        return {"kind": kind, "present": score >= MIN_SCORE, "score": score,
+                "bbox": best.get("bbox"), "mode": data.get("mode") or "ssd"}
+
     kind = "face" if "face" in topic else ("person" if "person" in topic else "det")
     score = _as_float(data.get("score", data.get("confidence", 1.0)), 1.0)
     present = bool(data.get("present", True))
     bbox = data.get("bbox")
-    mode = data.get("mode")
-    if not isinstance(mode, str) or not mode:
-        if kind == "face":
-            mode = "haar"
-        elif kind == "person":
-            mode = data.get("source", "ssd")
-        else:
-            mode = "det"
+    mode = data.get("mode") or ( "haar" if kind=="face" else ("ssd" if kind=="person" else "det") )
     return {"kind": kind, "present": present, "score": score, "bbox": bbox, "mode": mode}
 
 def announce_state() -> None:
@@ -135,6 +154,9 @@ def update_presence(evt: Dict[str, Any]) -> None:
     global _FRAME, _LAST_MODE
     _FRAME += 1
 
+    should_announce_on = False
+    should_announce_off = False
+
     with STATE_LOCK:
         if isinstance(evt.get("mode"), str) and evt["mode"]:
             _LAST_MODE = evt["mode"]
@@ -143,20 +165,17 @@ def update_presence(evt: Dict[str, Any]) -> None:
             STATE.consecutive_pos += 1
             STATE.last_pos_ts = now
             STATE.confidence = max(STATE.confidence * 0.9, float(evt["score"]))
-            should_announce_on = (not STATE.present) and (STATE.consecutive_pos >= P_ON_N)
-            if should_announce_on:
+            if not STATE.present and STATE.consecutive_pos >= P_ON_N:
                 STATE.present = True
+                should_announce_on = True
         else:
-            # Tryb „negatywny event” — OFF jeśli TTL upłynął
+            # Negatywy/zanik — OFF po TTL
             if STATE.present and (now - STATE.last_pos_ts) >= P_OFF_TT:
                 STATE.present = False
                 STATE.consecutive_pos = 0
                 STATE.confidence = 0.0
                 should_announce_off = True
-            else:
-                should_announce_off = False
 
-        # Log co N ramek
         if LOG_EVERY > 0 and (_FRAME % LOG_EVERY == 0):
             print(
                 f"[dispatcher] pres={STATE.present} conf={STATE.confidence:.2f} "
@@ -164,11 +183,7 @@ def update_presence(evt: Dict[str, Any]) -> None:
                 flush=True,
             )
 
-        # Po wyjściu z sekcji krytycznej decydujemy, co wysłać
-        announce_on = ('should_announce_on' in locals() and should_announce_on)
-        announce_off = should_announce_off
-
-    if announce_on or announce_off:
+    if should_announce_on or should_announce_off:
         announce_state()
 
 def rx_loop() -> None:
@@ -184,7 +199,7 @@ def rx_loop() -> None:
         except KeyboardInterrupt:
             break
         except zmq.Again:
-            # timeout — pozwala na responsywne zamknięcie, brak logu
+            # timeout — pozwala na responsywne zamknięcie
             pass
         except Exception as e:
             print(f"[dispatcher] err: {e}", flush=True)
@@ -226,9 +241,7 @@ if __name__ == "__main__":
     print("[dispatcher] starting (topics: vision.face/person/detections)", flush=True)
     PUB = zmq_pub()
     SUB = zmq_sub(["vision.face", "vision.person", "vision.detections"])
-    # wątki pomocnicze
     threading.Thread(target=heartbeat_loop, daemon=True).start()
     threading.Thread(target=ttl_loop, daemon=True).start()
-    # początkowy stan, żeby /state było od razu wypełnione
-    announce_state()
+    announce_state()  # początkowy stan
     rx_loop()
