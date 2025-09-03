@@ -1,8 +1,7 @@
-sudo tee /etc/systemd/system/rider-menu.service >/dev/null <<'EOF'
 [Unit]
 Description=Rider-Pi Menu (CLI)
-After=rider-broker.service rider-motion.service
-Wants=rider-broker.service rider-motion.service
+After=network-online.target rider-broker.service rider-motion.service
+Wants=network-online.target rider-broker.service rider-motion.service
 
 [Service]
 Type=simple
@@ -17,5 +16,4 @@ RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-EOF
 

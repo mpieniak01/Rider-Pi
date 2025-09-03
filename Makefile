@@ -16,10 +16,21 @@ help:
 	@echo "  robot api           # uruchom API (foreground)"
 	@echo "  robot stop-all      # zatrzymaj wszystkie usługi systemowe"
 	@echo "  robot safemode      # tryb awaryjny (kill + stop + LCD off)"
+	@echo "  robot lcd-on        # włącz LCD (ops/lcdctl.py on)"
 	@echo "  robot lcd-off       # zgaś LCD (ops/lcdctl.py off)"
+	@echo "  robot lcd-status    # status LCD (ops/lcdctl.py status)"
 	@echo "  robot vendor-kill   # ubij procesy dostawcy kamery/LCD"
 	@echo "  robot preview-ssd   # podgląd kamery SSD"
 	@echo "  robot bus-spy       # podsłuch magistrali"
+	@echo "  robot vision-on     # uruchom usługę vision"
+	@echo "  robot vision-off    # zatrzymaj usługę vision"
+	@echo "  robot vision-burst  # uruchom vision na czas (domyślnie 120s)"
+	@echo "  robot vision-status # status usługi vision"
+	@echo "  robot led-on        # włącz diodę statusową (sysfs)"
+	@echo "  robot led-off       # zgaś diodę statusową"
+	@echo "  robot led-blink     # miganie diody (HZ=2 lub ON/OFF w ms)"
+	@echo "  robot led-status    # pokaż trigger/brightness"
+	@echo "  robot led-auto      # przywróć domyślny trigger LED (np. mmc0)"
 	@echo "  robot test          # uruchom testy"
 	@echo "  robot bench         # benchmark detekcji"
 	@echo "  robot clean         # usuń cache i śmieci"
@@ -45,15 +56,23 @@ stop-all:
 safemode:
 	-$(SUDO) $(ROOT)/ops/camera_takeover_kill.sh
 	-$(SUDO) systemctl stop $(SYSTEMD_SERVICES)
-	-$(SUDO) $(PY) $(ROOT)/ops/lcdctl.py off || true
+	-$(SUDO) $(PY) $(ROOT)/ops/lcdctl.py off --no-spi || true
+	-$(SUDO) $(PY) $(ROOT)/ops/ledctl.py off || true
 
 # ───────────────────────────────────────────────
 # OPS HELPERS
-.PHONY: lcd-off vendor-kill
+.PHONY: lcd-on lcd-off lcd-status vendor-kill
+
+lcd-on:
+	@echo "== Włączam LCD (wyjście ze snu) =="
+	@$(SUDO) $(PY) $(ROOT)/ops/lcdctl.py on || true
 
 lcd-off:
 	@echo "== Wyłączam LCD (uśpienie panelu) =="
 	@$(SUDO) $(PY) $(ROOT)/ops/lcdctl.py off || true
+
+lcd-status:
+	@$(SUDO) $(PY) $(ROOT)/ops/lcdctl.py status || true
 
 vendor-kill:
 	@echo "== Ubijam procesy dostawcy kamery/LCD =="
@@ -67,6 +86,53 @@ preview-ssd:
 
 bus-spy:
 	$(PY) tools/bus_spy.py
+
+# ───────────────────────────────────────────────
+# VISION CONTROL
+.PHONY: vision-on vision-off vision-burst vision-status
+
+vision-on:
+	@echo "== Vision ON =="
+	@$(ROOT)/ops/vision_ctl.sh on
+
+vision-off:
+	@echo "== Vision OFF =="
+	@$(ROOT)/ops/vision_ctl.sh off
+
+vision-burst:
+	@echo "== Vision BURST ($(or $(SECONDS),120)s) =="
+	@$(ROOT)/ops/vision_ctl.sh burst $(or $(SECONDS),120)
+
+vision-status:
+	@$(ROOT)/ops/vision_ctl.sh status
+
+# ───────────────────────────────────────────────
+# LED CONTROL
+.PHONY: led-on led-off led-blink led-status led-auto
+
+led-on:
+	@echo "== LED ON =="
+	@$(SUDO) $(PY) $(ROOT)/ops/ledctl.py on
+
+led-off:
+	@echo "== LED OFF =="
+	@$(SUDO) $(PY) $(ROOT)/ops/ledctl.py off
+
+# Użycie: make led-blink HZ=2  (albo ON=200 OFF=200)
+led-blink:
+	@echo "== LED BLINK =="
+	@if [ -n "$(HZ)" ]; then \
+		$(SUDO) $(PY) $(ROOT)/ops/ledctl.py blink --hz $(HZ); \
+	else \
+		$(SUDO) $(PY) $(ROOT)/ops/ledctl.py blink --on-ms $${ON:-200} --off-ms $${OFF:-200}; \
+	fi
+
+led-status:
+	@$(SUDO) $(PY) $(ROOT)/ops/ledctl.py status
+
+led-auto:
+	@echo "== LED AUTO =="
+	@$(SUDO) $(PY) $(ROOT)/ops/ledctl.py auto
 
 # ───────────────────────────────────────────────
 # TESTS & BENCH
@@ -107,4 +173,3 @@ logs-broker:
 	@journalctl -u rider-broker.service -n 120 --no-pager
 logs-api:
 	@journalctl -u rider-api.service -n 120 --no-pager
-

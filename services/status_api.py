@@ -7,24 +7,34 @@ Endpoints:
 - /                : dashboard (serwowany z web/view.html)
 - /control         : sterowanie ruchem (web/control.html)
 - /healthz         : status + bus ages + devices (camera/lcd/xgo)
-- /state           : last vision.state
+- /health          : prosty alias health
+- /state           : last vision.state + blok camera
 - /sysinfo         : CPU/MEM/LOAD/DISK/TEMP (+ history dla dashboardu) + OS info
 - /metrics         : Prometheus-style, very small set
 - /events          : SSE live bus events (vision.*, camera.*, motion.*, cmd.*, motion.bridge.*)
+- /camera/last     : ostatnia zapisana klatka (JPEG) lub 404
+- /camera/placeholder : SVG komunikat „Brak podglądu (vision wyłączone)”
 - /snapshots/<fn>  : bezpieczne serwowanie JPG (cam.jpg, proc.jpg itd.)
 - /api/move        : POST {vx,vy,yaw,duration}
 - /api/stop        : POST {}
 - /api/preset      : POST {name}
 - /api/voice       : POST {text}
-- /api/cmd         : NOWE – dowolny JSON → topic 'motion.cmd'
-- /pub             : NOWE – {topic, message:str} → raw publish
+- /api/cmd         : dowolny JSON → topic 'motion.cmd'
+- /pub             : {topic, message:str} → raw publish
+- /svc             : LISTA statusów usług z whitelisty
+- /svc/<name>/status : status wybranej usługi (vision/last)
+- /svc/<name>      : POST {"action":"start|stop|restart|enable|disable"} (przez sudo wrapper)
 
 Zależności: flask, (opcjonalnie) pyzmq; API działa nawet bez ZMQ/XGO.
 Testowane na Python 3.9 (RPi OS).
 """
 
 import os, time, json, threading, collections, shutil, subprocess, platform
-from flask import Flask, Response, stream_with_context, request, send_file, send_from_directory, abort
+from flask import (
+    Flask, Response, stream_with_context, request,
+    send_file, send_from_directory, abort, make_response, jsonify
+)
+from typing import Optional  # <- dla Python 3.9 (zamiast "str | None")
 
 # --- Konfiguracja ---
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
@@ -44,15 +54,27 @@ SNAP_DIR      = os.path.abspath(os.getenv("SNAP_DIR", os.path.join(BASE_DIR, "sn
 VIEW_HTML     = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
 CONTROL_HTML  = os.path.abspath(os.path.join(BASE_DIR, "web", "control.html"))
 
+# --- Camera/vision paths & flags ---
+DATA_DIR       = os.path.abspath(os.path.join(BASE_DIR, "data"))
+LAST_FRAME     = os.path.join(DATA_DIR, "last_frame.jpg")   # pojedyncza ostatnia klatka
+VISION_ENABLED = (os.getenv("VISION_ENABLED", "0") == "1")  # off-by-default polityka
+
+# --- Services (whitelist + wrapper) ---
+ALLOWED_UNITS = {
+    "vision": "rider-vision.service",
+    "last":   "rider-last-frame-sink.service",
+    "lastframe": "rider-last-frame-sink.service",
+}
+SERVICE_CTL = os.path.join(BASE_DIR, "ops", "service_ctl.sh")  # sudo wrapper (NOPASSWD)
+
 app = Flask(__name__)
 
 # --- Stan wewnętrzny ---
 LAST_MSG_TS = None
 LAST_HEARTBEAT_TS = None
-# trzymamy też mode (jeśli dispatcher publikuje)
 LAST_STATE = {"present": False, "confidence": 0.0, "mode": None, "ts": None}
 
-LAST_CAMERA = {  # aktualizowane z camera.heartbeat
+LAST_CAMERA = {
     "ts": None,
     "mode": None,
     "fps": None,
@@ -161,10 +183,7 @@ def mem_info():
         if total and avail is not None:
             used = max(0.0, total - avail)
             pct = (used / total) * 100.0
-            return {
-                "total": total, "available": avail,
-                "used": used, "pct": pct,
-            }
+            return {"total": total, "available": avail, "used": used, "pct": pct}
     except Exception:
         pass
     return {"total": 0.0, "available": 0.0, "used": 0.0, "pct": 0.0}
@@ -208,7 +227,10 @@ def _os_info():
     return {"pretty": pretty, "kernel": kernel}
 
 # --- Wątek SUB (bus) ---
+
+
 def bus_sub_loop():
+    """Czyta PUB/SUB: wspiera multipart [topic, payload] oraz single-frame 'topic payload'."""
     global LAST_MSG_TS, LAST_HEARTBEAT_TS, LAST_STATE, LAST_CAMERA
     if not _ZMQ_OK:
         print("[api] pyzmq not available – bus features disabled", flush=True)
@@ -217,36 +239,55 @@ def bus_sub_loop():
         ctx = zmq.Context.instance()
         sub = ctx.socket(zmq.SUB)
         sub.connect(f"tcp://127.0.0.1:{BUS_SUB_PORT}")
-        # Słuchamy dotychczasowych i dodajemy ruch/cmd:
         for t in ("vision.", "camera.", "motion.bridge.", "motion.", "cmd."):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
+        try:
+            sub.setsockopt(zmq.RCVTIMEO, 1000)  # 1s timeout
+        except Exception:
+            pass
         print(f"[api] SUB connected tcp://127.0.0.1:{BUS_SUB_PORT}", flush=True)
 
         while True:
             try:
-                msg = sub.recv_string()
+                try:
+                    parts = sub.recv_multipart(flags=0)
+                except zmq.Again:
+                    continue
+
+                topic = ""; payload = ""
+                if parts:
+                    frames = [p.decode("utf-8","ignore") for p in parts]
+                    if len(frames) == 1:
+                        s1 = frames[0]
+                        if " " in s1:
+                            topic, payload = s1.split(" ", 1)
+                        else:
+                            topic, payload = s1, ""
+                    else:
+                        topic = frames[0]
+                        payload = frames[1] if len(frames) == 2 else " ".join(frames[1:])
+                else:
+                    continue
+
                 LAST_MSG_TS = time.time()
-                topic, payload = msg.split(" ", 1) if " " in msg else (msg, "")
                 EVENTS.append({"ts": LAST_MSG_TS, "topic": topic, "data": payload})
 
                 if topic == "vision.dispatcher.heartbeat":
                     LAST_HEARTBEAT_TS = LAST_MSG_TS
 
                 elif topic == "vision.state":
-                    # scalamy present/confidence/mode/ts
                     try:
-                        data = json.loads(payload)
+                        data = json.loads(payload) if payload else {}
                         LAST_STATE["present"]    = bool(data.get("present", LAST_STATE["present"]))
                         LAST_STATE["confidence"] = float(data.get("confidence", LAST_STATE["confidence"]))
-                        if "mode" in data:
-                            LAST_STATE["mode"] = data.get("mode")
+                        if "mode" in data: LAST_STATE["mode"] = data.get("mode")
                         LAST_STATE["ts"]        = float(data.get("ts", LAST_MSG_TS))
                     except Exception:
                         pass
 
                 elif topic == "camera.heartbeat":
                     try:
-                        data = json.loads(payload)
+                        data = json.loads(payload) if payload else {}
                         LAST_CAMERA["ts"]   = LAST_MSG_TS
                         LAST_CAMERA["mode"] = data.get("mode")
                         LAST_CAMERA["fps"]  = data.get("fps")
@@ -257,8 +298,7 @@ def bus_sub_loop():
                             "rot": ENV_ROT,
                         })
                         for k in ("enabled_env", "no_draw", "rot", "active"):
-                            if k in lcd:
-                                LAST_CAMERA["lcd"][k] = lcd[k]
+                            if k in lcd: LAST_CAMERA["lcd"][k] = lcd[k]
                     except Exception:
                         pass
             except Exception:
@@ -266,7 +306,7 @@ def bus_sub_loop():
     except Exception as e:
         print(f"[api] bus_sub_loop error: {e}", flush=True)
 
-# --- XGO read-only loop ---
+
 def xgo_ro_loop():
     global LAST_XGO, XGO_FW
     try:
@@ -428,17 +468,32 @@ def healthz():
     }
     return Response(json.dumps(payload), mimetype="application/json")
 
+@app.route("/health")
+def health_alias():
+    return jsonify({"ok": True}), 200
+
 @app.route("/state")
 def state():
     now = time.time()
     ts = LAST_STATE.get("ts")
     age = (now - ts) if ts else None
+
+    has_last = os.path.isfile(LAST_FRAME)
+    last_ts = int(os.stat(LAST_FRAME).st_mtime) if has_last else None
+
     payload = {
         "present": bool(LAST_STATE.get("present", False)),
         "confidence": float(LAST_STATE.get("confidence", 0.0)),
         "mode": LAST_STATE.get("mode"),
         "ts": ts,
         "age_s": round(age, 3) if age is not None else None,
+        "camera": {
+            "vision_enabled": bool(VISION_ENABLED),
+            "has_last_frame": bool(has_last),
+            "last_frame_ts": last_ts,
+            "preview_url": "/camera/last",
+            "placeholder_url": "/camera/placeholder"
+        }
     }
     return Response(json.dumps(payload), mimetype="application/json")
 
@@ -517,21 +572,132 @@ def events():
                 time.sleep(0.5)
     return Response(gen(), mimetype='text/event-stream')
 
-# --- Dashboard (zewnętrzny plik HTML) ---
+# --- Camera endpoints ---
+@app.route("/camera/last", methods=["GET"])
+def camera_last():
+    if os.path.isfile(LAST_FRAME):
+        resp = make_response(send_file(LAST_FRAME, mimetype="image/jpeg"))
+        resp.headers["Cache-Control"] = "no-store, max-age=0"
+        return resp
+    return Response(json.dumps({"error": "no_frame"}), mimetype="application/json", status=404)
+
+@app.route("/camera/placeholder", methods=["GET"])
+def camera_placeholder():
+    svg = """
+    <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">
+      <rect width="100%" height="100%" fill="#111"/>
+      <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle"
+            font-family="monospace" font-size="20" fill="#ccc">
+        Brak podglądu (vision wyłączone)
+      </text>
+      <text x="50%" y="58%" dominant-baseline="middle" text-anchor="middle"
+            font-family="monospace" font-size="12" fill="#777">
+        /camera/last zwróci 404, gdy brak klatki
+      </text>
+    </svg>
+    """.strip()
+    resp = make_response(svg)
+    resp.headers["Content-Type"] = "image/svg+xml"
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+# --- Services control (systemd whitelist) ---
+def _unit_for(name: str) -> Optional[str]:
+    if name in ALLOWED_UNITS:
+        return ALLOWED_UNITS[name]
+    if name in ALLOWED_UNITS.values():
+        return name
+    return None
+
+def _svc_status(unit: str) -> dict:
+    try:
+        out = subprocess.check_output(
+            ["systemctl", "show", unit, "--no-page",
+             "--property=ActiveState,SubState,UnitFileState,LoadState,Description"],
+            stderr=subprocess.STDOUT, text=True, timeout=2.0
+        )
+        kv = {}
+        for line in out.splitlines():
+            if "=" in line:
+                k,v = line.split("=",1)
+                kv[k.strip()] = v.strip()
+        return {
+            "unit": unit,
+            "load": kv.get("LoadState"),
+            "active": kv.get("ActiveState"),
+            "sub": kv.get("SubState"),
+            "enabled": kv.get("UnitFileState"),
+            "desc": kv.get("Description"),
+        }
+    except Exception as e:
+        return {"unit": unit, "error": str(e)}
+
+@app.route("/svc", methods=["GET"])
+def svc_list():
+    out = []
+    for unit in sorted(set(ALLOWED_UNITS.values())):
+        out.append(_svc_status(unit))
+    return Response(json.dumps({"services": out}), mimetype="application/json")
+
+@app.route("/svc/<name>/status", methods=["GET"])
+def svc_status(name: str):
+    unit = _unit_for(name)
+    if not unit:
+        return Response(json.dumps({"error":"unknown service"}), mimetype="application/json", status=404)
+    return Response(json.dumps(_svc_status(unit)), mimetype="application/json")
+
+@app.route("/svc/<name>", methods=["POST"])
+def svc_action(name: str):
+    """
+    Body: {"action":"start|stop|restart|enable|disable"}
+    Wykonuje przez sudo ops/service_ctl.sh (wymaga NOPASSWD dla tego skryptu).
+    """
+    unit = _unit_for(name)
+    if not unit:
+        return Response(json.dumps({"error":"unknown service"}), mimetype="application/json", status=404)
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").lower()
+    if action not in ("start","stop","restart","enable","disable"):
+        return Response(json.dumps({"error":"bad action"}), mimetype="application/json", status=400)
+
+    if not os.path.isfile(SERVICE_CTL) or not os.access(SERVICE_CTL, os.X_OK):
+        return Response(
+            json.dumps({"error":"service_ctl_missing",
+                        "hint":"chmod +x ops/service_ctl.sh & add sudoers NOPASSWD"}),
+            mimetype="application/json", status=501
+        )
+    try:
+        proc = subprocess.run(
+            ["sudo", "-n", SERVICE_CTL, unit, action],
+            check=False, capture_output=True, text=True, timeout=8.0
+        )
+        status = _svc_status(unit)
+        return Response(json.dumps({
+            "ok": (proc.returncode == 0),
+            "rc": proc.returncode,
+            "stdout": (proc.stdout or "")[-4000:],
+            "stderr": (proc.stderr or "")[-4000:],
+            "status": status
+        }), mimetype="application/json", status=(200 if proc.returncode==0 else 500))
+    except subprocess.TimeoutExpired:
+        return Response(json.dumps({"error":"timeout"}), mimetype="application/json", status=504)
+    except Exception as e:
+        return Response(json.dumps({"error": str(e)}), mimetype="application/json", status=500)
+
+# --- Dashboard / Control ---
 @app.route("/")
 def dashboard():
     if not os.path.isfile(VIEW_HTML):
         return Response("<h1>view.html missing</h1>", mimetype="text/html"), 404
     return send_file(VIEW_HTML)
 
-# --- Control (zewnętrzny plik HTML) ---
 @app.route("/control")
 def control_page():
     if not os.path.isfile(CONTROL_HTML):
         return Response("<h1>control.html missing</h1>", mimetype="text/html"), 404
     return send_file(CONTROL_HTML)
 
-# --- API sterowania (wysyłamy komendy na bus; egzekucja po stronie motion_bridge) ---
+# --- API sterowania ---
 @app.route("/api/move", methods=["POST"])
 def api_move():
     data = request.get_json(silent=True) or {}
@@ -539,7 +705,6 @@ def api_move():
     vy  = float(data.get("vy", 0.0))
     yaw = float(data.get("yaw", 0.0))
     duration = float(data.get("duration", 0.0))
-    # zgodnie z dotychczasowym mostem – publikujemy na 'cmd.move'
     bus_pub("cmd.move", {"vx": vx, "vy": vy, "yaw": yaw, "duration": duration, "ts": time.time()})
     return Response(json.dumps({"ok": True}), mimetype="application/json")
 
@@ -560,15 +725,12 @@ def api_voice():
     bus_pub("cmd.voice", {"text": text, "ts": time.time()})
     return Response(json.dumps({"ok": True}), mimetype="application/json")
 
-# --- NOWE: ogólny endpoint komend JSON -> motion.cmd ---
 @app.route("/api/cmd", methods=["POST"])
 def api_cmd():
     """
-    Prosta, kompatybilna mapa:
-      - drive: cmd.move {vx, yaw, duration}
-      - stop : cmd.stop {}
-      - spin : cmd.move {vx:0, yaw:±speed, duration:dur}
-    Bez żadnych dodatkowych topiców — to co już działało w Twoim bridge.
+    - drive: cmd.move {vx, yaw, duration}
+    - stop : cmd.stop {}
+    - spin : cmd.move {vx:0, yaw:±speed, duration:dur}
     """
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
@@ -597,16 +759,13 @@ def api_cmd():
             bus_pub("cmd.move", {"vx": 0.0, "yaw": yaw, "duration": dur, "ts": ts})
             return Response(json.dumps({"ok": True}), mimetype="application/json")
 
-        # fallback: pokaż do debug
         bus_pub("cmd.raw", {"payload": data, "ts": ts})
         return Response(json.dumps({"ok": True, "note": "unknown type -> cmd.raw"}), mimetype="application/json")
 
     except Exception as e:
         return Response(json.dumps({"error": str(e)}), mimetype="application/json", status=500)
 
-
-
-# --- NOWE: uniwersalny publish {topic, message:str} ---
+# --- RAW publish ---
 @app.route("/pub", methods=["POST"])
 def api_pub_generic():
     data = request.get_json(silent=True) or {}
@@ -614,13 +773,16 @@ def api_pub_generic():
     message = data.get("message")
     if not topic or message is None:
         return Response(json.dumps({"error":"need {topic, message}"}), mimetype="application/json", status=400)
-    # message jako string (jeśli nie string – serializujemy)
     if not isinstance(message, str):
         message = json.dumps(message, ensure_ascii=False)
-    bus_pub(topic, {"_raw": message}) if False else _ZMQ_PUB.send_string(f"{topic} {message}")  # raw publish
-    return Response(json.dumps({"ok": True}), mimetype="application/json")
 
-# --- Serwowanie snapshotów (cam.jpg / proc.jpg itd.) ---
+    if _ZMQ_OK and _ZMQ_PUB is not None:
+        _ZMQ_PUB.send_string(f"{topic} {message}")
+        return Response(json.dumps({"ok": True}), mimetype="application/json")
+    else:
+        return Response(json.dumps({"error":"bus not available"}), mimetype="application/json", status=503)
+
+# --- Serwowanie snapshotów ---
 @app.route("/snapshots/<path:fname>")
 def snapshots_static(fname: str):
     safe = os.path.abspath(os.path.join(SNAP_DIR, fname))
@@ -652,70 +814,9 @@ def start_xgo_ro():
 if __name__ == "__main__":
     try:
         os.makedirs(SNAP_DIR, exist_ok=True)
+        os.makedirs(DATA_DIR, exist_ok=True)
     except Exception:
         pass
     start_bus_sub()
     start_xgo_ro()
-    
-
-# --- added: hard alias /health for final running app ---
-try:
-    from flask import jsonify
-    if hasattr(app, "add_url_rule"):
-        app.add_url_rule(
-            "/health",
-            endpoint="__rp_health_alias",
-            view_func=lambda: (jsonify({"ok": True}), 200),
-            methods=["GET"],
-        )
-except Exception as _e:
-    # nie blokuj startu serwera
-    pass
-# --- end added ---
-
-
-# --- added: /control endpoint (post-reorg restore) ---
-try:
-    from flask import request, jsonify
-    import json as _json
-    import zmq
-
-    _ctx = zmq.Context.instance()
-    _ctrl_pub = _ctx.socket(zmq.PUB)
-    # publikujemy do brokera (XSUB) na 5555
-    _ctrl_pub.connect("tcp://127.0.0.1:5555")
-
-    def __rp_control():
-        # GET -> prosty ping/diagnostyka
-        if request.method == "GET":
-            return jsonify({"ok": True, "endpoint": "control", "hint": "POST JSON to publish"}), 200
-
-        # POST -> wyślij dalej na ZMQ
-        data = request.get_json(silent=True) or {}
-        topic = (data.get("topic") or "motion.cmd").encode()
-        _ctrl_pub.send_multipart([topic, _json.dumps(data).encode()])
-        return jsonify({"ok": True, "published_topic": topic.decode(), "echo": data}), 200
-
-    if hasattr(app, "add_url_rule"):
-        app.add_url_rule(
-            "/control",
-            endpoint="__rp_control",
-            view_func=__rp_control,
-            methods=["GET","POST"]
-        )
-except Exception as _e:
-    # nie blokuj startu API jeśli coś pójdzie nie tak
-    pass
-# --- end added ---
-app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
-
-# --- added by reorg fix ---
-try:
-    from flask import jsonify
-except Exception:
-    pass
-
-@app.route("/health")
-def _health():
-    # Prosty check: API żyje
-    return jsonify({"ok": True}), 200
+    app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
