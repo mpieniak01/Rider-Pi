@@ -38,6 +38,18 @@
   .cam-badge.on{ border-color:#2d6a4f; color:#9be3b0; background:#103226; }
   .cam-meta{font-size:12px;opacity:.8}
   .cam-img{width:100%;height:auto;border-radius:10px;border:1px solid #1d3548;background:#0c1b28}
+
+  /* Dolny pasek statusu (live via SSE) */
+  .statusbar{
+    position:sticky; bottom:-1px; margin-top:18px;
+    background:#0f2233;border:1px solid #1d3548;border-radius:10px;
+    padding:10px 12px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+    font-size:13px; box-shadow:0 2px 10px rgba(0,0,0,.25)
+  }
+  .pill{padding:2px 10px;border-radius:999px;border:1px solid #2b5577;background:#11263a;color:#b7cee3}
+  .pill.ok{border-color:#2d6a4f;background:#103226;color:#9be3b0}
+  .pill.bad{border-color:#7a2b2b;background:#2a1212;color:#ff9f9f}
+  .sep{opacity:.4}
 </style>
 </head>
 <body>
@@ -143,20 +155,33 @@
     </div>
   </div>
 
+  <!-- Dolny pasek statusu: live presence + kamera (SSE) -->
+  <div class="statusbar" id="statusbar">
+    <span id="sb_presence" class="pill">VISION: —</span>
+    <span class="sep">•</span>
+    <span id="sb_mode" class="muted">mode: —</span>
+    <span class="sep">•</span>
+    <span id="sb_conf" class="muted">conf: —</span>
+    <span class="sep">•</span>
+    <span id="sb_cam" class="pill">CAM: —</span>
+    <span id="sb_cam_meta" class="muted">fps: —, age: —</span>
+  </div>
+
   <div class="hint" style="margin-top:14px">
     © Rider-Pi – <a href="/healthz">/healthz</a> · <a href="/state">/state</a> · <a href="/sysinfo">/sysinfo</a>
   </div>
 </div>
 
 <script>
-const REFRESH_MS = 2000;
-const CAM_REFRESH_MS = 5000;
+const REFRESH_MS = 2000;     // sysinfo/health tick
+const CAM_REFRESH_MS = 5000; // awaryjny fallback dla obrazków
 
 const fmt = (n, d=1)=> (n==null? '—' : (typeof n==='number'? Number(n).toFixed(d): n));
 const el = id => document.getElementById(id);
 const setTxt=(id,txt)=>{const e=el(id); if(e) e.textContent=txt;}
 const setCls=(id,cls)=>{const e=el(id); if(e) e.className=cls;}
 
+/* ===== WYKRES ===== */
 function drawChart(cpuArr, memArr){
   const c = el('chart'); if(!c) return;
   const ctx = c.getContext('2d');
@@ -199,6 +224,7 @@ function drawChart(cpuArr, memArr){
   plot(memArr,'#ffd36d'); // mem
 }
 
+/* ===== /healthz ===== */
 function updateHealth(h){
   setTxt('h_status', h.status || '—');
   setCls('h_status', (h.status==='ok')? 'ok':'bad');
@@ -228,7 +254,7 @@ function updateHealth(h){
     const lcdTxt = (lcd.on? 'ON':'OFF')
       + (lcd.rot!=null? (' · rot '+lcd.rot):'')
       + (lcd.presenting? ' · presenting':'')
-      + (lcd.no_draw? ' · no_draw':'' );
+      + (lcd.no_draw? ' · no_draw':'');
     setTxt('d_lcd', lcdTxt); setCls('d_lcd', lcd.on? 'ok':'muted');
 
     const xgo = h.devices.xgo || {};
@@ -253,6 +279,7 @@ function updateHealth(h){
   }
 }
 
+/* ===== /state (presence) ===== */
 function updateState(s){
   setTxt('p_present', String(!!s.present));
   setCls('p_present', s.present? 'ok':'bad');
@@ -260,8 +287,16 @@ function updateState(s){
   setTxt('p_mode', s.mode || '—');
   setTxt('p_ts', s.ts? new Date(s.ts*1000).toLocaleTimeString(): '—');
   setTxt('p_age', (s.age_s!=null? fmt(s.age_s,1)+' s':'—'));
+
+  // dolny pasek
+  const presentOk = !!s.present;
+  setTxt('sb_presence', `VISION: ${presentOk ? 'PRESENT' : 'IDLE'}`);
+  setCls('sb_presence', 'pill ' + (presentOk ? 'ok':'bad'));
+  setTxt('sb_mode', `mode: ${s.mode || '—'}`);
+  setTxt('sb_conf', `conf: ${fmt(s.confidence,3)}`);
 }
 
+/* ===== /sysinfo ===== */
 function updateSys(si){
   if(!si) return;
 
@@ -284,59 +319,137 @@ function updateSys(si){
   drawChart(si.hist_cpu || [], si.hist_mem || []);
 }
 
-/* CAMERA: energooszczędny preview z /state */
+/* ===== Kamera (energooszczędny preview) ===== */
 function tsToStr(ts){
   if(!ts) return '—';
   try { return new Date(ts*1000).toLocaleString(); } catch(_){ return String(ts); }
 }
-async function refreshCamera(){
-  const imgCam = el('img_cam');
-  const imgProc = el('img_proc');
-  const camBadge = el('camBadge');
-  const camMeta = el('camMeta');
-  try{
-    const st = await (await fetch('/state',{cache:'no-store'})).json();
-    const cam = st.camera || {};
-    // badge
-    if (cam.vision_enabled) {
-      camBadge.textContent = 'vision: ON';
-      camBadge.className = 'cam-badge on';
-    } else {
-      camBadge.textContent = 'vision: OFF';
-      camBadge.className = 'cam-badge';
-    }
-    camMeta.textContent = cam.last_frame_ts ? ('ostatnia klatka: ' + tsToStr(cam.last_frame_ts)) : 'brak ostatniej klatki';
 
-    const bust = Date.now();
-    if (cam.vision_enabled) {
-      // spróbuj last; jeśli brak, placeholder
-      const lastUrl = (cam.preview_url || '/camera/last') + '?t=' + bust;
-      const head = await fetch(lastUrl, {method:'HEAD', cache:'no-store'});
-      imgCam.src = head.ok ? lastUrl : ((cam.placeholder_url || '/camera/placeholder') + '?t=' + bust);
-      // PROC: tylko jeśli vision ON — wtedy /snapshots/proc.jpg; inaczej placeholder
-      if (imgProc) imgProc.src = head.ok ? (`/snapshots/proc.jpg?t=${bust}`) : ((cam.placeholder_url || '/camera/placeholder') + '?t=' + bust);
-    } else {
-      imgCam.src = (cam.placeholder_url || '/camera/placeholder') + '?t=' + bust;
-      if (imgProc) imgProc.src = (cam.placeholder_url || '/camera/placeholder') + '?t=' + bust;
+async function headWithDate(url){
+  try{
+    const r = await fetch(url, {method:'HEAD', cache:'no-store'});
+    if(!r.ok) return null;
+    const lm = r.headers.get('Last-Modified') || r.headers.get('Date') || '';
+    const t  = lm ? Date.parse(lm) : Date.now();
+    const len= Number(r.headers.get('Content-Length')||0);
+    return {ok:true, url, ts:t, bytes:len};
+  }catch(_){ return null; }
+}
+
+function pickNewest(candidates){
+  const fresh = candidates.filter(c=>c && c.meta && c.meta.ok);
+  if(!fresh.length) return null;
+  fresh.sort((a,b)=> (b.meta.ts||0) - (a.meta.ts||0));
+  return fresh[0];
+}
+
+async function refreshCamera(){
+  const imgCam   = el('img_cam');
+  const imgProc  = el('img_proc');
+  const camBadge = el('camBadge');
+  const camMeta  = el('camMeta');
+
+  const bust = Date.now();
+
+  try{
+    const st  = await (await fetch('/state',{cache:'no-store'})).json();
+    const cam = st.camera || {};
+    if (camBadge){
+      camBadge.textContent = cam.vision_enabled ? 'vision: ON' : 'vision: OFF';
+      camBadge.className   = 'cam-badge' + (cam.vision_enabled ? ' on':'');
     }
+    if (camMeta){
+      const tsTxt = cam.last_frame_ts ? new Date(cam.last_frame_ts*1000).toLocaleString() : '—';
+      camMeta.textContent = cam.last_frame_ts ? ('ostatnia klatka: ' + tsTxt) : 'brak ostatniej klatki';
+    }
+
+    const uLast  = (cam.preview_url && cam.preview_url.startsWith('/camera/raw'))
+                   ? cam.preview_url : '/camera/raw';
+    const last   = `${uLast}${uLast.includes('?') ? '&' : '?'}t=${bust}`;
+    const proc   = `/camera/proc?t=${bust}`;
+    const ph     = (cam.placeholder_url || '/camera/placeholder') + `?t=${bust}`;
+
+    const [mLast, mProc, mPh] = await Promise.all([
+      headWithDate(last),
+      headWithDate(proc),
+      headWithDate(ph),
+    ]);
+
+    const bestCam = pickNewest([
+      {name:'last', meta:mLast},
+      {name:'proc', meta:mProc},
+      {name:'ph',   meta:mPh},
+    ]);
+    if (imgCam) imgCam.src = (bestCam && bestCam.meta && bestCam.meta.url) ? bestCam.meta.url : ph;
+
+    const bestProc = pickNewest([
+      {name:'proc', meta:mProc},
+      {name:'last', meta:mLast},
+      {name:'ph',   meta:mPh},
+    ]);
+    if (imgProc) imgProc.src = (bestProc && bestProc.meta && bestProc.meta.url) ? bestProc.meta.url : ph;
+
   }catch(e){
+    const bust2 = Date.now();
     if (camBadge){ camBadge.textContent='vision: ?'; camBadge.className='cam-badge'; }
     if (camMeta) camMeta.textContent='błąd odczytu stanu';
-    const bust = Date.now();
-    if (imgCam) imgCam.src = '/camera/placeholder?t=' + bust;
-    if (imgProc) imgProc.src = '/camera/placeholder?t=' + bust;
+    if (imgCam)  imgCam.src  = '/camera/placeholder?t=' + bust2;
+    if (imgProc) imgProc.src = '/camera/placeholder?t=' + bust2;
   }
 }
 
+/* ===== Polling ===== */
 async function tick(){
   try{ const h  = await (await fetch('/healthz',{cache:'no-store'})).json(); updateHealth(h);}catch(e){}
   try{ const s  = await (await fetch('/state',{cache:'no-store'})).json();   updateState(s);}catch(e){}
   try{ const si = await (await fetch('/sysinfo',{cache:'no-store'})).json(); updateSys(si);}catch(e){}
 }
 
+/* ===== SSE (natychmiastowe UI) ===== */
+function startSSE(){
+  try{
+    const es = new EventSource('/events');
+    es.onmessage = (ev)=>{
+      try{
+        const wrapper = JSON.parse(ev.data);
+        const topic = wrapper.topic || '';
+        let data = {};
+        try { data = JSON.parse(wrapper.data || '{}'); } catch(_){ data = {}; }
+
+        if (topic === 'vision.state'){
+          const s = {
+            present: !!data.present,
+            confidence: Number(data.confidence || 0),
+            mode: data.mode || '—',
+            ts: data.ts || null,
+            age_s: null
+          };
+          updateState(s);
+        }
+
+        if (topic === 'camera.heartbeat'){
+          const fps = (data && data.fps!=null) ? Number(data.fps) : null;
+          const mode = (data && data.mode) ? String(data.mode) : '—';
+          setTxt('sb_cam', 'CAM: ON'); setCls('sb_cam', 'pill ok');
+          setTxt('sb_cam_meta', `fps: ${fps!=null?fmt(fps,1):'—'}, age: ~0s, mode: ${mode}`);
+          const bust = Date.now();
+          const imgCam = el('img_cam');
+          const imgProc = el('img_proc');
+          if (imgCam) imgCam.src = `/camera/raw?t=${bust}`;
+          if (imgProc) imgProc.src = `/camera/proc?t=${bust}`;
+        }
+      }catch(e){ /* cicho */ }
+    };
+    es.onerror = ()=>{ /* SSE zerwane – fallback zostaje polling */ };
+  }catch(e){ /* SSE niedostępne – fallback polling */ }
+}
+
+/* ===== Start ===== */
 setInterval(tick, REFRESH_MS);
 setInterval(refreshCamera, CAM_REFRESH_MS);
-window.addEventListener('load', ()=>{ tick(); refreshCamera(); });
+window.addEventListener('load', ()=>{ tick(); refreshCamera(); startSSE(); });
 </script>
+
 </body>
 </html>
+

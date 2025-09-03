@@ -3,6 +3,13 @@
 """
 Rider-Pi – Status API + mini dashboard (Flask 1.x compatible)
 
+Zmiany vs poprzednia wersja:
+- /camera/last zwraca teraz **RAW** ze SNAP_DIR/raw.jpg (zamiast data/last_frame.jpg)
+- Dodane /camera/raw oraz /camera/proc (bez aliasów/symlinków)
+- /state używa mtime z raw.jpg do budowy preview_url i wyliczania świeżości
+- /metrics raportuje też wiek raw.jpg (camera_raw_age_seconds)
+- Ujednolicone pobieranie katalogu snapshotów: preferuj ENV SNAP_DIR lub SNAP_BASE
+
 Endpoints:
 - /                : dashboard (serwowany z web/view.html)
 - /control         : sterowanie ruchem (web/control.html)
@@ -12,7 +19,9 @@ Endpoints:
 - /sysinfo         : CPU/MEM/LOAD/DISK/TEMP (+ history dla dashboardu) + OS info
 - /metrics         : Prometheus-style, very small set
 - /events          : SSE live bus events (vision.*, camera.*, motion.*, cmd.*, motion.bridge.*)
-- /camera/last     : ostatnia zapisana klatka (JPEG) lub 404
+- /camera/last     : **RAW** – ostatnia zapisana klatka (JPEG) lub 404
+- /camera/raw      : RAW (tożsame z /camera/last)
+- /camera/proc     : obraz po obróbce (ramki)
 - /camera/placeholder : SVG komunikat „Brak podglądu (vision wyłączone)”
 - /snapshots/<fn>  : bezpieczne serwowanie JPG (cam.jpg, proc.jpg itd.)
 - /api/move        : POST {vx,vy,yaw,duration}
@@ -23,7 +32,7 @@ Endpoints:
 - /pub             : {topic, message:str} → raw publish
 - /svc             : LISTA statusów usług z whitelisty
 - /svc/<name>/status : status wybranej usługi (vision/last)
-- /svc/<name>      : POST {"action":"start|stop|restart|enable|disable"} (przez sudo wrapper)
+- /svc/<name>      : POST {action}
 
 Zależności: flask, (opcjonalnie) pyzmq; API działa nawet bez ZMQ/XGO.
 Testowane na Python 3.9 (RPi OS).
@@ -34,7 +43,7 @@ from flask import (
     Flask, Response, stream_with_context, request,
     send_file, send_from_directory, abort, make_response, jsonify
 )
-from typing import Optional  # <- dla Python 3.9 (zamiast "str | None")
+from typing import Optional  # dla Python 3.9
 
 # --- Konfiguracja ---
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
@@ -50,21 +59,28 @@ HISTORY_LEN = 60  # ~60 punktów, ~1 pkt / sekundę
 
 # Ścieżki: katalog na snapshoty i pliki HTML
 BASE_DIR      = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SNAP_DIR      = os.path.abspath(os.getenv("SNAP_DIR", os.path.join(BASE_DIR, "snapshots")))
+# Preferuj SNAP_DIR, wstecznie wspieraj SNAP_BASE, domyślnie .../snapshots
+SNAP_DIR      = os.path.abspath(
+    os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots")
+)
 VIEW_HTML     = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
 CONTROL_HTML  = os.path.abspath(os.path.join(BASE_DIR, "web", "control.html"))
 
-# --- Camera/vision paths & flags ---
+# Ścieżki RAW/PROC (bez aliasów)
+RAW_PATH  = os.path.join(SNAP_DIR, "raw.jpg")
+PROC_PATH = os.path.join(SNAP_DIR, "proc.jpg")
+
+# --- Camera/vision flags (dla zgodności, ale już nie używamy last_frame sink) ---
 DATA_DIR        = os.path.abspath(os.path.join(BASE_DIR, "data"))
-LAST_FRAME      = os.path.join(DATA_DIR, "last_frame.jpg")   # pojedyncza ostatnia klatka
 VISION_ENABLED  = (os.getenv("VISION_ENABLED", "0") == "1")  # off-by-default polityka
-LAST_FRESH_S    = float(os.getenv("LAST_FRESH_S", "3"))       # uznaj klatkę za świeżą, jeśli mtime <= X s
+LAST_FRESH_S    = float(os.getenv("LAST_FRESH_S", "3"))       # świeżość raw.jpg (sekundy)
 
 # --- Services (whitelist + wrapper) ---
 ALLOWED_UNITS = {
     "vision": "rider-vision.service",
     "last":   "rider-last-frame-sink.service",
     "lastframe": "rider-last-frame-sink.service",
+    "vision-hog": "rider-vision-hog.service",
 }
 SERVICE_CTL = os.path.join(BASE_DIR, "ops", "service_ctl.sh")  # sudo wrapper (NOPASSWD)
 
@@ -397,6 +413,15 @@ def get_sysinfo():
         si["battery_pct"] = int(LAST_XGO["battery"])
     return si
 
+# --- Pomocnicze ---
+
+def _file_mtime(path: str):
+    try:
+        st = os.stat(path)
+        return float(st.st_mtime)
+    except Exception:
+        return None
+
 # --- Middleware / nagłówki ---
 @app.after_request
 def log_and_secure(resp):
@@ -478,18 +503,19 @@ def state():
     ts = LAST_STATE.get("ts")
     age = (now - ts) if ts else None
 
-    has_last = os.path.isfile(LAST_FRAME)
-    last_ts = int(os.stat(LAST_FRAME).st_mtime) if has_last else None
+    raw_ts = _file_mtime(RAW_PATH)
+    has_raw = raw_ts is not None
 
-    # "vision_enabled": traktuj jako włączone, gdy ENV VISION_ENABLED=1 LUB klatka świeża
+    # "vision_enabled": traktuj jako włączone, gdy ENV VISION_ENABLED=1 LUB raw.jpg jest świeże
     fresh = False
-    if last_ts is not None:
+    if raw_ts is not None:
         try:
-            fresh = (now - float(last_ts)) <= LAST_FRESH_S
+            fresh = (now - float(raw_ts)) <= LAST_FRESH_S
         except Exception:
             fresh = False
     vision_enabled = bool(VISION_ENABLED or fresh)
 
+    cache_bust = int(raw_ts or now)
     payload = {
         "present": bool(LAST_STATE.get("present", False)),
         "confidence": float(LAST_STATE.get("confidence", 0.0)),
@@ -498,9 +524,9 @@ def state():
         "age_s": round(age, 3) if age is not None else None,
         "camera": {
             "vision_enabled": vision_enabled,
-            "has_last_frame": bool(has_last),
-            "last_frame_ts": last_ts,
-            "preview_url": f"/camera/last?t={last_ts or int(now)}",
+            "has_last_frame": bool(has_raw),
+            "last_frame_ts": int(raw_ts) if raw_ts else None,
+            "preview_url": f"/camera/last?t={cache_bust}",
             "placeholder_url": "/camera/placeholder"
         }
     }
@@ -538,15 +564,15 @@ def metrics():
     last_hb_age  = (now - LAST_HEARTBEAT_TS) if LAST_HEARTBEAT_TS else -1
     cam_age = (now - LAST_CAMERA["ts"]) if LAST_CAMERA["ts"] else -1
 
-    # wiek pliku last_frame
-    if os.path.isfile(LAST_FRAME):
+    # wiek raw.jpg (nowy sposób)
+    if os.path.isfile(RAW_PATH):
         try:
-            last_ts = os.stat(LAST_FRAME).st_mtime
-            last_frame_age = max(0.0, now - float(last_ts))
+            raw_ts = os.stat(RAW_PATH).st_mtime
+            raw_age = max(0.0, now - float(raw_ts))
         except Exception:
-            last_frame_age = -1
+            raw_age = -1
     else:
-        last_frame_age = -1
+        raw_age = -1
 
     xgo_age = -1
     if LAST_XGO.get("ts"):
@@ -568,8 +594,7 @@ def metrics():
     m("rider_bus_last_msg_age_seconds", round(last_msg_age,3))
     m("rider_bus_last_heartbeat_age_seconds", round(last_hb_age,3))
     m("rider_camera_last_hb_age_seconds", round(cam_age,3))
-    m("rider_camera_last_frame_age_seconds", round(last_frame_age,3))
-    m("rider_xgo_last_read_age_seconds", round(xgo_age,3) if xgo_age>=0 else -1)
+    m("rider_camera_raw_age_seconds", round(raw_age,3))
     return Response("\n".join(lines) + "\n", mimetype="text/plain")
 
 @app.route("/events")
@@ -593,17 +618,31 @@ def events():
                 time.sleep(0.5)
     return Response(gen(), mimetype='text/event-stream')
 
-# --- Camera endpoints ---
-@app.route("/camera/last", methods=["GET"])
+# --- Camera endpoints (RAW/PROC bez aliasów) ---
+@app.route("/camera/raw", methods=["GET", "HEAD"])
+def camera_raw():
+    if not os.path.isfile(RAW_PATH):
+        return Response(json.dumps({"error": "no_raw"}), mimetype="application/json", status=404)
+    # Cache-Control krótkie/no-cache – dashboard i tak dodaje cache-buster
+    return send_from_directory(SNAP_DIR, "raw.jpg", cache_timeout=0)
+
+@app.route("/camera/proc", methods=["GET", "HEAD"])
+def camera_proc():
+    if not os.path.isfile(PROC_PATH):
+        return Response(json.dumps({"error": "no_proc"}), mimetype="application/json", status=404)
+    return send_from_directory(SNAP_DIR, "proc.jpg", cache_timeout=0)
+
+@app.route("/camera/last", methods=["GET", "HEAD"])
 def camera_last():
-    if os.path.isfile(LAST_FRAME):
-        resp = make_response(send_file(LAST_FRAME, mimetype="image/jpeg"))
-        # mocne no-cache (dla przeglądarek i pośredników)
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        resp.headers["Pragma"]        = "no-cache"
-        resp.headers["Expires"]       = "0"
-        return resp
-    return Response(json.dumps({"error": "no_frame"}), mimetype="application/json", status=404)
+    # Zgodnie z uproszczeniem – /camera/last == RAW
+    if not os.path.isfile(RAW_PATH):
+        return Response(json.dumps({"error": "no_raw"}), mimetype="application/json", status=404)
+    resp = make_response(send_file(RAW_PATH, mimetype="image/jpeg"))
+    # mocne no-cache (dla przeglądarek i pośredników)
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"]        = "no-cache"
+    resp.headers["Expires"]       = "0"
+    return resp
 
 @app.route("/camera/placeholder", methods=["GET"])
 def camera_placeholder():
@@ -626,12 +665,14 @@ def camera_placeholder():
     return resp
 
 # --- Services control (systemd whitelist) ---
+
 def _unit_for(name: str) -> Optional[str]:
     if name in ALLOWED_UNITS:
         return ALLOWED_UNITS[name]
     if name in ALLOWED_UNITS.values():
         return name
     return None
+
 
 def _svc_status(unit: str) -> dict:
     try:
@@ -844,4 +885,3 @@ if __name__ == "__main__":
     start_bus_sub()
     start_xgo_ro()
     app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
-

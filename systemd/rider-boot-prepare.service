@@ -1,0 +1,22 @@
+[Unit]
+Description=Rider-Pi Boot Prepare (vendor cleanup, splash, LCD off)
+DefaultDependencies=no
+Before=multi-user.target rider-broker.service rider-api.service rider-vision.service
+ConditionPathExists=!/run/rider/boot-prepared
+
+[Service]
+Type=oneshot
+# Domyślne środowisko — można nadpisać w pliku drop-in /etc/systemd/system/rider-boot-prepare.service.d/override.conf
+Environment=SPLASH_SECONDS=5
+Environment=SPLASH_ROTATE=270
+Environment=SPLASH_CLEAR=1
+Environment=BOOT_VENDOR_GRACE=5
+Environment=LCD_BL_GPIO=13
+Environment=LCD_OFF_CMD=/usr/bin/python3 /home/pi/robot/scripts/lcdctl.py off
+RuntimeDirectory=rider
+RemainAfterExit=yes
+ExecStart=/home/pi/robot/ops/boot_prepare.sh
+
+[Install]
+WantedBy=multi-user.target
+

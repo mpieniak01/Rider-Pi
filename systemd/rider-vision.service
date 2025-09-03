@@ -1,0 +1,33 @@
+[Unit]
+Description=Rider-Pi Vision Dispatcher
+After=network-online.target rider-broker.service
+Wants=rider-broker.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/robot
+
+# Opcjonalny plik z lokalnymi nadpisaniami (jeśli istnieje)
+# np. /etc/default/rider-vision może zawierać: VISION_MIN_SCORE=0.4 itp.
+EnvironmentFile=-/etc/default/rider-vision
+
+# Domyślne parametry (można nadpisać w EnvironmentFile powyżej)
+Environment=PYTHONUNBUFFERED=1
+Environment=VISION_ON_CONSECUTIVE=3
+Environment=VISION_OFF_TTL_SEC=2.0
+Environment=VISION_MIN_SCORE=0.50
+Environment=LOG_EVERY=30
+# Environment=BUS_PUB_PORT=5555
+# Environment=BUS_SUB_PORT=5556
+
+ExecStart=/usr/bin/python3 -u apps/vision/dispatcher.py
+
+# Odporność
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGINT
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target
