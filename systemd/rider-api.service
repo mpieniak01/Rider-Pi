@@ -1,18 +1,18 @@
 [Unit]
-Description=Rider-Pi Status API (Flask)
-After=network.target rider-broker.service
+Description=Rider-Pi Status API
+After=network-online.target rider-broker.service
 Wants=rider-broker.service
 
 [Service]
+Type=simple
 User=pi
-Group=pi
 WorkingDirectory=/home/pi/robot
-Environment=PYTHONUNBUFFERED=1
-Environment=API_HOST=0.0.0.0
-Environment=API_PORT=8080
-ExecStart=/usr/bin/python3 -u /home/pi/robot/services/status_api.py
-Restart=always
+Environment=STATUS_API_PORT=8080
+ExecStart=/usr/bin/python3 -u services/status_api.py
+Restart=on-failure
 RestartSec=1
+KillSignal=SIGINT
+TimeoutStopSec=3
 
 [Install]
 WantedBy=multi-user.target
