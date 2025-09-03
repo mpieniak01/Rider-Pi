@@ -67,15 +67,53 @@
     .spacer{flex:1}
     a{color:#98c7ff; text-decoration:none}
     a:hover{text-decoration:underline}
+
+    /* Camera panel */
+    .camera-wrap{ display:flex;flex-wrap:wrap;gap:12px;align-items:center }
+    .badge{
+      display:inline-block; padding:2px 8px; border-radius:999px;
+      font-size:12px; border:1px solid #2b5577; background:#11263a; color:#b7cee3;
+      margin-left:8px;
+    }
+    .badge.success{ border-color:#2d6a4f; color:#9be3b0; background:#103226; }
+    .badge.secondary{ border-color:#3a4e66; color:#b7c8dd; background:#0f1f30; }
+    .camera-img{
+      max-width:100%; width:520px; height:auto; border-radius:12px; border:1px solid #1e3a56;
+      background:#0b1a27;
+    }
+    .camera-meta{ font-size:12px; color:#9bb7cf; }
+
+    /* Services panel */
+    .svc-table{ width:100%; border-collapse:collapse; font-size:14px }
+    .svc-table th,.svc-table td{ padding:8px; border-top:1px solid #1e3a56 }
+    .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #355; background:#11263a }
+    .pill.ok{ border-color:#2d6a4f; color:#9be3b0; background:#103226 }
+    .pill.bad{ border-color:#6b2d2d; color:#ff9b9b; background:#2b1111 }
+    .mini{ padding:8px 10px; font-size:14px }
   </style>
 </head>
 <body>
 <div class="wrap">
+
   <div class="card">
     <h1>Rider-Pi — Sterowanie ruchem
       <span id="apiStatus" class="muted" style="margin-left:8px">(checking…)</span>
     </h1>
-    <div class="row">
+
+    <!-- CAMERA PANEL -->
+    <div class="camera-wrap" style="margin:6px 0 10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <strong>Kamera</strong>
+        <span id="cameraBadge" class="badge">…</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="camera-meta" id="cameraMeta"></div>
+    </div>
+    <div class="row" style="justify-content:center">
+      <img id="cameraImg" class="camera-img" alt="Podgląd kamery" />
+    </div>
+
+    <div class="row" style="margin-top:14px">
       <label>Tryb lewo/prawo:
         <select id="lrMode">
           <option value="turn" selected>skręt (yaw)</option>
@@ -114,6 +152,26 @@
     </div>
   </div>
 
+  <!-- USŁUGI (systemd) -->
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 8px">Usługi (systemd)</h2>
+    <table class="svc-table" id="svcTable">
+      <thead>
+        <tr>
+          <th style="text-align:left">Nazwa</th>
+          <th style="text-align:left">Status</th>
+          <th style="text-align:left">Autostart</th>
+          <th style="text-align:left">Opis</th>
+          <th style="text-align:right">Akcje</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- wypełniane JS -->
+      </tbody>
+    </table>
+    <div class="muted" style="margin-top:8px">Korzysta z API: <code>/svc</code>, <code>/svc/&lt;name&gt;</code></div>
+  </div>
+
   <div class="card">
     <h2 style="font-size:16px;margin:0 0 8px">Zdarzenia (SSE /events)</h2>
     <div id="log"></div>
@@ -121,8 +179,7 @@
 </div>
 
 <script>
-  // ====== USTAWIENIA DOMYŚLNE (spójne z manualem) ======
-  // mały "nudge" F/B – żeby nie spadać z biurka:
+  // ====== USTAWIENIA ======
   const LIN_V = 0.05;
   const LIN_T = 0.15;
 
@@ -133,6 +190,10 @@
   const lrModeEl = qs('#lrMode');
   const logEl = qs('#log');
   const apiStatus = qs('#apiStatus');
+
+  const camImg = qs('#cameraImg');
+  const camBadge = qs('#cameraBadge');
+  const camMeta = qs('#cameraMeta');
 
   function clamp(n, lo, hi){ n=Number(n)||0; return Math.max(lo, Math.min(hi, n)); }
   spinEl.addEventListener('input', ()=> spinVal.textContent = Number(spinEl.value).toFixed(2));
@@ -153,6 +214,42 @@
   }
   setInterval(pingHealth, 1000); pingHealth();
 
+  // ====== CAMERA (niskoenergetyczny preview) ======
+  function tsToStr(ts){
+    if(!ts) return '—';
+    try{ return new Date(ts*1000).toLocaleString(); }catch(_){ return String(ts); }
+  }
+  async function refreshCamera(){
+    try{
+      const st = await fetch('/state', {cache:'no-store'}).then(r=>r.json());
+      const c = st.camera || {};
+      if (c.vision_enabled) {
+        camBadge.textContent = 'vision: ON';
+        camBadge.className = 'badge success';
+      } else {
+        camBadge.textContent = 'vision: OFF';
+        camBadge.className = 'badge secondary';
+      }
+      camMeta.textContent = c.last_frame_ts ? ('ostatnia klatka: ' + tsToStr(c.last_frame_ts)) : 'brak ostatniej klatki';
+
+      const bust = Date.now();
+      if (!c.vision_enabled) {
+        camImg.src = (c.placeholder_url || '/camera/placeholder') + '?t='+bust;
+        return;
+      }
+      const lastUrl = (c.preview_url || '/camera/last') + '?t='+bust;
+      const head = await fetch(lastUrl, {method:'HEAD', cache:'no-store'});
+      camImg.src = head.ok ? lastUrl : ((c.placeholder_url || '/camera/placeholder') + '?t='+bust);
+    }catch(e){
+      camBadge.textContent = 'vision: ?';
+      camBadge.className = 'badge secondary';
+      camImg.src = '/camera/placeholder?t='+Date.now();
+      camMeta.textContent = 'błąd odczytu stanu';
+    }
+  }
+  refreshCamera();
+  setInterval(refreshCamera, 5000);
+
   // ====== LOG ======
   function appendLog(msg, cls="") {
     const line = document.createElement('div');
@@ -162,7 +259,7 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  // ====== WYSYŁKA KOMEND (z fallbackami) ======
+  // ====== WYSYŁKA KOMEND ======
   async function httpPost(url, body, headers) {
     const r = await fetch(url, {
       method: 'POST',
@@ -173,7 +270,6 @@
     return r;
   }
 
-  // 1) preferujemy /api/cmd {type:...} → 2) /cmd → 3) /pub {topic,message}
   async function sendCmd(obj) {
     const tries = [
       {url:'/api/cmd', type:'json'},
@@ -196,7 +292,6 @@
     return false;
   }
 
-  // Stary endpoint kompatybilności: /api/move {vx,vy,yaw,duration}
   async function sendMoveLegacy(vx, vy, yaw, duration) {
     try {
       await httpPost('/api/move', {vx, vy, yaw, duration});
@@ -208,9 +303,8 @@
     }
   }
 
-  // ====== AKCJE ======
+  // ====== AKCJE RUCHU ======
   async function doStop() {
-    // 1) /api/stop → 2) /api/cmd stop → 3) /pub
     try {
       await httpPost('/api/stop', {});
       appendLog('stop', 'warn');
@@ -221,39 +315,30 @@
       try { await httpPost('/pub', {topic:'motion.cmd', message:'{"type":"stop"}'}); appendLog('stop(pub)', 'warn'); } catch(e){ appendLog(`ERROR stop: ${e.message}`, 'err'); }
     }
   }
-
   async function goF() {
-    // mały impuls f/b (LIN_V, LIN_T) – zgodnie z manualem
-    const ok = await sendCmd({type:'drive', lx: LIN_V, az: 0.0});
-    if (!ok) await sendMoveLegacy(+LIN_V, 0, 0, LIN_T);
-    setTimeout(doStop, Math.max(50, LIN_T*1000));
+    const ok = await sendCmd({type:'drive', lx: 0.05, az: 0.0});
+    if (!ok) await sendMoveLegacy(+0.05, 0, 0, 0.15);
+    setTimeout(doStop, 200);
   }
-
   async function goB() {
-    const ok = await sendCmd({type:'drive', lx: -LIN_V, az: 0.0});
-    if (!ok) await sendMoveLegacy(-LIN_V, 0, 0, LIN_T);
-    setTimeout(doStop, Math.max(50, LIN_T*1000));
+    const ok = await sendCmd({type:'drive', lx: -0.05, az: 0.0});
+    if (!ok) await sendMoveLegacy(-0.05, 0, 0, 0.15);
+    setTimeout(doStop, 200);
   }
-
-  async function spin(dir){ // dir: 'left' | 'right'
-    const s = clamp(spinEl.value, 0, 1), t = clamp(durSpinEl.value, 0.1, 5);
-    // 1) spróbuj komendę spin (która u nas wywołuje vendor turnleft/turnright)
+  async function spin(dir){
+    const s = Math.max(0, Math.min(1, Number(spinEl.value)||0)), t = Math.max(0.1, Math.min(5, Number(durSpinEl.value)||0.45));
     const ok = await sendCmd({type:'spin', dir, speed:s, dur:t});
     if (ok) { setTimeout(doStop, Math.max(100, t*1000)); return; }
-
-    // 2) fallback do starego /api/move (yaw)
     if (lrModeEl.value === 'turn') {
-      const yaw = (dir === 'left' ? -s : +s); // kierunek zgodny z poprzednią stroną (Δyaw ujemny = lewo)
+      const yaw = (dir === 'left' ? -s : +s);
       await sendMoveLegacy(0, 0, yaw, t);
     } else {
-      // alternatywa: strafe vy
       const vy = (dir === 'left' ? -s : +s);
       await sendMoveLegacy(0, vy, 0, t);
     }
     setTimeout(doStop, Math.max(100, t*1000));
   }
 
-  // ====== BUTTONS ======
   qs('#btnFwd').addEventListener('click', goF);
   qs('#btnBack').addEventListener('click', goB);
   qs('#btnLeft').addEventListener('click', ()=> spin('left'));
@@ -261,7 +346,7 @@
   qs('#btnStop').addEventListener('click', doStop);
   qs('#btnStop2').addEventListener('click', doStop);
 
-  // ====== KEYBOARD ======
+  // ====== Keyboard ======
   const pressed = new Set();
   function isArrow(k){ return ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k); }
   window.addEventListener('keydown', (ev)=>{
@@ -313,6 +398,76 @@
   }catch(e){
     appendLog('SSE not supported', 'warn');
   }
+
+  // ====== Services panel (systemd via /svc) ======
+  const svcRows = {
+    "rider-vision.service":   { label: "vision",    desc:"Rozpoznawanie/preview (energochłonne)" },
+    "rider-last-frame-sink.service": { label: "last", desc:"Zapis ostatniej klatki (niskie zużycie)" }
+  };
+
+  function pill(txt, ok){ return `<span class="pill ${ok?'ok':'bad'}">${txt}</span>`; }
+
+  function renderSvcTable(data){
+    const tb = document.querySelector('#svcTable tbody');
+    tb.innerHTML = '';
+    const services = (data.services||[]).filter(s => s && s.unit);
+    for(const s of services){
+      const label = (svcRows[s.unit]?.label) || s.unit;
+      const desc  = (svcRows[s.unit]?.desc)  || (s.desc || '');
+      const activeOK = (s.active === 'active' && s.sub === 'running');
+      const enabledOK = (s.enabled === 'enabled');
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${label}</strong> <span class="muted" style="font-size:12px">(${s.unit})</span></td>
+        <td>${activeOK ? pill('running', true) : pill(s.active || 'inactive', false)}</td>
+        <td>${enabledOK ? pill('enabled', true) : pill(s.enabled || 'disabled', false)}</td>
+        <td class="muted">${desc}</td>
+        <td style="text-align:right; white-space:nowrap">
+          <button class="mini" data-unit="${label}" data-act="start">start</button>
+          <button class="mini" data-unit="${label}" data-act="stop">stop</button>
+          <button class="mini" data-unit="${label}" data-act="restart">restart</button>
+          <button class="mini" data-unit="${label}" data-act="${enabledOK?'disable':'enable'}">${enabledOK?'disable':'enable'}</button>
+        </td>
+      `;
+      tb.appendChild(tr);
+    }
+
+    // wire buttons
+    tb.querySelectorAll('button[data-unit]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const name = btn.getAttribute('data-unit');
+        const act  = btn.getAttribute('data-act');
+        try{
+          const r = await fetch(`/svc/${encodeURIComponent(name)}`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({action:act})
+          });
+          const j = await r.json().catch(()=>({}));
+          if (r.ok && j.ok){
+            appendLog(`svc ${name}: ${act} ✔`, 'ok');
+          }else{
+            appendLog(`svc ${name}: ${act} ✖ ${j.stderr||j.error||r.status}`, 'err');
+          }
+        }catch(e){ appendLog(`svc ${name}: ${act} ✖ ${e.message}`, 'err'); }
+        loadSvc(); // refresh
+      });
+    });
+  }
+
+  async function loadSvc(){
+    try{
+      const r = await fetch('/svc', {cache:'no-store'});
+      if(!r.ok) throw new Error(r.status);
+      const j = await r.json();
+      renderSvcTable(j);
+    }catch(e){
+      const tb = document.querySelector('#svcTable tbody');
+      tb.innerHTML = `<tr><td colspan="5" class="err">Błąd pobierania /svc: ${e.message}</td></tr>`;
+    }
+  }
+  loadSvc();
+  setInterval(loadSvc, 5000);
 </script>
 </body>
 </html>
