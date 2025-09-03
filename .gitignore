@@ -23,3 +23,21 @@ _tmp/
 snapshots/
 web/*.temp
 web/*.old
+# Local data / diagnostics / cache
+_data/
+data/
+_diag/
+snapshots/
+**/__pycache__/
+*.pyc
+
+# Web build temps
+web/*.tmp
+
+# Editor / misc
+*.swp
+*.swo
+.DS_Store
+# Local work dirs (not part of main code)
+scripts/
+# Local work dir (not part of main code)
