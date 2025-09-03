@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -29,6 +29,15 @@
   .thumb .cap{font-size:12px;opacity:.8;margin-bottom:6px}
   .thumb img{display:block;width:100%;height:auto;border-radius:6px}
   @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+
+  /* Kamera */
+  .cam-badge{
+    display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px;
+    border:1px solid #2b5577;background:#11263a;color:#b7cee3;
+  }
+  .cam-badge.on{ border-color:#2d6a4f; color:#9be3b0; background:#103226; }
+  .cam-meta{font-size:12px;opacity:.8}
+  .cam-img{width:100%;height:auto;border-radius:10px;border:1px solid #1d3548;background:#0c1b28}
 </style>
 </head>
 <body>
@@ -36,7 +45,7 @@
   <h1>Rider-Pi — mini dashboard</h1>
   <div class="hint">Auto-refresh co ≈ 2 s. Endpointy: <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a></div>
 
-  <!-- RZĄD 1: System / Devices / History / Camera RAW -->
+  <!-- RZĄD 1: System / Devices / History / Camera -->
   <div class="grid">
     <!-- System -->
     <div class="card">
@@ -74,12 +83,16 @@
       </div>
     </div>
 
-    <!-- Camera RAW -->
+    <!-- Camera -->
     <div class="card">
-      <h3>Camera — RAW (kamera)</h3>
+      <h3 style="display:flex;align-items:center;gap:8px">
+        Kamera
+        <span id="camBadge" class="cam-badge">…</span>
+      </h3>
+      <div class="cam-meta" id="camMeta" style="margin-bottom:6px">—</div>
       <div class="thumb">
-        <div class="cap">surowy obraz</div>
-        <img id="img_cam" src="/snapshots/cam.jpg" alt="raw camera">
+        <div class="cap">podgląd (ostatnia klatka lub komunikat)</div>
+        <img id="img_cam" class="cam-img" src="/camera/placeholder" alt="kamera">
       </div>
     </div>
   </div>
@@ -116,6 +129,7 @@
         <div>events (SSE)</div><div><a href="/events" target="_blank">/events</a></div>
         <div>metrics</div><div><a href="/metrics" target="_blank">/metrics</a></div>
         <div>repo</div><div><a href="https://github.com/pppnews/Rider-Pi" target="_blank">Rider-Pi</a></div>
+        <div>sterowanie</div><div><a href="/control">/control</a></div>
       </div>
     </div>
 
@@ -124,7 +138,7 @@
       <h3>Camera — PROC (po obróbce)</h3>
       <div class="thumb">
         <div class="cap">ramki / etykiety z detektora</div>
-        <img id="img_proc" src="/snapshots/proc.jpg" alt="processed camera">
+        <img id="img_proc" class="cam-img" src="/camera/placeholder" alt="processed camera">
       </div>
     </div>
   </div>
@@ -135,8 +149,8 @@
 </div>
 
 <script>
-const REFRESH = 2000;
-const IMG_REFRESH = 800;
+const REFRESH_MS = 2000;
+const CAM_REFRESH_MS = 5000;
 
 const fmt = (n, d=1)=> (n==null? '—' : (typeof n==='number'? Number(n).toFixed(d): n));
 const el = id => document.getElementById(id);
@@ -148,16 +162,13 @@ function drawChart(cpuArr, memArr){
   const ctx = c.getContext('2d');
   ctx.clearRect(0,0,c.width,c.height);
 
-  // padding: left=30 (na skalę), reszta=10
   const padL=30, padT=10, padR=10, padB=10;
   const W=c.width - padL - padR;
   const H=c.height - padT - padB;
 
-  // ramka
   ctx.strokeStyle='#1d3548';
   ctx.strokeRect(padL, padT, W, H);
 
-  // skala Y (0,50,100)
   ctx.fillStyle = '#8aa';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'right';
@@ -187,7 +198,6 @@ function drawChart(cpuArr, memArr){
   plot(cpuArr,'#6db3ff'); // cpu
   plot(memArr,'#ffd36d'); // mem
 }
-
 
 function updateHealth(h){
   setTxt('h_status', h.status || '—');
@@ -255,46 +265,67 @@ function updateState(s){
 function updateSys(si){
   if(!si) return;
 
-  // CPU
   setTxt('ci_cpu', fmt(si.cpu_pct, 1) + '%');
+  setTxt('ci_load', `${fmt(si.load1,2)}/${fmt(si.load5,2)}/${fmt(si.load15,2)}`);
 
-  // LOAD: 1/5/15 z płaskich pól
-  setTxt('ci_load',
-    `${fmt(si.load1,2)}/${fmt(si.load5,2)}/${fmt(si.load15,2)}`);
-
-  // MEM: wartości w MB + % (pola: mem_total_mb, mem_used_mb, mem_pct)
   const mb = v => (v==null ? '—' : Number(v).toFixed(1)+' MB');
   if (si.mem_total_mb!=null && si.mem_used_mb!=null){
-    setTxt('ci_mem',
-      `${mb(si.mem_used_mb)} / ${mb(si.mem_total_mb)} (${fmt(si.mem_pct,1)}%)`);
-  } else {
-    setTxt('ci_mem','—');
-  }
+    setTxt('ci_mem', `${mb(si.mem_used_mb)} / ${mb(si.mem_total_mb)} (${fmt(si.mem_pct,1)}%)`);
+  } else setTxt('ci_mem','—');
 
-  // DISK: wartości w GB + % (pola: disk_total_gb, disk_used_gb, disk_pct)
   const gb = v => (v==null ? '—' : Number(v).toFixed(1)+' GB');
   if (si.disk_total_gb!=null && si.disk_used_gb!=null){
-    setTxt('ci_disk',
-      `${gb(si.disk_used_gb)} / ${gb(si.disk_total_gb)} (${fmt(si.disk_pct,1)}%)`);
-  } else {
-    setTxt('ci_disk','—');
-  }
+    setTxt('ci_disk', `${gb(si.disk_used_gb)} / ${gb(si.disk_total_gb)} (${fmt(si.disk_pct,1)}%)`);
+  } else setTxt('ci_disk','—');
 
-  // OS release (jako jeden string)
   setTxt('ci_os', si.os_release || '—');
-
-  // Temp na karcie Devices (jeśli jest)
   setTxt('d_temp', (si.temp_c!=null ? fmt(si.temp_c,1)+' °C' : '—'));
 
-  // Wykresy (historia)
   drawChart(si.hist_cpu || [], si.hist_mem || []);
 }
 
-/* auto-refresh obrazków (anti-cache) */
-function refreshImgs(){
-  const t = Date.now();
-  const cam = el('img_cam');  if (cam)  cam.src  = `/snapshots/cam.jpg?t=${t}`;
-  const pro = el('img_proc'); if (pro)  pro.src  = `/snapshots/proc.jpg?t=${t}`;
+/* CAMERA: energooszczędny preview z /state */
+function tsToStr(ts){
+  if(!ts) return '—';
+  try { return new Date(ts*1000).toLocaleString(); } catch(_){ return String(ts); }
+}
+async function refreshCamera(){
+  const imgCam = el('img_cam');
+  const imgProc = el('img_proc');
+  const camBadge = el('camBadge');
+  const camMeta = el('camMeta');
+  try{
+    const st = await (await fetch('/state',{cache:'no-store'})).json();
+    const cam = st.camera || {};
+    // badge
+    if (cam.vision_enabled) {
+      camBadge.textContent = 'vision: ON';
+      camBadge.className = 'cam-badge on';
+    } else {
+      camBadge.textContent = 'vision: OFF';
+      camBadge.className = 'cam-badge';
+    }
+    camMeta.textContent = cam.last_frame_ts ? ('ostatnia klatka: ' + tsToStr(cam.last_frame_ts)) : 'brak ostatniej klatki';
+
+    const bust = Date.now();
+    if (cam.vision_enabled) {
+      // spróbuj last; jeśli brak, placeholder
+      const lastUrl = (cam.preview_url || '/camera/last') + '?t=' + bust;
+      const head = await fetch(lastUrl, {method:'HEAD', cache:'no-store'});
+      imgCam.src = head.ok ? lastUrl : ((cam.placeholder_url || '/camera/placeholder') + '?t=' + bust);
+      // PROC: tylko jeśli vision ON — wtedy /snapshots/proc.jpg; inaczej placeholder
+      if (imgProc) imgProc.src = head.ok ? (`/snapshots/proc.jpg?t=${bust}`) : ((cam.placeholder_url || '/camera/placeholder') + '?t=' + bust);
+    } else {
+      imgCam.src = (cam.placeholder_url || '/camera/placeholder') + '?t=' + bust;
+      if (imgProc) imgProc.src = (cam.placeholder_url || '/camera/placeholder') + '?t=' + bust;
+    }
+  }catch(e){
+    if (camBadge){ camBadge.textContent='vision: ?'; camBadge.className='cam-badge'; }
+    if (camMeta) camMeta.textContent='błąd odczytu stanu';
+    const bust = Date.now();
+    if (imgCam) imgCam.src = '/camera/placeholder?t=' + bust;
+    if (imgProc) imgProc.src = '/camera/placeholder?t=' + bust;
+  }
 }
 
 async function tick(){
@@ -303,9 +334,9 @@ async function tick(){
   try{ const si = await (await fetch('/sysinfo',{cache:'no-store'})).json(); updateSys(si);}catch(e){}
 }
 
-setInterval(tick, REFRESH);
-setInterval(refreshImgs, IMG_REFRESH);
-window.addEventListener('load', ()=>{ tick(); refreshImgs(); });
+setInterval(tick, REFRESH_MS);
+setInterval(refreshCamera, CAM_REFRESH_MS);
+window.addEventListener('load', ()=>{ tick(); refreshCamera(); });
 </script>
 </body>
 </html>
