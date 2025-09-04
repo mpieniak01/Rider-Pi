@@ -1,18 +1,32 @@
 [Unit]
-Description=Rider-Pi Status API
-After=network-online.target rider-broker.service
-Wants=rider-broker.service
+Description=Rider-Pi API (HTTP/SSE)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=pi
+Group=pi
 WorkingDirectory=/home/pi/robot
+
+# Porty / env (dostosuj, jeśli używasz innych)
 Environment=STATUS_API_PORT=8080
-ExecStart=/usr/bin/python3 -u services/status_api.py
+Environment=BUS_PUB_PORT=5555
+Environment=BUS_SUB_PORT=5556
+Environment=ENABLE_XGO_RO=1
+
+# Uruchamiaj jako moduł, nie jako ścieżkę względną
+ExecStart=/usr/bin/python3 -u -m services.status_api
+
+# Stabilność
 Restart=on-failure
-RestartSec=1
-KillSignal=SIGINT
-TimeoutStopSec=3
+RestartSec=2
+StartLimitIntervalSec=30
+StartLimitBurst=10
+
+# Logi do journald
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

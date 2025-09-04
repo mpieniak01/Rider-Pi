@@ -66,7 +66,7 @@ def connect_xgolib():
 
 def connect_ro(port="/dev/ttyAMA0", verbose=False):
     # import przez scripts. – zakładamy plik obok
-    from scripts.xgo_client_ro import XGOClientRO
+    from tools.xgo_client_ro import XGOClientRO
     dog = XGOClientRO(port=port, verbose=verbose)
     return dog, port, "ro"
 
