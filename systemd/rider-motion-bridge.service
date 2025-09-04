@@ -1,0 +1,54 @@
+[Unit]
+Description=Rider-Pi Motion/XGO bridge (telemetria + sterowanie)
+After=network-online.target rider-broker.service
+Wants=network-online.target rider-broker.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+ExecStart=/usr/bin/python3 -u services/motion_bridge.py
+Restart=always
+RestartSec=0.5
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=process
+
+# --- BUS ---
+Environment=BUS_PUB_PORT=5555
+Environment=BUS_SUB_PORT=5556
+
+# --- BEZPIECZNY START (tylko odczyt, bez komend ruchu) ---
+Environment=READONLY=1
+Environment=MOVES_ALLOWED=0
+Environment=LAZY=1
+
+# --- PORT / CZĘSTOTLIWOŚĆ ---
+Environment=PORT=/dev/ttyAMA0
+Environment=RATE_HZ=2.0
+
+# --- SYNONIMY (kompatybilność wsteczna) ---
+Environment=BRIDGE_READONLY=1
+Environment=XGO_LAZY_OPEN=1
+Environment=XGO_PORT=/dev/ttyAMA0
+Environment=BRIDGE_RATE_HZ=2.0
+
+# --- LIMITY I DYNAMIKA ---
+Environment=SAFE_MAX=0.6
+Environment=SAFE_MAX_DURATION=0.6
+Environment=MIN_GAP=0.10
+Environment=MIN_CMD_GAP=0.10
+Environment=FREEZE_IDLE_S=2.0
+Environment=IDLE_MAX_DPS=8.0
+
+# --- STABILIZACJA YAW ---
+Environment=YAW_DEADBAND_DPS=1.2
+Environment=YAW_SMOOTH_ALPHA=0.25
+
+# --- PRĘDKOŚCI (zachowujemy jak było) ---
+Environment=SPEED_LINEAR=12
+Environment=DRY_RUN=0
+
+[Install]
+WantedBy=multi-user.target

@@ -8,7 +8,7 @@ SPLASH_ROTATE="${SPLASH_ROTATE:-270}"
 SPLASH_CLEAR="${SPLASH_CLEAR:-1}"
 BOOT_VENDOR_GRACE="${BOOT_VENDOR_GRACE:-5}"
 LCD_BL_GPIO="${LCD_BL_GPIO:-13}"
-LCD_OFF_CMD="${LCD_OFF_CMD:-/usr/bin/python3 /home/pi/robot/scripts/lcdctl.py off}"
+LCD_OFF_CMD="${LCD_OFF_CMD:-/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off}"
 
 ROBOT_ROOT="${ROBOT_ROOT:-/home/pi/robot}"
 MARKER_DIR="/run/rider"

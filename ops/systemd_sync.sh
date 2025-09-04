@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rider-Pi — repo-first systemd sync (ALLOWLIST)
-# Utrzymuje wyłącznie wskazane unity jako symlinki do ~/robot/systemd/*
+# Utrzymuje tylko wskazane unity jako symlinki do ~/robot/systemd/*
 # Idempotentny, bez reimportu z /etc do repo.
 
 set -euo pipefail
@@ -16,11 +16,13 @@ ALLOW_UNITS=(
   "rider-broker.service"
   "rider-api.service"
   "rider-vision.service"
+  "rider-motion-bridge.service"
   "rider-boot-prepare.service"
   "rider-minimal.target"
-  "rider-ssd-preview.service"   # ← włączamy linkowanie, bez enable
+  "rider-ssd-preview.service"   # linkujemy, bez enable — start wg Wants/ lub ręcznie
+  "jupyter.service"
+  "rider-dev.target"
 )
-
 
 BASE_ENABLE=( "getty@tty1.service" "ssh.service" "dhcpcd.service" )
 
@@ -39,13 +41,15 @@ in_allow() {
 mkdir -p "$REPO_DIR"
 need_sudo
 
-log "Ustawiam domyślny target na multi-user.target (baseline z konsolą/siecią/ssh)"
+log "Ustawiam domyślny target na multi-user.target"
 sudo systemctl set-default multi-user.target
 
-# 1) Backup aktualnych rider-* (*.service/*.target), bez katalogów *.service.d
-log "Kopia zapasowa obecnych unitów do: $BACKUP_DIR"
+# 1) Backup rider-* (*.service/*.target), bez katalogów *.service.d
+log "Backup rider-* do: $BACKUP_DIR"
 sudo mkdir -p "$BACKUP_DIR"
-sudo find "$ETC_DIR" -maxdepth 1 -type f -o -type l -regextype posix-extended -regex '.*/rider-.*\.(service|target)' -print0 \
+# poprawne grupowanie warunków 'find'
+sudo find "$ETC_DIR" -maxdepth 1 \( -type f -o -type l \) -regextype posix-extended \
+  -regex '.*/rider-.*\.(service|target)' -print0 \
   | sudo xargs -0 -I{} cp -a "{}" "$BACKUP_DIR" || true
 
 # 2) Baseline dostępności
@@ -55,11 +59,11 @@ for u in "${BASE_ENABLE[@]}"; do
 done
 
 # 3) Linkuj TYLKO allowlistę, jeśli plik istnieje w repo
-log "Tworzę symlinki tylko dla allowlisty -> ${REPO_DIR}/*"
+log "Tworzę symlinki dla allowlisty -> ${REPO_DIR}/*"
 for u in "${ALLOW_UNITS[@]}"; do
   if file_in_repo "$u"; then
     dst="$(etc_unit_path "$u")"
-    # jeśli istnieje zwykły plik lub błędny link → usuń
+    # jeżeli istnieje zwykły plik → usuń i zastąp linkiem
     if [[ -e "$dst" && ! -L "$dst" ]]; then sudo rm -f "$dst"; fi
     sudo ln -sfn "${REPO_DIR}/$u" "$dst"
   else
@@ -75,21 +79,20 @@ while IFS= read -r -d '' etcu; do
     log "Usuwam niezarządzane: $bn"
     sudo systemctl disable --now "$bn" 2>/dev/null || true
     sudo rm -f "$etcu"
-    # sprzątnij ewentualne wants/
     sudo rm -f "/etc/systemd/system/multi-user.target.wants/$bn" 2>/dev/null || true
     sudo rm -f "/etc/systemd/system/graphical.target.wants/$bn" 2>/dev/null || true
   fi
-done < <(find "$ETC_DIR" -maxdepth 1 -type f -o -type l -regextype posix-extended -regex '.*/rider-.*\.(service|target)' -print0)
+done < <(find "$ETC_DIR" -maxdepth 1 \( -type f -o -type l \) -regextype posix-extended \
+          -regex '.*/rider-.*\.(service|target)' -print0)
 
-# 5) Usuń wszystkie drop-iny *.service.d dla rider-*, bo repo trzyma pełną definicję
+# 5) Usuń drop-iny rider-*.service.d (repo trzyma pełne definicje)
 log "Usuwam drop-iny rider-*.service.d (jeśli były)"
 sudo find "$ETC_DIR" -maxdepth 1 -type d -name 'rider-*.service.d' -exec rm -rf {} + 2>/dev/null || true
 
-# 6) Reload + enable tylko tego, co trzeba
+# 6) Reload + enable tam gdzie trzeba
 log "systemctl daemon-reload"
 sudo systemctl daemon-reload
 
-# enable: minimal.target + boot-prepare (+ reszta nie musi być enable, jeśli WantedBy jest w plikach)
 for u in "${ALLOW_UNITS[@]}"; do
   case "$u" in
     rider-minimal.target|rider-boot-prepare.service)
@@ -97,9 +100,7 @@ for u in "${ALLOW_UNITS[@]}"; do
       sudo systemctl enable "$u" || true
       ;;
     *)
-      # nie wymuszamy enable na pozostałych; zostają linki, start wg Wants/ ręczny
-      :
-      ;;
+      : ;;  # reszta startuje wg Wants/ ręcznie
   esac
 done
 
@@ -120,7 +121,8 @@ while IFS= read -r -d '' u; do
   active="$(systemctl is-active  "$bn" 2>/dev/null || echo 'n/a')"
   target="$(readlink -f "$u" || echo '-')"
   printf "%-32s %-10s %-10s %s\n" "$bn" "$enabled" "$active" "$target"
-done < <(find "$ETC_DIR" -maxdepth 1 -type f -o -type l -regextype posix-extended -regex '.*/rider-.*\.(service|target)' -print0)
+done < <(find "$ETC_DIR" -maxdepth 1 \( -type f -o -type l \) -regextype posix-extended \
+          -regex '.*/rider-.*\.(service|target)' -print0)
 
 echo
 log "DONE. Po sync: reboot jest wskazany."

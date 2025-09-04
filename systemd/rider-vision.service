@@ -4,6 +4,8 @@ After=network-online.target rider-broker.service
 Wants=rider-broker.service
 
 [Service]
+Environment=VISION_ON_CONSECUTIVE=1
+Environment=VISION_MIN_SCORE=0.10
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/robot
