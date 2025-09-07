@@ -2,53 +2,65 @@
 Description=Rider-Pi Motion/XGO bridge (telemetria + sterowanie)
 After=network-online.target rider-broker.service
 Wants=network-online.target rider-broker.service
+StartLimitIntervalSec=30
+StartLimitBurst=10
 
 [Service]
 Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
-ExecStart=/usr/bin/python3 -u services/motion_bridge.py
+ExecStart=/usr/bin/python3 -u -m services.motion_bridge
 Restart=always
 RestartSec=0.5
 TimeoutStartSec=10
 TimeoutStopSec=5
 KillMode=process
+KillSignal=SIGINT
+Nice=-5
+StandardOutput=journal
+StandardError=journal
 
-# --- BUS ---
+# --- BUS (FIFO; nie „latest only”) ---
 Environment=BUS_PUB_PORT=5555
 Environment=BUS_SUB_PORT=5556
+Environment=BUS_RCVHWM=100
+Environment=BUS_CONFLATE=0
+Environment=MAX_MSGS_PER_TICK=10
+# Subskrybuj WSZYSTKIE tematy sterujące (jeśli kod czyta tę zmienną)
+Environment=BUS_TOPIC=cmd.move,cmd.stop,motion.cmd
 
-# --- BEZPIECZNY START (tylko odczyt, bez komend ruchu) ---
-Environment=READONLY=1
-Environment=MOVES_ALLOWED=0
-Environment=LAZY=1
+# --- TRYB PRACY (odblokuj komendy ruchu) ---
+Environment=DRY_RUN=0
+Environment=BRIDGE_READONLY=0
+Environment=MOVES_ALLOWED=1
+Environment=XGO_LAZY_OPEN=1
 
 # --- PORT / CZĘSTOTLIWOŚĆ ---
-Environment=PORT=/dev/ttyAMA0
-Environment=RATE_HZ=2.0
-
-# --- SYNONIMY (kompatybilność wsteczna) ---
-Environment=BRIDGE_READONLY=1
-Environment=XGO_LAZY_OPEN=1
 Environment=XGO_PORT=/dev/ttyAMA0
-Environment=BRIDGE_RATE_HZ=2.0
+Environment=BRIDGE_RATE_HZ=20.0
 
 # --- LIMITY I DYNAMIKA ---
-Environment=SAFE_MAX=0.6
-Environment=SAFE_MAX_DURATION=0.6
-Environment=MIN_GAP=0.10
-Environment=MIN_CMD_GAP=0.10
-Environment=FREEZE_IDLE_S=2.0
-Environment=IDLE_MAX_DPS=8.0
+Environment=SAFE_MAX_DURATION=0.12
+Environment=MIN_CMD_GAP=0.01
+Environment=YAW_FREEZE_WHEN_IDLE_S=2.0
+Environment=YAW_IDLE_MAX_DPS=8.0
+Environment=SPEED_LINEAR=8
 
 # --- STABILIZACJA YAW ---
 Environment=YAW_DEADBAND_DPS=1.2
-Environment=YAW_SMOOTH_ALPHA=0.25
+Environment=YAW_SMOOTH_ALPHA=0.20
 
-# --- PRĘDKOŚCI (zachowujemy jak było) ---
-Environment=SPEED_LINEAR=12
-Environment=DRY_RUN=0
+# --- PREEMPCJA / DEADMAN / ANTY-LAG ---
+Environment=PREEMPT=1
+# Dajemy dłuższe okno na dostarczenie komendy z UI (mniej "drop_old")
+Environment=DROP_OLD_MS=2000
+# Aktywny deadman (auto-stop) ale nie za agresywny
+Environment=DEADMAN_MS=400
+
+# --- BEZPIECZEŃSTWO / BATERIA ---
+# Na czas diagnozy zniesiony próg; gdy telemetria będzie stabilna ustaw np. 5–10.
+Environment=MIN_BATTERY_PCT=0
 
 [Install]
 WantedBy=multi-user.target

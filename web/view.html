@@ -181,6 +181,31 @@ const el = id => document.getElementById(id);
 const setTxt=(id,txt)=>{const e=el(id); if(e) e.textContent=txt;}
 const setCls=(id,cls)=>{const e=el(id); if(e) e.className=cls;}
 
+/* === helpers do pose (utwardzone po poprawce) === */
+function fmtPose(p){
+  if (Array.isArray(p)) {
+    const good = p.filter(v => v!=null && !Number.isNaN(Number(v)));
+    if (!good.length) return '—';
+    return good.map(v => Number(v).toFixed(1)).join('°, ') + '°';
+  }
+  if (typeof p === 'string') {
+    const t = p.trim();
+    if (!t || t === '—' || t === '-' || t.toLowerCase() === 'null') return '—';
+    const parts = t.split(',').map(s=>s.trim()).filter(Boolean);
+    if (!parts.length) return '—';
+    return parts.map(s => isNaN(s) ? s : (+s).toFixed(1)).join('°, ') + '°';
+  }
+  return (p==null ? '—' : String(p));
+}
+function hasPoseValue(p){
+  if (Array.isArray(p)) return p.some(v => v!=null && !Number.isNaN(Number(v)));
+  if (typeof p === 'string') {
+    const t = p.trim();
+    return !!t && t !== '—' && t !== '-' && t.toLowerCase() !== 'null';
+  }
+  return p!=null;
+}
+
 /* ===== WYKRES ===== */
 function drawChart(cpuArr, memArr){
   const c = el('chart'); if(!c) return;
@@ -204,7 +229,7 @@ function drawChart(cpuArr, memArr){
     ctx.lineTo(padL, y);
     ctx.strokeStyle = '#1d3548';
     ctx.stroke();
-    ctx.fillText(yv.toString(), padL - 6, y + 3);
+    ctx.fillText(String(yv), padL - 6, y + 3);
   }
 
   function plot(arr, color){
@@ -264,12 +289,22 @@ function updateHealth(h){
     setTxt('d_xgo_imu', imuTxt);
     setCls('d_xgo_imu', (xgo.on && xgo.imu_ok)? 'ok' : (xgo.on? 'muted':'muted'));
 
-    const poseTxt = (xgo.pose!=null? String(xgo.pose):'—')
-      + (xgo.roll!=null? (` · r ${fmt(xgo.roll,1)}°`):'')
-      + (xgo.pitch!=null? (` · p ${fmt(xgo.pitch,1)}°`):'')
-      + (xgo.yaw!=null? (` · y ${fmt(xgo.yaw,1)}°`):'');
-    setTxt('d_xgo_pose', poseTxt);
-    setCls('d_xgo_pose', (xgo.pose==='upright')? 'ok' : (xgo.pose ? 'bad' : 'muted'));
+    /* --- POSE: pokaż tylko istniejące części, bez „— · ...” --- */
+    const poseEl = el('d_xgo_pose');
+    if (poseEl) {
+      const poseVal = xgo.pose ?? null;
+      const parts = [];
+      if (hasPoseValue(poseVal)) parts.push(fmtPose(poseVal));
+      if (xgo.roll  != null) parts.push(`r ${fmt(xgo.roll,1)}°`);
+      if (xgo.pitch != null) parts.push(`p ${fmt(xgo.pitch,1)}°`);
+      if (xgo.yaw   != null) parts.push(`y ${fmt(xgo.yaw,1)}°`);
+
+      const txt = parts.length ? parts.join(' · ') : '—';
+      poseEl.textContent = txt;
+
+      poseEl.classList.remove('muted','ok','bad');
+      if (!parts.length) poseEl.classList.add('muted');
+    }
 
     const battTxt = (xgo.battery_pct!=null? `${xgo.battery_pct}%`:'—');
     setTxt('d_xgo_batt', battTxt);
@@ -452,4 +487,6 @@ window.addEventListener('load', ()=>{ tick(); refreshCamera(); startSSE(); });
 
 </body>
 </html>
+
+
 

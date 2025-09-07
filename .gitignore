@@ -41,3 +41,32 @@ web/*.tmp
 # Local work dirs (not part of main code)
 scripts/
 # Local work dir (not part of main code)
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.swp
+*.tmp
+*.bak.*
+*.log
+snapshots/
+data/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.swp
+*.tmp
+*.bak.*
+*.log
+snapshots/
+data/
+web/control.tmp
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.swp
+*.tmp
+*.bak.*
+*.log
+snapshots/
+data/
+web/control.tmp
