@@ -6,13 +6,14 @@ ConditionPathExists=!/run/rider/boot-prepared
 
 [Service]
 Type=oneshot
-# Domyślne środowisko — można nadpisać w pliku drop-in /etc/systemd/system/rider-boot-prepare.service.d/override.conf
-Environment=SPLASH_SECONDS=5
+WorkingDirectory=/home/pi/robot
+# Domyślne środowisko — można nadpisać drop-inem /etc/systemd/system/rider-boot-prepare.service.d/override.conf
+Environment=SPLASH_SECONDS=3
 Environment=SPLASH_ROTATE=270
 Environment=SPLASH_CLEAR=1
 Environment=BOOT_VENDOR_GRACE=5
 Environment=LCD_BL_GPIO=13
-Environment=LCD_OFF_CMD=/usr/bin/python3 /home/pi/robot/scripts/lcdctl.py off
+Environment="LCD_OFF_CMD=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off"
 RuntimeDirectory=rider
 RemainAfterExit=yes
 ExecStart=/home/pi/robot/ops/boot_prepare.sh
