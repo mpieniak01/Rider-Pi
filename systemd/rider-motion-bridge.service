@@ -38,7 +38,7 @@ Environment=XGO_LAZY_OPEN=1
 
 # --- PORT / CZĘSTOTLIWOŚĆ ---
 Environment=XGO_PORT=/dev/ttyAMA0
-Environment=BRIDGE_RATE_HZ=20.0
+Environment=BRIDGE_RATE_HZ=3.0
 
 # --- LIMITY I DYNAMIKA ---
 Environment=SAFE_MAX_DURATION=0.12
