@@ -1,4 +1,4 @@
-##Rider-Pi v0.5.1 — stable motion chain##
+## Rider-Pi v0.5.1 — stable motion chain ##
 
 ###Highlights###
 - Stabilny łańcuch ruchu: dashboard→API(:8080)→web-bridge(:8081)→BUS→motion-bridge→XGO
@@ -8,7 +8,7 @@
 - tests/: diag_snapshot, watch, cascade_forward (diagnostyka + kaskady)
 
 
-###Smoke test###
+### Smoke test ###
 - curl 127.0.0.1:8081/healthz && curl 127.0.0.1:8080/healthz
 - curl "127.0.0.1:8080/api/move?dir=forward&v=0.15&t=0.12" ; curl "127.0.0.1:8080/api/stop"
 - journalctl -u rider-motion-bridge.service -n 40 | egrep -i 'rx_cmd|forward|backward|stop'
