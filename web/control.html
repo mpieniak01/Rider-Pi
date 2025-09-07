@@ -402,7 +402,7 @@
   // ====== Services panel (systemd via /svc) ======
   const svcRows = {
     "rider-vision.service":   { label: "vision",    desc:"Rozpoznawanie/preview (energochłonne)" },
-    "rider-last-frame-sink.service": { label: "last", desc:"Zapis ostatniej klatki (niskie zużycie)" }
+    "rider-ssd-preview.service": { label: "last", desc:"SSD preview (RAW/PROC → snapshots)" }
   };
 
   function pill(txt, ok){ return `<span class="pill ${ok?'ok':'bad'}">${txt}</span>`; }

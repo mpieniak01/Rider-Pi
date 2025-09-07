@@ -4,14 +4,27 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Type=simple
 User=pi
-EnvironmentFile=/etc/default/rider-pi
 WorkingDirectory=/home/pi/robot
-ExecStart=/usr/bin/python3 -u /home/pi/robot/services/broker.py
+
+# --- PORTY BUS ---
+Environment=BUS_PUB_PORT=5555
+Environment=BUS_SUB_PORT=5556
+
+# --- ANTY-KOLEJKA (HWM) ---
+# Minimalne bufory po obu stronach brokera – nie „magazynuj” starych komend.
+Environment=SNDHWM=1
+Environment=RCVHWM=1
+
+# analogicznie: plik .py zamiast modułu, żeby nie wymagać pakietu
+ExecStart=/usr/bin/python3 -u services/broker.py
 Restart=always
-RestartSec=1
-# lepsze logowanie w journalctl
-Environment=PYTHONUNBUFFERED=1
+RestartSec=0.5
+TimeoutStartSec=5
+TimeoutStopSec=3
+KillMode=process
+KillSignal=SIGINT
 
 [Install]
 WantedBy=multi-user.target
