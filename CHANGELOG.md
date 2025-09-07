@@ -1,6 +1,14 @@
+## Rider-Pi v0.5.2 — perf tuning (3 Hz) - 2025.09.07
+
+### Changes
+- motion-bridge: BRIDGE_RATE_HZ=3.0 (CPU ↓ z ~11% do ~7–8% na Pi)
+- zachowana natychmiastowa reakcja na komendy z weba
+- rekomendacja: auto-refresh dashboardu 5–10 s (SSE pokrywa zdarzenia)
+
+
 ## Rider-Pi v0.5.1 — stable motion chain ##
 
-### Highlights
+### Changes
 - Stabilny łańcuch ruchu: dashboard→API(:8080)→web-bridge(:8081)→BUS→motion-bridge→XGO
 - API w trybie router-only (przejrzyste proxy do mostka)
 - web-bridge na :8081 (brak kolizji z API)
