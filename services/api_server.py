@@ -16,13 +16,17 @@ import urllib.parse
 import urllib.request
 from typing import Dict, Any, Optional
 
-from flask import Flask, request, jsonify, make_response, Response
+from flask import Flask, request, jsonify, make_response, Response, send_from_directory
 
 # Główny rdzeń stanu + /healthz|/state|/sysinfo|/metrics|/events
 from services.api_core import compat
 
 app: Flask = compat.app
 STATUS_API_PORT = int(os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or compat.STATUS_API_PORT)
+# Katalog ze statycznym webem (czyste HTML/JS/CSS)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
+
 
 # ── KONFIG MOSTKA RUCHU ──────────────────────────────────────────────────────
 MOTION_BRIDGE_URL = os.getenv("MOTION_BRIDGE_URL", "http://127.0.0.1:8081")
@@ -96,6 +100,18 @@ app.add_url_rule("/svc/<name>/status", view_func=services_api.svc_status, method
 app.add_url_rule("/svc/<name>",        view_func=services_api.svc_action, methods=["POST"])
 
 # dashboard (strona)
+def serve_control():
+    # /control -> web/control.html (Wasz czysty plik HTML)
+    return send_from_directory(STATIC_WEB_DIR, "control.html")
+
+def serve_web(fname):
+    # /web/<asset> -> dowolne zasoby z katalogu web/ (JS/CSS/obrazy)
+    return send_from_directory(STATIC_WEB_DIR, fname)
+
+# Rejestracja tras statycznych
+app.add_url_rule("/control", view_func=serve_control, methods=["GET"])
+app.add_url_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
+
 from services.api_core import dashboard
 app.add_url_rule("/",        view_func=dashboard.dashboard)
 app.add_url_rule("/control", view_func=dashboard.control_page)  # GET (strona)
@@ -127,15 +143,107 @@ app.add_url_rule("/api/stop", view_func=proxy_stop_get, methods=["GET"])
 
 # POST -> jednolite proxy do mostka /control
 def _proxy_control_from_body():
-    data = request.get_json(silent=True) or {}
-    body, code = _proxy_post_json("/control", data)
+    # Parsuj JSON bezpiecznie i toleruj puste ciało
+    data = request.get_json(force=False, silent=True) or {}
+
+    # Aliasy i normalizacja
+    cmd = (str(data.get("cmd") or data.get("action") or "").lower()).strip()
+    if "direction" in data and "dir" not in data:
+        data["dir"] = data["direction"]
+    if not cmd and "dir" in data:
+        cmd = "move"
+
+    # --- Mapowanie deterministyczne ---
+    if cmd == "move":
+        qs = {}
+        for k in ("dir","v","t","w"):  # w=omega (opcjonalnie)
+            if k in data:
+                qs[k] = data[k]
+        if "dir" not in qs:
+            return _corsify(jsonify({"ok": False, "error": "missing 'dir' for move"})), 400
+        body, code = _proxy_get("/api/move", qs)
+        return _corsify(jsonify(body)), code
+
+    if cmd == "stop" or data.get("stop") is True:
+        body, code = _proxy_get("/api/stop", None)
+        return _corsify(jsonify(body)), code
+
+    # Fallback: przekaż jako POST do web-bridge (kompat)
+    body, code = _proxy_post_json("/api/control", data)
+    if code == 404:
+        body, code = _proxy_post_json("/control", data)
     resp = jsonify(body)
     return _corsify(resp), code
 
+
 def api_control_proxy():
+    from flask import request, jsonify, make_response
+    import os, json, urllib.parse, urllib.request
+
+    def _corsify(resp):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+        return resp
+
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
-    return _proxy_control_from_body()
+
+    data = request.get_json(silent=True) or {}
+    cmd = (str(data.get("cmd") or data.get("action") or "")).lower().strip()
+    if "direction" in data and "dir" not in data:
+        data["dir"] = data["direction"]
+    if not cmd and "dir" in data:
+        cmd = "move"
+
+    base = os.getenv("MOTION_BRIDGE_URL") or os.getenv("WEB_BRIDGE_URL") or "http://127.0.0.1:8081"
+
+    def _get_json(url):
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=2.0) as r:
+            body = json.loads(r.read().decode("utf-8"))
+            return body, r.status
+
+    def _post_json(path, payload):
+        url = f"{base}{path}"
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data_bytes, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=2.0) as r:
+            raw = r.read(); code = r.status
+            ctype = r.headers.get("Content-Type","application/json")
+        try:
+            body = json.loads(raw.decode("utf-8")) if ctype.startswith("application/json") else {
+                "ok": False, "error": "bad content-type from web bridge", "text": raw[:300].decode("utf-8","ignore")
+            }
+        except Exception:
+            body = {"ok": False, "error": "bad json from web bridge", "text": raw[:300].decode("utf-8","ignore")}
+        return body, code
+
+    try:
+        # --- mapowanie deterministyczne ---
+        if cmd == "stop" or data.get("stop") is True:
+            body, code = _get_json(f"{base}/api/stop")
+            return _corsify(jsonify(body)), code
+
+        if cmd == "move" or "dir" in data:
+            qs = {k: data[k] for k in ("dir","v","t","w") if k in data}
+            if "dir" not in qs:
+                return _corsify(jsonify({"ok": False, "error": "missing 'dir' for move"})), 400
+            url = f"{base}/api/move?" + urllib.parse.urlencode(qs, doseq=True)
+            body, code = _get_json(url)
+            return _corsify(jsonify(body)), code
+
+        # --- fallback: zgodność wsteczna ---
+        try:
+            body, code = _post_json("/api/control", data)
+        except Exception:
+            body, code = _post_json("/control", data)
+        return _corsify(jsonify(body)), code
+
+    except Exception as e:
+        return _corsify(jsonify({"ok": False, "error": f"proxy_control_failed: {e}"})), 502
+
 app.add_url_rule("/api/control", view_func=api_control_proxy, methods=["POST","OPTIONS"])
 
 def api_cmd_proxy():
