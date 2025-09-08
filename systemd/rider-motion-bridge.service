@@ -41,11 +41,11 @@ Environment=XGO_PORT=/dev/ttyAMA0
 Environment=BRIDGE_RATE_HZ=3.0
 
 # --- LIMITY I DYNAMIKA ---
-Environment=SAFE_MAX_DURATION=0.12
+Environment=SAFE_MAX_DURATION=0.30
 Environment=MIN_CMD_GAP=0.01
-Environment=YAW_FREEZE_WHEN_IDLE_S=2.0
-Environment=YAW_IDLE_MAX_DPS=8.0
-Environment=SPEED_LINEAR=8
+Environment=YAW_FREEZE_WHEN_IDLE_S=1.0
+Environment=YAW_IDLE_MAX_DPS=1.0
+Environment=SPEED_LINEAR=10
 
 # --- STABILIZACJA YAW ---
 Environment=YAW_DEADBAND_DPS=1.2
@@ -56,7 +56,7 @@ Environment=PREEMPT=1
 # Dajemy dłuższe okno na dostarczenie komendy z UI (mniej "drop_old")
 Environment=DROP_OLD_MS=2000
 # Aktywny deadman (auto-stop) ale nie za agresywny
-Environment=DEADMAN_MS=400
+Environment=DEADMAN_MS=500
 
 # --- BEZPIECZEŃSTWO / BATERIA ---
 # Na czas diagnozy zniesiony próg; gdy telemetria będzie stabilna ustaw np. 5–10.

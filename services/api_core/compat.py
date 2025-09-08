@@ -656,7 +656,7 @@ try:
             app.url_map._rules_by_endpoint[r.endpoint].remove(r)
         except Exception:
             pass
-    app.add_url_rule("/api/control", endpoint="api_control", view_func=_api_control_proxy_impl, methods=["POST","OPTIONS"])
+    app.add_url_rule("/api/control_legacy", endpoint="api_control_legacy", view_func=_api_control_proxy_impl, methods=["POST","OPTIONS"])
     print("[api] /api/control proxy(v2): route installed (POST,OPTIONS)", flush=True)
 except Exception as _e:
     print("[api] /api/control proxy(v2): bind failed:", _e, flush=True)

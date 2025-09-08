@@ -8,23 +8,36 @@ Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
-# Produkcyjny serwer WSGI (zamiast Flask dev servera)
 ExecStart=/usr/bin/python3 -u -m services.web_motion_bridge
+Restart=always
 RestartSec=0.5
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=process
+KillSignal=SIGINT
+Nice=-5
 StandardOutput=journal
 StandardError=journal
 
-# HTTP
-Environment=WEB_T_DEFAULT=0.10
-Environment=WEB_V_DEFAULT=0.08
+# === bezpieczeństwo: web-bridge nie może otworzyć UART ===
+InaccessiblePaths=/dev/ttyAMA0
+
+# === HTTP ===
 Environment=WEB_HOST=0.0.0.0
 Environment=WEB_PORT=8081
-# Rate-limit po stronie HTTP mostka
+Environment=WEB_T_DEFAULT=0.10
+Environment=WEB_V_DEFAULT=0.08
 Environment=WEB_MIN_GAP_MS=90
-# PUB: łączymy się do brokera (mostek jako klient PUB)
+# PUB: mostek łączy się do brokera (klient PUB)
 Environment=WEB_BIND_PUB=0
 
-# BUS
+# === tryb proxy-only (bez sprzętu) ===
+Environment=BRIDGE_READONLY=1
+Environment=MOVES_ALLOWED=1
+Environment=XGO_LAZY_OPEN=1
+Environment=XGO_PORT=
+
+# === BUS ===
 Environment=BUS_PUB_PORT=5555
 Environment=BUS_SUB_PORT=5556
 Environment=BUS_RCVHWM=100
@@ -32,4 +45,3 @@ Environment=BUS_CONFLATE=0
 
 [Install]
 WantedBy=multi-user.target
-

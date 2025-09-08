@@ -270,71 +270,54 @@
     return r;
   }
 
-  async function sendCmd(obj) {
-    const tries = [
-      {url:'/api/cmd', type:'json'},
-      {url:'/cmd',     type:'json'},
-      {url:'/pub',     type:'pub'},
-    ];
-    let lastErr = null;
-    for (const t of tries) {
-      try {
-        if (t.type === 'json') {
-          await httpPost(t.url, obj);
-        } else {
-          await httpPost(t.url, {topic:'motion.cmd', message: JSON.stringify(obj)});
-        }
-        appendLog(`cmd → ${JSON.stringify(obj)}`, 'ok');
-        return true;
-      } catch(e){ lastErr = e; }
-    }
-    appendLog(`ERROR cmd: ${lastErr ? lastErr.message : 'unknown'}`, 'err');
-    return false;
-  }
-
-  async function sendMoveLegacy(vx, vy, yaw, duration) {
-    try {
-      await httpPost('/api/move', {vx, vy, yaw, duration});
-      appendLog(`move → ${JSON.stringify({vx,vy,yaw,duration})}`, 'ok');
-      return true;
-    } catch(e) {
-      appendLog(`ERROR move: ${e.message}`, 'err');
-      return false;
-    }
+  // NOWY helper: wszystko przez /api/control
+  async function apiControl(obj) {
+    const r = await httpPost('/api/control', obj);
+    const j = await r.json().catch(()=>({}));
+    appendLog(`api/control → ${JSON.stringify(obj)}`, r.ok ? 'ok' : 'err');
+    return j;
   }
 
   // ====== AKCJE RUCHU ======
   async function doStop() {
     try {
-      await httpPost('/api/stop', {});
-      appendLog('stop', 'warn');
+      await apiControl({cmd:'stop'});
       return;
-    } catch(_) {}
-    const ok = await sendCmd({type:'stop'});
-    if (!ok) {
-      try { await httpPost('/pub', {topic:'motion.cmd', message:'{"type":"stop"}'}); appendLog('stop(pub)', 'warn'); } catch(e){ appendLog(`ERROR stop: ${e.message}`, 'err'); }
+    } catch (e) {
+      appendLog(`stop via /api/control failed: ${e.message}`, 'warn');
+    }
+    // awaryjny fallback (starsze buildy)
+    try {
+      await fetch('/api/stop', {method:'GET', cache:'no-store'});
+      appendLog('stop (fallback /api/stop)', 'warn');
+    } catch (e) {
+      appendLog(`ERROR stop fallback: ${e.message}`, 'err');
     }
   }
+
   async function goF() {
-    const ok = await sendCmd({type:'drive', lx: 0.05, az: 0.0});
-    if (!ok) await sendMoveLegacy(+0.05, 0, 0, 0.15);
-    setTimeout(doStop, 200);
+    await apiControl({cmd:'move', dir:'forward', v: LIN_V, t: LIN_T});
+    setTimeout(doStop, Math.max(100, LIN_T*1000));
   }
+
   async function goB() {
-    const ok = await sendCmd({type:'drive', lx: -0.05, az: 0.0});
-    if (!ok) await sendMoveLegacy(-0.05, 0, 0, 0.15);
-    setTimeout(doStop, 200);
+    await apiControl({cmd:'move', dir:'backward', v: LIN_V, t: LIN_T});
+    setTimeout(doStop, Math.max(100, LIN_T*1000));
   }
+
+  // ← / → : skręt albo strafe w zależności od selektora
   async function spin(dir){
-    const s = Math.max(0, Math.min(1, Number(spinEl.value)||0)), t = Math.max(0.1, Math.min(5, Number(durSpinEl.value)||0.45));
-    const ok = await sendCmd({type:'spin', dir, speed:s, dur:t});
-    if (ok) { setTimeout(doStop, Math.max(100, t*1000)); return; }
+    const s = clamp(spinEl.value, 0, 1);
+    const t = clamp(durSpinEl.value, 0.1, 5);
+
     if (lrModeEl.value === 'turn') {
-      const yaw = (dir === 'left' ? -s : +s);
-      await sendMoveLegacy(0, 0, yaw, t);
+      // NOWE: użyj dir=left/right + v + t → /api/control → GET /api/move
+      await apiControl({cmd:'move', dir: (dir === 'left' ? 'left' : 'right'), v: s, t});
     } else {
-      const vy = (dir === 'left' ? -s : +s);
-      await sendMoveLegacy(0, vy, 0, t);
+      // STRAFE: jedziemy „starym” typem drive przez POST (proxy NIE zamieni na GET)
+      // ly = +s w prawo, -s w lewo
+      const ly = (dir === 'left' ? -s : +s);
+      await apiControl({type:'drive', lx:0, ly, az:0, dur:t});
     }
     setTimeout(doStop, Math.max(100, t*1000));
   }
@@ -371,7 +354,11 @@
   // Awaryjny STOP przy ukryciu/wyjściu ze strony
   document.addEventListener('visibilitychange', ()=> { if (document.hidden) doStop(); });
   window.addEventListener('beforeunload', ()=> {
-    try { navigator.sendBeacon('/api/stop', new Blob(['{}'], {type:'application/json'})); } catch(e){}
+    try {
+      navigator.sendBeacon('/api/control', new Blob(['{"cmd":"stop"}'], {type:'application/json'}));
+    } catch(e){
+      try { fetch('/api/stop', {method:'GET', keepalive:true}); } catch(_){}
+    }
   });
 
   // ====== SSE /events ======
@@ -401,8 +388,8 @@
 
   // ====== Services panel (systemd via /svc) ======
   const svcRows = {
-    "rider-vision.service":   { label: "vision",    desc:"Rozpoznawanie/preview (energochłonne)" },
-    "rider-ssd-preview.service": { label: "last", desc:"SSD preview (RAW/PROC → snapshots)" }
+    "rider-vision.service":        { label: "vision", desc:"Rozpoznawanie/preview (energochłonne)" },
+    "rider-ssd-preview.service":   { label: "last",   desc:"SSD preview (RAW/PROC → snapshots)" }
   };
 
   function pill(txt, ok){ return `<span class="pill ${ok?'ok':'bad'}">${txt}</span>`; }
