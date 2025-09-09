@@ -5,7 +5,7 @@ SUDO    ?= sudo
 ROOT    ?= $(CURDIR)
 
 # Aktualny zestaw usług (repo-first systemd)
-SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service rider-ssd-preview.service
+SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service rider-cam-preview.service
 
 # ───────────────────────────────────────────────
 .PHONY: help
@@ -19,16 +19,16 @@ help:
 	@echo "  make status-all       # status wszystkich usług rider-*"
 	@echo "  make logs-broker      # logi brokera"
 	@echo "  make logs-api         # logi API"
-	@echo "  make logs-ssd         # logi SSD preview"
+	@echo "  make logs-preview     # logi cam-preview"
 	@echo "  make logs-all         # logi wszystkich kluczowych"
 	@echo ""
 	@echo "  make stop-all         # zatrzymaj wszystkie usługi Rider-Pi"
 	@echo "  make safemode         # tryb awaryjny (kill vendor, stop, LCD off, LED off)"
 	@echo ""
-	@echo "  make preview-ssd      # podgląd kamery SSD (interactive)"
-	@echo "  make ssd-on           # start SSD preview (systemd)"
-	@echo "  make ssd-off          # stop  SSD preview (systemd)"
-	@echo "  make ssd-status       # status SSD preview"
+	@echo "  make preview-run      # podgląd kamery (interactive, bez systemd)"
+	@echo "  make preview-on       # start cam-preview (systemd)"
+	@echo "  make preview-off      # stop  cam-preview (systemd)"
+	@echo "  make preview-status   # status cam-preview"
 	@echo ""
 	@echo "  make bus-spy          # podsłuch magistrali"
 	@echo ""
@@ -52,27 +52,28 @@ help:
 	@echo "  make bench            # benchmark detekcji"
 	@echo "  make clean            # sprzątanie cache"
 	@echo "  make tree             # drzewo repo"
-	@echo "  make health           # /healthz API (port 5000)"
+	@echo "  make health           # /healthz API (port 8080)"
 	@echo ""
+	@echo "  [DEPRECATED] ssd-on/off/status/logs, preview-ssd  -> patrz: preview-*"
 
 # ───────────────────────────────────────────────
 # DEV RUN (foreground)
 .PHONY: broker api
 broker:
-	-@sudo fuser -k 5555/tcp 5556/tcp 2>/dev/null || true
+	-@fuser -k 5555/tcp 5556/tcp 2>/dev/null || true
 	$(PY) services/broker.py
 
 api:
-	$(PY) services/status_api.py
+	$(PY) -u -m services.api_server
 
 # ───────────────────────────────────────────────
 # SYSTEMD
 .PHONY: up stop-all status status-all logs-broker logs-api logs-all
 up:
-	@$(SUDO) systemctl restart rider-broker.service rider-api.service
+	@systemctl restart rider-broker.service rider-api.service
 
 stop-all:
-	-$(SUDO) systemctl stop $(SYSTEMD_SERVICES)
+	-@systemctl stop $(SYSTEMD_SERVICES)
 
 status:
 	@systemctl --no-pager --full status rider-broker.service | sed -n '1,20p'
@@ -80,13 +81,16 @@ status:
 	@systemctl --no-pager --full status rider-vision.service | sed -n '1,20p'
 
 status-all:
-	@systemctl list-units --type=service --all | grep -E 'rider-(broker|api|vision|ssd-preview)'
+	@systemctl list-units --type=service --all | grep -E 'rider-(broker|api|vision|cam-preview)'
 
 logs-broker:
 	@journalctl -u rider-broker.service -n 120 --no-pager
 
 logs-api:
 	@journalctl -u rider-api.service -n 120 --no-pager
+
+logs-preview:
+	@journalctl -u rider-cam-preview.service -n 120 --no-pager || true
 
 logs-all:
 	@journalctl -u rider-broker.service -n 80 --no-pager
@@ -95,59 +99,74 @@ logs-all:
 	@echo "───"
 	@journalctl -u rider-vision.service -n 80 --no-pager
 	@echo "───"
-	@journalctl -u rider-ssd-preview.service -n 80 --no-pager || true
+	@journalctl -u rider-cam-preview.service -n 80 --no-pager || true
 
 # ───────────────────────────────────────────────
 # SAFE MODE
 .PHONY: safemode
 safemode:
-	-$(SUDO) $(ROOT)/ops/camera_takeover_kill.sh
-	-$(SUDO) systemctl stop $(SYSTEMD_SERVICES)
-	-$(SUDO) $(PY) $(ROOT)/scripts/lcdctl.py off --no-spi || true
-	-$(SUDO) $(PY) $(ROOT)/ops/ledctl.py off || true
+	-@$(ROOT)/ops/camera_takeover_kill.sh || true
+	-@systemctl stop $(SYSTEMD_SERVICES)
+	-@$(PY) $(ROOT)/ops/lcdctl.py off --no-spi || true
+	-@$(PY) $(ROOT)/ops/ledctl.py off || true
 
 # ───────────────────────────────────────────────
 # OPS HELPERS
 .PHONY: lcd-on lcd-off lcd-status vendor-kill
 lcd-on:
 	@echo "== Włączam LCD (wyjście ze snu) =="
-	@$(SUDO) $(PY) $(ROOT)/scripts/lcdctl.py on || true
+	@$(PY) $(ROOT)/ops/lcdctl.py on || true
 
 lcd-off:
 	@echo "== Wyłączam LCD (uśpienie panelu) =="
-	@$(SUDO) $(PY) $(ROOT)/scripts/lcdctl.py off || true
+	@$(PY) $(ROOT)/ops/lcdctl.py off || true
 
 lcd-status:
-	@$(SUDO) $(PY) $(ROOT)/scripts/lcdctl.py status || true
+	@$(PY) $(ROOT)/ops/lcdctl.py status || true
 
 vendor-kill:
 	@echo "== Ubijam procesy dostawcy kamery/LCD =="
-	@$(SUDO) bash $(ROOT)/ops/camera_takeover_kill.sh || true
+	@bash $(ROOT)/ops/camera_takeover_kill.sh || true
 
 # ───────────────────────────────────────────────
 # TOOLS / DIAG
-.PHONY: preview-ssd bus-spy
-preview-ssd:
-	@echo "Podgląd SSD (Ctrl+C aby zakończyć)..."
-	$(PY) apps/camera/preview_lcd_ssd.py
+.PHONY: preview-run bus-spy
+preview-run:
+	@echo "Podgląd (Ctrl+C aby zakończyć)..."
+	$(PY) -u apps/camera/preview_lcd.py
 
 bus-spy:
 	$(PY) tools/bus_spy.py
 
 # ───────────────────────────────────────────────
-# SSD PREVIEW (systemd on-demand)
-.PHONY: ssd-on ssd-off ssd-status logs-ssd
+# CAM PREVIEW (systemd on-demand) + aliasy wsteczne
+.PHONY: preview-on preview-off preview-status
+preview-on:
+	@systemctl start rider-cam-preview.service
+
+preview-off:
+	@systemctl stop rider-cam-preview.service || true
+
+preview-status:
+	@systemctl --no-pager --full status rider-cam-preview.service | sed -n '1,25p' || true
+
+# aliasy DEPRECATED (zachowana kompatybilność)
+.PHONY: ssd-on ssd-off ssd-status logs-ssd preview-ssd
 ssd-on:
-	@$(SUDO) systemctl start rider-ssd-preview.service
-
+	@echo "[DEPRECATED] użyj: make preview-on"
+	@$(MAKE) preview-on
 ssd-off:
-	@$(SUDO) systemctl stop rider-ssd-preview.service || true
-
+	@echo "[DEPRECATED] użyj: make preview-off"
+	@$(MAKE) preview-off
 ssd-status:
-	@systemctl --no-pager --full status rider-ssd-preview.service | sed -n '1,20p' || true
-
+	@echo "[DEPRECATED] użyj: make preview-status"
+	@$(MAKE) preview-status
 logs-ssd:
-	@journalctl -u rider-ssd-preview.service -n 120 --no-pager || true
+	@echo "[DEPRECATED] użyj: make logs-preview"
+	@$(MAKE) logs-preview
+preview-ssd:
+	@echo "[DEPRECATED] użyj: make preview-run"
+	@$(MAKE) preview-run
 
 # ───────────────────────────────────────────────
 # VISION CONTROL
@@ -172,27 +191,27 @@ vision-status:
 .PHONY: led-on led-off led-blink led-status led-auto
 led-on:
 	@echo "== LED ON =="
-	@$(SUDO) $(PY) $(ROOT)/ops/ledctl.py on
+	@$(PY) $(ROOT)/ops/ledctl.py on
 
 led-off:
 	@echo "== LED OFF =="
-	@$(SUDO) $(PY) $(ROOT)/ops/ledctl.py off
+	@$(PY) $(ROOT)/ops/ledctl.py off
 
 # Użycie: make led-blink HZ=2  (albo ON=200 OFF=200)
 led-blink:
 	@echo "== LED BLINK =="
 	@if [ -n "$(HZ)" ]; then \
-		$(SUDO) $(PY) $(ROOT)/ops/ledctl.py blink --hz $(HZ); \
+		$(PY) $(ROOT)/ops/ledctl.py blink --hz $(HZ); \
 	else \
-		$(SUDO) $(PY) $(ROOT)/ops/ledctl.py blink --on-ms $${ON:-200} --off-ms $${OFF:-200}; \
+		$(PY) $(ROOT)/ops/ledctl.py blink --on-ms $${ON:-200} --off-ms $${OFF:-200}; \
 	fi
 
 led-status:
-	@$(SUDO) $(PY) $(ROOT)/ops/ledctl.py status
+	@$(PY) $(ROOT)/ops/ledctl.py status
 
 led-auto:
 	@echo "== LED AUTO =="
-	@$(SUDO) $(PY) $(ROOT)/ops/ledctl.py auto
+	@$(PY) $(ROOT)/ops/ledctl.py auto
 
 # ───────────────────────────────────────────────
 # ŚRODOWISKO GRAFICZNE / REALVNC
@@ -247,7 +266,7 @@ tree:
 	@command -v tree >/dev/null 21 && tree -a -I ".git" || find . -path "./.git" -prune -o -print
 
 # ───────────────────────────────────────────────
-# HEALTH CHECK (API na 5000)
+# HEALTH CHECK (API na 8080)
 .PHONY: health
 health:
-	@curl -fsS http://127.0.0.1:5000/healthz && echo || true
+	@curl -fsS http://127.0.0.1:8080/healthz && echo || true

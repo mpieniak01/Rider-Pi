@@ -74,3 +74,4 @@ services/.ipynb_checkpoints/
 .vscode/
 tests/_logs/
 tests/_artifacts/
+_scripts/

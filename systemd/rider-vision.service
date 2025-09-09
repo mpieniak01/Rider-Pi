@@ -8,6 +8,7 @@ Environment=VISION_ON_CONSECUTIVE=1
 Environment=VISION_MIN_SCORE=0.10
 Type=simple
 User=pi
+Group=pi
 WorkingDirectory=/home/pi/robot
 
 # Opcjonalny plik z lokalnymi nadpisaniami (jeśli istnieje)

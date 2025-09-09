@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Preview + MobileNet-SSD (Caffe) — zapis RAW/PROC do /home/pi/robot/snapshots (atomowo)
-# + ramki na LCD, + heartbeat, + publikacja vision.person
-import os, time
-from typing import Set, Tuple, List
+# + ramki na LCD, + heartbeat, + publikacja vision.person (tylko przy realnym trafieniu)
+import os, time, json
+from typing import Set, Tuple, List, Optional
 import cv2, numpy as np
 from common.bus import BusPub
 from common.cam_heartbeat import CameraHB
@@ -11,16 +11,56 @@ from common.snap import Snapper
 PUB = BusPub()
 HB  = CameraHB(mode="ssd")
 
-SNAP_DIR = os.getenv("SNAP_BASE", "/home/pi/robot/snapshots")
+# --- ścieżki / env ---
+# akceptuj obie nazwy (SNAP_DIR i SNAP_BASE) by uniknąć rozjazdów z usługą/API
+SNAP_DIR = os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or "/home/pi/robot/snapshots"
 os.makedirs(SNAP_DIR, exist_ok=True)
 SNAP = Snapper(base_dir=SNAP_DIR)
 
 def _env_flag(n, d=False): return str(os.getenv(n, str(int(d)))).lower() in ("1","true","yes","y","on")
-ROT   = int(os.getenv("PREVIEW_ROT", "270"))
+ROT    = int(os.getenv("PREVIEW_ROT", "270"))
 FLIP_H = _env_flag("PREVIEW_FLIP_H", False)
 FLIP_V = _env_flag("PREVIEW_FLIP_V", False)
 DISABLE_LCD = _env_flag("DISABLE_LCD", False)
 NO_DRAW     = _env_flag("NO_DRAW", False)
+
+# możliwość wymuszenia rozszerzenia snapshotów
+SNAP_EXT_FORCED = (os.getenv("SNAP_EXT","").strip().lower() or None)  # ".jpg" | ".png" | ".bmp"
+
+# --- anty-migotanie + throttling WWW ---
+# Trzymamy ostatnie trafienia przez DRAW_LATCH_MS (ms) do rysowania (nie do publikacji!)
+DRAW_LATCH_MS  = int(os.getenv("DRAW_LATCH_MS", "700"))
+# Nie zapisujemy proc/raw częściej niż co SNAP_EVERY_MS (zmniejsza I/O i lag w WWW)
+SNAP_EVERY_MS  = int(os.getenv("SNAP_EVERY_MS", "500"))
+
+_last_dets: List[Tuple[str, float, Tuple[int,int,int,int]]] = []
+_last_det_ts_ms: float = 0.0
+_next_snap_ts_ms: float = 0.0
+
+def _now_ms() -> float:
+    return time.time() * 1000.0
+
+def latch_dets(dets_now: List[Tuple[str,float,Tuple[int,int,int,int]]]
+               ) -> List[Tuple[str,float,Tuple[int,int,int,int]]]:
+    """Utrzymuje ostatnie bboxy przez DRAW_LATCH_MS, żeby obraz nie mrugał."""
+    global _last_dets, _last_det_ts_ms
+    t = _now_ms()
+    if dets_now:
+        _last_dets = dets_now
+        _last_det_ts_ms = t
+        return dets_now
+    if _last_dets and (t - _last_det_ts_ms) < DRAW_LATCH_MS:
+        return _last_dets
+    return dets_now
+
+def should_snap_now() -> bool:
+    """Kontrola częstotliwości zapisu snapshotów dla WWW."""
+    global _next_snap_ts_ms
+    t = _now_ms()
+    if t >= _next_snap_ts_ms:
+        _next_snap_ts_ms = t + SNAP_EVERY_MS
+        return True
+    return False
 
 def apply_rotation(frame, rot, flip_h, flip_v):
     if rot in (90,180,270):
@@ -41,7 +81,7 @@ def _lcd_init():
 _LCD = _lcd_init()
 
 def lcd_show_bgr(img_bgr):
-    if _LCD is None: return
+    if _LCD is None or NO_DRAW: return
     try:
         from PIL import Image
         img = cv2.resize(img_bgr, (320,240), interpolation=cv2.INTER_LINEAR)
@@ -75,29 +115,90 @@ def load_ssd():
     model = os.path.join("models","ssd","MobileNetSSD_deploy.caffemodel")
     if not (os.path.isfile(proto) and os.path.isfile(model)):
         raise FileNotFoundError("Brak modeli SSD w models/ssd/")
+    if os.path.getsize(model) < 5_000_000:
+        raise IOError(f"Uszkodzony/niepełny model Caffe (size={os.path.getsize(model)} B) – potrzebny ~23MB.")
     return cv2.dnn.readNetFromCaffe(proto, model)
 
 def parse_classes_env() -> Set[str]:
     raw = os.getenv("SSD_CLASSES","person")
-    return set([x.strip().lower() for x in raw.split(",") if x.strip()])
+    raw = "*" if (raw is None) else raw
+    s = {x.strip().lower() for x in raw.split(",") if x.strip()}
+    return set() if ("*" in s or "all" in s) else s
 
-def _atomic_write_jpeg(path: str, img, quality: int=85):
-    tmp = f"{path}.tmp"
-    ok = cv2.imwrite(tmp, img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
-    if ok:
-        try: os.replace(tmp, path)
-        except Exception: pass
+# ---------- snapshot encode helpers (JPG→PNG→BMP, atomowo) ----------
+_SELECTED_EXT: Optional[str] = None
 
-def save_raw_and_proc(raw_img, proc_img, quality: int=85):
+def _try_encode(ext: str, img, params) -> Optional[bytes]:
     try:
-        _atomic_write_jpeg(os.path.join(SNAP_DIR, "raw.jpg"),  raw_img,  quality)
-        _atomic_write_jpeg(os.path.join(SNAP_DIR, "proc.jpg"), proc_img, quality)
+        ok, buf = cv2.imencode(ext, img, params)
+        if ok: return buf.tobytes()
     except Exception:
         pass
+    return None
+
+def _select_ext(img_raw, img_proc) -> str:
+    if SNAP_EXT_FORCED in (".jpg",".jpeg",".png",".bmp"):
+        table = {
+            ".jpg":[int(cv2.IMWRITE_JPEG_QUALITY),85],
+            ".jpeg":[int(cv2.IMWRITE_JPEG_QUALITY),85],
+            ".png":[int(cv2.IMWRITE_PNG_COMPRESSION),3],
+            ".bmp":[]
+        }
+        p = table[".jpg"] if SNAP_EXT_FORCED==".jpeg" else table[SNAP_EXT_FORCED]
+        if _try_encode(SNAP_EXT_FORCED, img_raw, p) and _try_encode(SNAP_EXT_FORCED, img_proc, p):
+            return ".jpg" if SNAP_EXT_FORCED==".jpeg" else SNAP_EXT_FORCED
+    for ext, params in [(".jpg",[int(cv2.IMWRITE_JPEG_QUALITY),85]),
+                        (".png",[int(cv2.IMWRITE_PNG_COMPRESSION),3]),
+                        (".bmp",[])]:
+        if _try_encode(ext, img_raw, params) and _try_encode(ext, img_proc, params):
+            return ext
+    return ".bmp"
+
+def _atomic_write_bytes(path: str, data: bytes):
+    tmp = path + ".tmp"
+    try:
+        with open(tmp,"wb") as f: f.write(data)
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        try: os.remove(tmp)
+        except Exception: pass
+        return False
+
+def save_raw_and_proc(raw_img, proc_img):
+    """Zapisz oba pliki w tym samym działającym formacie (auto-wybór przy 1. zapisie)."""
+    global _SELECTED_EXT
+    if _SELECTED_EXT is None:
+        _SELECTED_EXT = _select_ext(raw_img, proc_img)
+        print(f"[snap] snapshot ext = {_SELECTED_EXT}", flush=True)
+    params = {
+        ".jpg":[int(cv2.IMWRITE_JPEG_QUALITY),85],
+        ".png":[int(cv2.IMWRITE_PNG_COMPRESSION),3],
+        ".bmp":[]
+    }[_SELECTED_EXT]
+    ext = _SELECTED_EXT
+
+    # zakoduj w pamięci i zapisz atomowo
+    for name, img in (("raw",raw_img), ("proc",proc_img)):
+        data = _try_encode(ext, img, params)
+        if data is None:
+            # awaryjnie dobierz ponownie
+            _SELECTED_EXT = _select_ext(raw_img, proc_img)
+            print(f"[snap] reselect ext = {_SELECTED_EXT}", flush=True)
+            ext = _SELECTED_EXT
+            params = {
+                ".jpg":[int(cv2.IMWRITE_JPEG_QUALITY),85],
+                ".png":[int(cv2.IMWRITE_PNG_COMPRESSION),3],
+                ".bmp":[]
+            }[ext]
+            data = _try_encode(ext, img, params)
+        if data is not None:
+            _atomic_write_bytes(os.path.join(SNAP_DIR, f"{name}{ext}"), data)
 
 def main():
     SCORE = float(os.getenv("SSD_SCORE","0.55"))
-    EVERY = int(os.getenv("SSD_EVERY","2"))
+    # WSPARCIE dla obu nazw: najpierw EVERY, potem SSD_EVERY (domyślnie 1 = co klatkę)
+    EVERY = int(os.getenv("EVERY", os.getenv("SSD_EVERY","1")))
     CLW   = parse_classes_env()
 
     read, _ = open_camera((320,240))
@@ -107,7 +208,7 @@ def main():
     frame_id, t0, frames = 0, time.time(), 0
 
     print(f"[ssd] start | SNAP_DIR={SNAP_DIR} | ROT={ROT} FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "
-          f"NO_DRAW={NO_DRAW} DISABLE_LCD={DISABLE_LCD} | SCORE>={SCORE} EVERY={EVERY}", flush=True)
+          f"NO_DRAW={NO_DRAW} DISABLE_LCD={DISABLE_LCD} | SCORE>={SCORE} EVERY={EVERY} | SSD_CLASSES={'ALL' if not CLW else ','.join(sorted(CLW))}", flush=True)
 
     HB.tick(None, 0.0, presenting=not NO_DRAW)
     last_snap_log = time.time()
@@ -126,6 +227,9 @@ def main():
 
         out = frame.copy()
         detections: List[Tuple[str,float,Tuple[int,int,int,int]]] = []
+        fresh_detections: List[Tuple[str,float,Tuple[int,int,int,int]]] = []
+
+        # Inference co N-tą klatkę
         if frame_id % max(1, EVERY) == 0:
             blob = cv2.dnn.blobFromImage(cv2.resize(frame,(300,300)),
                                          0.007843,(300,300),127.5,swapRB=True,crop=False)
@@ -143,13 +247,20 @@ def main():
                 if x2<=x1 or y2<=y1: continue
                 name = CLASSES[cls_id] if 0<=cls_id<len(CLASSES) else str(cls_id)
                 if CLW and (name.lower() not in CLW): continue
-                detections.append((name, conf, (x1,y1,x2,y2)))
+                tup = (name, conf, (x1,y1,x2,y2))
+                fresh_detections.append(tup)
+
+        # Rysowanie z LATCH (ciągły obrys dla oka)
+        detections = latch_dets(fresh_detections)
 
         for name, conf, (x1,y1,x2,y2) in detections:
             if not NO_DRAW:
                 cv2.rectangle(out,(x1,y1),(x2,y2),(0,255,255),2)
                 cv2.putText(out, f"{name}:{conf:.2f}", (x1,max(0,y1-5)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255),1,cv2.LINE_AA)
+
+        # Publikacja tylko dla realnych trafień z tej klatki (nie latched)
+        for name, conf, (x1,y1,x2,y2) in fresh_detections:
             if name.lower()=="person":
                 try:
                     PUB.publish("vision.person", {
@@ -159,22 +270,29 @@ def main():
                 except Exception:
                     pass
 
-        # --- zapis snapshotów (pewny) ---
-        save_raw_and_proc(frame, out, quality=85)
-        try:
-            SNAP.cam(frame); SNAP.proc(out); SNAP.lcd_from_frame(out); SNAP.lcd_from_fb()
-        except Exception:
-            pass
+        # --- snapshoty (atomowo, z fallbackiem formatu) z throttlingiem do WWW ---
+        if should_snap_now():
+            save_raw_and_proc(frame, out)
+            try:
+                SNAP.cam(frame); SNAP.proc(out); SNAP.lcd_from_frame(out); SNAP.lcd_from_fb()
+            except Exception:
+                pass
 
+        # co ~10 s lekki log diagnostyczny
         if now - last_snap_log > 10:
             try:
-                p = os.path.join(SNAP_DIR, "proc.jpg")
-                s = os.path.getsize(p) if os.path.exists(p) else -1
-                print(f"[snap] wrote proc.jpg size={s}B at {time.strftime('%H:%M:%S')}", flush=True)
+                for base in ("proc","raw"):
+                    for ext in (".jpg",".png",".bmp"):
+                        p = os.path.join(SNAP_DIR, f"{base}{ext}")
+                        if os.path.exists(p):
+                            s = os.path.getsize(p)
+                            print(f"[snap] {base}{ext} size={s}B @ {time.strftime('%H:%M:%S')}", flush=True)
+                            break
             except Exception:
                 pass
             last_snap_log = now
 
+        # LCD
         lcd_show_bgr(out)
         HB.tick(out, fps_ema, presenting=not NO_DRAW)
 

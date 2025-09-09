@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=pi
+Group=pi
 WorkingDirectory=/home/pi/robot
 
 # --- PORTY BUS ---

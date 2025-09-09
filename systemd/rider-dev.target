@@ -1,0 +1,7 @@
+[Unit]
+Description=Rider-Pi DEV profile (GUI + Jupyter)
+After=network-online.target
+Wants=network-online.target graphical.target jupyter.service
+
+[Install]
+WantedBy=multi-user.target
