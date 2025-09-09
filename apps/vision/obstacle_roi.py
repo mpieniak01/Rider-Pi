@@ -1,108 +1,117 @@
-#!/usr/bin/env python3
-# apps/vision/obstacle_roi.py
-import os, time, json
-import zmq
+import os, time, json, sys, cv2, numpy as np
 
-BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
-BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
-ZPUB = f"tcp://127.0.0.1:{BUS_PUB_PORT}"
-ZSUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
+SNAP_DIR = os.environ.get("SNAP_DIR", "/home/pi/robot/snapshots")
+PROC_PATH = os.environ.get("PROC_PATH", os.path.join(SNAP_DIR, "proc.jpg"))
+RAW_PATH  = os.environ.get("RAW_PATH",  os.path.join(SNAP_DIR, "raw.jpg"))
+ROI_Y0 = float(os.environ.get("ROI_Y0", "0.60"))
+ROI_H  = float(os.environ.get("ROI_H",  "0.35"))
+EDGE_AREA_PCT = float(os.environ.get("EDGE_AREA_PCT", "0.05"))
+EDGE_PIX_MIN  = int(os.environ.get("EDGE_PIX_MIN", "4000"))
+PUBLISH = os.environ.get("PUBLISH", "1") == "1"
+BUS_PUB = os.environ.get("BUS_PUB", "tcp://127.0.0.1:5555")
+TOPIC   = os.environ.get("TOPIC", "vision.obstacle")
+OUT_JSON = os.path.join(os.path.dirname(SNAP_DIR), "data", "obstacle.json")
 
-ROI_Y = float(os.getenv("OBST_ROI_Y", "0.65"))           # dolny pas od 65% wysokości
-MIN_W_FR = float(os.getenv("OBST_MIN_W_FRAC", "0.18"))   # min szerokość bbox / W
-MIN_A_FR = float(os.getenv("OBST_MIN_AREA_FRAC", "0.06"))# min pole bbox / (W*H)
-CLS_RAW = os.getenv("OBST_CLASSES", "*").strip()
-CLASSES = None if CLS_RAW in ("*", "", "all") else {c.strip().lower() for c in CLS_RAW.split(",")}
-ON_CONSEC = int(os.getenv("OBST_ON_CONSEC", "2"))
-OFF_TTL   = float(os.getenv("OBST_OFF_TTL", "0.7"))
+# ZMQ (opcjonalnie)
+pub = None
+if PUBLISH:
+    try:
+        import zmq
+        ctx = zmq.Context.instance()
+        pub = ctx.socket(zmq.PUB)
+        pub.connect(BUS_PUB)
+    except Exception as e:
+        print(f"[obst] warn: zmq disabled ({e})", flush=True)
+        pub = None
 
-def zmq_pub():
-    ctx = zmq.Context.instance()
-    s = ctx.socket(zmq.PUB); s.connect(ZPUB)
-    return s
+os.makedirs(os.path.dirname(OUT_JSON), exist_ok=True)
 
-def zmq_sub():
-    ctx = zmq.Context.instance()
-    s = ctx.socket(zmq.SUB); s.connect(ZSUB)
-    s.setsockopt_string(zmq.SUBSCRIBE, "vision.detections")
-    return s
+def load_gray(path):
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    return img
 
-def parse_msg(msg):
-    # "topic {json}"
-    sp = msg.find(" ")
-    if sp <= 0: return None, None
-    topic = msg[:sp]; payload = json.loads(msg[sp+1:])
-    return topic, payload
+def ensure_edges():
+    # preferuj gotowe krawędzie z PROC
+    img = load_gray(PROC_PATH)
+    if img is not None:
+        return img
+    # fallback: z RAW wylicz Canny
+    raw = load_gray(RAW_PATH)
+    if raw is None:
+        return None
+    # lekka filtracja + Canny
+    blur = cv2.GaussianBlur(raw, (3,3), 0)
+    edges = cv2.Canny(blur, 60, 120)
+    return edges
 
-def intersects_roi(b, W, H):
-    x,y,w,h = b
-    yb = y + h
-    roi_y = int(ROI_Y * H)
-    if yb < roi_y: return False
-    area = (w*h)/(W*H)
-    if (w/float(W) >= MIN_W_FR) or (area >= MIN_A_FR):
-        return True
-    return False
+def roi_slice(img):
+    h, w = img.shape[:2]
+    y0 = int(max(0, min(1, ROI_Y0)) * h)
+    hh = int(max(0.05, min(1-ROI_Y0, ROI_H)) * h)
+    y1 = min(h, y0 + hh)
+    return img[y0:y1, :], (w, h, y0, y1)
 
-def main():
-    sub = zmq_sub()
-    pub = zmq_pub()
-    present = False
-    pos_streak = 0
-    last_pos_ts = 0.0
+def decide(mask):
+    nz = int(np.count_nonzero(mask))
+    total = mask.size
+    pct = nz / max(1, total)
+    present = (pct >= EDGE_AREA_PCT) or (nz >= EDGE_PIX_MIN)
+    conf = float(min(1.0, max(pct / max(1e-6, EDGE_AREA_PCT), nz / max(1, EDGE_PIX_MIN)) * 0.5))
+    return present, pct, nz, total, conf
 
+def publish(topic, obj):
+    if pub is not None:
+        try:
+            msg = f"{topic} {json.dumps(obj, separators=(',',':'))}"
+            pub.send_string(msg)
+        except Exception as e:
+            print(f"[obst] warn: zmq send failed: {e}", flush=True)
+
+last_mtime = 0.0
+print(f"[obst] start | SNAP_DIR={SNAP_DIR} | PROC={PROC_PATH} | ROI_Y0={ROI_Y0} ROI_H={ROI_H} | THR pct={EDGE_AREA_PCT} pix={EDGE_PIX_MIN}", flush=True)
+
+try:
     while True:
         try:
-            msg = sub.recv_string(flags=zmq.NOBLOCK)
-        except zmq.Again:
-            # timeout / tick off-ttl
-            if present and (time.time() - last_pos_ts > OFF_TTL):
-                present = False
-                pub.send_string("obstacle.state " + json.dumps({
-                    "front": False, "ts": time.time(), "reason": "ttl"
-                }))
-            time.sleep(0.02)
+            st = os.stat(PROC_PATH)
+            m = st.st_mtime
+        except FileNotFoundError:
+            m = 0.0
+        if m <= last_mtime:
+            time.sleep(0.2)
+            continue
+        last_mtime = m
+
+        edges = ensure_edges()
+        if edges is None:
+            print("[obst] warn: no frame yet", flush=True)
+            time.sleep(0.3)
             continue
 
-        _, payload = parse_msg(msg)
-        if not payload: continue
-        W, H = payload.get("size", [0,0])
-        items = payload.get("items", [])
+        roi, (w, h, y0, y1) = roi_slice(edges)
+        present, pct, nz, total, conf = decide(roi)
 
-        hit = False
-        nearest = None
-        for it in items:
-            name = str(it.get("name","")).lower()
-            if CLASSES and name not in CLASSES: 
-                continue
-            if float(it.get("score",0.0)) < float(os.getenv("VISION_MIN_SCORE","0.5")):
-                continue
-            bbox = it.get("bbox",[0,0,0,0])
-            if intersects_roi(bbox, W, H):
-                hit = True
-                # keep biggest area as "nearest"
-                area = bbox[2]*bbox[3]
-                if not nearest or area > nearest[0]:
-                    nearest = (area, name, bbox)
+        payload = {
+            "type":"obstacle",
+            "present": bool(present),
+            "confidence": round(conf, 3),
+            "edge_pct": round(pct, 4),
+            "edge_nz": nz,
+            "roi": {"y0": y0, "y1": y1, "w": w, "h": h},
+            "ts": time.time()
+        }
 
-        if hit:
-            pos_streak += 1
-            last_pos_ts = time.time()
-            if not present and pos_streak >= ON_CONSEC:
-                present = True
-                pub.send_string("obstacle.state " + json.dumps({
-                    "front": True, "ts": time.time(),
-                    "reason": "bbox_roi",
-                    "nearest": {"name": nearest[1], "bbox": nearest[2]} if nearest else None
-                }))
-        else:
-            pos_streak = 0
-            if present and (time.time() - last_pos_ts > OFF_TTL):
-                present = False
-                pub.send_string("obstacle.state " + json.dumps({
-                    "front": False, "ts": time.time(), "reason": "clear"
-                }))
+        # JSON obok — łatwy podgląd / integracja
+        try:
+            with open(OUT_JSON, "w") as f:
+                json.dump(payload, f)
+        except Exception as e:
+            print(f"[obst] warn: write json failed: {e}", flush=True)
 
-if __name__ == "__main__":
-    try: main()
-    except KeyboardInterrupt: pass
+        publish(TOPIC, payload)
+        print(f"[obst] snap present={present} pct={pct:.3f} nz={nz} roi=({y0}:{y1}/{h})", flush=True)
+
+except KeyboardInterrupt:
+    pass
+finally:
+    print("[obst] stop", flush=True)
