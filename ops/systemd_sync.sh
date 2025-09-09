@@ -19,6 +19,9 @@ ALLOW_UNITS=(
   "rider-motion-bridge.service"
   "rider-boot-prepare.service"
   "rider-minimal.target"
+  "rider-edge-preview.service"   # edge preview (Canny)
+  "rider-obstacle.service"       # obstacle ROI detector
+  "rider-cam-preview.service"     # raw preview (no LCD when DISABLE_LCD=1)
   "rider-ssd-preview.service"   # linkujemy, bez enable — start wg Wants/ lub ręcznie
   "jupyter.service"
   "rider-dev.target"

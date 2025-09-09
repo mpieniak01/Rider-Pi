@@ -12,8 +12,10 @@ Rider-Pi – API server (router + entrypoint)
 from __future__ import annotations
 import os
 import json
+import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 from flask import Flask, request, jsonify, make_response, Response, send_from_directory
@@ -26,7 +28,6 @@ STATUS_API_PORT = int(os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or c
 # Katalog ze statycznym webem (czyste HTML/JS/CSS)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
-
 
 # ── KONFIG MOSTKA RUCHU ──────────────────────────────────────────────────────
 MOTION_BRIDGE_URL = os.getenv("MOTION_BRIDGE_URL", "http://127.0.0.1:8081")
@@ -75,10 +76,63 @@ def _corsify(resp: Response) -> Response:
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return resp
 
+
+# ── VISION: obstacle.json -> /state i /vision/obstacle ──────────────────────
+OBST_PATH = Path(os.environ.get("OBST_PATH", "/home/pi/robot/data/obstacle.json"))
+
+def load_obstacle() -> Optional[Dict[str, Any]]:
+    """Wczytaj obstacle.json, dołącz age_s; None gdy brak/błąd."""
+    try:
+        if not OBST_PATH.exists():
+            return None
+        data = json.loads(OBST_PATH.read_text())
+        ts = float(data.get("ts", OBST_PATH.stat().st_mtime))
+        data["ts"] = ts
+        data["age_s"] = max(0.0, time.time() - ts)
+        return data
+    except Exception:
+        return None
+
+def state_with_obstacle():
+    """
+    Wrapper na /state – deleguje do compat.state(), a następnie
+    dokleja vision.obstacle (jeśli dostępne).
+    """
+    base_resp = compat.state()
+    status = getattr(base_resp, "status_code", 200)
+    payload: Optional[Dict[str, Any]] = None
+
+    # Spróbuj bezpośrednio jako JSON…
+    get_json = getattr(base_resp, "get_json", None)
+    if callable(get_json):
+        payload = base_resp.get_json(silent=True)
+
+    # …albo sparsuj body.
+    if payload is None:
+        try:
+            payload = json.loads(base_resp.get_data(as_text=True) or "{}")
+        except Exception:
+            payload = {}
+
+    obst = load_obstacle()
+    if obst:
+        payload.setdefault("vision", {})
+        payload["vision"]["obstacle"] = obst
+
+    return jsonify(payload), status
+
+def vision_obstacle():
+    """Podgląd surowego obstacle.json."""
+    obst = load_obstacle()
+    if not obst:
+        return jsonify({"error": "no obstacle data"}), 404
+    return jsonify(obst)
+
+
 # ── ROUTING: HEALTH / STATE / EVENTS / ETC. ──────────────────────────────────
 app.add_url_rule("/healthz",  view_func=compat.healthz)
 app.add_url_rule("/health",   view_func=compat.health_alias)
-app.add_url_rule("/state",    view_func=compat.state)
+app.add_url_rule("/state",    view_func=state_with_obstacle)  # << wrapper z vision.obstacle
 app.add_url_rule("/sysinfo",  view_func=compat.sysinfo)
 app.add_url_rule("/metrics",  view_func=compat.metrics)
 app.add_url_rule("/events",   view_func=compat.events)
@@ -115,6 +169,9 @@ app.add_url_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
 from services.api_core import dashboard
 app.add_url_rule("/",        view_func=dashboard.dashboard)
 app.add_url_rule("/control", view_func=dashboard.control_page)  # GET (strona)
+
+# VISION – podglądowy endpoint
+app.add_url_rule("/vision/obstacle", view_func=vision_obstacle, methods=["GET"])
 
 # control API (komendy – stary mechanizm dla części endpointów)
 from services.api_core import control_api
@@ -272,4 +329,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
