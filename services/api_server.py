@@ -109,7 +109,7 @@ def serve_web(fname):
     return send_from_directory(STATIC_WEB_DIR, fname)
 
 # Rejestracja tras statycznych
-app.add_url_rule("/control", view_func=serve_control, methods=["GET"])
+#app.add_url_rule("/control", view_func=serve_control, methods=["GET"])
 app.add_url_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
 
 from services.api_core import dashboard

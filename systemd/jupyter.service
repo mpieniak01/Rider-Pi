@@ -1,0 +1,17 @@
+[Unit]
+Description=JupyterLab (developer mode)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi
+ExecStart=/usr/bin/python3 -m jupyter lab --notebook-dir=/home/pi --ip=0.0.0.0 --no-browser --port=8888
+User=pi
+Group=pi
+Restart=always
+RestartSec=10
+MemoryHigh=150M
+MemoryMax=220M
+
+[Install]
+WantedBy=multi-user.target

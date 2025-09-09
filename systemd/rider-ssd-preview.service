@@ -1,26 +1,49 @@
 [Unit]
-Description=Rider-Pi SSD camera preview (RAW/PROC to snapshots)
-After=network-online.target rider-broker.service
-Wants=network-online.target
+Description=Rider-Pi SSD camera preview (PROC z ramkami -> snapshots)
+After=network-online.target
+Wants=network-online.target rider-api.service
+Conflicts=rider-cam-preview.service
+StartLimitIntervalSec=30
+StartLimitBurst=10
 
 [Service]
+ExecStart=/usr/bin/flock -n /tmp/camera.lock /usr/bin/python3 -u apps/camera/preview_lcd_ssd.py
 Type=simple
 User=pi
+Group=pi
 WorkingDirectory=/home/pi/robot
+EnvironmentFile=-/etc/default/rider
+EnvironmentFile=-/etc/default/rider-ssd-preview
 
-# JPEG-i bez obrotu (dla dashboardu)
-Environment=PREVIEW_ROT=0
-# Obrót tylko na LCD
-Environment=LCD_ROT=270
-Environment=SSD_EVERY=1
-Environment=SSD_SCORE=0.45
-Environment=SSD_CLASSES=person
+# Ścieżki / parametry
 Environment=SNAP_DIR=/home/pi/robot/snapshots
+Environment=SSD_CLASSES=person,chair,tvmonitor,table
+Environment=SSD_SCORE=0.35
+Environment=EVERY=1
+Environment=SSD_EVERY=1
+Environment=PREVIEW_ROT=0
+Environment=LCD_ROT=270
+Environment=PREVIEW_FLIP_H=0
+Environment=SNAP_EVERY_MS=400
+Environment=DRAW_LATCH_MS=700
 
-ExecStartPre=/usr/bin/mkdir -p /home/pi/robot/snapshots
-ExecStart=/usr/bin/python3 apps/camera/preview_lcd_ssd.py
-Restart=on-failure
-RestartSec=3
+# Przygotowanie katalogu i bezpieczny fallback dla /camera/proc
+ExecStartPre=/bin/mkdir -p /home/pi/robot/snapshots
+ExecStartPre=/bin/ln -sf /home/pi/robot/snapshots/raw.jpg /home/pi/robot/snapshots/proc.jpg
+
+# Jeden proces na kamerę (lock) + uruchomienie podglądu SSD
+ExecStopPost=/bin/rm -f /tmp/camera.lock
+
+Restart=always
+RestartSec=0.5
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=control-group
+KillSignal=SIGINT
+Nice=-5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
+

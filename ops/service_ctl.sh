@@ -13,13 +13,19 @@ SYSTEMCTL="$(command -v systemctl || echo /bin/systemctl)"
 JOURNALCTL="$(command -v journalctl || echo /bin/journalctl)"
 LOG_LINES="${LOG_LINES:-120}"
 
-# --- Whitelist dozwolonych unitów ---
-ALLOWED=(
+# --- Whitelist dozwolonych unitów (dokładne) ---
+ALLOWED_EXACT=(
   "rider-broker.service"
   "rider-api.service"
   "rider-motion-bridge.service"
   "rider-vision.service"
-  "rider-ssd-preview.service"
+  "rider-ssd-preview.service"     # legacy, nadal dopuszczamy
+  "rider-cam-preview.service"     # NOWY podgląd kamery
+)
+
+# --- Whitelist wzorców (regexy) — np. rider-vision@roi.service ---
+ALLOWED_REGEX=(
+  '^rider-vision@[^[:space:]]+\.service$'
 )
 
 usage(){
@@ -29,12 +35,12 @@ usage(){
 
 map_alias(){
   case "${1:-}" in
-    broker)  echo "rider-broker.service" ;;
-    api)     echo "rider-api.service" ;;
-    motion)  echo "rider-motion-bridge.service" ;;
-    vision)  echo "rider-vision.service" ;;
-    preview) echo "rider-ssd-preview.service" ;;
-    *)       echo "${1:-}" ;;
+    broker)    echo "rider-broker.service" ;;
+    api)       echo "rider-api.service" ;;
+    motion)    echo "rider-motion-bridge.service" ;;
+    vision)    echo "rider-vision.service" ;;
+    preview)   echo "rider-cam-preview.service" ;;   # <-- zmienione z rider-ssd-preview.service
+    *)         echo "${1:-}" ;;
   esac
 }
 
@@ -46,8 +52,15 @@ normalize_unit(){
 
 is_allowed(){
   local want="$1"
-  for u in "${ALLOWED[@]}"; do
+  # dopasowanie dokładne
+  for u in "${ALLOWED_EXACT[@]}"; do
     [[ "$u" == "$want" ]] && return 0
+  done
+  # dopasowanie regex (np. rider-vision@roi.service)
+  for rx in "${ALLOWED_REGEX[@]}"; do
+    if [[ "$want" =~ $rx ]]; then
+      return 0
+    fi
   done
   return 1
 }
@@ -74,5 +87,7 @@ case "$ACTION" in
     exec "$JOURNALCTL" -u "$UNIT_REQ" -n "$LOG_LINES" --no-pager
     ;;
   *)
-    usage ;;
+    usage
+    ;;
 esac
+
