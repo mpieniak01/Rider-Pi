@@ -75,3 +75,12 @@ services/.ipynb_checkpoints/
 tests/_logs/
 tests/_artifacts/
 _scripts/
+
+# systemd backups
+systemd/*.service_*
+
+# Jupyter/ipynb
+**/.ipynb_checkpoints/
+*.ipynb
+# systemd backups
+systemd/*.service_
