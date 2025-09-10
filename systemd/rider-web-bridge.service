@@ -1,7 +1,7 @@
 [Unit]
 Description=Rider-Pi HTTP→ZMQ Motion Web Bridge
-After=network-online.target rider-broker.service
-Wants=network-online.target rider-broker.service
+Wants=network-online.target rider-broker.service rider-motion-bridge.service
+After=network-online.target rider-broker.service rider-motion-bridge.service
 
 [Service]
 Type=simple
@@ -10,7 +10,7 @@ Group=pi
 WorkingDirectory=/home/pi/robot
 ExecStart=/usr/bin/python3 -u -m services.web_motion_bridge
 Restart=always
-RestartSec=0.5
+RestartSec=500ms
 TimeoutStartSec=10
 TimeoutStopSec=5
 KillMode=process
@@ -19,7 +19,7 @@ Nice=-5
 StandardOutput=journal
 StandardError=journal
 
-# === bezpieczeństwo: web-bridge nie może otworzyć UART ===
+# 🔒 Minimalne ograniczenie: web-bridge nie może otworzyć UART
 InaccessiblePaths=/dev/ttyAMA0
 
 # === HTTP ===
@@ -45,3 +45,4 @@ Environment=BUS_CONFLATE=0
 
 [Install]
 WantedBy=multi-user.target
+

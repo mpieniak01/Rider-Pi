@@ -25,6 +25,7 @@ ALLOW_UNITS=(
   "rider-ssd-preview.service"   # linkujemy, bez enable — start wg Wants/ lub ręcznie
   "jupyter.service"
   "rider-dev.target"
+  "rider-web-bridge.service"
 )
 
 BASE_ENABLE=( "getty@tty1.service" "ssh.service" "dhcpcd.service" )
