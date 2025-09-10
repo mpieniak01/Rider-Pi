@@ -126,7 +126,10 @@ lcd-status:
 
 vendor-kill:
 	@echo "== Ubijam procesy dostawcy kamery/LCD =="
-	@bash $(ROOT)/ops/camera_takeover_kill.sh || true
+	@sudo systemctl stop yahboom* || true
+	@sudo systemctl stop rider-vendor* || true
+	@sudo systemctl stop jupyter.service || true
+	@sudo systemctl start jupyter.service || true
 
 # ───────────────────────────────────────────────
 # TOOLS / DIAG

@@ -1,25 +1,39 @@
-#!/usr/bin/env python3
-# Zwraca bieżący wynik detekcji przeszkody (obstacle.json), jeśli istnieje.
+from __future__ import annotations
 import os, json, time
-from flask import jsonify, Response
+from pathlib import Path
+from typing import Optional, Dict, Any
+from flask import Blueprint, jsonify, abort, send_file
 
-DATA_DIR = os.environ.get("DATA_DIR", "/home/pi/robot/data")
-OBST_JSON = os.path.join(DATA_DIR, "obstacle.json")
+vision_bp = Blueprint("vision", __name__)
 
-def obstacle_get():
-    now = time.time()
-    payload = {
-        "type": "obstacle", "present": False, "confidence": 0.0,
-        "edge_pct": 0.0, "edge_nz": 0,
-        "roi": {"y0": None, "y1": None, "w": None, "h": None},
-        "ts": None, "age_s": None
-    }
+ROOT = Path(os.environ.get("RIDER_ROOT", "/home/pi/robot"))
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(ROOT / "data")))
+SNAP_DIR = Path(os.environ.get("SNAP_DIR", str(ROOT / "snapshots")))
+OBST_PATH = Path(os.environ.get("OBST_PATH", str(DATA_DIR / "obstacle.json")))
+
+def load_obstacle() -> Optional[Dict[str, Any]]:
     try:
-        with open(OBST_JSON, "r") as f:
-            obj = json.load(f)
-        payload.update(obj)
-        if obj.get("ts"):
-            payload["age_s"] = now - float(obj["ts"])
+        if not OBST_PATH.exists():
+            return None
+        st = OBST_PATH.stat()
+        data = json.loads(OBST_PATH.read_text() or "{}")
+        ts = float(data.get("ts", st.st_mtime))
+        data["ts"] = ts
+        data["age_s"] = max(0.0, time.time() - ts)
+        return data
     except Exception:
-        pass
-    return jsonify(payload)
+        return None
+
+@vision_bp.route("/obstacle", methods=["GET"])
+def obstacle():
+    ob = load_obstacle()
+    if not ob:
+        return jsonify({"error": "no obstacle data"}), 404
+    return jsonify(ob), 200
+
+@vision_bp.route("/edge", methods=["GET"])
+def edge_preview():
+    p = SNAP_DIR / "proc.jpg"
+    if not p.exists():
+        abort(404)
+    return send_file(str(p), mimetype="image/jpeg", conditional=True, etag=True)
