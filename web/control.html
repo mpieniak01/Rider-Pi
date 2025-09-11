@@ -5,127 +5,73 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Sterowanie ruchem (REST /api)</title>
   <style>
-    /* DARK THEME — spójne z głównym dashboardem */
     :root { --pad: 16px; --gap: 12px; }
-    body{
-      font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-      margin:0; padding:var(--pad);
-      background:#0e1823; color:#e6eef7;
-    }
+    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:var(--pad); background:#0e1823; color:#e6eef7; }
     .wrap{max-width:1100px;margin:0 auto}
     h1{font-size:20px;margin:0 0 var(--pad)}
     .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
     .grid{display:grid;grid-template-columns:repeat(3,160px);gap:var(--gap);justify-content:center;margin:16px 0}
-
-    .card{
-      background:#0f2030;
-      border:1px solid #1e3a56;
-      border-radius:16px;
-      box-shadow:0 1px 8px rgba(0,0,0,.25);
-      padding:var(--pad); margin:0 0 var(--pad);
-    }
-
-    button{
-      padding:12px 16px;
-      border:1px solid #24425e;
-      border-radius:12px;
-      background:#122435; color:#e6eef7;
-      font-size:16px; cursor:pointer;
-      transition:transform .03s ease, background .12s ease, border-color .12s ease;
-    }
-    button:hover{ background:#16304a; border-color:#2b5577 }
-    button:active{ transform:scale(0.98) }
-
+    .card{ background:#0f2030; border:1px solid #1e3a56; border-radius:16px; box-shadow:0 1px 8px rgba(0,0,0,.25); padding:var(--pad); margin:0 0 var(--pad); }
+    button{ padding:12px 16px; border:1px solid #24425e; border-radius:12px; background:#122435; color:#e6eef7; font-size:16px; cursor:pointer; transition:transform .03s ease, background .12s ease, border-color .12s ease; }
+    button:hover{ background:#16304a; border-color:#2b5577 } button:active{ transform:scale(0.98) }
+    .btn-sm{ padding:6px 10px; font-size:13px; border-radius:10px }
     label{font-size:14px;color:#b7cee3;display:flex;align-items:center;gap:8px}
     input[type="range"]{width:160px; accent-color:#6de28a}
-    input[type="number"]{
-      width:100px;background:#0b1a27;color:#e6eef7;
-      border:1px solid #24425e;border-radius:10px;padding:6px 8px
-    }
-    select{
-      padding:8px 10px;border-radius:10px;
-      border:1px solid #24425e;background:#0b1a27;color:#e6eef7
-    }
-
-    #log{
-      height:220px; overflow:auto;
-      background:#0b1a27; border:1px solid #1c3349;
-      border-radius:10px; padding:8px;
-      font-family:ui-monospace,Consolas,monospace; font-size:13px;
-      white-space:pre-wrap;
-    }
-
-    .muted{opacity:.85}
-    .ok{color:#6de28a}
-    .warn{color:#f0c36d}
-    .err{color:#ff8080}
-    .kbd{
-      font-family:ui-monospace,Consolas,monospace;
-      background:#102233; border:1px solid #203a57;
-      border-radius:6px; padding:2px 6px; margin:0 2px; color:#b7cee3
-    }
-    .spacer{flex:1}
-    a{color:#98c7ff; text-decoration:none}
-    a:hover{text-decoration:underline}
-
-    /* Camera panel */
-    .camera-wrap{ display:flex;flex-wrap:wrap;gap:12px;align-items:center }
-    .badge{
-      display:inline-block; padding:2px 8px; border-radius:999px;
-      font-size:12px; border:1px solid #2b5577; background:#11263a; color:#b7cee3;
-      margin-left:8px;
-    }
-    .badge.success{ border-color:#2d6a4f; color:#9be3b0; background:#103226; }
-    .badge.secondary{ border-color:#3a4e66; color:#b7c8dd; background:#0f1f30; }
-    .camera-img{
-      max-width:100%; width:520px; height:auto; border-radius:12px; border:1px solid #1e3a56;
-      background:#0b1a27;
-    }
-    .camera-meta{ font-size:12px; color:#9bb7cf; }
-
-    /* Services panel */
-    .svc-table{ width:100%; border-collapse:collapse; font-size:14px }
-    .svc-table th,.svc-table td{ padding:8px; border-top:1px solid #1e3a56 }
-    .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #355; background:#11263a }
-    .pill.ok{ border-color:#2d6a4f; color:#9be3b0; background:#103226 }
-    .pill.bad{ border-color:#6b2d2d; color:#ff9b9b; background:#2b1111 }
-    .mini{ padding:8px 10px; font-size:14px }
+    input[type="number"]{ width:100px;background:#0b1a27;color:#e6eef7; border:1px solid #24425e;border-radius:10px;padding:6px 8px }
+    #log{ height:220px; overflow:auto; background:#0b1a27; border:1px solid #1c3349; border-radius:10px; padding:8px; font-family:ui-monospace,Consolas,monospace; font-size:13px; white-space:pre-wrap; }
+    .muted{opacity:.85} .ok{color:#6de28a} .warn{color:#f0c36d} .err{color:#ff8080}
+    .kbd{ font-family:ui-monospace,Consolas,monospace; background:#102233; border:1px solid #203a57; border-radius:6px; padding:2px 6px; margin:0 2px; color:#b7cee3 }
+    .spacer{flex:1} a{color:#98c7ff; text-decoration:none} a:hover{text-decoration:underline}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #24425e;background:#0b1a27}
+    .pill.ok{color:#6de28a;border-color:#2c6b48} .pill.err{color:#ff8080;border-color:#8a3a3a} .pill.warn{color:#f0c36d;border-color:#8a6a2c}
+    .svc-table{width:100%;border-collapse:collapse;margin-top:8px}
+    .svc-table th,.svc-table td{border-top:1px solid #1c3349;padding:8px 6px;text-align:left;font-size:14px}
+    .svc-table td:nth-child(3), .svc-table td:nth-child(4){ white-space:nowrap; }
+    .svc-actions{ white-space:nowrap; }
+    .svc-actions button{ display:inline-block; padding:6px 10px; font-size:14px; margin:2px 3px; border-radius:10px }
+    .cam{width:100%;max-width:480px;border-radius:12px;border:1px solid #1c3349;background:#0b1a27; display:block; margin:0 auto;}
+    .note{font-size:13px;color:#b7cee3}
   </style>
 </head>
 <body>
 <div class="wrap">
 
-  <div class="card">
-    <h1>Rider-Pi — Sterowanie ruchem
-      <span id="apiStatus" class="muted" style="margin-left:8px">(checking…)</span>
-    </h1>
+  <h1>Rider-Pi — Sterowanie ruchem
+    <span id="apiStatus" class="muted" style="margin-left:8px">(checking…)</span>
+    <span id="obstBadge" class="pill warn" style="margin-left:10px;display:none">Obstacle</span>
+  </h1>
 
-    <!-- CAMERA PANEL -->
-    <div class="camera-wrap" style="margin:6px 0 10px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <strong>Kamera</strong>
-        <span id="cameraBadge" class="badge">…</span>
+  <!-- 1) KAMERA (na górze) -->
+  <div class="card" style="position:relative">
+    <h2 style="font-size:16px;margin:0 0 8px">Podgląd kamery</h2>
+
+    <!-- przyciski przypięte do prawej krawędzi karty -->
+    <div style="position:absolute; right:16px; top:16px; display:flex; gap:8px; align-items:flex-end;">
+      <button id="camToggle" class="btn-sm">⟳ Auto-refresh</button>
+      <button id="btnUseEdge" class="btn-sm">Use EDGE</button>
+      <button id="btnUseCam"  class="btn-sm">Use CAM</button>
+    </div>
+
+    <!-- obrazek wycentrowany -->
+    <div class="row" style="align-items:flex-start; justify-content:center">
+      <div>
+        <img id="camPrev" class="cam" alt="camera preview" src="/camera/last?ts=0" />
+        <div class="note" id="camInfo" style="margin-top:6px">last frame: n/a · source: n/a</div>
       </div>
-      <div class="spacer"></div>
-      <div class="camera-meta" id="cameraMeta"></div>
     </div>
-    <div class="row" style="justify-content:center">
-      <img id="cameraImg" class="camera-img" alt="Podgląd kamery" />
-    </div>
+  </div>
 
-    <div class="row" style="margin-top:14px">
-      <label>Tryb lewo/prawo:
-        <select id="lrMode">
-          <option value="turn" selected>skręt (yaw)</option>
-          <option value="strafe">straf (vy)</option>
-        </select>
-      </label>
+  <!-- 2) STEROWANIE -->
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 8px">Sterowanie ruchem</h2>
+
+    <div class="row" style="margin:6px 0 10px">
       <label>Prędkość skrętu <span class="muted">(0..1)</span>:
-        <input id="speedSpin" type="range" min="0" max="1" step="0.05" value="0.30" />
-        <span id="speedSpinVal">0.30</span>
+        <input id="speedSpin" type="range" min="0" max="1" step="0.02" value="0.18" />
+        <span id="speedSpinVal">0.18</span>
       </label>
-      <label>Czas skrętu [s]:
-        <input id="durationSpin" type="number" min="0.1" step="0.05" value="0.45" />
+      <label>Czas impulsu [s]:
+        <input id="durationSpin" type="number" min="0.05" step="0.05" value="0.10" />
       </label>
       <div class="spacer"></div>
       <button id="btnStop">■ STOP</button>
@@ -135,11 +81,9 @@
       <div></div>
       <button id="btnFwd">↑ Forward</button>
       <div></div>
-
       <button id="btnLeft">← Left</button>
       <button id="btnStop2">■ Stop</button>
       <button id="btnRight">Right →</button>
-
       <div></div>
       <button id="btnBack">↓ Backward</button>
       <div></div>
@@ -152,26 +96,23 @@
     </div>
   </div>
 
-  <!-- USŁUGI (systemd) -->
+  <!-- 3) USŁUGI -->
   <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px">Usługi (systemd)</h2>
-    <table class="svc-table" id="svcTable">
+    <h2 style="font-size:16px;margin:0 0 8px">Usługi (systemd)
+      <button id="svcRefresh" class="btn-sm" style="margin-left:8px">⟳ odśwież</button>
+    </h2>
+    <div id="svcInfo" class="muted">Ładowanie… <span id="svcTs"></span></div>
+    <table class="svc-table" id="svcTable" style="display:none">
       <thead>
         <tr>
-          <th style="text-align:left">Nazwa</th>
-          <th style="text-align:left">Status</th>
-          <th style="text-align:left">Autostart</th>
-          <th style="text-align:left">Opis</th>
-          <th style="text-align:right">Akcje</th>
+          <th>Unit</th><th>Opis</th><th>Status</th><th>Autostart</th><th>Akcje</th>
         </tr>
       </thead>
-      <tbody>
-        <!-- wypełniane JS -->
-      </tbody>
+      <tbody id="svcBody"></tbody>
     </table>
-    <div class="muted" style="margin-top:8px">Korzysta z API: <code>/svc</code>, <code>/svc/&lt;name&gt;</code></div>
   </div>
 
+  <!-- 4) LOG -->
   <div class="card">
     <h2 style="font-size:16px;margin:0 0 8px">Zdarzenia (SSE /events)</h2>
     <div id="log"></div>
@@ -179,282 +120,231 @@
 </div>
 
 <script>
-  // ====== USTAWIENIA ======
-  const LIN_V = 0.05;
-  const LIN_T = 0.15;
-
+  // helpers
   const qs = (s)=>document.querySelector(s);
-  const spinEl = qs('#speedSpin');
-  const spinVal = qs('#speedSpinVal');
-  const durSpinEl = qs('#durationSpin');
-  const lrModeEl = qs('#lrMode');
   const logEl = qs('#log');
-  const apiStatus = qs('#apiStatus');
+  function appendLog(msg, cls=""){ const line=document.createElement('div'); if(cls) line.className=cls; line.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; logEl.appendChild(line); logEl.scrollTop=logEl.scrollHeight; }
+  window.addEventListener('error', e=> appendLog(`JS error: ${e.message}`, 'err'));
+  window.addEventListener('unhandledrejection', e=> appendLog(`Promise error: ${e.reason}`, 'err'));
 
-  const camImg = qs('#cameraImg');
-  const camBadge = qs('#cameraBadge');
-  const camMeta = qs('#cameraMeta');
-
-  function clamp(n, lo, hi){ n=Number(n)||0; return Math.max(lo, Math.min(hi, n)); }
+  // === Sterowanie ruchem (jak było) ===
+  const LIN_V = 0.10, LIN_T = 0.10;
+  const spinEl = qs('#speedSpin'), spinVal = qs('#speedSpinVal'), durSpinEl = qs('#durationSpin');
   spinEl.addEventListener('input', ()=> spinVal.textContent = Number(spinEl.value).toFixed(2));
+  function clamp(n, lo, hi){ n=Number(n)||0; return Math.max(lo, Math.min(hi, n)); }
 
-  // ====== HEALTH ======
   async function pingHealth(){
     try{
-      const r = await fetch('/healthz', {cache:'no-store'});
-      if(!r.ok) throw new Error(r.status);
-      const j = await r.json().catch(()=>({status:r.ok?'ok':'degraded'}));
-      const ok = (j.status === 'ok') || r.ok;
-      apiStatus.textContent = ok ? 'ok' : 'degraded';
-      apiStatus.className = ok ? 'ok' : 'warn';
-    }catch(e){
-      apiStatus.textContent = 'down';
-      apiStatus.className = 'err';
-    }
+      const r=await fetch('/healthz',{cache:'no-store'}); const j=await r.json().catch(()=>({}));
+      const apiStatus = qs('#apiStatus'); const ok=!!j.ok; apiStatus.textContent= ok?'ok':'degraded'; apiStatus.className = ok?'ok':'warn';
+    }catch(e){ const apiStatus = qs('#apiStatus'); apiStatus.textContent='down'; apiStatus.className='err'; }
   }
-  setInterval(pingHealth, 1000); pingHealth();
+  setInterval(()=>{ try{ pingHealth(); }catch(_){/*noop*/} }, 1000); pingHealth();
 
-  // ====== CAMERA (niskoenergetyczny preview) ======
-  function tsToStr(ts){
-    if(!ts) return '—';
-    try{ return new Date(ts*1000).toLocaleString(); }catch(_){ return String(ts); }
+  async function httpPost(url, body){
+    const r=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const t=await r.text(); let j=null; try{ j=JSON.parse(t);}catch{}
+    if(!r.ok){ throw new Error((j && (j.error||j.stderr||j.stdout)) || `HTTP ${r.status}`); }
+    return j||{};
   }
-  async function refreshCamera(){
+  async function apiControl(obj){ try{ const j= await httpPost('/api/control', obj); appendLog(`api/control → ${JSON.stringify(obj)} :: ${JSON.stringify(j)}`, 'ok'); return j; }catch(e){ appendLog(`api/control ${JSON.stringify(obj)} :: ${e.message}`,'err'); } }
+  async function doStop(){ try{ await apiControl({cmd:'stop'}); }catch(_){} }
+  async function goF(){ const t=Math.max(0.05, LIN_T); await apiControl({cmd:'move', dir:'forward', v: LIN_V, t}); setTimeout(()=>{try{doStop();}catch(_){}} , Math.max(100, t*1000)); }
+  async function goB(){ const t=Math.max(0.05, LIN_T); await apiControl({cmd:'move', dir:'backward', v: LIN_V, t}); setTimeout(()=>{try{doStop();}catch(_){}} , Math.max(100, t*1000)); }
+  async function spin(dir){ const w=clamp(spinEl.value,0,1); const t=clamp(durSpinEl.value,0.05,5); await apiControl({cmd:'move', dir:(dir==='left'?'left':'right'), w, t}); setTimeout(()=>{try{doStop();}catch(_){}} , Math.max(100, t*1000)); }
+  qs('#btnFwd').addEventListener('click', ()=>{try{goF();}catch(_){}}); qs('#btnBack').addEventListener('click', ()=>{try{goB();}catch(_){}} );
+  qs('#btnLeft').addEventListener('click', ()=>{try{spin('left');}catch(_){}}); qs('#btnRight').addEventListener('click', ()=>{try{spin('right');}catch(_){}} );
+  qs('#btnStop').addEventListener('click', ()=>{try{doStop();}catch(_){}}); qs('#btnStop2').addEventListener('click', ()=>{try{doStop();}catch(_){}});
+
+  // klawiatura
+  const pressed = new Set(); const isArrow = k => ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k);
+  window.addEventListener('keydown', ev=>{ try{
+    if(ev.repeat) return; const k=ev.key; if(isArrow(k)) ev.preventDefault(); pressed.add(k);
+    if(k===' ') {ev.preventDefault(); doStop(); return;}
+    if(k==='w'||k==='W'||k==='ArrowUp') goF();
+    if(k==='s'||k==='S'||k==='ArrowDown') goB();
+    if(k==='a'||k==='A'||k==='ArrowLeft') spin('left');
+    if(k==='d'||k==='D'||k==='ArrowRight') spin('right');
+  }catch(_){}} );
+  window.addEventListener('keyup', ev=>{ try{
+    if(!pressed.has(ev.key)) return; pressed.delete(ev.key);
+    if(['w','W','ArrowUp','s','S','ArrowDown','a','A','ArrowLeft','d','D','ArrowRight'].includes(ev.key)) doStop();
+  }catch(_){}} );
+  document.addEventListener('visibilitychange', ()=> { if (document.hidden) { try{doStop();}catch(_){ } } });
+  window.addEventListener('beforeunload', ()=> { try { navigator.sendBeacon('/api/control', new Blob(['{"cmd":"stop"}'], {type:'application/json'})); } catch(_){} });
+
+  // obstacle badge
+  async function pollObstacle(){
     try{
-      const st = await fetch('/state', {cache:'no-store'}).then(r=>r.json());
-      const c = st.camera || {};
-      if (c.vision_enabled) {
-        camBadge.textContent = 'vision: ON';
-        camBadge.className = 'badge success';
-      } else {
-        camBadge.textContent = 'vision: OFF';
-        camBadge.className = 'badge secondary';
+      const r = await fetch('/vision/obstacle', {cache:'no-store'});
+      if(!r.ok) throw 0;
+      const j = await r.json().catch(()=>({}));
+      const present = !!(j && (j.present || j.obstacle || (j.data && j.data.present)));
+      const obstBadge = qs('#obstBadge');
+      obstBadge.style.display = 'inline-flex';
+      obstBadge.textContent = present ? 'Obstacle: present' : 'Obstacle: none';
+      obstBadge.className = 'pill ' + (present ? 'err' : 'ok');
+    }catch(_){
+      const obstBadge = qs('#obstBadge');
+      obstBadge.style.display = 'inline-flex';
+      obstBadge.textContent = 'Obstacle: n/a';
+      obstBadge.className = 'pill warn';
+    }
+  }
+  setInterval(()=>{ try{pollObstacle();}catch(_){ } }, 1500); pollObstacle();
+
+  // kamera
+  const camImg = qs('#camPrev'); const camToggle = qs('#camToggle'); const camInfo = qs('#camInfo');
+  let camAuto = true; let camTimer = null;
+  function refreshCam(){ try{ camImg.src = '/camera/last?ts=' + Date.now(); }catch(_){ } }
+  function setCamAuto(on){
+    camAuto = on; camToggle.textContent = on ? '⟳ Auto-refresh (on)' : '⟳ Auto-refresh (off)';
+    if(camTimer){ clearInterval(camTimer); camTimer=null; }
+    if(on){ refreshCam(); camTimer = setInterval(()=>{try{refreshCam();}catch(_){ }}, 1500); }
+  }
+  camToggle.addEventListener('click', ()=> setCamAuto(!camAuto));
+  setCamAuto(true);
+
+  async function probeLastFrameAge(){
+    try{
+      const r = await fetch('/camera/last', { method:'HEAD', cache:'no-store' });
+      const lm = r.headers.get('Last-Modified');
+      let ageTxt = 'n/a';
+      if(lm){
+        const ts = new Date(lm).getTime();
+        const age = Math.max(0, (Date.now()-ts)/1000);
+        ageTxt = age.toFixed(1) + ' s';
       }
-      camMeta.textContent = c.last_frame_ts ? ('ostatnia klatka: ' + tsToStr(c.last_frame_ts)) : 'brak ostatniej klatki';
-
-      const bust = Date.now();
-      if (!c.vision_enabled) {
-        camImg.src = (c.placeholder_url || '/camera/placeholder') + '?t='+bust;
-        return;
-      }
-      const lastUrl = (c.preview_url || '/camera/last') + '?t='+bust;
-      const head = await fetch(lastUrl, {method:'HEAD', cache:'no-store'});
-      camImg.src = head.ok ? lastUrl : ((c.placeholder_url || '/camera/placeholder') + '?t='+bust);
-    }catch(e){
-      camBadge.textContent = 'vision: ?';
-      camBadge.className = 'badge secondary';
-      camImg.src = '/camera/placeholder?t='+Date.now();
-      camMeta.textContent = 'błąd odczytu stanu';
+      const src = await guessFrameSource();
+      camInfo.textContent = `last frame: ${ageTxt} · source: ${src}`;
+      camInfo.className = 'note ' + ((lm)? (parseFloat(ageTxt) < 3 ? 'ok':'warn') : 'err');
+    }catch{
+      camInfo.textContent = 'last frame: n/a · source: n/a';
+      camInfo.className = 'note err';
     }
   }
-  refreshCamera();
-  setInterval(refreshCamera, 5000);
+  setInterval(()=>{ try{probeLastFrameAge();}catch(_){ } }, 1500); probeLastFrameAge();
 
-  // ====== LOG ======
-  function appendLog(msg, cls="") {
-    const line = document.createElement('div');
-    if (cls) line.className = cls;
-    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
+  // /svc
+  const svcInfo = qs('#svcInfo'); const svcTable = qs('#svcTable'); const svcBody = qs('#svcBody'); const svcTs = qs('#svcTs');
+  qs('#svcRefresh').addEventListener('click', ()=>{ try{fetchServices();}catch(_){ } });
+
+  function badge(active, sub){
+    let cls='warn', txt=String(active||'unknown'); if(active==='active') cls='ok';
+    if(active==='failed' || active==='inactive') cls=(active==='failed'?'err':'warn');
+    return `<span class="pill ${cls}">${txt}${sub?` / ${sub}`:''}</span>`;
+  }
+  function badgeEnabled(state){
+    let cls='warn'; if(state==='enabled') cls='ok'; if(state==='disabled') cls='warn';
+    return `<span class="pill ${cls}">${state||'unknown'}</span>`;
   }
 
-  // ====== WYSYŁKA KOMEND ======
-  async function httpPost(url, body, headers) {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: Object.assign({'Content-Type':'application/json'}, headers||{}),
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-    return r;
-  }
-
-  // NOWY helper: wszystko przez /api/control
-  async function apiControl(obj) {
-    const r = await httpPost('/api/control', obj);
-    const j = await r.json().catch(()=>({}));
-    appendLog(`api/control → ${JSON.stringify(obj)}`, r.ok ? 'ok' : 'err');
-    return j;
-  }
-
-  // ====== AKCJE RUCHU ======
-  async function doStop() {
-    try {
-      await apiControl({cmd:'stop'});
-      return;
-    } catch (e) {
-      appendLog(`stop via /api/control failed: ${e.message}`, 'warn');
-    }
-    // awaryjny fallback (starsze buildy)
-    try {
-      await fetch('/api/stop', {method:'GET', cache:'no-store'});
-      appendLog('stop (fallback /api/stop)', 'warn');
-    } catch (e) {
-      appendLog(`ERROR stop fallback: ${e.message}`, 'err');
-    }
-  }
-
-  async function goF() {
-    await apiControl({cmd:'move', dir:'forward', v: LIN_V, t: LIN_T});
-    setTimeout(doStop, Math.max(100, LIN_T*1000));
-  }
-
-  async function goB() {
-    await apiControl({cmd:'move', dir:'backward', v: LIN_V, t: LIN_T});
-    setTimeout(doStop, Math.max(100, LIN_T*1000));
-  }
-
-  // ← / → : skręt albo strafe w zależności od selektora
-  async function spin(dir){
-    const s = clamp(spinEl.value, 0, 1);
-    const t = clamp(durSpinEl.value, 0.1, 5);
-
-    if (lrModeEl.value === 'turn') {
-      // NOWE: użyj dir=left/right + v + t → /api/control → GET /api/move
-      await apiControl({cmd:'move', dir: (dir === 'left' ? 'left' : 'right'), v: s, t});
-    } else {
-      // STRAFE: jedziemy „starym” typem drive przez POST (proxy NIE zamieni na GET)
-      // ly = +s w prawo, -s w lewo
-      const ly = (dir === 'left' ? -s : +s);
-      await apiControl({type:'drive', lx:0, ly, az:0, dur:t});
-    }
-    setTimeout(doStop, Math.max(100, t*1000));
-  }
-
-  qs('#btnFwd').addEventListener('click', goF);
-  qs('#btnBack').addEventListener('click', goB);
-  qs('#btnLeft').addEventListener('click', ()=> spin('left'));
-  qs('#btnRight').addEventListener('click', ()=> spin('right'));
-  qs('#btnStop').addEventListener('click', doStop);
-  qs('#btnStop2').addEventListener('click', doStop);
-
-  // ====== Keyboard ======
-  const pressed = new Set();
-  function isArrow(k){ return ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k); }
-  window.addEventListener('keydown', (ev)=>{
-    if (ev.repeat) return;
-    const k = ev.key;
-    if (isArrow(k)) ev.preventDefault();
-    pressed.add(k);
-    if (k === ' '){ ev.preventDefault(); doStop(); return; }
-    if (k === 'w' || k === 'W' || k === 'ArrowUp')   goF();
-    if (k === 's' || k === 'S' || k === 'ArrowDown') goB();
-    if (k === 'a' || k === 'A' || k === 'ArrowLeft') spin('left');
-    if (k === 'd' || k === 'D' || k === 'ArrowRight')spin('right');
-  });
-  window.addEventListener('keyup', (ev)=>{
-    if (!pressed.has(ev.key)) return;
-    pressed.delete(ev.key);
-    if (['w','W','ArrowUp','s','S','ArrowDown','a','A','ArrowLeft','d','D','ArrowRight'].includes(ev.key)) {
-      doStop();
-    }
-  });
-
-  // Awaryjny STOP przy ukryciu/wyjściu ze strony
-  document.addEventListener('visibilitychange', ()=> { if (document.hidden) doStop(); });
-  window.addEventListener('beforeunload', ()=> {
-    try {
-      navigator.sendBeacon('/api/control', new Blob(['{"cmd":"stop"}'], {type:'application/json'}));
-    } catch(e){
-      try { fetch('/api/stop', {method:'GET', keepalive:true}); } catch(_){}
-    }
-  });
-
-  // ====== SSE /events ======
-  try{
-    const es = new EventSource('/events');
-    es.onmessage = (ev)=> {
-      try{
-        const obj = JSON.parse(ev.data);
-        let line = obj.topic || 'event';
-        if (typeof obj.data === 'string') {
-          try {
-            const d = JSON.parse(obj.data);
-            if (d.event) line += ` :: ${d.event}`;
-            else if (d.vx!==undefined || d.yaw!==undefined) line += ` :: ${JSON.stringify(d)}`;
-          } catch(_){}
-        }
-        appendLog(line);
-      }catch(e){
-        appendLog(`event ${ev.data}`);
-      }
-    };
-    es.onerror = ()=> appendLog('SSE disconnected', 'warn');
-    appendLog('SSE connected');
-  }catch(e){
-    appendLog('SSE not supported', 'warn');
-  }
-
-  // ====== Services panel (systemd via /svc) ======
-  const svcRows = {
-    "rider-vision.service":        { label: "vision", desc:"Rozpoznawanie/preview (energochłonne)" },
-    "rider-ssd-preview.service":   { label: "last",   desc:"SSD preview (RAW/PROC → snapshots)" }
-  };
-
-  function pill(txt, ok){ return `<span class="pill ${ok?'ok':'bad'}">${txt}</span>`; }
-
-  function renderSvcTable(data){
-    const tb = document.querySelector('#svcTable tbody');
-    tb.innerHTML = '';
-    const services = (data.services||[]).filter(s => s && s.unit);
-    for(const s of services){
-      const label = (svcRows[s.unit]?.label) || s.unit;
-      const desc  = (svcRows[s.unit]?.desc)  || (s.desc || '');
-      const activeOK = (s.active === 'active' && s.sub === 'running');
-      const enabledOK = (s.enabled === 'enabled');
-
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><strong>${label}</strong> <span class="muted" style="font-size:12px">(${s.unit})</span></td>
-        <td>${activeOK ? pill('running', true) : pill(s.active || 'inactive', false)}</td>
-        <td>${enabledOK ? pill('enabled', true) : pill(s.enabled || 'disabled', false)}</td>
-        <td class="muted">${desc}</td>
-        <td style="text-align:right; white-space:nowrap">
-          <button class="mini" data-unit="${label}" data-act="start">start</button>
-          <button class="mini" data-unit="${label}" data-act="stop">stop</button>
-          <button class="mini" data-unit="${label}" data-act="restart">restart</button>
-          <button class="mini" data-unit="${label}" data-act="${enabledOK?'disable':'enable'}">${enabledOK?'disable':'enable'}</button>
-        </td>
-      `;
-      tb.appendChild(tr);
-    }
-
-    // wire buttons
-    tb.querySelectorAll('button[data-unit]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const name = btn.getAttribute('data-unit');
-        const act  = btn.getAttribute('data-act');
-        try{
-          const r = await fetch(`/svc/${encodeURIComponent(name)}`, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({action:act})
-          });
-          const j = await r.json().catch(()=>({}));
-          if (r.ok && j.ok){
-            appendLog(`svc ${name}: ${act} ✔`, 'ok');
-          }else{
-            appendLog(`svc ${name}: ${act} ✖ ${j.stderr||j.error||r.status}`, 'err');
-          }
-        }catch(e){ appendLog(`svc ${name}: ${act} ✖ ${e.message}`, 'err'); }
-        loadSvc(); // refresh
-      });
-    });
-  }
-
-  async function loadSvc(){
+  async function fetchServices(){
     try{
       const r = await fetch('/svc', {cache:'no-store'});
-      if(!r.ok) throw new Error(r.status);
-      const j = await r.json();
-      renderSvcTable(j);
+      const j = await r.json().catch(()=>null);
+      const arr = (j && j.services)||[];
+      if(!arr.length){ svcInfo.textContent='Brak danych z /svc'; svcTable.style.display='none'; return; }
+      svcInfo.textContent=''; svcTable.style.display='';
+      svcTs.textContent = '· ' + new Date().toLocaleTimeString();
+      svcBody.innerHTML = arr.map(s => {
+        const unit = s.unit || '';
+        const desc = s.desc || '';
+        const act = badge(s.active, s.sub);
+        const en = badgeEnabled(s.enabled);
+        return `<tr>
+          <td style="font-family:ui-monospace,Consolas,monospace">${unit}</td>
+          <td>${desc}</td>
+          <td>${act}</td>
+          <td>${en}</td>
+          <td class="svc-actions">
+            <button data-unit="${unit}" data-a="start">start</button>
+            <button data-unit="${unit}" data-a="stop">stop</button>
+            <button data-unit="${unit}" data-a="restart">restart</button>
+            <button data-unit="${unit}" data-a="enable">enable</button>
+            <button data-unit="${unit}" data-a="disable">disable</button>
+          </td>
+        </tr>`;
+      }).join('');
     }catch(e){
-      const tb = document.querySelector('#svcTable tbody');
-      tb.innerHTML = `<tr><td colspan="5" class="err">Błąd pobierania /svc: ${e.message}</td></tr>`;
+      svcInfo.textContent = 'Błąd /svc: ' + e;
+      svcTable.style.display='none';
     }
   }
-  loadSvc();
-  setInterval(loadSvc, 5000);
+  setInterval(()=>{ try{fetchServices();}catch(_){ } }, 4000); fetchServices();
+
+  // akcje /svc z pełną diagnostyką
+  async function svcAction(unit, action){
+    let status = 0, text = '', json = null;
+    try{
+      const r = await fetch('/svc/' + encodeURIComponent(unit), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action})
+      });
+      status = r.status;
+      text = await r.text();
+      try { json = JSON.parse(text); } catch {}
+      const ok = (r.ok && json && json.ok === true);
+      const msg = (json && (json.stderr || json.stdout || json.error)) || (text && text.trim()) || `HTTP ${status}`;
+      appendLog(`/svc ${action} ${unit} → ${status} :: ${msg}`, ok ? 'ok' : 'err');
+    }catch(e){
+      appendLog(`/svc ${action} ${unit} → network :: ${String(e)}`, 'err');
+    }finally{
+      try{ await fetchServices(); }catch(_){}
+      try{ await probeLastFrameAge(); }catch(_){}
+    }
+  }
+  qs('#svcBody').addEventListener('click', ev=>{
+    try{
+      const btn = ev.target.closest('button'); if(!btn) return;
+      btn.disabled = true;
+      const unit = btn.getAttribute('data-unit'); const action = btn.getAttribute('data-a');
+      svcAction(unit, action).finally(()=>{ try{btn.disabled=false;}catch(_){} });
+    }catch(_){}
+  });
+
+  // przełączniki źródła
+  async function useEdge(){ try{ await svcAction('rider-cam-preview.service','stop'); await svcAction('rider-edge-preview.service','start'); }catch(_){} }
+  async function useCam(){  try{ await svcAction('rider-edge-preview.service','stop'); await svcAction('rider-cam-preview.service','start'); }catch(_){} }
+  qs('#btnUseEdge').addEventListener('click', ()=>{ try{useEdge();}catch(_){ } });
+  qs('#btnUseCam').addEventListener('click',  ()=>{ try{useCam(); }catch(_){ } });
+
+  // heurystyka źródła
+  async function guessFrameSource(){
+    try{
+      const r = await fetch('/svc', {cache:'no-store'}); const j = await r.json();
+      const list = (j && j.services)||[];
+      const isActive = (name)=> !!list.find(s => s.unit===name && s.active==='active');
+      if(isActive('rider-edge-preview.service')) return 'edge';
+      if(isActive('rider-cam-preview.service'))  return 'cam';
+      if(isActive('rider-vision.service'))       return 'vision';
+      return 'none';
+    }catch{ return 'n/a'; }
+  }
+
+  // SSE z auto-reconnect
+  let es=null, esTimer=null, esDelay=1000;
+  function esConnect(){
+    try{
+      if(es){ try{es.close();}catch(_){ } es=null; }
+      es = new EventSource('/events');
+      es.onopen = ()=>{ appendLog('SSE connected'); esDelay=1000; };
+      es.onmessage=(ev)=>{ try{ const obj=JSON.parse(ev.data); appendLog(obj.topic? `${obj.topic}`: 'event'); }catch{ appendLog('event'); } };
+      es.onerror = ()=>{
+        appendLog('SSE disconnected — reconnecting…','warn');
+        try{ es.close(); }catch(_){}
+        clearTimeout(esTimer);
+        esTimer = setTimeout(esConnect, Math.min(esDelay, 10000));
+        esDelay = Math.min(esDelay*2, 10000);
+      };
+    }catch(e){
+      appendLog('SSE init failed: '+e,'err');
+      clearTimeout(esTimer);
+      esTimer = setTimeout(esConnect, Math.min(esDelay, 10000));
+      esDelay = Math.min(esDelay*2, 10000);
+    }
+  }
+  esConnect();
 </script>
 </body>
 </html>

@@ -6,27 +6,47 @@ from typing import Optional
 from flask import Response, request
 from . import compat as C
 
+# Pełna, jawna whitelist’a (alias -> unit)
 ALLOWED_UNITS = {
-    "vision":    "rider-vision.service",
-    "last":      "rider-ssd-preview.service",
-    "lastframe": "rider-ssd-preview.service",
-    "xgo":       "rider-motion-bridge.service",
-}
-SERVICE_CTL = os.path.join(C.BASE_DIR, "ops", "service_ctl.sh")
+    # core
+    "api":        "rider-api.service",
+    "broker":     "rider-broker.service",
+    "xgo":        "rider-motion-bridge.service",
+    "vision":     "rider-vision.service",
+    "web":        "rider-web-bridge.service",
 
+    # camera pipelines
+    "cam":        "rider-cam-preview.service",
+    "edge":       "rider-edge-preview.service",
+    "ssd":        "rider-ssd-preview.service",
+
+    # detectors
+    "obstacle":   "rider-obstacle.service",
+
+    # legacy aliasy zgodne z UI / dawnym API
+    "last":       "rider-ssd-preview.service",
+    "lastframe":  "rider-ssd-preview.service",
+}
+
+SERVICE_CTL = os.path.join(C.BASE_DIR, "ops", "service_ctl.sh")
 
 def _json(payload, status: int = 200) -> Response:
     return Response(json.dumps(payload, ensure_ascii=False),
                     mimetype="application/json", status=status)
 
-
 def _unit_for(name: str) -> Optional[str]:
+    """Zwraca pełną nazwę unitu, jeśli dozwolona (alias lub pełna nazwa)."""
+    if not name:
+        return None
+    name = name.strip()
+    # alias
     if name in ALLOWED_UNITS:
         return ALLOWED_UNITS[name]
-    if name in ALLOWED_UNITS.values():
+    # pełna nazwa
+    vals = set(ALLOWED_UNITS.values())
+    if name in vals:
         return name
     return None
-
 
 def _svc_status(unit: str) -> dict:
     try:
@@ -53,23 +73,19 @@ def _svc_status(unit: str) -> dict:
     except Exception as e:
         return {"unit": unit, "error": str(e)}
 
-
 def svc_list():
+    # pokaż WSZYSTKIE z whitelisty (unikalne pełne nazwy)
     services = [_svc_status(u) for u in sorted(set(ALLOWED_UNITS.values()))]
     return _json({"services": services})
 
-
 def svc_status(name: str):
-    name = (name or "").strip().lower()
-    unit = _unit_for(name)
+    unit = _unit_for((name or "").lower())
     if not unit:
         return _json({"error": "unknown service"}, status=404)
     return _json(_svc_status(unit))
 
-
 def svc_action(name: str):
-    name = (name or "").strip().lower()
-    unit = _unit_for(name)
+    unit = _unit_for((name or "").lower())
     if not unit:
         return _json({"error": "unknown service"}, status=404)
 
@@ -86,9 +102,10 @@ def svc_action(name: str):
         )
 
     try:
+        # Uwaga: przekazujemy *UNIT potem ACTION* (tak woła API)
         proc = subprocess.run(
             ["sudo", "-n", SERVICE_CTL, unit, action],
-            check=False, capture_output=True, text=True, timeout=8.0
+            check=False, capture_output=True, text=True, timeout=12.0
         )
         status_obj = _svc_status(unit)
         payload = {
@@ -103,3 +120,4 @@ def svc_action(name: str):
         return _json({"error": "timeout"}, status=504)
     except Exception as e:
         return _json({"error": str(e)}, status=500)
+

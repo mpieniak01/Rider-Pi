@@ -1,93 +1,80 @@
 #!/usr/bin/env bash
-# ops/service_ctl.sh — bezpieczne sterowanie wybranymi usługami systemd (z logs)
-# Użycie:
-#   service_ctl.sh <alias|unit> <start|stop|restart|enable|disable|status|logs>
-# Przykłady:
-#   service_ctl.sh motion restart
-#   service_ctl.sh api logs
-#   LOG_LINES=200 service_ctl.sh broker logs
-
 set -euo pipefail
 
-SYSTEMCTL="$(command -v systemctl || echo /bin/systemctl)"
-JOURNALCTL="$(command -v journalctl || echo /bin/journalctl)"
-LOG_LINES="${LOG_LINES:-120}"
-
-# --- Whitelist dozwolonych unitów (dokładne) ---
-ALLOWED_EXACT=(
-  "rider-broker.service"
-  "rider-api.service"
-  "rider-motion-bridge.service"
-  "rider-vision.service"
-  "rider-ssd-preview.service"     # legacy, nadal dopuszczamy
-  "rider-cam-preview.service"     # NOWY podgląd kamery
+# ===== Whitelist (pełne nazwy unitów) =====
+ALLOW_UNITS=(
+  rider-api.service
+  rider-broker.service
+  rider-motion-bridge.service
+  rider-vision.service
+  rider-web-bridge.service
+  rider-cam-preview.service
+  rider-edge-preview.service
+  rider-ssd-preview.service
+  rider-obstacle.service
 )
 
-# --- Whitelist wzorców (regexy) — np. rider-vision@roi.service ---
-ALLOWED_REGEX=(
-  '^rider-vision@[^[:space:]]+\.service$'
-)
+USER_NAME="pi"
+USER_UID="$(id -u "$USER_NAME" 2>/dev/null || echo 1000)"
+RUNTIME_DIR="/run/user/${USER_UID}"
 
-usage(){
-  echo "Usage: $0 <unit|alias> <start|stop|restart|enable|disable|status|logs>" >&2
-  exit 2
-}
-
-map_alias(){
-  case "${1:-}" in
-    broker)    echo "rider-broker.service" ;;
-    api)       echo "rider-api.service" ;;
-    motion)    echo "rider-motion-bridge.service" ;;
-    vision)    echo "rider-vision.service" ;;
-    preview)   echo "rider-cam-preview.service" ;;   # <-- zmienione z rider-ssd-preview.service
-    *)         echo "${1:-}" ;;
-  esac
-}
-
-normalize_unit(){
+is_allowed() {
   local u="$1"
-  [[ "$u" == *.* ]] || u+=".service"
-  echo "$u"
-}
-
-is_allowed(){
-  local want="$1"
-  # dopasowanie dokładne
-  for u in "${ALLOWED_EXACT[@]}"; do
-    [[ "$u" == "$want" ]] && return 0
-  done
-  # dopasowanie regex (np. rider-vision@roi.service)
-  for rx in "${ALLOWED_REGEX[@]}"; do
-    if [[ "$want" =~ $rx ]]; then
-      return 0
-    fi
-  done
+  for x in "${ALLOW_UNITS[@]}"; do [[ "$u" == "$x" ]] && return 0; done
   return 1
 }
+is_action() { case "$1" in start|stop|restart|enable|disable) return 0;; esac; return 1; }
 
-[[ $# -ge 2 ]] || usage
-REQ_RAW="$1"; ACTION="$2"
-UNIT_REQ="$(normalize_unit "$(map_alias "$REQ_RAW")")"
+# --- parse args: akceptuj obie kolejności ---
+A="${1:-}"; B="${2:-}"
+[[ -z "$A" || -z "$B" ]] && { echo "usage: $0 <unit> <start|stop|restart|enable|disable> (order free)" >&2; exit 2; }
 
-if ! is_allowed "$UNIT_REQ"; then
-  echo "DENY: unit '$UNIT_REQ' not in whitelist" >&2
-  exit 1
+if is_action "$A"; then ACTION="$A"; UNIT="$B"
+elif is_action "$B"; then UNIT="$A"; ACTION="$B"
+else echo "bad args: need unit + action (start/stop/restart/enable/disable)" >&2; exit 2
 fi
 
-case "$ACTION" in
-  start|stop|restart|enable|disable)
-    exec "$SYSTEMCTL" "$ACTION" "$UNIT_REQ"
-    ;;
-  status)
-    "$SYSTEMCTL" show "$UNIT_REQ" --no-page \
-      --property=Description,FragmentPath,UnitFileState,ActiveState,SubState,ExecStart,Environment
-    ;;
-  logs)
-    # ostatnie N linii dziennika; można pipe'ować do grep/egrep
-    exec "$JOURNALCTL" -u "$UNIT_REQ" -n "$LOG_LINES" --no-pager
-    ;;
-  *)
-    usage
-    ;;
-esac
+# --- whitelist ---
+if ! is_allowed "$UNIT"; then
+  echo "DENY: unit '$UNIT' not in whitelist" >&2
+  exit 3
+fi
+
+# --- helpers: spróbuj SYSTEM, potem USER; zbierz diagnostykę ---
+run_system() {
+  systemctl --no-pager "$ACTION" "$UNIT" 2>&1
+  return $?
+}
+run_user() {
+  sudo -u "$USER_NAME" XDG_RUNTIME_DIR="$RUNTIME_DIR" systemctl --user --no-pager "$ACTION" "$UNIT" 2>&1
+  return $?
+}
+
+# 1) spróbuj jako SYSTEM
+OUT_SYS="$(run_system)"; RC_SYS=$?
+if [[ $RC_SYS -eq 0 ]]; then
+  [[ -n "$OUT_SYS" ]] && echo "$OUT_SYS"
+  exit 0
+fi
+
+# 2) spróbuj jako USER
+OUT_USER="$(run_user)"; RC_USER=$?
+if [[ $RC_USER -eq 0 ]]; then
+  [[ -n "$OUT_USER" ]] && echo "$OUT_USER"
+  exit 0
+fi
+
+# 3) oba nie wyszły — wybierz lepszy komunikat
+# preferuj komunikaty "not found"/"could not be found" jeśli wystąpiły
+if echo "$OUT_SYS"$'\n'"$OUT_USER" | grep -qiE 'not found|could not be found'; then
+  echo "$OUT_SYS"$'\n'"$OUT_USER" | grep -iE 'not found|could not be found' | head -n1 >&2
+else
+  # w innym wypadku pokaż krótszy, ale treściwy stderr
+  if [[ ${#OUT_SYS} -le ${#OUT_USER} ]]; then
+    echo "$OUT_SYS" | tail -n2 >&2
+  else
+    echo "$OUT_USER" | tail -n2 >&2
+  fi
+fi
+exit 5
 
