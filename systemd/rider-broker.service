@@ -1,0 +1,31 @@
+[Unit]
+Description=Rider-Pi ZMQ broker (XSUB/XPUB)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+
+# --- PORTY BUS ---
+Environment=BUS_PUB_PORT=5555
+Environment=BUS_SUB_PORT=5556
+
+# --- ANTY-KOLEJKA (HWM) ---
+# Minimalne bufory po obu stronach brokera – nie „magazynuj” starych komend.
+Environment=SNDHWM=1
+Environment=RCVHWM=1
+
+# analogicznie: plik .py zamiast modułu, żeby nie wymagać pakietu
+ExecStart=/usr/bin/python3 -u services/broker.py
+Restart=always
+RestartSec=0.5
+TimeoutStartSec=5
+TimeoutStopSec=3
+KillMode=process
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

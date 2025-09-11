@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rider-Pi — mini dashboard</title>
+<style>
+  body{margin:0;background:#0e1a24;color:#d7e2ee;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:28px auto;padding:0 18px}
+  h1{font-size:28px;margin:0 0 8px}
+  .hint{opacity:.6;font-size:12px;margin-bottom:18px}
+
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  .card{background:#0f2233;border:1px solid #1d3548;border-radius:12px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+  .card h3{margin:0 0 10px;font-size:16px;color:#9cc8ff}
+
+  .kv{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:13px}
+  .kv div{opacity:.9}
+  .ok{color:#5fe39a} .bad{color:#ff6b6b} .muted{opacity:.6}
+
+  canvas{width:100%;height:140px;background:#0c1b28;border-radius:8px;border:1px solid #1d3548}
+  a{color:#87b7ff}
+  .legend{display:flex;gap:14px;margin-top:6px; font-size:12px; opacity:.8}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .cpu{background:#6db3ff}.mem{background:#ffd36d}
+
+  /* obrazki */
+  .thumb{background:#0c1b28;border:1px solid #1d3548;border-radius:10px;padding:8px}
+  .thumb .cap{font-size:12px;opacity:.8;margin-bottom:6px}
+  .thumb img{display:block;width:100%;height:auto;border-radius:6px}
+  @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+
+  /* Kamera */
+  .cam-badge{
+    display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px;
+    border:1px solid #2b5577;background:#11263a;color:#b7cee3;
+  }
+  .cam-badge.on{ border-color:#2d6a4f; color:#9be3b0; background:#103226; }
+  .cam-meta{font-size:12px;opacity:.8}
+  .cam-img{width:100%;height:auto;border-radius:10px;border:1px solid #1d3548;background:#0c1b28}
+
+  /* Dolny pasek statusu (live via SSE) */
+  .statusbar{
+    position:sticky; bottom:-1px; margin-top:18px;
+    background:#0f2233;border:1px solid #1d3548;border-radius:10px;
+    padding:10px 12px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+    font-size:13px; box-shadow:0 2px 10px rgba(0,0,0,.25)
+  }
+  .pill{padding:2px 10px;border-radius:999px;border:1px solid #2b5577;background:#11263a;color:#b7cee3}
+  .pill.ok{border-color:#2d6a4f;background:#103226;color:#9be3b0}
+  .pill.bad{border-color:#7a2b2b;background:#2a1212;color:#ff9f9f}
+  .sep{opacity:.4}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Rider-Pi — mini dashboard</h1>
+  <div class="hint">Auto-refresh co ≈ 2 s. Endpointy: <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a></div>
+
+  <!-- RZĄD 1: System / Devices / History / Camera -->
+  <div class="grid">
+    <!-- System -->
+    <div class="card">
+      <h3>System</h3>
+      <div class="kv">
+        <div>cpu</div><div id="ci_cpu" class="muted">—</div>
+        <div>load (1/5/15)</div><div id="ci_load" class="muted">—</div>
+        <div>mem</div><div id="ci_mem" class="muted">—</div>
+        <div>disk</div><div id="ci_disk" class="muted">—</div>
+        <div>os</div><div id="ci_os" class="muted">—</div>
+        <div>fw</div><div id="ci_fw" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- Devices -->
+    <div class="card">
+      <h3>Devices</h3>
+      <div class="kv">
+        <div>camera</div><div id="d_cam" class="muted">—</div>
+        <div>lcd</div><div id="d_lcd" class="muted">—</div>
+        <div>xgo.imu</div><div id="d_xgo_imu" class="muted">—</div>
+        <div>xgo.pose</div><div id="d_xgo_pose" class="muted">—</div>
+        <div>xgo.battery</div><div id="d_xgo_batt" class="muted">—</div>
+        <div>temp</div><div id="d_temp" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="card">
+      <h3>History (60 s) — CPU / MEM</h3>
+      <canvas id="chart" width="300" height="140"></canvas>
+      <div class="legend">
+        <span><i class="dot cpu"></i>cpu%</span>
+        <span><i class="dot mem"></i>mem%</span>
+      </div>
+    </div>
+
+    <!-- Camera -->
+    <div class="card">
+      <h3 style="display:flex;align-items:center;gap:8px">
+        Kamera
+        <span id="camBadge" class="cam-badge">…</span>
+      </h3>
+      <div class="cam-meta" id="camMeta" style="margin-bottom:6px">—</div>
+      <div class="thumb">
+        <div class="cap">podgląd (ostatnia klatka lub komunikat)</div>
+        <img id="img_cam" class="cam-img" src="/camera/placeholder" alt="kamera">
+      </div>
+    </div>
+  </div>
+
+  <!-- RZĄD 2: Health / Presence / Links / Camera PROC -->
+  <div class="grid" style="margin-top:18px">
+    <!-- Health -->
+    <div class="card">
+      <h3>Health</h3>
+      <div class="kv">
+        <div>status</div><div id="h_status" class="ok">ok</div>
+        <div>uptime</div><div id="h_uptime" class="muted">—</div>
+        <div>bus.last_msg_age</div><div id="h_msg" class="muted">—</div>
+        <div>bus.last_heartbeat_age</div><div id="h_hb" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- Presence -->
+    <div class="card">
+      <h3>Presence (vision.state)</h3>
+      <div class="kv">
+        <div>present</div><div id="p_present" class="bad">false</div>
+        <div>confidence</div><div id="p_conf" class="muted">0.000</div>
+        <div>mode</div><div id="p_mode" class="muted">—</div>
+        <div>ts</div><div id="p_ts" class="muted">—</div>
+        <div>age</div><div id="p_age" class="muted">—</div>
+      </div>
+    </div>
+
+    <!-- Links -->
+    <div class="card">
+      <h3>Links</h3>
+      <div class="kv">
+        <div>events (SSE)</div><div><a href="/events" target="_blank">/events</a></div>
+        <div>metrics</div><div><a href="/metrics" target="_blank">/metrics</a></div>
+        <div>repo</div><div><a href="https://github.com/pppnews/Rider-Pi" target="_blank">Rider-Pi</a></div>
+        <div>sterowanie</div><div><a href="/control">/control</a></div>
+      </div>
+    </div>
+
+    <!-- Camera PROC -->
+    <div class="card">
+      <h3>Camera — PROC (po obróbce)</h3>
+      <div class="thumb">
+        <div class="cap">ramki / etykiety z detektora</div>
+        <img id="img_proc" class="cam-img" src="/camera/placeholder" alt="processed camera">
+      </div>
+    </div>
+  </div>
+
+  <!-- Dolny pasek statusu: live presence + kamera (SSE) -->
+  <div class="statusbar" id="statusbar">
+    <span id="sb_presence" class="pill">VISION: —</span>
+    <span class="sep">•</span>
+    <span id="sb_mode" class="muted">mode: —</span>
+    <span class="sep">•</span>
+    <span id="sb_conf" class="muted">conf: —</span>
+    <span class="sep">•</span>
+    <span id="sb_cam" class="pill">CAM: —</span>
+    <span id="sb_cam_meta" class="muted">fps: —, age: —</span>
+  </div>
+
+  <div class="hint" style="margin-top:14px">
+    © Rider-Pi – <a href="/healthz">/healthz</a> · <a href="/state">/state</a> · <a href="/sysinfo">/sysinfo</a>
+  </div>
+</div>
+
+<script>
+const REFRESH_MS = 2000;     // sysinfo/health tick
+const CAM_REFRESH_MS = 5000; // awaryjny fallback dla obrazków
+
+const fmt = (n, d=1)=> (n==null? '—' : (typeof n==='number'? Number(n).toFixed(d): n));
+const el = id => document.getElementById(id);
+const setTxt=(id,txt)=>{const e=el(id); if(e) e.textContent=txt;}
+const setCls=(id,cls)=>{const e=el(id); if(e) e.className=cls;}
+
+/* === helpers do pose (utwardzone po poprawce) === */
+function fmtPose(p){
+  if (Array.isArray(p)) {
+    const good = p.filter(v => v!=null && !Number.isNaN(Number(v)));
+    if (!good.length) return '—';
+    return good.map(v => Number(v).toFixed(1)).join('°, ') + '°';
+  }
+  if (typeof p === 'string') {
+    const t = p.trim();
+    if (!t || t === '—' || t === '-' || t.toLowerCase() === 'null') return '—';
+    const parts = t.split(',').map(s=>s.trim()).filter(Boolean);
+    if (!parts.length) return '—';
+    return parts.map(s => isNaN(s) ? s : (+s).toFixed(1)).join('°, ') + '°';
+  }
+  return (p==null ? '—' : String(p));
+}
+function hasPoseValue(p){
+  if (Array.isArray(p)) return p.some(v => v!=null && !Number.isNaN(Number(v)));
+  if (typeof p === 'string') {
+    const t = p.trim();
+    return !!t && t !== '—' && t !== '-' && t.toLowerCase() !== 'null';
+  }
+  return p!=null;
+}
+
+/* ===== WYKRES ===== */
+function drawChart(cpuArr, memArr){
+  const c = el('chart'); if(!c) return;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+
+  const padL=30, padT=10, padR=10, padB=10;
+  const W=c.width - padL - padR;
+  const H=c.height - padT - padB;
+
+  ctx.strokeStyle='#1d3548';
+  ctx.strokeRect(padL, padT, W, H);
+
+  ctx.fillStyle = '#8aa';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (let yv of [0, 50, 100]) {
+    const y = padT + H - ((yv - 0) / 100) * H;
+    ctx.beginPath();
+    ctx.moveTo(padL - 4, y);
+    ctx.lineTo(padL, y);
+    ctx.strokeStyle = '#1d3548';
+    ctx.stroke();
+    ctx.fillText(String(yv), padL - 6, y + 3);
+  }
+
+  function plot(arr, color){
+    if(!arr || arr.length<2) return;
+    const n = arr.length, max=100, min=0;
+    ctx.beginPath(); ctx.lineWidth=1.2; ctx.strokeStyle=color;
+    for(let i=0;i<n;i++){
+      const x = padL + (i*(W/(n-1)));
+      const v = Math.max(min, Math.min(max, Number(arr[i]||0)));
+      const y = padT + H - ((v-min)/(max-min))*H;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  plot(cpuArr,'#6db3ff'); // cpu
+  plot(memArr,'#ffd36d'); // mem
+}
+
+/* ===== /healthz ===== */
+function updateHealth(h){
+  setTxt('h_status', h.status || '—');
+  setCls('h_status', (h.status==='ok')? 'ok':'bad');
+
+  if(h.uptime_s!=null){
+    const s = Math.floor(h.uptime_s);
+    const HH = Math.floor(s/3600);
+    const MM = String(Math.floor((s%3600)/60)).padStart(2,'0');
+    const SS = String(s%60).padStart(2,'0');
+    setTxt('h_uptime', `${HH}:${MM}:${SS}`);
+  } else setTxt('h_uptime','—');
+
+  setTxt('h_msg', (h.bus && h.bus.last_msg_age_s!=null)? fmt(h.bus.last_msg_age_s,1)+' s':'—');
+  setTxt('h_hb',  (h.bus && h.bus.last_heartbeat_age_s!=null)? fmt(h.bus.last_heartbeat_age_s,1)+' s':'—');
+
+  if(h.devices){
+    const cam = h.devices.camera || {};
+    const resTxt = (cam.res && cam.res.length===2)? ` ${cam.res[0]}×${cam.res[1]}` : '';
+    const camTxt = (cam.on? 'ON':'OFF')
+      + (cam.mode? (' · '+cam.mode):'')
+      + resTxt
+      + (cam.fps!=null? (' · '+fmt(cam.fps,1)+' fps'):'')
+      + (cam.age_s!=null? (' · '+fmt(cam.age_s,1)+'s'):'');
+    setTxt('d_cam', camTxt); setCls('d_cam', cam.on? 'ok':'muted');
+
+    const lcd = h.devices.lcd || {};
+    const lcdTxt = (lcd.on? 'ON':'OFF')
+      + (lcd.rot!=null? (' · rot '+lcd.rot):'')
+      + (lcd.presenting? ' · presenting':'')
+      + (lcd.no_draw? ' · no_draw':'');
+    setTxt('d_lcd', lcdTxt); setCls('d_lcd', lcd.on? 'ok':'muted');
+
+    const xgo = h.devices.xgo || {};
+    const imuTxt = (xgo.on? 'ON':'OFF')
+      + (xgo.imu_ok===true? ' · OK': (xgo.on? ' · ?':''))
+      + (xgo.age_s!=null? (' · '+fmt(xgo.age_s,1)+'s'):'');
+    setTxt('d_xgo_imu', imuTxt);
+    setCls('d_xgo_imu', (xgo.on && xgo.imu_ok)? 'ok' : (xgo.on? 'muted':'muted'));
+
+    /* --- POSE: pokaż tylko istniejące części, bez „— · ...” --- */
+    const poseEl = el('d_xgo_pose');
+    if (poseEl) {
+      const poseVal = xgo.pose ?? null;
+      const parts = [];
+      if (hasPoseValue(poseVal)) parts.push(fmtPose(poseVal));
+      if (xgo.roll  != null) parts.push(`r ${fmt(xgo.roll,1)}°`);
+      if (xgo.pitch != null) parts.push(`p ${fmt(xgo.pitch,1)}°`);
+      if (xgo.yaw   != null) parts.push(`y ${fmt(xgo.yaw,1)}°`);
+
+      const txt = parts.length ? parts.join(' · ') : '—';
+      poseEl.textContent = txt;
+
+      poseEl.classList.remove('muted','ok','bad');
+      if (!parts.length) poseEl.classList.add('muted');
+    }
+
+    const battTxt = (xgo.battery_pct!=null? `${xgo.battery_pct}%`:'—');
+    setTxt('d_xgo_batt', battTxt);
+    setCls('d_xgo_batt', (xgo.battery_pct!=null? 'ok':'muted'));
+
+    if (xgo.fw) setTxt('ci_fw', xgo.fw);
+  }
+}
+
+/* ===== /state (presence) ===== */
+function updateState(s){
+  setTxt('p_present', String(!!s.present));
+  setCls('p_present', s.present? 'ok':'bad');
+  setTxt('p_conf', fmt(s.confidence,3));
+  setTxt('p_mode', s.mode || '—');
+  setTxt('p_ts', s.ts? new Date(s.ts*1000).toLocaleTimeString(): '—');
+  setTxt('p_age', (s.age_s!=null? fmt(s.age_s,1)+' s':'—'));
+
+  // dolny pasek
+  const presentOk = !!s.present;
+  setTxt('sb_presence', `VISION: ${presentOk ? 'PRESENT' : 'IDLE'}`);
+  setCls('sb_presence', 'pill ' + (presentOk ? 'ok':'bad'));
+  setTxt('sb_mode', `mode: ${s.mode || '—'}`);
+  setTxt('sb_conf', `conf: ${fmt(s.confidence,3)}`);
+}
+
+/* ===== /sysinfo ===== */
+function updateSys(si){
+  if(!si) return;
+
+  setTxt('ci_cpu', fmt(si.cpu_pct, 1) + '%');
+  setTxt('ci_load', `${fmt(si.load1,2)}/${fmt(si.load5,2)}/${fmt(si.load15,2)}`);
+
+  const mb = v => (v==null ? '—' : Number(v).toFixed(1)+' MB');
+  if (si.mem_total_mb!=null && si.mem_used_mb!=null){
+    setTxt('ci_mem', `${mb(si.mem_used_mb)} / ${mb(si.mem_total_mb)} (${fmt(si.mem_pct,1)}%)`);
+  } else setTxt('ci_mem','—');
+
+  const gb = v => (v==null ? '—' : Number(v).toFixed(1)+' GB');
+  if (si.disk_total_gb!=null && si.disk_used_gb!=null){
+    setTxt('ci_disk', `${gb(si.disk_used_gb)} / ${gb(si.disk_total_gb)} (${fmt(si.disk_pct,1)}%)`);
+  } else setTxt('ci_disk','—');
+
+  setTxt('ci_os', si.os_release || '—');
+  setTxt('d_temp', (si.temp_c!=null ? fmt(si.temp_c,1)+' °C' : '—'));
+
+  drawChart(si.hist_cpu || [], si.hist_mem || []);
+}
+
+/* ===== Kamera (energooszczędny preview) ===== */
+function tsToStr(ts){
+  if(!ts) return '—';
+  try { return new Date(ts*1000).toLocaleString(); } catch(_){ return String(ts); }
+}
+
+async function headWithDate(url){
+  try{
+    const r = await fetch(url, {method:'HEAD', cache:'no-store'});
+    if(!r.ok) return null;
+    const lm = r.headers.get('Last-Modified') || r.headers.get('Date') || '';
+    const t  = lm ? Date.parse(lm) : Date.now();
+    const len= Number(r.headers.get('Content-Length')||0);
+    return {ok:true, url, ts:t, bytes:len};
+  }catch(_){ return null; }
+}
+
+function pickNewest(candidates){
+  const fresh = candidates.filter(c=>c && c.meta && c.meta.ok);
+  if(!fresh.length) return null;
+  fresh.sort((a,b)=> (b.meta.ts||0) - (a.meta.ts||0));
+  return fresh[0];
+}
+
+async function refreshCamera(){
+  const imgCam   = el('img_cam');
+  const imgProc  = el('img_proc');
+  const camBadge = el('camBadge');
+  const camMeta  = el('camMeta');
+
+  const bust = Date.now();
+
+  try{
+    const st  = await (await fetch('/state',{cache:'no-store'})).json();
+    const cam = st.camera || {};
+    if (camBadge){
+      camBadge.textContent = cam.vision_enabled ? 'vision: ON' : 'vision: OFF';
+      camBadge.className   = 'cam-badge' + (cam.vision_enabled ? ' on':'');
+    }
+    if (camMeta){
+      const tsTxt = cam.last_frame_ts ? new Date(cam.last_frame_ts*1000).toLocaleString() : '—';
+      camMeta.textContent = cam.last_frame_ts ? ('ostatnia klatka: ' + tsTxt) : 'brak ostatniej klatki';
+    }
+
+    const uLast  = (cam.preview_url && cam.preview_url.startsWith('/camera/raw'))
+                   ? cam.preview_url : '/camera/raw';
+    const last   = `${uLast}${uLast.includes('?') ? '&' : '?'}t=${bust}`;
+    const proc   = `/camera/proc?t=${bust}`;
+    const ph     = (cam.placeholder_url || '/camera/placeholder') + `?t=${bust}`;
+
+    const [mLast, mProc, mPh] = await Promise.all([
+      headWithDate(last),
+      headWithDate(proc),
+      headWithDate(ph),
+    ]);
+
+    const bestCam = pickNewest([
+      {name:'last', meta:mLast},
+      {name:'proc', meta:mProc},
+      {name:'ph',   meta:mPh},
+    ]);
+    if (imgCam) imgCam.src = (bestCam && bestCam.meta && bestCam.meta.url) ? bestCam.meta.url : ph;
+
+    const bestProc = pickNewest([
+      {name:'proc', meta:mProc},
+      {name:'last', meta:mLast},
+      {name:'ph',   meta:mPh},
+    ]);
+    if (imgProc) imgProc.src = (bestProc && bestProc.meta && bestProc.meta.url) ? bestProc.meta.url : ph;
+
+  }catch(e){
+    const bust2 = Date.now();
+    if (camBadge){ camBadge.textContent='vision: ?'; camBadge.className='cam-badge'; }
+    if (camMeta) camMeta.textContent='błąd odczytu stanu';
+    if (imgCam)  imgCam.src  = '/camera/placeholder?t=' + bust2;
+    if (imgProc) imgProc.src = '/camera/placeholder?t=' + bust2;
+  }
+}
+
+/* ===== Polling ===== */
+async function tick(){
+  try{ const h  = await (await fetch('/healthz',{cache:'no-store'})).json(); updateHealth(h);}catch(e){}
+  try{ const s  = await (await fetch('/state',{cache:'no-store'})).json();   updateState(s);}catch(e){}
+  try{ const si = await (await fetch('/sysinfo',{cache:'no-store'})).json(); updateSys(si);}catch(e){}
+}
+
+/* ===== SSE (natychmiastowe UI) ===== */
+function startSSE(){
+  try{
+    const es = new EventSource('/events');
+    es.onmessage = (ev)=>{
+      try{
+        const wrapper = JSON.parse(ev.data);
+        const topic = wrapper.topic || '';
+        let data = {};
+        try { data = JSON.parse(wrapper.data || '{}'); } catch(_){ data = {}; }
+
+        if (topic === 'vision.state'){
+          const s = {
+            present: !!data.present,
+            confidence: Number(data.confidence || 0),
+            mode: data.mode || '—',
+            ts: data.ts || null,
+            age_s: null
+          };
+          updateState(s);
+        }
+
+        if (topic === 'camera.heartbeat'){
+          const fps = (data && data.fps!=null) ? Number(data.fps) : null;
+          const mode = (data && data.mode) ? String(data.mode) : '—';
+          setTxt('sb_cam', 'CAM: ON'); setCls('sb_cam', 'pill ok');
+          setTxt('sb_cam_meta', `fps: ${fps!=null?fmt(fps,1):'—'}, age: ~0s, mode: ${mode}`);
+          const bust = Date.now();
+          const imgCam = el('img_cam');
+          const imgProc = el('img_proc');
+          if (imgCam) imgCam.src = `/camera/raw?t=${bust}`;
+          if (imgProc) imgProc.src = `/camera/proc?t=${bust}`;
+        }
+      }catch(e){ /* cicho */ }
+    };
+    es.onerror = ()=>{ /* SSE zerwane – fallback zostaje polling */ };
+  }catch(e){ /* SSE niedostępne – fallback polling */ }
+}
+
+/* ===== Start ===== */
+setInterval(tick, REFRESH_MS);
+setInterval(refreshCamera, CAM_REFRESH_MS);
+window.addEventListener('load', ()=>{ tick(); refreshCamera(); startSSE(); });
+</script>
+
+</body>
+</html>
+
+
+

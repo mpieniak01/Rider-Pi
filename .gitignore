@@ -1,0 +1,86 @@
+cat <<EOF > .gitignore
+# Logi i nagrania
+logs/
+data/logs/
+data/recordings/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+EOF
+
+# Jupyter checkpoints
+**/.ipynb_checkpoints/
+apps/camera/untitled*.py
+.env
+_tmp/
+.env
+snapshots/
+web/*.temp
+web/*.old
+# Local data / diagnostics / cache
+_data/
+data/
+_diag/
+snapshots/
+**/__pycache__/
+*.pyc
+
+# Web build temps
+web/*.tmp
+
+# Editor / misc
+*.swp
+*.swo
+.DS_Store
+# Local work dirs (not part of main code)
+scripts/
+# Local work dir (not part of main code)
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.swp
+*.tmp
+*.bak.*
+*.log
+snapshots/
+data/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.swp
+*.tmp
+*.bak.*
+*.log
+snapshots/
+data/
+web/control.tmp
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.swp
+*.tmp
+*.bak.*
+*.log
+snapshots/
+data/
+web/control.tmp
+services/.ipynb_checkpoints/
+.vscode/
+tests/_logs/
+tests/_artifacts/
+_scripts/
+
+# systemd backups
+systemd/*.service_*
+
+# Jupyter/ipynb
+**/.ipynb_checkpoints/
+*.ipynb
+# systemd backups
+systemd/*.service_

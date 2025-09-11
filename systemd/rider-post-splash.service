@@ -1,0 +1,47 @@
+[Unit]
+Description=Rider-Pi Post Splash (device info po starcie API i po uzyskaniu IP)
+After=network-online.target rider-api.service
+Wants=network-online.target
+Requires=rider-api.service
+PartOf=rider-minimal.target
+ConditionPathExists=/home/pi/robot/ops/splash_device_info.py
+StartLimitIntervalSec=120
+StartLimitBurst=10
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pi/robot
+# User=pi                 # odkomentuj, jeśli LCD/GPIO nie wymagają roota
+TimeoutStartSec=150
+
+# Konfiguracja wyświetlania
+Environment=SPLASH_USE=xgo
+Environment=SPLASH_ROTATE=270
+Environment=SPLASH_SECONDS=5
+Environment=SPLASH_CLEAR=1
+# Tu włączamy czekanie na IPv4 wewnątrz Pythona (0 = nie czeka)
+Environment=SPLASH_WAIT_IP_S=60
+
+# 0) Podświetlenie
+ExecStartPre=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py on
+
+# 1) Czekaj na API /healthz (max 45 s)
+ExecStartPre=/bin/bash -lc 'i=0; while ! curl -fsS -o /dev/null http://127.0.0.1:8080/healthz 2>/dev/null; do sleep 1; i=$((i+1)); [ $i -ge 45 ] && exit 1; done'
+
+# 2) Czekaj na /sysinfo z battery_pct (max 45 s)
+ExecStartPre=/bin/bash -lc 'i=0; while :; do out="$(curl -fsS http://127.0.0.1:8080/sysinfo 2>/dev/null || true)"; echo "$out" | grep -q "\"battery_pct\"" && exit 0; sleep 1; i=$((i+1)); [ $i -ge 45 ] && exit 1; done'
+
+# 3) Pokaż splash (Python — bez .sh)
+ExecStart=/usr/bin/env bash -lc 'SPLASH_WAIT_IP_S=60 /usr/bin/python3 ops/splash_device_info.py'
+
+# 4) Zgaś panel
+ExecStartPost=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off
+
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=rider-minimal.target
+
+
+

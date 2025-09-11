@@ -1,0 +1,21 @@
+[Unit]
+Description=Rider-Pi camera preview (no processing) -> snapshots/raw.*
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/robot
+Environment=PYTHONUNBUFFERED=1
+Environment=DETECTOR=none
+Environment=PREVIEW_ROT=0
+# (opcjonalnie wymuś PNG, jeśli JPEG bywa kapryśny)
+# Environment=LAST_FRAME_EXT=.png
+# flock gwarantuje single-instance na kamerze
+ExecStart=/usr/bin/flock -n /tmp/camera.lock /usr/bin/python3 apps/camera/preview_lcd.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
