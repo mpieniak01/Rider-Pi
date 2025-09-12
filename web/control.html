@@ -36,76 +36,91 @@
 <body>
 <div class="wrap">
 
-  <h1>Rider-Pi — Sterowanie ruchem
-    <span id="apiStatus" class="muted" style="margin-left:8px">(checking…)</span>
-    <span id="obstBadge" class="pill warn" style="margin-left:10px;display:none">Obstacle</span>
+  <h1 data-i18n="meta.app_title">
+    Rider-Pi — Sterowanie ruchem (REST /api)
+    <span id="apiStatus" class="muted" style="margin-left:8px" data-i18n="header.api_status_checking">(checking…)</span>
+    <span id="obstBadge" class="pill warn" style="margin-left:10px;display:none" data-i18n="header.obstacle_na">Obstacle: n/a</span>
   </h1>
 
   <!-- 1) KAMERA (na górze) -->
   <div class="card" style="position:relative">
-    <h2 style="font-size:16px;margin:0 0 8px">Podgląd kamery</h2>
+    <h2 style="font-size:16px;margin:0 0 8px" data-i18n="camera.title">Podgląd kamery</h2>
 
-    <!-- przyciski przypięte do prawej krawędzi karty -->
+    <!-- przyciski po prawej -->
     <div style="position:absolute; right:16px; top:16px; display:flex; gap:8px; align-items:flex-end;">
-      <button id="camToggle" class="btn-sm">⟳ Auto-refresh</button>
-      <button id="btnUseEdge" class="btn-sm">Use EDGE</button>
-      <button id="btnUseCam"  class="btn-sm">Use CAM</button>
+      <button id="camToggle" class="btn-sm" data-i18n="camera.auto_refresh_on">⟳ Auto-refresh (on)</button>
+      <button id="btnUseEdge" class="btn-sm" data-i18n="camera.use_edge">Use EDGE</button>
+      <button id="btnUseCam"  class="btn-sm" data-i18n="camera.use_cam">Use CAM</button>
     </div>
 
     <!-- obrazek wycentrowany -->
     <div class="row" style="align-items:flex-start; justify-content:center">
       <div>
         <img id="camPrev" class="cam" alt="camera preview" src="/camera/last?ts=0" />
-        <div class="note" id="camInfo" style="margin-top:6px">last frame: n/a · source: n/a</div>
+        <div class="note" id="camInfo" style="margin-top:6px" data-i18n="camera.last_frame_na">last frame: n/a · source: n/a</div>
       </div>
     </div>
   </div>
 
   <!-- 2) STEROWANIE -->
   <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px">Sterowanie ruchem</h2>
+    <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.title">Sterowanie ruchem</h2>
 
     <div class="row" style="margin:6px 0 10px">
-      <label>Prędkość skrętu <span class="muted">(0..1)</span>:
+      <label>
+        <span data-i18n="motion.turning_speed">Prędkość skrętu</span>
+        <span class="muted" data-i18n="motion.turning_range">(0..1)</span>:
         <input id="speedSpin" type="range" min="0" max="1" step="0.02" value="0.18" />
         <span id="speedSpinVal">0.18</span>
       </label>
-      <label>Czas impulsu [s]:
+      <label>
+        <span data-i18n="motion.pulse_time">Czas impulsu [s]</span>:
         <input id="durationSpin" type="number" min="0.05" step="0.05" value="0.10" />
       </label>
       <div class="spacer"></div>
-      <button id="btnStop">■ STOP</button>
+      <button id="btnStop" data-i18n="motion.btn_stop">■ STOP</button>
     </div>
 
     <div class="grid">
       <div></div>
-      <button id="btnFwd">↑ Forward</button>
+      <button id="btnFwd" data-i18n="motion.btn_forward">↑ Forward</button>
       <div></div>
-      <button id="btnLeft">← Left</button>
-      <button id="btnStop2">■ Stop</button>
-      <button id="btnRight">Right →</button>
+      <button id="btnLeft" data-i18n="motion.btn_left">← Left</button>
+      <button id="btnStop2" data-i18n="motion.btn_stop_small">■ Stop</button>
+      <button id="btnRight" data-i18n="motion.btn_right">Right →</button>
       <div></div>
-      <button id="btnBack">↓ Backward</button>
+      <button id="btnBack" data-i18n="motion.btn_backward">↓ Backward</button>
       <div></div>
     </div>
 
     <div class="row">
-      <span class="muted">Skróty: <span class="kbd">W</span>/<span class="kbd">S</span>/<span class="kbd">A</span>/<span class="kbd">D</span> lub strzałki; <span class="kbd">Spacja</span> = stop.</span>
+      <span class="muted">
+        <span data-i18n="motion.shortcuts_hint">Skróty</span>:
+        <span class="kbd">W/S/A/D</span>
+        <span data-i18n="motion.shortcuts_tail">lub strzałki; Spacja = stop.</span>
+      </span>
       <div class="spacer"></div>
-      <a href="/" class="muted">↩ dashboard</a>
+      <a href="/" class="muted" data-i18n="meta.dashboard">↩ dashboard</a>
     </div>
   </div>
 
   <!-- 3) USŁUGI -->
   <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px">Usługi (systemd)
-      <button id="svcRefresh" class="btn-sm" style="margin-left:8px">⟳ odśwież</button>
+    <h2 style="font-size:16px;margin:0 0 8px">
+      <span data-i18n="services.title">Usługi (systemd)</span>
+      <button id="svcRefresh" class="btn-sm" style="margin-left:8px" data-i18n="services.refresh">⟳ odśwież</button>
     </h2>
-    <div id="svcInfo" class="muted">Ładowanie… <span id="svcTs"></span></div>
+    <div id="svcInfo" class="muted">
+      <span data-i18n="meta.loading">Ładowanie…</span> <span id="svcTs"></span>
+    </div>
     <table class="svc-table" id="svcTable" style="display:none">
       <thead>
         <tr>
-          <th>Unit</th><th>Opis</th><th>Status</th><th>Autostart</th><th>Akcje</th>
+          <th data-i18n="services.unit">Unit</th>
+          <th data-i18n="services.desc">Opis</th>
+          <th data-i18n="services.status">Status</th>
+          <th data-i18n="services.autostart">Autostart</th>
+          <th data-i18n="services.actions">Akcje</th>
         </tr>
       </thead>
       <tbody id="svcBody"></tbody>
@@ -114,20 +129,34 @@
 
   <!-- 4) LOG -->
   <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px">Zdarzenia (SSE /events)</h2>
+    <h2 style="font-size:16px;margin:0 0 8px" data-i18n="events.title">Zdarzenia (SSE /events)</h2>
     <div id="log"></div>
   </div>
 </div>
 
-<script>
-  // helpers
+<!-- APP (i18n + logika) -->
+<script type="module">
+  import { initI18n, applyDom, t } from '/web/i18n.js';
+
+  // --- Inicjalizacja języka z ?lang=, potem localStorage, potem język przeglądarki
+  const urlLang = new URLSearchParams(location.search).get('lang');
+  const saved = localStorage.getItem('lang');
+  const browser = (navigator.language || '').slice(0,2).toLowerCase();
+  const pick = (v)=> v && v.toLowerCase().startsWith('en') ? 'en' : (v && v.toLowerCase().startsWith('pl') ? 'pl' : null);
+  const lang = pick(urlLang) || pick(saved) || pick(browser) || 'pl';
+  if (urlLang) localStorage.setItem('lang', lang);
+  await initI18n(lang);
+  applyDom();                                 // <- KLUCZ: przetłumacz całą stronę
+  document.documentElement.setAttribute('lang', lang);
+  document.title = t('meta.app_title');
+
+  // ====== poniżej oryginalna logika strony, z t() ======
   const qs = (s)=>document.querySelector(s);
   const logEl = qs('#log');
   function appendLog(msg, cls=""){ const line=document.createElement('div'); if(cls) line.className=cls; line.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; logEl.appendChild(line); logEl.scrollTop=logEl.scrollHeight; }
-  window.addEventListener('error', e=> appendLog(`JS error: ${e.message}`, 'err'));
-  window.addEventListener('unhandledrejection', e=> appendLog(`Promise error: ${e.reason}`, 'err'));
+  window.addEventListener('error', e=> appendLog(`${t('events.log_js_err',{msg:e.message||e})}`, 'err'));
+  window.addEventListener('unhandledrejection', e=> appendLog(`${t('events.log_prom_err',{reason:e.reason||e})}`, 'err'));
 
-  // === Sterowanie ruchem (jak było) ===
   const LIN_V = 0.10, LIN_T = 0.10;
   const spinEl = qs('#speedSpin'), spinVal = qs('#speedSpinVal'), durSpinEl = qs('#durationSpin');
   spinEl.addEventListener('input', ()=> spinVal.textContent = Number(spinEl.value).toFixed(2));
@@ -136,27 +165,35 @@
   async function pingHealth(){
     try{
       const r=await fetch('/healthz',{cache:'no-store'}); const j=await r.json().catch(()=>({}));
-      const apiStatus = qs('#apiStatus'); const ok=!!j.ok; apiStatus.textContent= ok?'ok':'degraded'; apiStatus.className = ok?'ok':'warn';
-    }catch(e){ const apiStatus = qs('#apiStatus'); apiStatus.textContent='down'; apiStatus.className='err'; }
+      const apiStatus = qs('#apiStatus'); const ok=!!j.ok;
+      apiStatus.textContent = ok ? t('header.api_status_ok') : t('header.api_status_degraded');
+      apiStatus.className = ok?'ok':'warn';
+    }catch{
+      const apiStatus = qs('#apiStatus');
+      apiStatus.textContent = t('header.api_status_down');
+      apiStatus.className='err';
+    }
   }
-  setInterval(()=>{ try{ pingHealth(); }catch(_){/*noop*/} }, 1000); pingHealth();
+  setInterval(pingHealth, 1000); pingHealth();
 
   async function httpPost(url, body){
     const r=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-    const t=await r.text(); let j=null; try{ j=JSON.parse(t);}catch{}
+    const raw=await r.text(); let j=null; try{ j=JSON.parse(raw);}catch{}
     if(!r.ok){ throw new Error((j && (j.error||j.stderr||j.stdout)) || `HTTP ${r.status}`); }
     return j||{};
   }
   async function apiControl(obj){ try{ const j= await httpPost('/api/control', obj); appendLog(`api/control → ${JSON.stringify(obj)} :: ${JSON.stringify(j)}`, 'ok'); return j; }catch(e){ appendLog(`api/control ${JSON.stringify(obj)} :: ${e.message}`,'err'); } }
-  async function doStop(){ try{ await apiControl({cmd:'stop'}); }catch(_){} }
-  async function goF(){ const t=Math.max(0.05, LIN_T); await apiControl({cmd:'move', dir:'forward', v: LIN_V, t}); setTimeout(()=>{try{doStop();}catch(_){}} , Math.max(100, t*1000)); }
-  async function goB(){ const t=Math.max(0.05, LIN_T); await apiControl({cmd:'move', dir:'backward', v: LIN_V, t}); setTimeout(()=>{try{doStop();}catch(_){}} , Math.max(100, t*1000)); }
-  async function spin(dir){ const w=clamp(spinEl.value,0,1); const t=clamp(durSpinEl.value,0.05,5); await apiControl({cmd:'move', dir:(dir==='left'?'left':'right'), w, t}); setTimeout(()=>{try{doStop();}catch(_){}} , Math.max(100, t*1000)); }
-  qs('#btnFwd').addEventListener('click', ()=>{try{goF();}catch(_){}}); qs('#btnBack').addEventListener('click', ()=>{try{goB();}catch(_){}} );
-  qs('#btnLeft').addEventListener('click', ()=>{try{spin('left');}catch(_){}}); qs('#btnRight').addEventListener('click', ()=>{try{spin('right');}catch(_){}} );
-  qs('#btnStop').addEventListener('click', ()=>{try{doStop();}catch(_){}}); qs('#btnStop2').addEventListener('click', ()=>{try{doStop();}catch(_){}});
+  async function doStop(){ try{ await apiControl({cmd:'stop'}); }catch{} }
+  async function goF(){ const tsec=Math.max(0.05, LIN_T); await apiControl({cmd:'move', dir:'forward', v: LIN_V, t:tsec}); setTimeout(()=>{try{doStop();}catch{} } , Math.max(100, tsec*1000)); }
+  async function goB(){ const tsec=Math.max(0.05, LIN_T); await apiControl({cmd:'move', dir:'backward', v: LIN_V, t:tsec}); setTimeout(()=>{try{doStop();}catch{} } , Math.max(100, tsec*1000)); }
+  async function spin(dir){ const w=clamp(spinEl.value,0,1); const tsec=clamp(durSpinEl.value,0.05,5); await apiControl({cmd:'move', dir:(dir==='left'?'left':'right'), w, t:tsec}); setTimeout(()=>{try{doStop();}catch{} } , Math.max(100, tsec*1000)); }
+  qs('#btnFwd').addEventListener('click', ()=>{try{goF();}catch{}});
+  qs('#btnBack').addEventListener('click', ()=>{try{goB();}catch{}});
+  qs('#btnLeft').addEventListener('click', ()=>{try{spin('left');}catch{}});
+  qs('#btnRight').addEventListener('click', ()=>{try{spin('right');}catch{}});
+  qs('#btnStop').addEventListener('click', ()=>{try{doStop();}catch{}});
+  qs('#btnStop2').addEventListener('click', ()=>{try{doStop();}catch{}});
 
-  // klawiatura
   const pressed = new Set(); const isArrow = k => ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k);
   window.addEventListener('keydown', ev=>{ try{
     if(ev.repeat) return; const k=ev.key; if(isArrow(k)) ev.preventDefault(); pressed.add(k);
@@ -165,13 +202,13 @@
     if(k==='s'||k==='S'||k==='ArrowDown') goB();
     if(k==='a'||k==='A'||k==='ArrowLeft') spin('left');
     if(k==='d'||k==='D'||k==='ArrowRight') spin('right');
-  }catch(_){}} );
+  }catch{} });
   window.addEventListener('keyup', ev=>{ try{
     if(!pressed.has(ev.key)) return; pressed.delete(ev.key);
     if(['w','W','ArrowUp','s','S','ArrowDown','a','A','ArrowLeft','d','D','ArrowRight'].includes(ev.key)) doStop();
-  }catch(_){}} );
-  document.addEventListener('visibilitychange', ()=> { if (document.hidden) { try{doStop();}catch(_){ } } });
-  window.addEventListener('beforeunload', ()=> { try { navigator.sendBeacon('/api/control', new Blob(['{"cmd":"stop"}'], {type:'application/json'})); } catch(_){} });
+  }catch{} });
+  document.addEventListener('visibilitychange', ()=> { if (document.hidden) { try{doStop();}catch{} } });
+  window.addEventListener('beforeunload', ()=> { try { navigator.sendBeacon('/api/control', new Blob(['{"cmd":"stop"}'], {type:'application/json'})); } catch{} });
 
   // obstacle badge
   async function pollObstacle(){
@@ -182,25 +219,25 @@
       const present = !!(j && (j.present || j.obstacle || (j.data && j.data.present)));
       const obstBadge = qs('#obstBadge');
       obstBadge.style.display = 'inline-flex';
-      obstBadge.textContent = present ? 'Obstacle: present' : 'Obstacle: none';
+      obstBadge.textContent = present ? t('header.obstacle_present') : t('header.obstacle_none');
       obstBadge.className = 'pill ' + (present ? 'err' : 'ok');
-    }catch(_){
+    }catch{
       const obstBadge = qs('#obstBadge');
       obstBadge.style.display = 'inline-flex';
-      obstBadge.textContent = 'Obstacle: n/a';
+      obstBadge.textContent = t('header.obstacle_na');
       obstBadge.className = 'pill warn';
     }
   }
-  setInterval(()=>{ try{pollObstacle();}catch(_){ } }, 1500); pollObstacle();
+  setInterval(pollObstacle, 1500); pollObstacle();
 
   // kamera
   const camImg = qs('#camPrev'); const camToggle = qs('#camToggle'); const camInfo = qs('#camInfo');
   let camAuto = true; let camTimer = null;
-  function refreshCam(){ try{ camImg.src = '/camera/last?ts=' + Date.now(); }catch(_){ } }
+  function refreshCam(){ try{ camImg.src = '/camera/last?ts=' + Date.now(); }catch{} }
   function setCamAuto(on){
-    camAuto = on; camToggle.textContent = on ? '⟳ Auto-refresh (on)' : '⟳ Auto-refresh (off)';
+    camAuto = on; camToggle.textContent = on ? t('camera.auto_refresh_on') : t('camera.auto_refresh_off');
     if(camTimer){ clearInterval(camTimer); camTimer=null; }
-    if(on){ refreshCam(); camTimer = setInterval(()=>{try{refreshCam();}catch(_){ }}, 1500); }
+    if(on){ refreshCam(); camTimer = setInterval(()=>{try{refreshCam();}catch{}}, 1500); }
   }
   camToggle.addEventListener('click', ()=> setCamAuto(!camAuto));
   setCamAuto(true);
@@ -216,18 +253,18 @@
         ageTxt = age.toFixed(1) + ' s';
       }
       const src = await guessFrameSource();
-      camInfo.textContent = `last frame: ${ageTxt} · source: ${src}`;
+      camInfo.textContent = t('camera.last_frame', { age: ageTxt, src });
       camInfo.className = 'note ' + ((lm)? (parseFloat(ageTxt) < 3 ? 'ok':'warn') : 'err');
     }catch{
-      camInfo.textContent = 'last frame: n/a · source: n/a';
+      camInfo.textContent = t('camera.last_frame_na');
       camInfo.className = 'note err';
     }
   }
-  setInterval(()=>{ try{probeLastFrameAge();}catch(_){ } }, 1500); probeLastFrameAge();
+  setInterval(probeLastFrameAge, 1500); probeLastFrameAge();
 
   // /svc
   const svcInfo = qs('#svcInfo'); const svcTable = qs('#svcTable'); const svcBody = qs('#svcBody'); const svcTs = qs('#svcTs');
-  qs('#svcRefresh').addEventListener('click', ()=>{ try{fetchServices();}catch(_){ } });
+  qs('#svcRefresh').addEventListener('click', ()=>{ try{fetchServices();}catch{} });
 
   function badge(active, sub){
     let cls='warn', txt=String(active||'unknown'); if(active==='active') cls='ok';
@@ -244,7 +281,7 @@
       const r = await fetch('/svc', {cache:'no-store'});
       const j = await r.json().catch(()=>null);
       const arr = (j && j.services)||[];
-      if(!arr.length){ svcInfo.textContent='Brak danych z /svc'; svcTable.style.display='none'; return; }
+      if(!arr.length){ svcInfo.innerHTML=t('services.empty'); svcTable.style.display='none'; return; }
       svcInfo.textContent=''; svcTable.style.display='';
       svcTs.textContent = '· ' + new Date().toLocaleTimeString();
       svcBody.innerHTML = arr.map(s => {
@@ -258,22 +295,21 @@
           <td>${act}</td>
           <td>${en}</td>
           <td class="svc-actions">
-            <button data-unit="${unit}" data-a="start">start</button>
-            <button data-unit="${unit}" data-a="stop">stop</button>
-            <button data-unit="${unit}" data-a="restart">restart</button>
-            <button data-unit="${unit}" data-a="enable">enable</button>
-            <button data-unit="${unit}" data-a="disable">disable</button>
+            <button data-unit="${unit}" data-a="start">${t('services.btn_start')}</button>
+            <button data-unit="${unit}" data-a="stop">${t('services.btn_stop')}</button>
+            <button data-unit="${unit}" data-a="restart">${t('services.btn_restart')}</button>
+            <button data-unit="${unit}" data-a="enable">${t('services.btn_enable')}</button>
+            <button data-unit="${unit}" data-a="disable">${t('services.btn_disable')}</button>
           </td>
         </tr>`;
       }).join('');
     }catch(e){
-      svcInfo.textContent = 'Błąd /svc: ' + e;
+      svcInfo.innerHTML = t('services.error_fetch', { msg: String(e) });
       svcTable.style.display='none';
     }
   }
-  setInterval(()=>{ try{fetchServices();}catch(_){ } }, 4000); fetchServices();
+  setInterval(fetchServices, 4000); fetchServices();
 
-  // akcje /svc z pełną diagnostyką
   async function svcAction(unit, action){
     let status = 0, text = '', json = null;
     try{
@@ -286,12 +322,12 @@
       try { json = JSON.parse(text); } catch {}
       const ok = (r.ok && json && json.ok === true);
       const msg = (json && (json.stderr || json.stdout || json.error)) || (text && text.trim()) || `HTTP ${status}`;
-      appendLog(`/svc ${action} ${unit} → ${status} :: ${msg}`, ok ? 'ok' : 'err');
+      appendLog(t('services.log_action', { action, unit, code: status, msg }), ok ? 'ok' : 'err');
     }catch(e){
-      appendLog(`/svc ${action} ${unit} → network :: ${String(e)}`, 'err');
+      appendLog(t('services.log_action', { action, unit, code: 'net', msg: String(e) }), 'err');
     }finally{
-      try{ await fetchServices(); }catch(_){}
-      try{ await probeLastFrameAge(); }catch(_){}
+      try{ await fetchServices(); }catch{}
+      try{ await probeLastFrameAge(); }catch{}
     }
   }
   qs('#svcBody').addEventListener('click', ev=>{
@@ -299,46 +335,44 @@
       const btn = ev.target.closest('button'); if(!btn) return;
       btn.disabled = true;
       const unit = btn.getAttribute('data-unit'); const action = btn.getAttribute('data-a');
-      svcAction(unit, action).finally(()=>{ try{btn.disabled=false;}catch(_){} });
-    }catch(_){}
+      svcAction(unit, action).finally(()=>{ try{btn.disabled=false;}catch{} });
+    }catch{}
   });
 
-  // przełączniki źródła
-  async function useEdge(){ try{ await svcAction('rider-cam-preview.service','stop'); await svcAction('rider-edge-preview.service','start'); }catch(_){} }
-  async function useCam(){  try{ await svcAction('rider-edge-preview.service','stop'); await svcAction('rider-cam-preview.service','start'); }catch(_){} }
-  qs('#btnUseEdge').addEventListener('click', ()=>{ try{useEdge();}catch(_){ } });
-  qs('#btnUseCam').addEventListener('click',  ()=>{ try{useCam(); }catch(_){ } });
+  async function useEdge(){ try{ await svcAction('rider-cam-preview.service','stop'); await svcAction('rider-edge-preview.service','start'); }catch{} }
+  async function useCam(){  try{ await svcAction('rider-edge-preview.service','stop'); await svcAction('rider-cam-preview.service','start'); }catch{} }
+  qs('#btnUseEdge').addEventListener('click', ()=>{ try{useEdge();}catch{} });
+  qs('#btnUseCam').addEventListener('click',  ()=>{ try{useCam(); }catch{} });
 
-  // heurystyka źródła
   async function guessFrameSource(){
     try{
       const r = await fetch('/svc', {cache:'no-store'}); const j = await r.json();
       const list = (j && j.services)||[];
       const isActive = (name)=> !!list.find(s => s.unit===name && s.active==='active');
-      if(isActive('rider-edge-preview.service')) return 'edge';
-      if(isActive('rider-cam-preview.service'))  return 'cam';
-      if(isActive('rider-vision.service'))       return 'vision';
-      return 'none';
+      if(isActive('rider-edge-preview.service')) return t('camera.src_edge');
+      if(isActive('rider-cam-preview.service'))  return t('camera.src_cam');
+      if(isActive('rider-vision.service'))       return t('camera.src_vision');
+      return t('camera.src_none');
     }catch{ return 'n/a'; }
   }
 
-  // SSE z auto-reconnect
+  // SSE
   let es=null, esTimer=null, esDelay=1000;
   function esConnect(){
     try{
-      if(es){ try{es.close();}catch(_){ } es=null; }
+      if(es){ try{es.close();}catch{} es=null; }
       es = new EventSource('/events');
-      es.onopen = ()=>{ appendLog('SSE connected'); esDelay=1000; };
-      es.onmessage=(ev)=>{ try{ const obj=JSON.parse(ev.data); appendLog(obj.topic? `${obj.topic}`: 'event'); }catch{ appendLog('event'); } };
+      es.onopen = ()=>{ appendLog(t('events.sse_connected')); esDelay=1000; };
+      es.onmessage=(ev)=>{ try{ const obj=JSON.parse(ev.data); appendLog(obj.topic? `${obj.topic}`: t('events.generic_event')); }catch{ appendLog(t('events.generic_event')); } };
       es.onerror = ()=>{
-        appendLog('SSE disconnected — reconnecting…','warn');
-        try{ es.close(); }catch(_){}
+        appendLog(t('events.sse_reconnect'),'warn');
+        try{ es.close(); }catch{}
         clearTimeout(esTimer);
         esTimer = setTimeout(esConnect, Math.min(esDelay, 10000));
         esDelay = Math.min(esDelay*2, 10000);
       };
     }catch(e){
-      appendLog('SSE init failed: '+e,'err');
+      appendLog(t('events.sse_init_err',{err:String(e)}),'err');
       clearTimeout(esTimer);
       esTimer = setTimeout(esConnect, Math.min(esDelay, 10000));
       esDelay = Math.min(esDelay*2, 10000);
@@ -348,3 +382,4 @@
 </script>
 </body>
 </html>
+
