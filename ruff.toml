@@ -1,0 +1,9 @@
+line-length = 120
+target-version = "py311"
+extend-exclude = ["tools/","models/","systemd/","docs/","web/","common/","**/__pycache__/"]
+
+[lint]
+select = ["E","F","W","I","UP"]
+ignore = ["E501","E203","E266"]
+fixable = ["ALL"]
+unfixable = []
