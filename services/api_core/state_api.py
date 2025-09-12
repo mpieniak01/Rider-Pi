@@ -1,11 +1,17 @@
 from __future__ import annotations
-import json, os, time
-from flask import jsonify, Response
+
+import json
+import os
+import time
+
+from flask import Response, jsonify
+
 from services.api_core import compat
 from services.api_core.vision_api import load_obstacle  # reużywamy jednej logiki
 
 
 def state() -> Response:
+    """Return basic robot state information."""
     now = time.time()
     ts = compat.LAST_STATE.get("ts")
     age = (now - ts) if ts else None
