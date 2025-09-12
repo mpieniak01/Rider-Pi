@@ -1,0 +1,16 @@
+[Unit]
+Description=Rider-Pi Voice Service
+After=network-online.target sound.target
+Requires=rider-voice.socket
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/robot
+ExecStart=/usr/bin/python3 -u -m apps.voice.service
+Restart=on-failure
+Environment=PYTHONUNBUFFERED=1
+IdleStopSec=20s
+TimeoutStopSec=3s
+
+[Install]
+WantedBy=multi-user.target
