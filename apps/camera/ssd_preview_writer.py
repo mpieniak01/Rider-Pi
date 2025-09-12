@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 # SSD preview + pewny zapis RAW/PROC do /home/pi/robot/snapshots (atomowo) + LCD
-import os, time
-import cv2, numpy as np
+import os
+import time
+
+import cv2
+import numpy as np
+
+from apps.camera.utils import env_flag, open_camera
 
 SNAP_DIR = os.getenv("SNAP_BASE", "/home/pi/robot/snapshots")
 os.makedirs(SNAP_DIR, exist_ok=True)
 
-ROT   = int(os.getenv("PREVIEW_ROT", "270"))
-FLIP_H = os.getenv("PREVIEW_FLIP_H","0").lower() in ("1","true","yes","on","y")
-FLIP_V = os.getenv("PREVIEW_FLIP_V","0").lower() in ("1","true","yes","on","y")
-DISABLE_LCD = os.getenv("DISABLE_LCD","0").lower() in ("1","true","yes","on","y")
-NO_DRAW     = os.getenv("NO_DRAW","0").lower() in ("1","true","yes","on","y")
+ROT = int(os.getenv("PREVIEW_ROT", "270"))
+FLIP_H = env_flag("PREVIEW_FLIP_H", False)
+FLIP_V = env_flag("PREVIEW_FLIP_V", False)
+DISABLE_LCD = env_flag("DISABLE_LCD", False)
+NO_DRAW = env_flag("NO_DRAW", False)
 
 CLASSES = ["background","aeroplane","bicycle","bird","boat","bottle","bus","car","cat",
            "chair","cow","diningtable","dog","horse","motorbike","person","pottedplant",
@@ -24,22 +29,7 @@ def apply_rotation(frame):
     if FLIP_V: frame = cv2.flip(frame, 0)
     return frame
 
-def open_camera(size=(320,240)):
-    try:
-        from picamera2 import Picamera2
-        picam2 = Picamera2()
-        config = picam2.create_preview_configuration(main={"size": size, "format":"RGB888"})
-        picam2.configure(config); picam2.start()
-        def read():
-            arr = picam2.capture_array()
-            return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-        return read
-    except Exception:
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  size[0])
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
-        def read(): return cap.read()
-        return read
+# Kamera (Picamera2 → V4L2 fallback) w utils.open_camera
 
 def lcd_show_bgr(img_bgr):
     if DISABLE_LCD: return
@@ -93,7 +83,7 @@ def main():
     EVERY = int(os.getenv("SSD_EVERY","1"))
     CLW   = set([x.strip().lower() for x in os.getenv("SSD_CLASSES","person").split(",") if x.strip()])
 
-    read = open_camera()
+    read, _ = open_camera()
     net = load_ssd()
     print(f"[start] SNAP_DIR={SNAP_DIR} ROT={ROT} LCD={'off' if DISABLE_LCD else 'on'} SCORE>={SCORE} EVERY={EVERY}", flush=True)
 

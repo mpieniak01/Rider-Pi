@@ -6,7 +6,7 @@
 
 import os
 import time
-from typing import Tuple, Optional
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -14,6 +14,7 @@ import numpy as np
 from common.bus import BusPub, now_ts
 from common.cam_heartbeat import CameraHB
 from common.snap import Snapper
+from apps.camera.utils import env_flag, open_camera
 
 PUB = BusPub()
 HB = CameraHB(mode="hybrid")
@@ -28,13 +29,9 @@ def pub(topic, payload: dict, add_ts: bool = False):
 
 
 # --------- ORIENTATION (wspólne) ---------
-def _env_flag(name: str, default: bool = False) -> bool:
-    return str(os.getenv(name, str(int(default)))).lower() in ("1", "true", "yes", "y", "on")
-
-
-ROT = int(os.getenv("PREVIEW_ROT", "270"))          # 0/90/180/270
-FLIP_H = _env_flag("PREVIEW_FLIP_H", False)
-FLIP_V = _env_flag("PREVIEW_FLIP_V", False)
+ROT = int(os.getenv("PREVIEW_ROT", "270"))  # 0/90/180/270
+FLIP_H = env_flag("PREVIEW_FLIP_H", False)
+FLIP_V = env_flag("PREVIEW_FLIP_V", False)
 
 
 def apply_rotation(frame, rot: int, flip_h: bool, flip_v: bool):
@@ -89,29 +86,7 @@ def lcd_show_bgr(img_bgr: np.ndarray):
     _LCD.ShowImage(Image.fromarray(img_rgb))
 
 
-def open_camera(size=(320, 240)):
-    try:
-        from picamera2 import Picamera2
-
-        picam2 = Picamera2()
-        config = picam2.create_preview_configuration(main={"size": size, "format": "RGB888"})
-        picam2.configure(config)
-        picam2.start()
-
-        def read():
-            arr = picam2.capture_array()
-            return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-
-        return read, size
-    except Exception:
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
-
-        def read():
-            return cap.read()
-
-        return read, size
+# Kamera (Picamera2 → V4L2 fallback) w utils.open_camera
 
 
 CLASSES = [

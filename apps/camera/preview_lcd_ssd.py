@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 # Preview + MobileNet-SSD (Caffe) — zapis RAW/PROC do /home/pi/robot/snapshots (atomowo)
 # + ramki na LCD, + heartbeat, + publikacja vision.person (tylko przy realnym trafieniu)
-import os, time, json
-from typing import Set, Tuple, List, Optional
-import cv2, numpy as np
+import json
+import os
+import time
+from typing import List, Optional, Set, Tuple
+
+import cv2
+import numpy as np
+
 from common.bus import BusPub
 from common.cam_heartbeat import CameraHB
 from common.snap import Snapper
+from apps.camera.utils import env_flag, open_camera
 
 PUB = BusPub()
 HB  = CameraHB(mode="ssd")
@@ -17,12 +23,11 @@ SNAP_DIR = os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or "/home/pi/robot/sn
 os.makedirs(SNAP_DIR, exist_ok=True)
 SNAP = Snapper(base_dir=SNAP_DIR)
 
-def _env_flag(n, d=False): return str(os.getenv(n, str(int(d)))).lower() in ("1","true","yes","y","on")
-ROT    = int(os.getenv("PREVIEW_ROT", "270"))
-FLIP_H = _env_flag("PREVIEW_FLIP_H", False)
-FLIP_V = _env_flag("PREVIEW_FLIP_V", False)
-DISABLE_LCD = _env_flag("DISABLE_LCD", False)
-NO_DRAW     = _env_flag("NO_DRAW", False)
+ROT = int(os.getenv("PREVIEW_ROT", "270"))
+FLIP_H = env_flag("PREVIEW_FLIP_H", False)
+FLIP_V = env_flag("PREVIEW_FLIP_V", False)
+DISABLE_LCD = env_flag("DISABLE_LCD", False)
+NO_DRAW = env_flag("NO_DRAW", False)
 
 # możliwość wymuszenia rozszerzenia snapshotów
 SNAP_EXT_FORCED = (os.getenv("SNAP_EXT","").strip().lower() or None)  # ".jpg" | ".png" | ".bmp"
@@ -89,22 +94,7 @@ def lcd_show_bgr(img_bgr):
     except Exception:
         pass
 
-def open_camera(size=(320,240)):
-    try:
-        from picamera2 import Picamera2
-        picam2 = Picamera2()
-        config = picam2.create_preview_configuration(main={"size": size, "format":"RGB888"})
-        picam2.configure(config); picam2.start()
-        def read():
-            arr = picam2.capture_array()
-            return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-        return read, size
-    except Exception:
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  size[0])
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
-        def read(): return cap.read()
-        return read, size
+# Kamera (Picamera2 → V4L2 fallback) w utils.open_camera
 
 CLASSES = ["background","aeroplane","bicycle","bird","boat","bottle","bus","car","cat",
            "chair","cow","diningtable","dog","horse","motorbike","person","pottedplant",

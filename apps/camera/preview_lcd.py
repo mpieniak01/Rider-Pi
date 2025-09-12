@@ -36,7 +36,9 @@ ENV:
 from __future__ import annotations
 import os, sys, time, json
 from pathlib import Path
-from typing import List, Tuple, Set, Optional
+from typing import List, Optional, Set, Tuple
+
+from apps.camera.utils import open_camera
 
 # ── ENV / ustawienia
 HUMAN_EN         = int(os.getenv("VISION_HUMAN", "0"))
@@ -266,31 +268,7 @@ def save_raw_snapshot(frame_bgr):
         print(f"[preview] save_raw_snapshot ERROR: {e}", flush=True)
 
 # ── Kamera (Picamera2 → V4L2 fallback)
-def open_camera(size=(320,240)):
-    """
-    Zwraca (read_fn, size). read_fn() -> (ok, frame_bgr).
-    """
-    try:
-        from picamera2 import Picamera2
-        picam2 = Picamera2()
-        config = picam2.create_preview_configuration(main={"size": size, "format":"RGB888"})
-        picam2.configure(config); picam2.start()
-        def read():
-            arr = picam2.capture_array()
-            return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-        return read, size
-    except Exception:
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  size[0])
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
-        try:
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        except Exception:
-            pass
-        def read():
-            ok, frm = cap.read()
-            return ok, frm
-        return read, size
+# korzystamy z utils.open_camera
 
 # ── Detektory
 def parse_ssd_classes_env() -> Set[str]:
