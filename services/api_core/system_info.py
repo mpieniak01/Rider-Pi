@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import os, time, subprocess, platform, shutil
+import os, time, subprocess, platform, shutil, json
+from flask import Response
 
 def _cpu_pct_sample():
     try:
@@ -111,3 +112,57 @@ def get_sysinfo(HIST_CPU, HIST_MEM):
     except Exception:
         pass
     return si
+
+
+def sysinfo():
+    from . import compat
+    si = get_sysinfo(compat.HIST_CPU, compat.HIST_MEM)
+    out = {
+        "cpu_pct": si["cpu_pct"],
+        "load1": si["load"]["1"],
+        "load5": si["load"]["5"],
+        "load15": si["load"]["15"],
+        "mem_total_mb": round(si["mem"]["total"] / 1048576, 1),
+        "mem_used_mb": round(si["mem"]["used"] / 1048576, 1),
+        "mem_pct": si["mem"]["pct"],
+        "disk_total_gb": round(si["disk"]["total"] / 1073741824, 1),
+        "disk_used_gb": round(si["disk"]["used"] / 1073741824, 1),
+        "disk_pct": si["disk"]["pct"],
+        "temp_c": si["temp_c"],
+        "hist_cpu": si["hist_cpu"],
+        "hist_mem": si["hist_mem"],
+        "os_release": ((si["os"].get("pretty") or "—") + " · " + (si["os"].get("kernel") or "—")),
+        "ts": si["ts"],
+    }
+    if "battery_pct" in si and si["battery_pct"] is not None:
+        out["battery_pct"] = si["battery_pct"]
+    return Response(json.dumps(out), mimetype="application/json")
+
+
+def metrics():
+    from . import compat
+    si = get_sysinfo(compat.HIST_CPU, compat.HIST_MEM)
+    now = time.time()
+    last_msg_age = (now - compat.LAST_MSG_TS) if compat.LAST_MSG_TS else -1
+    last_hb_age = (now - compat.LAST_HEARTBEAT_TS) if compat.LAST_HEARTBEAT_TS else -1
+    cam_age = (now - compat.LAST_CAMERA["ts"]) if compat.LAST_CAMERA["ts"] else -1
+    raw_age = -1
+    if os.path.isfile(compat.RAW_PATH):
+        try:
+            raw_age = max(0.0, now - float(os.stat(compat.RAW_PATH).st_mtime))
+        except Exception:
+            raw_age = -1
+    lines = []
+    def m(name, val):
+        lines.append(f"{name} {val}")
+    m("rider_cpu_pct", si["cpu_pct"])
+    m("rider_mem_pct", si["mem"]["pct"])
+    m("rider_disk_pct", si["disk"]["pct"])
+    m("rider_temp_c", si["temp_c"])
+    if "battery_pct" in si and si["battery_pct"] is not None:
+        m("rider_battery_pct", si["battery_pct"])
+    m("rider_bus_last_msg_age_seconds", round(last_msg_age, 3))
+    m("rider_bus_last_heartbeat_age_seconds", round(last_hb_age, 3))
+    m("rider_camera_last_hb_age_seconds", round(cam_age, 3))
+    m("rider_camera_raw_age_seconds", round(raw_age, 3))
+    return Response("\n".join(lines) + "\n", mimetype="text/plain")

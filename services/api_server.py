@@ -72,11 +72,12 @@ def _proxy_post_json(path: str, payload: Dict[str, Any]) -> Tuple[Dict[str, Any]
 
 # ── ROUTING: HEALTH / STATE / EVENTS / ETC. ──────────────────────────────────
 from services.api_core import state_api  # << wzbogacone /state (w core)
+from services.api_core import system_info
 app.add_url_rule("/healthz",  view_func=compat.healthz)
 app.add_url_rule("/health",   view_func=compat.health_alias)
 app.add_url_rule("/state",    view_func=state_api.state_route)  # << router tylko deleguje
-app.add_url_rule("/sysinfo",  view_func=compat.sysinfo)
-app.add_url_rule("/metrics",  view_func=compat.metrics)
+app.add_url_rule("/sysinfo",  view_func=system_info.sysinfo)
+app.add_url_rule("/metrics",  view_func=system_info.metrics)
 app.add_url_rule("/events",   view_func=compat.events)
 app.add_url_rule("/livez",    view_func=compat.livez)
 app.add_url_rule("/readyz",   view_func=compat.readyz)
