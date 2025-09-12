@@ -5,36 +5,28 @@ on:
     branches: [ main ]
   push:
     branches: [ codex/** ]
-  workflow_dispatch: {}   # pozwala odpalić ręcznie z zakładki Actions
+  workflow_dispatch: {}
 
 jobs:
   lint-test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: "3.11"   # ← USUŃ cache: "pip"
 
       - name: Install tools
         run: |
           python -m pip install --upgrade pip
           pip install ruff pytest || true
-          # jeśli masz requirements.txt, spróbuj je zainstalować (nie przerywa joba gdy brak/padnie)
           test -f requirements.txt && pip install -r requirements.txt || true
 
-      # Lint — lekko: nie blokuje PR (|| true). Chcesz ostrzejszy tryb? Usuń "|| true".
       - name: Ruff (lint)
         run: |
           ruff check services apps tests || true
           ruff format --check services apps tests || true
 
-      # Testy “lekkie” — bez rzeczy wymagających sprzętu/systemd
       - name: Pytest (smoke)
-        run: |
-          pytest -k "state_api or system_info or control" -q || true
+        run: pytest -k "state_api or system_info or control" -q || true
