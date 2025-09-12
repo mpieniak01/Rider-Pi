@@ -132,7 +132,7 @@ def bus_pub(topic: str, payload: dict):
         pass
 
 # ── System info (delegacja do modułu) ────────────────────────────────────────
-from . import system_info as _si
+# Funkcje sysinfo/metrics delegowane są do services.api_core.system_info.
 
 # ── Middleware ────────────────────────────────────────────────────────────────
 @app.after_request
@@ -325,7 +325,8 @@ def api_status():
     .system.cpu -> {count, percent}
     .devices.summary.flags -> {estop, motion_enable}
     """
-    si = _si.get_sysinfo(HIST_CPU, HIST_MEM)
+    from .system_info import get_sysinfo
+    si = get_sysinfo(HIST_CPU, HIST_MEM)
     flags = _read_flags()
     payload = {
         "system": {
@@ -349,7 +350,8 @@ def api_metrics_alias():
       { cpu: {count, percent}, mem: {percent, total, used},
         load: {"1m", "5m", "15m"}, uptime: {boot_time, uptime_s} }
     """
-    si = _si.get_sysinfo(HIST_CPU, HIST_MEM)
+    from .system_info import get_sysinfo
+    si = get_sysinfo(HIST_CPU, HIST_MEM)
 
     # CPU
     cpu = {
@@ -437,87 +439,18 @@ def api_flags_set(name: str, state: str):
     return Response(json.dumps({"ok": bool(ok), "name": name, "state": st}), mimetype="application/json", status=(200 if ok else 500))
 
 def state():
-    now = time.time()
-    ts = LAST_STATE.get("ts")
-    age = (now - ts) if ts else None
-    raw_ts = None
-    try:
-        st = os.stat(RAW_PATH); raw_ts = float(st.st_mtime)
-    except Exception:
-        pass
-    fresh = (raw_ts is not None and (now - float(raw_ts)) <= float(os.getenv("LAST_FRESH_S", "3")))
-    vision_enabled = bool((os.getenv("VISION_ENABLED", "0") == "1") or fresh)
-    cache_bust = int(raw_ts or now)
+    from .state_api import state as _state
+    return _state()
 
-    inferred_pose = LAST_XGO.get("pose") or _classify_pose(LAST_XGO.get("roll"), LAST_XGO.get("pitch"))
-
-    resp = {
-        "present": bool(LAST_STATE.get("present", False)),
-        "confidence": float(LAST_STATE.get("confidence", 0.0)),
-        "mode": LAST_STATE.get("mode"),
-        "ts": ts,
-        "age_s": round(age, 3) if age is not None else None,
-        "camera": {"vision_enabled": vision_enabled, "has_last_frame": bool(raw_ts),
-                   "last_frame_ts": int(raw_ts) if raw_ts else None,
-                   "preview_url": f"/camera/last?t={cache_bust}",
-                   "placeholder_url": "/camera/placeholder"},
-        "devices": {
-            "xgo": ({
-                "present": True,
-                "imu_ok": LAST_XGO.get("imu_ok"),
-                "pose": inferred_pose,
-                "battery_pct": LAST_XGO.get("battery"),
-                "roll": LAST_XGO.get("roll"),
-                "pitch": LAST_XGO.get("pitch"),
-                "yaw": LAST_XGO.get("yaw"),
-                "fw": XGO_FW,
-                "ts": LAST_XGO.get("ts"),
-            } if LAST_XGO.get("ts") else None)
-        }
-    }
-    return Response(json.dumps(resp), mimetype="application/json")
 
 def sysinfo():
-    si = _si.get_sysinfo(HIST_CPU, HIST_MEM)
-    out = {
-        "cpu_pct": si["cpu_pct"],
-        "load1": si["load"]["1"], "load5": si["load"]["5"], "load15": si["load"]["15"],
-        "mem_total_mb": round(si["mem"]["total"]/1048576,1),
-        "mem_used_mb": round(si["mem"]["used"]/1048576,1),
-        "mem_pct": si["mem"]["pct"],
-        "disk_total_gb": round(si["disk"]["total"]/1073741824,1),
-        "disk_used_gb": round(si["disk"]["used"]/1073741824,1),
-        "disk_pct": si["disk"]["pct"],
-        "temp_c": si["temp_c"],
-        "hist_cpu": si["hist_cpu"],
-        "hist_mem": si["hist_mem"],
-        "os_release": ((si["os"].get("pretty") or "—")+" · "+(si["os"].get("kernel") or "—")),
-        "ts": si["ts"],
-    }
-    if "battery_pct" in si and si["battery_pct"] is not None:
-        out["battery_pct"] = si["battery_pct"]
-    return Response(json.dumps(out), mimetype="application/json")
+    from .system_info import sysinfo as _sysinfo
+    return _sysinfo()
+
 
 def metrics():
-    si = _si.get_sysinfo(HIST_CPU, HIST_MEM)
-    now = time.time()
-    last_msg_age = (now - LAST_MSG_TS) if LAST_MSG_TS else -1
-    last_hb_age  = (now - LAST_HEARTBEAT_TS) if LAST_HEARTBEAT_TS else -1
-    cam_age      = (now - LAST_CAMERA["ts"]) if LAST_CAMERA["ts"] else -1
-    raw_age = -1
-    if os.path.isfile(RAW_PATH):
-        try: raw_age = max(0.0, now - float(os.stat(RAW_PATH).st_mtime))
-        except Exception: raw_age = -1
-    lines = []
-    def m(name, val): lines.append(f"{name} {val}")
-    m("rider_cpu_pct", si["cpu_pct"]); m("rider_mem_pct", si["mem"]["pct"]); m("rider_disk_pct", si["disk"]["pct"])
-    m("rider_temp_c", si["temp_c"])
-    if "battery_pct" in si and si["battery_pct"] is not None: m("rider_battery_pct", si["battery_pct"])
-    m("rider_bus_last_msg_age_seconds", round(last_msg_age,3))
-    m("rider_bus_last_heartbeat_age_seconds", round(last_hb_age,3))
-    m("rider_camera_last_hb_age_seconds", round(cam_age,3))
-    m("rider_camera_raw_age_seconds", round(raw_age,3))
-    return Response("\n".join(lines) + "\n", mimetype="text/plain")
+    from .system_info import metrics as _metrics
+    return _metrics()
 
 def events():
     @stream_with_context
