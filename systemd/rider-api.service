@@ -12,6 +12,8 @@ StartLimitBurst=10
 Type=simple
 User=pi
 Group=pi
+Environment=SAFE_MAX_DURATION=0.25
+Environment=WEB_BRIDGE_TIMEOUT=0.8
 WorkingDirectory=/home/pi/robot
 
 # Zewnętrzne pliki z env (nadpisują Environment= poniżej, jeśli istnieją)

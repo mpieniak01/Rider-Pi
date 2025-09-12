@@ -109,7 +109,6 @@ app.add_url_rule("/api/voice", view_func=control_api.api_voice, methods=["POST"]
 def main():
     compat.start_bus_sub()
     compat.start_xgo_ro()
-    app.run(host="0.0.0.0", port=STATUS_API_PORT, threaded=True)
-
+    app.run(host="0.0.0.0", port=STATUS_API_PORT, debug=False, use_reloader=False)
 if __name__ == "__main__":
     main()
