@@ -3,10 +3,12 @@
 
 import os
 import time
+
 import cv2
 import numpy as np
-from typing import Tuple
 from PIL import Image
+
+from apps.camera.utils import open_camera
 
 from common.bus import BusPub, now_ts
 from common.cam_heartbeat import CameraHB
@@ -47,24 +49,7 @@ def lcd_show_bgr(img_bgr: np.ndarray):
     _LCD.ShowImage(Image.fromarray(img_rgb))
 
 # --- Camera ---
-def open_camera(size=(320, 240)) -> Tuple[object, Tuple[int, int]]:
-    try:
-        from picamera2 import Picamera2
-        picam2 = Picamera2()
-        config = picam2.create_preview_configuration(main={"size": size, "format": "RGB888"})
-        picam2.configure(config)
-        picam2.start()
-        def read():
-            arr = picam2.capture_array()
-            return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-        return read, size
-    except Exception:
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
-        def read():
-            return cap.read()
-        return read, size
+# korzystamy z utils.open_camera
 
 # --- Main ---
 def main():
