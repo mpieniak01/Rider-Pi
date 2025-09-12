@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import os
 
-from flask import Flask, send_from_directory
+from flask import Flask, jsonify, make_response, request, send_from_directory
 
 from services.api_core import (
     camera,
+    chat_api,
     compat,
     control_api,
     control_proxy,
@@ -23,6 +24,7 @@ from services.api_core import (
     services_api,
     state_api,
     system_info,
+    voice_proxy,
 )
 
 app: Flask = compat.app
@@ -57,6 +59,21 @@ app.add_url_rule("/snapshots/<path:fname>", view_func=camera.snapshots_static)
 app.add_url_rule("/svc", view_func=services_api.svc_list, methods=["GET"])
 app.add_url_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
 app.add_url_rule("/svc/<name>", view_func=services_api.svc_action, methods=["POST"])
+
+# chat API
+@app.route("/chat/send", methods=["POST", "OPTIONS"])
+def chat_send():
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    body, code = chat_api.send_message(request.get_json(silent=True) or {})
+    return _corsify(jsonify(body)), code
+
+
+@app.route("/chat/history")
+def chat_history():
+    limit = request.args.get("limit", 50)
+    body, code = chat_api.get_history(limit)
+    return _corsify(jsonify(body)), code
 
 # dashboard (strona)
 def serve_control() -> object:
@@ -99,6 +116,18 @@ app.add_url_rule(
     methods=["POST", "OPTIONS"],
 )
 
+# voice proxy
+app.add_url_rule(
+    "/api/voice/capture",
+    view_func=voice_proxy.capture_handler,
+    methods=["POST", "OPTIONS"],
+)
+app.add_url_rule(
+    "/api/voice/say",
+    view_func=voice_proxy.say_handler,
+    methods=["POST", "OPTIONS"],
+)
+
 # Legacy POST-y (jeśli jeszcze używasz)
 app.add_url_rule("/api/move", view_func=control_api.api_move, methods=["POST"])
 app.add_url_rule("/api/stop", view_func=control_api.api_stop, methods=["POST"])
@@ -112,3 +141,9 @@ def main():
     app.run(host="0.0.0.0", port=STATUS_API_PORT, debug=False, use_reloader=False)
 if __name__ == "__main__":
     main()
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def _corsify(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    return resp
