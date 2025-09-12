@@ -84,3 +84,10 @@ systemd/*.service_*
 *.ipynb
 # systemd backups
 systemd/*.service_
+
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.snapshots/
+snapshots/
