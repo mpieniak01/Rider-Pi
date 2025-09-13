@@ -1,17 +1,33 @@
 from __future__ import annotations
-
 from collections import deque
-from typing import Any
+from threading import Lock
+import time
+from typing import Dict, List
 
-_BUF: deque[dict[str, Any]] = deque(maxlen=1000)
+class ChatStore:
+    def __init__(self, maxlen: int = 1000) -> None:
+        self._q: deque[Dict[str, object]] = deque(maxlen=maxlen)
+        self._lock = Lock()
 
+    def add(self, msg: str, user: str) -> Dict[str, object]:
+        item = {"ts": time.time(), "user": user, "msg": msg}
+        with self._lock:
+            self._q.append(item)
+        return item
 
-def append_msg(rec: dict[str, Any]) -> None:
-    """Append a chat record."""
-    _BUF.append(rec)
+    def list(self, limit: int = 20, newest_first: bool = True) -> List[Dict[str, object]]:
+        if limit <= 0:
+            return []
+        with self._lock:
+            data = list(self._q)[-limit:]
+        if newest_first:
+            data.reverse()
+        return data
 
+_STORE: ChatStore | None = None
 
-def tail(n: int) -> list[dict[str, Any]]:
-    """Return the last n records."""
-    n = max(0, min(n, len(_BUF)))
-    return list(_BUF)[-n:]
+def get_store() -> ChatStore:
+    global _STORE
+    if _STORE is None:
+        _STORE = ChatStore(maxlen=1000)
+    return _STORE
