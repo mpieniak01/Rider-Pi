@@ -1,0 +1,9 @@
+[Unit]
+Description=Voice Service Socket
+
+[Socket]
+ListenStream=127.0.0.1:8092
+NoDelay=yes
+
+[Install]
+WantedBy=sockets.target
