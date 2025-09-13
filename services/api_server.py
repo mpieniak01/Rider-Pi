@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-from flask import Flask, send_from_directory
+from flask import Flask, jsonify, make_response, request, send_from_directory
 
 from services.api_core import (
     camera,
@@ -20,10 +20,12 @@ from services.api_core import (
     control_api,
     control_proxy,
     dashboard,
+    face_api,
     services_api,
     state_api,
     system_info,
 )
+from services.api_core.control_proxy import _corsify
 
 app: Flask = compat.app
 STATUS_API_PORT = int(os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or compat.STATUS_API_PORT)
@@ -72,6 +74,14 @@ app.add_url_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
 
 app.add_url_rule("/", view_func=dashboard.dashboard)
 app.add_url_rule("/control", view_func=dashboard.control_page)
+
+# ── Face drawing API ─────────────────────────────────────────────────────────
+@app.route("/draw/face", methods=["POST", "OPTIONS"])
+def draw_face_route():
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    body, code = face_api.draw_face(request.get_json(silent=True) or {})
+    return _corsify(jsonify(body)), code
 
 # ── Vision API: blueprint (w core) ───────────────────────────────────────────
 try:
