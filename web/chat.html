@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Rider-Pi – Chat</title>
+<style>
+  :root { font-family: ui-sans-serif, system-ui, Arial, Helvetica, sans-serif; }
+  body { margin: 0; background: #0b0f14; color: #e8eef6; }
+  .wrap { max-width: 840px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 6px 0 12px; color: #9cc3ff; }
+  .card { background:#10171f; border:1px solid #1b2633; border-radius: 12px; padding: 12px; }
+  .row { display:flex; gap:8px; margin-top: 10px; }
+  input, button { font-size: 15px; }
+  input[type=text] { flex:1; padding:10px 12px; border-radius:10px; border:1px solid #223142; background:#0d141c; color:#e8eef6; }
+  input[type=text]::placeholder{color:#6e829b}
+  button { padding:10px 14px; border-radius:10px; border:1px solid #2a3b51; background:#243447; color:#e8eef6; cursor:pointer;}
+  button:disabled{opacity:.6; cursor:not-allowed}
+  .msgs { margin-top: 12px; display:flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow:auto; }
+  .msg { padding:10px 12px; border-radius:10px; border:1px solid #1b2633; background:#0e141c; }
+  .meta { font-size: 12px; color:#9bb2c7; margin-bottom: 4px; display:flex; gap:8px; align-items:center;}
+  .meta .pill { background:#17212b; border:1px solid #243447; border-radius: 999px; padding: 2px 8px; }
+  .err { color: #ff8a8a; font-size: 13px; margin-top: 6px; }
+  .topbar { display:flex; gap:8px; align-items:center; margin-bottom:10px;}
+  .topbar input { width: 200px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>💬 Rider-Pi – Chat</h1>
+    <div class="card">
+      <div class="topbar">
+        <input id="user" type="text" placeholder="użytkownik (np. web)" value="web">
+        <button id="refresh">Odśwież</button>
+        <span id="status" style="font-size:12px;color:#9bb2c7"></span>
+      </div>
+
+      <div class="msgs" id="msgs"></div>
+
+      <div class="row">
+        <input id="msg" type="text" placeholder="Napisz wiadomość i naciśnij Enter…">
+        <button id="send">Wyślij</button>
+      </div>
+      <div class="err" id="err"></div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = ''; // ten sam host:port (pusty = relative, np. /api/chat/…)
+const el = (id)=>document.getElementById(id);
+const msgs = el('msgs'), sendBtn = el('send'), msgIn = el('msg');
+const userIn = el('user'), errBox = el('err'), status = el('status');
+
+function fmtTs(ts){
+  try {
+    if (!ts) return '';
+    // ts może być sekundowy lub ms – zgadnij:
+    const t = (String(ts).length < 13) ? Number(ts)*1000 : Number(ts);
+    return new Date(t).toLocaleString();
+  } catch { return ''; }
+}
+
+function renderItems(items){
+  msgs.innerHTML = '';
+  (items||[]).forEach(it=>{
+    const div = document.createElement('div'); div.className='msg';
+    const meta = document.createElement('div'); meta.className='meta';
+    const pillUser = document.createElement('span'); pillUser.className='pill'; pillUser.textContent = it.user ?? 'unknown';
+    const pillTs = document.createElement('span'); pillTs.className='pill'; pillTs.textContent = fmtTs(it.ts);
+    meta.appendChild(pillUser); meta.appendChild(pillTs);
+    const body = document.createElement('div');
+    const text = it.msg ?? it.text ?? JSON.stringify(it);
+    body.textContent = text;
+    div.appendChild(meta); div.appendChild(body);
+    msgs.appendChild(div);
+  });
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+async function loadHistory(limit=50){
+  errBox.textContent = '';
+  status.textContent = 'Ładowanie…';
+  try {
+    const r = await fetch(`${API_BASE}/api/chat/history?limit=${limit}`, {method:'GET'});
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+    renderItems(data.items || []);
+    status.textContent = `OK • ${new Date().toLocaleTimeString()}`;
+  } catch(e){
+    errBox.textContent = `Błąd historii: ${e.message}`;
+    status.textContent = 'Błąd';
+  }
+}
+
+async function sendMessage(){
+  const msg = msgIn.value.trim();
+  const user = (userIn.value || 'web').trim();
+  errBox.textContent = '';
+  if (!msg) { errBox.textContent = 'Wpisz wiadomość.'; return; }
+  sendBtn.disabled = true;
+  try {
+    const r = await fetch(`${API_BASE}/api/chat/send`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({msg, user})
+    });
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+    msgIn.value = '';
+    await loadHistory(50);
+  } catch(e){
+    errBox.textContent = `Błąd wysyłki: ${e.message}`;
+  } finally {
+    sendBtn.disabled = false;
+    msgIn.focus();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  loadHistory(50);
+  el('refresh').addEventListener('click', ()=>loadHistory(50));
+  sendBtn.addEventListener('click', sendMessage);
+  msgIn.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter') sendMessage(); });
+  // co 10s lekki polling
+  setInterval(()=>loadHistory(50), 10000);
+});
+</script>
+</body>
+</html>
