@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+import services.api_core.chat_glue as chat_glue
+import services.api_core.services_api as services_api
+import services.api_core.dashboard as dashboard
+import services.api_core.camera as camera
+import services.api_core.voice_proxy as voice_proxy
+import services.api_core.control_proxy as control_proxy
+import services.api_core.system_info as system_info
+import services.api_core.state_api as state_api
+import services.api_core.compat as compat
 """
 Rider-Pi – API server (router + entrypoint)
 
@@ -8,24 +18,9 @@ Rider-Pi – API server (router + entrypoint)
     * POST /api/control|/api/cmd -> web_motion_bridge (8081)/control
 """
 
-from __future__ import annotations
-
 import os
 
 from flask import Flask, jsonify, make_response, request, send_from_directory
-
-from services.api_core import (
-    camera,
-    chat_api,
-    compat,
-    control_api,
-    control_proxy,
-    dashboard,
-    services_api,
-    state_api,
-    system_info,
-    voice_proxy,
-)
 
 app: Flask = compat.app
 STATUS_API_PORT = int(os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or compat.STATUS_API_PORT)
@@ -60,29 +55,11 @@ app.add_url_rule("/svc", view_func=services_api.svc_list, methods=["GET"])
 app.add_url_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
 app.add_url_rule("/svc/<name>", view_func=services_api.svc_action, methods=["POST"])
 
-# chat API
-@app.route("/chat/send", methods=["POST", "OPTIONS"])
-def chat_send():
-    if request.method == "OPTIONS":
-        return _corsify(make_response("", 204))
-    body, code = chat_api.send_message(request.get_json(silent=True) or {})
-    return _corsify(jsonify(body)), code
-
-
-@app.route("/chat/history")
-def chat_history():
-    limit = request.args.get("limit", 50)
-    body, code = chat_api.get_history(limit)
-    return _corsify(jsonify(body)), code
-
-# dashboard (strona)
 def serve_control() -> object:
     return send_from_directory(STATIC_WEB_DIR, "control.html")
 
-
 def serve_web(fname):
     return send_from_directory(STATIC_WEB_DIR, fname)
-
 
 # app.add_url_rule("/control", view_func=serve_control, methods=["GET"])  # opcjonalnie "goły" plik
 app.add_url_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
@@ -103,8 +80,6 @@ except Exception as e:  # pragma: no cover - optional dependency
     app.logger.warning(f"Vision blueprint not available: {e}")
 
 # ── Control API (proxy) ─────────────────────────────────────────────────────
-app.add_url_rule("/api/move", view_func=control_proxy.proxy_move_get, methods=["GET"])
-app.add_url_rule("/api/stop", view_func=control_proxy.proxy_stop_get, methods=["GET"])
 app.add_url_rule(
     "/api/control",
     view_func=control_proxy.control_proxy_handler,
@@ -129,10 +104,6 @@ app.add_url_rule(
 )
 
 # Legacy POST-y (jeśli jeszcze używasz)
-app.add_url_rule("/api/move", view_func=control_api.api_move, methods=["POST"])
-app.add_url_rule("/api/stop", view_func=control_api.api_stop, methods=["POST"])
-app.add_url_rule("/api/preset", view_func=control_api.api_preset, methods=["POST"])
-app.add_url_rule("/api/voice", view_func=control_api.api_voice, methods=["POST"])
 
 # ── BOOTSTRAP ────────────────────────────────────────────────────────────────
 def main():
