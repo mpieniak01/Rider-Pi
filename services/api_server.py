@@ -69,6 +69,14 @@ app.add_url_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
 app.add_url_rule("/", view_func=dashboard.dashboard)
 app.add_url_rule("/control", view_func=dashboard.control_page)
 
+# ── Face drawing API ─────────────────────────────────────────────────────────
+@app.route("/draw/face", methods=["POST", "OPTIONS"])
+def draw_face_route():
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    body, code = face_api.draw_face(request.get_json(silent=True) or {})
+    return _corsify(jsonify(body)), code
+
 # ── Vision API: blueprint (w core) ───────────────────────────────────────────
 try:
     from services.api_core import vision_api
