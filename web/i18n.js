@@ -6,13 +6,21 @@ export const I18N = {
     ok:        { pl: "OK", en: "OK" },
     warn:      { pl: "Ostrzeżenie", en: "Warning" },
     error:     { pl: "Błąd", en: "Error" },
+    dashboard: { pl: "↩ pulpit", en: "↩ dashboard" },
   },
+
   header: {
     api_status_checking: { pl: "(sprawdzanie…)", en: "(checking…)" },
     api_status_ok:       { pl: "ok", en: "ok" },
     api_status_degraded: { pl: "ograniczone", en: "degraded" },
     api_status_down:     { pl: "niedostępne", en: "down" },
+
+    obstacle_na:      { pl: "Przeszkoda: n/d", en: "Obstacle: n/a" },
+    obstacle_present: { pl: "Przeszkoda: WYKRYTA", en: "Obstacle: DETECTED" },
+    obstacle_none:    { pl: "Przeszkoda: brak", en: "Obstacle: none" },
   },
+
+  // ===== MINI DASHBOARD (zostawiamy jak było) =====
   dash: {
     page_title:     { pl: "Rider-Pi — mini dashboard", en: "Rider-Pi — mini dashboard" },
     hint_prefix:    { pl: "Auto-refresh co ≈ 2 s.",   en: "Auto-refresh every ≈ 2 s." },
@@ -91,7 +99,67 @@ export const I18N = {
       conf:          { pl: "conf",    en: "conf" },
       cam_prefix:    { pl: "CAM:",    en: "CAM:" }
     }
-  }
+  },
+
+  // ===== CONTROL PAGE (nowe / przywrócone tłumaczenia) =====
+  camera: {
+    title:             { pl: "Podgląd kamery", en: "Camera preview" },
+    auto_refresh_on:   { pl: "⟳ Auto-odświeżanie (wł)", en: "⟳ Auto-refresh (on)" },
+    auto_refresh_off:  { pl: "⟳ Auto-odświeżanie (wył)", en: "⟳ Auto-refresh (off)" },
+    use_edge:          { pl: "Użyj EDGE", en: "Use EDGE" },
+    use_cam:           { pl: "Użyj CAM",  en: "Use CAM" },
+    last_frame:        { pl: "ostatnia klatka: {age} · źródło: {src}", en: "last frame: {age} · source: {src}" },
+    last_frame_na:     { pl: "last frame: n/d · źródło: n/d", en: "last frame: n/a · source: n/a" },
+    src_edge:          { pl: "EDGE",   en: "EDGE" },
+    src_cam:           { pl: "CAM",    en: "CAM" },
+    src_vision:        { pl: "VISION", en: "VISION" },
+    src_none:          { pl: "brak",   en: "none" },
+  },
+
+  motion: {
+    title:           { pl: "Sterowanie ruchem", en: "Motion control" },
+    turning_speed:   { pl: "Prędkość skrętu",   en: "Turning speed" },
+    turning_range:   { pl: "(0..1)",           en: "(0..1)" },
+    pulse_time:      { pl: "Czas impulsu [s]",  en: "Pulse time [s]" },
+    btn_stop:        { pl: "■ STOP",            en: "■ STOP" },
+    btn_stop_small:  { pl: "■ Stop",            en: "■ Stop" },
+    btn_forward:     { pl: "↑ Naprzód",         en: "↑ Forward" },
+    btn_backward:    { pl: "↓ Wstecz",          en: "↓ Backward" },
+    btn_left:        { pl: "← Lewo",            en: "← Left" },
+    btn_right:       { pl: "Prawo →",           en: "Right →" },
+    shortcuts_hint:  { pl: "Skróty",            en: "Shortcuts" },
+    shortcuts_tail:  { pl: "lub strzałki; Spacja = stop.", en: "or arrow keys; Space = stop." },
+  },
+
+  services: {
+    title:     { pl: "Usługi (systemd)", en: "Services (systemd)" },
+    refresh:   { pl: "⟳ odśwież",       en: "⟳ refresh" },
+    unit:      { pl: "Unit",            en: "Unit" },
+    desc:      { pl: "Opis",            en: "Description" },
+    status:    { pl: "Status",          en: "Status" },
+    autostart: { pl: "Autostart",       en: "Autostart" },
+    actions:   { pl: "Akcje",           en: "Actions" },
+
+    btn_start:   { pl: "Start",   en: "Start" },
+    btn_stop:    { pl: "Stop",    en: "Stop" },
+    btn_restart: { pl: "Restart", en: "Restart" },
+    btn_enable:  { pl: "Enable",  en: "Enable" },
+    btn_disable: { pl: "Disable", en: "Disable" },
+
+    empty:       { pl: "Brak danych o usługach.", en: "No service data." },
+    error_fetch: { pl: "Błąd pobierania listy usług: {msg}", en: "Failed to fetch services: {msg}" },
+    log_action:  { pl: "systemd[{action} {unit}] → kod: {code} · {msg}", en: "systemd[{action} {unit}] → code: {code} · {msg}" },
+  },
+
+  events: {
+    title:         { pl: "Zdarzenia (SSE /events)", en: "Events (SSE /events)" },
+    log_js_err:    { pl: "Błąd JS: {msg}",         en: "JS error: {msg}" },
+    log_prom_err:  { pl: "Błąd obietnicy: {reason}", en: "Promise error: {reason}" },
+    sse_connected: { pl: "Połączono z /events",    en: "Connected to /events" },
+    generic_event: { pl: "zdarzenie",             en: "event" },
+    sse_reconnect: { pl: "Błąd SSE — ponawiam połączenie…", en: "SSE error — reconnecting…" },
+    sse_init_err:  { pl: "Błąd inicjalizacji SSE: {err}",   en: "SSE init error: {err}" },
+  },
 };
 
 let CURRENT_LANG = 'pl';

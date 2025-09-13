@@ -26,6 +26,8 @@ ALLOW_UNITS=(
   "jupyter.service"
   "rider-dev.target"
   "rider-web-bridge.service"
+# "rider-voice.socket"
+  "rider-voice.service"
 )
 
 BASE_ENABLE=( "getty@tty1.service" "ssh.service" "dhcpcd.service" )

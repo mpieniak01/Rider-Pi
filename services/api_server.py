@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
+import os
+
+from flask import Flask, jsonify, make_response, request, send_from_directory
+
+import services.api_core.chat_glue as chat_glue
+import services.api_core.services_api as services_api
+import services.api_core.dashboard as dashboard
+import services.api_core.camera as camera
+import services.api_core.voice_proxy as voice_proxy
+import services.api_core.control_proxy as control_proxy
+import services.api_core.system_info as system_info
+import services.api_core.state_api as state_api
+import services.api_core.compat as compat
+
 """
 Rider-Pi – API server (router + entrypoint)
 
@@ -7,25 +23,6 @@ Rider-Pi – API server (router + entrypoint)
     * GET  /api/move|/api/stop  -> web_motion_bridge (8081)
     * POST /api/control|/api/cmd -> web_motion_bridge (8081)/control
 """
-
-from __future__ import annotations
-
-import os
-
-from flask import Flask, jsonify, make_response, request, send_from_directory
-
-from services.api_core import (
-    camera,
-    compat,
-    control_api,
-    control_proxy,
-    dashboard,
-    face_api,
-    services_api,
-    state_api,
-    system_info,
-)
-from services.api_core.control_proxy import _corsify
 
 app: Flask = compat.app
 STATUS_API_PORT = int(os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or compat.STATUS_API_PORT)
@@ -60,14 +57,11 @@ app.add_url_rule("/svc", view_func=services_api.svc_list, methods=["GET"])
 app.add_url_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
 app.add_url_rule("/svc/<name>", view_func=services_api.svc_action, methods=["POST"])
 
-# dashboard (strona)
 def serve_control() -> object:
     return send_from_directory(STATIC_WEB_DIR, "control.html")
 
-
 def serve_web(fname):
     return send_from_directory(STATIC_WEB_DIR, fname)
-
 
 # app.add_url_rule("/control", view_func=serve_control, methods=["GET"])  # opcjonalnie "goły" plik
 app.add_url_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
@@ -96,8 +90,6 @@ except Exception as e:  # pragma: no cover - optional dependency
     app.logger.warning(f"Vision blueprint not available: {e}")
 
 # ── Control API (proxy) ─────────────────────────────────────────────────────
-app.add_url_rule("/api/move", view_func=control_proxy.proxy_move_get, methods=["GET"])
-app.add_url_rule("/api/stop", view_func=control_proxy.proxy_stop_get, methods=["GET"])
 app.add_url_rule(
     "/api/control",
     view_func=control_proxy.control_proxy_handler,
@@ -109,16 +101,65 @@ app.add_url_rule(
     methods=["POST", "OPTIONS"],
 )
 
-# Legacy POST-y (jeśli jeszcze używasz)
-app.add_url_rule("/api/move", view_func=control_api.api_move, methods=["POST"])
-app.add_url_rule("/api/stop", view_func=control_api.api_stop, methods=["POST"])
-app.add_url_rule("/api/preset", view_func=control_api.api_preset, methods=["POST"])
-app.add_url_rule("/api/voice", view_func=control_api.api_voice, methods=["POST"])
+# ── Voice proxy ─────────────────────────────────────────────────────────────
+app.add_url_rule(
+    "/api/voice/capture",
+    view_func=voice_proxy.capture_handler,
+    methods=["POST", "OPTIONS"],
+)
+app.add_url_rule(
+    "/api/voice/say",
+    view_func=voice_proxy.say_handler,
+    methods=["POST", "OPTIONS"],
+)
+
+# ── Chat API (/api/chat/*) ──────────────────────────────────────────────────
+# Idempotentna rejestracja tras: /api/chat/history (GET, OPTIONS), /api/chat/send (POST, OPTIONS)
+try:
+    chat_glue.register(app)
+    app.logger.info("Chat API registered at /api/chat/*")
+except Exception as e:
+    app.logger.warning(f"Chat API not available: {e}")
+
+# ── Aliasy / stuby dla zgodności z frontendem ────────────────────────────────
+# Alias: /api/last_frame -> /camera/last (GET/HEAD)
+def _api_last_frame():
+    return camera.camera_last()
+app.add_url_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
+
+# Stub: /api/bus/health (GET/OPTIONS) – zwraca OK, aby nie spamować logów
+def _bus_health():
+    if request.method == "OPTIONS":
+        return (
+            "",
+            204,
+            {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+            },
+        )
+    return (jsonify({"ok": True}), 200, {"Access-Control-Allow-Origin": "*"})
+
+app.add_url_rule("/api/bus/health", view_func=_bus_health, methods=["GET", "OPTIONS"])
+
+# Stub: /vision/obstacle (GET) – jeśli moduł nieaktywny
+def _vision_obstacle_stub():
+    return jsonify({"ok": False, "error": "vision obstacle not enabled"}), 404
+app.add_url_rule("/vision/obstacle", view_func=_vision_obstacle_stub, methods=["GET"])
 
 # ── BOOTSTRAP ────────────────────────────────────────────────────────────────
 def main():
     compat.start_bus_sub()
     compat.start_xgo_ro()
     app.run(host="0.0.0.0", port=STATUS_API_PORT, debug=False, use_reloader=False)
+
 if __name__ == "__main__":
     main()
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+def _corsify(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    return resp

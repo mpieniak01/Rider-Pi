@@ -91,3 +91,6 @@ __pycache__/
 *.log
 .snapshots/
 snapshots/
+
+# backups
+*.bak
