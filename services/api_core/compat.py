@@ -11,6 +11,8 @@ Rider-Pi – core kompatybilności:
 """
 
 from __future__ import annotations
+from flask import redirect
+import services.api_core.face_api as face_api
 import os, time, json, threading, collections, subprocess, platform, shutil
 from typing import Optional
 from flask import Flask, Response, stream_with_context, request, jsonify, send_file
@@ -594,3 +596,30 @@ try:
 except Exception as _e:
     print("[api] /api/control proxy(v2): bind failed:", _e, flush=True)
 # ===== KONIEC PATCHA =====
+
+
+def draw_face_route():
+    # proxy CORS tak jak w voice_proxy
+    try:
+        if request.method == "OPTIONS":
+            return voice_proxy._corsify(make_response("", 204))
+    except Exception:
+        pass
+    body, code = face_api.draw_face(request.get_json(silent=True) or {})
+    try:
+        return voice_proxy._corsify(jsonify(body)), code
+    except Exception:
+        # fallback gdyby voice_proxy nie miał _corsify
+        resp = jsonify(body)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+        return resp, code
+
+app.add_url_rule("/api/draw/face", view_func=draw_face_route, methods=["POST","OPTIONS"])
+app.add_url_rule("/draw/face", view_func=draw_face_route, methods=["POST","OPTIONS"])
+
+
+@app.route("/chat", methods=["GET"])
+def chat_alias():
+    return redirect("/web/chat.html", code=302)
