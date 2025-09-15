@@ -212,8 +212,9 @@ def main():
     ap.add_argument("--rotate", type=int, choices=[0,90,180,270], default=int(os.getenv("FACE_LCD_ROTATE","0")))
     ap.add_argument("--spi-hz", type=int, default=int(os.getenv("FACE_LCD_SPI_HZ","0")) or None)
     ap.add_argument("--bl-pin", type=int, default=int(os.getenv("FACE_LCD_BL_PIN","13")))
-    ap.add_argument("--force", help="Wymuś metodę sterownika, np. push_frame:rgb565_3 / push_rgb565:rgb565 / ShowImage:pil")
+    ap.add_argument("--force", help="Wymuś metodę sterownika LCD, np. push_rgb565:rgb565 / push_frame_rgb565_3:rgb565_3 / ShowImage:pil. Format: <nazwa_metody>:<wariant>")
     ap.add_argument("--stats", action="store_true")
+    ap.add_argument("--secs", type=float, default=None, help="Czas trwania testu w sekundach (domyślnie: nieskończoność)")
     args=ap.parse_args()
 
     fc=FaceController(size=args.size, fps=args.fps, idle=True)
@@ -223,6 +224,10 @@ def main():
     n=0; t0=time.time()
     try:
         while True:
+            now = time.time()
+            if args.secs is not None and (now - t0) >= args.secs:
+                print("[LCD] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
+                break
             try:
                 img = fc.frame_image().convert("RGB")   # szybka ścieżka (jeśli zaimplementowana)
             except Exception:
@@ -236,5 +241,12 @@ def main():
             time.sleep(1.0/max(1,args.fps))
     except KeyboardInterrupt:
         print("LCD loop finished.")
+    finally:
+        t1 = time.time()
+        dt = t1 - t0
+        if n > 0:
+            print(f"[LCD] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n/dt:.2f}", flush=True)
+        else:
+            print(f"[LCD] Brak wygenerowanych klatek.", flush=True)
 if __name__=="__main__":
     main()

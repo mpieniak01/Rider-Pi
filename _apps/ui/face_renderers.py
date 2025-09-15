@@ -144,41 +144,48 @@ class LCDRenderer(BaseRenderer):
                 pass
             self.Image, self.ImageDraw = Image, ImageDraw
             self.LCD_2inch = LCD_2inch
-        except Exception as e:
-            raise RuntimeError(f"xgoscreen import fail: {e}")
-
-        self.display = self.LCD_2inch.LCD_2inch()
-        if cfg.lcd_do_init:
+            self.display = self.LCD_2inch.LCD_2inch()
+            if cfg.lcd_do_init:
+                try:
+                    self.display.Init(); print("[face] LCD: Init()", flush=True)
+                except Exception as e:
+                    print(f"[face] LCD: Init() fail: {e}", flush=True)
+            self._force_backlight_on()
+            self._apply_spi_hz(cfg.lcd_spi_hz)
             try:
-                self.display.Init(); print("[face] LCD: Init()", flush=True)
-            except Exception as e:
-                print(f"[face] LCD: Init() fail: {e}", flush=True)
-        self._force_backlight_on()
-        self._apply_spi_hz(cfg.lcd_spi_hz)
-
-        try:
-            self.display.clear()
-        except Exception:
-            pass
-        time.sleep(0.2)
-
-        try:
-            self.W, self.H = int(self.display.width), int(self.display.height)
-        except Exception:
+                self.display.clear()
+            except Exception:
+                pass
+            time.sleep(0.2)
+            try:
+                self.W, self.H = int(self.display.width), int(self.display.height)
+            except Exception:
+                self.W, self.H = 240, 320
+            print(f"[face] LCD: W={self.W} H={self.H}", flush=True)
+            print(f"[face] LCD: rotate={cfg.lcd_rotate}", flush=True)
+            # Kanwa (CW,CH) to orientacja logiczna przed rotacją sprzętową
+            self.CW, self.CH = (self.W, self.H) if cfg.lcd_rotate in (0,180) else (self.H, self.W)
+            self.splash = self.Image.new("RGB", (self.CW, self.CH), (0,0,0))
+            self.draw = self.ImageDraw.Draw(self.splash)
+            self._err_count = 0; self._last_reinit = 0.0
+            # start
+            self.draw.rectangle([(0,0),(self.CW,self.CH)], fill=(0,120,255))
+            self.draw.rectangle([(6,6),(self.CW-6,self.CH-6)], outline=(255,255,255), width=4)
+            self._safe_show(self.splash, first=True)
+        except Exception as e:
+            print(f"[face] LCD: xgoscreen import fail: {e} (tryb symulacyjny)", flush=True)
+            self.Image, self.ImageDraw = Image, ImageDraw
+            self.LCD_2inch = None
+            self.display = None
             self.W, self.H = 240, 320
-        print(f"[face] LCD: W={self.W} H={self.H}", flush=True)
-        print(f"[face] LCD: rotate={cfg.lcd_rotate}", flush=True)
-        # Kanwa (CW,CH) to orientacja logiczna przed rotacją sprzętową
-        self.CW, self.CH = (self.W, self.H) if cfg.lcd_rotate in (0,180) else (self.H, self.W)
-
-        self.splash = self.Image.new("RGB", (self.CW, self.CH), (0,0,0))
-        self.draw = self.ImageDraw.Draw(self.splash)
-        self._err_count = 0; self._last_reinit = 0.0
-
-        # start
-        self.draw.rectangle([(0,0),(self.CW,self.CH)], fill=(0,120,255))
-        self.draw.rectangle([(6,6),(self.CW-6,self.CH-6)], outline=(255,255,255), width=4)
-        self._safe_show(self.splash, first=True)
+            self.CW, self.CH = (self.W, self.H) if cfg.lcd_rotate in (0,180) else (self.H, self.W)
+            self.splash = self.Image.new("RGB", (self.CW, self.CH), (0,0,0))
+            self.draw = self.ImageDraw.Draw(self.splash)
+            self._err_count = 0; self._last_reinit = 0.0
+            # start
+            self.draw.rectangle([(0,0),(self.CW,self.CH)], fill=(0,120,255))
+            self.draw.rectangle([(6,6),(self.CW-6,self.CH-6)], outline=(255,255,255), width=4)
+            self._safe_show(self.splash, first=True)
 
     # --- LCD helpers ---
     def _apply_spi_hz(self, hz: Optional[int]):
@@ -378,7 +385,18 @@ class LCDRenderer(BaseRenderer):
                 buf = self.display.getbuffer(img)  # type: ignore[attr-defined]
             except Exception:
                 buf = img
-            self.display.ShowImage(buf)
+            if self.display is not None:
+                self.display.ShowImage(buf)
+            else:
+                # tryb symulacyjny: pokaż obraz PIL
+                try:
+                    if hasattr(buf, 'show'):
+                        buf.show()
+                    else:
+                        from PIL import Image
+                        Image.fromarray(buf).show()
+                except Exception as e:
+                    print(f"[face] LCD: ShowImage PIL error: {e}", flush=True)
             self._bench_push_ms = (perf_counter() - t1) * 1000.0
             self._err_count = 0
             return True

@@ -15,10 +15,12 @@ def draw_face(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     try:
         expr = str(payload.get("expr", "neutral")).lower()
         size = int(payload.get("size", 240))
-        sink = str(payload.get("sink", "none")).lower()  # lcd|file|none
-        rotate = payload.get("rotate")
-        spi_hz = payload.get("spi_hz")
-        file_path = payload.get("file_path", "face_out.png")
+    sink = str(payload.get("sink", "none")).lower()  # lcd|file|none|png
+    rotate = payload.get("rotate")
+    spi_hz = payload.get("spi_hz")
+    spi_dev = payload.get("spi_dev")
+    method = payload.get("method", "auto")
+    file_path = payload.get("file_path", "face_out.png")
         if expr not in ALLOWED:
             return {"ok": False, "error": "bad expr"}, 400
         if not (64 <= size <= 480):
@@ -39,12 +41,13 @@ def draw_face(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
         png_bytes = renderer.render_png_bytes(DummyFaceState())
 
         if sink == "lcd":
-            lcd = SinkLCD(width=size, height=size, rotate=rotate, spi_hz=spi_hz)
             from PIL import Image
-            img = Image.open(BytesIO(png_bytes))
+            from io import BytesIO
+            lcd = SinkLCD(width=size, height=size, rotate=rotate, spi_hz=spi_hz, spi_dev=spi_dev, method=method)
+            img = Image.open(BytesIO(png_bytes)).convert("RGB").resize((size, size))
             try:
-                lcd.show_image(img)
-                return {"ok": True, "sink": "lcd", "expr": expr, "size": size}, 200
+                used = lcd.push_auto(img)
+                return {"ok": True, "sink": "lcd", "expr": expr, "size": size, "method": used}, 200
             except Exception as e:
                 return {"ok": False, "error": f"lcd error: {e}"}, 500
         elif sink == "file":
