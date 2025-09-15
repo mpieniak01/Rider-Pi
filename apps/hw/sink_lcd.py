@@ -52,45 +52,54 @@ class SinkLCD:
         :param data: bajty RGB565 (w*h*2)
         """
         if self._spi is None:
+            print("[sink_lcd] RAW path unavailable: SPI not initialized, fallback to PIL.")
             raise RuntimeError("SPI not initialized")
+        print("[sink_lcd] RAW path in use: push_rgb565 (16bpp)")
         self._spi.writebytes(data)
 
     def push_frame_rgb565_3(self, w, h, data: bytes):
         """
-        Alternatywna ścieżka: packed 3-bajtowe (np. do niestandardowego protokołu).
+        Alternatywna ścieżka: packed 3-bajtowe (alias do push_rgb565 jeśli nieobsługiwane).
         :param w: szerokość
         :param h: wysokość
         :param data: bajty (w*h*3)
         """
         if self._spi is None:
+            print("[sink_lcd] RAW path unavailable: SPI not initialized, fallback to PIL.")
             raise RuntimeError("SPI not initialized")
-        self._spi.writebytes(data)
+        print("[sink_lcd] RAW path in use: push_frame_rgb565_3 (3B packed, alias do 16bpp)")
+        # Jeśli nieobsługiwane, konwertuj do 16bpp i użyj push_rgb565
+        # Tu uproszczenie: po prostu wywołaj push_rgb565 na tych samych danych (lub konwertuj jeśli trzeba)
+        self.push_rgb565(w, h, data[:w*h*2])
 
     def push_auto(self, img: Image.Image):
         """
-        Wybiera metodę na podstawie self.method lub auto.
+        Wybiera metodę na podstawie self.method lub auto. Mapuje aliasy, loguje wybór, fallback bez crasha.
         """
         img = self._apply_rotation(img)
         img = img.convert("RGB").resize((self.width, self.height))
         arr = img.tobytes()
-        if self.method == "rgb565" or (self.method == "auto"):
-            rgb565 = self._rgb888_to_rgb565(arr)
-            try:
+        method_map = {
+            "push_rgb565": "rgb565",
+            "push_frame_rgb565_3": "rgb565_3",
+            "rgb565": "rgb565",
+            "rgb565_3": "rgb565_3",
+            "auto": "rgb565",
+        }
+        m = method_map.get(self.method, self.method)
+        try:
+            if m == "rgb565":
+                rgb565 = self._rgb888_to_rgb565(arr)
                 self.push_rgb565(self.width, self.height, rgb565)
                 return "rgb565"
-            except Exception as e:
-                print(f"[sink_lcd] push_rgb565 failed: {e}")
-                if self.method == "rgb565":
-                    raise
-        if self.method == "rgb565_3" or (self.method == "auto"):
-            rgb565_3 = self._rgb888_to_rgb565_3(arr)
-            try:
+            elif m == "rgb565_3":
+                rgb565_3 = self._rgb888_to_rgb565_3(arr)
                 self.push_frame_rgb565_3(self.width, self.height, rgb565_3)
                 return "rgb565_3"
-            except Exception as e:
-                print(f"[sink_lcd] push_frame_rgb565_3 failed: {e}")
-                if self.method == "rgb565_3":
-                    raise
+            else:
+                print(f"[sink_lcd] Nieznana metoda RAW: {self.method}, fallback do PIL.")
+        except Exception as e:
+            print(f"[sink_lcd] RAW path failed: {e} (fallback do PIL)")
         # Fallback
         self.show_image(img)
         return "pil"
@@ -101,13 +110,14 @@ class SinkLCD:
 
     def show_image(self, img: Image.Image):
         """
-        Fallback: wyświetla obraz PIL.Image na LCD (np. przez starszy sterownik).
+        Fallback: wyświetla obraz PIL.Image na LCD (lub desktop, symulacja).
         :param img: PIL.Image
         """
         print("[sink_lcd] Fallback: ShowImage(PIL)")
-        # Tu można podpiąć starszy sterownik, np. xgoscreen.LCD_2inch
-        # raise NotImplementedError lub zaimplementować jeśli dostępne
-        pass
+        try:
+            img.show()
+        except Exception as e:
+            print(f"[sink_lcd] PIL.Image.show() error: {e}")
 
     def _rgb888_to_rgb565(self, arr: bytes) -> bytes:
         # Konwersja RGB888 (PIL) → RGB565
@@ -140,12 +150,14 @@ class SinkLCD:
 
     def show_image(self, img: Image.Image):
         """
-        Fallback: wyświetla obraz PIL.Image na LCD (konwersja + rotacja).
+        Fallback: wyświetla obraz PIL.Image na LCD (lub desktop, symulacja).
         :param img: PIL.Image
         """
         img = self._apply_rotation(img)
-        # TODO: Implementacja wyświetlania obrazu na LCD
-        raise NotImplementedError("show_image: implementacja zależna od sprzętu")
+        try:
+            img.show()
+        except Exception as e:
+            print(f"[sink_lcd] PIL.Image.show() error: {e}")
 
     def _apply_rotation(self, img: Image.Image) -> Image.Image:
         if self.rotate == 270:

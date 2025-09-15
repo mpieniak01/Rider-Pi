@@ -43,7 +43,9 @@ def _apply_paths_and_local_pkg():
 _apply_paths_and_local_pkg()
 
 # --- teraz importujemy nasz renderer pakietowo ---
+
 from apps.ui.face.controller import FaceController  # type: ignore
+from apps.hw.sink_lcd import SinkLCD
 
 def save(path: str, data: bytes):
     p = pathlib.Path(path); p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(data)
@@ -145,7 +147,7 @@ def read_float_from_file(path: str, default: float = 0.0) -> float:
         return default
 
 def main():
-    p = argparse.ArgumentParser(description="Face CLI (nowy renderer + stary driver LCD)")
+    p = argparse.ArgumentParser(description="Face CLI (nowy renderer + RAW sink LCD)")
     p.add_argument("--expr", default="neutral")
     p.add_argument("--size", type=int, default=240)
     p.add_argument("--fps", type=int, default=20)
@@ -162,7 +164,12 @@ def main():
     p.add_argument("--speaking-pipe", default="")
     p.add_argument("--no-idle", action="store_true")
     p.add_argument("--forever", action="store_true")
+    p.add_argument("--method", type=str, default="auto", help="Metoda RAW sinka: auto|rgb565|rgb565_3|push_rgb565|push_frame_rgb565_3")
+    p.add_argument("--spi-hz", type=int, default=None)
+    p.add_argument("--spi-dev", type=str, default=None)
     args = p.parse_args()
+    # Loguj ENV
+    print(f"[face_cli2] ENV: LCD_ROTATE={os.environ.get('LCD_ROTATE')}, SPI_HZ={os.environ.get('SPI_HZ')}, LCD_SPI_DEV={os.environ.get('LCD_SPI_DEV')}")
     if args.forever:
         args.animate, args.secs = True, 0.0
 
@@ -173,6 +180,7 @@ def main():
 
     n=0; t0=time.time(); last=""
     try:
+        lcd = None
         while True:
             if args.speaking_pipe:
                 fc.speaking(read_float_from_file(args.speaking_pipe, args.speaking))
@@ -182,9 +190,15 @@ def main():
                 out  = stem.with_name("%s_%04d%s" % (stem.stem, n+1, stem.suffix or ".png"))
                 save(str(out), png)
             else:
-                how = push_lcd(png, args.outfile, args.fb, args.rotate, args.size)
-                if how != last:
-                    print("LCD:", how); last = how
+                # Nowy RAW sink
+                if lcd is None:
+                    lcd = SinkLCD(width=args.size, height=args.size, rotate=args.rotate, spi_hz=args.spi_hz, spi_dev=args.spi_dev, method=args.method)
+                img = Image.open(BytesIO(png)).convert("RGB").resize((args.size, args.size))
+                used = lcd.push_auto(img)
+                if used == 'pil':
+                    print(f'[face_cli2] Fallback: ShowImage(PIL)')
+                else:
+                    print(f'[face_cli2] RAW path in use: {used}')
             n += 1
             if args.stats and (n % max(1, args.fps*5) == 0):
                 dt = time.time() - t0

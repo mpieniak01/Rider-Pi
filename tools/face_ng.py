@@ -29,10 +29,12 @@ def main():
     parser.add_argument('--rotate', type=int, default=270, help='Rotacja LCD (default: 270)')
     parser.add_argument('--spi_hz', type=int, default=None, help='Częstotliwość SPI (np. 32000000)')
     parser.add_argument('--spi_dev', type=str, default=None, help='Urządzenie SPI (np. /dev/spidev0.0)')
-    parser.add_argument('--method', type=str, default='auto', help='Metoda LCD: auto|rgb565|rgb565_3|pil')
+        parser.add_argument('--method', type=str, default='auto', help='Metoda RAW sinka: auto|rgb565|rgb565_3|push_rgb565|push_frame_rgb565_3')
     parser.add_argument('--out', type=str, default='face_ng.png', help='Plik wyjściowy PNG (dla sink=png)')
     parser.add_argument('--animate', type=str, default='', help='Animacja: idle (mruganie, ruchy oczu)')
     args = parser.parse_args()
+        # Loguj ENV
+        print(f"[face_ng] ENV: LCD_ROTATE={os.environ.get('LCD_ROTATE')}, SPI_HZ={os.environ.get('SPI_HZ')}, LCD_SPI_DEV={os.environ.get('LCD_SPI_DEV')}")
 
     cfg = type("Cfg", (), {"mouth_y_k": 0.215, "brow_y_k": 0.21, "brow_h_k": 0.09, "head_ky": 1.04})()
     renderer = FaceRenderer(cfg, size=240)
@@ -49,7 +51,10 @@ def main():
             lcd = SinkLCD(width=240, height=240, rotate=args.rotate, spi_hz=args.spi_hz, spi_dev=args.spi_dev, method=args.method)
             img = Image.open(io.BytesIO(png_bytes)).convert("RGB").resize((240, 240))
             used = lcd.push_auto(img)
-            print(f'Wysłano klatkę do LCD (metoda: {used})')
+                if used == 'pil':
+                    print(f'[face_ng] Fallback: ShowImage(PIL)')
+                else:
+                    print(f'[face_ng] RAW path in use: {used}')
         elif args.sink == 'png':
             with open(args.out, 'wb') as f:
                 f.write(png_bytes)
