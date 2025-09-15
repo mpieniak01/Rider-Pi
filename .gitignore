@@ -94,3 +94,6 @@ snapshots/
 
 # backups
 *.bak
+
+# scratch files
+/tools/untitled*.py
