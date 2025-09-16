@@ -6,7 +6,7 @@ Requires=rider-api.service
 [Service]
 Type=simple
 EnvironmentFile=/workspaces/Rider-Pi/systemd/robot.env
-ExecStart=/usr/bin/python3 /workspaces/Rider-Pi/tools/newface_lcd_direct.py --expr neutral --rotate ${FACE_LCD_ROTATE:-0} --spi-hz ${FACE_LCD_SPI_HZ:-32000000} --stats
+ExecStart=/usr/bin/python3 /workspaces/Rider-Pi/tools/newface_lcd_direct.py --expr neutral --force ${FACE_LCD_FORCE:-auto} --driver ${FACE_LCD_DRIVER:-auto} --rotate ${FACE_LCD_ROTATE:-0} --spi-hz ${FACE_LCD_SPI_HZ:-32000000} --bl-pin ${FACE_LCD_BL_PIN:-13} --stats
 Restart=on-failure
 
 [Install]

@@ -1,3 +1,9 @@
+# Rider-Pi: LCD/face RAW/PNG
+_out/
+*.bak
+*.tmp
+__pycache__/
+.ipynb_checkpoints/
 cat <<EOF > .gitignore
 # Logi i nagrania
 logs/

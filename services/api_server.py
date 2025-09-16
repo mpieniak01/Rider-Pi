@@ -11,38 +11,25 @@ def face_ping():
 def face_render():
     try:
         data = request.get_json(force=True)
-        expr = data.get("expr", "neutral")
-        rotate = int(data.get("rotate", 0))
-        spi_hz = int(data.get("spi_hz", 0))
-        backend = data.get("backend", "lcd")
+        backend = data.get("backend", "png")
         out = data.get("out", None)
-        # Import bez side-effectów
         face_api = importlib.import_module("services.api_core.face_api")
-        # Preferuj draw_face jeśli backend lcd, fallback render_face (PNG)
-        if backend == "lcd":
-            if hasattr(face_api, "draw_face"):
-                res, code = face_api.draw_face(data)
-                if res.get("ok"):
-                    return jsonify(res), code
-        # PNG fallback (zawsze dostępny) – nowy backend przez FaceController
-        try:
-            from apps.ui.face.controller import FaceController
-            from PIL import Image
-            from io import BytesIO
-            fc = FaceController(size=data.get("size", 240), fps=1, idle=True)
-            fc.set_expr(expr)
-            img = Image.open(BytesIO(fc.frame()))
-            if out:
-                os.makedirs(os.path.dirname(out), exist_ok=True)
-                img.save(out)
-                return jsonify({"ok": True, "out": out})
-            # Zwróć PNG jako base64
-            import base64
-            buf = BytesIO(); img.save(buf, "PNG"); png_bytes = buf.getvalue()
-            png_b64 = base64.b64encode(png_bytes).decode("ascii")
-            return jsonify({"ok": True, "png_b64": png_b64, "expr": expr}), 200
-        except Exception as e:
-            return jsonify({"ok": False, "error": f"PNG fallback failed: {e}"}), 500
+        if hasattr(face_api, "draw_face"):
+            res, code = face_api.draw_face(data)
+            if backend == "lcd" and code == 503:
+                return jsonify(res), 503
+            if res.get("ok"):
+                # Jeśli PNG i out, zapisz plik
+                if backend == "png" and out and "png_b64" in res:
+                    import base64
+                    from PIL import Image
+                    from io import BytesIO
+                    os.makedirs(os.path.dirname(out), exist_ok=True)
+                    img = Image.open(BytesIO(base64.b64decode(res["png_b64"])))
+                    img.save(out)
+                    res["out"] = out
+                return jsonify(res), code
+        return jsonify({"ok": False, "error": "Unknown backend or render error"}), 500
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
 

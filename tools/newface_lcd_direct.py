@@ -246,7 +246,6 @@ def main():
                 except Exception:
                     frame = fc.frame()
                     img = Image.open(BytesIO(frame)).convert("RGB")
-                # symulacja: po prostu konwersja do PNG
                 _ = to_png_bytes(img)
                 n += 1
                 if args.stats and (now - last_stats) >= 1.0:
@@ -264,36 +263,3 @@ def main():
             else:
                 print(f"[PIL] Brak wygenerowanych klatek.", flush=True)
         return
-    # RAW/LCD path:
-    lcd = LCDDirect(rotate=args.rotate, size=args.size, spi_hz=args.spi_hz, bl_pin=args.bl_pin, force=force)
-
-    n = 0; t0 = time.time(); last_stats = t0
-    try:
-        while True:
-            now = time.time()
-            if args.secs is not None and (now - t0) >= args.secs:
-                print("[LCD] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
-                break
-            try:
-                img = fc.frame_image().convert("RGB")
-            except Exception:
-                frame = fc.frame()
-                img = Image.open(BytesIO(frame)).convert("RGB")
-            how = lcd.push(img)
-            n += 1
-            if args.stats and (now - last_stats) >= 1.0:
-                dt = now - t0
-                print(f"[stats] frames={n} fps~{(n/dt if dt>0 else 0):.1f} via {how}", flush=True)
-                last_stats = now
-            time.sleep(1.0 / max(1, args.fps))
-    except KeyboardInterrupt:
-        print("LCD loop finished.")
-    finally:
-        t1 = time.time()
-        dt = t1 - t0
-        if n > 0:
-            print(f"[LCD] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n/dt:.2f}", flush=True)
-        else:
-            print(f"[LCD] Brak wygenerowanych klatek.", flush=True)
-if __name__=="__main__":
-    main()
