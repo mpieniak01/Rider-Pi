@@ -5,7 +5,76 @@ import threading
 import time
 
 # Renderer nowej buźki (snapshot do PNG w pętli; LCD dodamy później)
+
 from apps.ui.face.renderer import FaceRenderer
+from PIL import Image
+import os
+from typing import Optional
+
+# --- SINKI ---
+class FaceSink:
+    def present(self, img: Image.Image):
+        raise NotImplementedError
+    def present_png(self, data: bytes):
+        raise NotImplementedError
+
+class NullSink(FaceSink):
+    def present(self, img: Image.Image):
+        pass
+    def present_png(self, data: bytes):
+        pass
+
+class FileSink(FaceSink):
+    def __init__(self, path=OUT_LATEST):
+        self.path = path
+    def present(self, img: Image.Image):
+        img.save(self.path, 'PNG')
+    def present_png(self, data: bytes):
+        with open(self.path, 'wb') as f:
+            f.write(data)
+
+class LcdNotAvailable(Exception):
+    pass
+
+class LcdFaceSink(FaceSink):
+    def __init__(self, **kwargs):
+        try:
+            from apps.hw.sink_lcd import SinkLCD
+        except ImportError:
+            raise LcdNotAvailable("LCD driver not importable")
+        try:
+            self.lcd = SinkLCD(**kwargs)
+        except Exception as e:
+            raise LcdNotAvailable(f"LCD init failed: {e}")
+    def present(self, img: Image.Image):
+        try:
+            self.lcd.push_auto(img)
+        except Exception as e:
+            raise LcdNotAvailable(f"LCD present failed: {e}")
+    def present_png(self, data: bytes):
+        from io import BytesIO
+        img = Image.open(BytesIO(data))
+        self.present(img)
+
+def get_sink(env: dict, payload: Optional[dict]=None) -> FaceSink:
+    sink_name = None
+    if payload and 'sink' in payload:
+        sink_name = payload['sink']
+    else:
+        sink_name = env.get('FACE_SINK')
+    if sink_name == 'file':
+        return FileSink()
+    elif sink_name == 'lcd':
+        try:
+            return LcdFaceSink(
+                rotate=int(env.get('FACE_LCD_ROTATE', 0)),
+                spi_hz=int(env.get('FACE_LCD_SPI_HZ', 32000000)),
+                method=env.get('FACE_LCD_DRIVER', 'auto')
+            )
+        except Exception as e:
+            raise LcdNotAvailable(str(e))
+    else:
+        return NullSink()
 
 # ── Konfiguracja/kontrakt plików wyjściowych ─────────────────────────────────
 OUT_LATEST = "/tmp/face_latest.png"         # nowy kontrakt (DoD)
@@ -59,13 +128,29 @@ class _Animator:
 
     def _loop(self):
         try:
-            # docelowo: cfg z modelu; na razie pusty dict jest OK
             self._renderer = FaceRenderer(cfg={}, size=240, guide=False, quality="fast")
         except Exception:
             self._renderer = None
 
+        # Wybierz sink na podstawie ENV i ostatniego payloadu play
+        env = dict(os.environ)
+        try:
+            # Przechowuj ostatni payload w stanie (jeśli play() go ustawi)
+            payload = STATE.get("_last_payload")
+        except Exception:
+            payload = None
+        try:
+            sink = get_sink(env, payload)
+        except LcdNotAvailable as e:
+            # LCD nie dostępny — sygnalizuj błąd i zatrzymaj animację
+            STATE["playing"] = False
+            STATE["running"] = False
+            STATE["error"] = str(e)
+            return
+        except Exception as e:
+            sink = NullSink()
+
         STATE["running"] = True
-        # nie nadpisuj started_ts przy resume tego samego „play”
         if not STATE.get("started_ts"):
             STATE["started_ts"] = time.time()
 
@@ -74,38 +159,39 @@ class _Animator:
         while (not self._stop.is_set()) and STATE.get("playing", False):
             fps = max(1, min(60, int(STATE.get("fps", 20) or 20)))
             expr = _norm_expr(STATE.get("expr"))
-            # Minimalny FaceState „lookalike” – wystarcza do rysunku
             face_state = SimpleNamespace(expr=expr, blink=False, pupil=0, tilt=0)
 
             try:
                 if self._renderer:
-                    png = self._renderer.render_png_bytes(face_state)
-                    # Zapisz finalną klatkę (kontrakt DoD + zgodność)
+                    img = self._renderer.render_image(face_state)
                     try:
-                        with open(OUT_LATEST, "wb") as f:
-                            f.write(png)
-                        try:
-                            with open(OUT_LEGACY, "wb") as f2:
-                                f2.write(png)
-                        except Exception:
-                            pass  # legacy opcjonalne
+                        sink.present(img)
+                    except LcdNotAvailable as e:
+                        STATE["playing"] = False
+                        STATE["running"] = False
+                        STATE["error"] = str(e)
+                        break
                     except Exception:
-                        pass  # zapis nie może zabić pętli
+                        pass  # nie zabijaj pętli na błędzie sinka
+                    # FileSink nadal zapisuje PNG (kontrakt DoD + zgodność)
+                    try:
+                        img.save(OUT_LATEST, "PNG")
+                        try:
+                            img.save(OUT_LEGACY, "PNG")
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
             except Exception:
-                # pętla ma żyć dalej, nawet jeśli jedna klatka się wywali
                 pass
 
-            # Aktualizuj stan
             STATE["last_ts"] = time.time()
             STATE["frame_count"] = int(STATE.get("frame_count") or 0) + 1
 
-            # zachowaj mniej więcej zadany FPS
             dt = 1.0 / fps
             sleep_left = dt - (STATE["last_ts"] - last_tick)
             if sleep_left > 0:
-                # krótsze spanie = szybsze reagowanie na stop()
                 time.sleep(min(sleep_left, 0.05))
-                # dociągnij resztę (jeśli była potrzeba)
                 remain = sleep_left - 0.05
                 if remain > 0:
                     time.sleep(remain)
@@ -123,6 +209,8 @@ _anim = _Animator()
 def play(payload: Dict[str, Any]) -> Dict[str, Any]:
     expr = _norm_expr(payload.get("expr"))
     fps = max(1, min(60, int(payload.get("fps", STATE.get("fps", 20) or 20))))
+    # zapamiętaj ostatni payload do wyboru sinka
+    STATE["_last_payload"] = payload.copy() if payload else None
     STATE.update(
         {
             "expr": expr,
@@ -131,9 +219,13 @@ def play(payload: Dict[str, Any]) -> Dict[str, Any]:
             "started_ts": time.time(),
             "frame_count": 0,
             "last_ts": None,
+            "error": None,
         }
     )
     _anim.start()
+    # LCD error: zwróć 503 jeśli nie można uruchomić LCD
+    if STATE.get("error") and (payload.get("sink") == "lcd" or os.environ.get("FACE_SINK") == "lcd"):
+        return {"ok": False, "status": 503, "error": STATE["error"]}
     return {"ok": True, "state": STATE}
 
 
