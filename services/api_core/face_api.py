@@ -153,3 +153,9 @@ def draw_face(payload_or_expr=None, backend="png", out=None, **kwargs) -> Tuple[
     res = render_face(payload)
     status = int(res.get("status", 200))
     return res, status
+
+def draw_face(payload: Dict[str, Any]):
+    """Legacy compat: keep /api/draw/face working. Returns (body, http_status)."""
+    res = render_face(payload)
+    status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
+    return res, status
