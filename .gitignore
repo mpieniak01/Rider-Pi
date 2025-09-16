@@ -12,6 +12,11 @@ __pycache__/
 *.pyd
 .venv/
 venv/
+_out/
+*.bak
+*.tmp
+**/__pycache__/
+**/.ipynb_checkpoints/
 EOF
 
 # Jupyter checkpoints
