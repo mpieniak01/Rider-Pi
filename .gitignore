@@ -1,3 +1,9 @@
+# Rider-Pi: LCD/face RAW/PNG
+_out/
+*.bak
+*.tmp
+__pycache__/
+.ipynb_checkpoints/
 cat <<EOF > .gitignore
 # Logi i nagrania
 logs/
@@ -99,3 +105,11 @@ snapshots/
 
 # backups
 *.bak
+
+# local backups
+services/**/*.bak-*
+*.bak-*
+
+# local backups
+services/**/face_api.py.bak-*
+services/**/api_server.py.bak-*

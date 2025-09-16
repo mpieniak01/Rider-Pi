@@ -1,56 +1,11 @@
-from flask import Flask, jsonify, make_response, request, send_from_directory
-app = Flask(__name__)
+from flask import Flask, jsonify, request, make_response
 import os
-import importlib
-import traceback
-# ── Aliasy / stuby dla zgodności z frontendem ────────────────────────────────
-# Alias: /api/last_frame -> /camera/last (GET/HEAD)
-def face_ping():
-    return jsonify({"ok": True})
+import traceback  # zostawione do debugowania
 
-def face_render():
-    try:
-        data = request.get_json(force=True)
-        expr = data.get("expr", "neutral")
-        rotate = int(data.get("rotate", 0))
-        spi_hz = int(data.get("spi_hz", 0))
-        backend = data.get("backend", "lcd")
-        out = data.get("out", None)
-        # Import bez side-effectów
-        face_api = importlib.import_module("services.api_core.face_api")
-        # Preferuj draw_face jeśli backend lcd, fallback render_face (PNG)
-        if backend == "lcd":
-            if hasattr(face_api, "draw_face"):
-                res, code = face_api.draw_face(data)
-                if res.get("ok"):
-                    return jsonify(res), code
-        # PNG fallback (zawsze dostępny) – nowy backend przez FaceController
-        try:
-            from apps.ui.face.controller import FaceController
-            from PIL import Image
-            from io import BytesIO
-            fc = FaceController(size=data.get("size", 240), fps=1, idle=True)
-            fc.set_expr(expr)
-            img = Image.open(BytesIO(fc.frame()))
-            if out:
-                os.makedirs(os.path.dirname(out), exist_ok=True)
-                img.save(out)
-                return jsonify({"ok": True, "out": out})
-            # Zwróć PNG jako base64
-            import base64
-            buf = BytesIO(); img.save(buf, "PNG"); png_bytes = buf.getvalue()
-            png_b64 = base64.b64encode(png_bytes).decode("ascii")
-            return jsonify({"ok": True, "png_b64": png_b64, "expr": expr}), 200
-        except Exception as e:
-            return jsonify({"ok": False, "error": f"PNG fallback failed: {e}"}), 500
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
+# Nowy shim dla buźki (PNG/file + 503 dla LCD bez HW)
+from services.api_core.face_api import render_face as face_render_shim
 
-app.add_url_rule("/face/ping", view_func=face_ping, methods=["GET"])
-app.add_url_rule("/face/render", view_func=face_render, methods=["POST"])
-
-
-
+# Moduły API (utrzymane dla spójności systemu)
 import services.api_core.chat_glue as chat_glue
 import services.api_core.services_api as services_api
 import services.api_core.dashboard as dashboard
@@ -61,25 +16,42 @@ import services.api_core.system_info as system_info
 import services.api_core.state_api as state_api
 import services.api_core.compat as compat
 
+app = Flask(__name__)
 
+# ── Helpers (MUSZĄ być zdefiniowane PRZED użyciem) ───────────────────────────
+def _corsify(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    return resp
 
-"""
-Rider-Pi – API server (router + entrypoint)
+# ── Face API (nowe) ──────────────────────────────────────────────────────────
+@app.route("/face/ping", methods=["GET"])
+def face_ping():
+    return jsonify({"ok": True})
 
-- Router mapuje endpointy na moduły z services.api_core.*
-"""
-import services.api_core.chat_glue as chat_glue
-import services.api_core.services_api as services_api
-import services.api_core.dashboard as dashboard
-import services.api_core.camera as camera
-import services.api_core.control_proxy as control_proxy
-import services.api_core.system_info as system_info
-import services.api_core.state_api as state_api
-import services.api_core.compat as compat
+@app.route("/face/render", methods=["POST"])
+def face_render():
+    payload = request.get_json(force=True, silent=True) or {}
+    res = face_render_shim(payload)
+    # Przekładaj 503 dla LCD bez HW
+    status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
+    return jsonify(res), status
 
+# ── Legacy: /api/draw/face (stary endpoint) ──────────────────────────────────
+@app.route("/api/draw/face", methods=["POST", "OPTIONS"])
+def api_draw_face_legacy():
+    # CORS preflight
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
 
+    payload = request.get_json(force=True, silent=True) or {}
+    # shim w face_api zwraca (body, http_status)
+    from services.api_core.face_api import draw_face
+    body, status = draw_face(payload)
+    return _corsify(make_response(jsonify(body), status))
 
-# ── Voice proxy ─────────────────────────────────────────────────────────────
+# ── Voice proxy ──────────────────────────────────────────────────────────────
 app.add_url_rule(
     "/api/voice/capture",
     view_func=voice_proxy.capture_handler,
@@ -91,8 +63,7 @@ app.add_url_rule(
     methods=["POST", "OPTIONS"],
 )
 
-# ── Chat API (/api/chat/*) ──────────────────────────────────────────────────
-# Idempotentna rejestracja tras: /api/chat/history (GET, OPTIONS), /api/chat/send (POST, OPTIONS)
+# ── Chat API (/api/chat/*) ───────────────────────────────────────────────────
 try:
     chat_glue.register(app)
     app.logger.info("Chat API registered at /api/chat/*")
@@ -100,12 +71,10 @@ except Exception as e:
     app.logger.warning(f"Chat API not available: {e}")
 
 # ── Aliasy / stuby dla zgodności z frontendem ────────────────────────────────
-# Alias: /api/last_frame -> /camera/last (GET/HEAD)
 def _api_last_frame():
     return camera.camera_last()
 app.add_url_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
 
-# Stub: /api/bus/health (GET/OPTIONS) – zwraca OK, aby nie spamować logów
 def _bus_health():
     if request.method == "OPTIONS":
         return (
@@ -121,7 +90,6 @@ def _bus_health():
 
 app.add_url_rule("/api/bus/health", view_func=_bus_health, methods=["GET", "OPTIONS"])
 
-# Stub: /vision/obstacle (GET) – jeśli moduł nieaktywny
 def _vision_obstacle_stub():
     return jsonify({"ok": False, "error": "vision obstacle not enabled"}), 404
 app.add_url_rule("/vision/obstacle", view_func=_vision_obstacle_stub, methods=["GET"])
@@ -135,10 +103,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# ── Helpers ─────────────────────────────────────────────────────────────────
-def _corsify(resp):
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    return resp
