@@ -1,4 +1,8 @@
 from __future__ import annotations
+
+import os
+from pathlib import Path
+OUT_LATEST = os.environ.get('FACE_LATEST_PATH','/tmp/face_latest.png')
 from typing import Dict, Any
 from types import SimpleNamespace
 import threading
