@@ -8,7 +8,11 @@ from flask import Flask, jsonify, request, make_response, send_from_directory
 try:
     import services.api_core.compat as compat
     app: Flask = getattr(compat, "app", Flask(__name__))
-    DEFAULT_PORT = int(os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or getattr(compat, "STATUS_API_PORT", 5000))
+    DEFAULT_PORT = int(
+        os.getenv("STATUS_API_PORT")
+        or os.getenv("API_PORT")
+        or getattr(compat, "STATUS_API_PORT", 5000)
+    )
 except Exception:
     compat = None  # type: ignore
     app = Flask(__name__)
@@ -28,7 +32,6 @@ import services.api_core.chat_glue as chat_glue  # dla nowego glue
 # Face (nowa ścieżka + legacy shim)
 from services.api_core.face_api import render_face as face_render_shim
 import services.api_core.face_anim as face_anim
-
 
 # ── CORS global (dla dashboardu na 8080 i API na 5000) ───────────────────────
 @app.after_request
@@ -53,11 +56,27 @@ def face_render():
     status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
     return jsonify(res), status
 
+# ── FACE: animacja (Phase 4 – HTTP shims do czystych funkcji) ───────────────
+@app.route("/face/play", methods=["POST", "OPTIONS"])
+def face_play():
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    payload = request.get_json(silent=True) or {}
+    res = face_anim.play(payload)   # czysta funkcja -> dict
+    return _corsify(jsonify(res)), 200
 
-# Face animation (Phase 4 – MVP)
-app.add_url_rule("/face/play",  view_func=face_anim.post_play,  methods=["POST", "OPTIONS"])
-app.add_url_rule("/face/stop",  view_func=face_anim.post_stop,  methods=["POST", "OPTIONS"])
-app.add_url_rule("/face/state", view_func=face_anim.get_state,  methods=["GET"])
+@app.route("/face/stop", methods=["POST", "OPTIONS"])
+def face_stop():
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    payload = request.get_json(silent=True) or {}
+    res = face_anim.stop(payload)   # czysta funkcja -> dict
+    return _corsify(jsonify(res)), 200
+
+@app.route("/face/state", methods=["GET"])
+def face_state():
+    res = face_anim.get_state()     # czysta funkcja -> dict
+    return _corsify(jsonify(res)), 200
 
 # ── FACE: legacy /api/draw/face (kompat) ─────────────────────────────────────
 @app.route("/api/draw/face", methods=["POST", "OPTIONS"])
@@ -122,6 +141,13 @@ _add_rule("/api/cmd", view_func=control_proxy.control_proxy_handler, methods=["P
 # voice proxy
 _add_rule("/api/voice/capture", view_func=voice_proxy.capture_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/voice/say", view_func=voice_proxy.say_handler, methods=["POST", "OPTIONS"])
+
+# bus health (stub) – żeby dashboard nie dostawał 404
+@app.route("/api/bus/health", methods=["GET", "OPTIONS"])
+def _bus_health():
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    return _corsify(jsonify({"ok": True})), 200
 
 # ── Chat API: rejestracja „glue” idempotentnie ───────────────────────────────
 try:
