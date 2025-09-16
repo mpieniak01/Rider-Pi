@@ -27,6 +27,8 @@ import services.api_core.chat_api as chat_api  # noqa: F401
 import services.api_core.chat_glue as chat_glue  # dla nowego glue
 # Face (nowa ścieżka + legacy shim)
 from services.api_core.face_api import render_face as face_render_shim
+import services.api_core.face_anim as face_anim
+
 
 # ── CORS global (dla dashboardu na 8080 i API na 5000) ───────────────────────
 @app.after_request
@@ -50,6 +52,12 @@ def face_render():
     res = face_render_shim(payload)
     status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
     return jsonify(res), status
+
+
+# Face animation (Phase 4 – MVP)
+app.add_url_rule("/face/play",  view_func=face_anim.post_play,  methods=["POST", "OPTIONS"])
+app.add_url_rule("/face/stop",  view_func=face_anim.post_stop,  methods=["POST", "OPTIONS"])
+app.add_url_rule("/face/state", view_func=face_anim.get_state,  methods=["GET"])
 
 # ── FACE: legacy /api/draw/face (kompat) ─────────────────────────────────────
 @app.route("/api/draw/face", methods=["POST", "OPTIONS"])
