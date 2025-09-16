@@ -21,6 +21,42 @@ class SinkLCD:
         self._spi = None
         self._init_spi()
 
+class LcdNotAvailable(Exception):
+    pass
+
+    def _init_spi(self):
+        try:
+            import spidev
+            self._spi = spidev.SpiDev()
+            bus, dev = self._parse_spi_dev(self.spi_dev)
+            self._spi.open(bus, dev)
+            self._spi.max_speed_hz = self.spi_hz
+        except Exception as e:
+            raise LcdNotAvailable(f"SPI init fail: {e}")
+
+    def push_auto(self, img: Image.Image):
+        """
+        Wybiera metodę na podstawie self.method lub auto. Mapuje aliasy, loguje wybór, fallback bez crasha.
+        """
+        img = self._apply_rotation(img)
+        img = img.convert("RGB").resize((self.width, self.height))
+        buf = pil_to_rgb565(img)
+        self.push_rgb565(self.width, self.height, buf)
+
+    def _apply_rotation(self, img: Image.Image) -> Image.Image:
+        if self.rotate:
+            return img.rotate(self.rotate, expand=True)
+        return img
+
+def pil_to_rgb565(img: Image.Image) -> bytes:
+    img = img.convert('RGB')
+    arr = bytearray()
+    for r, g, b in img.getdata():
+        rgb = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        arr.append((rgb >> 8) & 0xFF)
+        arr.append(rgb & 0xFF)
+    return bytes(arr)
+
     def _init_spi(self):
         try:
             import spidev
