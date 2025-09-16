@@ -1,14 +1,14 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 import os
-import traceback
+import traceback  # zostawione do debugowania
 
-# New face shim (PNG/file + 503 dla LCD bez HW)
+# Nowy shim dla buźki (PNG/file + 503 dla LCD bez HW)
 from services.api_core.face_api import render_face as face_render_shim
 
-# Moduły API
+# Moduły API (utrzymane dla spójności systemu)
 import services.api_core.chat_glue as chat_glue
-import services.api_core.services_api as services_api   # zostawione dla spójności
-import services.api_core.dashboard as dashboard         # jw.
+import services.api_core.services_api as services_api
+import services.api_core.dashboard as dashboard
 import services.api_core.camera as camera
 import services.api_core.voice_proxy as voice_proxy
 import services.api_core.control_proxy as control_proxy
@@ -17,6 +17,13 @@ import services.api_core.state_api as state_api
 import services.api_core.compat as compat
 
 app = Flask(__name__)
+
+# ── Helpers (MUSZĄ być zdefiniowane PRZED użyciem) ───────────────────────────
+def _corsify(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    return resp
 
 # ── Face API (nowe) ──────────────────────────────────────────────────────────
 @app.route("/face/ping", methods=["GET"])
@@ -31,7 +38,20 @@ def face_render():
     status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
     return jsonify(res), status
 
-# ── Voice proxy ─────────────────────────────────────────────────────────────
+# ── Legacy: /api/draw/face (stary endpoint) ──────────────────────────────────
+@app.route("/api/draw/face", methods=["POST", "OPTIONS"])
+def api_draw_face_legacy():
+    # CORS preflight
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+
+    payload = request.get_json(force=True, silent=True) or {}
+    # shim w face_api zwraca (body, http_status)
+    from services.api_core.face_api import draw_face
+    body, status = draw_face(payload)
+    return _corsify(make_response(jsonify(body), status))
+
+# ── Voice proxy ──────────────────────────────────────────────────────────────
 app.add_url_rule(
     "/api/voice/capture",
     view_func=voice_proxy.capture_handler,
@@ -43,7 +63,7 @@ app.add_url_rule(
     methods=["POST", "OPTIONS"],
 )
 
-# ── Chat API (/api/chat/*) ──────────────────────────────────────────────────
+# ── Chat API (/api/chat/*) ───────────────────────────────────────────────────
 try:
     chat_glue.register(app)
     app.logger.info("Chat API registered at /api/chat/*")
@@ -51,12 +71,10 @@ except Exception as e:
     app.logger.warning(f"Chat API not available: {e}")
 
 # ── Aliasy / stuby dla zgodności z frontendem ────────────────────────────────
-# Alias: /api/last_frame -> /camera/last (GET/HEAD)
 def _api_last_frame():
     return camera.camera_last()
 app.add_url_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
 
-# Stub: /api/bus/health (GET/OPTIONS) – zwraca OK, aby nie spamować logów
 def _bus_health():
     if request.method == "OPTIONS":
         return (
@@ -72,7 +90,6 @@ def _bus_health():
 
 app.add_url_rule("/api/bus/health", view_func=_bus_health, methods=["GET", "OPTIONS"])
 
-# Stub: /vision/obstacle (GET) – jeśli moduł nieaktywny
 def _vision_obstacle_stub():
     return jsonify({"ok": False, "error": "vision obstacle not enabled"}), 404
 app.add_url_rule("/vision/obstacle", view_func=_vision_obstacle_stub, methods=["GET"])
@@ -86,10 +103,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# ── Helpers ─────────────────────────────────────────────────────────────────
-def _corsify(resp):
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    return resp
