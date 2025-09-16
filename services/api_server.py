@@ -1,55 +1,14 @@
-from services.api_core.face_api import render_face as face_render_shim
-from flask import Flask, jsonify, make_response, request, send_from_directory
-app = Flask(__name__)
+from flask import Flask, jsonify, request
 import os
-import importlib
 import traceback
-# ── Aliasy / stuby dla zgodności z frontendem ────────────────────────────────
-# Alias: /api/last_frame -> /camera/last (GET/HEAD)
-def face_ping():
-    return jsonify({"ok": True})
 
-def face_render():
-    try:
-        data = request.get_json(force=True)
-        backend = data.get("backend", "png")
-        out = data.get("out", None)
-        face_api = importlib.import_module("services.api_core.face_api")
-        if hasattr(face_api, "draw_face"):
-            res, code = face_api.draw_face(data)
-            if backend == "lcd" and code == 503:
-                return jsonify(res), 503
-            if res.get("ok"):
-                # Jeśli PNG i out, zapisz plik
-                if backend == "png" and out and "png_b64" in res:
-                    import base64
-                    from PIL import Image
-                    from io import BytesIO
-                    os.makedirs(os.path.dirname(out), exist_ok=True)
-                    img = Image.open(BytesIO(base64.b64decode(res["png_b64"])))
-                    img.save(out)
-                    res["out"] = out
-                return jsonify(res), code
-        return jsonify({"ok": False, "error": "Unknown backend or render error"}), 500
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
+# New face shim (PNG/file + 503 dla LCD bez HW)
+from services.api_core.face_api import render_face as face_render_shim
 
-app.add_url_rule("/face/ping", view_func=face_ping, methods=["GET"])
-@app.route("/face/render", methods=["POST"])
-def face_render():
-    from flask import request, jsonify
-    payload = request.get_json(force=True, silent=True) or {}
-    res = face_render_shim(payload)
-    # Przekładaj status 503 (brak HW) zamiast 500:
-    status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
-    return jsonify(res), status
-
-
-
-
+# Moduły API
 import services.api_core.chat_glue as chat_glue
-import services.api_core.services_api as services_api
-import services.api_core.dashboard as dashboard
+import services.api_core.services_api as services_api   # zostawione dla spójności
+import services.api_core.dashboard as dashboard         # jw.
 import services.api_core.camera as camera
 import services.api_core.voice_proxy as voice_proxy
 import services.api_core.control_proxy as control_proxy
@@ -57,23 +16,20 @@ import services.api_core.system_info as system_info
 import services.api_core.state_api as state_api
 import services.api_core.compat as compat
 
+app = Flask(__name__)
 
+# ── Face API (nowe) ──────────────────────────────────────────────────────────
+@app.route("/face/ping", methods=["GET"])
+def face_ping():
+    return jsonify({"ok": True})
 
-"""
-Rider-Pi – API server (router + entrypoint)
-
-- Router mapuje endpointy na moduły z services.api_core.*
-"""
-import services.api_core.chat_glue as chat_glue
-import services.api_core.services_api as services_api
-import services.api_core.dashboard as dashboard
-import services.api_core.camera as camera
-import services.api_core.control_proxy as control_proxy
-import services.api_core.system_info as system_info
-import services.api_core.state_api as state_api
-import services.api_core.compat as compat
-
-
+@app.route("/face/render", methods=["POST"])
+def face_render():
+    payload = request.get_json(force=True, silent=True) or {}
+    res = face_render_shim(payload)
+    # Przekładaj 503 dla LCD bez HW
+    status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
+    return jsonify(res), status
 
 # ── Voice proxy ─────────────────────────────────────────────────────────────
 app.add_url_rule(
@@ -88,7 +44,6 @@ app.add_url_rule(
 )
 
 # ── Chat API (/api/chat/*) ──────────────────────────────────────────────────
-# Idempotentna rejestracja tras: /api/chat/history (GET, OPTIONS), /api/chat/send (POST, OPTIONS)
 try:
     chat_glue.register(app)
     app.logger.info("Chat API registered at /api/chat/*")
