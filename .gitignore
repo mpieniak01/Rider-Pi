@@ -109,3 +109,7 @@ snapshots/
 # local backups
 services/**/*.bak-*
 *.bak-*
+
+# local backups
+services/**/face_api.py.bak-*
+services/**/api_server.py.bak-*
