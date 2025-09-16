@@ -1,12 +1,20 @@
-from flask import Flask, jsonify, request, make_response
+# services/api_server.py
+from __future__ import annotations
+
 import os
-import traceback  # zostawione do debugowania
+from flask import Flask, jsonify, request, make_response, send_from_directory
 
-# Nowy shim dla buźki (PNG/file + 503 dla LCD bez HW)
-from services.api_core.face_api import render_face as face_render_shim
+# --- preferuj istniejący app/konfigurację z compat ---
+try:
+    import services.api_core.compat as compat
+    app: Flask = getattr(compat, "app", Flask(__name__))
+    DEFAULT_PORT = int(os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or getattr(compat, "STATUS_API_PORT", 5000))
+except Exception:
+    compat = None  # type: ignore
+    app = Flask(__name__)
+    DEFAULT_PORT = int(os.getenv("STATUS_API_PORT", "5000"))
 
-# Moduły API (utrzymane dla spójności systemu)
-import services.api_core.chat_glue as chat_glue
+# --- importy modułów rdzeniowych (routing poniżej) ---
 import services.api_core.services_api as services_api
 import services.api_core.dashboard as dashboard
 import services.api_core.camera as camera
@@ -14,18 +22,24 @@ import services.api_core.voice_proxy as voice_proxy
 import services.api_core.control_proxy as control_proxy
 import services.api_core.system_info as system_info
 import services.api_core.state_api as state_api
-import services.api_core.compat as compat
+# Chat: użyjemy „glue” na końcu, żeby rejestrować idempotentnie
+import services.api_core.chat_api as chat_api  # noqa: F401
+import services.api_core.chat_glue as chat_glue  # dla nowego glue
+# Face (nowa ścieżka + legacy shim)
+from services.api_core.face_api import render_face as face_render_shim
 
-app = Flask(__name__)
-
-# ── Helpers (MUSZĄ być zdefiniowane PRZED użyciem) ───────────────────────────
-def _corsify(resp):
+# ── CORS global (dla dashboardu na 8080 i API na 5000) ───────────────────────
+@app.after_request
+def _cors_all(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return resp
 
-# ── Face API (nowe) ──────────────────────────────────────────────────────────
+def _corsify(resp):
+    return _cors_all(resp)
+
+# ── FACE: nowe API ───────────────────────────────────────────────────────────
 @app.route("/face/ping", methods=["GET"])
 def face_ping():
     return jsonify({"ok": True})
@@ -34,71 +48,101 @@ def face_ping():
 def face_render():
     payload = request.get_json(force=True, silent=True) or {}
     res = face_render_shim(payload)
-    # Przekładaj 503 dla LCD bez HW
     status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
     return jsonify(res), status
 
-# ── Legacy: /api/draw/face (stary endpoint) ──────────────────────────────────
+# ── FACE: legacy /api/draw/face (kompat) ─────────────────────────────────────
 @app.route("/api/draw/face", methods=["POST", "OPTIONS"])
 def api_draw_face_legacy():
-    # CORS preflight
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
-
     payload = request.get_json(force=True, silent=True) or {}
-    # shim w face_api zwraca (body, http_status)
-    from services.api_core.face_api import draw_face
+    from services.api_core.face_api import draw_face  # zwraca (body, status)
     body, status = draw_face(payload)
     return _corsify(make_response(jsonify(body), status))
 
-# ── Voice proxy ──────────────────────────────────────────────────────────────
-app.add_url_rule(
-    "/api/voice/capture",
-    view_func=voice_proxy.capture_handler,
-    methods=["POST", "OPTIONS"],
-)
-app.add_url_rule(
-    "/api/voice/say",
-    view_func=voice_proxy.say_handler,
-    methods=["POST", "OPTIONS"],
-)
+# ── ROUTING: HEALTH / STATE / SYSINFO / METRICS / EVENTS / PROBES ───────────
+_rules = {r.rule for r in app.url_map.iter_rules()}
 
-# ── Chat API (/api/chat/*) ───────────────────────────────────────────────────
+def _add_rule(rule, **kw):
+    if rule not in _rules:
+        app.add_url_rule(rule, **kw)
+        _rules.add(rule)
+
+# health/state/sysinfo/metrics/events/livez/readyz
+if compat:
+    _add_rule("/healthz", view_func=compat.healthz)
+    _add_rule("/health", view_func=compat.health_alias)
+    _add_rule("/events", view_func=compat.events)
+    _add_rule("/livez", view_func=compat.livez)
+    _add_rule("/readyz", view_func=compat.readyz)
+_add_rule("/state", view_func=state_api.state_route)
+_add_rule("/sysinfo", view_func=system_info.sysinfo)
+_add_rule("/metrics", view_func=system_info.metrics)
+
+# camera & snapshots
+_add_rule("/camera/raw", view_func=camera.camera_raw, methods=["GET", "HEAD"])
+_add_rule("/camera/proc", view_func=camera.camera_proc, methods=["GET", "HEAD"])
+_add_rule("/camera/last", view_func=camera.camera_last, methods=["GET", "HEAD"])
+_add_rule("/camera/placeholder", view_func=camera.camera_placeholder, methods=["GET", "HEAD"])
+_add_rule("/snapshots/<path:fname>", view_func=camera.snapshots_static)
+
+# alias kompatybilności z frontem
+def _api_last_frame():
+    return camera.camera_last()
+_add_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
+
+# services (systemd)
+_add_rule("/svc", view_func=services_api.svc_list, methods=["GET"])
+_add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
+_add_rule("/svc/<name>", view_func=services_api.svc_action, methods=["POST"])
+
+# vision (blueprint opcjonalny)
 try:
-    chat_glue.register(app)
+    from services.api_core import vision_api
+    vision_bp = getattr(vision_api, "vision_bp", None)
+    if vision_bp:
+        app.register_blueprint(vision_bp, url_prefix="/vision")
+        app.logger.info("Vision API registered at /vision")
+except Exception as e:
+    app.logger.warning(f"Vision blueprint not available: {e}")
+
+# control proxy
+_add_rule("/api/control", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
+_add_rule("/api/cmd", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
+
+# voice proxy
+_add_rule("/api/voice/capture", view_func=voice_proxy.capture_handler, methods=["POST", "OPTIONS"])
+_add_rule("/api/voice/say", view_func=voice_proxy.say_handler, methods=["POST", "OPTIONS"])
+
+# ── Chat API: rejestracja „glue” idempotentnie ───────────────────────────────
+try:
+    chat_glue.register(app)  # doda /api/chat/history, /api/chat/send
     app.logger.info("Chat API registered at /api/chat/*")
 except Exception as e:
     app.logger.warning(f"Chat API not available: {e}")
 
-# ── Aliasy / stuby dla zgodności z frontendem ────────────────────────────────
-def _api_last_frame():
-    return camera.camera_last()
-app.add_url_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
+# ── Dashboard / pliki statyczne ──────────────────────────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
 
-def _bus_health():
-    if request.method == "OPTIONS":
-        return (
-            "",
-            204,
-            {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Content-Type",
-                "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-            },
-        )
-    return (jsonify({"ok": True}), 200, {"Access-Control-Allow-Origin": "*"})
+def serve_web(fname):
+    return send_from_directory(STATIC_WEB_DIR, fname)
 
-app.add_url_rule("/api/bus/health", view_func=_bus_health, methods=["GET", "OPTIONS"])
-
-def _vision_obstacle_stub():
-    return jsonify({"ok": False, "error": "vision obstacle not enabled"}), 404
-app.add_url_rule("/vision/obstacle", view_func=_vision_obstacle_stub, methods=["GET"])
+# root i control page (jeśli dashboard je dostarcza)
+_add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
+_add_rule("/", view_func=dashboard.dashboard, methods=["GET"])
+_add_rule("/control", view_func=dashboard.control_page, methods=["GET"])
 
 # ── BOOTSTRAP ────────────────────────────────────────────────────────────────
 def main():
-    compat.start_bus_sub()
-    compat.start_xgo_ro()
-    port = int(os.environ.get("STATUS_API_PORT", 5000))
+    try:
+        if compat:
+            compat.start_bus_sub()
+            compat.start_xgo_ro()
+    except Exception as e:
+        app.logger.warning(f"compat init warning: {e}")
+    port = DEFAULT_PORT
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
