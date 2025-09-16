@@ -48,7 +48,9 @@ class LCDDirect:
         self.force=force
         self._lcd=None; self._push=None  # (target, name, tag)
         self._disp_wh=(240,320); self._canvas=None
-        self._init_lcd()
+        # Lazy init: tylko jeśli backend RAW/LCD jest wybrany
+        if not (self.force and self.force.lower() == "pil"):
+            self._init_lcd()
 
     def _build_cfg(self, m):
         FC=getattr(m,"FaceConfig",None)
@@ -205,23 +207,67 @@ class LCDDirect:
         return f"{type(target).__name__}.{name}[{tag}]"
 
 def main():
-    ap=argparse.ArgumentParser()
-    ap.add_argument("--expr", default="neutral")
-    ap.add_argument("--size", type=int, default=240)
-    ap.add_argument("--fps", type=int, default=20)
-    ap.add_argument("--rotate", type=int, choices=[0,90,180,270], default=int(os.getenv("FACE_LCD_ROTATE","0")))
-    ap.add_argument("--spi-hz", type=int, default=int(os.getenv("FACE_LCD_SPI_HZ","0")) or None)
-    ap.add_argument("--bl-pin", type=int, default=int(os.getenv("FACE_LCD_BL_PIN","13")))
-    ap.add_argument("--force", help="Wymuś metodę sterownika LCD, np. push_rgb565:rgb565 / push_frame_rgb565_3:rgb565_3 / ShowImage:pil. Format: <nazwa_metody>:<wariant>")
-    ap.add_argument("--stats", action="store_true")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--expr", default="neutral", help="Wyraz buźki: neutral, happy, sad")
+    ap.add_argument("--size", type=int, default=240, help="Rozmiar buźki (px)")
+    ap.add_argument("--fps", type=int, default=20, help="Docelowy FPS")
+    ap.add_argument("--rotate", type=int, choices=[0,90,180,270], default=int(os.getenv("FACE_LCD_ROTATE","0")), help="Rotacja LCD")
+    ap.add_argument("--spi-hz", type=int, default=int(os.getenv("FACE_LCD_SPI_HZ","0")) or None, help="Prędkość SPI")
+    ap.add_argument("--bl-pin", type=int, default=int(os.getenv("FACE_LCD_BL_PIN","13")), help="Pin podświetlenia")
+    ap.add_argument("--force", help="Wymuś metodę sterownika LCD, np. push_rgb565:rgb565 / push_pil:pil / raw / pil")
+    ap.add_argument("--force-raw", action="store_true", help="Wymuś tryb RAW (jeśli wspierane)")
+    ap.add_argument("--force-pil", action="store_true", help="Wymuś tryb PIL (fallback)")
+    ap.add_argument("--stats", action="store_true", help="Loguj FPS/statystyki")
     ap.add_argument("--secs", type=float, default=None, help="Czas trwania testu w sekundach (domyślnie: nieskończoność)")
-    args=ap.parse_args()
+    args = ap.parse_args()
 
-    fc=FaceController(size=args.size, fps=args.fps, idle=True)
+    # Obsługa aliasów force-raw/force-pil
+    force = args.force
+    if args.force_raw:
+        force = "raw"
+    elif args.force_pil:
+        force = "pil"
+
+
+    fc = FaceController(size=args.size, fps=args.fps, idle=True)
     fc.set_expr(args.expr)
-    lcd=LCDDirect(rotate=args.rotate, size=args.size, spi_hz=args.spi_hz, bl_pin=args.bl_pin, force=args.force)
+    # Lazy init: LCDDirect tylko jeśli nie force-pil
+    if force and force.lower() == "pil":
+        # PIL-only: renderuj i wypisuj statystyki, bez LCD
+        n = 0; t0 = time.time(); last_stats = t0
+        try:
+            while True:
+                now = time.time()
+                if args.secs is not None and (now - t0) >= args.secs:
+                    print("[PIL] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
+                    break
+                try:
+                    img = fc.frame_image().convert("RGB")
+                except Exception:
+                    frame = fc.frame()
+                    img = Image.open(BytesIO(frame)).convert("RGB")
+                # symulacja: po prostu konwersja do PNG
+                _ = to_png_bytes(img)
+                n += 1
+                if args.stats and (now - last_stats) >= 1.0:
+                    dt = now - t0
+                    print(f"[stats] frames={n} fps~{(n/dt if dt>0 else 0):.1f} via PIL", flush=True)
+                    last_stats = now
+                time.sleep(1.0 / max(1, args.fps))
+        except KeyboardInterrupt:
+            print("PIL loop finished.")
+        finally:
+            t1 = time.time()
+            dt = t1 - t0
+            if n > 0:
+                print(f"[PIL] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n/dt:.2f}", flush=True)
+            else:
+                print(f"[PIL] Brak wygenerowanych klatek.", flush=True)
+        return
+    # RAW/LCD path:
+    lcd = LCDDirect(rotate=args.rotate, size=args.size, spi_hz=args.spi_hz, bl_pin=args.bl_pin, force=force)
 
-    n=0; t0=time.time()
+    n = 0; t0 = time.time(); last_stats = t0
     try:
         while True:
             now = time.time()
@@ -229,16 +275,17 @@ def main():
                 print("[LCD] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
                 break
             try:
-                img = fc.frame_image().convert("RGB")   # szybka ścieżka (jeśli zaimplementowana)
+                img = fc.frame_image().convert("RGB")
             except Exception:
                 frame = fc.frame()
                 img = Image.open(BytesIO(frame)).convert("RGB")
-            how=lcd.push(img)
-            if args.stats and (n % max(1, args.fps*5) == 0):
-                dt=time.time()-t0
+            how = lcd.push(img)
+            n += 1
+            if args.stats and (now - last_stats) >= 1.0:
+                dt = now - t0
                 print(f"[stats] frames={n} fps~{(n/dt if dt>0 else 0):.1f} via {how}", flush=True)
-            n+=1
-            time.sleep(1.0/max(1,args.fps))
+                last_stats = now
+            time.sleep(1.0 / max(1, args.fps))
     except KeyboardInterrupt:
         print("LCD loop finished.")
     finally:
