@@ -1,3 +1,4 @@
+from services.api_core.face_api import render_face as face_render_shim
 from flask import Flask, jsonify, make_response, request, send_from_directory
 app = Flask(__name__)
 import os
@@ -34,7 +35,15 @@ def face_render():
         return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
 
 app.add_url_rule("/face/ping", view_func=face_ping, methods=["GET"])
-app.add_url_rule("/face/render", view_func=face_render, methods=["POST"])
+@app.route("/face/render", methods=["POST"])
+def face_render():
+    from flask import request, jsonify
+    payload = request.get_json(force=True, silent=True) or {}
+    res = face_render_shim(payload)
+    # Przekładaj status 503 (brak HW) zamiast 500:
+    status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
+    return jsonify(res), status
+
 
 
 
