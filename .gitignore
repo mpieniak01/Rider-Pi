@@ -1,6 +1,7 @@
 # Rider-Pi: LCD/face RAW/PNG
 _out/
 *.bak
+*.bak-*
 *.tmp
 __pycache__/
 .ipynb_checkpoints/
@@ -20,6 +21,7 @@ __pycache__/
 venv/
 _out/
 *.bak
+*.bak-*
 *.tmp
 **/__pycache__/
 **/.ipynb_checkpoints/

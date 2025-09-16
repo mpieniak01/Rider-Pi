@@ -1,43 +1,58 @@
-# Rider-Pi: Buźka LCD/PNG
 
-## Szybki start
+# API statycznego renderu buźki Rider-Pi
 
-- CLI: `python3 tools/newface_lcd_direct.py --expr happy --stats`
-- API: `POST /face/render` (backend: lcd/png)
+## Endpointy
 
-## Zmienne środowiskowe
-- `RIDER_APPS_PATH` — ścieżka do katalogu apps (domyślnie: `_apps:apps`)
-- `FACE_LCD_ROTATE` — rotacja LCD (0/90/180/270)
-- `FACE_LCD_SPI_HZ` — prędkość SPI (np. 32000000)
-- `FACE_LCD_DRIVER` — sterownik LCD: `auto`, `st7789`, `ili9341` (domyślnie: auto)
-- `FACE_LCD_BL_PIN` — pin podświetlenia (domyślnie: 13)
+### 1. Render PNG do pliku
 
-## Komendy i flagi
-- `--force {auto,raw,pil}` — wymuś backend (domyślnie auto, ENV: `FACE_LCD_FORCE`)
-- `--driver {auto,st7789,ili9341}` — wybór sterownika LCD (ENV: `FACE_LCD_DRIVER`)
-- `--stats` — loguj FPS/statystyki
-- `--secs` — czas trwania testu
-- `--expr` — wyraz buźki: neutral, happy, sad
-- `--rotate` — rotacja LCD
-- `--spi-hz` — prędkość SPI
-- `--bl-pin` — pin podświetlenia
-- `--backend` — lcd/png (API)
-- `--out` — ścieżka pliku PNG (API)
+```bash
+curl -s -X POST http://127.0.0.1:8080/face/render -H 'Content-Type: application/json' \
+	-d '{"expr":"neutral","backend":"png","out":"/tmp/face_api.png","rotate":270,"size":240}'
+ls -l /tmp/face_api.png
+```
 
-## Backend LCD/PNG
-- LCD: szybka ścieżka RAW (jeśli wspierane przez hardware)
-- PNG: generuje plik na dysku (działa zawsze, fallback)
+- `backend`: `png` (alias: `file`, `image`)
+- `out`: ścieżka do pliku wyjściowego (wymagana)
+- `expr`: wyraz buźki (`neutral`, `happy`, `sad`, ...)
+- `rotate`: opcjonalnie obrót (0/90/180/270)
+- `size`: rozmiar (domyślnie 240)
 
-## Przykłady
-- LCD: `python3 tools/newface_lcd_direct.py --force raw --driver st7789 --rotate 270 --spi-hz 32000000 --stats --secs 5`
-- PNG: `python3 tools/newface_lcd_direct.py --force pil --stats --secs 2`
-- API LCD: `curl -X POST http://localhost:5000/face/render -H 'Content-Type: application/json' -d '{"expr":"happy","backend":"lcd"}'`
-- API PNG: `curl -X POST http://localhost:5000/face/render -H 'Content-Type: application/json' -d '{"expr":"happy","backend":"png","out":"/tmp/face.png"}'`
-## Troubleshooting LCD
-- Jeśli nie wykryto LCD lub brak sterownika: sprawdź ENV `FACE_LCD_DRIVER`, podłączone urządzenie, uprawnienia do SPI.
-- Fallback do PIL/PNG następuje automatycznie przy braku HW lub błędzie inicjalizacji.
-- API zwraca 503 Service Unavailable gdy backend=lcd i brak HW.
-## Systemd: rider-face.service
+### 2. Render LCD (bez HW → 503)
+
+```bash
+curl -s -i -X POST http://127.0.0.1:8080/face/render -H 'Content-Type: application/json' \
+	-d '{"expr":"neutral","backend":"lcd"}' | head -n 1
+```
+
+- Bez sprzętu LCD zawsze HTTP 503 i `{ok:false,status:503,error:"LCD backend not available on this host"}`
+
+### 3. Legacy kompat: /api/draw/face
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/api/draw/face -H 'Content-Type: application/json' \
+	-d '{"expr":"neutral","backend":"png","out":"/tmp/legacy.png"}'
+ls -l /tmp/legacy.png
+```
+
+- Z `backend:"lcd"` → HTTP 503
+
+## Port i środowisko
+
+- Domyślny port: **8080** (kontraktowy, można nadpisać `STATUS_API_PORT` lub `API_PORT`)
+- Globalny CORS (`Access-Control-Allow-Origin: *`)
+- ENV: `STATUS_API_PORT`, `API_PORT`, `FACE_*`
+
+## Zachowanie
+
+- `/face/ping` → `{ok:true}`
+- `/face/render` (PNG) → plik na dysku
+- `/face/render` (LCD, bez HW) → 503
+- `/api/draw/face` → pełna kompatybilność legacy
+
+## Poza zakresem
+
+- Animacje/FaceLoop, TTS, visemy, sterownik LCD RAW
+- Brak `/face/state`
 - Plik unit: `systemd/rider-face.service`
 - Domyślnie wyłączony: `sudo systemctl disable rider-face.service`
 - Włącz: `sudo systemctl enable rider-face.service && sudo systemctl start rider-face.service`
