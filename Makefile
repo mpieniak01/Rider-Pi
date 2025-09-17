@@ -4,6 +4,10 @@ PY      ?= /usr/bin/python3
 SUDO    ?= sudo
 ROOT    ?= $(CURDIR)
 
+# Domyślne LCD ENV (możesz nadpisać przy wywołaniu: FACE_LCD_ROTATE=270 make lcd-on)
+FACE_LCD_ROTATE ?= 270
+FACE_LCD_SPI_HZ ?= 32000000
+
 # Aktualny zestaw usług (repo-first systemd)
 SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service rider-cam-preview.service
 
@@ -37,16 +41,15 @@ help:
 	@echo "  make vision-burst     # vision na czas (SECONDS=120 domyślnie)"
 	@echo "  make vision-status    # status vision"
 	@echo ""
-	@echo "  make lcd-on           # włącz LCD"
-	@echo "  make lcd-off          # wyłącz LCD (sleep)"
-	@echo "  make lcd-status       # status LCD"
-	@echo "  make vendor-kill      # ubij vendorowe procesy kamery/LCD"
+	@echo "  make lcd-on           # włącz LCD (wake + DISP_ON)"
+	@echo "  make lcd-off          # wyłącz LCD (DISP_OFF + sleep)"
+	@echo "  make lcd-reset        # panel reset (RST) + ON"
+	@echo "  make lcd-black        # wyczyść ekran do czerni (presenter)"
 	@echo ""
-	@echo "  make x-on             # włącz środowisko graficzne + RealVNC (X11, :5900)"
-	@echo "  make x-off            # wyłącz środowisko graficzne (powrót do multi-user)"
-	@echo "  make vnc-virtual-on   # uruchom wirtualny VNC (:5901) bez X11"
-	@echo "  make vnc-virtual-off  # wyłącz wirtualny VNC"
-	@echo "  make gfx-status       # status lightdm / vnc"
+	@echo "  make face-direct      # bezpośredni renderer LCD (tools/newface_lcd_direct.py)"
+	@echo "                         #   EXPR=happy FPS=20 SECS=5 FORCE=rgb565_3"
+	@echo "  make face-api-png     # render PNG przez face_api → /tmp/face_api.png"
+	@echo "  make face-api-lcd     # jednorazowy push na LCD przez face_api"
 	@echo ""
 	@echo "  make test             # testy"
 	@echo "  make bench            # benchmark detekcji"
@@ -68,7 +71,7 @@ api:
 
 # ───────────────────────────────────────────────
 # SYSTEMD
-.PHONY: up stop-all status status-all logs-broker logs-api logs-all
+.PHONY: up stop-all status status-all logs-broker logs-api logs-all logs-preview
 up:
 	@systemctl restart rider-broker.service rider-api.service
 
@@ -107,22 +110,26 @@ logs-all:
 safemode:
 	-@$(ROOT)/ops/camera_takeover_kill.sh || true
 	-@systemctl stop $(SYSTEMD_SERVICES)
-	-@$(PY) $(ROOT)/ops/lcdctl.py off --no-spi || true
+	-@$(SUDO) $(PY) $(ROOT)/tools/lcdctl.py off || true
 	-@$(PY) $(ROOT)/ops/ledctl.py off || true
 
 # ───────────────────────────────────────────────
 # OPS HELPERS
-.PHONY: lcd-on lcd-off lcd-status vendor-kill
+.PHONY: lcd-on lcd-off lcd-reset lcd-black vendor-kill
 lcd-on:
 	@echo "== Włączam LCD (wyjście ze snu) =="
-	@$(PY) $(ROOT)/ops/lcdctl.py on || true
+	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py on || true
 
 lcd-off:
 	@echo "== Wyłączam LCD (uśpienie panelu) =="
-	@$(PY) $(ROOT)/ops/lcdctl.py off || true
+	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py off || true
 
-lcd-status:
-	@$(PY) $(ROOT)/ops/lcdctl.py status || true
+lcd-reset:
+	@echo "== RESET panelu LCD =="
+	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py reset || true
+
+lcd-black:
+	@$(PY) $(ROOT)/tools/lcd_presenter_clear.py
 
 vendor-kill:
 	@echo "== Ubijam procesy dostawcy kamery/LCD =="
@@ -215,6 +222,35 @@ led-status:
 led-auto:
 	@echo "== LED AUTO =="
 	@$(PY) $(ROOT)/ops/ledctl.py auto
+
+# ───────────────────────────────────────────────
+# FACE (helpers)
+.PHONY: face-direct face-api-png face-api-lcd
+# make face-direct EXPR=happy FPS=20 SECS=5 FORCE=rgb565_3
+face-direct:
+	@echo "== Face direct (tools/newface_lcd_direct.py) =="
+	@FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) \
+	$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
+		--expr $${EXPR:-neutral} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \
+		--fps $${FPS:-20} $${FORCE:+--force $${FORCE}} $${SECS:+--secs $${SECS}} --stats
+
+face-api-png:
+	@echo "== Face API → PNG (/tmp/face_api.png) =="
+	@$(PY) - <<'PY'
+from services.api_core import face_api
+res = face_api.render(backend="png", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.getenv("ROT","$(FACE_LCD_ROTATE)")), out="/tmp/face_api.png")
+print(res)
+PY
+	@echo "PNG: /tmp/face_api.png"
+
+face-api-lcd:
+	@echo "== Face API → LCD (jedna klatka) =="
+	@$(PY) - <<'PY'
+import os
+from services.api_core import face_api
+res = face_api.render(backend="lcd", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.getenv("ROT","$(FACE_LCD_ROTATE)")), spi_hz=int(os.getenv("HZ","$(FACE_LCD_SPI_HZ)")))
+print(res)
+PY
 
 # ───────────────────────────────────────────────
 # ŚRODOWISKO GRAFICZNE / REALVNC
