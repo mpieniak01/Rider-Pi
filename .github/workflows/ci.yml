@@ -1,40 +1,45 @@
-name: ci
+name: CI (lite)
 
 on:
-  pull_request:
-    branches: [ main ]
   push:
-    branches: [ codex/** ]
-  workflow_dispatch: {}
+  pull_request:
 
 jobs:
-  lint-test:
-    runs-on: ubuntu-latest
+  test:
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-<<<<<<< Updated upstream
-          python-version: "3.11"   # ← USUŃ cache: "pip"
+          python-version: '3.9'
 
-      - name: Install tools
+      - name: Create venv
+        run: python -m venv .venv
+
+      - name: Install runtime (no RPi extras)
         run: |
-          python -m pip install --upgrade pip
-          pip install ruff pytest || true
-          test -f requirements.txt && pip install -r requirements.txt || true
+          . .venv/bin/activate
+          pip install -U pip setuptools wheel
+          # tylko cross-platform pakiety; bez RPi.GPIO / spidev
+          pip install \
+            "flask>=3.1,<3.2" \
+            "pillow>=11,<12" \
+            "pyzmq>=25,<27" \
+            "requests>=2.32,<3" \
+            -c ops/agent/constraints.txt
 
-      - name: Ruff (lint)
+      - name: Install test deps
         run: |
-          ruff check services apps tests || true
-          ruff format --check services apps tests || true
+          . .venv/bin/activate
+          pip install -r ops/agent/requirements-test.txt -c ops/agent/constraints.txt
 
-      - name: Pytest (smoke)
-        run: pytest -k "state_api or system_info or control" -q || true
-=======
-          python-version: '3.11'
-      - run: pip install -r requirements.txt || true
-      - run: pip install ruff pytest || true
-      - run: ruff check . || true
-      - run: pytest -k "state_api or system_info or control" -q || true
->>>>>>> Stashed changes
+      - name: Run tests (HW-safe)
+        env:
+          RIDER_APPS_PATH: _apps:apps
+          FACE_LCD_ROTATE: "0"
+          FACE_LCD_SPI_HZ: "32000000"
+          FACE_LCD_FIT: fill
+        run: |
+          . .venv/bin/activate
+          bash ops/agent/run_tests.sh
