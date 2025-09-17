@@ -101,3 +101,28 @@
 1. **AGENT.md** (ten plik) – kontrakt Codex.
 2. **ARCHITECTURE.md** – porty, usługi, bus.
 3. **PROJECT.md** - wizja proejktu
+
+---
+
+## Migration notes: Face LCD fast-path (2025-09)
+
+- Usunięto wszelkie zależności od `_apps/ui/face_renderers.py` w buźce, API i narzędziach.
+- Nowy driver LCD (`apps/ui/face/driver/`): mock (domyślny, CI) oraz szkielet SPI.
+- Fast-path RAW RGB565: szybkie wypychanie klatki do bufora, mock zapisuje PNG, RGB565, meta.
+- Konfiguracja panelu i rotacji: `apps/ui/face/panel_cfg.py` (ENV/CLI), konwersje: `apps/ui/face/face_io.py`.
+- Nowe CLI: `tools/face_cli.py` (opcja --force, --expr, --rotate, --fit, --stats, backend mock domyślny).
+- Testy: `tests/test_face_raw_fastpath.py` (mock, fast-path, meta), `tests/test_no_underscore_apps_dependency.py` (brak _apps).
+- Brak zmian w systemd/autostart, brak regresji w API.
+
+### Przykładowe uruchomienie (mock, fast-path):
+
+```bash
+export RIDER_APPS_PATH="_apps:apps"
+export FACE_LCD_BACKEND=mock
+export FACE_LCD_ROTATE=270
+export FACE_LCD_SPI_HZ=32000000
+export FACE_LCD_FIT=fill
+python3 tools/face_cli.py --expr happy --rotate 270 --force raw:rgb565 --stats
+ls -lah /tmp/face_last.*
+cat /tmp/face_last.meta.json
+```
