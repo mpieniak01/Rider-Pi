@@ -7,39 +7,57 @@ on:
 jobs:
   test:
     runs-on: ubuntu-22.04
+    # Wymuszamy tryb bez sprzętu na runnerze
+    env:
+      FACE_SINK: png
+      RIDER_NO_HW: "1"
+      RIDER_APPS_PATH: _apps:apps
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: "3.9"
 
       - name: Create venv
+        shell: bash
         run: python -m venv .venv
 
       - name: Install runtime (no RPi extras)
+        shell: bash
         run: |
+          set -euo pipefail
           . .venv/bin/activate
-          pip install -U pip setuptools wheel
-          # tylko cross-platform pakiety; bez RPi.GPIO / spidev
-          pip install \
+          python -m pip install -U pip setuptools wheel
+          CONS=""
+          if [[ -f ops/agent/constraints.txt ]]; then
+            CONS="-c ops/agent/constraints.txt"
+          fi
+          # Tylko lekkie, cross-platformowe pakiety (bez RPi.GPIO/spidev)
+          pip install $CONS \
             "flask>=3.1,<3.2" \
             "pillow>=11,<12" \
             "pyzmq>=25,<27" \
-            "requests>=2.32,<3" \
-            -c ops/agent/constraints.txt
+            "requests>=2.32,<3"
 
       - name: Install test deps
+        shell: bash
         run: |
+          set -euo pipefail
           . .venv/bin/activate
-          pip install -r ops/agent/requirements-test.txt -c ops/agent/constraints.txt
+          if [[ -f ops/agent/requirements-test.txt ]]; then
+            CONS=""
+            [[ -f ops/agent/constraints.txt ]] && CONS="-c ops/agent/constraints.txt"
+            pip install -r ops/agent/requirements-test.txt $CONS
+          else
+            # fallback gdy plik nie istnieje w repo
+            pip install pytest==8.4.2 pytest-timeout==2.4.0
+          fi
 
       - name: Run tests (HW-safe)
-        env:
-          RIDER_APPS_PATH: _apps:apps
-          FACE_LCD_ROTATE: "0"
-          FACE_LCD_SPI_HZ: "32000000"
-          FACE_LCD_FIT: fill
+        shell: bash
         run: |
+          set -euo pipefail
           . .venv/bin/activate
           bash ops/agent/run_tests.sh
