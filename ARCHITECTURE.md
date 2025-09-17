@@ -14,6 +14,7 @@
 
 ## Architektura (kontekst)
 
+Serwisy w (`systemd`):
 - **API**: `rider-api.service` (port 8080) — jedyny punkt wejścia HTTP.
 - **Web-Motion Bridge**: `rider-web-bridge.service` (port 8081) — uproszczone ruchy.
 - **Broker ZMQ**: porty 5555/5556 — PUB/SUB.
@@ -22,7 +23,13 @@
 - **Voice**: socket `/run/rider-voice.sock` (opcjonalnie TCP `VOICE_TCP_PORT`).
 - **Chat**: brak własnego portu, integracja przez `/api/chat/*` i bus.
 - **Face**: `apps/ui/face.py` — render emocji, serwowany przez API.
-
+##Inne:##
+- **Workflows**: `.github/workflows` - definicje przepływów pracy dla GitHub Actions (automatyzacja CI/CD).
+- **Ops**: Konfiguracje i skrypty związane z operacjami, wdrażaniem i utrzymaniem (DevOps).
+- **Testy**: `tests` - jednostkowe i integracyjne dla poszczególnych modułów.
+- **Web**: Komponenty związane z interfejsem webowym do sterowania i monitorowania robota.
+- **Apps**: Warstwa aplikacyjna z podziałem na moduły funkcjonalne.
+  
 ## Środowisko uruchomieniowe
 
 - Agent działa w środowisku Raspberry Pi (Debian/Bookworm, Python 3.11).
@@ -90,7 +97,7 @@
 - **Źródło numeru**: używamy numerów **GitHub Issues** (N). Każdy atomowy przyrost = jedno Issue.
 - **Konwencja commitów**: dopisuj numer na końcu wiadomości, np. `feat(api): control router OK (12)`.
 - **Gałąź robocza**: `codex/12-krótki-opis`.
-- **SPRINT.md**: nagłówek zaczyna się od `Issue 12 – …`.
+- **SPRINT**: nagłówek zaczyna się od numeru `12 – …`.
 - **Relacje**: jeśli PR rozwiązuje zadanie, użyj `Fixes 12` w opisie PR.
 - **Tagi**: pozostajemy przy schemacie wersji (`v0.x.y`, np. jak w repo), opcjonalnie w release notes wspominamy numer Issue.
 
@@ -100,4 +107,4 @@
 
 1. **AGENT.md** (ten plik) – kontrakt Codex.
 2. **ARCHITECTURE.md** – porty, usługi, bus.
-3. **PROJECT.md** - wizja proejktu
+3. **PROJECT.md** - wizja projektu
