@@ -311,3 +311,12 @@ health:
 
 # Agent targets (do not remove)
 -include ops/agent/Makefile.agent
+
+# RAW fastpath helper
+.PHONY: face-direct-raw
+face-direct-raw:
+	@echo "== Face direct RAW (rgb565_3) =="
+	@FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) \
+	$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
+		--expr $${EXPR:-neutral} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \
+		--fps $${FPS:-30} --secs $${SECS:-5} --stats --force push_frame:rgb565_3
