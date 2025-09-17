@@ -8,27 +8,23 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 def add_paths():
     if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
     for p in os.getenv("RIDER_APPS_PATH","_apps:apps").split(":"):
-        p=p.strip(); 
+        p=p.strip()
         if not p: continue
         cand=(ROOT/p).resolve()
-        if cand.exists() and str(cand) not in sys.path: sys.path.insert(0,str(cand))
+        if cand.exists() and str(cand) not in sys.path:
+            sys.path.insert(0,str(cand))
 add_paths()
 
+# Nowy renderer/kompozytor buźki
 from apps.ui.face.controller import FaceController  # type: ignore
 
-def import_face_renderers_from_file_first():
-    tgt="apps.ui.face_renderers"; path=(ROOT/"_apps/ui/face_renderers.py").resolve()
-    if not path.exists(): return importlib.import_module(tgt)
-    if "apps" not in sys.modules:
-        mod=types.ModuleType("apps"); mod.__path__=[str((ROOT/"apps").resolve())]; sys.modules["apps"]=mod
-    if "apps.ui" not in sys.modules:
-        mod=types.ModuleType("apps.ui"); mod.__path__=[str((ROOT/"apps/ui").resolve()), str((ROOT/"_apps/ui").resolve())]; sys.modules["apps.ui"]=mod
-    spec=importlib.util.spec_from_file_location(tgt, str(path))
-    mod=importlib.util.module_from_spec(spec); sys.modules[tgt]=mod; spec.loader.exec_module(mod)  # type: ignore
-    return mod
+# Heurystyki nazw metod do „pushowania” klatek do sterownika
+NAME_OK  = re.compile(r"(img|image|frame|png|rgb|buf|buffer|disp|show|blit|push|draw|render|present|send|write|update|put)", re.I)
+NAME_SKIP= re.compile(r"^(set_|get_|begin$|init$|close$|cleanup$|takeover|setspi)", re.I)
 
 def to_png_bytes(img: Image.Image) -> bytes:
     buf = BytesIO(); img.save(buf,"PNG"); return buf.getvalue()
+
 def to_rgb565_bytes(img: Image.Image) -> bytes:
     im = img.convert("RGB"); w,h = im.size; px=im.load()
     out=bytearray(w*h*2); i=0
@@ -39,8 +35,28 @@ def to_rgb565_bytes(img: Image.Image) -> bytes:
             out[i]=(v>>8)&0xFF; out[i+1]=v&0xFF; i+=2
     return bytes(out)
 
-NAME_OK=re.compile(r"(img|image|frame|png|rgb|buf|buffer|disp|show|blit|push|draw|render|present|send|write|update|put)", re.I)
-NAME_SKIP=re.compile(r"^(set_|get_|begin$|init$|close$|cleanup$|takeover|setspi)", re.I)
+def _try_import(modname: str):
+    try:
+        return importlib.import_module(modname)
+    except Exception:
+        return None
+
+def import_face_renderers_from_file_first():
+    """
+    Priorytety importu sterownika LCD:
+      1) apps.ui.face.driver_ili9xx        (docelowy po migracji)
+      2) apps.ui.face_renderers            (jeśli istnieje wariant bez driver_ili9xx)
+      3) _apps.ui.face_renderers           (legacy do czasu całkowitej migracji)
+    """
+    for name in (
+        "apps.ui.face.driver_ili9xx",
+        "apps.ui.face_renderers",
+        "_apps.ui.face_renderers",
+    ):
+        m = _try_import(name)
+        if m is not None:
+            return m
+    raise ImportError("Nie udało się załadować żadnego modułu sterownika LCD (apps/ui/face/* ani _apps/ui/face_renderers.py).")
 
 class LCDDirect:
     def __init__(self, rotate:int, size:int, spi_hz:Optional[int]=None, bl_pin:int=13, force:Optional[str]=None):
@@ -58,7 +74,7 @@ class LCDDirect:
         try: cfg=FC()
         except TypeError: cfg=object.__new__(FC)
         fields={f.name for f in dataclasses.fields(FC)}
-        def setf(n,v): 
+        def setf(n,v):
             if n in fields: setattr(cfg,n,v)
         setf("lcd_do_init", True)
         setf("lcd_rotate", self.rotate)
@@ -89,11 +105,12 @@ class LCDDirect:
             need_cfg=(list(inspect.signature(cls.__init__).parameters.keys())[1]=="cfg")
         except Exception: need_cfg=False
         if need_cfg:
-            cfg=self._build_cfg(m); 
+            cfg=self._build_cfg(m)
             if cfg is None: raise RuntimeError("Wymagany cfg")
             self._lcd=cls(cfg)
         else:
-            try: self._lcd=cls(lcd_do_init=True, lcd_rotate=self.rotate, lcd_spi_hz=self.spi_hz, lcd_bl_pin=self.bl_pin)
+            try:
+                self._lcd=cls(lcd_do_init=True, lcd_rotate=self.rotate, lcd_spi_hz=self.spi_hz, lcd_bl_pin=self.bl_pin)
             except TypeError:
                 try: self._lcd=cls(self.rotate)
                 except Exception: self._lcd=cls()
@@ -145,7 +162,6 @@ class LCDDirect:
             name, tag = want.split(":",1)
         else:
             name, tag = want, "pil"
-        # zbierz kandydatów o tej nazwie
         for target in self._targets():
             fn=getattr(target, name, None)
             if callable(fn):
@@ -156,8 +172,6 @@ class LCDDirect:
         return False
 
     def _scan_bind(self, img:Image.Image)->Optional[str]:
-        NAME_OK=re.compile(r"(img|image|frame|png|rgb|buf|buffer|disp|show|blit|push|draw|render|present|send|write|update|put)", re.I)
-        NAME_SKIP=re.compile(r"^(set_|get_|begin$|init$|close$|cleanup$|takeover|setspi)", re.I)
         PNG=to_png_bytes(img); RGB=to_rgb565_bytes(img); w,h=img.size
         tried=[]
         for target in self._targets():
@@ -228,12 +242,11 @@ def main():
     elif args.force_pil:
         force = "pil"
 
-
     fc = FaceController(size=args.size, fps=args.fps, idle=True)
     fc.set_expr(args.expr)
-    # Lazy init: LCDDirect tylko jeśli nie force-pil
+
+    # PIL-only: renderuj i wypisuj statystyki, bez LCD
     if force and force.lower() == "pil":
-        # PIL-only: renderuj i wypisuj statystyki, bez LCD
         n = 0; t0 = time.time(); last_stats = t0
         try:
             while True:
@@ -246,7 +259,7 @@ def main():
                 except Exception:
                     frame = fc.frame()
                     img = Image.open(BytesIO(frame)).convert("RGB")
-                _ = to_png_bytes(img)
+                _ = to_png_bytes(img)  # symulacja pracy
                 n += 1
                 if args.stats and (now - last_stats) >= 1.0:
                     dt = now - t0
@@ -256,10 +269,58 @@ def main():
         except KeyboardInterrupt:
             print("PIL loop finished.")
         finally:
-            t1 = time.time()
-            dt = t1 - t0
+            t1 = time.time(); dt = t1 - t0
             if n > 0:
                 print(f"[PIL] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n/dt:.2f}", flush=True)
             else:
                 print(f"[PIL] Brak wygenerowanych klatek.", flush=True)
+            if hasattr(fc, "close"):
+                try: fc.close()
+                except Exception: pass
         return
+
+    # LCD path
+    lcd = LCDDirect(rotate=args.rotate, size=args.size, spi_hz=args.spi_hz, bl_pin=args.bl_pin, force=force)
+    n = 0; t0 = time.time(); last_stats = t0
+    last_used = None
+    try:
+        while True:
+            now = time.time()
+            if args.secs is not None and (now - t0) >= args.secs:
+                print("[LCD] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
+                break
+            try:
+                img = fc.frame_image().convert("RGB")
+            except Exception:
+                frame = fc.frame()
+                img = Image.open(BytesIO(frame)).convert("RGB")
+
+            used = lcd.push(img)
+            if used != last_used:
+                print(f"[LCD] bound → {used}", flush=True)
+                last_used = used
+
+            n += 1
+            if args.stats and (now - last_stats) >= 1.0:
+                dt = now - t0
+                print(f"[stats] frames={n} fps~{(n/dt if dt>0 else 0):.1f} via LCD", flush=True)
+                last_stats = now
+            time.sleep(1.0 / max(1, args.fps))
+    except KeyboardInterrupt:
+        print("LCD loop finished.")
+    finally:
+        t1 = time.time(); dt = t1 - t0
+        if n > 0:
+            print(f"[LCD] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n/dt:.2f}", flush=True)
+        else:
+            print(f"[LCD] Brak wygenerowanych klatek.", flush=True)
+        # sprzątanie, jeśli sterownik ma metody kończące
+        for obj in (getattr(lcd, "_lcd", None), fc):
+            for name in ("close","cleanup","end","sleep","off"):
+                fn = getattr(obj, name, None)
+                if callable(fn):
+                    try: fn()
+                    except Exception: pass
+
+if __name__ == "__main__":
+    main()
