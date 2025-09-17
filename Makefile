@@ -236,21 +236,20 @@ face-direct:
 
 face-api-png:
 	@echo "== Face API → PNG (/tmp/face_api.png) =="
-	@$(PY) - <<'PY'
-from services.api_core import face_api
-res = face_api.render(backend="png", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.getenv("ROT","$(FACE_LCD_ROTATE)")), out="/tmp/face_api.png")
-print(res)
-PY
+	@printf '%s\n' \
+	"import os" \
+	"from services.api_core import face_api" \
+	"res = face_api.render(backend=\"png\", expr=os.getenv(\"EXPR\",\"happy\"), size=int(os.getenv(\"SIZE\",\"240\")), rotate=int(os.getenv(\"ROT\",\"$(FACE_LCD_ROTATE)\")), out=\"/tmp/face_api.png\")" \
+	"print(res)" | $(PY) -
 	@echo "PNG: /tmp/face_api.png"
 
 face-api-lcd:
 	@echo "== Face API → LCD (jedna klatka) =="
-	@$(PY) - <<'PY'
-import os
-from services.api_core import face_api
-res = face_api.render(backend="lcd", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.getenv("ROT","$(FACE_LCD_ROTATE)")), spi_hz=int(os.getenv("HZ","$(FACE_LCD_SPI_HZ)")))
-print(res)
-PY
+	@printf '%s\n' \
+	"import os" \
+	"from services.api_core import face_api" \
+	"res = face_api.render(backend=\"lcd\", expr=os.getenv(\"EXPR\",\"happy\"), size=int(os.getenv(\"SIZE\",\"240\")), rotate=int(os.getenv(\"ROT\",\"$(FACE_LCD_ROTATE)\")), spi_hz=int(os.getenv(\"HZ\",\"$(FACE_LCD_SPI_HZ)\")))" \
+	"print(res)" | $(PY) -
 
 # ───────────────────────────────────────────────
 # ŚRODOWISKO GRAFICZNE / REALVNC
