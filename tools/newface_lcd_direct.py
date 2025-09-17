@@ -16,16 +16,8 @@ add_paths()
 
 from apps.ui.face.controller import FaceController  # type: ignore
 
-def import_face_renderers_from_file_first():
-    tgt="apps.ui.face_renderers"; path=(ROOT/"_apps/ui/face_renderers.py").resolve()
-    if not path.exists(): return importlib.import_module(tgt)
-    if "apps" not in sys.modules:
-        mod=types.ModuleType("apps"); mod.__path__=[str((ROOT/"apps").resolve())]; sys.modules["apps"]=mod
-    if "apps.ui" not in sys.modules:
-        mod=types.ModuleType("apps.ui"); mod.__path__=[str((ROOT/"apps/ui").resolve()), str((ROOT/"_apps/ui").resolve())]; sys.modules["apps.ui"]=mod
-    spec=importlib.util.spec_from_file_location(tgt, str(path))
-    mod=importlib.util.module_from_spec(spec); sys.modules[tgt]=mod; spec.loader.exec_module(mod)  # type: ignore
-    return mod
+
+
 
 def to_png_bytes(img: Image.Image) -> bytes:
     buf = BytesIO(); img.save(buf,"PNG"); return buf.getvalue()
