@@ -1,6 +1,6 @@
 [Unit]
-Description=Rider Voice Assistant Service
-After=network-online.target sound.target
+Description=Rider Voice Web API
+After=network-online.target rider-voice.service
 Wants=network-online.target
 ConditionPathExists=/home/pi/robot
 
@@ -10,7 +10,7 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
 EnvironmentFile=-/etc/rider/voice.env
-ExecStart=/usr/bin/python3 -m apps.voice.cli listen --hotword off
+ExecStart=/usr/bin/python3 -m apps.voice.web --bind 0.0.0.0:8092
 Restart=on-failure
 RestartSec=3
 StandardOutput=journal
