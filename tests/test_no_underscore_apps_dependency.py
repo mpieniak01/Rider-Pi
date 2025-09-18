@@ -3,6 +3,8 @@ import re
 import pytest
 
 # Pliki, które nie mogą importować _apps
+
+# Pliki, które nie mogą importować apps (przykład migracji)
 CHECK_PATHS = [
     "apps/ui/face/",
     "services/api_core/face_api.py",
@@ -10,7 +12,9 @@ CHECK_PATHS = [
     "tools/face_cli.py",
 ]
 
-IMPORT_RE = re.compile(r"^\s*from _apps|^\s*import _apps|_apps/ui/face_renderers.py")
+# Zakaz importu legacy apps (przykład: można rozszerzyć na inne niedozwolone importy)
+IMPORT_RE = re.compile(r"^\s*from apps|^\s*import apps|apps/ui/face_renderers.py")
+
 
 def scan_file(path):
     with open(path) as f:
@@ -29,7 +33,8 @@ def collect_py_files(base):
                 out.append(os.path.join(root, f))
     return out
 
+
 @pytest.mark.parametrize("path", sum([collect_py_files(p) for p in CHECK_PATHS], []))
-def test_no_underscore_apps(path):
+def test_no_legacy_apps_import(path):
     res = scan_file(path)
-    assert res is None, f"Zabroniony import _apps w {path}:{res}"
+    assert res is None, f"Zabroniony import apps w {path}:{res}"

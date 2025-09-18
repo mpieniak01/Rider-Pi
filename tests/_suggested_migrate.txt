@@ -1,0 +1,1 @@
+tests/test_no_underscore_apps_dependency.py  — importuje _apps/legacy → MIGRACJA

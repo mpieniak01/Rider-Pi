@@ -14,7 +14,7 @@ SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service r
 # ───────────────────────────────────────────────
 
 
-.PHONY: lcd-on-hard lcd-off-hard lcd-reset-hard lcd-status
+.PHONY: lcd-on-hard lcd-off-hard lcd-reset-hard lcd-status tests-audit
 
 lcd-on-hard:
 	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; DC=$${FACE_LCD_DC_PIN:-25}; RST=$${FACE_LCD_RST_PIN:-27}; DEV=$${FACE_LCD_SPI_DEV:-/dev/spidev0.0}; HZ=$${FACE_LCD_SPI_HZ:-$(FACE_LCD_SPI_HZ)}; \
@@ -37,3 +37,6 @@ lcd-reset-hard:
 
 lcd-status:
 	@BL=$${FACE_LCD_BL_PIN:-13}; echo "BL pin=$$BL"; raspi-gpio get $$BL
+
+tests-audit:
+	bash ops/tests_audit.sh
