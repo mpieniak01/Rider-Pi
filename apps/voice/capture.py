@@ -44,7 +44,7 @@ class AudioCapture:
         self._proc: subprocess.Popen[bytes] | None = None
         self._stop = threading.Event()
 
-    def __enter__(self) -> "AudioCapture":
+    def __enter__(self) -> AudioCapture:
         self.start()
         return self
 
