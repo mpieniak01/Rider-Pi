@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import collections
 import math
-from typing import Callable
+from collections.abc import Callable
 
 try:
     import webrtcvad  # type: ignore

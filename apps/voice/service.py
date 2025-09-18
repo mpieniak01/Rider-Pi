@@ -7,7 +7,7 @@ import time
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from . import logging as voice_logging
 from .asr import ASRConfig, Transcript, transcribe
@@ -70,7 +70,7 @@ class VoiceService:
                 time.sleep(1.0)
         self.logger.event("service.listen.stop")
 
-    def once(self, *, speak: bool = True) -> Optional[VoiceResult]:
+    def once(self, *, speak: bool = True) -> VoiceResult | None:
         try:
             return self._cycle(speak=speak)
         except Exception as exc:

@@ -1,4 +1,4 @@
-"""Automatic speech recognition backends."""
+""""Automatic speech recognition backends."""
 from __future__ import annotations
 
 import io
@@ -17,14 +17,17 @@ class ASRError(RuntimeError):
 
 @dataclass
 class ASRConfig:
-    backend: str
-    model: str
-    language: str | None
+    # Domyślne wartości pozwalają uruchomić backend bez nadmiaru konfiguracji
+    backend: str = "openai"             # "openai" | "vosk" | (inne w przyszłości)
+    model: str | None = None            # nazwa/model backendu (np. dla OpenAI)
+    language: str | None = None         # preferowany język, np. "pl", "en", "auto"
+    lang: str | None = None             # alias akceptowany przez CLI/konfig (mapowany na language)
     temperature: float = 0.0
     prompt: str | None = None
     vosk_model_dir: str | None = None
     whisper_model: str | None = None
     input_encoding: str | None = None
+    timeout: float | None = None        # opcjonalny timeout requestu (sekundy)
 
 
 @dataclass
@@ -44,52 +47,114 @@ def _pcm_to_wav_bytes(audio: bytes, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
-def transcribe(audio: bytes, sample_rate: int, config: ASRConfig, logger: voice_logging.VoiceLogger | None = None) -> Transcript:
+def _norm_language(cfg: ASRConfig) -> str | None:
+    """
+    Spójne uzgadnianie nazwy języka:
+    - używa cfg.language lub aliasu cfg.lang,
+    - 'auto' traktujemy jako None (backend zdecyduje sam).
+    """
+    val = (cfg.language or cfg.lang or "").strip()
+    if not val or val.lower() == "auto":
+        return None
+    return val
+
+
+def transcribe(
+    audio: bytes,
+    sample_rate: int,
+    config: ASRConfig,
+    logger: voice_logging.VoiceLogger | None = None,
+) -> Transcript:
     backend = (config.backend or "stub").lower()
+    logger = logger or voice_logging.get_logger("voice.asr")
+
     if backend == "openai":
-        return _openai_transcribe(audio, sample_rate, config, logger or voice_logging.get_logger("voice.asr"))
+        return _openai_transcribe(
+            audio,
+            sample_rate,
+            config,
+            logger,
+            language=_norm_language(config),
+        )
+
     if backend == "vosk":
-        return _vosk_transcribe(audio, sample_rate, config, logger or voice_logging.get_logger("voice.asr"))
+        return _vosk_transcribe(
+            audio,
+            sample_rate,
+            config,
+            logger,
+            language=_norm_language(config),
+        )
+
     raise ASRError(f"Unsupported ASR backend: {backend}")
 
 
-def _openai_transcribe(audio: bytes, sample_rate: int, config: ASRConfig, logger: voice_logging.VoiceLogger) -> Transcript:
+def _openai_transcribe(
+    audio: bytes,
+    sample_rate: int,
+    config: ASRConfig,
+    logger: voice_logging.VoiceLogger,
+    *,
+    language: str | None,
+) -> Transcript:
     try:
         from openai import OpenAI
     except Exception as exc:  # pragma: no cover - optional dependency
         raise ASRError(f"OpenAI SDK unavailable: {exc}") from exc
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ASRError("OPENAI_API_KEY not configured")
+
     client = OpenAI(api_key=api_key)
+
     wav_bytes = _pcm_to_wav_bytes(audio, sample_rate)
     buffer = io.BytesIO(wav_bytes)
-    buffer.name = "input.wav"
+    buffer.name = "input.wav"  # OpenAI SDK lubi nazwę pliku przy file=...
+
+    # Uwaga: w nowszym SDK OpenAI parametr 'language' jest wspierany przez modele transkrypcyjne
     response = client.audio.transcriptions.create(
-        model=config.model,
+        model=(config.model or "gpt-4o-mini-transcribe"),
         file=buffer,
-        language=config.language,
+        language=language,                 # None => auto
         prompt=config.prompt,
         temperature=config.temperature,
+        timeout=config.timeout,            # może być None
     )
+
     text = getattr(response, "text", None) or ""
-    language = getattr(response, "language", None) or config.language or ""
-    return Transcript(text=text.strip(), language=language, raw=response.to_dict() if hasattr(response, "to_dict") else response)
+    lang_out = getattr(response, "language", None) or (language or "") or ""
+    return Transcript(
+        text=text.strip(),
+        language=lang_out,
+        raw=response.to_dict() if hasattr(response, "to_dict") else response,
+    )
 
 
-def _vosk_transcribe(audio: bytes, sample_rate: int, config: ASRConfig, logger: voice_logging.VoiceLogger) -> Transcript:
+def _vosk_transcribe(
+    audio: bytes,
+    sample_rate: int,
+    config: ASRConfig,
+    logger: voice_logging.VoiceLogger,
+    *,
+    language: str | None,
+) -> Transcript:
     try:
         import vosk  # type: ignore
     except Exception as exc:  # pragma: no cover - optional dependency
         raise ASRError(f"Vosk backend unavailable: {exc}") from exc
+
     model_dir = config.vosk_model_dir or os.getenv("VOSK_MODEL_DIR")
     if not model_dir or not os.path.isdir(model_dir):
         raise ASRError("Vosk model directory missing; set vosk_model_dir")
+
     logger.event("asr.vosk.load", model_dir=model_dir)
     model = vosk.Model(model_dir)
     rec = vosk.KaldiRecognizer(model, sample_rate)
     rec.AcceptWaveform(audio)
     result = json.loads(rec.Result())
+
     text = (result.get("text") or "").strip()
-    language = config.language or result.get("language", "") or ""
-    return Transcript(text=text, language=language or "")
+    # Vosk zwykle nie zwraca jawnego 'language'; zachowaj preferencję wejściową
+    lang_out = language or result.get("language", "") or ""
+    return Transcript(text=text, language=lang_out)

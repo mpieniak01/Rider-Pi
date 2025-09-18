@@ -16,9 +16,10 @@ provided to extract typed values with defaults.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 import yaml
 

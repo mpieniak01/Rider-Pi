@@ -5,8 +5,9 @@ import argparse
 import io
 import time
 import wave
+from collections.abc import Iterable
 from copy import deepcopy
-from typing import Any, Iterable
+from typing import Any
 
 from flask import Flask, Response, jsonify, request
 

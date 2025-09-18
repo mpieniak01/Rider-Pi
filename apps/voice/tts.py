@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 import wave
 from dataclasses import dataclass
-from typing import Tuple
 
 import requests
 
@@ -29,7 +28,7 @@ class TTSConfig:
     piper_config: str | None = None
 
 
-def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None) -> Tuple[bytes, int, str]:
+def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None) -> tuple[bytes, int, str]:
     backend = (config.backend or "openai").lower()
     logger = logger or voice_logging.get_logger("voice.tts")
     if backend == "openai":
@@ -39,7 +38,7 @@ def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger |
     raise TTSError(f"Unsupported TTS backend: {backend}")
 
 
-def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> Tuple[bytes, int, str]:
+def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise TTSError("OPENAI_API_KEY not configured")
@@ -49,10 +48,6 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
         "voice": config.voice,
         "input": text,
         "format": config.format,
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
     }
     resp = requests.post(url, json=payload, timeout=60)
     if resp.status_code >= 400:
@@ -66,7 +61,7 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     return audio, sample_rate, config.format
 
 
-def _tts_piper(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> Tuple[bytes, int, str]:
+def _tts_piper(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
     if not config.piper_model:
         raise TTSError("piper_model not configured")
     output = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
