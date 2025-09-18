@@ -1,0 +1,26 @@
+name: tests-audit
+on:
+  pull_request:
+    paths:
+      - 'ops/tests_audit.sh'
+      - 'tests/**'
+      - 'Makefile'
+      - 'pytest.ini'
+  workflow_dispatch: {}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip && pip install pyflakes
+      - run: bash ops/tests_audit.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tests-audit
+          path: |
+            tests/_audit_report.csv
+            tests/_suggested_delete.txt
+            tests/_suggested_migrate.txt
