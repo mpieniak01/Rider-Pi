@@ -448,7 +448,7 @@ except Exception:
     _GPIO = None
 
 _DEF_SPI   = os.getenv("FACE_LCD_SPI_DEV", "/dev/spidev0.0")
-_DEF_HZ    = int(os.getenv("FACE_LCD_SPI_HZ", "32000000") or 0) or 32000000
+_DEF_HZ    = int(os.getenv("FACE_LCD_SPI_HZ", "48000000") or 0) or 32000000
 _DEF_MODE  = int(os.getenv("FACE_SPI_MODE", "0") or 0)
 _DEF_DC    = int(os.getenv("FACE_LCD_DC_PIN", "25") or 25)
 _DEF_RST   = int(os.getenv("FACE_LCD_RST_PIN", "27") or 27)
