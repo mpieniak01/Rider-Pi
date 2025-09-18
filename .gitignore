@@ -126,3 +126,12 @@ build/
 *.o
 __pycache__/
 *.pyc
+build/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.so
+fast565.egg-info/
+*.dist-info/
+.pytest_cache/
