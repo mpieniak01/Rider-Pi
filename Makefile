@@ -243,18 +243,6 @@ face-api-png:
 	"print(res)" | $(PY) -
 	@echo "PNG: /tmp/face_api.png"
 
-face-api-lcd:
-	@echo "== Face API → LCD (jedna klatka) =="
-	@printf '%s\n' \
-	"import os" \
-	"from services.api_core import face_api" \
-	"res = face_api.render(backend=\"lcd\", expr=os.getenv(\"EXPR\",\"happy\"), size=int(os.getenv(\"SIZE\",\"240\")), rotate=int(os.getenv(\"ROT\",\"$(FACE_LCD_ROTATE)\")), spi_hz=int(os.getenv(\"HZ\",\"$(FACE_LCD_SPI_HZ)\")))" \
-	"print(res)" | $(PY) -
-
-# ───────────────────────────────────────────────
-# ŚRODOWISKO GRAFICZNE / REALVNC
-# :5900 = vncserver-x11-serviced (wymaga lightdm/gdm3)
-# :5901 = vncserver-virtuald (wirtualny pulpit, bez X11)
 .PHONY: x-on x-off vnc-virtual-on vnc-virtual-off gfx-status
 x-on:
 	@echo "== Włączam tryb graficzny + RealVNC (X11, :5900) =="
@@ -326,17 +314,7 @@ face-direct-raw:
 	  --expr $${EXPR:-happy} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \\
 	  --fps $${FPS:-20} --stats $${SECS:+--secs $${SECS}} --force push_frame:rgb565_3
 
+.PHONY: face-api-lcd
 face-api-lcd:
 	@echo "== Face API → LCD (jedna klatka) =="
-	@ROT=$(FACE_LCD_ROTATE) HZ=$(FACE_LCD_SPI_HZ) $(PY) - <<'PY'
-import os
-from services.api_core import face_api
-res = face_api.render(
-	backend="lcd",
-	expr=os.getenv("EXPR","happy"),
-	size=int(os.getenv("SIZE","240")),
-	rotate=int(os.getenv("ROT","$(FACE_LCD_ROTATE)")),
-	spi_hz=int(os.getenv("HZ","$(FACE_LCD_SPI_HZ)")),
-)
-print(res)
-PY
+	@ROT=$(FACE_LCD_ROTATE) HZ=$(FACE_LCD_SPI_HZ) $(PY) -c 'import os; from services.api_core import face_api; print(face_api.render(backend="lcd", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.environ.get("ROT","270")), spi_hz=int(os.environ.get("HZ","32000000"))))'
