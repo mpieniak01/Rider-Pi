@@ -332,3 +332,36 @@ face-bench:
 		  | sed -n '/^\[stats\]/p;/^\\[LCD] Statystyki/p'; \
 	done
 	@echo "Tip: możesz nadpisać:  HZ_LIST=\"32000000 48000000\"  oraz SECS=6"
+
+.PHONY: lcd-recover
+lcd-recover:
+	-@$(MAKE) vendor-kill || true
+	-@$(MAKE) preview-off || true
+	-@$(MAKE) vision-off  || true
+	-@$(MAKE) stop-all    || true
+	-@$(SUDO) -E $(PY) $(ROOT)/tools/lcdctl.py off   || true
+	@sleep 0.2
+	-@$(SUDO) -E $(PY) $(ROOT)/tools/lcdctl.py reset || true
+	@sleep 0.2
+	-@$(SUDO) -E $(PY) $(ROOT)/tools/lcdctl.py on    || true
+	@$(PY) $(ROOT)/tools/lcd_presenter_clear.py      || true
+
+.PHONY: lcd-on-hard lcd-off-hard lcd-reset-hard lcd-status
+
+lcd-on-hard:
+	@BL=${FACE_LCD_BL_PIN:-13}; AH=${FACE_LCD_BL_ACTIVE_HIGH:-1}; DC=${FACE_LCD_DC_PIN:-25}; RST=${FACE_LCD_RST_PIN:-27}; DEV=${FACE_LCD_SPI_DEV:-/dev/spidev0.0}; HZ=${FACE_LCD_SPI_HZ:-$(FACE_LCD_SPI_HZ)}; \
+	$(SUDO) -E $(PY) $(ROOT)/tools/lcdctl.py on \
+	  --bl $$BL --bl-ah $$AH --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ
+
+lcd-off-hard:
+	@BL=${FACE_LCD_BL_PIN:-13}; AH=${FACE_LCD_BL_ACTIVE_HIGH:-1}; DC=${FACE_LCD_DC_PIN:-25}; RST=${FACE_LCD_RST_PIN:-27}; DEV=${FACE_LCD_SPI_DEV:-/dev/spidev0.0}; HZ=${FACE_LCD_SPI_HZ:-$(FACE_LCD_SPI_HZ)}; \
+	$(SUDO) -E $(PY) $(ROOT)/tools/lcdctl.py off \
+	  --bl $$BL --bl-ah $$AH --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ
+
+lcd-reset-hard:
+	@DC=${FACE_LCD_DC_PIN:-25}; RST=${FACE_LCD_RST_PIN:-27}; DEV=${FACE_LCD_SPI_DEV:-/dev/spidev0.0}; HZ=${FACE_LCD_SPI_HZ:-$(FACE_LCD_SPI_HZ)}; \
+	$(SUDO) -E $(PY) $(ROOT)/tools/lcdctl.py reset \
+	  --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ
+
+lcd-status:
+	@BL=${FACE_LCD_BL_PIN:-13}; echo "BL pin=$$BL"; raspi-gpio get $$BL || true
