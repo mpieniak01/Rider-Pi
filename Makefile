@@ -13,6 +13,30 @@ SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service r
 
 # ───────────────────────────────────────────────
 
+VOICE_BIND ?= 127.0.0.1:8092
+
+.PHONY: voice-run voice-ptt voice-once voice-asr-file voice-tts voice-web
+
+voice-run:
+	$(PY) -m apps.voice.cli listen $(VOICE_ARGS)
+
+voice-ptt:
+	$(PY) -m apps.voice.cli ptt $(VOICE_ARGS)
+
+voice-once:
+	$(PY) -m apps.voice.cli once $(VOICE_ARGS)
+
+voice-asr-file:
+	@if [ -z "$(FILE)" ]; then echo "Usage: make voice-asr-file FILE=path.wav"; exit 1; fi
+	$(PY) -m apps.voice.cli asr --file "$(FILE)" $(VOICE_ARGS)
+
+voice-tts:
+	@if [ -z "$(TEXT)" ]; then echo "Usage: make voice-tts TEXT='Hello'"; exit 1; fi
+	$(PY) -m apps.voice.cli tts --text "$(TEXT)" --play $(VOICE_ARGS)
+
+voice-web:
+	$(PY) -m apps.voice.web --bind $(VOICE_BIND) $(VOICE_ARGS)
+
 
 .PHONY: lcd-on-hard lcd-off-hard lcd-reset-hard lcd-status tests-audit
 

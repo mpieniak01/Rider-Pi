@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+"""Entry point kept for backwards compatibility."""
 
-from .service import main  # noqa: I001
+from .cli import main
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
