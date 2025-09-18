@@ -317,3 +317,13 @@ face-direct-raw:
 	$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
 	  --expr $${EXPR:-happy} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \
 	  --fps $${FPS:-20} --stats $${SECS:+--secs $${SECS}} --force push_frame:rgb565_3
+
+.PHONY: face-testcard face-api-png
+
+face-testcard:
+	@echo "== LCD testcard (kolorowe pasy) =="
+	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) -E $(PY) $(ROOT)/tools/lcd_presenter_testcard.py --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ)
+
+face-api-png:
+	@echo "== Face API → PNG (/tmp/face_api.png) =="
+	@ROT=$(FACE_LCD_ROTATE) $(PY) -c 'import os; from services.api_core import face_api; print(face_api.render(backend="png", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.environ.get("ROT","270")), out="/tmp/face_api.png"))'
