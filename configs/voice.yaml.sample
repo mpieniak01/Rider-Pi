@@ -1,0 +1,64 @@
+# Rider Voice configuration sample
+capture:
+  backend: pulse
+  device: null
+  sample_rate: 16000
+  channels: 1
+  frame_ms: 30
+  buffer_seconds: 5
+vad:
+  enabled: true
+  mode: 3
+  frame_ms: 30
+  tail_ms: 350
+  max_len_ms: 4500
+  energy_gate_dbfs: -36.0
+hotword:
+  enabled: false
+  engine: ptt
+  model: null
+  sensitivity: 0.6
+  auto_gain: 1.0
+asr:
+  backend: vosk
+  model: gpt-4o-mini-transcribe
+  language: pl
+  temperature: 0.0
+  prompt: null
+  vosk_model_dir: models/vosk
+nlu:
+  chat_threshold: 0.35
+  command_keywords:
+    stop: ["stop", "stój", "zatrzymaj"]
+    forward: ["go forward", "naprzód"]
+    back: ["go back", "wstecz"]
+    left: ["turn left", "w lewo"]
+    right: ["turn right", "w prawo"]
+  llm_model: gpt-4o-mini
+chat:
+  backend: openai
+  model: gpt-4o-mini
+  system_prompt: "You are Rider-Pi, a friendly voice assistant."
+  max_history: 4
+tts:
+  backend: piper
+  model: gpt-4o-mini-tts
+  voice: pl
+  format: wav
+  piper_model: /home/pi/models/piper/pl_PL-voice.onnx
+playback:
+  backend: pulse
+  alsa_device: default
+  volume: 100
+  ding:
+    enabled: true
+    path: assets/sounds/ding.wav
+service:
+  save_audio: false
+  recordings_dir: data/recordings
+  history_size: 20
+web:
+  host: 127.0.0.1
+  port: 8092
+logging:
+  level: INFO
