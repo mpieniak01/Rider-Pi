@@ -313,16 +313,11 @@ health:
 -include ops/agent/Makefile.agent
 
 # RAW fastpath helper
-.PHONY: face-direct-raw
-face-direct-raw:
-	@echo "== Face direct RAW (rgb565_3) =="
-	@FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) \
-	$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
-		--expr $${EXPR:-neutral} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \
-		--fps $${FPS:-30} --secs $${SECS:-5} --stats --force push_frame:rgb565_3
+print(res)
+PY
 
 # ───────────────────────────────────────────────
-# PATCH: face helpers (wymusza rotate=$(FACE_LCD_ROTATE))
+# FACE helpers — wersja ustalająca rotację z FACE_LCD_ROTATE
 .PHONY: face-testcard face-direct-raw face-api-lcd
 
 face-testcard:
@@ -331,7 +326,7 @@ face-testcard:
 
 # Użycie: make face-direct-raw EXPR=happy SECS=5
 face-direct-raw:
-	@echo "== Face direct RAW (rgb565_3) ==" 
+	@echo "== Face direct RAW (rgb565_3) =="
 	@echo "[make] rotate=$(FACE_LCD_ROTATE) hz=$(FACE_LCD_SPI_HZ)"
 	@FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) \
 	$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
