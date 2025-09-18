@@ -135,3 +135,11 @@ __pycache__/
 fast565.egg-info/
 *.dist-info/
 .pytest_cache/
+*.so
+build/
+dist/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
