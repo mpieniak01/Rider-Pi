@@ -11,7 +11,6 @@ import threading
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from . import logging as voice_logging
 
@@ -28,7 +27,7 @@ class PlaybackConfig:
     ding: dict[str, object]
 
 
-def _choose_player(backend: str) -> Optional[str]:
+def _choose_player(backend: str) -> str | None:
     if backend == "pulse":
         return shutil.which("paplay") or shutil.which("aplay")
     if backend == "alsa":

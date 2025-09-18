@@ -1,10 +1,10 @@
 """Keyword spotting and hotword helpers."""
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
 import time
-import contextlib
 from dataclasses import dataclass
 
 from . import logging as voice_logging

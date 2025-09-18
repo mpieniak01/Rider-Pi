@@ -1,8 +1,7 @@
 """Chat backends for conversational responses."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Tuple
+from dataclasses import dataclass
 
 from . import logging as voice_logging
 
@@ -29,9 +28,9 @@ class ChatSession:
     def __init__(self, config: ChatConfig, logger: voice_logging.VoiceLogger | None = None):
         self.config = config
         self.logger = logger or voice_logging.get_logger("voice.chat")
-        self._history: List[Message] = []
+        self._history: list[Message] = []
 
-    def ask(self, text: str) -> Tuple[str, List[Message]]:
+    def ask(self, text: str) -> tuple[str, list[Message]]:
         backend = (self.config.backend or "echo").lower()
         if backend == "openai":
             reply = self._ask_openai(text)

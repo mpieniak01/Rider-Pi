@@ -1,4 +1,4 @@
-"""Command line interface for the voice assistant."""
+""""Command line interface for the voice assistant."""
 from __future__ import annotations
 
 import argparse
@@ -7,8 +7,9 @@ import subprocess
 import sys
 import time
 import wave
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from . import config as voice_config
 from . import logging as voice_logging
@@ -39,6 +40,9 @@ def _build_overrides(args) -> dict[str, Any]:
         overrides = _merge(overrides, voice_config.override_from_pairs("playback", args.playback))
     if getattr(args, "service", None):
         overrides = _merge(overrides, voice_config.override_from_pairs("service", args.service))
+
+    # --- global flags translated to overrides ---
+    # hotword / ptt
     hotword = getattr(args, "hotword", None)
     if hotword:
         if hotword == "off":
@@ -49,12 +53,16 @@ def _build_overrides(args) -> dict[str, Any]:
             overrides = _merge(overrides, {"hotword": {"enabled": True}})
     if getattr(args, "ptt", False):
         overrides = _merge(overrides, {"hotword": {"enabled": True, "engine": "ptt"}})
+
+    # ding
     ding = getattr(args, "ding", None)
     if ding:
         overrides = _merge(overrides, {"playback": {"ding": {"enabled": ding == "on"}}})
+
+    # save-audio
     save_audio = getattr(args, "save_audio", None)
     if save_audio:
-        values = {}
+        values: dict[str, Any] = {}
         for token in save_audio:
             if token in ("on", "off"):
                 values["save_audio"] = token == "on"
@@ -62,9 +70,17 @@ def _build_overrides(args) -> dict[str, Any]:
                 key, val = token.split("=", 1)
                 values[key.replace("-", "_")] = val
         overrides = _merge(overrides, {"service": values})
+
+    # log level
     level = getattr(args, "log_level", None)
     if level:
         overrides = _merge(overrides, {"logging": {"level": level}})
+
+    # --- NEW: language hint (global) ---
+    lang = getattr(args, "lang", None)
+    if lang:
+        overrides = _merge(overrides, {"asr": {"lang": lang}})
+
     return overrides
 
 
@@ -138,6 +154,9 @@ def cmd_diag(args) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Rider voice assistant")
     parser.add_argument("--config", help="Path to config file", default=None)
+    # NEW: global ASR language hint
+    parser.add_argument("--lang", type=str, help="ASR language hint (pl|en|auto)", default=None)
+
     sub = parser.add_subparsers(dest="cmd")
 
     listen = sub.add_parser("listen", help="Continuous mode")

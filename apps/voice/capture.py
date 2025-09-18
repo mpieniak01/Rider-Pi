@@ -1,12 +1,12 @@
-"""Audio capture utilities for the voice assistant."""
+""""Audio capture utilities for the voice assistant."""
 from __future__ import annotations
 
 import contextlib
 import shlex
 import subprocess
 import threading
+from collections.abc import Generator
 from dataclasses import dataclass
-from typing import Generator, Optional
 
 from . import logging as voice_logging
 
@@ -19,16 +19,20 @@ class CaptureError(RuntimeError):
 
 @dataclass
 class CaptureConfig:
-    sample_rate: int
-    frame_ms: int
-    backend: str
-    device: str | None
-    buffer_seconds: int
-    command: str | None = None
+    # Bezpieczne domyślne wartości
+    sample_rate: int = 16000
+    frame_ms: int = 20
+    backend: str = "pulse"          # "pulse" | "alsa" | "command"
+    device: str | None = None       # np. "hw:1,0" dla ALSA lub nazwa źródła Pulse
+    buffer_seconds: int = 2
+    channels: int = 1               # liczba kanałów (1 = mono)
+    command: str | None = None      # tylko dla backend="command"
 
     @property
     def frame_bytes(self) -> int:
-        return int(self.sample_rate * self.frame_ms / 1000) * _SAMPLE_WIDTH
+        # liczba próbek w ramce * szerokość próbki * liczba kanałów
+        samples_per_frame = int(self.sample_rate * self.frame_ms / 1000)
+        return samples_per_frame * _SAMPLE_WIDTH * max(1, int(self.channels))
 
 
 class AudioCapture:
@@ -79,59 +83,67 @@ class AudioCapture:
     def _build_command(self) -> list[str]:
         cfg = self.config
         backend = cfg.backend.lower()
+
         if backend == "command" and cfg.command:
             return shlex.split(cfg.command)
+
         if backend == "pulse":
             cmd = [
                 "parec",
                 "--raw",
                 "--format=s16le",
                 f"--rate={cfg.sample_rate}",
-                "--channels=1",
+                f"--channels={max(1, int(cfg.channels))}",
             ]
             if cfg.device:
                 cmd.append(f"--device={cfg.device}")
             return cmd
+
         if backend == "alsa":
             device = cfg.device or "default"
             return [
                 "arecord",
                 "-q",
-                "-f",
-                "S16_LE",
-                "-c",
-                "1",
-                "-r",
-                str(cfg.sample_rate),
-                "-D",
-                device,
+                "-f", "S16_LE",
+                "-c", str(max(1, int(cfg.channels))),
+                "-r", str(cfg.sample_rate),
+                "-D", device,
             ]
+
         raise CaptureError(f"Unsupported capture backend: {backend}")
 
     def frames(self) -> Generator[bytes, None, None]:
-        proc = self._ensure_proc()
-        frame_size = self.config.frame_bytes
-        while not self._stop.is_set():
-            chunk = proc.stdout.read(frame_size)  # type: ignore[union-attr]
-            if not chunk:
-                break
-            yield chunk
-
-    def record(self, duration_s: float) -> bytes:
-        """Record raw PCM audio for a fixed duration."""
-
-        frame_count = max(1, int(duration_s * 1000 / self.config.frame_ms))
+        """
+        Zwraca *dokładnie pełne ramki* (frame_bytes).
+        Buforuje odczyt z potoku, żeby VAD nie dostawał za krótkich bloków.
+        """
         proc = self._ensure_proc()
         frame_size = self.config.frame_bytes
         buf = bytearray()
-        for _ in range(frame_count):
-            chunk = proc.stdout.read(frame_size)  # type: ignore[union-attr]
+        # czytamy większymi porcjami z pipe'a; minimum to rozmiar ramki
+        read_chunk = max(frame_size, 4096)
+        while not self._stop.is_set():
+            chunk = proc.stdout.read(read_chunk)  # type: ignore[union-attr]
             if not chunk:
+                # spuść pełne ramki, które ewentualnie zostały w buforze
+                while len(buf) >= frame_size:
+                    yield bytes(buf[:frame_size])
+                    del buf[:frame_size]
                 break
             buf.extend(chunk)
+            while len(buf) >= frame_size:
+                yield bytes(buf[:frame_size])
+                del buf[:frame_size]
+
+    def record(self, duration_s: float) -> bytes:
+        """Record raw PCM audio for a fixed duration."""
+        frame_count = max(1, int(duration_s * 1000 / self.config.frame_ms))
+        buf = bytearray()
+        for _, frame in zip(range(frame_count), self.frames()):
+            buf.extend(frame)
         return bytes(buf)
 
-    def record_with_vad(self, vad, *, max_frames: Optional[int] = None) -> bytes:
+    def record_with_vad(self, vad, *, max_frames: int | None = None) -> bytes:
         frames: list[bytes] = []
         for chunk in self.frames():
             frames.append(chunk)
