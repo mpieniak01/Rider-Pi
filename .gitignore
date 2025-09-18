@@ -115,3 +115,8 @@ services/**/*.bak-*
 # local backups
 services/**/face_api.py.bak-*
 services/**/api_server.py.bak-*
+fast565.egg-info/
+build/
+main
+setup.py
+fast565.c

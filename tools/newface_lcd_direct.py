@@ -25,9 +25,46 @@ NAME_SKIP= re.compile(r"^(set_|get_|begin$|init$|close$|cleanup$|takeover|setspi
 def to_png_bytes(img: Image.Image) -> bytes:
     buf = BytesIO(); img.save(buf,"PNG"); return buf.getvalue()
 
+
+
+_ENC_DBG_SHOWN = {"done": False}
+def _enc_dbg(msg):
+    if not _ENC_DBG_SHOWN["done"]:
+        print(f"[enc] {msg}", flush=True)
+        _ENC_DBG_SHOWN["done"] = True
+
+def _bench_rgb565_encoder(img):
+    t0=time.time(); _=to_rgb565_bytes(img); t1=time.time()
+    return (t1-t0)*1000.0
+
 def to_rgb565_bytes(img: Image.Image) -> bytes:
-    im = img.convert("RGB"); w,h = im.size; px=im.load()
-    out=bytearray(w*h*2); i=0
+    """Fast RGB->RGB565 (BE): fast565 C ext → NumPy → fallback."""
+    im = img.convert("RGB")
+    w, h = im.size
+    # 0) C extension (super fast)
+    try:
+        import fast565
+        data = im.tobytes()  # RGB24 from Pillow in C, bardzo szybko
+        _enc_dbg("fast565 C extension")
+        return fast565.pack_rgb24_to_rgb565_be(data, w, h)
+    except Exception:
+        pass
+    # 1) NumPy vector (może być wolne na Bullseye)
+    try:
+        import numpy as np
+        arr = np.asarray(im, dtype=np.uint8)
+        r = (arr[...,0].astype(np.uint16) >> 3)
+        g = (arr[...,1].astype(np.uint16) >> 2)
+        b = (arr[...,2].astype(np.uint16) >> 3)
+        v = (r<<11) | (g<<5) | b
+        _enc_dbg("NumPy vectorized path")
+        return v.byteswap().tobytes()
+    except Exception:
+        pass
+    # 2) Fallback loop (wolno)
+    _enc_dbg("SLOW fallback loop")
+    px = im.load()
+    out = bytearray(w*h*2); i=0
     for y in range(h):
         for x in range(w):
             r,g,b = px[x,y]
@@ -198,12 +235,34 @@ class LCDDirect:
 
     def push(self, pil_img:Image.Image)->str:
         img=self._prep(pil_img)
+
+        # jeśli nic nie zbindowane – znajdź
         if self._push is None:
             if not self._force_bind(img):
                 used=self._scan_bind(img)
                 if not used: raise RuntimeError("Nie znalazłem metody pushowania.")
                 print("LCD(direct): using", used, flush=True)
+
         target,name,tag=self._push
+
+        # AUTO-FALLBACK: jeśli nie wymuszono --force i mamy RAW (rgb565_*),
+        # a encoder RGB565 jest powolny (>30 ms dla 240x320), przełącz na PIL.
+        if (self.force is None) and tag.startswith("rgb565"):
+            try:
+                probe_img = img if img.size==(240,320) else img.resize((240,320))
+            except Exception:
+                probe_img = img
+            enc_ms = _bench_rgb565_encoder(probe_img)
+            if enc_ms > 30.0:
+                # spróbuj znaleźć wariant PIL na tym samym obiekcie
+                for cand in ("ShowImage","show","present","blit","display","update"):
+                    fn = getattr(target, cand, None)
+                    if callable(fn):
+                        self._push=(target, cand, "pil")
+                        name, tag = cand, "pil"
+                        print(f"[auto] encoder {enc_ms:.1f} ms → switch to {type(target).__name__}.{name}[{tag}]", flush=True)
+                        break
+
         fn=getattr(target,name)
         if tag.startswith("pil"):
             fn(img)
@@ -219,6 +278,7 @@ class LCDDirect:
             elif tag=="rgb565_kw2": fn(buf=RGB)
             else: fn(w,h,RGB)
         return f"{type(target).__name__}.{name}[{tag}]"
+
 
 def main():
     ap = argparse.ArgumentParser()
