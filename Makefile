@@ -312,25 +312,18 @@ health:
 # Agent targets (do not remove)
 -include ops/agent/Makefile.agent
 
-# RAW fastpath helper
-print(res)
-PY
-
-# ───────────────────────────────────────────────
-# FACE helpers — wersja ustalająca rotację z FACE_LCD_ROTATE
 .PHONY: face-testcard face-direct-raw face-api-lcd
 
 face-testcard:
-	@echo "== LCD testcard (kolorowe pasy) =="
+	@echo "== LCD testcard (kolorowe pasy) ==" 
 	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) -E $(PY) $(ROOT)/tools/lcd_presenter_testcard.py --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ)
 
-# Użycie: make face-direct-raw EXPR=happy SECS=5
 face-direct-raw:
-	@echo "== Face direct RAW (rgb565_3) =="
+	@echo "== Face direct RAW (rgb565_3) ==" 
 	@echo "[make] rotate=$(FACE_LCD_ROTATE) hz=$(FACE_LCD_SPI_HZ)"
-	@FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) \
-	$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
-	  --expr $${EXPR:-happy} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \
+	@FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) \\
+	$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \\
+	  --expr $${EXPR:-happy} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \\
 	  --fps $${FPS:-20} --stats $${SECS:+--secs $${SECS}} --force push_frame:rgb565_3
 
 face-api-lcd:
@@ -339,11 +332,11 @@ face-api-lcd:
 import os
 from services.api_core import face_api
 res = face_api.render(
-    backend="lcd",
-    expr=os.getenv("EXPR","happy"),
-    size=int(os.getenv("SIZE","240")),
-    rotate=int(os.getenv("ROT","$(FACE_LCD_ROTATE)")),
-    spi_hz=int(os.getenv("HZ","$(FACE_LCD_SPI_HZ)")),
+	backend="lcd",
+	expr=os.getenv("EXPR","happy"),
+	size=int(os.getenv("SIZE","240")),
+	rotate=int(os.getenv("ROT","$(FACE_LCD_ROTATE)")),
+	spi_hz=int(os.getenv("HZ","$(FACE_LCD_SPI_HZ)")),
 )
 print(res)
 PY
