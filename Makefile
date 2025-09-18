@@ -317,3 +317,18 @@ face-testcard:
 face-api-png:
 	@echo "== Face API → PNG (/tmp/face_api.png) =="
 	@ROT=$(FACE_LCD_ROTATE) $(PY) -c 'import os; from services.api_core import face_api; print(face_api.render(backend="png", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.environ.get("ROT","270")), out="/tmp/face_api.png"))'
+
+# ───────────────────────────────────────────────
+# FACE benchmark (krótki test FPS)
+.PHONY: face-bench
+face-bench:
+	@echo "== FACE BENCH =="
+	@for HZ in $${HZ_LIST:-32000000 48000000 64000000}; do \
+		echo "--- HZ=$$HZ ROT=$(FACE_LCD_ROTATE) (secs=$${SECS:-4}) ---"; \
+		FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$$HZ \
+		$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
+		  --expr happy --rotate $(FACE_LCD_ROTATE) --spi-hz $$HZ \
+		  --secs $${SECS:-4} --stats --force push_frame:rgb565_3 \
+		  | sed -n '/^\[stats\]/p;/^\\[LCD] Statystyki/p'; \
+	done
+	@echo "Tip: możesz nadpisać:  HZ_LIST=\"32000000 48000000\"  oraz SECS=6"
