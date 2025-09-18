@@ -2,7 +2,7 @@
 Description=Rider-Pi API (HTTP/SSE)
 After=network-online.target
 Wants=network-online.target
-# (opcjonalnie, gdy masz te usługi w systemie)
+# (opcjonalnie)
 # After=rider-broker.service rider-web-bridge.service
 # Wants=rider-broker.service rider-web-bridge.service
 StartLimitIntervalSec=30
@@ -16,12 +16,28 @@ Environment=SAFE_MAX_DURATION=0.25
 Environment=WEB_BRIDGE_TIMEOUT=0.8
 WorkingDirectory=/home/pi/robot
 
-# Zewnętrzne pliki z env (nadpisują Environment= poniżej, jeśli istnieją)
+# Zewnętrzne pliki ENV (jeśli istnieją – nadpiszą pola niżej)
 EnvironmentFile=-/etc/default/rider
 EnvironmentFile=-/etc/default/rider-api
 
-# Serwer API
+# Serwer API (8080)
+Environment=API_HOST=0.0.0.0
+Environment=API_PORT=8080
 ExecStart=/usr/bin/python3 -u -m services.api_server
+
+# Proxy do mostka ruchu (8081)
+#Environment=WEB_BRIDGE_URL=http://127.0.0.1:8081
+Environment=WEB_BRIDGE_URL=
+
+# Wyłącz telemetrię RO po UART z poziomu API (unikamy kolizji)
+Environment=ENABLE_XGO_RO=0
+# Environment=XGO_RO_PORT=/dev/ttyUSB0
+
+# BUS (jeśli API publikuje SSE z BUS)
+Environment=BUS_PUB_PORT=5555
+Environment=BUS_SUB_PORT=5556
+Environment=BUS_RCVHWM=100
+Environment=BUS_CONFLATE=0
 
 Restart=always
 RestartSec=0.5
@@ -33,24 +49,7 @@ Nice=-5
 StandardOutput=journal
 StandardError=journal
 
-# --- API (musi wystawić :8080) ---
-Environment=API_HOST=0.0.0.0
-Environment=API_PORT=8080
-
-# --- Proxy do mostka ruchu (GET /api/move -> :8081) ---
-Environment=WEB_BRIDGE_URL=http://127.0.0.1:8081
-
-# --- Zgaś kolizję UART z motion-bridge (telemetria RO z API wyłączona) ---
-Environment=ENABLE_XGO_RO=0
-# (jeśli kiedyś chcesz RO: ustaw na 1 i wskaż inny port niż /dev/ttyAMA0)
-# Environment=XGO_RO_PORT=/dev/ttyUSB0
-
-# --- BUS (jeśli API publikuje eventy/SSE z BUS) ---
-Environment=BUS_PUB_PORT=5555
-Environment=BUS_SUB_PORT=5556
-Environment=BUS_RCVHWM=100
-Environment=BUS_CONFLATE=0
-
 [Install]
 WantedBy=multi-user.target
+
 
