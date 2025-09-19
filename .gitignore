@@ -62,3 +62,6 @@ web/*.old
 web/*.temp
 web/*.tmp
 tests/_audit_import.py
+
+# ignore Jupyter checkpoints
+**/.ipynb_checkpoints/
