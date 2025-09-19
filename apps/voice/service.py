@@ -71,6 +71,16 @@ class VoiceService:
 
     # ─────────────────────────────────────────────
 
+    def _publish_ui_state(self, state: str) -> None:
+        """Publish the current UI state if a publisher is available."""
+
+        publisher = getattr(self, "_ui_state_publisher", None)
+        if callable(publisher):
+            try:
+                publisher(state)
+            except Exception as exc:  # pragma: no cover - defensive guard
+                self.logger.error("service.ui_state.publish_failed", error=str(exc))
+
     def stop(self) -> None:
         self.stop_event.set()
 
@@ -90,6 +100,10 @@ class VoiceService:
         try:
             return self._cycle(speak=speak)
         except Exception as exc:
+            try:
+                self._publish_ui_state("idle")
+            except Exception:
+                pass
             self.logger.error("service.once.error", error=str(exc))
             return None
 
