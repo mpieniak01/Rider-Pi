@@ -9,12 +9,24 @@ Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
+
+# (opcjonalnie) wczytaj dodatkowe zmienne, jeśli plik istnieje
 EnvironmentFile=-/etc/rider/voice.env
-ExecStart=/usr/bin/python3 -m apps.voice.web --bind 0.0.0.0:8092
+
+# 1) uruchom przez login shell, dzięki czemu wczyta ~/.bash_profile
+# 2) (dla pewności) jawnie source'ujemy profil
+# 3) 'exec' zastępuje powłokę procesem pythona
+ExecStartPre=/bin/bash -lc 'source ~/.bash_profile >/dev/null 2>&1; test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY is missing"; exit 1; }'
+ExecStart=/bin/bash -lc 'source ~/.bash_profile >/dev/null 2>&1; exec /usr/bin/python3 -m apps.voice.web --bind 0.0.0.0:8092'
+
 Restart=on-failure
 RestartSec=3
 StandardOutput=journal
 StandardError=journal
 
+# trochę “higieny” (opcjonalnie, zostaw jeśli nie sprawia kłopotów)
+Environment=PYTHONUNBUFFERED=1
+
 [Install]
 WantedBy=multi-user.target
+

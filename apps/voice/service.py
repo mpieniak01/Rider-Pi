@@ -1,3 +1,4 @@
+# apps/voice/service.py
 """Voice assistant service loop."""
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ import time
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from . import logging as voice_logging
 from .asr import ASRConfig, Transcript, transcribe
@@ -36,14 +37,24 @@ class VoiceService:
         self.config = config
         self.logger = voice_logging.get_logger("voice.service")
         self.stop_event = threading.Event()
+
         self._chat = ChatSession(ChatConfig(**config["chat"]))
         self._nlu = NLURouter(NLUConfig(**config["nlu"]))
+
         self._capture_cfg = CaptureConfig(**config["capture"])
         self._asr_cfg = ASRConfig(**config["asr"])
-        self._tts_cfg = TTSConfig(**config["tts"])
+
+        allowed_tts = {"backend", "voice", "model", "format", "piper_model", "piper_config"}
+        tts_kwargs = {k: v for k, v in config["tts"].items() if k in allowed_tts}
+        self._tts_cfg = TTSConfig(**tts_kwargs)
+
         self._play_cfg = PlaybackConfig(**config["playback"])
+
         hotword_cfg = config.get("hotword", {})
         self._hotword = HotwordDetector(HotwordConfig(**hotword_cfg))
+        self._hotword_engine = (hotword_cfg.get("engine") or "ptt").lower()
+        self._hotword_enabled = bool(hotword_cfg.get("enabled", False))
+
         vad_cfg = config.get("vad", {})
         self._vad = WebRtcActivity(
             sample_rate=self._capture_cfg.sample_rate,
@@ -53,22 +64,27 @@ class VoiceService:
             energy_gate=float(vad_cfg.get("energy_gate_dbfs", -40.0)),
         )
         self._max_len = int(vad_cfg.get("max_len_ms", 5000))
+
         service_cfg = config.get("service", {})
         self._save_audio = bool(service_cfg.get("save_audio", False))
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "data/recordings"))
+
+    # ─────────────────────────────────────────────
 
     def stop(self) -> None:
         self.stop_event.set()
 
     def listen(self) -> None:
         self.logger.event("service.listen.start")
-        while not self.stop_event.is_set():
-            try:
-                self._cycle()
-            except Exception as exc:
-                self.logger.error("service.cycle.error", error=str(exc))
-                time.sleep(1.0)
-        self.logger.event("service.listen.stop")
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    self._cycle()
+                except Exception as exc:
+                    self.logger.error("service.cycle.error", error=str(exc))
+                    time.sleep(0.3)
+        finally:
+            self.logger.event("service.listen.stop")
 
     def once(self, *, speak: bool = True) -> VoiceResult | None:
         try:
@@ -77,26 +93,58 @@ class VoiceService:
             self.logger.error("service.once.error", error=str(exc))
             return None
 
+    # ─────────────────────────────────────────────
+
+    def _should_ding(self) -> bool:
+        # PlaybackConfig może mieć sekcję ding; zachowaj ostrożność jeśli brak
+        ding_cfg = getattr(self._play_cfg, "ding", None)
+        return bool(getattr(ding_cfg, "enabled", True))
+
+    def _play_start_ding(self) -> None:
+        if self._should_ding():
+            play_ding(self._play_cfg, self.logger)
+
+    # Główna logika cyklu
     def _cycle(self, *, speak: bool = True) -> VoiceResult:
-        with AudioCapture(self._capture_cfg, self.logger) as capture:
-            if not self._hotword.wait(capture):
-                raise RuntimeError("Hotword timeout")
+        # PTT: czekamy na ENTER bez otwartego mikrofonu → gramy ding → dopiero potem nagrywamy
+        if self._hotword_engine == "ptt" or (not self._hotword_enabled):
+            if not self._wait_hotword_without_capture():
+                raise RuntimeError("Hotword/PTT timeout")
             if speak:
-                play_ding(self._play_cfg, self.logger)
-            audio = collect(capture.frames(), self._vad, self._max_len)
+                self._play_start_ding()
+            audio = self._record_with_vad()
+        else:
+            # klasyczny hotword: potrzebuje audio do detekcji
+            with AudioCapture(self._capture_cfg, self.logger) as capture:
+                if not self._hotword.wait(capture):
+                    raise RuntimeError("Hotword timeout")
+                if speak:
+                    self._play_start_ding()
+                # po ding zbieramy właściwe wypowiedzi
+                audio = collect(capture.frames(), self._vad, self._max_len)
+
         if not audio:
             raise RuntimeError("No audio captured")
+
         if self._save_audio:
             self._save_pcm(audio)
+
         start = time.time()
         transcript = transcribe(audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger)
+        # widoczność transkryptu
+        self.logger.event("service.asr.transcript", text=transcript.text)
+
         intent = self._nlu.route(transcript.text)
         reply = self._handle_intent(intent)
+
         audio_out, sample_rate, fmt = synthesize(reply, self._tts_cfg, self.logger)
         if speak:
+            # nieblokujące odtwarzanie
             play_bytes(audio_out, fmt, self._play_cfg, self.logger, blocking=False)
+
         latency = time.time() - start
         self.logger.event("service.cycle.done", latency=latency, intent=intent.kind)
+
         return VoiceResult(
             transcript=transcript,
             intent=intent,
@@ -107,17 +155,41 @@ class VoiceService:
             sample_rate=sample_rate,
         )
 
+    # ─────────────────────────────────────────────
+
+    def _wait_hotword_without_capture(self) -> bool:
+        """PTT/keyboard: czekaj na wyzwolenie bez otwartego mikrofonu."""
+        # większość implementacji HotwordDetector.ignoreuje argument capture w trybie 'ptt';
+        # przekazujemy None dla czytelności.
+        try:
+            return bool(self._hotword.wait(None))
+        except TypeError:
+            # starszy podpis wymaga 1 parametru; przekaż atrapu
+            class _NullCap:
+                def frames(self):  # pragma: no cover
+                    if False:
+                        yield b""
+            return bool(self._hotword.wait(_NullCap()))
+
+    def _record_with_vad(self) -> bytes:
+        """Otwórz mikrofon dopiero po sygnale startowym i zbierz wypowiedź VAD-em."""
+        with AudioCapture(self._capture_cfg, self.logger) as capture:
+            return collect(capture.frames(), self._vad, self._max_len)
+
     def _handle_intent(self, intent: Intent) -> str:
         if intent.kind == "command":
             name = intent.payload.get("name", "command")
             self.logger.event("service.command", name=name)
-            return f"Executing {name}."
+            return f"Wykonuję: {name}."
         reply, _ = self._chat.ask(intent.payload.get("text", ""))
         return reply
 
     def _save_pcm(self, audio: bytes) -> None:
         self._recordings_dir.mkdir(parents=True, exist_ok=True)
-        path = self._recordings_dir / f"capture_{int(time.time())}.wav"
+        # użyj czasu z dokładnością do ms, by uniknąć kolizji nazw
+        ts = time.time()
+        filename = f"capture_{int(ts)}_{int((ts % 1)*1000):03d}.wav"
+        path = self._recordings_dir / filename
         with wave.open(str(path), "wb") as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
@@ -125,6 +197,7 @@ class VoiceService:
             wf.writeframes(audio)
         self.logger.event("service.audio.saved", path=str(path))
 
+# ─────────────────────────────────────────────
 
 def setup_signals(service: VoiceService) -> None:
     def handler(signum, frame):  # pragma: no cover - signal handler
