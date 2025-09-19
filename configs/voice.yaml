@@ -15,15 +15,6 @@ vad:
   max_len_ms: 8000        # więcej czasu na wypowiedź
   energy_gate_dbfs: -48   # CZULEJ, łatwiej „zapali” się na mowie
 
-
-vad:
-  enabled: true
-  mode: 3
-  frame_ms: 20
-  tail_ms: 800            # trochę dłuższy ogon – nie ucina końcówki
-  max_len_ms: 12000       # możesz mówić do ~12 s
-  energy_gate_dbfs: -30   # mniej czuły (−36 głośniej, −44 ciszej)
-
 hotword:
   enabled: false          # PTT – aktywacja Enterem
 
