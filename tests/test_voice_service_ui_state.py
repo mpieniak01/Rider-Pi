@@ -1,4 +1,3 @@
-
 """Regression tests for VoiceService UI state publishing."""
 
 from __future__ import annotations
@@ -89,7 +88,7 @@ def test_once_publishes_idle_after_error(monkeypatch) -> None:
     assert service.once() is None
     assert published_states[:-1] == ["listen"]
     assert published_states[-1] == "idle"
-=======
+
 from __future__ import annotations
 
 import copy
