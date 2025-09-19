@@ -28,6 +28,11 @@ try:  # pragma: no cover - optional dependency (pyzmq)
 except Exception:  # pragma: no cover - running without bus support
     BusPub = None  # type: ignore[assignment]
 
+try:  # pragma: no cover - optional runtime dependency
+    from common.bus import BusPub
+except Exception:  # noqa: BLE001 - we want to handle ImportError generically
+    BusPub = None  # type: ignore[assignment]
+
 from . import logging as voice_logging
 from .asr import ASRConfig, Transcript, transcribe
 from common.bus import BusPub, BusSub
@@ -66,6 +71,8 @@ class VoiceService:
         self.config = config
         self.logger = voice_logging.get_logger("voice.service")
         self.stop_event = threading.Event()
+
+        self._ui_pub = BusPub() if BusPub else None
 
         self._chat = ChatSession(ChatConfig(**config["chat"]))
         self._nlu = NLURouter(NLUConfig(**config["nlu"]))
@@ -156,6 +163,14 @@ class VoiceService:
             if thread.is_alive():
                 thread.join(timeout=0.5)
 
+    def _publish_ui_state(self, state: str) -> None:
+        if not self._ui_pub:
+            return
+        try:
+            self._ui_pub.publish("ui.state", {"state": state}, add_ts=True)
+        except Exception as exc:  # pragma: no cover - bus failures shouldn't crash service
+            self.logger.debug("service.ui_state.publish_failed", state=state, error=str(exc))
+
     def listen(self) -> None:
         self.logger.event("service.listen.start")
         self._publish_ui_state("idle")
@@ -227,6 +242,27 @@ class VoiceService:
 
     # Główna logika cyklu
     def _cycle(self, *, speak: bool = True) -> VoiceResult:
+
+        self._publish_ui_state("hearing")
+        enqueued_speech = False
+        # PTT: czekamy na ENTER bez otwartego mikrofonu → gramy ding → dopiero potem nagrywamy
+        try:
+            if self._hotword_engine == "ptt" or (not self._hotword_enabled):
+                if not self._wait_hotword_without_capture():
+                    raise RuntimeError("Hotword/PTT timeout")
+                if speak:
+                    self._play_start_ding()
+                audio = self._record_with_vad()
+            else:
+                # klasyczny hotword: potrzebuje audio do detekcji
+                with AudioCapture(self._capture_cfg, self.logger) as capture:
+                    if not self._hotword.wait(capture):
+                        raise RuntimeError("Hotword timeout")
+                    if speak:
+                        self._play_start_ding()
+                    # po ding zbieramy właściwe wypowiedzi
+                    audio = collect(capture.frames(), self._vad, self._max_len)
+
         delegated_to_speech = False
         self._publish_ui_state("hearing")
         try:
@@ -366,9 +402,45 @@ class VoiceService:
             audio = self._record_with_vad()
 
 
+
             if not audio:
                 raise RuntimeError("No audio captured")
 
+
+            if self._save_audio:
+                self._save_pcm(audio)
+
+            start = time.time()
+            transcript = transcribe(
+                audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger
+            )
+            # widoczność transkryptu
+            self.logger.event("service.asr.transcript", text=transcript.text)
+
+            intent = self._nlu.route(transcript.text)
+            reply = self._handle_intent(intent)
+
+            audio_out, sample_rate, fmt = synthesize(reply, self._tts_cfg, self.logger)
+            if speak and audio_out:
+                # nieblokujące odtwarzanie
+                play_bytes(audio_out, fmt, self._play_cfg, self.logger, blocking=False)
+                enqueued_speech = True
+
+            latency = time.time() - start
+            self.logger.event("service.cycle.done", latency=latency, intent=intent.kind)
+
+            return VoiceResult(
+                transcript=transcript,
+                intent=intent,
+                reply=reply,
+                latency_s=latency,
+                audio=audio_out,
+                audio_format=fmt,
+                sample_rate=sample_rate,
+            )
+        finally:
+            if not enqueued_speech:
+                self._publish_ui_state("idle")
 
         self._publish_ui_state("thinking")
         start = time.time()
