@@ -1,6 +1,5 @@
 """Regression tests for VoiceService UI state publishing."""
 
-from __future__ import annotations
 
 import pathlib
 import sys
@@ -89,7 +88,6 @@ def test_once_publishes_idle_after_error(monkeypatch) -> None:
     assert published_states[:-1] == ["listen"]
     assert published_states[-1] == "idle"
 
-from __future__ import annotations
 
 import copy
 import pathlib
@@ -286,3 +284,4 @@ def test_listen_resets_state_after_cycle_error(monkeypatch: pytest.MonkeyPatch, 
     states = _state_sequence(publisher)
     assert states[-2:] == ["hearing", "idle"], states
 
+from __future__ import annotations
