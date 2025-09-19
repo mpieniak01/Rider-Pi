@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
 
 _PROFILE_FILES = [Path("~/.bash_profile").expanduser(), Path("~/.profile").expanduser()]
 

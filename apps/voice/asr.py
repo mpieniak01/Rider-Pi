@@ -8,7 +8,7 @@ import wave
 from dataclasses import dataclass
 from typing import Any
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
 
 
 class ASRError(RuntimeError):

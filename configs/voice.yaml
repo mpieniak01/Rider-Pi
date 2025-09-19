@@ -1,11 +1,11 @@
 # config/voice.yaml  — wariant PTT ustabilizowany
 capture:
-  backend: alsa
-  device: plughw:1,0
-  sample_rate: 16000
+  backend: alsa #pulse
+  device: plughw:wm8960soundcard,0
+  sample_rate: 48000
   channels: 1
   frame_ms: 20
-  buffer_seconds: 0.5     # (PREROLL) łapie początek mowy
+  buffer_seconds: 0.5
 
 vad:
   enabled: true
@@ -34,13 +34,14 @@ tts:
   backend: openai
   model: gpt-4o-mini-tts
   voice: alloy            # na razie EN akcent; lokalny PL (Piper) dołączymy osobno
-  format: wav
+  format: mp3
 
 playback:
-  backend: pulse
+  backend: alsa
+  alsa_device: "plughw:wm8960soundcard,0"
   volume: 100
   ding:
-    enabled: false
+    enabled: true
 
 service:
   save_audio: true

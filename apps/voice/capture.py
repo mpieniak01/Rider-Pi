@@ -8,7 +8,7 @@ import threading
 from collections.abc import Generator
 from dataclasses import dataclass
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
 
 _SAMPLE_WIDTH = 2  # signed 16-bit PCM
 

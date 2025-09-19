@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
 
 
 class ChatError(RuntimeError):
