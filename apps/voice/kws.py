@@ -7,7 +7,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
 
 try:
     from libnyumaya import AudioRecognition, FeatureExtractor  # type: ignore

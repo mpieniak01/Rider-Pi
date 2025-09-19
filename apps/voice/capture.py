@@ -8,7 +8,7 @@ import threading
 from collections.abc import Generator
 from dataclasses import dataclass
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
 
 _SAMPLE_WIDTH = 2  # signed 16-bit PCM
 
@@ -24,7 +24,7 @@ class CaptureConfig:
     frame_ms: int = 20
     backend: str = "pulse"          # "pulse" | "alsa" | "command"
     device: str | None = None       # np. "hw:1,0" dla ALSA lub nazwa źródła Pulse
-    buffer_seconds: int = 2
+    buffer_seconds: float = 0.0
     channels: int = 1               # liczba kanałów (1 = mono)
     command: str | None = None      # tylko dla backend="command"
 
@@ -101,7 +101,7 @@ class AudioCapture:
 
         if backend == "alsa":
             device = cfg.device or "default"
-            return [
+            cmd = [
                 "arecord",
                 "-q",
                 "-f", "S16_LE",
@@ -109,6 +109,10 @@ class AudioCapture:
                 "-r", str(cfg.sample_rate),
                 "-D", device,
             ]
+            buffer_us = int(max(0.0, float(cfg.buffer_seconds)) * 1_000_000)
+            if buffer_us > 0:
+                cmd += ["--buffer-time", str(buffer_us)]
+            return cmd
 
         raise CaptureError(f"Unsupported capture backend: {backend}")
 

@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
 
 COMMAND_PATTERNS = {
     "stop": re.compile(r"\b(stop|stój|zatrzymaj)\b", re.IGNORECASE),
