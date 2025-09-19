@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from common.bus import BusPub
+
 from . import logging as voice_logging
 from .asr import ASRConfig, Transcript, transcribe
 from .capture import AudioCapture, CaptureConfig
@@ -68,6 +70,11 @@ class VoiceService:
         service_cfg = config.get("service", {})
         self._save_audio = bool(service_cfg.get("save_audio", False))
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "data/recordings"))
+        ui_prefix = str(service_cfg.get("ui_bus_prefix", "voice.ui"))
+        ui_topic = str(service_cfg.get("ui_state_topic", "state"))
+        ui_warmup = int(service_cfg.get("ui_bus_warmup_ms", 0))
+        self._ui_bus = BusPub(ui_prefix, warmup_ms=ui_warmup)
+        self._ui_state_topic = ui_topic
 
     # ─────────────────────────────────────────────
 
@@ -82,6 +89,7 @@ class VoiceService:
                     self._cycle()
                 except Exception as exc:
                     self.logger.error("service.cycle.error", error=str(exc))
+                    self._publish_ui_state("idle")
                     time.sleep(0.3)
         finally:
             self.logger.event("service.listen.stop")
@@ -106,54 +114,68 @@ class VoiceService:
 
     # Główna logika cyklu
     def _cycle(self, *, speak: bool = True) -> VoiceResult:
+        self._publish_ui_state("hearing")
+        queued_speech = False
         # PTT: czekamy na ENTER bez otwartego mikrofonu → gramy ding → dopiero potem nagrywamy
-        if self._hotword_engine == "ptt" or (not self._hotword_enabled):
-            if not self._wait_hotword_without_capture():
-                raise RuntimeError("Hotword/PTT timeout")
-            if speak:
-                self._play_start_ding()
-            audio = self._record_with_vad()
-        else:
-            # klasyczny hotword: potrzebuje audio do detekcji
-            with AudioCapture(self._capture_cfg, self.logger) as capture:
-                if not self._hotword.wait(capture):
-                    raise RuntimeError("Hotword timeout")
+        try:
+            if self._hotword_engine == "ptt" or (not self._hotword_enabled):
+                if not self._wait_hotword_without_capture():
+                    raise RuntimeError("Hotword/PTT timeout")
                 if speak:
                     self._play_start_ding()
-                # po ding zbieramy właściwe wypowiedzi
-                audio = collect(capture.frames(), self._vad, self._max_len)
+                audio = self._record_with_vad()
+            else:
+                # klasyczny hotword: potrzebuje audio do detekcji
+                with AudioCapture(self._capture_cfg, self.logger) as capture:
+                    if not self._hotword.wait(capture):
+                        raise RuntimeError("Hotword timeout")
+                    if speak:
+                        self._play_start_ding()
+                    # po ding zbieramy właściwe wypowiedzi
+                    audio = collect(capture.frames(), self._vad, self._max_len)
 
-        if not audio:
-            raise RuntimeError("No audio captured")
+            if not audio:
+                raise RuntimeError("No audio captured")
 
-        if self._save_audio:
-            self._save_pcm(audio)
+            if self._save_audio:
+                self._save_pcm(audio)
 
-        start = time.time()
-        transcript = transcribe(audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger)
-        # widoczność transkryptu
-        self.logger.event("service.asr.transcript", text=transcript.text)
+            start = time.time()
+            transcript = transcribe(audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger)
+            # widoczność transkryptu
+            self.logger.event("service.asr.transcript", text=transcript.text)
 
-        intent = self._nlu.route(transcript.text)
-        reply = self._handle_intent(intent)
+            intent = self._nlu.route(transcript.text)
+            reply = self._handle_intent(intent)
 
-        audio_out, sample_rate, fmt = synthesize(reply, self._tts_cfg, self.logger)
-        if speak:
-            # nieblokujące odtwarzanie
-            play_bytes(audio_out, fmt, self._play_cfg, self.logger, blocking=False)
+            reply_has_text = bool(reply.strip())
+            if reply_has_text:
+                audio_out, sample_rate, fmt = synthesize(reply, self._tts_cfg, self.logger)
+            else:
+                audio_out, sample_rate, fmt = None, 0, ""
+                self.logger.event("service.reply.empty")
 
-        latency = time.time() - start
-        self.logger.event("service.cycle.done", latency=latency, intent=intent.kind)
+            if speak and audio_out:
+                # nieblokujące odtwarzanie
+                play_bytes(audio_out, fmt, self._play_cfg, self.logger, blocking=False)
+                queued_speech = True
+                self._publish_ui_state("speaking")
 
-        return VoiceResult(
-            transcript=transcript,
-            intent=intent,
-            reply=reply,
-            latency_s=latency,
-            audio=audio_out,
-            audio_format=fmt,
-            sample_rate=sample_rate,
-        )
+            latency = time.time() - start
+            self.logger.event("service.cycle.done", latency=latency, intent=intent.kind)
+
+            return VoiceResult(
+                transcript=transcript,
+                intent=intent,
+                reply=reply,
+                latency_s=latency,
+                audio=audio_out,
+                audio_format=fmt,
+                sample_rate=sample_rate,
+            )
+        finally:
+            if not queued_speech:
+                self._publish_ui_state("idle")
 
     # ─────────────────────────────────────────────
 
@@ -196,6 +218,12 @@ class VoiceService:
             wf.setframerate(self._capture_cfg.sample_rate)
             wf.writeframes(audio)
         self.logger.event("service.audio.saved", path=str(path))
+
+    def _publish_ui_state(self, state: str) -> None:
+        try:
+            self._ui_bus.publish(self._ui_state_topic, {"state": state}, add_ts=True)
+        except Exception as exc:
+            self.logger.debug("service.ui.publish_failed", error=str(exc))
 
 # ─────────────────────────────────────────────
 
