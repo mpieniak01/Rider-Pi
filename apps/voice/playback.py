@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
 
 
 class PlaybackError(RuntimeError):
