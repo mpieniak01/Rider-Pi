@@ -33,6 +33,8 @@ try:  # pragma: no cover - optional runtime dependency
 except Exception:  # noqa: BLE001 - we want to handle ImportError generically
     BusPub = None  # type: ignore[assignment]
 
+from common.bus import BusPub
+
 from . import logging as voice_logging
 from .asr import ASRConfig, Transcript, transcribe
 from common.bus import BusPub, BusSub
@@ -105,6 +107,12 @@ class VoiceService:
         service_cfg = config.get("service", {})
         self._save_audio = bool(service_cfg.get("save_audio", False))
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "data/recordings"))
+
+        ui_prefix = str(service_cfg.get("ui_bus_prefix", "voice.ui"))
+        ui_topic = str(service_cfg.get("ui_state_topic", "state"))
+        ui_warmup = int(service_cfg.get("ui_bus_warmup_ms", 0))
+        self._ui_bus = BusPub(ui_prefix, warmup_ms=ui_warmup)
+        self._ui_state_topic = ui_topic
         self._ui_topic = str(service_cfg.get("ui_topic", "ui.state"))
         self._ui_pub = ui_publisher or self._create_ui_publisher(service_cfg)
         self._last_ui_state: str | None = None
@@ -244,7 +252,12 @@ class VoiceService:
     def _cycle(self, *, speak: bool = True) -> VoiceResult:
 
         self._publish_ui_state("hearing")
+        queued_speech = False
+
+
+        self._publish_ui_state("hearing")
         enqueued_speech = False
+
         # PTT: czekamy na ENTER bez otwartego mikrofonu → gramy ding → dopiero potem nagrywamy
         try:
             if self._hotword_engine == "ptt" or (not self._hotword_enabled):
@@ -411,20 +424,33 @@ class VoiceService:
                 self._save_pcm(audio)
 
             start = time.time()
-            transcript = transcribe(
-                audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger
-            )
+            transcript = transcribe(audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger)
+
             # widoczność transkryptu
             self.logger.event("service.asr.transcript", text=transcript.text)
 
             intent = self._nlu.route(transcript.text)
             reply = self._handle_intent(intent)
 
+
+            reply_has_text = bool(reply.strip())
+            if reply_has_text:
+                audio_out, sample_rate, fmt = synthesize(reply, self._tts_cfg, self.logger)
+            else:
+                audio_out, sample_rate, fmt = None, 0, ""
+                self.logger.event("service.reply.empty")
+
+            if speak and audio_out:
+                # nieblokujące odtwarzanie
+                play_bytes(audio_out, fmt, self._play_cfg, self.logger, blocking=False)
+                queued_speech = True
+                self._publish_ui_state("speaking")
             audio_out, sample_rate, fmt = synthesize(reply, self._tts_cfg, self.logger)
             if speak and audio_out:
                 # nieblokujące odtwarzanie
                 play_bytes(audio_out, fmt, self._play_cfg, self.logger, blocking=False)
                 enqueued_speech = True
+
 
             latency = time.time() - start
             self.logger.event("service.cycle.done", latency=latency, intent=intent.kind)
@@ -439,6 +465,7 @@ class VoiceService:
                 sample_rate=sample_rate,
             )
         finally:
+
             if not enqueued_speech:
                 self._publish_ui_state("idle")
 
@@ -670,6 +697,12 @@ class VoiceService:
             wf.setframerate(self._capture_cfg.sample_rate)
             wf.writeframes(audio)
         self.logger.event("service.audio.saved", path=str(path))
+
+    def _publish_ui_state(self, state: str) -> None:
+        try:
+            self._ui_bus.publish(self._ui_state_topic, {"state": state}, add_ts=True)
+        except Exception as exc:
+            self.logger.debug("service.ui.publish_failed", error=str(exc))
 
 # ─────────────────────────────────────────────
 
