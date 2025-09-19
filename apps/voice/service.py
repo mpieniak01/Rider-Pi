@@ -31,8 +31,8 @@ from .chat import ChatConfig, ChatSession
 from .kws import HotwordConfig, HotwordDetector
 from .nlu import Intent, NLUConfig, NLURouter
 from .common import ensure_openai_key
-from .playback import PlaybackConfig, play_ding
-from .tts import TTSConfig, TTSStreamResult, speak
+from .playback import PlaybackConfig, play_ding, play_bytes
+from .tts import TTSConfig, TTSStreamResult, speak, synthesize
 from .vad import WebRtcActivity, collect
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -58,13 +58,13 @@ class SpeechTask:
 
 
 class VoiceService:
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
         self.config = config
         self.logger = vlog.get_logger("voice.service")
         self.stop_event = threading.Event()
 
-        # Bus
-        self._bus_pub = BusPub() if BusPub else None
+        # Bus (pozwól testom wstrzyknąć fałszywego publishra)
+        self._bus_pub = ui_publisher if ui_publisher is not None else (BusPub() if BusPub else None)
         self._bus_sub = BusSub("tts.speak") if BusSub else None
 
         # Sesje i konfiguracje
@@ -461,4 +461,5 @@ def setup_signals(service: VoiceService) -> None:
 
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
+
 
