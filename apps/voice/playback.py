@@ -31,6 +31,54 @@ class PlaybackConfig:
     ding: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass
+class PlaybackStream:
+    process: subprocess.Popen[bytes]
+    fmt: str
+    backend: str
+    accumulate: bool = False
+    _buffer: bytearray | None = None
+    _failed: bool = False
+
+    def __post_init__(self) -> None:
+        if self.accumulate:
+            self._buffer = bytearray()
+
+    def write(self, chunk: bytes) -> None:
+        if not chunk:
+            return
+        if self._buffer is not None:
+            self._buffer.extend(chunk)
+        if not self.process.stdin:
+            self._failed = True
+            raise PlaybackError("Player stdin unavailable")
+        try:
+            self.process.stdin.write(chunk)
+            self.process.stdin.flush()
+        except Exception as exc:  # pragma: no cover - system-level failure
+            self._failed = True
+            raise PlaybackError(f"Player write failed: {exc}") from exc
+
+    def close(self, *, timeout: float = 20.0) -> tuple[bool, bytes | None, str | None]:
+        if self.process.stdin:
+            with contextlib.suppress(Exception):
+                self.process.stdin.close()
+        try:
+            rc = self.process.wait(timeout=timeout)
+        except Exception:  # pragma: no cover - system-level failure
+            with contextlib.suppress(Exception):
+                self.process.kill()
+            rc = -1
+        stderr_text = None
+        if self.process.stderr:
+            try:
+                stderr_text = self.process.stderr.read().decode("utf-8", "ignore").strip()
+            except Exception:
+                stderr_text = None
+        audio = bytes(self._buffer) if self._buffer is not None else None
+        ok = rc == 0 and not self._failed
+        return ok, audio, stderr_text
+
 def _choose_player(backend: str) -> Optional[str]:
     """Zwróć ścieżkę do binarki gracza na podstawie backendu."""
     if backend == "pulse":
@@ -59,6 +107,104 @@ def _build_cmd(player_path: str, tmp_path: str, fmt: str, alsa_device: str | Non
     # paplay i inne – wystarczy ścieżka
     return [player_path, tmp_path]
 
+
+
+
+def _iter_mpg123_commands(config: PlaybackConfig):
+    path = shutil.which("mpg123")
+    if not path:
+        return []
+    backend = (config.backend or "pulse").lower()
+    order = []
+    if backend in {"pulse", "alsa"}:
+        order.append(backend)
+    else:
+        order.extend(["pulse", "alsa"])
+    # zawsze dodaj rezerwę bez -o
+    order.append("default")
+    seen: set[str] = set()
+    commands = []
+    for item in order:
+        if item in seen:
+            continue
+        seen.add(item)
+        if item == "pulse":
+            cmd = [path, "-q", "-o", "pulse", "-"]
+        elif item == "alsa":
+            cmd = [path, "-q", "-o", "alsa"]
+            if config.alsa_device:
+                cmd += ["-a", config.alsa_device]
+            cmd.append("-")
+        else:
+            cmd = [path, "-q", "-"]
+        commands.append((f"mpg123-{item}", cmd))
+    return commands
+
+
+def _iter_wav_commands(config: PlaybackConfig):
+    commands = []
+    paplay = shutil.which("paplay")
+    if paplay:
+        commands.append(("paplay", [paplay, "-"]))
+    aplay = shutil.which("aplay")
+    if aplay:
+        cmd = [aplay, "-q"]
+        if config.alsa_device:
+            cmd += ["-D", config.alsa_device]
+        cmd.append("-")
+        commands.append(("aplay", cmd))
+    return commands
+
+
+def start_stream(
+    fmt: str,
+    config: PlaybackConfig,
+    logger: voice_logging.VoiceLogger | None = None,
+    *,
+    accumulate: bool = False,
+) -> PlaybackStream | None:
+    """Spróbuj otworzyć strumień odtwarzacza dla danego formatu."""
+
+    logger = logger or voice_logging.get_logger("voice.playback")
+    fmt = (fmt or "").lower()
+
+    if fmt == "mp3":
+        for backend, cmd in _iter_mpg123_commands(config):
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    bufsize=0,
+                )
+            except FileNotFoundError:
+                return None
+            except Exception as exc:  # pragma: no cover - system-level failure
+                logger.warning("playback.stream.start_failed", backend=backend, error=str(exc))
+                continue
+            logger.debug("playback.stream.start", backend=backend, command=" ".join(cmd))
+            return PlaybackStream(proc, fmt="mp3", backend=backend, accumulate=accumulate)
+        return None
+
+    if fmt == "wav":
+        for backend, cmd in _iter_wav_commands(config):
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    bufsize=0,
+                )
+            except Exception as exc:  # pragma: no cover - system-level failure
+                logger.warning("playback.stream.start_failed", backend=backend, error=str(exc))
+                continue
+            logger.debug("playback.stream.start", backend=backend, command=" ".join(cmd))
+            return PlaybackStream(proc, fmt="wav", backend=backend, accumulate=accumulate)
+        return None
+
+    return None
 
 def play_bytes(
     audio: bytes,
