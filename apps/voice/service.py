@@ -23,6 +23,11 @@ if TYPE_CHECKING:  # pragma: no cover - typing helper
 else:  # pragma: no cover - runtime fallback
     BusPubType = Any
 
+try:  # pragma: no cover - optional dependency (pyzmq)
+    from common.bus import BusPub
+except Exception:  # pragma: no cover - running without bus support
+    BusPub = None  # type: ignore[assignment]
+
 from . import logging as voice_logging
 from .asr import ASRConfig, Transcript, transcribe
 from common.bus import BusPub, BusSub
@@ -57,7 +62,7 @@ class SpeechTask:
     result: TTSStreamResult | None = None
 
 class VoiceService:
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], *, ui_publisher: Any | None = None):
         self.config = config
         self.logger = voice_logging.get_logger("voice.service")
         self.stop_event = threading.Event()
@@ -93,6 +98,9 @@ class VoiceService:
         service_cfg = config.get("service", {})
         self._save_audio = bool(service_cfg.get("save_audio", False))
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "data/recordings"))
+        self._ui_topic = str(service_cfg.get("ui_topic", "ui.state"))
+        self._ui_pub = ui_publisher or self._create_ui_publisher(service_cfg)
+        self._last_ui_state: str | None = None
 
 
         publish_ui = bool(service_cfg.get("publish_ui_state", True))
@@ -150,15 +158,18 @@ class VoiceService:
 
     def listen(self) -> None:
         self.logger.event("service.listen.start")
+        self._publish_ui_state("idle")
         try:
             while not self.stop_event.is_set():
                 try:
                     self._cycle()
                 except Exception as exc:
+                    self._publish_ui_state("idle")
                     self.logger.error("service.cycle.error", error=str(exc))
                     self._publish_ui_state("idle")
                     time.sleep(0.3)
         finally:
+            self._publish_ui_state("idle")
             self.logger.event("service.listen.stop")
 
     def once(self, *, speak: bool = True) -> VoiceResult | None:
@@ -180,16 +191,39 @@ class VoiceService:
             play_ding(self._play_cfg, self.logger)
 
 
+    def _create_ui_publisher(self, service_cfg: dict[str, Any]) -> Any | None:
+        if BusPub is None:  # pragma: no cover - optional dependency missing
+            return None
+        try:
+            bus_cfg = service_cfg.get("ui_bus", {}) if isinstance(service_cfg, dict) else {}
+            prefix = str(bus_cfg.get("prefix", "") or "")
+            warmup = int(bus_cfg.get("warmup_ms", 0) or 0)
+            return BusPub(prefix, warmup)
+        except Exception as exc:  # pragma: no cover - optional bus
+            self.logger.warning("service.ui_state.publisher_failed", error=str(exc))
+            return None
+
     def _publish_ui_state(self, state: str) -> None:
-        if not self._ui_pub:
-            return
         if self._last_ui_state == state:
             return
-        try:
-            self._ui_pub.publish("ui.state", {"state": state}, add_ts=True)
+        if not self._ui_pub:
             self._last_ui_state = state
-        except Exception as exc:  # pragma: no cover - bus optional
-            self.logger.debug("service.ui_state.publish_error", error=str(exc))
+            return
+        payload = {"state": state, "ts": time.time()}
+        for attr in ("publish", "send", "pub"):
+            method = getattr(self._ui_pub, attr, None)
+            if callable(method):
+                try:
+                    method(self._ui_topic, payload)
+                except Exception as exc:
+                    self.logger.error(
+                        "service.ui_state.publish_failed", state=state, error=str(exc)
+                    )
+                else:
+                    self._last_ui_state = state
+                return
+        self.logger.warning("service.ui_state.unsupported_publisher")
+        self._last_ui_state = state
 
     # Główna logika cyklu
     def _cycle(self, *, speak: bool = True) -> VoiceResult:
@@ -303,10 +337,25 @@ class VoiceService:
         if waiting_without_capture:
             if not self._wait_hotword_without_capture():
                 raise RuntimeError("Hotword/PTT timeout")
+
+            if speak:
+                self._play_start_ding()
+            self._publish_ui_state("hearing")
+            audio = self._record_with_vad()
         else:
             with AudioCapture(self._capture_cfg, self.logger) as capture:
                 if not self._hotword.wait(capture):
                     raise RuntimeError("Hotword timeout")
+
+                if speak:
+                    self._play_start_ding()
+                # po ding zbieramy właściwe wypowiedzi
+                self._publish_ui_state("hearing")
+                audio = collect(capture.frames(), self._vad, self._max_len)
+
+        if not audio:
+            self._publish_ui_state("idle")
+            raise RuntimeError("No audio captured")
 
         if speak:
             self._play_start_ding()
@@ -316,8 +365,47 @@ class VoiceService:
         try:
             audio = self._record_with_vad()
 
+
             if not audio:
                 raise RuntimeError("No audio captured")
+
+
+        self._publish_ui_state("thinking")
+        start = time.time()
+        transcript = transcribe(audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger)
+        # widoczność transkryptu
+        self.logger.event("service.asr.transcript", text=transcript.text)
+
+        intent = self._nlu.route(transcript.text)
+        reply = self._handle_intent(intent)
+        reply_text = reply.strip()
+
+        audio_out: bytes | None = None
+        sample_rate = 0
+        fmt = ""
+        queued_tts = False
+        if reply_text:
+            audio_out, sample_rate, fmt = synthesize(reply_text, self._tts_cfg, self.logger)
+            if speak:
+                self._publish_ui_state("speaking")
+                queued_tts = True
+                # nieblokujące odtwarzanie
+                play_bytes(audio_out, fmt, self._play_cfg, self.logger, blocking=False)
+        if not queued_tts:
+            self._publish_ui_state("idle")
+
+        latency = time.time() - start
+        self.logger.event("service.cycle.done", latency=latency, intent=intent.kind)
+
+        return VoiceResult(
+            transcript=transcript,
+            intent=intent,
+            reply=reply,
+            latency_s=latency,
+            audio=audio_out,
+            audio_format=fmt,
+            sample_rate=sample_rate,
+        )
 
             if self._save_audio:
                 self._save_pcm(audio)
@@ -401,6 +489,7 @@ class VoiceService:
             if not speech_task_enqueued:
 
                 self._publish_ui_state("idle")
+
 
     # ─────────────────────────────────────────────
 
