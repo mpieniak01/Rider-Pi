@@ -1,16 +1,20 @@
+# apps/voice/playback.py
 """Audio playback helpers for the voice assistant."""
 from __future__ import annotations
 
 import contextlib
+import io
 import math
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
 import threading
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import List, Optional
 
 from . import logging as voice_logging
 
@@ -21,13 +25,14 @@ class PlaybackError(RuntimeError):
 
 @dataclass
 class PlaybackConfig:
-    backend: str
-    alsa_device: str | None
-    volume: int
-    ding: dict[str, object]
+    backend: str = "auto"                     # "auto" | "pulse" | "alsa" | nazwa binarki
+    alsa_device: str | None = None            # np. "plughw:1,0" (używane tylko z aplay)
+    volume: int = 100                         # obecnie informacyjne (regulacja po stronie systemu)
+    ding: dict[str, object] = field(default_factory=dict)
 
 
-def _choose_player(backend: str) -> str | None:
+def _choose_player(backend: str) -> Optional[str]:
+    """Zwróć ścieżkę do binarki gracza na podstawie backendu."""
     if backend == "pulse":
         return shutil.which("paplay") or shutil.which("aplay")
     if backend == "alsa":
@@ -41,71 +46,145 @@ def _choose_player(backend: str) -> str | None:
     return shutil.which(backend)
 
 
-def play_bytes(audio: bytes, fmt: str, config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None, *, blocking: bool = True):
-    player = _choose_player(config.backend)
-    if not player:
-        raise PlaybackError(f"No playback command for backend {config.backend}")
-    suffix = ".wav" if fmt == "wav" else f".{fmt}" if fmt else ".bin"
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    tmp.write(audio)
-    tmp_path = tmp.name
-    tmp.close()
-    cmd = [player, tmp_path]
-    if os.path.basename(player) == "aplay" and config.alsa_device:
-        cmd = [player, "-q", "-D", config.alsa_device, tmp_path]
-    if os.path.basename(player) == "ffplay":
-        cmd = [player, "-autoexit", "-nodisp", tmp_path]
+def _build_cmd(player_path: str, tmp_path: str, fmt: str, alsa_device: str | None) -> List[str]:
+    """Zbuduj komendę odtwarzacza dla podanej binarki."""
+    base = os.path.basename(player_path)
+    if base == "aplay":
+        if alsa_device:
+            return [player_path, "-q", "-D", alsa_device, tmp_path]
+        return [player_path, "-q", tmp_path]
+    if base == "ffplay":
+        # ffplay niech działa bez GUI
+        return [player_path, "-autoexit", "-nodisp", tmp_path]
+    # paplay i inne – wystarczy ścieżka
+    return [player_path, tmp_path]
+
+
+def play_bytes(
+    audio: bytes,
+    fmt: str,
+    config: PlaybackConfig,
+    logger: voice_logging.VoiceLogger | None = None,
+    *,
+    blocking: bool = True,
+):
+    """
+    Odtwórz bajty audio zapisując je tymczasowo do pliku.
+    - jeśli ustawiono VOICE_PLAYER, użyjemy go (może zawierać argumenty),
+    - w przeciwnym razie wybór na podstawie config.backend.
+    """
     logger = logger or voice_logging.get_logger("voice.playback")
+
+    # 0) wybór komendy (ENV ma pierwszeństwo)
+    env_player = os.getenv("VOICE_PLAYER")
+    env_cmd: Optional[List[str]] = shlex.split(env_player) if env_player else None
+
+    player_path: Optional[str] = None
+    if not env_cmd:
+        player_path = _choose_player(config.backend)
+        if not player_path:
+            raise PlaybackError(f"No playback command for backend '{config.backend}'")
+    # 1) zapisz do pliku tymczasowego
+    suffix = ".wav" if (fmt or "").lower() == "wav" else f".{fmt}" if fmt else ".bin"
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        tmp.write(audio)
+        tmp_path = tmp.name
+    finally:
+        tmp.close()
+
+    # 2) zbuduj końcowe polecenie
+    if env_cmd:
+        cmd = env_cmd + [tmp_path]
+    else:
+        cmd = _build_cmd(player_path, tmp_path, fmt, config.alsa_device)  # type: ignore[arg-type]
+
     logger.event("playback.start", command=" ".join(cmd))
     proc = subprocess.Popen(cmd)
-    if blocking:
-        proc.wait()
-        logger.event("playback.done", returncode=proc.returncode)
-        os.unlink(tmp_path)
-        return proc.returncode == 0
 
     def _cleanup() -> None:
-        proc.wait()
-        logger.event("playback.done", returncode=proc.returncode)
-        with contextlib.suppress(FileNotFoundError):  # type: ignore[name-defined]
+        rc = proc.wait()
+        logger.event("playback.done", returncode=rc)
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp_path)
+
+    if blocking:
+        _cleanup()
+        return proc.returncode == 0
 
     threading.Thread(target=_cleanup, daemon=True).start()
     return proc
 
 
-def play_file(path: str | os.PathLike[str], config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None, *, blocking: bool = True):
+def play_file(
+    path: str | os.PathLike[str],
+    config: PlaybackConfig,
+    logger: voice_logging.VoiceLogger | None = None,
+    *,
+    blocking: bool = True,
+):
     with open(path, "rb") as fh:
         data = fh.read()
-    fmt = Path(path).suffix.lstrip(".") or "wav"
+    fmt = Path(path).suffix.lstrip(".").lower() or "wav"
     return play_bytes(data, fmt, config, logger, blocking=blocking)
 
 
 def play_ding(config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None) -> None:
+    """
+    Zagraj krótki „ding”.
+    - Szanuje config.ding.enabled (jeśli podane).
+    - Jeśli config.ding.path istnieje – odtwarza plik, inaczej generuje ton 880 Hz ~200 ms.
+    """
+    logger = logger or voice_logging.get_logger("voice.playback")
     ding_cfg = config.ding or {}
+
+    enabled = ding_cfg.get("enabled")
+    if isinstance(enabled, bool) and not enabled:
+        # wyraźnie wyłączone
+        logger.event("playback.ding.skip")
+        return
+
     path = ding_cfg.get("path") if isinstance(ding_cfg, dict) else None
     if isinstance(path, str) and os.path.exists(path):
         play_file(path, config, logger, blocking=False)
         return
-    logger = logger or voice_logging.get_logger("voice.playback")
+
     logger.event("playback.ding.generate")
-    audio = _tone(0.2, 880.0)
+    audio = _tone_wav(duration=0.20, freq=880.0, sample_rate=16000, amplitude=0.25)
     play_bytes(audio, "wav", config, logger, blocking=False)
 
 
-def _tone(duration: float, freq: float, sample_rate: int = 16000) -> bytes:
-    frame_count = int(duration * sample_rate)
+# ───────────────────────────────────────────────────────────────────────────────
+# Pomocnicze: generacja prostego tonu do dinga (WAV w pamięci)
+# ───────────────────────────────────────────────────────────────────────────────
+
+def _tone_wav(duration: float, freq: float, sample_rate: int = 16000, amplitude: float = 0.25) -> bytes:
+    """Zwróć bajty WAV (mono, 16-bit) z prostym sinusem."""
+    frame_count = max(1, int(duration * sample_rate))
     buf = bytearray()
+
+    # proste „envelope” 5 ms na start i 40 ms na koniec, żeby uniknąć kliknięć
+    fade_in_frames = min(frame_count, int(0.005 * sample_rate))
+    fade_out_frames = min(frame_count, int(0.040 * sample_rate))
+
     for i in range(frame_count):
-        value = int(0.25 * math.sin(2 * math.pi * freq * (i / sample_rate)) * 32767)
+        # obwiednia
+        if i < fade_in_frames:
+            env = (i + 1) / max(1, fade_in_frames)
+        elif i >= frame_count - fade_out_frames:
+            env = (frame_count - i) / max(1, fade_out_frames)
+        else:
+            env = 1.0
+
+        s = math.sin(2 * math.pi * freq * (i / sample_rate))
+        value = int(amplitude * env * s * 32767.0)
         buf.extend(value.to_bytes(2, "little", signed=True))
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    tmp.close()
-    with wave.open(tmp.name, "wb") as wf:
+
+    # zapisz WAV do pamięci
+    bio = io.BytesIO()
+    with wave.open(bio, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
         wf.writeframes(bytes(buf))
-    data = Path(tmp.name).read_bytes()
-    os.unlink(tmp.name)
-    return data
+    return bio.getvalue()

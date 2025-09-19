@@ -1,0 +1,60 @@
+# config/voice.yaml  — wariant PTT ustabilizowany
+capture:
+  backend: alsa
+  device: plughw:1,0
+  sample_rate: 16000
+  channels: 1
+  frame_ms: 20
+  buffer_seconds: 0.5     # (PREROLL) łapie początek mowy
+
+vad:
+  enabled: true
+  mode: 3
+  frame_ms: 20
+  tail_ms: 900            # dłuższy ogon na końcówkę
+  max_len_ms: 8000        # więcej czasu na wypowiedź
+  energy_gate_dbfs: -48   # CZULEJ, łatwiej „zapali” się na mowie
+
+
+vad:
+  enabled: true
+  mode: 3
+  frame_ms: 20
+  tail_ms: 800            # trochę dłuższy ogon – nie ucina końcówki
+  max_len_ms: 12000       # możesz mówić do ~12 s
+  energy_gate_dbfs: -30   # mniej czuły (−36 głośniej, −44 ciszej)
+
+hotword:
+  enabled: false          # PTT – aktywacja Enterem
+
+asr:
+  backend: openai
+  model: gpt-4o-mini-transcribe
+  language: pl            # wymuszamy PL
+
+chat:
+  backend: openai
+  model: gpt-4o-mini
+  system_prompt: |
+    Mów wyłącznie po polsku. Odpowiadaj krótko i rzeczowo, styl neutralny.
+  max_history: 4
+
+tts:
+  backend: openai
+  model: gpt-4o-mini-tts
+  voice: alloy            # na razie EN akcent; lokalny PL (Piper) dołączymy osobno
+  format: wav
+
+playback:
+  backend: pulse
+  volume: 100
+  ding:
+    enabled: false
+
+service:
+  save_audio: true
+  recordings_dir: /tmp/voice-recs
+  history_size: 20
+
+logging:
+  level: INFO
