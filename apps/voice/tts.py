@@ -8,11 +8,13 @@ import wave
 import base64
 import audioop
 from dataclasses import dataclass
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import requests
 
-from . import logging as voice_logging
+from . import voice_logging as voice_logging
+from .common import ensure_openai_key
+from .playback import PlaybackConfig, PlaybackError, play_bytes, start_stream
 
 
 class TTSError(RuntimeError):
@@ -29,10 +31,21 @@ class TTSConfig:
     piper_config: dict | None = None # rezerwa
 
 
+@dataclass
+class TTSStreamResult:
+    ok: bool
+    audio: bytes | None = None
+    audio_format: str = ""
+    sample_rate: int = 0
+    streamed: bool = False
+    backend: str | None = None
+
+
 # ───── helpers ────────────────────────────────────────────────────────────────
 
 def _is_wav(b: bytes) -> bool:
     return len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE"
+
 
 def _wrap_wav(pcm: bytes, sr: int, ch: int, sw: int = 2) -> bytes:
     buf = io.BytesIO()
@@ -43,6 +56,7 @@ def _wrap_wav(pcm: bytes, sr: int, ch: int, sw: int = 2) -> bytes:
         wf.writeframes(pcm)
     return buf.getvalue()
 
+
 def _read_wav(b: bytes) -> tuple[bytes, int, int, int]:
     with wave.open(io.BytesIO(b), "rb") as wf:
         ch = wf.getnchannels()
@@ -50,6 +64,7 @@ def _read_wav(b: bytes) -> tuple[bytes, int, int, int]:
         sr = wf.getframerate()
         pcm = wf.readframes(wf.getnframes())
     return pcm, sr, ch, sw
+
 
 def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40) -> bytes:
     """Delikatny fade-in/out, by uniknąć „pyknięć”. Operuje na 16-bit mono/stereo."""
@@ -68,8 +83,8 @@ def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40)
         if ch == 1:
             a[i] = int(a[i] * scale)
         else:
-            a[2*i]   = int(a[2*i]   * scale)
-            a[2*i+1] = int(a[2*i+1] * scale)
+            a[2 * i] = int(a[2 * i] * scale)
+            a[2 * i + 1] = int(a[2 * i + 1] * scale)
     # fade-out
     n_out = min(n_samples // ch, int(sr * ms_out / 1000))
     for j in range(n_out):
@@ -78,9 +93,10 @@ def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40)
         if ch == 1:
             a[idx] = int(a[idx] * scale)
         else:
-            a[2*idx]   = int(a[2*idx]   * scale)
-            a[2*idx+1] = int(a[2*idx+1] * scale)
+            a[2 * idx] = int(a[2 * idx] * scale)
+            a[2 * idx + 1] = int(a[2 * idx + 1] * scale)
     return a.tobytes()
+
 
 def _normalize_16bit(pcm: bytes, target_peak: int = 30000, extra_gain: float = 1.0) -> bytes:
     """
@@ -97,9 +113,9 @@ def _normalize_16bit(pcm: bytes, target_peak: int = 30000, extra_gain: float = 1
     if abs(gain - 1.0) < 1e-3:
         return pcm
     for i, v in enumerate(a):
-        # hard clip (+soft limit mógłby być dodany w przyszłości)
         a[i] = int(max(-32768, min(32767, v * gain)))
     return a.tobytes()
+
 
 def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) -> Optional[bytes]:
     """
@@ -131,6 +147,144 @@ def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) ->
     return None
 
 
+def speak(
+    text: str,
+    config: TTSConfig,
+    playback: PlaybackConfig,
+    logger: voice_logging.VoiceLogger | None = None,
+    *,
+    accumulate: bool = False,
+) -> TTSStreamResult:
+    """Wygeneruj mowę i odtwórz ją, preferując strumieniowanie."""
+
+    logger = logger or voice_logging.get_logger("voice.tts")
+    text = text.strip()
+    if not text:
+        return TTSStreamResult(ok=False, streamed=False)
+
+    if not ensure_openai_key(logger):
+        return TTSStreamResult(ok=False, streamed=False)
+
+    stream_fmt = "mp3"
+    stream = start_stream(stream_fmt, playback, logger, accumulate=accumulate)
+    if stream:
+        start_ts = time.time()
+        first_chunk_at: float | None = None
+        ok_stream = True
+        mp3_bytes: bytes | None = None
+        try:
+            for chunk in _openai_stream_chunks(text, config, stream_fmt):
+                stream.write(chunk)
+                if first_chunk_at is None:
+                    first_chunk_at = time.time()
+                    logger.debug(
+                        "tts.stream.ttfb",
+                        backend=stream.backend,
+                        latency=first_chunk_at - start_ts,
+                    )
+        except TTSError as exc:
+            logger.warning("tts.stream.backend_error", backend=stream.backend, error=str(exc))
+            ok_stream = False
+        except PlaybackError as exc:
+            logger.warning("tts.stream.player_write_failed", backend=stream.backend, error=str(exc))
+            ok_stream = False
+        except Exception as exc:  # pragma: no cover - system-level failure
+            logger.warning("tts.stream.error", backend=stream.backend, error=str(exc))
+            ok_stream = False
+        finally:
+            try:
+                player_ok, mp3_bytes, stderr = stream.close()
+            except Exception as exc:  # pragma: no cover - system-level failure
+                logger.warning("tts.stream.close_error", backend=stream.backend, error=str(exc))
+                player_ok, mp3_bytes, stderr = False, None, None
+            ok_stream = ok_stream and player_ok
+            if not player_ok and stderr:
+                logger.warning("tts.stream.player_stderr", backend=stream.backend, stderr=stderr)
+
+        if ok_stream:
+            total = time.time() - start_ts
+            payload = {"backend": stream.backend, "duration": total}
+            if first_chunk_at is not None:
+                payload["ttfb"] = first_chunk_at - start_ts
+            logger.event("tts.stream.success", **payload)
+
+            audio_bytes: bytes | None = None
+            audio_format = stream_fmt
+            sample_rate = 0
+            if accumulate and mp3_bytes:
+                wav_bytes = _decode_mp3_to_wav(mp3_bytes, logger)
+                if wav_bytes:
+                    audio_bytes = wav_bytes
+                    try:
+                        _, sr, _, _ = _read_wav(wav_bytes)
+                    except Exception:
+                        sr = 0
+                    audio_format = "wav"
+                    sample_rate = sr
+                else:
+                    audio_bytes = mp3_bytes
+            return TTSStreamResult(
+                ok=True,
+                audio=audio_bytes,
+                audio_format=audio_format,
+                sample_rate=sample_rate,
+                streamed=True,
+                backend=stream.backend,
+            )
+
+        logger.warning("tts.stream.failed", backend=stream.backend)
+    else:
+        logger.debug("tts.stream.unavailable")
+
+    try:
+        audio_bytes, sample_rate, audio_fmt = synthesize(text, config, logger)
+    except TTSError as exc:
+        logger.error("tts.speak.failed", error=str(exc))
+        return TTSStreamResult(False, None, "", 0, streamed=False)
+
+    try:
+        play_bytes(audio_bytes, audio_fmt, playback, logger, blocking=True)
+    except PlaybackError as exc:
+        logger.error("tts.playback.failed", error=str(exc))
+        return TTSStreamResult(False, None, audio_fmt, sample_rate, streamed=False)
+
+    audio_data = audio_bytes if accumulate else None
+    return TTSStreamResult(True, audio_data, audio_fmt, sample_rate, streamed=False)
+
+
+def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str):
+    try:
+        from openai import OpenAI  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise TTSError(f"OpenAI SDK unavailable: {exc}") from exc
+
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    # Część wersji SDK nie przyjmuje `format` → spróbuj z, a w razie TypeError bez.
+    try:
+        try:
+            context = client.audio.speech.with_streaming_response.create(
+                model=(config.model or "gpt-4o-mini-tts"),
+                voice=(config.voice or "alloy"),
+                input=text,
+                #format=fmt,  # preferowane, gdy obsługiwane
+                timeout=45,
+            )
+        except TypeError:
+            context = client.audio.speech.with_streaming_response.create(
+                model=(config.model or "gpt-4o-mini-tts"),
+                voice=(config.voice or "alloy"),
+                input=text,
+                timeout=45,
+            )
+    except Exception as exc:
+        raise TTSError(f"OpenAI TTS streaming init failed: {exc}") from exc
+
+    with context as response:
+        for chunk in response.iter_bytes(8192):
+            if chunk:
+                yield chunk
+
+
 # ───── public API ─────────────────────────────────────────────────────────────
 
 def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None) -> Tuple[bytes, int, str]:
@@ -149,7 +303,7 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav"), niezależnie od proszonego formatu.
     VOICE_GAIN (env) działa przez normalizację 16-bit + fade-in/out.
     """
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = ensure_openai_key(logger)
     if not api_key:
         raise TTSError("OPENAI_API_KEY not configured")
 
@@ -174,8 +328,10 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             body = resp.content
 
             if resp.status_code >= 400:
-                logger.error("tts.openai.http_error",
-                             extra={"data": {"attempt": attempt, "status": resp.status_code, "text": resp.text[:400]}})
+                logger.error(
+                    "tts.openai.http_error",
+                    extra={"data": {"attempt": attempt, "status": resp.status_code, "text": resp.text[:400]}},
+                )
                 last_err = TTSError(f"OpenAI TTS error: {resp.status_code} {resp.text[:200]}")
                 time.sleep(0.6 * (attempt + 1))
                 continue
@@ -249,20 +405,18 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
                 time.sleep(0.6 * (attempt + 1))
                 continue
 
-            # 🔧 KLUCZOWA POPRAWKA: faktyczna konwersja do 16-bit, jeżeli potrzeba
+            # 🔧 konwersja do 16-bit, jeżeli potrzeba
             if sw != 2:
                 try:
                     pcm = audioop.lin2lin(pcm, sw, 2)
                     sw = 2
                 except Exception:
-                    # jeśli konwersja się nie powiedzie, pozostaw bez zmian
                     pass
 
             extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
             if sw == 2:
                 pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
                 pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
-            # jeśli jednak nie 16-bit, po prostu przepakuj bez normalizacji/fade
             wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
             return wav_bytes, sr, "wav"
