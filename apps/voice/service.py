@@ -2,7 +2,10 @@
 """Voice assistant service loop."""
 from __future__ import annotations
 
+import contextlib
+import queue
 import signal
+import subprocess
 import threading
 import time
 import wave
@@ -22,12 +25,15 @@ else:  # pragma: no cover - runtime fallback
 
 from . import logging as voice_logging
 from .asr import ASRConfig, Transcript, transcribe
-from .capture import AudioCapture, CaptureConfig
+from common.bus import BusPub, BusSub
+
+from .capture import AudioCapture, CaptureConfig, CaptureError
 from .chat import ChatConfig, ChatSession
 from .kws import HotwordConfig, HotwordDetector
 from .nlu import Intent, NLUConfig, NLURouter
-from .playback import PlaybackConfig, play_bytes, play_ding
-from .tts import TTSConfig, synthesize
+from .common import ensure_openai_key
+from .playback import PlaybackConfig, play_ding
+from .tts import TTSConfig, TTSStreamResult, speak
 from .vad import WebRtcActivity, collect
 
 
@@ -41,6 +47,14 @@ class VoiceResult:
     audio_format: str
     sample_rate: int
 
+
+@dataclass
+class SpeechTask:
+    text: str
+    source: str
+    ack: threading.Event | None = None
+    accumulate: bool = False
+    result: TTSStreamResult | None = None
 
 class VoiceService:
     def __init__(self, config: dict[str, Any]):
@@ -59,6 +73,7 @@ class VoiceService:
         self._tts_cfg = TTSConfig(**tts_kwargs)
 
         self._play_cfg = PlaybackConfig(**config["playback"])
+        ensure_openai_key(self.logger)
 
         hotword_cfg = config.get("hotword", {})
         self._hotword = HotwordDetector(HotwordConfig(**hotword_cfg))
@@ -79,6 +94,7 @@ class VoiceService:
         self._save_audio = bool(service_cfg.get("save_audio", False))
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "data/recordings"))
 
+
         publish_ui = bool(service_cfg.get("publish_ui_state", True))
         self._ui_pub: BusPubType | None = None
         self._last_ui_state: str | None = None
@@ -88,11 +104,49 @@ class VoiceService:
             except Exception as exc:  # pragma: no cover - optional dependency
                 self.logger.warning("service.ui_state.publisher_error", error=str(exc))
                 self._ui_pub = None
+                
+        # Bus PUB/SUB and speech queue
+        self._bus_pub: BusPub | None = None
+        self._bus_sub: BusSub | None = None
+        try:
+            self._bus_pub = BusPub()
+        except Exception as exc:
+            self.logger.warning("service.bus.pub_init_failed", error=str(exc))
+        try:
+            self._bus_sub = BusSub("tts.speak")
+        except Exception as exc:
+            self.logger.warning("service.bus.sub_init_failed", error=str(exc))
+            self._bus_sub = None
+
+        self._speech_queue: queue.Queue[SpeechTask | None] = queue.Queue()
+        self._speech_thread = threading.Thread(target=self._speech_worker, name="voice-speech", daemon=True)
+        self._speech_thread.start()
+        self._bus_thread: threading.Thread | None = None
+        if self._bus_sub is not None:
+            self._bus_thread = threading.Thread(target=self._tts_speak_loop, name="voice-tts-sub", daemon=True)
+            self._bus_thread.start()
+
+        self._threads: list[threading.Thread] = [self._speech_thread]
+        if self._bus_thread is not None:
+            self._threads.append(self._bus_thread)
+
+        self._publish_ui_state("idle")
+
 
     # ─────────────────────────────────────────────
 
     def stop(self) -> None:
         self.stop_event.set()
+        self._speech_queue.put(None)
+        if self._bus_sub is not None:
+            with contextlib.suppress(Exception):
+                self._bus_sub.close()
+        if self._bus_pub is not None:
+            with contextlib.suppress(Exception):
+                self._bus_pub.close()
+        for thread in self._threads:
+            if thread.is_alive():
+                thread.join(timeout=0.5)
 
     def listen(self) -> None:
         self.logger.event("service.listen.start")
@@ -124,6 +178,7 @@ class VoiceService:
     def _play_start_ding(self) -> None:
         if self._should_ding():
             play_ding(self._play_cfg, self.logger)
+
 
     def _publish_ui_state(self, state: str) -> None:
         if not self._ui_pub:
@@ -158,11 +213,115 @@ class VoiceService:
                     # po ding zbieramy właściwe wypowiedzi
                     audio = collect(capture.frames(), self._vad, self._max_len)
 
+
+    def _publish_ui_state(self, state: str) -> None:
+        if not self._bus_pub:
+            return
+        try:
+            self._bus_pub.publish("ui.state", {"state": state}, add_ts=True)
+        except Exception as exc:
+            self.logger.debug("service.bus.state_failed", state=state, error=str(exc))
+
+    def _publish_transcript(self, transcript: Transcript) -> None:
+        if not self._bus_pub:
+            return
+        lang = transcript.language or self._asr_cfg.language or getattr(self._asr_cfg, "lang", None) or "pl"
+        payload = {"text": transcript.text, "lang": lang}
+        try:
+            self._bus_pub.publish("audio.transcript", payload, add_ts=True)
+        except Exception as exc:
+            self.logger.debug("service.bus.transcript_failed", error=str(exc))
+
+    def _publish_assistant_speech(self, text: str) -> None:
+        if not text or not self._bus_pub:
+            return
+        try:
+            self._bus_pub.publish("assistant.speech", {"text": text}, add_ts=True)
+        except Exception as exc:
+            self.logger.debug("service.bus.speech_failed", error=str(exc))
+
+    def _request_speech(self, text: str, *, source: str, accumulate: bool) -> TTSStreamResult | None:
+        if not text.strip():
+            return None
+        task = SpeechTask(text=text, source=source, accumulate=accumulate)
+        ack = threading.Event()
+        task.ack = ack
+        self._speech_queue.put(task)
+        while not self.stop_event.is_set():
+            if ack.wait(0.2):
+                break
+        return task.result
+
+    def _speech_worker(self) -> None:
+        while True:
+            try:
+                task = self._speech_queue.get(timeout=0.2)
+            except queue.Empty:
+                if self.stop_event.is_set():
+                    break
+                continue
+            if task is None:
+                break
+            ack = task.ack
+            try:
+                self._publish_ui_state("speaking")
+                self._publish_assistant_speech(task.text)
+                result = speak(task.text, self._tts_cfg, self._play_cfg, self.logger, accumulate=task.accumulate)
+                task.result = result
+                if not result.ok:
+                    self.logger.warning("service.speak.failed", source=task.source)
+            except Exception as exc:
+                self.logger.error("service.speak.error", error=str(exc), source=task.source)
+                task.result = TTSStreamResult(False, None, "", 0, streamed=False)
+            finally:
+                self._publish_ui_state("idle")
+                if ack:
+                    ack.set()
+
+    def _tts_speak_loop(self) -> None:
+        sub = self._bus_sub
+        if sub is None:
+            return
+        while not self.stop_event.is_set():
+            try:
+                topic, payload = sub.recv(timeout_ms=200)
+            except Exception as exc:
+                if self.stop_event.is_set():
+                    break
+                self.logger.debug("service.bus.sub_error", error=str(exc))
+                time.sleep(0.2)
+                continue
+            if not payload:
+                continue
+            text = payload.get("text") if isinstance(payload, dict) else None
+            if not isinstance(text, str) or not text.strip():
+                continue
+            self._speech_queue.put(SpeechTask(text=text.strip(), source="bus", accumulate=False))
+    # Główna logika cyklu
+    def _cycle(self, *, speak: bool = True) -> VoiceResult:
+        waiting_without_capture = self._hotword_engine == "ptt" or (not self._hotword_enabled)
+        if waiting_without_capture:
+            if not self._wait_hotword_without_capture():
+                raise RuntimeError("Hotword/PTT timeout")
+        else:
+            with AudioCapture(self._capture_cfg, self.logger) as capture:
+                if not self._hotword.wait(capture):
+                    raise RuntimeError("Hotword timeout")
+
+        if speak:
+            self._play_start_ding()
+        self._publish_ui_state("hearing")
+        speech_task_enqueued = False
+        speech_result: TTSStreamResult | None = None
+        try:
+            audio = self._record_with_vad()
+
             if not audio:
                 raise RuntimeError("No audio captured")
 
             if self._save_audio:
                 self._save_pcm(audio)
+
 
             self._publish_ui_state("thinking")
 
@@ -192,10 +351,40 @@ class VoiceService:
             latency = time.time() - start
             self.logger.event("service.cycle.done", latency=latency, intent=intent.kind)
 
+            start = time.time()
+            transcript = transcribe(audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger)
+            self.logger.event("service.asr.transcript", text=transcript.text)
+            self._publish_transcript(transcript)
+
+            intent = self._nlu.route(transcript.text)
+            reply = self._handle_intent(intent)
+
+            processing_latency = time.time() - start
+
+            if speak and reply.strip():
+                speech_task_enqueued = True
+                speech_result = self._request_speech(reply, source="chat", accumulate=True)
+            elif speak:
+                self.logger.debug("service.tts.skip_empty")
+
+            total_latency = time.time() - start
+            self.logger.event(
+                "service.cycle.done",
+                latency=total_latency,
+                processing=processing_latency,
+                intent=intent.kind,
+            )
+
+            audio_bytes = speech_result.audio if speech_result and speech_result.audio else None
+            audio_format = speech_result.audio_format if speech_result else ""
+            sample_rate = speech_result.sample_rate if speech_result else 0
+
+
             return VoiceResult(
                 transcript=transcript,
                 intent=intent,
                 reply=reply,
+
                 latency_s=latency,
                 audio=audio_out,
                 audio_format=fmt,
@@ -203,6 +392,14 @@ class VoiceService:
             )
         finally:
             if not delegated_to_speech:
+                latency_s=total_latency,
+                audio=audio_bytes,
+                audio_format=audio_format,
+                sample_rate=sample_rate,
+            )
+        finally:
+            if not speech_task_enqueued:
+
                 self._publish_ui_state("idle")
 
     # ─────────────────────────────────────────────
@@ -222,10 +419,76 @@ class VoiceService:
             return bool(self._hotword.wait(_NullCap()))
 
     def _record_with_vad(self) -> bytes:
-        """Otwórz mikrofon dopiero po sygnale startowym i zbierz wypowiedź VAD-em."""
-        with AudioCapture(self._capture_cfg, self.logger) as capture:
-            return collect(capture.frames(), self._vad, self._max_len)
+        """Zbierz wypowiedź VAD-em z fallbackiem do arecord."""
+        audio = b""
+        try:
+            with AudioCapture(self._capture_cfg, self.logger) as capture:
+                audio = collect(capture.frames(), self._vad, self._max_len)
+        except CaptureError as exc:
+            self.logger.warning("service.capture.error", error=str(exc))
+        except Exception as exc:
+            self.logger.warning("service.capture.unexpected", error=str(exc))
+        if not audio:
+            audio = self._record_with_arecord()
+        return audio
 
+
+    def _record_with_arecord(self) -> bytes:
+        cfg = self._capture_cfg
+        device = cfg.device or "plughw:1,0"
+        buffer_seconds = float(getattr(cfg, "buffer_seconds", 0) or 0.0)
+        duration = max(self._max_len / 1000.0, 1.0) + buffer_seconds + 0.5
+        cmd = [
+            "arecord",
+            "-q",
+            "-t",
+            "raw",
+            "-f",
+            "S16_LE",
+            "-c",
+            str(max(1, int(cfg.channels))),
+            "-r",
+            str(cfg.sample_rate),
+            "-D",
+            device,
+            "-d",
+            f"{duration:.2f}",
+        ]
+        buffer_us = int(max(0.0, buffer_seconds) * 1_000_000)
+        if buffer_us > 0:
+            cmd += ["--buffer-time", str(buffer_us)]
+        self.logger.debug("service.capture.fallback.start", command=" ".join(cmd))
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        except FileNotFoundError:
+            self.logger.error("service.capture.arecord_missing")
+            return b""
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode("utf-8", "ignore").strip()
+            self.logger.error(
+                "service.capture.arecord_failed",
+                returncode=proc.returncode,
+                stderr=stderr,
+            )
+            return b""
+        raw = proc.stdout or b""
+        if not raw:
+            self.logger.warning("service.capture.arecord_empty")
+            return b""
+        frames = self._frames_from_pcm(raw, cfg.frame_bytes)
+        trimmed = collect(frames, self._vad, self._max_len)
+        if trimmed:
+            self.logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
+            return trimmed
+        self.logger.warning("service.capture.fallback.no_vad")
+        return raw
+
+    def _frames_from_pcm(self, data: bytes, frame_size: int):
+        for offset in range(0, len(data), frame_size):
+            chunk = data[offset : offset + frame_size]
+            if len(chunk) < frame_size:
+                break
+            yield chunk
     def _handle_intent(self, intent: Intent) -> str:
         if intent.kind == "command":
             name = intent.payload.get("name", "command")
