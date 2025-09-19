@@ -31,8 +31,8 @@ from .chat import ChatConfig, ChatSession
 from .kws import HotwordConfig, HotwordDetector
 from .nlu import Intent, NLUConfig, NLURouter
 from .common import ensure_openai_key
-from .playback import PlaybackConfig, play_ding
-from .tts import TTSConfig, TTSStreamResult, speak
+from .playback import PlaybackConfig, play_ding, play_bytes
+from .tts import TTSConfig, TTSStreamResult, speak, synthesize
 from .vad import WebRtcActivity, collect
 
 # ──────────────────────────────────────────────────────────────────────────────
