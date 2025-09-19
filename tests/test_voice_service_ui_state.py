@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Regression tests for VoiceService UI state publishing."""
 
 
