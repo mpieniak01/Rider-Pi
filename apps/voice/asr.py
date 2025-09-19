@@ -1,4 +1,4 @@
-""""Automatic speech recognition backends."""
+"""Automatic speech recognition backends."""
 from __future__ import annotations
 
 import io
@@ -27,7 +27,7 @@ class ASRConfig:
     vosk_model_dir: str | None = None
     whisper_model: str | None = None
     input_encoding: str | None = None
-    timeout: float | None = None        # opcjonalny timeout requestu (sekundy)
+    timeout: float | None = None        # opcjonalny timeout (obecnie *nie* przekazujemy do SDK)
 
 
 @dataclass
@@ -37,15 +37,29 @@ class Transcript:
     raw: Any | None = None
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Pomocnicze narzędzia audio
+
+def _is_wav(b: bytes) -> bool:
+    """Szybka detekcja nagłówka WAV (RIFF/WAVE)."""
+    return len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE"
+
+
 def _pcm_to_wav_bytes(audio: bytes, sample_rate: int) -> bytes:
+    """
+    Opakuj surowe PCM S16_LE (mono) w kontener WAV.
+    """
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
+        wf.setsampwidth(2)  # 16 bit
+        wf.setframerate(int(sample_rate))
         wf.writeframes(audio)
     return buf.getvalue()
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Normalizacja parametrów
 
 def _norm_language(cfg: ASRConfig) -> str | None:
     """
@@ -59,6 +73,9 @@ def _norm_language(cfg: ASRConfig) -> str | None:
     return val
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Publiczne API
+
 def transcribe(
     audio: bytes,
     sample_rate: int,
@@ -67,6 +84,9 @@ def transcribe(
 ) -> Transcript:
     backend = (config.backend or "stub").lower()
     logger = logger or voice_logging.get_logger("voice.asr")
+
+    if not audio:
+        raise ASRError("Empty audio buffer")
 
     if backend == "openai":
         return _openai_transcribe(
@@ -89,6 +109,9 @@ def transcribe(
     raise ASRError(f"Unsupported ASR backend: {backend}")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Implementacje backendów
+
 def _openai_transcribe(
     audio: bytes,
     sample_rate: int,
@@ -108,19 +131,29 @@ def _openai_transcribe(
 
     client = OpenAI(api_key=api_key)
 
-    wav_bytes = _pcm_to_wav_bytes(audio, sample_rate)
+    # ZAWSZE wysyłaj kontener (WAV/MP3). Tu preferujemy WAV.
+    if _is_wav(audio):
+        wav_bytes = audio
+    else:
+        wav_bytes = _pcm_to_wav_bytes(audio, sample_rate)
+
     buffer = io.BytesIO(wav_bytes)
     buffer.name = "input.wav"  # OpenAI SDK lubi nazwę pliku przy file=...
 
-    # Uwaga: w nowszym SDK OpenAI parametr 'language' jest wspierany przez modele transkrypcyjne
-    response = client.audio.transcriptions.create(
-        model=(config.model or "gpt-4o-mini-transcribe"),
-        file=buffer,
-        language=language,                 # None => auto
-        prompt=config.prompt,
-        temperature=config.temperature,
-        timeout=config.timeout,            # może być None
-    )
+    # Parametry wspierane przez endpoint transkrypcji:
+    # language: może być None (auto), prompt/temperature wg modelu
+    # (timeout trzymamy w configu, ale nie przekazujemy — SDK tego nie przyjmuje)
+    try:
+        response = client.audio.transcriptions.create(
+            model=(config.model or "gpt-4o-mini-transcribe"),
+            file=buffer,
+            language=language,                 # None => auto
+            prompt=config.prompt,
+            temperature=config.temperature,
+        )
+    except Exception as exc:
+        # Czytelniejsza diagnoza (np. 400: zły format)
+        raise ASRError(f"OpenAI transcription failed: {exc}") from exc
 
     text = getattr(response, "text", None) or ""
     lang_out = getattr(response, "language", None) or (language or "") or ""
