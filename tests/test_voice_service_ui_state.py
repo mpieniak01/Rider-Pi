@@ -284,5 +284,3 @@ def test_listen_resets_state_after_cycle_error(monkeypatch: pytest.MonkeyPatch, 
 
     states = _state_sequence(publisher)
     assert states[-2:] == ["hearing", "idle"], states
-
-from __future__ import annotations
