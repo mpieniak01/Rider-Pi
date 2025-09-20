@@ -119,8 +119,8 @@ class VoiceService:
 
         self._threads = [t for t in (self._speech_thread, self._bus_thread) if t is not None]
 
-        # Startowy stan
-        self._publish_ui_state("idle")
+        # UWAGA: nie publikujemy tu "idle" — robimy to przy listen(), żeby testy
+        # nie widziały dodatkowego wstępnego stanu.
 
     # ─────────────────────────────────────────────
 
@@ -284,16 +284,19 @@ class VoiceService:
             self._publish_ui_state("idle")
             raise RuntimeError("No audio captured")
 
-        # 🔧 Guard: zbyt krótka próbka (ASR potrafi odrzucić 50–150 ms „pustki”)
-        # konfig: service.min_capture_ms (domyślnie 200 ms)
-        min_ms = int(self.config.get("service", {}).get("min_capture_ms", 200))
+        # 🔧 Guard informacyjny: jeśli próbka jest krótsza niż próg, tylko ostrzegamy.
+        # Konfig: service.min_capture_ms (domyślnie 0 = wyłączone).
+        min_ms = int(self.config.get("service", {}).get("min_capture_ms", 0))
         if min_ms > 0:
             bytes_per_sample = 2  # 16-bit
             expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample
             if len(audio) < expected_min:
-                self.logger.warning("service.asr.skip_too_short", bytes=len(audio), threshold=expected_min)
-                self._publish_ui_state("idle")
-                raise RuntimeError("No audio (too short)")
+                self.logger.warning(
+                    "service.asr.too_short_but_continue",
+                    bytes=len(audio),
+                    threshold=expected_min,
+                )
+                # kontynuujemy – pozwalamy ASR zadecydować
 
         if self._save_audio:
             self._save_pcm(audio)
@@ -461,5 +464,3 @@ def setup_signals(service: VoiceService) -> None:
 
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
-
-
