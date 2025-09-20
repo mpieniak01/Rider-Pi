@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 # tools/manual_drive.py
 # Prosty trenażer impulsów: f/b/l/r/s/q + liczba (opcjonalnie).
 # Spójny z apps/motion/xgo_adapter.py: impulsy blokujące (block=True),
 # obroty realizowane vendorowo (turnleft/turnright przez ada.spin).
 
-import os, sys
+import os
+import sys
+
 from apps.motion.xgo_adapter import XgoAdapter
 
 HELP = """\
@@ -26,14 +29,21 @@ Dodatkowo:
 Włącz fizyczny ruch: export MOTION_ENABLE=1
 """
 
+
 def env_float(name: str, default: float) -> float:
-    try: return float(os.getenv(name, str(default)))
-    except Exception: return default
+    try:
+        return float(os.getenv(name, str(default)))
+    except Exception:
+        return default
+
 
 def read_yaw(adapter: XgoAdapter) -> float:
     imu = adapter.imu() or {}
-    try: return float(imu.get("yaw") or 0.0)
-    except Exception: return 0.0
+    try:
+        return float(imu.get("yaw") or 0.0)
+    except Exception:
+        return 0.0
+
 
 def main():
     # Nie wymuszamy ruchu – czytamy ustawienie użytkownika.
@@ -45,22 +55,25 @@ def main():
         return
 
     # Domyślne parametry (po zmianach: mniejszy przesuw na biurku)
-    v_def   = env_float("RIDER_SPEED_LIN",    0.05)  # 0..1 (mniejszy krok)
-    t_lin   = env_float("RIDER_PULSE",        0.15)  # krótszy impuls f/b
-    deg_def = env_float("RIDER_TURN_THETA",  22.00)  # °
-    t_yaw   = env_float("RIDER_TURN_MINTIME", 0.45)  # s
-    v_spin  = env_float("RIDER_TURN_SPEED",   0.30)  # 0..1 (mapowane do 20..70)
+    v_def = env_float("RIDER_SPEED_LIN", 0.05)  # 0..1 (mniejszy krok)
+    t_lin = env_float("RIDER_PULSE", 0.15)  # krótszy impuls f/b
+    deg_def = env_float("RIDER_TURN_THETA", 22.00)  # °
+    t_yaw = env_float("RIDER_TURN_MINTIME", 0.45)  # s
+    v_spin = env_float("RIDER_TURN_SPEED", 0.30)  # 0..1 (mapowane do 20..70)
 
     print("Manual Drive (impulse). E-STOP: Ctrl+C  |  'h' po pomoc.")
     ada.stop()
 
     while True:
         try:
-            sys.stdout.write("> "); sys.stdout.flush()
+            sys.stdout.write("> ")
+            sys.stdout.flush()
             line = sys.stdin.readline()
-            if not line: break
+            if not line:
+                break
             parts = line.strip().split()
-            if not parts: continue
+            if not parts:
+                continue
 
             cmd = parts[0].lower()
 
@@ -68,7 +81,8 @@ def main():
                 break
 
             if cmd in ("h", "help", "?"):
-                print(HELP); continue
+                print(HELP)
+                continue
 
             if cmd == "i":
                 imu = ada.imu()
@@ -79,29 +93,41 @@ def main():
                 continue
 
             if cmd == "s":
-                ada.stop(); print("[STOP]"); continue
+                ada.stop()
+                print("[STOP]")
+                continue
 
-            if cmd in ("f","b"):
-                v = v_def; t = t_lin
+            if cmd in ("f", "b"):
+                v = v_def
+                t = t_lin
                 if len(parts) >= 2:
-                    try: v = max(0.0, min(1.0, float(parts[1])))
-                    except Exception: pass
+                    try:
+                        v = max(0.0, min(1.0, float(parts[1])))
+                    except Exception:
+                        pass
                 if len(parts) >= 3:
-                    try: t = max(0.05, float(parts[2]))
-                    except Exception: pass
+                    try:
+                        t = max(0.05, float(parts[2]))
+                    except Exception:
+                        pass
                 direction = "forward" if cmd == "f" else "backward"
                 print(f"[{direction}] v={v:.2f} t={t:.2f}")
                 ada.drive(direction, v, t, block=True)  # block=True → adapter sam stopuje
                 continue
 
-            if cmd in ("l","r"):
-                deg = deg_def; t = t_yaw
+            if cmd in ("l", "r"):
+                deg = deg_def
+                t = t_yaw
                 if len(parts) >= 2:
-                    try: deg = float(parts[1])  # info/log; adapter używa vendor turn step
-                    except Exception: pass
+                    try:
+                        deg = float(parts[1])  # info/log; adapter używa vendor turn step
+                    except Exception:
+                        pass
                 if len(parts) >= 3:
-                    try: t = max(0.10, float(parts[2]))
-                    except Exception: pass
+                    try:
+                        t = max(0.10, float(parts[2]))
+                    except Exception:
+                        pass
                 dir_ = "left" if cmd == "l" else "right"
                 yaw0 = read_yaw(ada)
                 print(f"[spin {dir_}] deg≈{deg:.1f} t={t:.2f} (yaw0={yaw0:.1f})")
@@ -113,10 +139,13 @@ def main():
 
             print("Nieznana komenda. 'h' po pomoc.")
         except KeyboardInterrupt:
-            print("\n[ABORT]"); break
+            print("\n[ABORT]")
+            break
         except Exception as e:
             print(f"[ERR] {e}")
-    ada.stop(); print("bye.")
+    ada.stop()
+    print("bye.")
+
 
 if __name__ == "__main__":
     main()

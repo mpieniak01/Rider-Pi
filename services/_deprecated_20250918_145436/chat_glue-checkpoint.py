@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from typing import Deque, Dict, Any, List
+from typing import Any
 
-from flask import request, jsonify
+from flask import jsonify, request
 
 # Opcjonalny, docelowy magazyn historii – jeśli jest, użyjemy go.
 try:
@@ -13,10 +13,10 @@ except Exception:  # brak lub inne API → przełącz na bufor in-memory
     chat_store = None  # type: ignore
 
 # Prosty bufor na fallback (gdy nie ma chat_store)
-_HISTORY: Deque[Dict[str, Any]] = deque(maxlen=200)
+_HISTORY: deque[dict[str, Any]] = deque(maxlen=200)
 
 
-def _cors_headers() -> Dict[str, str]:
+def _cors_headers() -> dict[str, str]:
     return {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type",
@@ -32,7 +32,7 @@ def chat_history():
     # Pobierz historię z magazynu, jeżeli dostępny; w przeciwnym wypadku z fallbacku
     if chat_store and hasattr(chat_store, "history"):
         try:
-            items: List[Dict[str, Any]] = list(chat_store.history())  # oczekiwane API: iterator/lista dictów
+            items: list[dict[str, Any]] = list(chat_store.history())  # oczekiwane API: iterator/lista dictów
         except Exception:
             items = list(_HISTORY)
     else:

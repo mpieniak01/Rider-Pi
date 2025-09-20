@@ -1,4 +1,5 @@
 """Shared helpers for camera preview scripts."""
+
 from __future__ import annotations
 
 import os

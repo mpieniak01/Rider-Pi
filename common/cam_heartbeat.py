@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 """
 common/cam_heartbeat.py — jednolity heartbeat kamery dla wszystkich previewów.
 Użycie:

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from __future__ import annotations
-import os, time, mimetypes
-from flask import Response, make_response, send_file, abort
+
+import mimetypes
+import os
+import time
+
+from flask import Response, abort, make_response, send_file
+
 from . import compat as C
 
 # --- konfiguracja i pomocnicze ---
@@ -18,6 +22,7 @@ SNAP_MAX_AGE_S = int(os.getenv("SNAP_MAX_AGE_S", "20"))  # po ilu sekundach uzna
 # Upewnij się, że porównujemy ścieżki absolutne
 _SNAP_DIR_ABS = os.path.abspath(C.SNAP_DIR)
 
+
 def _resolve_snap(name: str):
     """
     Zwróć (full_path, ext, mimetype) dla 'raw' lub 'proc',
@@ -30,12 +35,14 @@ def _resolve_snap(name: str):
             return full, ext, mime
     return None
 
+
 def _fresh(path: str) -> bool:
     """Czy plik jest świeższy niż próg SNAP_MAX_AGE_S?"""
     try:
         return (time.time() - os.path.getmtime(path)) <= SNAP_MAX_AGE_S
     except Exception:
         return False
+
 
 def _nocache_file_response(path: str, mime: str | None = None):
     """Zwróć plik z nagłówkami twardo wyłączającymi cache."""
@@ -45,6 +52,7 @@ def _nocache_file_response(path: str, mime: str | None = None):
     resp.headers["Expires"] = "0"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
 
 # --- endpoints ---
 def camera_raw():
@@ -56,6 +64,7 @@ def camera_raw():
         return Response('{"error":"stale_raw"}', mimetype="application/json", status=404)
     return _nocache_file_response(full, mime)
 
+
 def camera_proc():
     r = _resolve_snap("proc")
     if not r:
@@ -65,6 +74,7 @@ def camera_proc():
         return Response('{"error":"stale_proc"}', mimetype="application/json", status=404)
     return _nocache_file_response(full, mime)
 
+
 def camera_last():
     # alias do RAW, z silniejszymi nagłówkami anti-cache
     r = _resolve_snap("raw")
@@ -72,6 +82,7 @@ def camera_last():
         return Response('{"error":"no_raw"}', mimetype="application/json", status=404)
     full, _ext, mime = r
     return _nocache_file_response(full, mime)
+
 
 def camera_placeholder():
     svg = """
@@ -92,6 +103,7 @@ def camera_placeholder():
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
 
+
 def snapshots_static(fname: str):
     """
     Serwuje dowolny plik ze SNAP_DIR po nazwie (np. raw.png, proc.bmp).
@@ -105,5 +117,3 @@ def snapshots_static(fname: str):
         return abort(404)
     mime = _MIME.get(os.path.splitext(safe)[1].lower(), mimetypes.guess_type(safe)[0] or "application/octet-stream")
     return _nocache_file_response(safe, mime)
-
-

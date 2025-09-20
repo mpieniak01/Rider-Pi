@@ -7,21 +7,18 @@ Zasady:
 - Błędy walidacji zwracają 400 lokalnie (bez forwardu).
 - Kody z mostka propagujemy (nie zamieniamy 400→502).
 """
+
 from __future__ import annotations
 
 import json
 import os
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Tuple, Literal
+from typing import Any, Literal
 
 from flask import Response, jsonify, make_response, request
 
-MOTION_BRIDGE_URL = (
-    os.getenv("MOTION_BRIDGE_URL")
-    or os.getenv("WEB_BRIDGE_URL")
-    or "http://127.0.0.1:8081"
-)
+MOTION_BRIDGE_URL = os.getenv("MOTION_BRIDGE_URL") or os.getenv("WEB_BRIDGE_URL") or "http://127.0.0.1:8081"
 HTTP_TIMEOUT_S = float(os.getenv("WEB_BRIDGE_TIMEOUT", "0.8"))
 SAFE_MAX_T = float(os.getenv("SAFE_MAX_DURATION", "0.5"))  # s, miękki limit pojedynczego ruchu
 
@@ -29,6 +26,7 @@ AllowedDir = Literal["forward", "backward", "left", "right"]
 
 
 # ───────────────────────────── helpers ───────────────────────────── #
+
 
 def _corsify(resp: Response) -> Response:
     """Attach permissive CORS headers."""
@@ -38,7 +36,7 @@ def _corsify(resp: Response) -> Response:
     return resp
 
 
-def _decode_json(raw: bytes) -> Dict[str, Any]:
+def _decode_json(raw: bytes) -> dict[str, Any]:
     try:
         return json.loads(raw.decode("utf-8"))
     except Exception:
@@ -55,11 +53,15 @@ def _proxy_get(path: str, qs_dict: dict[str, Any] | None = None) -> tuple[dict[s
         raw = resp.read()
         code = resp.status
         ctype = resp.headers.get("Content-Type", "application/json") or "application/json"
-    body = _decode_json(raw) if ctype.startswith("application/json") else {
-        "ok": False,
-        "error": "bad content-type from web bridge",
-        "text": raw[:300].decode("utf-8", "ignore"),
-    }
+    body = (
+        _decode_json(raw)
+        if ctype.startswith("application/json")
+        else {
+            "ok": False,
+            "error": "bad content-type from web bridge",
+            "text": raw[:300].decode("utf-8", "ignore"),
+        }
+    )
     return body, code
 
 
@@ -81,15 +83,20 @@ def _proxy_post_json(path: str, payload: dict[str, Any]) -> tuple[dict[str, Any]
     except Exception as e:  # network errors / bridge down
         return {"ok": False, "error": f"bridge unavailable: {e}"}, 502
 
-    body = _decode_json(raw) if ctype.startswith("application/json") else {
-        "ok": False,
-        "error": "bad content-type from web bridge",
-        "text": raw[:300].decode("utf-8", "ignore"),
-    }
+    body = (
+        _decode_json(raw)
+        if ctype.startswith("application/json")
+        else {
+            "ok": False,
+            "error": "bad content-type from web bridge",
+            "text": raw[:300].decode("utf-8", "ignore"),
+        }
+    )
     return body, code
 
 
 # ───────────────────────────── validation ───────────────────────────── #
+
 
 class BadRequest(ValueError):
     """400 – invalid client payload."""
@@ -108,7 +115,7 @@ def _validate_dir(d: Any) -> AllowedDir:
     return d  # type: ignore[return-value]
 
 
-def _validate_control_payload(p: Dict[str, Any]) -> Tuple[str, float, float]:
+def _validate_control_payload(p: dict[str, Any]) -> tuple[str, float, float]:
     """
     Minimalna walidacja:
       - cmd ∈ {"move","stop"}
@@ -150,6 +157,7 @@ def _validate_control_payload(p: Dict[str, Any]) -> Tuple[str, float, float]:
 
 
 # ───────────────────────────── public handlers ───────────────────────────── #
+
 
 def control_proxy_core() -> tuple[dict[str, Any], int]:
     """Interpret control command and forward to the motion bridge."""

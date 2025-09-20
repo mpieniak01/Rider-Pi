@@ -1,15 +1,19 @@
 from __future__ import annotations
-from pathlib import Path
+
 import time
+from pathlib import Path
 
 FLAGS_DIR = Path("data/flags")
 LAST_FRAME = Path("data/last_frame.jpg")
 
+
 def _flag_path(name: str) -> Path:
     return FLAGS_DIR / name
 
+
 def _flag_on(name: str) -> bool:
     return _flag_path(name).exists()
+
 
 def set_flag(name: str, on: bool) -> bool:
     FLAGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -24,20 +28,24 @@ def set_flag(name: str, on: bool) -> bool:
     except Exception:
         return False
 
+
 def get_motion_flags():
     return {
         "motion_enable": _flag_on("motion.enable"),
         "estop": _flag_on("estop.on"),
     }
 
+
 def get_last_frame_info():
     if LAST_FRAME.exists():
         return {"exists": True, "mtime": LAST_FRAME.stat().st_mtime, "path": str(LAST_FRAME)}
     return {"exists": False, "mtime": None, "path": str(LAST_FRAME)}
 
+
 def get_bus_health():
     # TODO: wpiąć realny heartbeat z brokera (z busa lub pliku).
     return {"broker": "unknown", "last_seen_ts": None}
+
 
 def get_devices_summary():
     return {
@@ -46,6 +54,7 @@ def get_devices_summary():
         "bus": get_bus_health(),
         "flags": get_motion_flags(),
     }
+
 
 def snapshot():
     return {

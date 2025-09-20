@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import os
-import io
-import pytest
 from urllib.parse import urlparse
+
+import pytest
 
 # Ten zestaw jest domyślnie wyłączony, by nie blokować lokalnych runów na robocie.
 # Włącz explicite: ALLOW_CAMERA_API_TESTS=1 pytest -q tests/test_camera_api.py

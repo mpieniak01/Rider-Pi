@@ -1,6 +1,11 @@
 from __future__ import annotations
-import json, os, time
-from flask import jsonify, Response
+
+import json
+import os
+import time
+
+from flask import Response, jsonify
+
 from services.api_core import compat
 from services.api_core.vision_api import load_obstacle  # reużywamy jednej logiki
 
@@ -15,7 +20,7 @@ def state() -> Response:
         raw_ts = float(st.st_mtime)
     except Exception:
         pass
-    fresh = (raw_ts is not None and (now - float(raw_ts)) <= float(os.getenv("LAST_FRESH_S", "3")))
+    fresh = raw_ts is not None and (now - float(raw_ts)) <= float(os.getenv("LAST_FRESH_S", "3"))
     vision_enabled = bool((os.getenv("VISION_ENABLED", "0") == "1") or fresh)
     cache_bust = int(raw_ts or now)
 

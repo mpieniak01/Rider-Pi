@@ -1,7 +1,10 @@
-import os
+from __future__ import annotations
+
 import json
-from PIL import Image
 from datetime import datetime
+
+from PIL import Image
+
 
 class MockFaceDriver:
     def __init__(self, cfg):
@@ -18,15 +21,17 @@ class MockFaceDriver:
         # Dla testów: zapis PNG z bufora RGB565 (wizualizacja)
         try:
             import numpy as np
-            arr = np.frombuffer(buf, dtype='>u2').reshape((h, w))
+
+            arr = np.frombuffer(buf, dtype=">u2").reshape((h, w))
             r = ((arr >> 11) & 0x1F) << 3
             g = ((arr >> 5) & 0x3F) << 2
             b = (arr & 0x1F) << 3
-            rgb = np.stack([r, g, b], axis=-1).astype('uint8')
+            rgb = np.stack([r, g, b], axis=-1).astype("uint8")
             from PIL import Image
-            img = Image.fromarray(rgb, 'RGB')
+
+            img = Image.fromarray(rgb, "RGB")
             img.save(f"{self.out_base}.png")
-        except Exception as e:
+        except Exception:
             # Nie blokuj testu jeśli numpy/PIL nie działa
             pass
         self._write_meta({"mode": "rgb565", "size": [w, h], "len": len(buf)})

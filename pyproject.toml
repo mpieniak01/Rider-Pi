@@ -1,0 +1,28 @@
+[tool.ruff]
+line-length = 100
+respect-gitignore = true
+target-version = "py39"
+extend-exclude = [
+  "_apps", "_apps/**",
+  "attic", "attic/**",
+  "venv", ".venv", "build", "dist", "__pycache__",
+  "services/_deprecated_*", "services/_deprecated_*/**"
+]
+# kompatybilność wstecz (starsze Ruffy czytają te klucze)
+select = ["E", "F", "I", "UP", "B"]
+# wyłącz fixowanie reguł, które zmieniają adnotacje (zostaną raporty, ale bez --fix)
+unfixable = ["UP006", "UP045"]
+# dla starszych Ruffów: wyciszenia testów
+per-file-ignores = { "tests/**" = ["E402", "F401", "F811"] }
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = []            # (opcjonalnie) można dodać "UP006","UP045" gdy nie chcesz nawet raportów
+unfixable = ["UP006", "UP045"]
+per-file-ignores = { "tests/**" = ["E402", "F401", "F811"] }
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+
+

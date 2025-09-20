@@ -1,4 +1,5 @@
 """Automatic speech recognition backends."""
+
 from __future__ import annotations
 
 import io
@@ -18,16 +19,16 @@ class ASRError(RuntimeError):
 @dataclass
 class ASRConfig:
     # Domyślne wartości pozwalają uruchomić backend bez nadmiaru konfiguracji
-    backend: str = "openai"             # "openai" | "vosk" | (inne w przyszłości)
-    model: str | None = None            # nazwa/model backendu (np. dla OpenAI)
-    language: str | None = None         # preferowany język, np. "pl", "en", "auto"
-    lang: str | None = None             # alias akceptowany przez CLI/konfig (mapowany na language)
+    backend: str = "openai"  # "openai" | "vosk" | (inne w przyszłości)
+    model: str | None = None  # nazwa/model backendu (np. dla OpenAI)
+    language: str | None = None  # preferowany język, np. "pl", "en", "auto"
+    lang: str | None = None  # alias akceptowany przez CLI/konfig (mapowany na language)
     temperature: float = 0.0
     prompt: str | None = None
     vosk_model_dir: str | None = None
     whisper_model: str | None = None
     input_encoding: str | None = None
-    timeout: float | None = None        # opcjonalny timeout (obecnie *nie* przekazujemy do SDK)
+    timeout: float | None = None  # opcjonalny timeout (obecnie *nie* przekazujemy do SDK)
 
 
 @dataclass
@@ -39,6 +40,7 @@ class Transcript:
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Pomocnicze narzędzia audio
+
 
 def _is_wav(b: bytes) -> bool:
     """Szybka detekcja nagłówka WAV (RIFF/WAVE)."""
@@ -61,6 +63,7 @@ def _pcm_to_wav_bytes(audio: bytes, sample_rate: int) -> bytes:
 # ──────────────────────────────────────────────────────────────────────────────
 # Normalizacja parametrów
 
+
 def _norm_language(cfg: ASRConfig) -> str | None:
     """
     Spójne uzgadnianie nazwy języka:
@@ -75,6 +78,7 @@ def _norm_language(cfg: ASRConfig) -> str | None:
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Publiczne API
+
 
 def transcribe(
     audio: bytes,
@@ -112,6 +116,7 @@ def transcribe(
 # ──────────────────────────────────────────────────────────────────────────────
 # Implementacje backendów
 
+
 def _openai_transcribe(
     audio: bytes,
     sample_rate: int,
@@ -147,7 +152,7 @@ def _openai_transcribe(
         response = client.audio.transcriptions.create(
             model=(config.model or "gpt-4o-mini-transcribe"),
             file=buffer,
-            language=language,                 # None => auto
+            language=language,  # None => auto
             prompt=config.prompt,
             temperature=config.temperature,
         )

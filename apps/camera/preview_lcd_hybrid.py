@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # apps/camera/preview_lcd_hybrid.py
 # PoC: SSD do inicjalizacji, tracker do podtrzymania, opcjonalny HAAR w ROI.
 # Publikuje vision.person (tracker/SSD) i vision.face (HAAR).
 # + wysyła camera.heartbeat + snapshoty RAW/proc/LCD/LCD_fb
-
 import os
 import time
-from typing import Optional
 
 import cv2
 import numpy as np
 
-from common.bus import BusPub, now_ts
+from apps.camera.utils import env_flag, open_camera
+from common.bus import BusPub
 from common.cam_heartbeat import CameraHB
 from common.snap import Snapper
-from apps.camera.utils import env_flag, open_camera
 
 PUB = BusPub()
 HB = CameraHB(mode="hybrid")
@@ -62,6 +62,7 @@ def _lcd_init():
     except Exception:
         try:
             import xgoscreen.LCD_2inch as lcd_mod
+
             LCD_2inch = lcd_mod.LCD_2inch
         except Exception:
             return None
@@ -90,9 +91,27 @@ def lcd_show_bgr(img_bgr: np.ndarray):
 
 
 CLASSES = [
-    "background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat",
-    "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant",
-    "sheep", "sofa", "train", "tvmonitor"
+    "background",
+    "aeroplane",
+    "bicycle",
+    "bird",
+    "boat",
+    "bottle",
+    "bus",
+    "car",
+    "cat",
+    "chair",
+    "cow",
+    "diningtable",
+    "dog",
+    "horse",
+    "motorbike",
+    "person",
+    "pottedplant",
+    "sheep",
+    "sofa",
+    "train",
+    "tvmonitor",
 ]
 PERSON_ID = 15
 
@@ -114,7 +133,9 @@ def create_tracker():
     elif hasattr(cv2, f"Tracker{typ}_create"):
         maker = getattr(cv2, f"Tracker{typ}_create")
     else:
-        maker = getattr(cv2, "TrackerKCF_create", None) or getattr(getattr(cv2, "legacy", object), "TrackerKCF_create", None)
+        maker = getattr(cv2, "TrackerKCF_create", None) or getattr(
+            getattr(cv2, "legacy", object), "TrackerKCF_create", None
+        )
     if maker is None:
         raise RuntimeError("OpenCV tracker API not available")
     return maker()
@@ -204,8 +225,11 @@ def main():
                 conf, (bx1, by1, bx2, by2) = best
                 if not NO_DRAW:
                     cv2.rectangle(out, (bx1, by1), (bx2, by2), (0, 255, 255), 2)
-                pub("vision.person", {"present": True, "score": float(conf),
-                                      "bbox": [bx1, by1, bx2 - bx1, by2 - by1]}, add_ts=True)
+                pub(
+                    "vision.person",
+                    {"present": True, "score": float(conf), "bbox": [bx1, by1, bx2 - bx1, by2 - by1]},
+                    add_ts=True,
+                )
                 tracker = create_tracker()
                 tracker.init(out, (bx1, by1, bx2 - bx1, by2 - by1))
                 track_bbox = (bx1, by1, bx2 - bx1, by2 - by1)
@@ -219,13 +243,13 @@ def main():
                 gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
                 faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
                 if not NO_DRAW:
-                    for (fx, fy, fw, fh) in faces:
+                    for fx, fy, fw, fh in faces:
                         cv2.rectangle(out, (x0 + fx, y0 + fy), (x0 + fx + fw, y0 + fy + fh), (0, 255, 0), 2)
                 if len(faces) > 0:
                     pub("vision.face", {"present": True, "score": 0.85, "count": len(faces)}, add_ts=True)
 
         # --- SNAPSHOTS ---
-        SNAP.cam(frame)          # RAW po ROT/FLIP
+        SNAP.cam(frame)  # RAW po ROT/FLIP
         SNAP.proc(out)
         SNAP.lcd_from_frame(out)
         SNAP.lcd_from_fb()

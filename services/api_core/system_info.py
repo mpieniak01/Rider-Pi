@@ -25,6 +25,7 @@ def _cpu_pct_sample() -> tuple[float, float]:
     except Exception:
         return 0.0, 0.0
 
+
 _prev = {"idle": None, "total": None}
 
 
@@ -47,12 +48,14 @@ def cpu_percent() -> float:
     usage = (1.0 - (diff_idle / diff_total)) * 100.0
     return max(0.0, min(100.0, usage))
 
+
 def load_avg() -> tuple[float, float, float]:
     """Return system load averages."""
     try:
         return os.getloadavg()
     except Exception:
         return (0.0, 0.0, 0.0)
+
 
 def mem_info() -> dict[str, float]:
     """Return memory usage information."""
@@ -72,6 +75,7 @@ def mem_info() -> dict[str, float]:
         pass
     return {"total": 0.0, "available": 0.0, "used": 0.0, "pct": 0.0}
 
+
 def disk_info(path: str = "/") -> dict[str, float]:
     """Return disk usage statistics for *path*."""
     try:
@@ -82,6 +86,7 @@ def disk_info(path: str = "/") -> dict[str, float]:
     except Exception:
         return {"total": 0, "used": 0, "free": 0, "pct": 0.0}
 
+
 def temp_c() -> float:
     """Best effort read of SoC temperature in Celsius."""
     try:
@@ -91,16 +96,11 @@ def temp_c() -> float:
         pass
     try:
         out = subprocess.check_output(["vcgencmd", "measure_temp"]).decode()
-        v = (
-            out.strip()
-            .split("=")[-1]
-            .replace("'C", "")
-            .replace("C", "")
-            .replace("'", "")
-        )
+        v = out.strip().split("=")[-1].replace("'C", "").replace("C", "").replace("'", "")
         return float(v)
     except Exception:
         return 0.0
+
 
 def _os_info() -> dict[str, str | None]:
     """Return distribution and kernel information."""
@@ -116,6 +116,7 @@ def _os_info() -> dict[str, str | None]:
     except Exception:
         pass
     return {"pretty": pretty, "kernel": platform.release()}
+
 
 _last_hist_t = 0.0
 
@@ -184,9 +185,7 @@ def sysinfo() -> Response:
         "temp_c": si["temp_c"],
         "hist_cpu": si["hist_cpu"],
         "hist_mem": si["hist_mem"],
-        "os_release": (si["os"].get("pretty") or "—")
-        + " · "
-        + (si["os"].get("kernel") or "—"),
+        "os_release": (si["os"].get("pretty") or "—") + " · " + (si["os"].get("kernel") or "—"),
         "ts": si["ts"],
     }
     if "battery_pct" in si and si["battery_pct"] is not None:

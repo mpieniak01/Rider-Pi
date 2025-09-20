@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+from __future__ import annotations
+
 """
 apps/nlu/main.py — NLU v0.1 (PL → motion.cmd)
 
@@ -18,7 +19,14 @@ Założenia:
 - Liczby: "na 2 sekundy", "przez 1.5 s", "60%" oraz "na 0.6" → nadpisują speed/dur.
 """
 
-import os, sys, time, json, re, unicodedata
+import json  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+import unicodedata  # noqa: E402
+
+from common.bus import BusPub, BusSub  # noqa: E402
 
 PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:
@@ -31,22 +39,23 @@ try:
 except Exception:
     pass
 
-from common.bus import BusPub, BusSub
 
 SUB = BusSub("audio.transcript")
 PUB = BusPub()
 
 # --- ENV / stan ---
 DEFAULT_SPEED = float(os.getenv("NLU_DEFAULT_SPEED", "0.5"))
-DEFAULT_DUR   = float(os.getenv("NLU_DEFAULT_DUR", "1.0"))
-SPEED_STEP    = float(os.getenv("NLU_SPEED_STEP",  "0.1"))
+DEFAULT_DUR = float(os.getenv("NLU_DEFAULT_DUR", "1.0"))
+SPEED_STEP = float(os.getenv("NLU_SPEED_STEP", "0.1"))
 
-cur_speed = DEFAULT_SPEED   # pamiętamy „bieg domyślny” pomiędzy komendami
+cur_speed = DEFAULT_SPEED  # pamiętamy „bieg domyślny” pomiędzy komendami
 
 # --- utils ---
 
+
 def log(msg):
     print(time.strftime("[%H:%M:%S]"), msg, flush=True)
+
 
 def _bus_publish(topic: str, payload: dict):
     """Kompatybilnie z Twoim BusPub (tools/pub.py używa .send)."""
@@ -55,23 +64,27 @@ def _bus_publish(topic: str, payload: dict):
             return getattr(PUB, m)(topic, payload)
     raise AttributeError("BusPub bez send/publish/pub")
 
+
 def strip_diacritics(s: str) -> str:
     # zamiana PL znaków na ASCII (prosty normalize)
     return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+
 
 def norm(txt: str) -> str:
     t = txt.lower().strip()
     t = strip_diacritics(t)
     # ujednolicenia
-    t = re.sub(r"[^\w\s%.,]", " ", t)      # wytnij znaki innych klas (zostaw % i . , )
+    t = re.sub(r"[^\w\s%.,]", " ", t)  # wytnij znaki innych klas (zostaw % i . , )
     t = re.sub(r"\s+", " ", t).strip()
     return t
+
 
 # --- ekstrakcja liczb ---
 
 _re_sec = re.compile(r"(?:na|przez)\s*(\d+(?:[.,]\d+)?)\s*(?:s|sek|sekundy|sekund|sek\.)\b")
 _re_pct = re.compile(r"(\d{1,3})\s*%")
 _re_spd = re.compile(r"(?:na|do)?\s*(0(?:[.,]\d+)?|1(?:[.,]0+)?)\b")  # 0..1
+
 
 def extract_duration_s(txt_norm: str):
     m = _re_sec.search(txt_norm)
@@ -83,6 +96,7 @@ def extract_duration_s(txt_norm: str):
     except Exception:
         return None
 
+
 def extract_speed(txt_norm: str):
     # priorytet: procenty -> ułamki
     m = _re_pct.search(txt_norm)
@@ -90,7 +104,7 @@ def extract_speed(txt_norm: str):
         try:
             pct = int(m.group(1))
             pct = max(0, min(100, pct))
-            return max(0.0, min(1.0, pct/100.0))
+            return max(0.0, min(1.0, pct / 100.0))
         except Exception:
             pass
     m = _re_spd.search(txt_norm)
@@ -102,10 +116,11 @@ def extract_speed(txt_norm: str):
             pass
     return None
 
+
 # --- reguły intencji ---
 
 FWD_PATTERNS = [
-    r"\b(jedz|jedziesz|rusz|start)\b",          # "jedź", "rusz"
+    r"\b(jedz|jedziesz|rusz|start)\b",  # "jedź", "rusz"
     r"\bdo przodu\b",
     r"\bnaprzod\b",
 ]
@@ -133,19 +148,25 @@ STOP_PATTERNS = [
 FASTER_PATTERNS = [r"\bszybciej\b", r"\bprzyspiesz\b", r"\bzwieksz predkosc\b"]
 SLOWER_PATTERNS = [r"\bwolniej\b", r"\bzwolnij\b", r"\bzmniejsz predkosc\b"]
 
+
 def any_match(txt_norm: str, patterns) -> bool:
     return any(re.search(p, txt_norm) for p in patterns)
 
+
 # --- decyzja → motion.cmd ---
+
 
 def clamp_speed(s: float) -> float:
     return max(0.1, min(1.0, s))
 
+
 def make_cmd_drive(direction: str, speed: float, dur: float):
     return {"type": "drive", "dir": direction, "speed": round(speed, 3), "dur": float(dur)}
 
+
 def make_cmd_spin(direction: str, speed: float, dur: float):
     return {"type": "spin", "dir": direction, "speed": round(speed, 3), "dur": float(dur)}
+
 
 def decide(txt_raw: str):
     """
@@ -188,7 +209,9 @@ def decide(txt_raw: str):
     # brak dopasowania → None
     return None, cur_speed
 
+
 # --- pętla ---
+
 
 def should_process(msg: dict) -> bool:
     # tylko pl i tylko voice
@@ -200,6 +223,7 @@ def should_process(msg: dict) -> bool:
     if "is_final" in msg and not bool(msg.get("is_final")):
         return False
     return True
+
 
 def main():
     log("NLU v0.1: start (sub audio.transcript → pub motion.cmd)")
@@ -226,6 +250,7 @@ def main():
             raise
         except Exception as e:
             log(f"NLU error: {e}")
+
 
 if __name__ == "__main__":
     try:

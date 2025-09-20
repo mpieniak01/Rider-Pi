@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 Proste menu (CLI) dla Rider-Pi:
 - Demo trajectory (SAFE) — tymczasowo włącza ruch plikiem-flagą, uruchamia demo, po demie wyłącza.
@@ -10,11 +12,11 @@ Uwaga: Motion jako usługa czyta:
   - /home/pi/robot/data/flags/estop.on        → twardy E-Stop
 """
 
-import os
-import time
-import json
-import subprocess
-from pathlib import Path
+import json  # noqa: E402
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 BASE_DIR = Path("/home/pi/robot")
 FLAGS_DIR = BASE_DIR / "data" / "flags"
@@ -26,14 +28,17 @@ ESTOP_FLAG = FLAGS_DIR / "estop.on"
 PUB_ADDR = os.getenv("BUS_PUB_ADDR", "tcp://127.0.0.1:5555")
 TOPIC = os.getenv("MOTION_TOPIC", "motion")
 
+
 def _pub(msg: dict):
     # minimalny publisher (ZeroMQ) – bez zewnętrznych zależności w menu
     import zmq
+
     ctx = zmq.Context.instance()
     s = ctx.socket(zmq.PUB)
     s.connect(PUB_ADDR)
     time.sleep(0.15)  # rozgrzewka subów
     s.send_multipart([TOPIC.encode(), json.dumps(msg).encode("utf-8")])
+
 
 def motion_enable(on: bool):
     if on:
@@ -43,6 +48,7 @@ def motion_enable(on: bool):
             MOTION_ENABLE_FLAG.unlink()
         except FileNotFoundError:
             pass
+
 
 def estop_set(on: bool):
     if on:
@@ -55,6 +61,7 @@ def estop_set(on: bool):
     # zawsze wyślij STOP dla pewności
     _pub({"type": "stop"})
 
+
 def demo_trajectory_safe():
     print("[MENU] Enabling motion (flag) and running demo…")
     motion_enable(True)
@@ -63,13 +70,11 @@ def demo_trajectory_safe():
         # PUB_ADDR/TOPIC zgodne z usługą/brokerem
         env["BUS_PUB_ADDR"] = PUB_ADDR
         env["MOTION_TOPIC"] = TOPIC
-        subprocess.run(
-            ["python3", "-u", str(BASE_DIR / "apps" / "demos" / "trajectory.py")],
-            env=env, check=True
-        )
+        subprocess.run(["python3", "-u", str(BASE_DIR / "apps" / "demos" / "trajectory.py")], env=env, check=True)
     finally:
         print("[MENU] Demo done. Disabling motion (flag).")
         motion_enable(False)
+
 
 def quick_forward_1s():
     print("[MENU] drive forward 1s")
@@ -79,6 +84,7 @@ def quick_forward_1s():
         time.sleep(0.1)
     _pub({"type": "stop"})
 
+
 def quick_spin_1s():
     print("[MENU] spin right 1s")
     t0 = time.time()
@@ -87,10 +93,12 @@ def quick_spin_1s():
         time.sleep(0.1)
     _pub({"type": "stop"})
 
+
 def show_status():
     m = MOTION_ENABLE_FLAG.exists()
     e = ESTOP_FLAG.exists()
     print(f"[STATUS] motion_enable_flag={m}  estop_flag={e}  PUB_ADDR={PUB_ADDR}  TOPIC={TOPIC}")
+
 
 def main():
     while True:
@@ -129,6 +137,7 @@ def main():
             break
         else:
             print("Unknown option.")
+
 
 if __name__ == "__main__":
     main()

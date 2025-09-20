@@ -1,19 +1,27 @@
+from __future__ import annotations
+
+import json
 import os
 import subprocess
-import json
-import pytest
+
 
 def run_cli(expr="neutral", rotate=0, fit="fill", force="raw:rgb565"):
     cmd = [
-        "python3", "tools/face_cli.py",
-        "--expr", expr,
-        "--rotate", str(rotate),
-        "--fit", fit,
-        "--force", force,
-        "--stats"
+        "python3",
+        "tools/face_cli.py",
+        "--expr",
+        expr,
+        "--rotate",
+        str(rotate),
+        "--fit",
+        fit,
+        "--force",
+        force,
+        "--stats",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result
+
 
 def test_mock_outputs():
     # Usuń stare pliki
@@ -35,7 +43,8 @@ def test_mock_outputs():
     assert meta["panel"]["rotate"] == 270
     # Sprawdź rozmiar bufora RGB565
     buf = open("/tmp/face_last.rgb565", "rb").read()
-    assert len(buf) == 240*240*2
+    assert len(buf) == 240 * 240 * 2
+
 
 def test_fit_modes():
     for fit in ["fill", "fit", "stretch"]:

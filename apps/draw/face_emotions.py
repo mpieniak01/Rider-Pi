@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Face emotion normalization helpers."""
 
 ALLOWED = {"happy", "sad", "neutral", "blink"}
