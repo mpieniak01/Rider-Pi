@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 class SpiFaceDriver:
     def __init__(self, cfg):
         self.cfg = cfg

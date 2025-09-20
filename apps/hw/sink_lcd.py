@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 """
 apps/hw/sink_lcd.py — obsługa wyświetlacza LCD dla buźki Rider-Pi.
 Dwie ścieżki: RAW (push_rgb565) i fallback (show_image PIL.Image).
 Rotacja tylko w sinku (ENV: FACE_LCD_ROTATE), domyślnie 270°.
 """
 
-import os
+import os  # noqa: E402
 
-from PIL import Image
+from PIL import Image  # noqa: E402
 
 
 class SinkLCD:

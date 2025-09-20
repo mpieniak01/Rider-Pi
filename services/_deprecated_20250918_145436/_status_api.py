@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 ##!/usr/bin/env python3
 """
 Rider-Pi – Status API (entrypoint + routing only)
 Handlery siedzą w services.status_core
 """
 
-import services.status_core as core
-from flask import Response, make_response, request
+import services.status_core as core  # noqa: E402
+from flask import Response, make_response, request  # noqa: E402
 
 # pobierz obiekty z core w sposób bezpieczny
 app = getattr(core, "app", None)

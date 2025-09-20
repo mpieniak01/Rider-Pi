@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import os
 import sys
 import time
@@ -7,7 +9,7 @@ import time
 def fmt(x, d=1, suf=""):
     try:
         return f"{float(x):.{d}f}{suf}"
-    except:
+    except Exception:
         return "—"
 
 
@@ -115,7 +117,7 @@ def main():
             if roll is not None and pitch is not None:
                 r, p = abs(float(roll)), abs(float(pitch))
                 pose = "upright" if (r < 20 and p < 20) else ("fallen?" if (r > 60 or p > 60) else "leaning")
-        except:
+        except Exception:
             pass
 
         print(

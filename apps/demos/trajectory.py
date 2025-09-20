@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # apps/demos/trajectory.py
 import json
 import os

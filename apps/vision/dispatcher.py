@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # apps/vision/dispatcher.py
 """
 Zbiera zdarzenia z detektorów (HAAR/SSD/itd.), normalizuje je,
@@ -7,14 +9,14 @@ IN : vision.face, vision.person, vision.detections
 OUT: vision.state, vision.dispatcher.heartbeat
 """
 
-import json
-import os
-import threading
-import time
-from dataclasses import dataclass
-from typing import Any
+import json  # noqa: E402
+import os  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+from dataclasses import dataclass  # noqa: E402
+from typing import Any  # noqa: E402
 
-import zmq
+import zmq  # noqa: E402
 
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))

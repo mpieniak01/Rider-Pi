@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 HTTP → ZMQ bridge dla Rider-Pi (zgodny z motion_bridge.py) + kompatybilny /control.
 
@@ -11,12 +13,12 @@ Endpointy:
   POST /control    {type: drive|spin|stop, ...}  // kompatybilne z dashboardem
 """
 
-import json
-import os
-import time
+import json  # noqa: E402
+import os  # noqa: E402
+import time  # noqa: E402
 
-import zmq
-from flask import Flask, jsonify, request
+import zmq  # noqa: E402
+from flask import Flask, jsonify, request  # noqa: E402
 
 BUS_ADDR = os.getenv("BUS_PUB_ADDR", "tcp://127.0.0.1:5555")
 TOPIC_MOVE = os.getenv("TOPIC_MOVE", "cmd.move")

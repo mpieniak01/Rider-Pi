@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 apps/menu/main.py — proste menu na 4 przyciski (bez LCD)
 Sub: ui.button, motion.state
 Pub: system.mode, motion.cmd(stop), system.menu.state
 """
 
-import sys
-import time
+import sys  # noqa: E402
+import time  # noqa: E402
 
-from common.bus import BusPub, BusSub
+from common.bus import BusPub, BusSub  # noqa: E402
 
 PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:

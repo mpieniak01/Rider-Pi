@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Nowe CLI do renderowania buźki na LCD/mocka.
 """

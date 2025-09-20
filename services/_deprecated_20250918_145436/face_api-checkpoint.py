@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # services/api_core/face_api.py
 import os
 from types import SimpleNamespace

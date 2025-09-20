@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 xgo_safe_init.py — bezpieczny start/odczyt XGO:
 - --backend xgolib  -> używa oryginalnego xgolib.XGO (może szarpnąć w __init__)
 - --backend ro      -> używa naszej biblioteki XGOClientRO (zero ruchu)
 """
 
-import argparse
-import os
-import time
+import argparse  # noqa: E402
+import os  # noqa: E402
+import time  # noqa: E402
 
 
 def fmt(x, d=1, suf=""):
     try:
         return f"{float(x):.{d}f}{suf}"
-    except:
+    except Exception:
         return "—"
 
 
@@ -27,7 +29,7 @@ def pose_label(roll, pitch):
         if r > 60 or p > 60:
             return "fallen?"
         return "leaning"
-    except:
+    except Exception:
         return "—"
 
 
@@ -147,19 +149,19 @@ def main():
             while True:
                 try:
                     batt = dog.read_battery()
-                except:
+                except Exception:
                     batt = None
                 try:
                     roll = dog.read_roll()
-                except:
+                except Exception:
                     roll = None
                 try:
                     pitch = dog.read_pitch()
-                except:
+                except Exception:
                     pitch = None
                 try:
                     yaw = dog.read_yaw()
-                except:
+                except Exception:
                     yaw = None
                 print(
                     f"battery: {fmt(batt, 0, '%')} | roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}"

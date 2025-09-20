@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 E-Stop ON/OFF/STATUS przez plik-flagę, plus natychmiastowy STOP przez broker.
 Użycie:
@@ -7,11 +9,11 @@ Użycie:
   python3 ops/estop.py status
 """
 
-import json
-import os
-import sys
-import time
-from pathlib import Path
+import json  # noqa: E402
+import os  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 BASE = Path("/home/pi/robot")
 FLAGS = BASE / "data" / "flags"

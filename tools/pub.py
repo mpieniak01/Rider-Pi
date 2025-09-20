@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Użycie:
   python3 tools/pub.py motion.state '{"stopped": true, "last_cmd_age_ms": 1500}'

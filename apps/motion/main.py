@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # apps/motion/main.py
 """
 Pętla ruchu Rider-Pi:
@@ -9,13 +11,13 @@ Pętla ruchu Rider-Pi:
 - telemetria PUB 'motion.state' na broker (tcp://127.0.0.1:5555)
 """
 
-import json
-import logging
-import os
-import time
+import json  # noqa: E402
+import logging  # noqa: E402
+import os  # noqa: E402
+import time  # noqa: E402
 
-from apps.safety.estop import estop_triggered, motion_enabled, safe_speed
-from common.pidlock import single_instance
+from apps.safety.estop import estop_triggered, motion_enabled, safe_speed  # noqa: E402
+from common.pidlock import single_instance  # noqa: E402
 
 _PID_FD = single_instance()
 

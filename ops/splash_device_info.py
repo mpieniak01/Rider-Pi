@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import json
 import os
 import platform
@@ -68,8 +70,8 @@ def load_font(size: int):
 
 # ---------------- POMOCNICZE ----------------
 def text_size(draw: ImageDraw.ImageDraw, txt: str, font: ImageFont.FreeTypeFont):
-    l, t, r, b = draw.textbbox((0, 0), txt, font=font)
-    return (r - l, b - t)
+    left, t, r, b = draw.textbbox((0, 0), txt, font=font)
+    return (r - left, b - t)
 
 
 def wrap_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_w: int):

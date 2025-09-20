@@ -1,29 +1,28 @@
 [tool.ruff]
 line-length = 100
 respect-gitignore = true
-# Wykluczenia globalne (legacy, artefakty buildów, cache, deprecated snapshoty)
+target-version = "py39"
 extend-exclude = [
   "_apps", "_apps/**",
   "attic", "attic/**",
   "venv", ".venv", "build", "dist", "__pycache__",
   "services/_deprecated_*", "services/_deprecated_*/**"
 ]
-
-# Zestaw reguł wstecznie kompatybilny (Ruff < 0.6 czyta te klucze)
+# kompatybilność wstecz (starsze Ruffy czytają te klucze)
 select = ["E", "F", "I", "UP", "B"]
-# >>> DODANE: kompatybilne wyciszenia dla starszych Ruffów <<<
+# wyłącz fixowanie reguł, które zmieniają adnotacje (zostaną raporty, ale bez --fix)
+unfixable = ["UP006", "UP045"]
+# dla starszych Ruffów: wyciszenia testów
 per-file-ignores = { "tests/**" = ["E402", "F401", "F811"] }
 
-# (Opcjonalnie) docelowa wersja Pythona
-target-version = "py311"
-
 [tool.ruff.lint]
-# Nowsze Ruff (>= 0.6) – sekcja lint
 select = ["E", "F", "I", "UP", "B"]
-# Testy mają „hacki importowe” – tymczasowe wyciszenia
+ignore = []            # (opcjonalnie) można dodać "UP006","UP045" gdy nie chcesz nawet raportów
+unfixable = ["UP006", "UP045"]
 per-file-ignores = { "tests/**" = ["E402", "F401", "F811"] }
 
 [tool.ruff.format]
 quote-style = "preserve"
+
 
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # Preview + MobileNet-SSD (Caffe) — zapis RAW/PROC do /home/pi/robot/snapshots (atomowo)
 # + ramki na LCD, + heartbeat, + publikacja vision.person (tylko przy realnym trafieniu)
 import os

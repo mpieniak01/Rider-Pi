@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 Proste menu (CLI) dla Rider-Pi:
 - Demo trajectory (SAFE) — tymczasowo włącza ruch plikiem-flagą, uruchamia demo, po demie wyłącza.
@@ -10,11 +12,11 @@ Uwaga: Motion jako usługa czyta:
   - /home/pi/robot/data/flags/estop.on        → twardy E-Stop
 """
 
-import json
-import os
-import subprocess
-import time
-from pathlib import Path
+import json  # noqa: E402
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 BASE_DIR = Path("/home/pi/robot")
 FLAGS_DIR = BASE_DIR / "data" / "flags"

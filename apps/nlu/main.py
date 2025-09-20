@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 apps/nlu/main.py — NLU v0.1 (PL → motion.cmd)
 
@@ -17,14 +19,14 @@ Założenia:
 - Liczby: "na 2 sekundy", "przez 1.5 s", "60%" oraz "na 0.6" → nadpisują speed/dur.
 """
 
-import json
-import os
-import re
-import sys
-import time
-import unicodedata
+import json  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+import unicodedata  # noqa: E402
 
-from common.bus import BusPub, BusSub
+from common.bus import BusPub, BusSub  # noqa: E402
 
 PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:

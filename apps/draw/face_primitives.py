@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 apps/draw/face_primitives.py — prymitywy rysowania buźki Rider-Pi (PIL).
 
@@ -5,7 +7,7 @@ Funkcje rysujące: głowa, oczy, brwi, usta, overlay (guide).
 Opcje: guide (overlay), quality=fast|aa2x.
 """
 
-import math
+import math  # noqa: E402
 
 
 def draw_face(canvas, cfg, model, guide=True, quality="fast"):

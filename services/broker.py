@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 ZeroMQ broker XSUB↔XPUB
 - PUB-y (demo, tools/pub.py) łączą się do tcp://*:5555
 - SUB-y (apps/motion) łączą się do tcp://*:5556
 """
 
-import logging
-import os
-import signal
+import logging  # noqa: E402
+import os  # noqa: E402
+import signal  # noqa: E402
 
-import zmq
+import zmq  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOG = logging.getLogger("broker")

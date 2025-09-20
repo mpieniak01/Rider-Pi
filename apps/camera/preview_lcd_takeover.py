@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# apps/camera/preview_lcd_takeover.py
+from __future__ import annotations
 
+# apps/camera/preview_lcd_takeover.py
 import os
 import time
 

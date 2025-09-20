@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # SSD preview + pewny zapis RAW/PROC do /home/pi/robot/snapshots (atomowo) + LCD
 import os
 import time

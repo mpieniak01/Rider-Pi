@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 apps/ui/buttons.py — 4 przyciski → BUS topic `ui.button`
 Payload:
@@ -9,11 +11,11 @@ ENV:
   HOLD_S=1.0        # czas długiego przytrzymania
 """
 
-import os
-import sys
-import time
+import os  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
 
-from common.bus import BusPub
+from common.bus import BusPub  # noqa: E402
 
 PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:

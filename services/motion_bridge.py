@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 Rider-Pi – Motion Bridge (deadman auto-stop + debounce + RX echo + compat adapter)
 
@@ -22,16 +24,16 @@ ENV (wycinek):
 - BUS_RCVHWM=100, BUS_CONFLATE=0
 """
 
-import json
-import os
-import signal
-import threading
-import time
-from collections.abc import Callable
-from threading import Timer
-from typing import Any
+import json  # noqa: E402
+import os  # noqa: E402
+import signal  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+from collections.abc import Callable  # noqa: E402
+from threading import Timer  # noqa: E402
+from typing import Any  # noqa: E402
 
-import zmq  # type: ignore
+import zmq  # type: ignore  # noqa: E402
 
 # --- ENV / parametry ---
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))

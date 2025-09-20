@@ -1,17 +1,19 @@
+from __future__ import annotations
+
 """
 Fabryka driverów LCD buźki: mock (domyślny), spi (opcjonalny).
 """
 
-from typing import Literal, Optional  # noqa: F401
+from typing import Literal, Optional  # noqa: E402, F401
 
-from .mock import MockFaceDriver
+from .mock import MockFaceDriver  # noqa: E402
 
 try:
     from .spi import SpiFaceDriver
 except ImportError:
     SpiFaceDriver = None
 
-from apps.ui.face.panel_cfg import PanelCfg
+from apps.ui.face.panel_cfg import PanelCfg  # noqa: E402
 
 
 class Driver:

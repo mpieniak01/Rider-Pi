@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 try:
     import xgoscreen.LCD_2inch as LCD_2inch
 except Exception as e:

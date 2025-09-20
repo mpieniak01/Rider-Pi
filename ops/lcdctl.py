@@ -138,7 +138,7 @@ def do_off(args) -> int:
         spi_ok = _spi_cmds(args.dc, args.rst, args.spi, args.hz, [0x28, 0x10])  # DISP_OFF, SLP_IN
         time.sleep(0.12)
     bl_ok = _set_bl(args.bl, args.bl_ah, on=False)
-    print("[lcdctl] OFF done (spi_ok=%s, bl_ok=%s)" % (spi_ok, bl_ok))
+    print(f"[lcdctl] OFF done (spi_ok={spi_ok}, bl_ok={bl_ok})")
     return 0 if (spi_ok or args.no_spi) and bl_ok else 2
 
 
@@ -151,7 +151,7 @@ def do_on(args) -> int:
         time.sleep(0.12)
         spi_ok &= _spi_cmds(args.dc, args.rst, args.spi, args.hz, [0x29])  # DISP_ON
         time.sleep(0.02)
-    print("[lcdctl] ON done (spi_ok=%s, bl_ok=%s)" % (spi_ok, bl_ok))
+    print(f"[lcdctl] ON done (spi_ok={spi_ok}, bl_ok={bl_ok})")
     return 0 if (spi_ok or args.no_spi) and bl_ok else 2
 
 

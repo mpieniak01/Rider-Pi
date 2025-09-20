@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 XGOClientRO — lekka biblioteka 'read-only' do odczytu sensorów XGO.
 - Zero komend ruchu (bezpieczna dla robota)

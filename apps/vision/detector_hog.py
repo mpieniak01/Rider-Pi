@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # apps/vision/detector_hog.py
 import os
 import time

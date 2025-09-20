@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 apps/chat/main.py — Chat: audio.transcript -> (OpenAI) -> tts.speak
 Omija komendy ruchu (rozpoznaje je wspólną funkcją is_motion_command()).
 """
 
-import os
-import re
-import sys
-import time
+import os  # noqa: E402
+import re  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
 
-from common.bus import BusPub, BusSub, now_ts
-from common.nlu_shared import is_motion_command
+from common.bus import BusPub, BusSub, now_ts  # noqa: E402
+from common.nlu_shared import is_motion_command  # noqa: E402
 
 PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:

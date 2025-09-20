@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 """
 apps/ui/face/renderer.py — czysty renderer PNG dla buźki Rider-Pi.
 Wejście: FaceState, wyjście: PNG bytes.
 Brak cyklicznych zależności (nie importuje controller ani LCD).
 """
 
-from io import BytesIO
+from io import BytesIO  # noqa: E402
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw  # noqa: E402
 
-from apps.draw.face_primitives import draw_face
+from apps.draw.face_primitives import draw_face  # noqa: E402
 
 
 class FaceRenderer:

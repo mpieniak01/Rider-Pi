@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Sniffer SUB — podgląd ramek wychodzących z brokera (XPUB).
 Domyślnie:

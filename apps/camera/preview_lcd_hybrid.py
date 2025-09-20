@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # apps/camera/preview_lcd_hybrid.py
 # PoC: SSD do inicjalizacji, tracker do podtrzymania, opcjonalny HAAR w ROI.
 # Publikuje vision.person (tracker/SSD) i vision.face (HAAR).
 # + wysyła camera.heartbeat + snapshoty RAW/proc/LCD/LCD_fb
-
 import os
 import time
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 """
 common/nlu_shared.py — wspólne funkcje NLU:
 - norm()                 — normalizacja tekstu (lower, bez polskich znaków, proste literówki)
