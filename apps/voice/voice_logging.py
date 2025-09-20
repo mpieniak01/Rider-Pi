@@ -13,6 +13,7 @@ fields `ts`, `level`, `name` and `msg`.  Any keyword arguments passed to
 serialized into `exc` so that stack traces survive across process
 boundaries.
 """
+
 from __future__ import annotations
 
 import json

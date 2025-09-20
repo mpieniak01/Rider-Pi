@@ -1,8 +1,12 @@
 from __future__ import annotations
-import os, json, time
+
+import json
+import os
+import time
 from pathlib import Path
-from typing import Optional, Dict, Any
-from flask import Blueprint, jsonify, abort, send_file
+from typing import Any
+
+from flask import Blueprint, abort, jsonify, send_file
 
 vision_bp = Blueprint("vision", __name__)
 
@@ -11,7 +15,8 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", str(ROOT / "data")))
 SNAP_DIR = Path(os.environ.get("SNAP_DIR", str(ROOT / "snapshots")))
 OBST_PATH = Path(os.environ.get("OBST_PATH", str(DATA_DIR / "obstacle.json")))
 
-def load_obstacle() -> Optional[Dict[str, Any]]:
+
+def load_obstacle() -> dict[str, Any] | None:
     try:
         if not OBST_PATH.exists():
             return None
@@ -24,12 +29,14 @@ def load_obstacle() -> Optional[Dict[str, Any]]:
     except Exception:
         return None
 
+
 @vision_bp.route("/obstacle", methods=["GET"])
 def obstacle():
     ob = load_obstacle()
     if not ob:
         return jsonify({"error": "no obstacle data"}), 404
     return jsonify(ob), 200
+
 
 @vision_bp.route("/edge", methods=["GET"])
 def edge_preview():

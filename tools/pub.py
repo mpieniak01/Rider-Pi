@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Użycie:
   python3 tools/pub.py motion.state '{"stopped": true, "last_cmd_age_ms": 1500}'
@@ -6,10 +7,16 @@ Użycie:
 ENV:
   BUS_PUB_ADDR (default tcp://127.0.0.1:5555)
 """
-import os, sys, json, time, argparse
+
+import argparse
+import json
+import os
+import time
+
 import zmq
 
 PUB_ADDR = os.getenv("BUS_PUB_ADDR", "tcp://127.0.0.1:5555")
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -37,6 +44,7 @@ def main():
             time.sleep(0.02)
 
     print(f"[PUB] sent → {args.topic}: {data}")
+
 
 if __name__ == "__main__":
     main()

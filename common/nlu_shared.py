@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 """
 common/nlu_shared.py — wspólne funkcje NLU:
 - norm()                 — normalizacja tekstu (lower, bez polskich znaków, proste literówki)
@@ -97,11 +98,18 @@ def parse_motion_intent(text: str):
 
 def confirm_text(intent: dict) -> str:
     a = intent.get("action")
-    if a == "forward": return "Jadę do przodu."
-    if a == "back":    return "Cofam."
-    if a == "left":    return "Skręcam w lewo."
-    if a == "right":   return "Skręcam w prawo."
-    if a == "stop":    return "Zatrzymuję się."
-    if a == "sit":     return "Siadam."
-    if a == "stand":   return "Wstaję."
+    if a == "forward":
+        return "Jadę do przodu."
+    if a == "back":
+        return "Cofam."
+    if a == "left":
+        return "Skręcam w lewo."
+    if a == "right":
+        return "Skręcam w prawo."
+    if a == "stop":
+        return "Zatrzymuję się."
+    if a == "sit":
+        return "Siadam."
+    if a == "stand":
+        return "Wstaję."
     return "Wykonuję polecenie."

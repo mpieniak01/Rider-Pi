@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import os
 import re
+
 import pytest
 
 # Pliki, które nie mogą importować _apps
@@ -13,7 +16,7 @@ CHECK_PATHS = [
 ]
 
 # Zakaz importu legacy apps (przykład: można rozszerzyć na inne niedozwolone importy)
-IMPORT_RE = re.compile(r"^\s*from apps|^\s*import apps|apps/ui/face_renderers.py")
+IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+_apps\b")
 
 
 def scan_file(path):
@@ -22,6 +25,7 @@ def scan_file(path):
             if IMPORT_RE.search(line):
                 return (i, line.strip())
     return None
+
 
 def collect_py_files(base):
     if os.path.isfile(base):

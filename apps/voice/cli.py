@@ -1,24 +1,25 @@
 # apps/voice/cli.py
 """Command line interface for the voice assistant."""
+
 from __future__ import annotations
 
 import argparse
+import audioop  # stdlib
 import base64
 import io
 import json
+import logging as pylog
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
-import wave
-import audioop  # stdlib
 import warnings
-import logging as pylog
+import wave
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from . import config as voice_config
 from . import voice_logging as voice_logging
@@ -27,10 +28,10 @@ from .playback import PlaybackConfig, play_bytes, play_ding
 from .service import VoiceService, setup_signals
 from .tts import TTSConfig, synthesize
 
-
 # ───────────────────────────────────────────────────────────────────────────────
 # ostrzeżenia tylko na stderr + wyciszenie webrtcvad
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def _warn_to_stderr(message, category, filename, lineno, file=None, line=None):
     stream = file if file is not None else sys.stderr
@@ -39,6 +40,7 @@ def _warn_to_stderr(message, category, filename, lineno, file=None, line=None):
     except Exception:
         pass
 
+
 warnings.showwarning = _warn_to_stderr
 warnings.filterwarnings("ignore", category=UserWarning, module=r"webrtcvad")
 
@@ -46,6 +48,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"webrtcvad")
 # ───────────────────────────────────────────────────────────────────────────────
 # helpers (merge, overrides)
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def _merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
     for key, value in extra.items():
@@ -113,7 +116,7 @@ def _build_overrides(args) -> dict[str, Any]:
     return overrides
 
 
-def _configure(args) -> Tuple[dict[str, Any], VoiceService]:
+def _configure(args) -> tuple[dict[str, Any], VoiceService]:
     overrides = _build_overrides(args)
     config = voice_config.load(getattr(args, "config", None), overrides=overrides)
     voice_logging.configure(config.get("logging", {}).get("level"))
@@ -124,6 +127,7 @@ def _configure(args) -> Tuple[dict[str, Any], VoiceService]:
 # ───────────────────────────────────────────────────────────────────────────────
 # audio utils (JSON decode, WAV wrap, resample, gain)
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def _is_wav(b: bytes) -> bool:
     return len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE"
@@ -136,7 +140,7 @@ def _read_wav_params(b: bytes):
         bio = io.BytesIO(b)
         with wave.open(bio, "rb") as wf:
             ch = wf.getnchannels()
-            sw = wf.getsampwidth()   # bytes
+            sw = wf.getsampwidth()  # bytes
             sr = wf.getframerate()
             pcm = wf.readframes(wf.getnframes())
         return pcm, sr, ch, sw
@@ -226,7 +230,7 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
     Obsługa: JSON->b64, już-WAV, RAW PCM16 mono (fallback).
     """
     target_rate = int(os.environ.get("VOICE_RATE", "48000"))
-    target_ch   = int(os.environ.get("VOICE_CHANNELS", "2"))
+    target_ch = int(os.environ.get("VOICE_CHANNELS", "2"))
 
     # 0) JSON?
     m = _decode_json_audio(audio)
@@ -235,7 +239,7 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
         if sr_json:
             sample_rate = int(sr_json)
         if fmt_json:
-            fmt = fmt_json
+            pass
 
     # 1) jeśli to WAV
     got_wav = _read_wav_params(audio)
@@ -253,7 +257,7 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
     return _wrap_wav(out, target_rate, target_ch, 2)
 
 
-def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> Tuple[bytes, int, str]:
+def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> tuple[bytes, int, str]:
     """
     Normalizuje wyjście synthesize(...):
     - dekoduje JSON jeśli backend zwróci JSON z base64 audio
@@ -269,11 +273,13 @@ def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> Tuple[bytes, int, s
 
 
 def _pulse_available() -> bool:
-    return bool(shutil.which("paplay") and (os.environ.get("PULSE_SERVER") or
-                                            os.path.exists(os.path.expanduser("~/.config/pulse"))))
+    return bool(
+        shutil.which("paplay")
+        and (os.environ.get("PULSE_SERVER") or os.path.exists(os.path.expanduser("~/.config/pulse")))
+    )
 
 
-def _choose_player_command() -> Optional[list[str]]:
+def _choose_player_command() -> list[str] | None:
     env_player = os.environ.get("VOICE_PLAYER")
     if env_player:
         return env_player.split()
@@ -287,6 +293,7 @@ def _choose_player_command() -> Optional[list[str]]:
 # ───────────────────────────────────────────────────────────────────────────────
 # log silencer – żeby stdout był czystym WAV przy redirekcie
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def _silence_logging_for_stdout() -> None:
     """Przekieruj wszystkie logi na stderr i wyłącz gadatliwość."""
@@ -309,6 +316,7 @@ def _silence_logging_for_stdout() -> None:
 # ───────────────────────────────────────────────────────────────────────────────
 # commands
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def cmd_listen(args) -> None:
     _, service = _configure(args)
@@ -416,7 +424,7 @@ def build_parser() -> argparse.ArgumentParser:
     listen.add_argument("--tts", nargs="*")
     listen.add_argument("--vad", nargs="*")
     listen.add_argument("--playback", nargs="*")
-    listen.add_argument("--capture", nargs="*")           # <— dodane
+    listen.add_argument("--capture", nargs="*")  # <— dodane
     listen.add_argument("--service", nargs="*")
     listen.add_argument("--ding", choices=["on", "off"], default=None)
     listen.add_argument("--save-audio", nargs="*")
@@ -428,10 +436,10 @@ def build_parser() -> argparse.ArgumentParser:
     ptt.add_argument("--tts", nargs="*")
     ptt.add_argument("--vad", nargs="*")
     ptt.add_argument("--playback", nargs="*")
-    ptt.add_argument("--capture", nargs="*")             # <— dodane
+    ptt.add_argument("--capture", nargs="*")  # <— dodane
     ptt.add_argument("--ding", choices=["on", "off"], default=None)  # <— dodane
     ptt.add_argument("--service", nargs="*")
-    ptt.add_argument("--save-audio", nargs="*")          # <— dodane (alias wygodny)
+    ptt.add_argument("--save-audio", nargs="*")  # <— dodane (alias wygodny)
     ptt.add_argument("--log-level", default=None)
 
     once = sub.add_parser("once", help="Single cycle")
@@ -439,12 +447,12 @@ def build_parser() -> argparse.ArgumentParser:
     once.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
     once.add_argument("--asr", nargs="*")
     once.add_argument("--tts", nargs="*")
-    once.add_argument("--vad", nargs="*")                # <— dodane (symetria)
+    once.add_argument("--vad", nargs="*")  # <— dodane (symetria)
     once.add_argument("--playback", nargs="*")
-    once.add_argument("--capture", nargs="*")            # <— dodane
+    once.add_argument("--capture", nargs="*")  # <— dodane
     once.add_argument("--ding", choices=["on", "off"], default=None)  # <— dodane
     once.add_argument("--service", nargs="*")
-    once.add_argument("--save-audio", nargs="*")         # <— dodane
+    once.add_argument("--save-audio", nargs="*")  # <— dodane
     once.add_argument("--log-level", default=None)
 
     asr_cmd = sub.add_parser("asr", help="Transcribe file")

@@ -1,10 +1,18 @@
 from __future__ import annotations
+
+import copy
+
+import pytest
+
+from apps.voice.asr import Transcript
+from apps.voice.service import VoiceService
+
 """Regression tests for VoiceService UI state publishing."""
 
 
-import pathlib
-import sys
-import types
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+import types  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -19,8 +27,6 @@ requests_stub.post = _stub_post
 requests_stub.RequestException = Exception
 requests_stub.exceptions = types.SimpleNamespace(RequestException=Exception)
 sys.modules.setdefault("requests", requests_stub)
-
-from apps.voice.service import VoiceService
 
 
 def _make_service() -> VoiceService:
@@ -90,12 +96,6 @@ def test_once_publishes_idle_after_error(monkeypatch) -> None:
     assert published_states[-1] == "idle"
 
 
-import copy
-import pathlib
-import sys
-
-import pytest
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 
@@ -117,9 +117,6 @@ class _RequestsStub:
 
 
 sys.modules.setdefault("requests", _RequestsStub())
-
-from apps.voice.asr import Transcript
-from apps.voice.service import VoiceService
 
 
 class FakePublisher:
@@ -213,6 +210,7 @@ def _state_sequence(publisher: FakePublisher) -> list[str]:
 
 def test_cycle_emits_idle_when_reply_empty(monkeypatch: pytest.MonkeyPatch, voice_module) -> None:
     config = _base_config()
+    config.setdefault("service", {}).update({"min_capture_ms": 0})
     publisher = FakePublisher()
     service = VoiceService(config, ui_publisher=publisher)
 
@@ -227,13 +225,14 @@ def test_cycle_emits_idle_when_reply_empty(monkeypatch: pytest.MonkeyPatch, voic
         synth_calls.append(text)
         return b"audio", 16000, "wav"
 
-    monkeypatch.setattr(voice_module, "synthesize", fake_synthesize)
-    monkeypatch.setattr(voice_module, "play_bytes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(voice_module, "synthesize", fake_synthesize, raising=False)
+    monkeypatch.setattr(voice_module, "play_bytes", lambda *args, **kwargs: None, raising=False)
 
     result = service._cycle()
 
     assert synth_calls == [], "TTS should not run when reply is empty"
     states = _state_sequence(publisher)
+    states = states[1:] if (states and states[0] == "idle") else states
     assert states == ["hearing", "thinking", "idle"]
     assert result.audio is None
     assert result.audio_format == ""

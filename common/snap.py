@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 # common/snap.py
 # Prosty „snapper”: zapisuje migawki JPG do katalogu (RAW/PROC/LCD/LCD_FB)
 # Sterowanie przez ENV:
@@ -16,7 +17,11 @@
 #   <SNAP_DIR>/lcd.jpg
 #   <SNAP_DIR>/lcd_fb.jpg      (tylko gdy jest framebuffer)
 
-import os, time, mmap, fcntl, struct
+import os
+import time
+import mmap
+import fcntl
+import struct
 from typing import Optional, Dict
 import numpy as np
 import cv2

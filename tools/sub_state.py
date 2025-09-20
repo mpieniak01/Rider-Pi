@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-import os, time, zmq
+from __future__ import annotations
+import os
+import time
 
-ADDR  = os.getenv("BUS_SUB_ADDR", "tcp://127.0.0.1:5556")
+import zmq
+
+ADDR = os.getenv("BUS_SUB_ADDR", "tcp://127.0.0.1:5556")
 TOPIC = os.getenv("MOTION_STATE_TOPIC", "motion.state").encode()
 
 ctx = zmq.Context.instance()

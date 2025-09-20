@@ -1,14 +1,15 @@
-# -*- coding: utf-8 -*-
+from __future__ import annotations
+
 """
 apps/hw/sink_lcd.py — obsługa wyświetlacza LCD dla buźki Rider-Pi.
 Dwie ścieżki: RAW (push_rgb565) i fallback (show_image PIL.Image).
 Rotacja tylko w sinku (ENV: FACE_LCD_ROTATE), domyślnie 270°.
 """
-import os
-from PIL import Image
 
+import os  # noqa: E402
 
-import struct
+from PIL import Image  # noqa: E402
+
 
 class SinkLCD:
     def __init__(self, width=240, height=320, rotate=None, spi_hz=None, spi_dev=None, method="auto"):
@@ -21,12 +22,14 @@ class SinkLCD:
         self._spi = None
         self._init_spi()
 
+
 class LcdNotAvailable(Exception):
     pass
 
     def _init_spi(self):
         try:
             import spidev
+
             self._spi = spidev.SpiDev()
             bus, dev = self._parse_spi_dev(self.spi_dev)
             self._spi.open(bus, dev)
@@ -48,8 +51,9 @@ class LcdNotAvailable(Exception):
             return img.rotate(self.rotate, expand=True)
         return img
 
+
 def pil_to_rgb565(img: Image.Image) -> bytes:
-    img = img.convert('RGB')
+    img = img.convert("RGB")
     arr = bytearray()
     for r, g, b in img.getdata():
         rgb = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
@@ -60,6 +64,7 @@ def pil_to_rgb565(img: Image.Image) -> bytes:
     def _init_spi(self):
         try:
             import spidev
+
             self._spi = spidev.SpiDev()
             bus, dev = self._parse_spi_dev(self.spi_dev)
             self._spi.open(bus, dev)
@@ -78,7 +83,6 @@ def pil_to_rgb565(img: Image.Image) -> bytes:
         except Exception:
             pass
         return 0, 0
-
 
     def push_rgb565(self, w, h, data: bytes):
         """
@@ -106,7 +110,7 @@ def pil_to_rgb565(img: Image.Image) -> bytes:
         print("[sink_lcd] RAW path in use: push_frame_rgb565_3 (3B packed, alias do 16bpp)")
         # Jeśli nieobsługiwane, konwertuj do 16bpp i użyj push_rgb565
         # Tu uproszczenie: po prostu wywołaj push_rgb565 na tych samych danych (lub konwertuj jeśli trzeba)
-        self.push_rgb565(w, h, data[:w*h*2])
+        self.push_rgb565(w, h, data[: w * h * 2])
 
     def push_auto(self, img: Image.Image):
         """
@@ -159,7 +163,7 @@ def pil_to_rgb565(img: Image.Image) -> bytes:
         # Konwersja RGB888 (PIL) → RGB565
         out = bytearray()
         for i in range(0, len(arr), 3):
-            r, g, b = arr[i], arr[i+1], arr[i+2]
+            r, g, b = arr[i], arr[i + 1], arr[i + 2]
             v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
             out.append((v >> 8) & 0xFF)
             out.append(v & 0xFF)
@@ -174,7 +178,7 @@ def pil_to_rgb565(img: Image.Image) -> bytes:
             return img.transpose(Image.ROTATE_180)
         return img
 
-    def push_rgb565(self, w, h, data: bytes):
+    def push_rgb565(self, w, h, data: bytes):  # noqa: F811
         """
         Szybka ścieżka: wysyła surowe dane RGB565 do LCD.
         :param w: szerokość
@@ -184,7 +188,7 @@ def pil_to_rgb565(img: Image.Image) -> bytes:
         # TODO: Implementacja zależna od sterownika LCD
         raise NotImplementedError("push_rgb565: implementacja zależna od sprzętu")
 
-    def show_image(self, img: Image.Image):
+    def show_image(self, img: Image.Image):  # noqa: F811
         """
         Fallback: wyświetla obraz PIL.Image na LCD (lub desktop, symulacja).
         :param img: PIL.Image

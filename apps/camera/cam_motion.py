@@ -26,9 +26,13 @@ Uruchamianie:
   python3 -m apps.camera.cam_motion
   VISION_HUMAN=1 VISION_FACE_EVERY=5 python3 -m apps.camera.cam_motion
 """
+
 from __future__ import annotations
-import os, sys, time
-from typing import Optional, Tuple
+
+import os
+import sys
+import time
+
 
 # --- konfiguracja z ENV -------------------------------------------------------
 def _int(env: str, default: int) -> int:
@@ -37,20 +41,22 @@ def _int(env: str, default: int) -> int:
     except Exception:
         return default
 
+
 def _float(env: str, default: float) -> float:
     try:
         return float(os.getenv(env, str(default)))
     except Exception:
         return default
 
-CAM_DEV     = os.getenv("CAM_DEV", "0")
-FPS         = _float("FPS", 15.0)
-LORES_W     = _int("LORES_W", 320)
-LORES_H     = _int("LORES_H", 240)
-MOTION_THR  = _float("MOTION_THR", 8.0)
-HUMAN_EN    = _int("VISION_HUMAN", 0)  # 1=on, 0=off
-FACE_EVERY  = _int("VISION_FACE_EVERY", 5)
-ZMQ_PUB_EP  = os.getenv("ZMQ_PUB", "")
+
+CAM_DEV = os.getenv("CAM_DEV", "0")
+FPS = _float("FPS", 15.0)
+LORES_W = _int("LORES_W", 320)
+LORES_H = _int("LORES_H", 240)
+MOTION_THR = _float("MOTION_THR", 8.0)
+HUMAN_EN = _int("VISION_HUMAN", 0)  # 1=on, 0=off
+FACE_EVERY = _int("VISION_FACE_EVERY", 5)
+ZMQ_PUB_EP = os.getenv("ZMQ_PUB", "")
 
 # --- bezpieczny import opcjonalnych bibliotek --------------------------------
 try:
@@ -73,7 +79,9 @@ except Exception:
 class _StdoutPub:
     def send_json(self, obj):
         import json
+
         print(json.dumps(obj, ensure_ascii=False), flush=True)
+
 
 def make_pub():
     if ZMQ_PUB_EP and zmq is not None:
@@ -100,6 +108,7 @@ def pub(sock, payload):
 
 # --- pomocnicze ---------------------------------------------------------------
 
+
 def _open_cam(dev: str):
     if cv2 is None:
         raise RuntimeError("OpenCV nie jest zainstalowany (cv2==None)")
@@ -123,7 +132,7 @@ def _face_cascade_or_none():
     if not HUMAN_EN or cv2 is None:
         return None
     try:
-        return cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        return cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     except Exception:
         return None
 
@@ -134,13 +143,14 @@ def _motion_metric(prev_gray, gray) -> float:
         return 0.0
     try:
         delta = cv2.absdiff(prev_gray, gray)
-        blur  = cv2.GaussianBlur(delta, (9, 9), 0)
+        blur = cv2.GaussianBlur(delta, (9, 9), 0)
         return float(blur.mean())
     except Exception:
         return 0.0
 
 
 # --- główna pętla -------------------------------------------------------------
+
 
 def run() -> None:
     if cv2 is None or np is None:
@@ -168,7 +178,7 @@ def run() -> None:
             time.sleep(0.01)
             continue
         frame = cv2.resize(frame, (LORES_W, LORES_H))
-        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         motion = _motion_metric(prev_gray, gray)
         prev_gray = gray

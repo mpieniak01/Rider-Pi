@@ -1,5 +1,6 @@
 # apps/voice/playback.py
 """Audio playback helpers for the voice assistant."""
+
 from __future__ import annotations
 
 import contextlib
@@ -14,7 +15,6 @@ import threading
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
 
 from . import voice_logging as voice_logging
 
@@ -25,9 +25,9 @@ class PlaybackError(RuntimeError):
 
 @dataclass
 class PlaybackConfig:
-    backend: str = "auto"                     # "auto" | "pulse" | "alsa" | nazwa binarki
-    alsa_device: str | None = None            # np. "plughw:1,0" (używane tylko z aplay)
-    volume: int = 100                         # obecnie informacyjne (regulacja po stronie systemu)
+    backend: str = "auto"  # "auto" | "pulse" | "alsa" | nazwa binarki
+    alsa_device: str | None = None  # np. "plughw:1,0" (używane tylko z aplay)
+    volume: int = 100  # obecnie informacyjne (regulacja po stronie systemu)
     ding: dict[str, object] = field(default_factory=dict)
 
 
@@ -79,7 +79,8 @@ class PlaybackStream:
         ok = rc == 0 and not self._failed
         return ok, audio, stderr_text
 
-def _choose_player(backend: str) -> Optional[str]:
+
+def _choose_player(backend: str) -> str | None:
     """Zwróć ścieżkę do binarki gracza na podstawie backendu."""
     if backend == "pulse":
         return shutil.which("paplay") or shutil.which("aplay")
@@ -94,7 +95,7 @@ def _choose_player(backend: str) -> Optional[str]:
     return shutil.which(backend)
 
 
-def _build_cmd(player_path: str, tmp_path: str, fmt: str, alsa_device: str | None) -> List[str]:
+def _build_cmd(player_path: str, tmp_path: str, fmt: str, alsa_device: str | None) -> list[str]:
     """Zbuduj komendę odtwarzacza dla podanej binarki."""
     base = os.path.basename(player_path)
     if base == "aplay":
@@ -106,8 +107,6 @@ def _build_cmd(player_path: str, tmp_path: str, fmt: str, alsa_device: str | Non
         return [player_path, "-autoexit", "-nodisp", tmp_path]
     # paplay i inne – wystarczy ścieżka
     return [player_path, tmp_path]
-
-
 
 
 def _iter_mpg123_commands(config: PlaybackConfig):
@@ -206,6 +205,7 @@ def start_stream(
 
     return None
 
+
 def play_bytes(
     audio: bytes,
     fmt: str,
@@ -223,9 +223,9 @@ def play_bytes(
 
     # 0) wybór komendy (ENV ma pierwszeństwo)
     env_player = os.getenv("VOICE_PLAYER")
-    env_cmd: Optional[List[str]] = shlex.split(env_player) if env_player else None
+    env_cmd: list[str] | None = shlex.split(env_player) if env_player else None
 
-    player_path: Optional[str] = None
+    player_path: str | None = None
     if not env_cmd:
         player_path = _choose_player(config.backend)
         if not player_path:
@@ -303,6 +303,7 @@ def play_ding(config: PlaybackConfig, logger: voice_logging.VoiceLogger | None =
 # ───────────────────────────────────────────────────────────────────────────────
 # Pomocnicze: generacja prostego tonu do dinga (WAV w pamięci)
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def _tone_wav(duration: float, freq: float, sample_rate: int = 16000, amplitude: float = 0.25) -> bytes:
     """Zwróć bajty WAV (mono, 16-bit) z prostym sinusem."""

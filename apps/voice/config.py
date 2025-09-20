@@ -13,6 +13,7 @@ uses plain dictionaries to keep the surface area small; dataclasses would
 introduce copies when merging nested settings.  Helper functions are
 provided to extract typed values with defaults.
 """
+
 from __future__ import annotations
 
 import os

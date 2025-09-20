@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # apps/vision/dispatcher.py
 """
 Zbiera zdarzenia z detektorów (HAAR/SSD/itd.), normalizuje je,
@@ -7,11 +9,14 @@ IN : vision.face, vision.person, vision.detections
 OUT: vision.state, vision.dispatcher.heartbeat
 """
 
-import os, time, json, threading
-from dataclasses import dataclass
-from typing import Optional, Dict, Any, List, Tuple
+import json  # noqa: E402
+import os  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+from dataclasses import dataclass  # noqa: E402
+from typing import Any  # noqa: E402
 
-import zmq
+import zmq  # noqa: E402
 
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
@@ -19,14 +24,15 @@ ZMQ_ADDR_PUB = f"tcp://127.0.0.1:{BUS_PUB_PORT}"
 ZMQ_ADDR_SUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
 
 # Histereza / debouncing (ENV)
-P_ON_N    = int(os.getenv("VISION_ON_CONSECUTIVE", "3"))     # ile kolejnych pozytywów, by włączyć present=True
-P_OFF_TT  = float(os.getenv("VISION_OFF_TTL_SEC", "2.0"))    # po ilu sekundach ciszy zgasić present
-MIN_SCORE = float(os.getenv("VISION_MIN_SCORE", "0.50"))     # minimalny próg score
+P_ON_N = int(os.getenv("VISION_ON_CONSECUTIVE", "3"))  # ile kolejnych pozytywów, by włączyć present=True
+P_OFF_TT = float(os.getenv("VISION_OFF_TTL_SEC", "2.0"))  # po ilu sekundach ciszy zgasić present
+MIN_SCORE = float(os.getenv("VISION_MIN_SCORE", "0.50"))  # minimalny próg score
 LOG_EVERY = int(os.getenv("LOG_EVERY", "10"))
 
-PUB: Optional[zmq.Socket] = None
-SUB: Optional[zmq.Socket] = None
+PUB: zmq.Socket | None = None
+SUB: zmq.Socket | None = None
 STATE_LOCK = threading.Lock()
+
 
 def zmq_pub() -> zmq.Socket:
     ctx = zmq.Context.instance()
@@ -34,7 +40,8 @@ def zmq_pub() -> zmq.Socket:
     s.connect(ZMQ_ADDR_PUB)
     return s
 
-def zmq_sub(topics: List[str]) -> zmq.Socket:
+
+def zmq_sub(topics: list[str]) -> zmq.Socket:
     ctx = zmq.Context.instance()
     s = ctx.socket(zmq.SUB)
     s.connect(ZMQ_ADDR_SUB)
@@ -47,13 +54,15 @@ def zmq_sub(topics: List[str]) -> zmq.Socket:
         s.setsockopt_string(zmq.SUBSCRIBE, t)
     return s
 
-def _json_loads(text: str) -> Dict[str, Any]:
+
+def _json_loads(text: str) -> dict[str, Any]:
     try:
         return json.loads(text)
     except Exception:
         return {"raw": text}
 
-def sub_recv() -> Tuple[str, Dict[str, Any]]:
+
+def sub_recv() -> tuple[str, dict[str, Any]]:
     """
     Odbiór z SUB — wspiera single-frame ("topic payload") i multipart.
     Zwraca: (topic, data:dict)
@@ -75,12 +84,14 @@ def sub_recv() -> Tuple[str, Dict[str, Any]]:
     except Exception:
         return topic, {"raw": "<binary>"}
 
-def pub(topic: str, payload: Dict[str, Any]) -> None:
+
+def pub(topic: str, payload: dict[str, Any]) -> None:
     try:
         assert PUB is not None
         PUB.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
     except Exception as e:
         print(f"[dispatcher] pub err: {e}", flush=True)
+
 
 # --- Stan wewnętrzny ---
 @dataclass
@@ -90,9 +101,11 @@ class PresenceState:
     consecutive_pos: int = 0
     confidence: float = 0.0
 
+
 STATE = PresenceState()
 _FRAME = 0
 _LAST_MODE: str = "idle"
+
 
 def _as_float(v, default=0.0) -> float:
     try:
@@ -100,7 +113,8 @@ def _as_float(v, default=0.0) -> float:
     except Exception:
         return float(default)
 
-def _best_detection(items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+
+def _best_detection(items: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Wybierz najlepszą detekcję z listy (preferuj person/face, najwyższy score)."""
     if not items:
         return None
@@ -114,7 +128,8 @@ def _best_detection(items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     scored.sort(key=lambda t: (("person" in t[1]) or ("face" in t[1]), t[0]), reverse=True)
     return scored[0][2]
 
-def normalize_event(topic: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+
+def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
     """
     Sprowadzamy HAAR/SSD/hybrid do:
       {"kind": "face"/"person"/"det", "present": bool, "score": float, "bbox": [...], "mode": str}
@@ -128,15 +143,21 @@ def normalize_event(topic: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]
         lbl = (str(best.get("label") or best.get("class") or "")).lower()
         kind = "person" if "person" in lbl else ("face" if "face" in lbl else "det")
         score = _as_float(best.get("score", best.get("confidence", 0.0)), 0.0)
-        return {"kind": kind, "present": score >= MIN_SCORE, "score": score,
-                "bbox": best.get("bbox"), "mode": data.get("mode") or "ssd"}
+        return {
+            "kind": kind,
+            "present": score >= MIN_SCORE,
+            "score": score,
+            "bbox": best.get("bbox"),
+            "mode": data.get("mode") or "ssd",
+        }
 
     kind = "face" if "face" in topic else ("person" if "person" in topic else "det")
     score = _as_float(data.get("score", data.get("confidence", 1.0)), 1.0)
     present = bool(data.get("present", True))
     bbox = data.get("bbox")
-    mode = data.get("mode") or ( "haar" if kind=="face" else ("ssd" if kind=="person" else "det") )
+    mode = data.get("mode") or ("haar" if kind == "face" else ("ssd" if kind == "person" else "det"))
     return {"kind": kind, "present": present, "score": score, "bbox": bbox, "mode": mode}
+
 
 def announce_state() -> None:
     with STATE_LOCK:
@@ -149,7 +170,8 @@ def announce_state() -> None:
     pub("vision.state", payload)
     print(f"[dispatcher] announce vision.state -> {payload}", flush=True)
 
-def update_presence(evt: Dict[str, Any]) -> None:
+
+def update_presence(evt: dict[str, Any]) -> None:
     now = time.time()
     global _FRAME, _LAST_MODE
     _FRAME += 1
@@ -186,6 +208,7 @@ def update_presence(evt: Dict[str, Any]) -> None:
     if should_announce_on or should_announce_off:
         announce_state()
 
+
 def rx_loop() -> None:
     print("[dispatcher] rx_loop started", flush=True)
     while True:
@@ -205,6 +228,7 @@ def rx_loop() -> None:
             print(f"[dispatcher] err: {e}", flush=True)
             time.sleep(0.02)
 
+
 def heartbeat_loop() -> None:
     while True:
         try:
@@ -216,6 +240,7 @@ def heartbeat_loop() -> None:
             break
         except Exception:
             time.sleep(5)
+
 
 def ttl_loop() -> None:
     """Watchdog ciszy: gasi present po P_OFF_TT sekundach bez pozytywów."""
@@ -236,6 +261,7 @@ def ttl_loop() -> None:
             break
         except Exception:
             time.sleep(0.2)
+
 
 if __name__ == "__main__":
     print("[dispatcher] starting (topics: vision.face/person/detections)", flush=True)

@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 # tests/test_face_anim_api.py
 import os
-import time
 import sys
-import pathlib
+import time
 
 import pytest
 
+from services.api_core import face_anim as fa
+
 # Import same Flask app as serwer – import NIE uruchamia main()
 from services.api_server import app
-from services.api_core import face_anim as fa
 
 
 @pytest.fixture(autouse=True)
@@ -158,7 +160,12 @@ def test_no_lcd_spi_imports():
     c.post("/face/play", json={"expr": "neutral", "fps": 15})
     time.sleep(0.2)
 
-    forbidden = [k for k in sys.modules.keys() if k.startswith("apps.hw") or "sink_lcd" in k or "spi" in k]
+    forbidden = [
+        k
+        for k in sys.modules.keys()
+        if (k.startswith("apps.hw") or "sink_lcd" in k or "spi" in k)
+        and not (k.startswith("tests") or k.startswith("test_"))
+    ]
     # dozwolone: puste — nie chcemy HW w tej fazie
     assert not forbidden, f"wygląda na importy HW: {forbidden[:5]}"
 

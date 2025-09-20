@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Sniffer SUB — podgląd ramek wychodzących z brokera (XPUB).
 Domyślnie:
@@ -12,9 +13,10 @@ Użycie:
 
 import os
 import time
+
 import zmq
 
-ADDR  = os.getenv("BUS_SUB_ADDR", "tcp://127.0.0.1:5556")
+ADDR = os.getenv("BUS_SUB_ADDR", "tcp://127.0.0.1:5556")
 TOPIC = os.getenv("TOPIC", os.getenv("MOTION_TOPIC", "motion"))
 
 ctx = zmq.Context.instance()
