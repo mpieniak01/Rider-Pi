@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
+import glob
 import os
 import platform
 import re
@@ -9,7 +9,7 @@ import socket
 import subprocess
 import sys
 import time
-from urllib.request import URLError, urlopen
+from collections.abc import Iterable
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -18,9 +18,13 @@ DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA_DIR = os.path.join(DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# Żeby pod systemd działały importy z projektu (tools.*). NIE używamy services/api_core.
+if DIR not in sys.path:
+    sys.path.insert(0, DIR)
+
 OUT_IMG = os.path.join(DATA_DIR, "splash_device_info.png")
-WIDTH = int(os.getenv("SPLASH_W", 480))
-HEIGHT = int(os.getenv("SPLASH_H", 320))
+WIDTH = int(os.getenv("SPLASH_W", "480"))
+HEIGHT = int(os.getenv("SPLASH_H", "320"))
 ROTATE = int(os.getenv("SPLASH_ROTATE", os.getenv("PREVIEW_ROT", "0")) or 0)
 SECS = float(os.getenv("SPLASH_SECONDS", "8"))
 USE = os.getenv("SPLASH_USE", "auto")  # xgo|pygame|auto
@@ -28,16 +32,16 @@ CLEAR = int(os.getenv("SPLASH_CLEAR", "1"))
 FBDEV = os.getenv("FBDEV", "/dev/fb1" if os.path.exists("/dev/fb1") else "/dev/fb0")
 
 WAIT_IP = int(os.getenv("SPLASH_WAIT_IP_S", os.getenv("WAIT_IP", "0")))
-WAIT_BATT = int(os.getenv("WAIT_BATT", "5"))
+WAIT_BATT = int(os.getenv("WAIT_BATT", "3"))
+SPLASH_HIDE_EMPTY_BATT = int(os.getenv("SPLASH_HIDE_EMPTY_BATT", "0"))
+SPLASH_EARLY_EXIT = int(os.getenv("SPLASH_EARLY_EXIT", "0"))
 
 LINE_EXTRA = int(os.getenv("SPLASH_LINE_EXTRA", "6"))
 IP_SPACER = int(os.getenv("SPLASH_IP_SPACER", "2"))
 KEY_W = int(os.getenv("SPLASH_KEY_W", "150"))
 REFRESH_EVERY = float(os.getenv("SPLASH_REFRESH_EVERY", "0.5"))
 
-# Sterowanie podświetleniem:
-# - ustaw XGO_BL_GPIO na nr BCM pinu (np. 0), żeby sterować,
-# - ustaw XGO_BL_GPIO=-1 (domyślnie), żeby NIC nie dotykać.
+# Sterowanie podświetleniem
 XGO_BL_GPIO = int(os.getenv("XGO_BL_GPIO", "-1"))
 RASPI_GPIO_BIN = "raspi-gpio"
 
@@ -74,10 +78,15 @@ def text_size(draw: ImageDraw.ImageDraw, txt: str, font: ImageFont.FreeTypeFont)
     return (r - left, b - t)
 
 
-def wrap_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_w: int):
+def wrap_lines(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    max_w: int,
+) -> list[str]:
     if "(" in text and "\n" not in text:
         text = re.sub(r"\s*\(", "\n(", text, count=1)
-    lines = []
+    lines: list[str] = []
     for chunk in text.split("\n"):
         words = chunk.split()
         if not words:
@@ -104,7 +113,7 @@ def _strip_parens(text: str) -> str:
 def read_os_pretty() -> str:
     try:
         with open("/etc/os-release") as f:
-            kv = {}
+            kv: dict[str, str] = {}
             for line in f:
                 if "=" in line:
                     k, v = line.strip().split("=", 1)
@@ -123,32 +132,132 @@ def read_temp_c() -> str:
         return "?"
 
 
-def read_battery_once(timeout_s: float = 1.0) -> str | None:
+# ---- BATERIA: sysfs ➜ XGOClientRO (UART) ----
+def _read_batt_sysfs_once() -> int | None:
+    base = "/sys/class/power_supply"
     try:
-        with urlopen("http://127.0.0.1:8080/sysinfo", timeout=timeout_s) as r:
-            data = json.loads(r.read().decode())
-            bp = data.get("battery_pct")
-            if bp is not None:
-                return str(int(bp))
-    except (URLError, OSError, ValueError, TimeoutError):
+        found = False
+        for d in glob.glob(f"{base}/*"):
+            found = True
+            tpath = os.path.join(d, "type")
+            if os.path.isfile(tpath):
+                try:
+                    t = open(tpath).read().strip().lower()
+                    if t and t != "battery":
+                        continue
+                except Exception:
+                    pass
+            cap = os.path.join(d, "capacity")
+            if os.path.isfile(cap):
+                try:
+                    v = int(float(open(cap).read().strip()))
+                    if 0 <= v <= 100:
+                        return v
+                except Exception:
+                    pass
+            uevent = os.path.join(d, "uevent")
+            if os.path.isfile(uevent):
+                try:
+                    for ln in open(uevent, encoding="utf-8", errors="ignore"):
+                        if ln.startswith("POWER_SUPPLY_CAPACITY="):
+                            v = int(float(ln.split("=", 1)[1].strip()))
+                            if 0 <= v <= 100:
+                                return v
+                except Exception:
+                    pass
+            pairs: Iterable[tuple[str, str]] = (
+                ("charge_now", "charge_full"),
+                ("energy_now", "energy_full"),
+            )
+            for now_name, full_name in pairs:
+                p_now = os.path.join(d, now_name)
+                p_full = os.path.join(d, full_name)
+                if os.path.isfile(p_now) and os.path.isfile(p_full):
+                    try:
+                        now = float(open(p_now).read().strip())
+                        full = float(open(p_full).read().strip())
+                        if full > 0:
+                            return int(max(0.0, min(100.0, (now / full) * 100.0)))
+                    except Exception:
+                        pass
+        if not found:
+            _log("battery: no entries under /sys/class/power_supply")
+        else:
+            _log("battery: power_supply present but no capacity/uevent/ratio")
+    except Exception as e:
+        _log(f"battery sysfs error: {e}")
+    return None
+
+
+def _read_batt_xgo_uart_once() -> int | None:
+    """
+    Bezpośredni odczyt z XGO po UART (biblioteka producenta).
+    Autodetekcja portu: ENV XGO_UART_PORTS="/dev/ttyAMA0,/dev/ttyS0,/dev/ttyUSB0"
+    + skan ttyUSB*.
+    """
+    try:
+        from tools.xgo_client_ro import XGOClientRO  # type: ignore
+    except Exception as e:
+        _log(f"battery: XGOClientRO import failed: {e}")
+        return None
+
+    env_ports = os.getenv("XGO_UART_PORTS", "/dev/ttyAMA0,/dev/ttyS0")
+    candidates = [p for p in (x.strip() for x in env_ports.split(",")) if p]
+    try:
+        candidates += sorted(glob.glob("/dev/ttyUSB*"))
+    except Exception:
         pass
+
+    tried: list[str] = []
+    for port in candidates:
+        tried.append(port)
+        try:
+            with XGOClientRO(port=port) as cli:
+                if hasattr(cli, "read_battery_pct"):
+                    v = cli.read_battery_pct()
+                    if v is not None:
+                        vv = int(v)
+                        _log(f"battery: XGO UART {port} -> {vv}%")
+                        return vv
+                v2 = cli.read_battery() if hasattr(cli, "read_battery") else None
+                if v2 is not None:
+                    vv = int(v2)
+                    _log(f"battery: XGO UART {port} -> {vv}%")
+                    return vv
+        except Exception as e:
+            _log(f"battery: XGO UART read failed on {port}: {e}")
+
+    _log(f"battery: no working UART among: {', '.join(tried) if tried else '(none)'}")
+    return None
+
+
+def read_battery_once() -> str | None:
+    for getter in (_read_batt_sysfs_once, _read_batt_xgo_uart_once):
+        v = getter()
+        if isinstance(v, int):
+            _log(f"battery source: {getter.__name__} -> {v}%")
+            return str(v)
     return None
 
 
 def pick_battery_nonblocking() -> str:
     t_end = time.time() + max(0, WAIT_BATT)
     while True:
-        b = read_battery_once(timeout_s=1.0)
+        b = read_battery_once()
         if b is not None:
             return b
         if time.time() >= t_end:
             return "—"
-        time.sleep(0.5)
+        time.sleep(0.25)
 
 
 def _get_ipv4() -> str | None:
     try:
-        out = subprocess.check_output(["ip", "-4", "route", "get", "1.1.1.1"], text=True, stderr=subprocess.DEVNULL)
+        out = subprocess.check_output(
+            ["ip", "-4", "route", "get", "1.1.1.1"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
         m = re.search(r"\bsrc (\d+\.\d+\.\d+\.\d+)\b", out or "")
         if m and m.group(1) != "127.0.0.1":
             _log(f"IP via route: {m.group(1)}")
@@ -157,7 +266,15 @@ def _get_ipv4() -> str | None:
         _log(f"route-get fail: {e}")
 
     try:
-        toks = subprocess.check_output(["hostname", "-I"], text=True, stderr=subprocess.DEVNULL).strip().split()
+        toks = (
+            subprocess.check_output(
+                ["hostname", "-I"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            .strip()
+            .split()
+        )
         for t in toks:
             if re.match(r"^\d+\.\d+\.\d+\.\d+$", t) and not t.startswith("127."):
                 _log(f"IP via hostname -I: {t}")
@@ -166,7 +283,11 @@ def _get_ipv4() -> str | None:
         _log(f"hostname -I fail: {e}")
 
     try:
-        out = subprocess.check_output(["ip", "-4", "-brief", "addr"], text=True, stderr=subprocess.DEVNULL)
+        out = subprocess.check_output(
+            ["ip", "-4", "-brief", "addr"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
         for ln in out.splitlines():
             parts = ln.split()
             if not parts or parts[0] == "lo":
@@ -191,22 +312,25 @@ def pick_ip_nonblocking() -> str:
         ip = _get_ipv4()
         if ip:
             return ip
-        time.sleep(1)
+        time.sleep(0.5)
     return "—"
 
 
 def gather_info():
     batt = pick_battery_nonblocking()
     batt_str = f"{batt}%" if batt.isdigit() else batt
-    return {
+    info = {
         "Host": socket.gethostname(),
         "Date": time.strftime("%Y-%m-%d %H:%M:%S"),
         "OS": read_os_pretty(),
         "Kernel": platform.release(),
         "Temp CPU": f"{read_temp_c()}°C",
-        "Battery": batt_str,
+        "Battery": batt_str,  # Battery PRZED IP
         "IP": pick_ip_nonblocking(),
     }
+    if SPLASH_HIDE_EMPTY_BATT and batt_str == "—":
+        info.pop("Battery", None)
+    return info
 
 
 # ---------------- RENDER ----------------
@@ -284,7 +408,7 @@ def _bl_set(low: bool) -> None:
 # ---------------- WYŚWIETLANIE ----------------
 def have_xgo() -> bool:
     try:
-        import xgoscreen.LCD_2inch  # noqa
+        import xgoscreen.LCD_2inch  # noqa: F401
 
         return True
     except Exception:
@@ -294,18 +418,16 @@ def have_xgo() -> bool:
 def show_live_xgo():
     import xgoscreen.LCD_2inch as LCD_2inch
 
-    # Zgaś BL tylko jeśli skonfigurowano GPIO (>=0). Gdy -1 — nic nie tykamy.
     _bl_set(low=True)
 
     disp = LCD_2inch.LCD_2inch()
     disp.Init()
     disp.clear()
 
-    W = int(getattr(disp, "W", getattr(disp, "width", 240)))
-    H = int(getattr(disp, "H", getattr(disp, "height", 320)))
-    target_size = (W, H)
+    w = int(getattr(disp, "W", getattr(disp, "width", 240)))
+    h = int(getattr(disp, "H", getattr(disp, "height", 320)))
+    target_size = (w, h)
 
-    # czarny start, żeby nie było „brudnego” obrazu
     disp.ShowImage(Image.new("RGB", target_size, (0, 0, 0)))
 
     t0 = time.time()
@@ -322,8 +444,10 @@ def show_live_xgo():
             disp.ShowImage(img)
             last_payload = info
             if first_frame:
-                _bl_set(low=False)  # włącz BL po pierwszym poprawnym kadrze
+                _bl_set(low=False)
                 first_frame = False
+                if SPLASH_EARLY_EXIT == 1:
+                    break
 
         if time.time() - t0 >= SECS:
             break
@@ -331,14 +455,13 @@ def show_live_xgo():
 
     if CLEAR == 1:
         disp.ShowImage(Image.new("RGB", target_size, (0, 0, 0)))
-        time.sleep(0.1)
     _log("xgo live display OK")
     return True
 
 
 def have_pygame() -> bool:
     try:
-        import pygame  # noqa
+        import pygame  # noqa: F401
 
         return True
     except Exception:
@@ -371,6 +494,8 @@ def show_live_pygame():
             screen.blit(surf, (0, 0))
             pygame.display.update()
             last_payload = info
+            if SPLASH_EARLY_EXIT == 1:
+                break
         if time.time() - t0 >= SECS:
             break
         time.sleep(REFRESH_EVERY)
@@ -381,7 +506,9 @@ def show_live_pygame():
 
 
 def main():
-    _log(f"start uid={os.getuid()} user={os.getenv('USER')} WAIT_IP={WAIT_IP} WAIT_BATT={WAIT_BATT}")
+    _log(
+        f"start uid={os.getuid()} user={os.getenv('USER')} WAIT_IP={WAIT_IP} WAIT_BATT={WAIT_BATT}"
+    )
     png_im = draw_splash_with(gather_info(), WIDTH, HEIGHT)
     maybe_rotate(png_im).save(OUT_IMG)
 

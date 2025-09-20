@@ -1,7 +1,6 @@
 [Unit]
 Description=Rider-Pi Boot Prepare (vendor cleanup, splash, LCD off)
-After=systemd-tmpfiles-setup.service sysinit.target local-fs.target basic.target rider-api.service
-Wants=rider-api.service
+After=systemd-tmpfiles-setup.service sysinit.target local-fs.target basic.target
 Before=display-manager.service lightdm.service rider-broker.service rider-vision.service
 ConditionPathExists=!/run/rider/boot-prepared
 
@@ -9,19 +8,26 @@ ConditionPathExists=!/run/rider/boot-prepared
 Type=oneshot
 WorkingDirectory=/home/pi/robot
 
-# Wymuszamy sterownik SPI (pewny na 2")
+EnvironmentFile=-/etc/default/rider-boot-prepare
+Environment=PYTHONPATH=/home/pi/robot
+
+# Splash (LCD 2")
 Environment=SPLASH_USE=xgo
 Environment=SPLASH_ROTATE=270
 Environment=SPLASH_SECONDS=8
 Environment=SPLASH_REFRESH_EVERY=0.2
+Environment=SPLASH_EARLY_EXIT=0
 
-# Czekania (nie blokują wyświetlenia; IP/batt pobierze ile się da)
-Environment=WAIT_IP=5
-Environment=WAIT_BATT=8
+# Czekanie
+Environment=WAIT_IP=0
+Environment=WAIT_BATT=1
 
-# Po splashu: clear + wygaszenie
-Environment=SPLASH_CLEAR=1
-Environment=KEEP_BL_ON=0
+# UART (dopasuj jak trzeba)
+Environment=XGO_UART_PORTS=/dev/ttyAMA0
+
+# Po splashu: nie czyść i zostaw BL włączone (lub zmień na 0)
+Environment=SPLASH_CLEAR=0
+Environment=KEEP_BL_ON=1
 Environment=LCD_BL_GPIO=0
 Environment="LCD_OFF_CMD=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off"
 Environment=XGO_BL_GPIO=-1
@@ -32,14 +38,21 @@ Environment=SPLASH_KEY_W=150
 Environment=SPLASH_LINE_EXTRA=6
 Environment=SPLASH_IP_SPACER=2
 
-# Wyłączamy SDL/fb żeby nie uciekało w HDMI
+# Nie ruszaj procesów display (ważne!)
+Environment=NO_KILL_DISPLAY=1
+
+# Unikamy SDL na HDMI; fallback to fb
 Environment=SDL_VIDEODRIVER=
 Environment=SDL_FBDEV=
 Environment=SDL_AUDIODRIVER=dummy
 Environment=PYGAME_HIDE_SUPPORT_PROMPT=1
 
-# --- ważne: włącz BL PRZED splashem ---
+# --- włącz BL PRZED splashem ---
 ExecStartPre=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py on
+
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=30
 
 RuntimeDirectory=rider
 RemainAfterExit=yes
@@ -47,5 +60,3 @@ ExecStart=/home/pi/robot/ops/boot_prepare.sh
 
 [Install]
 WantedBy=multi-user.target
-
-
