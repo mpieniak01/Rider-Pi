@@ -14,13 +14,15 @@ Environment=PYTHONPATH=/home/pi/robot
 # Splash (LCD 2")
 Environment=SPLASH_USE=xgo
 Environment=SPLASH_ROTATE=270
-Environment=SPLASH_SECONDS=8
+Environment=SPLASH_SECONDS=10
 Environment=SPLASH_REFRESH_EVERY=0.2
 Environment=SPLASH_EARLY_EXIT=0
 
 # Czekanie
-Environment=WAIT_IP=0
+Environment=WAIT_IP=3
 Environment=WAIT_BATT=1
+# Podpowiedź interfejsów do szybszego zczytania IP (opcjonalnie dopasuj)
+Environment=SPLASH_IFACES=wlan0,eth0
 
 # UART (dopasuj jak trzeba)
 Environment=XGO_UART_PORTS=/dev/ttyAMA0
@@ -60,3 +62,4 @@ ExecStart=/home/pi/robot/ops/boot_prepare.sh
 
 [Install]
 WantedBy=multi-user.target
+
