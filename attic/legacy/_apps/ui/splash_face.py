@@ -1,20 +1,24 @@
 # apps/ui/splash_face.py
 #!/usr/bin/env python3
 import os
-import time
 import socket
+import time
+
 import pygame
+
 
 # (opcjonalnie) sysinfo z lokalnego API
 def get_battery_pct():
     try:
         import requests  # python3-requests jest zainstalowany
+
         r = requests.get("http://127.0.0.1:8080/sysinfo", timeout=0.4)
         if r.ok:
             return r.json().get("battery_pct")
     except Exception:
         pass
     return None
+
 
 def get_ip():
     try:
@@ -27,9 +31,10 @@ def get_ip():
         pass
     return "0.0.0.0"
 
+
 def main():
     fbdev = os.environ.get("FBDEV", "/dev/fb1")
-    rot = int(os.environ.get("ROT", "0"))           # 0/90/180/270
+    rot = int(os.environ.get("ROT", "0"))  # 0/90/180/270
     secs = float(os.environ.get("SPLASH_SECS", "3"))
 
     # SDL -> framebuffer
@@ -49,7 +54,7 @@ def main():
     # --- Buźka ---
     cx, cy = w // 2, h // 2
     r = min(w, h) // 4
-    pygame.draw.circle(surf, (255, 215, 0), (cx, cy), r)                 # twarz
+    pygame.draw.circle(surf, (255, 215, 0), (cx, cy), r)  # twarz
     pygame.draw.circle(surf, (0, 0, 0), (cx - r // 3, cy - r // 3), r // 10)  # lewe oko
     pygame.draw.circle(surf, (0, 0, 0), (cx + r // 3, cy - r // 3), r // 10)  # prawe oko
     pygame.draw.arc(surf, (0, 0, 0), (cx - r // 2, cy - r // 6, r, r), 3.5, 5.9, 5)  # uśmiech
@@ -80,6 +85,7 @@ def main():
     pygame.display.update()
     time.sleep(secs)
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()

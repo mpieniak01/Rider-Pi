@@ -1,0 +1,29 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        entry: ruff check
+        language: system
+        types_or: [python]
+        # ruff sam ma extend-exclude, ale pre-commit też musi odfiltrować pliki
+        exclude: |
+          (?x)^(
+            attic/|
+            _apps/|
+            services/_deprecated_.*
+          )
+        args: [--fix, --force-exclude]
+
+      - id: ruff-format
+        name: ruff (format)
+        entry: ruff format
+        language: system
+        types_or: [python]
+        exclude: |
+          (?x)^(
+            attic/|
+            _apps/|
+            services/_deprecated_.*
+          )
+        args: [--force-exclude]
