@@ -23,7 +23,8 @@ def open_camera(size=(W, H)):
         from picamera2 import Picamera2
         picam2 = Picamera2()
         cfg = picam2.create_preview_configuration(main={"size": size, "format": "RGB888"})
-        picam2.configure(cfg); picam2.start()
+        picam2.configure(cfg)
+        picam2.start()
         def read():
             arr = picam2.capture_array()
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
@@ -47,7 +48,8 @@ def main():
     hog = cv2.HOGDescriptor()
     hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
-    last = time.time(); ema = None
+    last = time.time()
+    ema = None
     # hej! od razu pierwsze HB
     HB.tick(None, 0.0, presenting=False)
 
@@ -55,7 +57,8 @@ def main():
         t0 = time.time()
         ok, frame = read()
         if not ok:
-            time.sleep(0.01); continue
+            time.sleep(0.01)
+            continue
 
         # skala 1.05…1.1, minNeighbors=4–6; 320x240 i tak ogranicza koszt
         rects, weights = hog.detectMultiScale(frame, winStride=(8,8), padding=(8,8), scale=1.05)
@@ -79,8 +82,10 @@ def main():
             }, add_ts=True)
 
         # zapisz PROC do podglądu na dashboardzie
-        try: save_jpeg_bgr(PROC_FN, out)
-        except Exception as e: print("[hog] save error:", e, flush=True)
+        try:
+            save_jpeg_bgr(PROC_FN, out)
+        except Exception as e:
+            print("[hog] save error:", e, flush=True)
 
         # heartbeat (fps)
         now = time.time()

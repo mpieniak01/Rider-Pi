@@ -1,14 +1,13 @@
 # apps/voice/tts.py
 from __future__ import annotations
 
+import audioop
+import base64
 import io
 import os
 import time
 import wave
-import base64
-import audioop
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import requests
 
@@ -23,12 +22,12 @@ class TTSError(RuntimeError):
 
 @dataclass
 class TTSConfig:
-    backend: str = "openai"          # na razie "openai"
-    voice: str | None = None         # np. "alloy"
-    model: str | None = None         # np. "gpt-4o-mini-tts"
-    format: str = "wav"              # "wav" | "mp3" (i tak sprowadzimy do WAV)
-    piper_model: str | None = None   # rezerwa; bez użycia tutaj
-    piper_config: dict | None = None # rezerwa
+    backend: str = "openai"  # na razie "openai"
+    voice: str | None = None  # np. "alloy"
+    model: str | None = None  # np. "gpt-4o-mini-tts"
+    format: str = "wav"  # "wav" | "mp3" (i tak sprowadzimy do WAV)
+    piper_model: str | None = None  # rezerwa; bez użycia tutaj
+    piper_config: dict | None = None  # rezerwa
 
 
 @dataclass
@@ -42,6 +41,7 @@ class TTSStreamResult:
 
 
 # ───── helpers ────────────────────────────────────────────────────────────────
+
 
 def _is_wav(b: bytes) -> bool:
     return len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE"
@@ -74,6 +74,7 @@ def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40)
     if n_samples == 0:
         return pcm
     import array
+
     a = array.array("h")
     a.frombytes(pcm)
     # fade-in
@@ -89,7 +90,7 @@ def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40)
     n_out = min(n_samples // ch, int(sr * ms_out / 1000))
     for j in range(n_out):
         scale = (n_out - j) / max(1, n_out)
-        idx = (n_samples // ch - 1 - j)
+        idx = n_samples // ch - 1 - j
         if ch == 1:
             a[idx] = int(a[idx] * scale)
         else:
@@ -106,6 +107,7 @@ def _normalize_16bit(pcm: bytes, target_peak: int = 30000, extra_gain: float = 1
     if not pcm:
         return pcm
     import array
+
     a = array.array("h")
     a.frombytes(pcm)
     peak = max((abs(x) for x in a), default=1)
@@ -117,18 +119,22 @@ def _normalize_16bit(pcm: bytes, target_peak: int = 30000, extra_gain: float = 1
     return a.tobytes()
 
 
-def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) -> Optional[bytes]:
+def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) -> bytes | None:
     """
     Spróbuj zdekodować MP3 → WAV narzędziami systemowymi (ffmpeg/mpg123).
     Zwraca WAV lub None (gdy brak narzędzi albo dekoder zawiedzie).
     """
-    import shutil, subprocess
+    import shutil
+    import subprocess
+
     if shutil.which("ffmpeg"):
         try:
             p = subprocess.run(
-                ["ffmpeg", "-hide_banner", "-loglevel", "error",
-                 "-i", "pipe:0", "-f", "wav", "pipe:1"],
-                input=audio_bytes, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-f", "wav", "pipe:1"],
+                input=audio_bytes,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=True,
             )
             if _is_wav(p.stdout):
                 return p.stdout
@@ -138,7 +144,10 @@ def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) ->
         try:
             p = subprocess.run(
                 ["mpg123", "-q", "-w", "-", "-"],
-                input=audio_bytes, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True
+                input=audio_bytes,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=True,
             )
             if _is_wav(p.stdout):
                 return p.stdout
@@ -266,7 +275,7 @@ def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str):
                 model=(config.model or "gpt-4o-mini-tts"),
                 voice=(config.voice or "alloy"),
                 input=text,
-                #format=fmt,  # preferowane, gdy obsługiwane
+                # format=fmt,  # preferowane, gdy obsługiwane
                 timeout=45,
             )
         except TypeError:
@@ -287,7 +296,8 @@ def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str):
 
 # ───── public API ─────────────────────────────────────────────────────────────
 
-def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None) -> Tuple[bytes, int, str]:
+
+def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None) -> tuple[bytes, int, str]:
     backend = (config.backend or "openai").lower()
     logger = logger or voice_logging.get_logger("voice.tts")
 
@@ -297,7 +307,7 @@ def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger |
     return _tts_openai(text, config, logger)
 
 
-def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> Tuple[bytes, int, str]:
+def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
     """
     OpenAI Text-to-Speech (v1/audio/speech).
     Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav"), niezależnie od proszonego formatu.
@@ -308,8 +318,8 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
         raise TTSError("OPENAI_API_KEY not configured")
 
     url = "https://api.openai.com/v1/audio/speech"
-    model = (config.model or "gpt-4o-mini-tts")
-    voice = (config.voice or "alloy")
+    model = config.model or "gpt-4o-mini-tts"
+    voice = config.voice or "alloy"
     requested_fmt = (config.format or "wav").lower()
 
     payload = {"model": model, "voice": voice, "input": text, "format": requested_fmt}
@@ -341,7 +351,11 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
                 wav_bytes = body
 
             # 2) audio/mpeg — dekoduj do WAV
-            elif "audio/mpeg" in ctype or body[:3] == b"ID3" or (len(body) > 2 and body[0] == 0xFF and (body[1] & 0xE0) == 0xE0):
+            elif (
+                "audio/mpeg" in ctype
+                or body[:3] == b"ID3"
+                or (len(body) > 2 and body[0] == 0xFF and (body[1] & 0xE0) == 0xE0)
+            ):
                 w = _decode_mp3_to_wav(body, logger)
                 if not w:
                     last_err = TTSError("MP3 decode failed (no ffmpeg/mpg123?)")

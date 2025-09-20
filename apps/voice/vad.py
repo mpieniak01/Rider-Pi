@@ -1,4 +1,5 @@
 """Voice activity detection helpers."""
+
 from __future__ import annotations
 
 import collections

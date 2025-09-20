@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Rider-Pi – Motion Bridge (deadman auto-stop + debounce + RX echo + compat adapter)
 
@@ -23,61 +22,72 @@ ENV (wycinek):
 - BUS_RCVHWM=100, BUS_CONFLATE=0
 """
 
-import os, time, json, signal, threading
+import json
+import os
+import signal
+import threading
+import time
+from collections.abc import Callable
 from threading import Timer
-from typing import Optional, Any, Callable, List, Tuple
+from typing import Any
+
 import zmq  # type: ignore
 
 # --- ENV / parametry ---
-BUS_PUB_PORT      = int(os.getenv("BUS_PUB_PORT", "5555"))
-BUS_SUB_PORT      = int(os.getenv("BUS_SUB_PORT", "5556"))
-DRY_RUN           = (os.getenv("DRY_RUN", "1") == "1")
-BRIDGE_READONLY   = (os.getenv("BRIDGE_READONLY", "1") == "1")
-XGO_LAZY_OPEN     = (os.getenv("XGO_LAZY_OPEN", "1") == "1")
-XGO_PORT          = os.getenv("XGO_PORT", "/dev/ttyAMA0")
-BRIDGE_RATE_HZ    = max(0.1, min(20.0, float(os.getenv("BRIDGE_RATE_HZ", "2"))))
+BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
+BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
+DRY_RUN = os.getenv("DRY_RUN", "1") == "1"
+BRIDGE_READONLY = os.getenv("BRIDGE_READONLY", "1") == "1"
+XGO_LAZY_OPEN = os.getenv("XGO_LAZY_OPEN", "1") == "1"
+XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
+BRIDGE_RATE_HZ = max(0.1, min(20.0, float(os.getenv("BRIDGE_RATE_HZ", "2"))))
 
-SPEED_LINEAR      = float(os.getenv("SPEED_LINEAR", "12"))
+SPEED_LINEAR = float(os.getenv("SPEED_LINEAR", "12"))
 SAFE_MAX_DURATION = float(os.getenv("SAFE_MAX_DURATION", "0.6"))
-MIN_CMD_GAP       = float(os.getenv("MIN_CMD_GAP", "0.10"))
+MIN_CMD_GAP = float(os.getenv("MIN_CMD_GAP", "0.10"))
 
-TURN_STEP_MIN     = int(os.getenv("TURN_STEP_MIN", "20"))
-TURN_STEP_MAX     = int(os.getenv("TURN_STEP_MAX", "70"))
+TURN_STEP_MIN = int(os.getenv("TURN_STEP_MIN", "20"))
+TURN_STEP_MAX = int(os.getenv("TURN_STEP_MAX", "70"))
 
 # Stabilizacja yaw
-YAW_DEADBAND_DPS  = float(os.getenv("YAW_DEADBAND_DPS", "0.8"))
-YAW_SMOOTH_ALPHA  = max(0.0, min(1.0, float(os.getenv("YAW_SMOOTH_ALPHA", "0.2"))))
+YAW_DEADBAND_DPS = float(os.getenv("YAW_DEADBAND_DPS", "0.8"))
+YAW_SMOOTH_ALPHA = max(0.0, min(1.0, float(os.getenv("YAW_SMOOTH_ALPHA", "0.2"))))
 YAW_FREEZE_WHEN_IDLE_S = float(os.getenv("YAW_FREEZE_WHEN_IDLE_S", "2.0"))
-YAW_IDLE_MAX_DPS       = float(os.getenv("YAW_IDLE_MAX_DPS", "8.0"))
+YAW_IDLE_MAX_DPS = float(os.getenv("YAW_IDLE_MAX_DPS", "8.0"))
 
 # Anty-lag / preempcja
-PREEMPT           = (os.getenv("PREEMPT", "1") == "1")
-DROP_OLD_MS       = float(os.getenv("DROP_OLD_MS", "200"))
-DEADMAN_MS        = float(os.getenv("DEADMAN_MS", "0"))  # 0 = użyj duration
+PREEMPT = os.getenv("PREEMPT", "1") == "1"
+DROP_OLD_MS = float(os.getenv("DROP_OLD_MS", "200"))
+DEADMAN_MS = float(os.getenv("DEADMAN_MS", "0"))  # 0 = użyj duration
 
 # Ile wiadomości SUB przetwarzać na jeden tick (FIFO), aby nie gubić sekwencji move→stop itp.
 MAX_MSGS_PER_TICK = int(os.getenv("MAX_MSGS_PER_TICK", "10"))
 
 MOVES_ALLOWED = (not DRY_RUN) and (not BRIDGE_READONLY)
 
+
 # --- helpery kątów ---
-def _norm360(deg: Optional[float]) -> Optional[float]:
-    if deg is None: return None
+def _norm360(deg: float | None) -> float | None:
+    if deg is None:
+        return None
     try:
         x = float(deg) % 360.0
         return x if x >= 0.0 else x + 360.0
     except Exception:
         return None
 
+
 def _angle_diff_deg(a: float, b: float) -> float:
     d = (a - b + 180.0) % 360.0 - 180.0
     return d
+
 
 # Stan filtra yaw
 _yaw_state = {"ts": None, "yaw_raw": None, "yaw_stable": None, "src": "gyro_stabilized"}
 _last_motion_cmd_ts = 0.0
 
-def _stabilize_yaw(yaw_raw: Optional[float], ts: float, freeze: bool = False) -> Tuple[Optional[float], Optional[float], str]:
+
+def _stabilize_yaw(yaw_raw: float | None, ts: float, freeze: bool = False) -> tuple[float | None, float | None, str]:
     global _yaw_state
     if yaw_raw is None:
         _yaw_state["ts"] = ts
@@ -114,17 +124,20 @@ def _stabilize_yaw(yaw_raw: Optional[float], ts: float, freeze: bool = False) ->
     _yaw_state["yaw_stable"] = stab
     return stab, yaw_rate, _yaw_state["src"]
 
+
 # --- Opcjonalny sterownik XGO (leniwe otwieranie) ---
 _xgo_cls = None
 try:
     from xgolib import XGO as _XGO  # type: ignore
+
     _xgo_cls = _XGO
 except Exception:
     _xgo_cls = None
 
 xgo = None
 
-def ensure_xgo_open() -> Optional[Any]:
+
+def ensure_xgo_open() -> Any | None:
     global xgo
     if xgo is not None:
         return xgo
@@ -138,7 +151,7 @@ def ensure_xgo_open() -> Optional[Any]:
         return None
 
 
-def _list_hw_methods() -> List[str]:
+def _list_hw_methods() -> list[str]:
     try:
         dev = xgo or ensure_xgo_open()
         if not dev:
@@ -146,6 +159,7 @@ def _list_hw_methods() -> List[str]:
         return [m for m in dir(dev) if not m.startswith("_")]
     except Exception:
         return []
+
 
 # --- ZMQ ---
 ctx = zmq.Context.instance()
@@ -163,14 +177,23 @@ except Exception:
 
 sub.connect(f"tcp://127.0.0.1:{BUS_SUB_PORT}")
 for t in [
-    "cmd.motion.forward","cmd.motion.backward","cmd.motion.left","cmd.motion.right",
-    "cmd.motion.turn_left","cmd.motion.turn_right","cmd.motion.stop","cmd.motion.demo",
-    "cmd.move","cmd.stop","motion.cmd"
+    "cmd.motion.forward",
+    "cmd.motion.backward",
+    "cmd.motion.left",
+    "cmd.motion.right",
+    "cmd.motion.turn_left",
+    "cmd.motion.turn_right",
+    "cmd.motion.stop",
+    "cmd.motion.demo",
+    "cmd.move",
+    "cmd.stop",
+    "motion.cmd",
 ]:
     sub.setsockopt_string(zmq.SUBSCRIBE, t)
 
 # anti slow-joiner
 time.sleep(0.3)
+
 
 def _pub_json(topic: str, payload: dict):
     try:
@@ -178,13 +201,15 @@ def _pub_json(topic: str, payload: dict):
     except Exception:
         pass
 
+
 def publish_event(name: str, detail: dict):
     payload = {"ts": time.time(), "event": name, "detail": (detail or {})}
     _pub_json("motion.bridge.event", payload)
     print(f"[bridge] {name}: {detail}", flush=True)
 
+
 # --- Telemetria: devices.xgo ---
-def _get_val(names: List[str], post: Optional[Callable[[Any], Any]] = None) -> Any:
+def _get_val(names: list[str], post: Callable[[Any], Any] | None = None) -> Any:
     dev = xgo or ensure_xgo_open()
     if not dev:
         return None
@@ -207,14 +232,17 @@ def _read_attitude():
             if callable(fn):
                 try:
                     h = float(fn())
-                    return ( _get_val(["read_roll","rider_read_roll"], float),
-                             _get_val(["read_pitch","rider_read_pitch"], float),
-                             float(h), "heading_native" )
+                    return (
+                        _get_val(["read_roll", "rider_read_roll"], float),
+                        _get_val(["read_pitch", "rider_read_pitch"], float),
+                        float(h),
+                        "heading_native",
+                    )
                 except Exception:
                     pass
     for trio in [
-        ("read_roll","read_pitch","read_yaw"),
-        ("rider_read_roll","rider_read_pitch","rider_read_yaw"),
+        ("read_roll", "read_pitch", "read_yaw"),
+        ("rider_read_roll", "rider_read_pitch", "rider_read_yaw"),
     ]:
         dev = xgo or ensure_xgo_open()
         if not dev:
@@ -236,14 +264,17 @@ def _read_attitude():
 
 
 def read_xgo_telemetry() -> dict:
-    dev = xgo if xgo is not None else (ensure_xgo_open() if not XGO_LAZY_OPEN else xgo)
+    xgo if xgo is not None else (ensure_xgo_open() if not XGO_LAZY_OPEN else xgo)
     batt = _get_val(["rider_read_battery", "read_battery"])
-    fw   = _get_val(["rider_read_firmware", "read_firmware", "version"])
+    fw = _get_val(["rider_read_firmware", "read_firmware", "version"])
     roll, pitch, yaw_raw, yaw_src = _read_attitude()
     ts = time.time()
 
     if yaw_src == "heading_native":
-        yaw_norm = _norm360(yaw_raw); yaw_rate = None; yaw_out = yaw_norm; src_out = "heading_native"
+        yaw_norm = _norm360(yaw_raw)
+        yaw_rate = None
+        yaw_out = yaw_norm
+        src_out = "heading_native"
     else:
         prev_ts, prev_raw = _yaw_state["ts"], _yaw_state["yaw_raw"]
         if prev_ts is not None and prev_raw is not None and yaw_raw is not None:
@@ -274,6 +305,7 @@ def read_xgo_telemetry() -> dict:
 
 _last_telem_print = 0.0
 
+
 def publish_devices_xgo(payload: dict):
     global _last_telem_print
     _pub_json("devices.xgo", payload)
@@ -282,16 +314,20 @@ def publish_devices_xgo(payload: dict):
         print("[bridge] devices.xgo ->", payload, flush=True)
         _last_telem_print = now
 
+
 # --- Deadman (autostop po czasie) ---
 _deadman_lock = threading.Lock()
-_deadman_timer: Optional[Timer] = None
+_deadman_timer: Timer | None = None
+
 
 def _cancel_deadman():
     global _deadman_timer
     with _deadman_lock:
         if _deadman_timer is not None:
-            try: _deadman_timer.cancel()
-            except Exception: pass
+            try:
+                _deadman_timer.cancel()
+            except Exception:
+                pass
         _deadman_timer = None
 
 
@@ -302,6 +338,7 @@ def _schedule_deadman(duration_s: float):
     else:
         d = max(0.05, min(float(duration_s or 0.0), SAFE_MAX_DURATION))
     _cancel_deadman()
+
     def _fire():
         try:
             if ensure_xgo_open():
@@ -312,15 +349,21 @@ def _schedule_deadman(duration_s: float):
             publish_event("auto_stop", {"after_s": d, "rid": rid})
         except Exception:
             pass
-    t = Timer(d, _fire); t.daemon = True
-    with _deadman_lock: _deadman_timer = t
+
+    t = Timer(d, _fire)
+    t.daemon = True
+    with _deadman_lock:
+        _deadman_timer = t
     t.start()
+
 
 # --- Helpery wywołań HW ---
 
+
 def _try_call(fn, *args) -> bool:
     try:
-        fn(*args); return True
+        fn(*args)
+        return True
     except TypeError:
         return False
     except Exception as e:
@@ -333,16 +376,20 @@ def _call_move(method_name: str, *args):
         return
     dev = ensure_xgo_open()
     if not dev:
-        print("[bridge] hw unavailable for", method_name, flush=True); return
+        print("[bridge] hw unavailable for", method_name, flush=True)
+        return
     fn = getattr(dev, method_name, None)
     if not callable(fn):
-        print(f"[bridge] hw call missing method: {method_name}", flush=True); return
+        print(f"[bridge] hw call missing method: {method_name}", flush=True)
+        return
     _try_call(fn, *args)
 
 
 def _clamp01(v: float) -> float:
-    try: v = float(v)
-    except Exception: return 0.0
+    try:
+        v = float(v)
+    except Exception:
+        return 0.0
     return 0.0 if v < 0 else 1.0 if v > 1 else v
 
 
@@ -359,9 +406,9 @@ def do_forward(speed_norm, runtime):
     print(f"[bridge] forward v={spd:.2f} t={runtime:.2f}")
     dev = ensure_xgo_open()
     if dev and hasattr(dev, "forward"):
-        if not _try_call(getattr(dev,"forward"), spd):
-            if not _try_call(getattr(dev,"forward"), runtime):
-                _try_call(getattr(dev,"forward"), spd, runtime)
+        if not _try_call(getattr(dev, "forward"), spd):
+            if not _try_call(getattr(dev, "forward"), runtime):
+                _try_call(getattr(dev, "forward"), spd, runtime)
 
 
 def do_backward(speed_norm, runtime):
@@ -373,9 +420,9 @@ def do_backward(speed_norm, runtime):
     if dev:
         meth = "back" if hasattr(dev, "back") else ("backward" if hasattr(dev, "backward") else None)
         if meth:
-            if not _try_call(getattr(dev,meth), spd):
-                if not _try_call(getattr(dev,meth), runtime):
-                    _try_call(getattr(dev,meth), spd, runtime)
+            if not _try_call(getattr(dev, meth), spd):
+                if not _try_call(getattr(dev, meth), runtime):
+                    _try_call(getattr(dev, meth), spd, runtime)
 
 
 def do_turn_left(yaw_abs_norm, runtime):
@@ -411,12 +458,15 @@ def do_stop():
         except Exception as e:
             print("[bridge] hw call error:", e, flush=True)
 
+
 # --- sygnały, start ---
 _running = True
+
 
 def _sigterm(*_):
     global _running
     _running = False
+
 
 signal.signal(signal.SIGINT, _sigterm)
 signal.signal(signal.SIGTERM, _sigterm)
@@ -431,7 +481,7 @@ print(
     f"MOVES_ALLOWED={bool(MOVES_ALLOWED)} LAZY={bool(XGO_LAZY_OPEN)} "
     f"RATE_HZ={BRIDGE_RATE_HZ} PORT={XGO_PORT} "
     f"SAFE_MAX={SAFE_MAX_DURATION}s MIN_GAP={MIN_CMD_GAP}s)",
-    flush=True
+    flush=True,
 )
 print("[bridge] hw methods:", ", ".join(_list_hw_methods()), flush=True)
 publish_event("ready", {"ts": time.time()})
@@ -450,7 +500,7 @@ while _running:
         _next_telem_ts = now + (1.0 / BRIDGE_RATE_HZ)
 
     # Odbiór komend – pobierz do N wiadomości i przetwarzaj KAŻDĄ (FIFO)
-    batch: List[str] = []
+    batch: list[str] = []
     for _ in range(MAX_MSGS_PER_TICK):
         try:
             batch.append(sub.recv_string(flags=zmq.NOBLOCK))
@@ -496,7 +546,9 @@ while _running:
                     pass
 
             if (now2 - _last_cmd_ts) < MIN_CMD_GAP:
-                publish_event("skip_cmd.move", {"rid": rid, "reason": "min_gap", "gap_s": round(now2 - _last_cmd_ts, 3)})
+                publish_event(
+                    "skip_cmd.move", {"rid": rid, "reason": "min_gap", "gap_s": round(now2 - _last_cmd_ts, 3)}
+                )
                 continue
             _last_cmd_ts = now2
 
@@ -509,20 +561,27 @@ while _running:
                         print("[bridge] hw call error (preempt stop):", e, flush=True)
 
             moved = False
-            if d in ("forward","fwd","up"):
+            if d in ("forward", "fwd", "up"):
                 moved = True
-                do_forward(abs(vx), dur);  publish_event("forward",  {"rid": rid, "v": abs(vx), "runtime": dur})
-            elif d in ("backward","back","down"):
+                do_forward(abs(vx), dur)
+                publish_event("forward", {"rid": rid, "v": abs(vx), "runtime": dur})
+            elif d in ("backward", "back", "down"):
                 moved = True
-                do_backward(abs(vx), dur); publish_event("backward", {"rid": rid, "v": abs(vx), "runtime": dur})
-            elif d in ("left","turn_left"):
+                do_backward(abs(vx), dur)
+                publish_event("backward", {"rid": rid, "v": abs(vx), "runtime": dur})
+            elif d in ("left", "turn_left"):
                 moved = True
-                do_turn_left(abs(vx), dur);  publish_event("turn_left",  {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
-            elif d in ("right","turn_right"):
+                do_turn_left(abs(vx), dur)
+                publish_event("turn_left", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
+            elif d in ("right", "turn_right"):
                 moved = True
-                do_turn_right(abs(vx), dur); publish_event("turn_right", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
-            elif d in ("stop","halt"):
-                do_stop(); publish_event("stop", {"rid": rid}); _last_motion_cmd_ts = time.time(); continue
+                do_turn_right(abs(vx), dur)
+                publish_event("turn_right", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
+            elif d in ("stop", "halt"):
+                do_stop()
+                publish_event("stop", {"rid": rid})
+                _last_motion_cmd_ts = time.time()
+                continue
             else:
                 publish_event("skip_cmd.move", {"rid": rid, "reason": "bad_dir", "dir": d})
                 continue
@@ -534,8 +593,8 @@ while _running:
 
         # NOWE: cmd.move / cmd.stop
         if topic == "cmd.move":
-            vx  = float(data.get("vx", 0.0))
-            vy  = float(data.get("vy", 0.0))
+            vx = float(data.get("vx", 0.0))
+            vy = float(data.get("vy", 0.0))
             yaw = float(data.get("yaw", data.get("az", 0.0)) or 0.0)
 
             dur = max(0.05, min(float(data.get("duration", SAFE_MAX_DURATION) or SAFE_MAX_DURATION), SAFE_MAX_DURATION))
@@ -549,14 +608,19 @@ while _running:
                 try:
                     age = (now2 - float(ts_in)) * 1000.0
                     if age > DROP_OLD_MS:
-                        publish_event("skip_cmd.move", {"rid": data.get("rid"), "reason": "drop_old", "age_ms": round(age, 1)})
+                        publish_event(
+                            "skip_cmd.move", {"rid": data.get("rid"), "reason": "drop_old", "age_ms": round(age, 1)}
+                        )
                         continue
                 except Exception:
                     pass
 
             # Debounce
             if (now2 - _last_cmd_ts) < MIN_CMD_GAP:
-                publish_event("skip_cmd.move", {"rid": data.get("rid"), "reason": "min_gap", "gap_s": round(now2 - _last_cmd_ts, 3)})
+                publish_event(
+                    "skip_cmd.move",
+                    {"rid": data.get("rid"), "reason": "min_gap", "gap_s": round(now2 - _last_cmd_ts, 3)},
+                )
                 continue
             _last_cmd_ts = now2
 
@@ -575,23 +639,29 @@ while _running:
             if aw > 1e-4 and aw >= ax and aw >= ay:
                 moved = True
                 if yaw < 0:
-                    do_turn_left(aw, dur);  publish_event("turn_left",  {"step": _yaw_to_step(aw), "runtime": dur})
+                    do_turn_left(aw, dur)
+                    publish_event("turn_left", {"step": _yaw_to_step(aw), "runtime": dur})
                 else:
-                    do_turn_right(aw, dur); publish_event("turn_right", {"rid": data.get("rid"), "step": _yaw_to_step(aw), "runtime": dur})
+                    do_turn_right(aw, dur)
+                    publish_event("turn_right", {"rid": data.get("rid"), "step": _yaw_to_step(aw), "runtime": dur})
 
             elif ax > 1e-4 and ax >= ay:
                 moved = True
                 if vx >= 0:
-                    do_forward(ax, dur);  publish_event("forward",  {"v": ax, "runtime": dur})
+                    do_forward(ax, dur)
+                    publish_event("forward", {"v": ax, "runtime": dur})
                 else:
-                    do_backward(ax, dur); publish_event("backward", {"rid": data.get("rid"), "v": ax, "runtime": dur})
+                    do_backward(ax, dur)
+                    publish_event("backward", {"rid": data.get("rid"), "v": ax, "runtime": dur})
 
             elif ay > 1e-4:
                 moved = True
                 if vy >= 0:
-                    do_strafe_right(ay, dur); publish_event("right", {"rid": data.get("rid"), "v": ay, "runtime": dur})
+                    do_strafe_right(ay, dur)
+                    publish_event("right", {"rid": data.get("rid"), "v": ay, "runtime": dur})
                 else:
-                    do_strafe_left(ay, dur);  publish_event("left",  {"v": ay, "runtime": dur})
+                    do_strafe_left(ay, dur)
+                    publish_event("left", {"v": ay, "runtime": dur})
 
             if moved:
                 _last_motion_cmd_ts = now2
@@ -600,27 +670,46 @@ while _running:
             continue
 
         if topic == "cmd.stop":
-            do_stop(); publish_event("stop", {"rid": data.get("rid")})
+            do_stop()
+            publish_event("stop", {"rid": data.get("rid")})
             _last_motion_cmd_ts = time.time()
             continue
 
         # STARE: zgodność wstecz
         spd = float(data.get("speed", 10.0))
-        rt  = max(0.05, min(float(data.get("runtime", 0.6)), SAFE_MAX_DURATION))
+        rt = max(0.05, min(float(data.get("runtime", 0.6)), SAFE_MAX_DURATION))
 
-        if   topic.endswith(".forward"):
-            do_forward(spd if spd<=1 else spd/max(1.0, TURN_STEP_MAX), rt); publish_event("forward", {"rid": data.get("rid"), "v": spd, "runtime": rt}); _schedule_deadman(rt, data.get("rid")); _last_motion_cmd_ts = time.time()
+        if topic.endswith(".forward"):
+            do_forward(spd if spd <= 1 else spd / max(1.0, TURN_STEP_MAX), rt)
+            publish_event("forward", {"rid": data.get("rid"), "v": spd, "runtime": rt})
+            _schedule_deadman(rt, data.get("rid"))
+            _last_motion_cmd_ts = time.time()
         elif topic.endswith(".backward"):
-            do_backward(spd if spd<=1 else spd/max(1.0, TURN_STEP_MAX), rt); publish_event("backward", {"rid": data.get("rid"), "v": spd, "runtime": rt}); _schedule_deadman(rt, data.get("rid")); _last_motion_cmd_ts = time.time()
+            do_backward(spd if spd <= 1 else spd / max(1.0, TURN_STEP_MAX), rt)
+            publish_event("backward", {"rid": data.get("rid"), "v": spd, "runtime": rt})
+            _schedule_deadman(rt, data.get("rid"))
+            _last_motion_cmd_ts = time.time()
         elif topic.endswith(".left"):
-            do_strafe_left(spd if spd<=1 else min(1.0, spd/100.0), rt);  publish_event("left", {"rid": data.get("rid"), "v": spd, "runtime": rt}); _schedule_deadman(rt, data.get("rid")); _last_motion_cmd_ts = time.time()
+            do_strafe_left(spd if spd <= 1 else min(1.0, spd / 100.0), rt)
+            publish_event("left", {"rid": data.get("rid"), "v": spd, "runtime": rt})
+            _schedule_deadman(rt, data.get("rid"))
+            _last_motion_cmd_ts = time.time()
         elif topic.endswith(".right"):
-            do_strafe_right(spd if spd<=1 else min(1.0, spd/100.0), rt); publish_event("right", {"rid": data.get("rid"), "v": spd, "runtime": rt}); _schedule_deadman(rt, data.get("rid")); _last_motion_cmd_ts = time.time()
+            do_strafe_right(spd if spd <= 1 else min(1.0, spd / 100.0), rt)
+            publish_event("right", {"rid": data.get("rid"), "v": spd, "runtime": rt})
+            _schedule_deadman(rt, data.get("rid"))
+            _last_motion_cmd_ts = time.time()
         elif topic.endswith(".turn_left"):
-            yawn = spd if spd<=1 else min(1.0, spd/float(TURN_STEP_MAX))
-            do_turn_left(abs(yawn), rt);  publish_event("turn_left", {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt}); _schedule_deadman(rt, data.get("rid")); _last_motion_cmd_ts = time.time()
+            yawn = spd if spd <= 1 else min(1.0, spd / float(TURN_STEP_MAX))
+            do_turn_left(abs(yawn), rt)
+            publish_event("turn_left", {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt})
+            _schedule_deadman(rt, data.get("rid"))
+            _last_motion_cmd_ts = time.time()
         elif topic.endswith(".turn_right"):
-            yawn = spd if spd<=1 else min(1.0, spd/float(TURN_STEP_MAX))
-            do_turn_right(abs(yawn), rt); publish_event("turn_right", {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt}); _schedule_deadman(rt, data.get("rid")); _last_motion_cmd_ts = time.time()
+            yawn = spd if spd <= 1 else min(1.0, spd / float(TURN_STEP_MAX))
+            do_turn_right(abs(yawn), rt)
+            publish_event("turn_right", {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt})
+            _schedule_deadman(rt, data.get("rid"))
+            _last_motion_cmd_ts = time.time()
 
 print("[bridge] STOP", flush=True)

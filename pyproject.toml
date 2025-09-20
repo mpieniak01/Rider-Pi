@@ -1,0 +1,29 @@
+[tool.ruff]
+line-length = 100
+respect-gitignore = true
+# Wykluczenia globalne (legacy, artefakty buildów, cache, deprecated snapshoty)
+extend-exclude = [
+  "_apps", "_apps/**",
+  "attic", "attic/**",
+  "venv", ".venv", "build", "dist", "__pycache__",
+  "services/_deprecated_*", "services/_deprecated_*/**"
+]
+
+# Zestaw reguł wstecznie kompatybilny (Ruff < 0.6 czyta te klucze)
+select = ["E", "F", "I", "UP", "B"]
+# >>> DODANE: kompatybilne wyciszenia dla starszych Ruffów <<<
+per-file-ignores = { "tests/**" = ["E402", "F401", "F811"] }
+
+# (Opcjonalnie) docelowa wersja Pythona
+target-version = "py311"
+
+[tool.ruff.lint]
+# Nowsze Ruff (>= 0.6) – sekcja lint
+select = ["E", "F", "I", "UP", "B"]
+# Testy mają „hacki importowe” – tymczasowe wyciszenia
+per-file-ignores = { "tests/**" = ["E402", "F401", "F811"] }
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+

@@ -67,22 +67,27 @@ def apply_rotation(frame, rot, flip_h, flip_v):
     if rot in (90,180,270):
         k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[rot]
         frame = cv2.rotate(frame, k)
-    if flip_h: frame = cv2.flip(frame, 1)
-    if flip_v: frame = cv2.flip(frame, 0)
+    if flip_h:
+        frame = cv2.flip(frame, 1)
+    if flip_v:
+        frame = cv2.flip(frame, 0)
     return frame
 
 def _lcd_init():
-    if DISABLE_LCD: return None
+    if DISABLE_LCD:
+        return None
     try:
         from xgoscreen.LCD_2inch import LCD_2inch
-        lcd = LCD_2inch(); lcd.rotation = 0
+        lcd = LCD_2inch()
+        lcd.rotation = 0
         return lcd
     except Exception:
         return None
 _LCD = _lcd_init()
 
 def lcd_show_bgr(img_bgr):
-    if _LCD is None or NO_DRAW: return
+    if _LCD is None or NO_DRAW:
+        return
     try:
         from PIL import Image
         img = cv2.resize(img_bgr, (320,240), interpolation=cv2.INTER_LINEAR)
@@ -95,7 +100,8 @@ def open_camera(size=(320,240)):
         from picamera2 import Picamera2
         picam2 = Picamera2()
         config = picam2.create_preview_configuration(main={"size": size, "format":"RGB888"})
-        picam2.configure(config); picam2.start()
+        picam2.configure(config)
+        picam2.start()
         def read():
             arr = picam2.capture_array()
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
@@ -132,7 +138,8 @@ _SELECTED_EXT: Optional[str] = None
 def _try_encode(ext: str, img, params) -> Optional[bytes]:
     try:
         ok, buf = cv2.imencode(ext, img, params)
-        if ok: return buf.tobytes()
+        if ok:
+            return buf.tobytes()
     except Exception:
         pass
     return None
@@ -158,12 +165,15 @@ def _select_ext(img_raw, img_proc) -> str:
 def _atomic_write_bytes(path: str, data: bytes):
     tmp = path + ".tmp"
     try:
-        with open(tmp,"wb") as f: f.write(data)
+        with open(tmp,"wb") as f:
+            f.write(data)
         os.replace(tmp, path)
         return True
     except Exception:
-        try: os.remove(tmp)
-        except Exception: pass
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
         return False
 
 def save_raw_and_proc(raw_img, proc_img):
@@ -217,12 +227,14 @@ def main():
     while True:
         ok, frame = read()
         if not ok:
-            time.sleep(0.01); continue
+            time.sleep(0.01)
+            continue
 
         frame = apply_rotation(frame, ROT, FLIP_H, FLIP_V)
 
         now = time.time()
-        dt = max(1e-6, now - prev_t); inst = 1.0/dt
+        dt = max(1e-6, now - prev_t)
+        inst = 1.0/dt
         fps_ema = inst if fps_ema is None else 0.9*fps_ema + 0.1*inst
         prev_t = now
 
@@ -239,15 +251,22 @@ def main():
             h, w = frame.shape[:2]
             for i in range(det.shape[2]):
                 conf = float(det[0,0,i,2])
-                if conf < SCORE: continue
+                if conf < SCORE:
+                    continue
                 cls_id = int(det[0,0,i,1])
-                x1 = int(det[0,0,i,3]*w); y1 = int(det[0,0,i,4]*h)
-                x2 = int(det[0,0,i,5]*w); y2 = int(det[0,0,i,6]*h)
-                x1 = max(0,min(x1,w-1)); y1 = max(0,min(y1,h-1))
-                x2 = max(0,min(x2,w-1)); y2 = max(0,min(y2,h-1))
-                if x2<=x1 or y2<=y1: continue
+                x1 = int(det[0,0,i,3]*w)
+                y1 = int(det[0,0,i,4]*h)
+                x2 = int(det[0,0,i,5]*w)
+                y2 = int(det[0,0,i,6]*h)
+                x1 = max(0,min(x1,w-1))
+                y1 = max(0,min(y1,h-1))
+                x2 = max(0,min(x2,w-1))
+                y2 = max(0,min(y2,h-1))
+                if x2<=x1 or y2<=y1:
+                    continue
                 name = CLASSES[cls_id] if 0<=cls_id<len(CLASSES) else str(cls_id)
-                if CLW and (name.lower() not in CLW): continue
+                if CLW and (name.lower() not in CLW):
+                    continue
                 tup = (name, conf, (x1,y1,x2,y2))
                 fresh_detections.append(tup)
 
@@ -275,7 +294,10 @@ def main():
         if should_snap_now():
             save_raw_and_proc(frame, out)
             try:
-                SNAP.cam(frame); SNAP.proc(out); SNAP.lcd_from_frame(out); SNAP.lcd_from_fb()
+                SNAP.cam(frame)
+                SNAP.proc(out)
+                SNAP.lcd_from_frame(out)
+                SNAP.lcd_from_fb()
             except Exception:
                 pass
 
@@ -297,12 +319,15 @@ def main():
         lcd_show_bgr(out)
         HB.tick(out, fps_ema, presenting=not NO_DRAW)
 
-        frame_id += 1; frames += 1
+        frame_id += 1
+        frames += 1
         if frames % 60 == 0:
             dt_all = time.time() - t0
             fps = frames/dt_all if dt_all>0 else 0.0
             print(f"[ssd] fps={fps:.1f} (every={EVERY}, score>={SCORE})", flush=True)
 
 if __name__ == "__main__":
-    try: main()
-    except KeyboardInterrupt: pass
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

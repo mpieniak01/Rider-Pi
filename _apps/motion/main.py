@@ -65,7 +65,8 @@ class _RealAdapter:
         self.pulse_drive = IMPULSE_DRIVE
         self.pulse_yaw   = IMPULSE_YAW
     def move(self, lx: float = 0.0, az: float = 0.0):
-        ax = abs(lx); azm = abs(az)
+        ax = abs(lx)
+        azm = abs(az)
         if ax < EPS and azm < EPS:
             return
         if azm >= EPS:
@@ -130,12 +131,15 @@ class MotionController:
         self.robot = robot
         self.last_cmd_ts = time.time()
         self.stopped = True
-        self.t_lx = 0.0; self.t_az = 0.0
-        self.o_lx = 0.0; self.o_az = 0.0
+        self.t_lx = 0.0
+        self.t_az = 0.0
+        self.o_lx = 0.0
+        self.o_az = 0.0
     def _stop_immediate(self):
         self.t_lx = self.t_az = 0.0
         self.o_lx = self.o_az = 0.0
-        try: self.robot.stop()
+        try:
+            self.robot.stop()
         finally:
             self.stopped = True
             LOG.info("MOTION: STOP")
@@ -143,26 +147,33 @@ class MotionController:
         self.t_lx = self.t_az = 0.0
     def drive(self, lx: float, az: float):
         if not motion_enabled() or estop_triggered():
-            self._stop_immediate(); return
+            self._stop_immediate()
+            return
         lx = safe_speed(lx, SPEED_LIMIT)
         az = safe_speed(az, SPEED_LIMIT)
-        self.t_lx = lx; self.t_az = az
+        self.t_lx = lx
+        self.t_az = az
         self.last_cmd_ts = time.time()
     def _approach(self, cur: float, tgt: float, rate: float, dt: float) -> float:
         delta = tgt - cur
         maxstep = rate * dt
-        if   delta > maxstep: return cur + maxstep
-        elif delta < -maxstep: return cur - maxstep
-        else: return tgt
+        if   delta > maxstep:
+            return cur + maxstep
+        elif delta < -maxstep:
+            return cur - maxstep
+        else:
+            return tgt
     def tick(self, dt: float):
         if not motion_enabled() or estop_triggered():
-            if not self.stopped: self._stop_immediate()
+            if not self.stopped:
+                self._stop_immediate()
             else:
                 self.t_lx = self.t_az = 0.0
                 self.o_lx = self.o_az = 0.0
             return
         if (time.time() - self.last_cmd_ts) * 1000.0 > WATCHDOG_MS:
-            self.t_lx = 0.0; self.t_az = 0.0
+            self.t_lx = 0.0
+            self.t_az = 0.0
         new_lx = self._approach(self.o_lx, self.t_lx, RAMP_LX, dt)
         new_az = self._approach(self.o_az, self.t_az, RAMP_AZ, dt)
         changed = (abs(new_lx - self.o_lx) > 1e-4) or (abs(new_az - self.o_az) > 1e-4)
@@ -180,8 +191,11 @@ class MotionBus:
     def __init__(self, addr: str, topic: str):
         self.addr = addr
         self.topic = topic.encode("utf-8")
-        self._ctx = None; self._sub = None; self._poller = None
-        self._ok = False; self._init()
+        self._ctx = None
+        self._sub = None
+        self._poller = None
+        self._ok = False
+        self._init()
     def _init(self):
         try:
             import zmq
@@ -207,7 +221,8 @@ class MotionBus:
                 raw = self._sub.recv_multipart()
                 payload_bytes = raw[1] if len(raw) >= 2 else raw[-1]
                 payload = payload_bytes.decode("utf-8", errors="replace").strip()
-                try: return json.loads(payload)
+                try:
+                    return json.loads(payload)
                 except json.JSONDecodeError:
                     LOG.warning(f"Nieparsowalny payload: {payload[:200]}")
         except Exception as e:
@@ -245,7 +260,8 @@ def main():
             if cmd is not None:
                 _handle_cmd(ctrl, cmd)
             now = time.time()
-            dt = now - last; last = now
+            dt = now - last
+            last = now
             if dt <= 0 or dt > 1.0:
                 dt = LOOP_DT
             ctrl.tick(dt)
@@ -269,8 +285,10 @@ def main():
     except Exception as e:
         LOG.exception(f"Błąd w pętli motion: {e}")
     finally:
-        try: ctrl.stop()
-        except Exception: pass
+        try:
+            ctrl.stop()
+        except Exception:
+            pass
         LOG.info("Motion loop stop")
 
 if __name__ == "__main__":

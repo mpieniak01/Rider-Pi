@@ -61,8 +61,10 @@ def open_v4l2():
     c.set(cv2.CAP_PROP_FRAME_WIDTH,  FRAME_W)
     c.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_H)
     c.set(cv2.CAP_PROP_FPS, 15)
-    try: c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    except Exception: pass
+    try:
+        c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    except Exception:
+        pass
     # NIE wymuszamy MJPG (często brak wsparcia dla kamer CSI)
     return c
 
@@ -77,8 +79,9 @@ print(f"[edge] start | backend={'Picamera2' if have_p2 else 'V4L2'} | SNAP_DIR={
       f"| ROT={PREVIEW_ROT} | FLIP_H={PREVIEW_FLIP_H}", flush=True)
 
 running = True
-def _stop(*_): 
-    global running; running = False
+def _stop(*_):
+    global running
+    running = False
 signal.signal(signal.SIGINT, _stop)
 signal.signal(signal.SIGTERM, _stop)
 
@@ -92,13 +95,13 @@ def get_frame():
     if have_p2 and picam is not None:
         try:
             rgb = picam.capture_array()  # RGB
-            if rgb is None: 
+            if rgb is None:
                 return None
             return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         except Exception:
             return None
     else:
-        if cap is None: 
+        if cap is None:
             return None
         ok, frame = cap.read()
         if not ok:
@@ -114,8 +117,10 @@ while running:
         if (now - last_ok) >= reopen_deadline:
             # reopen obu backendów w bezpieczny sposób
             if have_p2 and picam is not None:
-                try: picam.stop()
-                except Exception: pass
+                try:
+                    picam.stop()
+                except Exception:
+                    pass
                 try:
                     picam.start()
                 except Exception:
@@ -130,7 +135,8 @@ while running:
                         pass
             else:
                 try:
-                    if cap is not None: cap.release()
+                    if cap is not None:
+                        cap.release()
                 except Exception:
                     pass
                 time.sleep(0.2)
@@ -168,11 +174,13 @@ while running:
 
 # cleanup
 try:
-    if have_p2 and picam is not None: picam.stop()
+    if have_p2 and picam is not None:
+        picam.stop()
 except Exception:
     pass
 try:
-    if cap is not None: cap.release()
+    if cap is not None:
+        cap.release()
 except Exception:
     pass
 print("[edge] stop", flush=True)

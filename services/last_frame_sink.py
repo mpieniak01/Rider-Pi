@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-import os, time, shutil, json
+import json
+import os
+import shutil
+import time
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -15,24 +18,29 @@ BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 _pub = None
 try:
     import zmq  # type: ignore
+
     _ctx = zmq.Context.instance()
     _pub = _ctx.socket(zmq.PUB)
     _pub.connect(f"tcp://127.0.0.1:{BUS_PUB_PORT}")
 except Exception:
     _pub = None
 
+
 def hb(fps=None):
-    if not _pub: return
+    if not _pub:
+        return
     try:
-        payload = {"mode": "sink", "fps": None if fps is None else round(float(fps),1), "lcd": {"active": False}}
+        payload = {"mode": "sink", "fps": None if fps is None else round(float(fps), 1), "lcd": {"active": False}}
         _pub.send_string(f"camera.heartbeat {json.dumps(payload)}")
     except Exception:
         pass
+
 
 def atomic_copy(src: Path, dst: Path):
     tmp = dst.with_suffix(".tmp")
     shutil.copyfile(src, tmp)
     os.replace(tmp, dst)  # atomic
+
 
 def main():
     last_mtime = 0.0
@@ -61,6 +69,7 @@ def main():
         except Exception:
             time.sleep(0.2)
         time.sleep(0.2)
+
 
 if __name__ == "__main__":
     main()

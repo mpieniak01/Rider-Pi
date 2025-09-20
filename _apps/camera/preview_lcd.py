@@ -34,6 +34,7 @@ ENV:
 """
 
 from __future__ import annotations
+from PIL import Image  # PIL używany do LCD
 import os
 import sys
 import time
@@ -135,7 +136,6 @@ if not ENV_DISABLE_LCD:
         print("[preview] LCD niedostępny lub biblioteka brakująca:", e, file=sys.stderr)
         LCD_ok = False
 
-from PIL import Image  # PIL używany do LCD
 
 def rotate_bgr(img_bgr, rot_deg: int):
     if rot_deg == 90:
@@ -193,8 +193,10 @@ def _atomic_write_bytes(path: Path, data: bytes) -> bool:
         os.replace(tmp, str(path))
         return True
     except Exception:
-        try: os.remove(tmp)
-        except Exception: pass
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
         return False
 
 def save_last_frame(frame_bgr):
@@ -259,10 +261,14 @@ def save_raw_snapshot(frame_bgr):
         if data is not None and _atomic_write_bytes(out_path, data):
             # dla kompatybilności UI: jeśli nie .jpg, zrób symlink raw.jpg → raw.<ext>
             if _SELECTED_EXT != ".jpg":
-                try: (Path(SNAP_DIR) / "raw.jpg").unlink(missing_ok=True)
-                except Exception: pass
-                try: (Path(SNAP_DIR) / "raw.jpg").symlink_to(out_path.name)
-                except Exception: pass
+                try:
+                    (Path(SNAP_DIR) / "raw.jpg").unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    (Path(SNAP_DIR) / "raw.jpg").symlink_to(out_path.name)
+                except Exception:
+                    pass
         else:
             print(f"[preview] save_raw_snapshot FAILED ext={_SELECTED_EXT}", flush=True)
     except Exception as e:
@@ -277,7 +283,8 @@ def open_camera(size=(320,240)):
         from picamera2 import Picamera2
         picam2 = Picamera2()
         config = picam2.create_preview_configuration(main={"size": size, "format":"RGB888"})
-        picam2.configure(config); picam2.start()
+        picam2.configure(config)
+        picam2.start()
         def read():
             arr = picam2.capture_array()
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
@@ -309,8 +316,10 @@ CLASSES_SSD = ["background","aeroplane","bicycle","bird","boat","bottle","bus","
 def ssd_load():
     proto = os.path.join("models","ssd","MobileNetSSD_deploy.prototxt")
     model = os.path.join("models","ssd","MobileNetSSD_deploy.caffemodel")
-    if not os.path.isfile(proto): raise FileNotFoundError(f"Brak prototxt: {proto}")
-    if not os.path.isfile(model): raise FileNotFoundError(f"Brak caffemodel: {model}")
+    if not os.path.isfile(proto):
+        raise FileNotFoundError(f"Brak prototxt: {proto}")
+    if not os.path.isfile(model):
+        raise FileNotFoundError(f"Brak caffemodel: {model}")
     if os.path.getsize(model) < 5_000_000:
         raise IOError(f"Uszkodzony/niepełny model Caffe (size={os.path.getsize(model)} B) – potrzebny ~23MB.")
     net = cv2.dnn.readNetFromCaffe(proto, model)
@@ -341,24 +350,34 @@ class TFLiteEffDet:
             return self.interp.get_tensor(self.output_details[idx]["index"])
         outs = [get(i) for i in range(len(self.output_details))]
 
-        boxes = None; classes = None; scores = None; count = None
+        boxes = None
+        classes = None
+        scores = None
+        count = None
         for a in outs:
             shp = tuple(a.shape)
-            if len(shp)==3 and shp[2]==4: boxes = a
+            if len(shp)==3 and shp[2]==4:
+                boxes = a
             elif len(shp)==2 and shp[1] in (10,25,100):
                 pass
-            elif len(shp)==2 and shp[1]==1: count = a
+            elif len(shp)==2 and shp[1]==1:
+                count = a
         for a in outs:
             if a.dtype in (np.float32, np.float16) and len(a.shape)==2 and a.shape[1] in (10,25,100):
-                if scores is None: scores = a
-                else: scores = a if a.mean() > scores.mean() else scores
+                if scores is None:
+                    scores = a
+                else:
+                    scores = a if a.mean() > scores.mean() else scores
             if a.dtype in (np.float32, np.int32, np.int64) and len(a.shape)==2 and a.shape[1] in (10,25,100):
-                if classes is None: classes = a
+                if classes is None:
+                    classes = a
 
         if boxes is None or scores is None or classes is None:
             return []
 
-        boxes = boxes[0]; scores = scores[0]; classes = classes[0]
+        boxes = boxes[0]
+        scores = scores[0]
+        classes = classes[0]
         n = len(scores) if count is None else int(count.flatten()[0])
 
         H, W = frame_bgr.shape[:2]
@@ -366,13 +385,17 @@ class TFLiteEffDet:
         COCO = {0:"person"}  # minimalny mapping; rozbudujesz wg potrzeb
         for i in range(min(n, len(scores))):
             sc = float(scores[i])
-            if sc < score_thr: continue
+            if sc < score_thr:
+                continue
             cls_idx = int(classes[i])
             name = COCO.get(cls_idx, "obj")
             y1, x1, y2, x2 = boxes[i]  # [0..1]
-            x1 = int(max(0, min(1, x1)) * W); x2 = int(max(0, min(1, x2)) * W)
-            y1 = int(max(0, min(1, y1)) * H); y2 = int(max(0, min(1, y2)) * H)
-            if x2<=x1 or y2<=y1: continue
+            x1 = int(max(0, min(1, x1)) * W)
+            x2 = int(max(0, min(1, x2)) * W)
+            y1 = int(max(0, min(1, y1)) * H)
+            y2 = int(max(0, min(1, y2)) * H)
+            if x2<=x1 or y2<=y1:
+                continue
             detections.append((name, sc, (x1,y1,x2,y2)))
         return detections
 
@@ -478,13 +501,19 @@ def main():
                     h, w = frame.shape[:2]
                     for i in range(raw.shape[2]):
                         conf = float(raw[0,0,i,2])
-                        if conf < VISION_MIN_SCORE: continue
+                        if conf < VISION_MIN_SCORE:
+                            continue
                         cls_id = int(raw[0,0,i,1])
-                        x1 = int(raw[0,0,i,3]*w); y1 = int(raw[0,0,i,4]*h)
-                        x2 = int(raw[0,0,i,5]*w); y2 = int(raw[0,0,i,6]*h)
-                        x1 = max(0,min(x1,w-1)); y1 = max(0,min(y1,h-1))
-                        x2 = max(0,min(x2,w-1)); y2 = max(0,min(y2,h-1))
-                        if x2<=x1 or y2<=y1: continue
+                        x1 = int(raw[0,0,i,3]*w)
+                        y1 = int(raw[0,0,i,4]*h)
+                        x2 = int(raw[0,0,i,5]*w)
+                        y2 = int(raw[0,0,i,6]*h)
+                        x1 = max(0,min(x1,w-1))
+                        y1 = max(0,min(y1,h-1))
+                        x2 = max(0,min(x2,w-1))
+                        y2 = max(0,min(y2,h-1))
+                        if x2<=x1 or y2<=y1:
+                            continue
                         name = CLASSES_SSD[cls_id] if 0<=cls_id<len(CLASSES_SSD) else str(cls_id)
                         lname = name.lower()
                         if ssd_filter and (lname not in ssd_filter):

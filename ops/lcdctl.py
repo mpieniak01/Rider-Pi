@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Rider-Pi LCD controller (2" SPI TFT) — ON/OFF (+ status, optional no-spi mode)
 
@@ -23,8 +22,14 @@ Env/flags:
 
 Domyślne wartości zgodne z Twoją płytką.
 """
+
 from __future__ import annotations
-import os, sys, time, argparse
+
+import argparse
+import os
+import sys
+import time
+
 
 # ------- helpers --------------------------------------------------------------
 def _env_int(name: str, default: int) -> int:
@@ -33,17 +38,20 @@ def _env_int(name: str, default: int) -> int:
     except Exception:
         return default
 
+
 def _env_str(name: str, default: str) -> str:
     return os.getenv(name, default)
 
+
 # Defaults discovered on your board
-DEF_BL_PIN  = _env_int("FACE_LCD_BL_PIN", 0)
-DEF_BL_AH   = _env_int("FACE_LCD_BL_ACTIVE_HIGH", 1)  # 1: ON=HIGH, OFF=LOW
-DEF_DC_PIN  = _env_int("DC_PIN", 25)
+DEF_BL_PIN = _env_int("FACE_LCD_BL_PIN", 0)
+DEF_BL_AH = _env_int("FACE_LCD_BL_ACTIVE_HIGH", 1)  # 1: ON=HIGH, OFF=LOW
+DEF_DC_PIN = _env_int("DC_PIN", 25)
 DEF_RST_PIN = _env_int("RST_PIN", 27)
-DEF_SPI     = _env_str("SPI_DEV", "/dev/spidev0.0")
-DEF_HZ      = _env_int("SPI_HZ", 12_000_000)
-DEF_NO_SPI  = bool(int(os.getenv("NO_SPI", "0") or "0"))
+DEF_SPI = _env_str("SPI_DEV", "/dev/spidev0.0")
+DEF_HZ = _env_int("SPI_HZ", 12_000_000)
+DEF_NO_SPI = bool(int(os.getenv("NO_SPI", "0") or "0"))
+
 
 # ------- gpio / spi primitives ----------------------------------------------
 def _has_root() -> bool:
@@ -53,6 +61,7 @@ def _has_root() -> bool:
         # na dziwnych env bez geteuid – przyjmijmy, że nie mamy root
         return False
 
+
 def _set_bl(bl_pin: int, active_high: int, on: bool) -> bool:
     """Ustaw podświetlenie. Zwraca True jeśli *prawdopodobnie* się udało."""
     if bl_pin < 0:
@@ -61,6 +70,7 @@ def _set_bl(bl_pin: int, active_high: int, on: bool) -> bool:
     ok = True
     try:
         import RPi.GPIO as GPIO  # type: ignore
+
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(bl_pin, GPIO.OUT)
@@ -74,6 +84,7 @@ def _set_bl(bl_pin: int, active_high: int, on: bool) -> bool:
         print(f"[lcdctl] WARN: backlight GPIO control failed: {e}")
     return ok
 
+
 def _spi_cmds(dc_pin: int, rst_pin: int, spi_dev: str, hz: int, cmds: list[int]) -> bool:
     """Wyślij proste komendy do panelu. Zwraca True jeśli poszło bez wyjątku."""
     if spi_dev.strip() == "" or spi_dev == "none":
@@ -81,8 +92,9 @@ def _spi_cmds(dc_pin: int, rst_pin: int, spi_dev: str, hz: int, cmds: list[int])
         return True
     ok = True
     try:
-        import spidev  # type: ignore
         import RPi.GPIO as GPIO  # type: ignore
+        import spidev  # type: ignore
+
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
         if dc_pin >= 0:
@@ -90,13 +102,15 @@ def _spi_cmds(dc_pin: int, rst_pin: int, spi_dev: str, hz: int, cmds: list[int])
         if rst_pin >= 0:
             GPIO.setup(rst_pin, GPIO.OUT, initial=GPIO.HIGH)
             # Soft reset pulse keeps the bus sane
-            GPIO.output(rst_pin, GPIO.LOW); time.sleep(0.01)
-            GPIO.output(rst_pin, GPIO.HIGH); time.sleep(0.05)
+            GPIO.output(rst_pin, GPIO.LOW)
+            time.sleep(0.01)
+            GPIO.output(rst_pin, GPIO.HIGH)
+            time.sleep(0.05)
         # parse /dev/spidevX.Y
         bus, dev = (0, 0)
         try:
-            path = spi_dev.replace('/dev/spidev', '')
-            bus, dev = [int(x) for x in path.split('.')]
+            path = spi_dev.replace("/dev/spidev", "")
+            bus, dev = [int(x) for x in path.split(".")]
         except Exception:
             pass
         spi = spidev.SpiDev()
@@ -115,6 +129,7 @@ def _spi_cmds(dc_pin: int, rst_pin: int, spi_dev: str, hz: int, cmds: list[int])
         print(f"[lcdctl] WARN: SPI command sequence failed: {e}")
     return ok
 
+
 # ------- actions -------------------------------------------------------------
 def do_off(args) -> int:
     # 1) Panel sleep (chyba że --no-spi), 2) BL off
@@ -125,6 +140,7 @@ def do_off(args) -> int:
     bl_ok = _set_bl(args.bl, args.bl_ah, on=False)
     print("[lcdctl] OFF done (spi_ok=%s, bl_ok=%s)" % (spi_ok, bl_ok))
     return 0 if (spi_ok or args.no_spi) and bl_ok else 2
+
 
 def do_on(args) -> int:
     # 1) BL on (by widzieć efekt), 2) panel wake (chyba że --no-spi)
@@ -138,6 +154,7 @@ def do_on(args) -> int:
     print("[lcdctl] ON done (spi_ok=%s, bl_ok=%s)" % (spi_ok, bl_ok))
     return 0 if (spi_ok or args.no_spi) and bl_ok else 2
 
+
 def do_status(args) -> int:
     # Bardzo prosta diagnostyka: dostępność SPI i BL
     spi_present = os.path.exists(args.spi) and os.access(args.spi, os.R_OK | os.W_OK)
@@ -145,38 +162,49 @@ def do_status(args) -> int:
     if args.bl >= 0:
         try:
             import RPi.GPIO as GPIO  # type: ignore
+
             GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
             GPIO.setup(args.bl, GPIO.OUT)
             # odczyt nie zawsze ma sens (pin OUT), ale pokażemy co trzymamy
             val = GPIO.input(args.bl)
             logical_on = (val == GPIO.HIGH) if args.bl_ah else (val == GPIO.LOW)
-            print(f"[lcdctl] BL GPIO BCM{args.bl}: phys={'HIGH' if val else 'LOW'} active_high={args.bl_ah} → {'ON' if logical_on else 'OFF'}")
+            print(
+                f"[lcdctl] BL GPIO BCM{args.bl}: phys={'HIGH' if val else 'LOW'} active_high={args.bl_ah} → {'ON' if logical_on else 'OFF'}"
+            )
         except Exception as e:
             print(f"[lcdctl] WARN: cannot read BL GPIO state: {e}")
     else:
         print("[lcdctl] BL GPIO disabled (bl < 0)")
     return 0
 
+
 # ------- cli -----------------------------------------------------------------
 def _parse() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Rider-Pi 2\" LCD ON/OFF controller")
+    p = argparse.ArgumentParser(description='Rider-Pi 2" LCD ON/OFF controller')
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def add_common(sp):
         sp.add_argument("--bl", type=int, default=DEF_BL_PIN, help=f"BL GPIO (default {DEF_BL_PIN}, -1 to skip)")
-        sp.add_argument("--bl-ah", dest="bl_ah", type=int, choices=(0,1), default=DEF_BL_AH, help=f"BL active-high? 1/0 (default {DEF_BL_AH})")
-        sp.add_argument("--dc",  type=int, default=DEF_DC_PIN,  help=f"DC GPIO (default {DEF_DC_PIN}, -1 to skip)")
+        sp.add_argument(
+            "--bl-ah",
+            dest="bl_ah",
+            type=int,
+            choices=(0, 1),
+            default=DEF_BL_AH,
+            help=f"BL active-high? 1/0 (default {DEF_BL_AH})",
+        )
+        sp.add_argument("--dc", type=int, default=DEF_DC_PIN, help=f"DC GPIO (default {DEF_DC_PIN}, -1 to skip)")
         sp.add_argument("--rst", type=int, default=DEF_RST_PIN, help=f"RST GPIO (default {DEF_RST_PIN}, -1 to skip)")
-        sp.add_argument("--spi", type=str, default=DEF_SPI,     help=f"SPI device (default {DEF_SPI})")
-        sp.add_argument("--hz",  type=int, default=DEF_HZ,      help=f"SPI speed (default {DEF_HZ})")
+        sp.add_argument("--spi", type=str, default=DEF_SPI, help=f"SPI device (default {DEF_SPI})")
+        sp.add_argument("--hz", type=int, default=DEF_HZ, help=f"SPI speed (default {DEF_HZ})")
         sp.add_argument("--no-spi", action="store_true", default=DEF_NO_SPI, help="do not send SPI commands (BL only)")
 
     sp_off = sub.add_parser("off", help="turn LCD off (sleep + backlight off)")
     add_common(sp_off)
     sp_off.set_defaults(func=do_off)
 
-    sp_on  = sub.add_parser("on",  help="turn LCD on (wake + backlight on)")
+    sp_on = sub.add_parser("on", help="turn LCD on (wake + backlight on)")
     add_common(sp_on)
     sp_on.set_defaults(func=do_on)
 
@@ -185,6 +213,7 @@ def _parse() -> argparse.Namespace:
     sp_stat.set_defaults(func=do_status)
 
     return p.parse_args()
+
 
 def main() -> int:
     args = _parse()
@@ -201,6 +230,7 @@ def main() -> int:
     except Exception as e:
         print(f"[lcdctl] ERROR: {e}", file=sys.stderr)
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

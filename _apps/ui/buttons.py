@@ -9,6 +9,7 @@ ENV:
   BUTTONS_SIM=0|1   # gdy 1 → sterowanie z klawiatury (l/r/enter/backspace)
   HOLD_S=1.0        # czas długiego przytrzymania
 """
+from common.bus import BusPub
 import os
 import sys
 import time
@@ -17,7 +18,6 @@ PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:
     sys.path.insert(0, PROJ_ROOT)
 
-from common.bus import BusPub
 PUB = BusPub()
 
 def _pub(topic: str, payload: dict):

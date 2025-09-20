@@ -18,6 +18,7 @@ Założenia:
 - Liczby: "na 2 sekundy", "przez 1.5 s", "60%" oraz "na 0.6" → nadpisują speed/dur.
 """
 
+from common.bus import BusPub, BusSub
 import os
 import sys
 import time
@@ -36,7 +37,6 @@ try:
 except Exception:
     pass
 
-from common.bus import BusPub, BusSub
 
 SUB = BusSub("audio.transcript")
 PUB = BusPub()

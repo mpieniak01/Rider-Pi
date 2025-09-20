@@ -1,7 +1,10 @@
 # services/api_core/face_runtime.py (propozycja)
-import threading, time
+import threading
+import time
+
 from apps.ui.face.renderer import FaceRenderer
 from services.api_core.face_anim import STATE, _norm_expr
+
 
 class Animator:
     def __init__(self):
@@ -10,7 +13,8 @@ class Animator:
         self._renderer = FaceRenderer(cfg={}, size=240, guide=False, quality="fast")
 
     def start(self):
-        if self._thr and self._thr.is_alive(): return
+        if self._thr and self._thr.is_alive():
+            return
         self._stop.clear()
         self._thr = threading.Thread(target=self._loop, name="face-anim", daemon=True)
         self._thr.start()
@@ -25,10 +29,11 @@ class Animator:
             expr = _norm_expr(STATE.get("expr"))
             # TODO: zbuduj FaceState z modelu; tymczasowo minimalny obiekt:
             from types import SimpleNamespace
+
             face_state = SimpleNamespace(expr=expr, blink=False, pupil=0, tilt=0)
 
             try:
-                png = self._renderer.render_png_bytes(face_state)
+                self._renderer.render_png_bytes(face_state)
                 # TODO sink: LCD / fallback do pliku:
                 # with open("/tmp/face_runtime.png", "wb") as f: f.write(png)
             except Exception:
@@ -39,5 +44,6 @@ class Animator:
             delay = max(0.0, dt - (STATE["last_ts"] - last))
             time.sleep(delay)
             last = time.time()
+
 
 animator = Animator()

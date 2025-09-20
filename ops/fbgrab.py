@@ -18,10 +18,14 @@
 #   SNAP_FB_LOOP=1 SNAP_FB_EVERY=0.5 python3 -u ops/fbgrab.py --loop
 #   SNAP_FB_DEV=/dev/fb1 SNAP_FB_W=320 SNAP_FB_H=240 python3 -u ops/fbgrab.py
 
-import os, sys, time, argparse
-from typing import Tuple
+import argparse
+import os
+import sys
+import time
+
 import numpy as np
 from PIL import Image
+
 
 def fb_to_image(dev: str, w: int, h: int, fmt: str = "RGB565") -> Image.Image:
     fmt = fmt.upper()
@@ -32,16 +36,19 @@ def fb_to_image(dev: str, w: int, h: int, fmt: str = "RGB565") -> Image.Image:
     with open(dev, "rb", buffering=0) as f:
         buf = f.read(need)
         if len(buf) < need:
-            raise RuntimeError(f"Czytanie {dev}: spodziewano {need} B, otrzymano {len(buf)} B. "
-                               "Upewnij się, że SNAP_FB_W/H są poprawne.")
+            raise RuntimeError(
+                f"Czytanie {dev}: spodziewano {need} B, otrzymano {len(buf)} B. "
+                "Upewnij się, że SNAP_FB_W/H są poprawne."
+            )
 
     arr = np.frombuffer(buf, dtype=np.uint16).reshape(h, w)
     # RGB565 -> RGB888
     r = ((arr >> 11) & 0x1F) << 3
-    g = ((arr >> 5)  & 0x3F) << 2
+    g = ((arr >> 5) & 0x3F) << 2
     b = (arr & 0x1F) << 3
     rgb = np.dstack([r, g, b]).astype(np.uint8)
     return Image.fromarray(rgb, mode="RGB")
+
 
 def save_fb(dev: str, w: int, h: int, out_path: str, fmt: str, rot: int = 0) -> str:
     img = fb_to_image(dev, w, h, fmt=fmt)
@@ -52,10 +59,11 @@ def save_fb(dev: str, w: int, h: int, out_path: str, fmt: str, rot: int = 0) -> 
         elif rot == 180:
             img = img.transpose(Image.ROTATE_180)
         elif rot == 270:
-            img = img.transpose(Image.ROTATE_90)   # cw 270
+            img = img.transpose(Image.ROTATE_90)  # cw 270
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     img.save(out_path, "JPEG", quality=85)
     return out_path
+
 
 def read_env_int(name: str, default: int) -> int:
     v = os.getenv(name)
@@ -66,19 +74,20 @@ def read_env_int(name: str, default: int) -> int:
     except Exception:
         return default
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Framebuffer -> JPG (LCD 2\")")
+    parser = argparse.ArgumentParser(description='Framebuffer -> JPG (LCD 2")')
     parser.add_argument("--loop", action="store_true", help="tryb ciągły")
     args = parser.parse_args()
 
-    dev   = os.getenv("SNAP_FB_DEV", "/dev/fb1")
-    w     = read_env_int("SNAP_FB_W", 320)
-    h     = read_env_int("SNAP_FB_H", 240)
-    out   = os.path.expanduser(os.getenv("SNAP_OUT", "~/robot/snapshots/lcd_fb.jpg"))
+    dev = os.getenv("SNAP_FB_DEV", "/dev/fb1")
+    w = read_env_int("SNAP_FB_W", 320)
+    h = read_env_int("SNAP_FB_H", 240)
+    out = os.path.expanduser(os.getenv("SNAP_OUT", "~/robot/snapshots/lcd_fb.jpg"))
     every = float(os.getenv("SNAP_FB_EVERY", "1.0"))
-    rot   = read_env_int("SNAP_FB_ROT", 0)
-    fmt   = os.getenv("SNAP_FB_FMT", "RGB565")
-    loop  = args.loop or (os.getenv("SNAP_FB_LOOP", "0") == "1")
+    rot = read_env_int("SNAP_FB_ROT", 0)
+    fmt = os.getenv("SNAP_FB_FMT", "RGB565")
+    loop = args.loop or (os.getenv("SNAP_FB_LOOP", "0") == "1")
 
     if not os.path.exists(dev):
         print(f"[fbgrab] ERROR: {dev} nie istnieje. Jesteś pewien, że LCD to {dev}?")
@@ -100,6 +109,7 @@ def main():
         except Exception as e:
             print("[fbgrab] ERROR:", e)
             sys.exit(2)
+
 
 if __name__ == "__main__":
     main()

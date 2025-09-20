@@ -6,6 +6,7 @@ Sub: tts.speak {"text":"...", "voice":"pl"}
 Pub: ui.face.set {"expr":"speak"} ... a po czasie -> {"expr":"neutral"}
 """
 
+from common.bus import BusPub, BusSub
 import os
 import sys
 import time
@@ -23,7 +24,6 @@ try:
 except Exception:
     pass
 
-from common.bus import BusPub, BusSub
 
 SUB = BusSub("tts.speak")
 PUB = BusPub()

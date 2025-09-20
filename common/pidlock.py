@@ -1,4 +1,6 @@
-import os, sys, fcntl
+import os
+import sys
+import fcntl
 
 def single_instance(lock_path="/tmp/rider-motion.lock"):
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)

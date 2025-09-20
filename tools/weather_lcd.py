@@ -10,6 +10,7 @@ Naprawy/ulepszenia:
 - Dodano `--self-test` (testy offline renderera i pomiaru tekstu, bez sieci/LCD) + dodatkowe asercje.
 - Fallback pomiaru tekstu (zgodność różnych wersji Pillow) i defensywne ścieżki.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,7 +19,7 @@ import json
 import sys
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Tuple, Optional
+from typing import Any
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -29,29 +30,44 @@ except Exception:
 # --- Stałe UI ---
 W, H = 240, 320
 MARGIN = 10
-FONT_SMALL: Optional[ImageFont.ImageFont] = None
-FONT_MED: Optional[ImageFont.ImageFont] = None
-FONT_BIG: Optional[ImageFont.ImageFont] = None
+FONT_SMALL: ImageFont.ImageFont | None = None
+FONT_MED: ImageFont.ImageFont | None = None
+FONT_BIG: ImageFont.ImageFont | None = None
 
 # Kody pogody Open‑Meteo → opis i piktogram
-WX: Dict[int, Tuple[str, str]] = {
+WX: dict[int, tuple[str, str]] = {
     0: ("Bezchmurnie", "☀"),
     1: ("Przeważnie słońce", "🌤"),
     2: ("Częściowe zachm.", "⛅"),
     3: ("Pochmurno", "☁"),
-    45: ("Mgła", "🌫"), 48: ("Mgła oszron.", "🌫"),
-    51: ("Mżawka lekka", "🌦"), 53: ("Mżawka", "🌦"), 55: ("Mżawka mocna", "🌧"),
-    56: ("Marznąca mżawka", "🌧"), 57: ("Marznąca mżawka", "🌧"),
-    61: ("Deszcz lekki", "🌦"), 63: ("Deszcz", "🌧"), 65: ("Ulewa", "🌧"),
-    66: ("Marznący deszcz", "🌧"), 67: ("Marznący deszcz", "🌧"),
-    71: ("Śnieg lekki", "🌨"), 73: ("Śnieg", "🌨"), 75: ("Śnieżyca", "❄"),
+    45: ("Mgła", "🌫"),
+    48: ("Mgła oszron.", "🌫"),
+    51: ("Mżawka lekka", "🌦"),
+    53: ("Mżawka", "🌦"),
+    55: ("Mżawka mocna", "🌧"),
+    56: ("Marznąca mżawka", "🌧"),
+    57: ("Marznąca mżawka", "🌧"),
+    61: ("Deszcz lekki", "🌦"),
+    63: ("Deszcz", "🌧"),
+    65: ("Ulewa", "🌧"),
+    66: ("Marznący deszcz", "🌧"),
+    67: ("Marznący deszcz", "🌧"),
+    71: ("Śnieg lekki", "🌨"),
+    73: ("Śnieg", "🌨"),
+    75: ("Śnieżyca", "❄"),
     77: ("Śnieg ziarnisty", "🌨"),
-    80: ("Przelotne opady", "🌧"), 81: ("Przel. opady", "🌧"), 82: ("Ulewy", "🌧"),
-    85: ("Przel. śnieg", "🌨"), 86: ("Ulewy śniegu", "❄"),
-    95: ("Burza", "⛈"), 96: ("Burza z gradem", "⛈"), 99: ("Burza z gradem", "⛈"),
+    80: ("Przelotne opady", "🌧"),
+    81: ("Przel. opady", "🌧"),
+    82: ("Ulewy", "🌧"),
+    85: ("Przel. śnieg", "🌨"),
+    86: ("Ulewy śniegu", "❄"),
+    95: ("Burza", "⛈"),
+    96: ("Burza z gradem", "⛈"),
+    99: ("Burza z gradem", "⛈"),
 }
 
 # --- I/O pomocnicze ---
+
 
 def _eprint(msg: str) -> None:
     sys.stderr.write(msg + "\n")
@@ -63,20 +79,23 @@ def _print(msg: str) -> None:
 
 # --- HTTP ---
 
-def http_get_json(url: str) -> Dict[str, Any]:
+
+def http_get_json(url: str) -> dict[str, Any]:
     req = urllib.request.Request(url, headers={"User-Agent": "RiderPi-Weather/1.0"})
     with urllib.request.urlopen(req, timeout=12) as r:
         data = r.read()
     return json.loads(data.decode("utf-8"))
 
 
-def geocode_place(name: str) -> Tuple[float, float, str]:
-    qs = urllib.parse.urlencode({
-        "name": name,
-        "count": 1,
-        "language": "pl",
-        "format": "json",
-    })
+def geocode_place(name: str) -> tuple[float, float, str]:
+    qs = urllib.parse.urlencode(
+        {
+            "name": name,
+            "count": 1,
+            "language": "pl",
+            "format": "json",
+        }
+    )
     url = f"https://geocoding-api.open-meteo.com/v1/search?{qs}"
     j = http_get_json(url)
     results = j.get("results") or []
@@ -84,28 +103,32 @@ def geocode_place(name: str) -> Tuple[float, float, str]:
         raise RuntimeError(f"Nie znaleziono lokalizacji: {name}")
     r0 = results[0]
     lat, lon = float(r0["latitude"]), float(r0["longitude"])
-    label = f"{r0.get('name','')} {r0.get('country_code','')}".strip()
+    label = f"{r0.get('name', '')} {r0.get('country_code', '')}".strip()
     return lat, lon, label
 
 
-def fetch_weather(lat: float, lon: float, tz: str = "Europe/Warsaw") -> Dict[str, Any]:
+def fetch_weather(lat: float, lon: float, tz: str = "Europe/Warsaw") -> dict[str, Any]:
     params = {
         "latitude": lat,
         "longitude": lon,
-        "current": ",".join([
-            "temperature_2m",
-            "relative_humidity_2m",
-            "apparent_temperature",
-            "precipitation",
-            "weather_code",
-            "wind_speed_10m",
-            "wind_direction_10m",
-        ]),
-        "daily": ",".join([
-            "temperature_2m_max",
-            "temperature_2m_min",
-            "precipitation_sum",
-        ]),
+        "current": ",".join(
+            [
+                "temperature_2m",
+                "relative_humidity_2m",
+                "apparent_temperature",
+                "precipitation",
+                "weather_code",
+                "wind_speed_10m",
+                "wind_direction_10m",
+            ]
+        ),
+        "daily": ",".join(
+            [
+                "temperature_2m_max",
+                "temperature_2m_min",
+                "precipitation_sum",
+            ]
+        ),
         "timezone": tz,
         "forecast_days": 1,
         "language": "pl",
@@ -115,6 +138,7 @@ def fetch_weather(lat: float, lon: float, tz: str = "Europe/Warsaw") -> Dict[str
 
 
 # --- Rysowanie ---
+
 
 def load_fonts() -> None:
     global FONT_SMALL, FONT_MED, FONT_BIG
@@ -134,7 +158,7 @@ def load_fonts() -> None:
     FONT_BIG = ImageFont.load_default()
 
 
-def _measure(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> Tuple[int, int]:
+def _measure(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> tuple[int, int]:
     try:
         w = int(draw.textlength(text, font=font))
     except Exception:
@@ -151,13 +175,15 @@ def _measure(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) ->
     return w, h
 
 
-def draw_label(draw: ImageDraw.ImageDraw, xy: Tuple[int, int], text: str, font: ImageFont.ImageFont, fill=0) -> Tuple[int, int]:
+def draw_label(
+    draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, font: ImageFont.ImageFont, fill=0
+) -> tuple[int, int]:
     draw.text(xy, text, font=font, fill=fill)
     w, h = _measure(draw, text, font)
     return (xy[0] + w, xy[1] + h)
 
 
-def render_card(data: Dict[str, Any], place_label: str) -> Image.Image:
+def render_card(data: dict[str, Any], place_label: str) -> Image.Image:
     img = Image.new("L", (W, H), color=255)
     draw = ImageDraw.Draw(img)
 
@@ -225,8 +251,10 @@ def render_card(data: Dict[str, Any], place_label: str) -> Image.Image:
 
 # --- LCD bridge ---
 
-def push_to_lcd(img: Image.Image, rotate: int = 270, spi_hz: Optional[int] = None) -> None:
+
+def push_to_lcd(img: Image.Image, rotate: int = 270, spi_hz: int | None = None) -> None:
     import importlib
+
     mod = importlib.import_module("_apps.ui.face_renderers")
 
     if rotate in (90, 180, 270):
@@ -284,8 +312,9 @@ def push_to_lcd(img: Image.Image, rotate: int = 270, spi_hz: Optional[int] = Non
 
 # --- CLI ---
 
+
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(prog="weather_lcd", description="Pokaż bieżącą pogodę na LCD 2\" (Rider‑Pi)")
+    p = argparse.ArgumentParser(prog="weather_lcd", description='Pokaż bieżącą pogodę na LCD 2" (Rider‑Pi)')
     p.add_argument("--place", type=str, default="Warszawa", help="Miasto/miejscowość (geocoding)")
     p.add_argument("--lat", type=float, default=None, help="Szerokość geogr.")
     p.add_argument("--lon", type=float, default=None, help="Długość geogr.")
@@ -297,6 +326,7 @@ def parse_args() -> argparse.Namespace:
 
 
 # --- Testy offline (bez sieci/LCD) ---
+
 
 def _self_tests() -> int:
     # 1) Render z danymi przykładowymi

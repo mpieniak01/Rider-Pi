@@ -1,10 +1,12 @@
 import os
 import time
+
 import pytest
 import requests
 
 API = "http://127.0.0.1:8080"
 PNG_PATH = "/tmp/face_latest.png"
+
 
 @pytest.mark.skipif(os.environ.get("FACE_SINK") == "lcd", reason="Brak LCD w CI")
 def test_file_sink_anim():
@@ -22,6 +24,7 @@ def test_file_sink_anim():
     assert r2.status_code == 200
     state = requests.get(f"{API}/face/state").json()
     assert not state["state"]["playing"]
+
 
 @pytest.mark.skipif(True, reason="Brak LCD w CI")
 def test_lcd_sink_no_hw():

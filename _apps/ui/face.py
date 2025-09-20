@@ -8,6 +8,7 @@ Uruchamianie (LCD):
   FACE_BACKEND=lcd FACE_BENCH=1 FACE_GUIDE=1 python3 -m apps.ui.face
 """
 from __future__ import annotations
+from apps.ui.face_renderers import BaseRenderer, LCDRenderer, TKRenderer, FaceConfig
 import os
 import sys
 import time
@@ -38,7 +39,6 @@ except Exception:
     BusSub = _StubSub  # type: ignore
     BusPub = _StubPub  # type: ignore
 
-from apps.ui.face_renderers import BaseRenderer, LCDRenderer, TKRenderer, FaceConfig
 
 # --- konfiguracja z ENV -------------------------------------------------------
 BACKEND_ENV  = os.environ.get("FACE_BACKEND", "auto").lower()
@@ -53,8 +53,10 @@ QUALITY      = os.environ.get("FACE_QUALITY", "fast").strip().lower()
 def _f(env, default, lo=None, hi=None):
     try:
         v = float(os.environ.get(env, str(default)))
-        if lo is not None: v = max(lo, v)
-        if hi is not None: v = min(hi, v)
+        if lo is not None:
+            v = max(lo, v)
+        if hi is not None:
+            v = min(hi, v)
         return v
     except Exception:
         return default
@@ -90,8 +92,11 @@ APP_VER = "0.3.0"
 
 # --- PID-lock -----------------------------------------------------------------
 def _pid_alive(pid: int) -> bool:
-    try: os.kill(pid, 0); return True
-    except OSError: return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
 
 def _cmdline(pid: int) -> str:
     try:
@@ -102,8 +107,10 @@ def _cmdline(pid: int) -> str:
 
 def acquire_lock():
     if LOCK_OVERRIDE:
-        try: os.unlink(LOCK_PATH)
-        except Exception: pass
+        try:
+            os.unlink(LOCK_PATH)
+        except Exception:
+            pass
 
     old_pid = None
     if os.path.exists(LOCK_PATH):
@@ -117,13 +124,16 @@ def acquire_lock():
         alive = _pid_alive(old_pid)
         same  = "apps/ui/face" in _cmdline(old_pid)
         if not alive or not same:
-            try: os.unlink(LOCK_PATH)
-            except Exception: pass
+            try:
+                os.unlink(LOCK_PATH)
+            except Exception:
+                pass
         else:
             try:
                 os.kill(old_pid, signal.SIGTERM)
                 for _ in range(40):
-                    if not _pid_alive(old_pid): break
+                    if not _pid_alive(old_pid):
+                        break
                     time.sleep(0.05)
             except Exception:
                 pass
@@ -135,8 +145,10 @@ def acquire_lock():
         f.write(str(os.getpid()))
 
 def release_lock():
-    try: os.unlink(LOCK_PATH)
-    except Exception: pass
+    try:
+        os.unlink(LOCK_PATH)
+    except Exception:
+        pass
 
 # --- model stanu --------------------------------------------------------------
 class FaceModel:
@@ -193,23 +205,31 @@ def pick_renderer(cfg: FaceConfig) -> BaseRenderer:
             return LCDRenderer(cfg)
         except Exception as e:
             print(f"[face] LCD fail: {e} → TK", flush=True)
-            try: return TKRenderer(cfg)
-            except Exception: return _Dummy()
+            try:
+                return TKRenderer(cfg)
+            except Exception:
+                return _Dummy()
     if cfg.backend_env == "tk":
-        try: return TKRenderer(cfg)
-        except Exception: return _Dummy()
+        try:
+            return TKRenderer(cfg)
+        except Exception:
+            return _Dummy()
     try:
         print("[face] backend=LCD(auto)", flush=True)
         return LCDRenderer(cfg)
     except Exception:
         print("[face] backend=TK(auto)", flush=True)
-        try: return TKRenderer(cfg)
-        except Exception: return _Dummy()
+        try:
+            return TKRenderer(cfg)
+        except Exception:
+            return _Dummy()
 
 # --- app ----------------------------------------------------------------------
 def _cleanup(renderer):
-    try: renderer.close()
-    except Exception: pass
+    try:
+        renderer.close()
+    except Exception:
+        pass
     release_lock()
 
 class FaceApp:
@@ -242,14 +262,20 @@ class FaceApp:
         self.q = queue.Queue()
 
         # bus: subs i pub (heartbeat)
-        self.sub_state = BusSub("ui.state");           self.sub_asst = BusSub("assistant.speech")
-        self.sub_tr    = BusSub("audio.transcript");   self.sub_set  = BusSub("ui.face.set")
-        self.sub_cfg   = BusSub("ui.face.config");     self.pub      = BusPub()
+        self.sub_state = BusSub("ui.state")
+        self.sub_asst = BusSub("assistant.speech")
+        self.sub_tr    = BusSub("audio.transcript")
+        self.sub_set  = BusSub("ui.face.set")
+        self.sub_cfg   = BusSub("ui.face.config")
+        self.pub      = BusPub()
 
-        self.bus_th = threading.Thread(target=self._bus_loop, daemon=True); self.bus_th.start()
+        self.bus_th = threading.Thread(target=self._bus_loop, daemon=True)
+        self.bus_th.start()
         try:
-            u = platform.uname(); print(f"[face] {u.system} {u.release} {u.machine}", flush=True)
-        except Exception: pass
+            u = platform.uname()
+            print(f"[face] {u.system} {u.release} {u.machine}", flush=True)
+        except Exception:
+            pass
         atexit.register(lambda: _cleanup(self.renderer))
         signal.signal(signal.SIGINT,  lambda *_: sys.exit(0))
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
@@ -291,8 +317,10 @@ class FaceApp:
         expr  = str(payload.get("expr","")) or None
         inten = payload.get("intensity", None)
         if inten is not None:
-            try: inten = float(inten)
-            except Exception: inten = None
+            try:
+                inten = float(inten)
+            except Exception:
+                inten = None
         blink = bool(payload.get("blink", False))
 
         if expr:
@@ -330,23 +358,27 @@ class FaceApp:
             try:
                 cfg.guide = bool(int(payload.get("guide", int(cfg.guide))))
                 print(f"[face] cfg: GUIDE={cfg.guide}", flush=True)
-            except Exception: pass
+            except Exception:
+                pass
 
         if "brow_caps" in payload:
             try:
                 cfg.brow_caps = bool(int(payload.get("brow_caps", int(cfg.brow_caps))))
                 print(f"[face] cfg: BROW_CAPS={cfg.brow_caps}", flush=True)
-            except Exception: pass
+            except Exception:
+                pass
 
         if "quality" in payload:
             q = str(payload.get("quality", cfg.quality)).strip().lower()
             if q in ("fast","aa2x"):
-                cfg.quality = q; print(f"[face] cfg: QUALITY={cfg.quality}", flush=True)
+                cfg.quality = q
+                print(f"[face] cfg: QUALITY={cfg.quality}", flush=True)
 
         if "brow_style" in payload:
             bs = str(payload.get("brow_style", cfg.brow_style)).strip().lower()
             if bs in ("classic","tapered"):
-                cfg.brow_style = bs; print(f"[face] cfg: BROW_STYLE={cfg.brow_style}", flush=True)
+                cfg.brow_style = bs
+                print(f"[face] cfg: BROW_STYLE={cfg.brow_style}", flush=True)
 
         if "lcd_spi_hz" in payload:
             try:
@@ -366,11 +398,15 @@ class FaceApp:
                 if t=="state":
                     self.model.state = ev.get("state","idle")
                 elif t=="assistant":
-                    evt = ev.get("event",""); txt = ev.get("text","")
+                    evt = ev.get("event","")
+                    txt = ev.get("text","")
                     if evt=="start":
-                        self.model.assist_speaking=True; self.model.assistant_text=txt; self.model.state="speak"
+                        self.model.assist_speaking=True
+                        self.model.assistant_text=txt
+                        self.model.state="speak"
                     elif evt=="end":
-                        self.model.assist_speaking=False; self.model.state="idle"
+                        self.model.assist_speaking=False
+                        self.model.state="idle"
                 elif t=="transcript":
                     self.model.user_text = ev.get("text","")
                 elif t=="face_set":
@@ -381,7 +417,8 @@ class FaceApp:
             pass
 
     def _maybe_print_bench(self):
-        if not BENCH: return
+        if not BENCH:
+            return
         self._bench_frames += 1
         now_wall = perf_counter()
         if now_wall - self._bench_last_wall >= 1.0:
@@ -394,7 +431,9 @@ class FaceApp:
             push_ms = float(getattr(self.renderer, "_bench_push_ms", 0.0))
             extra = (f" afps~{self._dyn_fps:.1f}" if AUTO_FPS else "")
             print(f"[bench] fps={fps:.1f}  cpu~{cpu_pct:.0f}%  draw={draw_ms:.1f}ms  push={push_ms:.1f}ms{extra}", flush=True)
-            self._bench_last_wall = now_wall; self._bench_last_cpu = cpu_now; self._bench_frames = 0
+            self._bench_last_wall = now_wall
+            self._bench_last_cpu = cpu_now
+            self._bench_frames = 0
 
     def _maybe_heartbeat(self):
         now = time.time()
@@ -445,7 +484,8 @@ class FaceApp:
                 self._maybe_print_bench()
                 self._maybe_heartbeat()
                 sl = dt - (perf_counter() - t0)
-                if sl > 0: time.sleep(sl)
+                if sl > 0:
+                    time.sleep(sl)
         except SystemExit:
             pass
         finally:

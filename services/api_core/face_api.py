@@ -1,13 +1,13 @@
 # services/api_core/face_api.py
-from typing import Dict, Any, Tuple, Optional
-from types import SimpleNamespace
 import os
+from types import SimpleNamespace
+from typing import Any
 
 ALLOWED = {"neutral", "happy", "sad", "blink"}
 ROT_ALLOWED = {0, 90, 180, 270}
 
 
-def _env_int(name: str, default: Optional[int] = None) -> Optional[int]:
+def _env_int(name: str, default: int | None = None) -> int | None:
     v = os.getenv(name)
     if v is None or v == "":
         return default
@@ -22,7 +22,7 @@ def _norm_expr(v: str) -> str:
     return v if v in ALLOWED else "neutral"
 
 
-def _norm_backend(p: Dict[str, Any]) -> str:
+def _norm_backend(p: dict[str, Any]) -> str:
     """
     Akceptuje obie konwencje: 'backend' lub 'sink'.
     Dla ścieżki plikowej działają aliasy: file/image/png.
@@ -37,6 +37,7 @@ def _make_cfg():
     """Spróbuj pobrać konfigurację twarzy z apps.ui.face.model; w razie czego {}."""
     try:
         from apps.ui.face import model as m  # type: ignore
+
         for name in ("default_cfg", "make_cfg", "FaceConfig", "Config"):
             if hasattr(m, name):
                 obj = getattr(m, name)
@@ -53,6 +54,7 @@ def _make_state(expr: str):
     """Spróbuj FaceState z modelu; w razie niepowodzenia — minimalny lookalike."""
     try:
         from apps.ui.face import model as m  # type: ignore
+
         for name in ("FaceState", "State", "FaceCtx", "Face"):
             if hasattr(m, name):
                 C = getattr(m, name)
@@ -73,6 +75,7 @@ def _render_png_bytes(expr: str, size: int) -> bytes:
     # Prefer FaceRenderer
     try:
         from apps.ui.face.renderer import FaceRenderer  # type: ignore
+
         cfg = _make_cfg()
         state = _make_state(expr)
         r = FaceRenderer(cfg, size=size, guide=False, quality="fast")
@@ -83,9 +86,12 @@ def _render_png_bytes(expr: str, size: int) -> bytes:
     except Exception:
         # Fallback: FaceController → frame() / frame_image()
         try:
-            from apps.ui.face.controller import FaceController  # type: ignore
             from io import BytesIO
+
             from PIL import Image
+
+            from apps.ui.face.controller import FaceController  # type: ignore
+
             fc = FaceController(size=size, fps=1, idle=True)
             fc.set_expr(expr)
             try:
@@ -111,7 +117,9 @@ def _rotate_png_bytes(png: bytes, rot: int) -> bytes:
         return png
     try:
         from io import BytesIO
+
         from PIL import Image
+
         img = Image.open(BytesIO(png)).convert("RGB")
         # zgodnie z wcześniejszą konwencją: 270 oznacza obrót w prawo
         img = img.rotate(360 - rot, expand=True)
@@ -127,14 +135,18 @@ def _one_frame_pil(expr: str, size: int):
     """Wyrenderuj jedną klatkę jako PIL.Image (bezpośrednio, nie PNG)."""
     try:
         from apps.ui.face.renderer import FaceRenderer  # type: ignore
+
         cfg = _make_cfg()
         state = _make_state(expr)
         r = FaceRenderer(cfg, size=size, guide=False, quality="fast")
         return r.render_image(state=state)  # PIL.Image
     except Exception:
-        from apps.ui.face.controller import FaceController  # type: ignore
         from io import BytesIO
+
         from PIL import Image
+
+        from apps.ui.face.controller import FaceController  # type: ignore
+
         fc = FaceController(size=size, fps=1, idle=True)
         fc.set_expr(expr)
         try:
@@ -144,7 +156,7 @@ def _one_frame_pil(expr: str, size: int):
             return Image.open(buf).convert("RGB")
 
 
-def render_face(payload: Dict[str, Any]) -> Dict[str, Any]:
+def render_face(payload: dict[str, Any]) -> dict[str, Any]:
     """
     Minimalny shim nowego API rysowania twarzy.
 
@@ -162,8 +174,7 @@ def render_face(payload: Dict[str, Any]) -> Dict[str, Any]:
         size = int(payload.get("size", 240))
 
         # normalizacja rotacji: payload → ENV → 0
-        rot = int(payload.get("rotate", payload.get("rotation",
-                  _env_int("FACE_LCD_ROTATE", 0))))
+        rot = int(payload.get("rotate", payload.get("rotation", _env_int("FACE_LCD_ROTATE", 0))))
 
         if b == "png":
             try:
@@ -188,7 +199,7 @@ def render_face(payload: Dict[str, Any]) -> Dict[str, Any]:
             # Parametry pomocnicze (opcjonalne)
             spi_hz = payload.get("spi_hz", _env_int("FACE_LCD_SPI_HZ"))
             bl_pin = int(payload.get("bl_pin", _env_int("FACE_LCD_BL_PIN", 13)))
-            force  = payload.get("force")  # np. "rgb565_3", "pil", "raw", itp.
+            force = payload.get("force")  # np. "rgb565_3", "pil", "raw", itp.
 
             try:
                 # PIL klatka (bez wstępnego obracania — zrobi to LCDDirect)
@@ -196,6 +207,7 @@ def render_face(payload: Dict[str, Any]) -> Dict[str, Any]:
 
                 # Importujemy local tool do LCD:
                 from tools import newface_lcd_direct as nfd  # type: ignore
+
                 lcd = nfd.LCDDirect(rotate=rot, size=size, spi_hz=spi_hz, bl_pin=bl_pin, force=force)
                 used = lcd.push(img)
                 # sprzątanie, jeśli sterownik ma metody kończące — robione wewnątrz toola
@@ -213,7 +225,8 @@ def render_face(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 # ---- Public wrappers / kompatybilność ----------------------------------------
 
-def render(**kwargs) -> Dict[str, Any]:
+
+def render(**kwargs) -> dict[str, Any]:
     """
     Wrapper kompatybilności: pozwala wywołać face_api.render(backend=..., expr=..., ...)
     i otrzymać dict z rezultatem.
@@ -221,7 +234,7 @@ def render(**kwargs) -> Dict[str, Any]:
     return render_face(dict(kwargs))
 
 
-def draw_face(payload_or_expr=None, backend="png", out=None, **kwargs) -> Tuple[Dict[str, Any], int]:
+def draw_face(payload_or_expr=None, backend="png", out=None, **kwargs) -> tuple[dict[str, Any], int]:
     """
     Kompatybilność dla starego kodu wołającego face_api.draw_face(...).
     Przyjmuje:

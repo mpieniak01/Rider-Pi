@@ -23,6 +23,7 @@
 #   KEEP_INPUT_WAV=0 KEEP_OUTPUT_WAV=0
 #   DING_PLAY_MS=200  # czas trwania krótkiego "ding" (ucięcie po ms)
 
+from common.bus import BusPub, BusSub, now_ts
 import os
 import sys
 import time
@@ -44,14 +45,18 @@ if PROJ_ROOT not in sys.path:
 
 # ── MARKER & stdout line-buffered ─────────────────────────────────────────────
 print(">>> MARKER: voice-service (hotword + VAD + ASR + optional Chat/TTS) <<<", flush=True)
-try: sys.stdout.reconfigure(line_buffering=True)
-except Exception: pass
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 # ── Bezpieczne logowanie ──────────────────────────────────────────────────────
 def log(msg: str) -> None:
     repl = {"→":"->","←":"<-","↔":"<->","—":"-","–":"-","…":"...","“":'"',"”":'"',"’":"'"}
-    try: s = str(msg)
-    except Exception: s = repr(msg)
+    try:
+        s = str(msg)
+    except Exception:
+        s = repr(msg)
     s = s.translate(str.maketrans(repl))
     try:
         print(time.strftime("[%H:%M:%S]"), s, flush=True)
@@ -77,22 +82,25 @@ sys.path.append(DEMOS_ROOT)
 try:
     from auto_platform import AudiostreamSource
 except Exception as e:
-    log(f"BLAD: auto_platform import: {e}"); sys.exit(1)
+    log(f"BLAD: auto_platform import: {e}")
+    sys.exit(1)
 try:
     from libnyumaya import AudioRecognition, FeatureExtractor
 except Exception as e:
-    log(f"BLAD: libnyumaya import: {e}"); sys.exit(1)
+    log(f"BLAD: libnyumaya import: {e}")
+    sys.exit(1)
 try:
     from xgolib import XGO
 except Exception as e:
-    log(f"UWAGA: xgolib niedostepny: {e}"); XGO = None
+    log(f"UWAGA: xgolib niedostepny: {e}")
+    XGO = None
 try:
     from openai import OpenAI
 except Exception as e:
-    log(f"BLAD: openai import: {e}"); sys.exit(1)
+    log(f"BLAD: openai import: {e}")
+    sys.exit(1)
 
 # bus (ZeroMQ)
-from common.bus import BusPub, BusSub, now_ts
 
 # ── PUB/SUB ───────────────────────────────────────────────────────────────────
 PUB = BusPub()              # do "audio.transcript" i innych
@@ -130,14 +138,16 @@ except Exception:
 # ── Łagodne zamykanie ─────────────────────────────────────────────────────────
 _shutdown_evt = threading.Event()
 def _sig_handler(signum, frame):
-    log(f"Odebrano sygnal {signum} — koncze lagodnie."); _shutdown_evt.set()
+    log(f"Odebrano sygnal {signum} — koncze lagodnie.")
+    _shutdown_evt.set()
 signal.signal(signal.SIGINT, _sig_handler)
 signal.signal(signal.SIGTERM, _sig_handler)
 
 # ── OPENAI KEY z ENV lub ~/.bash_profile ─────────────────────────────────────
 def _load_openai_key_from_bash_profile() -> Optional[str]:
     path = os.path.expanduser("~/.bash_profile")
-    if not os.path.exists(path): return None
+    if not os.path.exists(path):
+        return None
     try:
         cmd = 'source ~/.bash_profile >/dev/null 2>&1; printf "%s" "$OPENAI_API_KEY"'
         out = subprocess.run(["bash","-lc",cmd], capture_output=True, text=True, timeout=5)
@@ -150,7 +160,8 @@ def _load_openai_key_from_bash_profile() -> Optional[str]:
 
 def _get_openai_api_key() -> Optional[str]:
     key = os.environ.get("OPENAI_API_KEY")
-    if key: return key
+    if key:
+        return key
     key = _load_openai_key_from_bash_profile()
     if key:
         os.environ["OPENAI_API_KEY"] = key
@@ -170,19 +181,24 @@ def _tts_is_dup(text: str, window_s: float = 10.0) -> bool:
 # ── Konfig ───────────────────────────────────────────────────────────────────
 def _env_float(name: str, default: float) -> float:
     try:
-        v = os.environ.get(name,""); return float(v) if v else default
+        v = os.environ.get(name,"")
+        return float(v) if v else default
     except Exception:
         return default
 def _env_int(name: str, default: int) -> int:
     try:
-        v = os.environ.get(name,""); return int(v) if v else default
+        v = os.environ.get(name,"")
+        return int(v) if v else default
     except Exception:
         return default
 def _env_bool(name: str, default: bool) -> bool:
     v = os.environ.get(name,"")
-    if v == "": return default
-    try: return bool(int(v))
-    except Exception: return default
+    if v == "":
+        return default
+    try:
+        return bool(int(v))
+    except Exception:
+        return default
 
 VOICE_STANDALONE = _env_bool("VOICE_STANDALONE", True)
 SELF_STABILIZE   = _env_int("SELF_STABILIZE", 0)
@@ -232,24 +248,29 @@ BAT_WARN_PCT      = _env_int("BAT_WARN_PCT", 20)
 
 # Premium lib/model Nyumaya
 PREMIUM_LIB = os.environ.get("HOTWORD_LIB_PATH")
-if PREMIUM_LIB and not os.path.exists(PREMIUM_LIB): PREMIUM_LIB = None
+if PREMIUM_LIB and not os.path.exists(PREMIUM_LIB):
+    PREMIUM_LIB = None
 if not PREMIUM_LIB:
     from auto_platform import default_libpath as _deflib
     PREMIUM_LIB = _deflib if isinstance(_deflib,str) and os.path.exists(_deflib) else None
 if not PREMIUM_LIB:
     cand = os.path.join(DEMOS_ROOT,"libnyumaya_premium.so.3.1.0")
-    if os.path.exists(cand): PREMIUM_LIB = cand
+    if os.path.exists(cand):
+        PREMIUM_LIB = cand
 
 PREMIUM_MODEL = os.environ.get("HOTWORD_MODEL_PATH")
-if PREMIUM_MODEL and not os.path.exists(PREMIUM_MODEL): PREMIUM_MODEL = None
+if PREMIUM_MODEL and not os.path.exists(PREMIUM_MODEL):
+    PREMIUM_MODEL = None
 if not PREMIUM_MODEL:
     import glob as _glob
     cands = sorted(_glob.glob(os.path.join(DEMOS_ROOT,"src","*.premium")))
-    if cands: PREMIUM_MODEL = cands[0]
+    if cands:
+        PREMIUM_MODEL = cands[0]
 
 DING_WAV = os.path.join(DEMOS_ROOT,"src","ding.wav")
 ASSETS_DING = "/home/pi/robot/assets/ding.wav"
-if os.path.exists(ASSETS_DING): DING_WAV = ASSETS_DING
+if os.path.exists(ASSETS_DING):
+    DING_WAV = ASSETS_DING
 
 # ── Globals ───────────────────────────────────────────────────────────────────
 client = None
@@ -259,22 +280,28 @@ def _led(color):
     global g_car
     if g_car:
         try:
-            g_car.rider_led(1, color); g_car.rider_led(0, color)
+            g_car.rider_led(1, color)
+            g_car.rider_led(0, color)
         except Exception:
             pass
 
 def _ensure_recordings_dir():
-    try: os.makedirs(RECORDINGS_DIR, exist_ok=True)
-    except Exception as e: log(f"UWAGA: nie moge utworzyc {RECORDINGS_DIR}: {e}")
+    try:
+        os.makedirs(RECORDINGS_DIR, exist_ok=True)
+    except Exception as e:
+        log(f"UWAGA: nie moge utworzyc {RECORDINGS_DIR}: {e}")
 
 def _ts_name(prefix: str, ext=".wav") -> str:
-    ts = time.strftime("%Y%m%d_%H%M%S"); ms = int((time.time()%1)*1000)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    ms = int((time.time()%1)*1000)
     return f"{prefix}_{ts}_{ms:03d}{ext}"
 
 def _copy_to_recordings(src_path: str, prefix: str) -> str:
     _ensure_recordings_dir()
     dst = os.path.join(RECORDINGS_DIR, _ts_name(prefix, ".wav"))
-    shutil.copy2(src_path, dst); log(f"Zapisano kopie: {dst}"); return dst
+    shutil.copy2(src_path, dst)
+    log(f"Zapisano kopie: {dst}")
+    return dst
 
 def _has_ffmpeg() -> bool: return shutil.which("ffmpeg") is not None
 def _has_mpg123() -> bool: return shutil.which("mpg123") is not None
@@ -283,8 +310,10 @@ def _has_mpg123() -> bool: return shutil.which("mpg123") is not None
 def init_openai() -> None:
     global client
     if not OPENAI_API_KEY:
-        log("BLAD: brak klucza OpenAI (ENV lub ~/.bash_profile)."); sys.exit(1)
-    client = OpenAI(api_key=OPENAI_API_KEY); log("OpenAI OK.")
+        log("BLAD: brak klucza OpenAI (ENV lub ~/.bash_profile).")
+        sys.exit(1)
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    log("OpenAI OK.")
 
 # ── CPU/MEM (opcjonalnie psutil) ─────────────────────────────────────────────
 def _mem_used_percent_fallback() -> float:
@@ -292,12 +321,16 @@ def _mem_used_percent_fallback() -> float:
         total = avail = None
         with open("/proc/meminfo") as f:
             for line in f:
-                if line.startswith("MemTotal:"): total = int(line.split()[1])
-                elif line.startswith("MemAvailable:"): avail = int(line.split()[1])
-                if total and avail: break
+                if line.startswith("MemTotal:"):
+                    total = int(line.split()[1])
+                elif line.startswith("MemAvailable:"):
+                    avail = int(line.split()[1])
+                if total and avail:
+                    break
         if total and avail and total > 0:
             return 100.0 * (total - avail) / total
-    except Exception: pass
+    except Exception:
+        pass
     return 0.0
 
 def _cpu_usage_percent_fallback() -> float:
@@ -305,33 +338,42 @@ def _cpu_usage_percent_fallback() -> float:
         cores = os.cpu_count() or 1
         load1 = os.getloadavg()[0]
         return max(0.0, min(100.0, 100.0 * load1 / cores))
-    except Exception: return 0.0
+    except Exception:
+        return 0.0
 
 # ── dBFS z ramki S16LE ────────────────────────────────────────────────────────
 def _dbfs_from_frame(frame_bytes: bytes) -> float:
-    if not frame_bytes: return -120.0
+    if not frame_bytes:
+        return -120.0
     samples = np.frombuffer(frame_bytes, dtype=np.int16).astype(np.float32)/32768.0
-    if samples.size == 0: return -120.0
+    if samples.size == 0:
+        return -120.0
     rms = float(np.sqrt(np.mean(samples*samples))+1e-12)
-    dbfs = 20.0*math.log10(rms); return dbfs if dbfs>-120.0 else -120.0
+    dbfs = 20.0*math.log10(rms)
+    return dbfs if dbfs>-120.0 else -120.0
 
 # ── Bateria (na starcie) ─────────────────────────────────────────────────────
 def _read_battery_from_xgo():
-    if not g_car: return None
+    if not g_car:
+        return None
     for name in ("rider_read_battery","battery","get_battery","getVoltage","get_voltage"):
         try:
             if hasattr(g_car, name):
                 fn = getattr(g_car, name)
                 v = fn() if callable(fn) else fn
-                if isinstance(v,(int,float)) and 0<=v<=100: return int(round(v))
-        except Exception: continue
+                if isinstance(v,(int,float)) and 0<=v<=100:
+                    return int(round(v))
+        except Exception:
+            continue
     return None
 
 def battery_diag():
     pct = _read_battery_from_xgo()
-    if pct is None: log("Bateria: nie udalo sie odczytac.")
+    if pct is None:
+        log("Bateria: nie udalo sie odczytac.")
     else:
-        log(f"Bateria: {pct}%"); print(f"vol:{pct}%", flush=True)
+        log(f"Bateria: {pct}%")
+        print(f"vol:{pct}%", flush=True)
         if pct <= BAT_WARN_PCT:
             log(f"UWAGA: niski poziom baterii ({pct}%).")
             ui_state("low_battery")
@@ -341,64 +383,100 @@ def nagraj_glos() -> str:
     return _nagraj_vad() if HAS_VAD else _nagraj_fixed()
 
 def _nagraj_fixed() -> str:
-    log("Nagrywanie (fixed 5 s)..."); _led(LED_RECORD)
+    log("Nagrywanie (fixed 5 s)...")
+    _led(LED_RECORD)
     ui_state("record")
-    stream = AudiostreamSource(); stream.start()
-    frames=[]; start=time.time(); bpf=REC_CHANNELS*REC_SAMPWIDTH; chunk=1024*bpf
+    stream = AudiostreamSource()
+    stream.start()
+    frames=[]
+    start=time.time()
+    bpf=REC_CHANNELS*REC_SAMPWIDTH
+    chunk=1024*bpf
     while time.time()-start < REC_DURATION_S and not _shutdown_evt.is_set():
         data = stream.read(chunk, chunk)
-        if data: frames.append(data)
-        else: time.sleep(0.003)
-    stream.stop(); del stream; time.sleep(0.01)
+        if data:
+            frames.append(data)
+        else:
+            time.sleep(0.003)
+    stream.stop()
+    del stream
+    time.sleep(0.01)
     path = os.path.join(tempfile.gettempdir(), f"ask_{int(time.time()*1000)}.wav")
     with wave.open(path,'wb') as wf:
-        wf.setnchannels(REC_CHANNELS); wf.setsampwidth(REC_SAMPWIDTH); wf.setframerate(REC_SAMPLERATE)
+        wf.setnchannels(REC_CHANNELS)
+        wf.setsampwidth(REC_SAMPWIDTH)
+        wf.setframerate(REC_SAMPLERATE)
         wf.writeframes(b"".join(frames))
     return path
 
 def _nagraj_vad() -> str:
-    log("Nagrywanie (VAD, szybki tail)..."); _led(LED_RECORD)
+    log("Nagrywanie (VAD, szybki tail)...")
+    _led(LED_RECORD)
     ui_state("record")
     vad = webrtcvad.Vad(int(VAD_MODE))
-    stream = AudiostreamSource(); stream.start()
+    stream = AudiostreamSource()
+    stream.start()
     frame_ms = VAD_FRAME_MS if VAD_FRAME_MS in (10,20,30) else 20
     samples_per_frame = int(REC_SAMPLERATE*(frame_ms/1000.0))
     frame_bytes = samples_per_frame*REC_CHANNELS*REC_SAMPWIDTH
-    voiced = bytearray(); start_ts=time.time()
-    silence_vad_ms=0; silence_energy_ms=0; started=False
+    voiced = bytearray()
+    start_ts=time.time()
+    silence_vad_ms=0
+    silence_energy_ms=0
+    started=False
     try:
         while not _shutdown_evt.is_set():
             data = stream.read(frame_bytes, frame_bytes)
-            if not data: time.sleep(0.003); continue
+            if not data:
+                time.sleep(0.003)
+                continue
             dbfs = _dbfs_from_frame(data)
-            try: is_speech = vad.is_speech(data, REC_SAMPLERATE)
-            except Exception: is_speech=False
+            try:
+                is_speech = vad.is_speech(data, REC_SAMPLERATE)
+            except Exception:
+                is_speech=False
             if is_speech:
-                started=True; silence_vad_ms=0; silence_energy_ms=0; voiced.extend(data)
+                started=True
+                silence_vad_ms=0
+                silence_energy_ms=0
+                voiced.extend(data)
             else:
                 if started:
                     silence_vad_ms += frame_ms
-                    if dbfs <= ENERGY_CUTOFF_DBFS: silence_energy_ms += frame_ms
-                    else: silence_energy_ms = 0
+                    if dbfs <= ENERGY_CUTOFF_DBFS:
+                        silence_energy_ms += frame_ms
+                    else:
+                        silence_energy_ms = 0
                     voiced.extend(data)
-            if started and (silence_vad_ms>=VAD_SILENCE_TAIL_MS or silence_energy_ms>=ENERGY_TAIL_MS): break
-            if time.time()-start_ts > VAD_MAX_LEN_S: break
+            if started and (silence_vad_ms>=VAD_SILENCE_TAIL_MS or silence_energy_ms>=ENERGY_TAIL_MS):
+                break
+            if time.time()-start_ts > VAD_MAX_LEN_S:
+                break
     finally:
-        stream.stop(); del stream; time.sleep(0.01)
-    if not voiced: voiced.extend(b"\x00"*frame_bytes)
+        stream.stop()
+        del stream
+        time.sleep(0.01)
+    if not voiced:
+        voiced.extend(b"\x00"*frame_bytes)
     path = os.path.join(tempfile.gettempdir(), f"ask_{int(time.time()*1000)}.wav")
     with wave.open(path,'wb') as wf:
-        wf.setnchannels(REC_CHANNELS); wf.setsampwidth(REC_SAMPWIDTH); wf.setframerate(REC_SAMPLERATE)
+        wf.setnchannels(REC_CHANNELS)
+        wf.setsampwidth(REC_SAMPWIDTH)
+        wf.setframerate(REC_SAMPLERATE)
         wf.writeframes(voiced)
     return path
 
 # ── Odtwarzanie WAV (aplay) ──────────────────────────────────────────────────
 def _aplay_once(path: str, buffer_us: int, period_us: int, force_fmt: bool, quiet: bool) -> Tuple[bool, str]:
     cmd = ["aplay","-D",ALSA_DEVICE]
-    if quiet: cmd.insert(1,"-q")
-    if force_fmt: cmd += ["-r","48000","-f","S16_LE","-c","1","-t","wav"]
-    if buffer_us>0: cmd += ["--buffer-time", str(buffer_us)]
-    if period_us>0: cmd += ["--period-time", str(period_us)]
+    if quiet:
+        cmd.insert(1,"-q")
+    if force_fmt:
+        cmd += ["-r","48000","-f","S16_LE","-c","1","-t","wav"]
+    if buffer_us>0:
+        cmd += ["--buffer-time", str(buffer_us)]
+    if period_us>0:
+        cmd += ["--period-time", str(period_us)]
     cmd += [path]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -410,18 +488,23 @@ def _aplay_once(path: str, buffer_us: int, period_us: int, force_fmt: bool, quie
         return False, str(e)
 
 def odtworz_dzwiek(filename: str) -> bool:
-    log(f"Odtwarzam: {filename}"); _led(LED_SPEAK)
+    log(f"Odtwarzam: {filename}")
+    _led(LED_SPEAK)
     ok, msg = _aplay_once(filename, ALSA_BUFFER_US, ALSA_PERIOD_US, False, False)
-    if ok: return True
+    if ok:
+        return True
     ok, msg = _aplay_once(filename, 120000, 30000, True, False)
-    if ok: return True
+    if ok:
+        return True
     ok, msg = _aplay_once(filename, 0, 0, False, True)
-    if not ok: log(f"APLAY niepowodzenie: {msg.strip()}")
+    if not ok:
+        log(f"APLAY niepowodzenie: {msg.strip()}")
     return ok
 
 # ── ASR + Chat ────────────────────────────────────────────────────────────────
 def transkrybuj(audio_file: str) -> str:
-    t0=time.time(); log("Transkrypcja -> OpenAI...")
+    t0=time.time()
+    log("Transkrypcja -> OpenAI...")
     with open(audio_file,"rb") as f:
         tr = client.audio.transcriptions.create(model="whisper-1", file=f)
     t1=time.time()
@@ -429,7 +512,8 @@ def transkrybuj(audio_file: str) -> str:
     return tr.text
 
 def chat_reply(user_text: str) -> str:
-    log("Chat -> OpenAI..."); t2=time.time()
+    log("Chat -> OpenAI...")
+    t2=time.time()
     resp = client.chat.completions.create(
         model="gpt-4o-mini", temperature=0.4,
         messages=[
@@ -437,7 +521,8 @@ def chat_reply(user_text: str) -> str:
             {"role":"user","content":user_text},
         ])
     ans = resp.choices[0].message.content
-    t3=time.time(); log(f"TIMING: CHAT={(t3-t2):.2f}s")
+    t3=time.time()
+    log(f"TIMING: CHAT={(t3-t2):.2f}s")
     return ans
 
 # ── TTS STREAMING (mp3 -> mpg123 stdin) ───────────────────────────────────────
@@ -494,7 +579,8 @@ def tts_stream(text: str) -> bool:
             except Exception as e:
                 log(f"STREAM_TTS błąd (backend={backend}): {e}")
                 try:
-                    if proc.stdin: proc.stdin.close()
+                    if proc.stdin:
+                        proc.stdin.close()
                 except Exception:
                     pass
                 try:
@@ -504,7 +590,8 @@ def tts_stream(text: str) -> bool:
                 continue
 
             try:
-                if proc.stdin: proc.stdin.close()
+                if proc.stdin:
+                    proc.stdin.close()
             except Exception:
                 pass
             try:
@@ -530,8 +617,10 @@ def _play_ding_ms(ms: int = None):
     ms = int(os.environ.get("DING_PLAY_MS", ms if ms is not None else 200))
     try:
         cmd = ["aplay", "-q", "-D", ALSA_DEVICE]
-        if ALSA_BUFFER_US > 0: cmd += ["--buffer-time", str(ALSA_BUFFER_US)]
-        if ALSA_PERIOD_US > 0: cmd += ["--period-time", str(ALSA_PERIOD_US)]
+        if ALSA_BUFFER_US > 0:
+            cmd += ["--buffer-time", str(ALSA_BUFFER_US)]
+        if ALSA_PERIOD_US > 0:
+            cmd += ["--period-time", str(ALSA_PERIOD_US)]
         cmd += [DING_WAV]
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(max(0.05, ms/1000.0))
@@ -553,9 +642,12 @@ def on_wake():
         t_all0=time.time()
         wav_path = nagraj_glos()
         if KEEP_INPUT_WAV and wav_path and os.path.exists(wav_path):
-            try: _copy_to_recordings(wav_path,"pytanie")
-            except Exception as e: log(f"Nie zapisano kopii pytania: {e}")
-        _led(LED_PROCESS); ui_state("process")
+            try:
+                _copy_to_recordings(wav_path,"pytanie")
+            except Exception as e:
+                log(f"Nie zapisano kopii pytania: {e}")
+        _led(LED_PROCESS)
+        ui_state("process")
         user_text = transkrybuj(wav_path)
         log(f"Uzytkownik: {user_text}")
 
@@ -567,30 +659,38 @@ def on_wake():
         if VOICE_STANDALONE:
             ans = chat_reply(user_text)
             log(f"Asystent: {ans}")
-            ui_speech("start", ans); ui_state("speak")
+            ui_speech("start", ans)
+            ui_state("speak")
             ok = tts_stream(ans)
             ui_speech("end", ans)
             if not ok:
                 log("TTS: problem z odtworzeniem (mpg123?)")
 
-        t_all1=time.time(); log(f"TIMING: TOTAL={(t_all1 - t_all0):.2f}s")
+        t_all1=time.time()
+        log(f"TIMING: TOTAL={(t_all1 - t_all0):.2f}s")
     finally:
         if wav_path and os.path.exists(wav_path):
-            try: os.unlink(wav_path)
-            except Exception: pass
-        _led(LED_LISTEN); ui_state("idle")
+            try:
+                os.unlink(wav_path)
+            except Exception:
+                pass
+        _led(LED_LISTEN)
+        ui_state("idle")
 
 # ── Opcjonalne score z detektora ──────────────────────────────────────────────
 def _try_get_score(detector, keyword_id):
     for attr in ("getModelScore","get_score","getLastScore","getScores"):
         try:
             fn = getattr(detector, attr, None)
-            if not fn: continue
+            if not fn:
+                continue
             val = fn() if attr=="getScores" else fn(keyword_id)
             if isinstance(val,(list,tuple)) and val:
                 return float(val[0])
-            try: return float(val)
-            except Exception: continue
+            try:
+                return float(val)
+            except Exception:
+                continue
         except Exception:
             continue
     return None
@@ -603,26 +703,33 @@ def start_hotword_listener() -> Tuple[threading.Thread, threading.Event]:
         if not PREMIUM_LIB or not PREMIUM_MODEL:
             log("BLAD: brak lib .so lub modelu .premium — hotword wylaczony.")
             return
-        _led(LED_LISTEN); ui_state("idle")
+        _led(LED_LISTEN)
+        ui_state("idle")
         audio_stream=None
         try:
-            audio_stream = AudiostreamSource(); audio_stream.start()
-            extractor = FeatureExtractor(PREMIUM_LIB); detector = AudioRecognition(PREMIUM_LIB)
+            audio_stream = AudiostreamSource()
+            audio_stream.start()
+            extractor = FeatureExtractor(PREMIUM_LIB)
+            detector = AudioRecognition(PREMIUM_LIB)
             from os.path import basename
             log(f"Hotword: laduje .premium: {basename(PREMIUM_MODEL)}")
             keyword_id = detector.addModel(PREMIUM_MODEL, HOTWORD_THRESHOLD)
-            bufsize = detector.getInputDataSize(); last_stat=time.time()
+            bufsize = detector.getInputDataSize()
+            last_stat=time.time()
             log(f"Ustawienia: ALSA_DEVICE={ALSA_DEVICE}")
             log(f"Ustawienia: HOTWORD_THRESHOLD={HOTWORD_THRESHOLD:.2f} EXTRACTOR_GAIN={EXTRACTOR_GAIN:.2f} VAD={'ON' if HAS_VAD else 'OFF'}")
             log(f"QuickTail: ENERGY_CUTOFF_DBFS={ENERGY_CUTOFF_DBFS:.1f} dBFS, ENERGY_TAIL_MS={ENERGY_TAIL_MS} ms")
             log("NASLUCH AKTYWNY. Powiedz hotword lub naciśnij ENTER w konsoli.")
             if HAS_PSUTIL:
-                try: psutil.cpu_percent(None)
-                except Exception: pass
+                try:
+                    psutil.cpu_percent(None)
+                except Exception:
+                    pass
             while not stop_flag.is_set() and not _shutdown_evt.is_set():
                 frame = audio_stream.read(bufsize*2, bufsize*2)
                 if not frame:
-                    time.sleep(0.003); continue
+                    time.sleep(0.003)
+                    continue
                 dbfs = _dbfs_from_frame(frame)
                 features = extractor.signalToMel(frame, EXTRACTOR_GAIN)
                 prediction = detector.runDetection(features)
@@ -647,24 +754,35 @@ def start_hotword_listener() -> Tuple[threading.Thread, threading.Event]:
 
                 if prediction != 0 and prediction == keyword_id:
                     log("HOTWORD: wykryto.")
-                    try: audio_stream.stop()
-                    except Exception: pass
-                    try: del audio_stream
-                    except Exception: pass
+                    try:
+                        audio_stream.stop()
+                    except Exception:
+                        pass
+                    try:
+                        del audio_stream
+                    except Exception:
+                        pass
                     time.sleep(0.02)
                     _play_ding_ms()
                     on_wake()
                     if _shutdown_evt.is_set() or stop_flag.is_set():
                         break
-                    audio_stream = AudiostreamSource(); audio_stream.start(); _led(LED_LISTEN); ui_state("idle")
+                    audio_stream = AudiostreamSource()
+                    audio_stream.start()
+                    _led(LED_LISTEN)
+                    ui_state("idle")
         except Exception as e:
             log(f"BLAD watku hotword: {e}")
         finally:
             try:
-                if audio_stream: audio_stream.stop()
-            except Exception: pass
-            _led(LED_OFF); log("Hotword: watek zakonczony.")
-    th = threading.Thread(target=worker, daemon=True); th.start()
+                if audio_stream:
+                    audio_stream.stop()
+            except Exception:
+                pass
+            _led(LED_OFF)
+            log("Hotword: watek zakonczony.")
+    th = threading.Thread(target=worker, daemon=True)
+    th.start()
     return th, stop_flag
 
 # ── Ręczny trigger + SUB tts.speak (wyłączony w standalone) ──────────────────
@@ -672,16 +790,25 @@ def manual_trigger_thread(stop_flag: threading.Event) -> threading.Thread:
     def manual():
         log("Ręczny trigger: ENTER = pytanie, 'q'+ENTER = wyjście.")
         while not stop_flag.is_set() and not _shutdown_evt.is_set():
-            try: line = sys.stdin.readline()
-            except Exception: break
-            if stop_flag.is_set() or _shutdown_evt.is_set(): break
-            if line is None: continue
+            try:
+                line = sys.stdin.readline()
+            except Exception:
+                break
+            if stop_flag.is_set() or _shutdown_evt.is_set():
+                break
+            if line is None:
+                continue
             s = line.strip().lower()
             if s == "q":
-                _shutdown_evt.set(); stop_flag.set(); break
+                _shutdown_evt.set()
+                stop_flag.set()
+                break
             if s == "":
-                log("MANUAL: wyzwolenie."); on_wake()
-    th = threading.Thread(target=manual, daemon=True); th.start(); return th
+                log("MANUAL: wyzwolenie.")
+                on_wake()
+    th = threading.Thread(target=manual, daemon=True)
+    th.start()
+    return th
 
 def tts_subscriber_thread(stop_flag: threading.Event) -> threading.Thread:
     def run():
@@ -691,17 +818,22 @@ def tts_subscriber_thread(stop_flag: threading.Event) -> threading.Thread:
         log("SUB: tts.speak")
         while not stop_flag.is_set() and not _shutdown_evt.is_set():
             topic, payload = SUB_TTS.recv(timeout_ms=200)
-            if topic is None: continue
+            if topic is None:
+                continue
             try:
                 text = payload.get("text","")
             except Exception:
                 continue
             if text:
-                ui_speech("start", text); ui_state("speak")
+                ui_speech("start", text)
+                ui_state("speak")
                 tts_stream(text)
                 ui_speech("end", text)
-                _led(LED_LISTEN); ui_state("idle")
-    th = threading.Thread(target=run, daemon=True); th.start(); return th
+                _led(LED_LISTEN)
+                ui_state("idle")
+    th = threading.Thread(target=run, daemon=True)
+    th.start()
+    return th
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
@@ -709,17 +841,21 @@ if __name__ == "__main__":
     log("Start voice-service")
     if XGO:
         try:
-            g_car = XGO("xgorider"); log("XGO OK.")
+            g_car = XGO("xgorider")
+            log("XGO OK.")
         except Exception as e:
-            log(f"UWAGA: XGO init: {e}"); g_car = None
+            log(f"UWAGA: XGO init: {e}")
+            g_car = None
     else:
         g_car=None
 
     battery_diag()
     init_openai()
 
-    hotword_thread=None; hotword_stop=threading.Event()
-    th, st = start_hotword_listener(); hotword_thread, hotword_stop = th, st
+    hotword_thread=None
+    hotword_stop=threading.Event()
+    th, st = start_hotword_listener()
+    hotword_thread, hotword_stop = th, st
     manual_th = manual_trigger_thread(hotword_stop)
     if not VOICE_STANDALONE:
         sub_tts_th = tts_subscriber_thread(hotword_stop)

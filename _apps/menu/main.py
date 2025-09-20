@@ -5,6 +5,7 @@ apps/menu/main.py — proste menu na 4 przyciski (bez LCD)
 Sub: ui.button, motion.state
 Pub: system.mode, motion.cmd(stop), system.menu.state
 """
+from common.bus import BusPub, BusSub
 import sys
 import time
 
@@ -12,7 +13,6 @@ PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:
     sys.path.insert(0, PROJ_ROOT)
 
-from common.bus import BusPub, BusSub
 
 PUB = BusPub()
 SUB_BTN = BusSub("ui.button")
@@ -30,7 +30,8 @@ state = {
 def pub(topic, payload):
     # kompatybilnie z różnymi implementacjami BusPub
     for m in ("send","publish","pub"):
-        if hasattr(PUB, m): return getattr(PUB, m)(topic, payload)
+        if hasattr(PUB, m):
+            return getattr(PUB, m)(topic, payload)
 
 def pub_stop():
     pub("motion.cmd", {"type":"stop"})
@@ -52,11 +53,13 @@ def on_ok():
     if state["screen"] == "home":
         item = HOME_ITEMS[state["cursor"]]
         if item == "Dema":
-            if low_batt_blocked(): return
+            if low_batt_blocked():
+                return
             pub_stop()
             pub("system.mode", {"mode":"demos","demo":"trajectory","ts":time.time()})
         elif item == "Autonomia":
-            if low_batt_blocked(): return
+            if low_batt_blocked():
+                return
             pub_stop()
             pub("system.mode", {"mode":"autonomy","ts":time.time()})
         elif item == "Teleop":
@@ -94,10 +97,14 @@ def main():
                 btn = (p.get("id") or "").upper()
                 ev  = (p.get("event") or "").lower()
                 if ev == "down":
-                    if   btn == "LEFT":  on_left()
-                    elif btn == "RIGHT": on_right()
-                    elif btn == "OK":    on_ok()
-                    elif btn == "BACK":  on_back()
+                    if   btn == "LEFT":
+                        on_left()
+                    elif btn == "RIGHT":
+                        on_right()
+                    elif btn == "OK":
+                        on_ok()
+                    elif btn == "BACK":
+                        on_back()
             # battery
             t2, p2 = SUB_MS.recv(timeout_ms=0)
             if t2:

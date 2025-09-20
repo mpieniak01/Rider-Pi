@@ -18,9 +18,12 @@ class FaceFrame:
     guide: bool
     brow_caps: bool
     head_bbox: Optional[Rect]
-    eye_l: Rect; eye_r: Rect
-    pupil_l: Rect; pupil_r: Rect
-    brow_l: Arc;  brow_r: Arc
+    eye_l: Rect
+    eye_r: Rect
+    pupil_l: Rect
+    pupil_r: Rect
+    brow_l: Arc
+    brow_r: Arc
     mouth_arc: Optional[Arc] = None
     mouth_rect: Optional[Rect] = None
 
@@ -34,7 +37,8 @@ def compute_frame(style: FaceStyle,
                   cw: int, ch: int,
                   speak_phase: float,
                   t: float = None) -> FaceFrame:
-    if t is None: t = time.time()
+    if t is None:
+        t = time.time()
 
     cx, cy = cw // 2, ch // 2
     S = min(cw, ch)
@@ -90,8 +94,10 @@ def compute_frame(style: FaceStyle,
     def brow_arc(ex: int, k: float) -> Arc:
         x0, y0 = ex - brow_w//2, brow_y - brow_h
         x1, y1 = ex + brow_w//2, brow_y + brow_h
-        if k < 0: start, end = 20, 160   # ∪
-        else:     start, end = 200, 340  # ∩
+        if k < 0:
+            start, end = 20, 160   # ∪
+        else:
+            start, end = 200, 340  # ∩
         return ((x0, y0, x1, y1), start, end, stroke)
     brow_l = brow_arc(cx - eye_dx, k_brow)
     brow_r = brow_arc(cx + eye_dx, k_brow)
@@ -113,8 +119,10 @@ def compute_frame(style: FaceStyle,
         k_mouth = style.mouth.base_k + state_mouth + adj.mouth_k * k
         depth = max(6, int(abs(k_mouth) * S * 0.28))
         x0, y0, x1, y1 = cx - mouth_w//2, mouth_y - depth, cx + mouth_w//2, mouth_y + depth
-        if k_mouth < 0: start, end = 20, 160   # ∪ (uśmiech)
-        else:           start, end = 200, 340  # ∩ (smutek)
+        if k_mouth < 0:
+            start, end = 20, 160   # ∪ (uśmiech)
+        else:
+            start, end = 200, 340  # ∩ (smutek)
         mouth_arc = ((x0, y0, x1, y1), start, end, max(8, int(S * 0.055)))
         return FaceFrame(bg_rgb, style.head.guide, style.brows.caps, head_bbox,
                          eye_l, eye_r, pupil_l, pupil_r, brow_l, brow_r,

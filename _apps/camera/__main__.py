@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from apps.camera.preview_lcd_takeover import main as preview_main
 import os
 import sys
 import argparse
@@ -9,7 +10,6 @@ if PROJ_ROOT not in sys.path:
     sys.path.insert(0, PROJ_ROOT)
 
 # Uruchamiamy właściwy preview
-from apps.camera.preview_lcd_takeover import main as preview_main
 
 
 def parse_args() -> argparse.Namespace:

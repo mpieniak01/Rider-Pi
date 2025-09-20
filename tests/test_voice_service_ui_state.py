@@ -1,10 +1,18 @@
 from __future__ import annotations
+
+import copy
+
+import pytest
+
+from apps.voice.asr import Transcript
+from apps.voice.service import VoiceService
+
 """Regression tests for VoiceService UI state publishing."""
 
 
-import pathlib
-import sys
-import types
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+import types  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -19,8 +27,6 @@ requests_stub.post = _stub_post
 requests_stub.RequestException = Exception
 requests_stub.exceptions = types.SimpleNamespace(RequestException=Exception)
 sys.modules.setdefault("requests", requests_stub)
-
-from apps.voice.service import VoiceService
 
 
 def _make_service() -> VoiceService:
@@ -90,12 +96,6 @@ def test_once_publishes_idle_after_error(monkeypatch) -> None:
     assert published_states[-1] == "idle"
 
 
-import copy
-import pathlib
-import sys
-
-import pytest
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 
@@ -117,9 +117,6 @@ class _RequestsStub:
 
 
 sys.modules.setdefault("requests", _RequestsStub())
-
-from apps.voice.asr import Transcript
-from apps.voice.service import VoiceService
 
 
 class FakePublisher:

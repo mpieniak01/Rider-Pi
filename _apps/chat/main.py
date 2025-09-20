@@ -5,6 +5,8 @@ apps/chat/main.py — Chat: audio.transcript -> (OpenAI) -> tts.speak
 Omija komendy ruchu (rozpoznaje je wspólną funkcją is_motion_command()).
 """
 
+from common.nlu_shared import is_motion_command
+from common.bus import BusPub, BusSub, now_ts
 import os
 import sys
 import time
@@ -20,8 +22,6 @@ try:
 except Exception:
     pass
 
-from common.bus import BusPub, BusSub, now_ts
-from common.nlu_shared import is_motion_command
 
 def log(msg):
     try:

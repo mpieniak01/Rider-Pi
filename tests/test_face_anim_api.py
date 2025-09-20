@@ -1,14 +1,14 @@
 # tests/test_face_anim_api.py
 import os
-import time
 import sys
-import pathlib
+import time
 
 import pytest
 
+from services.api_core import face_anim as fa
+
 # Import same Flask app as serwer – import NIE uruchamia main()
 from services.api_server import app
-from services.api_core import face_anim as fa
 
 
 @pytest.fixture(autouse=True)

@@ -1,7 +1,7 @@
 # tests/test_face_anim_nullsink.py
 import os
 import time
-import importlib
+
 import pytest
 
 import services.api_core.face_anim as fa
@@ -32,8 +32,7 @@ def _clean_anim(monkeypatch):
     )
 
     # usuń pliki
-    for p in (getattr(fa, "OUT_LATEST", "/tmp/face_latest.png"),
-              getattr(fa, "OUT_LEGACY", "/tmp/face_runtime.png")):
+    for p in (getattr(fa, "OUT_LATEST", "/tmp/face_latest.png"), getattr(fa, "OUT_LEGACY", "/tmp/face_runtime.png")):
         try:
             if p and os.path.exists(p):
                 os.remove(p)

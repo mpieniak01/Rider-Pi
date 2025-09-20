@@ -1,13 +1,17 @@
 from __future__ import annotations
-from typing import Iterable, Optional
-import time, random
 
-from .renderer import FaceRenderer
+import random
+import time
+from collections.abc import Iterable
+
 from .animator import Animator
 from .gestures import GESTURES
+from .renderer import FaceRenderer
+
 
 class FaceController:
     """Przyjmuje komendy (gesty/polityki), woła animator i renderer."""
+
     def __init__(self, size: int = 240, fps: int = 12, idle: bool = True):
         self.size, self.fps = size, fps
         self.anim = Animator()
@@ -15,7 +19,7 @@ class FaceController:
         cfg = type("Cfg", (), {"mouth_y_k": 0.215, "brow_y_k": 0.21, "brow_h_k": 0.09, "head_ky": 1.04})()
         self.renderer = FaceRenderer(cfg, size=size)
         self._idle_enabled = idle
-        self._speak_level = 0.0   # 0..1
+        self._speak_level = 0.0  # 0..1
 
     # --- API ---
     def set_expr(self, expr: str) -> None:
@@ -25,7 +29,7 @@ class FaceController:
         spec = GESTURES[name](**kwargs)
         self.anim.start(spec, prio=prio, mode=mode)
 
-    def stop(self, channel: Optional[str] = None) -> None:
+    def stop(self, channel: str | None = None) -> None:
         self.anim.stop(channel)
 
     def set_idle(self, on: bool) -> None:

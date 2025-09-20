@@ -7,7 +7,10 @@ Użycie:
   python3 ops/estop.py status
 """
 
-import sys, os, time, json
+import json
+import os
+import sys
+import time
 from pathlib import Path
 
 BASE = Path("/home/pi/robot")
@@ -18,9 +21,11 @@ ESTOP_FLAG = FLAGS / "estop.on"
 PUB_ADDR = os.getenv("BUS_PUB_ADDR", "tcp://127.0.0.1:5555")
 TOPIC = os.getenv("MOTION_TOPIC", "motion")
 
+
 def _pub_stop():
     try:
         import zmq
+
         ctx = zmq.Context.instance()
         s = ctx.socket(zmq.PUB)
         s.connect(PUB_ADDR)
@@ -29,8 +34,9 @@ def _pub_stop():
     except Exception:
         pass
 
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in {"on","off","status"}:
+    if len(sys.argv) < 2 or sys.argv[1] not in {"on", "off", "status"}:
         print("Usage: estop.py on|off|status")
         sys.exit(1)
     cmd = sys.argv[1]
@@ -39,11 +45,14 @@ def main():
         _pub_stop()
         print("E-Stop: ON")
     elif cmd == "off":
-        try: ESTOP_FLAG.unlink()
-        except FileNotFoundError: pass
+        try:
+            ESTOP_FLAG.unlink()
+        except FileNotFoundError:
+            pass
         print("E-Stop: OFF")
     else:
         print(f"E-Stop flag exists: {ESTOP_FLAG.exists()}")
+
 
 if __name__ == "__main__":
     main()

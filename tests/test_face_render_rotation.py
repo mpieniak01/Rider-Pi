@@ -1,16 +1,20 @@
-import sys, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import pathlib
+import sys
 from io import BytesIO
 
-import pytest
 from PIL import Image
+
 from apps.ui.face.controller import FaceController
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
 
 def get_pupil_bbox(img: Image.Image):
     # Prosty heurystyczny detektor czarnej źrenicy (największy ciemny obszar)
-    arr = img.convert("L").point(lambda x: 0 if x < 32 else 255, mode='1')
+    arr = img.convert("L").point(lambda x: 0 if x < 32 else 255, mode="1")
     bbox = arr.getbbox()
     return bbox
+
 
 def test_face_rotation_preserves_pupil():
     expr = "neutral"

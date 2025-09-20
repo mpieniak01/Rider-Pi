@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from typing import Dict, Any, Optional
-from types import SimpleNamespace
 import threading
 import time
 from io import BytesIO
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 from PIL import Image
+
 from apps.ui.face.renderer import FaceRenderer
 
 # Ścieżki artefaktów (testy czyszczą OUT_LATEST oraz OUT_LEGACY)
@@ -18,28 +19,37 @@ OUT_LEGACY = os.environ.get("FACE_LEGACY_PATH", "/tmp/face_runtime.png")
 
 ALLOWED = {"neutral", "happy", "sad", "blink"}
 
+
 def _norm_expr(v: str) -> str:
     v = str(v or "neutral").strip().lower()
     return v if v in ALLOWED else "neutral"
 
+
 # ====================== SINKI (bez wczesnego LCD/SPI) ========================
+
 
 class FaceSink:
     """Interfejs prezentacji klatek."""
+
     def present(self, img: Image.Image) -> None:
         raise NotImplementedError
+
     def present_png(self, data: bytes) -> None:
         """Opcjonalne: prezentacja z PNG bytes; jeśli nieobsługiwane, fallback w animatorze."""
         raise NotImplementedError
 
+
 class NullSink(FaceSink):
     def present(self, img: Image.Image) -> None:
         pass
+
     def present_png(self, data: bytes) -> None:
         pass
 
+
 class FileSink(FaceSink):
     """Zapisuje ostatnią klatkę do pliku PNG (OUT_LATEST)."""
+
     def __init__(self, path: str = OUT_LATEST):
         self.path = path
         Path(os.path.dirname(self.path) or "/tmp").mkdir(parents=True, exist_ok=True)
@@ -51,8 +61,10 @@ class FileSink(FaceSink):
         with open(self.path, "wb") as f:
             f.write(data)
 
+
 class LcdNotAvailable(Exception):
     pass
+
 
 def _make_sink() -> FaceSink:
     """Wybór sinka wg ENV FACE_SINK: file | lcd | null (domyślnie: file)."""
@@ -63,15 +75,17 @@ def _make_sink() -> FaceSink:
         # Lazy import + bezpieczny fallback (brak LCD nie wywala importu modułu przy starcie)
         try:
             from apps.hw.sink_lcd import SinkLCD  # type: ignore
+
             return SinkLCD()
         except Exception as e:  # brak HW/drivera
             raise LcdNotAvailable(f"LCD sink not available: {e}")
     else:
         return NullSink()
 
+
 # ====================== GLOBALNY STAN ANIMACJI ===============================
 
-STATE: Dict[str, Any] = {
+STATE: dict[str, Any] = {
     "playing": False,
     "running": False,
     "expr": "neutral",
@@ -85,11 +99,12 @@ STATE: Dict[str, Any] = {
 
 # ====================== ANIMATOR (wątek w tle) ===============================
 
+
 class _Animator:
     def __init__(self) -> None:
-        self._thr: Optional[threading.Thread] = None
+        self._thr: threading.Thread | None = None
         self._stop = threading.Event()
-        self._renderer: Optional[FaceRenderer] = None
+        self._renderer: FaceRenderer | None = None
         self._sink: FaceSink = NullSink()
 
     def start(self) -> None:
@@ -160,24 +175,29 @@ class _Animator:
 
         STATE["running"] = False
 
+
 _anim = _Animator()
 
 # ====================== FUNKCJE DLA API (czyste dicty) =======================
 
-def play(payload: Dict[str, Any]) -> Dict[str, Any]:
+
+def play(payload: dict[str, Any]) -> dict[str, Any]:
     expr = _norm_expr(payload.get("expr"))
     fps = max(1, min(60, int(payload.get("fps", STATE.get("fps", 20) or 20))))
-    STATE.update({
-        "expr": expr,
-        "fps": fps,
-        "playing": True,
-        "error": None,
-        "_last_payload": dict(payload),
-    })
+    STATE.update(
+        {
+            "expr": expr,
+            "fps": fps,
+            "playing": True,
+            "error": None,
+            "_last_payload": dict(payload),
+        }
+    )
     _anim.start()
     return {"ok": True, "state": STATE}
 
-def stop(_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+def stop(_payload: dict[str, Any] | None = None) -> dict[str, Any]:
     STATE["playing"] = False
     _anim.stop()
     # szybkie domknięcie pętli
@@ -186,5 +206,6 @@ def stop(_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         time.sleep(0.01)
     return {"ok": True, "state": STATE}
 
-def get_state() -> Dict[str, Any]:
+
+def get_state() -> dict[str, Any]:
     return {"ok": True, "state": STATE}

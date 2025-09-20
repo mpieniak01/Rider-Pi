@@ -1,4 +1,5 @@
-""""Audio capture utilities for the voice assistant."""
+""" "Audio capture utilities for the voice assistant."""
+
 from __future__ import annotations
 
 import contextlib
@@ -22,11 +23,11 @@ class CaptureConfig:
     # Bezpieczne domyślne wartości
     sample_rate: int = 16000
     frame_ms: int = 20
-    backend: str = "pulse"          # "pulse" | "alsa" | "command"
-    device: str | None = None       # np. "hw:1,0" dla ALSA lub nazwa źródła Pulse
+    backend: str = "pulse"  # "pulse" | "alsa" | "command"
+    device: str | None = None  # np. "hw:1,0" dla ALSA lub nazwa źródła Pulse
     buffer_seconds: float = 0.0
-    channels: int = 1               # liczba kanałów (1 = mono)
-    command: str | None = None      # tylko dla backend="command"
+    channels: int = 1  # liczba kanałów (1 = mono)
+    command: str | None = None  # tylko dla backend="command"
 
     @property
     def frame_bytes(self) -> int:
@@ -104,10 +105,14 @@ class AudioCapture:
             cmd = [
                 "arecord",
                 "-q",
-                "-f", "S16_LE",
-                "-c", str(max(1, int(cfg.channels))),
-                "-r", str(cfg.sample_rate),
-                "-D", device,
+                "-f",
+                "S16_LE",
+                "-c",
+                str(max(1, int(cfg.channels))),
+                "-r",
+                str(cfg.sample_rate),
+                "-D",
+                device,
             ]
             buffer_us = int(max(0.0, float(cfg.buffer_seconds)) * 1_000_000)
             if buffer_us > 0:

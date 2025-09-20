@@ -1,13 +1,15 @@
-
-# -*- coding: utf-8 -*-
 """
 apps/ui/face/renderer.py — czysty renderer PNG dla buźki Rider-Pi.
 Wejście: FaceState, wyjście: PNG bytes.
 Brak cyklicznych zależności (nie importuje controller ani LCD).
 """
+
 from io import BytesIO
+
 from PIL import Image, ImageDraw
+
 from apps.draw.face_primitives import draw_face
+
 
 class FaceRenderer:
     def __init__(self, cfg, size=240, guide=False, quality="fast"):
@@ -22,7 +24,7 @@ class FaceRenderer:
         :param face_state: obiekt FaceState lub podobny
         :return: PNG bytes
         """
-        img = Image.new("RGB", (self.size, self.size), (30,58,138))
+        img = Image.new("RGB", (self.size, self.size), (30, 58, 138))
         canvas = ImageDraw.Draw(img)
         draw_face(canvas, self.cfg, face_state, guide=self.guide, quality=self.quality)
         buf = BytesIO()

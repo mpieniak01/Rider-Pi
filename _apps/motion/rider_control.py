@@ -101,10 +101,14 @@ if __name__ == "__main__":
     rm = RiderMotion()
     print("[rider_control] demo: fwd, back, left, right, stop")
     try:
-        rm.forward(); time.sleep(0.1)
-        rm.backward(); time.sleep(0.1)
-        rm.left(); time.sleep(0.1)
-        rm.right(); time.sleep(0.1)
+        rm.forward()
+        time.sleep(0.1)
+        rm.backward()
+        time.sleep(0.1)
+        rm.left()
+        time.sleep(0.1)
+        rm.right()
+        time.sleep(0.1)
         rm.stop()
     except KeyboardInterrupt:
         rm.stop()

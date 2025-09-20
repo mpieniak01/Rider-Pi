@@ -5,9 +5,9 @@ ZeroMQ broker XSUB↔XPUB
 - SUB-y (apps/motion) łączą się do tcp://*:5556
 """
 
+import logging
 import os
 import signal
-import logging
 
 import zmq
 
@@ -15,12 +15,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 LOG = logging.getLogger("broker")
 
 FRONT_ADDR = os.getenv("BROKER_FRONTEND_ADDR", "tcp://*:5555")  # XSUB (od publisherów)
-BACK_ADDR  = os.getenv("BROKER_BACKEND_ADDR",  "tcp://*:5556")  # XPUB (do subscriberów)
+BACK_ADDR = os.getenv("BROKER_BACKEND_ADDR", "tcp://*:5556")  # XPUB (do subscriberów)
+
 
 def main():
     ctx = zmq.Context.instance()
     frontend = ctx.socket(zmq.XSUB)
-    backend  = ctx.socket(zmq.XPUB)
+    backend = ctx.socket(zmq.XPUB)
 
     # (opcjonalnie) pokaż SUBSCRIBE/UNSUB na XPUB:
     # backend.setsockopt(zmq.XPUB_VERBOSE, 1)
@@ -31,7 +32,10 @@ def main():
     LOG.info(f"Broker XSUB {FRONT_ADDR}  <->  XPUB {BACK_ADDR}")
 
     stop = [False]
-    def _sig(_a,_b): stop[0] = True
+
+    def _sig(_a, _b):
+        stop[0] = True
+
     signal.signal(signal.SIGINT, _sig)
     signal.signal(signal.SIGTERM, _sig)
 
@@ -46,6 +50,7 @@ def main():
             backend.close(0)
         finally:
             ctx.term()
+
 
 if __name__ == "__main__":
     main()

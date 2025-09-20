@@ -1,5 +1,6 @@
 import os
 import re
+
 import pytest
 
 # Pliki, które nie mogą importować _apps
@@ -22,6 +23,7 @@ def scan_file(path):
             if IMPORT_RE.search(line):
                 return (i, line.strip())
     return None
+
 
 def collect_py_files(base):
     if os.path.isfile(base):

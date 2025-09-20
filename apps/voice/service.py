@@ -1,5 +1,6 @@
 # apps/voice/service.py
 """Voice assistant service loop (clean, consolidated)."""
+
 from __future__ import annotations
 
 import contextlib
@@ -10,9 +11,10 @@ import subprocess
 import threading
 import time
 import wave
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Iterable
+from typing import Any
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Bus (opcjonalny w runtime)
@@ -24,18 +26,18 @@ except Exception:  # pragma: no cover
 
 # Lokalny logger (NIE koliduje ze stdlib logging)
 from . import voice_logging as vlog
-
 from .asr import ASRConfig, Transcript, transcribe
 from .capture import AudioCapture, CaptureConfig, CaptureError
 from .chat import ChatConfig, ChatSession
+from .common import ensure_openai_key
 from .kws import HotwordConfig, HotwordDetector
 from .nlu import Intent, NLUConfig, NLURouter
-from .common import ensure_openai_key
-from .playback import PlaybackConfig, play_ding, play_bytes
-from .tts import TTSConfig, TTSStreamResult, speak, synthesize
+from .playback import PlaybackConfig, play_ding
+from .tts import TTSConfig, TTSStreamResult, speak
 from .vad import WebRtcActivity, collect
 
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class VoiceResult:
@@ -43,7 +45,7 @@ class VoiceResult:
     intent: Intent
     reply: str
     latency_s: float
-    audio: Optional[bytes]
+    audio: bytes | None
     audio_format: str
     sample_rate: int
 
@@ -53,8 +55,8 @@ class SpeechTask:
     text: str
     source: str
     accumulate: bool = False
-    ack: Optional[threading.Event] = None
-    result: Optional[TTSStreamResult] = None
+    ack: threading.Event | None = None
+    result: TTSStreamResult | None = None
 
 
 class VoiceService:
@@ -104,15 +106,15 @@ class VoiceService:
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "/tmp/voice-recs"))
 
         # UI state cache
-        self._last_ui_state: Optional[str] = None
+        self._last_ui_state: str | None = None
 
         # Kolejka mówienia
-        self._speech_queue: "queue.Queue[Optional[SpeechTask]]" = queue.Queue()
+        self._speech_queue: queue.Queue[SpeechTask | None] = queue.Queue()
         self._speech_thread = threading.Thread(target=self._speech_worker, name="voice-speech", daemon=True)
         self._speech_thread.start()
 
         # Subskrybent tts.speak
-        self._bus_thread: Optional[threading.Thread] = None
+        self._bus_thread: threading.Thread | None = None
         if self._bus_sub is not None:
             self._bus_thread = threading.Thread(target=self._tts_speak_loop, name="voice-tts-sub", daemon=True)
             self._bus_thread.start()
@@ -172,7 +174,7 @@ class VoiceService:
     # ─────────────────────────────────────────────
     # Kolejka mówienia
 
-    def _request_speech(self, text: str, *, source: str, accumulate: bool) -> Optional[TTSStreamResult]:
+    def _request_speech(self, text: str, *, source: str, accumulate: bool) -> TTSStreamResult | None:
         if not text.strip():
             return None
         task = SpeechTask(text=text.strip(), source=source, accumulate=accumulate)
@@ -247,7 +249,7 @@ class VoiceService:
             self._publish_ui_state("idle")
             self.logger.event("service.listen.stop")
 
-    def once(self, *, speak: bool = True) -> Optional[VoiceResult]:
+    def once(self, *, speak: bool = True) -> VoiceResult | None:
         try:
             return self._cycle(speak=speak)
         except Exception as exc:
@@ -312,7 +314,7 @@ class VoiceService:
 
         # Mówienie
         speech_task_enqueued = False
-        speech_result: Optional[TTSStreamResult] = None
+        speech_result: TTSStreamResult | None = None
 
         if speak and reply_text:
             speech_task_enqueued = True
@@ -360,10 +362,12 @@ class VoiceService:
         try:
             return bool(self._hotword.wait(None))
         except TypeError:
+
             class _NullCap:
                 def frames(self) -> Iterable[bytes]:  # pragma: no cover
                     if False:
                         yield b""
+
             return bool(self._hotword.wait(_NullCap()))
 
     def _record_with_vad(self) -> bytes:
@@ -390,12 +394,20 @@ class VoiceService:
         duration_s = int(math.ceil(duration_float))
 
         cmd = [
-            "arecord", "-q", "-t", "raw",
-            "-f", "S16_LE",
-            "-c", str(max(1, int(cfg.channels))),
-            "-r", str(cfg.sample_rate),
-            "-D", device,
-            "-d", str(duration_s),
+            "arecord",
+            "-q",
+            "-t",
+            "raw",
+            "-f",
+            "S16_LE",
+            "-c",
+            str(max(1, int(cfg.channels))),
+            "-r",
+            str(cfg.sample_rate),
+            "-D",
+            device,
+            "-d",
+            str(duration_s),
         ]
 
         buffer_us = int(max(0.0, buffer_seconds) * 1_000_000)
@@ -404,7 +416,7 @@ class VoiceService:
 
         self.logger.debug("service.capture.fallback.start", command=" ".join(cmd))
         try:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            proc = subprocess.run(cmd, capture_output=True, check=False)
         except FileNotFoundError:
             self.logger.error("service.capture.arecord_missing")
             return b""
@@ -426,7 +438,7 @@ class VoiceService:
 
     def _frames_from_pcm(self, data: bytes, frame_size: int):
         for off in range(0, len(data), frame_size):
-            chunk = data[off: off + frame_size]
+            chunk = data[off : off + frame_size]
             if len(chunk) < frame_size:
                 break
             yield chunk
@@ -442,7 +454,7 @@ class VoiceService:
     def _save_pcm(self, audio: bytes) -> None:
         self._recordings_dir.mkdir(parents=True, exist_ok=True)
         ts = time.time()
-        filename = f"capture_{int(ts)}_{int((ts % 1)*1000):03d}.wav"
+        filename = f"capture_{int(ts)}_{int((ts % 1) * 1000):03d}.wav"
         path = self._recordings_dir / filename
         with wave.open(str(path), "wb") as wf:
             wf.setnchannels(1)
@@ -454,6 +466,7 @@ class VoiceService:
 
 # ─────────────────────────────────────────────
 
+
 def setup_signals(service: VoiceService) -> None:
     def handler(signum, frame):  # pragma: no cover
         service.logger.event("service.signal", signum=signum)
@@ -461,5 +474,3 @@ def setup_signals(service: VoiceService) -> None:
 
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
-
-
