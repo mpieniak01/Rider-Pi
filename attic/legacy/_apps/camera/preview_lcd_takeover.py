@@ -3,9 +3,9 @@
 
 import os
 import time
+
 import cv2
 import numpy as np
-from typing import Tuple
 from PIL import Image
 
 from common.bus import BusPub
@@ -18,12 +18,13 @@ SNAP = Snapper(base_dir=os.getenv("SNAP_BASE", "/home/pi/robot/snapshots"))
 
 ROT = int(os.getenv("PREVIEW_ROT", "270"))
 DISABLE_LCD = os.getenv("DISABLE_LCD", "0") == "1"
-NO_DRAW     = os.getenv("NO_DRAW", "0") == "1"
+NO_DRAW = os.getenv("NO_DRAW", "0") == "1"
 
 LAST_FRAME_PATH = os.environ.get("LAST_FRAME_PATH", "/home/pi/robot/data/last_frame.jpg")
-SAVE_EVERY      = int(os.environ.get("SAVE_EVERY", 2))
+SAVE_EVERY = int(os.environ.get("SAVE_EVERY", 2))
 
 frame_counter = 0
+
 
 # --- LCD init ---
 def _lcd_init():
@@ -31,13 +32,16 @@ def _lcd_init():
         return None
     try:
         from xgoscreen.LCD_2inch import LCD_2inch
+
         lcd = LCD_2inch()
         lcd.rotation = 0
         return lcd
     except Exception:
         return None
 
+
 _LCD = _lcd_init()
+
 
 def lcd_show_bgr(img_bgr: np.ndarray):
     if _LCD is None:
@@ -46,25 +50,32 @@ def lcd_show_bgr(img_bgr: np.ndarray):
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     _LCD.ShowImage(Image.fromarray(img_rgb))
 
+
 # --- Camera ---
-def open_camera(size=(320, 240)) -> Tuple[object, Tuple[int, int]]:
+def open_camera(size=(320, 240)) -> tuple[object, tuple[int, int]]:
     try:
         from picamera2 import Picamera2
+
         picam2 = Picamera2()
         config = picam2.create_preview_configuration(main={"size": size, "format": "RGB888"})
         picam2.configure(config)
         picam2.start()
+
         def read():
             arr = picam2.capture_array()
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+
         return read, size
     except Exception:
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
+
         def read():
             return cap.read()
+
         return read, size
+
 
 # --- Main ---
 def main():
@@ -105,6 +116,7 @@ def main():
 
         if frame_counter % 60 == 0:
             print(f"[takeover] fps={fps_ema:.1f}", flush=True)
+
 
 if __name__ == "__main__":
     try:

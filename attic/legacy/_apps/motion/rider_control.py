@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 apps/motion/rider_control.py — bezpieczne mikro-impulsy ruchu dla Rider-Pi
 
@@ -19,16 +18,20 @@ ENV (opcjonalne):
 """
 
 from __future__ import annotations
+
 import os
-import time
 import threading
+import time
+
 from apps.motion.xgo_adapter import XgoAdapter
+
 
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.getenv(name, default))
     except Exception:
         return default
+
 
 def _env_int(name: str, default: int) -> int:
     try:
@@ -39,11 +42,11 @@ def _env_int(name: str, default: int) -> int:
 
 class RiderMotion:
     def __init__(self):
-        self.PULSE     = _env_float("RIDER_PULSE", 0.30)
+        self.PULSE = _env_float("RIDER_PULSE", 0.30)
         self.SPEED_LIN = _env_float("RIDER_SPEED_LIN", 0.10)  # frakcja 0..1
         self.SPEED_YAW = _env_float("RIDER_SPEED_YAW", 0.10)  # frakcja 0..1
-        self.COOLDOWN  = _env_float("RIDER_COOLDOWN", 0.35)
-        self.IMU_ON    = _env_int("RIDER_IMU", 1)
+        self.COOLDOWN = _env_float("RIDER_COOLDOWN", 0.35)
+        self.IMU_ON = _env_int("RIDER_IMU", 1)
 
         self._ada = XgoAdapter()
         self._lock = threading.Lock()
