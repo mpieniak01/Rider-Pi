@@ -8,9 +8,10 @@ SPLASH_ROTATE="${SPLASH_ROTATE:-270}"
 SPLASH_CLEAR="${SPLASH_CLEAR:-1}"
 SPLASH_USE="${SPLASH_USE:-}"                 # opcjonalnie: xgo|pygame|auto
 BOOT_VENDOR_GRACE="${BOOT_VENDOR_GRACE:-5}"
-LCD_BL_GPIO="${LCD_BL_GPIO:-0}"              # domyślnie BCM0 (spójnie z Twoją płytką)
+LCD_BL_GPIO="${LCD_BL_GPIO:-0}"              # domyślnie BCM0
 LCD_OFF_CMD="${LCD_OFF_CMD:-/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off}"
-KEEP_BL_ON="${KEEP_BL_ON:-0}"                # 1 = nie wyłączaj podświetlenia; zostaw włączone
+KEEP_BL_ON="${KEEP_BL_ON:-0}"                # 1 = zostaw BL włączone
+NO_KILL_DISPLAY="${NO_KILL_DISPLAY:-0}"      # 1 = NIE ubijaj lightdm/display-manager
 
 ROBOT_ROOT="${ROBOT_ROOT:-/home/pi/robot}"
 MARKER_DIR="/run/rider"
@@ -18,7 +19,7 @@ MARKER_FILE="${MARKER_DIR}/boot-prepared"
 
 log() { echo "[boot-prepare] $*"; }
 
-# 1) Marker /run/rider/boot-prepared — jeśli istnieje, kończymy (ConditionPathExists też to pilnuje)
+# 1) Marker
 mkdir -p "${MARKER_DIR}"
 if [[ -f "${MARKER_FILE}" ]]; then
   log "marker already present, nothing to do."
@@ -29,15 +30,19 @@ fi
 log "grace for vendor processes: ${BOOT_VENDOR_GRACE}s"
 sleep "${BOOT_VENDOR_GRACE}"
 
-# 3) Best-effort ubicie potencjalnych procesów trzymających LCD
+# 3) Best-effort ubicie potencjalnych procesów trzymających LCD (bez display-manager jeśli NO_KILL_DISPLAY=1)
 log "killing known vendor/display processes (best-effort)"
 pkill -f "/usr/bin/python3 .*xgo.*"      >/dev/null 2>&1 || true
 pkill -f "/usr/bin/python3 .*main\.py"   >/dev/null 2>&1 || true
 pkill -f "xgo.*screen"                   >/dev/null 2>&1 || true
-if [[ "${DISABLE_DM_KILL:-0}" != "1" ]]; then pkill -f "lightdm" >/dev/null 2>&1 || true; fi
-if [[ "${DISABLE_DM_KILL:-0}" != "1" ]]; then pkill -f "display-manager" >/dev/null 2>&1 || true; fi
+if [[ "${NO_KILL_DISPLAY}" != "1" ]]; then
+  pkill -f "lightdm"          >/dev/null 2>&1 || true
+  pkill -f "display-manager"  >/dev/null 2>&1 || true
+else
+  log "NO_KILL_DISPLAY=1 -> skipping LightDM/display-manager kill"
+fi
 
-# 4) Splash z informacją o urządzeniu (prefer wrapper .sh, fallback do .py)
+# 4) Splash
 SPLASH_SH="${ROBOT_ROOT}/ops/splash_device_info.sh"
 SPLASH_PY="${ROBOT_ROOT}/ops/splash_device_info.py"
 if [[ -x "${SPLASH_SH}" ]]; then
@@ -71,7 +76,7 @@ if command -v raspi-gpio >/dev/null 2>&1; then
   fi
 fi
 
-# 6) Panel OFF (domyślnie aktywne; w debug NO-OP przez LCD_OFF_CMD=:)
+# 6) Panel OFF (jeśli chcesz wyłączyć sygnały do LCD)
 if [[ -n "${LCD_OFF_CMD}" ]]; then
   log "turning LCD panel off: ${LCD_OFF_CMD}"
   set +e
