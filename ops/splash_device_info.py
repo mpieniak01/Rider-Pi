@@ -35,6 +35,7 @@ WAIT_IP = int(os.getenv("SPLASH_WAIT_IP_S", os.getenv("WAIT_IP", "0")))
 WAIT_BATT = int(os.getenv("WAIT_BATT", "3"))
 SPLASH_HIDE_EMPTY_BATT = int(os.getenv("SPLASH_HIDE_EMPTY_BATT", "0"))
 SPLASH_EARLY_EXIT = int(os.getenv("SPLASH_EARLY_EXIT", "0"))
+SHOW_IP_DELAY = int(os.getenv("SHOW_IP_DELAY", "1"))
 
 LINE_EXTRA = int(os.getenv("SPLASH_LINE_EXTRA", "6"))
 IP_SPACER = int(os.getenv("SPLASH_IP_SPACER", "2"))
@@ -47,6 +48,10 @@ RASPI_GPIO_BIN = "raspi-gpio"
 
 LOG = os.path.join(DATA_DIR, "splash_trace.log")
 
+# Znaczniki czasu dla IP (pierwsze udane wykrycie)
+_START_TS = time.time()  # (pozostaje — już nie używamy do IP)
+_IP_FIRST_SEEN_AT: float | None = None  # teraz: sekundy OD STARTU SYSTEMU (uptime)
+
 
 def _log(msg: str) -> None:
     try:
@@ -54,6 +59,15 @@ def _log(msg: str) -> None:
             f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
     except Exception:
         pass
+
+
+def _uptime_seconds() -> float:
+    """Zwraca sekundy od startu systemu."""
+    try:
+        with open("/proc/uptime") as f:
+            return float(f.read().split()[0])
+    except Exception:
+        return 0.0
 
 
 # ---------------- FONT ----------------
@@ -304,21 +318,38 @@ def _get_ipv4() -> str | None:
 
 
 def pick_ip_nonblocking() -> str:
+    global _IP_FIRST_SEEN_AT
     ip = _get_ipv4()
     if ip:
+        if _IP_FIRST_SEEN_AT is None:
+            _IP_FIRST_SEEN_AT = _uptime_seconds()  # <-- OD STARTU SYSTEMU
         return ip
     deadline = time.time() + max(0, WAIT_IP)
     while time.time() < deadline:
         ip = _get_ipv4()
         if ip:
+            if _IP_FIRST_SEEN_AT is None:
+                _IP_FIRST_SEEN_AT = _uptime_seconds()  # <-- OD STARTU SYSTEMU
             return ip
         time.sleep(0.5)
     return "—"
 
 
+def _ip_label(ip_value: str) -> str:
+    """Zwraca tekst dla linii IP, z dopiskiem czasu uzyskania (od bootu)."""
+    if ip_value == "—":
+        return "— (waiting)" if SHOW_IP_DELAY else "—"
+    if SHOW_IP_DELAY and _IP_FIRST_SEEN_AT is not None:
+        dt = max(0.0, _IP_FIRST_SEEN_AT)  # to już jest uptime w sekundach
+        return f"{ip_value} ({dt:.1f}s)"
+    return ip_value
+
+
 def gather_info():
     batt = pick_battery_nonblocking()
     batt_str = f"{batt}%" if batt.isdigit() else batt
+    ip_raw = pick_ip_nonblocking()
+    ip_str = _ip_label(ip_raw)
     info = {
         "Host": socket.gethostname(),
         "Date": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -326,7 +357,7 @@ def gather_info():
         "Kernel": platform.release(),
         "Temp CPU": f"{read_temp_c()}°C",
         "Battery": batt_str,  # Battery PRZED IP
-        "IP": pick_ip_nonblocking(),
+        "IP": ip_str,
     }
     if SPLASH_HIDE_EMPTY_BATT and batt_str == "—":
         info.pop("Battery", None)
