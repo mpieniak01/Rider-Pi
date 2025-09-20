@@ -1,23 +1,51 @@
 [Unit]
 Description=Rider-Pi Boot Prepare (vendor cleanup, splash, LCD off)
-DefaultDependencies=no
-Before=multi-user.target rider-broker.service rider-api.service rider-vision.service
+After=systemd-tmpfiles-setup.service sysinit.target local-fs.target basic.target rider-api.service
+Wants=rider-api.service
+Before=display-manager.service lightdm.service rider-broker.service rider-vision.service
 ConditionPathExists=!/run/rider/boot-prepared
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/pi/robot
-# Domyślne środowisko — można nadpisać drop-inem /etc/systemd/system/rider-boot-prepare.service.d/override.conf
-Environment=SPLASH_SECONDS=3
+
+# Wymuszamy sterownik SPI (pewny na 2")
+Environment=SPLASH_USE=xgo
 Environment=SPLASH_ROTATE=270
+Environment=SPLASH_SECONDS=8
+Environment=SPLASH_REFRESH_EVERY=0.2
+
+# Czekania (nie blokują wyświetlenia; IP/batt pobierze ile się da)
+Environment=WAIT_IP=5
+Environment=WAIT_BATT=8
+
+# Po splashu: clear + wygaszenie
 Environment=SPLASH_CLEAR=1
-Environment=BOOT_VENDOR_GRACE=5
-Environment=LCD_BL_GPIO=13
+Environment=KEEP_BL_ON=0
+Environment=LCD_BL_GPIO=0
 Environment="LCD_OFF_CMD=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off"
+Environment=XGO_BL_GPIO=-1
+
+# Timingi / rysowanie
+Environment=BOOT_VENDOR_GRACE=2
+Environment=SPLASH_KEY_W=150
+Environment=SPLASH_LINE_EXTRA=6
+Environment=SPLASH_IP_SPACER=2
+
+# Wyłączamy SDL/fb żeby nie uciekało w HDMI
+Environment=SDL_VIDEODRIVER=
+Environment=SDL_FBDEV=
+Environment=SDL_AUDIODRIVER=dummy
+Environment=PYGAME_HIDE_SUPPORT_PROMPT=1
+
+# --- ważne: włącz BL PRZED splashem ---
+ExecStartPre=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py on
+
 RuntimeDirectory=rider
 RemainAfterExit=yes
 ExecStart=/home/pi/robot/ops/boot_prepare.sh
 
 [Install]
 WantedBy=multi-user.target
+
 
