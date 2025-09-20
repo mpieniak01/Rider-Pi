@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Tuple, Dict, Any
-import os
 
-RGB = Tuple[int, int, int]
+import os
+from dataclasses import dataclass
+from typing import Any
+
+RGB = tuple[int, int, int]
+
 
 def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
+
 @dataclass
 class Eyes:
     dx_k: float = 0.22
-    w_k:  float = 0.28
-    h_k:  float = 0.12
+    w_k: float = 0.28
+    h_k: float = 0.12
     pupil_bias_k: float = 0.017
-    sacc_amp_k:  float = 0.04
+    sacc_amp_k: float = 0.04
+
 
 @dataclass
 class Brows:
@@ -25,33 +28,38 @@ class Brows:
     caps: bool = True
     base_k: float = +0.06  # ∩>0, ∪<0
 
+
 @dataclass
 class Mouth:
     y_k: float = 0.215
     w_k: float = 0.58
     base_k: float = -0.24  # ∪<0, ∩>0
 
+
 @dataclass
 class Head:
     ky: float = 1.04
     guide: bool = True
 
+
 @dataclass
 class Palette:
-    idle: RGB        = (30, 58, 138)
-    wake: RGB        = (245, 158, 11)
-    record: RGB      = (249, 115, 22)
-    process: RGB     = (124, 58, 237)
-    speak: RGB       = (16, 185, 129)
+    idle: RGB = (30, 58, 138)
+    wake: RGB = (245, 158, 11)
+    record: RGB = (249, 115, 22)
+    process: RGB = (124, 58, 237)
+    speak: RGB = (16, 185, 129)
     low_battery: RGB = (239, 68, 68)
+
 
 @dataclass
 class FaceStyle:
-    head:   Head    = Head()
-    eyes:   Eyes    = Eyes()
-    brows:  Brows   = Brows()
-    mouth:  Mouth   = Mouth()
+    head: Head = Head()
+    eyes: Eyes = Eyes()
+    brows: Brows = Brows()
+    mouth: Mouth = Mouth()
     colors: Palette = Palette()
+
 
 def style_from_env() -> FaceStyle:
     s = FaceStyle()
@@ -79,10 +87,10 @@ def style_from_env() -> FaceStyle:
     # Eyes
     envs = {
         "FACE_EYES_DXK": ("dx_k", 0.16, 0.30),
-        "FACE_EYES_WK":  ("w_k",  0.22, 0.34),
-        "FACE_EYES_HK":  ("h_k",  0.08, 0.18),
+        "FACE_EYES_WK": ("w_k", 0.22, 0.34),
+        "FACE_EYES_HK": ("h_k", 0.08, 0.18),
     }
-    for key,(attr,lo,hi) in envs.items():
+    for key, (attr, lo, hi) in envs.items():
         val = os.environ.get(key)
         if val:
             try:
@@ -91,7 +99,8 @@ def style_from_env() -> FaceStyle:
                 pass
     return s
 
-def style_apply_config(style: FaceStyle, cfg: Dict[str, Any]) -> None:
+
+def style_apply_config(style: FaceStyle, cfg: dict[str, Any]) -> None:
     if "head_ky" in cfg:
         try:
             style.head.ky = clamp(float(cfg["head_ky"]), 0.90, 1.20)
@@ -131,11 +140,11 @@ def style_apply_config(style: FaceStyle, cfg: Dict[str, Any]) -> None:
                 pass
         if "w_k" in eyes:
             try:
-                style.eyes.w_k  = clamp(float(eyes["w_k"]),  0.22, 0.34)
+                style.eyes.w_k = clamp(float(eyes["w_k"]), 0.22, 0.34)
             except Exception:
                 pass
         if "h_k" in eyes:
             try:
-                style.eyes.h_k  = clamp(float(eyes["h_k"]),  0.08, 0.18)
+                style.eyes.h_k = clamp(float(eyes["h_k"]), 0.08, 0.18)
             except Exception:
                 pass

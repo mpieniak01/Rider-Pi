@@ -17,11 +17,13 @@ _gpio_ok = False
 try:
     if GPIO_PIN >= 0:
         import RPi.GPIO as GPIO
+
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(GPIO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP if _ACTIVE_LOW else GPIO.PUD_DOWN)
         _gpio_ok = True
 except Exception:
     _gpio_ok = False  # brak biblioteki lub sprzętu → fallback
+
 
 def estop_triggered() -> bool:
     """
@@ -37,6 +39,7 @@ def estop_triggered() -> bool:
         return (val == 0) if _ACTIVE_LOW else (val == 1)
     return os.getenv("ESTOP", "0") == "1"
 
+
 def motion_enabled() -> bool:
     """
     Ruch dozwolony, gdy:
@@ -46,6 +49,7 @@ def motion_enabled() -> bool:
     if os.getenv("MOTION_ENABLE", "0") == "1":
         return True
     return MOTION_ENABLE_FLAG.exists()
+
 
 def safe_speed(v: float, limit: float = 0.6) -> float:
     """Clamp prędkości."""

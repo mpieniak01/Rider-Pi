@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 apps/motion/xgo_adapter.py — cienka warstwa nad biblioteką XGO (CM4/Rider)
 
@@ -26,23 +25,25 @@ Publiczne metody (best-effort, brak side-effectów gdy brak HW/ENABLE):
 """
 
 from __future__ import annotations
+
 import os
 import time
-from typing import Optional, Iterable
+from collections.abc import Iterable
 
 # ── Import biblioteki XGO (łagodnie) ─────────────────────────────────────────
 try:
     from xgolib import XGO  # typowe wejście
+
     _HAS_XGO = True
 except Exception:
     XGO = None  # type: ignore
     _HAS_XGO = False
 
 # ── Konfiguracja przez ENV ───────────────────────────────────────────────────
-XGO_PORT        = os.getenv("XGO_PORT", "/dev/ttyAMA0")
-XGO_VERSION     = os.getenv("XGO_VERSION", "xgorider")  # xgomini|xgolite|xgorider
-MOTION_ENABLE   = os.getenv("MOTION_ENABLE", "0") == "1"  # domyślnie OFF (bezpiecznie)
-_DEFAULT_PULSE  = float(os.getenv("RIDER_PULSE", "0.30"))  # domyślny czas impulsu (s)
+XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
+XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")  # xgomini|xgolite|xgorider
+MOTION_ENABLE = os.getenv("MOTION_ENABLE", "0") == "1"  # domyślnie OFF (bezpiecznie)
+_DEFAULT_PULSE = float(os.getenv("RIDER_PULSE", "0.30"))  # domyślny czas impulsu (s)
 
 # Skala „kroków” w funkcjach ogólnych (np. move_x/turn) – mała, delikatna
 _MIN_STEP = 1
@@ -124,7 +125,7 @@ class XgoAdapter:
         r, g, b = list(rgb)[:3] if rgb else (0, 0, 0)
         self._call("rider_led", int(idx), [int(r), int(g), int(b)])
 
-    def battery(self) -> Optional[float]:
+    def battery(self) -> float | None:
         """Zwraca poziom baterii w skali 0..1 (None, jeśli brak odczytu)."""
         if not self.ok():
             return None
@@ -143,7 +144,7 @@ class XgoAdapter:
             pass
         return None
 
-    def imu(self) -> Optional[dict]:
+    def imu(self) -> dict | None:
         """Zwraca orientację, jeśli dostępna: {'roll':..,'pitch':..,'yaw':..}."""
         if not self.ok():
             return None
@@ -201,7 +202,7 @@ class XgoAdapter:
         step = int(round(_MIN_STEP + s * (_MAX_STEP - _MIN_STEP)))
         return max(_MIN_STEP, min(_MAX_STEP, step))
 
-    def drive(self, dir: str, speed: float, dur: Optional[float] = None, *, block: bool = False) -> None:
+    def drive(self, dir: str, speed: float, dur: float | None = None, *, block: bool = False) -> None:
         """
         Jazda liniowa (forward/backward).
         Używa impulsu (runtime), po którym domyślnie STOP (bez block=True).
@@ -220,13 +221,11 @@ class XgoAdapter:
 
         # Rider-spec → ogólne → bardzo ogólne
         if d == "forward":
-            called = self._call("rider_move_x", +step, t) \
-                  or self._call("move_x", +step, t) \
-                  or self._call("forward", +step)
+            called = (
+                self._call("rider_move_x", +step, t) or self._call("move_x", +step, t) or self._call("forward", +step)
+            )
         else:
-            called = self._call("rider_move_x", -step, t) \
-                  or self._call("move_x", -step, t) \
-                  or self._call("back", +step)
+            called = self._call("rider_move_x", -step, t) or self._call("move_x", -step, t) or self._call("back", +step)
 
         if called:
             if block and t > 0:
@@ -235,8 +234,9 @@ class XgoAdapter:
             else:
                 self.stop()
 
-    def spin(self, dir: str, speed: float, dur: Optional[float] = None,
-             deg: Optional[float] = None, *, block: bool = False) -> None:
+    def spin(
+        self, dir: str, speed: float, dur: float | None = None, deg: float | None = None, *, block: bool = False
+    ) -> None:
         """
         Obrót w miejscu (left/right) — używa vendorowych metod turnleft/turnright,
         bo są potwierdzone jako działające na Twoim FW.

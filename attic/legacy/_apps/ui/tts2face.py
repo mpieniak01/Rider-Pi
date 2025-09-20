@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 apps/ui/tts2face.py — mostek TTS→Face
 Sub: tts.speak {"text":"...", "voice":"pl"}
 Pub: ui.face.set {"expr":"speak"} ... a po czasie -> {"expr":"neutral"}
 """
 
-from common.bus import BusPub, BusSub
+import json
 import os
 import sys
-import time
-import json
 import threading
+import time
+
+from common.bus import BusPub, BusSub
 
 PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:
@@ -28,12 +28,14 @@ except Exception:
 SUB = BusSub("tts.speak")
 PUB = BusPub()
 
-MIN_DUR = float(os.getenv("TTS2FACE_MIN_DUR", "0.8"))   # s
-MAX_DUR = float(os.getenv("TTS2FACE_MAX_DUR", "6.0"))   # s
-WPS     = float(os.getenv("TTS2FACE_WPS",     "3.0"))   # słowa/s (~180 wpm)
+MIN_DUR = float(os.getenv("TTS2FACE_MIN_DUR", "0.8"))  # s
+MAX_DUR = float(os.getenv("TTS2FACE_MAX_DUR", "6.0"))  # s
+WPS = float(os.getenv("TTS2FACE_WPS", "3.0"))  # słowa/s (~180 wpm)
+
 
 def log(msg):
     print(time.strftime("[%H:%M:%S]"), msg, flush=True)
+
 
 def estimate_duration(text: str) -> float:
     if not text:
@@ -42,6 +44,7 @@ def estimate_duration(text: str) -> float:
     dur = words / WPS
     return max(MIN_DUR, min(MAX_DUR, dur))
 
+
 def pub(topic, payload):
     # zgodnie z Twoim BusPub (tools/pub.py używa .send)
     for m in ("send", "publish", "pub"):
@@ -49,11 +52,12 @@ def pub(topic, payload):
             return getattr(PUB, m)(topic, payload)
     raise AttributeError("BusPub bez send/publish/pub")
 
+
 def speak_once(text: str):
     dur = estimate_duration(text)
     log(f"TTS→Face: speak {dur:.1f}s: {text!r}")
     try:
-        pub("ui.face.set", {"expr":"speak"})
+        pub("ui.face.set", {"expr": "speak"})
         # można przekazać 'intensity' itp. jeśli UI wspiera
     except Exception as e:
         log(f"pub speak error: {e}")
@@ -62,11 +66,12 @@ def speak_once(text: str):
     def back_to_neutral():
         time.sleep(dur)
         try:
-            pub("ui.face.set", {"expr":"neutral"})
+            pub("ui.face.set", {"expr": "neutral"})
         except Exception as e:
             log(f"pub neutral error: {e}")
 
     threading.Thread(target=back_to_neutral, daemon=True).start()
+
 
 def main():
     log("tts2face: start (sub tts.speak → pub ui.face.set)")
@@ -83,6 +88,7 @@ def main():
             raise
         except Exception as e:
             log(f"tts2face error: {e}")
+
 
 if __name__ == "__main__":
     try:
