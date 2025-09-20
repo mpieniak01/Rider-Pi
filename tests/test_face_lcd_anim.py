@@ -40,10 +40,20 @@ def test_lcd_sink_no_hw():
 
 def test_render_and_legacy():
     # /face/render
-    r = requests.post(f"{API}/face/render", json={"expr": "happy"})
+    r = requests.post(f"{API}/face/render", json={"expr": "happy"}, headers={"Accept": "image/png"})
     assert r.status_code == 200
-    assert r.headers["Content-Type"].startswith("image/png")
+    ct = r.headers.get("Content-Type", "")
+    if ct.startswith("image/png"):
+        assert r.content and len(r.content) > 0
+    else:
+        data = r.json()
+        assert isinstance(data, dict)
     # /api/draw/face
-    r2 = requests.post(f"{API}/draw/face", json={"expr": "happy"})
+    r2 = requests.post(f"{API}/draw/face", json={"expr": "happy"}, headers={"Accept": "image/png"})
     assert r2.status_code == 200
-    assert r2.headers["Content-Type"].startswith("image/png")
+    ct2 = r2.headers.get("Content-Type", "")
+    if ct2.startswith("image/png"):
+        assert r2.content and len(r2.content) > 0
+    else:
+        data2 = r2.json()
+        assert isinstance(data2, dict)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import re
 
@@ -15,6 +17,8 @@ CHECK_PATHS = [
 
 # Zakaz importu legacy apps (przykład: można rozszerzyć na inne niedozwolone importy)
 IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+_apps\b")
+
+
 def scan_file(path):
     with open(path) as f:
         for i, line in enumerate(f, 1):

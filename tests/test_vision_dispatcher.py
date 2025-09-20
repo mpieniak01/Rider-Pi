@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # tests/test_vision_dispatcher.py
 import importlib
 import os

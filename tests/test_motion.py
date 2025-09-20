@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # tests/test_motion.py
 """
 Prosty tester XgoAdapter:
@@ -7,9 +9,9 @@ Prosty tester XgoAdapter:
  - stop, IMU, bateria
 """
 
-import time
+import time  # noqa: E402
 
-from apps.motion.xgo_adapter import XgoAdapter
+from apps.motion.xgo_adapter import XgoAdapter  # noqa: E402
 
 
 def main():

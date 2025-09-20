@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # tests/test_face_anim_nullsink.py
 import os
 import time

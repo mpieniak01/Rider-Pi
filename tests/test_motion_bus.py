@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 # tests/test_motion_bus.py
 """
 Tester ścieżki BUS → motion.main → adapter → robot.
@@ -13,11 +15,11 @@ Uruchom:
 Uwaga: pętla apps.motion.main musi być uruchomiona.
 """
 
-import json
-import os
-import time
+import json  # noqa: E402
+import os  # noqa: E402
+import time  # noqa: E402
 
-import zmq
+import zmq  # noqa: E402
 
 PUB_ADDR = os.getenv("BUS_PUB", "tcp://127.0.0.1:5555")
 SUB_ADDR = os.getenv("BUS_SUB", "tcp://127.0.0.1:5556")
