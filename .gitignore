@@ -78,3 +78,7 @@ tests/_audit_import.py
 # Ignore only local overrides
 config/local/*
 !config/local/.gitignore
+
+# dev artifacts
+**/.ipynb_checkpoints/
+**/__pycache__/

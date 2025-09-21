@@ -35,7 +35,7 @@ konfiguracji oraz sposobów uruchamiania.
    export VOICE_CAPTURE_BACKEND=pulse
    ```
 
-2. Skopiuj `configs/voice.yaml.sample` do `configs/voice.yaml` i
+2. Skopiuj `config/voice.toml.sample` do `config/voice.toml` i
    dostosuj backendy, urządzenia audio, ścieżki do modeli offline.
 
 3. Zmiennych środowiskowych możesz używać bezpośrednio albo poprzez
@@ -179,7 +179,7 @@ z backendami chmurowymi.
 
 * **Vosk** – użyj skryptu `ops/fetch_models.sh` (gdy będzie dostępny) aby
   pobrać lekkie modele `vosk-model-small-pl-0.22` lub podobne. Wskazówkę
-  zapisz w `configs/voice.yaml` (`vosk_model_dir`).
+  zapisz w `config/voice.toml` (`vosk_model_dir`).
 * **Piper** – modele `.onnx` są duże, nie commitujemy ich. W dokumentacji
   `VOICE.md` linkujemy do oficjalnych buildów (`https://github.com/rhasspy/piper/releases`).
 * **Nyumaya/Porcupine** – moduł KWS potrafi korzystać z bibliotek jeśli
@@ -189,7 +189,7 @@ z backendami chmurowymi.
 ## Różnice względem `_apps/voice`
 
 * Brak bezpośrednich importów z `_apps` – nowy kod jest samodzielny.
-* Konfiguracja YAML + ENV + CLI zamiast globalnych zmiennych.
+* Konfiguracja TOML + ENV + CLI zamiast globalnych zmiennych.
 * JSON logi oraz modularna architektura (łatwiejsze testy i ewentualny
   fallback backendów).
 * Opcjonalne API HTTP oraz definicje `systemd` z repozytorium.
