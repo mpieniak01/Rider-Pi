@@ -2,109 +2,109 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Any, Dict, List
 
 from .model import FaceState
 
 
-@dataclass
-class Keyframe:
-    t: float
-    params: dict[str, float]  # np. {"eyes.blink": 1.0} albo {"eyes.dx": 0.5}
+def _ease(kind: str, t01: float) -> float:
+    if kind in ("in", "ease_in"):
+        return t01 * t01
+    if kind in ("out", "ease_out"):
+        u = 1.0 - t01
+        return 1.0 - u * u
+    if kind in ("in_out", "ease_in_out"):
+        if t01 < 0.5:
+            return 2.0 * t01 * t01
+        u = (t01 - 0.5) * 2.0
+        return 0.5 + 0.5 * (1.0 - (1.0 - u) * (1.0 - u))
+    return t01  # lin
 
 
 @dataclass
-class GestureSpec:
-    name: str
-    channel: str  # "eyes" | "brows" | "mouth" | "head"
-    frames: list[Keyframe]
-    fade_in: float = 0.06
-    fade_out: float = 0.06
-
-
-def _ease(a: float) -> float:
-    # smoothstep
-    a = 0.0 if a < 0.0 else 1.0 if a > 1.0 else a
-    return a * a * (3 - 2 * a)
+class _Active:
+    spec: Dict[str, Any]
+    t0: float
+    t1: float
 
 
 class Animator:
-    """Miksuje aktywne gesty per kanał i aktualizuje FaceState."""
+    """
+    Prosty animator „tracks/segments”:
+      spec = {
+        "duration": float,
+        "tracks": {
+          "eyes.blink": [{"t0":0.0,"t1":0.08,"v0":0.0,"v1":1.0,"ease":"in"}, ...],
+          ...
+        }
+      }
+    - Każdy segment działa w oknie [t0..t1] względem startu animacji.
+    - Jeśli FPS jest niski i przeskoczymy jakiś segment, „snapujemy” do końcowego v1
+      po upływie całej animacji, żeby nie utknąć np. z zamkniętym okiem.
+    """
 
     def __init__(self):
         self.state = FaceState()
-        self._layers: dict[str, dict] = {}  # channel -> {spec, t0, prio}
-        self._now = time.time()
+        self._actives: List[_Active] = []
 
-    def start(self, spec: GestureSpec, prio: int = 10, mode: str = "blend") -> None:
-        ch = spec.channel
-        if mode == "override":
-            self._layers.pop(ch, None)
-        self._layers[ch] = {"spec": spec, "t0": time.time(), "prio": prio}
+    def start(self, spec: Dict[str, Any], prio: int = 10, mode: str = "blend") -> None:
+        dur = float(spec.get("duration", 0.2))
+        now = time.time()
+        self._actives.append(_Active(spec=spec, t0=now, t1=now + dur))
 
-    def stop(self, channel: str | None = None) -> None:
-        if channel:
-            self._layers.pop(channel, None)
-        else:
-            self._layers.clear()
+    def _apply_track_segment(self, path: str, seg: Dict[str, Any], now: float, t0: float) -> bool:
+        s0, s1 = float(seg["t0"]), float(seg["t1"])
+        t_abs0, t_abs1 = t0 + s0, t0 + s1
+        if now < t_abs0 or now > t_abs1:
+            return False
+        # pozycja 0..1 w obrębie segmentu
+        k = (now - t_abs0) / max(1e-6, (t_abs1 - t_abs0))
+        k = max(0.0, min(1.0, k))
+        k = _ease(seg.get("ease", "lin"), k)
+        v = float(seg["v0"]) + (float(seg["v1"]) - float(seg["v0"])) * k
 
-    # ---- helpers ----
-    def _params_at(self, spec: GestureSpec, t: float) -> dict[str, float]:
-        fr = spec.frames
-        if not fr:
-            return {}
-        if t <= fr[0].t:
-            return fr[0].params
-        if t >= fr[-1].t:
-            return fr[-1].params
-        i = 0
-        while i < len(fr) - 1 and not (fr[i].t <= t <= fr[i + 1].t):
-            i += 1
-        a = (t - fr[i].t) / max(1e-6, (fr[i + 1].t - fr[i].t))
-        a = _ease(a)
-        out: dict[str, float] = {}
-        keys = set(fr[i].params) | set(fr[i + 1].params)
-        for k in keys:
-            v0 = fr[i].params.get(k, 0.0)
-            v1 = fr[i + 1].params.get(k, v0)
-            out[k] = (1 - a) * v0 + a * v1
-        return out
+        # zapis do modelu (obsługa ścieżek typu "eyes.blink")
+        node = self.state
+        parts = path.split(".")
+        for p in parts[:-1]:
+            node = getattr(node, p)
+        setattr(node, parts[-1], v)
+        return True
 
-    def _apply_by_path(self, path: str, value: float) -> None:
-        obj_name, field = path.split(".", 1)  # "eyes.dx"
-        obj = getattr(self.state, obj_name)
-        setattr(obj, field, value)
+    def _apply_track_final(self, path: str, segs: List[Dict[str, Any]]) -> None:
+        """Ustaw końcowe v1 ostatniego segmentu danego tracku."""
+        if not segs:
+            return
+        last = segs[-1]
+        v = float(last.get("v1", 0.0))
+        node = self.state
+        parts = path.split(".")
+        for p in parts[:-1]:
+            node = getattr(node, p)
+        setattr(node, parts[-1], v)
 
     def tick(self) -> FaceState:
         now = time.time()
-        updates: dict[str, list[tuple[int, float]]] = {}
-        kill = []
-        for ch, layer in list(self._layers.items()):
-            spec: GestureSpec = layer["spec"]
-            t0 = layer["t0"]
-            prio = layer["prio"]
-            t = now - t0
-            dur = spec.frames[-1].t if spec.frames else 0.0
 
-            # wagi fade-in/out
-            w_in = min(1.0, t / max(1e-6, spec.fade_in))
-            w_out = 1.0 if t <= dur else max(0.0, 1.0 - (t - dur) / max(1e-6, spec.fade_out))
-            w = _ease(min(w_in, w_out))
+        still_active: List[_Active] = []
+        for a in self._actives:
+            spec = a.spec
+            tracks: Dict[str, List[Dict[str, Any]]] = spec.get("tracks", {})
 
-            if w <= 0.0 and t > dur + spec.fade_out:
-                kill.append(ch)
+            if now >= a.t1:
+                # Animacja zakończona → „snap” do stanów końcowych wszystkich tracków
+                for path, segs in tracks.items():
+                    self._apply_track_final(path, segs)
+                # nie dokładamy do still_active → znika po tym ticku
                 continue
 
-            params = self._params_at(spec, min(t, dur))
-            for path, v in params.items():
-                updates.setdefault(path, []).append((prio, w * float(v)))
+            # W trakcie trwania animacji: stosujemy segmenty, które trafiały w okna czasowe
+            for path, segs in tracks.items():
+                # Jeśli przeskoczyliśmy segmenty (niski FPS), nic się nie nałoży – to OK.
+                for seg in segs:
+                    self._apply_track_segment(path, seg, now, a.t0)
 
-        for ch in kill:
-            self._layers.pop(ch, None)
+            still_active.append(a)
 
-        # miks wg prio (przy remisie średnia)
-        for path, lst in updates.items():
-            best = max(lst, key=lambda p: p[0])[0]
-            vals = [v for p, v in lst if p == best]
-            self._apply_by_path(path, sum(vals) / max(1, len(vals)))
-
+        self._actives = still_active
         return self.state
