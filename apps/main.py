@@ -70,7 +70,11 @@ def demo_trajectory_safe():
         # PUB_ADDR/TOPIC zgodne z usługą/brokerem
         env["BUS_PUB_ADDR"] = PUB_ADDR
         env["MOTION_TOPIC"] = TOPIC
-        subprocess.run(["python3", "-u", str(BASE_DIR / "apps" / "demos" / "trajectory.py")], env=env, check=True)
+        subprocess.run(
+            ["python3", "-u", str(BASE_DIR / "apps" / "demos" / "trajectory.py")],
+            env=env,
+            check=True,
+        )
     finally:
         print("[MENU] Demo done. Disabling motion (flag).")
         motion_enable(False)

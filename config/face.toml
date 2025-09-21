@@ -1,50 +1,95 @@
-[meta]
-schema = "face"
-version = 1
+# ~/apps/ui/face/face.toml
 
-[face.idle]
-blink_sec = 3.0
-soft_blink_sec = 0.0
-look_p = 0.0
-look_sec = 0.0
-jitter = 0.15
+# -----------------------------------------------------------------------------
+# Idle / mikro-gesty — sterowane przez kontroler (czytane jako ENV)
+# -----------------------------------------------------------------------------
+FACE_IDLE_BLINK_SEC = 3.0
+FACE_IDLE_SOFT_BLINK_SEC = 0.0
+FACE_IDLE_LOOK_P = 0.35
+FACE_IDLE_LOOK_SEC = 3.0
+FACE_IDLE_JITTER = 0.15
 
-[face.gesture.blink]
-dur = 0.16
-hold = 0.02
+# --- Blink choreografia
+FACE_GESTURE_BLINK_DUR = 0.16
+FACE_GESTURE_BLINK_HOLD = 0.02
 
-[face.gesture.look]
-t = 0.55
-amp = 0.42
+# --- Look parametry
+FACE_GESTURE_LOOK_T = 0.55
+FACE_GESTURE_LOOK_AMP = 0.42
 
-[face.transitions]
-step_s = 0.30
-dwell_s = 0.14
+# --- Przejścia nastrojów (mood)
+FACE_TRANS_STEP_S = 0.30
+FACE_TRANS_DWELL_S = 0.14
 
-[face.mouth.ribbon]
-taper_k = 0.60
-samples = 48
+# -----------------------------------------------------------------------------
+# Renderer (klucze używane bezpośrednio przez draw_face; lowercase)
+# -----------------------------------------------------------------------------
 
-[face.mouth.small_th_k]
-base = 0.050
-happy = 0.95
-neutral = 0.85
-sad = 1.05
+# Głowa / układ
+head_ky = 1.04
 
-[face.mouth.offsets]
-y_offset_k_happy   = 0.040
-y_offset_k_neutral = 0.050
-y_offset_k_sad     = 0.050
+# Brwi (łuki-arc w stylu referencyjnym)
+brow_y_k = 0.21        # wysokość brwi (0..~0.3)
+brow_h_k = 0.09        # „promień” pionowy łuku brwi (wpływa na krzywiznę)
 
-[face.mouth.lift]
-happy   =  0.045
-neutral =  0.000
-sad     = -0.045
+# Usta — profil „wstążki”
+mouth_ribbon_taper_k   = 0.60   # 0..1 — zwężenie końców wstążki
+mouth_small_th_k_base  = 0.050  # bazowa grubość (wzgl. S)
 
-[face.mouth.arch]
-happy   =  0.030
-neutral =  0.000
-sad     = -0.030
+# Łuk środka (arch) i unoszenie kącików (lift) per shape
+mouth_happy_lift_k     = 0.045
+mouth_neutral_lift_k   = 0.000
+mouth_sad_lift_k       = -0.045
 
-[face.debug]
-mouth = 0
+mouth_happy_arch_k     = 0.030
+mouth_neutral_arch_k   = 0.000
+mouth_sad_arch_k       = -0.030
+
+# Pozycja ust (środek)
+mouth_y_k              = 0.215   # klasyczny układ
+
+# -----------------------------------------------------------------------------
+# Legacy / aliasy (zostawione dla zgodności lub jeśli generujesz ENV z TOML)
+# -----------------------------------------------------------------------------
+
+# Usta — profil „wstążki”
+FACE_MOUTH_RIBBON_TAPER_K   = 0.60
+FACE_MOUTH_RIBBON_SAMPLES   = 48
+
+# Grubość przy małym otwarciu (bazowy × mnożniki per shape)
+FACE_MOUTH_SMALL_TH_K_BASE  = 0.050
+FACE_MOUTH_SMALL_TH_K_HAPPY = 0.95
+FACE_MOUTH_SMALL_TH_K_NEUTRAL = 0.85
+FACE_MOUTH_SMALL_TH_K_SAD   = 1.05
+
+# Pozycje Y (ułamki S) — jeżeli używasz starego mapowania
+FACE_MOUTH_Y_OFFSET_K_HAPPY   = 0.040
+FACE_MOUTH_Y_OFFSET_K_NEUTRAL = 0.050
+FACE_MOUTH_Y_OFFSET_K_SAD     = 0.050
+
+# Lift/arch (aliasy ENV)
+FACE_MOUTH_HAPPY_LIFT_K   = 0.045
+FACE_MOUTH_NEUTRAL_LIFT_K = 0.000
+FACE_MOUTH_SAD_LIFT_K     = -0.045
+FACE_MOUTH_HAPPY_ARCH_K   = 0.030
+FACE_MOUTH_NEUTRAL_ARCH_K = 0.000
+FACE_MOUTH_SAD_ARCH_K     = -0.030
+
+# Debug
+FACE_DEBUG_MOUTH = 0
+
+# Źrenice (drift i clamp) — czytane jako ENV przez renderer; tutaj dla wglądu
+FACE_PUPIL_DRIFT_AMP_K = 0.04
+FACE_PUPIL_DRIFT_FREQ  = 0.8
+FACE_PUPIL_CLAMP_RATIO = 0.78
+
+# Sprzęgło blink↔gaze (kontroler)
+FACE_BLINK_SHIFT_PROB  = 0.12
+
+# Ruch oka/białka za look
+eyes_follow_kx = 0.10
+eyes_follow_ky = 0.18
+
+# Brwi podążanie za okiem
+brow_follow_kx = 0.10
+brow_follow_ky = 0.10

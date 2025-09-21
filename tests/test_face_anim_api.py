@@ -36,7 +36,12 @@ def _clean_anim():
     )
 
     # usuń artefakty
-    for p in (fa.OUT_LATEST, fa.OUT_LEGACY, "/tmp/face_api_test.png", "/tmp/face_api_legacy_test.png"):
+    for p in (
+        fa.OUT_LATEST,
+        fa.OUT_LEGACY,
+        "/tmp/face_api_test.png",
+        "/tmp/face_api_legacy_test.png",
+    ):
         try:
             os.remove(p)
         except FileNotFoundError:
@@ -90,7 +95,9 @@ def test_play_state_stop_flow():
     assert rv.get_json()["ok"] is True
 
     # DoD: stopuje się < ~0.5 s
-    ok = _poll_until(lambda: _client().get("/face/state").get_json()["state"]["playing"] is False, timeout=0.6)
+    ok = _poll_until(
+        lambda: _client().get("/face/state").get_json()["state"]["playing"] is False, timeout=0.6
+    )
     assert ok, "playing nie przeszło na False w 0.6 s"
 
 

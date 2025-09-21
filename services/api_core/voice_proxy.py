@@ -19,7 +19,9 @@ def _corsify(resp: Response) -> Response:
     return resp
 
 
-def _forward(path: str, qs: dict[str, Any] | None, payload: dict[str, Any] | None) -> tuple[dict[str, Any], int]:
+def _forward(
+    path: str, qs: dict[str, Any] | None, payload: dict[str, Any] | None
+) -> tuple[dict[str, Any], int]:
     url = f"{VOICE_URL}{path}"
     if qs:
         url += "?" + urllib.parse.urlencode(qs)

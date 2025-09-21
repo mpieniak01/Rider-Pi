@@ -217,7 +217,9 @@ def test_cycle_emits_idle_when_reply_empty(monkeypatch: pytest.MonkeyPatch, voic
     monkeypatch.setattr(service, "_record_with_vad", lambda: b"\x00\x01" * 10)
     monkeypatch.setattr(service, "_wait_hotword_without_capture", lambda: True)
     monkeypatch.setattr(service, "_handle_intent", lambda intent: "   ")
-    monkeypatch.setattr(voice_module, "transcribe", lambda *args, **kwargs: Transcript(text="ok", language="en"))
+    monkeypatch.setattr(
+        voice_module, "transcribe", lambda *args, **kwargs: Transcript(text="ok", language="en")
+    )
 
     synth_calls: list[str] = []
 
@@ -254,7 +256,9 @@ def test_cycle_idle_after_short_recording(monkeypatch: pytest.MonkeyPatch, voice
     assert states[-2:] == ["hearing", "idle"], states
 
 
-def test_listen_resets_state_after_cycle_error(monkeypatch: pytest.MonkeyPatch, voice_module) -> None:
+def test_listen_resets_state_after_cycle_error(
+    monkeypatch: pytest.MonkeyPatch, voice_module
+) -> None:
     config = _base_config()
     publisher = FakePublisher()
     service = VoiceService(config, ui_publisher=publisher)

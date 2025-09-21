@@ -185,7 +185,9 @@ def _parse() -> argparse.Namespace:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def add_common(sp):
-        sp.add_argument("--bl", type=int, default=DEF_BL_PIN, help=f"BL GPIO (default {DEF_BL_PIN}, -1 to skip)")
+        sp.add_argument(
+            "--bl", type=int, default=DEF_BL_PIN, help=f"BL GPIO (default {DEF_BL_PIN}, -1 to skip)"
+        )
         sp.add_argument(
             "--bl-ah",
             dest="bl_ah",
@@ -194,11 +196,23 @@ def _parse() -> argparse.Namespace:
             default=DEF_BL_AH,
             help=f"BL active-high? 1/0 (default {DEF_BL_AH})",
         )
-        sp.add_argument("--dc", type=int, default=DEF_DC_PIN, help=f"DC GPIO (default {DEF_DC_PIN}, -1 to skip)")
-        sp.add_argument("--rst", type=int, default=DEF_RST_PIN, help=f"RST GPIO (default {DEF_RST_PIN}, -1 to skip)")
+        sp.add_argument(
+            "--dc", type=int, default=DEF_DC_PIN, help=f"DC GPIO (default {DEF_DC_PIN}, -1 to skip)"
+        )
+        sp.add_argument(
+            "--rst",
+            type=int,
+            default=DEF_RST_PIN,
+            help=f"RST GPIO (default {DEF_RST_PIN}, -1 to skip)",
+        )
         sp.add_argument("--spi", type=str, default=DEF_SPI, help=f"SPI device (default {DEF_SPI})")
         sp.add_argument("--hz", type=int, default=DEF_HZ, help=f"SPI speed (default {DEF_HZ})")
-        sp.add_argument("--no-spi", action="store_true", default=DEF_NO_SPI, help="do not send SPI commands (BL only)")
+        sp.add_argument(
+            "--no-spi",
+            action="store_true",
+            default=DEF_NO_SPI,
+            help="do not send SPI commands (BL only)",
+        )
 
     sp_off = sub.add_parser("off", help="turn LCD off (sleep + backlight off)")
     add_common(sp_off)
@@ -220,7 +234,10 @@ def main() -> int:
 
     if not _has_root():
         # Nie blokujemy — sysfs/GPIO bywa dostępne różnie, ale podpowiedzmy.
-        print("[lcdctl] WARN: nie wyglądasz na root; jeśli GPIO/SPI nie zadziała, użyj sudo.", file=sys.stderr)
+        print(
+            "[lcdctl] WARN: nie wyglądasz na root; jeśli GPIO/SPI nie zadziała, użyj sudo.",
+            file=sys.stderr,
+        )
 
     try:
         rc = int(bool(args.func(args)))

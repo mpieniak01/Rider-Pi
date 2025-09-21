@@ -89,7 +89,9 @@ _yaw_state = {"ts": None, "yaw_raw": None, "yaw_stable": None, "src": "gyro_stab
 _last_motion_cmd_ts = 0.0
 
 
-def _stabilize_yaw(yaw_raw: float | None, ts: float, freeze: bool = False) -> tuple[float | None, float | None, str]:
+def _stabilize_yaw(
+    yaw_raw: float | None, ts: float, freeze: bool = False
+) -> tuple[float | None, float | None, str]:
     global _yaw_state
     if yaw_raw is None:
         _yaw_state["ts"] = ts
@@ -408,9 +410,9 @@ def do_forward(speed_norm, runtime):
     print(f"[bridge] forward v={spd:.2f} t={runtime:.2f}")
     dev = ensure_xgo_open()
     if dev and hasattr(dev, "forward"):
-        if not _try_call(getattr(dev, "forward"), spd):
-            if not _try_call(getattr(dev, "forward"), runtime):
-                _try_call(getattr(dev, "forward"), spd, runtime)
+        if not _try_call(dev.forward, spd):
+            if not _try_call(dev.forward, runtime):
+                _try_call(dev.forward, spd, runtime)
 
 
 def do_backward(speed_norm, runtime):
@@ -420,7 +422,9 @@ def do_backward(speed_norm, runtime):
     print(f"[bridge] backward v={spd:.2f} t={runtime:.2f}")
     dev = ensure_xgo_open()
     if dev:
-        meth = "back" if hasattr(dev, "back") else ("backward" if hasattr(dev, "backward") else None)
+        meth = (
+            "back" if hasattr(dev, "back") else ("backward" if hasattr(dev, "backward") else None)
+        )
         if meth:
             if not _try_call(getattr(dev, meth), spd):
                 if not _try_call(getattr(dev, meth), runtime):
@@ -533,8 +537,15 @@ while _running:
             rid = data.get("rid")
             d = (data.get("dir") or "").lower()
             vx = float(data.get("v", 0.0) or 0.0)
-            dur = max(0.05, min(float(data.get("t", SAFE_MAX_DURATION) or SAFE_MAX_DURATION), SAFE_MAX_DURATION))
-            publish_event("rx_cmd.legacy", {"rid": rid, "topic": "motion.cmd", "dir": d, "v": vx, "t": dur})
+            dur = max(
+                0.05,
+                min(
+                    float(data.get("t", SAFE_MAX_DURATION) or SAFE_MAX_DURATION), SAFE_MAX_DURATION
+                ),
+            )
+            publish_event(
+                "rx_cmd.legacy", {"rid": rid, "topic": "motion.cmd", "dir": d, "v": vx, "t": dur}
+            )
 
             now2 = time.time()
             ts_in = data.get("ts")
@@ -542,14 +553,18 @@ while _running:
                 try:
                     age = (now2 - float(ts_in)) * 1000.0
                     if age > DROP_OLD_MS:
-                        publish_event("skip_cmd.move", {"rid": rid, "reason": "drop_old", "age_ms": round(age, 1)})
+                        publish_event(
+                            "skip_cmd.move",
+                            {"rid": rid, "reason": "drop_old", "age_ms": round(age, 1)},
+                        )
                         continue
                 except Exception:
                     pass
 
             if (now2 - _last_cmd_ts) < MIN_CMD_GAP:
                 publish_event(
-                    "skip_cmd.move", {"rid": rid, "reason": "min_gap", "gap_s": round(now2 - _last_cmd_ts, 3)}
+                    "skip_cmd.move",
+                    {"rid": rid, "reason": "min_gap", "gap_s": round(now2 - _last_cmd_ts, 3)},
                 )
                 continue
             _last_cmd_ts = now2
@@ -574,11 +589,15 @@ while _running:
             elif d in ("left", "turn_left"):
                 moved = True
                 do_turn_left(abs(vx), dur)
-                publish_event("turn_left", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
+                publish_event(
+                    "turn_left", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur}
+                )
             elif d in ("right", "turn_right"):
                 moved = True
                 do_turn_right(abs(vx), dur)
-                publish_event("turn_right", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
+                publish_event(
+                    "turn_right", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur}
+                )
             elif d in ("stop", "halt"):
                 do_stop()
                 publish_event("stop", {"rid": rid})
@@ -599,8 +618,17 @@ while _running:
             vy = float(data.get("vy", 0.0))
             yaw = float(data.get("yaw", data.get("az", 0.0)) or 0.0)
 
-            dur = max(0.05, min(float(data.get("duration", SAFE_MAX_DURATION) or SAFE_MAX_DURATION), SAFE_MAX_DURATION))
-            publish_event("rx_cmd.move", {"rid": data.get("rid"), "vx": vx, "vy": vy, "yaw": yaw, "duration": dur})
+            dur = max(
+                0.05,
+                min(
+                    float(data.get("duration", SAFE_MAX_DURATION) or SAFE_MAX_DURATION),
+                    SAFE_MAX_DURATION,
+                ),
+            )
+            publish_event(
+                "rx_cmd.move",
+                {"rid": data.get("rid"), "vx": vx, "vy": vy, "yaw": yaw, "duration": dur},
+            )
 
             now2 = time.time()
 
@@ -611,7 +639,8 @@ while _running:
                     age = (now2 - float(ts_in)) * 1000.0
                     if age > DROP_OLD_MS:
                         publish_event(
-                            "skip_cmd.move", {"rid": data.get("rid"), "reason": "drop_old", "age_ms": round(age, 1)}
+                            "skip_cmd.move",
+                            {"rid": data.get("rid"), "reason": "drop_old", "age_ms": round(age, 1)},
                         )
                         continue
                 except Exception:
@@ -621,7 +650,11 @@ while _running:
             if (now2 - _last_cmd_ts) < MIN_CMD_GAP:
                 publish_event(
                     "skip_cmd.move",
-                    {"rid": data.get("rid"), "reason": "min_gap", "gap_s": round(now2 - _last_cmd_ts, 3)},
+                    {
+                        "rid": data.get("rid"),
+                        "reason": "min_gap",
+                        "gap_s": round(now2 - _last_cmd_ts, 3),
+                    },
                 )
                 continue
             _last_cmd_ts = now2
@@ -645,7 +678,10 @@ while _running:
                     publish_event("turn_left", {"step": _yaw_to_step(aw), "runtime": dur})
                 else:
                     do_turn_right(aw, dur)
-                    publish_event("turn_right", {"rid": data.get("rid"), "step": _yaw_to_step(aw), "runtime": dur})
+                    publish_event(
+                        "turn_right",
+                        {"rid": data.get("rid"), "step": _yaw_to_step(aw), "runtime": dur},
+                    )
 
             elif ax > 1e-4 and ax >= ay:
                 moved = True
@@ -704,13 +740,19 @@ while _running:
         elif topic.endswith(".turn_left"):
             yawn = spd if spd <= 1 else min(1.0, spd / float(TURN_STEP_MAX))
             do_turn_left(abs(yawn), rt)
-            publish_event("turn_left", {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt})
+            publish_event(
+                "turn_left",
+                {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt},
+            )
             _schedule_deadman(rt, data.get("rid"))
             _last_motion_cmd_ts = time.time()
         elif topic.endswith(".turn_right"):
             yawn = spd if spd <= 1 else min(1.0, spd / float(TURN_STEP_MAX))
             do_turn_right(abs(yawn), rt)
-            publish_event("turn_right", {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt})
+            publish_event(
+                "turn_right",
+                {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt},
+            )
             _schedule_deadman(rt, data.get("rid"))
             _last_motion_cmd_ts = time.time()
 

@@ -32,7 +32,11 @@ def hb(fps=None):
     if not _pub:
         return
     try:
-        payload = {"mode": "sink", "fps": None if fps is None else round(float(fps), 1), "lcd": {"active": False}}
+        payload = {
+            "mode": "sink",
+            "fps": None if fps is None else round(float(fps), 1),
+            "lcd": {"active": False},
+        }
         _pub.send_string(f"camera.heartbeat {json.dumps(payload)}")
     except Exception:
         pass

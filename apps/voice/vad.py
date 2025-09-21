@@ -20,7 +20,9 @@ FrameHandler = Callable[[bytes], bool]
 def rms_dbfs(frame: bytes) -> float:
     if not frame:
         return -100.0
-    samples = [int.from_bytes(frame[i : i + 2], "little", signed=True) for i in range(0, len(frame), 2)]
+    samples = [
+        int.from_bytes(frame[i : i + 2], "little", signed=True) for i in range(0, len(frame), 2)
+    ]
     energy = sum(s * s for s in samples) / max(len(samples), 1)
     if energy <= 0:
         return -100.0
@@ -40,7 +42,9 @@ class SilenceTail:
 
 
 class WebRtcActivity:
-    def __init__(self, sample_rate: int, mode: int, frame_ms: int, tail_ms: int, energy_gate: float = -40.0):
+    def __init__(
+        self, sample_rate: int, mode: int, frame_ms: int, tail_ms: int, energy_gate: float = -40.0
+    ):
         self.sample_rate = sample_rate
         self.frame_ms = frame_ms
         self.tail = SilenceTail(frame_ms, tail_ms)

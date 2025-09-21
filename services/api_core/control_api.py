@@ -60,7 +60,9 @@ def api_cmd():
             C.bus_pub("cmd.move", {"vx": 0.0, "yaw": yaw, "duration": dur, "ts": ts})
             return Response('{"ok": true}', mimetype="application/json")
         C.bus_pub("cmd.raw", {"payload": data, "ts": ts})
-        return Response('{"ok": true, "note": "unknown type -> cmd.raw"}', mimetype="application/json")
+        return Response(
+            '{"ok": true, "note": "unknown type -> cmd.raw"}', mimetype="application/json"
+        )
     except Exception as e:
         return Response(json.dumps({"error": str(e)}), mimetype="application/json", status=500)
 
@@ -68,7 +70,13 @@ def api_cmd():
 def api_control():
     data = request.get_json(silent=True) or {}
     action = (request.args.get("action") or data.get("action") or "").strip().lower()
-    ms = request.args.get("ms") or data.get("ms") or request.args.get("duration") or data.get("duration") or 0
+    ms = (
+        request.args.get("ms")
+        or data.get("ms")
+        or request.args.get("duration")
+        or data.get("duration")
+        or 0
+    )
     try:
         ms = int(ms)
     except Exception:
@@ -89,7 +97,9 @@ def api_control():
         return Response('{"ok": true, "sent": {"action": "stop"}}', mimetype="application/json")
 
     if vx == 0.0 and yaw == 0.0 and action not in ("stop",):
-        return Response('{"ok": false, "error": "unknown action"}', mimetype="application/json", status=400)
+        return Response(
+            '{"ok": false, "error": "unknown action"}', mimetype="application/json", status=400
+        )
 
     C.bus_pub("cmd.move", {"vx": vx, "yaw": yaw, "duration": ms / 1000.0, "ts": time.time()})
     return Response(

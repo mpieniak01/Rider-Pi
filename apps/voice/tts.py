@@ -130,7 +130,17 @@ def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) ->
     if shutil.which("ffmpeg"):
         try:
             p = subprocess.run(
-                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-f", "wav", "pipe:1"],
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    "pipe:0",
+                    "-f",
+                    "wav",
+                    "pipe:1",
+                ],
                 input=audio_bytes,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
@@ -297,7 +307,9 @@ def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str):
 # ───── public API ─────────────────────────────────────────────────────────────
 
 
-def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None) -> tuple[bytes, int, str]:
+def synthesize(
+    text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None
+) -> tuple[bytes, int, str]:
     backend = (config.backend or "openai").lower()
     logger = logger or voice_logging.get_logger("voice.tts")
 
@@ -307,7 +319,9 @@ def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger |
     return _tts_openai(text, config, logger)
 
 
-def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
+def _tts_openai(
+    text: str, config: TTSConfig, logger: voice_logging.VoiceLogger
+) -> tuple[bytes, int, str]:
     """
     OpenAI Text-to-Speech (v1/audio/speech).
     Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav"), niezależnie od proszonego formatu.
@@ -340,7 +354,13 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             if resp.status_code >= 400:
                 logger.error(
                     "tts.openai.http_error",
-                    extra={"data": {"attempt": attempt, "status": resp.status_code, "text": resp.text[:400]}},
+                    extra={
+                        "data": {
+                            "attempt": attempt,
+                            "status": resp.status_code,
+                            "text": resp.text[:400],
+                        }
+                    },
                 )
                 last_err = TTSError(f"OpenAI TTS error: {resp.status_code} {resp.text[:200]}")
                 time.sleep(0.6 * (attempt + 1))
@@ -436,7 +456,9 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             return wav_bytes, sr, "wav"
 
         except requests.RequestException as e:
-            logger.warning("tts.openai.net_retry", extra={"data": {"attempt": attempt, "error": str(e)}})
+            logger.warning(
+                "tts.openai.net_retry", extra={"data": {"attempt": attempt, "error": str(e)}}
+            )
             last_err = e
             time.sleep(0.6 * (attempt + 1))
 

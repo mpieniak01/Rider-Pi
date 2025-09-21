@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 # common/snap.py
 # Prosty „snapper”: zapisuje migawki JPG do katalogu (RAW/PROC/LCD/LCD_FB)
 # Sterowanie przez ENV:
@@ -16,15 +17,13 @@ from __future__ import annotations
 #   <SNAP_DIR>/proc.jpg
 #   <SNAP_DIR>/lcd.jpg
 #   <SNAP_DIR>/lcd_fb.jpg      (tylko gdy jest framebuffer)
-
 import os
 import time
-import mmap
-import fcntl
-import struct
-from typing import Optional, Dict
-import numpy as np
+from typing import Dict, Optional
+
 import cv2
+import numpy as np
+
 
 class Snapper:
     def __init__(
@@ -36,12 +35,18 @@ class Snapper:
         lcd_every: Optional[float] = None,
     ):
         # konfiguracja
-        self._enabled = (os.getenv(enable_env, "0") == "1")
+        self._enabled = os.getenv(enable_env, "0") == "1"
         self.base = os.path.abspath(base_dir or os.getenv("SNAP_DIR", "./snapshots"))
         self._every = {
-            "cam":  float(os.getenv("SNAP_CAM_EVERY",  cam_every  if cam_every  is not None else 1.0) or 0),
-            "proc": float(os.getenv("SNAP_PROC_EVERY", proc_every if proc_every is not None else 1.0) or 0),
-            "lcd":  float(os.getenv("SNAP_LCD_EVERY",  lcd_every  if lcd_every  is not None else 1.0) or 0),
+            "cam": float(
+                os.getenv("SNAP_CAM_EVERY", cam_every if cam_every is not None else 1.0) or 0
+            ),
+            "proc": float(
+                os.getenv("SNAP_PROC_EVERY", proc_every if proc_every is not None else 1.0) or 0
+            ),
+            "lcd": float(
+                os.getenv("SNAP_LCD_EVERY", lcd_every if lcd_every is not None else 1.0) or 0
+            ),
             "lcd_fb": float(os.getenv("SNAP_FB_EVERY", 1.0) or 0),
         }
         self._last: Dict[str, float] = {}
@@ -50,8 +55,8 @@ class Snapper:
 
         # FB (opcjonalnie)
         self.fb_dev = os.getenv("SNAP_FB_DEV")  # np. /dev/fb1
-        self.fb_w   = int(os.getenv("SNAP_FB_W", "0") or 0)
-        self.fb_h   = int(os.getenv("SNAP_FB_H", "0") or 0)
+        self.fb_w = int(os.getenv("SNAP_FB_W", "0") or 0)
+        self.fb_h = int(os.getenv("SNAP_FB_H", "0") or 0)
         self.fb_bpp = 16  # najczęściej 16bpp (RGB565) na małych LCD
 
     # -- helpers -------------------------------------------------------------
@@ -151,7 +156,7 @@ class Snapper:
                 arr = np.frombuffer(data, dtype=np.uint16).reshape((h, w))
                 # rozpakowanie RGB565
                 r = ((arr >> 11) & 0x1F).astype(np.uint8)
-                g = ((arr >> 5)  & 0x3F).astype(np.uint8)
+                g = ((arr >> 5) & 0x3F).astype(np.uint8)
                 b = (arr & 0x1F).astype(np.uint8)
                 r = (r * 255 // 31).astype(np.uint8)
                 g = (g * 255 // 63).astype(np.uint8)
@@ -173,4 +178,3 @@ class Snapper:
             return self._save("lcd_fb", bgr)
         except Exception:
             return False
-

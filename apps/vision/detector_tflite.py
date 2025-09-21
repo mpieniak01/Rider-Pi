@@ -56,8 +56,12 @@ def sub_recv():
 
 
 # --- Parametry histerezy/debouncera ---
-P_ON_N = int(os.getenv("VISION_ON_CONSECUTIVE", "3"))  # ile kolejnych pozytywów, by uznać „present=true”
-P_OFF_TT = float(os.getenv("VISION_OFF_TTL_SEC", "2.0"))  # po ilu sekundach bez pozytywów uznać „present=false”
+P_ON_N = int(
+    os.getenv("VISION_ON_CONSECUTIVE", "3")
+)  # ile kolejnych pozytywów, by uznać „present=true”
+P_OFF_TT = float(
+    os.getenv("VISION_OFF_TTL_SEC", "2.0")
+)  # po ilu sekundach bez pozytywów uznać „present=false”
 MIN_SCORE = float(os.getenv("VISION_MIN_SCORE", "0.50"))  # minimalny próg score
 
 
@@ -108,7 +112,11 @@ def update_presence(evt: dict[str, Any]):
 
 
 def announce_state():
-    payload = {"present": STATE.present, "confidence": round(STATE.confidence, 3), "ts": time.time()}
+    payload = {
+        "present": STATE.present,
+        "confidence": round(STATE.confidence, 3),
+        "ts": time.time(),
+    }
     pub("vision.state", payload)
     # (opcjonalnie) sygnały do innych modułów:
     # pub("autonomy.perception", {"type":"presence", **payload})

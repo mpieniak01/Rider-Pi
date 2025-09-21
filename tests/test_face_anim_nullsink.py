@@ -34,7 +34,10 @@ def _clean_anim(monkeypatch):
     )
 
     # usuń pliki
-    for p in (getattr(fa, "OUT_LATEST", "/tmp/face_latest.png"), getattr(fa, "OUT_LEGACY", "/tmp/face_runtime.png")):
+    for p in (
+        getattr(fa, "OUT_LATEST", "/tmp/face_latest.png"),
+        getattr(fa, "OUT_LEGACY", "/tmp/face_runtime.png"),
+    ):
         try:
             if p and os.path.exists(p):
                 os.remove(p)

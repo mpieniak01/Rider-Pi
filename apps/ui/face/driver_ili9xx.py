@@ -63,7 +63,10 @@ def _iter_xgo_modules():
 def _score_class(cls) -> tuple[int, str]:
     n = cls.__name__.lower()
     raw = all(hasattr(cls, m) for m in ("SetWindows", "command", "spi_writebyte"))
-    pres = any(callable(getattr(cls, m, None)) for m in ("ShowImage", "show_image", "display", "put", "present"))
+    pres = any(
+        callable(getattr(cls, m, None))
+        for m in ("ShowImage", "show_image", "display", "put", "present")
+    )
     score = 0
     if raw:
         score += 6
@@ -106,7 +109,12 @@ def _find_presenter(dev) -> tuple[Any | None, Callable | None]:
 
 
 def _find_raw_iface(dev) -> tuple[Any | None, Callable | None, Callable | None, Callable | None]:
-    nodes = [dev, getattr(dev, "lcd", None), getattr(dev, "disp", None), getattr(dev, "display", None)]
+    nodes = [
+        dev,
+        getattr(dev, "lcd", None),
+        getattr(dev, "disp", None),
+        getattr(dev, "display", None),
+    ]
     for node in nodes:
         if node is None:
             continue
@@ -146,9 +154,13 @@ class LCDRenderer:
                     spi.mode = mode
             except Exception:
                 pass
-        print(f"disp={getattr(self.device, 'width', self.width)}x{getattr(self.device, 'height', self.height)}")
+        print(
+            f"disp={getattr(self.device, 'width', self.width)}x{getattr(self.device, 'height', self.height)}"
+        )
         if spi is not None:
-            print(f"[face] LCD: spi.hz={getattr(spi, 'max_speed_hz', hz)}  spi.mode={getattr(spi, 'mode', '-')}")
+            print(
+                f"[face] LCD: spi.hz={getattr(spi, 'max_speed_hz', hz)}  spi.mode={getattr(spi, 'mode', '-')}"
+            )
 
         # Backlight (BCM13 HIGH)
         try:
@@ -190,7 +202,9 @@ class LCDRenderer:
         # znajdź ścieżki
         self._present_obj, self._present = _find_presenter(self.device)
         self._raw_node, self._cmd, self._data, self._setw = _find_raw_iface(self.device)
-        print(f"[face] presenter={'+' if self._present else '-'}  raw={'+' if self._raw_node else '-'}")
+        print(
+            f"[face] presenter={'+' if self._present else '-'}  raw={'+' if self._raw_node else '-'}"
+        )
 
         # jeśli wymuszony RAW, wyłącz presenter
         self._force_raw = bool(int(os.getenv("FACE_FORCE_RAW", "0") or 0))
@@ -199,7 +213,9 @@ class LCDRenderer:
 
         # sanity: jeśli nie ma ani ShowImage ani RAW – nie ma sensu iść dalej
         if (self._present is None) and (self._raw_node is None):
-            raise RuntimeError("Brak ShowImage() i brak pełnego RAW (command/spi_writebyte/SetWindows) w xgoscreen.*")
+            raise RuntimeError(
+                "Brak ShowImage() i brak pełnego RAW (command/spi_writebyte/SetWindows) w xgoscreen.*"
+            )
 
     # --- rysowanie ---
     def ShowImage(self, img: Image.Image):
@@ -340,7 +356,7 @@ def _lcd_push_frame(self, w: int, h: int, buf: bytes):
 try:
     LCDRenderer  # type: ignore[name-defined]
     if not hasattr(LCDRenderer, "push_frame"):
-        setattr(LCDRenderer, "push_frame", _lcd_push_frame)
+        LCDRenderer.push_frame = _lcd_push_frame
 except NameError:
     pass
 
@@ -361,7 +377,7 @@ def _wrap_path_logger(obj):
             _last["ts"] = now
             return log_fn(path)
 
-    setattr(obj, "log_path", _throttled)
+    obj.log_path = _throttled
 
 
 # Spróbuj owinąć self (instancję) na końcu inicjalizacji sterownika
@@ -472,7 +488,7 @@ def _raw_install_push_rgb565_3(root):
             raise RuntimeError("No data path for raw push")
 
     # podłącz
-    setattr(low, "push_rgb565_3", _push_rgb565_3)
+    low.push_rgb565_3 = _push_rgb565_3
     return True
 
 
@@ -621,7 +637,7 @@ def _raw_push_rgb565_3(w: int, h: int, buf: bytes):
 try:
     LCDRenderer  # type: ignore
     low = getattr(LCDRenderer, "raw", None) or LCDRenderer
-    setattr(low, "push_rgb565_3", _raw_push_rgb565_3)
+    low.push_rgb565_3 = _raw_push_rgb565_3
 except Exception:
     pass
 # ===============================================================================
@@ -727,7 +743,12 @@ def _spi_setup():
     spi.max_speed_hz = _DEF_HZ
     spi.mode = _DEF_MODE
     spi.bits_per_word = 8
-    for attr, val in (("lsbfirst", False), ("cshigh", False), ("threewire", False), ("loop", False)):
+    for attr, val in (
+        ("lsbfirst", False),
+        ("cshigh", False),
+        ("threewire", False),
+        ("loop", False),
+    ):
         try:
             setattr(spi, attr, val)
         except Exception:
@@ -831,7 +852,12 @@ def _spi_setup():
     spi.max_speed_hz = _DEF_HZ
     spi.mode = _DEF_MODE
     spi.bits_per_word = 8
-    for attr, val in (("lsbfirst", False), ("cshigh", False), ("threewire", False), ("loop", False)):
+    for attr, val in (
+        ("lsbfirst", False),
+        ("cshigh", False),
+        ("threewire", False),
+        ("loop", False),
+    ):
         try:
             setattr(spi, attr, val)
         except Exception:
@@ -881,11 +907,11 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
 # Twarde nadpisanie push_frame na klasie sterownika:
 try:
     LCDRenderer  # type: ignore
-    setattr(LCDRenderer, "push_frame", _force_push_frame)
+    LCDRenderer.push_frame = _force_push_frame
     # jeśli jest sub-obiekt raw:
     low = getattr(LCDRenderer, "raw", None)
     if low is not None:
-        setattr(low, "push_frame", _force_push_frame)
+        low.push_frame = _force_push_frame
 except Exception as e:
     print("[force] patch push_frame failed:", e)
 
@@ -966,7 +992,12 @@ def _spi_setup():
     except Exception:
         pass
     # conservative flags
-    for attr, val in (("lsbfirst", False), ("cshigh", False), ("threewire", False), ("loop", False)):
+    for attr, val in (
+        ("lsbfirst", False),
+        ("cshigh", False),
+        ("threewire", False),
+        ("loop", False),
+    ):
         try:
             setattr(spi, attr, val)
         except Exception:
@@ -975,7 +1006,10 @@ def _spi_setup():
     if not _SPI_DBG_ONCE["done"]:
         try:
             bpw = getattr(spi, "bits_per_word", 8)
-            print(f"[spi] requested_hz={hz} actual_hz={spi.max_speed_hz} mode={spi.mode} bpw={bpw}", flush=True)
+            print(
+                f"[spi] requested_hz={hz} actual_hz={spi.max_speed_hz} mode={spi.mode} bpw={bpw}",
+                flush=True,
+            )
         except Exception:
             pass
         _SPI_DBG_ONCE["done"] = True
@@ -1025,10 +1059,10 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
 # attach override
 try:
     LCDRenderer  # type: ignore
-    setattr(LCDRenderer, "push_frame", _force_push_frame)
+    LCDRenderer.push_frame = _force_push_frame
     low = getattr(LCDRenderer, "raw", None)
     if low is not None:
-        setattr(low, "push_frame", _force_push_frame)
+        low.push_frame = _force_push_frame
 except Exception as e:
     print("[force] patch push_frame failed:", e)
 
@@ -1076,10 +1110,10 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
 # zbindowanie override (nawet jeśli już wcześniej łapaliśmy wyjątek)
 try:
     LCDRenderer  # type: ignore
-    setattr(LCDRenderer, "push_frame", _force_push_frame)
+    LCDRenderer.push_frame = _force_push_frame
     low = getattr(LCDRenderer, "raw", None)
     if low is not None:
-        setattr(low, "push_frame", _force_push_frame)
+        low.push_frame = _force_push_frame
 except Exception as e:
     print("[force] patch push_frame rebind failed:", e)
 
@@ -1148,10 +1182,10 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
 # ponowne zbindowanie na wszelki wypadek
 try:
     LCDRenderer  # type: ignore
-    setattr(LCDRenderer, "push_frame", _force_push_frame)
+    LCDRenderer.push_frame = _force_push_frame
     low = getattr(LCDRenderer, "raw", None)
     if low is not None:
-        setattr(low, "push_frame", _force_push_frame)
+        low.push_frame = _force_push_frame
 except Exception as e:
     print("[force] patch push_frame rebind failed:", e)
 # === OVERRIDE: prefer write/writebytes2; chunk fdwrite/xfer to avoid EMSGSIZE ==

@@ -73,7 +73,9 @@ def should_snap_now() -> bool:
 
 def apply_rotation(frame, rot, flip_h, flip_v):
     if rot in (90, 180, 270):
-        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[rot]
+        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[
+            rot
+        ]
         frame = cv2.rotate(frame, k)
     if flip_h:
         frame = cv2.flip(frame, 1)
@@ -143,7 +145,9 @@ def load_ssd():
     if not (os.path.isfile(proto) and os.path.isfile(model)):
         raise FileNotFoundError("Brak modeli SSD w models/ssd/")
     if os.path.getsize(model) < 5_000_000:
-        raise OSError(f"Uszkodzony/niepełny model Caffe (size={os.path.getsize(model)} B) – potrzebny ~23MB.")
+        raise OSError(
+            f"Uszkodzony/niepełny model Caffe (size={os.path.getsize(model)} B) – potrzebny ~23MB."
+        )
     return cv2.dnn.readNetFromCaffe(proto, model)
 
 
@@ -210,9 +214,11 @@ def save_raw_and_proc(raw_img, proc_img):
     if _SELECTED_EXT is None:
         _SELECTED_EXT = _select_ext(raw_img, proc_img)
         print(f"[snap] snapshot ext = {_SELECTED_EXT}", flush=True)
-    params = {".jpg": [int(cv2.IMWRITE_JPEG_QUALITY), 85], ".png": [int(cv2.IMWRITE_PNG_COMPRESSION), 3], ".bmp": []}[
-        _SELECTED_EXT
-    ]
+    params = {
+        ".jpg": [int(cv2.IMWRITE_JPEG_QUALITY), 85],
+        ".png": [int(cv2.IMWRITE_PNG_COMPRESSION), 3],
+        ".bmp": [],
+    }[_SELECTED_EXT]
     ext = _SELECTED_EXT
 
     # zakoduj w pamięci i zapisz atomowo
@@ -324,7 +330,11 @@ def main():
                 try:
                     PUB.publish(
                         "vision.person",
-                        {"present": True, "score": float(conf), "bbox": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)]},
+                        {
+                            "present": True,
+                            "score": float(conf),
+                            "bbox": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                        },
                         add_ts=True,
                     )
                 except Exception:
@@ -349,7 +359,10 @@ def main():
                         p = os.path.join(SNAP_DIR, f"{base}{ext}")
                         if os.path.exists(p):
                             s = os.path.getsize(p)
-                            print(f"[snap] {base}{ext} size={s}B @ {time.strftime('%H:%M:%S')}", flush=True)
+                            print(
+                                f"[snap] {base}{ext} size={s}B @ {time.strftime('%H:%M:%S')}",
+                                flush=True,
+                            )
                             break
             except Exception:
                 pass

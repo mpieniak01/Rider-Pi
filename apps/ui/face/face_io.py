@@ -21,7 +21,9 @@ def apply_rotate(img: Image.Image, deg: int) -> Image.Image:
     return img.rotate(-deg, expand=True)
 
 
-def fit_strategy(img: Image.Image, mode: Literal["fill", "fit", "stretch"], size=(240, 240)) -> Image.Image:
+def fit_strategy(
+    img: Image.Image, mode: Literal["fill", "fit", "stretch"], size=(240, 240)
+) -> Image.Image:
     if mode == "stretch":
         return img.resize(size)
     elif mode == "fit":

@@ -130,7 +130,9 @@ class XgoAdapter:
         if not self.ok():
             return None
         try:
-            v = getattr(self._dog, "rider_read_battery", None) or getattr(self._dog, "read_battery", None)
+            v = getattr(self._dog, "rider_read_battery", None) or getattr(
+                self._dog, "read_battery", None
+            )
             if callable(v):
                 raw = v()
                 try:
@@ -150,7 +152,9 @@ class XgoAdapter:
             return None
         try:
             r = getattr(self._dog, "rider_read_roll", None) or getattr(self._dog, "read_roll", None)
-            p = getattr(self._dog, "rider_read_pitch", None) or getattr(self._dog, "read_pitch", None)
+            p = getattr(self._dog, "rider_read_pitch", None) or getattr(
+                self._dog, "read_pitch", None
+            )
             y = getattr(self._dog, "rider_read_yaw", None) or getattr(self._dog, "read_yaw", None)
             if callable(r) and callable(p) and callable(y):
                 return {"roll": float(r()), "pitch": float(p()), "yaw": float(y())}
@@ -202,7 +206,9 @@ class XgoAdapter:
         step = int(round(_MIN_STEP + s * (_MAX_STEP - _MIN_STEP)))
         return max(_MIN_STEP, min(_MAX_STEP, step))
 
-    def drive(self, dir: str, speed: float, dur: float | None = None, *, block: bool = False) -> None:
+    def drive(
+        self, dir: str, speed: float, dur: float | None = None, *, block: bool = False
+    ) -> None:
         """
         Jazda liniowa (forward/backward).
         Używa impulsu (runtime), po którym domyślnie STOP (bez block=True).
@@ -222,10 +228,16 @@ class XgoAdapter:
         # Rider-spec → ogólne → bardzo ogólne
         if d == "forward":
             called = (
-                self._call("rider_move_x", +step, t) or self._call("move_x", +step, t) or self._call("forward", +step)
+                self._call("rider_move_x", +step, t)
+                or self._call("move_x", +step, t)
+                or self._call("forward", +step)
             )
         else:
-            called = self._call("rider_move_x", -step, t) or self._call("move_x", -step, t) or self._call("back", +step)
+            called = (
+                self._call("rider_move_x", -step, t)
+                or self._call("move_x", -step, t)
+                or self._call("back", +step)
+            )
 
         if called:
             if block and t > 0:
@@ -235,7 +247,13 @@ class XgoAdapter:
                 self.stop()
 
     def spin(
-        self, dir: str, speed: float, dur: float | None = None, deg: float | None = None, *, block: bool = False
+        self,
+        dir: str,
+        speed: float,
+        dur: float | None = None,
+        deg: float | None = None,
+        *,
+        block: bool = False,
     ) -> None:
         """
         Obrót w miejscu (left/right) — używa vendorowych metod turnleft/turnright,

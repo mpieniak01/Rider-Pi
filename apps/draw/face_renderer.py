@@ -6,7 +6,9 @@ import base64
 
 
 def render_face(*args, **kwargs):
-    raise NotImplementedError("render_face: funkcja nie jest już wspierana w nowej architekturze. Użyj FaceRenderer.")
+    raise NotImplementedError(
+        "render_face: funkcja nie jest już wspierana w nowej architekturze. Użyj FaceRenderer."
+    )
 
 
 def to_b64(png_bytes: bytes) -> str:

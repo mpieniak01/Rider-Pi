@@ -82,3 +82,10 @@ config/local/*
 # dev artifacts
 **/.ipynb_checkpoints/
 **/__pycache__/
+
+# backups
+*.bak
+
+# local artifacts
+packages-raspberrypi-*.txt
+apps/ui/untitled.py

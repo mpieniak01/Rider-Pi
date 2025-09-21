@@ -116,7 +116,11 @@ def main():
         try:
             if roll is not None and pitch is not None:
                 r, p = abs(float(roll)), abs(float(pitch))
-                pose = "upright" if (r < 20 and p < 20) else ("fallen?" if (r > 60 or p > 60) else "leaning")
+                pose = (
+                    "upright"
+                    if (r < 20 and p < 20)
+                    else ("fallen?" if (r > 60 or p > 60) else "leaning")
+                )
         except Exception:
             pass
 

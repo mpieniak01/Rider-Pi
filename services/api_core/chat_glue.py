@@ -32,7 +32,9 @@ def chat_history():
     # Pobierz historię z magazynu, jeżeli dostępny; w przeciwnym wypadku z fallbacku
     if chat_store and hasattr(chat_store, "history"):
         try:
-            items: list[dict[str, Any]] = list(chat_store.history())  # oczekiwane API: iterator/lista dictów
+            items: list[dict[str, Any]] = list(
+                chat_store.history()
+            )  # oczekiwane API: iterator/lista dictów
         except Exception:
             items = list(_HISTORY)
     else:
