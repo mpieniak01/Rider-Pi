@@ -1,0 +1,55 @@
+[meta]
+schema = "voice"
+version = 1
+
+[capture]
+backend = "alsa"
+device = "plughw:wm8960soundcard,0"
+sample_rate = 48000
+channels = 1
+frame_ms = 20
+buffer_seconds = 0.5
+
+[vad]
+enabled = true
+mode = 3
+frame_ms = 20
+tail_ms = 900
+max_len_ms = 8000
+energy_gate_dbfs = -48
+
+[hotword]
+enabled = false
+
+[asr]
+backend = "openai"
+model = "gpt-4o-mini-transcribe"
+language = "pl"
+
+[chat]
+backend = "openai"
+model = "gpt-4o-mini"
+system_prompt = "Mów wyłącznie po polsku. Odpowiadaj krótko i rzeczowo, styl neutralny."
+max_history = 4
+
+[tts]
+backend = "openai"
+model = "gpt-4o-mini-tts"
+voice = "alloy"
+format = "mp3"
+
+[playback]
+backend = "alsa"
+alsa_device = "plughw:wm8960soundcard,0"
+volume = 100
+
+[playback.ding]
+enabled = true
+
+[service]
+save_audio = true
+recordings_dir = "/tmp/voice-recs"
+history_size = 20
+
+[logging]
+level = "INFO"
