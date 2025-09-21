@@ -278,6 +278,18 @@ face-bench:
 	done
 	@echo "Tip: możesz nadpisać:  HZ_LIST=\"32000000 48000000\"  oraz SECS=6"
 
+
+face-neutral:
+	@bash tools/face_presets.sh neutral --secs 8 --stats
+
+face-happy:
+	@bash tools/face_presets.sh happy --secs 8 --stats
+
+face-sad:
+	@bash tools/face_presets.sh sad --secs 8 --stats
+
+
+
 # ───────────────────────────────────────────────
 # GFX / VNC
 .PHONY: x-on x-off vnc-virtual-on vnc-virtual-off gfx-status

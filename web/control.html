@@ -154,8 +154,16 @@
   const qs = (s)=>document.querySelector(s);
   const logEl = qs('#log');
   function appendLog(msg, cls=""){ const line=document.createElement('div'); if(cls) line.className=cls; line.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; logEl.appendChild(line); logEl.scrollTop=logEl.scrollHeight; }
-  window.addEventListener('error', e=> appendLog(`${t('events.log_js_err',{msg:e.message||e})}`, 'err'));
-  window.addEventListener('unhandledrejection', e=> appendLog(`${t('events.log_prom_err',{reason:e.reason||e})}`, 'err'));
+
+  // --- Opcjonalne logowanie błędów JS do panelu (domyślnie OFF). Włącz: ?debugjs=1
+  (() => {
+    const dbgParam = new URLSearchParams(location.search).get('debugjs');
+    const DEBUG_LOG_JS = (dbgParam === '1' || dbgParam === 'true');
+    if (DEBUG_LOG_JS) {
+      window.addEventListener('error', e=> appendLog(`${t('events.log_js_err',{msg:e.message||e})}`, 'err'));
+      window.addEventListener('unhandledrejection', e=> appendLog(`${t('events.log_prom_err',{reason:e.reason||e})}`, 'err'));
+    }
+  })();
 
   const LIN_V = 0.10, LIN_T = 0.10;
   const spinEl = qs('#speedSpin'), spinVal = qs('#speedSpinVal'), durSpinEl = qs('#durationSpin');
@@ -382,4 +390,5 @@
 </script>
 </body>
 </html>
+
 

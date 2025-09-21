@@ -65,3 +65,9 @@ tests/_audit_import.py
 
 # ignore Jupyter checkpoints
 **/.ipynb_checkpoints/
+
+# allow face tool
+!tools/newface_lcd_direct.py
+
+# allow face tool
+!tools/newface_lcd_direct.py
