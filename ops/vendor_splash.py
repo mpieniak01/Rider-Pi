@@ -26,7 +26,7 @@ d = ImageDraw.Draw(img)
 # 3 „kafelki” jak u producenta
 pad = 20
 third = (W - 4 * pad) // 3
-for i, x0 in enumerate([pad, pad + third + pad, pad + 2 * (third + pad)]):
+for _i, x0 in enumerate([pad, pad + third + pad, pad + 2 * (third + pad)]):
     d.rectangle([(x0, H - (H // 2)), (x0 + third, H - pad)], fill=(15, 21, 46))
 
 # Napisy

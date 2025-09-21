@@ -19,4 +19,10 @@ class PanelCfg:
         self.fit = fit
 
     def as_dict(self):
-        return dict(rotate=self.rotate, bgr=self.bgr, mx=self.mx, mv=self.mv, fit=self.fit)
+        return {
+            "rotate": self.rotate,
+            "bgr": self.bgr,
+            "mx": self.mx,
+            "mv": self.mv,
+            "fit": self.fit,
+        }

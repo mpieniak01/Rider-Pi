@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from .model import FaceState
 
@@ -23,7 +23,7 @@ def _ease(kind: str, t01: float) -> float:
 
 @dataclass
 class _Active:
-    spec: Dict[str, Any]
+    spec: dict[str, Any]
     t0: float
     t1: float
 
@@ -45,14 +45,14 @@ class Animator:
 
     def __init__(self):
         self.state = FaceState()
-        self._actives: List[_Active] = []
+        self._actives: list[_Active] = []
 
-    def start(self, spec: Dict[str, Any], prio: int = 10, mode: str = "blend") -> None:
+    def start(self, spec: dict[str, Any], prio: int = 10, mode: str = "blend") -> None:
         dur = float(spec.get("duration", 0.2))
         now = time.time()
         self._actives.append(_Active(spec=spec, t0=now, t1=now + dur))
 
-    def _apply_track_segment(self, path: str, seg: Dict[str, Any], now: float, t0: float) -> bool:
+    def _apply_track_segment(self, path: str, seg: dict[str, Any], now: float, t0: float) -> bool:
         s0, s1 = float(seg["t0"]), float(seg["t1"])
         t_abs0, t_abs1 = t0 + s0, t0 + s1
         if now < t_abs0 or now > t_abs1:
@@ -71,7 +71,7 @@ class Animator:
         setattr(node, parts[-1], v)
         return True
 
-    def _apply_track_final(self, path: str, segs: List[Dict[str, Any]]) -> None:
+    def _apply_track_final(self, path: str, segs: list[dict[str, Any]]) -> None:
         """Ustaw końcowe v1 ostatniego segmentu danego tracku."""
         if not segs:
             return
@@ -86,10 +86,10 @@ class Animator:
     def tick(self) -> FaceState:
         now = time.time()
 
-        still_active: List[_Active] = []
+        still_active: list[_Active] = []
         for a in self._actives:
             spec = a.spec
-            tracks: Dict[str, List[Dict[str, Any]]] = spec.get("tracks", {})
+            tracks: dict[str, list[dict[str, Any]]] = spec.get("tracks", {})
 
             if now >= a.t1:
                 # Animacja zakończona → „snap” do stanów końcowych wszystkich tracków

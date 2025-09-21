@@ -337,9 +337,7 @@ def ssd_load():
     if not os.path.isfile(model):
         raise FileNotFoundError(f"Brak caffemodel: {model}")
     if os.path.getsize(model) < 5_000_000:
-        raise OSError(
-            f"Uszkodzony/niepełny model Caffe (size={os.path.getsize(model)} B) – potrzebny ~23MB."
-        )
+        raise OSError(f"Uszkodzony/niepełny model Caffe (size={os.path.getsize(model)} B) – potrzebny ~23MB.")
     net = cv2.dnn.readNetFromCaffe(proto, model)
     return net
 
@@ -350,9 +348,7 @@ class TFLiteEffDet:
             from tflite_runtime.interpreter import Interpreter
         except Exception:
             from tensorflow.lite.python.interpreter import Interpreter  # type: ignore
-        self.interp = Interpreter(
-            model_path=path, num_threads=int(os.getenv("TFLITE_THREADS", "2"))
-        )
+        self.interp = Interpreter(model_path=path, num_threads=int(os.getenv("TFLITE_THREADS", "2")))
         self.interp.allocate_tensors()
         self.input_details = self.interp.get_input_details()
         self.output_details = self.interp.get_output_details()
@@ -385,20 +381,12 @@ class TFLiteEffDet:
             elif len(shp) == 2 and shp[1] == 1:
                 count = a
         for a in outs:
-            if (
-                a.dtype in (np.float32, np.float16)
-                and len(a.shape) == 2
-                and a.shape[1] in (10, 25, 100)
-            ):
+            if a.dtype in (np.float32, np.float16) and len(a.shape) == 2 and a.shape[1] in (10, 25, 100):
                 if scores is None:
                     scores = a
                 else:
                     scores = a if a.mean() > scores.mean() else scores
-            if (
-                a.dtype in (np.float32, np.int32, np.int64)
-                and len(a.shape) == 2
-                and a.shape[1] in (10, 25, 100)
-            ):
+            if a.dtype in (np.float32, np.int32, np.int64) and len(a.shape) == 2 and a.shape[1] in (10, 25, 100):
                 if classes is None:
                     classes = a
 
@@ -495,9 +483,7 @@ def main():
     if det_kind == "ssd":
         try:
             det = ssd_load()
-            print(
-                f"[det] SSD READY | classes={'ALL' if not ssd_filter else ','.join(sorted(ssd_filter))}"
-            )
+            print(f"[det] SSD READY | classes={'ALL' if not ssd_filter else ','.join(sorted(ssd_filter))}")
         except Exception as e:
             print(f"[det] SSD init FAILED: {e} → DETECTOR=none", flush=True)
             det_kind = "none"
@@ -547,9 +533,7 @@ def main():
                         face_cascade = None
                 if face_cascade is not None and (frames % FACE_EVERY == 0):
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = face_cascade.detectMultiScale(
-                        gray, scaleFactor=1.2, minNeighbors=3, minSize=(40, 40)
-                    )
+                    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=3, minSize=(40, 40))
                     for x, y, w, h in faces:
                         detections.append(("person", 0.90, (x, y, x + w, y + h)))
 
@@ -581,9 +565,7 @@ def main():
                         y2 = max(0, min(y2, h - 1))
                         if x2 <= x1 or y2 <= y1:
                             continue
-                        name = (
-                            CLASSES_SSD[cls_id] if 0 <= cls_id < len(CLASSES_SSD) else str(cls_id)
-                        )
+                        name = CLASSES_SSD[cls_id] if 0 <= cls_id < len(CLASSES_SSD) else str(cls_id)
                         lname = name.lower()
                         if ssd_filter and (lname not in ssd_filter):
                             continue
@@ -607,9 +589,7 @@ def main():
             if detections and (LCD_ok and not ENV_NO_DRAW):
                 draw_overlay(out, detections)
             if LCD_ok and not ENV_NO_DRAW and (frames % 10 == 0):
-                cv2.putText(
-                    out, f"{fps:.1f} fps", (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1
-                )
+                cv2.putText(out, f"{fps:.1f} fps", (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
             # Zapis last_frame + RAW snapshot — pierwsza klatka od razu, potem co SAVE_LAST_EVERY
             if frames == 0 or (frames % SAVE_LAST_EVERY == 0):
@@ -636,9 +616,7 @@ def main():
         # zgaś LCD po wyjściu (best-effort)
         if LCD_ok:
             try:
-                os.system(
-                    "sudo -n python3 ops/lcdctl.py off >/dev/null 2>&1 || sudo python3 ops/lcdctl.py off"
-                )
+                os.system("sudo -n python3 ops/lcdctl.py off >/dev/null 2>&1 || sudo python3 ops/lcdctl.py off")
             except Exception:
                 pass
 

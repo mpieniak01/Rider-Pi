@@ -58,9 +58,7 @@ def load_config(path: str | None = None) -> dict[str, str]:
         return {}
 
     if tomllib is None:
-        raise RuntimeError(
-            "Brak tomllib/tomli — zainstaluj: pip3 install tomli (dla Pythona < 3.11)."
-        )
+        raise RuntimeError("Brak tomllib/tomli — zainstaluj: pip3 install tomli (dla Pythona < 3.11).")
 
     with cfg_path.open("rb") as f:
         data = tomllib.load(f)

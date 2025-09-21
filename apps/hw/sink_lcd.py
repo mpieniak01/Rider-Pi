@@ -12,9 +12,7 @@ from PIL import Image  # noqa: E402
 
 
 class SinkLCD:
-    def __init__(
-        self, width=240, height=320, rotate=None, spi_hz=None, spi_dev=None, method="auto"
-    ):
+    def __init__(self, width=240, height=320, rotate=None, spi_hz=None, spi_dev=None, method="auto"):
         self.width = width
         self.height = height
         self.rotate = int(rotate) if rotate is not None else int(os.environ.get("LCD_ROTATE", 270))
@@ -37,7 +35,7 @@ class LcdNotAvailable(Exception):
             self._spi.open(bus, dev)
             self._spi.max_speed_hz = self.spi_hz
         except Exception as e:
-            raise LcdNotAvailable(f"SPI init fail: {e}")
+            raise LcdNotAvailable(f"SPI init fail: {e}") from e
 
     def push_auto(self, img: Image.Image):
         """

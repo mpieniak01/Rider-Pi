@@ -205,9 +205,7 @@ def bus_sub_loop():
                     try:
                         data = json.loads(payload) if payload else {}
                         C.LAST_STATE["present"] = bool(data.get("present", C.LAST_STATE["present"]))
-                        C.LAST_STATE["confidence"] = float(
-                            data.get("confidence", C.LAST_STATE["confidence"])
-                        )
+                        C.LAST_STATE["confidence"] = float(data.get("confidence", C.LAST_STATE["confidence"]))
                         if "mode" in data:
                             C.LAST_STATE["mode"] = data.get("mode")
                         C.LAST_STATE["ts"] = float(data.get("ts", C.LAST_MSG_TS))

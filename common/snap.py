@@ -19,7 +19,6 @@ from __future__ import annotations
 #   <SNAP_DIR>/lcd_fb.jpg      (tylko gdy jest framebuffer)
 import os
 import time
-from typing import Dict, Optional
 
 import cv2
 import numpy as np
@@ -28,28 +27,22 @@ import numpy as np
 class Snapper:
     def __init__(
         self,
-        base_dir: Optional[str] = None,
+        base_dir: str | None = None,
         enable_env: str = "SNAPSHOT_ENABLE",
-        cam_every: Optional[float] = None,
-        proc_every: Optional[float] = None,
-        lcd_every: Optional[float] = None,
+        cam_every: float | None = None,
+        proc_every: float | None = None,
+        lcd_every: float | None = None,
     ):
         # konfiguracja
         self._enabled = os.getenv(enable_env, "0") == "1"
         self.base = os.path.abspath(base_dir or os.getenv("SNAP_DIR", "./snapshots"))
         self._every = {
-            "cam": float(
-                os.getenv("SNAP_CAM_EVERY", cam_every if cam_every is not None else 1.0) or 0
-            ),
-            "proc": float(
-                os.getenv("SNAP_PROC_EVERY", proc_every if proc_every is not None else 1.0) or 0
-            ),
-            "lcd": float(
-                os.getenv("SNAP_LCD_EVERY", lcd_every if lcd_every is not None else 1.0) or 0
-            ),
+            "cam": float(os.getenv("SNAP_CAM_EVERY", cam_every if cam_every is not None else 1.0) or 0),
+            "proc": float(os.getenv("SNAP_PROC_EVERY", proc_every if proc_every is not None else 1.0) or 0),
+            "lcd": float(os.getenv("SNAP_LCD_EVERY", lcd_every if lcd_every is not None else 1.0) or 0),
             "lcd_fb": float(os.getenv("SNAP_FB_EVERY", 1.0) or 0),
         }
-        self._last: Dict[str, float] = {}
+        self._last: dict[str, float] = {}
         if self._enabled:
             os.makedirs(self.base, exist_ok=True)
 
@@ -74,7 +67,7 @@ class Snapper:
             return True
         return False
 
-    def _save(self, tag: str, bgr: np.ndarray, fname: Optional[str] = None) -> bool:
+    def _save(self, tag: str, bgr: np.ndarray, fname: str | None = None) -> bool:
         try:
             if bgr is None or bgr.size == 0:
                 return False

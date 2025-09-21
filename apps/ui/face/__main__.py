@@ -171,7 +171,10 @@ def main():
     n = 0
     last_sink = ""
     print(
-        f"[face] backend={backend} fb={fbdev} size={size} fb_size={fb_w}x{fb_h} rotate={rotate} expr={expr} use_api={use_api}"
+        (
+            f"[face] backend={backend} fb={fbdev} size={size} "
+            f"fb_size={fb_w}x{fb_h} rotate={rotate} expr={expr} use_api={use_api}",
+        ),
     )
     while running:
         # 1) render buźki

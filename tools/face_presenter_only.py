@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import argparse
 import importlib
 import os
@@ -69,7 +70,7 @@ def get_face_frame(expr: str, size):
     # spróbuj Twojego kontrolera; jeśli go brak – użyj planszy
     try:
         m = importlib.import_module("apps.ui.face_legacy")
-        FC = getattr(m, "FaceController")
+        FC = m.FaceController
         fc = FC(expr=expr)
         img = fc.frame_image().convert("RGB")
         return img.resize(size)
@@ -123,9 +124,7 @@ def main():
         if dt > 0:
             time.sleep(dt)
 
-    print(
-        f"[presenter] frames={frames} time={time.time() - t0:.2f}s fps~{frames / max(0.001, (time.time() - t0)):.2f} W={W} H={H} hz={hz} mode={mode}"
-    )
+    print(print(f"fps~{frames / max(0.001, (time.time() - t0)):.2f} W={W} H={H} ", f"hz={hz} mode={mode}"))
 
 
 if __name__ == "__main__":

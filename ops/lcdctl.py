@@ -170,7 +170,9 @@ def do_status(args) -> int:
             val = GPIO.input(args.bl)
             logical_on = (val == GPIO.HIGH) if args.bl_ah else (val == GPIO.LOW)
             print(
-                f"[lcdctl] BL GPIO BCM{args.bl}: phys={'HIGH' if val else 'LOW'} active_high={args.bl_ah} → {'ON' if logical_on else 'OFF'}"
+                print(
+                    f"BL pin {args.bl_pin}: value={val} ", f"active_high={args.bl_ah} → {'ON' if logical_on else 'OFF'}"
+                )
             )
         except Exception as e:
             print(f"[lcdctl] WARN: cannot read BL GPIO state: {e}")
@@ -185,9 +187,7 @@ def _parse() -> argparse.Namespace:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def add_common(sp):
-        sp.add_argument(
-            "--bl", type=int, default=DEF_BL_PIN, help=f"BL GPIO (default {DEF_BL_PIN}, -1 to skip)"
-        )
+        sp.add_argument("--bl", type=int, default=DEF_BL_PIN, help=f"BL GPIO (default {DEF_BL_PIN}, -1 to skip)")
         sp.add_argument(
             "--bl-ah",
             dest="bl_ah",
@@ -196,9 +196,7 @@ def _parse() -> argparse.Namespace:
             default=DEF_BL_AH,
             help=f"BL active-high? 1/0 (default {DEF_BL_AH})",
         )
-        sp.add_argument(
-            "--dc", type=int, default=DEF_DC_PIN, help=f"DC GPIO (default {DEF_DC_PIN}, -1 to skip)"
-        )
+        sp.add_argument("--dc", type=int, default=DEF_DC_PIN, help=f"DC GPIO (default {DEF_DC_PIN}, -1 to skip)")
         sp.add_argument(
             "--rst",
             type=int,

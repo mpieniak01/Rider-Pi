@@ -45,9 +45,7 @@ CLASSES = [
 
 def apply_rotation(frame):
     if ROT in (90, 180, 270):
-        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[
-            ROT
-        ]
+        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[ROT]
         frame = cv2.rotate(frame, k)
     if FLIP_H:
         frame = cv2.flip(frame, 1)
@@ -117,9 +115,7 @@ def atomic_write(path, img, quality_jpg=85, compression_png=3):
 def main():
     SCORE = float(os.getenv("SSD_SCORE", "0.45"))
     EVERY = int(os.getenv("SSD_EVERY", "1"))
-    CLW = set(
-        [x.strip().lower() for x in os.getenv("SSD_CLASSES", "person").split(",") if x.strip()]
-    )
+    CLW = {x.strip().lower() for x in os.getenv("SSD_CLASSES", "person").split(",") if x.strip()}
 
     read, _ = open_camera()
     net = load_ssd()

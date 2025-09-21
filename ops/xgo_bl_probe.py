@@ -4,8 +4,7 @@ from __future__ import annotations
 try:
     import xgoscreen.LCD_2inch as LCD_2inch
 except Exception as e:
-    print("Import fail:", e)
-    raise SystemExit(1)
+    raise SystemExit(f"Import fail: {e}") from e
 
 lcd = LCD_2inch.LCD_2inch()
 lcd.Init()

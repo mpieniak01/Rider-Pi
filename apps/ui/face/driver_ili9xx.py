@@ -63,10 +63,7 @@ def _iter_xgo_modules():
 def _score_class(cls) -> tuple[int, str]:
     n = cls.__name__.lower()
     raw = all(hasattr(cls, m) for m in ("SetWindows", "command", "spi_writebyte"))
-    pres = any(
-        callable(getattr(cls, m, None))
-        for m in ("ShowImage", "show_image", "display", "put", "present")
-    )
+    pres = any(callable(getattr(cls, m, None)) for m in ("ShowImage", "show_image", "display", "put", "present"))
     score = 0
     if raw:
         score += 6
@@ -90,7 +87,9 @@ def _pick_device_class():
         raise RuntimeError(f"xgoscreen niezaładowany: {_XGO_ERR}")
     cands = []
     for m in _iter_xgo_modules():
-        for name, obj in vars(m).items():
+        _ = None
+        for _, obj in vars(m).items():
+            _ = getattr(obj, "__name__", str(obj))
             if inspect.isclass(obj) and obj.__module__ == m.__name__:
                 cands.append(obj)
     if not cands:
@@ -154,13 +153,9 @@ class LCDRenderer:
                     spi.mode = mode
             except Exception:
                 pass
-        print(
-            f"disp={getattr(self.device, 'width', self.width)}x{getattr(self.device, 'height', self.height)}"
-        )
+        print(f"disp={getattr(self.device, 'width', self.width)}x{getattr(self.device, 'height', self.height)}")
         if spi is not None:
-            print(
-                f"[face] LCD: spi.hz={getattr(spi, 'max_speed_hz', hz)}  spi.mode={getattr(spi, 'mode', '-')}"
-            )
+            print(f"[face] LCD: spi.hz={getattr(spi, 'max_speed_hz', hz)}  spi.mode={getattr(spi, 'mode', '-')}")
 
         # Backlight (BCM13 HIGH)
         try:
@@ -202,9 +197,7 @@ class LCDRenderer:
         # znajdź ścieżki
         self._present_obj, self._present = _find_presenter(self.device)
         self._raw_node, self._cmd, self._data, self._setw = _find_raw_iface(self.device)
-        print(
-            f"[face] presenter={'+' if self._present else '-'}  raw={'+' if self._raw_node else '-'}"
-        )
+        print(f"[face] presenter={'+' if self._present else '-'}  raw={'+' if self._raw_node else '-'}")
 
         # jeśli wymuszony RAW, wyłącz presenter
         self._force_raw = bool(int(os.getenv("FACE_FORCE_RAW", "0") or 0))
@@ -213,9 +206,7 @@ class LCDRenderer:
 
         # sanity: jeśli nie ma ani ShowImage ani RAW – nie ma sensu iść dalej
         if (self._present is None) and (self._raw_node is None):
-            raise RuntimeError(
-                "Brak ShowImage() i brak pełnego RAW (command/spi_writebyte/SetWindows) w xgoscreen.*"
-            )
+            raise RuntimeError("Brak ShowImage() i brak pełnego RAW (command/spi_writebyte/SetWindows) w xgoscreen.*")
 
     # --- rysowanie ---
     def ShowImage(self, img: Image.Image):
@@ -354,7 +345,7 @@ def _lcd_push_frame(self, w: int, h: int, buf: bytes):
 
 # Podłącz metodę do klasy (jeśli nie istnieje)
 try:
-    LCDRenderer  # type: ignore[name-defined]
+    _ = LCDRenderer
     if not hasattr(LCDRenderer, "push_frame"):
         LCDRenderer.push_frame = _lcd_push_frame
 except NameError:
@@ -617,7 +608,7 @@ def _data(bs: bytes):
 # ============================================================================
 # ==== Rider-Pi: cache CASET/RASET (window) to avoid per-frame overhead =========
 try:
-    _RAW_STATE
+    _ = _RAW_STATE
 except NameError:
     _RAW_STATE = {"win": None}
 
@@ -635,7 +626,7 @@ def _raw_push_rgb565_3(w: int, h: int, buf: bytes):
 
 # re-attach in case earlier defined version exists
 try:
-    LCDRenderer  # type: ignore
+    _ = LCDRenderer
     low = getattr(LCDRenderer, "raw", None) or LCDRenderer
     low.push_rgb565_3 = _raw_push_rgb565_3
 except Exception:
@@ -701,7 +692,7 @@ def _spi_best_writer(spi):
 
 # pokaż raz, którą ścieżkę wybrano
 try:
-    _RAW_DBG_SHOWN
+    _ = _RAW_DBG_SHOWN
 except NameError:
     _RAW_DBG_SHOWN = {"done": False}
 
@@ -726,7 +717,7 @@ def _data(bs: bytes):
 # ==============================================================================
 # ==== DIAG: pokaż realny max_speed_hz i ścieżkę wysyłki raz ===================
 try:
-    _SPI_DBG_ONCE
+    _ = _SPI_DBG_ONCE
 except NameError:
     _SPI_DBG_ONCE = {"done": False}
 
@@ -766,7 +757,7 @@ def _spi_setup():
 
 
 try:
-    _RAW_DBG_ONCE
+    _ = _RAW_DBG_ONCE
 except NameError:
     _RAW_DBG_ONCE = {"done": False}
 
@@ -810,11 +801,11 @@ def _data(bs: bytes):
 # ==== Rider-Pi RAW fastpath: force push_frame → RAMWR + _data (one-shot) ======
 # Jednorazowe logi diagnostyczne:
 try:
-    _SPI_DBG_ONCE
+    _ = _SPI_DBG_ONCE
 except NameError:
     _SPI_DBG_ONCE = {"done": False}
 try:
-    _RAW_DBG_ONCE
+    _ = _RAW_DBG_ONCE
 except NameError:
     _RAW_DBG_ONCE = {"done": False}
 
@@ -890,7 +881,7 @@ def _data(bs: bytes):
 
 # cache okna (CASET/RASET tylko jeśli zmiana rozmiaru)
 try:
-    _RAW_STATE
+    _ = _RAW_STATE
 except NameError:
     _RAW_STATE = {"win": None}
 
@@ -906,7 +897,7 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
 
 # Twarde nadpisanie push_frame na klasie sterownika:
 try:
-    LCDRenderer  # type: ignore
+    _ = LCDRenderer
     LCDRenderer.push_frame = _force_push_frame
     # jeśli jest sub-obiekt raw:
     low = getattr(LCDRenderer, "raw", None)
@@ -945,11 +936,11 @@ def _spi_params():
 
 # one-time debug toggles
 try:
-    _SPI_DBG_ONCE
+    _ = _SPI_DBG_ONCE
 except NameError:
     _SPI_DBG_ONCE = {"done": False}
 try:
-    _RAW_DBG_ONCE
+    _ = _RAW_DBG_ONCE
 except NameError:
     _RAW_DBG_ONCE = {"done": False}
 
@@ -1042,7 +1033,7 @@ def _data(bs: bytes):
 
 # cache window (set once per WxH)
 try:
-    _RAW_STATE
+    _ = _RAW_STATE
 except NameError:
     _RAW_STATE = {"win": None}
 
@@ -1058,7 +1049,7 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
 
 # attach override
 try:
-    LCDRenderer  # type: ignore
+    _ = LCDRenderer
     LCDRenderer.push_frame = _force_push_frame
     low = getattr(LCDRenderer, "raw", None)
     if low is not None:
@@ -1098,7 +1089,7 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
     _spi_setup()
     global _RAW_STATE
     try:
-        _RAW_STATE
+        _ = _RAW_STATE
     except NameError:
         _RAW_STATE = {"win": None}
     if _RAW_STATE.get("win") != (w, h):
@@ -1109,7 +1100,7 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
 
 # zbindowanie override (nawet jeśli już wcześniej łapaliśmy wyjątek)
 try:
-    LCDRenderer  # type: ignore
+    _ = LCDRenderer
     LCDRenderer.push_frame = _force_push_frame
     low = getattr(LCDRenderer, "raw", None)
     if low is not None:
@@ -1170,7 +1161,7 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
     _spi_setup()
     global _RAW_STATE
     try:
-        _RAW_STATE
+        _ = _RAW_STATE
     except NameError:
         _RAW_STATE = {"win": None}
     if _RAW_STATE.get("win") != (w, h):
@@ -1181,7 +1172,7 @@ def _force_push_frame(self, w: int, h: int, buf: bytes):
 
 # ponowne zbindowanie na wszelki wypadek
 try:
-    LCDRenderer  # type: ignore
+    _ = LCDRenderer
     LCDRenderer.push_frame = _force_push_frame
     low = getattr(LCDRenderer, "raw", None)
     if low is not None:
@@ -1191,7 +1182,7 @@ except Exception as e:
 # === OVERRIDE: prefer write/writebytes2; chunk fdwrite/xfer to avoid EMSGSIZE ==
 
 try:
-    _SPI_CHUNK
+    _ = _SPI_CHUNK
 except NameError:
     _SPI_CHUNK = 32768  # konserwatywnie
 

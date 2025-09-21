@@ -537,9 +537,7 @@ def show_live_pygame():
 
 
 def main():
-    _log(
-        f"start uid={os.getuid()} user={os.getenv('USER')} WAIT_IP={WAIT_IP} WAIT_BATT={WAIT_BATT}"
-    )
+    _log(f"start uid={os.getuid()} user={os.getenv('USER')} WAIT_IP={WAIT_IP} WAIT_BATT={WAIT_BATT}")
     png_im = draw_splash_with(gather_info(), WIDTH, HEIGHT)
     maybe_rotate(png_im).save(OUT_IMG)
 

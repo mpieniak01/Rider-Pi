@@ -1,5 +1,14 @@
-#!/usr/bin/env python3
 from __future__ import annotations
+
+import argparse
+import struct
+import threading
+import time
+
+import serial
+
+#!/usr/bin/env python3
+
 """
 XGOClientRO — lekka biblioteka 'read-only' do odczytu sensorów XGO.
 - Zero komend ruchu (bezpieczna dla robota)
@@ -7,11 +16,6 @@ XGOClientRO — lekka biblioteka 'read-only' do odczytu sensorów XGO.
 - Testowy CLI: --port /dev/ttyAMA0 --loop --verbose
 """
 
-import struct
-import threading
-import time
-
-import serial
 
 # Adresy rejestrów (jak w xgolib)
 ADDR = {
@@ -56,7 +60,13 @@ def _byte2short_be(raw2: bytes) -> int:
 
 
 class XGOClientRO:
-    def __init__(self, port: str = "/dev/ttyAMA0", baud: int = 115200, timeout: float = 0.6, verbose: bool = False):
+    def __init__(
+        self,
+        port: str = "/dev/ttyAMA0",
+        baud: int = 115200,
+        timeout: float = 0.6,
+        verbose: bool = False,
+    ):
         self._ser = serial.Serial(port, baud, timeout=timeout)
         self._lock = threading.Lock()
         self.verbose = verbose
@@ -206,8 +216,6 @@ class XGOClientRO:
 
 # ----- tryb CLI/testowy -----
 if __name__ == "__main__":
-    import argparse
-
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", default="/dev/ttyAMA0")
     ap.add_argument("--baud", type=int, default=115200)

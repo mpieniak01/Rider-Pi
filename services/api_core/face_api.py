@@ -210,9 +210,7 @@ def render_face(payload: dict[str, Any]) -> dict[str, Any]:
                 # Importujemy local tool do LCD:
                 from tools import newface_lcd_direct as nfd  # type: ignore
 
-                lcd = nfd.LCDDirect(
-                    rotate=rot, size=size, spi_hz=spi_hz, bl_pin=bl_pin, force=force
-                )
+                lcd = nfd.LCDDirect(rotate=rot, size=size, spi_hz=spi_hz, bl_pin=bl_pin, force=force)
                 used = lcd.push(img)
                 # sprzątanie, jeśli sterownik ma metody kończące — robione wewnątrz toola
                 return {"ok": True, "used": used}
@@ -238,9 +236,7 @@ def render(**kwargs) -> dict[str, Any]:
     return render_face(dict(kwargs))
 
 
-def draw_face(
-    payload_or_expr=None, backend="png", out=None, **kwargs
-) -> tuple[dict[str, Any], int]:
+def draw_face(payload_or_expr=None, backend="png", out=None, **kwargs) -> tuple[dict[str, Any], int]:
     """
     Kompatybilność dla starego kodu wołającego face_api.draw_face(...).
     Przyjmuje:

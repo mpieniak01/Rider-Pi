@@ -17,9 +17,7 @@ _MIME = {
     ".png": "image/png",
     ".bmp": "image/bmp",
 }
-SNAP_MAX_AGE_S = int(
-    os.getenv("SNAP_MAX_AGE_S", "20")
-)  # po ilu sekundach uznać klatkę za przeterminowaną
+SNAP_MAX_AGE_S = int(os.getenv("SNAP_MAX_AGE_S", "20"))  # po ilu sekundach uznać klatkę za przeterminowaną
 
 # Upewnij się, że porównujemy ścieżki absolutne
 _SNAP_DIR_ABS = os.path.abspath(C.SNAP_DIR)

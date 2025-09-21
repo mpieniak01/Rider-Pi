@@ -62,9 +62,7 @@ def main():
             lines = []
             m = state.get("motion", {})
             v = state.get("vision", {})
-            lines.append(
-                f"MOTION: en={m.get('enabled')} estop={m.get('estop')} stopped={m.get('stopped')}"
-            )
+            lines.append(f"MOTION: en={m.get('enabled')} estop={m.get('estop')} stopped={m.get('stopped')}")
             out = m.get("output", {})
             lines.append(f"OUT: lx={out.get('lx', 0):.2f} az={out.get('az', 0):.2f}")
             lines.append(f"WD: {m.get('last_cmd_age_ms', 0)}ms / {m.get('watchdog_ms', 0)}ms")

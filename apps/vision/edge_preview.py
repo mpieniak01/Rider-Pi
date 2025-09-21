@@ -148,9 +148,7 @@ while running:
                         from picamera2 import Picamera2
 
                         picam = Picamera2()
-                        cfg = picam.create_preview_configuration(
-                            main={"size": (FRAME_W, FRAME_H), "format": "RGB888"}
-                        )
+                        cfg = picam.create_preview_configuration(main={"size": (FRAME_W, FRAME_H), "format": "RGB888"})
                         picam.configure(cfg)
                         picam.start()
                     except Exception:
@@ -185,9 +183,7 @@ while running:
     # dla dashboardu
     _ = save_jpeg(LAST, raw_bgr, quality=80)
 
-    print(
-        f"[snap] raw.jpg={raw_len}B proc.jpg={proc_len}B @ {time.strftime('%H:%M:%S')}", flush=True
-    )
+    print(f"[snap] raw.jpg={raw_len}B proc.jpg={proc_len}B @ {time.strftime('%H:%M:%S')}", flush=True)
 
     next_t += period
     delay = next_t - time.time()

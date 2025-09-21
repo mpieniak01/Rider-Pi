@@ -78,7 +78,7 @@ def _make_sink() -> FaceSink:
 
             return SinkLCD()
         except Exception as e:  # brak HW/drivera
-            raise LcdNotAvailable(f"LCD sink not available: {e}")
+            raise LcdNotAvailable(f"LCD sink not available: {e}") from e
     else:
         return NullSink()
 

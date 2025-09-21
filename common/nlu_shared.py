@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import re
+
 """
 common/nlu_shared.py — wspólne funkcje NLU:
 - norm()                 — normalizacja tekstu (lower, bez polskich znaków, proste literówki)
@@ -9,7 +11,6 @@ common/nlu_shared.py — wspólne funkcje NLU:
 - confirm_text()         — krótka odpowiedź głosowa dla ruchu
 """
 
-import re
 
 ACCENT_MAP = str.maketrans("ąćęłńóśźż", "acelnoszz")
 

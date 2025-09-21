@@ -110,17 +110,13 @@ class VoiceService:
 
         # Kolejka mówienia
         self._speech_queue: queue.Queue[SpeechTask | None] = queue.Queue()
-        self._speech_thread = threading.Thread(
-            target=self._speech_worker, name="voice-speech", daemon=True
-        )
+        self._speech_thread = threading.Thread(target=self._speech_worker, name="voice-speech", daemon=True)
         self._speech_thread.start()
 
         # Subskrybent tts.speak
         self._bus_thread: threading.Thread | None = None
         if self._bus_sub is not None:
-            self._bus_thread = threading.Thread(
-                target=self._tts_speak_loop, name="voice-tts-sub", daemon=True
-            )
+            self._bus_thread = threading.Thread(target=self._tts_speak_loop, name="voice-tts-sub", daemon=True)
             self._bus_thread.start()
 
         self._threads = [t for t in (self._speech_thread, self._bus_thread) if t is not None]
@@ -160,12 +156,7 @@ class VoiceService:
     def _publish_transcript(self, transcript: Transcript) -> None:
         if not self._bus_pub:
             return
-        lang = (
-            transcript.language
-            or self._asr_cfg.language
-            or getattr(self._asr_cfg, "lang", None)
-            or "pl"
-        )
+        lang = transcript.language or self._asr_cfg.language or getattr(self._asr_cfg, "lang", None) or "pl"
         payload = {"text": transcript.text, "lang": lang}
         try:
             self._bus_pub.publish("audio.transcript", payload, add_ts=True)
@@ -183,9 +174,7 @@ class VoiceService:
     # ─────────────────────────────────────────────
     # Kolejka mówienia
 
-    def _request_speech(
-        self, text: str, *, source: str, accumulate: bool
-    ) -> TTSStreamResult | None:
+    def _request_speech(self, text: str, *, source: str, accumulate: bool) -> TTSStreamResult | None:
         if not text.strip():
             return None
         task = SpeechTask(text=text.strip(), source=source, accumulate=accumulate)
@@ -310,9 +299,7 @@ class VoiceService:
             bytes_per_sample = 2  # 16-bit
             expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample
             if len(audio) < expected_min:
-                self.logger.warning(
-                    "service.asr.skip_too_short", bytes=len(audio), threshold=expected_min
-                )
+                self.logger.warning("service.asr.skip_too_short", bytes=len(audio), threshold=expected_min)
                 self._publish_ui_state("idle")
                 raise RuntimeError("No audio (too short)")
 
@@ -441,9 +428,7 @@ class VoiceService:
             return b""
         if proc.returncode != 0:
             stderr = proc.stderr.decode("utf-8", "ignore").strip()
-            self.logger.error(
-                "service.capture.arecord_failed", returncode=proc.returncode, stderr=stderr
-            )
+            self.logger.error("service.capture.arecord_failed", returncode=proc.returncode, stderr=stderr)
             return b""
         raw = proc.stdout or b""
         if not raw:
@@ -452,9 +437,7 @@ class VoiceService:
         frames = self._frames_from_pcm(raw, self._capture_cfg.frame_bytes)
         trimmed = collect(frames, self._vad, self._max_len)
         if trimmed:
-            self.logger.event(
-                "service.capture.fallback.success", backend="arecord", bytes=len(trimmed)
-            )
+            self.logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
             return trimmed
         self.logger.warning("service.capture.fallback.no_vad")
         return raw

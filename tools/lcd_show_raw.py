@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import importlib
 import os
 import sys
@@ -57,7 +58,16 @@ if src is None:
     src = Image.new("RGB", (W, H))
     dr = ImageDraw.Draw(src)
     for i, c in enumerate(
-        [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255), (255, 255, 255), (0, 0, 0)]
+        [
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+            (0, 255, 255),
+            (255, 0, 255),
+            (255, 255, 255),
+            (0, 0, 0),
+        ]
     ):
         dr.rectangle([0, i * H // 8, W, (i + 1) * H // 8 - 1], fill=c)
     dr.text((5, 5), "RAW TEST", fill=(0, 0, 0))

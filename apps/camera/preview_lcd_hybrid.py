@@ -249,14 +249,10 @@ def main():
             roi = out[y0:y1, x0:x1]
             if roi.size > 0:
                 gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                faces = haar.detectMultiScale(
-                    gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20)
-                )
+                faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
                 if not NO_DRAW:
                     for fx, fy, fw, fh in faces:
-                        cv2.rectangle(
-                            out, (x0 + fx, y0 + fy), (x0 + fx + fw, y0 + fy + fh), (0, 255, 0), 2
-                        )
+                        cv2.rectangle(out, (x0 + fx, y0 + fy), (x0 + fx + fw, y0 + fy + fh), (0, 255, 0), 2)
                 if len(faces) > 0:
                     pub(
                         "vision.face",

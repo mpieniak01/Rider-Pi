@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import os
 import random
-from typing import Any, Dict
+from typing import Any
 
 
 # Easingi – lekkie jak w legacy
@@ -37,7 +37,7 @@ def _seg(start: float, end: float, v0: float, v1: float, easing: str = "lin"):
 # ====== GESTURES API ======
 
 
-def blink(duration: float = None, hold: float = None, max_close: float = 1.0) -> Dict[str, Any]:
+def blink(duration: float = None, hold: float = None, max_close: float = 1.0) -> dict[str, Any]:
     """Mrugnięcie: szybkie zamknięcie → krótki hold → płynne otwarcie.
     max_close w [0..1]: 1.0 = pełne zamknięcie, 0.6 = pół-mrugnięcie."""
     import os
@@ -65,7 +65,7 @@ def blink(duration: float = None, hold: float = None, max_close: float = 1.0) ->
     return {"duration": close_t + hold + open_t, "tracks": tracks, "name": "blink"}
 
 
-def look(t: float = None, amp: float = None, jitter: float = None) -> Dict[str, Any]:
+def look(t: float = None, amp: float = None, jitter: float = None) -> dict[str, Any]:
     """Sakkada źrenic: szybki skok, overshoot, tłumienie + mikro-jitter."""
     t = float(os.getenv("FACE_GESTURE_LOOK_T", str(t if t else 0.55)))
     amp = float(os.getenv("FACE_GESTURE_LOOK_AMP", str(amp if amp else 0.45)))

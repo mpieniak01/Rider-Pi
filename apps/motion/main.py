@@ -35,9 +35,7 @@ RAMP_AZ = float(os.getenv("MOTION_RAMP_AZ", "2.0"))
 EPS = float(os.getenv("MOTION_EPS", "0.01"))
 
 # impulsy (s)
-IMPULSE_DRIVE = float(
-    os.getenv("MOTION_DRIVE_IMPULSE_SEC", os.getenv("MOTION_IMPULSE_SEC", "0.15"))
-)
+IMPULSE_DRIVE = float(os.getenv("MOTION_DRIVE_IMPULSE_SEC", os.getenv("MOTION_IMPULSE_SEC", "0.15")))
 IMPULSE_YAW = float(os.getenv("MOTION_YAW_IMPULSE_SEC", "0.18"))
 
 # telemetria

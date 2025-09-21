@@ -61,10 +61,15 @@ def _build_lcd(fr, drv_rotate, prefer=None):
                 cfg = FC()
             except TypeError:
                 cfg = object.__new__(FC)
-            for n, v in dict(lcd_do_init=True, lcd_rotate=drv_rotate, lcd_spi_hz=spi_hz, lcd_bl_pin=bl_pin).items():
-                if any(f.name == n for f in dataclasses.fields(FC)):
-                    setattr(cfg, n, v)
-            inst = cls(cfg)
+                for n, v in {
+                    "lcd_do_init": True,
+                    "lcd_rotate": drv_rotate,
+                    "lcd_spi_hz": spi_hz,
+                    "lcd_bl_pin": bl_pin,
+                }.items():
+                    if any(f.name == n for f in dataclasses.fields(FC)):
+                        setattr(cfg, n, v)
+                inst = cls(cfg)
         except Exception:
             inst = None
     else:
@@ -92,7 +97,7 @@ def _build_lcd(fr, drv_rotate, prefer=None):
 def _try_face_frame(expr, size):
     try:
         fc_mod = importlib.import_module("apps.ui.face.controller")
-        FC = getattr(fc_mod, "FaceController")
+        FC = fc_mod.FaceController
         fc = FC(size=size, fps=1, idle=True)
         fc.set_expr(expr)
 
@@ -116,7 +121,15 @@ def _try_face_frame(expr, size):
         def _mk(W=240, H=320):
             img = Image.new("RGB", (W, H), (0, 0, 64))
             drw = ImageDraw.Draw(img)
-            cols = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255), (255, 255, 255)]
+            cols = [
+                (255, 0, 0),
+                (0, 255, 0),
+                (0, 0, 255),
+                (255, 255, 0),
+                (255, 0, 255),
+                (0, 255, 255),
+                (255, 255, 255),
+            ]
             bw = W // len(cols)
             for i, c in enumerate(cols):
                 drw.rectangle([i * bw, 0, (i + 1) * bw - 1, H // 2], fill=c)
@@ -187,6 +200,7 @@ def main():
 
         if os.path.exists(args.img):
             im0 = Image.open(args.img).convert("RGB")
+
             def get_frame():
                 return im0.copy()
         else:

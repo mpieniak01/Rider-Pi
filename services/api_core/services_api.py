@@ -32,9 +32,7 @@ SERVICE_CTL = os.path.join(C.BASE_DIR, "ops", "service_ctl.sh")
 
 
 def _json(payload, status: int = 200) -> Response:
-    return Response(
-        json.dumps(payload, ensure_ascii=False), mimetype="application/json", status=status
-    )
+    return Response(json.dumps(payload, ensure_ascii=False), mimetype="application/json", status=status)
 
 
 def _unit_for(name: str) -> str | None:

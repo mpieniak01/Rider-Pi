@@ -305,9 +305,7 @@ def play_ding(config: PlaybackConfig, logger: voice_logging.VoiceLogger | None =
 # ───────────────────────────────────────────────────────────────────────────────
 
 
-def _tone_wav(
-    duration: float, freq: float, sample_rate: int = 16000, amplitude: float = 0.25
-) -> bytes:
+def _tone_wav(duration: float, freq: float, sample_rate: int = 16000, amplitude: float = 0.25) -> bytes:
     """Zwróć bajty WAV (mono, 16-bit) z prostym sinusem."""
     frame_count = max(1, int(duration * sample_rate))
     buf = bytearray()

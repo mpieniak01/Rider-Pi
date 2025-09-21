@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
+import time
+
+from common.bus import BusPub, now_ts
+
 """
 common/cam_heartbeat.py — jednolity heartbeat kamery dla wszystkich previewów.
 Użycie:
@@ -9,12 +14,6 @@ Użycie:
     ...
     hb.tick(frame, fps, presenting=True)  # wołaj co klatkę; wyśle co ~1 s
 """
-
-import os
-import time
-from typing import Optional
-
-from common.bus import BusPub, now_ts
 
 
 class CameraHB:
@@ -34,7 +33,7 @@ class CameraHB:
         except Exception:
             return 0, 0
 
-    def tick(self, frame, fps: Optional[float], presenting: bool = True) -> None:
+    def tick(self, frame, fps: float | None, presenting: bool = True) -> None:
         now = time.time()
         if now - self._last < 1.0:
             return

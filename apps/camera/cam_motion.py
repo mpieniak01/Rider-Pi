@@ -187,9 +187,7 @@ def run() -> None:
         try:
             if HUMAN_EN and face_cascade is not None and (fidx % max(1, FACE_EVERY) == 0):
                 # zmniejsz próg i rozmiar detekcji, by było tanio
-                faces = face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.2, minNeighbors=3, minSize=(40, 40)
-                )
+                faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=3, minSize=(40, 40))
                 human = len(faces) > 0
         except Exception:
             human = False

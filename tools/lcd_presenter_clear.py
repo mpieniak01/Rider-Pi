@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import importlib
 import os
 import sys
@@ -18,7 +19,7 @@ dev = None
 for name in dir(xs):
     obj = getattr(xs, name)
     # 1) bezpośrednio obiekty z ShowImage
-    if hasattr(obj, "ShowImage") and callable(getattr(obj, "ShowImage")):
+    if hasattr(obj, "ShowImage") and callable(obj.ShowImage):
         try:
             dev = obj()  # konstruktor bez parametrów
             break

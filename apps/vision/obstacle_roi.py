@@ -83,7 +83,7 @@ def publish(topic, obj):
 
 last_mtime = 0.0
 print(
-    f"[obst] start | SNAP_DIR={SNAP_DIR} | PROC={PROC_PATH} | ROI_Y0={ROI_Y0} ROI_H={ROI_H} | THR pct={EDGE_AREA_PCT} pix={EDGE_PIX_MIN}",
+    (f"ROI_Y0={ROI_Y0} ROI_H={ROI_H} | THR pct={EDGE_AREA_PCT} pix={EDGE_PIX_MIN}",),
     flush=True,
 )
 
@@ -126,9 +126,7 @@ try:
             print(f"[obst] warn: write json failed: {e}", flush=True)
 
         publish(TOPIC, payload)
-        print(
-            f"[obst] snap present={present} pct={pct:.3f} nz={nz} roi=({y0}:{y1}/{h})", flush=True
-        )
+        print(f"[obst] snap present={present} pct={pct:.3f} nz={nz} roi=({y0}:{y1}/{h})", flush=True)
 
 except KeyboardInterrupt:
     pass
