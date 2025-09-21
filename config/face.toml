@@ -1,0 +1,50 @@
+[meta]
+schema = "face"
+version = 1
+
+[face.idle]
+blink_sec = 3.0
+soft_blink_sec = 0.0
+look_p = 0.0
+look_sec = 0.0
+jitter = 0.15
+
+[face.gesture.blink]
+dur = 0.16
+hold = 0.02
+
+[face.gesture.look]
+t = 0.55
+amp = 0.42
+
+[face.transitions]
+step_s = 0.30
+dwell_s = 0.14
+
+[face.mouth.ribbon]
+taper_k = 0.60
+samples = 48
+
+[face.mouth.small_th_k]
+base = 0.050
+happy = 0.95
+neutral = 0.85
+sad = 1.05
+
+[face.mouth.offsets]
+y_offset_k_happy   = 0.040
+y_offset_k_neutral = 0.050
+y_offset_k_sad     = 0.050
+
+[face.mouth.lift]
+happy   =  0.045
+neutral =  0.000
+sad     = -0.045
+
+[face.mouth.arch]
+happy   =  0.030
+neutral =  0.000
+sad     = -0.030
+
+[face.debug]
+mouth = 0

@@ -71,3 +71,10 @@ tests/_audit_import.py
 
 # allow face tool
 !tools/newface_lcd_direct.py
+
+# === Track TOML configs (do NOT ignore) ===
+!config/
+!config/*.toml
+# Ignore only local overrides
+config/local/*
+!config/local/.gitignore
