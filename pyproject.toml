@@ -16,8 +16,6 @@ unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E402", "F401", "F811", "E501"]
-"apps/ui/face/driver_ili9xx.py" = ["E501"]
-"ops/xgo_safe_init.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "services", "tools"]
