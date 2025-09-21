@@ -1,40 +1,52 @@
-# Rider-Pi — FACE (LCD ILI9xx) – przewodnik
+# Rider-Pi — FACE (LCD ILI9xx)
 
-Dokument opisuje renderowanie „buźki” na panelu LCD (ILI9xx) – tryby, komendy, typowe problemy i szybkie procedury recovery. Sprawdzone na Raspberry Pi + SPI, w repo `Rider-Pi`.
+Dokument opisuje renderowanie „buźki” na panelu LCD (ILI9xx): tryby, komendy, zmienne środowiskowe, benchmark, recovery i FAQ. Sprawdzone na Raspberry Pi + SPI w repo `Rider-Pi`.
 
 ---
 
-## 1. TL;DR – szybki start
+## 1) TL;DR — szybki start
 
-```sh
+```bash
 # w repo:
 cd ~/robot
 
-# włącz i wyczyść panel (pewne ścieżki „presenter”)
+# włącz panel i wyczyść (pewne ścieżki „presenter”)
 make lcd-on && make lcd-black
 
-# testcard (pasy kontrolne) — alternatywnie bez make:
-make face-testcard || python3 tools/lcd_presenter_testcard.py --rotate 270 --spi-hz 48000000
+# testcard (pasy kontrolne)
+make face-testcard \
+  || python3 tools/lcd_presenter_testcard.py --rotate 270 --spi-hz 48000000
 
-# RAW (RGB565, fast path) ~11–15 FPS @ 48–64 MHz:
+# RAW (RGB565, fast-path) ~11–15 FPS @ 48–64 MHz
 make face-direct-raw EXPR=happy SECS=5
-# (albo dokładnie ten sam run bez make)
-sudo -E python3 tools/newface_lcd_direct.py --expr happy --rotate 270 --spi-hz 48000000 --secs 5 --stats --force push_frame:rgb565_3
+# lub dokładnie ten sam run bez make
+sudo -E python3 tools/newface_lcd_direct.py \
+  --expr happy --rotate 270 --spi-hz 48000000 \
+  --secs 5 --stats --force push_frame:rgb565_3
 
-# jednorazowa klatka przez API (pewna ścieżka PIL→LCD)
+# jednorazowa klatka przez API (PIL → LCD)
 make face-api-lcd
 ```
 
 ---
 
-## 2. Zmienne środowiskowe i domyślne ustawienia
+## 2) Zmienne środowiskowe (kluczowe)
 
-- `FACE_LCD_ROTATE=270` — **wymagana** rotacja, żeby obraz nie był bokiem.
-- `FACE_LCD_SPI_HZ=48000000` (domyślnie z Makefile i drivera).
-- `FACE_SPI_SEND=writebytes2` — wymusza wysyłkę SPI optymalną metodą (bez listy intów).
+- `FACE_LCD_ROTATE=270` — **wymagane**, aby obraz nie był bokiem.
+- `FACE_LCD_SPI_HZ=48000000` — domyślna prędkość (48 MHz).
+- `FACE_SPI_SEND=writebytes2` — wymusza szybki tryb wysyłki SPI.
+- (Face UX/tuning)
+  - `FACE_IDLE_ENABLE=1` — włącz idle mikro-gesty.
+  - `FACE_IDLE_BLINK_SEC=3.0` — częstotliwość mrugnięć.
+  - `FACE_IDLE_LOOK_P=0.22` / `FACE_IDLE_LOOK_SEC=3.4` — spontaniczne spojrzenia.
+  - `FACE_GESTURE_LOOK_AMP=0.32` — amplituda gesta look.
+  - `FACE_EYES_FOLLOW_KX=0.12` `FACE_EYES_FOLLOW_KY=0.22` — tłumienie ruchów oczu.
+  - `FACE_BROW_FOLLOW_KX=0.06` `FACE_BROW_FOLLOW_KY=0.10` — tłumienie brwi.
+  - `FACE_PUPIL_DRIFT_AMP_K=0.02` `FACE_PUPIL_DRIFT_FREQ=0.8` — mikrodryf źrenic.
 
 Ustaw na stałe (opcjonalnie):
-```sh
+
+```bash
 grep -q 'FACE_LCD_ROTATE' ~/.bashrc || {
   echo 'export FACE_LCD_ROTATE=270' >> ~/.bashrc
   echo 'export FACE_LCD_SPI_HZ=48000000' >> ~/.bashrc
@@ -45,94 +57,105 @@ source ~/.bashrc
 
 ---
 
-## 3. Cele `make` (kanoniczne)
+## 3) Cele `make` (kanoniczne)
 
 - `make lcd-on` — wyjście ze snu (DISP_ON).
 - `make lcd-off` — uśpienie (DISP_OFF + sleep).
-- `make lcd-black` — czarne wypełnienie (prezenter).
-- `make face-testcard` — pasy testowe (prezenter).
+- `make lcd-black` — czarne wypełnienie (presenter).
+- `make face-testcard` — pasy testowe (presenter).
 - `make face-direct-raw EXPR=happy SECS=5` — szybki renderer RAW (RGB565).
 - `make face-api-png` — wyrenderuj PNG do `/tmp/face_api.png`.
 - `make face-api-lcd` — jednorazowy push przez API na LCD.
-- `make face-bench` — mini-benchmark FPS (domyślnie 32/48/64 MHz).
-- `make lcd-recover` — sekwencja „twardego” przywrócenia panelu.
+- `make face-bench` — mini‑benchmark FPS (32/48/64 MHz).
+- `make lcd-recover` — twarde przywrócenie panelu.
 
 > Wszystkie cele respektują `FACE_LCD_ROTATE` i `FACE_LCD_SPI_HZ`.
 
 ---
 
-## 4. Tryby renderowania
+## 4) Tryby renderowania
 
-### 4.1. „Presenter” (pewny)
-Najbardziej niezawodna ścieżka do podstawowych testów:
-```sh
+### 4.1) Presenter (pewny)
+Najprostsza, niezależna od reszty stosu.
+
+```bash
 python3 tools/lcd_presenter_testcard.py --rotate 270 --spi-hz 48000000
 python3 tools/lcd_presenter_clear.py
 ```
-Daje obraz kontrolny / czarną ramkę bez zależności od reszty stosu.
 
-### 4.2. RAW (bezpośredni push RGB565)
-Szybki path z konwersją do RGB565 w C (moduł `fast565`):
-```sh
+### 4.2) RAW (RGB565, bezpośredni push)
+Szybka ścieżka z konwersją w C (`fast565`).
+
+```bash
 sudo -E python3 tools/newface_lcd_direct.py \
-  --expr happy --rotate 270 --spi-hz 48000000 --secs 5 --stats \
-  --force push_frame:rgb565_3
+  --expr happy --rotate 270 --spi-hz 48000000 \
+  --secs 5 --stats --force push_frame:rgb565_3
 ```
-- Przy 48–64 MHz typowo ~11–15 FPS (próbki z logów).
-- W logu szukaj:  
-  `LCD(direct): FORCED LCDRenderer.push_frame[rgb565_3]`  
-  `[enc] fast565 C extension`  
-  `[spi] requested_hz=48000000 actual_hz=48000000 mode=0 bpw=8`  
-  `[raw] path=writebytes2`
+W logu szukaj:
 
-### 4.3. API → PIL → LCD (jedna klatka)
-Najprostsza ścieżka „użytkowa”, pewna pod kątem rotacji:
-```sh
+```
+LCD(direct): FORCED LCDRenderer.push_frame[rgb565_3]
+[enc] fast565 C extension
+[spi] requested_hz=48000000 actual_hz=48000000 mode=0 bpw=8
+[raw] path=writebytes2
+```
+
+### 4.3) API → PIL → LCD (pojedyncza klatka)
+
+```bash
 python3 - <<'PY'
 from services.api_core import face_api
 print(face_api.render(backend="lcd", expr="happy", size=240, rotate=270, spi_hz=48000000))
 PY
 ```
-W logu: `LCD(direct): using LCDRenderer.ShowImage[pil]`
+W logach: `LCD(direct): using LCDRenderer.ShowImage[pil]`.
 
 ---
 
-## 5. Benchmark
+## 5) Benchmark
 
-Szybki sweep dla wybranych częstotliwości:
-```sh
+Szybkie porównanie częstotliwości SPI:
+
+```bash
 make face-bench                      # 32/48/64 MHz
 HZ_LIST="48000000" SECS=6 make face-bench
 ```
-Przykładowe wyniki (ROT=270):
-- 32 MHz: ~8–9 FPS
-- 48 MHz: ~9–11 FPS
-- 64 MHz: ~12–13 FPS  
-W RAW bez ograniczeń dodatkowych uzyskaliśmy do ~15 FPS (zależnie od sceny).
+
+**Przykładowe wyniki (ROT=270):**
+
+- 32 MHz: ~8–9 FPS
+- 48 MHz: ~9–11 FPS
+- 64 MHz: ~12–13 FPS
+
+W RAW bez dodatkowych obciążeń osiągaliśmy do ~15 FPS (zależnie od sceny).
 
 ---
 
-## 6. Recovery (gdy ekran „wariuje” / czarny / śmieci)
+## 6) Recovery (gdy ekran „wariuje” / czarny / śmieci)
 
-1) Zatrzymaj wszystko, co dotyka LCD/SPI:
-```sh
+1. Zatrzymaj wszystko, co dotyka LCD/SPI:
+
+```bash
 make vendor-kill || true
 make preview-off || true
 make vision-off  || true
 make stop-all    || true
 ```
 
-2) Twardy reset panelu + czyszczenie:
-```sh
+2. Twardy reset + czyszczenie:
+
+```bash
 sudo -E python3 tools/lcdctl.py off    || true; sleep 0.2
 sudo -E python3 tools/lcdctl.py reset  || true; sleep 0.2
 sudo -E python3 tools/lcdctl.py on     || true
 python3 tools/lcd_presenter_clear.py   || true
 ```
-(Albo wygodnie: `make lcd-recover`)
 
-3) Testy pewną ścieżką:
-```sh
+> Albo: `make lcd-recover`
+
+3. Test ścieżką pewną, potem API:
+
+```bash
 python3 tools/lcd_presenter_testcard.py --rotate 270 --spi-hz 48000000
 python3 - <<'PY'
 from services.api_core import face_api
@@ -142,77 +165,68 @@ PY
 
 ---
 
-## 7. Typowe objawy i rozwiązania
+## 7) Typowe objawy i szybkie fixy
 
-- **Buźka bokiem**  
-  Ustaw `FACE_LCD_ROTATE=270` (globalnie w `~/.bashrc` albo przy wywołaniu make/py).
-
-- **Czarny ekran / śmieci po chwili**  
-  Zrób `make lcd-recover`, potem przetestuj **presenterem** (testcard/clear).  
-  Upewnij się, że żaden inny proces nie trzyma SPI (vendor, preview, vision).
-
-- **„Message too long” / błąd fdwrite**  
-  Wymuś ścieżkę wysyłki: `FACE_SPI_SEND=writebytes2` (jest domyślnie preferowana).
-
-- **Wydajność słaba przy RAW**  
-  Sprawdź, że w logu jest `[enc] fast565 C extension`. Jeśli nie — zbuduj moduł (jest już w repo; przy aktualnym stanie masz `fast565` aktywny).
-
-- **Różnice FPS dla 32/48/64 MHz**  
-  To normalne – przepustowość SPI i decoder sceny wpływają na wynik.
+- **Buźka bokiem** → ustaw `FACE_LCD_ROTATE=270`.
+- **Czarny/śmieci po chwili** → `make lcd-recover`; sprawdź, czy nic innego nie trzyma SPI.
+- **„Message too long” / fdwrite** → `FACE_SPI_SEND=writebytes2`.
+- **RAW wolny** → upewnij się, że log ma `[enc] fast565 C extension`.
+- **FPS nie rośnie przy 64 MHz** → to bywa normalne dla danej sceny/ścieżki.
 
 ---
 
-## 8. Notatki implementacyjne
+## 8) Notatki implementacyjne
 
-- Sterownik: `apps/ui/face/driver_ili9xx.py` – domyślny HZ = **48 MHz**:
-  ```py
-  _DEF_HZ = int(os.getenv("FACE_LCD_SPI_HZ", "48000000") or 0) or 48000000
-  ```
-- Logger SPI pokazuje realny `max_speed_hz` np.:
-  ```
-  [spi] requested_hz=48000000 actual_hz=48000000 mode=0 bpw=8
-  ```
-- RAW używa konwersji RGB24→RGB565 w C (`fast565`), co redukuje czas enkodowania klatki do ~3 ms (zamiast ~230 ms w Python/NumPy na Pi).
+- Sterownik: `apps/ui/face/driver_ili9xx.py`.
+- Domyślny HZ:
 
----
-
-## 9. Checklist „działa / nie działa”
-
-- [x] `make lcd-on && make lcd-black` działa i nie wywala błędów.  
-- [x] `make face-testcard` pokazuje pasy.  
-- [x] `make face-api-lcd` rysuje poprawną buźkę (PIL path).  
-- [x] `make face-direct-raw EXPR=happy SECS=5` trzyma ~11–15 FPS (w logu `fast565` + `writebytes2`).  
-- [x] Wszędzie używasz `rotate=270`.  
-
----
-
-## 10. Ignorowanie artefaktów buildu (już w repo)
-
-`.gitignore` zawiera m.in.:
-```
-*.so
-build/
-dist/
-*.egg-info/
-__pycache__/
-.pytest_cache/
-*.pyc
-*.pyo
+```py
+_DEF_HZ = int(os.getenv("FACE_LCD_SPI_HZ", "48000000") or 0) or 48000000
 ```
 
----
-
-## 11. FAQ
-
-**P: Czy 64 MHz zawsze da więcej FPS?**  
-O: Zwykle tak, ale przy niektórych scenach/ścieżkach różnice mogą się spłaszczać.
-
-**P: Czemu PIL-path bywa wolniejszy niż RAW?**  
-O: PIL rysuje pewnie i uniwersalnie, ale RAW idzie bezpośrednio w RGB565 + SPI.
-
-**P: Skąd wiem, która ścieżka się użyła?**  
-O: Z logów: `LCDRenderer.ShowImage[pil]` (PIL) vs `LCDRenderer.push_frame[rgb565_3]` (RAW).
+- RAW używa konwersji RGB24→RGB565 w C (`fast565`), co redukuje czas enkodowania klatki do ~3 ms (vs ~230 ms w Python/NumPy na Pi).
+- Renderer twarzy:
+  - Brwi (arc) i usta (wstążka) przywrócone do klasycznego wyglądu.
+  - Źrenice: drift + clamp, sprzęgło blink→look.
+  - Pokrętła follow (oczy/brwi) przez ENV wg sekcji **2**.
 
 ---
 
-_Stan na dziś: stabilne ścieżki presenter + PIL; RAW osiąga ~11–15 FPS @ 48–64 MHz. Domyślnie wymuszamy `rotate=270`, domyślny HZ=48 MHz, transport
+## 9) Checklist „działa / nie działa”
+
+- [x] `make lcd-on && make lcd-black` nie zgłasza błędów
+- [x] `make face-testcard` pokazuje pasy
+- [x] `make face-api-lcd` rysuje poprawną buźkę (PIL‑path)
+- [x] `make face-direct-raw EXPR=happy SECS=5` trzyma ~11–15 FPS (log: `fast565` + `writebytes2`)
+- [x] Wszędzie `rotate=270`
+
+---
+
+
+
+## 10) FAQ
+
+**Czy 64 MHz zawsze da więcej FPS?**  
+Zwykle tak, ale przy niektórych scenach/ścieżkach różnice mogą się spłaszczać.
+
+**Dlaczego PIL‑path bywa wolniejszy niż RAW?**  
+PIL rysuje pewnie i uniwersalnie, RAW idzie bezpośrednio w RGB565 + SPI.
+
+**Skąd wiem, która ścieżka poszła?**  
+Z logów: `LCDRenderer.ShowImage[pil]` (PIL) vs `LCDRenderer.push_frame[rgb565_3]` (RAW).
+
+---
+
+### Załącznik: szybki demo‑run z tuningiem mimiki
+
+```bash
+sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
+  FACE_IDLE_ENABLE=1 FACE_IDLE_BLINK_SEC=3.4 FACE_IDLE_LOOK_P=0.22 FACE_IDLE_LOOK_SEC=3.4 \
+  FACE_GESTURE_LOOK_AMP=0.32 \
+  FACE_EYES_FOLLOW_KX=0.12 FACE_EYES_FOLLOW_KY=0.22 \
+  FACE_BROW_FOLLOW_KX=0.06 FACE_BROW_FOLLOW_KY=0.10 \
+  FACE_PUPIL_DRIFT_AMP_K=0.02 FACE_PUPIL_DRIFT_FREQ=0.8 \
+  python3 tools/newface_lcd_direct.py \
+    --expr neutral --fps 20 --rotate 270 --spi-hz 32000000 \
+    --secs 8 --stats
+```
