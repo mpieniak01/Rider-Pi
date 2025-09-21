@@ -205,7 +205,9 @@ def bus_sub_loop():
                     try:
                         data = json.loads(payload) if payload else {}
                         C.LAST_STATE["present"] = bool(data.get("present", C.LAST_STATE["present"]))
-                        C.LAST_STATE["confidence"] = float(data.get("confidence", C.LAST_STATE["confidence"]))
+                        C.LAST_STATE["confidence"] = float(
+                            data.get("confidence", C.LAST_STATE["confidence"])
+                        )
                         if "mode" in data:
                             C.LAST_STATE["mode"] = data.get("mode")
                         C.LAST_STATE["ts"] = float(data.get("ts", C.LAST_MSG_TS))
@@ -221,7 +223,11 @@ def bus_sub_loop():
                         C.LAST_CAMERA["fps"] = data.get("fps")
                         lcd = data.get("lcd") or {}
                         C.LAST_CAMERA["lcd"].update(
-                            {"enabled_env": (not C.ENV_DISABLE_LCD), "no_draw": C.ENV_NO_DRAW, "rot": C.ENV_ROT}
+                            {
+                                "enabled_env": (not C.ENV_DISABLE_LCD),
+                                "no_draw": C.ENV_NO_DRAW,
+                                "rot": C.ENV_ROT,
+                            }
                         )
                         for k in ("enabled_env", "no_draw", "rot", "active"):
                             if k in lcd:

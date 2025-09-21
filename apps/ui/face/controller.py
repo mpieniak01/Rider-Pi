@@ -32,7 +32,6 @@ class FaceController:
     def __init__(self, size: int = 240, fps: int = 12, idle: bool = True):
         self.size, self.fps = size, fps
 
-        # Pozwól wyłączyć idle także przez ENV
         env_idle = os.getenv("FACE_IDLE_ENABLE")
         self.idle = (
             (str(env_idle).lower() not in {"0", "false", "no"}) if env_idle is not None else idle
@@ -42,32 +41,30 @@ class FaceController:
         self.anim = Animator()
         self._speaking = False
 
-        # --- IDLE: deterministyczny blink / soft-blink / look + gałki z ENV ---
-        self._idle_blink_every = float(os.getenv("FACE_IDLE_BLINK_SEC", "3.0"))  # 0 → wyłącz
+        # IDLE
+        self._idle_blink_every = float(os.getenv("FACE_IDLE_BLINK_SEC", "3.0"))
         self._idle_soft_blink_every = float(os.getenv("FACE_IDLE_SOFT_BLINK_SEC", "0.0"))
         self._idle_look_p = float(os.getenv("FACE_IDLE_LOOK_P", "0.0"))
         self._idle_look_every = float(os.getenv("FACE_IDLE_LOOK_SEC", "0.0"))
         self._idle_jitter = float(os.getenv("FACE_IDLE_JITTER", "0.15"))
+        self._blink_shift_prob = float(os.getenv("FACE_BLINK_SHIFT_PROB", "0.12"))
 
-        # Choreografia blinku
+        # Gesty
         self._blink_dur = float(os.getenv("FACE_GESTURE_BLINK_DUR", "0.16"))
         self._blink_hold = float(os.getenv("FACE_GESTURE_BLINK_HOLD", "0.02"))
-
-        # Parametry spojrzenia
         self._look_t = float(os.getenv("FACE_GESTURE_LOOK_T", "0.55"))
         self._look_amp = float(os.getenv("FACE_GESTURE_LOOK_AMP", "0.42"))
 
-        # --- OVERRIDES ust (kształt + otwarcie) z ENV ---
-        # "auto" NIE jest twardym override – zostawiamy logikę mood/expr
+        # Usta override
         raw_shape = os.getenv("FACE_MOUTH_SHAPE", "").strip().lower()
         self._mouth_shape_override = raw_shape if raw_shape in {"happy", "neutral", "sad"} else ""
         self._mouth_open_override = os.getenv("FACE_MOUTH_OPEN", "").strip()
 
-        # Debug ust
+        # Debug
         self._debug_mouth = os.getenv("FACE_DEBUG_MOUTH", "0").lower() not in {"0", "false", "no"}
         self._last_dbg = 0.0
 
-        # Timery idle (następne terminy)
+        # Timery
         now = time.time()
         self._next_blink_ts = (
             now + self._jittered(self._idle_blink_every)
@@ -85,20 +82,18 @@ class FaceController:
             else float("inf")
         )
 
-        # Cooldowny antykolizyjne
         self._blink_cooldown_until = 0.0
         self._soft_blink_block_until = 0.0
 
-        # --- PRZEJŚCIA NASTROJU (mood) --------------------------------------
+        # Mood transitions
         self._trans_step_s = float(os.getenv("FACE_TRANS_STEP_S", "0.35"))
         self._trans_dwell_s_default = float(os.getenv("FACE_TRANS_DWELL_S", "0.18"))
 
         self._mood_current = "neutral"
         self._mood_queue: deque[tuple[str, float, str]] = deque()
-        self._mood_last_softblink_at = 0.0  # antyspam
+        self._mood_last_softblink_at = 0.0
 
-        # Ustaw shape startowy:
-        init_shape = self._mouth_shape_override or ""  # tylko stałe nastroje; "auto" ignorujemy
+        init_shape = self._mouth_shape_override or ""
         if init_shape in {"happy", "neutral", "sad"}:
             self.anim.state.mouth.shape = init_shape
             self._mood_current = init_shape
@@ -108,10 +103,7 @@ class FaceController:
             self.anim.state.mouth.shape = start
             self._mood_current = start
 
-    # --- helpers --------------------------------------------------------------
-
     def _jittered(self, base: float) -> float:
-        """Zwróć bazowy czas z lekkim jitterem (±self._idle_jitter)."""
         if base <= 0:
             return float("inf")
         j = max(0.0, self._idle_jitter)
@@ -127,8 +119,7 @@ class FaceController:
         elif kind == "look":
             self._next_look_ts = t
 
-    # --- API sterujące --------------------------------------------------------
-
+    # API
     def set_expr(self, expr: str) -> None:
         self.anim.state.expr = str(expr or "neutral")
 
@@ -142,13 +133,8 @@ class FaceController:
         spec = spec_fn(**kwargs)
         self.anim.start(spec, prio=10, mode="blend")
 
-    # --- Mood transitions API -------------------------------------------------
-
+    # Mood transitions
     def set_mood(self, target: str, via_neutral: bool = True, dwell_s: float | None = None) -> None:
-        """
-        Zaplanuj płynne przejście mimicze ust (happy/neutral/sad).
-        Jeśli przejście jest happy<->sad i via_neutral=True, dodajemy krótki postój w neutral.
-        """
         target = (target or "neutral").lower()
         if target not in {"happy", "neutral", "sad"}:
             return
@@ -170,12 +156,13 @@ class FaceController:
             if dwell and dwell > 0:
                 enqueue("neutral", self._trans_step_s + dwell, "dwell neutral")
             enqueue(
-                target, self._trans_step_s + max(0.0, dwell) + self._trans_step_s, f"to {target}"
+                target,
+                self._trans_step_s + max(0.0, dwell) + self._trans_step_s,
+                f"to {target}",
             )
         else:
             enqueue(target, self._trans_step_s, f"to {target}")
 
-        # delikatny blink startowy — nie częściej niż co 0.35 s
         if (now - self._mood_last_softblink_at) > 0.35:
             self.do(
                 "blink",
@@ -189,8 +176,7 @@ class FaceController:
         """True gdy nie ma zaplanowanych kroków zmiany nastroju ust."""
         return not self._mood_queue
 
-    # --- Polityki -------------------------------------------------------------
-
+    # Polityki
     def _policy_speaking_apply(self) -> None:
         st = self.anim.state
         try:
@@ -198,7 +184,6 @@ class FaceController:
         except Exception:
             pass
 
-        # OVERRIDES z ENV: usta (shape + open)
         if self._mouth_shape_override in {"happy", "neutral", "sad"}:
             st.mouth.shape = self._mouth_shape_override
 
@@ -210,9 +195,8 @@ class FaceController:
 
         if self._debug_mouth and (time.time() - self._last_dbg) > 1.0:
             cur = getattr(st.mouth, "shape", "?")
-            print(
-                f"[mouth] shape={cur} expr={st.expr} mood={self._mood_current} queue={len(self._mood_queue)}"
-            )
+            qlen = len(self._mood_queue)
+            print(f"[mouth] shape={cur} expr={st.expr} mood={self._mood_current} queue={qlen}")
             self._last_dbg = time.time()
 
     def _policy_idle_tick(self) -> None:
@@ -226,6 +210,13 @@ class FaceController:
             self._schedule_next("blink", self._idle_blink_every)
             self._blink_cooldown_until = now + max(0.18, self._blink_dur * 1.2)
             self._soft_blink_block_until = now + max(0.40, self._blink_dur * 2.5)
+
+            try:
+                prob = max(0.0, min(1.0, self._blink_shift_prob))
+                if prob > 0.0 and random.random() < prob:
+                    self.do("look", t=self._look_t, amp=self._look_amp)
+            except Exception:
+                pass
 
         if now >= self._next_soft_blink_ts and now >= self._soft_blink_block_until:
             self.do(
@@ -253,7 +244,7 @@ class FaceController:
         if not self._mood_queue:
             return
         now = time.time()
-        shape, when_ts, note = self._mood_queue[0]
+        shape, when_ts, _note = self._mood_queue[0]
         if now >= when_ts:
             self.anim.state.mouth.shape = shape
             self._mood_current = shape
@@ -267,8 +258,7 @@ class FaceController:
                 )
                 self._mood_last_softblink_at = now
 
-    # --- Klatki / pętla -------------------------------------------------------
-
+    # Klatki / pętla
     def frame(self) -> bytes:
         st = self.anim.tick()
         self._policy_speaking_apply()
@@ -296,7 +286,7 @@ class FaceController:
             return img
 
     def loop(self, secs: float) -> Iterable[bytes]:
-        """Stabilne taktowanie pętli (mniejszy dryf niż zwykłe time.sleep(dt))."""
+        """Stabilne taktowanie (mniejszy dryf niż zwykłe time.sleep(dt))."""
         dt = 1.0 / max(1, self.fps)
         t_end = time.time() + float(secs)
         t_next = time.time()

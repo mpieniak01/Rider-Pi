@@ -71,7 +71,9 @@ class DisplayCtl:
                     log("xgo: użyję BL via bl_DutyCycle (lub ekwiwalent)")
                 # spróbuj ustawić jasność; jeśli padnie na _pwm → zrób autoinit GPIO
                 if self._set_bl and not self._bl_set_safe(XGO_BRIGHT, try_gpio_init=True):
-                    log("xgo: BL wstępnie się nie udał (nawet po init) — przełączę na czarną klatkę jako fallback")
+                    log(
+                        "xgo: BL wstępnie się nie udał (nawet po init) — przełączę na czarną klatkę jako fallback"
+                    )
             except Exception as e:
                 log(f"xgo: init fail: {e}")
                 self.mode = "none"
@@ -108,7 +110,7 @@ class DisplayCtl:
             pwm.start(max(0, min(100, XGO_BRIGHT)))
             self._gpio_pwm = pwm
             try:
-                setattr(lcd, "_pwm", pwm)
+                lcd._pwm = pwm
             except Exception:
                 pass
             log(f"xgo: GPIO PWM init (pin={bl_pin}, freq={freq} Hz)")

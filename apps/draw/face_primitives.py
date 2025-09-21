@@ -1,18 +1,23 @@
 from __future__ import annotations
 
-"""
-apps/draw/face_primitives.py — prymitywy rysowania buźki Rider-Pi (PIL).
-
-Funkcje rysujące: głowa, oczy, brwi, usta, overlay (guide).
-Opcje: guide (overlay), quality=fast|aa2x.
-"""
-
-import math  # noqa: E402
+import math
 import os
+import time
+
+# apps/draw/face_primitives.py — prymitywy rysowania buźki Rider-Pi (PIL).
+# Funkcje rysujące: głowa, oczy, brwi, usta, overlay (guide).
+# Opcje: guide (overlay), quality=fast|aa2x.
+#
+# UWAGA:
+#  • Brwi i usta = wersja referencyjna (łuki arc + „wstążka”).
+#  • Źrenice: realny czas, mikrodryf, clamp, respekt `eyes.dx/dy`.
+#  • Pokrętła wytłumienia ruchu (cfg lub ENV):
+#     - eyes_follow_kx / eyes_follow_ky – ile całe oko podąża za look
+#     - brow_follow_kx / brow_follow_ky – ile brwi podążają za okiem
 
 
-# --- helper: pobieranie wartości z cfg (obsługuje obiekt i dict) -------------
 def _cfg(cfg, name: str, default):
+    """Pobierz wartość z cfg (obsługuje obiekt i dict)."""
     try:
         if hasattr(cfg, name):
             return getattr(cfg, name)
@@ -27,8 +32,8 @@ def _clampf(x: float, lo: float, hi: float) -> float:
     return hi if x > hi else lo if x < lo else x
 
 
-# --- resolver kształtu/otwarcia ust (priorytet: mouth.shape != "auto") -------
-def _resolve_mouth(model):
+def _resolve_mouth(model) -> tuple[str, float]:
+    """Resolver kształtu/otwarcia ust (priorytet: mouth.shape != 'auto')."""
     try:
         mouth = model.mouth
         shape = (getattr(mouth, "shape", "auto") or "auto").lower()
@@ -36,7 +41,6 @@ def _resolve_mouth(model):
     except Exception:
         shape, openv = "auto", 0.0
 
-    # clamp
     if openv < 0.0:
         openv = 0.0
     if openv > 1.0:
@@ -76,97 +80,133 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
         head_ky = _cfg(cfg, "head_ky", 1.04)
         rx = int(min(rx_limit, ry_limit / max(0.001, head_ky)))
         ry = int(min(ry_limit, rx * head_ky))
-        canvas.ellipse([(cx - rx, cy - ry), (cx + rx, cy + ry)], outline=(220, 235, 255), width=2)
+        canvas.ellipse(
+            [(cx - rx, cy - ry), (cx + rx, cy + ry)],
+            outline=(220, 235, 255),
+            width=2,
+        )
 
-    # Oczy
+    # Oczy (białko)
     blink_mul = model.blink_mul() if hasattr(model, "blink_mul") else 1.0
-    l = (
-        cx - eye_dx - eye_w // 2,
-        cy - int(eye_h * blink_mul),
-        cx - eye_dx + eye_w // 2,
-        cy + int(eye_h * blink_mul),
-    )  # noqa: E741
-    r = (
-        cx + eye_dx - eye_w // 2,
-        cy - int(eye_h * blink_mul),
-        cx + eye_dx + eye_w // 2,
-        cy + int(eye_h * blink_mul),
-    )
-    canvas.ellipse(l, fill=(255, 255, 255))
-    canvas.ellipse(r, fill=(255, 255, 255))
 
-    # Źrenice
-    def pupil_rect(rect, off):
+    # ruchem całego oka (białka) steruje look + pokrętła follow
+    eyes_dx = 0.0
+    eyes_dy = 0.0
+    try:
+        eyes = getattr(model, "eyes", None)
+        if eyes is not None:
+            eyes_dx = float(getattr(eyes, "dx", 0.0) or 0.0)
+            eyes_dy = float(getattr(eyes, "dy", 0.0) or 0.0)
+    except Exception:
+        pass
+
+    eyes_follow_kx = float(os.getenv("FACE_EYES_FOLLOW_KX", str(_cfg(cfg, "eyes_follow_kx", 0.18))))
+    eyes_follow_ky = float(os.getenv("FACE_EYES_FOLLOW_KY", str(_cfg(cfg, "eyes_follow_ky", 0.30))))
+
+    eye_cx_offset = int(eyes_dx * eye_w * eyes_follow_kx)
+    eye_cy_offset = int(eyes_dy * eye_h * eyes_follow_ky)
+
+    left_eye_rect = (
+        cx - eye_dx - eye_w // 2 + eye_cx_offset,
+        cy - int(eye_h * blink_mul) + eye_cy_offset,
+        cx - eye_dx + eye_w // 2 + eye_cx_offset,
+        cy + int(eye_h * blink_mul) + eye_cy_offset,
+    )
+    right_eye_rect = (
+        cx + eye_dx - eye_w // 2 + eye_cx_offset,
+        cy - int(eye_h * blink_mul) + eye_cy_offset,
+        cx + eye_dx + eye_w // 2 + eye_cx_offset,
+        cy + int(eye_h * blink_mul) + eye_cy_offset,
+    )
+    canvas.ellipse(left_eye_rect, fill=(255, 255, 255))
+    canvas.ellipse(right_eye_rect, fill=(255, 255, 255))
+
+    # Źrenice (drift/clamp/look)
+    def pupil_rect(rect, off_x, off_y):
         x1, y1, x2, y2 = rect
         ex, ey = (x1 + x2) // 2, (y1 + y2) // 2
         pw = int(eye_w * 0.18)
         ph = int(eye_h * 0.6 * blink_mul + 2)
-        return (ex - pw // 2 + off, ey - ph // 2, ex + pw // 2 + off, ey + ph // 2)
+        return (
+            ex - pw // 2 + off_x,
+            ey - ph // 2 + off_y,
+            ex + pw // 2 + off_x,
+            ey + ph // 2 + off_y,
+        )
 
-    t = 0.0  # docelowo: time.time()
-    freq = 1.2 if getattr(model, "state", "idle") in ("wake", "record", "process") else 2.0
-    amp = eye_w * 0.04
+    t = time.time()
+    drift_freq = float(os.getenv("FACE_PUPIL_DRIFT_FREQ", "0.8"))
+    drift_amp_k = float(os.getenv("FACE_PUPIL_DRIFT_AMP_K", "0.04"))
+    amp_px = eye_w * max(0.0, drift_amp_k)
     phase = 0.35
-    bias = int(S * 0.017)
-    offL = int(math.sin(t * freq) * amp + getattr(model, "gaze_dx", 0))
-    offR = int(math.sin(t * freq + phase) * amp + getattr(model, "gaze_dx", 0))
-    canvas.ellipse(pupil_rect(l, +bias + offL), fill=(0, 0, 0))
-    canvas.ellipse(pupil_rect(r, -bias + offR), fill=(0, 0, 0))
+    drift_scale = 1.0 if blink_mul >= 0.6 else (blink_mul / 0.6)
 
-    # Brwi (tylko styl classic, fast)
+    driftL_x = int(math.sin(t * drift_freq) * amp_px * drift_scale)
+    driftR_x = int(math.sin(t * drift_freq + phase) * amp_px * drift_scale)
+    v_amp_px = amp_px * 0.5
+    driftL_y = int(math.cos(t * (drift_freq * 0.8)) * v_amp_px * drift_scale)
+    driftR_y = int(math.cos(t * (drift_freq * 0.8) + phase) * v_amp_px * drift_scale)
+
+    bias = int(S * 0.017)
+    base_dx = int(eyes_dx * eye_w * 0.30)  # przesunięcie źrenicy wzgl. oka
+    base_dy = int(eyes_dy * eye_h * 0.45)
+    offL_x = +bias + base_dx + driftL_x
+    offR_x = -bias + base_dx + driftR_x
+    offL_y = base_dy + driftL_y
+    offR_y = base_dy + driftR_y
+
+    clamp_ratio = float(os.getenv("FACE_PUPIL_CLAMP_RATIO", "0.78"))
+    max_x = int(eye_w * 0.5 - eye_w * (1.0 - clamp_ratio) * 0.5)
+    max_y = int(eye_h * blink_mul * 0.9)
+
+    def _clamp_off(off_x, off_y):
+        return (
+            max(-max_x, min(max_x, off_x)),
+            max(-max_y, min(max_y, off_y)),
+        )
+
+    offL_x, offL_y = _clamp_off(offL_x, offL_y)
+    offR_x, offR_y = _clamp_off(offR_x, offR_y)
+
+    canvas.ellipse(pupil_rect(left_eye_rect, offL_x, offL_y), fill=(0, 0, 0))
+    canvas.ellipse(pupil_rect(right_eye_rect, offR_x, offR_y), fill=(0, 0, 0))
+
+    # Brwi – łuki „arc”; podążanie za okiem można wyciszyć
     brow_y = cy - int(S * _cfg(cfg, "brow_y_k", 0.21))
     brow_w = int(S * 0.19)
     brow_h = int(S * _cfg(cfg, "brow_h_k", 0.09))
     stroke = max(6, int(S * 0.03))
-    base_k = {"idle": 0.06, "wake": 0.10, "record": 0.08, "process": 0.04, "low_battery": 0.18}.get(
-        getattr(model, "state", "idle"), 0.06
-    )
+    base_k = {
+        "idle": 0.06,
+        "wake": 0.10,
+        "record": 0.08,
+        "process": 0.04,
+        "low_battery": 0.18,
+    }.get(getattr(model, "state", "idle"), 0.06)
+
+    brow_follow_kx = float(os.getenv("FACE_BROW_FOLLOW_KX", str(_cfg(cfg, "brow_follow_kx", 0.10))))
+    brow_follow_ky = float(os.getenv("FACE_BROW_FOLLOW_KY", str(_cfg(cfg, "brow_follow_ky", 0.20))))
+    brow_off_x = int(eyes_dx * eye_w * brow_follow_kx)
+    brow_off_y = int(eyes_dy * eye_h * brow_follow_ky)
 
     def draw_brow(ex: int, k: float):
-        x0, y0 = ex - brow_w // 2, brow_y - brow_h
-        x1, y1 = ex + brow_w // 2, brow_y + brow_h
-        if k < 0:
-            start, end = 20, 160
-        else:
-            start, end = 200, 340
-        canvas.arc([(x0, y0), (x1, y1)], start=start, end=end, fill=(255, 255, 255), width=stroke)
+        x0 = ex - brow_w // 2 + brow_off_x
+        y0 = brow_y - brow_h + brow_off_y
+        x1 = ex + brow_w // 2 + brow_off_x
+        y1 = brow_y + brow_h + brow_off_y
+        start, end = (20, 160) if k < 0 else (200, 340)
+        canvas.arc(
+            [(x0, y0), (x1, y1)],
+            start=start,
+            end=end,
+            fill=(255, 255, 255),
+            width=stroke,
+        )
 
     draw_brow(cx - eye_dx, base_k)
     draw_brow(cx + eye_dx, base_k)
 
-    # Usta ---------------------------------------------------------------------
-
-    def mouth_curvature_for(state: str) -> float:
-        # historyczne „auto” z legacy – zostawione jako fallback
-        k = {
-            "idle": -0.48,
-            "wake": -0.36,
-            "record": -0.28,
-            "process": -0.22,
-            "low_battery": 0.25,
-            "speak": -0.18,
-        }.get(state, -0.24)
-        if state != "low_battery" and k >= 0:
-            k = -0.18 if k == 0 else -abs(k)
-        if getattr(model, "expr", None) == "happy":
-            k -= 0.18 * max(0.0, min(1.0, float(getattr(model, "expr_intensity", 0.0))))
-        if getattr(model, "expr", None) == "neutral":
-            k = -0.18
-        return k
-
-    def draw_mouth_curve(cx_i: int, y: int, w: int, k: float, width_scale: float = 1.0) -> None:
-        Sloc = S
-        depth = max(6, int(abs(k) * Sloc * 0.28))
-        x0, y0, x1, y1 = cx_i - w // 2, y - depth, cx_i + w // 2, y + depth
-        if k < 0:
-            start, end = 20, 160
-        else:
-            start, end = 200, 340
-        width_scale = _clampf(width_scale, 0.3, 3.0)
-        width_px = max(8, int(Sloc * 0.055 * width_scale))
-        canvas.arc([(x0, y0), (x1, y1)], start=start, end=end, fill=(0, 0, 0), width=width_px)
-
-    # NEW: rysowanie "wstążki" (zmienna grubość + unoszenie kącików + łuk środka)
+    # Usta — „wstążka”
     def _draw_ribbon_mouth(
         cx_i: int,
         y: int,
@@ -178,13 +218,6 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
         samples: int,
         fill=(0, 0, 0),
     ) -> None:
-        """
-        :param h_base: bazowa grubość w centrum (px)
-        :param lift_k: ułamek S — dodatni unosi KĄCIKI (końce w górę, środek ~0)
-        :param arch_k: ułamek S — dodatni opuszcza ŚRODEK (łuk w dół dla uśmiechu),
-                       ujemny podnosi środek (łuk w górę dla smutku)
-        :param taper_k: 0..1 – zwężenie końców
-        """
         half = w / 2.0
         S_local = S
         lift_px = float(S_local) * lift_k
@@ -194,21 +227,16 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
 
         top = []
         bot = []
-        # profile
         p_taper = 1.6
-        p_lift = 1.8  # jak szybko rośnie efekt ku końcom (0 w środku)
-        p_arch = 2.0  # jak bardzo „dociążamy” środek (max w środku, 0 na końcach)
+        p_lift = 1.8
+        p_arch = 2.0
 
         for i in range(samples + 1):
             x = -half + (w * i / samples)
             t = abs(x) / half  # 0 środek; 1 końce
 
             thickness = h_base * (1.0 - taper_k * (t**p_taper))
-
-            # lift (kąciki): 0 w środku, max na końcach; dodatni = końce w górę
             lift = -lift_px * (t**p_lift)
-
-            # arch (środek): max w środku, 0 na końcach; dodatni = środek w dół
             arch = arch_px * (1.0 - (t**p_arch))
 
             y_mid = y + lift + arch
@@ -218,35 +246,28 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
         poly = top + bot[::-1]
         canvas.polygon(poly, fill=fill)
 
-    # Rozwiązanie shape/open z modelu (pierwszeństwo mouth.shape != "auto")
     mshape, mopen = _resolve_mouth(model)
 
-    # Gałki ENV dla małego otwarcia (grubości)
     small_th_base = float(os.getenv("FACE_MOUTH_SMALL_TH_K_BASE", "0.050"))
     small_th_h = float(os.getenv("FACE_MOUTH_SMALL_TH_K_HAPPY", "1.00"))
     small_th_n = float(os.getenv("FACE_MOUTH_SMALL_TH_K_NEUTRAL", "0.90"))
     small_th_s = float(os.getenv("FACE_MOUTH_SMALL_TH_K_SAD", "1.05"))
 
-    # Pozycje Y (ułamki S) – baza dla neutral/sad = 0.050
     yk_h = float(os.getenv("FACE_MOUTH_Y_OFFSET_K_HAPPY", "0.045"))
     yk_n = float(os.getenv("FACE_MOUTH_Y_OFFSET_K_NEUTRAL", "0.050"))
     yk_s = float(os.getenv("FACE_MOUTH_Y_OFFSET_K_SAD", "0.050"))
 
-    # Profil „wstążki”
-    taper_k = float(os.getenv("FACE_MOUTH_RIBBON_TAPER_K", "0.65"))
+    taper_k = float(os.getenv("FACE_MOUTH_RIBBON_TAPER_K", "0.60"))
     samples = int(os.getenv("FACE_MOUTH_RIBBON_SAMPLES", "48"))
 
-    # LIFT kącików (końce): dodatni happy, ujemny sad
-    lift_h = float(os.getenv("FACE_MOUTH_HAPPY_LIFT_K", "0.040"))
-    lift_n = float(os.getenv("FACE_MOUTH_NEUTRAL_LIFT_K", "0.010"))
-    lift_s = float(os.getenv("FACE_MOUTH_SAD_LIFT_K", "-0.040"))
+    lift_h = float(os.getenv("FACE_MOUTH_HAPPY_LIFT_K", "0.045"))
+    lift_n = float(os.getenv("FACE_MOUTH_NEUTRAL_LIFT_K", "0.000"))
+    lift_s = float(os.getenv("FACE_MOUTH_SAD_LIFT_K", "-0.045"))
 
-    # ARCH środka: dodatni = środek w dół (uśmiech), ujemny = środek w górę (smutek)
     arch_h = float(os.getenv("FACE_MOUTH_HAPPY_ARCH_K", "0.030"))
-    arch_n = float(os.getenv("FACE_MOUTH_NEUTRAL_ARCH_K", "0.008"))
+    arch_n = float(os.getenv("FACE_MOUTH_NEUTRAL_ARCH_K", "0.000"))
     arch_s = float(os.getenv("FACE_MOUTH_SAD_ARCH_K", "-0.030"))
 
-    # Mowa / asysta mowy → modulowany prostokąt (legacy)
     if getattr(model, "assist_speaking", False) or getattr(model, "state", "") == "speak":
         amp_m = (
             math.sin(getattr(model, "speak_phase", 0.0))
@@ -257,57 +278,33 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
         height = base_h + extra_h
         width = int(mouth_w * (1.0 + 0.06 * max(0.0, amp_m)))
         canvas.rectangle(
-            [(cx - width // 2, mouth_y - height // 2), (cx + width // 2, mouth_y + height // 2)],
+            [
+                (cx - width // 2, mouth_y - height // 2),
+                (cx + width // 2, mouth_y + height // 2),
+            ],
             fill=(0, 0, 0),
         )
     else:
-        # --- MAŁE OTWARCIE: rysuj "wstążkę" z liftem kącików + łukiem środka ---
         if mopen < 0.08:
             if mshape == "happy":
                 th = int(S * _clampf(small_th_base * small_th_h, 0.01, 0.14))
                 y_draw = mouth_y + int(S * yk_h)
                 _draw_ribbon_mouth(
-                    cx,
-                    y_draw,
-                    int(mouth_w * 1.00),
-                    max(1, th),
-                    lift_h,
-                    arch_h,
-                    taper_k,
-                    samples,
-                    fill=(0, 0, 0),
+                    cx, y_draw, int(mouth_w * 1.00), max(1, th), lift_h, arch_h, taper_k, samples
                 )
             elif mshape == "sad":
                 th = int(S * _clampf(small_th_base * small_th_s, 0.01, 0.14))
                 y_draw = mouth_y + int(S * yk_s)
                 _draw_ribbon_mouth(
-                    cx,
-                    y_draw,
-                    int(mouth_w * 1.00),
-                    max(1, th),
-                    lift_s,
-                    arch_s,
-                    taper_k,
-                    samples,
-                    fill=(0, 0, 0),
+                    cx, y_draw, int(mouth_w * 1.00), max(1, th), lift_s, arch_s, taper_k, samples
                 )
-            else:  # neutral
+            else:
                 th = int(S * _clampf(small_th_base * small_th_n, 0.01, 0.14))
                 y_draw = mouth_y + int(S * yk_n)
                 _draw_ribbon_mouth(
-                    cx,
-                    y_draw,
-                    int(mouth_w * 1.00),
-                    max(1, th),
-                    lift_n,
-                    arch_n,
-                    taper_k,
-                    samples,
-                    fill=(0, 0, 0),
+                    cx, y_draw, int(mouth_w * 1.00), max(1, th), lift_n, arch_n, taper_k, samples
                 )
-
         else:
-            # --- WIĘKSZE OTWARCIE: pełny owal (ellipse) ----------------------
             height = max(int(S * 0.028), int(mopen * (S * 0.10)))
             width = int(mouth_w * (1.0 + 0.05 * mopen))
             canvas.ellipse(

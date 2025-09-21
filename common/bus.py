@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from __future__ import annotations
+
 import json
 import os
 import time
-from typing import Dict, Iterable, Iterator, Optional, Tuple, Union
+from collections.abc import Iterable, Iterator
+from typing import Dict, Optional, Tuple, Union
 
 import zmq
 

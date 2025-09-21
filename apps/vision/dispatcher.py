@@ -24,7 +24,9 @@ ZMQ_ADDR_PUB = f"tcp://127.0.0.1:{BUS_PUB_PORT}"
 ZMQ_ADDR_SUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
 
 # Histereza / debouncing (ENV)
-P_ON_N = int(os.getenv("VISION_ON_CONSECUTIVE", "3"))  # ile kolejnych pozytywów, by włączyć present=True
+P_ON_N = int(
+    os.getenv("VISION_ON_CONSECUTIVE", "3")
+)  # ile kolejnych pozytywów, by włączyć present=True
 P_OFF_TT = float(os.getenv("VISION_OFF_TTL_SEC", "2.0"))  # po ilu sekundach ciszy zgasić present
 MIN_SCORE = float(os.getenv("VISION_MIN_SCORE", "0.50"))  # minimalny próg score
 LOG_EVERY = int(os.getenv("LOG_EVERY", "10"))
@@ -139,7 +141,13 @@ def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
         items = data.get("items") or data.get("detections") or data.get("objects") or []
         best = _best_detection(items)
         if not best:
-            return {"kind": "det", "present": False, "score": 0.0, "bbox": None, "mode": data.get("mode") or "det"}
+            return {
+                "kind": "det",
+                "present": False,
+                "score": 0.0,
+                "bbox": None,
+                "mode": data.get("mode") or "det",
+            }
         lbl = (str(best.get("label") or best.get("class") or "")).lower()
         kind = "person" if "person" in lbl else ("face" if "face" in lbl else "det")
         score = _as_float(best.get("score", best.get("confidence", 0.0)), 0.0)
@@ -155,7 +163,9 @@ def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
     score = _as_float(data.get("score", data.get("confidence", 1.0)), 1.0)
     present = bool(data.get("present", True))
     bbox = data.get("bbox")
-    mode = data.get("mode") or ("haar" if kind == "face" else ("ssd" if kind == "person" else "det"))
+    mode = data.get("mode") or (
+        "haar" if kind == "face" else ("ssd" if kind == "person" else "det")
+    )
     return {"kind": kind, "present": present, "score": score, "bbox": bbox, "mode": mode}
 
 

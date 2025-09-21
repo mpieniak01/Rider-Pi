@@ -32,7 +32,9 @@ SERVICE_CTL = os.path.join(C.BASE_DIR, "ops", "service_ctl.sh")
 
 
 def _json(payload, status: int = 200) -> Response:
-    return Response(json.dumps(payload, ensure_ascii=False), mimetype="application/json", status=status)
+    return Response(
+        json.dumps(payload, ensure_ascii=False), mimetype="application/json", status=status
+    )
 
 
 def _unit_for(name: str) -> str | None:
@@ -106,13 +108,21 @@ def svc_action(name: str):
 
     if not os.path.isfile(SERVICE_CTL) or not os.access(SERVICE_CTL, os.X_OK):
         return _json(
-            {"error": "service_ctl_missing", "hint": "chmod +x ops/service_ctl.sh & add sudoers NOPASSWD"}, status=501
+            {
+                "error": "service_ctl_missing",
+                "hint": "chmod +x ops/service_ctl.sh & add sudoers NOPASSWD",
+            },
+            status=501,
         )
 
     try:
         # Uwaga: przekazujemy *UNIT potem ACTION* (tak woła API)
         proc = subprocess.run(
-            ["sudo", "-n", SERVICE_CTL, unit, action], check=False, capture_output=True, text=True, timeout=12.0
+            ["sudo", "-n", SERVICE_CTL, unit, action],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=12.0,
         )
         status_obj = _svc_status(unit)
         payload = {

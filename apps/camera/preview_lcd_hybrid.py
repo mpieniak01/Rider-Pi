@@ -194,7 +194,11 @@ def main():
                 track_bbox = (x, y, tw, th)
                 if not NO_DRAW:
                     cv2.rectangle(out, (x, y), (x + tw, y + th), (255, 200, 0), 2)
-                pub("vision.person", {"present": True, "score": 0.75, "bbox": [x, y, tw, th]}, add_ts=True)
+                pub(
+                    "vision.person",
+                    {"present": True, "score": 0.75, "bbox": [x, y, tw, th]},
+                    add_ts=True,
+                )
             else:
                 tracker = None
                 track_bbox = None
@@ -227,7 +231,11 @@ def main():
                     cv2.rectangle(out, (bx1, by1), (bx2, by2), (0, 255, 255), 2)
                 pub(
                     "vision.person",
-                    {"present": True, "score": float(conf), "bbox": [bx1, by1, bx2 - bx1, by2 - by1]},
+                    {
+                        "present": True,
+                        "score": float(conf),
+                        "bbox": [bx1, by1, bx2 - bx1, by2 - by1],
+                    },
                     add_ts=True,
                 )
                 tracker = create_tracker()
@@ -241,12 +249,20 @@ def main():
             roi = out[y0:y1, x0:x1]
             if roi.size > 0:
                 gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
+                faces = haar.detectMultiScale(
+                    gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20)
+                )
                 if not NO_DRAW:
                     for fx, fy, fw, fh in faces:
-                        cv2.rectangle(out, (x0 + fx, y0 + fy), (x0 + fx + fw, y0 + fy + fh), (0, 255, 0), 2)
+                        cv2.rectangle(
+                            out, (x0 + fx, y0 + fy), (x0 + fx + fw, y0 + fy + fh), (0, 255, 0), 2
+                        )
                 if len(faces) > 0:
-                    pub("vision.face", {"present": True, "score": 0.85, "count": len(faces)}, add_ts=True)
+                    pub(
+                        "vision.face",
+                        {"present": True, "score": 0.85, "count": len(faces)},
+                        add_ts=True,
+                    )
 
         # --- SNAPSHOTS ---
         SNAP.cam(frame)  # RAW po ROT/FLIP

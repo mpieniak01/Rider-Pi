@@ -79,7 +79,16 @@ def main():
             max_score = max(max_score, float(s))
             cv2.rectangle(out, (x, y), (x + w, y + h), (0, 255, 255), 2)
             # opcjonalna etykieta
-            cv2.putText(out, f"{s:.2f}", (x, y - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+            cv2.putText(
+                out,
+                f"{s:.2f}",
+                (x, y - 4),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
 
         # publikuj presence dla “person”
         present = len(rects) > 0
@@ -90,7 +99,12 @@ def main():
                     "present": True,
                     "score": float(max_score),
                     "count": int(len(rects)),
-                    "bbox": [int(rects[0][0]), int(rects[0][1]), int(rects[0][2]), int(rects[0][3])],
+                    "bbox": [
+                        int(rects[0][0]),
+                        int(rects[0][1]),
+                        int(rects[0][2]),
+                        int(rects[0][3]),
+                    ],
                     "mode": "hog",
                 },
                 add_ts=True,

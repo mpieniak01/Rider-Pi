@@ -63,7 +63,9 @@ class HotwordDetector:
                 self._mode = "off"
         elif self._mode == "porcupine" and _HAS_PORCUPINE and config.model:
             try:
-                self._porcupine = pvporcupine.create(keyword_paths=[config.model], sensitivities=[config.sensitivity])
+                self._porcupine = pvporcupine.create(
+                    keyword_paths=[config.model], sensitivities=[config.sensitivity]
+                )
                 self.logger.event("hotword.porcupine", model=config.model)
             except Exception as exc:
                 self.logger.error("hotword.porcupine_failed", error=str(exc))
@@ -119,7 +121,10 @@ class HotwordDetector:
             if not data:
                 time.sleep(0.01)
                 continue
-            pcm = [int.from_bytes(data[i : i + 2], "little", signed=True) for i in range(0, len(data), 2)]
+            pcm = [
+                int.from_bytes(data[i : i + 2], "little", signed=True)
+                for i in range(0, len(data), 2)
+            ]
             result = porcupine.process(pcm)
             if result >= 0:
                 self.logger.event("hotword.trigger", engine="porcupine")

@@ -275,7 +275,9 @@ def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> tuple[bytes, int, s
 def _pulse_available() -> bool:
     return bool(
         shutil.which("paplay")
-        and (os.environ.get("PULSE_SERVER") or os.path.exists(os.path.expanduser("~/.config/pulse")))
+        and (
+            os.environ.get("PULSE_SERVER") or os.path.exists(os.path.expanduser("~/.config/pulse"))
+        )
     )
 
 

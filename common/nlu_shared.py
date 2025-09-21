@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from __future__ import annotations
+
 """
 common/nlu_shared.py — wspólne funkcje NLU:
 - norm()                 — normalizacja tekstu (lower, bez polskich znaków, proste literówki)
@@ -13,18 +13,18 @@ import re
 
 ACCENT_MAP = str.maketrans("ąćęłńóśźż", "acelnoszz")
 
+
 def norm(txt: str) -> str:
     t = (txt or "").lower()
     t = t.translate(ACCENT_MAP)
     t = re.sub(r"[^\w\s]+", " ", t)  # usuń interpunkcję/symbole
     t = re.sub(r"\s+", " ", t).strip()
 
-# popularne literówki / warianty z ASR
+    # popularne literówki / warianty z ASR
     replacements = {
         "nerd gogle": "nerd google",
         "jezdz": "jedz",
         "jedzd": "jedz",
-
         # przód: różne warianty
         "idz do przodu": "do przodu",
         "naprzud": "naprzod",
@@ -33,7 +33,6 @@ def norm(txt: str) -> str:
         "przedu": "przodu",
         "jedz do przod": "jedz do przodu",
         "jedz do przedu": "jedz do przodu",
-
         # NOWE: "na przód" → potraktuj jak "do przodu"
         "na przod": "do przodu",
         "na przodu": "do przodu",
@@ -44,27 +43,32 @@ def norm(txt: str) -> str:
         t = t.replace(a, b)
     return t
 
+
 # Wzorce komend ruchu
-_PAT_STOP   = re.compile(r"\b(stop|stoj|zatrzymaj|przestan)\b")
+_PAT_STOP = re.compile(r"\b(stop|stoj|zatrzymaj|przestan)\b")
 # rozszerzone: dopuszczamy też bezpośrednio "na przod"
-_PAT_FWD    = re.compile(r"\b(do przodu|na przod|naprzod|jedz(?: (?:do|na) przodu?)?|rusz)\b")
-_PAT_BACK   = re.compile(r"\b(do tylu|wstecz|cofnij)\b")
-_PAT_LEFT   = re.compile(r"\b(w lewo|skret w lewo|lewo)\b")
-_PAT_RIGHT  = re.compile(r"\b(w prawo|skret w prawo|prawo)\b")
-_PAT_SIT    = re.compile(r"\b(usiad|siad)\b")
-_PAT_STAND  = re.compile(r"\b(wstan)\b")
+_PAT_FWD = re.compile(r"\b(do przodu|na przod|naprzod|jedz(?: (?:do|na) przodu?)?|rusz)\b")
+_PAT_BACK = re.compile(r"\b(do tylu|wstecz|cofnij)\b")
+_PAT_LEFT = re.compile(r"\b(w lewo|skret w lewo|lewo)\b")
+_PAT_RIGHT = re.compile(r"\b(w prawo|skret w prawo|prawo)\b")
+_PAT_SIT = re.compile(r"\b(usiad|siad)\b")
+_PAT_STAND = re.compile(r"\b(wstan)\b")
+
 
 def is_motion_command(text: str) -> bool:
     t = norm(text)
-    return any((
-        _PAT_STOP.search(t),
-        _PAT_FWD.search(t),
-        _PAT_BACK.search(t),
-        _PAT_LEFT.search(t),
-        _PAT_RIGHT.search(t),
-        _PAT_SIT.search(t),
-        _PAT_STAND.search(t),
-    ))
+    return any(
+        (
+            _PAT_STOP.search(t),
+            _PAT_FWD.search(t),
+            _PAT_BACK.search(t),
+            _PAT_LEFT.search(t),
+            _PAT_RIGHT.search(t),
+            _PAT_SIT.search(t),
+            _PAT_STAND.search(t),
+        )
+    )
+
 
 def parse_motion_intent(text: str):
     """
@@ -95,6 +99,7 @@ def parse_motion_intent(text: str):
         return {"action": "stand"}
 
     return None
+
 
 def confirm_text(intent: dict) -> str:
     a = intent.get("action")

@@ -53,7 +53,9 @@ class ChatSession:
         for item in self._history[-self.config.max_history * 2 :]:
             messages.append({"role": item.role, "content": item.content})
         messages.append({"role": "user", "content": text})
-        response = client.chat.completions.create(model=self.config.model, messages=messages, temperature=0.6)
+        response = client.chat.completions.create(
+            model=self.config.model, messages=messages, temperature=0.6
+        )
         choice = response.choices[0].message.content if response.choices else ""
         return (choice or "").strip()
 

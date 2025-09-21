@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from __future__ import annotations
+
 """
 common/cam_heartbeat.py — jednolity heartbeat kamery dla wszystkich previewów.
 Użycie:
@@ -13,7 +13,9 @@ Użycie:
 import os
 import time
 from typing import Optional
+
 from common.bus import BusPub, now_ts
+
 
 class CameraHB:
     def __init__(self, mode: str):
@@ -41,7 +43,8 @@ class CameraHB:
             "camera.heartbeat",
             {
                 "ts": now_ts(),  # mamy własny timestamp
-                "w": w, "h": h,
+                "w": w,
+                "h": h,
                 "mode": self.mode,
                 "fps": float(fps) if fps is not None else None,
                 "lcd": {"active": True, "presenting": bool(presenting), "rot": self.rot},

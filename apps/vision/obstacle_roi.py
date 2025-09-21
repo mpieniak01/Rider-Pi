@@ -126,7 +126,9 @@ try:
             print(f"[obst] warn: write json failed: {e}", flush=True)
 
         publish(TOPIC, payload)
-        print(f"[obst] snap present={present} pct={pct:.3f} nz={nz} roi=({y0}:{y1}/{h})", flush=True)
+        print(
+            f"[obst] snap present={present} pct={pct:.3f} nz={nz} roi=({y0}:{y1}/{h})", flush=True
+        )
 
 except KeyboardInterrupt:
     pass

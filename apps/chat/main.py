@@ -29,7 +29,9 @@ def log(msg):
     try:
         print(time.strftime("[%H:%M:%S]"), msg, flush=True)
     except UnicodeEncodeError:
-        sys.stdout.buffer.write((time.strftime("[%H:%M:%S] ") + str(msg) + "\n").encode("utf-8", "replace"))
+        sys.stdout.buffer.write(
+            (time.strftime("[%H:%M:%S] ") + str(msg) + "\n").encode("utf-8", "replace")
+        )
         sys.stdout.flush()
 
 
@@ -72,13 +74,18 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 PUB = BusPub()
 SUB = BusSub("audio.transcript")
 
-SYSTEM_PROMPT = "Jesteś zwięzłym asystentem robota XGO. Odpowiadaj po polsku, jednym krótkim zdaniem."
+SYSTEM_PROMPT = (
+    "Jesteś zwięzłym asystentem robota XGO. Odpowiadaj po polsku, jednym krótkim zdaniem."
+)
 
 
 def chat_answer(user_text: str) -> str:
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_text}],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_text},
+        ],
         temperature=0.3,
         max_tokens=80,
     )

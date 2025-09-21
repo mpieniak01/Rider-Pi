@@ -55,7 +55,17 @@ def quietify_xgolib(dog):
             except Exception:
                 pass
     # próba wyzerowania prędkości
-    for name in ("move", "velocity", "set_velocity", "set_v", "set_speed", "move_x", "move_y", "turn", "mark_time"):
+    for name in (
+        "move",
+        "velocity",
+        "set_velocity",
+        "set_v",
+        "set_speed",
+        "move_x",
+        "move_y",
+        "turn",
+        "mark_time",
+    ):
         if hasattr(dog, name):
             try:
                 fn = getattr(dog, name)

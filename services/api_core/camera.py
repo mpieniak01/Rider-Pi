@@ -17,7 +17,9 @@ _MIME = {
     ".png": "image/png",
     ".bmp": "image/bmp",
 }
-SNAP_MAX_AGE_S = int(os.getenv("SNAP_MAX_AGE_S", "20"))  # po ilu sekundach uznać klatkę za przeterminowaną
+SNAP_MAX_AGE_S = int(
+    os.getenv("SNAP_MAX_AGE_S", "20")
+)  # po ilu sekundach uznać klatkę za przeterminowaną
 
 # Upewnij się, że porównujemy ścieżki absolutne
 _SNAP_DIR_ABS = os.path.abspath(C.SNAP_DIR)
@@ -115,5 +117,8 @@ def snapshots_static(fname: str):
         return abort(403)
     if not os.path.isfile(safe):
         return abort(404)
-    mime = _MIME.get(os.path.splitext(safe)[1].lower(), mimetypes.guess_type(safe)[0] or "application/octet-stream")
+    mime = _MIME.get(
+        os.path.splitext(safe)[1].lower(),
+        mimetypes.guess_type(safe)[0] or "application/octet-stream",
+    )
     return _nocache_file_response(safe, mime)
