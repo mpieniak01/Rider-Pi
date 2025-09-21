@@ -748,7 +748,10 @@ def _spi_setup():
     if not _SPI_DBG_ONCE["done"]:
         try:
             print(
-                f"[spi] requested_hz={_DEF_HZ} actual_hz={spi.max_speed_hz} mode={spi.mode} bpw={getattr(spi, 'bits_per_word', 8)}",
+                (
+                    f"[spi] requested_hz={_DEF_HZ} actual_hz={spi.max_speed_hz} ",
+                    f"mode={spi.mode} bpw={getattr(spi, 'bits_per_word', 8)}",
+                ),
                 flush=True,
             )
         except Exception:
@@ -853,11 +856,20 @@ def _spi_setup():
             setattr(spi, attr, val)
         except Exception:
             pass
-    _RAWSPI["spi"] = spi
+    print(
+        (
+            f"[spi] requested_hz={_DEF_HZ} actual_hz={spi.max_speed_hz} ",
+            f"mode={spi.mode} bpw={getattr(spi, 'bits_per_word', 8)}",
+        ),
+        flush=True,
+    )
     if not _SPI_DBG_ONCE["done"]:
         try:
             print(
-                f"[spi] requested_hz={_DEF_HZ} actual_hz={spi.max_speed_hz} mode={spi.mode} bpw={getattr(spi, 'bits_per_word', 8)}",
+                (
+                    f"[spi] requested_hz={_DEF_HZ} actual_hz={spi.max_speed_hz} ",
+                    f"mode={spi.mode} bpw={getattr(spi, 'bits_per_word', 8)}",
+                ),
                 flush=True,
             )
         except Exception:
@@ -996,9 +1008,11 @@ def _spi_setup():
     _RAWSPI["spi"] = spi
     if not _SPI_DBG_ONCE["done"]:
         try:
-            bpw = getattr(spi, "bits_per_word", 8)
             print(
-                f"[spi] requested_hz={hz} actual_hz={spi.max_speed_hz} mode={spi.mode} bpw={bpw}",
+                (
+                    f"[spi] requested_hz={_DEF_HZ} actual_hz={spi.max_speed_hz} ",
+                    f"mode={spi.mode} bpw={getattr(spi, 'bits_per_word', 8)}",
+                ),
                 flush=True,
             )
         except Exception:

@@ -21,8 +21,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from . import config as voice_config
-from . import voice_logging as voice_logging
+from . import config as voice_config, voice_logging as voice_logging
 from .asr import ASRConfig, transcribe
 from .playback import PlaybackConfig, play_bytes, play_ding
 from .service import VoiceService, setup_signals
