@@ -1,17 +1,17 @@
-"""Configuration loader for the voice stack.
+# apps/voice/config.py
+"""
+Configuration loader for the voice stack (TOML-first with legacy YAML fallback).
 
-Configuration precedence:
-1. Internal defaults defined in :data:`DEFAULT_CONFIG`.
-2. YAML file loaded from ``configs/voice.yaml`` (if present) or a path
-   passed via ``--config``.
-3. Environment variables (prefixed with ``VOICE_``).
-4. CLI overrides passed as dictionaries (typically created by
-   ``apps.voice.cli`` helpers).
+Precedence:
+1. Internal defaults (DEFAULT_CONFIG).
+2. File: VOICE_CONFIG (if set) or first existing among:
+   - RIDER_CONFIG_DIR/voice.toml
+   - ./config/voice.toml
+   - (legacy) ./configs/voice.yaml  [DEPRECATED – will be removed later]
+3. Environment variables (prefixed VOICE_).
+4. CLI overrides (mapping), typically from apps.voice.cli.
 
-The loader returns a deeply merged dictionary.  The rest of the codebase
-uses plain dictionaries to keep the surface area small; dataclasses would
-introduce copies when merging nested settings.  Helper functions are
-provided to extract typed values with defaults.
+Merging is deep (dict-recursive). Returned value is a plain dict.
 """
 
 from __future__ import annotations
@@ -22,7 +22,20 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-import yaml
+# TOML: stdlib on 3.11; tomli on 3.9/3.10
+try:
+    import tomllib  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover
+    try:
+        import tomli as tomllib  # type: ignore
+    except Exception:  # pragma: no cover
+        tomllib = None  # type: ignore
+
+# YAML only when actually loading a .yaml
+try:  # pragma: no cover
+    import yaml
+except Exception:  # pragma: no cover
+    yaml = None  # type: ignore
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "capture": {
@@ -139,14 +152,28 @@ def _merge_dict(dst: dict[str, Any], src: Mapping[str, Any]) -> dict[str, Any]:
     return dst
 
 
+def _load_toml(path: Path | None) -> dict[str, Any]:
+    if not path or not path.exists():
+        return {}
+    if tomllib is None:
+        raise RuntimeError("TOML config requires tomllib/tomli, but none is available")
+    with path.open("rb") as f:
+        data = tomllib.load(f) or {}
+    if not isinstance(data, Mapping):
+        raise ValueError(f"Config {path} must be a mapping")
+    return dict(data)
+
+
 def _load_yaml(path: Path | None) -> dict[str, Any]:
     if not path or not path.exists():
         return {}
+    if yaml is None:
+        raise RuntimeError("YAML config requires PyYAML (python3-yaml)")
     with path.open("r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle) or {}
-        if not isinstance(data, Mapping):
-            raise ValueError(f"Config {path} must be a mapping")
-        return dict(data)
+    if not isinstance(data, Mapping):
+        raise ValueError(f"Config {path} must be a mapping")
+    return dict(data)
 
 
 def _apply_env(config: dict[str, Any]) -> dict[str, Any]:
@@ -166,10 +193,58 @@ def _set_nested(config: dict[str, Any], path: Iterable[str], value: Any) -> None
     cur[segments[-1]] = value
 
 
-def load(path: str | os.PathLike[str] | None = None, *, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def _discover_config_path(cli_path: str | os.PathLike[str] | None) -> tuple[Path | None, str]:
+    """Return (path, kind) where kind in {"toml","yaml",""}."""
+    if cli_path:
+        p = Path(cli_path)
+        ext = p.suffix.lower()
+        if ext == ".toml":
+            return p, "toml"
+        if ext in {".yaml", ".yml"}:
+            return p, "yaml"
+        # No/unknown ext – try TOML first, then YAML
+        if p.exists():
+            return p, "toml"
+        return None, ""
+
+    # ENV override
+    env_p = os.getenv("VOICE_CONFIG")
+    if env_p:
+        return _discover_config_path(env_p)
+
+    # RIDER_CONFIG_DIR first
+    rid = os.getenv("RIDER_CONFIG_DIR")
+    if rid:
+        p = Path(rid) / "voice.toml"
+        if p.exists():
+            return p, "toml"
+
+    # repo-local preferred
+    p = Path("config/voice.toml")
+    if p.exists():
+        return p, "toml"
+
+    # legacy fallback (deprecated)
+    p = Path("configs/voice.yaml")
+    if p.exists():
+        return p, "yaml"
+
+    return None, ""
+
+
+def load(
+    path: str | os.PathLike[str] | None = None, *, overrides: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     base = deepcopy(DEFAULT_CONFIG)
-    cfg_path = Path(path) if path else Path("configs/voice.yaml")
-    merged = _merge_dict(base, _load_yaml(cfg_path))
+    cfg_path, kind = _discover_config_path(path)
+    if cfg_path and kind == "toml":
+        merged = _merge_dict(base, _load_toml(cfg_path))
+    elif cfg_path and kind == "yaml":
+        print("[voice.config] WARNING: loading legacy YAML from configs/voice.yaml (DEPRECATED)")
+        merged = _merge_dict(base, _load_yaml(cfg_path))
+    else:
+        merged = base  # no file found
+
     merged = _apply_env(merged)
     if overrides:
         merged = _merge_dict(merged, overrides)
@@ -184,7 +259,6 @@ def ensure_dir(path: str | Path) -> Path:
 
 def override_from_pairs(section: str, pairs: Iterable[str]) -> dict[str, Any]:
     """Parse ``key=value`` overrides into a nested mapping."""
-
     result: dict[str, Any] = {}
     for pair in pairs:
         if "=" not in pair:
