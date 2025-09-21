@@ -6,18 +6,13 @@ extend-exclude = [
   "_apps", "_apps/**",
   "attic", "attic/**",
   "venv", ".venv", "build", "dist", "__pycache__",
-  "services/_deprecated_*", "services/_deprecated_*/**"
+  "services/_deprecated_*", "services/_deprecated_*/**",
 ]
-
 [tool.ruff.lint]
-# wszystkie reguły trzymajmy tu (nowe miejsce)
 select = ["E", "F", "I", "UP", "B"]
-ignore = []                  # jeśli chcesz wyciszyć raporty, dopisz np. "UP045"
+ignore = []
 unfixable = ["UP006", "UP045"]
-per-file-ignores = { "tests/**" = ["E402", "F401", "F811"] }
-
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E402", "F401", "F811", "E501"]
 [tool.ruff.format]
 quote-style = "preserve"
-
-
-
