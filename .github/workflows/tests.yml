@@ -13,7 +13,12 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.9"]  # dopasowane do target-version=py39 (Ruff). Możesz dodać "3.10", "3.11".
+        python-version: ["3.9"]
+
+    env:
+      PYTHONPATH: .
+      RIDER_PI_CI: "1"
+      RIDER_PI_MOCK_HW: "1"
 
     steps:
       - name: Checkout
@@ -25,33 +30,19 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
-      - name: Install dependencies
+      - name: Install test deps (no package build)
         run: |
-          set -euxo pipefail
-          # Preferuj instalację z pyproject (extras "dev" jeżeli są)
-          if [ -f pyproject.toml ]; then
-            python -m pip install ".[dev]" || python -m pip install .
-          fi
-          # Fallbacki gdy są pliki wymagań
-          if [ -f requirements.txt ]; then
-            python -m pip install -r requirements.txt
-          fi
-          if [ -f requirements-dev.txt ]; then
-            python -m pip install -r requirements-dev.txt
-          fi
-          # Narzędzia pomocnicze do coverage (opcjonalnie)
-          python -m pip install pytest pytest-cov
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          # tylko zależności – bez instalowania projektu
+          [ -f requirements.txt ] && pip install -r requirements.txt || true
+          [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
+          pip install pytest pytest-cov
 
       - name: Run tests
-        env:
-          # Jeśli testy wymagają mocków sprzętowych — ustaw dowolne flaki/feature flags
-          RIDER_PI_CI: "1"
-          RIDER_PI_MOCK_HW: "1"
         run: |
-          pytest -q --maxfail=1 --disable-warnings -k "not slow" --cov=. --cov-report=term-missing
+          pytest -q --maxfail=1 --disable-warnings -k "not slow" \
+                 --cov=. --cov-report=term-missing
 
       - name: Upload coverage (HTML)
         if: ${{ always() }}
@@ -60,3 +51,4 @@ jobs:
           name: coverage-html
           path: htmlcov/
           if-no-files-found: ignore
+
