@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import importlib
 import os
 import sys
@@ -27,7 +28,12 @@ if spi is not None and hasattr(spi, "mode"):
 
 # znajdź RAW (node z: command/spi_writebyte/SetWindows)
 def get_raw(dev):
-    for node in (dev, getattr(dev, "lcd", None), getattr(dev, "disp", None), getattr(dev, "display", None)):
+    for node in (
+        dev,
+        getattr(dev, "lcd", None),
+        getattr(dev, "disp", None),
+        getattr(dev, "display", None),
+    ):
         if node and all(hasattr(node, m) for m in ("command", "spi_writebyte", "SetWindows")):
             return node
     raise RuntimeError("Brak RAW interfejsu (command/spi_writebyte/SetWindows)")
@@ -64,5 +70,7 @@ for i in range(0, len(black), 2048):
     d.spi_writebyte(black[i : i + 2048])
 
 print(
-    f"Panel reinitialized (COLMOD=0x{COLMOD:02X}, MADCTL=0x{MADCTL:02X}, invert={'on' if INVERT else 'off'}, SPI={SPIHZ or getattr(spi, 'max_speed_hz', '-')} mode={getattr(spi, 'mode', '-')})."
+    print(
+        f"... SPI={SPIHZ or getattr(spi, 'max_speed_hz', '-')} mode={getattr(spi, 'mode', '-')}",
+    )
 )

@@ -5,7 +5,6 @@ import json
 import os
 import time
 from collections.abc import Iterable, Iterator
-from typing import Dict, Optional, Tuple, Union
 
 import zmq
 
@@ -38,7 +37,7 @@ class BusPub:
     def _full_topic(self, topic: str) -> str:
         return f"{self.prefix}.{topic}" if self.prefix else topic
 
-    def publish(self, topic: str, payload: Dict, add_ts: bool = False) -> None:
+    def publish(self, topic: str, payload: dict, add_ts: bool = False) -> None:
         """
         Wyślij wiadomość. Jeśli add_ts=True i brak 'ts' w payload, doda znacznik czasu.
         """
@@ -50,7 +49,7 @@ class BusPub:
         self.sock.send_multipart([t, msg])
 
     # wsteczna kompatybilność: metoda/argumenty jak wcześniej
-    def send(self, topic: str, payload: Dict) -> None:
+    def send(self, topic: str, payload: dict) -> None:
         self.publish(topic, payload)
 
     def close(self) -> None:
@@ -73,7 +72,7 @@ class BusSub:
     Zwraca (topic:str, payload:dict).
     """
 
-    def __init__(self, topics: Union[str, Iterable[str]]):
+    def __init__(self, topics: str | Iterable[str]):
         self.ctx = zmq.Context.instance()
         self.sock = self.ctx.socket(zmq.SUB)
         self.sock.setsockopt(zmq.LINGER, 0)
@@ -88,7 +87,7 @@ class BusSub:
         """Dopisz subskrypcję w locie."""
         self.sock.setsockopt(zmq.SUBSCRIBE, topic.encode("utf-8"))
 
-    def recv(self, timeout_ms: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict]]:
+    def recv(self, timeout_ms: int | None = None) -> tuple[str | None, dict | None]:
         """
         Blokujące (z opcjonalnym timeoutem) pobranie jednej wiadomości.
         Zwraca (topic, payload) albo (None, None) przy timeout.
@@ -103,7 +102,7 @@ class BusSub:
             payload = None
         return topic.decode("utf-8"), payload
 
-    def recv_iter(self) -> Iterator[Tuple[str, Dict]]:
+    def recv_iter(self) -> Iterator[tuple[str, dict]]:
         """Nieskończona pętla generatora (użyteczne w wątkach)."""
         while True:
             topic, payload = self.recv()
@@ -112,7 +111,7 @@ class BusSub:
             yield topic, payload
 
     # pozwala używać:  for topic, msg in sub:
-    def __iter__(self) -> Iterator[Tuple[str, Dict]]:
+    def __iter__(self) -> Iterator[tuple[str, dict]]:
         return self.recv_iter()
 
     def close(self) -> None:

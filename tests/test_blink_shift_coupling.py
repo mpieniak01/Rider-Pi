@@ -90,6 +90,5 @@ def test_blink_can_trigger_look_when_coupling_enabled(monkeypatch):
         time.sleep(0.04)
 
     assert seen_jump, (
-        "Przy sprzęgle=1.0 i braku idle-look powinien wystąpić „skok” spojrzenia "
-        "(≥5 px) po którymś mrugnięciu."
+        "Przy sprzęgle=1.0 i braku idle-look powinien wystąpić „skok” spojrzenia (≥5 px) po którymś mrugnięciu."
     )

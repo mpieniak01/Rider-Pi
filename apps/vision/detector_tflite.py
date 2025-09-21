@@ -56,12 +56,8 @@ def sub_recv():
 
 
 # --- Parametry histerezy/debouncera ---
-P_ON_N = int(
-    os.getenv("VISION_ON_CONSECUTIVE", "3")
-)  # ile kolejnych pozytywów, by uznać „present=true”
-P_OFF_TT = float(
-    os.getenv("VISION_OFF_TTL_SEC", "2.0")
-)  # po ilu sekundach bez pozytywów uznać „present=false”
+P_ON_N = int(os.getenv("VISION_ON_CONSECUTIVE", "3"))  # ile kolejnych pozytywów, by uznać „present=true”
+P_OFF_TT = float(os.getenv("VISION_OFF_TTL_SEC", "2.0"))  # po ilu sekundach bez pozytywów uznać „present=false”
 MIN_SCORE = float(os.getenv("VISION_MIN_SCORE", "0.50"))  # minimalny próg score
 
 
@@ -80,7 +76,8 @@ STATE = PresenceState()
 # --- Normalizacja wejścia ---
 def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
     """
-    Sprowadzamy HAAR/SSD/hybrid do: {"kind": "face"/"person", "present": bool, "score": float, "bbox": [x,y,w,h] or None}
+    Sprowadzamy HAAR/SSD/hybrid do:
+    {"kind": "face"/"person", "present": bool, "score": float, "bbox": [x,y,w,h] or None}
     Zakładamy, że detektory wysyłają przynajmniej score; gdy brak, używamy domyślnych.
     """
     kind = "face" if "face" in topic else ("person" if "person" in topic else "det")

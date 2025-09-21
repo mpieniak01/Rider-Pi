@@ -70,6 +70,4 @@ def test_pupil_stays_inside_eye_with_extreme_look_and_blink(monkeypatch):
 
     # Źrenice pozostają w granicach prostokąta oka (przybliżenie owal/clamp)
     assert lx0 <= lc[0] <= lx1 and ly0 <= lc[1] <= ly1, "Lewy pupil powinien pozostać w obrębie oka"
-    assert rx0 <= rc[0] <= rx1 and ry0 <= rc[1] <= ry1, (
-        "Prawy pupil powinien pozostać w obrębie oka"
-    )
+    assert rx0 <= rc[0] <= rx1 and ry0 <= rc[1] <= ry1, "Prawy pupil powinien pozostać w obrębie oka"

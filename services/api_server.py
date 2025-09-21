@@ -11,9 +11,7 @@ try:
 
     app: Flask = getattr(compat, "app", Flask(__name__))
     DEFAULT_PORT = int(
-        os.getenv("STATUS_API_PORT")
-        or os.getenv("API_PORT")
-        or getattr(compat, "STATUS_API_PORT", 5000)
+        os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or getattr(compat, "STATUS_API_PORT", 5000)
     )
 except Exception:
     compat = None  # type: ignore
@@ -155,9 +153,7 @@ except Exception as e:
     app.logger.warning(f"Vision blueprint not available: {e}")
 
 # control proxy
-_add_rule(
-    "/api/control", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"]
-)
+_add_rule("/api/control", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/cmd", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
 
 # voice proxy
@@ -182,9 +178,7 @@ except Exception as e:
 
 # ── Dashboard / pliki statyczne ──────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_WEB_DIR = os.path.abspath(
-    os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web")
-)
+STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
 
 
 def serve_web(fname):
@@ -234,9 +228,7 @@ if _need_local:
             import zmq  # type: ignore
 
             _ctx = zmq.Context.instance()
-            _bus_addr = (
-                os.getenv("BUS_PUB_ADDR") or f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT', '5555')}"
-            )
+            _bus_addr = os.getenv("BUS_PUB_ADDR") or f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT', '5555')}"
             _pub = _ctx.socket(zmq.PUB)
             _pub.connect(_bus_addr)
             _PUBLISH = True

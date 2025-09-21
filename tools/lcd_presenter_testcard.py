@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import importlib
 import os
 import sys
@@ -17,7 +18,7 @@ def find_dev():
     # 1) szukaj klasy z ShowImage tuż pod xgoscreen
     for name in dir(xs):
         obj = getattr(xs, name)
-        if hasattr(obj, "ShowImage") and callable(getattr(obj, "ShowImage")):
+        if hasattr(obj, "ShowImage") and callable(obj.ShowImage):
             try:
                 return obj()
             except Exception:

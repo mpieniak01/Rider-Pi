@@ -246,9 +246,7 @@ class LCDDirect:
 
     def _prep(self, img: Image.Image) -> Image.Image:
         if self.rotate:
-            rot = {90: Image.ROTATE_90, 180: Image.ROTATE_180, 270: Image.ROTATE_270}.get(
-                self.rotate
-            )
+            rot = {90: Image.ROTATE_90, 180: Image.ROTATE_180, 270: Image.ROTATE_270}.get(self.rotate)
             img = img.transpose(rot) if rot else img.rotate(self.rotate, expand=True)
         W, H = self._disp_wh
         if img.size != (W, H):
@@ -274,9 +272,7 @@ class LCDDirect:
                 self._push = (target, name, tag)
                 print("LCD(direct): FORCED", f"{type(target).__name__}.{name}[{tag}]", flush=True)
                 return True
-        print(
-            f"[LCD] --force requested '{name}', nie znaleziono na obiektach sterownika.", flush=True
-        )
+        print(f"[LCD] --force requested '{name}', nie znaleziono na obiektach sterownika.", flush=True)
         return False
 
     def _scan_bind(self, img: Image.Image) -> str | None:
@@ -426,9 +422,7 @@ def main():
     )
 
     # Sterowanie „nastrojem” (mood) i sekwencjami
-    ap.add_argument(
-        "--mood", choices=["happy", "neutral", "sad"], help="Zaplanuj przejście nastroju (ust)."
-    )
+    ap.add_argument("--mood", choices=["happy", "neutral", "sad"], help="Zaplanuj przejście nastroju (ust).")
     ap.add_argument(
         "--mood-via-neutral",
         dest="mood_via_neutral",
@@ -535,9 +529,7 @@ def main():
         return
 
     # LCD path
-    lcd = LCDDirect(
-        rotate=args.rotate, size=args.size, spi_hz=args.spi_hz, bl_pin=args.bl_pin, force=force
-    )
+    lcd = LCDDirect(rotate=args.rotate, size=args.size, spi_hz=args.spi_hz, bl_pin=args.bl_pin, force=force)
     n = 0
     t0 = time.time()
     last_stats = t0

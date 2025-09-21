@@ -232,9 +232,7 @@ def _discover_config_path(cli_path: str | os.PathLike[str] | None) -> tuple[Path
     return None, ""
 
 
-def load(
-    path: str | os.PathLike[str] | None = None, *, overrides: Mapping[str, Any] | None = None
-) -> dict[str, Any]:
+def load(path: str | os.PathLike[str] | None = None, *, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
     base = deepcopy(DEFAULT_CONFIG)
     cfg_path, kind = _discover_config_path(path)
     if cfg_path and kind == "toml":

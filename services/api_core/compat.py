@@ -37,9 +37,7 @@ HISTORY_LEN = 60
 
 # ── Ścieżki ───────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SNAP_DIR = os.path.abspath(
-    os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots")
-)
+SNAP_DIR = os.path.abspath(os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots"))
 VIEW_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
 CONTROL_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "control.html"))
 RAW_PATH = os.path.join(SNAP_DIR, "raw.jpg")
@@ -215,9 +213,7 @@ def healthz():
     xgo_age = (now - xgo_ts) if xgo_ts else None
     xgo_on = xgo_age is not None and xgo_age <= 5.0
 
-    inferred_pose = LAST_XGO.get("pose") or _classify_pose(
-        LAST_XGO.get("roll"), LAST_XGO.get("pitch")
-    )
+    inferred_pose = LAST_XGO.get("pose") or _classify_pose(LAST_XGO.get("roll"), LAST_XGO.get("pitch"))
     fw = XGO_FW if XGO_FW != "Null" else None
 
     yaw = LAST_XGO.get("yaw")
@@ -228,12 +224,7 @@ def healthz():
 
     bat = LAST_XGO.get("battery")
     # Jednorazowe błyski 0% traktuj jako "brak odczytu".
-    if (
-        isinstance(bat, (int, float))
-        and bat == 0
-        and xgo_on
-        and (last_msg_age is not None and last_msg_age < 2.0)
-    ):
+    if isinstance(bat, (int, float)) and bat == 0 and xgo_on and (last_msg_age is not None and last_msg_age < 2.0):
         bat = None
 
     devices = {
@@ -291,9 +282,7 @@ def health_alias():
 def livez():
     # prosty „liveness”: proces żyje i podaje uptime
     up_s = time.time() - START_TS
-    return Response(
-        json.dumps({"alive": True, "uptime_s": round(up_s, 3)}), mimetype="application/json"
-    )
+    return Response(json.dumps({"alive": True, "uptime_s": round(up_s, 3)}), mimetype="application/json")
 
 
 # === Version / Bus health / Refined readyz ====================================
@@ -539,9 +528,7 @@ def api_flags_set(name: str, state: str):
         )
     st = state.strip().lower()
     if st not in ("on", "off"):
-        return Response(
-            json.dumps({"ok": False, "error": "bad state"}), mimetype="application/json", status=400
-        )
+        return Response(json.dumps({"ok": False, "error": "bad state"}), mimetype="application/json", status=400)
     ok = _set_flag(name, st == "on")
     return Response(
         json.dumps({"ok": bool(ok), "name": name, "state": st}),

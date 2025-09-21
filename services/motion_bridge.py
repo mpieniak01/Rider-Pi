@@ -89,9 +89,7 @@ _yaw_state = {"ts": None, "yaw_raw": None, "yaw_stable": None, "src": "gyro_stab
 _last_motion_cmd_ts = 0.0
 
 
-def _stabilize_yaw(
-    yaw_raw: float | None, ts: float, freeze: bool = False
-) -> tuple[float | None, float | None, str]:
+def _stabilize_yaw(yaw_raw: float | None, ts: float, freeze: bool = False) -> tuple[float | None, float | None, str]:
     global _yaw_state
     if yaw_raw is None:
         _yaw_state["ts"] = ts
@@ -422,9 +420,7 @@ def do_backward(speed_norm, runtime):
     print(f"[bridge] backward v={spd:.2f} t={runtime:.2f}")
     dev = ensure_xgo_open()
     if dev:
-        meth = (
-            "back" if hasattr(dev, "back") else ("backward" if hasattr(dev, "backward") else None)
-        )
+        meth = "back" if hasattr(dev, "back") else ("backward" if hasattr(dev, "backward") else None)
         if meth:
             if not _try_call(getattr(dev, meth), spd):
                 if not _try_call(getattr(dev, meth), runtime):
@@ -539,13 +535,9 @@ while _running:
             vx = float(data.get("v", 0.0) or 0.0)
             dur = max(
                 0.05,
-                min(
-                    float(data.get("t", SAFE_MAX_DURATION) or SAFE_MAX_DURATION), SAFE_MAX_DURATION
-                ),
+                min(float(data.get("t", SAFE_MAX_DURATION) or SAFE_MAX_DURATION), SAFE_MAX_DURATION),
             )
-            publish_event(
-                "rx_cmd.legacy", {"rid": rid, "topic": "motion.cmd", "dir": d, "v": vx, "t": dur}
-            )
+            publish_event("rx_cmd.legacy", {"rid": rid, "topic": "motion.cmd", "dir": d, "v": vx, "t": dur})
 
             now2 = time.time()
             ts_in = data.get("ts")
@@ -589,15 +581,11 @@ while _running:
             elif d in ("left", "turn_left"):
                 moved = True
                 do_turn_left(abs(vx), dur)
-                publish_event(
-                    "turn_left", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur}
-                )
+                publish_event("turn_left", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
             elif d in ("right", "turn_right"):
                 moved = True
                 do_turn_right(abs(vx), dur)
-                publish_event(
-                    "turn_right", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur}
-                )
+                publish_event("turn_right", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
             elif d in ("stop", "halt"):
                 do_stop()
                 publish_event("stop", {"rid": rid})

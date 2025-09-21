@@ -264,7 +264,7 @@ def push_to_lcd(img: Image.Image, rotate: int = 270, spi_hz: int | None = None) 
 
     if spi_hz is not None:
         try:
-            setattr(mod, "SPI_HZ", int(spi_hz))
+            mod.SPI_HZ = int(spi_hz)
         except Exception:
             pass
 

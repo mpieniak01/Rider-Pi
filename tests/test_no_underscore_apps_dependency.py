@@ -31,7 +31,7 @@ def collect_py_files(base):
     if os.path.isfile(base):
         return [base] if base.endswith(".py") else []
     out = []
-    for root, dirs, files in os.walk(base):
+    for root, _dirs, files in os.walk(base):
         for f in files:
             if f.endswith(".py"):
                 out.append(os.path.join(root, f))

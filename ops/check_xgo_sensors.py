@@ -96,8 +96,10 @@ def main():
     while True:
         try:
             batt = dog.read_battery()
+            _ = batt
         except Exception:
             batt = None
+            _ = batt
 
         try:
             roll = dog.read_roll()
@@ -116,16 +118,12 @@ def main():
         try:
             if roll is not None and pitch is not None:
                 r, p = abs(float(roll)), abs(float(pitch))
-                pose = (
-                    "upright"
-                    if (r < 20 and p < 20)
-                    else ("fallen?" if (r > 60 or p > 60) else "leaning")
-                )
+                pose = "upright" if (r < 20 and p < 20) else ("fallen?" if (r > 60 or p > 60) else "leaning")
         except Exception:
             pass
 
         print(
-            f"battery: {fmt(batt, 0, '%')} | roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} yaw: {fmt(yaw, 1, '°')} | pose: {pose}"
+            (f"roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} yaw: {fmt(yaw, 1, '°')} | pose: {pose}",),
         )
         time.sleep(1.0)
 

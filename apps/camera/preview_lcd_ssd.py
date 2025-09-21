@@ -73,9 +73,7 @@ def should_snap_now() -> bool:
 
 def apply_rotation(frame, rot, flip_h, flip_v):
     if rot in (90, 180, 270):
-        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[
-            rot
-        ]
+        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[rot]
         frame = cv2.rotate(frame, k)
     if flip_h:
         frame = cv2.flip(frame, 1)
@@ -145,9 +143,7 @@ def load_ssd():
     if not (os.path.isfile(proto) and os.path.isfile(model)):
         raise FileNotFoundError("Brak modeli SSD w models/ssd/")
     if os.path.getsize(model) < 5_000_000:
-        raise OSError(
-            f"Uszkodzony/niepełny model Caffe (size={os.path.getsize(model)} B) – potrzebny ~23MB."
-        )
+        raise OSError(f"Uszkodzony/niepełny model Caffe (size={os.path.getsize(model)} B) – potrzebny ~23MB.")
     return cv2.dnn.readNetFromCaffe(proto, model)
 
 
@@ -252,8 +248,11 @@ def main():
     frame_id, t0, frames = 0, time.time(), 0
 
     print(
-        f"[ssd] start | SNAP_DIR={SNAP_DIR} | ROT={ROT} FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "
-        f"NO_DRAW={NO_DRAW} DISABLE_LCD={DISABLE_LCD} | SCORE>={SCORE} EVERY={EVERY} | SSD_CLASSES={'ALL' if not CLW else ','.join(sorted(CLW))}",
+        f"[ssd] start | SNAP_DIR={SNAP_DIR} | ROT={ROT} FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "(
+            f"DBG FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "
+            f"CLASSES={CLW if CLW else 'ALL'} EVERY={EVERY} | "
+            f"SSD_CLASSES={'ALL' if not CLW else ','.join(sorted(CLW))}",
+        ),
         flush=True,
     )
 

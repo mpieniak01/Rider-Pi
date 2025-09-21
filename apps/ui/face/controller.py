@@ -33,9 +33,7 @@ class FaceController:
         self.size, self.fps = size, fps
 
         env_idle = os.getenv("FACE_IDLE_ENABLE")
-        self.idle = (
-            (str(env_idle).lower() not in {"0", "false", "no"}) if env_idle is not None else idle
-        )
+        self.idle = (str(env_idle).lower() not in {"0", "false", "no"}) if env_idle is not None else idle
 
         self.renderer = FaceRenderer(cfg={}, size=size, guide=False, quality="fast")
         self.anim = Animator()
@@ -67,20 +65,12 @@ class FaceController:
         # Timery
         now = time.time()
         self._next_blink_ts = (
-            now + self._jittered(self._idle_blink_every)
-            if self._idle_blink_every > 0
-            else float("inf")
+            now + self._jittered(self._idle_blink_every) if self._idle_blink_every > 0 else float("inf")
         )
         self._next_soft_blink_ts = (
-            now + self._jittered(self._idle_soft_blink_every)
-            if self._idle_soft_blink_every > 0
-            else float("inf")
+            now + self._jittered(self._idle_soft_blink_every) if self._idle_soft_blink_every > 0 else float("inf")
         )
-        self._next_look_ts = (
-            now + self._jittered(self._idle_look_every)
-            if self._idle_look_every > 0
-            else float("inf")
-        )
+        self._next_look_ts = now + self._jittered(self._idle_look_every) if self._idle_look_every > 0 else float("inf")
 
         self._blink_cooldown_until = 0.0
         self._soft_blink_block_until = 0.0
@@ -228,11 +218,7 @@ class FaceController:
             self._schedule_next("soft", self._idle_soft_blink_every)
             self._blink_cooldown_until = max(self._blink_cooldown_until, now + 0.12)
 
-        if (
-            self._idle_look_every > 0
-            and now >= self._next_look_ts
-            and now >= self._blink_cooldown_until
-        ):
+        if self._idle_look_every > 0 and now >= self._next_look_ts and now >= self._blink_cooldown_until:
             self.do("look", t=self._look_t, amp=self._look_amp)
             self._schedule_next("look", self._idle_look_every)
 

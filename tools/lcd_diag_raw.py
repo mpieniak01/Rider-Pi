@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import importlib
 import inspect
 import os
@@ -63,7 +64,13 @@ def pick_device_class():
         print("[diag] FATAL: brak klasy z SetWindows/command/spi_writebyte w xgoscreen.*")
         sys.exit(2)
     # preferuj nazwy z '2inch' lub 'lcd'
-    cands.sort(key=lambda kv: (0 if "2inch" in kv[0].lower() else 1, 0 if "lcd" in kv[0].lower() else 1, kv[0].lower()))
+    cands.sort(
+        key=lambda kv: (
+            0 if "2inch" in kv[0].lower() else 1,
+            0 if "lcd" in kv[0].lower() else 1,
+            kv[0].lower(),
+        )
+    )
     return cands[0][1]
 
 
@@ -128,7 +135,7 @@ def main():
     # trzy pełnoekranowe kolory (czerwony, zielony, niebieski)
     def fill565(val):
         line = (val.to_bytes(2, "big")) * W
-        for y in range(H):
+        for _y in range(H):
             dev.spi_writebyte(line)
 
     print("[diag] RED")

@@ -89,3 +89,9 @@ config/local/*
 # local artifacts
 packages-raspberrypi-*.txt
 apps/ui/untitled.py
+
+# local helpers
+ruff-*.txt
+service-wrap-lines.patch
+fix_*.py
+fix_*

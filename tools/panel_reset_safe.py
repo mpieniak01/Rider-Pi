@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import argparse
 import importlib
 import inspect
@@ -45,7 +46,13 @@ def pick_device_class():
                     cands.append((n, o))
     if not cands:
         raise RuntimeError("Nie znalazłem klasy urządzenia w xgoscreen.*")
-    cands.sort(key=lambda kv: (0 if "2inch" in kv[0].lower() else 1, 0 if "lcd" in kv[0].lower() else 1, kv[0].lower()))
+    cands.sort(
+        key=lambda kv: (
+            0 if "2inch" in kv[0].lower() else 1,
+            0 if "lcd" in kv[0].lower() else 1,
+            kv[0].lower(),
+        )
+    )
     return cands[0][1]
 
 

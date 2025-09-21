@@ -121,9 +121,7 @@ def _decode_with_tool_to_wav(audio: bytes) -> bytes | None:
 # ── audio shaping: fade & tail ────────────────────────────────────────────────
 
 
-def _apply_fade(
-    pcm: bytes, sr: int, ch: int, sampwidth: int = 2, fade_in_ms: int = 15, fade_out_ms: int = 20
-) -> bytes:
+def _apply_fade(pcm: bytes, sr: int, ch: int, sampwidth: int = 2, fade_in_ms: int = 15, fade_out_ms: int = 20) -> bytes:
     """Łagodny fade-in/out na PCM16 (eliminuje „pyknięcia”)."""
     if sampwidth != 2 or not pcm:
         return pcm
@@ -148,9 +146,7 @@ def _apply_fade(
     start_mid = fi
     end_mid = n - fo
     if end_mid > start_mid:
-        out[start_mid * frame_len : end_mid * frame_len] = pcm[
-            start_mid * frame_len : end_mid * frame_len
-        ]
+        out[start_mid * frame_len : end_mid * frame_len] = pcm[start_mid * frame_len : end_mid * frame_len]
 
     # ramp-out
     for i in range(n - fo, n):
@@ -228,11 +224,7 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int | None, fmt: str | None) ->
         return _wrap_wav(pcm, in_sr, in_ch, 2 if in_sw == 2 else in_sw)
 
     # 2) MP3/OGG → dekoduj do WAV narzędziem
-    if (
-        _is_mp3(audio)
-        or _is_ogg(audio)
-        or (fmt or "").lower() in ("mp3", "mpeg", "audio/mpeg", "ogg")
-    ):
+    if _is_mp3(audio) or _is_ogg(audio) or (fmt or "").lower() in ("mp3", "mpeg", "audio/mpeg", "ogg"):
         wav = _decode_with_tool_to_wav(audio)
         if wav and _is_wav(wav):
             got2 = _read_wav_params(wav)
@@ -294,9 +286,7 @@ def api_tts_test():
     pcm = _append_tail(pcm, sr, ch, int(os.environ.get("VOICE_TAIL_MS", "300")))
     pcm = _maybe_gain(pcm, float(os.environ.get("VOICE_GAIN", "1.0")))
     wav = _wrap_wav(pcm, sr, ch, 2)
-    return Response(
-        wav, mimetype="audio/wav", headers={"Content-Disposition": "inline; filename=test.wav"}
-    )
+    return Response(wav, mimetype="audio/wav", headers={"Content-Disposition": "inline; filename=test.wav"})
 
 
 @app.post("/api/tts")

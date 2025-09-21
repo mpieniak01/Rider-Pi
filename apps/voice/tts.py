@@ -307,9 +307,7 @@ def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str):
 # ───── public API ─────────────────────────────────────────────────────────────
 
 
-def synthesize(
-    text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None
-) -> tuple[bytes, int, str]:
+def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None) -> tuple[bytes, int, str]:
     backend = (config.backend or "openai").lower()
     logger = logger or voice_logging.get_logger("voice.tts")
 
@@ -319,9 +317,7 @@ def synthesize(
     return _tts_openai(text, config, logger)
 
 
-def _tts_openai(
-    text: str, config: TTSConfig, logger: voice_logging.VoiceLogger
-) -> tuple[bytes, int, str]:
+def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
     """
     OpenAI Text-to-Speech (v1/audio/speech).
     Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav"), niezależnie od proszonego formatu.
@@ -456,9 +452,7 @@ def _tts_openai(
             return wav_bytes, sr, "wav"
 
         except requests.RequestException as e:
-            logger.warning(
-                "tts.openai.net_retry", extra={"data": {"attempt": attempt, "error": str(e)}}
-            )
+            logger.warning("tts.openai.net_retry", extra={"data": {"attempt": attempt, "error": str(e)}})
             last_err = e
             time.sleep(0.6 * (attempt + 1))
 

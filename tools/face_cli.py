@@ -1,9 +1,7 @@
 from __future__ import annotations
-"""
-Nowe CLI do renderowania buźki na LCD/mocka.
-"""
 
 import argparse
+import json
 import os
 import sys
 
@@ -12,6 +10,11 @@ from PIL import Image, ImageDraw
 from apps.ui.face.driver import make_driver
 from apps.ui.face.face_io import apply_rotate, fit_strategy, to_rgb565
 from apps.ui.face.panel_cfg import PanelCfg
+
+"""
+Nowe CLI do renderowania buźki na LCD/mocka.
+"""
+
 
 # Przykładowe ekspresje (neutral, happy, sad, blink...)
 EXPR_MAP = {
@@ -89,8 +92,6 @@ def main():
             if os.path.exists(p):
                 print(f"{p}: {os.path.getsize(p)} B")
         if os.path.exists(base + ".meta.json"):
-            import json
-
             with open(base + ".meta.json") as f:
                 print(json.dumps(json.load(f), indent=2))
 

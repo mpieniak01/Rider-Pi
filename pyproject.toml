@@ -1,5 +1,5 @@
 [tool.ruff]
-line-length = 100
+line-length = 120
 respect-gitignore = true
 target-version = "py39"
 extend-exclude = [
@@ -8,11 +8,20 @@ extend-exclude = [
   "venv", ".venv", "build", "dist", "__pycache__",
   "services/_deprecated_*", "services/_deprecated_*/**",
 ]
+
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "C4"]
 ignore = []
-unfixable = ["UP006", "UP045"]
+unfixable = []
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E402", "F401", "F811", "E501"]
+"apps/ui/face/driver_ili9xx.py" = ["E501"]
+"ops/xgo_safe_init.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "services", "tools"]
+combine-as-imports = true
+
 [tool.ruff.format]
 quote-style = "preserve"
