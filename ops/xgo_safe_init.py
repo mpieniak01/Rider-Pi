@@ -129,9 +129,9 @@ def main():
         quietify_xgolib(dog)
         time.sleep(0.2)
         try:
-            fw = dog.read_firmware()
+            _fw = dog.read_firmware()
         except Exception:
-            fw = None
+            _fw = None
         try:
             batt = dog.read_battery()
         except Exception:
@@ -150,7 +150,11 @@ def main():
             yaw = None
 
         print(
-            f"[ok] fw: {fw} | battery: {fmt(batt, 0, '%')} | roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}"
+            (
+                f"battery: {fmt(batt, 0, '%')} | ",
+                f"roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} ",
+                f"yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}",
+            )
         )
         if args.once:
             return
@@ -170,11 +174,21 @@ def main():
                 except Exception:
                     pitch = None
                 try:
-                    yaw = dog.read_yaw()
+                    print(
+                        (
+                            f"battery: {fmt(batt, 0, '%')} | ",
+                            f"roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} ",
+                            f"yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}",
+                        )
+                    )
                 except Exception:
                     yaw = None
                 print(
-                    f"battery: {fmt(batt, 0, '%')} | roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}"
+                    (
+                        f"battery: {fmt(batt, 0, '%')} | ",
+                        f"roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} ",
+                        f"yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}",
+                    )
                 )
                 time.sleep(1.0)
         except KeyboardInterrupt:
@@ -183,15 +197,25 @@ def main():
 
     else:
         # backend 'ro' — ZERO ruchu, port trzymamy otwarty
-        dog, port, ver = connect_ro(args.port, args.verbose)
+        print(
+            (
+                f"battery: {fmt(batt, 0, '%')} | ",
+                f"roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} ",
+                f"yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}",
+            )
+        )
         with dog:
-            fw = dog.read_firmware()
+            _fw = dog.read_firmware()
             batt = dog.read_battery()
             roll = dog.read_roll()
             pitch = dog.read_pitch()
             yaw = dog.read_yaw()
             print(
-                f"[ok] fw: {fw} | battery: {fmt(batt, 0, '%')} | roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}"
+                (
+                    f"battery: {fmt(batt, 0, '%')} | ",
+                    f"roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} ",
+                    f"yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}",
+                )
             )
             if args.once:
                 return
@@ -203,7 +227,11 @@ def main():
                     pitch = dog.read_pitch()
                     yaw = dog.read_yaw()
                     print(
-                        f"battery: {fmt(batt, 0, '%')} | roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}"
+                        (
+                            f"battery: {fmt(batt, 0, '%')} | ",
+                            f"roll: {fmt(roll, 1, '°')} pitch: {fmt(pitch, 1, '°')} ",
+                            f"yaw: {fmt(yaw, 1, '°')} | pose: {pose_label(roll, pitch)}",
+                        )
                     )
                     time.sleep(1.0)
             except KeyboardInterrupt:
