@@ -38,11 +38,13 @@ jobs:
           [ -f requirements.txt ] && pip install -r requirements.txt || true
           [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
           pip install pytest pytest-cov
+          # TWARDY PIN do wersji zgodnej z RPi:
+          pip install pillow==8.1.2
 
       - name: Run tests
         run: |
           pytest -q --maxfail=1 --disable-warnings -k "not slow" \
-                 --cov=. --cov-report=term-missing
+                 --cov=. --cov-report=term-missing --cov-report=html
 
       - name: Upload coverage (HTML)
         if: ${{ always() }}
@@ -51,4 +53,3 @@ jobs:
           name: coverage-html
           path: htmlcov/
           if-no-files-found: ignore
-
