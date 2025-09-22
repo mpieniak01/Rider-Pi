@@ -48,7 +48,7 @@ help:
 	@echo "  make vision-status    # status vision"
 	@echo ""
 	@echo "  make lcd-on           # włącz LCD (wake + DISP_ON)"
-	@echo "  make lcd-off          # wyłącz LCD (DISP_OFF + sleep)"
+	@echo "  make lcd-off          # wyłącz LCD (black + SLEEP, + próba BL)"
 	@echo "  make lcd-reset        # panel reset (RST) + ON"
 	@echo "  make lcd-black        # wyczyść ekran do czerni (presenter)"
 	@echo "  make lcd-on-hard      # twarde ON (piny + SPI), z fallbackiem BL"
@@ -89,10 +89,10 @@ api:
 # SYSTEMD
 .PHONY: up stop-all status status-all logs-broker logs-api logs-all logs-preview
 up:
-	@systemctl restart rider-broker.service rider-api.service
+	@$(SUDO) systemctl restart rider-broker.service rider-api.service
 
 stop-all:
-	-@systemctl stop $(SYSTEMD_SERVICES)
+	-@$(SUDO) systemctl stop $(SYSTEMD_SERVICES) || true
 
 status:
 	@systemctl --no-pager --full status rider-broker.service | sed -n '1,20p'
@@ -122,12 +122,23 @@ logs-all:
 
 # ───────────────────────────────────────────────
 # SAFE MODE
-.PHONY: safemode
+.PHONY: safemode face-kill lcd-off-safe
 safemode:
 	-@$(ROOT)/ops/camera_takeover_kill.sh || true
-	-@systemctl stop $(SYSTEMD_SERVICES)
-	-@$(SUDO) $(PY) $(ROOT)/tools/lcdctl.py off || true
+	-@$(MAKE) face-kill
+	-@$(SUDO) systemctl stop $(SYSTEMD_SERVICES) || true
+	-@$(MAKE) lcd-off
 	-@$(PY) $(ROOT)/ops/ledctl.py off || true
+
+# zabij wszystko co może rysować na LCD
+face-kill:
+	-@pkill -f 'newface|lcd_presenter|api_server|face_api|preview_lcd|xgoscreen' || true
+
+# tryb „na pewniaka”: vendor kill + stop-all + off
+lcd-off-safe:
+	@$(MAKE) vendor-kill
+	@$(MAKE) stop-all
+	@$(MAKE) lcd-off
 
 # ───────────────────────────────────────────────
 # OPS HELPERS
@@ -136,9 +147,15 @@ lcd-on:
 	@echo "== Włączam LCD (wyjście ze snu) =="
 	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py on || true
 
+# U CIEBIE: brak sterowalnego BL → najlepszy efekt to 'black' + 'sleep'.
+# Próba wymuszenia BL przez GPIO zostaje (nie przeszkadza).
 lcd-off:
-	@echo "== Wyłączam LCD (uśpienie panelu) =="
+	@echo "== Wyłączam LCD (black + sleep) =="
+	@$(PY) $(ROOT)/tools/lcd_presenter_clear.py
 	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py off || true
+	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; \
+	if [ "$$AH" = "1" ]; then sudo raspi-gpio set $$BL op dl; else sudo raspi-gpio set $$BL op dh; fi; \
+	echo "BL pin=$$BL (wygaszony)"; raspi-gpio get $$BL
 
 lcd-reset:
 	@echo "== RESET panelu LCD =="
@@ -149,10 +166,10 @@ lcd-black:
 
 vendor-kill:
 	@echo "== Ubijam procesy dostawcy kamery/LCD =="
-	@sudo systemctl stop yahboom* || true
-	@sudo systemctl stop rider-vendor* || true
-	@sudo systemctl stop jupyter.service || true
-	@sudo systemctl start jupyter.service || true
+	@$(SUDO) systemctl stop yahboom* || true
+	@$(SUDO) systemctl stop rider-vendor* || true
+	@$(SUDO) systemctl stop jupyter.service || true
+	@$(SUDO) systemctl start jupyter.service || true
 
 # alias dla literówki
 vendir-kill:
@@ -172,10 +189,10 @@ bus-spy:
 # CAM PREVIEW (systemd on-demand) + aliasy wsteczne
 .PHONY: preview-on preview-off preview-status
 preview-on:
-	@systemctl start rider-cam-preview.service
+	@$(SUDO) systemctl start rider-cam-preview.service
 
 preview-off:
-	@systemctl stop rider-cam-preview.service || true
+	@$(SUDO) systemctl stop rider-cam-preview.service || true
 
 preview-status:
 	@systemctl --no-pager --full status rider-cam-preview.service | sed -n '1,25p' || true
@@ -287,8 +304,6 @@ face-happy:
 
 face-sad:
 	@bash tools/face_presets.sh sad --secs 8 --stats
-
-
 
 # ───────────────────────────────────────────────
 # GFX / VNC
