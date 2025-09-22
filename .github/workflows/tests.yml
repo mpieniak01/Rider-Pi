@@ -36,14 +36,27 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          # (opcjonalnie) zależności projektu – bez maskowania błędów
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          # opcjonalne zależności projektu
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt; fi
           # minimalny zestaw dla testów + piny zgodne z RPi
-          pip install pytest pytest-cov
-          pip install pillow==8.1.2
-          pip install "flask<3" "werkzeug<3"
-          pip install "requests>=2.31,<3"
+          python -m pip install pytest pytest-cov
+          python -m pip install pillow==8.1.2
+          python -m pip install "flask<3" "werkzeug<3"
+          python -m pip install "requests>=2.31,<3"
+          python -m pip install "pyzmq>=22,<26"
+
+      - name: Verify deps
+        run: |
+          python - <<'PY'
+          import sys
+          import PIL, flask, requests, zmq
+          print("Python:", sys.version)
+          print("Pillow:", PIL.__version__)
+          print("Flask:", flask.__version__)
+          print("Requests:", requests.__version__)
+          print("pyzmq:", zmq.__version__)
+          PY
 
       - name: Run tests
         run: |
