@@ -23,23 +23,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
+          cache: pip
 
       - name: Install test deps (no package build)
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          # tylko zależności – bez instalowania projektu
-          [ -f requirements.txt ] && pip install -r requirements.txt || true
-          [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
+          # zależności projektu (jeśli są) – bez maskowania błędów
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          # minimalny zestaw dla testów + twarde piny pod RPi
           pip install pytest pytest-cov
-          # TWARDY PIN do wersji zgodnej z RPi:
           pip install pillow==8.1.2
+          pip install "flask<3" "werkzeug<3"
 
       - name: Run tests
         run: |
