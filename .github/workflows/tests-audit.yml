@@ -1,6 +1,15 @@
 name: tests-audit
+
 on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'ops/tests_audit.sh'
+      - 'tests/**'
+      - 'Makefile'
+      - 'pytest.ini'
   pull_request:
+    branches: [ "main" ]
     paths:
       - 'ops/tests_audit.sh'
       - 'tests/**'
@@ -12,14 +21,32 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          python-version: '3.9'
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
           cache: 'pip'
-      - run: python -m pip install --upgrade pip && pip install pyflakes
-      - run: bash -euxo pipefail ops/tests_audit.sh
-      - uses: actions/upload-artifact@v4
+
+      - name: Install audit deps
+        run: |
+          python -m pip install --upgrade pip
+          # jeśli wolisz z pliku, utwórz ops/tests_audit_requirements.txt
+          # i zamień poniższą linijkę na: pip install -r ops/tests_audit_requirements.txt
+          pip install pyflakes
+
+      - name: Run audit
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash ops/tests_audit.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: tests-audit
           path: |
@@ -27,4 +54,3 @@ jobs:
             tests/_suggested_delete.txt
             tests/_suggested_migrate.txt
           if-no-files-found: warn
-
