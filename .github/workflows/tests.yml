@@ -36,13 +36,14 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          # zależności projektu (jeśli są) – bez maskowania błędów
+          # (opcjonalnie) zależności projektu – bez maskowania błędów
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          # minimalny zestaw dla testów + twarde piny pod RPi
+          # minimalny zestaw dla testów + piny zgodne z RPi
           pip install pytest pytest-cov
           pip install pillow==8.1.2
           pip install "flask<3" "werkzeug<3"
+          pip install "requests>=2.31,<3"
 
       - name: Run tests
         run: |
