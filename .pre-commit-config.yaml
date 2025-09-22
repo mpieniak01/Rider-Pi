@@ -1,29 +1,22 @@
 repos:
-  - repo: local
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
     hooks:
       - id: ruff
-        name: ruff (lint)
-        entry: ruff check
-        language: system
-        types_or: [python]
-        # ruff sam ma extend-exclude, ale pre-commit też musi odfiltrować pliki
+        name: ruff (lint + fix)
+        args: [--fix, --unsafe-fixes]
         exclude: |
           (?x)^(
             attic/|
             _apps/|
-            services/_deprecated_.*
+            services/_deprecated_.* 
           )
-        args: [--fix, --force-exclude]
-
       - id: ruff-format
         name: ruff (format)
-        entry: ruff format
-        language: system
-        types_or: [python]
+        # bez --force-exclude (hook już to dodaje)
         exclude: |
           (?x)^(
             attic/|
             _apps/|
-            services/_deprecated_.*
+            services/_deprecated_.* 
           )
-        args: [--force-exclude]

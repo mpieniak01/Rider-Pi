@@ -190,7 +190,7 @@ def main():
         if tracker is not None:
             track_ok, box = tracker.update(out)
             if track_ok:
-                x, y, tw, th = [int(v) for v in box]
+                x, y, tw, th = (int(v) for v in box)
                 track_bbox = (x, y, tw, th)
                 if not NO_DRAW:
                     cv2.rectangle(out, (x, y), (x + tw, y + th), (255, 200, 0), 2)

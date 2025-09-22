@@ -110,7 +110,7 @@ def _spi_cmds(dc_pin: int, rst_pin: int, spi_dev: str, hz: int, cmds: list[int])
         bus, dev = (0, 0)
         try:
             path = spi_dev.replace("/dev/spidev", "")
-            bus, dev = [int(x) for x in path.split(".")]
+            bus, dev = (int(x) for x in path.split("."))
         except Exception:
             pass
         spi = spidev.SpiDev()
