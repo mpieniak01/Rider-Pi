@@ -36,32 +36,34 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
+          # opcjonalne zależności projektu
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt; fi
+          # minimalny zestaw dla testów + piny zgodne z RPi
           python -m pip install pytest pytest-cov
           python -m pip install pillow==8.1.2
           python -m pip install "flask<3" "werkzeug<3"
           python -m pip install "requests>=2.31,<3"
           python -m pip install "pyzmq>=22,<26"
+          # NOWE: NumPy potrzebne w tools/face_cli.py (Py3.9 nie wspiera NumPy 2.x)
+          python -m pip install "numpy>=1.21,<2"
 
       - name: Verify deps
         run: |
           python - <<'PY'
-          import sys, PIL, flask, requests, zmq
+          import sys, PIL, flask, requests, zmq, numpy
           print("Python:", sys.version)
           print("Pillow:", PIL.__version__)
           print("Flask:", flask.__version__)
           print("Requests:", requests.__version__)
           print("pyzmq:", zmq.__version__)
+          print("NumPy:", numpy.__version__)
           PY
 
-      # === NOWE: uruchom API na :8000 i poczekaj aż wstanie ===
       - name: Start API (background on :8000)
         run: |
           set -euo pipefail
-          # Zmień poniższą komendę na właściwą dla Twojej aplikacji:
           python -u services/api_server.py & echo $! > api.pid
-          # Czekaj aż odpowie HTTP 200/OK
           for i in $(seq 1 40); do
             if curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then
               echo "API is up"; break
