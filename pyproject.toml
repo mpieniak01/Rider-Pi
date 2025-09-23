@@ -12,7 +12,8 @@ extend-exclude = [
   "build/",
   "dist/",
   "__pycache__/",
-  "fast565.egg-info/",
+  "**/*.egg-info/",
+  ".ipynb_checkpoints/",
   # całe drzewka starych snapshotów:
   "services/_deprecated_*/",
 ]
