@@ -1,12 +1,20 @@
 [tool.ruff]
 line-length = 120
-respect-gitignore = true
 target-version = "py39"
+respect-gitignore = true
+
+# Jedno źródło prawdy dla CI i lokalnie:
 extend-exclude = [
-  "_apps", "_apps/**",
-  "attic", "attic/**",
-  "venv", ".venv", "build", "dist", "__pycache__",
-  "services/_deprecated_*", "services/_deprecated_*/**",
+  "_apps/",
+  "attic/",
+  "venv/",
+  ".venv/",
+  "build/",
+  "dist/",
+  "__pycache__/",
+  "fast565.egg-info/",
+  # sekcja kodu historycznego:
+  "services/_deprecated_/",
 ]
 
 [tool.ruff.lint]
@@ -23,3 +31,4 @@ combine-as-imports = true
 
 [tool.ruff.format]
 quote-style = "preserve"
+
