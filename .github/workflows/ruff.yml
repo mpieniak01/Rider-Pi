@@ -25,8 +25,15 @@ jobs:
       - name: Install Ruff
         run: pip install "ruff==0.13.1"
 
-      - name: Check formatting (ruff format --check)
-        run: ruff format --check .
+      - name: Ruff version
+        run: ruff --version
 
-      - name: Lint (ruff check)
-        run: ruff check . --output-format=github --statistics
+      - name: Check formatting (ruff format --check)
+        run: ruff format --check --diff .
+
+      - name: Lint (PR annotations)
+        run: ruff check . --output-format=github
+
+      # (opcjonalnie) dodatkowe statystyki w zwykłym formacie do logów
+      # - name: Lint stats
+      #   run: ruff check . --statistics
