@@ -13,8 +13,8 @@ extend-exclude = [
   "dist/",
   "__pycache__/",
   "fast565.egg-info/",
-  # sekcja kodu historycznego:
-  "services/_deprecated_/",
+  # całe drzewka starych snapshotów:
+  "services/_deprecated_*/",
 ]
 
 [tool.ruff.lint]
@@ -31,4 +31,3 @@ combine-as-imports = true
 
 [tool.ruff.format]
 quote-style = "preserve"
-
