@@ -267,6 +267,9 @@ class VoiceService:
     # Główna tura
 
     def _cycle(self, *, speak: bool = True) -> VoiceResult:
+        # Reset VAD state to ensure clean detection for this recording cycle
+        self._vad.reset()
+        
         # Wejście – słuchamy
         self._publish_ui_state("hearing")
 
