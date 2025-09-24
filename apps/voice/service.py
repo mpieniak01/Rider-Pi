@@ -294,7 +294,11 @@ class VoiceService:
     def _cycle(self, *, speak: bool = True) -> VoiceResult:
         # Reset VAD state to ensure clean detection for this recording cycle
         self._vad.reset()
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> 6dc1d58 (Fix VAD state persistence causing voice recording loop failures)
         # Wejście – słuchamy
         self._publish_ui_state("hearing")
 
