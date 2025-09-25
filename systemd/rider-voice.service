@@ -9,10 +9,14 @@ Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
-EnvironmentFile=-/etc/rider/voice.env
-ExecStart=/usr/bin/python3 -m apps.voice.cli listen --hotword off
+
+# Uruchamiaj przez loginowego basha, żeby wczytać ~/.bash_profile (OPENAI_API_KEY)
+ExecStart=/bin/bash -l -c 'cd /home/pi/robot && /usr/bin/python3 -m apps.voice.cli listen'
+
 Restart=on-failure
 RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=5
 StandardOutput=journal
 StandardError=journal
 

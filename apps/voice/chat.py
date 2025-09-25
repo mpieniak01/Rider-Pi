@@ -1,3 +1,4 @@
+# apps/voice/chat.py
 """Chat backends for conversational responses."""
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ class ChatConfig:
     model: str
     system_prompt: str
     max_history: int = 4
+    # NOWE: limit tokenów przekazywany DO API (None = bez limitu)
+    max_tokens: int | None = None
 
 
 @dataclass
@@ -37,10 +40,16 @@ class ChatSession:
             reply = self._ask_openai(text)
         else:
             reply = f"You said: {text.strip()}"
+
+        # aktualizuj historię (user + assistant)
         self._history.append(Message(role="user", content=text))
         self._history.append(Message(role="assistant", content=reply))
-        if len(self._history) > self.config.max_history * 2:
-            self._history = self._history[-self.config.max_history * 2 :]
+
+        # ogranicz rozmiar historii (pary user/assistant)
+        max_pairs = max(0, int(self.config.max_history))
+        if max_pairs > 0 and len(self._history) > max_pairs * 2:
+            self._history = self._history[-max_pairs * 2 :]
+
         return reply, list(self._history)
 
     def _ask_openai(self, text: str) -> str:
@@ -48,13 +57,30 @@ class ChatSession:
             from openai import OpenAI
         except Exception as exc:  # pragma: no cover - optional dependency
             raise ChatError(f"OpenAI SDK unavailable: {exc}") from exc
+
         client = OpenAI()
+
+        # zbuduj listę wiadomości
         messages = [{"role": "system", "content": self.config.system_prompt}]
-        for item in self._history[-self.config.max_history * 2 :]:
-            messages.append({"role": item.role, "content": item.content})
+        # weź ostatnie N par z historii
+        max_pairs = max(0, int(self.config.max_history))
+        if max_pairs > 0:
+            for item in self._history[-max_pairs * 2 :]:
+                messages.append({"role": item.role, "content": item.content})
         messages.append({"role": "user", "content": text})
-        response = client.chat.completions.create(model=self.config.model, messages=messages, temperature=0.6)
-        choice = response.choices[0].message.content if response.choices else ""
+
+        # payload do API — DODANE: warunkowe max_tokens
+        payload = {
+            "model": self.config.model,
+            "messages": messages,
+            "temperature": 0.6,
+        }
+        if self.config.max_tokens is not None:
+            payload["max_tokens"] = int(self.config.max_tokens)
+
+        # wywołanie API
+        response = client.chat.completions.create(**payload)
+        choice = response.choices[0].message.content if getattr(response, "choices", None) else ""
         return (choice or "").strip()
 
     def reset(self) -> None:

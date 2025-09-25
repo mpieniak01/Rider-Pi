@@ -1,5 +1,5 @@
 # apps/voice/service.py
-"""Voice assistant service loop (clean, consolidated)."""
+"""Voice assistant service loop (clean, consolidated, hardened)."""
 
 from __future__ import annotations
 
@@ -91,11 +91,14 @@ class VoiceService:
 
         # VAD
         vad_cfg = config.get("vad", {})
+        # Wymuś >= 1000 ms podtrzymania po mowie – nie ucinamy końcówek
+        requested_tail = int(vad_cfg.get("tail_ms", 800))
+        enforced_tail = max(1000, requested_tail)
         self._vad = WebRtcActivity(
             sample_rate=self._capture_cfg.sample_rate,
             mode=int(vad_cfg.get("mode", 3)),
             frame_ms=int(vad_cfg.get("frame_ms", self._capture_cfg.frame_ms)),
-            tail_ms=int(vad_cfg.get("tail_ms", 800)),
+            tail_ms=enforced_tail,
             energy_gate=float(vad_cfg.get("energy_gate_dbfs", -30.0)),
         )
         self._max_len = int(vad_cfg.get("max_len_ms", 12000))
@@ -104,6 +107,18 @@ class VoiceService:
         service_cfg = config.get("service", {})
         self._save_audio = bool(service_cfg.get("save_audio", False))
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "/tmp/voice-recs"))
+
+        # Timingi stabilizujące nagrania
+        self._beep_pause_ms = int(service_cfg.get("beep_pause_ms", 250))  # pauza logiczna po ding (mute)
+        self._mic_open_delay_ms = int(service_cfg.get("mic_open_delay_ms", 100))  # stabilizacja ALSA po otwarciu
+        self._post_tts_mute_ms = int(service_cfg.get("post_tts_mute_ms", 300))  # po TTS wstrzymaj zbieranie
+
+        # Minima zbierania: 1) oczekiwanie na start mowy, 2) całkowity czas klipu
+        self._pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 1000))
+        self._min_capture_ms = int(service_cfg.get("min_capture_ms", 1000))
+
+        # Okno wyciszenia po ding/TTS
+        self._mute_until_ts: float = 0.0
 
         # UI state cache
         self._last_ui_state: str | None = None
@@ -120,6 +135,9 @@ class VoiceService:
             self._bus_thread.start()
 
         self._threads = [t for t in (self._speech_thread, self._bus_thread) if t is not None]
+
+        # DING cooldown (anty-pętla)
+        self._last_ding_ts: float = 0.0
 
         # Startowy stan
         self._publish_ui_state("idle")
@@ -199,6 +217,11 @@ class VoiceService:
             try:
                 self._publish_ui_state("speaking")
                 self._publish_assistant_speech(task.text)
+
+                # Zablokuj wejście na czas TTS (okno mute)
+                tts_block_s = (self._post_tts_mute_ms / 1000.0) + 0.2
+                self._mute_until_ts = max(self._mute_until_ts, time.time() + tts_block_s)
+
                 result = speak(
                     task.text,
                     self._tts_cfg,
@@ -213,6 +236,8 @@ class VoiceService:
                 self.logger.error("service.speak.error", error=str(exc), source=task.source)
                 task.result = TTSStreamResult(False, None, "", 0, streamed=False)
             finally:
+                # Dociągnij okno mute po mowie (anty-echo)
+                self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._post_tts_mute_ms / 1000.0))
                 self._publish_ui_state("idle")
                 if task.ack:
                     task.ack.set()
@@ -273,6 +298,11 @@ class VoiceService:
         # Wejście – słuchamy
         self._publish_ui_state("hearing")
 
+        # Jeśli trwa jeszcze okno wyciszenia po ding/TTS – odczekaj
+        now = time.time()
+        if now < self._mute_until_ts:
+            time.sleep(self._mute_until_ts - now)
+
         waiting_without_capture = self._hotword_engine == "ptt" or (not self._hotword_enabled)
 
         if waiting_without_capture:
@@ -281,6 +311,9 @@ class VoiceService:
                 raise RuntimeError("Hotword/PTT timeout")
             if speak and self._should_ding():
                 play_ding(self._play_cfg, self.logger)
+                self._last_ding_ts = time.time()
+                # po ding ustaw okno mute (nie nagrywaj dźwięku beep)
+                self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
             audio = self._record_with_vad()
         else:
             with AudioCapture(self._capture_cfg, self.logger) as capture:
@@ -289,22 +322,17 @@ class VoiceService:
                     raise RuntimeError("Hotword timeout")
                 if speak and self._should_ding():
                     play_ding(self._play_cfg, self.logger)
+                    self._last_ding_ts = time.time()
+                    self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
+                # małe opóźnienie po otwarciu device
+                if self._mic_open_delay_ms > 0:
+                    time.sleep(self._mic_open_delay_ms / 1000.0)
+                # zbieramy
                 audio = collect(capture.frames(), self._vad, self._max_len)
 
         if not audio:
             self._publish_ui_state("idle")
             raise RuntimeError("No audio captured")
-
-        # 🔧 Guard: zbyt krótka próbka (ASR potrafi odrzucić 50–150 ms „pustki”)
-        # konfig: service.min_capture_ms (domyślnie 200 ms)
-        min_ms = int(self.config.get("service", {}).get("min_capture_ms", 200))
-        if min_ms > 0:
-            bytes_per_sample = 2  # 16-bit
-            expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample
-            if len(audio) < expected_min:
-                self.logger.warning("service.asr.skip_too_short", bytes=len(audio), threshold=expected_min)
-                self._publish_ui_state("idle")
-                raise RuntimeError("No audio (too short)")
 
         if self._save_audio:
             self._save_pcm(audio)
@@ -321,7 +349,7 @@ class VoiceService:
         reply = self._handle_intent(intent)
         reply_text = reply.strip()
 
-        # Mówienie
+        # Mówienie (odtworzenie odpowiedzi – TTS)
         speech_task_enqueued = False
         speech_result: TTSStreamResult | None = None
 
@@ -345,6 +373,19 @@ class VoiceService:
         if not speech_task_enqueued:
             self._publish_ui_state("idle")
 
+        # krótki cooldown po mowie/PTT – nie łap echa ani „zależnych” ENTER-ów
+        if self._hotword_engine == "ptt":
+            if self._post_tts_mute_ms > 0:
+                time.sleep(self._post_tts_mute_ms / 1000.0)
+            time.sleep(0.15)
+            try:
+                import sys
+                import termios  # late import; brak zależności pod systemd
+
+                termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+            except Exception:
+                pass
+
         return VoiceResult(
             transcript=transcript,
             intent=intent,
@@ -362,12 +403,30 @@ class VoiceService:
         # PlaybackConfig.ding to dict -> sprawdzaj .get("enabled")
         ding_cfg = getattr(self._play_cfg, "ding", None)
         if isinstance(ding_cfg, dict):
-            return bool(ding_cfg.get("enabled", False))
-        # asekuracyjnie obsłuż też obiekt z atrybutem "enabled"
-        return bool(getattr(ding_cfg, "enabled", False))
+            ok = bool(ding_cfg.get("enabled", False))
+        else:
+            ok = bool(getattr(ding_cfg, "enabled", False))
+        # cooldown anty-pętla (≥1.0 s)
+        if ok and (time.time() - self._last_ding_ts) < 1.0:
+            return False
+        return ok
 
     def _wait_hotword_without_capture(self) -> bool:
         """PTT/keyboard: czekaj na wyzwolenie bez otwartego mikrofonu."""
+        if self._hotword_engine == "ptt":
+            try:
+                return bool(self._hotword.wait_ptt(timeout=60.0))  # type: ignore[attr-defined]
+            except AttributeError:
+                try:
+                    return bool(self._hotword.wait(None))
+                except TypeError:
+
+                    class _NullCap:
+                        def frames(self) -> Iterable[bytes]:  # pragma: no cover
+                            if False:
+                                yield b""
+
+                    return bool(self._hotword.wait(_NullCap()))
         try:
             return bool(self._hotword.wait(None))
         except TypeError:
@@ -380,17 +439,114 @@ class VoiceService:
             return bool(self._hotword.wait(_NullCap()))
 
     def _record_with_vad(self) -> bytes:
-        """Zbierz wypowiedź VAD-em z fallbackiem do arecord."""
+        """
+        Kolejność:
+        1) Poczekaj aż wygaśnie mute po beep/TTS (żeby nie nagrać „ding”).
+        2) Otwórz mikrofon i ustabilizuj ALSA.
+        3) Zbierz *co najmniej* pre_speech_wait_ms ramek (czekanie na głos),
+           dopiero wtedy pozwól VAD skracać nagranie.
+        4) VAD ma tail >= 1000 ms, więc trzyma ~1 s po zakończeniu mowy.
+        """
+        # 1) czekamy do końca mute
+        now = time.time()
+        if now < self._mute_until_ts:
+            time.sleep(self._mute_until_ts - now)
+
+        # --- NOWE: zresetuj stan detektora przed każdą turą (jeśli posiada taką metodę)
+        try:
+            reset = getattr(self._vad, "reset", None)
+            if callable(reset):
+                reset()
+        except Exception:
+            pass
+
         audio = b""
         try:
             with AudioCapture(self._capture_cfg, self.logger) as capture:
-                audio = collect(capture.frames(), self._vad, self._max_len)
+                # 2) stabilizacja toru po otwarciu (WM8960 bywa „leniwy” zaraz po TTS)
+                if self._mic_open_delay_ms > 0:
+                    time.sleep(max(self._mic_open_delay_ms, 200) / 1000.0)
+
+                frames_iter = capture.frames()
+
+                # 3) pre-roll: wymagamy co najmniej pre_speech_wait_ms zanim pozwolimy VAD zakończyć
+                pre_frames_needed = max(1, int(math.ceil(self._pre_speech_wait_ms / self._capture_cfg.frame_ms)))
+                pre_buf: list[bytes] = []
+                for _ in range(pre_frames_needed):
+                    try:
+                        pre_buf.append(next(frames_iter))
+                    except StopIteration:
+                        break
+
+                # jeśli niewiele zebraliśmy (np. wolny start), dozbieraj do 0.6 s
+                if len(pre_buf) < pre_frames_needed // 4:
+                    t0 = time.time()
+                    while len(pre_buf) < pre_frames_needed and (time.time() - t0) < 0.6:
+                        try:
+                            pre_buf.append(next(frames_iter))
+                        except StopIteration:
+                            break
+
+                def _chained():
+                    for f in pre_buf:
+                        if f:
+                            yield f
+                    for f in frames_iter:
+                        yield f
+
+                audio = collect(_chained(), self._vad, self._max_len)
+
         except CaptureError as exc:
             self.logger.warning("service.capture.error", error=str(exc))
         except Exception as exc:
             self.logger.warning("service.capture.unexpected", error=str(exc))
+
+        # Minimalna długość całego klipu
+        min_ms = max(200, self._min_capture_ms)
+        bytes_per_sample = 2  # 16-bit
+        channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
+        expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
+
+        # brak czegokolwiek → pewny fallback (arecord 2–4 s)
         if not audio:
-            audio = self._record_with_arecord()
+            self.logger.debug("service.capture.empty_retry_arecord")
+            return self._record_with_arecord()
+
+        # za krótkie → krótki dogryw (~0.8 s) i ponowna próba na zebranym buforze
+        if len(audio) < expected_min:
+            self.logger.debug("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
+            try:
+                with AudioCapture(self._capture_cfg, self.logger) as capture:
+                    if self._mic_open_delay_ms > 0:
+                        time.sleep(max(self._mic_open_delay_ms, 200) / 1000.0)
+                    t0 = time.time()
+                    chunks: list[bytes] = []
+                    for f in capture.frames():
+                        chunks.append(f)
+                        if (time.time() - t0) >= 0.8:
+                            break
+                    audio2 = collect(iter(chunks), self._vad, self._max_len)
+                    if audio2 and len(audio2) > len(audio):
+                        audio = audio2
+            except Exception as exc:
+                self.logger.debug("service.capture.retry_error", error=str(exc))
+
+            if len(audio) < expected_min:
+                self.logger.debug("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
+                return b""
+
+        # dodatkowa diagnostyka (rozmiar końcowy)
+        try:
+            self.logger.debug(
+                "service.capture.final_size",
+                bytes=len(audio),
+                min_required=expected_min,
+                pre_wait_ms=self._pre_speech_wait_ms,
+                tail_ms=getattr(self._vad, "tail_ms", 0),
+            )
+        except Exception:
+            pass
+
         return audio
 
     def _record_with_arecord(self) -> bytes:
@@ -398,9 +554,10 @@ class VoiceService:
         device = cfg.device or "plughw:1,0"
         buffer_seconds = float(getattr(cfg, "buffer_seconds", 0) or 0.0)
 
-        # arecord -d wymaga całych sekund → zaokrąglij w górę
+        # arecord -d wymaga całych sekund → ogranicz do max 4 s, min 2 s
         duration_float = max(self._max_len / 1000.0, 1.0) + buffer_seconds + 0.5
         duration_s = int(math.ceil(duration_float))
+        duration_s = max(2, min(4, duration_s))
 
         cmd = [
             "arecord",
@@ -437,13 +594,43 @@ class VoiceService:
         if not raw:
             self.logger.warning("service.capture.arecord_empty")
             return b""
+
+        # pofragmentuj „raw” na ramki i spróbuj VAD-ować
         frames = self._frames_from_pcm(raw, self._capture_cfg.frame_bytes)
         trimmed = collect(frames, self._vad, self._max_len)
+
+        # Minimalna długość
+        min_ms = max(200, self._min_capture_ms)
+        bytes_per_sample = 2
+        channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
+        expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
+
         if trimmed:
-            self.logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
-            return trimmed
+            if len(trimmed) >= expected_min:
+                self.logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
+                return trimmed
+            # przycięte za krótkie → spróbuj oddać raw jeśli ma sensowny rozmiar
+            if len(raw) >= max(1, expected_min // 2):
+                self.logger.warning(
+                    "service.capture.fallback.trimmed_too_short_using_raw",
+                    bytes_trimmed=len(trimmed),
+                    bytes_raw=len(raw),
+                )
+                return raw
+            self.logger.warning(
+                "service.capture.fallback.trimmed_too_short",
+                bytes_trimmed=len(trimmed),
+                bytes_required=expected_min,
+            )
+            return b""
+
+        # gdy VAD nic nie wykroił – oddaj raw jeżeli sensowny
+        if len(raw) >= max(1, expected_min // 2):
+            self.logger.warning("service.capture.fallback.no_vad_using_raw", bytes=len(raw))
+            return raw
+
         self.logger.warning("service.capture.fallback.no_vad")
-        return raw
+        return b""
 
     def _frames_from_pcm(self, data: bytes, frame_size: int):
         for off in range(0, len(data), frame_size):
@@ -466,7 +653,7 @@ class VoiceService:
         filename = f"capture_{int(ts)}_{int((ts % 1) * 1000):03d}.wav"
         path = self._recordings_dir / filename
         with wave.open(str(path), "wb") as wf:
-            wf.setnchannels(1)
+            wf.setnchannels(max(1, int(getattr(self._capture_cfg, "channels", 1))))
             wf.setsampwidth(2)
             wf.setframerate(self._capture_cfg.sample_rate)
             wf.writeframes(audio)

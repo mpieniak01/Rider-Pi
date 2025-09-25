@@ -1,186 +1,205 @@
-""" "Audio capture utilities for the voice assistant."""
-
+# apps/voice/capture.py
 from __future__ import annotations
 
 import contextlib
 import shlex
+import shutil
 import subprocess
 import threading
-from collections.abc import Generator
+import time
+from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import Final
 
 from . import voice_logging as voice_logging
 
-_SAMPLE_WIDTH = 2  # signed 16-bit PCM
-
 
 class CaptureError(RuntimeError):
+    """Błąd warstwy wejścia audio (uruchomienie/odczyt/konwersja)."""
+
     pass
 
 
 @dataclass
 class CaptureConfig:
-    # Bezpieczne domyślne wartości
-    sample_rate: int = 16000
-    frame_ms: int = 20
-    backend: str = "pulse"  # "pulse" | "alsa" | "command"
-    device: str | None = None  # np. "hw:1,0" dla ALSA lub nazwa źródła Pulse
+    """
+    Konfiguracja wejścia audio (ALSA/WebRTC).
+
+    Pola:
+      - backend: nazwa backendu, np. "alsa"
+      - device: urządzenie ALSA, np. "plughw:wm8960soundcard,0"
+      - sample_rate: próbkowanie w Hz (np. 16000)
+      - channels: liczba kanałów (1=mono, 2=stereo)
+      - frame_ms: długość ramki w milisekundach (np. 20)
+      - buffer_seconds: dodatkowy bufor dla ALSA/arecord (sekundy, może być 0.0)
+      - command: (opcjonalnie) ścieżka/nazwa programu nagrywającego (domyślnie "arecord")
+                 np. "arecord" lub "/usr/bin/arecord"
+    """
+
+    backend: str
+    device: str
+    sample_rate: int
+    channels: int
+    frame_ms: int
     buffer_seconds: float = 0.0
-    channels: int = 1  # liczba kanałów (1 = mono)
-    command: str | None = None  # tylko dla backend="command"
+    command: str | None = None  # <-- NOWE
+
+    # 16-bit PCM (S16_LE) → 2 bajty na próbkę
+    BYTES_PER_SAMPLE: Final[int] = 2
+
+    def __post_init__(self) -> None:
+        if self.sample_rate <= 0:
+            raise ValueError("sample_rate must be > 0")
+        if self.channels <= 0:
+            raise ValueError("channels must be > 0")
+        if self.frame_ms <= 0:
+            raise ValueError("frame_ms must be > 0")
+        if self.buffer_seconds < 0.0:
+            self.buffer_seconds = 0.0
+
+    @property
+    def frame_duration_s(self) -> float:
+        return self.frame_ms / 1000.0
+
+    @property
+    def frame_samples(self) -> int:
+        return int(self.sample_rate * self.frame_duration_s)
 
     @property
     def frame_bytes(self) -> int:
-        # liczba próbek w ramce * szerokość próbki * liczba kanałów
-        samples_per_frame = int(self.sample_rate * self.frame_ms / 1000)
-        return samples_per_frame * _SAMPLE_WIDTH * max(1, int(self.channels))
+        return self.frame_samples * self.channels * self.BYTES_PER_SAMPLE
+
+    @property
+    def buffer_time_us(self) -> int:
+        return int(self.buffer_seconds * 1_000_000)
+
+    def bytes_for_ms(self, ms: int | float) -> int:
+        seconds = float(ms) / 1000.0
+        samples = int(self.sample_rate * seconds)
+        return samples * self.channels * self.BYTES_PER_SAMPLE
 
 
 class AudioCapture:
-    """Thin wrapper around ``arecord``/``parec`` subprocesses."""
+    """
+    Prosty wrapper na ciągłe przechwytywanie PCM przez ALSA (arecord → stdout).
 
-    def __init__(self, config: CaptureConfig, logger: voice_logging.VoiceLogger | None = None):
+    Użycie:
+        with AudioCapture(cfg, logger) as cap:
+            for frame in cap.frames():
+                ...
+
+    Zwracane ramki mają dokładnie `cfg.frame_bytes` bajtów (S16_LE).
+    """
+
+    def __init__(self, config: CaptureConfig, logger: voice_logging.VoiceLogger | None = None) -> None:
         self.config = config
         self.logger = logger or voice_logging.get_logger("voice.capture")
-        self._proc: subprocess.Popen[bytes] | None = None
+        self._proc: subprocess.Popen | None = None
         self._stop = threading.Event()
 
     def __enter__(self) -> AudioCapture:
-        self.start()
-        return self
+        backend = (self.config.backend or "alsa").lower()
+        if backend != "alsa":
+            raise CaptureError(f"Unsupported capture backend: {backend}")
 
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self.stop()
+        # wybór programu: config.command ma priorytet, inaczej szukamy arecord
+        if self.config.command:
+            cmd_head = shlex.split(self.config.command)
+            path = shutil.which(cmd_head[0]) or cmd_head[0]
+        else:
+            path = shutil.which("arecord")
 
-    def start(self) -> None:
-        if self._proc and self._proc.poll() is None:
-            return
-        cmd = self._build_command()
+        if not path:
+            raise CaptureError("arecord not found on PATH and no 'command' provided")
+
+        cmd = [path]
+        # a następnie stałe parametry do surowego PCM S16_LE
+        cmd += [
+            "-q",
+            "-t",
+            "raw",
+            "-f",
+            "S16_LE",
+            "-c",
+            str(max(1, int(self.config.channels))),
+            "-r",
+            str(self.config.sample_rate),
+            "-D",
+            self.config.device or "default",
+        ]
+        if self.config.buffer_time_us > 0:
+            cmd += ["--buffer-time", str(self.config.buffer_time_us)]
+
         try:
             self._proc = subprocess.Popen(
                 cmd,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 bufsize=0,
             )
-        except FileNotFoundError as exc:
-            raise CaptureError(f"Executable not found for capture backend: {cmd[0]}") from exc
-        self._stop.clear()
-        self.logger.debug("capture.start", command=" ".join(map(shlex.quote, cmd)))
+        except Exception as exc:
+            raise CaptureError(f"Failed to start capture command: {exc}") from exc
 
-    def stop(self) -> None:
+        self.logger.debug("capture.start", command=" ".join(cmd))
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def close(self) -> None:
         self._stop.set()
         proc = self._proc
         if not proc:
             return
-        if proc.poll() is None:
+        if proc.stdout:
             with contextlib.suppress(Exception):
-                proc.terminate()
-                proc.wait(timeout=1.0)
+                proc.stdout.close()
+        if proc.stderr:
+            with contextlib.suppress(Exception):
+                proc.stderr.close()
         with contextlib.suppress(Exception):
-            proc.kill()
-        self._proc = None
-
-    def _build_command(self) -> list[str]:
-        cfg = self.config
-        backend = cfg.backend.lower()
-
-        if backend == "command" and cfg.command:
-            return shlex.split(cfg.command)
-
-        if backend == "pulse":
-            cmd = [
-                "parec",
-                "--raw",
-                "--format=s16le",
-                f"--rate={cfg.sample_rate}",
-                f"--channels={max(1, int(cfg.channels))}",
-            ]
-            if cfg.device:
-                cmd.append(f"--device={cfg.device}")
-            return cmd
-
-        if backend == "alsa":
-            device = cfg.device or "default"
-            cmd = [
-                "arecord",
-                "-q",
-                "-f",
-                "S16_LE",
-                "-c",
-                str(max(1, int(cfg.channels))),
-                "-r",
-                str(cfg.sample_rate),
-                "-D",
-                device,
-            ]
-            buffer_us = int(max(0.0, float(cfg.buffer_seconds)) * 1_000_000)
-            if buffer_us > 0:
-                cmd += ["--buffer-time", str(buffer_us)]
-            return cmd
-
-        raise CaptureError(f"Unsupported capture backend: {backend}")
-
-    def frames(self) -> Generator[bytes, None, None]:
-        """
-        Zwraca *dokładnie pełne ramki* (frame_bytes).
-        Buforuje odczyt z potoku, żeby VAD nie dostawał za krótkich bloków.
-        """
-        proc = self._ensure_proc()
-        frame_size = self.config.frame_bytes
-        buf = bytearray()
-        # czytamy większymi porcjami z pipe'a; minimum to rozmiar ramki
-        read_chunk = max(frame_size, 4096)
-        while not self._stop.is_set():
-            chunk = proc.stdout.read(read_chunk)  # type: ignore[union-attr]
-            if not chunk:
-                # spuść pełne ramki, które ewentualnie zostały w buforze
-                while len(buf) >= frame_size:
-                    yield bytes(buf[:frame_size])
-                    del buf[:frame_size]
-                break
-            buf.extend(chunk)
-            while len(buf) >= frame_size:
-                yield bytes(buf[:frame_size])
-                del buf[:frame_size]
-
-    def record(self, duration_s: float) -> bytes:
-        """Record raw PCM audio for a fixed duration."""
-        frame_count = max(1, int(duration_s * 1000 / self.config.frame_ms))
-        buf = bytearray()
-        for _, frame in zip(range(frame_count), self.frames()):
-            buf.extend(frame)
-        return bytes(buf)
-
-    def record_with_vad(self, vad, *, max_frames: int | None = None) -> bytes:
-        frames: list[bytes] = []
-        for chunk in self.frames():
-            frames.append(chunk)
-            if vad(chunk):
-                break
-            if max_frames and len(frames) >= max_frames:
-                break
-        return b"".join(frames)
-
-    def read(self, size: int) -> bytes:
-        proc = self._ensure_proc()
-        data = proc.stdout.read(size)  # type: ignore[union-attr]
-        return data or b""
-
-    def drain(self) -> None:
-        proc = self._proc
-        if proc and proc.stdout:
+            proc.terminate()
+        try:
+            proc.wait(timeout=1.5)
+        except Exception:
             with contextlib.suppress(Exception):
-                proc.stdout.read()
+                proc.kill()
+        self._proc = None
+        self.logger.debug("capture.stop")
 
-    def _ensure_proc(self) -> subprocess.Popen[bytes]:
-        if not self._proc or self._proc.poll() is not None:
-            self.start()
-        assert self._proc is not None
-        assert self._proc.stdout is not None
-        return self._proc
+    def frames(self) -> Iterator[bytes]:
+        proc = self._proc
+        if not proc or not proc.stdout:
+            raise CaptureError("Capture not started")
 
+        fb = int(self.config.frame_bytes)
+        stdout = proc.stdout
 
-def capture_once(config: CaptureConfig, duration_s: float) -> bytes:
-    with AudioCapture(config) as cap:
-        return cap.record(duration_s)
+        buf = bytearray()
+        last_data_ts = time.time()
+
+        while not self._stop.is_set():
+            chunk = stdout.read(fb - len(buf))
+            if not chunk:
+                if proc.poll() is not None:
+                    err = None
+                    if proc.stderr:
+                        with contextlib.suppress(Exception):
+                            err = proc.stderr.read().decode("utf-8", "ignore").strip()
+                    if err:
+                        self.logger.warning("capture.proc.exit", returncode=proc.returncode, stderr=err)
+                    break
+                time.sleep(0.005)
+                if (time.time() - last_data_ts) > 2.0:
+                    self.logger.warning("capture.silence.timeout")
+                    last_data_ts = time.time()
+                continue
+
+            last_data_ts = time.time()
+            buf.extend(chunk)
+            if len(buf) >= fb:
+                out = bytes(buf[:fb])
+                del buf[:fb]
+                yield out
+        return

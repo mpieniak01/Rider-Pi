@@ -38,25 +38,26 @@ except Exception:  # pragma: no cover
     yaml = None  # type: ignore
 
 DEFAULT_CONFIG: dict[str, Any] = {
+    # RPi-friendly defaults (even if TOML is missing)
     "capture": {
-        "backend": "pulse",  # pulse|alsa|command
-        "device": None,
+        "backend": "alsa",  # alsa|pulse|command
+        "device": "default",
         "sample_rate": 16_000,
         "channels": 1,
-        "frame_ms": 30,
-        "buffer_seconds": 5,
+        "frame_ms": 20,
+        "buffer_seconds": 0.0,
         "command": None,
     },
     "vad": {
         "enabled": True,
-        "mode": 3,
-        "frame_ms": 30,
+        "mode": 2,  # 0..3, 2 ~= balanced
+        "frame_ms": 20,
         "tail_ms": 350,
-        "max_len_ms": 4500,
-        "energy_gate_dbfs": -36.0,
+        "max_len_ms": 8000,
+        "energy_gate_dbfs": -48.0,
     },
     "hotword": {
-        "enabled": True,
+        "enabled": False,  # avoid waiting for a model by default
         "engine": "nyumaya",  # nyumaya|porcupine|ptt|off
         "model": None,
         "sensitivity": 0.6,
@@ -94,12 +95,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "backend": "openai",  # openai|piper
         "model": "gpt-4o-mini-tts",
         "voice": "alloy",
-        "format": "wav",
+        "format": "mp3",  # stream-friendly for mpg123
         "piper_model": None,
         "piper_config": None,
     },
     "playback": {
-        "backend": "pulse",  # pulse|alsa|auto
+        "backend": "auto",  # auto|pulse|alsa
         "alsa_device": "default",
         "volume": 100,
         "ding": {
@@ -123,18 +124,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
 }
 
+# Minimal, pragmatic ENV mapping (you can ignore these if you keep everything in TOML)
 ENV_MAPPING: dict[str, tuple[str, ...]] = {
     "VOICE_CAPTURE_BACKEND": ("capture", "backend"),
     "VOICE_CAPTURE_DEVICE": ("capture", "device"),
     "VOICE_CAPTURE_COMMAND": ("capture", "command"),
+    "VOICE_CAPTURE_SAMPLE_RATE": ("capture", "sample_rate"),
+    "VOICE_CAPTURE_CHANNELS": ("capture", "channels"),
+    "VOICE_VAD_MODE": ("vad", "mode"),
+    "VOICE_VAD_TAIL_MS": ("vad", "tail_ms"),
     "VOICE_ASR_BACKEND": ("asr", "backend"),
     "VOICE_ASR_MODEL": ("asr", "model"),
     "VOICE_ASR_LANG": ("asr", "language"),
     "VOICE_TTS_BACKEND": ("tts", "backend"),
     "VOICE_TTS_VOICE": ("tts", "voice"),
     "VOICE_TTS_MODEL": ("tts", "model"),
+    "VOICE_TTS_FORMAT": ("tts", "format"),
     "VOICE_PLAYBACK_BACKEND": ("playback", "backend"),
     "VOICE_PLAYBACK_DEVICE": ("playback", "alsa_device"),
+    "VOICE_PLAYBACK_VOLUME": ("playback", "volume"),
     "VOICE_LOG_LEVEL": ("logging", "level"),
 }
 
@@ -177,9 +185,10 @@ def _load_yaml(path: Path | None) -> dict[str, Any]:
 
 
 def _apply_env(config: dict[str, Any]) -> dict[str, Any]:
+    # Apply ENV with basic type coercion (numbers/bools), not raw strings
     for env, path in ENV_MAPPING.items():
         if env in os.environ:
-            _set_nested(config, path, os.environ[env])
+            _set_nested(config, path, _auto(os.environ[env]))
     return config
 
 
