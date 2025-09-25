@@ -12,15 +12,17 @@ def _wants_stream(cfg: dict[str, Any], args) -> bool:
     """Check if streaming mode is requested."""
     # Primary check: explicit realtime transport in any component
     asr_cfg = cfg.get("asr", {})
-    chat_cfg = cfg.get("chat", {}) 
+    chat_cfg = cfg.get("chat", {})
     tts_cfg = cfg.get("tts", {})
-    
+
     # Require explicit realtime transport
-    if (asr_cfg.get("transport") == "realtime" or
-        chat_cfg.get("transport") == "realtime" or  
-        tts_cfg.get("transport") == "realtime"):
+    if (
+        asr_cfg.get("transport") == "realtime"
+        or chat_cfg.get("transport") == "realtime"
+        or tts_cfg.get("transport") == "realtime"
+    ):
         return True
-        
+
     return False
 
 
@@ -30,6 +32,7 @@ def run_listen(cfg: dict[str, Any], args) -> int:
         # Import here to avoid circular imports and optional dependencies
         try:
             from .svc_stream import run_listen_stream
+
             return run_listen_stream(cfg, args)
         except ImportError as e:
             print(f"Streaming mode requires additional dependencies: {e}")
@@ -45,6 +48,7 @@ def run_once(cfg: dict[str, Any], args) -> int:
         # Import here to avoid circular imports and optional dependencies
         try:
             from .svc_stream import run_once_stream
+
             return run_once_stream(cfg, args)
         except ImportError as e:
             print(f"Streaming mode requires additional dependencies: {e}")

@@ -7,9 +7,9 @@ This script demonstrates the streaming mode detection and configuration
 without requiring an actual OpenAI API key or WebSocket connection.
 """
 
-import os
 import sys
 from pathlib import Path
+
 # Add project root to path
 project_root = str(Path(__file__).resolve().parent.parent)
 sys.path.insert(0, project_root)

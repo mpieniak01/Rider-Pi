@@ -371,7 +371,7 @@ def cmd_diag(args) -> None:
     overrides = _build_overrides(args)
     config = voice_config.load(getattr(args, "config", None), overrides=overrides)
     voice_logging.configure(config.get("logging", {}).get("level"))
-    
+
     capture_backend = config["capture"]["backend"]
     print("Capture backend:", capture_backend)
     if capture_backend == "alsa" and shutil.which("arecord"):
@@ -382,15 +382,16 @@ def cmd_diag(args) -> None:
         subprocess.run(["pactl", "list", "short", "sources"], check=False)
     print("TTS backend:", config["tts"]["backend"])
     print("ASR backend:", config["asr"]["backend"])
-    
+
     # Check if streaming mode would be detected
     from .svc_core import _wants_stream
+
     if _wants_stream(config, args):
         print("Mode: streaming (WebSocket realtime)")
         print("Stream endpoint:", config.get("stream", {}).get("endpoint", "not configured"))
     else:
         print("Mode: file-based (traditional)")
-    
+
     chosen = _choose_player_command()
     print("Playback external (fallback):", " ".join(chosen) if chosen else "<internal>")
     print("mpg123 present:", bool(shutil.which("mpg123")))

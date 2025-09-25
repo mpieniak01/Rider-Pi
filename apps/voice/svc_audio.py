@@ -201,11 +201,11 @@ def playback_tts(cfg: dict[str, Any], audio_bytes: bytes) -> None:
 
 def capture_continuous(capture_cfg: dict[str, Any], chunk_size: int):
     """Generator that yields continuous audio chunks for streaming.
-    
+
     Args:
         capture_cfg: Capture configuration dictionary
         chunk_size: Size of audio chunks in bytes
-    
+
     Yields:
         bytes: Audio chunks of specified size
     """
@@ -215,23 +215,23 @@ def capture_continuous(capture_cfg: dict[str, Any], chunk_size: int):
         sample_rate=int(capture_cfg.get("sample_rate", 16000)),
         channels=int(capture_cfg.get("channels", 1)),
         frame_ms=int(capture_cfg.get("frame_ms", 20)),
-        buffer_seconds=float(capture_cfg.get("buffer_seconds", 0.1))
+        buffer_seconds=float(capture_cfg.get("buffer_seconds", 0.1)),
     )
-    
+
     try:
         with AudioCapture(config) as capture:
             buffer = b""
             for frame in capture.frames():
                 if not frame:
                     continue
-                    
+
                 buffer += frame
-                
+
                 # Yield chunks of requested size
                 while len(buffer) >= chunk_size:
                     yield buffer[:chunk_size]
                     buffer = buffer[chunk_size:]
-                    
+
     except Exception:
         # Fallback to arecord-based streaming (simplified)
         # In practice, this would need more sophisticated streaming capture
