@@ -1,5 +1,5 @@
 # apps/voice/service.py
-"""Voice assistant service loop (clean, consolidated, hardened)."""
+"""Voice assistant service loop (clean, consolidated)."""
 
 from __future__ import annotations
 
@@ -73,7 +73,20 @@ class VoiceService:
         self._chat = ChatSession(ChatConfig(**config["chat"]))
         self._nlu = NLURouter(NLUConfig(**config["nlu"]))
 
-        self._capture_cfg = CaptureConfig(**config["capture"])
+        # ⬇⬇⬇ Bezpieczne domyślne wartości capture dla testów/UI
+        _cap_in = dict(config.get("capture") or {})
+        _cap_defaults = {
+            "backend": "dummy",
+            "device": "null",
+            "sample_rate": 16000,
+            "channels": 1,
+            "frame_ms": 20,
+            "buffer_seconds": 0.0,
+        }
+        for k, v in _cap_defaults.items():
+            _cap_in.setdefault(k, v)
+        self._capture_cfg = CaptureConfig(**_cap_in)
+
         self._asr_cfg = ASRConfig(**config["asr"])
 
         allowed_tts = {"backend", "voice", "model", "format", "piper_model", "piper_config"}
@@ -91,7 +104,7 @@ class VoiceService:
 
         # VAD
         vad_cfg = config.get("vad", {})
-        # Wymuś >= 1000 ms podtrzymania po mowie – nie ucinamy końcówek
+        # Wymuś >= 1000 ms podtrzymania po mowie
         requested_tail = int(vad_cfg.get("tail_ms", 800))
         enforced_tail = max(1000, requested_tail)
         self._vad = WebRtcActivity(
@@ -113,7 +126,7 @@ class VoiceService:
         self._mic_open_delay_ms = int(service_cfg.get("mic_open_delay_ms", 100))  # stabilizacja ALSA po otwarciu
         self._post_tts_mute_ms = int(service_cfg.get("post_tts_mute_ms", 300))  # po TTS wstrzymaj zbieranie
 
-        # Minima zbierania: 1) oczekiwanie na start mowy, 2) całkowity czas klipu
+        # Nowe minima
         self._pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 1000))
         self._min_capture_ms = int(service_cfg.get("min_capture_ms", 1000))
 
@@ -236,7 +249,7 @@ class VoiceService:
                 self.logger.error("service.speak.error", error=str(exc), source=task.source)
                 task.result = TTSStreamResult(False, None, "", 0, streamed=False)
             finally:
-                # Dociągnij okno mute po mowie (anty-echo)
+                # Dociągnij okno mute po mowie
                 self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._post_tts_mute_ms / 1000.0))
                 self._publish_ui_state("idle")
                 if task.ack:
@@ -292,9 +305,6 @@ class VoiceService:
     # Główna tura
 
     def _cycle(self, *, speak: bool = True) -> VoiceResult:
-        # Reset VAD state to ensure clean detection for this recording cycle
-        self._vad.reset()
-
         # Wejście – słuchamy
         self._publish_ui_state("hearing")
 
@@ -302,6 +312,14 @@ class VoiceService:
         now = time.time()
         if now < self._mute_until_ts:
             time.sleep(self._mute_until_ts - now)
+
+        # ⬅⬅⬅ KLUCZOWE: resetuj stan VAD na początku KAŻDEGO cyklu
+        # Zapobiega to „dziedziczeniu” wypełnionego ogona ciszy (tail) pomiędzy nagraniami.
+        try:
+            self._vad.reset()
+        except Exception:
+            # defensywnie: jeśli implementacja nie ma resetu — nie krusz kopii
+            pass
 
         waiting_without_capture = self._hotword_engine == "ptt" or (not self._hotword_enabled)
 
@@ -447,25 +465,15 @@ class VoiceService:
            dopiero wtedy pozwól VAD skracać nagranie.
         4) VAD ma tail >= 1000 ms, więc trzyma ~1 s po zakończeniu mowy.
         """
-        # 1) czekamy do końca mute
         now = time.time()
         if now < self._mute_until_ts:
             time.sleep(self._mute_until_ts - now)
 
-        # --- NOWE: zresetuj stan detektora przed każdą turą (jeśli posiada taką metodę)
-        try:
-            reset = getattr(self._vad, "reset", None)
-            if callable(reset):
-                reset()
-        except Exception:
-            pass
-
         audio = b""
         try:
             with AudioCapture(self._capture_cfg, self.logger) as capture:
-                # 2) stabilizacja toru po otwarciu (WM8960 bywa „leniwy” zaraz po TTS)
                 if self._mic_open_delay_ms > 0:
-                    time.sleep(max(self._mic_open_delay_ms, 200) / 1000.0)
+                    time.sleep(self._mic_open_delay_ms / 1000.0)
 
                 frames_iter = capture.frames()
 
@@ -507,18 +515,18 @@ class VoiceService:
         channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
         expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
 
-        # brak czegokolwiek → pewny fallback (arecord 2–4 s)
+        # Brak czegokolwiek → pewny fallback (arecord 2–4 s)
         if not audio:
             self.logger.debug("service.capture.empty_retry_arecord")
             return self._record_with_arecord()
 
-        # za krótkie → krótki dogryw (~0.8 s) i ponowna próba na zebranym buforze
+        # Za krótkie → krótki dogryw (~0.8 s) i ponowna próba na zebranym buforze
         if len(audio) < expected_min:
             self.logger.debug("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
             try:
                 with AudioCapture(self._capture_cfg, self.logger) as capture:
                     if self._mic_open_delay_ms > 0:
-                        time.sleep(max(self._mic_open_delay_ms, 200) / 1000.0)
+                        time.sleep(self._mic_open_delay_ms / 1000.0)
                     t0 = time.time()
                     chunks: list[bytes] = []
                     for f in capture.frames():
@@ -534,18 +542,6 @@ class VoiceService:
             if len(audio) < expected_min:
                 self.logger.debug("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
                 return b""
-
-        # dodatkowa diagnostyka (rozmiar końcowy)
-        try:
-            self.logger.debug(
-                "service.capture.final_size",
-                bytes=len(audio),
-                min_required=expected_min,
-                pre_wait_ms=self._pre_speech_wait_ms,
-                tail_ms=getattr(self._vad, "tail_ms", 0),
-            )
-        except Exception:
-            pass
 
         return audio
 
@@ -609,7 +605,6 @@ class VoiceService:
             if len(trimmed) >= expected_min:
                 self.logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
                 return trimmed
-            # przycięte za krótkie → spróbuj oddać raw jeśli ma sensowny rozmiar
             if len(raw) >= max(1, expected_min // 2):
                 self.logger.warning(
                     "service.capture.fallback.trimmed_too_short_using_raw",
@@ -624,7 +619,6 @@ class VoiceService:
             )
             return b""
 
-        # gdy VAD nic nie wykroił – oddaj raw jeżeli sensowny
         if len(raw) >= max(1, expected_min // 2):
             self.logger.warning("service.capture.fallback.no_vad_using_raw", bytes=len(raw))
             return raw
