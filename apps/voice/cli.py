@@ -13,7 +13,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import warnings
 import wave
@@ -42,7 +41,6 @@ def _warn_to_stderr(message, category, filename, lineno, file=None, line=None):
 
 warnings.showwarning = _warn_to_stderr
 warnings.filterwarnings("ignore", category=UserWarning, module=r"webrtcvad")
-
 
 # ───────────────────────────────────────────────────────────────────────────────
 # helpers (merge, overrides)
@@ -107,10 +105,10 @@ def _build_overrides(args) -> dict[str, Any]:
     if level:
         overrides = _merge(overrides, {"logging": {"level": level}})
 
-    # globalny hint języka dla ASR
+    # globalny hint języka dla ASR (fix: language, nie 'lang')
     lang = getattr(args, "lang", None)
     if lang:
-        overrides = _merge(overrides, {"asr": {"lang": lang}})
+        overrides = _merge(overrides, {"asr": {"language": lang}})
 
     return overrides
 
@@ -263,7 +261,6 @@ def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> tuple[bytes, int, s
     - zwraca (audio_bytes, sample_rate, fmt_label)
     """
     audio, sample_rate, fmt = synthesize(text, TTSConfig(**tts_cfg))
-    # jeśli to JSON – dekoduj
     maybe = _decode_json_audio(audio)
     if maybe:
         raw, sr_json, fmt_json = maybe
@@ -279,6 +276,7 @@ def _pulse_available() -> bool:
 
 
 def _choose_player_command() -> list[str] | None:
+    # (pozostawione dla kompatybilności; w --play korzystamy z play_bytes)
     env_player = os.environ.get("VOICE_PLAYER")
     if env_player:
         return env_player.split()
@@ -296,7 +294,6 @@ def _choose_player_command() -> list[str] | None:
 
 def _silence_logging_for_stdout() -> None:
     """Przekieruj wszystkie logi na stderr i wyłącz gadatliwość."""
-    # przekieruj istniejące handlery loggerów na stderr
     for lg in (pylog.getLogger(), pylog.root):
         for h in list(lg.handlers):
             try:
@@ -305,10 +302,8 @@ def _silence_logging_for_stdout() -> None:
                 pass
             if hasattr(h, "stream"):
                 h.stream = sys.stderr
-    # jeśli nie ma żadnych handlerów – dodaj jeden na stderr
     if not pylog.root.handlers:
         pylog.root.addHandler(pylog.StreamHandler(sys.stderr))
-    # kompletnie wycisz logowanie poniżej CRITICAL
     pylog.disable(pylog.CRITICAL)
 
 
@@ -355,36 +350,20 @@ def cmd_tts(args) -> None:
 
     config, _ = _configure(args)
     audio, sample_rate, fmt = _synthesize_bytes(args.text, config["tts"])
-    wav_bytes = _ensure_wav_bytes(audio, sample_rate, fmt)
-
-    # GAIN?
-    try:
-        g = float(os.environ.get("VOICE_GAIN", "1.0"))
-    except Exception:
-        g = 1.0
-    if g and abs(g - 1.0) > 1e-6:
-        wav_bytes = _apply_gain_wav(wav_bytes, g)
 
     if args.play:
-        cmd = _choose_player_command()
-        if cmd:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-                f.write(wav_bytes)
-                path = f.name
-            try:
-                print("playback.start:", " ".join(cmd + [path]))
-                rc = subprocess.call(cmd + [path])
-                print("playback.done: returncode=", rc)
-            finally:
-                try:
-                    os.unlink(path)
-                except Exception:
-                    pass
-        else:
-            # fallback: wewnętrzny odtwarzacz (gdy brak aplay/paplay)
-            play_bytes(wav_bytes, "wav", PlaybackConfig(**config["playback"]))
+        # preferuj wewnętrzny odtwarzacz z configu (backend=auto/mpg123, alsa_device, volume, ding)
+        play_bytes(audio, fmt, PlaybackConfig(**config["playback"]))
     else:
-        # CZYSTY WAV na stdout
+        # na stdout zawsze czysty WAV (do potoków)
+        wav_bytes = _ensure_wav_bytes(audio, sample_rate, fmt)
+        # GAIN (opcjonalny, przez env VOICE_GAIN)
+        try:
+            g = float(os.environ.get("VOICE_GAIN", "1.0"))
+        except Exception:
+            g = 1.0
+        if g and abs(g - 1.0) > 1e-6:
+            wav_bytes = _apply_gain_wav(wav_bytes, g)
         sys.stdout.buffer.write(wav_bytes)
 
 
@@ -401,7 +380,8 @@ def cmd_diag(args) -> None:
     print("TTS backend:", config["tts"]["backend"])
     print("ASR backend:", config["asr"]["backend"])
     chosen = _choose_player_command()
-    print("Playback external:", " ".join(chosen) if chosen else "<internal>")
+    print("Playback external (fallback):", " ".join(chosen) if chosen else "<internal>")
+    print("mpg123 present:", bool(shutil.which("mpg123")))
     print("Playing ding…")
     start = time.time()
     play_ding(PlaybackConfig(**config["playback"]))
@@ -423,7 +403,7 @@ def build_parser() -> argparse.ArgumentParser:
     listen.add_argument("--tts", nargs="*")
     listen.add_argument("--vad", nargs="*")
     listen.add_argument("--playback", nargs="*")
-    listen.add_argument("--capture", nargs="*")  # <— dodane
+    listen.add_argument("--capture", nargs="*")
     listen.add_argument("--service", nargs="*")
     listen.add_argument("--ding", choices=["on", "off"], default=None)
     listen.add_argument("--save-audio", nargs="*")
@@ -435,10 +415,10 @@ def build_parser() -> argparse.ArgumentParser:
     ptt.add_argument("--tts", nargs="*")
     ptt.add_argument("--vad", nargs="*")
     ptt.add_argument("--playback", nargs="*")
-    ptt.add_argument("--capture", nargs="*")  # <— dodane
-    ptt.add_argument("--ding", choices=["on", "off"], default=None)  # <— dodane
+    ptt.add_argument("--capture", nargs="*")
+    ptt.add_argument("--ding", choices=["on", "off"], default=None)
     ptt.add_argument("--service", nargs="*")
-    ptt.add_argument("--save-audio", nargs="*")  # <— dodane (alias wygodny)
+    ptt.add_argument("--save-audio", nargs="*")
     ptt.add_argument("--log-level", default=None)
 
     once = sub.add_parser("once", help="Single cycle")
@@ -446,12 +426,12 @@ def build_parser() -> argparse.ArgumentParser:
     once.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
     once.add_argument("--asr", nargs="*")
     once.add_argument("--tts", nargs="*")
-    once.add_argument("--vad", nargs="*")  # <— dodane (symetria)
+    once.add_argument("--vad", nargs="*")
     once.add_argument("--playback", nargs="*")
-    once.add_argument("--capture", nargs="*")  # <— dodane
-    once.add_argument("--ding", choices=["on", "off"], default=None)  # <— dodane
+    once.add_argument("--capture", nargs="*")
+    once.add_argument("--ding", choices=["on", "off"], default=None)
     once.add_argument("--service", nargs="*")
-    once.add_argument("--save-audio", nargs="*")  # <— dodane
+    once.add_argument("--save-audio", nargs="*")
     once.add_argument("--log-level", default=None)
 
     asr_cmd = sub.add_parser("asr", help="Transcribe file")

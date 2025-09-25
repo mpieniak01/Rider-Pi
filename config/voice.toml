@@ -5,21 +5,22 @@ version = 1
 [capture]
 backend = "alsa"
 device = "plughw:wm8960soundcard,0"
-sample_rate = 48000
+sample_rate = 16000
 channels = 1
 frame_ms = 20
-buffer_seconds = 0.5
+buffer_seconds = 0.50     # ↑ więcej bufora ALSA po otwarciu (stabilniejsze kolejne pętle)
 
 [vad]
 enabled = true
-mode = 3
+mode = 3                  # agresywniejszy VAD
 frame_ms = 20
-tail_ms = 900
-max_len_ms = 8000
-energy_gate_dbfs = -48
+tail_ms = 1200            # ≥1.2 s podtrzymania po mowie
+max_len_ms = 6000
+energy_gate_dbfs = -52    # czułe, ale nie ekstremalne (−60 bywa zbyt "szumolubne")
 
 [hotword]
 enabled = false
+engine = "ptt"            # ENTER
 
 [asr]
 backend = "openai"
@@ -31,6 +32,7 @@ backend = "openai"
 model = "gpt-4o-mini"
 system_prompt = "Mów wyłącznie po polsku. Odpowiadaj krótko i rzeczowo, styl neutralny."
 max_history = 4
+max_tokens = 120          # ← trafia do API (tu nic lokalnie nie ucinamy)
 
 [tts]
 backend = "openai"
@@ -45,11 +47,22 @@ volume = 100
 
 [playback.ding]
 enabled = true
+# path = "assets/sounds/ding.wav"
+gain_db = -3.0            # delikatniejszy ding (mniej ryzyka, że VAD "złapie" echo)
 
 [service]
 save_audio = true
 recordings_dir = "/tmp/voice-recs"
 history_size = 20
 
+# Kluczowe okna/progi:
+pre_speech_wait_ms = 800   # ↓ szybciej pozwalamy VAD działać po beep
+min_capture_ms = 900       # ↓ akceptuj krótsze klipy (900 ms ≈ 28 800 B)
+beep_pause_ms = 380        # okno mute po ding (anty-echo)
+mic_open_delay_ms = 220    # ↑ WM8960 potrzebuje chwili po ponownym otwarciu
+post_tts_mute_ms = 500     # ↑ dłuższe wyciszenie po TTS (mniej echa w kolejnej pętli)
+guard_ms = 0               # nieużywane (mute wystarcza)
+
 [logging]
 level = "INFO"
+
