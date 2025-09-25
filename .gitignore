@@ -1,97 +1,28 @@
-# .gitignore (merged 2025-09-18T20:42:17+02:00)
-/_apps/
-/_apps/**
-apps/camera/untitled*.py
-*.bak
-*.bak-*
-*.bak.*
-build/
-cat <<EOF > .gitignore
-_data/
-data/
-data/logs/
-data/recordings/
-_diag/
-dist/
-*.dist-info/
-.DS_Store
-*.egg-info/
-.env
-EOF
-fast565.c
-fast565.egg-info/
-*.ipynb
-**/.ipynb_checkpoints/
-.ipynb_checkpoints/
-*.log
-logs/
-main
-*.o
-_out/
-*.pyc
-**/__pycache__/
+# Python
 __pycache__/
-*.py[cod]
-*.pyd
+*.pyc
 *.pyo
-.pytest_cache/
-_scripts/
-scripts/
-services/**/api_server.py.bak-*
-services/**/*.bak-*
-services/**/face_api.py.bak-*
-services/.ipynb_checkpoints/
-setup.py
-.snapshots/
-snapshots/
-*.so
-*.swo
-*.swp
-systemd/*.service_
-systemd/*.service_*
-tests/_artifacts/
-tests/_logs/
-*.tmp
-_tmp/
-tools/
+*.pyd
+.env
 .venv/
 venv/
-.vscode/
-web/control.tmp
-web/*.old
-web/*.temp
-web/*.tmp
-tests/_audit_import.py
 
-# ignore Jupyter checkpoints
-**/.ipynb_checkpoints/
+# Rider-voice artefakty
+/tmp/
+tmp/
+voice-recs/
+recordings/
+*.wav
+*.mp3
+*.ogg
 
-# allow face tool
-!tools/newface_lcd_direct.py
+# Klucze/sekrety i konfiguracje lokalne
+*.env
+.env.*
+/etc/default/rider-voice
+config/local*.toml
+config/secret*.toml
 
-# allow face tool
-!tools/newface_lcd_direct.py
-
-# === Track TOML configs (do NOT ignore) ===
-!config/
-!config/*.toml
-# Ignore only local overrides
-config/local/*
-!config/local/.gitignore
-
-# dev artifacts
-**/.ipynb_checkpoints/
-**/__pycache__/
-
-# backups
-*.bak
-
-# local artifacts
-packages-raspberrypi-*.txt
-apps/ui/untitled.py
-
-# local helpers
-ruff-*.txt
-service-wrap-lines.patch
-fix_*.py
-fix_*
+# Systemd build artefacts
+*.service~
+*.socket~
