@@ -1,0 +1,215 @@
+# apps/voice/svc_audio.py
+"""Voice service audio I/O adapter - ALSA, capture, playback, ding."""
+
+from __future__ import annotations
+
+import math
+import subprocess
+import time
+from typing import Any, Dict, Iterable
+
+from .capture import AudioCapture, CaptureConfig, CaptureError
+from .playback import PlaybackConfig, play_ding as playback_play_ding
+from .vad import collect, WebRtcActivity
+
+
+def capture_once(
+    capture_cfg: CaptureConfig,
+    vad: WebRtcActivity, 
+    max_len_ms: int,
+    service_cfg: Dict[str, Any],
+    logger
+) -> bytes:
+    """Capture audio @16kHz mono according to cfg.capture and cfg.vad; return bytes compatible with transcribe_file()."""
+    # Get timing parameters from service config
+    mic_open_delay_ms = int(service_cfg.get("mic_open_delay_ms", 100))
+    pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 1000))  
+    min_capture_ms = int(service_cfg.get("min_capture_ms", 1000))
+    
+    audio = b""
+    try:
+        with AudioCapture(capture_cfg, logger) as capture:
+            if mic_open_delay_ms > 0:
+                time.sleep(mic_open_delay_ms / 1000.0)
+
+            frames_iter = capture.frames()
+
+            # Pre-roll: require at least pre_speech_wait_ms before allowing VAD to end
+            pre_frames_needed = max(1, int(math.ceil(pre_speech_wait_ms / capture_cfg.frame_ms)))
+            pre_buf: list[bytes] = []
+            for _ in range(pre_frames_needed):
+                try:
+                    pre_buf.append(next(frames_iter))
+                except StopIteration:
+                    break
+
+            # If we collected little (eg slow start), collect up to 0.6s more
+            if len(pre_buf) < pre_frames_needed // 4:
+                t0 = time.time()
+                while len(pre_buf) < pre_frames_needed and (time.time() - t0) < 0.6:
+                    try:
+                        pre_buf.append(next(frames_iter))
+                    except StopIteration:
+                        break
+
+            def _chained():
+                for f in pre_buf:
+                    if f:
+                        yield f
+                for f in frames_iter:
+                    yield f
+
+            audio = collect(_chained(), vad, max_len_ms)
+
+    except CaptureError as exc:
+        logger.warning("service.capture.error", error=str(exc))
+    except Exception as exc:
+        logger.warning("service.capture.unexpected", error=str(exc))
+
+    # Minimum length check for entire clip
+    min_ms = max(200, min_capture_ms)
+    bytes_per_sample = 2  # 16-bit
+    channels = max(1, int(getattr(capture_cfg, "channels", 1)))
+    expected_min = int(capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
+
+    # Nothing captured -> fallback to arecord
+    if not audio:
+        logger.debug("service.capture.empty_retry_arecord")
+        return capture_with_arecord(capture_cfg, vad, max_len_ms, logger, min_capture_ms)
+
+    # Too short -> short retry (~0.8s) and try again on collected buffer  
+    if len(audio) < expected_min:
+        logger.debug("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
+        try:
+            with AudioCapture(capture_cfg, logger) as capture:
+                if mic_open_delay_ms > 0:
+                    time.sleep(mic_open_delay_ms / 1000.0)
+                t0 = time.time()
+                chunks: list[bytes] = []
+                for f in capture.frames():
+                    chunks.append(f)
+                    if (time.time() - t0) >= 0.8:
+                        break
+                audio2 = collect(iter(chunks), vad, max_len_ms)
+                if audio2 and len(audio2) > len(audio):
+                    audio = audio2
+        except Exception as exc:
+            logger.debug("service.capture.retry_error", error=str(exc))
+
+        if len(audio) < expected_min:
+            logger.debug("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
+            return b""
+
+    return audio
+
+
+def capture_with_arecord(
+    capture_cfg: CaptureConfig,
+    vad: WebRtcActivity,
+    max_len_ms: int,
+    logger,
+    min_capture_ms: int
+) -> bytes:
+    """Fallback capture using arecord command."""
+    device = capture_cfg.device or "plughw:1,0"
+    buffer_seconds = float(getattr(capture_cfg, "buffer_seconds", 0) or 0.0)
+
+    # arecord -d requires whole seconds -> limit to max 4s, min 2s
+    duration_float = max(max_len_ms / 1000.0, 1.0) + buffer_seconds + 0.5
+    duration_s = int(math.ceil(duration_float))
+    duration_s = max(2, min(4, duration_s))
+
+    cmd = [
+        "arecord",
+        "-q",
+        "-t",
+        "raw", 
+        "-f",
+        "S16_LE",
+        "-c",
+        str(max(1, int(capture_cfg.channels))),
+        "-r",
+        str(capture_cfg.sample_rate),
+        "-D",
+        device,
+        "-d",
+        str(duration_s),
+    ]
+
+    buffer_us = int(max(0.0, buffer_seconds) * 1_000_000)
+    if buffer_us > 0:
+        cmd += ["--buffer-time", str(buffer_us)]
+
+    logger.debug("service.capture.fallback.start", command=" ".join(cmd))
+    try:
+        proc = subprocess.run(cmd, capture_output=True, check=False)
+    except FileNotFoundError:
+        logger.error("service.capture.arecord_missing")
+        return b""
+    if proc.returncode != 0:
+        stderr = proc.stderr.decode("utf-8", "ignore").strip()
+        logger.error("service.capture.arecord_failed", returncode=proc.returncode, stderr=stderr)
+        return b""
+    raw = proc.stdout or b""
+    if not raw:
+        logger.warning("service.capture.arecord_empty")
+        return b""
+
+    # Fragment raw into frames and try VAD
+    frames = _frames_from_pcm(raw, capture_cfg.frame_bytes)
+    trimmed = collect(frames, vad, max_len_ms)
+
+    # Minimum length
+    min_ms = max(200, min_capture_ms)
+    bytes_per_sample = 2
+    channels = max(1, int(getattr(capture_cfg, "channels", 1)))
+    expected_min = int(capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
+
+    if trimmed:
+        if len(trimmed) >= expected_min:
+            logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
+            return trimmed
+        if len(raw) >= max(1, expected_min // 2):
+            logger.warning(
+                "service.capture.fallback.trimmed_too_short_using_raw",
+                bytes_trimmed=len(trimmed),
+                bytes_raw=len(raw),
+            )
+            return raw
+        logger.warning(
+            "service.capture.fallback.trimmed_too_short",
+            bytes_trimmed=len(trimmed),
+            bytes_required=expected_min,
+        )
+        return b""
+
+    if len(raw) >= max(1, expected_min // 2):
+        logger.warning("service.capture.fallback.no_vad_using_raw", bytes=len(raw))
+        return raw
+
+    logger.warning("service.capture.fallback.no_vad")
+    return b""
+
+
+def _frames_from_pcm(data: bytes, frame_size: int):
+    """Split PCM data into frames."""
+    for off in range(0, len(data), frame_size):
+        chunk = data[off : off + frame_size]
+        if len(chunk) < frame_size:
+            break
+        yield chunk
+
+
+def playback_tts(cfg: Dict[str, Any], audio_bytes: bytes) -> None:
+    """Play TTS result; respects volume and post_tts_mute_ms."""
+    # This would contain TTS playback logic if needed
+    # For now this is handled by the speech worker in the service
+    pass
+
+
+def play_ding(cfg: Dict[str, Any], logger) -> None:
+    """Play ding sound (gain_db, beep_pause_ms)."""
+    # Delegate to existing playback function
+    playback_cfg = cfg.get("playback", {})
+    play_cfg = PlaybackConfig(**playback_cfg)
+    playback_play_ding(play_cfg, logger)
