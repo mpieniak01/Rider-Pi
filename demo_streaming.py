@@ -9,9 +9,9 @@ without requiring an actual OpenAI API key or WebSocket connection.
 
 import os
 import sys
-
+from pathlib import Path
 # Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = str(Path(__file__).resolve().parent.parent)
 sys.path.insert(0, project_root)
 
 from apps.voice import config as voice_config
