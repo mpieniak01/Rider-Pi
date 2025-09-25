@@ -8,58 +8,75 @@ device = "plughw:wm8960soundcard,0"
 sample_rate = 16000
 channels = 1
 frame_ms = 20
-buffer_seconds = 0.60
+buffer_seconds = 0.10      # krótki pre-roll (nie zasysa dingu)
 
 [vad]
 enabled = true
 mode = 0
 frame_ms = 20
-tail_ms = 1400
-max_len_ms = 6000
-energy_gate_dbfs = -25
+tail_ms = 900              # ciut krócej, bez obcinania końcówki
+max_len_ms = 6000          # zapas na dłuższe pytania
+energy_gate_dbfs = -23     # szybciej kończy ciszę
 
 [hotword]
 enabled = false
-engine = "ptt"
+engine = "ptt"             # ENTER wyzwala ding
 
 [asr]
 backend = "openai"
-model = "gpt-4o-mini-transcribe"
+model = "gpt-4o-mini-transcribe"    # tryb plikowy (stabilny)
 language = "pl"
-prompt = "Polski asystent głosowy. Przykłady: 'Co jest stolicą Polski?', 'Która jest teraz godzina?'. Transkrybuj wiernie po polsku."
+prompt = "Polski asystent głosowy. Transkrybuj wiernie po polsku."
+# --- STREAMING (NIEOBSŁUGIWANE w tym buildzie) ---
+# streaming = true
+# realtime_model = "gpt-4o-realtime-preview"
+# realtime_transport = "websocket"          # websocket / sdp
+# realtime_format = "pcm16"                 # 16-bit signed little-endian
+# realtime_sample_rate = 16000
+# partial_results = true
 
 [chat]
 backend = "openai"
 model = "gpt-4o-mini"
-system_prompt = "Odpowiadaj pełnym zdaniem po polsku."
+system_prompt = "Odpowiadaj krótko po polsku: jedno zdanie, maksymalnie 12 słów."
 max_history = 4
-max_tokens = 120
+max_tokens = 70
 
 [tts]
 backend = "openai"
 model = "gpt-4o-mini-tts"
-voice = "verse"
+voice = "ash"              # stały polski lektor (przyjazny, spójny)
 format = "mp3"
+# streaming = true   # (NIEOBSŁUGIWANE tutaj) — zostawiamy zakomentowane
 
 [playback]
 backend = "alsa"
 alsa_device = "plughw:wm8960soundcard,0"
-volume = 100
+volume = 85                # ding i TTS wyraźne, bez przesteru
 
 [playback.ding]
 enabled = true
-gain_db = 3.0
+gain_db = 3.0              # delikatny, ale słyszalny
 
 [service]
 save_audio = true
 recordings_dir = "/tmp/voice-recs"
 history_size = 20
-pre_speech_wait_ms = 800
-min_capture_ms = 900
-beep_pause_ms = 380
-mic_open_delay_ms = 220
-post_tts_mute_ms = 500
+
+# Maskowanie „pstryka” i kontrola startu:
+beep_pause_ms = 800        # krótsze tłumienie po dingu (anty-echo)
+pre_speech_wait_ms = 800   # szybciej zaczynamy „słuchać”
+min_capture_ms = 900       # dolny limit długości klipu
+mic_open_delay_ms = 420    # WM8960 lubi krótki delay po otwarciu
+post_tts_mute_ms = 600
 guard_ms = 0
+
+# --- STREAMING PARAMS (NIEUŻYWANE teraz — tylko do wglądu) ---
+# stream_chunk_ms = 20
+# stream_end_silence_ms = 700
+# stream_max_turn_ms = 6000
 
 [logging]
 level = "INFO"
+
+
