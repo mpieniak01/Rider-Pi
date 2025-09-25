@@ -1,4 +1,4 @@
-"""Automatic speech recognition backends."""
+""" "Automatic speech recognition backends."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ class ASRConfig:
     vosk_model_dir: str | None = None
     whisper_model: str | None = None
     input_encoding: str | None = None
-    timeout: float | None = None  # opcjonalny timeout (obecnie *nie* przekazujemy do SDK)
+    timeout: float | None = None  # opcjonalny timeout (sekundy)
 
 
 @dataclass
@@ -135,6 +135,13 @@ def _openai_transcribe(
         raise ASRError("OPENAI_API_KEY not configured")
 
     client = OpenAI(api_key=api_key)
+    # per-request timeout (jeśli ustawiono)
+    if config.timeout and config.timeout > 0:
+        try:
+            client = client.with_options(timeout=config.timeout)
+        except Exception:
+            # zgodność z różnymi wersjami SDK; jeśli brak with_options, pomiń
+            pass
 
     # ZAWSZE wysyłaj kontener (WAV/MP3). Tu preferujemy WAV.
     if _is_wav(audio):
@@ -145,19 +152,18 @@ def _openai_transcribe(
     buffer = io.BytesIO(wav_bytes)
     buffer.name = "input.wav"  # OpenAI SDK lubi nazwę pliku przy file=...
 
-    # Parametry wspierane przez endpoint transkrypcji:
-    # language: może być None (auto), prompt/temperature wg modelu
-    # (timeout trzymamy w configu, ale nie przekazujemy — SDK tego nie przyjmuje)
+    kwargs: dict[str, Any] = {
+        "model": (config.model or "gpt-4o-mini-transcribe"),
+        "file": buffer,
+        "prompt": config.prompt,
+        "temperature": config.temperature,
+    }
+    if language:  # nie wysyłaj language=None
+        kwargs["language"] = language
+
     try:
-        response = client.audio.transcriptions.create(
-            model=(config.model or "gpt-4o-mini-transcribe"),
-            file=buffer,
-            language=language,  # None => auto
-            prompt=config.prompt,
-            temperature=config.temperature,
-        )
+        response = client.audio.transcriptions.create(**kwargs)
     except Exception as exc:
-        # Czytelniejsza diagnoza (np. 400: zły format)
         raise ASRError(f"OpenAI transcription failed: {exc}") from exc
 
     text = getattr(response, "text", None) or ""

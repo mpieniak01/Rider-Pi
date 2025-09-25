@@ -25,7 +25,8 @@ class TTSConfig:
     backend: str = "openai"  # na razie "openai"
     voice: str | None = None  # np. "alloy"
     model: str | None = None  # np. "gpt-4o-mini-tts"
-    format: str = "wav"  # "wav" | "mp3" (i tak sprowadzimy do WAV)
+    format: str = "wav"  # "wav" | "mp3" (i tak sprowadzimy do WAV w synth)
+    timeout: float | None = None  # [s] – timeout per-request (stream/synth)
     piper_model: str | None = None  # rezerwa; bez użycia tutaj
     piper_config: dict | None = None  # rezerwa
 
@@ -181,9 +182,11 @@ def speak(
     if not text:
         return TTSStreamResult(ok=False, streamed=False)
 
-    if not ensure_openai_key(logger):
+    api_key = ensure_openai_key(logger)
+    if not api_key:
         return TTSStreamResult(ok=False, streamed=False)
 
+    # streaming: preferuj MP3 (najszybszy start z mpg123)
     stream_fmt = "mp3"
     stream = start_stream(stream_fmt, playback, logger, accumulate=accumulate)
     if stream:
@@ -192,7 +195,7 @@ def speak(
         ok_stream = True
         mp3_bytes: bytes | None = None
         try:
-            for chunk in _openai_stream_chunks(text, config, stream_fmt):
+            for chunk in _openai_stream_chunks(text, config, stream_fmt, api_key=api_key):
                 stream.write(chunk)
                 if first_chunk_at is None:
                     first_chunk_at = time.time()
@@ -255,6 +258,7 @@ def speak(
     else:
         logger.debug("tts.stream.unavailable")
 
+    # fallback: pełny synth + odtwarzanie
     try:
         audio_bytes, sample_rate, audio_fmt = synthesize(text, config, logger)
     except TTSError as exc:
@@ -271,33 +275,20 @@ def speak(
     return TTSStreamResult(True, audio_data, audio_fmt, sample_rate, streamed=False)
 
 
-def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str):
-    try:
-        from openai import OpenAI  # type: ignore
-    except Exception as exc:  # pragma: no cover - optional dependency
-        raise TTSError(f"OpenAI SDK unavailable: {exc}") from exc
+def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str, *, api_key: str):
+    from openai import OpenAI
 
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    # Część wersji SDK nie przyjmuje `format` → spróbuj z, a w razie TypeError bez.
+    client = OpenAI(api_key=api_key)
+    timeout_s = config.timeout or 45
     try:
-        try:
-            context = client.audio.speech.with_streaming_response.create(
-                model=(config.model or "gpt-4o-mini-tts"),
-                voice=(config.voice or "alloy"),
-                input=text,
-                # format=fmt,  # preferowane, gdy obsługiwane
-                timeout=45,
-            )
-        except TypeError:
-            context = client.audio.speech.with_streaming_response.create(
-                model=(config.model or "gpt-4o-mini-tts"),
-                voice=(config.voice or "alloy"),
-                input=text,
-                timeout=45,
-            )
+        context = client.audio.speech.with_streaming_response.create(
+            model=(config.model or "gpt-4o-mini-tts"),
+            voice=(config.voice or "alloy"),
+            input=text,
+            timeout=timeout_s,
+        )
     except Exception as exc:
         raise TTSError(f"OpenAI TTS streaming init failed: {exc}") from exc
-
     with context as response:
         for chunk in response.iter_bytes(8192):
             if chunk:
@@ -343,7 +334,7 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     last_err = None
     for attempt in range(3):
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=40)
+            resp = requests.post(url, json=payload, headers=headers, timeout=(config.timeout or 40))
             ctype = (resp.headers.get("Content-Type") or "").lower()
             body = resp.content
 

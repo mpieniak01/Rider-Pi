@@ -38,6 +38,10 @@ class SilenceTail:
             return False
         return not any(self.window)
 
+    def reset(self) -> None:
+        """Clear the silence detection window to reset state between recordings."""
+        self.window.clear()
+
 
 class WebRtcActivity:
     def __init__(self, sample_rate: int, mode: int, frame_ms: int, tail_ms: int, energy_gate: float = -40.0):
@@ -57,6 +61,10 @@ class WebRtcActivity:
         else:
             decision = self._vad.is_speech(frame, self.sample_rate)
         return self.tail.push(not decision)
+
+    def reset(self) -> None:
+        """Reset VAD state to prepare for a new recording session."""
+        self.tail.reset()
 
 
 def collect(stream, detector: WebRtcActivity, max_len_ms: int) -> bytes:

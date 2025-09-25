@@ -1,4 +1,4 @@
-"""Structured logging helpers for the voice stack.
+""" "Structured logging helpers for the voice stack.
 
 The voice stack is spawned either as a CLI tool, a long-running
 service, or via the HTTP API.  All of these entry points should rely on
@@ -56,18 +56,31 @@ class _JsonFormatter(logging.Formatter):
     default_time_format = "%Y-%m-%dT%H:%M:%S"
 
     def format(self, record: logging.LogRecord) -> str:
-        ts = time.strftime(self.default_time_format, time.localtime(record.created))
+        # używamy UTC, bo dopisujemy 'Z'
+        ts = time.strftime(self.default_time_format, time.gmtime(record.created))
         payload: dict[str, Any] = {
             "ts": f"{ts}.{int(record.msecs):03d}Z",
             "level": record.levelname,
             "name": record.name,
             "msg": record.getMessage(),
         }
+
+        # Zbierz dodatkowe pola i spłaszcz do 'data'
         extras = {k: v for k, v in record.__dict__.items() if k not in _STD_ATTRS}
         if extras:
-            payload["extra"] = extras
+            # Jeżeli logger podał 'data' (np. extra={"data": {...}}), weź je wprost.
+            data = extras.pop("data", None)
+            if isinstance(data, dict):
+                # Połącz z resztą extras (gdyby coś jeszcze zostało)
+                payload["data"] = {**data, **extras} if extras else data
+            elif data is not None:
+                payload["data"] = data if not extras else {"_": data, **extras}
+            elif extras:
+                payload["data"] = extras
+
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
+
         return json.dumps(payload, ensure_ascii=False)
 
 
@@ -78,7 +91,6 @@ def _level_from_env(default: str = _DEFAULT_LEVEL) -> str:
 
 def configure(level: str | None = None) -> None:
     """Configure the root logger to emit JSON to stdout."""
-
     resolved = (level or _level_from_env()).upper()
     stream = logging.StreamHandler(stream=sys.stdout)
     stream.setFormatter(_JsonFormatter())
@@ -95,6 +107,7 @@ class VoiceLogger:
     logger: logging.Logger
 
     def event(self, msg: str, **fields: Any) -> None:
+        # Pola trafiają pod 'data' (formatter je spłaszczy na poziomie głównym).
         if fields:
             self.logger.info(msg, extra={"data": fields})
         else:

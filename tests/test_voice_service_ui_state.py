@@ -283,3 +283,36 @@ def test_listen_resets_state_after_cycle_error(monkeypatch: pytest.MonkeyPatch, 
 
     states = _state_sequence(publisher)
     assert states[-2:] == ["hearing", "idle"], states
+
+
+def test_vad_state_reset_between_cycles(monkeypatch: pytest.MonkeyPatch, voice_module) -> None:
+    """Test that VAD state is reset between recording cycles."""
+    config = _base_config()
+    config.setdefault("service", {}).update({"min_capture_ms": 0})  # Disable minimum capture check
+    publisher = FakePublisher()
+    service = VoiceService(config, ui_publisher=publisher)
+
+    # Track VAD reset calls
+    reset_calls = []
+    original_reset = service._vad.reset
+
+    def track_reset():
+        reset_calls.append(True)
+        return original_reset()
+
+    monkeypatch.setattr(service._vad, "reset", track_reset)
+    monkeypatch.setattr(service, "_record_with_vad", lambda: b"\x00\x01" * 100)
+    monkeypatch.setattr(service, "_wait_hotword_without_capture", lambda: True)
+    monkeypatch.setattr(service, "_handle_intent", lambda intent: "Test response")
+    monkeypatch.setattr(voice_module, "transcribe", lambda *args, **kwargs: Transcript(text="test", language="en"))
+
+    # Mock speech synthesis to avoid actual audio processing
+    monkeypatch.setattr(voice_module, "synthesize", lambda *args, **kwargs: (b"audio", 16000, "wav"), raising=False)
+    monkeypatch.setattr(voice_module, "play_bytes", lambda *args, **kwargs: None, raising=False)
+
+    # Call _cycle twice to simulate multiple recordings
+    service._cycle()
+    service._cycle()
+
+    # VAD reset should have been called twice (once per cycle)
+    assert len(reset_calls) == 2, f"Expected 2 VAD reset calls, got {len(reset_calls)}"
