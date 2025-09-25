@@ -1,6 +1,17 @@
 # Rider Voice Stack (2025‑09)
 
-Pełny port aplikacji głosowej znajduje się w `apps/voice/`. Architektura jest modułowa (capture → VAD → KWS → ASR → NLU → Chat → TTS → playback), co upraszcza utrzymanie i testy. Poniżej: instalacja, konfiguracja, CLI, Web API, usługi systemd, logowanie i diagnostyka — **zaktualizowane o ostatnie zmiany**.
+Pełny port aplikacji głosowej znajduje się w `apps/voice/`. Architektura jest modułowa (capture → VAD → KWS → ASR → NLU → Chat → TTS → playback), co upraszcza utrzymanie i testy. **Wspiera teraz również tryb strumieniowy (realtime) z WebSocket duplex** dla natychmiastowych interakcji głosowych.
+
+---
+
+## Tryby pracy
+
+**Rider Voice** obsługuje dwa główne tryby:
+
+1. **Tryb plikowy (file-based)** - tradycyjny pipeline: capture → plik → ASR → Chat → TTS → playback
+2. **Tryb strumieniowy (realtime)** - WebSocket duplex: audio chunks → partial ASR → streaming Chat/TTS z barge-in
+
+Wybór trybu odbywa się automatycznie na podstawie konfiguracji `transport` w sekcjach `[asr]`, `[chat]`, `[tts]`.
 
 ---
 
@@ -17,6 +28,62 @@ Pełny port aplikacji głosowej znajduje się w `apps/voice/`. Architektura jest
 ---
 
 ## Konfiguracja
+
+### Tryb strumieniowy (Realtime WebSocket)
+
+Aby włączyć tryb strumieniowy, ustaw `transport = "realtime"` w odpowiednich sekcjach:
+
+```toml
+[asr]
+backend = "openai"
+transport = "realtime"          # Włącza strumieniowy ASR
+model = "gpt-4o-realtime-preview"
+language = "pl"
+partial_results = true
+
+[chat]
+backend = "openai"
+transport = "realtime"          # Włącza strumieniowy chat
+model = "gpt-4o-realtime-preview"
+system_prompt = "Odpowiadaj krótko po polsku."
+max_tokens = 70
+
+[tts]
+backend = "openai"
+transport = "realtime"          # Włącza strumieniowy TTS
+model = "gpt-4o-realtime-preview"
+voice = "ash"
+format = "pcm16"
+
+# Parametry streaming
+[stream]
+protocol = "websocket"
+endpoint = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
+auth = "env:OPENAI_API_KEY"
+chunk_ms = 20                   # Chunki audio co 20ms
+sample_rate = 16000
+turn_end_silence_ms = 700       # Czas ciszy kończącej turę
+max_turn_ms = 6000              # Maksymalny czas tury
+send_partials = true            # Publikuj partial ASR
+server_vad = true               # Używaj VAD serwerowego
+ping_interval_s = 10            # Ping WebSocket co 10s
+
+[stream.reconnect]
+max_retries = 6                 # Maksymalne próby reconnect
+base_ms = 250                   # Bazowy delay reconnect
+max_ms = 5000                   # Maksymalny delay reconnect
+
+[stream.audio]
+jitter_buffer_ms = 120          # Bufor jitter dla TTS
+barge_in = true                 # Włącz przerwania TTS
+```
+
+**Funkcje trybu strumieniowego:**
+- **Partial ASR**: Publikacja `ui.partial` z bieżącą hipotezą tekstu
+- **Streaming TTS**: Odtwarzanie audio natychmiast po otrzymaniu pierwszych chunków
+- **Barge-in**: Możliwość przerwania TTS przez rozpoczęcie nowej mowy
+- **Reconnect**: Automatyczne wznawianie połączenia z exponential backoff
+- **Duplex audio**: Równoczesne wysyłanie i odbieranie audio
 
 ### Pliki i ENV
 
