@@ -13,12 +13,15 @@ from apps.voice.service import VoiceService
 """
 Regression tests for VoiceService UI state publishing.
 
-Kluczowe poprawki:
-- patchujemy apps.voice.asr.transcribe (a nie fasadę), żeby nie dzwonić do OpenAI.
-- patchujemy apps.voice.service_impl.time.sleep (tam używany jest time.sleep).
+Kluczowe: patchujemy **apps.voice.service_impl.*** (a nie asr/tts/playback bezpośrednio),
+bo service_impl importuje symbole przy ładowaniu:
+    from ..asr import transcribe
+    from ..tts import synthesize
+    from ..playback import play_bytes
+i potem używa lokalnych nazw modułu (service_impl.transcribe itd.).
 """
 
-# Ścieżka projektu
+# Ścieżka projektu na początek sys.path
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 # Minimalny stub requests (bez sieci)
@@ -35,99 +38,11 @@ requests_stub.exceptions = types.SimpleNamespace(RequestException=Exception)
 sys.modules.setdefault("requests", requests_stub)
 
 
-# Lokalne Transcript (żeby nie importować apps.voice.asr i OpenAI)
+# Lokalne Transcript (żeby test nie musiał importować z apps.voice.asr)
 @dataclass
 class Transcript:
     text: str
     language: str | None = None
-
-
-def _make_service() -> VoiceService:
-    config = {
-        "capture": {},
-        "vad": {},
-        "hotword": {"enabled": False, "engine": "off"},
-        "asr": {
-            "backend": "dummy",
-            "model": "test",
-            "language": "en",
-            "temperature": 0.0,
-            "prompt": None,
-            "vosk_model_dir": "",
-            "whisper_model": "tiny",
-            "input_encoding": "s16le",
-        },
-        "nlu": {
-            "chat_threshold": 0.5,
-            "command_keywords": {},
-            "llm_model": "dummy",
-        },
-        "chat": {
-            "backend": "echo",
-            "model": "dummy",
-            "system_prompt": "prompt",
-            "max_history": 1,
-        },
-        "tts": {
-            "backend": "dummy",
-            "voice": "dummy",
-            "model": "dummy",
-            "format": "wav",
-            "piper_model": None,
-            "piper_config": None,
-        },
-        "playback": {
-            "backend": "dummy",
-            "alsa_device": "default",
-            "volume": 0,
-            "ding": {"enabled": False, "path": "", "gain_db": 0.0},
-        },
-        "service": {
-            "save_audio": False,
-            "recordings_dir": "data/recordings",
-            "history_size": 1,
-        },
-        "logging": {"level": "INFO"},
-    }
-    return VoiceService(config)
-
-
-def test_once_publishes_idle_after_error(monkeypatch) -> None:
-    service = _make_service()
-    published_states: list[str] = []
-
-    # Przechwyt publikacji stanu UI
-    monkeypatch.setattr(service, "_publish_ui_state", published_states.append)
-
-    def failing_cycle(*, speak: bool = True):  # noqa: ARG001
-        published_states.append("listen")
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(service, "_cycle", failing_cycle)
-
-    assert service.once() is None
-    assert published_states[:-1] == ["listen"]
-    assert published_states[-1] == "idle"
-
-
-class _RequestsStub:
-    RequestException = Exception
-
-    @staticmethod
-    def post(*_args, **_kwargs):  # pragma: no cover
-        class _Resp:
-            status_code = 200
-            headers = {}
-            content = b""
-            text = ""
-
-            def json(self):  # pragma: no cover
-                return {}
-
-        return _Resp()
-
-
-sys.modules.setdefault("requests", _RequestsStub())
 
 
 class FakePublisher:
@@ -175,26 +90,47 @@ def _base_config() -> dict:
 
 
 @pytest.fixture()
-def voice_module():
-    import apps.voice.service as voice_service_module
+def service_impl_mod():
+    import importlib
 
-    return voice_service_module
+    return importlib.import_module("apps.voice.service_impl")
 
 
 def _state_sequence(publisher: FakePublisher) -> list[str]:
     return [payload["state"] for topic, payload in publisher.messages if topic == "ui.state"]
 
 
-def test_cycle_emits_idle_when_reply_empty(monkeypatch: pytest.MonkeyPatch, voice_module) -> None:
-    # Patchujemy właściwe moduły
-    import importlib
+def _patch_runtime(monkeypatch: pytest.MonkeyPatch, service_impl_mod, *, transcribe_text: str):
+    """
+    Patchujemy WSZYSTKO, czego _cycle() dotyka poza VoiceService:
+      - service_impl.transcribe -> Transcript(transcribe_text)
+      - service_impl.time.sleep -> no-op
+      - service_impl.synthesize -> (b"audio", 16000, "wav")
+      - service_impl.play_bytes -> no-op
+    """
+    monkeypatch.setattr(service_impl_mod, "transcribe", lambda *a, **k: Transcript(text=transcribe_text, language="en"))
+    monkeypatch.setattr(service_impl_mod.time, "sleep", lambda *_a, **_k: None)
+    monkeypatch.setattr(service_impl_mod, "synthesize", lambda *a, **k: (b"audio", 16000, "wav"), raising=False)
+    monkeypatch.setattr(service_impl_mod, "play_bytes", lambda *a, **k: None, raising=False)
 
-    asr_mod = importlib.import_module("apps.voice.asr")
-    monkeypatch.setattr(asr_mod, "transcribe", lambda *_, **__: Transcript(text="ok", language="en"))
 
-    service_impl = importlib.import_module("apps.voice.service_impl")
-    monkeypatch.setattr(service_impl.time, "sleep", lambda *_a, **_k: None)
+def test_once_publishes_idle_after_error(monkeypatch: pytest.MonkeyPatch, service_impl_mod) -> None:
+    service = VoiceService(_base_config(), ui_publisher=FakePublisher())
+    published_states: list[str] = []
+    monkeypatch.setattr(service, "_publish_ui_state", published_states.append)
 
+    def failing_cycle(*, speak: bool = True):  # noqa: ARG001
+        published_states.append("listen")
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service, "_cycle", failing_cycle)
+    assert service.once() is None
+    assert published_states[:-1] == ["listen"]
+    assert published_states[-1] == "idle"
+
+
+def test_cycle_emits_idle_when_reply_empty(monkeypatch: pytest.MonkeyPatch, service_impl_mod) -> None:
+    _patch_runtime(monkeypatch, service_impl_mod, transcribe_text="ok")  # ASR OK, ale odpowiedź będzie pusta
     config = _base_config()
     config.setdefault("service", {}).update({"min_capture_ms": 0})
     publisher = FakePublisher()
@@ -202,33 +138,23 @@ def test_cycle_emits_idle_when_reply_empty(monkeypatch: pytest.MonkeyPatch, voic
 
     monkeypatch.setattr(service, "_record_with_vad", lambda: b"\x00\x01" * 10)
     monkeypatch.setattr(service, "_wait_hotword_without_capture", lambda: True)
-    monkeypatch.setattr(service, "_handle_intent", lambda intent: "   ")
-
-    # Tłumimy TTS/playback defensywnie
-    monkeypatch.setattr(voice_module, "synthesize", lambda *a, **k: (b"audio", 16000, "wav"), raising=False)
-    monkeypatch.setattr(voice_module, "play_bytes", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(service, "_handle_intent", lambda intent: "   ")  # pusta odpowiedź
 
     result = service._cycle()
 
     states = _state_sequence(publisher)
     states = states[1:] if (states and states[0] == "idle") else states
     assert states == ["hearing", "thinking", "idle"]
-    assert result.audio is None
-    assert result.audio_format == ""
-    assert result.sample_rate == 0
+    assert result.audio is None and result.audio_format == "" and result.sample_rate == 0
 
 
-def test_cycle_idle_after_short_recording(monkeypatch: pytest.MonkeyPatch) -> None:
-    import importlib
-
-    service_impl = importlib.import_module("apps.voice.service_impl")
-    monkeypatch.setattr(service_impl.time, "sleep", lambda *_a, **_k: None)
-
+def test_cycle_idle_after_short_recording(monkeypatch: pytest.MonkeyPatch, service_impl_mod) -> None:
+    _patch_runtime(monkeypatch, service_impl_mod, transcribe_text="ignored")
     config = _base_config()
     publisher = FakePublisher()
     service = VoiceService(config, ui_publisher=publisher)
 
-    monkeypatch.setattr(service, "_record_with_vad", lambda: b"")
+    monkeypatch.setattr(service, "_record_with_vad", lambda: b"")  # za krótko
     monkeypatch.setattr(service, "_wait_hotword_without_capture", lambda: True)
 
     with pytest.raises(RuntimeError):
@@ -238,12 +164,8 @@ def test_cycle_idle_after_short_recording(monkeypatch: pytest.MonkeyPatch) -> No
     assert states[-2:] == ["hearing", "idle"], states
 
 
-def test_listen_resets_state_after_cycle_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    import importlib
-
-    service_impl = importlib.import_module("apps.voice.service_impl")
-    monkeypatch.setattr(service_impl.time, "sleep", lambda *_a, **_k: None)
-
+def test_listen_resets_state_after_cycle_error(monkeypatch: pytest.MonkeyPatch, service_impl_mod) -> None:
+    _patch_runtime(monkeypatch, service_impl_mod, transcribe_text="ignored")
     config = _base_config()
     publisher = FakePublisher()
     service = VoiceService(config, ui_publisher=publisher)
@@ -272,14 +194,9 @@ def test_listen_resets_state_after_cycle_error(monkeypatch: pytest.MonkeyPatch) 
     assert states[-2:] == ["hearing", "idle"], states
 
 
-def test_vad_state_reset_between_cycles(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_vad_state_reset_between_cycles(monkeypatch: pytest.MonkeyPatch, service_impl_mod) -> None:
     """VAD reset powinien następować między kolejnymi cyklami."""
-    import importlib
-
-    asr_mod = importlib.import_module("apps.voice.asr")
-    monkeypatch.setattr(asr_mod, "transcribe", lambda *_, **__: Transcript(text="test", language="en"))
-    service_impl = importlib.import_module("apps.voice.service_impl")
-    monkeypatch.setattr(service_impl.time, "sleep", lambda *_a, **_k: None)
+    _patch_runtime(monkeypatch, service_impl_mod, transcribe_text="test")
 
     config = _base_config()
     config.setdefault("service", {}).update({"min_capture_ms": 0})
@@ -298,12 +215,6 @@ def test_vad_state_reset_between_cycles(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(service, "_record_with_vad", lambda: b"\x00\x01" * 100)
     monkeypatch.setattr(service, "_wait_hotword_without_capture", lambda: True)
     monkeypatch.setattr(service, "_handle_intent", lambda intent: "Test response")
-
-    # Tłumimy TTS/playback
-    monkeypatch.setattr(
-        sys.modules.get("apps.voice.service"), "synthesize", lambda *a, **k: (b"audio", 16000, "wav"), raising=False
-    )
-    monkeypatch.setattr(sys.modules.get("apps.voice.service"), "play_bytes", lambda *a, **k: None, raising=False)
 
     service._cycle()
     service._cycle()
