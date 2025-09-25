@@ -6,26 +6,22 @@ from __future__ import annotations
 import math
 import subprocess
 import time
-from typing import Any, Dict, Iterable
+from typing import Any
 
 from .capture import AudioCapture, CaptureConfig, CaptureError
 from .playback import PlaybackConfig, play_ding as playback_play_ding
-from .vad import collect, WebRtcActivity
+from .vad import WebRtcActivity, collect
 
 
 def capture_once(
-    capture_cfg: CaptureConfig,
-    vad: WebRtcActivity, 
-    max_len_ms: int,
-    service_cfg: Dict[str, Any],
-    logger
+    capture_cfg: CaptureConfig, vad: WebRtcActivity, max_len_ms: int, service_cfg: dict[str, Any], logger
 ) -> bytes:
-    """Capture audio @16kHz mono according to cfg.capture and cfg.vad; return bytes compatible with transcribe_file()."""
+    """Capture audio @16kHz mono; returns bytes for transcribe_file()."""
     # Get timing parameters from service config
     mic_open_delay_ms = int(service_cfg.get("mic_open_delay_ms", 100))
-    pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 1000))  
+    pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 1000))
     min_capture_ms = int(service_cfg.get("min_capture_ms", 1000))
-    
+
     audio = b""
     try:
         with AudioCapture(capture_cfg, logger) as capture:
@@ -77,7 +73,7 @@ def capture_once(
         logger.debug("service.capture.empty_retry_arecord")
         return capture_with_arecord(capture_cfg, vad, max_len_ms, logger, min_capture_ms)
 
-    # Too short -> short retry (~0.8s) and try again on collected buffer  
+    # Too short -> short retry (~0.8s) and try again on collected buffer
     if len(audio) < expected_min:
         logger.debug("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
         try:
@@ -104,11 +100,7 @@ def capture_once(
 
 
 def capture_with_arecord(
-    capture_cfg: CaptureConfig,
-    vad: WebRtcActivity,
-    max_len_ms: int,
-    logger,
-    min_capture_ms: int
+    capture_cfg: CaptureConfig, vad: WebRtcActivity, max_len_ms: int, logger, min_capture_ms: int
 ) -> bytes:
     """Fallback capture using arecord command."""
     device = capture_cfg.device or "plughw:1,0"
@@ -123,7 +115,7 @@ def capture_with_arecord(
         "arecord",
         "-q",
         "-t",
-        "raw", 
+        "raw",
         "-f",
         "S16_LE",
         "-c",
@@ -200,14 +192,14 @@ def _frames_from_pcm(data: bytes, frame_size: int):
         yield chunk
 
 
-def playback_tts(cfg: Dict[str, Any], audio_bytes: bytes) -> None:
+def playback_tts(cfg: dict[str, Any], audio_bytes: bytes) -> None:
     """Play TTS result; respects volume and post_tts_mute_ms."""
     # This would contain TTS playback logic if needed
     # For now this is handled by the speech worker in the service
     pass
 
 
-def play_ding(cfg: Dict[str, Any], logger) -> None:
+def play_ding(cfg: dict[str, Any], logger) -> None:
     """Play ding sound (gain_db, beep_pause_ms)."""
     # Delegate to existing playback function
     playback_cfg = cfg.get("playback", {})
