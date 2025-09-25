@@ -8,36 +8,37 @@ device = "plughw:wm8960soundcard,0"
 sample_rate = 16000
 channels = 1
 frame_ms = 20
-buffer_seconds = 0.50     # ↑ więcej bufora ALSA po otwarciu (stabilniejsze kolejne pętle)
+buffer_seconds = 0.60
 
 [vad]
 enabled = true
-mode = 3                  # agresywniejszy VAD
+mode = 0
 frame_ms = 20
-tail_ms = 1200            # ≥1.2 s podtrzymania po mowie
+tail_ms = 1400
 max_len_ms = 6000
-energy_gate_dbfs = -52    # czułe, ale nie ekstremalne (−60 bywa zbyt "szumolubne")
+energy_gate_dbfs = -25
 
 [hotword]
 enabled = false
-engine = "ptt"            # ENTER
+engine = "ptt"
 
 [asr]
 backend = "openai"
 model = "gpt-4o-mini-transcribe"
 language = "pl"
+prompt = "Polski asystent głosowy. Przykłady: 'Co jest stolicą Polski?', 'Która jest teraz godzina?'. Transkrybuj wiernie po polsku."
 
 [chat]
 backend = "openai"
 model = "gpt-4o-mini"
-system_prompt = "Mów wyłącznie po polsku. Odpowiadaj krótko i rzeczowo, styl neutralny."
+system_prompt = "Odpowiadaj pełnym zdaniem po polsku."
 max_history = 4
-max_tokens = 120          # ← trafia do API (tu nic lokalnie nie ucinamy)
+max_tokens = 120
 
 [tts]
 backend = "openai"
 model = "gpt-4o-mini-tts"
-voice = "alloy"
+voice = "verse"
 format = "mp3"
 
 [playback]
@@ -47,22 +48,18 @@ volume = 100
 
 [playback.ding]
 enabled = true
-# path = "assets/sounds/ding.wav"
-gain_db = -3.0            # delikatniejszy ding (mniej ryzyka, że VAD "złapie" echo)
+gain_db = 3.0
 
 [service]
 save_audio = true
 recordings_dir = "/tmp/voice-recs"
 history_size = 20
-
-# Kluczowe okna/progi:
-pre_speech_wait_ms = 800   # ↓ szybciej pozwalamy VAD działać po beep
-min_capture_ms = 900       # ↓ akceptuj krótsze klipy (900 ms ≈ 28 800 B)
-beep_pause_ms = 380        # okno mute po ding (anty-echo)
-mic_open_delay_ms = 220    # ↑ WM8960 potrzebuje chwili po ponownym otwarciu
-post_tts_mute_ms = 500     # ↑ dłuższe wyciszenie po TTS (mniej echa w kolejnej pętli)
-guard_ms = 0               # nieużywane (mute wystarcza)
+pre_speech_wait_ms = 800
+min_capture_ms = 900
+beep_pause_ms = 380
+mic_open_delay_ms = 220
+post_tts_mute_ms = 500
+guard_ms = 0
 
 [logging]
 level = "INFO"
-
