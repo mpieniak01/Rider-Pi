@@ -3,9 +3,15 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
+
+# Wirtualne środowiska
 .venv/
 venv/
+
+# Pliki środowiskowe (lokalne)
+.env
+*.env
+.env.*
 
 # Rider-voice artefakty
 /tmp/
@@ -16,13 +22,17 @@ recordings/
 *.mp3
 *.ogg
 
-# Klucze/sekrety i konfiguracje lokalne
-*.env
-.env.*
-/etc/default/rider-voice
-config/local*.toml
-config/secret*.toml
+# Konfiguracje aplikacji
+!config/*.toml          # śledzimy domyślne TOML-e (np. voice.toml)
+config/local*.toml      # ignorujemy lokalne warianty
+config/secret*.toml     # ignorujemy sekrety
+!config/*.example.toml  # (opcjonalnie) śledź pliki .example.toml
 
 # Systemd build artefacts
 *.service~
 *.socket~
+
+# Dane/artefakty (ignoruj cały katalog data/)
+data/
+# jeśli chcesz zostawić pusty katalog w repo:
+#!data/.gitkeep
