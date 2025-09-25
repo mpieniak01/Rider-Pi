@@ -1,0 +1,41 @@
+diff --git a/apps/voice/cli.py b/apps/voice/cli.py
+--- a/apps/voice/cli.py
++++ b/apps/voice/cli.py
+@@ -359,9 +359,7 @@ def cmd_once(args) -> None:
+     config = _load_and_merge_config(args)
+     from .svc_core import run_once
+ 
+-    result = run_once(config, args)
+-    # Note: run_once should return an int, but old version expects a result
+-    # This is a compatibility layer - the actual printing is done in the run_once implementations
++    run_once(config, args)
+ 
+diff --git a/tests/test_voice_cli_streaming.py b/tests/test_voice_cli_streaming.py
+--- a/tests/test_voice_cli_streaming.py
++++ b/tests/test_voice_cli_streaming.py
+@@ -192,7 +192,7 @@ def test_cli_once_prefers_streaming_when_service_transport_set(mocker, monkeypat
+         mock_run_once.assert_called_once()
+         call_args = mock_run_once.call_args[0]
+-        config_passed = call_args[0]
++        _ = call_args[0]  # podgląd konfiguracji nieużywany w asercjach
+ 
+         # The config should contain the chat overrides
+         # (actual assertions follow below)
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+new file mode 100644
+--- /dev/null
++++ b/requirements-dev.txt
+@@ -0,0 +1,12 @@
++Pillow==8.1.2
++requests>=2.31,<3
++pyzmq>=22,<26
++pytest
++pytest-asyncio==0.23.7
++flask<3
++werkzeug<3
++pre-commit
++ruff
++# Testy „face raw fastpath” i narzędzia CLI wymagają NumPy (RGB565, buforowanie)
++numpy==1.26.4
++# Testy streamingu oczekują obecności websockets (nawet przy mockach importu)
++websockets==11.0.3

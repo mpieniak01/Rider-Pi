@@ -42,13 +42,13 @@ from .vad import WebRtcActivity, collect
 def _filter_for_dataclass(config_dict: dict[str, Any], dataclass_type) -> dict[str, Any]:
     """Filter config dict to only include fields that are valid for the given dataclass."""
     import dataclasses
-    
+
     if not dataclasses.is_dataclass(dataclass_type):
         # Fallback for non-dataclass types - just remove transport
         filtered = dict(config_dict)
         filtered.pop("transport", None)
         return filtered
-    
+
     valid_fields = {field.name for field in dataclasses.fields(dataclass_type)}
     return {k: v for k, v in config_dict.items() if k in valid_fields}
 

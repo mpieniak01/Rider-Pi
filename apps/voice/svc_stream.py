@@ -635,7 +635,7 @@ def run_ptt_stream(cfg: dict[str, Any], args) -> int:
         cfg["hotword"] = {}
     cfg["hotword"]["enabled"] = True
     cfg["hotword"]["engine"] = "ptt"
-    
+
     return run_listen_stream(cfg, args)
 
 

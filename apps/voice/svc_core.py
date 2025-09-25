@@ -22,21 +22,21 @@ def _wants_stream(cfg: dict[str, Any], args) -> bool:
         or chat_cfg.get("transport") == "realtime"
         or tts_cfg.get("transport") == "realtime"
     )
-    
+
     if not realtime_requested:
         return False
-        
+
     # Check if API key is available for streaming mode
     stream_cfg = cfg.get("stream", {})
     auth = stream_cfg.get("auth", "env:OPENAI_API_KEY")
-    
+
     if auth.startswith("env:"):
         env_key = auth[4:]
         api_key = os.environ.get(env_key, "")
         if not api_key:
             print(f"[voice.svc_core] WARNING: {env_key} not set, falling back to file mode")
             return False
-    
+
     return True
 
 

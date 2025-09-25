@@ -23,7 +23,7 @@ from typing import Any
 from . import config as voice_config, voice_logging as voice_logging
 from .asr import ASRConfig, transcribe
 from .playback import PlaybackConfig, play_bytes, play_ding
-from .service import VoiceService, setup_signals
+from .service import VoiceService
 from .tts import TTSConfig, synthesize
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -50,13 +50,13 @@ warnings.filterwarnings("ignore", category=UserWarning, module=r"webrtcvad")
 def _filter_for_dataclass(config_dict: dict[str, Any], dataclass_type) -> dict[str, Any]:
     """Filter config dict to only include fields that are valid for the given dataclass."""
     import dataclasses
-    
+
     if not dataclasses.is_dataclass(dataclass_type):
         # Fallback for non-dataclass types - just remove transport
         filtered = dict(config_dict)
         filtered.pop("transport", None)
         return filtered
-    
+
     valid_fields = {field.name for field in dataclasses.fields(dataclass_type)}
     return {k: v for k, v in config_dict.items() if k in valid_fields}
 
@@ -343,6 +343,7 @@ def _silence_logging_for_stdout() -> None:
 def cmd_listen(args) -> None:
     config, _ = _configure(args)
     from .svc_core import run_listen
+
     run_listen(config, args)
 
 
@@ -350,13 +351,15 @@ def cmd_ptt(args) -> None:
     args.hotword = "ptt"
     config, _ = _configure(args)
     from .svc_core import run_listen
+
     run_listen(config, args)
 
 
 def cmd_once(args) -> None:
     config, _ = _configure(args)
     from .svc_core import run_once
-    result = run_once(config, args)
+
+    run_once(config, args)
     # Note: run_once should return an int, but old version expects a result
     # This is a compatibility layer - the actual printing is done in the run_once implementations
 
