@@ -107,7 +107,8 @@ class StreamingVoiceService:
             env_key = auth[4:]
             api_key = os.environ.get(env_key, "")
             if not api_key:
-                raise RuntimeError(f"Missing environment variable: {env_key}")
+                self.logger.error("auth_missing_key", env_var=env_key)
+                raise RuntimeError(f"Missing environment variable: {env_key}. Set it with: export {env_key}=sk-...")
             return api_key
         return auth
         
