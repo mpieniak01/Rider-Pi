@@ -626,6 +626,19 @@ def run_listen_stream(cfg: dict[str, Any], args) -> int:
     return 0
 
 
+def run_ptt_stream(cfg: dict[str, Any], args) -> int:
+    """Run streaming PTT (push-to-talk) mode."""
+    # PTT is handled by setting hotword engine to "ptt" and using regular listen mode
+    # Ensure hotword is configured for PTT
+    cfg = cfg.copy()
+    if "hotword" not in cfg:
+        cfg["hotword"] = {}
+    cfg["hotword"]["enabled"] = True
+    cfg["hotword"]["engine"] = "ptt"
+    
+    return run_listen_stream(cfg, args)
+
+
 def run_once_stream(cfg: dict[str, Any], args) -> int:
     """Run streaming once mode."""
     service = StreamingVoiceService(cfg)
