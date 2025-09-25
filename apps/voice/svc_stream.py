@@ -27,6 +27,19 @@ from . import voice_logging
 from .svc_audio import capture_continuous
 from .svc_core import mask_secret
 
+# --- ensure module-scoped `websockets` symbol exists (test-friendly) ---
+try:
+    import websockets as _websockets
+
+    websockets = _websockets
+except Exception:  # ImportError and others
+
+    class _WSStub:
+        def __getattr__(self, name):
+            raise ImportError("websockets library not available")
+
+    websockets = _WSStub()
+
 
 @dataclass
 class StreamConfig:
