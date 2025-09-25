@@ -66,6 +66,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "asr": {
         "backend": "openai",  # openai|vosk|faster-whisper|whispercpp
+        "transport": "file",  # file|realtime
         "model": "gpt-4o-mini-transcribe",
         "language": "en",
         "temperature": 0.0,
@@ -87,12 +88,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "chat": {
         "backend": "openai",
+        "transport": "rest",  # rest|realtime
         "model": "gpt-4o-mini",
         "system_prompt": "You are Rider-Pi, a friendly voice assistant.",
         "max_history": 4,
+        "max_tokens": 70,  # Common parameter for chat
     },
     "tts": {
         "backend": "openai",  # openai|piper
+        "transport": "file",  # file|realtime
         "model": "gpt-4o-mini-tts",
         "voice": "alloy",
         "format": "mp3",  # stream-friendly for mpg123
@@ -122,6 +126,29 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "logging": {
         "level": "INFO",
     },
+    # Streaming configuration (for realtime WebSocket mode)
+    "stream": {
+        "protocol": "websocket",
+        "endpoint": "",
+        "auth": "",
+        "chunk_ms": 20,
+        "sample_rate": 16000,
+        "turn_end_silence_ms": 700,
+        "max_turn_ms": 6000,
+        "send_partials": True,
+        "server_vad": True,
+        "local_vad_fallback": True,
+        "ping_interval_s": 10,
+        "reconnect": {
+            "max_retries": 6,
+            "base_ms": 250,
+            "max_ms": 5000,
+        },
+        "audio": {
+            "jitter_buffer_ms": 120,
+            "barge_in": True,
+        },
+    },
 }
 
 # Minimal, pragmatic ENV mapping (you can ignore these if you keep everything in TOML)
@@ -145,6 +172,17 @@ ENV_MAPPING: dict[str, tuple[str, ...]] = {
     "VOICE_PLAYBACK_VOLUME": ("playback", "volume"),
     "VOICE_LOG_LEVEL": ("logging", "level"),
 }
+
+
+def _warn_unknown_keys(config: dict[str, Any], known_config: dict[str, Any], prefix: str = "") -> None:
+    """Warn about unknown keys in config, compared to known_config structure."""
+    for key, value in config.items():
+        full_key = f"{prefix}.{key}" if prefix else key
+
+        if key not in known_config:
+            print(f"[voice.config] WARNING: unknown config key '{full_key}' (ignored)")
+        elif isinstance(value, Mapping) and isinstance(known_config[key], Mapping):
+            _warn_unknown_keys(dict(value), dict(known_config[key]), full_key)
 
 
 def _merge_dict(dst: dict[str, Any], src: Mapping[str, Any]) -> dict[str, Any]:
@@ -245,10 +283,16 @@ def load(path: str | os.PathLike[str] | None = None, *, overrides: Mapping[str, 
     base = deepcopy(DEFAULT_CONFIG)
     cfg_path, kind = _discover_config_path(path)
     if cfg_path and kind == "toml":
-        merged = _merge_dict(base, _load_toml(cfg_path))
+        loaded_config = _load_toml(cfg_path)
+        # Warn about unknown keys before merging
+        _warn_unknown_keys(loaded_config, DEFAULT_CONFIG)
+        merged = _merge_dict(base, loaded_config)
     elif cfg_path and kind == "yaml":
         print("[voice.config] WARNING: loading legacy YAML from configs/voice.yaml (DEPRECATED)")
-        merged = _merge_dict(base, _load_yaml(cfg_path))
+        loaded_config = _load_yaml(cfg_path)
+        # Warn about unknown keys before merging
+        _warn_unknown_keys(loaded_config, DEFAULT_CONFIG)
+        merged = _merge_dict(base, loaded_config)
     else:
         merged = base  # no file found
 

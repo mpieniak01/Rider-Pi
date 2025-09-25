@@ -15,6 +15,7 @@ import pytest
 from apps.voice.svc_core import _wants_stream, run_listen, run_once
 
 
+@patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
 def test_streaming_mode_detection():
     """Test that streaming mode is correctly detected."""
     # File mode config
@@ -112,6 +113,7 @@ def test_streaming_mode_fallback_on_import_error():
             mock_file_listen.assert_called_once_with(config, None)
 
 
+@patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
 def test_once_mode_streaming_delegation():
     """Test that once mode correctly delegates to streaming when configured."""
     config = {

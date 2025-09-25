@@ -39,6 +39,28 @@ from .vad import WebRtcActivity, collect
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _filter_for_dataclass(config_dict: dict[str, Any], dataclass_type) -> dict[str, Any]:
+    """Filter config dict to only include fields that are valid for the given dataclass."""
+    import dataclasses
+
+    if not dataclasses.is_dataclass(dataclass_type):
+        # Fallback for non-dataclass types - just remove transport
+        filtered = dict(config_dict)
+        filtered.pop("transport", None)
+        return filtered
+
+    valid_fields = {field.name for field in dataclasses.fields(dataclass_type)}
+    return {k: v for k, v in config_dict.items() if k in valid_fields}
+
+
+# Backward compatibility alias
+def _filter_transport_field(config_dict: dict[str, Any]) -> dict[str, Any]:
+    """Remove transport field from config dict for legacy service classes."""
+    filtered = dict(config_dict)
+    filtered.pop("transport", None)
+    return filtered
+
+
 @dataclass
 class VoiceResult:
     transcript: Transcript
@@ -70,7 +92,7 @@ class VoiceService:
         self._bus_sub = BusSub("tts.speak") if BusSub else None
 
         # Sesje i konfiguracje
-        self._chat = ChatSession(ChatConfig(**config["chat"]))
+        self._chat = ChatSession(ChatConfig(**_filter_for_dataclass(config["chat"], ChatConfig)))
         self._nlu = NLURouter(NLUConfig(**config["nlu"]))
 
         # ⬇⬇⬇ Bezpieczne domyślne wartości capture dla testów/UI
@@ -87,10 +109,12 @@ class VoiceService:
             _cap_in.setdefault(k, v)
         self._capture_cfg = CaptureConfig(**_cap_in)
 
-        self._asr_cfg = ASRConfig(**config["asr"])
+        self._asr_cfg = ASRConfig(**_filter_for_dataclass(config["asr"], ASRConfig))
 
         allowed_tts = {"backend", "voice", "model", "format", "piper_model", "piper_config"}
         tts_kwargs = {k: v for k, v in config["tts"].items() if k in allowed_tts}
+        # Note: tts_kwargs already filters via allowed_tts, but let's use the generic approach
+        tts_kwargs = _filter_for_dataclass(tts_kwargs, TTSConfig)
         self._tts_cfg = TTSConfig(**tts_kwargs)
 
         self._play_cfg = PlaybackConfig(**config["playback"])

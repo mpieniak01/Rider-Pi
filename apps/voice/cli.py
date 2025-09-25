@@ -23,7 +23,7 @@ from typing import Any
 from . import config as voice_config, voice_logging as voice_logging
 from .asr import ASRConfig, transcribe
 from .playback import PlaybackConfig, play_bytes, play_ding
-from .service import VoiceService, setup_signals
+from .service import VoiceService
 from .tts import TTSConfig, synthesize
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -43,6 +43,32 @@ warnings.showwarning = _warn_to_stderr
 warnings.filterwarnings("ignore", category=UserWarning, module=r"webrtcvad")
 
 # ───────────────────────────────────────────────────────────────────────────────
+# helper functions
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+def _filter_for_dataclass(config_dict: dict[str, Any], dataclass_type) -> dict[str, Any]:
+    """Filter config dict to only include fields that are valid for the given dataclass."""
+    import dataclasses
+
+    if not dataclasses.is_dataclass(dataclass_type):
+        # Fallback for non-dataclass types - just remove transport
+        filtered = dict(config_dict)
+        filtered.pop("transport", None)
+        return filtered
+
+    valid_fields = {field.name for field in dataclasses.fields(dataclass_type)}
+    return {k: v for k, v in config_dict.items() if k in valid_fields}
+
+
+def _filter_transport_field(config_dict: dict[str, Any]) -> dict[str, Any]:
+    """Remove transport field from config dict for legacy service classes."""
+    filtered = dict(config_dict)
+    filtered.pop("transport", None)
+    return filtered
+
+
+# ───────────────────────────────────────────────────────────────────────────────
 # helpers (merge, overrides)
 # ───────────────────────────────────────────────────────────────────────────────
 
@@ -60,6 +86,8 @@ def _build_overrides(args) -> dict[str, Any]:
     overrides: dict[str, Any] = {}
     if getattr(args, "asr", None):
         overrides = _merge(overrides, voice_config.override_from_pairs("asr", args.asr))
+    if getattr(args, "chat", None):
+        overrides = _merge(overrides, voice_config.override_from_pairs("chat", args.chat))
     if getattr(args, "tts", None):
         overrides = _merge(overrides, voice_config.override_from_pairs("tts", args.tts))
     if getattr(args, "vad", None):
@@ -260,7 +288,7 @@ def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> tuple[bytes, int, s
     - dekoduje JSON jeśli backend zwróci JSON z base64 audio
     - zwraca (audio_bytes, sample_rate, fmt_label)
     """
-    audio, sample_rate, fmt = synthesize(text, TTSConfig(**tts_cfg))
+    audio, sample_rate, fmt = synthesize(text, TTSConfig(**_filter_for_dataclass(tts_cfg, TTSConfig)))
     maybe = _decode_json_audio(audio)
     if maybe:
         raw, sr_json, fmt_json = maybe
@@ -313,22 +341,27 @@ def _silence_logging_for_stdout() -> None:
 
 
 def cmd_listen(args) -> None:
-    _, service = _configure(args)
-    setup_signals(service)
-    service.listen()
+    config, _ = _configure(args)
+    from .svc_core import run_listen
+
+    run_listen(config, args)
 
 
 def cmd_ptt(args) -> None:
     args.hotword = "ptt"
-    cmd_listen(args)
+    config, _ = _configure(args)
+    from .svc_core import run_listen
+
+    run_listen(config, args)
 
 
 def cmd_once(args) -> None:
-    _, service = _configure(args)
-    setup_signals(service)
-    result = service.once()
-    if result:
-        print(result.transcript.text)
+    config, _ = _configure(args)
+    from .svc_core import run_once
+
+    run_once(config, args)
+    # Note: run_once should return an int, but old version expects a result
+    # This is a compatibility layer - the actual printing is done in the run_once implementations
 
 
 def cmd_asr(args) -> None:
@@ -339,7 +372,7 @@ def cmd_asr(args) -> None:
     overrides = _build_overrides(args)
     config = voice_config.load(args.config, overrides=overrides)
     voice_logging.configure(config.get("logging", {}).get("level"))
-    transcript = transcribe(frames, sample_rate, ASRConfig(**config["asr"]))
+    transcript = transcribe(frames, sample_rate, ASRConfig(**_filter_for_dataclass(config["asr"], ASRConfig)))
     print(transcript.text)
 
 
@@ -413,6 +446,7 @@ def build_parser() -> argparse.ArgumentParser:
     listen.set_defaults(func=cmd_listen)
     listen.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
     listen.add_argument("--asr", nargs="*")
+    listen.add_argument("--chat", nargs="*")
     listen.add_argument("--tts", nargs="*")
     listen.add_argument("--vad", nargs="*")
     listen.add_argument("--playback", nargs="*")
@@ -425,6 +459,7 @@ def build_parser() -> argparse.ArgumentParser:
     ptt = sub.add_parser("ptt", help="Push-to-talk mode")
     ptt.set_defaults(func=cmd_ptt)
     ptt.add_argument("--asr", nargs="*")
+    ptt.add_argument("--chat", nargs="*")
     ptt.add_argument("--tts", nargs="*")
     ptt.add_argument("--vad", nargs="*")
     ptt.add_argument("--playback", nargs="*")
@@ -438,6 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
     once.set_defaults(func=cmd_once)
     once.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
     once.add_argument("--asr", nargs="*")
+    once.add_argument("--chat", nargs="*")
     once.add_argument("--tts", nargs="*")
     once.add_argument("--vad", nargs="*")
     once.add_argument("--playback", nargs="*")
