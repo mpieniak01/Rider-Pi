@@ -10,35 +10,26 @@ import os
 import queue
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
+# Utrzymujemy symbol module-scoped `websockets` (łatwy do mockowania w testach)
 try:
-    import websockets as ws_async
-except Exception:
-    ws_async = None  # async lib not available
-
-try:
-    import websocket as ws_sync  # websocket-client (sync)
-except Exception:
-    ws_sync = None
-
-from . import voice_logging
-from .svc_audio import capture_continuous
-from .svc_core import mask_secret
-
-# --- ensure module-scoped `websockets` symbol exists (test-friendly) ---
-try:
-    import websockets as _websockets
+    import websockets as _websockets  # type: ignore
 
     websockets = _websockets
-except Exception:  # ImportError and others
+except Exception:  # ImportError i inne
 
     class _WSStub:
         def __getattr__(self, name):
             raise ImportError("websockets library not available")
 
-    websockets = _WSStub()
+    websockets = _WSStub()  # type: ignore
+
+from . import voice_logging
+from .svc_audio import capture_continuous
+from .svc_core import mask_secret
 
 
 @dataclass
@@ -118,6 +109,26 @@ class StreamingVoiceService:
         self.connected = False
         self.retry_count = 0
 
+    # ---- small async wrappers (ułatwiają mocki/testy) ----
+    async def send(self, data: str) -> None:
+        if not self.websocket:
+            return
+        await self.websocket.send(data)
+
+    async def recv(self) -> str:
+        if not self.websocket:
+            raise ConnectionError("WebSocket not connected")
+        return await self.websocket.recv()
+
+    async def close(self) -> None:
+        if self.websocket:
+            try:
+                await self.websocket.close()
+            finally:
+                self.websocket = None
+
+    # ------------------------------------------------------
+
     def _get_auth_header(self) -> str:
         """Extract API key from auth config."""
         auth = self.stream_cfg.auth
@@ -158,44 +169,30 @@ class StreamingVoiceService:
                 self.logger.debug("error_pub_error", error=str(e))
 
     async def _connect(self) -> bool:
-        """Establish WebSocket connection to OpenAI Realtime API (async if possible, sync fallback)."""
-        if not (ws_async or ws_sync):
-            raise RuntimeError("websocket libs unavailable. Install: pip install websockets or websocket-client")
+        """Establish WebSocket connection to OpenAI Realtime API (async-only)."""
+        try:
+            # sprawdzimy dostępność pakietu (przy stubie rzuci)
+            _ = websockets.connect  # type: ignore[attr-defined]
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError("websockets library not available. Install with: pip install websockets") from e
 
         try:
             api_key = self._get_auth_header()
             headers = {"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}
+
             self.logger.event("ws.connect_attempt", endpoint=mask_secret(self.stream_cfg.endpoint))
 
-            if ws_async is not None:
-                # PREFER: async websockets
-                self.websocket = await ws_async.connect(
-                    self.stream_cfg.endpoint,
-                    extra_headers=headers,
-                    ping_interval=self.stream_cfg.ping_interval_s,
-                    ping_timeout=10,
-                )
-                self._ws_mode = "async"
-            else:
-                # FALLBACK: websocket-client (sync) opakowany w executorze
-                import asyncio
-
-                hdr_list = [f"{k}: {v}" for k, v in headers.items()]
-                loop = asyncio.get_running_loop()
-
-                def _sync_connect():
-                    return ws_sync.create_connection(
-                        self.stream_cfg.endpoint, header=hdr_list, ping_interval=self.stream_cfg.ping_interval_s
-                    )
-
-                self.websocket = await loop.run_in_executor(None, _sync_connect)
-                self._ws_mode = "sync"
+            self.websocket = await websockets.connect(  # type: ignore[attr-defined]
+                self.stream_cfg.endpoint,
+                extra_headers=headers,
+                ping_interval=self.stream_cfg.ping_interval_s,
+                ping_timeout=10,
+            )
 
             self.connected = True
             self.retry_count = 0
-            import uuid
-
             self.session_id = str(uuid.uuid4())
+
             self.logger.event("ws.connected", session_id=self.session_id)
             return True
 
@@ -240,7 +237,7 @@ class StreamingVoiceService:
             },
         }
 
-        await self.websocket.send(json.dumps(session_update))
+        await self.send(json.dumps(session_update))
         self.logger.event("session.configured")
 
     async def _send_audio_chunk(self, audio_data: bytes) -> None:
@@ -250,10 +247,9 @@ class StreamingVoiceService:
 
         # Convert to base64 for JSON transmission
         audio_b64 = base64.b64encode(audio_data).decode("utf-8")
-
         message = {"type": "input_audio_buffer.append", "audio": audio_b64}
 
-        await self.websocket.send(json.dumps(message))
+        await self.send(json.dumps(message))
         self.logger.debug("audio_chunk_sent", bytes=len(audio_data))
 
     async def _commit_audio_buffer(self) -> None:
@@ -262,11 +258,7 @@ class StreamingVoiceService:
             return
 
         commit_msg = {"type": "input_audio_buffer.commit"}
-        if getattr(self, "_ws_mode", "async") == "async":
-            await self.websocket.send(json.dumps(commit_msg))
-        else:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self.websocket.send, json.dumps(commit_msg))
+        await self.send(json.dumps(commit_msg))
 
         # Request response
         response_msg = {
@@ -276,12 +268,7 @@ class StreamingVoiceService:
                 "instructions": "Respond in Polish, keep it short and conversational.",
             },
         }
-        if getattr(self, "_ws_mode", "async") == "async":
-            await self.websocket.send(json.dumps(response_msg))
-        else:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self.websocket.send, json.dumps(response_msg))
-
+        await self.send(json.dumps(response_msg))
         self.logger.event("response.requested")
 
     async def _handle_ws_message(self, message: str) -> None:
@@ -385,12 +372,7 @@ class StreamingVoiceService:
                 if not self.websocket:
                     break
 
-                if getattr(self, "_ws_mode", "async") == "async":
-                    message = await asyncio.wait_for(self.websocket.recv(), timeout=1.0)
-                else:
-                    loop = asyncio.get_running_loop()
-                    message = await asyncio.wait_for(loop.run_in_executor(None, self.websocket.recv), timeout=1.0)
-
+                message = await asyncio.wait_for(self.recv(), timeout=1.0)
                 await self._handle_ws_message(message)
 
             except asyncio.TimeoutError:
@@ -557,12 +539,7 @@ class StreamingVoiceService:
             # Cleanup workers and socket
             try:
                 if self.websocket:
-                    if getattr(self, "_ws_mode", "async") == "async":
-                        await self.websocket.close()
-                else:
-                    loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, self.websocket.close)
-
+                    await self.close()
             finally:
                 self.connected = False
                 self._stop_stream_workers()
