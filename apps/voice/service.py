@@ -1,11 +1,5 @@
 from __future__ import annotations
 
-# --- Shimy kompatybilności dla testów (monkeypatch w pytest) ---
-# Testy oczekują, że poniższe symbole istnieją w module `apps.voice.service`,
-# dzięki czemu mogą je nadpisać przez monkeypatch.setattr(...).
-# `transcribe` – sensowny alias do plikowego ASR, by runtime miał działającą funkcję.
-from ..asr import transcribe_file as transcribe  # noqa: F401
-
 # Legacy class-based API (tymczasowo dla zgodności testów)
 from .service_impl import (
     SpeechTask,
@@ -17,24 +11,38 @@ from .service_impl import (
 # Public functional API (nowe)
 from .svc_core import run_listen, run_once
 
+# --- Shimy kompatybilności dla testów (monkeypatch w pytest) ---
+# elastyczny import transcribe_file -> transcribe
+try:
+    # wariant: apps/asr.py
+    from ..asr import transcribe_file as transcribe  # type: ignore[attr-defined]
+except Exception:
+    try:
+        # wariant: apps/voice/asr.py
+        from .asr import transcribe_file as transcribe  # type: ignore[attr-defined]
+    except Exception:
+        # ostateczny fallback: stub (testy i tak monkeypatchują)
+        def transcribe(*args, **kwargs):
+            raise NotImplementedError("transcribe shim: brak modułu asr.py (apps/asr.py lub apps/voice/asr.py)")
+
 
 def _record_with_vad(*args, **kwargs):
-    """(shim) Zastępczy punkt patchowania; właściwa logika przeniesiona do svc_audio.capture_once()."""
+    """(shim) Punkt patchowania; właściwa logika w svc_audio.capture_once()."""
     raise NotImplementedError("_record_with_vad is test-only shim; patched in tests")
 
 
 def _wait_hotword_without_capture(*args, **kwargs):
-    """(shim) Hotword/ptt; tutaj tylko punkt patchowania w testach."""
+    """(shim) Punkt patchowania dla hotword/PTT."""
     raise NotImplementedError("_wait_hotword_without_capture is test-only shim")
 
 
 def _handle_intent(*args, **kwargs):
-    """(shim) Obsługa intencji; prawdziwa implementacja przeniesiona, tu tylko stub do patchowania."""
+    """(shim) Punkt patchowania dla obsługi intencji."""
     raise NotImplementedError("_handle_intent is test-only shim")
 
 
 def nlu_chat(*args, **kwargs):
-    """(shim) NLU/chat; w testach podmieniane lambdą."""
+    """(shim) Punkt patchowania dla NLU/chat."""
     raise NotImplementedError("nlu_chat is test-only shim; patched in tests")
 
 
@@ -47,7 +55,7 @@ __all__ = [
     "VoiceResult",
     "SpeechTask",
     "setup_signals",
-    # shimy dla kompatybilności testów
+    # shimy
     "transcribe",
     "_record_with_vad",
     "_wait_hotword_without_capture",
