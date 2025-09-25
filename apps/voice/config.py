@@ -178,7 +178,7 @@ def _warn_unknown_keys(config: dict[str, Any], known_config: dict[str, Any], pre
     """Warn about unknown keys in config, compared to known_config structure."""
     for key, value in config.items():
         full_key = f"{prefix}.{key}" if prefix else key
-        
+
         if key not in known_config:
             print(f"[voice.config] WARNING: unknown config key '{full_key}' (ignored)")
         elif isinstance(value, Mapping) and isinstance(known_config[key], Mapping):
