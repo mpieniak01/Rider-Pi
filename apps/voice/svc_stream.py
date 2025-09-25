@@ -172,9 +172,21 @@ class StreamingVoiceService:
         """Establish WebSocket connection to OpenAI Realtime API (async-only)."""
         try:
             # sprawdzimy dostępność pakietu (przy stubie rzuci)
-            _ = websockets.connect  # type: ignore[attr-defined]
+            ws_connect = websockets.connect  # type: ignore[attr-defined]
         except Exception as e:  # pragma: no cover
             raise RuntimeError("websockets library not available. Install with: pip install websockets") from e
+
+        # Add diagnostics for websocket source and version
+        try:
+            import inspect
+            ws_source = inspect.getsourcefile(ws_connect)
+            ws_version = getattr(websockets, '__version__', 'unknown')  # type: ignore[attr-defined]
+            self.logger.event("ws.connect_diagnostics", 
+                            websocket_source=ws_source, 
+                            websocket_version=ws_version,
+                            function_name=ws_connect.__name__)
+        except Exception as e:
+            self.logger.debug("ws.diagnostics_failed", error=str(e))
 
         try:
             api_key = self._get_auth_header()
@@ -182,7 +194,7 @@ class StreamingVoiceService:
 
             self.logger.event("ws.connect_attempt", endpoint=mask_secret(self.stream_cfg.endpoint))
 
-            self.websocket = await websockets.connect(  # type: ignore[attr-defined]
+            self.websocket = await ws_connect(
                 self.stream_cfg.endpoint,
                 extra_headers=headers,
                 ping_interval=self.stream_cfg.ping_interval_s,

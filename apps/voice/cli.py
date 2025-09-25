@@ -313,9 +313,13 @@ def _silence_logging_for_stdout() -> None:
 
 
 def cmd_listen(args) -> None:
-    _, service = _configure(args)
-    setup_signals(service)
-    service.listen()
+    overrides = _build_overrides(args)
+    config = voice_config.load(getattr(args, "config", None), overrides=overrides)
+    voice_logging.configure(config.get("logging", {}).get("level"))
+    
+    # Use core routing logic to select between file-based and streaming modes
+    from .svc_core import run_listen
+    run_listen(config, args)
 
 
 def cmd_ptt(args) -> None:
@@ -324,11 +328,13 @@ def cmd_ptt(args) -> None:
 
 
 def cmd_once(args) -> None:
-    _, service = _configure(args)
-    setup_signals(service)
-    result = service.once()
-    if result:
-        print(result.transcript.text)
+    overrides = _build_overrides(args)
+    config = voice_config.load(getattr(args, "config", None), overrides=overrides)  
+    voice_logging.configure(config.get("logging", {}).get("level"))
+    
+    # Use core routing logic to select between file-based and streaming modes
+    from .svc_core import run_once
+    run_once(config, args)
 
 
 def cmd_asr(args) -> None:
