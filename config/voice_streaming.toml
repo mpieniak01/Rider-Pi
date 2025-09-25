@@ -24,26 +24,26 @@ engine = "ptt"             # ENTER wyzwala ding
 
 [asr]
 backend = "openai"
-transport = "file"                  # "file"|"realtime" 
-model = "gpt-4o-mini-transcribe"    # tryb plikowy (stabilny)
+transport = "realtime"                # STREAMING MODE
+model = "gpt-4o-realtime-preview"
 language = "pl"
 prompt = "Polski asystent głosowy. Transkrybuj wiernie po polsku."
 partial_results = true
 
 [chat]
 backend = "openai"
-transport = "rest"                    # "rest"|"realtime"
-model = "gpt-4o-mini"
+transport = "realtime"                # STREAMING MODE
+model = "gpt-4o-realtime-preview"
 system_prompt = "Odpowiadaj krótko po polsku: jedno zdanie, maksymalnie 12 słów."
 max_history = 4
 max_tokens = 70
 
 [tts]
 backend = "openai"
-transport = "file"                    # "file"|"realtime"
-model = "gpt-4o-mini-tts"
+transport = "realtime"                # STREAMING MODE
+model = "gpt-4o-realtime-preview"
 voice = "ash"              # stały polski lektor (przyjazny, spójny)
-format = "mp3"
+format = "pcm16"
 
 [playback]
 backend = "alsa"
@@ -59,9 +59,9 @@ save_audio = true
 recordings_dir = "/tmp/voice-recs"
 history_size = 20
 
-# Maskowanie „pstryka” i kontrola startu:
+# Maskowanie „pstryka" i kontrola startu:
 beep_pause_ms = 800        # krótsze tłumienie po dingu (anty-echo)
-pre_speech_wait_ms = 800   # szybciej zaczynamy „słuchać”
+pre_speech_wait_ms = 800   # szybciej zaczynamy „słuchać"
 min_capture_ms = 900       # dolny limit długości klipu
 mic_open_delay_ms = 420    # WM8960 lubi krótki delay po otwarciu
 post_tts_mute_ms = 600
@@ -92,5 +92,3 @@ barge_in = true
 
 [logging]
 level = "INFO"
-
-
