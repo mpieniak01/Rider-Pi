@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 try:
     import websockets
@@ -21,12 +21,13 @@ except ImportError:
 
 from . import voice_logging
 from .svc_audio import capture_continuous
-from .svc_core import clamp, mask_secret
+from .svc_core import mask_secret
 
 
 @dataclass
 class StreamConfig:
     """Configuration for WebSocket streaming."""
+
     protocol: str = "websocket"
     endpoint: str = ""
     auth: str = ""
@@ -38,12 +39,12 @@ class StreamConfig:
     server_vad: bool = True
     local_vad_fallback: bool = True
     ping_interval_s: int = 10
-    
+
     # Reconnect settings
     max_retries: int = 6
     base_ms: int = 250
     max_ms: int = 5000
-    
+
     # Audio settings
     jitter_buffer_ms: int = 120
     barge_in: bool = True
@@ -54,7 +55,7 @@ class StreamConfig:
         stream_cfg = cfg.get("stream", {})
         reconnect_cfg = stream_cfg.get("reconnect", {})
         audio_cfg = stream_cfg.get("audio", {})
-        
+
         return cls(
             protocol=stream_cfg.get("protocol", "websocket"),
             endpoint=stream_cfg.get("endpoint", ""),
@@ -77,13 +78,13 @@ class StreamConfig:
 
 class StreamingVoiceService:
     """WebSocket-based streaming voice service with duplex audio."""
-    
+
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
         self.config = config
         self.stream_cfg = StreamConfig.from_dict(config)
         self.ui_publisher = ui_publisher
         self.logger = voice_logging.get_logger("voice.stream")
-        
+
         # Runtime state
         self.websocket: Any = None
         self.session_id: str = ""
@@ -92,14 +93,14 @@ class StreamingVoiceService:
         self.tts_player_queue: queue.Queue[bytes | None] = queue.Queue()
         self.stop_event = threading.Event()
         self.barge_in_event = threading.Event()
-        
+
         # Partial transcript tracking
         self.partial_transcript = ""
-        
+
         # Connection state
         self.connected = False
         self.retry_count = 0
-        
+
     def _get_auth_header(self) -> str:
         """Extract API key from auth config."""
         auth = self.stream_cfg.auth
@@ -111,7 +112,7 @@ class StreamingVoiceService:
                 raise RuntimeError(f"Missing environment variable: {env_key}. Set it with: export {env_key}=sk-...")
             return api_key
         return auth
-        
+
     def _publish_ui_state(self, state: str) -> None:
         """Publish UI state change."""
         if state != self.current_state:
@@ -121,7 +122,7 @@ class StreamingVoiceService:
                     self.ui_publisher.publish("ui.state", {"state": state, "ts": time.time()})
                 except Exception as e:
                     self.logger.debug("ui_state_pub_error", error=str(e))
-                    
+
     def _publish_partial(self, text: str) -> None:
         """Publish partial transcript."""
         if self.ui_publisher and text != self.partial_transcript:
@@ -130,16 +131,12 @@ class StreamingVoiceService:
                 self.ui_publisher.publish("ui.partial", {"text": text, "ts": time.time()})
             except Exception as e:
                 self.logger.debug("partial_pub_error", error=str(e))
-                
+
     def _publish_error(self, error_type: str, message: str) -> None:
         """Publish error event."""
         if self.ui_publisher:
             try:
-                self.ui_publisher.publish("ui.error", {
-                    "type": error_type, 
-                    "message": message, 
-                    "ts": time.time()
-                })
+                self.ui_publisher.publish("ui.error", {"type": error_type, "message": message, "ts": time.time()})
             except Exception as e:
                 self.logger.debug("error_pub_error", error=str(e))
 
@@ -147,45 +144,42 @@ class StreamingVoiceService:
         """Establish WebSocket connection to OpenAI Realtime API."""
         if not websockets:
             raise RuntimeError("websockets library not available. Install with: pip install websockets")
-            
+
         try:
             api_key = self._get_auth_header()
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "OpenAI-Beta": "realtime=v1"
-            }
-            
+            headers = {"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}
+
             self.logger.event("ws.connect_attempt", endpoint=mask_secret(self.stream_cfg.endpoint))
-            
+
             self.websocket = await websockets.connect(
                 self.stream_cfg.endpoint,
                 extra_headers=headers,
                 ping_interval=self.stream_cfg.ping_interval_s,
-                ping_timeout=10
+                ping_timeout=10,
             )
-            
+
             self.connected = True
             self.retry_count = 0
             self.session_id = str(uuid.uuid4())
-            
+
             self.logger.event("ws.connected", session_id=self.session_id)
             return True
-            
+
         except Exception as e:
             self.logger.error("ws.connect_failed", error=str(e))
             self._publish_error("ws_connect", str(e))
             return False
-            
+
     async def _send_session_update(self) -> None:
         """Send session configuration to WebSocket."""
         if not self.websocket:
             return
-            
+
         # Extract relevant config sections
         asr_cfg = self.config.get("asr", {})
         chat_cfg = self.config.get("chat", {})
         tts_cfg = self.config.get("tts", {})
-        
+
         session_update = {
             "type": "session.update",
             "session": {
@@ -202,108 +196,125 @@ class StreamingVoiceService:
                     "threshold": 0.5,
                     "prefix_padding_ms": 300,
                     "silence_duration_ms": self.stream_cfg.turn_end_silence_ms,
-                } if self.stream_cfg.server_vad else None,
+                }
+                if self.stream_cfg.server_vad
+                else None,
                 "tools": [],
                 "tool_choice": "auto",
                 "temperature": 0.6,
-                "max_response_output_tokens": chat_cfg.get("max_tokens", 70)
-            }
+                "max_response_output_tokens": chat_cfg.get("max_tokens", 70),
+            },
         }
-        
+
         await self.websocket.send(json.dumps(session_update))
         self.logger.event("session.configured")
-        
+
     async def _send_audio_chunk(self, audio_data: bytes) -> None:
         """Send audio chunk to WebSocket."""
         if not self.websocket or not audio_data:
             return
-            
+
         # Convert to base64 for JSON transmission
-        audio_b64 = base64.b64encode(audio_data).decode('utf-8')
-        
-        message = {
-            "type": "input_audio_buffer.append",
-            "audio": audio_b64
-        }
-        
+        audio_b64 = base64.b64encode(audio_data).decode("utf-8")
+
+        message = {"type": "input_audio_buffer.append", "audio": audio_b64}
+
         await self.websocket.send(json.dumps(message))
         self.logger.debug("audio_chunk_sent", bytes=len(audio_data))
-        
+
     async def _commit_audio_buffer(self) -> None:
         """Commit the audio buffer and trigger response generation."""
         if not self.websocket:
             return
-            
+
         commit_msg = {"type": "input_audio_buffer.commit"}
         await self.websocket.send(json.dumps(commit_msg))
-        
+
         # Request response
         response_msg = {
             "type": "response.create",
             "response": {
                 "modalities": ["text", "audio"],
-                "instructions": "Respond in Polish, keep it short and conversational."
-            }
+                "instructions": "Respond in Polish, keep it short and conversational.",
+            },
         }
         await self.websocket.send(json.dumps(response_msg))
         self.logger.event("response.requested")
-        
+
     async def _handle_ws_message(self, message: str) -> None:
         """Handle incoming WebSocket message."""
         try:
             data = json.loads(message)
             msg_type = data.get("type", "")
-            
+
             if msg_type == "input_audio_buffer.speech_started":
                 self._publish_ui_state("hearing")
                 self.logger.event("speech.started")
-                
+
             elif msg_type == "input_audio_buffer.speech_stopped":
                 self.logger.event("speech.stopped")
                 # Commit buffer and request response
                 await self._commit_audio_buffer()
-                
+
             elif msg_type.startswith("conversation.item.input_audio_transcription"):
                 if msg_type == "conversation.item.input_audio_transcription.delta":
                     # Partial transcription
                     transcript = data.get("delta", "")
                     if self.stream_cfg.send_partials and transcript:
                         self._publish_partial(transcript)
-                        
+
                 elif msg_type == "conversation.item.input_audio_transcription.completed":
                     # Final transcription
                     transcript = data.get("transcript", "")
                     self.logger.event("asr.final", transcript=transcript)
-                    
+
             elif msg_type == "response.output_item.added":
                 # Start of response generation
                 self._publish_ui_state("thinking")
-                
-            elif msg_type == "response.audio.delta":
-                # Streaming TTS audio chunk
-                audio_b64 = data.get("delta", "")
+
+            # ----- TTS STREAM (documented event names) -----
+            elif msg_type == "response.output_audio.delta":
+                # Streaming TTS audio chunk (base64)
+                audio_b64 = data.get("delta") or (data.get("data") or {}).get("delta")
                 if audio_b64:
-                    audio_data = base64.b64decode(audio_b64)
-                    self.tts_player_queue.put(audio_data)
-                    
-            elif msg_type == "response.audio.done":
+                    try:
+                        audio_data = base64.b64decode(audio_b64)
+                        self.tts_player_queue.put(audio_data)
+                    except Exception:
+                        self.logger.debug("tts.delta.decode_failed", exc_info=True)
+
+            elif msg_type == "response.output_audio.done":
                 # End of TTS stream
-                self.tts_player_queue.put(None)  # Signal end
+                self.tts_player_queue.put(None)
                 self.logger.event("tts.stream_complete")
-                
-            elif msg_type == "response.done":
-                # Complete response finished
+
+            # ----- Backward compatibility (older names) -----
+            elif msg_type == "response.audio.delta":
+                audio_b64 = data.get("delta")
+                if audio_b64:
+                    try:
+                        audio_data = base64.b64decode(audio_b64)
+                        self.tts_player_queue.put(audio_data)
+                    except Exception:
+                        self.logger.debug("tts.delta.decode_failed_legacy", exc_info=True)
+
+            elif msg_type == "response.audio.done":
+                self.tts_player_queue.put(None)
+                self.logger.event("tts.stream_complete_legacy")
+
+            # ----- Completed response -----
+            elif msg_type in ("response.completed", "response.done"):
                 self._publish_ui_state("idle")
                 self.logger.event("response.complete")
-                
+
             elif msg_type == "error":
                 error_msg = data.get("error", {}).get("message", "Unknown error")
                 self.logger.error("ws.protocol_error", error=error_msg)
                 self._publish_error("ws_protocol", error_msg)
-                
+
         except Exception as e:
             self.logger.error("message_parse_error", error=str(e), message=message[:200])
-            
+
     async def _audio_sender_loop(self) -> None:
         """Send audio chunks from queue to WebSocket."""
         while not self.stop_event.is_set() and self.connected:
@@ -319,65 +330,99 @@ class StreamingVoiceService:
                 except Exception as e:
                     self.logger.error("audio_send_error", error=str(e))
                     break
-                    
+
             except Exception as e:
                 self.logger.error("audio_sender_error", error=str(e))
                 break
-                
+
     async def _message_receiver_loop(self) -> None:
         """Receive and handle WebSocket messages."""
         while not self.stop_event.is_set() and self.connected:
             try:
                 if not self.websocket:
                     break
-                    
+
                 message = await asyncio.wait_for(self.websocket.recv(), timeout=1.0)
                 await self._handle_ws_message(message)
-                
+
             except asyncio.TimeoutError:
                 continue
             except Exception as e:
                 self.logger.error("message_recv_error", error=str(e))
                 self.connected = False
                 break
-                
+
+    def _stop_stream_workers(self) -> None:
+        """Stop capture/TTS threads and clear queues before reconnect or shutdown."""
+        try:
+            # signal stop to any loops/threads
+            self.stop_event.set()
+
+            # join known threads if present
+            for th_name in ("_capture_thread", "_tts_player_thread", "_tts_thread"):
+                th = getattr(self, th_name, None)
+                if th is not None:
+                    try:
+                        th.join(timeout=1.0)
+                    except Exception:
+                        pass
+                    setattr(self, th_name, None)
+
+            # clear playback queue
+            q = getattr(self, "tts_player_queue", None)
+            if q is not None and hasattr(q, "queue"):
+                try:
+                    with q.mutex:
+                        q.queue.clear()
+                except Exception:
+                    pass
+
+            # clear capture queue
+            aq = getattr(self, "audio_queue", None)
+            if aq is not None and hasattr(aq, "queue"):
+                try:
+                    with aq.mutex:
+                        aq.queue.clear()
+                except Exception:
+                    pass
+
+            # reset stop flag for next session
+            self.stop_event.clear()
+        except Exception:
+            self.logger.debug("stop_workers_failed", exc_info=True)
+
     async def _reconnect_loop(self) -> bool:
         """Handle reconnection with exponential backoff."""
         while self.retry_count < self.stream_cfg.max_retries and not self.stop_event.is_set():
-            delay_ms = min(
-                self.stream_cfg.base_ms * (2 ** self.retry_count),
-                self.stream_cfg.max_ms
-            )
-            
-            self.logger.event("ws.reconnect_attempt", 
-                            retry=self.retry_count + 1, 
-                            delay_ms=delay_ms)
-                            
+            delay_ms = min(self.stream_cfg.base_ms * (2**self.retry_count), self.stream_cfg.max_ms)
+
+            self.logger.event("ws.reconnect_attempt", retry=self.retry_count + 1, delay_ms=delay_ms)
+
             await asyncio.sleep(delay_ms / 1000.0)
-            
+
             if await self._connect():
                 await self._send_session_update()
                 return True
-                
+
             self.retry_count += 1
-            
+
         self.logger.error("ws.reconnect_exhausted", max_retries=self.stream_cfg.max_retries)
         self._publish_error("ws_connect", "Connection failed after max retries")
         return False
-        
+
     def _audio_capture_thread(self) -> None:
         """Capture audio and feed to WebSocket queue."""
         try:
             capture_cfg = self.config.get("capture", {})
             sample_rate = capture_cfg.get("sample_rate", 16000)
             chunk_ms = self.stream_cfg.chunk_ms
-            
+
             chunk_size = int(sample_rate * chunk_ms / 1000) * 2  # 16-bit samples
-            
+
             for audio_chunk in capture_continuous(capture_cfg, chunk_size):
                 if self.stop_event.is_set():
                     break
-                    
+
                 if self.barge_in_event.is_set():
                     # Clear TTS queue on barge-in
                     while not self.tts_player_queue.empty():
@@ -386,24 +431,24 @@ class StreamingVoiceService:
                         except queue.Empty:
                             break
                     self.barge_in_event.clear()
-                    
+
                 if audio_chunk and self.connected:
                     self.audio_queue.put(audio_chunk)
-                    
+
         except Exception as e:
             self.logger.error("audio_capture_error", error=str(e))
         finally:
             self.audio_queue.put(None)  # Signal stop
-            
+
     def _tts_player_thread(self) -> None:
         """Play TTS audio from queue."""
         from .playback import PlaybackConfig, play_bytes
-        
+
         try:
             playback_cfg = PlaybackConfig(**self.config.get("playback", {}))
             audio_buffer = b""
             playing = False
-            
+
             while not self.stop_event.is_set():
                 try:
                     chunk = self.tts_player_queue.get(timeout=0.1)
@@ -415,87 +460,86 @@ class StreamingVoiceService:
                         playing = False
                         self._publish_ui_state("idle")
                         continue
-                        
+
                     if chunk:
                         audio_buffer += chunk
-                        
-                        # Start playing after we have enough buffered
-                        if not playing and len(audio_buffer) >= (self.stream_cfg.jitter_buffer_ms * 32):  # ~32 bytes/ms for 16kHz mono
+
+                        # Start after jitter buffer fills (~32 bytes/ms @ 16kHz mono)
+                        threshold = self.stream_cfg.jitter_buffer_ms * 32
+                        if not playing and len(audio_buffer) >= threshold:
                             self._publish_ui_state("speaking")
                             playing = True
-                            
-                        # Play chunk if we're in speaking mode
+
+                        # Play streaming chunk
                         if playing:
                             play_bytes(chunk, "pcm16", playback_cfg)
-                            
+
                 except queue.Empty:
                     continue
                 except Exception as e:
                     self.logger.error("tts_player_error", error=str(e))
-                    
+
         except Exception as e:
             self.logger.error("tts_player_thread_error", error=str(e))
-            
+
     async def _run_session(self) -> None:
         """Run a single WebSocket session."""
         # Connect and configure
         if not await self._connect():
             return
-            
+
         await self._send_session_update()
-        
+
         # Start audio capture thread
-        capture_thread = threading.Thread(
-            target=self._audio_capture_thread,
-            name="voice-stream-capture",
-            daemon=True
-        )
+        capture_thread = threading.Thread(target=self._audio_capture_thread, name="voice-stream-capture", daemon=True)
         capture_thread.start()
-        
-        # Start TTS player thread  
-        tts_thread = threading.Thread(
-            target=self._tts_player_thread,
-            name="voice-stream-tts",
-            daemon=True
-        )
+        self._capture_thread = capture_thread  # keep ref for joins
+
+        # Start TTS player thread
+        tts_thread = threading.Thread(target=self._tts_player_thread, name="voice-stream-tts", daemon=True)
         tts_thread.start()
-        
+        self._tts_player_thread = tts_thread  # keep ref for joins
+
         # Run main loops
         try:
-            await asyncio.gather(
-                self._audio_sender_loop(),
-                self._message_receiver_loop()
-            )
+            await asyncio.gather(self._audio_sender_loop(), self._message_receiver_loop())
         except Exception as e:
             self.logger.error("session_error", error=str(e))
         finally:
-            # Cleanup
-            if self.websocket:
-                await self.websocket.close()
-            self.connected = False
-            
+            # Cleanup workers and socket
+            try:
+                if self.websocket:
+                    await self.websocket.close()
+            finally:
+                self.connected = False
+                self._stop_stream_workers()
+
     async def _run_with_reconnect(self) -> None:
         """Run WebSocket session with reconnection."""
         while not self.stop_event.is_set():
             try:
                 await self._run_session()
-                
+
                 if self.stop_event.is_set():
                     break
-                    
+
+                # Prepare for a clean reconnect cycle
+                self._stop_stream_workers()
+                self._publish_ui_state("idle")
+
                 # Try to reconnect if connection dropped
                 if not await self._reconnect_loop():
                     break
-                    
+
             except Exception as e:
                 self.logger.error("stream_session_error", error=str(e))
                 break
-                
+
     def listen(self) -> None:
         """Start streaming listen mode."""
         self.logger.event("stream.listen.start")
         self._publish_ui_state("idle")
-        
+
         try:
             # Run the async WebSocket session
             asyncio.run(self._run_with_reconnect())
@@ -505,29 +549,23 @@ class StreamingVoiceService:
             self.logger.error("stream.listen.error", error=str(e))
         finally:
             self.stop()
-            
+
     def once(self) -> dict[str, Any] | None:
         """Single streaming interaction (not typically used for streaming)."""
-        # For streaming mode, 'once' doesn't make as much sense,
-        # but we can implement a timeout-based single interaction
         self.logger.event("stream.once.start")
-        
-        # This is a simplified implementation
-        # In practice, streaming mode is designed for continuous operation
         timeout_s = 30
-        
+
         async def single_interaction():
             await self._connect()
             await self._send_session_update()
-            
+
             # Wait for a single complete interaction
             start_time = time.time()
             while time.time() - start_time < timeout_s:
                 if self.current_state == "idle" and time.time() - start_time > 5:
-                    # Had some interaction, now idle
                     break
                 await asyncio.sleep(0.1)
-                
+
         try:
             asyncio.run(single_interaction())
             return {"transcript": {"text": "Streaming mode interaction"}, "success": True}
@@ -536,7 +574,7 @@ class StreamingVoiceService:
             return None
         finally:
             self.stop()
-            
+
     def stop(self) -> None:
         """Stop the streaming service."""
         self.logger.event("stream.stop")
@@ -548,11 +586,12 @@ class StreamingVoiceService:
 def run_listen_stream(cfg: dict[str, Any], args) -> int:
     """Run streaming listen mode."""
     service = StreamingVoiceService(cfg)
-    
+
     # Setup signal handlers (reuse from file mode)
     from .service_impl import setup_signals
+
     setup_signals(service)
-    
+
     service.listen()
     return 0
 
