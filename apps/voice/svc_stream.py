@@ -184,7 +184,7 @@ class StreamingVoiceService:
 
             self.websocket = await websockets.connect(  # type: ignore[attr-defined]
                 self.stream_cfg.endpoint,
-                extra_headers=headers,
+                additional_headers=headers,
                 ping_interval=self.stream_cfg.ping_interval_s,
                 ping_timeout=10,
             )
@@ -646,3 +646,31 @@ def run_once_stream(cfg: dict[str, Any], args) -> int:
     if result and result.get("transcript", {}).get("text"):
         print(result["transcript"]["text"])
     return 0
+
+
+# --- silence cosmetic SSL close errors on Python 3.9 ---
+try:
+    import asyncio
+
+    def _silence_ssl_close(loop, context):
+        msg = str(context.get('message', ''))
+        exc = context.get('exception')
+        if ('Fatal error on SSL transport' in msg) or (isinstance(exc, OSError) and getattr(exc, 'errno', None) == 9):
+            return
+        loop.default_exception_handler(context)
+
+    try:
+        asyncio.get_event_loop().set_exception_handler(_silence_ssl_close)
+    except Exception:
+        pass
+except Exception:
+    pass
+
+
+# --- silence asyncio logger noise on SSL close (Py3.9) ---
+try:
+    import logging
+
+    logging.getLogger("asyncio").setLevel(logging.CRITICAL)
+except Exception:
+    pass
