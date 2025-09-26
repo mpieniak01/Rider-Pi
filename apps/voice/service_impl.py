@@ -145,6 +145,10 @@ class VoiceService:
         self._save_audio = bool(service_cfg.get("save_audio", False))
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "/tmp/voice-recs"))
 
+        # Beep control parameters
+        self._beep_enabled = bool(service_cfg.get("beep", True))  # Enable/disable beep globally
+        self._beep_delay_ms = int(service_cfg.get("beep_delay_ms", 250))  # Delay after beep before capture
+
         # Timingi stabilizujące nagrania
         self._beep_pause_ms = int(service_cfg.get("beep_pause_ms", 250))  # pauza logiczna po ding (mute)
         self._mic_open_delay_ms = int(service_cfg.get("mic_open_delay_ms", 100))  # stabilizacja ALSA po otwarciu
@@ -356,6 +360,9 @@ class VoiceService:
                 self._last_ding_ts = time.time()
                 # po ding ustaw okno mute (nie nagrywaj dźwięku beep)
                 self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
+                # Add delay after beep before capture starts
+                if self._beep_delay_ms > 0:
+                    time.sleep(self._beep_delay_ms / 1000.0)
             audio = self._record_with_vad()
         else:
             with AudioCapture(self._capture_cfg, self.logger) as capture:
@@ -366,6 +373,9 @@ class VoiceService:
                     play_ding(self._play_cfg, self.logger)
                     self._last_ding_ts = time.time()
                     self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
+                    # Add delay after beep before capture starts
+                    if self._beep_delay_ms > 0:
+                        time.sleep(self._beep_delay_ms / 1000.0)
                 # małe opóźnienie po otwarciu device
                 if self._mic_open_delay_ms > 0:
                     time.sleep(self._mic_open_delay_ms / 1000.0)
@@ -442,6 +452,10 @@ class VoiceService:
     # Pomocnicze
 
     def _should_ding(self) -> bool:
+        # Check service-level beep control first
+        if not self._beep_enabled:
+            return False
+            
         # PlaybackConfig.ding to dict -> sprawdzaj .get("enabled")
         ding_cfg = getattr(self._play_cfg, "ding", None)
         if isinstance(ding_cfg, dict):

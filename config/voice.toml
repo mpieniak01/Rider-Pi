@@ -4,7 +4,7 @@ version = 1
 
 [capture]
 backend = "alsa"
-device = "plughw:wm8960soundcard,0"
+device = "wm8960_in"
 sample_rate = 16000
 channels = 1
 frame_ms = 20
@@ -47,7 +47,7 @@ format = "mp3"
 
 [playback]
 backend = "alsa"
-alsa_device = "plughw:wm8960soundcard,0"
+alsa_device = "wm8960_out"
 volume = 85                # ding i TTS wyraźne, bez przesteru
 
 [playback.ding]
