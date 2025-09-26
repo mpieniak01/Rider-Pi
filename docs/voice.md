@@ -27,6 +27,43 @@ Wybór trybu odbywa się automatycznie na podstawie konfiguracji `transport` w s
 
 ---
 
+## Audio Setup
+
+### WM8960 Soundcard Duplex Configuration
+
+The WM8960 soundcard doesn't support full duplex on raw `hw:` devices, which causes conflicts between beep playback (`aplay`) and voice capture (`arecord`). To resolve this issue:
+
+1. **Copy the ALSA configuration file:**
+   ```bash
+   cp config/asoundrc.wm8960 ~/.asoundrc
+   ```
+
+2. **The configuration provides these aliases:**
+   - `wm8960_out` - for audio playback (uses dmix for mixing)
+   - `wm8960_in` - for audio capture (uses dsnoop for sharing)
+   - `wm8960` - for control interface
+
+3. **Configuration is already set in `config/voice.toml`:**
+   ```toml
+   [capture]
+   device = "wm8960_in"
+   
+   [playback]
+   alsa_device = "wm8960_out"
+   ```
+
+4. **Use realtime modes with pasuspender:**
+   ```bash
+   make voice-once-realtime    # Single interaction
+   make voice-listen-realtime  # Continuous listening
+   ```
+
+5. **Service parameters for beep control:**
+   - `--service beep=false` - Disable beep sound completely
+   - `--service beep_delay_ms=250` - Delay after beep before capture starts
+
+---
+
 ## Konfiguracja
 
 ### Tryb strumieniowy (Realtime WebSocket)

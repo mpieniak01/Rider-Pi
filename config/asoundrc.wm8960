@@ -1,0 +1,47 @@
+# ALSA configuration for WM8960 soundcard duplex support
+# This file resolves the capture/playback conflicts on WM8960 hardware
+# 
+# Copy this to ~/.asoundrc to enable duplex audio support:
+# cp config/asoundrc.wm8960 ~/.asoundrc
+#
+# Usage in voice.toml:
+# [capture]
+# device = "wm8960_in"
+# [playback]  
+# alsa_device = "wm8960_out"
+
+# Output (playback) device using dmix for mixing multiple audio streams
+pcm.wm8960_out {
+  type plug
+  slave.pcm {
+    type dmix
+    ipc_key 59700
+    slave {
+      pcm "hw:wm8960soundcard,0"
+      rate 16000
+      format S16_LE
+      channels 1
+    }
+  }
+}
+
+# Input (capture) device using dsnoop for sharing microphone
+pcm.wm8960_in {
+  type plug
+  slave.pcm {
+    type dsnoop
+    ipc_key 59701
+    slave {
+      pcm "hw:wm8960soundcard,0"
+      rate 16000
+      format S16_LE
+      channels 1
+    }
+  }
+}
+
+# Control interface for the WM8960 card
+ctl.wm8960 {
+  type hw
+  card wm8960soundcard
+}

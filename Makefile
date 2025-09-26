@@ -63,6 +63,8 @@ help:
 	@echo "  make voice-run        # nasłuch ciągły (listen)"
 	@echo "  make voice-ptt        # push-to-talk (ptt)"
 	@echo "  make voice-once       # pojedyncza interakcja (once)"
+	@echo "  make voice-once-realtime  # pojedyncza interakcja (realtime WebSocket)"
+	@echo "  make voice-listen-realtime # nasłuch ciągły (realtime WebSocket)"
 	@echo "  make voice-asr-file FILE=path.wav   # rozpoznaj mowę z pliku"
 	@echo "  make voice-tts TEXT='Hello'         # synteza + odtworzenie"
 	@echo "  make voice-web        # uruchom serwer web UI (bind: $(VOICE_BIND))"
@@ -336,7 +338,7 @@ gfx-status:
 
 # ───────────────────────────────────────────────
 # VOICE (CLI + web)
-.PHONY: voice-run voice-ptt voice-once voice-asr-file voice-tts voice-web
+.PHONY: voice-run voice-ptt voice-once voice-asr-file voice-tts voice-web voice-once-realtime voice-listen-realtime
 voice-run:
 	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli listen $(VOICE_ARGS)
 
@@ -356,6 +358,21 @@ voice-tts:
 
 voice-web:
 	$(ENV_FROM_BASH) $(PY) -m apps.voice.web --bind $(VOICE_BIND) $(VOICE_ARGS)
+
+# Realtime voice modes with pasuspender for WM8960 duplex support
+voice-once-realtime:
+	pasuspender -- \
+	$(PY) -m apps.voice.cli --config ./config/voice.toml once \
+	  --asr transport=realtime language=pl \
+	  --chat transport=realtime \
+	  --tts transport=realtime voice=ash
+
+voice-listen-realtime:
+	pasuspender -- \
+	$(PY) -m apps.voice.cli --config ./config/voice.toml listen \
+	  --asr transport=realtime language=pl \
+	  --chat transport=realtime \
+	  --tts transport=realtime voice=ash
 
 # ───────────────────────────────────────────────
 # LCD HARD (zachowany wariant z poprawnym $$)
