@@ -455,7 +455,7 @@ class VoiceService:
         # Check service-level beep control first
         if not self._beep_enabled:
             return False
-            
+
         # PlaybackConfig.ding to dict -> sprawdzaj .get("enabled")
         ding_cfg = getattr(self._play_cfg, "ding", None)
         if isinstance(ding_cfg, dict):
