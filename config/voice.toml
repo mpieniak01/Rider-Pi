@@ -4,7 +4,7 @@ version = 1
 
 [capture]
 backend = "alsa"
-device = "plughw:wm8960soundcard,0"
+device = "wm8960_in"
 sample_rate = 16000
 channels = 1
 frame_ms = 20
@@ -24,7 +24,7 @@ engine = "ptt"             # ENTER wyzwala ding
 
 [asr]
 backend = "openai"
-transport = "file"                  # "file"|"realtime" 
+transport = "realtime"
 model = "gpt-4o-mini-transcribe"    # tryb plikowy (stabilny)
 language = "pl"
 prompt = "Polski asystent głosowy. Transkrybuj wiernie po polsku."
@@ -32,7 +32,7 @@ partial_results = true
 
 [chat]
 backend = "openai"
-transport = "rest"                    # "rest"|"realtime"
+transport = "realtime"
 model = "gpt-4o-mini"
 system_prompt = "Odpowiadaj krótko po polsku: jedno zdanie, maksymalnie 12 słów."
 max_history = 4
@@ -40,14 +40,14 @@ max_tokens = 70
 
 [tts]
 backend = "openai"
-transport = "file"                    # "file"|"realtime"
+transport = "realtime"
 model = "gpt-4o-mini-tts"
 voice = "ash"              # stały polski lektor (przyjazny, spójny)
 format = "mp3"
 
 [playback]
 backend = "alsa"
-alsa_device = "plughw:wm8960soundcard,0"
+alsa_device = "wm8960_out"
 volume = 85                # ding i TTS wyraźne, bez przesteru
 
 [playback.ding]

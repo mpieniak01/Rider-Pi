@@ -117,6 +117,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "save_audio": False,
         "recordings_dir": "data/recordings",
         "history_size": 20,
+        "beep": True,  # Enable/disable beep sound before capture
+        "beep_delay_ms": 250,  # Delay after beep before starting capture (ms)
     },
     "web": {
         "host": "127.0.0.1",
