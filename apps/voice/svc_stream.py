@@ -30,8 +30,9 @@ except Exception:  # ImportError i inne
 
 from . import voice_logging
 from .common import ensure_event_logger  # ⬅️ gwarantuj .event(...)
-from .svc_audio import capture_continuous
+from .svc_audio import capture_continuous, ensure_mono_16k
 from .svc_core import mask_secret
+from .playback import play_ding, PlaybackConfig
 
 
 @dataclass
@@ -141,11 +142,24 @@ class StreamingVoiceService:
         return await self.websocket.recv()
 
     async def close(self) -> None:
+        """Close WebSocket connection gracefully."""
         if self.websocket:
             try:
-                await self.websocket.close()
+                self.logger.event("ws.closing", session_id=self.session_id)
+                
+                # Close with normal closure code
+                await self.websocket.close(code=1000)
+                
+                # Wait for closure to complete
+                await self.websocket.wait_closed()
+                
+                self.logger.event("ws.closed", session_id=self.session_id)
+                
+            except Exception as e:
+                self.logger.event("ws.close_error", error=str(e))
             finally:
                 self.websocket = None
+                self.connected = False
 
     # ------------------------------------------------------
 
@@ -348,14 +362,30 @@ class StreamingVoiceService:
         if not self.websocket or not audio_data:
             return
 
+        # Normalize to mono 16kHz before transmission
+        from .capture import CaptureConfig
+        capture_cfg = CaptureConfig(**self.config.get("capture", {}))
+        
+        original_channels = int(capture_cfg.channels or 1)
+        normalized_audio = ensure_mono_16k(audio_data, capture_cfg)
+        
         # Convert to base64 for JSON transmission
-        audio_b64 = base64.b64encode(audio_data).decode("utf-8")
+        audio_b64 = base64.b64encode(normalized_audio).decode("utf-8")
         message = {"type": "input_audio_buffer.append", "audio": audio_b64}
 
         await self.send(json.dumps(message))
         # zaznacz, że w tej turze mamy dane
         self._any_audio_since_commit = True
-        self.logger.event("audio_chunk_sent", bytes=len(audio_data))
+        
+        # Enhanced logging with channel info
+        self.logger.event("stream.tx", 
+            bytes_in=len(audio_data),
+            bytes_out=len(normalized_audio),
+            ch_in=original_channels,
+            ch_out=1,
+            sr=int(capture_cfg.sample_rate or 16000),
+            chunk_ms=self.stream_cfg.chunk_ms
+        )
 
     async def _commit_audio_buffer(self) -> None:
         """Commit the audio buffer and trigger response generation."""
@@ -520,6 +550,15 @@ class StreamingVoiceService:
                     self._publish_ui_state("hearing")
                     # barge-in: przerwij TTS
                     self.barge_in_event.set()
+                    
+                    # Play beep if enabled
+                    service_cfg = self.config.get("service", {})
+                    if service_cfg.get("beep", False):
+                        try:
+                            playback_cfg = PlaybackConfig(**self.config.get("playback", {}))
+                            play_ding(playback_cfg, self.logger)
+                        except Exception as e:
+                            self.logger.event("ptt.beep.error", error=str(e))
 
                     # DODANE: upewnij się, że capture żyje (WM8960/dsnoop potrafi się zamknąć)
                     if not (self._capture_thread and self._capture_thread.is_alive()):
@@ -875,9 +914,19 @@ class StreamingVoiceService:
             self.tts_player_queue.put_nowait(None)
         except Exception:
             pass
+        
         self.stop_event.set()
         self.connected = False
         self._publish_ui_state("idle")
+        
+        # Schedule graceful WebSocket closure if we have an event loop
+        if self._loop and self.websocket:
+            try:
+                # Schedule close on the event loop
+                future = asyncio.run_coroutine_threadsafe(self.close(), self._loop)
+                # Don't wait for completion to avoid blocking
+            except Exception as e:
+                self.logger.event("stop.close_schedule_error", error=str(e))
 
 
 def run_listen_stream(cfg: dict[str, Any], args) -> int:

@@ -14,6 +14,42 @@ from .playback import PlaybackConfig, play_ding as playback_play_ding
 from .vad import WebRtcActivity, collect
 
 
+def ensure_mono_16k(audio_data: bytes, capture_cfg: CaptureConfig) -> bytes:
+    """Ensure audio is mono 16kHz S16_LE format.
+    
+    Args:
+        audio_data: Raw audio bytes from capture
+        capture_cfg: Capture configuration with channels/sample_rate info
+    
+    Returns:
+        Normalized audio bytes (mono, 16kHz, S16_LE)
+    """
+    if not audio_data:
+        return audio_data
+    
+    channels = int(capture_cfg.channels or 1)
+    sample_rate = int(capture_cfg.sample_rate or 16000)
+    
+    # If already mono, return as-is (assuming correct format)
+    if channels == 1:
+        return audio_data
+    
+    # Convert stereo/multi-channel to mono using audioop
+    if channels >= 2:
+        # audioop.tomono(fragment, width, lfactor, rfactor)
+        # width=2 for S16_LE (16-bit samples), equal mix (1,1)
+        try:
+            mono_data = audioop.tomono(audio_data, 2, 1, 1)
+            return mono_data
+        except audioop.error as e:
+            # Fallback: just use left channel by taking every other sample
+            if len(audio_data) >= 4:  # At least one stereo sample
+                return audio_data[::4] + audio_data[1::4]  # Interleaved L/R -> L only
+            return audio_data
+    
+    return audio_data
+
+
 def capture_once(
     capture_cfg: CaptureConfig, vad: WebRtcActivity, max_len_ms: int, service_cfg: dict[str, Any], logger
 ) -> bytes:
