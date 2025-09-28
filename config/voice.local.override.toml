@@ -1,0 +1,6 @@
+[playback]
+device = "plug:dmix:CARD=wm8960soundcard,DEV=0"
+
+[capture]
+device = "plug:dsnoop:CARD=wm8960soundcard,DEV=0"
+sample_rate = 16000

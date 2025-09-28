@@ -37,28 +37,24 @@ try:  # pragma: no cover
 except Exception:  # pragma: no cover
     yaml = None  # type: ignore
 
+# ───────────────────────────────────────────────────────────────────────────────
+# Defaults (spójne z realtime i ALSA WM8960)
+# ───────────────────────────────────────────────────────────────────────────────
+
 DEFAULT_CONFIG: dict[str, Any] = {
-    # RPi-friendly defaults (even if TOML is missing)
     "capture": {
-        "backend": "alsa",  # alsa|pulse|command
-        "device": "default",
+        "backend": "alsa",  # alsa|command
+        "device": "default",  # alias np. plughw:wm8960soundcard,0
         "sample_rate": 16_000,
         "channels": 1,
         "frame_ms": 20,
         "buffer_seconds": 0.0,
-        "command": None,
-    },
-    "vad": {
-        "enabled": True,
-        "mode": 2,  # 0..3, 2 ~= balanced
-        "frame_ms": 20,
-        "tail_ms": 350,
-        "max_len_ms": 8000,
-        "energy_gate_dbfs": -48.0,
+        "command": None,  # dla backend=command
+        "extra_args": [],  # dodatkowe argumenty dla arecord itp.
     },
     "hotword": {
-        "enabled": False,  # avoid waiting for a model by default
-        "engine": "nyumaya",  # nyumaya|porcupine|ptt|off
+        "enabled": False,
+        "engine": "ptt",  # ptt|nyumaya|porcupine
         "model": None,
         "sensitivity": 0.6,
         "auto_gain": 1.0,
@@ -68,12 +64,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "backend": "openai",  # openai|vosk|faster-whisper|whispercpp
         "transport": "file",  # file|realtime
         "model": "gpt-4o-mini-transcribe",
-        "language": "en",
+        "language": "pl",
         "temperature": 0.0,
         "prompt": None,
         "vosk_model_dir": "models/vosk",
         "whisper_model": "medium",
         "input_encoding": "s16le",
+        # NEW: VAD (dawniej top-level 'vad')
+        "vad": {
+            "enabled": True,
+            "aggressiveness": 2,  # 0..3
+            "start_ms": 200,
+            "end_ms": 700,
+        },
     },
     "nlu": {
         "chat_threshold": 0.35,
@@ -92,20 +95,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model": "gpt-4o-mini",
         "system_prompt": "You are Rider-Pi, a friendly voice assistant.",
         "max_history": 4,
-        "max_tokens": 70,  # Common parameter for chat
+        "max_tokens": 70,
     },
     "tts": {
         "backend": "openai",  # openai|piper
         "transport": "file",  # file|realtime
         "model": "gpt-4o-mini-tts",
         "voice": "alloy",
-        "format": "mp3",  # stream-friendly for mpg123
+        "format": "mp3",
         "piper_model": None,
         "piper_config": None,
     },
     "playback": {
         "backend": "auto",  # auto|pulse|alsa
-        "alsa_device": "default",
+        "alsa_device": "default",  # alias np. plughw:wm8960soundcard,0
         "volume": 100,
         "ding": {
             "enabled": True,
@@ -116,9 +119,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "service": {
         "save_audio": False,
         "recordings_dir": "data/recordings",
+        "save_format": "wav",  # "wav" | "mp3"
+        "filename_pattern": "%Y%m%d_%H%M%S",  # strftime dla nazw
         "history_size": 20,
-        "beep": True,  # Enable/disable beep sound before capture
-        "beep_delay_ms": 250,  # Delay after beep before starting capture (ms)
+        "beep": True,
+        "beep_delay_ms": 250,
+        "turn": {
+            "max_turn_ms": 6000,
+            "key_exit": True,
+            "commit_on_key": True,
+        },
     },
     "web": {
         "host": "127.0.0.1",
@@ -128,11 +138,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "logging": {
         "level": "INFO",
     },
-    # Streaming configuration (for realtime WebSocket mode)
+    # Streaming (realtime WebSocket)
     "stream": {
         "protocol": "websocket",
         "endpoint": "",
-        "auth": "",
+        "auth": "env:OPENAI_API_KEY",  # jawnie wspieramy env
         "chunk_ms": 20,
         "sample_rate": 16000,
         "turn_end_silence_ms": 700,
@@ -153,15 +163,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
 }
 
-# Minimal, pragmatic ENV mapping (you can ignore these if you keep everything in TOML)
+# ───────────────────────────────────────────────────────────────────────────────
+# ENV mapping (rozszerzony o nowe ścieżki)
+# ───────────────────────────────────────────────────────────────────────────────
+
 ENV_MAPPING: dict[str, tuple[str, ...]] = {
     "VOICE_CAPTURE_BACKEND": ("capture", "backend"),
     "VOICE_CAPTURE_DEVICE": ("capture", "device"),
     "VOICE_CAPTURE_COMMAND": ("capture", "command"),
     "VOICE_CAPTURE_SAMPLE_RATE": ("capture", "sample_rate"),
     "VOICE_CAPTURE_CHANNELS": ("capture", "channels"),
-    "VOICE_VAD_MODE": ("vad", "mode"),
-    "VOICE_VAD_TAIL_MS": ("vad", "tail_ms"),
+    # Legacy VAD env → przeniesione do asr.vad.*
+    "VOICE_VAD_MODE": ("asr", "vad", "aggressiveness"),
+    "VOICE_VAD_TAIL_MS": ("asr", "vad", "end_ms"),
     "VOICE_ASR_BACKEND": ("asr", "backend"),
     "VOICE_ASR_MODEL": ("asr", "model"),
     "VOICE_ASR_LANG": ("asr", "language"),
@@ -175,12 +189,49 @@ ENV_MAPPING: dict[str, tuple[str, ...]] = {
     "VOICE_LOG_LEVEL": ("logging", "level"),
 }
 
+# ───────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+def _build_known_keys_for_warning() -> dict[str, Any]:
+    """
+    Zwraca schemat kluczy uznawanych za poprawne, łącznie z LEGACY,
+    aby nie straszyć ostrzeżeniami przed normalizacją.
+    """
+    known = deepcopy(DEFAULT_CONFIG)
+
+    # LEGACY: top-level 'vad'
+    known["vad"] = {
+        "enabled": True,
+        "mode": 2,
+        "frame_ms": 20,
+        "tail_ms": 350,
+        "max_len_ms": 8000,
+        "energy_gate_dbfs": -48.0,
+    }
+    # LEGACY: stream.* przeniesione do stream.reconnect
+    known["stream"].update(
+        {
+            "max_retries": 6,
+            "base_ms": 250,
+            "max_ms": 5000,
+        }
+    )
+    # LEGACY: service.logging → logging
+    known["service"]["logging"] = {"level": "INFO"}
+    # LEGACY: playback.device → playback.alsa_device
+    known["playback"]["device"] = "default"
+    # LEGACY: schema (dowolna wartość) – ignorujemy
+    known["schema"] = {}
+
+    return known
+
 
 def _warn_unknown_keys(config: dict[str, Any], known_config: dict[str, Any], prefix: str = "") -> None:
     """Warn about unknown keys in config, compared to known_config structure."""
     for key, value in config.items():
         full_key = f"{prefix}.{key}" if prefix else key
-
         if key not in known_config:
             print(f"[voice.config] WARNING: unknown config key '{full_key}' (ignored)")
         elif isinstance(value, Mapping) and isinstance(known_config[key], Mapping):
@@ -251,7 +302,6 @@ def _discover_config_path(cli_path: str | os.PathLike[str] | None) -> tuple[Path
             return p, "toml"
         if ext in {".yaml", ".yml"}:
             return p, "yaml"
-        # No/unknown ext – try TOML first, then YAML
         if p.exists():
             return p, "toml"
         return None, ""
@@ -281,24 +331,113 @@ def _discover_config_path(cli_path: str | os.PathLike[str] | None) -> tuple[Path
     return None, ""
 
 
+# ───────────────────────────────────────────────────────────────────────────────
+# Legacy normalizer (mapuje stare klucze -> nowe ścieżki)
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+def _normalize_legacy(config: dict[str, Any]) -> dict[str, Any]:
+    cfg = config
+
+    # 1) top-level 'vad' → asr.vad.*
+    if isinstance(cfg.get("vad"), Mapping):
+        legacy_vad = dict(cfg.pop("vad"))
+        asr_vad = cfg.setdefault("asr", {}).setdefault("vad", {})
+        if "enabled" in legacy_vad:
+            asr_vad.setdefault("enabled", legacy_vad["enabled"])
+        if "mode" in legacy_vad:
+            asr_vad.setdefault("aggressiveness", legacy_vad["mode"])
+        if "tail_ms" in legacy_vad:
+            asr_vad.setdefault("end_ms", legacy_vad["tail_ms"])
+        if "frame_ms" in legacy_vad and "start_ms" not in asr_vad:
+            try:
+                asr_vad.setdefault("start_ms", int(legacy_vad["frame_ms"]))
+            except Exception:
+                pass
+        # energy_gate_dbfs / max_len_ms – pomijamy
+
+    # 2) stream.{max_retries,base_ms,max_ms} → stream.reconnect.*
+    stream = cfg.get("stream")
+    if isinstance(stream, Mapping):
+        s = dict(stream)
+        moved = False
+        for k in ("max_retries", "base_ms", "max_ms"):
+            if k in s:
+                cfg.setdefault("stream", {}).setdefault("reconnect", {})[k] = s[k]
+                moved = True
+        if moved:
+            for k in ("max_retries", "base_ms", "max_ms"):
+                cfg["stream"].pop(k, None)
+
+    # 3) service.logging.level → logging.level
+    if isinstance(cfg.get("service"), Mapping):
+        svc = cfg["service"]
+        if isinstance(svc.get("logging"), Mapping):
+            lvl = svc["logging"].get("level")
+            if lvl:
+                cfg.setdefault("logging", {})["level"] = lvl
+            svc.pop("logging", None)
+
+    # 4) playback.device → playback.alsa_device
+    if isinstance(cfg.get("playback"), Mapping):
+        pb = cfg["playback"]
+        if "device" in pb and "alsa_device" not in pb:
+            pb["alsa_device"] = pb.pop("device")
+
+    # 5) schema → ignoruj
+    cfg.pop("schema", None)
+
+    return cfg
+
+
+def _normalize_aliases(cfg: dict[str, Any]) -> dict[str, Any]:
+    """
+    Spójnik aliasów:
+    - capture: jeżeli jest 'alsa_device' a brak 'device' → device = alsa_device
+    - playback: jeżeli jest tylko 'device' → alsa_device = device
+    """
+    cap = cfg.get("capture", {}) or {}
+    if "device" not in cap and "alsa_device" in cap:
+        cap["device"] = cap["alsa_device"]
+    cfg["capture"] = cap
+
+    pb = cfg.get("playback", {}) or {}
+    if "alsa_device" not in pb and "device" in pb:
+        pb["alsa_device"] = pb["device"]
+    cfg["playback"] = pb
+    return cfg
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Public API
+# ───────────────────────────────────────────────────────────────────────────────
+
+
 def load(path: str | os.PathLike[str] | None = None, *, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
     base = deepcopy(DEFAULT_CONFIG)
     cfg_path, kind = _discover_config_path(path)
+
+    loaded_config: dict[str, Any] = {}
     if cfg_path and kind == "toml":
         loaded_config = _load_toml(cfg_path)
-        # Warn about unknown keys before merging
-        _warn_unknown_keys(loaded_config, DEFAULT_CONFIG)
-        merged = _merge_dict(base, loaded_config)
+        # Warn with LEGACY schema included to avoid noise
+        _warn_unknown_keys(loaded_config, _build_known_keys_for_warning())
     elif cfg_path and kind == "yaml":
         print("[voice.config] WARNING: loading legacy YAML from configs/voice.yaml (DEPRECATED)")
         loaded_config = _load_yaml(cfg_path)
-        # Warn about unknown keys before merging
-        _warn_unknown_keys(loaded_config, DEFAULT_CONFIG)
-        merged = _merge_dict(base, loaded_config)
+        _warn_unknown_keys(loaded_config, _build_known_keys_for_warning())
     else:
-        merged = base  # no file found
+        loaded_config = {}
 
+    # Merge file over defaults
+    merged = _merge_dict(base, loaded_config)
+    # Normalize legacy → mapuj stare klucze do nowych
+    merged = _normalize_legacy(merged)
+    # **Alias fixy** (capture/playback)
+    merged = _normalize_aliases(merged)
+    # Apply ENV
     merged = _apply_env(merged)
+    # CLI overrides last
     if overrides:
         merged = _merge_dict(merged, overrides)
     return merged

@@ -1,0 +1,44 @@
+import json
+import logging
+from datetime import datetime
+
+class JsonLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": datetime.utcfromtimestamp(record.created).isoformat(timespec="milliseconds") + "Z",
+            "level": record.levelname,
+            "name": record.name,
+            "msg": record.getMessage(),
+        }
+
+        # Zbierz "extra", ale bez nie-serializowalnych obiektów
+        extra = {}
+        for k, v in record.__dict__.items():
+            if k in (
+                "msg","args","levelname","levelno","pathname","filename","module",
+                "exc_info","exc_text","stack_info","lineno","funcName","created",
+                "msecs","relativeCreated","thread","threadName","processName","process"
+            ):
+                continue
+            try:
+                json.dumps(v)
+                extra[k] = v
+            except TypeError:
+                # Np. obiekty websockets (ClientConnection, Frame) → zamieniamy na str()
+                extra[k] = str(v)
+
+        if extra:
+            payload["data"] = extra
+
+        # KOŃCOWE zabezpieczenie: wszystko co nie-JSON → str()
+        return json.dumps(payload, ensure_ascii=False, default=str)
+
+def setup_json_logging(level=logging.INFO):
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonLogFormatter())
+    root = logging.getLogger()
+    # usuń istniejące handlery, żeby nie dublować
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    root.addHandler(handler)
+    root.setLevel(level)

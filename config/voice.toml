@@ -1,96 +1,85 @@
-[meta]
-schema = "voice"
-version = 1
+# config/voice.toml — Rider-Pi (realtime WS + ALSA WM8960, BEZ ~/.asoundrc)
+# Uwaga: aktywnie używamy "hw:wm8960soundcard,0" + 16 kHz S16_LE STEREO (mono nie przechodzi).
+# Poprzednie wpisy dsnoop/dmix zostawiamy w komentarzach.
+
+[logging]
+level = "DEBUG"             # Na testy DEBUG; na produkcji INFO.
 
 [capture]
-backend = "alsa"
-device = "wm8960_in"
+# --- POPRZEDNIO (zostawiamy do referencji):
+# device      = "dsnoop:CARD=wm8960soundcard,DEV=0"  # równoważne: "dsnoop:1,0"
+# sample_rate = 48000
+# channels    = 2
+# --- AKTYWNE (sprawdzone dziś): HW 16 kHz S16_LE, 2ch
+device      = "hw:wm8960soundcard,0"
 sample_rate = 16000
-channels = 1
-frame_ms = 20
-buffer_seconds = 0.10      # krótki pre-roll (nie zasysa dingu)
-
-[vad]
-enabled = true
-mode = 0
-frame_ms = 20
-tail_ms = 900              # ciut krócej, bez obcinania końcówki
-max_len_ms = 6000          # zapas na dłuższe pytania
-energy_gate_dbfs = -23     # szybciej kończy ciszę
-
-[hotword]
-enabled = false
-engine = "ptt"             # ENTER wyzwala ding
-
-[asr]
-backend = "openai"
-transport = "realtime"
-model = "gpt-4o-mini-transcribe"    # tryb plikowy (stabilny)
-language = "pl"
-prompt = "Polski asystent głosowy. Transkrybuj wiernie po polsku."
-partial_results = true
-
-[chat]
-backend = "openai"
-transport = "realtime"
-model = "gpt-4o-mini"
-system_prompt = "Odpowiadaj krótko po polsku: jedno zdanie, maksymalnie 12 słów."
-max_history = 4
-max_tokens = 70
-
-[tts]
-backend = "openai"
-transport = "realtime"
-model = "gpt-4o-mini-tts"
-voice = "ash"              # stały polski lektor (przyjazny, spójny)
-format = "mp3"
+channels    = 2
+# format     = "S16_LE"      # (opcjonalnie; nasz arecord i tak wymusza S16_LE)
 
 [playback]
-backend = "alsa"
-alsa_device = "wm8960_out"
-volume = 85                # ding i TTS wyraźne, bez przesteru
+backend     = "alsa"
+# --- POPRZEDNIO:
+# device      = "dmix:CARD=wm8960soundcard,DEV=0"    # równoważne: "dmix:1,0"
+# alsa_device = "dmix:CARD=wm8960soundcard,DEV=0"
+# --- AKTYWNE (sprawdzone dziś): HW bez miksu (lightdm/pulseaudio zatrzymane)
+alsa_device = "hw:wm8960soundcard,0"
+volume      = 100                                   # 0–100 (jeśli backend wspiera)
 
-[playback.ding]
-enabled = true
-gain_db = 3.0              # delikatny, ale słyszalny
+[asr]
+transport = "realtime"
+language  = "pl"
 
-[service]
-save_audio = true
-recordings_dir = "/tmp/voice-recs"
-history_size = 20
+[asr.vad]
+# W PTT zwykle OFF (włączymy później przy nasłuchu ciągłym).
+# POPRZEDNIO: enabled = true
+enabled        = false
+aggressiveness = 3
+start_ms       = 150
+end_ms         = 900
 
-# Maskowanie „pstryka” i kontrola startu:
-beep_pause_ms = 800        # krótsze tłumienie po dingu (anty-echo)
-pre_speech_wait_ms = 800   # szybciej zaczynamy „słuchać”
-min_capture_ms = 900       # dolny limit długości klipu
-mic_open_delay_ms = 420    # WM8960 lubi krótki delay po otwarciu
-post_tts_mute_ms = 600
-guard_ms = 0
+[chat]
+transport = "realtime"
 
-# --- STREAMING PARAMS ---
+[tts]
+transport = "realtime"
+voice     = "verse"
+# POPRZEDNIO: format="pcm16" — obecnie nieużywane przez nasz kod, zostawiam w komentarzu
+# format    = "pcm16"
+
 [stream]
-protocol = "websocket"
-endpoint = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
-auth = "env:OPENAI_API_KEY"
-chunk_ms = 20
-sample_rate = 16000
-turn_end_silence_ms = 700
-max_turn_ms = 6000
-send_partials = true
-server_vad = true
-local_vad_fallback = true
-ping_interval_s = 10
+auth                = "env:OPENAI_API_KEY"
+# ENV OPENAI_REALTIME_ENDPOINT ma pierwszeństwo nad tym polem:
+endpoint            = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
+ping_interval_s     = 10
+
+# Audio do WS: zawsze 16 kHz mono po stronie modelu; my wysyłamy 20 ms ramki.
+chunk_ms            = 20
+sample_rate         = 16000
+
+# Domykanie tur (serwerowe):
+turn_end_silence_ms = 600
+max_turn_ms         = 6000
+
+# Te klucze mogą być ignorowane przez bieżącą wersję kodu, ale zostawiamy je:
+send_partials       = true
+server_vad          = true
+local_vad_fallback  = true
+
+[stream.audio]
+# Mogą być ignorowane w tej wersji; zachowujemy.
+jitter_buffer_ms = 80
+barge_in         = true
 
 [stream.reconnect]
 max_retries = 6
-base_ms = 250
-max_ms = 5000
+base_ms     = 250
+max_ms      = 5000
 
-[stream.audio]
-jitter_buffer_ms = 120
-barge_in = true
+[service]
+beep          = true
+beep_delay_ms = 250
 
-[logging]
-level = "INFO"
-
-
+[service.turn]
+max_turn_ms    = 6000
+key_exit       = true
+commit_on_key  = true

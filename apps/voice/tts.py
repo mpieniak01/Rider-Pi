@@ -29,6 +29,8 @@ class TTSConfig:
     timeout: float | None = None  # [s] – timeout per-request (stream/synth)
     piper_model: str | None = None  # rezerwa; bez użycia tutaj
     piper_config: dict | None = None  # rezerwa
+    # NOWE: STRICT — gdy "realtime", blokujemy wszelkie REST/HTTP TTS
+    transport: str = "file"  # "file" | "realtime"
 
 
 @dataclass
@@ -150,7 +152,7 @@ def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) ->
             if _is_wav(p.stdout):
                 return p.stdout
         except Exception as e:
-            logger.warning("tts.decode.ffmpeg_failed", extra={"data": str(e)})
+            logger.event("tts.decode.ffmpeg_failed", extra={"data": str(e)})
     if shutil.which("mpg123"):
         try:
             p = subprocess.run(
@@ -163,8 +165,11 @@ def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) ->
             if _is_wav(p.stdout):
                 return p.stdout
         except Exception as e:
-            logger.warning("tts.decode.mpg123_failed", extra={"data": str(e)})
+            logger.event("tts.decode.mpg123_failed", extra={"data": str(e)})
     return None
+
+
+# ───── public API ─────────────────────────────────────────────────────────────
 
 
 def speak(
@@ -175,12 +180,17 @@ def speak(
     *,
     accumulate: bool = False,
 ) -> TTSStreamResult:
-    """Wygeneruj mowę i odtwórz ją, preferując strumieniowanie."""
+    """Wygeneruj mowę i odtwórz ją; w STRICT mode NIE używa REST, gdy transport=realtime."""
 
     logger = logger or voice_logging.get_logger("voice.tts")
     text = text.strip()
     if not text:
         return TTSStreamResult(ok=False, streamed=False)
+
+    # STRICT: zabroń REST (zarówno streaming HTTP, jak i synth) w trybie realtime
+    if (config.transport or "").lower() == "realtime":
+        logger.event("tts.strict.realtime_block", extra={"data": {"msg": "TTS REST disabled when transport=realtime"}})
+        raise TTSError("TTS REST disabled when transport=realtime")
 
     api_key = ensure_openai_key(logger)
     if not api_key:
@@ -199,29 +209,29 @@ def speak(
                 stream.write(chunk)
                 if first_chunk_at is None:
                     first_chunk_at = time.time()
-                    logger.debug(
+                    logger.event(
                         "tts.stream.ttfb",
                         backend=stream.backend,
                         latency=first_chunk_at - start_ts,
                     )
         except TTSError as exc:
-            logger.warning("tts.stream.backend_error", backend=stream.backend, error=str(exc))
+            logger.event("tts.stream.backend_error", backend=stream.backend, error=str(exc))
             ok_stream = False
         except PlaybackError as exc:
-            logger.warning("tts.stream.player_write_failed", backend=stream.backend, error=str(exc))
+            logger.event("tts.stream.player_write_failed", backend=stream.backend, error=str(exc))
             ok_stream = False
         except Exception as exc:  # pragma: no cover - system-level failure
-            logger.warning("tts.stream.error", backend=stream.backend, error=str(exc))
+            logger.event("tts.stream.error", backend=stream.backend, error=str(exc))
             ok_stream = False
         finally:
             try:
                 player_ok, mp3_bytes, stderr = stream.close()
             except Exception as exc:  # pragma: no cover - system-level failure
-                logger.warning("tts.stream.close_error", backend=stream.backend, error=str(exc))
+                logger.event("tts.stream.close_error", backend=stream.backend, error=str(exc))
                 player_ok, mp3_bytes, stderr = False, None, None
             ok_stream = ok_stream and player_ok
             if not player_ok and stderr:
-                logger.warning("tts.stream.player_stderr", backend=stream.backend, stderr=stderr)
+                logger.event("tts.stream.player_stderr", backend=stream.backend, stderr=stderr)
 
         if ok_stream:
             total = time.time() - start_ts
@@ -254,7 +264,7 @@ def speak(
                 backend=stream.backend,
             )
 
-        logger.warning("tts.stream.failed", backend=stream.backend)
+        logger.event("tts.stream.failed", backend=stream.backend)
     else:
         logger.debug("tts.stream.unavailable")
 
@@ -262,13 +272,13 @@ def speak(
     try:
         audio_bytes, sample_rate, audio_fmt = synthesize(text, config, logger)
     except TTSError as exc:
-        logger.error("tts.speak.failed", error=str(exc))
+        logger.event("tts.speak.failed", error=str(exc))
         return TTSStreamResult(False, None, "", 0, streamed=False)
 
     try:
         play_bytes(audio_bytes, audio_fmt, playback, logger, blocking=True)
     except PlaybackError as exc:
-        logger.error("tts.playback.failed", error=str(exc))
+        logger.event("tts.playback.failed", error=str(exc))
         return TTSStreamResult(False, None, audio_fmt, sample_rate, streamed=False)
 
     audio_data = audio_bytes if accumulate else None
@@ -295,13 +305,17 @@ def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str, *, api_key: st
                 yield chunk
 
 
-# ───── public API ─────────────────────────────────────────────────────────────
-
-
 def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger | None = None) -> tuple[bytes, int, str]:
-    backend = (config.backend or "openai").lower()
+    """
+    Pełna synteza (REST), zwraca (audio_bytes, sample_rate, audio_format).
+    STRICT: zabronione, gdy transport=realtime.
+    """
     logger = logger or voice_logging.get_logger("voice.tts")
+    if (config.transport or "").lower() == "realtime":
+        logger.event("tts.strict.realtime_block", extra={"data": {"msg": "TTS REST disabled when transport=realtime"}})
+        raise TTSError("TTS REST disabled when transport=realtime")
 
+    backend = (config.backend or "openai").lower()
     if backend != "openai":
         raise TTSError(f"Unsupported TTS backend: {backend}")
 
@@ -339,7 +353,7 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             body = resp.content
 
             if resp.status_code >= 400:
-                logger.error(
+                logger.event(
                     "tts.openai.http_error",
                     extra={
                         "data": {
@@ -443,7 +457,7 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             return wav_bytes, sr, "wav"
 
         except requests.RequestException as e:
-            logger.warning("tts.openai.net_retry", extra={"data": {"attempt": attempt, "error": str(e)}})
+            logger.event("tts.openai.net_retry", extra={"data": {"attempt": attempt, "error": str(e)}})
             last_err = e
             time.sleep(0.6 * (attempt + 1))
 
