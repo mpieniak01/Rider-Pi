@@ -1,0 +1,91 @@
+[meta]
+schema = "voice"
+version = 1
+
+[capture]
+backend = "alsa"
+device = "wm8960_in"
+
+[vad]
+enabled = true
+mode = 0
+frame_ms = 20
+tail_ms = 900              # ciut krócej, bez obcinania końcówki
+max_len_ms = 6000          # zapas na dłuższe pytania
+energy_gate_dbfs = -23     # szybciej kończy ciszę
+
+[hotword]
+enabled = false
+engine = "ptt"             # ENTER wyzwala ding
+
+[asr]
+backend = "openai"
+transport = "realtime"
+model = "gpt-4o-mini-transcribe"    # tryb plikowy (stabilny)
+language = "pl"
+prompt = "Polski asystent głosowy. Transkrybuj wiernie po polsku."
+partial_results = true
+
+[chat]
+backend = "openai"
+transport = "realtime"
+model = "gpt-4o-mini"
+system_prompt = "Odpowiadaj krótko po polsku: jedno zdanie, maksymalnie 12 słów."
+max_history = 4
+max_tokens = 70
+
+[tts]
+backend = "openai"
+transport = "realtime"
+model = "gpt-4o-mini-tts"
+voice = "ash"              # stały polski lektor (przyjazny, spójny)
+format = "mp3"
+
+[playback]
+backend = "alsa"
+alsa_device = "wm8960_out"
+
+[playback.ding]
+enabled = true
+gain_db = 3.0              # delikatny, ale słyszalny
+
+[service]
+save_audio = true
+recordings_dir = "/tmp/voice-recs"
+history_size = 20
+beep_delay_ms = 250
+
+# Maskowanie „pstryka” i kontrola startu:
+beep_pause_ms = 800        # krótsze tłumienie po dingu (anty-echo)
+pre_speech_wait_ms = 800   # szybciej zaczynamy „słuchać”
+min_capture_ms = 900       # dolny limit długości klipu
+mic_open_delay_ms = 420    # WM8960 lubi krótki delay po otwarciu
+post_tts_mute_ms = 600
+guard_ms = 0
+
+# --- STREAMING PARAMS ---
+[stream]
+protocol = "websocket"
+endpoint = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
+auth = "env:OPENAI_API_KEY"
+chunk_ms = 20
+sample_rate = 16000
+turn_end_silence_ms = 700
+max_turn_ms = 6000
+send_partials = true
+server_vad = true
+local_vad_fallback = true
+ping_interval_s = 10
+
+[stream.reconnect]
+max_retries = 6
+base_ms = 250
+max_ms = 5000
+
+[stream.audio]
+jitter_buffer_ms = 120
+barge_in = true
+
+[logging]
+level = "INFO"
+

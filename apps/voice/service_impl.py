@@ -1,8 +1,9 @@
 # apps/voice/service.py
-"""Voice assistant service loop (clean, consolidated)."""
+"""Voice assistant service loop (clean, consolidated, STRICT file-only)."""
 
 from __future__ import annotations
 
+import audioop
 import contextlib
 import math
 import queue
@@ -37,6 +38,7 @@ from .tts import TTSConfig, TTSStreamResult, speak
 from .vad import WebRtcActivity, collect
 
 # ──────────────────────────────────────────────────────────────────────────────
+# helpers (dataclass filtering & STRICT mode)
 
 
 def _filter_for_dataclass(config_dict: dict[str, Any], dataclass_type) -> dict[str, Any]:
@@ -44,21 +46,38 @@ def _filter_for_dataclass(config_dict: dict[str, Any], dataclass_type) -> dict[s
     import dataclasses
 
     if not dataclasses.is_dataclass(dataclass_type):
-        # Fallback for non-dataclass types - just remove transport
         filtered = dict(config_dict)
         filtered.pop("transport", None)
         return filtered
-
     valid_fields = {field.name for field in dataclasses.fields(dataclass_type)}
     return {k: v for k, v in config_dict.items() if k in valid_fields}
 
 
-# Backward compatibility alias
 def _filter_transport_field(config_dict: dict[str, Any]) -> dict[str, Any]:
     """Remove transport field from config dict for legacy service classes."""
     filtered = dict(config_dict)
     filtered.pop("transport", None)
     return filtered
+
+
+def _assert_file_mode(cfg: dict[str, Any]) -> None:
+    """Rzuć wyjątek, jeśli ktokolwiek próbuje wymusić 'realtime' w file-mode."""
+    for sec in ("asr", "chat", "tts"):
+        sec_cfg = cfg.get(sec) or {}
+        if str(sec_cfg.get("transport", "")).lower() == "realtime":
+            raise RuntimeError(
+                f"[voice.service] STRICT file-mode; '{sec}.transport=realtime' niedozwolone w tym module."
+            )
+
+
+def _force_transports_file(cfg: dict[str, Any]) -> None:
+    """Ustaw transport='file' w asr/chat/tts."""
+    for sec in ("asr", "chat", "tts"):
+        sec_cfg = cfg.setdefault(sec, {})
+        sec_cfg["transport"] = "file"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -83,6 +102,9 @@ class SpeechTask:
 
 class VoiceService:
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
+        _assert_file_mode(config)
+        _force_transports_file(config)
+
         self.config = config
         self.logger = vlog.get_logger("voice.service")
         self.stop_event = threading.Event()
@@ -92,7 +114,9 @@ class VoiceService:
         self._bus_sub = BusSub("tts.speak") if BusSub else None
 
         # Sesje i konfiguracje
-        self._chat = ChatSession(ChatConfig(**_filter_for_dataclass(config["chat"], ChatConfig)))
+        chat_in = dict(config.get("chat") or {})
+        chat_in.setdefault("transport", "file")
+        self._chat = ChatSession(ChatConfig(**_filter_for_dataclass(chat_in, ChatConfig)))
         self._nlu = NLURouter(NLUConfig(**config["nlu"]))
 
         # ⬇⬇⬇ Bezpieczne domyślne wartości capture dla testów/UI
@@ -109,13 +133,13 @@ class VoiceService:
             _cap_in.setdefault(k, v)
         self._capture_cfg = CaptureConfig(**_cap_in)
 
-        self._asr_cfg = ASRConfig(**_filter_for_dataclass(config["asr"], ASRConfig))
+        asr_in = dict(config.get("asr") or {})
+        asr_in.setdefault("transport", "file")
+        self._asr_cfg = ASRConfig(**_filter_for_dataclass(asr_in, ASRConfig))
 
-        allowed_tts = {"backend", "voice", "model", "format", "piper_model", "piper_config"}
-        tts_kwargs = {k: v for k, v in config["tts"].items() if k in allowed_tts}
-        # Note: tts_kwargs already filters via allowed_tts, but let's use the generic approach
-        tts_kwargs = _filter_for_dataclass(tts_kwargs, TTSConfig)
-        self._tts_cfg = TTSConfig(**tts_kwargs)
+        tts_in = dict(config.get("tts") or {})
+        tts_in.setdefault("transport", "file")
+        self._tts_cfg = TTSConfig(**_filter_for_dataclass(tts_in, TTSConfig))
 
         self._play_cfg = PlaybackConfig(**config["playback"])
         ensure_openai_key(self.logger)
@@ -146,16 +170,21 @@ class VoiceService:
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "/tmp/voice-recs"))
 
         # Beep control parameters
-        self._beep_enabled = bool(service_cfg.get("beep", True))  # Enable/disable beep globally
-        self._beep_delay_ms = int(service_cfg.get("beep_delay_ms", 250))  # Delay after beep before capture
+        self._beep_enabled = bool(service_cfg.get("beep", True))  # globalny włącznik beep
+        self._beep_delay_ms = int(service_cfg.get("beep_delay_ms", 250))  # opóźnienie po beep zanim zaczniemy zbierać
 
         # Timingi stabilizujące nagrania
         self._beep_pause_ms = int(service_cfg.get("beep_pause_ms", 250))  # pauza logiczna po ding (mute)
         self._mic_open_delay_ms = int(service_cfg.get("mic_open_delay_ms", 100))  # stabilizacja ALSA po otwarciu
         self._post_tts_mute_ms = int(service_cfg.get("post_tts_mute_ms", 300))  # po TTS wstrzymaj zbieranie
 
-        # Nowe minima
+        # Nowe minima / „no-cost” timeouty
         self._pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 1000))
+        # 🔴 NEW: jeśli po beep jest cisza >= 2000 ms → przerywamy bez kosztu
+        self._no_speech_timeout_ms = int(service_cfg.get("no_speech_timeout_ms", 2000))
+        self._silence_rms_gate = int(  # noqa: E501
+            service_cfg.get("silence_rms_gate", 500)
+        )  # próg energii dla wczesnego wykrycia ciszy
         self._min_capture_ms = int(service_cfg.get("min_capture_ms", 1000))
 
         # Okno wyciszenia po ding/TTS
@@ -210,7 +239,7 @@ class VoiceService:
         try:
             self._bus_pub.publish("ui.state", {"state": state}, add_ts=True)
         except Exception as exc:
-            self.logger.debug("service.bus.state_failed", state=state, error=str(exc))
+            self.logger.event("service.bus.state_failed", state=state, error=str(exc))
 
     def _publish_transcript(self, transcript: Transcript) -> None:
         if not self._bus_pub:
@@ -220,7 +249,7 @@ class VoiceService:
         try:
             self._bus_pub.publish("audio.transcript", payload, add_ts=True)
         except Exception as exc:
-            self.logger.debug("service.bus.transcript_failed", error=str(exc))
+            self.logger.event("service.bus.transcript_failed", error=str(exc))
 
     def _publish_assistant_speech(self, text: str) -> None:
         if not text or not self._bus_pub:
@@ -228,7 +257,7 @@ class VoiceService:
         try:
             self._bus_pub.publish("assistant.speech", {"text": text}, add_ts=True)
         except Exception as exc:
-            self.logger.debug("service.bus.speech_failed", error=str(exc))
+            self.logger.event("service.bus.speech_failed", error=str(exc))
 
     # ─────────────────────────────────────────────
     # Kolejka mówienia
@@ -272,9 +301,9 @@ class VoiceService:
                 )
                 task.result = result
                 if not result.ok:
-                    self.logger.warning("service.speak.failed", source=task.source)
+                    self.logger.event("service.speak.failed", source=task.source)
             except Exception as exc:
-                self.logger.error("service.speak.error", error=str(exc), source=task.source)
+                self.logger.event("service.speak.error", error=str(exc), source=task.source)
                 task.result = TTSStreamResult(False, None, "", 0, streamed=False)
             finally:
                 # Dociągnij okno mute po mowie
@@ -293,7 +322,7 @@ class VoiceService:
             except Exception as exc:
                 if self.stop_event.is_set():
                     break
-                self.logger.debug("service.bus.sub_error", error=str(exc))
+                self.logger.event("service.bus.sub_error", error=str(exc))
                 time.sleep(0.2)
                 continue
             if not payload:
@@ -315,7 +344,7 @@ class VoiceService:
                 except Exception as exc:
                     # po błędzie zawsze wracaj do idle
                     self._publish_ui_state("idle")
-                    self.logger.error("service.cycle.error", error=str(exc))
+                    self.logger.event("service.cycle.error", error=str(exc))
                     time.sleep(0.3)
         finally:
             self._publish_ui_state("idle")
@@ -326,7 +355,7 @@ class VoiceService:
             return self._cycle(speak=speak)
         except Exception as exc:
             self._publish_ui_state("idle")
-            self.logger.error("service.once.error", error=str(exc))
+            self.logger.event("service.once.error", error=str(exc))
             return None
 
     # ─────────────────────────────────────────────
@@ -341,12 +370,10 @@ class VoiceService:
         if now < self._mute_until_ts:
             time.sleep(self._mute_until_ts - now)
 
-        # ⬅⬅⬅ KLUCZOWE: resetuj stan VAD na początku KAŻDEGO cyklu
-        # Zapobiega to „dziedziczeniu” wypełnionego ogona ciszy (tail) pomiędzy nagraniami.
+        # reset VAD na początku każdego cyklu
         try:
             self._vad.reset()
         except Exception:
-            # defensywnie: jeśli implementacja nie ma resetu — nie krusz kopii
             pass
 
         waiting_without_capture = self._hotword_engine == "ptt" or (not self._hotword_enabled)
@@ -358,9 +385,8 @@ class VoiceService:
             if speak and self._should_ding():
                 play_ding(self._play_cfg, self.logger)
                 self._last_ding_ts = time.time()
-                # po ding ustaw okno mute (nie nagrywaj dźwięku beep)
+                # po ding wycisz wejście
                 self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
-                # Add delay after beep before capture starts
                 if self._beep_delay_ms > 0:
                     time.sleep(self._beep_delay_ms / 1000.0)
             audio = self._record_with_vad()
@@ -373,15 +399,13 @@ class VoiceService:
                     play_ding(self._play_cfg, self.logger)
                     self._last_ding_ts = time.time()
                     self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
-                    # Add delay after beep before capture starts
                     if self._beep_delay_ms > 0:
                         time.sleep(self._beep_delay_ms / 1000.0)
-                # małe opóźnienie po otwarciu device
                 if self._mic_open_delay_ms > 0:
                     time.sleep(self._mic_open_delay_ms / 1000.0)
-                # zbieramy
                 audio = collect(capture.frames(), self._vad, self._max_len)
 
+        # 🔴 „cisza po beep” → przerwij bez kosztu (nic nie wysyłamy do ASR/Chat)
         if not audio:
             self._publish_ui_state("idle")
             raise RuntimeError("No audio captured")
@@ -401,7 +425,7 @@ class VoiceService:
         reply = self._handle_intent(intent)
         reply_text = reply.strip()
 
-        # Mówienie (odtworzenie odpowiedzi – TTS)
+        # Mówienie (TTS)
         speech_task_enqueued = False
         speech_result: TTSStreamResult | None = None
 
@@ -416,23 +440,21 @@ class VoiceService:
             intent=intent.kind,
         )
 
-        # Wynik do ewentualnego UI/API
         audio_bytes = speech_result.audio if (speech_result and speech_result.audio) else None
         audio_format = speech_result.audio_format if speech_result else ""
         sample_rate = speech_result.sample_rate if speech_result else 0
 
-        # Jeśli nie mówimy – przywróć idle tu; jeżeli mówimy, worker zrobi to sam.
         if not speech_task_enqueued:
             self._publish_ui_state("idle")
 
-        # krótki cooldown po mowie/PTT – nie łap echa ani „zależnych” ENTER-ów
+        # krótki cooldown po mowie/PTT – nie łap echa
         if self._hotword_engine == "ptt":
             if self._post_tts_mute_ms > 0:
                 time.sleep(self._post_tts_mute_ms / 1000.0)
             time.sleep(0.15)
             try:
                 import sys
-                import termios  # late import; brak zależności pod systemd
+                import termios
 
                 termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
             except Exception:
@@ -452,16 +474,16 @@ class VoiceService:
     # Pomocnicze
 
     def _should_ding(self) -> bool:
-        # Check service-level beep control first
+        # Service-level beep
         if not self._beep_enabled:
             return False
-
-        # PlaybackConfig.ding to dict -> sprawdzaj .get("enabled")
+        # PlaybackConfig.ding to dict -> sprawdzaj .get("enabled"); domyślnie True
         ding_cfg = getattr(self._play_cfg, "ding", None)
         if isinstance(ding_cfg, dict):
-            ok = bool(ding_cfg.get("enabled", False))
+            ok = bool(ding_cfg.get("enabled", True))
         else:
-            ok = bool(getattr(ding_cfg, "enabled", False))
+            # jeśli struktura inna/None – traktuj jako włączone
+            ok = True
         # cooldown anty-pętla (≥1.0 s)
         if ok and (time.time() - self._last_ding_ts) < 1.0:
             return False
@@ -494,14 +516,33 @@ class VoiceService:
 
             return bool(self._hotword.wait(_NullCap()))
 
+    def _frame_has_voice(self, frame: bytes, thr: int) -> bool:
+        """Prosty wskaźnik energii (RMS) do wstępnego wykrywania ciszy."""
+        try:
+            rms = audioop.rms(frame, 2)  # 16-bit
+            return rms >= thr
+        except Exception:
+            return False
+
+    def _safe_frame_bytes(self) -> int:
+        """Zwróć rozmiar ramki w bajtach; jeśli brak atrybutu w cfg – wylicz."""
+        fb = getattr(self._capture_cfg, "frame_bytes", None)
+        if isinstance(fb, int) and fb > 0:
+            return fb
+        # 16-bit * channels * samples_per_frame
+        chans = max(1, int(getattr(self._capture_cfg, "channels", 1)))
+        samples = int(self._capture_cfg.sample_rate * (self._capture_cfg.frame_ms / 1000.0))
+        return max(1, samples * chans * 2)
+
     def _record_with_vad(self) -> bytes:
         """
         Kolejność:
         1) Poczekaj aż wygaśnie mute po beep/TTS (żeby nie nagrać „ding”).
         2) Otwórz mikrofon i ustabilizuj ALSA.
-        3) Zbierz *co najmniej* pre_speech_wait_ms ramek (czekanie na głos),
-           dopiero wtedy pozwól VAD skracać nagranie.
-        4) VAD ma tail >= 1000 ms, więc trzyma ~1 s po zakończeniu mowy.
+        3) Wczesne okno „no-cost”: do _no_speech_timeout_ms czekamy na głos.
+           Jeśli cisza → zwróć b"" (brak kosztów).
+        4) Po wykryciu głosu zbieramy właściwe nagranie (collect+VAD).
+        5) Minimalna długość i szybkie retry.
         """
         now = time.time()
         if now < self._mute_until_ts:
@@ -515,23 +556,32 @@ class VoiceService:
 
                 frames_iter = capture.frames()
 
-                # 3) pre-roll: wymagamy co najmniej pre_speech_wait_ms zanim pozwolimy VAD zakończyć
-                pre_frames_needed = max(1, int(math.ceil(self._pre_speech_wait_ms / self._capture_cfg.frame_ms)))
+                # 3) okno „no-cost” – czekamy max N ms aż pojawi się głos
+                voiced = False
+                start_wait = time.time()
                 pre_buf: list[bytes] = []
-                for _ in range(pre_frames_needed):
+                max_wait_s = max(0, self._no_speech_timeout_ms) / 1000.0
+                while (time.time() - start_wait) < max_wait_s:
+                    try:
+                        f = next(frames_iter)
+                    except StopIteration:
+                        break
+                    pre_buf.append(f)
+                    if self._frame_has_voice(f, self._silence_rms_gate):  # noqa: E501
+                        voiced = True
+                        break
+                if not voiced:
+                    # cisza → koniec bez kosztu
+                    self.logger.event("service.nospeech.timeout", ms=self._no_speech_timeout_ms)
+                    return b""
+
+                # 3b) pre-roll do _pre_speech_wait_ms total, żeby mieć margines
+                need_frames = max(1, int(math.ceil(self._pre_speech_wait_ms / self._capture_cfg.frame_ms)))
+                while len(pre_buf) < need_frames:
                     try:
                         pre_buf.append(next(frames_iter))
                     except StopIteration:
                         break
-
-                # jeśli niewiele zebraliśmy (np. wolny start), dozbieraj do 0.6 s
-                if len(pre_buf) < pre_frames_needed // 4:
-                    t0 = time.time()
-                    while len(pre_buf) < pre_frames_needed and (time.time() - t0) < 0.6:
-                        try:
-                            pre_buf.append(next(frames_iter))
-                        except StopIteration:
-                            break
 
                 def _chained():
                     for f in pre_buf:
@@ -543,9 +593,9 @@ class VoiceService:
                 audio = collect(_chained(), self._vad, self._max_len)
 
         except CaptureError as exc:
-            self.logger.warning("service.capture.error", error=str(exc))
+            self.logger.event("service.capture.error", error=str(exc))
         except Exception as exc:
-            self.logger.warning("service.capture.unexpected", error=str(exc))
+            self.logger.event("service.capture.unexpected", error=str(exc))
 
         # Minimalna długość całego klipu
         min_ms = max(200, self._min_capture_ms)
@@ -553,14 +603,12 @@ class VoiceService:
         channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
         expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
 
-        # Brak czegokolwiek → pewny fallback (arecord 2–4 s)
         if not audio:
-            self.logger.debug("service.capture.empty_retry_arecord")
+            self.logger.event("service.capture.empty_retry_arecord")
             return self._record_with_arecord()
 
-        # Za krótkie → krótki dogryw (~0.8 s) i ponowna próba na zebranym buforze
         if len(audio) < expected_min:
-            self.logger.debug("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
+            self.logger.event("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
             try:
                 with AudioCapture(self._capture_cfg, self.logger) as capture:
                     if self._mic_open_delay_ms > 0:
@@ -575,10 +623,10 @@ class VoiceService:
                     if audio2 and len(audio2) > len(audio):
                         audio = audio2
             except Exception as exc:
-                self.logger.debug("service.capture.retry_error", error=str(exc))
+                self.logger.event("service.capture.retry_error", error=str(exc))
 
             if len(audio) < expected_min:
-                self.logger.debug("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
+                self.logger.event("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
                 return b""
 
         return audio
@@ -614,23 +662,23 @@ class VoiceService:
         if buffer_us > 0:
             cmd += ["--buffer-time", str(buffer_us)]
 
-        self.logger.debug("service.capture.fallback.start", command=" ".join(cmd))
+        self.logger.event("service.capture.fallback.start", command=" ".join(cmd))
         try:
             proc = subprocess.run(cmd, capture_output=True, check=False)
         except FileNotFoundError:
-            self.logger.error("service.capture.arecord_missing")
+            self.logger.event("service.capture.arecord_missing")
             return b""
         if proc.returncode != 0:
             stderr = proc.stderr.decode("utf-8", "ignore").strip()
-            self.logger.error("service.capture.arecord_failed", returncode=proc.returncode, stderr=stderr)
+            self.logger.event("service.capture.arecord_failed", returncode=proc.returncode, stderr=stderr)
             return b""
         raw = proc.stdout or b""
         if not raw:
-            self.logger.warning("service.capture.arecord_empty")
+            self.logger.event("service.capture.arecord_empty")
             return b""
 
         # pofragmentuj „raw” na ramki i spróbuj VAD-ować
-        frames = self._frames_from_pcm(raw, self._capture_cfg.frame_bytes)
+        frames = self._frames_from_pcm(raw, self._safe_frame_bytes())
         trimmed = collect(frames, self._vad, self._max_len)
 
         # Minimalna długość
@@ -644,13 +692,13 @@ class VoiceService:
                 self.logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
                 return trimmed
             if len(raw) >= max(1, expected_min // 2):
-                self.logger.warning(
+                self.logger.event(
                     "service.capture.fallback.trimmed_too_short_using_raw",
                     bytes_trimmed=len(trimmed),
                     bytes_raw=len(raw),
                 )
                 return raw
-            self.logger.warning(
+            self.logger.event(
                 "service.capture.fallback.trimmed_too_short",
                 bytes_trimmed=len(trimmed),
                 bytes_required=expected_min,
@@ -658,10 +706,10 @@ class VoiceService:
             return b""
 
         if len(raw) >= max(1, expected_min // 2):
-            self.logger.warning("service.capture.fallback.no_vad_using_raw", bytes=len(raw))
+            self.logger.event("service.capture.fallback.no_vad_using_raw", bytes=len(raw))
             return raw
 
-        self.logger.warning("service.capture.fallback.no_vad")
+        self.logger.event("service.capture.fallback.no_vad")
         return b""
 
     def _frames_from_pcm(self, data: bytes, frame_size: int):

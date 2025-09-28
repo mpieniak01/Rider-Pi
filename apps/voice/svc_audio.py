@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import audioop  # <-- konwersje szerokości próbek
 import math
 import subprocess
 import time
@@ -58,9 +59,9 @@ def capture_once(
             audio = collect(_chained(), vad, max_len_ms)
 
     except CaptureError as exc:
-        logger.warning("service.capture.error", error=str(exc))
+        logger.event("service.capture.error", error=str(exc))
     except Exception as exc:
-        logger.warning("service.capture.unexpected", error=str(exc))
+        logger.event("service.capture.unexpected", error=str(exc))
 
     # Minimum length check for entire clip
     min_ms = max(200, min_capture_ms)
@@ -75,7 +76,7 @@ def capture_once(
 
     # Too short -> short retry (~0.8s) and try again on collected buffer
     if len(audio) < expected_min:
-        logger.debug("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
+        logger.event("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
         try:
             with AudioCapture(capture_cfg, logger) as capture:
                 if mic_open_delay_ms > 0:
@@ -90,10 +91,10 @@ def capture_once(
                 if audio2 and len(audio2) > len(audio):
                     audio = audio2
         except Exception as exc:
-            logger.debug("service.capture.retry_error", error=str(exc))
+            logger.event("service.capture.retry_error", error=str(exc))
 
         if len(audio) < expected_min:
-            logger.debug("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
+            logger.event("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
             return b""
 
     return audio
@@ -102,9 +103,12 @@ def capture_once(
 def capture_with_arecord(
     capture_cfg: CaptureConfig, vad: WebRtcActivity, max_len_ms: int, logger, min_capture_ms: int
 ) -> bytes:
-    """Fallback capture using arecord command."""
+    """Fallback capture using arecord command (S32_LE -> konwersja do S16_LE)."""
     device = capture_cfg.device or "plughw:1,0"
     buffer_seconds = float(getattr(capture_cfg, "buffer_seconds", 0) or 0.0)
+    sample_format = str(getattr(capture_cfg, "sample_format", "S16_LE")).upper()
+    channels = max(1, int(getattr(capture_cfg, "channels", 1)))
+    sample_rate = int(getattr(capture_cfg, "sample_rate", 16000))
 
     # arecord -d requires whole seconds -> limit to max 4s, min 2s
     duration_float = max(max_len_ms / 1000.0, 1.0) + buffer_seconds + 0.5
@@ -117,11 +121,11 @@ def capture_with_arecord(
         "-t",
         "raw",
         "-f",
-        "S16_LE",
+        sample_format,  # <--- respektuj format karty (np. S32_LE)
         "-c",
-        str(max(1, int(capture_cfg.channels))),
+        str(channels),
         "-r",
-        str(capture_cfg.sample_rate),
+        str(sample_rate),
         "-D",
         device,
         "-d",
@@ -132,52 +136,63 @@ def capture_with_arecord(
     if buffer_us > 0:
         cmd += ["--buffer-time", str(buffer_us)]
 
-    logger.debug("service.capture.fallback.start", command=" ".join(cmd))
+    logger.event("service.capture.fallback.start", command=" ".join(cmd))
     try:
         proc = subprocess.run(cmd, capture_output=True, check=False)
     except FileNotFoundError:
         logger.error("service.capture.arecord_missing")
         return b""
+
     if proc.returncode != 0:
         stderr = proc.stderr.decode("utf-8", "ignore").strip()
-        logger.error("service.capture.arecord_failed", returncode=proc.returncode, stderr=stderr)
+        logger.event("service.capture.arecord_failed", returncode=proc.returncode, stderr=stderr)
         return b""
-    raw = proc.stdout or b""
-    if not raw:
+
+    raw_in = proc.stdout or b""
+    if not raw_in:
         logger.warning("service.capture.arecord_empty")
         return b""
 
-    # Fragment raw into frames and try VAD
-    frames = _frames_from_pcm(raw, capture_cfg.frame_bytes)
+    # --- KONWERSJA DO 16-bit LE (jeśli nagrano S32_LE) ---
+    in_width = 4 if sample_format.startswith("S32") else 2
+    try:
+        raw_s16 = audioop.lin2lin(raw_in, in_width, 2) if in_width != 2 else raw_in
+    except Exception as exc:
+        logger.event("service.capture.convert_failed", error=str(exc))
+        return b""
+
+    # Podziel na ramki 16-bit do VAD
+    frame_ms = int(getattr(capture_cfg, "frame_ms", 20))
+    frame_bytes_16 = int(sample_rate * (frame_ms / 1000.0)) * 2 * channels
+
+    frames = _frames_from_pcm(raw_s16, frame_bytes_16)
     trimmed = collect(frames, vad, max_len_ms)
 
     # Minimum length
     min_ms = max(200, min_capture_ms)
-    bytes_per_sample = 2
-    channels = max(1, int(getattr(capture_cfg, "channels", 1)))
-    expected_min = int(capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
+    expected_min = int(sample_rate * (min_ms / 1000.0)) * 2 * channels
 
     if trimmed:
         if len(trimmed) >= expected_min:
             logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
             return trimmed
-        if len(raw) >= max(1, expected_min // 2):
-            logger.warning(
+        if len(raw_s16) >= max(1, expected_min // 2):
+            logger.event(
                 "service.capture.fallback.trimmed_too_short_using_raw",
                 bytes_trimmed=len(trimmed),
-                bytes_raw=len(raw),
+                bytes_raw=len(raw_s16),
             )
-            return raw
-        logger.warning(
+            return raw_s16
+        logger.event(
             "service.capture.fallback.trimmed_too_short",
             bytes_trimmed=len(trimmed),
             bytes_required=expected_min,
         )
         return b""
 
-    if len(raw) >= max(1, expected_min // 2):
-        logger.warning("service.capture.fallback.no_vad_using_raw", bytes=len(raw))
-        return raw
+    if len(raw_s16) >= max(1, expected_min // 2):
+        logger.event("service.capture.fallback.no_vad_using_raw", bytes=len(raw_s16))
+        return raw_s16
 
     logger.warning("service.capture.fallback.no_vad")
     return b""
@@ -216,6 +231,8 @@ def capture_continuous(capture_cfg: dict[str, Any], chunk_size: int):
         channels=int(capture_cfg.get("channels", 1)),
         frame_ms=int(capture_cfg.get("frame_ms", 20)),
         buffer_seconds=float(capture_cfg.get("buffer_seconds", 0.1)),
+        # Jeśli moduł .capture obsługuje sample_format, przekaż dalej:
+        sample_format=str(capture_cfg.get("sample_format", capture_cfg.get("format", "S16_LE"))).upper(),
     )
 
     try:
@@ -233,9 +250,9 @@ def capture_continuous(capture_cfg: dict[str, Any], chunk_size: int):
                     buffer = buffer[chunk_size:]
 
     except Exception:
-        # Fallback to arecord-based streaming (simplified)
-        # In practice, this would need more sophisticated streaming capture
-        pass
+        # Fallback do arecord wykonywany jest w ścieżce capture_once();
+        # tutaj celowo nie strumieniujemy arecord-em ad hoc.
+        return
 
 
 def play_ding(cfg: dict[str, Any], logger) -> None:

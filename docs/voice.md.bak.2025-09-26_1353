@@ -329,11 +329,3 @@ pytest -q -k voice
 **Q:** „Czy Web API można wystawić poza localhost?”\
 **A:** Tak, `--bind 0.0.0.0:8092` lub `VOICE_BIND=0.0.0.0:8092` (pamiętaj o zaporze).
 
-
-## WM8960 (Raspberry Pi) – realtime
-- ALSA: ustaw `~/.asoundrc` z `dmix` (play) + `dsnoop` (cap) i aliasami `wm8960_out`, `wm8960_in` (16 kHz).
-- W `config/voice.toml` ustaw:
-  - `[playback] device = "wm8960_out"`
-  - `[capture]  device = "wm8960_in", sample_rate=16000, channels=1`
-  - `[service]  beep=false` (na start); potem można `beep=true` + `beep_delay_ms=250`.
-- Aplikacja odtwarza przez `aplay` z `PULSE_SERVER=127.0.0.1`, więc PulseAudio nie przeszkadza.

@@ -1,5 +1,13 @@
 # apps/voice/cli.py
-"""Command line interface for the voice assistant."""
+"""Command line interface for the Rider-Pi voice assistant (STRICT modes).
+
+Najważniejsze zmiany:
+- Dodano --mode {stream,file} dla komend: listen / ptt / once.
+  * stream → asr/chat/tts.transport = "realtime"
+  * file   → asr/chat/tts.transport = "file"
+- Brak odwołań do starego `service` — wejścia idą przez `svc_core.run_*`.
+- `diag` rozpoznaje tryb na bazie strictowego `_mode_from_cfg`.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +31,6 @@ from typing import Any
 from . import config as voice_config, voice_logging as voice_logging
 from .asr import ASRConfig, transcribe
 from .playback import PlaybackConfig, play_bytes, play_ding
-from .service import VoiceService
 from .tts import TTSConfig, synthesize
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -82,7 +89,50 @@ def _merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
     return base
 
 
+def _pairs_to_dict(pairs: list[str]) -> dict[str, Any]:
+    """
+    Zamienia listę par key=val na zagnieżdżony dict z obsługą kropki:
+    ["a.b=1", "a.c=true"] -> {"a": {"b": "1", "c": "true"}}
+    Typy bool/int są parsowane lekko konserwatywnie.
+    """
+    out: dict[str, Any] = {}
+    for token in pairs:
+        if "=" not in token:
+            # flaga bez wartości → potraktuj jako true
+            key, val = token, "true"
+        else:
+            key, val = token.split("=", 1)
+        # proste rzutowania
+        v: Any = val
+        if isinstance(val, str) and val.lower() in ("true", "false"):
+            v = val.lower() == "true"
+        else:
+            try:
+                if isinstance(val, str) and val.isdigit():
+                    v = int(val)
+                else:
+                    if isinstance(val, str) and val.startswith("-") and val[1:].isdigit():
+                        v = int(val)
+                    else:
+                        v = float(val) if isinstance(val, str) and any(c in val for c in ".eE") else val
+            except Exception:
+                v = val
+        # zagnieżdżanie po kropkach
+        cur = out
+        parts = key.split(".")
+        for p in parts[:-1]:
+            cur = cur.setdefault(p, {})
+        cur[parts[-1]] = v
+    return out
+
+
 def _build_overrides(args) -> dict[str, Any]:
+    """
+    Składa nadpisania z CLI. Najważniejsze poprawki:
+    - --vad trafia do asr.vad (wcześniej było top-level 'vad')
+    - --turn trafia do service.turn
+    - --mode ustawia transporty (STRICT)
+    """
     overrides: dict[str, Any] = {}
     if getattr(args, "asr", None):
         overrides = _merge(overrides, voice_config.override_from_pairs("asr", args.asr))
@@ -90,14 +140,37 @@ def _build_overrides(args) -> dict[str, Any]:
         overrides = _merge(overrides, voice_config.override_from_pairs("chat", args.chat))
     if getattr(args, "tts", None):
         overrides = _merge(overrides, voice_config.override_from_pairs("tts", args.tts))
+
+    # NEW: --mode → ustaw transporty spójnie (STRICT)
+    mode = getattr(args, "mode", None)
+    if mode == "stream":
+        overrides = _merge(
+            overrides,
+            {"asr": {"transport": "realtime"}, "chat": {"transport": "realtime"}, "tts": {"transport": "realtime"}},
+        )
+    elif mode == "file":
+        overrides = _merge(
+            overrides, {"asr": {"transport": "file"}, "chat": {"transport": "file"}, "tts": {"transport": "file"}}
+        )
+
+    # NEW: --vad -> asr.vad
     if getattr(args, "vad", None):
-        overrides = _merge(overrides, voice_config.override_from_pairs("vad", args.vad))
+        vad_dict = _pairs_to_dict(args.vad)
+        overrides = _merge(overrides, {"asr": {"vad": vad_dict}})
+
     if getattr(args, "playback", None):
         overrides = _merge(overrides, voice_config.override_from_pairs("playback", args.playback))
     if getattr(args, "capture", None):
         overrides = _merge(overrides, voice_config.override_from_pairs("capture", args.capture))
+
+    # service (legacy, nadal wspieramy)
     if getattr(args, "service", None):
         overrides = _merge(overrides, voice_config.override_from_pairs("service", args.service))
+
+    # NEW: --turn -> service.turn
+    if getattr(args, "turn", None):
+        turn_dict = _pairs_to_dict(args.turn)
+        overrides = _merge(overrides, {"service": {"turn": turn_dict}})
 
     # hotword / ptt
     hotword = getattr(args, "hotword", None)
@@ -116,7 +189,7 @@ def _build_overrides(args) -> dict[str, Any]:
     if ding:
         overrides = _merge(overrides, {"playback": {"ding": {"enabled": ding == "on"}}})
 
-    # save-audio (krótki alias: --save-audio on recordings_dir=...)
+    # save-audio
     save_audio = getattr(args, "save_audio", None)
     if save_audio:
         values: dict[str, Any] = {}
@@ -133,7 +206,7 @@ def _build_overrides(args) -> dict[str, Any]:
     if level:
         overrides = _merge(overrides, {"logging": {"level": level}})
 
-    # globalny hint języka dla ASR (fix: language, nie 'lang')
+    # globalny hint języka dla ASR
     lang = getattr(args, "lang", None)
     if lang:
         overrides = _merge(overrides, {"asr": {"language": lang}})
@@ -141,12 +214,12 @@ def _build_overrides(args) -> dict[str, Any]:
     return overrides
 
 
-def _configure(args) -> tuple[dict[str, Any], VoiceService]:
+def _configure(args) -> tuple[dict[str, Any], None]:
+    """Wczytaj config + nadpisania, skonfiguruj logowanie. Nie twórz VoiceService tutaj."""
     overrides = _build_overrides(args)
     config = voice_config.load(getattr(args, "config", None), overrides=overrides)
     voice_logging.configure(config.get("logging", {}).get("level"))
-    service = VoiceService(config)
-    return config, service
+    return config, None
 
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -201,14 +274,22 @@ def _decode_json_audio(b: bytes):
                 break
         if payload is None:
             return None
+        raw: bytes | None = None
         if isinstance(payload, str):
-            raw = base64.b64decode(payload)
+            try:
+                raw = base64.b64decode(payload)
+            except Exception:
+                return None
         elif isinstance(payload, dict):
             for k in ("b64", "base64", "data"):
-                if k in payload and isinstance(payload[k], str):
-                    raw = base64.b64decode(payload[k])
-                    break
-            else:
+                v = payload.get(k)
+                if isinstance(v, str):
+                    try:
+                        raw = base64.b64decode(v)
+                        break
+                    except Exception:
+                        return None
+            if raw is None:
                 return None
         else:
             return None
@@ -228,7 +309,7 @@ def _resample_to(pcm: bytes, in_sr: int, in_ch: int, target_sr: int, target_ch: 
     return out
 
 
-def _add_tail_silence(pcm: bytes, sr: int, ch: int, tail_ms: int = None) -> bytes:
+def _add_tail_silence(pcm: bytes, sr: int, ch: int, tail_ms: int | None = None) -> bytes:
     tail_ms = int(os.environ.get("VOICE_TAIL_MS", tail_ms or 120))
     tail_frames = int(sr * tail_ms / 1000.0) * ch
     return pcm + (b"\x00\x00" * tail_frames)
@@ -341,6 +422,10 @@ def _silence_logging_for_stdout() -> None:
 
 
 def cmd_listen(args) -> None:
+    # Jeśli ktoś wymusił hotword=ptt i nie podał –vad → domyślnie wyłącz lokalny VAD
+    if getattr(args, "hotword", None) == "ptt" and not getattr(args, "vad", None):
+        args.vad = ["enabled=false"]
+
     config, _ = _configure(args)
     from .svc_core import run_listen
 
@@ -348,7 +433,11 @@ def cmd_listen(args) -> None:
 
 
 def cmd_ptt(args) -> None:
+    # Twardo wymuszamy PTT + jeśli brak --vad, to wyłącz lokalny VAD (ENTER steruje turą)
     args.hotword = "ptt"
+    if not getattr(args, "vad", None):
+        args.vad = ["enabled=false"]
+
     config, _ = _configure(args)
     from .svc_core import run_listen
 
@@ -356,12 +445,15 @@ def cmd_ptt(args) -> None:
 
 
 def cmd_once(args) -> None:
+    # Jeśli ktoś chce PTT w once i nie podał –vad → też wyłączamy lokalny VAD
+    if getattr(args, "hotword", None) == "ptt" and not getattr(args, "vad", None):
+        args.vad = ["enabled=false"]
+
     config, _ = _configure(args)
     from .svc_core import run_once
 
     run_once(config, args)
-    # Note: run_once should return an int, but old version expects a result
-    # This is a compatibility layer - the actual printing is done in the run_once implementations
+    # drukowanie wyniku odbywa się w run_once_* implementacjach
 
 
 def cmd_asr(args) -> None:
@@ -385,10 +477,8 @@ def cmd_tts(args) -> None:
     audio, sample_rate, fmt = _synthesize_bytes(args.text, config["tts"])
 
     if args.play:
-        # preferuj wewnętrzny odtwarzacz z configu (backend=auto/mpg123, alsa_device, volume, ding)
         play_bytes(audio, fmt, PlaybackConfig(**config["playback"]))
     else:
-        # na stdout zawsze czysty WAV (do potoków)
         wav_bytes = _ensure_wav_bytes(audio, sample_rate, fmt)
         # GAIN (opcjonalny, przez env VOICE_GAIN)
         try:
@@ -405,7 +495,7 @@ def cmd_diag(args) -> None:
     config = voice_config.load(getattr(args, "config", None), overrides=overrides)
     voice_logging.configure(config.get("logging", {}).get("level"))
 
-    capture_backend = config["capture"]["backend"]
+    capture_backend = config.get("capture", {}).get("backend", "alsa")
     print("Capture backend:", capture_backend)
     if capture_backend == "alsa" and shutil.which("arecord"):
         print("== arecord -l ==")
@@ -413,15 +503,30 @@ def cmd_diag(args) -> None:
     if shutil.which("pactl"):
         print("== pactl list short sources ==")
         subprocess.run(["pactl", "list", "short", "sources"], check=False)
-    print("TTS backend:", config["tts"]["backend"])
-    print("ASR backend:", config["asr"]["backend"])
+    print("TTS backend:", config.get("tts", {}).get("backend", "openai"))
+    print("ASR backend:", config.get("asr", {}).get("backend", "auto"))
 
-    # Check if streaming mode would be detected
-    from .svc_core import _wants_stream
+    # STRICT: rozpoznaj tryb przez svc_core
+    mode = "file"
+    try:
+        from .svc_core import _mode_from_cfg  # type: ignore
 
-    if _wants_stream(config, args):
+        mode = _mode_from_cfg(config)
+    except Exception:
+        # best-effort fallback (jeśli ktoś trafi stary plik)
+        pass
+
+    if mode == "realtime":
         print("Mode: streaming (WebSocket realtime)")
-        print("Stream endpoint:", config.get("stream", {}).get("endpoint", "not configured"))
+        # Pokaż skuteczny endpoint (ENV ma priorytet nad TOML) i zamaskuj model
+        endpoint = os.environ.get("OPENAI_REALTIME_ENDPOINT") or config.get("stream", {}).get("endpoint", "")
+
+        def _mask(s: str) -> str:
+            if not s:
+                return "not configured"
+            return s.replace("model=", "model=***")
+
+        print("Stream endpoint:", _mask(endpoint))
     else:
         print("Mode: file-based (traditional)")
 
@@ -444,11 +549,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     listen = sub.add_parser("listen", help="Continuous mode")
     listen.set_defaults(func=cmd_listen)
+    listen.add_argument("--mode", choices=["stream", "file"], default=None)
     listen.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
     listen.add_argument("--asr", nargs="*")
     listen.add_argument("--chat", nargs="*")
     listen.add_argument("--tts", nargs="*")
-    listen.add_argument("--vad", nargs="*")
+    listen.add_argument("--vad", nargs="*")  # NEW: mapuje się do asr.vad.*
+    listen.add_argument("--turn", nargs="*")  # NEW: mapuje się do service.turn.*
     listen.add_argument("--playback", nargs="*")
     listen.add_argument("--capture", nargs="*")
     listen.add_argument("--service", nargs="*")
@@ -458,10 +565,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     ptt = sub.add_parser("ptt", help="Push-to-talk mode")
     ptt.set_defaults(func=cmd_ptt)
+    ptt.add_argument("--mode", choices=["stream", "file"], default=None)
     ptt.add_argument("--asr", nargs="*")
     ptt.add_argument("--chat", nargs="*")
     ptt.add_argument("--tts", nargs="*")
-    ptt.add_argument("--vad", nargs="*")
+    ptt.add_argument("--vad", nargs="*")  # NEW
+    ptt.add_argument("--turn", nargs="*")  # NEW
     ptt.add_argument("--playback", nargs="*")
     ptt.add_argument("--capture", nargs="*")
     ptt.add_argument("--ding", choices=["on", "off"], default=None)
@@ -471,11 +580,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     once = sub.add_parser("once", help="Single cycle")
     once.set_defaults(func=cmd_once)
+    once.add_argument("--mode", choices=["stream", "file"], default=None)
     once.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
     once.add_argument("--asr", nargs="*")
     once.add_argument("--chat", nargs="*")
     once.add_argument("--tts", nargs="*")
-    once.add_argument("--vad", nargs="*")
+    once.add_argument("--vad", nargs="*")  # NEW
+    once.add_argument("--turn", nargs="*")  # NEW
     once.add_argument("--playback", nargs="*")
     once.add_argument("--capture", nargs="*")
     once.add_argument("--ding", choices=["on", "off"], default=None)
@@ -499,6 +610,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     diag = sub.add_parser("diag", help="Diagnostics")
     diag.set_defaults(func=cmd_diag)
+    diag.add_argument("--mode", choices=["stream", "file"], default=None)
     diag.add_argument("--log-level", default=None)
 
     return parser

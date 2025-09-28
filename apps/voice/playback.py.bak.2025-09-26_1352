@@ -1,4 +1,3 @@
-# apps/voice/playback.py
 """Audio playback helpers for the voice assistant."""
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ import shutil
 import subprocess
 import tempfile
 import threading
-import time
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,15 +25,9 @@ class PlaybackError(RuntimeError):
 @dataclass
 class PlaybackConfig:
     backend: str = "auto"  # "auto" | "pulse" | "alsa" | nazwa binarki
-    alsa_device: str | None = None  # np. "plughw:wm8960soundcard,0"
-    # Alias z configu: jeśli w TOML jest "device", to przypisz do alsa_device
-    device: str | None = None
-    volume: int = 100  # informacyjne (regulacja systemowa poza aplikacją)
+    alsa_device: str | None = None  # np. "plughw:1,0" (używane z mpg123/aplay)
+    volume: int = 100  # informacyjne (regulacja systemowa)
     ding: dict[str, object] = field(default_factory=dict)
-
-    def resolved_alsa(self) -> str | None:
-        # Preferuj jawne alsa_device; w przeciwnym razie użyj aliasu device
-        return self.alsa_device or self.device
 
 
 @dataclass
@@ -46,28 +38,10 @@ class PlaybackStream:
     accumulate: bool = False
     _buffer: bytearray | None = None
     _failed: bool = False
-    # pola runtime do autodomknięcia
-    _last_write_ts: float = field(default_factory=lambda: time.time())
-    _idle_timeout_s: float = 2.0  # zamykamy po bezczynności
-    _closer_thread: threading.Thread | None = None
-    _closer_stop: threading.Event = field(default_factory=threading.Event)
 
     def __post_init__(self) -> None:
         if self.accumulate:
             self._buffer = bytearray()
-
-        # watchdog bezczynności (zamyka stream po _idle_timeout_s od ostatniego zapisu)
-        def _closer():
-            while not self._closer_stop.is_set():
-                if time.time() - self._last_write_ts > self._idle_timeout_s:
-                    try:
-                        self.close(timeout=3.0)
-                    finally:
-                        break  # noqa: B012
-                time.sleep(0.1)
-
-        self._closer_thread = threading.Thread(target=_closer, name="playback-idle-closer", daemon=True)
-        self._closer_thread.start()
 
     def write(self, chunk: bytes) -> None:
         if not chunk:
@@ -80,19 +54,12 @@ class PlaybackStream:
         try:
             self.process.stdin.write(chunk)
             self.process.stdin.flush()
-            self._last_write_ts = time.time()
         except Exception as exc:  # pragma: no cover
             self._failed = True
             raise PlaybackError(f"Player write failed: {exc}") from exc
 
     def close(self, *, timeout: float = 20.0) -> tuple[bool, bytes | None, str | None]:
-        # zatrzymaj watchdog
-        self._closer_stop.set()
-        if self._closer_thread and self._closer_thread.is_alive():
-            with contextlib.suppress(Exception):
-                self._closer_thread.join(timeout=0.2)
-
-        if self.process.stdin and not self.process.stdin.closed:
+        if self.process.stdin:
             with contextlib.suppress(Exception):
                 self.process.stdin.close()
         try:
@@ -112,11 +79,6 @@ class PlaybackStream:
         return ok, audio, stderr_text
 
 
-# ───────────────────────────────────────────────────────────────────────────────
-# Selektor binarek
-# ───────────────────────────────────────────────────────────────────────────────
-
-
 def _choose_player(backend: str) -> str | None:
     """Zwróć ścieżkę do binarki gracza na podstawie backendu."""
     if backend == "pulse":
@@ -130,11 +92,6 @@ def _choose_player(backend: str) -> str | None:
                 return path
         return None
     return shutil.which(backend)
-
-
-# ───────────────────────────────────────────────────────────────────────────────
-# Budowanie komend (tryb plikowy)
-# ───────────────────────────────────────────────────────────────────────────────
 
 
 def _build_cmd(player_path: str, tmp_path: str, fmt: str, alsa_device: str | None) -> list[str]:
@@ -152,11 +109,6 @@ def _build_cmd(player_path: str, tmp_path: str, fmt: str, alsa_device: str | Non
         return [player_path, "-autoexit", "-nodisp", tmp_path]
     # paplay i inne – wystarczy ścieżka
     return [player_path, tmp_path]
-
-
-# ───────────────────────────────────────────────────────────────────────────────
-# Budowanie komend (tryb strumieniowy – stdin)
-# ───────────────────────────────────────────────────────────────────────────────
 
 
 def _iter_mpg123_commands(config: PlaybackConfig):
@@ -182,8 +134,8 @@ def _iter_mpg123_commands(config: PlaybackConfig):
             cmd = [path, "-q", "-o", "pulse", "-"]
         elif item == "alsa":
             cmd = [path, "-q", "-o", "alsa"]
-            if config.resolved_alsa():
-                cmd += ["-a", config.resolved_alsa()]  # karta/alias
+            if config.alsa_device:
+                cmd += ["-a", config.alsa_device]
             cmd.append("-")
         else:
             cmd = [path, "-q", "-"]
@@ -192,7 +144,6 @@ def _iter_mpg123_commands(config: PlaybackConfig):
 
 
 def _iter_wav_commands(config: PlaybackConfig):
-    """Strumieniowanie WAV przez stdin."""
     commands = []
     backend = (config.backend or "auto").lower()
     aplay = shutil.which("aplay")
@@ -201,8 +152,8 @@ def _iter_wav_commands(config: PlaybackConfig):
     if backend == "alsa":
         if aplay:
             cmd = [aplay, "-q"]
-            if config.resolved_alsa():
-                cmd += ["-D", config.resolved_alsa()]
+            if config.alsa_device:
+                cmd += ["-D", config.alsa_device]
             cmd.append("-")
             commands.append(("aplay", cmd))
         if paplay:
@@ -212,99 +163,11 @@ def _iter_wav_commands(config: PlaybackConfig):
             commands.append(("paplay", [paplay, "-"]))
         if aplay:
             cmd = [aplay, "-q"]
-            if config.resolved_alsa():
-                cmd += ["-D", config.resolved_alsa()]
+            if config.alsa_device:
+                cmd += ["-D", config.alsa_device]
             cmd.append("-")
             commands.append(("aplay", cmd))
     return commands
-
-
-def _iter_pcm16_commands(config: PlaybackConfig, *, rate: int = 16000, channels: int = 1):
-    """Strumieniowanie RAW PCM16 mono jako stdin."""
-    commands = []
-    backend = (config.backend or "auto").lower()
-    aplay = shutil.which("aplay")
-    paplay = shutil.which("paplay")
-
-    if backend in ("alsa", "auto"):
-        if aplay:
-            cmd = [aplay, "-q"]
-            if config.resolved_alsa():
-                cmd += ["-D", config.resolved_alsa()]
-            cmd += ["-f", "S16_LE", "-r", str(rate), "-c", str(channels), "-t", "raw", "-"]
-            commands.append(("aplay-raw", cmd))
-
-    if backend in ("pulse", "auto"):
-        if paplay:
-            # paplay dla RAW: --raw --rate=16000 --channels=1 --format=s16le
-            cmd = [paplay, "--raw", f"--rate={rate}", f"--channels={channels}", "--format=s16le", "-"]
-            commands.append(("paplay-raw", cmd))
-
-    return commands
-
-
-# ───────────────────────────────────────────────────────────────────────────────
-# Cache strumieni (stałe odtwarzanie dla PCM16 bez restartu procesu)
-# ───────────────────────────────────────────────────────────────────────────────
-
-_PCM16_CACHE_LOCK = threading.Lock()
-_PCM16_CACHE: dict[tuple[str, str | None, str], PlaybackStream] = {}
-# klucz: (backend_norm, alsa_device, "pcm16")
-
-
-def _get_or_start_pcm16_stream(config: PlaybackConfig, logger: voice_logging.VoiceLogger) -> PlaybackStream | None:
-    backend = (config.backend or "auto").lower()
-    alsa_dev = config.resolved_alsa()
-    key = (backend, alsa_dev, "pcm16")
-
-    with _PCM16_CACHE_LOCK:
-        # jeśli istnieje i żyje – użyj
-        stream = _PCM16_CACHE.get(key)
-        if stream and stream.process.poll() is None:
-            return stream
-
-        # usuń martwy wpis
-        if stream:
-            _PCM16_CACHE.pop(key, None)
-
-        # spróbuj uruchomić nowy strumień
-        for backend_name, cmd in _iter_pcm16_commands(config, rate=16000, channels=1):
-            try:
-                proc = subprocess.Popen(
-                    cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    bufsize=0,
-                )
-            except Exception as exc:  # pragma: no cover
-                logger.event("playback.stream.start_failed", backend=backend_name, error=str(exc))
-                continue
-            logger.event("playback.stream.start", backend=backend_name, command=" ".join(cmd))
-            stream = PlaybackStream(proc, fmt="pcm16", backend=backend_name, accumulate=False)
-            _PCM16_CACHE[key] = stream
-            return stream
-
-        return None
-
-
-def _close_pcm16_streams(logger: voice_logging.VoiceLogger | None = None) -> None:
-    logger = logger or voice_logging.get_logger("voice.playback")
-    with _PCM16_CACHE_LOCK:
-        for key, stream in list(_PCM16_CACHE.items()):
-            try:
-                ok, _, err = stream.close(timeout=3.0)
-                if not ok and err:
-                    logger.event("playback.stream.error_on_close", key=str(key), error=err)
-            except Exception as exc:
-                logger.event("playback.stream.close_exc", key=str(key), error=str(exc))
-            finally:
-                _PCM16_CACHE.pop(key, None)
-
-
-# ───────────────────────────────────────────────────────────────────────────────
-# API wysokiego poziomu
-# ───────────────────────────────────────────────────────────────────────────────
 
 
 def start_stream(
@@ -314,15 +177,9 @@ def start_stream(
     *,
     accumulate: bool = False,
 ) -> PlaybackStream | None:
-    """
-    Spróbuj otworzyć strumień odtwarzacza dla danego formatu.
-    Uwaga: dla 'pcm16' preferujemy cache globalny (_get_or_start_pcm16_stream).
-    """
+    """Spróbuj otworzyć strumień odtwarzacza dla danego formatu."""
     logger = logger or voice_logging.get_logger("voice.playback")
     fmt = (fmt or "").lower()
-
-    if fmt == "pcm16":
-        return _get_or_start_pcm16_stream(config, logger)
 
     if fmt == "mp3":
         for backend, cmd in _iter_mpg123_commands(config):
@@ -335,12 +192,13 @@ def start_stream(
                     bufsize=0,
                 )
             except FileNotFoundError:
-                logger.event("playback.stream.cmd_missing", backend=backend)
+                # przejdź do kolejnego wariantu zamiast przerywać całą próbę
+                logger.debug("playback.stream.cmd_missing", backend=backend)
                 continue
             except Exception as exc:  # pragma: no cover
-                logger.event("playback.stream.start_failed", backend=backend, error=str(exc))
+                logger.warning("playback.stream.start_failed", backend=backend, error=str(exc))
                 continue
-            logger.event("playback.stream.start", backend=backend, command=" ".join(cmd))
+            logger.debug("playback.stream.start", backend=backend, command=" ".join(cmd))
             return PlaybackStream(proc, fmt="mp3", backend=backend, accumulate=accumulate)
         return None
 
@@ -355,24 +213,13 @@ def start_stream(
                     bufsize=0,
                 )
             except Exception as exc:  # pragma: no cover
-                logger.event("playback.stream.start_failed", backend=backend, error=str(exc))
+                logger.warning("playback.stream.start_failed", backend=backend, error=str(exc))
                 continue
-            logger.event("playback.stream.start", backend=backend, command=" ".join(cmd))
+            logger.debug("playback.stream.start", backend=backend, command=" ".join(cmd))
             return PlaybackStream(proc, fmt="wav", backend=backend, accumulate=accumulate)
         return None
 
     return None
-
-
-def _wrap_pcm16_to_wav(raw: bytes, rate: int = 16000, channels: int = 1, sampwidth: int = 2) -> bytes:
-    """Owiń surowe PCM16 w nagłówek WAV (mono/dom. 16 kHz)."""
-    bio = io.BytesIO()
-    with wave.open(bio, "wb") as wf:
-        wf.setnchannels(channels)
-        wf.setsampwidth(sampwidth)
-        wf.setframerate(rate)
-        wf.writeframes(raw)
-    return bio.getvalue()
 
 
 def _fallback_file_play(
@@ -388,12 +235,7 @@ def _fallback_file_play(
     env_player = os.getenv("VOICE_PLAYER")
     env_cmd: list[str] | None = shlex.split(env_player) if env_player else None
 
-    # 1) jeżeli format to RAW pcm16 — owiń w WAV, aby zwiększyć szanse na odtworzenie
-    if (fmt or "").lower() == "pcm16":
-        audio = _wrap_pcm16_to_wav(audio, rate=16000, channels=1)  # standard sesji
-        fmt = "wav"
-
-    # 2) wybierz domyślnego gracza po formacie
+    # 1) wybierz domyślnego gracza po formacie
     if env_cmd:
         player_cmd = env_cmd
     else:
@@ -414,7 +256,7 @@ def _fallback_file_play(
                 raise PlaybackError(f"No player for format '{fmt}'")
             player_cmd = [path, "-autoexit", "-nodisp"]
 
-    # 3) zapisz do pliku tymczasowego
+    # 2) zapisz do pliku tymczasowego
     suffix = ".wav" if (fmt or "").lower() == "wav" else f".{fmt}" if fmt else ".bin"
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     try:
@@ -423,17 +265,14 @@ def _fallback_file_play(
     finally:
         tmp.close()
 
-    # 4) dołóż parametry per gracz
+    # 3) dołóż parametry per gracz
     base = os.path.basename(player_cmd[0])
-    if base == "aplay":
-        args = ["-q"]
-        if config.resolved_alsa():
-            args += ["-D", config.resolved_alsa()]
-        player_cmd = player_cmd + args + [tmp_path]
+    if base == "aplay" and config.alsa_device:
+        player_cmd = player_cmd + ["-q", "-D", config.alsa_device, tmp_path]
     elif base == "mpg123":
         # plikowa ścieżka (nie stdin)
-        if (config.backend or "auto").lower() == "alsa" and config.resolved_alsa():
-            player_cmd = player_cmd + ["-q", "-o", "alsa", "-a", config.resolved_alsa(), tmp_path]
+        if (config.backend or "auto").lower() == "alsa" and config.alsa_device:
+            player_cmd = player_cmd + ["-q", "-o", "alsa", "-a", config.alsa_device, tmp_path]
         elif (config.backend or "auto").lower() == "pulse":
             player_cmd = player_cmd + ["-q", "-o", "pulse", tmp_path]
         else:
@@ -468,30 +307,13 @@ def play_bytes(
     blocking: bool = True,
 ):
     """
-    Odtwórz bajty audio.
-    - Dla PCM16: używa **stałego strumienia** (cache), więc kolejne wywołania nie restartują `aplay/paplay`.
-    - Dla MP3/WAV: próba strumieniowania; jeśli nie wyjdzie → fallback do pliku tymczasowego.
+    Odtwórz bajty audio. Preferuje strumieniowanie (stdin) dla MP3/WAV.
+    Jeśli stream nieosiągalny — fallback do pliku tymczasowego.
     """
     logger = logger or voice_logging.get_logger("voice.playback")
     fmt = (fmt or "").lower()
 
-    # 1) tryb preferowany: stały strumień dla PCM16
-    if fmt == "pcm16":
-        stream = start_stream(fmt, config, logger, accumulate=False)
-        if stream:
-            try:
-                stream.write(audio)
-                # nie zamykamy – watchdog autodomknie po bezczynności
-                return True
-            except Exception as exc:  # pragma: no cover
-                logger.event("playback.stream.failed_write", error=str(exc))
-                # fallback do pliku WAV (spójność)
-                return _fallback_file_play(_wrap_pcm16_to_wav(audio), "wav", config, logger, blocking=blocking)
-
-        # jeśli nie udało się wystartować strumienia – fallback do WAV
-        return _fallback_file_play(_wrap_pcm16_to_wav(audio), "wav", config, logger, blocking=blocking)
-
-    # 2) MP3/WAV – spróbuj pełnego strumienia jednorazowego
+    # 1) spróbuj trybu strumieniowego
     stream = start_stream(fmt, config, logger, accumulate=False)
     if stream:
         try:
@@ -499,7 +321,7 @@ def play_bytes(
                 stream.write(audio)
                 ok, _, err = stream.close()
                 if not ok and err:
-                    logger.event("playback.stream.error", backend=stream.backend, error=err)
+                    logger.warning("playback.stream.error", backend=stream.backend, error=err)
                 return ok
             else:
 
@@ -508,15 +330,15 @@ def play_bytes(
                         stream.write(audio)
                         stream.close()
                     except Exception as exc:  # pragma: no cover
-                        logger.event("playback.stream.bg_error", error=str(exc))
+                        logger.warning("playback.stream.bg_error", error=str(exc))
 
                 threading.Thread(target=_bg, daemon=True).start()
                 return stream.process
         except Exception as exc:  # pragma: no cover
-            logger.event("playback.stream.failed_write", error=str(exc))
+            logger.warning("playback.stream.failed_write", error=str(exc))
             # przejdź do fallbacku plikowego
 
-    # 3) fallback do pliku (pewnie brak mpg123/paplay lub błąd parametrów)
+    # 2) fallback do pliku (pewnie brak mpg123/paplay)
     return _fallback_file_play(audio, fmt, config, logger, blocking=blocking)
 
 
