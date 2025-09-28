@@ -1,3 +1,11 @@
+from __future__ import annotations
+
+import os
+
+import pytest
+
+pytestmark = pytest.mark.hardware
+
 """
 Integration tests for the streaming voice service.
 
@@ -5,7 +13,6 @@ These tests verify the complete pipeline works without requiring
 external API connections.
 """
 
-from __future__ import annotations
 
 import os
 from unittest.mock import patch
@@ -16,6 +23,11 @@ from apps.voice.svc_core import _wants_stream, run_listen, run_once
 
 
 @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+def _skip_if_no_device_env():
+    if os.environ.get('RUN_DEVICE_TESTS') != '1':
+        pytest.skip('Hardware/ALSA tests disabled on CI (set RUN_DEVICE_TESTS=1 to enable).')
+
+
 def test_streaming_mode_detection():
     """Test that streaming mode is correctly detected."""
     # File mode config

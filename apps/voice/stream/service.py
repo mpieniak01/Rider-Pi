@@ -26,6 +26,7 @@ from .transport import ReconnectingTransport
 @dataclass
 class StreamConfig:
     """Configuration for WebSocket streaming."""
+
     protocol: str = "websocket"
     endpoint: str = ""
     auth: str = ""
@@ -119,9 +120,7 @@ class StreamingVoiceService:
         self.ptt_state.add_enter_callback(PTTState.SPEAKING, self._on_speaking_start)
 
         # State transitions
-        self.ptt_state.add_transition_callback(
-            PTTState.COMMIT, PTTState.WAIT_REPLY, self._on_commit_complete
-        )
+        self.ptt_state.add_transition_callback(PTTState.COMMIT, PTTState.WAIT_REPLY, self._on_commit_complete)
 
     def _on_arming(self) -> None:
         """Called when entering ARMING state."""
@@ -153,7 +152,7 @@ class StreamingVoiceService:
                 base_ms=self.stream_cfg.base_ms,
                 max_ms=self.stream_cfg.max_ms,
                 ping_interval_s=self.stream_cfg.ping_interval_s,
-                logger=self.logger
+                logger=self.logger,
             )
             return True
 
@@ -166,6 +165,7 @@ class StreamingVoiceService:
         auth = self.stream_cfg.auth
         if auth.startswith("env:"):
             import os
+
             env_key = auth[4:]
             api_key = (os.environ.get(env_key, "") or "").strip()
             if not api_key:
@@ -195,43 +195,42 @@ class StreamingVoiceService:
         """Publish error event."""
         if self.ui_publisher:
             try:
-                self.ui_publisher.publish("ui.error", 
-                                        {"type": error_type, "message": message, "ts": time.time()})
+                self.ui_publisher.publish("ui.error", {"type": error_type, "message": message, "ts": time.time()})
             except Exception as e:
                 self.logger.event("error_pub_error", error=str(e))
 
     async def once(self, *, speak: bool = True) -> dict[str, Any] | None:
         """Single interaction mode."""
         self.logger.event("stream.once.start")
-        
+
         if not await self._initialize_transport():
             return None
 
         try:
             # Initialize session
             await self._send_session_init()
-            
+
             # Start message handler
             self._message_handler_task = asyncio.create_task(self._message_handler_loop())
-            
+
             # Start audio capture
             self._start_audio_capture()
-            
+
             # Trigger PTT start
             self.ptt_state.start_interaction()
             self.ptt_state.transition(PTTEvent.START)
-            
+
             # Wait for completion (with timeout)
             timeout_s = self.stream_cfg.max_turn_ms / 1000.0 + 10  # Extra buffer
-            
+
             try:
                 await asyncio.wait_for(self._wait_for_completion(), timeout=timeout_s)
             except asyncio.TimeoutError:
                 self.logger.event("stream.once.timeout")
                 self.ptt_state.transition(PTTEvent.TIMEOUT)
-            
+
             return {"completed": self._completed, "session_id": self.session_id}
-            
+
         finally:
             await self._cleanup()
 
@@ -257,14 +256,14 @@ class StreamingVoiceService:
         while not self.stop_event.is_set():
             try:
                 await self._run_session()
-                
+
                 if self.stop_event.is_set():
                     break
-                    
+
                 # Reset for reconnection
                 self._cleanup_workers()
                 self._publish_ui_state("idle")
-                
+
             except Exception as e:
                 self.logger.event("stream.session_error", error=str(e))
                 break
@@ -272,18 +271,18 @@ class StreamingVoiceService:
     async def _run_session(self) -> None:
         """Run a single WebSocket session."""
         await self._send_session_init()
-        
+
         # Start workers
-        self._start_audio_capture() 
+        self._start_audio_capture()
         self._start_tts_player()
-        
+
         # Start message handler
         self._message_handler_task = asyncio.create_task(self._message_handler_loop())
-        
+
         # Main session loop
         while not self.stop_event.is_set() and self.transport:
             await asyncio.sleep(0.1)  # Prevent busy loop
-            
+
             # Check for PTT events if enabled
             if self.ptt_enabled:
                 # This would integrate with keyboard input handling
@@ -293,9 +292,9 @@ class StreamingVoiceService:
         """Send session initialization message."""
         if not self.transport:
             return
-            
+
         self.session_id = str(uuid.uuid4())
-        
+
         init_message = {
             "type": "session.update",
             "session": {
@@ -303,10 +302,10 @@ class StreamingVoiceService:
                 "voice": "verse",
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
-                "turn_detection": {"type": "server_vad"} if self.stream_cfg.server_vad else None
-            }
+                "turn_detection": {"type": "server_vad"} if self.stream_cfg.server_vad else None,
+            },
         }
-        
+
         await self.transport.send(json.dumps(init_message))
         self.logger.event("session.init", session_id=self.session_id)
 
@@ -327,34 +326,34 @@ class StreamingVoiceService:
         try:
             data = json.loads(message)
             msg_type = data.get("type", "")
-            
+
             if msg_type == "response.audio.delta":
                 # Handle streaming audio
                 audio_b64 = data.get("delta", "")
                 if audio_b64:
                     audio_data = base64.b64decode(audio_b64)
                     self.tts_player_queue.put(audio_data)
-                    
+
             elif msg_type == "response.audio.done":
                 # End of audio stream
                 self.tts_player_queue.put(None)  # Sentinel
                 self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
-                
+
             elif msg_type == "response.text.delta":
                 # Handle streaming text (partial transcript)
                 text = data.get("delta", "")
                 self._publish_partial(text)
-                
+
             elif msg_type in ("response.completed", "response.done"):
                 self._completed = True
                 self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
-                
+
             elif msg_type == "error":
                 error_msg = data.get("error", {}).get("message", "Unknown error")
                 self.logger.event("ws.protocol_error", error=error_msg)
                 self._publish_error("ws_protocol", error_msg)
                 self.ptt_state.transition(PTTEvent.ERROR)
-                
+
         except Exception as e:
             self.logger.event("message_parse_error", error=str(e), sample=message[:200])
 
@@ -365,18 +364,11 @@ class StreamingVoiceService:
 
         def capture_target():
             try:
-                capture_continuous(
-                    self.config["capture"],
-                    self.audio_queue,
-                    self.stop_event,
-                    logger=self.logger
-                )
+                capture_continuous(self.config["capture"], self.audio_queue, self.stop_event, logger=self.logger)
             except Exception as e:
                 self.logger.event("capture_thread_error", error=str(e))
 
-        self._capture_thread = threading.Thread(
-            target=capture_target, name="stream-capture", daemon=True
-        )
+        self._capture_thread = threading.Thread(target=capture_target, name="stream-capture", daemon=True)
         self._capture_thread.start()
 
     def _start_tts_player(self) -> None:
@@ -387,11 +379,11 @@ class StreamingVoiceService:
         def player_target():
             # Import here to avoid circular dependency
             from ..audio.playback import PlaybackConfig, start_stream
-            
+
             try:
                 playback_cfg = PlaybackConfig(**self.config.get("playback", {}))
                 stream = None
-                
+
                 while not self.stop_event.is_set():
                     try:
                         chunk = self.tts_player_queue.get(timeout=1.0)
@@ -400,29 +392,27 @@ class StreamingVoiceService:
                                 stream.close()
                                 stream = None
                             continue
-                            
+
                         if not stream:
                             stream = start_stream("pcm16", playback_cfg, self.logger)
                             if stream:
                                 self.ptt_state.transition(PTTEvent.TTS_START)
-                                
+
                         if stream:
                             stream.write(chunk)
-                            
+
                     except queue.Empty:
                         continue
                     except Exception as e:
                         self.logger.event("tts_player_error", error=str(e))
-                        
+
                 if stream:
                     stream.close()
-                    
+
             except Exception as e:
                 self.logger.event("tts_player_thread_error", error=str(e))
 
-        self._tts_player_thread = threading.Thread(
-            target=player_target, name="stream-tts-player", daemon=True
-        )
+        self._tts_player_thread = threading.Thread(target=player_target, name="stream-tts-player", daemon=True)
         self._tts_player_thread.start()
 
     async def _wait_for_completion(self) -> None:
@@ -435,14 +425,14 @@ class StreamingVoiceService:
         # Signal workers to stop
         if not self.stop_event.is_set():
             self.stop_event.set()
-            
+
         # Send sentinel to queues
         try:
             self.audio_queue.put(None)
             self.tts_player_queue.put(None)
         except Exception:
             pass
-            
+
         # Wait for threads to finish
         for thread in [self._capture_thread, self._tts_player_thread]:
             if thread and thread.is_alive():
@@ -465,7 +455,7 @@ class StreamingVoiceService:
 
         # Cleanup workers
         self._cleanup_workers()
-        
+
         # Reset state
         self.ptt_state.reset()
         self._publish_ui_state("idle")

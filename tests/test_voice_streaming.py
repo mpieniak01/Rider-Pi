@@ -1,3 +1,11 @@
+from __future__ import annotations
+
+import os
+
+import pytest
+
+pytestmark = pytest.mark.hardware
+
 """
 Tests for WebSocket streaming voice service.
 
@@ -5,7 +13,6 @@ Tests the streaming functionality using mock WebSocket connections
 to verify proper message handling, state transitions, and audio flow.
 """
 
-from __future__ import annotations
 
 import asyncio
 import json
@@ -83,6 +90,11 @@ def stream_config():
         "capture": {"backend": "alsa", "sample_rate": 16000, "channels": 1},
         "playback": {"backend": "alsa"},
     }
+
+
+def _skip_if_no_device_env():
+    if os.environ.get('RUN_DEVICE_TESTS') != '1':
+        pytest.skip('Hardware/ALSA tests disabled on CI (set RUN_DEVICE_TESTS=1 to enable).')
 
 
 def test_stream_config_creation(stream_config):
