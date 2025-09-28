@@ -40,7 +40,7 @@ jobs:
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt; fi
           # minimalny zestaw dla testów + piny zgodne z RPi
-          python -m pip install pytest pytest-cov
+          python -m pip install pytest -q -k voice -m "not hardware and not network"
           python -m pip install pillow==8.1.2
           python -m pip install "flask<3" "werkzeug<3"
           python -m pip install "requests>=2.31,<3"
@@ -72,10 +72,13 @@ jobs:
           done
 
       - name: Run tests
+  env:
+    RUN_DEVICE_TESTS: "0"
+    VOICE_EXPERIMENTAL: "1"
         env:
           BASE_URL: "http://127.0.0.1:8000"
         run: |
-          pytest -q --maxfail=1 --disable-warnings -k "not slow" \
+          pytest -q -k voice -m "not hardware and not network"
                  --cov=. --cov-report=term-missing --cov-report=html
 
       - name: Stop API

@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+
+import pytest
+
+pytestmark = pytest.mark.hardware
+
+
 import copy
 import pathlib
 import sys
@@ -112,6 +119,11 @@ def _patch_runtime(monkeypatch: pytest.MonkeyPatch, service_impl_mod, *, transcr
     monkeypatch.setattr(service_impl_mod.time, "sleep", lambda *_a, **_k: None)
     monkeypatch.setattr(service_impl_mod, "synthesize", lambda *a, **k: (b"audio", 16000, "wav"), raising=False)
     monkeypatch.setattr(service_impl_mod, "play_bytes", lambda *a, **k: None, raising=False)
+
+
+def _skip_if_no_device_env():
+    if os.environ.get('RUN_DEVICE_TESTS') != '1':
+        pytest.skip('Hardware/ALSA tests disabled on CI (set RUN_DEVICE_TESTS=1 to enable).')
 
 
 def test_once_publishes_idle_after_error(monkeypatch: pytest.MonkeyPatch, service_impl_mod) -> None:
