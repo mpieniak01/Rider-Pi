@@ -36,7 +36,11 @@ class WebSocketTransport:
         self.endpoint = endpoint
         self.auth_header = auth_header
         self.ping_interval_s = ping_interval_s
-        self.logger = logger or voice_logging.get_logger(__name__)
+        
+        if logger is None:
+            from ..common import ensure_event_logger
+            logger = ensure_event_logger(voice_logging.get_logger(__name__))
+        self.logger = logger
         
         # Connection state
         self.websocket: Any = None
@@ -223,7 +227,10 @@ class ReconnectingTransport:
         self.base_ms = base_ms
         self.max_ms = max_ms
         self.ping_interval_s = ping_interval_s
-        self.logger = logger or voice_logging.get_logger(__name__)
+        if logger is None:
+            from ..common import ensure_event_logger
+            logger = ensure_event_logger(voice_logging.get_logger(__name__))
+        self.logger = logger
         
         self.transport: WebSocketTransport | None = None
         self.retry_count = 0

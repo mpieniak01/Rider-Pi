@@ -14,8 +14,9 @@ import time
 from typing import Any
 
 from .. import voice_logging
+from ..common import ensure_event_logger
 
-logger = voice_logging.get_logger(__name__)
+logger = ensure_event_logger(voice_logging.get_logger(__name__))
 
 
 class ALSAError(RuntimeError):

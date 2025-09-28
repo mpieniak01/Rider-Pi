@@ -69,6 +69,14 @@ help:
 	@echo "  make voice-tts TEXT='Hello'         # synteza + odtworzenie"
 	@echo "  make voice-web        # uruchom serwer web UI (bind: $(VOICE_BIND))"
 	@echo ""
+	@echo "  NEW VOICE (CLI-first with ALSA pre-flight):"
+	@echo "  make voice-once-new   # pojedyncza interakcja (nowy CLI)"
+	@echo "  make voice-ptt-new    # push-to-talk (nowy CLI)"
+	@echo "  make voice-listen-new # nasłuch ciągły (nowy CLI)"
+	@echo "  make voice-diag       # diagnostyka systemu"
+	@echo "  make voice-free       # zwolnij urządzenia ALSA"
+	@echo "  make voice-smoke      # testy podstawowe (bez audio/sieci)"
+	@echo ""
 	@echo "  make test             # testy"
 	@echo "  make bench            # benchmark detekcji"
 	@echo "  make clean            # sprzątanie cache"
@@ -373,6 +381,34 @@ voice-listen-realtime:
 	  --asr transport=realtime language=pl \
 	  --chat transport=realtime \
 	  --tts transport=realtime voice=ash
+
+# ───────────────────────────────────────────────
+# NEW VOICE TARGETS (CLI-first with ALSA pre-flight)
+.PHONY: voice-once-new voice-ptt-new voice-listen-new voice-diag voice-free voice-smoke
+voice-once-new:
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new once --mode stream $(VOICE_ARGS)
+
+voice-ptt-new:
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new ptt --mode stream $(VOICE_ARGS)
+
+voice-listen-new:
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new listen --mode stream $(VOICE_ARGS)
+
+voice-diag:
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new diag --audio $(VOICE_ARGS)
+
+voice-free:
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new free $(VOICE_ARGS)
+
+voice-smoke:
+	@echo "Voice smoke tests (mock mode, no audio/network)..."
+	@echo "Testing config loading..."
+	@$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new diag --no-network --log-level ERROR
+	@echo "Testing WAV utilities..."
+	@$(PY) -m pytest tests/test_voice_audio_utils.py::TestWavUtil -v -x
+	@echo "Testing PTT state machine..."  
+	@$(PY) -m pytest tests/test_voice_ptt_state.py -v -x
+	@echo "✓ Smoke tests passed"
 
 # ───────────────────────────────────────────────
 # LCD HARD (zachowany wariant z poprawnym $$)

@@ -44,7 +44,10 @@ class PTTStateMachine:
     """PTT state machine with event handling and callbacks."""
 
     def __init__(self, logger: voice_logging.VoiceLogger | None = None):
-        self.logger = logger or voice_logging.get_logger(__name__)
+        if logger is None:
+            from ..common import ensure_event_logger
+            logger = ensure_event_logger(voice_logging.get_logger(__name__))
+        self.logger = logger
         self.state = PTTState.IDLE
         self.start_time: float = 0
         self.last_transition: float = 0
