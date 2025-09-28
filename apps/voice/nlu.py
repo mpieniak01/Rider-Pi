@@ -1,4 +1,5 @@
-"""NLU routing: command or chat."""
+# apps/voice/nlu.py
+""" "NLU routing: command or chat."""
 
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import voice_logging as voice_logging
+from .common import ensure_event_logger  # ⬅️ shim do .event(...)
 
 COMMAND_PATTERNS = {
     "stop": re.compile(r"\b(stop|stój|zatrzymaj)\b", re.IGNORECASE),
@@ -34,7 +36,8 @@ class Intent:
 class NLURouter:
     def __init__(self, config: NLUConfig, logger: voice_logging.VoiceLogger | None = None):
         self.config = config
-        self.logger = logger or voice_logging.get_logger("voice.nlu")
+        base_logger = logger or voice_logging.get_logger("voice.nlu")
+        self.logger = ensure_event_logger(base_logger)  # ⬅️ gwarantuj logger.event(...)
         self.patterns = dict(COMMAND_PATTERNS)
         for command, keywords in config.command_keywords.items():
             if command in self.patterns:

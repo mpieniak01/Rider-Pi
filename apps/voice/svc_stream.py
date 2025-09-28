@@ -29,6 +29,7 @@ except Exception:  # ImportError i inne
     websockets = _WSStub()  # type: ignore
 
 from . import voice_logging
+from .common import ensure_event_logger  # ⬅️ gwarantuj .event(...)
 from .svc_audio import capture_continuous
 from .svc_core import mask_secret
 
@@ -92,7 +93,7 @@ class StreamingVoiceService:
         self.config = config
         self.stream_cfg = StreamConfig.from_dict(config)
         self.ui_publisher = ui_publisher
-        self.logger = voice_logging.get_logger("voice.stream")
+        self.logger = ensure_event_logger(voice_logging.get_logger("voice.stream"))  # ⬅️ utwardzenie loggera
 
         # Runtime state
         self.websocket: Any = None
@@ -269,6 +270,7 @@ class StreamingVoiceService:
         tts_cfg = self.config.get("tts", {}) or {}
 
         # `turn_detection` zostaje – VAD serwerowy może pomóc, ale nie steruje PTT
+        voice = tts_cfg.get("voice") or "verse"
         session_update = {
             "type": "session.update",
             "session": {
@@ -291,6 +293,7 @@ class StreamingVoiceService:
                 "tool_choice": "auto",
                 "temperature": 0.6,
                 "max_response_output_tokens": chat_cfg.get("max_tokens", 70),
+                "voice": voice,
             },
         }
 

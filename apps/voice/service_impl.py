@@ -1,4 +1,4 @@
-# apps/voice/service.py
+## apps/voice/service_impl.py
 """Voice assistant service loop (clean, consolidated, STRICT file-only)."""
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from . import voice_logging as vlog
 from .asr import ASRConfig, Transcript, transcribe
 from .capture import AudioCapture, CaptureConfig, CaptureError
 from .chat import ChatConfig, ChatSession
-from .common import ensure_openai_key
+from .common import ensure_event_logger, ensure_openai_key  # ⬅️ DODANE
 from .kws import HotwordConfig, HotwordDetector
 from .nlu import Intent, NLUConfig, NLURouter
 from .playback import PlaybackConfig, play_ding
@@ -107,6 +107,7 @@ class VoiceService:
 
         self.config = config
         self.logger = vlog.get_logger("voice.service")
+        self.logger = ensure_event_logger(self.logger)  # ⬅️ DODANE: gwarantuj .event(...)
         self.stop_event = threading.Event()
 
         # Bus (pozwól testom wstrzyknąć fałszywego publishra)
