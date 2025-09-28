@@ -36,3 +36,7 @@ config/secret*.toml     # ignorujemy sekrety
 data/
 # jeśli chcesz zostawić pusty katalog w repo:
 #!data/.gitkeep
+*.bak*
+config/voice.local.override.toml
+scripts/fix_logger_event.py
+Sprawd?
