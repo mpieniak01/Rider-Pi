@@ -4,6 +4,10 @@
 from __future__ import annotations
 
 import os
+
+os.environ.setdefault(
+    "OPENAI_REALTIME_ENDPOINT", os.environ.get("OPENAI_REALTIME_ENDPOINT", "wss://example.invalid")
+)  # CI default dummy endpoint
 import re
 from typing import Any
 
