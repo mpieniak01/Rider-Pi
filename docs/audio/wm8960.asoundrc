@@ -1,0 +1,39 @@
+# ALSA Configuration for WM8960 Sound Card with Duplex Support
+# Place this file as ~/.asoundrc or /etc/asound.conf
+
+# Dsnoop device for capture (shared input)
+pcm.wm8960_in {
+    type dsnoop
+    ipc_key 1024
+    slave {
+        pcm "hw:wm8960soundcard,0"
+        channels 2
+        rate 16000
+        format S16_LE
+    }
+}
+
+# Dmix device for playback (shared output)  
+pcm.wm8960_out {
+    type dmix
+    ipc_key 2048
+    slave {
+        pcm "hw:wm8960soundcard,0"
+        rate 48000
+        format S16_LE
+        channels 2
+    }
+}
+
+# Asymmetric default device (capture different from playback)
+pcm.!default {
+    type asym
+    playback.pcm "wm8960_out"
+    capture.pcm  "wm8960_in"
+}
+
+# Control device (for mixer controls)
+ctl.!default {
+    type hw
+    card wm8960soundcard
+}
