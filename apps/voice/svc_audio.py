@@ -7,6 +7,7 @@ import audioop  # <-- konwersje szerokości próbek
 import math
 import subprocess
 import time
+from collections.abc import Iterator
 from typing import Any
 
 from .capture import AudioCapture, CaptureConfig, CaptureError
@@ -15,39 +16,30 @@ from .vad import WebRtcActivity, collect
 
 
 def ensure_mono_16k(audio_data: bytes, capture_cfg: CaptureConfig) -> bytes:
-    """Ensure audio is mono 16kHz S16_LE format.
-    
-    Args:
-        audio_data: Raw audio bytes from capture
-        capture_cfg: Capture configuration with channels/sample_rate info
-    
-    Returns:
-        Normalized audio bytes (mono, 16kHz, S16_LE)
+    """Zapewnij MONO @16k S16_LE na wyjściu (bez resamplingu).
+
+    Wejście: surowe PCM z capture (S16_LE, interleaved kanały).
+    Jeśli `channels==1` — zwraca bufor bez zmian.
+    Jeśli `channels>=2` — bezpieczny downmix przez audioop.tomono(..., width=2).
+    Uwaga: funkcja NIE robi resamplingu — sample_rate=16000 powinien być ustawiony w config/CLI.
     """
     if not audio_data:
         return audio_data
-    
-    channels = int(capture_cfg.channels or 1)
-    sample_rate = int(capture_cfg.sample_rate or 16000)
-    
-    # If already mono, return as-is (assuming correct format)
-    if channels == 1:
+
+    try:
+        channels = int(getattr(capture_cfg, "channels", 1) or 1)
+    except Exception:
+        channels = 1
+
+    if channels <= 1:
         return audio_data
-    
-    # Convert stereo/multi-channel to mono using audioop
-    if channels >= 2:
-        # audioop.tomono(fragment, width, lfactor, rfactor)
-        # width=2 for S16_LE (16-bit samples), equal mix (1,1)
-        try:
-            mono_data = audioop.tomono(audio_data, 2, 1, 1)
-            return mono_data
-        except audioop.error as e:
-            # Fallback: just use left channel by taking every other sample
-            if len(audio_data) >= 4:  # At least one stereo sample
-                return audio_data[::4] + audio_data[1::4]  # Interleaved L/R -> L only
-            return audio_data
-    
-    return audio_data
+
+    try:
+        # width=2 (S16_LE); miks 50/50 zmniejsza ryzyko przesteru
+        return audioop.tomono(audio_data, 2, 0.5, 0.5)
+    except Exception:
+        # Gdyby coś poszło nie tak po stronie audioop — oddaj oryginał (lepsze niż korupcja danych)
+        return audio_data
 
 
 def capture_once(
@@ -146,7 +138,7 @@ def capture_with_arecord(
     channels = max(1, int(getattr(capture_cfg, "channels", 1)))
     sample_rate = int(getattr(capture_cfg, "sample_rate", 16000))
 
-    # arecord -d requires whole seconds -> limit to max 4s, min 2s
+    # arecord -d wymaga pełnych sekund → limit 2..4 s
     duration_float = max(max_len_ms / 1000.0, 1.0) + buffer_seconds + 0.5
     duration_s = int(math.ceil(duration_float))
     duration_s = max(2, min(4, duration_s))
@@ -157,7 +149,7 @@ def capture_with_arecord(
         "-t",
         "raw",
         "-f",
-        sample_format,  # <--- respektuj format karty (np. S32_LE)
+        sample_format,  # respektuj format karty (np. S32_LE)
         "-c",
         str(channels),
         "-r",
@@ -234,7 +226,7 @@ def capture_with_arecord(
     return b""
 
 
-def _frames_from_pcm(data: bytes, frame_size: int):
+def _frames_from_pcm(data: bytes, frame_size: int) -> Iterator[bytes]:
     """Split PCM data into frames."""
     for off in range(0, len(data), frame_size):
         chunk = data[off : off + frame_size]
@@ -244,21 +236,18 @@ def _frames_from_pcm(data: bytes, frame_size: int):
 
 
 def playback_tts(cfg: dict[str, Any], audio_bytes: bytes) -> None:
-    """Play TTS result; respects volume and post_tts_mute_ms."""
-    # This would contain TTS playback logic if needed
-    # For now this is handled by the speech worker in the service
-    pass
+    """Play TTS result; respects volume and post_tts_mute_ms.
+
+    Placeholder – odtwarzanie TTS jest obsługiwane przez warstwę „speech worker”.
+    """
+    return None
 
 
-def capture_continuous(capture_cfg: dict[str, Any], chunk_size: int):
-    """Generator that yields continuous audio chunks for streaming.
+def capture_continuous(capture_cfg: dict[str, Any], chunk_size: int) -> Iterator[bytes]:
+    """Generator, który zwraca kolejne porcje audio do streamingu.
 
-    Args:
-        capture_cfg: Capture configuration dictionary
-        chunk_size: Size of audio chunks in bytes
-
-    Yields:
-        bytes: Audio chunks of specified size
+    Nie stosuje fallbacku na arecord (streaming ma działać na głównym backendzie).
+    Downmix do MONO realizujemy po stronie `svc_stream` (nadawczej) przez `ensure_mono_16k`.
     """
     config = CaptureConfig(
         backend=capture_cfg.get("backend", "alsa"),
@@ -272,28 +261,23 @@ def capture_continuous(capture_cfg: dict[str, Any], chunk_size: int):
     )
 
     try:
+        # Uwaga: AudioCapture może wymagać loggera (w tej wersji przyjmujemy, że jest opcjonalny).
         with AudioCapture(config) as capture:
             buffer = b""
             for frame in capture.frames():
                 if not frame:
                     continue
-
                 buffer += frame
-
-                # Yield chunks of requested size
                 while len(buffer) >= chunk_size:
                     yield buffer[:chunk_size]
                     buffer = buffer[chunk_size:]
-
     except Exception:
-        # Fallback do arecord wykonywany jest w ścieżce capture_once();
-        # tutaj celowo nie strumieniujemy arecord-em ad hoc.
+        # Fallback do arecord robimy tylko w ścieżce capture_once(); w streamingu nie.
         return
 
 
 def play_ding(cfg: dict[str, Any], logger) -> None:
-    """Play ding sound (gain_db, beep_pause_ms)."""
-    # Delegate to existing playback function
+    """Zagraj ding (ustawienia: gain_db, beep_pause_ms) przez backend playback."""
     playback_cfg = cfg.get("playback", {})
     play_cfg = PlaybackConfig(**playback_cfg)
     playback_play_ding(play_cfg, logger)
