@@ -411,6 +411,31 @@ voice-smoke:
 	@echo "✓ Smoke tests passed"
 
 # ───────────────────────────────────────────────
+# VOICE STREAMING TARGETS (new)
+.PHONY: voice-kill voice-stream-once voice-stream-listen
+voice-kill:
+	@echo "== Killing voice/audio processes =="
+	-@pkill -f "apps.voice.cli" 2>/dev/null || true
+	-@pkill -f "arecord" 2>/dev/null || true
+	-@pkill -f "aplay" 2>/dev/null || true
+
+voice-stream-once: voice-kill
+	@echo "== Single streaming interaction =="
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli once \
+	  --mode stream \
+	  --log-level INFO \
+	  --capture device=wm8960_in sample_rate=16000 channels=2 \
+	  --playback device=wm8960_out
+
+voice-stream-listen: voice-kill
+	@echo "== Continuous streaming (PTT mode) =="
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli ptt \
+	  --mode stream \
+	  --log-level DEBUG \
+	  --capture device=wm8960_in sample_rate=16000 channels=2 \
+	  --playback device=wm8960_out
+
+# ───────────────────────────────────────────────
 # LCD HARD (zachowany wariant z poprawnym $$)
 .PHONY: lcd-on-hard lcd-off-hard
 lcd-on-hard:
