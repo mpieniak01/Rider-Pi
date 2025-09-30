@@ -24,7 +24,7 @@ except Exception:  # pragma: no cover
 from . import voice_logging
 from .capture import CaptureConfig
 from .common import ensure_event_logger
-from .playback import play_ding  # Re-export for test compatibility
+from .playback import play_ding  # noqa: F401 - Re-export for test compatibility
 from .stream_chunks import AudioChunkProcessor, calculate_chunk_size, decode_audio_from_message
 from .svc_audio import capture_continuous
 from .transport import StreamingVoiceTransportMixin
