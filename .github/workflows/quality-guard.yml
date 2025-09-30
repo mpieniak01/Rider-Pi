@@ -16,14 +16,15 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
       - name: Install deps
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          pip install ruff pytest
+          # bazowe narzędzia + biblioteki wymagane przy imporcie modułów voice
+          pip install ruff pytest requests websockets
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
 
@@ -73,7 +74,7 @@ jobs:
             echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
-      # 3) NO-STUB (warn only): tylko dodatki, ignoruje komentarze/TODO/FIXME
+      # 3) NO-STUB (warn only) – tylko dodatki, ignoruje komentarze
       - name: NO-STUB (warn only) on additions
         if: env.ALLOW_DELETE != '1'
         shell: bash
