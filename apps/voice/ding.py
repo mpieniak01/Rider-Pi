@@ -9,14 +9,11 @@ from __future__ import annotations
 
 import io
 import math
-import os
 import wave
 from typing import TYPE_CHECKING
 
-from . import voice_logging
-
 if TYPE_CHECKING:
-    from .playback import PlaybackConfig
+    pass
 
 
 def _tone_wav(duration: float, freq: float, sample_rate: int = 16000, amplitude: float = 0.25) -> bytes:
