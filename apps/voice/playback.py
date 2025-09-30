@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 # apps/voice/playback.py
 """Audio playback helpers for the voice assistant."""
 
@@ -605,3 +606,12 @@ def _tone_wav(duration: float, freq: float, sample_rate: int = 16000, amplitude:
         wf.setframerate(sample_rate)
         wf.writeframes(bytes(buf))
     return bio.getvalue()
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Re-exports from extracted modules (for API compatibility)
+# ────────────────────────────────────────────────────────────────────────────
+
+# Re-export ding functionality (keep existing play_ding above, add alternatives)
+
+# Main functions and classes are defined above and remain primary exports

@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 ## apps/voice/service_impl.py
 """Voice assistant service loop (clean, consolidated, STRICT file-only)."""
 
@@ -751,3 +752,12 @@ def setup_signals(service: VoiceService) -> None:
 
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Re-exports from extracted modules (for API compatibility)
+# ────────────────────────────────────────────────────────────────────────────
+
+# Re-export file pipeline functionality
+
+# Main classes VoiceService, VoiceResult, SpeechTask are defined above and remain primary exports

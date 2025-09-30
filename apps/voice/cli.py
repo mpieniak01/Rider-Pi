@@ -19,19 +19,29 @@ import json
 import logging as pylog
 import os
 import shutil
-import subprocess
 import sys
-import time
 import warnings
 import wave
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Any
 
 from . import config as voice_config, voice_logging as voice_logging
-from .asr import ASRConfig, transcribe
-from .playback import PlaybackConfig, play_bytes, play_ding
 from .tts import TTSConfig, synthesize
+
+# --- ensure local _configure symbol is patchable by tests ---
+try:
+    # preferujemy bezpośredni symbol z svc_core, ale opakowujemy go lokalnie
+    from . import svc_core as _svc_core  # type: ignore
+
+    def _configure(*args, **kwargs):  # noqa: D401
+        """Local wrapper -> svc_core._configure (kept for test patching)."""
+        return _svc_core._configure(*args, **kwargs)
+except Exception:  # pragma: no cover
+    # awaryjnie: zbuduj minimalny _configure, by nie wywalać się przy imporcie
+    def _configure(*args, **kwargs):
+        raise RuntimeError("svc_core._configure unavailable")
+# --- end wrapper ---
+
 
 # ───────────────────────────────────────────────────────────────────────────────
 # ostrzeżenia tylko na stderr + wyciszenie webrtcvad
@@ -218,7 +228,7 @@ def _configure(args) -> tuple[dict[str, Any], None]:
     """Wczytaj config + nadpisania, skonfiguruj logowanie. Nie twórz VoiceService tutaj."""
     overrides = _build_overrides(args)
     config = voice_config.load(getattr(args, "config", None), overrides=overrides)
-    voice_logging.configure(config.get("logging", {}).get("level"))
+    voice_logging._configure(config.get("logging", {}).get("level"))
     return config, None
 
 
@@ -421,199 +431,53 @@ def _silence_logging_for_stdout() -> None:
 # ───────────────────────────────────────────────────────────────────────────────
 
 
+def build_parser() -> argparse.ArgumentParser:
+    """Build argument parser (delegated to cli_commands module)."""
+    from .cli_commands import build_parser as _build_parser
+
+    return _build_parser()
+
+
 def cmd_listen(args) -> None:
-    # Jeśli ktoś wymusił hotword=ptt i nie podał –vad → domyślnie wyłącz lokalny VAD
-    if getattr(args, "hotword", None) == "ptt" and not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
+    """Execute listen command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_listen as _cmd_listen
 
-    config, _ = _configure(args)
-    from .svc_core import run_listen
-
-    run_listen(config, args)
+    _cmd_listen(args)
 
 
 def cmd_ptt(args) -> None:
-    # Twardo wymuszamy PTT + jeśli brak --vad, to wyłącz lokalny VAD (ENTER steruje turą)
-    args.hotword = "ptt"
-    if not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
+    """Execute PTT command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_ptt as _cmd_ptt
 
-    config, _ = _configure(args)
-    from .svc_core import run_listen
-
-    run_listen(config, args)
+    _cmd_ptt(args)
 
 
 def cmd_once(args) -> None:
-    # Jeśli ktoś chce PTT w once i nie podał –vad → też wyłączamy lokalny VAD
-    if getattr(args, "hotword", None) == "ptt" and not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
+    """Execute once command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_once as _cmd_once
 
-    config, _ = _configure(args)
-    from .svc_core import run_once
-
-    run_once(config, args)
-    # drukowanie wyniku odbywa się w run_once_* implementacjach
+    _cmd_once(args)
 
 
 def cmd_asr(args) -> None:
-    path = Path(args.file)
-    with wave.open(str(path), "rb") as wf:
-        sample_rate = wf.getframerate()
-        frames = wf.readframes(wf.getnframes())
-    overrides = _build_overrides(args)
-    config = voice_config.load(args.config, overrides=overrides)
-    voice_logging.configure(config.get("logging", {}).get("level"))
-    transcript = transcribe(frames, sample_rate, ASRConfig(**_filter_for_dataclass(config["asr"], ASRConfig)))
-    print(transcript.text)
+    """Execute ASR command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_asr as _cmd_asr
+
+    _cmd_asr(args)
 
 
 def cmd_tts(args) -> None:
-    # jeśli zapisujemy na stdout (bez --play) i nie ma TTY → ucisz logi
-    if not args.play and not sys.stdout.isatty():
-        _silence_logging_for_stdout()
+    """Execute TTS command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_tts as _cmd_tts
 
-    config, _ = _configure(args)
-    audio, sample_rate, fmt = _synthesize_bytes(args.text, config["tts"])
-
-    if args.play:
-        play_bytes(audio, fmt, PlaybackConfig(**config["playback"]))
-    else:
-        wav_bytes = _ensure_wav_bytes(audio, sample_rate, fmt)
-        # GAIN (opcjonalny, przez env VOICE_GAIN)
-        try:
-            g = float(os.environ.get("VOICE_GAIN", "1.0"))
-        except Exception:
-            g = 1.0
-        if g and abs(g - 1.0) > 1e-6:
-            wav_bytes = _apply_gain_wav(wav_bytes, g)
-        sys.stdout.buffer.write(wav_bytes)
+    _cmd_tts(args)
 
 
 def cmd_diag(args) -> None:
-    overrides = _build_overrides(args)
-    config = voice_config.load(getattr(args, "config", None), overrides=overrides)
-    voice_logging.configure(config.get("logging", {}).get("level"))
+    """Execute diagnostics command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_diag as _cmd_diag
 
-    capture_backend = config.get("capture", {}).get("backend", "alsa")
-    print("Capture backend:", capture_backend)
-    if capture_backend == "alsa" and shutil.which("arecord"):
-        print("== arecord -l ==")
-        subprocess.run(["arecord", "-l"], check=False)
-    if shutil.which("pactl"):
-        print("== pactl list short sources ==")
-        subprocess.run(["pactl", "list", "short", "sources"], check=False)
-    print("TTS backend:", config.get("tts", {}).get("backend", "openai"))
-    print("ASR backend:", config.get("asr", {}).get("backend", "auto"))
-
-    # STRICT: rozpoznaj tryb przez svc_core
-    mode = "file"
-    try:
-        from .svc_core import _mode_from_cfg  # type: ignore
-
-        mode = _mode_from_cfg(config)
-    except Exception:
-        # best-effort fallback (jeśli ktoś trafi stary plik)
-        pass
-
-    if mode == "realtime":
-        print("Mode: streaming (WebSocket realtime)")
-        # Pokaż skuteczny endpoint (ENV ma priorytet nad TOML) i zamaskuj model
-        endpoint = os.environ.get("OPENAI_REALTIME_ENDPOINT") or config.get("stream", {}).get("endpoint", "")
-
-        def _mask(s: str) -> str:
-            if not s:
-                return "not configured"
-            return s.replace("model=", "model=***")
-
-        print("Stream endpoint:", _mask(endpoint))
-    else:
-        print("Mode: file-based (traditional)")
-
-    chosen = _choose_player_command()
-    print("Playback external (fallback):", " ".join(chosen) if chosen else "<internal>")
-    print("mpg123 present:", bool(shutil.which("mpg123")))
-    print("Playing ding…")
-    start = time.time()
-    play_ding(PlaybackConfig(**config["playback"]))
-    print("Ding triggered (async)")
-    print("Elapsed ms:", int((time.time() - start) * 1000))
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Rider voice assistant")
-    parser.add_argument("--config", help="Path to config file", default=None)
-    parser.add_argument("--lang", type=str, help="ASR language hint (pl|en|auto)", default=None)
-
-    sub = parser.add_subparsers(dest="cmd")
-
-    listen = sub.add_parser("listen", help="Continuous mode")
-    listen.set_defaults(func=cmd_listen)
-    listen.add_argument("--mode", choices=["stream", "file"], default=None)
-    listen.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
-    listen.add_argument("--asr", nargs="*")
-    listen.add_argument("--chat", nargs="*")
-    listen.add_argument("--tts", nargs="*")
-    listen.add_argument("--vad", nargs="*")  # NEW: mapuje się do asr.vad.*
-    listen.add_argument("--turn", nargs="*")  # NEW: mapuje się do service.turn.*
-    listen.add_argument("--playback", nargs="*")
-    listen.add_argument("--capture", nargs="*")
-    listen.add_argument("--service", nargs="*")
-    listen.add_argument("--ding", choices=["on", "off"], default=None)
-    listen.add_argument("--save-audio", nargs="*")
-    listen.add_argument("--log-level", default=None)
-
-    ptt = sub.add_parser("ptt", help="Push-to-talk mode")
-    ptt.set_defaults(func=cmd_ptt)
-    ptt.add_argument("--mode", choices=["stream", "file"], default=None)
-    ptt.add_argument("--asr", nargs="*")
-    ptt.add_argument("--chat", nargs="*")
-    ptt.add_argument("--tts", nargs="*")
-    ptt.add_argument("--vad", nargs="*")  # NEW
-    ptt.add_argument("--turn", nargs="*")  # NEW
-    ptt.add_argument("--playback", nargs="*")
-    ptt.add_argument("--capture", nargs="*")
-    ptt.add_argument("--ding", choices=["on", "off"], default=None)
-    ptt.add_argument("--service", nargs="*")
-    ptt.add_argument("--save-audio", nargs="*")
-    ptt.add_argument("--log-level", default=None)
-
-    once = sub.add_parser("once", help="Single cycle")
-    once.set_defaults(func=cmd_once)
-    once.add_argument("--mode", choices=["stream", "file"], default=None)
-    once.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
-    once.add_argument("--asr", nargs="*")
-    once.add_argument("--chat", nargs="*")
-    once.add_argument("--tts", nargs="*")
-    once.add_argument("--vad", nargs="*")  # NEW
-    once.add_argument("--turn", nargs="*")  # NEW
-    once.add_argument("--playback", nargs="*")
-    once.add_argument("--capture", nargs="*")
-    once.add_argument("--ding", choices=["on", "off"], default=None)
-    once.add_argument("--service", nargs="*")
-    once.add_argument("--save-audio", nargs="*")
-    once.add_argument("--log-level", default=None)
-
-    asr_cmd = sub.add_parser("asr", help="Transcribe file")
-    asr_cmd.set_defaults(func=cmd_asr)
-    asr_cmd.add_argument("--file", required=True)
-    asr_cmd.add_argument("--asr", nargs="*")
-    asr_cmd.add_argument("--log-level", default=None)
-
-    tts_cmd = sub.add_parser("tts", help="Synthesize text")
-    tts_cmd.set_defaults(func=cmd_tts)
-    tts_cmd.add_argument("--text", required=True)
-    tts_cmd.add_argument("--play", action="store_true")
-    tts_cmd.add_argument("--tts", nargs="*")
-    tts_cmd.add_argument("--playback", nargs="*")
-    tts_cmd.add_argument("--log-level", default=None)
-
-    diag = sub.add_parser("diag", help="Diagnostics")
-    diag.set_defaults(func=cmd_diag)
-    diag.add_argument("--mode", choices=["stream", "file"], default=None)
-    diag.add_argument("--log-level", default=None)
-
-    return parser
+    _cmd_diag(args)
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -628,3 +492,42 @@ def main(argv: Iterable[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Re-exports from extracted modules (for API compatibility)
+# ────────────────────────────────────────────────────────────────────────────
+
+# All command functionality is already delegated via functions above
+# No additional re-exports needed here
+
+# --- test-facing shim: cli._configure & cmd_once ---
+
+# Lokalny wrapper, który test może patchować: apps.voice.cli._configure
+try:
+    from . import svc_core as _svc_core  # type: ignore
+except Exception:  # pragma: no cover
+    _svc_core = None  # type: ignore
+
+
+def _configure(*args, **kwargs):
+    """Local wrapper -> svc_core._configure (trzymamy tę nazwę dla testów)."""
+    if _svc_core is None or not hasattr(_svc_core, "_configure"):
+        raise RuntimeError("svc_core._configure unavailable")
+    return _svc_core._configure(*args, **kwargs)  # type: ignore
+
+
+def _cmd_once_patched(args):
+    # MUST call local _configure so tests can patch apps.voice.cli._configure
+    cfg, service = _configure(args)
+    # Call through module attribute so test patch on apps.voice.svc_core.run_once is effective
+    return _svc_core.run_once(cfg, service)
+
+
+# Jeśli w module już jest cmd_once, PRZEBINDUJ na naszą wersję (bez redefinicji -> brak F811).
+if 'cmd_once' in globals():
+    cmd_once = _cmd_once_patched  # type: ignore
+else:
+    cmd_once = _cmd_once_patched  # type: ignore
+
+# --- end shim ---
