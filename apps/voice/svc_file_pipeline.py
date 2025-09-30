@@ -250,9 +250,8 @@ class VoiceProcessingPipeline:
 
     def _handle_intent(self, intent: Intent) -> str:
         """Handle intent and generate response."""
-        # This is a placeholder - actual implementation depends on chat system
-        # For now, return a simple response
-        return f"Processed intent: {intent.kind}"
+        # Route the intent through the chat system to generate a proper response
+        return self.chat_router.handle_intent(intent)
 
     def _save_pcm(self, audio: bytes) -> None:
         """Save audio data to file for debugging."""
