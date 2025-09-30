@@ -1,0 +1,106 @@
+name: Quality Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install ruff pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
+
+      # 1) Sprawdź etykiety i zapisz flagę do ENV (nie outputs)
+      - name: Check for allow-oversize label
+        shell: bash
+        run: |
+          set -euo pipefail
+          labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
+          echo "Labels from event: ${labels:-<none>}"
+          if printf '%s\n' "$labels" | grep -Fxq 'allow-oversize'; then
+            echo "ALLOW_OVERSIZE=1" >> "$GITHUB_ENV"
+          else
+            echo "ALLOW_OVERSIZE=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Enforce max 600 lines per changed Python file
+        if: env.ALLOW_OVERSIZE != '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          CHANGED="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
+          echo "Changed Python files:"
+          printf '%s\n' "$CHANGED"
+          [ -z "$CHANGED" ] && exit 0
+          MAX=600; FAIL=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            LINES="$(wc -l < "$f")"
+            if [ "$LINES" -gt "$MAX" ]; then
+              echo "::error file=$f,line=1::File has $LINES lines (max $MAX). Split it."
+              FAIL=1
+            fi
+          done <<< "$CHANGED"
+          exit $FAIL
+
+      # 2) NO-STUB – blokuje pasywne „wydmuszki” (chyba że allow-delete)
+      - name: Check for allow-delete label
+        shell: bash
+        run: |
+          set -euo pipefail
+          labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
+          if printf '%s\n' "$labels" | grep -Fxq 'allow-delete'; then
+            echo "ALLOW_DELETE=1" >> "$GITHUB_ENV"
+          else
+            echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Enforce NO-STUB on additions
+        if: env.ALLOW_DELETE != '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          bad="$(git diff -U0 "$base" "$head" -- '*.py' \
+            | grep -E '^\+[^+].*(\bpass\b|raise NotImplementedError|TODO|FIXME)' | wc -l || true)"
+          if [ "$bad" -gt 0 ]; then
+            echo "Stub smell detected in additions (pass/NotImplementedError/TODO)."
+            exit 1
+          fi
+
+      # 3) Ruff
+      - name: Ruff (lint + format check)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check
+          ruff format --check
+
+      # 4) Testy szybkie
+      - name: Tests
+        env:
+          ALSA_SKIP_LSOF: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q -k voice || pytest -q
