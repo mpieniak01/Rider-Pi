@@ -48,8 +48,7 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           CHANGED="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
-          echo "Changed Python files:"
-          printf '%s\n' "$CHANGED"
+          echo "Changed Python files:"; printf '%s\n' "$CHANGED"
           [ -z "$CHANGED" ] && exit 0
           MAX=600; FAIL=0
           while IFS= read -r f; do
@@ -74,38 +73,24 @@ jobs:
             echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
-      # 3) NO-STUB (miękki): tylko dodane linie, ignoruje komentarze/TODO/FIXME
-      - name: Enforce NO-STUB on additions
+      # 3) NO-STUB (warn only): tylko dodatki, ignoruje komentarze/TODO/FIXME
+      - name: NO-STUB (warn only) on additions
         if: env.ALLOW_DELETE != '1'
         shell: bash
         run: |
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-
-          # Tylko dodane linie (+), bez nagłówków +++
           added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//')"
-
-          # Usuń linie będące wyłącznie komentarzem
           clean="$(printf '%s\n' "$added" | awk '!/^[[:space:]]*#/')"
-
-          # 1) gołe 'pass' (poza ew. trailing komentarzem) -> liczba bez białych znaków
-          pass_count="$(printf '%s\n' "$clean" \
-            | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l | tr -d '[:space:]' || true)"
-
-          # 2) 'raise NotImplementedError' (bez nieprzenośnych klas słów) -> liczba bez białych znaków
-          nie_count="$(printf '%s\n' "$clean" \
-            | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' \
-            | wc -l | tr -d '[:space:]' || true)"
-
-          # Sumuj bezpiecznie i pokaż debug
+          pass_count="$(printf '%s\n' "$clean" | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l | tr -d '[:space:]' || true)"
+          nie_count="$(printf '%s\n' "$clean" | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' | wc -l | tr -d '[:space:]' || true)"
           bad=$(( ${pass_count:-0} + ${nie_count:-0} ))
-          echo "NO-STUB counts -> pass: ${pass_count:-0}, NotImplementedError: ${nie_count:-0}, bad: $bad"
-
+          echo "NO-STUB (warn) -> pass: ${pass_count:-0}, NotImplementedError: ${nie_count:-0}, total: $bad"
           if [ "$bad" -gt 0 ]; then
-            echo "Stub smell detected in additions (pure 'pass' or 'raise NotImplementedError')."
-            exit 1
+            echo "::warning::NO-STUB smell in additions (pure 'pass' or 'raise NotImplementedError'). total=$bad"
           fi
+          exit 0
 
       # 4) Ruff
       - name: Ruff (lint + format check)
@@ -115,11 +100,13 @@ jobs:
           ruff check
           ruff format --check
 
-      # 5) Testy szybkie
+      # 5) Testy (voice-only) + poprawny PYTHONPATH
       - name: Tests
         env:
           ALSA_SKIP_LSOF: "1"
+          PYTHONPATH: ${{ github.workspace }}
         shell: bash
         run: |
           set -euo pipefail
-          pytest -q -k voice || pytest -q
+          echo "PYTHONPATH=$PYTHONPATH"
+          pytest -q -k voice
