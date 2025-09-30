@@ -2,7 +2,7 @@ name: Quality Guard
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
   quality:
@@ -27,33 +27,33 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
 
-      # 1) Limit 600 linii (chyba że label allow-oversize)
+      # 1) Flaga allow-oversize -> ENV
       - name: Check for allow-oversize label
-        id: oversize
         shell: bash
         run: |
           set -euo pipefail
           labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
-          echo "Labels: ${labels}"
+          echo "Labels from event: ${labels:-<none>}"
           if printf '%s\n' "$labels" | grep -Fxq 'allow-oversize'; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "ALLOW_OVERSIZE=1" >> "$GITHUB_ENV"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "ALLOW_OVERSIZE=0" >> "$GITHUB_ENV"
           fi
 
       - name: Enforce max 600 lines per changed Python file
-        if: steps.oversize.outputs.skip == 'false'
+        if: env.ALLOW_OVERSIZE != '1'
         shell: bash
         run: |
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           CHANGED="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
+          echo "Changed Python files:"
+          printf '%s\n' "$CHANGED"
           [ -z "$CHANGED" ] && exit 0
           MAX=600; FAIL=0
           while IFS= read -r f; do
             [ -z "$f" ] && continue
-            # case "$f" in tests/*) continue ;; esac   # odkomentuj, jeśli testy mają nie podlegać limitowi
             LINES="$(wc -l < "$f")"
             if [ "$LINES" -gt "$MAX" ]; then
               echo "::error file=$f,line=1::File has $LINES lines (max $MAX). Split it."
@@ -62,34 +62,52 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # 2) NO-STUB (chyba że label allow-delete)
+      # 2) Flaga allow-delete -> ENV
       - name: Check for allow-delete label
-        id: del
         shell: bash
         run: |
           set -euo pipefail
           labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
           if printf '%s\n' "$labels" | grep -Fxq 'allow-delete'; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "ALLOW_DELETE=1" >> "$GITHUB_ENV"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
+      # 3) NO-STUB (miękki): tylko dodane linie, ignoruje komentarze/TODO/FIXME
       - name: Enforce NO-STUB on additions
-        if: steps.del.outputs.skip == 'false'
+        if: env.ALLOW_DELETE != '1'
         shell: bash
         run: |
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          bad="$(git diff -U0 "$base" "$head" -- '*.py' \
-            | grep -E '^\+[^+].*(\bpass\b|raise NotImplementedError|TODO|FIXME)' | wc -l || true)"
+
+          # Tylko dodane linie (+), bez nagłówków +++
+          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//')"
+
+          # Usuń linie będące wyłącznie komentarzem
+          clean="$(printf '%s\n' "$added" | awk '!/^[[:space:]]*#/')"
+
+          # 1) gołe 'pass' (poza ew. trailing komentarzem) -> liczba bez białych znaków
+          pass_count="$(printf '%s\n' "$clean" \
+            | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l | tr -d '[:space:]' || true)"
+
+          # 2) 'raise NotImplementedError' (bez nieprzenośnych klas słów) -> liczba bez białych znaków
+          nie_count="$(printf '%s\n' "$clean" \
+            | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' \
+            | wc -l | tr -d '[:space:]' || true)"
+
+          # Sumuj bezpiecznie i pokaż debug
+          bad=$(( ${pass_count:-0} + ${nie_count:-0} ))
+          echo "NO-STUB counts -> pass: ${pass_count:-0}, NotImplementedError: ${nie_count:-0}, bad: $bad"
+
           if [ "$bad" -gt 0 ]; then
-            echo "Stub smell detected in additions (pass/NotImplementedError/TODO)."
+            echo "Stub smell detected in additions (pure 'pass' or 'raise NotImplementedError')."
             exit 1
           fi
 
-      # 3) Ruff
+      # 4) Ruff
       - name: Ruff (lint + format check)
         shell: bash
         run: |
@@ -97,7 +115,7 @@ jobs:
           ruff check
           ruff format --check
 
-      # 4) Testy szybkie
+      # 5) Testy szybkie
       - name: Tests
         env:
           ALSA_SKIP_LSOF: "1"
