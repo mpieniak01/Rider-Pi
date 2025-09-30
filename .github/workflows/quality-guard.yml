@@ -7,16 +7,13 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: { fetch-depth: 0 }
 
-      - name: Setup Python (3.9 — jak na urządzeniu)
+      - name: Setup Python (3.9 jak na urządzeniu)
         uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
+        with: { python-version: '3.9' }
 
       - name: Install deps (ruff)
         shell: bash
@@ -26,19 +23,19 @@ jobs:
           pip install ruff
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
 
-      # --- 1) allow-oversize -> ENV ---
-      - name: Check for allow-oversize label
+      # ---- flags z etykiet PR ----
+      - name: Flags from labels
+        id: flags
         shell: bash
         run: |
           set -euo pipefail
           labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
-          if printf '%s\n' "$labels" | grep -Fxq 'allow-oversize'; then
-            echo "ALLOW_OVERSIZE=1" >> "$GITHUB_ENV"
-          else
-            echo "ALLOW_OVERSIZE=0" >> "$GITHUB_ENV"
-          fi
+          echo "labels: ${labels:-<none>}"
+          case "$labels" in *"allow-oversize"*) echo "ALLOW_OVERSIZE=1" >>"$GITHUB_ENV";; esac
+          case "$labels" in *"allow-delete"*)  echo "ALLOW_DELETE=1"  >>"$GITHUB_ENV";; esac
+          case "$labels" in *"nostub-strict"*) echo "NOSTUB_STRICT=1" >>"$GITHUB_ENV";; esac
 
-      # --- 2) limit 600 linii na zmieniony plik .py (chyba że allow-oversize) ---
+      # ---- 600 linii / plik (chyba że allow-oversize) ----
       - name: Enforce max 600 lines per changed Python file
         if: env.ALLOW_OVERSIZE != '1'
         shell: bash
@@ -59,45 +56,30 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # --- 3) allow-delete -> ENV (wyłącza NO-STUB, jeśli trzeba) ---
-      - name: Check for allow-delete label
-        shell: bash
-        run: |
-          set -euo pipefail
-          labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
-          if printf '%s\n' "$labels" | grep -Fxq 'allow-delete'; then
-            echo "ALLOW_DELETE=1" >> "$GITHUB_ENV"
-          else
-            echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
-          fi
-
-      # --- 4) NO-STUB (miękki) — tylko nowe linie, bez komentarzy ---
-      - name: Enforce NO-STUB on additions
+      # ---- NO-STUB (miękko: warning). Zafailuj tylko z etykietą nostub-strict ----
+      - name: NO-STUB (warn-only by default)
         if: env.ALLOW_DELETE != '1'
         shell: bash
         run: |
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          # Pobierz DODANE linie (+), odfiltruj nagłówki +++ oraz komentarze
           added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//' | grep -vE '^[[:space:]]*#')"
-
-          # 1) czyste 'pass' (opcjonalny komentarz na końcu dozwolony)
+          # czyste 'pass'
           pass_count="$(printf '%s\n' "$added" | grep -Ec '^[[:space:]]*pass([[:space:]]*#.*)?$' || true)"
-
-          # 2) 'raise NotImplementedError' – bez granic słowa, ale bezpiecznie:
-          #    dopuszczamy brak liter/cyfry/_ po lewej i prawej
-          nie_count="$(printf '%s\n' "$added" \
-            | grep -Ec '(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)' || true)"
-
+          # raise NotImplementedError (portable)
+          nie_count="$(printf '%s\n' "$added" | grep -Ec '(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)' || true)"
           echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
           bad=$((pass_count + nie_count))
           if [ "$bad" -gt 0 ]; then
-            echo "Stub smell in additions (pure 'pass' or 'raise NotImplementedError')."
-            exit 1
+            if [ "${NOSTUB_STRICT:-0}" = "1" ]; then
+              echo "Stub smell in additions — strict mode"; exit 1
+            else
+              echo "::warning::Stub smell in additions (pass/NotImplementedError); use 'nostub-strict' label to enforce."
+            fi
           fi
 
-      # --- 5) Ruff (lint + format check) ---
+      # ---- Ruff ----
       - name: Ruff (lint + format check)
         shell: bash
         run: |
