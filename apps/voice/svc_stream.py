@@ -1086,7 +1086,13 @@ def run_ptt_stream(cfg: dict[str, Any], args) -> int:
 # ────────────────────────────────────────────────────────────────────────────
 
 # Re-export transport functionality
+from .stream_transport import WebSocketTransport
 
 # Re-export audio chunk processing
+from .stream_chunks import (
+    AudioChunkProcessor,
+    calculate_chunk_size,
+    decode_audio_from_message,
+)
 
 # Main class StreamingVoiceService is defined above and remains the primary export

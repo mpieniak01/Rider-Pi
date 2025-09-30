@@ -612,5 +612,6 @@ def _tone_wav(duration: float, freq: float, sample_rate: int = 16000, amplitude:
 # ────────────────────────────────────────────────────────────────────────────
 
 # Re-export ding functionality (keep existing play_ding above, add alternatives)
+from .ding import configure_ding_from_dict, generate_beep_tone
 
 # Main functions and classes are defined above and remain primary exports
