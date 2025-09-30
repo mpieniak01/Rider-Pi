@@ -74,7 +74,7 @@ jobs:
             echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
-      # 3) NO-STUB (miękki): tylko dodane linie, bez komentarzy/TODO/FIXME
+      # 3) NO-STUB (miękki): tylko dodane linie, ignoruje komentarze/TODO/FIXME
       - name: Enforce NO-STUB on additions
         if: env.ALLOW_DELETE != '1'
         shell: bash
@@ -83,22 +83,20 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
 
-          # Tylko DODANE linie (+), bez nagłówków +++ i bez kontekstu (-U0).
+          # Tylko dodane linie (+), bez nagłówków +++
           added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//')"
 
-          # 1) gołe 'pass' (poza ew. komentarzem po '#')
-          pass_count="$(printf '%s\n' "$added" \
-            | awk ' /^[[:space:]]*#/ {next} \
-                    /^[[:space:]]*pass([[:space:]]*#.*)?$/ {c++} \
-                    END{print c+0}' )"
+          # Usuń linie będące wyłącznie komentarzem
+          clean="$(printf '%s\n' "$added" | awk '!/^[[:space:]]*#/')"
 
-          # 2) raise NotImplementedError w NIEkomentowanej linii
-          nie_count="$(printf '%s\n' "$added" \
-            | awk ' /^[[:space:]]*#/ {next} \
-                    /[[:<:]]raise[[:space:]]+NotImplementedError[[:>:]]/ {c++} \
-                    END{print c+0}' )"
+          # 1) gołe 'pass' (poza ew. trailing komentarzem)
+          pass_count="$(printf '%s\n' "$clean" \
+            | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l || true)"
 
-          # UWAGA: celowo NIE flagujemy TODO/FIXME (to tylko komentarze/znaczniki pracy)
+          # 2) 'raise NotImplementedError' (bez nieprzenośnych klas słów)
+          nie_count="$(printf '%s\n' "$clean" \
+            | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' | wc -l || true)"
+
           bad=$((pass_count + nie_count))
           echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
 
