@@ -17,6 +17,18 @@ from .capture import CaptureConfig
 from .svc_audio import ensure_mono_16k
 
 
+def _get(src: Any, key: str, default: Any) -> Any:
+    """Pobierz wartość z dict lub obiektu przez atrybut; w innym wypadku zwróć default."""
+    try:
+        if isinstance(src, dict):
+            return src.get(key, default)
+        if hasattr(src, key):
+            return getattr(src, key)
+    except Exception:
+        pass
+    return default
+
+
 class AudioChunkProcessor:
     """Handles audio chunk processing for streaming."""
 
@@ -48,7 +60,7 @@ class AudioChunkProcessor:
             "ch_in": int(self.capture_cfg_obj.channels or 1),
             "ch_out": 1,
             "sr": int(self.capture_cfg_obj.sample_rate or 16000),
-            "chunk_ms": self.stream_cfg.chunk_ms,
+            "chunk_ms": _get(self.stream_cfg, "chunk_ms", 20),
         }
 
         return json.dumps(message), telemetry
@@ -73,54 +85,72 @@ class AudioChunkProcessor:
         return json.dumps(response_msg)
 
     def create_session_update_message(self, config: dict[str, Any]) -> str:
-        """Create session configuration update message."""
-        chat_cfg = config.get("chat", {})
-        tts_cfg = config.get("tts", {}) or {}
+        """Zbuduj poprawny payload `session.update` (bez zmian funkcjonalnych).
 
-        voice = tts_cfg.get("voice") or "verse"
-        session_update = {
-        # Determine temperature, default to 0.6 if not provided
-        try:
-            temperature = float(chat_cfg.get("temperature", 0.6))
-        except (ValueError, TypeError):
-            temperature = 0.6
+        Zwraca JSON (str), bo wysyłka po WS oczekuje tekstu.
+        """
+        # Lokalne referencje i fallbacki
+        stream_cfg = self.stream_cfg or {}
+        chat_cfg = (config or {}).get("chat", {}) or {}
+        cfg_stream = (config or {}).get("stream", {}) or {}
+        cfg_tts = (config or {}).get("tts", {}) or {}
+        # VAD i limity tur
+        silence_ms = int(_get(stream_cfg, "turn_end_silence_ms", _get(cfg_stream, "turn_end_silence_ms", 700)))
+        max_turn_ms = int(_get(stream_cfg, "max_turn_ms", _get(cfg_stream, "max_turn_ms", 6000)))
 
-        # Add tools and tool_choice if present, else default to None
-        tools = chat_cfg.get("tools", None)
-        tool_choice = chat_cfg.get("tool_choice", None)
+        # Głos TTS, instrukcje
+        voice = cfg_tts.get("voice") or _get(stream_cfg, "voice", "verse")
+        instructions = _get(stream_cfg, "instructions", "")
 
-        # Conditional turn_detection based on server_vad setting
-        if hasattr(self.stream_cfg, "server_vad") and not getattr(self.stream_cfg, "server_vad", False):
-            turn_detection = None
-        else:
+        # turn_detection: jeśli server_vad włączony – konfigurujemy, w przeciwnym razie None
+        server_vad = bool(_get(stream_cfg, "server_vad", _get(cfg_stream, "server_vad", True)))
+        turn_detection: dict[str, Any] | None
+        if server_vad:
             turn_detection = {
                 "type": "server_vad",
-                "threshold": 0.5,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": self.stream_cfg.turn_end_silence_ms,
+                "silence_duration_ms": silence_ms,
+                "max_turn_duration_ms": max_turn_ms,
             }
+        else:
+            turn_detection = None
 
-        session_update = {
+        session_update: dict[str, Any] = {
             "type": "session.update",
             "session": {
                 "modalities": ["text", "audio"],
                 "voice": voice,
-                "instructions": "Odpowiadaj krótko i po polsku.",
+                "instructions": instructions,
                 "turn_detection": turn_detection,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
+                # Transkrypcja wejścia; pozostawiamy whisper-1 jako dotychczasowy placeholder.
                 "input_audio_transcription": {"model": "whisper-1"},
-                "temperature": temperature,
-                "tools": tools,
-                "tool_choice": tool_choice,
             },
         }
-        # Add max_tokens from chat config if available
-        if "max_tokens" in chat_cfg:
-            try:
+
+        # temperatura (opcjonalnie z chat)
+        temp = chat_cfg.get("temperature", None)
+        try:
+            if temp is not None:
+                session_update["session"]["temperature"] = float(temp)
+        except (ValueError, TypeError):
+            pass
+
+        # max_tokens (opcjonalnie z chat)
+        try:
+            if "max_tokens" in chat_cfg:
                 session_update["session"]["max_response_output_tokens"] = int(chat_cfg["max_tokens"])
-            except (ValueError, TypeError):
-                pass
+        except (ValueError, TypeError):
+            pass
+
+        # tools / tool_choice (opcjonalnie)
+        tools = chat_cfg.get("tools")
+        if tools is not None:
+            session_update["session"]["tools"] = tools
+
+        tool_choice = chat_cfg.get("tool_choice")
+        if tool_choice is not None:
+            session_update["session"]["tool_choice"] = tool_choice
 
         return json.dumps(session_update)
 

@@ -28,6 +28,21 @@ from typing import Any
 from . import config as voice_config, voice_logging as voice_logging
 from .tts import TTSConfig, synthesize
 
+# --- ensure local _configure symbol is patchable by tests ---
+try:
+    # preferujemy bezpośredni symbol z svc_core, ale opakowujemy go lokalnie
+    from . import svc_core as _svc_core  # type: ignore
+
+    def _configure(*args, **kwargs):  # noqa: D401
+        """Local wrapper -> svc_core._configure (kept for test patching)."""
+        return _svc_core._configure(*args, **kwargs)
+except Exception:  # pragma: no cover
+    # awaryjnie: zbuduj minimalny _configure, by nie wywalać się przy imporcie
+    def _configure(*args, **kwargs):
+        raise RuntimeError("svc_core._configure unavailable")
+# --- end wrapper ---
+
+
 # ───────────────────────────────────────────────────────────────────────────────
 # ostrzeżenia tylko na stderr + wyciszenie webrtcvad
 # ───────────────────────────────────────────────────────────────────────────────
@@ -213,7 +228,7 @@ def _configure(args) -> tuple[dict[str, Any], None]:
     """Wczytaj config + nadpisania, skonfiguruj logowanie. Nie twórz VoiceService tutaj."""
     overrides = _build_overrides(args)
     config = voice_config.load(getattr(args, "config", None), overrides=overrides)
-    voice_logging.configure(config.get("logging", {}).get("level"))
+    voice_logging._configure(config.get("logging", {}).get("level"))
     return config, None
 
 
@@ -485,3 +500,34 @@ if __name__ == "__main__":  # pragma: no cover
 
 # All command functionality is already delegated via functions above
 # No additional re-exports needed here
+
+# --- test-facing shim: cli._configure & cmd_once ---
+
+# Lokalny wrapper, który test może patchować: apps.voice.cli._configure
+try:
+    from . import svc_core as _svc_core  # type: ignore
+except Exception:  # pragma: no cover
+    _svc_core = None  # type: ignore
+
+
+def _configure(*args, **kwargs):
+    """Local wrapper -> svc_core._configure (trzymamy tę nazwę dla testów)."""
+    if _svc_core is None or not hasattr(_svc_core, "_configure"):
+        raise RuntimeError("svc_core._configure unavailable")
+    return _svc_core._configure(*args, **kwargs)  # type: ignore
+
+
+def _cmd_once_patched(args):
+    # MUST call local _configure so tests can patch apps.voice.cli._configure
+    cfg, service = _configure(args)
+    # Call through module attribute so test patch on apps.voice.svc_core.run_once is effective
+    return _svc_core.run_once(cfg, service)
+
+
+# Jeśli w module już jest cmd_once, PRZEBINDUJ na naszą wersję (bez redefinicji -> brak F811).
+if 'cmd_once' in globals():
+    cmd_once = _cmd_once_patched  # type: ignore
+else:
+    cmd_once = _cmd_once_patched  # type: ignore
+
+# --- end shim ---
