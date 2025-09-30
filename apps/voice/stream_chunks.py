@@ -79,31 +79,42 @@ class AudioChunkProcessor:
 
         voice = tts_cfg.get("voice") or "verse"
         session_update = {
-            "type": "session.update",
-            "session": {
-                "modalities": ["text", "audio"],
-                "voice": voice,
-                "instructions": "Odpowiadaj krótko i po polsku.",
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": {"model": "whisper-1"},
-            },
-        }
-        if getattr(self.stream_cfg, "server_vad", False):
-            session_update["session"]["turn_detection"] = {
+        # Determine temperature, default to 0.6 if not provided
+        try:
+            temperature = float(chat_cfg.get("temperature", 0.6))
+        except (ValueError, TypeError):
+            temperature = 0.6
+
+        # Add tools and tool_choice if present, else default to None
+        tools = chat_cfg.get("tools", None)
+        tool_choice = chat_cfg.get("tool_choice", None)
+
+        # Conditional turn_detection based on server_vad setting
+        if hasattr(self.stream_cfg, "server_vad") and not getattr(self.stream_cfg, "server_vad", False):
+            turn_detection = None
+        else:
+            turn_detection = {
                 "type": "server_vad",
                 "threshold": 0.5,
                 "prefix_padding_ms": 300,
                 "silence_duration_ms": self.stream_cfg.turn_end_silence_ms,
             }
 
-        # Add temperature from chat config if available
-        if "temperature" in chat_cfg:
-            try:
-                session_update["session"]["temperature"] = float(chat_cfg["temperature"])
-            except (ValueError, TypeError):
-                pass
-
+        session_update = {
+            "type": "session.update",
+            "session": {
+                "modalities": ["text", "audio"],
+                "voice": voice,
+                "instructions": "Odpowiadaj krótko i po polsku.",
+                "turn_detection": turn_detection,
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "input_audio_transcription": {"model": "whisper-1"},
+                "temperature": temperature,
+                "tools": tools,
+                "tool_choice": tool_choice,
+            },
+        }
         # Add max_tokens from chat config if available
         if "max_tokens" in chat_cfg:
             try:
