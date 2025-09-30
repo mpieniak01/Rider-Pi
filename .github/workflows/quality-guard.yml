@@ -23,7 +23,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
 
-      # Jeśli PR ma label 'allow-oversize', pomijamy check 600 linii.
+      # 1) 600 linii – tylko zmienione pliki (chyba że label allow-oversize)
       - name: Check for allow-oversize label
         id: oversize
         run: |
@@ -41,27 +41,50 @@ jobs:
           head="${{ github.event.pull_request.head.sha }}"
           CHANGED=$(git diff --name-only "$base" "$head" -- '*.py' | tr '\n' ' ')
           [ -z "$CHANGED" ] && exit 0
-
-          MAX=600
-          FAIL=0
+          MAX=600; FAIL=0
           for f in $CHANGED; do
-            # (opcjonalnie) pomiń testy:
-            # case "$f" in tests/*) continue ;; esac
+            # case "$f" in tests/*) continue ;; esac   # odkomentuj, jeśli testy mają nie podlegać limitowi
             LINES=$(wc -l < "$f")
             if [ "$LINES" -gt "$MAX" ]; then
-              echo "::error file=$f,line=1::File has $LINES lines (max $MAX). Split it into smaller modules."
+              echo "::error file=$f,line=1::File has $LINES lines (max $MAX). Split it."
               FAIL=1
             fi
           done
           exit $FAIL
 
+      # 2) NO-STUB – blokuje „wydmuszki” w nowych liniach (chyba że allow-delete)
+      - name: Check for allow-delete label
+        id: del
+        run: |
+          if jq -r '.pull_request.labels[].name' <<<"${{ toJson(github.event) }}" | grep -q '^allow-delete$'; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Enforce NO-STUB on additions
+        if: steps.del.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          bad=$(git diff -U0 "$base" "$head" -- '*.py' \
+            | grep -E '^\+[^+].*(\bpass\b|raise NotImplementedError|TODO|FIXME)' | wc -l || true)
+          if [ "$bad" -gt 0 ]; then
+            echo "Stub smell detected in additions (pass/NotImplementedError/TODO)."
+            exit 1
+          fi
+
+      # 3) Ruff
       - name: Ruff (lint + format check)
         run: |
           ruff check
           ruff format --check
 
+      # 4) Testy (lekko, szybko)
       - name: Tests
         env:
           ALSA_SKIP_LSOF: "1"
         run: |
           pytest -q -k voice || pytest -q
+
