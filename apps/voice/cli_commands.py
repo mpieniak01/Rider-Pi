@@ -9,16 +9,12 @@ from __future__ import annotations
 
 import argparse
 import audioop
-import base64
 import io
-import json
 import os
 import shutil
 import subprocess
 import sys
-import time
 import wave
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -154,11 +150,11 @@ def cmd_asr(args) -> None:
     with wave.open(str(path), "rb") as wf:
         sample_rate = wf.getframerate()
         frames = wf.readframes(wf.getnframes())
-    
+
     overrides = _build_overrides(args)
     config = voice_config.load(args.config, overrides=overrides)
     voice_logging.configure(config.get("logging", {}).get("level"))
-    
+
     transcript = transcribe(frames, sample_rate, ASRConfig(**_filter_for_dataclass(config["asr"], ASRConfig)))
     print(transcript.text)
 
@@ -194,7 +190,7 @@ def cmd_diag(args) -> None:
 
     capture_backend = config.get("capture", {}).get("backend", "alsa")
     print("Capture backend:", capture_backend)
-    
+
     if capture_backend == "alsa" and shutil.which("arecord"):
         print("arecord available: YES")
         try:
@@ -216,11 +212,11 @@ def cmd_diag(args) -> None:
 
     # Check mode detection
     from .svc_core import _wants_stream
-    
+
     wants_stream = _wants_stream(config, args)
     mode = "stream" if wants_stream else "file"
     print(f"Detected mode: {mode}")
-    
+
     # Show key config sections
     for section in ["asr", "chat", "tts"]:
         if section in config:
@@ -240,22 +236,26 @@ def _configure(args) -> tuple[dict[str, Any], Any]:
 def _build_overrides(args) -> dict[str, Any]:
     """Build configuration overrides from CLI arguments."""
     overrides: dict[str, Any] = {}
-    
+
     # Handle mode override
     if getattr(args, "mode", None):
         mode = args.mode
         if mode == "stream":
-            overrides.update({
-                "asr": {"transport": "realtime"},
-                "chat": {"transport": "realtime"},
-                "tts": {"transport": "realtime"},
-            })
+            overrides.update(
+                {
+                    "asr": {"transport": "realtime"},
+                    "chat": {"transport": "realtime"},
+                    "tts": {"transport": "realtime"},
+                }
+            )
         elif mode == "file":
-            overrides.update({
-                "asr": {"transport": "file"},
-                "chat": {"transport": "file"},
-                "tts": {"transport": "file"},
-            })
+            overrides.update(
+                {
+                    "asr": {"transport": "file"},
+                    "chat": {"transport": "file"},
+                    "tts": {"transport": "file"},
+                }
+            )
 
     # Handle other argument mappings
     for section in ["asr", "chat", "tts", "vad", "turn", "playback", "capture", "service"]:
@@ -306,12 +306,12 @@ def _build_overrides(args) -> dict[str, Any]:
 def _filter_for_dataclass(config_dict: dict[str, Any], dataclass_type) -> dict[str, Any]:
     """Filter config dict to only include fields valid for the given dataclass."""
     import dataclasses
-    
+
     if not dataclasses.is_dataclass(dataclass_type):
         filtered = dict(config_dict)
         filtered.pop("transport", None)
         return filtered
-    
+
     field_names = {f.name for f in dataclasses.fields(dataclass_type)}
     filtered = {k: v for k, v in config_dict.items() if k in field_names}
     return filtered
@@ -326,12 +326,12 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
     """Ensure audio data is in WAV format."""
     if fmt == "wav":
         return audio
-    
+
     # Convert PCM to WAV
     if fmt in ("pcm", "pcm16"):
         channels = 1  # Assume mono
         sampwidth = 2  # 16-bit
-        
+
         output = io.BytesIO()
         with wave.open(output, "wb") as wf:
             wf.setnchannels(channels)
@@ -339,7 +339,7 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
             wf.setframerate(sample_rate)
             wf.writeframes(audio)
         return output.getvalue()
-    
+
     return audio
 
 
@@ -347,22 +347,22 @@ def _apply_gain_wav(wav_bytes: bytes, gain: float) -> bytes:
     """Apply gain to WAV audio data."""
     if abs(gain - 1.0) < 1e-6:
         return wav_bytes
-    
+
     try:
         input_io = io.BytesIO(wav_bytes)
         with wave.open(input_io, "rb") as wf:
             frames = wf.readframes(wf.getnframes())
             params = wf.getparams()
-        
+
         # Apply gain
         gained_frames = audioop.mul(frames, 2, gain)  # Assume 16-bit
-        
+
         # Write back to WAV
         output_io = io.BytesIO()
         with wave.open(output_io, "wb") as wf:
             wf.setparams(params)
             wf.writeframes(gained_frames)
-        
+
         return output_io.getvalue()
     except Exception:
         return wav_bytes
@@ -371,4 +371,5 @@ def _apply_gain_wav(wav_bytes: bytes, gain: float) -> bytes:
 def _silence_logging_for_stdout() -> None:
     """Silence logging when outputting to stdout."""
     import logging
+
     logging.getLogger().setLevel(logging.CRITICAL)

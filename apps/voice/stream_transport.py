@@ -13,7 +13,6 @@ import uuid
 from typing import Any
 
 from . import voice_logging
-from .common import ensure_event_logger
 from .svc_core import mask_secret
 
 # WebSocket library handling with graceful fallback

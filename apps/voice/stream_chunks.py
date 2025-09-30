@@ -2,7 +2,7 @@
 """Audio chunk processing for streaming voice service.
 
 Extracted from svc_stream.py to keep files under 600 lines.
-Handles 20ms buffer management, downmix to 16kHz, audioop utilities, 
+Handles 20ms buffer management, downmix to 16kHz, audioop utilities,
 and base64 pack/unpack for WebSocket transmission.
 """
 
@@ -27,7 +27,7 @@ class AudioChunkProcessor:
 
     def process_and_encode_chunk(self, audio_data: bytes) -> tuple[str, dict[str, Any]] | None:
         """Process audio chunk and encode for WebSocket transmission.
-        
+
         Returns:
             Tuple of (JSON message string, telemetry dict) or None if no data
         """
@@ -74,7 +74,6 @@ class AudioChunkProcessor:
 
     def create_session_update_message(self, config: dict[str, Any]) -> str:
         """Create session configuration update message."""
-        asr_cfg = config.get("asr", {})
         chat_cfg = config.get("chat", {})
         tts_cfg = config.get("tts", {}) or {}
 

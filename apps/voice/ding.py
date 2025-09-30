@@ -11,7 +11,6 @@ import io
 import math
 import os
 import wave
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import voice_logging
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
     from .playback import PlaybackConfig
 
 
-def play_ding(config: "PlaybackConfig", logger: voice_logging.VoiceLogger | None = None) -> None:
+def play_ding(config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None) -> None:
     """
     Play a short "ding" sound.
     - Respects config.ding.enabled (if provided).
@@ -40,6 +39,7 @@ def play_ding(config: "PlaybackConfig", logger: voice_logging.VoiceLogger | None
     path = ding_cfg.get("path") if isinstance(ding_cfg, dict) else None
     if isinstance(path, str) and os.path.exists(path):
         from .playback import play_file
+
         play_file(path, config, logger, blocking=False)
         return
 
@@ -57,8 +57,9 @@ def play_ding(config: "PlaybackConfig", logger: voice_logging.VoiceLogger | None
     scale = 10.0 ** (gain_db / 20.0)
     amplitude = max(0.0, min(1.0, base_amp * scale))
     audio = _tone_wav(duration=0.20, freq=880.0, sample_rate=16000, amplitude=amplitude)
-    
+
     from .playback import play_bytes
+
     play_bytes(audio, "wav", config, logger, blocking=False)
 
 
@@ -100,35 +101,35 @@ def generate_beep_tone(
     gain_db: float = 0.0,
 ) -> bytes:
     """Generate a beep tone with specified parameters.
-    
+
     Args:
         frequency: Tone frequency in Hz
         duration: Duration in seconds
         sample_rate: Sample rate in Hz
         amplitude: Base amplitude (0.0 to 1.0)
         gain_db: Gain adjustment in dB
-        
+
     Returns:
         WAV audio bytes
     """
     # Apply gain
     scale = 10.0 ** (gain_db / 20.0)
     adjusted_amplitude = max(0.0, min(1.0, amplitude * scale))
-    
+
     return _tone_wav(duration, frequency, sample_rate, adjusted_amplitude)
 
 
 def configure_ding_from_dict(config_dict: dict) -> dict:
     """Configure ding settings from config dictionary.
-    
+
     Args:
         config_dict: Configuration dictionary
-        
+
     Returns:
         Processed ding configuration
     """
     ding_cfg = config_dict.get("ding", {})
-    
+
     # Set defaults
     defaults = {
         "enabled": True,
@@ -138,10 +139,10 @@ def configure_ding_from_dict(config_dict: dict) -> dict:
         "sample_rate": 16000,
         "amplitude": 0.25,
     }
-    
+
     # Merge with user config
     for key, default_value in defaults.items():
         if key not in ding_cfg:
             ding_cfg[key] = default_value
-    
+
     return ding_cfg

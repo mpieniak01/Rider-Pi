@@ -12,13 +12,13 @@ import time
 from collections.abc import Iterable
 from typing import Any
 
-from .asr import ASRConfig, Transcript, transcribe
+from .asr import ASRConfig, transcribe
 from .capture import AudioCapture, CaptureConfig
-from .chat import ChatConfig, ChatSession
+from .chat import ChatConfig
 from .kws import HotwordDetector
 from .nlu import Intent, NLURouter
 from .playback import PlaybackConfig, play_ding
-from .tts import TTSConfig, TTSStreamResult, speak
+from .tts import TTSConfig, TTSStreamResult
 from .vad import WebRtcActivity, collect
 
 
@@ -66,7 +66,7 @@ class VoiceProcessingPipeline:
 
     def execute_cycle(self, *, speak: bool = True, publish_ui_state: Any = None) -> dict[str, Any]:
         """Execute one complete voice processing cycle.
-        
+
         Returns:
             Dictionary containing cycle results (transcript, intent, reply, etc.)
         """
@@ -92,14 +92,14 @@ class VoiceProcessingPipeline:
                 if publish_ui_state:
                     publish_ui_state("idle")
                 raise RuntimeError("Hotword/PTT timeout")
-            
+
             if speak and self._should_ding():
                 play_ding(self.play_cfg, self.logger)
                 self.last_ding_ts = time.time()
                 self.mute_until_ts = max(self.mute_until_ts, time.time() + (self.beep_pause_ms / 1000.0))
                 if self.beep_delay_ms > 0:
                     time.sleep(self.beep_delay_ms / 1000.0)
-            
+
             audio = self._record_with_vad()
         else:
             with AudioCapture(self.capture_cfg, self.logger) as capture:
@@ -107,17 +107,17 @@ class VoiceProcessingPipeline:
                     if publish_ui_state:
                         publish_ui_state("idle")
                     raise RuntimeError("Hotword timeout")
-                
+
                 if speak and self._should_ding():
                     play_ding(self.play_cfg, self.logger)
                     self.last_ding_ts = time.time()
                     self.mute_until_ts = max(self.mute_until_ts, time.time() + (self.beep_pause_ms / 1000.0))
                     if self.beep_delay_ms > 0:
                         time.sleep(self.beep_delay_ms / 1000.0)
-                
+
                 if self.mic_open_delay_ms > 0:
                     time.sleep(self.mic_open_delay_ms / 1000.0)
-                
+
                 audio = collect(capture.frames(), self.vad, self.max_len)
 
         # Check for silence after beep
@@ -132,7 +132,7 @@ class VoiceProcessingPipeline:
         # Processing phase
         if publish_ui_state:
             publish_ui_state("thinking")
-        
+
         start = time.time()
 
         # ASR: Speech to text
@@ -141,7 +141,7 @@ class VoiceProcessingPipeline:
 
         # NLU: Intent recognition
         intent = self.nlu.route(transcript.text)
-        
+
         # Chat: Generate response
         reply = self._handle_intent(intent)
         reply_text = reply.strip()
@@ -172,6 +172,7 @@ class VoiceProcessingPipeline:
             try:
                 import sys
                 import termios
+
                 termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
             except Exception:
                 pass
@@ -199,14 +200,14 @@ class VoiceProcessingPipeline:
         """Check if ding should be played."""
         if not self.beep_enabled:
             return False
-        
+
         # Check PlaybackConfig.ding settings
         ding_cfg = getattr(self.play_cfg, "ding", None)
         if isinstance(ding_cfg, dict):
             ok = bool(ding_cfg.get("enabled", True))
         else:
             ok = True
-        
+
         # Cooldown check (≥1.0 s)
         if ok and (time.time() - self.last_ding_ts) < 1.0:
             return False
@@ -221,19 +222,23 @@ class VoiceProcessingPipeline:
                 try:
                     return bool(self.hotword.wait(None))
                 except TypeError:
+
                     class _NullCap:
                         def frames(self) -> Iterable[bytes]:  # pragma: no cover
                             if False:
                                 yield b""
+
                     return bool(self.hotword.wait(_NullCap()))
-        
+
         try:
             return bool(self.hotword.wait(None))
         except TypeError:
+
             class _NullCap:
                 def frames(self) -> Iterable[bytes]:  # pragma: no cover
                     if False:
                         yield b""
+
             return bool(self.hotword.wait(_NullCap()))
 
     def _record_with_vad(self) -> bytes:
@@ -253,14 +258,10 @@ class VoiceProcessingPipeline:
         """Save audio data to file for debugging."""
         import tempfile
         import time
-        
+
         timestamp = int(time.time())
         try:
-            with tempfile.NamedTemporaryFile(
-                prefix=f"voice_audio_{timestamp}_",
-                suffix=".pcm",
-                delete=False
-            ) as f:
+            with tempfile.NamedTemporaryFile(prefix=f"voice_audio_{timestamp}_", suffix=".pcm", delete=False) as f:
                 f.write(audio)
                 self.logger.event("audio.saved", path=f.name, size=len(audio))
         except Exception as e:

@@ -758,6 +758,5 @@ def setup_signals(service: VoiceService) -> None:
 # ────────────────────────────────────────────────────────────────────────────
 
 # Re-export file pipeline functionality
-from .svc_file_pipeline import VoiceProcessingPipeline
 
 # Main classes VoiceService, VoiceResult, SpeechTask are defined above and remain primary exports

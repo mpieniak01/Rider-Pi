@@ -19,18 +19,13 @@ import json
 import logging as pylog
 import os
 import shutil
-import subprocess
 import sys
-import time
 import warnings
 import wave
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Any
 
 from . import config as voice_config, voice_logging as voice_logging
-from .asr import ASRConfig, transcribe
-from .playback import PlaybackConfig, play_bytes, play_ding
 from .tts import TTSConfig, synthesize
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -421,164 +416,52 @@ def _silence_logging_for_stdout() -> None:
 # ───────────────────────────────────────────────────────────────────────────────
 
 
-def cmd_listen(args) -> None:
-    # Jeśli ktoś wymusił hotword=ptt i nie podał –vad → domyślnie wyłącz lokalny VAD
-    if getattr(args, "hotword", None) == "ptt" and not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
-
-    config, _ = _configure(args)
-    from .svc_core import run_listen
-
-    run_listen(config, args)
-
-
-def cmd_ptt(args) -> None:
-    # Twardo wymuszamy PTT + jeśli brak --vad, to wyłącz lokalny VAD (ENTER steruje turą)
-    args.hotword = "ptt"
-    if not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
-
-    config, _ = _configure(args)
-    from .svc_core import run_listen
-
-    run_listen(config, args)
-
-
-def cmd_once(args) -> None:
-    # Jeśli ktoś chce PTT w once i nie podał –vad → też wyłączamy lokalny VAD
-    if getattr(args, "hotword", None) == "ptt" and not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
-
-    config, _ = _configure(args)
-    from .svc_core import run_once
-
-    run_once(config, args)
-    # drukowanie wyniku odbywa się w run_once_* implementacjach
-
-
-def cmd_asr(args) -> None:
-    path = Path(args.file)
-    with wave.open(str(path), "rb") as wf:
-        sample_rate = wf.getframerate()
-        frames = wf.readframes(wf.getnframes())
-    overrides = _build_overrides(args)
-    config = voice_config.load(args.config, overrides=overrides)
-    voice_logging.configure(config.get("logging", {}).get("level"))
-    transcript = transcribe(frames, sample_rate, ASRConfig(**_filter_for_dataclass(config["asr"], ASRConfig)))
-    print(transcript.text)
-
-
-def cmd_tts(args) -> None:
-    # jeśli zapisujemy na stdout (bez --play) i nie ma TTY → ucisz logi
-    if not args.play and not sys.stdout.isatty():
-        _silence_logging_for_stdout()
-
-    config, _ = _configure(args)
-    audio, sample_rate, fmt = _synthesize_bytes(args.text, config["tts"])
-
-    if args.play:
-        play_bytes(audio, fmt, PlaybackConfig(**config["playback"]))
-    else:
-        wav_bytes = _ensure_wav_bytes(audio, sample_rate, fmt)
-        # GAIN (opcjonalny, przez env VOICE_GAIN)
-        try:
-            g = float(os.environ.get("VOICE_GAIN", "1.0"))
-        except Exception:
-            g = 1.0
-        if g and abs(g - 1.0) > 1e-6:
-            wav_bytes = _apply_gain_wav(wav_bytes, g)
-        sys.stdout.buffer.write(wav_bytes)
-
-
-def cmd_diag(args) -> None:
-    overrides = _build_overrides(args)
-    config = voice_config.load(getattr(args, "config", None), overrides=overrides)
-    voice_logging.configure(config.get("logging", {}).get("level"))
-
-    capture_backend = config.get("capture", {}).get("backend", "alsa")
-    print("Capture backend:", capture_backend)
-    if capture_backend == "alsa" and shutil.which("arecord"):
-        print("== arecord -l ==")
-        subprocess.run(["arecord", "-l"], check=False)
-    if shutil.which("pactl"):
-        print("== pactl list short sources ==")
-        subprocess.run(["pactl", "list", "short", "sources"], check=False)
-    print("TTS backend:", config.get("tts", {}).get("backend", "openai"))
-    print("ASR backend:", config.get("asr", {}).get("backend", "auto"))
-
-    # STRICT: rozpoznaj tryb przez svc_core
-    mode = "file"
-    try:
-        from .svc_core import _mode_from_cfg  # type: ignore
-
-        mode = _mode_from_cfg(config)
-    except Exception:
-        # best-effort fallback (jeśli ktoś trafi stary plik)
-        pass
-
-    if mode == "realtime":
-        print("Mode: streaming (WebSocket realtime)")
-        # Pokaż skuteczny endpoint (ENV ma priorytet nad TOML) i zamaskuj model
-        endpoint = os.environ.get("OPENAI_REALTIME_ENDPOINT") or config.get("stream", {}).get("endpoint", "")
-
-        def _mask(s: str) -> str:
-            if not s:
-                return "not configured"
-            return s.replace("model=", "model=***")
-
-        print("Stream endpoint:", _mask(endpoint))
-    else:
-        print("Mode: file-based (traditional)")
-
-    chosen = _choose_player_command()
-    print("Playback external (fallback):", " ".join(chosen) if chosen else "<internal>")
-    print("mpg123 present:", bool(shutil.which("mpg123")))
-    print("Playing ding…")
-    start = time.time()
-    play_ding(PlaybackConfig(**config["playback"]))
-    print("Ding triggered (async)")
-    print("Elapsed ms:", int((time.time() - start) * 1000))
-
-
 def build_parser() -> argparse.ArgumentParser:
     """Build argument parser (delegated to cli_commands module)."""
     from .cli_commands import build_parser as _build_parser
+
     return _build_parser()
 
 
 def cmd_listen(args) -> None:
     """Execute listen command (delegated to cli_commands module)."""
     from .cli_commands import cmd_listen as _cmd_listen
+
     _cmd_listen(args)
 
 
 def cmd_ptt(args) -> None:
     """Execute PTT command (delegated to cli_commands module)."""
     from .cli_commands import cmd_ptt as _cmd_ptt
+
     _cmd_ptt(args)
 
 
 def cmd_once(args) -> None:
     """Execute once command (delegated to cli_commands module)."""
     from .cli_commands import cmd_once as _cmd_once
+
     _cmd_once(args)
 
 
 def cmd_asr(args) -> None:
     """Execute ASR command (delegated to cli_commands module)."""
     from .cli_commands import cmd_asr as _cmd_asr
+
     _cmd_asr(args)
 
 
 def cmd_tts(args) -> None:
     """Execute TTS command (delegated to cli_commands module)."""
     from .cli_commands import cmd_tts as _cmd_tts
+
     _cmd_tts(args)
 
 
 def cmd_diag(args) -> None:
     """Execute diagnostics command (delegated to cli_commands module)."""
     from .cli_commands import cmd_diag as _cmd_diag
+
     _cmd_diag(args)
 
 
@@ -600,15 +483,5 @@ if __name__ == "__main__":  # pragma: no cover
 # Re-exports from extracted modules (for API compatibility)
 # ────────────────────────────────────────────────────────────────────────────
 
-# Re-export CLI command functionality
-from .cli_commands import (
-    build_parser,
-    cmd_asr,
-    cmd_diag,
-    cmd_listen,
-    cmd_once,
-    cmd_ptt,
-    cmd_tts,
-)
-
-# Main function is defined above and remains the primary export
+# All command functionality is already delegated via functions above
+# No additional re-exports needed here

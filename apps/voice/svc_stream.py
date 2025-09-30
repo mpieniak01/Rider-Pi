@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import os
 import queue
@@ -32,7 +31,7 @@ from . import voice_logging
 from .capture import CaptureConfig  # cache obiektu do ensure_mono_16k
 from .common import ensure_event_logger  # ⬅️ gwarantuj .event(...)
 from .playback import PlaybackConfig, play_ding
-from .svc_audio import capture_continuous, ensure_mono_16k
+from .svc_audio import capture_continuous
 from .svc_core import mask_secret
 
 
@@ -491,9 +490,10 @@ class StreamingVoiceService:
 
         # Use chunk processor for session message generation
         from .stream_chunks import AudioChunkProcessor
+
         chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
         session_msg = chunk_processor.create_session_update_message(self.config)
-        
+
         await self.send(session_msg)
         self.logger.event("session.configured")
 
@@ -547,14 +547,15 @@ class StreamingVoiceService:
 
         # Use chunk processor for audio encoding
         from .stream_chunks import AudioChunkProcessor
+
         chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
         result = chunk_processor.process_and_encode_chunk(audio_data)
-        
+
         if result:
             message_json, telemetry = result
             await self.send(message_json)
             self._any_audio_since_commit = True
-            
+
             # Log telemetry
             self.logger.event("stream.tx", **telemetry)
 
@@ -565,11 +566,12 @@ class StreamingVoiceService:
 
         # Use chunk processor for message generation
         from .stream_chunks import AudioChunkProcessor
+
         chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
-        
+
         commit_msg = chunk_processor.create_commit_message()
         await self.send(commit_msg)
-        
+
         response_msg = chunk_processor.create_response_message(self.config)
         await self.send(response_msg)
         self.logger.event("response.requested")
@@ -613,6 +615,7 @@ class StreamingVoiceService:
             elif msg_type == "response.output_audio.delta":
                 # Use chunk processor for audio decoding
                 from .stream_chunks import decode_audio_from_message
+
                 audio_data = decode_audio_from_message(data)
                 if audio_data:
                     self.tts_player_queue.put(audio_data)
@@ -626,6 +629,7 @@ class StreamingVoiceService:
             elif msg_type == "response.audio.delta":
                 # Use chunk processor for audio decoding
                 from .stream_chunks import decode_audio_from_message
+
                 audio_data = decode_audio_from_message(data)
                 if audio_data:
                     self.tts_player_queue.put(audio_data)
@@ -814,6 +818,7 @@ class StreamingVoiceService:
             chunk_ms = self.stream_cfg.chunk_ms
             # Use utility function for chunk size calculation
             from .stream_chunks import calculate_chunk_size
+
             chunk_size = calculate_chunk_size(sample_rate, chunk_ms)
 
             for audio_chunk in capture_continuous(capture_cfg, chunk_size):
@@ -1081,13 +1086,7 @@ def run_ptt_stream(cfg: dict[str, Any], args) -> int:
 # ────────────────────────────────────────────────────────────────────────────
 
 # Re-export transport functionality
-from .stream_transport import WebSocketTransport
 
 # Re-export audio chunk processing
-from .stream_chunks import (
-    AudioChunkProcessor,
-    calculate_chunk_size,
-    decode_audio_from_message,
-)
 
 # Main class StreamingVoiceService is defined above and remains the primary export
