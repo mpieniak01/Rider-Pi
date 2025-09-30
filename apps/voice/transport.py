@@ -127,11 +127,14 @@ class StreamingVoiceTransportMixin:
         while self.retry_count < self.stream_cfg.max_retries and not self.stop_event.is_set():  # type: ignore
             # type: ignore[attr-defined]
             delay_ms = min(
-                self.stream_cfg.base_ms * (2**self.retry_count), self.stream_cfg.max_ms  # type: ignore[attr-defined]
+                self.stream_cfg.base_ms * (2**self.retry_count),
+                self.stream_cfg.max_ms,  # type: ignore[attr-defined]
             )
             # type: ignore[attr-defined]
             self.logger.event(
-                "ws.reconnect_attempt", retry=self.retry_count + 1, delay_ms=delay_ms  # type: ignore[attr-defined]
+                "ws.reconnect_attempt",
+                retry=self.retry_count + 1,
+                delay_ms=delay_ms,  # type: ignore[attr-defined]
             )
             await asyncio.sleep(delay_ms / 1000.0)
 
@@ -143,7 +146,8 @@ class StreamingVoiceTransportMixin:
 
         # type: ignore[attr-defined]
         self.logger.event(
-            "ws.reconnect_exhausted", max_retries=self.stream_cfg.max_retries  # type: ignore[attr-defined]
+            "ws.reconnect_exhausted",
+            max_retries=self.stream_cfg.max_retries,  # type: ignore[attr-defined]
         )
         self._publish_error("ws_connect", "Connection failed after max retries")  # type: ignore[attr-defined]
         return False

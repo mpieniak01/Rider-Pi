@@ -25,10 +25,10 @@ from . import voice_logging
 from .capture import CaptureConfig
 from .common import ensure_event_logger
 from .playback import play_ding  # noqa: F401 - Re-export for test compatibility
+from .state import StreamingVoicePTTMixin
 from .stream_chunks import AudioChunkProcessor, calculate_chunk_size, decode_audio_from_message
 from .svc_audio import capture_continuous
 from .transport import StreamingVoiceTransportMixin
-from .state import StreamingVoicePTTMixin
 
 
 @dataclass
@@ -609,7 +609,6 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
     # ----- PTT: wątek czytający ENTER -----
     # _ptt_keyboard_thread() is now provided by StreamingVoicePTTMixin (state.py)
-
 
     def _stop_stream_workers(self) -> None:
         """Stop capture/TTS threads and clear queues before reconnect or shutdown."""

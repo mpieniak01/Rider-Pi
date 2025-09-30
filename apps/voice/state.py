@@ -76,7 +76,9 @@ class StreamingVoicePTTMixin:
                     self.ptt_active = False  # type: ignore[attr-defined]
                     # type: ignore[attr-defined]
                     self.logger.event(
-                        "ptt.toggle", state="stop", any_audio=self._any_audio_since_commit  # type: ignore
+                        "ptt.toggle",
+                        state="stop",
+                        any_audio=self._any_audio_since_commit,  # type: ignore
                     )
                     # commit tylko jeśli coś powiedzieliśmy
                     # type: ignore[attr-defined]
@@ -84,7 +86,8 @@ class StreamingVoicePTTMixin:
                         try:
                             # type: ignore[attr-defined]
                             fut = asyncio.run_coroutine_threadsafe(
-                                self._commit_audio_buffer(), self._loop  # type: ignore[attr-defined]
+                                self._commit_audio_buffer(),
+                                self._loop,  # type: ignore[attr-defined]
                             )
 
                             def _done(f):
