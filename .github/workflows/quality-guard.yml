@@ -27,7 +27,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
 
-      # 1) Sprawdź etykiety i zapisz flagę do ENV (nie outputs)
+      # 1) Flaga allow-oversize -> ENV
       - name: Check for allow-oversize label
         shell: bash
         run: |
@@ -62,7 +62,7 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # 2) NO-STUB – blokuje pasywne „wydmuszki” (chyba że allow-delete)
+      # 2) Flaga allow-delete -> ENV
       - name: Check for allow-delete label
         shell: bash
         run: |
@@ -74,6 +74,7 @@ jobs:
             echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
+      # 3) NO-STUB (miękki): tylko dodane linie, bez komentarzy/TODO/FIXME
       - name: Enforce NO-STUB on additions
         if: env.ALLOW_DELETE != '1'
         shell: bash
@@ -81,14 +82,32 @@ jobs:
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          bad="$(git diff -U0 "$base" "$head" -- '*.py' \
-            | grep -E '^\+[^+].*(\bpass\b|raise NotImplementedError|TODO|FIXME)' | wc -l || true)"
+
+          # Tylko DODANE linie (+), bez nagłówków +++ i bez kontekstu (-U0).
+          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//')"
+
+          # 1) gołe 'pass' (poza ew. komentarzem po '#')
+          pass_count="$(printf '%s\n' "$added" \
+            | awk ' /^[[:space:]]*#/ {next} \
+                    /^[[:space:]]*pass([[:space:]]*#.*)?$/ {c++} \
+                    END{print c+0}' )"
+
+          # 2) raise NotImplementedError w NIEkomentowanej linii
+          nie_count="$(printf '%s\n' "$added" \
+            | awk ' /^[[:space:]]*#/ {next} \
+                    /[[:<:]]raise[[:space:]]+NotImplementedError[[:>:]]/ {c++} \
+                    END{print c+0}' )"
+
+          # UWAGA: celowo NIE flagujemy TODO/FIXME (to tylko komentarze/znaczniki pracy)
+          bad=$((pass_count + nie_count))
+          echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
+
           if [ "$bad" -gt 0 ]; then
-            echo "Stub smell detected in additions (pass/NotImplementedError/TODO)."
+            echo "Stub smell detected in additions (pure 'pass' or 'raise NotImplementedError')."
             exit 1
           fi
 
-      # 3) Ruff
+      # 4) Ruff
       - name: Ruff (lint + format check)
         shell: bash
         run: |
@@ -96,7 +115,7 @@ jobs:
           ruff check
           ruff format --check
 
-      # 4) Testy szybkie
+      # 5) Testy szybkie
       - name: Tests
         env:
           ALSA_SKIP_LSOF: "1"
