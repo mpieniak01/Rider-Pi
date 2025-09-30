@@ -89,16 +89,18 @@ jobs:
           # Usuń linie będące wyłącznie komentarzem
           clean="$(printf '%s\n' "$added" | awk '!/^[[:space:]]*#/')"
 
-          # 1) gołe 'pass' (poza ew. trailing komentarzem)
+          # 1) gołe 'pass' (poza ew. trailing komentarzem) -> liczba bez białych znaków
           pass_count="$(printf '%s\n' "$clean" \
-            | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l || true)"
+            | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l | tr -d '[:space:]' || true)"
 
-          # 2) 'raise NotImplementedError' (bez nieprzenośnych klas słów)
+          # 2) 'raise NotImplementedError' (bez nieprzenośnych klas słów) -> liczba bez białych znaków
           nie_count="$(printf '%s\n' "$clean" \
-            | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' | wc -l || true)"
+            | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' \
+            | wc -l | tr -d '[:space:]' || true)"
 
-          bad=$((pass_count + nie_count))
-          echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
+          # Sumuj bezpiecznie i pokaż debug
+          bad=$(( ${pass_count:-0} + ${nie_count:-0} ))
+          echo "NO-STUB counts -> pass: ${pass_count:-0}, NotImplementedError: ${nie_count:-0}, bad: $bad"
 
           if [ "$bad" -gt 0 ]; then
             echo "Stub smell detected in additions (pure 'pass' or 'raise NotImplementedError')."
