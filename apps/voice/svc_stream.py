@@ -9,7 +9,6 @@ import queue
 import sys
 import threading
 import time
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,7 +28,7 @@ from .common import ensure_event_logger
 from .playback import PlaybackConfig, play_ding
 from .stream_chunks import AudioChunkProcessor, calculate_chunk_size, decode_audio_from_message
 from .svc_audio import capture_continuous
-from .svc_core import mask_secret
+from .transport import StreamingVoiceTransportMixin
 
 
 @dataclass
@@ -84,7 +83,7 @@ class StreamConfig:
         )
 
 
-class StreamingVoiceService:
+class StreamingVoiceService(StreamingVoiceTransportMixin):
     """WebSocket-based streaming voice service with duplex audio."""
 
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
@@ -142,49 +141,9 @@ class StreamingVoiceService:
                 sample_format=str((self.config.get("capture", {}) or {}).get("sample_format", "S16_LE")).upper(),
             )
 
-    # ---- small async wrappers (ułatwiają mocki/testy) ----
-    async def send(self, data: str) -> None:
-        if not self.websocket:
-            return
-        await self.websocket.send(data)
-
-    async def recv(self) -> str:
-        if not self.websocket:
-            raise ConnectionError("WebSocket not connected")
-        return await self.websocket.recv()
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # ZAMIANA: aclose() (async) + close() (sync wrapper) zamiast samego async close()
-    # ──────────────────────────────────────────────────────────────────────────
-    async def aclose(self) -> None:
-        """Close WebSocket connection gracefully (async)."""
-        if self.websocket:
-            try:
-                self.logger.event("ws.closing", session_id=self.session_id)
-                await self.websocket.close(code=1000)
-                await self.websocket.wait_closed()
-                self.logger.event("ws.closed", session_id=self.session_id)
-            except Exception as e:
-                self.logger.event("ws.close_error", error=str(e))
-            finally:
-                self.websocket = None
-                self.connected = False
-
-    async def close(self) -> None:
-        """Async close – zgodne z oczekiwaniami testów (awaitable)."""
-        await self.aclose()
-
-    def close_sync(self) -> None:
-        """Sync wrapper – do użycia z kodu niesynchronicznego (CLI, sygnały)."""
-        try:
-            from .utils import run_sync
-
-            run_sync(self.aclose())
-        except Exception as e:
-            try:
-                self.logger.event("ws.close_sync_error", error=str(e))
-            except Exception:
-                pass
+    # ---- Transport methods now in StreamingVoiceTransportMixin (transport.py) ----
+    # send(), recv(), aclose(), close(), close_sync(), _connect(), _reconnect_loop()
+    # are provided by the mixin
 
     # apps/voice/svc_stream.py – wewnątrz klasy StreamingVoiceService
     def __del__(self) -> None:
@@ -443,42 +402,8 @@ class StreamingVoiceService:
             self._capture_thread = None
 
     # -------------------------------------------------------------------------
-
-    async def _connect(self) -> bool:
-        try:
-            _ = websockets.connect  # type: ignore[attr-defined]
-        except Exception as e:  # pragma: no cover
-            raise RuntimeError("websockets library not available. Install with: pip install websockets") from e
-
-        try:
-            api_key = self._get_auth_header()
-            endpoint = (self.stream_cfg.endpoint or os.environ.get("OPENAI_REALTIME_ENDPOINT") or "").strip()
-            if not endpoint:
-                raise RuntimeError(
-                    "Missing realtime endpoint. Set [stream].endpoint in config or OPENAI_REALTIME_ENDPOINT env."
-                )
-
-            headers = {"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}
-            self.logger.event("ws.connect_attempt", endpoint=mask_secret(endpoint))
-
-            self.websocket = await websockets.connect(  # type: ignore[attr-defined]
-                endpoint,
-                additional_headers=headers,
-                ping_interval=self.stream_cfg.ping_interval_s,
-                ping_timeout=10,
-            )
-
-            self.connected = True
-            self.retry_count = 0
-            self.session_id = str(uuid.uuid4())
-
-            self.logger.event("ws.connected", session_id=self.session_id)
-            return True
-
-        except Exception as e:
-            self.logger.event("ws.connect_failed", error=str(e))
-            self._publish_error("ws_connect", str(e))
-            return False
+    # _connect() is now provided by StreamingVoiceTransportMixin (transport.py)
+    # -------------------------------------------------------------------------
 
     async def _send_session_update(self) -> None:
         """Send session configuration to WebSocket."""
@@ -785,22 +710,7 @@ class StreamingVoiceService:
         except Exception as _e:
             self.logger.event("stop_workers_failed", error=str(_e))
 
-    async def _reconnect_loop(self) -> bool:
-        """Handle reconnection with exponential backoff."""
-        while self.retry_count < self.stream_cfg.max_retries and not self.stop_event.is_set():
-            delay_ms = min(self.stream_cfg.base_ms * (2**self.retry_count), self.stream_cfg.max_ms)
-            self.logger.event("ws.reconnect_attempt", retry=self.retry_count + 1, delay_ms=delay_ms)
-            await asyncio.sleep(delay_ms / 1000.0)
-
-            if await self._connect():
-                await self._send_session_update()
-                return True
-
-            self.retry_count += 1
-
-        self.logger.event("ws.reconnect_exhausted", max_retries=self.stream_cfg.max_retries)
-        self._publish_error("ws_connect", "Connection failed after max retries")
-        return False
+    # _reconnect_loop() is now provided by StreamingVoiceTransportMixin (transport.py)
 
     def _audio_capture_thread(self) -> None:
         """Capture audio and feed to WebSocket queue."""
@@ -1076,8 +986,10 @@ def run_ptt_stream(cfg: dict[str, Any], args) -> int:
 # Re-exports from extracted modules (for API compatibility)
 # ────────────────────────────────────────────────────────────────────────────
 
-# Re-export transport functionality
-
-# Re-export audio chunk processing
+# ────────────────────────────────────────────────────────────────────────────
+# Re-exports from extracted modules (for API compatibility)
+# ────────────────────────────────────────────────────────────────────────────
 
 # Main class StreamingVoiceService is defined above and remains the primary export
+# Transport mixin: StreamingVoiceTransportMixin (imported above)
+# Audio chunks: AudioChunkProcessor (imported above)
