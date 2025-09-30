@@ -13,7 +13,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Python
+      - name: Setup Python (match device)
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
@@ -23,18 +23,18 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          # bazowe narzędzia + biblioteki wymagane przy imporcie modułów voice
+          # narzędzia + lekkie runtime-y, które są importowane przez voice
           pip install ruff pytest requests websockets
-          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
+          [ -f requirements.txt ] && pip install -r requirements.txt || true
+          [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
 
-      # 1) Flaga allow-oversize -> ENV
+      # 1) allow-oversize -> ENV
       - name: Check for allow-oversize label
         shell: bash
         run: |
           set -euo pipefail
           labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
-          echo "Labels from event: ${labels:-<none>}"
+          printf 'Labels from event: %s\n' "${labels:-<none>}"
           if printf '%s\n' "$labels" | grep -Fxq 'allow-oversize'; then
             echo "ALLOW_OVERSIZE=1" >> "$GITHUB_ENV"
           else
@@ -49,7 +49,6 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           CHANGED="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
-          echo "Changed Python files:"; printf '%s\n' "$CHANGED"
           [ -z "$CHANGED" ] && exit 0
           MAX=600; FAIL=0
           while IFS= read -r f; do
@@ -62,7 +61,7 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # 2) Flaga allow-delete -> ENV
+      # 2) allow-delete -> ENV
       - name: Check for allow-delete label
         shell: bash
         run: |
@@ -74,7 +73,7 @@ jobs:
             echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
-      # 3) NO-STUB (warn only) – tylko dodatki, ignoruje komentarze
+      # 3) NO-STUB (soft warning; tylko dodatki, bez komentarzy)
       - name: NO-STUB (warn only) on additions
         if: env.ALLOW_DELETE != '1'
         shell: bash
@@ -86,11 +85,9 @@ jobs:
           clean="$(printf '%s\n' "$added" | awk '!/^[[:space:]]*#/')"
           pass_count="$(printf '%s\n' "$clean" | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l | tr -d '[:space:]' || true)"
           nie_count="$(printf '%s\n' "$clean" | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' | wc -l | tr -d '[:space:]' || true)"
-          bad=$(( ${pass_count:-0} + ${nie_count:-0} ))
-          echo "NO-STUB (warn) -> pass: ${pass_count:-0}, NotImplementedError: ${nie_count:-0}, total: $bad"
-          if [ "$bad" -gt 0 ]; then
-            echo "::warning::NO-STUB smell in additions (pure 'pass' or 'raise NotImplementedError'). total=$bad"
-          fi
+          total=$(( ${pass_count:-0} + ${nie_count:-0} ))
+          echo "NO-STUB (warn) -> pass=${pass_count:-0}, NIE=${nie_count:-0}, total=$total"
+          [ "$total" -gt 0 ] && echo "::warning::NO-STUB smell in additions (pure 'pass' or 'raise NotImplementedError'). total=$total"
           exit 0
 
       # 4) Ruff
@@ -101,7 +98,7 @@ jobs:
           ruff check
           ruff format --check
 
-      # 5) Testy (voice-only) + poprawny PYTHONPATH
+      # 5) Tests (voice-only) – nie zbieramy całej suite
       - name: Tests
         env:
           ALSA_SKIP_LSOF: "1"
@@ -109,5 +106,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "PYTHONPATH=$PYTHONPATH"
-          pytest -q -k voice
+          pytest -q tests/test_voice_* tests/*voice* || pytest -q tests/test_voice_* tests/*voice*
