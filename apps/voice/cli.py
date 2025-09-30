@@ -541,79 +541,45 @@ def cmd_diag(args) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Rider voice assistant")
-    parser.add_argument("--config", help="Path to config file", default=None)
-    parser.add_argument("--lang", type=str, help="ASR language hint (pl|en|auto)", default=None)
+    """Build argument parser (delegated to cli_commands module)."""
+    from .cli_commands import build_parser as _build_parser
+    return _build_parser()
 
-    sub = parser.add_subparsers(dest="cmd")
 
-    listen = sub.add_parser("listen", help="Continuous mode")
-    listen.set_defaults(func=cmd_listen)
-    listen.add_argument("--mode", choices=["stream", "file"], default=None)
-    listen.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
-    listen.add_argument("--asr", nargs="*")
-    listen.add_argument("--chat", nargs="*")
-    listen.add_argument("--tts", nargs="*")
-    listen.add_argument("--vad", nargs="*")  # NEW: mapuje się do asr.vad.*
-    listen.add_argument("--turn", nargs="*")  # NEW: mapuje się do service.turn.*
-    listen.add_argument("--playback", nargs="*")
-    listen.add_argument("--capture", nargs="*")
-    listen.add_argument("--service", nargs="*")
-    listen.add_argument("--ding", choices=["on", "off"], default=None)
-    listen.add_argument("--save-audio", nargs="*")
-    listen.add_argument("--log-level", default=None)
+def cmd_listen(args) -> None:
+    """Execute listen command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_listen as _cmd_listen
+    _cmd_listen(args)
 
-    ptt = sub.add_parser("ptt", help="Push-to-talk mode")
-    ptt.set_defaults(func=cmd_ptt)
-    ptt.add_argument("--mode", choices=["stream", "file"], default=None)
-    ptt.add_argument("--asr", nargs="*")
-    ptt.add_argument("--chat", nargs="*")
-    ptt.add_argument("--tts", nargs="*")
-    ptt.add_argument("--vad", nargs="*")  # NEW
-    ptt.add_argument("--turn", nargs="*")  # NEW
-    ptt.add_argument("--playback", nargs="*")
-    ptt.add_argument("--capture", nargs="*")
-    ptt.add_argument("--ding", choices=["on", "off"], default=None)
-    ptt.add_argument("--service", nargs="*")
-    ptt.add_argument("--save-audio", nargs="*")
-    ptt.add_argument("--log-level", default=None)
 
-    once = sub.add_parser("once", help="Single cycle")
-    once.set_defaults(func=cmd_once)
-    once.add_argument("--mode", choices=["stream", "file"], default=None)
-    once.add_argument("--hotword", choices=["on", "off", "ptt"], default=None)
-    once.add_argument("--asr", nargs="*")
-    once.add_argument("--chat", nargs="*")
-    once.add_argument("--tts", nargs="*")
-    once.add_argument("--vad", nargs="*")  # NEW
-    once.add_argument("--turn", nargs="*")  # NEW
-    once.add_argument("--playback", nargs="*")
-    once.add_argument("--capture", nargs="*")
-    once.add_argument("--ding", choices=["on", "off"], default=None)
-    once.add_argument("--service", nargs="*")
-    once.add_argument("--save-audio", nargs="*")
-    once.add_argument("--log-level", default=None)
+def cmd_ptt(args) -> None:
+    """Execute PTT command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_ptt as _cmd_ptt
+    _cmd_ptt(args)
 
-    asr_cmd = sub.add_parser("asr", help="Transcribe file")
-    asr_cmd.set_defaults(func=cmd_asr)
-    asr_cmd.add_argument("--file", required=True)
-    asr_cmd.add_argument("--asr", nargs="*")
-    asr_cmd.add_argument("--log-level", default=None)
 
-    tts_cmd = sub.add_parser("tts", help="Synthesize text")
-    tts_cmd.set_defaults(func=cmd_tts)
-    tts_cmd.add_argument("--text", required=True)
-    tts_cmd.add_argument("--play", action="store_true")
-    tts_cmd.add_argument("--tts", nargs="*")
-    tts_cmd.add_argument("--playback", nargs="*")
-    tts_cmd.add_argument("--log-level", default=None)
+def cmd_once(args) -> None:
+    """Execute once command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_once as _cmd_once
+    _cmd_once(args)
 
-    diag = sub.add_parser("diag", help="Diagnostics")
-    diag.set_defaults(func=cmd_diag)
-    diag.add_argument("--mode", choices=["stream", "file"], default=None)
-    diag.add_argument("--log-level", default=None)
 
-    return parser
+def cmd_asr(args) -> None:
+    """Execute ASR command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_asr as _cmd_asr
+    _cmd_asr(args)
+
+
+def cmd_tts(args) -> None:
+    """Execute TTS command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_tts as _cmd_tts
+    _cmd_tts(args)
+
+
+def cmd_diag(args) -> None:
+    """Execute diagnostics command (delegated to cli_commands module)."""
+    from .cli_commands import cmd_diag as _cmd_diag
+    _cmd_diag(args)
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -628,3 +594,21 @@ def main(argv: Iterable[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Re-exports from extracted modules (for API compatibility)
+# ────────────────────────────────────────────────────────────────────────────
+
+# Re-export CLI command functionality
+from .cli_commands import (
+    build_parser,
+    cmd_asr,
+    cmd_diag,
+    cmd_listen,
+    cmd_once,
+    cmd_ptt,
+    cmd_tts,
+)
+
+# Main function is defined above and remains the primary export

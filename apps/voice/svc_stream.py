@@ -489,43 +489,19 @@ class StreamingVoiceService:
         if not self.websocket:
             return
 
-        asr_cfg = self.config.get("asr", {})
-        chat_cfg = self.config.get("chat", {})
-        tts_cfg = self.config.get("tts", {}) or {}
-
-        voice = tts_cfg.get("voice") or "verse"
-        session_update = {
-            "type": "session.update",
-            "session": {
-                "modalities": ["text", "audio"],
-                "instructions": chat_cfg.get("system_prompt", ""),
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": {
-                    "model": "whisper-1" if asr_cfg.get("backend") == "openai" else "whisper-1"
-                },
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": self.stream_cfg.turn_end_silence_ms,
-                }
-                if self.stream_cfg.server_vad
-                else None,
-                "tools": [],
-                "tool_choice": "auto",
-                "temperature": 0.6,
-                "max_response_output_tokens": chat_cfg.get("max_tokens", 70),
-                "voice": voice,
-            },
-        }
-
-        await self.send(json.dumps(session_update))
+        # Use chunk processor for session message generation
+        from .stream_chunks import AudioChunkProcessor
+        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
+        session_msg = chunk_processor.create_session_update_message(self.config)
+        
+        await self.send(session_msg)
         self.logger.event("session.configured")
 
         # Self-test TTS (opcjonalnie via env)
         if os.getenv("VOICE_TTS_SELFTEST") == "1":
             try:
+                tts_cfg = self.config.get("tts", {}) or {}
+                voice = tts_cfg.get("voice") or "verse"
                 test_msg = {
                     "type": "response.create",
                     "response": {
@@ -569,46 +545,33 @@ class StreamingVoiceService:
         if not self.websocket or not audio_data:
             return
 
-        # Normalize to mono 16kHz before transmission (bez resamplingu)
-        normalized_audio = ensure_mono_16k(audio_data, self._capture_cfg_obj)
-
-        # Convert to base64 for JSON transmission
-        audio_b64 = base64.b64encode(normalized_audio).decode("utf-8")
-        message = {"type": "input_audio_buffer.append", "audio": audio_b64}
-
-        await self.send(json.dumps(message))
-        self._any_audio_since_commit = True
-
-        # Telemetria
-        self.logger.event(
-            "stream.tx",
-            bytes_in=len(audio_data),
-            bytes_out=len(normalized_audio),
-            ch_in=int(self._capture_cfg_obj.channels or 1),
-            ch_out=1,
-            sr=int(self._capture_cfg_obj.sample_rate or 16000),
-            chunk_ms=self.stream_cfg.chunk_ms,
-        )
+        # Use chunk processor for audio encoding
+        from .stream_chunks import AudioChunkProcessor
+        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
+        result = chunk_processor.process_and_encode_chunk(audio_data)
+        
+        if result:
+            message_json, telemetry = result
+            await self.send(message_json)
+            self._any_audio_since_commit = True
+            
+            # Log telemetry
+            self.logger.event("stream.tx", **telemetry)
 
     async def _commit_audio_buffer(self) -> None:
         """Commit the audio buffer and trigger response generation."""
         if not self.websocket:
             return
 
-        await self.send(json.dumps({"type": "input_audio_buffer.commit"}))
-
-        tts_cfg = self.config.get("tts", {}) or {}
-        voice = tts_cfg.get("voice") or "verse"
-        response_msg = {
-            "type": "response.create",
-            "response": {
-                "conversation": "default",
-                "instructions": "Odpowiadaj krótko i po polsku.",
-                "modalities": ["text", "audio"],
-                "audio": {"voice": voice, "format": "pcm16"},
-            },
-        }
-        await self.send(json.dumps(response_msg))
+        # Use chunk processor for message generation
+        from .stream_chunks import AudioChunkProcessor
+        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
+        
+        commit_msg = chunk_processor.create_commit_message()
+        await self.send(commit_msg)
+        
+        response_msg = chunk_processor.create_response_message(self.config)
+        await self.send(response_msg)
         self.logger.event("response.requested")
 
     async def _handle_ws_message(self, message: str) -> None:
@@ -648,14 +611,12 @@ class StreamingVoiceService:
 
             # ----- TTS STREAM -----
             elif msg_type == "response.output_audio.delta":
-                audio_b64 = data.get("delta") or (data.get("data") or {}).get("delta")
-                if audio_b64:
-                    try:
-                        audio_data = base64.b64decode(audio_b64)
-                        self.tts_player_queue.put(audio_data)
-                        self.logger.event("tts.audio_chunk", bytes=len(audio_data))
-                    except Exception as _e:
-                        self.logger.event("tts.delta.decode_failed", error=str(_e))
+                # Use chunk processor for audio decoding
+                from .stream_chunks import decode_audio_from_message
+                audio_data = decode_audio_from_message(data)
+                if audio_data:
+                    self.tts_player_queue.put(audio_data)
+                    self.logger.event("tts.audio_chunk", bytes=len(audio_data))
 
             elif msg_type == "response.output_audio.done":
                 self.tts_player_queue.put(None)
@@ -663,14 +624,12 @@ class StreamingVoiceService:
 
             # ----- Backward compatibility (older names) -----
             elif msg_type == "response.audio.delta":
-                audio_b64 = data.get("delta")
-                if audio_b64:
-                    try:
-                        audio_data = base64.b64decode(audio_b64)
-                        self.tts_player_queue.put(audio_data)
-                        self.logger.event("tts.audio_chunk_legacy", bytes=len(audio_data))
-                    except Exception as _e:
-                        self.logger.event("tts.delta.decode_failed_legacy", error=str(_e))
+                # Use chunk processor for audio decoding
+                from .stream_chunks import decode_audio_from_message
+                audio_data = decode_audio_from_message(data)
+                if audio_data:
+                    self.tts_player_queue.put(audio_data)
+                    self.logger.event("tts.audio_chunk_legacy", bytes=len(audio_data))
 
             elif msg_type == "response.audio.done":
                 self.tts_player_queue.put(None)
@@ -853,7 +812,9 @@ class StreamingVoiceService:
             capture_cfg = self.config.get("capture", {})
             sample_rate = capture_cfg.get("sample_rate", 16000)
             chunk_ms = self.stream_cfg.chunk_ms
-            chunk_size = int(sample_rate * chunk_ms / 1000) * 2  # 16-bit samples
+            # Use utility function for chunk size calculation
+            from .stream_chunks import calculate_chunk_size
+            chunk_size = calculate_chunk_size(sample_rate, chunk_ms)
 
             for audio_chunk in capture_continuous(capture_cfg, chunk_size):
                 if self.stop_event.is_set():
@@ -1097,35 +1058,6 @@ def run_once_stream(cfg: dict[str, Any], args) -> int:
     return 0
 
 
-# --- silence cosmetic SSL close errors on Python 3.9 ---
-try:
-    import asyncio as _aio
-
-    def _silence_ssl_close(loop, context):
-        msg = str(context.get("message", ""))
-        exc = context.get("exception")
-        is_bad_fd = isinstance(exc, OSError) and getattr(exc, "errno", None) == 9
-        if ("Fatal error on SSL transport" in msg) or is_bad_fd:
-            return
-        loop.default_exception_handler(context)
-
-    try:
-        _aio.get_event_loop().set_exception_handler(_silence_ssl_close)
-    except Exception:
-        pass
-except Exception:
-    pass
-
-
-# --- silence asyncio logger noise on SSL close (Py3.9) ---
-try:
-    import logging
-
-    logging.getLogger("asyncio").setLevel(logging.CRITICAL)
-except Exception:
-    pass
-
-
 # --- Test-friendly wrappers (mockowane w testach) ---
 
 
@@ -1142,3 +1074,20 @@ def run_ptt_stream(cfg: dict[str, Any], args) -> int:
     hot["engine"] = "ptt"
     cfg2["hotword"] = hot
     return run_listen_stream(cfg2, args)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Re-exports from extracted modules (for API compatibility)
+# ────────────────────────────────────────────────────────────────────────────
+
+# Re-export transport functionality
+from .stream_transport import WebSocketTransport
+
+# Re-export audio chunk processing
+from .stream_chunks import (
+    AudioChunkProcessor,
+    calculate_chunk_size,
+    decode_audio_from_message,
+)
+
+# Main class StreamingVoiceService is defined above and remains the primary export
