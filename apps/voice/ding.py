@@ -19,50 +19,6 @@ if TYPE_CHECKING:
     from .playback import PlaybackConfig
 
 
-def play_ding(config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None) -> None:
-    """
-    Play a short "ding" sound.
-    - Respects config.ding.enabled (if provided).
-    - If config.ding.path exists – plays the file, otherwise generates 880 Hz ~200 ms tone.
-    - Supports config.ding.gain_db for generated tone.
-    """
-    logger = logger or voice_logging.get_logger("voice.playback")
-    ding_cfg = config.ding or {}
-
-    # enabled: defaults to True; set False to disable
-    enabled = ding_cfg.get("enabled")
-    if isinstance(enabled, bool) and not enabled:
-        logger.event("playback.ding.skip")
-        return
-
-    # if there's a file path – play it (without volume adjustment)
-    path = ding_cfg.get("path") if isinstance(ding_cfg, dict) else None
-    if isinstance(path, str) and os.path.exists(path):
-        from .playback import play_file
-
-        play_file(path, config, logger, blocking=False)
-        return
-
-    # generated tone – consider gain_db
-    gain_db = 0.0
-    try:
-        if "gain_db" in ding_cfg:
-            gain_db = float(ding_cfg["gain_db"])  # e.g. -3.0
-    except Exception:
-        gain_db = 0.0
-
-    logger.event("playback.ding.generate")
-    # base amplitude 0.25, scale with dB
-    base_amp = 0.25
-    scale = 10.0 ** (gain_db / 20.0)
-    amplitude = max(0.0, min(1.0, base_amp * scale))
-    audio = _tone_wav(duration=0.20, freq=880.0, sample_rate=16000, amplitude=amplitude)
-
-    from .playback import play_bytes
-
-    play_bytes(audio, "wav", config, logger, blocking=False)
-
-
 def _tone_wav(duration: float, freq: float, sample_rate: int = 16000, amplitude: float = 0.25) -> bytes:
     """Return WAV bytes (mono, 16-bit) with simple sine wave."""
     frame_count = max(1, int(duration * sample_rate))
