@@ -24,7 +24,6 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pip
           pip install ruff
-          # (opcjonalnie) soft: nie zbijaj joba jeśli brak pliku:
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
 
       # --- 1) allow-oversize -> ENV ---
@@ -72,7 +71,7 @@ jobs:
             echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
-      # --- 4) NO-STUB (miękki) — tylko nowe linie, ignoruje komentarze/TODO/FIXME ---
+      # --- 4) NO-STUB (miękki) — tylko nowe linie, bez komentarzy ---
       - name: Enforce NO-STUB on additions
         if: env.ALLOW_DELETE != '1'
         shell: bash
@@ -80,21 +79,23 @@ jobs:
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
+          # Pobierz DODANE linie (+), odfiltruj nagłówki +++ oraz komentarze
+          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//' | grep -vE '^[[:space:]]*#')"
 
-          # Nowe linie (+), bez +++ i bez kontekstu:
-          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//')"
+          # 1) czyste 'pass' (opcjonalny komentarz na końcu dozwolony)
+          pass_count="$(printf '%s\n' "$added" | grep -Ec '^[[:space:]]*pass([[:space:]]*#.*)?$' || true)"
 
-          # gołe 'pass' (bez komentarza po nim)
-          pass_count="$(printf '%s\n' "$added" \
-            | awk ' /^[[:space:]]*#/ {next} /^[[:space:]]*pass([[:space:]]*#.*)?$/ {c++} END{print c+0}' )"
-
-          # 'raise NotImplementedError' w niekomentowanej linii
+          # 2) 'raise NotImplementedError' – bez granic słowa, ale bezpiecznie:
+          #    dopuszczamy brak liter/cyfry/_ po lewej i prawej
           nie_count="$(printf '%s\n' "$added" \
-            | awk ' /^[[:space:]]*#/ {next} /[[:<:]]raise[[:space:]]+NotImplementedError[[:>:]]/ {c++} END{print c+0}' )"
+            | grep -Ec '(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)' || true)"
 
-          bad=$((pass_count + nie_count))
           echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
-          [ "$bad" -eq 0 ] || { echo "Stub smell in additions."; exit 1; }
+          bad=$((pass_count + nie_count))
+          if [ "$bad" -gt 0 ]; then
+            echo "Stub smell in additions (pure 'pass' or 'raise NotImplementedError')."
+            exit 1
+          fi
 
       # --- 5) Ruff (lint + format check) ---
       - name: Ruff (lint + format check)
