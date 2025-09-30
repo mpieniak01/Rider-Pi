@@ -20,7 +20,13 @@
 - uruchamiać długowiecznych demonów poza `systemd`,
 - wysyłać telemetrii/eksfiltracji.
 
-**Limit wielkości pliku:** ≤ 600 linii (miękkie; przy przekroczeniu – rozbij na moduły).
+### 1.1) Rozbijanie dużych plików (>600 linii)
+
+- Wydziel spójne warstwy (np. transport, state, chunks, orkiestracja).
+- MOVE-ONLY: przenoś całe klasy/funkcje, nie twórz szkieletów.
+- Zapewnij re-eksporty, aby publiczne importy działały jak wcześniej.
+- Po każdym kroku uruchom ruff i pytest.
+- **Limit wielkości pliku:** ≤ 600 linii (miękkie; przy przekroczeniu – rozbij na moduły).
 
 ---
 
