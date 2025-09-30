@@ -19,13 +19,15 @@ jobs:
           python-version: '3.11'
 
       - name: Install deps
+        shell: bash
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
           pip install ruff pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
 
-      # 1) 600 linii – tylko zmienione pliki (chyba że label allow-oversize)
+      # 1) Limit 600 linii (chyba że label allow-oversize)
       - name: Check for allow-oversize label
         id: oversize
         shell: bash
@@ -60,7 +62,7 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # 2) NO-STUB – blokuje „wydmuszki” w nowych liniach (chyba że allow-delete)
+      # 2) NO-STUB (chyba że label allow-delete)
       - name: Check for allow-delete label
         id: del
         shell: bash
@@ -91,13 +93,15 @@ jobs:
       - name: Ruff (lint + format check)
         shell: bash
         run: |
+          set -euo pipefail
           ruff check
           ruff format --check
 
-      # 4) Testy (lekko, szybko)
+      # 4) Testy szybkie
       - name: Tests
         env:
           ALSA_SKIP_LSOF: "1"
         shell: bash
         run: |
+          set -euo pipefail
           pytest -q -k voice || pytest -q
