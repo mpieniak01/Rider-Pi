@@ -6,13 +6,12 @@ import asyncio
 import json
 import os
 import queue
-import sys
 import threading
 import time
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
+# 3rd-party (wstrzykiwane do transportu przez self._ws_module)
 try:
     import websockets  # type: ignore
 except Exception:  # pragma: no cover
@@ -23,13 +22,15 @@ except Exception:  # pragma: no cover
 
     websockets = _WSStub()  # type: ignore
 
+# Lokalne moduły
 from . import voice_logging
 from .capture import CaptureConfig
 from .common import ensure_event_logger
-from .playback import PlaybackConfig, play_ding
+from .playback import play_ding  # noqa: F401 - Re-export for test compatibility
+from .state import StreamingVoicePTTMixin
 from .stream_chunks import AudioChunkProcessor, calculate_chunk_size, decode_audio_from_message
 from .svc_audio import capture_continuous
-from .svc_core import mask_secret
+from .transport import StreamingVoiceTransportMixin
 
 
 @dataclass
@@ -60,9 +61,9 @@ class StreamConfig:
     @classmethod
     def from_dict(cls, cfg: dict[str, Any]) -> StreamConfig:
         """Create StreamConfig from dictionary, handling nested structures."""
-        stream_cfg = cfg.get("stream", {})
-        reconnect_cfg = stream_cfg.get("reconnect", {})
-        audio_cfg = stream_cfg.get("audio", {})
+        stream_cfg = cfg.get("stream", {}) or {}
+        reconnect_cfg = stream_cfg.get("reconnect", {}) or {}
+        audio_cfg = stream_cfg.get("audio", {}) or {}
 
         return cls(
             protocol=stream_cfg.get("protocol", "websocket"),
@@ -84,7 +85,7 @@ class StreamConfig:
         )
 
 
-class StreamingVoiceService:
+class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin):
     """WebSocket-based streaming voice service with duplex audio."""
 
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
@@ -142,51 +143,12 @@ class StreamingVoiceService:
                 sample_format=str((self.config.get("capture", {}) or {}).get("sample_format", "S16_LE")).upper(),
             )
 
-    # ---- small async wrappers (ułatwiają mocki/testy) ----
-    async def send(self, data: str) -> None:
-        if not self.websocket:
-            return
-        await self.websocket.send(data)
+        # Umożliwia testom patchować websockets na poziomie modułu svc_stream
+        self._ws_module = websockets
 
-    async def recv(self) -> str:
-        if not self.websocket:
-            raise ConnectionError("WebSocket not connected")
-        return await self.websocket.recv()
+    # ---- Transport methods are provided by StreamingVoiceTransportMixin ----
+    # send(), recv(), aclose(), close(), close_sync(), _connect(), _reconnect_loop()
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # ZAMIANA: aclose() (async) + close() (sync wrapper) zamiast samego async close()
-    # ──────────────────────────────────────────────────────────────────────────
-    async def aclose(self) -> None:
-        """Close WebSocket connection gracefully (async)."""
-        if self.websocket:
-            try:
-                self.logger.event("ws.closing", session_id=self.session_id)
-                await self.websocket.close(code=1000)
-                await self.websocket.wait_closed()
-                self.logger.event("ws.closed", session_id=self.session_id)
-            except Exception as e:
-                self.logger.event("ws.close_error", error=str(e))
-            finally:
-                self.websocket = None
-                self.connected = False
-
-    async def close(self) -> None:
-        """Async close – zgodne z oczekiwaniami testów (awaitable)."""
-        await self.aclose()
-
-    def close_sync(self) -> None:
-        """Sync wrapper – do użycia z kodu niesynchronicznego (CLI, sygnały)."""
-        try:
-            from .utils import run_sync
-
-            run_sync(self.aclose())
-        except Exception as e:
-            try:
-                self.logger.event("ws.close_sync_error", error=str(e))
-            except Exception:
-                pass
-
-    # apps/voice/svc_stream.py – wewnątrz klasy StreamingVoiceService
     def __del__(self) -> None:
         try:
             # prefer sync
@@ -194,8 +156,6 @@ class StreamingVoiceService:
                 self.close_sync()  # best-effort
                 return
             # fallback: spróbuj bez run_sync
-            import asyncio
-
             coro = getattr(self, "aclose", None)
             if callable(coro):
                 loop = asyncio.get_event_loop()
@@ -208,14 +168,11 @@ class StreamingVoiceService:
 
     def stop(self) -> None:
         """Stop the streaming service (idempotent, test-friendly)."""
-        # Sygnał stop natychmiast – testy oczekują ustawionych flag.
-        # Ustaw event zatrzymania na początku.
+        # 0) Flagi stopu
         try:
             self.stop_event.set()
         except Exception:
             pass
-
-        # Reszta flag wewnętrznych
         try:
             self._stopping = True
             if hasattr(self, "_running"):
@@ -226,7 +183,6 @@ class StreamingVoiceService:
             if callable(log):
                 log("stream.stop")
         except Exception:
-            # Stop ma być odporny na wyjątki – testy wolą idempotentność.
             pass
 
         # 1) Jeśli mamy pętlę, spróbuj zaplanować domknięcie asynchronicznie i wyjść.
@@ -240,14 +196,12 @@ class StreamingVoiceService:
                         return
                     if hasattr(self, "close") and asyncio.iscoroutinefunction(self.close):  # type: ignore[attr-defined]
                         fut = asyncio.run_coroutine_threadsafe(self.close(), loop)  # type: ignore[misc]
-                        _ = fut  # dla mypy
+                        _ = fut  # silence linters
                         return
                 except Exception as e:
                     self.logger.event("stream.stop.schedule_failed", error=str(e))
-                    # spadamy do ścieżki synchronicznej
         except Exception as e:
             self.logger.event("stream.stop.loop_probe_failed", error=str(e))
-            # spadamy do ścieżki synchronicznej
 
         # 2) Preferuj API synchroniczne, jeśli jest dostępne.
         try:
@@ -257,85 +211,6 @@ class StreamingVoiceService:
                 return
         except Exception as e:
             self.logger.event("stream.stop.close_sync_failed", error=str(e))
-            # fallback niżej
-
-        # 3) Fallback: zablokowane domknięcie aclose()/close() bez warningów.
-        try:
-            from .utils import run_sync  # lokalny import, łatwy do mockowania
-        except Exception:
-            run_sync = None  # type: ignore[assignment]
-
-        try:
-            if hasattr(self, "aclose"):
-                if run_sync is not None:
-                    run_sync(self.aclose(), timeout=2.0)
-                else:
-                    asyncio.run(self.aclose())
-                self.logger.event("stream.stop.ok", via="aclose")
-                return
-        except Exception as e:
-            self.logger.event("stream.stop.aclose_failed", error=str(e))
-
-        try:
-            if hasattr(self, "close"):
-                is_coro_fn = (
-                    run_sync is not None
-                    and hasattr(asyncio, "iscoroutinefunction")
-                    and asyncio.iscoroutinefunction(self.close)  # type: ignore[arg-type]
-                )
-                if is_coro_fn:
-                    run_sync(self.close(), timeout=2.0)  # type: ignore[misc]
-                else:
-                    close_fn = getattr(self, "close", None)
-                    if callable(close_fn):
-                        close_fn()  # type: ignore[call-arg]
-                self.logger.event("stream.stop.ok", via="close")
-                return
-        except Exception as e:
-            self.logger.event("stream.stop.close_failed", error=str(e))
-            # Ostatecznie: nic więcej nie robimy – stop ma być idempotentny.
-        try:
-            self._stopping = True
-            if hasattr(self, "_running"):
-                self._running = False
-            if hasattr(self, "_ptt_active"):
-                self._ptt_active = False
-            log = getattr(self.logger, "event", None)
-            if callable(log):
-                log("stream.stop")
-        except Exception:
-            # Stop ma być odporny na wyjątki – testy wolą idempotentność.
-            pass
-
-        # 1) Jeśli mamy pętlę, spróbuj zaplanować domknięcie asynchronicznie i wyjść.
-        try:
-            loop = getattr(self, "_loop", None)
-            is_running = getattr(loop, "is_running", lambda: False)()
-            if is_running:
-                try:
-                    if hasattr(self, "aclose"):
-                        asyncio.run_coroutine_threadsafe(self.aclose(), loop)
-                        return
-                    if hasattr(self, "close") and asyncio.iscoroutinefunction(self.close):  # type: ignore[attr-defined]
-                        fut = asyncio.run_coroutine_threadsafe(self.close(), loop)  # type: ignore[misc]
-                        _ = fut  # dla mypy
-                        return
-                except Exception as e:
-                    self.logger.event("stream.stop.schedule_failed", error=str(e))
-                    # spadamy do ścieżki synchronicznej
-        except Exception as e:
-            self.logger.event("stream.stop.loop_probe_failed", error=str(e))
-            # spadamy do ścieżki synchronicznej
-
-        # 2) Preferuj API synchroniczne, jeśli jest dostępne.
-        try:
-            if hasattr(self, "close_sync"):
-                self.close_sync()
-                self.logger.event("stream.stop.ok", via="close_sync")
-                return
-        except Exception as e:
-            self.logger.event("stream.stop.close_sync_failed", error=str(e))
-            # fallback niżej
 
         # 3) Fallback: zablokowane domknięcie aclose()/close() bez warningów.
         try:
@@ -443,50 +318,15 @@ class StreamingVoiceService:
             self._capture_thread = None
 
     # -------------------------------------------------------------------------
-
-    async def _connect(self) -> bool:
-        try:
-            _ = websockets.connect  # type: ignore[attr-defined]
-        except Exception as e:  # pragma: no cover
-            raise RuntimeError("websockets library not available. Install with: pip install websockets") from e
-
-        try:
-            api_key = self._get_auth_header()
-            endpoint = (self.stream_cfg.endpoint or os.environ.get("OPENAI_REALTIME_ENDPOINT") or "").strip()
-            if not endpoint:
-                raise RuntimeError(
-                    "Missing realtime endpoint. Set [stream].endpoint in config or OPENAI_REALTIME_ENDPOINT env."
-                )
-
-            headers = {"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}
-            self.logger.event("ws.connect_attempt", endpoint=mask_secret(endpoint))
-
-            self.websocket = await websockets.connect(  # type: ignore[attr-defined]
-                endpoint,
-                additional_headers=headers,
-                ping_interval=self.stream_cfg.ping_interval_s,
-                ping_timeout=10,
-            )
-
-            self.connected = True
-            self.retry_count = 0
-            self.session_id = str(uuid.uuid4())
-
-            self.logger.event("ws.connected", session_id=self.session_id)
-            return True
-
-        except Exception as e:
-            self.logger.event("ws.connect_failed", error=str(e))
-            self._publish_error("ws_connect", str(e))
-            return False
+    # _connect() is now provided by StreamingVoiceTransportMixin (transport.py)
+    # -------------------------------------------------------------------------
 
     async def _send_session_update(self) -> None:
         """Send session configuration to WebSocket."""
         if not self.websocket:
             return
 
-        # Use chunk processor for session message generation
-
+        # Użyj procesora chunków do wygenerowania wiadomości sesji
         chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
         session_msg = chunk_processor.create_session_update_message(self.config)
 
@@ -541,8 +381,6 @@ class StreamingVoiceService:
         if not self.websocket or not audio_data:
             return
 
-        # Use chunk processor for audio encoding
-
         chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
         result = chunk_processor.process_and_encode_chunk(audio_data)
 
@@ -550,8 +388,6 @@ class StreamingVoiceService:
             message_json, telemetry = result
             await self.send(message_json)
             self._any_audio_since_commit = True
-
-            # Log telemetry
             self.logger.event("stream.tx", **telemetry)
 
     async def _commit_audio_buffer(self) -> None:
@@ -559,10 +395,7 @@ class StreamingVoiceService:
         if not self.websocket:
             return
 
-        # Use chunk processor for message generation
-
         chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
-
         commit_msg = chunk_processor.create_commit_message()
         await self.send(commit_msg)
 
@@ -607,8 +440,6 @@ class StreamingVoiceService:
 
             # ----- TTS STREAM -----
             elif msg_type == "response.output_audio.delta":
-                # Use chunk processor for audio decoding
-
                 audio_data = decode_audio_from_message(data)
                 if audio_data:
                     self.tts_player_queue.put(audio_data)
@@ -620,8 +451,6 @@ class StreamingVoiceService:
 
             # ----- Backward compatibility (older names) -----
             elif msg_type == "response.audio.delta":
-                # Use chunk processor for audio decoding
-
                 audio_data = decode_audio_from_message(data)
                 if audio_data:
                     self.tts_player_queue.put(audio_data)
@@ -683,73 +512,7 @@ class StreamingVoiceService:
                 break
 
     # ----- PTT: wątek czytający ENTER -----
-    def _ptt_keyboard_thread(self) -> None:
-        """Toggle PTT on each ENTER press. Start → capture; Stop → commit."""
-        self.logger.event("ptt.keyboard.start")
-        while not self.stop_event.is_set():
-            try:
-                line = sys.stdin.readline()
-                if line is None:
-                    break
-                # ENTER → toggle
-                if not self.ptt_active:
-                    # start PTT
-                    self.ptt_active = True
-                    self._any_audio_since_commit = False
-                    self._publish_ui_state("hearing")
-                    # barge-in: przerwij TTS
-                    self.barge_in_event.set()
-
-                    # Play beep if enabled
-                    service_cfg = self.config.get("service", {})
-                    if service_cfg.get("beep", False):
-                        try:
-                            playback_cfg = PlaybackConfig(**self.config.get("playback", {}))
-                            play_ding(playback_cfg, self.logger)
-                        except Exception as e:
-                            self.logger.event("ptt.beep.error", error=str(e))
-
-                    # Upewnij się, że capture żyje (WM8960/dsnoop potrafi się zamknąć)
-                    if not (self._capture_thread and self._capture_thread.is_alive()):
-                        try:
-                            th = threading.Thread(
-                                target=self._audio_capture_thread,
-                                name="voice-stream-capture",
-                                daemon=True,
-                            )
-                            th.start()
-                            self._capture_thread = th
-                            self.logger.event("capture.restart.ptt")
-                        except Exception as e:
-                            self.logger.event("capture.restart.error", error=str(e))
-
-                    self.logger.event("ptt.toggle", state="start")
-                else:
-                    # stop PTT
-                    self.ptt_active = False
-                    self.logger.event("ptt.toggle", state="stop", any_audio=self._any_audio_since_commit)
-                    # commit tylko jeśli coś powiedzieliśmy
-                    if self._any_audio_since_commit and self._loop and self.connected:
-                        try:
-                            fut = asyncio.run_coroutine_threadsafe(self._commit_audio_buffer(), self._loop)
-
-                            def _done(f):
-                                try:
-                                    f.result()
-                                except Exception as e:
-                                    self.logger.event("ptt.commit.future_error", error=str(e))
-
-                            fut.add_done_callback(_done)
-                            self.logger.event("ptt.commit.dispatched")
-                        except Exception as e:
-                            self.logger.event("ptt.commit.error", error=str(e))
-                    # UI „thinking” aż do response
-                    self._publish_ui_state("thinking")
-                    self._any_audio_since_commit = False
-            except Exception as e:
-                self.logger.event("ptt.keyboard.error", error=str(e))
-                break
-        self.logger.event("ptt.keyboard.exit")
+    # _ptt_keyboard_thread() is now provided by StreamingVoicePTTMixin (state.py)
 
     def _stop_stream_workers(self) -> None:
         """Stop capture/TTS threads and clear queues before reconnect or shutdown."""
@@ -785,22 +548,7 @@ class StreamingVoiceService:
         except Exception as _e:
             self.logger.event("stop_workers_failed", error=str(_e))
 
-    async def _reconnect_loop(self) -> bool:
-        """Handle reconnection with exponential backoff."""
-        while self.retry_count < self.stream_cfg.max_retries and not self.stop_event.is_set():
-            delay_ms = min(self.stream_cfg.base_ms * (2**self.retry_count), self.stream_cfg.max_ms)
-            self.logger.event("ws.reconnect_attempt", retry=self.retry_count + 1, delay_ms=delay_ms)
-            await asyncio.sleep(delay_ms / 1000.0)
-
-            if await self._connect():
-                await self._send_session_update()
-                return True
-
-            self.retry_count += 1
-
-        self.logger.event("ws.reconnect_exhausted", max_retries=self.stream_cfg.max_retries)
-        self._publish_error("ws_connect", "Connection failed after max retries")
-        return False
+    # _reconnect_loop() is now provided by StreamingVoiceTransportMixin (transport.py)
 
     def _audio_capture_thread(self) -> None:
         """Capture audio and feed to WebSocket queue."""
@@ -808,7 +556,6 @@ class StreamingVoiceService:
             capture_cfg = self.config.get("capture", {})
             sample_rate = capture_cfg.get("sample_rate", 16000)
             chunk_ms = self.stream_cfg.chunk_ms
-            # Use utility function for chunk size calculation
 
             chunk_size = calculate_chunk_size(sample_rate, chunk_ms)
 
@@ -1075,9 +822,7 @@ def run_ptt_stream(cfg: dict[str, Any], args) -> int:
 # ────────────────────────────────────────────────────────────────────────────
 # Re-exports from extracted modules (for API compatibility)
 # ────────────────────────────────────────────────────────────────────────────
-
-# Re-export transport functionality
-
-# Re-export audio chunk processing
-
 # Main class StreamingVoiceService is defined above and remains the primary export
+# Transport mixin: StreamingVoiceTransportMixin (imported above)
+# PTT state mixin: StreamingVoicePTTMixin (imported above)
+# Audio chunks: AudioChunkProcessor (imported above)
