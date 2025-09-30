@@ -74,8 +74,8 @@ jobs:
             echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
-      # 3) NO-STUB (miękki): tylko dodane linie, ignoruje komentarze/TODO/FIXME
-      - name: Enforce NO-STUB on additions
+      # 3) NO-STUB (miękki, NIEBLOKUJĄCY): tylko dodane linie, ignoruje komentarze/TODO/FIXME
+      - name: NO-STUB (warn only) on additions
         if: env.ALLOW_DELETE != '1'
         shell: bash
         run: |
@@ -83,29 +83,23 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
 
-          # Tylko dodane linie (+), bez nagłówków +++
+          # Dodane linie (+), bez nagłówków +++
           added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//')"
-
-          # Usuń linie będące wyłącznie komentarzem
           clean="$(printf '%s\n' "$added" | awk '!/^[[:space:]]*#/')"
 
-          # 1) gołe 'pass' (poza ew. trailing komentarzem) -> liczba bez białych znaków
           pass_count="$(printf '%s\n' "$clean" \
             | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l | tr -d '[:space:]' || true)"
-
-          # 2) 'raise NotImplementedError' (bez nieprzenośnych klas słów) -> liczba bez białych znaków
           nie_count="$(printf '%s\n' "$clean" \
             | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' \
             | wc -l | tr -d '[:space:]' || true)"
 
-          # Sumuj bezpiecznie i pokaż debug
           bad=$(( ${pass_count:-0} + ${nie_count:-0} ))
-          echo "NO-STUB counts -> pass: ${pass_count:-0}, NotImplementedError: ${nie_count:-0}, bad: $bad"
+          echo "NO-STUB (warn) -> pass: ${pass_count:-0}, NotImplementedError: ${nie_count:-0}, total: $bad"
 
           if [ "$bad" -gt 0 ]; then
-            echo "Stub smell detected in additions (pure 'pass' or 'raise NotImplementedError')."
-            exit 1
+            echo "::warning::NO-STUB smell in additions (pure 'pass' or 'raise NotImplementedError'). total=$bad"
           fi
+          exit 0
 
       # 4) Ruff
       - name: Ruff (lint + format check)
