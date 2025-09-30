@@ -6,7 +6,6 @@ import asyncio
 import json
 import os
 import queue
-import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -25,10 +24,11 @@ except Exception:  # pragma: no cover
 from . import voice_logging
 from .capture import CaptureConfig
 from .common import ensure_event_logger
-from .playback import PlaybackConfig, play_ding
+from .playback import play_ding  # Re-export for test compatibility
 from .stream_chunks import AudioChunkProcessor, calculate_chunk_size, decode_audio_from_message
 from .svc_audio import capture_continuous
 from .transport import StreamingVoiceTransportMixin
+from .state import StreamingVoicePTTMixin
 
 
 @dataclass
@@ -83,7 +83,7 @@ class StreamConfig:
         )
 
 
-class StreamingVoiceService(StreamingVoiceTransportMixin):
+class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin):
     """WebSocket-based streaming voice service with duplex audio."""
 
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
@@ -608,73 +608,8 @@ class StreamingVoiceService(StreamingVoiceTransportMixin):
                 break
 
     # ----- PTT: wątek czytający ENTER -----
-    def _ptt_keyboard_thread(self) -> None:
-        """Toggle PTT on each ENTER press. Start → capture; Stop → commit."""
-        self.logger.event("ptt.keyboard.start")
-        while not self.stop_event.is_set():
-            try:
-                line = sys.stdin.readline()
-                if line is None:
-                    break
-                # ENTER → toggle
-                if not self.ptt_active:
-                    # start PTT
-                    self.ptt_active = True
-                    self._any_audio_since_commit = False
-                    self._publish_ui_state("hearing")
-                    # barge-in: przerwij TTS
-                    self.barge_in_event.set()
+    # _ptt_keyboard_thread() is now provided by StreamingVoicePTTMixin (state.py)
 
-                    # Play beep if enabled
-                    service_cfg = self.config.get("service", {})
-                    if service_cfg.get("beep", False):
-                        try:
-                            playback_cfg = PlaybackConfig(**self.config.get("playback", {}))
-                            play_ding(playback_cfg, self.logger)
-                        except Exception as e:
-                            self.logger.event("ptt.beep.error", error=str(e))
-
-                    # Upewnij się, że capture żyje (WM8960/dsnoop potrafi się zamknąć)
-                    if not (self._capture_thread and self._capture_thread.is_alive()):
-                        try:
-                            th = threading.Thread(
-                                target=self._audio_capture_thread,
-                                name="voice-stream-capture",
-                                daemon=True,
-                            )
-                            th.start()
-                            self._capture_thread = th
-                            self.logger.event("capture.restart.ptt")
-                        except Exception as e:
-                            self.logger.event("capture.restart.error", error=str(e))
-
-                    self.logger.event("ptt.toggle", state="start")
-                else:
-                    # stop PTT
-                    self.ptt_active = False
-                    self.logger.event("ptt.toggle", state="stop", any_audio=self._any_audio_since_commit)
-                    # commit tylko jeśli coś powiedzieliśmy
-                    if self._any_audio_since_commit and self._loop and self.connected:
-                        try:
-                            fut = asyncio.run_coroutine_threadsafe(self._commit_audio_buffer(), self._loop)
-
-                            def _done(f):
-                                try:
-                                    f.result()
-                                except Exception as e:
-                                    self.logger.event("ptt.commit.future_error", error=str(e))
-
-                            fut.add_done_callback(_done)
-                            self.logger.event("ptt.commit.dispatched")
-                        except Exception as e:
-                            self.logger.event("ptt.commit.error", error=str(e))
-                    # UI „thinking” aż do response
-                    self._publish_ui_state("thinking")
-                    self._any_audio_since_commit = False
-            except Exception as e:
-                self.logger.event("ptt.keyboard.error", error=str(e))
-                break
-        self.logger.event("ptt.keyboard.exit")
 
     def _stop_stream_workers(self) -> None:
         """Stop capture/TTS threads and clear queues before reconnect or shutdown."""
@@ -986,10 +921,7 @@ def run_ptt_stream(cfg: dict[str, Any], args) -> int:
 # Re-exports from extracted modules (for API compatibility)
 # ────────────────────────────────────────────────────────────────────────────
 
-# ────────────────────────────────────────────────────────────────────────────
-# Re-exports from extracted modules (for API compatibility)
-# ────────────────────────────────────────────────────────────────────────────
-
 # Main class StreamingVoiceService is defined above and remains the primary export
 # Transport mixin: StreamingVoiceTransportMixin (imported above)
+# PTT state mixin: StreamingVoicePTTMixin (imported above)
 # Audio chunks: AudioChunkProcessor (imported above)
