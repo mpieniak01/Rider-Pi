@@ -121,12 +121,21 @@ def calculate_chunk_size(sample_rate: int, chunk_ms: int) -> int:
 def decode_audio_from_message(message_data: dict[str, Any]) -> bytes | None:
     """Decode base64 audio data from WebSocket message."""
     try:
-        if message_data.get("type") == "response.audio.delta":
+        msg_type = message_data.get("type")
+        if msg_type == "response.audio.delta":
             audio_b64 = message_data.get("delta", "")
             if audio_b64:
                 return base64.b64decode(audio_b64)
-        elif message_data.get("type") == "response.audio":
+        elif msg_type == "response.audio":
             audio_b64 = message_data.get("audio", "")
+            if audio_b64:
+                return base64.b64decode(audio_b64)
+        elif msg_type == "response.output_audio.delta":
+            # Try top-level 'delta'
+            audio_b64 = message_data.get("delta", "")
+            if not audio_b64:
+                # Try nested 'data' dict
+                audio_b64 = (message_data.get("data") or {}).get("delta", "")
             if audio_b64:
                 return base64.b64decode(audio_b64)
     except Exception:
