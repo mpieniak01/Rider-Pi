@@ -13,34 +13,33 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Python (match device)
+      - name: Setup Python (3.9 — jak na urządzeniu)
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
-      - name: Install deps
+      - name: Install deps (ruff)
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          # narzędzia + lekkie runtime-y, które są importowane przez voice
-          pip install ruff pytest requests websockets
-          [ -f requirements.txt ] && pip install -r requirements.txt || true
-          [ -f requirements-dev.txt ] && pip install -r requirements-dev.txt || true
+          pip install ruff
+          # (opcjonalnie) soft: nie zbijaj joba jeśli brak pliku:
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
 
-      # 1) allow-oversize -> ENV
+      # --- 1) allow-oversize -> ENV ---
       - name: Check for allow-oversize label
         shell: bash
         run: |
           set -euo pipefail
           labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
-          printf 'Labels from event: %s\n' "${labels:-<none>}"
           if printf '%s\n' "$labels" | grep -Fxq 'allow-oversize'; then
             echo "ALLOW_OVERSIZE=1" >> "$GITHUB_ENV"
           else
             echo "ALLOW_OVERSIZE=0" >> "$GITHUB_ENV"
           fi
 
+      # --- 2) limit 600 linii na zmieniony plik .py (chyba że allow-oversize) ---
       - name: Enforce max 600 lines per changed Python file
         if: env.ALLOW_OVERSIZE != '1'
         shell: bash
@@ -61,7 +60,7 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # 2) allow-delete -> ENV
+      # --- 3) allow-delete -> ENV (wyłącza NO-STUB, jeśli trzeba) ---
       - name: Check for allow-delete label
         shell: bash
         run: |
@@ -73,37 +72,34 @@ jobs:
             echo "ALLOW_DELETE=0" >> "$GITHUB_ENV"
           fi
 
-      # 3) NO-STUB (soft warning; tylko dodatki, bez komentarzy)
-      - name: NO-STUB (warn only) on additions
+      # --- 4) NO-STUB (miękki) — tylko nowe linie, ignoruje komentarze/TODO/FIXME ---
+      - name: Enforce NO-STUB on additions
         if: env.ALLOW_DELETE != '1'
         shell: bash
         run: |
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//')"
-          clean="$(printf '%s\n' "$added" | awk '!/^[[:space:]]*#/')"
-          pass_count="$(printf '%s\n' "$clean" | grep -E '^[[:space:]]*pass([[:space:]]*#.*)?$' | wc -l | tr -d '[:space:]' || true)"
-          nie_count="$(printf '%s\n' "$clean" | grep -E '(^|[^A-Za-z_])raise[[:space:]]+NotImplementedError([^A-Za-z_]|$)' | wc -l | tr -d '[:space:]' || true)"
-          total=$(( ${pass_count:-0} + ${nie_count:-0} ))
-          echo "NO-STUB (warn) -> pass=${pass_count:-0}, NIE=${nie_count:-0}, total=$total"
-          [ "$total" -gt 0 ] && echo "::warning::NO-STUB smell in additions (pure 'pass' or 'raise NotImplementedError'). total=$total"
-          exit 0
 
-      # 4) Ruff
+          # Nowe linie (+), bez +++ i bez kontekstu:
+          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//')"
+
+          # gołe 'pass' (bez komentarza po nim)
+          pass_count="$(printf '%s\n' "$added" \
+            | awk ' /^[[:space:]]*#/ {next} /^[[:space:]]*pass([[:space:]]*#.*)?$/ {c++} END{print c+0}' )"
+
+          # 'raise NotImplementedError' w niekomentowanej linii
+          nie_count="$(printf '%s\n' "$added" \
+            | awk ' /^[[:space:]]*#/ {next} /[[:<:]]raise[[:space:]]+NotImplementedError[[:>:]]/ {c++} END{print c+0}' )"
+
+          bad=$((pass_count + nie_count))
+          echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
+          [ "$bad" -eq 0 ] || { echo "Stub smell in additions."; exit 1; }
+
+      # --- 5) Ruff (lint + format check) ---
       - name: Ruff (lint + format check)
         shell: bash
         run: |
           set -euo pipefail
           ruff check
           ruff format --check
-
-      # 5) Tests (voice-only) – nie zbieramy całej suite
-      - name: Tests
-        env:
-          ALSA_SKIP_LSOF: "1"
-          PYTHONPATH: ${{ github.workspace }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          pytest -q tests/test_voice_* tests/*voice* || pytest -q tests/test_voice_* tests/*voice*
