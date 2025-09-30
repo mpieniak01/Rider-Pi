@@ -84,17 +84,18 @@ class AudioChunkProcessor:
                 "modalities": ["text", "audio"],
                 "voice": voice,
                 "instructions": "Odpowiadaj krótko i po polsku.",
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": self.stream_cfg.turn_end_silence_ms,
-                },
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
                 "input_audio_transcription": {"model": "whisper-1"},
             },
         }
+        if getattr(self.stream_cfg, "server_vad", False):
+            session_update["session"]["turn_detection"] = {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": self.stream_cfg.turn_end_silence_ms,
+            }
 
         # Add temperature from chat config if available
         if "temperature" in chat_cfg:
