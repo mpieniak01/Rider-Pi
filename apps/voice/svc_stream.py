@@ -146,6 +146,9 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         # Umożliwia testom patchować websockets na poziomie modułu svc_stream
         self._ws_module = websockets
 
+        # Audio chunk processor - initialized once for efficiency
+        self._chunks = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
+
     # ---- Transport methods are provided by StreamingVoiceTransportMixin ----
     # send(), recv(), aclose(), close(), close_sync(), _connect(), _reconnect_loop()
 
@@ -326,9 +329,8 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         if not self.websocket:
             return
 
-        # Użyj procesora chunków do wygenerowania wiadomości sesji
-        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
-        session_msg = chunk_processor.create_session_update_message(self.config)
+        # Use the initialized chunk processor
+        session_msg = self._chunks.create_session_update_message(self.config)
 
         await self.send(session_msg)
         self.logger.event("session.configured")
@@ -381,8 +383,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         if not self.websocket or not audio_data:
             return
 
-        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
-        result = chunk_processor.process_and_encode_chunk(audio_data)
+        result = self._chunks.process_and_encode_chunk(audio_data)
 
         if result:
             message_json, telemetry = result
@@ -395,11 +396,10 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         if not self.websocket:
             return
 
-        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
-        commit_msg = chunk_processor.create_commit_message()
+        commit_msg = self._chunks.create_commit_message()
         await self.send(commit_msg)
 
-        response_msg = chunk_processor.create_response_message(self.config)
+        response_msg = self._chunks.create_response_message(self.config)
         await self.send(response_msg)
         self.logger.event("response.requested")
 
