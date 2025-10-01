@@ -353,28 +353,17 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             except Exception as e:
                 self.logger.event("tts.selftest.error", error=str(e))
 
-        # autostart capture tylko gdy NIE PTT
+        # Autostart capture tylko gdy NIE PTT (z kompatybilnością dla starych przełączników)
         try:
-            if not self.ptt_enabled:
+            should_autostart = not self.ptt_enabled or (
+                str(getattr(self, "_hotword", "")).lower() == "off"
+                or str(self.config.get("hotword", "")).lower() == "off"
+            )
+            if should_autostart:
                 self._start_capture()
                 self.logger.event("capture.autostart")
             else:
                 self.logger.event("ptt.enabled")
-        except Exception as _e:
-            self.logger.event("capture.autostart.error", error=str(_e))
-
-        # kompat: stare przełączniki hotword=off
-        try:
-            if (not self.ptt_enabled) and str(getattr(self, "_hotword", "")).lower() == "off":
-                self.logger.event("capture.autostart")
-                self._start_capture()
-        except Exception as _e:
-            self.logger.event("capture.autostart.error", error=str(_e))
-        try:
-            base_cfg = getattr(self, "cfg", None) or getattr(self, "config", None) or {}
-            if (not self.ptt_enabled) and str(base_cfg.get("hotword", "")).lower() == "off":
-                self.logger.event("capture.autostart")
-                self._start_capture()
         except Exception as _e:
             self.logger.event("capture.autostart.error", error=str(_e))
 
@@ -438,27 +427,18 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             elif msg_type == "response.output_item.added":
                 self._publish_ui_state("thinking")
 
-            # ----- TTS STREAM -----
-            elif msg_type == "response.output_audio.delta":
+            # ----- TTS STREAM (current and legacy names) -----
+            elif msg_type in ("response.output_audio.delta", "response.audio.delta"):
                 audio_data = decode_audio_from_message(data)
                 if audio_data:
                     self.tts_player_queue.put(audio_data)
-                    self.logger.event("tts.audio_chunk", bytes=len(audio_data))
+                    event_name = "tts.audio_chunk" if "output_audio" in msg_type else "tts.audio_chunk_legacy"
+                    self.logger.event(event_name, bytes=len(audio_data))
 
-            elif msg_type == "response.output_audio.done":
+            elif msg_type in ("response.output_audio.done", "response.audio.done"):
                 self.tts_player_queue.put(None)
-                self.logger.event("tts.stream_complete")
-
-            # ----- Backward compatibility (older names) -----
-            elif msg_type == "response.audio.delta":
-                audio_data = decode_audio_from_message(data)
-                if audio_data:
-                    self.tts_player_queue.put(audio_data)
-                    self.logger.event("tts.audio_chunk_legacy", bytes=len(audio_data))
-
-            elif msg_type == "response.audio.done":
-                self.tts_player_queue.put(None)
-                self.logger.event("tts.stream_complete_legacy")
+                event_name = "tts.stream_complete" if "output_audio" in msg_type else "tts.stream_complete_legacy"
+                self.logger.event(event_name)
 
             # ----- Completed response -----
             elif msg_type in ("response.completed", "response.done"):
@@ -547,6 +527,25 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             self.stop_event.clear()
         except Exception as _e:
             self.logger.event("stop_workers_failed", error=str(_e))
+
+    def _start_worker_threads(self) -> None:
+        """Start capture, TTS, and PTT worker threads if not already running."""
+        # Start audio capture thread
+        if not (self._capture_thread and self._capture_thread.is_alive()):
+            self._capture_thread = threading.Thread(
+                target=self._audio_capture_thread, name="voice-stream-capture", daemon=True
+            )
+            self._capture_thread.start()
+
+        # Start TTS player thread
+        if not (self._tts_thread and self._tts_thread.is_alive()):
+            self._tts_thread = threading.Thread(target=self._tts_player_loop, name="voice-stream-tts", daemon=True)
+            self._tts_thread.start()
+
+        # Start PTT keyboard thread (only if PTT enabled)
+        if self.ptt_enabled and not (self._ptt_thread and self._ptt_thread.is_alive()):
+            self._ptt_thread = threading.Thread(target=self._ptt_keyboard_thread, name="voice-ptt", daemon=True)
+            self._ptt_thread.start()
 
     # _reconnect_loop() is now provided by StreamingVoiceTransportMixin (transport.py)
 
@@ -676,23 +675,8 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
         await self._send_session_update()
 
-        # Start audio capture thread (jeśli nie wystartował w autostarcie)
-        if not (self._capture_thread and self._capture_thread.is_alive()):
-            capture_thread = threading.Thread(
-                target=self._audio_capture_thread, name="voice-stream-capture", daemon=True
-            )
-            capture_thread.start()
-            self._capture_thread = capture_thread
-
-        # Start TTS player thread (nowa nazwa pola: _tts_thread)
-        if not (self._tts_thread and self._tts_thread.is_alive()):
-            self._tts_thread = threading.Thread(target=self._tts_player_loop, name="voice-stream-tts", daemon=True)
-            self._tts_thread.start()
-
-        # Start PTT keyboard thread (tylko jeśli ptt_enabled)
-        if self.ptt_enabled and not (self._ptt_thread and self._ptt_thread.is_alive()):
-            self._ptt_thread = threading.Thread(target=self._ptt_keyboard_thread, name="voice-ptt", daemon=True)
-            self._ptt_thread.start()
+        # Start worker threads
+        self._start_worker_threads()
 
         # Run main loops
         try:
@@ -754,20 +738,10 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             await self._send_session_update()
 
             if not (self._capture_thread and self._capture_thread.is_alive()):
-                try:
-                    self._start_capture()
-                    self.logger.event("capture.autostart.fallback")
-                except Exception as e:
-                    self.logger.event("capture.autostart.error", error=str(e))
+                self.logger.event("capture.autostart.fallback")
 
-            if not (self._tts_thread and self._tts_thread.is_alive()):
-                self._tts_thread = threading.Thread(target=self._tts_player_loop, name="voice-stream-tts", daemon=True)
-                self._tts_thread.start()
-
-            # w „once” też pozwól na PTT (Enter→start/stop)
-            if self.ptt_enabled and not (self._ptt_thread and self._ptt_thread.is_alive()):
-                self._ptt_thread = threading.Thread(target=self._ptt_keyboard_thread, name="voice-ptt", daemon=True)
-                self._ptt_thread.start()
+            # Start all worker threads
+            self._start_worker_threads()
 
             sender = asyncio.create_task(self._audio_sender_loop())
             receiver = asyncio.create_task(self._message_receiver_loop())
