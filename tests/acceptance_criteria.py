@@ -163,7 +163,9 @@ print(f"SUMMARY: {passed}/{len(criteria)} passed, {failed}/{len(criteria)} faile
 print("=" * 70 + "\n")
 
 if failed > 0:
-    sys.exit(1)
+    if __name__ == "__main__":
+        sys.exit(1)
 else:
     print("✓ All acceptance criteria verified successfully!\n")
-    sys.exit(0)
+    if __name__ == "__main__":
+        sys.exit(0)
