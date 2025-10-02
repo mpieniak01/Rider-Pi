@@ -2,6 +2,7 @@
 """
 Test basic simulator functionality
 """
+
 from __future__ import annotations
 
 import math
