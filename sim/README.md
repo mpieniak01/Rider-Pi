@@ -1,204 +1,5 @@
 # Rider-Pi 2D Simulator
 
-A 2D simulator for testing Rider-Pi navigation algorithms without physical hardware.
-
-## Features
-
-- **Virtual Robot**: Simulates robot dynamics (position, orientation, velocities)
-- **MQTT/ZMQ Integration**: Receives control commands via ZMQ message bus
-- **Physics Simulation**: Realistic linear and angular motion
-- **Map System**: Text-based maps with wall detection
-- **Visual Rendering**: Pygame-based visualization with telemetry panel
-- **Virtual Sensors**: Gyroscope and camera with ZMQ publishing
-
-## Requirements
-
-```bash
-pip install pygame pyzmq
-```
-
-## Quick Start
-
-### 1. Start the ZMQ Broker
-
-The broker proxies messages between publishers and subscribers:
-
-```bash
-python3 services/broker.py
-```
-
-This starts:
-- Frontend (XSUB): `tcp://*:5555` - for publishers
-- Backend (XPUB): `tcp://*:5556` - for subscribers
-
-### 2. Run the Simulator
-
-```bash
-python3 run_simulation.py
-```
-
-The simulator will:
-- Load the map from `sim/maps/simple.txt` (or set `SIM_MAP` env var)
-- Place the robot at the 'R' marker position
-- Open a pygame window with map view and telemetry panel
-- Subscribe to `motion` topic on the ZMQ bus
-
-### 3. Control the Robot
-
-**Option A: Keyboard Control**
-
-```bash
-python3 tools/sim_keyboard_control.py
-```
-
-Controls:
-- `W` - Move forward
-- `S` - Move backward
-- `A` - Turn left
-- `D` - Turn right
-- `Space` - Stop
-- `Q/ESC` - Quit
-
-**Option B: Publish Commands Directly**
-
-```bash
-python3 tools/pub.py motion '{"type":"drive","lx":1.0,"az":0.0}'
-python3 tools/pub.py motion '{"type":"stop"}'
-```
-
-**Option C: Use Existing Motion Control**
-
-The simulator is compatible with the existing motion control infrastructure:
-
-```bash
-# Send commands to the motion topic
-python3 tools/send_cmd.py motion '{"type":"drive","lx":0.5,"az":0.3}'
-```
-
-## Map Format
-
-Maps are text files where:
-- `#` = Wall
-- ` ` or `.` = Floor
-- `R` = Robot start position
-
-Example:
-```
-##########
-#        #
-#  R     #
-#   ##   #
-#        #
-##########
-```
-
-## Environment Variables
-
-### Simulator
-- `SIM_MAP` - Path to map file (default: `sim/maps/simple.txt`)
-- `SIM_LOG_LEVEL` - Logging level (default: `INFO`)
-
-### ZMQ Bus
-- `BUS_PUB_ADDR` - Publisher address (default: `tcp://127.0.0.1:5555`)
-- `BUS_SUB_ADDR` - Subscriber address (default: `tcp://127.0.0.1:5556`)
-- `MOTION_TOPIC` - Control topic name (default: `motion`)
-
-### Sensors
-- `GYRO_TOPIC` - Gyro data topic (default: `sensor.gyro`)
-- `CAMERA_TOPIC` - Camera data topic (default: `sensor.camera`)
-
-## Command Format
-
-Commands are JSON messages sent to the `motion` topic:
-
-**Drive Command:**
-```json
-{
-  "type": "drive",
-  "lx": 1.0,    // Linear velocity (-1.0 to 1.0)
-  "az": 0.5     // Angular velocity (-1.0 to 1.0)
-}
-```
-
-**Stop Command:**
-```json
-{
-  "type": "stop"
-}
-```
-
-## Robot Dynamics
-
-- **Linear velocity**: Scaled by 0.3 m/s (configurable in code)
-- **Angular velocity**: Scaled by 1.5 rad/s (configurable in code)
-- **Position update**: Uses standard differential drive kinematics
-- **Angle normalization**: Angles are kept in [-π, π] range
-
-## Telemetry
-
-The simulator displays real-time telemetry in the side panel:
-- Position (X, Y) in meters
-- Orientation (angle) in degrees
-- Linear velocity (m/s)
-- Angular velocity (rad/s)
-- Camera first-person view
-
-Virtual sensors publish data to ZMQ:
-- **Gyro**: Publishes orientation (yaw, roll, pitch) at 10 Hz
-- **Camera**: Publishes frame metadata at 5 Hz
-
-## Testing
-
-Run unit tests:
-```bash
-python3 tests/test_simulator_robot.py
-```
-
-Run integration test (requires broker):
-```bash
-python3 tests/test_simulator_mqtt.py
-```
-
-## Architecture
-
-```
-┌──────────────┐
-│   Publisher  │ (keyboard control, motion commands)
-│ (PUB socket) │
-└──────┬───────┘
-       │ connects to tcp://127.0.0.1:5555
-       ▼
-┌──────────────┐
-│   Broker     │ (ZMQ proxy)
-│ XSUB ↔ XPUB  │
-└──────┬───────┘
-       │ binds to tcp://*:5556
-       ▼
-┌──────────────┐
-│  Simulator   │
-│ (SUB socket) │
-│   + Robot    │
-│   + World    │
-│   + Sensors  │
-└──────────────┘
-```
-
-## Troubleshooting
-
-**Simulator doesn't respond to commands:**
-- Check that the broker is running
-- Verify the correct ZMQ addresses (check `BUS_PUB_ADDR` and `BUS_SUB_ADDR`)
-- Check that commands are sent to the correct topic (default: `motion`)
-
-**Pygame window doesn't open:**
-- Install pygame: `pip install pygame`
-- If running over SSH, set `DISPLAY` or use headless mode
-
-**Robot doesn't move:**
-- Commands are scaled (lx=1.0 → 0.3 m/s actual)
-- Check telemetry panel for current velocities
-- Verify physics is updating (check FPS in window title)
-=======
 # SIM-1: Simulator Core Implementation
 
 ## Overview
@@ -367,3 +168,161 @@ This core implementation provides the foundation for:
 - Physics simulation
 - Interactive controls
 - Telemetry display in side panel
+
+A standalone 2D simulator for Rider-Pi that allows testing navigation algorithms without physical hardware.
+
+## Features
+
+- **Real-time Physics Simulation**: Simulates robot movement with realistic kinematics
+- **MQTT Integration**: Uses the same MQTT bus protocol as the real robot
+- **Visual Feedback**: 
+  - Top-down view of the robot and environment
+  - First-person camera view with perspective rendering
+  - Real-time telemetry display
+- **Map Loading**: Load custom environments from simple text files
+- **Sensor Publishing**: Virtual gyroscope and camera publish data to MQTT topics
+
+## Quick Start
+
+### Running the Simulator
+
+```bash
+python run_simulation.py
+```
+
+### Environment Variables
+
+- `SIM_MAP`: Path to map file (default: `sim/maps/simple.txt`)
+- `SIM_WIDTH`: Window width in pixels (default: 1280)
+- `SIM_HEIGHT`: Window height in pixels (default: 720)
+- `SIM_FPS`: Simulation frame rate (default: 30)
+- `SIM_LOG_LEVEL`: Logging level (default: INFO)
+
+### MQTT Topics
+
+The simulator uses the same MQTT topics as the real robot:
+
+**Subscribed (Inputs):**
+- `motion` - Control commands: `{"type": "drive", "lx": 0.5, "az": 0.2}` or `{"type": "stop"}`
+
+**Published (Outputs):**
+- `rider.gyro.angle` - Robot orientation in degrees
+- `rider.camera.frame` - Camera image as JPEG bytes
+
+### Controlling the Robot
+
+Use existing tools to control the simulated robot:
+
+```bash
+# Monitor MQTT traffic
+python tools/bus_spy.py
+
+# Send manual commands
+python tools/send_cmd.py
+```
+
+Or publish commands directly:
+
+```python
+import zmq
+import json
+
+ctx = zmq.Context.instance()
+pub = ctx.socket(zmq.PUB)
+pub.connect("tcp://127.0.0.1:5555")
+
+# Drive forward
+pub.send_multipart([
+    b"motion",
+    json.dumps({"type": "drive", "lx": 0.5, "az": 0.0}).encode()
+])
+
+# Stop
+pub.send_multipart([
+    b"motion",
+    json.dumps({"type": "stop"}).encode()
+])
+```
+
+## Map Format
+
+Maps are simple text files with the following characters:
+
+- `X` - Wall/obstacle
+- `R` - Robot start position
+- `M` - Goal/target
+- ` ` (space) - Empty space
+
+Example:
+
+```
+XXXXXXXXXX
+X        X
+X   R    X
+X        X
+X    M   X
+XXXXXXXXXX
+```
+
+### Available Maps
+
+- `sim/maps/simple.txt` - Basic test environment
+- `sim/maps/corridor.txt` - Long corridor
+- `sim/maps/maze.txt` - Complex environment with obstacles
+
+## Architecture
+
+The simulator is completely independent from the `rider_pi` package and has no direct imports from it. It communicates solely through the MQTT bus, acting as a digital twin of the physical robot.
+
+### Components
+
+- **`sim/world.py`** - Main simulation environment and Pygame rendering
+- **`sim/robot.py`** - Virtual robot with physics and MQTT control
+- **`sim/sensors.py`** - Virtual gyroscope and camera with MQTT publishing
+- **`run_simulation.py`** - Entry point script
+
+## Development
+
+### Testing
+
+```bash
+# Run simulator tests
+pytest tests/test_simulator.py -v
+
+# Run with specific map
+SIM_MAP=sim/maps/maze.txt python run_simulation.py
+```
+
+### Linting
+
+```bash
+ruff check sim/ run_simulation.py
+ruff format sim/ run_simulation.py
+```
+
+## Integration with Navigation Algorithms
+
+The same navigation algorithm code can control both the simulator and real robot by simply connecting to the MQTT bus. No code changes are required.
+
+Example:
+
+```python
+# This code works with both simulator and real robot
+from common.bus import BusPub, BusSub
+
+pub = BusPub()
+sub = BusSub("rider.gyro.angle")
+
+# Send movement command
+pub.publish("motion", {"type": "drive", "lx": 0.5, "az": 0.0})
+
+# Receive sensor data
+for topic, payload in sub:
+    print(f"Angle: {payload['angle']}")
+```
+
+## Keyboard Controls
+
+- `ESC` - Quit simulation
+
+Control commands must be sent via MQTT for realistic testing.
