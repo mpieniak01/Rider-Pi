@@ -12,6 +12,7 @@ import pygame
 
 LOG = logging.getLogger("sim.world")
 
+<<<<<<< HEAD
 # Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -229,6 +230,8 @@ class World:
 
     def quit(self):
         """Clean up and quit Pygame."""
+=======
+>>>>>>> 47f3011 (pr74: restore simulator files from origin/main (remove leftover conflict markers))
 # Window configuration
 WINDOW_WIDTH = int(os.getenv("SIM_WIDTH", "1280"))
 WINDOW_HEIGHT = int(os.getenv("SIM_HEIGHT", "720"))
