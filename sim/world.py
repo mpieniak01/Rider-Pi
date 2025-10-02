@@ -137,7 +137,7 @@ class World:
 
         return screen_x, screen_y
 
-    def render_main_panel(self, robot):
+    def render_main_panel(self, robot=None):
         """Render the main top-down view panel."""
         self.main_surface.fill((40, 40, 40))  # Dark gray background
 
@@ -252,7 +252,7 @@ class World:
             self.side_surface.blit(text, (10, y_offset))
             y_offset += 16
 
-    def render(self, robot, camera_surface):
+    def render(self, robot=None, camera_surface=None):
         """Render the complete simulation window."""
         # Render panels
         self.render_main_panel(robot)
