@@ -37,7 +37,7 @@ jobs:
 
       # ---- 600 linii / plik (chyba że allow-oversize) ----
       - name: Enforce max 600 lines per changed Python file
-        if: env.ALLOW_OVERSIZE != '1'
+        if: env.ALLOW_OVERSIZE!= '1'
         shell: bash
         run: |
           set -euo pipefail
