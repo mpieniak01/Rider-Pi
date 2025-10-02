@@ -1,5 +1,5 @@
-from .world import World
 from .robot import SimulatedRobot
-from .sensors import VirtualGyro, VirtualCamera
+from .sensors import VirtualCamera, VirtualGyro
+from .world import World
 
 __all__ = ["World", "SimulatedRobot", "VirtualGyro", "VirtualCamera"]
