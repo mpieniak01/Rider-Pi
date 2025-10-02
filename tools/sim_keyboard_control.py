@@ -4,7 +4,7 @@ Simple keyboard control for the simulator using ZMQ bus.
 
 Controls:
   W - Move forward
-  S - Move backward  
+  S - Move backward
   A - Turn left
   D - Turn right
   Space - Stop
@@ -61,8 +61,7 @@ def main():
     def send_cmd(cmd: dict):
         """Send command to motion topic."""
         msg = json.dumps(cmd, separators=(",", ":"))
-        full_msg = f"{MOTION_TOPIC} {msg}"
-        pub.send_string(full_msg)
+        pub.send_multipart([MOTION_TOPIC.encode("utf-8"), msg.encode("utf-8")])
         print(f"Sent: {cmd}")
 
     try:
