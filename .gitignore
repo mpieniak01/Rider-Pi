@@ -40,3 +40,4 @@ data/
 config/voice.local.override.toml
 scripts/fix_logger_event.py
 Sprawd?
+sim_screenshot.png
