@@ -9,9 +9,6 @@ the acceptance criteria.
 Usage:
     # Terminal 1: Start broker
     python services/broker.py
-
-    # Terminal 2: Run this demo
-    python examples/demo_sim3_sensors.py
 """
 
 from __future__ import annotations
