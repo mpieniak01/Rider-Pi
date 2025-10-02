@@ -14,7 +14,6 @@ import pygame
 
 LOG = logging.getLogger("sim.world")
 
-
 # Window configuration
 WINDOW_WIDTH = int(os.getenv("SIM_WIDTH", "1280"))
 WINDOW_HEIGHT = int(os.getenv("SIM_HEIGHT", "720"))
