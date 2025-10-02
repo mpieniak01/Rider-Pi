@@ -1,22 +1,18 @@
-######################
-#                    #
-#  R                 #
-#                    #
-#       ####         #
-#       #  #         #
-#       #  #         #
-#       ####         #
-#                    #
-#                    #
-#            ####    #
-#            #  #    #
-#            ####    #
-#                    #
-######################
-=======
 XXXXXXX
 X R   X
 X     X
 X     X
 X   M X
 XXXXXXX
+
+XXXXXXXXXXXXXXXXXX
+X                X
+X                X
+X                X
+X       R        X
+X                X
+X                X
+X                X
+X            M   X
+X                X
+XXXXXXXXXXXXXXXXXX

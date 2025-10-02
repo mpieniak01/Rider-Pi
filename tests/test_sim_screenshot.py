@@ -23,7 +23,30 @@ print("Creating simulator screenshot for SIM-1...")
 world = World(map_file="sim/maps/map01.txt")
 
 # Render a frame
-world.render()
+import pygame
+
+
+class _DummyRobot:
+    def __init__(self, x=0.0, y=0.0, angle=0.0):
+        self.x = float(x)
+        self.y = float(y)
+        self.angle = float(angle)
+        self.linear_vel = 0.0
+        self.angular_vel = 0.0
+
+    def get_state(self):
+        return {
+            "x": self.x,
+            "y": self.y,
+            "angle": self.angle,
+            "linear_vel": self.linear_vel,
+            "angular_vel": self.angular_vel,
+        }
+
+
+dummy_robot = _DummyRobot(0.0, 0.0, 0.0)
+camera_surface = getattr(world, "camera_surface", None) or pygame.Surface((1280, 720))
+world.render(dummy_robot, camera_surface)
 
 # Save screenshot
 pygame.image.save(world.screen, "sim_basic_screenshot.png")

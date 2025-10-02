@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Rider-Pi 2D Simulator Entry Point
+
 Launches the standalone 2D simulator for testing navigation algorithms.
 Communicates with the motion control system via MQTT bus.
 """
@@ -26,6 +27,7 @@ logging.basicConfig(
 )
 
 LOG = logging.getLogger("sim.main")
+
 
 def main():
     """Main simulation loop."""
@@ -62,6 +64,7 @@ def main():
         while running:
             # Handle events
             running = world.handle_events()
+
             # Get delta time
             delta_time = world.tick()
 
@@ -88,6 +91,7 @@ def main():
     finally:
         world.quit()
         LOG.info("Simulation stopped")
+
 
 if __name__ == "__main__":
     main()

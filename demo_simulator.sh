@@ -1,83 +1,85 @@
 #!/bin/bash
 # Demo script for Rider-Pi 2D Simulator
-# 
-# This script demonstrates:
-# 1. Starting the ZMQ broker
-# 2. Running the simulator
-# 3. Sending control commands
-#
-# Usage: ./demo_simulator.sh
+# This script demonstrates the complete workflow
 
 set -e
 
-echo "======================================"
-echo "Rider-Pi 2D Simulator Demo"
-echo "======================================"
+echo "=== Rider-Pi 2D Simulator Demo ==="
 echo ""
 
 # Check dependencies
-echo "Checking dependencies..."
-python3 -c "import pygame" 2>/dev/null || {
-    echo "ERROR: pygame not installed. Run: pip install pygame"
+echo "[1/5] Checking dependencies..."
+python3 -c "import pygame, zmq" 2>/dev/null && echo "  ✓ pygame and zmq installed" || {
+    echo "  ✗ Missing dependencies. Install with: pip install pygame pyzmq"
     exit 1
 }
-
-python3 -c "import zmq" 2>/dev/null || {
-    echo "ERROR: pyzmq not installed. Run: pip install pyzmq"
-    exit 1
-}
-
-echo "✓ Dependencies OK"
-echo ""
 
 # Start broker in background
-echo "Starting ZMQ broker..."
+echo "[2/5] Starting ZMQ broker..."
 python3 services/broker.py &
 BROKER_PID=$!
+sleep 2
+echo "  ✓ Broker running (PID: $BROKER_PID)"
+
+# Start simulator in background (headless mode for demo)
+echo "[3/5] Starting simulator..."
+SDL_VIDEODRIVER=dummy python3 run_simulation.py &
+SIM_PID=$!
+sleep 2
+echo "  ✓ Simulator running (PID: $SIM_PID)"
+
+# Send test commands
+echo "[4/5] Sending control commands..."
+
+# Monitor in background
+timeout 10 python3 tools/bus_spy.py &
+SPY_PID=$!
+
 sleep 1
 
-# Check if broker started successfully
-if ! kill -0 $BROKER_PID 2>/dev/null; then
-    echo "⚠ Broker may already be running or failed to start"
-    BROKER_PID=""
-else
-    echo "✓ Broker started (PID: $BROKER_PID)"
-fi
+# Send some commands
+python3 -c "
+import zmq, json, time
+ctx = zmq.Context.instance()
+pub = ctx.socket(zmq.PUB)
+pub.connect('tcp://127.0.0.1:5555')
+time.sleep(0.3)
 
-# Cleanup function
-cleanup() {
-    echo ""
-    echo "Cleaning up..."
-    if [ ! -z "$BROKER_PID" ]; then
-        kill $BROKER_PID 2>/dev/null || true
-        echo "✓ Broker stopped"
-    fi
-}
+print('  → Sending forward command')
+for _ in range(3):
+    pub.send_multipart([b'motion', json.dumps({'type': 'drive', 'lx': 0.5, 'az': 0.0}).encode()])
+    time.sleep(0.1)
 
-trap cleanup EXIT
+time.sleep(1)
+print('  → Sending rotation command')
+for _ in range(3):
+    pub.send_multipart([b'motion', json.dumps({'type': 'drive', 'lx': 0.0, 'az': 0.3}).encode()])
+    time.sleep(0.1)
+
+time.sleep(1)
+print('  → Sending stop command')
+for _ in range(3):
+    pub.send_multipart([b'motion', json.dumps({'type': 'stop'}).encode()])
+    time.sleep(0.1)
+
+print('  ✓ Commands sent successfully')
+"
+
+sleep 2
+
+# Cleanup
+echo "[5/5] Cleaning up..."
+kill $SPY_PID 2>/dev/null || true
+kill $SIM_PID 2>/dev/null || true
+kill $BROKER_PID 2>/dev/null || true
+sleep 1
+echo "  ✓ All processes stopped"
 
 echo ""
-echo "======================================"
-echo "Running simulator tests..."
-echo "======================================"
+echo "=== Demo Complete ==="
 echo ""
-
-# Run tests
-python3 tests/test_simulator_robot.py
-echo ""
-python3 tests/test_simulator_mqtt.py
-
-echo ""
-echo "======================================"
-echo "✓ All tests passed!"
-echo "======================================"
-echo ""
-echo "To run the simulator manually:"
-echo "  1. Start broker:    python3 services/broker.py"
-echo "  2. Start simulator: python3 run_simulation.py"
-echo "  3. Control robot:   python3 tools/sim_keyboard_control.py"
-echo ""
-echo "Or send commands directly:"
-echo "  python3 tools/pub.py motion '{\"type\":\"drive\",\"lx\":1.0,\"az\":0.0}'"
-echo "  python3 tools/pub.py motion '{\"type\":\"stop\"}'"
-echo ""
+echo "To run interactively:"
+echo "  Terminal 1: python services/broker.py"
+echo "  Terminal 2: python run_simulation.py"
+echo "  Terminal 3: python tools/bus_spy.py"
+echo "  Terminal 4: python tools/send_cmd.py"

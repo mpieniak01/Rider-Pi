@@ -1,5 +1,5 @@
-from __future__ import annotations
 from .robot import SimulatedRobot
-"""Rider-Pi 2D Simulator - Virtual robot for testing navigation algorithms."""
+from .sensors import VirtualCamera, VirtualGyro
+from .world import World
 
-__all__ = ["SimulatedRobot"]
+__all__ = ["World", "SimulatedRobot", "VirtualGyro", "VirtualCamera"]
