@@ -9,7 +9,7 @@ the acceptance criteria.
 Usage:
     # Terminal 1: Start broker
     python services/broker.py
-    
+
     # Terminal 2: Run this demo
     python examples/demo_sim3_sensors.py
 """
@@ -103,7 +103,7 @@ for i in range(60):  # Run for 2 seconds at 30 FPS
         gyro_marker = "📡" if gyro_published else "  "
         camera_marker = "📷" if camera_published else "  "
         print(
-            f"   {i/30:.1f}s    | "
+            f"   {i / 30:.1f}s    | "
             f"{angle_deg:7.1f}° {gyro_marker} | "
             f"{camera_marker}     | "
             f"({robot.x:.2f}, {robot.y:.2f})"
