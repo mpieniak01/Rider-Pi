@@ -27,7 +27,7 @@ class World:
     2D world with map, robot rendering, and telemetry display.
     """
 
-    def __init__(self, map_file: str, cell_size: int = 40, fps: int = 60):
+    def __init__(self, map_file: str = None, cell_size: int = 40, fps: int = 60):
         """
         Initialize the world.
 
@@ -229,7 +229,6 @@ class World:
 
     def quit(self):
         """Clean up and quit Pygame."""
-=======
 # Window configuration
 WINDOW_WIDTH = int(os.getenv("SIM_WIDTH", "1280"))
 WINDOW_HEIGHT = int(os.getenv("SIM_HEIGHT", "720"))
@@ -243,7 +242,7 @@ CELL_SIZE = 30  # pixels per grid cell
 class World:
     """Main simulation world managing the Pygame window and rendering."""
 
-    def __init__(self, map_file: str = None):
+    def __init__(self, map_file: str = None, cell_size: int = 40, fps: int = 60):
         pygame.init()
         pygame.display.set_caption("Rider-Pi 2D Simulator")
 
