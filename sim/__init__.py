@@ -1,7 +1,5 @@
-"""
-Rider-Pi 2D Simulator
+from __future__ import annotations
+from .robot import SimulatedRobot
+"""Rider-Pi 2D Simulator - Virtual robot for testing navigation algorithms."""
 
-A 2D simulation environment for testing robot behavior.
-"""
-
-__version__ = "0.1.0"
+__all__ = ["SimulatedRobot"]
