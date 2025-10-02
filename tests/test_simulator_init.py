@@ -30,10 +30,10 @@ def test_simulator_initialization():
     # Test sensors
     from sim.sensors import VirtualCamera, VirtualGyro
 
-    gyro = VirtualGyro(rate_hz=10.0)
+    _ = VirtualGyro(rate_hz=10.0)
     print("✓ Gyro initialized")
 
-    camera = VirtualCamera(width=320, height=240)
+    _ = VirtualCamera(width=320, height=240)
     print("✓ Camera initialized")
 
     # Test world
