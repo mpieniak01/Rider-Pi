@@ -5,3 +5,6 @@ anyio>=4.4
 
 # realtime ws
 websockets>=15.0
+
+# 2D simulator
+pygame>=2.5.0
