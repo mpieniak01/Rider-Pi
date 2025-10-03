@@ -41,3 +41,5 @@ config/voice.local.override.toml
 scripts/fix_logger_event.py
 Sprawd?
 sim_screenshot.png
+sim_basic_screenshot.png
+sim_basic_screenshot.png
