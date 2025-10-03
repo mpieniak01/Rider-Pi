@@ -39,8 +39,8 @@ jobs:
           # opcjonalne zależności projektu
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt || true; fi
           if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt || true; fi
-          # minimalny zestaw pod testy
-          python -m pip install pytest pytest-timeout
+          # minimalny zestaw pod testy (piny spójne z Py3.9 na RPi)
+          python -m pip install "pytest==8.4.2" "pytest-timeout==2.4.0" "pytest-cov==5.0.0"
           python -m pip install "pillow>=8,<12" "numpy>=1.21,<2" \
                                 "requests>=2.31,<3" "pyzmq>=22,<26" \
                                 "flask<3" "werkzeug<3"
