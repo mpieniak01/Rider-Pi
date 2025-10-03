@@ -7,21 +7,30 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
 
       - name: Setup Python (3.9 jak na urządzeniu)
         uses: actions/setup-python@v5
-        with: { python-version: '3.9' }
+        with:
+          python-version: '3.9'
 
-      - name: Install deps (ruff)
-        shell: bash
+      - name: Ensure jq present
         run: |
-          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Install deps (ruff pinned)
+        run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          pip install "ruff==0.6.9"
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+
+      - name: Ruff version
+        run: ruff --version
 
       # ---- flags z etykiet PR ----
       - name: Flags from labels
@@ -29,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" || true)"
+          labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
           echo "labels: ${labels:-<none>}"
           case "$labels" in *"allow-oversize"*) echo "ALLOW_OVERSIZE=1" >>"$GITHUB_ENV";; esac
           case "$labels" in *"allow-delete"*)  echo "ALLOW_DELETE=1"  >>"$GITHUB_ENV";; esac
@@ -37,7 +46,7 @@ jobs:
 
       # ---- 600 linii / plik (chyba że allow-oversize) ----
       - name: Enforce max 600 lines per changed Python file
-        if: env.ALLOW_OVERSIZE!= '1'
+        if: env.ALLOW_OVERSIZE != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +65,7 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # ---- NO-STUB (miękko: warning). Zafailuj tylko z etykietą nostub-strict ----
+      # ---- NO-STUB (miękko) ----
       - name: NO-STUB (warn-only by default)
         if: env.ALLOW_DELETE != '1'
         shell: bash
@@ -65,9 +74,7 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//' | grep -vE '^[[:space:]]*#')"
-          # czyste 'pass'
           pass_count="$(printf '%s\n' "$added" | grep -Ec '^[[:space:]]*pass([[:space:]]*#.*)?$' || true)"
-          # raise NotImplementedError (portable)
           nie_count="$(printf '%s\n' "$added" | grep -Ec '(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)' || true)"
           echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
           bad=$((pass_count + nie_count))
@@ -80,9 +87,7 @@ jobs:
           fi
 
       # ---- Ruff ----
-      - name: Ruff (lint + format check)
-        shell: bash
+      - name: Ruff (lint + format check, PR annotations)
         run: |
-          set -euo pipefail
-          ruff check
-          ruff format --check
+          ruff check . --output-format=github
+          ruff format --check .
