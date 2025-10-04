@@ -1,4 +1,4 @@
-# Phase 5 — LCD RAW sink for face animation
+# Faza 5 — sink LCD RAW dla animacji twarzy
 
 ## Konfiguracja środowiska (ENV)
 
