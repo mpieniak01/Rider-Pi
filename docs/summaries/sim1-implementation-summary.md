@@ -15,7 +15,7 @@ All acceptance criteria have been met and verified.
 1. **Core Simulator**
    - `sim/__init__.py` - Package initialization
    - `sim/world.py` - Main World class (203 lines)
-   - `sim/README.md` - Comprehensive documentation
+   - `docs/modules/sim.md` - Comprehensive documentation
 
 2. **Map Files**
    - `sim/maps/simple.txt` - Simple 7x6 test map

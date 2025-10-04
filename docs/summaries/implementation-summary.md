@@ -58,7 +58,7 @@ All criteria from the issue have been met:
 - Sample map with walls, open spaces, and robot start position
 - Format: `#` = wall, ` ` = floor, `R` = robot start
 
-#### `sim/README.md`
+#### `docs/modules/sim.md`
 - Comprehensive usage documentation
 - Environment variable reference
 - Command format specification
