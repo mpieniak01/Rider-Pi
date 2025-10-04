@@ -27,23 +27,23 @@ Wybór trybu odbywa się automatycznie na podstawie konfiguracji `transport` w s
 
 ---
 
-## Audio Setup
+## Konfiguracja audio
 
-### WM8960 Soundcard Duplex Configuration
+### Konfiguracja dupleksu karty dźwiękowej WM8960
 
-The WM8960 soundcard doesn't support full duplex on raw `hw:` devices, which causes conflicts between beep playback (`aplay`) and voice capture (`arecord`). To resolve this issue:
+Karta dźwiękowa WM8960 nie obsługuje pełnego dupleksu na surowych urządzeniach `hw:`, co powoduje konflikty między odtwarzaniem dźwięku (`aplay`) a przechwytywaniem głosu (`arecord`). Aby rozwiązać ten problem:
 
-1. **Copy the ALSA configuration file:**
+1. **Skopiuj plik konfiguracyjny ALSA:**
    ```bash
    cp config/asoundrc.wm8960 ~/.asoundrc
    ```
 
-2. **The configuration provides these aliases:**
-   - `wm8960_out` - for audio playback (uses dmix for mixing)
-   - `wm8960_in` - for audio capture (uses dsnoop for sharing)
-   - `wm8960` - for control interface
+2. **Konfiguracja dostarcza następujące aliasy:**
+   - `wm8960_out` - dla odtwarzania audio (używa dmix do miksowania)
+   - `wm8960_in` - dla przechwytywania audio (używa dsnoop do współdzielenia)
+   - `wm8960` - dla interfejsu kontrolnego
 
-3. **Configuration is already set in `config/voice.toml`:**
+3. **Konfiguracja jest już ustawiona w `config/voice.toml`:**
    ```toml
    [capture]
    device = "wm8960_in"
@@ -52,15 +52,15 @@ The WM8960 soundcard doesn't support full duplex on raw `hw:` devices, which cau
    alsa_device = "wm8960_out"
    ```
 
-4. **Use realtime modes with pasuspender:**
+4. **Użyj trybów realtime z pasuspender:**
    ```bash
-   make voice-once-realtime    # Single interaction
-   make voice-listen-realtime  # Continuous listening
+   make voice-once-realtime    # Pojedyncza interakcja
+   make voice-listen-realtime  # Ciągłe nasłuchiwanie
    ```
 
-5. **Service parameters for beep control:**
-   - `--service beep=false` - Disable beep sound completely
-   - `--service beep_delay_ms=250` - Delay after beep before capture starts
+5. **Parametry serwisu dla kontroli dźwięku:**
+   - `--service beep=false` - Wyłącz dźwięk całkowicie
+   - `--service beep_delay_ms=250` - Opóźnienie po dźwięku przed rozpoczęciem przechwytywania
 
 ---
 
