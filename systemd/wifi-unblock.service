@@ -1,0 +1,15 @@
+[Unit]
+Description=Unblock Wi-Fi and bring wlan0 up before ConnMan
+After=local-fs.target
+Before=connman.service network-pre.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/rfkill unblock wifi
+ExecStart=/usr/bin/ip link set wlan0 up
+ExecStart=/bin/sleep 1
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

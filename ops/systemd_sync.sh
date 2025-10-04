@@ -28,6 +28,7 @@ ALLOW_UNITS=(
   "rider-web-bridge.service"
 # "rider-voice.socket"
   "rider-voice.service"
+  "wifi-unblock.service"
 )
 
 BASE_ENABLE=( "getty@tty1.service" "ssh.service" "dhcpcd.service" )
