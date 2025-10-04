@@ -2,6 +2,8 @@
 
 > Centralny indeks dokumentacji projektu **Rider-Pi Apps** — oprogramowania rozszerzającego możliwości urządzenia Rider-Pi.
 
+> **Uwaga**: Raporty historyczne w katalogu `docs/summaries/` mogą pozostać w języku angielskim, ponieważ stanowią zapis wcześniejszych wersji projektu.
+
 ## Dokumenty główne (katalog główny)
 
 Najważniejsze dokumenty znajdują się w katalogu głównym projektu:
@@ -21,9 +23,9 @@ Szczegółowa dokumentacja poszczególnych modułów systemu:
 
 ### Moduł buźki (Face)
 
-- [**face-lcd.md**](modules/face-lcd.md) — renderowanie buźki na panelu LCD ILI9xx (tryby, zmienne środowiskowe, benchmark, recovery)
-- [**face-api.md**](modules/face-api.md) — API statycznego renderu buźki (endpointy HTTP, konfiguracja)
-- [**face-phase5-lcd.md**](modules/face-phase5-lcd.md) — sink LCD RAW dla animacji twarzy (faza 5)
+- [**face-lcd.md**](modules/face-lcd.md) — renderowanie buźki na panelu LCD ILI9xx (ogólny opis obsługi LCD: tryby, zmienne środowiskowe, benchmark, recovery)
+- [**face.md**](modules/face.md) — API statycznego renderu buźki (endpointy HTTP, konfiguracja)
+- [**face-phase5-lcd.md**](modules/face-phase5-lcd.md) — dokumentacja fazy 5 implementacji (sink LCD RAW dla animacji twarzy)
 
 ### Moduł głosu (Voice)
 
@@ -158,5 +160,5 @@ python scripts/doc_sync_check.py
 
 ---
 
-**Ostatnia aktualizacja**: 2025-01  
+**Ostatnia aktualizacja**: 2025-10-04  
 **Wersja dokumentacji**: zgodna z kodem głównym (branch `main`)
