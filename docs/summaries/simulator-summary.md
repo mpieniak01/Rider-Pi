@@ -178,7 +178,7 @@ for topic, payload in sub:
 - `sim/maps/simple.txt` (209 bytes)
 - `sim/maps/corridor.txt` (117 bytes)
 - `sim/maps/maze.txt` (576 bytes)
-- `sim/README.md` (3.7 KB)
+- `docs/modules/sim.md` (3.7 KB)
 - `run_simulation.py` (2.6 KB)
 - `demo_simulator.sh` (2.1 KB)
 - `tests/test_simulator.py` (2.6 KB)

@@ -37,7 +37,7 @@ Successfully implemented the foundational layer of the Rider-Pi 2D Simulator, in
 ### Documentation
 | File | Content |
 |------|---------|
-| `sim/README.md` | Complete API and usage guide |
+| `docs/modules/sim.md` | Complete API and usage guide |
 | `SIM1_IMPLEMENTATION_SUMMARY.md` | Detailed implementation analysis |
 | `COMPLETION_REPORT.md` | This report |
 
