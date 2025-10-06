@@ -28,18 +28,20 @@ except Exception:  # pragma: no cover
 
 # Lokalne moduły
 from . import voice_logging
+from .audio_rx_tts import AudioReceiver
+from .audio_tx import AudioTransmitter
 from .capture import CaptureConfig
 from .common import ensure_event_logger
 from .playback import play_ding  # noqa: F401 - Re-export for test compatibility
+from .ptt_state import PTTController
 from .rt_protocol import build_response_cancel
 from .state import StreamingVoicePTTMixin
 from .stream_chunks import (
     AudioChunkProcessor,
-    calculate_chunk_size,
     decode_audio_from_message,
 )
-from .svc_audio import capture_continuous
 from .transport import StreamingVoiceTransportMixin
+from .voice_metrics import VoiceMetrics
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -249,6 +251,48 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         self._resp_guard_ms: int = _env_int("VOICE_RESPONSE_GUARD_MS", 400)
         self._ptt_commit_sync: bool = _env_flag("VOICE_PTT_COMMIT_SYNC", False)
         self._ptt_commit_timeout_ms: int = _env_int("VOICE_PTT_COMMIT_TIMEOUT_MS", 1500)
+
+        # --- New modular components (PR-2) ---
+        self.metrics = VoiceMetrics()
+
+        # Audio transmitter (capture → queue)
+        self.audio_transmitter = AudioTransmitter(
+            config=self.config,
+            stream_cfg=self.stream_cfg,
+            audio_queue=self.audio_queue,
+            logger=self.logger,
+            stop_event=self.stop_event,
+            ptt_enabled=self.ptt_enabled,
+        )
+        # Wire callbacks
+        self.audio_transmitter.on_ptt_commit = self._schedule_commit
+        self.audio_transmitter.on_barge_in = self._handle_barge_in_from_capture
+
+        # Audio receiver (queue → playback)
+        self.audio_receiver = AudioReceiver(
+            config=self.config,
+            stream_cfg=self.stream_cfg,
+            tts_queue=self.tts_player_queue,
+            logger=self.logger,
+            stop_event=self.stop_event,
+            barge_in_event=self.barge_in_event,
+        )
+        # Wire callbacks
+        self.audio_receiver.on_playback_start = lambda: self._publish_ui_state("speaking")
+        self.audio_receiver.on_playback_end = lambda: self._publish_ui_state("idle")
+
+        # PTT controller (keyboard → commit)
+        self.ptt_controller = PTTController(
+            logger=self.logger,
+            config=self.config,
+            stop_event=self.stop_event,
+        )
+        self.ptt_controller.ptt_enabled = self.ptt_enabled
+        # Wire callbacks
+        self.ptt_controller.on_commit = self._schedule_commit
+        self.ptt_controller.on_state_change = self._publish_ui_state
+        self.ptt_controller.on_barge_in = lambda: self.barge_in_event.set()
+        self.ptt_controller.on_capture_restart = self._ensure_capture_alive
 
     # ---- Transport methods are provided by StreamingVoiceTransportMixin ----
     # send(), recv(), aclose(), close(), close_sync(), _connect(), _reconnect_loop()
@@ -484,6 +528,35 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                 pass
             self._capture_thread = None
 
+    def _handle_barge_in_from_capture(self) -> None:
+        """Handle barge-in from audio capture thread."""
+        # Send response.cancel to interrupt ongoing response
+        if self.connected and self.websocket and self.stream_cfg.barge_in:
+            try:
+                loop = self._loop
+                if loop and hasattr(loop, "is_running") and loop.is_running():
+                    asyncio.run_coroutine_threadsafe(self._send_response_cancel(), loop)
+            except Exception as e:
+                self.logger.event("barge_in.cancel_error", error=str(e))
+
+        # Clear TTS queue on barge-in
+        while not self.tts_player_queue.empty():
+            try:
+                self.tts_player_queue.get_nowait()
+            except queue.Empty:
+                break
+
+    def _ensure_capture_alive(self) -> None:
+        """Ensure capture thread is alive (used by PTT)."""
+        try:
+            th = getattr(self, "_capture_thread", None)
+            if not (th and th.is_alive()):
+                self.audio_transmitter.start_capture()
+                self._capture_thread = self.audio_transmitter._capture_thread
+                self.logger.event("capture.restart.ptt")
+        except Exception as e:
+            self.logger.event("capture.restart.error", error=str(e))
+
     # -------------------------------------------------------------------------
     # _connect() is provided by StreamingVoiceTransportMixin (transport.py)
     # -------------------------------------------------------------------------
@@ -528,10 +601,13 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             bytes_out = int(telemetry.get("bytes_out", 0))
             self.logger.event("audio.appended", bytes=bytes_out)
 
+            # Record metrics
+            bytes_in = int(telemetry.get("bytes_in", len(audio_data)))
+            bytes_out = int(telemetry.get("bytes_out", 0))
+            self.metrics.on_audio_chunk(bytes_in, bytes_out)
+
             # 3) Per-chunk metryka
             try:
-                bytes_in = int(telemetry.get("bytes_in", len(audio_data)))
-                bytes_out = int(telemetry.get("bytes_out", 0))
                 duration_ms = max(0, int((time.perf_counter() - t0) * 1000))
 
                 self.logger.event(
@@ -731,6 +807,9 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             self._response_pending = True
             self._last_commit_ts = time.time()
             self.logger.event("audio.committed")
+
+            # Record metrics
+            self.metrics.on_commit()
         except Exception as e:
             self.logger.event("commit.send_error", error=str(e))
             try:
@@ -815,6 +894,9 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                 self._response_pending = False
                 self.logger.event("response.created")
 
+                # Record response metrics
+                self.metrics.on_response()
+
             elif msg_type == "response.output_item.added":
                 self._publish_ui_state("thinking")
 
@@ -825,11 +907,15 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                     try:
                         self.tts_player_queue.put(audio_data, block=False)
                         self.logger.event("response.delta", bytes=len(audio_data))
+
+                        # Record TTS metrics
+                        self.metrics.on_tts_chunk(len(audio_data))
                     except queue.Full:
                         # Queue full - drop and log
                         self._tts_drops += 1
                         if self._tts_drops % 10 == 1:
                             self.logger.event("tts_queue.full", drops=self._tts_drops)
+                        self.metrics.on_audio_drop(1)
 
             elif msg_type == "response.output_audio.done":
                 self.tts_player_queue.put(None)
@@ -951,156 +1037,25 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
     # _reconnect_loop() is provided by StreamingVoiceTransportMixin (transport.py)
 
     def _audio_capture_thread(self) -> None:
-        """Capture audio and feed to WebSocket queue."""
-        try:
-            capture_cfg = self.config.get("capture", {}) or {}
-            sample_rate = int(capture_cfg.get("sample_rate", 16000))
-            chunk_ms = int(self.stream_cfg.chunk_ms)
-            chunk_size = calculate_chunk_size(sample_rate, chunk_ms)
+        """Capture audio and feed to WebSocket queue - delegates to AudioTransmitter."""
+        # Sync state from service to transmitter
+        self.audio_transmitter.ptt_active = self.ptt_active
+        self.audio_transmitter._ptt_was_active = self._ptt_was_active
+        self.audio_transmitter._any_audio_since_commit = self._any_audio_since_commit
+        self.audio_transmitter.connected = self.connected
 
-            for audio_chunk in capture_continuous(capture_cfg, chunk_size):
-                # ── Fallback commit na PTT STOP (zbocze True->False) ─────────────
-                try:
-                    if (
-                        self.ptt_enabled
-                        and self._ptt_was_active
-                        and (not self.ptt_active)
-                        and self._any_audio_since_commit
-                    ):
-                        self._schedule_commit()
-                        self.logger.event("ptt.commit.fallback.dispatch")
-                        self._any_audio_since_commit = False
-                except Exception as _e:
-                    self.logger.event("ptt.commit.fallback.guard_error", error=str(_e))
-                # aktualizuj stan do kolejnej iteracji
-                self._ptt_was_active = bool(self.ptt_active)
-                # ────────────────────────────────────────────────────────────────
+        # Delegate to AudioTransmitter
+        self.audio_transmitter._audio_capture_thread()
 
-                if self.stop_event.is_set():
-                    break
-
-                if self.barge_in_event.is_set():
-                    # Send response.cancel to interrupt ongoing response
-                    if self.connected and self.websocket and self.stream_cfg.barge_in:
-                        try:
-                            loop = self._loop
-                            if loop and hasattr(loop, "is_running") and loop.is_running():
-                                asyncio.run_coroutine_threadsafe(self._send_response_cancel(), loop)
-                        except Exception as e:
-                            self.logger.event("barge_in.cancel_error", error=str(e))
-
-                    # Clear TTS queue on barge-in
-                    while not self.tts_player_queue.empty():
-                        try:
-                            self.tts_player_queue.get_nowait()
-                        except queue.Empty:
-                            break
-                    self.barge_in_event.clear()
-
-                # GATE: wysyłaj audio TYLKO gdy PTT aktywne lub gdy PTT wyłączone
-                if audio_chunk and self.connected and (self.ptt_active or not self.ptt_enabled):
-                    try:
-                        self.audio_queue.put(audio_chunk, block=False)
-                    except queue.Full:
-                        # Queue full - drop oldest and add new (backpressure)
-                        self._audio_drops += 1
-                        if self._audio_drops % 10 == 1:  # Log every 10th drop
-                            self.logger.event("audio_queue.full", drops=self._audio_drops)
-                        try:
-                            self.audio_queue.get_nowait()  # Remove oldest
-                            self.audio_queue.put(audio_chunk, block=False)
-                        except Exception as e:
-                            self.logger.event("audio_queue.fallback_error", error=str(e))
-
-        except Exception as e:
-            self.logger.event("audio_capture_error", error=str(e))
-        finally:
-            # Wrzucamy None tylko przy globalnym stopie/reconnect
-            if self.stop_event.is_set() or not self.connected:
-                self.audio_queue.put(None)
+        # Sync state back to service
+        self.ptt_active = self.audio_transmitter.ptt_active
+        self._ptt_was_active = self.audio_transmitter._ptt_was_active
+        self._any_audio_since_commit = self.audio_transmitter._any_audio_since_commit
 
     def _tts_player_loop(self) -> None:
-        """Play TTS audio from queue (strumieniowo, jeden proces na odpowiedź)."""
-        from .playback import PlaybackConfig, play_bytes, start_stream
-
-        try:
-            playback_cfg = PlaybackConfig(**self.config.get("playback", {}))
-            # Bufor na początek (jitter buffer), zanim wystartujemy strumień
-            prebuffer = bytearray()
-            threshold = max(1, self.stream_cfg.jitter_buffer_ms) * 32  # ~32B/ms @ 16kHz mono
-            stream = None  # PlaybackStream lub None
-
-            def _close_stream():
-                nonlocal stream
-                if stream is not None:
-                    try:
-                        stream.close()
-                    except Exception as _e:
-                        self.logger.event("tts.stream.close_error", error=str(_e))
-                    stream = None
-
-            while not self.stop_event.is_set():
-                try:
-                    # Obsługa barge-in: natychmiast kończ bieżący stream
-                    if self.barge_in_event.is_set():
-                        _close_stream()
-                        prebuffer.clear()
-                        self.barge_in_event.clear()
-
-                    chunk = self.tts_player_queue.get(timeout=0.1)
-
-                    if chunk is None:
-                        # koniec bieżącej odpowiedzi TTS
-                        if stream is None:
-                            if prebuffer:
-                                try:
-                                    play_bytes(bytes(prebuffer), "pcm16", playback_cfg)
-                                except Exception as _e:
-                                    self.logger.event("tts.play_once.error", error=str(_e))
-                            prebuffer.clear()
-                        _close_stream()
-                        self._publish_ui_state("idle")
-                        continue
-
-                    # mamy dane
-                    if stream is None:
-                        prebuffer.extend(chunk)
-                        if len(prebuffer) >= threshold:
-                            stream = start_stream("pcm16", playback_cfg, self.logger, accumulate=False)
-                            if stream is None:
-                                try:
-                                    play_bytes(bytes(prebuffer), "pcm16", playback_cfg)
-                                except Exception as _e:
-                                    self.logger.event("tts.fallback.play_error", error=str(_e))
-                                prebuffer.clear()
-                            else:
-                                self._publish_ui_state("speaking")
-                                try:
-                                    if prebuffer:
-                                        stream.write(bytes(prebuffer))
-                                    prebuffer.clear()
-                                except Exception as _e:
-                                    self.logger.event("tts.stream.write_error", error=str(_e))
-                                    _close_stream()
-                                    continue
-                    else:
-                        try:
-                            stream.write(chunk)
-                        except Exception as _e:
-                            self.logger.event("tts.stream.write_error", error=str(_e))
-                            _close_stream()
-                            try:
-                                play_bytes(chunk, "pcm16", playback_cfg)
-                            except Exception as _e2:
-                                self.logger.event("tts.fallback.play_error", error=str(_e2))
-
-                except queue.Empty:
-                    continue
-                except Exception as e:
-                    self.logger.event("tts_player_error", error=str(e))
-
-        except Exception as e:
-            self.logger.event("tts_player_thread_error", error=str(e))
+        """Play TTS audio from queue - delegates to AudioReceiver."""
+        # Delegate to AudioReceiver
+        self.audio_receiver._tts_player_loop()
 
     async def _run_session(self) -> None:
         """Run a single WebSocket session."""
@@ -1108,6 +1063,9 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
         if not await self._connect():
             return
+
+        # Record connection in metrics
+        self.metrics.on_connect()
 
         # utwórz dump plik z nagłówkiem, by tail/grep nie sypały błędem braku pliku
         try:
@@ -1161,6 +1119,9 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                 self.connected = False
                 self._stop_stream_workers()
 
+                # Record disconnection in metrics
+                self.metrics.on_disconnect()
+
     async def _run_with_reconnect(self) -> None:
         """Run WebSocket session with reconnection."""
         while not self.stop_event.is_set():
@@ -1172,6 +1133,9 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
                 self._stop_stream_workers()
                 self._publish_ui_state("idle")
+
+                # Record reconnection attempt in metrics
+                self.metrics.on_reconnect()
 
                 if not await self._reconnect_loop():
                     break
