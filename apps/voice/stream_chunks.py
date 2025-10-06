@@ -158,7 +158,7 @@ def calculate_chunk_size(sample_rate: int, chunk_ms: int) -> int:
 
 def decode_audio_from_message(message_data: dict[str, Any]) -> bytes | None:
     """Decode base64 audio data from WebSocket message (RT API variants).
-    
+
     Delegates to rt_protocol.decode_audio_from_message for compatibility.
     """
     return rt_decode_audio(message_data)

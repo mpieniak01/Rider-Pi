@@ -145,10 +145,12 @@ def build_audio_append(audio_data: bytes) -> str:
         JSON string of input_audio_buffer.append message
     """
     audio_b64 = base64.b64encode(audio_data).decode("ascii")
-    return json.dumps({
-        "type": RealtimeMessageType.INPUT_AUDIO_BUFFER_APPEND,
-        "audio": audio_b64,
-    })
+    return json.dumps(
+        {
+            "type": RealtimeMessageType.INPUT_AUDIO_BUFFER_APPEND,
+            "audio": audio_b64,
+        }
+    )
 
 
 def build_audio_commit() -> str:

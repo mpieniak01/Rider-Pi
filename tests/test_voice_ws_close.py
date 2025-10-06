@@ -145,7 +145,7 @@ class TestServiceStop:
         with patch('asyncio.run_coroutine_threadsafe') as mock_schedule:
             # Create a mock future that can be awaited
             mock_future = MagicMock()
-            
+
             # Make the mock actually await the coroutine to prevent warnings
             async def run_coro(coro, loop):
                 try:
@@ -153,10 +153,10 @@ class TestServiceStop:
                 except Exception:
                     pass
                 return mock_future
-            
+
             # Replace with async version
             mock_schedule.side_effect = lambda coro, loop: asyncio.create_task(run_coro(coro, loop))
-            
+
             service.stop()
 
             # Should attempt to schedule close
