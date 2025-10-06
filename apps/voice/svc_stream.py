@@ -495,9 +495,9 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             return
 
         try:
-            sr = int(self.config.get('capture', {}).get('sample_rate', 16000))
+            int(self.config.get('capture', {}).get('sample_rate', 16000))
         except Exception:
-            sr = 16000
+            pass
 
         voice = self.config.get('tts', {}).get('voice', 'ash')
         instructions = self.config.get('session', {}).get('instructions', 'Test: TTS działa po stronie klienta.')
@@ -508,7 +508,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                 'voice': voice,
                 'modalities': ['text', 'audio'],
                 'input_audio_format': 'pcm16',
-                'output_audio_format': {'type': 'pcm16', 'sample_rate': sr},
+                'output_audio_format': 'pcm16',
                 'instructions': instructions,
                 'audio': {'voice': voice, 'format': 'pcm16'},
             },
