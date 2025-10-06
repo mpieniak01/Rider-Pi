@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from collections.abc import Iterable, Mapping, MutableMapping
 from pathlib import Path
 from typing import Any
@@ -135,8 +134,8 @@ def unknown_keys(
     path: tuple[str, ...] = (),
 ) -> set[tuple[str, ...]]:
     """
-    Zwraca zbiór ścieżek kluczy (tuple), które nie istnieją w bazowym configu.
-    Sprawdzenie jest płytkie: brak klucza w 'base' oznacza cały poddrzewo jako nieznane.
+    Zwraca zbiór ścieżek kluczy (tuple), które nie istnieją w bazowym configu 'base'.
+    Użycie: unknown_keys(base_known_schema, candidate_config). Sprawdzenie płytkie.
     """
     bad: set[tuple[str, ...]] = set()
     for k, v in overrides.items():
@@ -148,17 +147,22 @@ def unknown_keys(
     return bad
 
 
-def _warn_unknown_keys(base: Mapping[str, Any], overrides: Mapping[str, Any], stream=None) -> None:
+def _warn_unknown_keys(candidate: Mapping[str, Any], known: Mapping[str, Any], stream=None) -> None:
     """
-    Wypisz ostrzeżenia o nieznanych kluczach override względem base (używane przez testy).
+    Wypisz ostrzeżenia o nieznanych kluczach z 'candidate' względem 'known'.
+    Format dokładnie jak oczekuje test: jedna linia na klucz, na STDOUT.
     """
-    if stream is None:
-        stream = sys.stderr
-    bad = sorted(unknown_keys(base, overrides))
+    # policz nieznane: znane -> base, kandydat -> overrides
+    bad = sorted(unknown_keys(known, candidate))
     if not bad:
         return
-    paths = ["/".join(parts) for parts in bad]
-    print(f"[config] Unknown override keys: {', '.join(paths)}", file=stream)
+    if stream is None:
+        import sys as _sys
+
+        stream = _sys.stdout
+    for parts in bad:
+        path = ".".join(parts)
+        print(f"WARNING: unknown config key '{path}'", file=stream)
 
 
 def load(path: str | Path | None = None, overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
