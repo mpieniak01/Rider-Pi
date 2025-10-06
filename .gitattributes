@@ -11,3 +11,4 @@ _apps/** merge=ours
 *.yml  text eol=lf
 *.yaml text eol=lf
 *.py text eol=lf
+*.py text eol=lf
