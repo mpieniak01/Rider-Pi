@@ -127,6 +127,17 @@ def test_get_auth_header(stream_config):
     assert auth_header == "test-key"
 
 
+def test_get_auth_header_bashenv_rejected(stream_config):
+    """Test that bashenv scheme is rejected for security reasons."""
+    # Modify config to use bashenv scheme
+    stream_config["stream"]["auth"] = "bashenv:~/.bash_profile:OPENAI_API_KEY"
+    service = StreamingVoiceService(stream_config)
+
+    # Should raise RuntimeError with clear message
+    with pytest.raises(RuntimeError, match="bashenv.*no longer supported.*security"):
+        service._get_auth_header()
+
+
 def test_ui_state_publishing(stream_config, mock_ui_publisher):
     """Test UI state change publishing."""
     service = StreamingVoiceService(stream_config, mock_ui_publisher)

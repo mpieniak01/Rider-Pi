@@ -35,7 +35,7 @@ Karta dźwiękowa WM8960 nie obsługuje pełnego dupleksu na surowych urządzeni
 
 1. **Skopiuj plik konfiguracyjny ALSA:**
    ```bash
-   cp config/asoundrc.wm8960 ~/.asoundrc
+   cp config/alsa/asoundrc.wm8960 ~/.asoundrc
    ```
 
 2. **Konfiguracja dostarcza następujące aliasy:**
@@ -123,6 +123,8 @@ barge_in = true                 # Włącz przerwania TTS
 - **Duplex audio**: Równoczesne wysyłanie i odbieranie audio
 
 ### Pliki i ENV
+
+> **Pełna dokumentacja konfiguracji i polityki sekretów:** [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
 
 1. Skopiuj przykładowe ENV i uzupełnij:
 
