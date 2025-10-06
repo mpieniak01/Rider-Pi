@@ -1,0 +1,47 @@
+# config/voice_file.toml — FILE pipeline (REST ASR/CHAT/TTS, PTT)
+# ALSA: używamy aliasów: wm8960_in / wm8960_out
+
+[logging]
+level = "INFO"
+
+[capture]
+backend        = "alsa"
+device         = "wm8960_in"   # <-- Twój alias wejścia
+sample_rate    = 16000
+channels       = 1             # Twój stary preset (mono)
+frame_ms       = 20
+buffer_seconds = 0.10
+sample_format  = "S16_LE"
+
+[playback]
+backend     = "alsa"
+device      = "wm8960_out"     # <-- Twój alias wyjścia
+# alsa_device = "hw:wm8960soundcard,0"  # opcjonalny fallback, jeśli alias by nie zadziałał
+volume      = 80
+
+[asr]
+transport = "rest"
+language  = "pl"
+
+[asr.vad]
+enabled        = false         # w PTT zbędny; włącz tylko przy nasłuchu
+aggressiveness = 2
+start_ms       = 120
+end_ms         = 650
+
+[chat]
+transport = "rest"
+
+[tts]
+transport = "rest"
+voice     = "ash"
+format    = "mp3"              # lub przełącz z CLI na WAV/aplay dla mniejszej latencji
+
+[service]
+beep          = true
+beep_delay_ms = 250
+
+[service.turn]
+max_turn_ms   = 6000
+key_exit      = true
+commit_on_key = true

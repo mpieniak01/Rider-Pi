@@ -43,3 +43,66 @@ Sprawd?
 sim_screenshot.png
 sim_basic_screenshot.png
 sim_basic_screenshot.png
+
+# --- Rider-Pi artifacts ---
+*.wav
+*.mp3
+*.opus
+*.ogg
+*.flac
+*.log
+logs/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.vscode/
+.idea/
+*.diff
+*.patch
+*.bak
+*.swp
+.env
+.env.*
+dist/
+build/
+coverage.xml
+.coverage
+htmlcov/
+
+# --- Rider-Pi artifacts ---
+# audio dumps
+*.wav
+*.mp3
+*.opus
+*.ogg
+*.flac
+# logs
+*.log
+logs/
+# caches
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# IDE
+.vscode/
+.idea/
+# patches/backupy
+*.diff
+*.patch
+*.bak
+*.swp
+# envy / build
+.env
+.env.*
+.venv/
+dist/
+build/
+# test coverage
+coverage.xml
+.coverage
+htmlcov/
+# modele/duże pliki
+models/
+*.caffemodel
