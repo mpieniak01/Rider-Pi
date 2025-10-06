@@ -21,22 +21,10 @@ from .rt_protocol import (
     build_audio_append,
     build_audio_commit,
     build_response_create,
-    build_session_update,
     decode_audio_from_message as rt_decode_audio,
 )
+from .session_prefs import build_session_preferences, session_prefs_to_dict
 from .svc_audio import ensure_mono_16k
-
-
-def _get(src: Any, key: str, default: Any) -> Any:
-    """Pobierz wartość z dict lub obiektu przez atrybut; w innym wypadku zwróć default."""
-    try:
-        if isinstance(src, dict):
-            return src.get(key, default)
-        if hasattr(src, key):
-            return getattr(src, key)
-    except Exception:
-        pass
-    return default
 
 
 class AudioChunkProcessor:
@@ -69,7 +57,7 @@ class AudioChunkProcessor:
             "ch_in": int(self.capture_cfg_obj.channels or 1),
             "ch_out": 1,
             "sr": int(self.capture_cfg_obj.sample_rate or 16000),
-            "chunk_ms": _get(self.stream_cfg, "chunk_ms", 20),
+            "chunk_ms": getattr(self.stream_cfg, "chunk_ms", 20),
         }
 
         return message, telemetry
@@ -90,63 +78,21 @@ class AudioChunkProcessor:
 
     def create_session_update_message(self, config: dict[str, Any]) -> str:
         """Zbuduj poprawny payload `session.update` i zwróć JSON (str)."""
-        stream_cfg = self.stream_cfg or {}
-        chat_cfg = (config or {}).get("chat", {}) or {}
-        cfg_stream = (config or {}).get("stream", {}) or {}
-        cfg_tts = (config or {}).get("tts", {}) or {}
-
-        # VAD i limity tur
-        silence_ms = int(_get(stream_cfg, "turn_end_silence_ms", _get(cfg_stream, "turn_end_silence_ms", 700)))
-        max_turn_ms = int(_get(stream_cfg, "max_turn_ms", _get(cfg_stream, "max_turn_ms", 6000)))
-
-        # Głos TTS, instrukcje
-        voice = cfg_tts.get("voice") or _get(stream_cfg, "voice", "verse")
-        instructions = _get(stream_cfg, "instructions", "")
-
-        # turn_detection: włączony server VAD albo brak (PTT)
-        server_vad = bool(_get(stream_cfg, "server_vad", _get(cfg_stream, "server_vad", True)))
-
-        # Format wejścia/wyjścia
-        in_sr = int(_get(self.capture_cfg_obj, "sample_rate", 16000))
-
-        # temperatura (opcjonalnie z chat)
-        temp = chat_cfg.get("temperature", None)
-        try:
-            if temp is not None:
-                temp = float(temp)
-        except (ValueError, TypeError):
-            temp = None
-
-        # Build base message using rt_protocol
-        message = build_session_update(
-            voice=voice,
-            instructions=instructions,
-            input_sample_rate=in_sr,
-            output_sample_rate=16000,
-            server_vad=server_vad,
-            silence_duration_ms=silence_ms,
-            max_turn_duration_ms=max_turn_ms,
-            temperature=temp,
+        # Build session preferences from config
+        prefs = build_session_preferences(
+            config=config,
+            stream_cfg=self.stream_cfg,
+            capture_cfg=self.capture_cfg_obj,
         )
 
-        # Parse to add additional fields not in base builder
-        session_update = json.loads(message)
+        # Convert to session dict
+        session_dict = session_prefs_to_dict(prefs)
 
-        # max_tokens (opcjonalnie z chat)
-        try:
-            if "max_tokens" in chat_cfg:
-                session_update["session"]["max_response_output_tokens"] = int(chat_cfg["max_tokens"])
-        except (ValueError, TypeError):
-            pass
-
-        # tools / tool_choice (opcjonalnie)
-        tools = chat_cfg.get("tools")
-        if tools is not None:
-            session_update["session"]["tools"] = tools
-
-        tool_choice = chat_cfg.get("tool_choice")
-        if tool_choice is not None:
-            session_update["session"]["tool_choice"] = tool_choice
+        # Wrap in session.update message
+        session_update = {
+            "type": "session.update",
+            "session": session_dict,
+        }
 
         return json.dumps(session_update)
 

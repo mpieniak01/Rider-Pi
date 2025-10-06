@@ -43,3 +43,24 @@ class PlaybackError(AudioError):
     """Audio playback errors."""
 
     pass
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# WebSocket/Transport specific errors (PR-3)
+# ────────────────────────────────────────────────────────────────────────────
+class WsClosed(StreamError):
+    """WebSocket connection closed unexpectedly."""
+
+    pass
+
+
+class BadAudioFormat(AudioError):
+    """Invalid audio format configuration or mismatch."""
+
+    pass
+
+
+class BackpressureExceeded(StreamError):
+    """Queue backpressure limit exceeded (too many dropped chunks)."""
+
+    pass
