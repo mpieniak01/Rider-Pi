@@ -993,7 +993,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                     if self.connected and self.websocket and self.stream_cfg.barge_in:
                         try:
                             loop = self._loop
-                            if loop and getattr(loop, "is_running", lambda: False)():
+                            if loop and hasattr(loop, "is_running") and loop.is_running():
                                 asyncio.run_coroutine_threadsafe(self._send_response_cancel(), loop)
                         except Exception as e:
                             self.logger.event("barge_in.cancel_error", error=str(e))
