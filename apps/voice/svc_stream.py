@@ -1018,8 +1018,8 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                         try:
                             self.audio_queue.get_nowait()  # Remove oldest
                             self.audio_queue.put(audio_chunk, block=False)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            self.logger.event("audio_queue.fallback_error", error=str(e))
 
         except Exception as e:
             self.logger.event("audio_capture_error", error=str(e))
