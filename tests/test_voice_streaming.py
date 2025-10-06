@@ -204,8 +204,15 @@ async def test_session_update_message(stream_config):
     assert "session" in msg
     session = msg["session"]
     assert session["voice"] == "ash"
-    assert session["input_audio_format"] == "pcm16"
-    assert session["output_audio_format"] == "pcm16"
+    # Updated to expect object format (not string) - PR-0 stabilization
+    assert isinstance(session["input_audio_format"], dict)
+    assert session["input_audio_format"]["type"] == "pcm16"
+    assert session["input_audio_format"]["sample_rate_hz"] == 16000
+    assert session["input_audio_format"]["channels"] == 1
+    assert isinstance(session["output_audio_format"], dict)
+    assert session["output_audio_format"]["type"] == "pcm16"
+    assert session["output_audio_format"]["sample_rate_hz"] == 16000
+    assert session["output_audio_format"]["channels"] == 1
 
 
 @pytest.mark.asyncio
