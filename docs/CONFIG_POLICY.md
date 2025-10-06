@@ -135,17 +135,59 @@ auth = "env:OPENAI_API_KEY"
 
 ## 3. Konfiguracja sprzętu (ALSA)
 
-### Źródło prawdy: `config/asoundrc.wm8960`
+### Źródło prawdy: `config/alsa/asoundrc.wm8960`
 
 Konfiguracja ALSA dla WM8960 jest **szablonem** w repo:
 ```bash
-cp config/asoundrc.wm8960 ~/.asoundrc
+cp config/alsa/asoundrc.wm8960 ~/.asoundrc
 ```
 
 **Struktura aliasów:**
 - `wm8960_in` — capture (dsnoop, 16kHz mono)
 - `wm8960_out` — playback (dmix, 48kHz stereo)
 - `wm8960` — control interface
+
+### Pre-flight checks (nowe w PR-3)
+
+Przed uruchomieniem aplikacji audio, należy sprawdzić dostępność urządzeń:
+
+```bash
+# Sprawdzenie bez zabijania procesów
+config/alsa/preflight.sh --capture wm8960_in --playback wm8960_out
+
+# Sprawdzenie z wymuszonym czyszczeniem
+config/alsa/preflight.sh --force --capture wm8960_in --playback wm8960_out
+```
+
+**Zachowanie skryptu pre-flight:**
+
+1. **Sprawdzenie urządzenia** — próba otwarcia dla test capture/playback (0.1s)
+2. **Wykrycie procesów** — użycie `lsof /dev/snd/*` (pomijane w CI/testach)
+3. **Bezpieczne zabijanie** (tylko z `--force` i tylko znane procesy):
+   - Wysyła `SIGTERM` do `arecord`, `aplay`, `python.*voice`
+   - Czeka do 1s na graceful shutdown
+   - Jeśli proces nadal istnieje, wysyła `SIGKILL`
+   - Loguje wszystkie akcje z PID i nazwą komendy
+4. **Ponowne sprawdzenie** — po czyszczeniu ponownie testuje urządzenia
+5. **Raport** — zwraca exit code 0 jeśli OK, 1 jeśli błąd
+
+**Integracja w skryptach:**
+```bash
+# W ops/voice-once.sh:
+"$RIDER_CONFIG_DIR/config/alsa/preflight.sh" \
+  --force \
+  --capture wm8960_in \
+  --playback wm8960_out || {
+  echo "WARNING: Pre-flight failed, continuing anyway" >&2
+}
+```
+
+**Bezpieczeństwo:**
+- NIE zabija procesów systemowych
+- Wymaga jawnego `--force` do zabicia czegokolwiek
+- Loguje wszystkie PID i komendy przed zabiciem
+- Używa SIGTERM przed SIGKILL
+- Pomija `lsof` w środowiskach testowych (ENV: `ALSA_SKIP_LSOF=1`)
 
 ### Skrypty operacyjne
 

@@ -35,7 +35,7 @@ Karta dźwiękowa WM8960 nie obsługuje pełnego dupleksu na surowych urządzeni
 
 1. **Skopiuj plik konfiguracyjny ALSA:**
    ```bash
-   cp config/asoundrc.wm8960 ~/.asoundrc
+   cp config/alsa/asoundrc.wm8960 ~/.asoundrc
    ```
 
 2. **Konfiguracja dostarcza następujące aliasy:**

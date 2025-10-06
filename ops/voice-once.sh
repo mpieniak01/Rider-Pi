@@ -22,7 +22,7 @@ setup_voice_env
 
 # Apply WM8960 mixer settings
 echo "[voice-once] Applying WM8960 mixer levels…" >&2
-"$RIDER_CONFIG_DIR/wm8960-apply.sh" || {
+"$RIDER_CONFIG_DIR/alsa/wm8960-apply.sh" || {
   echo "[voice-once] WARNING: Failed to apply WM8960 settings (may not be available)" >&2
 }
 
