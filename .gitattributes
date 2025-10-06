@@ -13,3 +13,4 @@ _apps/** merge=ours
 *.py text eol=lf
 *.py text eol=lf
 *.py text eol=lf
+*.py text eol=lf
