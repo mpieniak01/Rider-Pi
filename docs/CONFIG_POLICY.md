@@ -382,3 +382,70 @@ A: Nie. Skrypty **czytają** z `config/` i **uzupełniają** brakujące ENV, ale
 
 **Ostatnia aktualizacja:** 2025-01 (PR-1)
 **Kontakt:** Issues w repozytorium GitHub
+
+---
+
+## 8. Podsumowanie zmian (seria PR-ów config unification)
+
+### PR-1: Usunięcie bashenv (SECURITY CRITICAL) ✅
+- Usunięto schemat `bashenv:` z `svc_stream.py` (ryzyko odczytu z `.bash_history`)
+- Migracja: `bashenv:~/.bash_profile:VAR` → `env:VAR`
+- Utworzono `docs/CONFIG_POLICY.md`
+
+### PR-2: Centralizacja dostępu do konfiguracji ✅
+- Utworzono `tools/load_config.sh` (helper dla skryptów)
+- Zaktualizowano `ops/voice-once.sh` (nowoczesny wzorzec)
+- Oznaczono `ops/voice-run.sh` jako LEGACY
+
+### PR-3: Pre-flight checks ALSA ✅
+- Utworzono `config/alsa/preflight.sh` (bezpieczne zabijanie procesów)
+- Reorganizacja: `config/alsa/` dla ALSA-specyficznych plików
+- Przeniesiono `asoundrc.wm8960` i `wm8960-apply.sh`
+
+---
+
+## 9. Checklist dla nowych deweloperów
+
+**Setup środowiska:**
+```bash
+# 1. Clone i install
+git clone https://github.com/mpieniak01/Rider-Pi.git
+cd Rider-Pi
+pip install -r requirements-dev.txt
+
+# 2. ALSA config
+cp config/alsa/asoundrc.wm8960 ~/.asoundrc
+
+# 3. API key
+echo 'export OPENAI_API_KEY="sk-..."' >> ~/.bash_profile
+source ~/.bash_profile
+
+# 4. Pre-flight check
+config/alsa/preflight.sh --capture wm8960_in --playback wm8960_out
+
+# 5. Test
+python -m apps.voice.cli diag
+```
+
+**Tworzenie nowego skryptu ops:**
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname "$0")/../tools/load_config.sh"
+setup_voice_env
+# Twój kod tutaj
+```
+
+**Przed commitem:**
+```bash
+ruff check apps/ tests/ --fix
+ruff format apps/ tests/
+pytest -q
+git diff --cached | grep -i "sk-"  # sprawdź sekrety
+```
+
+---
+
+**Ostatnia aktualizacja:** 2025-01 (PR-3 complete)  
+**Wersja:** 1.0  
+**Related docs:** [voice.md](modules/voice.md), [wm8960.md](audio/wm8960.md), [AGENT.md](../AGENT.md)
