@@ -163,6 +163,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
     """WebSocket-based streaming voice service with duplex audio."""
 
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
+        self._session_update_sent = False
         self.config = config
         self.stream_cfg = StreamConfig.from_dict(config)
         self.ui_publisher = ui_publisher
@@ -553,6 +554,9 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                 self._start_capture()
         except Exception as _e:
             self.logger.event("capture.autostart.error", error=str(_e))
+
+        if getattr(self, '_session_update_sent', False):
+            return
 
     async def _send_audio_chunk(self, audio_data: bytes) -> None:
         """Send audio chunk to WebSocket i **zawsze** emituj metrykę stream.tx (1×)."""
