@@ -10,3 +10,4 @@ _apps/** merge=ours
 *.sh   text eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf
+*.py text eol=lf
