@@ -21,9 +21,11 @@ Environment variables:
 - RIDER_CONFIG_DIR: directory containing voice.toml (e.g., /etc/rider)
 - VOICE_*: individual setting overrides (e.g., VOICE_ASR_BACKEND=vosk)
 
+# fmt: off
 Example usage:
     from apps.voice import config
 
+# fmt: on
     # Load with defaults
     cfg = config.load()
 
