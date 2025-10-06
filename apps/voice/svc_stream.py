@@ -507,7 +507,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             'session': {
                 'voice': voice,
                 'modalities': ['text', 'audio'],
-                'input_audio_format': {'type': 'pcm16', 'sample_rate': sr},
+                'input_audio_format': 'pcm16',
                 'output_audio_format': {'type': 'pcm16', 'sample_rate': sr},
                 'instructions': instructions,
                 'audio': {'voice': voice, 'format': 'pcm16'},
