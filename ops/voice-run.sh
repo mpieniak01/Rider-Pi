@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# voice-run.sh — uruchamia /home/pi/robot/apps/voice/main.py z sensownymi domyślnymi ENV
+# voice-run.sh — LEGACY script for backward compatibility
+# 
+# NOTE: This script exports many ENV variables for the legacy voice app.
+# For new deployments, consider using the modern approach with config files:
+#   - See ops/voice-once.sh for example
+#   - Use tools/load_config.sh helper
+#   - Read docs/CONFIG_POLICY.md for full policy
+#
 # Użycie:
 #   ./voice-run.sh             # domyślnie tryb BUS (VOICE_STANDALONE=0)
 #   ./voice-run.sh bus         # wymuś tryb BUS

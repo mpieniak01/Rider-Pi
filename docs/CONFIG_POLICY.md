@@ -168,6 +168,37 @@ Przed uruchomieniem audio:
 
 ## 4. Standardy skryptów ops
 
+### Helper dla skryptów: `tools/load_config.sh`
+
+Zamiast duplikować logikę wykrywania ścieżek i ładowania konfiguracji, skrypty mogą użyć:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Załaduj pomocnicze funkcje
+source "$(dirname "$0")/../tools/load_config.sh"
+
+# Skonfiguruj środowisko automatycznie
+setup_voice_env
+
+# Uruchom aplikację (RIDER_CONFIG_DIR i API key już ustawione)
+python -m apps.voice.cli listen
+```
+
+**Dostępne funkcje:**
+
+- `get_rider_root` — wykryj katalog główny projektu
+- `get_config_dir` — zwróć katalog config (respektuje `RIDER_CONFIG_DIR`)
+- `load_api_key [VARNAME]` — załaduj klucz API z `~/.bash_profile`
+- `setup_voice_env` — skonfiguruj pełne środowisko (locale, PYTHONPATH, API key)
+- `exec_with_config CMD...` — setup + exec w jednej linii
+
+**Przykład użycia w jednej linii:**
+```bash
+source tools/load_config.sh && exec_with_config python -m apps.voice.cli ptt
+```
+
 ### Nagłówek skryptu
 ```bash
 #!/usr/bin/env bash
