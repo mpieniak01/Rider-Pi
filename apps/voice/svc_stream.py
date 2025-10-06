@@ -31,6 +31,7 @@ from . import voice_logging
 from .capture import CaptureConfig
 from .common import ensure_event_logger
 from .playback import play_ding  # noqa: F401 - Re-export for test compatibility
+from .rt_protocol import build_response_cancel
 from .state import StreamingVoicePTTMixin
 from .stream_chunks import (
     AudioChunkProcessor,
@@ -253,21 +254,11 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
     # send(), recv(), aclose(), close(), close_sync(), _connect(), _reconnect_loop()
 
     def __del__(self) -> None:
-        try:
-            # prefer sync
-            if hasattr(self, "close_sync"):
-                self.close_sync()  # best-effort
-                return
-            # fallback: spróbuj bez run_sync
-            coro = getattr(self, "aclose", None)
-            if callable(coro):
-                loop = asyncio.get_event_loop()
-                if loop.is_running():  # w testach często tak
-                    loop.create_task(coro())  # odpal bez blokowania
-                else:
-                    asyncio.run(coro())
-        except Exception:
-            pass
+        """Cleanup on deletion - best effort, no guarantees in __del__."""
+        # Skip cleanup in __del__ entirely to avoid unawaited coroutine warnings.
+        # Proper cleanup should happen via explicit close() or stop() calls.
+        # __del__ is not a reliable place for async cleanup in Python.
+        pass
 
     def stop(self) -> None:
         """Stop the streaming service (idempotent, test-friendly)."""
@@ -599,7 +590,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         if not (self.connected and self.websocket):
             return
         try:
-            await self.send(json.dumps({"type": "response.cancel"}))
+            await self.send(build_response_cancel())
             self.logger.event("response.cancel.sent")
             self._response_pending = False
         except Exception as e:
