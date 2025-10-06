@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
 
 from apps.voice.svc_stream import StreamingVoiceService
 
@@ -19,8 +20,8 @@ class TestWebSocketClose:
         mock_ws.wait_closed = AsyncMock()
         return mock_ws
 
-    @pytest.fixture
-    def service(self):
+    @pytest_asyncio.fixture
+    async def service(self):
         """Create a streaming service for testing."""
         config = {
             "stream": {"endpoint": "ws://test", "auth": "test-key"},
@@ -28,7 +29,13 @@ class TestWebSocketClose:
             "playback": {},
             "service": {"beep": False},
         }
-        return StreamingVoiceService(config)
+        svc = StreamingVoiceService(config)
+        yield svc
+        # Proper cleanup - await close to prevent unawaited coroutine warning
+        try:
+            await svc.close()
+        except Exception:
+            pass
 
     @pytest.mark.asyncio
     async def test_close_with_valid_websocket(self, service, mock_websocket):
@@ -99,8 +106,8 @@ class TestWebSocketClose:
 class TestServiceStop:
     """Test service stop and cleanup."""
 
-    @pytest.fixture
-    def service(self):
+    @pytest_asyncio.fixture
+    async def service(self):
         """Create a streaming service for testing."""
         config = {
             "stream": {"endpoint": "ws://test", "auth": "test-key"},
@@ -108,23 +115,48 @@ class TestServiceStop:
             "playback": {},
             "service": {"beep": False},
         }
-        return StreamingVoiceService(config)
+        svc = StreamingVoiceService(config)
+        yield svc
+        # Proper cleanup - await close to prevent unawaited coroutine warning
+        try:
+            await svc.close()
+        except Exception:
+            pass
 
-    def test_stop_sets_flags(self, service):
+    @pytest.mark.asyncio
+    async def test_stop_sets_flags(self, service):
         """Test that stop() sets appropriate flags."""
         service.stop()
 
         assert service.stop_event.is_set()
         assert not service.connected
 
-    def test_stop_with_running_loop(self, service):
+    @pytest.mark.asyncio
+    async def test_stop_with_running_loop(self, service):
         """Test stop with event loop (scheduling close)."""
         mock_loop = MagicMock()
+        # Make is_running return True to trigger async path
+        mock_loop.is_running.return_value = True
         service._loop = mock_loop
         service.websocket = MagicMock()
 
-        # Mock asyncio.run_coroutine_threadsafe
+        # Mock asyncio.run_coroutine_threadsafe to actually run the coroutine
+        # This prevents "unawaited coroutine" warnings
         with patch('asyncio.run_coroutine_threadsafe') as mock_schedule:
+            # Create a mock future that can be awaited
+            mock_future = MagicMock()
+            
+            # Make the mock actually await the coroutine to prevent warnings
+            async def run_coro(coro, loop):
+                try:
+                    await coro
+                except Exception:
+                    pass
+                return mock_future
+            
+            # Replace with async version
+            mock_schedule.side_effect = lambda coro, loop: asyncio.create_task(run_coro(coro, loop))
+            
             service.stop()
 
             # Should attempt to schedule close

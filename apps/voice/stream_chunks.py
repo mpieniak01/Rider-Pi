@@ -5,17 +5,25 @@ Audio chunk processing for streaming voice service.
 Extracted from svc_stream.py to keep files under 600 lines.
 Handles 20ms buffer management, downmix/resample to 16kHz, audioop utilities,
 and base64 pack/unpack for WebSocket transmission.
+
+NOTE: Message builders now delegated to rt_protocol.py (PR-1 refactoring).
 """
 
 from __future__ import annotations
 
-import base64
 import json
 from typing import Any
 
 # ⬇️ Uwaga: celowo NIE importujemy voice_logging, żeby uniknąć pętli importów
 # from . import voice_logging
 from .capture import CaptureConfig
+from .rt_protocol import (
+    build_audio_append,
+    build_audio_commit,
+    build_response_create,
+    build_session_update,
+    decode_audio_from_message as rt_decode_audio,
+)
 from .svc_audio import ensure_mono_16k
 
 
@@ -52,9 +60,8 @@ class AudioChunkProcessor:
         # Normalizacja do mono/16 kHz (ensure_mono_16k resampluje/konwertuje jeśli trzeba)
         normalized_audio = ensure_mono_16k(audio_data, self.capture_cfg_obj)
 
-        # JSON wymaga base64
-        audio_b64 = base64.b64encode(normalized_audio).decode("ascii")
-        message = {"type": "input_audio_buffer.append", "audio": audio_b64}
+        # Use rt_protocol builder
+        message = build_audio_append(normalized_audio)
 
         telemetry = {
             "bytes_in": len(audio_data),
@@ -65,11 +72,11 @@ class AudioChunkProcessor:
             "chunk_ms": _get(self.stream_cfg, "chunk_ms", 20),
         }
 
-        return json.dumps(message), telemetry
+        return message, telemetry
 
     def create_commit_message(self) -> str:
         """Create audio buffer commit message."""
-        return json.dumps({"type": "input_audio_buffer.commit"})
+        return build_audio_commit()
 
     def create_response_message(self, config: dict[str, Any]) -> str:
         """Create response request message (modalities + voice).
@@ -79,16 +86,7 @@ class AudioChunkProcessor:
         tts_cfg = (config or {}).get("tts", {}) or {}
         voice = tts_cfg.get("voice") or "verse"
 
-        response_msg = {
-            "type": "response.create",
-            "response": {
-                "conversation": "default",
-                "instructions": "Odpowiadaj krótko i po polsku.",
-                "modalities": ["text", "audio"],
-                "audio": {"voice": voice},
-            },
-        }
-        return json.dumps(response_msg)
+        return build_response_create(voice=voice, instructions="Odpowiadaj krótko i po polsku.")
 
     def create_session_update_message(self, config: dict[str, Any]) -> str:
         """Zbuduj poprawny payload `session.update` i zwróć JSON (str)."""
@@ -107,47 +105,32 @@ class AudioChunkProcessor:
 
         # turn_detection: włączony server VAD albo brak (PTT)
         server_vad = bool(_get(stream_cfg, "server_vad", _get(cfg_stream, "server_vad", True)))
-        turn_detection: dict[str, Any] | None
-        if server_vad:
-            turn_detection = {
-                "type": "server_vad",
-                "silence_duration_ms": silence_ms,
-                "max_turn_duration_ms": max_turn_ms,
-            }
-        else:
-            turn_detection = None  # PTT/sterowanie ręczne
 
-        # Format wejścia/wyjścia jako OBIEKTY (wymagane przez backendy RT)
+        # Format wejścia/wyjścia
         in_sr = int(_get(self.capture_cfg_obj, "sample_rate", 16000))
-        session_update: dict[str, Any] = {
-            "type": "session.update",
-            "session": {
-                "modalities": ["text", "audio"],
-                "voice": voice,
-                "instructions": instructions,
-                "turn_detection": turn_detection,
-                "input_audio_format": {
-                    "type": "pcm16",
-                    "sample_rate_hz": in_sr,
-                    "channels": 1,
-                },
-                "output_audio_format": {
-                    "type": "pcm16",
-                    "sample_rate_hz": 16000,
-                    "channels": 1,
-                },
-                # Transkrypcja wejścia (placeholder zgodnie z dotychczasowym zachowaniem)
-                "input_audio_transcription": {"model": "whisper-1"},
-            },
-        }
 
         # temperatura (opcjonalnie z chat)
         temp = chat_cfg.get("temperature", None)
         try:
             if temp is not None:
-                session_update["session"]["temperature"] = float(temp)
+                temp = float(temp)
         except (ValueError, TypeError):
-            pass
+            temp = None
+
+        # Build base message using rt_protocol
+        message = build_session_update(
+            voice=voice,
+            instructions=instructions,
+            input_sample_rate=in_sr,
+            output_sample_rate=16000,
+            server_vad=server_vad,
+            silence_duration_ms=silence_ms,
+            max_turn_duration_ms=max_turn_ms,
+            temperature=temp,
+        )
+
+        # Parse to add additional fields not in base builder
+        session_update = json.loads(message)
 
         # max_tokens (opcjonalnie z chat)
         try:
@@ -174,24 +157,8 @@ def calculate_chunk_size(sample_rate: int, chunk_ms: int) -> int:
 
 
 def decode_audio_from_message(message_data: dict[str, Any]) -> bytes | None:
-    """Decode base64 audio data from WebSocket message (RT API variants)."""
-    try:
-        msg_type = message_data.get("type")
-        if msg_type == "response.audio.delta":
-            audio_b64 = message_data.get("delta", "")
-            if audio_b64:
-                return base64.b64decode(audio_b64)
-        elif msg_type == "response.audio":
-            audio_b64 = message_data.get("audio", "")
-            if audio_b64:
-                return base64.b64decode(audio_b64)
-        elif msg_type == "response.output_audio.delta":
-            # Niektóre implementacje mają delta na top-level, inne w data.delta
-            audio_b64 = message_data.get("delta", "")
-            if not audio_b64:
-                audio_b64 = (message_data.get("data") or {}).get("delta", "")
-            if audio_b64:
-                return base64.b64decode(audio_b64)
-    except Exception:
-        pass
-    return None
+    """Decode base64 audio data from WebSocket message (RT API variants).
+    
+    Delegates to rt_protocol.decode_audio_from_message for compatibility.
+    """
+    return rt_decode_audio(message_data)
