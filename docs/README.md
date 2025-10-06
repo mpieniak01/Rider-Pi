@@ -14,6 +14,7 @@ Najważniejsze dokumenty znajdują się w katalogu głównym projektu:
 - [**ARCHITECTURE_DIAGRAM.md**](../ARCHITECTURE_DIAGRAM.md) — diagramy architektury
 - [**AGENT.md**](../AGENT.md) — kontrakt dla asystenta kodu, zasady developerskie
 - [**WORKING-AGREEMENTS.md**](../WORKING-AGREEMENTS.md) — ustalenia robocze zespołu
+- [**CONFIG_POLICY.md**](CONFIG_POLICY.md) — **polityka konfiguracji i sekretów** (single source of truth)
 
 ---
 

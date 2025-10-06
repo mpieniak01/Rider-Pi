@@ -124,6 +124,8 @@ barge_in = true                 # Włącz przerwania TTS
 
 ### Pliki i ENV
 
+> **Pełna dokumentacja konfiguracji i polityki sekretów:** [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
+
 1. Skopiuj przykładowe ENV i uzupełnij:
 
    ```bash
