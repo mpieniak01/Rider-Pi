@@ -197,9 +197,17 @@ class StreamingVoiceTransportMixin:
         """Close WebSocket connection gracefully (async)."""
         if getattr(self, "websocket", None):  # type: ignore[attr-defined]
             try:
+                # Calculate connection lifetime
+                lifetime_s = 0.0
+                if hasattr(self, "_connection_start_ts") and self._connection_start_ts > 0:  # type: ignore[attr-defined]
+                    import time
+
+                    lifetime_s = time.time() - self._connection_start_ts  # type: ignore[attr-defined]
+
                 self.logger.event(  # type: ignore[attr-defined]
                     "ws.closing",
                     session_id=getattr(self, "session_id", None),  # type: ignore[attr-defined]
+                    lifetime_s=round(lifetime_s, 2) if lifetime_s > 0 else None,
                 )
                 await self.websocket.close(code=1000)  # type: ignore[attr-defined]
                 try:
@@ -210,6 +218,7 @@ class StreamingVoiceTransportMixin:
                 self.logger.event(  # type: ignore[attr-defined]
                     "ws.closed",
                     session_id=getattr(self, "session_id", None),  # type: ignore[attr-defined]
+                    lifetime_s=round(lifetime_s, 2) if lifetime_s > 0 else None,
                 )
             except Exception as e:
                 try:
@@ -301,6 +310,11 @@ class StreamingVoiceTransportMixin:
             self.connected = True  # type: ignore[attr-defined]
             self.retry_count = 0  # type: ignore[attr-defined]
             self.session_id = str(uuid.uuid4())  # type: ignore[attr-defined]
+            # Track connection start time for lifetime metrics
+            if hasattr(self, "_connection_start_ts"):
+                import time
+
+                self._connection_start_ts = time.time()  # type: ignore[attr-defined]
             try:
                 self.logger.event("ws.connected", session_id=self.session_id)  # type: ignore[attr-defined]
             except Exception:
