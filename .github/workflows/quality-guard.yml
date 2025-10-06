@@ -86,8 +86,39 @@ jobs:
             fi
           fi
 
+      # ---- CRLF detector (najczęstsza przyczyna 'would reformat' na CI) ----
+      - name: Detect CRLF in changed Python files
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          CHANGED="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
+          [ -z "$CHANGED" ] && exit 0
+          BAD=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            # Wykryj znak CR (0x0D); jeśli jest -> CRLF
+            if grep -Iq . "$f" && grep -q $'\r' "$f"; then
+              BAD="${BAD}${f}\n"
+            fi
+          done <<< "$CHANGED"
+          if [ -n "$BAD" ]; then
+            echo "::error::Detected CRLF in Python files (use LF). Offenders:\n${BAD}"
+            echo "Tip: add '*.py text eol=lf' to .gitattributes and run 'git add --renormalize \"*.py\"'."
+            exit 1
+          fi
+
       # ---- Ruff ----
       - name: Ruff (lint + format check, PR annotations)
+        shell: bash
         run: |
+          set -euo pipefail
           ruff check . --output-format=github
-          ruff format --check .
+          # pokaż diff gdy --check nie przejdzie (łatwiejszy review)
+          if ! ruff format --check .; then
+            echo "::group::ruff format --diff"
+            ruff format --diff .
+            echo "::endgroup::"
+            exit 1
+          fi

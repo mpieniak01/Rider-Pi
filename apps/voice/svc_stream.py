@@ -173,10 +173,17 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         self.websocket: Any = None
         self.session_id: str = ""
         self.current_state = "idle"
-        self.audio_queue: queue.Queue[bytes | None] = queue.Queue()
-        self.tts_player_queue: queue.Queue[bytes | None] = queue.Queue()
+        # Bounded queues for backpressure (prevent unbounded growth)
+        audio_queue_maxsize = _env_int("VOICE_AUDIO_QUEUE_MAX", 200)  # ~4s @ 20ms chunks
+        tts_queue_maxsize = _env_int("VOICE_TTS_QUEUE_MAX", 500)  # ~10s @ 20ms chunks
+        self.audio_queue: queue.Queue[bytes | None] = queue.Queue(maxsize=audio_queue_maxsize)
+        self.tts_player_queue: queue.Queue[bytes | None] = queue.Queue(maxsize=tts_queue_maxsize)
         self.stop_event = threading.Event()
         self.barge_in_event = threading.Event()
+
+        # Counters for dropped chunks (backpressure metrics)
+        self._audio_drops = 0
+        self._tts_drops = 0
 
         # workers (dla join/stop)
         self._capture_thread: threading.Thread | None = None
@@ -195,6 +202,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         # Connection state
         self.connected = False
         self.retry_count = 0
+        self._connection_start_ts: float = 0.0  # Track connection lifetime
 
         # one-shot interaction flag
         self._completed: bool = False
@@ -490,32 +498,18 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
     # -------------------------------------------------------------------------
 
     async def _send_session_update(self) -> None:
+        """Wyślij session.update z pełnymi ustawieniami formatu, modalities, turn_detection."""
         # Idempotentne: wysyłamy tylko raz
         if getattr(self, '_session_update_sent', False):
             return
 
-        try:
-            int(self.config.get('capture', {}).get('sample_rate', 16000))
-        except Exception:
-            pass
+        # Użyj AudioChunkProcessor do budowy pełnego session.update
+        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
+        payload_json = chunk_processor.create_session_update_message(self.config)
 
-        voice = self.config.get('tts', {}).get('voice', 'ash')
-        instructions = self.config.get('session', {}).get('instructions', 'Test: TTS działa po stronie klienta.')
-
-        payload = {
-            'type': 'session.update',
-            'session': {
-                'voice': voice,
-                'modalities': ['text', 'audio'],
-                'input_audio_format': 'pcm16',
-                'output_audio_format': 'pcm16',
-                'instructions': instructions,
-                'audio': {'voice': voice, 'format': 'pcm16'},
-            },
-        }
-
-        await self.send(json.dumps(payload))
+        await self.send(payload_json)
         self._session_update_sent = True
+        self.logger.event("session.update.sent")
 
     async def _send_audio_chunk(self, audio_data: bytes) -> None:
         """Send audio chunk to WebSocket i **zawsze** emituj metrykę stream.tx (1×)."""
@@ -538,6 +532,10 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             # 2) Wyślij do WS
             await self.send(message_json)
             self._any_audio_since_commit = True
+
+            # Log audio appended event
+            bytes_out = int(telemetry.get("bytes_out", 0))
+            self.logger.event("audio.appended", bytes=bytes_out)
 
             # 3) Per-chunk metryka
             try:
@@ -596,6 +594,17 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
     # ────────────────────────────────────────────────────────────────────────
     # RESPONSE GUARD: dopnij response.create po commit, jeśli serwer milczy
     # ────────────────────────────────────────────────────────────────────────
+    async def _send_response_cancel(self) -> None:
+        """Send response.cancel to interrupt ongoing response (barge-in)."""
+        if not (self.connected and self.websocket):
+            return
+        try:
+            await self.send(json.dumps({"type": "response.cancel"}))
+            self.logger.event("response.cancel.sent")
+            self._response_pending = False
+        except Exception as e:
+            self.logger.event("response.cancel.error", error=str(e))
+
     async def _ensure_response_requested(self, force: bool = False) -> None:
         """Wyślij response.create, jeśli jeszcze „wisi” pending po commit."""
         if not (self.connected and self.websocket):
@@ -730,7 +739,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             await self.send(json.dumps({"type": "input_audio_buffer.commit"}))
             self._response_pending = True
             self._last_commit_ts = time.time()
-            self.logger.event("commit.sent")
+            self.logger.event("audio.committed")
         except Exception as e:
             self.logger.event("commit.send_error", error=str(e))
             try:
@@ -785,7 +794,13 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                 except Exception:
                     pass
 
-            if msg_type == "input_audio_buffer.speech_started":
+            if msg_type == "session.updated":
+                self.logger.event("session.ready")
+
+            elif msg_type == "session.created":
+                self.logger.event("session.created", session_id=data.get("session", {}).get("id", ""))
+
+            elif msg_type == "input_audio_buffer.speech_started":
                 self._publish_ui_state("hearing")
                 self.logger.event("speech.started")
 
@@ -816,23 +831,34 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             elif msg_type == "response.output_audio.delta":
                 audio_data = decode_audio_from_message(data)
                 if audio_data:
-                    self.tts_player_queue.put(audio_data)
-                    self.logger.event("tts.audio_chunk", bytes=len(audio_data))
+                    try:
+                        self.tts_player_queue.put(audio_data, block=False)
+                        self.logger.event("response.delta", bytes=len(audio_data))
+                    except queue.Full:
+                        # Queue full - drop and log
+                        self._tts_drops += 1
+                        if self._tts_drops % 10 == 1:
+                            self.logger.event("tts_queue.full", drops=self._tts_drops)
 
             elif msg_type == "response.output_audio.done":
                 self.tts_player_queue.put(None)
-                self.logger.event("tts.stream_complete")
+                self.logger.event("response.done")
 
             # ----- Backward compatibility (older names) -----
             elif msg_type == "response.audio.delta":
                 audio_data = decode_audio_from_message(data)
                 if audio_data:
-                    self.tts_player_queue.put(audio_data)
-                    self.logger.event("tts.audio_chunk_legacy", bytes=len(audio_data))
+                    try:
+                        self.tts_player_queue.put(audio_data, block=False)
+                        self.logger.event("response.delta", bytes=len(audio_data), legacy=True)
+                    except queue.Full:
+                        self._tts_drops += 1
+                        if self._tts_drops % 10 == 1:
+                            self.logger.event("tts_queue.full", drops=self._tts_drops, legacy=True)
 
             elif msg_type == "response.audio.done":
                 self.tts_player_queue.put(None)
-                self.logger.event("tts.stream_complete_legacy")
+                self.logger.event("response.done", legacy=True)
 
             # ----- Completed response -----
             elif msg_type in ("response.completed", "response.done"):
@@ -963,6 +989,15 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                     break
 
                 if self.barge_in_event.is_set():
+                    # Send response.cancel to interrupt ongoing response
+                    if self.connected and self.websocket and self.stream_cfg.barge_in:
+                        try:
+                            loop = self._loop
+                            if loop and hasattr(loop, "is_running") and loop.is_running():
+                                asyncio.run_coroutine_threadsafe(self._send_response_cancel(), loop)
+                        except Exception as e:
+                            self.logger.event("barge_in.cancel_error", error=str(e))
+
                     # Clear TTS queue on barge-in
                     while not self.tts_player_queue.empty():
                         try:
@@ -973,7 +1008,18 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
                 # GATE: wysyłaj audio TYLKO gdy PTT aktywne lub gdy PTT wyłączone
                 if audio_chunk and self.connected and (self.ptt_active or not self.ptt_enabled):
-                    self.audio_queue.put(audio_chunk)
+                    try:
+                        self.audio_queue.put(audio_chunk, block=False)
+                    except queue.Full:
+                        # Queue full - drop oldest and add new (backpressure)
+                        self._audio_drops += 1
+                        if self._audio_drops % 10 == 1:  # Log every 10th drop
+                            self.logger.event("audio_queue.full", drops=self._audio_drops)
+                        try:
+                            self.audio_queue.get_nowait()  # Remove oldest
+                            self.audio_queue.put(audio_chunk, block=False)
+                        except Exception as e:
+                            self.logger.event("audio_queue.fallback_error", error=str(e))
 
         except Exception as e:
             self.logger.event("audio_capture_error", error=str(e))
