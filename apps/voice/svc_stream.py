@@ -1,14 +1,18 @@
+# apps/voice/svc_stream.py
 """WebSocket streaming voice service - duplex realtime ASR→CHAT→TTS pipeline."""
 
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import queue
+import re
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 # 3rd-party (wstrzykiwane do transportu przez self._ws_module)
@@ -28,9 +32,75 @@ from .capture import CaptureConfig
 from .common import ensure_event_logger
 from .playback import play_ding  # noqa: F401 - Re-export for test compatibility
 from .state import StreamingVoicePTTMixin
-from .stream_chunks import AudioChunkProcessor, calculate_chunk_size, decode_audio_from_message
+from .stream_chunks import (
+    AudioChunkProcessor,
+    calculate_chunk_size,
+    decode_audio_from_message,
+)
 from .svc_audio import capture_continuous
 from .transport import StreamingVoiceTransportMixin
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Anti-spam / ENV utils
+# ────────────────────────────────────────────────────────────────────────────
+def _env_int(name: str, default: int) -> int:
+    try:
+        raw = os.environ.get(name, "")
+        return int(raw.strip() or default)
+    except Exception:
+        return default
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip() in ("1", "true", "True", "yes", "YES")
+
+
+class _TxLogger:
+    """Agreguje telemetrię dla stream.tx i ogranicza spam logów."""
+
+    def __init__(self, logger) -> None:
+        self.logger = logger
+        self._sec = int(time.time())
+        self._n = 0
+        self._bytes_in = 0
+        self._bytes_out = 0
+        # przy 20 ms ~= 50 chunków/sek
+        self._sample_every = max(1, _env_int("VOICE_TX_SAMPLE_EVERY", 50))
+
+    def on_chunk(self, telemetry: dict) -> None:
+        self._n += 1
+        self._bytes_in += int(telemetry.get("bytes_in", 0))
+        self._bytes_out += int(telemetry.get("bytes_out", 0))
+        now = int(time.time())
+
+        # loguj co N-ty chunk lub przy zmianie sekundy
+        if (self._n % self._sample_every) != 0 and now == self._sec:
+            return
+
+        self.logger.event(
+            "stream.tx",
+            bytes_in=self._bytes_in,
+            bytes_out=self._bytes_out,
+            chunks=self._n,
+            ch_in=telemetry.get("ch_in", 1),
+            ch_out=telemetry.get("ch_out", 1),
+            sr=telemetry.get("sr", 16000),
+            chunk_ms=telemetry.get("chunk_ms", 20),
+        )
+
+        # reset raz na sekundę albo po logu co N
+        if now != self._sec:
+            self._sec = now
+            self._n = 0
+            self._bytes_in = 0
+            self._bytes_out = 0
+
+
+RECV_DUMP_PATH = "/tmp/voice-ws-recv.jsonl"
 
 
 @dataclass
@@ -58,6 +128,9 @@ class StreamConfig:
     jitter_buffer_ms: int = 120
     barge_in: bool = True
 
+    # Request trigger
+    request_on_commit: bool = True
+
     @classmethod
     def from_dict(cls, cfg: dict[str, Any]) -> StreamConfig:
         """Create StreamConfig from dictionary, handling nested structures."""
@@ -82,6 +155,7 @@ class StreamConfig:
             max_ms=int(reconnect_cfg.get("max_ms", 5000)),
             jitter_buffer_ms=int(audio_cfg.get("jitter_buffer_ms", 120)),
             barge_in=bool(audio_cfg.get("barge_in", True)),
+            request_on_commit=bool(stream_cfg.get("request_on_commit", True)),
         )
 
 
@@ -108,6 +182,12 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         self._tts_thread: threading.Thread | None = None
         self._ptt_thread: threading.Thread | None = None
 
+        # async taski
+        self._sender_task: asyncio.Task | None = None
+        self._recv_task: asyncio.Task | None = None
+        self._guard_task: asyncio.Task | None = None
+        self._nudge_task: asyncio.Task | None = None
+
         # Partial transcript tracking
         self.partial_transcript = ""
 
@@ -125,8 +205,14 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             ptt_cfg.get("enabled", False)
         )
         self.ptt_active: bool = False  # czy aktualnie nagrywamy po Enter
+        self._ptt_was_active: bool = False  # detekcja zbocza STOP (True->False)
         self._any_audio_since_commit: bool = False  # czy coś poleciało od startu PTT
         self._loop: asyncio.AbstractEventLoop | None = None  # główna pętla do commitów z wątku
+
+        # strażnik odpowiedzi po commit
+        self._response_pending: bool = False
+        self._last_commit_ts: float = 0.0
+        self._last_commit_future: Any = None  # Future z run_coroutine_threadsafe (dla PTT watchdog)
 
         # cache CaptureConfig dla ensure_mono_16k (zamiast tworzyć per chunk)
         try:
@@ -145,6 +231,14 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
         # Umożliwia testom patchować websockets na poziomie modułu svc_stream
         self._ws_module = websockets
+
+        # Anti-spam agregator do logów stream.tx
+        self._txlog = _TxLogger(self.logger)
+
+        # --- Response guard i commit PTT sterowane ENV ---
+        self._resp_guard_ms: int = _env_int("VOICE_RESPONSE_GUARD_MS", 400)
+        self._ptt_commit_sync: bool = _env_flag("VOICE_PTT_COMMIT_SYNC", False)
+        self._ptt_commit_timeout_ms: int = _env_int("VOICE_PTT_COMMIT_TIMEOUT_MS", 1500)
 
     # ---- Transport methods are provided by StreamingVoiceTransportMixin ----
     # send(), recv(), aclose(), close(), close_sync(), _connect(), _reconnect_loop()
@@ -177,13 +271,23 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             self._stopping = True
             if hasattr(self, "_running"):
                 self._running = False
-            if hasattr(self, "_ptt_active"):
-                self._ptt_active = False
+            if hasattr(self, "ptt_active"):
+                self.ptt_active = False
             log = getattr(self.logger, "event", None)
             if callable(log):
                 log("stream.stop")
         except Exception:
             pass
+
+        # 0.5) Anuluj asynchroniczne taski, jeśli wiszą
+        try:
+            for attr in ("_nudge_task", "_guard_task", "_recv_task", "_sender_task"):
+                t: asyncio.Task | None = getattr(self, attr, None)
+                if t and not t.done():
+                    t.cancel()
+                    setattr(self, attr, None)
+        except Exception as e:
+            self.logger.event("stream.stop.task_cancel_failed", error=str(e))
 
         # 1) Jeśli mamy pętlę, spróbuj zaplanować domknięcie asynchronicznie i wyjść.
         try:
@@ -249,16 +353,75 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             # Ostatecznie: nic więcej nie robimy – stop ma być idempotentny.
 
     def _get_auth_header(self) -> str:
-        """Extract API key from auth config."""
-        auth = self.stream_cfg.auth
+        """Pobierz klucz API wg schematu:
+        - env:VAR            → z ENV
+        - file:/path         → z pliku (cała zawartość / 1 linia)
+        - bashenv:/path:VAR  → z pliku bash (np. ~/.bash_history), bierze ostatnie VAR=...
+        - raw string         → literal w configu
+        """
+
+        def _expand(p: str) -> str:
+            return os.path.expanduser(os.path.expandvars(p))
+
+        def _from_file(path: str) -> str:
+            path = _expand(path)
+            try:
+                with open(path, encoding="utf-8", errors="ignore") as f:
+                    return f.read().strip()
+            except FileNotFoundError:
+                self.logger.event("auth_file_missing", path=path)
+                return ""
+
+        def _from_bashenv(path: str, var: str) -> str:
+            path = _expand(path)
+            try:
+                with open(path, encoding="utf-8", errors="ignore") as f:
+                    lines = f.read().splitlines()
+            except FileNotFoundError:
+                self.logger.event("auth_bashenv_missing", path=path, var=var)
+                return ""
+            # Szukamy od końca ostatniego przypisania VAR=...
+            # Łapie: export VAR="sk-..." ;  VAR='sk-...'  VAR=sk-...;python ...
+            pat = re.compile(rf'(?:(?:export|set)\s+)?{re.escape(var)}\s*=\s*([\'"]?)(.+?)\1(?=\s|;|$)')
+            for line in reversed(lines):
+                m = pat.search(line.strip())
+                if m:
+                    return m.group(2).strip()
+            self.logger.event("auth_bashenv_not_found", path=path, var=var)
+            return ""
+
+        auth = (self.stream_cfg.auth or "").strip()
+
         if auth.startswith("env:"):
             env_key = auth[4:]
             api_key = (os.environ.get(env_key, "") or "").strip()
             if not api_key:
                 self.logger.event("auth_missing_key", env_var=env_key)
-                raise RuntimeError(f"Missing environment variable: {env_key}. Set it with: export {env_key}=sk-...")
+                raise RuntimeError(f"Missing environment variable: {env_key}.")
+            self.logger.event("auth.loaded", src="env", var=env_key, length=len(api_key))
             return api_key
-        return auth.strip()
+
+        if auth.startswith("file:"):
+            key = _from_file(auth[5:])
+            if not key:
+                raise RuntimeError(f"API key file empty or not found: {auth[5:]}")
+            self.logger.event("auth.loaded", src="file", length=len(key))
+            return key
+
+        if auth.startswith("bashenv:"):
+            try:
+                _, rest = auth.split(":", 1)
+                path, var = rest.rsplit(":", 1)
+            except ValueError as err:
+                raise RuntimeError("bashenv scheme must be: bashenv:/path:VARNAME") from err
+            key = _from_bashenv(path, var)
+            if not key:
+                raise RuntimeError(f"Could not extract {var} from {path}")
+            self.logger.event("auth.loaded", src="bashenv", var=var, length=len(key))
+            return key
+
+        # fallback: literal w configu
+        return auth
 
     def _publish_ui_state(self, state: str) -> None:
         """Publish UI state change."""
@@ -299,7 +462,11 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             except Exception as e:
                 self.logger.event("capture.thread.error", error=str(e))
 
-        self._capture_thread = threading.Thread(target=_target, name="voice-stream-capture-autostart", daemon=True)
+        self._capture_thread = threading.Thread(
+            target=_target,
+            name="voice-stream-capture-autostart",
+            daemon=True,
+        )
         self._capture_thread.start()
 
     def _stop_capture(self) -> None:
@@ -322,21 +489,33 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
     # -------------------------------------------------------------------------
 
     async def _send_session_update(self) -> None:
-        """Send session configuration to WebSocket."""
+        """Send session configuration to WebSocket (bogatszy payload, wstecznie zgodny)."""
         if not self.websocket:
             return
 
-        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
-        session_msg = chunk_processor.create_session_update_message(self.config)
+        # voice (tts) + sample_rate z capture (fallback 16k)
+        tts_cfg = self.config.get("tts", {}) or {}
+        voice = tts_cfg.get("voice") or "ash"
+        try:
+            sr = int(self.config.get("capture", {}).get("sample_rate", 16000))
+        except Exception:
+            sr = 16000
 
-        await self.send(session_msg)
+        payload = {
+            "type": "session.update",
+            "session": {
+                "voice": voice,
+                "modalities": ["text", "audio"],
+                "input_audio_format": {"type": "pcm16", "sample_rate": sr},
+                "output_audio_format": {"type": "pcm16", "sample_rate": sr},
+            },
+        }
+        await self.send(json.dumps(payload))
         self.logger.event("session.configured")
 
         # Self-test TTS (opcjonalnie via env)
         if os.getenv("VOICE_TTS_SELFTEST") == "1":
             try:
-                tts_cfg = self.config.get("tts", {}) or {}
-                voice = tts_cfg.get("voice") or "verse"
                 test_msg = {
                     "type": "response.create",
                     "response": {
@@ -376,40 +555,272 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             self.logger.event("capture.autostart.error", error=str(_e))
 
     async def _send_audio_chunk(self, audio_data: bytes) -> None:
-        """Send audio chunk to WebSocket."""
+        """Send audio chunk to WebSocket i **zawsze** emituj metrykę stream.tx (1×)."""
         if not self.websocket or not audio_data:
             return
 
+        t0 = time.perf_counter()
+
+        # 1) Przetwórz i zakoduj chunk
         chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
         result = chunk_processor.process_and_encode_chunk(audio_data)
 
+        # Wspólne parametry metryki
+        ch_in = int(getattr(self._capture_cfg_obj, "channels", 1) or 1)
+        sr = int(getattr(self.stream_cfg, "sample_rate", 16000))
+        chunk_ms = int(getattr(self.stream_cfg, "chunk_ms", 20))
+
         if result:
             message_json, telemetry = result
+            # 2) Wyślij do WS
             await self.send(message_json)
             self._any_audio_since_commit = True
-            self.logger.event("stream.tx", **telemetry)
+
+            # 3) Per-chunk metryka
+            try:
+                bytes_in = int(telemetry.get("bytes_in", len(audio_data)))
+                bytes_out = int(telemetry.get("bytes_out", 0))
+                duration_ms = max(0, int((time.perf_counter() - t0) * 1000))
+
+                self.logger.event(
+                    "stream.tx",
+                    sr=sr,
+                    ch_in=ch_in,
+                    ch_out=1,  # po normalizacji mono
+                    bytes_in=bytes_in,
+                    bytes_out=bytes_out,
+                    chunk_ms=chunk_ms,
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                self.logger.debug("failed to emit per-chunk stream.tx", exc_info=True)
+
+            # 4) Anti-spam agregacja
+            self._txlog.on_chunk(
+                {
+                    "sr": sr,
+                    "ch_in": ch_in,
+                    "ch_out": 1,
+                    "bytes_in": len(audio_data),
+                    "bytes_out": int(telemetry.get("bytes_out", 0)),
+                    "chunk_ms": chunk_ms,
+                }
+            )
+        else:
+            # Fallback: nic nie poszło do WS (np. za mały chunk)
+            duration_ms = max(0, int((time.perf_counter() - t0) * 1000))
+            self.logger.event(
+                "stream.tx",
+                sr=sr,
+                ch_in=ch_in,
+                ch_out=1,
+                bytes_in=len(audio_data),
+                bytes_out=0,
+                chunk_ms=chunk_ms,
+                duration_ms=duration_ms,
+            )
+            self._txlog.on_chunk(
+                {
+                    "sr": sr,
+                    "ch_in": ch_in,
+                    "ch_out": 1,
+                    "bytes_in": len(audio_data),
+                    "bytes_out": 0,
+                    "chunk_ms": chunk_ms,
+                }
+            )
+
+    # ────────────────────────────────────────────────────────────────────────
+    # RESPONSE GUARD: dopnij response.create po commit, jeśli serwer milczy
+    # ────────────────────────────────────────────────────────────────────────
+    async def _ensure_response_requested(self, force: bool = False) -> None:
+        """Wyślij response.create, jeśli jeszcze „wisi” pending po commit."""
+        if not (self.connected and self.websocket):
+            return
+        if not (force or self._response_pending):
+            return
+        try:
+            await self.send(
+                json.dumps(
+                    {
+                        "type": "response.create",
+                        "response": {
+                            "conversation": "default",
+                            "modalities": ["audio", "text"],
+                        },
+                    }
+                )
+            )
+            self.logger.event("response.create.sent", forced=bool(force))
+        except Exception as e:
+            self.logger.event("response.create.error", error=str(e))
+
+    async def _delayed_response_guard(self, delay_s: float = 0.4) -> None:
+        """Po krótkim czasie od commit sprawdź, czy trzeba dopchnąć response.create."""
+        try:
+            await asyncio.sleep(max(0.05, delay_s))
+            if self._response_pending and (time.time() - self._last_commit_ts) >= delay_s:
+                await self._ensure_response_requested(force=not self.stream_cfg.request_on_commit)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            self.logger.event("response.guard.error", error=str(e))
+
+    async def _delayed_force_nudge(self, delay_s: float) -> None:
+        """Po PTT STOP: delikatny nudge — spróbuj wymusić create TYLKO jeśli commit ustawił pending."""
+        try:
+            await asyncio.sleep(delay_s)
+            if self._response_pending:
+                await self._ensure_response_requested(force=True)
+                self.logger.event("response.nudge.force")
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            self.logger.event("response.nudge.error", error=str(e))
+
+    # ────────────────────────────────────────────────────────────────────────
+    # PUBLIC (kompat) API dla PTT mixin: schedule commit i zwróć Future
+    # ────────────────────────────────────────────────────────────────────────
+    def _schedule_commit(self) -> Any:
+        """Planowo uruchom _commit_audio_buffer() na pętli i zwróć Future."""
+        loop = self._loop
+        if loop is None or not getattr(loop, "is_running", lambda: False)():
+            self.logger.event("commit.schedule.skip", reason="no_loop")
+            return None
+        try:
+            fut = asyncio.run_coroutine_threadsafe(self._commit_audio_buffer(), loop)
+            self._last_commit_future = fut
+            self.logger.event("commit.scheduled")
+
+            # Telemetria zakończenia commita (sukces/wyjątek)
+            def _done(f: asyncio.Future):
+                try:
+                    exc = f.exception()
+                except Exception as e:
+                    self.logger.event("commit.future.done", ok=False, error=str(e))
+                    return
+                if exc is None:
+                    self.logger.event("commit.future.done", ok=True)
+                else:
+                    self.logger.event("commit.future.done", ok=False, error=str(exc))
+
+            try:
+                fut.add_done_callback(_done)  # nie blokuje
+            except Exception as _e:
+                self.logger.event("commit.future.cb_error", error=str(_e))
+
+            # pre-emptive nudge po opóźnieniu (dla PTT)
+            try:
+                if self._nudge_task and not self._nudge_task.done():
+                    self._nudge_task.cancel()
+                self._nudge_task = loop.create_task(
+                    self._delayed_force_nudge(max(0.1, self._resp_guard_ms / 1000.0 + 0.2))
+                )
+            except Exception as _e:
+                self.logger.event("response.nudge.schedule_error", error=str(_e))
+
+            # Opcjonalnie: czekaj synchronizująco po STOP (diagnostycznie)
+            if self._ptt_commit_sync:
+                try:
+                    self.logger.event("commit.sync.wait", timeout_ms=self._ptt_commit_timeout_ms)
+                    fut.result(timeout=max(0.05, self._ptt_commit_timeout_ms / 1000.0))
+                    self.logger.event("commit.sync.ok")
+                except Exception as e:
+                    self.logger.event("commit.sync.error", error=str(e))
+
+            return fut
+        except Exception as e:
+            self.logger.event("commit.schedule.error", error=str(e))
+            return None
+
+    # aliasy oczekiwane przez niektóre wersje mixinów
+    def commit_audio_buffer(self) -> Any:
+        """Publiczny wrapper — wywołaj commit i zwróć Future (dla watchdogów PTT)."""
+        return self._schedule_commit()
+
+    def commit(self) -> Any:  # czasem mixin zawoła krótszą nazwę
+        return self._schedule_commit()
+
+    async def commit_audio_buffer_async(self) -> None:
+        """Asynchroniczny wrapper — bezpośrednio await na commit."""
+        await self._commit_audio_buffer()
 
     async def _commit_audio_buffer(self) -> None:
         """Commit the audio buffer and trigger response generation."""
-        if not self.websocket:
+        # marker wejścia
+        try:
+            self.logger.event("commit.entry")
+        except Exception:
+            pass
+
+        if not (self.connected and self.websocket):
+            try:
+                self.logger.event("commit.skip.not_connected")
+                self.logger.event("commit.exit", status="skip")
+            finally:
+                # ruff B012: nie zwracamy z finally
+                pass
+
             return
+        # 1) Domknięcie bufora wejściowego audio
+        try:
+            await self.send(json.dumps({"type": "input_audio_buffer.commit"}))
+            self._response_pending = True
+            self._last_commit_ts = time.time()
+            self.logger.event("commit.sent")
+        except Exception as e:
+            self.logger.event("commit.send_error", error=str(e))
+            try:
+                self.logger.event("commit.exit", status="error")
+            finally:
+                raise
 
-        chunk_processor = AudioChunkProcessor(self._capture_cfg_obj, self.stream_cfg, self.logger)
-        commit_msg = chunk_processor.create_commit_message()
-        await self.send(commit_msg)
-
-        response_msg = chunk_processor.create_response_message(self.config)
-        await self.send(response_msg)
-        self.logger.event("response.requested")
+        # 2) Opcjonalnie: natychmiast prośba o odpowiedź
+        try:
+            if self.stream_cfg.request_on_commit:
+                await self._ensure_response_requested(force=False)
+            else:
+                self.logger.event("response.create.skip")
+        except Exception as e:
+            self.logger.event("response.create.error", error=str(e))
+        finally:
+            # 3) Strażnik „dopchnięcia” create
+            try:
+                if self._guard_task and not self._guard_task.done():
+                    self._guard_task.cancel()
+                loop = self._loop or asyncio.get_running_loop()
+                self._guard_task = loop.create_task(
+                    self._delayed_response_guard(max(0.05, self._resp_guard_ms / 1000.0))
+                )
+                self.logger.event("response.guard.schedule", delay_ms=int(self._resp_guard_ms))
+            except Exception as _e:
+                self.logger.event("response.guard.schedule_error", error=str(_e))
+            # marker wyjścia OK
+            try:
+                self.logger.event("commit.exit", status="ok")
+            except Exception:
+                pass
 
     async def _handle_ws_message(self, message: str) -> None:
         """Handle incoming WebSocket message."""
+        # Dump surowej ramki do pliku (zawsze, dla diagnostyki)
+        try:
+            with open(RECV_DUMP_PATH, "a") as f:
+                f.write(f'{datetime.utcnow().isoformat()}Z {message}\n')
+        except Exception:
+            # brak dysku? — ignoruj
+            pass
+
         try:
             data = json.loads(message)
             msg_type = data.get("type", "")
 
-            # log surowych typów – pomaga przy diagnozie po commit
-            self.logger.event("ws.recv", t=msg_type)
+            # lekki log typów – tylko wartościowe rzeczy (bez spamu)
+            if msg_type.startswith("response.") or msg_type in ("error", "rate_limits.updated", "session.updated"):
+                try:
+                    self.logger.event("ws.recv", t=msg_type)
+                except Exception:
+                    pass
 
             if msg_type == "input_audio_buffer.speech_started":
                 self._publish_ui_state("hearing")
@@ -432,6 +843,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
             elif msg_type == "response.created":
                 self._publish_ui_state("thinking")
+                self._response_pending = False
                 self.logger.event("response.created")
 
             elif msg_type == "response.output_item.added":
@@ -463,6 +875,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             elif msg_type in ("response.completed", "response.done"):
                 self._publish_ui_state("idle")
                 self._completed = True
+                self._response_pending = False
                 self.logger.event("response.complete")
 
             elif msg_type == "error":
@@ -471,8 +884,8 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                 self._publish_error("ws_protocol", error_msg)
 
             else:
-                sample = message[:300] if isinstance(message, str) else ""
-                self.logger.event("ws.msg", raw=data.get("type", ""), sample=sample)
+                # Tłumimy szum – drobne, rzadkie typy można podejrzeć w dumpie WS
+                pass
 
         except Exception as e:
             self.logger.event("message_parse_error", error=str(e), sample=message[:200])
@@ -497,14 +910,22 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
     async def _message_receiver_loop(self) -> None:
         """Receive and handle WebSocket messages."""
+        timeouts = 0
         while not self.stop_event.is_set() and self.connected:
             try:
                 if not self.websocket:
                     break
                 message = await asyncio.wait_for(self.recv(), timeout=1.0)
+                timeouts = 0
                 await self._handle_ws_message(message)
             except asyncio.TimeoutError:
+                timeouts += 1
+                # co parę sekund zostaw ślad, że pętla żyje, ale nie ma ramek
+                if timeouts % 5 == 0:
+                    self.logger.event("ws.recv.timeout", n=timeouts)
                 continue
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 self.logger.event("message_recv_error", error=str(e))
                 self.connected = False
@@ -545,20 +966,36 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 
             self.stop_event.clear()
         except Exception as _e:
-            self.logger.event("stop_workers_failed", error=str(_e))
+            self.logger.event("stop_workers_failed", error=_e)
 
     # _reconnect_loop() is provided by StreamingVoiceTransportMixin (transport.py)
 
     def _audio_capture_thread(self) -> None:
         """Capture audio and feed to WebSocket queue."""
         try:
-            capture_cfg = self.config.get("capture", {})
-            sample_rate = capture_cfg.get("sample_rate", 16000)
-            chunk_ms = self.stream_cfg.chunk_ms
-
+            capture_cfg = self.config.get("capture", {}) or {}
+            sample_rate = int(capture_cfg.get("sample_rate", 16000))
+            chunk_ms = int(self.stream_cfg.chunk_ms)
             chunk_size = calculate_chunk_size(sample_rate, chunk_ms)
 
             for audio_chunk in capture_continuous(capture_cfg, chunk_size):
+                # ── Fallback commit na PTT STOP (zbocze True->False) ─────────────
+                try:
+                    if (
+                        self.ptt_enabled
+                        and self._ptt_was_active
+                        and (not self.ptt_active)
+                        and self._any_audio_since_commit
+                    ):
+                        self._schedule_commit()
+                        self.logger.event("ptt.commit.fallback.dispatch")
+                        self._any_audio_since_commit = False
+                except Exception as _e:
+                    self.logger.event("ptt.commit.fallback.guard_error", error=str(_e))
+                # aktualizuj stan do kolejnej iteracji
+                self._ptt_was_active = bool(self.ptt_active)
+                # ────────────────────────────────────────────────────────────────
+
                 if self.stop_event.is_set():
                     break
 
@@ -672,29 +1109,48 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         if not await self._connect():
             return
 
+        # utwórz dump plik z nagłówkiem, by tail/grep nie sypały błędem braku pliku
+        try:
+            with open(RECV_DUMP_PATH, "a") as f:
+                f.write(f"{datetime.utcnow().isoformat()}Z __start_session__ {self.session_id}\n")
+        except Exception:
+            pass
+
         await self._send_session_update()
 
         # Start audio capture thread (jeśli nie wystartował w autostarcie)
         if not (self._capture_thread and self._capture_thread.is_alive()):
             capture_thread = threading.Thread(
-                target=self._audio_capture_thread, name="voice-stream-capture", daemon=True
+                target=self._audio_capture_thread,
+                name="voice-stream-capture",
+                daemon=True,
             )
             capture_thread.start()
             self._capture_thread = capture_thread
 
         # Start TTS player thread
         if not (self._tts_thread and self._tts_thread.is_alive()):
-            self._tts_thread = threading.Thread(target=self._tts_player_loop, name="voice-stream-tts", daemon=True)
+            self._tts_thread = threading.Thread(
+                target=self._tts_player_loop,
+                name="voice-stream-tts",
+                daemon=True,
+            )
             self._tts_thread.start()
 
         # Start PTT keyboard thread (tylko jeśli ptt_enabled)
         if self.ptt_enabled and not (self._ptt_thread and self._ptt_thread.is_alive()):
-            self._ptt_thread = threading.Thread(target=self._ptt_keyboard_thread, name="voice-ptt", daemon=True)
+            self._ptt_thread = threading.Thread(
+                target=self._ptt_keyboard_thread,
+                name="voice-ptt",
+                daemon=True,
+            )
             self._ptt_thread.start()
 
-        # Run main loops
+        # Run main loops – trzymaj referencje tasków, by móc je anulować
         try:
-            await asyncio.gather(self._audio_sender_loop(), self._message_receiver_loop())
+            self._sender_task = asyncio.create_task(self._audio_sender_loop(), name="audio_sender_loop")
+            self._recv_task = asyncio.create_task(self._message_receiver_loop(), name="message_receiver_loop")
+            await asyncio.gather(self._sender_task, self._recv_task)
         except Exception as e:
             self.logger.event("session_error", error=str(e))
         finally:
@@ -759,12 +1215,20 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                     self.logger.event("capture.autostart.error", error=str(e))
 
             if not (self._tts_thread and self._tts_thread.is_alive()):
-                self._tts_thread = threading.Thread(target=self._tts_player_loop, name="voice-stream-tts", daemon=True)
+                self._tts_thread = threading.Thread(
+                    target=self._tts_player_loop,
+                    name="voice-stream-tts",
+                    daemon=True,
+                )
                 self._tts_thread.start()
 
             # w „once” też pozwól na PTT (Enter→start/stop)
             if self.ptt_enabled and not (self._ptt_thread and self._ptt_thread.is_alive()):
-                self._ptt_thread = threading.Thread(target=self._ptt_keyboard_thread, name="voice-ptt", daemon=True)
+                self._ptt_thread = threading.Thread(
+                    target=self._ptt_keyboard_thread,
+                    name="voice-ptt",
+                    daemon=True,
+                )
                 self._ptt_thread.start()
 
             sender = asyncio.create_task(self._audio_sender_loop())
@@ -793,8 +1257,6 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
 # ────────────────────────────────────────────────────────────────────────────
 # PROXY/Wrappers dla CLI i testów
 # ────────────────────────────────────────────────────────────────────────────
-
-
 def _run_coro_in_thread(coro) -> Any:
     """Uruchom coroutine w osobnym wątku z własną pętlą (bez kolizji z @pytest.mark.asyncio)."""
     result_box: dict[str, Any] = {}
@@ -818,7 +1280,14 @@ def run_once_stream(cfg: dict[str, Any], args) -> int:
     """Run streaming once mode (CLI/test proxy)."""
     service = StreamingVoiceService(cfg)
     try:
-        result = _run_coro_in_thread(service.once(speak=True))  # test oczekuje speak=True
+        # once() jest synchroniczne (wywołuje asyncio.run wewnątrz),
+        # ale testowy DummyService.once() może być async → obsłuż oba przypadki.
+        ret = service.once()
+        if inspect.iscoroutine(ret):
+            result = _run_coro_in_thread(ret)
+        else:
+            result = ret
+
         if isinstance(result, dict) and result.get("transcript", {}).get("text"):
             print(result["transcript"]["text"])  # noqa: T201
         return 0
@@ -826,24 +1295,40 @@ def run_once_stream(cfg: dict[str, Any], args) -> int:
         aclose = getattr(service, "aclose", None)
         close_sync = getattr(service, "close_sync", None)
         if callable(aclose):
-            _run_coro_in_thread(aclose())
+            try:
+                _run_coro_in_thread(aclose())
+            except Exception:
+                pass
         elif callable(close_sync):
-            close_sync()
+            try:
+                close_sync()
+            except Exception:
+                pass
 
 
 def run_listen_stream(cfg: dict[str, Any], args) -> int:
     """Start streaming in 'listen' mode (CLI/test proxy)."""
     service = StreamingVoiceService(cfg)
     try:
-        _run_coro_in_thread(service.listen())  # DummyService.listen() jest async w teście
+        # listen() jest zwykle synchroniczne (bo samo robi asyncio.run),
+        # ale testowy DummyService.listen() bywa async → obsłuż oba przypadki.
+        ret = service.listen()
+        if inspect.iscoroutine(ret):
+            _run_coro_in_thread(ret)  # DummyService.listen() jest async w teście
         return 0
     finally:
         aclose = getattr(service, "aclose", None)
         close_sync = getattr(service, "close_sync", None)
         if callable(aclose):
-            _run_coro_in_thread(aclose())
+            try:
+                _run_coro_in_thread(aclose())
+            except Exception:
+                pass
         elif callable(close_sync):
-            close_sync()
+            try:
+                close_sync()
+            except Exception:
+                pass
 
 
 def run_ptt_stream(cfg: dict[str, Any], args) -> int:

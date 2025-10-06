@@ -1,8 +1,9 @@
 # apps/voice/stream_chunks.py
-"""Audio chunk processing for streaming voice service.
+"""
+Audio chunk processing for streaming voice service.
 
 Extracted from svc_stream.py to keep files under 600 lines.
-Handles 20ms buffer management, downmix to 16kHz, audioop utilities,
+Handles 20ms buffer management, downmix/resample to 16kHz, audioop utilities,
 and base64 pack/unpack for WebSocket transmission.
 """
 
@@ -12,7 +13,8 @@ import base64
 import json
 from typing import Any
 
-from . import voice_logging
+# ⬇️ Uwaga: celowo NIE importujemy voice_logging, żeby uniknąć pętli importów
+# from . import voice_logging
 from .capture import CaptureConfig
 from .svc_audio import ensure_mono_16k
 
@@ -32,7 +34,8 @@ def _get(src: Any, key: str, default: Any) -> Any:
 class AudioChunkProcessor:
     """Handles audio chunk processing for streaming."""
 
-    def __init__(self, capture_cfg_obj: CaptureConfig, stream_cfg: Any, logger: voice_logging.VoiceLogger):
+    # logger typujemy jako Any, żeby nie ściągać voice_logging przy imporcie modułu
+    def __init__(self, capture_cfg_obj: CaptureConfig, stream_cfg: Any, logger: Any):
         self.capture_cfg_obj = capture_cfg_obj
         self.stream_cfg = stream_cfg
         self.logger = logger
@@ -46,14 +49,13 @@ class AudioChunkProcessor:
         if not audio_data:
             return None
 
-        # Normalize to mono 16kHz before transmission (bez resamplingu)
+        # Normalizacja do mono/16 kHz (ensure_mono_16k resampluje/konwertuje jeśli trzeba)
         normalized_audio = ensure_mono_16k(audio_data, self.capture_cfg_obj)
 
-        # Convert to base64 for JSON transmission
-        audio_b64 = base64.b64encode(normalized_audio).decode("utf-8")
+        # JSON wymaga base64
+        audio_b64 = base64.b64encode(normalized_audio).decode("ascii")
         message = {"type": "input_audio_buffer.append", "audio": audio_b64}
 
-        # Telemetria
         telemetry = {
             "bytes_in": len(audio_data),
             "bytes_out": len(normalized_audio),
@@ -70,30 +72,31 @@ class AudioChunkProcessor:
         return json.dumps({"type": "input_audio_buffer.commit"})
 
     def create_response_message(self, config: dict[str, Any]) -> str:
-        """Create response request message."""
-        tts_cfg = config.get("tts", {}) or {}
+        """Create response request message (modalities + voice).
+
+        Uwaga: format audio konfigurujemy w session.update (nie tutaj).
+        """
+        tts_cfg = (config or {}).get("tts", {}) or {}
         voice = tts_cfg.get("voice") or "verse"
+
         response_msg = {
             "type": "response.create",
             "response": {
                 "conversation": "default",
                 "instructions": "Odpowiadaj krótko i po polsku.",
                 "modalities": ["text", "audio"],
-                "audio": {"voice": voice, "format": "pcm16"},
+                "audio": {"voice": voice},
             },
         }
         return json.dumps(response_msg)
 
     def create_session_update_message(self, config: dict[str, Any]) -> str:
-        """Zbuduj poprawny payload `session.update` (bez zmian funkcjonalnych).
-
-        Zwraca JSON (str), bo wysyłka po WS oczekuje tekstu.
-        """
-        # Lokalne referencje i fallbacki
+        """Zbuduj poprawny payload `session.update` i zwróć JSON (str)."""
         stream_cfg = self.stream_cfg or {}
         chat_cfg = (config or {}).get("chat", {}) or {}
         cfg_stream = (config or {}).get("stream", {}) or {}
         cfg_tts = (config or {}).get("tts", {}) or {}
+
         # VAD i limity tur
         silence_ms = int(_get(stream_cfg, "turn_end_silence_ms", _get(cfg_stream, "turn_end_silence_ms", 700)))
         max_turn_ms = int(_get(stream_cfg, "max_turn_ms", _get(cfg_stream, "max_turn_ms", 6000)))
@@ -102,7 +105,7 @@ class AudioChunkProcessor:
         voice = cfg_tts.get("voice") or _get(stream_cfg, "voice", "verse")
         instructions = _get(stream_cfg, "instructions", "")
 
-        # turn_detection: jeśli server_vad włączony – konfigurujemy, w przeciwnym razie None
+        # turn_detection: włączony server VAD albo brak (PTT)
         server_vad = bool(_get(stream_cfg, "server_vad", _get(cfg_stream, "server_vad", True)))
         turn_detection: dict[str, Any] | None
         if server_vad:
@@ -112,8 +115,10 @@ class AudioChunkProcessor:
                 "max_turn_duration_ms": max_turn_ms,
             }
         else:
-            turn_detection = None
+            turn_detection = None  # PTT/sterowanie ręczne
 
+        # Format wejścia/wyjścia jako OBIEKTY (wymagane przez backendy RT)
+        in_sr = int(_get(self.capture_cfg_obj, "sample_rate", 16000))
         session_update: dict[str, Any] = {
             "type": "session.update",
             "session": {
@@ -121,9 +126,17 @@ class AudioChunkProcessor:
                 "voice": voice,
                 "instructions": instructions,
                 "turn_detection": turn_detection,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                # Transkrypcja wejścia; pozostawiamy whisper-1 jako dotychczasowy placeholder.
+                "input_audio_format": {
+                    "type": "pcm16",
+                    "sample_rate_hz": in_sr,
+                    "channels": 1,
+                },
+                "output_audio_format": {
+                    "type": "pcm16",
+                    "sample_rate_hz": 16000,
+                    "channels": 1,
+                },
+                # Transkrypcja wejścia (placeholder zgodnie z dotychczasowym zachowaniem)
                 "input_audio_transcription": {"model": "whisper-1"},
             },
         }
@@ -157,11 +170,11 @@ class AudioChunkProcessor:
 
 def calculate_chunk_size(sample_rate: int, chunk_ms: int) -> int:
     """Calculate chunk size in bytes for given sample rate and duration."""
-    return int(sample_rate * chunk_ms / 1000) * 2  # 16-bit samples
+    return int(sample_rate * chunk_ms / 1000) * 2  # 16-bit mono (2 bajty na próbkę)
 
 
 def decode_audio_from_message(message_data: dict[str, Any]) -> bytes | None:
-    """Decode base64 audio data from WebSocket message."""
+    """Decode base64 audio data from WebSocket message (RT API variants)."""
     try:
         msg_type = message_data.get("type")
         if msg_type == "response.audio.delta":
@@ -173,10 +186,9 @@ def decode_audio_from_message(message_data: dict[str, Any]) -> bytes | None:
             if audio_b64:
                 return base64.b64decode(audio_b64)
         elif msg_type == "response.output_audio.delta":
-            # Try top-level 'delta'
+            # Niektóre implementacje mają delta na top-level, inne w data.delta
             audio_b64 = message_data.get("delta", "")
             if not audio_b64:
-                # Try nested 'data' dict
                 audio_b64 = (message_data.get("data") or {}).get("delta", "")
             if audio_b64:
                 return base64.b64decode(audio_b64)

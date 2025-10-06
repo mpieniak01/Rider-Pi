@@ -1,96 +1,63 @@
-[meta]
-schema = "voice"
-version = 1
+# config/voice_streaming.toml — PTT + Realtime WS (PL), zgodny z aktualnym kodem
 
 [logging]
-level = "DEBUG"                          # Na debug PTT; na produkcji ustaw INFO.
+level = "INFO"
 
 [capture]
-backend      = "alsa"
-# Bez ~/.asoundrc – współdzielenie wejścia:
-device       = "dsnoop:CARD=wm8960soundcard,DEV=0"
-sample_rate  = 16000
-channels     = 1
-frame_ms     = 20
-buffer_seconds = 0.10                    # krótki pre-roll (nie zasysa dingu)
-
-[hotword]
-enabled = false
-engine  = "ptt"                          # PTT wymuszamy z CLI: apps.voice.cli ptt ...
-
-[asr]
-backend   = "openai"
-transport = "realtime"                   # STREAMING MODE
-model     = "gpt-4o-realtime-preview"
-language  = "pl"
-prompt    = "Polski asystent głosowy. Transkrybuj wiernie po polsku."
-partial_results = true
-
-[asr.vad]                                 # <-- przeniesione z top-level [vad]
-enabled        = true                     # UWAGA: w PTT wyłączamy z CLI (--vad enabled=false)
-mode           = 0
-frame_ms       = 20
-tail_ms        = 900                      # ciut krócej, bez obcinania końcówki
-max_len_ms     = 6000                     # zapas na dłuższe pytania
-energy_gate_dbfs = -23                    # szybciej kończy ciszę
-
-[chat]
-backend   = "openai"
-transport = "realtime"                    # STREAMING MODE
-model     = "gpt-4o-realtime-preview"
-system_prompt = "Odpowiadaj krótko po polsku: jedno zdanie, maksymalnie 12 słów."
-max_history = 4
-max_tokens  = 70
-
-[tts]
-backend   = "openai"
-transport = "realtime"                    # STREAMING MODE
-model     = "gpt-4o-realtime-preview"
-voice     = "verse"                       # spójnie z svc_stream
-format    = "pcm16"
+backend        = "alsa"
+device         = "wm8960_in"
+sample_rate    = 16000
+channels       = 1
+frame_ms       = 20            # zgodnie z naszymi chunkami
+buffer_seconds = 0.10          # mniejszy bufor = mniejsza latencja
 
 [playback]
-backend     = "alsa"
-# Bez ~/.asoundrc – współdzielenie wyjścia:
-device      = "dmix:CARD=wm8960soundcard,DEV=0"
-alsa_device = "dmix:CARD=wm8960soundcard,DEV=0"
-volume      = 85                          # ding i TTS wyraźne, bez przesteru
+backend = "alsa"
+device  = "wm8960_out"
+volume  = 55
 
-[playback.ding]
-enabled = true
-gain_db = 3.0
+[asr]
+transport = "realtime"
+language  = "pl"
 
-[service]
-save_audio     = true
-recordings_dir = "/tmp/voice-recs"
-history_size   = 20
-# Maskowanie „pstryka" i kontrola startu:
-beep_pause_ms      = 800
-pre_speech_wait_ms = 800
-min_capture_ms     = 900
-mic_open_delay_ms  = 420
-post_tts_mute_ms   = 600
-guard_ms           = 0
+[chat]
+transport     = "realtime"
+# przeniesione z [stream.session.instructions]
+system_prompt = "Mów po polsku, krótko i rzeczowo. Jeśli pytanie jest krótkie, odpowiadaj w 1–2 zdaniach."
 
-# --- STREAMING PARAMS ---
+[tts]
+transport = "realtime"
+voice     = "ash"
+format    = "pcm16"            # zgodnie z tym, co wysyła _send_session_update()
+
 [stream]
-protocol             = "websocket"
-endpoint             = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
-auth                 = "env:OPENAI_API_KEY"
-chunk_ms             = 20
-sample_rate          = 16000
-turn_end_silence_ms  = 700
-max_turn_ms          = 6000
-send_partials        = true
-server_vad           = true
-local_vad_fallback   = true
-ping_interval_s      = 10
+# <<< KLUCZ CZYTANY Z ~/.bash_profile >>>
+auth                = "bashenv:~/.bash_profile:OPENAI_API_KEY"
+endpoint            = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
+chunk_ms            = 20
+sample_rate         = 16000
+turn_end_silence_ms = 700
+max_turn_ms         = 15000      # więcej czasu na wypowiedź
+send_partials       = false
+server_vad          = true
+local_vad_fallback  = false
+ping_interval_s     = 10
+# request_on_commit – nieużywane przez kod, commit i tak wysyła response.create
+
+[stream.audio]
+jitter_buffer_ms = 80            # balans: płynność vs. latencja
+barge_in         = true
 
 [stream.reconnect]
 max_retries = 6
 base_ms     = 250
 max_ms      = 5000
 
-[stream.audio]
-jitter_buffer_ms = 120
-barge_in         = true
+[service]
+beep          = true
+beep_delay_ms = 250
+
+[service.turn]
+max_turn_ms   = 15000
+key_exit      = true
+commit_on_key = true
