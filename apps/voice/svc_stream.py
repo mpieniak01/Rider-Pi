@@ -8,7 +8,6 @@ import inspect
 import json
 import os
 import queue
-import re
 import threading
 import time
 from dataclasses import dataclass
@@ -400,8 +399,11 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         """Pobierz klucz API wg schematu:
         - env:VAR            → z ENV
         - file:/path         → z pliku (cała zawartość / 1 linia)
-        - bashenv:/path:VAR  → z pliku bash (np. ~/.bash_history), bierze ostatnie VAR=...
         - raw string         → literal w configu
+
+        SECURITY NOTE: bashenv: scheme has been removed. Use env: or file: instead.
+        For shell profile integration, export variables in ~/.bash_profile and source it
+        before running the application, or use file: pointing to a dedicated secrets file.
         """
 
         def _expand(p: str) -> str:
@@ -415,24 +417,6 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             except FileNotFoundError:
                 self.logger.event("auth_file_missing", path=path)
                 return ""
-
-        def _from_bashenv(path: str, var: str) -> str:
-            path = _expand(path)
-            try:
-                with open(path, encoding="utf-8", errors="ignore") as f:
-                    lines = f.read().splitlines()
-            except FileNotFoundError:
-                self.logger.event("auth_bashenv_missing", path=path, var=var)
-                return ""
-            # Szukamy od końca ostatniego przypisania VAR=...
-            # Łapie: export VAR="sk-..." ;  VAR='sk-...'  VAR=sk-...;python ...
-            pat = re.compile(rf'(?:(?:export|set)\s+)?{re.escape(var)}\s*=\s*([\'"]?)(.+?)\1(?=\s|;|$)')
-            for line in reversed(lines):
-                m = pat.search(line.strip())
-                if m:
-                    return m.group(2).strip()
-            self.logger.event("auth_bashenv_not_found", path=path, var=var)
-            return ""
 
         auth = (self.stream_cfg.auth or "").strip()
 
@@ -453,16 +437,12 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
             return key
 
         if auth.startswith("bashenv:"):
-            try:
-                _, rest = auth.split(":", 1)
-                path, var = rest.rsplit(":", 1)
-            except ValueError as err:
-                raise RuntimeError("bashenv scheme must be: bashenv:/path:VARNAME") from err
-            key = _from_bashenv(path, var)
-            if not key:
-                raise RuntimeError(f"Could not extract {var} from {path}")
-            self.logger.event("auth.loaded", src="bashenv", var=var, length=len(key))
-            return key
+            # SECURITY: bashenv scheme is no longer supported
+            self.logger.event("auth_bashenv_rejected", auth=auth)
+            raise RuntimeError(
+                "bashenv: scheme is no longer supported for security reasons. "
+                "Use env:VARNAME (with variable exported in shell) or file:/path/to/keyfile instead."
+            )
 
         # fallback: literal w configu
         return auth

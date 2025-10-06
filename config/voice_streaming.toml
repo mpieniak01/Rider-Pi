@@ -31,8 +31,10 @@ voice     = "ash"
 format    = "pcm16"            # zgodnie z tym, co wysyła _send_session_update()
 
 [stream]
-# <<< KLUCZ CZYTANY Z ~/.bash_profile >>>
-auth                = "bashenv:~/.bash_profile:OPENAI_API_KEY"
+# <<< KLUCZ CZYTANY Z ZMIENNEJ ŚRODOWISKOWEJ >>>
+# Upewnij się, że OPENAI_API_KEY jest wyeksportowany w ~/.bash_profile
+# i źródło tego pliku przed uruchomieniem aplikacji (np. w ops/voice-run.sh)
+auth                = "env:OPENAI_API_KEY"
 endpoint            = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
 chunk_ms            = 20
 sample_rate         = 16000
