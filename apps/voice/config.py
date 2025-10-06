@@ -23,13 +23,13 @@ Environment variables:
 
 Example usage:
     from apps.voice import config
-    
+
     # Load with defaults
     cfg = config.load()
-    
+
     # Load with overrides
     cfg = config.load(overrides={"asr": {"backend": "vosk"}})
-    
+
     # Load specific file
     cfg = config.load("config/voice_streaming.toml")
 """
