@@ -490,73 +490,32 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
     # -------------------------------------------------------------------------
 
     async def _send_session_update(self) -> None:
-        """Send session configuration to WebSocket (bogatszy payload, wstecznie zgodny)."""
-        if not self.websocket:
+        # Idempotentne: wysyłamy tylko raz
+        if getattr(self, '_session_update_sent', False):
             return
 
-        # voice (tts) + sample_rate z capture (fallback 16k)
-        tts_cfg = self.config.get("tts", {}) or {}
-        voice = tts_cfg.get("voice") or "ash"
         try:
-            sr = int(self.config.get("capture", {}).get("sample_rate", 16000))
+            sr = int(self.config.get('capture', {}).get('sample_rate', 16000))
         except Exception:
             sr = 16000
 
+        voice = self.config.get('tts', {}).get('voice', 'ash')
+        instructions = self.config.get('session', {}).get('instructions', 'Test: TTS działa po stronie klienta.')
+
         payload = {
-            "type": "session.update",
-            "session": {
-                "voice": voice,
-                "modalities": ["text", "audio"],
-                "input_audio_format": {"type": "pcm16", "sample_rate": sr},
-                "output_audio_format": {"type": "pcm16", "sample_rate": sr},
+            'type': 'session.update',
+            'session': {
+                'voice': voice,
+                'modalities': ['text', 'audio'],
+                'input_audio_format': {'type': 'pcm16', 'sample_rate': sr},
+                'output_audio_format': {'type': 'pcm16', 'sample_rate': sr},
+                'instructions': instructions,
+                'audio': {'voice': voice, 'format': 'pcm16'},
             },
         }
+
         await self.send(json.dumps(payload))
-        self.logger.event("session.configured")
-
-        # Self-test TTS (opcjonalnie via env)
-        if os.getenv("VOICE_TTS_SELFTEST") == "1":
-            try:
-                test_msg = {
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["audio"],
-                        "instructions": "Test: TTS działa po stronie klienta.",
-                        "audio": {"voice": voice, "format": "pcm16"},
-                    },
-                }
-                await self.send(json.dumps(test_msg))
-                self.logger.event("tts.selftest.sent", voice=voice)
-            except Exception as e:
-                self.logger.event("tts.selftest.error", error=str(e))
-
-        # autostart capture tylko gdy NIE PTT
-        try:
-            if not self.ptt_enabled:
-                self._start_capture()
-                self.logger.event("capture.autostart")
-            else:
-                self.logger.event("ptt.enabled")
-        except Exception as _e:
-            self.logger.event("capture.autostart.error", error=str(_e))
-
-        # kompat: stare przełączniki hotword=off
-        try:
-            if (not self.ptt_enabled) and str(getattr(self, "_hotword", "")).lower() == "off":
-                self.logger.event("capture.autostart")
-                self._start_capture()
-        except Exception as _e:
-            self.logger.event("capture.autostart.error", error=str(_e))
-        try:
-            base_cfg = getattr(self, "cfg", None) or getattr(self, "config", None) or {}
-            if (not self.ptt_enabled) and str(base_cfg.get("hotword", "")).lower() == "off":
-                self.logger.event("capture.autostart")
-                self._start_capture()
-        except Exception as _e:
-            self.logger.event("capture.autostart.error", error=str(_e))
-
-        if getattr(self, '_session_update_sent', False):
-            return
+        self._session_update_sent = True
 
     async def _send_audio_chunk(self, audio_data: bytes) -> None:
         """Send audio chunk to WebSocket i **zawsze** emituj metrykę stream.tx (1×)."""
