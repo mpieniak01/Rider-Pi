@@ -55,4 +55,3 @@ def test_ptt_disabled_when_service_hotword_disabled(base_config):
         assert service.audio_transmitter.ptt_enabled is False
     finally:
         _cleanup(service)
-

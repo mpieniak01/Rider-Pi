@@ -229,11 +229,7 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
                 # Kompatybilność: domyślnie traktuj brak konfiguracji jako PTT
                 hotword_engine = "ptt"
 
-        self.ptt_enabled: bool = (
-            hotword_engine == "ptt"
-            or bool(ptt_cfg.get("enabled", False))
-            or commit_on_key
-        )
+        self.ptt_enabled: bool = hotword_engine == "ptt" or bool(ptt_cfg.get("enabled", False)) or commit_on_key
         if service_hotword_enabled is False:
             self.ptt_enabled = False
 
