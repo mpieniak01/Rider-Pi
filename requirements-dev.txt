@@ -8,3 +8,4 @@ websockets>=15.0
 
 # 2D simulator
 pygame>=2.5.0
+pytest-timeout>=2.3.1

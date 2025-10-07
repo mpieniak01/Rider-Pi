@@ -1,66 +1,39 @@
-# ALSA configuration for WM8960 soundcard duplex support
-# This file resolves the capture/playback conflicts on WM8960 hardware.
-#
-# Copy to user config:
-#   cp config/asoundrc.wm8960 ~/.asoundrc
-#
-# Usage in voice*.toml:
-# [capture]
-# device = "wm8960_in"
-# sample_rate = 16000
-# channels = 1
-#
-# [playback]
-# device = "wm8960_out"
-#
-# Notes:
-# - WM8960 is currently card 0, device 0 on this system (see: aplay -l / arecord -l).
-# - Input runs 16 kHz mono via dsnoop (multi-reader), output runs 48 kHz stereo via dmix (multi-writer).
+# ---------------------------------------------------------------------------
+# Rider-Pi / config/alsa/asoundrc.wm8960
+# ALSA dla WM8960 (CM4) – wariant MIN (bez dmix/dsnoop, 100% po ID).
+# - ID karty: "wm8960soundcard" (sprawdź `aplay -l`)
+# - Brak odwołań hw:0 / card 0
+# - Używamy nazwanych aliasów: wm8960_out (playback), wm8960_in (capture)
+# ---------------------------------------------------------------------------
 
-# ===== OUTPUT (playback): 48 kHz stereo via dmix =====
+# Domyślny kontroler – inaczej `aplay -L` potrafi zgłosić "Invalid CTL hw:0"
+ctl.!default {
+  type hw
+  card "wm8960soundcard"
+}
+
+# Surowe urządzenia HW po ID
+pcm.wm8960_hw_playback {
+  type hw
+  card   "wm8960soundcard"
+  device 0
+}
+pcm.wm8960_hw_capture {
+  type hw
+  card   "wm8960soundcard"
+  device 0
+}
+
+# Alias PLAYBACK (plug → HW)
 pcm.wm8960_out {
   type plug
-  slave.pcm {
-    type dmix
-    ipc_key 59700
-    ipc_perm 0666
-    slave {
-      pcm "hw:0,0"      # <-- WM8960 card 0, device 0
-      rate 48000
-      format S16_LE
-      channels 2
-    }
-  }
+  slave.pcm "wm8960_hw_playback"
 }
+ctl.wm8960_out { type hw card "wm8960soundcard" }
 
-# Optional alias used by some legacy scripts (safe to keep)
-pcm.wm8960_out_48k {
-  type plug
-  slave.pcm "wm8960_out"
-}
-
-# ===== INPUT (capture): 16 kHz mono via dsnoop =====
+# Alias CAPTURE (plug → HW)
 pcm.wm8960_in {
   type plug
-  slave.pcm {
-    type dsnoop
-    ipc_key 59701
-    ipc_perm 0666
-    slave {
-      pcm "hw:0,0"      # <-- WM8960 card 0, device 0
-      rate 16000
-      format S16_LE
-      channels 1
-    }
-  }
+  slave.pcm "wm8960_hw_capture"
 }
-
-# ===== Control interfaces =====
-ctl.wm8960 {
-  type hw
-  card 0              # <-- control points to card 0
-}
-
-# ===== Defaults (optional but handy) =====
-pcm.!default wm8960_out
-ctl.!default { type hw card 0 }
+ctl.wm8960_in { type hw card "wm8960soundcard" }
