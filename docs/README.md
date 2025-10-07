@@ -18,23 +18,56 @@ Najważniejsze dokumenty znajdują się w katalogu głównym projektu:
 
 ---
 
-## Dokumentacja modułów
+## Dokumentacja modułów aplikacyjnych (`apps/*`)
 
-Szczegółowa dokumentacja poszczególnych modułów systemu:
+Szczegółowa dokumentacja wszystkich modułów aplikacyjnych:
 
-### Moduł buźki (Face)
+- [**apps/README.md**](apps/README.md) — **indeks modułów aplikacyjnych** (przegląd, zależności, uruchamianie)
+- [**apps/chat.md**](apps/chat.md) — chat z OpenAI (audio.transcript → GPT → tts.speak)
+- [**apps/nlu.md**](apps/nlu.md) — rozpoznawanie intencji ruchu z transkrypcji PL
+- [**apps/launcher.md**](apps/launcher.md) — menu startowe na 4 przyciski
+- [**apps/menu.md**](apps/menu.md) — menu nawigacyjne (duplikat launcher?)
+- [**apps/motion.md**](apps/motion.md) — bridge ruchu (motion.cmd → XGO adapter)
+- [**apps/safety.md**](apps/safety.md) — emergency stop (E-STOP)
+- [**apps/demos.md**](apps/demos.md) — gotowe demonstracje ruchu
+- [**apps/camera.md**](apps/camera.md) — preview kamery z detekcją twarzy na LCD
+- [**apps/vision.md**](apps/vision.md) — detekcja obiektów (HOG, TFLite, ROI)
+- [**apps/draw.md**](apps/draw.md) — prymitywy renderowania buźki
+- [**apps/hw.md**](apps/hw.md) — sink LCD (framebuffer)
+- [**apps/ui.md**](apps/ui.md) — przyciski, konfiguracja UI, kontroler buźki
 
-- [**face-lcd.md**](modules/face-lcd.md) — renderowanie buźki na panelu LCD ILI9xx (ogólny opis obsługi LCD: tryby, zmienne środowiskowe, benchmark, recovery)
-- [**face.md**](modules/face.md) — API statycznego renderu buźki (endpointy HTTP, konfiguracja)
-- [**face-phase5-lcd.md**](modules/face-phase5-lcd.md) — dokumentacja fazy 5 implementacji (sink LCD RAW dla animacji twarzy)
+### Dokumentacja modułów (legacy — `docs/modules/`)
 
-### Moduł głosu (Voice)
+- [**modules/voice.md**](modules/voice.md) — pełny stos głosowy (ASR, TTS, VAD, KWS, chat), tryby plikowy i strumieniowy
+- [**modules/face.md**](modules/face.md) — API statycznego renderu buźki (endpointy HTTP, konfiguracja)
+- [**modules/face-lcd.md**](modules/face-lcd.md) — renderowanie buźki na panelu LCD ILI9xx
+- [**modules/face-phase5-lcd.md**](modules/face-phase5-lcd.md) — dokumentacja fazy 5 implementacji (sink LCD RAW)
+- [**modules/sim.md**](modules/sim.md) — symulator 2D Rider-Pi, testowanie algorytmów nawigacji
 
-- [**voice.md**](modules/voice.md) — pełny stos głosowy (ASR, TTS, VAD, KWS, chat), tryby plikowy i strumieniowy
+---
 
-### Symulator (Simulator)
+## Dokumentacja skryptów operacyjnych (`ops/*`)
 
-- [**sim.md**](modules/sim.md) — symulator 2D Rider-Pi, testowanie algorytmów nawigacji bez sprzętu
+Skrypty operacyjne dla zarządzania systemem i usługami:
+
+- [**ops/README.md**](ops/README.md) — **indeks skryptów** (konwencje, bezpieczeństwo, kody wyjścia)
+- [**ops/voice-scripts.md**](ops/voice-scripts.md) — voice-run.sh, voice-once.sh (uruchamianie aplikacji głosowej)
+- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — service_ctl.sh, systemd_sync.sh (zarządzanie usługami)
+- [**ops/display-scripts.md**](ops/display-scripts.md) — lcdctl.py, ledctl.py, fbgrab.py (kontrola wyświetlacza)
+- [**ops/camera-scripts.md**](ops/camera-scripts.md) — camera_preview.sh, camera_takeover_kill.sh (zarządzanie kamerą)
+- [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — monitor_metrics.sh, monitor_stream.sh (monitorowanie)
+- [**ops/utility-scripts.md**](ops/utility-scripts.md) — testy, diagnostyka XGO, demo, narzędzia
+
+---
+
+## Dokumentacja konfiguracji (`config/*`)
+
+Parametry konfiguracji dla wszystkich modułów:
+
+- [**config/README.md**](config/README.md) — **indeks parametrów** (hierarchia, precedencja, polityka sekretów)
+- [**config/voice.md**](config/voice.md) — voice_file.toml, voice_streaming.toml (ASR, TTS, Chat)
+- [**config/face.md**](config/face.md) — face.toml (geometria buźki, emocje, animacje)
+- [**config/alsa.md**](config/alsa.md) — asoundrc.wm8960, wm8960-apply.sh (konfiguracja ALSA)
 
 ---
 
@@ -75,7 +108,10 @@ Przy dodawaniu nowych dokumentów należy przestrzegać następujących zasad:
 ### 1. Wybór lokalizacji
 
 - **Katalog główny** — tylko dokumenty o zasięgu ogólnym (wizja, architektura, working agreements)
-- **`docs/modules/`** — dokumentacja poszczególnych modułów aplikacyjnych
+- **`docs/apps/`** — dokumentacja modułów aplikacyjnych (`apps/*`)
+- **`docs/ops/`** — dokumentacja skryptów operacyjnych (`ops/*`)
+- **`docs/config/`** — dokumentacja parametrów konfiguracji (`config/*`)
+- **`docs/modules/`** — dokumentacja modułów (legacy — nowe dokumenty powinny iść do `docs/apps/`)
 - **`docs/audio/`** — konfiguracja sprzętu audio
 - **`docs/summaries/`** — raporty z zakończonych prac
 - **`docs/release-notes/`** — informacje o wydaniach
@@ -161,5 +197,5 @@ python scripts/doc_sync_check.py
 
 ---
 
-**Ostatnia aktualizacja**: 2025-10-04  
+**Ostatnia aktualizacja**: 2025-01 (dokumentacja apps/ops/config dodana)  
 **Wersja dokumentacji**: zgodna z kodem głównym (branch `main`)
