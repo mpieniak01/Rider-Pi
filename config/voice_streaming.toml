@@ -1,32 +1,70 @@
 # ---------------------------------------------------------------------------
-# Rider-Pi / voice_streaming.toml
-# Tryb: STREAMING (ptt) – duplex WS: CAPTURE → CHAT (REST/WS) → TTS (stream)
-# Używa ALSA aliasów z config/alsa/asoundrc.wm8960 (export ALSA_CONFIG_PATH).
-# Ten plik służy do testów funkcjonalnych PTT przez WebSocket.
+# Rider-Pi / config/voice_streaming.toml
+# Tryb STREAMING (PTT) — pełny duplex przez WebSocket (ASR+CHAT+TTS).
+# Wymaga ALSA aliasów z: config/alsa/asoundrc.wm8960 (dsnoop/dmix).
 # ---------------------------------------------------------------------------
 
 lang = "pl"
 
+# --- STREAM (WS) ------------------------------------------------------------
+[stream]
+protocol = "websocket"
+# Model podajemy w URL — tak oczekuje Realtime WS
+endpoint = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17"
+# Skąd brać bearer: tu z ENV. Ustawiamy ephemeral ek_… w OPENAI_API_KEY
+auth = "env:OPENAI_API_KEY"
+
+[stream.reconnect]
+max_retries = 6
+base_ms     = 250
+max_ms      = 5000
+
+# (opcjonalnie) bufor jitter i barge-in
+[stream.audio]
+jitter_buffer_ms = 120
+barge_in         = true
+
+# --- AUDIO IN (MIC) ---------------------------------------------------------
 [capture]
-device      = "wm8960_in"
-sample_rate = 16000
-channels    = 1
-# Uwaga: w trybie streaming zwykle używamy natywnego capture mixina.
-# Jeśli w logach pojawi się "Unsupported capture backend: dummy", rozważ:
-# backend = "arecord"
+# Używamy ciągłego strumienia (bez -d 4) – bez fallbacku.
+backend       = "arecord"          # alternatywnie: "alsa"
+device        = "wm8960_in"
+rate          = 16000              # <- ważne: klucz 'rate', nie 'sample_rate'
+channels      = 1
+frame_ms      = 20
+allow_fallback = false
+# Mniejsza bezwładność wejścia (50 ms bufor, 20 ms period):
+command = "arecord -q -t raw -f S16_LE -c 1 -r 16000 -D wm8960_in --buffer-time 50000 --period-time 20000 -"
 
+# --- AUDIO OUT --------------------------------------------------------------
 [playback]
-device = "wm8960_out"
+backend = "aplay"
+device  = "wm8960_out"
+volume  = 55
+# Uwaga: wrappery /usr/local/bin/mpg123 i /usr/local/bin/paplay mają kierować na ALSA (nie Pulse)
 
+# --- ASR / CHAT / TTS – WS realtime ----------------------------------------
 [asr]
-backend = "openai"
-model   = "gpt-4o-mini-transcribe"   # w razie potrzeby: "whisper-1"
+backend   = "openai"
+transport = "realtime"
+# model informacyjnie – właściwy model jest w [stream].endpoint
+model     = "gpt-4o-realtime-preview-2024-12-17"
 
 [chat]
 backend       = "openai"
-model         = "gpt-4o-mini"
+transport     = "realtime"
+model         = "gpt-4o-realtime-preview-2024-12-17"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
+[tts]
+backend   = "openai"
+transport = "realtime"
+voice     = "alloy"
+# Realtime zwykle zwraca PCM16 24 kHz — odtwarzamy bezpośrednio przez aplay:
+format     = "pcm16"
+player_cmd = "aplay -q -D wm8960_out -f S16_LE -c 1 -r 24000"
+
+# --- NLU / HOTWORD ----------------------------------------------------------
 [nlu]
 chat_threshold = 0.65
 llm_model      = "gpt-4o-mini"
@@ -39,10 +77,12 @@ volume_down  = ["ciszej", "ścisz", "-10"]
 
 [hotword]
 enabled = true
-engine  = "ptt"   # sterowanie przyciskiem w trybie streaming
+engine  = "ptt"
 
-[tts]
-backend    = "openai"
-voice      = "ash"
-format     = "wav"
-player_cmd = "aplay -q -D wm8960_out"
+# --- PTT parametry (łagodniejsze) ------------------------------------------
+[ptt]
+silence_ms      = 1500
+commit_on_stop  = true
+require_audio   = false
+# Jeżeli Twoja wersja wspiera:
+# min_dbfs = -60
