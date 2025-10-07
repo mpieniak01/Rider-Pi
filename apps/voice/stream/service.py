@@ -184,7 +184,7 @@ class StreamingVoiceService:
         if auth.startswith("file:"):
             path = _expand(auth[5:])
             try:
-                with open(path, encoding="utf-8", errors="ignore") as handle:
+                with open(path, encoding="utf-8") as handle:
                     key = handle.read().strip()
             except FileNotFoundError as exc:
                 self.logger.event("auth_file_missing", path=path)
