@@ -210,11 +210,31 @@ class StreamingVoiceService(StreamingVoiceTransportMixin, StreamingVoicePTTMixin
         self._completed: bool = False
 
         # --- PTT (push-to-talk) sterowanie Enterem ---
-        hotword_cfg = self.config.get("hotword") or {}
+        hotword_cfg = dict(self.config.get("hotword") or {})
         ptt_cfg = self.config.get("ptt") or {}
-        self.ptt_enabled: bool = str(hotword_cfg.get("engine", "")).lower() == "ptt" or bool(
-            ptt_cfg.get("enabled", False)
-        )
+        service_cfg = self.config.get("service") or {}
+        turn_cfg = service_cfg.get("turn") or self.config.get("turn") or {}
+
+        service_hotword_engine = str(service_cfg.get("hotword_engine", "")).strip().lower()
+        service_hotword_enabled = service_cfg.get("hotword_enabled")
+        commit_on_key = bool(turn_cfg.get("commit_on_key", False))
+
+        hotword_engine = str(hotword_cfg.get("engine", "")).strip().lower()
+        if not hotword_engine:
+            if service_hotword_engine:
+                hotword_engine = service_hotword_engine
+            elif service_hotword_enabled is False:
+                hotword_engine = ""
+            else:
+                # Kompatybilność: domyślnie traktuj brak konfiguracji jako PTT
+                hotword_engine = "ptt"
+
+        self.ptt_enabled: bool = hotword_engine == "ptt" or bool(ptt_cfg.get("enabled", False)) or commit_on_key
+        if service_hotword_enabled is False:
+            self.ptt_enabled = False
+
+        # zachowaj wyliczony engine (dla debugowania/ew. przyszłego użycia)
+        self._ptt_engine = hotword_engine
         self.ptt_active: bool = False  # czy aktualnie nagrywamy po Enter
         self._ptt_was_active: bool = False  # detekcja zbocza STOP (True->False)
         self._any_audio_since_commit: bool = False  # czy coś poleciało od startu PTT
