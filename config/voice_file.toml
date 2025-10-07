@@ -44,7 +44,8 @@ enabled = true
 engine  = "ptt"   # tryb PTT w once/file
 
 [tts]
-backend = "openai"
-voice   = "ash"
-format  = "mp3"
-player_cmd = "./ops/audio/mpg123.sh"  # tylko jeśli wrócisz do format = "mp3"
+backend    = "openai"
+voice      = "ash"
+format     = "wav"
+player_cmd = "aplay -q -D wm8960_out"
+

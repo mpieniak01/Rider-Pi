@@ -1,18 +1,15 @@
 # ---------------------------------------------------------------------------
-# Rider-Pi / config/alsa/asoundrc.wm8960
-# ALSA dla WM8960 (CM4) – wariant MIN (bez dmix/dsnoop), 100% po ID.
-# - ID karty: "wm8960soundcard" (sprawdź `aplay -l`)
-# - Brak odwołań do hw:0 / card 0
-# - Używamy aliasów: wm8960_out (playback), wm8960_in (capture)
+# Rider-Pi / ALSA WM8960 (MIN: plug→hw, po ID "wm8960soundcard")
+# Alias playback:  wm8960_out
+# Alias capture:   wm8960_in
 # ---------------------------------------------------------------------------
 
-# Domyślny kontroler – bez tego `aplay -L` potrafi mówić "Invalid CTL hw:0"
 ctl.!default {
   type hw
   card "wm8960soundcard"
 }
 
-# Surowe urządzenia HW po ID (czytelne aliasy)
+# Surowe urządzenia HW po ID (zero numerów kart!)
 pcm.wm8960_hw_playback {
   type hw
   card   "wm8960soundcard"
@@ -24,14 +21,14 @@ pcm.wm8960_hw_capture {
   device 0
 }
 
-# PLAYBACK: plug → hw  (prosto i niezawodnie)
+# Alias PLAYBACK (plug → hw)
 pcm.wm8960_out {
   type plug
   slave.pcm "wm8960_hw_playback"
 }
 ctl.wm8960_out { type hw card "wm8960soundcard" }
 
-# CAPTURE: plug → hw
+# Alias CAPTURE (plug → hw)
 pcm.wm8960_in {
   type plug
   slave.pcm "wm8960_hw_capture"
