@@ -84,9 +84,13 @@ class WebSocketTransport:
                 )
 
                 # Create connection
-                extra_headers = {}
+                extra_headers = []
                 if self.auth_header:
-                    extra_headers["Authorization"] = self.auth_header
+                    extra_headers.append(("Authorization", self.auth_header))
+
+                # Realtime API (2024-10) requires beta header to opt-in.
+                # Keep it unconditional – server ignores duplicates.
+                extra_headers.append(("OpenAI-Beta", "realtime=v1"))
 
                 self.websocket = await websockets.connect(
                     effective_endpoint,
