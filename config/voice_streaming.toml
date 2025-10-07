@@ -44,5 +44,5 @@ engine  = "ptt"   # sterowanie przyciskiem w trybie streaming
 [tts]
 backend    = "openai"
 voice      = "ash"
-format     = "mp3"
-player_cmd = "./ops/audio/mpg123.sh"  # ALSA → wm8960_out (bez Pulse)
+format     = "wav"
+player_cmd = "aplay -q -D wm8960_out"
