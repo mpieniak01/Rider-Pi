@@ -196,7 +196,7 @@ class StreamingVoiceService:
 
         if auth.startswith("bashenv:"):
             # Historical scheme removed for security reasons to avoid sourcing shell profiles.
-            self.logger.event("auth_bashenv_rejected", auth=auth)
+            self.logger.event("auth_bashenv_rejected", scheme="bashenv")
             raise RuntimeError(
                 "bashenv: scheme is no longer supported. Use env:VARNAME or file:/path/to/keyfile instead."
             )
