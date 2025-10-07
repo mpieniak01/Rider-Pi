@@ -1,65 +1,48 @@
-# config/voice_streaming.toml — PTT + Realtime WS (PL), zgodny z aktualnym kodem
+# ---------------------------------------------------------------------------
+# Rider-Pi / voice_streaming.toml
+# Tryb: STREAMING (ptt) – duplex WS: CAPTURE → CHAT (REST/WS) → TTS (stream)
+# Używa ALSA aliasów z config/alsa/asoundrc.wm8960 (export ALSA_CONFIG_PATH).
+# Ten plik służy do testów funkcjonalnych PTT przez WebSocket.
+# ---------------------------------------------------------------------------
 
-[logging]
-level = "INFO"
+lang = "pl"
 
 [capture]
-backend        = "alsa"
-device         = "wm8960_in"
-sample_rate    = 16000
-channels       = 1
-frame_ms       = 20            # zgodnie z naszymi chunkami
-buffer_seconds = 0.10          # mniejszy bufor = mniejsza latencja
+device      = "wm8960_in"
+sample_rate = 16000
+channels    = 1
+# Uwaga: w trybie streaming zwykle używamy natywnego capture mixina.
+# Jeśli w logach pojawi się "Unsupported capture backend: dummy", rozważ:
+# backend = "arecord"
 
 [playback]
-backend = "alsa"
-device  = "wm8960_out"
-volume  = 55
+device = "wm8960_out"
 
 [asr]
-transport = "realtime"
-language  = "pl"
+backend = "openai"
+model   = "gpt-4o-mini-transcribe"   # w razie potrzeby: "whisper-1"
 
 [chat]
-transport     = "realtime"
-# przeniesione z [stream.session.instructions]
-system_prompt = "Mów po polsku, krótko i rzeczowo. Jeśli pytanie jest krótkie, odpowiadaj w 1–2 zdaniach."
+backend       = "openai"
+model         = "gpt-4o-mini"
+system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
+
+[nlu]
+chat_threshold = 0.65
+llm_model      = "gpt-4o-mini"
+
+[nlu.command_keywords]
+stop         = ["stop", "pauza", "koniec", "cisza"]
+repeat       = ["powtórz", "jeszcze raz"]
+volume_up    = ["głośniej", "podgłośnij", "+10"]
+volume_down  = ["ciszej", "ścisz", "-10"]
+
+[hotword]
+enabled = true
+engine  = "ptt"   # sterowanie przyciskiem w trybie streaming
 
 [tts]
-transport = "realtime"
-voice     = "ash"
-format    = "pcm16"            # zgodnie z tym, co wysyła _send_session_update()
-
-[stream]
-# <<< KLUCZ CZYTANY Z ZMIENNEJ ŚRODOWISKOWEJ >>>
-# Upewnij się, że OPENAI_API_KEY jest wyeksportowany w ~/.bash_profile
-# i źródło tego pliku przed uruchomieniem aplikacji (np. w ops/voice-run.sh)
-auth                = "env:OPENAI_API_KEY"
-endpoint            = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
-chunk_ms            = 20
-sample_rate         = 16000
-turn_end_silence_ms = 700
-max_turn_ms         = 15000      # więcej czasu na wypowiedź
-send_partials       = false
-server_vad          = true
-local_vad_fallback  = false
-ping_interval_s     = 10
-# request_on_commit – nieużywane przez kod, commit i tak wysyła response.create
-
-[stream.audio]
-jitter_buffer_ms = 80            # balans: płynność vs. latencja
-barge_in         = true
-
-[stream.reconnect]
-max_retries = 6
-base_ms     = 250
-max_ms      = 5000
-
-[service]
-beep          = true
-beep_delay_ms = 250
-
-[service.turn]
-max_turn_ms   = 15000
-key_exit      = true
-commit_on_key = true
+backend    = "openai"
+voice      = "ash"
+format     = "mp3"
+player_cmd = "./ops/audio/mpg123.sh"  # ALSA → wm8960_out (bez Pulse)
