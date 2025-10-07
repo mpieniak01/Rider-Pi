@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 import queue
 import threading
 import time
@@ -19,6 +20,7 @@ from typing import Any
 
 from .. import voice_logging
 from ..common import ensure_event_logger
+from ..session_prefs import build_session_preferences, session_prefs_to_dict
 from ..svc_audio import capture_continuous
 from ..utils import run_sync  # ⬅️ bezpieczne uruchamianie coroutine z kodu sync
 from .state import PTTEvent, PTTState, PTTStateMachine
@@ -163,18 +165,51 @@ class StreamingVoiceService:
             return False
 
     def _get_auth_header(self) -> str:
-        """Extract API key from auth config."""
-        auth = self.stream_cfg.auth
-        if auth.startswith("env:"):
-            import os
+        """Extract API key from auth config following security best practices."""
 
+        def _expand(path: str) -> str:
+            return os.path.expanduser(os.path.expandvars(path))
+
+        auth = (self.stream_cfg.auth or "").strip()
+
+        if auth.startswith("env:"):
             env_key = auth[4:]
             api_key = (os.environ.get(env_key, "") or "").strip()
             if not api_key:
                 self.logger.event("auth_missing_key", env_var=env_key)
                 raise RuntimeError(f"Missing environment variable: {env_key}")
+            self.logger.event("auth.loaded", src="env", var=env_key, length=len(api_key))
             return api_key
-        return auth.strip()
+
+        if auth.startswith("file:"):
+            path = _expand(auth[5:])
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    key = handle.read().strip()
+            except FileNotFoundError as exc:
+                self.logger.event("auth_file_missing", path=path)
+                raise RuntimeError(f"API key file not found: {path}") from exc
+            if not key:
+                raise RuntimeError(f"API key file empty: {path}")
+            self.logger.event("auth.loaded", src="file", length=len(key))
+            return key
+
+        if auth.startswith("bashenv:"):
+            # Historical scheme removed for security reasons to avoid sourcing shell profiles.
+            self.logger.event("auth_bashenv_rejected", scheme="bashenv")
+            raise RuntimeError(
+                "bashenv: scheme is no longer supported. Use env:VARNAME or file:/path/to/keyfile instead."
+            )
+
+        if auth:
+            return auth
+
+        fallback = (os.environ.get("OPENAI_API_KEY", "") or "").strip()
+        if fallback:
+            self.logger.event("auth.loaded", src="env", var="OPENAI_API_KEY", length=len(fallback))
+            return fallback
+
+        raise RuntimeError("Missing OpenAI API key. Configure stream.auth or set OPENAI_API_KEY.")
 
     async def _send_session_init(self) -> None:
         """Send session initialization message."""
@@ -182,16 +217,11 @@ class StreamingVoiceService:
             return
 
         self.session_id = str(uuid.uuid4())
-        init_message = {
-            "type": "session.update",
-            "session": {
-                "modalities": ["text", "audio"],
-                "voice": "verse",
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "turn_detection": {"type": "server_vad"} if self.stream_cfg.server_vad else None,
-            },
-        }
+        prefs = build_session_preferences(self.config, stream_cfg=self.stream_cfg)
+        session_payload = session_prefs_to_dict(prefs)
+
+        init_message = {"type": "session.update", "session": session_payload}
+
         await self.transport.send(json.dumps(init_message))
         self.logger.event("session.init", session_id=self.session_id)
 
