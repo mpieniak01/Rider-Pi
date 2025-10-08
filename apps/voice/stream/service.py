@@ -759,6 +759,17 @@ class StreamingVoiceService:
             finally:
                 self.transport = None
 
+        # For backward compatibility: close direct websocket if set (for tests)
+        if self.websocket:
+            try:
+                await self.websocket.close(code=1000)
+                await self.websocket.wait_closed()
+            except Exception as e:
+                self.logger.event("websocket.close.error", error=str(e))
+            finally:
+                self.websocket = None
+                self.connected = False
+
         # workers & state
         self._cleanup_workers()
         self.ptt_state.reset()
