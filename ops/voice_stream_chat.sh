@@ -101,6 +101,8 @@ async def main() -> None:
     service = StreamingVoiceService(cfg)
     loop = asyncio.get_running_loop()
     service._loop = loop  # utrzymujemy spójność z istniejącym kodem
+    import websockets
+    service._ws_module = websockets
 
     # 1) Transport WS
     if not await service._initialize_transport():
