@@ -15,12 +15,15 @@ import queue
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 from .. import voice_logging
+from ..capture import CaptureConfig
 from ..common import ensure_event_logger
+from ..rt_protocol import build_audio_commit, build_response_create
 from ..session_prefs import build_session_preferences, session_prefs_to_dict
+from ..stream_chunks import AudioChunkProcessor
 from ..svc_audio import capture_continuous
 from ..utils import run_sync  # ⬅️ bezpieczne uruchamianie coroutine z kodu sync
 from .state import PTTEvent, PTTState, PTTStateMachine
@@ -105,11 +108,36 @@ class StreamingVoiceService:
         self._capture_thread: threading.Thread | None = None
         self._tts_player_thread: threading.Thread | None = None
         self._message_handler_task: asyncio.Task[None] | None = None
+        self._audio_sender_task: asyncio.Task[None] | None = None
 
         # Session state
         self.session_id: str = ""
         self.partial_transcript = ""
         self._completed: bool = False
+        self._session_prefs: Any | None = None
+        self._commit_lock = asyncio.Lock()
+        self._chunk_counter = 0
+
+        # Capture configuration for chunk processing
+        capture_in = dict(self.config.get("capture", {}) or {})
+        capture_filtered = capture_in
+        try:
+            valid_fields = {field.name for field in fields(CaptureConfig)}
+            capture_filtered = {k: v for k, v in capture_in.items() if k in valid_fields}
+            self._capture_cfg = CaptureConfig(**capture_filtered)
+        except Exception:
+            self._capture_cfg = CaptureConfig()
+
+        self._capture_cfg_dict = {
+            "backend": self._capture_cfg.backend,
+            "device": self._capture_cfg.device,
+            "sample_rate": self._capture_cfg.sample_rate,
+            "channels": self._capture_cfg.channels,
+            "frame_ms": self._capture_cfg.frame_ms,
+            "buffer_seconds": self._capture_cfg.buffer_seconds,
+            "sample_format": self._capture_cfg.sample_format,
+        }
+        self._chunk_processor = AudioChunkProcessor(self._capture_cfg, self.stream_cfg, self.logger)
 
         # PTT configuration
         hotword_cfg = self.config.get("hotword", {})
@@ -158,6 +186,17 @@ class StreamingVoiceService:
                 max_ms=self.stream_cfg.max_ms,
                 ping_interval_s=self.stream_cfg.ping_interval_s,
                 logger=self.logger,
+            )
+            self.logger.event(
+                "stream.config",
+                endpoint=self._mask_endpoint(self.stream_cfg.endpoint),
+                chunk_ms=self.stream_cfg.chunk_ms,
+                sample_rate=self.stream_cfg.sample_rate,
+                silence_ms=self.stream_cfg.turn_end_silence_ms,
+                max_turn_ms=self.stream_cfg.max_turn_ms,
+                server_vad=int(self.stream_cfg.server_vad),
+                send_partials=int(self.stream_cfg.send_partials),
+                barge_in=int(self.stream_cfg.barge_in),
             )
             return True
         except Exception as e:
@@ -218,6 +257,7 @@ class StreamingVoiceService:
 
         self.session_id = str(uuid.uuid4())
         prefs = build_session_preferences(self.config, stream_cfg=self.stream_cfg)
+        self._session_prefs = prefs
         session_payload = session_prefs_to_dict(prefs)
 
         init_message = {"type": "session.update", "session": session_payload}
@@ -264,7 +304,10 @@ class StreamingVoiceService:
         try:
             await self._send_session_init()
             self._message_handler_task = asyncio.create_task(self._message_handler_loop())
+            self._audio_sender_task = asyncio.create_task(self._audio_sender_loop())
             self._start_audio_capture()
+            if speak:
+                self._start_tts_player()
             self.ptt_state.start_interaction()
             self.ptt_state.transition(PTTEvent.START)
 
@@ -339,6 +382,7 @@ class StreamingVoiceService:
         await self._send_session_init()
         self._start_audio_capture()
         self._start_tts_player()
+        self._audio_sender_task = asyncio.create_task(self._audio_sender_loop())
         self._message_handler_task = asyncio.create_task(self._message_handler_loop())
 
         while not self.stop_event.is_set() and self.transport:
@@ -382,6 +426,22 @@ class StreamingVoiceService:
                 text = data.get("delta", "")
                 self._publish_partial(text)
 
+            elif msg_type == "response.created":
+                self.logger.event("response.created")
+                self.ptt_state.transition(PTTEvent.SERVER_RESPONSE)
+
+            elif msg_type == "session.updated":
+                self.logger.event("session.updated")
+
+            elif msg_type == "input_audio_buffer.speech_started":
+                self.logger.event("speech.started")
+                self.ptt_state.transition(PTTEvent.VOICE_START)
+
+            elif msg_type == "input_audio_buffer.speech_stopped":
+                self.logger.event("speech.stopped")
+                self.ptt_state.transition(PTTEvent.VOICE_END)
+                await self._commit_audio_buffer()
+
             elif msg_type in ("response.completed", "response.done"):
                 self._completed = True
                 self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
@@ -398,16 +458,118 @@ class StreamingVoiceService:
     # ──────────────────────────────────────────────────────────────────────────
     # Workers
 
+    async def _audio_sender_loop(self) -> None:
+        """Send captured audio frames to the realtime API."""
+        self.logger.event("audio.sender.start")
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    chunk = self.audio_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+
+                if chunk is None:
+                    if self._any_audio_since_commit:
+                        await self._commit_audio_buffer()
+                    if self.stop_event.is_set():
+                        break
+                    continue
+
+                await self._send_audio_chunk(chunk)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.event("audio.sender.error", error=str(e))
+        finally:
+            self.logger.event("audio.sender.stop")
+
+    async def _send_audio_chunk(self, chunk: bytes) -> None:
+        """Encode and send a PCM16 chunk to the server."""
+        if not chunk or not self.transport:
+            return
+
+        try:
+            result = self._chunk_processor.process_and_encode_chunk(chunk)
+            if not result:
+                return
+
+            message_json, telemetry = result
+            await self.transport.send(message_json)
+            self._chunk_counter += 1
+            self._any_audio_since_commit = True
+
+            if self._chunk_counter == 1 or self._chunk_counter % 50 == 0:
+                self.logger.event(
+                    "stream.tx",
+                    bytes_in=int(telemetry.get("bytes_in", len(chunk))),
+                    bytes_out=int(telemetry.get("bytes_out", 0)),
+                    ch_in=int(telemetry.get("ch_in", 1)),
+                    ch_out=int(telemetry.get("ch_out", 1)),
+                    sr=int(telemetry.get("sr", self.stream_cfg.sample_rate)),
+                    chunk_ms=int(telemetry.get("chunk_ms", self.stream_cfg.chunk_ms)),
+                    ordinal=self._chunk_counter,
+                )
+        except Exception as e:
+            self.logger.event("audio.append.error", error=str(e))
+            raise
+
+    async def _commit_audio_buffer(self) -> None:
+        """Close the current input buffer and request a response."""
+        async with self._commit_lock:
+            if not self.transport:
+                self.logger.event("audio.commit.skip", reason="no_transport")
+                return
+            if not self._any_audio_since_commit:
+                self.logger.event("audio.commit.skip", reason="empty")
+                return
+
+            try:
+                await self.transport.send(build_audio_commit())
+                self.logger.event("audio.commit")
+            except Exception as e:
+                self.logger.event("audio.commit.error", error=str(e))
+                raise
+            finally:
+                self._any_audio_since_commit = False
+
+            await self._send_response_create()
+
+    async def _send_response_create(self) -> None:
+        """Request assistant response generation."""
+        if not self.transport:
+            return
+
+        prefs = self._session_prefs
+        modalities = getattr(prefs, "modalities", ["text", "audio"])
+        voice = getattr(prefs, "voice", "verse") or "verse"
+        instructions = getattr(prefs, "instructions", "")
+
+        try:
+            message = build_response_create(voice=voice, instructions=instructions, modalities=list(modalities))
+            await self.transport.send(message)
+            self.logger.event("response.create", voice=voice, modalities=",".join(modalities))
+        except Exception as e:
+            self.logger.event("response.create.error", error=str(e))
+            raise
+
     def _start_audio_capture(self) -> None:
         """Start audio capture thread (generator → queue)."""
         if self._capture_thread and self._capture_thread.is_alive():
             return
 
         # policz bajty na chunk
-        cap_cfg = self.config.get("capture", {}) or {}
-        sr = int(cap_cfg.get("sample_rate", self.stream_cfg.sample_rate))
+        cap_cfg = self._capture_cfg_dict
+        sr = int(self._capture_cfg.sample_rate)
         chunk_ms = int(self.stream_cfg.chunk_ms)
-        chunk_size = int(sr * chunk_ms / 1000) * 2  # S16_LE mono (downmix w transporcie/serwerze)
+        chunk_size = int(self._capture_cfg.bytes_for_ms(chunk_ms))
+
+        self.logger.event(
+            "capture.start",
+            sample_rate=sr,
+            chunk_ms=chunk_ms,
+            chunk_bytes=chunk_size,
+            channels=int(self._capture_cfg.channels),
+        )
 
         def capture_target():
             try:
@@ -518,6 +680,15 @@ class StreamingVoiceService:
 
     async def _cleanup(self) -> None:
         """Full cleanup including transport."""
+        if self._audio_sender_task and not self._audio_sender_task.done():
+            self._audio_sender_task.cancel()
+            try:
+                await self._audio_sender_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._audio_sender_task = None
+
         # cancel message handler
         if self._message_handler_task and not self._message_handler_task.done():
             self._message_handler_task.cancel()
@@ -549,3 +720,8 @@ class StreamingVoiceService:
         """Wait for interaction completion."""
         while not self._completed and not self.stop_event.is_set():
             await asyncio.sleep(0.1)
+
+    def _mask_endpoint(self, endpoint: str) -> str:
+        if not endpoint:
+            return ""
+        return endpoint.replace("model=", "model=***")
