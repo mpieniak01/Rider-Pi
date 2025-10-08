@@ -1,28 +1,56 @@
 from __future__ import annotations
 
-# Legacy class-based API (tymczasowo dla zgodności testów)
-from .service_impl import (
+"""
+apps.voice package API
+
+- Legacy (tymczasowe, na potrzeby testów): klasy z service_impl.
+- Nowe API: funkcje run_listen / run_once.
+- Shimy: punkty do monkeypatch w testach (ASR, VAD, hotword/PTT, NLU/chat).
+
+Dodatkowo: na etapie importu próbujemy bezpiecznie uzupełnić ENV
+(OPENAI_API_KEY, itp.) z ~/.bash_profile, jeśli dostępny jest moduł
+apps.voice.env_loader (nie jest to twarda zależność).
+"""
+
+# --- Opcjonalne uzupełnienie ENV z ~/.bash_profile ---------------------------
+try:
+    # Nie robimy z tego twardej zależności – jeśli modułu nie ma, pomijamy.
+    from .env_loader import ensure_env_from_bash_profile as _ensure_env_from_bash_profile  # type: ignore
+except Exception:  # pragma: no cover
+    _ensure_env_from_bash_profile = None  # type: ignore[assignment]
+
+if _ensure_env_from_bash_profile:
+    # Łagodne uzupełnienie brakujących zmiennych; brak skutku ubocznego, gdy ENV kompletne.
+    try:
+        _ensure_env_from_bash_profile()
+    except Exception:
+        # Nigdy nie zrywamy importu pakietu, jeżeli profil jest niedostępny.
+        pass
+
+# --- Legacy class-based API (tymczasowo dla zgodności testów) ----------------
+from .service_impl import (  # noqa: E402
     SpeechTask,
     VoiceResult,
     VoiceService,
     setup_signals,
 )
 
-# Public functional API (nowe)
-from .svc_core import run_listen, run_once
+# --- Public functional API (nowe) -------------------------------------------
+from .svc_core import run_listen, run_once  # noqa: E402
 
-# --- Shimy kompatybilności dla testów (monkeypatch w pytest) ---
+# --- Shimy kompatybilności dla testów (monkeypatch w pytest) -----------------
 # elastyczny import transcribe_file -> transcribe
 try:
-    # wariant: apps/asr.py
+    # wariant: apps/asr.py (poza pakietem voice)
     from ..asr import transcribe_file as transcribe  # type: ignore[attr-defined]
 except Exception:
     try:
-        # wariant: apps/voice/asr.py
+        # wariant: apps/voice/asr.py (wewnątrz pakietu voice)
         from .asr import transcribe_file as transcribe  # type: ignore[attr-defined]
     except Exception:
-        # ostateczny fallback: stub (testy i tak monkeypatchują)
-        def transcribe(*args, **kwargs):
+
+        def transcribe(*args, **kwargs):  # type: ignore[no-redef]
+            """Stub: testy podmieniają monkeypatchem."""
             raise NotImplementedError("transcribe shim: brak modułu asr.py (apps/asr.py lub apps/voice/asr.py)")
 
 
