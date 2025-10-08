@@ -186,6 +186,11 @@ class StreamingVoiceService:
         self.ptt_controller = _PTTControllerShim(self)
         self.audio_transmitter = _AudioTransmitterShim(self)
 
+        # Additional compatibility attributes for old tests
+        self.connected = False  # WebSocket connection state
+        self.websocket: Any | None = None  # WebSocket connection object
+        self.current_state = "idle"  # Current service state
+
         # event loop (do bezpiecznych zamknięć z kodu synchronicznego)
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -402,6 +407,10 @@ class StreamingVoiceService:
                 run_sync(self._cleanup())
             except Exception as e:
                 self.logger.event("stream.stop.cleanup_sync_error", error=str(e))
+
+    async def close(self) -> None:
+        """Close the service (compatibility alias for stop, async version)."""
+        await self._cleanup()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Session run loops
