@@ -1,10 +1,12 @@
 # apps/voice/svc_stream.py
-"""WebSocket streaming voice service - compatibility shim/router.
+"""WebSocket streaming voice service - compatibility shim.
 
-This module serves as a compatibility layer that re-exports the refactored
-StreamingVoiceService from apps.voice.stream.service, while maintaining the
-CLI wrapper functions (run_once_stream, run_listen_stream, run_ptt_stream)
-for backward compatibility with existing tests and command-line interfaces.
+This file now acts as a compatibility layer (shim) that re-exports the refactored
+StreamingVoiceService from apps.voice.stream.service, maintaining backward compatibility
+for existing tests and CLI runners.
+
+Original implementation moved to apps/voice/stream/service.py as part of the refactoring
+described in Issue #XX to modernize the streaming voice architecture.
 """
 
 from __future__ import annotations
@@ -14,16 +16,22 @@ import inspect
 import threading
 from typing import Any
 
-# Re-export for test compatibility
+# Re-export play_ding for test compatibility
 from .playback import play_ding  # noqa: F401
 
-# Re-export the refactored streaming service and config
-from .stream.service import StreamConfig, StreamingVoiceService  # noqa: F401
+# Re-export the refactored service under the old path for compatibility
+from .stream.service import StreamConfig, StreamingVoiceService
+
+__all__ = [
+    "StreamConfig",
+    "StreamingVoiceService",
+    "play_ding",
+    "run_once_stream",
+    "run_listen_stream",
+    "run_ptt_stream",
+]
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# PROXY/Wrappers dla CLI i testów
-# ────────────────────────────────────────────────────────────────────────────
 def _run_coro_in_thread(coro) -> Any:
     """Uruchom coroutine w osobnym wątku z własną pętlą (bez kolizji z @pytest.mark.asyncio)."""
     result_box: dict[str, Any] = {}
