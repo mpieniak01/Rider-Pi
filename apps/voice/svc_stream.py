@@ -56,7 +56,7 @@ def run_once_stream(cfg: dict[str, Any], args) -> int:
     service = StreamingVoiceService(cfg)
     try:
         # once() jest synchroniczne (wywołuje asyncio.run wewnątrz),
-        # ale testowy DummyService.once() może być async → obsłuż oba przypadki.
+        # but testowy DummyService.once() może być async → obsłuż oba przypadki.
         ret = service.once()
         if inspect.iscoroutine(ret):
             result = _run_coro_in_thread(ret)
@@ -67,16 +67,10 @@ def run_once_stream(cfg: dict[str, Any], args) -> int:
             print(result["transcript"]["text"])  # noqa: T201
         return 0
     finally:
-        aclose = getattr(service, "aclose", None)
-        close_sync = getattr(service, "close_sync", None)
-        if callable(aclose):
+        stop = getattr(service, "stop", None)
+        if callable(stop):
             try:
-                _run_coro_in_thread(aclose())
-            except Exception:
-                pass
-        elif callable(close_sync):
-            try:
-                close_sync()
+                stop()
             except Exception:
                 pass
 
@@ -85,23 +79,16 @@ def run_listen_stream(cfg: dict[str, Any], args) -> int:
     """Start streaming in 'listen' mode (CLI/test proxy)."""
     service = StreamingVoiceService(cfg)
     try:
-        # listen() jest zwykle synchroniczne (bo samo robi asyncio.run),
-        # ale testowy DummyService.listen() bywa async → obsłuż oba przypadki.
+        # listen() może być synchroniczne lub async – obsłuż oba przypadki
         ret = service.listen()
         if inspect.iscoroutine(ret):
             _run_coro_in_thread(ret)  # DummyService.listen() jest async w teście
         return 0
     finally:
-        aclose = getattr(service, "aclose", None)
-        close_sync = getattr(service, "close_sync", None)
-        if callable(aclose):
+        stop = getattr(service, "stop", None)
+        if callable(stop):
             try:
-                _run_coro_in_thread(aclose())
-            except Exception:
-                pass
-        elif callable(close_sync):
-            try:
-                close_sync()
+                stop()
             except Exception:
                 pass
 
