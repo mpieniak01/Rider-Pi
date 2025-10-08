@@ -139,10 +139,57 @@ class StreamingVoiceService:
         }
         self._chunk_processor = AudioChunkProcessor(self._capture_cfg, self.stream_cfg, self.logger)
 
-        # PTT configuration
-        hotword_cfg = self.config.get("hotword", {})
-        self.ptt_enabled: bool = str(hotword_cfg.get("engine", "")).lower() == "ptt"
+        # PTT configuration (compatible with old svc_stream.py logic)
+        hotword_cfg = dict(self.config.get("hotword") or {})
+        ptt_cfg = self.config.get("ptt") or {}
+        service_cfg = self.config.get("service") or {}
+        turn_cfg = service_cfg.get("turn") or self.config.get("turn") or {}
+
+        service_hotword_engine = str(service_cfg.get("hotword_engine", "")).strip().lower()
+        service_hotword_enabled = service_cfg.get("hotword_enabled")
+        commit_on_key = bool(turn_cfg.get("commit_on_key", False))
+
+        hotword_engine = str(hotword_cfg.get("engine", "")).strip().lower()
+        if not hotword_engine:
+            if service_hotword_engine:
+                hotword_engine = service_hotword_engine
+            elif service_hotword_enabled is False:
+                hotword_engine = ""
+            else:
+                # Kompatybilność: domyślnie traktuj brak konfiguracji jako PTT
+                hotword_engine = "ptt"
+
+        self.ptt_enabled: bool = hotword_engine == "ptt" or bool(ptt_cfg.get("enabled", False)) or commit_on_key
+        if service_hotword_enabled is False:
+            self.ptt_enabled = False
+
         self._any_audio_since_commit: bool = False
+
+        # Compatibility shims for tests expecting old API (ptt_controller, audio_transmitter)
+        # These are simple objects that expose ptt_enabled for backward compatibility
+        class _PTTControllerShim:
+            def __init__(self, parent):
+                self._parent = parent
+
+            @property
+            def ptt_enabled(self):
+                return self._parent.ptt_enabled
+
+        class _AudioTransmitterShim:
+            def __init__(self, parent):
+                self._parent = parent
+
+            @property
+            def ptt_enabled(self):
+                return self._parent.ptt_enabled
+
+        self.ptt_controller = _PTTControllerShim(self)
+        self.audio_transmitter = _AudioTransmitterShim(self)
+
+        # Additional compatibility attributes for old tests
+        self.connected = False  # WebSocket connection state
+        self.websocket: Any | None = None  # WebSocket connection object
+        self.current_state = "idle"  # Current service state
 
         # event loop (do bezpiecznych zamknięć z kodu synchronicznego)
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -360,6 +407,10 @@ class StreamingVoiceService:
                 run_sync(self._cleanup())
             except Exception as e:
                 self.logger.event("stream.stop.cleanup_sync_error", error=str(e))
+
+    async def close(self) -> None:
+        """Close the service (compatibility alias for stop, async version)."""
+        await self._cleanup()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Session run loops

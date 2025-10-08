@@ -10,7 +10,7 @@ lang = "pl"
 [stream]
 protocol = "websocket"
 # Model podajemy w URL — tak oczekuje Realtime WS
-endpoint = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17"
+endpoint = "wss://api.openai.com/v1/realtime?model=gpt-4o"
 # Skąd brać bearer: tu z ENV. Ustawiamy ephemeral ek_… w OPENAI_API_KEY
 auth = "env:OPENAI_API_KEY"
 
