@@ -558,7 +558,7 @@ class StreamingVoiceService:
             return
 
         # policz bajty na chunk
-        cap_cfg = dict(self._capture_cfg_dict)
+        cap_cfg = self._capture_cfg_dict
         sr = int(self._capture_cfg.sample_rate)
         chunk_ms = int(self.stream_cfg.chunk_ms)
         chunk_size = int(self._capture_cfg.bytes_for_ms(chunk_ms))
