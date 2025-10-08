@@ -19,13 +19,13 @@ from dataclasses import dataclass, fields
 from typing import Any
 
 from .. import voice_logging
-from ..common import ensure_event_logger
 from ..capture import CaptureConfig
+from ..common import ensure_event_logger
 from ..rt_protocol import build_audio_commit, build_response_create
 from ..session_prefs import build_session_preferences, session_prefs_to_dict
+from ..stream_chunks import AudioChunkProcessor
 from ..svc_audio import capture_continuous
 from ..utils import run_sync  # ⬅️ bezpieczne uruchamianie coroutine z kodu sync
-from ..stream_chunks import AudioChunkProcessor
 from .state import PTTEvent, PTTState, PTTStateMachine
 from .transport import ReconnectingTransport
 
