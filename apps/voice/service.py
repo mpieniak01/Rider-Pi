@@ -15,12 +15,15 @@ apps.voice.env_loader (nie jest to twarda zależność).
 # --- Opcjonalne uzupełnienie ENV z ~/.bash_profile ---------------------------
 try:
     # Nie robimy z tego twardej zależności – jeśli modułu nie ma, pomijamy.
-    from .env_loader import ensure_env_from_bash_profile as _ensure_env_from_bash_profile  # type: ignore
+    from .env_loader import (  # type: ignore
+        ensure_env_from_bash_profile as _ensure_env_from_bash_profile,
+    )
 except Exception:  # pragma: no cover
     _ensure_env_from_bash_profile = None  # type: ignore[assignment]
 
 if _ensure_env_from_bash_profile:
-    # Łagodne uzupełnienie brakujących zmiennych; brak skutku ubocznego, gdy ENV kompletne.
+    # Łagodne uzupełnienie brakujących zmiennych; brak skutku ubocznego,
+    # gdy ENV jest kompletne.
     try:
         _ensure_env_from_bash_profile()
     except Exception:
@@ -39,7 +42,7 @@ from .service_impl import (  # noqa: E402
 from .svc_core import run_listen, run_once  # noqa: E402
 
 # --- Shimy kompatybilności dla testów (monkeypatch w pytest) -----------------
-# elastyczny import transcribe_file -> transcribe
+# Elastyczny import transcribe_file -> transcribe
 try:
     # wariant: apps/asr.py (poza pakietem voice)
     from ..asr import transcribe_file as transcribe  # type: ignore[attr-defined]
@@ -51,7 +54,7 @@ except Exception:
 
         def transcribe(*args, **kwargs):  # type: ignore[no-redef]
             """Stub: testy podmieniają monkeypatchem."""
-            raise NotImplementedError("transcribe shim: brak modułu asr.py (apps/asr.py lub apps/voice/asr.py)")
+            raise NotImplementedError("transcribe shim: brak modułu asr.py " "(apps/asr.py lub apps/voice/asr.py)")
 
 
 def _record_with_vad(*args, **kwargs):
