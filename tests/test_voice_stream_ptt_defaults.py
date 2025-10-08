@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import contextlib
-
 import pytest
+import pytest_asyncio
 
 from apps.voice.svc_stream import StreamingVoiceService
 
@@ -21,14 +20,29 @@ def base_config() -> dict[str, object]:
     }
 
 
-def _cleanup(service: StreamingVoiceService) -> None:
-    """Ensure threads/events are stopped after each test."""
+@pytest_asyncio.fixture
+async def service_factory(base_config):
+    """Factory fixture for creating services with proper cleanup."""
+    services = []
 
-    with contextlib.suppress(Exception):
-        service.stop()
+    def _create_service(config=None):
+        cfg = config if config is not None else base_config
+        svc = StreamingVoiceService(cfg)
+        services.append(svc)
+        return svc
+
+    yield _create_service
+
+    # Clean up all created services
+    for svc in services:
+        try:
+            await svc.close()
+        except Exception:
+            pass
 
 
-def test_ptt_enabled_by_default(base_config):
+@pytest.mark.asyncio
+async def test_ptt_enabled_by_default(base_config):
     """PTT should auto-enable when configuration omits explicit hotword settings."""
 
     service = StreamingVoiceService(base_config)
@@ -37,10 +51,14 @@ def test_ptt_enabled_by_default(base_config):
         assert service.ptt_controller.ptt_enabled is True
         assert service.audio_transmitter.ptt_enabled is True
     finally:
-        _cleanup(service)
+        try:
+            await service.close()
+        except Exception:
+            pass
 
 
-def test_ptt_disabled_when_service_hotword_disabled(base_config):
+@pytest.mark.asyncio
+async def test_ptt_disabled_when_service_hotword_disabled(base_config):
     """Explicitly disabling hotword should turn off PTT even with commit_on_key."""
 
     cfg = dict(base_config)
@@ -54,4 +72,7 @@ def test_ptt_disabled_when_service_hotword_disabled(base_config):
         assert service.ptt_controller.ptt_enabled is False
         assert service.audio_transmitter.ptt_enabled is False
     finally:
-        _cleanup(service)
+        try:
+            await service.close()
+        except Exception:
+            pass
