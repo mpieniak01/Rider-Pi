@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-apps.voice package API
+apps.voice service API
 
 - Legacy (tymczasowe, na potrzeby testów): klasy z service_impl.
 - Nowe API: funkcje run_listen / run_once.
