@@ -170,8 +170,6 @@ class StreamingVoiceService:
         self._playback_cfg = PlaybackConfig(
             backend=playback_in.get("backend", "alsa"),
             device=playback_in.get("device"),
-            sample_rate=int(playback_in.get("sample_rate", 24000)),
-            channels=int(playback_in.get("channels", 1)),
         )
 
         # PTT configuration (compatible with old svc_stream.py logic)
