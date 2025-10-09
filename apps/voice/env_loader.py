@@ -33,7 +33,7 @@ def _source_profile_and_dump_env() -> dict[str, str]:
     Uruchom loginowego basha, załaduj ~/.bash_profile (jeśli istnieje),
     a następnie zwróć środowisko jako dict tylko z kluczami z WHITELIST.
     """
-    cmd = "bash -lc " "'[ -f ~/.bash_profile ] && source ~/.bash_profile >/dev/null 2>&1 || true; " "env -0'"
+    cmd = "bash -lc '[ -f ~/.bash_profile ] && source ~/.bash_profile >/dev/null 2>&1 || true; env -0'"
     out = subprocess.check_output(cmd, shell=True)  # nosec - kontrolowane polecenie
     result: dict[str, str] = {}
 
