@@ -20,11 +20,14 @@ from typing import Any
 
 from .. import voice_logging
 from ..capture import CaptureConfig
+from ..chat import ChatConfig, ChatSession
 from ..common import ensure_event_logger
+from ..playback import PlaybackConfig
 from ..rt_protocol import build_audio_commit, build_response_create
 from ..session_prefs import build_session_preferences, session_prefs_to_dict
 from ..stream_chunks import AudioChunkProcessor
 from ..svc_audio import capture_continuous
+from ..tts import TTSConfig, speak_stream
 from ..utils import run_sync  # ⬅️ bezpieczne uruchamianie coroutine z kodu sync
 from .state import PTTEvent, PTTState, PTTStateMachine
 from .transport import ReconnectingTransport
@@ -138,6 +141,36 @@ class StreamingVoiceService:
             "sample_format": self._capture_cfg.sample_format,
         }
         self._chunk_processor = AudioChunkProcessor(self._capture_cfg, self.stream_cfg, self.logger)
+
+        # Chat configuration for streaming mode
+        chat_in = dict(self.config.get("chat", {}) or {})
+        self._chat_cfg = ChatConfig(
+            backend=chat_in.get("backend", "openai"),
+            model=chat_in.get("model", "gpt-4o-mini"),
+            system_prompt=chat_in.get("system_prompt", "Jesteś asystentem robota. Odpowiadaj krótko i po polsku."),
+            max_history=int(chat_in.get("max_history", 4)),
+            max_tokens=chat_in.get("max_tokens"),
+            transport="realtime",  # Mark as realtime for streaming
+        )
+        self._chat_session: ChatSession | None = None
+
+        # TTS configuration for streaming mode
+        tts_in = dict(self.config.get("tts", {}) or {})
+        self._tts_cfg = TTSConfig(
+            backend=tts_in.get("backend", "openai"),
+            voice=tts_in.get("voice", "alloy"),
+            model=tts_in.get("model", "gpt-4o-mini-tts"),
+            format=tts_in.get("format", "mp3"),
+            timeout=tts_in.get("timeout"),
+            transport="realtime",  # Mark as realtime
+        )
+
+        # Playback configuration for TTS
+        playback_in = dict(self.config.get("playback", {}) or {})
+        self._playback_cfg = PlaybackConfig(
+            backend=playback_in.get("backend", "alsa"),
+            device=playback_in.get("device"),
+        )
 
         # PTT configuration (compatible with old svc_stream.py logic)
         hotword_cfg = dict(self.config.get("hotword") or {})
@@ -493,6 +526,14 @@ class StreamingVoiceService:
                 self.ptt_state.transition(PTTEvent.VOICE_END)
                 await self._commit_audio_buffer()
 
+            elif msg_type == "conversation.item.input_audio_transcription.completed":
+                # Transcription completed - handle it with our chat/TTS pipeline
+                transcript = data.get("transcript", "")
+                if transcript and transcript.strip():
+                    self.logger.event("asr.transcript.final", text=transcript)
+                    # Start async chat + TTS pipeline
+                    asyncio.create_task(self._handle_transcript(transcript.strip()))
+
             elif msg_type in ("response.completed", "response.done"):
                 self._completed = True
                 self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
@@ -505,6 +546,38 @@ class StreamingVoiceService:
 
         except Exception as e:
             self.logger.event("message_parse_error", error=str(e), sample=message[:200])
+
+    async def _handle_transcript(self, transcript: str) -> None:
+        """
+        Handle final transcription by calling chat and TTS in streaming mode.
+        This enables the ASR→CHAT→TTS pipeline with streaming responses.
+        """
+        try:
+            self.logger.event("chat.stream.start", text=transcript)
+            self.ptt_state.transition(PTTEvent.SERVER_RESPONSE)
+
+            # Create or reuse chat session
+            if self._chat_session is None:
+                self._chat_session = ChatSession(self._chat_cfg, self.logger)
+
+            # Get streaming response from chat
+            chat_stream = self._chat_session.ask_stream(transcript)
+
+            # Feed chat stream to TTS for immediate playback
+            self.logger.event("tts.stream.start")
+            result = await speak_stream(chat_stream, self._tts_cfg, self._playback_cfg, self.logger)
+
+            if result.ok:
+                self.logger.event("chat_tts.stream.complete")
+                self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
+                self._completed = True
+            else:
+                self.logger.event("chat_tts.stream.failed")
+                self.ptt_state.transition(PTTEvent.ERROR)
+
+        except Exception as exc:
+            self.logger.event("chat_tts.stream.error", error=str(exc))
+            self.ptt_state.transition(PTTEvent.ERROR)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Workers

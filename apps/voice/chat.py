@@ -57,6 +57,38 @@ class ChatSession:
 
         return reply, list(self._history)
 
+    async def ask_stream(self, text: str):
+        """
+        Asynchroniczne wywołanie chat completions z obsługą streamingu.
+        Zwraca async generator produkujący fragmenty (tokeny) odpowiedzi.
+        Używane w trybie transport=realtime.
+        """
+        backend = (self.config.backend or "echo").lower()
+
+        # Dodaj wiadomość użytkownika do historii
+        self._history.append(Message(role="user", content=text))
+
+        if backend == "openai":
+            # Streamujące wywołanie OpenAI
+            full_reply = ""
+            async for chunk in self._ask_openai_stream(text):
+                full_reply += chunk
+                yield chunk
+
+            # Zapisz pełną odpowiedź w historii
+            self._history.append(Message(role="assistant", content=full_reply))
+
+        else:
+            # Echo backend - zwróć od razu całą odpowiedź
+            reply = f"You said: {text.strip()}"
+            self._history.append(Message(role="assistant", content=reply))
+            yield reply
+
+        # Ogranicz rozmiar historii (po dodaniu odpowiedzi)
+        max_pairs = max(0, int(self.config.max_history))
+        if max_pairs > 0 and len(self._history) > max_pairs * 2:
+            self._history = self._history[-max_pairs * 2 :]
+
     def _ask_openai(self, text: str) -> str:
         """
         REST-owe wywołanie Chat Completions.
@@ -113,6 +145,68 @@ class ChatSession:
         except Exception as exc:
             self.logger.event("chat.rest.error", error=str(exc))
             raise ChatError(f"OpenAI chat completion failed: {exc}") from exc
+
+    async def _ask_openai_stream(self, text: str):
+        """
+        Asynchroniczne streamujące wywołanie OpenAI Chat Completions.
+        Używane w trybie realtime - NIE blokuje jak REST.
+        Zwraca async generator produkujący fragmenty odpowiedzi.
+        """
+        # Minimalna walidacja
+        if not self.config.model:
+            raise ChatError("OpenAI model not configured")
+        if not self.config.backend or self.config.backend.lower() != "openai":
+            raise ChatError("OpenAI backend not selected")
+
+        # Klucz API
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ChatError("OPENAI_API_KEY is not set")
+
+        try:
+            from openai import AsyncOpenAI  # type: ignore
+        except Exception as exc:  # pragma: no cover - optional dependency
+            raise ChatError(f"OpenAI SDK unavailable: {exc}") from exc
+
+        client = AsyncOpenAI(api_key=api_key)
+
+        # Zbuduj listę wiadomości (bez nowej wiadomości użytkownika - już jest w historii)
+        messages = [{"role": "system", "content": self.config.system_prompt}]
+        # weź ostatnie N par z historii (bez ostatniej wiadomości użytkownika, która została dodana wcześniej)
+        max_pairs = max(0, int(self.config.max_history))
+        if max_pairs > 0:
+            # Użyj wszystkich wiadomości oprócz ostatniej (user message dodanej przed wywołaniem)
+            for item in self._history[:-1][-max_pairs * 2 :]:
+                messages.append({"role": item.role, "content": item.content})
+        # Dodaj aktualną wiadomość użytkownika
+        messages.append({"role": "user", "content": text})
+
+        # Payload do API ze streamingiem
+        payload = {
+            "model": self.config.model,
+            "messages": messages,
+            "temperature": 0.6,
+            "stream": True,
+        }
+        if self.config.max_tokens is not None:
+            payload["max_tokens"] = int(self.config.max_tokens)
+
+        # Wywołanie API (streaming)
+        try:
+            self.logger.event("chat.stream.request", model=self.config.model, msg_count=len(messages))
+            stream = await client.chat.completions.create(**payload)
+
+            # Iteruj przez fragmenty odpowiedzi
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta and hasattr(delta, "content") and delta.content:
+                        yield delta.content
+
+            self.logger.event("chat.stream.ok")
+        except Exception as exc:
+            self.logger.event("chat.stream.error", error=str(exc))
+            raise ChatError(f"OpenAI chat streaming failed: {exc}") from exc
 
     def reset(self) -> None:
         self._history.clear()

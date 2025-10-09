@@ -463,3 +463,113 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
 
     # jeśli tu dotarliśmy — nie udało się
     raise TTSError(f"OpenAI TTS request failed: {last_err or 'unknown error'}")
+
+
+async def speak_stream(
+    text_generator,
+    config: TTSConfig,
+    playback: PlaybackConfig,
+    logger: voice_logging.VoiceLogger | None = None,
+) -> TTSStreamResult:
+    """
+    Asynchroniczna wersja TTS dla strumienia tekstu.
+    Akceptuje async generator produkujący fragmenty tekstu.
+    Buforuje tekst do momentu wykrycia końca zdania (., !, ?),
+    a następnie wysyła całe zdanie do syntezy i odtwarzania.
+    Używane w trybie transport=realtime.
+    """
+    logger = logger or voice_logging.get_logger("voice.tts")
+
+    api_key = ensure_openai_key(logger)
+    if not api_key:
+        return TTSStreamResult(ok=False, streamed=False)
+
+    # Bufor na akumulację tekstu do końca zdania
+    buffer = ""
+    sentence_endings = {".", "!", "?", "\n"}
+    model = config.model or "gpt-4o-mini-tts"
+    voice = config.voice or "alloy"
+
+    logger.event("tts.stream_async.start", model=model, voice=voice)
+
+    # Tworzymy kopię konfiguracji z wyłączonym blokowaniem realtime
+    # ponieważ speak_stream jest dedykowane dla trybu realtime
+    config_override = TTSConfig(
+        backend=config.backend,
+        voice=config.voice,
+        model=config.model,
+        format=config.format,
+        timeout=config.timeout,
+        piper_model=config.piper_model,
+        piper_config=config.piper_config,
+        transport="file",  # Override to bypass blocking
+    )
+
+    try:
+        async for chunk in text_generator:
+            if not chunk:
+                continue
+
+            buffer += chunk
+
+            # Sprawdź, czy bufor zawiera koniec zdania
+            # Szukamy ostatniego znaku końca zdania
+            last_ending_idx = -1
+            for i in range(len(buffer) - 1, -1, -1):
+                if buffer[i] in sentence_endings:
+                    last_ending_idx = i
+                    break
+
+            # Jeśli znaleziono koniec zdania i jest wystarczająco dużo tekstu
+            if last_ending_idx >= 0 and last_ending_idx >= 10:  # minimum 10 znaków
+                # Wydziel zdanie do syntezy
+                sentence = buffer[: last_ending_idx + 1].strip()
+                buffer = buffer[last_ending_idx + 1 :]
+
+                if sentence:
+                    # Synteza i odtwarzanie zdania
+                    logger.event("tts.stream_async.sentence", chars=len(sentence))
+                    try:
+                        # Uruchom blokującą operację w executorze
+                        import asyncio
+
+                        loop = asyncio.get_event_loop()
+
+                        # Capture sentence in closure to avoid loop variable binding issue
+                        def _make_tts_func(text: str):
+                            def _sync_tts():
+                                return speak(text, config_override, playback, logger, accumulate=False)
+
+                            return _sync_tts
+
+                        await loop.run_in_executor(None, _make_tts_func(sentence))
+
+                    except Exception as exc:
+                        logger.event("tts.stream_async.sentence_error", error=str(exc))
+                        # Kontynuuj mimo błędu
+
+        # Jeśli został tekst w buforze, wypowiedz go
+        if buffer.strip():
+            logger.event("tts.stream_async.final_buffer", chars=len(buffer))
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                final_text = buffer.strip()
+
+                def _make_tts_func(text: str):
+                    def _sync_tts():
+                        return speak(text, config_override, playback, logger, accumulate=False)
+
+                    return _sync_tts
+
+                await loop.run_in_executor(None, _make_tts_func(final_text))
+            except Exception as exc:
+                logger.event("tts.stream_async.final_error", error=str(exc))
+
+        logger.event("tts.stream_async.complete")
+        return TTSStreamResult(ok=True, streamed=True)
+
+    except Exception as exc:
+        logger.event("tts.stream_async.error", error=str(exc))
+        return TTSStreamResult(ok=False, streamed=False)
