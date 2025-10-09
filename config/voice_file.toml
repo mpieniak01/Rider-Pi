@@ -1,51 +1,26 @@
-# ---------------------------------------------------------------------------
-# Rider-Pi / voice_file.toml
-# Tryb: FILE (once) – tradycyjny pipeline ASR → CHAT → TTS
-# Używa ALSA aliasów z config/alsa/asoundrc.wm8960 (export ALSA_CONFIG_PATH).
-# Ten plik służy do funkcjonalnych testów „raz-na-raz” (push-to-talk).
-# Uwaga: w tej wersji aplikacji pole `capture.backend` powoduje błąd
-# "Unsupported capture backend: …", dlatego NIE ustawiamy backendu w [capture].
-# Aplikacja sama wykona stabilny fallback na `arecord`.
-# ---------------------------------------------------------------------------
-
-lang = "pl"
-
+# Minimalny, stabilny plikowy tryb rozmowy (WAV + ALSA)
 [capture]
-device      = "wm8960_in"
-sample_rate = 16000
-channels    = 1
-# brak `backend` – unikamy "Unsupported capture backend: arecord"
+device   = "wm8960_in"    # mikrofon (WE)
+rate     = 16000
+channels = 1
+format   = "s16le"
+backend  = "arecord"
 
 [playback]
-device = "wm8960_out"
-volume = 55
+device   = "wm8960_out"   # głośnik (WY)
+backend  = "aplay"        # bez Pulse
+volume   = 55
 
 [asr]
-backend = "openai"
-model   = "gpt-4o-mini-transcribe"   # jeśli nie działa, podmień na "whisper-1"
+backend  = "openai"
+model    = "whisper-1"
 
 [chat]
 backend       = "openai"
 model         = "gpt-4o-mini"
-system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku. Udzielaj odpowiedzi jednym krótkim zdaniem."
-
-[nlu]
-chat_threshold = 0.65
-llm_model      = "gpt-4o-mini"
-
-[nlu.command_keywords]
-stop         = ["stop", "pauza", "koniec", "cisza"]
-repeat       = ["powtórz", "jeszcze raz"]
-volume_up    = ["głośniej", "podgłośnij", "+10"]
-volume_down  = ["ciszej", "ścisz", "-10"]
-
-[hotword]
-enabled = true
-engine  = "ptt"   # tryb PTT w once/file
+language      = "pl"
+system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
 [tts]
-backend    = "openai"
-voice      = "ash"
-format     = "wav"
-player_cmd = "aplay -q -D wm8960_out"
-
+format   = "wav"          # najpewniejsze z aplay
+voice    = "alloy"
