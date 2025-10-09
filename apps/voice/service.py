@@ -54,7 +54,7 @@ except Exception:
 
         def transcribe(*args, **kwargs):  # type: ignore[no-redef]
             """Stub: testy podmieniają monkeypatchem."""
-            raise NotImplementedError("transcribe shim: brak modułu asr.py " "(apps/asr.py lub apps/voice/asr.py)")
+            raise NotImplementedError("transcribe shim: brak modułu asr.py (apps/asr.py lub apps/voice/asr.py)")
 
 
 def _record_with_vad(*args, **kwargs):

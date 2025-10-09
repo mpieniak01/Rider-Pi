@@ -122,6 +122,12 @@ barge_in = true                 # Włącz przerwania TTS
 - **Reconnect**: Automatyczne wznawianie połączenia z exponential backoff
 - **Duplex audio**: Równoczesne wysyłanie i odbieranie audio
 
+**Nowa architektura (od v0.6+):**
+- **Modułowy pipeline**: ASR (transkrypcja) → Chat (streaming) → TTS (sentence buffering)
+- **Async streaming**: Odpowiedzi czatu generowane jako async generator
+- **Sentence buffering**: TTS buforuje tekst do wykrycia końca zdania (`.`, `!`, `?`) przed syntezą
+- **Elastyczność**: Możliwość użycia własnych modułów Chat/TTS zamiast end-to-end Realtime API
+
 ### Pliki i ENV
 
 > **Pełna dokumentacja konfiguracji i polityki sekretów:** [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
