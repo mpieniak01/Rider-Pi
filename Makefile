@@ -155,21 +155,21 @@ lcd-off-safe:
 .PHONY: lcd-on lcd-off lcd-reset lcd-black vendor-kill vendir-kill
 lcd-on:
 	@echo "== Włączam LCD (wyjście ze snu) =="
-	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py on || true
+	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/scripts/sys_lcd-control.py on || true
 
 # U CIEBIE: brak sterowalnego BL → najlepszy efekt to 'black' + 'sleep'.
 # Próba wymuszenia BL przez GPIO zostaje (nie przeszkadza).
 lcd-off:
 	@echo "== Wyłączam LCD (black + sleep) =="
 	@$(PY) $(ROOT)/scripts/dev_lcd-clear.py
-	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py off || true
+	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/scripts/sys_lcd-control.py off || true
 	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; \
 	if [ "$$AH" = "1" ]; then sudo raspi-gpio set $$BL op dl; else sudo raspi-gpio set $$BL op dh; fi; \
 	echo "BL pin=$$BL (wygaszony)"; raspi-gpio get $$BL
 
 lcd-reset:
 	@echo "== RESET panelu LCD =="
-	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py reset || true
+	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/scripts/sys_lcd-control.py reset || true
 
 lcd-black:
 	@$(PY) $(ROOT)/scripts/dev_lcd-clear.py
@@ -306,14 +306,15 @@ face-bench:
 	@echo "Tip: możesz nadpisać:  HZ_LIST=\"32000000 48000000\"  oraz SECS=6"
 
 
-face-neutral:
-	@bash tools/face_presets.sh neutral --secs 8 --stats
+# Commented out - face_presets.sh script doesn't exist
+# face-neutral:
+# 	@bash tools/face_presets.sh neutral --secs 8 --stats
 
-face-happy:
-	@bash tools/face_presets.sh happy --secs 8 --stats
+# face-happy:
+# 	@bash tools/face_presets.sh happy --secs 8 --stats
 
-face-sad:
-	@bash tools/face_presets.sh sad --secs 8 --stats
+# face-sad:
+# 	@bash tools/face_presets.sh sad --secs 8 --stats
 
 # ───────────────────────────────────────────────
 # GFX / VNC
@@ -441,14 +442,14 @@ voice-stream-listen: voice-kill
 lcd-on-hard:
 	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; DC=$${FACE_LCD_DC_PIN:-25}; RST=$${FACE_LCD_RST_PIN:-27}; DEV=$${FACE_LCD_SPI_DEV:-/dev/spidev0.0}; HZ=$${FACE_LCD_SPI_HZ:-$(FACE_LCD_SPI_HZ)}; \
 	echo "[lcd-on-hard] BL=$$BL AH=$$AH DC=$$DC RST=$$RST SPI=$$DEV HZ=$$HZ"; \
-	$(SUDO) -E $(PY) $(ROOT)/tools/lcdctl.py on --bl $$BL --bl-ah $$AH --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ; \
+	$(SUDO) -E $(PY) $(ROOT)/scripts/sys_lcd-control.py on --bl $$BL --bl-ah $$AH --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ; \
 	if [ "$$AH" = "1" ]; then sudo raspi-gpio set $$BL op dh; else sudo raspi-gpio set $$BL op dl; fi; \
 	echo "BL pin=$$BL"; raspi-gpio get $$BL
 
 lcd-off-hard:
 	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; DC=$${FACE_LCD_DC_PIN:-25}; RST=$${FACE_LCD_RST_PIN:-27}; DEV=$${FACE_LCD_SPI_DEV:-/dev/spidev0.0}; HZ=$${FACE_LCD_SPI_HZ:-$(FACE_LCD_SPI_HZ)}; \
 	echo "[lcd-off-hard] BL=$$BL AH=$$AH DC=$$DC RST=$$RST SPI=$$DEV HZ=$$HZ"; \
-	$(SUDO) -E $(PY) $(ROOT)/tools/lcdctl.py off --bl $$BL --bl-ah $$AH --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ; \
+	$(SUDO) -E $(PY) $(ROOT)/scripts/sys_lcd-control.py off --bl $$BL --bl-ah $$AH --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ; \
 	if [ "$$AH" = "1" ]; then sudo raspi-gpio set $$BL op dl; else sudo raspi-gpio set $$BL op dh; fi; \
 	echo "BL pin=$$BL"; raspi-gpio get $$BL
 
