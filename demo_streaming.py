@@ -15,8 +15,8 @@ project_root = str(Path(__file__).resolve().parent.parent)
 sys.path.insert(0, project_root)
 
 from apps.voice import config as voice_config
+from apps.voice.stream.service import StreamConfig, StreamingVoiceService
 from apps.voice.svc_core import _wants_stream
-from apps.voice.svc_stream import StreamConfig, StreamingVoiceService
 
 
 def demo_config_loading():
