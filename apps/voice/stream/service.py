@@ -676,19 +676,19 @@ class StreamingVoiceService:
         try:
             loop = asyncio.get_running_loop()
 
+            def _check_stdin():
+                rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if rlist:
+                    line = sys.stdin.readline()
+                    # Accept only bare ENTER (empty line after strip)
+                    if line and line.strip() == "":
+                        return True
+                return False
+
             while not self.stop_event.is_set():
                 # Non-blocking check for stdin input with timeout
                 try:
                     # Use run_in_executor for blocking select call
-                    def _check_stdin():
-                        rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-                        if rlist:
-                            line = sys.stdin.readline()
-                            # Accept only bare ENTER (empty line after strip)
-                            if line.strip() == "":
-                                return True
-                        return False
-
                     has_input = await loop.run_in_executor(None, _check_stdin)
 
                     if has_input:
