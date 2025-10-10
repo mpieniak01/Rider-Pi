@@ -31,9 +31,23 @@
 
 ### 4) Głos / Chat
 
-- **Voice** — socket `` (opcjonalnie TCP `VOICE_TCP_PORT`).
-  - Moduły: VAD, KWS, TTS; integracja z API/Chat przez bus.
+- **Voice** — modułowa architektura głosowa w `apps/voice/` obsługująca dwa tryby pracy:
+  - **Tryb plikowy** (`file`): klasyczny pipeline capture→ASR→Chat→TTS→playback
+  - **Tryb strumieniowy** (`realtime`): WebSocket duplex z partial ASR, streaming chat/TTS
+  - **Komponenty kluczowe**:
+    - `svc_core.py` — wybór trybu (file/stream) i delegacja do odpowiedniego serwisu
+    - `svc_file.py` + `svc_file_pipeline.py` — implementacja trybu plikowego
+    - `svc_stream_runner.py` — wrappery CLI dla trybu strumieniowego
+    - `stream/service.py` — główny serwis strumieniowy (StreamingVoiceService)
+    - `stream/transport.py` — transport WebSocket z auto-reconnect
+    - `stream/state.py` — maszyna stanów PTT (Push-To-Talk)
+    - `stream/handlers.py` — obsługa wiadomości/zdarzeń WebSocket
+    - `stream/playout.py` — capture audio i playback TTS
+    - `audio/capture.py`, `audio/playback.py` — moduły niskopoziomowe ALSA/Pulse
+  - Integracja: VAD, KWS, ASR, Chat, TTS; komunikacja przez bus (ZMQ) i socket ``
 - **Chat** — integracja przez `/api/chat/*` + wymiana stanów na busie.
+
+> **Szczegółowa dokumentacja**: `docs/modules/voice.md` — pełny opis architektury, konfiguracji, API
 
 ### 5) Twarz (Face)
 
@@ -168,6 +182,173 @@ HTTP 8080  |  rider-api       |<--static----|  data/, snapshots/  |
                 +------------------------------>| Face (Animator→Renderer→LCD)  |
                                                 +-------------------------------+
 ```
+
+---
+
+## Moduł Voice — Architektura szczegółowa
+
+### Struktura modułu (`apps/voice/`)
+
+Moduł voice został zrefaktoryzowany (PR#1–PR#4, 2024) w celu uproszczenia i modularyzacji. Obecna architektura wspiera dwa tryby pracy z elastycznym wyborem transportu.
+
+#### Tryby pracy
+
+1. **Tryb plikowy (`file`)** — klasyczny pipeline:
+   - Capture → plik WAV → ASR → Chat (text) → TTS → playback
+   - Niskie zużycie zasobów, wysoka kompatybilność
+   - Brak partial results, pełna transkrypcja po zakończeniu nagrania
+
+2. **Tryb strumieniowy (`realtime`)** — WebSocket duplex:
+   - Audio chunks (20ms) → WebSocket → partial ASR + streaming Chat/TTS
+   - Barge-in (przerwanie TTS przez nową mowę)
+   - Auto-reconnect z exponential backoff
+   - Wymagany backend obsługujący realtime (np. OpenAI Realtime API)
+
+#### Komponenty kluczowe
+
+**Wybór trybu i delegacja:**
+- `svc_core.py` — funkcje `run_listen()`, `run_once()`, `run_ptt()`
+  - Analizuje konfigurację `transport` w sekcjach `[asr]`, `[chat]`, `[tts]`
+  - Deleguje do `svc_file.py` (tryb file) lub `svc_stream_runner.py` (tryb realtime)
+
+**Tryb plikowy:**
+- `svc_file.py` — klasa `VoiceService`, funkcje `run_listen_file()`, `run_once_file()`
+- `svc_file_pipeline.py` — pipeline ASR→Chat→TTS dla trybu plikowego
+- Wykorzystuje: `audio/capture.py`, `audio/playback.py`, `asr.py`, `chat.py`, `tts.py`
+
+**Tryb strumieniowy:**
+- `svc_stream_runner.py` — wrappery CLI: `run_listen_stream()`, `run_ptt_stream()`, `run_once_stream()`
+- `stream/service.py` — `StreamingVoiceService` (główny serwis, 700+ linii)
+  - Integruje mixiny: `StreamHandlersMixin`, `StreamPlayoutMixin`
+  - Zarządza lifecycle WebSocket, audio queues, worker threads
+- `stream/transport.py` — `WebSocketTransport`, `ReconnectingTransport`
+  - Obsługa ping/heartbeat, exponential backoff retry
+  - Wsparcie dla `websockets` (async) i `websocket-client` (sync fallback)
+- `stream/state.py` — `PTTStateMachine` (maszyna stanów Push-To-Talk)
+  - Stany: IDLE, LISTENING, SPEAKING, PROCESSING
+  - Eventy: PTT_START, PTT_STOP, ASR_PARTIAL, TTS_START, TTS_END
+- `stream/handlers.py` — `StreamHandlersMixin`
+  - Obsługa wiadomości WebSocket (ASR partial, TTS audio chunks, sesja)
+  - Keyboard PTT loop, ding sounds
+- `stream/playout.py` — `StreamPlayoutMixin`
+  - Audio capture thread (wysyłanie chunków do WebSocket)
+  - TTS player thread (odtwarzanie przychodzących audio chunks)
+  - Jitter buffer, barge-in handling
+
+**Moduły współdzielone:**
+- `audio/capture.py` — przechwytywanie audio (ALSA/Pulse/command)
+- `audio/playback.py` — odtwarzanie audio (ALSA/Pulse)
+- `audio/alsa.py` — narzędzia ALSA (lista urządzeń, konfiguracja)
+- `audio/wavutil.py` — operacje na plikach WAV
+- `asr.py` — abstrakcja ASR (OpenAI, Vosk)
+- `chat.py` — integracja Chat API (streaming generator)
+- `tts.py` — synteza mowy (OpenAI, Piper)
+- `vad.py` — Voice Activity Detection
+- `kws.py` — Keyword Spotting (hotword detection)
+
+**CLI i API:**
+- `cli.py` + `cli_commands.py` — interfejs linii poleceń
+- `web.py` — HTTP API (Flask): `/asr`, `/tts`, `/capture`, `/healthz`
+- `main.py` — główny entry point (używany przez systemd)
+
+### Przepływ danych
+
+#### Tryb plikowy (file)
+
+```text
+1. [Hotword/PTT] → trigger capture
+2. audio/capture.py → WAV file (silence detection via VAD)
+3. asr.py → transcript (text)
+4. chat.py → response (text)
+5. tts.py → audio file (WAV/MP3)
+6. audio/playback.py → speaker output
+7. Powrót do kroku 1 (w trybie listen)
+```
+
+**Kluczowe punkty:**
+- Jeden plik WAV na capture (zapisywany opcjonalnie dla debugowania)
+- ASR dopiero po zakończeniu nagrania (brak partial results)
+- Chat zwraca pełną odpowiedź (nie streaming)
+- TTS generuje pełny plik audio przed playbackiem
+
+#### Tryb strumieniowy (realtime)
+
+```text
+1. [PTT Start] → WebSocket session.create
+2. Capture thread → audio chunks (20ms PCM16) → WebSocket send
+3. WebSocket recv → partial ASR transcript → UI update
+4. [Silence detection] → audio.commit → finalna transkrypcja
+5. WebSocket recv → streaming Chat response (tekst) → sentence buffering
+6. Sentence complete → TTS start → audio chunks PCM16
+7. TTS player thread → audio chunks → jitter buffer → playback
+8. [Barge-in] → stop TTS, przerwij playback, nowa tura (krok 2)
+9. [PTT Stop] → session cleanup, powrót do IDLE
+```
+
+**Kluczowe punkty:**
+- Duplex audio: równoczesne wysyłanie capture i odbieranie TTS
+- Partial ASR publikowane na bieżąco (UI updates)
+- Streaming Chat: odpowiedź generowana jako async generator
+- Sentence buffering: TTS czeka na `.`, `!`, `?` przed syntezą
+- Barge-in: detekcja nowej mowy → cancel TTS, clear buffers
+- Reconnect: automatyczne wznawianie połączenia po utracie (exponential backoff)
+
+### Konfiguracja trybu
+
+Tryb wybierany automatycznie na podstawie `transport` w konfiguracjach:
+
+```toml
+[asr]
+backend = "openai"
+transport = "realtime"    # file | realtime
+
+[chat]
+backend = "openai"
+transport = "realtime"
+
+[tts]
+backend = "openai"
+transport = "realtime"
+```
+
+Jeśli **wszystkie** trzy (`asr`, `chat`, `tts`) mają `transport = "realtime"` → tryb strumieniowy.
+W przeciwnym razie → tryb plikowy (file).
+
+### Historia refaktoryzacji
+
+**PR#1 (Clean & Freeze):**
+- Usunięto duplikaty: `ws_transport.py`, `stream_transport.py`
+- Pozostawiono `audio/*` do późniejszej migracji
+
+**PR#2 (CLI Unification):**
+- Konsolidacja CLI: usunięto odniesienia do nieistniejącego `cli_new.py`
+- Jeden spójny moduł `apps.voice.cli`
+
+**PR#3 (Tests Migration & Shim Removal):**
+- Migracja testów z legacy shims do nowych modułów
+- Usunięto shimmy: `svc_stream.py`, `state.py`, `ptt_state.py`, mixiny
+- Nowy moduł: `svc_stream_runner.py` (wrappery dla CLI)
+
+**PR#4 (WebSocket Transport Consolidation):**
+- Usunięto duplikat `apps/voice/transport.py`
+- Jeden transport: `apps/voice/stream/transport.py`
+
+**PR#5 (Dokumentacja):**
+- Aktualizacja `ARCHITECTURE.md` i `docs/modules/voice.md`
+- Spójny opis nowej architektury
+
+### Pliki usunięte (legacy)
+
+- `apps/voice/ws_transport.py` (PR#1)
+- `apps/voice/stream_transport.py` (PR#1)
+- `apps/voice/svc_stream.py` (PR#3)
+- `apps/voice/state.py` (PR#3)
+- `apps/voice/ptt_state.py` (PR#3)
+- `apps/voice/transport.py` (PR#4)
+
+**Migracja**: patrz `docs/modules/voice.md` → sekcja "Deprecated / Legacy Files"
+
+
 
 ---
 
