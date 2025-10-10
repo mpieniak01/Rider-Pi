@@ -94,6 +94,9 @@ Files removed in PR-3:
 - `apps/voice/state.py`
 - `apps/voice/ptt_state.py`
 
+Files removed in PR-4:
+- `apps/voice/transport.py`
+
 Mixins removed in PR-3:
 - `StreamingVoiceTransportMixin`
 - `StreamingVoicePTTMixin`
@@ -108,6 +111,7 @@ Mixins removed in PR-3:
 |------------|-----------|
 | `from apps.voice.svc_stream import StreamingVoiceService` | `from apps.voice.stream.service import StreamingVoiceService` |
 | `from apps.voice.state import StreamingVoicePTTMixin` | `from apps.voice.stream.state import PTTStateMachine` |
+| `from apps.voice.transport import WebSocketTransport` | `from apps.voice.stream.transport import WebSocketTransport` |
 | `from apps.voice.ws_transport import ...` | `from apps.voice.stream.transport import ...` |
 | `from apps.voice.audio import alsa` | (Pending migration to top-level) |
 

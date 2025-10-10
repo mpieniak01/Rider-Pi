@@ -366,6 +366,9 @@ pytest -q -k voice
 - **`StreamingVoiceTransportMixin`** → Use concrete transport classes from `apps.voice.stream.transport`
 - **`StreamingVoicePTTMixin`** → Use `apps.voice.stream.state.PTTStateMachine`
 
+### Removed in PR-4 (WebSocket Transport Consolidation)
+- **`apps/voice/transport.py`** → Use `apps.voice.stream.transport` (duplicate removed, single implementation)
+
 ### Pending Migration
 - **`apps/voice/audio/*`** directory (deprecated, will be migrated to top-level modules)
   - Current: `from apps.voice.audio import alsa, wavutil`
