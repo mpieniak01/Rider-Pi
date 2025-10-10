@@ -20,3 +20,20 @@ repos:
             _apps/|
             services/_deprecated_.* 
           )
+  
+  # Quality guards for voice module refactoring
+  - repo: local
+    hooks:
+      - id: check-file-length
+        name: Check file length (max 600 lines)
+        entry: python3 tools/check_file_length.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        
+      - id: check-legacy-imports
+        name: Check for legacy imports
+        entry: python3 tools/check_legacy_imports.py
+        language: system
+        pass_filenames: false
+        always_run: true

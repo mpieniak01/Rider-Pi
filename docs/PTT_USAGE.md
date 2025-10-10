@@ -118,3 +118,22 @@ The PTT keyboard handler in `apps/voice/stream/service.py`:
 - Automatically transitions back to IDLE after each interaction
 
 See `apps/voice/stream/state.py` for the full PTT state machine implementation.
+
+---
+
+## Deprecated Imports (for developers)
+
+**⚠️  If you're working with the codebase:**
+
+The PTT functionality has been refactored. Use the following imports:
+
+- **PTT State Machine**: `from apps.voice.stream.state import PTTStateMachine`
+- **Streaming Service**: `from apps.voice.stream.service import StreamingVoiceService`
+- **CLI Entry Points**: `from apps.voice.svc_stream_runner import run_ptt_stream`
+
+**Removed/deprecated modules:**
+- `apps.voice.state.StreamingVoicePTTMixin` → Use `PTTStateMachine` from `apps.voice.stream.state`
+- `apps.voice.ptt_state` → Use `PTTStateMachine` from `apps.voice.stream.state`
+- `apps.voice.svc_stream` → Use `apps.voice.stream.service` or `apps.voice.svc_stream_runner`
+
+See [docs/modules/voice.md](modules/voice.md#deprecated--legacy-files) for complete migration guide.
