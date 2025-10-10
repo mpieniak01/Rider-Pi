@@ -54,7 +54,7 @@ help:
 	@echo "  make lcd-on-hard      # twarde ON (piny + SPI), z fallbackiem BL"
 	@echo "  make lcd-off-hard     # twarde OFF (piny + SPI), z wymuszeniem BL"
 	@echo ""
-	@echo "  make face-direct      # bezpośredni renderer LCD (tools/newface_lcd_direct.py)"
+	@echo "  make face-direct      # bezpośredni renderer LCD (scripts/dev_face-lcd-direct.py)"
 	@echo "  make face-api-png     # render PNG przez face_api → /tmp/face_api.png"
 	@echo "  make face-api-lcd     # jednorazowy push na LCD przez face_api"
 	@echo "  make face-testcard    # plansza testowa na LCD"
@@ -134,11 +134,11 @@ logs-all:
 # SAFE MODE
 .PHONY: safemode face-kill lcd-off-safe
 safemode:
-	-@$(ROOT)/ops/camera_takeover_kill.sh || true
+	-@$(ROOT)/scripts/sys_camera-kill.sh || true
 	-@$(MAKE) face-kill
 	-@$(SUDO) systemctl stop $(SYSTEMD_SERVICES) || true
 	-@$(MAKE) lcd-off
-	-@$(PY) $(ROOT)/ops/ledctl.py off || true
+	-@$(PY) $(ROOT)/scripts/sys_led-control.py off || true
 
 # zabij wszystko co może rysować na LCD
 face-kill:
@@ -161,7 +161,7 @@ lcd-on:
 # Próba wymuszenia BL przez GPIO zostaje (nie przeszkadza).
 lcd-off:
 	@echo "== Wyłączam LCD (black + sleep) =="
-	@$(PY) $(ROOT)/tools/lcd_presenter_clear.py
+	@$(PY) $(ROOT)/scripts/dev_lcd-clear.py
 	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py off || true
 	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; \
 	if [ "$$AH" = "1" ]; then sudo raspi-gpio set $$BL op dl; else sudo raspi-gpio set $$BL op dh; fi; \
@@ -172,7 +172,7 @@ lcd-reset:
 	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/tools/lcdctl.py reset || true
 
 lcd-black:
-	@$(PY) $(ROOT)/tools/lcd_presenter_clear.py
+	@$(PY) $(ROOT)/scripts/dev_lcd-clear.py
 
 vendor-kill:
 	@echo "== Ubijam procesy dostawcy kamery/LCD =="
@@ -193,7 +193,7 @@ preview-run:
 	$(PY) -u apps/camera/preview_lcd.py
 
 bus-spy:
-	$(PY) tools/bus_spy.py
+	$(PY) scripts/diag_bus-spy.py
 
 # ───────────────────────────────────────────────
 # CAM PREVIEW (systemd on-demand) + aliasy wsteczne
@@ -230,54 +230,54 @@ preview-ssd:
 .PHONY: vision-on vision-off vision-burst vision-status
 vision-on:
 	@echo "== Vision ON =="
-	@$(ROOT)/ops/vision_ctl.sh on
+	@$(ROOT)/scripts/sys_vision-control.sh on
 
 vision-off:
 	@echo "== Vision OFF =="
-	@$(ROOT)/ops/vision_ctl.sh off
+	@$(ROOT)/scripts/sys_vision-control.sh off
 
 vision-burst:
 	@echo "== Vision BURST ($(or $(SECONDS),120)s) =="
-	@$(ROOT)/ops/vision_ctl.sh burst $(or $(SECONDS),120)
+	@$(ROOT)/scripts/sys_vision-control.sh burst $(or $(SECONDS),120)
 
 vision-status:
-	@$(ROOT)/ops/vision_ctl.sh status
+	@$(ROOT)/scripts/sys_vision-control.sh status
 
 # ───────────────────────────────────────────────
 # LED CONTROL
 .PHONY: led-on led-off led-blink led-status led-auto
 led-on:
 	@echo "== LED ON =="
-	@$(PY) $(ROOT)/ops/ledctl.py on
+	@$(PY) $(ROOT)/scripts/sys_led-control.py on
 
 led-off:
 	@echo "== LED OFF =="
-	@$(PY) $(ROOT)/ops/ledctl.py off
+	@$(PY) $(ROOT)/scripts/sys_led-control.py off
 
 # Użycie: make led-blink HZ=2  (albo ON=200 OFF=200)
 led-blink:
 	@echo "== LED BLINK =="
 	@if [ -n "$(HZ)" ]; then \
-		$(PY) $(ROOT)/ops/ledctl.py blink --hz $(HZ); \
+		$(PY) $(ROOT)/scripts/sys_led-control.py blink --hz $(HZ); \
 	else \
-		$(PY) $(ROOT)/ops/ledctl.py blink --on-ms $${ON:-200} --off-ms $${OFF:-200}; \
+		$(PY) $(ROOT)/scripts/sys_led-control.py blink --on-ms $${ON:-200} --off-ms $${OFF:-200}; \
 	fi
 
 led-status:
-	@$(PY) $(ROOT)/ops/ledctl.py status
+	@$(PY) $(ROOT)/scripts/sys_led-control.py status
 
 led-auto:
 	@echo "== LED AUTO =="
-	@$(PY) $(ROOT)/ops/ledctl.py auto
+	@$(PY) $(ROOT)/scripts/sys_led-control.py auto
 
 # ───────────────────────────────────────────────
 # FACE (helpers)
 .PHONY: face-direct face-api-png face-api-lcd face-testcard face-bench
 # make face-direct EXPR=happy FPS=20 SECS=5 FORCE=rgb565_3
 face-direct:
-	@echo "== Face direct (tools/newface_lcd_direct.py) =="
+	@echo "== Face direct (scripts/dev_face-lcd-direct.py) =="
 	@FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) \
-	$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
+	$(SUDO) -E $(PY) $(ROOT)/scripts/dev_face-lcd-direct.py \
 		--expr $${EXPR:-neutral} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \
 		--fps $${FPS:-20} $${FORCE:+--force $${FORCE}} $${SECS:+--secs $${SECS}} --stats
 
@@ -291,14 +291,14 @@ face-api-lcd:
 
 face-testcard:
 	@echo "== LCD testcard (kolorowe pasy) =="
-	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) -E $(PY) $(ROOT)/tools/lcd_presenter_testcard.py --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ)
+	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) -E $(PY) $(ROOT)/scripts/dev_lcd-testcard.py --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ)
 
 face-bench:
 	@echo "== FACE BENCH =="
 	@for HZ in $${HZ_LIST:-32000000 48000000 64000000}; do \
 		echo "--- HZ=$$HZ ROT=$(FACE_LCD_ROTATE) (secs=$${SECS:-4}) ---"; \
 		FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$$HZ \
-		$(SUDO) -E $(PY) $(ROOT)/tools/newface_lcd_direct.py \
+		$(SUDO) -E $(PY) $(ROOT)/scripts/dev_face-lcd-direct.py \
 		  --expr happy --rotate $(FACE_LCD_ROTATE) --spi-hz $$HZ \
 		  --secs $${SECS:-4} --stats --force push_frame:rgb565_3 \
 		  | sed -n '/^\[stats\]/p;/^\[LCD] Statystyki/p'; \
@@ -460,7 +460,7 @@ test:
 	@(pytest -q tests 2>/dev/null || $(PY) -m unittest discover -s tests -p "test_*.py" || true)
 
 bench:
-	bash ops/bench_detect.sh 10
+	bash scripts/diag_bench-detect.sh 10
 
 # ───────────────────────────────────────────────
 # CLEAN & TREE

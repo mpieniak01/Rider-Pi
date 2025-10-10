@@ -32,7 +32,7 @@ echo "  ✓ Simulator running (PID: $SIM_PID)"
 echo "[4/5] Sending control commands..."
 
 # Monitor in background
-timeout 10 python3 tools/bus_spy.py &
+timeout 10 python3 scripts/diag_bus-spy.py &
 SPY_PID=$!
 
 sleep 1
@@ -81,5 +81,5 @@ echo ""
 echo "To run interactively:"
 echo "  Terminal 1: python services/broker.py"
 echo "  Terminal 2: python run_simulation.py"
-echo "  Terminal 3: python tools/bus_spy.py"
-echo "  Terminal 4: python tools/send_cmd.py"
+echo "  Terminal 3: python scripts/diag_bus-spy.py"
+echo "  Terminal 4: python scripts/dev_send-cmd.py"

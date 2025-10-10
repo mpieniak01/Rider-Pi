@@ -11,12 +11,12 @@
 ### Użycie
 
 ```bash
-./ops/voice-run.sh             # domyślnie tryb BUS (VOICE_STANDALONE=0)
-./ops/voice-run.sh bus         # wymuś tryb BUS
-./ops/voice-run.sh standalone  # wymuś tryb STANDALONE (mowa + chat w voice)
+./scripts/sys_voice-run.sh             # domyślnie tryb BUS (VOICE_STANDALONE=0)
+./scripts/sys_voice-run.sh bus         # wymuś tryb BUS
+./scripts/sys_voice-run.sh standalone  # wymuś tryb STANDALONE (mowa + chat w voice)
 
 # Nadpisywanie parametrów
-HOTWORD_THRESHOLD=0.62 ./ops/voice-run.sh standalone
+HOTWORD_THRESHOLD=0.62 ./scripts/sys_voice-run.sh standalone
 ```
 
 ### Parametry ENV
@@ -49,7 +49,7 @@ HOTWORD_THRESHOLD=0.62 ./ops/voice-run.sh standalone
 #### BUS (domyślny)
 
 ```bash
-./ops/voice-run.sh bus
+./scripts/sys_voice-run.sh bus
 ```
 
 - ASR → publikuje na `audio.transcript`
@@ -59,7 +59,7 @@ HOTWORD_THRESHOLD=0.62 ./ops/voice-run.sh standalone
 #### STANDALONE
 
 ```bash
-./ops/voice-run.sh standalone
+./scripts/sys_voice-run.sh standalone
 ```
 
 - ASR + Chat + TTS w jednym procesie
@@ -82,7 +82,7 @@ aplay -l
 
 # Ustaw urządzenie
 export ALSA_DEVICE=hw:wm8960soundcard,0
-./ops/voice-run.sh
+./scripts/sys_voice-run.sh
 ```
 
 ### Przykłady
@@ -91,7 +91,7 @@ export ALSA_DEVICE=hw:wm8960soundcard,0
 
 ```bash
 source ~/.bash_profile  # załaduj OPENAI_API_KEY
-./ops/voice-run.sh
+./scripts/sys_voice-run.sh
 ```
 
 #### Konfiguracja zaawansowana
@@ -101,7 +101,7 @@ export ALSA_DEVICE=hw:wm8960soundcard,0
 export HOTWORD_THRESHOLD=0.65
 export VAD_MODE=2
 export STREAM_TTS=1
-./ops/voice-run.sh standalone
+./scripts/sys_voice-run.sh standalone
 ```
 
 #### Debug (zachowaj nagrania)
@@ -110,7 +110,7 @@ export STREAM_TTS=1
 export KEEP_INPUT_WAV=1
 export KEEP_OUTPUT_WAV=1
 export RECORDINGS_DIR=/tmp/voice_debug
-./ops/voice-run.sh
+./scripts/sys_voice-run.sh
 ```
 
 ### Diagnostyka
@@ -124,7 +124,7 @@ arecord -D $ALSA_DEVICE -d 5 -f S16_LE -r 16000 test.wav
 aplay test.wav
 
 # Monitoruj logi
-./ops/voice-run.sh 2>&1 | tee voice.log
+./scripts/sys_voice-run.sh 2>&1 | tee voice.log
 ```
 
 ---
@@ -140,14 +140,14 @@ Wykonuje **pojedyncze polecenie głosowe** — uproszczona wersja do szybkich te
 ### Użycie
 
 ```bash
-./ops/voice-once.sh
+./scripts/sys_voice-once.sh
 ```
 
 ### Przykład
 
 ```bash
 # Jedno polecenie PTT (push-to-talk)
-./ops/voice-once.sh
+./scripts/sys_voice-once.sh
 # [nagranie przez X sekund]
 # → transkrypcja → OpenAI → TTS → odtworzenie
 ```
@@ -170,7 +170,7 @@ Wykonuje **pojedyncze polecenie głosowe** — uproszczona wersja do szybkich te
 ```bash
 export VAD_MODE=3
 export HOTWORD_THRESHOLD=0.65
-./ops/voice-run.sh
+./scripts/sys_voice-run.sh
 ```
 
 **Nowy sposób:**

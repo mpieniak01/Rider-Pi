@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# tools/load_config.sh — Helper for ops scripts to load configuration
+# scripts/util_load-config.sh — Helper for ops scripts to load configuration
 # 
 # Usage:
-#   source tools/load_config.sh
+#   source scripts/util_load-config.sh
 #   RIDER_ROOT=$(get_rider_root)
 #   CONFIG_DIR=$(get_config_dir)
 #   
 # Or for one-liners:
-#   source tools/load_config.sh && exec_with_config python -m apps.voice.cli listen
+#   source scripts/util_load-config.sh && exec_with_config python -m apps.voice.cli listen
 
 set -euo pipefail
 
@@ -31,7 +31,7 @@ get_rider_root() {
         fi
     fi
     
-    # Fall back to script location (assume we're in tools/)
+    # Fall back to script location (assume we're in scripts/)
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     echo "$(dirname "$script_dir")"
@@ -146,7 +146,7 @@ load_config.sh — Configuration helper for Rider-Pi ops scripts
 
 This script should be SOURCED, not executed:
 
-    source tools/load_config.sh
+    source scripts/util_load-config.sh
     setup_voice_env
     python -m apps.voice.cli listen
 
@@ -162,7 +162,7 @@ Example usage in script:
     set -euo pipefail
     
     # Load config utilities
-    source "$(dirname "$0")/../tools/load_config.sh"
+    source "$(dirname "$0")/util_load-config.sh"
     
     # Setup environment
     setup_voice_env

@@ -616,7 +616,7 @@ def main():
         # zgaś LCD po wyjściu (best-effort)
         if LCD_ok:
             try:
-                os.system("sudo -n python3 ops/lcdctl.py off >/dev/null 2>&1 || sudo python3 ops/lcdctl.py off")
+                os.system("sudo -n python3 scripts/sys_lcd-control.py off >/dev/null 2>&1 || sudo python3 scripts/sys_lcd-control.py off")
             except Exception:
                 pass
 

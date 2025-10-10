@@ -3,7 +3,7 @@ from __future__ import annotations
 
 """
 ZeroMQ broker XSUB↔XPUB
-- PUB-y (demo, tools/pub.py) łączą się do tcp://*:5555
+- PUB-y (demo, scripts/dev_bus-pub.py) łączą się do tcp://*:5555
 - SUB-y (apps/motion) łączą się do tcp://*:5556
 """
 

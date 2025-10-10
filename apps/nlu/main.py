@@ -58,7 +58,7 @@ def log(msg):
 
 
 def _bus_publish(topic: str, payload: dict):
-    """Kompatybilnie z Twoim BusPub (tools/pub.py używa .send)."""
+    """Kompatybilnie z Twoim BusPub (scripts/dev_bus-pub.py używa .send)."""
     for m in ("send", "publish", "pub"):
         if hasattr(PUB, m):
             return getattr(PUB, m)(topic, payload)

@@ -176,7 +176,7 @@ print(cfg)
 ```bash
 export VAD_MODE=3
 export HOTWORD_THRESHOLD=0.65
-./ops/voice-run.sh
+./scripts/sys_voice-run.sh
 ```
 
 **Nowy sposób:**

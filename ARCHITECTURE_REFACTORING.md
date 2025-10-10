@@ -179,10 +179,10 @@ RIDER_SIMULATOR=1 python3 your_app.py
 - `apps/motion/main.py`
 - `apps/motion/rider_control.py`
 - `services/web_motion_bridge.py`
-- `tools/manual_drive.py`
-- `tools/face_cli.py`
-- `tools/newface_lcd_direct.py`
-- `ops/demo_lemniscate.py`
+- `scripts/dev_manual-drive.py`
+- `scripts/dev_face-cli.py`
+- `scripts/dev_face-lcd-direct.py`
+- `scripts/demo_trajectory.py`
 - `tests/test_motion.py`
 
 ## Impact on Existing Code

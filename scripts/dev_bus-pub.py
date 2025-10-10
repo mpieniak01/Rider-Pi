@@ -11,8 +11,8 @@ import zmq
 
 """
 Użycie:
-  python3 tools/pub.py motion.state '{"stopped": true, "last_cmd_age_ms": 1500}'
-  python3 tools/pub.py vision.state '{"moving": false, "human": true}'
+  python3 scripts/dev_bus-pub.py motion.state '{"stopped": true, "last_cmd_age_ms": 1500}'
+  python3 scripts/dev_bus-pub.py vision.state '{"moving": false, "human": true}'
 ENV:
   BUS_PUB_ADDR (default tcp://127.0.0.1:5555)
 """

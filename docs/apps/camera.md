@@ -113,7 +113,7 @@ Zobacz: [docs/ops/systemd-scripts.md](../ops/systemd-scripts.md)
 
 | Problem | Przyczyna | Rozwiązanie |
 |---------|-----------|-------------|
-| Kamera zajęta | Inny proces używa `/dev/video0` | Użyj `--takeover` lub `./ops/camera_takeover_kill.sh` |
+| Kamera zajęta | Inny proces używa `/dev/video0` | Użyj `--takeover` lub `./scripts/sys_camera-kill.sh` |
 | Brak obrazu na LCD | Nieprawidłowe urządzenie framebuffer | Sprawdź `/dev/fb0` lub `/dev/fb1` |
 | Obraz do góry nogami | Brak/niewłaściwa rotacja | Użyj `--rot 180` |
 | Niska jakość obrazu | Brak korekcji jasności | Dodaj `--alpha 1.2 --beta 10` |
@@ -129,7 +129,7 @@ lsof /dev/video0
 fuser /dev/video0
 
 # Zabij procesy kamery (bezpiecznie)
-./ops/camera_takeover_kill.sh
+./scripts/sys_camera-kill.sh
 
 # Test framebuffera
 cat /dev/urandom > /dev/fb0  # powinno pokazać noise na ekranie

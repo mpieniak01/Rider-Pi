@@ -15,7 +15,7 @@
 - `Makefile`, `pytest.ini`, `pyproject.toml`.
 
 **Nie wolno:**
-- zmieniać pinów/sprzętu ani unitów `systemd/` poza tymi wymienionymi w `ops/systemd_sync.sh`,
+- zmieniać pinów/sprzętu ani unitów `systemd/` poza tymi wymienionymi w `scripts/sys_systemd-sync.sh`,
 - dodawać zależności spoza repo (żadnego `pip install` online),
 - uruchamiać długowiecznych demonów poza `systemd`,
 - wysyłać telemetrii/eksfiltracji.
@@ -104,7 +104,7 @@ curl -s http://localhost:8080/healthz | jq .
 curl -s -X POST http://localhost:8080/api/control -H 'Content-Type: application/json' \
   -d '{"action":"move","vx":0.4,"yaw":0,"duration":0.2}'
 ```
-- **BUS spy:** `python3 tools/sub.py motion`
+- **BUS spy:** `python3 scripts/dev_bus-sub.py motion`
 - **Demo LCD/PNG (face):**
 ```bash
 sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
@@ -113,7 +113,7 @@ sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
   FACE_EYES_FOLLOW_KX=0.12 FACE_EYES_FOLLOW_KY=0.22 \
   FACE_BROW_FOLLOW_KX=0.03 FACE_BROW_FOLLOW_KY=0.06 \
   FACE_PUPIL_DRIFT_AMP_K=0.02 FACE_PUPIL_DRIFT_FREQ=0.8 \
-  python3 tools/newface_lcd_direct.py --expr neutral --fps 20 --rotate 270 --secs 8 --stats
+  python3 scripts/dev_face-lcd-direct.py --expr neutral --fps 20 --rotate 270 --secs 8 --stats
 ```
 
 ---
@@ -191,7 +191,7 @@ ruff format
 - Driver LCD: `apps/ui/face/driver_ili9xx.py` (mock w CI + SPI w runtime).
 - Fast-path RAW RGB565; mock zapisuje PNG/565/meta.
 - Konfiguracja panelu/rotacji: `apps/ui/face/panel_cfg.py`; I/O: `apps/ui/face/face_io.py`.
-- CLI: `tools/newface_lcd_direct.py` i `tools/face_cli.py`.
+- CLI: `scripts/dev_face-lcd-direct.py` i `scripts/dev_face-cli.py`.
 - Testy: `tests/test_face_raw_fastpath.py`, `tests/test_no_underscore_apps_dependency.py`.
 
 **Przykład (mock, fast-path):**
@@ -199,7 +199,7 @@ ruff format
 export FACE_LCD_BACKEND=mock
 export FACE_LCD_ROTATE=270
 export FACE_LCD_SPI_HZ=32000000
-python3 tools/newface_lcd_direct.py --expr neutral --secs 4 --stats
+python3 scripts/dev_face-lcd-direct.py --expr neutral --secs 4 --stats
 ```
 
 ---

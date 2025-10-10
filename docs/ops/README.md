@@ -112,7 +112,7 @@ Zobacz: [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
 Helper dla skryptów do automatycznego ładowania konfiguracji:
 
 ```bash
-source "$REPO_ROOT/tools/load_config.sh"
+source "$REPO_ROOT/scripts/util_load-config.sh"
 setup_voice_env  # automatyczne wykrycie i załadowanie ENV
 ```
 
@@ -122,7 +122,7 @@ setup_voice_env  # automatyczne wykrycie i załadowanie ENV
 
 ```bash
 # Z repo root
-./ops/voice-run.sh
+./scripts/sys_voice-run.sh
 
 # Z dowolnego miejsca (jeśli PATH skonfigurowany)
 voice-run.sh

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-# ops/demo_lemniscate.py
+# scripts/demo_trajectory.py
 # Proste demo „ósemki” (lemniskata) na prymitywach XgoAdapter:
 # w każdej iteracji: krótki yaw + krótki forward; po N krokach zmiana kierunku yaw.
 import os

@@ -108,7 +108,7 @@ def svc_action(name: str):
         return _json(
             {
                 "error": "service_ctl_missing",
-                "hint": "chmod +x ops/service_ctl.sh & add sudoers NOPASSWD",
+                "hint": "chmod +x scripts/sys_control.sh & add sudoers NOPASSWD",
             },
             status=501,
         )
