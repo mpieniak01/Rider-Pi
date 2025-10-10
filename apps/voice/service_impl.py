@@ -693,7 +693,6 @@ class VoiceService(BusIntegrationMixin):
 # ─────────────────────────────────────────────
 
 
-
 # ────────────────────────────────────────────────────────────────────────────
 # Re-exports for API compatibility
 # ────────────────────────────────────────────────────────────────────────────
@@ -704,4 +703,3 @@ from .svc_signals import setup_signals
 # Main classes VoiceService, VoiceResult, SpeechTask are defined above and remain primary exports
 
 __all__ = ["VoiceService", "VoiceResult", "SpeechTask", "setup_signals"]
-

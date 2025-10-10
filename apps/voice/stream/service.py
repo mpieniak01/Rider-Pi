@@ -239,7 +239,6 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
 
         self._loop: asyncio.AbstractEventLoop | None = None
 
-
     # ──────────────────────────────────────────────────────────────────────────
     # Transport & session
 
@@ -664,4 +663,3 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
     # ──────────────────────────────────────────────────────────────────────────
     # Test compatibility aliases (delegated to StreamHandlersMixin)
     # _send_session_update, _handle_ws_message are in handlers.py
-
