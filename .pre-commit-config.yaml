@@ -1,39 +1,30 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
-    hooks:
-      - id: ruff
-        name: ruff (lint + fix)
-        args: [--fix, --unsafe-fixes]
-        exclude: |
-          (?x)^(
-            attic/|
-            _apps/|
-            services/_deprecated_.* 
-          )
-      - id: ruff-format
-        name: ruff (format)
-        # bez --force-exclude (hook już to dodaje)
-        exclude: |
-          (?x)^(
-            attic/|
-            _apps/|
-            services/_deprecated_.* 
-          )
-  
-  # Quality guards for voice module refactoring
-  - repo: local
-    hooks:
-      - id: check-file-length
-        name: Check file length (max 600 lines)
-        entry: python3 tools/check_file_length.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        
-      - id: check-legacy-imports
-        name: Check for legacy imports
-        entry: python3 tools/check_legacy_imports.py
-        language: system
-        pass_filenames: false
-        always_run: true
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.6.9
+  hooks:
+  - id: ruff
+    name: ruff (lint + fix)
+    args:
+    - --fix
+    - --unsafe-fixes
+    exclude: "(?x)^(\n  attic/|\n  _apps/|\n  services/_deprecated_.* \n)\n"
+  - id: ruff-format
+    name: ruff (format)
+    exclude: "(?x)^(\n  attic/|\n  _apps/|\n  services/_deprecated_.* \n)\n"
+- repo: local
+  hooks:
+  - id: check-file-length
+    name: Check file length (apps/voice/*) [CI-only]
+    entry: python3 tools/check_file_length.py
+    language: system
+    pass_filenames: false
+    always_run: true
+    stages:
+    - push
+    - manual
+  - id: check-legacy-imports
+    name: Check for legacy imports
+    entry: python3 tools/check_legacy_imports.py
+    language: system
+    pass_filenames: false
+    always_run: true
