@@ -537,6 +537,9 @@ class StreamingVoiceService:
 
         asyncio.create_task(_rx_watchdog())
 
+        # Keep the session alive while other tasks are running.
+        # This loop waits until stop_event is set or the transport is closed.
+        # It acts as a simple wait mechanism to prevent premature exit.
         while not self.stop_event.is_set() and self.transport:
             await asyncio.sleep(0.1)
 
