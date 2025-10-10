@@ -21,10 +21,10 @@ from datetime import datetime
 from typing import Any
 
 from .. import voice_logging
-from ..capture import CaptureConfig
+from ..audio.capture import CaptureConfig
+from ..audio.playback import PlaybackConfig
 from ..chat import ChatConfig, ChatSession
 from ..common import ensure_event_logger
-from ..playback import PlaybackConfig
 from ..rt_protocol import build_audio_commit, build_response_create
 from ..stream_chunks import AudioChunkProcessor
 from ..tts import TTSConfig
