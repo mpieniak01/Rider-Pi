@@ -345,3 +345,33 @@ pytest -q -k voice
   - `[capture]  device = "wm8960_in", sample_rate=16000, channels=1`
   - `[service]  beep=false` (na start); potem można `beep=true` + `beep_delay_ms=250`.
 - Aplikacja odtwarza przez `aplay` z `PULSE_SERVER=127.0.0.1`, więc PulseAudio nie przeszkadza.
+
+---
+
+## Deprecated / Legacy Files
+
+**⚠️  The following files/modules have been removed or deprecated during refactoring:**
+
+### Removed in PR-1 (Clean & Freeze)
+- **`apps/voice/ws_transport.py`** → Use `apps.voice.stream.transport` (WebSocket transport)
+- **`apps/voice/stream_transport.py`** → Use `apps.voice.stream.transport`
+- **`apps/voice/cli_new.py`** → Use `apps.voice.cli` (main CLI)
+
+### Removed in PR-3 (Tests Migration & Shim Removal)
+- **`apps/voice/svc_stream.py`** → Use `apps.voice.stream.service.StreamingVoiceService` or `apps.voice.svc_stream_runner` for CLI entry points
+- **`apps/voice/state.py`** (StreamingVoicePTTMixin) → Use `apps.voice.stream.state.PTTStateMachine`
+- **`apps/voice/ptt_state.py`** → Use `apps.voice.stream.state.PTTStateMachine`
+- **`StreamingVoiceTransportMixin`** → Use concrete transport classes from `apps.voice.stream.transport`
+- **`StreamingVoicePTTMixin`** → Use `apps.voice.stream.state.PTTStateMachine`
+
+### Pending Migration
+- **`apps/voice/audio/*`** directory (deprecated, will be migrated to top-level modules)
+  - Current: `from apps.voice.audio import alsa, wavutil`
+  - Future: Functionality will be integrated into `apps.voice.capture`, `apps.voice.playback`, or `apps.voice.utils`
+  - Note: Currently still used by some tests; migration planned for future PR
+
+**Migration guide:**
+- For streaming services: import from `apps.voice.stream.service`
+- For PTT state machine: import from `apps.voice.stream.state`
+- For WebSocket transport: import from `apps.voice.stream.transport`
+- For CLI entry points: use `apps.voice.svc_stream_runner` or `apps.voice.svc_core`
