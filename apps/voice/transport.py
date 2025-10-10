@@ -1,14 +1,11 @@
 # apps/voice/transport.py
-""" "WebSocket transport layer for Rider-Pi voice streaming.
+"""WebSocket transport layer for Rider-Pi voice streaming.
 
 Provides clean WebSocket connection management with:
 - Proper connection lifecycle (connect, send, recv, close)
 - Heartbeat/ping handling
 - Reconnection logic
 - Clean shutdown with code 1000
-
-Compat shims:
-- StreamingVoiceTransportMixin: legacy no-op mixin kept for import compatibility.
 """
 
 from __future__ import annotations
@@ -315,62 +312,7 @@ class ReconnectingTransport:
         self.retry_count = 0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Legacy compatibility shim
-class StreamingVoiceTransportMixin:
-    """Deprecated legacy mixin.
-
-    Zostawiony tylko po to, aby `from .transport import StreamingVoiceTransportMixin`
-    nie wywalał ImportError w starych testach.
-
-    Provides minimal rate-limited send() for test compatibility.
-    Real implementations should use WebSocketTransport or ReconnectingTransport directly.
-    """
-
-    def __init__(self):
-        self._append_sample_counter = 0
-        self._append_sample_every = int(os.environ.get("VOICE_WS_APPEND_SAMPLE_EVERY", "0"))
-        self._ws_log_enabled = os.environ.get("VOICE_WS_LOG", "").strip() == "1"
-
-    async def send(self, data: str) -> None:
-        """Send data through WebSocket with optional rate-limited logging."""
-        if not hasattr(self, "websocket") or not self.websocket:
-            return
-
-        await self.websocket.send(data)
-
-        # Rate-limited logging for test compatibility
-        # Initialize counters if not already set (test classes may not call __init__)
-        if not hasattr(self, "_ws_log_enabled"):
-            self._ws_log_enabled = os.environ.get("VOICE_WS_LOG", "").strip() == "1"
-        if not hasattr(self, "_append_sample_counter"):
-            self._append_sample_counter = 0
-        if not hasattr(self, "_append_sample_every"):
-            self._append_sample_every = int(os.environ.get("VOICE_WS_APPEND_SAMPLE_EVERY", "0"))
-
-        if self._ws_log_enabled and hasattr(self, "logger"):
-            import json
-
-            try:
-                payload = json.loads(data)
-                event_type = payload.get("type", "")
-
-                # Rate-limit audio buffer append logging
-                if event_type == "input_audio_buffer.append":
-                    if self._append_sample_every > 0:
-                        self._append_sample_counter += 1
-                        if self._append_sample_counter % self._append_sample_every == 0:
-                            self.logger.event("ws.send", t=event_type, sample_num=self._append_sample_counter)
-                else:
-                    # Log all non-append events
-                    self.logger.event("ws.send", t=event_type)
-            except Exception:
-                # Ignore logging errors
-                pass
-
-
 __all__ = [
     "WebSocketTransport",
     "ReconnectingTransport",
-    "StreamingVoiceTransportMixin",  # compat
 ]

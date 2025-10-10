@@ -98,7 +98,7 @@ def test_file_mode_with_missing_transport():
     assert _wants_stream(config, None) is False
 
 
-@patch('apps.voice.svc_stream.run_listen_stream')
+@patch('apps.voice.svc_stream_runner.run_listen_stream')
 @patch('apps.voice.svc_core.run_listen_file')
 @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
 def test_listen_streaming_delegation(mock_file_listen, mock_stream_listen):
@@ -121,7 +121,7 @@ def test_listen_streaming_delegation(mock_file_listen, mock_stream_listen):
     mock_file_listen.assert_not_called()
 
 
-@patch('apps.voice.svc_stream.run_once_stream')
+@patch('apps.voice.svc_stream_runner.run_once_stream')
 @patch('apps.voice.svc_core.run_once_file')
 @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
 def test_once_streaming_delegation(mock_file_once, mock_stream_once):
@@ -146,10 +146,10 @@ def test_once_streaming_delegation(mock_file_once, mock_stream_once):
 
 def test_ptt_streaming_function_exists():
     """Test that run_ptt_stream function exists and works."""
-    from apps.voice.svc_stream import run_ptt_stream
+    from apps.voice.svc_stream_runner import run_ptt_stream
 
     # Mock the dependencies
-    with patch('apps.voice.svc_stream.run_listen_stream') as mock_listen:
+    with patch('apps.voice.svc_stream_runner.run_listen_stream') as mock_listen:
         mock_listen.return_value = 0
 
         config = {"asr": {"transport": "realtime"}}
