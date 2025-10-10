@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .service_impl import SpeechTask
+    from .svc_file import SpeechTask
     from .voice_logging import VoiceLogger
 
 # Bus (optional in runtime)
@@ -75,7 +75,7 @@ class BusIntegrationMixin:
 
     def _tts_speak_loop(self) -> None:
         """Subscribe to tts.speak bus topic and queue speech tasks."""
-        from .service_impl import SpeechTask
+        from .svc_file import SpeechTask
 
         sub = self._bus_sub
         if sub is None:
