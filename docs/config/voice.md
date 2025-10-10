@@ -261,3 +261,17 @@ aplay -D wm8960_out test.wav
 - [CONFIG_POLICY.md](../CONFIG_POLICY.md) — polityka konfiguracji
 
 **Ostatnia aktualizacja:** 2025-01
+
+---
+
+## Deprecated Configuration Files
+
+**⚠️  Legacy configuration patterns:**
+
+The voice module has been refactored. Configuration files remain unchanged, but internal imports have been reorganized:
+
+- Legacy transport files (`ws_transport.py`, `stream_transport.py`) → Use `apps.voice.stream.transport`
+- Legacy state files (`state.py`, `ptt_state.py`) → Use `apps.voice.stream.state`
+- `apps/voice/audio/*` directory (pending migration to top-level modules)
+
+**No action required** for users - configuration keys remain the same. See [docs/modules/voice.md](../modules/voice.md#deprecated--legacy-files) for developer migration guide.
