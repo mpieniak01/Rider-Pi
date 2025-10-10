@@ -1,19 +1,19 @@
-# Minimalny, stabilny plikowy tryb rozmowy (WAV + ALSA)
+# Minimalny, stabilny tryb plikowy: WAV/PCM16 + czyste ALSA (WM8960)
+
 [capture]
-device   = "wm8960_in"    # mikrofon (WE)
-rate     = 16000
-channels = 1
-format   = "s16le"
-backend  = "arecord"
+device        = "wm8960_in"
+sample_rate   = 16000
+channels      = 1
+sample_format = "S16_LE"
 
 [playback]
-device   = "wm8960_out"   # głośnik (WY)
-backend  = "aplay"        # bez Pulse
-volume   = 55
+backend = "aplay"          # czyste ALSA (bez Pulse)
+device  = "wm8960_out"     # wyjście WM8960
 
 [asr]
 backend  = "openai"
 model    = "whisper-1"
+language = "pl"
 
 [chat]
 backend       = "openai"
@@ -22,5 +22,17 @@ language      = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
 [tts]
-format   = "wav"          # najpewniejsze z aplay
-voice    = "alloy"
+backend = "openai"
+model   = "gpt-4o-mini-tts"
+format  = "wav"            # zgodne z aplay
+voice   = "ash"            # możesz zmienić na "alloy" itp.
+
+[nlu]
+chat_threshold   = 0.0
+llm_model        = "dummy"
+command_keywords = {}
+
+[hotword]
+enabled = false
+engine  = "none"
+

@@ -2,9 +2,9 @@
 
 [capture]
 device   = "wm8960_in"
-rate     = 16000
+sample_rate = 16000
 channels = 1
-format   = "s16le"
+sample_format = "S16_LE"
 
 [playback]
 device   = "wm8960_out"
@@ -25,8 +25,12 @@ language      = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
 [tts]
-format = "wav"
-voice  = "alloy"
+[tts]
+backend = "openai"
+model   = "gpt-4o-mini-tts"
+format  = "wav"
+voice   = "alloy"
+
 
 # UWAGA: PTT wyłączone – używamy VAD po stronie serwera
 [hotword]
