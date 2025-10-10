@@ -6,7 +6,6 @@ respect-gitignore = true
 # Jedno źródło prawdy dla CI i lokalnie:
 extend-exclude = [
   "_apps/",
-  "attic/",
   "venv/",
   ".venv/",
   "build/",
