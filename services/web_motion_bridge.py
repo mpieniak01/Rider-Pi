@@ -34,7 +34,7 @@ _pub.bind(BUS_ADDR) if os.getenv("WEB_BIND_PUB", "0") == "1" else _pub.connect(B
 
 # XGO adapter (opcjonalnie – best effort)
 try:
-    from apps.motion.xgo_adapter import XgoAdapter  # type: ignore
+    from drivers.xgo import XgoAdapter  # type: ignore
 
     _ADA = XgoAdapter()
 except Exception:

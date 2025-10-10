@@ -11,7 +11,7 @@ Prosty tester XgoAdapter:
 
 import time  # noqa: E402
 
-from apps.motion.xgo_adapter import XgoAdapter  # noqa: E402
+from drivers.xgo import XgoAdapter  # noqa: E402
 
 
 def main():

@@ -23,7 +23,7 @@ import os
 import threading
 import time
 
-from apps.motion.xgo_adapter import XgoAdapter
+from drivers.xgo import XgoAdapter
 
 
 def _env_float(name: str, default: float) -> float:

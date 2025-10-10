@@ -67,7 +67,7 @@ class _RealAdapter:
     """
 
     def __init__(self):
-        from apps.motion.xgo_adapter import XgoAdapter
+        from drivers.xgo import XgoAdapter
 
         self._ada = XgoAdapter()
         self.pulse_drive = IMPULSE_DRIVE

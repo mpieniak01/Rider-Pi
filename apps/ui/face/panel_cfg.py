@@ -1,28 +1,13 @@
 from __future__ import annotations
 
-from typing import Literal
+"""
+Panel configuration for LCD display.
 
+DEPRECATED: This module is kept for backward compatibility.
+Please use drivers.lcd.PanelCfg instead.
+"""
 
-class PanelCfg:
-    def __init__(
-        self,
-        rotate: int = 0,
-        bgr: bool = True,
-        mx: bool = False,
-        mv: bool = False,
-        fit: Literal["fill", "fit", "stretch"] = "fill",
-    ):
-        self.rotate = rotate
-        self.bgr = bgr
-        self.mx = mx
-        self.mv = mv
-        self.fit = fit
+# Re-export from new location
+from drivers.lcd.panel_cfg import PanelCfg
 
-    def as_dict(self):
-        return {
-            "rotate": self.rotate,
-            "bgr": self.bgr,
-            "mx": self.mx,
-            "mv": self.mv,
-            "fit": self.fit,
-        }
+__all__ = ["PanelCfg"]
