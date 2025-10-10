@@ -6,6 +6,12 @@ DEPRECATED: This module is kept for backward compatibility.
 Please use drivers.lcd.driver_ili9xx instead.
 """
 
+import warnings
+warnings.warn(
+    "Importing 'apps.ui.face.driver_ili9xx' is deprecated. Please use 'drivers.lcd.driver_ili9xx' instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 from __future__ import annotations
 
 # Re-export everything from new location
