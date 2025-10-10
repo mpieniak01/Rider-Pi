@@ -8,7 +8,6 @@ import audioop
 import contextlib
 import math
 import queue
-import signal
 import subprocess
 import threading
 import time
@@ -17,14 +16,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Bus (opcjonalny w runtime)
-try:  # pragma: no cover - optional dependency
-    from common.bus import BusPub, BusSub  # type: ignore
-except Exception:  # pragma: no cover
-    BusPub = None  # type: ignore[assignment]
-    BusSub = None  # type: ignore[assignment]
 
 # Lokalny logger (NIE koliduje ze stdlib logging)
 from . import voice_logging as vlog
@@ -35,6 +26,7 @@ from .common import ensure_event_logger, ensure_openai_key  # ⬅️ DODANE
 from .kws import HotwordConfig, HotwordDetector
 from .nlu import Intent, NLUConfig, NLURouter
 from .playback import PlaybackConfig, play_ding
+from .svc_bus import BusIntegrationMixin
 from .tts import TTSConfig, TTSStreamResult, speak
 from .vad import WebRtcActivity, collect
 
@@ -101,7 +93,7 @@ class SpeechTask:
     result: TTSStreamResult | None = None
 
 
-class VoiceService:
+class VoiceService(BusIntegrationMixin):
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
         _assert_file_mode(config)
         _force_transports_file(config)
@@ -112,6 +104,9 @@ class VoiceService:
         self.stop_event = threading.Event()
 
         # Bus (pozwól testom wstrzyknąć fałszywego publishra)
+        # BusPub/BusSub are now imported in svc_bus.py
+        from .svc_bus import BusPub, BusSub
+
         self._bus_pub = ui_publisher if ui_publisher is not None else (BusPub() if BusPub else None)
         self._bus_sub = BusSub("tts.speak") if BusSub else None
 
@@ -230,36 +225,9 @@ class VoiceService:
                 t.join(timeout=0.5)
 
     # ─────────────────────────────────────────────
-    # Publikacje na busie
-
-    def _publish_ui_state(self, state: str) -> None:
-        if state == self._last_ui_state:
-            return
-        self._last_ui_state = state
-        if not self._bus_pub:
-            return
-        try:
-            self._bus_pub.publish("ui.state", {"state": state}, add_ts=True)
-        except Exception as exc:
-            self.logger.event("service.bus.state_failed", state=state, error=str(exc))
-
-    def _publish_transcript(self, transcript: Transcript) -> None:
-        if not self._bus_pub:
-            return
-        lang = transcript.language or self._asr_cfg.language or getattr(self._asr_cfg, "lang", None) or "pl"
-        payload = {"text": transcript.text, "lang": lang}
-        try:
-            self._bus_pub.publish("audio.transcript", payload, add_ts=True)
-        except Exception as exc:
-            self.logger.event("service.bus.transcript_failed", error=str(exc))
-
-    def _publish_assistant_speech(self, text: str) -> None:
-        if not text or not self._bus_pub:
-            return
-        try:
-            self._bus_pub.publish("assistant.speech", {"text": text}, add_ts=True)
-        except Exception as exc:
-            self.logger.event("service.bus.speech_failed", error=str(exc))
+    # ─────────────────────────────────────────────
+    # Bus publishing and TTS speak loop (delegated to BusIntegrationMixin in svc_bus.py)
+    # _publish_ui_state, _publish_transcript, _publish_assistant_speech, _tts_speak_loop are in svc_bus.py
 
     # ─────────────────────────────────────────────
     # Kolejka mówienia
@@ -313,26 +281,6 @@ class VoiceService:
                 self._publish_ui_state("idle")
                 if task.ack:
                     task.ack.set()
-
-    def _tts_speak_loop(self) -> None:
-        sub = self._bus_sub
-        if sub is None:
-            return
-        while not self.stop_event.is_set():
-            try:
-                topic, payload = sub.recv(timeout_ms=200)
-            except Exception as exc:
-                if self.stop_event.is_set():
-                    break
-                self.logger.event("service.bus.sub_error", error=str(exc))
-                time.sleep(0.2)
-                continue
-            if not payload:
-                continue
-            text = payload.get("text") if isinstance(payload, dict) else None
-            if not isinstance(text, str) or not text.strip():
-                continue
-            self._speech_queue.put(SpeechTask(text=text.strip(), source="bus", accumulate=False))
 
     # ─────────────────────────────────────────────
 
@@ -745,19 +693,13 @@ class VoiceService:
 # ─────────────────────────────────────────────
 
 
-def setup_signals(service: VoiceService) -> None:
-    def handler(signum, frame):  # pragma: no cover
-        service.logger.event("service.signal", signum=signum)
-        service.stop()
-
-    signal.signal(signal.SIGINT, handler)
-    signal.signal(signal.SIGTERM, handler)
-
-
 # ────────────────────────────────────────────────────────────────────────────
-# Re-exports from extracted modules (for API compatibility)
+# Re-exports for API compatibility
 # ────────────────────────────────────────────────────────────────────────────
 
-# Re-export file pipeline functionality
+# Re-export signal handling
+from .svc_signals import setup_signals
 
 # Main classes VoiceService, VoiceResult, SpeechTask are defined above and remain primary exports
+
+__all__ = ["VoiceService", "VoiceResult", "SpeechTask", "setup_signals"]
