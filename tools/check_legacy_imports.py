@@ -8,8 +8,10 @@ Legacy files blocked:
   - apps/voice/ws_transport.py (removed in PR-1)
   - apps/voice/stream_transport.py (removed in PR-1)
   - apps/voice/service_impl.py (removed in PR-1, moved to svc_file.py)
+  - apps/voice/capture.py (removed in PR-3, use apps.voice.audio.capture)
+  - apps/voice/playback.py (removed in PR-3, use apps.voice.audio.playback)
+  - apps/voice/state.py (removed in PR-3, use apps.voice.stream.state)
   - apps/voice/svc_stream.py (removed in PR-3)
-  - apps/voice/state.py (removed in PR-3)
   - apps/voice/ptt_state.py (removed in PR-3)
 
 Exit codes:
@@ -30,7 +32,12 @@ LEGACY_PATTERNS = [
     (r"import apps\.voice\.ws_transport\b", "apps/voice/ws_transport.py (removed in PR-1)"),
     (r"import apps\.voice\.stream_transport\b", "apps/voice/stream_transport.py (removed in PR-1)"),
     (r"import apps\.voice\.service_impl\b", "apps/voice/service_impl.py (removed in PR-1, use apps.voice.svc_file)"),
-    # Files removed in PR-3
+    # Files removed in PR-3 (audio/state modules)
+    (r"from apps\.voice\.capture\b", "apps/voice/capture.py (removed in PR-3, use apps.voice.audio.capture)"),
+    (r"from apps\.voice\.playback\b", "apps/voice/playback.py (removed in PR-3, use apps.voice.audio.playback)"),
+    (r"import apps\.voice\.capture\b", "apps/voice/capture.py (removed in PR-3, use apps.voice.audio.capture)"),
+    (r"import apps\.voice\.playback\b", "apps/voice/playback.py (removed in PR-3, use apps.voice.audio.playback)"),
+    # Files removed in earlier PR-3 (shims)
     (
         r"from apps\.voice\.svc_stream\b",
         "apps/voice/svc_stream.py (removed in PR-3, use apps.voice.svc_stream_runner or apps.voice.stream.service)",

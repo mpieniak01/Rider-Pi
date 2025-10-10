@@ -2,7 +2,7 @@
 
 import pytest
 
-from apps.voice.capture import CaptureConfig
+from apps.voice.audio.capture import CaptureConfig
 from apps.voice.svc_audio import ensure_mono_16k
 
 

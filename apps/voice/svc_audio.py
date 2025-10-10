@@ -10,8 +10,8 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
-from .capture import AudioCapture, CaptureConfig, CaptureError
-from .playback import PlaybackConfig, play_ding as playback_play_ding
+from .audio.capture import AudioCapture, CaptureConfig, CaptureError
+from .audio.playback import PlaybackConfig, play_ding as playback_play_ding
 from .vad import WebRtcActivity, collect
 
 

@@ -33,12 +33,12 @@ from typing import Any
 # Lokalny logger (NIE koliduje ze stdlib logging)
 from . import voice_logging as vlog
 from .asr import ASRConfig, Transcript, transcribe
-from .capture import AudioCapture, CaptureConfig, CaptureError
+from .audio.capture import AudioCapture, CaptureConfig, CaptureError
+from .audio.playback import PlaybackConfig, play_ding
 from .chat import ChatConfig, ChatSession
 from .common import ensure_event_logger, ensure_openai_key
 from .kws import HotwordConfig, HotwordDetector
 from .nlu import Intent, NLUConfig, NLURouter
-from .playback import PlaybackConfig, play_ding
 from .svc_bus import BusIntegrationMixin
 from .tts import TTSConfig, TTSStreamResult, speak
 from .vad import WebRtcActivity, collect

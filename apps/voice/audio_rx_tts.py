@@ -84,7 +84,7 @@ class AudioReceiver:
 
     def _tts_player_loop(self) -> None:
         """Play TTS audio from queue (streaming, one process per response)."""
-        from .playback import PlaybackConfig, play_bytes, start_stream
+        from .audio.playback import PlaybackConfig, play_bytes, start_stream
 
         try:
             playback_cfg = PlaybackConfig(**self.config.get("playback", {}))

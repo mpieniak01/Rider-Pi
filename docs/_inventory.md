@@ -18,7 +18,7 @@
 | `apps/safety` | `estop.py` | ⚠️ Do uzupełnienia |
 | `apps/ui` | `buttons.py`, `config.py`, `face_actuators.py`, `face_core.py`, `face_emotions.py` | ⚠️ Do uzupełnienia |
 | `apps/vision` | `detector_hog.py`, `detector_tflite.py`, `dispatcher.py`, `edge_preview.py`, `obstacle_roi.py` | ⚠️ Do uzupełnienia |
-| `apps/voice` | `cli.py`, `config.py`, `asr.py`, `tts.py`, `capture.py`, `playback.py`, etc. | ✅ Udokumentowane w `docs/modules/voice.md` |
+| `apps/voice` | `cli.py`, `config.py`, `asr.py`, `tts.py`, `audio/capture.py`, `audio/playback.py`, etc. | ✅ Udokumentowane w `docs/modules/voice.md` |
 
 ## Skrypty operacyjne (`ops/*`)
 
