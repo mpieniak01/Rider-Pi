@@ -9,6 +9,12 @@ the acceptance criteria.
 Usage:
     # Terminal 1: Start broker
     python services/broker.py
+<<<<<<< Updated upstream
+=======
+
+    # Terminal 2: Run this demo
+    python examples/demo_sim3_sensors.py
+>>>>>>> Stashed changes
 """
 
 from __future__ import annotations

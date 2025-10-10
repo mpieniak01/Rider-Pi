@@ -1,18 +1,11 @@
-#!/usr/bin/env python3
-"""
-apps/ui/face/driver_ili9xx.py — sterownik LCD dla ILI9xx
-
-DEPRECATED: This module is kept for backward compatibility.
-Please use drivers.lcd.driver_ili9xx instead.
-"""
+from __future__ import annotations
 
 import warnings
+
+from drivers.lcd.driver_ili9xx import *  # noqa: F401,F403
+
 warnings.warn(
-    "Importing 'apps.ui.face.driver_ili9xx' is deprecated. Please use 'drivers.lcd.driver_ili9xx' instead.",
+    "apps.ui.face.driver_ili9xx is deprecated; use drivers.lcd.driver_ili9xx instead.",
     DeprecationWarning,
     stacklevel=2,
 )
-from __future__ import annotations
-
-# Re-export everything from new location
-from drivers.lcd.driver_ili9xx import *  # noqa: F401, F403
