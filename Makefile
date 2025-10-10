@@ -386,24 +386,24 @@ voice-listen-realtime:
 # NEW VOICE TARGETS (CLI-first with ALSA pre-flight)
 .PHONY: voice-once-new voice-ptt-new voice-listen-new voice-diag voice-free voice-smoke
 voice-once-new:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new once --mode stream $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli once --mode stream $(VOICE_ARGS)
 
 voice-ptt-new:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new ptt --mode stream $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli ptt --mode stream $(VOICE_ARGS)
 
 voice-listen-new:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new listen --mode stream $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli listen --mode stream $(VOICE_ARGS)
 
 voice-diag:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new diag --audio $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli diag --audio $(VOICE_ARGS)
 
 voice-free:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new free $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli free $(VOICE_ARGS)
 
 voice-smoke:
 	@echo "Voice smoke tests (mock mode, no audio/network)..."
 	@echo "Testing config loading..."
-	@$(ENV_FROM_BASH) $(PY) -m apps.voice.cli_new diag --no-network --log-level ERROR
+	@$(ENV_FROM_BASH) $(PY) -m apps.voice.cli diag --no-network --log-level ERROR
 	@echo "Testing WAV utilities..."
 	@$(PY) -m pytest tests/test_voice_audio_utils.py::TestWavUtil -v -x
 	@echo "Testing PTT state machine..."  
