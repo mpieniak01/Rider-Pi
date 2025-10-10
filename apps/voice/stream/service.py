@@ -12,6 +12,8 @@ import base64
 import json
 import os
 import queue
+import select
+import sys
 import threading
 import time
 import uuid
@@ -112,6 +114,7 @@ class StreamingVoiceService:
         self._tts_player_thread: threading.Thread | None = None
         self._message_handler_task: asyncio.Task[None] | None = None
         self._audio_sender_task: asyncio.Task[None] | None = None
+        self._keyboard_task: asyncio.Task[None] | None = None
 
         # Session state
         self.session_id: str = ""
@@ -504,6 +507,10 @@ class StreamingVoiceService:
         self._audio_sender_task = asyncio.create_task(self._audio_sender_loop())
         self._message_handler_task = asyncio.create_task(self._message_handler_loop())
 
+        # Start PTT keyboard handler if enabled
+        if self.ptt_enabled:
+            self._keyboard_task = asyncio.create_task(self._keyboard_ptt_loop())
+
         # prosty watchdog RX – jeśli nie ma eventów, ostrzegaj
         async def _rx_watchdog():
             while not self.stop_event.is_set():
@@ -516,9 +523,6 @@ class StreamingVoiceService:
 
         while not self.stop_event.is_set() and self.transport:
             await asyncio.sleep(0.1)
-            if self.ptt_enabled:
-                # integrate keyboard PTT here if needed
-                pass
 
     # ──────────────────────────────────────────────────────────────────────────
     # Messaging
@@ -642,6 +646,84 @@ class StreamingVoiceService:
         except Exception as exc:
             self.logger.event("chat_tts.stream.error", error=str(exc))
             self.ptt_state.transition(PTTEvent.ERROR)
+
+    async def _keyboard_ptt_loop(self) -> None:
+        """Handle keyboard PTT (ENTER key) in a non-blocking async loop.
+        
+        Each ENTER press toggles PTT:
+        - First press: START event (begins recording)
+        - Second press: COMMIT_AUDIO event (ends recording and sends for processing)
+        """
+        self.logger.event("ptt.keyboard.start")
+        ptt_active = False
+        
+        try:
+            loop = asyncio.get_running_loop()
+            
+            while not self.stop_event.is_set():
+                # Non-blocking check for stdin input with timeout
+                try:
+                    # Use run_in_executor for blocking select call
+                    def _check_stdin():
+                        rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+                        if rlist:
+                            line = sys.stdin.readline()
+                            # Accept only bare ENTER (empty line after strip)
+                            if line and line.strip() == "":
+                                return True
+                        return False
+                    
+                    has_input = await loop.run_in_executor(None, _check_stdin)
+                    
+                    if has_input:
+                        if not ptt_active:
+                            # Start recording
+                            self.logger.event("ptt.keyboard.start_recording")
+                            self.ptt_state.transition(PTTEvent.START)
+                            self._publish_ui_state("recording")
+                            ptt_active = True
+                            
+                            # Optional beep on start
+                            service_cfg = self.config.get("service", {})
+                            if service_cfg.get("beep", False):
+                                asyncio.create_task(self._play_ding_async())
+                        else:
+                            # Stop recording and commit
+                            self.logger.event("ptt.keyboard.commit")
+                            self.ptt_state.transition(PTTEvent.COMMIT_AUDIO)
+                            await self._commit_audio_buffer()
+                            self._publish_ui_state("processing")
+                            ptt_active = False
+                    else:
+                        # Small sleep to avoid busy waiting
+                        await asyncio.sleep(0.1)
+                        
+                except Exception as e:
+                    self.logger.event("ptt.keyboard.error", error=str(e))
+                    await asyncio.sleep(0.5)
+                    
+        except asyncio.CancelledError:
+            self.logger.event("ptt.keyboard.cancelled")
+        except Exception as e:
+            self.logger.event("ptt.keyboard.loop_error", error=str(e))
+        finally:
+            self.logger.event("ptt.keyboard.stop")
+
+    async def _play_ding_async(self) -> None:
+        """Play ding sound asynchronously (non-blocking)."""
+        try:
+            loop = asyncio.get_running_loop()
+            
+            def _do_ding():
+                try:
+                    from ..playback import play_ding
+                    play_ding(self._playback_cfg, self.logger)
+                except Exception as e:
+                    self.logger.event("ptt.ding.error", error=str(e))
+            
+            await loop.run_in_executor(None, _do_ding)
+        except Exception as e:
+            self.logger.event("ptt.ding.async_error", error=str(e))
 
     # ──────────────────────────────────────────────────────────────────────────
     # Workers
@@ -912,6 +994,15 @@ class StreamingVoiceService:
                 pass
             finally:
                 self._message_handler_task = None
+
+        if self._keyboard_task and not self._keyboard_task.done():
+            self._keyboard_task.cancel()
+            try:
+                await self._keyboard_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._keyboard_task = None
 
         if self.transport:
             try:
