@@ -12,10 +12,12 @@ The service is composed of mixins:
 from __future__ import annotations
 
 import asyncio
+import logging
 import queue
 import threading
 import time
 from dataclasses import dataclass, fields
+from datetime import datetime
 from typing import Any
 
 from .. import voice_logging
@@ -86,6 +88,43 @@ class StreamConfig:
 
 
 class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
+    async def connect(self, *args, **kwargs) -> bool:
+        """Bezpieczne łączenie: nie propaguje wyjątku, publikuje ui.error i zwraca False."""
+        try:
+            # Oczekujemy, że _connect_inner podniesie wyjątek przy błędzie
+            if hasattr(self, "_connect_inner"):
+                return await self._connect_inner(*args, **kwargs)
+            # Wsteczna kompatybilność: jeśli istnieje stary _connect, deleguj
+            if hasattr(self, "_connect"):
+                return await self._connect(*args, **kwargs)  # type: ignore[misc]
+            # Jeśli nic nie ma – uznaj jako błąd
+            raise RuntimeError("No connect implementation")
+        except Exception as e:
+            self.connected = False
+            # Publikujemy błąd w formacie sprawdzanym przez test
+            self._publish_error("ws_connect", e)
+            # Opcjonalny log – nie zmieniamy poziomu logowania testów
+            logger = logging.getLogger(getattr(self, "log_name", "voice.stream"))
+            try:
+                logger.warning("connect failed: %s", e)
+            except Exception:
+                pass
+            return False
+
+    def _publish_error(self, err_type: str, message: str) -> None:
+        """Publikuj błąd do UI w formacie oczekiwanym przez testy."""
+        payload = {
+            "type": err_type,
+            "message": str(message),
+            "ts": datetime.utcnow().isoformat() + "Z",
+        }
+        pub = getattr(self, "ui_publisher", None)
+        if pub and hasattr(pub, "publish"):
+            try:
+                pub.publish("ui.error", payload)
+            except Exception:  # nie chcemy, by publikacja błędu psuła dalszy flow
+                pass
+
     """Refactored WebSocket-based streaming voice service."""
 
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
