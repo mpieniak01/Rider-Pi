@@ -7,7 +7,6 @@ Legacy files blocked:
   - apps/voice/audio/* (to be migrated to top-level modules)
   - apps/voice/ws_transport.py (removed in PR-1)
   - apps/voice/stream_transport.py (removed in PR-1)
-  - apps/voice/cli_new.py (removed in PR-1)
   - apps/voice/service_impl.py (removed in PR-1, moved to svc_file.py)
   - apps/voice/svc_stream.py (removed in PR-3)
   - apps/voice/state.py (removed in PR-3)
@@ -27,11 +26,9 @@ LEGACY_PATTERNS = [
     # Files removed in PR-1
     (r"from apps\.voice\.ws_transport\b", "apps/voice/ws_transport.py (removed in PR-1)"),
     (r"from apps\.voice\.stream_transport\b", "apps/voice/stream_transport.py (removed in PR-1)"),
-    (r"from apps\.voice\.cli_new\b", "apps/voice/cli_new.py (removed in PR-1)"),
     (r"from apps\.voice\.service_impl\b", "apps/voice/service_impl.py (removed in PR-1, use apps.voice.svc_file)"),
     (r"import apps\.voice\.ws_transport\b", "apps/voice/ws_transport.py (removed in PR-1)"),
     (r"import apps\.voice\.stream_transport\b", "apps/voice/stream_transport.py (removed in PR-1)"),
-    (r"import apps\.voice\.cli_new\b", "apps/voice/cli_new.py (removed in PR-1)"),
     (r"import apps\.voice\.service_impl\b", "apps/voice/service_impl.py (removed in PR-1, use apps.voice.svc_file)"),
     # Files removed in PR-3
     (

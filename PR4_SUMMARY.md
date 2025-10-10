@@ -25,7 +25,6 @@ This PR adds documentation deprecation sections and quality guard tools to preve
 - Hard blocks (exit code 1):
   - `apps/voice/ws_transport.py` (removed in PR-1)
   - `apps/voice/stream_transport.py` (removed in PR-1)
-  - `apps/voice/cli_new.py` (removed in PR-1)
   - `apps/voice/svc_stream.py` (removed in PR-3)
   - `apps/voice/state.py` (removed in PR-3)
   - `apps/voice/ptt_state.py` (removed in PR-3)
