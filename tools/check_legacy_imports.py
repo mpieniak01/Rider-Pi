@@ -13,6 +13,7 @@ Legacy files blocked:
   - apps/voice/state.py (removed in PR-3, use apps.voice.stream.state)
   - apps/voice/svc_stream.py (removed in PR-3)
   - apps/voice/ptt_state.py (removed in PR-3)
+  - apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)
 
 Exit codes:
   0 - No legacy imports found
@@ -56,6 +57,9 @@ LEGACY_PATTERNS = [
     # Mixins removed in PR-3
     (r"\bStreamingVoiceTransportMixin\b", "StreamingVoiceTransportMixin (removed in PR-3)"),
     (r"\bStreamingVoicePTTMixin\b", "StreamingVoicePTTMixin (removed in PR-3)"),
+    # Files removed in PR-4 (transport consolidation)
+    (r"from apps\.voice\.transport\b", "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)"),
+    (r"import apps\.voice\.transport\b", "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)"),
 ]
 
 # Audio directory imports - warn but don't fail (to be migrated in future)
