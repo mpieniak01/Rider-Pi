@@ -47,7 +47,7 @@ export FACE_BROW_HK="${FACE_BROW_HK:-0.09}"
 export FACE_MOUTH_YK="${FACE_MOUTH_YK:-0.205}"
 
 BROKER="${ROOT}/services/broker.py"
-PUB="${ROOT}/tools/pub.py"
+PUB="${ROOT}/scripts/dev_bus-pub.py"
 
 log(){ printf "[%(%H:%M:%S)T] %s\n" -1 "$*"; }
 have(){ command -v "$1" >/dev/null 2>&1; }

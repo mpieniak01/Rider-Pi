@@ -69,10 +69,10 @@ python services/broker.py
 python run_simulation.py
 
 # Terminal 3: Send commands
-python tools/send_cmd.py
+python scripts/dev_send-cmd.py
 
 # Terminal 4: Monitor MQTT traffic
-python tools/bus_spy.py
+python scripts/diag_bus-spy.py
 ```
 
 ### Environment Variables
@@ -129,7 +129,7 @@ python tests/test_simulator_integration.py
 The simulator integrates seamlessly with the existing Rider-Pi infrastructure:
 
 1. **Uses existing MQTT broker** (`services/broker.py`)
-2. **Compatible with existing tools** (`tools/bus_spy.py`, `tools/send_cmd.py`)
+2. **Compatible with existing tools** (`scripts/diag_bus-spy.py`, `scripts/dev_send-cmd.py`)
 3. **Same topic names** as real robot
 4. **Same message format** as motion controller
 

@@ -11,8 +11,8 @@ import pytest
 CHECK_PATHS = [
     "apps/ui/face/",
     "services/api_core/face_api.py",
-    "tools/newface_lcd_direct.py",
-    "tools/face_cli.py",
+    "scripts/dev_face-lcd-direct.py",
+    "scripts/dev_face-cli.py",
 ]
 
 # Zakaz importu legacy apps (przykład: można rozszerzyć na inne niedozwolone importy)

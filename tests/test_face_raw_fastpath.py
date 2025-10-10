@@ -8,7 +8,7 @@ import subprocess
 def run_cli(expr="neutral", rotate=0, fit="fill", force="raw:rgb565"):
     cmd = [
         "python3",
-        "tools/face_cli.py",
+        "scripts/dev_face-cli.py",
         "--expr",
         expr,
         "--rotate",

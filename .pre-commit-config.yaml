@@ -15,7 +15,7 @@ repos:
   hooks:
   - id: check-file-length
     name: Check file length (apps/voice/*) [CI-only]
-    entry: python3 tools/check_file_length.py
+    entry: python3 scripts/dev_check-file-length.py
     language: system
     pass_filenames: false
     always_run: true
@@ -24,7 +24,7 @@ repos:
     - manual
   - id: check-legacy-imports
     name: Check for legacy imports
-    entry: python3 tools/check_legacy_imports.py
+    entry: python3 scripts/dev_check-legacy-imports.py
     language: system
     pass_filenames: false
     always_run: true

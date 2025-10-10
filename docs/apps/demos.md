@@ -70,7 +70,7 @@ python -m apps.demos.trajectory
 
 ```bash
 # Jeśli istnieje skrypt w ops/
-./ops/demo_lemniscate.py  # inna demo (ruch w kształcie lemniskaty)
+./scripts/demo_trajectory.py  # inna demo (ruch w kształcie lemniskaty)
 ```
 
 ## Błędy i diagnostyka
@@ -108,12 +108,12 @@ while True: print(json.dumps(s.recv()[1]))"
 
 ### demo_lemniscate.py (ops/)
 
-⚠️ **Lokalizacja:** `ops/demo_lemniscate.py` (nie w `apps/demos/`)
+⚠️ **Lokalizacja:** `scripts/demo_trajectory.py` (nie w `apps/demos/`)
 
 Demonstracja ruchu w kształcie lemniskaty (∞).
 
 ```bash
-./ops/demo_lemniscate.py
+./scripts/demo_trajectory.py
 ```
 
 ## Zależności

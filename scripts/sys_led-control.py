@@ -29,7 +29,7 @@ def _p(path, *extra) -> pathlib.Path:
 
 def _eacces_hint(p: pathlib.Path) -> None:
     _err(f"[err] permission denied: {p}")
-    _err("      spróbuj z sudo, np.:  sudo ./ops/ledctl.py off")
+    _err("      spróbuj z sudo, np.:  sudo ./scripts/sys_led-control.py off")
 
 
 def write_text(p: pathlib.Path, val: str) -> bool:

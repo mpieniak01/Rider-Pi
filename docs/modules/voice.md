@@ -142,7 +142,7 @@ Moduł `apps/voice` przeszedł kompleksową refaktoryzację w ramach PR#1–PR#5
 **PR#4: WebSocket Transport Consolidation** (deduplikacja transportu)
 - ❌ `apps/voice/transport.py` (319 linii) → duplikat `stream/transport.py`, usunięty
 - Jeden transport: `apps/voice/stream/transport.py`
-- Aktualizacja quality guards (`tools/check_legacy_imports.py`)
+- Aktualizacja quality guards (`scripts/dev_check-legacy-imports.py`)
 
 **PR#5: Dokumentacja** (aktualizacja docs)
 - Aktualizacja `ARCHITECTURE.md` z nową sekcją "Moduł Voice — Architektura szczegółowa"
@@ -415,7 +415,7 @@ sudo systemctl enable --now rider-voice-web.service
 journalctl -u rider-voice.service -f
 ```
 
-> Integracja z `ops/systemd_sync.sh`: unity są na allow-liście.
+> Integracja z `scripts/sys_systemd-sync.sh`: unity są na allow-liście.
 
 ---
 
@@ -576,7 +576,7 @@ ptt_state.handle_event(PTTEvent.PTT_START)
 
 ### Quality Guards
 
-Automatyczne sprawdzanie w pre-commit i CI (`tools/check_legacy_imports.py`):
+Automatyczne sprawdzanie w pre-commit i CI (`scripts/dev_check-legacy-imports.py`):
 - **Blokuje** importy usuniętych plików (exit code 1)
 - **Ostrzega** o importach `audio/*` (exit code 0, soft warning)
 

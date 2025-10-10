@@ -77,7 +77,7 @@ auth = "env:OPENAI_API_KEY"
 
 **Skrypty automatycznie ładują profil:**
 ```bash
-# ops/voice-run.sh już robi:
+# scripts/sys_voice-run.sh już robi:
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   OPENAI_API_KEY="$(bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf "%s" "$OPENAI_API_KEY"')"
   export OPENAI_API_KEY
@@ -173,7 +173,7 @@ config/alsa/preflight.sh --force --capture wm8960_in --playback wm8960_out
 
 **Integracja w skryptach:**
 ```bash
-# W ops/voice-once.sh:
+# W scripts/sys_voice-once.sh:
 "$RIDER_CONFIG_DIR/config/alsa/preflight.sh" \
   --force \
   --capture wm8960_in \
@@ -193,9 +193,9 @@ config/alsa/preflight.sh --force --capture wm8960_in --playback wm8960_out
 
 Skrypty w `ops/` **czytają** konfigurację z `config/`, nie **tworzą** jej:
 ```bash
-# ops/voice-run.sh eksportuje ENV z domyślnymi wartościami,
+# scripts/sys_voice-run.sh eksportuje ENV z domyślnymi wartościami,
 # ale można je nadpisać:
-ALSA_DEVICE=wm8960_in ops/voice-run.sh
+ALSA_DEVICE=wm8960_in scripts/sys_voice-run.sh
 ```
 
 ### Pre-flight checks (planowane w PR-3)
@@ -210,7 +210,7 @@ Przed uruchomieniem audio:
 
 ## 4. Standardy skryptów ops
 
-### Helper dla skryptów: `tools/load_config.sh`
+### Helper dla skryptów: `scripts/util_load-config.sh`
 
 Zamiast duplikować logikę wykrywania ścieżek i ładowania konfiguracji, skrypty mogą użyć:
 
@@ -219,7 +219,7 @@ Zamiast duplikować logikę wykrywania ścieżek i ładowania konfiguracji, skry
 set -euo pipefail
 
 # Załaduj pomocnicze funkcje
-source "$(dirname "$0")/../tools/load_config.sh"
+source "$(dirname "$0")/../scripts/util_load-config.sh"
 
 # Skonfiguruj środowisko automatycznie
 setup_voice_env
@@ -238,7 +238,7 @@ python -m apps.voice.cli listen
 
 **Przykład użycia w jednej linii:**
 ```bash
-source tools/load_config.sh && exec_with_config python -m apps.voice.cli ptt
+source scripts/util_load-config.sh && exec_with_config python -m apps.voice.cli ptt
 ```
 
 ### Nagłówek skryptu
@@ -393,9 +393,9 @@ A: Nie. Skrypty **czytają** z `config/` i **uzupełniają** brakujące ENV, ale
 - Utworzono `docs/CONFIG_POLICY.md`
 
 ### PR-2: Centralizacja dostępu do konfiguracji ✅
-- Utworzono `tools/load_config.sh` (helper dla skryptów)
-- Zaktualizowano `ops/voice-once.sh` (nowoczesny wzorzec)
-- Oznaczono `ops/voice-run.sh` jako LEGACY
+- Utworzono `scripts/util_load-config.sh` (helper dla skryptów)
+- Zaktualizowano `scripts/sys_voice-once.sh` (nowoczesny wzorzec)
+- Oznaczono `scripts/sys_voice-run.sh` jako LEGACY
 
 ### PR-3: Pre-flight checks ALSA ✅
 - Utworzono `config/alsa/preflight.sh` (bezpieczne zabijanie procesów)
@@ -431,7 +431,7 @@ python -m apps.voice.cli diag
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-source "$(dirname "$0")/../tools/load_config.sh"
+source "$(dirname "$0")/../scripts/util_load-config.sh"
 setup_voice_env
 # Twój kod tutaj
 ```

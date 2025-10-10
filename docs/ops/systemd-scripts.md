@@ -9,8 +9,8 @@ Bezpieczna kontrola usług systemd z **whitelist** dozwolonych jednostek. Zapobi
 ### Użycie
 
 ```bash
-./ops/service_ctl.sh <unit> <action>
-./ops/service_ctl.sh <action> <unit>  # kolejność dowolna
+./scripts/sys_control.sh <unit> <action>
+./scripts/sys_control.sh <action> <unit>  # kolejność dowolna
 ```
 
 ### Parametry
@@ -42,16 +42,16 @@ ALLOW_UNITS=(
 
 ```bash
 # Start usługi API
-./ops/service_ctl.sh rider-api.service start
+./scripts/sys_control.sh rider-api.service start
 
 # Stop usługi vision
-./ops/service_ctl.sh stop rider-vision.service  # kolejność dowolna
+./scripts/sys_control.sh stop rider-vision.service  # kolejność dowolna
 
 # Restart brokera
-./ops/service_ctl.sh rider-broker.service restart
+./scripts/sys_control.sh rider-broker.service restart
 
 # Enable na starcie systemu
-./ops/service_ctl.sh rider-api.service enable
+./scripts/sys_control.sh rider-api.service enable
 ```
 
 ### Diagnostyka
@@ -85,7 +85,7 @@ Logika wykrywania:
 
 **Dodawanie nowych usług do whitelist:**
 
-Edytuj `ops/service_ctl.sh`:
+Edytuj `scripts/sys_control.sh`:
 ```bash
 ALLOW_UNITS=(
   # ... istniejące ...
@@ -104,7 +104,7 @@ Synchronizuje definicje usług systemd z repozytorium do `/etc/systemd/system`. 
 ### Użycie
 
 ```bash
-./ops/systemd_sync.sh
+./scripts/sys_systemd-sync.sh
 ```
 
 ⚠️ **Wymaga sudo** — modyfikuje `/etc/systemd/system`
@@ -185,10 +185,10 @@ EOF
 # (edytuj plik: ALLOW_UNITS+=("rider-my-service.service"))
 
 # 3. Synchronizuj
-sudo ./ops/systemd_sync.sh
+sudo ./scripts/sys_systemd-sync.sh
 
 # 4. Uruchom
-./ops/service_ctl.sh rider-my-service.service start
+./scripts/sys_control.sh rider-my-service.service start
 ```
 
 #### 2. Usunięcie usługi
@@ -197,7 +197,7 @@ sudo ./ops/systemd_sync.sh
 # 1. Usuń z allowlist w systemd_sync.sh
 # 2. Usuń plik z systemd/
 # 3. Synchronizuj
-sudo ./ops/systemd_sync.sh
+sudo ./scripts/sys_systemd-sync.sh
 # → usługa zostanie automatycznie wyłączona i usunięta z /etc
 ```
 
@@ -242,7 +242,7 @@ Skrypt przygotowania systemu przy starcie — uruchamiany przez `rider-boot-prep
 
 ```bash
 # Ręczne uruchomienie (debug)
-sudo ./ops/boot_prepare.sh
+sudo ./scripts/sys_boot-prepare.sh
 
 # Przez systemd (automatyczne przy starcie)
 sudo systemctl start rider-boot-prepare.service

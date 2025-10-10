@@ -183,7 +183,7 @@ alsamixer -c wm8960soundcard
 }
 
 # Uruchom voice
-./ops/voice-run.sh
+./scripts/sys_voice-run.sh
 ```
 
 ---

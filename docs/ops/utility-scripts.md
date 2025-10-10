@@ -7,7 +7,7 @@
 Zestaw testów systemowych — weryfikacja funkcjonalności robota.
 
 ```bash
-./ops/test_suite.sh
+./scripts/diag_test-suite.sh
 ```
 
 ⚠️ **Wymaga weryfikacji:** Zakres testów do uzupełnienia.
@@ -26,7 +26,7 @@ Prawdopodobne testy:
 Audyt testów — sprawdzenie pokrycia, brakujące testy, jakość.
 
 ```bash
-./ops/tests_audit.sh
+./scripts/diag_tests-audit.sh
 ```
 
 ⚠️ **Wymaga weryfikacji:** Szczegóły do uzupełnienia.
@@ -38,7 +38,7 @@ Audyt testów — sprawdzenie pokrycia, brakujące testy, jakość.
 Benchmark detekcji — wydajność detektorów wizyjnych.
 
 ```bash
-./ops/bench_detect.sh [detector_type]
+./scripts/diag_bench-detect.sh [detector_type]
 ```
 
 Prawdopodobnie testuje:
@@ -56,7 +56,7 @@ Prawdopodobnie testuje:
 Sprawdzenie czujników platformy XGO.
 
 ```bash
-./ops/check_xgo_sensors.py
+./scripts/diag_sensors.py
 ```
 
 Sprawdza:
@@ -82,7 +82,7 @@ Battery:    OK (12.3V, 85%)
 Diagnostyka bootloadera XGO.
 
 ```bash
-./ops/xgo_bl_probe.py
+./scripts/diag_xgo-bootloader.py
 ```
 
 ⚠️ **Wymaga weryfikacji:** Szczegóły do uzupełnienia.
@@ -99,7 +99,7 @@ Prawdopodobnie:
 Bezpieczna inicjalizacja XGO — sprawdzenie pre-flight przed ruchem.
 
 ```bash
-./ops/xgo_safe_init.py
+./scripts/sys_xgo-init.py
 ```
 
 Sprawdza:
@@ -122,14 +122,14 @@ Sprawdza:
 Demonstracja ruchu w kształcie lemniskaty (∞).
 
 ```bash
-./ops/demo_lemniscate.py
+./scripts/demo_trajectory.py
 ```
 
 Parametry (ENV):
 ```bash
 export DEMO_SPEED=0.3
 export DEMO_SIZE=1.0  # rozmiar pętli
-./ops/demo_lemniscate.py
+./scripts/demo_trajectory.py
 ```
 
 Zobacz także: [docs/apps/demos.md](../apps/demos.md)
@@ -143,7 +143,7 @@ Zobacz także: [docs/apps/demos.md](../apps/demos.md)
 Eksport zmiennych środowiskowych dla robota.
 
 ```bash
-source ./ops/export_env.sh
+source ./scripts/util_export-env.sh
 ```
 
 Ustawia:
@@ -174,7 +174,7 @@ Prawdopodobnie:
 Czyszczenie przestarzałych usług i plików tymczasowych.
 
 ```bash
-./ops/services_cleanup.sh
+./scripts/sys_cleanup.sh
 ```
 
 Czyści:
@@ -190,7 +190,7 @@ Czyści:
 Emergency stop — zatrzymanie wszystkich ruchów.
 
 ```bash
-./ops/estop.py
+./scripts/sys_emergency-stop.py
 ```
 
 Wysyła:
@@ -209,21 +209,21 @@ Zobacz: [docs/apps/safety.md](../apps/safety.md)
 
 ```bash
 # 1. Sync systemd
-sudo ./ops/systemd_sync.sh
+sudo ./scripts/sys_systemd-sync.sh
 
 # 2. Check XGO
-./ops/xgo_safe_init.py || exit 1
+./scripts/sys_xgo-init.py || exit 1
 
 # 3. Start core services
-./ops/service_ctl.sh rider-broker.service start
-./ops/service_ctl.sh rider-api.service start
+./scripts/sys_control.sh rider-broker.service start
+./scripts/sys_control.sh rider-api.service start
 
 # 4. Start aplikacji
-./ops/service_ctl.sh rider-voice.service start
-./ops/service_ctl.sh rider-vision.service start
+./scripts/sys_control.sh rider-voice.service start
+./scripts/sys_control.sh rider-vision.service start
 
 # 5. Monitor
-./ops/monitor_metrics.sh 10 &
+./scripts/diag_metrics.sh 10 &
 ```
 
 ---
@@ -232,7 +232,7 @@ sudo ./ops/systemd_sync.sh
 
 ```bash
 # 1. Check sensors
-./ops/check_xgo_sensors.py
+./scripts/diag_sensors.py
 
 # 2. Check services
 systemctl status rider-*.service
@@ -241,10 +241,10 @@ systemctl status rider-*.service
 journalctl -u rider-broker.service --since "5 min ago"
 
 # 4. Test suite
-./ops/test_suite.sh
+./scripts/diag_test-suite.sh
 
 # 5. Monitor streams
-./ops/monitor_stream.sh motion vision.state
+./scripts/diag_stream.sh motion vision.state
 ```
 
 ---

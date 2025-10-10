@@ -3,8 +3,8 @@
 # 
 # NOTE: This script exports many ENV variables for the legacy voice app.
 # For new deployments, consider using the modern approach with config files:
-#   - See ops/voice-once.sh for example
-#   - Use tools/load_config.sh helper
+#   - See scripts/sys_voice-once.sh for example
+#   - Use scripts/util_load-config.sh helper
 #   - Read docs/CONFIG_POLICY.md for full policy
 #
 # Użycie:

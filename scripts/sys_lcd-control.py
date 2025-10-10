@@ -3,13 +3,13 @@
 Rider-Pi LCD controller (2" SPI TFT) — ON/OFF (+ status, optional no-spi mode)
 
 Pozostaje kompatybilny:
-  sudo python3 ops/lcdctl.py off
-  sudo python3 ops/lcdctl.py on
+  sudo python3 scripts/sys_lcd-control.py off
+  sudo python3 scripts/sys_lcd-control.py on
 
 Nowości:
-  sudo python3 ops/lcdctl.py status       # szybka diagnostyka
-  sudo NO_SPI=1 python3 ops/lcdctl.py off # tylko podświetlenie (bez komend SPI)
-  sudo python3 ops/lcdctl.py off --no-spi # j.w.
+  sudo python3 scripts/sys_lcd-control.py status       # szybka diagnostyka
+  sudo NO_SPI=1 python3 scripts/sys_lcd-control.py off # tylko podświetlenie (bez komend SPI)
+  sudo python3 scripts/sys_lcd-control.py off --no-spi # j.w.
 
 Env/flags:
   --bl 0|BCM     (FACE_LCD_BL_PIN)

@@ -33,7 +33,7 @@ This document summarizes the complete refactoring of the `apps/voice` module con
 
 **Changes:**
 - Updated Makefile (6 targets): `cli_new` → `cli`
-- Updated `tools/check_legacy_imports.py` (removed `cli_new` patterns)
+- Updated `scripts/dev_check-legacy-imports.py` (removed `cli_new` patterns)
 - Updated documentation (3 files)
 
 **Files changed**: 6 files, 17 lines modified
@@ -67,7 +67,7 @@ This document summarizes the complete refactoring of the `apps/voice` module con
 - `apps/voice/transport.py` (319 lines) — duplicate of `stream/transport.py`
 
 **Files updated:**
-- `tools/check_legacy_imports.py` (+4 lines) — block `transport.py` imports
+- `scripts/dev_check-legacy-imports.py` (+4 lines) — block `transport.py` imports
 - `docs/modules/voice.md` (+3 lines) — migration guide
 - `docs/QUALITY_GUARDS.md` (+4 lines) — documentation
 
@@ -224,7 +224,7 @@ def test_ptt_state():
 
 ### Legacy Imports Check
 
-**Tool**: `tools/check_legacy_imports.py`
+**Tool**: `scripts/dev_check-legacy-imports.py`
 
 **Blocks** (exit code 1):
 - `apps/voice/ws_transport`
@@ -239,13 +239,13 @@ def test_ptt_state():
 
 **Usage:**
 ```bash
-python tools/check_legacy_imports.py
+python scripts/dev_check-legacy-imports.py
 # Runs automatically in pre-commit hook
 ```
 
 ### File Length Check
 
-**Tool**: `tools/check_file_length.py`
+**Tool**: `scripts/dev_check-file-length.py`
 
 **Enforces**: 600-line limit on new files in `apps/voice`
 
@@ -255,7 +255,7 @@ python tools/check_legacy_imports.py
 
 **Usage:**
 ```bash
-python tools/check_file_length.py
+python scripts/dev_check-file-length.py
 # Runs automatically in pre-commit hook
 ```
 

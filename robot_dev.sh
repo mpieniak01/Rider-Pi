@@ -51,11 +51,11 @@ EOF
 }
 
 takeover () {
-  if [[ -x "$ROOT/ops/camera_takeover_kill.sh" ]]; then
-    say "takeover: ops/camera_takeover_kill.sh"
-    "$ROOT/ops/camera_takeover_kill.sh" || true
+  if [[ -x "$ROOT/scripts/sys_camera-kill.sh" ]]; then
+    say "takeover: scripts/sys_camera-kill.sh"
+    "$ROOT/scripts/sys_camera-kill.sh" || true
   else
-    say "takeover: brak ops/camera_takeover_kill.sh — pomijam"
+    say "takeover: brak scripts/sys_camera-kill.sh — pomijam"
   fi
 }
 

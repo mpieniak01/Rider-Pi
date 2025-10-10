@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-# ops/fbgrab.py
+# scripts/diag_framebuffer-grab.py
 # Zrzut faktycznej zawartości LCD (framebuffer) do JPG.
 # - tryb jednorazowy (domyślnie)
 # - tryb ciągły (--loop lub SNAP_FB_LOOP=1) co SNAP_FB_EVERY sekund
@@ -16,9 +16,9 @@ from __future__ import annotations
 #   SNAP_FB_FMT   -> 'RGB565' (obsługiwany obecnie)
 #
 # Przykłady:
-#   python3 -u ops/fbgrab.py
-#   SNAP_FB_LOOP=1 SNAP_FB_EVERY=0.5 python3 -u ops/fbgrab.py --loop
-#   SNAP_FB_DEV=/dev/fb1 SNAP_FB_W=320 SNAP_FB_H=240 python3 -u ops/fbgrab.py
+#   python3 -u scripts/diag_framebuffer-grab.py
+#   SNAP_FB_LOOP=1 SNAP_FB_EVERY=0.5 python3 -u scripts/diag_framebuffer-grab.py --loop
+#   SNAP_FB_DEV=/dev/fb1 SNAP_FB_W=320 SNAP_FB_H=240 python3 -u scripts/diag_framebuffer-grab.py
 import argparse
 import os
 import sys

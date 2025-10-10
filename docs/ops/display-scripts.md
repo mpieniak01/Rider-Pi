@@ -9,7 +9,7 @@ Kontrola wyświetlacza LCD — jasność, zasilanie, czyszczenie ekranu.
 ### Użycie
 
 ```bash
-./ops/lcdctl.py [command] [args]
+./scripts/sys_lcd-control.py [command] [args]
 ```
 
 ### Komendy
@@ -27,13 +27,13 @@ Prawdopodobne komendy:
 
 ```bash
 # Ustaw jasność na 80%
-./ops/lcdctl.py brightness 80
+./scripts/sys_lcd-control.py brightness 80
 
 # Wyłącz ekran (oszczędzanie energii)
-./ops/lcdctl.py off
+./scripts/sys_lcd-control.py off
 
 # Wyczyść na czarno
-./ops/lcdctl.py clear black
+./scripts/sys_lcd-control.py clear black
 ```
 
 ---
@@ -47,7 +47,7 @@ Kontrola diod LED — miganie, kolory, wzorce.
 ### Użycie
 
 ```bash
-./ops/ledctl.py [command] [args]
+./scripts/sys_led-control.py [command] [args]
 ```
 
 ### Komendy
@@ -65,13 +65,13 @@ Prawdopodobne komendy:
 
 ```bash
 # Włącz LED 0
-./ops/ledctl.py on 0
+./scripts/sys_led-control.py on 0
 
 # Miganie z częstotliwością 2 Hz
-./ops/ledctl.py blink 0 2
+./scripts/sys_led-control.py blink 0 2
 
 # Czerwony kolor
-./ops/ledctl.py color 0 255 0 0
+./scripts/sys_led-control.py color 0 255 0 0
 ```
 
 ---
@@ -85,7 +85,7 @@ Zrzut ekranu z framebuffera `/dev/fb*` do pliku PNG/JPEG.
 ### Użycie
 
 ```bash
-./ops/fbgrab.py [options]
+./scripts/diag_framebuffer-grab.py [options]
 ```
 
 ### Parametry
@@ -101,13 +101,13 @@ Prawdopodobne opcje:
 
 ```bash
 # Zrzut ekranu do PNG
-./ops/fbgrab.py -o screenshot.png
+./scripts/diag_framebuffer-grab.py -o screenshot.png
 
 # Z konkretnego framebuffera
-./ops/fbgrab.py -d /dev/fb1 -o lcd_snapshot.png
+./scripts/diag_framebuffer-grab.py -d /dev/fb1 -o lcd_snapshot.png
 
 # Format JPEG
-./ops/fbgrab.py -o screen.jpg -f jpeg
+./scripts/diag_framebuffer-grab.py -o screen.jpg -f jpeg
 ```
 
 ### Use cases
@@ -127,7 +127,7 @@ Wyświetla **ekran powitalny** z informacjami o urządzeniu: IP, hostname, wersj
 ### Użycie
 
 ```bash
-./ops/splash_device_info.py
+./scripts/sys_splash-info.py
 ```
 
 ### Wyświetlane informacje
@@ -176,7 +176,7 @@ Wrapper bash dla `splash_device_info.py` — ustawia ENV i uruchamia Python scri
 ### Użycie
 
 ```bash
-./ops/splash_device_info.sh
+./scripts/sys_splash-info.sh
 ```
 
 ---
@@ -192,7 +192,7 @@ Ekran powitalny **producenta** — logo, branding, informacje o produkcie.
 ### Użycie
 
 ```bash
-./ops/vendor_splash.py
+./scripts/sys_vendor-splash.py
 ```
 
 ### Różnice vs splash_device_info

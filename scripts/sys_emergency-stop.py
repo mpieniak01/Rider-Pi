@@ -4,9 +4,9 @@ from __future__ import annotations
 """
 E-Stop ON/OFF/STATUS przez plik-flagę, plus natychmiastowy STOP przez broker.
 Użycie:
-  python3 ops/estop.py on
-  python3 ops/estop.py off
-  python3 ops/estop.py status
+  python3 scripts/sys_emergency-stop.py on
+  python3 scripts/sys_emergency-stop.py off
+  python3 scripts/sys_emergency-stop.py status
 """
 
 import json  # noqa: E402

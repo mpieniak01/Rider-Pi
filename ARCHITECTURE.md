@@ -137,7 +137,7 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 ### LCD / Render
 
 - `apps/ui/face/driver_ili9xx.py` — most do ekranu (RAW/ShowImage).
-- `tools/newface_lcd_direct.py` — tryb demo (LCD/PNG).
+- `scripts/dev_face-lcd-direct.py` — tryb demo (LCD/PNG).
 
 ---
 
@@ -358,6 +358,6 @@ W przeciwnym razie → tryb plikowy (file).
 - `AGENT.md` — kontrakt i zasady pracy (coding, Done, quality gate).
 - `PROJECT.md` — wizja, roadmapa.
 - `config/face.toml` — strojenie mimiki.
-- `tools/newface_lcd_direct.py` — demo i diagnostyka renderera/LCD.
+- `scripts/dev_face-lcd-direct.py` — demo i diagnostyka renderera/LCD.
 - `tests/` — testy (m.in. źrenice, blink, look, clamp).
 

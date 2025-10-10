@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-# tools/manual_drive.py
+# scripts/dev_manual-drive.py
 # Prosty trenażer impulsów: f/b/l/r/s/q + liczba (opcjonalnie).
 # Spójny z apps/motion/xgo_adapter.py: impulsy blokujące (block=True),
 # obroty realizowane vendorowo (turnleft/turnright przez ada.spin).
