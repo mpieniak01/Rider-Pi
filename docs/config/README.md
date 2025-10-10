@@ -7,6 +7,7 @@
 ### Konfiguracja aplikacji
 
 - [**voice.md**](voice.md) — parametry voice (ASR, TTS, Chat) — `voice_file.toml`, `voice_streaming.toml`
+- [**validation.md**](validation.md) — **NEW**: walidacja konfiguracji, schema enforcement, fail-fast/lenient modes
 - [**face.md**](face.md) — parametry renderingu buźki — `face.toml`
 - [**alsa.md**](alsa.md) — konfiguracja ALSA (asoundrc, wm8960)
 
