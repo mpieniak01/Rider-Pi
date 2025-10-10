@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import time
 
-from apps.motion.xgo_adapter import XgoAdapter
+from drivers.xgo import XgoAdapter
 
 
 def main():
