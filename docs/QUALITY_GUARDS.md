@@ -90,7 +90,6 @@ KNOWN_EXCEPTIONS = {
 Files removed in PR-1:
 - `apps/voice/ws_transport.py`
 - `apps/voice/stream_transport.py`
-- `apps/voice/cli_new.py`
 
 Files removed in PR-3:
 - `apps/voice/svc_stream.py`

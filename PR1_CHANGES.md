@@ -17,10 +17,10 @@ This PR removes legacy/unused files from `apps/voice` as part of the refactoring
 
 **Verification**: No imports found in codebase
 
-### 3. `apps/voice/cli_new.py` (460 lines)
-**Reason**: Experimental/alternate CLI implementation that was never integrated. Main CLI is in `apps/voice/cli.py`.
+### 3. CLI files consolidated
+**Reason**: The new CLI implementation was already integrated into `apps/voice/cli.py` and `apps/voice/cli_commands.py` as part of the modular architecture.
 
-**Verification**: No imports found in codebase. Not referenced in `main.py` or any other entry point.
+**Result**: References to `cli_new` removed in PR-2 (CLI Unification).
 
 ## Files Modified
 
@@ -42,7 +42,7 @@ This PR removes legacy/unused files from `apps/voice` as part of the refactoring
 
 **Reason**: Active usage found in codebase:
 - `apps/voice/__init__.py` imports `ALSAError` from `audio/errors.py`
-- `apps/voice/cli_new.py` imports from `audio/alsa.py` and `audio/wavutil.py`
+- `apps/voice/cli.py` and `apps/voice/cli_commands.py` import from `audio/alsa.py` and `audio/wavutil.py`
 - `tests/test_voice_audio_utils.py` imports from `audio/alsa.py` and `audio/wavutil.py`
 - Contains unique functionality (`alsa.py`, `wavutil.py`) not duplicated elsewhere
 

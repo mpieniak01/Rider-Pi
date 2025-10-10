@@ -355,7 +355,9 @@ pytest -q -k voice
 ### Removed in PR-1 (Clean & Freeze)
 - **`apps/voice/ws_transport.py`** → Use `apps.voice.stream.transport` (WebSocket transport)
 - **`apps/voice/stream_transport.py`** → Use `apps.voice.stream.transport`
-- **`apps/voice/cli_new.py`** → Use `apps.voice.cli` (main CLI)
+
+### Removed in PR-2 (CLI Unification)
+- Old CLI files consolidated into single `apps.voice.cli` module
 
 ### Removed in PR-3 (Tests Migration & Shim Removal)
 - **`apps/voice/svc_stream.py`** → Use `apps.voice.stream.service.StreamingVoiceService` or `apps.voice.svc_stream_runner` for CLI entry points
