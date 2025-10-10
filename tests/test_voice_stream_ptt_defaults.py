@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from apps.voice.svc_stream import StreamingVoiceService
+from apps.voice.stream.service import StreamingVoiceService
 
 
 @pytest.fixture

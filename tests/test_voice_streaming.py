@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from apps.voice.svc_stream import StreamConfig, StreamingVoiceService
+from apps.voice.stream.service import StreamConfig, StreamingVoiceService
 
 
 class MockWebSocket:
@@ -273,7 +273,7 @@ def test_barge_in_detection(stream_config, mock_ui_publisher):
     assert not service.barge_in_event.is_set()
 
 
-@patch('apps.voice.svc_stream.websockets')
+@patch('apps.voice.stream.service.websockets')
 @pytest.mark.asyncio
 async def test_connection_failure_handling(mock_ws, stream_config, mock_ui_publisher):
     """Test connection failure handling."""

@@ -72,7 +72,7 @@ def run_listen(cfg: dict[str, Any], args) -> int:
     if _wants_stream(cfg, args):
         print("[voice.svc_core] INFO: Using streaming mode (realtime WebSocket)")
         try:
-            from .svc_stream import run_listen_stream
+            from .svc_stream_runner import run_listen_stream
 
             return run_listen_stream(cfg, args)
         except ImportError as e:
@@ -88,7 +88,7 @@ def run_once(cfg: dict[str, Any], args) -> int:
     if _wants_stream(cfg, args):
         print("[voice.svc_core] INFO: Using streaming mode (realtime WebSocket)")
         try:
-            from .svc_stream import run_once_stream
+            from .svc_stream_runner import run_once_stream
 
             return run_once_stream(cfg, args)
         except ImportError as e:

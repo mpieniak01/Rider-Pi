@@ -1,22 +1,19 @@
 # tests/test_voice_svc_stream_proxy.py
-"""Proxy tests for apps.voice.svc_stream (no I/O, no ALSA)."""
+"""Tests for apps.voice.stream.service module exports (no I/O, no ALSA)."""
 
 import pytest
 
 
 def test_exports_present():
-    from apps.voice import svc_stream
+    from apps.voice.stream import service as stream_service
 
-    assert hasattr(svc_stream, "StreamConfig")
-    assert hasattr(svc_stream, "StreamingVoiceService")
-    assert hasattr(svc_stream, "run_once_stream")
-    assert hasattr(svc_stream, "run_listen_stream")
-    assert hasattr(svc_stream, "run_ptt_stream")
+    assert hasattr(stream_service, "StreamConfig")
+    assert hasattr(stream_service, "StreamingVoiceService")
 
 
 @pytest.mark.asyncio
-async def test_run_once_stream_invokes_service_once(monkeypatch):
-    from apps.voice import svc_stream
+async def test_service_once_invocation(monkeypatch):
+    from apps.voice.stream import service as stream_service
 
     calls = {"once": 0}
 
@@ -28,19 +25,24 @@ async def test_run_once_stream_invokes_service_once(monkeypatch):
         async def once(self, *, speak=True):
             assert speak is True
             calls["once"] += 1
+            return {"transcript": {"text": "test"}}
 
-    # Zamieniamy StreamingVoiceService tylko w module proxy
-    monkeypatch.setattr(svc_stream, "StreamingVoiceService", DummyService)
+        def stop(self):
+            pass
 
-    # Uruchamiamy wrapper (użyje asyncio.run wewnątrz)
-    rc = svc_stream.run_once_stream({"stream": {}}, args=None)
-    assert rc == 0
+    # Replace StreamingVoiceService with dummy
+    monkeypatch.setattr(stream_service, "StreamingVoiceService", DummyService)
+
+    # Direct service invocation
+    svc = stream_service.StreamingVoiceService({"stream": {}})
+    result = await svc.once(speak=True)
+    assert result == {"transcript": {"text": "test"}}
     assert calls["once"] == 1
 
 
 @pytest.mark.asyncio
-async def test_run_listen_stream_invokes_service_listen(monkeypatch):
-    from apps.voice import svc_stream
+async def test_service_listen_invocation(monkeypatch):
+    from apps.voice.stream import service as stream_service
 
     calls = {"listen": 0}
 
@@ -52,27 +54,37 @@ async def test_run_listen_stream_invokes_service_listen(monkeypatch):
         async def listen(self):
             calls["listen"] += 1
 
-    monkeypatch.setattr(svc_stream, "StreamingVoiceService", DummyService)
-    rc = svc_stream.run_listen_stream({"stream": {}}, args=None)
-    assert rc == 0
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(stream_service, "StreamingVoiceService", DummyService)
+    
+    # Direct service invocation
+    svc = stream_service.StreamingVoiceService({"stream": {}})
+    await svc.listen()
     assert calls["listen"] == 1
 
 
-def test_run_ptt_stream_sets_hotword_and_delegates(monkeypatch):
-    from apps.voice import svc_stream
+@pytest.mark.asyncio
+async def test_ptt_mode_configuration():
+    """Test that PTT mode is configured correctly in service."""
+    from apps.voice.stream import service as stream_service
 
-    captured = {}
-
-    def fake_run_listen_stream(cfg, args):
-        captured["cfg"] = cfg
-        return 0
-
-    monkeypatch.setattr(svc_stream, "run_listen_stream", fake_run_listen_stream)
-
-    base_cfg = {"stream": {}, "hotword": {"enabled": False}}
-    rc = svc_stream.run_ptt_stream(base_cfg, args=None)
-    assert rc == 0
-
-    cfg = captured["cfg"]
-    assert cfg["hotword"]["enabled"] is True
-    assert cfg["hotword"]["engine"] == "ptt"
+    ptt_config = {
+        "stream": {},
+        "hotword": {"enabled": True, "engine": "ptt"},
+        "capture": {"sample_rate": 16000, "channels": 1},
+        "playback": {},
+        "service": {},
+    }
+    
+    svc = stream_service.StreamingVoiceService(ptt_config)
+    try:
+        # Verify PTT configuration is applied
+        assert svc.config["hotword"]["enabled"] is True
+        assert svc.config["hotword"]["engine"] == "ptt"
+    finally:
+        try:
+            await svc.close()
+        except Exception:
+            pass

@@ -94,7 +94,7 @@ def test_streaming_mode_delegation_with_api_key():
     }
 
     # Mock the streaming implementation to avoid actual WebSocket connection
-    with patch("apps.voice.svc_stream.run_listen_stream") as mock_stream_listen:
+    with patch("apps.voice.svc_stream_runner.run_listen_stream") as mock_stream_listen:
         mock_stream_listen.return_value = 0
 
         result = run_listen(config, None)
@@ -115,8 +115,8 @@ def test_streaming_mode_fallback_on_import_error():
         "service": {},
     }
 
-    # Mock the svc_stream module import to fail
-    with patch.dict("sys.modules", {"apps.voice.svc_stream": None}):
+    # Mock the svc_stream_runner module import to fail
+    with patch.dict("sys.modules", {"apps.voice.svc_stream_runner": None}):
         with patch("apps.voice.svc_core.run_listen_file") as mock_file_listen:
             mock_file_listen.return_value = 0
 
@@ -135,7 +135,7 @@ def test_once_mode_streaming_delegation():
         "stream": {"protocol": "websocket"},
     }
 
-    with patch("apps.voice.svc_stream.run_once_stream") as mock_stream_once:
+    with patch("apps.voice.svc_stream_runner.run_once_stream") as mock_stream_once:
         mock_stream_once.return_value = 0
 
         result = run_once(config, None)
