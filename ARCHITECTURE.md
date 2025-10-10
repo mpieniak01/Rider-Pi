@@ -314,6 +314,7 @@ transport = "realtime"
 Jeśli **wszystkie** trzy (`asr`, `chat`, `tts`) mają `transport = "realtime"` → tryb strumieniowy.
 W przeciwnym razie → tryb plikowy (file).
 
+> **Uwaga:** W przypadku konfiguracji mieszanej (np. tylko jeden z modułów ma `transport = "realtime"`, pozostałe `file`), system przechodzi w tryb plikowy dla wszystkich usług. Tryb częściowo strumieniowy nie jest obsługiwany.
 ### Historia refaktoryzacji
 
 **PR#1 (Clean & Freeze):**
