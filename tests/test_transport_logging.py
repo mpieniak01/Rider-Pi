@@ -1,5 +1,6 @@
 # apps/voice/tests/test_transport_logging.py
 """Test rate-limited WebSocket logging."""
+
 import asyncio
 import json
 import os

@@ -58,7 +58,7 @@ async def test_service_listen_invocation(monkeypatch):
             pass
 
     monkeypatch.setattr(stream_service, "StreamingVoiceService", DummyService)
-    
+
     # Direct service invocation
     svc = stream_service.StreamingVoiceService({"stream": {}})
     await svc.listen()
@@ -77,7 +77,7 @@ async def test_ptt_mode_configuration():
         "playback": {},
         "service": {},
     }
-    
+
     svc = stream_service.StreamingVoiceService(ptt_config)
     try:
         # Verify PTT configuration is applied
