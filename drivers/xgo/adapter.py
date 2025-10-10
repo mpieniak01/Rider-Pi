@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-apps/motion/xgo_adapter.py — cienka warstwa nad biblioteką XGO (CM4/Rider)
+drivers/xgo/adapter.py — cienka warstwa nad biblioteką XGO (CM4/Rider)
 
 Cel:
 - Jednolite, bezpieczne API do ruchu/LED/baterii/IMU + parę udogodnień.
