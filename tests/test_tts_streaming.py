@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from apps.voice.playback import PlaybackConfig
+from apps.voice.audio.playback import PlaybackConfig
 from apps.voice.tts import TTSConfig, speak_stream
 
 

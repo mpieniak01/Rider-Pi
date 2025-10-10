@@ -20,7 +20,7 @@ from typing import Any
 
 from . import config as voice_config, voice_logging
 from .asr import ASRConfig, transcribe
-from .playback import PlaybackConfig, play_bytes
+from .audio.playback import PlaybackConfig, play_bytes
 from .tts import TTSConfig, synthesize
 
 

@@ -13,11 +13,11 @@ from collections.abc import Iterable
 from typing import Any
 
 from .asr import ASRConfig, transcribe
-from .capture import AudioCapture, CaptureConfig
+from .audio.capture import AudioCapture, CaptureConfig
+from .audio.playback import PlaybackConfig, play_ding
 from .chat import ChatConfig
 from .kws import HotwordDetector
 from .nlu import Intent, NLURouter
-from .playback import PlaybackConfig, play_ding
 from .tts import TTSConfig, TTSStreamResult
 from .vad import WebRtcActivity, collect
 
