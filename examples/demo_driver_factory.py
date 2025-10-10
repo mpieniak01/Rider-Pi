@@ -27,9 +27,7 @@ from drivers.lcd import PanelCfg, get_lcd_driver
 from drivers.xgo import get_robot_driver
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 LOG = logging.getLogger("demo")
 

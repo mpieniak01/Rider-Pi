@@ -37,7 +37,7 @@ def find_hardware_imports(root_dir: Path, exclude_dirs: set):
             continue
 
         try:
-            with open(py_file, "r", encoding="utf-8") as f:
+            with open(py_file, encoding="utf-8") as f:
                 for line_num, line in enumerate(f, 1):
                     for pattern in hardware_patterns:
                         if pattern.match(line):

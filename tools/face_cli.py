@@ -7,9 +7,8 @@ import sys
 
 from PIL import Image, ImageDraw
 
-from drivers.lcd import make_driver
 from apps.ui.face.face_io import apply_rotate, fit_strategy, to_rgb565
-from drivers.lcd import PanelCfg
+from drivers.lcd import PanelCfg, make_driver
 
 """
 Nowe CLI do renderowania buźki na LCD/mocka.

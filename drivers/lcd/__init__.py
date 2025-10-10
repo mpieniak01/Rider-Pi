@@ -42,8 +42,8 @@ def make_driver(kind: Literal["mock", "spi"], cfg: PanelCfg) -> Driver:
             from .spi import SpiFaceDriver
 
             return SpiFaceDriver(cfg)
-        except ImportError:
-            raise RuntimeError("SPI driver not available")
+        except ImportError as err:
+            raise RuntimeError("SPI driver not available") from err
     else:
         raise ValueError(f"Unknown driver kind: {kind}")
 
@@ -73,7 +73,7 @@ def get_lcd_driver(cfg: PanelCfg | None = None):
             from .driver_ili9xx import LCDRenderer
 
             return LCDRenderer(cfg)
-        except ImportError as e:
+        except ImportError:
             # Fallback to mock if hardware not available
             from .mock import MockFaceDriver
 

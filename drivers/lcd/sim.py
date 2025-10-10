@@ -96,9 +96,7 @@ class SimulatedLCDDriver:
                     # numpy/PIL not available, skip PNG conversion
                     pass
 
-                self._write_meta(
-                    {"mode": "rgb565", "size": [w, h], "len": len(buf), "frame": self.frame_count}
-                )
+                self._write_meta({"mode": "rgb565", "size": [w, h], "len": len(buf), "frame": self.frame_count})
             except Exception as e:
                 LOG.warning(f"[SIM] Failed to save frame: {e}")
 

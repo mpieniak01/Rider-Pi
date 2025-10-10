@@ -121,7 +121,8 @@ def import_face_renderers_from_file_first():
         if m is not None:
             return m
     raise ImportError(
-        "Nie udało się załadować żadnego modułu sterownika LCD (drivers/lcd/* ani apps/ui/face/* ani _apps/ui/face_renderers.py)."
+        "Nie udało się załadować żadnego modułu sterownika LCD "
+        "(drivers/lcd/* ani apps/ui/face/* ani _apps/ui/face_renderers.py)."
     )
 
 
