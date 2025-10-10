@@ -46,10 +46,10 @@ Użyj istniejących narzędzi do sterowania symulowanym robotem:
 
 ```bash
 # Monitorowanie ruchu MQTT
-python tools/bus_spy.py
+python scripts/diag_bus-spy.py
 
 # Wysyłanie ręcznych komend
-python tools/send_cmd.py
+python scripts/dev_send-cmd.py
 ```
 
 Lub publikuj komendy bezpośrednio:

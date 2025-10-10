@@ -8,7 +8,7 @@ This PR adds documentation deprecation sections and quality guard tools to preve
 
 ### 1. Quality Guard Tools
 
-**`tools/check_file_length.py`** (116 lines)
+**`scripts/dev_check-file-length.py`** (116 lines)
 - Enforces 600-line limit on Python files in `apps/voice`
 - Ignores test files (`test_*.py`, `*_test.py`)
 - Tracks known exceptions (pre-existing files from incomplete PR-2):
@@ -20,7 +20,7 @@ This PR adds documentation deprecation sections and quality guard tools to preve
   - 1: New files exceed limit
   - 2: Known exceptions have regressed (grown larger)
 
-**`tools/check_legacy_imports.py`** (200 lines)
+**`scripts/dev_check-legacy-imports.py`** (200 lines)
 - Blocks imports of removed/deprecated modules
 - Hard blocks (exit code 1):
   - `apps/voice/ws_transport.py` (removed in PR-1)
@@ -55,8 +55,8 @@ This PR adds documentation deprecation sections and quality guard tools to preve
 
 **`.pre-commit-config.yaml`**
 - Added local hooks for quality guards:
-  - `check-file-length`: Runs `tools/check_file_length.py`
-  - `check-legacy-imports`: Runs `tools/check_legacy_imports.py`
+  - `check-file-length`: Runs `scripts/dev_check-file-length.py`
+  - `check-legacy-imports`: Runs `scripts/dev_check-legacy-imports.py`
 - Both hooks run on every commit (`always_run: true`)
 - Will block commits with new violations
 
@@ -66,11 +66,11 @@ This PR adds documentation deprecation sections and quality guard tools to preve
 
 ```bash
 # File length check (passes with known exceptions)
-$ python3 tools/check_file_length.py
+$ python3 scripts/dev_check-file-length.py
 ✅ All files under 600 lines (checked 48 files, 3 known exceptions)
 
 # Legacy imports check (1 warning for audio/*, 0 errors)
-$ python3 tools/check_legacy_imports.py
+$ python3 scripts/dev_check-legacy-imports.py
 ⚠️  Deprecated imports found (audio/* directory):
   tests/test_voice_audio_utils.py:16
     from apps.voice.audio import alsa, wavutil
@@ -117,8 +117,8 @@ The `apps/voice/audio/*` directory still exists:
   - No mentions of `audio/*`, `ws_transport.py`, `stream_transport.py` as current/recommended
 
 - ✅ **CI/Pre-commit guards**
-  - `tools/check_file_length.py` created and working
-  - `tools/check_legacy_imports.py` created and working
+  - `scripts/dev_check-file-length.py` created and working
+  - `scripts/dev_check-legacy-imports.py` created and working
   - Both added to `.pre-commit-config.yaml`
   - Guards will fail CI on new violations
 
@@ -151,8 +151,8 @@ The `apps/voice/audio/*` directory still exists:
 
 ## Files Changed
 
-- **Added**: `tools/check_file_length.py` (116 lines)
-- **Added**: `tools/check_legacy_imports.py` (200 lines)
+- **Added**: `scripts/dev_check-file-length.py` (116 lines)
+- **Added**: `scripts/dev_check-legacy-imports.py` (200 lines)
 - **Modified**: `docs/modules/voice.md` (+35 lines: deprecation section)
 - **Modified**: `docs/PTT_USAGE.md` (+16 lines: developer note)
 - **Modified**: `docs/config/voice.md` (+11 lines: deprecation note)

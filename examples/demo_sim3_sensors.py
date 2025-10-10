@@ -133,7 +133,7 @@ print()
 print("To verify MQTT messages are actually sent:")
 print("  1. Start broker: python services/broker.py")
 print("  2. Run this script: python examples/demo_sim3_sensors.py")
-print("  3. In another terminal: python tools/bus_spy.py")
+print("  3. In another terminal: python scripts/diag_bus-spy.py")
 print()
 print("=" * 70)
 

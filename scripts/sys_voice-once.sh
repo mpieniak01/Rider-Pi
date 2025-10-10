@@ -2,7 +2,7 @@
 # voice-once.sh — Modern example: single voice interaction with WM8960
 # 
 # This script demonstrates the recommended pattern:
-# - Uses tools/load_config.sh for environment setup
+# - Uses scripts/util_load-config.sh for environment setup
 # - Passes config file explicitly to Python
 # - Applies hardware setup (WM8960 mixer) before starting
 #
@@ -15,7 +15,7 @@ set -euo pipefail
 
 # Load configuration helpers
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/../tools/load_config.sh"
+source "$SCRIPT_DIR/util_load-config.sh"
 
 # Setup environment (RIDER_ROOT, config paths, API key, etc.)
 setup_voice_env

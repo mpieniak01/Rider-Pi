@@ -9,7 +9,7 @@ Uruchamia preview z kamery na LCD — wrapper dla `apps.camera`.
 ### Użycie
 
 ```bash
-./ops/camera_preview.sh [args]
+./scripts/sys_camera-preview.sh [args]
 ```
 
 ### Parametry
@@ -18,10 +18,10 @@ Przekazuje argumenty do `python -m apps.camera`:
 
 ```bash
 # Preview z detekcją twarzy
-./ops/camera_preview.sh --human 1 --every 3
+./scripts/sys_camera-preview.sh --human 1 --every 3
 
 # Preview z rotacją
-./ops/camera_preview.sh --rot 180
+./scripts/sys_camera-preview.sh --rot 180
 
 # Zobacz pełną listę parametrów
 python -m apps.camera --help
@@ -42,7 +42,7 @@ Zobacz: [docs/apps/camera.md](../apps/camera.md)
 ### Użycie
 
 ```bash
-./ops/camera_takeover_kill.sh
+./scripts/sys_camera-kill.sh
 ```
 
 ### Działanie
@@ -73,7 +73,7 @@ lsof /dev/video0
 # → python  1234 pi   3u   CHR   81,0   /dev/video0
 
 # Przejmij kamerę
-./ops/camera_takeover_kill.sh
+./scripts/sys_camera-kill.sh
 # [camera_takeover_kill] Found process: python (1234)
 # [camera_takeover_kill] Sending SIGTERM to 1234
 # [camera_takeover_kill] Process 1234 terminated
@@ -105,7 +105,7 @@ sudo pkill -9 -f "python.*camera"
 ### Użycie
 
 ```bash
-./ops/kill_cam.sh
+./scripts/sys_kill-cam.sh
 ```
 
 ### Różnice
@@ -128,7 +128,7 @@ Kontrola usług wizyjnych (vision, edge-preview, obstacle).
 ### Użycie
 
 ```bash
-./ops/vision_ctl.sh <action>
+./scripts/sys_vision-control.sh <action>
 ```
 
 ### Akcje
@@ -146,16 +146,16 @@ Prawdopodobne akcje:
 
 ```bash
 # Start wizji
-./ops/vision_ctl.sh start
+./scripts/sys_vision-control.sh start
 
 # Status
-./ops/vision_ctl.sh status
+./scripts/sys_vision-control.sh status
 # rider-vision.service:        active (running)
 # rider-edge-preview.service:  inactive (dead)
 # rider-obstacle.service:      active (running)
 
 # Stop wszystkich
-./ops/vision_ctl.sh stop
+./scripts/sys_vision-control.sh stop
 ```
 
 ### Alternatywa
@@ -163,9 +163,9 @@ Prawdopodobne akcje:
 Użyj bezpośrednio `service_ctl.sh`:
 
 ```bash
-./ops/service_ctl.sh rider-vision.service start
-./ops/service_ctl.sh rider-edge-preview.service start
-./ops/service_ctl.sh rider-obstacle.service start
+./scripts/sys_control.sh rider-vision.service start
+./scripts/sys_control.sh rider-edge-preview.service start
+./scripts/sys_control.sh rider-obstacle.service start
 ```
 
 ---
@@ -183,13 +183,13 @@ Inny proces blokuje kamerę.
 lsof /dev/video0
 
 # 2. Bezpieczne przejęcie
-./ops/camera_takeover_kill.sh
+./scripts/sys_camera-kill.sh
 
 # 3. Uruchom własny preview
-./ops/camera_preview.sh --human 1
+./scripts/sys_camera-preview.sh --human 1
 
 # (alternatywnie) Start przez systemd
-./ops/service_ctl.sh rider-cam-preview.service start
+./scripts/sys_control.sh rider-cam-preview.service start
 ```
 
 ### Pre-flight check (rekomendowane)
@@ -202,11 +202,11 @@ Dodaj do skryptu startowego:
 # Check camera availability
 if lsof /dev/video0 >/dev/null 2>&1; then
   echo "Camera busy, taking over..."
-  ./ops/camera_takeover_kill.sh
+  ./scripts/sys_camera-kill.sh
 fi
 
 # Start preview
-./ops/camera_preview.sh
+./scripts/sys_camera-preview.sh
 ```
 
 ---

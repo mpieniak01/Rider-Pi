@@ -9,7 +9,7 @@ Monitoruje **metryki systemowe** — CPU, pamięć, temperatura, dysk, network.
 ### Użycie
 
 ```bash
-./ops/monitor_metrics.sh [interval]
+./scripts/diag_metrics.sh [interval]
 ```
 
 ### Parametry
@@ -51,13 +51,13 @@ Możliwe formaty:
 
 ```bash
 # Monitoruj co 10 sekund
-./ops/monitor_metrics.sh 10
+./scripts/diag_metrics.sh 10
 
 # Zapisz do pliku
-./ops/monitor_metrics.sh 5 > metrics.log
+./scripts/diag_metrics.sh 5 > metrics.log
 
 # Monitor w tle
-nohup ./ops/monitor_metrics.sh 30 &
+nohup ./scripts/diag_metrics.sh 30 &
 ```
 
 ### Integracja z systemd
@@ -79,7 +79,7 @@ Monitoruje **strumienie danych** — topiki BUS, throughput, opóźnienia.
 ### Użycie
 
 ```bash
-./ops/monitor_stream.sh [topic...]
+./scripts/diag_stream.sh [topic...]
 ```
 
 ### Parametry
@@ -110,13 +110,13 @@ Prawdopodobnie:
 
 ```bash
 # Monitoruj wszystkie topiki
-./ops/monitor_stream.sh
+./scripts/diag_stream.sh
 
 # Tylko motion i vision
-./ops/monitor_stream.sh motion vision.state
+./scripts/diag_stream.sh motion vision.state
 
 # Eksport do CSV
-./ops/monitor_stream.sh > stream_metrics.csv
+./scripts/diag_stream.sh > stream_metrics.csv
 ```
 
 ---
@@ -180,7 +180,7 @@ Możliwe mechanizmy:
 # Ustaw threshold
 export CPU_ALERT_THRESHOLD=80  # %
 export TEMP_ALERT_THRESHOLD=70 # °C
-./ops/monitor_metrics.sh
+./scripts/diag_metrics.sh
 ```
 
 ---

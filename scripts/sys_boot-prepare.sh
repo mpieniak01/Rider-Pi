@@ -9,7 +9,7 @@ SPLASH_CLEAR="${SPLASH_CLEAR:-1}"
 SPLASH_USE="${SPLASH_USE:-}"                 # opcjonalnie: xgo|pygame|auto
 BOOT_VENDOR_GRACE="${BOOT_VENDOR_GRACE:-5}"
 LCD_BL_GPIO="${LCD_BL_GPIO:-0}"              # domyślnie BCM0
-LCD_OFF_CMD="${LCD_OFF_CMD:-/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off}"
+LCD_OFF_CMD="${LCD_OFF_CMD:-/usr/bin/python3 /home/pi/robot/scripts/sys_lcd-control.py off}"
 KEEP_BL_ON="${KEEP_BL_ON:-0}"                # 1 = zostaw BL włączone
 NO_KILL_DISPLAY="${NO_KILL_DISPLAY:-0}"      # 1 = NIE ubijaj lightdm/display-manager
 
@@ -43,8 +43,8 @@ else
 fi
 
 # 4) Splash
-SPLASH_SH="${ROBOT_ROOT}/ops/splash_device_info.sh"
-SPLASH_PY="${ROBOT_ROOT}/ops/splash_device_info.py"
+SPLASH_SH="${ROBOT_ROOT}/scripts/sys_splash-info.sh"
+SPLASH_PY="${ROBOT_ROOT}/scripts/sys_splash-info.py"
 if [[ -x "${SPLASH_SH}" ]]; then
   log "showing splash rotate=${SPLASH_ROTATE} seconds=${SPLASH_SECONDS} clear=${SPLASH_CLEAR} use=${SPLASH_USE:-auto}"
   env \

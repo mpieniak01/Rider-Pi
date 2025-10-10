@@ -93,8 +93,8 @@ def test_simulator_mqtt_communication():
     print("\n=== All Tests Completed ===\n")
     print("Next steps:")
     print("  1. Check the simulator window for robot movement")
-    print("  2. Use 'python tools/bus_spy.py' to monitor MQTT traffic")
-    print("  3. Use 'python tools/send_cmd.py' to send manual commands")
+    print("  2. Use 'python scripts/diag_bus-spy.py' to monitor MQTT traffic")
+    print("  3. Use 'python scripts/dev_send-cmd.py' to send manual commands")
 
 
 def test_with_subprocess():

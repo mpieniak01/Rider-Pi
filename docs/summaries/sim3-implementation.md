@@ -115,7 +115,7 @@ def publish(self):
 
 ### AC1: Gyro Publishing
 ✅ **VERIFIED**: During robot movement, current orientation is cyclically published on `rider.gyro.angle`
-- Verifiable using `tools/bus_spy.py`
+- Verifiable using `scripts/diag_bus-spy.py`
 - Test: `tests/test_sim3_acceptance.py::test_gyro_publishes_orientation`
 
 ### AC2: Dynamic Camera View
@@ -131,7 +131,7 @@ def publish(self):
 ### AC4: Camera Frame Publishing
 ✅ **VERIFIED**: Camera frames are cyclically published on `rider.camera.frame`
 - Frames encoded as JPEG byte arrays
-- Verifiable using `tools/bus_spy.py` or dedicated subscriber script
+- Verifiable using `scripts/diag_bus-spy.py` or dedicated subscriber script
 - Test: `tests/test_sim3_acceptance.py::test_camera_publishes_frames`
 
 ## 🧪 Test Results
@@ -184,10 +184,10 @@ python services/broker.py
 python run_simulation.py
 
 # Terminal 3: Monitor MQTT traffic
-python tools/bus_spy.py
+python scripts/diag_bus-spy.py
 
 # Terminal 4: Send control commands
-python tools/send_cmd.py
+python scripts/dev_send-cmd.py
 ```
 
 ### Run tests:

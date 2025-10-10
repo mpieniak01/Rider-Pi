@@ -253,7 +253,7 @@ class FaceController:
         return self.renderer.render_png_bytes(st)
 
     def frame_image(self) -> Image.Image:
-        """Zwraca PIL.Image (używane przez tools/newface_lcd_direct.py)."""
+        """Zwraca PIL.Image (używane przez scripts/dev_face-lcd-direct.py)."""
         try:
             data = self.frame()
             return Image.open(BytesIO(data)).convert("RGB")

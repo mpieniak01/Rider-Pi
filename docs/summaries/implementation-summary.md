@@ -72,7 +72,7 @@ All criteria from the issue have been met:
 - `tests/test_simulator_init.py`: Headless initialization test for CI/CD
 
 #### Tools
-- `tools/sim_keyboard_control.py`: Interactive keyboard control (WASD + Space)
+- `scripts/dev_keyboard-sim.py`: Interactive keyboard control (WASD + Space)
 - `demo_simulator.sh`: Complete demo workflow script
 
 ## 🔧 Technical Details
@@ -139,9 +139,9 @@ python3 services/broker.py
 python3 run_simulation.py
 
 # Terminal 3: Control robot
-python3 tools/sim_keyboard_control.py
+python3 scripts/dev_keyboard-sim.py
 # OR
-python3 tools/pub.py motion '{"type":"drive","lx":1.0,"az":0.0}'
+python3 scripts/dev_bus-pub.py motion '{"type":"drive","lx":1.0,"az":0.0}'
 ```
 
 ## 📝 Integration with Existing System

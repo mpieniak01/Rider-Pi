@@ -4,20 +4,20 @@
 
 Two quality guard tools prevent regression of the voice module refactoring:
 
-1. **`tools/check_file_length.py`** - Enforces 600-line limit
-2. **`tools/check_legacy_imports.py`** - Blocks removed/deprecated imports
+1. **`scripts/dev_check-file-length.py`** - Enforces 600-line limit
+2. **`scripts/dev_check-legacy-imports.py`** - Blocks removed/deprecated imports
 
 ## Running Manually
 
 ```bash
 # Check file length violations
-python3 tools/check_file_length.py
+python3 scripts/dev_check-file-length.py
 
 # Check legacy imports
-python3 tools/check_legacy_imports.py
+python3 scripts/dev_check-legacy-imports.py
 
 # Run both
-python3 tools/check_file_length.py && python3 tools/check_legacy_imports.py
+python3 scripts/dev_check-file-length.py && python3 scripts/dev_check-legacy-imports.py
 ```
 
 ## Pre-commit Integration
@@ -68,7 +68,7 @@ These files are tracked from incomplete PR-2. The guard:
 
 ### Adding a Known Exception
 
-If justified (rare cases), edit `tools/check_file_length.py`:
+If justified (rare cases), edit `scripts/dev_check-file-length.py`:
 
 ```python
 KNOWN_EXCEPTIONS = {

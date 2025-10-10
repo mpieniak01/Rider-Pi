@@ -106,7 +106,7 @@ def svc_action(name: str):
 
     if not os.path.isfile(SERVICE_CTL) or not os.access(SERVICE_CTL, os.X_OK):
         return _json(
-            {"error": "service_ctl_missing", "hint": "chmod +x ops/service_ctl.sh & add sudoers NOPASSWD"}, status=501
+            {"error": "service_ctl_missing", "hint": "chmod +x scripts/sys_control.sh & add sudoers NOPASSWD"}, status=501
         )
 
     try:

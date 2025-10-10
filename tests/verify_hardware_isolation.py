@@ -57,7 +57,8 @@ def main():
     # Directories where hardware imports are allowed
     allowed_dirs = {
         "drivers",  # Hardware abstraction layer
-        "ops",  # Operational scripts (allowed to access hardware directly)
+        "scripts",  # Operational scripts (allowed to access hardware directly)
+        "ops",  # Legacy ops subdirs (agent/, audio/)
         ".git",  # Git metadata
         "venv",  # Virtual environment
         ".venv",  # Virtual environment
@@ -70,7 +71,6 @@ def main():
         "apps/ui/manager.py",  # UI manager may need GPIO for buttons
         "apps/hw",  # Hardware-specific application code
         "services/motion_bridge.py",  # Legacy bridge code
-        "tools/lcdctl.py",  # Low-level LCD control tool
     }
 
     violations = find_hardware_imports(repo_root, allowed_dirs)

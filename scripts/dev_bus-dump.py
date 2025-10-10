@@ -13,9 +13,9 @@ Domyślnie:
   ADDR  = tcp://127.0.0.1:5556
   TOPIC = motion
 Użycie:
-  python3 tools/sub_dump.py                 # dump 'motion'
-  TOPIC="*" python3 tools/sub_dump.py       # dump wszystkie
-  TOPIC="vision" python3 tools/sub_dump.py  # dump 'vision'
+  python3 scripts/dev_bus-dump.py                 # dump 'motion'
+  TOPIC="*" python3 scripts/dev_bus-dump.py       # dump wszystkie
+  TOPIC="vision" python3 scripts/dev_bus-dump.py  # dump 'vision'
 """
 
 

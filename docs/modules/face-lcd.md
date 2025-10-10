@@ -15,12 +15,12 @@ make lcd-on && make lcd-black
 
 # testcard (pasy kontrolne)
 make face-testcard \
-  || python3 tools/lcd_presenter_testcard.py --rotate 270 --spi-hz 48000000
+  || python3 scripts/dev_lcd-testcard.py --rotate 270 --spi-hz 48000000
 
 # RAW (RGB565, fast-path) ~11–15 FPS @ 48–64 MHz
 make face-direct-raw EXPR=happy SECS=5
 # lub dokładnie ten sam run bez make
-sudo -E python3 tools/newface_lcd_direct.py \
+sudo -E python3 scripts/dev_face-lcd-direct.py \
   --expr happy --rotate 270 --spi-hz 48000000 \
   --secs 5 --stats --force push_frame:rgb565_3
 
@@ -79,15 +79,15 @@ source ~/.bashrc
 Najprostsza, niezależna od reszty stosu.
 
 ```bash
-python3 tools/lcd_presenter_testcard.py --rotate 270 --spi-hz 48000000
-python3 tools/lcd_presenter_clear.py
+python3 scripts/dev_lcd-testcard.py --rotate 270 --spi-hz 48000000
+python3 scripts/dev_lcd-clear.py
 ```
 
 ### 4.2) RAW (RGB565, bezpośredni push)
 Szybka ścieżka z konwersją w C (`fast565`).
 
 ```bash
-sudo -E python3 tools/newface_lcd_direct.py \
+sudo -E python3 scripts/dev_face-lcd-direct.py \
   --expr happy --rotate 270 --spi-hz 48000000 \
   --secs 5 --stats --force push_frame:rgb565_3
 ```
@@ -148,7 +148,7 @@ make stop-all    || true
 sudo -E python3 tools/lcdctl.py off    || true; sleep 0.2
 sudo -E python3 tools/lcdctl.py reset  || true; sleep 0.2
 sudo -E python3 tools/lcdctl.py on     || true
-python3 tools/lcd_presenter_clear.py   || true
+python3 scripts/dev_lcd-clear.py   || true
 ```
 
 > Albo: `make lcd-recover`
@@ -156,7 +156,7 @@ python3 tools/lcd_presenter_clear.py   || true
 3. Test ścieżką pewną, potem API:
 
 ```bash
-python3 tools/lcd_presenter_testcard.py --rotate 270 --spi-hz 48000000
+python3 scripts/dev_lcd-testcard.py --rotate 270 --spi-hz 48000000
 python3 - <<'PY'
 from services.api_core import face_api
 print(face_api.render(backend="lcd", expr="happy", size=240, rotate=270, spi_hz=48000000))
@@ -226,7 +226,7 @@ sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
   FACE_EYES_FOLLOW_KX=0.12 FACE_EYES_FOLLOW_KY=0.22 \
   FACE_BROW_FOLLOW_KX=0.06 FACE_BROW_FOLLOW_KY=0.10 \
   FACE_PUPIL_DRIFT_AMP_K=0.02 FACE_PUPIL_DRIFT_FREQ=0.8 \
-  python3 tools/newface_lcd_direct.py \
+  python3 scripts/dev_face-lcd-direct.py \
     --expr neutral --fps 20 --rotate 270 --spi-hz 32000000 \
     --secs 8 --stats
 ```

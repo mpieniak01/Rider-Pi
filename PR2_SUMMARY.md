@@ -20,7 +20,7 @@ Updated all CLI module references from `cli_new` to `cli`:
 - `voice-free`: `apps.voice.cli_new` → `apps.voice.cli`
 - `voice-smoke`: `apps.voice.cli_new` → `apps.voice.cli`
 
-### 2. tools/check_legacy_imports.py (4 changes)
+### 2. scripts/dev_check-legacy-imports.py (4 changes)
 Removed `cli_new` from legacy imports blocklist:
 - Removed documentation reference to `cli_new.py` (line 10)
 - Removed pattern for `from apps.voice.cli_new` (line 30)
@@ -46,13 +46,13 @@ Removed `cli_new` from legacy imports blocklist:
 
 ### ✅ Linting
 ```bash
-$ python -m ruff check apps/voice/cli.py apps/voice/cli_commands.py tools/check_legacy_imports.py
+$ python -m ruff check apps/voice/cli.py apps/voice/cli_commands.py scripts/dev_check-legacy-imports.py
 All checks passed!
 ```
 
 ### ✅ Formatting
 ```bash
-$ python -m ruff format --check apps/voice/cli.py apps/voice/cli_commands.py tools/check_legacy_imports.py
+$ python -m ruff format --check apps/voice/cli.py apps/voice/cli_commands.py scripts/dev_check-legacy-imports.py
 3 files already formatted
 ```
 
@@ -72,7 +72,7 @@ $ python -m pytest tests/test_voice_cli_streaming.py -v
 
 ### ✅ Legacy Imports Check
 ```bash
-$ python tools/check_legacy_imports.py
+$ python scripts/dev_check-legacy-imports.py
 ✅ No hard-blocked legacy imports (but 1 audio/* import(s) should be migrated)
 ```
 
@@ -100,7 +100,7 @@ Only documentation explaining the change remains.
 
 ## Files Changed
 - `Makefile` (6 lines)
-- `tools/check_legacy_imports.py` (4 lines)
+- `scripts/dev_check-legacy-imports.py` (4 lines)
 - `docs/QUALITY_GUARDS.md` (1 line)
 - `docs/modules/voice.md` (3 lines)
 - `PR1_CHANGES.md` (2 lines)

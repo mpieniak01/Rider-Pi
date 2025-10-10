@@ -63,10 +63,10 @@ multi-user.target @~26.3s
 ---
 
 ## 6) Co dołączamy do paczki (artefakty)
-- `systemd/wifi-unblock.service` (już w repo; symlinkowany przez `ops/systemd_sync.sh`).
+- `systemd/wifi-unblock.service` (już w repo; symlinkowany przez `scripts/sys_systemd-sync.sh`).
 - `systemd/drop-ins/rider-boot-prepare.service.d/`:
   - `after-network.conf` (wariant B) **lub** `wait-online.conf` (wariant A).
-- `ops/systemd_sync.sh` – dopisana allowlista dla powyższych plików.
+- `scripts/sys_systemd-sync.sh` – dopisana allowlista dla powyższych plików.
 
 ---
 

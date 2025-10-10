@@ -23,7 +23,7 @@ Both files contained the same `WebSocketTransport` and `ReconnectingTransport` c
 
 ### 2. Updated Quality Guard
 
-**`tools/check_legacy_imports.py`** (+4 lines)
+**`scripts/dev_check-legacy-imports.py`** (+4 lines)
 - Added pattern to block `from apps.voice.transport` imports
 - Added pattern to block `import apps.voice.transport` imports
 - Updated docstring to document PR-4 removal
@@ -47,11 +47,11 @@ Both files contained the same `WebSocketTransport` and `ReconnectingTransport` c
 
 ```bash
 # Linting
-$ ruff check tools/check_legacy_imports.py
+$ ruff check scripts/dev_check-legacy-imports.py
 All checks passed!
 
 # Legacy imports guard
-$ python tools/check_legacy_imports.py
+$ python scripts/dev_check-legacy-imports.py
 ✅ No hard-blocked legacy imports (but 4 audio/* import(s) should be migrated)
 ```
 
@@ -109,7 +109,7 @@ from apps.voice.stream.transport import WebSocketTransport, ReconnectingTranspor
 ## Files Changed
 
 - **Deleted**: `apps/voice/transport.py` (319 lines)
-- **Modified**: `tools/check_legacy_imports.py` (+4 lines)
+- **Modified**: `scripts/dev_check-legacy-imports.py` (+4 lines)
 - **Modified**: `docs/modules/voice.md` (+3 lines)
 - **Modified**: `docs/QUALITY_GUARDS.md` (+4 lines)
 
