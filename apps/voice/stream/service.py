@@ -242,6 +242,7 @@ class StreamingVoiceService:
         self.ptt_state.add_enter_callback(PTTState.ARMING, self._on_arming)
         self.ptt_state.add_enter_callback(PTTState.RECORDING, self._on_recording_start)
         self.ptt_state.add_enter_callback(PTTState.SPEAKING, self._on_speaking_start)
+        self.ptt_state.add_enter_callback(PTTState.CLOSING, self._on_closing)
         self.ptt_state.add_transition_callback(PTTState.COMMIT, PTTState.WAIT_REPLY, self._on_commit_complete)
 
     def _on_arming(self) -> None:
@@ -253,6 +254,21 @@ class StreamingVoiceService:
 
     def _on_speaking_start(self) -> None:
         self._publish_ui_state("speaking")
+
+    def _on_closing(self) -> None:
+        """Handle CLOSING state - immediately transition to IDLE for next interaction."""
+        self._publish_ui_state("idle")
+        # Use asyncio to schedule the transition to IDLE
+        if self._loop:
+            asyncio.run_coroutine_threadsafe(self._transition_to_idle(), self._loop)
+
+    async def _transition_to_idle(self) -> None:
+        """Async helper to transition from CLOSING to IDLE."""
+        # Small delay to ensure cleanup is done
+        await asyncio.sleep(0.05)
+        # Send a completion event to trigger CLOSING → IDLE transition
+        # Using TIMEOUT as a generic event that CLOSING accepts
+        self.ptt_state.transition(PTTEvent.TIMEOUT)
 
     def _on_commit_complete(self, event: PTTEvent) -> None:
         self._publish_ui_state("processing")
@@ -651,7 +667,7 @@ class StreamingVoiceService:
         """Handle keyboard PTT (ENTER key) in a non-blocking async loop.
         
         Each ENTER press toggles PTT:
-        - First press: START event (begins recording)
+        - First press: START event → ARMING → (after optional ding) → RECORDING
         - Second press: COMMIT_AUDIO event (ends recording and sends for processing)
         """
         self.logger.event("ptt.keyboard.start")
@@ -677,16 +693,24 @@ class StreamingVoiceService:
                     
                     if has_input:
                         if not ptt_active:
-                            # Start recording
+                            # Start recording flow: IDLE → ARMING → RECORDING
                             self.logger.event("ptt.keyboard.start_recording")
+                            
+                            # Transition to ARMING
                             self.ptt_state.transition(PTTEvent.START)
-                            self._publish_ui_state("recording")
-                            ptt_active = True
                             
                             # Optional beep on start
                             service_cfg = self.config.get("service", {})
                             if service_cfg.get("beep", False):
-                                asyncio.create_task(self._play_ding_async())
+                                await self._play_ding_async()
+                            
+                            # Small delay to let ding play (if any)
+                            await asyncio.sleep(0.1)
+                            
+                            # Transition to RECORDING
+                            self.ptt_state.transition(PTTEvent.DING_COMPLETE)
+                            self._publish_ui_state("recording")
+                            ptt_active = True
                         else:
                             # Stop recording and commit
                             self.logger.event("ptt.keyboard.commit")
