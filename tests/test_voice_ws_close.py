@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from apps.voice.svc_stream import StreamingVoiceService
+from apps.voice.stream.service import StreamingVoiceService
 
 
 class TestWebSocketClose:
