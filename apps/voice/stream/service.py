@@ -685,7 +685,7 @@ class StreamingVoiceService:
                         if rlist:
                             line = sys.stdin.readline()
                             # Accept only bare ENTER (empty line after strip)
-                            if line and line.strip() == "":
+                            if line.strip() == "":
                                 return True
                         return False
 
