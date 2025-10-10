@@ -6,7 +6,7 @@ Ignores test files (*_test.py, test_*.py) as they can be longer.
 
 Known exceptions (pre-existing, to be fixed):
   - apps/voice/stream/service.py (704 lines, from PR-2)
-  - apps/voice/service_impl.py (705 lines, from PR-2)
+  - apps/voice/svc_file.py (754 lines, consolidated from service_impl in PR#1)
   - apps/voice/playback.py (617 lines, from PR-2)
 
 Exit codes:
@@ -22,7 +22,7 @@ from pathlib import Path
 # Format: (path_relative_to_repo, max_allowed_lines)
 KNOWN_EXCEPTIONS = {
     "apps/voice/stream/service.py": 704,
-    "apps/voice/service_impl.py": 705,
+    "apps/voice/svc_file.py": 754,
     "apps/voice/playback.py": 617,
 }
 

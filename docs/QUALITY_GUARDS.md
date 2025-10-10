@@ -54,7 +54,7 @@ git commit --no-verify -m "..."
 
 ### Known Exceptions (pre-existing)
 - `apps/voice/stream/service.py` (704 lines)
-- `apps/voice/service_impl.py` (705 lines)
+- `apps/voice/svc_file.py` (754 lines, consolidated from service_impl in PR#1)
 - `apps/voice/playback.py` (617 lines)
 
 These files are tracked from incomplete PR-2. The guard:
@@ -74,7 +74,7 @@ If justified (rare cases), edit `tools/check_file_length.py`:
 ```python
 KNOWN_EXCEPTIONS = {
     "apps/voice/stream/service.py": 704,
-    "apps/voice/service_impl.py": 705,
+    "apps/voice/svc_file.py": 754,
     "apps/voice/playback.py": 617,
     # Add new exception only if absolutely necessary:
     # "apps/voice/some_file.py": 650,  # Reason: ...

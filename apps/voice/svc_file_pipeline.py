@@ -1,8 +1,8 @@
 # apps/voice/svc_file_pipeline.py
 """File-based ASR→CHAT→TTS pipeline logic.
 
-Extracted from service_impl.py to keep files under 600 lines.
-Contains the core voice processing cycle for file mode operation.
+Experimental pipeline-based approach for file mode operation.
+Note: VoiceService class-based approach is currently in svc_file.py.
 """
 
 from __future__ import annotations

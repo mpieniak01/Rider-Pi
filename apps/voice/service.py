@@ -6,7 +6,7 @@ from typing import Any
 """
 apps.voice service API
 
-- Legacy (tymczasowe, na potrzeby testów): klasy z service_impl.
+- Legacy (tymczasowe, na potrzeby testów): klasy z svc_file (moved from service_impl in PR#1).
 - Nowe API: funkcje run_listen / run_once.
 - Shimy: punkty do monkeypatch w testach (ASR, VAD, hotword/PTT, NLU/chat).
 
