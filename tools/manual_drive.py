@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import sys
 
-from apps.motion.xgo_adapter import XgoAdapter
+from drivers.xgo import XgoAdapter
 
 HELP = """\
 Komendy:
