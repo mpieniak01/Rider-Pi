@@ -128,13 +128,13 @@ def main():
     """Main entry point."""
     repo_root = Path(__file__).parent.parent
 
-    # Check all Python files in the repo (except attic and _apps)
+    # Check all Python files in the repo (except _apps)
     python_files = []
     for pattern in ["apps/**/*.py", "tests/**/*.py", "common/**/*.py", "services/**/*.py"]:
         python_files.extend(repo_root.glob(pattern))
 
     # Filter out excluded directories
-    excluded = {"attic", "_apps"}
+    excluded = {"_apps"}
     python_files = [f for f in python_files if not any(part in excluded for part in f.parts)]
 
     failures = []
