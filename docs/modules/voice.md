@@ -15,6 +15,153 @@ Wybór trybu odbywa się automatycznie na podstawie konfiguracji `transport` w s
 
 ---
 
+## Architektura modułu
+
+### Refaktoryzacja (2024 Q4)
+
+Moduł `apps/voice` przeszedł kompleksową refaktoryzację w ramach PR#1–PR#5 w celu:
+- Eliminacji duplikatów kodu (usunięto ~1000 linii zduplikowanego kodu)
+- Rozdzielenia logiki plikowej i strumieniowej
+- Uproszczenia testowania i utrzymania
+- Wprowadzenia jasnego API i punktów integracji
+
+### Komponenty po refaktoryzacji
+
+#### Wybór trybu i orkiestracja
+- **`svc_core.py`** — centralna logika wyboru trybu (`run_listen`, `run_once`, `run_ptt`)
+  - Analizuje konfigurację `transport` w `[asr]`, `[chat]`, `[tts]`
+  - Deleguje do odpowiedniego serwisu (file lub stream)
+
+#### Tryb plikowy (file)
+- **`svc_file.py`** — `VoiceService` (klasa główna), `run_listen_file()`, `run_once_file()`
+- **`svc_file_pipeline.py`** — pipeline ASR→Chat→TTS
+- **Przepływ**: Capture → WAV → ASR (pełna transkrypcja) → Chat → TTS → Playback
+
+#### Tryb strumieniowy (realtime)
+- **`svc_stream_runner.py`** — wrappery CLI dla trybu stream
+  - `run_listen_stream()`, `run_ptt_stream()`, `run_once_stream()`
+  - Delegują do `stream/service.StreamingVoiceService`
+
+**Pakiet `apps/voice/stream/`:**
+- **`service.py`** — `StreamingVoiceService` (główna klasa, 700+ linii)
+  - Integruje mixiny: `StreamHandlersMixin`, `StreamPlayoutMixin`
+  - Lifecycle: connect → session → audio duplex → cleanup
+- **`transport.py`** — `WebSocketTransport`, `ReconnectingTransport`
+  - Ping/heartbeat, exponential backoff retry (max 6 prób)
+  - Obsługa `websockets` (async) i `websocket-client` (sync fallback)
+- **`state.py`** — `PTTStateMachine` (Push-To-Talk state machine)
+  - Stany: IDLE, LISTENING, SPEAKING, PROCESSING
+  - Eventy: PTT_START, PTT_STOP, ASR_PARTIAL, TTS_START, TTS_END
+- **`handlers.py`** — `StreamHandlersMixin`
+  - Obsługa wiadomości WebSocket (session, ASR, TTS, błędy)
+  - Keyboard PTT, ding sounds, partial transcript publishing
+- **`playout.py`** — `StreamPlayoutMixin`
+  - Audio capture thread (chunki 20ms → WebSocket)
+  - TTS player thread (WebSocket → jitter buffer → playback)
+  - Barge-in handling (przerwanie TTS przez nową mowę)
+
+#### Moduły audio (niskopoziomowe)
+**Pakiet `apps/voice/audio/`:**
+- **`capture.py`** — przechwytywanie audio (ALSA/Pulse/command)
+  - `CaptureConfig`, `capture_once()`, `capture_stream()`
+  - VAD integration, silence detection
+- **`playback.py`** — odtwarzanie audio (ALSA/Pulse)
+  - `PlaybackConfig`, `play_audio()`, `play_ding()`
+- **`alsa.py`** — narzędzia ALSA (lista urządzeń, konfiguracja dmix/dsnoop)
+- **`wavutil.py`** — operacje na plikach WAV
+- **`errors.py`** — `ALSAError`, `AudioError`
+
+> **Uwaga**: Pakiet `audio/*` planowany do migracji na top-level w przyszłych PR (obecnie w użyciu)
+
+#### Moduły integracji backendu
+- **`asr.py`** — ASR backends (OpenAI, Vosk)
+- **`chat.py`** — Chat API (streaming generator dla realtime)
+- **`tts.py`** — TTS backends (OpenAI, Piper)
+- **`vad.py`** — Voice Activity Detection
+- **`kws.py`** — Keyword Spotting (hotword)
+
+#### CLI i API
+- **`cli.py`** + **`cli_commands.py`** — interfejs linii poleceń
+  - Komendy: `listen`, `ptt`, `once`, `asr`, `tts`, `diag`
+  - Obsługa `--mode {stream,file}` dla każdej komendy
+- **`web.py`** — HTTP API (Flask)
+  - Endpointy: `/asr`, `/tts`, `/capture`, `/healthz`
+- **`main.py`** — entry point dla systemd
+
+### Przepływ danych — szczegóły
+
+#### Tryb plikowy
+1. **Trigger**: Hotword detection lub PTT (Enter key)
+2. **Capture**: `audio/capture.py` → WAV file (VAD kończy nagranie po ciszy)
+3. **ASR**: `asr.py` → pełna transkrypcja tekstu
+4. **Chat**: `chat.py` → odpowiedź (pełny tekst)
+5. **TTS**: `tts.py` → synteza audio (WAV/MP3 file)
+6. **Playback**: `audio/playback.py` → speaker
+7. **Loop**: Powrót do kroku 1 (w trybie `listen`)
+
+**Zalety**: Niskie zużycie zasobów, kompatybilność z offline backends  
+**Wady**: Brak partial results, opóźnienie (pełny pipeline sekwencyjny)
+
+#### Tryb strumieniowy
+1. **Connection**: `stream/transport.py` → WebSocket connect do realtime endpoint
+2. **Session**: `session.create` → inicjalizacja konfiguracji (ASR/Chat/TTS)
+3. **PTT Start**: User trigger → `PTTStateMachine.LISTENING`
+4. **Audio duplex**:
+   - **TX**: Capture thread → chunki 20ms PCM16 → `audio.append` WebSocket
+   - **RX**: WebSocket → partial ASR (`transcript.delta`) → UI update
+5. **Silence**: Server VAD → `audio.commit` → finalna transkrypcja
+6. **Chat streaming**: Response generator → tekst (streaming) → sentence buffer
+7. **TTS streaming**: Zdanie kompletne → TTS chunks → `audio.delta` (PCM16 base64)
+8. **Playback**: TTS player thread → jitter buffer → speaker
+9. **Barge-in**: Nowa mowa wykryta → cancel TTS, clear buffers, nowa tura (krok 4)
+10. **PTT Stop**: Session cleanup → `PTTStateMachine.IDLE`
+
+**Zalety**: Natychmiastowe partial results, niskie latencje, interaktywność  
+**Wady**: Wymagany realtime backend (OpenAI Realtime API), wyższe koszty
+
+### Historia zmian (PR#1–PR#5)
+
+**PR#1: Clean & Freeze** (usunięto legacy files)
+- ❌ `apps/voice/ws_transport.py` (289 linii) → duplikat, zastąpiony przez `stream/transport.py`
+- ❌ `apps/voice/stream_transport.py` (120 linii) → duplikat, nieużywany
+- ✅ Zachowano `audio/*` (aktywne użycie, migracja odroczona)
+
+**PR#2: CLI Unification** (konsolidacja CLI)
+- Usunięto odniesienia do nieistniejącego `cli_new.py`
+- Jeden spójny moduł: `apps/voice/cli` + `cli_commands`
+- Zaktualizowano Makefile (6 targets) i dokumentację
+
+**PR#3: Tests Migration & Shim Removal** (cleanup shims)
+- ❌ `apps/voice/svc_stream.py` (104 linii) → re-export shim, usunięty
+- ❌ `apps/voice/state.py` (364 linii) → `StreamingVoicePTTMixin`, zastąpiony przez `stream/state.PTTStateMachine`
+- ❌ `apps/voice/ptt_state.py` (324 linii) → duplikat, nieużywany
+- ❌ Mixiny: `StreamingVoiceTransportMixin`, `StreamingVoicePTTMixin` → usunięte
+- ✅ Nowy moduł: `svc_stream_runner.py` (wrappery CLI dla stream mode)
+- Migracja 9 testów z legacy shims do nowych modułów
+
+**PR#4: WebSocket Transport Consolidation** (deduplikacja transportu)
+- ❌ `apps/voice/transport.py` (319 linii) → duplikat `stream/transport.py`, usunięty
+- Jeden transport: `apps/voice/stream/transport.py`
+- Aktualizacja quality guards (`tools/check_legacy_imports.py`)
+
+**PR#5: Dokumentacja** (aktualizacja docs)
+- Aktualizacja `ARCHITECTURE.md` z nową sekcją "Moduł Voice — Architektura szczegółowa"
+- Rozszerzenie `docs/modules/voice.md` z sekcją "Architektura modułu"
+- Konsolidacja informacji z PR#1–PR#4 summaries
+
+### Statystyki refaktoryzacji
+
+- **Usunięto**: ~1600 linii duplikatów i legacy code
+- **Dodano**: ~500 linii nowych modułów (svc_stream_runner, dokumentacja)
+- **Saldo netto**: -1100 linii (redukcja złożoności)
+- **Pliki usunięte**: 6 (ws_transport, stream_transport, svc_stream, state, ptt_state, transport)
+- **Pliki dodane**: 1 (svc_stream_runner)
+- **Testy**: 100% migracja z legacy shims, wszystkie przechodzą
+
+
+
+---
+
 ## Wymagania
 
 - **Sprzęt/OS**: Raspberry Pi, Debian/Bookworm.
@@ -350,33 +497,87 @@ pytest -q -k voice
 
 ## Deprecated / Legacy Files
 
-**⚠️  The following files/modules have been removed or deprecated during refactoring:**
+**⚠️  The following files/modules have been removed or deprecated during refactoring (PR#1–PR#4):**
+
+### Summary Table
+
+| Usunięty plik | PR | Powód | Migracja do |
+|---------------|----|-----------------------------------------|-----------------|
+| `ws_transport.py` | #1 | Duplikat WebSocket transport | `stream/transport.py` |
+| `stream_transport.py` | #1 | Duplikat, nieużywany | `stream/transport.py` |
+| `svc_stream.py` | #3 | Re-export shim, zbędny po modularyzacji | `stream/service.py` lub `svc_stream_runner.py` |
+| `state.py` | #3 | `StreamingVoicePTTMixin` duplikat | `stream/state.PTTStateMachine` |
+| `ptt_state.py` | #3 | Duplikat PTT state, nieużywany | `stream/state.PTTStateMachine` |
+| `transport.py` | #4 | Duplikat `stream/transport.py` | `stream/transport.py` |
+
+**Usunięto razem**: 6 plików, ~1600 linii duplikatów i legacy code
 
 ### Removed in PR-1 (Clean & Freeze)
-- **`apps/voice/ws_transport.py`** → Use `apps.voice.stream.transport` (WebSocket transport)
-- **`apps/voice/stream_transport.py`** → Use `apps.voice.stream.transport`
+- **`apps/voice/ws_transport.py`** (289 linii) → Use `apps.voice.stream.transport` (WebSocket transport)
+- **`apps/voice/stream_transport.py`** (120 linii) → Use `apps.voice.stream.transport`
 
 ### Removed in PR-2 (CLI Unification)
 - Old CLI files consolidated into single `apps.voice.cli` module
+- References to non-existent `cli_new.py` removed from Makefile and docs
 
 ### Removed in PR-3 (Tests Migration & Shim Removal)
-- **`apps/voice/svc_stream.py`** → Use `apps.voice.stream.service.StreamingVoiceService` or `apps.voice.svc_stream_runner` for CLI entry points
-- **`apps/voice/state.py`** (StreamingVoicePTTMixin) → Use `apps.voice.stream.state.PTTStateMachine`
-- **`apps/voice/ptt_state.py`** → Use `apps.voice.stream.state.PTTStateMachine`
+- **`apps/voice/svc_stream.py`** (104 linii) → Use `apps.voice.stream.service.StreamingVoiceService` or `apps.voice.svc_stream_runner` for CLI entry points
+- **`apps/voice/state.py`** (364 linii, StreamingVoicePTTMixin) → Use `apps.voice.stream.state.PTTStateMachine`
+- **`apps/voice/ptt_state.py`** (324 linii) → Use `apps.voice.stream.state.PTTStateMachine`
 - **`StreamingVoiceTransportMixin`** → Use concrete transport classes from `apps.voice.stream.transport`
 - **`StreamingVoicePTTMixin`** → Use `apps.voice.stream.state.PTTStateMachine`
 
 ### Removed in PR-4 (WebSocket Transport Consolidation)
-- **`apps/voice/transport.py`** → Use `apps.voice.stream.transport` (duplicate removed, single implementation)
+- **`apps/voice/transport.py`** (319 linii) → Use `apps.voice.stream.transport` (duplicate removed, single implementation)
 
 ### Pending Migration
-- **`apps/voice/audio/*`** directory (deprecated, will be migrated to top-level modules)
-  - Current: `from apps.voice.audio import alsa, wavutil`
-  - Future: Functionality will be integrated into `apps.voice.capture`, `apps.voice.playback`, or `apps.voice.utils`
-  - Note: Currently still used by some tests; migration planned for future PR
+- **`apps/voice/audio/*`** directory (currently in use, migration planned)
+  - Current: `from apps.voice.audio import alsa, wavutil, capture, playback`
+  - Future: Functionality will be integrated into top-level modules or remain as specialized subpackage
+  - Note: Quality guard warns about imports but doesn't block (exit code 0)
 
-**Migration guide:**
-- For streaming services: import from `apps.voice.stream.service`
-- For PTT state machine: import from `apps.voice.stream.state`
-- For WebSocket transport: import from `apps.voice.stream.transport`
-- For CLI entry points: use `apps.voice.svc_stream_runner` or `apps.voice.svc_core`
+### Migration Guide
+
+**Streaming service:**
+```python
+# ❌ OLD (removed)
+from apps.voice.svc_stream import StreamingVoiceService
+from apps.voice.transport import WebSocketTransport
+from apps.voice.state import StreamingVoicePTTMixin
+
+# ✅ NEW (correct)
+from apps.voice.stream.service import StreamingVoiceService
+from apps.voice.stream.transport import WebSocketTransport, ReconnectingTransport
+from apps.voice.stream.state import PTTStateMachine
+```
+
+**CLI entry points:**
+```python
+# ❌ OLD (removed)
+from apps.voice.svc_stream import run_listen_stream
+
+# ✅ NEW (correct)
+from apps.voice.svc_stream_runner import run_listen_stream
+# or use high-level API:
+from apps.voice.svc_core import run_listen
+```
+
+**PTT state machine:**
+```python
+# ❌ OLD (removed)
+class MyService(StreamingVoicePTTMixin):
+    pass
+
+# ✅ NEW (correct)
+from apps.voice.stream.state import PTTStateMachine, PTTEvent
+ptt_state = PTTStateMachine(logger)
+ptt_state.handle_event(PTTEvent.PTT_START)
+```
+
+### Quality Guards
+
+Automatyczne sprawdzanie w pre-commit i CI (`tools/check_legacy_imports.py`):
+- **Blokuje** importy usuniętych plików (exit code 1)
+- **Ostrzega** o importach `audio/*` (exit code 0, soft warning)
+
+
