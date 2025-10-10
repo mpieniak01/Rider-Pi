@@ -22,7 +22,7 @@ from typing import Any
 
 try:  # py>=3.11
     import tomllib  # type: ignore[attr-defined]
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     import tomli as tomllib  # type: ignore[no-redef]
 
 __all__ = [
