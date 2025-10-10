@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+from typing import Any
+
 """
 apps.voice service API
 
@@ -7,28 +10,76 @@ apps.voice service API
 - Nowe API: funkcje run_listen / run_once.
 - Shimy: punkty do monkeypatch w testach (ASR, VAD, hotword/PTT, NLU/chat).
 
-Dodatkowo: na etapie importu próbujemy bezpiecznie uzupełnić ENV
-(OPENAI_API_KEY, itp.) z ~/.bash_profile, jeśli dostępny jest moduł
-apps.voice.env_loader (nie jest to twarda zależność).
+Dodatkowo: podczas importu:
+- łagodnie próbujemy uzupełnić ENV z ~/.bash_profile (gdy dostępny jest
+  moduł apps.voice.env_loader – nie jest to twarda zależność),
+- logujemy stan kluczowych zmiennych środowiskowych (bezpiecznie, bez wartości).
 """
 
-# --- Opcjonalne uzupełnienie ENV z ~/.bash_profile ---------------------------
+# Logowanie dopiero po wczytaniu opcjonalnego ENV – unikamy zbędnych importów.
 try:
-    # Nie robimy z tego twardej zależności – jeśli modułu nie ma, pomijamy.
-    from .env_loader import (  # type: ignore
-        ensure_env_from_bash_profile as _ensure_env_from_bash_profile,
-    )
+    from .voice_logging import info as _log_info, warn as _log_warn  # type: ignore
 except Exception:  # pragma: no cover
-    _ensure_env_from_bash_profile = None  # type: ignore[assignment]
+    # Minimalne „no-op” jeśli logger nie jest dostępny w bardzo wczesnym etapie importu.
+    def _log_info(name: str, msg: str, data: dict[str, Any] | None = None) -> None:  # type: ignore
+        pass
 
-if _ensure_env_from_bash_profile:
-    # Łagodne uzupełnienie brakujących zmiennych; brak skutku ubocznego,
-    # gdy ENV jest kompletne.
+    def _log_warn(name: str, msg: str, data: dict[str, Any] | None = None) -> None:  # type: ignore
+        pass
+
+
+# --- Opcjonalne uzupełnienie ENV z ~/.bash_profile ---------------------------
+def _maybe_load_env_from_bash_profile() -> None:
+    """
+    Łagodne uzupełnienie ENV z ~/.bash_profile (jeśli dostępny moduł).
+    Nigdy nie zrywa importu przy błędach.
+    """
+    try:
+        # Nie robimy z tego twardej zależności – jeśli modułu nie ma, pomijamy.
+        from .env_loader import (  # type: ignore
+            ensure_env_from_bash_profile as _ensure_env_from_bash_profile,
+        )
+    except Exception:  # pragma: no cover
+        _log_info("voice.init", "env.loader.missing", {"src": "env_loader"})
+        return
+
     try:
         _ensure_env_from_bash_profile()
-    except Exception:
-        # Nigdy nie zrywamy importu pakietu, jeżeli profil jest niedostępny.
-        pass
+        _log_info("voice.init", "env.loader.ok", {"src": "~/.bash_profile"})
+    except Exception:  # pragma: no cover
+        _log_warn("voice.init", "env.loader.failed", {"src": "~/.bash_profile"})
+
+
+_maybe_load_env_from_bash_profile()
+
+
+def _mask_len(value: str | None) -> int:
+    return len(value) if value else 0
+
+
+def _report_env_state() -> None:
+    """
+    Bezpieczne logowanie stanu krytycznych zmiennych (bez wypisywania wartości).
+    """
+    keys = [
+        "OPENAI_API_KEY",  # Realtime / Chat
+        "OPENAI_BASE_URL",  # niestandardowe endpointy (opcjonalnie)
+        "OPENAI_ORG_ID",  # org (opcjonalnie)
+        "HTTP_PROXY",  # ewentualne proxy
+        "HTTPS_PROXY",
+    ]
+    data = {k: {"present": bool(os.getenv(k)), "len": _mask_len(os.getenv(k))} for k in keys}
+    _log_info("voice.init", "env.state", data)
+
+    if not os.getenv("OPENAI_API_KEY"):
+        _log_warn(
+            "voice.init",
+            "env.missing.key",
+            {"var": "OPENAI_API_KEY", "hint": "Ustaw klucz lub zapewnij ładowanie z ~/.bash_profile"},
+        )
+
+
+_report_env_state()
 
 # --- Legacy class-based API (tymczasowo dla zgodności testów) ----------------
 from .service_impl import (  # noqa: E402
