@@ -82,15 +82,15 @@ def _report_env_state() -> None:
 _report_env_state()
 
 # --- Legacy class-based API (tymczasowo dla zgodności testów) ----------------
-from .service_impl import (  # noqa: E402
+# Now imported from svc_file (consolidated in PR#1)
+# --- Public functional API (nowe) -------------------------------------------
+from .svc_core import run_listen, run_once  # noqa: E402
+from .svc_file import (  # noqa: E402
     SpeechTask,
     VoiceResult,
     VoiceService,
-    setup_signals,
 )
-
-# --- Public functional API (nowe) -------------------------------------------
-from .svc_core import run_listen, run_once  # noqa: E402
+from .svc_signals import setup_signals  # noqa: E402
 
 # --- Shimy kompatybilności dla testów (monkeypatch w pytest) -----------------
 # Elastyczny import transcribe_file -> transcribe

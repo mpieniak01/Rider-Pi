@@ -20,12 +20,12 @@ from apps.voice.service import VoiceService
 """
 Regression tests for VoiceService UI state publishing.
 
-Kluczowe: patchujemy **apps.voice.service_impl.*** (a nie asr/tts/playback bezpośrednio),
-bo service_impl importuje symbole przy ładowaniu:
-    from ..asr import transcribe
-    from ..tts import synthesize
-    from ..playback import play_bytes
-i potem używa lokalnych nazw modułu (service_impl.transcribe itd.).
+Kluczowe: patchujemy **apps.voice.svc_file.*** (przeniesione z service_impl w PR#1),
+bo svc_file importuje symbole przy ładowaniu:
+    from .asr import transcribe
+    from .tts import synthesize
+    from .playback import play_bytes
+i potem używa lokalnych nazw modułu (svc_file.transcribe itd.).
 """
 
 # Ścieżka projektu na początek sys.path
@@ -100,7 +100,8 @@ def _base_config() -> dict:
 def service_impl_mod():
     import importlib
 
-    return importlib.import_module("apps.voice.service_impl")
+    # PR#1: VoiceService moved to svc_file
+    return importlib.import_module("apps.voice.svc_file")
 
 
 def _state_sequence(publisher: FakePublisher) -> list[str]:
