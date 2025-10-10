@@ -131,6 +131,12 @@ class StreamingVoiceService:
         self._last_audio_ts: float = 0.0
         self._last_commit_ts: float = time.time()
 
+        # --- Bandwidth metrics (pojedynczy event na końcu sesji) -------------
+        self._bw_tx_total: int = 0
+        self._bw_rx_total: int = 0  # na razie nieakumulowane (opcjonalnie)
+        self._bw_started_ts: float = time.time()
+        # ---------------------------------------------------------------------
+
         # Capture configuration for chunk processing
         capture_in = dict(self.config.get("capture", {}) or {})
         try:
@@ -819,6 +825,13 @@ class StreamingVoiceService:
             msg = json.dumps({"type": "input_audio_buffer.append", "audio": b64})
             await self.transport.send(msg)
 
+            # akumuluj bajty wysłane (TX)
+            try:
+                if isinstance(chunk, (bytes, bytearray)):
+                    self._bw_tx_total += len(chunk)
+            except Exception:
+                pass
+
             self._chunk_counter += 1
             self._any_audio_since_commit = True
             self._last_audio_ts = time.time()
@@ -1049,6 +1062,22 @@ class StreamingVoiceService:
             finally:
                 self.websocket = None
                 self.connected = False
+
+        # Emituj pojedynczą metrykę pasma na koniec sesji
+        try:
+            window_s = max(0.001, time.time() - self._bw_started_ts)
+            data = {
+                "tx_bytes": int(self._bw_tx_total),
+                "rx_bytes": int(self._bw_rx_total),
+                "window_s": float(window_s),
+                "tx_bps": float(self._bw_tx_total) / window_s,
+                "rx_bps": float(self._bw_rx_total) / window_s if self._bw_rx_total else 0.0,
+                "phase": "final",
+            }
+            # Nazwa eventu "bw" – zgodnie z testem oczekującym logu przepływności
+            self.logger.event("bw", **data)
+        except Exception:
+            pass
 
         self._cleanup_workers()
         self.ptt_state.reset()
