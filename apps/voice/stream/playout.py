@@ -14,8 +14,8 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..capture import CaptureConfig
-    from ..playback import PlaybackConfig
+    from ..audio.capture import CaptureConfig
+    from ..audio.playback import PlaybackConfig
     from ..voice_logging import VoiceLogger
 
 

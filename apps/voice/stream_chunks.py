@@ -16,7 +16,7 @@ from typing import Any
 
 # ⬇️ Uwaga: celowo NIE importujemy voice_logging, żeby uniknąć pętli importów
 # from . import voice_logging
-from .capture import CaptureConfig
+from .audio.capture import CaptureConfig
 from .rt_protocol import (
     build_audio_append,
     build_audio_commit,

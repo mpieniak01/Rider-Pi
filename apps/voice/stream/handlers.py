@@ -19,8 +19,8 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from ..audio.playback import PlaybackConfig
     from ..chat import ChatSession
-    from ..playback import PlaybackConfig
     from ..tts import TTSConfig
     from ..voice_logging import VoiceLogger
     from .state import PTTEvent, PTTStateMachine
@@ -469,7 +469,7 @@ class StreamHandlersMixin:
 
             def _do_ding():
                 try:
-                    from ..playback import play_ding
+                    from ..audio.playback import play_ding
 
                     play_ding(self._playback_cfg, self.logger)
                 except Exception as e:

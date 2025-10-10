@@ -12,8 +12,8 @@ from dataclasses import dataclass
 import requests
 
 from . import voice_logging as voice_logging
+from .audio.playback import PlaybackConfig, PlaybackError, play_bytes, start_stream
 from .common import ensure_openai_key
-from .playback import PlaybackConfig, PlaybackError, play_bytes, start_stream
 
 
 class TTSError(RuntimeError):
