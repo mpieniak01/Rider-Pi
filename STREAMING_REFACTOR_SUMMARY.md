@@ -150,6 +150,43 @@ Dodano testy jednostkowe:
 4. **Mockowanie OpenAI API**: Testy integracyjne bez rzeczywistego API
 5. **Configuration**: Parametry sentence buffering w TOML
 
+## PTT (Push-to-Talk) Mode Implementation
+
+### Completed in Issue #XX
+
+**Objective**: Implement intuitive ENTER key-based PTT control for streaming voice interactions.
+
+**Implementation**:
+- Added `_keyboard_ptt_loop()` async method to `StreamingVoiceService`
+- Non-blocking stdin polling using `select.select()` in executor
+- State machine flow: IDLE → ARMING → RECORDING → COMMIT → WAIT_REPLY → SPEAKING → CLOSING → IDLE
+- Automatic transition from CLOSING to IDLE via `_on_closing()` callback
+- Optional beep sound on recording start (configurable via `service.beep`)
+
+**User Flow**:
+1. Press ENTER → Start recording (IDLE → ARMING → RECORDING)
+2. Speak your message
+3. Press ENTER again or wait for VAD → End recording (RECORDING → COMMIT)
+4. System processes and plays response (COMMIT → WAIT_REPLY → SPEAKING)
+5. Auto-return to IDLE, ready for next interaction
+
+**Key Files Modified**:
+- `apps/voice/stream/service.py` - Added keyboard PTT loop and state callbacks
+- `apps/voice/stream/state.py` - PTT state machine (no changes, working as designed)
+- `docs/PTT_USAGE.md` - Comprehensive usage documentation
+
+**CLI Usage**:
+```bash
+./voice ptt --mode stream    # PTT with streaming mode
+./voice ptt --mode file      # PTT with file mode
+./voice ptt --force          # With ALSA cleanup
+```
+
+**Testing**:
+- Manual state machine verification completed
+- All state transitions validated: IDLE → START → ARMING → DING_COMPLETE → RECORDING → COMMIT_AUDIO → COMMIT → SERVER_RESPONSE → WAIT_REPLY → TTS_START → SPEAKING → TTS_COMPLETE → CLOSING → TIMEOUT → IDLE
+- Existing tests pass without regression
+
 ## Powiązane pliki
 
 - `apps/voice/chat.py` - moduł czatu

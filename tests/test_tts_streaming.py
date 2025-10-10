@@ -11,13 +11,13 @@ from apps.voice.tts import TTSConfig, speak_stream
 @pytest.mark.asyncio
 async def test_speak_stream_sentence_buffering():
     """Test that speak_stream buffers text until sentence endings."""
-    config = TTSConfig(
+    __config = TTSConfig(
         backend="openai",
         voice="alloy",
         model="gpt-4o-mini-tts",
         transport="realtime",
     )
-    playback = PlaybackConfig(
+    __playback = PlaybackConfig(
         backend="null",  # Use null backend for testing
         device=None,
     )
@@ -48,25 +48,25 @@ async def test_speak_stream_final_buffer():
 
 def test_tts_config_transport_override():
     """Test that TTSConfig can be created with transport override."""
-    config = TTSConfig(
+    __config = TTSConfig(
         backend="openai",
         voice="alloy",
         model="gpt-4o-mini-tts",
         transport="realtime",
     )
 
-    assert config.transport == "realtime"
+    assert __config.transport == "realtime"
 
     # Test override for internal use
     config_override = TTSConfig(
-        backend=config.backend,
-        voice=config.voice,
-        model=config.model,
-        format=config.format,
-        timeout=config.timeout,
+        backend=__config.backend,
+        voice=__config.voice,
+        model=__config.model,
+        format=__config.format,
+        timeout=__config.timeout,
         transport="file",  # Override
     )
 
     assert config_override.transport == "file"
-    assert config_override.voice == config.voice
-    assert config_override.model == config.model
+    assert config_override.voice == __config.voice
+    assert config_override.model == __config.model
