@@ -7,7 +7,7 @@ import signal
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .service_impl import VoiceService
+    from .svc_file import VoiceService
 
 
 def setup_signals(service: VoiceService) -> None:
