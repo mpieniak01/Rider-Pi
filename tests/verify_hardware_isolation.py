@@ -57,7 +57,6 @@ def main():
     # Directories where hardware imports are allowed
     allowed_dirs = {
         "drivers",  # Hardware abstraction layer
-        "attic",  # Legacy code
         "ops",  # Operational scripts (allowed to access hardware directly)
         ".git",  # Git metadata
         "venv",  # Virtual environment
