@@ -483,6 +483,27 @@ def cmd_diag(args) -> None:
 def main(argv: Iterable[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
+    
+    # Handle --print-effective-config early (before subcommand requirement)
+    if getattr(args, "print_effective_config", False):
+        from .config_loader import ValidationError, load_and_validate, print_effective_config as print_cfg
+        
+        overrides = _build_overrides(args) if hasattr(args, 'cmd') else {}
+        lenient = getattr(args, "config_lenient", False)
+        
+        try:
+            config = load_and_validate(
+                path=getattr(args, "config", None),
+                overrides=overrides,
+                lenient=lenient,
+            )
+        except ValidationError as e:
+            print(f"Configuration error:\n{e}", file=sys.stderr)
+            return 1
+        
+        print_cfg(config, mask=True)
+        return 0
+    
     if not getattr(args, "cmd", None):
         parser.print_help()
         return 1

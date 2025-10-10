@@ -28,6 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the main argument parser for voice CLI."""
     parser = argparse.ArgumentParser(description="Rider voice assistant")
     parser.add_argument("--config", help="Path to config file", default=None)
+    parser.add_argument("--config-lenient", action="store_true", help="Warn on unknown keys instead of failing")
+    parser.add_argument("--print-effective-config", action="store_true", help="Print effective config and exit")
     parser.add_argument("--lang", type=str, help="ASR language hint (pl|en|auto)", default=None)
 
     sub = parser.add_subparsers(dest="cmd")
@@ -227,9 +229,40 @@ def cmd_diag(args) -> None:
 
 def _configure(args) -> tuple[dict[str, Any], Any]:
     """Configure system from arguments."""
+    from .config_loader import ValidationError, load_and_validate, mask_secrets, print_effective_config
+
     overrides = _build_overrides(args)
-    config = voice_config.load(getattr(args, "config", None), overrides=overrides)
+    lenient = getattr(args, "config_lenient", False)
+
+    try:
+        config = load_and_validate(
+            path=getattr(args, "config", None),
+            overrides=overrides,
+            lenient=lenient,
+        )
+    except ValidationError as e:
+        print(f"Configuration error:\n{e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Handle --print-effective-config
+    if getattr(args, "print_effective_config", False):
+        print_effective_config(config, mask=True)
+        sys.exit(0)
+
+    # Configure logging and log effective config
     voice_logging.configure(config.get("logging", {}).get("level"))
+
+    # Log effective config (masked) at INFO level
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info("=== Effective Configuration ===")
+    masked_config = mask_secrets(config)
+    import json
+
+    for section, values in masked_config.items():
+        logger.info(f"[{section}]: {json.dumps(values, indent=2)}")
+
     return config, None
 
 
