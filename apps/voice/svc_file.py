@@ -8,6 +8,11 @@ Zasady:
 - Przed uruchomieniem wymuszamy "file" w asr/chat/tts, aby uniknąć niespójności.
 
 Consolidated from service_impl.py as part of PR#1 refactoring.
+
+This module now contains the main VoiceService implementation for file-mode operation.
+It acts as the entry point for all voice pipeline components (ASR, CHAT, TTS) in file-only mode,
+strictly enforcing file transport and rejecting any realtime configuration. All file-mode logic
+and orchestration is handled here.
 """
 
 from __future__ import annotations
