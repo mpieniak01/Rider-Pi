@@ -1,4 +1,4 @@
-# apps/voice/stream/services.py
+# apps/voice/stream/service.py
 """Refactored streaming voice service using transport and state modules.
 
 This is a streamlined version of the original streaming service,
@@ -107,7 +107,7 @@ class StreamingVoiceService:
         self.stop_event = threading.Event()
         self.barge_in_event = threading.Event()
 
-        # Worker threads
+        # Worker tasks/threads
         self._capture_thread: threading.Thread | None = None
         self._tts_player_thread: threading.Thread | None = None
         self._message_handler_task: asyncio.Task[None] | None = None
@@ -121,13 +121,19 @@ class StreamingVoiceService:
         self._commit_lock = asyncio.Lock()
         self._chunk_counter = 0
 
+        # RX watchdog
+        self._last_rx_ts: float = time.time()
+
+        # TX timers (dla commitów bez lokalnego VAD)
+        self._last_audio_ts: float = 0.0
+        self._last_commit_ts: float = time.time()
+
         # Capture configuration for chunk processing
         capture_in = dict(self.config.get("capture", {}) or {})
-        capture_filtered = capture_in
         try:
             valid_fields = {field.name for field in fields(CaptureConfig)}
-            capture_filtered = {k: v for k, v in capture_in.items() if k in valid_fields}
-            self._capture_cfg = CaptureConfig(**capture_filtered)
+            capture_in = {k: v for k, v in capture_in.items() if k in valid_fields}
+            self._capture_cfg = CaptureConfig(**capture_in)
         except Exception:
             self._capture_cfg = CaptureConfig()
 
@@ -140,6 +146,7 @@ class StreamingVoiceService:
             "buffer_seconds": self._capture_cfg.buffer_seconds,
             "sample_format": self._capture_cfg.sample_format,
         }
+        # Zostawiamy dla ewentualnych przyszłych optymalizacji, ale nie używamy bezpośrednio do wysyłki
         self._chunk_processor = AudioChunkProcessor(self._capture_cfg, self.stream_cfg, self.logger)
 
         # Chat configuration for streaming mode
@@ -150,7 +157,7 @@ class StreamingVoiceService:
             system_prompt=chat_in.get("system_prompt", "Jesteś asystentem robota. Odpowiadaj krótko i po polsku."),
             max_history=int(chat_in.get("max_history", 4)),
             max_tokens=chat_in.get("max_tokens"),
-            transport="realtime",  # Mark as realtime for streaming
+            transport="realtime",
         )
         self._chat_session: ChatSession | None = None
 
@@ -162,7 +169,7 @@ class StreamingVoiceService:
             model=tts_in.get("model", "gpt-4o-mini-tts"),
             format=tts_in.get("format", "mp3"),
             timeout=tts_in.get("timeout"),
-            transport="realtime",  # Mark as realtime
+            transport="realtime",
         )
 
         # Playback configuration for TTS
@@ -189,7 +196,6 @@ class StreamingVoiceService:
             elif service_hotword_enabled is False:
                 hotword_engine = ""
             else:
-                # Kompatybilność: domyślnie traktuj brak konfiguracji jako PTT
                 hotword_engine = "ptt"
 
         self.ptt_enabled: bool = hotword_engine == "ptt" or bool(ptt_cfg.get("enabled", False)) or commit_on_key
@@ -198,8 +204,7 @@ class StreamingVoiceService:
 
         self._any_audio_since_commit: bool = False
 
-        # Compatibility shims for tests expecting old API (ptt_controller, audio_transmitter)
-        # These are simple objects that expose ptt_enabled for backward compatibility
+        # Compatibility shims
         class _PTTControllerShim:
             def __init__(self, parent):
                 self._parent = parent
@@ -219,12 +224,11 @@ class StreamingVoiceService:
         self.ptt_controller = _PTTControllerShim(self)
         self.audio_transmitter = _AudioTransmitterShim(self)
 
-        # Additional compatibility attributes for old tests
-        self.connected = False  # WebSocket connection state
-        self.websocket: Any | None = None  # WebSocket connection object
-        self.current_state = "idle"  # Current service state
+        # Additional compatibility attributes
+        self.connected = False
+        self.websocket: Any | None = None
+        self.current_state = "idle"
 
-        # event loop (do bezpiecznych zamknięć z kodu synchronicznego)
         self._loop: asyncio.AbstractEventLoop | None = None
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -239,7 +243,6 @@ class StreamingVoiceService:
 
     def _on_arming(self) -> None:
         self._publish_ui_state("arming")
-        # TODO: optional beep here
 
     def _on_recording_start(self) -> None:
         self._publish_ui_state("recording")
@@ -314,7 +317,6 @@ class StreamingVoiceService:
             return key
 
         if auth.startswith("bashenv:"):
-            # Historical scheme removed for security reasons to avoid sourcing shell profiles.
             self.logger.event("auth_bashenv_rejected", scheme="bashenv")
             raise RuntimeError(
                 "bashenv: scheme is no longer supported. Use env:VARNAME or file:/path/to/keyfile instead."
@@ -331,19 +333,54 @@ class StreamingVoiceService:
         raise RuntimeError("Missing OpenAI API key. Configure stream.auth or set OPENAI_API_KEY.")
 
     async def _send_session_init(self) -> None:
-        """Send session initialization message."""
+        """Send session initialization message (session.update)."""
         if not self.transport:
             return
 
         self.session_id = str(uuid.uuid4())
         prefs = build_session_preferences(self.config, stream_cfg=self.stream_cfg)
-        self._session_prefs = prefs
-        session_payload = session_prefs_to_dict(prefs)
+        prefs_dict = session_prefs_to_dict(prefs) if prefs else {}
 
-        init_message = {"type": "session.update", "session": session_payload}
+        # Bezpieczne domyślne pola dla Realtime:
+        prefs_dict.setdefault("modalities", ["audio", "text"])
+
+        if self.stream_cfg.server_vad:
+            prefs_dict["turn_detection"] = {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": int(self.stream_cfg.turn_end_silence_ms),
+            }
+
+        prefs_dict["input_audio_format"] = {
+            "type": "pcm16",
+            "sample_rate_hz": int(self.stream_cfg.sample_rate),
+            "channels": 1,
+        }
+
+        # Wyjście audio – PCM16 (pasuje do naszego playera stream.pcm16)
+        prefs_dict["output_audio_format"] = {"type": "pcm16"}
+
+        voice_name = getattr(self._tts_cfg, "voice", None) or "alloy"
+        prefs_dict.setdefault("voice", voice_name)
+
+        prefs_dict.setdefault(
+            "instructions",
+            "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj po polsku, zwięźle.",
+        )
+
+        self._session_prefs = prefs
+        init_message = {"type": "session.update", "session": prefs_dict}
 
         await self.transport.send(json.dumps(init_message))
-        self.logger.event("session.init", session_id=self.session_id)
+        self.logger.event(
+            "session.init",
+            session_id=self.session_id,
+            has_vad=int(self.stream_cfg.server_vad),
+            in_sr=int(self.stream_cfg.sample_rate),
+            out_fmt="pcm16",
+            voice=voice_name,
+        )
 
     # ──────────────────────────────────────────────────────────────────────────
     # UI publish
@@ -424,12 +461,10 @@ class StreamingVoiceService:
         """Stop the service (safe from sync code)."""
         self.logger.event("stream.stop")
         self.stop_event.set()
-        # wyczyść kolejki audio → zakończ TTS
         try:
             self.tts_player_queue.put_nowait(None)
         except Exception:
             pass
-        # zaplanuj asynchroniczne sprzątanie jeśli mamy loop; w innym razie domknij natychmiast
         if self._loop:
             try:
                 asyncio.run_coroutine_threadsafe(self._cleanup(), self._loop)
@@ -469,8 +504,18 @@ class StreamingVoiceService:
         self._audio_sender_task = asyncio.create_task(self._audio_sender_loop())
         self._message_handler_task = asyncio.create_task(self._message_handler_loop())
 
+        # prosty watchdog RX – jeśli nie ma eventów, ostrzegaj
+        async def _rx_watchdog():
+            while not self.stop_event.is_set():
+                await asyncio.sleep(5)
+                delta = time.time() - self._last_rx_ts
+                if delta > 5:
+                    self.logger.event("ws.no_rx", since_s=int(delta))
+
+        asyncio.create_task(_rx_watchdog())
+
         while not self.stop_event.is_set() and self.transport:
-            await asyncio.sleep(0.1)  # prevent busy loop
+            await asyncio.sleep(0.1)
             if self.ptt_enabled:
                 # integrate keyboard PTT here if needed
                 pass
@@ -478,11 +523,18 @@ class StreamingVoiceService:
     # ──────────────────────────────────────────────────────────────────────────
     # Messaging
 
+    def _normalize_type(self, t: str) -> str:
+        """Normalize historical Realtime event names."""
+        if t == "response.done":
+            return "response.completed"
+        return t
+
     async def _message_handler_loop(self) -> None:
         """Handle incoming WebSocket messages."""
         while not self.stop_event.is_set() and self.transport:
             try:
                 message = await asyncio.wait_for(self.transport.recv(), timeout=1.0)
+                self._last_rx_ts = time.time()
                 await self._handle_message(message)
             except asyncio.TimeoutError:
                 continue
@@ -494,21 +546,29 @@ class StreamingVoiceService:
         """Handle incoming WebSocket message."""
         try:
             data = json.loads(message)
-            msg_type = data.get("type", "")
+            msg_type = self._normalize_type(data.get("type", ""))
 
-            if msg_type == "response.audio.delta":
+            # ── AUDIO OUT (PCM16) ────────────────────────────────────────────
+            if msg_type in ("response.output_audio.delta", "response.audio.delta"):
                 audio_b64 = data.get("delta", "")
                 if audio_b64:
-                    audio_data = base64.b64decode(audio_b64)
-                    self.tts_player_queue.put(audio_data)
+                    try:
+                        audio_data = base64.b64decode(audio_b64)
+                    except Exception as e:
+                        self.logger.event("audio.delta.b64_error", error=str(e))
+                        audio_data = b""
+                    if audio_data:
+                        self.tts_player_queue.put(audio_data)
 
-            elif msg_type == "response.audio.done":
+            elif msg_type in ("response.output_audio.completed", "response.audio.done"):
                 self.tts_player_queue.put(None)
                 self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
 
-            elif msg_type == "response.text.delta":
+            # ── TEXT OUT ─────────────────────────────────────────────────────
+            elif msg_type in ("response.output_text.delta", "response.text.delta"):
                 text = data.get("delta", "")
-                self._publish_partial(text)
+                if text:
+                    self._publish_partial(text)
 
             elif msg_type == "response.created":
                 self.logger.event("response.created")
@@ -517,6 +577,7 @@ class StreamingVoiceService:
             elif msg_type == "session.updated":
                 self.logger.event("session.updated")
 
+            # ── VAD ──────────────────────────────────────────────────────────
             elif msg_type == "input_audio_buffer.speech_started":
                 self.logger.event("speech.started")
                 self.ptt_state.transition(PTTEvent.VOICE_START)
@@ -524,46 +585,49 @@ class StreamingVoiceService:
             elif msg_type == "input_audio_buffer.speech_stopped":
                 self.logger.event("speech.stopped")
                 self.ptt_state.transition(PTTEvent.VOICE_END)
+                # Bez czekania: domknij bieżący bufor i poproś o odpowiedź
                 await self._commit_audio_buffer()
 
+            # ── ASR (serwerowa transkrypcja) ─────────────────────────────────
             elif msg_type == "conversation.item.input_audio_transcription.completed":
-                # Transcription completed - handle it with our chat/TTS pipeline
                 transcript = data.get("transcript", "")
                 if transcript and transcript.strip():
                     self.logger.event("asr.transcript.final", text=transcript)
-                    # Start async chat + TTS pipeline
                     asyncio.create_task(self._handle_transcript(transcript.strip()))
 
-            elif msg_type in ("response.completed", "response.done"):
+            # ── RESPONSE END ─────────────────────────────────────────────────
+            elif msg_type == "response.completed":
                 self._completed = True
                 self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
 
+            # ── ERROR ────────────────────────────────────────────────────────
             elif msg_type == "error":
                 error_msg = data.get("error", {}).get("message", "Unknown error")
                 self.logger.event("ws.protocol_error", error=error_msg)
                 self._publish_error("ws_protocol", error_msg)
                 self.ptt_state.transition(PTTEvent.ERROR)
 
+            else:
+                try:
+                    preview = json.dumps(data)[:160]
+                except Exception:
+                    preview = str(data)[:160]
+                self.logger.event("ws.rx.unknown_type", t=msg_type or "<none>", sample=preview)
+
         except Exception as e:
             self.logger.event("message_parse_error", error=str(e), sample=message[:200])
 
     async def _handle_transcript(self, transcript: str) -> None:
-        """
-        Handle final transcription by calling chat and TTS in streaming mode.
-        This enables the ASR→CHAT→TTS pipeline with streaming responses.
-        """
+        """ASR→CHAT→TTS local pipeline as a fallback/augmentation."""
         try:
             self.logger.event("chat.stream.start", text=transcript)
             self.ptt_state.transition(PTTEvent.SERVER_RESPONSE)
 
-            # Create or reuse chat session
             if self._chat_session is None:
                 self._chat_session = ChatSession(self._chat_cfg, self.logger)
 
-            # Get streaming response from chat
             chat_stream = self._chat_session.ask_stream(transcript)
 
-            # Feed chat stream to TTS for immediate playback
             self.logger.event("tts.stream.start")
             result = await speak_stream(chat_stream, self._tts_cfg, self._playback_cfg, self.logger)
 
@@ -585,14 +649,42 @@ class StreamingVoiceService:
     async def _audio_sender_loop(self) -> None:
         """Send captured audio frames to the realtime API."""
         self.logger.event("audio.sender.start")
+        silence_s = max(0.2, self.stream_cfg.turn_end_silence_ms / 1000.0)
+        hard_cap_s = max(1.0, self.stream_cfg.max_turn_ms / 1000.0)
         try:
             while not self.stop_event.is_set():
+                now = time.time()
+
+                # Timery commitów bez lokalnego VAD
+                if self._any_audio_since_commit:
+                    if (now - self._last_audio_ts) >= silence_s:
+                        try:
+                            self.logger.event(
+                                "audio.commit.timer_silence",
+                                idle_ms=int((now - self._last_audio_ts) * 1000),
+                            )
+                            await self._commit_audio_buffer()
+                            self._last_commit_ts = time.time()
+                        except Exception:
+                            pass
+                    elif (now - self._last_commit_ts) >= hard_cap_s:
+                        try:
+                            self.logger.event(
+                                "audio.commit.timer_maxturn",
+                                elapsed_ms=int((now - self._last_commit_ts) * 1000),
+                            )
+                            await self._commit_audio_buffer()
+                            self._last_commit_ts = time.time()
+                        except Exception:
+                            pass
+
                 try:
                     chunk = self.audio_queue.get(timeout=0.1)
                 except queue.Empty:
                     continue
 
                 if chunk is None:
+                    # koniec capture – domknij jeśli coś jest w buforze
                     if self._any_audio_since_commit:
                         await self._commit_audio_buffer()
                     if self.stop_event.is_set():
@@ -608,29 +700,28 @@ class StreamingVoiceService:
             self.logger.event("audio.sender.stop")
 
     async def _send_audio_chunk(self, chunk: bytes) -> None:
-        """Encode and send a PCM16 chunk to the server."""
+        """Encode and send a PCM16 chunk to the server as JSON append."""
         if not chunk or not self.transport:
             return
 
         try:
-            result = self._chunk_processor.process_and_encode_chunk(chunk)
-            if not result:
-                return
+            b64 = base64.b64encode(chunk).decode("ascii")
+            msg = json.dumps({"type": "input_audio_buffer.append", "audio": b64})
+            await self.transport.send(msg)
 
-            message_json, telemetry = result
-            await self.transport.send(message_json)
             self._chunk_counter += 1
             self._any_audio_since_commit = True
+            self._last_audio_ts = time.time()
 
             if self._chunk_counter == 1 or self._chunk_counter % 50 == 0:
                 self.logger.event(
                     "stream.tx",
-                    bytes_in=int(telemetry.get("bytes_in", len(chunk))),
-                    bytes_out=int(telemetry.get("bytes_out", 0)),
-                    ch_in=int(telemetry.get("ch_in", 1)),
-                    ch_out=int(telemetry.get("ch_out", 1)),
-                    sr=int(telemetry.get("sr", self.stream_cfg.sample_rate)),
-                    chunk_ms=int(telemetry.get("chunk_ms", self.stream_cfg.chunk_ms)),
+                    bytes_in=len(chunk),
+                    bytes_out=len(msg),
+                    ch_in=1,
+                    ch_out=1,
+                    sr=self.stream_cfg.sample_rate,
+                    chunk_ms=self.stream_cfg.chunk_ms,
                     ordinal=self._chunk_counter,
                 )
         except Exception as e:
@@ -664,9 +755,11 @@ class StreamingVoiceService:
             return
 
         prefs = self._session_prefs
-        modalities = getattr(prefs, "modalities", ["text", "audio"])
-        voice = getattr(prefs, "voice", "verse") or "verse"
-        instructions = getattr(prefs, "instructions", "")
+        modalities = getattr(prefs, "modalities", None) or ["text", "audio"]
+        voice = getattr(prefs, "voice", None) or getattr(self._tts_cfg, "voice", "alloy") or "alloy"
+        instructions = (
+            getattr(prefs, "instructions", "") or "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj po polsku."
+        )
 
         try:
             message = build_response_create(voice=voice, instructions=instructions, modalities=list(modalities))
@@ -681,7 +774,6 @@ class StreamingVoiceService:
         if self._capture_thread and self._capture_thread.is_alive():
             return
 
-        # policz bajty na chunk
         cap_cfg = self._capture_cfg_dict
         sr = int(self._capture_cfg.sample_rate)
         chunk_ms = int(self.stream_cfg.chunk_ms)
@@ -712,7 +804,6 @@ class StreamingVoiceService:
             except Exception as e:
                 self.logger.event("capture_thread_error", error=str(e))
             finally:
-                # sygnał EOF do pętli sendera
                 try:
                     self.audio_queue.put_nowait(None)
                 except Exception:
@@ -749,6 +840,7 @@ class StreamingVoiceService:
 
                     if stream is None:
                         try:
+                            # Oczekujemy PCM16; session.update ustawia output_audio_format=pcm16.
                             stream = start_stream("pcm16", playback_cfg, self.logger)
                             self.ptt_state.transition(PTTEvent.TTS_START)
                         except Exception as e:
@@ -785,7 +877,6 @@ class StreamingVoiceService:
         if not self.stop_event.is_set():
             self.stop_event.set()
 
-        # wyślij sentinele
         for q in (self.audio_queue, self.tts_player_queue):
             try:
                 q.put_nowait(None)
@@ -813,7 +904,6 @@ class StreamingVoiceService:
             finally:
                 self._audio_sender_task = None
 
-        # cancel message handler
         if self._message_handler_task and not self._message_handler_task.done():
             self._message_handler_task.cancel()
             try:
@@ -823,7 +913,6 @@ class StreamingVoiceService:
             finally:
                 self._message_handler_task = None
 
-        # close transport
         if self.transport:
             try:
                 await self.transport.close()
@@ -832,7 +921,6 @@ class StreamingVoiceService:
             finally:
                 self.transport = None
 
-        # For backward compatibility: close direct websocket if set (for tests)
         if self.websocket:
             try:
                 await self.websocket.close(code=1000)
@@ -843,7 +931,6 @@ class StreamingVoiceService:
                 self.websocket = None
                 self.connected = False
 
-        # workers & state
         self._cleanup_workers()
         self.ptt_state.reset()
         self._publish_ui_state("idle")

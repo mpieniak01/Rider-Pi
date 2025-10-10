@@ -1,4 +1,5 @@
-"""WebSocket transport layer for Rider-Pi voice streaming.
+# apps/voice/stream/transport.py
+""" "WebSocket transport layer for Rider-Pi voice streaming.
 
 Provides clean WebSocket connection management with:
 - Proper connection lifecycle (connect, send, recv, close)
@@ -17,22 +18,28 @@ from typing import Any
 from .. import voice_logging
 from ..errors import StreamError
 
-# WebSocket library handling with graceful fallback
+# ---- Preferred async library: websockets ------------------------------------
+_ws_async = None
 try:
-    import websockets as _websockets  # type: ignore
-
-    websockets = _websockets
+    import websockets as _ws_async  # type: ignore
 except Exception:
+    _ws_async = None
 
-    class _WSStub:
-        def __getattr__(self, name):
-            raise ImportError("websockets library not available")
-
-    websockets = _WSStub()  # type: ignore
+# ---- Fallback sync library: websocket-client --------------------------------
+_ws_sync = None
+try:
+    import websocket as _ws_sync  # type: ignore  # pip install websocket-client
+except Exception:
+    _ws_sync = None
 
 
 class WebSocketTransport:
-    """WebSocket transport with connection management and heartbeat."""
+    """WebSocket transport with connection management and heartbeat.
+
+    Supports:
+      - websockets (async, preferred)
+      - websocket-client (sync, fallback via to_thread)
+    """
 
     def __init__(
         self,
@@ -51,8 +58,15 @@ class WebSocketTransport:
             logger = ensure_event_logger(voice_logging.get_logger(__name__))
         self.logger = logger
 
+        # Library mode flags
+        self._use_async = _ws_async is not None
+        self._use_sync = (not self._use_async) and (_ws_sync is not None)
+
+        if not self._use_async and not self._use_sync:
+            raise ImportError("No WebSocket library available. Install 'websockets' or 'websocket-client'.")
+
         # Connection state
-        self.websocket: Any = None
+        self.websocket: Any = None  # websockets.client.WebSocketClientProtocol or _ws_sync.WebSocket
         self.session_id: str = ""
         self.connected: bool = False
         self.retry_count: int = 0
@@ -62,14 +76,7 @@ class WebSocketTransport:
         self._stop_heartbeat = False
 
     async def connect(self, *, max_retries: int = 3) -> bool:
-        """Connect to WebSocket endpoint.
-
-        Args:
-            max_retries: Maximum connection attempts
-
-        Returns:
-            True if connection successful
-        """
+        """Connect to WebSocket endpoint."""
         for attempt in range(max_retries + 1):
             try:
                 # Resolve endpoint with environment variable override
@@ -80,24 +87,40 @@ class WebSocketTransport:
                     return False
 
                 self.logger.event(
-                    "ws.connect.attempt", endpoint=self._mask_endpoint(effective_endpoint), attempt=attempt + 1
+                    "ws.connect.attempt",
+                    endpoint=self._mask_endpoint(effective_endpoint),
+                    attempt=attempt + 1,
                 )
 
-                # Create connection
-                extra_headers = []
-                if self.auth_header:
-                    extra_headers.append(("Authorization", self.auth_header))
+                if self._use_async:
+                    # --- websockets (async) ---
+                    headers = []
+                    if self.auth_header:
+                        headers.append(("Authorization", self.auth_header))
+                    headers.append(("OpenAI-Beta", "realtime=v1"))
 
-                # Realtime API (2024-10) requires beta header to opt-in.
-                # Keep it unconditional – server ignores duplicates.
-                extra_headers.append(("OpenAI-Beta", "realtime=v1"))
+                    self.websocket = await _ws_async.connect(  # type: ignore[attr-defined]
+                        effective_endpoint,
+                        extra_headers=headers,
+                        ping_interval=self.ping_interval_s,
+                        ping_timeout=10,
+                    )
+                    self.logger.event("ws.library", name="websockets")
+                else:
+                    # --- websocket-client (sync) ---
+                    hdr_list: list[str] = []
+                    if self.auth_header:
+                        hdr_list.append(f"Authorization: {self.auth_header}")
+                    hdr_list.append("OpenAI-Beta: realtime=v1")
 
-                self.websocket = await websockets.connect(
-                    effective_endpoint,
-                    extra_headers=extra_headers,
-                    ping_interval=self.ping_interval_s,
-                    ping_timeout=10,
-                )
+                    # create_connection is blocking → run in thread
+                    self.websocket = await asyncio.to_thread(
+                        _ws_sync.create_connection,  # type: ignore[attr-defined]
+                        effective_endpoint,
+                        header=hdr_list,  # ⚠️ POPRAWKA: header=..., NIE extra_headers
+                        timeout=10,
+                    )
+                    self.logger.event("ws.library", name="websocket-client")
 
                 self.connected = True
                 self.retry_count = 0
@@ -119,47 +142,37 @@ class WebSocketTransport:
         return False
 
     async def send(self, data: str) -> None:
-        """Send data through WebSocket.
-
-        Args:
-            data: JSON string to send
-
-        Raises:
-            StreamError: If not connected or send fails
-        """
+        """Send data through WebSocket."""
         if not self.websocket or not self.connected:
             raise StreamError("WebSocket not connected")
 
         try:
-            await self.websocket.send(data)
+            if self._use_async:
+                await self.websocket.send(data)
+            else:
+                await asyncio.to_thread(self.websocket.send, data)
         except Exception as e:
             self.connected = False
             raise StreamError(f"WebSocket send failed: {e}") from e
 
     async def recv(self) -> str:
-        """Receive data from WebSocket.
-
-        Returns:
-            Received message as string
-
-        Raises:
-            StreamError: If not connected or receive fails
-        """
+        """Receive data from WebSocket."""
         if not self.websocket or not self.connected:
             raise StreamError("WebSocket not connected")
 
         try:
-            message = await self.websocket.recv()
+            if self._use_async:
+                message = await self.websocket.recv()
+            else:
+                message = await asyncio.to_thread(self.websocket.recv)
+
             return str(message)
         except Exception as e:
             self.connected = False
             raise StreamError(f"WebSocket recv failed: {e}") from e
 
     async def close(self) -> None:
-        """Close WebSocket connection cleanly.
-
-        Uses close code 1000 (normal closure) and waits for closure confirmation.
-        """
+        """Close WebSocket connection cleanly."""
         # Stop heartbeat first
         self._stop_heartbeat = True
         if self._heartbeat_task and not self._heartbeat_task.done():
@@ -173,11 +186,11 @@ class WebSocketTransport:
             try:
                 self.logger.event("ws.closing", session_id=self.session_id)
 
-                # Close with normal closure code
-                await self.websocket.close(code=1000)
-
-                # Wait for closure to complete
-                await self.websocket.wait_closed()
+                if self._use_async:
+                    await self.websocket.close(code=1000)
+                    await self.websocket.wait_closed()
+                else:
+                    await asyncio.to_thread(self.websocket.close, status=1000)
 
                 self.logger.event("ws.closed", session_id=self.session_id)
 
@@ -197,9 +210,17 @@ class WebSocketTransport:
                 if self._stop_heartbeat or not self.connected:
                     break
 
-                # WebSocket library handles ping automatically via ping_interval
-                # We just need to check if connection is still alive
-                if self.websocket and self.websocket.closed:
+                # For async websockets, ping is handled by library (ping_interval).
+                # For websocket-client, send manual ping.
+                if (not self._use_async) and self.websocket:
+                    try:
+                        await asyncio.to_thread(self.websocket.ping)
+                    except Exception:
+                        self.connected = False
+                        self.logger.event("ws.heartbeat.ping_failed")
+                        break
+
+                if self._use_async and self.websocket and self.websocket.closed:
                     self.logger.event("ws.heartbeat.connection_closed")
                     self.connected = False
                     break
@@ -212,18 +233,8 @@ class WebSocketTransport:
                 break
 
     def _mask_endpoint(self, endpoint: str) -> str:
-        """Mask sensitive parts of endpoint for logging.
-
-        Args:
-            endpoint: WebSocket endpoint URL
-
-        Returns:
-            Masked endpoint safe for logging
-        """
         if not endpoint:
             return "not configured"
-
-        # Mask model parameter if present
         return endpoint.replace("model=", "model=***")
 
 
@@ -256,34 +267,25 @@ class ReconnectingTransport:
         self.retry_count = 0
 
     async def ensure_connected(self) -> bool:
-        """Ensure WebSocket connection is established.
-
-        Returns:
-            True if connected (or reconnected)
-        """
+        """Ensure WebSocket connection is established."""
         if self.transport and self.transport.connected:
             return True
-
         return await self._reconnect()
 
     async def _reconnect(self) -> bool:
         """Attempt to reconnect with exponential backoff."""
         while self.retry_count < self.max_retries:
-            # Clean up old transport
             if self.transport:
                 await self.transport.close()
 
-            # Create new transport
             self.transport = WebSocketTransport(self.endpoint, self.auth_header, self.ping_interval_s, self.logger)
 
-            # Calculate backoff delay
             delay_ms = min(self.base_ms * (2**self.retry_count), self.max_ms)
 
             if self.retry_count > 0:
                 self.logger.event("ws.reconnect.delay", delay_ms=delay_ms, retry=self.retry_count)
                 await asyncio.sleep(delay_ms / 1000.0)
 
-            # Attempt connection
             if await self.transport.connect():
                 self.retry_count = 0
                 return True
@@ -298,14 +300,12 @@ class ReconnectingTransport:
         """Send data, reconnecting if needed."""
         if not await self.ensure_connected():
             raise StreamError("Cannot establish WebSocket connection")
-
         await self.transport.send(data)
 
     async def recv(self) -> str:
         """Receive data, reconnecting if needed."""
         if not await self.ensure_connected():
             raise StreamError("Cannot establish WebSocket connection")
-
         return await self.transport.recv()
 
     async def close(self) -> None:
