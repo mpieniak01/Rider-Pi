@@ -1,10 +1,10 @@
 # Stabilny streaming: VAD po stronie serwera + WAV + ALSA (aplay)
 
 [capture]
-device   = "wm8960_in"
-sample_rate = 16000
-channels = 1
-sample_format = "S16_LE"
+device       = "wm8960_in"
+sample_rate  = 16000
+channels     = 1
+sample_format= "S16_LE"
 
 [playback]
 device   = "wm8960_out"
@@ -16,7 +16,10 @@ backend  = "openai"
 model    = "whisper-1"
 
 [nlu]
-backend  = "passthrough"
+backend           = "passthrough"
+chat_threshold    = 0.0
+llm_model         = "dummy"
+command_keywords  = {}
 
 [chat]
 backend       = "openai"
@@ -25,17 +28,15 @@ language      = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
 [tts]
-[tts]
 backend = "openai"
 model   = "gpt-4o-mini-tts"
 format  = "wav"
 voice   = "alloy"
 
-
 # UWAGA: PTT wyłączone – używamy VAD po stronie serwera
 [hotword]
 enabled = false
-engine  = "ptt"
+engine  = "none"
 
 [ptt]
 commit_on_stop = true
@@ -49,8 +50,8 @@ auth     = "env:OPENAI_API_KEY"
 chunk_ms = 20
 
 # Kluczowe przełączniki streamingu
-server_vad = true
+server_vad          = true
 turn_end_silence_ms = 900
-max_turn_ms = 8000
-send_partials = true
-barge_in = true
+max_turn_ms         = 8000
+send_partials       = true
+barge_in            = true
