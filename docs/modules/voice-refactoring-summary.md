@@ -161,7 +161,7 @@ Realtime mode requires: `transport = "realtime"` in **all** of `[asr]`, `[chat]`
 
 **File Mode:**
 ```
-Hotword → Capture (VAV) → ASR → Chat → TTS → Playback → Loop
+Hotword → Capture (VAD) → ASR → Chat → TTS → Playback → Loop
 ```
 
 **Streaming Mode:**
