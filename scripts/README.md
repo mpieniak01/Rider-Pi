@@ -13,7 +13,7 @@ Wszystkie skrypty stosują wzorzec:
 #### `sys_` – Operacje systemowe  
 Skrypty do zarządzania systemem, usługami, rozruchem i operacjami krytycznymi:
 - `sys_control.sh` – kontrola usług  
-- `systemd-sync.sh` – (Przenisiony do katalogu ops) synchronizacja z systemd  
+- `systemd-sync.sh` – synchronizacja z systemd  
 - `sys_boot-prepare.sh` – przygotowanie systemu do startu  
 - `sys_cleanup.sh` – czyszczenie usług  
 - `sys_camera-preview.sh` – podgląd kamery  
