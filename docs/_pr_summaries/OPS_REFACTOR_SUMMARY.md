@@ -10,7 +10,7 @@ W ramach uporządkowania struktury projektu przeprowadzono analizę i refaktoryz
 
 | Stara ścieżka | Nowa ścieżka | Uzasadnienie |
 |---------------|--------------|--------------|
-| `ops/systemd-sync.sh` | `scripts/systemd-sync.sh` | Spójność z resztą skryptów systemowych; dokumentacja już wskazywała na tę lokalizację |
+| `ops/systemd-sync.sh` | `scripts/sys_systemd-sync.sh` | Spójność z resztą skryptów systemowych; dokumentacja już wskazywała na tę lokalizację |
 
 ### Usunięte pliki
 
@@ -49,13 +49,14 @@ Katalog zachowany, ponieważ:
 ### Pliki zmienione
 1. **docs/ops/README.md**
    - Usunięto notatkę `(pozostało w ops/)` przy `systemd-sync.sh`
-   - Zaktualizowano ścieżkę na `systemd-sync.sh` w katalogu scripts
+   - Zaktualizowano ścieżkę na `sys_systemd-sync.sh` w katalogu scripts
 
 2. **docs/_inventory.md**
-   - Zmieniono `ops/systemd-sync.sh` → `scripts/systemd-sync.sh`
+   - Zmieniono `ops/systemd-sync.sh` → `scripts/sys_systemd-sync.sh`
 
 3. **scripts/README.md**
    - Usunięto notatkę `(Przenisiony do katalogu ops)` przy `systemd-sync.sh`
+   - Dodano prefiks `sys_` zgodnie z konwencją nazewnictwa
 
 ### Pliki bez zmian (już poprawne)
 Następujące pliki już zawierały prawidłowe referencje do `scripts/sys_systemd-sync.sh` lub `scripts/systemd-sync.sh`:
@@ -126,16 +127,17 @@ grep -r "wm8960-mixer.sh" --include="*.md" --include="*.sh" --include="*.py"
 
 ### Stan katalogów
 - **ops/** - zachowany (4 pliki w podkatalogach)
-- **scripts/** - dodany systemd-sync.sh
+- **scripts/** - dodany sys_systemd-sync.sh
 - **config/alsa/** - posiada aktualną wersję wm8960-apply.sh
 
 ### Rezultat
 Katalog `ops/` został uporządkowany zgodnie z zasadą **MOVE-FIRST**:
-1. Główny skrypt operacyjny (`systemd-sync.sh`) przeniesiony do `scripts/`
+1. Główny skrypt operacyjny (`systemd-sync.sh`) przeniesiony do `scripts/sys_systemd-sync.sh`
 2. Duplikaty usunięte
 3. Zachowane tylko pliki aktywnie używane lub specyficzne dla podkatalogów
 4. Wszystkie referencje zaktualizowane
 5. Historia git zachowana dla wszystkich zmian
+6. Zastosowano konwencję nazewnictwa `sys_` dla skryptów systemowych
 
 ---
 

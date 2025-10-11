@@ -32,7 +32,7 @@
 
 ### Skrypty systemd (sys_*)
 - `sys_control.sh` — kontrola usług systemd (whitelist)
-- `scripts/systemd-sync.sh` — synchronizacja definicji systemd z repo
+- `scripts/sys_systemd-sync.sh` — synchronizacja definicji systemd z repo
 - `sys_boot-prepare.sh` — przygotowanie systemu przy starcie
 
 ### Skrypty wyświetlacza (sys_*, diag_*)
