@@ -18,8 +18,8 @@ print("=" * 70 + "\n")
 
 criteria = []
 
-# AC1: Uruchomienie run_simulation.py otwiera okno Pygame
-print("[AC1] Run run_simulation.py opens Pygame window")
+# AC1: Uruchomienie scripts/sim/run_simulation.py otwiera okno Pygame
+print("[AC1] Run scripts/sim/run_simulation.py opens Pygame window")
 try:
     import pygame
 

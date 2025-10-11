@@ -133,12 +133,12 @@ Istniejący katalog `sim/` zawiera:
 - `sim/robot.py` - Symulator robota z fizyką i MQTT
 - `sim/sensors.py` - Wirtualne sensory (żyroskop, kamera)
 - `sim/world.py` - Świat 2D z mapami
-- `run_simulation.py` - Standalone symulator 2D
+- `scripts/sim/run_simulation.py` - Standalone symulator 2D
 
 **Decyzja**: Katalog `sim/` został **zachowany** ponieważ:
 1. Służy do **zaawansowanej symulacji 2D** z wizualizacją (pygame)
 2. Ma inny cel niż `drivers/*/sim.py` (które są prostymi mockupami)
-3. Jest używany przez `run_simulation.py` do testowania nawigacji
+3. Jest używany przez `scripts/sim/run_simulation.py` do testowania nawigacji
 4. Nie koliduje z nową architekturą
 
 ### Relacja między `sim/` a `drivers/*/sim.py`
@@ -147,7 +147,7 @@ Istniejący katalog `sim/` zawiera:
 |--------|----------------------|-----------------------------------|
 | Cel | Zaawansowana symulacja fizykalna | Prosty mock dla testów |
 | Zależności | pygame, zmq, wizualizacja | Brak (tylko logging) |
-| Użycie | `run_simulation.py`, testy nawigacji | Testy jednostkowe, CI/CD |
+| Użycie | `scripts/sim/run_simulation.py`, testy nawigacji | Testy jednostkowe, CI/CD |
 | Fizyka | Tak (pozycja, prędkość, kolizje) | Nie (tylko logi) |
 | MQTT | Tak (integracja z brokerem) | Nie |
 

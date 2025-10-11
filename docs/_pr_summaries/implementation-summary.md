@@ -45,7 +45,7 @@ All criteria from the issue have been met:
 
 ### Entry Point
 
-#### `run_simulation.py`
+#### `scripts/sim/run_simulation.py`
 - Main simulation loop
 - Integrates robot, world, and sensors
 - Handles pygame events (ESC to quit)
@@ -136,7 +136,7 @@ Messages are ZMQ multipart: `[topic_bytes, payload_bytes]`
 python3 services/broker.py
 
 # Terminal 2: Start simulator
-python3 run_simulation.py
+python3 scripts/sim/run_simulation.py
 
 # Terminal 3: Control robot
 python3 scripts/dev_keyboard-sim.py

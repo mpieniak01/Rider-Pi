@@ -18,7 +18,7 @@ Niezależny symulator 2D dla Rider-Pi umożliwiający testowanie algorytmów naw
 ### Uruchamianie symulatora
 
 ```bash
-python run_simulation.py
+python scripts/sim/run_simulation.py
 ```
 
 ### Zmienne środowiskowe
@@ -110,7 +110,7 @@ Symulator jest całkowicie niezależny od pakietu `rider_pi` i nie ma bezpośred
 - **`sim/world.py`** - Główne środowisko symulacji i renderowanie Pygame
 - **`sim/robot.py`** - Wirtualny robot z fizyką i sterowaniem MQTT
 - **`sim/sensors.py`** - Wirtualny żyroskop i kamera z publikowaniem MQTT
-- **`run_simulation.py`** - Skrypt punktu wejścia
+- **`scripts/sim/run_simulation.py`** - Skrypt punktu wejścia
 
 ## Rozwój
 
@@ -121,14 +121,14 @@ Symulator jest całkowicie niezależny od pakietu `rider_pi` i nie ma bezpośred
 pytest tests/test_simulator.py -v
 
 # Uruchom z konkretną mapą
-SIM_MAP=sim/maps/maze.txt python run_simulation.py
+SIM_MAP=sim/maps/maze.txt python scripts/sim/run_simulation.py
 ```
 
 ### Linting
 
 ```bash
-ruff check sim/ run_simulation.py
-ruff format sim/ run_simulation.py
+ruff check sim/ scripts/sim/run_simulation.py
+ruff format sim/ scripts/sim/run_simulation.py
 ```
 
 ## Integracja z algorytmami nawigacji
