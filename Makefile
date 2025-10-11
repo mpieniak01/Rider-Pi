@@ -18,7 +18,6 @@ VOICE_BIND ?= 127.0.0.1:8092
 ENV_FROM_BASH = OPENAI_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf %s "$$OPENAI_API_KEY"')"
 
 # ───────────────────────────────────────────────
-# ───────────────────────────────────────────────
 .PHONY: help
 help:
 	@echo ""
