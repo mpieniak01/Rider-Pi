@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-# Pliki, które nie mogą importować _apps
+# Pliki, które nie mogą importować _apps lub _todelete
 
 # Pliki, które nie mogą importować apps (przykład migracji)
 CHECK_PATHS = [
@@ -17,13 +17,17 @@ CHECK_PATHS = [
 
 # Zakaz importu legacy apps (przykład: można rozszerzyć na inne niedozwolone importy)
 IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+_apps\b")
+# Zakaz importu z _todelete (archiwum)
+TODELETE_RE = re.compile(r"^\s*(?:from|import)\s+.*\._todelete\b")
 
 
 def scan_file(path):
     with open(path) as f:
         for i, line in enumerate(f, 1):
             if IMPORT_RE.search(line):
-                return (i, line.strip())
+                return (i, line.strip(), "_apps import")
+            if TODELETE_RE.search(line):
+                return (i, line.strip(), "_todelete import")
     return None
 
 
@@ -41,4 +45,4 @@ def collect_py_files(base):
 @pytest.mark.parametrize("path", sum([collect_py_files(p) for p in CHECK_PATHS], []))
 def test_no_legacy_apps_import(path):
     res = scan_file(path)
-    assert res is None, f"Zabroniony import apps w {path}:{res}"
+    assert res is None, f"Zabroniony import ({res[2]}) w {path}:{res[0]}: {res[1]}"

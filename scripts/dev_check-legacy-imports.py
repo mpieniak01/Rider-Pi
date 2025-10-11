@@ -14,6 +14,10 @@ Legacy files blocked:
   - apps/voice/svc_stream.py (removed in PR-3)
   - apps/voice/ptt_state.py (removed in PR-3)
   - apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)
+  - apps/voice/main.py (moved to _todelete, use apps.voice.cli)
+  - apps/ui/face_*.py (moved to _todelete, use apps.draw or apps.ui.face)
+  - apps/ui/face/driver_ili9xx.py (moved to _todelete, use drivers.lcd.driver_ili9xx)
+  - apps/launcher/main.py (moved to _todelete, duplicate of apps/menu/main.py)
 
 Exit codes:
   0 - No legacy imports found
@@ -60,6 +64,17 @@ LEGACY_PATTERNS = [
     # Files removed in PR-4 (transport consolidation)
     (r"from apps\.voice\.transport\b", "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)"),
     (r"import apps\.voice\.transport\b", "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)"),
+    # Files moved to _todelete in refactor PR (orphaned stubs)
+    (r"from apps\.voice\.main\b", "apps/voice/main.py (moved to _todelete, use apps.voice.cli)"),
+    (r"import apps\.voice\.main\b", "apps/voice/main.py (moved to _todelete, use apps.voice.cli)"),
+    (r"from apps\.ui\.face_actuators\b", "apps/ui/face_actuators.py (moved to _todelete, use apps.draw)"),
+    (r"from apps\.ui\.face_core\b", "apps/ui/face_core.py (moved to _todelete, use apps.draw)"),
+    (r"from apps\.ui\.face_emotions\b", "apps/ui/face_emotions.py (moved to _todelete, use apps.draw)"),
+    (r"from apps\.ui\.splash_face\b", "apps/ui/splash_face.py (moved to _todelete, use apps.draw)"),
+    (r"from apps\.ui\.tts2face\b", "apps/ui/tts2face.py (moved to _todelete, use apps.draw)"),
+    (r"from apps\.ui\.face\.driver_ili9xx\b", "apps/ui/face/driver_ili9xx.py (moved to _todelete, use drivers.lcd)"),
+    (r"from apps\.launcher\.main\b", "apps/launcher/main.py (moved to _todelete, use apps.menu.main)"),
+    (r"import apps\.launcher\.main\b", "apps/launcher/main.py (moved to _todelete, use apps.menu.main)"),
 ]
 
 # Audio directory imports - warn but don't fail (to be migrated in future)
