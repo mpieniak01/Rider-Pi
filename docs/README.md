@@ -46,16 +46,19 @@ Szczegółowa dokumentacja wszystkich modułów aplikacyjnych:
 
 ---
 
-## Dokumentacja skryptów operacyjnych (`ops/*`)
+## Dokumentacja skryptów operacyjnych
+
+> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` (patrz [../scripts/README.md](../scripts/README.md)).  
+> Dokumentacja w `docs/ops/` opisuje funkcjonalność (pozostaje aktualna), ale ścieżki odnoszą się do nowej lokalizacji.
 
 Skrypty operacyjne dla zarządzania systemem i usługami:
 
 - [**ops/README.md**](ops/README.md) — **indeks skryptów** (konwencje, bezpieczeństwo, kody wyjścia)
-- [**ops/voice-scripts.md**](ops/voice-scripts.md) — voice-run.sh, voice-once.sh (uruchamianie aplikacji głosowej)
-- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — service_ctl.sh, systemd_sync.sh (zarządzanie usługami)
-- [**ops/display-scripts.md**](ops/display-scripts.md) — lcdctl.py, ledctl.py, fbgrab.py (kontrola wyświetlacza)
-- [**ops/camera-scripts.md**](ops/camera-scripts.md) — camera_preview.sh, camera_takeover_kill.sh (zarządzanie kamerą)
-- [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — monitor_metrics.sh, monitor_stream.sh (monitorowanie)
+- [**ops/voice-scripts.md**](ops/voice-scripts.md) — sys_voice-*.sh (uruchamianie aplikacji głosowej)
+- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — sys_control.sh, systemd-sync.sh (zarządzanie usługami)
+- [**ops/display-scripts.md**](ops/display-scripts.md) — sys_lcd-control.py, sys_led-control.py (kontrola wyświetlacza)
+- [**ops/camera-scripts.md**](ops/camera-scripts.md) — sys_camera-*.sh (zarządzanie kamerą)
+- [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — diag_metrics.sh, diag_stream.sh (monitorowanie)
 - [**ops/utility-scripts.md**](ops/utility-scripts.md) — testy, diagnostyka XGO, demo, narzędzia
 
 ---
@@ -109,7 +112,7 @@ Przy dodawaniu nowych dokumentów należy przestrzegać następujących zasad:
 
 - **Katalog główny** — tylko dokumenty o zasięgu ogólnym (wizja, architektura, working agreements)
 - **`docs/apps/`** — dokumentacja modułów aplikacyjnych (`apps/*`)
-- **`docs/ops/`** — dokumentacja skryptów operacyjnych (`ops/*`)
+- **`docs/ops/`** — dokumentacja skryptów operacyjnych (skrypty w `scripts/`)
 - **`docs/config/`** — dokumentacja parametrów konfiguracji (`config/*`)
 - **`docs/modules/`** — dokumentacja modułów (legacy — nowe dokumenty powinny iść do `docs/apps/`)
 - **`docs/audio/`** — konfiguracja sprzętu audio
