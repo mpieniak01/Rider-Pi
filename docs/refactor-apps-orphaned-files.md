@@ -191,7 +191,7 @@ Moduły, które mogą być używane przez zewnętrzne skrypty, serwisy systemd l
 
 ### Dlaczego `_todelete/` zamiast `_` prefix?
 
-1. Zgodne z istniejącą konwencją (`_deprecated_*/` w services)
+1. Jasna sygnalizacja przeznaczenia (do usunięcia w przyszłości)
 2. Łatwiejsza migracja całych katalogów
 3. Jasna struktura archiwum z zachowaniem hierarchii
 4. Możliwość łatwego usunięcia całego katalogu w przyszłości

@@ -7,10 +7,10 @@ repos:
     args:
     - --fix
     - --unsafe-fixes
-    exclude: "(?x)^(\n  _apps/|\n  services/_deprecated_.* \n)\n"
+    exclude: "(?x)^(\n  _apps/ \n)\n"
   - id: ruff-format
     name: ruff (format)
-    exclude: "(?x)^(\n  _apps/|\n  services/_deprecated_.* \n)\n"
+    exclude: "(?x)^(\n  _apps/ \n)\n"
 - repo: local
   hooks:
   - id: check-file-length

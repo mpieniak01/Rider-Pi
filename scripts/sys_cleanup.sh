@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
-QUAR_DIR="services/_deprecated_${STAMP}"
+QUAR_DIR="services/_quarantine_${STAMP}"
 mkdir -p "$QUAR_DIR"
 
 echo "== services cleanup =="
