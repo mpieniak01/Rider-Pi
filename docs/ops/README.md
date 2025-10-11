@@ -1,6 +1,8 @@
-# Dokumentacja skryptów operacyjnych (`ops/*`)
+# Dokumentacja skryptów operacyjnych
 
-> Indeks dokumentacji wszystkich skryptów operacyjnych w katalogu `ops/`
+> Indeks dokumentacji wszystkich skryptów operacyjnych (obecnie w katalogu `scripts/`)
+
+> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` z ujednoliconą konwencją nazewnictwa. Zobacz [../scripts/README.md](../../scripts/README.md) dla szczegółów migracji.
 
 ## Spis dokumentów
 
@@ -15,48 +17,52 @@
 
 ## Szybki indeks skryptów
 
-### Skrypty głosowe
-- `voice-run.sh` — uruchamianie aplikacji głosowej (legacy z ENV)
-- `voice-once.sh` — pojedyncze polecenie głosowe
+> Wszystkie skrypty znajdują się teraz w katalogu `scripts/` z prefiksami kategorii.  
+> Pełna lista i konwencja nazewnictwa: [scripts/README.md](../../scripts/README.md)
 
-### Skrypty systemd
-- `service_ctl.sh` — bezpieczna kontrola usług systemd (whitelist)
-- `systemd_sync.sh` — synchronizacja definicji systemd z repo
-- `boot_prepare.sh` — przygotowanie systemu przy starcie
+### Skrypty głosowe (prefiks `sys_`)
+- `sys_voice-run.sh` — uruchamianie aplikacji głosowej (legacy z ENV)
+- `sys_voice-once.sh` — pojedyncze polecenie głosowe
+- `sys_voice-stream.sh` — tryb strumieniowy głosu
 
-### Skrypty wyświetlacza
-- `lcdctl.py` — kontrola LCD (jasność, zasilanie, czyszczenie)
-- `ledctl.py` — kontrola diod LED
-- `fbgrab.py` — zrzut ekranu z framebuffera
-- `splash_device_info.py` — ekran powitalny z info o urządzeniu
-- `vendor_splash.py` — ekran powitalny producenta
+### Skrypty systemd (prefiks `sys_`)
+- `sys_control.sh` — bezpieczna kontrola usług systemd (whitelist)
+- `ops/systemd-sync.sh` — synchronizacja definicji systemd z repo (pozostało w ops/)
+- `sys_boot-prepare.sh` — przygotowanie systemu przy starcie
 
-### Skrypty kamery
-- `camera_preview.sh` — uruchomienie preview z kamery
-- `camera_takeover_kill.sh` — wymuszenie dostępu do kamery
-- `kill_cam.sh` — szybkie zabicie procesów kamery
-- `vision_ctl.sh` — kontrola usług wizyjnych
+### Skrypty wyświetlacza (prefiks `sys_`)
+- `sys_lcd-control.py` — kontrola LCD (jasność, zasilanie, czyszczenie)
+- `sys_led-control.py` — kontrola diod LED
+- `diag_framebuffer-grab.py` — zrzut ekranu z framebuffera
+- `sys_splash-info.py` — ekran powitalny z info o urządzeniu
+- `sys_vendor-splash.py` — ekran powitalny producenta
 
-### Skrypty monitoringu
-- `monitor_metrics.sh` — monitorowanie metryk systemu
-- `monitor_stream.sh` — monitorowanie strumieni
+### Skrypty kamery (prefiks `sys_`)
+- `sys_camera-preview.sh` — uruchomienie preview z kamery
+- `sys_camera-kill.sh` — wymuszenie dostępu do kamery
+- `sys_kill-cam.sh` — szybkie zabicie procesów kamery
+- `sys_vision-control.sh` — kontrola usług wizyjnych
 
-### Skrypty testowe
-- `test_suite.sh` — zestaw testów
-- `tests_audit.sh` — audyt testów
-- `bench_detect.sh` — benchmark detekcji
+### Skrypty monitoringu (prefiks `diag_`)
+- `diag_metrics.sh` — monitorowanie metryk systemu
+- `diag_stream.sh` — monitorowanie strumieni
 
-### Diagnostyka XGO
-- `check_xgo_sensors.py` — sprawdzenie czujników XGO
-- `xgo_bl_probe.py` — diagnostyka bootloadera XGO
-- `xgo_safe_init.py` — bezpieczna inicjalizacja XGO
+### Skrypty testowe (prefiks `diag_`)
+- `diag_test-suite.sh` — zestaw testów
+- `diag_tests-audit.sh` — audyt testów
+- `diag_bench-detect.sh` — benchmark detekcji
 
-### Narzędzia pomocnicze
-- `export_env.sh` — eksport zmiennych środowiskowych
-- `volume_hooks.sh` — hooki głośności
-- `services_cleanup.sh` — czyszczenie usług
-- `estop.py` — emergency stop
-- `demo_lemniscate.py` — demo ruchu w kształcie lemniskaty
+### Diagnostyka XGO (prefiks `diag_` i `sys_`)
+- `diag_sensors.py` — sprawdzenie czujników XGO
+- `diag_xgo-bootloader.py` — diagnostyka bootloadera XGO
+- `sys_xgo-init.py` — bezpieczna inicjalizacja XGO
+
+### Narzędzia pomocnicze (prefiks `util_` i `sys_`)
+- `util_export-env.sh` — eksport zmiennych środowiskowych
+- `util_volume-hooks.sh` — hooki głośności
+- `sys_cleanup.sh` — czyszczenie usług
+- `sys_emergency-stop.py` — emergency stop
+- `demo_trajectory.py` — demo ruchu w kształcie lemniskaty
 
 ## Konwencje skryptów
 
@@ -101,7 +107,7 @@ Przykład: `service_ctl.sh` akceptuje tylko zdefiniowaną listę usług.
 
 ### Nie nadpisuj konfiguracji
 
-Skrypty w `ops/` **czytają** konfigurację z `config/`, ale **nie nadpisują** istniejących wartości ENV.
+Skrypty operacyjne **czytają** konfigurację z `config/`, ale **nie nadpisują** istniejących wartości ENV.
 
 Zobacz: [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
 
@@ -152,11 +158,11 @@ Standardowe kody wyjścia zgodne z POSIX:
 ### Sprawdzanie dostępności skryptów
 
 ```bash
-# Lista wszystkich skryptów ops
-ls -la ops/*.sh ops/*.py
+# Lista wszystkich skryptów
+ls -la scripts/*.sh scripts/*.py
 
 # Sprawdź uprawnienia wykonywania
-find ops -type f \( -name "*.sh" -o -name "*.py" \) ! -perm -u+x
+find scripts -type f \( -name "*.sh" -o -name "*.py" \) ! -perm -u+x
 ```
 
 ### Logi skryptów
@@ -172,5 +178,7 @@ Większość skryptów loguje do:
 - [CONFIG_POLICY.md](../CONFIG_POLICY.md) — polityka konfiguracji
 - [docs/apps/](../apps/) — moduły aplikacyjne
 - [docs/config/](../config/) — parametry konfiguracji
+- [scripts/README.md](../../scripts/README.md) — pełna dokumentacja katalogu scripts/
+- [docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](../_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md) — szczegóły migracji ops/→scripts/
 
-**Ostatnia aktualizacja:** 2025-01
+**Ostatnia aktualizacja:** 2025-10 (po migracji do scripts/)

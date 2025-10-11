@@ -197,10 +197,10 @@ python -m apps.voice.cli listen --config config/local/voice.toml
 
 ⚠️ **Wymaga weryfikacji:** Jeśli istnieją stare pliki YAML.
 
-Narzędzie do konwersji:
+Narzędzie do konwersji (jeśli dostępne):
 ```bash
-# (jeśli planowane)
-python tools/yaml_to_toml.py config/legacy/voice.yaml > config/voice.toml
+# (planowane - aktualnie nie zaimplementowane)
+python scripts/util_yaml-to-toml.py config/legacy/voice.yaml > config/voice.toml
 ```
 
 ## FAQ

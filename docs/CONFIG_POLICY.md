@@ -375,8 +375,8 @@ export VOICE_CONFIG=config/local/voice_dev.toml
 export VOICE_CONFIG=config/local/voice_prod.toml
 ```
 
-**Q: Czy skrypty w `ops/` nadpisują konfigurację?**
-A: Nie. Skrypty **czytają** z `config/` i **uzupełniają** brakujące ENV, ale nie nadpisują istniejących wartości.
+**Q: Czy skrypty operacyjne nadpisują konfigurację?**
+A: Nie. Skrypty w `scripts/` **czytają** z `config/` i **uzupełniają** brakujące ENV, ale nie nadpisują istniejących wartości.
 
 ---
 
