@@ -2,7 +2,7 @@
 
 > Centralny indeks dokumentacji projektu **Rider-Pi Apps** — oprogramowania rozszerzającego możliwości urządzenia Rider-Pi.
 
-> **Uwaga**: Raporty historyczne w katalogu `docs/summaries/` mogą pozostać w języku angielskim, ponieważ stanowią zapis wcześniejszych wersji projektu.
+> **Uwaga**: Raporty historyczne w katalogu `docs/_pr_summaries/` mogą pozostać w języku angielskim, ponieważ stanowią zapis wcześniejszych wersji projektu.
 
 ## Dokumenty główne (katalog główny)
 
@@ -83,11 +83,11 @@ Konfiguracja i wykorzystanie kart dźwiękowych:
 
 Podsumowania zakończonych etapów prac:
 
-- [**completion-report.md**](summaries/completion-report.md) — raport końcowy projektu
-- [**implementation-summary.md**](summaries/implementation-summary.md) — podsumowanie implementacji
-- [**simulator-summary.md**](summaries/simulator-summary.md) — podsumowanie implementacji symulatora 2D
-- [**sim1-implementation-summary.md**](summaries/sim1-implementation-summary.md) — raport z implementacji SIM-1 (rdzeń środowiska i renderowanie mapy)
-- [**sim3-implementation.md**](summaries/sim3-implementation.md) — raport z implementacji SIM-3
+- [**completion-report.md**](_pr_summaries/completion-report.md) — raport końcowy projektu
+- [**implementation-summary.md**](_pr_summaries/implementation-summary.md) — podsumowanie implementacji
+- [**simulator-summary.md**](_pr_summaries/simulator-summary.md) — podsumowanie implementacji symulatora 2D
+- [**sim1-implementation-summary.md**](_pr_summaries/sim1-implementation-summary.md) — raport z implementacji SIM-1 (rdzeń środowiska i renderowanie mapy)
+- [**sim3-implementation.md**](_pr_summaries/sim3-implementation.md) — raport z implementacji SIM-3
 
 ---
 
@@ -113,7 +113,7 @@ Przy dodawaniu nowych dokumentów należy przestrzegać następujących zasad:
 - **`docs/config/`** — dokumentacja parametrów konfiguracji (`config/*`)
 - **`docs/modules/`** — dokumentacja modułów (legacy — nowe dokumenty powinny iść do `docs/apps/`)
 - **`docs/audio/`** — konfiguracja sprzętu audio
-- **`docs/summaries/`** — raporty z zakończonych prac
+- **`docs/summaries/`** — raporty z zakończonych prac (obecnie `docs/_pr_summaries/`)
 - **`docs/release-notes/`** — informacje o wydaniach
 
 ### 2. Konwencja nazewnicza
