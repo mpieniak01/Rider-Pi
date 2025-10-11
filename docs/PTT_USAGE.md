@@ -111,7 +111,7 @@ If you get ALSA errors, use `--force` to kill blocking processes:
 
 ## Technical Details
 
-The PTT keyboard handler in `apps/voice/stream/service.py`:
+The PTT keyboard handler in `apps/voice/stream/svc_streaming.py`:
 - Runs as an async task (`_keyboard_ptt_loop`)
 - Uses non-blocking stdin polling with `select.select()`
 - Sends PTT state machine events (`START`, `DING_COMPLETE`, `COMMIT_AUDIO`)
@@ -128,12 +128,12 @@ See `apps/voice/stream/state.py` for the full PTT state machine implementation.
 The PTT functionality has been refactored. Use the following imports:
 
 - **PTT State Machine**: `from apps.voice.stream.state import PTTStateMachine`
-- **Streaming Service**: `from apps.voice.stream.service import StreamingVoiceService`
+- **Streaming Service**: `from apps.voice.stream.svc_streaming import StreamingVoiceService`
 - **CLI Entry Points**: `from apps.voice.svc_stream_runner import run_ptt_stream`
 
 **Removed/deprecated modules:**
 - `apps.voice.state.StreamingVoicePTTMixin` → Use `PTTStateMachine` from `apps.voice.stream.state`
 - `apps.voice.ptt_state` → Use `PTTStateMachine` from `apps.voice.stream.state`
-- `apps.voice.svc_stream` → Use `apps.voice.stream.service` or `apps.voice.svc_stream_runner`
+- `apps.voice.svc_stream` → Use `apps.voice.stream.svc_streaming` or `apps.voice.svc_stream_runner`
 
 See [docs/modules/voice.md](modules/voice.md#deprecated--legacy-files) for complete migration guide.

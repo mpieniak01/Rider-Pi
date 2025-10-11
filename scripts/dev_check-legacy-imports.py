@@ -14,6 +14,13 @@ Legacy files blocked:
   - apps/voice/svc_stream.py (removed in PR-3)
   - apps/voice/ptt_state.py (removed in PR-3)
   - apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)
+  - apps/voice/stream/service.py (renamed to svc_streaming.py)
+  - apps/voice/audio/wavutil.py (removed - dead code)
+  - apps/voice/audio_rx_tts.py (removed - dead code)
+  - apps/voice/audio_tx.py (removed - dead code)
+  - apps/voice/ding.py (removed - dead code)
+  - apps/voice/svc_file_pipeline.py (removed - dead code)
+  - apps/voice/voice_metrics.py (removed - dead code)
   - apps/voice/main.py (moved to _todelete, use apps.voice.cli)
   - apps/ui/face_*.py (moved to _todelete, use apps.draw or apps.ui.face)
   - apps/ui/face/driver_ili9xx.py (moved to _todelete, use drivers.lcd.driver_ili9xx)
@@ -45,7 +52,7 @@ LEGACY_PATTERNS = [
     # Files removed in earlier PR-3 (shims)
     (
         r"from apps\.voice\.svc_stream\b",
-        "apps/voice/svc_stream.py (removed in PR-3, use apps.voice.svc_stream_runner or apps.voice.stream.service)",
+        "apps/voice/svc_stream.py (removed in PR-3, use apps.voice.svc_stream_runner or apps.voice.stream.svc_streaming)",
     ),
     (
         r"from apps\.voice\.state\b",
@@ -64,6 +71,20 @@ LEGACY_PATTERNS = [
     # Files removed in PR-4 (transport consolidation)
     (r"from apps\.voice\.transport\b", "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)"),
     (r"import apps\.voice\.transport\b", "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)"),
+    # Files removed in refactor PR (dead code)
+    (r"from apps\.voice\.stream\.service\b", "apps/voice/stream/service.py (renamed to svc_streaming.py)"),
+    (r"from apps\.voice\.audio\.wavutil\b", "apps/voice/audio/wavutil.py (removed - dead code)"),
+    (r"from apps\.voice\.audio_rx_tts\b", "apps/voice/audio_rx_tts.py (removed - dead code)"),
+    (r"from apps\.voice\.audio_tx\b", "apps/voice/audio_tx.py (removed - dead code)"),
+    (r"from apps\.voice\.ding\b", "apps/voice/ding.py (removed - dead code, use playback.play_ding)"),
+    (r"from apps\.voice\.svc_file_pipeline\b", "apps/voice/svc_file_pipeline.py (removed - dead code)"),
+    (r"from apps\.voice\.voice_metrics\b", "apps/voice/voice_metrics.py (removed - dead code)"),
+    (r"import apps\.voice\.audio\.wavutil\b", "apps/voice/audio/wavutil.py (removed - dead code)"),
+    (r"import apps\.voice\.audio_rx_tts\b", "apps/voice/audio_rx_tts.py (removed - dead code)"),
+    (r"import apps\.voice\.audio_tx\b", "apps/voice/audio_tx.py (removed - dead code)"),
+    (r"import apps\.voice\.ding\b", "apps/voice/ding.py (removed - dead code)"),
+    (r"import apps\.voice\.svc_file_pipeline\b", "apps/voice/svc_file_pipeline.py (removed - dead code)"),
+    (r"import apps\.voice\.voice_metrics\b", "apps/voice/voice_metrics.py (removed - dead code)"),
     # Files moved to _todelete in refactor PR (orphaned stubs)
     (r"from apps\.voice\.main\b", "apps/voice/main.py (moved to _todelete, use apps.voice.cli)"),
     (r"import apps\.voice\.main\b", "apps/voice/main.py (moved to _todelete, use apps.voice.cli)"),

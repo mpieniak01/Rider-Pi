@@ -34,16 +34,15 @@ Moduł `apps/voice` przeszedł kompleksową refaktoryzację w ramach PR#1–PR#5
 
 #### Tryb plikowy (file)
 - **`svc_file.py`** — `VoiceService` (klasa główna), `run_listen_file()`, `run_once_file()`
-- **`svc_file_pipeline.py`** — pipeline ASR→Chat→TTS
 - **Przepływ**: Capture → WAV → ASR (pełna transkrypcja) → Chat → TTS → Playback
 
 #### Tryb strumieniowy (realtime)
 - **`svc_stream_runner.py`** — wrappery CLI dla trybu stream
   - `run_listen_stream()`, `run_ptt_stream()`, `run_once_stream()`
-  - Delegują do `stream/service.StreamingVoiceService`
+  - Delegują do `stream/svc_streaming.StreamingVoiceService`
 
 **Pakiet `apps/voice/stream/`:**
-- **`service.py`** — `StreamingVoiceService` (główna klasa, 700+ linii)
+- **`svc_streaming.py`** — `StreamingVoiceService` (główna klasa, 700+ linii)
   - Integruje mixiny: `StreamHandlersMixin`, `StreamPlayoutMixin`
   - Lifecycle: connect → session → audio duplex → cleanup
 - **`transport.py`** — `WebSocketTransport`, `ReconnectingTransport`
@@ -68,7 +67,6 @@ Moduł `apps/voice` przeszedł kompleksową refaktoryzację w ramach PR#1–PR#5
 - **`playback.py`** — odtwarzanie audio (ALSA/Pulse)
   - `PlaybackConfig`, `play_audio()`, `play_ding()`
 - **`alsa.py`** — narzędzia ALSA (lista urządzeń, konfiguracja dmix/dsnoop)
-- **`wavutil.py`** — operacje na plikach WAV
 - **`errors.py`** — `ALSAError`, `AudioError`
 
 > **Uwaga**: Pakiet `audio/*` planowany do migracji na top-level w przyszłych PR (obecnie w użyciu)
@@ -505,7 +503,7 @@ pytest -q -k voice
 |---------------|----|-----------------------------------------|-----------------|
 | `ws_transport.py` | #1 | Duplikat WebSocket transport | `stream/transport.py` |
 | `stream_transport.py` | #1 | Duplikat, nieużywany | `stream/transport.py` |
-| `svc_stream.py` | #3 | Re-export shim, zbędny po modularyzacji | `stream/service.py` lub `svc_stream_runner.py` |
+| `svc_stream.py` | #3 | Re-export shim, zbędny po modularyzacji | `stream/svc_streaming.py` lub `svc_stream_runner.py` |
 | `state.py` | #3 | `StreamingVoicePTTMixin` duplikat | `stream/state.PTTStateMachine` |
 | `ptt_state.py` | #3 | Duplikat PTT state, nieużywany | `stream/state.PTTStateMachine` |
 | `transport.py` | #4 | Duplikat `stream/transport.py` | `stream/transport.py` |
@@ -521,7 +519,7 @@ pytest -q -k voice
 - References to non-existent `cli_new.py` removed from Makefile and docs
 
 ### Removed in PR-3 (Tests Migration & Shim Removal)
-- **`apps/voice/svc_stream.py`** (104 linii) → Use `apps.voice.stream.service.StreamingVoiceService` or `apps.voice.svc_stream_runner` for CLI entry points
+- **`apps/voice/svc_stream.py`** (104 linii) → Use `apps.voice.stream.svc_streaming.StreamingVoiceService` or `apps.voice.svc_stream_runner` for CLI entry points
 - **`apps/voice/state.py`** (364 linii, StreamingVoicePTTMixin) → Use `apps.voice.stream.state.PTTStateMachine`
 - **`apps/voice/ptt_state.py`** (324 linii) → Use `apps.voice.stream.state.PTTStateMachine`
 - **`StreamingVoiceTransportMixin`** → Use concrete transport classes from `apps.voice.stream.transport`
@@ -532,7 +530,7 @@ pytest -q -k voice
 
 ### Pending Migration
 - **`apps/voice/audio/*`** directory (currently in use, migration planned)
-  - Current: `from apps.voice.audio import alsa, wavutil, capture, playback`
+  - Current: `from apps.voice.audio import alsa, capture, playback`
   - Future: Functionality will be integrated into top-level modules or remain as specialized subpackage
   - Note: Quality guard warns about imports but doesn't block (exit code 0)
 
@@ -546,7 +544,7 @@ from apps.voice.transport import WebSocketTransport
 from apps.voice.state import StreamingVoicePTTMixin
 
 # ✅ NEW (correct)
-from apps.voice.stream.service import StreamingVoiceService
+from apps.voice.stream.svc_streaming import StreamingVoiceService
 from apps.voice.stream.transport import WebSocketTransport, ReconnectingTransport
 from apps.voice.stream.state import PTTStateMachine
 ```
