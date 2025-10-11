@@ -17,7 +17,7 @@ Tests the streaming functionality using mock WebSocket connections
 to verify proper message handling, state transitions, and audio flow.
 """
 
-from apps.voice.stream.service import StreamConfig, StreamingVoiceService
+from apps.voice.stream.svc_streaming import StreamConfig, StreamingVoiceService
 
 
 class MockWebSocket:

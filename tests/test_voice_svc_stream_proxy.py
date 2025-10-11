@@ -1,11 +1,11 @@
 # tests/test_voice_svc_stream_proxy.py
-"""Tests for apps.voice.stream.service module exports (no I/O, no ALSA)."""
+"""Tests for apps.voice.stream.svc_streaming module exports (no I/O, no ALSA)."""
 
 import pytest
 
 
 def test_exports_present():
-    from apps.voice.stream import service as stream_service
+    from apps.voice.stream import svc_streaming as stream_service
 
     assert hasattr(stream_service, "StreamConfig")
     assert hasattr(stream_service, "StreamingVoiceService")
@@ -13,7 +13,7 @@ def test_exports_present():
 
 @pytest.mark.asyncio
 async def test_service_once_invocation(monkeypatch):
-    from apps.voice.stream import service as stream_service
+    from apps.voice.stream import svc_streaming as stream_service
 
     calls = {"once": 0}
 
@@ -42,7 +42,7 @@ async def test_service_once_invocation(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_service_listen_invocation(monkeypatch):
-    from apps.voice.stream import service as stream_service
+    from apps.voice.stream import svc_streaming as stream_service
 
     calls = {"listen": 0}
 
@@ -68,7 +68,7 @@ async def test_service_listen_invocation(monkeypatch):
 @pytest.mark.asyncio
 async def test_ptt_mode_configuration():
     """Test that PTT mode is configured correctly in service."""
-    from apps.voice.stream import service as stream_service
+    from apps.voice.stream import svc_streaming as stream_service
 
     ptt_config = {
         "stream": {},
