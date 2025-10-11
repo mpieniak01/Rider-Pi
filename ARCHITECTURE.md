@@ -104,7 +104,8 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 | `config/`      | Konfiguracje                                         |
 | `data/`        | Dane pomocnicze/ostatnie pliki (np. `last_frame`)    |
 | `snapshots/`   | Zrzuty klatek / surowe ujęcia                        |
-| `tools/`       | Narzędzia                                            |
+| `scripts/`     | Skrypty operacyjne, deweloperskie, diagnostyczne     |
+| `drivers/`     | Sterowniki sprzętowe (XGO, LCD)                      |
 | `tests/`       | Testy unit/integration                               |
 
 ---
