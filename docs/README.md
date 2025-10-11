@@ -200,5 +200,5 @@ python scripts/doc_sync_check.py
 
 ---
 
-**Ostatnia aktualizacja**: 2025-01 (dokumentacja apps/ops/config dodana)  
+**Ostatnia aktualizacja**: 2025-10 (aktualizacja po reorganizacji struktury: ops/tools/ → scripts/)  
 **Wersja dokumentacji**: zgodna z kodem głównym (branch `main`)
