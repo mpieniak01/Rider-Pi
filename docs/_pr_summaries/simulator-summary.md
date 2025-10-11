@@ -18,7 +18,7 @@ sim/
 │   └── maze.txt          # Complex maze
 └── README.md             # Simulator documentation
 
-run_simulation.py         # Entry point script
+scripts/sim/run_simulation.py         # Entry point script
 demo_simulator.sh         # Demonstration script
 ```
 
@@ -66,7 +66,7 @@ demo_simulator.sh         # Demonstration script
 python services/broker.py
 
 # Terminal 2: Start simulator
-python run_simulation.py
+python scripts/sim/run_simulation.py
 
 # Terminal 3: Send commands
 python scripts/dev_send-cmd.py
@@ -179,7 +179,7 @@ for topic, payload in sub:
 - `sim/maps/corridor.txt` (117 bytes)
 - `sim/maps/maze.txt` (576 bytes)
 - `docs/modules/sim.md` (3.7 KB)
-- `run_simulation.py` (2.6 KB)
+- `scripts/sim/run_simulation.py` (2.6 KB)
 - `demo_simulator.sh` (2.1 KB)
 - `tests/test_simulator.py` (2.6 KB)
 - `tests/test_simulator_integration.py` (4.6 KB)

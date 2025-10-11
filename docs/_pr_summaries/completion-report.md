@@ -25,7 +25,7 @@ Successfully implemented the foundational layer of the Rider-Pi 2D Simulator, in
 | `sim/__init__.py` | 7 | Package initialization |
 | `sim/maps/map01.txt` | 10 | Default 15x10 map |
 | `sim/maps/simple.txt` | 6 | Simple 7x6 test map |
-| `run_simulation.py` | 47 | Application entry point |
+| `scripts/sim/run_simulation.py` | 47 | Application entry point |
 
 ### Testing & Verification
 | File | Purpose | Status |
@@ -45,7 +45,7 @@ Successfully implemented the foundational layer of the Rider-Pi 2D Simulator, in
 
 ## Acceptance Criteria Results
 
-### ✅ AC1: Uruchomienie run_simulation.py otwiera okno Pygame
+### ✅ AC1: Uruchomienie scripts/sim/run_simulation.py otwiera okno Pygame
 **Result**: PASS
 - Window opens at 1280x720 resolution
 - Pygame initialized correctly
@@ -182,7 +182,7 @@ pygame>=2.5.0  # Added to requirements-dev.txt
 
 ### Basic Usage
 ```bash
-python3 run_simulation.py
+python3 scripts/sim/run_simulation.py
 ```
 
 ### Custom Map
@@ -193,7 +193,7 @@ world = World(map_file="sim/maps/custom.txt")
 
 ### Headless Mode (for testing)
 ```bash
-SDL_VIDEODRIVER=dummy python3 run_simulation.py
+SDL_VIDEODRIVER=dummy python3 scripts/sim/run_simulation.py
 ```
 
 ---

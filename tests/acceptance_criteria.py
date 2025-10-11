@@ -18,7 +18,7 @@ print("=" * 70 + "\n")
 
 criteria = []
 
-# AC1: Uruchomienie python run_simulation.py otwiera okno Pygame z wczytaną mapą
+# AC1: Uruchomienie python scripts/sim/run_simulation.py otwiera okno Pygame z wczytaną mapą
 print("[AC1] Simulator launches with Pygame window and loads map from .txt file")
 try:
     import pygame

@@ -22,7 +22,7 @@ All acceptance criteria have been met and verified.
    - `sim/maps/map01.txt` - Default 15x10 map
 
 3. **Entry Point**
-   - `run_simulation.py` - Main simulation launcher (47 lines)
+   - `scripts/sim/run_simulation.py` - Main simulation launcher (47 lines)
 
 4. **Tests**
    - `tests/test_simulator_basic.py` - 7 unit tests
@@ -42,7 +42,7 @@ All acceptance criteria have been met and verified.
 
 ## Acceptance Criteria Verification
 
-### ✅ AC1: Uruchomienie run_simulation.py otwiera okno Pygame
+### ✅ AC1: Uruchomienie scripts/sim/run_simulation.py otwiera okno Pygame
 **Status**: PASS
 - Pygame window initializes at 1280x720 resolution
 - Window title: "Rider-Pi 2D Simulator"
@@ -192,7 +192,7 @@ world = World(map_file="sim/maps/custom.txt")
 
 ### Headless Mode
 ```bash
-SDL_VIDEODRIVER=dummy python3 run_simulation.py
+SDL_VIDEODRIVER=dummy python3 scripts/sim/run_simulation.py
 ```
 
 ---

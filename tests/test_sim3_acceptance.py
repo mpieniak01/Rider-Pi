@@ -143,11 +143,11 @@ def test_camera_publishes_frames():
 
 
 def test_integration_in_main_loop():
-    """Verify sensors are integrated in run_simulation.py main loop."""
+    """Verify sensors are integrated in scripts/sim/run_simulation.py main loop."""
     import importlib.util
 
     # Load run_simulation module
-    spec = importlib.util.spec_from_file_location("run_simulation", "run_simulation.py")
+    spec = importlib.util.spec_from_file_location("run_simulation", "scripts/sim/run_simulation.py")
     run_sim = importlib.util.module_from_spec(spec)
 
     # Verify it imports required modules

@@ -20,7 +20,7 @@ def simple_navigation_demo():
     print("This script controls the robot (simulator or real)")
     print("Make sure the broker and simulator are running:\n")
     print("  Terminal 1: python services/broker.py")
-    print("  Terminal 2: python run_simulation.py\n")
+    print("  Terminal 2: python scripts/sim/run_simulation.py\n")
 
     # Create publisher for control commands
     pub = BusPub(warmup_ms=300)

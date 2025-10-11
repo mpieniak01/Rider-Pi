@@ -212,7 +212,7 @@ The existing `sim/` directory is **preserved** and serves a different purpose:
 | Features | Position, velocity, collision, visualization | Logging only |
 | Dependencies | pygame, zmq | None |
 | Usage | Navigation testing, visualization | Unit tests, CI/CD |
-| Integration | Standalone `run_simulation.py` | Via factory functions |
+| Integration | Standalone `scripts/sim/run_simulation.py` | Via factory functions |
 
 Both approaches complement each other and can coexist.
 

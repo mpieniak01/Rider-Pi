@@ -23,7 +23,7 @@ echo "  ✓ Broker running (PID: $BROKER_PID)"
 
 # Start simulator in background (headless mode for demo)
 echo "[3/5] Starting simulator..."
-SDL_VIDEODRIVER=dummy python3 run_simulation.py &
+SDL_VIDEODRIVER=dummy python3 scripts/sim/run_simulation.py &
 SIM_PID=$!
 sleep 2
 echo "  ✓ Simulator running (PID: $SIM_PID)"
@@ -80,6 +80,6 @@ echo "=== Demo Complete ==="
 echo ""
 echo "To run interactively:"
 echo "  Terminal 1: python services/broker.py"
-echo "  Terminal 2: python run_simulation.py"
+echo "  Terminal 2: python scripts/sim/run_simulation.py"
 echo "  Terminal 3: python scripts/diag_bus-spy.py"
 echo "  Terminal 4: python scripts/dev_send-cmd.py"

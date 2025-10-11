@@ -174,7 +174,7 @@ sim/
 └── maps/
     └── simple.txt           # Sample map file
 
-run_simulation.py            # Main entry point
+scripts/sim/run_simulation.py            # Main entry point
 
 scripts/
 └── dev_keyboard-sim.py      # Keyboard control (WASD)

@@ -1,5 +1,0 @@
-
-[nlu]
-chat_threshold = 0.0
-llm_model = "dummy"
-command_keywords = {}

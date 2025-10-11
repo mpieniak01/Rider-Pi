@@ -138,7 +138,7 @@ check("6. MQTT publishing works for both sensors", test_mqtt_publishing)
 def test_main_loop():
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location("run_simulation", "run_simulation.py")
+    spec = importlib.util.spec_from_file_location("run_simulation", "scripts/sim/run_simulation.py")
     run_sim = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(run_sim)
 

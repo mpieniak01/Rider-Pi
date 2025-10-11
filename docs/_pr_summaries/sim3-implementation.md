@@ -33,7 +33,7 @@ class VirtualGyro:
             self._pub.send_multipart([GYRO_TOPIC.encode("utf-8"), payload])
 ```
 
-**Integration in main loop** (`run_simulation.py` line 78):
+**Integration in main loop** (`scripts/sim/run_simulation.py` line 78):
 ```python
 gyro.publish(robot.angle)
 ```
@@ -145,7 +145,7 @@ tests/acceptance_criteria.py ........... 6/6 PASSED
 
 ### Linting
 ```
-ruff check sim/ run_simulation.py ...... ✓ All checks passed
+ruff check sim/ scripts/sim/run_simulation.py ...... ✓ All checks passed
 ```
 
 ### Manual Verification
@@ -181,7 +181,7 @@ SIM_LOG_LEVEL=INFO                  # Logging level
 python services/broker.py
 
 # Terminal 2: Start simulator
-python run_simulation.py
+python scripts/sim/run_simulation.py
 
 # Terminal 3: Monitor MQTT traffic
 python scripts/diag_bus-spy.py
@@ -235,7 +235,7 @@ if now - self.last_pub < self.period:
 
 - `sim/sensors.py` - Virtual sensors implementation
 - `sim/world.py` - Side panel rendering
-- `run_simulation.py` - Main loop integration
+- `scripts/sim/run_simulation.py` - Main loop integration
 - `tests/test_sim3_acceptance.py` - Acceptance criteria tests
 - `tests/acceptance_criteria.py` - Verification script
 

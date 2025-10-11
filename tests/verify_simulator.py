@@ -68,10 +68,10 @@ assert test_surface is not None, "Camera should render a surface"
 print("  ✓ Sensors working")
 
 # Test 4: Entry point script
-print("[4/4] Testing run_simulation.py imports...")
+print("[4/4] Testing scripts/sim/run_simulation.py imports...")
 import importlib.util
 
-spec = importlib.util.spec_from_file_location("run_simulation", "run_simulation.py")
+spec = importlib.util.spec_from_file_location("run_simulation", "scripts/sim/run_simulation.py")
 run_sim = importlib.util.module_from_spec(spec)
 # Don't execute, just verify it can be imported
 print("  ✓ Entry point script valid")
@@ -80,6 +80,6 @@ print("\n=== All Module Verifications Passed ===\n")
 
 print("To run the simulator:")
 print("  1. Start the broker: python services/broker.py")
-print("  2. Start the simulator: python run_simulation.py")
+print("  2. Start the simulator: python scripts/sim/run_simulation.py")
 print("  3. Send commands: python scripts/dev_send-cmd.py")
 print("  4. Monitor traffic: python scripts/diag_bus-spy.py")

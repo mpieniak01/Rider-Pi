@@ -27,7 +27,7 @@ def test_simulator_mqtt_communication():
     Run this test with the broker and simulator already running:
 
     Terminal 1: python services/broker.py
-    Terminal 2: SDL_VIDEODRIVER=dummy python run_simulation.py
+    Terminal 2: SDL_VIDEODRIVER=dummy python scripts/sim/run_simulation.py
     Terminal 3: python tests/test_simulator_integration.py
     """
     print("\n=== Testing Simulator MQTT Communication ===\n")
@@ -122,7 +122,7 @@ def test_with_subprocess():
         env = os.environ.copy()
         env["SDL_VIDEODRIVER"] = "dummy"
         sim_proc = subprocess.Popen(
-            ["python", "run_simulation.py"],
+            ["python", "scripts/sim/run_simulation.py"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
