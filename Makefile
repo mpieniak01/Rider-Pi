@@ -397,7 +397,7 @@ voice-kill:
 	-@pkill -f "arecord" 2>/dev/null || true
 	-@pkill -f "aplay" 2>/dev/null || true
 
-# alias for compatibility
+# Compatibility alias: voice-free redirects to voice-kill
 # Maintained for backward compatibility; legacy scripts may use 'voice-free' instead of 'voice-kill'.
 voice-free: voice-kill
 
