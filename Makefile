@@ -22,31 +22,51 @@ ENV_FROM_BASH = OPENAI_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2
 help:
 	@echo ""
 	@echo "Rider-Pi — język projektu"
+	@echo ""
+	@echo "═══ System Services ═══"
 	@echo "  make broker           # uruchom brokera (foreground)"
 	@echo "  make api              # uruchom API (foreground)"
 	@echo "  make up               # restart broker+api (systemd)"
+	@echo "  make stop-all         # zatrzymaj wszystkie usługi Rider-Pi"
+	@echo "  make safemode         # tryb awaryjny (kill vendor, stop, LCD off, LED off)"
+	@echo ""
+	@echo "═══ System Status & Logs ═══"
 	@echo "  make status           # status broker+api+vision"
 	@echo "  make status-all       # status wszystkich usług rider-*"
 	@echo "  make logs-broker      # logi brokera"
 	@echo "  make logs-api         # logi API"
 	@echo "  make logs-preview     # logi cam-preview"
 	@echo "  make logs-all         # logi wszystkich kluczowych"
+	@echo "  make logs-clean       # wyczyść logi journalctl dla rider-*"
 	@echo ""
-	@echo "  make stop-all         # zatrzymaj wszystkie usługi Rider-Pi"
-	@echo "  make safemode         # tryb awaryjny (kill vendor, stop, LCD off, LED off)"
+	@echo "═══ Voice (File-based) ═══"
+	@echo "  make voice-file-listen      # nasłuch ciągły (listen, config: voice_file.toml)"
+	@echo "  make voice-file-ptt         # push-to-talk (ptt, config: voice_file.toml)"
+	@echo "  make voice-file-once        # pojedyncza interakcja (once, config: voice_file.toml)"
+	@echo "  make voice-asr-file FILE=path.wav   # rozpoznaj mowę z pliku"
+	@echo "  make voice-tts TEXT='Hello'         # synteza + odtworzenie"
+	@echo "  make voice-web        # uruchom serwer web UI (bind: $(VOICE_BIND))"
 	@echo ""
+	@echo "═══ Voice (Streaming WebSocket) ═══"
+	@echo "  make voice-stream-once      # pojedyncza interakcja (realtime WS, config: voice_streaming.toml)"
+	@echo "  make voice-stream-listen    # nasłuch ciągły (realtime WS, config: voice_streaming.toml)"
+	@echo "  make voice-kill       # zabij procesy głosowe/audio"
+	@echo "  make voice-diag       # diagnostyka systemu"
+	@echo "  make voice-smoke      # testy podstawowe (bez audio/sieci)"
+	@echo ""
+	@echo "═══ Camera Preview ═══"
 	@echo "  make preview-run      # podgląd kamery (interactive, bez systemd)"
 	@echo "  make preview-on       # start cam-preview (systemd)"
 	@echo "  make preview-off      # stop  cam-preview (systemd)"
 	@echo "  make preview-status   # status cam-preview"
 	@echo ""
-	@echo "  make bus-spy          # podsłuch magistrali"
-	@echo ""
+	@echo "═══ Vision Dispatcher ═══"
 	@echo "  make vision-on        # start vision (dispatcher)"
 	@echo "  make vision-off       # stop vision"
 	@echo "  make vision-burst     # vision na czas (SECONDS=120 domyślnie)"
 	@echo "  make vision-status    # status vision"
 	@echo ""
+	@echo "═══ Hardware Control — LCD ═══"
 	@echo "  make lcd-on           # włącz LCD (wake + DISP_ON)"
 	@echo "  make lcd-off          # wyłącz LCD (black + SLEEP, + próba BL)"
 	@echo "  make lcd-reset        # panel reset (RST) + ON"
@@ -54,36 +74,34 @@ help:
 	@echo "  make lcd-on-hard      # twarde ON (piny + SPI), z fallbackiem BL"
 	@echo "  make lcd-off-hard     # twarde OFF (piny + SPI), z wymuszeniem BL"
 	@echo ""
+	@echo "═══ Hardware Control — LED ═══"
+	@echo "  make led-on           # włącz LED"
+	@echo "  make led-off          # wyłącz LED"
+	@echo "  make led-blink        # miganie LED (HZ=2 lub ON=200 OFF=200)"
+	@echo "  make led-status       # status LED"
+	@echo "  make led-auto         # automatyczny tryb LED"
+	@echo ""
+	@echo "═══ Face Rendering ═══"
 	@echo "  make face-direct      # bezpośredni renderer LCD (scripts/dev_face-lcd-direct.py)"
 	@echo "  make face-api-png     # render PNG przez face_api → /tmp/face_api.png"
 	@echo "  make face-api-lcd     # jednorazowy push na LCD przez face_api"
 	@echo "  make face-testcard    # plansza testowa na LCD"
 	@echo "  make face-bench       # krótki benchmark FPS"
 	@echo ""
-	@echo "  make voice-run        # nasłuch ciągły (listen)"
-	@echo "  make voice-ptt        # push-to-talk (ptt)"
-	@echo "  make voice-once       # pojedyncza interakcja (once)"
-	@echo "  make voice-once-realtime  # pojedyncza interakcja (realtime WebSocket)"
-	@echo "  make voice-listen-realtime # nasłuch ciągły (realtime WebSocket)"
-	@echo "  make voice-asr-file FILE=path.wav   # rozpoznaj mowę z pliku"
-	@echo "  make voice-tts TEXT='Hello'         # synteza + odtworzenie"
-	@echo "  make voice-web        # uruchom serwer web UI (bind: $(VOICE_BIND))"
+	@echo "═══ Configuration ═══"
+	@echo "  make config-edit-stream     # edytuj config/voice_streaming.toml"
+	@echo "  make config-edit-file       # edytuj config/voice_file.toml"
 	@echo ""
-	@echo "  NEW VOICE (CLI-first with ALSA pre-flight):"
-	@echo "  make voice-once-new   # pojedyncza interakcja (nowy CLI)"
-	@echo "  make voice-ptt-new    # push-to-talk (nowy CLI)"
-	@echo "  make voice-listen-new # nasłuch ciągły (nowy CLI)"
-	@echo "  make voice-diag       # diagnostyka systemu"
-	@echo "  make voice-free       # zwolnij urządzenia ALSA"
-	@echo "  make voice-smoke      # testy podstawowe (bez audio/sieci)"
-	@echo ""
+	@echo "═══ Diagnostics & Utilities ═══"
+	@echo "  make bus-spy          # podsłuch magistrali"
 	@echo "  make test             # testy"
 	@echo "  make bench            # benchmark detekcji"
 	@echo "  make clean            # sprzątanie cache"
 	@echo "  make tree             # drzewo repo"
 	@echo "  make health           # /healthz API (port 8080)"
 	@echo ""
-	@echo "  [DEPRECATED] ssd-on/off/status/logs, preview-ssd  -> patrz: preview-*"
+
+# ───────────────────────────────────────────────
 
 # ───────────────────────────────────────────────
 # DEV RUN (foreground)
@@ -97,7 +115,7 @@ api:
 
 # ───────────────────────────────────────────────
 # SYSTEMD
-.PHONY: up stop-all status status-all logs-broker logs-api logs-all logs-preview
+.PHONY: up stop-all status status-all logs-broker logs-api logs-all logs-preview logs-clean
 up:
 	@$(SUDO) systemctl restart rider-broker.service rider-api.service
 
@@ -129,6 +147,15 @@ logs-all:
 	@journalctl -u rider-vision.service -n 80 --no-pager
 	@echo "───"
 	@journalctl -u rider-cam-preview.service -n 80 --no-pager || true
+
+logs-clean:
+	@echo "== Cleaning systemd logs for rider-* services =="
+	@$(SUDO) journalctl --rotate || true
+	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u rider-broker.service || true
+	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u rider-api.service || true
+	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u rider-vision.service || true
+	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u rider-cam-preview.service || true
+	@echo "Logs cleaned."
 
 # ───────────────────────────────────────────────
 # SAFE MODE
@@ -196,7 +223,7 @@ bus-spy:
 	$(PY) scripts/diag_bus-spy.py
 
 # ───────────────────────────────────────────────
-# CAM PREVIEW (systemd on-demand) + aliasy wsteczne
+# CAM PREVIEW (systemd on-demand)
 .PHONY: preview-on preview-off preview-status
 preview-on:
 	@$(SUDO) systemctl start rider-cam-preview.service
@@ -206,24 +233,6 @@ preview-off:
 
 preview-status:
 	@systemctl --no-pager --full status rider-cam-preview.service | sed -n '1,25p' || true
-
-# aliasy DEPRECATED (zachowana kompatybilność)
-.PHONY: ssd-on ssd-off ssd-status logs-ssd preview-ssd
-ssd-on:
-	@echo "[DEPRECATED] użyj: make preview-on"
-	@$(MAKE) preview-on
-ssd-off:
-	@echo "[DEPRECATED] użyj: make preview-off"
-	@$(MAKE) preview-off
-ssd-status:
-	@echo "[DEPRECATED] użyj: make preview-status"
-	@$(MAKE) preview-status
-logs-ssd:
-	@echo "[DEPRECATED] użyj: make logs-preview"
-	@$(MAKE) logs-preview
-preview-ssd:
-	@echo "[DEPRECATED] użyj: make preview-run"
-	@$(MAKE) preview-run
 
 # ───────────────────────────────────────────────
 # VISION CONTROL
@@ -305,16 +314,16 @@ face-bench:
 	done
 	@echo "Tip: możesz nadpisać:  HZ_LIST=\"32000000 48000000\"  oraz SECS=6"
 
+# ───────────────────────────────────────────────
+# CONFIG HELPERS
+.PHONY: config-edit-stream config-edit-file
+config-edit-stream:
+	@echo "== Editing voice streaming config =="
+	@$${EDITOR:-nano} $(ROOT)/config/voice_streaming.toml
 
-# Commented out - face_presets.sh script doesn't exist
-# face-neutral:
-# 	@bash tools/face_presets.sh neutral --secs 8 --stats
-
-# face-happy:
-# 	@bash tools/face_presets.sh happy --secs 8 --stats
-
-# face-sad:
-# 	@bash tools/face_presets.sh sad --secs 8 --stats
+config-edit-file:
+	@echo "== Editing voice file config =="
+	@$${EDITOR:-nano} $(ROOT)/config/voice_file.toml
 
 # ───────────────────────────────────────────────
 # GFX / VNC
@@ -346,16 +355,16 @@ gfx-status:
 	@systemctl get-default
 
 # ───────────────────────────────────────────────
-# VOICE (CLI + web)
-.PHONY: voice-run voice-ptt voice-once voice-asr-file voice-tts voice-web voice-once-realtime voice-listen-realtime
-voice-run:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli listen $(VOICE_ARGS)
+# VOICE — FILE-BASED (WAV/PCM)
+.PHONY: voice-file-listen voice-file-ptt voice-file-once voice-asr-file voice-tts voice-web
+voice-file-listen:
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_file.toml listen $(VOICE_ARGS)
 
-voice-ptt:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli ptt $(VOICE_ARGS)
+voice-file-ptt:
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_file.toml ptt $(VOICE_ARGS)
 
-voice-once:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli once $(VOICE_ARGS)
+voice-file-once:
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_file.toml once $(VOICE_ARGS)
 
 voice-asr-file:
 	@if [ -z "$(FILE)" ]; then echo "Usage: make voice-asr-file FILE=path.wav"; exit 1; fi
@@ -368,38 +377,31 @@ voice-tts:
 voice-web:
 	$(ENV_FROM_BASH) $(PY) -m apps.voice.web --bind $(VOICE_BIND) $(VOICE_ARGS)
 
-# Realtime voice modes with pasuspender for WM8960 duplex support
-voice-once-realtime:
-	pasuspender -- \
-	$(PY) -m apps.voice.cli --config ./config/voice.toml once \
-	  --asr transport=realtime language=pl \
-	  --chat transport=realtime \
-	  --tts transport=realtime voice=ash
-
-voice-listen-realtime:
-	pasuspender -- \
-	$(PY) -m apps.voice.cli --config ./config/voice.toml listen \
-	  --asr transport=realtime language=pl \
-	  --chat transport=realtime \
-	  --tts transport=realtime voice=ash
-
 # ───────────────────────────────────────────────
-# NEW VOICE TARGETS (CLI-first with ALSA pre-flight)
-.PHONY: voice-once-new voice-ptt-new voice-listen-new voice-diag voice-free voice-smoke
-voice-once-new:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli once --mode stream $(VOICE_ARGS)
+# VOICE — STREAMING (WebSocket Realtime)
+.PHONY: voice-stream-once voice-stream-listen voice-kill voice-diag voice-smoke
+voice-stream-once:
+	@echo "== Single streaming interaction (WebSocket realtime) =="
+	pasuspender -- \
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_streaming.toml once $(VOICE_ARGS)
 
-voice-ptt-new:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli ptt --mode stream $(VOICE_ARGS)
+voice-stream-listen:
+	@echo "== Continuous streaming listen (WebSocket realtime) =="
+	pasuspender -- \
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_streaming.toml listen $(VOICE_ARGS)
 
-voice-listen-new:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli listen --mode stream $(VOICE_ARGS)
+voice-kill:
+	@echo "== Killing voice/audio processes =="
+	-@pkill -f "apps.voice.cli" 2>/dev/null || true
+	-@pkill -f "arecord" 2>/dev/null || true
+	-@pkill -f "aplay" 2>/dev/null || true
+
+# Compatibility alias: voice-free redirects to voice-kill
+# Maintained for backward compatibility; legacy scripts may use 'voice-free' instead of 'voice-kill'.
+voice-free: voice-kill
 
 voice-diag:
 	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli diag --audio $(VOICE_ARGS)
-
-voice-free:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli free $(VOICE_ARGS)
 
 voice-smoke:
 	@echo "Voice smoke tests (mock mode, no audio/network)..."
@@ -410,31 +412,6 @@ voice-smoke:
 	@echo "Testing PTT state machine..."  
 	@$(PY) -m pytest tests/test_voice_ptt_state.py -v -x
 	@echo "✓ Smoke tests passed"
-
-# ───────────────────────────────────────────────
-# VOICE STREAMING TARGETS (new)
-.PHONY: voice-kill voice-stream-once voice-stream-listen
-voice-kill:
-	@echo "== Killing voice/audio processes =="
-	-@pkill -f "apps.voice.cli" 2>/dev/null || true
-	-@pkill -f "arecord" 2>/dev/null || true
-	-@pkill -f "aplay" 2>/dev/null || true
-
-voice-stream-once: voice-kill
-	@echo "== Single streaming interaction =="
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli once \
-	  --mode stream \
-	  --log-level INFO \
-	  --capture device=wm8960_in sample_rate=16000 channels=2 \
-	  --playback device=wm8960_out
-
-voice-stream-listen: voice-kill
-	@echo "== Continuous streaming (PTT mode) =="
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli ptt \
-	  --mode stream \
-	  --log-level DEBUG \
-	  --capture device=wm8960_in sample_rate=16000 channels=2 \
-	  --playback device=wm8960_out
 
 # ───────────────────────────────────────────────
 # LCD HARD (zachowany wariant z poprawnym $$)
