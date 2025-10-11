@@ -108,6 +108,24 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 | `drivers/`     | Sterowniki sprzętowe (XGO, LCD)                      |
 | `tests/`       | Testy unit/integration                               |
 
+### Historia reorganizacji struktury
+
+**PR #10 (2025-01):** Utworzenie warstwy sterowników `drivers/`
+- Przeniesiono sterowniki XGO i LCD z `apps/` do dedykowanego katalogu `drivers/`
+- Wprowadzono abstrakcję sprzętową oddzielającą logikę aplikacji od interfejsów sprzętowych
+- Zobacz: [docs/_pr_summaries/PR10_SUMMARY.md](docs/_pr_summaries/PR10_SUMMARY.md)
+
+**PR #11 (2025-01):** Wprowadzenie trybu symulacji
+- Dodano symulowane implementacje sterowników (`drivers/xgo/sim.py`, `drivers/lcd/sim.py`)
+- Wprowadzono fabryki sterowników reagujące na zmienną `RIDER_SIMULATOR`
+- Umożliwiono rozwój i testowanie bez dostępu do fizycznego sprzętu
+- Zobacz: [docs/_pr_summaries/PR11_SUMMARY.md](docs/_pr_summaries/PR11_SUMMARY.md)
+
+**PR #13 (2025-10):** Konsolidacja skryptów operacyjnych
+- Scalono skrypty z katalogów `ops/` i `tools/` do `scripts/`
+- Wprowadzono ujednoliconą konwencję nazewnictwa (prefiksy: `sys_`, `diag_`, `dev_`, `demo_`, `util_`)
+- Zobacz: [docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md), [scripts/README.md](scripts/README.md)
+
 ---
 
 ## Konfiguracja i parametry
