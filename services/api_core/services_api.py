@@ -28,7 +28,7 @@ ALLOWED_UNITS = {
     "lastframe": "rider-ssd-preview.service",
 }
 
-SERVICE_CTL = os.path.join(C.BASE_DIR, "ops", "service_ctl.sh")
+SERVICE_CTL = os.path.join(C.BASE_DIR, "scripts", "sys_control.sh")
 
 
 def _json(payload, status: int = 200) -> Response:
