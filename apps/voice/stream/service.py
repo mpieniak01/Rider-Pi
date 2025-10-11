@@ -12,11 +12,6 @@ The service is composed of mixins:
 from __future__ import annotations
 
 import asyncio
-
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
 import logging
 import queue
 import threading
@@ -38,6 +33,25 @@ from .handlers import StreamHandlersMixin
 from .playout import StreamPlayoutMixin
 from .state import PTTEvent, PTTStateMachine
 from .transport import ReconnectingTransport
+
+
+def _ensure_event_loop() -> None:
+    """
+    Make sure current thread has an asyncio event loop.
+    Nie ustawiamy pętli na etapie importu modułu – robimy to leniwie, kiedy potrzebne.
+    """
+    try:
+        asyncio.get_running_loop()
+        return
+    except RuntimeError:
+        pass
+    # Spróbuj pobrać istniejącą pętlę (legacy API); jeśli brak – utwórz i ustaw.
+    try:
+        asyncio.get_event_loop()
+        return
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
 
 @dataclass
@@ -107,7 +121,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         except Exception as e:
             self.connected = False
             # Publikujemy błąd w formacie sprawdzanym przez test
-            self._publish_error("ws_connect", e)
+            self._publish_error("ws_connect", str(e))
             # Opcjonalny log – nie zmieniamy poziomu logowania testów
             logger = logging.getLogger(getattr(self, "log_name", "voice.stream"))
             try:
@@ -127,12 +141,16 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         if pub and hasattr(pub, "publish"):
             try:
                 pub.publish("ui.error", payload)
-            except Exception:  # nie chcemy, by publikacja błędu psuła dalszy flow
+            except Exception:
+                # publikacja błędu nie powinna psuć dalszego flow
                 pass
 
     """Refactored WebSocket-based streaming voice service."""
 
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
+        # Upewnij się, że mamy pętlę zanim stworzymy prymitywy asyncio.
+        _ensure_event_loop()
+
         self.config = config
         self.stream_cfg = StreamConfig.from_dict(config)
         self.ui_publisher = ui_publisher
