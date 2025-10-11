@@ -27,7 +27,7 @@
 
 ### Skrypty systemd (prefiks `sys_`)
 - `sys_control.sh` — bezpieczna kontrola usług systemd (whitelist)
-- `ops/systemd-sync.sh` — synchronizacja definicji systemd z repo (pozostało w ops/)
+- `scripts/systemd-sync.sh` — synchronizacja definicji systemd z repo (przeniesiono z ops/)
 - `sys_boot-prepare.sh` — przygotowanie systemu przy starcie
 
 ### Skrypty wyświetlacza (prefiks `sys_`)

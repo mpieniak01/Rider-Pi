@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ops/bench_detect.sh DUR
+# scripts/diag_bench-detect.sh DUR
 set -euo pipefail
 export LC_ALL=C
 

@@ -191,7 +191,7 @@ config/alsa/preflight.sh --force --capture wm8960_in --playback wm8960_out
 
 ### Skrypty operacyjne
 
-Skrypty w `ops/` **czytają** konfigurację z `config/`, nie **tworzą** jej:
+Skrypty w `scripts/` **czytają** konfigurację z `config/`, nie **tworzą** jej:
 ```bash
 # scripts/sys_voice-run.sh eksportuje ENV z domyślnymi wartościami,
 # ale można je nadpisać:
