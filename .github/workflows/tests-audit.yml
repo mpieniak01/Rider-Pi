@@ -4,14 +4,14 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'ops/tests_audit.sh'
+      - 'scripts/diag_tests-audit.sh'
       - 'tests/**'
       - 'Makefile'
       - 'pytest.ini'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'ops/tests_audit.sh'
+      - 'scripts/diag_tests-audit.sh'
       - 'tests/**'
       - 'Makefile'
       - 'pytest.ini'
@@ -35,15 +35,15 @@ jobs:
       - name: Install audit deps
         run: |
           python -m pip install --upgrade pip
-          # jeśli wolisz z pliku, utwórz ops/tests_audit_requirements.txt
-          # i zamień poniższą linijkę na: pip install -r ops/tests_audit_requirements.txt
+          # jeśli wolisz z pliku, utwórz scripts/tests_audit_requirements.txt
+          # i zamień poniższą linijkę na: pip install -r scripts/tests_audit_requirements.txt
           pip install pyflakes
 
       - name: Run audit
         shell: bash
         run: |
           set -euxo pipefail
-          bash ops/tests_audit.sh
+          bash scripts/diag_tests-audit.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
