@@ -13,8 +13,6 @@ extend-exclude = [
   "__pycache__/",
   "**/*.egg-info/",
   ".ipynb_checkpoints/",
-  # całe drzewka starych snapshotów:
-  "services/_deprecated_*/",
   # archiwum nieużywanych modułów:
   "**/_todelete/",
 ]
