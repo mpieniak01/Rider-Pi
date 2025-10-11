@@ -145,9 +145,9 @@ make stop-all    || true
 2. Twardy reset + czyszczenie:
 
 ```bash
-sudo -E python3 tools/lcdctl.py off    || true; sleep 0.2
-sudo -E python3 tools/lcdctl.py reset  || true; sleep 0.2
-sudo -E python3 tools/lcdctl.py on     || true
+sudo -E python3 scripts/sys_lcd-control.py off    || true; sleep 0.2
+sudo -E python3 scripts/sys_lcd-control.py reset  || true; sleep 0.2
+sudo -E python3 scripts/sys_lcd-control.py on     || true
 python3 scripts/dev_lcd-clear.py   || true
 ```
 

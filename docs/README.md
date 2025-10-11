@@ -2,7 +2,7 @@
 
 > Centralny indeks dokumentacji projektu **Rider-Pi Apps** — oprogramowania rozszerzającego możliwości urządzenia Rider-Pi.
 
-> **Uwaga**: Raporty historyczne w katalogu `docs/summaries/` mogą pozostać w języku angielskim, ponieważ stanowią zapis wcześniejszych wersji projektu.
+> **Uwaga**: Raporty historyczne w katalogu `docs/_pr_summaries/` mogą pozostać w języku angielskim, ponieważ stanowią zapis wcześniejszych wersji projektu.
 
 ## Dokumenty główne (katalog główny)
 
@@ -46,16 +46,19 @@ Szczegółowa dokumentacja wszystkich modułów aplikacyjnych:
 
 ---
 
-## Dokumentacja skryptów operacyjnych (`ops/*`)
+## Dokumentacja skryptów operacyjnych
+
+> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` (patrz [../scripts/README.md](../scripts/README.md)).  
+> Dokumentacja w `docs/ops/` opisuje funkcjonalność (pozostaje aktualna), ale ścieżki odnoszą się do nowej lokalizacji.
 
 Skrypty operacyjne dla zarządzania systemem i usługami:
 
 - [**ops/README.md**](ops/README.md) — **indeks skryptów** (konwencje, bezpieczeństwo, kody wyjścia)
-- [**ops/voice-scripts.md**](ops/voice-scripts.md) — voice-run.sh, voice-once.sh (uruchamianie aplikacji głosowej)
-- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — service_ctl.sh, systemd_sync.sh (zarządzanie usługami)
-- [**ops/display-scripts.md**](ops/display-scripts.md) — lcdctl.py, ledctl.py, fbgrab.py (kontrola wyświetlacza)
-- [**ops/camera-scripts.md**](ops/camera-scripts.md) — camera_preview.sh, camera_takeover_kill.sh (zarządzanie kamerą)
-- [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — monitor_metrics.sh, monitor_stream.sh (monitorowanie)
+- [**ops/voice-scripts.md**](ops/voice-scripts.md) — sys_voice-*.sh (uruchamianie aplikacji głosowej)
+- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — sys_control.sh, systemd-sync.sh (zarządzanie usługami)
+- [**ops/display-scripts.md**](ops/display-scripts.md) — sys_lcd-control.py, sys_led-control.py (kontrola wyświetlacza)
+- [**ops/camera-scripts.md**](ops/camera-scripts.md) — sys_camera-*.sh (zarządzanie kamerą)
+- [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — diag_metrics.sh, diag_stream.sh (monitorowanie)
 - [**ops/utility-scripts.md**](ops/utility-scripts.md) — testy, diagnostyka XGO, demo, narzędzia
 
 ---
@@ -83,11 +86,11 @@ Konfiguracja i wykorzystanie kart dźwiękowych:
 
 Podsumowania zakończonych etapów prac:
 
-- [**completion-report.md**](summaries/completion-report.md) — raport końcowy projektu
-- [**implementation-summary.md**](summaries/implementation-summary.md) — podsumowanie implementacji
-- [**simulator-summary.md**](summaries/simulator-summary.md) — podsumowanie implementacji symulatora 2D
-- [**sim1-implementation-summary.md**](summaries/sim1-implementation-summary.md) — raport z implementacji SIM-1 (rdzeń środowiska i renderowanie mapy)
-- [**sim3-implementation.md**](summaries/sim3-implementation.md) — raport z implementacji SIM-3
+- [**completion-report.md**](_pr_summaries/completion-report.md) — raport końcowy projektu
+- [**implementation-summary.md**](_pr_summaries/implementation-summary.md) — podsumowanie implementacji
+- [**simulator-summary.md**](_pr_summaries/simulator-summary.md) — podsumowanie implementacji symulatora 2D
+- [**sim1-implementation-summary.md**](_pr_summaries/sim1-implementation-summary.md) — raport z implementacji SIM-1 (rdzeń środowiska i renderowanie mapy)
+- [**sim3-implementation.md**](_pr_summaries/sim3-implementation.md) — raport z implementacji SIM-3
 
 ---
 
@@ -109,11 +112,11 @@ Przy dodawaniu nowych dokumentów należy przestrzegać następujących zasad:
 
 - **Katalog główny** — tylko dokumenty o zasięgu ogólnym (wizja, architektura, working agreements)
 - **`docs/apps/`** — dokumentacja modułów aplikacyjnych (`apps/*`)
-- **`docs/ops/`** — dokumentacja skryptów operacyjnych (`ops/*`)
+- **`docs/ops/`** — dokumentacja skryptów operacyjnych (skrypty w `scripts/`)
 - **`docs/config/`** — dokumentacja parametrów konfiguracji (`config/*`)
 - **`docs/modules/`** — dokumentacja modułów (legacy — nowe dokumenty powinny iść do `docs/apps/`)
 - **`docs/audio/`** — konfiguracja sprzętu audio
-- **`docs/summaries/`** — raporty z zakończonych prac
+- **`docs/summaries/`** — raporty z zakończonych prac (obecnie `docs/_pr_summaries/`)
 - **`docs/release-notes/`** — informacje o wydaniach
 
 ### 2. Konwencja nazewnicza
@@ -197,5 +200,5 @@ python scripts/doc_sync_check.py
 
 ---
 
-**Ostatnia aktualizacja**: 2025-01 (dokumentacja apps/ops/config dodana)  
+**Ostatnia aktualizacja**: 2025-10 (aktualizacja po reorganizacji struktury: ops/tools/ → scripts/)  
 **Wersja dokumentacji**: zgodna z kodem głównym (branch `main`)

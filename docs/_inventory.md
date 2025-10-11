@@ -20,49 +20,53 @@
 | `apps/vision` | `detector_hog.py`, `detector_tflite.py`, `dispatcher.py`, `edge_preview.py`, `obstacle_roi.py` | ⚠️ Do uzupełnienia |
 | `apps/voice` | `cli.py`, `config.py`, `asr.py`, `tts.py`, `audio/capture.py`, `audio/playback.py`, etc. | ✅ Udokumentowane w `docs/modules/voice.md` |
 
-## Skrypty operacyjne (`ops/*`)
+## Skrypty operacyjne
 
-### Skrypty głosowe (voice)
-- `voice-run.sh` — uruchamianie aplikacji głosowej (legacy z ENV)
-- `voice-once.sh` — pojedyncze polecenie głosowe
+> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` z ujednoliconą konwencją nazewnictwa.  
+> Zobacz [../scripts/README.md](../scripts/README.md) i [_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md)
 
-### Skrypty systemd
-- `service_ctl.sh` — kontrola usług systemd (whitelist)
-- `systemd_sync.sh` — synchronizacja definicji systemd z repo
-- `boot_prepare.sh` — przygotowanie systemu przy starcie
+### Skrypty głosowe (sys_voice-*)
+- `sys_voice-run.sh` — uruchamianie aplikacji głosowej (legacy z ENV)
+- `sys_voice-once.sh` — pojedyncze polecenie głosowe
+- `sys_voice-stream.sh` — tryb strumieniowy głosu
 
-### Skrypty wyświetlacza
-- `lcdctl.py` — kontrola LCD (brightness, power, clear)
-- `ledctl.py` — kontrola diod LED
-- `fbgrab.py` — zrzut ekranu z framebuffera
-- `splash_device_info.py` — ekran powitalny z informacjami o urządzeniu
-- `splash_device_info.sh` — wrapper bash dla splash
-- `vendor_splash.py` — ekran powitalny producenta
+### Skrypty systemd (sys_*)
+- `sys_control.sh` — kontrola usług systemd (whitelist)
+- `ops/systemd-sync.sh` — synchronizacja definicji systemd z repo (pozostało w ops/)
+- `sys_boot-prepare.sh` — przygotowanie systemu przy starcie
 
-### Skrypty kamery
-- `camera_preview.sh` — preview z kamery
-- `camera_takeover_kill.sh` — wymuszenie dostępu do kamery (kill procesów)
-- `kill_cam.sh` — szybkie zabicie procesów kamery
-- `vision_ctl.sh` — kontrola usług wizyjnych
+### Skrypty wyświetlacza (sys_*, diag_*)
+- `sys_lcd-control.py` — kontrola LCD (brightness, power, clear)
+- `sys_led-control.py` — kontrola diod LED
+- `diag_framebuffer-grab.py` — zrzut ekranu z framebuffera
+- `sys_splash-info.py` — ekran powitalny z informacjami o urządzeniu
+- `sys_splash-info.sh` — wrapper bash dla splash
+- `sys_vendor-splash.py` — ekran powitalny producenta
 
-### Skrypty monitoringu
-- `monitor_metrics.sh` — monitorowanie metryk systemu
-- `monitor_stream.sh` — monitorowanie strumieni
+### Skrypty kamery (sys_*)
+- `sys_camera-preview.sh` — preview z kamery
+- `sys_camera-kill.sh` — wymuszenie dostępu do kamery (kill procesów)
+- `sys_kill-cam.sh` — szybkie zabicie procesów kamery
+- `sys_vision-control.sh` — kontrola usług wizyjnych
 
-### Skrypty testowe i diagnostyczne
-- `test_suite.sh` — zestaw testów
-- `tests_audit.sh` — audyt testów
-- `bench_detect.sh` — benchmark detekcji
-- `check_xgo_sensors.py` — sprawdzenie czujników XGO
-- `xgo_bl_probe.py` — diagnostyka bootloadera XGO
-- `xgo_safe_init.py` — bezpieczna inicjalizacja XGO
+### Skrypty monitoringu (diag_*)
+- `diag_metrics.sh` — monitorowanie metryk systemu
+- `diag_stream.sh` — monitorowanie strumieni
 
-### Skrypty pomocnicze
-- `export_env.sh` — eksport zmiennych środowiskowych
-- `volume_hooks.sh` — hooki głośności
-- `services_cleanup.sh` — czyszczenie usług
-- `estop.py` — emergency stop
-- `demo_lemniscate.py` — demo ruchu w kształcie lemniskaty
+### Skrypty testowe i diagnostyczne (diag_*)
+- `diag_test-suite.sh` — zestaw testów
+- `diag_tests-audit.sh` — audyt testów
+- `diag_bench-detect.sh` — benchmark detekcji
+- `diag_sensors.py` — sprawdzenie czujników XGO
+- `diag_xgo-bootloader.py` — diagnostyka bootloadera XGO
+- `sys_xgo-init.py` — bezpieczna inicjalizacja XGO
+
+### Skrypty pomocnicze (util_*, sys_*)
+- `util_export-env.sh` — eksport zmiennych środowiskowych
+- `util_volume-hooks.sh` — hooki głośności
+- `sys_cleanup.sh` — czyszczenie usług
+- `sys_emergency-stop.py` — emergency stop
+- `demo_trajectory.py` — demo ruchu w kształcie lemniskaty
 
 ## Pliki konfiguracyjne (`config/*`)
 
@@ -94,42 +98,16 @@
 
 ## Braki do uzupełnienia
 
-### Nowe katalogi do utworzenia
-- `docs/apps/` — dokumentacja modułów aplikacyjnych
-- `docs/ops/` — dokumentacja skryptów operacyjnych
-- `docs/config/` — szczegółowa dokumentacja parametrów konfiguracji
+### Dokumenty apps, ops i config - KOMPLETNE ✅
 
-### Dokumenty do stworzenia (13 modułów apps)
-1. `docs/apps/camera.md`
-2. `docs/apps/chat.md`
-3. `docs/apps/demos.md`
-4. `docs/apps/draw.md`
-5. `docs/apps/hw.md`
-6. `docs/apps/launcher.md`
-7. `docs/apps/menu.md`
-8. `docs/apps/motion.md`
-9. `docs/apps/nlu.md`
-10. `docs/apps/safety.md`
-11. `docs/apps/ui.md`
-12. `docs/apps/vision.md`
-13. `docs/apps/README.md` (indeks)
+Wszystkie wymienione dokumenty zostały już utworzone i znajdują się w:
+- `docs/apps/` — dokumentacja modułów aplikacyjnych (13 plików) ✅
+- `docs/ops/` — dokumentacja skryptów operacyjnych (7 plików) ✅  
+- `docs/config/` — szczegółowa dokumentacja parametrów konfiguracji (4 pliki) ✅
 
-### Dokumenty ops (7 plików tematycznych)
-1. `docs/ops/README.md` (indeks)
-2. `docs/ops/voice-scripts.md`
-3. `docs/ops/systemd-scripts.md`
-4. `docs/ops/display-scripts.md`
-5. `docs/ops/monitoring-scripts.md`
-6. `docs/ops/camera-scripts.md`
-7. `docs/ops/utility-scripts.md`
-
-### Dokumenty config (4 pliki)
-1. `docs/config/README.md` (indeks parametrów)
-2. `docs/config/voice.md`
-3. `docs/config/face.md`
-4. `docs/config/alsa.md`
+**Zadanie bieżące:** Weryfikacja aktualności dokumentów po reorganizacji struktury (skrypty ops/→scripts/)
 
 ---
 
-**Ostatnia aktualizacja:** 2025-01 (automatyczna inwentaryzacja)  
-**Całkowita liczba dokumentów do stworzenia:** 24 pliki
+**Ostatnia aktualizacja:** 2025-10 (po migracji skryptów do scripts/)  
+**Status:** Większość dokumentów już utworzona - wymaga weryfikacji aktualności

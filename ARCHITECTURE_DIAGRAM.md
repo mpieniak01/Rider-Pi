@@ -176,8 +176,8 @@ sim/
 
 run_simulation.py            # Main entry point
 
-tools/
-└── sim_keyboard_control.py  # Keyboard control (WASD)
+scripts/
+└── dev_keyboard-sim.py      # Keyboard control (WASD)
 
 tests/
 ├── test_simulator_robot.py  # Unit tests (7 tests)
