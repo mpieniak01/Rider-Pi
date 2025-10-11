@@ -398,6 +398,7 @@ voice-kill:
 	-@pkill -f "aplay" 2>/dev/null || true
 
 # alias for compatibility
+# Maintained for backward compatibility; legacy scripts may use 'voice-free' instead of 'voice-kill'.
 voice-free: voice-kill
 
 voice-diag:
