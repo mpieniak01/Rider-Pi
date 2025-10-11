@@ -52,7 +52,7 @@ LEGACY_PATTERNS = [
     # Files removed in earlier PR-3 (shims)
     (
         r"from apps\.voice\.svc_stream\b",
-        "apps/voice/svc_stream.py (removed in PR-3, use apps.voice.svc_stream_runner or apps.voice.stream.svc_streaming)",
+        "apps/voice/svc_stream.py (removed in PR-3, use svc_stream_runner or stream.svc_streaming)",
     ),
     (
         r"from apps\.voice\.state\b",
