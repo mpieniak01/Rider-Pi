@@ -481,4 +481,10 @@ health:
 	@curl -fsS http://127.0.0.1:8080/healthz && echo || true
 
 # Agent targets (do not remove)
--include ops/agent/Makefile.agent
+-include config/agent/Makefile.agent
+
+# ───────────────────────────────────────────────
+# SYSTEMD SYNC
+.PHONY: systemd-sync
+systemd-sync:
+	bash scripts/systemd-sync.sh
