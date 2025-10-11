@@ -20,7 +20,7 @@ repos:
     pass_filenames: false
     always_run: true
     stages:
-    - push
+    - pre-push
     - manual
   - id: check-legacy-imports
     name: Check for legacy imports
