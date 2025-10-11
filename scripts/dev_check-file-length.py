@@ -5,7 +5,7 @@
 - CI runs   : ENFORCED (gdy CI=1/true).
 
 Known exceptions (do rozbicia później):
-  - apps/voice/stream/service.py (tracked)
+  - apps/voice/stream/svc_streaming.py (tracked)
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ MAX_LINES_DEFAULT = 600
 # Jedyny sensowny wyjątek na dziś:
 # Wartość jest "górką" – nie zawracamy głowy regresją lokalnie.
 KNOWN_EXCEPTIONS = {
-    "apps/voice/stream/service.py": 9999,  # tymczasowo bez limitu, egzekwujemy w CI polityką/PR review
+    "apps/voice/stream/svc_streaming.py": 9999,  # tymczasowo bez limitu, egzekwujemy w CI polityką/PR review
 }
 
 

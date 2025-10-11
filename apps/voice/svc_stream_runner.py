@@ -12,7 +12,7 @@ import inspect
 import threading
 from typing import Any
 
-from .stream.service import StreamingVoiceService
+from .stream.svc_streaming import StreamingVoiceService
 
 
 def _run_coro_in_thread(coro) -> Any:

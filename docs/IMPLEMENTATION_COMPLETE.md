@@ -7,7 +7,7 @@ Successfully completed the migration to the new streaming architecture with full
 ## What Was Delivered
 
 ### 1. Core PTT Implementation ✅
-- **File**: `apps/voice/stream/service.py`
+- **File**: `apps/voice/stream/svc_streaming.py`
 - **Added**: `_keyboard_ptt_loop()` async method (~80 lines)
 - **Features**:
   - Non-blocking stdin polling with `select.select()`
@@ -16,7 +16,7 @@ Successfully completed the migration to the new streaming architecture with full
   - Optional beep sound on recording start
 
 ### 2. State Machine Integration ✅
-- **File**: `apps/voice/stream/service.py`
+- **File**: `apps/voice/stream/svc_streaming.py`
 - **Added**: State callbacks for proper flow
 - **Flow**: IDLE → ARMING → RECORDING → COMMIT → WAIT_REPLY → SPEAKING → CLOSING → IDLE
 - **Key Enhancement**: Automatic CLOSING → IDLE transition for continuous interactions
@@ -48,9 +48,9 @@ Successfully completed the migration to the new streaming architecture with full
 ## Files Changed
 
 ```
-apps/voice/stream/service.py    | +127 lines (PTT implementation)
-docs/PTT_USAGE.md               | +120 lines (new documentation)
-STREAMING_REFACTOR_SUMMARY.md   | +37 lines (update)
+apps/voice/stream/svc_streaming.py    | +127 lines (PTT implementation)
+docs/PTT_USAGE.md                      | +120 lines (new documentation)
+STREAMING_REFACTOR_SUMMARY.md          | +37 lines (update)
 ```
 
 ## User Experience

@@ -53,7 +53,7 @@ git commit --no-verify -m "..."
 - Maximum 600 lines per file
 
 ### Known Exceptions (pre-existing)
-- `apps/voice/stream/service.py` (27 lines)
+- `apps/voice/stream/svc_streaming.py` (27 lines)
 - `apps/voice/svc_file.py` (758 lines, consolidated from service_impl in PR#1, updated in PR#3)
 
 These files are tracked from incomplete PR-2. The guard:
@@ -109,7 +109,7 @@ Mixins removed in PR-3:
 
 | Old Import | New Import |
 |------------|-----------|
-| `from apps.voice.svc_stream import StreamingVoiceService` | `from apps.voice.stream.service import StreamingVoiceService` |
+| `from apps.voice.svc_stream import StreamingVoiceService` | `from apps.voice.stream.svc_streaming import StreamingVoiceService` |
 | `from apps.voice.state import StreamingVoicePTTMixin` | `from apps.voice.stream.state import PTTStateMachine` |
 | `from apps.voice.transport import WebSocketTransport` | `from apps.voice.stream.transport import WebSocketTransport` |
 | `from apps.voice.ws_transport import ...` | `from apps.voice.stream.transport import ...` |

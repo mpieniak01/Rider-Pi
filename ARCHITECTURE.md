@@ -36,9 +36,9 @@
   - **Tryb strumieniowy** (`realtime`): WebSocket duplex z partial ASR, streaming chat/TTS
   - **Komponenty kluczowe**:
     - `svc_core.py` — wybór trybu (file/stream) i delegacja do odpowiedniego serwisu
-    - `svc_file.py` + `svc_file_pipeline.py` — implementacja trybu plikowego
+    - `svc_file.py` — implementacja trybu plikowego
     - `svc_stream_runner.py` — wrappery CLI dla trybu strumieniowego
-    - `stream/service.py` — główny serwis strumieniowy (StreamingVoiceService)
+    - `stream/svc_streaming.py` — główny serwis strumieniowy (StreamingVoiceService)
     - `stream/transport.py` — transport WebSocket z auto-reconnect
     - `stream/state.py` — maszyna stanów PTT (Push-To-Talk)
     - `stream/handlers.py` — obsługa wiadomości/zdarzeń WebSocket
@@ -232,12 +232,11 @@ Moduł voice został zrefaktoryzowany (PR#1–PR#4, 2024) w celu uproszczenia i 
 
 **Tryb plikowy:**
 - `svc_file.py` — klasa `VoiceService`, funkcje `run_listen_file()`, `run_once_file()`
-- `svc_file_pipeline.py` — pipeline ASR→Chat→TTS dla trybu plikowego
 - Wykorzystuje: `audio/capture.py`, `audio/playback.py`, `asr.py`, `chat.py`, `tts.py`
 
 **Tryb strumieniowy:**
 - `svc_stream_runner.py` — wrappery CLI: `run_listen_stream()`, `run_ptt_stream()`, `run_once_stream()`
-- `stream/service.py` — `StreamingVoiceService` (główny serwis, 700+ linii)
+- `stream/svc_streaming.py` — `StreamingVoiceService` (główny serwis, 700+ linii)
   - Integruje mixiny: `StreamHandlersMixin`, `StreamPlayoutMixin`
   - Zarządza lifecycle WebSocket, audio queues, worker threads
 - `stream/transport.py` — `WebSocketTransport`, `ReconnectingTransport`
@@ -258,7 +257,6 @@ Moduł voice został zrefaktoryzowany (PR#1–PR#4, 2024) w celu uproszczenia i 
 - `audio/capture.py` — przechwytywanie audio (ALSA/Pulse/command)
 - `audio/playback.py` — odtwarzanie audio (ALSA/Pulse)
 - `audio/alsa.py` — narzędzia ALSA (lista urządzeń, konfiguracja)
-- `audio/wavutil.py` — operacje na plikach WAV
 - `asr.py` — abstrakcja ASR (OpenAI, Vosk)
 - `chat.py` — integracja Chat API (streaming generator)
 - `tts.py` — synteza mowy (OpenAI, Piper)
