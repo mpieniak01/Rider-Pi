@@ -1,56 +1,49 @@
 # ---------------------------------------------------------------------------
 # Rider-Pi / config/voice_gemini_file.toml
 #
-# Konfiguracja dla trybu "plikowego" z użyciem Google Gemini jako backendu czatu.
-# Ten tryb wysyła zapytanie i odtwarza całą odpowiedź po jej otrzymaniu.
+# WERSJA POPRAWIONA
+# Tryb "plikowy" z Google Gemini do czatu oraz OpenAI do ASR i TTS.
 # ---------------------------------------------------------------------------
 
-lang = "pl"
-
-# --- STREAM (WS) ------------------------------------------------------------
-# Sekcja [stream] jest specyficzna dla OpenAI i nie jest używana w tej konfiguracji.
-# Komunikacja z Gemini odbywa się przez REST API wewnątrz aplikacji.
-
-# --- AUDIO IN (MIC) ---------------------------------------------------------
+# --- Konfiguracja Audio (bez zmian) ---
 [capture]
-backend       = "arecord"
 device        = "wm8960_in"
-rate          = 16000
+sample_rate   = 16000
 channels      = 1
-frame_ms      = 20
-allow_fallback = false
-command = "arecord -q -t raw -f S16_LE -c 1 -r 16000 -D wm8960_in --buffer-time 50000 --period-time 20000 -"
+sample_format = "S16_LE"
 
-# --- AUDIO OUT --------------------------------------------------------------
 [playback]
 backend = "aplay"
 device  = "wm8960_out"
 volume  = 55
 
-# --- ASR / CHAT / TTS -------------------------------------------------------
-# W tej konfiguracji ASR i TTS nadal mogą korzystać z OpenAI,
-# podczas gdy CHAT jest przełączony na Google Gemini.
+# --- Konfiguracja Usług Głosowych ---
 
+# ASR (Rozpoznawanie mowy) -> OpenAI
+# Twoja mowa jest wysyłana do OpenAI w celu zamiany na tekst.
 [asr]
-backend   = "openai"
-model     = "whisper-1" # Przykładowy model dla ASR
+backend  = "openai"
+model    = "whisper-1"
+language = "pl"
 
 [chat]
-# Przełączamy backend na Google Gemini
-backend       = "google"
-# Model Gemini do użycia (np. gemini-pro)
-model         = "gemini-pro"
+backend       = "google"            # przełącznik na Gemini
+model         = "gemini-2.5-flash-lite"  # dopasuj do testów, jeśli używają innego
+language      = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
 [tts]
-backend   = "openai"
-voice     = "alloy"
-format    = "mp3" # Gemini może preferować inne formaty, ale na razie zostawiamy mp3
+backend = "openai"
+format  = "mp3"    # możesz wrócić do "wav" jeśli wolisz aplay/PCM16
+voice   = "ash"
+# NOWE: Dodaj tę linię, aby użyć dedykowanego odtwarzacza MP3
+player_cmd = "mpg123 -q -"
 
 # --- NLU / HOTWORD ----------------------------------------------------------
 [nlu]
+backend       = "openai"    # dozwolone: passthrough | dummy | openai
 chat_threshold = 0.65
-llm_model      = "gpt-4o-mini" # NLU może nadal używać modelu OpenAI
+llm_model      = "gpt-4o-mini"
 
 [nlu.command_keywords]
 stop         = ["stop", "pauza", "koniec", "cisza"]
@@ -62,8 +55,26 @@ volume_down  = ["ciszej", "ścisz", "-10"]
 enabled = true
 engine  = "ptt"
 
-# --- PTT parametry ----------------------------------------------------------
+# --- PTT --------------------------------------------------------------------
 [ptt]
-silence_ms      = 1500
-commit_on_stop  = true
-require_audio   = false
+silence_ms     = 1500
+commit_on_stop = true
+# (UWAGA: 'require_audio' usunięty – nie istnieje w schemacie)
+
+# --- VAD (optymalizacja latencji) -------------------------------------------
+[vad]
+mode             = 2          # mniej agresywny niż 3 – bezpieczniej dla początku/końca mowy
+frame_ms         = 20
+tail_ms          = 220
+energy_gate_dbfs = -27.0
+max_len_ms       = 5000
+
+# --- SERVICE (krótsze rundy, brak „fast-fail” dla krótkich wypowiedzi) -----
+[service]
+beep                 = false
+pre_speech_wait_ms   = 250
+mic_open_delay_ms    = 30
+post_tts_mute_ms     = 200
+min_capture_ms       = 350        # obniżone z 700 – krótkie wypowiedzi nie wypadną
+no_speech_timeout_ms = 1600       # więcej czasu na start mowy
+recordings_dir       = "/tmp/voice-recs"

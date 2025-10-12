@@ -1,4 +1,9 @@
-# Minimalny, stabilny tryb plikowy: WAV/PCM16 + czyste ALSA (WM8960)
+# Minimalny, stabilny tryb plikowy (WM8960) — zoptymalizowany pod krótsze rundy
+# Kluczowe zmiany vs. poprzedni:
+# - VAD: mode=3 (bardziej agresywny), tail_ms=200, energy_gate_dbfs=-25 → szybciej kończy nagranie,
+# - krótsze czasy serwisu: pre_speech_wait_ms=200, no_speech_timeout_ms=1000,
+# - dopuszczalny limit nagrania skrócony: max_len_ms=5000,
+# - beep wyłączony (bez dodatkowych opóźnień).
 
 [capture]
 device        = "wm8960_in"
@@ -7,6 +12,7 @@ channels      = 1
 sample_format = "S16_LE"
 
 [playback]
+# Prosty tor ALSA → aplay + WAV/PCM16
 backend = "aplay"
 device  = "wm8960_out"
 
@@ -23,8 +29,8 @@ system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po po
 
 [tts]
 backend = "openai"
-format  = "wav"    # aplay wymaga WAV/PCM16 w tym pipeline
-voice   = "alloy"
+format  = "wav"      # w tym pipeline najlepiej WAV/PCM16
+voice   = "ash"
 
 [nlu]
 chat_threshold = 0.6
@@ -38,3 +44,37 @@ volume_down = ["ciszej", "ciszej proszę"]
 [hotword]
 enabled = false
 engine  = "ptt"
+
+# ── VAD i Service (optymalizacja latencji) ─────────────────────────────────────────────
+
+[vad]
+# mode=3: najbardziej agresywny – mniej „przykleja się” do szumu tła.
+mode             = 2
+frame_ms         = 20
+tail_ms          = 200
+energy_gate_dbfs = -27.0
+max_len_ms       = 5000
+
+[service]
+# Bez „ding”, krótkie okna i minima — skracamy „dziurę” po wypowiedzi
+beep                 = false
+pre_speech_wait_ms   = 250
+mic_open_delay_ms    = 30
+post_tts_mute_ms     = 200
+min_capture_ms       = 350
+no_speech_timeout_ms = 1600
+# Lekki próg ciszy po stronie RMS (pomaga „dokończyć” ogon)
+silence_rms_gate     = 260
+save_audio           = false
+recordings_dir       = "/tmp/voice-recs"
+
+# ── Tip (opcjonalny fallback):
+# Jeśli trafisz na "Player write failed: I/O operation on closed file",
+# możesz przetestować MP3 + mpg123 (czasem stabilniejsze na PulseAudio):
+#
+# [tts]
+# format = "mp3"
+#
+# [playback]
+# backend = "mpg123"
+# device  = "wm8960_out"
