@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
 # Rider-Pi / config/voice_gemini_file.toml
 #
-# WERSJA POPRAWIONA
-# Tryb "plikowy" z Google Gemini do czatu oraz OpenAI do ASR i TTS.
+# Pełny ekosystem Google Gemini (ASR + Chat + TTS)
+# Tryb "plikowy" (REST API) z Google Gemini dla wszystkich usług głosowych.
 # ---------------------------------------------------------------------------
 
 # --- Konfiguracja Audio (bez zmian) ---
@@ -19,25 +19,26 @@ volume  = 55
 
 # --- Konfiguracja Usług Głosowych ---
 
-# ASR (Rozpoznawanie mowy) -> OpenAI
-# Twoja mowa jest wysyłana do OpenAI w celu zamiany na tekst.
+# ASR (Rozpoznawanie mowy) -> Google Gemini
+# Używa modeli multimodalnych Gemini do transkrypcji audio.
 [asr]
-backend  = "openai"
-model    = "whisper-1"
+backend  = "google"
+model    = "gemini-1.5-flash"
 language = "pl"
 
 [chat]
 backend       = "google"            # przełącznik na Gemini
-model         = "gemini-2.5-flash-lite"  # dopasuj do testów, jeśli używają innego
+model         = "gemini-2.0-flash-exp"
 language      = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
+# TTS (Synteza mowy) -> Google Gemini
+# Wykorzystuje najnowsze modele Gemini z native audio generation.
 [tts]
-backend = "openai"
-format  = "mp3"    # możesz wrócić do "wav" jeśli wolisz aplay/PCM16
-voice   = "ash"
-# NOWE: Dodaj tę linię, aby użyć dedykowanego odtwarzacza MP3
-player_cmd = "mpg123 -q -"
+backend = "google"
+model   = "gemini-2.0-flash-exp-tts"
+voice   = "Kore"  # Dostępne głosy: Kore, Aoede, Charon, Fenrir, Puck
+format  = "wav"
 
 # --- NLU / HOTWORD ----------------------------------------------------------
 [nlu]
