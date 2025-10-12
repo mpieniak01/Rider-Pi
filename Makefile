@@ -40,16 +40,16 @@ help:
 	@echo "  make logs-clean       # wyczyść logi journalctl dla rider-*"
 	@echo ""
 	@echo "═══ Voice (File-based) ═══"
-	@echo "  make voice-file-listen      # nasłuch ciągły (listen, config: voice_file.toml)"
-	@echo "  make voice-file-ptt         # push-to-talk (ptt, config: voice_file.toml)"
-	@echo "  make voice-file-once        # pojedyncza interakcja (once, config: voice_file.toml)"
+	@echo "  make voice-file-listen      # nasłuch ciągły (listen, config: voice_openai_file.toml)"
+	@echo "  make voice-file-ptt         # push-to-talk (ptt, config: voice_openai_file.toml)"
+	@echo "  make voice-file-once        # pojedyncza interakcja (once, config: voice_openai_file.toml)"
 	@echo "  make voice-asr-file FILE=path.wav   # rozpoznaj mowę z pliku"
 	@echo "  make voice-tts TEXT='Hello'         # synteza + odtworzenie"
 	@echo "  make voice-web        # uruchom serwer web UI (bind: $(VOICE_BIND))"
 	@echo ""
 	@echo "═══ Voice (Streaming WebSocket) ═══"
-	@echo "  make voice-stream-once      # pojedyncza interakcja (realtime WS, config: voice_streaming.toml)"
-	@echo "  make voice-stream-listen    # nasłuch ciągły (realtime WS, config: voice_streaming.toml)"
+	@echo "  make voice-stream-once      # pojedyncza interakcja (realtime WS, config: voice_openai_streaming.toml)"
+	@echo "  make voice-stream-listen    # nasłuch ciągły (realtime WS, config: voice_openai_streaming.toml)"
 	@echo "  make voice-kill       # zabij procesy głosowe/audio"
 	@echo "  make voice-diag       # diagnostyka systemu"
 	@echo "  make voice-smoke      # testy podstawowe (bez audio/sieci)"
@@ -89,8 +89,8 @@ help:
 	@echo "  make face-bench       # krótki benchmark FPS"
 	@echo ""
 	@echo "═══ Configuration ═══"
-	@echo "  make config-edit-stream     # edytuj config/voice_streaming.toml"
-	@echo "  make config-edit-file       # edytuj config/voice_file.toml"
+	@echo "  make config-edit-stream     # edytuj config/voice_openai_streaming.toml"
+	@echo "  make config-edit-file       # edytuj config/voice_openai_file.toml"
 	@echo ""
 	@echo "═══ Diagnostics & Utilities ═══"
 	@echo "  make bus-spy          # podsłuch magistrali"
@@ -319,11 +319,11 @@ face-bench:
 .PHONY: config-edit-stream config-edit-file
 config-edit-stream:
 	@echo "== Editing voice streaming config =="
-	@$${EDITOR:-nano} $(ROOT)/config/voice_streaming.toml
+	@$${EDITOR:-nano} $(ROOT)/config/voice_openai_streaming.toml
 
 config-edit-file:
 	@echo "== Editing voice file config =="
-	@$${EDITOR:-nano} $(ROOT)/config/voice_file.toml
+	@$${EDITOR:-nano} $(ROOT)/config/voice_openai_file.toml
 
 # ───────────────────────────────────────────────
 # GFX / VNC
@@ -358,13 +358,13 @@ gfx-status:
 # VOICE — FILE-BASED (WAV/PCM)
 .PHONY: voice-file-listen voice-file-ptt voice-file-once voice-asr-file voice-tts voice-web
 voice-file-listen:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_file.toml listen $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_file.toml listen $(VOICE_ARGS)
 
 voice-file-ptt:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_file.toml ptt $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_file.toml ptt $(VOICE_ARGS)
 
 voice-file-once:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_file.toml once $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_file.toml once $(VOICE_ARGS)
 
 voice-asr-file:
 	@if [ -z "$(FILE)" ]; then echo "Usage: make voice-asr-file FILE=path.wav"; exit 1; fi
@@ -383,12 +383,12 @@ voice-web:
 voice-stream-once:
 	@echo "== Single streaming interaction (WebSocket realtime) =="
 	pasuspender -- \
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_streaming.toml once $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_streaming.toml once $(VOICE_ARGS)
 
 voice-stream-listen:
 	@echo "== Continuous streaming listen (WebSocket realtime) =="
 	pasuspender -- \
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_streaming.toml listen $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_streaming.toml listen $(VOICE_ARGS)
 
 voice-kill:
 	@echo "== Killing voice/audio processes =="

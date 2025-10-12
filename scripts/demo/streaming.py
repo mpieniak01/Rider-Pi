@@ -38,9 +38,9 @@ def demo_config_loading():
         print(f"   Error loading file config: {e}")
 
     # Test streaming config
-    print("\n2. Streaming configuration (config/voice_streaming.toml):")
+    print("\n2. Streaming configuration (config/voice_openai_streaming.toml):")
     try:
-        cfg_stream = voice_config.load("config/voice_streaming.toml")
+        cfg_stream = voice_config.load("config/voice_openai_streaming.toml")
         is_streaming = _wants_stream(cfg_stream, None)
         print(f"   Mode: {'Streaming' if is_streaming else 'File-based'}")
         print(f"   ASR transport: {cfg_stream['asr'].get('transport', 'default')}")
@@ -154,7 +154,7 @@ def main():
         print("=" * 60)
         print("\nTo test with real OpenAI API:")
         print("1. Set OPENAI_API_KEY environment variable")
-        print("2. Run: python -m apps.voice.cli --config config/voice_streaming.toml listen")
+        print("2. Run: python -m apps.voice.cli --config config/voice_openai_streaming.toml listen")
         print("\nFor file-based mode (no API key needed):")
         print("   Run: python -m apps.voice.cli --config config/voice.toml diag")
 

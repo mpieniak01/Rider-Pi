@@ -1,9 +1,44 @@
-# Konfiguracja Voice (`voice_file.toml`, `voice_streaming.toml`)
+# Konfiguracja Voice (`voice_openai_file.toml`, `voice_openai_streaming.toml`)
+
+## Konwencja nazewnicza plików konfiguracyjnych
+
+**Od wersji 2025-01**, pliki konfiguracyjne voice używają jednoznacznej konwencji nazewniczej:
+
+```
+voice_<provider>_<mode>.toml
+```
+
+Gdzie:
+- **`<provider>`** — dostawca usług AI: `openai`, `gemini`
+- **`<mode>`** — tryb komunikacji: `file` (REST API), `streaming` (WebSocket)
+
+**Dostępne pliki:**
+
+| Plik | Provider | Tryb | Opis |
+|------|----------|------|------|
+| `voice_openai_file.toml` | OpenAI | REST | Tryb plikowy (PTT, batch) |
+| `voice_openai_streaming.toml` | OpenAI | WebSocket | Tryb strumieniowy (realtime) |
+| `voice_gemini_file.toml` | Google Gemini | REST | Tryb plikowy z Gemini |
+| `voice_gemini_example.toml` | Google Gemini | - | Przykładowa konfiguracja |
+
+**Przykład użycia:**
+```bash
+# OpenAI w trybie plikowym (domyślny)
+make voice-file-ptt
+
+# Google Gemini w trybie plikowym
+python -m apps.voice.cli --config ./config/voice_gemini_file.toml ptt
+
+# OpenAI w trybie strumieniowym
+make voice-stream-listen
+```
+
+---
 
 ## Pliki konfiguracyjne
 
-- **`voice_file.toml`** — tryb plikowy (REST API: ASR/Chat/TTS)
-- **`voice_streaming.toml`** — tryb strumieniowy (Realtime WebSocket duplex)
+- **`voice_openai_file.toml`** — tryb plikowy (REST API: ASR/Chat/TTS)
+- **`voice_openai_streaming.toml`** — tryb strumieniowy (Realtime WebSocket duplex)
 
 ## Wybór trybu
 
@@ -14,7 +49,7 @@
 
 ---
 
-## Parametry: voice_file.toml
+## Parametry: voice_openai_file.toml
 
 ### [logging]
 
@@ -123,9 +158,9 @@ max_history = 4
 
 ---
 
-## Parametry: voice_streaming.toml
+## Parametry: voice_openai_streaming.toml
 
-### Różnice vs voice_file.toml
+### Różnice vs voice_openai_file.toml
 
 Streaming używa tych samych sekcji `[logging]`, `[capture]`, `[playback]`, ale z dodatkowymi parametrami:
 
@@ -255,7 +290,7 @@ beep = false  # bez beep dla debug
 ### Sprawdzenie załadowanej konfiguracji
 
 ```bash
-python -m apps.voice.cli diag --config config/voice_file.toml
+python -m apps.voice.cli diag --config config/voice_openai_file.toml
 ```
 
 ### Test urządzeń ALSA
