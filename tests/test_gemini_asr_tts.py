@@ -121,26 +121,64 @@ class TestGeminiTTS:
                 os.environ["GOOGLE_API_KEY"] = old_key
 
     def test_gemini_tts_requires_sdk(self):
-        """Test that Gemini TTS requires google-generativeai SDK."""
-        config = TTSConfig(backend="google", model="gemini-1.5-flash")
+        """Test that Gemini TTS requires google-genai SDK."""
+        config = TTSConfig(backend="google", model="gemini-2.0-flash-exp-tts")
 
         # Set a fake API key
         os.environ["GOOGLE_API_KEY"] = "fake-key-for-test"
 
-        with patch.dict("sys.modules", {"google.generativeai": None}):
-            with pytest.raises(TTSError, match="Google Generative AI SDK unavailable"):
+        with patch.dict("sys.modules", {"google.genai": None}):
+            with pytest.raises(TTSError, match="Google GenAI SDK unavailable"):
                 synthesize("Hello world", config)
 
-    @patch("google.generativeai.configure")
-    def test_gemini_tts_not_yet_supported(self, mock_configure):
-        """Test that Gemini TTS shows proper error for unsupported feature."""
-        config = TTSConfig(backend="google", model="gemini-1.5-flash")
+    @patch("google.genai.Client")
+    def test_gemini_tts_success(self, mock_client_class):
+        """Test successful Gemini TTS generation."""
+        # Setup mock
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_part = MagicMock()
+        mock_inline_data = MagicMock()
+
+        # Simulate PCM audio data (16-bit mono at 24kHz)
+        import array
+
+        audio_samples = array.array("h", [0] * 24000)  # 1 second of silence
+        mock_inline_data.data = audio_samples.tobytes()
+
+        mock_part.inline_data = mock_inline_data
+        mock_response.candidates = [MagicMock(content=MagicMock(parts=[mock_part]))]
+        mock_client.models.generate_content.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        config = TTSConfig(backend="google", model="gemini-2.0-flash-exp-tts", voice="Kore")
 
         os.environ["GOOGLE_API_KEY"] = "fake-key-for-test"
 
         # Use proper logger with event method
         logger = voice_logging.get_logger("test")
-        with pytest.raises(TTSError, match="Gemini TTS is not yet supported"):
+        audio_bytes, sample_rate, fmt = synthesize("Hello world", config, logger=logger)
+
+        assert len(audio_bytes) > 0
+        assert sample_rate == 24000
+        assert fmt == "wav"
+        mock_client_class.assert_called_once_with(api_key="fake-key-for-test")
+
+    @patch("google.genai.Client")
+    def test_gemini_tts_handles_errors(self, mock_client_class):
+        """Test that Gemini TTS handles API errors properly."""
+        # Setup mock to raise an error
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = Exception("API Error")
+        mock_client_class.return_value = mock_client
+
+        config = TTSConfig(backend="google", model="gemini-2.0-flash-exp-tts")
+
+        os.environ["GOOGLE_API_KEY"] = "fake-key-for-test"
+
+        # Use proper logger
+        logger = voice_logging.get_logger("test")
+        with pytest.raises(TTSError, match="Gemini TTS failed"):
             synthesize("Hello world", config, logger=logger)
 
     def test_gemini_tts_blocks_realtime_mode(self):
@@ -151,7 +189,7 @@ class TestGeminiTTS:
 
         # Create a mock logger with event method
         mock_logger = MagicMock()
-        
+
         # Should block before trying to access the backend
         with pytest.raises(TTSError, match="TTS REST disabled when transport=realtime"):
             synthesize("Hello world", config, logger=mock_logger)

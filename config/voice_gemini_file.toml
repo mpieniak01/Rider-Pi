@@ -33,14 +33,12 @@ language      = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
 # TTS (Synteza mowy) -> Google Gemini
-# UWAGA: Gemini obecnie nie wspiera TTS. Używamy OpenAI jako fallback.
-# Gdy Google doda TTS do Gemini API, backend zostanie zmieniony na "google".
+# Wykorzystuje najnowsze modele Gemini z native audio generation.
 [tts]
-backend = "openai"
-format  = "mp3"    # możesz wrócić do "wav" jeśli wolisz aplay/PCM16
-voice   = "ash"
-# NOWE: Dodaj tę linię, aby użyć dedykowanego odtwarzacza MP3
-player_cmd = "mpg123 -q -"
+backend = "google"
+model   = "gemini-2.0-flash-exp-tts"
+voice   = "Kore"  # Dostępne głosy: Kore, Aoede, Charon, Fenrir, Puck
+format  = "wav"
 
 # --- NLU / HOTWORD ----------------------------------------------------------
 [nlu]

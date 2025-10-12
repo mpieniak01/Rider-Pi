@@ -474,38 +474,67 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
 
 def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
     """
-    Google Gemini Text-to-Speech.
+    Google Gemini Text-to-Speech using native audio generation.
     Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav").
-    Uwaga: Gemini obecnie nie ma dedykowanego API TTS, więc używamy multimodalnego modelu
-    do generowania audio z tekstu (jeśli dostępne) lub zwracamy błąd.
+    Wykorzystuje nowe API google-genai z modelem gemini-2.5-flash-preview-tts.
     """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise TTSError("GOOGLE_API_KEY not configured")
 
     try:
-        import google.generativeai as genai  # type: ignore
+        from google import genai
+        from google.genai import types
     except Exception as exc:  # pragma: no cover - optional dependency
-        raise TTSError(f"Google Generative AI SDK unavailable: {exc}") from exc
+        raise TTSError(f"Google GenAI SDK unavailable: {exc}") from exc
 
-    # Konfiguruj API
-    genai.configure(api_key=api_key)
+    model_name = config.model or "gemini-2.0-flash-exp-tts"
+    voice_name = config.voice or "Kore"  # Default voice
 
-    model_name = config.model or "gemini-1.5-flash"
-
-    logger.event("tts.gemini.request", model=model_name)
+    logger.event("tts.gemini.request", model=model_name, voice=voice_name)
 
     try:
-        # UWAGA: Gemini API obecnie nie oferuje bezpośredniego TTS.
-        # Zgodnie z dokumentacją, możemy używać modeli multimodalnych, ale
-        # generowanie audio z tekstu nie jest jeszcze wspierane w google-generativeai.
-        #
-        # Rozwiązanie tymczasowe: zwróć błąd z informacją
-        raise TTSError(
-            "Gemini TTS is not yet supported. "
-            "Google Gemini API currently doesn't provide text-to-speech functionality. "
-            "Please use OpenAI backend for TTS or wait for Google to add TTS support to Gemini API."
+        # Inicjalizuj klienta
+        client = genai.Client(api_key=api_key)
+
+        # Konfiguracja TTS z native audio
+        response = client.models.generate_content(
+            model=model_name,
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=voice_name,
+                        )
+                    )
+                ),
+            ),
         )
+
+        # Wyciągnij dane audio z odpowiedzi
+        if not response.candidates or not response.candidates[0].content.parts:
+            raise TTSError("No audio data in Gemini response")
+
+        audio_data = response.candidates[0].content.parts[0].inline_data.data
+
+        # Gemini zwraca audio w formacie PCM 24kHz, 16-bit
+        sample_rate = 24000
+
+        # Opakuj w WAV
+        wav_bytes = _wrap_wav(audio_data, sample_rate, ch=1, sw=2)
+
+        # Opcjonalna normalizacja i fade (jak w OpenAI)
+        extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
+        pcm, sr, ch, sw = _read_wav(wav_bytes)
+        if sw == 2:
+            pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
+            pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
+        wav_bytes = _wrap_wav(pcm, sr, ch, sw)
+
+        logger.event("tts.gemini.ok", bytes=len(wav_bytes), sample_rate=sample_rate)
+        return wav_bytes, sample_rate, "wav"
 
     except Exception as exc:
         logger.event("tts.gemini.error", error=str(exc))

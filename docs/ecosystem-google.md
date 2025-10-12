@@ -2,7 +2,7 @@
 
 ## Przegląd
 
-Rider-Pi oferuje pełne wsparcie dla ekosystemu Google Gemini jako alternatywy dla OpenAI. System pozwala na używanie usług Google dla rozpoznawania mowy (ASR) i konwersacji (Chat), przy zachowaniu pełnej kompatybilności z istniejącymi funkcjami.
+Rider-Pi oferuje pełne wsparcie dla ekosystemu Google Gemini jako alternatywy dla OpenAI. System pozwala na używanie usług Google dla rozpoznawania mowy (ASR), konwersacji (Chat) i syntezy mowy (TTS), przy zachowaniu pełnej kompatybilności z istniejącymi funkcjami.
 
 ## Obecny Stan Wsparcia
 
@@ -10,23 +10,19 @@ Rider-Pi oferuje pełne wsparcie dla ekosystemu Google Gemini jako alternatywy d
 
 - **ASR (Speech-to-Text)**: Google Gemini z modelami multimodalnymi (np. `gemini-1.5-flash`)
 - **Chat**: Google Gemini z modelami konwersacyjnymi (np. `gemini-2.0-flash-exp`, `gemini-pro`)
+- **TTS (Text-to-Speech)**: Google Gemini z natywną generacją audio (np. `gemini-2.0-flash-exp-tts`)
 - **Streaming Chat**: Asynchroniczne streamowanie odpowiedzi z Gemini
-
-### ⚠️ Ograniczenia
-
-- **TTS (Text-to-Speech)**: Gemini API obecnie **nie wspiera** TTS
-  - Rekomendacja: Używaj OpenAI jako backend dla TTS
-  - Status będzie aktualizowany gdy Google doda wsparcie TTS do Gemini API
 
 ## Konfiguracja
 
 ### 1. Instalacja Zależności
 
 ```bash
-pip install google-generativeai>=0.8.0
+pip install google-generativeai>=0.8.0  # Dla ASR i Chat
+pip install google-genai>=1.0.0          # Dla TTS
 ```
 
-Biblioteka `google-generativeai` jest jedyną wymaganą zależnością dla ekosystemu Google.
+Obie biblioteki są wymagane dla pełnego ekosystemu Google Gemini.
 
 ### 2. Klucz API
 
@@ -56,13 +52,14 @@ language = "pl"
 [chat]
 backend       = "google"
 model         = "gemini-2.0-flash-exp"
-system_prompt = "Jesteś asystentem głosowym. Odpowiadaj krótko."
+system_prompt = "Jesteś asystentem głosowym Rider-Pi..."
 
-# TTS - OpenAI (fallback, Gemini nie wspiera TTS)
+# TTS - Google Gemini (native audio generation)
 [tts]
-backend = "openai"
-format  = "mp3"
-voice   = "ash"
+backend = "google"
+model   = "gemini-2.0-flash-exp-tts"
+voice   = "Kore"  # Dostępne: Kore, Aoede, Charon, Fenrir, Puck
+format  = "wav"
 ```
 
 ## Użycie
@@ -104,6 +101,23 @@ python -m apps.voice.cli --config ./config/voice_gemini_file.toml listen
 - `gemini-2.0-flash-exp` (najnowszy) - eksperymentalny, najszybszy
 - `gemini-pro` (stabilny) - sprawdzony model produkcyjny
 - `gemini-1.5-flash` - dobra równowaga szybkości i jakości
+
+### TTS (Synteza Mowy)
+
+- `gemini-2.0-flash-exp-tts` (zalecany) - najnowszy model z native audio generation
+- `gemini-2.5-flash-preview-tts` - wersja preview z zaawansowanymi funkcjami
+
+**Dostępne głosy**:
+- `Kore` (domyślny) - neutralny głos
+- `Aoede` - kobiecy głos
+- `Charon` - męski głos
+- `Fenrir` - głęboki męski głos
+- `Puck` - młodzieńczy głos
+
+**Parametry audio**:
+- Sample rate: 24 kHz
+- Format: PCM 16-bit mono
+- Output: WAV (automatycznie konwertowane)
 
 ## Przełączanie między Ekosystemami
 
@@ -161,10 +175,11 @@ Analogicznie, zmień `backend = "openai"` i odpowiednie modele.
 |---------|--------|---------------|
 | ASR | ✅ Whisper (bardzo dobry) | ✅ Multimodal (dobry) |
 | Chat | ✅ GPT-4o (doskonały) | ✅ Gemini 2.0 (doskonały) |
-| TTS | ✅ Pełne wsparcie | ❌ Brak wsparcia |
+| TTS | ✅ Pełne wsparcie | ✅ Native audio generation |
 | Streaming Chat | ✅ | ✅ |
 | Koszty | $$$ | $$ (tańszy) |
 | Latencja | Bardzo niska | Niska |
+| Głosy TTS | 6 opcji | 5 opcji |
 
 ## Rozwiązywanie Problemów
 
@@ -182,20 +197,19 @@ export GOOGLE_API_KEY="twoj-klucz"
 pip install google-generativeai>=0.8.0
 ```
 
-### Błąd: "Gemini TTS is not yet supported"
+### Błąd: "Google GenAI SDK unavailable"
 
-**Rozwiązanie**: To oczekiwane. Użyj OpenAI dla TTS:
-```toml
-[tts]
-backend = "openai"
+**Rozwiązanie**: Zainstaluj bibliotekę:
+```bash
+pip install google-genai>=1.0.0
 ```
 
-### Niska jakość transkrypcji
+### Niska jakość audio TTS
 
 **Rozwiązanie**: 
-1. Sprawdź jakość audio (poziom szumu)
-2. Spróbuj modelu `gemini-1.5-pro` zamiast `gemini-1.5-flash`
-3. Ustaw konkretny język w konfiguracji: `language = "pl"`
+1. Wypróbuj różne głosy (Kore, Aoede, Charon, Fenrir, Puck)
+2. Użyj nowszego modelu: `gemini-2.5-flash-preview-tts`
+3. Sprawdź poziom `VOICE_GAIN` w zmiennych środowiskowych
 
 ## Testowanie
 
@@ -230,9 +244,10 @@ python -m apps.voice.cli --config ./config/voice_gemini_file.toml ptt
 - [x] ✅ Wsparcie dla Gemini Chat (REST)
 - [x] ✅ Wsparcie dla Gemini Chat (Streaming)
 - [x] ✅ Wsparcie dla Gemini ASR (Multimodal)
-- [ ] ⏳ Wsparcie dla Gemini TTS (oczekujemy na API)
+- [x] ✅ Wsparcie dla Gemini TTS (Native Audio Generation)
 - [ ] 🔜 Optymalizacja latencji dla ASR
 - [ ] 🔜 Wsparcie dla innych języków w ASR
+- [ ] 🔜 Zaawansowane kontrole stylu głosu w TTS
 
 ## Referencje
 
