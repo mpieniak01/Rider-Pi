@@ -198,7 +198,7 @@ def speak(
 
     # streaming: preferuj MP3 (najszybszy start z mpg123)
     stream_fmt = "mp3"
-    stream = start_stream(stream_fmt, playback, logger, accumulate=accumulate)
+    stream = start_stream(stream_fmt, playback, logger, accumulate=True) if accumulate else None
     if stream:
         start_ts = time.time()
         first_chunk_at: float | None = None
@@ -276,7 +276,7 @@ def speak(
         return TTSStreamResult(False, None, "", 0, streamed=False)
 
     try:
-        play_bytes(audio_bytes, audio_fmt, playback, logger, blocking=True)
+        play_bytes(audio_bytes, audio_fmt, playback, logger)
     except PlaybackError as exc:
         logger.event("tts.playback.failed", error=str(exc))
         return TTSStreamResult(False, None, audio_fmt, sample_rate, streamed=False)
