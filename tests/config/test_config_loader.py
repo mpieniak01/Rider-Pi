@@ -33,9 +33,9 @@ from apps.voice.config_loader import (
 
 
 def test_config_positive_minimal_file_mode():
-    """Test loading voice_file.toml succeeds."""
+    """Test loading voice_openai_file.toml succeeds."""
     loader = ConfigLoader()
-    config = loader.load("voice_file.toml")
+    config = loader.load("voice_openai_file.toml")
 
     assert "capture" in config
     assert "asr" in config
@@ -45,15 +45,15 @@ def test_config_positive_minimal_file_mode():
 
     # Verify key values from file
     assert config["capture"]["device"] == "wm8960_in"
-    assert config["capture"]["rate"] == 16000
+    assert config["capture"]["sample_rate"] == 16000
     assert config["asr"]["backend"] == "openai"
     assert config["tts"]["format"] == "wav"
 
 
 def test_config_positive_streaming_profile():
-    """Test loading voice_streaming_fallback.toml succeeds."""
+    """Test loading voice_openai_streaming_fallback.toml succeeds."""
     loader = ConfigLoader()
-    config = loader.load("voice_streaming_fallback.toml")
+    config = loader.load("voice_openai_streaming_fallback.toml")
 
     assert "capture" in config
     assert "stream" in config
@@ -72,7 +72,7 @@ def test_unknown_keys_fail_fast():
 
     with pytest.raises(ValidationError) as exc_info:
         loader.load(
-            "voice_file.toml",
+            "voice_openai_file.toml",
             overrides={
                 "asr": {"devicee": "typo"},  # Typo: devicee instead of device
                 "unknown_section": {"key": "value"},
@@ -89,7 +89,7 @@ def test_unknown_keys_lenient_warn(capsys):
     loader = ConfigLoader(lenient=True)
 
     config = loader.load(
-        "voice_file.toml", overrides={"asr": {"unknown_field": "test"}, "chat": {"another_unknown": 123}}
+        "voice_openai_file.toml", overrides={"asr": {"unknown_field": "test"}, "chat": {"another_unknown": 123}}
     )
 
     # Config should still load
@@ -108,14 +108,14 @@ def test_type_and_range_validation():
 
     # Invalid channels (must be 1 or 2)
     with pytest.raises(ValidationError) as exc:
-        loader.load("voice_file.toml", overrides={"capture": {"channels": 3}})
+        loader.load("voice_openai_file.toml", overrides={"capture": {"channels": 3}})
     assert "channels" in str(exc.value)
     assert "must be one of [1, 2]" in str(exc.value)
 
     # Invalid sample rate
     with pytest.raises(ValidationError) as exc:
         loader.load(
-            "voice_file.toml",
+            "voice_openai_file.toml",
             overrides={
                 "capture": {"rate": 8000}  # Not in allowed list
             },
@@ -125,7 +125,7 @@ def test_type_and_range_validation():
     # Invalid volume (out of range)
     with pytest.raises(ValidationError) as exc:
         loader.load(
-            "voice_file.toml",
+            "voice_openai_file.toml",
             overrides={
                 "playback": {"volume": 150}  # Max is 100
             },
@@ -135,7 +135,7 @@ def test_type_and_range_validation():
 
     # Invalid backend choice
     with pytest.raises(ValidationError) as exc:
-        loader.load("voice_file.toml", overrides={"asr": {"backend": "invalid_backend"}})
+        loader.load("voice_openai_file.toml", overrides={"asr": {"backend": "invalid_backend"}})
     assert "backend" in str(exc.value)
 
 
@@ -144,16 +144,16 @@ def test_precedence_env_cli_overrides():
     loader = ConfigLoader()
 
     # Base config from TOML
-    config_base = loader.load("voice_file.toml")
+    config_base = loader.load("voice_openai_file.toml")
     assert config_base["tts"]["voice"] == "alloy"
 
     # Override via CLI-style overrides
-    config_overridden = loader.load("voice_file.toml", overrides={"tts": {"voice": "nova"}})
+    config_overridden = loader.load("voice_openai_file.toml", overrides={"tts": {"voice": "nova"}})
     assert config_overridden["tts"]["voice"] == "nova"
 
     # Multiple levels of override
     config_multi = loader.load(
-        "voice_file.toml",
+        "voice_openai_file.toml",
         overrides={"capture": {"rate": 24000}, "playback": {"volume": 75}, "asr": {"model": "whisper-large"}},
     )
     assert config_multi["capture"]["rate"] == 24000
@@ -209,7 +209,7 @@ def test_ptt_ignored_when_server_vad():
     loader = ConfigLoader()
 
     # Load streaming config which has server_vad=true and hotword.enabled=false
-    config = loader.load("voice_streaming_fallback.toml")
+    config = loader.load("voice_openai_streaming_fallback.toml")
 
     # Verify the conditions
     assert config["stream"]["server_vad"] is True
@@ -243,15 +243,15 @@ def test_mask_secrets():
 def test_load_and_validate_convenience():
     """Test the convenience load_and_validate function."""
     # Should work without errors
-    config = load_and_validate("voice_file.toml")
+    config = load_and_validate("voice_openai_file.toml")
     assert "asr" in config
 
     # Should fail on unknown keys by default
     with pytest.raises(ValidationError):
-        load_and_validate("voice_file.toml", overrides={"bad_section": {"key": "value"}})
+        load_and_validate("voice_openai_file.toml", overrides={"bad_section": {"key": "value"}})
 
     # Should succeed in lenient mode
-    config = load_and_validate("voice_file.toml", overrides={"bad_section": {"key": "value"}}, lenient=True)
+    config = load_and_validate("voice_openai_file.toml", overrides={"bad_section": {"key": "value"}}, lenient=True)
     assert "asr" in config
 
 
@@ -261,7 +261,7 @@ def test_typo_suggestions():
 
     with pytest.raises(ValidationError) as exc:
         loader.load(
-            "voice_file.toml",
+            "voice_openai_file.toml",
             overrides={
                 "asr": {"backedn": "openai"}  # Typo: backedn -> backend
             },
@@ -302,7 +302,7 @@ def test_deep_merge_overrides():
     loader = ConfigLoader()
 
     config = loader.load(
-        "voice_file.toml",
+        "voice_openai_file.toml",
         overrides={
             "asr": {
                 "model": "whisper-large",  # Override existing field
@@ -330,7 +330,7 @@ def test_validation_error_format():
 
     with pytest.raises(ValidationError) as exc:
         loader.load(
-            "voice_file.toml",
+            "voice_openai_file.toml",
             overrides={
                 "unknown1": {"key": "value"},
                 "unknown2": {"key": "value"},
@@ -362,7 +362,7 @@ def test_required_fields():
     # This should fail because required_field is missing
     with pytest.raises(ValidationError) as exc:
         loader.load(
-            "voice_file.toml",
+            "voice_openai_file.toml",
             overrides={
                 "test_section": {}  # Missing required_field
             },

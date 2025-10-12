@@ -41,9 +41,24 @@ source ~/.bash_profile
 
 ## Konfiguracja
 
+### Konwencja nazewnicza plików konfiguracyjnych
+
+Od wersji 2025-01, pliki konfiguracyjne voice używają jednoznacznej konwencji nazewniczej:
+`voice_<provider>_<mode>.toml`
+
+Gdzie:
+- `<provider>` — dostawca usług: `openai`, `gemini`
+- `<mode>` — tryb komunikacji: `file` (REST API), `streaming` (WebSocket)
+
+**Dostępne pliki:**
+- `voice_openai_file.toml` — OpenAI w trybie plikowym (REST)
+- `voice_openai_streaming.toml` — OpenAI w trybie strumieniowym (WebSocket)
+- `voice_gemini_file.toml` — Google Gemini w trybie plikowym (REST)
+- `voice_gemini_example.toml` — Przykładowa konfiguracja Gemini
+
 ### Tryb plikowy (REST API)
 
-Plik: `config/voice_file.toml`
+Plik: `config/voice_gemini_file.toml`
 
 ```toml
 [chat]
@@ -56,7 +71,11 @@ transport = "rest"
 
 ### Tryb strumieniowy (Realtime)
 
-Plik: `config/voice_streaming.toml`
+**Uwaga:** Google Gemini obecnie nie ma dedykowanego trybu strumieniowego WebSocket. 
+Dla streamingu używaj `voice_gemini_file.toml` z parametrem `transport = "realtime"` 
+dla quasi-streamingu przez REST API.
+
+Plik: `config/voice_gemini_file.toml` (z modyfikacją)
 
 ```toml
 [chat]
@@ -94,20 +113,17 @@ Google Gemini oferuje różne modele:
 
 ```bash
 # Uruchom z konfiguracją Google Gemini
-make voice-file-ptt
+make voice-file-ptt  # używa domyślnie voice_openai_file.toml
 
-# Lub bezpośrednio:
-python -m apps.voice.cli --config ./config/voice_file.toml ptt
+# Lub bezpośrednio z Gemini:
+python -m apps.voice.cli --config ./config/voice_gemini_file.toml ptt
 ```
 
 ### Tryb strumieniowy
 
 ```bash
-# Pojedyncza interakcja
-make voice-stream-once
-
-# Nasłuch ciągły
-make voice-stream-listen
+# Uwaga: dla Gemini używaj pliku voice_gemini_file.toml
+python -m apps.voice.cli --config ./config/voice_gemini_file.toml listen
 ```
 
 ### Programatyczne użycie
@@ -237,7 +253,7 @@ python -m apps.voice.cli --config /tmp/test_config.toml once
 
 # Test z Google Gemini (wymaga GOOGLE_API_KEY)
 export GOOGLE_API_KEY="twój-klucz"
-python -m apps.voice.cli --config ./config/voice_file.toml once
+python -m apps.voice.cli --config ./config/voice_openai_file.toml once
 ```
 
 ## Rozwiązywanie problemów
@@ -316,13 +332,16 @@ Aby przejść z OpenAI na Google Gemini:
 
 1. Zainstaluj SDK: `pip install google-generativeai`
 2. Uzyskaj klucz API Google
-3. Zmień w pliku `.toml`:
+3. Użyj dedykowanego pliku konfiguracyjnego:
+   - Skopiuj `config/voice_gemini_example.toml` do `config/voice_gemini_file.toml`
+   - Lub ręcznie zmień w pliku `.toml`:
    ```toml
    [chat]
    backend = "google"  # było: "openai"
    model = "gemini-pro"  # było: "gpt-4o-mini"
    ```
 4. Ustaw `GOOGLE_API_KEY` zamiast `OPENAI_API_KEY`
+5. Uruchom: `python -m apps.voice.cli --config ./config/voice_gemini_file.toml ptt`
 
 ## Przykłady użycia
 

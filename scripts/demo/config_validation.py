@@ -31,18 +31,18 @@ from apps.voice.config_loader import (
 def demo_positive_loading():
     """Criterion 1: Complete TOML loading works."""
     print("\n" + "=" * 60)
-    print("1. POSITIVE LOADING - voice_file.toml and voice_streaming_fallback.toml")
+    print("1. POSITIVE LOADING - voice_openai_file.toml and voice_openai_streaming_fallback.toml")
     print("=" * 60)
 
     loader = ConfigLoader()
 
     # Load file mode config
-    config1 = loader.load("voice_file.toml")
-    print(f"✓ Loaded voice_file.toml with {len(config1)} sections")
+    config1 = loader.load("voice_openai_file.toml")
+    print(f"✓ Loaded voice_openai_file.toml with {len(config1)} sections")
 
     # Load streaming mode config
-    config2 = loader.load("voice_streaming_fallback.toml")
-    print(f"✓ Loaded voice_streaming_fallback.toml with {len(config2)} sections")
+    config2 = loader.load("voice_openai_streaming_fallback.toml")
+    print(f"✓ Loaded voice_openai_streaming_fallback.toml with {len(config2)} sections")
     print(f"  - server_vad={config2['stream']['server_vad']}")
     print(f"  - hotword.enabled={config2['hotword']['enabled']}")
 
@@ -57,7 +57,7 @@ def demo_fail_fast_mode():
 
     try:
         loader.load(
-            "voice_file.toml",
+            "voice_openai_file.toml",
             overrides={"asr": {"backedn": "openai"}, "unknown_section": {"key": "val"}},
         )
         print("✗ FAILED: Should have raised ValidationError")
@@ -80,7 +80,7 @@ def demo_lenient_mode():
 
     loader = ConfigLoader(lenient=True)
 
-    _ = loader.load("voice_file.toml", overrides={"asr": {"unknown_key": "test"}, "bad_section": {"x": 1}})
+    _ = loader.load("voice_openai_file.toml", overrides={"asr": {"unknown_key": "test"}, "bad_section": {"x": 1}})
 
     print(f"✓ Config loaded in lenient mode with {len(loader.unknown_keys)} unknown keys")
     print(f"  Unknown keys: {['.'.join(k) for k in loader.unknown_keys]}")
@@ -96,7 +96,7 @@ def demo_type_validation():
 
     # Test invalid channels
     try:
-        loader.load("voice_file.toml", overrides={"capture": {"channels": 3}})
+        loader.load("voice_openai_file.toml", overrides={"capture": {"channels": 3}})
         print("✗ FAILED: Should reject channels=3")
     except ValidationError as e:
         if "channels" in str(e) and "[1, 2]" in str(e):
@@ -104,7 +104,7 @@ def demo_type_validation():
 
     # Test invalid volume
     try:
-        loader.load("voice_file.toml", overrides={"playback": {"volume": 150}})
+        loader.load("voice_openai_file.toml", overrides={"playback": {"volume": 150}})
         print("✗ FAILED: Should reject volume=150")
     except ValidationError as e:
         if "volume" in str(e) and "100" in str(e):
@@ -112,7 +112,7 @@ def demo_type_validation():
 
     # Test invalid backend
     try:
-        loader.load("voice_file.toml", overrides={"asr": {"backend": "invalid"}})
+        loader.load("voice_openai_file.toml", overrides={"asr": {"backend": "invalid"}})
         print("✗ FAILED: Should reject invalid backend")
     except ValidationError as e:
         if "backend" in str(e):
@@ -128,11 +128,11 @@ def demo_precedence():
     loader = ConfigLoader()
 
     # Load base config
-    config1 = loader.load("voice_file.toml")
+    config1 = loader.load("voice_openai_file.toml")
     base_voice = config1["tts"]["voice"]
 
     # Override with CLI
-    config2 = loader.load("voice_file.toml", overrides={"tts": {"voice": "nova"}})
+    config2 = loader.load("voice_openai_file.toml", overrides={"tts": {"voice": "nova"}})
     overridden_voice = config2["tts"]["voice"]
 
     print(f"✓ Base TOML: tts.voice = {base_voice}")
@@ -202,7 +202,7 @@ def demo_print_effective():
     print("=" * 60)
 
     loader = ConfigLoader()
-    config = loader.load("voice_file.toml", overrides={"tts": {"voice": "nova"}})
+    config = loader.load("voice_openai_file.toml", overrides={"tts": {"voice": "nova"}})
 
     print("✓ Effective config (first 10 lines):")
     import io

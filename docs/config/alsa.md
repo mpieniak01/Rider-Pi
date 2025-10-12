@@ -64,8 +64,8 @@ arecord -D wm8960_in -d 5 -f S16_LE -r 16000 test.wav
 aplay -D wm8960_out test.wav
 
 # W aplikacji voice
-python -m apps.voice.cli listen --config config/voice_file.toml
-# (voice_file.toml używa device = "wm8960_in" i "wm8960_out")
+python -m apps.voice.cli listen --config config/voice_openai_file.toml
+# (voice_openai_file.toml używa device = "wm8960_in" i "wm8960_out")
 ```
 
 ---

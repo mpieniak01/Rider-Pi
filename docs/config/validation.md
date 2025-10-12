@@ -19,10 +19,10 @@ The Voice Assistant configuration system now includes comprehensive validation w
 python -m apps.voice.cli listen
 
 # Specify custom config file
-python -m apps.voice.cli --config config/voice_file.toml listen
+python -m apps.voice.cli --config config/voice_openai_file.toml listen
 
 # Print effective configuration (merged TOML + ENV + CLI)
-python -m apps.voice.cli --config config/voice_file.toml --print-effective-config
+python -m apps.voice.cli --config config/voice_openai_file.toml --print-effective-config
 ```
 
 ### Validation Modes
@@ -160,7 +160,7 @@ Print the final merged configuration:
 
 ```bash
 python -m apps.voice.cli \
-  --config config/voice_file.toml \
+  --config config/voice_openai_file.toml \
   --print-effective-config \
   listen \
   --asr model=whisper-large \

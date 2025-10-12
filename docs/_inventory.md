@@ -72,8 +72,8 @@
 
 | Plik | Moduł | Status dokumentacji |
 |------|-------|---------------------|
-| `voice_file.toml` | voice (tryb plikowy) | ⚠️ Do uzupełnienia szczegółami parametrów |
-| `voice_streaming.toml` | voice (tryb strumieniowy) | ⚠️ Do uzupełnienia szczegółami parametrów |
+| `voice_openai_file.toml` | voice (tryb plikowy) | ⚠️ Do uzupełnienia szczegółami parametrów |
+| `voice_openai_streaming.toml` | voice (tryb strumieniowy) | ⚠️ Do uzupełnienia szczegółami parametrów |
 | `face.toml` | ui/face (rendering buźki) | ⚠️ Do uzupełnienia szczegółami parametrów |
 
 ### Podkatalogi konfiguracji

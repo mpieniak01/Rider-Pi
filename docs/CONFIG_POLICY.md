@@ -10,8 +10,8 @@ Wszystkie pliki konfiguracyjne rezydują w `config/` lub jego podkatalogach:
 
 ```
 config/
-├── voice_file.toml          # Konfiguracja voice (tryb plikowy)
-├── voice_streaming.toml     # Konfiguracja voice (tryb strumieniowy)
+├── voice_openai_file.toml          # Konfiguracja voice (tryb plikowy)
+├── voice_openai_streaming.toml     # Konfiguracja voice (tryb strumieniowy)
 ├── face.toml                # Konfiguracja renderingu twarzy
 ├── asoundrc.wm8960          # Szablon ALSA dla WM8960
 ├── wm8960-apply.sh          # Skrypt konfiguracji miksera WM8960
@@ -70,7 +70,7 @@ source ~/.bash_profile
 
 **W aplikacji:**
 ```toml
-# config/voice_streaming.toml
+# config/voice_openai_streaming.toml
 [stream]
 auth = "env:OPENAI_API_KEY"
 ```
@@ -98,7 +98,7 @@ chmod 600 config/local/openai.key
 
 **W aplikacji:**
 ```toml
-# config/voice_streaming.toml
+# config/voice_openai_streaming.toml
 [stream]
 auth = "file:config/local/openai.key"
 ```
