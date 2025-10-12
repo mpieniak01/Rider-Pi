@@ -68,7 +68,7 @@ Skrypty operacyjne dla zarządzania systemem i usługami:
 Parametry konfiguracji dla wszystkich modułów:
 
 - [**config/README.md**](config/README.md) — **indeks parametrów** (hierarchia, precedencja, polityka sekretów)
-- [**config/voice.md**](config/voice.md) — voice_file.toml, voice_streaming.toml (ASR, TTS, Chat)
+- [**config/voice.md**](config/voice.md) — voice_openai_file.toml, voice_openai_streaming.toml (ASR, TTS, Chat)
 - [**config/face.md**](config/face.md) — face.toml (geometria buźki, emocje, animacje)
 - [**config/alsa.md**](config/alsa.md) — asoundrc.wm8960, wm8960-apply.sh (konfiguracja ALSA)
 

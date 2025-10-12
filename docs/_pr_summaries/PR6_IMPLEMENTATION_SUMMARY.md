@@ -118,7 +118,7 @@ When `hotword.enabled=false` and `stream.server_vad=true`, the `[ptt]` section i
 ### Test Suite: `tests/config/test_config_loader.py`
 
 16 comprehensive tests covering:
-1. ✅ `test_config_positive_minimal_file_mode()` - voice_file.toml loads
+1. ✅ `test_config_positive_minimal_file_mode()` - voice_openai_file.toml loads
 2. ✅ `test_config_positive_streaming_profile()` - voice_streaming_fallback.toml loads
 3. ✅ `test_unknown_keys_fail_fast()` - Unknown keys raise ValidationError
 4. ✅ `test_unknown_keys_lenient_warn()` - Lenient mode warns
@@ -169,7 +169,7 @@ When `hotword.enabled=false` and `stream.server_vad=true`, the `[ptt]` section i
 
 | # | Criterion | Status |
 |---|-----------|--------|
-| 1 | Complete loading of voice_file.toml and voice_streaming_fallback.toml | ✅ |
+| 1 | Complete loading of voice_openai_file.toml and voice_streaming_fallback.toml | ✅ |
 | 2 | Fail-fast mode raises errors, lenient mode warns | ✅ |
 | 3 | Type and range validation with examples | ✅ |
 | 4 | Precedence: ENV and CLI override TOML | ✅ |
@@ -187,10 +187,10 @@ When `hotword.enabled=false` and `stream.server_vad=true`, the `[ptt]` section i
 python -m apps.voice.cli listen
 
 # Custom config
-python -m apps.voice.cli --config config/voice_file.toml listen
+python -m apps.voice.cli --config config/voice_openai_file.toml listen
 
 # Print effective config
-python -m apps.voice.cli --config config/voice_file.toml --print-effective-config
+python -m apps.voice.cli --config config/voice_openai_file.toml --print-effective-config
 ```
 
 ### Validation Examples

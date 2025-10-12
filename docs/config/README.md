@@ -6,7 +6,7 @@
 
 ### Konfiguracja aplikacji
 
-- [**voice.md**](voice.md) — parametry voice (ASR, TTS, Chat) — `voice_file.toml`, `voice_streaming.toml`
+- [**voice.md**](voice.md) — parametry voice (ASR, TTS, Chat) — `voice_openai_file.toml`, `voice_openai_streaming.toml`
 - [**validation.md**](validation.md) — **NEW**: walidacja konfiguracji, schema enforcement, fail-fast/lenient modes
 - [**face.md**](face.md) — parametry renderingu buźki — `face.toml`
 - [**alsa.md**](alsa.md) — konfiguracja ALSA (asoundrc, wm8960)
@@ -17,8 +17,8 @@
 
 ```
 config/
-├── voice_file.toml          # Voice: tryb plikowy (REST ASR/TTS)
-├── voice_streaming.toml     # Voice: tryb strumieniowy (Realtime WebSocket)
+├── voice_openai_file.toml          # Voice: tryb plikowy (REST ASR/TTS)
+├── voice_openai_streaming.toml     # Voice: tryb strumieniowy (Realtime WebSocket)
 ├── face.toml                # Renderowanie buźki (parametry geometrii, emocje)
 ├── alsa/                    # Konfiguracja ALSA
 │   ├── asoundrc.wm8960      # Szablon asoundrc dla WM8960
@@ -35,21 +35,21 @@ config/
 1. **CLI args** (najwyższy priorytet)
 2. **Zmienne środowiskowe** (ENV)
 3. **Plik TOML** (wskazany przez `--config` lub `VOICE_CONFIG`)
-4. **Domyślny TOML** (`config/voice_file.toml` lub `voice_streaming.toml`)
+4. **Domyślny TOML** (`config/voice_openai_file.toml` lub `voice_openai_streaming.toml`)
 5. **Hardcoded defaults** (najniższy priorytet)
 
 ### Przykład
 
 ```bash
 # 1. Załaduj z TOML
-python -m apps.voice.cli listen --config config/voice_file.toml
+python -m apps.voice.cli listen --config config/voice_openai_file.toml
 
 # 2. Nadpisz przez ENV
 export VOICE_ASR_BACKEND=vosk
-python -m apps.voice.cli listen --config config/voice_file.toml
+python -m apps.voice.cli listen --config config/voice_openai_file.toml
 
 # 3. Nadpisz przez CLI (najwyższy priorytet)
-python -m apps.voice.cli listen --config config/voice_file.toml --asr backend=whisper
+python -m apps.voice.cli listen --config config/voice_openai_file.toml --asr backend=whisper
 ```
 
 ## Polityka sekretów
@@ -100,7 +100,7 @@ Zobacz: [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
 mkdir -p config/local
 
 # Przykład: konfiguracja dev
-cp config/voice_file.toml config/local/voice_dev.toml
+cp config/voice_openai_file.toml config/local/voice_dev.toml
 # edytuj: zmień backendy, modele, urządzenia
 
 # Użyj w aplikacji
@@ -114,7 +114,7 @@ python -m apps.voice.cli listen
 
 ```bash
 # 1. Skopiuj sample
-cp config/voice_file.toml config/local/voice.toml
+cp config/voice_openai_file.toml config/local/voice.toml
 
 # 2. Edytuj urządzenia ALSA
 nano config/local/voice.toml
@@ -150,10 +150,10 @@ python -m apps.ui.face
 
 ```bash
 # Diagnostyka konfiguracji
-python -m apps.voice.cli diag --config config/voice_file.toml
+python -m apps.voice.cli diag --config config/voice_openai_file.toml
 
 # Sprawdź załadowane parametry
-python -m apps.voice.cli listen --config config/voice_file.toml --dry-run
+python -m apps.voice.cli listen --config config/voice_openai_file.toml --dry-run
 ```
 
 ### Face
