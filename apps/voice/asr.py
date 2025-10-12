@@ -101,6 +101,15 @@ def transcribe(
             language=_norm_language(config),
         )
 
+    if backend == "google":
+        return _gemini_transcribe(
+            audio,
+            sample_rate,
+            config,
+            logger,
+            language=_norm_language(config),
+        )
+
     if backend == "vosk":
         return _vosk_transcribe(
             audio,
@@ -173,6 +182,67 @@ def _openai_transcribe(
         language=lang_out,
         raw=response.to_dict() if hasattr(response, "to_dict") else response,
     )
+
+
+def _gemini_transcribe(
+    audio: bytes,
+    sample_rate: int,
+    config: ASRConfig,
+    logger: voice_logging.VoiceLogger,
+    *,
+    language: str | None,
+) -> Transcript:
+    """
+    Google Gemini Speech-to-Text using multimodal model.
+    Używa google-generativeai SDK i modeli multimodalnych jak gemini-1.5-flash.
+    """
+    try:
+        import google.generativeai as genai  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ASRError(f"Google Generative AI SDK unavailable: {exc}") from exc
+
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ASRError("GOOGLE_API_KEY not configured")
+
+    # Konfiguruj API
+    genai.configure(api_key=api_key)
+
+    # ZAWSZE wysyłaj kontener (WAV). Gemini akceptuje WAV/MP3.
+    if _is_wav(audio):
+        wav_bytes = audio
+    else:
+        wav_bytes = _pcm_to_wav_bytes(audio, sample_rate)
+
+    # Użyj modelu multimodalnego (np. gemini-1.5-flash)
+    model_name = config.model or "gemini-1.5-flash"
+
+    try:
+        logger.event("asr.gemini.request", model=model_name)
+
+        # Gemini multimodal API przyjmuje audio jako część contentu
+        model = genai.GenerativeModel(model_name=model_name)
+
+        # Przygotuj prompt dla transkrypcji
+        prompt = "Transcribe the following audio to text"
+        if language:
+            prompt += f" in {language} language"
+        prompt += ". Return only the transcribed text without any additional formatting or commentary."
+
+        # Wyślij audio jako część multimodalnego zapytania
+        response = model.generate_content([prompt, {"mime_type": "audio/wav", "data": wav_bytes}])
+
+        text = (response.text or "").strip()
+        logger.event("asr.gemini.ok", chars=len(text))
+
+        return Transcript(
+            text=text,
+            language=language or "",
+            raw=response,
+        )
+    except Exception as exc:
+        logger.event("asr.gemini.error", error=str(exc))
+        raise ASRError(f"Gemini transcription failed: {exc}") from exc
 
 
 def _vosk_transcribe(
