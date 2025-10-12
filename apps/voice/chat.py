@@ -236,6 +236,7 @@ class ChatSession:
             return text_out
         except Exception as exc:
             self._evt("chat.rest.error", error=str(exc))
+
             raise ChatError(f"Google Gemini chat completion failed: {exc}") from exc
 
     async def _ask_openai_stream(self, text: str):

@@ -37,7 +37,10 @@ class ConfigSchema:
     """
 
     def __init__(self, data: dict[str, set[str]] | None = None) -> None:
-        self.data: dict[str, set[str]] = dict(SCHEMA) if data is None else data
+        # Głęboka kopia wartości setów, aby uniknąć współdzielenia obiektów między instancjami
+        self.data: dict[str, set[str]] = (
+            {k: set(v) for k, v in SCHEMA.items()} if data is None else {k: set(v) for k, v in data.items()}
+        )
         # Mapa: nazwa_sekcji -> { nazwa_pola -> FieldSchema }
         self._sections: dict[str, dict[str, FieldSchema]] = {sec: {} for sec in self.data.keys()}
 
@@ -93,10 +96,29 @@ SCHEMA: dict[str, set[str]] = {
     "compat": {"allow_unknown_keys", "sample_rates"},
     # dla testu ścieżek względnych
     "save_audio": {"enabled", "dir"},
+    # UŻYWANE PRZEZ svc_file.py – pełny zestaw
+    "service": {
+        "beep",
+        "beep_delay_ms",
+        "beep_pause_ms",
+        "mic_open_delay_ms",
+        "pre_speech_wait_ms",
+        "no_speech_timeout_ms",
+        "min_capture_ms",
+        "post_tts_mute_ms",
+        "save_audio",
+        "recordings_dir",
+        "silence_rms_gate",
+    },
+    "vad": {
+        "mode",
+        "frame_ms",
+        "tail_ms",
+        "energy_gate_dbfs",
+        "max_len_ms",
+    },
     # dodatkowe sekcje wymagane przez testy obecności
-    "vad": set(),
     "turn": set(),
-    "service": set(),
 }
 
 # Dopuszczalne backendy per sekcja (wystarczające do testów)
@@ -144,6 +166,13 @@ def _resolve_relative_paths(d: dict[str, Any], base: Path) -> dict[str, Any]:
         p = Path(sa["dir"])
         if not p.is_absolute():
             out["save_audio"]["dir"] = str((base / p).resolve())
+
+    # service.recordings_dir
+    svc = out.get("service")
+    if isinstance(svc, dict) and isinstance(svc.get("recordings_dir"), str):
+        p = Path(svc["recordings_dir"])
+        if not p.is_absolute():
+            out["service"]["recordings_dir"] = str((base / p).resolve())
 
     # files.input_wav/output_wav
     files = out.get("files")
@@ -271,7 +300,7 @@ class ConfigLoader:
         # schema-injected required fields
         self._req_sections: dict[str, dict[str, FieldSchema]] = self.schema.sections if self.schema is not None else {}
         # efektywny schemat (wbudowany + dostarczony)
-        self._effective_schema: dict[str, set[str]] = dict(SCHEMA)
+        self._effective_schema: dict[str, set[str]] = {k: set(v) for k, v in SCHEMA.items()}
         if self.schema is not None:
             for sec, keys in self.schema.data.items():
                 if sec in self._effective_schema:
@@ -283,15 +312,23 @@ class ConfigLoader:
         if path is None:
             raise ValidationError("Config path is required")
         p = Path(path)
-        if not p.is_absolute():
-            # standardowe położenie: repo/config/<file>
-            repo_root = Path.cwd()
-            default = repo_root / "config" / p.name
-            if default.exists():
-                p = default
-        if not p.exists():
-            raise ValidationError(f"Config file not found: {p}")
-        return p
+        if p.is_absolute():
+            if not p.exists():
+                raise ValidationError(f"Config file not found: {p}")
+            return p
+
+        # Ścieżka względna: najpierw sprawdź tę, którą podał użytkownik
+        p_user = (Path.cwd() / p).resolve()
+        if p_user.exists():
+            return p_user
+
+        # Fallback: standardowe położenie repo/config/<file>
+        repo_root = Path.cwd()
+        default = (repo_root / "config" / p.name).resolve()
+        if default.exists():
+            return default
+
+        raise ValidationError(f"Config file not found: {p_user}")
 
     def _format_validation_errors(self) -> str:
         parts: list[str] = ["Configuration validation failed:"]
@@ -316,10 +353,17 @@ class ConfigLoader:
         self.unknown_keys.clear()
         self.validation_errors.clear()
 
+        # pozwól wyłączyć błąd dla nieznanych kluczy
+        allow_unknown = bool(isinstance(data.get("compat"), dict) and data["compat"].get("allow_unknown_keys") is True)
+
+        def _mark_unknown(section: str, key: str) -> None:
+            if not allow_unknown:
+                self._warn_or_err_unknown(section, key)
+
         # --- sekcje nieznane (wg efektywnego schematu) ---
         for section in data.keys():
             if section not in self._effective_schema:
-                self._warn_or_err_unknown(section, "<section>")
+                _mark_unknown(section, "<section>")
 
         # --- weryfikacja kluczy w znanych sekcjach ---
         for section, allowed in self._effective_schema.items():
@@ -331,7 +375,7 @@ class ConfigLoader:
                 continue
             for key in sec_data.keys():
                 if key not in allowed:
-                    self._warn_or_err_unknown(section, key)
+                    _mark_unknown(section, key)
 
         # --- Reguły wartości ---
         cap = data.get("capture", {}) if isinstance(data.get("capture"), dict) else {}
