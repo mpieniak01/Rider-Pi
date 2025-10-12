@@ -320,10 +320,13 @@ def synthesize(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger |
         raise TTSError("TTS REST disabled when transport=realtime")
 
     backend = (config.backend or "openai").lower()
-    if backend != "openai":
-        raise TTSError(f"Unsupported TTS backend: {backend}")
 
-    return _tts_openai(text, config, logger)
+    if backend == "openai":
+        return _tts_openai(text, config, logger)
+    elif backend == "google":
+        return _tts_gemini(text, config, logger)
+    else:
+        raise TTSError(f"Unsupported TTS backend: {backend}")
 
 
 def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
@@ -467,6 +470,48 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
 
     # jeśli tu dotarliśmy — nie udało się
     raise TTSError(f"OpenAI TTS request failed: {last_err or 'unknown error'}")
+
+
+def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
+    """
+    Google Gemini Text-to-Speech.
+    Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav").
+    Uwaga: Gemini obecnie nie ma dedykowanego API TTS, więc używamy multimodalnego modelu
+    do generowania audio z tekstu (jeśli dostępne) lub zwracamy błąd.
+    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise TTSError("GOOGLE_API_KEY not configured")
+
+    try:
+        import google.generativeai as genai  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise TTSError(f"Google Generative AI SDK unavailable: {exc}") from exc
+
+    # Konfiguruj API
+    genai.configure(api_key=api_key)
+
+    model_name = config.model or "gemini-1.5-flash"
+
+    logger.event("tts.gemini.request", model=model_name)
+
+    try:
+        # UWAGA: Gemini API obecnie nie oferuje bezpośredniego TTS.
+        # Zgodnie z dokumentacją, możemy używać modeli multimodalnych, ale
+        # generowanie audio z tekstu nie jest jeszcze wspierane w google-generativeai.
+        #
+        # Rozwiązanie tymczasowe: zwróć błąd z informacją
+        raise TTSError(
+            "Gemini TTS is not yet supported. "
+            "Google Gemini API currently doesn't provide text-to-speech functionality. "
+            "Please use OpenAI backend for TTS or wait for Google to add TTS support to Gemini API."
+        )
+
+    except Exception as exc:
+        logger.event("tts.gemini.error", error=str(exc))
+        if isinstance(exc, TTSError):
+            raise
+        raise TTSError(f"Gemini TTS failed: {exc}") from exc
 
 
 async def speak_stream(
