@@ -61,14 +61,15 @@ class ConfigSchema:
 ALLOWED_HOTWORD_ENGINES = {"porcupine", "ptt", "vosk", "none"}
 
 # aliasy kluczy: pozwalamy używać historycznych nazw w TOML
+# (mapujemy STARE -> NOWE, aby wszędzie w kodzie używać sample_*)
 KEY_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
-    ("capture", "sample_rate"): ("capture", "rate"),
-    ("capture", "sample_format"): ("capture", "format"),
+    ("capture", "rate"): ("capture", "sample_rate"),
+    ("capture", "format"): ("capture", "sample_format"),
 }
 
 # znane sekcje/klucze
 SCHEMA: dict[str, set[str]] = {
-    "capture": {"device", "rate", "channels", "format"},
+    "capture": {"device", "sample_rate", "channels", "sample_format"},
     "playback": {"backend", "device", "volume"},
     "asr": {"backend", "model", "language"},
     "chat": {"backend", "model", "language", "system_prompt"},
@@ -336,10 +337,12 @@ class ConfigLoader:
         cap = data.get("capture", {}) if isinstance(data.get("capture"), dict) else {}
         if "channels" in cap and cap["channels"] not in (1, 2):
             self.validation_errors.append("Field 'capture.channels' must be one of [1, 2]")
-        if "rate" in cap and cap["rate"] not in (16000, 22050, 24000, 44100, 48000):
-            self.validation_errors.append("Field 'capture.rate' must be one of [16000, 22050, 24000, 44100, 48000]")
-        if "format" in cap and not isinstance(cap["format"], str):
-            self.validation_errors.append("Field 'capture.format' must be a string (e.g., 'S16_LE')")
+        if "sample_rate" in cap and cap["sample_rate"] not in (16000, 22050, 24000, 44100, 48000):
+            self.validation_errors.append(
+                "Field 'capture.sample_rate' must be one of [16000, 22050, 24000, 44100, 48000]"
+            )
+        if "sample_format" in cap and not isinstance(cap["sample_format"], str):
+            self.validation_errors.append("Field 'capture.sample_format' must be a string (e.g., 'S16_LE')")
 
         pb = data.get("playback", {}) if isinstance(data.get("playback"), dict) else {}
         if "volume" in pb:
