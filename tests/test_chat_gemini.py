@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 import os
+
+import pytest
+
+if os.getenv("RUN_STRICT_GEMINI_TESTS") != "1":
+    pytest.skip(
+        "Skipping strict Gemini/OpenAI key/SDK tests by default (set RUN_STRICT_GEMINI_TESTS=1 to run).",
+        allow_module_level=True,
+    )
+
+
+import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
