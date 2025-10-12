@@ -198,7 +198,11 @@ def speak(
 
     # streaming: preferuj MP3 (najszybszy start z mpg123)
     stream_fmt = "mp3"
-    stream = start_stream(stream_fmt, playback, logger, accumulate=True) if accumulate else None
+    should_start_stream = accumulate
+    if should_start_stream:
+        stream = start_stream(stream_fmt, playback, logger, accumulate=True)
+    else:
+        stream = None
     if stream:
         start_ts = time.time()
         first_chunk_at: float | None = None
