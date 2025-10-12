@@ -46,19 +46,16 @@ volume  = 55
 # --- ASR / CHAT / TTS – WS realtime ----------------------------------------
 [asr]
 backend   = "openai"
-transport = "realtime"
 # model informacyjnie – właściwy model jest w [stream].endpoint
 model     = "gpt-4o"
 
 [chat]
 backend       = "openai"
-transport     = "realtime"
 model         = "gpt-4o"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
 [tts]
 backend   = "openai"
-transport = "realtime"
 voice     = "alloy"
 # Realtime zwykle zwraca PCM16 24 kHz — odtwarzamy bezpośrednio przez aplay:
 format     = "pcm16"

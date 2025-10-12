@@ -3,16 +3,9 @@
 """Voice service file mode pipeline — STRICT file-only.
 
 Zasady:
-- Ten moduł uruchamia wyłącznie ścieżkę plikową (ASR/CHAT/TTS = "file").
+- Ten moduł uruchamia wyłącznie ścieżkę plikową (ASR/CHAT/TTs = "file").
 - Jeśli w cfg gdziekolwiek ustawiono transport="realtime", przerywamy z kodem 2.
 - Przed uruchomieniem wymuszamy "file" w asr/chat/tts, aby uniknąć niespójności.
-
-Consolidated from service_impl.py as part of PR#1 refactoring.
-
-This module now contains the main VoiceService implementation for file-mode operation.
-It acts as the entry point for all voice pipeline components (ASR, CHAT, TTS) in file-only mode,
-strictly enforcing file transport and rejecting any realtime configuration. All file-mode logic
-and orchestration is handled here.
 """
 
 from __future__ import annotations
@@ -20,6 +13,7 @@ from __future__ import annotations
 import audioop
 import contextlib
 import math
+import os  # ← potrzebne dla VOICE_BEEP
 import queue
 import subprocess
 import threading
@@ -118,11 +112,10 @@ class VoiceService(BusIntegrationMixin):
 
         self.config = config
         self.logger = vlog.get_logger("voice.service")
-        self.logger = ensure_event_logger(self.logger)  # ⬅️ DODANE: gwarantuj .event(...)
+        self.logger = ensure_event_logger(self.logger)  # gwarantuj .event(...)
         self.stop_event = threading.Event()
 
         # Bus (pozwól testom wstrzyknąć fałszywego publishra)
-        # BusPub/BusSub are now imported in svc_bus.py
         from .svc_bus import BusPub, BusSub
 
         self._bus_pub = ui_publisher if ui_publisher is not None else (BusPub() if BusPub else None)
@@ -137,7 +130,8 @@ class VoiceService(BusIntegrationMixin):
         # ⬇⬇⬇ Bezpieczne domyślne wartości capture dla testów/UI
         _cap_in = dict(config.get("capture") or {})
         _cap_defaults = {
-            "backend": "dummy",
+            # KLUCZOWA zmiana: domyślnie ALSA (nie 'dummy')
+            "backend": "alsa",
             "device": "null",
             "sample_rate": 16000,
             "channels": 1,
@@ -167,7 +161,6 @@ class VoiceService(BusIntegrationMixin):
 
         # VAD
         vad_cfg = config.get("vad", {})
-        # Wymuś >= 1000 ms podtrzymania po mowie
         requested_tail = int(vad_cfg.get("tail_ms", 800))
         enforced_tail = max(1000, requested_tail)
         self._vad = WebRtcActivity(
@@ -185,8 +178,11 @@ class VoiceService(BusIntegrationMixin):
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "/tmp/voice-recs"))
 
         # Beep control parameters
-        self._beep_enabled = bool(service_cfg.get("beep", True))  # globalny włącznik beep
-        self._beep_delay_ms = int(service_cfg.get("beep_delay_ms", 250))  # opóźnienie po beep zanim zaczniemy zbierać
+        # KLUCZOWA zmiana: domyślnie beep WYŁĄCZONY, aby nie wywoływać paplay z U8/8kHz
+        env_beep = os.getenv("VOICE_BEEP", "").strip()
+        env_beep_on = env_beep in {"1", "true", "TRUE", "yes", "on"}
+        self._beep_enabled = bool(service_cfg.get("beep", False) or env_beep_on)
+        self._beep_delay_ms = int(service_cfg.get("beep_delay_ms", 250))  # opóźnienie po beep zanim zbierzemy
 
         # Timingi stabilizujące nagrania
         self._beep_pause_ms = int(service_cfg.get("beep_pause_ms", 250))  # pauza logiczna po ding (mute)
@@ -195,11 +191,8 @@ class VoiceService(BusIntegrationMixin):
 
         # Nowe minima / „no-cost” timeouty
         self._pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 1000))
-        # 🔴 NEW: jeśli po beep jest cisza >= 2000 ms → przerywamy bez kosztu
         self._no_speech_timeout_ms = int(service_cfg.get("no_speech_timeout_ms", 2000))
-        self._silence_rms_gate = int(  # noqa: E501
-            service_cfg.get("silence_rms_gate", 500)
-        )  # próg energii dla wczesnego wykrycia ciszy
+        self._silence_rms_gate = int(service_cfg.get("silence_rms_gate", 500))
         self._min_capture_ms = int(service_cfg.get("min_capture_ms", 1000))
 
         # Okno wyciszenia po ding/TTS
@@ -243,9 +236,7 @@ class VoiceService(BusIntegrationMixin):
                 t.join(timeout=0.5)
 
     # ─────────────────────────────────────────────
-    # ─────────────────────────────────────────────
-    # Bus publishing and TTS speak loop (delegated to BusIntegrationMixin in svc_bus.py)
-    # _publish_ui_state, _publish_transcript, _publish_assistant_speech, _tts_speak_loop are in svc_bus.py
+    # Bus publishing and TTS speak loop – w svc_bus.py
 
     # ─────────────────────────────────────────────
     # Kolejka mówienia
@@ -253,7 +244,7 @@ class VoiceService(BusIntegrationMixin):
     def _request_speech(self, text: str, *, source: str, accumulate: bool) -> TTSStreamResult | None:
         if not text.strip():
             return None
-        task = SpeechTask(text=text.strip(), source=source, accumulate=accumulate)
+        task = SpeechTask(text=text.strip(), source=source, accumulate=False)  # KLUCZOWE: wyłącz streaming
         task.ack = threading.Event()
         self._speech_queue.put(task)
         while not self.stop_event.is_set():
@@ -285,7 +276,7 @@ class VoiceService(BusIntegrationMixin):
                     self._tts_cfg,
                     self._play_cfg,
                     self.logger,
-                    accumulate=task.accumulate,
+                    accumulate=task.accumulate,  # teraz zawsze False
                 )
                 task.result = result
                 if not result.ok:
@@ -310,7 +301,6 @@ class VoiceService(BusIntegrationMixin):
                 try:
                     self._cycle(speak=True)
                 except Exception as exc:
-                    # po błędzie zawsze wracaj do idle
                     self._publish_ui_state("idle")
                     self.logger.event("service.cycle.error", error=str(exc))
                     time.sleep(0.3)
@@ -373,7 +363,7 @@ class VoiceService(BusIntegrationMixin):
                     time.sleep(self._mic_open_delay_ms / 1000.0)
                 audio = collect(capture.frames(), self._vad, self._max_len)
 
-        # 🔴 „cisza po beep” → przerwij bez kosztu (nic nie wysyłamy do ASR/Chat)
+        # „cisza po beep” → przerwij bez kosztu
         if not audio:
             self._publish_ui_state("idle")
             raise RuntimeError("No audio captured")
@@ -393,20 +383,16 @@ class VoiceService(BusIntegrationMixin):
         reply = self._handle_intent(intent)
         reply_text = reply.strip()
 
-        # Mówienie (TTS)
+        # Mówienie (TTS): KLUCZOWE – bez streamingu
         speech_task_enqueued = False
         speech_result: TTSStreamResult | None = None
 
         if speak and reply_text:
             speech_task_enqueued = True
-            speech_result = self._request_speech(reply_text, source="chat", accumulate=True)
+            speech_result = self._request_speech(reply_text, source="chat", accumulate=False)
 
         total_latency = time.time() - start
-        self.logger.event(
-            "service.cycle.done",
-            latency=total_latency,
-            intent=intent.kind,
-        )
+        self.logger.event("service.cycle.done", latency=total_latency, intent=intent.kind)
 
         audio_bytes = speech_result.audio if (speech_result and speech_result.audio) else None
         audio_format = speech_result.audio_format if speech_result else ""
@@ -450,7 +436,6 @@ class VoiceService(BusIntegrationMixin):
         if isinstance(ding_cfg, dict):
             ok = bool(ding_cfg.get("enabled", True))
         else:
-            # jeśli struktura inna/None – traktuj jako włączone
             ok = True
         # cooldown anty-pętla (≥1.0 s)
         if ok and (time.time() - self._last_ding_ts) < 1.0:
@@ -497,21 +482,11 @@ class VoiceService(BusIntegrationMixin):
         fb = getattr(self._capture_cfg, "frame_bytes", None)
         if isinstance(fb, int) and fb > 0:
             return fb
-        # 16-bit * channels * samples_per_frame
         chans = max(1, int(getattr(self._capture_cfg, "channels", 1)))
         samples = int(self._capture_cfg.sample_rate * (self._capture_cfg.frame_ms / 1000.0))
         return max(1, samples * chans * 2)
 
     def _record_with_vad(self) -> bytes:
-        """
-        Kolejność:
-        1) Poczekaj aż wygaśnie mute po beep/TTS (żeby nie nagrać „ding”).
-        2) Otwórz mikrofon i ustabilizuj ALSA.
-        3) Wczesne okno „no-cost”: do _no_speech_timeout_ms czekamy na głos.
-           Jeśli cisza → zwróć b"" (brak kosztów).
-        4) Po wykryciu głosu zbieramy właściwe nagranie (collect+VAD).
-        5) Minimalna długość i szybkie retry.
-        """
         now = time.time()
         if now < self._mute_until_ts:
             time.sleep(self._mute_until_ts - now)
@@ -524,7 +499,7 @@ class VoiceService(BusIntegrationMixin):
 
                 frames_iter = capture.frames()
 
-                # 3) okno „no-cost” – czekamy max N ms aż pojawi się głos
+                # okno „no-cost”
                 voiced = False
                 start_wait = time.time()
                 pre_buf: list[bytes] = []
@@ -535,15 +510,14 @@ class VoiceService(BusIntegrationMixin):
                     except StopIteration:
                         break
                     pre_buf.append(f)
-                    if self._frame_has_voice(f, self._silence_rms_gate):  # noqa: E501
+                    if self._frame_has_voice(f, self._silence_rms_gate):
                         voiced = True
                         break
                 if not voiced:
-                    # cisza → koniec bez kosztu
                     self.logger.event("service.nospeech.timeout", ms=self._no_speech_timeout_ms)
                     return b""
 
-                # 3b) pre-roll do _pre_speech_wait_ms total, żeby mieć margines
+                # pre-roll
                 need_frames = max(1, int(math.ceil(self._pre_speech_wait_ms / self._capture_cfg.frame_ms)))
                 while len(pre_buf) < need_frames:
                     try:
@@ -565,7 +539,7 @@ class VoiceService(BusIntegrationMixin):
         except Exception as exc:
             self.logger.event("service.capture.unexpected", error=str(exc))
 
-        # Minimalna długość całego klipu
+        # Minimalna długość
         min_ms = max(200, self._min_capture_ms)
         bytes_per_sample = 2  # 16-bit
         channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
@@ -604,7 +578,7 @@ class VoiceService(BusIntegrationMixin):
         device = cfg.device or "plughw:1,0"
         buffer_seconds = float(getattr(cfg, "buffer_seconds", 0) or 0.0)
 
-        # arecord -d wymaga całych sekund → ogranicz do max 4 s, min 2 s
+        # arecord -d: całe sekundy → max 4 s, min 2 s
         duration_float = max(self._max_len / 1000.0, 1.0) + buffer_seconds + 0.5
         duration_s = int(math.ceil(duration_float))
         duration_s = max(2, min(4, duration_s))
@@ -645,11 +619,9 @@ class VoiceService(BusIntegrationMixin):
             self.logger.event("service.capture.arecord_empty")
             return b""
 
-        # pofragmentuj „raw” na ramki i spróbuj VAD-ować
         frames = self._frames_from_pcm(raw, self._safe_frame_bytes())
         trimmed = collect(frames, self._vad, self._max_len)
 
-        # Minimalna długość
         min_ms = max(200, self._min_capture_ms)
         bytes_per_sample = 2
         channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
@@ -714,7 +686,6 @@ class VoiceService(BusIntegrationMixin):
 
 def run_listen_file(cfg: dict[str, Any], args) -> int:
     """Run listen mode using file-based pipeline (STRICT file-only)."""
-    # VoiceService is now defined in this module
     from .svc_signals import setup_signals
 
     try:
@@ -733,7 +704,6 @@ def run_listen_file(cfg: dict[str, Any], args) -> int:
 
 def run_once_file(cfg: dict[str, Any], args) -> int:
     """Run once mode using file-based pipeline (STRICT file-only)."""
-    # VoiceService is now defined in this module
     from .svc_signals import setup_signals
 
     try:
