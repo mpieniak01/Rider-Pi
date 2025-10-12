@@ -102,7 +102,7 @@ SCHEMA: dict[str, set[str]] = {
 # Dopuszczalne backendy per sekcja (wystarczające do testów)
 ALLOWED_BACKENDS_PER_SECTION: dict[str, set[str]] = {
     "asr": {"openai"},
-    "chat": {"openai"},
+    "chat": {"openai", "google"},
     "tts": {"openai"},
     "nlu": {"passthrough", "dummy", "openai"},
     "playback": {"aplay"},
