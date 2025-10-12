@@ -2,9 +2,9 @@
 
 [capture]
 device        = "wm8960_in"
-sample_rate   = 16000     # było: rate
+sample_rate   = 16000
 channels      = 1
-sample_format = "S16_LE"  # było: format
+sample_format = "S16_LE"
 
 [playback]
 backend = "aplay"
@@ -24,7 +24,7 @@ system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po po
 [tts]
 backend = "openai"
 format  = "wav"    # aplay wymaga WAV/PCM16 w tym pipeline
-voice   = "alloy"  # sprawdzony głos
+voice   = "alloy"
 
 [nlu]
 chat_threshold = 0.6

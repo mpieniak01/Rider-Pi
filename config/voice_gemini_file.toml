@@ -1,0 +1,69 @@
+# ---------------------------------------------------------------------------
+# Rider-Pi / config/voice_gemini_file.toml
+#
+# Konfiguracja dla trybu "plikowego" z użyciem Google Gemini jako backendu czatu.
+# Ten tryb wysyła zapytanie i odtwarza całą odpowiedź po jej otrzymaniu.
+# ---------------------------------------------------------------------------
+
+lang = "pl"
+
+# --- STREAM (WS) ------------------------------------------------------------
+# Sekcja [stream] jest specyficzna dla OpenAI i nie jest używana w tej konfiguracji.
+# Komunikacja z Gemini odbywa się przez REST API wewnątrz aplikacji.
+
+# --- AUDIO IN (MIC) ---------------------------------------------------------
+[capture]
+backend       = "arecord"
+device        = "wm8960_in"
+rate          = 16000
+channels      = 1
+frame_ms      = 20
+allow_fallback = false
+command = "arecord -q -t raw -f S16_LE -c 1 -r 16000 -D wm8960_in --buffer-time 50000 --period-time 20000 -"
+
+# --- AUDIO OUT --------------------------------------------------------------
+[playback]
+backend = "aplay"
+device  = "wm8960_out"
+volume  = 55
+
+# --- ASR / CHAT / TTS -------------------------------------------------------
+# W tej konfiguracji ASR i TTS nadal mogą korzystać z OpenAI,
+# podczas gdy CHAT jest przełączony na Google Gemini.
+
+[asr]
+backend   = "openai"
+model     = "whisper-1" # Przykładowy model dla ASR
+
+[chat]
+# Przełączamy backend na Google Gemini
+backend       = "google"
+# Model Gemini do użycia (np. gemini-pro)
+model         = "gemini-pro"
+system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
+
+[tts]
+backend   = "openai"
+voice     = "alloy"
+format    = "mp3" # Gemini może preferować inne formaty, ale na razie zostawiamy mp3
+
+# --- NLU / HOTWORD ----------------------------------------------------------
+[nlu]
+chat_threshold = 0.65
+llm_model      = "gpt-4o-mini" # NLU może nadal używać modelu OpenAI
+
+[nlu.command_keywords]
+stop         = ["stop", "pauza", "koniec", "cisza"]
+repeat       = ["powtórz", "jeszcze raz"]
+volume_up    = ["głośniej", "podgłośnij", "+10"]
+volume_down  = ["ciszej", "ścisz", "-10"]
+
+[hotword]
+enabled = true
+engine  = "ptt"
+
+# --- PTT parametry ----------------------------------------------------------
+[ptt]
+silence_ms      = 1500
+commit_on_stop  = true
+require_audio   = false
