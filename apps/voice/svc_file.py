@@ -77,6 +77,14 @@ def _force_transports_file(cfg: dict[str, Any]) -> None:
         sec_cfg["transport"] = "file"
 
 
+def _merge_defaults(src: dict[str, Any] | None, defaults: dict[str, Any]) -> dict[str, Any]:
+    """Merge with defaults (defaults win only for missing keys)."""
+    d = dict(src or {})
+    for k, v in defaults.items():
+        d.setdefault(k, v)
+    return d
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Data classes
 
@@ -121,16 +129,32 @@ class VoiceService(BusIntegrationMixin):
         self._bus_pub = ui_publisher if ui_publisher is not None else (BusPub() if BusPub else None)
         self._bus_sub = BusSub("tts.speak") if BusSub else None
 
-        # Sesje i konfiguracje
-        chat_in = dict(config.get("chat") or {})
-        chat_in.setdefault("transport", "file")
+        # ── Konfiguracje z bezpiecznymi domyślnymi ─────────────────────────────
+        # CHAT
+        chat_defaults = {
+            "backend": "openai",
+            "model": "gpt-4o-mini",
+            "language": "pl",
+            "system_prompt": "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku.",
+            "transport": "file",
+        }
+        chat_in = _merge_defaults(config.get("chat"), chat_defaults)
         self._chat = ChatSession(ChatConfig(**_filter_for_dataclass(chat_in, ChatConfig)))
-        self._nlu = NLURouter(NLUConfig(**config["nlu"]))
 
-        # ⬇⬇⬇ Bezpieczne domyślne wartości capture dla testów/UI
+        # NLU
+        nlu_in = _merge_defaults(
+            config.get("nlu"),
+            {
+                "backend": "openai",
+                "llm_model": "gpt-4o-mini",
+                "chat_threshold": 0.6,
+            },
+        )
+        self._nlu = NLURouter(NLUConfig(**_filter_for_dataclass(nlu_in, NLUConfig)))
+
+        # CAPTURE — domyślnie ALSA (nie 'dummy')
         _cap_in = dict(config.get("capture") or {})
         _cap_defaults = {
-            # KLUCZOWA zmiana: domyślnie ALSA (nie 'dummy')
             "backend": "alsa",
             "device": "null",
             "sample_rate": 16000,
@@ -142,15 +166,19 @@ class VoiceService(BusIntegrationMixin):
             _cap_in.setdefault(k, v)
         self._capture_cfg = CaptureConfig(**_cap_in)
 
-        asr_in = dict(config.get("asr") or {})
-        asr_in.setdefault("transport", "file")
+        # ASR
+        asr_defaults = {"backend": "openai", "model": "whisper-1", "language": "pl", "transport": "file"}
+        asr_in = _merge_defaults(config.get("asr"), asr_defaults)
         self._asr_cfg = ASRConfig(**_filter_for_dataclass(asr_in, ASRConfig))
 
-        tts_in = dict(config.get("tts") or {})
-        tts_in.setdefault("transport", "file")
+        # TTS
+        tts_defaults = {"backend": "openai", "format": "wav", "voice": "alloy", "transport": "file"}
+        tts_in = _merge_defaults(config.get("tts"), tts_defaults)
         self._tts_cfg = TTSConfig(**_filter_for_dataclass(tts_in, TTSConfig))
 
-        self._play_cfg = PlaybackConfig(**config["playback"])
+        # PLAYBACK
+        self._play_cfg = PlaybackConfig(**_merge_defaults(config.get("playback"), {"backend": "aplay"}))
+
         ensure_openai_key(self.logger)
 
         # Hotword / PTT
@@ -159,10 +187,10 @@ class VoiceService(BusIntegrationMixin):
         self._hotword_engine = (hotword_cfg.get("engine") or "ptt").lower()
         self._hotword_enabled = bool(hotword_cfg.get("enabled", False))
 
-        # VAD
+        # VAD (krótszy domyślny „ogon”, by szybciej zamykać nagranie)
         vad_cfg = config.get("vad", {})
-        requested_tail = int(vad_cfg.get("tail_ms", 800))
-        enforced_tail = max(1000, requested_tail)
+        requested_tail = int(vad_cfg.get("tail_ms", 300))
+        enforced_tail = max(300, requested_tail)  # wcześniej 1000 → duża zwłoka
         self._vad = WebRtcActivity(
             sample_rate=self._capture_cfg.sample_rate,
             mode=int(vad_cfg.get("mode", 3)),
@@ -170,30 +198,29 @@ class VoiceService(BusIntegrationMixin):
             tail_ms=enforced_tail,
             energy_gate=float(vad_cfg.get("energy_gate_dbfs", -30.0)),
         )
-        self._max_len = int(vad_cfg.get("max_len_ms", 12000))
+        self._max_len = int(vad_cfg.get("max_len_ms", 8000))
 
-        # Service
+        # Service (krótsze domyślne timingi żeby zmniejszyć „dziurę”)
         service_cfg = config.get("service", {})
         self._save_audio = bool(service_cfg.get("save_audio", False))
         self._recordings_dir = Path(service_cfg.get("recordings_dir", "/tmp/voice-recs"))
 
-        # Beep control parameters
-        # KLUCZOWA zmiana: domyślnie beep WYŁĄCZONY, aby nie wywoływać paplay z U8/8kHz
+        # Beep (domyślnie OFF; można włączyć VOICE_BEEP=1)
         env_beep = os.getenv("VOICE_BEEP", "").strip()
         env_beep_on = env_beep in {"1", "true", "TRUE", "yes", "on"}
         self._beep_enabled = bool(service_cfg.get("beep", False) or env_beep_on)
-        self._beep_delay_ms = int(service_cfg.get("beep_delay_ms", 250))  # opóźnienie po beep zanim zbierzemy
+        self._beep_delay_ms = int(service_cfg.get("beep_delay_ms", 150))
+        self._beep_pause_ms = int(service_cfg.get("beep_pause_ms", 150))
 
-        # Timingi stabilizujące nagrania
-        self._beep_pause_ms = int(service_cfg.get("beep_pause_ms", 250))  # pauza logiczna po ding (mute)
-        self._mic_open_delay_ms = int(service_cfg.get("mic_open_delay_ms", 100))  # stabilizacja ALSA po otwarciu
-        self._post_tts_mute_ms = int(service_cfg.get("post_tts_mute_ms", 300))  # po TTS wstrzymaj zbieranie
+        # Timingi ALSA/echo
+        self._mic_open_delay_ms = int(service_cfg.get("mic_open_delay_ms", 50))
+        self._post_tts_mute_ms = int(service_cfg.get("post_tts_mute_ms", 200))
 
-        # Nowe minima / „no-cost” timeouty
-        self._pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 1000))
-        self._no_speech_timeout_ms = int(service_cfg.get("no_speech_timeout_ms", 2000))
+        # „no-cost” / minima
+        self._pre_speech_wait_ms = int(service_cfg.get("pre_speech_wait_ms", 300))
+        self._no_speech_timeout_ms = int(service_cfg.get("no_speech_timeout_ms", 1200))
         self._silence_rms_gate = int(service_cfg.get("silence_rms_gate", 500))
-        self._min_capture_ms = int(service_cfg.get("min_capture_ms", 1000))
+        self._min_capture_ms = int(service_cfg.get("min_capture_ms", 700))
 
         # Okno wyciszenia po ding/TTS
         self._mute_until_ts: float = 0.0
@@ -244,7 +271,8 @@ class VoiceService(BusIntegrationMixin):
     def _request_speech(self, text: str, *, source: str, accumulate: bool) -> TTSStreamResult | None:
         if not text.strip():
             return None
-        task = SpeechTask(text=text.strip(), source=source, accumulate=False)  # KLUCZOWE: wyłącz streaming
+        # KLUCZOWE: tryb ONCE → bez streamingu (accumulate=False)
+        task = SpeechTask(text=text.strip(), source=source, accumulate=False)
         task.ack = threading.Event()
         self._speech_queue.put(task)
         while not self.stop_event.is_set():
@@ -276,7 +304,7 @@ class VoiceService(BusIntegrationMixin):
                     self._tts_cfg,
                     self._play_cfg,
                     self.logger,
-                    accumulate=task.accumulate,  # teraz zawsze False
+                    accumulate=task.accumulate,  # zawsze False w once
                 )
                 task.result = result
                 if not result.ok:

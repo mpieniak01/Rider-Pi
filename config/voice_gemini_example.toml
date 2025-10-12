@@ -1,0 +1,64 @@
+# Przykładowa konfiguracja Google Gemini dla Rider-Pi
+# Skopiuj do config/voice_file.toml lub config/voice_streaming.toml
+
+# === GOOGLE GEMINI - TRYB PLIKOWY (REST) ===
+
+[capture]
+device = "wm8960_in"
+sample_rate = 16000
+channels = 1
+sample_format = "S16_LE"
+
+[playback]
+backend = "aplay"
+device = "wm8960_out"
+volume = 80
+
+[asr]
+backend = "openai"
+model = "whisper-1"
+language = "pl"
+transport = "rest"
+
+[chat]
+# GOOGLE GEMINI - zmień na "openai" aby wrócić do OpenAI
+backend = "google"
+model = "gemini-pro"
+# Alternatywne modele:
+# model = "gemini-1.5-pro"  # Rozszerzony kontekst (1M tokenów)
+# model = "gemini-1.5-flash"  # Szybszy, tańszy
+
+system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj BARDZO KRÓTKO po polsku - maksymalnie 2-3 zdania."
+max_history = 4
+transport = "rest"
+
+[tts]
+backend = "openai"
+model = "tts-1"
+voice = "alloy"
+format = "mp3"
+transport = "rest"
+
+[nlu]
+chat_threshold = 0.6
+llm_model = "gpt-4o-mini"
+
+[nlu.command_keywords]
+stop = ["stop", "przerwij"]
+volume_up = ["głośniej"]
+volume_down = ["ciszej"]
+
+[hotword]
+enabled = false
+engine = "ptt"
+
+# === WYMAGANE ZMIENNE ŚRODOWISKOWE ===
+# 
+# Ustaw przed uruchomieniem:
+# export GOOGLE_API_KEY="twój-klucz-google-gemini"
+# export OPENAI_API_KEY="twój-klucz-openai"  # dla ASR i TTS
+#
+# Uruchomienie:
+# make voice-file-ptt
+# lub:
+# python -m apps.voice.cli --config ./config/voice_file.toml ptt

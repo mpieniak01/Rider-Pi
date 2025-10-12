@@ -70,7 +70,31 @@
 
 | Klucz | Typ | Wartości | Domyślna | Opis |
 |-------|-----|----------|----------|------|
+| `backend` | str | openai, google, echo | `openai` | Wybór dostawcy czatu |
 | `transport` | str | rest, realtime | `rest` | Transport chat |
+| `model` | str | — | — | Identyfikator modelu (np. `gpt-4o-mini` lub `gemini-pro`) |
+| `system_prompt` | str | — | — | Prompt systemowy definiujący zachowanie asystenta |
+| `max_history` | int | ≥0 | `4` | Maksymalna liczba par user/assistant w historii |
+| `max_tokens` | int | ≥1 lub None | `None` | Limit tokenów w odpowiedzi (opcjonalny) |
+
+**Backendy:**
+- **`openai`** — OpenAI Chat Completions API (wymaga `OPENAI_API_KEY`)
+- **`google`** — Google Gemini API (wymaga `GOOGLE_API_KEY`)
+- **`echo`** — Testowy backend odbijający wiadomości (bez AI)
+
+**Zmienne środowiskowe:**
+- `OPENAI_API_KEY` — klucz API dla backendu OpenAI
+- `GOOGLE_API_KEY` — klucz API dla backendu Google Gemini
+
+**Przykład konfiguracji:**
+
+```toml
+[chat]
+backend = "google"
+model = "gemini-pro"
+system_prompt = "Jesteś asystentem głosowym. Odpowiadaj krótko po polsku."
+max_history = 4
+```
 
 ### [tts]
 
