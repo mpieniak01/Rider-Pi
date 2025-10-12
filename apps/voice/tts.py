@@ -476,7 +476,7 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     """
     Google Gemini Text-to-Speech using native audio generation.
     Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav").
-    Wykorzystuje nowe API google-genai z modelem gemini-2.5-flash-preview-tts.
+    Wykorzystuje nowe API google-genai z domyślnym modelem gemini-2.0-flash-exp-tts.
     """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
