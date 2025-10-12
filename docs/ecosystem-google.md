@@ -162,7 +162,7 @@ Analogicznie, zmień `backend = "openai"` i odpowiednie modele.
 │                     Rider-Pi Voice Pipeline                  │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
-│  Mikrofon → ASR (Gemini) → Chat (Gemini) → TTS (OpenAI)     │
+│  Mikrofon → ASR (Gemini) → Chat (Gemini) → TTS (Gemini)     │
 │              ↓                 ↓               ↓             │
 │           Text             Response          Audio           │
 │                                                               │
