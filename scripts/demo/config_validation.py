@@ -228,7 +228,7 @@ def demo_ptt_ignored():
     print("=" * 60)
 
     loader = ConfigLoader()
-    config = loader.load("voice_streaming_fallback.toml")
+    config = loader.load("voice_openai_streaming_fallback.toml")
 
     # Check conditions
     server_vad = config["stream"]["server_vad"]

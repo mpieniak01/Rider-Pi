@@ -117,10 +117,10 @@ def test_type_and_range_validation():
         loader.load(
             "voice_openai_file.toml",
             overrides={
-                "capture": {"rate": 8000}  # Not in allowed list
+                "capture": {"sample_rate": 8000}  # Not in allowed list
             },
         )
-    assert "rate" in str(exc.value)
+    assert "sample_rate" in str(exc.value)
 
     # Invalid volume (out of range)
     with pytest.raises(ValidationError) as exc:
@@ -154,9 +154,9 @@ def test_precedence_env_cli_overrides():
     # Multiple levels of override
     config_multi = loader.load(
         "voice_openai_file.toml",
-        overrides={"capture": {"rate": 24000}, "playback": {"volume": 75}, "asr": {"model": "whisper-large"}},
+        overrides={"capture": {"sample_rate": 24000}, "playback": {"volume": 75}, "asr": {"model": "whisper-large"}},
     )
-    assert config_multi["capture"]["rate"] == 24000
+    assert config_multi["capture"]["sample_rate"] == 24000
     assert config_multi["playback"]["volume"] == 75
     assert config_multi["asr"]["model"] == "whisper-large"
 
@@ -309,7 +309,7 @@ def test_deep_merge_overrides():
             },
             "capture": {
                 "channels": 2,  # Override existing field
-                "rate": 24000,  # Override existing field
+                "sample_rate": 24000,  # Override existing field
             },
         },
     )
@@ -317,7 +317,7 @@ def test_deep_merge_overrides():
     # Overridden values
     assert config["asr"]["model"] == "whisper-large"
     assert config["capture"]["channels"] == 2
-    assert config["capture"]["rate"] == 24000
+    assert config["capture"]["sample_rate"] == 24000
 
     # Non-overridden values should remain
     assert config["asr"]["backend"] == "openai"
