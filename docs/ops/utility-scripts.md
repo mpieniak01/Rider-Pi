@@ -209,7 +209,7 @@ Zobacz: [docs/apps/safety.md](../apps/safety.md)
 
 ```bash
 # 1. Sync systemd
-sudo ./scripts/sys_systemd-sync.sh
+sudo ./scripts/systemd-sync.sh
 
 # 2. Check XGO
 ./scripts/sys_xgo-init.py || exit 1
