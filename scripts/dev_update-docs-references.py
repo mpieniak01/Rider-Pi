@@ -95,8 +95,12 @@ def should_skip_context(line: str, context_before: List[str], filepath: Path) ->
     Check if this line is in a context where we should NOT update.
     E.g., in migration summary tables showing old→new mappings.
     """
-    # Always skip the SCRIPTS_MIGRATION_SUMMARY.md file itself - it documents the mappings
-    if 'SCRIPTS_MIGRATION_SUMMARY.md' in str(filepath):
+    # Always skip these files - they document the mappings/automation
+    skip_files = [
+        'SCRIPTS_MIGRATION_SUMMARY.md',
+        'DOCS_AUTO_UPDATE.md',  # Documents the automation tool itself
+    ]
+    if any(skip_file in str(filepath) for skip_file in skip_files):
         return True
     
     # Check if we're in a markdown table (starts with |)
