@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import fcntl
 import glob
 import os
 import platform
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterable
+from contextlib import contextmanager
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -21,6 +23,10 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # Żeby pod systemd działały importy z projektu (tools.*). NIE używamy services/api_core.
 if DIR not in sys.path:
     sys.path.insert(0, DIR)
+# pozwól importować moduły przeniesione do scripts/
+SCRIPTS_DIR = os.path.join(DIR, "scripts")
+if os.path.isdir(SCRIPTS_DIR) and SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
 
 OUT_IMG = os.path.join(DATA_DIR, "splash_device_info.png")
 WIDTH = int(os.getenv("SPLASH_W", "480"))
@@ -30,6 +36,13 @@ SECS = float(os.getenv("SPLASH_SECONDS", "8"))
 USE = os.getenv("SPLASH_USE", "auto")  # xgo|pygame|auto
 CLEAR = int(os.getenv("SPLASH_CLEAR", "1"))
 FBDEV = os.getenv("FBDEV", "/dev/fb1" if os.path.exists("/dev/fb1") else "/dev/fb0")
+
+# --- PRE-SLIDE (LOGO) ---
+SPLASH_LOGO = os.getenv("SPLASH_LOGO", os.path.join(DATA_DIR, "splash_logo.png"))
+try:
+    SPLASH_LOGO_SECONDS = float(os.getenv("SPLASH_LOGO_SECONDS", "0") or "0")
+except ValueError:
+    SPLASH_LOGO_SECONDS = 0.0
 
 WAIT_IP = int(os.getenv("SPLASH_WAIT_IP_S", os.getenv("WAIT_IP", "0")))
 WAIT_BATT = int(os.getenv("WAIT_BATT", "3"))
@@ -46,11 +59,17 @@ REFRESH_EVERY = float(os.getenv("SPLASH_REFRESH_EVERY", "0.5"))
 XGO_BL_GPIO = int(os.getenv("XGO_BL_GPIO", "-1"))
 RASPI_GPIO_BIN = "raspi-gpio"
 
+# Wygładzanie odczytów baterii
+BATT_CACHE_SEC = float(os.getenv("BATT_CACHE_SEC", "5"))
+
 LOG = os.path.join(DATA_DIR, "splash_trace.log")
 
 # Znaczniki czasu dla IP (pierwsze udane wykrycie)
 _START_TS = time.time()  # (pozostaje — już nie używamy do IP)
 _IP_FIRST_SEEN_AT: float | None = None  # teraz: sekundy OD STARTU SYSTEMU (uptime)
+
+# Cache baterii (wartość, timestamp)
+_last_batt: tuple[str | None, float] = (None, 0.0)
 
 
 def _log(msg: str) -> None:
@@ -121,6 +140,21 @@ def wrap_lines(
 def _strip_parens(text: str) -> str:
     cleaned = re.sub(r"\s*\([^)]*\)", "", text)
     return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+def _letterbox_fit(im: Image.Image, target_wh: tuple[int, int]) -> Image.Image:
+    """Dopasuj z zachowaniem proporcji (letterbox), bez rozciągania."""
+    tw, th = target_wh
+    iw, ih = im.size
+    if tw <= 0 or th <= 0 or iw <= 0 or ih <= 0:
+        return im
+    scale = min(tw / iw, th / ih)
+    nw, nh = max(1, int(iw * scale)), max(1, int(ih * scale))
+    im2 = im.resize((nw, nh), Image.LANCZOS)
+    canvas = Image.new("RGB", (tw, th), (0, 0, 0))
+    ox, oy = (tw - nw) // 2, (th - nh) // 2
+    canvas.paste(im2, (ox, oy))
+    return canvas
 
 
 # ---------------- DANE ----------------
@@ -203,16 +237,78 @@ def _read_batt_sysfs_once() -> int | None:
     return None
 
 
+@contextmanager
+def _serial_batt_lock():
+    """
+    Prosty lockfile, żeby unikać równoległego dostępu do UART.
+    Jeśli lock zajęty — logujemy i pozwalamy funkcji kontynuować (zwróci None).
+    """
+    lock_path = "/run/lock/xgo_batt.lock"
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    f = open(lock_path, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+    except BlockingIOError:
+        _log("battery: lock held by another process; skipping this read")
+        yield
+    finally:
+        try:
+            fcntl.flock(f, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        f.close()
+
+
 def _read_batt_xgo_uart_once() -> int | None:
     """
     Bezpośredni odczyt z XGO po UART (biblioteka producenta).
     Autodetekcja portu: ENV XGO_UART_PORTS="/dev/ttyAMA0,/dev/ttyS0,/dev/ttyUSB0"
     + skan ttyUSB*.
+    Najpierw próbujemy legacy importu tools.xgo_client_ro,
+    a jeśli go nie ma, dynamicznie ładujemy scripts/dev_xgo-client.py.
     """
+    # 1) legacy import (jeśli w repo znów pojawi się tools/xgo_client_ro.py)
     try:
         from tools.xgo_client_ro import XGOClientRO  # type: ignore
-    except Exception as e:
-        _log(f"battery: XGOClientRO import failed: {e}")
+
+        XGOCls = XGOClientRO
+    except Exception as e_legacy:
+        _log(f"battery: XGOClientRO import failed: {e_legacy}")
+        XGOCls = None
+
+    # 2) fallback: załaduj scripts/dev_xgo-client.py (ma myślnik w nazwie)
+    if XGOCls is None:
+        try:
+            import importlib.machinery
+            import importlib.util
+
+            fpath = os.path.join(DIR, "scripts", "dev_xgo-client.py")
+            if os.path.isfile(fpath):
+                spec = importlib.util.spec_from_loader(
+                    "dev_xgo_client_dyn",
+                    importlib.machinery.SourceFileLoader("dev_xgo_client_dyn", fpath),
+                )
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)  # type: ignore[attr-defined]
+
+                    # znajdź klasę z metodą odczytu baterii
+                    XGOCls = None
+                    for name in dir(mod):
+                        obj = getattr(mod, name)
+                        if isinstance(obj, type) and (hasattr(obj, "read_battery") or hasattr(obj, "read_battery_pct")):
+                            XGOCls = obj
+                            break
+                    if XGOCls is None:
+                        _log("battery: dev_xgo-client.py loaded, but no suitable class found")
+            else:
+                _log("battery: dev_xgo-client.py not found")
+        except Exception as e_dyn:
+            _log(f"battery: loading dev_xgo-client.py failed: {e_dyn}")
+            XGOCls = None
+
+    if XGOCls is None:
         return None
 
     env_ports = os.getenv("XGO_UART_PORTS", "/dev/ttyAMA0,/dev/ttyS0")
@@ -223,23 +319,30 @@ def _read_batt_xgo_uart_once() -> int | None:
         pass
 
     tried: list[str] = []
-    for port in candidates:
-        tried.append(port)
-        try:
-            with XGOClientRO(port=port) as cli:
-                if hasattr(cli, "read_battery_pct"):
-                    v = cli.read_battery_pct()
-                    if v is not None:
-                        vv = int(v)
-                        _log(f"battery: XGO UART {port} -> {vv}%")
-                        return vv
-                v2 = cli.read_battery() if hasattr(cli, "read_battery") else None
-                if v2 is not None:
-                    vv = int(v2)
-                    _log(f"battery: XGO UART {port} -> {vv}%")
-                    return vv
-        except Exception as e:
-            _log(f"battery: XGO UART read failed on {port}: {e}")
+
+    # ochrona portu lockiem
+    with _serial_batt_lock():
+        for port in candidates:
+            tried.append(port)
+            # drobny backoff 2 próby, bo czasem pierwszy odczyt po openie zwraca pustkę
+            for _attempt in range(2):
+                try:
+                    with XGOCls(port=port) as cli:
+                        if hasattr(cli, "read_battery_pct"):
+                            v = cli.read_battery_pct()
+                            if v is not None:
+                                vv = int(v)
+                                _log(f"battery: XGO UART {port} -> {vv}%")
+                                return vv
+                        v2 = cli.read_battery() if hasattr(cli, "read_battery") else None
+                        if v2 is not None:
+                            vv = int(v2)
+                            _log(f"battery: XGO UART {port} -> {vv}%")
+                            return vv
+                except Exception as e:
+                    _log(f"battery: XGO UART read failed on {port}: {e}")
+                    time.sleep(0.12)  # krótki backoff i jeszcze raz
+                    continue
 
     _log(f"battery: no working UART among: {', '.join(tried) if tried else '(none)'}")
     return None
@@ -255,13 +358,28 @@ def read_battery_once() -> str | None:
 
 
 def pick_battery_nonblocking() -> str:
+    """
+    Zwraca świeży odczyt, a przy krótkich dropach portu — ostatnią dobrą wartość
+    z cache (do BATT_CACHE_SEC). Po upływie WAIT_BATT i bez cache zwraca '—'.
+    """
+    global _last_batt
     t_end = time.time() + max(0, WAIT_BATT)
+
     while True:
-        b = read_battery_once()
-        if b is not None:
-            return b
-        if time.time() >= t_end:
+        now = time.time()
+        v = read_battery_once()
+        if v is not None:
+            _last_batt = (v, now)
+            return v
+
+        # brak świeżego odczytu — użyj cache, jeśli nieprzeterminowany
+        last_v, last_ts = _last_batt
+        if last_v is not None and (now - last_ts) <= BATT_CACHE_SEC:
+            return last_v
+
+        if now >= t_end:
             return "—"
+
         time.sleep(0.25)
 
 
@@ -436,6 +554,24 @@ def _bl_set(low: bool) -> None:
         _log(f"BL ctrl fail: {e}")
 
 
+# ---------------- PRE-SLIDE (LOGO) WYŚWIETLANIE ----------------
+def _load_logo_for_target(target_size: tuple[int, int]) -> Image.Image | None:
+    """Ładuje logo, rotuje i dopasowuje (letterbox) do docelowego rozmiaru."""
+    if SPLASH_LOGO_SECONDS <= 0:
+        return None
+    path = SPLASH_LOGO
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        im = Image.open(path).convert("RGB")
+        im = maybe_rotate(im)
+        im = _letterbox_fit(im, target_size)
+        return im
+    except Exception as e:
+        _log(f"logo load failed: {e}")
+        return None
+
+
 # ---------------- WYŚWIETLANIE ----------------
 def have_xgo() -> bool:
     try:
@@ -459,6 +595,18 @@ def show_live_xgo():
     h = int(getattr(disp, "H", getattr(disp, "height", 320)))
     target_size = (w, h)
 
+    # PRE-SLIDE: logo
+    logo_img = _load_logo_for_target(target_size)
+    if logo_img is not None:
+        try:
+            disp.ShowImage(logo_img)
+            _log(f"logo shown (xgo): {SPLASH_LOGO} for {SPLASH_LOGO_SECONDS:.1f}s")
+            print(f"[splash] logo shown: {SPLASH_LOGO} ({SPLASH_LOGO_SECONDS:.1f}s)")
+            time.sleep(SPLASH_LOGO_SECONDS)
+        except Exception as e:
+            _log(f"logo show failed (xgo): {e}")
+
+    # tło
     disp.ShowImage(Image.new("RGB", target_size, (0, 0, 0)))
 
     t0 = time.time()
@@ -511,6 +659,19 @@ def show_live_pygame():
     screen = pygame.display.set_mode(target_size, 0, 24)
     screen.fill((0, 0, 0))
     pygame.display.update()
+
+    # PRE-SLIDE: logo
+    logo_img = _load_logo_for_target(target_size)
+    if logo_img is not None:
+        try:
+            surf = pygame.image.fromstring(logo_img.tobytes(), logo_img.size, logo_img.mode)
+            screen.blit(surf, (0, 0))
+            pygame.display.update()
+            _log(f"logo shown (pygame): {SPLASH_LOGO} for {SPLASH_LOGO_SECONDS:.1f}s")
+            print(f"[splash] logo shown: {SPLASH_LOGO} ({SPLASH_LOGO_SECONDS:.1f}s)")
+            time.sleep(SPLASH_LOGO_SECONDS)
+        except Exception as e:
+            _log(f"logo show failed (pygame): {e}")
 
     t0 = time.time()
     last_payload = None
