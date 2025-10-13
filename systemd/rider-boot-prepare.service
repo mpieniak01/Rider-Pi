@@ -21,17 +21,17 @@ Environment=SPLASH_EARLY_EXIT=0
 # Czekanie
 Environment=WAIT_IP=3
 Environment=WAIT_BATT=1
-# Podpowiedź interfejsów do szybszego zczytania IP (opcjonalnie dopasuj)
 Environment=SPLASH_IFACES=wlan0,eth0
 
-# UART (dopasuj jak trzeba)
+# UART
 Environment=XGO_UART_PORTS=/dev/ttyAMA0
 
-# Po splashu: nie czyść i zostaw BL włączone (lub zmień na 0)
+# Po splashu
 Environment=SPLASH_CLEAR=0
 Environment=KEEP_BL_ON=1
 Environment=LCD_BL_GPIO=0
-Environment="LCD_OFF_CMD=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off"
+# Uwaga: wartość z przestrzeniami MUSI być w cudzysłowie
+Environment="LCD_OFF_CMD=/usr/bin/make -C /home/pi/robot lcd-off"
 Environment=XGO_BL_GPIO=-1
 
 # Timingi / rysowanie
@@ -43,23 +43,24 @@ Environment=SPLASH_IP_SPACER=2
 # Nie ruszaj procesów display (ważne!)
 Environment=NO_KILL_DISPLAY=1
 
-# Unikamy SDL na HDMI; fallback to fb
+# SDL/pygame
 Environment=SDL_VIDEODRIVER=
 Environment=SDL_FBDEV=
 Environment=SDL_AUDIODRIVER=dummy
 Environment=PYGAME_HIDE_SUPPORT_PROMPT=1
 
-# --- włącz BL PRZED splashem ---
-ExecStartPre=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py on
+# --- włącz LCD PRZED splashem ---
+ExecStartPre=/usr/bin/make -C /home/pi/robot lcd-on
 
 StandardOutput=journal
 StandardError=journal
-TimeoutStartSec=30
+TimeoutStartSec=90
 
 RuntimeDirectory=rider
 RemainAfterExit=yes
-ExecStart=/home/pi/robot/ops/boot_prepare.sh
+
+# Główna sekwencja (skrypt w repo)
+ExecStart=/home/pi/robot/scripts/sys_boot-prepare.sh
 
 [Install]
 WantedBy=multi-user.target
-
