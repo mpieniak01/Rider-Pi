@@ -50,6 +50,8 @@ Skrypty do rozwoju, ręcznego sterowania i testów:
 - `dev_manual-drive.py` – ręczne sterowanie robotem  
 - `dev_check-file-length.py` – sprawdzanie długości plików  
 - `dev_check-legacy-imports.py` – wykrywanie przestarzałych importów  
+- `dev_update-docs-references.py` – automatyczna aktualizacja referencji w dokumentacji
+- `dev_validate-docs-links.py` – walidacja linków i referencji w dokumentacji
 - `dev_face-cli.py` – interfejs CLI modułu „face”  
 - `dev_face-lcd-clean.py` – czyszczenie LCD twarzy  
 - `dev_face-presenter.py` – tylko prezentacja twarzy  
