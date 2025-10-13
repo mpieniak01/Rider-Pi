@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
 # run_boot.sh — szybki rozruch po restarcie (broker → face), bez systemd.
-# Działa zarówno z poziomu ./run_boot.sh (root projektu), jak i ./run_boot.sh
-#
 # Użycie:
 #   ./run_boot.sh           # broker + face (LCD)
 #   ./run_boot.sh --test    # + sekwencja smoke-test
@@ -57,15 +55,30 @@ stop_all(){
   pkill -f "python3 -m apps.ui.face" 2>/dev/null || true
   pkill -f "/apps/ui/face.py"        2>/dev/null || true
   pkill -f "${BROKER}"               2>/dev/null || true
+  # procesy z Makefile (bezpiecznie, jeśli brak — ignorujemy)
+  pkill -f "dev_face-lcd-direct.py"  2>/dev/null || true
+  pkill -f "api_server"              2>/dev/null || true
   sleep 0.3
-  pkill -KILL -f "apps.ui.face|${BROKER}" 2>/dev/null || true
+  pkill -KILL -f "apps.ui.face|${BROKER}|dev_face-lcd-direct.py" 2>/dev/null || true
   log "STOP: OK"
 }
 
-kill_spi_holders(){
-  log "SPI takeover: ubijam trzymaczy SPI (rootowa appka itp.)"
+kill_conflicts(){
+  # Vendor + potencjalni „trzymacze” SPI
+  log "KILL: vendor i potencjalni trzymacze SPI"
+  if have make; then
+    make -C "$ROOT" vendor-kill || true
+  fi
   sudo pkill -f "python3 remix.py" 2>/dev/null || true
   sudo pkill -f "mian.py|main.py|demo.*.py|app_.*.py" 2>/dev/null || true
+}
+
+lcd_on(){
+  if have make; then
+    log "LCD: włączam panel (make lcd-on)"
+    FACE_LCD_ROTATE="${FACE_LCD_ROTATE}" FACE_LCD_SPI_HZ="${FACE_LCD_SPI_HZ:-32000000}" \
+      sudo -E make -C "$ROOT" lcd-on || true
+  fi
 }
 
 start_broker(){
@@ -89,6 +102,9 @@ start_broker(){
 start_face(){
   local backend="$1"   # lcd|tk
   log "start: face (backend=${backend})"
+  if [[ "$backend" == "lcd" ]]; then
+    lcd_on
+  fi
   if [[ -n "${DISPLAY:-}" ]] && have lxterminal; then
     FACE_BACKEND="${backend}" lxterminal -t "face" -e bash -lc "python3 -m apps.ui.face; echo; echo '[face] exited'; read -r" & disown
   else
@@ -127,7 +143,7 @@ if (( DO_STOP )); then
 fi
 
 # ── run ───────────────────────────────────────────────────────────────────────
-kill_spi_holders
+kill_conflicts
 start_broker
 start_face "$([[ $USE_TK -eq 1 ]] && echo tk || echo lcd)"
 

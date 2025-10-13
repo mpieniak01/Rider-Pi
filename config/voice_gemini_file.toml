@@ -10,7 +10,7 @@
 device        = "wm8960_in"
 sample_rate   = 16000
 channels      = 1
-sample_format = "S16_LE"
+sample_format = "S16_LE"   # Uwaga: jeśli źródło to RAW PCM, klient powinien owinąć do WAV lub użyć -t wav
 
 [playback]
 backend = "aplay"
@@ -20,29 +20,30 @@ volume  = 55
 # --- Konfiguracja Usług Głosowych ---
 
 # ASR (Rozpoznawanie mowy) -> Google Gemini
-# Używa modeli multimodalnych Gemini do transkrypcji audio.
+# Zalecany model 2.5 z obsługą audio w generateContent.
 [asr]
 backend  = "google"
-model    = "gemini-1.5-flash"
+model    = "gemini-2.5-flash"
 language = "pl"
 
+# Chat -> Google Gemini (tekst)
 [chat]
-backend       = "google"            # przełącznik na Gemini
-model         = "gemini-2.0-flash-exp"
+backend       = "google"
+model         = "gemini-2.5-flash"
 language      = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
 # TTS (Synteza mowy) -> Google Gemini
-# Wykorzystuje najnowsze modele Gemini z native audio generation.
+# Użyj wariantu *-preview-tts + voice (np. Kore). Klient musi ustawić responseModalities=["AUDIO"] i speechConfig.voiceName.
 [tts]
 backend = "google"
-model   = "gemini-2.0-flash-exp-tts"
-voice   = "Kore"  # Dostępne głosy: Kore, Aoede, Charon, Fenrir, Puck
+model   = "gemini-2.5-flash-preview-tts"
+voice   = "Kore"   # Przykładowe głosy: Kore, Aoede, Charon, Fenrir, Puck
 format  = "wav"
 
 # --- NLU / HOTWORD ----------------------------------------------------------
 [nlu]
-backend       = "openai"    # dozwolone: passthrough | dummy | openai
+backend        = "openai"    # dozwolone: passthrough | dummy | openai
 chat_threshold = 0.65
 llm_model      = "gpt-4o-mini"
 
