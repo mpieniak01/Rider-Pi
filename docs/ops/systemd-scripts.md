@@ -104,7 +104,7 @@ Synchronizuje definicje usług systemd z repozytorium do `/etc/systemd/system`. 
 ### Użycie
 
 ```bash
-./scripts/sys_systemd-sync.sh
+./scripts/systemd-sync.sh
 ```
 
 ⚠️ **Wymaga sudo** — modyfikuje `/etc/systemd/system`
@@ -185,7 +185,7 @@ EOF
 # (edytuj plik: ALLOW_UNITS+=("rider-my-service.service"))
 
 # 3. Synchronizuj
-sudo ./scripts/sys_systemd-sync.sh
+sudo ./scripts/systemd-sync.sh
 
 # 4. Uruchom
 ./scripts/sys_control.sh rider-my-service.service start
@@ -197,7 +197,7 @@ sudo ./scripts/sys_systemd-sync.sh
 # 1. Usuń z allowlist w systemd_sync.sh
 # 2. Usuń plik z systemd/
 # 3. Synchronizuj
-sudo ./scripts/sys_systemd-sync.sh
+sudo ./scripts/systemd-sync.sh
 # → usługa zostanie automatycznie wyłączona i usunięta z /etc
 ```
 

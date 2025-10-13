@@ -15,7 +15,7 @@
 - `Makefile`, `pytest.ini`, `pyproject.toml`.
 
 **Nie wolno:**
-- zmieniać pinów/sprzętu ani unitów `systemd/` poza tymi wymienionymi w `scripts/sys_systemd-sync.sh`,
+- zmieniać pinów/sprzętu ani unitów `systemd/` poza tymi wymienionymi w `scripts/systemd-sync.sh`,
 - dodawać zależności spoza repo (żadnego `pip install` online),
 - uruchamiać długowiecznych demonów poza `systemd`,
 - wysyłać telemetrii/eksfiltracji.

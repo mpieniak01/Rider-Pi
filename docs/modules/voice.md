@@ -413,7 +413,7 @@ sudo systemctl enable --now rider-voice-web.service
 journalctl -u rider-voice.service -f
 ```
 
-> Integracja z `scripts/sys_systemd-sync.sh`: unity są na allow-liście.
+> Integracja z `scripts/systemd-sync.sh`: unity są na allow-liście.
 
 ---
 
