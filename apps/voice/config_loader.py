@@ -13,6 +13,19 @@ except Exception:  # py3.9/3.10
     import tomli as tomllib  # type: ignore
 
 
+def _normalize_backends(d: dict[str, Any]) -> dict[str, Any]:
+    """Normalizuje wartości backendów (lower-case, alias 'gemini' -> 'google')."""
+    out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in d.items()}
+    for sec in ("asr", "chat", "tts", "nlu", "playback"):
+        secv = out.get(sec)
+        if isinstance(secv, dict) and "backend" in secv:
+            b = str(secv["backend"]).strip().lower()
+            if b == "gemini":
+                b = "google"
+            secv["backend"] = b
+    return out
+
+
 # ========================== Public API (oczekiwane przez testy) ==========================
 
 
@@ -123,9 +136,9 @@ SCHEMA: dict[str, set[str]] = {
 
 # Dopuszczalne backendy per sekcja (wystarczające do testów)
 ALLOWED_BACKENDS_PER_SECTION: dict[str, set[str]] = {
-    "asr": {"openai"},
+    "asr": {"openai", "google"},
     "chat": {"openai", "google"},
-    "tts": {"openai"},
+    "tts": {"openai", "google"},
     "nlu": {"passthrough", "dummy", "openai"},
     "playback": {"aplay"},
 }
@@ -446,6 +459,7 @@ class ConfigLoader:
             data = _deep_merge(data, dict(overrides))
 
         data = _apply_aliases(data)
+        data = _normalize_backends(data)
         data = _resolve_relative_paths(data, base_dir)
 
         self._validate(data)

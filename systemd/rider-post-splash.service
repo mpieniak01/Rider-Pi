@@ -23,7 +23,7 @@ Environment=SPLASH_CLEAR=1
 Environment=SPLASH_WAIT_IP_S=60
 
 # 0) Podświetlenie
-ExecStartPre=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py on
+ExecStartPre=/usr/bin/make -C /home/pi/robot lcd-on
 
 # 1) Czekaj na API /healthz (max 45 s)
 ExecStartPre=/bin/bash -lc 'i=0; while ! curl -fsS -o /dev/null http://127.0.0.1:8080/healthz 2>/dev/null; do sleep 1; i=$((i+1)); [ $i -ge 45 ] && exit 1; done'
@@ -35,7 +35,7 @@ ExecStartPre=/bin/bash -lc 'i=0; while :; do out="$(curl -fsS http://127.0.0.1:8
 ExecStart=/usr/bin/env bash -lc 'SPLASH_WAIT_IP_S=60 /usr/bin/python3 ops/splash_device_info.py'
 
 # 4) Zgaś panel
-ExecStartPost=/usr/bin/python3 /home/pi/robot/ops/lcdctl.py off
+ExecStartPost=/usr/bin/make -C /home/pi/robot lcd-off
 
 Restart=on-failure
 RestartSec=3
