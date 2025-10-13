@@ -18,6 +18,10 @@ Environment=SPLASH_SECONDS=10
 Environment=SPLASH_REFRESH_EVERY=0.2
 Environment=SPLASH_EARLY_EXIT=0
 
+# [NOWE] Pre-slide: logo (opcjonalne)
+Environment=SPLASH_LOGO=/home/pi/robot/data/splash_logo.png
+Environment=SPLASH_LOGO_SECONDS=2
+
 # Czekanie
 Environment=WAIT_IP=3
 Environment=WAIT_BATT=1
