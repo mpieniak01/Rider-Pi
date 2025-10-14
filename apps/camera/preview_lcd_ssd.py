@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# apps/camera/preview_lcd_ssd.py
+
 from __future__ import annotations
 
 # Preview + MobileNet-SSD (Caffe) — zapis RAW/PROC do /home/pi/robot/snapshots (atomowo)
@@ -247,14 +249,14 @@ def main():
     fps_ema, prev_t = None, time.time()
     frame_id, t0, frames = 0, time.time(), 0
 
-    print(
-        f"[ssd] start | SNAP_DIR={SNAP_DIR} | ROT={ROT} FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "(
-            f"DBG FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "
-            f"CLASSES={CLW if CLW else 'ALL'} EVERY={EVERY} | "
-            f"SSD_CLASSES={'ALL' if not CLW else ','.join(sorted(CLW))}",
-        ),
-        flush=True,
+    # --- poprawione, jednoznaczne logowanie startu (bez "wywoływania" stringa)
+    start_msg = (
+        f"[ssd] start | SNAP_DIR={SNAP_DIR} | "
+        f"ROT={ROT} FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "
+        f"CLASSES={'ALL' if not CLW else ','.join(sorted(CLW))} "
+        f"EVERY={EVERY}"
     )
+    print(start_msg, flush=True)
 
     HB.tick(None, 0.0, presenting=not NO_DRAW)
     last_snap_log = time.time()
