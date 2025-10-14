@@ -145,7 +145,7 @@ def test_precedence_env_cli_overrides():
 
     # Base config from TOML
     config_base = loader.load("voice_openai_file.toml")
-    assert config_base["tts"]["voice"] == "alloy"
+    assert config_base["tts"]["voice"] == "ash"
 
     # Override via CLI-style overrides
     config_overridden = loader.load("voice_openai_file.toml", overrides={"tts": {"voice": "nova"}})
