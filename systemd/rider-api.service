@@ -2,9 +2,6 @@
 Description=Rider-Pi API (HTTP/SSE)
 After=network-online.target
 Wants=network-online.target
-# (opcjonalnie)
-# After=rider-broker.service rider-web-bridge.service
-# Wants=rider-broker.service rider-web-bridge.service
 StartLimitIntervalSec=30
 StartLimitBurst=10
 
@@ -12,32 +9,39 @@ StartLimitBurst=10
 Type=simple
 User=pi
 Group=pi
-Environment=SAFE_MAX_DURATION=0.25
-Environment=WEB_BRIDGE_TIMEOUT=0.8
 WorkingDirectory=/home/pi/robot
 
-# Zewnętrzne pliki ENV (jeśli istnieją – nadpiszą pola niżej)
+# Stabilne importy i brak kolizji z ~/.local
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONNOUSERSITE=1
+Environment=PYTHONPATH=/home/pi/robot
+
+# Limity / time-outy
+Environment=SAFE_MAX_DURATION=0.25
+Environment=WEB_BRIDGE_TIMEOUT=0.8
+
+# Zewnętrzne ENV (opcjonalne; nadpiszą wartości poniżej)
 EnvironmentFile=-/etc/default/rider
 EnvironmentFile=-/etc/default/rider-api
 
-# Serwer API (8080)
+# Serwer API — u Ciebie na :8080 (zgodne z UI)
 Environment=API_HOST=0.0.0.0
 Environment=API_PORT=8080
-ExecStart=/usr/bin/python3 -u -m services.api_server
 
-# Proxy do mostka ruchu (8081)
-#Environment=WEB_BRIDGE_URL=http://127.0.0.1:8081
+# „Świeżość” klatek dla /camera/* (możesz nadpisać w /etc/default/rider-api)
+Environment=SNAP_MAX_AGE_S=300
+
+# Proxy do mostka ruchu (puste = nie używaj)
 Environment=WEB_BRIDGE_URL=
 
-# Wyłącz telemetrię RO po UART z poziomu API (unikamy kolizji)
-Environment=ENABLE_XGO_RO=0
-# Environment=XGO_RO_PORT=/dev/ttyUSB0
-
-# BUS (jeśli API publikuje SSE z BUS)
+# BUS (SSE)
 Environment=BUS_PUB_PORT=5555
 Environment=BUS_SUB_PORT=5556
 Environment=BUS_RCVHWM=100
 Environment=BUS_CONFLATE=0
+
+# Start serwera
+ExecStart=/usr/bin/python3 -u -m services.api_server
 
 Restart=always
 RestartSec=0.5
@@ -51,5 +55,3 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-
-

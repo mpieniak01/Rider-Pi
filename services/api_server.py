@@ -1,4 +1,3 @@
-# services/api_server.py
 from __future__ import annotations
 
 import os
@@ -21,22 +20,19 @@ except Exception:
 # --- importy modułów rdzeniowych (routing poniżej) ---
 import services.api_core.camera as camera
 
-# Chat: użyjemy „glue” na końcu, żeby rejestrować idempotentnie
+# Chat/glue
 import services.api_core.chat_api as chat_api  # noqa: F401
-import services.api_core.chat_glue as chat_glue  # dla nowego glue
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
-import services.api_core.services_api as services_api
+import services.api_core.services_api as services_api  # właściwy moduł usług
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
 import services.api_core.voice_proxy as voice_proxy
-
-# Face (nowa ścieżka + legacy shim)
 from services.api_core.face_api import render_face as face_render_shim
 
 
-# ── CORS global (dla dashboardu na 8080 i API na 5000) ───────────────────────
+# ── CORS global ──────────────────────────────────────────────────────────────
 @app.after_request
 def _cors_all(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
@@ -63,13 +59,13 @@ def face_render():
     return jsonify(res), status
 
 
-# ── FACE: animacja (Phase 4 – HTTP shims do czystych funkcji) ───────────────
+# ── FACE: animacja ───────────────────────────────────────────────────────────
 @app.route("/face/play", methods=["POST", "OPTIONS"])
 def face_play():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     payload = request.get_json(silent=True) or {}
-    res = face_anim.play(payload)  # czysta funkcja -> dict
+    res = face_anim.play(payload)
     return _corsify(jsonify(res)), 200
 
 
@@ -78,17 +74,17 @@ def face_stop():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     payload = request.get_json(silent=True) or {}
-    res = face_anim.stop(payload)  # czysta funkcja -> dict
+    res = face_anim.stop(payload)
     return _corsify(jsonify(res)), 200
 
 
 @app.route("/face/state", methods=["GET"])
 def face_state():
-    res = face_anim.get_state()  # czysta funkcja -> dict
+    res = face_anim.get_state()
     return _corsify(jsonify(res)), 200
 
 
-# ── FACE: legacy /api/draw/face (kompat) ─────────────────────────────────────
+# ── FACE: legacy ─────────────────────────────────────────────────────────────
 @app.route("/api/draw/face", methods=["POST", "OPTIONS"])
 def api_draw_face_legacy():
     if request.method == "OPTIONS":
@@ -97,10 +93,10 @@ def api_draw_face_legacy():
     from services.api_core.face_api import draw_face  # zwraca (body, status)
 
     body, status = draw_face(payload)
-    return _corsify(make_response(jsonify(body), status))
+    return _corsify(jsonify(body)), status
 
 
-# ── ROUTING: HEALTH / STATE / SYSINFO / METRICS / EVENTS / PROBES ───────────
+# ── ROUTING ──────────────────────────────────────────────────────────────────
 _rules = {r.rule for r in app.url_map.iter_rules()}
 
 
@@ -129,19 +125,34 @@ _add_rule("/camera/placeholder", view_func=camera.camera_placeholder, methods=["
 _add_rule("/snapshots/<path:fname>", view_func=camera.snapshots_static)
 
 
-# alias kompatybilności z frontem
+# alias dla frontu
 def _api_last_frame():
     return camera.camera_last()
 
 
 _add_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
 
-# services (systemd)
-_add_rule("/svc", view_func=services_api.svc_list, methods=["GET"])
-_add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
-_add_rule("/svc/<name>", view_func=services_api.svc_action, methods=["POST"])
 
-# vision (blueprint opcjonalny)
+# ── SERVICES (systemd) ──────────────────────────────────────────────────────
+# Jedna trasa, dwie metody → NIE używamy helpera (żeby nie pominął POST).
+@app.route("/svc", methods=["GET"])
+def svc_list_route():
+    return services_api.svc_list()
+
+
+@app.route("/svc/<name>", methods=["GET", "POST"])
+def svc_name_route(name: str):
+    if request.method == "GET":
+        return services_api.svc_status(name)
+    # POST = akcja
+    return services_api.svc_action(name)
+
+
+# Alias zgodności
+_add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
+
+
+# vision (opcjonalny blueprint)
 try:
     from services.api_core import vision_api
 
@@ -161,7 +172,7 @@ _add_rule("/api/voice/capture", view_func=voice_proxy.capture_handler, methods=[
 _add_rule("/api/voice/say", view_func=voice_proxy.say_handler, methods=["POST", "OPTIONS"])
 
 
-# bus health (stub) – żeby dashboard nie dostawał 404
+# bus health (stub)
 @app.route("/api/bus/health", methods=["GET", "OPTIONS"])
 def _bus_health():
     if request.method == "OPTIONS":
@@ -169,14 +180,7 @@ def _bus_health():
     return _corsify(jsonify({"ok": True})), 200
 
 
-# ── Chat API: rejestracja „glue” idempotentnie ───────────────────────────────
-try:
-    chat_glue.register(app)  # doda /api/chat/history, /api/chat/send
-    app.logger.info("Chat API registered at /api/chat/*")
-except Exception as e:
-    app.logger.warning(f"Chat API not available: {e}")
-
-# ── Dashboard / pliki statyczne ──────────────────────────────────────────────
+# ── Static / dashboard ───────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
 
@@ -185,10 +189,65 @@ def serve_web(fname):
     return send_from_directory(STATIC_WEB_DIR, fname)
 
 
-# root i control page (jeśli dashboard je dostarcza)
 _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"])
 _add_rule("/control", view_func=dashboard.control_page, methods=["GET"])
+
+
+# ── Local control fallback (przed startem serwera) ───────────────────────────
+def _register_local_control_fallback():
+    try:
+        _has_bridge = bool(os.getenv("WEB_BRIDGE_URL", "").strip())
+    except Exception:
+        _has_bridge = False
+
+    rules_now = {r.rule for r in app.url_map.iter_rules()}
+    need_local = (not _has_bridge) and ("/api/control" not in rules_now)
+
+    if not need_local:
+        return
+
+    try:
+        import json as _json
+
+        from flask import jsonify as _jsonify, make_response as _mk, request as _req
+
+        try:
+            import zmq  # type: ignore
+
+            _ctx = zmq.Context.instance()
+            _bus_addr = os.getenv("BUS_PUB_ADDR") or f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT', '5555')}"
+            _pub = _ctx.socket(zmq.PUB)
+            _pub.connect(_bus_addr)
+            _PUBLISH = True
+        except Exception as _e:
+            _PUBLISH = False
+            app.logger.warning(f"[control-local] pyzmq not available or BUS connect failed: {_e}")
+
+        def _control_local():
+            if _req.method == "OPTIONS":
+                return _corsify(_mk("", 204))
+            payload = _req.get_json(silent=True) or {}
+            if "cmd" not in payload:
+                payload = {"cmd": "move", "dir": payload.get("dir", "stop")}
+            info = {"ok": True, "mode": "local", "published": False}
+            if _PUBLISH:
+                try:
+                    topic = "motion.cmd"
+                    _pub.send_string(f"{topic} {_json.dumps(payload)}")
+                    info["published"] = True
+                except Exception as e:
+                    info.update(ok=False, error=f"bus_publish_failed: {e}")
+            return _corsify(_jsonify(info)), 200 if info.get("ok") else 500
+
+        app.add_url_rule("/api/control", view_func=_control_local, methods=["POST", "OPTIONS"])
+        app.add_url_rule("/api/cmd", view_func=_control_local, methods=["POST", "OPTIONS"])
+        app.logger.info("[control-local] registered /api/control,/api/cmd (no WEB_BRIDGE_URL)")
+    except Exception as e:
+        app.logger.warning(f"[control-local] fallback not active: {e}")
+
+
+_register_local_control_fallback()
 
 
 # ── BOOTSTRAP ────────────────────────────────────────────────────────────────
@@ -205,60 +264,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# === Local control fallback (działa gdy brak WEB_BRIDGE_URL i brak zarejestrowanych tras) ===
-try:
-    _HAS_BRIDGE = bool(os.getenv("WEB_BRIDGE_URL", "").strip())
-except Exception:
-    _HAS_BRIDGE = False
-
-try:
-    _rules_now = {r.rule for r in app.url_map.iter_rules()}
-    _need_local = (not _HAS_BRIDGE) and ("/api/control" not in _rules_now)
-except Exception:
-    _need_local = False
-
-if _need_local:
-    try:
-        import json
-
-        from flask import jsonify, make_response, request
-
-        try:
-            import zmq  # type: ignore
-
-            _ctx = zmq.Context.instance()
-            _bus_addr = os.getenv("BUS_PUB_ADDR") or f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT', '5555')}"
-            _pub = _ctx.socket(zmq.PUB)
-            _pub.connect(_bus_addr)
-            _PUBLISH = True
-        except Exception as _e:
-            _PUBLISH = False
-            app.logger.warning(f"[control-local] pyzmq not available or BUS connect failed: {_e}")
-
-        def _control_local():
-            if request.method == "OPTIONS":
-                return _corsify(make_response("", 204))
-            payload = request.get_json(silent=True) or {}
-            # domyślne zachowanie: jeśli nie ma 'cmd', wpisz 'move' i 'stop'
-            if "cmd" not in payload:
-                payload = {"cmd": "move", "dir": payload.get("dir", "stop")}
-            info = {"ok": True, "mode": "local", "published": False}
-            if _PUBLISH:
-                try:
-                    topic = "motion.cmd"
-                    _pub.send_string(f"{topic} {json.dumps(payload)}")
-                    info["published"] = True
-                except Exception as e:
-                    info.update(ok=False, error=f"bus_publish_failed: {e}")
-            return _corsify(jsonify(info)), 200 if info.get("ok") else 500
-
-        # rejestracja tras
-        app.add_url_rule("/api/control", view_func=_control_local, methods=["POST", "OPTIONS"])
-        app.add_url_rule("/api/cmd", view_func=_control_local, methods=["POST", "OPTIONS"])
-        app.logger.info("[control-local] registered /api/control,/api/cmd (no WEB_BRIDGE_URL)")
-    except Exception as e:
-        try:
-            app.logger.warning(f"[control-local] fallback not active: {e}")
-        except Exception:
-            pass

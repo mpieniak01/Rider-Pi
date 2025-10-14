@@ -1,21 +1,49 @@
 [Unit]
 Description=Rider-Pi camera preview (no processing) -> snapshots/raw.*
-After=network.target
-StartLimitIntervalSec=0
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=30
+StartLimitBurst=10
 
 [Service]
 Type=simple
 User=pi
+Group=pi
+# dostęp do /dev/video* (na wszelki wypadek)
+SupplementaryGroups=video,input
+
 WorkingDirectory=/home/pi/robot
+
+# pewne importy i brak kolizji z ~/.local
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONNOUSERSITE=1
+Environment=PYTHONPATH=/home/pi/robot
+
+# Konfiguracja podglądu (Twoje)
 Environment=DETECTOR=none
 Environment=PREVIEW_ROT=0
-# (opcjonalnie wymuś PNG, jeśli JPEG bywa kapryśny)
+# opcjonalnie: wymuś format
 # Environment=LAST_FRAME_EXT=.png
-# flock gwarantuje single-instance na kamerze
-ExecStart=/usr/bin/flock -n /tmp/camera.lock /usr/bin/python3 apps/camera/preview_lcd.py
+# opcjonalnie: wybór urządzenia (np. /dev/video0)
+# Environment=VIDEO_DEVICE=/dev/video0
+
+# (opcjonalnie) zewnętrzne ENV-y, jeśli chcesz je wykorzystywać
+EnvironmentFile=-/etc/default/rider
+EnvironmentFile=-/etc/default/rider-camera
+
+# UŻYWAJ Pythona z izolowanego venv (patrz: /home/pi/robot/.venv-cam)
+# i blokada flock, by nie odpalić 2x procesu na kamerze
+ExecStart=/usr/bin/flock -n /tmp/camera.lock /home/pi/robot/.venv-cam/bin/python -u -m apps.camera.preview_lcd
+
 Restart=always
-RestartSec=1
+RestartSec=0.5
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=process
+KillSignal=SIGINT
+Nice=-5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
