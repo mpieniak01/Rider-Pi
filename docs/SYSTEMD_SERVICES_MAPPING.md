@@ -113,14 +113,33 @@ After this PR, all service files follow these standards:
 
 The following commands can be used to test service file validity:
 
+### Static Tests (No systemd required)
+
 ```bash
-# Validate all service files
+# Python validator - checks paths exist
 ./scripts/diag_validate-systemd-paths.py
 
-# Run comprehensive smoke tests
+# Comprehensive bash smoke tests
 ./scripts/diag_systemd-smoke.sh
 
-# Verify specific service file
+# Pytest-based static tests
+pytest tests/test_systemd_services.py -v
+```
+
+### Smoke Tests (Requires systemd)
+
+```bash
+# Enable systemd smoke tests (checks systemd-analyze verify)
+SYSTEMD_SMOKE_TESTS=1 pytest tests/test_systemd_smoke.py -v
+
+# Full smoke tests (includes service start/stop - requires root)
+SYSTEMD_SMOKE_TESTS=1 SYSTEMD_SMOKE_FULL=1 pytest tests/test_systemd_smoke.py -v
+```
+
+### Manual Verification
+
+```bash
+# Verify specific service file syntax
 systemd-analyze verify systemd/rider-face.service
 
 # Test service on actual system
@@ -129,14 +148,75 @@ sudo systemctl start rider-face.service
 sudo systemctl status rider-face.service
 ```
 
+### Local Testing Instructions
+
+1. **Quick validation** (no dependencies):
+   ```bash
+   bash scripts/diag_systemd-smoke.sh
+   ```
+
+2. **Full pytest suite** (requires pytest):
+   ```bash
+   pip install pytest pytest-timeout
+   pytest tests/test_systemd_services.py -v
+   ```
+
+3. **With systemd** (on robot or systemd-enabled system):
+   ```bash
+   SYSTEMD_SMOKE_TESTS=1 pytest tests/test_systemd_smoke.py -v
+   ```
+
 ## CI Integration
 
-Service file validation is now part of the CI pipeline in `.github/workflows/quality-guard.yml`:
+Service file validation is now part of the CI pipeline:
+
+### quality-guard.yml (Always runs)
 
 ```yaml
-- name: Validate systemd service files
+- name: Validate systemd service files (bash smoke test)
   run: bash scripts/diag_systemd-smoke.sh
+
+- name: Validate systemd service files (pytest static tests)
+  run: pytest tests/test_systemd_services.py -v
 ```
+
+**Tests performed:**
+- ✅ systemd-analyze verify (syntax validation)
+- ✅ Path validation (all ExecStart paths exist)
+- ✅ Deprecated pattern detection (no ops/, tools/, /workspaces/)
+- ✅ Consistency checks (WorkingDirectory for Python services)
+- ✅ Description field presence and non-empty
+- ✅ No duplicate ExecStart → missing file errors
+
+### tests.yml (Conditional)
+
+```yaml
+systemd-smoke:
+  if: contains(github.event.pull_request.labels.*.name, 'test-systemd')
+  ...
+  - name: Run systemd smoke tests
+    env:
+      SYSTEMD_SMOKE_TESTS: "1"
+    run: pytest tests/test_systemd_smoke.py -v
+```
+
+**Trigger:** Add `test-systemd` label to PR
+
+**Tests performed:**
+- ✅ systemd-analyze verify on actual systemd
+- ✅ Service file loading verification
+- ✅ daemon-reload succeeds
+
+**Note:** Full service start/stop tests require `SYSTEMD_SMOKE_FULL=1` and root privileges.
+
+### Test Failure Handling
+
+Any PR that modifies service files or referenced scripts will be validated automatically:
+
+- ❌ **Block merge** if ExecStart references non-existent files
+- ❌ **Block merge** if deprecated paths are detected
+- ❌ **Block merge** if Description field is missing or empty
+- ⚠️ **Warning only** for missing WorkingDirectory (some services may not need it)
 
 This ensures that any PR that modifies service files or referenced scripts will be validated automatically.
 
