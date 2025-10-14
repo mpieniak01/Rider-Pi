@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# server/api_core/camera.py
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import mimetypes
@@ -17,7 +19,8 @@ _MIME = {
     ".png": "image/png",
     ".bmp": "image/bmp",
 }
-SNAP_MAX_AGE_S = int(os.getenv("SNAP_MAX_AGE_S", "20"))  # po ilu sekundach uznać klatkę za przeterminowaną
+# po ilu sekundach uznać klatkę za przeterminowaną
+SNAP_MAX_AGE_S = int(os.getenv("SNAP_MAX_AGE_S", "20"))
 
 # Upewnij się, że porównujemy ścieżki absolutne
 _SNAP_DIR_ABS = os.path.abspath(C.SNAP_DIR)
@@ -39,8 +42,9 @@ def _resolve_snap(name: str):
         for ext in _EXTS:
             full = os.path.join(_SNAP_DIR_ABS, f"{base}{ext}")
             if os.path.isfile(full):
-                mime = _MIME.get(ext, mimetypes.guess_type(full)[0] or "application/octet-stream")
-                return full, ext, mime
+                ext_l = ext.lower()
+                mime = _MIME.get(ext_l, mimetypes.guess_type(full)[0] or "application/octet-stream")
+                return full, ext_l, mime
     return None
 
 
@@ -62,32 +66,47 @@ def _nocache_file_response(path: str, mime: str | None = None):
     return resp
 
 
+def _json_error(name: str, status: int = 404) -> Response:
+    """Spójna odpowiedź JSON z anty-cache dla błędów/stanów 404."""
+    body = f'{{"error":"{name}"}}'
+    resp = make_response(body, status)
+    resp.headers["Content-Type"] = "application/json"
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
 # --- endpoints ---
 def camera_raw():
     r = _resolve_snap("raw")
     if not r:
-        return Response('{"error":"no_raw"}', mimetype="application/json", status=404)
+        return _json_error("no_raw", 404)
     full, _ext, mime = r
     if not _fresh(full):
-        return Response('{"error":"stale_raw"}', mimetype="application/json", status=404)
+        return _json_error("stale_raw", 404)
     return _nocache_file_response(full, mime)
 
 
 def camera_proc():
     r = _resolve_snap("proc")
     if not r:
-        return Response('{"error":"no_proc"}', mimetype="application/json", status=404)
+        return _json_error("no_proc", 404)
     full, _ext, mime = r
     if not _fresh(full):
-        return Response('{"error":"stale_proc"}', mimetype="application/json", status=404)
+        return _json_error("stale_proc", 404)
     return _nocache_file_response(full, mime)
 
 
 def camera_last():
-    # alias do RAW, z silniejszymi nagłówkami anti-cache
+    """
+    Alias do RAW, z silnymi nagłówkami anti-cache.
+    HEAD zachowuje się jak GET (200/404), bez body – obsługiwane automatycznie przez Flask.
+    """
     r = _resolve_snap("raw")
     if not r:
-        return Response('{"error":"no_raw"}', mimetype="application/json", status=404)
+        return _json_error("no_raw", 404)
     full, _ext, mime = r
     return _nocache_file_response(full, mime)
 
@@ -109,6 +128,7 @@ def camera_placeholder():
     resp = make_response(svg)
     resp.headers["Content-Type"] = "image/svg+xml"
     resp.headers["Cache-Control"] = "no-store, max-age=0"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
 
 

@@ -41,7 +41,7 @@
   <div class="hint">
     <span data-i18n="dash.hint_prefix">Auto-refresh co ≈ 2 s.</span>
     <span data-i18n="dash.hint_endpoints">Endpointy:</span>
-    <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a>
+    <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a>, <a href="/vision/snap-info">/vision/snap-info</a>
     <span style="margin-left:8px">—</span>
     <a href="#" id="langPL">PL</a> | <a href="#" id="langEN">EN</a>
   </div>
@@ -134,6 +134,26 @@
     </div>
   </div>
 
+  <div class="grid" style="margin-top:18px">
+    <div class="card">
+      <h3>Obstacle</h3>
+      <div class="kv">
+        <div>present</div><div id="obs_present" class="muted">—</div>
+        <div>confidence</div><div id="obs_conf" class="muted">—</div>
+        <div>edge_pct</div><div id="obs_edge" class="muted">—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Snap freshness</h3>
+      <div class="kv">
+        <div>raw.age</div><div id="age_raw" class="muted">—</div>
+        <div>proc.age</div><div id="age_proc" class="muted">—</div>
+      </div>
+      <div class="hint" style="margin-top:6px;opacity:.7">Źródło: <code>/vision/snap-info</code></div>
+    </div>
+  </div>
+
   <div class="statusbar" id="statusbar">
     <span class="pill" id="sb_presence"><span data-i18n="dash.status.vision_prefix">VISION:</span>&nbsp;<span id="sb_presence_state">—</span></span>
     <span class="sep">•</span>
@@ -150,7 +170,8 @@
 import { initI18n, applyDom, t, setLang } from '/web/i18n.js?v=3';
 
 const REFRESH_MS = 2000;
-const CAM_REFRESH_MS = 5000;
+const CAM_REFRESH_MS = 1000; // częstsze odświeżanie podglądu
+const SNAP_STALE_S = 5;      // heurystyka UI (API i tak daje no-store)
 const el = id=>document.getElementById(id);
 const setTxt=(id,txt)=>{const e=el(id); if(e) e.textContent=txt}
 const setCls=(id,cls)=>{const e=el(id); if(e) e.className=cls}
@@ -186,9 +207,12 @@ function drawChart(cpuArr=[], memArr=[]){
 async function refreshCamera(){
   const imgCam=el('img_cam'), imgProc=el('img_proc'), camBadge=el('camBadge'), camMeta=el('camMeta');
   const bust = Date.now();
+  const ph = `/camera/placeholder?t=${bust}`;
+
   try{
-    const st = await (await fetch('/state',{cache:'no-store'})).json();
-    const cam = st.camera || {};
+    // meta z /state (jeśli jest)
+    const st = await (await fetch('/state',{cache:'no-store'})).json().catch(()=>null);
+    const cam = st?.camera || {};
     if (camBadge){
       camBadge.textContent = cam.vision_enabled ? t('dash.camera.vision_on') : t('dash.camera.vision_off');
       camBadge.className   = 'cam-badge' + (cam.vision_enabled ? ' on' : '');
@@ -197,19 +221,22 @@ async function refreshCamera(){
       camMeta.textContent = cam.last_frame_ts ? (t('dash.camera.last_frame_ts') + ' ' + new Date(cam.last_frame_ts*1000).toLocaleString())
                                               : t('dash.camera.no_last_frame');
     }
-    const candidates = [`/api/last_frame?t=${bust}`, `/camera/last?t=${bust}`];
-    let src = null;
-    for(const u of candidates){
-      try{ const r = await fetch(u, {method:'HEAD', cache:'no-store'}); if(r.ok){ src=u; break; } }catch{}
-    }
-    const ph = `/camera/placeholder?t=${bust}`;
-    if (imgCam)  imgCam.src  = src || ph;
-    if (imgProc) imgProc.src = src || ph;
-  }catch{
-    const ph = `/camera/placeholder?t=${Date.now()}`;
-    if (imgCam)  imgCam.src  = ph;
-    if (imgProc) imgProc.src = ph;
-  }
+  }catch{}
+
+  // ŹRÓDŁA WYRAŹNIE ROZDZIELONE:
+  const camURL  = `/vision/cam?t=${bust}`;
+  const procURL = `/vision/edge?t=${bust}`;
+
+  // HEAD → jeśli 200, ustaw src; w przeciwnym razie fallback do placeholdera
+  try{
+    const r1 = await fetch(camURL,  {method:'HEAD', cache:'no-store'});
+    if (imgCam) imgCam.src  = r1.ok ? camURL  : ph;
+  }catch{ if (imgCam) imgCam.src = ph; }
+
+  try{
+    const r2 = await fetch(procURL, {method:'HEAD', cache:'no-store'});
+    if (imgProc) imgProc.src = r2.ok ? procURL : ph;
+  }catch{ if (imgProc) imgProc.src = ph; }
 }
 
 /* ===== HEALTH (status/uptime + ages z wielu źródeł) ===== */
@@ -263,7 +290,7 @@ function updateStateUI(s){
   setTxt('sb_conf', `${t('dash.status.conf')}: ${fmt(s.confidence,3)}`);
 }
 
-/* ===== DEVICES: /state + fallback /healthz.devices ===== */
+/* ===== DEVICES ===== */
 function textFromLCD(lcd){
   if(!lcd) return '—';
   const parts = [];
@@ -274,23 +301,19 @@ function textFromLCD(lcd){
   return parts.join(' · ');
 }
 function applyDevices({state, health}){
-  // CAMERA
   const cam = state?.camera ?? health?.devices?.camera ?? {};
   const resTxt = (cam.res && cam.res.length===2)? ` ${cam.res[0]}×${cam.res[1]}` : '';
   const camTxt = (cam.on? 'ON':'OFF') + (cam.mode?(' · '+cam.mode):'') + resTxt + (cam.fps!=null? (' · '+fmt(cam.fps,1)+' fps'):'');
   setTxt('d_cam', camTxt); setCls('d_cam', cam.on? 'ok':'muted');
 
-  // LCD
   const lcd = state?.lcd ?? health?.devices?.lcd ?? null;
   const lcdTxt = textFromLCD(lcd);
   setTxt('d_lcd', lcdTxt); setCls('d_lcd', (lcd && lcd.on)? 'ok':'muted');
 
-  // XGO
   const xgo = state?.xgo ?? health?.devices?.xgo ?? {};
   const imuTxt = (xgo.on? 'ON':'OFF') + (xgo.imu_ok===true? ' · OK': (xgo.on? ' · ?':''));
   setTxt('d_xgo_imu', imuTxt); setCls('d_xgo_imu', (xgo.on && xgo.imu_ok)? 'ok':'muted');
 
-  // POSE
   const parts = [];
   if (Array.isArray(xgo.pose) && xgo.pose.some(v=>v!=null)) {
     parts.push(xgo.pose.filter(v=>v!=null).map(v=>Number(v).toFixed(1)).join('°, ')+'°');
@@ -301,14 +324,53 @@ function applyDevices({state, health}){
   if (xgo.yaw!=null)   parts.push(`y ${fmt(xgo.yaw,1)}°`);
   setTxt('d_xgo_pose', parts.length? parts.join(' · ') : '—');
 
-  // BATTERY
   const battPct = (xgo.battery_pct ?? xgo.batt_pct ?? xgo.battery?.pct ?? xgo.battery);
   setTxt('d_xgo_batt', (battPct!=null? `${Number(battPct).toFixed(0)}%` : '—'));
   setCls('d_xgo_batt', (battPct!=null? 'ok':'muted'));
 
-  // FW (na kartę System)
   const fw = xgo.fw ?? state?.fw ?? health?.devices?.xgo?.fw;
   if (fw) setTxt('ci_fw', fw);
+}
+
+/* ===== OBSTACLE ===== */
+function applyObstacle(o){
+  const present = !!o.present;
+  const conf = (o.confidence!=null)? Number(o.confidence).toFixed(3) : '—';
+  const pct  = (o.edge_pct!=null)? Number(o.edge_pct).toFixed(3) : '—';
+  const cls  = present ? 'ok' : 'bad';
+  const set=(id,txt,c)=>{ const e=document.getElementById(id); if(!e) return; e.textContent=txt; if(c) e.className=c; };
+  set('obs_present', String(present), cls);
+  set('obs_conf', conf);
+  set('obs_edge', pct);
+}
+async function fetchObstacle(){
+  try{
+    const r = await fetch('/vision/obstacle',{cache:'no-store'});
+    if(!r.ok) return;
+    const j = await r.json().catch(()=>null);
+    if(j) applyObstacle(j);
+  }catch{}
+}
+
+/* ===== SNAP INFO (wiek ramek) ===== */
+function applySnapInfo(si){
+  const rawAge = si?.raw?.age_s;
+  const procAge = si?.proc?.age_s;
+  setTxt('age_raw',  rawAge!=null ? fmt(rawAge,1)+' s' : '—');
+  setTxt('age_proc', procAge!=null ? fmt(procAge,1)+' s' : '—');
+
+  // CAM pill heurystyka
+  const ok = (rawAge!=null && rawAge <= SNAP_STALE_S);
+  setCls('sb_cam', 'pill ' + (ok ? 'ok' : 'bad'));
+  setTxt('sb_cam', 'CAM: ' + (rawAge!=null? fmt(rawAge,1)+'s':'—') + ' / ' + (procAge!=null? fmt(procAge,1)+'s':'—'));
+}
+async function refreshSnapInfo(){
+  try{
+    const r = await fetch('/vision/snap-info',{cache:'no-store'});
+    if(!r.ok) return;
+    const j = await r.json().catch(()=>null);
+    if(j) applySnapInfo(j);
+  }catch{}
 }
 
 /* ===== SYSINFO ===== */
@@ -332,7 +394,6 @@ function applySysinfo(si){
   setTxt('ci_os', si.os_release || si.platform || '—');
   setTxt('d_temp', (si.temp_c!=null ? fmt(si.temp_c,1)+' °C' : '—'));
 
-  // FW z sysinfo (fallback)
   const fw = si.fw || si.fw_version || si.firmware || si.version;
   if (fw) setTxt('ci_fw', fw);
 
@@ -354,6 +415,8 @@ function startSSE(){ try{ const es=new EventSource('/events'); es.onmessage=()=>
 
 setInterval(tick, REFRESH_MS); tick();
 setInterval(refreshCamera, CAM_REFRESH_MS); refreshCamera();
+setInterval(fetchObstacle, REFRESH_MS); fetchObstacle();
+setInterval(refreshSnapInfo, REFRESH_MS); refreshSnapInfo();
 startSSE();
 </script>
 </body>

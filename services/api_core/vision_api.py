@@ -1,46 +1,141 @@
+#!/usr/bin/env python3
+# robot/services/api_core/vision_api.py
+# -*- coding: utf-8 -*-
+
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
-from pathlib import Path
 from typing import Any
 
-from flask import Blueprint, abort, jsonify, send_file
+from flask import Blueprint, Response, jsonify, make_response, send_file
 
-vision_bp = Blueprint("vision", __name__)
+# Używamy stałych ścieżek z compat (RAW_PATH/PROC_PATH/SNAP_DIR, opcjonalnie DATA_DIR)
+from services.api_core import compat as C
 
-ROOT = Path(os.environ.get("RIDER_ROOT", "/home/pi/robot"))
-DATA_DIR = Path(os.environ.get("DATA_DIR", str(ROOT / "data")))
-SNAP_DIR = Path(os.environ.get("SNAP_DIR", str(ROOT / "snapshots")))
-OBST_PATH = Path(os.environ.get("OBST_PATH", str(DATA_DIR / "obstacle.json")))
+bp = Blueprint("vision_api", __name__)
+
+# ---------- helpers: nagłówki / ścieżki ----------
 
 
-def load_obstacle() -> dict[str, Any] | None:
+def _nocache(resp: Response) -> Response:
+    """Twardo wyłącz cache po stronie klienta/przeglądarki."""
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+def _json_nocache(payload: Any, status: int = 200) -> Response:
+    """JSON z nagłówkami no-store."""
+    resp = make_response(jsonify(payload), status)
+    return _nocache(resp)
+
+
+def _ssd_path() -> str:
+    return os.getenv("SSD_PATH", os.path.join(C.SNAP_DIR, "ssd.jpg"))
+
+
+# ---------- helpers: obrazy ----------
+
+
+def _img_response(path: str) -> Response:
+    """Zwróć obraz z wyłączonym cache; nie rzucaj 500 dla HEAD/GET."""
+    if not os.path.isfile(path):
+        # spójny 404 (text/plain — brak pliku)
+        resp = make_response(f"Not found: {path}", 404)
+        resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+        return _nocache(resp)
+    # jeżeli plik istnieje — serwuj bezwarunkowo (HEAD otrzyma 200 bez body)
+    resp = send_file(path, mimetype="image/jpeg", conditional=True)
+    return _nocache(resp)
+
+
+@bp.route("/vision/cam", methods=["GET", "HEAD"])
+def vision_cam() -> Response:
+    return _img_response(C.RAW_PATH)
+
+
+@bp.route("/vision/edge", methods=["GET", "HEAD"])
+def vision_edge() -> Response:
+    return _img_response(C.PROC_PATH)
+
+
+@bp.route("/vision/ssd", methods=["GET", "HEAD"])
+def vision_ssd() -> Response:
+    return _img_response(_ssd_path())
+
+
+# ---------- meta: snap-info ----------
+
+
+@bp.route("/vision/snap-info", methods=["GET", "HEAD"])
+def snap_info() -> Response:
+    def info(p: str):
+        try:
+            st = os.stat(p)
+            with open(p, "rb") as f:
+                md5 = hashlib.md5(f.read()).hexdigest()
+            now = time.time()
+            return {
+                "exists": True,
+                "path": p,
+                "mtime": int(st.st_mtime),
+                "size": st.st_size,
+                "md5": md5,
+                "age_s": round(max(0.0, now - float(st.st_mtime)), 3),
+            }
+        except FileNotFoundError:
+            return {"exists": False, "path": p}
+
+    payload = {
+        "raw": info(C.RAW_PATH),
+        "proc": info(C.PROC_PATH),
+        "ssd": info(_ssd_path()),
+    }
+    return _json_nocache(payload, 200)
+
+
+# ---------- helpers: obstacle (kompatybilność dla state_api) ----------
+
+
+def _default_data_dir() -> str:
+    # Jeśli compat ma DATA_DIR — użyj. W przeciwnym razie: ~/robot/data obok snapshots.
+    if hasattr(C, "DATA_DIR"):
+        return C.DATA_DIR  # type: ignore[attr-defined]
+    base = os.path.dirname(C.SNAP_DIR)
+    return os.path.join(base, "data")
+
+
+def load_obstacle() -> dict[str, Any]:
+    """
+    Kompatybilna funkcja używana przez state_api.
+    Źródło: plik JSON, domyślnie data/obstacle.json (można nadpisać przez ENV).
+    Zwraca słownik z co najmniej kluczem 'present' (bool).
+    """
+    data_dir = os.getenv("DATA_DIR", _default_data_dir())
+    path = os.getenv("OBSTACLE_JSON", os.path.join(data_dir, "obstacle.json"))
+
     try:
-        if not OBST_PATH.exists():
-            return None
-        st = OBST_PATH.stat()
-        data = json.loads(OBST_PATH.read_text() or "{}")
-        ts = float(data.get("ts", st.st_mtime))
-        data["ts"] = ts
-        data["age_s"] = max(0.0, time.time() - ts)
-        return data
-    except Exception:
-        return None
+        with open(path, encoding="utf-8") as f:
+            payload = json.load(f)
+        # twardy fallback kluczy, by uniknąć KeyError downstream
+        if not isinstance(payload, dict):
+            return {"present": False, "error": "invalid_json_type", "path": path}
+        payload.setdefault("present", False)
+        return payload
+    except FileNotFoundError:
+        return {"present": False, "error": "not_found", "path": path}
+    except json.JSONDecodeError as e:
+        return {"present": False, "error": f"json_decode:{e}", "path": path}
+    except Exception as e:
+        return {"present": False, "error": f"unexpected:{e}", "path": path}
 
 
-@vision_bp.route("/obstacle", methods=["GET"])
-def obstacle():
-    ob = load_obstacle()
-    if not ob:
-        return jsonify({"error": "no obstacle data"}), 404
-    return jsonify(ob), 200
-
-
-@vision_bp.route("/edge", methods=["GET"])
-def edge_preview():
-    p = SNAP_DIR / "proc.jpg"
-    if not p.exists():
-        abort(404)
-    return send_file(str(p), mimetype="image/jpeg", conditional=True, etag=True)
+@bp.route("/vision/obstacle", methods=["GET", "HEAD"])
+def vision_obstacle() -> Response:
+    """Publiczny endpoint z aktualnym stanem przeszkody (do UI i diagnostyki)."""
+    return _json_nocache(load_obstacle(), 200)

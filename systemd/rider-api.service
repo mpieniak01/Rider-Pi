@@ -15,16 +15,24 @@ WorkingDirectory=/home/pi/robot
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONNOUSERSITE=1
 Environment=PYTHONPATH=/home/pi/robot
+Environment=PYTHONFAULTHANDLER=1
 
-# Limity / time-outy
+# Limity / time-outy (dostosuj w razie potrzeby)
 Environment=SAFE_MAX_DURATION=0.25
 Environment=WEB_BRIDGE_TIMEOUT=0.8
 
-# Zewnętrzne ENV (opcjonalne; nadpiszą wartości poniżej)
+# === ŚCIEŻKI SNAPSHOTÓW (spójne z services/api_core/compat.py) ===
+# Mogą zostać nadpisane w /etc/default/rider-api
+Environment=SNAP_DIR=/home/pi/robot/snapshots
+Environment=RAW_PATH=/home/pi/robot/snapshots/raw.jpg
+Environment=PROC_PATH=/home/pi/robot/snapshots/proc.jpg
+Environment=SSD_PATH=/home/pi/robot/snapshots/ssd.jpg
+
+# Zewnętrzne ENV (opcjonalne; nadpiszą wartości powyżej)
 EnvironmentFile=-/etc/default/rider
 EnvironmentFile=-/etc/default/rider-api
 
-# Serwer API — u Ciebie na :8080 (zgodne z UI)
+# Serwer API — na :8080 (zgodne z UI)
 Environment=API_HOST=0.0.0.0
 Environment=API_PORT=8080
 
