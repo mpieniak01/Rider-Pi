@@ -61,6 +61,40 @@ Skrypty operacyjne dla zarządzania systemem i usługami:
 - [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — diag_metrics.sh, diag_stream.sh (monitorowanie)
 - [**ops/utility-scripts.md**](ops/utility-scripts.md) — testy, diagnostyka XGO, demo, narzędzia
 
+### Testy usług systemd
+
+Dokumentacja testowania i walidacji plików `.service`:
+
+- [**SYSTEMD_SERVICES_MAPPING.md**](SYSTEMD_SERVICES_MAPPING.md) — mapowanie usług systemd → skrypty, status po refaktoryzacji
+- [**SYSTEMD_SERVICES_INVENTORY.md**](SYSTEMD_SERVICES_INVENTORY.md) — pełna inwentaryzacja wszystkich jednostek systemd (ExecStart, status walidacji)
+- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — szczegółowa dokumentacja narzędzi walidacji
+
+**Dostępne testy:**
+
+1. **Testy statyczne** (bez systemd):
+   - `scripts/diag_validate-systemd-paths.py` — walidacja ścieżek w ExecStart
+   - `scripts/diag_systemd-smoke.sh` — kompleksowy test bash
+   - `pytest tests/test_systemd_services.py` — testy pytest
+
+2. **Testy smoke** (wymagają systemd):
+   - `SYSTEMD_SMOKE_TESTS=1 pytest tests/test_systemd_smoke.py` — weryfikacja z systemd
+
+**Uruchamianie lokalnie:**
+
+```bash
+# Szybka walidacja (bez zależności)
+bash scripts/diag_systemd-smoke.sh
+
+# Pełny zestaw pytest
+pip install pytest pytest-timeout
+pytest tests/test_systemd_services.py -v
+
+# Z systemd (na robocie)
+SYSTEMD_SMOKE_TESTS=1 pytest tests/test_systemd_smoke.py -v
+```
+
+Więcej informacji: [SYSTEMD_SERVICES_MAPPING.md](SYSTEMD_SERVICES_MAPPING.md#testing)
+
 ---
 
 ## Dokumentacja konfiguracji (`config/*`)
