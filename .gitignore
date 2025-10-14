@@ -112,3 +112,7 @@ tests/_audit_report.csv
 tests/_audit_import.py
 tests/_suggested_delete.txt
 tests/_suggested_migrate.txt
+.venv*
+snapshots/
+__pycache__/
+*.pyc
