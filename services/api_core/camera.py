@@ -27,12 +27,20 @@ def _resolve_snap(name: str):
     """
     Zwróć (full_path, ext, mimetype) dla 'raw' lub 'proc',
     próbując kolejno .jpg, .png, .bmp. Gdy brak – None.
+
+    Dla 'raw' dodajemy fallback do 'cam' (tryb Snapper / takeover),
+    aby endpoint działał w obu trybach podglądu.
     """
-    for ext in _EXTS:
-        full = os.path.join(_SNAP_DIR_ABS, f"{name}{ext}")
-        if os.path.isfile(full):
-            mime = _MIME.get(ext, mimetypes.guess_type(full)[0] or "application/octet-stream")
-            return full, ext, mime
+    candidates = [name]
+    if name == "raw":
+        candidates.append("cam")
+
+    for base in candidates:
+        for ext in _EXTS:
+            full = os.path.join(_SNAP_DIR_ABS, f"{base}{ext}")
+            if os.path.isfile(full):
+                mime = _MIME.get(ext, mimetypes.guess_type(full)[0] or "application/octet-stream")
+                return full, ext, mime
     return None
 
 
