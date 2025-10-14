@@ -121,3 +121,7 @@ backup/
 services/api_server.py.*bak.*
 services/api_server.py.preclean.*
 services/api_server.py.bpfix.*
+# Runtime artefacts
+snapshots/*.jpg
+data/obstacle.json
+*.log
