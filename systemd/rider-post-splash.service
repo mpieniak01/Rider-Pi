@@ -4,7 +4,7 @@ After=network-online.target rider-api.service
 Wants=network-online.target
 Requires=rider-api.service
 PartOf=rider-minimal.target
-ConditionPathExists=/home/pi/robot/ops/splash_device_info.py
+ConditionPathExists=/home/pi/robot/scripts/sys_splash-info.py
 StartLimitIntervalSec=120
 StartLimitBurst=10
 
@@ -32,7 +32,7 @@ ExecStartPre=/bin/bash -lc 'i=0; while ! curl -fsS -o /dev/null http://127.0.0.1
 ExecStartPre=/bin/bash -lc 'i=0; while :; do out="$(curl -fsS http://127.0.0.1:8080/sysinfo 2>/dev/null || true)"; echo "$out" | grep -q "\"battery_pct\"" && exit 0; sleep 1; i=$((i+1)); [ $i -ge 45 ] && exit 1; done'
 
 # 3) Pokaż splash (Python — bez .sh)
-ExecStart=/usr/bin/env bash -lc 'SPLASH_WAIT_IP_S=60 /usr/bin/python3 ops/splash_device_info.py'
+ExecStart=/usr/bin/env bash -lc 'SPLASH_WAIT_IP_S=60 /usr/bin/python3 scripts/sys_splash-info.py'
 
 # 4) Zgaś panel
 ExecStartPost=/usr/bin/make -C /home/pi/robot lcd-off
