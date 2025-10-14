@@ -151,17 +151,7 @@ def svc_name_route(name: str):
 # Alias zgodności
 _add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
 
-
-# vision (opcjonalny blueprint)
-try:
-    from services.api_core import vision_api
-
-    vision_bp = getattr(vision_api, "vision_bp", None)
-    if vision_bp:
-        app.register_blueprint(vision_bp, url_prefix="/vision")
-        app.logger.info("Vision API registered at /vision")
-except Exception as e:
-    app.logger.warning(f"Vision blueprint not available: {e}")
+# (UWAGA) Rejestracja vision blueprint odbywa się w sekcji BOOTSTRAP przez lazy-import.
 
 # control proxy
 _add_rule("/api/control", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
@@ -251,6 +241,22 @@ _register_local_control_fallback()
 
 
 # ── BOOTSTRAP ────────────────────────────────────────────────────────────────
+
+# --- [Rider-Pi] register vision_api blueprint(s) ---
+try:
+    import importlib
+
+    _va = importlib.import_module("services.api_core.vision_api")
+    _bp = getattr(_va, "bp", None)
+    if _bp is None:
+        raise RuntimeError("vision_api.bp missing (circular import?)")
+    app.register_blueprint(_bp)  # /vision/*
+    app.register_blueprint(_bp, url_prefix="/api")  # /api/vision/*
+    app.logger.info("[api] vision_api blueprints registered: /vision/* and /api/vision/*")
+except Exception as e:
+    app.logger.exception("[api] failed to register vision_api blueprint: %s", e)
+
+
 def main():
     try:
         if compat:
