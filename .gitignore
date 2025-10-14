@@ -116,3 +116,8 @@ tests/_suggested_migrate.txt
 snapshots/
 __pycache__/
 *.pyc
+# Rider-Pi local backups
+backup/
+services/api_server.py.*bak.*
+services/api_server.py.preclean.*
+services/api_server.py.bpfix.*
