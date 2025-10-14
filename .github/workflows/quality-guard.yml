@@ -124,9 +124,17 @@ jobs:
           fi
 
       # ---- Systemd service files validation ----
-      - name: Validate systemd service files
+      - name: Validate systemd service files (bash smoke test)
         shell: bash
         run: |
           set -euo pipefail
           echo "Validating systemd service files..."
           bash scripts/diag_systemd-smoke.sh
+
+      - name: Validate systemd service files (pytest static tests)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Running pytest-based systemd validation..."
+          pip install pytest pytest-timeout
+          pytest tests/test_systemd_services.py -v --tb=short
