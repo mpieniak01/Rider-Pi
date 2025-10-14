@@ -58,9 +58,7 @@ class TestSystemdServiceFiles:
             if not re.search(r"^Description=.+$", content, re.MULTILINE):
                 missing_description.append(service_file.name)
 
-        assert not missing_description, (
-            f"Service files missing Description field: {', '.join(missing_description)}"
-        )
+        assert not missing_description, f"Service files missing Description field: {', '.join(missing_description)}"
 
     def test_description_field_not_empty(self, service_files):
         """Test that Description fields are not empty."""
@@ -73,9 +71,7 @@ class TestSystemdServiceFiles:
             if match and not match.group(1).strip():
                 empty_description.append(service_file.name)
 
-        assert not empty_description, (
-            f"Service files with empty Description: {', '.join(empty_description)}"
-        )
+        assert not empty_description, f"Service files with empty Description: {', '.join(empty_description)}"
 
     def test_no_deprecated_workspaces_path(self, service_files):
         """Test that no service files use deprecated /workspaces/ path."""
@@ -102,8 +98,7 @@ class TestSystemdServiceFiles:
                 deprecated_path.append(service_file.name)
 
         assert not deprecated_path, (
-            f"Service files using deprecated ops/ path: {', '.join(deprecated_path)}. "
-            "Should use scripts/ instead."
+            f"Service files using deprecated ops/ path: {', '.join(deprecated_path)}. " "Should use scripts/ instead."
         )
 
     def test_no_deprecated_tools_path(self, service_files):
@@ -117,8 +112,7 @@ class TestSystemdServiceFiles:
                 deprecated_path.append(service_file.name)
 
         assert not deprecated_path, (
-            f"Service files using deprecated tools/ path: {', '.join(deprecated_path)}. "
-            "Should use scripts/ instead."
+            f"Service files using deprecated tools/ path: {', '.join(deprecated_path)}. " "Should use scripts/ instead."
         )
 
     def test_exec_start_paths_exist(self, service_files, repo_root):
@@ -145,21 +139,15 @@ class TestSystemdServiceFiles:
                         rel_path = path_str.replace("/home/pi/robot/", "")
                         check_path = repo_root / rel_path
                         if not check_path.exists():
-                            missing_paths.append(
-                                f"{service_file.name}: {path_str} (expected at {check_path})"
-                            )
+                            missing_paths.append(f"{service_file.name}: {path_str} (expected at {check_path})")
 
                     # Check relative paths
                     elif not path.is_absolute():
                         check_path = repo_root / path_str
                         if not check_path.exists():
-                            missing_paths.append(
-                                f"{service_file.name}: {path_str} (expected at {check_path})"
-                            )
+                            missing_paths.append(f"{service_file.name}: {path_str} (expected at {check_path})")
 
-        assert not missing_paths, (
-            "Service files reference non-existent paths:\n  " + "\n  ".join(missing_paths)
-        )
+        assert not missing_paths, "Service files reference non-existent paths:\n  " + "\n  ".join(missing_paths)
 
     def test_python_services_have_working_directory(self, service_files):
         """Test that Python services using apps/ or services/ have WorkingDirectory."""
@@ -176,9 +164,7 @@ class TestSystemdServiceFiles:
 
         # This is a warning, not a hard failure - some services may work without it
         if missing_workdir:
-            pytest.skip(
-                f"Python services without WorkingDirectory (warning): {', '.join(missing_workdir)}"
-            )
+            pytest.skip(f"Python services without WorkingDirectory (warning): {', '.join(missing_workdir)}")
 
     @staticmethod
     def _parse_exec_line(line: str) -> list[str]:
@@ -253,6 +239,4 @@ class TestServiceMapping:
 
         # This is informational - some services might intentionally not be documented
         if undocumented:
-            pytest.skip(
-                f"Services not documented in mapping (info): {', '.join(undocumented)}"
-            )
+            pytest.skip(f"Services not documented in mapping (info): {', '.join(undocumented)}")

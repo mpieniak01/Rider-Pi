@@ -83,9 +83,8 @@ class TestSystemdSmoke:
                 if "No such file or directory" not in output and "not executable" not in output:
                     failed.append((service_file.name, output))
 
-        assert not failed, (
-            f"systemd-analyze verify failed for:\n"
-            + "\n".join(f"  {name}: {output}" for name, output in failed)
+        assert not failed, "systemd-analyze verify failed for:\n" + "\n".join(
+            f"  {name}: {output}" for name, output in failed
         )
 
     @pytest.mark.skipif(
@@ -139,9 +138,7 @@ class TestSystemdSmoke:
 
             # Check if service reached active state
             state = self._get_service_state(service_name)
-            assert state in ("active", "inactive", "activating"), (
-                f"Unexpected state after start: {state}"
-            )
+            assert state in ("active", "inactive", "activating"), f"Unexpected state after start: {state}"
 
             # Stop the service
             result = subprocess.run(
@@ -215,10 +212,7 @@ class TestSystemdIntegration:
 
         if failed:
             # This is informational - services may not be installed in CI
-            pytest.skip(
-                "Some services could not be loaded (info): "
-                + ", ".join(name for name, _ in failed)
-            )
+            pytest.skip("Some services could not be loaded (info): " + ", ".join(name for name, _ in failed))
 
 
 if __name__ == "__main__":

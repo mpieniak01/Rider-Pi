@@ -66,6 +66,7 @@ Skrypty operacyjne dla zarządzania systemem i usługami:
 Dokumentacja testowania i walidacji plików `.service`:
 
 - [**SYSTEMD_SERVICES_MAPPING.md**](SYSTEMD_SERVICES_MAPPING.md) — mapowanie usług systemd → skrypty, status po refaktoryzacji
+- [**SYSTEMD_SERVICES_INVENTORY.md**](SYSTEMD_SERVICES_INVENTORY.md) — pełna inwentaryzacja wszystkich jednostek systemd (ExecStart, status walidacji)
 - [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — szczegółowa dokumentacja narzędzi walidacji
 
 **Dostępne testy:**
