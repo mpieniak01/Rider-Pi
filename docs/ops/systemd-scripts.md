@@ -255,4 +255,80 @@ sudo systemctl start rider-boot-prepare.service
 - [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md) — standardy konfiguracji
 - Katalog `systemd/` w repo — definicje usług
 
-**Ostatnia aktualizacja:** 2025-01
+---
+
+## Walidacja i testy
+
+### diag_validate-systemd-paths.py
+
+**Opis:** Waliduje ścieżki w plikach `.service` - sprawdza czy wszystkie pliki wskazane w `ExecStart`, `ExecStartPre` i `ExecStartPost` istnieją.
+
+**Użycie:**
+```bash
+./scripts/diag_validate-systemd-paths.py
+```
+
+**Co sprawdza:**
+- Czy ścieżki absolutne w `/home/pi/robot/` istnieją w repo
+- Czy ścieżki względne wskazują na istniejące pliki
+- Czy nie ma przestarzałych ścieżek (`/workspaces/`, `ops/`, `tools/`)
+
+**Output:**
+```
+Validating systemd service files in: /path/to/systemd
+  ✓ rider-api.service
+  ✓ rider-broker.service
+  ...
+✓ All service files validated successfully!
+```
+
+---
+
+### diag_systemd-smoke.sh
+
+**Opis:** Kompleksowy smoke test wszystkich plików `.service` w repo. Uruchamiany automatycznie w CI.
+
+**Użycie:**
+```bash
+./scripts/diag_systemd-smoke.sh
+```
+
+**Testy:**
+
+1. **systemd-analyze verify** — sprawdza poprawność składni wszystkich `.service`
+2. **Path validation** — uruchamia `diag_validate-systemd-paths.py`
+3. **Deprecated patterns** — wykrywa przestarzałe ścieżki:
+   - `/workspaces/` (powinno być `/home/pi/robot`)
+   - `ops/` (powinno być `scripts/`)
+   - `tools/` (powinno być `scripts/`)
+4. **Consistency checks** — sprawdza czy usługi Python mają ustawiony `WorkingDirectory`
+
+**Output:**
+```
+Rider-Pi Systemd Services Smoke Test
+=====================================
+
+Test 1: systemd-analyze verify
+-------------------------------
+✓ rider-api.service: syntax valid
+✓ rider-broker.service: syntax valid
+...
+
+Test Summary
+============
+Total service files: 16
+✓ All tests passed!
+```
+
+**CI Integration:**
+
+Test jest automatycznie uruchamiany w każdym PR przez workflow `quality-guard.yml`:
+
+```yaml
+- name: Validate systemd service files
+  run: bash scripts/diag_systemd-smoke.sh
+```
+
+---
+
+**Ostatnia aktualizacja:** 2025-10

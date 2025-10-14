@@ -122,3 +122,11 @@ jobs:
             echo "::endgroup::"
             exit 1
           fi
+
+      # ---- Systemd service files validation ----
+      - name: Validate systemd service files
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Validating systemd service files..."
+          bash scripts/diag_systemd-smoke.sh
