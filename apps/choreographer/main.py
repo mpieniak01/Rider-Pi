@@ -59,7 +59,7 @@ def match_event(event_payload: dict, match_criteria: dict) -> bool:
         
         actual_value = event_payload[field]
         
-        # Support wildcards and partial matching
+        # Support wildcards ('*'), exact match, and list membership
         if expected_value == "*":
             continue
         
