@@ -1,8 +1,5 @@
-from __future__ import annotations
-
 """Tests for choreographer event mapping logic."""
-
-
+from __future__ import annotations
 
 def test_match_event_exact():
     """Test exact match of event payload."""

@@ -18,12 +18,13 @@ Usage:
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 # Add project root to path
 repo_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(repo_root))
+
+import time
 
 from common.bus import BusPub, BusSub
 

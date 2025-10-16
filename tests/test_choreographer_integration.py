@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 """Integration tests for choreographer module."""
+from __future__ import annotations
 
 import time
 from unittest.mock import MagicMock, patch

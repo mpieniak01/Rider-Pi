@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 """
 apps/choreographer/main.py — Choreographer service
 
@@ -13,6 +11,7 @@ Example flow:
   Output: PUB("command.face.expression") → {"expression": "happy"}
           PUB("motion") → {"type": "drive", "lx": 0.3, "az": 0.0}
 """
+from __future__ import annotations
 
 import logging
 import os
@@ -20,8 +19,6 @@ import signal
 import sys
 
 from common.bus import BusPub, BusSub
-
-# Ensure project root is in path
 
 # Configure logging
 LOG_LEVEL = os.getenv("CHOREOGRAPHER_LOG_LEVEL", "INFO").upper()

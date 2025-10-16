@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 """Configuration loading for choreographer module."""
+from __future__ import annotations
 
 import os
 from pathlib import Path
@@ -11,7 +10,7 @@ except ImportError:
     try:
         import tomli as tomllib  # type: ignore
     except ImportError:
-        raise ImportError("tomli is required for Python < 3.11. Install with: pip install tomli")
+        raise ImportError("tomli is required for Python < 3.11. Install with: pip install tomli") from None
 
 
 def load_choreography_config(config_path: str | None = None) -> dict:
