@@ -1,5 +1,5 @@
-# ruff: noqa: E402
 #!/usr/bin/env python3
+# ruff: noqa: E402, T201
 """
 Demo script showing how to test choreographer with simulated events.
 
@@ -16,6 +16,7 @@ Usage:
     # Terminal 3: Run this demo
     python3 scripts/demo/choreographer_demo.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -29,7 +30,7 @@ sys.path.insert(0, str(repo_root))
 from common.bus import BusPub, BusSub
 
 
-def demo_sentiment_events():
+def demo_sentiment_events() -> None:
     """Publish sample sentiment events to demonstrate choreography."""
     print("=" * 60)
     print("Choreographer Demo - Sentiment Events")
@@ -38,24 +39,20 @@ def demo_sentiment_events():
     print("This demo publishes sentiment events that trigger choreographies.")
     print("Make sure the choreographer is running in another terminal.")
     print()
-    
+
     pub = BusPub(warmup_ms=100)
-    
+
     sentiments = [
         ("joy", "Triggering JOY choreography..."),
         ("sad", "Triggering SAD choreography..."),
         ("neutral", "Triggering NEUTRAL choreography..."),
         ("joy", "Triggering JOY again..."),
     ]
-    
+
     try:
         for sentiment, description in sentiments:
             print(f"\n{description}")
-            payload = {
-                "sentiment": sentiment,
-                "confidence": 0.9,
-                "source": "demo"
-            }
+            payload = {"sentiment": sentiment, "confidence": 0.9, "source": "demo"}
             pub.publish("events.sentiment", payload, add_ts=True)
             print(f"  Published: events.sentiment → {payload}")
             print("  Expected choreography:")
@@ -66,18 +63,18 @@ def demo_sentiment_events():
                 print("    - Face: sad expression")
             else:
                 print("    - Face: neutral expression")
-            
+
             time.sleep(3)  # Wait between events
-        
+
         print("\n" + "=" * 60)
         print("Demo complete!")
         print("=" * 60)
-    
+
     finally:
         pub.close()
 
 
-def demo_listen_commands():
+def demo_listen_commands() -> None:
     """Listen to commands published by choreographer."""
     print("=" * 60)
     print("Choreographer Demo - Command Listener")
@@ -86,10 +83,10 @@ def demo_listen_commands():
     print("Listening for commands from choreographer...")
     print("Press Ctrl+C to stop.")
     print()
-    
+
     # Subscribe to all command topics and motion
     sub = BusSub(["command", "motion"])
-    
+
     try:
         while True:
             topic, payload = sub.recv(timeout_ms=1000)
@@ -97,26 +94,26 @@ def demo_listen_commands():
                 print(f"\n[{time.strftime('%H:%M:%S')}] Received command:")
                 print(f"  Topic: {topic}")
                 print(f"  Payload: {payload}")
-    
+
     except KeyboardInterrupt:
         print("\nStopped listening.")
-    
+
     finally:
         sub.close()
 
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Choreographer demo")
     parser.add_argument(
         "mode",
         choices=["publish", "listen"],
-        help="publish: send test events; listen: monitor commands"
+        help="publish: send test events; listen: monitor commands",
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.mode == "publish":
         demo_sentiment_events()
     else:
