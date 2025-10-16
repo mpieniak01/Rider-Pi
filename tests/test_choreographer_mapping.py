@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """Tests for choreographer event mapping logic."""
 
-import pytest
 
 
 def test_match_event_exact():
