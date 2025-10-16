@@ -231,7 +231,8 @@ apps/choreographer/
 ```
 
 ## Zależności
-
+- **Python 3.11+** (stdlib `tomllib` dla parsowania TOML)
+  lub **Python 3.9–3.10** z zewnętrznym pakietem [`tomli`](https://pypi.org/project/tomli/) — wymagany fallback w kodzie
 ### Wewnętrzne (w repo)
 - `common.bus.BusPub` — publikacja komend
 - `common.bus.BusSub` — subskrypcja zdarzeń
