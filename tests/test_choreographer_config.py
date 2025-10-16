@@ -6,9 +6,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
-
-
 def test_load_default_config():
     """Test loading default choreography config."""
     from apps.choreographer.config import load_choreography_config
