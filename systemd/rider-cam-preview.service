@@ -10,7 +10,8 @@ Type=simple
 User=pi
 Group=pi
 # dostęp do /dev/video* (na wszelki wypadek)
-SupplementaryGroups=video,input
+# (lista po SPACJI, nie po przecinku)
+SupplementaryGroups=video input
 
 WorkingDirectory=/home/pi/robot
 
