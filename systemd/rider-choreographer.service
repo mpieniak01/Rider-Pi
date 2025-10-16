@@ -1,0 +1,45 @@
+[Unit]
+Description=Rider-Pi Choreographer (event orchestration)
+After=network-online.target rider-broker.service
+Wants=network-online.target
+Requires=rider-broker.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+
+# Python environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONNOUSERSITE=1
+Environment=PYTHONPATH=/home/pi/robot
+Environment=PYTHONFAULTHANDLER=1
+
+# Choreographer configuration
+Environment=CHOREOGRAPHER_LOG_LEVEL=INFO
+Environment=CHOREOGRAPHER_CONFIG=/home/pi/robot/config/choreography.toml
+Environment=CHOREOGRAPHER_WARMUP_MS=10
+
+# Bus configuration
+Environment=BUS_XPUB=tcp://127.0.0.1:5556
+Environment=BUS_XSUB=tcp://127.0.0.1:5555
+
+# External ENV (optional; will override values above)
+EnvironmentFile=-/etc/default/rider
+EnvironmentFile=-/etc/default/rider-choreographer
+
+# Start choreographer
+ExecStart=/usr/bin/python3 -u -m apps.choreographer
+
+Restart=always
+RestartSec=0.5
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=process
+KillSignal=SIGINT
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
