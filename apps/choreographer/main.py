@@ -14,7 +14,6 @@ Example flow:
           PUB("motion") → {"type": "drive", "lx": 0.3, "az": 0.0}
 """
 
-import json
 import logging
 import os
 import signal
