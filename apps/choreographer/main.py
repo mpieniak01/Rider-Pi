@@ -11,7 +11,7 @@ commands to multiple modules.
 Example flow:
   Input:  SUB("events.sentiment") → {"sentiment": "joy", "confidence": 0.9}
   Output: PUB("command.face.expression") → {"expression": "happy"}
-          PUB("command.motion.action") → {"action": "wag", "duration": 2.0}
+          PUB("motion") → {"type": "drive", "lx": 0.3, "az": 0.0}
 """
 
 import json

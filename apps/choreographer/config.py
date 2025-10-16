@@ -3,8 +3,15 @@ from __future__ import annotations
 """Configuration loading for choreographer module."""
 
 import os
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib  # type: ignore[attr-defined]
+except ImportError:
+    try:
+        import tomli as tomllib  # type: ignore
+    except ImportError:
+        raise ImportError("tomli is required for Python < 3.11. Install with: pip install tomli")
 
 
 def load_choreography_config(config_path: str | None = None) -> dict:

@@ -19,14 +19,14 @@ Wejście:  SUB("events.sentiment") → {"sentiment": "joy", "confidence": 0.9, "
 Mapowanie: config/choreography.toml → trigger match: sentiment=="joy"
           ↓
 Akcje:    PUB("command.face.expression") → {"expression": "happy", "duration": 3.0}
-          PUB("command.motion.action") → {"action": "wag", "speed": 0.5, "duration": 2.0}
+          PUB("motion") → {"type": "drive", "lx": 0.3, "az": 0.0}
 ```
 
 ## Przykład pożądanego zachowania
 
 Gdy moduł `voice` (a konkretnie NLU lub chat) wykryje w rozmowie sentyment `joy` (radość), Choreograf:
 1. Wysyła komendę do modułu `ui/face`, aby wyświetlił animację uśmiechu (`expression: "happy"`)
-2. Wysyła komendę do modułu `motion`, aby wykonał predefiniowany, "radosny" ruch (np. `action: "wag"`)
+2. Wysyła komendę do modułu `motion`, aby wykonał ruch do przodu (`type: "drive", "lx": 0.3`)
 
 ## Konfiguracja
 
@@ -61,11 +61,11 @@ expression = "happy"
 duration = 3.0
 
 [[mappings.actions]]
-topic = "command.motion.action"
+topic = "motion"
 [mappings.actions.payload]
-action = "wag"
-speed = 0.5
-duration = 2.0
+type = "drive"
+lx = 0.3
+az = 0.0
 ```
 
 #### Struktura mapowania
@@ -101,10 +101,11 @@ topic = "command.face.gesture"
 gesture = "blink"
 
 [[mappings.actions]]
-topic = "command.motion.action"
+topic = "motion"
 [mappings.actions.payload]
-action = "jump"
-duration = 0.5
+type = "drive"
+lx = 0.2
+az = 0.3  # slight turn
 ```
 
 **Nie wymaga to zmiany kodu** — moduł automatycznie załaduje nową konfigurację po restarcie.
@@ -209,10 +210,15 @@ Moduły, które mogą odbierać komendy z choreografa:
 - **Face** (`apps/ui/face`) — sterowanie ekspresją twarzy
   - Temat: `command.face.expression`
   - Payload: `{"expression": "happy|sad|neutral", "duration": 3.0}`
+  - **Uwaga:** W obecnej implementacji moduł face nie subskrybuje tego tematu automatycznie. Wymagana jest integracja w przyszłej wersji.
   
 - **Motion** (`apps/motion`) — sterowanie ruchem
-  - Temat: `command.motion.action`
-  - Payload: `{"action": "wag|celebrate|jump", "speed": 0.5, "duration": 2.0}`
+  - Temat: `motion`
+  - Payload dla ruchu: `{"type": "drive", "lx": 0.3, "az": 0.0}`
+  - Payload dla stop: `{"type": "stop"}`
+  - Parametry:
+    - `lx` — prędkość liniowa (forward/backward, -1.0 do 1.0)
+    - `az` — prędkość obrotowa (angular z, -1.0 do 1.0)
 
 ## Struktura kodu
 
