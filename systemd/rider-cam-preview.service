@@ -31,9 +31,8 @@ Environment=PREVIEW_ROT=0
 EnvironmentFile=-/etc/default/rider
 EnvironmentFile=-/etc/default/rider-camera
 
-# UŻYWAJ Pythona z izolowanego venv (patrz: /home/pi/robot/.venv-cam)
-# i blokada flock, by nie odpalić 2x procesu na kamerze
-ExecStart=/usr/bin/flock -n /tmp/camera.lock /home/pi/robot/.venv-cam/bin/python -u -m apps.camera.preview_lcd
+# UŻYWAJ Pythona z izolowanego venv (patrz: .venv-cam/) + flock, by nie odpalić 2x procesu na kamerze
+ExecStart=/usr/bin/flock -n /tmp/camera.lock .venv-cam/bin/python -u -m apps.camera.preview_lcd
 
 Restart=always
 RestartSec=0.5
