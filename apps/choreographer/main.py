@@ -18,7 +18,6 @@ import logging
 import os
 import signal
 import sys
-from pathlib import Path
 
 from common.bus import BusPub, BusSub
 
