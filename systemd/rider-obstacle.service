@@ -10,24 +10,46 @@ Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
+
+# Globalne ENV (opcjonalne, jeśli istnieją)
 EnvironmentFile=-/etc/default/rider
 EnvironmentFile=-/etc/default/rider-obstacle
 
-# Źródło klatek (proc z edge-preview)
+# --- I/O: ścieżki snapów i danych ---
+# Źródło klatek (PROC z edge-preview)
 Environment=SNAP_DIR=/home/pi/robot/snapshots
 Environment=PROC_PATH=/home/pi/robot/snapshots/proc.jpg
+# Katalog i plik wyniku detektora
+Environment=DATA_DIR=/home/pi/robot/data
+Environment=OBSTACLE_JSON=/home/pi/robot/data/obstacle.json
 
-# ROI + progi (dół obrazu)
+# --- ROI + progi (domyślnie dół obrazu) ---
 Environment=ROI_Y0=0.55
 Environment=ROI_H=0.40
-# min. udział krawędzi / pikseli w ROI (prosty próg alarmu)
-Environment=EDGE_AREA_PCT=0.04
-Environment=EDGE_PIX_MIN=3500
+# Progi detekcji:
+# Przy logach edge_pct≈0.08–0.13 podbijamy domyślnie tak,
+# aby „pusta scena” nie była stale present=True.
+Environment=EDGE_AREA_PCT=0.18     # udział krawędzi w ROI (0.18 = 18%)
+Environment=EDGE_PIX_MIN=16000     # minimalna liczba pikseli krawędzi w ROI
 
-# publikacja do bus/state (jeśli obstacle_roi.py to wspiera)
+# Debounce (ile kolejnych próbek musi potwierdzać stan)
+Environment=OBST_DEC_N=3
+
+# Świeżość ramek — dane starsze oznacz jako 'stale'
+Environment=SNAP_MAX_AGE_S=3.0
+
+# Publikacja do bus/state (gdy obstacle_roi.py to wspiera)
 Environment=PUBLISH=1
 
+# Bezpieczny, jednoznaczny logging bez buforowania (dodatkowo do -u)
+Environment=PYTHONUNBUFFERED=1
+
+# Pre-hook: zapewnij katalogi
+ExecStartPre=/bin/mkdir -p /home/pi/robot/snapshots /home/pi/robot/data
+
+# Detektor
 ExecStart=/usr/bin/python3 -u apps/vision/obstacle_roi.py
+
 Restart=always
 RestartSec=0.5
 TimeoutStartSec=10
