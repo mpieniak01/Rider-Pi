@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 #!/usr/bin/env python3
 """
 Demo script showing how to test choreographer with simulated events.
