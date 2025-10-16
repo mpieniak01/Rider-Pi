@@ -1,6 +1,7 @@
 """Tests for choreographer event mapping logic."""
 from __future__ import annotations
 
+
 def test_match_event_exact():
     """Test exact match of event payload."""
     from apps.choreographer.main import match_event
@@ -83,8 +84,9 @@ def test_match_event_empty_criteria():
 
 def test_process_event_no_match():
     """Test processing event with no matching choreography."""
-    from apps.choreographer.main import process_event
     from unittest.mock import MagicMock
+
+    from apps.choreographer.main import process_event
     
     pub = MagicMock()
     mappings = [
@@ -106,8 +108,9 @@ def test_process_event_no_match():
 
 def test_process_event_with_match():
     """Test processing event with matching choreography."""
-    from apps.choreographer.main import process_event
     from unittest.mock import MagicMock
+
+    from apps.choreographer.main import process_event
     
     pub = MagicMock()
     mappings = [
@@ -137,8 +140,9 @@ def test_process_event_with_match():
 
 def test_process_event_multiple_actions():
     """Test processing event triggers multiple actions."""
-    from apps.choreographer.main import process_event
     from unittest.mock import MagicMock
+
+    from apps.choreographer.main import process_event
     
     pub = MagicMock()
     mappings = [
@@ -168,8 +172,9 @@ def test_process_event_multiple_actions():
 
 def test_process_event_wildcard_topic():
     """Test processing event with wildcard topic matching."""
-    from apps.choreographer.main import process_event
     from unittest.mock import MagicMock
+
+    from apps.choreographer.main import process_event
     
     pub = MagicMock()
     mappings = [
@@ -200,8 +205,9 @@ def test_process_event_wildcard_topic():
 
 def test_execute_action_missing_topic():
     """Test executing action without topic logs warning."""
-    from apps.choreographer.main import execute_action
     from unittest.mock import MagicMock
+
+    from apps.choreographer.main import execute_action
     
     pub = MagicMock()
     action = {
@@ -217,8 +223,9 @@ def test_execute_action_missing_topic():
 
 def test_execute_action_with_payload():
     """Test executing action with payload."""
-    from apps.choreographer.main import execute_action
     from unittest.mock import MagicMock
+
+    from apps.choreographer.main import execute_action
     
     pub = MagicMock()
     action = {
