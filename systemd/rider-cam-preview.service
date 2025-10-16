@@ -10,7 +10,7 @@ Type=simple
 User=pi
 Group=pi
 # dostęp do /dev/video* (na wszelki wypadek)
-SupplementaryGroups=video,input
+SupplementaryGroups=video input
 
 WorkingDirectory=/home/pi/robot
 
@@ -31,9 +31,8 @@ Environment=PREVIEW_ROT=0
 EnvironmentFile=-/etc/default/rider
 EnvironmentFile=-/etc/default/rider-camera
 
-# UŻYWAJ Pythona z izolowanego venv (patrz: /home/pi/robot/.venv-cam)
-# i blokada flock, by nie odpalić 2x procesu na kamerze
-ExecStart=/usr/bin/flock -n /tmp/camera.lock /home/pi/robot/.venv-cam/bin/python -u -m apps.camera.preview_lcd
+# Używamy systemowego Pythona (CI-friendly) + flock, żeby nie odpalić 2x kamery
+ExecStart=/usr/bin/flock -n /tmp/camera.lock /usr/bin/python3 -u -m apps.camera.preview_lcd
 
 Restart=always
 RestartSec=0.5

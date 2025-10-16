@@ -1,0 +1,100 @@
+# Choreography configuration
+# Defines mappings from events to synchronized actions across modules
+
+# Example mapping: when joy sentiment is detected, show happy face and happy movement
+[[mappings]]
+name = "joy_response"
+description = "Respond to joyful sentiment with happy expression and movement"
+
+[mappings.trigger]
+topic = "events.sentiment"
+# Match criteria: all fields must match for trigger to fire
+[mappings.trigger.match]
+sentiment = "joy"
+
+[[mappings.actions]]
+topic = "command.face.expression"
+[mappings.actions.payload]
+expression = "happy"
+duration = 3.0
+
+[[mappings.actions]]
+topic = "motion"
+[mappings.actions.payload]
+type = "drive"
+lx = 0.3
+az = 0.0
+
+
+# Example: sadness response
+[[mappings]]
+name = "sadness_response"
+description = "Respond to sad sentiment with sad face"
+
+[mappings.trigger]
+topic = "events.sentiment"
+[mappings.trigger.match]
+sentiment = "sad"
+
+[[mappings.actions]]
+topic = "command.face.expression"
+[mappings.actions.payload]
+expression = "sad"
+duration = 3.0
+
+
+# Example: neutral sentiment
+[[mappings]]
+name = "neutral_response"
+description = "Respond to neutral sentiment with neutral face"
+
+[mappings.trigger]
+topic = "events.sentiment"
+[mappings.trigger.match]
+sentiment = "neutral"
+
+[[mappings.actions]]
+topic = "command.face.expression"
+[mappings.actions.payload]
+expression = "neutral"
+
+
+# Example: anger response (demonstrates multiple sentiments)
+[[mappings]]
+name = "anger_response"
+description = "Respond to anger with appropriate expression"
+
+[mappings.trigger]
+topic = "events.sentiment"
+[mappings.trigger.match]
+sentiment = ["anger", "angry"]  # Can match multiple values
+
+[[mappings.actions]]
+topic = "command.face.expression"
+[mappings.actions.payload]
+expression = "sad"  # Use sad for anger (as we only have happy/sad/neutral)
+duration = 2.0
+
+
+# Example: NLU emotion detection (if implemented)
+[[mappings]]
+name = "nlu_joy_response"
+description = "Respond to NLU-detected joy"
+
+[mappings.trigger]
+topic = "events.nlu.emotion"
+[mappings.trigger.match]
+emotion = "joy"
+
+[[mappings.actions]]
+topic = "command.face.expression"
+[mappings.actions.payload]
+expression = "happy"
+duration = 3.0
+
+[[mappings.actions]]
+topic = "motion"
+[mappings.actions.payload]
+type = "drive"
+lx = 0.2
+az = 0.0

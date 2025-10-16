@@ -91,6 +91,8 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 - `vision.face`, `vision.person`, `vision.motion`
 - `voice.state`, `voice.kws`, `voice.vad`
 - `face.state`, `face.render`
+- `events.sentiment`, `events.nlu.emotion` — zdarzenia dla choreografa
+- `command.face.expression` — komendy do twarzy z choreografa
 
 ---
 
