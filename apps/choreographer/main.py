@@ -24,9 +24,6 @@ from pathlib import Path
 from common.bus import BusPub, BusSub
 
 # Ensure project root is in path
-PROJ_ROOT = os.getenv("PYTHONPATH", "/home/pi/robot")
-if PROJ_ROOT not in sys.path:
-    sys.path.insert(0, PROJ_ROOT)
 
 # Configure logging
 LOG_LEVEL = os.getenv("CHOREOGRAPHER_LOG_LEVEL", "INFO").upper()
