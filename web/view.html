@@ -17,17 +17,21 @@
   .ok{color:#5fe39a} .bad{color:#ff6b6b} .muted{opacity:.6}
   canvas{width:100%;height:140px;background:#0c1b28;border-radius:8px;border:1px solid #1d3548}
   a{color:#87b7ff}
-  .legend{display:flex;gap:14px;margin-top:6px;font-size:12px;opacity:.8}
+
+  .legend{display:flex;gap:14px;margin-top:6px;font-size:12px;opacity:.8;flex-wrap:wrap}
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
   .cpu{background:#6db3ff}.mem{background:#ffd36d}
+  .raw{background:#6db3ff}.proc{background:#ffd36d}.obst{background:#9be3b0}.edge{background:#6db3ff}
+
   .thumb{background:#0c1b28;border:1px solid #1d3548;border-radius:10px;padding:8px}
-  .thumb .cap{font-size:12px;opacity:.8;margin-bottom:6px}
   .thumb img{display:block;width:100%;height:auto;border-radius:6px}
+  .thumb.blank{background:#000;border-color:#222}
   @media (max-width:980px){.grid{grid-template-columns:1fr}}
+
   .cam-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px;border:1px solid #2b5577;background:#11263a;color:#b7cee3}
   .cam-badge.on{border-color:#2d6a4f;color:#9be3b0;background:#103226}
-  .cam-meta{font-size:12px;opacity:.8}
-  .cam-img{width:100%;height:auto;border-radius:10px;border:1px solid #1d3548;background:#0c1b28}
+  .cam-img{width:100%;height:auto;border-radius:10px;border:1px solid #1d3548;background:#0c1b28;aspect-ratio:16/9;object-fit:cover}
+
   .statusbar{position:sticky;bottom:-1px;margin-top:18px;background:#0f2233;border:1px solid #1d3548;border-radius:10px;padding:10px 12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
   .pill{padding:2px 10px;border-radius:999px;border:1px solid #2b5577;background:#11263a;color:#b7cee3}
   .pill.ok{border-color:#2d6a4f;background:#103226;color:#9be3b0}
@@ -46,6 +50,7 @@
     <a href="#" id="langPL">PL</a> | <a href="#" id="langEN">EN</a>
   </div>
 
+  <!-- RZĄD 1 -->
   <div class="grid">
     <div class="card">
       <h3 data-i18n="dash.system.title">System</h3>
@@ -85,14 +90,16 @@
         Kamera
         <span id="camBadge" class="cam-badge">…</span>
       </h3>
-      <div class="cam-meta" id="camMeta" style="margin-bottom:6px">—</div>
       <div class="thumb">
-        <div class="cap" data-i18n="dash.camera.caption">podgląd (ostatnia klatka lub komunikat)</div>
-        <img id="img_cam" class="cam-img" src="/camera/placeholder" alt="kamera">
+        <img id="img_cam" class="cam-img" src="/camera/placeholder" alt="kamera" decoding="async" loading="lazy">
+      </div>
+      <div class="legend">
+        <span><i class="dot raw"></i><span id="leg_cam_txt">RAW • age: —</span></span>
       </div>
     </div>
   </div>
 
+  <!-- RZĄD 2 -->
   <div class="grid" style="margin-top:18px">
     <div class="card">
       <h3 data-i18n="dash.health.title">Health</h3>
@@ -105,16 +112,35 @@
     </div>
 
     <div class="card">
-      <h3 data-i18n="dash.presence.title">Obecność (vision.state)</h3>
+      <h3>Obstacle</h3>
       <div class="kv">
-        <div data-i18n="dash.presence.present">obecny</div><div id="p_present" class="bad">false</div>
-        <div data-i18n="dash.presence.confidence">pewność</div><div id="p_conf" class="muted">0.000</div>
-        <div data-i18n="dash.presence.mode">tryb</div><div id="p_mode" class="muted">—</div>
-        <div data-i18n="dash.presence.ts">ts</div><div id="p_ts" class="muted">—</div>
-        <div data-i18n="dash.presence.age">wiek</div><div id="p_age" class="muted">—</div>
+        <div>present</div><div id="obs_present" class="muted">—</div>
+        <div>confidence</div><div id="obs_conf" class="muted">—</div>
+        <div>edge_pct</div><div id="obs_edge" class="muted">—</div>
       </div>
     </div>
 
+    <div class="card">
+      <h3>ROI histogram — edges</h3>
+      <canvas id="binsCanvas" width="300" height="140"></canvas>
+      <div class="legend">
+        <span><i class="dot edge"></i><span id="binsLegendTxt">LOW/HIGH: — / — • edge_pct: —</span></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 data-i18n="dash.camera_proc.title">Kamera — PROC</h3>
+      <div class="thumb">
+        <img id="img_proc" class="cam-img" src="/camera/placeholder" alt="processed camera" decoding="async" loading="lazy">
+      </div>
+      <div class="legend">
+        <span><i class="dot proc"></i><span id="leg_proc_txt">PROC • age: —</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RZĄD 3 -->
+  <div class="grid" style="margin-top:18px">
     <div class="card">
       <h3 data-i18n="dash.links.title">Linki</h3>
       <div class="kv">
@@ -126,31 +152,27 @@
     </div>
 
     <div class="card">
-      <h3 data-i18n="dash.camera_proc.title">Kamera — PROC</h3>
-      <div class="thumb">
-        <div class="cap" data-i18n="dash.camera_proc.caption">ramki / etykiety</div>
-        <img id="img_proc" class="cam-img" src="/camera/placeholder" alt="processed camera">
-      </div>
-    </div>
-  </div>
-
-  <div class="grid" style="margin-top:18px">
-    <div class="card">
-      <h3>Obstacle</h3>
-      <div class="kv">
-        <div>present</div><div id="obs_present" class="muted">—</div>
-        <div>confidence</div><div id="obs_conf" class="muted">—</div>
-        <div>edge_pct</div><div id="obs_edge" class="muted">—</div>
-      </div>
-    </div>
-
-    <div class="card">
       <h3>Snap freshness</h3>
       <div class="kv">
         <div>raw.age</div><div id="age_raw" class="muted">—</div>
         <div>proc.age</div><div id="age_proc" class="muted">—</div>
       </div>
       <div class="hint" style="margin-top:6px;opacity:.7">Źródło: <code>/vision/snap-info</code></div>
+    </div>
+
+    <div class="card">
+      <h3 class="muted">—</h3>
+      <div class="muted">&nbsp;</div>
+    </div>
+
+    <div class="card">
+      <h3>Camera — OBST (annot)</h3>
+      <div class="thumb">
+        <img id="img_obst" class="cam-img" src="/camera/placeholder" alt="obstacle annotated" decoding="async" loading="lazy">
+      </div>
+      <div class="legend">
+        <span><i class="dot obst"></i><span id="leg_obst_txt">OBST • ROI overlay</span></span>
+      </div>
     </div>
   </div>
 
@@ -170,207 +192,256 @@
 import { initI18n, applyDom, t, setLang } from '/web/i18n.js?v=3';
 
 const REFRESH_MS = 2000;
-const CAM_REFRESH_MS = 1000; // częstsze odświeżanie podglądu
-const SNAP_STALE_S = 5;      // heurystyka UI (API i tak daje no-store)
+const SNAP_STALE_S = 5;
+
 const el = id=>document.getElementById(id);
 const setTxt=(id,txt)=>{const e=el(id); if(e) e.textContent=txt}
 const setCls=(id,cls)=>{const e=el(id); if(e) e.className=cls}
 const fmt=(n,d=1)=> (n==null? '—' : (typeof n==='number'? Number(n).toFixed(d): n));
 
-/* i18n wybór języka */
-const urlLang = new URLSearchParams(location.search).get('lang');
-const saved = localStorage.getItem('lang');
-const browser = (navigator.language || '').slice(0,2).toLowerCase();
-const pick = v => v && v.toLowerCase().startsWith('en') ? 'en' : (v && v.toLowerCase().startsWith('pl') ? 'pl' : null);
-const lang = pick(urlLang) || pick(saved) || pick(browser) || 'pl';
-if (urlLang) localStorage.setItem('lang', lang);
-await initI18n(lang);
-applyDom();
-document.documentElement.setAttribute('lang', lang);
-document.title = t('dash.page_title');
-document.getElementById('langPL').addEventListener('click', e=>{e.preventDefault(); localStorage.setItem('lang','pl'); setLang('pl'); document.documentElement.setAttribute('lang','pl'); document.title=t('dash.page_title');});
-document.getElementById('langEN').addEventListener('click', e=>{e.preventDefault(); localStorage.setItem('lang','en'); setLang('en'); document.documentElement.setAttribute('lang','en'); document.title=t('dash.page_title');});
+/* --- black preview helper --- */
+const BLACK_SVG='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="100%" height="100%" fill="black"/></svg>';
+function blackify(imgEl,on=true){ if(!imgEl) return; const box=imgEl.closest('.thumb'); if(on){ imgEl.src=BLACK_SVG; box&&box.classList.add('blank'); } else { box&&box.classList.remove('blank'); } }
 
-/* wykres */
+/* i18n */
+const urlLang=new URLSearchParams(location.search).get('lang');
+const saved=localStorage.getItem('lang');
+const browser=(navigator.language||'').slice(0,2).toLowerCase();
+const pick=v=>v&&v.toLowerCase().startsWith('en')?'en':(v&&v.toLowerCase().startsWith('pl')?'pl':null);
+const lang=pick(urlLang)||pick(saved)||pick(browser)||'pl';
+if(urlLang) localStorage.setItem('lang',lang);
+await initI18n(lang); applyDom(); document.documentElement.setAttribute('lang',lang); document.title=t('dash.page_title');
+document.getElementById('langPL').addEventListener('click',e=>{e.preventDefault();localStorage.setItem('lang','pl');setLang('pl');document.documentElement.setAttribute('lang','pl');document.title=t('dash.page_title');});
+document.getElementById('langEN').addEventListener('click',e=>{e.preventDefault();localStorage.setItem('lang','en');setLang('en');document.documentElement.setAttribute('lang','en');document.title=t('dash.page_title');});
+
+/* wykres CPU/MEM */
 function drawChart(cpuArr=[], memArr=[]){
-  const c = el('chart'); if(!c) return; const ctx=c.getContext('2d');
+  const c=el('chart'); if(!c) return; const ctx=c.getContext('2d');
   ctx.clearRect(0,0,c.width,c.height);
-  const padL=30, padT=10, padR=10, padB=10; const W=c.width-padL-padR, H=c.height-padT-padB;
+  const padL=30,padT=10,padR=10,padB=10; const W=c.width-padL-padR,H=c.height-padT-padB;
   ctx.strokeStyle='#1d3548'; ctx.strokeRect(padL,padT,W,H);
   ctx.fillStyle='#8aa'; ctx.font='10px sans-serif'; ctx.textAlign='right';
-  [0,50,100].forEach(yv=>{ const y=padT+H-((yv/100)*H); ctx.beginPath(); ctx.moveTo(padL-4,y); ctx.lineTo(padL,y); ctx.strokeStyle='#1d3548'; ctx.stroke(); ctx.fillText(String(yv), padL-6, y+3); });
+  [0,50,100].forEach(yv=>{const y=padT+H-((yv/100)*H); ctx.beginPath(); ctx.moveTo(padL-4,y); ctx.lineTo(padL,y); ctx.strokeStyle='#1d3548'; ctx.stroke(); ctx.fillText(String(yv),padL-6,y+3);});
   function plot(arr,color){ if(!arr||arr.length<2) return; ctx.beginPath(); ctx.lineWidth=1.2; ctx.strokeStyle=color; const n=arr.length; for(let i=0;i<n;i++){ const x=padL+(i*(W/(n-1))); const v=Math.max(0,Math.min(100,Number(arr[i]||0))); const y=padT+H-((v/100)*H); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); }
   plot(cpuArr,'#6db3ff'); plot(memArr,'#ffd36d');
 }
 
-/* ===== KAMERA ===== */
+/* ===== KAMERY ===== */
+let lastCamReq=0,lastProcReq=0,lastObstReq=0;
+let lastSnapAges={raw:null,proc:null};
+let lastCamState={vision_enabled:undefined,on:undefined,res:null,fps:null};
+let lastObstacle={present:null,confidence:null};
+
+function setCamBadgeAndMeta(cam){
+  const camBadge=el('camBadge');
+  if(camBadge){
+    camBadge.textContent = cam?.vision_enabled ? t('dash.camera.vision_on') : t('dash.camera.vision_off');
+    camBadge.className   = 'cam-badge' + (cam?.vision_enabled ? ' on' : '');
+  }
+}
+function cameraShouldBeBlack(){
+  const visionOff=(lastCamState.vision_enabled===false)||(lastCamState.on===false);
+  const rawTooOld=(lastSnapAges.raw!=null && lastSnapAges.raw>SNAP_STALE_S);
+  const procTooOld=(lastSnapAges.proc!=null && lastSnapAges.proc>SNAP_STALE_S);
+  return visionOff||rawTooOld||procTooOld;
+}
+function setImageSafely(imgEl,url,tagStore){
+  const tag=Date.now(); tagStore.value=tag;
+  const loader=new Image(); loader.decoding='async'; loader.loading='eager';
+  loader.onload=()=>{ if(tagStore.value!==tag) return; imgEl.src=url; blackify(imgEl,false); };
+  loader.onerror=()=>{ if(tagStore.value!==tag) return; blackify(imgEl,true); };
+  loader.src=url;
+}
+function refreshCamLegends(){
+  const partsRaw=['RAW']; if(lastCamState.res) partsRaw.push(lastCamState.res);
+  if(lastCamState.fps!=null) partsRaw.push(`${fmt(lastCamState.fps,1)} fps`);
+  if(lastSnapAges.raw!=null) partsRaw.push(`age: ${fmt(lastSnapAges.raw,1)}s`);
+  setTxt('leg_cam_txt',partsRaw.join(' • '));
+
+  const partsProc=['PROC']; if(lastCamState.res) partsProc.push(lastCamState.res);
+  if(lastSnapAges.proc!=null) partsProc.push(`age: ${fmt(lastSnapAges.proc,1)}s`);
+  setTxt('leg_proc_txt',partsProc.join(' • '));
+
+  const partsObst=['OBST','ROI overlay'];
+  if(lastObstacle.present!=null) partsObst.push(`present: ${String(lastObstacle.present)}`);
+  if(lastObstacle.confidence!=null) partsObst.push(`conf: ${fmt(lastObstacle.confidence,3)}`);
+  setTxt('leg_obst_txt',partsObst.join(' • '));
+}
 async function refreshCamera(){
-  const imgCam=el('img_cam'), imgProc=el('img_proc'), camBadge=el('camBadge'), camMeta=el('camMeta');
-  const bust = Date.now();
-  const ph = `/camera/placeholder?t=${bust}`;
-
-  try{
-    // meta z /state (jeśli jest)
-    const st = await (await fetch('/state',{cache:'no-store'})).json().catch(()=>null);
-    const cam = st?.camera || {};
-    if (camBadge){
-      camBadge.textContent = cam.vision_enabled ? t('dash.camera.vision_on') : t('dash.camera.vision_off');
-      camBadge.className   = 'cam-badge' + (cam.vision_enabled ? ' on' : '');
-    }
-    if (camMeta){
-      camMeta.textContent = cam.last_frame_ts ? (t('dash.camera.last_frame_ts') + ' ' + new Date(cam.last_frame_ts*1000).toLocaleString())
-                                              : t('dash.camera.no_last_frame');
-    }
-  }catch{}
-
-  // ŹRÓDŁA WYRAŹNIE ROZDZIELONE:
-  const camURL  = `/vision/cam?t=${bust}`;
-  const procURL = `/vision/edge?t=${bust}`;
-
-  // HEAD → jeśli 200, ustaw src; w przeciwnym razie fallback do placeholdera
-  try{
-    const r1 = await fetch(camURL,  {method:'HEAD', cache:'no-store'});
-    if (imgCam) imgCam.src  = r1.ok ? camURL  : ph;
-  }catch{ if (imgCam) imgCam.src = ph; }
-
-  try{
-    const r2 = await fetch(procURL, {method:'HEAD', cache:'no-store'});
-    if (imgProc) imgProc.src = r2.ok ? procURL : ph;
-  }catch{ if (imgProc) imgProc.src = ph; }
+  const imgCam=el('img_cam'), imgProc=el('img_proc'), imgObst=el('img_obst');
+  if(cameraShouldBeBlack()){ blackify(imgCam,true); blackify(imgProc,true); blackify(imgObst,true); return; }
+  const bust=Date.now();
+  setImageSafely(imgCam, `/vision/cam?t=${bust}`, {get value(){return lastCamReq}, set value(v){lastCamReq=v;}});
+  setImageSafely(imgProc, `/vision/edge?t=${bust}`,{get value(){return lastProcReq},set value(v){lastProcReq=v;}});
+  setImageSafely(imgObst, `/snapshots/obst_annot.jpg?t=${bust}`, {get value(){return lastObstReq},set value(v){lastObstReq=v;}});
 }
 
-/* ===== HEALTH (status/uptime + ages z wielu źródeł) ===== */
+/* ===== HEALTH ===== */
 function updateHealth(h){
-  const ok = !!(h && (h.ok===true || h.status==='ok' || h.state==='ok'));
-  setTxt('h_status', ok? t('meta.ok'): 'degraded'); setCls('h_status', ok?'ok':'bad');
+  const ok=!!(h && (h.ok===true || h.status==='ok' || h.state==='ok'));
+  setTxt('h_status', ok? t('meta.ok'):'degraded'); setCls('h_status', ok?'ok':'bad');
 
   if(h && h.uptime_s!=null){
-    const s = Math.max(0, Math.floor(h.uptime_s));
-    const HH = Math.floor(s/3600), MM = String(Math.floor((s%3600)/60)).padStart(2,'0'), SS = String(s%60).padStart(2,'0');
-    setTxt('h_uptime', `${HH}:${MM}:${SS}`);
+    const s=Math.max(0,Math.floor(h.uptime_s));
+    const HH=Math.floor(s/3600), MM=String(Math.floor((s%3600)/60)).padStart(2,'0'), SS=String(s%60).padStart(2,'0');
+    setTxt('h_uptime',`${HH}:${MM}:${SS}`);
   } else setTxt('h_uptime','—');
 
-  const msg = h?.bus?.last_msg_age_s ?? h?.bus?.last_msg_age;
-  if (msg!=null) setTxt('h_msg', `${Number(msg).toFixed(1)} s`);
+  const msg=h?.bus?.last_msg_age_s ?? h?.bus?.last_msg_age;
+  if(msg!=null) setTxt('h_msg',`${Number(msg).toFixed(1)} s`);
 
-  let hb = h?.bus?.last_heartbeat_age_s ?? h?.bus?.last_hb_age_s ?? h?.bus?.heartbeat_age_s ?? null;
-  if (hb==null){
-    const ts = h?.bus?.last_heartbeat_ts ?? h?.bus?.heartbeat_ts ?? null;
-    if (ts!=null) hb = Math.max(0, (Date.now()/1000) - Number(ts));
+  let hb=h?.bus?.last_heartbeat_age_s ?? h?.bus?.last_hb_age_s ?? h?.bus?.heartbeat_age_s ?? null;
+  if(hb==null){
+    const ts=h?.bus?.last_heartbeat_ts ?? h?.bus?.heartbeat_ts ?? null;
+    if(ts!=null) hb=Math.max(0,(Date.now()/1000)-Number(ts));
   }
-  if (hb!=null) setTxt('h_hb', `${Number(hb).toFixed(1)} s`);
+  if(hb!=null) setTxt('h_hb',`${Number(hb).toFixed(1)} s`);
 }
-
-/* jeśli jeszcze brak, spróbuj z /api/bus/health */
 async function busHeartbeatFallback(){
   try{
-    const r = await fetch('/api/bus/health', {cache:'no-store'});
-    if(!r.ok) return;
-    const j = await r.json().catch(()=>null); if(!j) return;
-    const lag = j?.bus?.last_msg_age_s ?? j?.bus?.last_msg_age;
-    if (lag!=null) setTxt('h_msg', `${Number(lag).toFixed(1)} s`);
-    let hb = j?.bus?.last_heartbeat_age_s ?? j?.bus?.last_hb_age_s ?? j?.bus?.heartbeat_age_s;
-    if (hb==null){
-      const ts = j?.bus?.last_heartbeat_ts ?? j?.bus?.heartbeat_ts;
-      if (ts!=null) hb = Math.max(0, (Date.now()/1000) - Number(ts));
-    }
-    if (hb!=null) setTxt('h_hb', `${Number(hb).toFixed(1)} s`);
+    const r=await fetch('/api/bus/health',{cache:'no-store'}); if(!r.ok) return;
+    const j=await r.json().catch(()=>null); if(!j) return;
+    const lag=j?.bus?.last_msg_age_s ?? j?.bus?.last_msg_age;
+    if(lag!=null) setTxt('h_msg',`${Number(lag).toFixed(1)} s`);
+    let hb=j?.bus?.last_heartbeat_age_s ?? j?.bus?.last_hb_age_s ?? j?.bus?.heartbeat_age_s;
+    if(hb==null){ const ts=j?.bus?.last_heartbeat_ts ?? j?.bus?.heartbeat_ts; if(ts!=null) hb=Math.max(0,(Date.now()/1000)-Number(ts)); }
+    if(hb!=null) setTxt('h_hb',`${Number(hb).toFixed(1)} s`);
   }catch{}
 }
 
-/* ===== PRESENCE ===== */
+/* ===== STATE ===== */
+let lastHealth=null, lastState=null;
+
 function updateStateUI(s){
-  setTxt('p_present', String(!!s.present)); setCls('p_present', s.present? 'ok':'bad');
-  setTxt('p_conf', fmt(s.confidence,3)); setTxt('p_mode', s.mode || '—');
-  setTxt('p_ts', s.ts? new Date(s.ts*1000).toLocaleTimeString(): '—');
-  setTxt('p_age', (s.age_s!=null? fmt(s.age_s,1)+' s':'—'));
-  setTxt('sb_presence_state', s.present? t('dash.status.present'): t('dash.status.idle'));
-  setCls('sb_presence', 'pill '+(s.present?'ok':'bad'));
-  setTxt('sb_mode', `${t('dash.status.mode')}: ${s.mode || '—'}`);
-  setTxt('sb_conf', `${t('dash.status.conf')}: ${fmt(s.confidence,3)}`);
+  setTxt('p_present',String(!!s.present)); setCls('p_present',s.present?'ok':'bad');
+  setTxt('p_conf',fmt(s.confidence,3)); setTxt('p_mode',s.mode||'—');
+  setTxt('p_ts',s.ts? new Date(s.ts*1000).toLocaleTimeString():'—');
+  setTxt('p_age',(s.age_s!=null? fmt(s.age_s,1)+' s':'—'));
+  setTxt('sb_presence_state',s.present? t('dash.status.present'): t('dash.status.idle'));
+  setCls('sb_presence','pill '+(s.present?'ok':'bad'));
+  setTxt('sb_mode',`${t('dash.status.mode')}: ${s.mode||'—'}`);
+  setTxt('sb_conf',`${t('dash.status.conf')}: ${fmt(s.confidence,3)}`);
+
+  lastCamState.vision_enabled = s?.camera?.vision_enabled;
+  lastCamState.on = s?.camera?.on;
+  const resArr=s?.camera?.res;
+  lastCamState.res=(Array.isArray(resArr)&&resArr.length===2)?`${resArr[0]}×${resArr[1]}`:null;
+  lastCamState.fps=(s?.camera?.fps!=null)? Number(s.camera.fps):null;
+
+  setCamBadgeAndMeta(s?.camera||{});
+  refreshCamLegends();
 }
 
 /* ===== DEVICES ===== */
 function textFromLCD(lcd){
   if(!lcd) return '—';
-  const parts = [];
-  parts.push(lcd.on ? 'ON' : 'OFF');
-  if (lcd.rot!=null) parts.push('rot '+lcd.rot);
-  if (lcd.presenting) parts.push('presenting');
-  if (lcd.no_draw) parts.push('no_draw');
+  const parts=[]; parts.push(lcd.on?'ON':'OFF');
+  if(lcd.rot!=null) parts.push('rot '+lcd.rot);
+  if(lcd.presenting) parts.push('presenting');
+  if(lcd.no_draw) parts.push('no_draw');
   return parts.join(' · ');
 }
-function applyDevices({state, health}){
+function applyDevices({state,health}){
   const cam = state?.camera ?? health?.devices?.camera ?? {};
-  const resTxt = (cam.res && cam.res.length===2)? ` ${cam.res[0]}×${cam.res[1]}` : '';
-  const camTxt = (cam.on? 'ON':'OFF') + (cam.mode?(' · '+cam.mode):'') + resTxt + (cam.fps!=null? (' · '+fmt(cam.fps,1)+' fps'):'');
-  setTxt('d_cam', camTxt); setCls('d_cam', cam.on? 'ok':'muted');
+  const resTxt=(cam.res && cam.res.length===2)? ` ${cam.res[0]}×${cam.res[1]}`:'';
+  const camTxt=(cam.on?'ON':'OFF') + (cam.mode?(' · '+cam.mode):'') + resTxt + (cam.fps!=null? (' · '+fmt(cam.fps,1)+' fps'):'');
+  setTxt('d_cam',camTxt); setCls('d_cam',cam.on?'ok':'muted');
 
   const lcd = state?.lcd ?? health?.devices?.lcd ?? null;
-  const lcdTxt = textFromLCD(lcd);
-  setTxt('d_lcd', lcdTxt); setCls('d_lcd', (lcd && lcd.on)? 'ok':'muted');
+  const lcdTxt=textFromLCD(lcd);
+  setTxt('d_lcd',lcdTxt); setCls('d_lcd',(lcd && lcd.on)?'ok':'muted');
 
   const xgo = state?.xgo ?? health?.devices?.xgo ?? {};
-  const imuTxt = (xgo.on? 'ON':'OFF') + (xgo.imu_ok===true? ' · OK': (xgo.on? ' · ?':''));
-  setTxt('d_xgo_imu', imuTxt); setCls('d_xgo_imu', (xgo.on && xgo.imu_ok)? 'ok':'muted');
+  const imuTxt=(xgo.on?'ON':'OFF') + (xgo.imu_ok===true?' · OK':(xgo.on?' · ?':''));
+  setTxt('d_xgo_imu',imuTxt); setCls('d_xgo_imu',(xgo.on && xgo.imu_ok)?'ok':'muted');
 
-  const parts = [];
-  if (Array.isArray(xgo.pose) && xgo.pose.some(v=>v!=null)) {
+  const parts=[];
+  if(Array.isArray(xgo.pose) && xgo.pose.some(v=>v!=null)){
     parts.push(xgo.pose.filter(v=>v!=null).map(v=>Number(v).toFixed(1)).join('°, ')+'°');
   }
-  if (typeof xgo.pose==='string' && xgo.pose.trim()) parts.push(xgo.pose.trim());
-  if (xgo.roll!=null)  parts.push(`r ${fmt(xgo.roll,1)}°`);
-  if (xgo.pitch!=null) parts.push(`p ${fmt(xgo.pitch,1)}°`);
-  if (xgo.yaw!=null)   parts.push(`y ${fmt(xgo.yaw,1)}°`);
-  setTxt('d_xgo_pose', parts.length? parts.join(' · ') : '—');
+  if(typeof xgo.pose==='string' && xgo.pose.trim()) parts.push(xgo.pose.trim());
+  if(xgo.roll!=null)  parts.push(`r ${fmt(xgo.roll,1)}°`);
+  if(xgo.pitch!=null) parts.push(`p ${fmt(xgo.pitch,1)}°`);
+  if(xgo.yaw!=null)   parts.push(`y ${fmt(xgo.yaw,1)}°`);
+  setTxt('d_xgo_pose',parts.length? parts.join(' · ') : '—');
 
-  const battPct = (xgo.battery_pct ?? xgo.batt_pct ?? xgo.battery?.pct ?? xgo.battery);
-  setTxt('d_xgo_batt', (battPct!=null? `${Number(battPct).toFixed(0)}%` : '—'));
-  setCls('d_xgo_batt', (battPct!=null? 'ok':'muted'));
+  const battPct=(xgo.battery_pct ?? xgo.batt_pct ?? xgo.battery?.pct ?? xgo.battery);
+  setTxt('d_xgo_batt',(battPct!=null? `${Number(battPct).toFixed(0)}%`:'—'));
+  setCls('d_xgo_batt',(battPct!=null?'ok':'muted'));
 
   const fw = xgo.fw ?? state?.fw ?? health?.devices?.xgo?.fw;
   if (fw) setTxt('ci_fw', fw);
 }
 
-/* ===== OBSTACLE ===== */
+/* ===== OBSTACLE + HISTOGRAM ===== */
+function drawBinsCanvas({bins=null,edge_pct=null,low=null,high=null}={}){
+  const c=el('binsCanvas'); if(!c) return; const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  const padL=30,padT=10,padR=10,padB=16; const W=c.width-padL-padR,H=c.height-padT-padB;
+  ctx.strokeStyle='#1d3548'; ctx.strokeRect(padL,padT,W,H);
+  ctx.fillStyle='#8aa'; ctx.font='10px sans-serif'; ctx.textAlign='right';
+  [0,0.5,1].forEach(v=>{const y=padT+H-(v*H); ctx.beginPath(); ctx.moveTo(padL-4,y); ctx.lineTo(padL,y); ctx.strokeStyle='#1d3548'; ctx.stroke(); ctx.fillText(String(Math.round(v*100)),padL-6,y+3);});
+  if(low!=null){ const y=padT+H-(Math.max(0,Math.min(1,low))*H); ctx.strokeStyle='#2b8a3e'; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+W,y); ctx.stroke(); ctx.setLineDash([]);}
+  if(high!=null){ const y=padT+H-(Math.max(0,Math.min(1,high))*H); ctx.strokeStyle='#d89d2b'; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+W,y); ctx.stroke(); ctx.setLineDash([]);}
+  if(Array.isArray(bins) && bins.length){
+    const n=bins.length; const gap=2; const barW=(W-(gap*(n-1)))/n;
+    ctx.fillStyle='#6db3ff';
+    bins.forEach((v,i)=>{ const h=H*Math.max(0,Math.min(1,Number(v)||0)); const x=padL+i*(barW+gap); const y=padT+H-h; ctx.fillRect(x,y,Math.max(1,barW),h);});
+  }else if(edge_pct!=null){
+    const h=H*Math.max(0,Math.min(1,Number(edge_pct)||0)); ctx.fillStyle='#6db3ff';
+    ctx.fillRect(padL+W*0.25,padT+H-h,W*0.5,h);
+  }
+}
 function applyObstacle(o){
-  const present = !!o.present;
-  const conf = (o.confidence!=null)? Number(o.confidence).toFixed(3) : '—';
-  const pct  = (o.edge_pct!=null)? Number(o.edge_pct).toFixed(3) : '—';
-  const cls  = present ? 'ok' : 'bad';
-  const set=(id,txt,c)=>{ const e=document.getElementById(id); if(!e) return; e.textContent=txt; if(c) e.className=c; };
-  set('obs_present', String(present), cls);
-  set('obs_conf', conf);
-  set('obs_edge', pct);
+  const present=!!o.present;
+  const conf=(o.confidence!=null)? Number(o.confidence).toFixed(3):null;
+  const pct=(o.edge_pct!=null)? Number(o.edge_pct).toFixed(3):'—';
+  const cls=present?'ok':'bad';
+  const set=(id,txt,c)=>{const e=document.getElementById(id); if(!e) return; e.textContent=txt; if(c) e.className=c;};
+  set('obs_present',String(present),cls);
+  set('obs_conf',conf!=null?conf:'—');
+  set('obs_edge',pct);
+
+  lastObstacle.present=present;
+  lastObstacle.confidence=(conf!=null? Number(conf):null);
+  refreshCamLegends();
+
+  const low=o?.diag?.t_low ?? null;
+  const high=o?.diag?.t_high ?? null;
+  const bins=o?.diag?.bins ?? null;
+  const edge_raw=o?.diag?.edge_pct_raw ?? o?.edge_pct ?? null;
+
+  drawBinsCanvas({bins,edge_pct:edge_raw,low,high});
+  const txt=document.getElementById('binsLegendTxt');
+  if(txt){
+    const lowTxt=low!=null? Number(low).toFixed(2):'—';
+    const highTxt=high!=null? Number(high).toFixed(2):'—';
+    const epTxt=edge_raw!=null? Number(edge_raw).toFixed(3):'—';
+    txt.textContent=`LOW/HIGH: ${lowTxt} / ${highTxt} • edge_pct: ${epTxt}`;
+  }
 }
 async function fetchObstacle(){
-  try{
-    const r = await fetch('/vision/obstacle',{cache:'no-store'});
-    if(!r.ok) return;
-    const j = await r.json().catch(()=>null);
-    if(j) applyObstacle(j);
-  }catch{}
+  try{ const r=await fetch('/vision/obstacle',{cache:'no-store'}); if(!r.ok) return;
+       const j=await r.json().catch(()=>null); if(j) applyObstacle(j);}catch{}
 }
 
-/* ===== SNAP INFO (wiek ramek) ===== */
+/* ===== SNAP INFO ===== */
 function applySnapInfo(si){
-  const rawAge = si?.raw?.age_s;
-  const procAge = si?.proc?.age_s;
-  setTxt('age_raw',  rawAge!=null ? fmt(rawAge,1)+' s' : '—');
-  setTxt('age_proc', procAge!=null ? fmt(procAge,1)+' s' : '—');
-
-  // CAM pill heurystyka
-  const ok = (rawAge!=null && rawAge <= SNAP_STALE_S);
-  setCls('sb_cam', 'pill ' + (ok ? 'ok' : 'bad'));
-  setTxt('sb_cam', 'CAM: ' + (rawAge!=null? fmt(rawAge,1)+'s':'—') + ' / ' + (procAge!=null? fmt(procAge,1)+'s':'—'));
+  const rawAge=si?.raw?.age_s; const procAge=si?.proc?.age_s;
+  lastSnapAges.raw=rawAge ?? null; lastSnapAges.proc=procAge ?? null;
+  setTxt('age_raw',rawAge!=null? fmt(rawAge,1)+' s':'—');
+  setTxt('age_proc',procAge!=null? fmt(procAge,1)+' s':'—');
+  const ok=(rawAge!=null && rawAge<=SNAP_STALE_S);
+  setCls('sb_cam','pill '+(ok?'ok':'bad'));
+  setTxt('sb_cam','CAM: '+(rawAge!=null? fmt(rawAge,1)+'s':'—')+' / '+(procAge!=null? fmt(procAge,1)+'s':'—'));
+  const imgCam=el('img_cam'); const imgProc=el('img_proc');
+  if(rawAge!=null && rawAge>SNAP_STALE_S) blackify(imgCam,true); else blackify(imgCam,false);
+  if(procAge!=null && procAge>SNAP_STALE_S) blackify(imgProc,true); else blackify(imgProc,false);
+  refreshCamLegends();
 }
 async function refreshSnapInfo(){
-  try{
-    const r = await fetch('/vision/snap-info',{cache:'no-store'});
-    if(!r.ok) return;
-    const j = await r.json().catch(()=>null);
-    if(j) applySnapInfo(j);
-  }catch{}
+  try{ const r=await fetch('/vision/snap-info',{cache:'no-store'}); if(!r.ok) return;
+       const j=await r.json().catch(()=>null); if(j) applySnapInfo(j);}catch{}
 }
 
 /* ===== SYSINFO ===== */
@@ -378,45 +449,40 @@ function applySysinfo(si){
   if(!si) return;
   setTxt('ci_cpu', si.cpu_pct!=null? fmt(si.cpu_pct,1)+'%':'—');
   setTxt('ci_load', `${fmt(si.load1,2)}/${fmt(si.load5,2)}/${fmt(si.load15,2)}`);
-
-  const mb = v => (v==null ? '—' : Number(v).toFixed(1)+' MB');
-  if (si.mem_total_mb!=null && si.mem_used_mb!=null){
-    const pct = si.mem_pct!=null ? ` (${fmt(si.mem_pct,1)}%)` : '';
+  const mb=v=> (v==null ? '—' : Number(v).toFixed(1)+' MB');
+  if(si.mem_total_mb!=null && si.mem_used_mb!=null){
+    const pct=si.mem_pct!=null? ` (${fmt(si.mem_pct,1)}%)`:'';
     setTxt('ci_mem', `${mb(si.mem_used_mb)} / ${mb(si.mem_total_mb)}${pct}`);
   } else setTxt('ci_mem','—');
-
-  const gb = v => (v==null ? '—' : Number(v).toFixed(1)+' GB');
-  if (si.disk_total_gb!=null && si.disk_used_gb!=null){
-    const pct = si.disk_pct!=null ? ` (${fmt(si.disk_pct,1)}%)` : '';
+  const gb=v=> (v==null ? '—' : Number(v).toFixed(1)+' GB');
+  if(si.disk_total_gb!=null && si.disk_used_gb!=null){
+    const pct=si.disk_pct!=null? ` (${fmt(si.disk_pct,1)}%)`:'';
     setTxt('ci_disk', `${gb(si.disk_used_gb)} / ${gb(si.disk_total_gb)}${pct}`);
   } else setTxt('ci_disk','—');
-
   setTxt('ci_os', si.os_release || si.platform || '—');
   setTxt('d_temp', (si.temp_c!=null ? fmt(si.temp_c,1)+' °C' : '—'));
-
   const fw = si.fw || si.fw_version || si.firmware || si.version;
   if (fw) setTxt('ci_fw', fw);
-
   drawChart(si.hist_cpu || [], si.hist_mem || []);
 }
 
 /* ===== Poll ===== */
-let lastHealth = null, lastState = null;
 async function tick(){
   try{ lastHealth = await (await fetch('/healthz',{cache:'no-store'})).json(); updateHealth(lastHealth);}catch{}
   try{ await busHeartbeatFallback(); }catch{}
   try{ lastState  = await (await fetch('/state',{cache:'no-store'})).json(); updateStateUI(lastState);}catch{}
   try{ applyDevices({state:lastState, health:lastHealth}); }catch{}
   try{ const si = await (await fetch('/sysinfo',{cache:'no-store'})).json(); applySysinfo(si);}catch{}
+
+  try{ await refreshSnapInfo(); }catch{}
+  try{ await refreshCamera(); }catch{}
 }
 
 /* lekkie SSE */
 function startSSE(){ try{ const es=new EventSource('/events'); es.onmessage=()=>{}; es.onerror=()=>{}; }catch{} }
 
 setInterval(tick, REFRESH_MS); tick();
-setInterval(refreshCamera, CAM_REFRESH_MS); refreshCamera();
 setInterval(fetchObstacle, REFRESH_MS); fetchObstacle();
-setInterval(refreshSnapInfo, REFRESH_MS); refreshSnapInfo();
 startSSE();
 </script>
 </body>

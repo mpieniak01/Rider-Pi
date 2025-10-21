@@ -11,11 +11,32 @@ FACE_LCD_SPI_HZ ?= 32000000
 # Aktualny zestaw usług (repo-first systemd)
 SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service rider-cam-preview.service
 
-# VOICE (serwer www + CLI; opcjonalne VOICE_ARGS, np. ' --lang pl --tts backend=openai ')
+# Provider wyboru backendu głosowego: openai (domyślnie) lub google (Gemini)
+PROVIDER ?= openai  # allowed: openai, google
+
+# VOICE (serwer www + CLI; opcjonalne VOICE_ARGS, np. ' --lang pl ')
 VOICE_BIND ?= 127.0.0.1:8092
 
-# Dziedziczenie klucza z ~/.bash_profile do komend voice-*
-ENV_FROM_BASH = OPENAI_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf %s "$$OPENAI_API_KEY"')"
+# Dziedziczenie kluczy z ~/.bash_profile do komend voice-* (+ opcjonalne wygaszenie szumu logów gRPC)
+ENV_FROM_BASH = OPENAI_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf %s "$$OPENAI_API_KEY"')" \
+                GOOGLE_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf %s "$$GOOGLE_API_KEY"')" \
+                GRPC_VERBOSITY=ERROR GLOG_minloglevel=3 PYTHONWARNINGS="ignore:Field name .*Operation"
+
+# Wybór pliku konfiguracyjnego dla trybu FILE zależnie od PROVIDER
+ifeq ($(PROVIDER),google)
+VOICE_FILE_CFG := ./config/voice_gemini_file.toml
+else
+VOICE_FILE_CFG := ./config/voice_openai_file.toml
+endif
+
+# Wybór pliku konfiguracyjnego dla STREAMING:
+# Domyślnie OpenAI; jeśli PROVIDER=google i istnieje config/voice_gemini_streaming.toml — użyj go.
+VOICE_STREAM_CFG := ./config/voice_openai_streaming.toml
+ifeq ($(PROVIDER),google)
+ifneq ("$(wildcard ./config/voice_gemini_streaming.toml)","")
+VOICE_STREAM_CFG := ./config/voice_gemini_streaming.toml
+endif
+endif
 
 # ───────────────────────────────────────────────
 .PHONY: help
@@ -40,16 +61,17 @@ help:
 	@echo "  make logs-clean       # wyczyść logi journalctl dla rider-*"
 	@echo ""
 	@echo "═══ Voice (File-based) ═══"
-	@echo "  make voice-file-listen      # nasłuch ciągły (listen, config: voice_openai_file.toml)"
-	@echo "  make voice-file-ptt         # push-to-talk (ptt, config: voice_openai_file.toml)"
-	@echo "  make voice-file-once        # pojedyncza interakcja (once, config: voice_openai_file.toml)"
-	@echo "  make voice-asr-file FILE=path.wav   # rozpoznaj mowę z pliku"
-	@echo "  make voice-tts TEXT='Hello'         # synteza + odtworzenie"
-	@echo "  make voice-web        # uruchom serwer web UI (bind: $(VOICE_BIND))"
+	@echo "  make voice-file-listen [PROVIDER=openai|google]   # nasłuch ciągły (listen)"
+	@echo "  make voice-file-ptt    [PROVIDER=openai|google]   # push-to-talk (ptt)"
+	@echo "  make voice-file-once   [PROVIDER=openai|google]   # pojedyncza interakcja (once)"
+	@echo "  make voice-asr-file FILE=path.wav                 # rozpoznaj mowę z pliku"
+	@echo "  make voice-tts TEXT='Hello'                       # synteza + odtworzenie"
+	@echo "  make voice-web                                     # uruchom serwer web UI (bind: $(VOICE_BIND))"
 	@echo ""
 	@echo "═══ Voice (Streaming WebSocket) ═══"
-	@echo "  make voice-stream-once      # pojedyncza interakcja (realtime WS, config: voice_openai_streaming.toml)"
-	@echo "  make voice-stream-listen    # nasłuch ciągły (realtime WS, config: voice_openai_streaming.toml)"
+	@echo "  make voice-stream-once   [PROVIDER=openai|google]* # pojedyncza interakcja (realtime WS)"
+	@echo "  make voice-stream-listen [PROVIDER=openai|google]* # nasłuch ciągły (realtime WS)"
+	@echo "      * Uwaga: wariant Google jest użyty tylko jeśli istnieje config/voice_gemini_streaming.toml."
 	@echo "  make voice-kill       # zabij procesy głosowe/audio"
 	@echo "  make voice-diag       # diagnostyka systemu"
 	@echo "  make voice-smoke      # testy podstawowe (bez audio/sieci)"
@@ -69,7 +91,7 @@ help:
 	@echo "═══ Hardware Control — LCD ═══"
 	@echo "  make lcd-on           # włącz LCD (wake + DISP_ON)"
 	@echo "  make lcd-off          # wyłącz LCD (black + SLEEP, + próba BL)"
-	@echo "  make lcd-reset        # panel reset (RST) + ON"
+	@echo "  make lcd-reset        # panel reset (RST) + ON)"
 	@echo "  make lcd-black        # wyczyść ekran do czerni (presenter)"
 	@echo "  make lcd-on-hard      # twarde ON (piny + SPI), z fallbackiem BL"
 	@echo "  make lcd-off-hard     # twarde OFF (piny + SPI), z wymuszeniem BL"
@@ -83,14 +105,15 @@ help:
 	@echo ""
 	@echo "═══ Face Rendering ═══"
 	@echo "  make face-direct      # bezpośredni renderer LCD (scripts/dev_face-lcd-direct.py)"
-	@echo "  make face-api-png     # render PNG przez face_api → /tmp/face_api.png"
+	@echo "  make face-api-png     # render PNG przez face_api → /tmp/face_api.png)"
 	@echo "  make face-api-lcd     # jednorazowy push na LCD przez face_api"
 	@echo "  make face-testcard    # plansza testowa na LCD"
 	@echo "  make face-bench       # krótki benchmark FPS"
 	@echo ""
 	@echo "═══ Configuration ═══"
-	@echo "  make config-edit-stream     # edytuj config/voice_openai_streaming.toml"
-	@echo "  make config-edit-file       # edytuj config/voice_openai_file.toml"
+	@echo "  make config-edit-stream [PROVIDER=openai|google]*   # edytuj streaming cfg"
+	@echo "  make config-edit-file   [PROVIDER=openai|google]    # edytuj file cfg"
+	@echo "      * Google streaming edytowany, jeśli istnieje config/voice_gemini_streaming.toml"
 	@echo ""
 	@echo "═══ Diagnostics & Utilities ═══"
 	@echo "  make bus-spy          # podsłuch magistrali"
@@ -318,12 +341,16 @@ face-bench:
 # CONFIG HELPERS
 .PHONY: config-edit-stream config-edit-file
 config-edit-stream:
-	@echo "== Editing voice streaming config =="
-	@$${EDITOR:-nano} $(ROOT)/config/voice_openai_streaming.toml
+	@echo "== Editing voice streaming config (PROVIDER=$(PROVIDER)) =="
+	@if [ "$(PROVIDER)" = "google" ] && [ -f "$(ROOT)/config/voice_gemini_streaming.toml" ]; then \
+		$${EDITOR:-nano} "$(ROOT)/config/voice_gemini_streaming.toml"; \
+	else \
+		$${EDITOR:-nano} "$(ROOT)/config/voice_openai_streaming.toml"; \
+	fi
 
 config-edit-file:
-	@echo "== Editing voice file config =="
-	@$${EDITOR:-nano} $(ROOT)/config/voice_openai_file.toml
+	@echo "== Editing voice file config (PROVIDER=$(PROVIDER)) =="
+	@$${EDITOR:-nano} $(VOICE_FILE_CFG)
 
 # ───────────────────────────────────────────────
 # GFX / VNC
@@ -358,13 +385,13 @@ gfx-status:
 # VOICE — FILE-BASED (WAV/PCM)
 .PHONY: voice-file-listen voice-file-ptt voice-file-once voice-asr-file voice-tts voice-web
 voice-file-listen:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_file.toml listen $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_FILE_CFG) listen $(VOICE_ARGS)
 
 voice-file-ptt:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_file.toml ptt $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_FILE_CFG) ptt $(VOICE_ARGS)
 
 voice-file-once:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_file.toml once $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_FILE_CFG) once $(VOICE_ARGS)
 
 voice-asr-file:
 	@if [ -z "$(FILE)" ]; then echo "Usage: make voice-asr-file FILE=path.wav"; exit 1; fi
@@ -381,14 +408,14 @@ voice-web:
 # VOICE — STREAMING (WebSocket Realtime)
 .PHONY: voice-stream-once voice-stream-listen voice-kill voice-diag voice-smoke
 voice-stream-once:
-	@echo "== Single streaming interaction (WebSocket realtime) =="
+	@echo "== Single streaming interaction (WebSocket realtime, PROVIDER=$(PROVIDER)) =="
 	pasuspender -- \
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_streaming.toml once $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_STREAM_CFG) once $(VOICE_ARGS)
 
 voice-stream-listen:
-	@echo "== Continuous streaming listen (WebSocket realtime) =="
+	@echo "== Continuous streaming listen (WebSocket realtime, PROVIDER=$(PROVIDER)) =="
 	pasuspender -- \
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config ./config/voice_openai_streaming.toml listen $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_STREAM_CFG) listen $(VOICE_ARGS)
 
 voice-kill:
 	@echo "== Killing voice/audio processes =="
@@ -397,7 +424,6 @@ voice-kill:
 	-@pkill -f "aplay" 2>/dev/null || true
 
 # Compatibility alias: voice-free redirects to voice-kill
-# Maintained for backward compatibility; legacy scripts may use 'voice-free' instead of 'voice-kill'.
 voice-free: voice-kill
 
 voice-diag:

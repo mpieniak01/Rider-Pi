@@ -1,4 +1,4 @@
-"""Audio playback utilities for Rider-Pi voice assistant.
+""" "Audio playback utilities for Rider-Pi voice assistant.
 
 Provides clean, focused playback functionality without complex caching.
 """
@@ -23,16 +23,26 @@ from .alsa import resolved_alsa
 class PlaybackConfig:
     """Configuration for audio playback."""
 
-    backend: str = "auto"  # "auto" | "pulse" | "alsa" | command name
-    alsa_device: str | None = None  # e.g., "plughw:wm8960soundcard,0"
-    device: str | None = None  # alias from config
-    volume: int = 100  # informational only
+    # accepted: "auto" | "pulse" | "alsa" | "aplay" | "paplay"
+    backend: str = "auto"
+    # ALSA device/PCM do bezpośredniego użycia (np. "wm8960_out" albo "plughw:0,0")
+    alsa_device: str | None = None
+    # alias z pliku konfiguracyjnego (np. "wm8960_out")
+    device: str | None = None
+    volume: int = 100
     ding: dict[str, Any] = field(default_factory=dict)
 
     def resolved_alsa_device(self) -> str | None:
-        """Get resolved ALSA device name."""
-        device_name = self.alsa_device or self.device
-        return resolved_alsa(device_name)
+        """
+        Zwraca sensowną nazwę ALSA do użycia z -D (aplay) / -a (mpg123):
+        - preferuj to, co jawnie ustawiono w alsa_device
+        - jeśli nie ma, spróbuj aliasu z 'device'
+        - przepuść przez mapowanie resolved_alsa (jeśli istnieje)
+        """
+        dev = self.alsa_device or self.device
+        if not dev:
+            return None
+        return resolved_alsa(dev) or dev
 
 
 @dataclass
@@ -104,7 +114,6 @@ class PlaybackStream:
         try:
             rc = self.process.wait(timeout=timeout)
         except Exception:
-            # Force kill if hanging
             with contextlib.suppress(Exception):
                 self.process.kill()
             rc = -1
@@ -112,7 +121,6 @@ class PlaybackStream:
         stdout_data = None
         stderr_data = None
 
-        # Capture any output
         if self.process.stdout:
             with contextlib.suppress(Exception):
                 stdout_data = self.process.stdout.read()
@@ -126,115 +134,174 @@ class PlaybackStream:
         return success, output, stderr_data.decode(errors="ignore") if stderr_data else None
 
 
-def _iter_mpg123_commands(config: PlaybackConfig):
-    """Generate mpg123 command variants for streaming."""
-    path = shutil.which("mpg123")
-    if not path:
-        return []
-
-    backend = (config.backend or "pulse").lower()
-
-    # Try backends in order
-    backends = []
-    if backend in {"pulse", "alsa"}:
-        backends.append(backend)
-    else:
-        backends.extend(["pulse", "alsa"])
-    backends.append("default")  # fallback
-
-    commands = []
-    seen = set()
-
-    for backend_name in backends:
-        if backend_name in seen:
-            continue
-        seen.add(backend_name)
-
-        if backend_name == "pulse":
-            cmd = [path, "-q", "-o", "pulse", "-"]
-        elif backend_name == "alsa":
-            cmd = [path, "-q", "-o", "alsa"]
-            device = config.resolved_alsa_device()
-            if device:
-                cmd += ["-a", device]
-            cmd.append("-")
-        else:  # default
-            cmd = [path, "-q", "-"]
-
-        commands.append(cmd)
-
-    return commands
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-def _iter_aplay_commands(config: PlaybackConfig):
-    """Generate aplay command variants."""
-    path = shutil.which("aplay")
-    if not path:
-        return []
-
-    commands = []
-    device = config.resolved_alsa_device()
-
-    if device:
-        commands.append([path, "-q", "-D", device])
-    commands.append([path, "-q"])  # system default
-
-    return commands
+def _normalize_backend(name: str) -> str:
+    b = (name or "auto").lower()
+    if b == "aplay":
+        return "alsa"
+    if b == "paplay":
+        return "pulse"
+    return b
 
 
-def _iter_paplay_commands(config: PlaybackConfig):
-    """Generate paplay command variants."""
+def _iter_paplay_commands(_: PlaybackConfig):
+    """paplay for WAV/PCM (PulseAudio/PipeWire)."""
     path = shutil.which("paplay")
     if not path:
         return []
     return [[path]]
 
 
+def _unique(seq):
+    seen = set()
+    out = []
+    for x in seq:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
+
+
+def _iter_aplay_commands(cfg: PlaybackConfig, *, fmt: str | None):
+    """
+    aplay dla WAV/PCM. Kolejność:
+      1) -D <alias/alsa_device> (np. wm8960_out / plughw:…)
+      2) -D default
+      3) -D plug:default
+      4) bez -D (system default)
+    """
+    path = shutil.which("aplay")
+    if not path:
+        return []
+
+    params_pcm16 = ["-f", "S16_LE", "-r", "16000", "-c", "1"]
+
+    # zbuduj kandydatów urządzeń
+    preferred = []
+    # najpierw alias/alsa z configu
+    if cfg.device:
+        preferred.append(cfg.device)
+    if cfg.alsa_device and cfg.alsa_device != cfg.device:
+        preferred.append(cfg.alsa_device)
+    # typowe fallbacki
+    preferred += ["default", "plug:default", None]
+    preferred = _unique(preferred)
+
+    commands = []
+    for dev in preferred:
+        base = [path, "-q"]
+        if dev:
+            base += ["-D", dev]
+        # dobierz parametry dla pcm16
+        if fmt == "pcm16":
+            commands.append(base + params_pcm16)
+        else:
+            commands.append(base[:])
+
+    return commands
+
+
+def _iter_mpg123_commands(cfg: PlaybackConfig):
+    """mpg123 for MP3. Najpierw Pulse, potem ALSA (+alias)."""
+    path = shutil.which("mpg123")
+    if not path:
+        return []
+
+    cmds = []
+    # Pulse output (nie potrzebuje -a)
+    cmds.append([path, "-q", "-o", "pulse", "-"])
+
+    # ALSA output; spróbuj z konkretnym PCM/dev
+    devs = _unique([cfg.resolved_alsa_device(), cfg.device, None])
+    for d in devs:
+        if d:
+            cmds.append([path, "-q", "-o", "alsa", "-a", d, "-"])
+        else:
+            cmds.append([path, "-q", "-o", "alsa", "-"])
+
+    return cmds
+
+
+def _iter_ffplay_commands():
+    """ffplay fallback (FFmpeg)."""
+    path = shutil.which("ffplay")
+    if not path:
+        return []
+    return [[path, "-nodisp", "-autoexit", "-v", "error", "-i", "-"]]
+
+
+def _iter_sox_play_commands(fmt_hint: str):
+    """SoX play fallback."""
+    path = shutil.which("play")
+    if not path:
+        return []
+    if fmt_hint == "pcm16":
+        return [[path, "-q", "-t", "s16", "-r", "16000", "-c", "1", "-"]]
+    return [[path, "-q", "-"]]
+
+
 def _start_playback_process(
     fmt: str, config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None
-) -> subprocess.Popen[bytes] | None:
-    """Start appropriate playback process for format."""
+) -> tuple[subprocess.Popen[bytes] | None, str]:
+    """Start appropriate playback process. Returns (proc, resolved_backend)."""
     if logger is None:
         logger = voice_logging.get_logger(__name__)
 
-    backend = (config.backend or "auto").lower()
+    backend = _normalize_backend(config.backend)
 
-    # Determine command generators based on format and backend
+    # MP3
     if fmt == "mp3":
-        command_generators = [lambda: _iter_mpg123_commands(config)]
-    else:  # pcm16, wav, etc.
+        generators = [
+            lambda: _iter_mpg123_commands(config),
+            _iter_ffplay_commands,
+            lambda: _iter_sox_play_commands("mp3"),
+        ]
+    else:
+        # WAV/PCM
         if backend == "pulse":
-            command_generators = [lambda: _iter_paplay_commands(config), lambda: _iter_aplay_commands(config)]
-        elif backend == "alsa":
-            command_generators = [lambda: _iter_aplay_commands(config), lambda: _iter_paplay_commands(config)]
-        else:  # auto
-            command_generators = [
+            generators = [
                 lambda: _iter_paplay_commands(config),
-                lambda: _iter_aplay_commands(config),
-                lambda: _iter_mpg123_commands(config),
+                lambda: _iter_aplay_commands(config, fmt=None if fmt == "wav" else "pcm16"),
+                _iter_ffplay_commands,
+                lambda: _iter_sox_play_commands(fmt),
+            ]
+        elif backend == "alsa":
+            generators = [
+                lambda: _iter_aplay_commands(config, fmt=None if fmt == "wav" else "pcm16"),
+                lambda: _iter_paplay_commands(config),
+                _iter_ffplay_commands,
+                lambda: _iter_sox_play_commands(fmt),
+            ]
+        else:  # auto → preferuj ALSA najpierw (Twoje środowisko tak działa)
+            generators = [
+                lambda: _iter_aplay_commands(config, fmt=None if fmt == "wav" else "pcm16"),
+                lambda: _iter_paplay_commands(config),
+                _iter_ffplay_commands,
+                lambda: _iter_sox_play_commands(fmt),
             ]
 
-    # Try commands in order
     last_error = None
-    for generator in command_generators:
-        for cmd in generator():
+    for gen in generators:
+        for cmd in gen():
             try:
-                logger.event("playback.process.trying", cmd=cmd[:2])  # don't log full command
-
+                logger.event("playback.process.trying", cmd=cmd[:2])
                 proc = subprocess.Popen(
                     cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
                 )
-
                 logger.event("playback.process.started", cmd=cmd[0], fmt=fmt)
-                return proc
-
+                return proc, backend
             except Exception as e:
                 last_error = str(e)
                 logger.event("playback.process.failed", cmd=cmd[0], error=str(e))
                 continue
 
     logger.event("playback.process.no_working_command", last_error=last_error, fmt=fmt, backend=backend)
-    return None
+    return None, backend
 
 
 def start_stream(
@@ -247,38 +314,28 @@ def start_stream(
     """Start streaming playback process.
 
     Args:
-        fmt: Audio format ("pcm16", "mp3", etc.)
+        fmt: "pcm16" | "wav" | "mp3"
         config: Playback configuration
         logger: Logger instance
         accumulate: If True, buffer written data
 
     Returns:
-        PlaybackStream instance or None if failed
+        PlaybackStream or None
     """
     if logger is None:
         logger = voice_logging.get_logger(__name__)
 
-    process = _start_playback_process(fmt, config, logger)
+    process, resolved_backend = _start_playback_process(fmt, config, logger)
     if not process:
         return None
 
-    return PlaybackStream(process=process, fmt=fmt, backend=config.backend or "auto", accumulate=accumulate)
+    return PlaybackStream(process=process, fmt=fmt, backend=resolved_backend, accumulate=accumulate)
 
 
 def play_bytes(
     audio_data: bytes, fmt: str, config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None
 ) -> bool:
-    """Play audio bytes immediately (one-shot playback).
-
-    Args:
-        audio_data: Audio data to play
-        fmt: Format of audio data
-        config: Playback configuration
-        logger: Logger instance
-
-    Returns:
-        True if playback succeeded
-    """
+    """Play audio bytes immediately (one-shot playback)."""
     if not audio_data:
         return True
 
@@ -305,49 +362,28 @@ def play_bytes(
 
 
 def play_ding(config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None) -> bool:
-    """Play notification ding sound.
-
-    Args:
-        config: Playback configuration
-        logger: Logger instance
-
-    Returns:
-        True if ding played successfully
-    """
+    """Play notification ding sound (440Hz, 200ms, PCM16/16k)."""
     if logger is None:
         logger = voice_logging.get_logger(__name__)
 
-    # Generate simple ding tone (440Hz for 200ms)
     sample_rate = 16000
-    duration = 0.2  # seconds
-    frequency = 440  # Hz
+    duration = 0.2
+    frequency = 440
 
     import math
 
     samples = int(sample_rate * duration)
-
-    # Generate sine wave
     ding_data = bytearray()
     for i in range(samples):
         t = i / sample_rate
         sample = int(32767 * 0.3 * math.sin(2 * math.pi * frequency * t))
-        # Convert to 16-bit little-endian
-        ding_data.extend(sample.to_bytes(2, 'little', signed=True))
+        ding_data.extend(sample.to_bytes(2, "little", signed=True))
 
     return play_bytes(bytes(ding_data), "pcm16", config, logger)
 
 
 def play_file(file_path: Path | str, config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None) -> bool:
-    """Play audio file.
-
-    Args:
-        file_path: Path to audio file
-        config: Playback configuration
-        logger: Logger instance
-
-    Returns:
-        True if file played successfully
-    """
+    """Play audio file."""
     if logger is None:
         logger = voice_logging.get_logger(__name__)
 
@@ -357,7 +393,6 @@ def play_file(file_path: Path | str, config: PlaybackConfig, logger: voice_loggi
         return False
 
     try:
-        # Determine format from extension
         suffix = path.suffix.lower()
         if suffix == ".mp3":
             fmt = "mp3"
@@ -366,7 +401,6 @@ def play_file(file_path: Path | str, config: PlaybackConfig, logger: voice_loggi
         else:
             fmt = "pcm16"  # assume raw PCM
 
-        # Read and play file
         audio_data = path.read_bytes()
         return play_bytes(audio_data, fmt, config, logger)
 

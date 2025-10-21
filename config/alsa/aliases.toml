@@ -1,0 +1,16 @@
+# Rider-Pi / ALSA alias map (minimal, kanoniczny)
+
+[pcm]
+# Nazwy MUSZĄ się zgadzać z ~/.asoundrc
+wm8960_out = "wm8960_out"
+wm8960_in  = "wm8960_in"
+
+# (opcjonalne ułatwienia)
+default_out = "wm8960_out"
+default_in  = "wm8960_in"
+
+[ctl]
+# Sterownik miksera (jeśli potrzebny)
+wm8960_out  = "hw:wm8960soundcard"
+wm8960_in   = "hw:wm8960soundcard"
+default_ctl = "hw:wm8960soundcard"

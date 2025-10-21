@@ -11,43 +11,43 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
 
-# Globalne ENV (opcjonalne, jeśli istnieją)
-EnvironmentFile=-/etc/default/rider
-EnvironmentFile=-/etc/default/rider-obstacle
+# (Świadomie brak EnvironmentFile, by nic nas nie nadpisywało)
 
-# --- I/O: ścieżki snapów i danych ---
-# Źródło klatek (PROC z edge-preview)
+# --- I/O ---
 Environment=SNAP_DIR=/home/pi/robot/snapshots
 Environment=PROC_PATH=/home/pi/robot/snapshots/proc.jpg
-# Katalog i plik wyniku detektora
+#Environment=RAW_PATH=/home/pi/robot/snapshots/raw.jpg
 Environment=DATA_DIR=/home/pi/robot/data
 Environment=OBSTACLE_JSON=/home/pi/robot/data/obstacle.json
 
-# --- ROI + progi (domyślnie dół obrazu) ---
+# --- ROI ---
 Environment=ROI_Y0=0.55
 Environment=ROI_H=0.40
-# Progi detekcji:
-# Przy logach edge_pct≈0.08–0.13 podbijamy domyślnie tak,
-# aby „pusta scena” nie była stale present=True.
-Environment=EDGE_AREA_PCT=0.18     # udział krawędzi w ROI (0.18 = 18%)
-Environment=EDGE_PIX_MIN=16000     # minimalna liczba pikseli krawędzi w ROI
 
-# Debounce (ile kolejnych próbek musi potwierdzać stan)
+# --- Progi/histereza (MAŁO krawędzi => przeszkoda) ---
+Environment=EDGE_T_LOW=0.10
+Environment=EDGE_T_HIGH=0.18
+Environment=DARK_LUMA=0.15
+Environment=LAPL_VAR_MIN=30.0
+Environment=CONF_GAIN=4.0
 Environment=OBST_DEC_N=3
-
-# Świeżość ramek — dane starsze oznacz jako 'stale'
 Environment=SNAP_MAX_AGE_S=3.0
 
-# Publikacja do bus/state (gdy obstacle_roi.py to wspiera)
-Environment=PUBLISH=1
+# Legacy tylko do diag
+Environment=EDGE_AREA_PCT=0.18
+Environment=EDGE_PIX_MIN=16000
 
-# Bezpieczny, jednoznaczny logging bez buforowania (dodatkowo do -u)
+# --- Annotacje (WŁĄCZONE) ---
+Environment=OBST_ANN=1
+Environment=OBST_ANN_PATH=/home/pi/robot/snapshots/obst_annot.jpg
+Environment=OBST_BINS=24
+Environment=EDGE_BIN_LOW=0.06
+
+# PUB + logging
+Environment=PUBLISH=1
 Environment=PYTHONUNBUFFERED=1
 
-# Pre-hook: zapewnij katalogi
 ExecStartPre=/bin/mkdir -p /home/pi/robot/snapshots /home/pi/robot/data
-
-# Detektor
 ExecStart=/usr/bin/python3 -u apps/vision/obstacle_roi.py
 
 Restart=always
