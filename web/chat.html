@@ -20,9 +20,14 @@
   .msg { padding:10px 12px; border-radius:10px; border:1px solid #1b2633; background:#0e141c; }
   .meta { font-size: 12px; color:#9bb2c7; margin-bottom: 4px; display:flex; gap:8px; align-items:center;}
   .meta .pill { background:#17212b; border:1px solid #243447; border-radius: 999px; padding: 2px 8px; }
-  .err { color: #ff8a8a; font-size: 13px; margin-top: 6px; }
+  .err { color: #ff8a8a; font-size: 13px; margin-top: 6px; min-height: 1.2em; word-break: break-word; }
   .topbar { display:flex; gap:8px; align-items:center; margin-bottom:10px;}
-  .topbar input { width: 200px; }
+  .topbar input { width: 220px; }
+  .status { display:flex; align-items:center; gap:6px; font-size:12px; color:#9bb2c7 }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; background:#6e829b; }
+  .dot.ok { background:#37d67a; }
+  .dot.err { background:#ff6b6b; }
+  .muted { opacity:.7 }
 </style>
 </head>
 <body>
@@ -30,34 +35,71 @@
     <h1>💬 Rider-Pi – Chat</h1>
     <div class="card">
       <div class="topbar">
-        <input id="user" type="text" placeholder="użytkownik (np. web)" value="web">
+        <input id="user" type="text" placeholder="użytkownik (np. web)" value="web" maxlength="64" spellcheck="false" />
         <button id="refresh">Odśwież</button>
-        <span id="status" style="font-size:12px;color:#9bb2c7"></span>
+        <span class="status"><span id="dot" class="dot"></span><span id="status">—</span></span>
       </div>
 
-      <div class="msgs" id="msgs"></div>
+      <div class="msgs" id="msgs" aria-live="polite"></div>
 
       <div class="row">
-        <input id="msg" type="text" placeholder="Napisz wiadomość i naciśnij Enter…">
+        <input id="msg" type="text" placeholder="Napisz wiadomość i naciśnij Enter…" maxlength="2000" />
         <button id="send">Wyślij</button>
       </div>
       <div class="err" id="err"></div>
     </div>
+    <div class="muted" style="font-size:12px; margin-top:8px;">
+      Polling co 10s (wstrzymywany gdy karta jest ukryta).
+    </div>
   </div>
 
 <script>
-const API_BASE = ''; // ten sam host:port (pusty = relative, np. /api/chat/…)
+/* --- Konfiguracja --- */
+function getQueryParam(name){
+  const m = new URLSearchParams(location.search).get(name);
+  return m && m.trim() ? m.trim() : null;
+}
+const API_BASE = getQueryParam('api') || '';
+
+/* --- Elementy --- */
 const el = (id)=>document.getElementById(id);
-const msgs = el('msgs'), sendBtn = el('send'), msgIn = el('msg');
-const userIn = el('user'), errBox = el('err'), status = el('status');
+const msgs = el('msgs');
+const sendBtn = el('send');
+const msgIn = el('msg');
+const userIn = el('user');
+const errBox = el('err');
+const statusEl = el('status');
+const dotEl = el('dot');
+
+let pollTimer = null;
+let inFlightCtrl = null;
+
+/* --- Helpers --- */
+// NORMALIZACJA CZASU: sec → ms; µs/ns → ms; ms zostawiamy
+function normalizeTs(x){
+  const n = Number(x);
+  if (!isFinite(n) || n <= 0) return NaN;
+  // sekundy (typowo ~1.7e9) → ms
+  if (n < 1e12) return n * 1000;
+  // mikrosekundy (typowo ~1.7e15) → ms
+  if (n >= 1e14 && n < 1e17) return Math.floor(n / 1000);
+  // nanosekundy (>=1e17) → ms
+  if (n >= 1e17) return Math.floor(n / 1e6);
+  // milisekundy (~1.7e12) zostawiamy
+  return n;
+}
 
 function fmtTs(ts){
   try {
-    if (!ts) return '';
-    // ts może być sekundowy lub ms – zgadnij:
-    const t = (String(ts).length < 13) ? Number(ts)*1000 : Number(ts);
-    return new Date(t).toLocaleString();
-  } catch { return ''; }
+    const t = normalizeTs(ts);
+    if (!isFinite(t)) return '—';
+    return new Date(t).toLocaleString('pl-PL');
+  } catch { return '—'; }
+}
+
+function setStatus(ok, text){
+  statusEl.textContent = text || (ok ? 'OK' : 'błąd');
+  dotEl.className = 'dot ' + (ok ? 'ok' : 'err');
 }
 
 function renderItems(items){
@@ -65,64 +107,115 @@ function renderItems(items){
   (items||[]).forEach(it=>{
     const div = document.createElement('div'); div.className='msg';
     const meta = document.createElement('div'); meta.className='meta';
-    const pillUser = document.createElement('span'); pillUser.className='pill'; pillUser.textContent = it.user ?? 'unknown';
-    const pillTs = document.createElement('span'); pillTs.className='pill'; pillTs.textContent = fmtTs(it.ts);
-    meta.appendChild(pillUser); meta.appendChild(pillTs);
+    const pillUser = document.createElement('span'); pillUser.className='pill';
+    pillUser.textContent = it.user || 'user';
+    const pillTime = document.createElement('span'); pillTime.className='pill';
+    pillTime.textContent = fmtTs(it.ts);
+    meta.appendChild(pillUser);
+    meta.appendChild(pillTime);
     const body = document.createElement('div');
-    const text = it.msg ?? it.text ?? JSON.stringify(it);
-    body.textContent = text;
-    div.appendChild(meta); div.appendChild(body);
+    body.textContent = it.msg ?? '';
+    div.appendChild(meta);
+    div.appendChild(body);
     msgs.appendChild(div);
   });
   msgs.scrollTop = msgs.scrollHeight;
 }
 
+async function apiFetch(url, opts={}){
+  if (inFlightCtrl) inFlightCtrl.abort();
+  inFlightCtrl = new AbortController();
+  const options = { cache: 'no-store', signal: inFlightCtrl.signal, ...opts };
+  return fetch(url, options);
+}
+
+async function pingOnce(){
+  try{
+    const r = await apiFetch(`${API_BASE}/api/chat/ping`, { method:'GET' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    setStatus(true, `OK • ${new Date().toLocaleTimeString('pl-PL')}`);
+  }catch(e){
+    setStatus(false, `błąd ping: ${e.message}`);
+  }
+}
+
 async function loadHistory(limit=50){
-  errBox.textContent = '';
-  status.textContent = 'Ładowanie…';
   try {
-    const r = await fetch(`${API_BASE}/api/chat/history?limit=${limit}`, {method:'GET'});
+    errBox.textContent = '';
+    setStatus(true, '⏳ pobieram…');
+    const url = `${API_BASE}/api/chat/history?limit=${encodeURIComponent(limit)}`;
+    const r = await apiFetch(url, { method:'GET' });
     const data = await r.json().catch(()=>({}));
-    if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+    if(!r.ok || !data?.ok){
+      throw new Error(data?.error || `HTTP ${r.status}`);
+    }
     renderItems(data.items || []);
-    status.textContent = `OK • ${new Date().toLocaleTimeString()}`;
+    setStatus(true, `OK • ${new Date().toLocaleTimeString('pl-PL')}`);
   } catch(e){
+    setStatus(false, 'błąd');
     errBox.textContent = `Błąd historii: ${e.message}`;
-    status.textContent = 'Błąd';
   }
 }
 
 async function sendMessage(){
-  const msg = msgIn.value.trim();
+  const msg = (msgIn.value || '').trim();
   const user = (userIn.value || 'web').trim();
-  errBox.textContent = '';
-  if (!msg) { errBox.textContent = 'Wpisz wiadomość.'; return; }
+  if(!msg){ msgIn.focus(); return; }
   sendBtn.disabled = true;
-  try {
+  try{
+    errBox.textContent = '';
+    try { localStorage.setItem('rider_chat_user', user); } catch {}
     const r = await fetch(`${API_BASE}/api/chat/send`, {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({msg, user})
+      headers:{'Content-Type':'application/json', 'Cache-Control':'no-store'},
+      body: JSON.stringify({ msg, user }),
+      cache: 'no-store'
     });
     const data = await r.json().catch(()=>({}));
-    if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+    if (!r.ok || !data?.ok) throw new Error(data?.error || `HTTP ${r.status}`);
     msgIn.value = '';
     await loadHistory(50);
   } catch(e){
     errBox.textContent = `Błąd wysyłki: ${e.message}`;
+    setStatus(false, 'błąd wysyłki');
   } finally {
     sendBtn.disabled = false;
     msgIn.focus();
   }
 }
 
+/* --- Polling --- */
+function startPolling(){
+  stopPolling();
+  pollTimer = setInterval(()=>{
+    if (document.hidden) return;
+    loadHistory(50);
+  }, 10000);
+}
+function stopPolling(){
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+document.addEventListener('visibilitychange', ()=>{
+  if (document.hidden) {
+    stopPolling();
+  } else {
+    loadHistory(50);
+    startPolling();
+  }
+});
+
 document.addEventListener('DOMContentLoaded', ()=>{
+  try {
+    const u = localStorage.getItem('rider_chat_user');
+    if (u && u.trim()) userIn.value = u.trim();
+  } catch {}
+  pingOnce();
   loadHistory(50);
   el('refresh').addEventListener('click', ()=>loadHistory(50));
   sendBtn.addEventListener('click', sendMessage);
   msgIn.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter') sendMessage(); });
-  // co 10s lekki polling
-  setInterval(()=>loadHistory(50), 10000);
+  startPolling();
 });
 </script>
 </body>

@@ -32,6 +32,59 @@ if not hasattr(app, "get"):
     app.post = _route_post  # type: ignore[attr-defined]
 
 # ───────────────────────────────────────────────────────────────────────────────
+# Opcjonalne lokalne backendy (Piper / Vosk) – importy „best-effort”
+# ───────────────────────────────────────────────────────────────────────────────
+
+_PIPER_OK = False
+_VOSK_OK = False
+try:
+    import piper  # type: ignore  # pip install piper-tts
+
+    _PIPER_OK = True
+except Exception:
+    _PIPER_OK = False
+
+try:
+    from vosk import KaldiRecognizer, Model  # type: ignore  # pip install vosk
+
+    _VOSK_OK = True
+except Exception:
+    _VOSK_OK = False
+
+# Ścieżki do modeli można nadpisać ENV lub ustawić w config/voice.toml → loader je wczyta.
+PIPER_MODEL = os.getenv("PIPER_MODEL", "/home/pi/models/piper/pl_PL-gosia-medium.onnx")
+VOSK_MODEL = os.getenv("VOSK_MODEL", "/home/pi/models/vosk/vosk-model-small-pl-0.22")
+
+# Cache instancji lokalnych backendów
+_local_piper_voice = None
+_local_vosk_model = None
+
+
+def _get_local_piper_voice():
+    """Zwraca piper.PiperVoice (singleton) lub podnosi RuntimeError, gdy brak modułu/modelu."""
+    if not _PIPER_OK:
+        raise RuntimeError("piper module not available (pip install piper-tts)")
+    global _local_piper_voice
+    if _local_piper_voice is None:
+        if not os.path.isfile(PIPER_MODEL):
+            raise RuntimeError(f"Piper model not found: {PIPER_MODEL}")
+        _local_piper_voice = piper.PiperVoice(PIPER_MODEL)
+    return _local_piper_voice
+
+
+def _get_local_vosk_model():
+    """Zwraca vosk.Model (singleton) lub podnosi RuntimeError, gdy brak modułu/modelu."""
+    if not _VOSK_OK:
+        raise RuntimeError("vosk module not available (pip install vosk)")
+    global _local_vosk_model
+    if _local_vosk_model is None:
+        if not os.path.isdir(VOSK_MODEL):
+            raise RuntimeError(f"Vosk model not found dir: {VOSK_MODEL}")
+        _local_vosk_model = Model(VOSK_MODEL)
+    return _local_vosk_model
+
+
+# ───────────────────────────────────────────────────────────────────────────────
 # Pomocniki audio (minimalne; kompatybilne z Py3.9)
 # ───────────────────────────────────────────────────────────────────────────────
 
@@ -292,7 +345,7 @@ def api_tts_test():
 @app.post("/api/tts")
 def api_tts():
     """
-    JSON in: { "text": "...", "backend": "...", "format": "wav|mp3", "voice": "..." }
+    JSON in: { "text": "...", "backend|provider": "openai|gemini|local|piper", "format": "wav|mp3", "voice": "..." }
     Domyślnie zwraca **audio/wav** (surowe bajty).
     Dodaj ?b64=1 aby dostać JSON: { audio_b64: "..." }.
     """
@@ -302,21 +355,72 @@ def api_tts():
         if not text:
             return jsonify({"status": "error", "error": "missing text"}), 400
 
-        # Wczytaj konfigurację TTS i zsyntetyzuj audio:
+        # backend/provide: dopuszczamy aliasy "provider", "tts"
+        backend = (payload.get("backend") or payload.get("provider") or payload.get("tts") or "").strip().lower()
+
+        # 1) Kanał lokalny (Piper) – na życzenie albo z configu (patrz niżej)
+        if backend in ("local", "piper"):
+            if not _PIPER_OK:
+                return jsonify({"status": "error", "error": "piper module not available"}), 500
+            try:
+                voice = _get_local_piper_voice()
+                # Piper generuje PCM 16-bit, zwykle 22_050 Hz, mono
+                pcm = voice.synthesize(text)
+                sr = 22050
+                ch = 1
+                # Reshape do ustawień globalnych (fade/tail/gain + resample)
+                target_sr = int(os.environ.get("VOICE_RATE", "48000"))
+                target_ch = int(os.environ.get("VOICE_CHANNELS", "2"))
+                pcm2 = _resample_to(pcm, sr, ch, target_sr, target_ch)
+                wav = _wrap_wav(pcm2, target_sr, target_ch, 2)
+            except Exception as e:
+                return jsonify({"status": "error", "error": f"local piper failed: {e}"}), 500
+
+            if request.args.get("b64") == "1":
+                b64 = base64.b64encode(wav).decode("ascii")
+                return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
+            return Response(wav, mimetype="audio/wav", headers={"Content-Disposition": "inline; filename=tts.wav"})
+
+        # 2) Pozostałe kanały – pozostawiamy dotychczasową ścieżkę (OpenAI/Gemini)
         from . import config as voice_config
         from .tts import TTSConfig, synthesize
 
         # Nadpisanie części configu przez payload (opcjonalne)
         overrides = {}
         tts_pairs = []
-        for k in ("backend", "format", "voice", "model"):
+        for k in ("backend", "provider", "format", "voice", "model"):
             if k in payload:
-                tts_pairs.append(f"{k}={payload[k]}")
+                # "provider" i "backend" traktujemy zamiennie → sprowadzamy do backend
+                key = "backend" if k in ("backend", "provider") else k
+                tts_pairs.append(f"{key}={payload[k]}")
         if tts_pairs:
-            # override_from_pairs zwraca dict z kluczem 'tts'
             overrides = {"tts": voice_config.override_from_pairs("tts", tts_pairs)["tts"]}
 
         cfg = voice_config.load(None, overrides=overrides)
+
+        # Jeśli w configu mamy backend=local/piper → obsłuż loklanie (kompatybilność)
+        cfg_backend = str(cfg.get("tts", {}).get("backend", "")).lower()
+        if cfg_backend in ("local", "piper"):
+            if not _PIPER_OK:
+                return jsonify({"status": "error", "error": "piper module not available"}), 500
+            try:
+                voice = _get_local_piper_voice()
+                pcm = voice.synthesize(text)
+                sr = 22050
+                ch = 1
+                target_sr = int(os.environ.get("VOICE_RATE", "48000"))
+                target_ch = int(os.environ.get("VOICE_CHANNELS", "2"))
+                pcm2 = _resample_to(pcm, sr, ch, target_sr, target_ch)
+                wav = _wrap_wav(pcm2, target_sr, target_ch, 2)
+            except Exception as e:
+                return jsonify({"status": "error", "error": f"local piper failed: {e}"}), 500
+
+            if request.args.get("b64") == "1":
+                b64 = base64.b64encode(wav).decode("ascii")
+                return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
+            return Response(wav, mimetype="audio/wav", headers={"Content-Disposition": "inline; filename=tts.wav"})
+
+        # W przeciwnym razie – dotychczasowy synth (OpenAI/Gemini)
         audio, sr, fmt = synthesize(text, TTSConfig(**cfg["tts"]))
 
         # Upewnij się, że to WAV (z fade/tail/gain/resample jeśli trzeba)
@@ -338,6 +442,85 @@ def api_tts():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# NOWY endpoint: lokalny ASR (Vosk) – przyjmuje WAV (lub MP3/OGG), zwraca JSON
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/asr")
+def api_asr():
+    """
+    POST audio (preferowane Content-Type: audio/wav) lub multipart 'file'.
+    Zwraca JSON: { ok: true, text: "..." }
+    """
+    try:
+        if not _VOSK_OK:
+            return jsonify({"ok": False, "error": "vosk module not available"}), 500
+
+        audio_bytes: bytes | None = None
+        ctype = (request.headers.get("Content-Type") or "").lower()
+
+        # multipart/form-data z plikiem 'file'
+        if "multipart" in ctype and request.files:
+            f = request.files.get("file")
+            if f:
+                audio_bytes = f.read()
+        if audio_bytes is None:
+            # surowe body
+            audio_bytes = request.get_data(cache=False, as_text=False) or None
+
+        if not audio_bytes:
+            return jsonify({"ok": False, "error": "no audio data"}), 400
+
+        # Upewnij się, że mamy WAV
+        wav = None
+        if _is_wav(audio_bytes):
+            wav = audio_bytes
+        else:
+            # MP3/OGG → dekoduj
+            if _is_mp3(audio_bytes) or _is_ogg(audio_bytes) or "mpeg" in ctype or "ogg" in ctype:
+                wav = _decode_with_tool_to_wav(audio_bytes)
+            # opcjonalnie: potraktuj jako RAW PCM16 mono @ 16k (gdy klient wysyła czysty PCM)
+            if wav is None and "application/octet-stream" in ctype:
+                try:
+                    pcm = audio_bytes
+                    # RAW 16k → zrób WAV mono
+                    wav = _wrap_wav(pcm, 16000, 1, 2)
+                except Exception:
+                    wav = None
+
+        if not wav or not _is_wav(wav):
+            return jsonify({"ok": False, "error": "unsupported or invalid audio"}), 400
+
+        # Parametry WAV – Vosk wymaga 16k mono 16-bit
+        got = _read_wav_params(wav)
+        if not got:
+            return jsonify({"ok": False, "error": "invalid wav"}), 400
+        pcm, in_sr, in_ch, in_sw = got
+        if in_sw != 2:
+            return jsonify({"ok": False, "error": "expected 16-bit PCM"}), 400
+
+        target_sr = 16000
+        target_ch = 1
+        if in_sr != target_sr or in_ch != target_ch:
+            pcm = _resample_to(pcm, in_sr, in_ch, target_sr, target_ch)
+
+        model = _get_local_vosk_model()
+        rec = KaldiRecognizer(model, target_sr)
+        rec.AcceptWaveform(pcm)
+        import json as _json  # lokalny import, żeby nie kolidować z JSON w Flasku
+
+        try:
+            data = _json.loads(rec.FinalResult() or "{}")
+        except Exception:
+            data = {"text": ""}
+
+        return jsonify({"ok": True, "text": (data.get("text") or "").strip()}), 200
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ───────────────────────────────────────────────────────────────────────────────

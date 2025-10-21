@@ -1,8 +1,10 @@
+# services/api_server.py
 from __future__ import annotations
 
 import os
+from typing import Any
 
-from flask import Flask, jsonify, make_response, request, send_from_directory
+from flask import Flask, Response, jsonify, make_response, request, send_from_directory
 
 # --- preferuj istniejący app/konfigurację z compat ---
 try:
@@ -19,29 +21,28 @@ except Exception:
 
 # --- importy modułów rdzeniowych (routing poniżej) ---
 import services.api_core.camera as camera
-
-# Chat/glue
-import services.api_core.chat_api as chat_api  # noqa: F401
+import services.api_core.chat_api as chat_api  # noqa: F401  # Chat/glue
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
 import services.api_core.services_api as services_api  # właściwy moduł usług
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
+import services.api_core.voice_local_proxy as voice_local_proxy  # lokalny TTS/ASR proxy
 import services.api_core.voice_proxy as voice_proxy
 from services.api_core.face_api import render_face as face_render_shim
 
 
 # ── CORS global ──────────────────────────────────────────────────────────────
 @app.after_request
-def _cors_all(resp):
+def _cors_all(resp: Response) -> Response:
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS,HEAD"
     return resp
 
 
-def _corsify(resp):
+def _corsify(resp: Response) -> Response:
     return _cors_all(resp)
 
 
@@ -100,7 +101,8 @@ def api_draw_face_legacy():
 _rules = {r.rule for r in app.url_map.iter_rules()}
 
 
-def _add_rule(rule, **kw):
+def _add_rule(rule: str, **kw: Any) -> None:
+    """Dodaje trasę tylko jeśli jeszcze nie istnieje (idempotentnie)."""
     if rule not in _rules:
         app.add_url_rule(rule, **kw)
         _rules.add(rule)
@@ -157,9 +159,13 @@ _add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET
 _add_rule("/api/control", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/cmd", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
 
-# voice proxy
+# voice proxy (zdalne/istniejące)
 _add_rule("/api/voice/capture", view_func=voice_proxy.capture_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/voice/say", view_func=voice_proxy.say_handler, methods=["POST", "OPTIONS"])
+
+# voice local proxy (NOWE – lokalny kanał TTS/ASR via :8092)
+_add_rule("/api/voice/tts", view_func=voice_local_proxy.tts_local_handler, methods=["POST", "OPTIONS"])
+_add_rule("/api/voice/asr", view_func=voice_local_proxy.asr_local_handler, methods=["POST", "OPTIONS"])
 
 
 # bus health (stub)
@@ -175,8 +181,16 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
 
 
-def serve_web(fname):
-    return send_from_directory(STATIC_WEB_DIR, fname)
+def serve_web(fname: str):
+    """Serwuje statyki z twardym anti-cache, żeby UI zawsze widział świeże pliki."""
+    resp = send_from_directory(STATIC_WEB_DIR, fname)
+    try:
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    except Exception:
+        pass
+    return resp
 
 
 _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
@@ -185,7 +199,7 @@ _add_rule("/control", view_func=dashboard.control_page, methods=["GET"])
 
 
 # ── Local control fallback (przed startem serwera) ───────────────────────────
-def _register_local_control_fallback():
+def _register_local_control_fallback() -> None:
     try:
         _has_bridge = bool(os.getenv("WEB_BRIDGE_URL", "").strip())
     except Exception:
@@ -220,7 +234,7 @@ def _register_local_control_fallback():
             payload = _req.get_json(silent=True) or {}
             if "cmd" not in payload:
                 payload = {"cmd": "move", "dir": payload.get("dir", "stop")}
-            info = {"ok": True, "mode": "local", "published": False}
+            info: dict[str, Any] = {"ok": True, "mode": "local", "published": False}
             if _PUBLISH:
                 try:
                     topic = "motion.cmd"
@@ -240,6 +254,104 @@ def _register_local_control_fallback():
 _register_local_control_fallback()
 
 
+# ── CHAT: rejestracja + bezpieczny fallback ──────────────────────────────────
+def _register_chat_endpoints() -> None:
+    """Rejestruje chat_api jeśli ma register(app); dodaje minimalny fallback,
+    gdy trasy nie istnieją. Idempotentne."""
+    # 1) Spróbuj zarejestrować przez modułowy register(app)
+    try:
+        if hasattr(chat_api, "register"):
+            chat_api.register(app)  # może dodać /api/chat/history, /api/chat/send, itp.
+            app.logger.info("[chat] blueprint/handlers registered via chat_api.register(app)")
+    except Exception as e:
+        app.logger.warning(f"[chat] register(app) failed: {e}")
+
+    # 2) Fallback tylko jeśli dalej brak tras
+    rules_now = {r.rule for r in app.url_map.iter_rules()}
+    need_history = "/api/chat/history" not in rules_now
+    need_send = "/api/chat/send" not in rules_now
+    need_ping = "/api/chat/ping" not in rules_now
+
+    if not (need_history or need_send or need_ping):
+        return
+
+    # Lokalny, prosty magazyn (zgodny z chat_store.*)
+    try:
+        from services.api_core import chat_store as _chat_store  # type: ignore
+    except Exception as e:  # awaryjnie pusty store in-memory
+        _chat_store = None  # type: ignore
+        app.logger.warning(f"[chat] chat_store import failed: {e}")
+
+    def _ok(data: dict[str, Any], code: int = 200):
+        return _corsify(jsonify({"ok": True, **data})), code
+
+    def _err(msg: str, code: int = 400):
+        return _corsify(jsonify({"ok": False, "error": msg})), code
+
+    if need_ping:
+
+        def _chat_ping():
+            if request.method == "OPTIONS":
+                return _corsify(make_response("", 204))
+            return _ok({"service": "chat", "mode": "fallback"})
+
+        _add_rule("/api/chat/ping", view_func=_chat_ping, methods=["GET", "OPTIONS"])
+
+    if need_history:
+
+        def _chat_history():
+            if request.method == "OPTIONS":
+                return _corsify(make_response("", 204))
+            limit = request.args.get("limit")
+            try:
+                n = int(limit) if limit is not None else None
+            except Exception:
+                n = None
+            try:
+                if _chat_store and hasattr(_chat_store, "history"):
+                    items = list(_chat_store.history(n))  # type: ignore[attr-defined]
+                elif _chat_store and hasattr(_chat_store, "get_store"):
+                    items = _chat_store.get_store().list(limit=n)  # type: ignore[call-arg]
+                else:
+                    items = []  # brak magazynu
+                return _ok({"items": items})
+            except Exception as e:
+                return _err(f"history_failed: {e}", 500)
+
+        _add_rule("/api/chat/history", view_func=_chat_history, methods=["GET", "OPTIONS"])
+
+    if need_send:
+
+        def _chat_send():
+            if request.method == "OPTIONS":
+                return _corsify(make_response("", 204))
+            payload = request.get_json(silent=True) or {}
+            msg = (payload.get("msg") or "").strip()
+            user = (payload.get("user") or "web").strip()
+            if not msg:
+                return _err("empty_msg", 400)
+            try:
+                if _chat_store and hasattr(_chat_store, "append"):
+                    item = _chat_store.append({"msg": msg, "user": user})  # type: ignore[attr-defined]
+                elif _chat_store and hasattr(_chat_store, "get_store"):
+                    item = _chat_store.get_store().add(msg=msg, user=user)  # type: ignore[attr-defined]
+                else:
+                    # awaryjnie echo
+                    item = {"msg": msg, "user": user}
+                return _ok({"item": item})
+            except Exception as e:
+                return _err(f"send_failed: {e}", 500)
+
+        _add_rule("/api/chat/send", view_func=_chat_send, methods=["POST", "OPTIONS"])
+
+    app.logger.info(
+        "[chat] fallback endpoints active: "
+        f"{'history ' if need_history else ''}"
+        f"{'send ' if need_send else ''}"
+        f"{'ping' if need_ping else ''}".strip()
+    )
+
+
 # ── BOOTSTRAP ────────────────────────────────────────────────────────────────
 
 # --- [Rider-Pi] register vision_api blueprint(s) ---
@@ -255,6 +367,9 @@ try:
     app.logger.info("[api] vision_api blueprints registered: /vision/* and /api/vision/*")
 except Exception as e:
     app.logger.exception("[api] failed to register vision_api blueprint: %s", e)
+
+# --- rejestracja czatu (blueprint lub fallback) ---
+_register_chat_endpoints()
 
 
 def main():

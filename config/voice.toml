@@ -1,0 +1,7 @@
+# Minimalny profil TTS dla apps.voice.web
+[tts]
+# backend domyślnie "openai"
+# voice domyślnie "alloy"
+# model domyślnie "gpt-4o-mini-tts"
+# format domyślnie "wav"
+# transport domyślnie "file"
