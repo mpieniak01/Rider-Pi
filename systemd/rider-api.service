@@ -11,11 +11,10 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
 
-# Stabilne importy i brak kolizji z ~/.local
+# Stabilne importy i logowanie
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONNOUSERSITE=1
-Environment=PYTHONPATH=/home/pi/robot
 Environment=PYTHONFAULTHANDLER=1
+Environment=PYTHONPATH=/home/pi/robot
 
 # Limity / time-outy (dostosuj w razie potrzeby)
 Environment=SAFE_MAX_DURATION=0.25
@@ -36,11 +35,15 @@ EnvironmentFile=-/etc/default/rider-api
 Environment=API_HOST=0.0.0.0
 Environment=API_PORT=8080
 
-# „Świeżość” klatek dla /camera/* (możesz nadpisać w /etc/default/rider-api)
+# „Świeżość” klatek dla /camera/*
 Environment=SNAP_MAX_AGE_S=300
 
 # Proxy do mostka ruchu (puste = nie używaj)
 Environment=WEB_BRIDGE_URL=
+
+# Lokalny voice-web (zgodny z services/api_core/voice_local_proxy.py)
+Environment=VOICE_WEB_BASE=http://127.0.0.1:8092
+Environment=VOICE_HTTP_TIMEOUT=45
 
 # BUS (SSE)
 Environment=BUS_PUB_PORT=5555
