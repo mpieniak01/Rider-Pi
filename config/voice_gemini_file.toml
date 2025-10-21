@@ -1,82 +1,68 @@
 # ---------------------------------------------------------------------------
 # Rider-Pi / config/voice_gemini_file.toml
-#
-# Pełny ekosystem Google Gemini (ASR + Chat + TTS)
-# Tryb "plikowy" (REST API) z Google Gemini dla wszystkich usług głosowych.
+# Google Gemini (ASR + Chat + TTS) – tryb plikowy
+# Uwaga: walidator wymaga playback.backend = "aplay"
 # ---------------------------------------------------------------------------
 
-# --- Konfiguracja Audio (bez zmian) ---
 [capture]
 device        = "wm8960_in"
 sample_rate   = 16000
 channels      = 1
-sample_format = "S16_LE"   # Uwaga: jeśli źródło to RAW PCM, klient powinien owinąć do WAV lub użyć -t wav
+sample_format = "S16_LE"
 
 [playback]
-backend = "aplay"
-device  = "wm8960_out"
+backend = "aplay"         # wymagane przez walidator
+device  = "wm8960_out"    # KLUCZOWE: omijamy 'default', gramy przez alias ALSA
 volume  = 55
 
-# --- Konfiguracja Usług Głosowych ---
-
-# ASR (Rozpoznawanie mowy) -> Google Gemini
-# Zalecany model 2.5 z obsługą audio w generateContent.
 [asr]
 backend  = "google"
 model    = "gemini-2.5-flash"
 language = "pl"
 
-# Chat -> Google Gemini (tekst)
 [chat]
 backend       = "google"
 model         = "gemini-2.5-flash"
 language      = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 
-# TTS (Synteza mowy) -> Google Gemini
-# Użyj wariantu *-preview-tts + voice (np. Kore). Klient musi ustawić responseModalities=["AUDIO"] i speechConfig.voiceName.
 [tts]
 backend = "google"
 model   = "gemini-2.5-flash-preview-tts"
-voice   = "Kore"   # Przykładowe głosy: Kore, Aoede, Charon, Fenrir, Puck
-format  = "wav"
+voice   = "Kore"
+format  = "wav"                 # zwijamy do WAV i gramy przez aplay
 
-# --- NLU / HOTWORD ----------------------------------------------------------
 [nlu]
-backend        = "openai"    # dozwolone: passthrough | dummy | openai
+backend        = "passthrough"  # dozwolone: dummy | openai | passthrough
 chat_threshold = 0.65
-llm_model      = "gpt-4o-mini"
+llm_model      = "gemini-2.5-flash"
 
 [nlu.command_keywords]
-stop         = ["stop", "pauza", "koniec", "cisza"]
-repeat       = ["powtórz", "jeszcze raz"]
-volume_up    = ["głośniej", "podgłośnij", "+10"]
-volume_down  = ["ciszej", "ścisz", "-10"]
+stop        = ["stop", "pauza", "koniec", "cisza"]
+repeat      = ["powtórz", "jeszcze raz"]
+volume_up   = ["głośniej", "podgłośnij", "+10"]
+volume_down = ["ciszej", "ścisz", "-10"]
 
 [hotword]
 enabled = true
 engine  = "ptt"
 
-# --- PTT --------------------------------------------------------------------
 [ptt]
 silence_ms     = 1500
 commit_on_stop = true
-# (UWAGA: 'require_audio' usunięty – nie istnieje w schemacie)
 
-# --- VAD (optymalizacja latencji) -------------------------------------------
 [vad]
-mode             = 2          # mniej agresywny niż 3 – bezpieczniej dla początku/końca mowy
+mode             = 2
 frame_ms         = 20
 tail_ms          = 220
 energy_gate_dbfs = -27.0
 max_len_ms       = 5000
 
-# --- SERVICE (krótsze rundy, brak „fast-fail” dla krótkich wypowiedzi) -----
 [service]
 beep                 = false
 pre_speech_wait_ms   = 250
 mic_open_delay_ms    = 30
 post_tts_mute_ms     = 200
-min_capture_ms       = 350        # obniżone z 700 – krótkie wypowiedzi nie wypadną
-no_speech_timeout_ms = 1600       # więcej czasu na start mowy
+min_capture_ms       = 350
+no_speech_timeout_ms = 1600
 recordings_dir       = "/tmp/voice-recs"

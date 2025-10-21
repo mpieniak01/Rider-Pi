@@ -22,9 +22,9 @@ class TTSError(RuntimeError):
 
 @dataclass
 class TTSConfig:
-    backend: str = "openai"  # na razie "openai"
-    voice: str | None = None  # np. "alloy"
-    model: str | None = None  # np. "gpt-4o-mini-tts"
+    backend: str = "openai"  # "openai" | "google"
+    voice: str | None = None  # np. "alloy" / "Kore"
+    model: str | None = None  # np. "gpt-4o-mini-tts" / "gemini-2.5-flash-preview-tts"
     format: str = "wav"  # "wav" | "mp3" (i tak sprowadzimy do WAV w synth)
     timeout: float | None = None  # [s] – timeout per-request (stream/synth)
     piper_model: str | None = None  # rezerwa; bez użycia tutaj
@@ -192,17 +192,21 @@ def speak(
         logger.event("tts.strict.realtime_block", extra={"data": {"msg": "TTS REST disabled when transport=realtime"}})
         raise TTSError("TTS REST disabled when transport=realtime")
 
-    api_key = ensure_openai_key(logger)
-    if not api_key:
-        return TTSStreamResult(ok=False, streamed=False)
+    backend = (config.backend or "openai").lower()
 
-    # streaming: preferuj MP3 (najszybszy start z mpg123)
+    # Streaming obsługujemy tylko dla OpenAI; dla Google pomijamy ścieżkę stream
     stream_fmt = "mp3"
-    should_start_stream = accumulate
+    should_start_stream = accumulate and backend == "openai"
+
     if should_start_stream:
+        api_key = ensure_openai_key(logger)
+        if not api_key:
+            return TTSStreamResult(ok=False, streamed=False)
+
         stream = start_stream(stream_fmt, playback, logger, accumulate=True)
     else:
         stream = None
+
     if stream:
         start_ts = time.time()
         first_chunk_at: float | None = None
@@ -476,7 +480,6 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     """
     Google Gemini Text-to-Speech using native audio generation.
     Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav").
-    Wykorzystuje nowe API google-genai z domyślnym modelem gemini-2.0-flash-exp-tts.
     """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -488,7 +491,7 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     except Exception as exc:  # pragma: no cover - optional dependency
         raise TTSError(f"Google GenAI SDK unavailable: {exc}") from exc
 
-    model_name = config.model or "gemini-2.0-flash-exp-tts"
+    model_name = config.model or "gemini-2.5-flash-preview-tts"
     voice_name = config.voice or "Kore"  # Default voice
 
     logger.event("tts.gemini.request", model=model_name, voice=voice_name)
@@ -513,28 +516,49 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             ),
         )
 
-        # Wyciągnij dane audio z odpowiedzi
-        if not response.candidates or not response.candidates[0].content.parts:
-            raise TTSError("No audio data in Gemini response")
+        # Wyciągnij dane audio z odpowiedzi (bezpiecznie)
+        cand = (getattr(response, "candidates", None) or [None])[0]
+        content = getattr(cand, "content", None)
+        parts = getattr(content, "parts", None) or []
+        inline = None
+        for p in parts:
+            idata = getattr(p, "inline_data", None)
+            if idata is not None and getattr(idata, "data", None):
+                inline = idata
+                break
+        if inline is None:
+            pf = getattr(response, "prompt_feedback", None)
+            raise TTSError(f"No audio data in Gemini response (parts empty). prompt_feedback={pf!r}")
 
-        audio_data = response.candidates[0].content.parts[0].inline_data.data
+        raw = inline.data
+        # Google SDK bywa niespójne: czasem bytes, czasem base64 string
+        if isinstance(raw, str):
+            try:
+                raw = base64.b64decode(raw)
+            except Exception as e:
+                raise TTSError(f"Gemini inline_data.data not decodable base64: {e}") from e
 
-        # Gemini zwraca audio w formacie PCM 24kHz, 16-bit
-        sample_rate = 24000
-
-        # Opakuj w WAV
-        wav_bytes = _wrap_wav(audio_data, sample_rate, ch=1, sw=2)
+        # Rozpoznaj typ: WAV czy czysty PCM
+        if _is_wav(raw):
+            wav_bytes = raw
+            pcm, sr, ch, sw = _read_wav(wav_bytes)
+        else:
+            # Załóżmy 16-bit PCM mono 24 kHz (obecne zachowanie Gemini TTS)
+            sr = 24000
+            ch = 1
+            sw = 2
+            pcm = raw
+            wav_bytes = _wrap_wav(pcm, sr, ch, sw)
 
         # Opcjonalna normalizacja i fade (jak w OpenAI)
         extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
-        pcm, sr, ch, sw = _read_wav(wav_bytes)
         if sw == 2:
             pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
             pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
-        wav_bytes = _wrap_wav(pcm, sr, ch, sw)
+        wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
-        logger.event("tts.gemini.ok", bytes=len(wav_bytes), sample_rate=sample_rate)
-        return wav_bytes, sample_rate, "wav"
+        logger.event("tts.gemini.ok", bytes=len(wav_bytes), sample_rate=sr)
+        return wav_bytes, sr, "wav"
 
     except Exception as exc:
         logger.event("tts.gemini.error", error=str(exc))
@@ -558,6 +582,7 @@ async def speak_stream(
     """
     logger = logger or voice_logging.get_logger("voice.tts")
 
+    # Streaming jest obecnie wspierany tylko dla OpenAI — więc tu używamy ensure_openai_key
     api_key = ensure_openai_key(logger)
     if not api_key:
         return TTSStreamResult(ok=False, streamed=False)

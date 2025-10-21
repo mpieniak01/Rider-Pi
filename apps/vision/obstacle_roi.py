@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
 """
-Rider-Pi: obstacle detector based on edge density in a bottom ROI.
+Rider-Pi: obstacle detector based on edge *scarcity* in a bottom ROI.
 
-We read the processed edge frame (PROC_PATH), compute edge density within a
-configurable ROI, and write obstacle.json atomically. Adds freshness info
-(age_s, stale) and simple debounce to smooth decisions.
-
-ENV (defaults aligned with systemd unit):
-- PROC_PATH=/home/pi/robot/snapshots/proc.jpg
-- DATA_DIR=/home/pi/robot/data
-- OBSTACLE_JSON=/home/pi/robot/data/obstacle.json
-- ROI_Y0=0.55        # fraction from top (0..1)
-- ROI_H=0.40         # ROI height fraction (0..1), clamped to frame
-- EDGE_AREA_PCT=0.18 # fraction (0..1) of non-zero edge pixels to trigger
-- EDGE_PIX_MIN=16000 # absolute pixel count threshold
-- SNAP_MAX_AGE_S=3.0 # mark data as stale if proc.jpg older than this
-- OBST_DEC_N=3       # debounce window length (samples)
-- PUBLISH=0/1        # optional: publish to ZMQ bus if available
+Zmiany vs poprzednia wersja:
+- MAŁO krawędzi ⇒ przeszkoda (present=True), histereza EDGE_T_LOW/HIGH.
+- Bezpieczniki: DARK_LUMA (ciemno) i LAPL_VAR_MIN (rozmycie) ⇒ przeszkoda.
+- Confidence liczone zgodnie z nową semantyką.
+- (NOWE) Opcjonalne annotacje obrazu na PROC: kolorowy ROI + status + słabe-kolumny.
 """
 
 from __future__ import annotations
@@ -51,19 +41,42 @@ def _env_int(name: str, default: int) -> int:
 
 
 PROC_PATH = os.getenv("PROC_PATH", "/home/pi/robot/snapshots/proc.jpg")
+RAW_PATH = os.getenv("RAW_PATH", "/home/pi/robot/snapshots/raw.jpg")  # opcjonalny
 DATA_DIR = os.getenv("DATA_DIR", "/home/pi/robot/data")
 OBSTACLE_JSON = os.getenv("OBSTACLE_JSON", f"{DATA_DIR}/obstacle.json")
 
 ROI_Y0 = _env_float("ROI_Y0", 0.55)
 ROI_H = _env_float("ROI_H", 0.40)
 
+# Legacy (diag)
 EDGE_AREA_PCT = _env_float("EDGE_AREA_PCT", 0.18)
 EDGE_PIX_MIN = _env_int("EDGE_PIX_MIN", 16000)
+
+# Histereza
+EDGE_T_LOW = _env_float("EDGE_T_LOW", 0.10)
+EDGE_T_HIGH = _env_float("EDGE_T_HIGH", 0.18)
+
+# Bezpieczniki
+DARK_LUMA = _env_float("DARK_LUMA", 0.15)  # 0..1
+LAPL_VAR_MIN = _env_float("LAPL_VAR_MIN", 30.0)
+
+CONF_GAIN = _env_float("CONF_GAIN", 4.0)
 
 SNAP_MAX_AGE_S = _env_float("SNAP_MAX_AGE_S", 3.0)
 OBST_DEC_N = _env_int("OBST_DEC_N", 3)
 
 PUBLISH = _env_int("PUBLISH", 0)
+
+# Annotacje
+OBST_ANN = _env_int("OBST_ANN", 0)
+OBST_ANN_PATH = os.getenv("OBST_ANN_PATH", "/home/pi/robot/snapshots/obst_annot.jpg")
+OBST_BINS = _env_int("OBST_BINS", 24)
+EDGE_BIN_LOW = _env_float("EDGE_BIN_LOW", 0.06)
+
+# sanity
+if EDGE_T_LOW > EDGE_T_HIGH:
+    EDGE_T_LOW, EDGE_T_HIGH = EDGE_T_HIGH, EDGE_T_LOW
+
 
 # ----------------------------- utils ----------------------------------------
 
@@ -84,7 +97,7 @@ def atomic_write_json(path: str, obj: dict[str, Any]) -> None:
     os.replace(tmp, p)
 
 
-def proc_mtime_age(path: str) -> tuple[float, float]:
+def file_mtime_age(path: str) -> tuple[float, float]:
     try:
         mtime = Path(path).stat().st_mtime
     except FileNotFoundError:
@@ -93,10 +106,8 @@ def proc_mtime_age(path: str) -> tuple[float, float]:
     return mtime, max(0.0, t - mtime)
 
 
-def load_proc_gray(path: str) -> np.ndarray | None:
-    # PROC jest już obrazem krawędzi (binarne/dużo czerni) – czytamy w gray.
-    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-    return img
+def load_gray(path: str) -> np.ndarray | None:
+    return cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 
 
 def roi_slice(h: int, y0_frac: float, h_frac: float) -> slice:
@@ -109,20 +120,103 @@ def roi_slice(h: int, y0_frac: float, h_frac: float) -> slice:
     return slice(y0, y1)
 
 
-def edge_stats(gray: np.ndarray, sl: slice) -> tuple[int, int, float]:
-    """
-    Zwraca: (edge_nz, roi_px, edge_pct)
-    Liczymy piksele != 0 (PROC to obraz krawędzi).
-    """
-    roi = gray[sl, :]
+def edge_stats(edge_gray: np.ndarray, sl: slice) -> tuple[int, int, float]:
+    roi = edge_gray[sl, :]
     nz = cv2.countNonZero(roi)
     total = int(roi.shape[0] * roi.shape[1])
     pct = (nz / total) if total > 0 else 0.0
     return nz, total, pct
 
 
-def decide(edge_pct: float, edge_nz: int) -> bool:
-    return (edge_pct >= EDGE_AREA_PCT) or (edge_nz >= EDGE_PIX_MIN)
+def luma_and_focus(gray_raw: np.ndarray, sl: slice) -> tuple[float, float]:
+    roi = gray_raw[sl, :]
+    mean_luma = float(np.mean(roi)) / 255.0 if roi.size else 0.0
+    lap = cv2.Laplacian(roi, cv2.CV_64F)
+    lap_var = float(lap.var()) if roi.size else 0.0
+    return mean_luma, lap_var
+
+
+def median_of(deq: deque[float]) -> float:
+    arr = sorted(deq)
+    n = len(arr)
+    if n == 0:
+        return 0.0
+    mid = n // 2
+    if n % 2:
+        return arr[mid]
+    return 0.5 * (arr[mid - 1] + arr[mid])
+
+
+# ----------------------------- annotations ----------------------------------
+
+
+def _to_bgr(img_gray: np.ndarray) -> np.ndarray:
+    if len(img_gray.shape) == 2:
+        return cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
+    return img_gray.copy()
+
+
+def bins_edge_pcts(edge_gray: np.ndarray, sl: slice, bins: int) -> list[float]:
+    roi = edge_gray[sl, :]
+    h, w = roi.shape[:2]
+    bins = max(1, int(bins))
+    bin_w = max(1, w // bins)
+    out: list[float] = []
+    for i in range(bins):
+        x0 = i * bin_w
+        x1 = w if i == bins - 1 else min(w, (i + 1) * bin_w)
+        col = roi[:, x0:x1]
+        nz = cv2.countNonZero(col)
+        total = int(col.shape[0] * col.shape[1])
+        out.append((nz / total) if total > 0 else 0.0)
+    return out
+
+
+def draw_overlay(
+    base_gray: np.ndarray,
+    sl: slice,
+    present: bool,
+    confidence: float,
+    edge_pct: float,
+    bins_pcts: list[float] | None,
+    ann_path: str,
+) -> None:
+    try:
+        vis = _to_bgr(base_gray)
+        h, w = vis.shape[:2]
+        y0, y1 = sl.start, sl.stop
+
+        color = (0, 200, 0) if not present else (0, 0, 220)
+        overlay = vis.copy()
+        cv2.rectangle(overlay, (0, y0), (w - 1, y1 - 1), color, thickness=-1)
+        cv2.addWeighted(overlay, 0.15, vis, 0.85, 0, vis)
+
+        cv2.line(vis, (0, y0), (w - 1, y0), (180, 180, 0), 1)
+        cv2.line(vis, (0, y1), (w - 1, y1), (180, 180, 0), 1)
+
+        if bins_pcts:
+            bin_w = max(1, w // max(1, len(bins_pcts)))
+            for i, p in enumerate(bins_pcts):
+                if p < EDGE_BIN_LOW:
+                    x0 = i * bin_w
+                    x1 = min(w - 1, (i + 1) * bin_w - 1)
+                    cv2.rectangle(vis, (x0, y0), (x1, y1 - 1), (0, 0, 255), 1)
+
+        txt = f"present={present} conf={confidence:.2f} edge={edge_pct:.3f}"
+        cv2.putText(
+            vis,
+            txt,
+            (8, max(16, y0 - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+
+        cv2.imwrite(ann_path, vis, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+    except Exception as e:
+        print("[obst][annot] ERROR:", e, flush=True)
 
 
 # ----------------------------- optional bus ---------------------------------
@@ -134,7 +228,6 @@ if PUBLISH:
 
         _ctx = zmq.Context.instance()
         _bus = _ctx.socket(zmq.PUB)
-        # domyślny endpoint – dopasuj do swojego brokera jeśli inny
         _bus.bind("tcp://127.0.0.1:5557")
     except Exception:
         _bus = None
@@ -164,19 +257,23 @@ def main() -> int:
     signal.signal(signal.SIGINT, _sigint)
     signal.signal(signal.SIGTERM, _sigint)
 
-    hist = deque(maxlen=max(1, OBST_DEC_N))
+    edge_hist = deque(maxlen=max(1, OBST_DEC_N))
+    last_present = False
 
     print(
-        f"[obst] start PROC={PROC_PATH} ROI={ROI_Y0:.2f}+{ROI_H:.2f} "
-        f"TH={EDGE_AREA_PCT:.3f}/{EDGE_PIX_MIN} DEC_N={OBST_DEC_N}",
+        (
+            f"[obst] start PROC={PROC_PATH} RAW={RAW_PATH} ROI={ROI_Y0:.2f}+{ROI_H:.2f} "
+            f"LOW/HIGH={{EDGE_T_LOW:.3f}}/{{EDGE_T_HIGH:.3f}} DARK={DARK_LUMA:.2f} "
+            f"LAPL={LAPL_VAR_MIN:.1f} N={edge_hist.maxlen}"
+        ),
         flush=True,
     )
 
     while not _STOP:
-        mtime, age_s = proc_mtime_age(PROC_PATH)
-        img = load_proc_gray(PROC_PATH)
+        proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)
+        img_proc = load_gray(PROC_PATH)
 
-        if img is None:
+        if img_proc is None:
             payload = {
                 "type": "obstacle",
                 "present": False,
@@ -184,9 +281,10 @@ def main() -> int:
                 "edge_pct": 0.0,
                 "edge_nz": 0,
                 "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
+                "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
                 "ts": now_s(),
-                "age_s": age_s,
-                "stale": age_s > SNAP_MAX_AGE_S,
+                "age_s": proc_age_s,
+                "stale": proc_age_s > SNAP_MAX_AGE_S,
                 "error": "proc_not_found",
             }
             atomic_write_json(OBSTACLE_JSON, payload)
@@ -194,43 +292,101 @@ def main() -> int:
             time.sleep(0.25)
             continue
 
-        h, w = img.shape[:2]
+        h, w = img_proc.shape[:2]
         sl = roi_slice(h, ROI_Y0, ROI_H)
         y0, y1 = sl.start, sl.stop
 
-        edge_nz, roi_px, edge_pct = edge_stats(img, sl)
-        curr_present = decide(edge_pct, edge_nz)
+        edge_nz, roi_px, edge_pct_raw = edge_stats(img_proc, sl)
+        edge_hist.append(float(edge_pct_raw))
+        edge_pct = median_of(edge_hist)
 
-        hist.append(1 if curr_present else 0)
-        # Debounce: present=True dopiero, gdy wszystkie ostatnie N są True.
-        present = sum(hist) == len(hist)
-        # Confidence: odległość od progu w prostym ujęciu (0..1)
-        # liczona na bazie edge_pct (ma lepszą stabilność niż nz).
-        margin = max(1e-6, max(edge_pct, EDGE_AREA_PCT))
-        conf = clamp((edge_pct - EDGE_AREA_PCT) / margin + (1 if present else 0) * 0.0, 0.0, 1.0)
+        img_raw = load_gray(RAW_PATH)
+        if img_raw is None:
+            img_raw = img_proc
+        mean_luma, lap_var = luma_and_focus(img_raw, sl)
+
+        dark = mean_luma < DARK_LUMA
+        blurry = lap_var < LAPL_VAR_MIN
+
+        if dark or blurry:
+            present = True
+        else:
+            if edge_pct <= EDGE_T_LOW:
+                present = True
+            elif edge_pct >= EDGE_T_HIGH:
+                present = False
+            else:
+                present = last_present
+
+        if present:
+            base = 0.0
+            if EDGE_T_LOW > 0:
+                base = clamp((EDGE_T_LOW - edge_pct) / EDGE_T_LOW, 0.0, 1.0)
+            occl = 1.0 if (dark or blurry) else 0.0
+            conf = clamp(CONF_GAIN * base + 0.5 * occl, 0.0, 1.0)
+        else:
+            denom = max(1e-6, 1.0 - EDGE_T_HIGH)
+            base = clamp((edge_pct - EDGE_T_HIGH) / denom, 0.0, 1.0)
+            conf = clamp(CONF_GAIN * base, 0.0, 1.0)
+
+        last_present = present
+
+        if OBST_ANN:
+            try:
+                bins = bins_edge_pcts(img_proc, sl, OBST_BINS) if OBST_BINS > 0 else None
+            except Exception:
+                bins = None
+            draw_overlay(
+                base_gray=img_proc,  # annot na PROC
+                sl=sl,
+                present=present,
+                confidence=float(conf),
+                edge_pct=float(edge_pct),
+                bins_pcts=bins,
+                ann_path=OBST_ANN_PATH,
+            )
 
         payload = {
             "type": "obstacle",
             "present": bool(present),
-            "confidence": round(conf, 3),
-            "edge_pct": round(edge_pct, 4),
+            "confidence": round(float(conf), 3),
+            "edge_pct": round(float(edge_pct), 4),
             "edge_nz": int(edge_nz),
             "roi": {"y0": int(y0), "y1": int(y1), "w": int(w), "h": int(h)},
+            "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
             "ts": now_s(),
-            "age_s": round(age_s, 3),
-            "stale": bool(age_s > SNAP_MAX_AGE_S),
+            "age_s": round(proc_age_s, 3),
+            "stale": bool(proc_age_s > SNAP_MAX_AGE_S),
+            "diag": {
+                "edge_pct_raw": round(float(edge_pct_raw), 4),
+                "roi_px": int(roi_px),
+                "mean_luma": round(float(mean_luma), 3),
+                "lap_var": round(float(lap_var), 1),
+                "dark": bool(dark),
+                "blurry": bool(blurry),
+                "t_low": EDGE_T_LOW,
+                "t_high": EDGE_T_HIGH,
+                "conf_gain": CONF_GAIN,
+                "edge_area_pct_legacy": EDGE_AREA_PCT,
+                "edge_pix_min_legacy": EDGE_PIX_MIN,
+                "proc_mtime": proc_mtime,
+            },
         }
 
         atomic_write_json(OBSTACLE_JSON, payload)
         publish("vision.obstacle", payload)
 
         print(
-            f"[obst] snap present={payload['present']} pct={payload['edge_pct']:.3f} "
-            f"nz={edge_nz} roi=({y0}:{y1}/{h})",
+            (
+                f"[obst] snap present={payload['present']} conf={payload['confidence']:.2f} "
+                f"pct={payload['edge_pct']:.3f}/{payload['diag']['edge_pct_raw']:.3f} "
+                f"luma={payload['diag']['mean_luma']:.2f} lapv={payload['diag']['lap_var']:.1f} "
+                f"dark={payload['diag']['dark']} blur={payload['diag']['blurry']} "
+                f"roi=({y0}:{y1}/{h})"
+            ),
             flush=True,
         )
 
-        # ~10 Hz przy szybkim pipeline, ale ramki i tak powstają ~10–20/s
         time.sleep(0.1)
 
     return 0
