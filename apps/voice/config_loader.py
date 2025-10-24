@@ -1,3 +1,5 @@
+# apps/voice/config_loader.py
+
 from __future__ import annotations
 
 import os
@@ -81,15 +83,18 @@ ALLOWED_HOTWORD_ENGINES = {"porcupine", "ptt", "vosk", "none"}
 KEY_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
     ("capture", "rate"): ("capture", "sample_rate"),
     ("capture", "format"): ("capture", "sample_format"),
+    # literówka/zmiana nazwy w sekcji chat: mode -> model
+    ("chat", "mode"): ("chat", "model"),
 }
 
 # znane sekcje/klucze
 SCHEMA: dict[str, set[str]] = {
     "capture": {"device", "sample_rate", "channels", "sample_format"},
     "playback": {"backend", "device", "volume"},
-    "asr": {"backend", "model", "language"},
-    "chat": {"backend", "model", "language", "system_prompt"},
-    "tts": {"backend", "model", "format", "voice"},
+    # HTTP/local: dopuszczamy base_url/endpoint/content_type/timeout/provider
+    "asr": {"backend", "model", "language", "base_url", "endpoint", "content_type", "timeout", "provider"},
+    "chat": {"backend", "model", "language", "system_prompt", "base_url", "endpoint", "timeout", "provider"},
+    "tts": {"backend", "model", "format", "voice", "base_url", "endpoint", "accept", "timeout", "provider"},
     "nlu": {"backend", "chat_threshold", "llm_model", "command_keywords"},
     "hotword": {"enabled", "engine"},
     "stream": {
@@ -122,6 +127,8 @@ SCHEMA: dict[str, set[str]] = {
         "save_audio",
         "recordings_dir",
         "silence_rms_gate",
+        # opcjonalnie: provider (np. do telemetrii/obsługi ogólnej)
+        "provider",
     },
     "vad": {
         "mode",
@@ -132,13 +139,15 @@ SCHEMA: dict[str, set[str]] = {
     },
     # dodatkowe sekcje wymagane przez testy obecności
     "turn": set(),
+    # sekcja pomocnicza; by nie wywalać Unknown keys: io.<section>
+    "io": set(),
 }
 
 # Dopuszczalne backendy per sekcja (wystarczające do testów)
 ALLOWED_BACKENDS_PER_SECTION: dict[str, set[str]] = {
-    "asr": {"openai", "google"},
-    "chat": {"openai", "google"},
-    "tts": {"openai", "google"},
+    "asr": {"openai", "google", "local"},
+    "chat": {"openai", "google", "local"},
+    "tts": {"openai", "google", "local"},
     "nlu": {"passthrough", "dummy", "openai"},
     "playback": {"aplay"},
 }
