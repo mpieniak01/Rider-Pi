@@ -66,11 +66,11 @@ export DEMO_SPEED_ROT=0.5
 python -m apps.demos.trajectory
 ```
 
-### Uruchomienie z ops
+### Uruchomienie ze scripts
 
 ```bash
-# Jeśli istnieje skrypt w ops/
-./scripts/demo_trajectory.py  # inna demo (ruch w kształcie lemniskaty)
+# Demo ruchu w kształcie lemniskaty
+./scripts/demo_trajectory.py
 ```
 
 ## Błędy i diagnostyka

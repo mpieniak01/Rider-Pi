@@ -1,8 +1,8 @@
-# Moduł Launcher (`apps/launcher`)
+# Moduł Launcher (`apps/main.py`)
 
 ## Opis
 
-Moduł `apps/launcher` implementuje **proste menu startowe** na 4 przyciski fizyczne (bez wyświetlacza LCD). Umożliwia wybór trybu pracy robota: dema, autonomia, teleoperacja, ustawienia, logi.
+Moduł `apps/main.py` implementuje **proste menu startowe** (CLI) dla Rider-Pi. Umożliwia wybór trybu pracy robota: demo trajectory, testy drive/stop, E-Stop ON/OFF.
 
 ### Główne funkcje
 
