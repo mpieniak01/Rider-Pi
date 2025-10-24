@@ -16,6 +16,9 @@ ALLOWED_UNITS: dict[str, str] = {
     "api": "rider-api.service",
     "broker": "rider-broker.service",
     "web": "rider-web-bridge.service",
+    # voice (NOWE)
+    "voice": "rider-voice.service",
+    "voice-web": "rider-voice-web.service",
     # motion / xgo
     "xgo": "rider-motion-bridge.service",
     "motion": "rider-motion-bridge.service",
