@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from . import voice_logging as voice_logging
 
@@ -23,6 +24,11 @@ class ChatConfig:
     max_tokens: int | None = None
     # STRICT: dla transport="realtime" blokujemy REST (ask), ale pozwalamy na streaming (ask_stream)
     transport: str = "file"  # "file" | "realtime"
+
+    # LOCAL HTTP (prosty REST: POST JSON -> JSON)
+    base_url: str | None = None  # np. "http://127.0.0.1:8092"
+    endpoint: str | None = None  # np. "/api/chat"
+    timeout: float | None = None  # sekundy
 
 
 @dataclass
@@ -56,6 +62,42 @@ class ChatSession:
         except Exception:
             pass
 
+    def _history_pairs_limit(self) -> int:
+        max_pairs = max(0, int(self.config.max_history))
+        return max_pairs
+
+    def _clip_history(self) -> None:
+        max_pairs = self._history_pairs_limit()
+        if max_pairs > 0 and len(self._history) > max_pairs * 2:
+            self._history = self._history[-max_pairs * 2 :]
+
+    def _build_messages_openai(self, user_text: str) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = [{"role": "system", "content": self.config.system_prompt}]
+        max_pairs = self._history_pairs_limit()
+        if max_pairs > 0:
+            for item in self._history[-max_pairs * 2 :]:
+                messages.append({"role": item.role, "content": item.content})
+        messages.append({"role": "user", "content": user_text})
+        return messages
+
+    def _build_history_gemini(self) -> list[dict[str, list[str]]]:
+        history: list[dict[str, list[str]]] = []
+        max_pairs = self._history_pairs_limit()
+        if max_pairs > 0:
+            for item in self._history[-max_pairs * 2 :]:
+                role = "model" if item.role == "assistant" else item.role
+                history.append({"role": role, "parts": [item.content]})
+        return history
+
+    def _build_messages_local(self, user_text: str) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = [{"role": "system", "content": self.config.system_prompt}]
+        max_pairs = self._history_pairs_limit()
+        if max_pairs > 0:
+            for item in self._history[-max_pairs * 2 :]:
+                messages.append({"role": item.role, "content": item.content})
+        messages.append({"role": "user", "content": user_text})
+        return messages
+
     def ask(self, text: str) -> tuple[str, list[Message]]:
         backend = (self.config.backend or "echo").lower()
 
@@ -63,6 +105,8 @@ class ChatSession:
             reply = self._ask_openai(text)
         elif backend == "google":
             reply = self._ask_gemini(text)
+        elif backend == "local":
+            reply = self._ask_local_http(text)
         else:
             # Prosty backend echa – przydatny offline/testowo
             reply = f"You said: {text.strip()}"
@@ -72,9 +116,7 @@ class ChatSession:
         self._history.append(Message(role="assistant", content=reply))
 
         # ogranicz rozmiar historii (pary user/assistant)
-        max_pairs = max(0, int(self.config.max_history))
-        if max_pairs > 0 and len(self._history) > max_pairs * 2:
-            self._history = self._history[-max_pairs * 2 :]
+        self._clip_history()
 
         return reply, list(self._history)
 
@@ -95,8 +137,6 @@ class ChatSession:
             async for chunk in self._ask_openai_stream(text):
                 full_reply += chunk
                 yield chunk
-
-            # Zapisz pełną odpowiedź w historii
             self._history.append(Message(role="assistant", content=full_reply))
 
         elif backend == "google":
@@ -105,9 +145,13 @@ class ChatSession:
             async for chunk in self._ask_gemini_stream(text):
                 full_reply += chunk
                 yield chunk
-
-            # Zapisz pełną odpowiedź w historii
             self._history.append(Message(role="assistant", content=full_reply))
+
+        elif backend == "local":
+            # Brak natywnego streamu — wykonaj pojedyncze wywołanie i zwróć jednorazowy chunk
+            reply = self._ask_local_http(text, realtime_guard=False)
+            self._history.append(Message(role="assistant", content=reply))
+            yield reply
 
         else:
             # Echo backend — zwróć od razu całą odpowiedź
@@ -116,9 +160,7 @@ class ChatSession:
             yield reply
 
         # Ogranicz rozmiar historii (po dodaniu odpowiedzi)
-        max_pairs = max(0, int(self.config.max_history))
-        if max_pairs > 0 and len(self._history) > max_pairs * 2:
-            self._history = self._history[-max_pairs * 2 :]
+        self._clip_history()
 
     def _ask_openai(self, text: str) -> str:
         """
@@ -147,17 +189,9 @@ class ChatSession:
 
         client = OpenAI(api_key=api_key)
 
-        # Zbuduj listę wiadomości
-        messages = [{"role": "system", "content": self.config.system_prompt}]
-        # weź ostatnie N par z historii
-        max_pairs = max(0, int(self.config.max_history))
-        if max_pairs > 0:
-            for item in self._history[-max_pairs * 2 :]:
-                messages.append({"role": item.role, "content": item.content})
-        messages.append({"role": "user", "content": text})
+        messages = self._build_messages_openai(text)
 
-        # Payload do API — warunkowe max_tokens
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": messages,
             "temperature": 0.6,
@@ -205,15 +239,7 @@ class ChatSession:
         # Konfiguruj API
         genai.configure(api_key=api_key)
 
-        # Zbuduj historię konwersacji dla Gemini
-        # Gemini używa formatu: {'role': 'user'|'model', 'parts': ['text']}
-        history = []
-        max_pairs = max(0, int(self.config.max_history))
-        if max_pairs > 0:
-            for item in self._history[-max_pairs * 2 :]:
-                # Mapuj 'assistant' na 'model' dla Gemini
-                role = "model" if item.role == "assistant" else item.role
-                history.append({"role": role, "parts": [item.content]})
+        history = self._build_history_gemini()
 
         # Wywołanie API (REST)
         try:
@@ -236,8 +262,55 @@ class ChatSession:
             return text_out
         except Exception as exc:
             self._evt("chat.rest.error", error=str(exc))
-
             raise ChatError(f"Google Gemini chat completion failed: {exc}") from exc
+
+    def _ask_local_http(self, text: str, *, realtime_guard: bool = True) -> str:
+        """
+        Prosty backend HTTP:
+          POST {base_url}{endpoint}
+          JSON payload: {"messages":[{"role":"system","content":"..."},...,{"role":"user","content":"..."}]}
+          Response: {"text":"..."} lub {"message":{"content":"..."}}
+        """
+        if realtime_guard and (self.config.transport or "").lower() == "realtime":
+            raise ChatError("Chat REST disabled when transport=realtime")
+
+        try:
+            import requests  # type: ignore
+        except Exception as exc:  # pragma: no cover
+            raise ChatError(f"requests not available: {exc}") from exc
+
+        base_url = (self.config.base_url or "").rstrip("/")
+        endpoint = self.config.endpoint or "/api/chat"
+        url = f"{base_url}{endpoint}"
+        timeout = self.config.timeout or 10.0
+
+        messages = self._build_messages_local(text)
+        payload = {"messages": messages}
+        self._evt("chat.local.request", url=url, msg_count=len(messages))
+
+        try:
+            resp = requests.post(url, json=payload, timeout=timeout)
+        except Exception as exc:
+            self._evt("chat.local.error", error=str(exc))
+            raise ChatError(f"LOCAL CHAT: request failed: {exc}") from exc
+
+        if resp.status_code >= 400:
+            snippet = (resp.text or "")[:200]
+            self._evt("chat.local.http_error", status=resp.status_code, body=snippet)
+            raise ChatError(f"LOCAL CHAT HTTP {resp.status_code}: {snippet}")
+
+        try:
+            data = resp.json()
+        except Exception as e:
+            raise ChatError("LOCAL CHAT: invalid JSON") from e
+
+        text_out = ((data.get("text") or "") or ((data.get("message") or {}).get("content") or "")).strip()
+
+        if not text_out:
+            raise ChatError("LOCAL CHAT: empty response")
+
+        self._evt("chat.local.ok", chars=len(text_out))
+        return text_out
 
     async def _ask_openai_stream(self, text: str):
         """
@@ -265,17 +338,13 @@ class ChatSession:
 
         # Zbuduj listę wiadomości (bez nowej wiadomości użytkownika — już jest w historii)
         messages = [{"role": "system", "content": self.config.system_prompt}]
-        # weź ostatnie N par z historii (bez ostatniej wiadomości usera dodanej wcześniej)
-        max_pairs = max(0, int(self.config.max_history))
+        max_pairs = self._history_pairs_limit()
         if max_pairs > 0:
-            # Użyj wszystkich wiadomości oprócz ostatniej (user message dodanej przed wywołaniem)
             for item in self._history[:-1][-max_pairs * 2 :]:
                 messages.append({"role": item.role, "content": item.content})
-        # Dodaj aktualną wiadomość użytkownika
         messages.append({"role": "user", "content": text})
 
-        # Payload do API ze streamingiem
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": messages,
             "temperature": 0.6,
@@ -326,14 +395,10 @@ class ChatSession:
         # Konfiguruj API
         genai.configure(api_key=api_key)
 
-        # Zbuduj historię konwersacji dla Gemini
-        # Gemini używa formatu: {'role': 'user'|'model', 'parts': ['text']}
         history = []
-        max_pairs = max(0, int(self.config.max_history))
+        max_pairs = self._history_pairs_limit()
         if max_pairs > 0:
-            # Użyj wszystkich wiadomości oprócz ostatniej (user message dodanej przed wywołaniem)
             for item in self._history[:-1][-max_pairs * 2 :]:
-                # Mapuj 'assistant' na 'model' dla Gemini
                 role = "model" if item.role == "assistant" else item.role
                 history.append({"role": role, "parts": [item.content]})
 
@@ -341,19 +406,14 @@ class ChatSession:
         try:
             self._evt("chat.stream.request", model=self.config.model, msg_count=len(history) + 1)
 
-            # Utwórz model z system instruction
             model = genai.GenerativeModel(
                 model_name=self.config.model,
                 system_instruction=self.config.system_prompt,
             )
-
-            # Rozpocznij chat z historią
             chat = model.start_chat(history=history)
 
-            # Wyślij wiadomość z streamingiem
             response = await chat.send_message_async(text, stream=True)
 
-            # Iteruj przez fragmenty odpowiedzi
             async for chunk in response:
                 if chunk.text:
                     yield chunk.text
