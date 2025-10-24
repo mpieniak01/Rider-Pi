@@ -11,8 +11,11 @@ FACE_LCD_SPI_HZ ?= 32000000
 # Aktualny zestaw usług (repo-first systemd)
 SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service rider-cam-preview.service
 
-# Provider wyboru backendu głosowego: openai (domyślnie) lub google (Gemini)
-PROVIDER ?= openai  # allowed: openai, google
+# Provider wyboru backendu głosowego:
+# - openai (domyślnie)
+# - google (Gemini)
+# - local  (voice-web na :8092, config/voice_local_file.toml)
+PROVIDER ?= openai  # allowed: openai, google, local
 
 # VOICE (serwer www + CLI; opcjonalne VOICE_ARGS, np. ' --lang pl ')
 VOICE_BIND ?= 127.0.0.1:8092
@@ -25,12 +28,15 @@ ENV_FROM_BASH = OPENAI_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2
 # Wybór pliku konfiguracyjnego dla trybu FILE zależnie od PROVIDER
 ifeq ($(PROVIDER),google)
 VOICE_FILE_CFG := ./config/voice_gemini_file.toml
+else ifeq ($(PROVIDER),local)
+VOICE_FILE_CFG := ./config/voice_local_file.toml
 else
 VOICE_FILE_CFG := ./config/voice_openai_file.toml
 endif
 
 # Wybór pliku konfiguracyjnego dla STREAMING:
 # Domyślnie OpenAI; jeśli PROVIDER=google i istnieje config/voice_gemini_streaming.toml — użyj go.
+# Dla PROVIDER=local nie ma natywnego realtime WS — użyj wariantów file-based.
 VOICE_STREAM_CFG := ./config/voice_openai_streaming.toml
 ifeq ($(PROVIDER),google)
 ifneq ("$(wildcard ./config/voice_gemini_streaming.toml)","")
@@ -61,17 +67,17 @@ help:
 	@echo "  make logs-clean       # wyczyść logi journalctl dla rider-*"
 	@echo ""
 	@echo "═══ Voice (File-based) ═══"
-	@echo "  make voice-file-listen [PROVIDER=openai|google]   # nasłuch ciągły (listen)"
-	@echo "  make voice-file-ptt    [PROVIDER=openai|google]   # push-to-talk (ptt)"
-	@echo "  make voice-file-once   [PROVIDER=openai|google]   # pojedyncza interakcja (once)"
-	@echo "  make voice-asr-file FILE=path.wav                 # rozpoznaj mowę z pliku"
-	@echo "  make voice-tts TEXT='Hello'                       # synteza + odtworzenie"
-	@echo "  make voice-web                                     # uruchom serwer web UI (bind: $(VOICE_BIND))"
+	@echo "  make voice-file-listen [PROVIDER=openai|google|local]   # nasłuch ciągły (listen)"
+	@echo "  make voice-file-ptt    [PROVIDER=openai|google|local]   # push-to-talk (ptt)"
+	@echo "  make voice-file-once   [PROVIDER=openai|google|local]   # pojedyncza interakcja (once)"
+	@echo "  make voice-asr-file FILE=path.wav                       # rozpoznaj mowę z pliku"
+	@echo "  make voice-tts TEXT='Hello'                             # synteza + odtworzenie"
+	@echo "  make voice-web                                           # uruchom serwer web UI (bind: $(VOICE_BIND))"
 	@echo ""
 	@echo "═══ Voice (Streaming WebSocket) ═══"
 	@echo "  make voice-stream-once   [PROVIDER=openai|google]* # pojedyncza interakcja (realtime WS)"
 	@echo "  make voice-stream-listen [PROVIDER=openai|google]* # nasłuch ciągły (realtime WS)"
-	@echo "      * Uwaga: wariant Google jest użyty tylko jeśli istnieje config/voice_gemini_streaming.toml."
+	@echo "      * Uwaga: PROVIDER=local nie obsługuje realtime WS — użyj wariantów file-based."
 	@echo "  make voice-kill       # zabij procesy głosowe/audio"
 	@echo "  make voice-diag       # diagnostyka systemu"
 	@echo "  make voice-smoke      # testy podstawowe (bez audio/sieci)"
@@ -112,7 +118,7 @@ help:
 	@echo ""
 	@echo "═══ Configuration ═══"
 	@echo "  make config-edit-stream [PROVIDER=openai|google]*   # edytuj streaming cfg"
-	@echo "  make config-edit-file   [PROVIDER=openai|google]    # edytuj file cfg"
+	@echo "  make config-edit-file   [PROVIDER=openai|google|local] # edytuj file cfg"
 	@echo "      * Google streaming edytowany, jeśli istnieje config/voice_gemini_streaming.toml"
 	@echo ""
 	@echo "═══ Diagnostics & Utilities ═══"
@@ -385,37 +391,43 @@ gfx-status:
 # VOICE — FILE-BASED (WAV/PCM)
 .PHONY: voice-file-listen voice-file-ptt voice-file-once voice-asr-file voice-tts voice-web
 voice-file-listen:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_FILE_CFG) listen $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli $(VOICE_ARGS) --config $(VOICE_FILE_CFG) listen
 
 voice-file-ptt:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_FILE_CFG) ptt $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli $(VOICE_ARGS) --config $(VOICE_FILE_CFG) ptt
 
 voice-file-once:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_FILE_CFG) once $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli $(VOICE_ARGS) --config $(VOICE_FILE_CFG) once
 
 voice-asr-file:
-	@if [ -z "$(FILE)" ]; then echo "Usage: make voice-asr-file FILE=path.wav"; exit 1; fi
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli asr --file "$(FILE)" $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_FILE_CFG) asr --file "$(FILE)" $(VOICE_ARGS)
 
 voice-tts:
-	@if [ -z "$(TEXT)" ]; then echo "Usage: make voice-tts TEXT='Hello'"; exit 1; fi
-	PYTHONPATH=$(ROOT) $(PY) -m apps.voice.cli tts --text "$(TEXT)" --play $(VOICE_ARGS)
+	$(ENV_FROM_BASH) PYTHONPATH=$(ROOT) $(PY) -m apps.voice.cli --config $(VOICE_FILE_CFG) tts --text "$(TEXT)" --play $(VOICE_ARGS)
 
 voice-web:
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.web --bind $(VOICE_BIND) $(VOICE_ARGS)
+	$(ENV_FROM_BASH) \
+	PIPER_MODEL_DIR=$(ROOT)/models/piper \
+	VOSK_MODEL_DIR=$(ROOT)/models/vosk/vosk-model-small-pl-0.22 \
+	ASR_BACKEND=vosk \
+	$(PY) -m apps.voice.web --bind $(VOICE_BIND) $(VOICE_ARGS)
+
+
 
 # ───────────────────────────────────────────────
 # VOICE — STREAMING (WebSocket Realtime)
 .PHONY: voice-stream-once voice-stream-listen voice-kill voice-diag voice-smoke
 voice-stream-once:
 	@echo "== Single streaming interaction (WebSocket realtime, PROVIDER=$(PROVIDER)) =="
+	@if [ "$(PROVIDER)" = "local" ]; then echo "Streaming realtime nieobsługiwany dla PROVIDER=local — użyj voice-file-*"; exit 1; fi
 	pasuspender -- \
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_STREAM_CFG) once $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli $(VOICE_ARGS) --config $(VOICE_STREAM_CFG) once
 
 voice-stream-listen:
 	@echo "== Continuous streaming listen (WebSocket realtime, PROVIDER=$(PROVIDER)) =="
+	@if [ "$(PROVIDER)" = "local" ]; then echo "Streaming realtime nieobsługiwany dla PROVIDER=local — użyj voice-file-*"; exit 1; fi
 	pasuspender -- \
-	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli --config $(VOICE_STREAM_CFG) listen $(VOICE_ARGS)
+	$(ENV_FROM_BASH) $(PY) -m apps.voice.cli $(VOICE_ARGS) --config $(VOICE_STREAM_CFG) listen
 
 voice-kill:
 	@echo "== Killing voice/audio processes =="

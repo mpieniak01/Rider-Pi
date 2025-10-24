@@ -1,7 +1,7 @@
 [Unit]
-Description=Rider Voice Assistant Service
-After=network-online.target sound.target
-Wants=network-online.target
+Description=Rider Voice Assistant (CLI listener using local web ASR/TTS)
+After=network-online.target sound.target rider-voice-web.service
+Wants=network-online.target rider-voice-web.service
 ConditionPathExists=/home/pi/robot
 
 [Service]
@@ -10,8 +10,16 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
 
-# Uruchamiaj przez loginowego basha, żeby wczytać ~/.bash_profile (OPENAI_API_KEY)
-ExecStart=/bin/bash -l -c 'cd /home/pi/robot && /usr/bin/python3 -m apps.voice.cli listen'
+# Wszystko w repo
+Environment=PYTHONPATH=/home/pi/robot
+Environment=VOICE_FILE_CFG=/home/pi/robot/config/voice_local_file.toml
+Environment=PIPER_MODEL_DIR=/home/pi/robot/models/piper
+Environment=VOSK_MODEL_DIR=/home/pi/robot/models/vosk/vosk-model-small-pl-0.22
+Environment=ASR_BACKEND=vosk
+Environment=PYTHONUNBUFFERED=1
+
+# CLI wymaga --config (inaczej "Config path is required")
+ExecStart=/usr/bin/python3 -m apps.voice.cli --config ${VOICE_FILE_CFG} listen
 
 Restart=on-failure
 RestartSec=3

@@ -1,7 +1,67 @@
-# Minimalny profil TTS dla apps.voice.web
+lang = "pl"
+
+[capture]
+device = "wm8960_in"
+sample_rate = 16000
+channels = 1
+sample_format = "S16_LE"
+
+[playback]
+backend = "aplay"
+device = "wm8960_out"
+volume = 55
+
+[vad]
+enabled = true
+engine = "webrtc"
+mode = 2
+frame_ms = 20
+tail_ms = 220
+energy_gate_dbfs = -27.0
+max_len_ms = 5000
+
+[service]
+beep = false
+pre_speech_wait_ms = 250
+mic_open_delay_ms = 30
+post_tts_mute_ms = 200
+min_capture_ms = 350
+no_speech_timeout_ms = 1600
+silence_rms_gate = 260
+save_audio = false
+recordings_dir = "/tmp/voice-recs"
+
+[asr]
+backend = "local"
+base_url = "http://127.0.0.1:8092"
+endpoint = "/api/asr"
+content_type = "audio/wav"
+timeout = 8.0
+language = "pl"
+
+[chat]
+backend = "local"
+base_url = "http://127.0.0.1:8092"
+endpoint = "/api/chat"
+timeout = 10.0
+language = "pl"
+system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
+
 [tts]
-# backend domyślnie "openai"
-# voice domyślnie "alloy"
-# model domyślnie "gpt-4o-mini-tts"
-# format domyślnie "wav"
-# transport domyślnie "file"
+backend = "local"
+base_url = "http://127.0.0.1:8092"
+endpoint = "/api/tts"
+accept = "audio/wav"
+voice = "pl_m"
+timeout = 10.0
+
+[compat]
+allow_unknown_keys = true
+
+[nlu]
+backend = "passthrough"
+chat_threshold = 0.4
+llm_model = "none"
+
+[nlu.command_keywords]
+stop = [ "stop", "pauza", "cisza",]
