@@ -104,10 +104,16 @@ Wszystkie wymienione dokumenty zostały już utworzone i znajdują się w:
 - `docs/apps/` — dokumentacja modułów aplikacyjnych (13 plików) ✅
 - `docs/ops/` — dokumentacja skryptów operacyjnych (7 plików) ✅  
 - `docs/config/` — szczegółowa dokumentacja parametrów konfiguracji (4 pliki) ✅
+- `drivers/` — dokumentacja sterowników sprzętowych (README.md) ✅
 
-**Zadanie bieżące:** Weryfikacja aktualności dokumentów po reorganizacji struktury (skrypty ops/→scripts/)
+**Status:** Dokumentacja zaktualizowana (2025-10-24):
+- ✅ Poprawiono endpointy web.py w docs/modules/voice.md
+- ✅ Dodano port 8092 do tabeli portów w ARCHITECTURE.md
+- ✅ Dodano dokumentację voice_local_file.toml w docs/config/voice.md
+- ✅ Zaktualizowano rider-voice-web.service w SYSTEMD_SERVICES_INVENTORY.md
+- ✅ Poprawiono referencje do scripts/ w docs/apps/
 
 ---
 
-**Ostatnia aktualizacja:** 2025-10 (po migracji skryptów do scripts/)  
-**Status:** Większość dokumentów już utworzona - wymaga weryfikacji aktualności
+**Ostatnia aktualizacja:** 2025-10-24 (weryfikacja po dodaniu lokalnego Piper/Vosk)  
+**Status:** Dokumentacja zgodna z aktualnym stanem kodu

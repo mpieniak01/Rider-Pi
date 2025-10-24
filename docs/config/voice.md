@@ -21,14 +21,18 @@ Gdzie:
 | `voice_openai_streaming_fallback.toml` | OpenAI | WebSocket | Streaming z fallbackiem |
 | `voice_gemini_file.toml` | Google Gemini | REST | Tryb plikowy z Gemini |
 | `voice_gemini_example.toml` | Google Gemini | - | Przykładowa konfiguracja |
-| `voice_local_file.toml` | Local (Piper/Vosk) | REST | Lokalny TTS/ASR przez HTTP (port 8092) |
+| `voice.toml` | Local (Piper/Vosk) | REST | Lokalny TTS/ASR przez HTTP (port 8092) — używany przez `make PROVIDER=local` |
+| `voice_local_file.toml` | Local (Piper/Vosk) | REST | Alternatywna konfiguracja lokalna |
 
 **Przykład użycia:**
 ```bash
 # OpenAI w trybie plikowym (domyślny)
 make voice-file-ptt
 
-# Lokalny Piper/Vosk (bez API key)
+# Lokalny Piper/Vosk (bez API key) - używa config/voice.toml
+make voice-file-ptt PROVIDER=local
+
+# Lub bezpośrednio z voice_local_file.toml
 python -m apps.voice.cli --config ./config/voice_local_file.toml ptt
 
 # Google Gemini w trybie plikowym
@@ -44,7 +48,8 @@ make voice-stream-listen
 
 - **`voice_openai_file.toml`** — tryb plikowy (REST API: ASR/Chat/TTS) z OpenAI
 - **`voice_openai_streaming.toml`** — tryb strumieniowy (Realtime WebSocket duplex) z OpenAI
-- **`voice_local_file.toml`** — tryb plikowy z lokalnymi backendami (Piper TTS, Vosk ASR) przez HTTP API na porcie 8092
+- **`voice.toml`** — tryb plikowy z lokalnymi backendami (Piper TTS, Vosk ASR) przez HTTP API na porcie 8092 (używany przez `make PROVIDER=local`)
+- **`voice_local_file.toml`** — alternatywna konfiguracja lokalna (podobna do voice.toml)
 
 ## Wybór trybu
 
