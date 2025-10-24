@@ -1,5 +1,5 @@
 [capture]
-device = "wm8960_in"
+device = "hw:0,0"
 sample_rate = 16000
 channels = 1
 sample_format = "S16_LE"
