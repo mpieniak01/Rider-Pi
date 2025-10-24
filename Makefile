@@ -29,7 +29,7 @@ ENV_FROM_BASH = OPENAI_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2
 ifeq ($(PROVIDER),google)
 VOICE_FILE_CFG := ./config/voice_gemini_file.toml
 else ifeq ($(PROVIDER),local)
-VOICE_FILE_CFG := ./config/voice_local_file.toml
+VOICE_FILE_CFG := ./config/voice.toml
 else
 VOICE_FILE_CFG := ./config/voice_openai_file.toml
 endif
