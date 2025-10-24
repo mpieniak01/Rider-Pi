@@ -1,4 +1,5 @@
-""" "Automatic speech recognition backends."""
+# apps/voice/asr.py
+"""Automatic speech recognition backends."""
 
 from __future__ import annotations
 
@@ -19,8 +20,8 @@ class ASRError(RuntimeError):
 @dataclass
 class ASRConfig:
     # Domyślne wartości pozwalają uruchomić backend bez nadmiaru konfiguracji
-    backend: str = "openai"  # "openai" | "vosk" | (inne w przyszłości)
-    model: str | None = None  # nazwa/model backendu (np. dla OpenAI)
+    backend: str = "openai"  # "openai" | "google" | "vosk" | "local"
+    model: str | None = None  # nazwa/model backendu (np. dla OpenAI / Gemini)
     language: str | None = None  # preferowany język, np. "pl", "en", "auto"
     lang: str | None = None  # alias akceptowany przez CLI/konfig (mapowany na language)
     temperature: float = 0.0
@@ -29,6 +30,11 @@ class ASRConfig:
     whisper_model: str | None = None
     input_encoding: str | None = None
     timeout: float | None = None  # opcjonalny timeout (sekundy)
+
+    # LOCAL HTTP (prosty REST: POST audio/wav -> JSON {text, language})
+    base_url: str | None = None  # np. "http://127.0.0.1:8092"
+    endpoint: str | None = None  # np. "/api/asr"
+    content_type: str | None = None  # domyślnie "audio/wav"
 
 
 @dataclass
@@ -48,9 +54,7 @@ def _is_wav(b: bytes) -> bool:
 
 
 def _pcm_to_wav_bytes(audio: bytes, sample_rate: int) -> bytes:
-    """
-    Opakuj surowe PCM S16_LE (mono) w kontener WAV.
-    """
+    """Opakuj surowe PCM S16_LE (mono) w kontener WAV."""
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         wf.setnchannels(1)
@@ -112,6 +116,15 @@ def transcribe(
 
     if backend == "vosk":
         return _vosk_transcribe(
+            audio,
+            sample_rate,
+            config,
+            logger,
+            language=_norm_language(config),
+        )
+
+    if backend == "local":
+        return _local_http_transcribe(
             audio,
             sample_rate,
             config,
@@ -272,3 +285,66 @@ def _vosk_transcribe(
     # Vosk zwykle nie zwraca jawnego 'language'; zachowaj preferencję wejściową
     lang_out = language or result.get("language", "") or ""
     return Transcript(text=text, language=lang_out)
+
+
+def _local_http_transcribe(
+    audio: bytes,
+    sample_rate: int,
+    config: ASRConfig,
+    logger: voice_logging.VoiceLogger,
+    *,
+    language: str | None,
+) -> Transcript:
+    """
+    Prosty backend HTTP:
+      POST {base_url}{endpoint}
+      Headers: Content-Type: audio/wav, Accept: application/json
+      Body:   WAV (mono, 16 kHz preferowane)
+      Response JSON: {"text": "...", "language": "pl"} (language opcjonalny)
+    """
+    try:
+        import requests  # type: ignore
+    except Exception as exc:  # pragma: no cover
+        raise ASRError(f"requests not available: {exc}") from exc
+
+    # ZAWSZE wyślij WAV
+    if _is_wav(audio):
+        wav_bytes = audio
+    else:
+        wav_bytes = _pcm_to_wav_bytes(audio, sample_rate)
+
+    base_url = (config.base_url or "").rstrip("/")
+    endpoint = config.endpoint or "/api/asr"
+    url = f"{base_url}{endpoint}"
+
+    headers = {
+        "Content-Type": (config.content_type or "audio/wav"),
+        "Accept": "application/json",
+    }
+    timeout = config.timeout or 8.0
+
+    logger.event("asr.local.request", url=url, bytes=len(wav_bytes))
+    try:
+        resp = requests.post(url, data=wav_bytes, headers=headers, timeout=timeout)
+    except Exception as exc:
+        logger.event("asr.local.error", error=str(exc))
+        raise ASRError(f"LOCAL ASR: request failed: {exc}") from exc
+
+    if resp.status_code >= 400:
+        snippet = (resp.text or "")[:200]
+        logger.event("asr.local.http_error", status=resp.status_code, body=snippet)
+        raise ASRError(f"LOCAL ASR HTTP {resp.status_code}: {snippet}")
+
+    try:
+        data = resp.json()
+    except Exception as e:
+        raise ASRError("LOCAL ASR: invalid JSON") from e
+
+    text_out = (data.get("text") or "").strip()
+    lang_out = data.get("language") or language or ""
+
+    if not text_out:
+        raise ASRError("LOCAL ASR: empty transcript")
+
+    logger.event("asr.local.ok", chars=len(text_out))
+    return Transcript(text=text_out, language=str(lang_out), raw=data)
