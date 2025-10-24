@@ -1,4 +1,6 @@
-# Skrypty głosowe (`ops/voice-*.sh`)
+# Skrypty głosowe
+
+> Dokumentacja skryptów do obsługi modułu głosowego: `sys_voice-*.sh`, `talk_*.sh`
 
 ## voice-run.sh
 
@@ -194,3 +196,191 @@ python -m apps.voice.cli listen --config config/local/voice_dev.toml
 
 **Ostatnia aktualizacja:** 2025-01  
 **Status:** voice-run.sh = legacy (ale stabilny), nowoczesne API w `apps/voice/cli`
+
+---
+
+## talk_local.sh
+
+### Opis
+
+Proste demo lokalne TTS/ASR wykorzystujące HTTP API na porcie 8092 (`rider-voice-web.service`). Nagrywa dźwięk z mikrofonu, rozpoznaje mowę przez lokalny Vosk, a następnie odtwarza rozpoznany tekst przez lokalny Piper TTS.
+
+**Typ:** Demo / proof-of-concept dla lokalnych backendów bez kluczy API
+
+### Użycie
+
+```bash
+./scripts/talk_local.sh [czas_nagrania_w_sekundach]
+
+# Przykłady
+./scripts/talk_local.sh      # Domyślnie 3 sekundy nagrania
+./scripts/talk_local.sh 5    # 5 sekund nagrania
+./scripts/talk_local.sh 10   # 10 sekund nagrania
+```
+
+### Przepływ danych
+
+```
+1. Mikrofon → arecord (plughw:0,0, 16kHz, mono) → /tmp/in.wav
+2. /tmp/in.wav → POST http://127.0.0.1:8092/api/asr → JSON {text: "..."}
+3. Wyświetlenie rozpoznanego tekstu na konsoli
+4. Tekst → POST http://127.0.0.1:8092/api/tts → /tmp/out.wav
+5. /tmp/out.wav → aplay → głośnik
+```
+
+### Parametry
+
+| Parametr | Typ | Domyślna | Opis |
+|----------|-----|----------|------|
+| `$1` | int | `3` | Długość nagrania w sekundach |
+
+**Hardcoded w skrypcie:**
+- Urządzenie ALSA: `plughw:0,0`
+- Format audio: S16_LE, 16000 Hz, 1 kanał
+- Głos Piper: `pl_PL-gosia-medium.onnx`
+- Backend TTS: `piper`
+
+### Wymagania
+
+- ✅ Uruchomiona usługa `rider-voice-web.service` na porcie 8092
+- ✅ Mikrofon i głośnik podłączone i skonfigurowane w ALSA
+- ✅ Zainstalowane narzędzia: `arecord`, `aplay`, `curl`, `jq`
+- ✅ Modele lokalne: Piper (`pl_PL-gosia-medium.onnx`) i Vosk (`vosk-model-small-pl-0.22`)
+
+### Uruchomienie usługi voice-web
+
+```bash
+# Sprawdź status
+sudo systemctl status rider-voice-web.service
+
+# Uruchom (jeśli nie działa)
+sudo systemctl start rider-voice-web.service
+
+# Lub bezpośrednio (development)
+python3 -m apps.voice.web --bind 0.0.0.0:8092
+```
+
+### Przykład sesji
+
+```bash
+$ ./scripts/talk_local.sh 3
+[REC] Mów przez 3 s…
+[ASR] Rozpoznaję…
+[ASR] >> cześć jak się masz
+[TTS] Odpowiadam…
+Playing WAVE '/tmp/out.wav' : Signed 16 bit Little Endian, Rate 48000 Hz, Stereo
+```
+
+### Troubleshooting
+
+**Problem:** `curl: (7) Failed to connect to 127.0.0.1 port 8092`
+- **Rozwiązanie:** Uruchom `rider-voice-web.service` (patrz wyżej)
+
+**Problem:** `arecord: main:830: audio open error: No such file or directory`
+- **Rozwiązanie:** Sprawdź urządzenie ALSA: `arecord -l`, dostosuj `plughw:X,Y` w skrypcie
+
+**Problem:** `jq: parse error: Invalid numeric literal`
+- **Rozwiązanie:** API zwrócił błąd, sprawdź logi: `journalctl -u rider-voice-web -n 50`
+
+---
+
+## talk_assistant.sh
+
+### Opis
+
+Interaktywny asystent głosowy w pętli wykorzystujący lokalne backendy Piper/Vosk. Rozpoznaje proste komendy (godzina, echo, stop) i reaguje syntezą mowy.
+
+**Typ:** Demo interaktywne / przykład implementacji prostego asystenta
+
+### Użycie
+
+```bash
+./scripts/talk_assistant.sh
+
+# W pętli mówisz komendy, asystent odpowiada
+# Zakończ mówiąc: "stop", "koniec" lub "zakończ"
+```
+
+### Obsługiwane komendy
+
+| Komenda głosowa | Akcja | Przykład odpowiedzi |
+|-----------------|-------|---------------------|
+| "która jest godzina" | Podaje aktualną godzinę | "Jest 14:35" |
+| "powtórz [tekst]" | Powtarza usłyszany tekst | "Powtarzam: dzień dobry" |
+| "echo [tekst]" | Powtarza usłyszany tekst | "Powtarzam: test mikrofonu" |
+| "stop" / "koniec" / "zakończ" | Kończy pętlę | "Kończę pętlę nasłuchu." |
+| (inne) | Domyślna odpowiedź | "Usłyszałem: [tekst]" |
+
+### Przepływ danych
+
+```
+PĘTLA NIESKOŃCZONA:
+  1. Mikrofon → arecord (3s) → /tmp/in.wav
+  2. /tmp/in.wav → POST /api/asr → tekst rozpoznany
+  3. Analiza tekstu (normalizacja lowercase, grep pattern matching)
+  4. Wybór akcji na podstawie wykrytej komendy
+  5. Generowanie odpowiedzi (funkcja say_wav)
+  6. POST /api/tts → /tmp/out.wav → aplay
+  7. Powrót do kroku 1 (lub wyjście przy "stop")
+```
+
+### Konfiguracja
+
+**Hardcoded:**
+- Urządzenie ALSA: `plughw:0,0`
+- Format audio: S16_LE, 16000 Hz, mono
+- Długość nagrania: 3 sekundy (fixed)
+- Głos Piper: `pl_PL-gosia-medium.onnx`
+
+### Wymagania
+
+Identyczne jak dla `talk_local.sh`:
+- Uruchomiona usługa `rider-voice-web.service` (port 8092)
+- Mikrofon i głośnik w ALSA
+- Narzędzia: `arecord`, `aplay`, `curl`, `jq`
+
+### Przykład sesji
+
+```bash
+$ ./scripts/talk_assistant.sh
+[REC] Mów (3 s)…
+[ASR] >> która jest godzina
+Playing WAVE '/tmp/out.wav' : ...  # "Jest 14:37"
+
+[REC] Mów (3 s)…
+[ASR] >> powtórz dzień dobry
+Playing WAVE '/tmp/out.wav' : ...  # "Powtarzam: dzień dobry"
+
+[REC] Mów (3 s)…
+[ASR] >> stop
+Playing WAVE '/tmp/out.wav' : ...  # "Kończę pętlę nasłuchu."
+$
+```
+
+### Rozszerzanie funkcjonalności
+
+Dodaj własne komendy edytując sekcję `if/elif` w skrypcie (linie 25-36):
+
+```bash
+elif echo "$L" | grep -qE 'pogoda'; then
+  say_wav "Sprawdzam pogodę... Dziś słonecznie, 18 stopni."
+elif echo "$L" | grep -qE 'muzyka|graj'; then
+  say_wav "Włączam muzykę."
+  # mpg123 /home/pi/music/song.mp3 &
+```
+
+### Troubleshooting
+
+Patrz sekcja Troubleshooting w `talk_local.sh` — identyczne problemy i rozwiązania.
+
+### Zobacz także
+
+- [talk_local.sh](#talk_localsh) — prostszy wariant (jednorazowe echo)
+- [docs/modules/voice.md](../modules/voice.md) — pełna dokumentacja API
+- [docs/config/voice.md](../config/voice.md) — konfiguracja lokalnych backendów
+- [systemd/rider-voice-web.service](../../systemd/rider-voice-web.service) — definicja usługi
+
+---
+
+**Ostatnia aktualizacja:** 2025-10-24  
+**Dodano:** Dokumentacja skryptów `talk_local.sh` i `talk_assistant.sh`
