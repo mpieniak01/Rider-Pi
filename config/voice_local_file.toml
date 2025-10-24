@@ -1,0 +1,88 @@
+[capture]
+device = "wm8960_in"
+sample_rate = 16000
+channels = 1
+sample_format = "S16_LE"
+
+[playback]
+backend = "aplay"
+device  = "wm8960_out"
+volume  = 55
+
+[asr]
+backend = "local"
+base_url = "http://127.0.0.1:8092"
+endpoint = "/api/asr"
+content_type = "audio/wav"
+language = "pl"
+timeout = 8
+
+[chat]
+backend = "local"
+model   = "small"
+system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
+transport = "file"
+max_history = 4
+max_tokens  = 512
+base_url = "http://127.0.0.1:8092"
+endpoint = "/api/chat"
+timeout  = 10
+
+[tts]
+backend = "local"
+voice   = "pl_m"
+model   = "small"
+format  = "wav"
+accept  = "audio/wav"
+base_url = "http://127.0.0.1:8092"
+endpoint = "/api/tts"
+timeout  = 10
+transport = "file"
+
+[nlu]
+backend = "passthrough"
+chat_threshold = 0.4
+llm_model = "none"
+command_keywords = { stop = ["stop","pauza","cisza"] }
+
+[hotword]
+enabled = false
+engine  = "none"
+
+[ptt]
+commit_on_stop = true
+silence_ms = 800
+max_turn_ms = 20000
+
+# VAD — czulszy próg energii i dłuższy ogon ciszy
+[vad]
+enabled = true
+engine = "webrtc"
+mode = 2
+frame_ms = 20
+tail_ms = 500
+energy_gate_dbfs = -38.0
+max_len_ms = 5000
+
+[service]
+beep = false
+pre_speech_wait_ms = 350
+mic_open_delay_ms = 30
+post_tts_mute_ms = 200
+min_capture_ms = 1200
+no_speech_timeout_ms = 3500
+silence_rms_gate = 260
+save_audio = false
+recordings_dir = "/tmp/voice-recs"
+
+[save_audio]
+enabled = false
+dir = "./recordings"
+
+[logging]
+level = "INFO"
+json = false
+sink = "stderr"
+
+[compat]
+allow_unknown_keys = true
