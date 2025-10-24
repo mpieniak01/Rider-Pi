@@ -64,6 +64,7 @@
 | ---------------------------- | -------- | --------------- | ------------------------------------------------------ |
 | API                          | HTTP     | **8080**        | Wejście REST (control/chat/healthz, serwowanie plików) |
 | Web-Motion Bridge (opcjonal) | HTTP     | **8081**        | Prostszy interfejs do ruchu                            |
+| Voice Web API (opcjonalne)   | HTTP     | **8092**        | Lokalny TTS/ASR (Piper/Vosk) przez HTTP                |
 | ZMQ PUB/SUB                  | ZMQ      | **5555 / 5556** | Wewnętrzny bus komunikatów                             |
 | Voice sock                   | UNIX     | ``              | Komunikacja voice                                      |
 | UART                         | Serial   | ``              | Kontrola aktuatorów (wyłącznie przez Motion Bridge)    |

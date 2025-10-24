@@ -82,6 +82,13 @@ Skrypty wspierające i użytkowe:
 - `util_load-config.sh` – ładowanie konfiguracji  
 - `util_volume.py` – kontrola głośności  
 
+#### `talk_` – Interaktywne dema głosowe
+Skrypty demonstracyjne dla lokalnego TTS/ASR (Piper/Vosk):
+- `talk_local.sh` – proste echo: nagrywa, rozpoznaje i odtwarza tekst przez lokalne API
+- `talk_assistant.sh` – interaktywny asystent w pętli z prostymi komendami (godzina, echo, stop)
+
+> **Wymaga:** uruchomioną usługę `rider-voice-web.service` na porcie 8092
+
 ---
 
 ## Szybkie odniesienie (Quick Reference)
@@ -119,7 +126,78 @@ sudo python3 scripts/sys_lcd-control.py on|off|status
 ```bash
 ./scripts/sys_voice-once.sh        # Jednorazowa interakcja głosowa
 ./scripts/sys_voice-run.sh         # Tryb ciągły
+
+# Lokalne dema (wymaga rider-voice-web.service na :8092)
+./scripts/talk_local.sh [czas_s]   # Nagraj, rozpoznaj i odtwórz (domyślnie 3s)
+./scripts/talk_assistant.sh        # Interaktywny asystent (godzina, echo, stop)
 ```
+
+---
+
+## Szczegółowe opisy wybranych skryptów
+
+### talk_local.sh
+
+**Opis:** Proste demo lokalnego TTS/ASR — nagranie, rozpoznanie i odtworzenie przez API na porcie 8092.
+
+**Użycie:**
+```bash
+./scripts/talk_local.sh [czas_nagrania_w_sekundach]
+
+# Przykłady
+./scripts/talk_local.sh      # Domyślnie 3 sekundy
+./scripts/talk_local.sh 5    # 5 sekund nagrania
+```
+
+**Przepływ:**
+1. Nagranie audio przez `arecord` (ALSA, `plughw:0,0`, 16kHz, mono)
+2. Rozpoznanie mowy przez `POST /api/asr` (lokalny Vosk)
+3. Wyświetlenie rozpoznanego tekstu
+4. Synteza mowy przez `POST /api/tts` (lokalny Piper, głos `pl_PL-gosia-medium.onnx`)
+5. Odtworzenie przez `aplay`
+
+**Wymagania:**
+- Uruchomiona usługa `rider-voice-web.service` (port 8092)
+- Mikrofon i głośnik skonfigurowane w ALSA
+- Zainstalowane: `arecord`, `aplay`, `curl`, `jq`
+
+**Konfiguracja:**
+- Urządzenie audio: `plughw:0,0` (można zmienić w skrypcie)
+- Głos Piper: `pl_PL-gosia-medium.onnx` (można zmienić w skrypcie)
+
+---
+
+### talk_assistant.sh
+
+**Opis:** Interaktywny asystent głosowy w pętli z prostymi komendami (godzina, echo, stop).
+
+**Użycie:**
+```bash
+./scripts/talk_assistant.sh
+
+# Komendy głosowe:
+# "która jest godzina" → podaje aktualną godzinę
+# "powtórz [tekst]" lub "echo [tekst]" → powtarza usłyszany tekst
+# "stop" / "koniec" / "zakończ" → kończy pętlę
+```
+
+**Przepływ:**
+1. Nagranie audio (3 sekundy, pętla nieskończona)
+2. Rozpoznanie mowy przez lokalny Vosk (API `/api/asr`)
+3. Analiza tekstu i wybór akcji:
+   - Wykrycie "która jest godzina" → TTS z aktualną godziną
+   - Wykrycie "powtórz"/"echo" → TTS z rozpoznanym tekstem
+   - Wykrycie "stop"/"koniec"/"zakończ" → wyjście z pętli
+   - Inne → domyślna odpowiedź "Usłyszałem: [tekst]"
+4. Synteza i odtworzenie odpowiedzi przez lokalny Piper
+
+**Wymagania:**
+- Uruchomiona usługa `rider-voice-web.service` (port 8092)
+- Mikrofon i głośnik skonfigurowane w ALSA
+- Zainstalowane: `arecord`, `aplay`, `curl`, `jq`
+
+**Rozszerzanie:**
+Dodaj własne komendy edytując sekcję `if/elif` w skrypcie (linie 25-36).
 
 ---
 

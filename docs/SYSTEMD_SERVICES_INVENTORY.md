@@ -296,17 +296,24 @@
 
 **ExecStart:**
 ```
-/bin/bash -lc 'source ~/.bash_profile >/dev/null 2>&1; exec /usr/bin/python3 -m apps.voice.web --bind 0.0.0.0:8092'
-```
-
-**ExecStartPre:**
-```
-/bin/bash -lc 'source ~/.bash_profile >/dev/null 2>&1; test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY is missing"; exit 1; }'
+/usr/bin/python3 -m apps.voice.web --bind 0.0.0.0:8092
 ```
 
 **WorkingDirectory:** /home/pi/robot
 
+**Environment:**
+- `PYTHONPATH=/home/pi/.local/lib/python3.9/site-packages:/home/pi/robot`
+- `PIPER_MODEL_DIR=/home/pi/robot/models/piper`
+- `VOSK_MODEL_DIR=/home/pi/robot/models/vosk/vosk-model-small-pl-0.22`
+- `ASR_BACKEND=vosk`
+- `PYTHONUNBUFFERED=1`
+- `LOG_LEVEL=DEBUG`
+
 **Status:** ✅ Valid - Python module in apps/
+
+**File exists:** ✅ apps/voice/web.py
+
+**Notes:** HTTP API dla lokalnego TTS (Piper) i ASR (Vosk) na porcie 8092
 
 **Notes:** Voice API web service, requires OPENAI_API_KEY
 

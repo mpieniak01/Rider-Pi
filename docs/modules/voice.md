@@ -83,7 +83,7 @@ Moduł `apps/voice` przeszedł kompleksową refaktoryzację w ramach PR#1–PR#5
   - Komendy: `listen`, `ptt`, `once`, `asr`, `tts`, `diag`
   - Obsługa `--mode {stream,file}` dla każdej komendy
 - **`web.py`** — HTTP API (Flask)
-  - Endpointy: `/asr`, `/tts`, `/capture`, `/healthz`
+  - Endpointy: `/healthz`, `/api/tts`, `/api/tts-test`, `/api/asr`
 - **`main.py`** — entry point dla systemd
 
 ### Przepływ danych — szczegóły
@@ -357,10 +357,10 @@ make voice-web VOICE_BIND=0.0.0.0:8092
 
 Serwer (Flask) udostępnia:
 
-- `GET /healthz` — status backendów.
-- `POST /tts` — body JSON `{text, backend, voice, model}` → audio (`wav`/`mpeg`).
-- `POST /asr` — `multipart/form-data`: `file=@…`, `backend`, `lang`.
-- `POST /capture` — JSON z konfiguracją (`asr`, `tts`, `hotword`…) → audio odpowiedzi + nagłówki `X-Transcript`, `X-Intent`, `X-Latency`.
+- `GET /healthz` — status backendów (zwraca `{"ok": true}`).
+- `GET /api/tts-test` — ton testowy 1kHz (diagnostyka audio).
+- `POST /api/tts` — body JSON `{text, voice?, model?}` → audio WAV. Używa lokalnego Piper TTS.
+- `POST /api/asr` — audio (WAV/MP3/OGG) jako `multipart/form-data` (pole `file`) lub raw body → JSON `{ok, text}`. Używa lokalnego Vosk ASR.
 
 Start:
 
@@ -372,23 +372,19 @@ curl -s http://127.0.0.1:8092/healthz | jq
 Przykłady:
 
 ```bash
-# TTS → WAV
-curl -s -X POST http://127.0.0.1:8092/tts \
+# TTS → WAV (lokalny Piper)
+curl -s -X POST http://127.0.0.1:8092/api/tts \
   -H 'content-type: application/json' \
-  -d '{"text":"Cześć, tu Rider-Pi!","backend":"piper","voice":"pl"}' \
+  -d '{"text":"Cześć, tu Rider-Pi!"}' \
   -o reply.wav
 
-# ASR na pliku
-curl -s -X POST http://127.0.0.1:8092/asr \
+# Ton testowy (diagnostyka)
+curl -s http://127.0.0.1:8092/api/tts-test -o test_tone.wav
+
+# ASR na pliku (lokalny Vosk)
+curl -s -X POST http://127.0.0.1:8092/api/asr \
   -F file=@samples/test.wav \
-  -F backend=vosk \
-  -F lang=pl
-
-# Jednorazowy cykl capture→ASR→chat/TTS
-curl -s -X POST http://127.0.0.1:8092/capture \
-  -H 'content-type: application/json' \
-  -d '{"asr":{"backend":"openai","lang":"pl"}, "tts":{"backend":"openai"}}' \
-  -o reply.wav
+  | jq .text
 ```
 
 ---
