@@ -1,4 +1,4 @@
-# Konfiguracja Voice (`voice_openai_file.toml`, `voice_openai_streaming.toml`)
+# Konfiguracja Voice
 
 ## Konwencja nazewnicza plików konfiguracyjnych
 
@@ -9,7 +9,7 @@ voice_<provider>_<mode>.toml
 ```
 
 Gdzie:
-- **`<provider>`** — dostawca usług AI: `openai`, `gemini`
+- **`<provider>`** — dostawca usług AI: `openai`, `gemini`, `local`
 - **`<mode>`** — tryb komunikacji: `file` (REST API), `streaming` (WebSocket)
 
 **Dostępne pliki:**
@@ -18,13 +18,18 @@ Gdzie:
 |------|----------|------|------|
 | `voice_openai_file.toml` | OpenAI | REST | Tryb plikowy (PTT, batch) |
 | `voice_openai_streaming.toml` | OpenAI | WebSocket | Tryb strumieniowy (realtime) |
+| `voice_openai_streaming_fallback.toml` | OpenAI | WebSocket | Streaming z fallbackiem |
 | `voice_gemini_file.toml` | Google Gemini | REST | Tryb plikowy z Gemini |
 | `voice_gemini_example.toml` | Google Gemini | - | Przykładowa konfiguracja |
+| `voice_local_file.toml` | Local (Piper/Vosk) | REST | Lokalny TTS/ASR przez HTTP (port 8092) |
 
 **Przykład użycia:**
 ```bash
 # OpenAI w trybie plikowym (domyślny)
 make voice-file-ptt
+
+# Lokalny Piper/Vosk (bez API key)
+python -m apps.voice.cli --config ./config/voice_local_file.toml ptt
 
 # Google Gemini w trybie plikowym
 python -m apps.voice.cli --config ./config/voice_gemini_file.toml ptt
@@ -37,8 +42,9 @@ make voice-stream-listen
 
 ## Pliki konfiguracyjne
 
-- **`voice_openai_file.toml`** — tryb plikowy (REST API: ASR/Chat/TTS)
-- **`voice_openai_streaming.toml`** — tryb strumieniowy (Realtime WebSocket duplex)
+- **`voice_openai_file.toml`** — tryb plikowy (REST API: ASR/Chat/TTS) z OpenAI
+- **`voice_openai_streaming.toml`** — tryb strumieniowy (Realtime WebSocket duplex) z OpenAI
+- **`voice_local_file.toml`** — tryb plikowy z lokalnymi backendami (Piper TTS, Vosk ASR) przez HTTP API na porcie 8092
 
 ## Wybór trybu
 
@@ -46,6 +52,7 @@ make voice-stream-listen
 |------|----------|----------|--------|-----------|
 | **File** | PTT, batch processing | 1–3s | Niższe | REST API |
 | **Streaming** | Konwersacja realtime | <500ms | Wyższe | WebSocket, GPT-4o-realtime |
+| **Local** | Offline, bez API key | 1–2s | Brak | Lokalne modele Piper/Vosk, rider-voice-web.service |
 
 ---
 
@@ -220,6 +227,53 @@ format    = "pcm16"     # Realtime używa PCM16
 | `max_retries` | int | `6` | Maksymalna liczba prób reconnect |
 | `base_ms` | int | `250` | Bazowy czas backoff (ms) |
 | `max_ms` | int | `5000` | Maksymalny czas backoff (ms) |
+
+---
+
+## Parametry: voice_local_file.toml
+
+Konfiguracja dla lokalnych backendów (Piper TTS, Vosk ASR) dostępnych przez HTTP API na porcie 8092.
+
+### [asr]
+
+| Klucz | Typ | Domyślna | Opis |
+|-------|-----|----------|------|
+| `backend` | str | `local` | Backend ASR (local = Vosk przez HTTP) |
+| `base_url` | str | `http://127.0.0.1:8092` | URL voice-web API |
+| `endpoint` | str | `/api/asr` | Endpoint ASR |
+| `content_type` | str | `audio/wav` | Typ zawartości |
+| `language` | str | `pl` | Język rozpoznawania |
+| `timeout` | int | `8` | Timeout żądania (sekundy) |
+
+### [tts]
+
+| Klucz | Typ | Domyślna | Opis |
+|-------|-----|----------|------|
+| `backend` | str | `local` | Backend TTS (local = Piper przez HTTP) |
+| `base_url` | str | `http://127.0.0.1:8092` | URL voice-web API |
+| `endpoint` | str | `/api/tts` | Endpoint TTS |
+| `voice` | str | `pl_m` | Głos Piper (pl_m = polski męski) |
+| `model` | str | `small` | Model głosu |
+| `format` | str | `wav` | Format audio |
+| `timeout` | int | `10` | Timeout żądania (sekundy) |
+| `transport` | str | `file` | Tryb transportu |
+
+### [chat]
+
+| Klucz | Typ | Domyślna | Opis |
+|-------|-----|----------|------|
+| `backend` | str | `local` | Backend chat (local = lokalny model) |
+| `model` | str | `small` | Model chat |
+| `system_prompt` | str | - | Prompt systemowy |
+| `transport` | str | `file` | Tryb transportu |
+| `max_history` | int | `4` | Maksymalna historia konwersacji |
+| `max_tokens` | int | `512` | Maksymalna długość odpowiedzi |
+| `base_url` | str | `http://127.0.0.1:8092` | URL API (dla przyszłych rozszerzeń) |
+
+**Uwagi:**
+- Wymaga uruchomionego `rider-voice-web.service` na porcie 8092
+- Modele Piper i Vosk muszą być zainstalowane lokalnie (patrz `PIPER_MODEL_DIR`, `VOSK_MODEL_DIR`)
+- Działa offline bez API keys
 
 ---
 
