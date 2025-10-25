@@ -84,6 +84,7 @@ export const I18N = {
       metrics: { pl: "metryki",       en: "metrics" },
       repo:    { pl: "repozytorium",  en: "repo" },
       control: { pl: "sterowanie",    en: "control" },
+      google_home: { pl: "Google Home", en: "Google Home" },
     },
 
     camera_proc: {
