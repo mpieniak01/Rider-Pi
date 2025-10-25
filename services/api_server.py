@@ -198,11 +198,17 @@ def home_auth():
     Start OAuth 2.0 flow for Google Home using InstalledAppFlow.
 
     This endpoint initiates the OAuth flow which will:
-    1. Start a local server on port 8080
+    1. Start a local server (default port 8080, configurable via GOOGLE_OAUTH_PORT)
     2. Open the user's browser for authentication
     3. Complete automatically when user authorizes the app
 
-    Note: This is a blocking operation that waits for user to complete auth.
+    WARNING: This is a blocking operation that waits for user to complete auth.
+    The request may take 30-60 seconds or longer depending on user interaction.
+    Clients should set appropriate timeouts (recommended: 120+ seconds).
+
+    Note: Breaking change - this endpoint changed from GET to POST.
+    This is required for the Desktop app OAuth flow which is initiated server-side
+    rather than via redirect.
     """
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))

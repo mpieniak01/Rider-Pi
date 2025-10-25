@@ -29,7 +29,9 @@ API Server (`services/api_server.py`) udostępnia następujące endpointy:
 #### POST `/api/home/auth`
 Inicjuje proces autoryzacji OAuth 2.0 z użyciem InstalledAppFlow.
 
-**Uwaga:** To jest endpoint blokujący - czeka na zakończenie procesu autoryzacji przez użytkownika w przeglądarce.
+**Uwaga:** To jest endpoint blokujący - czeka na zakończenie procesu autoryzacji przez użytkownika w przeglądarce. Może trwać 30-60+ sekund. Klienty HTTP powinny ustawić timeout na minimum 120 sekund.
+
+**WAŻNE:** Zmiana z GET na POST - jest to zmiana niekompatybilna wstecz wymagana dla przepływu Desktop app.
 
 **Odpowiedź**:
 ```json
@@ -38,6 +40,9 @@ Inicjuje proces autoryzacji OAuth 2.0 z użyciem InstalledAppFlow.
   "message": "Authentication successful"
 }
 ```
+
+**Konfiguracja:**
+- Port lokalnego serwera callback można zmienić przez zmienną `GOOGLE_OAUTH_PORT` (domyślnie 8080)
 
 #### GET `/api/home/status`
 Sprawdza status autoryzacji (czy użytkownik jest zalogowany).
@@ -277,9 +282,10 @@ Serwer domyślnie startuje na porcie 5000 (konfigurowalny przez zmienną `STATUS
 ### Błędy OAuth callback
 
 - Przepływ Desktop app wykorzystuje `InstalledAppFlow.run_local_server()` który automatycznie obsługuje callback
-- Serwer lokalny nasłuchuje domyślnie na porcie 8080
-- Upewnij się, że port 8080 nie jest zajęty przez inną aplikację
-- Jeśli port jest zajęty, możesz zmienić go w kodzie `google_home_api.py` w funkcji `start_oauth_flow()`
+- Serwer lokalny nasłuchuje domyślnie na porcie 8080 (konfigurowalny przez `GOOGLE_OAUTH_PORT`)
+- Upewnij się, że port nie jest zajęty przez inną aplikację
+- Jeśli port jest zajęty, ustaw `export GOOGLE_OAUTH_PORT="8081"` (lub inny wolny port) w `~/.bash_profile`
+- Proces autoryzacji jest blokujący - może trwać 30-60+ sekund, upewnij się że klient HTTP ma odpowiedni timeout
 
 ### Błędy CORS w przeglądarce
 

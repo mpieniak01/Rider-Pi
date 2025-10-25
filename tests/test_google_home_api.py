@@ -72,23 +72,24 @@ class TestGoogleHomeAPI:
             with patch.object(gha, "CLIENT_ID", "test_id"):
                 with patch.object(gha, "CLIENT_SECRET", "test_secret"):
                     with patch.object(gha, "TOKEN_FILE", temp_token_file):
-                        result = gha.start_oauth_flow()
+                        with patch.object(gha, "OAUTH_CALLBACK_PORT", 8080):
+                            result = gha.start_oauth_flow()
 
-                        assert result["ok"] is True
-                        assert "message" in result
-                        assert temp_token_file.exists()
+                            assert result["ok"] is True
+                            assert "message" in result
+                            assert temp_token_file.exists()
 
-                        # Verify token content
-                        with open(temp_token_file) as f:
-                            tokens = json.load(f)
-                        assert tokens["refresh_token"] == "test_refresh_token"
+                            # Verify token content
+                            with open(temp_token_file) as f:
+                                tokens = json.load(f)
+                            assert tokens["refresh_token"] == "test_refresh_token"
 
-                        # Verify run_local_server was called with correct params
-                        mock_flow.run_local_server.assert_called_once()
-                        call_kwargs = mock_flow.run_local_server.call_args[1]
-                        assert call_kwargs["port"] == 8080
-                        assert call_kwargs["access_type"] == "offline"
-                        assert call_kwargs["prompt"] == "consent"
+                            # Verify run_local_server was called with correct params
+                            mock_flow.run_local_server.assert_called_once()
+                            call_kwargs = mock_flow.run_local_server.call_args[1]
+                            assert call_kwargs["port"] == 8080
+                            assert call_kwargs["access_type"] == "offline"
+                            assert call_kwargs["prompt"] == "consent"
 
     def test_get_devices_no_project_id(self):
         """Test get_devices returns error when PROJECT_ID is not set."""

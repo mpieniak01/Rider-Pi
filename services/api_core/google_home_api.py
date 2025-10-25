@@ -29,6 +29,7 @@ SCOPES = ["https://www.googleapis.com/auth/sdm.service"]
 
 # API configuration
 API_TIMEOUT = int(os.getenv("GOOGLE_API_TIMEOUT", "10"))
+OAUTH_CALLBACK_PORT = int(os.getenv("GOOGLE_OAUTH_PORT", "8080"))
 
 # Token storage path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -74,9 +75,10 @@ def start_oauth_flow() -> dict[str, Any]:
 
         # Run local server to handle OAuth callback automatically
         # This will open the browser and wait for user to complete authorization
-        logger.info("Starting OAuth flow with local server...")
+        # Port can be configured via GOOGLE_OAUTH_PORT environment variable
+        logger.info(f"Starting OAuth flow with local server on port {OAUTH_CALLBACK_PORT}...")
         credentials = flow.run_local_server(
-            port=8080,
+            port=OAUTH_CALLBACK_PORT,
             access_type="offline",
             prompt="consent",
         )

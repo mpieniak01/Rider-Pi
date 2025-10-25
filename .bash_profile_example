@@ -28,6 +28,9 @@ export GOOGLE_CLIENT_SECRET="TWOJ_CLIENT_SECRET"
 # Przykład: "abc123def456-789g-hij0-klmn-opqrstuvwxyz"
 export GOOGLE_PROJECT_ID="twoj-device-access-project-id"
 
+# Opcjonalnie: Port dla lokalnego serwera OAuth callback (domyślnie 8080)
+# export GOOGLE_OAUTH_PORT="8080"
+
 # UWAGA: GOOGLE_REDIRECT_URI nie jest już wymagane dla typu "Desktop app"
 # InstalledAppFlow zarządza przekierowaniami automatycznie
 
