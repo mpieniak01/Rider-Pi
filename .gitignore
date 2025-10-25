@@ -27,6 +27,7 @@ recordings/
 config/local*.toml      # ignorujemy lokalne warianty
 config/secret*.toml     # ignorujemy sekrety
 !config/*.example.toml  # (opcjonalnie) śledź pliki .example.toml
+config/local/google_tokens.json  # Google Home OAuth tokens
 
 # Systemd build artefacts
 *.service~

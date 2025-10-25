@@ -1,0 +1,38 @@
+#!/bin/bash
+# .bash_profile_example
+# Przykładowa konfiguracja zmiennych środowiskowych dla Google Home API
+# Skopiuj ten plik do ~/.bash_profile i uzupełnij własnymi wartościami
+
+# ============================================================================
+# GOOGLE HOME API - OAuth 2.0 Configuration
+# ============================================================================
+# Aby uzyskać te dane:
+# 1. Przejdź do Google Cloud Console: https://console.cloud.google.com/
+# 2. Utwórz projekt lub wybierz istniejący
+# 3. Włącz Smart Device Management API
+# 4. Utwórz dane uwierzytelniające OAuth 2.0 (typ: Web application)
+# 5. Dodaj Authorized redirect URI: http://199.168.1.71:5000/api/home/oauth2callback
+# 6. Przejdź do Device Access Console: https://console.nest.google.com/device-access/
+# 7. Utwórz projekt Device Access i skopiuj Project ID
+
+# Identyfikator klienta OAuth 2.0 z Google Cloud Console
+# Przykład: "123456789012-abcdefghijklmnopqrstuvwxyz123456.apps.googleusercontent.com"
+export GOOGLE_CLIENT_ID="TWOJ_CLIENT_ID.apps.googleusercontent.com"
+
+# Tajny klucz klienta OAuth 2.0 z Google Cloud Console
+# Przykład: "GOCSPX-AbCdEfGhIjKlMnOpQrStUvWxYz"
+export GOOGLE_CLIENT_SECRET="TWOJ_CLIENT_SECRET"
+
+# Project ID z Google Device Access Console
+# Przykład: "abc123def456-789g-hij0-klmn-opqrstuvwxyz"
+export GOOGLE_PROJECT_ID="twoj-device-access-project-id"
+
+# Opcjonalnie: Redirect URI (domyślnie używany w kodzie)
+# Zmień tylko jeśli używasz innego adresu IP lub portu
+# export GOOGLE_REDIRECT_URI="http://199.168.1.71:5000/api/home/oauth2callback"
+
+# ============================================================================
+# Aby zastosować zmiany, uruchom:
+#   source ~/.bash_profile
+# lub zaloguj się ponownie do systemu
+# ============================================================================

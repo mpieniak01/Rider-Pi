@@ -84,6 +84,7 @@ export const I18N = {
       metrics: { pl: "metryki",       en: "metrics" },
       repo:    { pl: "repozytorium",  en: "repo" },
       control: { pl: "sterowanie",    en: "control" },
+      home:    { pl: "Google Home",   en: "Google Home" },
     },
 
     camera_proc: {
@@ -159,6 +160,30 @@ export const I18N = {
     generic_event: { pl: "zdarzenie",             en: "event" },
     sse_reconnect: { pl: "Błąd SSE — ponawiam połączenie…", en: "SSE error — reconnecting…" },
     sse_init_err:  { pl: "Błąd inicjalizacji SSE: {err}",   en: "SSE init error: {err}" },
+  },
+
+  // ===== GOOGLE HOME =====
+  home: {
+    page_title:         { pl: "Rider-Pi — Sterowanie Google Home", en: "Rider-Pi — Google Home Control" },
+    auth_checking:      { pl: "Sprawdzanie…", en: "Checking…" },
+    auth_ok:            { pl: "Zalogowano", en: "Authenticated" },
+    auth_required:      { pl: "Wymagane logowanie", en: "Auth Required" },
+    auth_error:         { pl: "Błąd autoryzacji", en: "Auth Error" },
+    auth_title:         { pl: "Wymagana autoryzacja", en: "Authentication Required" },
+    auth_description:   { pl: "Aby sterować urządzeniami Google Home, zaloguj się kontem Google.", en: "To control your Google Home devices, please sign in with your Google account." },
+    auth_button:        { pl: "Zaloguj przez Google", en: "Sign in with Google" },
+    auth_success:       { pl: "Zalogowano pomyślnie!", en: "Authentication successful!" },
+    devices_title:      { pl: "Twoje urządzenia", en: "Your Devices" },
+    refresh_button:     { pl: "⟳ Odśwież", en: "⟳ Refresh" },
+    no_devices:         { pl: "Brak urządzeń. Sprawdź konfigurację Google Home.", en: "No devices found. Check your Google Home configuration." },
+    btn_on:             { pl: "Włącz", en: "On" },
+    btn_off:            { pl: "Wyłącz", en: "Off" },
+    brightness:         { pl: "Jasność", en: "Brightness" },
+    sending_command:    { pl: "Wysyłanie komendy…", en: "Sending command…" },
+    command_success:    { pl: "Komenda wykonana pomyślnie", en: "Command executed successfully" },
+    error_check_auth:   { pl: "Błąd sprawdzania autoryzacji: {msg}", en: "Error checking auth: {msg}" },
+    error_load_devices: { pl: "Błąd ładowania urządzeń: {msg}", en: "Error loading devices: {msg}" },
+    error_send_command: { pl: "Błąd wysyłania komendy: {msg}", en: "Error sending command: {msg}" },
   },
 };
 
