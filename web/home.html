@@ -18,6 +18,10 @@
     .btn-auth:hover{ background:#1557b0; border-color:#1557b0; }
     label{font-size:14px;color:#b7cee3;display:flex;align-items:center;gap:8px}
     input[type="range"]{width:200px; accent-color:#6de28a}
+    input[type="color"]{width:60px;height:36px;border:1px solid #24425e;border-radius:8px;background:#122435;cursor:pointer;padding:2px}
+    input[type="color"]:hover{border-color:#2b5577}
+    select{padding:6px 10px;border:1px solid #24425e;border-radius:8px;background:#122435;color:#e6eef7;font-size:13px;cursor:pointer}
+    select:hover{background:#16304a;border-color:#2b5577}
     .device-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--gap);margin:16px 0}
     .device-card{background:#0b1a27;border:1px solid #1c3349;border-radius:12px;padding:12px;}
     .device-name{font-weight:600;margin-bottom:8px;color:#e6eef7}
@@ -91,6 +95,12 @@
 
   // --- Helper functions
   const qs = (s)=>document.querySelector(s);
+  
+  // Device control constants
+  const DEFAULT_COLOR_TEMP_K = 3000;
+  const DEFAULT_RGB_COLOR = 0xFFFFFF;
+  const DEFAULT_TEMPERATURE_C = 20;
+  const TEMP_INCREMENT_C = 0.5;
   
   function showStatus(msg, type='ok'){
     const statusMsg = qs('#statusMsg');
@@ -229,7 +239,7 @@
       
       // Color temperature
       if(colorTrait.temperatureK !== undefined){
-        const currentTemp = colorTrait.temperatureK || 3000;
+        const currentTemp = colorTrait.temperatureK || DEFAULT_COLOR_TEMP_K;
         html += `
           <div class="control-row">
             <label style="flex:1">
@@ -244,7 +254,7 @@
       
       // Color spectrum (RGB)
       if(colorTrait.spectrumRgb !== undefined){
-        const rgbValue = colorTrait.spectrumRgb || 16777215;
+        const rgbValue = colorTrait.spectrumRgb || DEFAULT_RGB_COLOR;
         const hexColor = '#' + rgbValue.toString(16).padStart(6, '0');
         html += `
           <div class="control-row">
@@ -261,7 +271,7 @@
     // TemperatureSetting trait
     if(traits['sdm.devices.traits.TemperatureSetting']){
       const tempTrait = traits['sdm.devices.traits.TemperatureSetting'];
-      const currentSetpoint = tempTrait.thermostatTemperatureSetpoint || 20;
+      const currentSetpoint = tempTrait.thermostatTemperatureSetpoint || DEFAULT_TEMPERATURE_C;
       const currentAmbient = tempTrait.thermostatTemperatureAmbient;
       
       html += `
@@ -389,8 +399,8 @@
       btn.addEventListener('click', ()=> {
         const valueSpan = btn.parentElement.querySelector('.temp-value');
         if(valueSpan){
-          const currentTemp = parseFloat(valueSpan.textContent) || 20;
-          const newTemp = currentTemp + 0.5;
+          const currentTemp = parseFloat(valueSpan.textContent) || DEFAULT_TEMPERATURE_C;
+          const newTemp = currentTemp + TEMP_INCREMENT_C;
           sendCommand(device.name, 'action.devices.commands.ThermostatTemperatureSetpoint', {thermostatTemperatureSetpoint: newTemp});
         }
       });
@@ -400,8 +410,8 @@
       btn.addEventListener('click', ()=> {
         const valueSpan = btn.parentElement.querySelector('.temp-value');
         if(valueSpan){
-          const currentTemp = parseFloat(valueSpan.textContent) || 20;
-          const newTemp = currentTemp - 0.5;
+          const currentTemp = parseFloat(valueSpan.textContent) || DEFAULT_TEMPERATURE_C;
+          const newTemp = currentTemp - TEMP_INCREMENT_C;
           sendCommand(device.name, 'action.devices.commands.ThermostatTemperatureSetpoint', {thermostatTemperatureSetpoint: newTemp});
         }
       });
