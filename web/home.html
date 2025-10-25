@@ -85,6 +85,13 @@ const log = (msg, cls = '') => {
   el.scrollTop = el.scrollHeight;
 };
 
+// Helper to escape HTML to prevent XSS
+const escapeHtml = (str) => {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+};
+
 initI18n('pl');
 
 let devices = [];
@@ -113,7 +120,12 @@ async function fetchDevices() {
   } catch (err) {
     log(`Błąd: ${err.message}`, 'err');
     qs('#refreshStatus').textContent = '(błąd)';
-    qs('#devicesContainer').innerHTML = `<div class="note err">${t('home.error_loading')}: ${err.message}</div>`;
+    const container = qs('#devicesContainer');
+    container.textContent = '';
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'note err';
+    errorDiv.textContent = `${t('home.error_loading')}: ${err.message}`;
+    container.appendChild(errorDiv);
   }
 }
 
@@ -166,6 +178,10 @@ function renderDevices() {
 function createDeviceCard(device) {
   const { id, name, type, traits, state, attributes } = device;
   const typeName = type.split('.').pop();
+  
+  // Escape device name to prevent XSS (name could be user-controlled)
+  const safeName = escapeHtml(name);
+  const safeTypeName = escapeHtml(typeName);
   
   let controls = '';
   
@@ -303,8 +319,8 @@ function createDeviceCard(device) {
     <div class="device-card">
       <div class="device-header">
         <div>
-          <div class="device-name">${name}</div>
-          <div class="device-type">${typeName}</div>
+          <div class="device-name">${safeName}</div>
+          <div class="device-type">${safeTypeName}</div>
         </div>
       </div>
       ${controls}

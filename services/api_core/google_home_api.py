@@ -235,7 +235,7 @@ def send_command(device_id: str, command: str, params: dict[str, Any]) -> dict[s
 
     except Exception as e:
         logger.error(f"Error executing command: {e}", exc_info=True)
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": "Command execution failed"}
 
 
 # Flask route handlers
@@ -246,7 +246,7 @@ def api_list_devices():
         return jsonify({"ok": True, "devices": devices})
     except Exception as e:
         logger.error(f"Error listing devices: {e}", exc_info=True)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": "Failed to list devices"}), 500
 
 
 def api_send_command():
@@ -268,4 +268,4 @@ def api_send_command():
 
     except Exception as e:
         logger.error(f"Error sending command: {e}", exc_info=True)
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": "Failed to send command"}), 500

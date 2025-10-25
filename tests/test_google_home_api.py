@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Tests for Google Home API integration."""
 
 from __future__ import annotations
@@ -131,7 +132,3 @@ def test_unsupported_trait():
     )
     assert result["ok"] is False
     assert "error" in result
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
