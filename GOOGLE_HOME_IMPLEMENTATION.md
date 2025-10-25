@@ -23,7 +23,7 @@ Successfully implemented complete Google Home smart device control integration f
 
 ### 2. API Endpoints (`services/api_server.py`)
 **New Routes:**
-- `POST /api/home/auth` - Initiates OAuth 2.0 Desktop app flow (blocking, uses InstalledAppFlow)
+- `POST /api/home/auth` - Initiates OAuth 2.0 Desktop app flow (blocking operation, uses InstalledAppFlow.run_local_server(), typical duration 30-120 seconds waiting for user to complete authentication in browser)
 - `GET /api/home/status` - Returns authentication status
 - `GET /api/home/devices` - Lists all Google Home devices (401 if not authenticated)
 - `POST /api/home/command` - Sends commands to devices (401 if not authenticated)
@@ -181,15 +181,17 @@ Successfully implemented complete Google Home smart device control integration f
 
 ### OAuth 2.0 Flow (Desktop App / InstalledAppFlow)
 1. User clicks "Sign in with Google"
-2. Frontend sends POST to `/api/home/auth`
+2. Frontend sends POST to `/api/home/auth` with 120-second timeout
 3. Backend calls `start_oauth_flow()` which uses `InstalledAppFlow.run_local_server()`
-4. Local server starts on port 8080 (configurable via GOOGLE_OAUTH_PORT)
+4. Local server starts on port 8080 (configurable in google_home_api.py via GOOGLE_OAUTH_PORT environment variable, default: 8080)
 5. Browser opens Google authorization page
 6. User grants permissions
 7. Google redirects to local server callback (handled automatically)
 8. `run_local_server()` captures the response and exchanges code for tokens
 9. Refresh token saved to `config/local/google_tokens.json`
 10. Frontend receives success response and refreshes auth status
+
+**Note:** The entire process is blocking and typically takes 30-120 seconds depending on how quickly the user completes authentication.
 
 ### Token Lifecycle
 - **Access Token**: 1 hour lifetime, not stored permanently
