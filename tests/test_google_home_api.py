@@ -163,6 +163,152 @@ class TestGoogleHomeAPI:
         call_args = mock_post.call_args
         assert command in str(call_args)
 
+    @patch("services.api_core.google_home_api.refresh_access_token")
+    @patch("services.api_core.google_home_api.requests.post")
+    def test_send_command_color_temperature(self, mock_post, mock_refresh):
+        """Test send_command with ColorAbsolute (temperature) command."""
+        mock_refresh.return_value = "test_access_token"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+        mock_post.return_value = mock_response
+
+        device_id = "enterprises/test/devices/123"
+        command = "action.devices.commands.ColorAbsolute"
+        params = {"color": {"temperatureK": 3000}}
+
+        result = gha.send_command(device_id, command, params)
+
+        assert result["ok"] is True
+        mock_post.assert_called_once()
+
+        # Verify payload structure
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["json"]["command"] == command
+        assert call_kwargs["json"]["params"]["color"]["temperatureK"] == 3000
+
+    @patch("services.api_core.google_home_api.refresh_access_token")
+    @patch("services.api_core.google_home_api.requests.post")
+    def test_send_command_color_rgb(self, mock_post, mock_refresh):
+        """Test send_command with ColorAbsolute (RGB) command."""
+        mock_refresh.return_value = "test_access_token"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+        mock_post.return_value = mock_response
+
+        device_id = "enterprises/test/devices/123"
+        command = "action.devices.commands.ColorAbsolute"
+        params = {"color": {"spectrumRgb": 16711680}}
+
+        result = gha.send_command(device_id, command, params)
+
+        assert result["ok"] is True
+        mock_post.assert_called_once()
+
+        # Verify payload structure
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["json"]["params"]["color"]["spectrumRgb"] == 16711680
+
+    @patch("services.api_core.google_home_api.refresh_access_token")
+    @patch("services.api_core.google_home_api.requests.post")
+    def test_send_command_thermostat_setpoint(self, mock_post, mock_refresh):
+        """Test send_command with ThermostatTemperatureSetpoint command."""
+        mock_refresh.return_value = "test_access_token"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+        mock_post.return_value = mock_response
+
+        device_id = "enterprises/test/devices/123"
+        command = "action.devices.commands.ThermostatTemperatureSetpoint"
+        params = {"thermostatTemperatureSetpoint": 22.5}
+
+        result = gha.send_command(device_id, command, params)
+
+        assert result["ok"] is True
+        mock_post.assert_called_once()
+
+        # Verify payload structure
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["json"]["params"]["thermostatTemperatureSetpoint"] == 22.5
+
+    @patch("services.api_core.google_home_api.refresh_access_token")
+    @patch("services.api_core.google_home_api.requests.post")
+    def test_send_command_thermostat_mode(self, mock_post, mock_refresh):
+        """Test send_command with ThermostatSetMode command."""
+        mock_refresh.return_value = "test_access_token"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+        mock_post.return_value = mock_response
+
+        device_id = "enterprises/test/devices/123"
+        command = "action.devices.commands.ThermostatSetMode"
+        params = {"thermostatMode": "heat"}
+
+        result = gha.send_command(device_id, command, params)
+
+        assert result["ok"] is True
+        mock_post.assert_called_once()
+
+        # Verify payload structure
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["json"]["params"]["thermostatMode"] == "heat"
+
+    @patch("services.api_core.google_home_api.refresh_access_token")
+    @patch("services.api_core.google_home_api.requests.post")
+    def test_send_command_start_stop(self, mock_post, mock_refresh):
+        """Test send_command with StartStop command."""
+        mock_refresh.return_value = "test_access_token"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+        mock_post.return_value = mock_response
+
+        device_id = "enterprises/test/devices/123"
+        command = "action.devices.commands.StartStop"
+        params = {"start": True}
+
+        result = gha.send_command(device_id, command, params)
+
+        assert result["ok"] is True
+        mock_post.assert_called_once()
+
+        # Verify payload structure
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["json"]["params"]["start"] is True
+
+    @patch("services.api_core.google_home_api.refresh_access_token")
+    @patch("services.api_core.google_home_api.requests.post")
+    def test_send_command_dock(self, mock_post, mock_refresh):
+        """Test send_command with Dock command."""
+        mock_refresh.return_value = "test_access_token"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "{}"
+        mock_response.json.return_value = {}
+        mock_post.return_value = mock_response
+
+        device_id = "enterprises/test/devices/123"
+        command = "action.devices.commands.Dock"
+        params = {}
+
+        result = gha.send_command(device_id, command, params)
+
+        assert result["ok"] is True
+        mock_post.assert_called_once()
+
+        # Verify payload structure
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["json"]["command"] == "action.devices.commands.Dock"
+        assert call_kwargs["json"]["params"] == {}
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

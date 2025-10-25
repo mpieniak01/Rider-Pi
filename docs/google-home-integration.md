@@ -383,7 +383,7 @@ Wysyła komendę do urządzenia.
 
 Potencjalne rozszerzenia funkcjonalności:
 
-- [ ] Obsługa dodatkowych cech urządzeń (ColorSetting, TemperatureSetting, etc.)
+- [x] Obsługa dodatkowych cech urządzeń (ColorSetting, TemperatureSetting, StartStop, Dock)
 - [ ] Grupowanie urządzeń według pokoi
 - [ ] Zaplanowane akcje (timer, harmonogram)
 - [ ] Sceny i automatyzacje
@@ -393,6 +393,147 @@ Potencjalne rozszerzenia funkcjonalności:
 - [ ] WebSocket do real-time aktualizacji stanów urządzeń
 - [ ] Tryb offline z cache'owaniem stanów
 - [ ] Logi historyczne zmian stanów urządzeń
+
+## Obsługiwane typy urządzeń i cechy
+
+Rider-Pi obecnie obsługuje następujące cechy (traits) urządzeń Google Home:
+
+### OnOff
+Włączanie i wyłączanie urządzeń.
+
+**Kontrolki UI:**
+- Przyciski "Włącz" i "Wyłącz"
+- Wyświetlanie aktualnego stanu (ON/OFF)
+
+**Komenda API:**
+```json
+{
+  "command": "action.devices.commands.OnOff",
+  "params": {"on": true}
+}
+```
+
+### Brightness
+Regulacja jasności urządzeń oświetleniowych.
+
+**Kontrolki UI:**
+- Suwak od 0 do 100
+- Wyświetlanie aktualnej wartości w procentach
+
+**Komenda API:**
+```json
+{
+  "command": "action.devices.commands.BrightnessAbsolute",
+  "params": {"brightness": 75}
+}
+```
+
+### ColorSetting
+Ustawianie koloru i temperatury barwowej światła.
+
+**Kontrolki UI:**
+- Suwak temperatury barwowej (2000K - 6500K)
+- Selektor koloru RGB (color picker)
+
+**Komendy API:**
+```json
+// Temperatura barwowa
+{
+  "command": "action.devices.commands.ColorAbsolute",
+  "params": {
+    "color": {
+      "temperatureK": 3000
+    }
+  }
+}
+
+// Kolor RGB
+{
+  "command": "action.devices.commands.ColorAbsolute",
+  "params": {
+    "color": {
+      "spectrumRgb": 16711680
+    }
+  }
+}
+```
+
+### TemperatureSetting
+Sterowanie termostatami - ustawianie temperatury i trybu pracy.
+
+**Kontrolki UI:**
+- Przyciski +/- do zmiany temperatury zadanej
+- Wyświetlanie temperatury otoczenia (jeśli dostępna)
+- Lista rozwijana do wyboru trybu termostatu
+
+**Komendy API:**
+```json
+// Ustawienie temperatury
+{
+  "command": "action.devices.commands.ThermostatTemperatureSetpoint",
+  "params": {
+    "thermostatTemperatureSetpoint": 22.5
+  }
+}
+
+// Zmiana trybu
+{
+  "command": "action.devices.commands.ThermostatSetMode",
+  "params": {
+    "thermostatMode": "heat"
+  }
+}
+```
+
+**Dostępne tryby:**
+- `off` - Wyłączony
+- `heat` - Ogrzewanie
+- `cool` - Chłodzenie
+- `heatcool` - Automatyczny (ogrzewanie/chłodzenie)
+- `eco` - Tryb ekonomiczny
+- `on` - Włączony
+
+### StartStop
+Uruchamianie i zatrzymywanie urządzeń (np. odkurzaczy robotycznych).
+
+**Kontrolki UI:**
+- Przyciski "Start", "Stop", "Pauza"
+- Wyświetlanie aktualnego stanu (RUNNING/PAUSED/STOPPED)
+
+**Komendy API:**
+```json
+// Start
+{
+  "command": "action.devices.commands.StartStop",
+  "params": {"start": true}
+}
+
+// Stop
+{
+  "command": "action.devices.commands.StartStop",
+  "params": {"start": false}
+}
+
+// Pauza
+{
+  "command": "action.devices.commands.PauseUnpause",
+  "params": {"pause": true}
+}
+```
+
+### Dock
+Wysyłanie urządzenia do bazy ładującej.
+
+**Kontrolki UI:**
+- Przycisk "Wróć do bazy"
+
+**Komenda API:**
+```json
+{
+  "command": "action.devices.commands.Dock",
+  "params": {}
+}
+```
 
 ## Referencje
 

@@ -223,6 +223,121 @@
       `;
     }
     
+    // ColorSetting trait - Temperature
+    if(traits['sdm.devices.traits.ColorSetting']){
+      const colorTrait = traits['sdm.devices.traits.ColorSetting'];
+      
+      // Color temperature
+      if(colorTrait.temperatureK !== undefined){
+        const currentTemp = colorTrait.temperatureK || 3000;
+        html += `
+          <div class="control-row">
+            <label style="flex:1">
+              <span>${t('home.color_temperature')}:</span>
+              <input type="range" min="2000" max="6500" value="${currentTemp}" 
+                     data-action="color-temp" data-device="${escapeHtml(device.name)}" />
+              <span class="color-temp-value">${currentTemp}K</span>
+            </label>
+          </div>
+        `;
+      }
+      
+      // Color spectrum (RGB)
+      if(colorTrait.spectrumRgb !== undefined){
+        const rgbValue = colorTrait.spectrumRgb || 16777215;
+        const hexColor = '#' + rgbValue.toString(16).padStart(6, '0');
+        html += `
+          <div class="control-row">
+            <label style="flex:1">
+              <span>${t('home.color')}:</span>
+              <input type="color" value="${hexColor}" 
+                     data-action="color-rgb" data-device="${escapeHtml(device.name)}" />
+            </label>
+          </div>
+        `;
+      }
+    }
+    
+    // TemperatureSetting trait
+    if(traits['sdm.devices.traits.TemperatureSetting']){
+      const tempTrait = traits['sdm.devices.traits.TemperatureSetting'];
+      const currentSetpoint = tempTrait.thermostatTemperatureSetpoint || 20;
+      const currentAmbient = tempTrait.thermostatTemperatureAmbient;
+      
+      html += `
+        <div class="control-row">
+          <label style="flex:1">
+            <span>${t('home.temperature_setpoint')}:</span>
+            <button class="btn-sm" data-action="temp-down" data-device="${escapeHtml(device.name)}">−</button>
+            <span class="temp-value">${currentSetpoint}°C</span>
+            <button class="btn-sm" data-action="temp-up" data-device="${escapeHtml(device.name)}">+</button>
+          </label>
+        </div>
+      `;
+      
+      if(currentAmbient !== undefined){
+        html += `
+          <div class="control-row">
+            <span class="muted">${t('home.temperature_ambient')}: ${currentAmbient}°C</span>
+          </div>
+        `;
+      }
+      
+      // Thermostat mode
+      const availableModes = tempTrait.availableThermostatModes || [];
+      const currentMode = tempTrait.thermostatMode || 'off';
+      if(availableModes.length > 0){
+        html += `
+          <div class="control-row">
+            <label style="flex:1">
+              <span>${t('home.thermostat_mode')}:</span>
+              <select data-action="thermostat-mode" data-device="${escapeHtml(device.name)}">
+        `;
+        availableModes.forEach(mode => {
+          const selected = mode === currentMode ? 'selected' : '';
+          html += `<option value="${mode}" ${selected}>${t('home.mode_' + mode)}</option>`;
+        });
+        html += `
+              </select>
+            </label>
+          </div>
+        `;
+      }
+    }
+    
+    // StartStop trait
+    if(traits['sdm.devices.traits.StartStop']){
+      const startStopTrait = traits['sdm.devices.traits.StartStop'];
+      const isRunning = startStopTrait.isRunning || false;
+      const isPaused = startStopTrait.isPaused || false;
+      
+      html += `
+        <div class="control-row">
+          <button class="btn-sm" data-action="start" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_start')}
+          </button>
+          <button class="btn-sm" data-action="stop" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_stop')}
+          </button>
+          <button class="btn-sm" data-action="pause" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_pause')}
+          </button>
+          <span class="muted">(${isRunning ? (isPaused ? 'PAUSED' : 'RUNNING') : 'STOPPED'})</span>
+        </div>
+      `;
+    }
+    
+    // Dock trait
+    if(traits['sdm.devices.traits.Dock']){
+      html += `
+        <div class="control-row">
+          <button class="btn-sm" data-action="dock" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_dock')}
+          </button>
+        </div>
+      `;
+    }
+    
     html += `</div>`;
     card.innerHTML = html;
     
@@ -245,6 +360,77 @@
         const valueSpan = slider.parentElement.querySelector('.brightness-value');
         if(valueSpan) valueSpan.textContent = e.target.value + '%';
       });
+    });
+    
+    // Color temperature
+    card.querySelectorAll('[data-action="color-temp"]').forEach(slider => {
+      slider.addEventListener('change', (e)=> {
+        const temperatureK = parseInt(e.target.value);
+        sendCommand(device.name, 'action.devices.commands.ColorAbsolute', {color: {temperatureK}});
+      });
+      
+      slider.addEventListener('input', (e)=> {
+        const valueSpan = slider.parentElement.querySelector('.color-temp-value');
+        if(valueSpan) valueSpan.textContent = e.target.value + 'K';
+      });
+    });
+    
+    // Color RGB
+    card.querySelectorAll('[data-action="color-rgb"]').forEach(picker => {
+      picker.addEventListener('change', (e)=> {
+        const hex = e.target.value.substring(1); // Remove #
+        const spectrumRgb = parseInt(hex, 16);
+        sendCommand(device.name, 'action.devices.commands.ColorAbsolute', {color: {spectrumRgb}});
+      });
+    });
+    
+    // Temperature controls
+    card.querySelectorAll('[data-action="temp-up"]').forEach(btn => {
+      btn.addEventListener('click', ()=> {
+        const valueSpan = btn.parentElement.querySelector('.temp-value');
+        if(valueSpan){
+          const currentTemp = parseFloat(valueSpan.textContent) || 20;
+          const newTemp = currentTemp + 0.5;
+          sendCommand(device.name, 'action.devices.commands.ThermostatTemperatureSetpoint', {thermostatTemperatureSetpoint: newTemp});
+        }
+      });
+    });
+    
+    card.querySelectorAll('[data-action="temp-down"]').forEach(btn => {
+      btn.addEventListener('click', ()=> {
+        const valueSpan = btn.parentElement.querySelector('.temp-value');
+        if(valueSpan){
+          const currentTemp = parseFloat(valueSpan.textContent) || 20;
+          const newTemp = currentTemp - 0.5;
+          sendCommand(device.name, 'action.devices.commands.ThermostatTemperatureSetpoint', {thermostatTemperatureSetpoint: newTemp});
+        }
+      });
+    });
+    
+    // Thermostat mode
+    card.querySelectorAll('[data-action="thermostat-mode"]').forEach(select => {
+      select.addEventListener('change', (e)=> {
+        const thermostatMode = e.target.value;
+        sendCommand(device.name, 'action.devices.commands.ThermostatSetMode', {thermostatMode});
+      });
+    });
+    
+    // Start/Stop/Pause
+    card.querySelectorAll('[data-action="start"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.StartStop', {start: true}));
+    });
+    
+    card.querySelectorAll('[data-action="stop"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.StartStop', {start: false}));
+    });
+    
+    card.querySelectorAll('[data-action="pause"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.PauseUnpause', {pause: true}));
+    });
+    
+    // Dock
+    card.querySelectorAll('[data-action="dock"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.Dock', {}));
     });
     
     devicesList.appendChild(card);
