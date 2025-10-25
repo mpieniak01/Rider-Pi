@@ -25,6 +25,7 @@ import services.api_core.chat_api as chat_api  # noqa: F401  # Chat/glue
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
+import services.api_core.google_home_api as google_home_api
 import services.api_core.services_api as services_api  # właściwy moduł usług
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
@@ -167,6 +168,10 @@ _add_rule("/api/voice/say", view_func=voice_proxy.say_handler, methods=["POST", 
 _add_rule("/api/voice/tts", view_func=voice_local_proxy.tts_local_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/voice/asr", view_func=voice_local_proxy.asr_local_handler, methods=["POST", "OPTIONS"])
 
+# google home control
+_add_rule("/api/home/devices", view_func=google_home_api.api_list_devices, methods=["GET", "OPTIONS"])
+_add_rule("/api/home/command", view_func=google_home_api.api_send_command, methods=["POST", "OPTIONS"])
+
 
 # bus health (stub)
 @app.route("/api/bus/health", methods=["GET", "OPTIONS"])
@@ -196,6 +201,7 @@ def serve_web(fname: str):
 _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"])
 _add_rule("/control", view_func=dashboard.control_page, methods=["GET"])
+_add_rule("/home", view_func=dashboard.home_page, methods=["GET"])
 
 
 # ── Local control fallback (przed startem serwera) ───────────────────────────

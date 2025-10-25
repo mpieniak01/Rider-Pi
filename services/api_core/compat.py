@@ -40,6 +40,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SNAP_DIR = os.path.abspath(os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots"))
 VIEW_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
 CONTROL_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "control.html"))
+HOME_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "home.html"))
 RAW_PATH = os.path.join(SNAP_DIR, "raw.jpg")
 PROC_PATH = os.path.join(SNAP_DIR, "proc.jpg")
 

@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rider-Pi — Google Home Control</title>
+  <style>
+    :root { --pad: 16px; --gap: 12px; }
+    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:var(--pad); background:#0e1823; color:#e6eef7; }
+    .wrap{max-width:1200px;margin:0 auto}
+    h1{font-size:20px;margin:0 0 var(--pad)}
+    h2{font-size:16px;margin:0 0 8px}
+    .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
+    .card{ background:#0f2030; border:1px solid #1e3a56; border-radius:16px; box-shadow:0 1px 8px rgba(0,0,0,.25); padding:var(--pad); margin:0 0 var(--pad); }
+    button{ padding:10px 14px; border:1px solid #24425e; border-radius:10px; background:#122435; color:#e6eef7; font-size:14px; cursor:pointer; transition:transform .03s ease, background .12s ease, border-color .12s ease; }
+    button:hover{ background:#16304a; border-color:#2b5577 } button:active{ transform:scale(0.98) }
+    button:disabled{ opacity:0.5; cursor:not-allowed; }
+    .btn-sm{ padding:6px 10px; font-size:13px; border-radius:8px }
+    label{font-size:14px;color:#b7cee3;display:flex;align-items:center;gap:8px;margin:4px 0}
+    input[type="range"]{width:180px; accent-color:#6de28a}
+    input[type="number"]{ width:80px;background:#0b1a27;color:#e6eef7; border:1px solid #24425e;border-radius:8px;padding:6px 8px }
+    input[type="color"]{ width:60px; height:36px; background:#0b1a27;border:1px solid #24425e;border-radius:8px;cursor:pointer }
+    select{ background:#0b1a27;color:#e6eef7; border:1px solid #24425e;border-radius:8px;padding:6px 10px;font-size:14px }
+    .muted{opacity:.85} .ok{color:#6de28a} .warn{color:#f0c36d} .err{color:#ff8080}
+    .spacer{flex:1} a{color:#98c7ff; text-decoration:none} a:hover{text-decoration:underline}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #24425e;background:#0b1a27}
+    .pill.ok{color:#6de28a;border-color:#2c6b48} .pill.err{color:#ff8080;border-color:#8a3a3a} .pill.warn{color:#f0c36d;border-color:#8a6a2c}
+    .device-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:var(--gap)}
+    .device-card{background:#0b1a27;border:1px solid #1c3349;border-radius:12px;padding:12px}
+    .device-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1c3349}
+    .device-name{font-size:15px;font-weight:600}
+    .device-type{font-size:12px;color:#b7cee3;opacity:0.8}
+    .control-section{margin:8px 0;padding:8px 0;border-top:1px solid #1c3349}
+    .control-section:first-child{border-top:none;padding-top:0}
+    .control-row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
+    .control-label{font-size:13px;color:#b7cee3;min-width:80px}
+    .control-value{font-size:13px;color:#e6eef7;min-width:60px}
+    .btn-group{display:flex;gap:6px;flex-wrap:wrap}
+    .status-indicator{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+    .status-on{background:#6de28a}
+    .status-off{background:#8a3a3a}
+    .note{font-size:13px;color:#b7cee3}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  
+  <h1>
+    <span data-i18n="home.title">Google Home — Sterowanie urządzeniami</span>
+    <span id="refreshStatus" class="muted" style="margin-left:8px">(sprawdzanie...)</span>
+  </h1>
+
+  <div class="row">
+    <button id="btnRefresh" class="btn-sm" data-i18n="home.refresh">⟳ Odśwież</button>
+    <div class="spacer"></div>
+    <a href="/" data-i18n="meta.dashboard">↩ pulpit</a>
+    <a href="/control" data-i18n="home.control_page">Sterowanie</a>
+  </div>
+
+  <!-- Devices container -->
+  <div class="card">
+    <h2 data-i18n="home.devices_title">Urządzenia</h2>
+    <div id="devicesContainer" class="device-grid">
+      <div class="note" data-i18n="home.loading">Ładowanie urządzeń...</div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="card">
+    <h2 data-i18n="home.log_title">Dziennik</h2>
+    <div id="log" style="height:150px; overflow:auto; background:#0b1a27; border:1px solid #1c3349; border-radius:10px; padding:8px; font-family:ui-monospace,Consolas,monospace; font-size:13px; white-space:pre-wrap;"></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { t, initI18n } from '/web/i18n.js';
+
+const qs = s => document.querySelector(s);
+const log = (msg, cls = '') => {
+  const el = qs('#log');
+  const ts = new Date().toLocaleTimeString();
+  const line = `[${ts}] ${msg}`;
+  el.textContent += line + '\n';
+  el.scrollTop = el.scrollHeight;
+};
+
+initI18n('pl');
+
+let devices = [];
+
+// Fetch devices from API
+async function fetchDevices() {
+  try {
+    log('Pobieranie listy urządzeń...');
+    qs('#refreshStatus').textContent = '(ładowanie...)';
+    
+    const response = await fetch('/api/home/devices', { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    if (!data.ok) {
+      throw new Error(data.error || 'Unknown error');
+    }
+    
+    devices = data.devices || [];
+    log(`Znaleziono ${devices.length} urządzeń`);
+    qs('#refreshStatus').textContent = `(${devices.length} urządzeń)`;
+    
+    renderDevices();
+  } catch (err) {
+    log(`Błąd: ${err.message}`, 'err');
+    qs('#refreshStatus').textContent = '(błąd)';
+    qs('#devicesContainer').innerHTML = `<div class="note err">${t('home.error_loading')}: ${err.message}</div>`;
+  }
+}
+
+// Send command to device
+async function sendDeviceCommand(deviceId, command, params) {
+  try {
+    log(`Wysyłanie komendy do ${deviceId}: ${command}`);
+    
+    const response = await fetch('/api/home/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId, command, params })
+    });
+    
+    const data = await response.json();
+    if (!data.ok) {
+      throw new Error(data.error || 'Command failed');
+    }
+    
+    log(`✓ Komenda wykonana: ${command}`);
+    
+    // Update local device state
+    const device = devices.find(d => d.id === deviceId);
+    if (device && data.state) {
+      device.state = { ...device.state, ...data.state };
+      renderDevices();
+    }
+    
+    return data;
+  } catch (err) {
+    log(`✗ Błąd komendy: ${err.message}`, 'err');
+    throw err;
+  }
+}
+
+// Render devices in the UI
+function renderDevices() {
+  const container = qs('#devicesContainer');
+  
+  if (!devices.length) {
+    container.innerHTML = `<div class="note">${t('home.no_devices')}</div>`;
+    return;
+  }
+  
+  container.innerHTML = devices.map(device => createDeviceCard(device)).join('');
+  attachEventListeners();
+}
+
+// Create HTML for a single device card
+function createDeviceCard(device) {
+  const { id, name, type, traits, state, attributes } = device;
+  const typeName = type.split('.').pop();
+  
+  let controls = '';
+  
+  // OnOff control
+  if (traits.includes('action.devices.traits.OnOff')) {
+    const isOn = state.on || false;
+    const statusClass = isOn ? 'status-on' : 'status-off';
+    controls += `
+      <div class="control-section">
+        <div class="control-row">
+          <span class="control-label">
+            <span class="${statusClass} status-indicator"></span>
+            ${t('home.power')}
+          </span>
+          <div class="btn-group">
+            <button class="btn-sm" data-device="${id}" data-action="power-on" ${isOn ? 'disabled' : ''}>${t('home.on')}</button>
+            <button class="btn-sm" data-device="${id}" data-action="power-off" ${!isOn ? 'disabled' : ''}>${t('home.off')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
+  // Brightness control
+  if (traits.includes('action.devices.traits.Brightness')) {
+    const brightness = state.brightness || 0;
+    controls += `
+      <div class="control-section">
+        <div class="control-row">
+          <span class="control-label">${t('home.brightness')}</span>
+          <input type="range" min="0" max="100" value="${brightness}" 
+                 data-device="${id}" data-action="brightness" />
+          <span class="control-value" data-device="${id}" data-value="brightness">${brightness}%</span>
+        </div>
+      </div>
+    `;
+  }
+  
+  // Color control (RGB or Temperature)
+  if (traits.includes('action.devices.traits.ColorSetting')) {
+    const color = state.color || {};
+    const tempRange = attributes.colorTemperatureRange || { temperatureMinK: 2000, temperatureMaxK: 6500 };
+    
+    // Color temperature
+    if (color.temperatureK || attributes.colorModel !== 'rgb') {
+      const tempK = color.temperatureK || 3000;
+      controls += `
+        <div class="control-section">
+          <div class="control-row">
+            <span class="control-label">${t('home.color_temp')}</span>
+            <input type="range" min="${tempRange.temperatureMinK}" max="${tempRange.temperatureMaxK}" 
+                   value="${tempK}" step="100"
+                   data-device="${id}" data-action="color-temp" />
+            <span class="control-value" data-device="${id}" data-value="color-temp">${tempK}K</span>
+          </div>
+        </div>
+      `;
+    }
+    
+    // RGB color picker
+    if (attributes.colorModel === 'rgb' || color.spectrumRgb !== undefined) {
+      const rgbHex = color.spectrumRgb ? `#${color.spectrumRgb.toString(16).padStart(6, '0')}` : '#ffffff';
+      controls += `
+        <div class="control-section">
+          <div class="control-row">
+            <span class="control-label">${t('home.color')}</span>
+            <input type="color" value="${rgbHex}" 
+                   data-device="${id}" data-action="color-rgb" />
+          </div>
+        </div>
+      `;
+    }
+  }
+  
+  // Thermostat controls
+  if (traits.includes('action.devices.traits.TemperatureSetting')) {
+    const mode = state.thermostatMode || 'off';
+    const setpoint = state.thermostatTemperatureSetpoint || 20;
+    const ambient = state.thermostatTemperatureAmbient;
+    const modes = attributes.availableThermostatModes || ['off', 'heat', 'cool', 'auto'];
+    
+    controls += `
+      <div class="control-section">
+        <div class="control-row">
+          <span class="control-label">${t('home.thermostat_mode')}</span>
+          <select data-device="${id}" data-action="thermostat-mode">
+            ${modes.map(m => `<option value="${m}" ${m === mode ? 'selected' : ''}>${t('home.mode_' + m)}</option>`).join('')}
+          </select>
+        </div>
+        ${ambient !== undefined ? `
+        <div class="control-row">
+          <span class="control-label">${t('home.current_temp')}</span>
+          <span class="control-value">${ambient.toFixed(1)}°C</span>
+        </div>
+        ` : ''}
+        <div class="control-row">
+          <span class="control-label">${t('home.target_temp')}</span>
+          <input type="number" min="10" max="30" step="0.5" value="${setpoint}" 
+                 data-device="${id}" data-action="thermostat-temp" style="width:80px" />
+          <span>°C</span>
+        </div>
+      </div>
+    `;
+  }
+  
+  // StartStop controls (vacuum, etc.)
+  if (traits.includes('action.devices.traits.StartStop')) {
+    const isRunning = state.isRunning || false;
+    const isPaused = state.isPaused || false;
+    controls += `
+      <div class="control-section">
+        <div class="control-row">
+          <span class="control-label">${t('home.operation')}</span>
+          <div class="btn-group">
+            <button class="btn-sm" data-device="${id}" data-action="start" ${isRunning ? 'disabled' : ''}>${t('home.start')}</button>
+            <button class="btn-sm" data-device="${id}" data-action="stop" ${!isRunning ? 'disabled' : ''}>${t('home.stop')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
+  // Dock control
+  if (traits.includes('action.devices.traits.Dock')) {
+    controls += `
+      <div class="control-section">
+        <div class="control-row">
+          <button class="btn-sm" data-device="${id}" data-action="dock">${t('home.dock')}</button>
+        </div>
+      </div>
+    `;
+  }
+  
+  return `
+    <div class="device-card">
+      <div class="device-header">
+        <div>
+          <div class="device-name">${name}</div>
+          <div class="device-type">${typeName}</div>
+        </div>
+      </div>
+      ${controls}
+    </div>
+  `;
+}
+
+// Attach event listeners to controls
+function attachEventListeners() {
+  // Power buttons
+  document.querySelectorAll('[data-action="power-on"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const deviceId = btn.getAttribute('data-device');
+      sendDeviceCommand(deviceId, 'action.devices.commands.OnOff', { on: true });
+    });
+  });
+  
+  document.querySelectorAll('[data-action="power-off"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const deviceId = btn.getAttribute('data-device');
+      sendDeviceCommand(deviceId, 'action.devices.commands.OnOff', { on: false });
+    });
+  });
+  
+  // Brightness sliders
+  document.querySelectorAll('[data-action="brightness"]').forEach(slider => {
+    const deviceId = slider.getAttribute('data-device');
+    const valueDisplay = qs(`[data-device="${deviceId}"][data-value="brightness"]`);
+    
+    slider.addEventListener('input', (e) => {
+      valueDisplay.textContent = e.target.value + '%';
+    });
+    
+    slider.addEventListener('change', (e) => {
+      sendDeviceCommand(deviceId, 'action.devices.commands.BrightnessAbsolute', { brightness: parseInt(e.target.value) });
+    });
+  });
+  
+  // Color temperature sliders
+  document.querySelectorAll('[data-action="color-temp"]').forEach(slider => {
+    const deviceId = slider.getAttribute('data-device');
+    const valueDisplay = qs(`[data-device="${deviceId}"][data-value="color-temp"]`);
+    
+    slider.addEventListener('input', (e) => {
+      valueDisplay.textContent = e.target.value + 'K';
+    });
+    
+    slider.addEventListener('change', (e) => {
+      sendDeviceCommand(deviceId, 'action.devices.commands.ColorAbsolute', { 
+        color: { temperatureK: parseInt(e.target.value) } 
+      });
+    });
+  });
+  
+  // Color pickers
+  document.querySelectorAll('[data-action="color-rgb"]').forEach(picker => {
+    const deviceId = picker.getAttribute('data-device');
+    
+    picker.addEventListener('change', (e) => {
+      const hex = e.target.value.substring(1); // Remove #
+      const rgb = parseInt(hex, 16);
+      sendDeviceCommand(deviceId, 'action.devices.commands.ColorAbsolute', { 
+        color: { spectrumRgb: rgb } 
+      });
+    });
+  });
+  
+  // Thermostat mode selectors
+  document.querySelectorAll('[data-action="thermostat-mode"]').forEach(select => {
+    const deviceId = select.getAttribute('data-device');
+    
+    select.addEventListener('change', (e) => {
+      sendDeviceCommand(deviceId, 'action.devices.commands.ThermostatSetMode', { 
+        thermostatMode: e.target.value 
+      });
+    });
+  });
+  
+  // Thermostat temperature inputs
+  document.querySelectorAll('[data-action="thermostat-temp"]').forEach(input => {
+    const deviceId = input.getAttribute('data-device');
+    
+    input.addEventListener('change', (e) => {
+      sendDeviceCommand(deviceId, 'action.devices.commands.ThermostatTemperatureSetpoint', { 
+        thermostatTemperatureSetpoint: parseFloat(e.target.value) 
+      });
+    });
+  });
+  
+  // Start/Stop buttons
+  document.querySelectorAll('[data-action="start"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const deviceId = btn.getAttribute('data-device');
+      sendDeviceCommand(deviceId, 'action.devices.commands.StartStop', { start: true });
+    });
+  });
+  
+  document.querySelectorAll('[data-action="stop"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const deviceId = btn.getAttribute('data-device');
+      sendDeviceCommand(deviceId, 'action.devices.commands.StartStop', { start: false });
+    });
+  });
+  
+  // Dock buttons
+  document.querySelectorAll('[data-action="dock"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const deviceId = btn.getAttribute('data-device');
+      sendDeviceCommand(deviceId, 'action.devices.commands.Dock', {});
+    });
+  });
+}
+
+// Refresh button
+qs('#btnRefresh').addEventListener('click', fetchDevices);
+
+// Auto-refresh every 10 seconds
+setInterval(fetchDevices, 10000);
+
+// Initial load
+fetchDevices();
+</script>
+
+</body>
+</html>

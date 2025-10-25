@@ -160,6 +160,40 @@ export const I18N = {
     sse_reconnect: { pl: "Błąd SSE — ponawiam połączenie…", en: "SSE error — reconnecting…" },
     sse_init_err:  { pl: "Błąd inicjalizacji SSE: {err}",   en: "SSE init error: {err}" },
   },
+
+  home: {
+    title:            { pl: "Google Home — Sterowanie urządzeniami", en: "Google Home — Device Control" },
+    refresh:          { pl: "⟳ Odśwież", en: "⟳ Refresh" },
+    control_page:     { pl: "Sterowanie", en: "Control" },
+    devices_title:    { pl: "Urządzenia", en: "Devices" },
+    log_title:        { pl: "Dziennik", en: "Log" },
+    loading:          { pl: "Ładowanie urządzeń...", en: "Loading devices..." },
+    no_devices:       { pl: "Brak urządzeń", en: "No devices" },
+    error_loading:    { pl: "Błąd ładowania", en: "Error loading" },
+    
+    // Device controls
+    power:            { pl: "Zasilanie", en: "Power" },
+    on:               { pl: "Włącz", en: "On" },
+    off:              { pl: "Wyłącz", en: "Off" },
+    brightness:       { pl: "Jasność", en: "Brightness" },
+    color:            { pl: "Kolor", en: "Color" },
+    color_temp:       { pl: "Temperatura barwowa", en: "Color Temperature" },
+    
+    // Thermostat
+    thermostat_mode:  { pl: "Tryb", en: "Mode" },
+    current_temp:     { pl: "Temperatura bieżąca", en: "Current Temperature" },
+    target_temp:      { pl: "Temperatura zadana", en: "Target Temperature" },
+    mode_off:         { pl: "Wyłączony", en: "Off" },
+    mode_heat:        { pl: "Ogrzewanie", en: "Heat" },
+    mode_cool:        { pl: "Chłodzenie", en: "Cool" },
+    mode_auto:        { pl: "Auto", en: "Auto" },
+    
+    // Start/Stop
+    operation:        { pl: "Praca", en: "Operation" },
+    start:            { pl: "Start", en: "Start" },
+    stop:             { pl: "Stop", en: "Stop" },
+    dock:             { pl: "Wróć do bazy", en: "Dock" },
+  },
 };
 
 let CURRENT_LANG = 'pl';

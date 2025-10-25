@@ -22,3 +22,9 @@ def control_page():
     if not os.path.isfile(C.CONTROL_HTML):
         return Response("<h1>control.html missing</h1>", mimetype="text/html"), 404
     return send_file(C.CONTROL_HTML)
+
+
+def home_page():
+    if not os.path.isfile(C.HOME_HTML):
+        return Response("<h1>home.html missing</h1>", mimetype="text/html"), 404
+    return send_file(C.HOME_HTML)
