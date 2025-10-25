@@ -25,6 +25,7 @@ import services.api_core.chat_api as chat_api  # noqa: F401  # Chat/glue
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
+import services.api_core.google_home_api as google_home_api
 import services.api_core.services_api as services_api  # właściwy moduł usług
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
@@ -166,6 +167,118 @@ _add_rule("/api/voice/say", view_func=voice_proxy.say_handler, methods=["POST", 
 # voice local proxy (NOWE – lokalny kanał TTS/ASR via :8092)
 _add_rule("/api/voice/tts", view_func=voice_local_proxy.tts_local_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/voice/asr", view_func=voice_local_proxy.asr_local_handler, methods=["POST", "OPTIONS"])
+
+
+# ── GOOGLE HOME ──────────────────────────────────────────────────────────────
+def _auto_refresh_token_and_retry(api_call, *args, **kwargs):
+    """
+    Helper to automatically refresh token on 401 and retry the API call.
+
+    Args:
+        api_call: Function to call (get_devices or send_command)
+        *args, **kwargs: Arguments to pass to the API call
+
+    Returns:
+        Result dictionary from the API call
+    """
+    result = api_call(*args, **kwargs)
+
+    # Auto-refresh token on 401
+    if result.get("status_code") == 401:
+        token = google_home_api.refresh_access_token()
+        if token:
+            result = api_call(*args, **kwargs)
+
+    return result
+
+
+@app.route("/api/home/auth", methods=["GET"])
+def home_auth():
+    """Start OAuth 2.0 flow for Google Home."""
+    try:
+        auth_url = google_home_api.get_auth_url()
+        from flask import redirect
+
+        return redirect(auth_url)
+    except Exception as e:
+        app.logger.error(f"Error starting OAuth flow: {e}", exc_info=True)
+        return _corsify(jsonify({"ok": False, "error": "Authentication configuration error"})), 500
+
+
+@app.route("/api/home/oauth2callback", methods=["GET"])
+def home_oauth_callback():
+    """Handle OAuth 2.0 callback from Google."""
+    code = request.args.get("code")
+    if not code:
+        return _corsify(jsonify({"ok": False, "error": "No authorization code provided"})), 400
+
+    result = google_home_api.handle_oauth_callback(code)
+
+    if result.get("ok"):
+        # Redirect to home.html after successful auth
+        from flask import redirect
+
+        return redirect("/web/home.html?auth=success")
+    else:
+        # Log that authentication failed (without sensitive details)
+        app.logger.error("OAuth callback failed")
+        return _corsify(jsonify({"ok": False, "error": "Authentication failed"})), 500
+
+
+@app.route("/api/home/status", methods=["GET", "OPTIONS"])
+def home_status():
+    """Check authentication status."""
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+
+    is_auth = google_home_api.is_authenticated()
+    return _corsify(jsonify({"ok": True, "authenticated": is_auth})), 200
+
+
+@app.route("/api/home/devices", methods=["GET", "OPTIONS"])
+def home_devices():
+    """Get list of devices from Google Home."""
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+
+    result = _auto_refresh_token_and_retry(google_home_api.get_devices)
+
+    if result.get("ok"):
+        # Success - return only the devices, not internal details
+        return _corsify(jsonify({"ok": True, "devices": result.get("devices", [])})), 200
+    else:
+        # Log actual error but return generic message
+        app.logger.error(f"Failed to get devices: {result.get('error', 'Unknown error')}")
+        error_msg = "Not authenticated" if result.get("status_code") == 401 else "Failed to retrieve devices"
+        status_code = 401 if result.get("status_code") == 401 else 500
+        return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
+
+
+@app.route("/api/home/command", methods=["POST", "OPTIONS"])
+def home_command():
+    """Send command to a Google Home device."""
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+
+    payload = request.get_json(silent=True) or {}
+    device_id = payload.get("deviceId")
+    command = payload.get("command")
+    params = payload.get("params", {})
+
+    if not device_id or not command:
+        return _corsify(jsonify({"ok": False, "error": "Missing deviceId or command"})), 400
+
+    result = _auto_refresh_token_and_retry(google_home_api.send_command, device_id, command, params)
+
+    if result.get("ok"):
+        # Success
+        return _corsify(jsonify({"ok": True})), 200
+    else:
+        # Log actual error but return generic message
+        app.logger.error(f"Failed to send command: {result.get('error', 'Unknown error')}")
+        error_msg = "Not authenticated" if result.get("status_code") == 401 else "Command failed"
+        status_code = 401 if result.get("status_code") == 401 else 500
+        return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
 # bus health (stub)
