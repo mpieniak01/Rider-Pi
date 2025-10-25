@@ -97,9 +97,9 @@ class TestSystemdServiceFiles:
             if re.search(r"^Exec\w+.*\bops/", content, re.MULTILINE):
                 deprecated_path.append(service_file.name)
 
-        assert not deprecated_path, (
-            f"Service files using deprecated ops/ path: {', '.join(deprecated_path)}. Should use scripts/ instead."
-        )
+        assert (
+            not deprecated_path
+        ), f"Service files using deprecated ops/ path: {', '.join(deprecated_path)}. Should use scripts/ instead."
 
     def test_no_deprecated_tools_path(self, service_files):
         """Test that no service files use deprecated tools/ path in ExecStart."""
@@ -111,9 +111,9 @@ class TestSystemdServiceFiles:
             if re.search(r"^Exec\w+.*\btools/", content, re.MULTILINE):
                 deprecated_path.append(service_file.name)
 
-        assert not deprecated_path, (
-            f"Service files using deprecated tools/ path: {', '.join(deprecated_path)}. Should use scripts/ instead."
-        )
+        assert (
+            not deprecated_path
+        ), f"Service files using deprecated tools/ path: {', '.join(deprecated_path)}. Should use scripts/ instead."
 
     def test_exec_start_paths_exist(self, service_files, repo_root):
         """Test that all ExecStart paths reference existing files."""
