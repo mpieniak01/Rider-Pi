@@ -479,8 +479,42 @@
   }
 
   // --- Event listeners
-  qs('#btnAuth').addEventListener('click', ()=> {
-    window.location.href = '/api/home/auth';
+  qs('#btnAuth').addEventListener('click', async ()=> {
+    const btn = qs('#btnAuth');
+    const originalText = btn.textContent;
+    
+    try {
+      btn.disabled = true;
+      btn.textContent = t('meta.loading') + '...';
+      
+      // POST request with extended timeout for blocking OAuth flow
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
+      
+      const response = await fetch('/api/home/auth', {
+        method: 'POST',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      const result = await response.json().catch(() => ({}));
+      
+      if (response.ok && result.ok) {
+        showStatus(t('home.auth_success'), 'ok');
+        // Refresh to show devices
+        await checkAuth();
+      } else {
+        throw new Error(result.error || 'Authentication failed');
+      }
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        showStatus(t('home.error_timeout'), 'err');
+      } else {
+        showStatus(t('home.error_auth', {msg: e.message}), 'err');
+      }
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
   });
 
   qs('#btnRefresh').addEventListener('click', ()=> loadDevices());
