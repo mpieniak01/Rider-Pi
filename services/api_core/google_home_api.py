@@ -76,7 +76,7 @@ def start_oauth_flow() -> dict[str, Any]:
         # Run local server to handle OAuth callback automatically
         # This will open the browser and wait for user to complete authorization
         # Port can be configured via GOOGLE_OAUTH_PORT environment variable
-        logger.info(f"Starting OAuth flow with local server on port {OAUTH_CALLBACK_PORT}...")
+        logger.info("Starting OAuth flow with local server...")
         credentials = flow.run_local_server(
             port=OAUTH_CALLBACK_PORT,
             access_type="offline",
@@ -100,8 +100,8 @@ def start_oauth_flow() -> dict[str, Any]:
         return {"ok": True, "message": "Authentication successful"}
 
     except Exception as e:
-        logger.error(f"OAuth flow error: {e}", exc_info=True)
-        return {"ok": False, "error": str(e)}
+        logger.error(f"OAuth flow error: {type(e).__name__}", exc_info=True)
+        return {"ok": False, "error": "OAuth authorization failed"}
 
 
 def is_authenticated() -> bool:

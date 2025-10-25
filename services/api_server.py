@@ -218,7 +218,8 @@ def home_auth():
         status_code = 200 if result.get("ok") else 500
         return _corsify(jsonify(result)), status_code
     except Exception as e:
-        app.logger.error(f"Error starting OAuth flow: {e}", exc_info=True)
+        # Log detailed error internally (not exposed to client)
+        app.logger.error(f"OAuth flow error: {type(e).__name__}", exc_info=True)
         return _corsify(jsonify({"ok": False, "error": "Authentication configuration error"})), 500
 
 
