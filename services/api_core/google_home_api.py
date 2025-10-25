@@ -15,7 +15,7 @@ from typing import Any
 import requests
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
+from google_auth_oauthlib.flow import InstalledAppFlow
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 PROJECT_ID = os.getenv("GOOGLE_PROJECT_ID", "")
-REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5000/api/home/oauth2callback")
 
 # OAuth scopes
 SCOPES = ["https://www.googleapis.com/auth/sdm.service"]
@@ -44,73 +43,43 @@ def _ensure_token_dir():
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
-def get_auth_url() -> str:
+def start_oauth_flow() -> dict[str, Any]:
     """
-    Generate OAuth 2.0 authorization URL.
+    Start OAuth 2.0 authorization flow using InstalledAppFlow.
+
+    This method opens a local server to handle the OAuth callback automatically.
+    The user will be prompted to open a browser and complete the authorization.
 
     Returns:
-        Authorization URL to redirect user to.
+        Dictionary with status and message.
     """
     if not CLIENT_ID or not CLIENT_SECRET:
         raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in environment variables")
 
     client_config = {
-        "web": {
+        "installed": {
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [REDIRECT_URI],
+            "redirect_uris": ["http://localhost", "urn:ietf:wg:oauth:2.0:oob"],
         }
     }
 
-    flow = Flow.from_client_config(
-        client_config,
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
-    )
-
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        prompt="consent",
-    )
-
-    logger.info(f"Generated auth URL: {auth_url}")
-    return auth_url
-
-
-def handle_oauth_callback(code: str) -> dict[str, Any]:
-    """
-    Handle OAuth 2.0 callback and exchange code for tokens.
-
-    Args:
-        code: Authorization code from OAuth callback.
-
-    Returns:
-        Dictionary with status and token information.
-    """
-    if not CLIENT_ID or not CLIENT_SECRET:
-        return {"ok": False, "error": "Missing CLIENT_ID or CLIENT_SECRET"}
-
     try:
-        client_config = {
-            "web": {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [REDIRECT_URI],
-            }
-        }
-
-        flow = Flow.from_client_config(
+        flow = InstalledAppFlow.from_client_config(
             client_config,
             scopes=SCOPES,
-            redirect_uri=REDIRECT_URI,
         )
 
-        flow.fetch_token(code=code)
-        credentials = flow.credentials
+        # Run local server to handle OAuth callback automatically
+        # This will open the browser and wait for user to complete authorization
+        logger.info("Starting OAuth flow with local server...")
+        credentials = flow.run_local_server(
+            port=8080,
+            access_type="offline",
+            prompt="consent",
+        )
 
         # Save refresh token
         _ensure_token_dir()
@@ -129,7 +98,7 @@ def handle_oauth_callback(code: str) -> dict[str, Any]:
         return {"ok": True, "message": "Authentication successful"}
 
     except Exception as e:
-        logger.error(f"OAuth callback error: {e}", exc_info=True)
+        logger.error(f"OAuth flow error: {e}", exc_info=True)
         return {"ok": False, "error": str(e)}
 
 

@@ -192,37 +192,28 @@ def _auto_refresh_token_and_retry(api_call, *args, **kwargs):
     return result
 
 
-@app.route("/api/home/auth", methods=["GET"])
+@app.route("/api/home/auth", methods=["POST", "OPTIONS"])
 def home_auth():
-    """Start OAuth 2.0 flow for Google Home."""
-    try:
-        auth_url = google_home_api.get_auth_url()
-        from flask import redirect
+    """
+    Start OAuth 2.0 flow for Google Home using InstalledAppFlow.
 
-        return redirect(auth_url)
+    This endpoint initiates the OAuth flow which will:
+    1. Start a local server on port 8080
+    2. Open the user's browser for authentication
+    3. Complete automatically when user authorizes the app
+
+    Note: This is a blocking operation that waits for user to complete auth.
+    """
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+
+    try:
+        result = google_home_api.start_oauth_flow()
+        status_code = 200 if result.get("ok") else 500
+        return _corsify(jsonify(result)), status_code
     except Exception as e:
         app.logger.error(f"Error starting OAuth flow: {e}", exc_info=True)
         return _corsify(jsonify({"ok": False, "error": "Authentication configuration error"})), 500
-
-
-@app.route("/api/home/oauth2callback", methods=["GET"])
-def home_oauth_callback():
-    """Handle OAuth 2.0 callback from Google."""
-    code = request.args.get("code")
-    if not code:
-        return _corsify(jsonify({"ok": False, "error": "No authorization code provided"})), 400
-
-    result = google_home_api.handle_oauth_callback(code)
-
-    if result.get("ok"):
-        # Redirect to home.html after successful auth
-        from flask import redirect
-
-        return redirect("/web/home.html?auth=success")
-    else:
-        # Log that authentication failed (without sensitive details)
-        app.logger.error("OAuth callback failed")
-        return _corsify(jsonify({"ok": False, "error": "Authentication failed"})), 500
 
 
 @app.route("/api/home/status", methods=["GET", "OPTIONS"])
