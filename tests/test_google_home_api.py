@@ -43,34 +43,18 @@ class TestGoogleHomeAPI:
         finally:
             temp_path.unlink()
 
-    def test_get_auth_url_missing_credentials(self):
-        """Test get_auth_url raises ValueError when credentials are missing."""
+    def test_start_oauth_flow_missing_credentials(self):
+        """Test start_oauth_flow raises ValueError when credentials are missing."""
         # Temporarily clear credentials
         with patch.object(gha, "CLIENT_ID", ""):
             with patch.object(gha, "CLIENT_SECRET", ""):
                 with pytest.raises(ValueError, match="GOOGLE_CLIENT_ID"):
-                    gha.get_auth_url()
+                    gha.start_oauth_flow()
 
-    @patch("services.api_core.google_home_api.Flow")
-    def test_get_auth_url_success(self, mock_flow_class):
-        """Test get_auth_url returns proper URL with valid credentials."""
+    @patch("services.api_core.google_home_api.InstalledAppFlow")
+    def test_start_oauth_flow_success(self, mock_flow_class):
+        """Test start_oauth_flow successfully completes OAuth flow."""
         # Mock the Flow behavior
-        mock_flow = MagicMock()
-        mock_flow.authorization_url.return_value = ("https://accounts.google.com/auth?test=1", None)
-        mock_flow_class.from_client_config.return_value = mock_flow
-
-        with patch.object(gha, "CLIENT_ID", "test_id"):
-            with patch.object(gha, "CLIENT_SECRET", "test_secret"):
-                url = gha.get_auth_url()
-
-                assert isinstance(url, str)
-                assert url.startswith("https://")
-                mock_flow.authorization_url.assert_called_once()
-
-    @patch("services.api_core.google_home_api.Flow")
-    def test_handle_oauth_callback_success(self, mock_flow_class):
-        """Test handle_oauth_callback successfully saves tokens."""
-        # Mock Flow and credentials
         mock_creds = MagicMock()
         mock_creds.refresh_token = "test_refresh_token"
         mock_creds.token_uri = "https://oauth2.googleapis.com/token"
@@ -79,7 +63,7 @@ class TestGoogleHomeAPI:
         mock_creds.scopes = gha.SCOPES
 
         mock_flow = MagicMock()
-        mock_flow.credentials = mock_creds
+        mock_flow.run_local_server.return_value = mock_creds
         mock_flow_class.from_client_config.return_value = mock_flow
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -88,16 +72,24 @@ class TestGoogleHomeAPI:
             with patch.object(gha, "CLIENT_ID", "test_id"):
                 with patch.object(gha, "CLIENT_SECRET", "test_secret"):
                     with patch.object(gha, "TOKEN_FILE", temp_token_file):
-                        result = gha.handle_oauth_callback("test_code")
+                        with patch.object(gha, "OAUTH_CALLBACK_PORT", 8080):
+                            result = gha.start_oauth_flow()
 
-                        assert result["ok"] is True
-                        assert "message" in result
-                        assert temp_token_file.exists()
+                            assert result["ok"] is True
+                            assert "message" in result
+                            assert temp_token_file.exists()
 
-                        # Verify token content
-                        with open(temp_token_file) as f:
-                            tokens = json.load(f)
-                        assert tokens["refresh_token"] == "test_refresh_token"
+                            # Verify token content
+                            with open(temp_token_file) as f:
+                                tokens = json.load(f)
+                            assert tokens["refresh_token"] == "test_refresh_token"
+
+                            # Verify run_local_server was called with correct params
+                            mock_flow.run_local_server.assert_called_once()
+                            call_kwargs = mock_flow.run_local_server.call_args[1]
+                            assert call_kwargs["port"] == 8080
+                            assert call_kwargs["access_type"] == "offline"
+                            assert call_kwargs["prompt"] == "consent"
 
     def test_get_devices_no_project_id(self):
         """Test get_devices returns error when PROJECT_ID is not set."""
