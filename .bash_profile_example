@@ -10,12 +10,13 @@
 # 1. Przejdź do Google Cloud Console: https://console.cloud.google.com/
 # 2. Utwórz projekt lub wybierz istniejący
 # 3. Włącz Smart Device Management API
-# 4. Utwórz dane uwierzytelniające OAuth 2.0 (typ: Web application)
-# 5. Dodaj Authorized redirect URI: http://199.168.1.71:5000/api/home/oauth2callback
+# 4. Utwórz dane uwierzytelniające OAuth 2.0 (typ: Desktop app / Aplikacja komputerowa)
+#    WAŻNE: Wybierz typ "Desktop app" (Aplikacja komputerowa), NIE "Web application"
+# 5. Zapisz Client ID i Client Secret
 # 6. Przejdź do Device Access Console: https://console.nest.google.com/device-access/
 # 7. Utwórz projekt Device Access i skopiuj Project ID
 
-# Identyfikator klienta OAuth 2.0 z Google Cloud Console
+# Identyfikator klienta OAuth 2.0 z Google Cloud Console (typ: Desktop app)
 # Przykład: "123456789012-abcdefghijklmnopqrstuvwxyz123456.apps.googleusercontent.com"
 export GOOGLE_CLIENT_ID="TWOJ_CLIENT_ID.apps.googleusercontent.com"
 
@@ -27,9 +28,11 @@ export GOOGLE_CLIENT_SECRET="TWOJ_CLIENT_SECRET"
 # Przykład: "abc123def456-789g-hij0-klmn-opqrstuvwxyz"
 export GOOGLE_PROJECT_ID="twoj-device-access-project-id"
 
-# Opcjonalnie: Redirect URI (domyślnie używany w kodzie)
-# Zmień tylko jeśli używasz innego adresu IP lub portu
-# export GOOGLE_REDIRECT_URI="http://199.168.1.71:5000/api/home/oauth2callback"
+# Opcjonalnie: Port dla lokalnego serwera OAuth callback (domyślnie 8080)
+# export GOOGLE_OAUTH_PORT="8080"
+
+# UWAGA: GOOGLE_REDIRECT_URI nie jest już wymagane dla typu "Desktop app"
+# InstalledAppFlow zarządza przekierowaniami automatycznie
 
 # ============================================================================
 # Aby zastosować zmiany, uruchom:

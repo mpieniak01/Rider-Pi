@@ -26,18 +26,23 @@ Moduł odpowiedzialny za komunikację z Google Smart Device Management API:
 
 API Server (`services/api_server.py`) udostępnia następujące endpointy:
 
-#### GET `/api/home/auth`
-Inicjuje proces autoryzacji OAuth 2.0. Przekierowuje użytkownika do strony logowania Google.
+#### POST `/api/home/auth`
+Inicjuje proces autoryzacji OAuth 2.0 z użyciem InstalledAppFlow.
 
-**Odpowiedź**: HTTP 302 Redirect do Google OAuth
+**Uwaga:** To jest endpoint blokujący - czeka na zakończenie procesu autoryzacji przez użytkownika w przeglądarce. Może trwać 30-60+ sekund. Klienty HTTP powinny ustawić timeout na minimum 120 sekund.
 
-#### GET `/api/home/oauth2callback`
-Endpoint obsługujący callback z Google po zakończeniu autoryzacji.
+**WAŻNE:** Zmiana z GET na POST - jest to zmiana niekompatybilna wstecz wymagana dla przepływu Desktop app.
 
-**Parametry URL**:
-- `code` (string): Kod autoryzacyjny zwrócony przez Google
+**Odpowiedź**:
+```json
+{
+  "ok": true,
+  "message": "Authentication successful"
+}
+```
 
-**Odpowiedź**: HTTP 302 Redirect do `/web/home.html?auth=success`
+**Konfiguracja:**
+- Port lokalnego serwera callback można zmienić przez zmienną `GOOGLE_OAUTH_PORT` (domyślnie 8080)
 
 #### GET `/api/home/status`
 Sprawdza status autoryzacji (czy użytkownik jest zalogowany).
@@ -145,10 +150,11 @@ Interfejs webowy zapewnia:
 4. Utwórz dane uwierzytelniające OAuth 2.0:
    - Przejdź do "APIs & Services" → "Credentials"
    - Kliknij "Create Credentials" → "OAuth client ID"
-   - Wybierz typ aplikacji: "Web application"
-   - Dodaj Authorized redirect URI: `http://199.168.1.71:5000/api/home/oauth2callback`
-     (zmień IP/port jeśli używasz innego adresu)
+   - Wybierz typ aplikacji: **"Desktop app"** (Aplikacja komputerowa)
+   - Podaj nazwę (np. "Rider-Pi Desktop")
    - Zapisz **Client ID** i **Client Secret**
+
+**WAŻNE:** Typ klienta OAuth musi być "Desktop app", NIE "Web application". Przepływ Desktop app wykorzystuje lokalny serwer callback i nie wymaga publicznego URI przekierowania.
 
 ### 2. Konfiguracja Device Access Console
 
@@ -205,9 +211,11 @@ Serwer domyślnie startuje na porcie 5000 (konfigurowalny przez zmienną `STATUS
 
 1. Otwórz w przeglądarce: `http://199.168.1.71:5000/web/home.html`
 2. Kliknij przycisk "Zaloguj przez Google"
-3. Zaloguj się kontem Google i udziel zgód dla aplikacji
-4. Zostaniesz przekierowany z powrotem do panelu Rider-Pi
-5. Po pomyślnej autoryzacji zobaczysz listę urządzeń
+3. Aplikacja automatycznie otworzy przeglądarkę i uruchomi lokalny serwer na porcie 8080
+4. Zaloguj się kontem Google i udziel zgód dla aplikacji
+5. Po pomyślnej autoryzacji przeglądarka zostanie zamknięta, a panel Rider-Pi wyświetli listę urządzeń
+
+**Uwaga:** Proces autoryzacji używa przepływu "Desktop app" z `InstalledAppFlow.run_local_server()`. Lokalny serwer nasłuchuje na `http://localhost:8080` i automatycznie obsługuje callback z Google.
 
 ### Sterowanie urządzeniami
 
@@ -273,9 +281,11 @@ Serwer domyślnie startuje na porcie 5000 (konfigurowalny przez zmienną `STATUS
 
 ### Błędy OAuth callback
 
-- Sprawdź czy Redirect URI w Google Cloud Console jest identyczny z używanym
-- Format: `http://IP:PORT/api/home/oauth2callback`
-- Sprawdź czy serwer jest dostępny pod podanym adresem IP
+- Przepływ Desktop app wykorzystuje `InstalledAppFlow.run_local_server()` który automatycznie obsługuje callback
+- Serwer lokalny nasłuchuje domyślnie na porcie 8080 (konfigurowalny przez `GOOGLE_OAUTH_PORT`)
+- Upewnij się, że port nie jest zajęty przez inną aplikację
+- Jeśli port jest zajęty, ustaw `export GOOGLE_OAUTH_PORT="8081"` (lub inny wolny port) w `~/.bash_profile`
+- Proces autoryzacji jest blokujący - może trwać 30-60+ sekund, upewnij się że klient HTTP ma odpowiedni timeout
 
 ### Błędy CORS w przeglądarce
 
@@ -323,20 +333,14 @@ Rider-Pi/
 
 ### Klasy i funkcje (google_home_api.py)
 
-#### `get_auth_url() -> str`
-Generuje URL autoryzacji OAuth 2.0.
-
-**Zwraca**: URL do przekierowania użytkownika
-
-**Wyjątki**: `ValueError` jeśli brakuje CLIENT_ID lub CLIENT_SECRET
-
-#### `handle_oauth_callback(code: str) -> dict`
-Obsługuje callback OAuth i wymienia kod na tokeny.
-
-**Parametry**:
-- `code`: Kod autoryzacyjny
+#### `start_oauth_flow() -> dict`
+Rozpoczyna przepływ autoryzacji OAuth 2.0 używając InstalledAppFlow.
 
 **Zwraca**: `{"ok": True/False, "message": "...", "error": "..."}`
+
+**Uwaga**: Ta funkcja jest blokująca i czeka na zakończenie autoryzacji przez użytkownika.
+
+**Wyjątki**: `ValueError` jeśli brakuje CLIENT_ID lub CLIENT_SECRET
 
 #### `is_authenticated() -> bool`
 Sprawdza czy użytkownik jest zalogowany.
