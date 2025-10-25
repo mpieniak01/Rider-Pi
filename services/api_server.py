@@ -180,7 +180,7 @@ def home_auth():
         return redirect(auth_url)
     except Exception as e:
         app.logger.error(f"Error starting OAuth flow: {e}", exc_info=True)
-        return _corsify(jsonify({"ok": False, "error": str(e)})), 500
+        return _corsify(jsonify({"ok": False, "error": "Authentication configuration error"})), 500
 
 
 @app.route("/api/home/oauth2callback", methods=["GET"])
@@ -198,7 +198,9 @@ def home_oauth_callback():
 
         return redirect("/web/home.html?auth=success")
     else:
-        return _corsify(jsonify(result)), 500
+        # Log that authentication failed (without sensitive details)
+        app.logger.error("OAuth callback failed")
+        return _corsify(jsonify({"ok": False, "error": "Authentication failed"})), 500
 
 
 @app.route("/api/home/status", methods=["GET", "OPTIONS"])
@@ -226,8 +228,14 @@ def home_devices():
         if token:
             result = google_home_api.get_devices()
 
-    status = 200 if result.get("ok") else 500
-    return _corsify(jsonify(result)), status
+    if result.get("ok"):
+        # Success - return only the devices, not internal details
+        return _corsify(jsonify({"ok": True, "devices": result.get("devices", [])})), 200
+    else:
+        # Log actual error but return generic message
+        app.logger.error(f"Failed to get devices: {result.get('error', 'Unknown error')}")
+        error_msg = "Not authenticated" if result.get("status_code") == 401 else "Failed to retrieve devices"
+        return _corsify(jsonify({"ok": False, "error": error_msg})), 500 if result.get("ok") is False else 401
 
 
 @app.route("/api/home/command", methods=["POST", "OPTIONS"])
@@ -252,8 +260,14 @@ def home_command():
         if token:
             result = google_home_api.send_command(device_id, command, params)
 
-    status = 200 if result.get("ok") else 500
-    return _corsify(jsonify(result)), status
+    if result.get("ok"):
+        # Success
+        return _corsify(jsonify({"ok": True})), 200
+    else:
+        # Log actual error but return generic message
+        app.logger.error(f"Failed to send command: {result.get('error', 'Unknown error')}")
+        error_msg = "Not authenticated" if result.get("status_code") == 401 else "Command failed"
+        return _corsify(jsonify({"ok": False, "error": error_msg})), 401 if result.get("status_code") == 401 else 500
 
 
 # bus health (stub)
