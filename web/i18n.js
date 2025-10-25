@@ -199,6 +199,8 @@ export const I18N = {
     error_check_auth:   { pl: "Błąd sprawdzania autoryzacji: {msg}", en: "Error checking auth: {msg}" },
     error_load_devices: { pl: "Błąd ładowania urządzeń: {msg}", en: "Error loading devices: {msg}" },
     error_send_command: { pl: "Błąd wysyłania komendy: {msg}", en: "Error sending command: {msg}" },
+    error_auth:         { pl: "Błąd autoryzacji: {msg}", en: "Authentication error: {msg}" },
+    error_timeout:      { pl: "Przekroczono czas oczekiwania na autoryzację. Spróbuj ponownie.", en: "Authentication timeout. Please try again." },
   },
 };
 

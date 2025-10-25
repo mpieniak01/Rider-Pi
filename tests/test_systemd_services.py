@@ -98,7 +98,7 @@ class TestSystemdServiceFiles:
                 deprecated_path.append(service_file.name)
 
         assert not deprecated_path, (
-            f"Service files using deprecated ops/ path: {', '.join(deprecated_path)}. " "Should use scripts/ instead."
+            f"Service files using deprecated ops/ path: {', '.join(deprecated_path)}. Should use scripts/ instead."
         )
 
     def test_no_deprecated_tools_path(self, service_files):
@@ -112,7 +112,7 @@ class TestSystemdServiceFiles:
                 deprecated_path.append(service_file.name)
 
         assert not deprecated_path, (
-            f"Service files using deprecated tools/ path: {', '.join(deprecated_path)}. " "Should use scripts/ instead."
+            f"Service files using deprecated tools/ path: {', '.join(deprecated_path)}. Should use scripts/ instead."
         )
 
     def test_exec_start_paths_exist(self, service_files, repo_root):

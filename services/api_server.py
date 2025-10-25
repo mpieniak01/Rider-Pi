@@ -239,6 +239,10 @@ def home_devices():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
 
+    # Check authentication first to avoid 500 errors
+    if not google_home_api.is_authenticated():
+        return _corsify(jsonify({"ok": False, "error": "Not authenticated"})), 401
+
     result = _auto_refresh_token_and_retry(google_home_api.get_devices)
 
     if result.get("ok"):
@@ -257,6 +261,10 @@ def home_command():
     """Send command to a Google Home device."""
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
+
+    # Check authentication first to avoid 500 errors
+    if not google_home_api.is_authenticated():
+        return _corsify(jsonify({"ok": False, "error": "Not authenticated"})), 401
 
     payload = request.get_json(silent=True) or {}
     device_id = payload.get("deviceId")

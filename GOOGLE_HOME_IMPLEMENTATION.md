@@ -15,8 +15,7 @@ Successfully implemented complete Google Home smart device control integration f
 - Comprehensive error handling and logging
 
 **Key Functions:**
-- `get_auth_url()` - Generate OAuth authorization URL
-- `handle_oauth_callback(code)` - Process OAuth callback and save tokens
+- `start_oauth_flow()` - Initiate Desktop app OAuth flow with InstalledAppFlow
 - `is_authenticated()` - Check authentication status
 - `refresh_access_token()` - Automatic token refresh
 - `get_devices()` - Retrieve device list from Google
@@ -24,14 +23,16 @@ Successfully implemented complete Google Home smart device control integration f
 
 ### 2. API Endpoints (`services/api_server.py`)
 **New Routes:**
-- `GET /api/home/auth` - Initiates OAuth 2.0 flow
-- `GET /api/home/oauth2callback` - Handles Google OAuth callback
+- `POST /api/home/auth` - Initiates OAuth 2.0 Desktop app flow
+  - Blocking operation using InstalledAppFlow.run_local_server()
+  - Typical duration: 30-120 seconds (waiting for user to complete authentication in browser)
 - `GET /api/home/status` - Returns authentication status
-- `GET /api/home/devices` - Lists all Google Home devices
-- `POST /api/home/command` - Sends commands to devices
+- `GET /api/home/devices` - Lists all Google Home devices (401 if not authenticated)
+- `POST /api/home/command` - Sends commands to devices (401 if not authenticated)
 
 **Security Features:**
 - CORS support for all endpoints
+- 401 Unauthorized response when not authenticated (not 500)
 - Sanitized error responses (no stack trace exposure)
 - Automatic token refresh on 401 errors
 - Generic error messages to prevent information leakage
@@ -180,14 +181,19 @@ Successfully implemented complete Google Home smart device control integration f
 
 ## Technical Details
 
-### OAuth 2.0 Flow
+### OAuth 2.0 Flow (Desktop App / InstalledAppFlow)
 1. User clicks "Sign in with Google"
-2. Redirect to Google authorization URL
-3. User grants permissions
-4. Google redirects to `/api/home/oauth2callback?code=...`
-5. Backend exchanges code for access + refresh tokens
-6. Refresh token saved to `config/local/google_tokens.json`
-7. User redirected to `home.html?auth=success`
+2. Frontend sends POST to `/api/home/auth` with 120-second timeout
+3. Backend calls `start_oauth_flow()` which uses `InstalledAppFlow.run_local_server()`
+4. Local server starts on port 8080 (configurable via GOOGLE_OAUTH_PORT environment variable)
+5. Browser opens Google authorization page
+6. User grants permissions
+7. Google redirects to local server callback (handled automatically)
+8. `run_local_server()` captures the response and exchanges code for tokens
+9. Refresh token saved to `config/local/google_tokens.json`
+10. Frontend receives success response and refreshes auth status
+
+**Note:** The entire process is blocking and typically takes 30-120 seconds depending on how quickly the user completes authentication.
 
 ### Token Lifecycle
 - **Access Token**: 1 hour lifetime, not stored permanently
