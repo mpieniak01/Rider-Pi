@@ -180,7 +180,7 @@ def update_file_references(content: str, mappings: dict[str, str], filepath: Pat
         # Check for deprecated services
         line, was_updated = mark_deprecated_service(line, context_before)
         if was_updated:
-            changes.append(f"Line {i+1}: Marked deprecated service")
+            changes.append(f"Line {i + 1}: Marked deprecated service")
 
         # Try to update references
         for old_ref, new_ref in mappings.items():
@@ -193,11 +193,11 @@ def update_file_references(content: str, mappings: dict[str, str], filepath: Pat
                     if verify_new_path_exists(new_ref):
                         new_line = pattern.sub(new_ref, line)
                         if new_line != line:
-                            changes.append(f"Line {i+1}: {old_ref} → {new_ref}")
+                            changes.append(f"Line {i + 1}: {old_ref} → {new_ref}")
                             line = new_line
                     else:
                         print(
-                            f"WARNING: {filepath.relative_to(REPO_ROOT)} line {i+1}: "
+                            f"WARNING: {filepath.relative_to(REPO_ROOT)} line {i + 1}: "
                             f"Target {new_ref} not found, skipping update",
                             file=sys.stderr,
                         )
@@ -208,11 +208,11 @@ def update_file_references(content: str, mappings: dict[str, str], filepath: Pat
                     if verify_new_path_exists(new_ref):
                         new_line = line.replace(old_ref, new_ref)
                         if new_line != line:
-                            changes.append(f"Line {i+1}: {old_ref} → {new_ref}")
+                            changes.append(f"Line {i + 1}: {old_ref} → {new_ref}")
                             line = new_line
                     else:
                         print(
-                            f"WARNING: {filepath.relative_to(REPO_ROOT)} line {i+1}: "
+                            f"WARNING: {filepath.relative_to(REPO_ROOT)} line {i + 1}: "
                             f"File {new_ref} not found, skipping update",
                             file=sys.stderr,
                         )
