@@ -123,8 +123,7 @@ def validate_service_file(service_path: Path, repo_root: Path) -> tuple[bool, li
 
                     if not check_path.exists():
                         errors.append(
-                            f"  ✗ {service_path.name}: Path does not exist: {path_str}\n"
-                            f"    Expected at: {check_path}"
+                            f"  ✗ {service_path.name}: Path does not exist: {path_str}\n    Expected at: {check_path}"
                         )
                         continue
 
