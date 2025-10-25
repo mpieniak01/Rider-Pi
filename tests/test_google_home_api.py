@@ -43,7 +43,6 @@ class TestGoogleHomeAPI:
         finally:
             temp_path.unlink()
 
-    @patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "", "GOOGLE_CLIENT_SECRET": ""}, clear=False)
     def test_get_auth_url_missing_credentials(self):
         """Test get_auth_url raises ValueError when credentials are missing."""
         # Temporarily clear credentials
@@ -52,11 +51,6 @@ class TestGoogleHomeAPI:
                 with pytest.raises(ValueError, match="GOOGLE_CLIENT_ID"):
                     gha.get_auth_url()
 
-    @patch.dict(
-        os.environ,
-        {"GOOGLE_CLIENT_ID": "test_id", "GOOGLE_CLIENT_SECRET": "test_secret"},
-        clear=False,
-    )
     @patch("services.api_core.google_home_api.Flow")
     def test_get_auth_url_success(self, mock_flow_class):
         """Test get_auth_url returns proper URL with valid credentials."""
