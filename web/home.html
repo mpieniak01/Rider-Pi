@@ -179,7 +179,7 @@
   function renderDevice(device){
     const devicesList = qs('#devicesList');
     
-    const name = device.name ? device.name.split('/').pop() : device.name || 'Unknown Device';
+    const name = (device.name || 'Unknown Device').split('/').pop() || 'Unknown Device';
     const type = device.type || 'Unknown';
     const traits = device.traits || {};
     
