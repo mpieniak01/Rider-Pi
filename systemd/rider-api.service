@@ -21,19 +21,21 @@ Environment=SAFE_MAX_DURATION=0.25
 Environment=WEB_BRIDGE_TIMEOUT=0.8
 
 # === ŚCIEŻKI SNAPSHOTÓW (spójne z services/api_core/compat.py) ===
-# Mogą zostać nadpisane w /etc/default/rider-api
 Environment=SNAP_DIR=/home/pi/robot/snapshots
 Environment=RAW_PATH=/home/pi/robot/snapshots/raw.jpg
 Environment=PROC_PATH=/home/pi/robot/snapshots/proc.jpg
 Environment=SSD_PATH=/home/pi/robot/snapshots/ssd.jpg
 
-# Zewnętrzne ENV (opcjonalne; nadpiszą wartości powyżej)
-EnvironmentFile=-/etc/default/rider
-EnvironmentFile=-/etc/default/rider-api
+# UWAGA: Sekrety (GOOGLE_CLIENT_ID/SECRET/PROJECT_ID itd.) mają być WYŁĄCZNIE w ~/.bash_profile
+# Dlatego NIE używamy tu EnvironmentFile do sekretów — usunięte.
+# EnvironmentFile=-/etc/default/rider
+# EnvironmentFile=-/etc/default/rider-api
 
 # Serwer API — na :8080 (zgodne z UI)
+# STATUS_API_PORT czytany przez nasze API; API_PORT zachowany dla zgodności wstecznej.
 Environment=API_HOST=0.0.0.0
 Environment=API_PORT=8080
+Environment=STATUS_API_PORT=8080
 
 # „Świeżość” klatek dla /camera/*
 Environment=SNAP_MAX_AGE_S=300
@@ -41,9 +43,11 @@ Environment=SNAP_MAX_AGE_S=300
 # Proxy do mostka ruchu (puste = nie używaj)
 Environment=WEB_BRIDGE_URL=
 
-# Lokalny voice-web (zgodny z services/api_core/voice_local_proxy.py)
+# Voice (nowe, lokalny voice-web) + legacy zmienne dla zgodności
 Environment=VOICE_WEB_BASE=http://127.0.0.1:8092
 Environment=VOICE_HTTP_TIMEOUT=45
+Environment=VOICE_TTS_URL=http://127.0.0.1:8092/api/tts
+Environment=VOICE_ASR_URL=http://127.0.0.1:8092/api/asr
 
 # BUS (SSE)
 Environment=BUS_PUB_PORT=5555
@@ -51,8 +55,16 @@ Environment=BUS_SUB_PORT=5556
 Environment=BUS_RCVHWM=100
 Environment=BUS_CONFLATE=0
 
-# Start serwera
-ExecStart=/usr/bin/python3 -u -m services.api_server
+# XGO RO (zachowanie jak w logach: domyślnie wyłączone)
+Environment=ENABLE_XGO_RO=0
+# Environment=XGO_RO_PORT=/dev/ttyUSB0
+
+# Start serwera:
+# - uruchamiamy bash jako powłokę logowania (-l) i ładujemy ~/.bash_profile,
+#   żeby pobrać SEKRETY OAuth (Desktop app): GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET /
+#   GOOGLE_PROJECT_ID / GOOGLE_OAUTH_PORT itp.
+# - dopiero potem exec Python.
+ExecStart=/bin/bash -lc 'source "$HOME/.bash_profile" && exec /usr/bin/python3 -u -m services.api_server'
 
 Restart=always
 RestartSec=0.5

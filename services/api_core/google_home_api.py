@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Google Home API integration module.
-Handles OAuth 2.0 authentication and Smart Device Management API communication.
+Handles OAuth 2.0 authentication (InstalledAppFlow – Desktop) and
+Smart Device Management (SDM) API communication.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -19,43 +21,100 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 logger = logging.getLogger(__name__)
 
+# -----------------------------------------------------------------------------
 # Configuration from environment variables
-CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-PROJECT_ID = os.getenv("GOOGLE_PROJECT_ID", "")
+# -----------------------------------------------------------------------------
+CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+PROJECT_ID = os.getenv("GOOGLE_PROJECT_ID", "").strip()
 
 # OAuth scopes
 SCOPES = ["https://www.googleapis.com/auth/sdm.service"]
 
 # API configuration
 API_TIMEOUT = int(os.getenv("GOOGLE_API_TIMEOUT", "10"))
+# Port, na którym tymczasowo nasłuchuje biblioteka Google podczas OAuth
 OAUTH_CALLBACK_PORT = int(os.getenv("GOOGLE_OAUTH_PORT", "8080"))
+# Port API (jeśli podany) – by uniknąć kolizji z OAUTH_CALLBACK_PORT
+STATUS_API_PORT = int(os.getenv("STATUS_API_PORT", os.getenv("PORT", "8080")))
 
-# Token storage path
+# Token storage path (repo_root/config/local/google_tokens.json)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TOKEN_FILE = BASE_DIR / "config" / "local" / "google_tokens.json"
 
-# API endpoints
+# SDM API
 API_BASE = "https://smartdevicemanagement.googleapis.com/v1"
 
 
-def _ensure_token_dir():
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+def _ensure_token_dir() -> None:
     """Ensure token directory exists."""
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """Return True if (host, port) is busy."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.2)
+        try:
+            return s.connect_ex((host, port)) == 0
+        except OSError:
+            # Jeśli błąd gniazda – przyjmijmy, że port nie jest dostępny.
+            return True
+
+
+def _pick_oauth_port() -> int:
+    """
+    Pick a safe port for InstalledAppFlow.run_local_server():
+    - prefer GOOGLE_OAUTH_PORT,
+    - if it collides with STATUS_API_PORT or is busy, try a few fallbacks.
+    """
+    candidates = [OAUTH_CALLBACK_PORT]
+    # unikaj kolizji z API
+    if STATUS_API_PORT not in (OAUTH_CALLBACK_PORT,):
+        candidates.append(STATUS_API_PORT)  # tylko aby sprawdzić i ominąć
+    # sensowne fallbacki
+    candidates.extend([8085, 8090, 8888, 0])  # 0 = auto-assign by OS
+
+    for p in candidates:
+        if p == STATUS_API_PORT:
+            continue
+        if p == 0:
+            # pozwól OS przydzielić
+            return 0
+        if not _port_in_use(p):
+            return p
+
+    # w ostateczności pozwól OS dobrać port
+    return 0
+
+
+def _require_oauth_env() -> tuple[bool, str | None]:
+    if not CLIENT_ID or not CLIENT_SECRET:
+        return (
+            False,
+            "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET are not set (Desktop app credentials required).",
+        )
+    return True, None
+
+
+# -----------------------------------------------------------------------------
+# OAuth (InstalledAppFlow – Desktop)
+# -----------------------------------------------------------------------------
 def start_oauth_flow() -> dict[str, Any]:
     """
-    Start OAuth 2.0 authorization flow using InstalledAppFlow.
+    Start OAuth 2.0 authorization flow using InstalledAppFlow (Desktop app).
 
-    This method opens a local server to handle the OAuth callback automatically.
-    The user will be prompted to open a browser and complete the authorization.
-
-    Returns:
-        Dictionary with status and message.
+    Biblioteka uruchamia tymczasowy serwer lokalny (loopback), przechwytuje kod
+    i zwraca odświeżalny token. Na RPi nie wymuszamy GUI – podajemy URL w logu,
+    który można wkleić w przeglądarce na innym urządzeniu.
     """
-    if not CLIENT_ID or not CLIENT_SECRET:
-        raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in environment variables")
+    ok, err = _require_oauth_env()
+    if not ok:
+        logger.error("OAuth init error: %s", err)
+        return {"ok": False, "error": "auth_env_missing"}
 
     client_config = {
         "installed": {
@@ -63,54 +122,64 @@ def start_oauth_flow() -> dict[str, Any]:
             "client_secret": CLIENT_SECRET,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": ["http://localhost", "urn:ietf:wg:oauth:2.0:oob"],
         }
     }
 
     try:
-        flow = InstalledAppFlow.from_client_config(
-            client_config,
-            scopes=SCOPES,
+        flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
+
+        # Wybierz bezpieczny port (bez kolizji z API / już zajętym)
+        port = _pick_oauth_port()
+        if port == 0:
+            logger.info("OAuth: letting OS choose a free loopback port.")
+
+        logger.info(
+            "Starting OAuth local server on loopback (port=%s). "
+            "If a browser doesn't open automatically, copy the URL from logs.",
+            port if port != 0 else "auto",
         )
 
-        # Run local server to handle OAuth callback automatically
-        # This will open the browser and wait for user to complete authorization
-        # Port can be configured via GOOGLE_OAUTH_PORT environment variable
-        logger.info("Starting OAuth flow with local server...")
+        # Nie otwieramy przeglądarki na RPi (headless) – open_browser=False
         credentials = flow.run_local_server(
-            port=OAUTH_CALLBACK_PORT,
+            port=port,
             access_type="offline",
             prompt="consent",
+            open_browser=False,
         )
 
-        # Save refresh token
+        # Save refresh token (and metadata)
         _ensure_token_dir()
         token_data = {
             "refresh_token": credentials.refresh_token,
             "token_uri": credentials.token_uri,
             "client_id": credentials.client_id,
             "client_secret": credentials.client_secret,
-            "scopes": credentials.scopes,
+            "scopes": list(credentials.scopes or []),
         }
+        if not token_data["refresh_token"]:
+            # Zdarza się, gdy consent nie wymusił refresh_token (użyto starej zgody).
+            logger.warning(
+                "OAuth completed but no refresh_token received. "
+                "Try again with 'prompt=\"consent\"' (already set) "
+                "or revoke previous consent in Google account."
+            )
 
-        with open(TOKEN_FILE, "w") as f:
+        with open(TOKEN_FILE, "w", encoding="utf-8") as f:
             json.dump(token_data, f, indent=2)
 
-        logger.info(f"OAuth tokens saved to {TOKEN_FILE}")
+        logger.info("OAuth tokens saved to %s", TOKEN_FILE)
         return {"ok": True, "message": "Authentication successful"}
 
     except Exception as e:
-        logger.error(f"OAuth flow error: {type(e).__name__}", exc_info=True)
+        # Biblioteka loguje „Please visit this URL to authorize...” na stderr;
+        # my też logujemy pełny wyjątek, by łatwiej debugować.
+        logger.error("OAuth flow error: %s", e, exc_info=True)
+        # Wyrównaj komunikat do tego, co widzisz na /api/home/auth
         return {"ok": False, "error": "OAuth authorization failed"}
 
 
 def is_authenticated() -> bool:
-    """
-    Check if user is authenticated (has valid refresh token).
-
-    Returns:
-        True if refresh token exists, False otherwise.
-    """
+    """True if refresh token file exists."""
     return TOKEN_FILE.exists()
 
 
@@ -119,27 +188,36 @@ def _load_credentials() -> Credentials | None:
     Load credentials from token file.
 
     Returns:
-        Credentials object or None if not available.
+        Credentials object or None if not available/invalid.
     """
     if not TOKEN_FILE.exists():
         return None
 
     try:
-        with open(TOKEN_FILE) as f:
+        with open(TOKEN_FILE, encoding="utf-8") as f:
             token_data = json.load(f)
+
+        refresh_token = token_data.get("refresh_token")
+        token_uri = token_data.get("token_uri")
+        client_id = token_data.get("client_id")
+        client_secret = token_data.get("client_secret")
+        scopes = token_data.get("scopes") or SCOPES
+
+        if not (refresh_token and token_uri and client_id and client_secret):
+            logger.error("Token file is missing required fields; re-authentication needed.")
+            return None
 
         creds = Credentials(
             token=None,
-            refresh_token=token_data.get("refresh_token"),
-            token_uri=token_data.get("token_uri"),
-            client_id=token_data.get("client_id"),
-            client_secret=token_data.get("client_secret"),
-            scopes=token_data.get("scopes"),
+            refresh_token=refresh_token,
+            token_uri=token_uri,
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=scopes,
         )
-
         return creds
     except Exception as e:
-        logger.error(f"Error loading credentials: {e}", exc_info=True)
+        logger.error("Error loading credentials: %s", e, exc_info=True)
         return None
 
 
@@ -156,28 +234,35 @@ def refresh_access_token() -> str | None:
         return None
 
     try:
-        if not creds.valid:
-            creds.refresh(Request())
-            logger.info("Access token refreshed successfully")
+        # creds.valid może być False, ale bez tokenu – odśwież.
+        creds.refresh(Request())
+        if not creds.token:
+            logger.error("Token refresh returned no access token.")
+            return None
+        logger.info("Access token refreshed successfully")
         return creds.token
     except Exception as e:
-        logger.error(f"Error refreshing token: {e}", exc_info=True)
+        logger.error("Error refreshing token: %s", e, exc_info=True)
         return None
 
 
+# -----------------------------------------------------------------------------
+# SDM API
+# -----------------------------------------------------------------------------
 def get_devices() -> dict[str, Any]:
     """
     Get list of devices from Smart Device Management API.
 
     Returns:
-        Dictionary with devices list or error.
+        {"ok": True, "devices": [...]} or {"ok": False, "error": "...", "status_code": int?}
     """
     if not PROJECT_ID:
         return {"ok": False, "error": "GOOGLE_PROJECT_ID not set"}
 
     token = refresh_access_token()
     if not token:
-        return {"ok": False, "error": "Not authenticated or token refresh failed"}
+        # pozwól wyżej zmapować to na 401
+        return {"ok": False, "error": "Not authenticated or token refresh failed", "status_code": 401}
 
     try:
         url = f"{API_BASE}/enterprises/{PROJECT_ID}/devices"
@@ -186,39 +271,39 @@ def get_devices() -> dict[str, Any]:
             "Content-Type": "application/json",
         }
 
-        response = requests.get(url, headers=headers, timeout=API_TIMEOUT)
-
-        if response.status_code == 401:
+        resp = requests.get(url, headers=headers, timeout=API_TIMEOUT)
+        if resp.status_code == 401:
             return {"ok": False, "error": "Unauthorized", "status_code": 401}
 
-        response.raise_for_status()
-        data = response.json()
-
+        resp.raise_for_status()
+        data = resp.json()
         devices = data.get("devices", [])
-        logger.info(f"Retrieved {len(devices)} devices")
-
+        logger.info("Retrieved %d devices", len(devices))
         return {"ok": True, "devices": devices}
-
     except requests.exceptions.RequestException as e:
-        logger.error(f"Error getting devices: {e}", exc_info=True)
+        logger.error("Error getting devices: %s", e, exc_info=True)
         return {"ok": False, "error": str(e)}
 
 
-def send_command(device_id: str, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+def send_command(
+    device_id: str,
+    command: str,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
-    Send command to a device.
+    Send a command to a device.
 
     Args:
-        device_id: Full device ID (enterprises/.../devices/...)
-        command: Command name (e.g., 'action.devices.commands.OnOff')
-        params: Command parameters
+        device_id: Full device resource name (e.g., 'enterprises/.../devices/...')
+        command:   SDM command (e.g., 'action.devices.commands.OnOff')
+        params:    Dict with command params
 
     Returns:
-        Dictionary with command result or error.
+        {"ok": True, "result": {...}} or {"ok": False, "error": "...", "status_code": int?}
     """
     token = refresh_access_token()
     if not token:
-        return {"ok": False, "error": "Not authenticated or token refresh failed"}
+        return {"ok": False, "error": "Not authenticated or token refresh failed", "status_code": 401}
 
     try:
         url = f"{API_BASE}/{device_id}:executeCommand"
@@ -226,22 +311,16 @@ def send_command(device_id: str, command: str, params: dict[str, Any] | None = N
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
+        payload = {"command": command, "params": params or {}}
 
-        payload = {
-            "command": command,
-            "params": params or {},
-        }
-
-        response = requests.post(url, headers=headers, json=payload, timeout=API_TIMEOUT)
-
-        if response.status_code == 401:
+        resp = requests.post(url, headers=headers, json=payload, timeout=API_TIMEOUT)
+        if resp.status_code == 401:
             return {"ok": False, "error": "Unauthorized", "status_code": 401}
 
-        response.raise_for_status()
-
-        logger.info(f"Command '{command}' sent to device {device_id}")
-        return {"ok": True, "result": response.json() if response.text else {}}
-
+        resp.raise_for_status()
+        result = resp.json() if resp.text else {}
+        logger.info("Command '%s' sent to device %s", command, device_id)
+        return {"ok": True, "result": result}
     except requests.exceptions.RequestException as e:
-        logger.error(f"Error sending command: {e}", exc_info=True)
+        logger.error("Error sending command: %s", e, exc_info=True)
         return {"ok": False, "error": str(e)}
