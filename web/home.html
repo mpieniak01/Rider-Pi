@@ -243,7 +243,8 @@ function createDeviceCard(device) {
     
     // RGB color picker
     if (attributes.colorModel === 'rgb' || color.spectrumRgb !== undefined) {
-      const rgbHex = color.spectrumRgb ? `#${color.spectrumRgb.toString(16).padStart(6, '0')}` : '#ffffff';
+      const rgb = Math.max(0, Math.min(0xFFFFFF, Number(color.spectrumRgb) || 0));
+      const rgbHex = '#' + rgb.toString(16).padStart(6, '0');
       controls += `
         <div class="control-section">
           <div class="control-row">
@@ -271,7 +272,7 @@ function createDeviceCard(device) {
             ${modes.map(m => `<option value="${m}" ${m === mode ? 'selected' : ''}>${t('home.mode_' + m)}</option>`).join('')}
           </select>
         </div>
-        ${ambient !== undefined ? `
+        ${ambient != null ? `
         <div class="control-row">
           <span class="control-label">${t('home.current_temp')}</span>
           <span class="control-value">${ambient.toFixed(1)}°C</span>
