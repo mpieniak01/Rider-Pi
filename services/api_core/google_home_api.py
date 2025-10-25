@@ -23,10 +23,13 @@ logger = logging.getLogger(__name__)
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 PROJECT_ID = os.getenv("GOOGLE_PROJECT_ID", "")
-REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://199.168.1.71:5000/api/home/oauth2callback")
+REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5000/api/home/oauth2callback")
 
 # OAuth scopes
 SCOPES = ["https://www.googleapis.com/auth/sdm.service"]
+
+# API configuration
+API_TIMEOUT = int(os.getenv("GOOGLE_API_TIMEOUT", "10"))
 
 # Token storage path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -212,7 +215,7 @@ def get_devices() -> dict[str, Any]:
             "Content-Type": "application/json",
         }
 
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=API_TIMEOUT)
 
         if response.status_code == 401:
             return {"ok": False, "error": "Unauthorized", "status_code": 401}
@@ -258,7 +261,7 @@ def send_command(device_id: str, command: str, params: dict[str, Any] | None = N
             "params": params or {},
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response = requests.post(url, headers=headers, json=payload, timeout=API_TIMEOUT)
 
         if response.status_code == 401:
             return {"ok": False, "error": "Unauthorized", "status_code": 401}

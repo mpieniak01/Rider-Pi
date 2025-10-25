@@ -170,6 +170,28 @@ _add_rule("/api/voice/asr", view_func=voice_local_proxy.asr_local_handler, metho
 
 
 # ── GOOGLE HOME ──────────────────────────────────────────────────────────────
+def _auto_refresh_token_and_retry(api_call, *args, **kwargs):
+    """
+    Helper to automatically refresh token on 401 and retry the API call.
+
+    Args:
+        api_call: Function to call (get_devices or send_command)
+        *args, **kwargs: Arguments to pass to the API call
+
+    Returns:
+        Result dictionary from the API call
+    """
+    result = api_call(*args, **kwargs)
+
+    # Auto-refresh token on 401
+    if result.get("status_code") == 401:
+        token = google_home_api.refresh_access_token()
+        if token:
+            result = api_call(*args, **kwargs)
+
+    return result
+
+
 @app.route("/api/home/auth", methods=["GET"])
 def home_auth():
     """Start OAuth 2.0 flow for Google Home."""
@@ -219,14 +241,7 @@ def home_devices():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
 
-    result = google_home_api.get_devices()
-
-    # Auto-refresh token on 401
-    if result.get("status_code") == 401:
-        # Token might be expired, try to refresh and retry
-        token = google_home_api.refresh_access_token()
-        if token:
-            result = google_home_api.get_devices()
+    result = _auto_refresh_token_and_retry(google_home_api.get_devices)
 
     if result.get("ok"):
         # Success - return only the devices, not internal details
@@ -235,7 +250,8 @@ def home_devices():
         # Log actual error but return generic message
         app.logger.error(f"Failed to get devices: {result.get('error', 'Unknown error')}")
         error_msg = "Not authenticated" if result.get("status_code") == 401 else "Failed to retrieve devices"
-        return _corsify(jsonify({"ok": False, "error": error_msg})), 500 if result.get("ok") is False else 401
+        status_code = 401 if result.get("status_code") == 401 else 500
+        return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
 @app.route("/api/home/command", methods=["POST", "OPTIONS"])
@@ -252,13 +268,7 @@ def home_command():
     if not device_id or not command:
         return _corsify(jsonify({"ok": False, "error": "Missing deviceId or command"})), 400
 
-    result = google_home_api.send_command(device_id, command, params)
-
-    # Auto-refresh token on 401
-    if result.get("status_code") == 401:
-        token = google_home_api.refresh_access_token()
-        if token:
-            result = google_home_api.send_command(device_id, command, params)
+    result = _auto_refresh_token_and_retry(google_home_api.send_command, device_id, command, params)
 
     if result.get("ok"):
         # Success
@@ -267,7 +277,8 @@ def home_command():
         # Log actual error but return generic message
         app.logger.error(f"Failed to send command: {result.get('error', 'Unknown error')}")
         error_msg = "Not authenticated" if result.get("status_code") == 401 else "Command failed"
-        return _corsify(jsonify({"ok": False, "error": error_msg})), 401 if result.get("status_code") == 401 else 500
+        status_code = 401 if result.get("status_code") == 401 else 500
+        return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
 # bus health (stub)
