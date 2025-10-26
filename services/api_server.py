@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Callable
 
 from flask import Flask, Response, jsonify, make_response, request, send_from_directory
 
@@ -12,12 +12,12 @@ try:
 
     app: Flask = getattr(compat, "app", Flask(__name__))
     DEFAULT_PORT = int(
-        os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or getattr(compat, "STATUS_API_PORT", 5000)
+        os.getenv("STATUS_API_PORT") or os.getenv("API_PORT") or getattr(compat, "STATUS_API_PORT", 8080)
     )
 except Exception:
     compat = None  # type: ignore
     app = Flask(__name__)
-    DEFAULT_PORT = int(os.getenv("STATUS_API_PORT", "5000"))
+    DEFAULT_PORT = int(os.getenv("STATUS_API_PORT", "8080"))
 
 # --- importy modułów rdzeniowych (routing poniżej) ---
 import services.api_core.camera as camera
@@ -32,6 +32,7 @@ import services.api_core.system_info as system_info
 import services.api_core.voice_local_proxy as voice_local_proxy  # lokalny TTS/ASR proxy
 import services.api_core.voice_proxy as voice_proxy
 from services.api_core.face_api import render_face as face_render_shim
+from services.api_core.google_home_api import build_auth_url_preview  # NEW
 
 
 # ── CORS global ──────────────────────────────────────────────────────────────
@@ -137,7 +138,6 @@ _add_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
 
 
 # ── SERVICES (systemd) ──────────────────────────────────────────────────────
-# Jedna trasa, dwie metody → NIE używamy helpera (żeby nie pominął POST).
 @app.route("/svc", methods=["GET"])
 def svc_list_route():
     return services_api.svc_list()
@@ -170,7 +170,7 @@ _add_rule("/api/voice/asr", view_func=voice_local_proxy.asr_local_handler, metho
 
 
 # ── GOOGLE HOME ──────────────────────────────────────────────────────────────
-def _auto_refresh_token_and_retry(api_call, *args, **kwargs):
+def _auto_refresh_token_and_retry(api_call: Callable[..., dict[str, Any]], *args, **kwargs) -> dict[str, Any]:
     """
     Helper to automatically refresh token on 401 and retry the API call.
 
@@ -192,34 +192,75 @@ def _auto_refresh_token_and_retry(api_call, *args, **kwargs):
     return result
 
 
-@app.route("/api/home/auth", methods=["POST", "OPTIONS"])
-def home_auth():
+@app.route("/api/home/auth/url", methods=["GET", "OPTIONS"])  # NEW
+def home_auth_url():
     """
-    Start OAuth 2.0 flow for Google Home using InstalledAppFlow.
-
-    This endpoint initiates the OAuth flow which will:
-    1. Start a local server (default port 8080, configurable via GOOGLE_OAUTH_PORT)
-    2. Open the user's browser for authentication
-    3. Complete automatically when user authorizes the app
-
-    WARNING: This is a blocking operation that waits for user to complete auth.
-    The request may take 30-60 seconds or longer depending on user interaction.
-    Clients should set appropriate timeouts (recommended: 120+ seconds).
-
-    Note: Breaking change - this endpoint changed from GET to POST.
-    This is required for the Desktop app OAuth flow which is initiated server-side
-    rather than via redirect.
+    Zwraca URL autoryzacji i planowany port loopback jako JSON (NIE blokuje).
+    Użyteczne w trybie headless: można zrobić SSH tunnel na podany port,
+    a następnie wywołać POST /api/home/auth żeby wystartować flow.
     """
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
+
+    preview = build_auth_url_preview()
+    code = 200 if preview.get("ok") else 400
+    return _corsify(jsonify(preview)), code
+
+
+@app.route("/api/home/auth", methods=["POST", "OPTIONS"])
+def home_auth():
+    """
+    Start OAuth 2.0 flow for Google Home using InstalledAppFlow (Desktop flow).
+
+    Endpoint uruchamia lokalny serwer (loopback) w bibliotece Google
+    (port z GOOGLE_OAUTH_PORT; jeśli zajęty – wybierany bezpiecznie),
+    loguje URL autoryzacji i czeka do zakończenia logowania.
+    """
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+
+    # Zaloguj URL i port PRZED blokującym wywołaniem (w journald: tag rider-api-env)
+    try:
+        import json as _json  # lokalny import aby nie zanieczyszczać globali
+        import subprocess
+
+        preview = build_auth_url_preview()
+        if preview.get("ok"):
+            auth_url = preview.get("auth_url", "")
+            port = preview.get("port")
+
+            cmd1 = [
+                "/bin/sh",
+                "-lc",
+                (
+                    "printf '%s' "
+                    f"{_json.dumps('[google-oauth] auth_url: ' + auth_url)} "
+                    "| systemd-cat -t rider-api-env -p info"
+                ),
+            ]
+            subprocess.run(cmd1, check=False)
+
+            if port:
+                cmd2 = [
+                    "/bin/sh",
+                    "-lc",
+                    (
+                        "printf '%s' "
+                        f"{_json.dumps('[google-oauth] loopback port: ' + str(port))} "
+                        "| systemd-cat -t rider-api-env -p info"
+                    ),
+                ]
+                subprocess.run(cmd2, check=False)
+    except Exception as _e:
+        app.logger.warning("auth preview log failed: %s", _e)
 
     try:
         result = google_home_api.start_oauth_flow()
         status_code = 200 if result.get("ok") else 500
         return _corsify(jsonify(result)), status_code
     except Exception as e:
-        # Log detailed error internally (not exposed to client)
-        app.logger.error(f"OAuth flow error: {type(e).__name__}", exc_info=True)
+        # Log szczegóły tylko po stronie serwera
+        app.logger.error("OAuth flow error: %s", e, exc_info=True)
         return _corsify(jsonify({"ok": False, "error": "Authentication configuration error"})), 500
 
 
@@ -248,12 +289,11 @@ def home_devices():
     if result.get("ok"):
         # Success - return only the devices, not internal details
         return _corsify(jsonify({"ok": True, "devices": result.get("devices", [])})), 200
-    else:
-        # Log actual error but return generic message
-        app.logger.error(f"Failed to get devices: {result.get('error', 'Unknown error')}")
-        error_msg = "Not authenticated" if result.get("status_code") == 401 else "Failed to retrieve devices"
-        status_code = 401 if result.get("status_code") == 401 else 500
-        return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
+
+    app.logger.error("Failed to get devices: %s", result.get("error", "Unknown error"))
+    error_msg = "Not authenticated" if result.get("status_code") == 401 else "Failed to retrieve devices"
+    status_code = 401 if result.get("status_code") == 401 else 500
+    return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
 @app.route("/api/home/command", methods=["POST", "OPTIONS"])
@@ -277,14 +317,12 @@ def home_command():
     result = _auto_refresh_token_and_retry(google_home_api.send_command, device_id, command, params)
 
     if result.get("ok"):
-        # Success
-        return _corsify(jsonify({"ok": True})), 200
-    else:
-        # Log actual error but return generic message
-        app.logger.error(f"Failed to send command: {result.get('error', 'Unknown error')}")
-        error_msg = "Not authenticated" if result.get("status_code") == 401 else "Command failed"
-        status_code = 401 if result.get("status_code") == 401 else 500
-        return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
+        return _corsify(jsonify({"ok": True, "result": result.get("result", {})})), 200
+
+    app.logger.error("Failed to send command: %s", result.get("error", "Unknown error"))
+    error_msg = "Not authenticated" if result.get("status_code") == 401 else "Command failed"
+    status_code = 401 if result.get("status_code") == 401 else 500
+    return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
 # bus health (stub)
@@ -345,7 +383,7 @@ def _register_local_control_fallback() -> None:
             _PUBLISH = True
         except Exception as _e:
             _PUBLISH = False
-            app.logger.warning(f"[control-local] pyzmq not available or BUS connect failed: {_e}")
+            app.logger.warning("[control-local] pyzmq not available or BUS connect failed: %s", _e)
 
         def _control_local():
             if _req.method == "OPTIONS":
@@ -367,7 +405,7 @@ def _register_local_control_fallback() -> None:
         app.add_url_rule("/api/cmd", view_func=_control_local, methods=["POST", "OPTIONS"])
         app.logger.info("[control-local] registered /api/control,/api/cmd (no WEB_BRIDGE_URL)")
     except Exception as e:
-        app.logger.warning(f"[control-local] fallback not active: {e}")
+        app.logger.warning("[control-local] fallback not active: %s", e)
 
 
 _register_local_control_fallback()
@@ -383,7 +421,7 @@ def _register_chat_endpoints() -> None:
             chat_api.register(app)  # może dodać /api/chat/history, /api/chat/send, itp.
             app.logger.info("[chat] blueprint/handlers registered via chat_api.register(app)")
     except Exception as e:
-        app.logger.warning(f"[chat] register(app) failed: {e}")
+        app.logger.warning("[chat] register(app) failed: %s", e)
 
     # 2) Fallback tylko jeśli dalej brak tras
     rules_now = {r.rule for r in app.url_map.iter_rules()}
@@ -399,7 +437,7 @@ def _register_chat_endpoints() -> None:
         from services.api_core import chat_store as _chat_store  # type: ignore
     except Exception as e:  # awaryjnie pusty store in-memory
         _chat_store = None  # type: ignore
-        app.logger.warning(f"[chat] chat_store import failed: {e}")
+        app.logger.warning("[chat] chat_store import failed: %s", e)
 
     def _ok(data: dict[str, Any], code: int = 200):
         return _corsify(jsonify({"ok": True, **data})), code
@@ -497,7 +535,7 @@ def main():
             compat.start_bus_sub()
             compat.start_xgo_ro()
     except Exception as e:
-        app.logger.warning(f"compat init warning: {e}")
+        app.logger.warning("compat init warning: %s", e)
     port = DEFAULT_PORT
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 

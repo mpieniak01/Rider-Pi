@@ -15,6 +15,8 @@ WorkingDirectory=/home/pi/robot
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONFAULTHANDLER=1
 Environment=PYTHONPATH=/home/pi/robot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=LANG=C.UTF-8
 
 # Limity / time-outy (dostosuj w razie potrzeby)
 Environment=SAFE_MAX_DURATION=0.25
@@ -26,13 +28,10 @@ Environment=RAW_PATH=/home/pi/robot/snapshots/raw.jpg
 Environment=PROC_PATH=/home/pi/robot/snapshots/proc.jpg
 Environment=SSD_PATH=/home/pi/robot/snapshots/ssd.jpg
 
-# UWAGA: Sekrety (GOOGLE_CLIENT_ID/SECRET/PROJECT_ID itd.) mają być WYŁĄCZNIE w ~/.bash_profile
-# Dlatego NIE używamy tu EnvironmentFile do sekretów — usunięte.
-# EnvironmentFile=-/etc/default/rider
-# EnvironmentFile=-/etc/default/rider-api
+# Sekrety (GOOGLE_*) wyłącznie w ~/.bash_profile
+# Świadomie bez EnvironmentFile.
 
 # Serwer API — na :8080 (zgodne z UI)
-# STATUS_API_PORT czytany przez nasze API; API_PORT zachowany dla zgodności wstecznej.
 Environment=API_HOST=0.0.0.0
 Environment=API_PORT=8080
 Environment=STATUS_API_PORT=8080
@@ -55,16 +54,21 @@ Environment=BUS_SUB_PORT=5556
 Environment=BUS_RCVHWM=100
 Environment=BUS_CONFLATE=0
 
-# XGO RO (zachowanie jak w logach: domyślnie wyłączone)
+# XGO RO (domyślnie wyłączone)
 Environment=ENABLE_XGO_RO=0
 # Environment=XGO_RO_PORT=/dev/ttyUSB0
 
+# HOME jawnie (asekuracja dla ładowania profilu)
+Environment=HOME=/home/pi
+
+# Diagnostyka startu (pojawia się w journald)
+ExecStartPre=/bin/bash -lc 'echo "[rider-api] sourcing $HOME/.bash_profile i start services.api_server" | systemd-cat -t rider-api-env -p info'
+
 # Start serwera:
-# - uruchamiamy bash jako powłokę logowania (-l) i ładujemy ~/.bash_profile,
-#   żeby pobrać SEKRETY OAuth (Desktop app): GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET /
-#   GOOGLE_PROJECT_ID / GOOGLE_OAUTH_PORT itp.
-# - dopiero potem exec Python.
-ExecStart=/bin/bash -lc 'source "$HOME/.bash_profile" && exec /usr/bin/python3 -u -m services.api_server'
+# - set -a => auto-eksport zmiennych z profilu
+# - bezpieczne źródłowanie profilu (tylko gdy plik istnieje)
+# - exec python (żeby środowisko trafiło do procesu)
+ExecStart=/bin/bash -lc 'set -a; [ -r "$HOME/.bash_profile" ] && . "$HOME/.bash_profile"; set +a; exec /usr/bin/python3 -u -m services.api_server'
 
 Restart=always
 RestartSec=0.5

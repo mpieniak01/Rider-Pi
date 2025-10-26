@@ -61,7 +61,7 @@ def _port_in_use(port: int, host: str = "127.0.0.1") -> bool:
         try:
             return s.connect_ex((host, port)) == 0
         except OSError:
-            # Jeśli błąd gniazda – przyjmijmy, że port nie jest dostępny.
+            # Jeśli błąd gniazda – przyjmijmy ostrożnie, że port jest niedostępny.
             return True
 
 
@@ -101,15 +101,12 @@ def _require_oauth_env() -> tuple[bool, str | None]:
 
 
 # -----------------------------------------------------------------------------
-# OAuth (InstalledAppFlow – Desktop)
+# OAuth helpers (HEADLESS-friendly)
 # -----------------------------------------------------------------------------
-def start_oauth_flow() -> dict[str, Any]:
+def build_auth_url_preview() -> dict[str, Any]:
     """
-    Start OAuth 2.0 authorization flow using InstalledAppFlow (Desktop app).
-
-    Biblioteka uruchamia tymczasowy serwer lokalny (loopback), przechwytuje kod
-    i zwraca odświeżalny token. Na RPi nie wymuszamy GUI – podajemy URL w logu,
-    który można wkleić w przeglądarce na innym urządzeniu.
+    Zbuduj Google OAuth authorization URL i port loopback, którego planujemy użyć,
+    ale NIE uruchamiaj jeszcze local servera. Przydatne w trybie headless.
     """
     ok, err = _require_oauth_env()
     if not ok:
@@ -124,22 +121,73 @@ def start_oauth_flow() -> dict[str, Any]:
             "token_uri": "https://oauth2.googleapis.com/token",
         }
     }
+    flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
+
+    port = _pick_oauth_port()
+    if port == 0:
+        redirect = "http://localhost/"
+        show_port = 0
+    else:
+        redirect = f"http://localhost:{port}/"
+        show_port = port
+
+    flow.redirect_uri = redirect
+    auth_url, _state = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        include_granted_scopes="true",
+    )
+
+    logger.info("OAuth preview: port=%s redirect=%s", show_port or "auto", redirect)
+    logger.info("OAuth preview URL: %s", auth_url)
+    return {"ok": True, "auth_url": auth_url, "port": show_port}
+
+
+# -----------------------------------------------------------------------------
+# OAuth (InstalledAppFlow – Desktop)
+# -----------------------------------------------------------------------------
+def start_oauth_flow() -> dict[str, Any]:
+    """
+    Start OAuth 2.0 authorization flow using InstalledAppFlow (Desktop app).
+    Na RPi nie otwieramy przeglądarki (headless) – URL logujemy w journald.
+    """
+    ok, err = _require_oauth_env()
+    if not ok:
+        logger.error("OAuth init error: %s", err)
+        return {"ok": False, "error": "auth_env_missing", "error_detail": err}
+
+    client_config = {
+        "installed": {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    }
 
     try:
         flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
 
-        # Wybierz bezpieczny port (bez kolizji z API / już zajętym)
         port = _pick_oauth_port()
-        if port == 0:
-            logger.info("OAuth: letting OS choose a free loopback port.")
+        redirect = "http://localhost/" if port == 0 else f"http://localhost:{port}/"
 
-        logger.info(
-            "Starting OAuth local server on loopback (port=%s). "
-            "If a browser doesn't open automatically, copy the URL from logs.",
-            port if port != 0 else "auto",
+        # Ustal redirect_uri przed wygenerowaniem linku, żeby log był spójny z run_local_server
+        flow.redirect_uri = redirect
+        auth_url, _state = flow.authorization_url(
+            access_type="offline",
+            prompt="consent",
+            include_granted_scopes="true",
         )
 
-        # Nie otwieramy przeglądarki na RPi (headless) – open_browser=False
+        logger.info(
+            "Starting OAuth local server on loopback (port=%s, redirect=%s).",
+            port if port != 0 else "auto",
+            redirect,
+        )
+        logger.info("Please visit this URL to authorize: %s", auth_url)
+
+        # UWAGA: nie używamy authorization_prompt_message/success_message
+        # bo starsze google-auth-oauthlib ich nie obsługuje na RPi.
         credentials = flow.run_local_server(
             port=port,
             access_type="offline",
@@ -157,11 +205,9 @@ def start_oauth_flow() -> dict[str, Any]:
             "scopes": list(credentials.scopes or []),
         }
         if not token_data["refresh_token"]:
-            # Zdarza się, gdy consent nie wymusił refresh_token (użyto starej zgody).
             logger.warning(
                 "OAuth completed but no refresh_token received. "
-                "Try again with 'prompt=\"consent\"' (already set) "
-                "or revoke previous consent in Google account."
+                "Try again with prompt='consent' or revoke previous consent in Google account."
             )
 
         with open(TOKEN_FILE, "w", encoding="utf-8") as f:
@@ -171,11 +217,8 @@ def start_oauth_flow() -> dict[str, Any]:
         return {"ok": True, "message": "Authentication successful"}
 
     except Exception as e:
-        # Biblioteka loguje „Please visit this URL to authorize...” na stderr;
-        # my też logujemy pełny wyjątek, by łatwiej debugować.
         logger.error("OAuth flow error: %s", e, exc_info=True)
-        # Wyrównaj komunikat do tego, co widzisz na /api/home/auth
-        return {"ok": False, "error": "OAuth authorization failed"}
+        return {"ok": False, "error": "OAuth authorization failed", "error_detail": str(e)}
 
 
 def is_authenticated() -> bool:
