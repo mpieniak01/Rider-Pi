@@ -13,6 +13,7 @@ import pytest
 
 # Import modules under test
 import services.api_core.google_home_api as gha
+import services.api_server as api_server
 from services.api_server import app
 
 
@@ -68,8 +69,6 @@ class TestGoogleCommandAPI:
                 mock_send.return_value = {"ok": True, "result": {"status": "SUCCESS"}}
 
                 # Patch cache directory
-                import services.api_server as api_server
-
                 with patch.object(api_server, "LAST_COMMAND_FILE", temp_cache_dir / "last_command.json"):
                     response = client.post(
                         "/api/home/command",
@@ -107,8 +106,6 @@ class TestGoogleCommandAPI:
                 with patch.object(gha, "refresh_access_token", return_value=None):
                     mock_send.return_value = {"ok": False, "error": "Unauthorized", "status_code": 401}
 
-                    import services.api_server as api_server
-
                     with patch.object(api_server, "LAST_COMMAND_FILE", temp_cache_dir / "last_command.json"):
                         response = client.post(
                             "/api/home/command",
@@ -136,8 +133,6 @@ class TestGoogleCommandAPI:
             with patch.object(gha, "send_command") as mock_send:
                 mock_send.return_value = {"ok": False, "error": "Network timeout"}
 
-                import services.api_server as api_server
-
                 with patch.object(api_server, "LAST_COMMAND_FILE", temp_cache_dir / "last_command.json"):
                     response = client.post(
                         "/api/home/command",
@@ -164,8 +159,6 @@ class TestGoogleCommandAPI:
         with patch.object(gha, "is_authenticated", return_value=True):
             with patch.object(gha, "send_command") as mock_send:
                 mock_send.return_value = {"ok": True, "result": {"status": "SUCCESS"}}
-
-                import services.api_server as api_server
 
                 with patch.object(api_server, "LAST_COMMAND_FILE", temp_cache_dir / "last_command.json"):
                     client.post(

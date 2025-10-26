@@ -174,7 +174,7 @@ GOOGLE_DATA_DIR = DATA_DIR / "google"
 LAST_COMMAND_FILE = GOOGLE_DATA_DIR / "last_command.json"
 
 
-def _save_command_cache(device_id: str, command: str, params: dict, result: dict[str, Any]) -> None:
+def _save_command_cache(device_id: str, command: str, params: dict[str, Any], result: dict[str, Any]) -> None:
     """Save command response to cache file.
 
     Args:
@@ -196,7 +196,7 @@ def _save_command_cache(device_id: str, command: str, params: dict, result: dict
         }
         LAST_COMMAND_FILE.write_text(json.dumps(cache_data, indent=2))
     except Exception as e:
-        app.logger.warning(f"Failed to save command cache: {e}")
+        app.logger.warning(f"Failed to save command cache to {LAST_COMMAND_FILE}: {e}")
 
 
 def _auto_refresh_token_and_retry(api_call: Callable[..., dict[str, Any]], *args, **kwargs) -> dict[str, Any]:
