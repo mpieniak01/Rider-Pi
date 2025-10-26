@@ -69,30 +69,29 @@ jobs:
       - name: NO-STUB (warn-only by default)
         if: env.ALLOW_DELETE != '1'
         shell: bash
-        continue-on-error: true   # gwarantuje WARN-ONLY nawet przy nieprzewidzianym błędzie
         run: |
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
 
-          # Różnice tylko dla *.py
-          diff_py="$(git diff -U0 "$base" "$head" -- '*.py' || true)"
-          if [ -z "$diff_py" ]; then
+          # jeśli PR nie dotyka .py -> pomiń krok
+          CHANGED_PY="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
+          if [ -z "$CHANGED_PY" ]; then
             echo "NO-STUB: no Python changes -> skip"
             exit 0
           fi
 
-          # Tylko dodane linie (pojedynczy '+'), bez komentarzy/pustych
-          added_clean="$(printf '%s\n' "$diff_py" \
-            | awk '/^\+[^+]/ { sub(/^\+/,""); print }' \
-            | awk '!/^[[:space:]]*($|#)/')"
+          # czyste dodane linie (bez komentarzy/pustych); używamy awk (odporne na brak dopasowań)
+          diff_py="$(git diff -U0 "$base" "$head" -- '*.py' || true)"
 
-          # Zlicz 'pass' i 'raise NotImplementedError'
-          pass_count="$(printf '%s\n' "$added_clean" \
-            | awk '/^[[:space:]]*pass([[:space:]]*#.*)?$/ {c++} END{print c+0}')"
+          added_clean="$(
+            printf '%s\n' "$diff_py" \
+            | awk '/^\+[^+]/ { sub(/^\+/, "", $0); print }' \
+            | awk '!/^[[:space:]]*($|#)/'
+          )"
 
-          nie_count="$(printf '%s\n' "$added_clean" \
-            | awk '(/(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)/){c++} END{print c+0}')"
+          pass_count="$(printf '%s\n' "$added_clean" | awk '/^[[:space:]]*pass([[:space:]]*#.*)?$/ {c++} END{print c+0}')"
+          nie_count="$(printf '%s\n' "$added_clean" | awk '(/(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)/){c++} END{print c+0}')"
 
           echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
           bad=$((pass_count + nie_count))
@@ -108,7 +107,7 @@ jobs:
             echo "NO-STUB: no stubs detected."
           fi
 
-      # ---- CRLF detector (najczęstsza przyczyna 'would reformat' na CI) ----
+      # ---- CRLF detector ----
       - name: Detect CRLF in changed Python files
         shell: bash
         run: |
