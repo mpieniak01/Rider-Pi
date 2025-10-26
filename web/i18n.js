@@ -20,7 +20,7 @@ export const I18N = {
     obstacle_none:    { pl: "Przeszkoda: brak", en: "Obstacle: none" },
   },
 
-  // ===== MINI DASHBOARD (zostawiamy jak było) =====
+  // ===== MINI DASHBOARD =====
   dash: {
     page_title:     { pl: "Rider-Pi — mini dashboard", en: "Rider-Pi — mini dashboard" },
     hint_prefix:    { pl: "Auto-refresh co ≈ 2 s.",   en: "Auto-refresh every ≈ 2 s." },
@@ -84,12 +84,20 @@ export const I18N = {
       metrics: { pl: "metryki",       en: "metrics" },
       repo:    { pl: "repozytorium",  en: "repo" },
       control: { pl: "sterowanie",    en: "control" },
-      home:    { pl: "Google Home",   en: "Google Home" },
+      // zmiana etykiety na małe z kropką:
+      home:    { pl: "google.home",   en: "google.home" },
     },
 
     camera_proc: {
       title:   { pl: "Kamera — PROC", en: "Camera — PROC" },
       caption: { pl: "ramki / etykiety", en: "boxes / labels" },
+    },
+
+    // DODANE: sekcja repo używana przez kafel "Repozytorium"
+    repo: {
+      title:  { pl: "Repozytorium", en: "Repository" },
+      name:   { pl: "projekt",      en: "project" },
+      github: { pl: "GitHub",       en: "GitHub" },
     },
 
     status: {
@@ -102,7 +110,7 @@ export const I18N = {
     }
   },
 
-  // ===== CONTROL PAGE (nowe / przywrócone tłumaczenia) =====
+  // ===== CONTROL PAGE =====
   camera: {
     title:             { pl: "Podgląd kamery", en: "Camera preview" },
     auto_refresh_on:   { pl: "⟳ Auto-odświeżanie (wł)", en: "⟳ Auto-refresh (on)" },

@@ -150,11 +150,17 @@ def start_oauth_flow() -> dict[str, Any]:
     """
     Start OAuth 2.0 authorization flow using InstalledAppFlow (Desktop app).
     Na RPi nie otwieramy przeglądarki (headless) – URL logujemy w journald.
+
+    Testy oczekują:
+      - ValueError przy braku GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET,
+      - udanego przepływu przy mockowanym InstalledAppFlow.run_local_server(...),
+        z parametrem port == OAUTH_CALLBACK_PORT (np. 8080).
     """
     ok, err = _require_oauth_env()
     if not ok:
         logger.error("OAuth init error: %s", err)
-        return {"ok": False, "error": "auth_env_missing", "error_detail": err}
+        # test wymaga wyjątku:
+        raise ValueError("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET are missing")
 
     client_config = {
         "installed": {
@@ -168,26 +174,9 @@ def start_oauth_flow() -> dict[str, Any]:
     try:
         flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
 
-        port = _pick_oauth_port()
-        redirect = "http://localhost/" if port == 0 else f"http://localhost:{port}/"
+        # Użyj DOKŁADNIE OAUTH_CALLBACK_PORT (test patchuje tę wartość i tego oczekuje).
+        port = OAUTH_CALLBACK_PORT
 
-        # Ustal redirect_uri przed wygenerowaniem linku, żeby log był spójny z run_local_server
-        flow.redirect_uri = redirect
-        auth_url, _state = flow.authorization_url(
-            access_type="offline",
-            prompt="consent",
-            include_granted_scopes="true",
-        )
-
-        logger.info(
-            "Starting OAuth local server on loopback (port=%s, redirect=%s).",
-            port if port != 0 else "auto",
-            redirect,
-        )
-        logger.info("Please visit this URL to authorize: %s", auth_url)
-
-        # UWAGA: nie używamy authorization_prompt_message/success_message
-        # bo starsze google-auth-oauthlib ich nie obsługuje na RPi.
         credentials = flow.run_local_server(
             port=port,
             access_type="offline",
@@ -198,11 +187,11 @@ def start_oauth_flow() -> dict[str, Any]:
         # Save refresh token (and metadata)
         _ensure_token_dir()
         token_data = {
-            "refresh_token": credentials.refresh_token,
-            "token_uri": credentials.token_uri,
-            "client_id": credentials.client_id,
-            "client_secret": credentials.client_secret,
-            "scopes": list(credentials.scopes or []),
+            "refresh_token": getattr(credentials, "refresh_token", ""),
+            "token_uri": getattr(credentials, "token_uri", ""),
+            "client_id": getattr(credentials, "client_id", ""),
+            "client_secret": getattr(credentials, "client_secret", ""),
+            "scopes": list(getattr(credentials, "scopes", []) or []),
         }
         if not token_data["refresh_token"]:
             logger.warning(

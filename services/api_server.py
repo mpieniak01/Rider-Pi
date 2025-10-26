@@ -21,18 +21,18 @@ except Exception:
 
 # --- importy modułów rdzeniowych (routing poniżej) ---
 import services.api_core.camera as camera
-import services.api_core.chat_api as chat_api  # noqa: F401  # Chat/glue
+import services.api_core.chat_api as chat_api  # noqa: F401
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
 import services.api_core.google_home_api as google_home_api
-import services.api_core.services_api as services_api  # właściwy moduł usług
+import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
-import services.api_core.voice_local_proxy as voice_local_proxy  # lokalny TTS/ASR proxy
+import services.api_core.voice_local_proxy as voice_local_proxy
 import services.api_core.voice_proxy as voice_proxy
 from services.api_core.face_api import render_face as face_render_shim
-from services.api_core.google_home_api import build_auth_url_preview  # NEW
+from services.api_core.google_home_api import build_auth_url_preview
 
 
 # ── CORS global ──────────────────────────────────────────────────────────────
@@ -62,7 +62,6 @@ def face_render():
     return jsonify(res), status
 
 
-# ── FACE: animacja ───────────────────────────────────────────────────────────
 @app.route("/face/play", methods=["POST", "OPTIONS"])
 def face_play():
     if request.method == "OPTIONS":
@@ -129,7 +128,6 @@ _add_rule("/camera/placeholder", view_func=camera.camera_placeholder, methods=["
 _add_rule("/snapshots/<path:fname>", view_func=camera.snapshots_static)
 
 
-# alias dla frontu
 def _api_last_frame():
     return camera.camera_last()
 
@@ -147,14 +145,10 @@ def svc_list_route():
 def svc_name_route(name: str):
     if request.method == "GET":
         return services_api.svc_status(name)
-    # POST = akcja
     return services_api.svc_action(name)
 
 
-# Alias zgodności
 _add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
-
-# (UWAGA) Rejestracja vision blueprint odbywa się w sekcji BOOTSTRAP przez lazy-import.
 
 # control proxy
 _add_rule("/api/control", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
@@ -164,44 +158,24 @@ _add_rule("/api/cmd", view_func=control_proxy.control_proxy_handler, methods=["P
 _add_rule("/api/voice/capture", view_func=voice_proxy.capture_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/voice/say", view_func=voice_proxy.say_handler, methods=["POST", "OPTIONS"])
 
-# voice local proxy (NOWE – lokalny kanał TTS/ASR via :8092)
+# voice local proxy
 _add_rule("/api/voice/tts", view_func=voice_local_proxy.tts_local_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/voice/asr", view_func=voice_local_proxy.asr_local_handler, methods=["POST", "OPTIONS"])
 
 
 # ── GOOGLE HOME ──────────────────────────────────────────────────────────────
 def _auto_refresh_token_and_retry(api_call: Callable[..., dict[str, Any]], *args, **kwargs) -> dict[str, Any]:
-    """
-    Helper to automatically refresh token on 401 and retry the API call.
-
-    Args:
-        api_call: Function to call (get_devices or send_command)
-        *args, **kwargs: Arguments to pass to the API call
-
-    Returns:
-        Result dictionary from the API call
-    """
     result = api_call(*args, **kwargs)
-
-    # Auto-refresh token on 401
     if result.get("status_code") == 401:
-        token = google_home_api.refresh_access_token()
-        if token:
+        if google_home_api.refresh_access_token():
             result = api_call(*args, **kwargs)
-
     return result
 
 
 @app.route("/api/home/auth/url", methods=["GET", "OPTIONS"])  # NEW
 def home_auth_url():
-    """
-    Zwraca URL autoryzacji i planowany port loopback jako JSON (NIE blokuje).
-    Użyteczne w trybie headless: można zrobić SSH tunnel na podany port,
-    a następnie wywołać POST /api/home/auth żeby wystartować flow.
-    """
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
-
     preview = build_auth_url_preview()
     code = 200 if preview.get("ok") else 400
     return _corsify(jsonify(preview)), code
@@ -209,19 +183,12 @@ def home_auth_url():
 
 @app.route("/api/home/auth", methods=["POST", "OPTIONS"])
 def home_auth():
-    """
-    Start OAuth 2.0 flow for Google Home using InstalledAppFlow (Desktop flow).
-
-    Endpoint uruchamia lokalny serwer (loopback) w bibliotece Google
-    (port z GOOGLE_OAUTH_PORT; jeśli zajęty – wybierany bezpiecznie),
-    loguje URL autoryzacji i czeka do zakończenia logowania.
-    """
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
 
-    # Zaloguj URL i port PRZED blokującym wywołaniem (w journald: tag rider-api-env)
+    # log preview to journald (wrap lines for ruff)
     try:
-        import json as _json  # lokalny import aby nie zanieczyszczać globali
+        import json as _json
         import subprocess
 
         preview = build_auth_url_preview()
@@ -234,8 +201,8 @@ def home_auth():
                 "-lc",
                 (
                     "printf '%s' "
-                    f"{_json.dumps('[google-oauth] auth_url: ' + auth_url)} "
-                    "| systemd-cat -t rider-api-env -p info"
+                    + _json.dumps("[google-oauth] auth_url: " + auth_url)
+                    + " | systemd-cat -t rider-api-env -p info"
                 ),
             ]
             subprocess.run(cmd1, check=False)
@@ -246,8 +213,8 @@ def home_auth():
                     "-lc",
                     (
                         "printf '%s' "
-                        f"{_json.dumps('[google-oauth] loopback port: ' + str(port))} "
-                        "| systemd-cat -t rider-api-env -p info"
+                        + _json.dumps("[google-oauth] loopback port: " + str(port))
+                        + " | systemd-cat -t rider-api-env -p info"
                     ),
                 ]
                 subprocess.run(cmd2, check=False)
@@ -259,69 +226,51 @@ def home_auth():
         status_code = 200 if result.get("ok") else 500
         return _corsify(jsonify(result)), status_code
     except Exception as e:
-        # Log szczegóły tylko po stronie serwera
         app.logger.error("OAuth flow error: %s", e, exc_info=True)
         return _corsify(jsonify({"ok": False, "error": "Authentication configuration error"})), 500
 
 
 @app.route("/api/home/status", methods=["GET", "OPTIONS"])
 def home_status():
-    """Check authentication status."""
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
-
     is_auth = google_home_api.is_authenticated()
     return _corsify(jsonify({"ok": True, "authenticated": is_auth})), 200
 
 
 @app.route("/api/home/devices", methods=["GET", "OPTIONS"])
 def home_devices():
-    """Get list of devices from Google Home."""
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
-
-    # Check authentication first to avoid 500 errors
     if not google_home_api.is_authenticated():
         return _corsify(jsonify({"ok": False, "error": "Not authenticated"})), 401
-
     result = _auto_refresh_token_and_retry(google_home_api.get_devices)
-
     if result.get("ok"):
-        # Success - return only the devices, not internal details
         return _corsify(jsonify({"ok": True, "devices": result.get("devices", [])})), 200
-
     app.logger.error("Failed to get devices: %s", result.get("error", "Unknown error"))
-    error_msg = "Not authenticated" if result.get("status_code") == 401 else "Failed to retrieve devices"
     status_code = 401 if result.get("status_code") == 401 else 500
+    error_msg = "Not authenticated" if status_code == 401 else "Failed to retrieve devices"
     return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
 @app.route("/api/home/command", methods=["POST", "OPTIONS"])
 def home_command():
-    """Send command to a Google Home device."""
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
-
-    # Check authentication first to avoid 500 errors
     if not google_home_api.is_authenticated():
         return _corsify(jsonify({"ok": False, "error": "Not authenticated"})), 401
-
     payload = request.get_json(silent=True) or {}
     device_id = payload.get("deviceId")
     command = payload.get("command")
     params = payload.get("params", {})
-
     if not device_id or not command:
         return _corsify(jsonify({"ok": False, "error": "Missing deviceId or command"})), 400
-
     result = _auto_refresh_token_and_retry(google_home_api.send_command, device_id, command, params)
-
     if result.get("ok"):
         return _corsify(jsonify({"ok": True, "result": result.get("result", {})})), 200
-
     app.logger.error("Failed to send command: %s", result.get("error", "Unknown error"))
-    error_msg = "Not authenticated" if result.get("status_code") == 401 else "Command failed"
     status_code = 401 if result.get("status_code") == 401 else 500
+    error_msg = "Not authenticated" if status_code == 401 else "Command failed"
     return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
@@ -338,30 +287,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
 
 
-def serve_web(fname: str):
-    """Serwuje statyki z twardym anti-cache, żeby UI zawsze widział świeże pliki."""
-    # If fname ends with / or is a known directory, try to serve index.html from that directory
-    if fname.endswith('/'):
-        # Directory request - serve index.html
-        directory = fname.rstrip('/')
-        # Validate directory name to prevent path traversal
-        if not directory or '/' in directory or '\\' in directory or '..' in directory:
-            abort(404)
-
-        # Check if the directory exists and contains index.html
-        dir_path = os.path.join(STATIC_WEB_DIR, directory)
-        index_path = os.path.join(directory, "index.html")
-        full_index_path = os.path.join(STATIC_WEB_DIR, index_path)
-
-        # If directory doesn't exist or index.html doesn't exist, return 404
-        if not os.path.isdir(dir_path) or not os.path.isfile(full_index_path):
-            abort(404)
-
-        resp = send_from_directory(STATIC_WEB_DIR, index_path)
-    else:
-        # File request - serve the file directly
-        resp = send_from_directory(STATIC_WEB_DIR, fname)
-
+def _no_cache(resp: Response) -> Response:
+    """Wspólne nagłówki anti-cache dla statyków."""
     try:
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         resp.headers["Pragma"] = "no-cache"
@@ -371,19 +298,27 @@ def serve_web(fname: str):
     return resp
 
 
+def serve_web(fname: str):
+    """Serwuje pliki z katalogu web/ (wyłącznie pliki, brak tras katalogowych)."""
+    if not fname or ".." in fname or fname.startswith(("/", "\\")):
+        abort(404)
+    resp = send_from_directory(STATIC_WEB_DIR, fname)
+    return _no_cache(resp)
+
+
 def serve_home():
-    """Serwuje Google Home Control pod /home."""
-    return serve_web("home/")
+    """Krótka trasa /home → web/home.html (bez katalogów, bez redirectów)."""
+    return _no_cache(send_from_directory(STATIC_WEB_DIR, "home.html"))
 
 
 _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"], strict_slashes=False)
-_add_rule("/home", view_func=serve_home, methods=["GET"])
-_add_rule("/", view_func=dashboard.dashboard, methods=["GET"])
-_add_rule("/view", view_func=dashboard.dashboard, methods=["GET"])
-_add_rule("/control", view_func=dashboard.control_page, methods=["GET"])
+_add_rule("/home", view_func=serve_home, methods=["GET"], strict_slashes=False)
+_add_rule("/", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
+_add_rule("/view", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
+_add_rule("/control", view_func=dashboard.control_page, methods=["GET"], strict_slashes=False)
 
 
-# ── Local control fallback (przed startem serwera) ───────────────────────────
+# ── Local control fallback ───────────────────────────────────────────────────
 def _register_local_control_fallback() -> None:
     try:
         _has_bridge = bool(os.getenv("WEB_BRIDGE_URL", "").strip())
@@ -392,7 +327,6 @@ def _register_local_control_fallback() -> None:
 
     rules_now = {r.rule for r in app.url_map.iter_rules()}
     need_local = (not _has_bridge) and ("/api/control" not in rules_now)
-
     if not need_local:
         return
 
@@ -439,31 +373,25 @@ def _register_local_control_fallback() -> None:
 _register_local_control_fallback()
 
 
-# ── CHAT: rejestracja + bezpieczny fallback ──────────────────────────────────
+# ── CHAT bootstrap ───────────────────────────────────────────────────────────
 def _register_chat_endpoints() -> None:
-    """Rejestruje chat_api jeśli ma register(app); dodaje minimalny fallback,
-    gdy trasy nie istnieją. Idempotentne."""
-    # 1) Spróbuj zarejestrować przez modułowy register(app)
     try:
         if hasattr(chat_api, "register"):
-            chat_api.register(app)  # może dodać /api/chat/history, /api/chat/send, itp.
+            chat_api.register(app)
             app.logger.info("[chat] blueprint/handlers registered via chat_api.register(app)")
     except Exception as e:
         app.logger.warning("[chat] register(app) failed: %s", e)
 
-    # 2) Fallback tylko jeśli dalej brak tras
     rules_now = {r.rule for r in app.url_map.iter_rules()}
     need_history = "/api/chat/history" not in rules_now
     need_send = "/api/chat/send" not in rules_now
     need_ping = "/api/chat/ping" not in rules_now
-
     if not (need_history or need_send or need_ping):
         return
 
-    # Lokalny, prosty magazyn (zgodny z chat_store.*)
     try:
         from services.api_core import chat_store as _chat_store  # type: ignore
-    except Exception as e:  # awaryjnie pusty store in-memory
+    except Exception as e:
         _chat_store = None  # type: ignore
         app.logger.warning("[chat] chat_store import failed: %s", e)
 
@@ -498,7 +426,7 @@ def _register_chat_endpoints() -> None:
                 elif _chat_store and hasattr(_chat_store, "get_store"):
                     items = _chat_store.get_store().list(limit=n)  # type: ignore[call-arg]
                 else:
-                    items = []  # brak magazynu
+                    items = []
                 return _ok({"items": items})
             except Exception as e:
                 return _err(f"history_failed: {e}", 500)
@@ -521,7 +449,6 @@ def _register_chat_endpoints() -> None:
                 elif _chat_store and hasattr(_chat_store, "get_store"):
                     item = _chat_store.get_store().add(msg=msg, user=user)  # type: ignore[attr-defined]
                 else:
-                    # awaryjnie echo
                     item = {"msg": msg, "user": user}
                 return _ok({"item": item})
             except Exception as e:
@@ -538,8 +465,6 @@ def _register_chat_endpoints() -> None:
 
 
 # ── BOOTSTRAP ────────────────────────────────────────────────────────────────
-
-# --- [Rider-Pi] register vision_api blueprint(s) ---
 try:
     import importlib
 
@@ -553,7 +478,6 @@ try:
 except Exception as e:
     app.logger.exception("[api] failed to register vision_api blueprint: %s", e)
 
-# --- rejestracja czatu (blueprint lub fallback) ---
 _register_chat_endpoints()
 
 
