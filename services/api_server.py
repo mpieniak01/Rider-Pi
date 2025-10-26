@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import Any, Callable
 
-from flask import Flask, Response, jsonify, make_response, request, send_from_directory
+from flask import Flask, Response, abort, jsonify, make_response, request, send_from_directory
 
 # --- preferuj istniejący app/konfigurację z compat ---
 try:
@@ -352,6 +352,10 @@ def serve_web(fname: str):
 
 def serve_web_directory(directory: str):
     """Serwuje index.html z katalogu web/<directory>/."""
+    # Validate directory name to prevent path traversal
+    if not directory or '/' in directory or '\\' in directory or '..' in directory:
+        abort(404)
+
     index_path = os.path.join(directory, "index.html")
     resp = send_from_directory(STATIC_WEB_DIR, index_path)
     try:
