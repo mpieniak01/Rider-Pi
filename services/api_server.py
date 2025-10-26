@@ -340,24 +340,28 @@ STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.di
 
 def serve_web(fname: str):
     """Serwuje statyki z twardym anti-cache, żeby UI zawsze widział świeże pliki."""
-    resp = send_from_directory(STATIC_WEB_DIR, fname)
-    try:
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        resp.headers["Pragma"] = "no-cache"
-        resp.headers["Expires"] = "0"
-    except Exception:
-        pass
-    return resp
+    # If fname ends with / or is a known directory, try to serve index.html from that directory
+    if fname.endswith('/'):
+        # Directory request - serve index.html
+        directory = fname.rstrip('/')
+        # Validate directory name to prevent path traversal
+        if not directory or '/' in directory or '\\' in directory or '..' in directory:
+            abort(404)
 
+        # Check if the directory exists and contains index.html
+        dir_path = os.path.join(STATIC_WEB_DIR, directory)
+        index_path = os.path.join(directory, "index.html")
+        full_index_path = os.path.join(STATIC_WEB_DIR, index_path)
 
-def serve_web_directory(directory: str):
-    """Serwuje index.html z katalogu web/<directory>/."""
-    # Validate directory name to prevent path traversal
-    if not directory or '/' in directory or '\\' in directory or '..' in directory:
-        abort(404)
+        # If directory doesn't exist or index.html doesn't exist, return 404
+        if not os.path.isdir(dir_path) or not os.path.isfile(full_index_path):
+            abort(404)
 
-    index_path = os.path.join(directory, "index.html")
-    resp = send_from_directory(STATIC_WEB_DIR, index_path)
+        resp = send_from_directory(STATIC_WEB_DIR, index_path)
+    else:
+        # File request - serve the file directly
+        resp = send_from_directory(STATIC_WEB_DIR, fname)
+
     try:
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         resp.headers["Pragma"] = "no-cache"
@@ -369,11 +373,10 @@ def serve_web_directory(directory: str):
 
 def serve_home():
     """Serwuje Google Home Control pod /home."""
-    return serve_web_directory("home")
+    return serve_web("home/")
 
 
-_add_rule("/web/<directory>/", view_func=serve_web_directory, methods=["GET"])
-_add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
+_add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"], strict_slashes=False)
 _add_rule("/home", view_func=serve_home, methods=["GET"])
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"])
 _add_rule("/view", view_func=dashboard.dashboard, methods=["GET"])
