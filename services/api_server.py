@@ -372,8 +372,8 @@ def serve_home():
     return serve_web_directory("home")
 
 
-_add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
 _add_rule("/web/<directory>/", view_func=serve_web_directory, methods=["GET"])
+_add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"])
 _add_rule("/home", view_func=serve_home, methods=["GET"])
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"])
 _add_rule("/control", view_func=dashboard.control_page, methods=["GET"])
