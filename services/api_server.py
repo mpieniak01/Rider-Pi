@@ -191,8 +191,8 @@ def _save_command_cache(device_id: str, command: str, params: dict[str, Any], re
             "command": command,
             "params": params,
             "ok": result.get("ok", False),
-            "response": result.get("result") if result.get("ok") else None,
-            "error": result.get("error") if not result.get("ok") else None,
+            "response": result.get("result"),
+            "error": result.get("error"),
         }
         LAST_COMMAND_FILE.write_text(json.dumps(cache_data, indent=2))
     except Exception as e:
