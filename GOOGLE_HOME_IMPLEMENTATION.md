@@ -38,7 +38,7 @@ Successfully implemented complete Google Home smart device control integration f
 - Generic error messages to prevent information leakage
 - Server-side logging of detailed errors for debugging
 
-### 3. Frontend (`web/home.html`)
+### 3. Frontend (`web/home/`)
 **User Interface:**
 - Clean, dark-themed design matching Rider-Pi style
 - Authentication flow with Google sign-in button
@@ -219,7 +219,7 @@ Successfully implemented complete Google Home smart device control integration f
 
 ### New Files (5)
 1. `services/api_core/google_home_api.py` (323 lines)
-2. `web/home.html` (297 lines)
+2. `web/home/index.html` (297 lines)
 3. `.bash_profile_example` (40 lines)
 4. `docs/google-home-integration.md` (464 lines)
 5. `tests/test_google_home_api.py` (174 lines)
@@ -288,7 +288,7 @@ Successfully implemented complete Google Home smart device control integration f
 3. Run `source ~/.bash_profile`
 4. Install dependencies: `pip install -r requirements-dev.txt`
 5. Start server: `python services/api_server.py`
-6. Navigate to `http://<IP>:5000/web/home.html`
+6. Navigate to `http://<IP>:5000/web/home/`
 
 ### First-Time Authentication
 1. Click "Sign in with Google"
