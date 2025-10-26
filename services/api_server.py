@@ -1,7 +1,10 @@
 # services/api_server.py
 from __future__ import annotations
 
+import json
 import os
+import time
+from pathlib import Path
 from typing import Any, Callable
 
 from flask import Flask, Response, abort, jsonify, make_response, request, send_from_directory
@@ -165,6 +168,37 @@ _add_rule("/api/voice/asr", view_func=voice_local_proxy.asr_local_handler, metho
 
 
 # ── GOOGLE HOME ──────────────────────────────────────────────────────────────
+# Configuration for command caching
+DATA_DIR = Path(os.getenv("DATA_DIR", Path.home() / "robot" / "data"))
+GOOGLE_DATA_DIR = DATA_DIR / "google"
+LAST_COMMAND_FILE = GOOGLE_DATA_DIR / "last_command.json"
+
+
+def _save_command_cache(device_id: str, command: str, params: dict[str, Any], result: dict[str, Any]) -> None:
+    """Save command response to cache file.
+
+    Args:
+        device_id: Device ID that received the command
+        command: Command that was sent
+        params: Parameters that were sent
+        result: Result from google_home_api.send_command
+    """
+    try:
+        GOOGLE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        cache_data = {
+            "timestamp": time.time(),
+            "device_id": device_id,
+            "command": command,
+            "params": params,
+            "ok": result.get("ok", False),
+            "response": result.get("result"),
+            "error": result.get("error"),
+        }
+        LAST_COMMAND_FILE.write_text(json.dumps(cache_data, indent=2))
+    except Exception as e:
+        app.logger.warning(f"Failed to save command cache to {LAST_COMMAND_FILE}: {e}")
+
+
 def _auto_refresh_token_and_retry(api_call: Callable[..., dict[str, Any]], *args, **kwargs) -> dict[str, Any]:
     result = api_call(*args, **kwargs)
     if result.get("status_code") == 401:
@@ -267,6 +301,10 @@ def home_command():
     if not device_id or not command:
         return _corsify(jsonify({"ok": False, "error": "Missing deviceId or command"})), 400
     result = _auto_refresh_token_and_retry(google_home_api.send_command, device_id, command, params)
+
+    # Save command result to cache
+    _save_command_cache(device_id, command, params, result)
+
     if result.get("ok"):
         return _corsify(jsonify({"ok": True, "result": result.get("result", {})})), 200
     app.logger.error("Failed to send command: %s", result.get("error", "Unknown error"))
