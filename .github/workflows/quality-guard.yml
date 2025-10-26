@@ -8,6 +8,12 @@ jobs:
   quality:
     runs-on: ubuntu-latest
 
+    # ✅ domyślne wartości; później podmieniamy przez $GITHUB_ENV
+    env:
+      ALLOW_OVERSIZE: '0'
+      ALLOW_DELETE: '0'
+      NOSTUB_STRICT: '0'
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,7 +26,7 @@ jobs:
 
       - name: Ensure jq present
         run: |
-          sudo apt-get update
+          sudo apt-get update -y
           sudo apt-get install -y jq
 
       - name: Install deps (ruff pinned)
@@ -38,15 +44,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          labels="$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
+          labels="$(jq -r '.pull_request.labels[].name // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
           echo "labels: ${labels:-<none>}"
           case "$labels" in *"allow-oversize"*) echo "ALLOW_OVERSIZE=1" >>"$GITHUB_ENV";; esac
           case "$labels" in *"allow-delete"*)  echo "ALLOW_DELETE=1"  >>"$GITHUB_ENV";; esac
           case "$labels" in *"nostub-strict"*) echo "NOSTUB_STRICT=1" >>"$GITHUB_ENV";; esac
 
-      # ---- 600 linii / plik (chyba że allow-oversize) ----
+      # ---- 600 linii / plik (aktywny gdy ALLOW_OVERSIZE=0) ----
       - name: Enforce max 600 lines per changed Python file
-        if: env.ALLOW_OVERSIZE != '1'
+        if: ${{ env.ALLOW_OVERSIZE == '0' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -65,23 +71,21 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # ---- NO-STUB (miękko; skip gdy brak zmian .py) ----
+      # ---- NO-STUB (aktywny gdy ALLOW_DELETE=0) ----
       - name: NO-STUB (warn-only by default)
-        if: env.ALLOW_DELETE != '1'
+        if: ${{ env.ALLOW_DELETE == '0' }}
         shell: bash
         run: |
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
 
-          # jeśli PR nie dotyka .py -> pomiń krok
           CHANGED_PY="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
           if [ -z "$CHANGED_PY" ]; then
             echo "NO-STUB: no Python changes -> skip"
             exit 0
           fi
 
-          # czyste dodane linie (bez komentarzy/pustych); używamy awk (odporne na brak dopasowań)
           diff_py="$(git diff -U0 "$base" "$head" -- '*.py' || true)"
 
           added_clean="$(
@@ -116,18 +120,15 @@ jobs:
           head="${{ github.event.pull_request.head.sha }}"
           CHANGED="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
           [ -z "$CHANGED" ] && exit 0
-          BAD=""
+          FAIL=0
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             if grep -Iq . "$f" && grep -q $'\r' "$f"; then
-              BAD="${BAD}${f}\n"
+              echo "::error file=$f,line=1::Detected CRLF in Python file (use LF). Tip: add '*.py text eol=lf' to .gitattributes and run 'git add --renormalize \"*.py\"'."
+              FAIL=1
             fi
           done <<< "$CHANGED"
-          if [ -n "$BAD" ]; then
-            echo "::error::Detected CRLF in Python files (use LF). Offenders:\n${BAD}"
-            echo "Tip: add '*.py text eol=lf' to .gitattributes and run 'git add --renormalize \"*.py\"'."
-            exit 1
-          fi
+          exit $FAIL
 
       # ---- Ruff ----
       - name: Ruff (lint + format check, PR annotations)
