@@ -1,0 +1,27 @@
+[Unit]
+Description=Rider-Pi Google Bridge (data feed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+
+# --- Google Bridge Configuration ---
+Environment=GOOGLE_ENABLED=1
+Environment=GOOGLE_POLL_S=300
+Environment=DATA_DIR=/home/pi/robot/data
+
+# Run the puller
+ExecStart=/usr/bin/python3 -u apps/google_bridge/puller.py
+Restart=always
+RestartSec=5
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=process
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

@@ -109,6 +109,12 @@ help:
 	@echo "  make led-status       # status LED"
 	@echo "  make led-auto         # automatyczny tryb LED"
 	@echo ""
+	@echo "═══ Google Feed (bridge → cache → API) ═══"
+	@echo "  make google-on        # start Google feed worker (systemd)"
+	@echo "  make google-off       # stop Google feed worker"
+	@echo "  make google-status    # status Google feed + cache files"
+	@echo "  make google-logs      # logs Google feed worker"
+	@echo ""
 	@echo "═══ Face Rendering ═══"
 	@echo "  make face-direct      # bezpośredni renderer LCD (scripts/dev_face-lcd-direct.py)"
 	@echo "  make face-api-png     # render PNG przez face_api → /tmp/face_api.png)"
@@ -488,6 +494,28 @@ clean:
 
 tree:
 	@command -v tree >/dev/null 2>&1 && tree -a -I ".git" || find . -path "./.git" -prune -o -print
+
+# ───────────────────────────────────────────────
+# GOOGLE FEED (bridge → cache → API)
+.PHONY: google-on google-off google-status google-logs
+google-on:
+	@echo "== Starting Google Feed (rider-google-bridge.service) =="
+	@$(SUDO) systemctl enable --now rider-google-bridge.service
+
+google-off:
+	@echo "== Stopping Google Feed (rider-google-bridge.service) =="
+	@$(SUDO) systemctl disable --now rider-google-bridge.service
+
+google-status:
+	@echo "== Google Feed Status =="
+	@$(SUDO) systemctl status rider-google-bridge.service --no-pager || true
+	@echo ""
+	@echo "== Cache files =="
+	@ls -lh $(ROOT)/data/google/ 2>/dev/null || echo "No cache files yet"
+
+google-logs:
+	@echo "== Google Feed Logs =="
+	@$(SUDO) journalctl -u rider-google-bridge.service -fn 50 --no-pager
 
 # ───────────────────────────────────────────────
 # HEALTH CHECK (API na 8080)
