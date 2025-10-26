@@ -33,8 +33,6 @@ class TestGoogleFeedAPI:
 
     def test_read_json_file_not_exists(self):
         """Test _read_json_file with non-existent file returns default."""
-        import tempfile
-
         nonexistent = Path(tempfile.gettempdir()) / "nonexistent_test_file_12345.json"
         result = google_proxy._read_json_file(nonexistent, {"default": True})
         assert result == {"default": True}
@@ -59,8 +57,6 @@ class TestGoogleFeedAPI:
 
     def test_get_status_endpoint(self):
         """Test /api/google/status endpoint returns valid JSON."""
-        import tempfile
-
         from flask import Flask
 
         app = Flask(__name__)
@@ -109,8 +105,6 @@ class TestGoogleFeedAPI:
 
     def test_get_last_snapshot_not_exists(self):
         """Test /api/google/raw/last.json returns 404 when no snapshot."""
-        import tempfile
-
         from flask import Flask
 
         app = Flask(__name__)

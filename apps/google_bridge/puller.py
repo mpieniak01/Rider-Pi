@@ -31,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger("google_bridge.puller")
 
 # Configuration from environment
-GOOGLE_POLL_S = int(os.getenv("GOOGLE_POLL_S", "300"))  # 5 minutes default
+GOOGLE_POLL_S = int(os.getenv("GOOGLE_POLL_S", "300"))  # 300 seconds (5 minutes) default
 GOOGLE_ENABLED = os.getenv("GOOGLE_ENABLED", "1") == "1"
 DATA_DIR = Path(os.getenv("DATA_DIR", Path.home() / "robot" / "data"))
 GOOGLE_DATA_DIR = DATA_DIR / "google"

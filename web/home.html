@@ -136,19 +136,21 @@
   async function fetchSnapshot() {
     try {
       const response = await fetch('/api/google/raw/last.json', { cache: 'no-store' });
+      
+      // Handle 404 (no snapshot) explicitly
+      if (response.status === 404) {
+        qs('#snapshotData').textContent = 'No snapshot available yet';
+        return;
+      }
+      
       const data = await response.json();
       
       // Pretty print JSON
       qs('#snapshotData').textContent = JSON.stringify(data, null, 2);
       
     } catch (e) {
-      // 404 is expected when no snapshot exists
-      if (e.message && e.message.includes('404')) {
-        qs('#snapshotData').textContent = 'No snapshot available yet';
-      } else {
-        console.error('Failed to fetch snapshot:', e);
-        qs('#snapshotData').textContent = 'Error loading snapshot';
-      }
+      console.error('Failed to fetch snapshot:', e);
+      qs('#snapshotData').textContent = 'Error loading snapshot';
     }
   }
 
