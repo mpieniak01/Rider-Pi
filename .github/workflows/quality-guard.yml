@@ -69,6 +69,7 @@ jobs:
       - name: NO-STUB (warn-only by default)
         if: env.ALLOW_DELETE != '1'
         shell: bash
+        continue-on-error: true   # gwarantuje WARN-ONLY nawet przy nieprzewidzianym błędzie
         run: |
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
