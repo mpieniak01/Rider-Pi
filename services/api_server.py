@@ -26,6 +26,7 @@ import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
 import services.api_core.google_home_api as google_home_api
+import services.api_core.google_proxy as google_proxy
 import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
@@ -477,6 +478,13 @@ try:
     app.logger.info("[api] vision_api blueprints registered: /vision/* and /api/vision/*")
 except Exception as e:
     app.logger.exception("[api] failed to register vision_api blueprint: %s", e)
+
+# Register google_proxy blueprint
+try:
+    app.register_blueprint(google_proxy.google_proxy)
+    app.logger.info("[api] google_proxy blueprint registered: /api/google/*")
+except Exception as e:
+    app.logger.exception("[api] failed to register google_proxy blueprint: %s", e)
 
 _register_chat_endpoints()
 

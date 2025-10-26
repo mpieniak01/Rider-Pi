@@ -3,534 +3,166 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rider-Pi — Google Home Control</title>
+  <title>Rider-Pi — Google Feed</title>
   <style>
     :root { --pad: 16px; --gap: 12px; }
     body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:var(--pad); background:#0e1823; color:#e6eef7; }
     .wrap{max-width:1100px;margin:0 auto}
     h1{font-size:20px;margin:0 0 var(--pad)}
-    .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
     .card{ background:#0f2030; border:1px solid #1e3a56; border-radius:16px; box-shadow:0 1px 8px rgba(0,0,0,.25); padding:var(--pad); margin:0 0 var(--pad); }
-    button{ padding:12px 16px; border:1px solid #24425e; border-radius:12px; background:#122435; color:#e6eef7; font-size:16px; cursor:pointer; transition:transform .03s ease, background .12s ease, border-color .12s ease; }
-    button:hover{ background:#16304a; border-color:#2b5577 } button:active{ transform:scale(0.98) }
-    .btn-sm{ padding:6px 10px; font-size:13px; border-radius:10px }
-    .btn-auth{ padding:12px 24px; font-size:16px; background:#1a73e8; border-color:#1a73e8; }
-    .btn-auth:hover{ background:#1557b0; border-color:#1557b0; }
-    label{font-size:14px;color:#b7cee3;display:flex;align-items:center;gap:8px}
-    input[type="range"]{width:200px; accent-color:#6de28a}
-    input[type="color"]{width:60px;height:36px;border:1px solid #24425e;border-radius:8px;background:#122435;cursor:pointer;padding:2px}
-    input[type="color"]:hover{border-color:#2b5577}
-    select{padding:6px 10px;border:1px solid #24425e;border-radius:8px;background:#122435;color:#e6eef7;font-size:13px;cursor:pointer}
-    select:hover{background:#16304a;border-color:#2b5577}
-    .device-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--gap);margin:16px 0}
-    .device-card{background:#0b1a27;border:1px solid #1c3349;border-radius:12px;padding:12px;}
-    .device-name{font-weight:600;margin-bottom:8px;color:#e6eef7}
-    .device-type{font-size:12px;color:#b7cee3;margin-bottom:8px}
-    .device-controls{margin-top:10px;display:flex;flex-direction:column;gap:8px}
-    .control-row{display:flex;gap:8px;align-items:center}
-    .muted{opacity:.85} .ok{color:#6de28a} .warn{color:#f0c36d} .err{color:#ff8080}
+    .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:13px;border:1px solid #24425e;background:#0b1a27}
+    .pill.ok{color:#6de28a;border-color:#2c6b48;background:#0d2418}
+    .pill.warn{color:#f0c36d;border-color:#7a6434;background:#2a2418}
+    .pill.err{color:#ff8080;border-color:#8a3a3a;background:#2a1818}
+    .pill.off{color:#b7cee3;border-color:#24425e;background:#0b1a27}
+    .muted{opacity:.85; color:#b7cee3}
     .spacer{flex:1}
     a{color:#98c7ff; text-decoration:none} a:hover{text-decoration:underline}
-    .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #24425e;background:#0b1a27}
-    .pill.ok{color:#6de28a;border-color:#2c6b48} .pill.err{color:#ff8080;border-color:#8a3a3a}
-    .note{font-size:13px;color:#b7cee3;margin-top:8px}
+    pre{background:#0b1a27;border:1px solid #1c3349;border-radius:8px;padding:12px;overflow:auto;font-size:13px;line-height:1.5}
+    .data-row{display:flex;gap:8px;margin:4px 0;font-size:14px}
+    .data-label{color:#b7cee3;min-width:120px}
+    .data-value{color:#e6eef7}
     .spinner{display:inline-block;width:16px;height:16px;border:2px solid #24425e;border-top-color:#6de28a;border-radius:50%;animation:spin 0.8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .hidden{display:none}
-    .status-msg{padding:8px 12px;border-radius:8px;margin:8px 0;background:#0b1a27;border:1px solid #1c3349}
   </style>
 </head>
 <body>
 <div class="wrap">
   
-  <h1 data-i18n="home.page_title">
-    Rider-Pi — Google Home Control
-    <span id="authBadge" class="pill warn" style="margin-left:10px" data-i18n="home.auth_checking">Checking…</span>
+  <h1>
+    Rider-Pi — Google Feed
+    <span id="stateBadge" class="pill warn">
+      <span class="spinner"></span> Loading...
+    </span>
   </h1>
 
-  <!-- AUTH SECTION -->
-  <div id="authSection" class="card hidden">
-    <h2 style="font-size:16px;margin:0 0 12px" data-i18n="home.auth_title">Authentication Required</h2>
-    <p data-i18n="home.auth_description">To control your Google Home devices, please sign in with your Google account.</p>
-    <button id="btnAuth" class="btn-auth" data-i18n="home.auth_button">Sign in with Google</button>
-  </div>
-
-  <!-- DEVICES SECTION -->
-  <div id="devicesSection" class="card hidden">
-    <div class="row">
-      <h2 style="font-size:16px;margin:0" data-i18n="home.devices_title">Your Devices</h2>
-      <div class="spacer"></div>
-      <button id="btnRefresh" class="btn-sm" data-i18n="home.refresh_button">⟳ Refresh</button>
+  <!-- Status Card -->
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 12px">Status & Metrics</h2>
+    
+    <div class="data-row">
+      <div class="data-label">State:</div>
+      <div class="data-value" id="stateValue">—</div>
     </div>
     
-    <div id="statusMsg" class="status-msg hidden"></div>
+    <div class="data-row">
+      <div class="data-label">Last Update:</div>
+      <div class="data-value" id="timestampValue">—</div>
+    </div>
     
-    <div id="devicesList" class="device-grid">
-      <div class="muted" data-i18n="meta.loading">Loading…</div>
+    <div class="data-row">
+      <div class="data-label">Requests (24h):</div>
+      <div class="data-value" id="requestsValue">—</div>
+    </div>
+    
+    <div class="data-row">
+      <div class="data-label">Errors (24h):</div>
+      <div class="data-value" id="errorsValue">—</div>
     </div>
   </div>
 
-  <!-- FOOTER -->
+  <!-- Snapshot Card -->
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 12px">Last Snapshot</h2>
+    <pre id="snapshotData" class="muted">No data available</pre>
+  </div>
+
+  <!-- Footer -->
   <div class="row">
-    <a href="/" class="muted" data-i18n="meta.dashboard">↩ dashboard</a>
+    <a href="/web/view.html" class="muted">↩ dashboard</a>
     <span class="muted" style="margin: 0 8px;">•</span>
-    <a href="/chat" class="muted">💬 chat</a>
+    <a href="/web/chat.html" class="muted">💬 chat</a>
+    <span class="muted" style="margin: 0 8px;">•</span>
+    <a href="/web/google_home.html" class="muted">🏠 Google Home</a>
   </div>
 
 </div>
 
-<!-- APP (i18n + logika) -->
+<!-- App Logic -->
 <script type="module">
-  import { initI18n, applyDom, t } from '/web/i18n.js';
+  const POLL_INTERVAL_MS = 5000; // 5 seconds
 
-  // --- Inicjalizacja języka
-  const urlLang = new URLSearchParams(location.search).get('lang');
-  const saved = localStorage.getItem('lang');
-  const browser = (navigator.language || '').slice(0,2).toLowerCase();
-  const pick = (v)=> v && v.toLowerCase().startsWith('en') ? 'en' : (v && v.toLowerCase().startsWith('pl') ? 'pl' : null);
-  const lang = pick(urlLang) || pick(saved) || pick(browser) || 'pl';
-  if (urlLang) localStorage.setItem('lang', lang);
-  await initI18n(lang);
-  applyDom();
-  document.documentElement.setAttribute('lang', lang);
-  document.title = t('home.page_title');
-
-  // --- Helper functions
-  const qs = (s)=>document.querySelector(s);
+  const qs = (s) => document.querySelector(s);
   
-  // Device control constants
-  const DEFAULT_COLOR_TEMP_K = 3000;
-  const DEFAULT_RGB_COLOR = 0xFFFFFF;
-  const DEFAULT_TEMPERATURE_C = 20;
-  const TEMP_INCREMENT_C = 0.5;
-  
-  function showStatus(msg, type='ok'){
-    const statusMsg = qs('#statusMsg');
-    statusMsg.textContent = msg;
-    statusMsg.className = `status-msg ${type}`;
-    statusMsg.classList.remove('hidden');
-    setTimeout(()=> statusMsg.classList.add('hidden'), 5000);
-  }
-
-  async function httpGet(url){
-    const r = await fetch(url, {cache:'no-store'});
-    const j = await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-    return j;
-  }
-
-  async function httpPost(url, body){
-    const r = await fetch(url, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(body)
+  function formatTimestamp(ts) {
+    if (!ts || ts === 0) return '—';
+    const d = new Date(ts * 1000);
+    return d.toLocaleString('pl-PL', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
     });
-    const j = await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-    return j;
   }
 
-  // --- Check auth status
-  async function checkAuth(){
-    try{
-      const result = await httpGet('/api/home/status');
-      const isAuth = result.authenticated;
+  function updateStateBadge(state) {
+    const badge = qs('#stateBadge');
+    const stateMap = {
+      'ok': { text: 'OK', class: 'pill ok' },
+      'enabled': { text: 'Enabled', class: 'pill warn' },
+      'error': { text: 'Error', class: 'pill err' },
+      'off': { text: 'Off', class: 'pill off' }
+    };
+    
+    const config = stateMap[state] || { text: 'Unknown', class: 'pill warn' };
+    badge.textContent = config.text;
+    badge.className = config.class;
+  }
+
+  async function fetchStatus() {
+    try {
+      const response = await fetch('/api/google/status', { cache: 'no-store' });
+      const data = await response.json();
       
-      const authBadge = qs('#authBadge');
-      const authSection = qs('#authSection');
-      const devicesSection = qs('#devicesSection');
+      // Update state badge
+      updateStateBadge(data.state || 'off');
       
-      if(isAuth){
-        authBadge.textContent = t('home.auth_ok');
-        authBadge.className = 'pill ok';
-        authSection.classList.add('hidden');
-        devicesSection.classList.remove('hidden');
-        loadDevices();
-      } else {
-        authBadge.textContent = t('home.auth_required');
-        authBadge.className = 'pill warn';
-        authSection.classList.remove('hidden');
-        devicesSection.classList.add('hidden');
-      }
-    }catch(e){
-      const authBadge = qs('#authBadge');
-      authBadge.textContent = t('home.auth_error');
-      authBadge.className = 'pill err';
-      showStatus(t('home.error_check_auth', {msg: e.message}), 'err');
+      // Update status values
+      qs('#stateValue').textContent = data.state || 'unknown';
+      qs('#timestampValue').textContent = formatTimestamp(data.timestamp);
+      qs('#requestsValue').textContent = data.metrics?.requests_24h ?? 0;
+      qs('#errorsValue').textContent = data.metrics?.errors_24h ?? 0;
+      
+    } catch (e) {
+      console.error('Failed to fetch status:', e);
+      updateStateBadge('error');
+      qs('#stateValue').textContent = 'error';
     }
   }
 
-  // --- Load devices
-  async function loadDevices(){
-    const devicesList = qs('#devicesList');
-    devicesList.innerHTML = `<div class="muted"><span class="spinner"></span> ${t('meta.loading')}</div>`;
-    
-    try{
-      const result = await httpGet('/api/home/devices');
+  async function fetchSnapshot() {
+    try {
+      const response = await fetch('/api/google/raw/last.json', { cache: 'no-store' });
       
-      if(!result.ok){
-        throw new Error(result.error || 'Failed to load devices');
-      }
-      
-      const devices = result.devices || [];
-      
-      if(devices.length === 0){
-        devicesList.innerHTML = `<div class="note" data-i18n="home.no_devices">${t('home.no_devices')}</div>`;
+      // Handle 404 (no snapshot) explicitly
+      if (response.status === 404) {
+        qs('#snapshotData').textContent = 'No snapshot available yet';
         return;
       }
       
-      devicesList.innerHTML = '';
-      devices.forEach(device => renderDevice(device));
+      const data = await response.json();
       
-    }catch(e){
-      devicesList.innerHTML = `<div class="err">${t('home.error_load_devices', {msg: e.message})}</div>`;
-    }
-  }
-
-  // --- Render a device
-  function renderDevice(device){
-    const devicesList = qs('#devicesList');
-    
-    const name = (device.name || 'Unknown Device').split('/').pop() || 'Unknown Device';
-    const type = device.type || 'Unknown';
-    const traits = device.traits || {};
-    
-    const card = document.createElement('div');
-    card.className = 'device-card';
-    
-    let html = `
-      <div class="device-name">${escapeHtml(name)}</div>
-      <div class="device-type">${escapeHtml(type)}</div>
-      <div class="device-controls">
-    `;
-    
-    // OnOff trait
-    if(traits['sdm.devices.traits.OnOff']){
-      const currentState = traits['sdm.devices.traits.OnOff'].on ? 'ON' : 'OFF';
-      html += `
-        <div class="control-row">
-          <button class="btn-sm" data-action="on" data-device="${escapeHtml(device.name)}">
-            ${t('home.btn_on')}
-          </button>
-          <button class="btn-sm" data-action="off" data-device="${escapeHtml(device.name)}">
-            ${t('home.btn_off')}
-          </button>
-          <span class="muted">(${currentState})</span>
-        </div>
-      `;
-    }
-    
-    // Brightness trait
-    if(traits['sdm.devices.traits.Brightness']){
-      const currentBrightness = traits['sdm.devices.traits.Brightness'].brightness || 0;
-      html += `
-        <div class="control-row">
-          <label style="flex:1">
-            <span>${t('home.brightness')}:</span>
-            <input type="range" min="0" max="100" value="${currentBrightness}" 
-                   data-action="brightness" data-device="${escapeHtml(device.name)}" />
-            <span class="brightness-value">${currentBrightness}%</span>
-          </label>
-        </div>
-      `;
-    }
-    
-    // ColorSetting trait - Temperature
-    if(traits['sdm.devices.traits.ColorSetting']){
-      const colorTrait = traits['sdm.devices.traits.ColorSetting'];
+      // Pretty print JSON
+      qs('#snapshotData').textContent = JSON.stringify(data, null, 2);
       
-      // Color temperature
-      if(colorTrait.temperatureK !== undefined){
-        const currentTemp = colorTrait.temperatureK || DEFAULT_COLOR_TEMP_K;
-        html += `
-          <div class="control-row">
-            <label style="flex:1">
-              <span>${t('home.color_temperature')}:</span>
-              <input type="range" min="2000" max="6500" value="${currentTemp}" 
-                     data-action="color-temp" data-device="${escapeHtml(device.name)}" />
-              <span class="color-temp-value">${currentTemp}K</span>
-            </label>
-          </div>
-        `;
-      }
-      
-      // Color spectrum (RGB)
-      if(colorTrait.spectrumRgb !== undefined){
-        const rgbValue = colorTrait.spectrumRgb || DEFAULT_RGB_COLOR;
-        const hexColor = '#' + rgbValue.toString(16).padStart(6, '0');
-        html += `
-          <div class="control-row">
-            <label style="flex:1">
-              <span>${t('home.color')}:</span>
-              <input type="color" value="${hexColor}" 
-                     data-action="color-rgb" data-device="${escapeHtml(device.name)}" />
-            </label>
-          </div>
-        `;
-      }
-    }
-    
-    // TemperatureSetting trait
-    if(traits['sdm.devices.traits.TemperatureSetting']){
-      const tempTrait = traits['sdm.devices.traits.TemperatureSetting'];
-      const currentSetpoint = tempTrait.thermostatTemperatureSetpoint || DEFAULT_TEMPERATURE_C;
-      const currentAmbient = tempTrait.thermostatTemperatureAmbient;
-      
-      html += `
-        <div class="control-row">
-          <label style="flex:1">
-            <span>${t('home.temperature_setpoint')}:</span>
-            <button class="btn-sm" data-action="temp-down" data-device="${escapeHtml(device.name)}">−</button>
-            <span class="temp-value">${currentSetpoint}°C</span>
-            <button class="btn-sm" data-action="temp-up" data-device="${escapeHtml(device.name)}">+</button>
-          </label>
-        </div>
-      `;
-      
-      if(currentAmbient !== undefined){
-        html += `
-          <div class="control-row">
-            <span class="muted">${t('home.temperature_ambient')}: ${currentAmbient}°C</span>
-          </div>
-        `;
-      }
-      
-      // Thermostat mode
-      const availableModes = tempTrait.availableThermostatModes || [];
-      const currentMode = tempTrait.thermostatMode || 'off';
-      if(availableModes.length > 0){
-        html += `
-          <div class="control-row">
-            <label style="flex:1">
-              <span>${t('home.thermostat_mode')}:</span>
-              <select data-action="thermostat-mode" data-device="${escapeHtml(device.name)}">
-        `;
-        availableModes.forEach(mode => {
-          const selected = mode === currentMode ? 'selected' : '';
-          html += `<option value="${mode}" ${selected}>${t('home.mode_' + mode)}</option>`;
-        });
-        html += `
-              </select>
-            </label>
-          </div>
-        `;
-      }
-    }
-    
-    // StartStop trait
-    if(traits['sdm.devices.traits.StartStop']){
-      const startStopTrait = traits['sdm.devices.traits.StartStop'];
-      const isRunning = startStopTrait.isRunning || false;
-      const isPaused = startStopTrait.isPaused || false;
-      
-      html += `
-        <div class="control-row">
-          <button class="btn-sm" data-action="start" data-device="${escapeHtml(device.name)}">
-            ${t('home.btn_start')}
-          </button>
-          <button class="btn-sm" data-action="stop" data-device="${escapeHtml(device.name)}">
-            ${t('home.btn_stop')}
-          </button>
-          <button class="btn-sm" data-action="pause" data-device="${escapeHtml(device.name)}">
-            ${t('home.btn_pause')}
-          </button>
-          <span class="muted">(${isRunning ? (isPaused ? 'PAUSED' : 'RUNNING') : 'STOPPED'})</span>
-        </div>
-      `;
-    }
-    
-    // Dock trait
-    if(traits['sdm.devices.traits.Dock']){
-      html += `
-        <div class="control-row">
-          <button class="btn-sm" data-action="dock" data-device="${escapeHtml(device.name)}">
-            ${t('home.btn_dock')}
-          </button>
-        </div>
-      `;
-    }
-    
-    html += `</div>`;
-    card.innerHTML = html;
-    
-    // Add event listeners
-    card.querySelectorAll('[data-action="on"]').forEach(btn => {
-      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.OnOff', {on: true}));
-    });
-    
-    card.querySelectorAll('[data-action="off"]').forEach(btn => {
-      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.OnOff', {on: false}));
-    });
-    
-    card.querySelectorAll('[data-action="brightness"]').forEach(slider => {
-      slider.addEventListener('change', (e)=> {
-        const brightness = parseInt(e.target.value);
-        sendCommand(device.name, 'action.devices.commands.BrightnessAbsolute', {brightness});
-      });
-      
-      slider.addEventListener('input', (e)=> {
-        const valueSpan = slider.parentElement.querySelector('.brightness-value');
-        if(valueSpan) valueSpan.textContent = e.target.value + '%';
-      });
-    });
-    
-    // Color temperature
-    card.querySelectorAll('[data-action="color-temp"]').forEach(slider => {
-      slider.addEventListener('change', (e)=> {
-        const temperatureK = parseInt(e.target.value);
-        sendCommand(device.name, 'action.devices.commands.ColorAbsolute', {color: {temperatureK}});
-      });
-      
-      slider.addEventListener('input', (e)=> {
-        const valueSpan = slider.parentElement.querySelector('.color-temp-value');
-        if(valueSpan) valueSpan.textContent = e.target.value + 'K';
-      });
-    });
-    
-    // Color RGB
-    card.querySelectorAll('[data-action="color-rgb"]').forEach(picker => {
-      picker.addEventListener('change', (e)=> {
-        const hex = e.target.value.substring(1); // Remove #
-        const spectrumRgb = parseInt(hex, 16);
-        sendCommand(device.name, 'action.devices.commands.ColorAbsolute', {color: {spectrumRgb}});
-      });
-    });
-    
-    // Temperature controls
-    card.querySelectorAll('[data-action="temp-up"]').forEach(btn => {
-      btn.addEventListener('click', ()=> {
-        const valueSpan = btn.parentElement.querySelector('.temp-value');
-        if(valueSpan){
-          const currentTemp = parseFloat(valueSpan.textContent) || DEFAULT_TEMPERATURE_C;
-          const newTemp = currentTemp + TEMP_INCREMENT_C;
-          sendCommand(device.name, 'action.devices.commands.ThermostatTemperatureSetpoint', {thermostatTemperatureSetpoint: newTemp});
-        }
-      });
-    });
-    
-    card.querySelectorAll('[data-action="temp-down"]').forEach(btn => {
-      btn.addEventListener('click', ()=> {
-        const valueSpan = btn.parentElement.querySelector('.temp-value');
-        if(valueSpan){
-          const currentTemp = parseFloat(valueSpan.textContent) || DEFAULT_TEMPERATURE_C;
-          const newTemp = currentTemp - TEMP_INCREMENT_C;
-          sendCommand(device.name, 'action.devices.commands.ThermostatTemperatureSetpoint', {thermostatTemperatureSetpoint: newTemp});
-        }
-      });
-    });
-    
-    // Thermostat mode
-    card.querySelectorAll('[data-action="thermostat-mode"]').forEach(select => {
-      select.addEventListener('change', (e)=> {
-        const thermostatMode = e.target.value;
-        sendCommand(device.name, 'action.devices.commands.ThermostatSetMode', {thermostatMode});
-      });
-    });
-    
-    // Start/Stop/Pause
-    card.querySelectorAll('[data-action="start"]').forEach(btn => {
-      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.StartStop', {start: true}));
-    });
-    
-    card.querySelectorAll('[data-action="stop"]').forEach(btn => {
-      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.StartStop', {start: false}));
-    });
-    
-    card.querySelectorAll('[data-action="pause"]').forEach(btn => {
-      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.PauseUnpause', {pause: true}));
-    });
-    
-    // Dock
-    card.querySelectorAll('[data-action="dock"]').forEach(btn => {
-      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.Dock', {}));
-    });
-    
-    devicesList.appendChild(card);
-  }
-
-  // --- Send command to device
-  async function sendCommand(deviceId, command, params){
-    try{
-      showStatus(t('home.sending_command'), 'ok');
-      
-      const result = await httpPost('/api/home/command', {
-        deviceId,
-        command,
-        params
-      });
-      
-      if(!result.ok){
-        throw new Error(result.error || 'Command failed');
-      }
-      
-      showStatus(t('home.command_success'), 'ok');
-      
-      // Refresh devices after a short delay
-      setTimeout(()=> loadDevices(), 1500);
-      
-    }catch(e){
-      showStatus(t('home.error_send_command', {msg: e.message}), 'err');
-    }
-  }
-
-  // --- Utility
-  function escapeHtml(text){
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  // --- Event listeners
-  qs('#btnAuth').addEventListener('click', async ()=> {
-    const btn = qs('#btnAuth');
-    const originalText = btn.textContent;
-    
-    try {
-      btn.disabled = true;
-      btn.textContent = t('meta.loading') + '...';
-      
-      // POST request with extended timeout for blocking OAuth flow
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
-      
-      const response = await fetch('/api/home/auth', {
-        method: 'POST',
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      const result = await response.json().catch(() => ({}));
-      
-      if (response.ok && result.ok) {
-        showStatus(t('home.auth_success'), 'ok');
-        // Refresh to show devices
-        await checkAuth();
-      } else {
-        throw new Error(result.error || 'Authentication failed');
-      }
     } catch (e) {
-      if (e.name === 'AbortError') {
-        showStatus(t('home.error_timeout'), 'err');
-      } else {
-        showStatus(t('home.error_auth', {msg: e.message}), 'err');
-      }
-      btn.disabled = false;
-      btn.textContent = originalText;
+      console.error('Failed to fetch snapshot:', e);
+      qs('#snapshotData').textContent = 'Error loading snapshot';
     }
-  });
-
-  qs('#btnRefresh').addEventListener('click', ()=> loadDevices());
-
-  // --- Check for auth success callback
-  const authParam = new URLSearchParams(location.search).get('auth');
-  if(authParam === 'success'){
-    // Remove query param from URL
-    window.history.replaceState({}, '', location.pathname);
-    showStatus(t('home.auth_success'), 'ok');
   }
 
-  // --- Initialize
-  checkAuth();
+  async function updateAll() {
+    await Promise.all([fetchStatus(), fetchSnapshot()]);
+  }
+
+  // Initial update
+  updateAll();
+
+  // Poll every 5 seconds
+  setInterval(updateAll, POLL_INTERVAL_MS);
 </script>
 
 </body>
