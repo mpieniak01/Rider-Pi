@@ -33,7 +33,10 @@ class TestGoogleFeedAPI:
 
     def test_read_json_file_not_exists(self):
         """Test _read_json_file with non-existent file returns default."""
-        result = google_proxy._read_json_file(Path("/tmp/nonexistent.json"), {"default": True})
+        import tempfile
+
+        nonexistent = Path(tempfile.gettempdir()) / "nonexistent_test_file_12345.json"
+        result = google_proxy._read_json_file(nonexistent, {"default": True})
         assert result == {"default": True}
 
     def test_read_json_file_invalid_json(self):
@@ -56,6 +59,8 @@ class TestGoogleFeedAPI:
 
     def test_get_status_endpoint(self):
         """Test /api/google/status endpoint returns valid JSON."""
+        import tempfile
+
         from flask import Flask
 
         app = Flask(__name__)
@@ -63,7 +68,8 @@ class TestGoogleFeedAPI:
 
         with app.test_client() as client:
             # Test with non-existent status file
-            with patch.object(google_proxy, "STATUS_FILE", Path("/tmp/nonexistent_status.json")):
+            nonexistent = Path(tempfile.gettempdir()) / "nonexistent_status_test.json"
+            with patch.object(google_proxy, "STATUS_FILE", nonexistent):
                 response = client.get("/api/google/status")
                 assert response.status_code == 200
                 data = response.get_json()
@@ -103,13 +109,16 @@ class TestGoogleFeedAPI:
 
     def test_get_last_snapshot_not_exists(self):
         """Test /api/google/raw/last.json returns 404 when no snapshot."""
+        import tempfile
+
         from flask import Flask
 
         app = Flask(__name__)
         app.register_blueprint(google_proxy.google_proxy)
 
         with app.test_client() as client:
-            with patch.object(google_proxy, "LAST_FILE", Path("/tmp/nonexistent_last.json")):
+            nonexistent = Path(tempfile.gettempdir()) / "nonexistent_last_test.json"
+            with patch.object(google_proxy, "LAST_FILE", nonexistent):
                 response = client.get("/api/google/raw/last.json")
                 assert response.status_code == 404
                 data = response.get_json()
