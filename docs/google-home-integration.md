@@ -125,7 +125,7 @@ Wysyła komendę do urządzenia.
 
 ### Frontend
 
-**Plik: `web/home.html`**
+**Plik: `web/home/index.html`**
 
 Interfejs webowy zapewnia:
 
@@ -209,7 +209,7 @@ Serwer domyślnie startuje na porcie 5000 (konfigurowalny przez zmienną `STATUS
 
 ### Proces autoryzacji
 
-1. Otwórz w przeglądarce: `http://199.168.1.71:5000/web/home.html`
+1. Otwórz w przeglądarce: `http://199.168.1.71:5000/web/home/`
 2. Kliknij przycisk "Zaloguj przez Google"
 3. Aplikacja automatycznie otworzy przeglądarkę i uruchomi lokalny serwer na porcie 8080
 4. Zaloguj się kontem Google i udziel zgód dla aplikacji
@@ -305,7 +305,8 @@ Rider-Pi/
 │   └── api_core/
 │       └── google_home_api.py     # Główny moduł Google Home API
 ├── web/
-│   ├── home.html                  # Interfejs sterowania
+│   ├── home/
+│   │   └── index.html             # Interfejs sterowania
 │   └── i18n.js                    # Tłumaczenia (home.*)
 ├── config/
 │   └── local/
@@ -318,7 +319,7 @@ Rider-Pi/
 
 ### Nowe pliki
 - `services/api_core/google_home_api.py` - główny moduł integracji
-- `web/home.html` - interfejs webowy
+- `web/home/index.html` - interfejs webowy
 - `.bash_profile_example` - przykładowa konfiguracja
 - `docs/google-home-integration.md` - dokumentacja
 
