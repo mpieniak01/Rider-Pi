@@ -74,24 +74,31 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
 
-          # jeśli PR nie dotyka .py -> pomiń krok
-          CHANGED_PY="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
-          if [ -z "$CHANGED_PY" ]; then
+          # Różnice tylko dla *.py
+          diff_py="$(git diff -U0 "$base" "$head" -- '*.py' || true)"
+          if [ -z "$diff_py" ]; then
             echo "NO-STUB: no Python changes -> skip"
             exit 0
           fi
 
-          # zbierz tylko dodane linie nie będące komentarzami
-          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' || true)"
-          added="$(printf '%s\n' "$added" | sed 's/^+//' | grep -vE '^[[:space:]]*(#|$)' || true)"
+          # Tylko dodane linie (pojedynczy '+'), bez komentarzy/pustych
+          added_clean="$(printf '%s\n' "$diff_py" \
+            | awk '/^\+[^+]/ { sub(/^\+/,""); print }' \
+            | awk '!/^[[:space:]]*($|#)/')"
 
-          pass_count="$(printf '%s\n' "$added" | grep -Ec '^[[:space:]]*pass([[:space:]]*#.*)?$' || true)"
-          nie_count="$(printf '%s\n' "$added" | grep -Ec '(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)' || true)"
+          # Zlicz 'pass' i 'raise NotImplementedError'
+          pass_count="$(printf '%s\n' "$added_clean" \
+            | awk '/^[[:space:]]*pass([[:space:]]*#.*)?$/ {c++} END{print c+0}')"
+
+          nie_count="$(printf '%s\n' "$added_clean" \
+            | awk '(/(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)/){c++} END{print c+0}')"
+
           echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
           bad=$((pass_count + nie_count))
 
           if [ "$bad" -gt 0 ] && [ "${NOSTUB_STRICT:-0}" = "1" ]; then
-            echo "Stub smell in additions — strict mode"; exit 1
+            echo "Stub smell in additions — strict mode"
+            exit 1
           fi
 
           if [ "$bad" -gt 0 ]; then
