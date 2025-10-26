@@ -65,7 +65,7 @@ jobs:
           done <<< "$CHANGED"
           exit $FAIL
 
-      # ---- NO-STUB (miękko) ----
+      # ---- NO-STUB (miękko; skip gdy brak zmian .py) ----
       - name: NO-STUB (warn-only by default)
         if: env.ALLOW_DELETE != '1'
         shell: bash
@@ -73,17 +73,31 @@ jobs:
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' | sed 's/^+//' | grep -vE '^[[:space:]]*#')"
+
+          # jeśli PR nie dotyka .py -> pomiń krok
+          CHANGED_PY="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
+          if [ -z "$CHANGED_PY" ]; then
+            echo "NO-STUB: no Python changes -> skip"
+            exit 0
+          fi
+
+          # zbierz tylko dodane linie nie będące komentarzami
+          added="$(git diff -U0 "$base" "$head" -- '*.py' | grep -E '^\+[^+]' || true)"
+          added="$(printf '%s\n' "$added" | sed 's/^+//' | grep -vE '^[[:space:]]*(#|$)' || true)"
+
           pass_count="$(printf '%s\n' "$added" | grep -Ec '^[[:space:]]*pass([[:space:]]*#.*)?$' || true)"
           nie_count="$(printf '%s\n' "$added" | grep -Ec '(^|[^A-Za-z0-9_])raise[[:space:]]+NotImplementedError([^A-Za-z0-9_]|$)' || true)"
           echo "NO-STUB counts -> pass: $pass_count, NotImplementedError: $nie_count"
           bad=$((pass_count + nie_count))
+
+          if [ "$bad" -gt 0 ] && [ "${NOSTUB_STRICT:-0}" = "1" ]; then
+            echo "Stub smell in additions — strict mode"; exit 1
+          fi
+
           if [ "$bad" -gt 0 ]; then
-            if [ "${NOSTUB_STRICT:-0}" = "1" ]; then
-              echo "Stub smell in additions — strict mode"; exit 1
-            else
-              echo "::warning::Stub smell in additions (pass/NotImplementedError); use 'nostub-strict' label to enforce."
-            fi
+            echo "::warning::Stub smell in additions (pass/NotImplementedError); use 'nostub-strict' label to enforce."
+          else
+            echo "NO-STUB: no stubs detected."
           fi
 
       # ---- CRLF detector (najczęstsza przyczyna 'would reformat' na CI) ----
@@ -98,7 +112,6 @@ jobs:
           BAD=""
           while IFS= read -r f; do
             [ -z "$f" ] && continue
-            # Wykryj znak CR (0x0D); jeśli jest -> CRLF
             if grep -Iq . "$f" && grep -q $'\r' "$f"; then
               BAD="${BAD}${f}\n"
             fi
@@ -115,7 +128,6 @@ jobs:
         run: |
           set -euo pipefail
           ruff check . --output-format=github
-          # pokaż diff gdy --check nie przejdzie (łatwiejszy review)
           if ! ruff format --check .; then
             echo "::group::ruff format --diff"
             ruff format --diff .
