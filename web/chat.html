@@ -2,17 +2,201 @@
 <html lang="pl">
 <head>
 <meta charset="utf-8">
-<title>Chat</title>
+<title>Rider-Pi — Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #0e1823; color: #e6eef7; }
-  h1 { font-size: 24px; margin: 0 0 16px; }
-  p { line-height: 1.6; }
-  a { color: #98c7ff; text-decoration: none; }
-  a:hover { text-decoration: underline; }
+  :root{
+    --bg:#0e1823; --fg:#e6eef7; --muted:#9ab1c9; --card:#122234; --accent:#98c7ff;
+    --mine:#1f3a57; --bot:#173149; --err:#4a1f27; --ok:#1c3b2b; --warn:#3b301c;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:980px;margin:20px auto;padding:0 16px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  header h1{font-size:22px;margin:0}
+  header .links{margin-left:auto;font-size:13px}
+  header a{color:var(--accent);text-decoration:none}
+  header a:hover{text-decoration:underline}
+  .status{font-size:12px;opacity:.8}
+  .status.ok{color:#a7f3d0}
+  .status.warn{color:#fde68a}
+  .status.err{color:#fecaca}
+
+  .board{background:var(--card);border-radius:10px;padding:12px;min-height:58vh;
+         display:flex;flex-direction:column;gap:10px;border:1px solid #15273b}
+  .msg{max-width:78%;padding:10px 12px;border-radius:10px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+  .msg.you{align-self:flex-end;background:var(--mine);border-top-right-radius:4px}
+  .msg.bot{align-self:flex-start;background:var(--bot);border-top-left-radius:4px}
+  .msg.err{background:var(--err)}
+  .meta{opacity:.65;font-size:12px;margin-top:6px}
+  .row{display:flex;gap:10px;margin-top:12px}
+  textarea{flex:1;min-height:64px;max-height:220px;resize:vertical;background:#0b1520;color:var(--fg);
+           border:1px solid #1a2c43;border-radius:8px;padding:10px;font:inherit}
+  textarea:focus{outline:1px solid #244769}
+  .side{display:flex;flex-direction:column;gap:8px;min-width:180px}
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{appearance:none;border:0;border-radius:8px;padding:10px 14px;background:#1d3a58;color:var(--fg);cursor:pointer}
+  .btn:hover{background:#234769}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  label{font-size:12px;opacity:.9}
+  .hint{font-size:12px;opacity:.7;margin-top:6px}
 </style>
 </head>
 <body>
-  <h1>Chat</h1>
-  <p>Placeholder. Wróć do <a href="/home">Google Home</a> lub <a href="/view">dashboard</a>.</p>
+  <div class="wrap">
+    <header>
+      <h1>Chat</h1>
+      <div class="links">
+        <a href="/view">dashboard</a> · <a href="/home">Google&nbsp;Home</a>
+      </div>
+    </header>
+
+    <div class="status" id="status">Gotowy</div>
+
+    <div class="board" id="board" aria-live="polite"></div>
+
+    <div class="row">
+      <textarea id="input" placeholder="Napisz wiadomość… (Enter = wyślij, Shift+Enter = nowa linia)"></textarea>
+      <div class="side">
+        <button class="btn" id="sendBtn">Wyślij</button>
+        <div class="controls">
+          <input type="checkbox" id="tts" />
+          <label for="tts">Czytaj odpowiedzi (TTS)</label>
+        </div>
+        <div class="hint">Chat API: <code>/api/chat/send</code> · TTS: <code>/api/voice/tts</code></div>
+      </div>
+    </div>
+
+    <div class="meta" id="latency"></div>
+  </div>
+
+<script>
+(function(){
+  const board   = document.getElementById('board');
+  const input   = document.getElementById('input');
+  const sendBtn = document.getElementById('sendBtn');
+  const status  = document.getElementById('status');
+  const latency = document.getElementById('latency');
+  const ttsChk  = document.getElementById('tts');
+
+  // prosty storage historii w sesji
+  const history = JSON.parse(sessionStorage.getItem('chat_history') || '[]');
+  for (const item of history) appendMessage(item.role, item.text, item.error);
+
+  function save(role, text, error){
+    history.push({role, text, error: !!error});
+    if (history.length > 200) history.shift();
+    sessionStorage.setItem('chat_history', JSON.stringify(history));
+  }
+
+  function setStatus(text, cls){
+    status.textContent = text;
+    status.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  function appendMessage(role, text, isError){
+    const el = document.createElement('div');
+    el.className = 'msg ' + (isError ? 'err' : (role === 'you' ? 'you' : 'bot'));
+    el.textContent = text;
+    board.appendChild(el);
+    board.scrollTop = board.scrollHeight;
+  }
+
+  function normalizeReply(data){
+    // obsłuż kilka potencjalnych kształtów odpowiedzi z glue/fallbacku
+    return (
+      data?.reply ??
+      data?.echo ??
+      data?.text ??
+      data?.message ??
+      data?.content ??
+      data?.item?.msg ??
+      (data?.choices && data.choices[0]?.message?.content) ??
+      JSON.stringify(data)
+    );
+  }
+
+  async function callChat(promptText){
+    const t0 = performance.now();
+    const res = await fetch('/api/chat/send', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ msg: promptText, user: 'web' })
+    });
+    const t1 = performance.now();
+    latency.textContent = `Czas odpowiedzi: ${(t1 - t0).toFixed(0)} ms`;
+    if (!res.ok){
+      const errText = await res.text().catch(()=>`${res.status} ${res.statusText}`);
+      throw new Error(`Chat HTTP ${res.status}: ${errText}`);
+    }
+    return res.json();
+  }
+
+  async function speak(text){
+    const res = await fetch('/api/voice/tts', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        text,
+        backend: 'piper',
+        voice: 'pl_PL-gosia-medium.onnx' // dopasuj do swoich modeli, jeśli potrzeba
+      })
+    });
+    if (!res.ok){
+      const txt = await res.text().catch(()=>`${res.status} ${res.statusText}`);
+      throw new Error(`TTS HTTP ${res.status}: ${txt}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    await audio.play().catch(()=>{});
+    setTimeout(()=>URL.revokeObjectURL(url), 15000);
+  }
+
+  async function send(){
+    const text = (input.value || '').trim();
+    if (!text) return;
+    input.value = '';
+    setStatus('Wysyłam…','warn');
+    sendBtn.disabled = true;
+
+    appendMessage('you', text);
+    save('you', text);
+
+    try{
+      const data = await callChat(text);
+      const reply = normalizeReply(data) || '(pusta odpowiedź)';
+      appendMessage('bot', reply);
+      save('bot', reply);
+      setStatus('OK','ok');
+
+      if (ttsChk.checked){
+        try { await speak(reply); }
+        catch (e){ appendMessage('bot', '⚠︎ TTS: ' + (e.message || e), true); save('bot', 'TTS ERROR', true); }
+      }
+    }catch(e){
+      const msg = (e && e.message) ? e.message : String(e);
+      appendMessage('bot', 'Błąd: ' + msg, true);
+      save('bot', 'Błąd: ' + msg, true);
+      setStatus('Błąd','err');
+    }finally{
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  input.addEventListener('keydown', (ev)=>{
+    if (ev.key === 'Enter' && !ev.shiftKey){
+      ev.preventDefault();
+      send();
+    }
+  });
+
+  setStatus('Gotowy','ok');
+  input.focus();
+})();
+</script>
 </body>
 </html>

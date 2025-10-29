@@ -18,7 +18,7 @@ import subprocess
 import threading
 import time
 
-from flask import Flask, Response, jsonify, make_response, redirect, request, stream_with_context
+from flask import Flask, Response, jsonify, make_response, request, stream_with_context
 
 import services.api_core.face_api as face_api
 
@@ -749,8 +749,3 @@ def draw_face_route():
 
 app.add_url_rule("/api/draw/face", view_func=draw_face_route, methods=["POST", "OPTIONS"])
 app.add_url_rule("/draw/face", view_func=draw_face_route, methods=["POST", "OPTIONS"])
-
-
-@app.route("/chat", methods=["GET"])
-def chat_alias():
-    return redirect("/web/chat.html", code=302)

@@ -175,14 +175,7 @@ LAST_COMMAND_FILE = GOOGLE_DATA_DIR / "last_command.json"
 
 
 def _save_command_cache(device_id: str, command: str, params: dict[str, Any], result: dict[str, Any]) -> None:
-    """Save command response to cache file.
-
-    Args:
-        device_id: Device ID that received the command
-        command: Command that was sent
-        params: Parameters that were sent
-        result: Result from google_home_api.send_command
-    """
+    """Save command response to cache file."""
     try:
         GOOGLE_DATA_DIR.mkdir(parents=True, exist_ok=True)
         cache_data = {
@@ -301,10 +294,7 @@ def home_command():
     if not device_id or not command:
         return _corsify(jsonify({"ok": False, "error": "Missing deviceId or command"})), 400
     result = _auto_refresh_token_and_retry(google_home_api.send_command, device_id, command, params)
-
-    # Save command result to cache
     _save_command_cache(device_id, command, params, result)
-
     if result.get("ok"):
         return _corsify(jsonify({"ok": True, "result": result.get("result", {})})), 200
     app.logger.error("Failed to send command: %s", result.get("error", "Unknown error"))
@@ -350,8 +340,22 @@ def serve_home():
     return _no_cache(send_from_directory(STATIC_WEB_DIR, "home.html"))
 
 
+def serve_chat():
+    """Krótka trasa /chat → web/chat.html bez 30x."""
+    chat_path = os.path.join(STATIC_WEB_DIR, "chat.html")
+    if not os.path.isfile(chat_path):
+        abort(404)
+    # czytaj surowo, ustaw content-type i anti-cache
+    with open(chat_path, "rb") as f:
+        data = f.read()
+    resp = make_response(data, 200)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    return _no_cache(resp)
+
+
 _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"], strict_slashes=False)
 _add_rule("/home", view_func=serve_home, methods=["GET"], strict_slashes=False)
+_add_rule("/chat", view_func=serve_chat, methods=["GET"], strict_slashes=False)  # no-redirect, no send_file
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/view", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/control", view_func=dashboard.control_page, methods=["GET"], strict_slashes=False)
