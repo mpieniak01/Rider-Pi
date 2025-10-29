@@ -141,7 +141,7 @@ class TestDeviceNameValidation:
             # For hw: format, check it's not just numeric (should have card name)
             is_named_hw = self._is_named_hw_device(device)
             assert is_alias or has_card_spec or is_named_hw, (
-                f"Device {device} should use stable naming (alias, CARD=, or named hw:)"
+                f"Device {device} should use stable naming (is_alias={is_alias}, has_card_spec={has_card_spec}, is_named_hw={is_named_hw})"
             )
 
     @staticmethod
