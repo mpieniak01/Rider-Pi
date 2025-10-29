@@ -23,7 +23,6 @@ class TestDeviceNameConfiguration:
         # Test with alias
         cfg = CaptureConfig(device="wm8960_in")
         assert cfg.device == "wm8960_in"
-        assert "wm8960_in" in cfg.device
 
         # Test with full ALSA name
         cfg_full = CaptureConfig(device="plughw:CARD=wm8960soundcard,DEV=0")
@@ -58,15 +57,16 @@ class TestDeviceLogging:
         cfg = CaptureConfig(device="wm8960_in", sample_rate=16000, channels=1, sample_format="S16_LE")
 
         with caplog.at_level(logging.INFO):
-            # We need to mock the subprocess to avoid actually starting arecord
+            # Mock the subprocess to avoid actually starting arecord
             with patch("apps.voice.audio.capture.AudioCapture._start_proc") as mock_start:
-                mock_start.return_value = MagicMock()
-                try:
+                mock_proc = MagicMock()
+                mock_start.return_value = mock_proc
+
+                with patch.object(AudioCapture, "_kill_proc"):
                     capture = AudioCapture(cfg)
-                    capture.__enter__()
-                except Exception:
-                    # Expected - we're mocking, so it might fail
-                    pass
+                    with capture:
+                        # Context manager entered, logging should have occurred
+                        pass
 
             # Check that device information was logged
             log_messages = [rec.message for rec in caplog.records]
@@ -77,20 +77,27 @@ class TestDeviceLogging:
         """Verify playback logs device information when initialized."""
         cfg = PlaybackConfig(backend="alsa", device="wm8960_out", volume=55)
 
-        with caplog.at_level(logging.INFO):
-            with patch("apps.voice.audio.playback.subprocess.Popen") as mock_popen:
-                mock_popen.return_value = MagicMock()
-                try:
-                    _start_playback_process("pcm16", cfg)
-                except Exception:
-                    # Expected - we're mocking
-                    pass
+        # Create a mock VoiceLogger with the event method
+        mock_logger = MagicMock()
+        mock_logger.info = MagicMock()
+        mock_logger.event = MagicMock()
 
-            # Check that device information was logged
-            log_messages = [rec.message for rec in caplog.records]
-            # The resolved device might be different from the alias, so check for the log pattern
-            device_logged = any("playback.device.init" in msg for msg in log_messages)
-            assert device_logged, f"Device logging not found in logs: {log_messages}"
+        with patch("apps.voice.audio.playback.voice_logging.get_logger", return_value=mock_logger):
+            with patch("apps.voice.audio.playback.subprocess.Popen") as mock_popen:
+                mock_proc = MagicMock()
+                mock_popen.return_value = mock_proc
+
+                with patch("apps.voice.audio.playback.shutil.which", return_value="/usr/bin/aplay"):
+                    result = _start_playback_process("pcm16", cfg)
+                    assert result is not None
+
+        # Check that device information was logged via logger.info()
+        assert mock_logger.info.called
+        # Get the first call to info()
+        call_args = mock_logger.info.call_args
+        log_message = str(call_args)
+        assert "playback.device.init" in log_message
+        assert "pcm16" in log_message
 
 
 class TestDeviceNameValidation:
@@ -126,10 +133,14 @@ class TestDeviceNameValidation:
             cfg = CaptureConfig(device=device)
             assert cfg.device == device
             # Stable devices have either:
-            # - an alias (no hw: prefix), or
-            # - explicit CARD= specification, or
-            # - hw: with card name (not just a number)
+            # - an alias (no hw:/plughw: prefix), or
+            # - explicit CARD= specification
             is_alias = not device.startswith("hw:") and not device.startswith("plughw:")
             has_card_spec = "CARD=" in device
-            has_card_name = ":" in device and "soundcard" in device.lower()
-            assert is_alias or has_card_spec or has_card_name, f"Device {device} should use stable naming"
+            # For hw: format, check it's not just numeric (should have card name)
+            is_named_hw = (
+                device.startswith("hw:") and "," in device and not device.split(":")[1].split(",")[0].isdigit()
+            )
+            assert is_alias or has_card_spec or is_named_hw, (
+                f"Device {device} should use stable naming (alias, CARD=, or named hw:)"
+            )
