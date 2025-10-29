@@ -155,9 +155,7 @@ class TestDeviceNameValidation:
         parts = device.split(":", 1)
         if len(parts) < 2:
             return False
-        card_part = parts[1].split(",", 1)
-        if len(card_part) < 1:
-            return False
-        card_id = card_part[0]
+        card_and_device = parts[1].split(",", 1)
+        card_id = card_and_device[0]
         # If it's purely numeric, it's unstable; otherwise it's a named card
         return not card_id.isdigit()
