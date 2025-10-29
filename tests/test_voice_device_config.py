@@ -9,7 +9,6 @@ Verifies that:
 import logging
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from apps.voice.audio.capture import AudioCapture, CaptureConfig
 from apps.voice.audio.playback import PlaybackConfig, _start_playback_process
