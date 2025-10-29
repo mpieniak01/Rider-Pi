@@ -30,7 +30,7 @@ timeout  = 10
 
 [tts]
 backend = "local"
-voice   = "pl_m"
+voice = "pl_PL-gosia-medium"
 model   = "small"
 format  = "wav"
 accept  = "audio/wav"

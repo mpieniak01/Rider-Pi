@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#config/alsa/wm8960-apply.sh
+# Skrypt konfiguracyjny ALSA dla kodeka WM8960
+# Ustawia routing i poziomy głośności
 set -euo pipefail
 
 # --- znajdź kontrolę miksera dla wm8960 ---
