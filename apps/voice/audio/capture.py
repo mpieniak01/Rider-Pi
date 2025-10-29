@@ -233,6 +233,13 @@ class AudioCapture:
         # fallback do aliasu, jeśli nie podano device:
         if not self.config.device:
             self.config.device = "wm8960_in"
+        # Log device information at INFO level for diagnostics
+        self.logger.info(
+            f"capture.device.init: device='{self.config.device}', "
+            f"sample_rate={self.config.sample_rate}, "
+            f"channels={self.config.channels}, "
+            f"format={self.config.sample_format or 'S16_LE'}"
+        )
         self._proc = self._start_proc()
         return self
 
