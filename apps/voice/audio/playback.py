@@ -6,6 +6,7 @@ Provides clean, focused playback functionality without complex caching.
 from __future__ import annotations
 
 import contextlib
+import logging
 import shutil
 import subprocess
 import threading
@@ -255,12 +256,13 @@ def _start_playback_process(
     backend = _normalize_backend(config.backend)
 
     # Log playback device information at INFO level for diagnostics
-    resolved_dev = config.resolved_alsa_device()
-    logger.info(
-        f"playback.device.init: backend='{backend}', "
-        f"device='{resolved_dev or config.device or 'default'}', "
-        f"volume={config.volume}, format='{fmt}'"
-    )
+    if logger.isEnabledFor(logging.INFO):
+        resolved_dev = config.resolved_alsa_device()
+        logger.info(
+            f"playback.device.init: backend='{backend}', "
+            f"device='{resolved_dev or config.device or 'default'}', "
+            f"volume={config.volume}, format='{fmt}'"
+        )
 
     # MP3
     if fmt == "mp3":
