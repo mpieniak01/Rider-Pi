@@ -12,21 +12,42 @@
 
 ### Opis
 
-Szablon `.asoundrc` dla karty dźwiękowej **WM8960** — definiuje aliasy `wm8960_in` i `wm8960_out` dla łatwiejszego użycia.
+Szablon `.asoundrc` dla karty dźwiękowej **WM8960** — definiuje stabilne aliasy `wm8960_in` i `wm8960_out`, które nie zmieniają się po restarcie systemu, niezależnie od kolejności wykrywania kart dźwiękowych.
+
+### Dlaczego używać nazw zamiast indeksów?
+
+**Problem z indeksami kart:**
+- Indeksy kart (np. `hw:0,0`, `hw:1,0`) są przydzielane dynamicznie przez jądro Linux
+- Kolejność może się zmienić przy każdym restarcie (np. HDMI wykryte przed/po fizycznej kartą)
+- Wymaga ręcznej rekonfiguracji po każdej zmianie kolejności
+
+**Rozwiązanie - nazwy urządzeń:**
+- Nazwy kart (np. `wm8960soundcard`) są stałe i przypisane do sprzętu
+- Aliasy (np. `wm8960_in`) ułatwiają konfigurację
+- System działa stabilnie niezależnie od kolejności wykrywania kart
 
 ### Instalacja
 
 ```bash
-# 1. Skopiuj szablon
-cp config/alsa/asoundrc.wm8960 ~/.asoundrc
-
-# 2. Sprawdź urządzenia ALSA
+# 1. Sprawdź dostępne karty dźwiękowe
 aplay -l
 arecord -l
 
-# 3. Dostosuj (jeśli karta ma inny numer)
+# Przykładowy output:
+# card 0: Headphones [bcm2835 Headphones], device 0: bcm2835 Headphones [bcm2835 Headphones]
+# card 1: wm8960soundcard [wm8960-soundcard], device 0: bcm2835-i2s-wm8960-hifi wm8960-hifi-0
+
+# 2. Skopiuj szablon
+cp config/alsa/asoundrc.wm8960 ~/.asoundrc
+
+# 3. Dostosuj (jeśli karta ma inną nazwę niż 'wm8960soundcard')
 nano ~/.asoundrc
-# Zmień "hw:wm8960soundcard,0" na właściwe urządzenie
+# Zmień "card wm8960soundcard" na właściwą nazwę z output komendy aplay -l
+# UWAGA: Używaj NAZWY karty (np. wm8960soundcard), NIE indeksu (np. 1)!
+
+# 4. Sprawdź, czy aliasy działają
+arecord -D wm8960_in -d 1 -f S16_LE -r 16000 test.wav
+aplay -D wm8960_out test.wav
 ```
 
 ### Zawartość (przykład)
@@ -189,6 +210,44 @@ alsamixer -c wm8960soundcard
 ---
 
 ## Typowe problemy
+
+### 0. Zmiana kolejności kart po restarcie (NAJWAŻNIEJSZE)
+
+**Problem:**
+System po restarcie używa niewłaściwego urządzenia audio, ponieważ kolejność kart się zmieniła (np. HDMI wykryte jako card 0 zamiast card 1).
+
+**Diagnoza:**
+```bash
+# Sprawdź aktualną kolejność kart
+cat /proc/asound/cards
+
+# Przykład problematycznej sytuacji:
+#  0 [Headphones     ]: bcm2835_headpho - bcm2835 Headphones
+#  1 [wm8960soundcard]: wm8960-soundcar - wm8960-soundcard
+# Po restarcie może być:
+#  0 [wm8960soundcard]: wm8960-soundcar - wm8960-soundcard
+#  1 [Headphones     ]: bcm2835_headpho - bcm2835 Headphones
+```
+
+**Rozwiązanie (ZALECANE):**
+Używaj **nazw kart zamiast indeksów** w konfiguracji:
+
+```toml
+# ❌ NIE UŻYWAJ indeksów (niestabilne):
+# device = "hw:1,0"  # może się zmienić na hw:0,0 po restarcie!
+
+# ✅ UŻYWAJ nazw urządzeń (stabilne):
+[capture]
+device = "plughw:CARD=wm8960soundcard,DEV=0"  # lub alias "wm8960_in"
+
+[playback]
+device = "plughw:CARD=wm8960soundcard,DEV=0"  # lub alias "wm8960_out"
+```
+
+**Dlaczego to działa:**
+- Nazwa karty (`wm8960soundcard`) jest przypisana do fizycznego urządzenia
+- Indeks (`1` lub `0`) jest dynamicznie przydzielany przez kernel przy starcie
+- Użycie nazwy gwarantuje, że zawsze trafisz na właściwe urządzenie
 
 ### 1. Brak dźwięku (capture/playback)
 

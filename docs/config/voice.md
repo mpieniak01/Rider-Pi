@@ -74,7 +74,7 @@ make voice-stream-listen
 | Klucz | Typ | Zakres | Domyślna | Opis |
 |-------|-----|--------|----------|------|
 | `backend` | str | alsa, pulse | `alsa` | Backend capture audio |
-| `device` | str | — | `wm8960_in` | Urządzenie ALSA (alias lub hw:X,Y) |
+| `device` | str | — | `wm8960_in` | Urządzenie ALSA (alias, np. `wm8960_in` lub pełna nazwa `plughw:CARD=wm8960soundcard,DEV=0`) |
 | `sample_rate` | int | 8k–48k | `16000` | Częstotliwość próbkowania (Hz) |
 | `channels` | int | 1, 2 | `1` | Liczba kanałów (1=mono, 2=stereo) |
 | `frame_ms` | int | 10–30 | `20` | Rozmiar ramki (ms) |
@@ -82,16 +82,52 @@ make voice-stream-listen
 | `sample_format` | str | — | `S16_LE` | Format próbek (S16_LE = 16-bit signed) |
 
 **Uwagi:**
-- `device = "wm8960_in"` wymaga aliasu w `.asoundrc` (patrz [alsa.md](alsa.md))
+- `device` akceptuje:
+  - **Alias ALSA** (np. `wm8960_in`) – wymaga definicji w `~/.asoundrc` (patrz [alsa.md](alsa.md))
+  - **Pełna nazwa urządzenia** (np. `plughw:CARD=wm8960soundcard,DEV=0`) – działa bez aliasu
+  - **Nazwa karty** (np. `hw:wm8960soundcard,0`) – bezpośrednie odwołanie do hardware
+- Używanie **nazw urządzeń zamiast indeksów** zapewnia stabilność po każdym restarcie systemu
 - `sample_rate = 16000` jest optymalne dla ASR (Whisper, Vosk)
+
+**Jak znaleźć nazwę swojego urządzenia:**
+```bash
+# Lista urządzeń do nagrywania (capture)
+arecord -l
+
+# Przykładowy output:
+# card 1: wm8960soundcard [wm8960-soundcard], device 0: bcm2835-i2s-wm8960-hifi wm8960-hifi-0 [bcm2835-i2s-wm8960-hifi wm8960-hifi-0]
+
+# Z powyższego możesz użyć:
+# - plughw:CARD=wm8960soundcard,DEV=0  (zalecane, automatyczna konwersja formatu)
+# - hw:wm8960soundcard,0               (direct hardware access)
+# - hw:1,0                             (NIE zalecane - indeks może się zmienić!)
+```
 
 ### [playback]
 
 | Klucz | Typ | Zakres | Domyślna | Opis |
 |-------|-----|--------|----------|------|
 | `backend` | str | alsa, pulse | `alsa` | Backend playback audio |
-| `device` | str | — | `wm8960_out` | Urządzenie ALSA |
+| `device` | str | — | `wm8960_out` | Urządzenie ALSA (alias, np. `wm8960_out` lub pełna nazwa `plughw:CARD=wm8960soundcard,DEV=0`) |
 | `volume` | int | 0–100 | `80` | Głośność wyjścia (%) |
+
+**Uwagi:**
+- Podobnie jak `capture.device`, akceptuje aliasy ALSA lub pełne nazwy urządzeń
+- Używanie nazw urządzeń zapewnia stabilność konfiguracji
+
+**Jak znaleźć nazwę swojego urządzenia:**
+```bash
+# Lista urządzeń do odtwarzania (playback)
+aplay -l
+
+# Przykładowy output:
+# card 1: wm8960soundcard [wm8960-soundcard], device 0: bcm2835-i2s-wm8960-hifi wm8960-hifi-0 [bcm2835-i2s-wm8960-hifi wm8960-hifi-0]
+
+# Z powyższego możesz użyć:
+# - plughw:CARD=wm8960soundcard,DEV=0  (zalecane)
+# - hw:wm8960soundcard,0               (direct hardware)
+# - hw:1,0                             (NIE zalecane - indeks może się zmienić!)
+```
 
 ### [asr]
 
