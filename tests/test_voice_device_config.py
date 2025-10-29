@@ -88,8 +88,9 @@ class TestDeviceLogging:
                 mock_popen.return_value = mock_proc
 
                 with patch("apps.voice.audio.playback.shutil.which", return_value="/usr/bin/aplay"):
-                    result = _start_playback_process("pcm16", cfg)
-                    assert result is not None
+                    proc, backend = _start_playback_process("pcm16", cfg)
+                    assert proc is not None
+                    assert backend == "alsa"
 
         # Check that device information was logged via logger.info()
         assert mock_logger.info.called
@@ -138,9 +139,25 @@ class TestDeviceNameValidation:
             is_alias = not device.startswith("hw:") and not device.startswith("plughw:")
             has_card_spec = "CARD=" in device
             # For hw: format, check it's not just numeric (should have card name)
-            is_named_hw = (
-                device.startswith("hw:") and "," in device and not device.split(":")[1].split(",")[0].isdigit()
-            )
+            is_named_hw = self._is_named_hw_device(device)
             assert is_alias or has_card_spec or is_named_hw, (
                 f"Device {device} should use stable naming (alias, CARD=, or named hw:)"
             )
+
+    @staticmethod
+    def _is_named_hw_device(device: str) -> bool:
+        """Check if hw: device uses a named card (not numeric index)."""
+        if not device.startswith("hw:"):
+            return False
+        if "," not in device:
+            return False
+        # Extract the card identifier (between "hw:" and ",")
+        parts = device.split(":", 1)
+        if len(parts) < 2:
+            return False
+        card_part = parts[1].split(",", 1)
+        if len(card_part) < 1:
+            return False
+        card_id = card_part[0]
+        # If it's purely numeric, it's unstable; otherwise it's a named card
+        return not card_id.isdigit()
