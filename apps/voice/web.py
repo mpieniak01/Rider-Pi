@@ -7,13 +7,15 @@ import base64
 import io
 import math
 import os
+import shlex
 import shutil
 import struct
 import subprocess
 import tempfile
 import wave
+from typing import Any
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, g, jsonify, request
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Instancja aplikacji + polyfill dla Flask < 2.0
@@ -31,6 +33,39 @@ if not hasattr(app, "get"):
 
     app.get = _route_get  # type: ignore[attr-defined]
     app.post = _route_post  # type: ignore[attr-defined]
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Logger i konfiguracja
+# ───────────────────────────────────────────────────────────────────────────────
+
+try:
+    from . import voice_logging
+
+    logger = voice_logging.get_logger("voice.web")
+except Exception:
+    import logging
+
+    logger = logging.getLogger("voice.web")
+
+
+@app.before_request
+def _load_config():
+    """Ładuje konfigurację do kontekstu Flask g przed każdym żądaniem."""
+    if not hasattr(g, "config"):
+        try:
+            from . import config as voice_config
+
+            # Ładujemy domyślną konfigurację voice.toml lub voice_local_file.toml
+            cfg_dict = voice_config.load(None)
+            # Konwertujemy na obiekt z atrybutami dla wygody (cfg.chat.backend)
+            g.config = type(
+                "Config", (), {k: type("Section", (), v) if isinstance(v, dict) else v for k, v in cfg_dict.items()}
+            )()  # noqa: E501
+        except Exception as e:
+            logger.warning("web.config.load_failed", error=str(e))
+            # Fallback: pusty obiekt konfiguracji
+            g.config = type("Config", (), {})()
+
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Opcjonalne lokalne backendy (Piper / Vosk) – importy „best-effort”
@@ -675,6 +710,100 @@ def api_asr():
         return jsonify({"ok": True, "text": (data.get("text") or "").strip()}), 200
 
     except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Lokalny Chat (llama.cpp) – przyjmuje JSON, zwraca JSON
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+def _build_llama_prompt(cfg: Any, messages: list[dict[str, str]]) -> str:
+    """Tworzy prosty prompt dla llama.cpp z historii."""
+    # llama.cpp najlepiej działa z formatem 'instruct' lub 'chatml'
+    # Dla uproszczenia, na razie bierzemy tylko prompt systemowy i ostatnią wiadomość
+    system_prompt = cfg.system_prompt or "Jesteś pomocnym asystentem."
+
+    user_text = ""
+    if messages and messages[-1]["role"] == "user":
+        user_text = messages[-1]["content"]
+
+    # Format <|system|>\n{prompt}<|end|>\n<|user|>\n{text}<|end|>\n<|assistant|>
+    return f"<|system|>\n{system_prompt}<|end|>\n<|user|>\n{user_text}<|end|>\n<|assistant|>"
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat_local():
+    """
+    Handler dla lokalnego LLM (llama.cpp).
+    Wywołuje binarkę systemową przez subprocess.
+    """
+    try:
+        chat_cfg = g.config.chat
+        if not chat_cfg or chat_cfg.backend != "local":
+            return jsonify({"ok": False, "error": "Lokalny backend czatu nie jest skonfigurowany."}), 500
+
+        # Sprawdzenie, czy binarka i model istnieją
+        llm_main_path = getattr(chat_cfg, "llm_main_path", "llama.cpp/main")
+        llm_model_path = getattr(chat_cfg, "llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf")
+        llm_extra_args = getattr(chat_cfg, "llm_extra_args", "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7")
+
+        if not os.path.exists(llm_main_path):
+            return jsonify({"ok": False, "error": f"Nie znaleziono binarki llama.cpp: {llm_main_path}"}), 500
+        if not os.path.exists(llm_model_path):
+            return jsonify({"ok": False, "error": f"Nie znaleziono modelu LLM: {llm_model_path}"}), 500
+
+        payload = request.get_json(force=True, silent=True) or {}
+        messages = payload.get("messages") or []
+        if not messages:
+            return jsonify({"ok": False, "error": "Brak wiadomości (messages) w payload."}), 400
+
+        prompt = _build_llama_prompt(chat_cfg, messages)
+        extra_args = shlex.split(llm_extra_args or "")
+
+        # Budowanie komendy
+        cmd = [
+            llm_main_path,
+            "-m",
+            llm_model_path,
+            "-p",
+            prompt,
+        ] + extra_args
+
+        logger.info("web.chat.local.exec", cmd=" ".join(cmd))
+
+        # Wywołanie subprocessu
+        # Używamy timeout z konfiguracji
+        timeout_sec = getattr(chat_cfg, "timeout", 20.0)
+
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)
+
+        if proc.returncode != 0:
+            logger.error("web.chat.local.fail", code=proc.returncode, stderr=proc.stderr[:500])
+            return jsonify({"ok": False, "error": "Błąd wykonania llama.cpp", "stderr": proc.stderr}), 500
+
+        # Odpowiedź jest na stdout (dzięki --simple-io)
+        # Usuwamy prompt, który llama.cpp czasem powtarza na początku
+        full_output = proc.stdout.strip()
+        if full_output.startswith(prompt):
+            text_response = full_output[len(prompt) :].strip()
+        else:
+            text_response = full_output
+
+        logger.info("web.chat.local.ok", chars=len(text_response))
+
+        # Zwracamy format zgodny z oczekiwaniami ChatSession._ask_local_http
+        return jsonify({"ok": True, "text": text_response, "message": {"role": "assistant", "content": text_response}})
+
+    except subprocess.TimeoutExpired:
+        logger.warning("web.chat.local.timeout", timeout=timeout_sec)
+        return jsonify(
+            {"ok": False, "error": "Przekroczono limit czasu oczekiwania na llama.cpp"}
+        ), 504  # Gateway Timeout  # noqa: E501
+    except Exception as e:
+        logger.error("web.chat.local.error", error=str(e))
+        return jsonify({"ok": False, "error": f"Wewnętrzny błąd serwera: {e}"}), 500
+
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
