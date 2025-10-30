@@ -794,6 +794,10 @@ def api_chat_local():
         extra_args = shlex.split(llm_extra_args or "")
 
         # Budowanie komendy - używamy listy argumentów, co jest bezpieczniejsze niż shell=True
+        # SECURITY: User input (messages) flows into 'prompt', which is passed as a value to the
+        # '-p' flag. Since we use subprocess.run() with a list (not shell=True), the prompt is
+        # treated as pure data, not as executable code. The subprocess doesn't invoke a shell,
+        # so shell metacharacters in the prompt have no special meaning.
         cmd = [
             llm_main_path,
             "-m",
@@ -805,9 +809,13 @@ def api_chat_local():
         _log_info("web.chat.local.exec", cmd_len=len(cmd))
 
         # Wywołanie subprocessu - używamy listy args (nie shell=True) dla bezpieczeństwa
+        # This is safe from command injection because:
+        # 1. We use a list of arguments (not shell=True)
+        # 2. Paths are validated for shell metacharacters
+        # 3. User input is in 'prompt' which is a data argument to '-p', not a command
         timeout_sec = getattr(chat_cfg, "timeout", 20.0)
 
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)  # nosec B603
 
         if proc.returncode != 0:
             _log_error("web.chat.local.fail", code=proc.returncode, stderr_len=len(proc.stderr))
