@@ -48,6 +48,30 @@ except Exception:
     logger = logging.getLogger("voice.web")
 
 
+def _log_info(msg: str, **kwargs) -> None:
+    """Safe logging helper that works with both custom and standard loggers."""
+    if hasattr(logger, "event"):
+        logger.event(msg, **kwargs)  # type: ignore[attr-defined]
+    else:
+        logger.info(f"{msg} {kwargs}" if kwargs else msg)
+
+
+def _log_warning(msg: str, **kwargs) -> None:
+    """Safe logging helper that works with both custom and standard loggers."""
+    if hasattr(logger, "event"):
+        logger.event(msg, **kwargs)  # type: ignore[attr-defined]
+    else:
+        logger.warning(f"{msg} {kwargs}" if kwargs else msg)
+
+
+def _log_error(msg: str, **kwargs) -> None:
+    """Safe logging helper that works with both custom and standard loggers."""
+    if hasattr(logger, "event"):
+        logger.event(msg, **kwargs)  # type: ignore[attr-defined]
+    else:
+        logger.error(f"{msg} {kwargs}" if kwargs else msg)
+
+
 @app.before_request
 def _load_config():
     """Ładuje konfigurację do kontekstu Flask g przed każdym żądaniem."""
@@ -62,7 +86,7 @@ def _load_config():
                 "Config", (), {k: type("Section", (), v) if isinstance(v, dict) else v for k, v in cfg_dict.items()}
             )()  # noqa: E501
         except Exception as e:
-            logger.warning("web.config.load_failed", error=str(e))
+            _log_warning("web.config.load_failed", error=str(e))
             # Fallback: pusty obiekt konfiguracji
             g.config = type("Config", (), {})()
 
@@ -770,7 +794,7 @@ def api_chat_local():
             prompt,
         ] + extra_args
 
-        logger.info("web.chat.local.exec", cmd=" ".join(cmd))
+        _log_info("web.chat.local.exec", cmd=" ".join(cmd))
 
         # Wywołanie subprocessu
         # Używamy timeout z konfiguracji
@@ -779,7 +803,7 @@ def api_chat_local():
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)
 
         if proc.returncode != 0:
-            logger.error("web.chat.local.fail", code=proc.returncode, stderr=proc.stderr[:500])
+            _log_error("web.chat.local.fail", code=proc.returncode, stderr=proc.stderr[:500])
             return jsonify({"ok": False, "error": "Błąd wykonania llama.cpp", "stderr": proc.stderr}), 500
 
         # Odpowiedź jest na stdout (dzięki --simple-io)
@@ -790,18 +814,18 @@ def api_chat_local():
         else:
             text_response = full_output
 
-        logger.info("web.chat.local.ok", chars=len(text_response))
+        _log_info("web.chat.local.ok", chars=len(text_response))
 
         # Zwracamy format zgodny z oczekiwaniami ChatSession._ask_local_http
         return jsonify({"ok": True, "text": text_response, "message": {"role": "assistant", "content": text_response}})
 
     except subprocess.TimeoutExpired:
-        logger.warning("web.chat.local.timeout", timeout=timeout_sec)
+        _log_warning("web.chat.local.timeout", timeout=timeout_sec)
         return jsonify(
             {"ok": False, "error": "Przekroczono limit czasu oczekiwania na llama.cpp"}
         ), 504  # Gateway Timeout  # noqa: E501
     except Exception as e:
-        logger.error("web.chat.local.error", error=str(e))
+        _log_error("web.chat.local.error", error=str(e))
         return jsonify({"ok": False, "error": f"Wewnętrzny błąd serwera: {e}"}), 500
 
         return jsonify({"ok": False, "error": str(e)}), 500
