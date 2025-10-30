@@ -211,7 +211,32 @@ def test_api_chat_handles_subprocess_error(client, mock_config):
     assert response.status_code == 500
     data = json.loads(response.data)
     assert data["ok"] is False
+    # Error message should not expose stderr for security
     assert "Błąd wykonania llama.cpp" in data["error"]
+    assert "stderr" not in data  # Should not leak stderr to user
+
+
+def test_api_chat_rejects_malicious_paths(client, mock_config):
+    """Test that /api/chat rejects paths with shell metacharacters."""
+    from apps.voice.web import app
+
+    # Set malicious path with shell injection attempt
+    mock_config.chat.llm_main_path = "/bin/sh;rm -rf /"
+
+    with app.app_context():
+        with patch("apps.voice.web.g") as mock_g:
+            mock_g.config = mock_config
+
+            response = client.post(
+                "/api/chat",
+                data=json.dumps({"messages": [{"role": "user", "content": "test"}]}),
+                content_type="application/json",
+            )
+
+    assert response.status_code == 500
+    data = json.loads(response.data)
+    assert data["ok"] is False
+    assert "Nieprawidłowa ścieżka" in data["error"]
 
 
 def test_build_llama_prompt():

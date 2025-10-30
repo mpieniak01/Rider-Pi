@@ -772,10 +772,18 @@ def api_chat_local():
         llm_model_path = getattr(chat_cfg, "llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf")
         llm_extra_args = getattr(chat_cfg, "llm_extra_args", "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7")
 
+        # Walidacja bezpieczeństwa: ścieżki muszą być absolutne lub względne bez podejrzanych znaków
+        # Zapobiegamy command injection poprzez sprawdzenie, czy ścieżki nie zawierają niebezpiecznych znaków
+        import re
+
+        if re.search(r"[;&|`$()]", llm_main_path) or re.search(r"[;&|`$()]", llm_model_path):
+            _log_error("web.chat.local.invalid_path", path="contains shell metacharacters")
+            return jsonify({"ok": False, "error": "Nieprawidłowa ścieżka w konfiguracji."}), 500
+
         if not os.path.exists(llm_main_path):
-            return jsonify({"ok": False, "error": f"Nie znaleziono binarki llama.cpp: {llm_main_path}"}), 500
+            return jsonify({"ok": False, "error": "Nie znaleziono binarki llama.cpp"}), 500
         if not os.path.exists(llm_model_path):
-            return jsonify({"ok": False, "error": f"Nie znaleziono modelu LLM: {llm_model_path}"}), 500
+            return jsonify({"ok": False, "error": "Nie znaleziono modelu LLM"}), 500
 
         payload = request.get_json(force=True, silent=True) or {}
         messages = payload.get("messages") or []
@@ -785,7 +793,7 @@ def api_chat_local():
         prompt = _build_llama_prompt(chat_cfg, messages)
         extra_args = shlex.split(llm_extra_args or "")
 
-        # Budowanie komendy
+        # Budowanie komendy - używamy listy argumentów, co jest bezpieczniejsze niż shell=True
         cmd = [
             llm_main_path,
             "-m",
@@ -794,17 +802,17 @@ def api_chat_local():
             prompt,
         ] + extra_args
 
-        _log_info("web.chat.local.exec", cmd=" ".join(cmd))
+        _log_info("web.chat.local.exec", cmd_len=len(cmd))
 
-        # Wywołanie subprocessu
-        # Używamy timeout z konfiguracji
+        # Wywołanie subprocessu - używamy listy args (nie shell=True) dla bezpieczeństwa
         timeout_sec = getattr(chat_cfg, "timeout", 20.0)
 
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)
 
         if proc.returncode != 0:
-            _log_error("web.chat.local.fail", code=proc.returncode, stderr=proc.stderr[:500])
-            return jsonify({"ok": False, "error": "Błąd wykonania llama.cpp", "stderr": proc.stderr}), 500
+            _log_error("web.chat.local.fail", code=proc.returncode, stderr_len=len(proc.stderr))
+            # Nie ujawniamy szczegółów stderr użytkownikowi ze względów bezpieczeństwa
+            return jsonify({"ok": False, "error": "Błąd wykonania llama.cpp"}), 500
 
         # Odpowiedź jest na stdout (dzięki --simple-io)
         # Usuwamy prompt, który llama.cpp czasem powtarza na początku
@@ -825,8 +833,9 @@ def api_chat_local():
             {"ok": False, "error": "Przekroczono limit czasu oczekiwania na llama.cpp"}
         ), 504  # Gateway Timeout  # noqa: E501
     except Exception as e:
-        _log_error("web.chat.local.error", error=str(e))
-        return jsonify({"ok": False, "error": f"Wewnętrzny błąd serwera: {e}"}), 500
+        # Nie ujawniamy szczegółów wyjątku użytkownikowi ze względów bezpieczeństwa
+        _log_error("web.chat.local.error", error_type=type(e).__name__)
+        return jsonify({"ok": False, "error": "Wewnętrzny błąd serwera"}), 500
 
 
 # ───────────────────────────────────────────────────────────────────────────────
