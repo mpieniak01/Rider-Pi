@@ -7,6 +7,7 @@ import base64
 import io
 import math
 import os
+import re
 import shlex
 import shutil
 import struct
@@ -72,6 +73,11 @@ def _log_error(msg: str, **kwargs) -> None:
         logger.error(f"{msg} {kwargs}" if kwargs else msg)
 
 
+def _dict_to_config_object(cfg_dict: dict) -> Any:
+    """Convert nested dict to object with attribute access (cfg.chat.backend)."""
+    return type("Config", (), {k: type("Section", (), v) if isinstance(v, dict) else v for k, v in cfg_dict.items()})()
+
+
 @app.before_request
 def _load_config():
     """Ładuje konfigurację do kontekstu Flask g przed każdym żądaniem."""
@@ -82,9 +88,7 @@ def _load_config():
             # Ładujemy domyślną konfigurację voice.toml lub voice_local_file.toml
             cfg_dict = voice_config.load(None)
             # Konwertujemy na obiekt z atrybutami dla wygody (cfg.chat.backend)
-            g.config = type(
-                "Config", (), {k: type("Section", (), v) if isinstance(v, dict) else v for k, v in cfg_dict.items()}
-            )()  # noqa: E501
+            g.config = _dict_to_config_object(cfg_dict)
         except Exception as e:
             _log_warning("web.config.load_failed", error=str(e))
             # Fallback: pusty obiekt konfiguracji
@@ -762,6 +766,7 @@ def api_chat_local():
     Handler dla lokalnego LLM (llama.cpp).
     Wywołuje binarkę systemową przez subprocess.
     """
+    timeout_sec = 20.0  # Default timeout, may be overridden from config
     try:
         chat_cfg = g.config.chat
         if not chat_cfg or chat_cfg.backend != "local":
@@ -774,8 +779,6 @@ def api_chat_local():
 
         # Walidacja bezpieczeństwa: ścieżki muszą być absolutne lub względne bez podejrzanych znaków
         # Zapobiegamy command injection poprzez sprawdzenie, czy ścieżki nie zawierają niebezpiecznych znaków
-        import re
-
         if re.search(r"[;&|`$()]", llm_main_path) or re.search(r"[;&|`$()]", llm_model_path):
             _log_error("web.chat.local.invalid_path", path="contains shell metacharacters")
             return jsonify({"ok": False, "error": "Nieprawidłowa ścieżka w konfiguracji."}), 500

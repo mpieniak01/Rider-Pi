@@ -56,7 +56,7 @@ def test_api_chat_requires_local_backend(client, mock_config):
     assert response.status_code == 500
     data = json.loads(response.data)
     assert data["ok"] is False
-    assert "nie jest skonfigurowany" in data["error"]
+    assert "Lokalny backend czatu nie jest skonfigurowany." in data["error"]
 
 
 def test_api_chat_checks_binary_exists(client, mock_config):
