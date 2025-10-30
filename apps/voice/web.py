@@ -812,27 +812,40 @@ def api_chat_local():
         # Budowanie komendy - używamy listy argumentów, co jest bezpieczniejsze niż shell=True
         # BEZPIECZEŃSTWO: Dane użytkownika (messages) trafiają do 'prompt', który jest przekazywany
         # jako wartość flagi '-p'. Ponieważ używamy subprocess.run() z listą (nie shell=True),
-        # prompt jest traktowany jako czyste dane, a nie wykonywalny kod. Subprocess nie wywołuje
-        # shella, więc znaki specjalne w prompcie nie mają żadnego specjalnego znaczenia.
-        # Dodatkowo ograniczamy długość promptu (MAX_PROMPT_LEN) aby zapobiec DoS.
+        # jako dane wejściowe przez plik tymczasowy (nie jako argument linii poleceń), co minimalizuje
+        # ryzyko argument injection oraz potencjalnych błędów w parsowaniu argumentów przez llama.cpp.
+        # Dodatkowo ograniczamy długość promptu.
+        MAX_PROMPT_LEN = 4096
+        if len(prompt) > MAX_PROMPT_LEN:
+            return jsonify({"ok": False, "error": f"Prompt za długi (max {MAX_PROMPT_LEN} znaków)"}), 400
+
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as prompt_file:
+            prompt_file.write(prompt)
+            prompt_file.flush()
+            prompt_file_path = prompt_file.name
+
+        # Zakładamy, że llama.cpp obsługuje flagę -f <plik> do wczytania promptu z pliku
         cmd = [
             llm_main_path,
             "-m",
             llm_model_path,
-            "-p",
-            prompt,
+            "-f",
+            prompt_file_path,
         ] + extra_args
 
         _log_info("web.chat.local.exec", cmd_len=len(cmd))
 
         # Wywołanie subprocessu - używamy listy args (nie shell=True) dla bezpieczeństwa
-        # To jest bezpieczne przed command injection ponieważ:
-        # 1. Używamy listy argumentów (nie shell=True)
-        # 2. Ścieżki są walidowane (whitelist: tylko a-z, A-Z, 0-9, /, _, ., -)
-        # 3. Dane użytkownika są w 'prompt' który jest argumentem danych dla '-p', nie komendą
-        # 4. Długość promptu jest ograniczona
-        # nosec B603: subprocess with list arguments is safe from shell injection
-        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)  # nosec B603
+        # To jest bezpieczne przed command injection oraz argument injection, bo prompt nie jest już argumentem
+        timeout_sec = getattr(chat_cfg, "timeout", 20.0)
+
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)
+        finally:
+            try:
+                os.remove(prompt_file_path)
+            except Exception:
+                pass
 
         if proc.returncode != 0:
             _log_error("web.chat.local.fail", code=proc.returncode, stderr_len=len(proc.stderr))
