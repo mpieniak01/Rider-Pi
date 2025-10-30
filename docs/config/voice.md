@@ -161,7 +161,7 @@ aplay -l
 | `max_tokens` | int | ≥1 lub None | `None` | Limit tokenów w odpowiedzi (opcjonalny) |
 | `base_url` | str | — | `http://127.0.0.1:8092` | URL serwera dla backendu `local` |
 | `endpoint` | str | — | `/api/chat` | Endpoint API dla backendu `local` |
-| `timeout` | float | ≥1 | `20.0` | Timeout dla żądań HTTP (sekundy) |
+| `timeout` | float | ≥1 | `20.0` | Timeout dla żądań HTTP (backendy zdalne) lub wykonania llama.cpp (sekundy, backend local) |
 | `llm_main_path` | str | — | `llama.cpp/main` | Ścieżka do binarki llama.cpp (tylko backend `local`) |
 | `llm_model_path` | str | — | `models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf` | Ścieżka do modelu GGUF (tylko backend `local`) |
 | `llm_extra_args` | str | — | `-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7` | Dodatkowe argumenty dla llama.cpp (tylko backend `local`) |

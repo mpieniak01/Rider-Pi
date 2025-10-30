@@ -217,7 +217,7 @@ def test_api_chat_handles_subprocess_error(client, mock_config):
 
 
 def test_api_chat_rejects_malicious_paths(client, mock_config):
-    """Test that /api/chat rejects paths with shell metacharacters."""
+    """Test that /api/chat rejects paths with invalid characters (whitelist validation)."""
     from apps.voice.web import app
 
     # Set malicious path with shell injection attempt

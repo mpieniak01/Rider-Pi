@@ -19,14 +19,14 @@ timeout = 8
 
 [chat]
 backend = "local"
-model   = "small"
+model = "small"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 transport = "file"
 max_history = 4
-max_tokens  = 512
+max_tokens = 512
 base_url = "http://127.0.0.1:8092"
 endpoint = "/api/chat"
-timeout  = 20.0
+timeout = 20.0
 
 # --- NOWE KLUCZE (dla serwera apps/voice/web.py) ---
 # Ścieżka do skompilowanej binarki llama.cpp (np. pobranej z tutoriali RPi)

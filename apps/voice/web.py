@@ -747,17 +747,22 @@ def api_asr():
 
 
 def _build_llama_prompt(cfg: Any, messages: list[dict[str, str]]) -> str:
-    """Tworzy prosty prompt dla llama.cpp z historii."""
-    # llama.cpp najlepiej działa z formatem 'instruct' lub 'chatml'
-    # Dla uproszczenia, na razie bierzemy tylko prompt systemowy i ostatnią wiadomość
+    """Tworzy prompt dla llama.cpp z pełnej historii wiadomości w formacie ChatML."""
     system_prompt = cfg.system_prompt or "Jesteś pomocnym asystentem."
+    prompt_parts = [f"<|system|>\n{system_prompt}<|end|>"]
 
-    user_text = ""
-    if messages and messages[-1]["role"] == "user":
-        user_text = messages[-1]["content"]
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "user":
+            prompt_parts.append(f"<|user|>\n{content}<|end|>")
+        elif role == "assistant":
+            prompt_parts.append(f"<|assistant|>\n{content}<|end|>")
 
-    # Format <|system|>\n{prompt}<|end|>\n<|user|>\n{text}<|end|>\n<|assistant|>
-    return f"<|system|>\n{system_prompt}<|end|>\n<|user|>\n{user_text}<|end|>\n<|assistant|>"
+    # Dodajemy tag asystenta na końcu, aby model wiedział, że ma odpowiedzieć
+    prompt_parts.append("<|assistant|>")
+
+    return "\n".join(prompt_parts)
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -766,21 +771,23 @@ def api_chat_local():
     Handler dla lokalnego LLM (llama.cpp).
     Wywołuje binarkę systemową przez subprocess.
     """
-    timeout_sec = 20.0  # Default timeout, may be overridden from config
     try:
         chat_cfg = g.config.chat
         if not chat_cfg or chat_cfg.backend != "local":
             return jsonify({"ok": False, "error": "Lokalny backend czatu nie jest skonfigurowany."}), 500
+
+        # Pobierz timeout wcześnie, aby był dostępny w exception handlerach
+        timeout_sec = getattr(chat_cfg, "timeout", 20.0)
 
         # Sprawdzenie, czy binarka i model istnieją
         llm_main_path = getattr(chat_cfg, "llm_main_path", "llama.cpp/main")
         llm_model_path = getattr(chat_cfg, "llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf")
         llm_extra_args = getattr(chat_cfg, "llm_extra_args", "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7")
 
-        # Walidacja bezpieczeństwa: ścieżki muszą być absolutne lub względne bez podejrzanych znaków
-        # Zapobiegamy command injection poprzez sprawdzenie, czy ścieżki nie zawierają niebezpiecznych znaków
-        if re.search(r"[;&|`$()]", llm_main_path) or re.search(r"[;&|`$()]", llm_model_path):
-            _log_error("web.chat.local.invalid_path", path="contains shell metacharacters")
+        # Walidacja bezpieczeństwa: używamy podejścia whitelist - tylko dozwolone znaki w ścieżkach
+        # Dozwolone: a-z, A-Z, 0-9, /, _, ., -
+        if not re.match(r"^[a-zA-Z0-9/_.-]+$", llm_main_path) or not re.match(r"^[a-zA-Z0-9/_.-]+$", llm_model_path):
+            _log_error("web.chat.local.invalid_path", path="contains invalid characters")
             return jsonify({"ok": False, "error": "Nieprawidłowa ścieżka w konfiguracji."}), 500
 
         if not os.path.exists(llm_main_path):
@@ -794,6 +801,12 @@ def api_chat_local():
             return jsonify({"ok": False, "error": "Brak wiadomości (messages) w payload."}), 400
 
         prompt = _build_llama_prompt(chat_cfg, messages)
+
+        # Ograniczenie długości promptu dla bezpieczeństwa
+        MAX_PROMPT_LEN = 8192
+        if len(prompt) > MAX_PROMPT_LEN:
+            return jsonify({"ok": False, "error": f"Prompt za długi (max {MAX_PROMPT_LEN} znaków)"}), 400
+
         extra_args = shlex.split(llm_extra_args or "")
 
         # Budowanie komendy - używamy listy argumentów, co jest bezpieczniejsze niż shell=True
@@ -801,6 +814,7 @@ def api_chat_local():
         # jako wartość flagi '-p'. Ponieważ używamy subprocess.run() z listą (nie shell=True),
         # prompt jest traktowany jako czyste dane, a nie wykonywalny kod. Subprocess nie wywołuje
         # shella, więc znaki specjalne w prompcie nie mają żadnego specjalnego znaczenia.
+        # Dodatkowo ograniczamy długość promptu (MAX_PROMPT_LEN) aby zapobiec DoS.
         cmd = [
             llm_main_path,
             "-m",
@@ -814,10 +828,10 @@ def api_chat_local():
         # Wywołanie subprocessu - używamy listy args (nie shell=True) dla bezpieczeństwa
         # To jest bezpieczne przed command injection ponieważ:
         # 1. Używamy listy argumentów (nie shell=True)
-        # 2. Ścieżki są walidowane pod kątem znaków specjalnych shella
+        # 2. Ścieżki są walidowane (whitelist: tylko a-z, A-Z, 0-9, /, _, ., -)
         # 3. Dane użytkownika są w 'prompt' który jest argumentem danych dla '-p', nie komendą
-        timeout_sec = getattr(chat_cfg, "timeout", 20.0)
-
+        # 4. Długość promptu jest ograniczona
+        # nosec B603: subprocess with list arguments is safe from shell injection
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)  # nosec B603
 
         if proc.returncode != 0:
@@ -828,10 +842,7 @@ def api_chat_local():
         # Odpowiedź jest na stdout (dzięki --simple-io)
         # Usuwamy prompt, który llama.cpp czasem powtarza na początku
         full_output = proc.stdout.strip()
-        if full_output.startswith(prompt):
-            text_response = full_output[len(prompt) :].strip()
-        else:
-            text_response = full_output
+        text_response = full_output.removeprefix(prompt).strip()
 
         _log_info("web.chat.local.ok", chars=len(text_response))
 
