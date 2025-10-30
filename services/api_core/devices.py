@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 
 from . import compat as C
@@ -244,7 +245,11 @@ def xgo_ro_loop():
     try:
         time.sleep(0.5)
         try:
-            from tools.xgo_client_ro import XGOClientRO  # type: ignore
+            # import z scripts/dev_xgo-client.py (ma myślnik w nazwie)
+            from common.xgo_loader import load_xgo_client_ro
+
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            XGOClientRO = load_xgo_client_ro(repo_root)
         except Exception as e:
             print("[api] xgo_ro_loop import error:", e, flush=True)
             return
