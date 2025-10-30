@@ -26,7 +26,7 @@ unfixable = []
 "tests/**" = ["E402", "F401", "F811", "E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["apps", "services", "tools"]
+known-first-party = ["apps", "services"]
 combine-as-imports = true
 
 [tool.ruff.format]

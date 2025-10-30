@@ -265,48 +265,16 @@ def _read_batt_xgo_uart_once() -> int | None:
     Bezpośredni odczyt z XGO po UART (biblioteka producenta).
     Autodetekcja portu: ENV XGO_UART_PORTS="/dev/ttyAMA0,/dev/ttyS0,/dev/ttyUSB0"
     + skan ttyUSB*.
-    Najpierw próbujemy legacy importu tools.xgo_client_ro,
-    a jeśli go nie ma, dynamicznie ładujemy scripts/dev_xgo-client.py.
+    Dynamicznie ładujemy scripts/dev_xgo-client.py.
     """
-    # 1) legacy import (jeśli w repo znów pojawi się tools/xgo_client_ro.py)
+    # załaduj scripts/dev_xgo-client.py (ma myślnik w nazwie)
     try:
-        from tools.xgo_client_ro import XGOClientRO  # type: ignore
+        from common.xgo_loader import load_xgo_client_ro
 
-        XGOCls = XGOClientRO
-    except Exception as e_legacy:
-        _log(f"battery: XGOClientRO import failed: {e_legacy}")
-        XGOCls = None
-
-    # 2) fallback: załaduj scripts/dev_xgo-client.py (ma myślnik w nazwie)
-    if XGOCls is None:
-        try:
-            import importlib.machinery
-            import importlib.util
-
-            fpath = os.path.join(DIR, "scripts", "dev_xgo-client.py")
-            if os.path.isfile(fpath):
-                spec = importlib.util.spec_from_loader(
-                    "dev_xgo_client_dyn",
-                    importlib.machinery.SourceFileLoader("dev_xgo_client_dyn", fpath),
-                )
-                if spec and spec.loader:
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)  # type: ignore[attr-defined]
-
-                    # znajdź klasę z metodą odczytu baterii
-                    XGOCls = None
-                    for name in dir(mod):
-                        obj = getattr(mod, name)
-                        if isinstance(obj, type) and (hasattr(obj, "read_battery") or hasattr(obj, "read_battery_pct")):
-                            XGOCls = obj
-                            break
-                    if XGOCls is None:
-                        _log("battery: dev_xgo-client.py loaded, but no suitable class found")
-            else:
-                _log("battery: dev_xgo-client.py not found")
-        except Exception as e_dyn:
-            _log(f"battery: loading dev_xgo-client.py failed: {e_dyn}")
-            XGOCls = None
+        XGOCls = load_xgo_client_ro(DIR)
+    except Exception as e_dyn:
+        _log(f"battery: loading dev_xgo-client.py failed: {e_dyn}")
+        return None
 
     if XGOCls is None:
         return None
