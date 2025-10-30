@@ -108,21 +108,11 @@ def connect_xgolib():
 
 def connect_ro(port="/dev/ttyAMA0", verbose=False):
     # import przez scripts/dev_xgo-client.py (ma myślnik w nazwie)
-    import importlib.machinery
-    import importlib.util
+    from common.xgo_loader import load_xgo_client_ro
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    fpath = os.path.join(script_dir, "dev_xgo-client.py")
-    spec = importlib.util.spec_from_loader(
-        "dev_xgo_client_mod",
-        importlib.machinery.SourceFileLoader("dev_xgo_client_mod", fpath),
-    )
-    if spec and spec.loader:
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)  # type: ignore[attr-defined]
-        XGOClientRO = mod.XGOClientRO
-    else:
-        raise ImportError(f"Cannot load dev_xgo-client.py from {fpath}")
+    repo_root = os.path.abspath(os.path.join(script_dir, ".."))
+    XGOClientRO = load_xgo_client_ro(repo_root)
 
     dog = XGOClientRO(port=port, verbose=verbose)
     return dog, port, "ro"

@@ -246,21 +246,10 @@ def xgo_ro_loop():
         time.sleep(0.5)
         try:
             # import z scripts/dev_xgo-client.py (ma myślnik w nazwie)
-            import importlib.machinery
-            import importlib.util
+            from common.xgo_loader import load_xgo_client_ro
 
             repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            fpath = os.path.join(repo_root, "scripts", "dev_xgo-client.py")
-            spec = importlib.util.spec_from_loader(
-                "dev_xgo_client_mod",
-                importlib.machinery.SourceFileLoader("dev_xgo_client_mod", fpath),
-            )
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)  # type: ignore[attr-defined]
-                XGOClientRO = mod.XGOClientRO
-            else:
-                raise ImportError(f"Cannot load dev_xgo-client.py from {fpath}")
+            XGOClientRO = load_xgo_client_ro(repo_root)
         except Exception as e:
             print("[api] xgo_ro_loop import error:", e, flush=True)
             return

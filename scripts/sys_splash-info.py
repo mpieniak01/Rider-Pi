@@ -269,35 +269,9 @@ def _read_batt_xgo_uart_once() -> int | None:
     """
     # załaduj scripts/dev_xgo-client.py (ma myślnik w nazwie)
     try:
-        import importlib.machinery
-        import importlib.util
+        from common.xgo_loader import load_xgo_client_ro
 
-        fpath = os.path.join(DIR, "scripts", "dev_xgo-client.py")
-        if os.path.isfile(fpath):
-            spec = importlib.util.spec_from_loader(
-                "dev_xgo_client_dyn",
-                importlib.machinery.SourceFileLoader("dev_xgo_client_dyn", fpath),
-            )
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)  # type: ignore[attr-defined]
-
-                # znajdź klasę z metodą odczytu baterii
-                XGOCls = None
-                for name in dir(mod):
-                    obj = getattr(mod, name)
-                    if isinstance(obj, type) and (hasattr(obj, "read_battery") or hasattr(obj, "read_battery_pct")):
-                        XGOCls = obj
-                        break
-                if XGOCls is None:
-                    _log("battery: dev_xgo-client.py loaded, but no suitable class found")
-                    return None
-            else:
-                _log("battery: dev_xgo-client.py spec failed")
-                return None
-        else:
-            _log("battery: dev_xgo-client.py not found")
-            return None
+        XGOCls = load_xgo_client_ro(DIR)
     except Exception as e_dyn:
         _log(f"battery: loading dev_xgo-client.py failed: {e_dyn}")
         return None
