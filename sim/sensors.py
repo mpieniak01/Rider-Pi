@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import time
+from time import monotonic
 
 import pygame
 import zmq
@@ -27,70 +28,79 @@ class VirtualGyro:
     """Virtual gyroscope that publishes robot orientation."""
 
     def __init__(self, rate_hz: float = 10.0):
-        self.rate_hz = rate_hz
-        self.period = 1.0 / max(0.1, rate_hz)
-        self.last_pub = 0.0
+        self.rate_hz = float(rate_hz)
+        # Zachowujemy 'period' dla testów (kompatybilność API) i wewnętrznie używamy monotonic.
+        self.period: float = 1.0 / max(0.1, self.rate_hz)
+        self._min_interval: float = self.period
+        self.last_pub: float = 0.0  # monotonic timestamp ostatniej realnej publikacji
 
         self._ctx = None
         self._pub = None
         self._init_mqtt()
 
-    def _init_mqtt(self):
+    def _init_mqtt(self) -> None:
         """Initialize MQTT publisher."""
         try:
             self._ctx = zmq.Context.instance()
             self._pub = self._ctx.socket(zmq.PUB)
             self._pub.connect(BUS_PUB_ADDR)
             time.sleep(0.1)  # Warmup
-            LOG.info(f"Gyro PUB → {BUS_PUB_ADDR} topic='{GYRO_TOPIC}' @ {self.rate_hz} Hz")
-        except Exception as e:
-            LOG.warning(f"Failed to initialize gyro MQTT: {e}")
+            LOG.info("Gyro PUB → %s topic='%s' @ %s Hz", BUS_PUB_ADDR, GYRO_TOPIC, self.rate_hz)
+        except Exception as e:  # noqa: BLE001
+            LOG.warning("Failed to initialize gyro MQTT: %s", e)
 
-    def publish(self, angle: float):
-        """Publish gyro angle if enough time has passed."""
-        now = time.time()
-        if now - self.last_pub < self.period:
+    def publish(self, angle: float) -> None:
+        """Publish gyro angle if enough time has passed (rate-limited)."""
+        now_mono = monotonic()
+        if self._min_interval and (now_mono - self.last_pub) < self._min_interval:
+            # Zbyt wcześnie — brak wysyłki i brak zmiany last_pub
             return
 
-        self.last_pub = now
+        # Aktualizacja znacznika dopiero przy realnej publikacji.
+        self.last_pub = now_mono
+
         if self._pub:
             try:
-                # Convert radians to degrees
+                # Do payloadu używamy zegara ściennego (przydatny dla logów/zdarzeń).
+                now_wall = time.time()
                 angle_deg = math.degrees(angle)
-                payload = json.dumps({"angle": angle_deg, "ts": now}).encode("utf-8")
+                payload = json.dumps({"angle": angle_deg, "ts": now_wall}).encode("utf-8")
                 self._pub.send_multipart([GYRO_TOPIC.encode("utf-8"), payload])
-            except Exception as e:
-                LOG.debug(f"Error publishing gyro: {e}")
+            except Exception as e:  # noqa: BLE001
+                LOG.debug("Error publishing gyro: %s", e)
 
 
 class VirtualCamera:
     """Virtual camera that renders first-person view with perspective."""
 
     def __init__(self, width: int = 320, height: int = 240, fov: float = 60.0, rate_hz: float = 5.0):
-        self.width = width
-        self.height = height
-        self.fov = fov  # Field of view in degrees
-        self.rate_hz = rate_hz
-        self.period = 1.0 / max(0.1, rate_hz)
-        self.last_pub = 0.0
+        self.width = int(width)
+        self.height = int(height)
+        self.fov = float(fov)  # Field of view in degrees
+        self.rate_hz = float(rate_hz)
+
+        # Zachowujemy 'period' dla zgodności z testami; limitowanie na monotonic.
+        self.period: float = 1.0 / max(0.1, self.rate_hz)
+        self._min_interval: float = self.period
+        self.last_pub: float = 0.0  # monotonic timestamp ostatniej realnej publikacji
 
         self._ctx = None
         self._pub = None
         self._init_mqtt()
 
         # Create camera surface
-        self.surface = pygame.Surface((width, height))
+        self.surface = pygame.Surface((self.width, self.height))
 
-    def _init_mqtt(self):
+    def _init_mqtt(self) -> None:
         """Initialize MQTT publisher."""
         try:
             self._ctx = zmq.Context.instance()
             self._pub = self._ctx.socket(zmq.PUB)
             self._pub.connect(BUS_PUB_ADDR)
             time.sleep(0.1)  # Warmup
-            LOG.info(f"Camera PUB → {BUS_PUB_ADDR} topic='{CAMERA_TOPIC}' @ {self.rate_hz} Hz")
-        except Exception as e:
-            LOG.warning(f"Failed to initialize camera MQTT: {e}")
+            LOG.info("Camera PUB → %s topic='%s' @ %s Hz", BUS_PUB_ADDR, CAMERA_TOPIC, self.rate_hz)
+        except Exception as e:  # noqa: BLE001
+            LOG.warning("Failed to initialize camera MQTT: %s", e)
 
     def render(self, robot_x: float, robot_y: float, robot_angle: float, walls: list):
         """
@@ -127,8 +137,7 @@ class VirtualCamera:
             # Draw wall column based on distance
             if min_dist < float("inf"):
                 # Perspective projection: closer = taller
-                # Limit max distance to avoid division by zero
-                min_dist = max(min_dist, 0.1)
+                min_dist = max(min_dist, 0.1)  # Limit max distance to avoid division by zero
                 wall_height = min(self.height, int(self.height / (min_dist * 0.5)))
                 wall_top = (self.height - wall_height) // 2
 
@@ -169,24 +178,27 @@ class VirtualCamera:
             return t
         return None
 
-    def publish(self):
-        """Publish camera frame if enough time has passed."""
-        now = time.time()
-        if now - self.last_pub < self.period:
+    def publish(self) -> None:
+        """Publish camera frame if enough time has passed (rate-limited)."""
+        now_mono = monotonic()
+        if self._min_interval and (now_mono - self.last_pub) < self._min_interval:
+            # Zbyt wcześnie — brak wysyłki i brak zmiany last_pub
             return
 
-        self.last_pub = now
+        # Aktualizujemy last_pub dopiero przy realnej publikacji
+        self.last_pub = now_mono
+
         if self._pub:
             try:
                 # Convert pygame surface to JPEG bytes
                 import pygame.image
 
-                # Create a string buffer to hold the image
                 buf = io.BytesIO()
+                # Jeśli build pygame nie obsłuży "JPEG", można rozważyć PNG.
                 pygame.image.save(self.surface, buf, "JPEG")
                 img_bytes = buf.getvalue()
 
                 # Publish as binary data
                 self._pub.send_multipart([CAMERA_TOPIC.encode("utf-8"), img_bytes])
-            except Exception as e:
-                LOG.debug(f"Error publishing camera: {e}")
+            except Exception as e:  # noqa: BLE001
+                LOG.debug("Error publishing camera: %s", e)
