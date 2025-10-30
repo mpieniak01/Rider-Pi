@@ -7,13 +7,16 @@ import base64
 import io
 import math
 import os
+import re
+import shlex
 import shutil
 import struct
 import subprocess
 import tempfile
 import wave
+from typing import Any
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, g, jsonify, request
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Instancja aplikacji + polyfill dla Flask < 2.0
@@ -31,6 +34,66 @@ if not hasattr(app, "get"):
 
     app.get = _route_get  # type: ignore[attr-defined]
     app.post = _route_post  # type: ignore[attr-defined]
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Logger i konfiguracja
+# ───────────────────────────────────────────────────────────────────────────────
+
+try:
+    from . import voice_logging
+
+    logger = voice_logging.get_logger("voice.web")
+except Exception:
+    import logging
+
+    logger = logging.getLogger("voice.web")
+
+
+def _log_info(msg: str, **kwargs) -> None:
+    """Safe logging helper that works with both custom and standard loggers."""
+    if hasattr(logger, "event"):
+        logger.event(msg, **kwargs)  # type: ignore[attr-defined]
+    else:
+        logger.info(f"{msg} {kwargs}" if kwargs else msg)
+
+
+def _log_warning(msg: str, **kwargs) -> None:
+    """Safe logging helper that works with both custom and standard loggers."""
+    if hasattr(logger, "event"):
+        logger.event(msg, **kwargs)  # type: ignore[attr-defined]
+    else:
+        logger.warning(f"{msg} {kwargs}" if kwargs else msg)
+
+
+def _log_error(msg: str, **kwargs) -> None:
+    """Safe logging helper that works with both custom and standard loggers."""
+    if hasattr(logger, "event"):
+        logger.event(msg, **kwargs)  # type: ignore[attr-defined]
+    else:
+        logger.error(f"{msg} {kwargs}" if kwargs else msg)
+
+
+def _dict_to_config_object(cfg_dict: dict) -> Any:
+    """Convert nested dict to object with attribute access (cfg.chat.backend)."""
+    return type("Config", (), {k: type("Section", (), v) if isinstance(v, dict) else v for k, v in cfg_dict.items()})()
+
+
+@app.before_request
+def _load_config():
+    """Ładuje konfigurację do kontekstu Flask g przed każdym żądaniem."""
+    if not hasattr(g, "config"):
+        try:
+            from . import config as voice_config
+
+            # Ładujemy domyślną konfigurację voice.toml lub voice_local_file.toml
+            cfg_dict = voice_config.load(None)
+            # Konwertujemy na obiekt z atrybutami dla wygody (cfg.chat.backend)
+            g.config = _dict_to_config_object(cfg_dict)
+        except Exception as e:
+            _log_warning("web.config.load_failed", error=str(e))
+            # Fallback: pusty obiekt konfiguracji
+            g.config = type("Config", (), {})()
+
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Opcjonalne lokalne backendy (Piper / Vosk) – importy „best-effort”
@@ -676,6 +739,138 @@ def api_asr():
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Lokalny Chat (llama.cpp) – przyjmuje JSON, zwraca JSON
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+def _build_llama_prompt(cfg: Any, messages: list[dict[str, str]]) -> str:
+    """Tworzy prompt dla llama.cpp z pełnej historii wiadomości w formacie ChatML."""
+    system_prompt = cfg.system_prompt or "Jesteś pomocnym asystentem."
+    prompt_parts = [f"<|system|>\n{system_prompt}<|end|>"]
+
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "user":
+            prompt_parts.append(f"<|user|>\n{content}<|end|>")
+        elif role == "assistant":
+            prompt_parts.append(f"<|assistant|>\n{content}<|end|>")
+
+    # Dodajemy tag asystenta na końcu, aby model wiedział, że ma odpowiedzieć
+    prompt_parts.append("<|assistant|>")
+
+    return "\n".join(prompt_parts)
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat_local():
+    """
+    Handler dla lokalnego LLM (llama.cpp).
+    Wywołuje binarkę systemową przez subprocess.
+    """
+    try:
+        chat_cfg = g.config.chat
+        if not chat_cfg or chat_cfg.backend != "local":
+            return jsonify({"ok": False, "error": "Lokalny backend czatu nie jest skonfigurowany."}), 500
+
+        # Pobierz timeout wcześnie, aby był dostępny w exception handlerach
+        timeout_sec = getattr(chat_cfg, "timeout", 20.0)
+
+        # Sprawdzenie, czy binarka i model istnieją
+        llm_main_path = getattr(chat_cfg, "llm_main_path", "llama.cpp/main")
+        llm_model_path = getattr(chat_cfg, "llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf")
+        llm_extra_args = getattr(chat_cfg, "llm_extra_args", "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7")
+
+        # Walidacja bezpieczeństwa: używamy podejścia whitelist - tylko dozwolone znaki w ścieżkach
+        # Dozwolone: a-z, A-Z, 0-9, /, _, ., -
+        if not re.match(r"^[a-zA-Z0-9/_.-]+$", llm_main_path) or not re.match(r"^[a-zA-Z0-9/_.-]+$", llm_model_path):
+            _log_error("web.chat.local.invalid_path", path="contains invalid characters")
+            return jsonify({"ok": False, "error": "Nieprawidłowa ścieżka w konfiguracji."}), 500
+
+        if not os.path.exists(llm_main_path):
+            return jsonify({"ok": False, "error": "Nie znaleziono binarki llama.cpp"}), 500
+        if not os.path.exists(llm_model_path):
+            return jsonify({"ok": False, "error": "Nie znaleziono modelu LLM"}), 500
+
+        payload = request.get_json(force=True, silent=True) or {}
+        messages = payload.get("messages") or []
+        if not messages:
+            return jsonify({"ok": False, "error": "Brak wiadomości (messages) w payload."}), 400
+
+        prompt = _build_llama_prompt(chat_cfg, messages)
+
+        # Ograniczenie długości promptu dla bezpieczeństwa
+        MAX_PROMPT_LEN = 8192
+        if len(prompt) > MAX_PROMPT_LEN:
+            return jsonify({"ok": False, "error": f"Prompt za długi (max {MAX_PROMPT_LEN} znaków)"}), 400
+
+        extra_args = shlex.split(llm_extra_args or "")
+
+        # Budowanie komendy - używamy listy argumentów, co jest bezpieczniejsze niż shell=True
+        # BEZPIECZEŃSTWO: Dane użytkownika (messages) trafiają do 'prompt', który jest przekazywany
+        # jako wartość flagi '-p'. Ponieważ używamy subprocess.run() z listą (nie shell=True),
+        # jako dane wejściowe przez plik tymczasowy (nie jako argument linii poleceń), co minimalizuje
+        # ryzyko argument injection oraz potencjalnych błędów w parsowaniu argumentów przez llama.cpp.
+        # Dodatkowo ograniczamy długość promptu.
+        MAX_PROMPT_LEN = 4096
+        if len(prompt) > MAX_PROMPT_LEN:
+            return jsonify({"ok": False, "error": f"Prompt za długi (max {MAX_PROMPT_LEN} znaków)"}), 400
+
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as prompt_file:
+            prompt_file.write(prompt)
+            prompt_file.flush()
+            prompt_file_path = prompt_file.name
+
+        # Zakładamy, że llama.cpp obsługuje flagę -f <plik> do wczytania promptu z pliku
+        cmd = [
+            llm_main_path,
+            "-m",
+            llm_model_path,
+            "-f",
+            prompt_file_path,
+        ] + extra_args
+
+        _log_info("web.chat.local.exec", cmd_len=len(cmd))
+
+        # Wywołanie subprocessu - używamy listy args (nie shell=True) dla bezpieczeństwa
+        # To jest bezpieczne przed command injection oraz argument injection, bo prompt nie jest już argumentem
+        timeout_sec = getattr(chat_cfg, "timeout", 20.0)
+
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)
+        finally:
+            try:
+                os.remove(prompt_file_path)
+            except Exception:
+                pass
+
+        if proc.returncode != 0:
+            _log_error("web.chat.local.fail", code=proc.returncode, stderr_len=len(proc.stderr))
+            # Nie ujawniamy szczegółów stderr użytkownikowi ze względów bezpieczeństwa
+            return jsonify({"ok": False, "error": "Błąd wykonania llama.cpp"}), 500
+
+        # Odpowiedź jest na stdout (dzięki --simple-io)
+        # Usuwamy prompt, który llama.cpp czasem powtarza na początku
+        full_output = proc.stdout.strip()
+        text_response = full_output.removeprefix(prompt).strip()
+
+        _log_info("web.chat.local.ok", chars=len(text_response))
+
+        # Zwracamy format zgodny z oczekiwaniami ChatSession._ask_local_http
+        return jsonify({"ok": True, "text": text_response, "message": {"role": "assistant", "content": text_response}})
+
+    except subprocess.TimeoutExpired:
+        _log_warning("web.chat.local.timeout", timeout=timeout_sec)
+        return jsonify(
+            {"ok": False, "error": "Przekroczono limit czasu oczekiwania na llama.cpp"}
+        ), 504  # Gateway Timeout  # noqa: E501
+    except Exception as e:
+        # Nie ujawniamy szczegółów wyjątku użytkownikowi ze względów bezpieczeństwa
+        _log_error("web.chat.local.error", error_type=type(e).__name__)
+        return jsonify({"ok": False, "error": "Wewnętrzny błąd serwera"}), 500
 
 
 # ───────────────────────────────────────────────────────────────────────────────

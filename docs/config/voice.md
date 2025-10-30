@@ -153,23 +153,30 @@ aplay -l
 
 | Klucz | Typ | Wartości | Domyślna | Opis |
 |-------|-----|----------|----------|------|
-| `backend` | str | openai, google, echo | `openai` | Wybór dostawcy czatu |
+| `backend` | str | openai, google, local, echo | `openai` | Wybór dostawcy czatu |
 | `transport` | str | rest, realtime | `rest` | Transport chat |
 | `model` | str | — | — | Identyfikator modelu (np. `gpt-4o-mini` lub `gemini-pro`) |
 | `system_prompt` | str | — | — | Prompt systemowy definiujący zachowanie asystenta |
 | `max_history` | int | ≥0 | `4` | Maksymalna liczba par user/assistant w historii |
 | `max_tokens` | int | ≥1 lub None | `None` | Limit tokenów w odpowiedzi (opcjonalny) |
+| `base_url` | str | — | `http://127.0.0.1:8092` | URL serwera dla backendu `local` |
+| `endpoint` | str | — | `/api/chat` | Endpoint API dla backendu `local` |
+| `timeout` | float | ≥1 | `20.0` | Timeout dla żądań HTTP (backendy zdalne) lub wykonania llama.cpp (sekundy, backend local) |
+| `llm_main_path` | str | — | `llama.cpp/main` | Ścieżka do binarki llama.cpp (tylko backend `local`) |
+| `llm_model_path` | str | — | `models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf` | Ścieżka do modelu GGUF (tylko backend `local`) |
+| `llm_extra_args` | str | — | `-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7` | Dodatkowe argumenty dla llama.cpp (tylko backend `local`) |
 
 **Backendy:**
 - **`openai`** — OpenAI Chat Completions API (wymaga `OPENAI_API_KEY`)
 - **`google`** — Google Gemini API (wymaga `GOOGLE_API_KEY`)
+- **`local`** — Lokalny LLM przez llama.cpp (wymaga instalacji llama.cpp i modelu GGUF)
 - **`echo`** — Testowy backend odbijający wiadomości (bez AI)
 
 **Zmienne środowiskowe:**
 - `OPENAI_API_KEY` — klucz API dla backendu OpenAI
 - `GOOGLE_API_KEY` — klucz API dla backendu Google Gemini
 
-**Przykład konfiguracji:**
+**Przykład konfiguracji (Google Gemini):**
 
 ```toml
 [chat]
@@ -178,6 +185,30 @@ model = "gemini-pro"
 system_prompt = "Jesteś asystentem głosowym. Odpowiadaj krótko po polsku."
 max_history = 4
 ```
+
+**Przykład konfiguracji (Local LLM):**
+
+```toml
+[chat]
+backend = "local"
+base_url = "http://127.0.0.1:8092"
+endpoint = "/api/chat"
+timeout = 20.0
+system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
+max_history = 4
+max_tokens = 512
+
+# Konfiguracja llama.cpp (wymagane dla backendu 'local')
+llm_main_path = "llama.cpp/main"
+llm_model_path = "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf"
+llm_extra_args = "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7"
+```
+
+**Uwagi dla backendu `local`:**
+- Wymaga uruchomionego serwera `rider-voice-web.service` na porcie 8092
+- Wymaga instalacji [llama.cpp](https://github.com/ggerganov/llama.cpp) i pobrania modelu GGUF
+- Rekomendowany model dla Raspberry Pi: Phi-3-mini (3.8B parametrów, quantized Q4)
+- Flagi `llm_extra_args`: `-t 4` (4 wątki), `--simple-io` (prostsze wyjście), `--temp 0.7` (temperatura generowania)
 
 ### [tts]
 

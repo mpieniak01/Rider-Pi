@@ -19,14 +19,28 @@ timeout = 8
 
 [chat]
 backend = "local"
-model   = "small"
+model = "small"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
 transport = "file"
 max_history = 4
-max_tokens  = 512
+max_tokens = 512
 base_url = "http://127.0.0.1:8092"
 endpoint = "/api/chat"
-timeout  = 10
+timeout = 20.0
+
+# --- NOWE KLUCZE (dla serwera apps/voice/web.py) ---
+# Ścieżka do skompilowanej binarki llama.cpp (np. pobranej z tutoriali RPi)
+# Wartość domyślna, jeśli nie ustawiona w ~/.bash_profile
+llm_main_path = "llama.cpp/main"
+
+# Ścieżka do modelu GGUF. Rekomendowany model dla RPi to Phi-3-mini.
+# Zalecana domyślna ścieżka:
+llm_model_path = "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf"
+
+# Dodatkowe flagi dla llama.cpp (wątki, rozmiar kontekstu itp.)
+# -t 4 = 4 wątki (dla RPi 4/5)
+# --simple-io = unika logów startowych w stdout
+llm_extra_args = "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7"
 
 [tts]
 backend = "local"
