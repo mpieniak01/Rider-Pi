@@ -828,8 +828,6 @@ def api_chat_local():
         _log_error("web.chat.local.error", error=str(e))
         return jsonify({"ok": False, "error": f"Wewnętrzny błąd serwera: {e}"}), 500
 
-        return jsonify({"ok": False, "error": str(e)}), 500
-
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Uruchamianie modułem: python -m apps.voice.web --bind 0.0.0.0:8092
