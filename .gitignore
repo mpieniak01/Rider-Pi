@@ -126,3 +126,5 @@ services/api_server.py.bpfix.*
 snapshots/*.jpg
 data/obstacle.json
 *.log
+llama.cpp/
+llama.cpp/
