@@ -127,3 +127,4 @@ snapshots/*.jpg
 data/obstacle.json
 *.log
 llama.cpp/
+*.gguf
