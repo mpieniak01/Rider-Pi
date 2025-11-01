@@ -146,7 +146,10 @@ SCHEMA: dict[str, set[str]] = {
 # Dopuszczalne backendy per sekcja (wystarczające do testów)
 ALLOWED_BACKENDS_PER_SECTION: dict[str, set[str]] = {
     "asr": {"openai", "google", "local"},
-    "chat": {"openai", "google", "local"},
+    # === POPRAWKA ===
+    # Dodajemy "stub" do listy, aby walidacja przechodziła,
+    # co pozwoli klientowi (apps.voice.chat) użyć wbudowanego trybu "echo".
+    "chat": {"openai", "google", "local", "stub"},
     "tts": {"openai", "google", "local"},
     "nlu": {"passthrough", "dummy", "openai"},
     "playback": {"aplay"},

@@ -28,6 +28,7 @@ ALLOW_UNITS=(
   "rider-web-bridge.service"
 # "rider-voice.socket"
   "rider-voice.service"
+  "rider-voice-web.service"
   "rider-choreographer.service"  # choreography/event orchestration
   "wifi-unblock.service"
 )

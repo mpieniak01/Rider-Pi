@@ -10,6 +10,7 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
 
+
 # Najpierw user site-packages (piper-tts), potem moduły z repo
 Environment=PYTHONPATH=/home/pi/.local/lib/python3.9/site-packages:/home/pi/robot
 
@@ -23,6 +24,10 @@ Environment=PIPER_CONFIG=/home/pi/robot/models/piper/pl_PL-gosia-medium.onnx.jso
 Environment=VOSK_MODEL_DIR=/home/pi/robot/models/vosk/vosk-model-small-pl-0.22
 Environment=ASR_BACKEND=vosk
 
+# === POPRAWKA LLAMA.CPP ===
+# Ustawia chat (LLM) w tryb 'stub', aby nie szukał llama.cpp
+Environment=VOICE_WEB_LLM_PROVIDER="stub"
+
 # Krytyczne: wrapper piper w /home/pi/robot/bin musi być pierwszy
 Environment=PATH=/home/pi/robot/bin:/home/pi/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -30,7 +35,8 @@ Environment=PYTHONUNBUFFERED=1
 Environment=LOG_LEVEL=DEBUG
 
 # Pre-checki (pomagają złapać zły PATH/plik modelu zanim web wstanie)
-ExecStartPre=/usr/bin/env bash -lc 'command -v piper && piper -h >/dev/null'
+# Bezpośrednio wskazujemy na poprawną binarkę 'piper' zainstalowaną przez --user
+ExecStartPre=/home/pi/.local/bin/piper -h
 ExecStartPre=/usr/bin/env bash -lc '[ -f "$PIPER_MODEL" ] && [ -f "$PIPER_CONFIG" ] || { echo "Brak modelu/konfigu PIPER"; exit 1; }'
 ExecStart=/usr/bin/python3 -m apps.voice.web --bind 0.0.0.0:8092
 

@@ -3,7 +3,12 @@ line-length = 120
 target-version = "py39"
 respect-gitignore = true
 
-# Jedno źródło prawdy dla CI i lokalnie:
+exclude = [
+  "lama.cpp",
+  "llama.cpp",
+]
+force-exclude = true
+
 extend-exclude = [
   "_apps/",
   "venv/",

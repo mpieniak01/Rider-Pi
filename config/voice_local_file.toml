@@ -31,16 +31,16 @@ timeout = 20.0
 # --- NOWE KLUCZE (dla serwera apps/voice/web.py) ---
 # Ścieżka do skompilowanej binarki llama.cpp (np. pobranej z tutoriali RPi)
 # Wartość domyślna, jeśli nie ustawiona w ~/.bash_profile
-llm_main_path = "llama.cpp/main"
+llm_main_path = "llama.cpp/build/bin/llama-cli"
 
 # Ścieżka do modelu GGUF. Rekomendowany model dla RPi to Phi-3-mini.
 # Zalecana domyślna ścieżka:
-llm_model_path = "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf"
+llm_model_path = "models/llm/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
 
 # Dodatkowe flagi dla llama.cpp (wątki, rozmiar kontekstu itp.)
 # -t 4 = 4 wątki (dla RPi 4/5)
 # --simple-io = unika logów startowych w stdout
-llm_extra_args = "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7"
+llm_extra_args = "-t 4 -n 128 --ctx-size 512 --simple-io --temp 0.7"
 
 [tts]
 backend = "local"

@@ -180,7 +180,15 @@ def _iter_aplay_commands(cfg: PlaybackConfig, *, fmt: str | None):
     if not path:
         return []
 
+    # Parametry dla surowego PCM (np. 'ding' 16k/mono)
     params_pcm16 = ["-f", "S16_LE", "-r", "16000", "-c", "1"]
+
+    # === POCZĄTEK POPRAWKI ===
+    # Parametry dla plików WAV. Zakładamy, że tts.py (OpenAI/Google)
+    # i web.py (local) dostarczają audio 48kHz, S16_LE, 2 kanały (stereo).
+    # Podajemy to jawnie, aby uniknąć błędów 'aplay' przy czytaniu nagłówka ze strumienia.
+    params_wav_48k_stereo = ["-f", "S16_LE", "-r", "48000", "-c", "2"]
+    # === KONIEC POPRAWKI ===
 
     # zbuduj kandydatów urządzeń
     preferred = []
@@ -198,10 +206,17 @@ def _iter_aplay_commands(cfg: PlaybackConfig, *, fmt: str | None):
         base = [path, "-q"]
         if dev:
             base += ["-D", dev]
-        # dobierz parametry dla pcm16
+        
+        # dobierz parametry
         if fmt == "pcm16":
             commands.append(base + params_pcm16)
+        elif fmt == "wav":
+            # === POCZĄTEK POPRAWKI ===
+            # Użyj jawnych parametrów dla WAV
+            commands.append(base + params_wav_48k_stereo)
+            # === KONIEC POPRAWKI ===
         else:
+            # Fallback - stary kod (może być potrzebny dla mp3?)
             commands.append(base[:])
 
     return commands
@@ -276,20 +291,26 @@ def _start_playback_process(
         if backend == "pulse":
             generators = [
                 lambda: _iter_paplay_commands(config),
-                lambda: _iter_aplay_commands(config, fmt=None if fmt == "wav" else "pcm16"),
+                # === POCZĄTEK POPRAWKI: Przekazuj 'fmt' poprawnie ===
+                lambda: _iter_aplay_commands(config, fmt=fmt),
+                # === KONIEC POPRAWKI ===
                 _iter_ffplay_commands,
                 lambda: _iter_sox_play_commands(fmt),
             ]
         elif backend == "alsa":
             generators = [
-                lambda: _iter_aplay_commands(config, fmt=None if fmt == "wav" else "pcm16"),
+                # === POCZĄTEK POPRAWKI: Przekazuj 'fmt' poprawnie ===
+                lambda: _iter_aplay_commands(config, fmt=fmt),
+                # === KONIEC POPRAWKI ===
                 lambda: _iter_paplay_commands(config),
                 _iter_ffplay_commands,
                 lambda: _iter_sox_play_commands(fmt),
             ]
         else:  # auto → preferuj ALSA najpierw (Twoje środowisko tak działa)
             generators = [
-                lambda: _iter_aplay_commands(config, fmt=None if fmt == "wav" else "pcm16"),
+                # === POCZĄTEK POPRAWKI: Przekazuj 'fmt' poprawnie ===
+                lambda: _iter_aplay_commands(config, fmt=fmt),
+                # === KONIEC POPRAWKI ===
                 lambda: _iter_paplay_commands(config),
                 _iter_ffplay_commands,
                 lambda: _iter_sox_play_commands(fmt),
@@ -417,3 +438,4 @@ def play_file(file_path: Path | str, config: PlaybackConfig, logger: voice_loggi
     except Exception as e:
         logger.event("playback.file.error", path=str(path), error=str(e))
         return False
+

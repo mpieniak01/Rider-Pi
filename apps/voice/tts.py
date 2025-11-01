@@ -75,17 +75,17 @@ def _read_wav(b: bytes) -> tuple[bytes, int, int, int]:
 
 def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40) -> bytes:
     """Delikatny fade-in/out, by uniknąć „pyknięć”. Operuje na 16-bit mono/stereo."""
-    if not pcm or ch not in (1, 2):
+    if not pcm or ch not in (1, 2) or len(pcm) < 4:
         return pcm
-    n_samples = len(pcm) // 2
-    if n_samples == 0:
+    n_samples_per_channel = len(pcm) // (2 * ch)
+    if n_samples_per_channel == 0:
         return pcm
     import array
 
     a = array.array("h")
     a.frombytes(pcm)
     # fade-in
-    n_in = min(n_samples // ch, int(sr * ms_in / 1000))
+    n_in = min(n_samples_per_channel, int(sr * ms_in / 1000))
     for i in range(n_in):
         scale = (i + 1) / max(1, n_in)
         if ch == 1:
@@ -94,15 +94,15 @@ def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40)
             a[2 * i] = int(a[2 * i] * scale)
             a[2 * i + 1] = int(a[2 * i + 1] * scale)
     # fade-out
-    n_out = min(n_samples // ch, int(sr * ms_out / 1000))
+    n_out = min(n_samples_per_channel, int(sr * ms_out / 1000))
     for j in range(n_out):
         scale = (n_out - j) / max(1, n_out)
-        idx = n_samples // ch - 1 - j
+        idx_in_channel = n_samples_per_channel - 1 - j
         if ch == 1:
-            a[idx] = int(a[idx] * scale)
+            a[idx_in_channel] = int(a[idx_in_channel] * scale)
         else:
-            a[2 * idx] = int(a[2 * idx] * scale)
-            a[2 * idx + 1] = int(a[2 * idx] * scale)
+            a[2 * idx_in_channel] = int(a[2 * idx_in_channel] * scale)
+            a[2 * idx_in_channel + 1] = int(a[2 * idx_in_channel + 1] * scale)
     return a.tobytes()
 
 
@@ -171,6 +171,67 @@ def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) ->
         except Exception as e:
             logger.event("tts.decode.mpg123_failed", extra={"data": str(e)})
     return None
+
+
+def _resample_to(pcm: bytes, in_sr: int, in_ch: int, target_sr: int, target_ch: int) -> tuple[bytes, int, int]:
+    """
+    Resample PCM using audioop. Zwraca (pcm_bytes, new_sr, new_ch).
+    Wymaga 16-bit (sw=2).
+    """
+    if in_sr == target_sr and in_ch == target_ch:
+        return pcm, in_sr, in_ch
+
+    pcm_out = pcm
+    sr_out, ch_out = in_sr, in_ch
+
+    # Krok 1: Resample kanałów
+    try:
+        if target_ch == 2 and in_ch == 1:
+            pcm_out = audioop.tostereo(pcm_out, 2, 1, 1)
+            ch_out = 2
+        elif target_ch == 1 and in_ch == 2:
+            pcm_out = audioop.tomono(pcm_out, 2, 0.5, 0.5)
+            ch_out = 1
+    except audioop.error:
+        # Błąd konwersji kanałów, kontynuuj z oryginałem
+        pcm_out = pcm
+        ch_out = in_ch
+
+    # Krok 2: Resample częstotliwości
+    try:
+        if sr_out != target_sr:
+            pcm_out, _ = audioop.ratecv(pcm_out, 2, ch_out, sr_out, target_sr, None)
+            sr_out = target_sr
+    except audioop.error as e:
+        # Jeśli konwersja się nie uda, zwróć to co mamy (zmienione kanały, stara stopa)
+        if "not supported" in str(e):
+            return pcm_out, sr_out, ch_out
+        raise e
+
+    return pcm_out, sr_out, ch_out
+
+
+# === START NOWE FUNKCJE (skopiowane z web.py) ===
+def _append_tail(pcm: bytes, sr: int, ch: int, ms: int) -> bytes:
+    """Dodaje ciszę na końcu strumienia PCM."""
+    frames = int(sr * ms / 1000) * ch
+    if frames > 0:
+        pcm += b"\x00\x00" * frames  # Zakładamy 16-bit (2 bajty)
+    return pcm
+
+
+def _maybe_gain(pcm: bytes, gain: float) -> bytes:
+    """Stosuje wzmocnienie (gain) do PCM."""
+    if gain == 1.0:
+        return pcm
+    g = max(0.1, min(gain, 3.0))
+    try:
+        return audioop.mul(pcm, 2, g)  # Zakładamy 16-bit (2 bajty)
+    except audioop.error:
+        return pcm  # Zwróć oryginał, jeśli audioop zawiedzie
+
+
+# === KONIEC NOWYCH FUNKCJI ===
 
 
 # ───── public API ─────────────────────────────────────────────────────────────
@@ -469,10 +530,26 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
                 except Exception:
                     pass
 
+            # === START FIX: Resampling + Tail ===
+            # Wymuszamy 48kHz / 2 kanały (Stereo) - tak jak robi to działający `local`
+            TARGET_SR = 48000
+            TARGET_CH = 2
+
+            if sw == 2:  # Resampling działa tylko na 16-bit
+                try:
+                    pcm, sr, ch = _resample_to(pcm, sr, ch, TARGET_SR, TARGET_CH)
+                    sw = 2  # _resample_to zachowuje 16-bit
+                except Exception as e:
+                    logger.event("tts.openai.resample_failed", error=str(e))
+                    # Kontynuuj z oryginalnym audio, jeśli resampling zawiedzie
+            # === END FIX ===
+
             extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
             if sw == 2:
                 pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
                 pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
+                pcm = _append_tail(pcm, sr, ch, 300)
+                pcm = _maybe_gain(pcm, extra_gain)
             wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
             return wav_bytes, sr, "wav"
@@ -550,21 +627,36 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
 
         # Rozpoznaj typ: WAV czy czysty PCM
         if _is_wav(raw):
-            wav_bytes = raw
-            pcm, sr, ch, sw = _read_wav(wav_bytes)
+            pcm, sr, ch, sw = _read_wav(raw)
         else:
             # Załóżmy 16-bit PCM mono 24 kHz (obecne zachowanie Gemini TTS)
             sr = 24000
             ch = 1
             sw = 2
             pcm = raw
-            wav_bytes = _wrap_wav(pcm, sr, ch, sw)
+
+        # === START FIX: Resampling + Tail ===
+        # Google TTS (jak OpenAI) zwraca 24kHz.
+        # Resamplujemy do 48kHz i wymuszamy 2 KANAŁY (stereo)
+        TARGET_SR = 48000
+        TARGET_CH = 2  # <--- POPRAWKA: Wymuszenie 2 kanałów (stereo)
+
+        if sw == 2:  # Resampling działa tylko na 16-bit
+            try:
+                pcm, sr, ch = _resample_to(pcm, sr, ch, TARGET_SR, TARGET_CH)
+                sw = 2  # _resample_to zachowuje 16-bit
+            except Exception as e:
+                logger.event("tts.gemini.resample_failed", error=str(e))
+                # Kontynuuj z oryginalnym audio, jeśli resampling zawiedzie
+        # === END FIX ===
 
         # Opcjonalna normalizacja i fade (jak w OpenAI)
         extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
         if sw == 2:
             pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
             pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
+            pcm = _append_tail(pcm, sr, ch, 300)  # <--- POPRAWKA: Dodanie ciszy
+            pcm = _maybe_gain(pcm, extra_gain)  # <--- POPRAWKA: Dodanie gain
         wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
         logger.event("tts.gemini.ok", bytes=len(wav_bytes), sample_rate=sr)
@@ -656,7 +748,7 @@ def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) 
         raw = base64.b64decode(b64)
         if _is_wav(raw):
             wav_bytes = raw
-            pcm, sr, ch, sw = _read_wav(wav_bytes)
+            pcm, sr, ch, sw = _read_wav(raw)
         else:
             w = _decode_mp3_to_wav(raw, logger)
             if not w:
@@ -897,3 +989,4 @@ def _piper_synthesize_wav(voice, text: str, length_scale=1.0, noise_scale=0.667,
 
 
 # ===== end helpers =====
+

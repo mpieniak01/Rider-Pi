@@ -25,9 +25,9 @@ beep = false
 pre_speech_wait_ms = 250
 mic_open_delay_ms = 30
 post_tts_mute_ms = 200
-min_capture_ms = 350
-no_speech_timeout_ms = 1600
-silence_rms_gate = 260
+min_capture_ms = 200         # zmiana
+no_speech_timeout_ms = 3000   # zmiana
+silence_rms_gate = 200        # zmiana
 save_audio = false
 recordings_dir = "/tmp/voice-recs"
 
@@ -40,12 +40,13 @@ timeout = 8.0
 language = "pl"
 
 [chat]
-backend = "local"
+backend = "stub"
 base_url = "http://127.0.0.1:8092"
 endpoint = "/api/chat"
 timeout = 10.0
 language = "pl"
 system_prompt = "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj krótko po polsku."
+model = "stub"
 
 [tts]
 backend = "local"
@@ -59,9 +60,13 @@ timeout = 10.0
 allow_unknown_keys = true
 
 [nlu]
-backend = "passthrough"
+backend = "dummy"
 chat_threshold = 0.4
 llm_model = "none"
 
 [nlu.command_keywords]
 stop = [ "stop", "pauza", "cisza",]
+
+[hotword]
+enabled = false
+engine = "ptt"
