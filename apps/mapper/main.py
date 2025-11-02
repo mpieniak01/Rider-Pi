@@ -21,6 +21,7 @@ import os
 import time
 
 import numpy as np
+import zmq
 
 from common.bus import TOPIC_ROBOT_POSE, TOPIC_VISION_OBSTACLE_DATA, BusSub
 
@@ -249,17 +250,27 @@ class Mapper:
         # Statistics print interval
         STATS_INTERVAL = 10.0  # seconds
 
+        # Set up poller for efficient multi-socket polling
+        poller = zmq.Poller()
+        poller.register(self.sub_pose.sock, zmq.POLLIN)
+        poller.register(self.sub_obstacles.sock, zmq.POLLIN)
+
         try:
             while True:
-                # Receive robot pose updates
-                topic, payload = self.sub_pose.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_ROBOT_POSE:
-                    self._handle_robot_pose(payload)
+                # Poll for messages with 10ms timeout
+                socks = dict(poller.poll(timeout=10))
 
-                # Receive obstacle data
-                topic, payload = self.sub_obstacles.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_VISION_OBSTACLE_DATA:
-                    self._handle_obstacle_data(payload)
+                # Check for robot pose updates
+                if self.sub_pose.sock in socks:
+                    topic, payload = self.sub_pose.recv(timeout_ms=0)
+                    if topic and payload and topic == TOPIC_ROBOT_POSE:
+                        self._handle_robot_pose(payload)
+
+                # Check for obstacle data
+                if self.sub_obstacles.sock in socks:
+                    topic, payload = self.sub_obstacles.recv(timeout_ms=0)
+                    if topic and payload and topic == TOPIC_VISION_OBSTACLE_DATA:
+                        self._handle_obstacle_data(payload)
 
                 # Print statistics periodically
                 now = time.time()

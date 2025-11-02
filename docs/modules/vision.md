@@ -5,7 +5,7 @@
 The **Vision** module provides computer vision capabilities for the Rider-Pi robot, including:
 - Object detection (faces, persons, obstacles)
 - Event normalization and debouncing (dispatcher)
-- Depth estimation for SLAM mapping (Stage 3 addition)
+- Depth estimation for SLAM mapping (Stage 3 addition).
 
 ## Components
 

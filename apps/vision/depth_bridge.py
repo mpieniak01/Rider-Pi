@@ -42,7 +42,6 @@ SUB: zmq.Socket | None = None
 
 # State tracking
 _navigator_active = False
-_last_obstacle_data = None
 _state_lock = threading.Lock()
 
 
@@ -59,8 +58,8 @@ def zmq_sub(topics: list[str]) -> zmq.Socket:
     s.connect(ZMQ_ADDR_SUB)
     try:
         s.setsockopt(zmq.RCVTIMEO, 1000)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[vision_depth] Warning: failed to set zmq.RCVTIMEO: {e}", flush=True)
     for t in topics:
         s.setsockopt_string(zmq.SUBSCRIBE, t)
     return s
@@ -102,8 +101,8 @@ def estimate_distance_from_confidence(confidence: float) -> float:
     """
     Simplified distance estimation based on obstacle confidence.
 
-    High confidence (close to 1.0) = closer obstacle
-    Low confidence = farther obstacle
+    Inverse relationship: High confidence (close to 1.0) = closer obstacle
+                         Low confidence = farther obstacle
 
     Formula:
     - confidence ∈ [0.5, 1.0] maps to distance ∈ [MAX_DISTANCE, MIN_DISTANCE]
@@ -117,8 +116,7 @@ def estimate_distance_from_confidence(confidence: float) -> float:
 
     TODO: Replace with actual depth estimation from mono-depth model
     """
-    # Inverse relationship: higher confidence = closer
-    # Map confidence [0.5, 1.0] to distance [MAX, MIN]
+    # Map confidence [0.5, 1.0] to distance [MAX, MIN] using inverse relationship
     if confidence < 0.5:
         return MAX_OBSTACLE_DISTANCE
 
@@ -166,11 +164,9 @@ def handle_navigator_state(data: dict[str, Any]) -> None:
 
 def handle_vision_obstacle(data: dict[str, Any]) -> None:
     """Process obstacle detection and publish depth data if navigator is active"""
-    global _last_obstacle_data
 
     with _state_lock:
         active = _navigator_active
-        _last_obstacle_data = data
 
     if not active:
         return  # Only publish depth data when navigator is active
