@@ -27,9 +27,19 @@
 
 - **Vision/Camera** — moduły w `apps/camera/*` i `apps/vision/*`.
   - Źródło obrazu (libcamera), detektory (HOG/SSD/TFLite).
-  - Wyniki zapisują do `snapshots/` / `data/` (ostatnia klatka, surowe ujęcia) i publikują eventy (np. `vision.person`).
+  - Wyniki zapisują do `snapshots/` / `data/` (ostatnia klatka, surowe ujęcia) i publikują eventy (np. `vision.person`, `vision.obstacle`).
 
-### 4) Głos / Chat
+### 4) Navigator (Autonomous Exploration)
+
+- **Navigator** — moduł autonomicznej nawigacji w `apps/navigator/*`.
+  - Tryb „Rekonesans" (Stage 1): reaktywne unikanie przeszkód.
+  - Subskrybuje `vision.obstacle`, publikuje na `navigator.state`.
+  - Dwie strategie: STOP (zatrzymanie) i AVOID (omijanie).
+  - Sterowanie przez API: `/api/navigator/start`, `/api/navigator/stop`, `/api/navigator/config`.
+  - Integracja z interfejsem webowym w `control.html`.
+  - Zobacz: `docs/modules/navigator.md`
+
+### 5) Głos / Chat
 
 - **Voice** — modułowa architektura głosowa w `apps/voice/` obsługująca dwa tryby pracy:
   - **Tryb plikowy** (`file`): klasyczny pipeline capture→ASR→Chat→TTS→playback
@@ -89,11 +99,12 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 **BUS (ZMQ)** — kanały przykładowe:
 
 - `motion.move`, `motion.stop`, `motion.state`
-- `vision.face`, `vision.person`, `vision.motion`
+- `vision.face`, `vision.person`, `vision.motion`, `vision.obstacle`
 - `voice.state`, `voice.kws`, `voice.vad`
 - `face.state`, `face.render`
 - `events.sentiment`, `events.nlu.emotion` — zdarzenia dla choreografa
 - `command.face.expression` — komendy do twarzy z choreografa
+- `navigator.control`, `navigator.state` — autonomiczna nawigacja (Rekonesans)
 
 ---
 
