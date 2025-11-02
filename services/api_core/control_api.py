@@ -65,6 +65,56 @@ def api_cmd():
         return Response(json.dumps({"error": str(e)}), mimetype="application/json", status=500)
 
 
+def api_balance():
+    """Handle balance/stabilization control."""
+    if request.method == "OPTIONS":
+        resp = Response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
+        return resp
+
+    data = request.get_json(silent=True) or {}
+    try:
+        enabled = bool(data.get("enabled", False))
+    except Exception:
+        return Response('{"ok": false, "error": "invalid enabled value"}', mimetype="application/json", status=400)
+
+    C.bus_pub("cmd.balance", {"enabled": enabled, "ts": time.time()})
+    resp = Response(
+        json.dumps({"ok": True, "sent": {"enabled": enabled}}),
+        mimetype="application/json",
+    )
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
+def api_height():
+    """Handle height/suspension control."""
+    if request.method == "OPTIONS":
+        resp = Response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
+        return resp
+
+    data = request.get_json(silent=True) or {}
+    try:
+        height = int(data.get("height", 0))
+        # Clamp to safe range (0-12 cm as per issue requirements)
+        height = max(0, min(12, height))
+    except Exception:
+        return Response('{"ok": false, "error": "invalid height value"}', mimetype="application/json", status=400)
+
+    C.bus_pub("cmd.height", {"height": height, "ts": time.time()})
+    resp = Response(
+        json.dumps({"ok": True, "sent": {"height": height}}),
+        mimetype="application/json",
+    )
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
 def api_control():
     data = request.get_json(silent=True) or {}
     action = (request.args.get("action") or data.get("action") or "").strip().lower()
