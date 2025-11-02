@@ -43,6 +43,10 @@ STATE_PUB_ADDR = os.getenv("BUS_PUB_ADDR", "tcp://127.0.0.1:5555")
 STATE_TOPIC = os.getenv("MOTION_STATE_TOPIC", "motion.state")
 STATE_HZ = float(os.getenv("MOTION_TELEM_HZ", "5.0"))
 
+# IMU telemetria (dla odometrii)
+IMU_TOPIC = os.getenv("MOTION_IMU_TOPIC", "imu.data")
+IMU_HZ = float(os.getenv("MOTION_IMU_HZ", "10.0"))
+
 LOG = logging.getLogger("motion")
 
 
@@ -59,6 +63,10 @@ class _SimAdapter:
         if self._moving:
             LOG.info("[SIM] STOP")
         self._moving = False
+
+    def get_imu(self) -> dict | None:
+        """Simulated IMU data - returns None (not available in sim)"""
+        return None
 
 
 class _RealAdapter:
@@ -89,6 +97,10 @@ class _RealAdapter:
 
     def stop(self):
         self._ada.stop()
+
+    def get_imu(self) -> dict | None:
+        """Get IMU data (roll, pitch, yaw) from robot"""
+        return self._ada.imu()
 
 
 def _make_adapter() -> object:
@@ -279,6 +291,7 @@ def main():
     ctrl = MotionController(robot)
     bus = MotionBus(BUS_ADDR, BUS_TOPIC)
     telem = MotionTelemetry(STATE_PUB_ADDR, STATE_TOPIC, STATE_HZ)
+    imu_telem = MotionTelemetry(STATE_PUB_ADDR, IMU_TOPIC, IMU_HZ)
     LOG.info("Motion loop start")
     try:
         last = time.time()
@@ -306,6 +319,10 @@ def main():
                 "impulses": {"drive": IMPULSE_DRIVE, "yaw": IMPULSE_YAW},
             }
             telem.maybe_publish(state)
+            # Publish IMU data if available
+            imu_data = robot.get_imu()
+            if imu_data is not None:
+                imu_telem.maybe_publish(imu_data)
             time.sleep(LOOP_DT)
     except KeyboardInterrupt:
         LOG.info("KeyboardInterrupt – zatrzymuję ruch.")

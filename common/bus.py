@@ -26,6 +26,11 @@ TOPIC_VISION_FOLLOW_STOP = "vision.follow.stop"  # Disable all tracking
 TOPIC_NAVIGATOR_STATE = "navigator.state"  # Navigator state updates
 TOPIC_VISION_OBSTACLE = "vision.obstacle"  # Obstacle detection from vision
 
+# Topic constants for odometry (Stage 2 - Position tracking)
+TOPIC_ROBOT_POSE = "robot.pose"  # Estimated robot position (x, y, theta)
+TOPIC_IMU_DATA = "imu.data"  # Raw IMU data (roll, pitch, yaw)
+TOPIC_MOTION_COMMAND = "motion"  # Motion commands (used by navigator and manual control)
+
 
 def now_ts() -> float:
     return time.time()
