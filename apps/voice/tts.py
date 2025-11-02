@@ -803,7 +803,6 @@ def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) 
         pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
         pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
         pcm = _append_tail(pcm, sr, ch, 300)  # <--- POPRAWKA: Dodanie ciszy
-        pcm = _maybe_gain(pcm, extra_gain)  # <--- POPRAWKA: Dodanie gain
     wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
     logger.event("tts.local.ok", bytes=len(wav_bytes), sample_rate=sr)
