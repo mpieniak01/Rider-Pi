@@ -92,11 +92,13 @@ class TestOdometryEstimator(unittest.TestCase):
         self.estimator.update_pose(0.5)
 
         # Should have moved forward and rotated
-        # Forward: 0.2 m/s * 0.5s = 0.1m in current heading (but heading changes during motion)
+        # Motion model: rotation updates first, then linear motion in new direction
         # Rotation: -0.5 rad/s * 0.5s = -0.25 rad
-        # Note: Due to rotation during motion, the actual path is curved
-        self.assertAlmostEqual(self.estimator.x, 0.097, places=2)  # Curved path
-        self.assertAlmostEqual(self.estimator.y, -0.025, places=2)  # Some lateral motion
+        # Linear motion: 0.2 m/s * 0.5s = 0.1m in direction theta=-0.25 rad
+        # x = 0.1 * cos(-0.25) ≈ 0.097
+        # y = 0.1 * sin(-0.25) ≈ -0.025
+        self.assertAlmostEqual(self.estimator.x, 0.097, places=2)
+        self.assertAlmostEqual(self.estimator.y, -0.025, places=2)
         self.assertAlmostEqual(self.estimator.theta, -0.25, places=3)
 
     def test_imu_update(self):

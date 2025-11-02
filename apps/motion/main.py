@@ -320,7 +320,7 @@ def main():
             }
             telem.maybe_publish(state)
             # Publish IMU data if available
-            imu_data = robot.get_imu() if hasattr(robot, "get_imu") else None
+            imu_data = robot.get_imu()
             if imu_data is not None:
                 imu_telem.maybe_publish(imu_data)
             time.sleep(LOOP_DT)
