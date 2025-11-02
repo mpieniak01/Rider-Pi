@@ -12,6 +12,10 @@ import zmq
 XPUB_ENDPOINT = os.getenv("BUS_XPUB", "tcp://127.0.0.1:5556")  # SUB łączy się TU
 XSUB_ENDPOINT = os.getenv("BUS_XSUB", "tcp://127.0.0.1:5555")  # PUB łączy się TU
 
+# Topic constants for robot control
+TOPIC_MOTION_BALANCE = "cmd.balance"  # Balance/stabilization control
+TOPIC_MOTION_HEIGHT = "cmd.height"  # Height/suspension control
+
 
 def now_ts() -> float:
     return time.time()

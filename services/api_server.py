@@ -25,6 +25,7 @@ except Exception:
 # --- importy modułów rdzeniowych (routing poniżej) ---
 import services.api_core.camera as camera
 import services.api_core.chat_api as chat_api  # noqa: F401
+import services.api_core.control_api as control_api
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
@@ -157,6 +158,10 @@ _add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET
 # control proxy
 _add_rule("/api/control", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
 _add_rule("/api/cmd", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
+
+# control API - balance and height
+_add_rule("/api/control/balance", view_func=control_api.api_balance, methods=["POST", "OPTIONS"])
+_add_rule("/api/control/height", view_func=control_api.api_height, methods=["POST", "OPTIONS"])
 
 # voice proxy (zdalne/istniejące)
 _add_rule("/api/voice/capture", view_func=voice_proxy.capture_handler, methods=["POST", "OPTIONS"])

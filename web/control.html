@@ -93,6 +93,21 @@
       <div></div>
     </div>
 
+    <!-- Balance and Height Controls -->
+    <div class="row" style="margin:16px 0 10px; padding-top:16px; border-top:1px solid #1e3a56">
+      <label style="cursor:pointer">
+        <input id="balanceToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
+        <span data-i18n="motion.balance">Balance</span>
+      </label>
+      <div style="width:20px"></div>
+      <label>
+        <span data-i18n="motion.height">Height</span>
+        <span class="muted">(0..12 cm)</span>:
+        <input id="heightSlider" type="range" min="0" max="12" step="1" value="6" />
+        <span id="heightVal">6</span> cm
+      </label>
+    </div>
+
     <div class="row">
       <span class="muted">
         <span data-i18n="motion.shortcuts_hint">Skróty</span>:
@@ -201,6 +216,32 @@
   qs('#btnRight').addEventListener('click', ()=>{try{spin('right');}catch{}});
   qs('#btnStop').addEventListener('click', ()=>{try{doStop();}catch{}});
   qs('#btnStop2').addEventListener('click', ()=>{try{doStop();}catch{}});
+
+  // Balance control
+  const balanceToggle = qs('#balanceToggle');
+  async function sendBalance(enabled){
+    try{
+      const j = await httpPost('/api/control/balance', {enabled: enabled});
+      appendLog(`balance → enabled:${enabled} :: ${JSON.stringify(j)}`, 'ok');
+    }catch(e){
+      appendLog(`balance error: ${e.message}`, 'err');
+    }
+  }
+  balanceToggle.addEventListener('change', ()=>{try{sendBalance(balanceToggle.checked);}catch{}});
+
+  // Height control
+  const heightSlider = qs('#heightSlider');
+  const heightVal = qs('#heightVal');
+  heightSlider.addEventListener('input', ()=> heightVal.textContent = heightSlider.value);
+  async function sendHeight(height){
+    try{
+      const j = await httpPost('/api/control/height', {height: parseInt(height)});
+      appendLog(`height → ${height}cm :: ${JSON.stringify(j)}`, 'ok');
+    }catch(e){
+      appendLog(`height error: ${e.message}`, 'err');
+    }
+  }
+  heightSlider.addEventListener('change', ()=>{try{sendHeight(heightSlider.value);}catch{}});
 
   const pressed = new Set(); const isArrow = k => ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k);
   window.addEventListener('keydown', ev=>{ try{

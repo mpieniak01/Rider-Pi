@@ -138,6 +138,8 @@ export const I18N = {
     btn_right:       { pl: "Prawo →",           en: "Right →" },
     shortcuts_hint:  { pl: "Skróty",            en: "Shortcuts" },
     shortcuts_tail:  { pl: "lub strzałki; Spacja = stop.", en: "or arrow keys; Space = stop." },
+    balance:         { pl: "Stabilizacja", en: "Balance" },
+    height:          { pl: "Wysokość", en: "Height" },
   },
 
   services: {

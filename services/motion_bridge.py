@@ -189,6 +189,8 @@ for t in [
     "cmd.motion.demo",
     "cmd.move",
     "cmd.stop",
+    "cmd.balance",
+    "cmd.height",
     "motion.cmd",
 ]:
     sub.setsockopt_string(zmq.SUBSCRIBE, t)
@@ -699,6 +701,54 @@ while _running:
             do_stop()
             publish_event("stop", {"rid": data.get("rid")})
             _last_motion_cmd_ts = time.time()
+            continue
+
+        # Balance/stabilization control
+        if topic == "cmd.balance":
+            enabled = bool(data.get("enabled", False))
+            print(f"[bridge] balance enabled={enabled}")
+            if ensure_xgo_open():
+                try:
+                    # Try enable_balance first, fallback to set_stabilization
+                    if hasattr(xgo, "enable_balance"):
+                        xgo.enable_balance(enabled)  # type: ignore[attr-defined]
+                    elif hasattr(xgo, "set_stabilization"):
+                        xgo.set_stabilization(enabled)  # type: ignore[attr-defined]
+                    elif hasattr(xgo, "imu"):
+                        xgo.imu(1 if enabled else 0)  # type: ignore[attr-defined]
+                    publish_event("balance", {"rid": data.get("rid"), "enabled": enabled})
+                except Exception as e:
+                    print(f"[bridge] balance error: {e}", flush=True)
+                    publish_event("balance_error", {"rid": data.get("rid"), "error": str(e)})
+            continue
+
+        # Height/suspension control
+        if topic == "cmd.height":
+            try:
+                height_cm = int(data.get("height", 0))
+            except (ValueError, TypeError) as e:
+                print(f"[bridge] invalid height value: {data.get('height')}, error: {e}", flush=True)
+                publish_event(
+                    "height_error",
+                    {"rid": data.get("rid"), "error": f"invalid height: {data.get('height')}"},
+                )
+                continue
+            # Clamp to safe range and map to adapter range (70-115)
+            # Input: 0-12 cm, Output: 70-115 (adapter internal range)
+            height_cm = max(0, min(12, height_cm))
+            # Linear mapping: 0cm->70, 12cm->115
+            height_raw = int(70 + (height_cm / 12.0) * 45)
+            print(f"[bridge] height cm={height_cm} raw={height_raw}")
+            if ensure_xgo_open():
+                try:
+                    if hasattr(xgo, "set_height"):
+                        xgo.set_height(height_raw)  # type: ignore[attr-defined]
+                    elif hasattr(xgo, "rider_height"):
+                        xgo.rider_height(height_raw)  # type: ignore[attr-defined]
+                    publish_event("height", {"rid": data.get("rid"), "height_cm": height_cm, "height_raw": height_raw})
+                except Exception as e:
+                    print(f"[bridge] height error: {e}", flush=True)
+                    publish_event("height_error", {"rid": data.get("rid"), "error": str(e)})
             continue
 
         # STARE: zgodność wstecz
