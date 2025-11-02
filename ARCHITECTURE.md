@@ -39,6 +39,16 @@
   - Integracja z interfejsem webowym w `control.html`.
   - Zobacz: `docs/modules/navigator.md`
 
+### 4a) Odometry (Position Tracking)
+
+- **Odometry** — moduł śledzenia pozycji robota w `apps/odometry/*`.
+  - Tryb „Rekonesans" (Stage 2): estymacja pozycji (x, y, theta) przez fuzję danych.
+  - Subskrybuje `motion` (komendy ruchu) i `imu.data` (czujnik orientacji).
+  - Publikuje `robot.pose` (estymowana pozycja i orientacja).
+  - Wykorzystuje dead reckoning z komend ruchu oraz korekcję IMU dla orientacji.
+  - Krytyczny komponent dla przyszłych etapów: mapowanie (Stage 3) i powrót do bazy (Stage 4).
+  - Zobacz: `docs/modules/odometry.md`
+
 ### 5) Głos / Chat
 
 - **Voice** — modułowa architektura głosowa w `apps/voice/` obsługująca dwa tryby pracy:
@@ -98,13 +108,15 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 
 **BUS (ZMQ)** — kanały przykładowe:
 
-- `motion.move`, `motion.stop`, `motion.state`
+- `motion` (`motion.move`, `motion.stop`), `motion.state`
 - `vision.face`, `vision.person`, `vision.motion`, `vision.obstacle`
 - `voice.state`, `voice.kws`, `voice.vad`
 - `face.state`, `face.render`
 - `events.sentiment`, `events.nlu.emotion` — zdarzenia dla choreografa
 - `command.face.expression` — komendy do twarzy z choreografa
-- `navigator.control`, `navigator.state` — autonomiczna nawigacja (Rekonesans)
+- `navigator.control`, `navigator.state` — autonomiczna nawigacja (Rekonesans Stage 1)
+- `robot.pose` — estymowana pozycja robota (x, y, theta) z modułu odometrii (Rekonesans Stage 2)
+- `imu.data` — surowe dane z czujnika IMU (roll, pitch, yaw) publikowane przez motion bridge
 
 ---
 
