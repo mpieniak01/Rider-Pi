@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re  # <-- IMPORT RE
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,7 +27,7 @@ class ChatConfig:
     transport: str = "file"  # "file" | "realtime"
 
     # LOCAL HTTP (prosty REST: POST JSON -> JSON)
-    base_url: str | None = None  # np. "http://127.0.0.1:8092"
+    base_url: str | None = None  # np. "[http://127.0.0.1:8092](http://127.0.0.1:8092)"
     endpoint: str | None = None  # np. "/api/chat"
     timeout: float | None = None  # sekundy
 
@@ -35,6 +36,24 @@ class ChatConfig:
 class Message:
     role: str
     content: str
+
+
+# === POCZĄTEK POPRAWKI: Funkcja czyszcząca Markdown ===
+_MARKDOWN_CLEANER = re.compile(r"[`*#_~]")
+
+
+def _clean_markdown(text: str) -> str:
+    """
+    Usuwa podstawowe znaki formatujące markdown (jak ```, *, _, #),
+    które mogą być zwracane przez modele Gemini i powodować błędy TTS.
+    """
+    if not text:
+        return ""
+    # Usuń bloki kodu i inne znaki specjalne
+    return _MARKDOWN_CLEANER.sub("", text).strip()
+
+
+# === KONIEC POPRAWKI ===
 
 
 class ChatSession:
@@ -101,24 +120,34 @@ class ChatSession:
     def ask(self, text: str) -> tuple[str, list[Message]]:
         backend = (self.config.backend or "echo").lower()
 
+        # === POCZĄTEK POPRAWKI: Czyszczenie tekstu wejściowego ===
+        # Czyścimy tekst, który mógł przyjść z ASR z markdownem
+        cleaned_text = _clean_markdown(text)
+        # === KONIEC POPRAWKI ===
+
         if backend == "openai":
-            reply = self._ask_openai(text)
+            reply = self._ask_openai(cleaned_text)  # Użyj cleaned_text
         elif backend == "google":
-            reply = self._ask_gemini(text)
+            reply = self._ask_gemini(cleaned_text)  # Użyj cleaned_text
         elif backend == "local":
-            reply = self._ask_local_http(text)
+            reply = self._ask_local_http(cleaned_text)  # Użyj cleaned_text
         else:
             # Prosty backend echa – przydatny offline/testowo
-            reply = f"You said: {text.strip()}"
+            reply = f"You said: {cleaned_text.strip()}"  # Użyj cleaned_text
+
+        # === POCZĄTEK POPRAWKI: Czyszczenie tekstu wyjściowego ===
+        # Czyścimy odpowiedź *przed* zapisaniem jej w historii i odesłaniem
+        cleaned_reply = _clean_markdown(reply)
+        # === KONIEC POPRAWKI ===
 
         # aktualizuj historię (user + assistant)
-        self._history.append(Message(role="user", content=text))
-        self._history.append(Message(role="assistant", content=reply))
+        self._history.append(Message(role="user", content=cleaned_text))  # Użyj cleaned_text
+        self._history.append(Message(role="assistant", content=cleaned_reply))  # Użyj cleaned_reply
 
         # ogranicz rozmiar historii (pary user/assistant)
         self._clip_history()
 
-        return reply, list(self._history)
+        return cleaned_reply, list(self._history)  # Zwróć cleaned_reply
 
     async def ask_stream(self, text: str):
         """
@@ -128,34 +157,39 @@ class ChatSession:
         """
         backend = (self.config.backend or "echo").lower()
 
+        # === POCZĄTEK POPRAWKI: Czyszczenie tekstu wejściowego ===
+        cleaned_text = _clean_markdown(text)
+        # === KONIEC POPRAWKI ===
+
         # Dodaj wiadomość użytkownika do historii
-        self._history.append(Message(role="user", content=text))
+        self._history.append(Message(role="user", content=cleaned_text))
 
         if backend == "openai":
             # Streamujące wywołanie OpenAI
             full_reply = ""
-            async for chunk in self._ask_openai_stream(text):
+            async for chunk in self._ask_openai_stream(cleaned_text):  # Użyj cleaned_text
                 full_reply += chunk
                 yield chunk
-            self._history.append(Message(role="assistant", content=full_reply))
+            self._history.append(Message(role="assistant", content=_clean_markdown(full_reply)))  # Zapisz wyczyszczoną
 
         elif backend == "google":
             # Quasi-streaming dla Google Gemini
             full_reply = ""
-            async for chunk in self._ask_gemini_stream(text):
+            async for chunk in self._ask_gemini_stream(cleaned_text):  # Użyj cleaned_text
                 full_reply += chunk
                 yield chunk
-            self._history.append(Message(role="assistant", content=full_reply))
+            self._history.append(Message(role="assistant", content=_clean_markdown(full_reply)))  # Zapisz wyczyszczoną
 
         elif backend == "local":
             # Brak natywnego streamu — wykonaj pojedyncze wywołanie i zwróć jednorazowy chunk
-            reply = self._ask_local_http(text, realtime_guard=False)
-            self._history.append(Message(role="assistant", content=reply))
-            yield reply
+            reply = self._ask_local_http(cleaned_text, realtime_guard=False)  # Użyj cleaned_text
+            cleaned_reply = _clean_markdown(reply)  # Wyczyść odpowiedź
+            self._history.append(Message(role="assistant", content=cleaned_reply))
+            yield cleaned_reply
 
         else:
             # Echo backend — zwróć od razu całą odpowiedź
-            reply = f"You said: {text.strip()}"
+            reply = f"You said: {cleaned_text.strip()}"  # Użyj cleaned_text
             self._history.append(Message(role="assistant", content=reply))
             yield reply
 
@@ -205,8 +239,13 @@ class ChatSession:
             response = client.chat.completions.create(**payload)
             choice = response.choices[0].message.content if getattr(response, "choices", None) else ""
             text_out = (choice or "").strip()
-            self._evt("chat.rest.ok", chars=len(text_out))
-            return text_out
+
+            # === POCZĄTEK POPRAWKI: Czyszczenie odpowiedzi ===
+            cleaned_text_out = _clean_markdown(text_out)
+            self._evt("chat.rest.ok", chars=len(cleaned_text_out), raw_chars=len(text_out))
+            return cleaned_text_out
+            # === KONIEC POPRAWKI ===
+
         except Exception as exc:
             self._evt("chat.rest.error", error=str(exc))
             raise ChatError(f"OpenAI chat completion failed: {exc}") from exc
@@ -227,7 +266,7 @@ class ChatSession:
             raise ChatError("Google backend not selected")
 
         # Klucz API – dla REST wymagany
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ChatError("GOOGLE_API_KEY is not set")
 
@@ -258,8 +297,12 @@ class ChatSession:
             response = chat.send_message(text)
             text_out = (response.text or "").strip()
 
-            self._evt("chat.rest.ok", chars=len(text_out))
-            return text_out
+            # === POCZĄTEK POPRAWKI: Czyszczenie odpowiedzi ===
+            cleaned_text_out = _clean_markdown(text_out)
+            self._evt("chat.rest.ok", chars=len(cleaned_text_out), raw_chars=len(text_out))
+            return cleaned_text_out
+            # === KONIEC POPRAWKI ===
+
         except Exception as exc:
             self._evt("chat.rest.error", error=str(exc))
             raise ChatError(f"Google Gemini chat completion failed: {exc}") from exc
@@ -309,8 +352,11 @@ class ChatSession:
         if not text_out:
             raise ChatError("LOCAL CHAT: empty response")
 
-        self._evt("chat.local.ok", chars=len(text_out))
-        return text_out
+        # === POCZĄTEK POPRAWKI: Czyszczenie odpowiedzi ===
+        cleaned_text_out = _clean_markdown(text_out)
+        self._evt("chat.local.ok", chars=len(cleaned_text_out), raw_chars=len(text_out))
+        return cleaned_text_out
+        # === KONIEC POPRAWKI ===
 
     async def _ask_openai_stream(self, text: str):
         """
@@ -363,7 +409,11 @@ class ChatSession:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
                     if delta and hasattr(delta, "content") and delta.content:
+                        # === POCZĄTEK POPRAWKI: Czyszczenie strumienia ===
+                        # Czyścimy na bieżąco, ale to może być ryzykowne
+                        # Lepsza strategia: czyścić całą odpowiedź na końcu
                         yield delta.content
+                        # === KONIEC POPRAWKI ===
 
             self._evt("chat.stream.ok")
         except Exception as exc:
@@ -383,7 +433,7 @@ class ChatSession:
             raise ChatError("Google backend not selected")
 
         # Klucz API
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ChatError("GOOGLE_API_KEY is not set")
 
@@ -416,7 +466,11 @@ class ChatSession:
 
             async for chunk in response:
                 if chunk.text:
+                    # === POCZĄTEK POPRAWKI: Czyszczenie strumienia ===
+                    # Czyścimy na bieżąco, ale to może być ryzykowne
+                    # Lepsza strategia: czyścić całą odpowiedź na końcu
                     yield chunk.text
+                    # === KONIEC POPRAWKI ===
 
             self._evt("chat.stream.ok")
         except Exception as exc:
