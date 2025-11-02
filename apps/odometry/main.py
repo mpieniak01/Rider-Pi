@@ -40,11 +40,7 @@ LOG = logging.getLogger("odometry")
 
 def normalize_angle(angle: float) -> float:
     """Normalize angle to [-pi, pi] range"""
-    while angle > math.pi:
-        angle -= 2.0 * math.pi
-    while angle < -math.pi:
-        angle += 2.0 * math.pi
-    return angle
+    return ((angle + math.pi) % (2.0 * math.pi)) - math.pi
 
 
 class OdometryEstimator:

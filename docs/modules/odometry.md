@@ -114,7 +114,7 @@ Estymowana pozycja i orientacja robota w globalnym układzie współrzędnych.
 
 ### Model Ruchu
 
-| Zmiећања | Domyślnie | Opis |
+| Zmienna | Domyślnie | Opis |
 |---------|-----------|------|
 | `ODOMETRY_LINEAR_SPEED_SCALE` | `0.2` | Skala prędkości liniowej: m/s na jednostkę prędkości znormalizowanej (0-1) |
 | `ODOMETRY_ANGULAR_SPEED_SCALE` | `1.0` | Skala prędkości kątowej: rad/s na jednostkę prędkości znormalizowanej (0-1) |
