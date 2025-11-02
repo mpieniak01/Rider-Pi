@@ -11,10 +11,16 @@ This document provides a mapping of all systemd service files to the scripts the
 | **rider-boot-prepare.service** | ✓ Valid | `/home/pi/robot/scripts/sys_boot-prepare.sh` | Script in `scripts/` |
 | **rider-broker.service** | ✓ Valid | `/usr/bin/python3 -u services/broker.py` | Python script in `services/` |
 | **rider-cam-preview.service** | ✓ Valid | `/usr/bin/python3 apps/camera/preview_lcd.py` | Python script in `apps/` |
+| **rider-choreographer.service** | ✓ Valid | `/usr/bin/python3 -u -m apps.choreographer.main` | Emotion and sentiment choreography service |
 | **rider-edge-preview.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/edge_preview.py` | Python script in `apps/` |
 | **rider-face.service** | ✓ Fixed | `/usr/bin/python3 /home/pi/robot/scripts/dev_face-lcd-direct.py` | **Updated from** `/workspaces/Rider-Pi/tools/` |
+| **rider-google-bridge.service** | ✓ Valid | `/usr/bin/python3 -u -m apps.google_bridge.main` | Python module in `apps/` |
+| **rider-mapper.service** | ✓ Valid | `/usr/bin/python3 /home/pi/robot/apps/mapper/main.py` | **Rekonesans Stage 3**: SLAM mapping service |
 | **rider-motion-bridge.service** | ✓ Valid | `/usr/bin/python3 -u -m services.motion_bridge` | Python module in `services/` |
 | **rider-obstacle.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/obstacle_roi.py` | Python script in `apps/` |
+| **rider-odometry.service** | ✓ Valid | `/usr/bin/python3 -u -m apps.odometry.main` | **Rekonesans Stage 2**: Position tracking service |
+| **rider-tracker.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/tracker.py` | Vision tracking service |
+| **rider-tracking-controller.service** | ✓ Valid | `/usr/bin/python3 -u apps/motion/tracking_controller.py` | Motion tracking controller |
 | **rider-post-splash.service** | ✓ Fixed | `/usr/bin/python3 scripts/sys_splash-info.py` | **Updated from** `ops/splash_device_info.py` |
 | **rider-ssd-preview.service** | ✓ Valid | `/usr/bin/python3 -u apps/camera/preview_lcd_ssd.py` | Python script in `apps/` |
 | **rider-vision.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/dispatcher.py` | Python script in `apps/` |
@@ -220,7 +226,34 @@ Any PR that modifies service files or referenced scripts will be validated autom
 
 This ensures that any PR that modifies service files or referenced scripts will be validated automatically.
 
+## Notes on Rekonesans (Autonomous Navigation) Services
+
+### Navigator Service
+**Note:** There is currently **no dedicated `rider-navigator.service`**. The navigator module (`apps/navigator/main.py`) is designed to be controlled via the API (`/api/navigator/*` endpoints) and does not run as a persistent background service. It can be started on-demand through the web interface or API calls.
+
+If a persistent navigator service is needed, it can be created similar to the odometry and mapper services.
+
+### Service Dependencies (Rekonesans Epic)
+The autonomous navigation (Rekonesans) feature spans multiple services:
+
+1. **rider-odometry.service** (Stage 2) - Position tracking
+   - Depends on: `rider-broker.service`, `rider-motion-bridge.service`
+   - Publishes: `robot.pose` (position and orientation)
+
+2. **rider-mapper.service** (Stage 3) - SLAM mapping
+   - Depends on: `rider-broker.service`, `rider-odometry.service`
+   - Subscribes: `robot.pose`, `vision.obstacle.data`
+   - Publishes: `mapper.map.data` (occupancy grid)
+
+3. **Navigator** (Stages 1 & 4) - Exploration and path planning
+   - Controlled via API: `/api/navigator/*`
+   - Subscribes: `vision.obstacle`, `robot.pose`, `mapper.map.data`
+   - Publishes: `navigator.state`, `motion` commands
+
+### Vision Depth Bridge
+The `apps/vision/depth_bridge.py` module provides obstacle distance estimation for mapping. It does not have a dedicated systemd service but can be integrated into the vision pipeline as needed.
+
 ---
 
-**Last updated:** 2025-10-14  
-**Related PR:** Fix systemd services after file renames/move to `scripts/`
+**Last updated:** 2025-11-02  
+**Related PR:** Fix systemd services after file renames/move to `scripts/` + Documentation audit (PR #199)
