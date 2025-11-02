@@ -80,7 +80,11 @@ def api_balance():
     try:
         enabled = bool(data.get("enabled", False))
     except Exception:
-        return Response('{"ok": false, "error": "invalid enabled value"}', mimetype="application/json", status=400)
+        return Response(
+            json.dumps({"ok": False, "error": "invalid enabled value"}),
+            mimetype="application/json",
+            status=400,
+        )
 
     C.bus_pub(TOPIC_MOTION_BALANCE, {"enabled": enabled, "ts": time.time()})
     resp = Response(
@@ -106,7 +110,11 @@ def api_height():
         # Clamp to safe range (0-12 cm as per issue requirements)
         height = max(0, min(12, height))
     except Exception:
-        return Response('{"ok": false, "error": "invalid height value"}', mimetype="application/json", status=400)
+        return Response(
+            json.dumps({"ok": False, "error": "invalid height value"}),
+            mimetype="application/json",
+            status=400,
+        )
 
     C.bus_pub(TOPIC_MOTION_HEIGHT, {"height": height, "ts": time.time()})
     resp = Response(

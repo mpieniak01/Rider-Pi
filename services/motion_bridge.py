@@ -724,7 +724,15 @@ while _running:
 
         # Height/suspension control
         if topic == "cmd.height":
-            height_cm = int(data.get("height", 0))
+            try:
+                height_cm = int(data.get("height", 0))
+            except (ValueError, TypeError) as e:
+                print(f"[bridge] invalid height value: {data.get('height')}, error: {e}", flush=True)
+                publish_event(
+                    "height_error",
+                    {"rid": data.get("rid"), "error": f"invalid height: {data.get('height')}"},
+                )
+                continue
             # Clamp to safe range and map to adapter range (70-115)
             # Input: 0-12 cm, Output: 70-115 (adapter internal range)
             height_cm = max(0, min(12, height_cm))
