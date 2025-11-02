@@ -45,8 +45,10 @@ class TrackingController:
         try:
             imu_on = _env_int("RIDER_IMU", 1)
             self.xgo.set_stabilization(bool(imu_on))
-        except Exception:
-            pass
+        except AttributeError as e:
+            print(f"[tracking] stabilization not available: {e}", flush=True)
+        except Exception as e:
+            print(f"[tracking] stabilization setup error: {e}", flush=True)
 
     def on_tracking_offset(self, offset_x: float, mode: str) -> None:
         """

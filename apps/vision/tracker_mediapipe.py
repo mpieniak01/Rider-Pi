@@ -132,7 +132,8 @@ def open_camera():
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
         return read
-    except Exception:
+    except (ImportError, RuntimeError) as e:
+        print(f"[tracker] PiCamera2 not available, using cv2.VideoCapture: {e}", flush=True)
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
@@ -245,8 +246,14 @@ def tracking_loop() -> None:
             print(f"[tracker] tracking_loop err: {e}", flush=True)
             time.sleep(0.1)
 
-    face_detector.close()
-    hand_detector.close()
+    # Clean up detectors
+    try:
+        if hasattr(face_detector, "close"):
+            face_detector.close()
+        if hasattr(hand_detector, "close"):
+            hand_detector.close()
+    except Exception as e:
+        print(f"[tracker] detector cleanup warning: {e}", flush=True)
 
 
 if __name__ == "__main__":

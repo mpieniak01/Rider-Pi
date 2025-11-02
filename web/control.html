@@ -288,8 +288,22 @@
     }
   }
 
-  followFaceToggle.addEventListener('change', ()=>{try{sendFollowFace(followFaceToggle.checked);}catch{}});
-  followHandToggle.addEventListener('change', ()=>{try{sendFollowHand(followHandToggle.checked);}catch{}});
+  followFaceToggle.addEventListener('change', ()=>{
+    try{
+      sendFollowFace(followFaceToggle.checked);
+    }catch(e){
+      console.error('Follow face toggle error:', e);
+      appendLog(`follow face toggle error: ${e.message}`, 'err');
+    }
+  });
+  followHandToggle.addEventListener('change', ()=>{
+    try{
+      sendFollowHand(followHandToggle.checked);
+    }catch(e){
+      console.error('Follow hand toggle error:', e);
+      appendLog(`follow hand toggle error: ${e.message}`, 'err');
+    }
+  });
 
   const pressed = new Set(); const isArrow = k => ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k);
   window.addEventListener('keydown', ev=>{ try{
