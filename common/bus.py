@@ -22,6 +22,10 @@ TOPIC_VISION_FOLLOW_FACE_SET = "vision.follow.face.set"  # Enable face tracking
 TOPIC_VISION_FOLLOW_HAND_SET = "vision.follow.hand.set"  # Enable hand tracking
 TOPIC_VISION_FOLLOW_STOP = "vision.follow.stop"  # Disable all tracking
 
+# Topic constants for navigator (Rekonesans mode)
+TOPIC_NAVIGATOR_STATE = "navigator.state"  # Navigator state updates
+TOPIC_VISION_OBSTACLE = "vision.obstacle"  # Obstacle detection from vision
+
 
 def now_ts() -> float:
     return time.time()
