@@ -139,10 +139,11 @@ def open_camera():
         return cap.read
 
 
-def calculate_offset_x(detections: list) -> float | None:
+def calculate_offset_x(detections: list, frame_width: float | None = None) -> float | None:
     """
     Calculate horizontal offset from center.
     Returns offset_x in range [-1.0, 1.0], or None if no detection.
+    frame_width can be provided when detections use absolute pixel coordinates.
     -1.0 = far left, 0.0 = center, +1.0 = far right
     """
     if not detections:
@@ -158,9 +159,13 @@ def calculate_offset_x(detections: list) -> float | None:
     ):
         bbox = det.location_data.relative_bounding_box
         center_x = bbox.xmin + bbox.width / 2.0
+        if frame_width is not None and center_x > 1.0:
+            center_x /= frame_width
     # For hand detection, use landmark (wrist = landmark 0)
     elif hasattr(det, "landmark"):
         center_x = det.landmark[0].x
+        if frame_width is not None and center_x > 1.0:
+            center_x /= frame_width
     else:
         return None
 
