@@ -29,6 +29,7 @@ COOLDOWN_AFTER_AVOID = float(os.getenv("NAVIGATOR_COOLDOWN", "1.0"))
 TOPIC_VISION_OBSTACLE = "vision.obstacle"
 TOPIC_MOTION = "motion"
 TOPIC_NAVIGATOR_STATE = "navigator.state"
+TOPIC_NAVIGATOR_CONTROL = "navigator.control"
 
 LOG = logging.getLogger("navigator")
 
@@ -58,13 +59,18 @@ class Navigator:
         self.active = False
 
         # Bus connections
-        self.sub = BusSub(TOPIC_VISION_OBSTACLE)
+        self.sub_obstacle = BusSub(TOPIC_VISION_OBSTACLE)
+        self.sub_control = BusSub(TOPIC_NAVIGATOR_CONTROL)
         self.pub = BusPub()
 
         # State tracking
         self.last_obstacle_ts = 0.0
         self.last_avoid_ts = 0.0
         self.obstacle_present = False
+
+        # Configuration
+        self.fwd_speed = FWD_SPEED
+        self.turn_speed = TURN_SPEED
 
         LOG.info(f"Navigator initialized with strategy: {self.strategy.value}")
 
@@ -122,7 +128,7 @@ class Navigator:
             if self.state != NavigatorState.EXPLORING:
                 self.state = NavigatorState.EXPLORING
                 LOG.info("Obstacle cleared - resuming exploration")
-            self._send_motion_drive(FWD_SPEED)
+            self._send_motion_drive(self.fwd_speed)
             self._publish_state()
             return
 
@@ -154,13 +160,51 @@ class Navigator:
 
         # Turn right (could be randomized or based on sensor data)
         LOG.info("AVOID strategy: turning to avoid obstacle")
-        self._send_motion_drive(0.0, -TURN_SPEED)  # Turn right
+        self._send_motion_drive(0.0, -self.turn_speed)  # Turn right
 
         # Schedule return to forward motion after turn
         # Note: In a production system, this would be managed by a state machine
         # with proper timing. For now, we rely on the motion system's impulse duration.
 
         self._publish_state()
+
+    def _handle_control_command(self, cmd: dict):
+        """Handle control commands from API"""
+        action = cmd.get("action", "").lower()
+
+        if action == "start":
+            strategy_str = cmd.get("strategy", "STOP")
+            try:
+                strategy = Strategy[strategy_str.upper()]
+                self.set_strategy(strategy)
+            except KeyError:
+                LOG.warning(f"Invalid strategy in start command: {strategy_str}")
+            self.start()
+
+        elif action == "stop":
+            self.stop()
+
+        elif action == "config":
+            config = cmd.get("config", {})
+            if "strategy" in config:
+                try:
+                    strategy = Strategy[config["strategy"].upper()]
+                    self.set_strategy(strategy)
+                except KeyError:
+                    LOG.warning(f"Invalid strategy in config: {config['strategy']}")
+
+            if "fwd_speed" in config:
+                self.fwd_speed = float(config["fwd_speed"])
+                LOG.info(f"Forward speed set to: {self.fwd_speed}")
+
+            if "turn_speed" in config:
+                self.turn_speed = float(config["turn_speed"])
+                LOG.info(f"Turn speed set to: {self.turn_speed}")
+
+            self._publish_state()
+
+        else:
+            LOG.warning(f"Unknown control action: {action}")
 
     def _publish_state(self):
         """Publish navigator state to bus"""
@@ -181,15 +225,17 @@ class Navigator:
         try:
             while True:
                 # Receive obstacle events from vision
-                topic, payload = self.sub.recv(timeout_ms=100)
+                topic, payload = self.sub_obstacle.recv(timeout_ms=50)
+                if topic and payload and topic == TOPIC_VISION_OBSTACLE:
+                    present = payload.get("present", False)
+                    confidence = payload.get("confidence", 0.0)
+                    if self.active:
+                        self._handle_obstacle(present, confidence)
 
-                if topic and payload:
-                    if topic == TOPIC_VISION_OBSTACLE:
-                        present = payload.get("present", False)
-                        confidence = payload.get("confidence", 0.0)
-
-                        if self.active:
-                            self._handle_obstacle(present, confidence)
+                # Receive control commands from API
+                topic, payload = self.sub_control.recv(timeout_ms=50)
+                if topic and payload and topic == TOPIC_NAVIGATOR_CONTROL:
+                    self._handle_control_command(payload)
 
                 # Publish state periodically
                 self._publish_state()
@@ -202,7 +248,8 @@ class Navigator:
             LOG.exception(f"Error in navigator loop: {e}")
         finally:
             self.stop()
-            self.sub.close()
+            self.sub_obstacle.close()
+            self.sub_control.close()
             self.pub.close()
             LOG.info("Navigator shutdown complete")
 

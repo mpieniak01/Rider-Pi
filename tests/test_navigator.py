@@ -21,10 +21,20 @@ class TestNavigator(unittest.TestCase):
         self.mock_sub = self.bus_sub_patch.start()
         self.mock_pub = self.bus_pub_patch.start()
 
-        # Create mock instances
-        self.mock_sub_instance = MagicMock()
+        # Create mock instances for multiple subscriptions
+        self.mock_sub_obstacle = MagicMock()
+        self.mock_sub_control = MagicMock()
         self.mock_pub_instance = MagicMock()
-        self.mock_sub.return_value = self.mock_sub_instance
+
+        # Return different instances for different topics
+        def sub_side_effect(topic):
+            if topic == "vision.obstacle":
+                return self.mock_sub_obstacle
+            elif topic == "navigator.control":
+                return self.mock_sub_control
+            return MagicMock()
+
+        self.mock_sub.side_effect = sub_side_effect
         self.mock_pub.return_value = self.mock_pub_instance
 
     def tearDown(self):

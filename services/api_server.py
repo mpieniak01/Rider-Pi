@@ -31,6 +31,7 @@ import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
 import services.api_core.google_home_api as google_home_api
 import services.api_core.google_proxy as google_proxy
+import services.api_core.navigator_api as navigator_api
 import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
@@ -162,6 +163,12 @@ _add_rule("/api/cmd", view_func=control_proxy.control_proxy_handler, methods=["P
 # control API - balance and height
 _add_rule("/api/control/balance", view_func=control_api.api_balance, methods=["POST", "OPTIONS"])
 _add_rule("/api/control/height", view_func=control_api.api_height, methods=["POST", "OPTIONS"])
+
+# navigator API (Rekonesans mode)
+_add_rule("/api/navigator/start", view_func=navigator_api.api_navigator_start, methods=["POST", "OPTIONS"])
+_add_rule("/api/navigator/stop", view_func=navigator_api.api_navigator_stop, methods=["POST", "OPTIONS"])
+_add_rule("/api/navigator/config", view_func=navigator_api.api_navigator_config, methods=["POST", "OPTIONS"])
+_add_rule("/api/navigator/status", view_func=navigator_api.api_navigator_status, methods=["GET", "OPTIONS"])
 
 # voice proxy (zdalne/istniejące)
 _add_rule("/api/voice/capture", view_func=voice_proxy.capture_handler, methods=["POST", "OPTIONS"])
