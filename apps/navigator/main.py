@@ -85,6 +85,7 @@ class Navigator:
         self.active = True
         self.state = NavigatorState.EXPLORING
         LOG.info("Navigator started - beginning exploration")
+        self._send_motion_drive(self.fwd_speed)
         self.state_changed = True
         self._publish_state()
 
