@@ -157,6 +157,7 @@ class TestNavigator(unittest.TestCase):
         nav = Navigator(strategy=Strategy.AVOID)
         nav.active = True
         nav.state = NavigatorState.EXPLORING
+        nav.state_changed = True  # Mark state as changed
 
         nav._publish_state()
 
@@ -198,6 +199,44 @@ class TestNavigator(unittest.TestCase):
 
         # Timestamps should be the same (second call was in cooldown)
         self.assertEqual(first_avoid_ts, second_avoid_ts)
+
+    def test_state_publish_on_change_only(self):
+        """Test that state is only published when it changes"""
+        nav = Navigator(strategy=Strategy.STOP)
+        
+        # Clear any initial publish calls
+        self.mock_pub_instance.publish.reset_mock()
+        
+        # Call _publish_state without state change
+        nav.state_changed = False
+        nav._publish_state()
+        
+        # Should not publish
+        state_calls = [c for c in self.mock_pub_instance.publish.call_args_list if c[0][0] == "navigator.state"]
+        self.assertEqual(len(state_calls), 0)
+        
+        # Now mark state as changed
+        nav.state_changed = True
+        nav._publish_state()
+        
+        # Should publish
+        state_calls = [c for c in self.mock_pub_instance.publish.call_args_list if c[0][0] == "navigator.state"]
+        self.assertEqual(len(state_calls), 1)
+        
+    def test_state_publish_force_heartbeat(self):
+        """Test that force=True publishes even without state change"""
+        nav = Navigator(strategy=Strategy.STOP)
+        
+        # Clear any initial publish calls
+        self.mock_pub_instance.publish.reset_mock()
+        
+        # Call _publish_state with force=True
+        nav.state_changed = False
+        nav._publish_state(force=True)
+        
+        # Should publish even without state change
+        state_calls = [c for c in self.mock_pub_instance.publish.call_args_list if c[0][0] == "navigator.state"]
+        self.assertEqual(len(state_calls), 1)
 
 
 if __name__ == "__main__":
