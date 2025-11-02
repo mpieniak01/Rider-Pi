@@ -28,9 +28,10 @@ The mapper consists of two main classes:
 **Subscribed Topics:**
 - `robot.pose` - Robot position and orientation from odometry (Stage 2)
 - `vision.obstacle.data` - Obstacle detections with distance from vision
+- `navigator.map.request` - **NEW in Stage 4**: Map data requests from navigator
 
 **Published Topics:**
-- None (currently stores map in-memory; future stages may publish/save map)
+- `mapper.map.data` - **NEW in Stage 4**: Occupancy grid map published on request
 
 ## Occupancy Grid
 
@@ -174,9 +175,34 @@ Provides robot position (x, y, theta) on `robot.pose` topic
 ### Stage 3: Mapper (This Module)
 Consumes odometry and vision data to build occupancy grid
 
-### Future Stages
-- **Stage 4**: Path planning using the occupancy grid
-- **Stage 5**: Return-to-base navigation
+### Stage 4: Return to Home (NEW)
+**Mapper now provides map data to navigator for path planning:**
+- Navigator requests map via `navigator.map.request` topic
+- Mapper responds with occupancy grid on `mapper.map.data` topic
+- Navigator uses map for A* pathfinding to return to start position
+
+## Map Data Format (Stage 4)
+
+When navigator requests the map, mapper publishes the following data structure:
+
+```json
+{
+  "grid": [[0, 0, 127, ...], ...],  // 2D array of cell values
+  "width_cells": 200,                // Grid width in cells
+  "height_cells": 200,               // Grid height in cells
+  "resolution_m": 0.05,              // Cell size in meters
+  "origin_x": 5.0,                   // Map origin X offset
+  "origin_y": 5.0,                   // Map origin Y offset
+  "width_m": 10.0,                   // Total map width
+  "height_m": 10.0,                  // Total map height
+  "ts": 1234567890.123               // Timestamp
+}
+```
+
+**Cell Values:**
+- `0` - Free space (traversable)
+- `127` - Unknown (can be traversed if configured)
+- `255` - Occupied (obstacle, not traversable)
 
 ## Design Inspiration
 
@@ -187,16 +213,21 @@ The occupancy grid structure is inspired by `sim/world.py` but implemented for d
 ## Limitations and Future Work
 
 **Current Limitations:**
-- Map is in-memory only (not persisted)
-- No map publishing to other modules
+- Map is in-memory only (not persisted to disk)
 - No probabilistic occupancy (cells are binary: occupied or free)
 - Fixed map size (no dynamic expansion)
+- No loop closure detection
+
+**Stage 4 Enhancements (IMPLEMENTED):**
+- ✅ Map publishing on request for path planning
+- ✅ Integration with navigator for return-to-home
 
 **Future Enhancements:**
 - Save/load map to/from disk
-- Publish map updates on bus for visualization
+- Publish map updates on bus for real-time visualization
 - Probabilistic occupancy grid (0-100% confidence)
 - Dynamic map expansion as robot explores
+- Loop closure detection for improved accuracy
 - Map merging for multi-robot scenarios
 - Integration with localization (full SLAM)
 

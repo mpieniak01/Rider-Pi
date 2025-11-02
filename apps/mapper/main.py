@@ -23,7 +23,14 @@ import time
 import numpy as np
 import zmq
 
-from common.bus import TOPIC_ROBOT_POSE, TOPIC_VISION_OBSTACLE_DATA, BusSub
+from common.bus import (
+    TOPIC_MAPPER_MAP_DATA,
+    TOPIC_NAVIGATOR_MAP_REQUEST,
+    TOPIC_ROBOT_POSE,
+    TOPIC_VISION_OBSTACLE_DATA,
+    BusPub,
+    BusSub,
+)
 
 # Environment configuration
 LOG_LEVEL = os.getenv("MAPPER_LOG_LEVEL", "INFO").upper()
@@ -164,6 +171,8 @@ class Mapper:
         # Bus connections
         self.sub_pose = BusSub(TOPIC_ROBOT_POSE)
         self.sub_obstacles = BusSub(TOPIC_VISION_OBSTACLE_DATA)
+        self.sub_map_request = BusSub(TOPIC_NAVIGATOR_MAP_REQUEST)
+        self.pub = BusPub()
 
         # Current robot pose
         self.robot_x = ROBOT_INIT_X
@@ -234,6 +243,31 @@ class Mapper:
 
         self.obstacles_processed += valid_obstacles
 
+    def _handle_map_request(self, payload: dict):
+        """
+        Handle map data request from navigator.
+
+        Publishes current occupancy grid data to the bus.
+        """
+        LOG.info("Received map request from navigator")
+
+        # Prepare map data for transmission
+        map_data = {
+            "grid": self.grid.grid.tolist(),  # Convert numpy array to list for JSON serialization
+            "width_cells": self.grid.width_cells,
+            "height_cells": self.grid.height_cells,
+            "resolution_m": self.grid.resolution_m,
+            "origin_x": self.grid.origin_x,
+            "origin_y": self.grid.origin_y,
+            "width_m": self.grid.width_m,
+            "height_m": self.grid.height_m,
+            "ts": time.time(),
+        }
+
+        # Publish map data
+        self.pub.publish(TOPIC_MAPPER_MAP_DATA, map_data, add_ts=True)
+        LOG.info(f"Published map data: {self.grid.width_cells}x{self.grid.height_cells} cells")
+
     def _print_statistics(self):
         """Print mapping statistics periodically"""
         stats = self.grid.get_occupancy_info()
@@ -254,6 +288,7 @@ class Mapper:
         poller = zmq.Poller()
         poller.register(self.sub_pose.sock, zmq.POLLIN)
         poller.register(self.sub_obstacles.sock, zmq.POLLIN)
+        poller.register(self.sub_map_request.sock, zmq.POLLIN)
 
         try:
             while True:
@@ -272,6 +307,12 @@ class Mapper:
                     if topic and payload and topic == TOPIC_VISION_OBSTACLE_DATA:
                         self._handle_obstacle_data(payload)
 
+                # Check for map requests
+                if self.sub_map_request.sock in socks:
+                    topic, payload = self.sub_map_request.recv(timeout_ms=0)
+                    if topic and payload and topic == TOPIC_NAVIGATOR_MAP_REQUEST:
+                        self._handle_map_request(payload)
+
                 # Print statistics periodically
                 now = time.time()
                 if now - self.last_stats_print_ts >= STATS_INTERVAL:
@@ -288,6 +329,8 @@ class Mapper:
         finally:
             self.sub_pose.close()
             self.sub_obstacles.close()
+            self.sub_map_request.close()
+            self.pub.close()
             LOG.info("Mapper shutdown complete")
             self._print_statistics()  # Final statistics
 

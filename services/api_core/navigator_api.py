@@ -10,6 +10,8 @@ import time
 
 from flask import Response, request
 
+from common.bus import TOPIC_NAVIGATOR_RETURN_HOME_START
+
 from . import compat as C
 
 # Navigator topics
@@ -137,6 +139,26 @@ def api_navigator_status():
                 "topic": TOPIC_NAVIGATOR_STATE,
             }
         ),
+        mimetype="application/json",
+    )
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
+def api_navigator_return_home():
+    """Start return to home sequence"""
+    if request.method == "OPTIONS":
+        resp = Response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
+        return resp
+
+    # Publish return to home command
+    C.bus_pub(TOPIC_NAVIGATOR_RETURN_HOME_START, {"action": "return_home"}, add_ts=True)
+
+    resp = Response(
+        json.dumps({"ok": True, "action": "return_home"}),
         mimetype="application/json",
     )
     resp.headers["Access-Control-Allow-Origin"] = "*"

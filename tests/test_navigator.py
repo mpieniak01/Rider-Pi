@@ -238,6 +238,66 @@ class TestNavigator(unittest.TestCase):
         state_calls = [c for c in self.mock_pub_instance.publish.call_args_list if c[0][0] == "navigator.state"]
         self.assertEqual(len(state_calls), 1)
 
+    def test_return_home_state_transition(self):
+        """Test transition to RETURNING_HOME state"""
+        nav = Navigator(strategy=Strategy.STOP)
+        nav.start()  # Start in exploring mode
+
+        # Trigger return to home
+        nav._handle_return_home_start({})
+
+        # Should transition to RETURNING_HOME state
+        self.assertEqual(nav.state, NavigatorState.RETURNING_HOME)
+        self.assertFalse(nav.active)  # No longer in autonomous exploration
+        self.assertTrue(nav.waiting_for_map)
+
+        # Should have published map request
+        calls = self.mock_pub_instance.publish.call_args_list
+        # Note: The actual topic is imported from bus, so we check for the publish call
+        self.assertGreater(len([c for c in calls if "map" in str(c).lower()]), 0)
+
+    def test_handle_robot_pose_update(self):
+        """Test updating robot pose from odometry"""
+        nav = Navigator()
+
+        pose_payload = {"x": 1.5, "y": 2.3, "theta": 0.785}  # ~45 degrees
+        nav._handle_robot_pose(pose_payload)
+
+        self.assertAlmostEqual(nav.current_pose[0], 1.5)
+        self.assertAlmostEqual(nav.current_pose[1], 2.3)
+        self.assertAlmostEqual(nav.current_pose[2], 0.785)
+
+    def test_path_following_waypoint_reached(self):
+        """Test path following removes waypoint when reached"""
+        nav = Navigator()
+        nav.state = NavigatorState.RETURNING_HOME
+        nav.current_pose = (1.0, 1.0, 0.0)
+        nav.current_path = [(1.05, 1.05), (2.0, 2.0)]  # First waypoint very close
+
+        nav._update_path_following()
+
+        # First waypoint should be removed since we're within tolerance
+        self.assertEqual(len(nav.current_path), 1)
+        self.assertEqual(nav.current_path[0], (2.0, 2.0))
+
+    def test_path_following_goal_reached(self):
+        """Test reaching final goal"""
+        nav = Navigator()
+        nav.state = NavigatorState.RETURNING_HOME
+        nav.goal_pose = (0.0, 0.0)
+        nav.current_pose = (0.05, 0.05, 0.0)  # Very close to goal
+        nav.current_path = []  # No more waypoints
+
+        nav._update_path_following()
+
+        # Should transition to IDLE
+        self.assertEqual(nav.state, NavigatorState.IDLE)
+
+        # Should send stop command
+        calls = self.mock_pub_instance.publish.call_args_list
+        motion_stop_calls = [c for c in calls if c[0][0] == "motion" and c[0][1].get("type") == "stop"]
+        self.assertGreater(len(motion_stop_calls), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

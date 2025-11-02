@@ -33,6 +33,11 @@ TOPIC_MOTION_COMMAND = "motion"  # Motion commands (used by navigator and manual
 
 # Topic constants for mapper (Stage 3 - SLAM mapping)
 TOPIC_VISION_OBSTACLE_DATA = "vision.obstacle.data"  # Obstacle data with distance (angle, distance pairs)
+TOPIC_NAVIGATOR_MAP_REQUEST = "navigator.map.request"  # Navigator requests map from mapper
+TOPIC_MAPPER_MAP_DATA = "mapper.map.data"  # Mapper publishes occupancy grid data
+
+# Topic constants for return to home (Stage 4 - Path planning)
+TOPIC_NAVIGATOR_RETURN_HOME_START = "navigator.return_home.start"  # Start return to home sequence
 
 
 def now_ts() -> float:
