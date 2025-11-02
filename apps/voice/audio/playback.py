@@ -206,7 +206,7 @@ def _iter_aplay_commands(cfg: PlaybackConfig, *, fmt: str | None):
         base = [path, "-q"]
         if dev:
             base += ["-D", dev]
-        
+
         # dobierz parametry
         if fmt == "pcm16":
             commands.append(base + params_pcm16)
@@ -438,4 +438,3 @@ def play_file(file_path: Path | str, config: PlaybackConfig, logger: voice_loggi
     except Exception as e:
         logger.event("playback.file.error", path=str(path), error=str(e))
         return False
-
