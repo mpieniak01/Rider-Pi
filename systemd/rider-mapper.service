@@ -1,0 +1,23 @@
+[Unit]
+Description=Rider-Pi Mapper Service (SLAM Occupancy Grid)
+After=rider-broker.service rider-odometry.service
+Wants=rider-broker.service rider-odometry.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/robot
+ExecStart=/usr/bin/python3 /home/pi/robot/apps/mapper/main.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables (optional overrides)
+Environment="MAPPER_LOG_LEVEL=INFO"
+Environment="MAPPER_MAP_WIDTH_M=10.0"
+Environment="MAPPER_MAP_HEIGHT_M=10.0"
+Environment="MAPPER_MAP_RESOLUTION_M=0.05"
+
+[Install]
+WantedBy=multi-user.target
