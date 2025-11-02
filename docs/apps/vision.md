@@ -47,6 +47,44 @@ Moduł `apps/vision` implementuje **detekcję obiektów** z kamery — wykrywani
 - Analizuje wybrany obszar obrazu
 - Wykrywa obecność obiektów (np. przeszkoda przed robotem)
 
+### depth_bridge.py (NEW - Rekonesans Stage 3)
+
+**Estymacja głębi dla mapowania SLAM:**
+- Monitoruje stan nawigatora (`navigator.state`)
+- Aktywuje się automatycznie w trybie Rekonesans
+- Konwertuje detekcje przeszkód na dane z dystansem
+- Publikuje `vision.obstacle.data` dla konsumpcji przez mapper
+
+**Tryb działania:**
+- **Simplified Heuristic** (obecnie): Estymacja dystansu na podstawie confidence i pozycji w obrazie
+- **Mono-Depth Estimation** (przyszłość): Model TFLite do estymacji głębi z pojedynczego obrazu
+
+**Topics:**
+- Subskrybuje: `navigator.state`, `vision.obstacle`
+- Publikuje: `vision.obstacle.data` (pary angle, distance)
+
+**Konfiguracja ENV:**
+```bash
+VISION_DEFAULT_OBSTACLE_DISTANCE=1.5  # Domyślny dystans przeszkody (m)
+VISION_MIN_OBSTACLE_DISTANCE=0.3      # Minimalny dystans (m)
+VISION_MAX_OBSTACLE_DISTANCE=3.0      # Maksymalny dystans (m)
+VISION_CAMERA_FOV_H=60.0              # Pole widzenia kamery (stopnie)
+```
+
+**Format danych vision.obstacle.data:**
+```json
+{
+  "obstacles": [
+    {"angle": -15.0, "distance": 1.2},  // kąt w stopniach, dystans w metrach
+    {"angle": 0.0, "distance": 1.5},
+    {"angle": 15.0, "distance": 1.8}
+  ],
+  "ts": 1234567890.123
+}
+```
+
+**Uwaga:** Obecna implementacja używa uproszczonej heurystyki. Dla dokładniejszego mapowania, planowane jest dodanie modelu mono-depth estimation (TFLite).
+
 ## Przepływ danych
 
 ```

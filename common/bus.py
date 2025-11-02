@@ -12,32 +12,97 @@ import zmq
 XPUB_ENDPOINT = os.getenv("BUS_XPUB", "tcp://127.0.0.1:5556")  # SUB łączy się TU
 XSUB_ENDPOINT = os.getenv("BUS_XSUB", "tcp://127.0.0.1:5555")  # PUB łączy się TU
 
+# ============================================================================
 # Topic constants for robot control
-TOPIC_MOTION_BALANCE = "cmd.balance"  # Balance/stabilization control
-TOPIC_MOTION_HEIGHT = "cmd.height"  # Height/suspension control
+# ============================================================================
 
+# Balance/stabilization control
+# Payload: {"enabled": bool, "ts": float}
+TOPIC_MOTION_BALANCE = "cmd.balance"
+
+# Height/suspension control  
+# Payload: {"height": int (0-255), "ts": float}
+TOPIC_MOTION_HEIGHT = "cmd.height"
+
+# ============================================================================
 # Topic constants for vision tracking (Follow Me feature)
-TOPIC_VISION_TRACKING_OFFSET = "vision.tracking.offset"  # Published offset for tracking
-TOPIC_VISION_FOLLOW_FACE_SET = "vision.follow.face.set"  # Enable face tracking
-TOPIC_VISION_FOLLOW_HAND_SET = "vision.follow.hand.set"  # Enable hand tracking
-TOPIC_VISION_FOLLOW_STOP = "vision.follow.stop"  # Disable all tracking
+# ============================================================================
 
-# Topic constants for navigator (Rekonesans mode)
-TOPIC_NAVIGATOR_STATE = "navigator.state"  # Navigator state updates
-TOPIC_VISION_OBSTACLE = "vision.obstacle"  # Obstacle detection from vision
+# Published offset for tracking target
+# Payload: {"offset_x": float, "offset_y": float, "ts": float}
+TOPIC_VISION_TRACKING_OFFSET = "vision.tracking.offset"
 
+# Enable face tracking mode
+# Payload: {"enabled": bool, "ts": float}
+TOPIC_VISION_FOLLOW_FACE_SET = "vision.follow.face.set"
+
+# Enable hand tracking mode  
+# Payload: {"enabled": bool, "ts": float}
+TOPIC_VISION_FOLLOW_HAND_SET = "vision.follow.hand.set"
+
+# Disable all tracking modes
+# Payload: {"ts": float}
+TOPIC_VISION_FOLLOW_STOP = "vision.follow.stop"
+
+# ============================================================================
+# Topic constants for navigator (Rekonesans mode - Autonomous exploration)
+# ============================================================================
+
+# Navigator state updates (published by navigator)
+# Payload: {"active": bool, "state": str, "strategy": str, "obstacle_present": bool, "ts": float}
+# States: "idle", "exploring", "avoiding", "stopped", "returning_home", "path_blocked"
+TOPIC_NAVIGATOR_STATE = "navigator.state"
+
+# Obstacle detection from vision (binary - obstacle present/absent)
+# Payload: {"type": "obstacle", "present": bool, "confidence": float, "edge_pct": float, "ts": float}
+TOPIC_VISION_OBSTACLE = "vision.obstacle"
+
+# ============================================================================
 # Topic constants for odometry (Stage 2 - Position tracking)
-TOPIC_ROBOT_POSE = "robot.pose"  # Estimated robot position (x, y, theta)
-TOPIC_IMU_DATA = "imu.data"  # Raw IMU data (roll, pitch, yaw)
-TOPIC_MOTION_COMMAND = "motion"  # Motion commands (used by navigator and manual control)
+# ============================================================================
 
+# Estimated robot position and orientation (published by odometry module)
+# Payload: {"x": float, "y": float, "theta": float, "theta_deg": float, "ts": float}
+# Coordinates: x, y in meters; theta in radians (0 = forward at start)
+TOPIC_ROBOT_POSE = "robot.pose"
+
+# Raw IMU data from robot sensors (published by motion bridge)
+# Payload: {"roll": float, "pitch": float, "yaw": float, "ts": float}
+# Angles in degrees; yaw is used by odometry for orientation correction
+TOPIC_IMU_DATA = "imu.data"
+
+# Motion commands for robot movement (published by navigator, API, manual control)
+# Payload: {"type": "drive"|"stop", "lx": float, "az": float, "ts": float}
+# lx: linear velocity (-1.0 to 1.0), az: angular velocity (-1.0 to 1.0)
+TOPIC_MOTION_COMMAND = "motion"
+
+# ============================================================================
 # Topic constants for mapper (Stage 3 - SLAM mapping)
-TOPIC_VISION_OBSTACLE_DATA = "vision.obstacle.data"  # Obstacle data with distance (angle, distance pairs)
-TOPIC_NAVIGATOR_MAP_REQUEST = "navigator.map.request"  # Navigator requests map from mapper
-TOPIC_MAPPER_MAP_DATA = "mapper.map.data"  # Mapper publishes occupancy grid data
+# ============================================================================
 
+# Obstacle data with distance estimation (published by vision depth bridge)
+# Payload: {"obstacles": [{"angle": float, "distance": float}, ...], "ts": float}
+# angle in degrees (relative to robot heading), distance in meters
+TOPIC_VISION_OBSTACLE_DATA = "vision.obstacle.data"
+
+# Navigator requests occupancy grid map from mapper (published by navigator)
+# Payload: {"request_id": float, "ts": float}
+TOPIC_NAVIGATOR_MAP_REQUEST = "navigator.map.request"
+
+# Mapper publishes occupancy grid data in response to request
+# Payload: {"grid": [[int]], "width_cells": int, "height_cells": int, 
+#           "resolution_m": float, "origin_x": float, "origin_y": float,
+#           "width_m": float, "height_m": float, "ts": float}
+# grid values: 0=free, 127=unknown, 255=occupied
+TOPIC_MAPPER_MAP_DATA = "mapper.map.data"
+
+# ============================================================================
 # Topic constants for return to home (Stage 4 - Path planning)
-TOPIC_NAVIGATOR_RETURN_HOME_START = "navigator.return_home.start"  # Start return to home sequence
+# ============================================================================
+
+# Start return to home sequence (published by API or navigator control)
+# Payload: {"action": "return_home", "ts": float}
+TOPIC_NAVIGATOR_RETURN_HOME_START = "navigator.return_home.start"
 
 
 def now_ts() -> float:
