@@ -16,24 +16,32 @@ ALLOWED_UNITS: dict[str, str] = {
     "api": "rider-api.service",
     "broker": "rider-broker.service",
     "web": "rider-web-bridge.service",
-    # voice (NOWE)
+    # voice
     "voice": "rider-voice.service",
     "voice-web": "rider-voice-web.service",
     # motion / xgo
     "xgo": "rider-motion-bridge.service",
     "motion": "rider-motion-bridge.service",
-    "motion-preview": "rider-motion-bridge.service",  # jeśli masz osobny unit, podmień
+    "motion-preview": "rider-motion-bridge.service",
     # camera pipelines (preview)
     "cam": "rider-cam-preview.service",
-    "camera": "rider-cam-preview.service",  # legacy alias
+    "camera": "rider-cam-preview.service",
     "edge": "rider-edge-preview.service",
     "ssd": "rider-ssd-preview.service",
     # detectors
     "obstacle": "rider-obstacle.service",
-    # legacy aliasy zgodne z dawnym UI / API
+    # legacy aliases
     "last": "rider-ssd-preview.service",
     "lastframe": "rider-ssd-preview.service",
+    # new units added
+    "mapper": "rider-mapper.service",
+    "odometry": "rider-odometry.service",
+    "tracker": "rider-tracker.service",
+    "post-splash": "rider-post-splash.service",
+    "google-bridge": "rider-google-bridge.service",
+    "tracking-controller": "rider-tracking-controller.service",
 }
+
 
 # --- grupy wzajemnie wykluczające (mutex) ---
 MUTEX_GROUPS: list[set[str]] = [
