@@ -118,6 +118,7 @@ Estymowana pozycja i orientacja robota w globalnym układzie współrzędnych.
 |---------|-----------|------|
 | `ODOMETRY_LINEAR_SPEED_SCALE` | `0.2` | Skala prędkości liniowej: m/s na jednostkę prędkości znormalizowanej (0-1) |
 | `ODOMETRY_ANGULAR_SPEED_SCALE` | `1.0` | Skala prędkości kątowej: rad/s na jednostkę prędkości znormalizowanej (0-1) |
+| `ODOMETRY_IMU_TIMEOUT_S` | `1.0` | Timeout IMU (s): po tym czasie bez danych IMU, system powraca do dead reckoning |
 
 ## Algorytm Estymatora
 
@@ -132,16 +133,24 @@ Estymator łączy dwa źródła informacji:
 **b) Dane IMU (Korekcja Orientacji):**
 - Kąt `yaw` → bezpośrednia korekcja orientacji `theta`
 - Nadpisuje dead reckoning dla orientacji (bardziej dokładne)
+- **Staleness Detection**: Jeśli dane IMU nie są aktualizowane przez `IMU_TIMEOUT_S` (domyślnie 1s), system automatycznie powraca do dead reckoning
+- Gdy IMU wraca po przerwie, system ponownie zaczyna używać danych z czujnika
 
 ### 2. Aktualizacja Pozy
 
 W każdym cyklu aktualizacji (domyślnie 10 Hz):
 
 ```python
-# Orientacja (priorytet: IMU > dead reckoning)
-if imu_available:
-    theta = theta + delta_yaw_from_imu
+# Sprawdzenie świeżości danych IMU
+imu_is_fresh = imu_available and (now - last_imu_ts) < IMU_TIMEOUT_S
+
+# Orientacja (priorytet: świeże IMU > dead reckoning)
+if imu_is_fresh:
+    # IMU aktualizuje theta bezpośrednio w update_imu()
+    # Nie dodawane żadne dodatkowe obroty z komend
+    pass
 else:
+    # Brak IMU lub stare dane - użyj dead reckoning
     theta = theta + (az * ANGULAR_SPEED_SCALE * dt)
 
 # Pozycja (dead reckoning w kierunku aktualnej orientacji)

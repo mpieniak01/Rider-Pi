@@ -30,6 +30,8 @@ Environment=ODOMETRY_INITIAL_THETA=0.0
 Environment=ODOMETRY_LINEAR_SPEED_SCALE=0.2
 # Angular speed scale: rad/s per unit normalized speed (0-1)
 Environment=ODOMETRY_ANGULAR_SPEED_SCALE=1.0
+# IMU timeout: fall back to dead reckoning after this duration without IMU data (seconds)
+Environment=ODOMETRY_IMU_TIMEOUT_S=1.0
 
 ExecStart=/usr/bin/python3 -u -m apps.odometry.main
 

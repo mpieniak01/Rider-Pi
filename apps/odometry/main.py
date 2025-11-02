@@ -35,6 +35,9 @@ INITIAL_THETA = float(os.getenv("ODOMETRY_INITIAL_THETA", "0.0"))
 LINEAR_SPEED_SCALE = float(os.getenv("ODOMETRY_LINEAR_SPEED_SCALE", "0.2"))  # m/s per unit speed
 ANGULAR_SPEED_SCALE = float(os.getenv("ODOMETRY_ANGULAR_SPEED_SCALE", "1.0"))  # rad/s per unit speed
 
+# IMU timeout - fall back to dead reckoning if no IMU data for this duration
+IMU_TIMEOUT_S = float(os.getenv("ODOMETRY_IMU_TIMEOUT_S", "1.0"))  # seconds
+
 LOG = logging.getLogger("odometry")
 
 
@@ -102,12 +105,22 @@ class OdometryEstimator:
         if dt <= 0 or dt > 1.0:
             return  # Sanity check
 
+        # Check if IMU data is stale (fall back to dead reckoning)
+        now = time.time()
+        imu_is_fresh = self.imu_available and self.last_imu_ts is not None and (now - self.last_imu_ts) < IMU_TIMEOUT_S
+
         # Dead reckoning using motion commands
-        # If we have IMU, we trust it for orientation; otherwise use commanded angular velocity
-        if not self.imu_available:
-            # No IMU - use commanded angular velocity
+        # If we have fresh IMU, we trust it for orientation; otherwise use commanded angular velocity
+        if not imu_is_fresh:
+            # No IMU or stale IMU - use commanded angular velocity
             dtheta = self.last_az * ANGULAR_SPEED_SCALE * dt
             self.theta = normalize_angle(self.theta + dtheta)
+
+            # Log when falling back from stale IMU
+            if self.imu_available and self.last_imu_ts is not None:
+                age = now - self.last_imu_ts
+                if age >= IMU_TIMEOUT_S:
+                    LOG.debug(f"IMU data stale (age={age:.2f}s), using dead reckoning")
 
         # Linear motion - apply in current heading direction
         linear_vel = self.last_lx * LINEAR_SPEED_SCALE
