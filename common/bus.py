@@ -16,6 +16,12 @@ XSUB_ENDPOINT = os.getenv("BUS_XSUB", "tcp://127.0.0.1:5555")  # PUB łączy si�
 TOPIC_MOTION_BALANCE = "cmd.balance"  # Balance/stabilization control
 TOPIC_MOTION_HEIGHT = "cmd.height"  # Height/suspension control
 
+# Topic constants for vision tracking (Follow Me feature)
+TOPIC_VISION_TRACKING_OFFSET = "vision/tracking/offset"  # Published offset for tracking
+TOPIC_VISION_FOLLOW_FACE_SET = "vision/follow/face/set"  # Enable face tracking
+TOPIC_VISION_FOLLOW_HAND_SET = "vision/follow/hand/set"  # Enable hand tracking
+TOPIC_VISION_FOLLOW_STOP = "vision/follow/stop"  # Disable all tracking
+
 
 def now_ts() -> float:
     return time.time()

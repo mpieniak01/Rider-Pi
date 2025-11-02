@@ -10,7 +10,9 @@ import os
 import time
 from typing import Any
 
-from flask import Blueprint, Response, jsonify, make_response, send_file
+from flask import Blueprint, Response, jsonify, make_response, request, send_file
+
+from common import bus
 
 # Używamy stałych ścieżek z compat (RAW_PATH/PROC_PATH/SNAP_DIR, opcjonalnie DATA_DIR)
 from services.api_core import compat as C
@@ -139,3 +141,58 @@ def load_obstacle() -> dict[str, Any]:
 def vision_obstacle() -> Response:
     """Publiczny endpoint z aktualnym stanem przeszkody (do UI i diagnostyki)."""
     return _json_nocache(load_obstacle(), 200)
+
+
+# ---------- Follow Me tracking control endpoints ----------
+
+
+@bp.route("/vision/follow/face", methods=["POST", "OPTIONS"])
+def set_follow_face() -> Response:
+    """Enable or disable face tracking mode."""
+    if request.method == "OPTIONS":
+        resp = make_response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        enable = payload.get("enable", False)
+
+        pub = bus.BusPub()
+        if enable:
+            pub.publish(bus.TOPIC_VISION_FOLLOW_FACE_SET, {"enabled": True})
+        else:
+            pub.publish(bus.TOPIC_VISION_FOLLOW_STOP, {"mode": "face"})
+        pub.close()
+
+        return _json_nocache({"ok": True, "mode": "face", "enabled": enable}, 200)
+    except Exception as e:
+        return _json_nocache({"ok": False, "error": str(e)}, 500)
+
+
+@bp.route("/vision/follow/hand", methods=["POST", "OPTIONS"])
+def set_follow_hand() -> Response:
+    """Enable or disable hand tracking mode."""
+    if request.method == "OPTIONS":
+        resp = make_response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        enable = payload.get("enable", False)
+
+        pub = bus.BusPub()
+        if enable:
+            pub.publish(bus.TOPIC_VISION_FOLLOW_HAND_SET, {"enabled": True})
+        else:
+            pub.publish(bus.TOPIC_VISION_FOLLOW_STOP, {"mode": "hand"})
+        pub.close()
+
+        return _json_nocache({"ok": True, "mode": "hand", "enabled": enable}, 200)
+    except Exception as e:
+        return _json_nocache({"ok": False, "error": str(e)}, 500)
