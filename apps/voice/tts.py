@@ -775,7 +775,7 @@ def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) 
                 pcm, sr, ch, sw = body, 16000, 1, 2
                 wav_bytes = _wrap_wav(pcm, sr, ch, sw)
 
-    # Normalizacja i fade (jak w innych backendach)
+    # Konwersja do 16-bit jeśli potrzeba
     extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
     if sw != 2:
         try:
@@ -783,9 +783,26 @@ def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) 
             sw = 2
         except Exception:
             pass
+
+    # === START FIX: Resampling + Tail + Gain (jak w OpenAI i Google) ===
+    # Wymuszamy 48kHz / 2 kanały (Stereo) - tak jak w pozostałych backendach
+    TARGET_SR = 48000
+    TARGET_CH = 2
+
+    if sw == 2:  # Resampling działa tylko na 16-bit
+        try:
+            pcm, sr, ch = _resample_to(pcm, sr, ch, TARGET_SR, TARGET_CH)
+            sw = 2  # _resample_to zachowuje 16-bit
+        except Exception as e:
+            logger.event("tts.local.resample_failed", error=str(e))
+            # Kontynuuj z oryginalnym audio, jeśli resampling zawiedzie
+    # === END FIX ===
+
+    # Normalizacja i fade (jak w innych backendach)
     if sw == 2:
         pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
         pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
+        pcm = _append_tail(pcm, sr, ch, 300)  # <--- POPRAWKA: Dodanie ciszy
     wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
     logger.event("tts.local.ok", bytes=len(wav_bytes), sample_rate=sr)
@@ -989,4 +1006,3 @@ def _piper_synthesize_wav(voice, text: str, length_scale=1.0, noise_scale=0.667,
 
 
 # ===== end helpers =====
-
