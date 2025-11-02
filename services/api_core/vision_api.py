@@ -168,8 +168,8 @@ def set_follow_face() -> Response:
         pub.close()
 
         return _json_nocache({"ok": True, "mode": "face", "enabled": enable}, 200)
-    except Exception as e:
-        return _json_nocache({"ok": False, "error": str(e)}, 500)
+    except Exception:
+        return _json_nocache({"ok": False, "error": "Failed to set face tracking mode"}, 500)
 
 
 @bp.route("/vision/follow/hand", methods=["POST", "OPTIONS"])
@@ -194,5 +194,5 @@ def set_follow_hand() -> Response:
         pub.close()
 
         return _json_nocache({"ok": True, "mode": "hand", "enabled": enable}, 200)
-    except Exception as e:
-        return _json_nocache({"ok": False, "error": str(e)}, 500)
+    except Exception:
+        return _json_nocache({"ok": False, "error": "Failed to set hand tracking mode"}, 500)
