@@ -31,6 +31,9 @@ TOPIC_ROBOT_POSE = "robot.pose"  # Estimated robot position (x, y, theta)
 TOPIC_IMU_DATA = "imu.data"  # Raw IMU data (roll, pitch, yaw)
 TOPIC_MOTION_COMMAND = "motion"  # Motion commands (used by navigator and manual control)
 
+# Topic constants for mapper (Stage 3 - SLAM mapping)
+TOPIC_VISION_OBSTACLE_DATA = "vision.obstacle.data"  # Obstacle data with distance (angle, distance pairs)
+
 
 def now_ts() -> float:
     return time.time()
