@@ -124,15 +124,16 @@ def get_neighbors(x: int, y: int) -> list[tuple[int, int, float]]:
         List of (dx, dy, cost) tuples
     """
     # 8-connected grid: orthogonal moves cost 1.0, diagonal moves cost sqrt(2)
+    sqrt_2 = math.sqrt(2)
     neighbors = [
         (0, 1, 1.0),  # North
         (1, 0, 1.0),  # East
         (0, -1, 1.0),  # South
         (-1, 0, 1.0),  # West
-        (1, 1, 1.414),  # Northeast
-        (1, -1, 1.414),  # Southeast
-        (-1, -1, 1.414),  # Southwest
-        (-1, 1, 1.414),  # Northwest
+        (1, 1, sqrt_2),  # Northeast
+        (1, -1, sqrt_2),  # Southeast
+        (-1, -1, sqrt_2),  # Southwest
+        (-1, 1, sqrt_2),  # Northwest
     ]
     return [(x + dx, y + dy, cost) for dx, dy, cost in neighbors]
 
