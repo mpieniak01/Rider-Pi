@@ -136,6 +136,8 @@
         </select>
       </label>
       <span id="reconStatus" class="pill" style="margin-left:10px;display:none"></span>
+      <div style="width:20px"></div>
+      <button id="btnReturnHome" class="btn-sm" style="display:none" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
     </div>
 
     <div class="row">
@@ -328,16 +330,20 @@
   const reconToggle = qs('#reconToggle');
   const reconStrategy = qs('#reconStrategy');
   const reconStatus = qs('#reconStatus');
+  const btnReturnHome = qs('#btnReturnHome');
 
   async function sendReconStart(strategy){
     try{
       const j = await httpPost('/api/navigator/start', {strategy: strategy});
       appendLog(`Rekonesans started with strategy ${strategy} :: ${JSON.stringify(j)}`, 'ok');
       updateReconStatus('exploring', strategy);
+      // Show return to home button when recon is active
+      btnReturnHome.style.display = 'inline-block';
     }catch(e){
       appendLog(`Rekonesans start error: ${e.message}`, 'err');
       reconToggle.checked = false;
       reconStatus.style.display = 'none';
+      btnReturnHome.style.display = 'none';
     }
   }
 
@@ -346,6 +352,8 @@
       const j = await httpPost('/api/navigator/stop', {});
       appendLog(`Rekonesans stopped :: ${JSON.stringify(j)}`, 'ok');
       updateReconStatus('stopped');
+      // Hide return to home button when recon stops
+      btnReturnHome.style.display = 'none';
     }catch(e){
       appendLog(`Rekonesans stop error: ${e.message}`, 'err');
     }
@@ -360,6 +368,18 @@
     }
   }
 
+  async function sendReturnHome(){
+    try{
+      const j = await httpPost('/api/navigator/return_home', {});
+      appendLog(`Return to home started :: ${JSON.stringify(j)}`, 'ok');
+      updateReconStatus('returning_home');
+      // Uncheck recon toggle since we're no longer exploring
+      reconToggle.checked = false;
+    }catch(e){
+      appendLog(`Return to home error: ${e.message}`, 'err');
+    }
+  }
+
   function updateReconStatus(state, strategy){
     if(state === 'exploring'){
       reconStatus.textContent = `Active (${strategy || 'STOP'})`;
@@ -370,6 +390,10 @@
       reconStatus.className = 'pill';
       reconStatus.style.display = 'inline-flex';
       setTimeout(()=> reconStatus.style.display = 'none', 2000);
+    } else if(state === 'returning_home'){
+      reconStatus.textContent = 'Returning Home';
+      reconStatus.className = 'pill warn';
+      reconStatus.style.display = 'inline-flex';
     }
   }
 
@@ -404,6 +428,15 @@
     }catch(e){
       console.error('Rekonesans strategy change error:', e);
       appendLog(`Rekonesans strategy error: ${e.message}`, 'err');
+    }
+  });
+
+  btnReturnHome.addEventListener('click', ()=>{
+    try{
+      sendReturnHome();
+    }catch(e){
+      console.error('Return to home error:', e);
+      appendLog(`Return to home error: ${e.message}`, 'err');
     }
   });
 
