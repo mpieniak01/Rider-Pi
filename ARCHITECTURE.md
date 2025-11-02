@@ -49,6 +49,28 @@
   - Krytyczny komponent dla przyszłych etapów: mapowanie (Stage 3) i powrót do bazy (Stage 4).
   - Zobacz: `docs/modules/odometry.md`
 
+### 4b) Mapper (SLAM Mapping)
+
+- **Mapper** — moduł budowania mapy otoczenia w `apps/mapper/*`.
+  - Tryb „Rekonesans" (Stage 3): budowanie siatki zajętości (occupancy grid) w czasie rzeczywistym.
+  - Subskrybuje `robot.pose` (z odometrii) i `vision.obstacle.data` (z wizji z estymacją głębi).
+  - Utrzymuje mapę w pamięci jako `numpy.array` (inspirowane `sim/world.py`).
+  - Transformuje współrzędne: z lokalnych robota → globalne mapy.
+  - Oznacza komórki jako zajęte/wolne/nieznane na podstawie detekcji przeszkód.
+  - Fundamentalny komponent SLAM — łączy percepcję (wizja) z lokalizacją (odometria).
+  - Zobacz: `docs/modules/mapper.md`
+
+### 4c) Vision Depth (Depth Estimation for Mapping)
+
+- **Vision Depth Bridge** — `apps/vision/depth_bridge.py`.
+  - Rozszerzenie systemu wizyjnego o estymację głębi dla mapowania.
+  - Monitoruje stan nawigatora; aktywuje się w trybie „Rekonesans".
+  - Konwertuje detekcje przeszkód na pary (kąt, dystans) dla mappera.
+  - Obecna implementacja: uproszczona estymacja (heurystyka na podstawie confidence).
+  - Przyszła implementacja: mono-depth estimation (TFLite model).
+  - Publikuje `vision.obstacle.data` dla konsumpcji przez mapper.
+  - Zobacz: `docs/modules/vision.md`
+
 ### 5) Głos / Chat
 
 - **Voice** — modułowa architektura głosowa w `apps/voice/` obsługująca dwa tryby pracy:

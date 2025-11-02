@@ -85,12 +85,12 @@ class TestOccupancyGrid(unittest.TestCase):
         """Test marking obstacle with inflation radius"""
         # Mark obstacle at origin with 0.2m inflation
         self.grid.mark_obstacle(0.0, 0.0, inflation_radius=0.2)
-        
+
         grid_x, grid_y = self.grid.world_to_grid(0.0, 0.0)
-        
+
         # Center cell should be occupied
         self.assertEqual(self.grid.grid[grid_y, grid_x], CELL_OCCUPIED)
-        
+
         # Cells within inflation radius should be occupied
         # At 0.1m resolution, 0.2m inflation = 2 cells radius
         # Check adjacent cells
@@ -113,9 +113,9 @@ class TestOccupancyGrid(unittest.TestCase):
         self.grid.mark_obstacle(0.0, 0.0)
         self.grid.mark_obstacle(1.0, 0.0)
         self.grid.mark_obstacle(0.0, 1.0)
-        
+
         info = self.grid.get_occupancy_info()
-        
+
         self.assertEqual(info["total_cells"], 10000)
         self.assertEqual(info["occupied_cells"], 3)
         self.assertGreater(info["occupied_percent"], 0)
@@ -209,7 +209,7 @@ class TestMapper(unittest.TestCase):
 
         # Obstacle should be at approximately (0.0, 2.0) in world coordinates
         grid_x, grid_y = mapper.grid.world_to_grid(0.0, 2.0)
-        
+
         # Check that cell is occupied (allowing for rounding)
         # The exact cell might vary slightly due to floating point, so check nearby cells too
         occupied_nearby = False
@@ -219,7 +219,7 @@ class TestMapper(unittest.TestCase):
                     if mapper.grid.grid[grid_y + dy, grid_x + dx] == CELL_OCCUPIED:
                         occupied_nearby = True
                         break
-        
+
         self.assertTrue(occupied_nearby, "No occupied cell found near expected obstacle location")
 
     def test_handle_obstacle_data_robot_translated(self):

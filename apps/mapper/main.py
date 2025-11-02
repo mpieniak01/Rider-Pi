@@ -182,7 +182,9 @@ class Mapper:
         self.robot_theta = float(payload.get("theta", 0.0))
         self.last_pose_ts = payload.get("ts", time.time())
 
-        LOG.debug(f"Robot pose updated: ({self.robot_x:.3f}, {self.robot_y:.3f}, {math.degrees(self.robot_theta):.1f}°)")
+        LOG.debug(
+            f"Robot pose updated: ({self.robot_x:.3f}, {self.robot_y:.3f}, {math.degrees(self.robot_theta):.1f}°)"
+        )
 
     def _handle_obstacle_data(self, payload: dict):
         """
@@ -198,7 +200,7 @@ class Mapper:
         }
         """
         obstacles = payload.get("obstacles", [])
-        
+
         if not obstacles:
             return
 
@@ -214,7 +216,7 @@ class Mapper:
             # Calculate obstacle position in global coordinates
             # angle_global = robot_theta + angle_local
             angle_global = self.robot_theta + angle_local
-            
+
             # Obstacle position in global frame
             obs_x = self.robot_x + distance * math.cos(angle_global)
             obs_y = self.robot_y + distance * math.sin(angle_global)
@@ -226,7 +228,7 @@ class Mapper:
                 f"Obstacle: local_angle={math.degrees(angle_local):.1f}°, "
                 f"dist={distance:.2f}m -> global=({obs_x:.2f}, {obs_y:.2f})"
             )
-            
+
             valid_obstacles += 1
 
         self.obstacles_processed += valid_obstacles
