@@ -6,6 +6,8 @@ import time
 
 from flask import Response, request
 
+from common.bus import TOPIC_MOTION_BALANCE, TOPIC_MOTION_HEIGHT
+
 from . import compat as C
 
 
@@ -80,7 +82,7 @@ def api_balance():
     except Exception:
         return Response('{"ok": false, "error": "invalid enabled value"}', mimetype="application/json", status=400)
 
-    C.bus_pub("cmd.balance", {"enabled": enabled, "ts": time.time()})
+    C.bus_pub(TOPIC_MOTION_BALANCE, {"enabled": enabled, "ts": time.time()})
     resp = Response(
         json.dumps({"ok": True, "sent": {"enabled": enabled}}),
         mimetype="application/json",
@@ -106,7 +108,7 @@ def api_height():
     except Exception:
         return Response('{"ok": false, "error": "invalid height value"}', mimetype="application/json", status=400)
 
-    C.bus_pub("cmd.height", {"height": height, "ts": time.time()})
+    C.bus_pub(TOPIC_MOTION_HEIGHT, {"height": height, "ts": time.time()})
     resp = Response(
         json.dumps({"ok": True, "sent": {"height": height}}),
         mimetype="application/json",
