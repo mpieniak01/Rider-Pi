@@ -44,9 +44,7 @@ def heuristic(x1: int, y1: int, x2: int, y2: int) -> float:
     return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
 
-def world_to_grid(
-    x: float, y: float, resolution_m: float, origin_x: float, origin_y: float
-) -> tuple[int, int]:
+def world_to_grid(x: float, y: float, resolution_m: float, origin_x: float, origin_y: float) -> tuple[int, int]:
     """
     Convert world coordinates (meters) to grid coordinates (cells).
 

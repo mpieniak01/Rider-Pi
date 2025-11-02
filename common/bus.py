@@ -20,7 +20,7 @@ XSUB_ENDPOINT = os.getenv("BUS_XSUB", "tcp://127.0.0.1:5555")  # PUB łączy si�
 # Payload: {"enabled": bool, "ts": float}
 TOPIC_MOTION_BALANCE = "cmd.balance"
 
-# Height/suspension control  
+# Height/suspension control
 # Payload: {"height": int (0-255), "ts": float}
 TOPIC_MOTION_HEIGHT = "cmd.height"
 
@@ -36,7 +36,7 @@ TOPIC_VISION_TRACKING_OFFSET = "vision.tracking.offset"
 # Payload: {"enabled": bool, "ts": float}
 TOPIC_VISION_FOLLOW_FACE_SET = "vision.follow.face.set"
 
-# Enable hand tracking mode  
+# Enable hand tracking mode
 # Payload: {"enabled": bool, "ts": float}
 TOPIC_VISION_FOLLOW_HAND_SET = "vision.follow.hand.set"
 
@@ -90,7 +90,7 @@ TOPIC_VISION_OBSTACLE_DATA = "vision.obstacle.data"
 TOPIC_NAVIGATOR_MAP_REQUEST = "navigator.map.request"
 
 # Mapper publishes occupancy grid data in response to request
-# Payload: {"grid": [[int]], "width_cells": int, "height_cells": int, 
+# Payload: {"grid": [[int]], "width_cells": int, "height_cells": int,
 #           "resolution_m": float, "origin_x": float, "origin_y": float,
 #           "width_m": float, "height_m": float, "ts": float}
 # grid values: 0=free, 127=unknown, 255=occupied

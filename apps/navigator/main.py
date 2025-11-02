@@ -158,7 +158,7 @@ class Navigator:
 
         old_obstacle = self.obstacle_present
         old_state = self.state
-        
+
         self.obstacle_present = present
         self.last_obstacle_ts = time.time()
 
@@ -176,7 +176,7 @@ class Navigator:
                 self._handle_stop_strategy()
             elif self.strategy == Strategy.AVOID:
                 self._handle_avoid_strategy()
-        
+
         # Mark state as changed if obstacle presence or state changed
         if old_obstacle != self.obstacle_present or old_state != self.state:
             self.state_changed = True
@@ -225,7 +225,7 @@ class Navigator:
         elif action == "config":
             config = cmd.get("config", {})
             changed = False
-            
+
             if "strategy" in config:
                 try:
                     strategy = Strategy[config["strategy"].upper()]
@@ -334,7 +334,7 @@ class Navigator:
             goal_dx = goal_x - current_x
             goal_dy = goal_y - current_y
             goal_distance = math.sqrt(goal_dx**2 + goal_dy**2)
-            
+
             if goal_distance < GOAL_TOLERANCE:
                 LOG.info("Reached goal position!")
                 self.state = NavigatorState.IDLE
@@ -350,7 +350,7 @@ class Navigator:
 
         # Loop to process consecutive waypoints within tolerance
         current_x, current_y, current_theta = self.current_pose
-        
+
         while self.current_path:
             target_x, target_y = self.current_path[0]
             dx = target_x - current_x
@@ -411,13 +411,13 @@ class Navigator:
 
     def _publish_state(self, force: bool = False):
         """Publish navigator state to bus
-        
+
         Args:
             force: If True, publish regardless of state change (for heartbeat)
         """
         if not force and not self.state_changed:
             return
-            
+
         state = {
             "active": self.active,
             "state": self.state.value,

@@ -4,6 +4,7 @@ apps/vision/tracker_mediapipe.py
 MediaPipe-based face and hand tracking for Follow Me mode.
 Subscribes to control topics and publishes tracking offset.
 """
+
 from __future__ import annotations
 
 import json
@@ -153,10 +154,7 @@ def calculate_offset_x(detections: list, frame_width: float | None = None) -> fl
     det = detections[0]
 
     # For face detection, use bbox
-    if (
-        hasattr(det, "location_data")
-        and det.location_data.HasField("relative_bounding_box")
-    ):
+    if hasattr(det, "location_data") and det.location_data.HasField("relative_bounding_box"):
         bbox = det.location_data.relative_bounding_box
         center_x = bbox.xmin + bbox.width / 2.0
         if frame_width is not None and center_x > 1.0:
