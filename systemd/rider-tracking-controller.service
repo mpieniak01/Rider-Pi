@@ -1,0 +1,47 @@
+[Unit]
+Description=Rider-Pi Tracking Controller (rotation control for Follow Me)
+After=network-online.target rider-broker.service rider-tracker.service
+Wants=network-online.target rider-broker.service rider-tracker.service
+StartLimitIntervalSec=30
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+
+# Bus configuration
+Environment=BUS_SUB_PORT=5556
+
+# Tracking controller parameters
+Environment=TRACKING_KP=0.15
+Environment=TRACKING_DEAD_ZONE=0.1
+Environment=TRACKING_TIMEOUT=1.0
+Environment=TRACKING_MAX_SPEED=0.20
+
+# XGO/Rider settings (if needed)
+Environment=RIDER_IMU=1
+Environment=XGO_PORT=/dev/ttyAMA0
+Environment=XGO_VERSION=xgorider
+Environment=MOTION_ENABLE=1
+
+# Python settings
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/usr/bin/python3 -u -m apps.motion.tracking_controller
+
+# Restart policy
+Restart=always
+RestartSec=2
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=process
+KillSignal=SIGINT
+Nice=-5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
