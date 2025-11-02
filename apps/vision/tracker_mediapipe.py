@@ -101,13 +101,13 @@ def control_loop() -> None:
                 continue
 
             with FOLLOW_MODE_LOCK:
-                if topic == "vision/follow/face/set":
+                if topic == "vision.follow.face.set":
                     FOLLOW_MODE = "FACE"
                     print("[tracker] mode → FACE", flush=True)
-                elif topic == "vision/follow/hand/set":
+                elif topic == "vision.follow.hand.set":
                     FOLLOW_MODE = "HAND"
                     print("[tracker] mode → HAND", flush=True)
-                elif topic == "vision/follow/stop":
+                elif topic == "vision.follow.stop":
                     FOLLOW_MODE = "NONE"
                     print("[tracker] mode → NONE", flush=True)
         except KeyboardInterrupt:
@@ -229,7 +229,7 @@ def tracking_loop() -> None:
             now = time.time()
             if offset_x is not None and (now - last_pub_ts) >= frame_interval:
                 pub(
-                    "vision/tracking/offset",
+                    "vision.tracking.offset",
                     {"offset_x": round(offset_x, 3), "mode": mode.lower(), "ts": now},
                 )
                 last_pub_ts = now
@@ -259,7 +259,7 @@ def tracking_loop() -> None:
 if __name__ == "__main__":
     print("[tracker] starting MediaPipe tracker", flush=True)
     PUB = zmq_pub()
-    SUB = zmq_sub(["vision/follow/face/set", "vision/follow/hand/set", "vision/follow/stop"])
+    SUB = zmq_sub(["vision.follow.face.set", "vision.follow.hand.set", "vision.follow.stop"])
 
     # Start control listener in background
     threading.Thread(target=control_loop, daemon=True).start()

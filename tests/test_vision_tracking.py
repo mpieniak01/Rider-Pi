@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 # tests/test_vision_tracking.py
 """Tests for vision tracking (Follow Me) feature."""
 

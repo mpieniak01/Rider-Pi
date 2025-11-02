@@ -267,6 +267,7 @@
       // Disable hand tracking if face enabled
       if(enabled && followHandToggle.checked){
         followHandToggle.checked = false;
+        sendFollowHand(false);
       }
     }catch(e){
       appendLog(`follow face error: ${e.message}`, 'err');
@@ -281,6 +282,7 @@
       // Disable face tracking if hand enabled
       if(enabled && followFaceToggle.checked){
         followFaceToggle.checked = false;
+        sendFollowFace(false);
       }
     }catch(e){
       appendLog(`follow hand error: ${e.message}`, 'err');

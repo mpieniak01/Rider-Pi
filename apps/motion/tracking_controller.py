@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 apps/motion/tracking_controller.py
-Subscribes to vision/tracking/offset and controls robot rotation to follow objects.
+Subscribes to vision.tracking.offset and controls robot rotation to follow objects.
 Uses proportional controller with dead zone and timeout.
 """
 
@@ -147,7 +147,7 @@ def main():
     threading.Thread(target=controller.watchdog_loop, daemon=True).start()
 
     # Subscribe to tracking offset topic
-    sub = zmq_sub(["vision/tracking/offset"])
+    sub = zmq_sub(["vision.tracking.offset"])
 
     print("[tracking_controller] listening for tracking offset...", flush=True)
 
@@ -157,7 +157,7 @@ def main():
             if not topic:
                 continue
 
-            if topic == "vision/tracking/offset":
+            if topic == "vision.tracking.offset":
                 offset_x = data.get("offset_x", 0.0)
                 mode = data.get("mode", "unknown")
                 controller.on_tracking_offset(offset_x, mode)

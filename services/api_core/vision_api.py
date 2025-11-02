@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import time
 from typing import Any
@@ -17,6 +18,7 @@ from common import bus
 # Używamy stałych ścieżek z compat (RAW_PATH/PROC_PATH/SNAP_DIR, opcjonalnie DATA_DIR)
 from services.api_core import compat as C
 
+logger = logging.getLogger(__name__)
 bp = Blueprint("vision_api", __name__)
 
 # ---------- helpers: nagłówki / ścieżki ----------
@@ -168,7 +170,8 @@ def set_follow_face() -> Response:
         pub.close()
 
         return _json_nocache({"ok": True, "mode": "face", "enabled": enable}, 200)
-    except Exception:
+    except Exception as e:
+        logger.exception("Failed to set face tracking mode: %s", e)
         return _json_nocache({"ok": False, "error": "Failed to set face tracking mode"}, 500)
 
 
@@ -194,5 +197,6 @@ def set_follow_hand() -> Response:
         pub.close()
 
         return _json_nocache({"ok": True, "mode": "hand", "enabled": enable}, 200)
-    except Exception:
+    except Exception as e:
+        logger.exception("Failed to set hand tracking mode: %s", e)
         return _json_nocache({"ok": False, "error": "Failed to set hand tracking mode"}, 500)
