@@ -108,6 +108,19 @@
       </label>
     </div>
 
+    <!-- Follow Me Tracking Controls -->
+    <div class="row" style="margin:16px 0 10px; padding-top:16px; border-top:1px solid #1e3a56">
+      <label style="cursor:pointer">
+        <input id="followFaceToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
+        <span data-i18n="motion.follow_face">Śledź Twarz (Follow Face)</span>
+      </label>
+      <div style="width:20px"></div>
+      <label style="cursor:pointer">
+        <input id="followHandToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
+        <span data-i18n="motion.follow_hand">Śledź Dłoń (Follow Hand)</span>
+      </label>
+    </div>
+
     <div class="row">
       <span class="muted">
         <span data-i18n="motion.shortcuts_hint">Skróty</span>:
@@ -242,6 +255,41 @@
     }
   }
   heightSlider.addEventListener('change', ()=>{try{sendHeight(heightSlider.value);}catch{}});
+
+  // Follow Me tracking controls
+  const followFaceToggle = qs('#followFaceToggle');
+  const followHandToggle = qs('#followHandToggle');
+
+  async function sendFollowFace(enabled){
+    try{
+      const j = await httpPost('/api/vision/follow/face', {enable: enabled});
+      appendLog(`follow face → enabled:${enabled} :: ${JSON.stringify(j)}`, 'ok');
+      // Disable hand tracking if face enabled
+      if(enabled && followHandToggle.checked){
+        followHandToggle.checked = false;
+      }
+    }catch(e){
+      appendLog(`follow face error: ${e.message}`, 'err');
+      followFaceToggle.checked = false;
+    }
+  }
+
+  async function sendFollowHand(enabled){
+    try{
+      const j = await httpPost('/api/vision/follow/hand', {enable: enabled});
+      appendLog(`follow hand → enabled:${enabled} :: ${JSON.stringify(j)}`, 'ok');
+      // Disable face tracking if hand enabled
+      if(enabled && followFaceToggle.checked){
+        followFaceToggle.checked = false;
+      }
+    }catch(e){
+      appendLog(`follow hand error: ${e.message}`, 'err');
+      followHandToggle.checked = false;
+    }
+  }
+
+  followFaceToggle.addEventListener('change', ()=>{try{sendFollowFace(followFaceToggle.checked);}catch{}});
+  followHandToggle.addEventListener('change', ()=>{try{sendFollowHand(followHandToggle.checked);}catch{}});
 
   const pressed = new Set(); const isArrow = k => ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k);
   window.addEventListener('keydown', ev=>{ try{

@@ -140,6 +140,8 @@ export const I18N = {
     shortcuts_tail:  { pl: "lub strzałki; Spacja = stop.", en: "or arrow keys; Space = stop." },
     balance:         { pl: "Stabilizacja", en: "Balance" },
     height:          { pl: "Wysokość", en: "Height" },
+    follow_face:     { pl: "Śledź Twarz (Follow Face)", en: "Follow Face" },
+    follow_hand:     { pl: "Śledź Dłoń (Follow Hand)", en: "Follow Hand" },
   },
 
   services: {
