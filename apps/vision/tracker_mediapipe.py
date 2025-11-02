@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+apps/vision/tracker_mediapipe.py
+MediaPipe-based face and hand tracking for Follow Me mode.
+Subscribes to control topics and publishes tracking offset.
+"""
 from __future__ import annotations
 
 import json
@@ -10,12 +15,6 @@ from typing import Any
 import cv2
 import mediapipe as mp
 import zmq
-
-"""
-apps/vision/tracker_mediapipe.py
-MediaPipe-based face and hand tracking for Follow Me mode.
-Subscribes to control topics and publishes tracking offset.
-"""
 
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
@@ -140,7 +139,7 @@ def open_camera():
         return cap.read
 
 
-def calculate_offset_x(detections: list, frame_width: int) -> float | None:
+def calculate_offset_x(detections: list) -> float | None:
     """
     Calculate horizontal offset from center.
     Returns offset_x in range [-1.0, 1.0], or None if no detection.
@@ -153,7 +152,10 @@ def calculate_offset_x(detections: list, frame_width: int) -> float | None:
     det = detections[0]
 
     # For face detection, use bbox
-    if hasattr(det, "location_data") and det.location_data.HasField("relative_bounding_box"):
+    if (
+        hasattr(det, "location_data")
+        and det.location_data.HasField("relative_bounding_box")
+    ):
         bbox = det.location_data.relative_bounding_box
         center_x = bbox.xmin + bbox.width / 2.0
     # For hand detection, use landmark (wrist = landmark 0)
@@ -182,7 +184,10 @@ def tracking_loop() -> None:
 
     face_detector = mp_face.FaceDetection(model_selection=0, min_detection_confidence=0.5)
     hand_detector = mp_hands.Hands(
-        static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5, min_tracking_confidence=0.5
+        static_image_mode=False,
+        max_num_hands=1,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
     )
 
     read = open_camera()
@@ -218,12 +223,12 @@ def tracking_loop() -> None:
             if mode == "FACE":
                 results = face_detector.process(rgb_frame)
                 if results.detections:
-                    offset_x = calculate_offset_x(results.detections, w)
+                    offset_x = calculate_offset_x(results.detections)
             elif mode == "HAND":
                 results = hand_detector.process(rgb_frame)
                 if results.multi_hand_landmarks:
                     # Convert hand landmarks to detection-like format
-                    offset_x = calculate_offset_x(results.multi_hand_landmarks, w)
+                    offset_x = calculate_offset_x(results.multi_hand_landmarks)
 
             # Publish offset if detected and enough time passed
             now = time.time()

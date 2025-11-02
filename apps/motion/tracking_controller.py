@@ -2,7 +2,20 @@
 """
 apps/motion/tracking_controller.py
 Subscribes to vision.tracking.offset and controls robot rotation to follow objects.
-Uses proportional controller with dead zone and timeout.
+Uses a proportional controller with dead zone and timeout.
+
+Configuration parameters (set via environment variables):
+- KP (TRACKING_KP, default: 0.15): Proportional gain for the controller.
+  Higher values increase responsiveness.
+- DEAD_ZONE (TRACKING_DEAD_ZONE, default: 0.1): No action is taken if the
+  absolute offset is less than this value.
+- TIMEOUT_SEC (TRACKING_TIMEOUT, default: 1.0): Time in seconds after which
+  the controller stops if no new offset is received.
+- MAX_SPEED (TRACKING_MAX_SPEED, default: 0.20): Maximum rotation speed
+  (range: 0..1) applied by the controller.
+
+These parameters allow tuning of the tracking controller's responsiveness
+and stability.
 """
 
 from __future__ import annotations
