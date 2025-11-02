@@ -15,10 +15,12 @@ The API server runs on port **8080** and provides REST endpoints for controlling
 ### Core APIs
 - [Control API](control.md) - Robot movement and control
 - [Navigator API](navigator.md) - Autonomous navigation (Rekonesans mode)
-- [Camera API](camera.md) - Camera access and vision system
-- [Chat API](chat.md) - Voice and text chat interface
-- [Face API](face.md) - Robot face animation control
-- [Google Home API](google-home.md) - Google Home integration
+
+<!-- The following API documentation files are planned for future documentation: -->
+<!-- - [Camera API](camera.md) - Camera access and vision system -->
+<!-- - [Chat API](chat.md) - Voice and text chat interface -->
+<!-- - [Face API](face.md) - Robot face animation control -->
+<!-- - [Google Home API](google-home.md) - Google Home integration -->
 
 ### Health and Status
 - `GET /healthz` - System health check

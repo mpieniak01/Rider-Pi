@@ -255,5 +255,5 @@ The `apps/vision/depth_bridge.py` module provides obstacle distance estimation f
 
 ---
 
-**Last updated:** 2025-10-14  
-**Related PR:** Fix systemd services after file renames/move to `scripts/`
+**Last updated:** 2025-11-02  
+**Related PR:** Fix systemd services after file renames/move to `scripts/` + Documentation audit (PR #199)
