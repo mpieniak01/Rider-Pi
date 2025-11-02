@@ -155,7 +155,7 @@ def api_navigator_return_home():
         return resp
 
     # Publish return to home command
-    C.bus_pub(TOPIC_NAVIGATOR_RETURN_HOME_START, {"action": "return_home", "ts": time.time()})
+    C.bus_pub(TOPIC_NAVIGATOR_RETURN_HOME_START, {"action": "return_home"}, add_ts=True)
 
     resp = Response(
         json.dumps({"ok": True, "action": "return_home"}),

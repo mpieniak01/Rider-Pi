@@ -253,15 +253,6 @@ class TestNavigator(unittest.TestCase):
 
         # Should have published map request
         calls = self.mock_pub_instance.publish.call_args_list
-        map_request_calls = [
-            c
-            for c in calls
-            if len(c[0]) > 0
-            and (
-                c[0][0] == "navigator.map.request"
-                or (len(c) > 1 and c[1] and c[1].get("topic") == "navigator.map.request")
-            )
-        ]
         # Note: The actual topic is imported from bus, so we check for the publish call
         self.assertGreater(len([c for c in calls if "map" in str(c).lower()]), 0)
 

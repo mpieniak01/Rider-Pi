@@ -373,8 +373,10 @@
       const j = await httpPost('/api/navigator/return_home', {});
       appendLog(`Return to home started :: ${JSON.stringify(j)}`, 'ok');
       updateReconStatus('returning_home');
-      // Uncheck recon toggle since we're no longer exploring
+      // Uncheck recon toggle without triggering its event handler
+      reconToggle.removeEventListener('change', reconToggleHandler);
       reconToggle.checked = false;
+      setTimeout(() => reconToggle.addEventListener('change', reconToggleHandler), 0);
     }catch(e){
       appendLog(`Return to home error: ${e.message}`, 'err');
     }
@@ -397,7 +399,7 @@
     }
   }
 
-  reconToggle.addEventListener('change', ()=>{
+  const reconToggleHandler = ()=>{
     try{
       if(reconToggle.checked){
         // Disable follow modes when starting recon
@@ -417,7 +419,9 @@
       console.error('Rekonesans toggle error:', e);
       appendLog(`Rekonesans toggle error: ${e.message}`, 'err');
     }
-  });
+  };
+
+  reconToggle.addEventListener('change', reconToggleHandler);
 
   reconStrategy.addEventListener('change', ()=>{
     try{
@@ -431,9 +435,9 @@
     }
   });
 
-  btnReturnHome.addEventListener('click', ()=>{
+  btnReturnHome.addEventListener('click', async ()=>{
     try{
-      sendReturnHome();
+      await sendReturnHome();
     }catch(e){
       console.error('Return to home error:', e);
       appendLog(`Return to home error: ${e.message}`, 'err');

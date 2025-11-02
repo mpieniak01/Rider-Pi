@@ -5,6 +5,7 @@ Pathfinding module for navigator - A* algorithm on occupancy grid
 
 from __future__ import annotations
 
+import functools
 import heapq
 import math
 
@@ -14,6 +15,7 @@ CELL_FREE = 0
 CELL_OCCUPIED = 255
 
 
+@functools.total_ordering
 class Node:
     """A* search node"""
 
@@ -29,6 +31,8 @@ class Node:
         return self.f < other.f
 
     def __eq__(self, other):
+        if not isinstance(other, Node):
+            return NotImplemented
         return self.x == other.x and self.y == other.y
 
     def __hash__(self):
@@ -175,8 +179,8 @@ def simplify_path(path: list[tuple[int, int]]) -> list[tuple[int, int]]:
         dy2 = next_y - curr_y
 
         # Normalize directions
-        len1 = math.sqrt(dx1**2 + dy1**2) or 1.0
-        len2 = math.sqrt(dx2**2 + dy2**2) or 1.0
+        len1 = math.sqrt(dx1**2 + dy1**2) if (dx1 or dy1) else 1.0
+        len2 = math.sqrt(dx2**2 + dy2**2) if (dx2 or dy2) else 1.0
 
         dx1, dy1 = dx1 / len1, dy1 / len1
         dx2, dy2 = dx2 / len2, dy2 / len2

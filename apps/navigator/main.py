@@ -21,6 +21,7 @@ import os
 import time
 from enum import Enum
 
+from apps.navigator import pathfinding
 from common.bus import (
     TOPIC_MAPPER_MAP_DATA,
     TOPIC_NAVIGATOR_MAP_REQUEST,
@@ -277,15 +278,6 @@ class Navigator:
         LOG.info("Received map data from mapper")
         self.waiting_for_map = False
 
-        # Import pathfinding here to avoid circular dependency
-        try:
-            from apps.navigator import pathfinding
-        except ImportError:
-            LOG.error("Failed to import pathfinding module")
-            self.state = NavigatorState.IDLE
-            self.state_changed = True
-            return
-
         # Prepare grid data
         grid_data = {
             "grid": payload.get("grid", []),
@@ -336,46 +328,67 @@ class Navigator:
             return
 
         if not self.current_path:
-            # Path is empty, we've reached the goal
-            LOG.info("Reached goal position!")
-            self.state = NavigatorState.IDLE
-            self.state_changed = True
-            self._send_motion_stop()
+            # Path is empty, check if we're actually at the goal
+            current_x, current_y, _ = self.current_pose
+            goal_x, goal_y = self.goal_pose[0], self.goal_pose[1]
+            goal_dx = goal_x - current_x
+            goal_dy = goal_y - current_y
+            goal_distance = math.sqrt(goal_dx**2 + goal_dy**2)
+            
+            if goal_distance < GOAL_TOLERANCE:
+                LOG.info("Reached goal position!")
+                self.state = NavigatorState.IDLE
+                self.state_changed = True
+                self._send_motion_stop()
+            else:
+                LOG.warning(
+                    f"Path is empty but robot is not at goal "
+                    f"(distance={goal_distance:.2f}m > tolerance={GOAL_TOLERANCE:.2f}m)"
+                )
+                # Stay in RETURNING_HOME state for potential replan
             return
 
-        # Get next waypoint
-        target_x, target_y = self.current_path[0]
+        # Loop to process consecutive waypoints within tolerance
         current_x, current_y, current_theta = self.current_pose
+        
+        while self.current_path:
+            target_x, target_y = self.current_path[0]
+            dx = target_x - current_x
+            dy = target_y - current_y
+            distance = math.sqrt(dx**2 + dy**2)
 
-        # Calculate distance to waypoint
-        dx = target_x - current_x
-        dy = target_y - current_y
-        distance = math.sqrt(dx**2 + dy**2)
+            # Check if we've reached the waypoint
+            if distance < WAYPOINT_TOLERANCE:
+                LOG.info(f"Reached waypoint ({target_x:.2f}, {target_y:.2f})")
+                self.current_path.pop(0)
 
-        # Check if we've reached the waypoint
-        if distance < WAYPOINT_TOLERANCE:
-            LOG.info(f"Reached waypoint ({target_x:.2f}, {target_y:.2f})")
-            self.current_path.pop(0)
+                # Check if this was the last waypoint
+                if not self.current_path:
+                    # Check if we're close enough to the goal
+                    goal_dx = self.goal_pose[0] - current_x
+                    goal_dy = self.goal_pose[1] - current_y
+                    goal_distance = math.sqrt(goal_dx**2 + goal_dy**2)
 
-            # Check if this was the last waypoint
-            if not self.current_path:
-                # Check if we're close enough to the goal
-                goal_dx = self.goal_pose[0] - current_x
-                goal_dy = self.goal_pose[1] - current_y
-                goal_distance = math.sqrt(goal_dx**2 + goal_dy**2)
+                    if goal_distance < GOAL_TOLERANCE:
+                        LOG.info("Successfully reached home position!")
+                        self.state = NavigatorState.IDLE
+                        self.state_changed = True
+                        self._send_motion_stop()
+                        return
+                # Continue to next waypoint in the loop
+                continue
+            else:
+                break
 
-                if goal_distance < GOAL_TOLERANCE:
-                    LOG.info("Successfully reached home position!")
-                    self.state = NavigatorState.IDLE
-                    self.state_changed = True
-                    self._send_motion_stop()
-                    return
-
-            # Continue to next waypoint
-            self._update_path_following()
+        # If there are no more waypoints after the loop, return
+        if not self.current_path:
             return
 
         # Calculate required heading to waypoint
+        target_x, target_y = self.current_path[0]
+        current_x, current_y, current_theta = self.current_pose
+        dx = target_x - current_x
+        dy = target_y - current_y
         target_angle = math.atan2(dy, dx)
 
         # Normalize angle difference to [-pi, pi]
@@ -466,12 +479,14 @@ class Navigator:
                     self._handle_robot_pose(payload)
 
                 # Update path following if in return to home mode
-                now = time.time()
-                if self.state == NavigatorState.RETURNING_HOME and now - last_path_update >= PATH_UPDATE_INTERVAL:
-                    self._update_path_following()
-                    last_path_update = now
+                if self.state == NavigatorState.RETURNING_HOME:
+                    now = time.time()
+                    if now - last_path_update >= PATH_UPDATE_INTERVAL:
+                        self._update_path_following()
+                        last_path_update = now
 
                 # Publish state if changed or heartbeat timeout
+                now = time.time()
                 if now - self.last_state_publish_ts >= HEARTBEAT_INTERVAL:
                     self._publish_state(force=True)
                 else:
