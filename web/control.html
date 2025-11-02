@@ -121,6 +121,23 @@
       </label>
     </div>
 
+    <!-- Rekonesans (Autonomous Navigation) Controls -->
+    <div class="row" style="margin:16px 0 10px; padding-top:16px; border-top:1px solid #1e3a56">
+      <label style="cursor:pointer">
+        <input id="reconToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
+        <span data-i18n="motion.recon_mode">Tryb Rekonesans (Autonomous)</span>
+      </label>
+      <div style="width:20px"></div>
+      <label>
+        <span data-i18n="motion.recon_strategy">Strategia</span>:
+        <select id="reconStrategy" style="background:#0b1a27;color:#e6eef7;border:1px solid #24425e;border-radius:10px;padding:6px 8px;margin-left:8px">
+          <option value="STOP" data-i18n-option="motion.strategy_stop">STOP (zatrzymaj)</option>
+          <option value="AVOID" data-i18n-option="motion.strategy_avoid">AVOID (omijaj)</option>
+        </select>
+      </label>
+      <span id="reconStatus" class="pill" style="margin-left:10px;display:none"></span>
+    </div>
+
     <div class="row">
       <span class="muted">
         <span data-i18n="motion.shortcuts_hint">Skróty</span>:
@@ -304,6 +321,89 @@
     }catch(e){
       console.error('Follow hand toggle error:', e);
       appendLog(`follow hand toggle error: ${e.message}`, 'err');
+    }
+  });
+
+  // --- Rekonesans (Autonomous Navigation) ---
+  const reconToggle = qs('#reconToggle');
+  const reconStrategy = qs('#reconStrategy');
+  const reconStatus = qs('#reconStatus');
+
+  async function sendReconStart(strategy){
+    try{
+      const j = await httpPost('/api/navigator/start', {strategy: strategy});
+      appendLog(`Rekonesans started with strategy ${strategy} :: ${JSON.stringify(j)}`, 'ok');
+      updateReconStatus('exploring', strategy);
+    }catch(e){
+      appendLog(`Rekonesans start error: ${e.message}`, 'err');
+      reconToggle.checked = false;
+      reconStatus.style.display = 'none';
+    }
+  }
+
+  async function sendReconStop(){
+    try{
+      const j = await httpPost('/api/navigator/stop', {});
+      appendLog(`Rekonesans stopped :: ${JSON.stringify(j)}`, 'ok');
+      updateReconStatus('stopped');
+    }catch(e){
+      appendLog(`Rekonesans stop error: ${e.message}`, 'err');
+    }
+  }
+
+  async function sendReconConfig(strategy){
+    try{
+      const j = await httpPost('/api/navigator/config', {strategy: strategy});
+      appendLog(`Rekonesans strategy changed to ${strategy} :: ${JSON.stringify(j)}`, 'ok');
+    }catch(e){
+      appendLog(`Rekonesans config error: ${e.message}`, 'err');
+    }
+  }
+
+  function updateReconStatus(state, strategy){
+    if(state === 'exploring'){
+      reconStatus.textContent = `Active (${strategy || 'STOP'})`;
+      reconStatus.className = 'pill ok';
+      reconStatus.style.display = 'inline-flex';
+    } else if(state === 'stopped'){
+      reconStatus.textContent = 'Stopped';
+      reconStatus.className = 'pill';
+      reconStatus.style.display = 'inline-flex';
+      setTimeout(()=> reconStatus.style.display = 'none', 2000);
+    }
+  }
+
+  reconToggle.addEventListener('change', ()=>{
+    try{
+      if(reconToggle.checked){
+        // Disable follow modes when starting recon
+        if(followFaceToggle.checked){
+          followFaceToggle.checked = false;
+          sendFollowFace(false);
+        }
+        if(followHandToggle.checked){
+          followHandToggle.checked = false;
+          sendFollowHand(false);
+        }
+        sendReconStart(reconStrategy.value);
+      } else {
+        sendReconStop();
+      }
+    }catch(e){
+      console.error('Rekonesans toggle error:', e);
+      appendLog(`Rekonesans toggle error: ${e.message}`, 'err');
+    }
+  });
+
+  reconStrategy.addEventListener('change', ()=>{
+    try{
+      if(reconToggle.checked){
+        sendReconConfig(reconStrategy.value);
+        updateReconStatus('exploring', reconStrategy.value);
+      }
+    }catch(e){
+      console.error('Rekonesans strategy change error:', e);
+      appendLog(`Rekonesans strategy error: ${e.message}`, 'err');
     }
   });
 
