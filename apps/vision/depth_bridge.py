@@ -105,6 +105,16 @@ def estimate_distance_from_confidence(confidence: float) -> float:
     High confidence (close to 1.0) = closer obstacle
     Low confidence = farther obstacle
 
+    Formula:
+    - confidence ∈ [0.5, 1.0] maps to distance ∈ [MAX_DISTANCE, MIN_DISTANCE]
+    - Normalized confidence: norm_conf = (confidence - 0.5) / 0.5
+    - Distance: MAX_DISTANCE - (norm_conf * (MAX_DISTANCE - MIN_DISTANCE))
+
+    Examples:
+    - confidence=1.0 → norm_conf=1.0 → distance≈MIN_DISTANCE (0.3m)
+    - confidence=0.75 → norm_conf=0.5 → distance≈1.65m
+    - confidence=0.5 → norm_conf=0.0 → distance≈MAX_DISTANCE (3.0m)
+
     TODO: Replace with actual depth estimation from mono-depth model
     """
     # Inverse relationship: higher confidence = closer

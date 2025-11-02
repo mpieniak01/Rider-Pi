@@ -68,6 +68,7 @@ class OccupancyGrid:
         self.height_cells = int(math.ceil(height_m / resolution_m))
 
         # Initialize grid (all cells unknown)
+        # Note: Grid uses (height, width) indexing following numpy convention: grid[row, col] = grid[y, x]
         self.grid = np.full((self.height_cells, self.width_cells), CELL_UNKNOWN, dtype=np.uint8)
 
         # Origin is at the center of the map
@@ -214,7 +215,6 @@ class Mapper:
                 continue
 
             # Calculate obstacle position in global coordinates
-            # angle_global = robot_theta + angle_local
             angle_global = self.robot_theta + angle_local
 
             # Obstacle position in global frame
