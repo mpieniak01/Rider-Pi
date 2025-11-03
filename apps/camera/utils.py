@@ -11,7 +11,13 @@ import cv2
 
 def env_flag(name: str, default: bool = False) -> bool:
     """Return boolean value of environment flag *name*."""
-    return str(os.getenv(name, str(int(default)))).lower() in {"1", "true", "yes", "y", "on"}
+    return str(os.getenv(name, str(int(default)))).lower() in {
+        "1",
+        "true",
+        "yes",
+        "y",
+        "on",
+    }
 
 
 def open_camera(

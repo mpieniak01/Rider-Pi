@@ -161,7 +161,7 @@ class BusPub:
 class BusSub:
     """
     Subscriber: łączy się do XPUB brokera i nasłuchuje na wybranych tematach.
-    Zwraca (topic:str, payload:dict).
+    Zwraca (topic:str|None, payload:dict|None).
     """
 
     def __init__(self, topics: str | Iterable[str]):
@@ -182,23 +182,55 @@ class BusSub:
     def recv(self, timeout_ms: int | None = None) -> tuple[str | None, dict | None]:
         """
         Blokujące (z opcjonalnym timeoutem) pobranie jednej wiadomości.
+        Toleruje 1-frame (payload only) i 2+ frames (topic, payload[, ...]).
         Zwraca (topic, payload) albo (None, None) przy timeout.
         """
+        # timeout (poll)
         if timeout_ms is not None:
             if self.sock.poll(timeout=timeout_ms) <= 0:
                 return None, None
-        topic, data = self.sock.recv_multipart()
+
+        # odbierz ramek (lista bytes)
+        frames = self.sock.recv_multipart()
+        if not frames:
+            return "", None
+
+        # normalizacja: topic = 1. ramka (jeśli >=2), payload = ostatnia
+        if len(frames) >= 2:
+            topic_b, payload_b = frames[0], frames[-1]
+        else:
+            topic_b, payload_b = b"", frames[0]
+
+        # decode topic
         try:
-            payload = json.loads(data.decode("utf-8"))
+            topic = topic_b.decode("utf-8", errors="ignore")
         except Exception:
-            payload = None
-        return topic.decode("utf-8"), payload
+            topic = ""
+
+        # decode payload -> dict (JSON) lub None
+        payload: dict | None = None
+        if isinstance(payload_b, (bytes, bytearray)):
+            try:
+                payload = json.loads(payload_b.decode("utf-8", errors="ignore"))
+            except Exception:
+                payload = None
+        elif isinstance(payload_b, str):
+            try:
+                payload = json.loads(payload_b)
+            except Exception:
+                payload = None
+        elif isinstance(payload_b, dict):
+            payload = payload_b
+
+        return topic, payload
 
     def recv_iter(self) -> Iterator[tuple[str, dict]]:
         """Nieskończona pętla generatora (użyteczne w wątkach)."""
         while True:
             topic, payload = self.recv()
             if topic is None:
+                continue
+            if payload is None:
                 continue
             yield topic, payload
 

@@ -37,7 +37,12 @@ class TestGoogleCommandAPI:
         """Test /api/home/command returns 401 when not authenticated."""
         with patch.object(gha, "is_authenticated", return_value=False):
             response = client.post(
-                "/api/home/command", json={"deviceId": "test-device", "command": "test-command", "params": {}}
+                "/api/home/command",
+                json={
+                    "deviceId": "test-device",
+                    "command": "test-command",
+                    "params": {},
+                },
             )
             assert response.status_code == 401
             data = response.get_json()
@@ -69,7 +74,11 @@ class TestGoogleCommandAPI:
                 mock_send.return_value = {"ok": True, "result": {"status": "SUCCESS"}}
 
                 # Patch cache directory
-                with patch.object(api_server, "LAST_COMMAND_FILE", temp_cache_dir / "last_command.json"):
+                with patch.object(
+                    api_server,
+                    "LAST_COMMAND_FILE",
+                    temp_cache_dir / "last_command.json",
+                ):
                     response = client.post(
                         "/api/home/command",
                         json={
@@ -86,7 +95,9 @@ class TestGoogleCommandAPI:
 
                     # Verify send_command was called with correct params
                     mock_send.assert_called_once_with(
-                        "enterprises/project/devices/123", "action.devices.commands.OnOff", {"on": True}
+                        "enterprises/project/devices/123",
+                        "action.devices.commands.OnOff",
+                        {"on": True},
                     )
 
                     # Verify cache was created
@@ -104,9 +115,17 @@ class TestGoogleCommandAPI:
         with patch.object(gha, "is_authenticated", return_value=True):
             with patch.object(gha, "send_command") as mock_send:
                 with patch.object(gha, "refresh_access_token", return_value=None):
-                    mock_send.return_value = {"ok": False, "error": "Unauthorized", "status_code": 401}
+                    mock_send.return_value = {
+                        "ok": False,
+                        "error": "Unauthorized",
+                        "status_code": 401,
+                    }
 
-                    with patch.object(api_server, "LAST_COMMAND_FILE", temp_cache_dir / "last_command.json"):
+                    with patch.object(
+                        api_server,
+                        "LAST_COMMAND_FILE",
+                        temp_cache_dir / "last_command.json",
+                    ):
                         response = client.post(
                             "/api/home/command",
                             json={
@@ -133,7 +152,11 @@ class TestGoogleCommandAPI:
             with patch.object(gha, "send_command") as mock_send:
                 mock_send.return_value = {"ok": False, "error": "Network timeout"}
 
-                with patch.object(api_server, "LAST_COMMAND_FILE", temp_cache_dir / "last_command.json"):
+                with patch.object(
+                    api_server,
+                    "LAST_COMMAND_FILE",
+                    temp_cache_dir / "last_command.json",
+                ):
                     response = client.post(
                         "/api/home/command",
                         json={
@@ -160,7 +183,11 @@ class TestGoogleCommandAPI:
             with patch.object(gha, "send_command") as mock_send:
                 mock_send.return_value = {"ok": True, "result": {"status": "SUCCESS"}}
 
-                with patch.object(api_server, "LAST_COMMAND_FILE", temp_cache_dir / "last_command.json"):
+                with patch.object(
+                    api_server,
+                    "LAST_COMMAND_FILE",
+                    temp_cache_dir / "last_command.json",
+                ):
                     client.post(
                         "/api/home/command",
                         json={
@@ -201,7 +228,9 @@ class TestGoogleCommandIntegration:
                 mock_post.return_value = mock_response
 
                 result = gha.send_command(
-                    "enterprises/project/devices/123", "action.devices.commands.OnOff", {"on": True}
+                    "enterprises/project/devices/123",
+                    "action.devices.commands.OnOff",
+                    {"on": True},
                 )
 
                 assert result["ok"] is True
@@ -218,7 +247,9 @@ class TestGoogleCommandIntegration:
                 mock_post.return_value = mock_response
 
                 result = gha.send_command(
-                    "enterprises/project/devices/123", "action.devices.commands.OnOff", {"on": True}
+                    "enterprises/project/devices/123",
+                    "action.devices.commands.OnOff",
+                    {"on": True},
                 )
 
                 assert result["ok"] is False
@@ -230,7 +261,11 @@ class TestGoogleCommandIntegration:
         with patch("services.api_core.google_home_api.refresh_access_token") as mock_refresh:
             mock_refresh.return_value = None
 
-            result = gha.send_command("enterprises/project/devices/123", "action.devices.commands.OnOff", {"on": True})
+            result = gha.send_command(
+                "enterprises/project/devices/123",
+                "action.devices.commands.OnOff",
+                {"on": True},
+            )
 
             assert result["ok"] is False
             assert "authenticated" in result["error"].lower()

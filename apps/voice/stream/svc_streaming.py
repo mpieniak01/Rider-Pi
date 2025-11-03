@@ -223,7 +223,10 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         self._chat_cfg = ChatConfig(
             backend=chat_in.get("backend", "openai"),
             model=chat_in.get("model", "gpt-4o-mini"),
-            system_prompt=chat_in.get("system_prompt", "Jesteś asystentem robota. Odpowiadaj krótko i po polsku."),
+            system_prompt=chat_in.get(
+                "system_prompt",
+                "Jesteś asystentem robota. Odpowiadaj krótko i po polsku.",
+            ),
             max_history=int(chat_in.get("max_history", 4)),
             max_tokens=chat_in.get("max_tokens"),
             transport="realtime",

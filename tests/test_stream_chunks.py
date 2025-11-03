@@ -4,7 +4,11 @@ import json
 
 from apps.voice import voice_logging
 from apps.voice.audio.capture import CaptureConfig
-from apps.voice.stream_chunks import AudioChunkProcessor, calculate_chunk_size, decode_audio_from_message
+from apps.voice.stream_chunks import (
+    AudioChunkProcessor,
+    calculate_chunk_size,
+    decode_audio_from_message,
+)
 
 
 class DummyLogger:

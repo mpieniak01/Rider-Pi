@@ -33,7 +33,10 @@ def probe_devices() -> dict[str, Any]:
     result: dict[str, Any] = {
         "cards": [],
         "devices": [],
-        "aliases": {"wm8960_in": "hw:wm8960soundcard,0", "wm8960_out": "hw:wm8960soundcard,0"},
+        "aliases": {
+            "wm8960_in": "hw:wm8960soundcard,0",
+            "wm8960_out": "hw:wm8960soundcard,0",
+        },
     }
 
     try:
@@ -50,7 +53,11 @@ def probe_devices() -> dict[str, Any]:
                 if "device" in line.lower():
                     result["devices"].append(line.strip())
 
-        logger.event("alsa.probe.success", cards_count=len(result["cards"]), devices_count=len(result["devices"]))
+        logger.event(
+            "alsa.probe.success",
+            cards_count=len(result["cards"]),
+            devices_count=len(result["devices"]),
+        )
     except Exception as e:
         logger.event("alsa.probe.error", error=str(e))
 
@@ -124,7 +131,20 @@ def _test_device_access(device: str, mode: str) -> bool:
             "/dev/null",
         ]
     else:
-        cmd = ["timeout", "2", "aplay", "-D", device, "-f", "S16_LE", "-r", "16000", "-c", "2", "/dev/null"]
+        cmd = [
+            "timeout",
+            "2",
+            "aplay",
+            "-D",
+            device,
+            "-f",
+            "S16_LE",
+            "-r",
+            "16000",
+            "-c",
+            "2",
+            "/dev/null",
+        ]
 
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=3)
@@ -158,12 +178,22 @@ def ensure_free(
     force: bool = False,
 ) -> dict[str, Any]:
     """Ensure ALSA devices are free and accessible."""
-    result: dict[str, Any] = {"capture_free": True, "playback_free": True, "processes_killed": 0, "errors": []}
+    result: dict[str, Any] = {
+        "capture_free": True,
+        "playback_free": True,
+        "processes_killed": 0,
+        "errors": [],
+    }
 
     capture_resolved = resolved_alsa(capture_dev) if capture_dev else None
     playback_resolved = resolved_alsa(playback_dev) if playback_dev else None
 
-    logger.event("alsa.ensure_free.start", capture=capture_resolved, playback=playback_resolved, force=force)
+    logger.event(
+        "alsa.ensure_free.start",
+        capture=capture_resolved,
+        playback=playback_resolved,
+        force=force,
+    )
 
     if capture_resolved:
         result["capture_free"] = _test_device_access(capture_resolved, "capture")

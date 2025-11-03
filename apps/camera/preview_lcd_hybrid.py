@@ -206,7 +206,12 @@ def main():
         # SSD co N klatek
         if fid % max(1, EVERY) == 0:
             blob = cv2.dnn.blobFromImage(
-                cv2.resize(out, (300, 300)), 0.007843, (300, 300), 127.5, swapRB=True, crop=False
+                cv2.resize(out, (300, 300)),
+                0.007843,
+                (300, 300),
+                127.5,
+                swapRB=True,
+                crop=False,
             )
             net.setInput(blob)
             det = net.forward()
@@ -252,7 +257,13 @@ def main():
                 faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
                 if not NO_DRAW:
                     for fx, fy, fw, fh in faces:
-                        cv2.rectangle(out, (x0 + fx, y0 + fy), (x0 + fx + fw, y0 + fy + fh), (0, 255, 0), 2)
+                        cv2.rectangle(
+                            out,
+                            (x0 + fx, y0 + fy),
+                            (x0 + fx + fw, y0 + fy + fh),
+                            (0, 255, 0),
+                            2,
+                        )
                 if len(faces) > 0:
                     pub(
                         "vision.face",

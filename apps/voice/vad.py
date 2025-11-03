@@ -77,7 +77,14 @@ class WebRtcActivity:
     Wywołanie zwraca **True, gdy wykryto koniec mowy** (czyli „można kończyć nagrywanie”).
     """
 
-    def __init__(self, sample_rate: int, mode: int, frame_ms: int, tail_ms: int, energy_gate: float = -40.0):
+    def __init__(
+        self,
+        sample_rate: int,
+        mode: int,
+        frame_ms: int,
+        tail_ms: int,
+        energy_gate: float = -40.0,
+    ):
         self.sample_rate = int(sample_rate or 16000)
         # WebRTC akceptuje 10/20/30 ms; resztę „przycinamy” do najbliższej z tych wartości
         if frame_ms not in (10, 20, 30):

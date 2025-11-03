@@ -161,11 +161,21 @@ def clamp_speed(s: float) -> float:
 
 
 def make_cmd_drive(direction: str, speed: float, dur: float):
-    return {"type": "drive", "dir": direction, "speed": round(speed, 3), "dur": float(dur)}
+    return {
+        "type": "drive",
+        "dir": direction,
+        "speed": round(speed, 3),
+        "dur": float(dur),
+    }
 
 
 def make_cmd_spin(direction: str, speed: float, dur: float):
-    return {"type": "spin", "dir": direction, "speed": round(speed, 3), "dur": float(dur)}
+    return {
+        "type": "spin",
+        "dir": direction,
+        "speed": round(speed, 3),
+        "dur": float(dur),
+    }
 
 
 def decide(txt_raw: str):

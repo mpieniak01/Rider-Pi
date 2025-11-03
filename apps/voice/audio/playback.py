@@ -132,7 +132,11 @@ class PlaybackStream:
         success = rc == 0 and not self._failed
         output = self._buffer[:] if self._buffer else stdout_data
 
-        return success, output, stderr_data.decode(errors="ignore") if stderr_data else None
+        return (
+            success,
+            output,
+            stderr_data.decode(errors="ignore") if stderr_data else None,
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -322,7 +326,11 @@ def _start_playback_process(
             try:
                 logger.event("playback.process.trying", cmd=cmd[:2])
                 proc = subprocess.Popen(
-                    cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    bufsize=0,
                 )
                 logger.event("playback.process.started", cmd=cmd[0], fmt=fmt)
                 return proc, backend
@@ -331,7 +339,12 @@ def _start_playback_process(
                 logger.event("playback.process.failed", cmd=cmd[0], error=str(e))
                 continue
 
-    logger.event("playback.process.no_working_command", last_error=last_error, fmt=fmt, backend=backend)
+    logger.event(
+        "playback.process.no_working_command",
+        last_error=last_error,
+        fmt=fmt,
+        backend=backend,
+    )
     return None, backend
 
 
@@ -364,7 +377,10 @@ def start_stream(
 
 
 def play_bytes(
-    audio_data: bytes, fmt: str, config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None
+    audio_data: bytes,
+    fmt: str,
+    config: PlaybackConfig,
+    logger: voice_logging.VoiceLogger | None = None,
 ) -> bool:
     """Play audio bytes immediately (one-shot playback)."""
     if not audio_data:
@@ -413,7 +429,11 @@ def play_ding(config: PlaybackConfig, logger: voice_logging.VoiceLogger | None =
     return play_bytes(bytes(ding_data), "pcm16", config, logger)
 
 
-def play_file(file_path: Path | str, config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None) -> bool:
+def play_file(
+    file_path: Path | str,
+    config: PlaybackConfig,
+    logger: voice_logging.VoiceLogger | None = None,
+) -> bool:
     """Play audio file."""
     if logger is None:
         logger = voice_logging.get_logger(__name__)

@@ -21,7 +21,11 @@ try:
         import RPi.GPIO as GPIO
 
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(GPIO_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP if _ACTIVE_LOW else GPIO.PUD_DOWN)
+        GPIO.setup(
+            GPIO_PIN,
+            GPIO.IN,
+            pull_up_down=GPIO.PUD_UP if _ACTIVE_LOW else GPIO.PUD_DOWN,
+        )
         _gpio_ok = True
 except Exception:
     _gpio_ok = False  # brak biblioteki lub sprzętu → fallback

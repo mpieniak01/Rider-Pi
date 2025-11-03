@@ -156,11 +156,20 @@ def _build_overrides(args) -> dict[str, Any]:
     if mode == "stream":
         overrides = _merge(
             overrides,
-            {"asr": {"transport": "realtime"}, "chat": {"transport": "realtime"}, "tts": {"transport": "realtime"}},
+            {
+                "asr": {"transport": "realtime"},
+                "chat": {"transport": "realtime"},
+                "tts": {"transport": "realtime"},
+            },
         )
     elif mode == "file":
         overrides = _merge(
-            overrides, {"asr": {"transport": "file"}, "chat": {"transport": "file"}, "tts": {"transport": "file"}}
+            overrides,
+            {
+                "asr": {"transport": "file"},
+                "chat": {"transport": "file"},
+                "tts": {"transport": "file"},
+            },
         )
 
     # NEW: --vad -> asr.vad
@@ -486,7 +495,11 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     # Handle --print-effective-config early (before subcommand requirement)
     if getattr(args, "print_effective_config", False):
-        from .config_loader import ValidationError, load_and_validate, print_effective_config as print_cfg
+        from .config_loader import (
+            ValidationError,
+            load_and_validate,
+            print_effective_config as print_cfg,
+        )
 
         overrides = _build_overrides(args) if hasattr(args, 'cmd') else {}
         lenient = getattr(args, "config_lenient", False)

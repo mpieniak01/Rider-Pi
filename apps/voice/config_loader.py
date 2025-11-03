@@ -92,9 +92,37 @@ SCHEMA: dict[str, set[str]] = {
     "capture": {"device", "sample_rate", "channels", "sample_format"},
     "playback": {"backend", "device", "volume"},
     # HTTP/local: dopuszczamy base_url/endpoint/content_type/timeout/provider
-    "asr": {"backend", "model", "language", "base_url", "endpoint", "content_type", "timeout", "provider"},
-    "chat": {"backend", "model", "language", "system_prompt", "base_url", "endpoint", "timeout", "provider"},
-    "tts": {"backend", "model", "format", "voice", "base_url", "endpoint", "accept", "timeout", "provider"},
+    "asr": {
+        "backend",
+        "model",
+        "language",
+        "base_url",
+        "endpoint",
+        "content_type",
+        "timeout",
+        "provider",
+    },
+    "chat": {
+        "backend",
+        "model",
+        "language",
+        "system_prompt",
+        "base_url",
+        "endpoint",
+        "timeout",
+        "provider",
+    },
+    "tts": {
+        "backend",
+        "model",
+        "format",
+        "voice",
+        "base_url",
+        "endpoint",
+        "accept",
+        "timeout",
+        "provider",
+    },
     "nlu": {"backend", "chat_threshold", "llm_model", "command_keywords"},
     "hotword": {"enabled", "engine"},
     "stream": {
@@ -406,7 +434,13 @@ class ConfigLoader:
         cap = data.get("capture", {}) if isinstance(data.get("capture"), dict) else {}
         if "channels" in cap and cap["channels"] not in (1, 2):
             self.validation_errors.append("Field 'capture.channels' must be one of [1, 2]")
-        if "sample_rate" in cap and cap["sample_rate"] not in (16000, 22050, 24000, 44100, 48000):
+        if "sample_rate" in cap and cap["sample_rate"] not in (
+            16000,
+            22050,
+            24000,
+            44100,
+            48000,
+        ):
             self.validation_errors.append(
                 "Field 'capture.sample_rate' must be one of [16000, 22050, 24000, 44100, 48000]"
             )

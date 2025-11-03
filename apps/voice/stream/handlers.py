@@ -259,7 +259,10 @@ class StreamHandlersMixin:
     def _publish_error(self, error_type: str, message: str) -> None:
         if self.ui_publisher:
             try:
-                self.ui_publisher.publish("ui.error", {"type": error_type, "message": message, "ts": time.time()})
+                self.ui_publisher.publish(
+                    "ui.error",
+                    {"type": error_type, "message": message, "ts": time.time()},
+                )
             except Exception as e:
                 self.logger.event("error_pub_error", error=str(e))
 
@@ -486,8 +489,16 @@ class StreamHandlersMixin:
         """Wyślij aktualizację sesji zgodną z oczekiwaniami testów."""
         session = {
             "voice": "ash",
-            "input_audio_format": {"type": "pcm16", "sample_rate_hz": 16000, "channels": 1},
-            "output_audio_format": {"type": "pcm16", "sample_rate_hz": 16000, "channels": 1},
+            "input_audio_format": {
+                "type": "pcm16",
+                "sample_rate_hz": 16000,
+                "channels": 1,
+            },
+            "output_audio_format": {
+                "type": "pcm16",
+                "sample_rate_hz": 16000,
+                "channels": 1,
+            },
         }
         msg = json.dumps({"type": "session.update", "session": session})
 

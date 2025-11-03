@@ -75,7 +75,10 @@ def _report_env_state() -> None:
         _log_warn(
             "voice.init",
             "env.missing.key",
-            {"var": "OPENAI_API_KEY", "hint": "Ustaw klucz lub zapewnij ładowanie z ~/.bash_profile"},
+            {
+                "var": "OPENAI_API_KEY",
+                "hint": "Ustaw klucz lub zapewnij ładowanie z ~/.bash_profile",
+            },
         )
 
 

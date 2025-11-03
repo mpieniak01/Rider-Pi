@@ -162,7 +162,13 @@ def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
     present = bool(data.get("present", True))
     bbox = data.get("bbox")
     mode = data.get("mode") or ("haar" if kind == "face" else ("ssd" if kind == "person" else "det"))
-    return {"kind": kind, "present": present, "score": score, "bbox": bbox, "mode": mode}
+    return {
+        "kind": kind,
+        "present": present,
+        "score": score,
+        "bbox": bbox,
+        "mode": mode,
+    }
 
 
 def announce_state() -> None:

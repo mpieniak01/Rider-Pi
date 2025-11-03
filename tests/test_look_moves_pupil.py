@@ -9,7 +9,7 @@ from apps.ui.face.controller import FaceController
 
 def _pupil_centers(
     img: Image.Image,
-) -> tuple[Optional[tuple[float, float]], Optional[tuple[float, float]]]:
+) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
     w, h = img.size
     px = img.load()
     cx, cy = w // 2, h // 2

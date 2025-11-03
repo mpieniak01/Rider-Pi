@@ -338,7 +338,8 @@ class Mapper:
 def main():
     """Entry point"""
     logging.basicConfig(
-        level=getattr(logging, LOG_LEVEL, logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
     mapper = Mapper()

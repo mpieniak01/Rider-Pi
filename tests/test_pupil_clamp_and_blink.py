@@ -7,7 +7,9 @@ from PIL import Image
 from apps.ui.face.controller import FaceController
 
 
-def _eye_rects(img: Image.Image) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+def _eye_rects(
+    img: Image.Image,
+) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
     w, h = img.size
     cx, cy = w // 2, h // 2
     eye_dx = int(min(w, h) * 0.22)
@@ -20,12 +22,12 @@ def _eye_rects(img: Image.Image) -> tuple[tuple[int, int, int, int], tuple[int, 
 
 def _pupil_centers(
     img: Image.Image,
-) -> tuple[Optional[tuple[float, float]], Optional[tuple[float, float]]]:
+) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
     w, h = img.size
     px = img.load()
     (lx0, ly0, lx1, ly1), (rx0, ry0, rx1, ry1) = _eye_rects(img)
 
-    def scan_rect(x0: int, y0: int, x1: int, y1: int) -> Optional[tuple[float, float]]:
+    def scan_rect(x0: int, y0: int, x1: int, y1: int) -> tuple[float, float] | None:
         xs, ys, n = 0, 0, 0
         for y in range(max(y0, 0), min(y1, h)):
             for x in range(max(x0, 0), min(x1, w)):

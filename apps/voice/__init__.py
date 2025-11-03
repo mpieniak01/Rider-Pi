@@ -6,7 +6,10 @@ from .errors import (  # PR-3: domain-specific errors
     VoiceError,
     WsClosed,
 )
-from .session_prefs import SessionPreferences, build_session_preferences  # PR-3: session config
+from .session_prefs import (
+    SessionPreferences,
+    build_session_preferences,
+)  # PR-3: session config
 from .stream_chunks import AudioChunkProcessor  # noqa: F401
 
 __all__ = [

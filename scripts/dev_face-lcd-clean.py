@@ -31,7 +31,14 @@ def _list_lcd_classes(fr):
         if inspect.isclass(obj) and obj.__module__ == fr.__name__:
             has_show = any(
                 callable(getattr(obj, m, None))
-                for m in ("ShowImage", "show_image", "display", "blit", "put", "present")
+                for m in (
+                    "ShowImage",
+                    "show_image",
+                    "display",
+                    "blit",
+                    "put",
+                    "present",
+                )
             )
             has_raw = all(hasattr(obj, m) for m in ("SetWindows", "command", "spi_writebyte"))
             if has_show or has_raw or name.lower().startswith("lcd"):
@@ -76,7 +83,12 @@ def _build_lcd(fr, drv_rotate, prefer=None):
         inst = None
     if inst is None:
         try:
-            inst = cls(lcd_do_init=True, lcd_rotate=drv_rotate, lcd_spi_hz=spi_hz, lcd_bl_pin=bl_pin)
+            inst = cls(
+                lcd_do_init=True,
+                lcd_rotate=drv_rotate,
+                lcd_spi_hz=spi_hz,
+                lcd_bl_pin=bl_pin,
+            )
         except Exception:
             try:
                 inst = cls(drv_rotate)
@@ -238,7 +250,11 @@ def main():
             if args.rotate:
                 from PIL import Image
 
-                rot_map = {90: Image.ROTATE_90, 180: Image.ROTATE_180, 270: Image.ROTATE_270}
+                rot_map = {
+                    90: Image.ROTATE_90,
+                    180: Image.ROTATE_180,
+                    270: Image.ROTATE_270,
+                }
                 op = rot_map.get(args.rotate)
                 img = img.transpose(op) if op else img.rotate(args.rotate, expand=True)
 

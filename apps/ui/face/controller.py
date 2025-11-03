@@ -59,7 +59,11 @@ class FaceController:
         self._mouth_open_override = os.getenv("FACE_MOUTH_OPEN", "").strip()
 
         # Debug
-        self._debug_mouth = os.getenv("FACE_DEBUG_MOUTH", "0").lower() not in {"0", "false", "no"}
+        self._debug_mouth = os.getenv("FACE_DEBUG_MOUTH", "0").lower() not in {
+            "0",
+            "false",
+            "no",
+        }
         self._last_dbg = 0.0
 
         # Timery

@@ -133,7 +133,15 @@ def should_skip_context(line: str, context_before: list[str], filepath: Path) ->
     # Check if in a code block showing old vs new comparison
     if any(
         marker in line.lower()
-        for marker in ['# old:', '# before:', 'old path', 'removed in pr', 'was a stub', 'moved from', 'migrated from']
+        for marker in [
+            '# old:',
+            '# before:',
+            'old path',
+            'removed in pr',
+            'was a stub',
+            'moved from',
+            'migrated from',
+        ]
     ):
         return True
 
@@ -266,7 +274,11 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Update documentation references')
-    parser.add_argument('--dry-run', action='store_true', help='Show what would be changed without modifying files')
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be changed without modifying files',
+    )
     parser.add_argument('--verify-only', action='store_true', help='Only verify that new paths exist')
 
     args = parser.parse_args()

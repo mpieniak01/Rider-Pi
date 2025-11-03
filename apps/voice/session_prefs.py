@@ -114,7 +114,13 @@ def build_session_preferences(
     server_vad = bool(_get(stream_cfg, "server_vad", cfg_stream.get("server_vad", True)))
 
     # Turn detection timing
-    silence_ms = int(_get(stream_cfg, "turn_end_silence_ms", cfg_stream.get("turn_end_silence_ms", 700)))
+    silence_ms = int(
+        _get(
+            stream_cfg,
+            "turn_end_silence_ms",
+            cfg_stream.get("turn_end_silence_ms", 700),
+        )
+    )
     max_turn_ms = int(_get(stream_cfg, "max_turn_ms", cfg_stream.get("max_turn_ms", 6000)))
 
     # Temperature (from chat config)

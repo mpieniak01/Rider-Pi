@@ -26,7 +26,13 @@ for m in mods:
             ):
                 print("CALL:", n)
         else:
-            if n in ("BL", "Backlight", "BACKLIGHT", "LCD_BL", "PIN_BL") or n.lower() in (
+            if n in (
+                "BL",
+                "Backlight",
+                "BACKLIGHT",
+                "LCD_BL",
+                "PIN_BL",
+            ) or n.lower() in (
                 "bl",
                 "backlight",
                 "lcd_bl",

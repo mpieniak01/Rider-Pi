@@ -124,7 +124,12 @@ def main():
         if dt > 0:
             time.sleep(dt)
 
-    print(print(f"fps~{frames / max(0.001, (time.time() - t0)):.2f} W={W} H={H} ", f"hz={hz} mode={mode}"))
+    print(
+        print(
+            f"fps~{frames / max(0.001, (time.time() - t0)):.2f} W={W} H={H} ",
+            f"hz={hz} mode={mode}",
+        )
+    )
 
 
 if __name__ == "__main__":

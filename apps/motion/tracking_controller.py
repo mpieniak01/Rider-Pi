@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
 """
 apps/motion/tracking_controller.py
-Subscribes to vision.tracking.offset and controls robot rotation to follow objects.
-Uses a proportional controller with dead zone and timeout.
 
-Configuration parameters (set via environment variables):
-- KP (TRACKING_KP, default: 0.15): Proportional gain for the controller.
-  Higher values increase responsiveness.
-- DEAD_ZONE (TRACKING_DEAD_ZONE, default: 0.1): No action is taken if the
-  absolute offset is less than this value.
-- TIMEOUT_SEC (TRACKING_TIMEOUT, default: 1.0): Time in seconds after which
-  the controller stops if no new offset is received.
-- MAX_SPEED (TRACKING_MAX_SPEED, default: 0.20): Maximum rotation speed
-  (range: 0..1) applied by the controller.
+Subskrybuje vision.tracking.offset i wystawia komendy ruchu na bus:
+- cmd.move {vx, vy, yaw, duration, rid, prio, ts}
+- cmd.stop {rid, reason, ts}
 
-These parameters allow tuning of the tracking controller's responsiveness
-and stability.
+Regulator P z martwą strefą i watchdogiem. NIE steruje sprzętem bezpośrednio
+(od tego jest rider-motion-bridge), dzięki czemu warstwa WEB i TRACKING są
+niezależne i odporne na awarie jednej z nich.
+
+Tunable (ENV):
+- TRACKING_KP (default 0.15)
+- TRACKING_DEAD_ZONE (default 0.10)
+- TRACKING_TIMEOUT (s, default 1.0)
+- TRACKING_MAX_SPEED (default 0.20, 0..1)
+- TRACKING_CMD_DURATION (s, default 0.20)  # czas „dawki” ruchu
+- TRACKING_CMD_PRIO (int, default 50)      # priorytet źródła „tracking”
+- BUS_SUB_PORT (default 5556)
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -28,100 +31,26 @@ from typing import Any
 
 import zmq
 
-from drivers.xgo import XgoAdapter
+from common.bus import BusPub  # publikujemy tylko na bus
 
+# ── Konfiguracja ──────────────────────────────────────────────────────────────
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
 ZMQ_ADDR_SUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
 
-# Controller parameters
-KP = float(os.getenv("TRACKING_KP", "0.15"))  # Proportional gain
-DEAD_ZONE = float(os.getenv("TRACKING_DEAD_ZONE", "0.1"))  # No action if |offset| < this
-TIMEOUT_SEC = float(os.getenv("TRACKING_TIMEOUT", "1.0"))  # Stop after this time without updates
-MAX_SPEED = float(os.getenv("TRACKING_MAX_SPEED", "0.20"))  # Max rotation speed (0..1)
+KP = float(os.getenv("TRACKING_KP", "0.15"))
+DEAD_ZONE = float(os.getenv("TRACKING_DEAD_ZONE", "0.10"))
+TIMEOUT_SEC = float(os.getenv("TRACKING_TIMEOUT", "1.0"))
+MAX_SPEED = float(os.getenv("TRACKING_MAX_SPEED", "0.20"))
+CMD_DURATION = float(os.getenv("TRACKING_CMD_DURATION", "0.20"))
+CMD_PRIO = int(os.getenv("TRACKING_CMD_PRIO", "50"))
+RID = "tracking"  # identyfikator źródła
+LOOP_HZ = 10.0  # tylko do logu informacyjnego
 
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, default))
-    except Exception:
-        return default
-
-
-class TrackingController:
-    def __init__(self):
-        self.xgo = XgoAdapter()
-        self.lock = threading.Lock()
-        self.last_offset_ts = 0.0
-        self.current_mode = "NONE"
-
-        # Enable stabilization
-        try:
-            imu_on = _env_int("RIDER_IMU", 1)
-            self.xgo.set_stabilization(bool(imu_on))
-        except AttributeError as e:
-            print(f"[tracking] stabilization not available: {e}", flush=True)
-        except Exception as e:
-            print(f"[tracking] stabilization setup error: {e}", flush=True)
-
-    def on_tracking_offset(self, offset_x: float, mode: str) -> None:
-        """
-        Handle tracking offset message.
-        offset_x: -1.0 (left) to +1.0 (right), 0.0 = centered
-        """
-        now = time.time()
-
-        with self.lock:
-            self.last_offset_ts = now
-            self.current_mode = mode
-
-            # Apply dead zone
-            if abs(offset_x) < DEAD_ZONE:
-                rotation_speed = 0.0
-            else:
-                # Proportional controller
-                rotation_speed = KP * offset_x
-                # Clamp to max speed
-                rotation_speed = max(-MAX_SPEED, min(MAX_SPEED, rotation_speed))
-
-            # Execute rotation
-            if rotation_speed != 0.0:
-                direction = "right" if rotation_speed > 0 else "left"
-                speed = abs(rotation_speed)
-                print(f"[tracking] rotate {direction} @ {speed:.3f} (offset={offset_x:.3f})", flush=True)
-                self.xgo.spin(direction, speed, duration=0.1, block=False)
-            else:
-                # In dead zone, stop
-                self.xgo.stop()
-
-    def watchdog_loop(self) -> None:
-        """Stop robot if no tracking updates received within timeout."""
-        while True:
-            try:
-                now = time.time()
-                with self.lock:
-                    if self.current_mode != "NONE":
-                        time_since_update = now - self.last_offset_ts
-                        if time_since_update > TIMEOUT_SEC:
-                            print(f"[tracking] timeout ({time_since_update:.1f}s) - stopping", flush=True)
-                            self.xgo.stop()
-                            self.current_mode = "NONE"
-
-                time.sleep(0.2)
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                print(f"[tracking] watchdog error: {e}", flush=True)
-                time.sleep(0.2)
-
-
-def zmq_sub(topics: list[str]) -> zmq.Socket:
-    ctx = zmq.Context.instance()
-    s = ctx.socket(zmq.SUB)
-    s.connect(ZMQ_ADDR_SUB)
-    s.setsockopt(zmq.RCVTIMEO, 100)  # 100ms timeout
-    for t in topics:
-        s.setsockopt_string(zmq.SUBSCRIBE, t)
-    return s
+log = logging.getLogger("tracking_controller")
+logging.basicConfig(
+    level=os.getenv("TRACKING_LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 
 def _json_loads(text: str) -> dict[str, Any]:
@@ -131,8 +60,18 @@ def _json_loads(text: str) -> dict[str, Any]:
         return {}
 
 
-def sub_recv(sock: zmq.Socket) -> tuple[str, dict[str, Any]]:
-    """Receive message from SUB socket."""
+def _zmq_sub(topics) -> zmq.Socket:
+    ctx = zmq.Context.instance()
+    s = ctx.socket(zmq.SUB)
+    s.connect(ZMQ_ADDR_SUB)
+    s.setsockopt(zmq.RCVTIMEO, 100)  # 100 ms
+    for t in topics:
+        s.setsockopt_string(zmq.SUBSCRIBE, t)
+    return s
+
+
+def _sub_recv(sock: zmq.Socket) -> tuple[str, dict[str, Any]]:
+    """Odbierz (topic, payload_json) z SUB."""
     try:
         parts = sock.recv_multipart()
         if not parts:
@@ -152,36 +91,125 @@ def sub_recv(sock: zmq.Socket) -> tuple[str, dict[str, Any]]:
         return "", {}
 
 
-def main():
-    print("[tracking_controller] starting", flush=True)
-    controller = TrackingController()
+class TrackingController:
+    def __init__(self) -> None:
+        self.bus = BusPub(warmup_ms=5)
+        self.lock = threading.Lock()
+        self.last_offset_ts = 0.0
+        self.current_mode = "NONE"
 
-    # Start watchdog thread
-    threading.Thread(target=controller.watchdog_loop, daemon=True).start()
+        log.info(
+            "[tracking_controller] params: KP=%.3f DEAD=%.3f TIMEOUT=%.2fs MAX=%.3f DURATION=%.2fs PRIO=%d HZ=%.1f",
+            KP,
+            DEAD_ZONE,
+            TIMEOUT_SEC,
+            MAX_SPEED,
+            CMD_DURATION,
+            CMD_PRIO,
+            LOOP_HZ,
+        )
 
-    # Subscribe to tracking offset topic
-    sub = zmq_sub(["vision.tracking.offset"])
+    # ── Publikacja na busie (kontrakt cmd.move / cmd.stop) ────────────────────
+    def _send_move(
+        self,
+        yaw: float,
+        duration: float = CMD_DURATION,
+        vx: float = 0.0,
+        vy: float = 0.0,
+    ) -> None:
+        msg = {
+            "vx": float(vx),
+            "vy": float(vy),
+            "yaw": float(yaw),
+            "duration": float(duration),
+            "rid": RID,
+            "prio": int(CMD_PRIO),
+            "ts": time.time(),
+        }
+        self.bus.publish("cmd.move", msg, add_ts=False)  # ts już w msg
 
-    print("[tracking_controller] listening for tracking offset...", flush=True)
+    def _send_stop(self, reason: str) -> None:
+        msg = {
+            "rid": RID,
+            "reason": str(reason),
+            "ts": time.time(),
+        }
+        self.bus.publish("cmd.stop", msg, add_ts=False)
 
-    while True:
-        try:
-            topic, data = sub_recv(sub)
-            if not topic:
+    # ── Logika regulatora ─────────────────────────────────────────────────────
+    def on_tracking_offset(self, offset_x: float, mode: str) -> None:
+        """offset_x: -1.0 (lewo) .. +1.0 (prawo), 0.0 = center."""
+        now = time.time()
+        with self.lock:
+            self.last_offset_ts = now
+            self.current_mode = mode
+
+            if abs(offset_x) < DEAD_ZONE:
+                log.info("[tracking] STOP (dead-zone)")
+                self._send_stop("dead-zone")
+                return
+
+            # regulator P
+            az = KP * offset_x  # yaw docelowy
+            az = max(-MAX_SPEED, min(MAX_SPEED, az))  # clamp [-MAX_SPEED, +MAX_SPEED]
+
+            direction = "right" if az > 0 else "left"
+            log.info(
+                "[tracking] rotate %s @ %.3f (offset=%.3f, mode=%s)",
+                direction,
+                abs(az),
+                offset_x,
+                mode,
+            )
+
+            # publikacja dawki ruchu na busie
+            self._send_move(yaw=az, duration=CMD_DURATION)
+
+    def watchdog_loop(self) -> None:
+        """Stop, gdy brak update'ów przez TIMEOUT_SEC."""
+        while True:
+            try:
+                time.sleep(0.2)
+                now = time.time()
+                with self.lock:
+                    if self.current_mode != "NONE" and now - self.last_offset_ts > TIMEOUT_SEC:
+                        log.info(
+                            "[tracking] timeout (%.1fs) - stopping",
+                            now - self.last_offset_ts,
+                        )
+                        self._send_stop("timeout")
+                        self.current_mode = "NONE"
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                log.warning("[tracking] watchdog error: %s", e)
+                time.sleep(0.2)
+
+
+def main() -> None:
+    log.info("[tracking_controller] starting")
+    ctrl = TrackingController()
+
+    threading.Thread(target=ctrl.watchdog_loop, daemon=True).start()
+
+    sub = _zmq_sub(["vision.tracking.offset"])
+    log.info("[tracking_controller] listening for tracking offset...")
+
+    try:
+        while True:
+            topic, data = _sub_recv(sub)
+            if topic != "vision.tracking.offset":
                 continue
-
-            if topic == "vision.tracking.offset":
-                offset_x = data.get("offset_x", 0.0)
-                mode = data.get("mode", "unknown")
-                controller.on_tracking_offset(offset_x, mode)
-
-        except KeyboardInterrupt:
-            print("[tracking_controller] stopping", flush=True)
-            controller.xgo.stop()
-            break
-        except Exception as e:
-            print(f"[tracking_controller] error: {e}", flush=True)
-            time.sleep(0.1)
+            offset_x = float(data.get("offset_x", 0.0))
+            mode = str(data.get("mode", "unknown"))
+            ctrl.on_tracking_offset(offset_x, mode)
+    except KeyboardInterrupt:
+        log.info("[tracking_controller] interrupted")
+    finally:
+        try:
+            ctrl._send_stop("shutdown")
+        finally:
+            log.info("[tracking_controller] shutdown complete")
 
 
 if __name__ == "__main__":

@@ -28,8 +28,16 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the main argument parser for voice CLI."""
     parser = argparse.ArgumentParser(description="Rider voice assistant")
     parser.add_argument("--config", help="Path to config file", default=None)
-    parser.add_argument("--config-lenient", action="store_true", help="Warn on unknown keys instead of failing")
-    parser.add_argument("--print-effective-config", action="store_true", help="Print effective config and exit")
+    parser.add_argument(
+        "--config-lenient",
+        action="store_true",
+        help="Warn on unknown keys instead of failing",
+    )
+    parser.add_argument(
+        "--print-effective-config",
+        action="store_true",
+        help="Print effective config and exit",
+    )
     parser.add_argument("--lang", type=str, help="ASR language hint (pl|en|auto)", default=None)
 
     sub = parser.add_subparsers(dest="cmd")
@@ -157,7 +165,11 @@ def cmd_asr(args) -> None:
     config = voice_config.load(args.config, overrides=overrides)
     voice_logging.configure(config.get("logging", {}).get("level"))
 
-    transcript = transcribe(frames, sample_rate, ASRConfig(**_filter_for_dataclass(config["asr"], ASRConfig)))
+    transcript = transcribe(
+        frames,
+        sample_rate,
+        ASRConfig(**_filter_for_dataclass(config["asr"], ASRConfig)),
+    )
     print(transcript.text)
 
 
@@ -229,7 +241,12 @@ def cmd_diag(args) -> None:
 
 def _configure(args) -> tuple[dict[str, Any], Any]:
     """Configure system from arguments."""
-    from .config_loader import ValidationError, load_and_validate, mask_secrets, print_effective_config
+    from .config_loader import (
+        ValidationError,
+        load_and_validate,
+        mask_secrets,
+        print_effective_config,
+    )
 
     overrides = _build_overrides(args)
     lenient = getattr(args, "config_lenient", False)
@@ -291,7 +308,16 @@ def _build_overrides(args) -> dict[str, Any]:
             )
 
     # Handle other argument mappings
-    for section in ["asr", "chat", "tts", "vad", "turn", "playback", "capture", "service"]:
+    for section in [
+        "asr",
+        "chat",
+        "tts",
+        "vad",
+        "turn",
+        "playback",
+        "capture",
+        "service",
+    ]:
         if hasattr(args, section) and getattr(args, section) is not None:
             values = getattr(args, section)
             if values:

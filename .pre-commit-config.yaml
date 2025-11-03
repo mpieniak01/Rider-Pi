@@ -1,30 +1,31 @@
 repos:
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.6.9
-  hooks:
-  - id: ruff
-    name: ruff (lint + fix)
-    args:
-    - --fix
-    - --unsafe-fixes
-    exclude: "(?x)^(\n  _apps/ \n)\n"
-  - id: ruff-format
-    name: ruff (format)
-    exclude: "(?x)^(\n  _apps/ \n)\n"
-- repo: local
-  hooks:
-  - id: check-file-length
-    name: Check file length (apps/voice/*) [CI-only]
-    entry: python3 scripts/dev_check-file-length.py
-    language: system
-    pass_filenames: false
-    always_run: true
-    stages:
-    - pre-push
-    - manual
-  - id: check-legacy-imports
-    name: Check for legacy imports
-    entry: python3 scripts/dev_check-legacy-imports.py
-    language: system
-    pass_filenames: false
-    always_run: true
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        name: ruff (lint + fix)
+        args:
+          - --fix
+          - --unsafe-fixes
+        exclude: "(?x)^(\n  _apps/ \n)\n"
+      - id: ruff-format
+        name: ruff (format)
+        exclude: "(?x)^(\n  _apps/ \n)\n"
+
+  - repo: local
+    hooks:
+      - id: check-file-length
+        name: Check file length (apps/voice/*) [CI-only]
+        entry: python3 scripts/dev_check-file-length.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages:
+          - pre-push
+          - manual
+      - id: check-legacy-imports
+        name: Check for legacy imports
+        entry: python3 scripts/dev_check-legacy-imports.py
+        language: system
+        pass_filenames: false
+        always_run: true

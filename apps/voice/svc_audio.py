@@ -43,7 +43,11 @@ def ensure_mono_16k(audio_data: bytes, capture_cfg: CaptureConfig) -> bytes:
 
 
 def capture_once(
-    capture_cfg: CaptureConfig, vad: WebRtcActivity, max_len_ms: int, service_cfg: dict[str, Any], logger
+    capture_cfg: CaptureConfig,
+    vad: WebRtcActivity,
+    max_len_ms: int,
+    service_cfg: dict[str, Any],
+    logger,
 ) -> bytes:
     """Capture audio @16kHz mono; returns bytes for transcribe_file()."""
     # Get timing parameters from service config
@@ -122,14 +126,22 @@ def capture_once(
             logger.event("service.capture.retry_error", error=str(exc))
 
         if len(audio) < expected_min:
-            logger.event("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
+            logger.event(
+                "service.capture.fast_fail.too_short",
+                bytes=len(audio),
+                threshold=expected_min,
+            )
             return b""
 
     return audio
 
 
 def capture_with_arecord(
-    capture_cfg: CaptureConfig, vad: WebRtcActivity, max_len_ms: int, logger, min_capture_ms: int
+    capture_cfg: CaptureConfig,
+    vad: WebRtcActivity,
+    max_len_ms: int,
+    logger,
+    min_capture_ms: int,
 ) -> bytes:
     """Fallback capture using arecord command (S32_LE -> konwersja do S16_LE)."""
     device = capture_cfg.device or "plughw:1,0"
@@ -202,7 +214,11 @@ def capture_with_arecord(
 
     if trimmed:
         if len(trimmed) >= expected_min:
-            logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
+            logger.event(
+                "service.capture.fallback.success",
+                backend="arecord",
+                bytes=len(trimmed),
+            )
             return trimmed
         if len(raw_s16) >= max(1, expected_min // 2):
             logger.event(

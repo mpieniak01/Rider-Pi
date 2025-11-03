@@ -117,7 +117,10 @@ def api_navigator_config():
             )
 
     # Publish configuration update
-    C.bus_pub(TOPIC_NAVIGATOR_CONTROL, {"action": "config", "config": config, "ts": time.time()})
+    C.bus_pub(
+        TOPIC_NAVIGATOR_CONTROL,
+        {"action": "config", "config": config, "ts": time.time()},
+    )
 
     resp = Response(
         json.dumps({"ok": True, "action": "config", "config": config}),

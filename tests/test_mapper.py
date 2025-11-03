@@ -182,7 +182,10 @@ class TestMapper(unittest.TestCase):
         mapper.robot_theta = 0.0
 
         # Obstacle straight ahead at 2m
-        obstacle_data = {"obstacles": [{"angle": 0.0, "distance": 2.0}], "ts": 1234567890.0}
+        obstacle_data = {
+            "obstacles": [{"angle": 0.0, "distance": 2.0}],
+            "ts": 1234567890.0,
+        }
 
         mapper._handle_obstacle_data(obstacle_data)
 
@@ -203,7 +206,10 @@ class TestMapper(unittest.TestCase):
         mapper.robot_theta = math.pi / 2
 
         # Obstacle straight ahead (relative to robot) at 2m
-        obstacle_data = {"obstacles": [{"angle": 0.0, "distance": 2.0}], "ts": 1234567890.0}
+        obstacle_data = {
+            "obstacles": [{"angle": 0.0, "distance": 2.0}],
+            "ts": 1234567890.0,
+        }
 
         mapper._handle_obstacle_data(obstacle_data)
 
@@ -232,7 +238,10 @@ class TestMapper(unittest.TestCase):
         mapper.robot_theta = 0.0
 
         # Obstacle straight ahead at 1m
-        obstacle_data = {"obstacles": [{"angle": 0.0, "distance": 1.0}], "ts": 1234567890.0}
+        obstacle_data = {
+            "obstacles": [{"angle": 0.0, "distance": 1.0}],
+            "ts": 1234567890.0,
+        }
 
         mapper._handle_obstacle_data(obstacle_data)
 
@@ -300,7 +309,10 @@ class TestMapper(unittest.TestCase):
         mapper.robot_y = 0.0
         mapper.robot_theta = math.pi / 2
 
-        obstacle_data = {"obstacles": [{"angle": 0.0, "distance": 2.0}], "ts": 1234567890.0}
+        obstacle_data = {
+            "obstacles": [{"angle": 0.0, "distance": 2.0}],
+            "ts": 1234567890.0,
+        }
 
         mapper._handle_obstacle_data(obstacle_data)
 
@@ -317,7 +329,10 @@ class TestMapper(unittest.TestCase):
                         found_obstacle = True
                         break
 
-        self.assertTrue(found_obstacle, "Obstacle not found at expected location after transformation")
+        self.assertTrue(
+            found_obstacle,
+            "Obstacle not found at expected location after transformation",
+        )
 
 
 if __name__ == "__main__":

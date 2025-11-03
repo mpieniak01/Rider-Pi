@@ -7,8 +7,8 @@ IDLE → ARMING → RECORDING → COMMIT → WAIT_REPLY → SPEAKING → CLOSING
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from enum import Enum, auto
-from typing import Callable
 
 from .. import voice_logging
 
@@ -63,7 +63,10 @@ class PTTStateMachine:
         self.on_exit: dict[PTTState, list[Callable[[], None]]] = {}
 
     def add_transition_callback(
-        self, from_state: PTTState, to_state: PTTState, callback: Callable[[PTTEvent], None]
+        self,
+        from_state: PTTState,
+        to_state: PTTState,
+        callback: Callable[[PTTEvent], None],
     ) -> None:
         """Add callback for specific state transition."""
         key = (from_state, to_state)
@@ -126,7 +129,10 @@ class PTTStateMachine:
                 callback(event)
             except Exception as e:
                 self.logger.event(
-                    "ptt.callback.transition_error", from_state=old_state.name, to_state=new_state.name, error=str(e)
+                    "ptt.callback.transition_error",
+                    from_state=old_state.name,
+                    to_state=new_state.name,
+                    error=str(e),
                 )
 
         # Execute enter callbacks

@@ -65,7 +65,11 @@ class MockTransportMixin:
                     if self._append_sample_every > 0:
                         self._append_sample_counter += 1
                         if self._append_sample_counter % self._append_sample_every == 0:
-                            self.logger.event("ws.send", t=event_type, sample_num=self._append_sample_counter)
+                            self.logger.event(
+                                "ws.send",
+                                t=event_type,
+                                sample_num=self._append_sample_counter,
+                            )
                 else:
                     # Log all non-append events
                     self.logger.event("ws.send", t=event_type)

@@ -62,7 +62,12 @@ def get_status():
     """
     # Read status file with fallback
     status = _read_json_file(
-        STATUS_FILE, {"state": "off", "timestamp": 0, "metrics": {"errors_24h": 0, "requests_24h": 0}}
+        STATUS_FILE,
+        {
+            "state": "off",
+            "timestamp": 0,
+            "metrics": {"errors_24h": 0, "requests_24h": 0},
+        },
     )
 
     # Ensure status is never 500 - always return valid JSON

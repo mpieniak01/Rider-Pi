@@ -110,7 +110,14 @@ def tts_local_handler():
             return _cors(r3)
 
         # 5) Inny typ → błąd
-        return _cors(jsonify({"ok": False, "error": f"unexpected content-type from voice-web: {ctype}"})), 502
+        return _cors(
+            jsonify(
+                {
+                    "ok": False,
+                    "error": f"unexpected content-type from voice-web: {ctype}",
+                }
+            )
+        ), 502
 
     except urllib.error.HTTPError as e:
         try:
@@ -165,7 +172,15 @@ def asr_local_handler():
         if status != 200:
             # przekaż częściowo treść błędu backendu
             snippet = body.decode("utf-8", errors="ignore")[:800]
-            return _cors(jsonify({"ok": False, "error": f"voice asr http error: {status}", "body": snippet})), 502
+            return _cors(
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": f"voice asr http error: {status}",
+                        "body": snippet,
+                    }
+                )
+            ), 502
 
         if "application/json" not in ctype_out:
             return _cors(jsonify({"ok": False, "error": f"unexpected content-type: {ctype_out}"})), 502
@@ -185,6 +200,14 @@ def asr_local_handler():
             err_body = e.read().decode("utf-8", errors="ignore")
         except Exception:
             err_body = ""
-        return _cors(jsonify({"ok": False, "error": f"voice asr http error: {e.code}", "body": err_body[:800]})), 502
+        return _cors(
+            jsonify(
+                {
+                    "ok": False,
+                    "error": f"voice asr http error: {e.code}",
+                    "body": err_body[:800],
+                }
+            )
+        ), 502
     except Exception as e:
         return _cors(jsonify({"ok": False, "error": f"voice asr proxy failed: {e}"})), 502

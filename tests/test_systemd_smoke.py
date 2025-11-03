@@ -138,7 +138,11 @@ class TestSystemdSmoke:
 
             # Check if service reached active state
             state = self._get_service_state(service_name)
-            assert state in ("active", "inactive", "activating"), f"Unexpected state after start: {state}"
+            assert state in (
+                "active",
+                "inactive",
+                "activating",
+            ), f"Unexpected state after start: {state}"
 
             # Stop the service
             result = subprocess.run(

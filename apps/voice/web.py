@@ -75,7 +75,11 @@ def _log_error(msg: str, **kwargs) -> None:
 
 def _dict_to_config_object(cfg_dict: dict) -> Any:
     """Convert nested dict to object with attribute access (cfg.chat.backend)."""
-    return type("Config", (), {k: type("Section", (), v) if isinstance(v, dict) else v for k, v in cfg_dict.items()})()
+    return type(
+        "Config",
+        (),
+        {k: type("Section", (), v) if isinstance(v, dict) else v for k, v in cfg_dict.items()},
+    )()
 
 
 @app.before_request
@@ -268,7 +272,14 @@ def _decode_with_tool_to_wav(audio: bytes) -> bytes | None:
 # ── audio shaping: fade & tail ────────────────────────────────────────────────
 
 
-def _apply_fade(pcm: bytes, sr: int, ch: int, sampwidth: int = 2, fade_in_ms: int = 15, fade_out_ms: int = 20) -> bytes:
+def _apply_fade(
+    pcm: bytes,
+    sr: int,
+    ch: int,
+    sampwidth: int = 2,
+    fade_in_ms: int = 15,
+    fade_out_ms: int = 20,
+) -> bytes:
     """Łagodny fade-in/out na PCM16 (eliminuje „pyknięcia”)."""
     if sampwidth != 2 or not pcm:
         return pcm
@@ -418,7 +429,12 @@ def _piper_synthesize_wav_bytes(voice, text: str, model_path: str | None = None)
         return wav_bytes, sr
 
     # 1) metody zapisujące do pliku
-    file_methods = ["synthesize_wav", "synthesize_to_wav", "save_wav", "synthesize_to_file"]
+    file_methods = [
+        "synthesize_wav",
+        "synthesize_to_wav",
+        "save_wav",
+        "synthesize_to_file",
+    ]
     for m in file_methods:
         if hasattr(voice, m):
             fn = getattr(voice, m)
@@ -574,7 +590,11 @@ def api_tts_test():
     pcm = _append_tail(pcm, sr, ch, int(os.environ.get("VOICE_TAIL_MS", "300")))
     pcm = _maybe_gain(pcm, float(os.environ.get("VOICE_GAIN", "1.0")))
     wav = _wrap_wav(pcm, sr, ch, 2)
-    return Response(wav, mimetype="audio/wav", headers={"Content-Disposition": "inline; filename=test.wav"})
+    return Response(
+        wav,
+        mimetype="audio/wav",
+        headers={"Content-Disposition": "inline; filename=test.wav"},
+    )
 
 
 @app.post("/api/tts")
@@ -612,7 +632,11 @@ def api_tts():
             if request.args.get("b64") == "1":
                 b64 = base64.b64encode(wav).decode("ascii")
                 return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
-            return Response(wav, mimetype="audio/wav", headers={"Content-Disposition": "inline; filename=tts.wav"})
+            return Response(
+                wav,
+                mimetype="audio/wav",
+                headers={"Content-Disposition": "inline; filename=tts.wav"},
+            )
 
         # 2) Pozostałe kanały – OpenAI/Gemini
         from . import config as voice_config
@@ -647,7 +671,11 @@ def api_tts():
             if request.args.get("b64") == "1":
                 b64 = base64.b64encode(wav).decode("ascii")
                 return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
-            return Response(wav, mimetype="audio/wav", headers={"Content-Disposition": "inline; filename=tts.wav"})
+            return Response(
+                wav,
+                mimetype="audio/wav",
+                headers={"Content-Disposition": "inline; filename=tts.wav"},
+            )
 
         # W przeciwnym razie – chmurowy synth
         audio, sr, fmt = synthesize(text, TTSConfig(**cfg["tts"]))
@@ -781,8 +809,16 @@ def api_chat_local():
 
         # Sprawdzenie, czy binarka i model istnieją
         llm_main_path = getattr(chat_cfg, "llm_main_path", "llama.cpp/main")
-        llm_model_path = getattr(chat_cfg, "llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf")
-        llm_extra_args = getattr(chat_cfg, "llm_extra_args", "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7")
+        llm_model_path = getattr(
+            chat_cfg,
+            "llm_model_path",
+            "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf",
+        )
+        llm_extra_args = getattr(
+            chat_cfg,
+            "llm_extra_args",
+            "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7",
+        )
 
         # Walidacja bezpieczeństwa: używamy podejścia whitelist - tylko dozwolone znaki w ścieżkach
         # Dozwolone: a-z, A-Z, 0-9, /, _, ., -
@@ -840,7 +876,13 @@ def api_chat_local():
         timeout_sec = getattr(chat_cfg, "timeout", 20.0)
 
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec)
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=timeout_sec,
+            )
         finally:
             try:
                 os.remove(prompt_file_path)
@@ -860,7 +902,13 @@ def api_chat_local():
         _log_info("web.chat.local.ok", chars=len(text_response))
 
         # Zwracamy format zgodny z oczekiwaniami ChatSession._ask_local_http
-        return jsonify({"ok": True, "text": text_response, "message": {"role": "assistant", "content": text_response}})
+        return jsonify(
+            {
+                "ok": True,
+                "text": text_response,
+                "message": {"role": "assistant", "content": text_response},
+            }
+        )
 
     except subprocess.TimeoutExpired:
         _log_warning("web.chat.local.timeout", timeout=timeout_sec)

@@ -4,10 +4,19 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from flask import Flask, Response, abort, jsonify, make_response, request, send_from_directory
+from flask import (
+    Flask,
+    Response,
+    abort,
+    jsonify,
+    make_response,
+    request,
+    send_from_directory,
+)
 
 # --- preferuj istniejący app/konfigurację z compat ---
 try:
@@ -157,27 +166,71 @@ def svc_name_route(name: str):
 _add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
 
 # control proxy
-_add_rule("/api/control", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
-_add_rule("/api/cmd", view_func=control_proxy.control_proxy_handler, methods=["POST", "OPTIONS"])
+_add_rule(
+    "/api/control",
+    view_func=control_proxy.control_proxy_handler,
+    methods=["POST", "OPTIONS"],
+)
+_add_rule(
+    "/api/cmd",
+    view_func=control_proxy.control_proxy_handler,
+    methods=["POST", "OPTIONS"],
+)
 
 # control API - balance and height
-_add_rule("/api/control/balance", view_func=control_api.api_balance, methods=["POST", "OPTIONS"])
+_add_rule(
+    "/api/control/balance",
+    view_func=control_api.api_balance,
+    methods=["POST", "OPTIONS"],
+)
 _add_rule("/api/control/height", view_func=control_api.api_height, methods=["POST", "OPTIONS"])
 
 # navigator API (Rekonesans mode)
-_add_rule("/api/navigator/start", view_func=navigator_api.api_navigator_start, methods=["POST", "OPTIONS"])
-_add_rule("/api/navigator/stop", view_func=navigator_api.api_navigator_stop, methods=["POST", "OPTIONS"])
-_add_rule("/api/navigator/config", view_func=navigator_api.api_navigator_config, methods=["POST", "OPTIONS"])
-_add_rule("/api/navigator/status", view_func=navigator_api.api_navigator_status, methods=["GET", "OPTIONS"])
-_add_rule("/api/navigator/return_home", view_func=navigator_api.api_navigator_return_home, methods=["POST", "OPTIONS"])
+_add_rule(
+    "/api/navigator/start",
+    view_func=navigator_api.api_navigator_start,
+    methods=["POST", "OPTIONS"],
+)
+_add_rule(
+    "/api/navigator/stop",
+    view_func=navigator_api.api_navigator_stop,
+    methods=["POST", "OPTIONS"],
+)
+_add_rule(
+    "/api/navigator/config",
+    view_func=navigator_api.api_navigator_config,
+    methods=["POST", "OPTIONS"],
+)
+_add_rule(
+    "/api/navigator/status",
+    view_func=navigator_api.api_navigator_status,
+    methods=["GET", "OPTIONS"],
+)
+_add_rule(
+    "/api/navigator/return_home",
+    view_func=navigator_api.api_navigator_return_home,
+    methods=["POST", "OPTIONS"],
+)
 
 # voice proxy (zdalne/istniejące)
-_add_rule("/api/voice/capture", view_func=voice_proxy.capture_handler, methods=["POST", "OPTIONS"])
+_add_rule(
+    "/api/voice/capture",
+    view_func=voice_proxy.capture_handler,
+    methods=["POST", "OPTIONS"],
+)
 _add_rule("/api/voice/say", view_func=voice_proxy.say_handler, methods=["POST", "OPTIONS"])
 
 # voice local proxy
-_add_rule("/api/voice/tts", view_func=voice_local_proxy.tts_local_handler, methods=["POST", "OPTIONS"])
-_add_rule("/api/voice/asr", view_func=voice_local_proxy.asr_local_handler, methods=["POST", "OPTIONS"])
+_add_rule(
+    "/api/voice/tts",
+    view_func=voice_local_proxy.tts_local_handler,
+    methods=["POST", "OPTIONS"],
+)
+_add_rule(
+    "/api/voice/asr",
+    view_func=voice_local_proxy.asr_local_handler,
+    methods=["POST", "OPTIONS"],
+)
 
 
 # ── GOOGLE HOME ──────────────────────────────────────────────────────────────

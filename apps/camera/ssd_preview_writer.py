@@ -45,7 +45,11 @@ CLASSES = [
 
 def apply_rotation(frame):
     if ROT in (90, 180, 270):
-        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[ROT]
+        k = {
+            90: cv2.ROTATE_90_CLOCKWISE,
+            180: cv2.ROTATE_180,
+            270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+        }[ROT]
         frame = cv2.rotate(frame, k)
     if FLIP_H:
         frame = cv2.flip(frame, 1)
@@ -135,7 +139,12 @@ def main():
 
         if net is not None and frames % max(1, EVERY) == 0:
             blob = cv2.dnn.blobFromImage(
-                cv2.resize(frame, (300, 300)), 0.007843, (300, 300), 127.5, swapRB=True, crop=False
+                cv2.resize(frame, (300, 300)),
+                0.007843,
+                (300, 300),
+                127.5,
+                swapRB=True,
+                crop=False,
             )
             net.setInput(blob)
             det = net.forward()
@@ -180,7 +189,10 @@ def main():
                 if os.path.exists(os.path.join(SNAP_DIR, "proc.jpg"))
                 else -1
             )
-            print(f"[snap] proc.jpg size={s}B  ok_raw={ok_raw} ok_proc={ok_proc}", flush=True)
+            print(
+                f"[snap] proc.jpg size={s}B  ok_raw={ok_raw} ok_proc={ok_proc}",
+                flush=True,
+            )
 
         lcd_show_bgr(out)
         frames += 1

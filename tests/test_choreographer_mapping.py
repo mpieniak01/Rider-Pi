@@ -90,7 +90,12 @@ def test_process_event_no_match():
     from apps.choreographer.main import process_event
 
     pub = MagicMock()
-    mappings = [{"trigger": {"topic": "events.sentiment", "match": {"sentiment": "sad"}}, "actions": []}]
+    mappings = [
+        {
+            "trigger": {"topic": "events.sentiment", "match": {"sentiment": "sad"}},
+            "actions": [],
+        }
+    ]
 
     # Event doesn't match
     process_event("events.sentiment", {"sentiment": "joy"}, mappings, pub)
@@ -134,7 +139,10 @@ def test_process_event_multiple_actions():
         {
             "trigger": {"topic": "events.sentiment", "match": {"sentiment": "joy"}},
             "actions": [
-                {"topic": "command.face.expression", "payload": {"expression": "happy"}},
+                {
+                    "topic": "command.face.expression",
+                    "payload": {"expression": "happy"},
+                },
                 {"topic": "command.motion.action", "payload": {"action": "wag"}},
             ],
         }

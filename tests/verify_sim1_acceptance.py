@@ -55,7 +55,13 @@ try:
     assert 0.25 < side_ratio < 0.35, f"Side panel should be ~30% (is {side_ratio:.1%})"
 
     world.quit()
-    criteria.append(("AC2", True, "✓ Window properly divided into map panel (~70%) and side panel (~30%)"))
+    criteria.append(
+        (
+            "AC2",
+            True,
+            "✓ Window properly divided into map panel (~70%) and side panel (~30%)",
+        )
+    )
 except Exception as e:
     criteria.append(("AC2", False, f"✗ Failed: {e}"))
 
@@ -80,7 +86,13 @@ try:
     world.render()
 
     world.quit()
-    criteria.append(("AC3", True, f"✓ Map rendered: {world.map_width}x{world.map_height}, {len(world.walls)} walls"))
+    criteria.append(
+        (
+            "AC3",
+            True,
+            f"✓ Map rendered: {world.map_width}x{world.map_height}, {len(world.walls)} walls",
+        )
+    )
 except Exception as e:
     criteria.append(("AC3", False, f"✗ Failed: {e}"))
 

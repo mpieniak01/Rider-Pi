@@ -38,7 +38,14 @@ def pick_device_class():
             if inspect.isclass(o) and o.__module__ == m.__name__:
                 has_show = any(
                     callable(getattr(o, a, None))
-                    for a in ("ShowImage", "show_image", "display", "blit", "put", "present")
+                    for a in (
+                        "ShowImage",
+                        "show_image",
+                        "display",
+                        "blit",
+                        "put",
+                        "present",
+                    )
                 )
                 has_raw = all(hasattr(o, a) for a in ("SetWindows", "command", "spi_writebyte"))
                 name_ok = any(k in n.lower() for k in ("lcd", "st77", "st7789", "display", "panel"))

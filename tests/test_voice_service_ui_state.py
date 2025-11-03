@@ -64,7 +64,12 @@ class FakePublisher:
 
 
 _BASE_CONFIG = {
-    "chat": {"backend": "echo", "model": "dummy", "system_prompt": "", "max_history": 1},
+    "chat": {
+        "backend": "echo",
+        "model": "dummy",
+        "system_prompt": "",
+        "max_history": 1,
+    },
     "nlu": {"chat_threshold": 0.0, "command_keywords": {}, "llm_model": "dummy"},
     "capture": {
         "backend": "pulse",
@@ -77,7 +82,12 @@ _BASE_CONFIG = {
     },
     "asr": {"backend": "dummy", "model": "dummy", "language": "en"},
     "tts": {"backend": "dummy", "model": "dummy", "voice": "dummy", "format": "wav"},
-    "playback": {"backend": "pulse", "alsa_device": None, "volume": 100, "ding": {"enabled": False}},
+    "playback": {
+        "backend": "pulse",
+        "alsa_device": None,
+        "volume": 100,
+        "ding": {"enabled": False},
+    },
     "hotword": {
         "enabled": False,
         "engine": "off",
@@ -86,7 +96,13 @@ _BASE_CONFIG = {
         "auto_gain": 1.0,
         "threshold": 0.5,
     },
-    "vad": {"mode": 3, "frame_ms": 30, "tail_ms": 350, "max_len_ms": 4500, "energy_gate_dbfs": -36.0},
+    "vad": {
+        "mode": 3,
+        "frame_ms": 30,
+        "tail_ms": 350,
+        "max_len_ms": 4500,
+        "energy_gate_dbfs": -36.0,
+    },
     "service": {"save_audio": False, "recordings_dir": "data/recordings"},
     "logging": {"level": "INFO"},
 }
@@ -116,9 +132,18 @@ def _patch_runtime(monkeypatch: pytest.MonkeyPatch, service_impl_mod, *, transcr
       - service_impl.synthesize -> (b"audio", 16000, "wav")
       - service_impl.play_bytes -> no-op
     """
-    monkeypatch.setattr(service_impl_mod, "transcribe", lambda *a, **k: Transcript(text=transcribe_text, language="en"))
+    monkeypatch.setattr(
+        service_impl_mod,
+        "transcribe",
+        lambda *a, **k: Transcript(text=transcribe_text, language="en"),
+    )
     monkeypatch.setattr(service_impl_mod.time, "sleep", lambda *_a, **_k: None)
-    monkeypatch.setattr(service_impl_mod, "synthesize", lambda *a, **k: (b"audio", 16000, "wav"), raising=False)
+    monkeypatch.setattr(
+        service_impl_mod,
+        "synthesize",
+        lambda *a, **k: (b"audio", 16000, "wav"),
+        raising=False,
+    )
     monkeypatch.setattr(service_impl_mod, "play_bytes", lambda *a, **k: None, raising=False)
 
 

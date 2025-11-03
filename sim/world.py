@@ -190,7 +190,12 @@ class World:
         if self.goal:
             gx, gy = self.goal
             screen_x, screen_y = self.grid_to_screen(gx + 0.5, gy + 0.5)
-            pygame.draw.circle(self.main_surface, (0, 255, 0), (screen_x, screen_y), self.cell_size // 3)
+            pygame.draw.circle(
+                self.main_surface,
+                (0, 255, 0),
+                (screen_x, screen_y),
+                self.cell_size // 3,
+            )
 
         # Draw robot
         if robot:
@@ -224,12 +229,24 @@ class World:
         for x in range(self.map_width + 1):
             screen_x, screen_y1 = self.grid_to_screen(x, 0)
             _, screen_y2 = self.grid_to_screen(x, self.map_height)
-            pygame.draw.line(self.main_surface, (60, 60, 60), (screen_x, screen_y1), (screen_x, screen_y2), 1)
+            pygame.draw.line(
+                self.main_surface,
+                (60, 60, 60),
+                (screen_x, screen_y1),
+                (screen_x, screen_y2),
+                1,
+            )
 
         for y in range(self.map_height + 1):
             screen_x1, screen_y = self.grid_to_screen(0, y)
             screen_x2, _ = self.grid_to_screen(self.map_width, y)
-            pygame.draw.line(self.main_surface, (60, 60, 60), (screen_x1, screen_y), (screen_x2, screen_y), 1)
+            pygame.draw.line(
+                self.main_surface,
+                (60, 60, 60),
+                (screen_x1, screen_y),
+                (screen_x2, screen_y),
+                1,
+            )
 
     def render_side_panel(self, robot=None, camera_surface=None):
         """Render the side panel with camera view and telemetry."""
@@ -243,7 +260,13 @@ class World:
         y_offset += 30
 
         # Divider
-        pygame.draw.line(self.side_surface, (100, 100, 100), (10, y_offset), (self.side_panel_width - 10, y_offset), 1)
+        pygame.draw.line(
+            self.side_surface,
+            (100, 100, 100),
+            (10, y_offset),
+            (self.side_panel_width - 10, y_offset),
+            1,
+        )
         y_offset += 15
 
         # Camera view
@@ -281,7 +304,13 @@ class World:
 
         # Instructions at bottom
         y_offset = self.height - 80
-        pygame.draw.line(self.side_surface, (100, 100, 100), (10, y_offset), (self.side_panel_width - 10, y_offset), 1)
+        pygame.draw.line(
+            self.side_surface,
+            (100, 100, 100),
+            (10, y_offset),
+            (self.side_panel_width - 10, y_offset),
+            1,
+        )
         y_offset += 10
 
         instructions = [
@@ -307,7 +336,11 @@ class World:
 
         # Draw divider
         pygame.draw.line(
-            self.screen, (100, 100, 100), (self.main_panel_width, 0), (self.main_panel_width, self.height), 2
+            self.screen,
+            (100, 100, 100),
+            (self.main_panel_width, 0),
+            (self.main_panel_width, self.height),
+            2,
         )
 
         # Update display

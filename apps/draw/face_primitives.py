@@ -286,15 +286,42 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
             if mshape == "happy":
                 th = int(S * _clampf(small_th_base * small_th_h, 0.01, 0.14))
                 y_draw = mouth_y + int(S * yk_h)
-                _draw_ribbon_mouth(cx, y_draw, int(mouth_w * 1.00), max(1, th), lift_h, arch_h, taper_k, samples)
+                _draw_ribbon_mouth(
+                    cx,
+                    y_draw,
+                    int(mouth_w * 1.00),
+                    max(1, th),
+                    lift_h,
+                    arch_h,
+                    taper_k,
+                    samples,
+                )
             elif mshape == "sad":
                 th = int(S * _clampf(small_th_base * small_th_s, 0.01, 0.14))
                 y_draw = mouth_y + int(S * yk_s)
-                _draw_ribbon_mouth(cx, y_draw, int(mouth_w * 1.00), max(1, th), lift_s, arch_s, taper_k, samples)
+                _draw_ribbon_mouth(
+                    cx,
+                    y_draw,
+                    int(mouth_w * 1.00),
+                    max(1, th),
+                    lift_s,
+                    arch_s,
+                    taper_k,
+                    samples,
+                )
             else:
                 th = int(S * _clampf(small_th_base * small_th_n, 0.01, 0.14))
                 y_draw = mouth_y + int(S * yk_n)
-                _draw_ribbon_mouth(cx, y_draw, int(mouth_w * 1.00), max(1, th), lift_n, arch_n, taper_k, samples)
+                _draw_ribbon_mouth(
+                    cx,
+                    y_draw,
+                    int(mouth_w * 1.00),
+                    max(1, th),
+                    lift_n,
+                    arch_n,
+                    taper_k,
+                    samples,
+                )
         else:
             height = max(int(S * 0.028), int(mopen * (S * 0.10)))
             width = int(mouth_w * (1.0 + 0.05 * mopen))

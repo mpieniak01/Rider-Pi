@@ -5,14 +5,16 @@ from __future__ import annotations
 Rider-Pi – Motion Bridge (deadman auto-stop + debounce + RX echo + compat adapter)
 
 Kluczowe punkty:
-- Konwencja skrętu utrzymana: yaw<0 => left, yaw>0 => right (spójne z web_motion_bridge).
+- Konwencja skrętu: yaw<0 => left, yaw>0 => right (spójne z web_motion_bridge).
 - Debounce i DROP_OLD_MS jak wcześniej; SAFE_MAX_DURATION zabezpiecza deadmana.
-- Drobne doprecyzowania komentarzy i defensywności.
+- Poprawione wygładzanie kątów (wrap-around 0/360) — interpolacja robiona w przestrzeni "unwrapped".
+- Deadman publikuje poprawnie rid; sygnatura _schedule_deadman(d, rid=None).
+- Defensywność wywołań HW i publikacji.
 
 Słucha:
   * NOWE:  cmd.move {vx,vy,yaw|az,duration,ts}, cmd.stop {}
   * STARE: cmd.motion.forward/backward/left/right/turn_left/turn_right/stop {speed,runtime}
-Mapuje na wywołania XGO; skręt bezpośrednio na vendorowe turnleft/turnright(step).
+Mapuje na wywołania XGO; skręt na vendorowe turnleft/turnright(step).
 Publikuje:
   * motion.bridge.event {event, detail}
   * devices.xgo {...}
@@ -62,7 +64,7 @@ PREEMPT = os.getenv("PREEMPT", "1") == "1"
 DROP_OLD_MS = float(os.getenv("DROP_OLD_MS", "200"))
 DEADMAN_MS = float(os.getenv("DEADMAN_MS", "0"))  # 0 = użyj duration
 
-# Ile wiadomości SUB przetwarzać na jeden tick (FIFO), aby nie gubić sekwencji move→stop itp.
+# Ile wiadomości SUB przetwarzać na jeden tick (FIFO)
 MAX_MSGS_PER_TICK = int(os.getenv("MAX_MSGS_PER_TICK", "10"))
 
 MOVES_ALLOWED = (not DRY_RUN) and (not BRIDGE_READONLY)
@@ -80,8 +82,8 @@ def _norm360(deg: float | None) -> float | None:
 
 
 def _angle_diff_deg(a: float, b: float) -> float:
-    d = (a - b + 180.0) % 360.0 - 180.0
-    return d
+    """Różnica kątów (a-b) w zakresie (-180, 180]."""
+    return (a - b + 180.0) % 360.0 - 180.0
 
 
 # Stan filtra yaw
@@ -90,12 +92,17 @@ _last_motion_cmd_ts = 0.0
 
 
 def _stabilize_yaw(yaw_raw: float | None, ts: float, freeze: bool = False) -> tuple[float | None, float | None, str]:
+    """Wygładzanie yaw z poprawną obsługą wrap-aroundu 0/360."""
     global _yaw_state
     if yaw_raw is None:
         _yaw_state["ts"] = ts
         return None, None, _yaw_state["src"]
 
-    prev_ts, prev_raw, prev_stab = _yaw_state["ts"], _yaw_state["yaw_raw"], _yaw_state["yaw_stable"]
+    prev_ts, prev_raw, prev_stab = (
+        _yaw_state["ts"],
+        _yaw_state["yaw_raw"],
+        _yaw_state["yaw_stable"],
+    )
 
     if prev_ts is not None and prev_raw is not None:
         dt = max(1e-6, ts - float(prev_ts))
@@ -111,15 +118,17 @@ def _stabilize_yaw(yaw_raw: float | None, ts: float, freeze: bool = False) -> tu
         if freeze or abs(yaw_rate or 0.0) < YAW_DEADBAND_DPS:
             stab = prev_stab
         else:
+            # policz minimalny krok do base_heading względem poprzedniego stabilnego kąta
             step = _angle_diff_deg(base_heading, prev_stab)
-            raw_next = (prev_stab + step) % 360.0
+            # UWAGA: nie składamy do [0,360) przed interpolacją!
+            raw_next_unwrapped = prev_stab + step
             if YAW_SMOOTH_ALPHA <= 0.0:
-                stab = raw_next
+                stab = raw_next_unwrapped
             elif YAW_SMOOTH_ALPHA >= 1.0:
-                stab = base_heading
+                stab = raw_next_unwrapped
             else:
-                stab = (1.0 - YAW_SMOOTH_ALPHA) * prev_stab + YAW_SMOOTH_ALPHA * raw_next
-                stab = _norm360(stab)
+                stab = prev_stab + YAW_SMOOTH_ALPHA * (raw_next_unwrapped - prev_stab)
+            stab = _norm360(stab)
 
     _yaw_state["ts"] = ts
     _yaw_state["yaw_raw"] = yaw_raw
@@ -335,7 +344,8 @@ def _cancel_deadman():
         _deadman_timer = None
 
 
-def _schedule_deadman(duration_s: float):
+def _schedule_deadman(duration_s: float, rid: str | None = None):
+    """Planowany auto-stop po czasie (lub DEADMAN_MS)."""
     global _deadman_timer
     if DEADMAN_MS and DEADMAN_MS > 0:
         d = float(DEADMAN_MS) / 1000.0
@@ -362,8 +372,6 @@ def _schedule_deadman(duration_s: float):
 
 
 # --- Helpery wywołań HW ---
-
-
 def _try_call(fn, *args) -> bool:
     try:
         fn(*args)
@@ -537,9 +545,15 @@ while _running:
             vx = float(data.get("v", 0.0) or 0.0)
             dur = max(
                 0.05,
-                min(float(data.get("t", SAFE_MAX_DURATION) or SAFE_MAX_DURATION), SAFE_MAX_DURATION),
+                min(
+                    float(data.get("t", SAFE_MAX_DURATION) or SAFE_MAX_DURATION),
+                    SAFE_MAX_DURATION,
+                ),
             )
-            publish_event("rx_cmd.legacy", {"rid": rid, "topic": "motion.cmd", "dir": d, "v": vx, "t": dur})
+            publish_event(
+                "rx_cmd.legacy",
+                {"rid": rid, "topic": "motion.cmd", "dir": d, "v": vx, "t": dur},
+            )
 
             now2 = time.time()
             ts_in = data.get("ts")
@@ -558,7 +572,11 @@ while _running:
             if (now2 - _last_cmd_ts) < MIN_CMD_GAP:
                 publish_event(
                     "skip_cmd.move",
-                    {"rid": rid, "reason": "min_gap", "gap_s": round(now2 - _last_cmd_ts, 3)},
+                    {
+                        "rid": rid,
+                        "reason": "min_gap",
+                        "gap_s": round(now2 - _last_cmd_ts, 3),
+                    },
                 )
                 continue
             _last_cmd_ts = now2
@@ -583,11 +601,17 @@ while _running:
             elif d in ("left", "turn_left"):
                 moved = True
                 do_turn_left(abs(vx), dur)
-                publish_event("turn_left", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
+                publish_event(
+                    "turn_left",
+                    {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur},
+                )
             elif d in ("right", "turn_right"):
                 moved = True
                 do_turn_right(abs(vx), dur)
-                publish_event("turn_right", {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur})
+                publish_event(
+                    "turn_right",
+                    {"rid": rid, "step": _yaw_to_step(abs(vx)), "runtime": dur},
+                )
             elif d in ("stop", "halt"):
                 do_stop()
                 publish_event("stop", {"rid": rid})
@@ -599,11 +623,12 @@ while _running:
 
             if moved:
                 _last_motion_cmd_ts = now2
-                _schedule_deadman(dur)
+                _schedule_deadman(dur, rid)
             continue
 
         # NOWE: cmd.move / cmd.stop
         if topic == "cmd.move":
+            rid = data.get("rid")
             vx = float(data.get("vx", 0.0))
             vy = float(data.get("vy", 0.0))
             yaw = float(data.get("yaw", data.get("az", 0.0)) or 0.0)
@@ -617,7 +642,7 @@ while _running:
             )
             publish_event(
                 "rx_cmd.move",
-                {"rid": data.get("rid"), "vx": vx, "vy": vy, "yaw": yaw, "duration": dur},
+                {"rid": rid, "vx": vx, "vy": vy, "yaw": yaw, "duration": dur},
             )
 
             now2 = time.time()
@@ -630,7 +655,7 @@ while _running:
                     if age > DROP_OLD_MS:
                         publish_event(
                             "skip_cmd.move",
-                            {"rid": data.get("rid"), "reason": "drop_old", "age_ms": round(age, 1)},
+                            {"rid": rid, "reason": "drop_old", "age_ms": round(age, 1)},
                         )
                         continue
                 except Exception:
@@ -641,7 +666,7 @@ while _running:
                 publish_event(
                     "skip_cmd.move",
                     {
-                        "rid": data.get("rid"),
+                        "rid": rid,
                         "reason": "min_gap",
                         "gap_s": round(now2 - _last_cmd_ts, 3),
                     },
@@ -665,46 +690,51 @@ while _running:
                 moved = True
                 if yaw < 0:
                     do_turn_left(aw, dur)
-                    publish_event("turn_left", {"step": _yaw_to_step(aw), "runtime": dur})
+                    publish_event(
+                        "turn_left",
+                        {"rid": rid, "step": _yaw_to_step(aw), "runtime": dur},
+                    )
                 else:
                     do_turn_right(aw, dur)
                     publish_event(
                         "turn_right",
-                        {"rid": data.get("rid"), "step": _yaw_to_step(aw), "runtime": dur},
+                        {"rid": rid, "step": _yaw_to_step(aw), "runtime": dur},
                     )
 
             elif ax > 1e-4 and ax >= ay:
                 moved = True
                 if vx >= 0:
                     do_forward(ax, dur)
-                    publish_event("forward", {"v": ax, "runtime": dur})
+                    publish_event("forward", {"rid": rid, "v": ax, "runtime": dur})
                 else:
                     do_backward(ax, dur)
-                    publish_event("backward", {"rid": data.get("rid"), "v": ax, "runtime": dur})
+                    publish_event("backward", {"rid": rid, "v": ax, "runtime": dur})
 
             elif ay > 1e-4:
                 moved = True
                 if vy >= 0:
                     do_strafe_right(ay, dur)
-                    publish_event("right", {"rid": data.get("rid"), "v": ay, "runtime": dur})
+                    publish_event("right", {"rid": rid, "v": ay, "runtime": dur})
                 else:
                     do_strafe_left(ay, dur)
-                    publish_event("left", {"v": ay, "runtime": dur})
+                    publish_event("left", {"rid": rid, "v": ay, "runtime": dur})
 
             if moved:
                 _last_motion_cmd_ts = now2
 
-            _schedule_deadman(dur)
+            _schedule_deadman(dur, rid)
             continue
 
         if topic == "cmd.stop":
+            rid = data.get("rid")
             do_stop()
-            publish_event("stop", {"rid": data.get("rid")})
+            publish_event("stop", {"rid": rid})
             _last_motion_cmd_ts = time.time()
             continue
 
         # Balance/stabilization control
         if topic == "cmd.balance":
+            rid = data.get("rid")
             enabled = bool(data.get("enabled", False))
             print(f"[bridge] balance enabled={enabled}")
             if ensure_xgo_open():
@@ -716,27 +746,30 @@ while _running:
                         xgo.set_stabilization(enabled)  # type: ignore[attr-defined]
                     elif hasattr(xgo, "imu"):
                         xgo.imu(1 if enabled else 0)  # type: ignore[attr-defined]
-                    publish_event("balance", {"rid": data.get("rid"), "enabled": enabled})
+                    publish_event("balance", {"rid": rid, "enabled": enabled})
                 except Exception as e:
                     print(f"[bridge] balance error: {e}", flush=True)
-                    publish_event("balance_error", {"rid": data.get("rid"), "error": str(e)})
+                    publish_event("balance_error", {"rid": rid, "error": str(e)})
             continue
 
         # Height/suspension control
         if topic == "cmd.height":
+            rid = data.get("rid")
             try:
                 height_cm = int(data.get("height", 0))
             except (ValueError, TypeError) as e:
-                print(f"[bridge] invalid height value: {data.get('height')}, error: {e}", flush=True)
+                print(
+                    f"[bridge] invalid height value: {data.get('height')}, error: {e}",
+                    flush=True,
+                )
                 publish_event(
                     "height_error",
-                    {"rid": data.get("rid"), "error": f"invalid height: {data.get('height')}"},
+                    {"rid": rid, "error": f"invalid height: {data.get('height')}"},
                 )
                 continue
-            # Clamp to safe range and map to adapter range (70-115)
-            # Input: 0-12 cm, Output: 70-115 (adapter internal range)
+            # Clamp do bezpiecznego zakresu i mapuj do adaptera (70-115)
+            # Input: 0-12 cm, Output: 70-115
             height_cm = max(0, min(12, height_cm))
-            # Linear mapping: 0cm->70, 12cm->115
             height_raw = int(70 + (height_cm / 12.0) * 45)
             print(f"[bridge] height cm={height_cm} raw={height_raw}")
             if ensure_xgo_open():
@@ -745,53 +778,57 @@ while _running:
                         xgo.set_height(height_raw)  # type: ignore[attr-defined]
                     elif hasattr(xgo, "rider_height"):
                         xgo.rider_height(height_raw)  # type: ignore[attr-defined]
-                    publish_event("height", {"rid": data.get("rid"), "height_cm": height_cm, "height_raw": height_raw})
+                    publish_event(
+                        "height",
+                        {"rid": rid, "height_cm": height_cm, "height_raw": height_raw},
+                    )
                 except Exception as e:
                     print(f"[bridge] height error: {e}", flush=True)
-                    publish_event("height_error", {"rid": data.get("rid"), "error": str(e)})
+                    publish_event("height_error", {"rid": rid, "error": str(e)})
             continue
 
         # STARE: zgodność wstecz
+        rid = data.get("rid")
         spd = float(data.get("speed", 10.0))
         rt = max(0.05, min(float(data.get("runtime", 0.6)), SAFE_MAX_DURATION))
 
         if topic.endswith(".forward"):
             do_forward(spd if spd <= 1 else spd / max(1.0, TURN_STEP_MAX), rt)
-            publish_event("forward", {"rid": data.get("rid"), "v": spd, "runtime": rt})
-            _schedule_deadman(rt, data.get("rid"))
+            publish_event("forward", {"rid": rid, "v": spd, "runtime": rt})
+            _schedule_deadman(rt, rid)
             _last_motion_cmd_ts = time.time()
         elif topic.endswith(".backward"):
             do_backward(spd if spd <= 1 else spd / max(1.0, TURN_STEP_MAX), rt)
-            publish_event("backward", {"rid": data.get("rid"), "v": spd, "runtime": rt})
-            _schedule_deadman(rt, data.get("rid"))
+            publish_event("backward", {"rid": rid, "v": spd, "runtime": rt})
+            _schedule_deadman(rt, rid)
             _last_motion_cmd_ts = time.time()
         elif topic.endswith(".left"):
             do_strafe_left(spd if spd <= 1 else min(1.0, spd / 100.0), rt)
-            publish_event("left", {"rid": data.get("rid"), "v": spd, "runtime": rt})
-            _schedule_deadman(rt, data.get("rid"))
+            publish_event("left", {"rid": rid, "v": spd, "runtime": rt})
+            _schedule_deadman(rt, rid)
             _last_motion_cmd_ts = time.time()
         elif topic.endswith(".right"):
             do_strafe_right(spd if spd <= 1 else min(1.0, spd / 100.0), rt)
-            publish_event("right", {"rid": data.get("rid"), "v": spd, "runtime": rt})
-            _schedule_deadman(rt, data.get("rid"))
+            publish_event("right", {"rid": rid, "v": spd, "runtime": rt})
+            _schedule_deadman(rt, rid)
             _last_motion_cmd_ts = time.time()
         elif topic.endswith(".turn_left"):
             yawn = spd if spd <= 1 else min(1.0, spd / float(TURN_STEP_MAX))
             do_turn_left(abs(yawn), rt)
             publish_event(
                 "turn_left",
-                {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt},
+                {"rid": rid, "step": _yaw_to_step(abs(yawn)), "runtime": rt},
             )
-            _schedule_deadman(rt, data.get("rid"))
+            _schedule_deadman(rt, rid)
             _last_motion_cmd_ts = time.time()
         elif topic.endswith(".turn_right"):
             yawn = spd if spd <= 1 else min(1.0, spd / float(TURN_STEP_MAX))
             do_turn_right(abs(yawn), rt)
             publish_event(
                 "turn_right",
-                {"rid": data.get("rid"), "step": _yaw_to_step(abs(yawn)), "runtime": rt},
+                {"rid": rid, "step": _yaw_to_step(abs(yawn)), "runtime": rt},
             )
-            _schedule_deadman(rt, data.get("rid"))
+            _schedule_deadman(rt, rid)
             _last_motion_cmd_ts = time.time()
 
 print("[bridge] STOP", flush=True)

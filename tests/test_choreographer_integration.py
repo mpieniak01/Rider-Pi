@@ -89,7 +89,12 @@ def test_choreographer_wildcard_topic():
 
     pub = MagicMock()
 
-    mappings = [{"trigger": {"topic": "events.*", "match": {}}, "actions": [{"topic": "command.test", "payload": {}}]}]
+    mappings = [
+        {
+            "trigger": {"topic": "events.*", "match": {}},
+            "actions": [{"topic": "command.test", "payload": {}}],
+        }
+    ]
 
     # Should match any topic starting with "events."
     process_event("events.sentiment", {"data": "test"}, mappings, pub)

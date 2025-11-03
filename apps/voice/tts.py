@@ -254,7 +254,10 @@ def speak(
 
     # STRICT: zabroń REST (zarówno streaming HTTP, jak i synth) w trybie realtime
     if (config.transport or "").lower() == "realtime":
-        logger.event("tts.strict.realtime_block", extra={"data": {"msg": "TTS REST disabled when transport=realtime"}})
+        logger.event(
+            "tts.strict.realtime_block",
+            extra={"data": {"msg": "TTS REST disabled when transport=realtime"}},
+        )
         raise TTSError("TTS REST disabled when transport=realtime")
 
     backend = (config.backend or "openai").lower()
@@ -389,7 +392,10 @@ def synthesize(
     """
     logger = logger or voice_logging.get_logger("voice.tts")
     if (config.transport or "").lower() == "realtime":
-        logger.event("tts.strict.realtime_block", extra={"data": {"msg": "TTS REST disabled when transport=realtime"}})
+        logger.event(
+            "tts.strict.realtime_block",
+            extra={"data": {"msg": "TTS REST disabled when transport=realtime"}},
+        )
         raise TTSError("TTS REST disabled when transport=realtime")
 
     backend = (config.backend or "openai").lower()
@@ -555,7 +561,10 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             return wav_bytes, sr, "wav"
 
         except requests.RequestException as e:
-            logger.event("tts.openai.net_retry", extra={"data": {"attempt": attempt, "error": str(e)}})
+            logger.event(
+                "tts.openai.net_retry",
+                extra={"data": {"attempt": attempt, "error": str(e)}},
+            )
             last_err = e
             time.sleep(0.6 * (attempt + 1))
 
@@ -880,7 +889,13 @@ async def speak_stream(
 
                         def _make_tts_func(text: str):
                             def _sync_tts():
-                                return speak(text, config_override, playback, logger, accumulate=False)
+                                return speak(
+                                    text,
+                                    config_override,
+                                    playback,
+                                    logger,
+                                    accumulate=False,
+                                )
 
                             return _sync_tts
 
@@ -918,7 +933,12 @@ async def speak_stream(
 
 
 def _piper_synthesize_wav(
-    voice, text: str, length_scale=1.0, noise_scale=0.667, noise_w=0.8, sentence_silence=0.6
+    voice,
+    text: str,
+    length_scale=1.0,
+    noise_scale=0.667,
+    noise_w=0.8,
+    sentence_silence=0.6,
 ) -> bytes:
     """Zwraca bajty pliku WAV (mono, 16-bit) z PiperVoice."""
     import io
@@ -983,7 +1003,14 @@ def _load_piper_voice(voice_id: str, model_dir: str):
     return voice
 
 
-def _piper_synthesize_wav(voice, text: str, length_scale=1.0, noise_scale=0.667, noise_w=0.8, sentence_silence=0.6):
+def _piper_synthesize_wav(
+    voice,
+    text: str,
+    length_scale=1.0,
+    noise_scale=0.667,
+    noise_w=0.8,
+    sentence_silence=0.6,
+):
     import io
     import wave
 

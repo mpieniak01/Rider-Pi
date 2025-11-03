@@ -141,7 +141,10 @@ def heartbeat_loop():
     # Co jakiś czas emituj heartbeat (do debug/logów)
     while True:
         try:
-            pub("vision.dispatcher.heartbeat", {"ts": time.time(), "present": STATE.present})
+            pub(
+                "vision.dispatcher.heartbeat",
+                {"ts": time.time(), "present": STATE.present},
+            )
             time.sleep(5)
         except KeyboardInterrupt:
             break

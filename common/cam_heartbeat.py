@@ -46,7 +46,11 @@ class CameraHB:
                 "h": h,
                 "mode": self.mode,
                 "fps": float(fps) if fps is not None else None,
-                "lcd": {"active": True, "presenting": bool(presenting), "rot": self.rot},
+                "lcd": {
+                    "active": True,
+                    "presenting": bool(presenting),
+                    "rot": self.rot,
+                },
             },
             add_ts=False,
         )

@@ -45,7 +45,12 @@ class VirtualGyro:
             self._pub = self._ctx.socket(zmq.PUB)
             self._pub.connect(BUS_PUB_ADDR)
             time.sleep(0.1)  # Warmup
-            LOG.info("Gyro PUB → %s topic='%s' @ %s Hz", BUS_PUB_ADDR, GYRO_TOPIC, self.rate_hz)
+            LOG.info(
+                "Gyro PUB → %s topic='%s' @ %s Hz",
+                BUS_PUB_ADDR,
+                GYRO_TOPIC,
+                self.rate_hz,
+            )
         except Exception as e:  # noqa: BLE001
             LOG.warning("Failed to initialize gyro MQTT: %s", e)
 
@@ -73,7 +78,13 @@ class VirtualGyro:
 class VirtualCamera:
     """Virtual camera that renders first-person view with perspective."""
 
-    def __init__(self, width: int = 320, height: int = 240, fov: float = 60.0, rate_hz: float = 5.0):
+    def __init__(
+        self,
+        width: int = 320,
+        height: int = 240,
+        fov: float = 60.0,
+        rate_hz: float = 5.0,
+    ):
         self.width = int(width)
         self.height = int(height)
         self.fov = float(fov)  # Field of view in degrees
@@ -98,7 +109,12 @@ class VirtualCamera:
             self._pub = self._ctx.socket(zmq.PUB)
             self._pub.connect(BUS_PUB_ADDR)
             time.sleep(0.1)  # Warmup
-            LOG.info("Camera PUB → %s topic='%s' @ %s Hz", BUS_PUB_ADDR, CAMERA_TOPIC, self.rate_hz)
+            LOG.info(
+                "Camera PUB → %s topic='%s' @ %s Hz",
+                BUS_PUB_ADDR,
+                CAMERA_TOPIC,
+                self.rate_hz,
+            )
         except Exception as e:  # noqa: BLE001
             LOG.warning("Failed to initialize camera MQTT: %s", e)
 
@@ -115,7 +131,11 @@ class VirtualCamera:
 
         # Ground
         ground_height = self.height // 2
-        pygame.draw.rect(self.surface, (101, 67, 33), (0, ground_height, self.width, self.height - ground_height))
+        pygame.draw.rect(
+            self.surface,
+            (101, 67, 33),
+            (0, ground_height, self.width, self.height - ground_height),
+        )
 
         # Render walls with perspective
         fov_rad = math.radians(self.fov)
@@ -150,7 +170,14 @@ class VirtualCamera:
         return self.surface
 
     def _ray_wall_intersection(
-        self, rx: float, ry: float, angle: float, x1: float, y1: float, x2: float, y2: float
+        self,
+        rx: float,
+        ry: float,
+        angle: float,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
     ) -> float | None:
         """
         Calculate intersection distance between a ray and a wall segment.

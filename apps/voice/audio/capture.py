@@ -303,7 +303,11 @@ class AudioCapture:
                         if proc.stderr:
                             with contextlib.suppress(Exception):
                                 err_txt = proc.stderr.read().decode("utf-8", "ignore").strip()
-                        self.logger.event("capture.proc.exit", returncode=proc.returncode, stderr=err_txt)
+                        self.logger.event(
+                            "capture.proc.exit",
+                            returncode=proc.returncode,
+                            stderr=err_txt,
+                        )
                         break
                     # brak danych chwilowo – nie blokuj CPU
                     time.sleep(0.003)

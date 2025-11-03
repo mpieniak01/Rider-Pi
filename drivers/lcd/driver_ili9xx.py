@@ -107,7 +107,9 @@ def _find_presenter(dev) -> tuple[Any | None, Callable | None]:
     return None, None
 
 
-def _find_raw_iface(dev) -> tuple[Any | None, Callable | None, Callable | None, Callable | None]:
+def _find_raw_iface(
+    dev,
+) -> tuple[Any | None, Callable | None, Callable | None, Callable | None]:
     nodes = [
         dev,
         getattr(dev, "lcd", None),
@@ -703,7 +705,10 @@ def _data(bs: bytes):
     spi = _RAWSPI["spi"]
     kind, send = _spi_best_writer(spi)
     if not _RAW_DBG_SHOWN["done"]:
-        print(f"[raw] spi send path = {kind or 'NONE'} (forced={_FORCE_SEND or '-'})", flush=True)
+        print(
+            f"[raw] spi send path = {kind or 'NONE'} (forced={_FORCE_SEND or '-'})",
+            flush=True,
+        )
         _RAW_DBG_SHOWN["done"] = True
     if send is None:
         raise RuntimeError("SPI has no usable write method")
@@ -1079,7 +1084,11 @@ def _maybe_set_window(w: int, h: int):
     for fname in ("_set_window", "set_window", "window", "SetWindow", "setwin", "win"):
         fn = globals().get(fname)
         if callable(fn):
-            for args in ((0, 0, w - 1, h - 1), (0, w - 1, 0, h - 1), (0, w - 1, h - 1, 0)):
+            for args in (
+                (0, 0, w - 1, h - 1),
+                (0, w - 1, 0, h - 1),
+                (0, w - 1, h - 1, 0),
+            ):
                 try:
                     fn(*args)
                     return True
@@ -1272,7 +1281,11 @@ def _maybe_set_window(w: int, h: int):
     for fname in ("_set_window", "set_window", "window", "SetWindow", "setwin", "win"):
         fn = globals().get(fname)
         if callable(fn):
-            for args in ((0, 0, w - 1, h - 1), (0, w - 1, 0, h - 1), (0, w - 1, h - 1, 0)):
+            for args in (
+                (0, 0, w - 1, h - 1),
+                (0, w - 1, 0, h - 1),
+                (0, w - 1, h - 1, 0),
+            ):
                 try:
                     fn(*args)
                     return True

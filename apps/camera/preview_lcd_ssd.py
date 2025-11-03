@@ -75,7 +75,11 @@ def should_snap_now() -> bool:
 
 def apply_rotation(frame, rot, flip_h, flip_v):
     if rot in (90, 180, 270):
-        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}[rot]
+        k = {
+            90: cv2.ROTATE_90_CLOCKWISE,
+            180: cv2.ROTATE_180,
+            270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+        }[rot]
         frame = cv2.rotate(frame, k)
     if flip_h:
         frame = cv2.flip(frame, 1)
@@ -282,7 +286,12 @@ def main():
         # Inference co N-tą klatkę
         if frame_id % max(1, EVERY) == 0:
             blob = cv2.dnn.blobFromImage(
-                cv2.resize(frame, (300, 300)), 0.007843, (300, 300), 127.5, swapRB=True, crop=False
+                cv2.resize(frame, (300, 300)),
+                0.007843,
+                (300, 300),
+                127.5,
+                swapRB=True,
+                crop=False,
             )
             net.setInput(blob)
             det = net.forward()

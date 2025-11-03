@@ -9,8 +9,9 @@ import select
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from . import voice_logging as voice_logging
 
@@ -133,7 +134,8 @@ class HotwordDetector:
             return
         try:
             self._porcupine = pvporcupine.create(
-                keyword_paths=[self.config.model], sensitivities=[self.config.sensitivity]
+                keyword_paths=[self.config.model],
+                sensitivities=[self.config.sensitivity],
             )
             self.logger.event("hotword.porcupine", model=self.config.model)
         except Exception as exc:  # pragma: no cover

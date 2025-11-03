@@ -7,7 +7,6 @@ import os
 import pathlib
 import sys
 import time
-from typing import Optional
 
 LED_CLASS = "/sys/class/leds"
 
@@ -64,7 +63,7 @@ def list_leds() -> list[pathlib.Path]:
     return [pathlib.Path(p) for p in sorted(glob.glob(f"{LED_CLASS}/*"))]
 
 
-def pick_led(prefer: Optional[str]) -> Optional[tuple[pathlib.Path, pathlib.Path, str]]:
+def pick_led(prefer: str | None) -> tuple[pathlib.Path, pathlib.Path, str] | None:
     """
     Zwraca (brightness, trigger, nazwa_led).
     prefer – nazwa katalogu w /sys/class/leds (np. ACT, PWR, led0).
@@ -119,8 +118,8 @@ def blink_loop(
     brightness: pathlib.Path,
     trigger: pathlib.Path,
     hz: float = 2.0,
-    on_ms: Optional[int] = None,
-    off_ms: Optional[int] = None,
+    on_ms: int | None = None,
+    off_ms: int | None = None,
 ) -> None:
     if on_ms is None or off_ms is None:
         period = 1.0 / max(hz, 0.1)
@@ -152,7 +151,9 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     ap.add_argument(
-        "--led", help="nazwa LED (katalog w /sys/class/leds), np. ACT, PWR, led0", default=os.getenv("LED_NAME")
+        "--led",
+        help="nazwa LED (katalog w /sys/class/leds), np. ACT, PWR, led0",
+        default=os.getenv("LED_NAME"),
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 

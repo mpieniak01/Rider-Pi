@@ -291,7 +291,11 @@ class ReconnectingTransport:
                 return True
 
             self.retry_count += 1
-            self.logger.event("ws.reconnect.failed", retry=self.retry_count, max_retries=self.max_retries)
+            self.logger.event(
+                "ws.reconnect.failed",
+                retry=self.retry_count,
+                max_retries=self.max_retries,
+            )
 
         self.logger.event("ws.reconnect.exhausted", max_retries=self.max_retries)
         return False

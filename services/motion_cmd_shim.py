@@ -38,7 +38,14 @@ def main():
         vx = +v if d == "forward" else (-v if d == "backward" else 0.0)
         yaw = +w if d == "left" else (-w if d == "right" else 0.0)
 
-        out = {"vx": vx, "vy": 0.0, "yaw": yaw, "duration": t, "rid": rid, "ts": time.time()}
+        out = {
+            "vx": vx,
+            "vy": 0.0,
+            "yaw": yaw,
+            "duration": t,
+            "rid": rid,
+            "ts": time.time(),
+        }
 
         pub.send_string(f"cmd.move {json.dumps(out, ensure_ascii=False)}")
         print("[shim] motion.cmd → cmd.move:", out, flush=True)

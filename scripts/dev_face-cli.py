@@ -45,7 +45,12 @@ def parse_env_or_arg(val, env, default, typ=str):
 def main():
     parser = argparse.ArgumentParser(description="Face LCD CLI (mock/spi)")
     parser.add_argument("--expr", default="neutral", help="Ekspresja: neutral, happy, sad, blink...")
-    parser.add_argument("--rotate", type=int, choices=[0, 90, 180, 270], help="Rotacja LCD (0/90/180/270)")
+    parser.add_argument(
+        "--rotate",
+        type=int,
+        choices=[0, 90, 180, 270],
+        help="Rotacja LCD (0/90/180/270)",
+    )
     parser.add_argument("--spi-hz", type=int, help="Częstotliwość SPI (opcjonalnie)")
     parser.add_argument("--fit", choices=["fill", "fit", "stretch"], help="Tryb dopasowania obrazu")
     parser.add_argument(
@@ -54,7 +59,11 @@ def main():
         default="raw:rgb565",
         help="Tryb wypychania klatki",
     )
-    parser.add_argument("--backend", choices=["mock", "spi"], help="Backend drivera (domyślnie mock lub z ENV)")
+    parser.add_argument(
+        "--backend",
+        choices=["mock", "spi"],
+        help="Backend drivera (domyślnie mock lub z ENV)",
+    )
     parser.add_argument("--stats", action="store_true", help="Wyświetl info o plikach mocka")
     args = parser.parse_args()
 

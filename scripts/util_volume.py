@@ -9,7 +9,13 @@ SINK = os.getenv("PULSE_SINK", "1")
 
 
 def run(cmd):
-    subprocess.run(cmd, shell=True, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        cmd,
+        shell=True,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def ensure_pulse():

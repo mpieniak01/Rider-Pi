@@ -38,7 +38,11 @@ def get_motion_flags():
 
 def get_last_frame_info():
     if LAST_FRAME.exists():
-        return {"exists": True, "mtime": LAST_FRAME.stat().st_mtime, "path": str(LAST_FRAME)}
+        return {
+            "exists": True,
+            "mtime": LAST_FRAME.stat().st_mtime,
+            "path": str(LAST_FRAME),
+        }
     return {"exists": False, "mtime": None, "path": str(LAST_FRAME)}
 
 

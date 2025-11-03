@@ -80,7 +80,10 @@ def demo_lenient_mode():
 
     loader = ConfigLoader(lenient=True)
 
-    _ = loader.load("voice_openai_file.toml", overrides={"asr": {"unknown_key": "test"}, "bad_section": {"x": 1}})
+    _ = loader.load(
+        "voice_openai_file.toml",
+        overrides={"asr": {"unknown_key": "test"}, "bad_section": {"x": 1}},
+    )
 
     print(f"✓ Config loaded in lenient mode with {len(loader.unknown_keys)} unknown keys")
     print(f"  Unknown keys: {['.'.join(k) for k in loader.unknown_keys]}")

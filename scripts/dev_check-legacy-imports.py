@@ -38,17 +38,47 @@ from pathlib import Path
 # Patterns for legacy imports to block
 LEGACY_PATTERNS = [
     # Files removed in PR-1
-    (r"from apps\.voice\.ws_transport\b", "apps/voice/ws_transport.py (removed in PR-1)"),
-    (r"from apps\.voice\.stream_transport\b", "apps/voice/stream_transport.py (removed in PR-1)"),
-    (r"from apps\.voice\.service_impl\b", "apps/voice/service_impl.py (removed in PR-1, use apps.voice.svc_file)"),
-    (r"import apps\.voice\.ws_transport\b", "apps/voice/ws_transport.py (removed in PR-1)"),
-    (r"import apps\.voice\.stream_transport\b", "apps/voice/stream_transport.py (removed in PR-1)"),
-    (r"import apps\.voice\.service_impl\b", "apps/voice/service_impl.py (removed in PR-1, use apps.voice.svc_file)"),
+    (
+        r"from apps\.voice\.ws_transport\b",
+        "apps/voice/ws_transport.py (removed in PR-1)",
+    ),
+    (
+        r"from apps\.voice\.stream_transport\b",
+        "apps/voice/stream_transport.py (removed in PR-1)",
+    ),
+    (
+        r"from apps\.voice\.service_impl\b",
+        "apps/voice/service_impl.py (removed in PR-1, use apps.voice.svc_file)",
+    ),
+    (
+        r"import apps\.voice\.ws_transport\b",
+        "apps/voice/ws_transport.py (removed in PR-1)",
+    ),
+    (
+        r"import apps\.voice\.stream_transport\b",
+        "apps/voice/stream_transport.py (removed in PR-1)",
+    ),
+    (
+        r"import apps\.voice\.service_impl\b",
+        "apps/voice/service_impl.py (removed in PR-1, use apps.voice.svc_file)",
+    ),
     # Files removed in PR-3 (audio/state modules)
-    (r"from apps\.voice\.capture\b", "apps/voice/capture.py (removed in PR-3, use apps.voice.audio.capture)"),
-    (r"from apps\.voice\.playback\b", "apps/voice/playback.py (removed in PR-3, use apps.voice.audio.playback)"),
-    (r"import apps\.voice\.capture\b", "apps/voice/capture.py (removed in PR-3, use apps.voice.audio.capture)"),
-    (r"import apps\.voice\.playback\b", "apps/voice/playback.py (removed in PR-3, use apps.voice.audio.playback)"),
+    (
+        r"from apps\.voice\.capture\b",
+        "apps/voice/capture.py (removed in PR-3, use apps.voice.audio.capture)",
+    ),
+    (
+        r"from apps\.voice\.playback\b",
+        "apps/voice/playback.py (removed in PR-3, use apps.voice.audio.playback)",
+    ),
+    (
+        r"import apps\.voice\.capture\b",
+        "apps/voice/capture.py (removed in PR-3, use apps.voice.audio.capture)",
+    ),
+    (
+        r"import apps\.voice\.playback\b",
+        "apps/voice/playback.py (removed in PR-3, use apps.voice.audio.playback)",
+    ),
     # Files removed in earlier PR-3 (shims)
     (
         r"from apps\.voice\.svc_stream\b",
@@ -66,36 +96,105 @@ LEGACY_PATTERNS = [
     (r"import apps\.voice\.state\b", "apps/voice/state.py (removed in PR-3)"),
     (r"import apps\.voice\.ptt_state\b", "apps/voice/ptt_state.py (removed in PR-3)"),
     # Mixins removed in PR-3
-    (r"\bStreamingVoiceTransportMixin\b", "StreamingVoiceTransportMixin (removed in PR-3)"),
+    (
+        r"\bStreamingVoiceTransportMixin\b",
+        "StreamingVoiceTransportMixin (removed in PR-3)",
+    ),
     (r"\bStreamingVoicePTTMixin\b", "StreamingVoicePTTMixin (removed in PR-3)"),
     # Files removed in PR-4 (transport consolidation)
-    (r"from apps\.voice\.transport\b", "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)"),
-    (r"import apps\.voice\.transport\b", "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)"),
+    (
+        r"from apps\.voice\.transport\b",
+        "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)",
+    ),
+    (
+        r"import apps\.voice\.transport\b",
+        "apps/voice/transport.py (removed in PR-4, use apps.voice.stream.transport)",
+    ),
     # Files removed in refactor PR (dead code)
-    (r"from apps\.voice\.stream\.service\b", "apps/voice/stream/service.py (renamed to svc_streaming.py)"),
-    (r"from apps\.voice\.audio\.wavutil\b", "apps/voice/audio/wavutil.py (removed - dead code)"),
-    (r"from apps\.voice\.audio_rx_tts\b", "apps/voice/audio_rx_tts.py (removed - dead code)"),
+    (
+        r"from apps\.voice\.stream\.service\b",
+        "apps/voice/stream/service.py (renamed to svc_streaming.py)",
+    ),
+    (
+        r"from apps\.voice\.audio\.wavutil\b",
+        "apps/voice/audio/wavutil.py (removed - dead code)",
+    ),
+    (
+        r"from apps\.voice\.audio_rx_tts\b",
+        "apps/voice/audio_rx_tts.py (removed - dead code)",
+    ),
     (r"from apps\.voice\.audio_tx\b", "apps/voice/audio_tx.py (removed - dead code)"),
-    (r"from apps\.voice\.ding\b", "apps/voice/ding.py (removed - dead code, use playback.play_ding)"),
-    (r"from apps\.voice\.svc_file_pipeline\b", "apps/voice/svc_file_pipeline.py (removed - dead code)"),
-    (r"from apps\.voice\.voice_metrics\b", "apps/voice/voice_metrics.py (removed - dead code)"),
-    (r"import apps\.voice\.audio\.wavutil\b", "apps/voice/audio/wavutil.py (removed - dead code)"),
-    (r"import apps\.voice\.audio_rx_tts\b", "apps/voice/audio_rx_tts.py (removed - dead code)"),
+    (
+        r"from apps\.voice\.ding\b",
+        "apps/voice/ding.py (removed - dead code, use playback.play_ding)",
+    ),
+    (
+        r"from apps\.voice\.svc_file_pipeline\b",
+        "apps/voice/svc_file_pipeline.py (removed - dead code)",
+    ),
+    (
+        r"from apps\.voice\.voice_metrics\b",
+        "apps/voice/voice_metrics.py (removed - dead code)",
+    ),
+    (
+        r"import apps\.voice\.audio\.wavutil\b",
+        "apps/voice/audio/wavutil.py (removed - dead code)",
+    ),
+    (
+        r"import apps\.voice\.audio_rx_tts\b",
+        "apps/voice/audio_rx_tts.py (removed - dead code)",
+    ),
     (r"import apps\.voice\.audio_tx\b", "apps/voice/audio_tx.py (removed - dead code)"),
     (r"import apps\.voice\.ding\b", "apps/voice/ding.py (removed - dead code)"),
-    (r"import apps\.voice\.svc_file_pipeline\b", "apps/voice/svc_file_pipeline.py (removed - dead code)"),
-    (r"import apps\.voice\.voice_metrics\b", "apps/voice/voice_metrics.py (removed - dead code)"),
+    (
+        r"import apps\.voice\.svc_file_pipeline\b",
+        "apps/voice/svc_file_pipeline.py (removed - dead code)",
+    ),
+    (
+        r"import apps\.voice\.voice_metrics\b",
+        "apps/voice/voice_metrics.py (removed - dead code)",
+    ),
     # Files moved to _todelete in refactor PR (orphaned stubs)
-    (r"from apps\.voice\.main\b", "apps/voice/main.py (moved to _todelete, use apps.voice.cli)"),
-    (r"import apps\.voice\.main\b", "apps/voice/main.py (moved to _todelete, use apps.voice.cli)"),
-    (r"from apps\.ui\.face_actuators\b", "apps/ui/face_actuators.py (moved to _todelete, use apps.draw)"),
-    (r"from apps\.ui\.face_core\b", "apps/ui/face_core.py (moved to _todelete, use apps.draw)"),
-    (r"from apps\.ui\.face_emotions\b", "apps/ui/face_emotions.py (moved to _todelete, use apps.draw)"),
-    (r"from apps\.ui\.splash_face\b", "apps/ui/splash_face.py (moved to _todelete, use apps.draw)"),
-    (r"from apps\.ui\.tts2face\b", "apps/ui/tts2face.py (moved to _todelete, use apps.draw)"),
-    (r"from apps\.ui\.face\.driver_ili9xx\b", "apps/ui/face/driver_ili9xx.py (moved to _todelete, use drivers.lcd)"),
-    (r"from apps\.launcher\.main\b", "apps/launcher/main.py (moved to _todelete, use apps.menu.main)"),
-    (r"import apps\.launcher\.main\b", "apps/launcher/main.py (moved to _todelete, use apps.menu.main)"),
+    (
+        r"from apps\.voice\.main\b",
+        "apps/voice/main.py (moved to _todelete, use apps.voice.cli)",
+    ),
+    (
+        r"import apps\.voice\.main\b",
+        "apps/voice/main.py (moved to _todelete, use apps.voice.cli)",
+    ),
+    (
+        r"from apps\.ui\.face_actuators\b",
+        "apps/ui/face_actuators.py (moved to _todelete, use apps.draw)",
+    ),
+    (
+        r"from apps\.ui\.face_core\b",
+        "apps/ui/face_core.py (moved to _todelete, use apps.draw)",
+    ),
+    (
+        r"from apps\.ui\.face_emotions\b",
+        "apps/ui/face_emotions.py (moved to _todelete, use apps.draw)",
+    ),
+    (
+        r"from apps\.ui\.splash_face\b",
+        "apps/ui/splash_face.py (moved to _todelete, use apps.draw)",
+    ),
+    (
+        r"from apps\.ui\.tts2face\b",
+        "apps/ui/tts2face.py (moved to _todelete, use apps.draw)",
+    ),
+    (
+        r"from apps\.ui\.face\.driver_ili9xx\b",
+        "apps/ui/face/driver_ili9xx.py (moved to _todelete, use drivers.lcd)",
+    ),
+    (
+        r"from apps\.launcher\.main\b",
+        "apps/launcher/main.py (moved to _todelete, use apps.menu.main)",
+    ),
+    (
+        r"import apps\.launcher\.main\b",
+        "apps/launcher/main.py (moved to _todelete, use apps.menu.main)",
+    ),
 ]
 
 # Audio directory imports - warn but don't fail (to be migrated in future)
@@ -166,7 +265,12 @@ def main():
 
     # Check all Python files in the repo (except _apps)
     python_files = []
-    for pattern in ["apps/**/*.py", "tests/**/*.py", "common/**/*.py", "services/**/*.py"]:
+    for pattern in [
+        "apps/**/*.py",
+        "tests/**/*.py",
+        "common/**/*.py",
+        "services/**/*.py",
+    ]:
         python_files.extend(repo_root.glob(pattern))
 
     # Filter out excluded directories

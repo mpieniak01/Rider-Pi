@@ -224,7 +224,16 @@ class LCDDirect:
                 pass
         wh = self._size_from(self._lcd)
         if not wh:
-            for n in ("renderer", "lcd", "device", "driver", "screen", "panel", "disp", "display"):
+            for n in (
+                "renderer",
+                "lcd",
+                "device",
+                "driver",
+                "screen",
+                "panel",
+                "disp",
+                "display",
+            ):
                 sub = getattr(self._lcd, n, None)
                 if sub:
                     wh = self._size_from(sub)
@@ -240,7 +249,16 @@ class LCDDirect:
 
     def _targets(self):
         t = [self._lcd]
-        for n in ("renderer", "lcd", "device", "driver", "screen", "panel", "disp", "display"):
+        for n in (
+            "renderer",
+            "lcd",
+            "device",
+            "driver",
+            "screen",
+            "panel",
+            "disp",
+            "display",
+        ):
             sub = getattr(self._lcd, n, None)
             if sub is not None:
                 t.append(sub)
@@ -248,7 +266,11 @@ class LCDDirect:
 
     def _prep(self, img: Image.Image) -> Image.Image:
         if self.rotate:
-            rot = {90: Image.ROTATE_90, 180: Image.ROTATE_180, 270: Image.ROTATE_270}.get(self.rotate)
+            rot = {
+                90: Image.ROTATE_90,
+                180: Image.ROTATE_180,
+                270: Image.ROTATE_270,
+            }.get(self.rotate)
             img = img.transpose(rot) if rot else img.rotate(self.rotate, expand=True)
         W, H = self._disp_wh
         if img.size != (W, H):
@@ -272,9 +294,16 @@ class LCDDirect:
             fn = getattr(target, name, None)
             if callable(fn):
                 self._push = (target, name, tag)
-                print("LCD(direct): FORCED", f"{type(target).__name__}.{name}[{tag}]", flush=True)
+                print(
+                    "LCD(direct): FORCED",
+                    f"{type(target).__name__}.{name}[{tag}]",
+                    flush=True,
+                )
                 return True
-        print(f"[LCD] --force requested '{name}', nie znaleziono na obiektach sterownika.", flush=True)
+        print(
+            f"[LCD] --force requested '{name}', nie znaleziono na obiektach sterownika.",
+            flush=True,
+        )
         return False
 
     def _scan_bind(self, img: Image.Image) -> str | None:
@@ -308,7 +337,12 @@ class LCDDirect:
                     except Exception:
                         tried.append(f"{type(target).__name__}.{name}:{tag}")
                         continue
-        print("[LCD] tried:", ", ".join(tried[:16]), "..." if len(tried) > 16 else "", flush=True)
+        print(
+            "[LCD] tried:",
+            ", ".join(tried[:16]),
+            "..." if len(tried) > 16 else "",
+            flush=True,
+        )
         return None
 
     def push(self, pil_img: Image.Image) -> str:
@@ -330,7 +364,14 @@ class LCDDirect:
                 probe_img = img
             enc_ms = _bench_rgb565_encoder(probe_img)
             if enc_ms > 30.0:
-                for cand in ("ShowImage", "show", "present", "blit", "display", "update"):
+                for cand in (
+                    "ShowImage",
+                    "show",
+                    "present",
+                    "blit",
+                    "display",
+                    "update",
+                ):
                     fn = getattr(target, cand, None)
                     if callable(fn):
                         self._push = (target, cand, "pil")
@@ -424,7 +465,11 @@ def main():
     )
 
     # Sterowanie „nastrojem” (mood) i sekwencjami
-    ap.add_argument("--mood", choices=["happy", "neutral", "sad"], help="Zaplanuj przejście nastroju (ust).")
+    ap.add_argument(
+        "--mood",
+        choices=["happy", "neutral", "sad"],
+        help="Zaplanuj przejście nastroju (ust).",
+    )
     ap.add_argument(
         "--mood-via-neutral",
         dest="mood_via_neutral",
@@ -493,7 +538,11 @@ def main():
                         m = mood_seq[0]
                         mood_seq.rotate(-1)
                         print(f"[mood] next → {m}", flush=True)
-                        fc.set_mood(m, via_neutral=args.mood_via_neutral, dwell_s=args.mood_dwell)
+                        fc.set_mood(
+                            m,
+                            via_neutral=args.mood_via_neutral,
+                            dwell_s=args.mood_dwell,
+                        )
                         next_mood_ts = now + mood_interval
                     else:
                         # Odłóż do następnej próby
@@ -520,7 +569,10 @@ def main():
             t1 = time.time()
             dt = t1 - t0
             if n > 0:
-                print(f"[PIL] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n / dt:.2f}", flush=True)
+                print(
+                    f"[PIL] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n / dt:.2f}",
+                    flush=True,
+                )
             else:
                 print("[PIL] Brak wygenerowanych klatek.", flush=True)
             if hasattr(fc, "close"):
@@ -531,7 +583,13 @@ def main():
         return
 
     # LCD path
-    lcd = LCDDirect(rotate=args.rotate, size=args.size, spi_hz=args.spi_hz, bl_pin=args.bl_pin, force=force)
+    lcd = LCDDirect(
+        rotate=args.rotate,
+        size=args.size,
+        spi_hz=args.spi_hz,
+        bl_pin=args.bl_pin,
+        force=force,
+    )
     n = 0
     t0 = time.time()
     last_stats = t0
@@ -569,7 +627,10 @@ def main():
             n += 1
             if args.stats and (now - last_stats) >= 1.0:
                 dt = now - t0
-                print(f"[stats] frames={n} fps~{(n / dt if dt > 0 else 0):.1f} via LCD", flush=True)
+                print(
+                    f"[stats] frames={n} fps~{(n / dt if dt > 0 else 0):.1f} via LCD",
+                    flush=True,
+                )
                 last_stats = now
             time.sleep(1.0 / max(1, args.fps))
     except KeyboardInterrupt:
@@ -578,7 +639,10 @@ def main():
         t1 = time.time()
         dt = t1 - t0
         if n > 0:
-            print(f"[LCD] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n / dt:.2f}", flush=True)
+            print(
+                f"[LCD] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n / dt:.2f}",
+                flush=True,
+            )
         else:
             print("[LCD] Brak wygenerowanych klatek.", flush=True)
         for obj in (getattr(lcd, "_lcd", None), fc):

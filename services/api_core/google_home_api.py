@@ -207,7 +207,11 @@ def start_oauth_flow() -> dict[str, Any]:
 
     except Exception as e:
         logger.error("OAuth flow error: %s", e, exc_info=True)
-        return {"ok": False, "error": "OAuth authorization failed", "error_detail": str(e)}
+        return {
+            "ok": False,
+            "error": "OAuth authorization failed",
+            "error_detail": str(e),
+        }
 
 
 def is_authenticated() -> bool:
@@ -294,7 +298,11 @@ def get_devices() -> dict[str, Any]:
     token = refresh_access_token()
     if not token:
         # pozwól wyżej zmapować to na 401
-        return {"ok": False, "error": "Not authenticated or token refresh failed", "status_code": 401}
+        return {
+            "ok": False,
+            "error": "Not authenticated or token refresh failed",
+            "status_code": 401,
+        }
 
     try:
         url = f"{API_BASE}/enterprises/{PROJECT_ID}/devices"
@@ -335,7 +343,11 @@ def send_command(
     """
     token = refresh_access_token()
     if not token:
-        return {"ok": False, "error": "Not authenticated or token refresh failed", "status_code": 401}
+        return {
+            "ok": False,
+            "error": "Not authenticated or token refresh failed",
+            "status_code": 401,
+        }
 
     try:
         url = f"{API_BASE}/{device_id}:executeCommand"

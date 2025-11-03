@@ -95,7 +95,10 @@ def test_play_state_stop_flow():
     assert rv.get_json()["ok"] is True
 
     # DoD: stopuje się < ~0.5 s
-    ok = _poll_until(lambda: _client().get("/face/state").get_json()["state"]["playing"] is False, timeout=0.6)
+    ok = _poll_until(
+        lambda: _client().get("/face/state").get_json()["state"]["playing"] is False,
+        timeout=0.6,
+    )
     assert ok, "playing nie przeszło na False w 0.6 s"
 
 
@@ -125,7 +128,13 @@ def test_snapshot_png_backend_ok():
 
     rv = c.post(
         "/face/render",
-        json={"expr": "neutral", "backend": "png", "out": out, "rotate": 270, "size": 240},
+        json={
+            "expr": "neutral",
+            "backend": "png",
+            "out": out,
+            "rotate": 270,
+            "size": 240,
+        },
     )
     assert rv.status_code == 200
     data = rv.get_json()

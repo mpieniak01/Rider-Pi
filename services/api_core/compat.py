@@ -282,7 +282,10 @@ def health_alias():
 def livez():
     # prosty „liveness”: proces żyje i podaje uptime
     up_s = time.time() - START_TS
-    return Response(json.dumps({"alive": True, "uptime_s": round(up_s, 3)}), mimetype="application/json")
+    return Response(
+        json.dumps({"alive": True, "uptime_s": round(up_s, 3)}),
+        mimetype="application/json",
+    )
 
 
 # === Version / Bus health / Refined readyz ====================================
@@ -301,7 +304,10 @@ def _git_info():
         desc = None
     try:
         rev = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], cwd=BASE_DIR, text=True, timeout=1.0
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=BASE_DIR,
+            text=True,
+            timeout=1.0,
         ).strip()
     except Exception:
         rev = None
@@ -528,7 +534,11 @@ def api_flags_set(name: str, state: str):
         )
     st = state.strip().lower()
     if st not in ("on", "off"):
-        return Response(json.dumps({"ok": False, "error": "bad state"}), mimetype="application/json", status=400)
+        return Response(
+            json.dumps({"ok": False, "error": "bad state"}),
+            mimetype="application/json",
+            status=400,
+        )
     ok = _set_flag(name, st == "on")
     return Response(
         json.dumps({"ok": bool(ok), "name": name, "state": st}),

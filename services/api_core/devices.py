@@ -92,7 +92,15 @@ def bus_sub_loop():
         ctx = zmq.Context.instance()
         sub = ctx.socket(zmq.SUB)
         sub.connect(f"tcp://127.0.0.1:{C.BUS_SUB_PORT}")
-        for t in ("vision.", "camera.", "motion.bridge.", "motion.", "cmd.", "devices.", "xgo."):
+        for t in (
+            "vision.",
+            "camera.",
+            "motion.bridge.",
+            "motion.",
+            "cmd.",
+            "devices.",
+            "xgo.",
+        ):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
         try:
             sub.setsockopt(zmq.RCVTIMEO, 1000)

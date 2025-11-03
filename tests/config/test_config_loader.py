@@ -89,7 +89,8 @@ def test_unknown_keys_lenient_warn(capsys):
     loader = ConfigLoader(lenient=True)
 
     config = loader.load(
-        "voice_openai_file.toml", overrides={"asr": {"unknown_field": "test"}, "chat": {"another_unknown": 123}}
+        "voice_openai_file.toml",
+        overrides={"asr": {"unknown_field": "test"}, "chat": {"another_unknown": 123}},
     )
 
     # Config should still load
@@ -154,7 +155,11 @@ def test_precedence_env_cli_overrides():
     # Multiple levels of override
     config_multi = loader.load(
         "voice_openai_file.toml",
-        overrides={"capture": {"sample_rate": 24000}, "playback": {"volume": 75}, "asr": {"model": "whisper-large"}},
+        overrides={
+            "capture": {"sample_rate": 24000},
+            "playback": {"volume": 75},
+            "asr": {"model": "whisper-large"},
+        },
     )
     assert config_multi["capture"]["sample_rate"] == 24000
     assert config_multi["playback"]["volume"] == 75
@@ -251,7 +256,11 @@ def test_load_and_validate_convenience():
         load_and_validate("voice_openai_file.toml", overrides={"bad_section": {"key": "value"}})
 
     # Should succeed in lenient mode
-    config = load_and_validate("voice_openai_file.toml", overrides={"bad_section": {"key": "value"}}, lenient=True)
+    config = load_and_validate(
+        "voice_openai_file.toml",
+        overrides={"bad_section": {"key": "value"}},
+        lenient=True,
+    )
     assert "asr" in config
 
 

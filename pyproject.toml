@@ -1,14 +1,5 @@
 [tool.ruff]
 line-length = 120
-target-version = "py39"
-respect-gitignore = true
-
-exclude = [
-  "lama.cpp",
-  "llama.cpp",
-]
-force-exclude = true
-
 extend-exclude = [
   "_apps/",
   "venv/",
@@ -18,7 +9,6 @@ extend-exclude = [
   "__pycache__/",
   "**/*.egg-info/",
   ".ipynb_checkpoints/",
-  # archiwum nieużywanych modułów:
   "**/_todelete/",
 ]
 

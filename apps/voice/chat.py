@@ -454,7 +454,11 @@ class ChatSession:
 
         # Wywołanie API (streaming)
         try:
-            self._evt("chat.stream.request", model=self.config.model, msg_count=len(history) + 1)
+            self._evt(
+                "chat.stream.request",
+                model=self.config.model,
+                msg_count=len(history) + 1,
+            )
 
             model = genai.GenerativeModel(
                 model_name=self.config.model,

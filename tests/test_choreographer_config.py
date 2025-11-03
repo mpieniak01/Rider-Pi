@@ -60,7 +60,12 @@ def test_validate_valid_config():
         "mappings": [
             {
                 "trigger": {"topic": "events.sentiment", "match": {"sentiment": "joy"}},
-                "actions": [{"topic": "command.face.expression", "payload": {"expression": "happy"}}],
+                "actions": [
+                    {
+                        "topic": "command.face.expression",
+                        "payload": {"expression": "happy"},
+                    }
+                ],
             }
         ]
     }

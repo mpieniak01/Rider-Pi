@@ -138,4 +138,8 @@ def test_web_static_files_no_trailing_slash_redirect():
     for file_path in test_files:
         r = c.get(file_path, follow_redirects=False)
         # Should either be 200 or 404, but NOT a redirect
-        assert r.status_code not in (301, 302, 308), f"{file_path} should not redirect; got {r.status_code}"
+        assert r.status_code not in (
+            301,
+            302,
+            308,
+        ), f"{file_path} should not redirect; got {r.status_code}"

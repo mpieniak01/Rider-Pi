@@ -75,7 +75,7 @@ def main():
         rects, weights = hog.detectMultiScale(frame, winStride=(8, 8), padding=(8, 8), scale=1.05)
         out = frame.copy()
         max_score = 0.0
-        for (x, y, w, h), s in zip(rects, weights):
+        for (x, y, w, h), s in zip(rects, weights, strict=False):
             max_score = max(max_score, float(s))
             cv2.rectangle(out, (x, y), (x + w, y + h), (0, 255, 255), 2)
             # opcjonalna etykieta

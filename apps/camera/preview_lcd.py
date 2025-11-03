@@ -76,7 +76,11 @@ try:
     import cv2
     import numpy as np
 except Exception as e:
-    print("[preview] Brak OpenCV: sudo apt-get install -y python3-opencv", e, file=sys.stderr)
+    print(
+        "[preview] Brak OpenCV: sudo apt-get install -y python3-opencv",
+        e,
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 # ── BUS publisher (preferuj common.bus, w razie czego czysty ZMQ)
@@ -489,7 +493,10 @@ def main():
             det_kind = "none"
     elif det_kind == "tflite":
         if not os.path.isfile(TFLITE_MODEL):
-            print(f"[det] TFLite model not found: {TFLITE_MODEL} → DETECTOR=none", flush=True)
+            print(
+                f"[det] TFLite model not found: {TFLITE_MODEL} → DETECTOR=none",
+                flush=True,
+            )
             det_kind = "none"
         else:
             try:
@@ -589,7 +596,15 @@ def main():
             if detections and (LCD_ok and not ENV_NO_DRAW):
                 draw_overlay(out, detections)
             if LCD_ok and not ENV_NO_DRAW and (frames % 10 == 0):
-                cv2.putText(out, f"{fps:.1f} fps", (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                cv2.putText(
+                    out,
+                    f"{fps:.1f} fps",
+                    (5, 20),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 0, 0),
+                    1,
+                )
 
             # Zapis last_frame + RAW snapshot — pierwsza klatka od razu, potem co SAVE_LAST_EVERY
             if frames == 0 or (frames % SAVE_LAST_EVERY == 0):

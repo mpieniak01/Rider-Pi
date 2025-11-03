@@ -39,6 +39,7 @@ def zmq_pub() -> zmq.Socket:
     ctx = zmq.Context.instance()
     s = ctx.socket(zmq.PUB)
     s.connect(ZMQ_ADDR_PUB)
+    print(f"[tracker] zmq_pub connected to {ZMQ_ADDR_PUB}", flush=True)
     return s
 
 
@@ -49,13 +50,17 @@ def zmq_sub(topics: list[str]) -> zmq.Socket:
     s.setsockopt(zmq.RCVTIMEO, 100)  # 100ms timeout for responsiveness
     for t in topics:
         s.setsockopt_string(zmq.SUBSCRIBE, t)
+        print(f"[tracker] zmq_sub subscribed to topic '{t}'", flush=True)
+    print(f"[tracker] zmq_sub connected to {ZMQ_ADDR_SUB}", flush=True)
     return s
 
 
 def pub(topic: str, payload: dict[str, Any]) -> None:
     try:
         assert PUB is not None
-        PUB.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
+        message = f"{topic} {json.dumps(payload, ensure_ascii=False)}"
+        PUB.send_string(message)
+        print(f"[tracker] pub → {topic} {payload}", flush=True)
     except Exception as e:
         print(f"[tracker] pub err: {e}", flush=True)
 
@@ -85,7 +90,8 @@ def sub_recv() -> tuple[str, dict[str, Any]]:
         return topic, _json_loads(payload)
     except zmq.Again:
         return "", {}
-    except Exception:
+    except Exception as e:
+        print(f"[tracker] sub_recv err: {e}", flush=True)
         return "", {}
 
 
@@ -110,6 +116,11 @@ def control_loop() -> None:
                 elif topic == "vision.follow.stop":
                     FOLLOW_MODE = "NONE"
                     print("[tracker] mode → NONE", flush=True)
+                else:
+                    print(
+                        f"[tracker] control_loop got unknown topic '{topic}' data={data}",
+                        flush=True,
+                    )
         except KeyboardInterrupt:
             break
         except Exception as e:
@@ -131,9 +142,13 @@ def open_camera():
             arr = picam2.capture_array()
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
+        print("[tracker] open_camera: using Picamera2", flush=True)
         return read
     except (ImportError, RuntimeError) as e:
-        print(f"[tracker] PiCamera2 not available, using cv2.VideoCapture: {e}", flush=True)
+        print(
+            f"[tracker] PiCamera2 not available, using cv2.VideoCapture: {e}",
+            flush=True,
+        )
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
@@ -150,16 +165,13 @@ def calculate_offset_x(detections: list, frame_width: float | None = None) -> fl
     if not detections:
         return None
 
-    # Take first detection (could be improved to choose largest/closest)
     det = detections[0]
 
-    # For face detection, use bbox
     if hasattr(det, "location_data") and det.location_data.HasField("relative_bounding_box"):
         bbox = det.location_data.relative_bounding_box
         center_x = bbox.xmin + bbox.width / 2.0
         if frame_width is not None and center_x > 1.0:
             center_x /= frame_width
-    # For hand detection, use landmark (wrist = landmark 0)
     elif hasattr(det, "landmark"):
         center_x = det.landmark[0].x
         if frame_width is not None and center_x > 1.0:
@@ -167,10 +179,7 @@ def calculate_offset_x(detections: list, frame_width: float | None = None) -> fl
     else:
         return None
 
-    # Convert to offset: center_x is in [0, 1], where 0.5 is center
-    offset_x = (center_x - 0.5) * 2.0  # Convert to [-1, 1]
-
-    # Apply dead zone
+    offset_x = (center_x - 0.5) * 2.0  # Convert to [-1,1]
     if abs(offset_x) < DEAD_ZONE:
         offset_x = 0.0
 
@@ -181,7 +190,6 @@ def tracking_loop() -> None:
     """Main tracking loop using MediaPipe."""
     print("[tracker] tracking_loop started", flush=True)
 
-    # Initialize MediaPipe
     mp_face = mp.solutions.face_detection
     mp_hands = mp.solutions.hands
 
@@ -200,40 +208,49 @@ def tracking_loop() -> None:
     while True:
         try:
             t0 = time.time()
-
-            # Get current mode
             with FOLLOW_MODE_LOCK:
                 mode = FOLLOW_MODE
 
-            # Skip processing if no tracking active
             if mode == "NONE":
+                # debug: report idle mode
+                print("[tracker] tracking_loop idle (mode=NONE)", flush=True)
                 time.sleep(0.1)
                 continue
 
-            # Read frame
             ok, frame = read()
             if not ok:
+                print("[tracker] read frame failed", flush=True)
                 time.sleep(0.01)
                 continue
 
-            # Convert to RGB for MediaPipe
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w = rgb_frame.shape[:2]
 
             offset_x = None
 
-            # Process based on mode
             if mode == "FACE":
                 results = face_detector.process(rgb_frame)
                 if results.detections:
                     offset_x = calculate_offset_x(results.detections)
+                    print(
+                        f"[tracker] DETECTION FACE count={len(results.detections)} offset_x={offset_x}",
+                        flush=True,
+                    )
+                else:
+                    print("[tracker] DETECTION FACE none", flush=True)
             elif mode == "HAND":
                 results = hand_detector.process(rgb_frame)
                 if results.multi_hand_landmarks:
-                    # Convert hand landmarks to detection-like format
                     offset_x = calculate_offset_x(results.multi_hand_landmarks)
+                    print(
+                        f"[tracker] DETECTION HAND count={len(results.multi_hand_landmarks)} offset_x={offset_x}",
+                        flush=True,
+                    )
+                else:
+                    print("[tracker] DETECTION HAND none", flush=True)
+            else:
+                print(f"[tracker] Unknown mode '{mode}'", flush=True)
 
-            # Publish offset if detected and enough time passed
             now = time.time()
             if offset_x is not None and (now - last_pub_ts) >= frame_interval:
                 pub(
@@ -241,8 +258,16 @@ def tracking_loop() -> None:
                     {"offset_x": round(offset_x, 3), "mode": mode.lower(), "ts": now},
                 )
                 last_pub_ts = now
+            else:
+                # debug: not publishing
+                if offset_x is None:
+                    print("[tracker] no offset to publish", flush=True)
+                else:
+                    print(
+                        f"[tracker] publish skipped (interval) offset_x={offset_x}",
+                        flush=True,
+                    )
 
-            # Rate limiting
             elapsed = time.time() - t0
             sleep_time = max(0.0, frame_interval - elapsed)
             if sleep_time > 0:
@@ -254,7 +279,6 @@ def tracking_loop() -> None:
             print(f"[tracker] tracking_loop err: {e}", flush=True)
             time.sleep(0.1)
 
-    # Clean up detectors
     try:
         if hasattr(face_detector, "close"):
             face_detector.close()
@@ -269,8 +293,5 @@ if __name__ == "__main__":
     PUB = zmq_pub()
     SUB = zmq_sub(["vision.follow.face.set", "vision.follow.hand.set", "vision.follow.stop"])
 
-    # Start control listener in background
     threading.Thread(target=control_loop, daemon=True).start()
-
-    # Run tracking loop in main thread
     tracking_loop()

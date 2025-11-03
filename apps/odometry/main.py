@@ -17,8 +17,15 @@ import logging
 import math
 import os
 import time
+from typing import Any
 
-from common.bus import TOPIC_IMU_DATA, TOPIC_MOTION_COMMAND, TOPIC_ROBOT_POSE, BusPub, BusSub
+from common.bus import (
+    TOPIC_IMU_DATA,
+    TOPIC_MOTION_COMMAND,
+    TOPIC_ROBOT_POSE,
+    BusPub,
+    BusSub,
+)
 
 # Environment configuration
 LOG_LEVEL = os.getenv("ODOMETRY_LOG_LEVEL", "INFO").upper()
@@ -42,12 +49,12 @@ LOG = logging.getLogger("odometry")
 
 
 def normalize_angle(angle: float) -> float:
-    """Normalize angle to [-pi, pi] range"""
+    """Normalize angle to [-pi, pi] range."""
     return ((angle + math.pi) % (2.0 * math.pi)) - math.pi
 
 
 class OdometryEstimator:
-    """Estimates robot pose using motion commands and IMU data"""
+    """Estimates robot pose using motion commands and IMU data."""
 
     def __init__(self, x: float = 0.0, y: float = 0.0, theta: float = 0.0):
         # Current pose estimate
@@ -61,22 +68,25 @@ class OdometryEstimator:
         self.last_motion_ts = time.time()
 
         # IMU tracking
-        self.last_imu_yaw = None
-        self.last_imu_ts = None
+        self.last_imu_yaw: float | None = None
+        self.last_imu_ts: float | None = None
         self.imu_available = False
 
         LOG.info(
-            f"Odometry initialized at pose: x={self.x:.3f}m, y={self.y:.3f}m, theta={math.degrees(self.theta):.1f}°"
+            "Odometry initialized at pose: x=%.3fm, y=%.3fm, theta=%.1f°",
+            self.x,
+            self.y,
+            math.degrees(self.theta),
         )
 
-    def update_motion_command(self, lx: float, az: float):
-        """Update with new motion command"""
+    def update_motion_command(self, lx: float, az: float) -> None:
+        """Update with new motion command."""
         self.last_lx = lx
         self.last_az = az
         self.last_motion_ts = time.time()
 
-    def update_imu(self, yaw: float):
-        """Update with IMU yaw reading (in degrees)"""
+    def update_imu(self, yaw: float) -> None:
+        """Update with IMU yaw reading (in degrees)."""
         yaw_rad = math.radians(yaw)
         now = time.time()
 
@@ -85,23 +95,27 @@ class OdometryEstimator:
             self.last_imu_yaw = yaw_rad
             self.last_imu_ts = now
             self.imu_available = True
-            LOG.debug(f"First IMU reading: yaw={yaw:.1f}°")
+            LOG.debug("First IMU reading: yaw=%.1f°", yaw)
             return
 
         # Calculate change in orientation from IMU
-        dt = now - self.last_imu_ts
-        if dt > 0 and dt < 1.0:  # Sanity check on dt
+        dt = now - (self.last_imu_ts or now)
+        if 0 < dt < 1.0:
             dyaw = normalize_angle(yaw_rad - self.last_imu_yaw)
             # Use IMU data to correct orientation estimate
             self.theta = normalize_angle(self.theta + dyaw)
-            LOG.debug(f"IMU update: dyaw={math.degrees(dyaw):.2f}°, new theta={math.degrees(self.theta):.1f}°")
+            LOG.debug(
+                "IMU update: dyaw=%.2f°, new theta=%.1f°",
+                math.degrees(dyaw),
+                math.degrees(self.theta),
+            )
 
         self.last_imu_yaw = yaw_rad
         self.last_imu_ts = now
         self.imu_available = True
 
-    def update_pose(self, dt: float):
-        """Update pose estimate based on motion model"""
+    def update_pose(self, dt: float) -> None:
+        """Update pose estimate based on motion model."""
         if dt <= 0 or dt > 1.0:
             return  # Sanity check
 
@@ -112,7 +126,6 @@ class OdometryEstimator:
         # Dead reckoning using motion commands
         # If we have fresh IMU, we trust it for orientation; otherwise use commanded angular velocity
         if not imu_is_fresh:
-            # No IMU or stale IMU - use commanded angular velocity
             dtheta = self.last_az * ANGULAR_SPEED_SCALE * dt
             self.theta = normalize_angle(self.theta + dtheta)
 
@@ -120,7 +133,7 @@ class OdometryEstimator:
             if self.imu_available and self.last_imu_ts is not None:
                 age = now - self.last_imu_ts
                 if age >= IMU_TIMEOUT_S:
-                    LOG.debug(f"IMU data stale (age={age:.2f}s), using dead reckoning")
+                    LOG.debug("IMU data stale (age=%.2fs), using dead reckoning", age)
 
         # Linear motion - apply in current heading direction
         linear_vel = self.last_lx * LINEAR_SPEED_SCALE
@@ -132,12 +145,16 @@ class OdometryEstimator:
 
         if abs(dx) > 0.001 or abs(dy) > 0.001 or abs(self.last_az) > 0.01:
             LOG.debug(
-                f"Pose update: dx={dx:.4f}m, dy={dy:.4f}m, "
-                f"pose=({self.x:.3f}, {self.y:.3f}, {math.degrees(self.theta):.1f}°)"
+                "Pose update: dx=%.4fm, dy=%.4fm, pose=(%.3f, %.3f, %.1f°)",
+                dx,
+                dy,
+                self.x,
+                self.y,
+                math.degrees(self.theta),
             )
 
     def get_pose(self) -> dict:
-        """Get current pose estimate"""
+        """Get current pose estimate."""
         return {
             "x": self.x,
             "y": self.y,
@@ -148,7 +165,7 @@ class OdometryEstimator:
 
 
 class Odometry:
-    """Odometry system - manages pose estimation and bus communication"""
+    """Odometry system - manages pose estimation and bus communication."""
 
     def __init__(self):
         self.estimator = OdometryEstimator(x=INITIAL_X, y=INITIAL_Y, theta=INITIAL_THETA)
@@ -164,10 +181,72 @@ class Odometry:
         self.last_update_ts = time.time()
         self.last_publish_ts = time.time()
 
-        LOG.info(f"Odometry system initialized (update: {UPDATE_RATE_HZ}Hz, publish: {PUBLISH_RATE_HZ}Hz)")
+        LOG.info(
+            "Odometry system initialized (update: %.1fHz, publish: %.1fHz)",
+            UPDATE_RATE_HZ,
+            PUBLISH_RATE_HZ,
+        )
 
-    def _handle_motion_command(self, payload: dict):
-        """Handle incoming motion command"""
+    @staticmethod
+    def _decode_payload(payload: Any) -> dict | None:
+        """Return dict payload from bytes/str/dict; otherwise None."""
+        if payload is None:
+            return None
+        if isinstance(payload, dict):
+            return payload
+        if isinstance(payload, (bytes, bytearray)):
+            try:
+                import json
+
+                return json.loads(payload.decode(errors="ignore"))
+            except Exception:  # noqa: BLE001
+                return None
+        if isinstance(payload, str):
+            try:
+                import json
+
+                return json.loads(payload)
+            except Exception:  # noqa: BLE001
+                return None
+        return None
+
+    @staticmethod
+    def _normalize_topic(topic: Any) -> str:
+        if isinstance(topic, (bytes, bytearray)):
+            return topic.decode(errors="ignore")
+        if isinstance(topic, str):
+            return topic
+        return ""
+
+    @staticmethod
+    def _recv_safe(sub: BusSub, timeout_ms: int) -> tuple[str, dict | None]:
+        """
+        Receive from BusSub tolerant to 1-frame (payload-only) and 2+ frames (topic, payload[, ...]).
+        Returns (topic_str, payload_dict_or_none).
+        """
+        msg: Any = sub.recv(timeout_ms=timeout_ms)
+        topic: Any
+        payload: Any
+        topic, payload = "", None
+
+        if msg is None:
+            return "", None
+
+        # msg can be: dict/bytes/str (1 frame), or tuple/list of frames (2+ frames)
+        if isinstance(msg, (list, tuple)):
+            if len(msg) == 1:
+                topic, payload = "", msg[0]
+            elif len(msg) >= 2:
+                topic, payload = msg[0], msg[-1]
+        else:
+            topic, payload = "", msg
+
+        topic_str = Odometry._normalize_topic(topic)
+        payload_obj = Odometry._decode_payload(payload)
+        return topic_str, payload_obj
+
+    def _handle_motion_command(self, payload: dict) -> None:
+        """Handle incoming motion command."""
         cmd_type = payload.get("type", "")
         if cmd_type == "drive":
             lx = float(payload.get("lx", 0.0))
@@ -176,33 +255,33 @@ class Odometry:
         elif cmd_type == "stop":
             self.estimator.update_motion_command(0.0, 0.0)
 
-    def _handle_imu_data(self, payload: dict):
-        """Handle incoming IMU data"""
+    def _handle_imu_data(self, payload: dict) -> None:
+        """Handle incoming IMU data."""
         yaw = payload.get("yaw")
         if yaw is not None:
             self.estimator.update_imu(float(yaw))
 
-    def _publish_pose(self):
-        """Publish current pose estimate"""
+    def _publish_pose(self) -> None:
+        """Publish current pose estimate."""
         pose = self.estimator.get_pose()
         self.pub.publish(TOPIC_ROBOT_POSE, pose, add_ts=True)
         self.last_publish_ts = time.time()
 
-    def run(self):
-        """Main odometry loop"""
+    def run(self) -> None:
+        """Main odometry loop."""
         LOG.info("Odometry main loop started")
 
         try:
             while True:
                 now = time.time()
 
-                # Check for motion commands
-                topic, payload = self.sub_motion.recv(timeout_ms=10)
+                # Check for motion commands (safe recv)
+                topic, payload = self._recv_safe(self.sub_motion, timeout_ms=10)
                 if topic and payload and topic == TOPIC_MOTION_COMMAND:
                     self._handle_motion_command(payload)
 
-                # Check for IMU data
-                topic, payload = self.sub_imu.recv(timeout_ms=10)
+                # Check for IMU data (safe recv)
+                topic, payload = self._recv_safe(self.sub_imu, timeout_ms=10)
                 if topic and payload and topic == TOPIC_IMU_DATA:
                     self._handle_imu_data(payload)
 
@@ -221,8 +300,8 @@ class Odometry:
 
         except KeyboardInterrupt:
             LOG.info("Odometry interrupted by user")
-        except Exception as e:
-            LOG.exception(f"Error in odometry loop: {e}")
+        except Exception as e:  # noqa: BLE001
+            LOG.exception("Error in odometry loop: %s", e)
         finally:
             self.sub_motion.close()
             self.sub_imu.close()
@@ -230,12 +309,12 @@ class Odometry:
             LOG.info("Odometry shutdown complete")
 
 
-def main():
-    """Entry point"""
+def main() -> None:
+    """Entry point."""
     logging.basicConfig(
-        level=getattr(logging, LOG_LEVEL, logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-
     odometry = Odometry()
     odometry.run()
 

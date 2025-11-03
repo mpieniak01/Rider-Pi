@@ -159,7 +159,10 @@ def handle_navigator_state(data: dict[str, Any]) -> None:
     with _state_lock:
         _navigator_active = data.get("active", False)
         state = data.get("state", "idle")
-        print(f"[vision_depth] navigator: active={_navigator_active}, state={state}", flush=True)
+        print(
+            f"[vision_depth] navigator: active={_navigator_active}, state={state}",
+            flush=True,
+        )
 
 
 def handle_vision_obstacle(data: dict[str, Any]) -> None:
@@ -215,7 +218,10 @@ def rx_loop() -> None:
 
 if __name__ == "__main__":
     print("[vision_depth] starting (simplified depth estimation mode)", flush=True)
-    print("[vision_depth] TODO: Integrate mono-depth TFLite model for accurate distance", flush=True)
+    print(
+        "[vision_depth] TODO: Integrate mono-depth TFLite model for accurate distance",
+        flush=True,
+    )
 
     PUB = zmq_pub()
     SUB = zmq_sub(["navigator.state", "vision.obstacle"])

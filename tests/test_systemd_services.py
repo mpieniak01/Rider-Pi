@@ -15,19 +15,19 @@ import pytest
 
 
 @pytest.fixture
-def repo_root():
+def repo_root() -> Path:
     """Get repository root directory."""
     return Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def systemd_dir(repo_root):
+def systemd_dir(repo_root: Path) -> Path:
     """Get systemd directory."""
     return repo_root / "systemd"
 
 
 @pytest.fixture
-def service_files(systemd_dir):
+def service_files(systemd_dir: Path) -> list[Path]:
     """Get all .service files."""
     files = sorted(systemd_dir.glob("*.service"))
     assert files, f"No .service files found in {systemd_dir}"
@@ -37,20 +37,20 @@ def service_files(systemd_dir):
 class TestSystemdServiceFiles:
     """Static validation tests for systemd service files."""
 
-    def test_systemd_directory_exists(self, systemd_dir):
+    def test_systemd_directory_exists(self, systemd_dir: Path) -> None:
         """Test that systemd directory exists."""
         assert systemd_dir.exists(), f"systemd directory not found at {systemd_dir}"
         assert systemd_dir.is_dir(), f"{systemd_dir} is not a directory"
 
-    def test_service_files_found(self, service_files):
+    def test_service_files_found(self, service_files: list[Path]) -> None:
         """Test that service files are found."""
         assert len(service_files) > 0, "No .service files found"
         # We expect at least 15 service files based on current repo state
         assert len(service_files) >= 15, f"Expected at least 15 service files, found {len(service_files)}"
 
-    def test_description_field_present(self, service_files):
+    def test_description_field_present(self, service_files: list[Path]) -> None:
         """Test that all service files have Description field."""
-        missing_description = []
+        missing_description: list[str] = []
 
         for service_file in service_files:
             content = service_file.read_text()
@@ -60,9 +60,9 @@ class TestSystemdServiceFiles:
 
         assert not missing_description, f"Service files missing Description field: {', '.join(missing_description)}"
 
-    def test_description_field_not_empty(self, service_files):
+    def test_description_field_not_empty(self, service_files: list[Path]) -> None:
         """Test that Description fields are not empty."""
-        empty_description = []
+        empty_description: list[str] = []
 
         for service_file in service_files:
             content = service_file.read_text()
@@ -73,9 +73,9 @@ class TestSystemdServiceFiles:
 
         assert not empty_description, f"Service files with empty Description: {', '.join(empty_description)}"
 
-    def test_no_deprecated_workspaces_path(self, service_files):
+    def test_no_deprecated_workspaces_path(self, service_files: list[Path]) -> None:
         """Test that no service files use deprecated /workspaces/ path."""
-        deprecated_path = []
+        deprecated_path: list[str] = []
 
         for service_file in service_files:
             content = service_file.read_text()
@@ -87,9 +87,9 @@ class TestSystemdServiceFiles:
             "Should use /home/pi/robot instead."
         )
 
-    def test_no_deprecated_ops_path(self, service_files):
+    def test_no_deprecated_ops_path(self, service_files: list[Path]) -> None:
         """Test that no service files use deprecated ops/ path in ExecStart."""
-        deprecated_path = []
+        deprecated_path: list[str] = []
 
         for service_file in service_files:
             content = service_file.read_text()
@@ -101,9 +101,9 @@ class TestSystemdServiceFiles:
             not deprecated_path
         ), f"Service files using deprecated ops/ path: {', '.join(deprecated_path)}. Should use scripts/ instead."
 
-    def test_no_deprecated_tools_path(self, service_files):
+    def test_no_deprecated_tools_path(self, service_files: list[Path]) -> None:
         """Test that no service files use deprecated tools/ path in ExecStart."""
-        deprecated_path = []
+        deprecated_path: list[str] = []
 
         for service_file in service_files:
             content = service_file.read_text()
@@ -115,9 +115,9 @@ class TestSystemdServiceFiles:
             not deprecated_path
         ), f"Service files using deprecated tools/ path: {', '.join(deprecated_path)}. Should use scripts/ instead."
 
-    def test_exec_start_paths_exist(self, service_files, repo_root):
+    def test_exec_start_paths_exist(self, service_files: list[Path], repo_root: Path) -> None:
         """Test that all ExecStart paths reference existing files."""
-        missing_paths = []
+        missing_paths: list[str] = []
 
         for service_file in service_files:
             content = service_file.read_text()
@@ -149,9 +149,9 @@ class TestSystemdServiceFiles:
 
         assert not missing_paths, "Service files reference non-existent paths:\n  " + "\n  ".join(missing_paths)
 
-    def test_python_services_have_working_directory(self, service_files):
+    def test_python_services_have_working_directory(self, service_files: list[Path]) -> None:
         """Test that Python services using apps/ or services/ have WorkingDirectory."""
-        missing_workdir = []
+        missing_workdir: list[str] = []
 
         for service_file in service_files:
             content = service_file.read_text()
@@ -179,11 +179,11 @@ class TestSystemdServiceFiles:
         # Handle special characters like @ and - prefixes
         line = re.sub(r"^[@-]+", "", line)
 
-        paths = []
+        paths: list[str] = []
 
         # Skip bash -c/lc wrapped commands, look for Python scripts
         if re.search(r"\b(bash|sh)\s+-[lc]", line):
-            python_scripts = re.findall(r"python3?\s+([/\w.-]+\.py)", line)
+            python_scripts = re.findall(r"python3?\s+([/\w.\-]+\.py)", line)
             paths.extend(python_scripts)
             return paths
 
@@ -208,7 +208,13 @@ class TestSystemdServiceFiles:
                 if token.startswith(("http://", "https://")) or re.match(r"^\d*[<>]", token):
                     continue
                 # Skip common wrappers
-                if token in ("/usr/bin/env", "/usr/bin/flock", "/bin/bash", "/bin/sh", "/usr/bin/make"):
+                if token in (
+                    "/usr/bin/env",
+                    "/usr/bin/flock",
+                    "/bin/bash",
+                    "/bin/sh",
+                    "/usr/bin/make",
+                ):
                     continue
 
                 paths.append(token)
@@ -220,7 +226,7 @@ class TestSystemdServiceFiles:
 class TestServiceMapping:
     """Test the service → script mapping documentation."""
 
-    def test_all_services_documented_in_mapping(self, service_files, repo_root):
+    def test_all_services_documented_in_mapping(self, service_files: list[Path], repo_root: Path) -> None:
         """Test that all service files are documented in SYSTEMD_SERVICES_MAPPING.md."""
         mapping_doc = repo_root / "docs" / "SYSTEMD_SERVICES_MAPPING.md"
 
@@ -230,7 +236,7 @@ class TestServiceMapping:
 
         mapping_content = mapping_doc.read_text()
 
-        undocumented = []
+        undocumented: list[str] = []
         for service_file in service_files:
             service_name = service_file.name
             # Check if service is mentioned in the mapping doc

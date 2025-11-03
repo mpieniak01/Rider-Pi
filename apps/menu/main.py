@@ -67,7 +67,10 @@ def on_ok():
             if low_batt_blocked():
                 return
             pub_stop()
-            pub("system.mode", {"mode": "demos", "demo": "trajectory", "ts": time.time()})
+            pub(
+                "system.mode",
+                {"mode": "demos", "demo": "trajectory", "ts": time.time()},
+            )
         elif item == "Autonomia":
             if low_batt_blocked():
                 return

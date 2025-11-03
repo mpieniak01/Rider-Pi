@@ -55,7 +55,14 @@ def pick_device_class():
             if inspect.isclass(obj) and obj.__module__ == m.__name__:
                 any(
                     callable(getattr(obj, k, None))
-                    for k in ("ShowImage", "show_image", "display", "blit", "put", "present")
+                    for k in (
+                        "ShowImage",
+                        "show_image",
+                        "display",
+                        "blit",
+                        "put",
+                        "present",
+                    )
                 )
                 has_raw = all(hasattr(obj, k) for k in ("SetWindows", "command", "spi_writebyte"))
                 if has_raw:

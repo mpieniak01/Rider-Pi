@@ -176,7 +176,11 @@ def _measure(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) ->
 
 
 def draw_label(
-    draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, font: ImageFont.ImageFont, fill=0
+    draw: ImageDraw.ImageDraw,
+    xy: tuple[int, int],
+    text: str,
+    font: ImageFont.ImageFont,
+    fill=0,
 ) -> tuple[int, int]:
     draw.text(xy, text, font=font, fill=fill)
     w, h = _measure(draw, text, font)
@@ -320,7 +324,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lon", type=float, default=None, help="Długość geogr.")
     p.add_argument("--rotate", type=int, default=270, choices=[0, 90, 180, 270], help="Rotacja LCD")
     p.add_argument("--spi-hz", type=int, default=None, help="Częstotliwość SPI")
-    p.add_argument("--dry-run", action="store_true", help="Zapisz PNG do /tmp/weather.png zamiast LCD")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Zapisz PNG do /tmp/weather.png zamiast LCD",
+    )
     p.add_argument("--self-test", action="store_true", help="Uruchom testy offline")
     return p.parse_args()
 

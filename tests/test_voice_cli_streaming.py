@@ -57,7 +57,10 @@ def test_streaming_mode_with_chat_transport():
     """Test that transport=realtime in chat triggers streaming mode."""
     config = {
         "asr": {"backend": "openai", "transport": "file"},
-        "chat": {"backend": "openai", "transport": "realtime"},  # This should trigger streaming
+        "chat": {
+            "backend": "openai",
+            "transport": "realtime",
+        },  # This should trigger streaming
         "tts": {"backend": "openai", "transport": "file"},
     }
 

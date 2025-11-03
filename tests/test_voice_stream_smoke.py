@@ -28,7 +28,12 @@ class MockWebSocket:
             raise ConnectionError("WebSocket closed")
         # Return a mock response for testing
         await asyncio.sleep(0.01)
-        return json.dumps({"type": "response.audio.delta", "audio": base64.b64encode(b"mock_audio").decode()})
+        return json.dumps(
+            {
+                "type": "response.audio.delta",
+                "audio": base64.b64encode(b"mock_audio").decode(),
+            }
+        )
 
     async def close(self, code=1000):
         self.closed = True

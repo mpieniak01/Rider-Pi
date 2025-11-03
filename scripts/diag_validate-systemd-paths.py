@@ -70,7 +70,13 @@ def parse_exec_line(line: str) -> list[str]:
             if re.match(r'^\d*[<>]', token):
                 continue
             # Skip common wrappers
-            if token in ('/usr/bin/env', '/usr/bin/flock', '/bin/bash', '/bin/sh', '/usr/bin/make'):
+            if token in (
+                '/usr/bin/env',
+                '/usr/bin/flock',
+                '/bin/bash',
+                '/bin/sh',
+                '/usr/bin/make',
+            ):
                 continue
 
             paths.append(token)

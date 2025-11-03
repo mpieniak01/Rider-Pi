@@ -167,12 +167,22 @@ class VoiceService(BusIntegrationMixin):
         self._capture_cfg = CaptureConfig(**_cap_in)
 
         # ASR
-        asr_defaults = {"backend": "openai", "model": "whisper-1", "language": "pl", "transport": "file"}
+        asr_defaults = {
+            "backend": "openai",
+            "model": "whisper-1",
+            "language": "pl",
+            "transport": "file",
+        }
         asr_in = _merge_defaults(config.get("asr"), asr_defaults)
         self._asr_cfg = ASRConfig(**_filter_for_dataclass(asr_in, ASRConfig))
 
         # TTS
-        tts_defaults = {"backend": "openai", "format": "wav", "voice": "alloy", "transport": "file"}
+        tts_defaults = {
+            "backend": "openai",
+            "format": "wav",
+            "voice": "alloy",
+            "transport": "file",
+        }
         tts_in = _merge_defaults(config.get("tts"), tts_defaults)
         self._tts_cfg = TTSConfig(**_filter_for_dataclass(tts_in, TTSConfig))
 
@@ -384,7 +394,10 @@ class VoiceService(BusIntegrationMixin):
                 if speak and self._should_ding():
                     play_ding(self._play_cfg, self.logger)
                     self._last_ding_ts = time.time()
-                    self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
+                    self._mute_until_ts = max(
+                        self._mute_until_ts,
+                        time.time() + (self._beep_pause_ms / 1000.0),
+                    )
                     if self._beep_delay_ms > 0:
                         time.sleep(self._beep_delay_ms / 1000.0)
                 if self._mic_open_delay_ms > 0:
@@ -546,7 +559,10 @@ class VoiceService(BusIntegrationMixin):
                     return b""
 
                 # pre-roll
-                need_frames = max(1, int(math.ceil(self._pre_speech_wait_ms / self._capture_cfg.frame_ms)))
+                need_frames = max(
+                    1,
+                    int(math.ceil(self._pre_speech_wait_ms / self._capture_cfg.frame_ms)),
+                )
                 while len(pre_buf) < need_frames:
                     try:
                         pre_buf.append(next(frames_iter))
@@ -578,7 +594,11 @@ class VoiceService(BusIntegrationMixin):
             return self._record_with_arecord()
 
         if len(audio) < expected_min:
-            self.logger.event("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
+            self.logger.event(
+                "service.capture.retry_short_clip",
+                bytes=len(audio),
+                threshold=expected_min,
+            )
             try:
                 with AudioCapture(self._capture_cfg, self.logger) as capture:
                     if self._mic_open_delay_ms > 0:
@@ -596,7 +616,11 @@ class VoiceService(BusIntegrationMixin):
                 self.logger.event("service.capture.retry_error", error=str(exc))
 
             if len(audio) < expected_min:
-                self.logger.event("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
+                self.logger.event(
+                    "service.capture.fast_fail.too_short",
+                    bytes=len(audio),
+                    threshold=expected_min,
+                )
                 return b""
 
         return audio
@@ -640,7 +664,11 @@ class VoiceService(BusIntegrationMixin):
             return b""
         if proc.returncode != 0:
             stderr = proc.stderr.decode("utf-8", "ignore").strip()
-            self.logger.event("service.capture.arecord_failed", returncode=proc.returncode, stderr=stderr)
+            self.logger.event(
+                "service.capture.arecord_failed",
+                returncode=proc.returncode,
+                stderr=stderr,
+            )
             return b""
         raw = proc.stdout or b""
         if not raw:
@@ -657,7 +685,11 @@ class VoiceService(BusIntegrationMixin):
 
         if trimmed:
             if len(trimmed) >= expected_min:
-                self.logger.event("service.capture.fallback.success", backend="arecord", bytes=len(trimmed))
+                self.logger.event(
+                    "service.capture.fallback.success",
+                    backend="arecord",
+                    bytes=len(trimmed),
+                )
                 return trimmed
             if len(raw) >= max(1, expected_min // 2):
                 self.logger.event(
@@ -753,4 +785,10 @@ def run_once_file(cfg: dict[str, Any], args) -> int:
 # ──────────────────────────────────────────────────────────────────────────────
 # Exports
 
-__all__ = ["VoiceService", "VoiceResult", "SpeechTask", "run_listen_file", "run_once_file"]
+__all__ = [
+    "VoiceService",
+    "VoiceResult",
+    "SpeechTask",
+    "run_listen_file",
+    "run_once_file",
+]

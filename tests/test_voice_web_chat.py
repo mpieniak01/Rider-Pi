@@ -64,7 +64,10 @@ def test_api_chat_checks_binary_exists(client, mock_config):
     from apps.voice.web import app
 
     with app.app_context():
-        with patch("apps.voice.web.g") as mock_g, patch("apps.voice.web.os.path.exists") as mock_exists:
+        with (
+            patch("apps.voice.web.g") as mock_g,
+            patch("apps.voice.web.os.path.exists") as mock_exists,
+        ):
             mock_g.config = mock_config
             # First call (binary check) returns False
             mock_exists.return_value = False
@@ -86,7 +89,10 @@ def test_api_chat_checks_model_exists(client, mock_config):
     from apps.voice.web import app
 
     with app.app_context():
-        with patch("apps.voice.web.g") as mock_g, patch("apps.voice.web.os.path.exists") as mock_exists:
+        with (
+            patch("apps.voice.web.g") as mock_g,
+            patch("apps.voice.web.os.path.exists") as mock_exists,
+        ):
             mock_g.config = mock_config
             # First call (binary) True, second call (model) False
             mock_exists.side_effect = [True, False]
@@ -108,7 +114,10 @@ def test_api_chat_requires_messages(client, mock_config):
     from apps.voice.web import app
 
     with app.app_context():
-        with patch("apps.voice.web.g") as mock_g, patch("apps.voice.web.os.path.exists") as mock_exists:
+        with (
+            patch("apps.voice.web.g") as mock_g,
+            patch("apps.voice.web.os.path.exists") as mock_exists,
+        ):
             mock_g.config = mock_config
             mock_exists.return_value = True
 

@@ -14,7 +14,14 @@ def load_voice(model_path: str):
     return v
 
 
-def synthesize_wav_bytes(voice, text: str, length_scale=1.0, noise_scale=0.667, noise_w=0.8, sentence_silence=0.6):
+def synthesize_wav_bytes(
+    voice,
+    text: str,
+    length_scale=1.0,
+    noise_scale=0.667,
+    noise_w=0.8,
+    sentence_silence=0.6,
+):
     """Zwraca (wav_bytes, sample_rate). Zapis przez wave.open(...,'wb')."""
     sr = getattr(getattr(voice, "config", None), "sample_rate", None) or 22050
     buf = io.BytesIO()

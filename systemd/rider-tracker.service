@@ -2,6 +2,7 @@
 Description=Rider-Pi Vision Tracker (MediaPipe face/hand tracking)
 After=network-online.target rider-broker.service
 Wants=network-online.target rider-broker.service
+ConditionPathExists=/home/pi/robot
 StartLimitIntervalSec=30
 StartLimitBurst=10
 
@@ -11,6 +12,11 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
 
+# Python/Protobuf
+Environment=PYTHONUNBUFFERED=1
+Environment=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+Environment=PYTHONPATH=/home/pi/robot:/home/pi/.local/lib/python3.9/site-packages
+
 # Bus configuration
 Environment=BUS_PUB_PORT=5555
 Environment=BUS_SUB_PORT=5556
@@ -19,11 +25,8 @@ Environment=BUS_SUB_PORT=5556
 Environment=TRACKING_DEAD_ZONE=0.1
 Environment=TRACKING_MAX_FPS=10.0
 
-# Snapshot directory
+# Snapshots
 Environment=SNAP_BASE=/home/pi/robot/snapshots
-
-# Python settings
-Environment=PYTHONUNBUFFERED=1
 
 ExecStart=/usr/bin/python3 -u -m apps.vision.tracker_mediapipe
 
