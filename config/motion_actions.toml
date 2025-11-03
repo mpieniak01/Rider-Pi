@@ -1,0 +1,163 @@
+# robot_motion_actions_dog.toml
+# ------------------------------------------------------------
+# KONFIGURACJA AKCJI RUCHU I POZ DLA ROBOTA XGO MINI/LITE
+# ------------------------------------------------------------
+# Każdy blok [[action]] opisuje pojedynczą akcję ruchu lub pozy:
+#   - name_en   : nazwa kanoniczna (angielska, używana w kodzie)
+#   - name_pl   : nazwa w języku polskim (snake_case, do UI/web)
+#   - voice_en  : lista możliwych komend głosowych po angielsku
+#   - voice_pl  : lista możliwych komend głosowych po polsku
+#   - call.fn   : funkcja wywoływana w adapterze ruchu
+#   - call.params : parametry ruchu (prędkość, kąt, czas, nazwa pozy)
+#   - extra     : dodatkowe flagi, np. reset po akcji
+# ------------------------------------------------------------
+
+[[action]]
+name_en   = "move_forward"
+name_pl   = "jedz_do_przodu"
+voice_en  = ["go forward", "forward", "move forward"]
+voice_pl  = ["do przodu", "naprzod", "jedz do przodu"]
+call.fn   = "move_x"
+call.params.v = 12
+call.params.duration_s = 3.0
+extra.reset = true
+
+[[action]]
+name_en   = "move_back"
+name_pl   = "jedz_do_tylu"
+voice_en  = ["go back", "back", "move back"]
+voice_pl  = ["do tylu", "wstecz", "jedz do tylu"]
+call.fn   = "move_x"
+call.params.v = -12
+call.params.duration_s = 3.0
+extra.reset = true
+
+[[action]]
+name_en   = "turn_left"
+name_pl   = "skrec_w_lewo"
+voice_en  = ["turn left", "left turn"]
+voice_pl  = ["skrec w lewo", "w lewo"]
+call.fn   = "turn"
+call.params.deg = 60
+call.params.duration_s = 1.5
+extra.reset = true
+
+[[action]]
+name_en   = "turn_right"
+name_pl   = "skrec_w_prawo"
+voice_en  = ["turn right", "right turn"]
+voice_pl  = ["skrec w prawo", "w prawo"]
+call.fn   = "turn"
+call.params.deg = -60
+call.params.duration_s = 1.5
+extra.reset = true
+
+[[action]]
+name_en   = "translate_left"
+name_pl   = "przesun_w_lewo"
+voice_en  = ["left translation", "strafe left", "sidestep left"]
+voice_pl  = ["przesun w lewo", "krok w lewo", "bocznie w lewo"]
+call.fn   = "move_y"
+call.params.v = 6
+call.params.duration_s = 3.0
+extra.reset = true
+
+[[action]]
+name_en   = "translate_right"
+name_pl   = "przesun_w_prawo"
+voice_en  = ["right translation", "strafe right", "sidestep right"]
+voice_pl  = ["przesun w prawo", "krok w prawo", "bocznie w prawo"]
+call.fn   = "move_y"
+call.params.v = -6
+call.params.duration_s = 3.0
+extra.reset = true
+
+[[action]]
+name_en   = "pose_dance"
+name_pl   = "taniec"
+voice_en  = ["dance"]
+voice_pl  = ["tancz", "taniec"]
+call.fn   = "pose"
+call.params.name = "dance"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_push_up"
+name_pl   = "pompki"
+voice_en  = ["push up", "push-ups"]
+voice_pl  = ["pompki", "zrob pompki"]
+call.fn   = "pose"
+call.params.name = "push_up"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_take_a_pee"
+name_pl   = "siusiu_pozoruj"
+voice_en  = ["take a pee", "pee"]
+voice_pl  = ["siusiu", "zrob siusiu"]
+call.fn   = "pose"
+call.params.name = "take_a_pee"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_sit_down"
+name_pl   = "siad"
+voice_en  = ["sit down", "sit"]
+voice_pl  = ["siad", "usiadz", "siadz"]
+call.fn   = "pose"
+call.params.name = "sit_down"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_wave_hand"
+name_pl   = "machanie_lapa"
+voice_en  = ["wave hand", "wave"]
+voice_pl  = ["pomachaj", "machaj lapa", "machaj"]
+call.fn   = "pose"
+call.params.name = "wave_hand"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_stretch"
+name_pl   = "przeciaganie"
+voice_en  = ["stretch"]
+voice_pl  = ["rozciagnij sie", "przeciagnij sie"]
+call.fn   = "pose"
+call.params.name = "stretch"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_handshake"
+name_pl   = "podaj_lape"
+voice_en  = ["hand shake", "handshake", "shake hands"]
+voice_pl  = ["podaj lape", "uscisnij dlon"]
+call.fn   = "pose"
+call.params.name = "handshake"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_pray"
+name_pl   = "modlitwa"
+voice_en  = ["pray"]
+voice_pl  = ["modl sie", "modlitwa"]
+call.fn   = "pose"
+call.params.name = "pray"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_looking_for_food"
+name_pl   = "szukaj_jedzenia"
+voice_en  = ["looking for food", "look for food"]
+voice_pl  = ["szukaj jedzenia", "szukac jedzenia"]
+call.fn   = "pose"
+call.params.name = "looking_for_food"
+call.params.duration_s = 3.0
+
+[[action]]
+name_en   = "pose_chicken_head"
+name_pl   = "kura_glowa"
+voice_en  = ["chicken head"]
+voice_pl  = ["kura", "glowa kury"]
+call.fn   = "pose"
+call.params.name = "chicken_head"
+call.params.duration_s = 3.0
