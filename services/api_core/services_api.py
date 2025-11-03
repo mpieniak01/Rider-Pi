@@ -37,7 +37,7 @@ ALLOWED_UNITS: dict[str, str] = {
     "mapper": "rider-mapper.service",
     "odometry": "rider-odometry.service",
     "tracker": "rider-tracker.service",
-    "post-splash": "rider-post-splash.service",
+    # "post-splash": "rider-post-splash.service",
     "google-bridge": "rider-google-bridge.service",
     "tracking-controller": "rider-tracking-controller.service",
 }
