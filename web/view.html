@@ -180,6 +180,37 @@
     </div>
   </div>
 
+  <!-- RZĄD 4 -->
+  <div class="grid" style="margin-top:18px">
+    <div class="card">
+      <h3>Camera — TRACKER (Follow Me)</h3>
+      <div class="thumb">
+        <img id="img_tracker" class="cam-img" src="/camera/placeholder" alt="tracker with FPS and detection" decoding="async" loading="lazy">
+      </div>
+      <div class="legend">
+        <span><i class="dot raw"></i><span id="leg_tracker_txt">TRACKER • FPS + detection circle</span></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Tracking Info</h3>
+      <div class="kv">
+        <div>mode</div><div id="track_mode" class="muted">—</div>
+        <div>offset_x</div><div id="track_offset" class="muted">—</div>
+        <div>tracker.age</div><div id="age_tracker" class="muted">—</div>
+      </div>
+      <div class="hint" style="margin-top:6px;opacity:.7">Follow Me tracking status</div>
+    </div>
+
+    <div class="card" style="grid-column: span 2">
+      <h3>Info</h3>
+      <div class="hint" style="opacity:.8">
+        Tracker stream pokazuje wykrywaną twarz lub dłoń z zaznaczonym okręgiem oraz aktualnym FPS przetwarzania.
+        Minimalna akceptowalna wartość FPS to 10. Użyj endpointów w /vision/follow/face i /vision/follow/hand aby włączyć tryb Follow Me.
+      </div>
+    </div>
+  </div>
+
   <div class="statusbar" id="statusbar">
     <span class="pill" id="sb_presence"><span data-i18n="dash.status.vision_prefix">VISION:</span>&nbsp;<span id="sb_presence_state">—</span></span>
     <span class="sep">•</span>
@@ -231,8 +262,8 @@ function drawChart(cpuArr=[], memArr=[]){
 }
 
 /* ===== KAMERY ===== */
-let lastCamReq=0,lastProcReq=0,lastObstReq=0;
-let lastSnapAges={raw:null,proc:null};
+let lastCamReq=0,lastProcReq=0,lastObstReq=0,lastTrackerReq=0;
+let lastSnapAges={raw:null,proc:null,tracker:null};
 let lastCamState={vision_enabled:undefined,on:undefined,res:null,fps:null};
 let lastObstacle={present:null,confidence:null};
 
@@ -270,14 +301,19 @@ function refreshCamLegends(){
   if(lastObstacle.present!=null) partsObst.push(`present: ${String(lastObstacle.present)}`);
   if(lastObstacle.confidence!=null) partsObst.push(`conf: ${fmt(lastObstacle.confidence,3)}`);
   setTxt('leg_obst_txt',partsObst.join(' • '));
+
+  const partsTracker=['TRACKER','FPS + detection'];
+  if(lastSnapAges.tracker!=null) partsTracker.push(`age: ${fmt(lastSnapAges.tracker,1)}s`);
+  setTxt('leg_tracker_txt',partsTracker.join(' • '));
 }
 async function refreshCamera(){
-  const imgCam=el('img_cam'), imgProc=el('img_proc'), imgObst=el('img_obst');
-  if(cameraShouldBeBlack()){ blackify(imgCam,true); blackify(imgProc,true); blackify(imgObst,true); return; }
+  const imgCam=el('img_cam'), imgProc=el('img_proc'), imgObst=el('img_obst'), imgTracker=el('img_tracker');
+  if(cameraShouldBeBlack()){ blackify(imgCam,true); blackify(imgProc,true); blackify(imgObst,true); }
   const bust=Date.now();
   setImageSafely(imgCam, `/vision/cam?t=${bust}`, {get value(){return lastCamReq}, set value(v){lastCamReq=v;}});
   setImageSafely(imgProc, `/vision/edge?t=${bust}`,{get value(){return lastProcReq},set value(v){lastProcReq=v;}});
   setImageSafely(imgObst, `/snapshots/obst_annot.jpg?t=${bust}`, {get value(){return lastObstReq},set value(v){lastObstReq=v;}});
+  setImageSafely(imgTracker, `/vision/tracker?t=${bust}`, {get value(){return lastTrackerReq},set value(v){lastTrackerReq=v;}});
 }
 
 /* ===== HEALTH ===== */
@@ -431,10 +467,11 @@ async function fetchObstacle(){
 
 /* ===== SNAP INFO ===== */
 function applySnapInfo(si){
-  const rawAge=si?.raw?.age_s; const procAge=si?.proc?.age_s;
-  lastSnapAges.raw=rawAge ?? null; lastSnapAges.proc=procAge ?? null;
+  const rawAge=si?.raw?.age_s; const procAge=si?.proc?.age_s; const trackerAge=si?.tracker?.age_s;
+  lastSnapAges.raw=rawAge ?? null; lastSnapAges.proc=procAge ?? null; lastSnapAges.tracker=trackerAge ?? null;
   setTxt('age_raw',rawAge!=null? fmt(rawAge,1)+' s':'—');
   setTxt('age_proc',procAge!=null? fmt(procAge,1)+' s':'—');
+  setTxt('age_tracker',trackerAge!=null? fmt(trackerAge,1)+' s':'—');
   const ok=(rawAge!=null && rawAge<=SNAP_STALE_S);
   setCls('sb_cam','pill '+(ok?'ok':'bad'));
   setTxt('sb_cam','CAM: '+(rawAge!=null? fmt(rawAge,1)+'s':'—')+' / '+(procAge!=null? fmt(procAge,1)+'s':'—'));

@@ -44,6 +44,38 @@ Integrates depth estimation for SLAM mapping:
 - IN: `navigator.state`, `vision.obstacle`
 - OUT: `vision.obstacle.data`
 
+### 4. Tracker MediaPipe (`apps/vision/tracker_mediapipe.py`) — **Follow Me Visual Stream**
+
+MediaPipe-based face and hand tracking with visual feedback:
+- Real-time face and hand detection using MediaPipe
+- Publishes tracking offset data for motion controller
+- Generates annotated video stream with:
+  - **FPS overlay** — processing frames per second (minimum acceptable: 10 FPS)
+  - **Detection circle** — visual marker around tracked object (face/hand)
+- Saves frames to `snapshots/tracker.jpg` for web UI consumption
+
+**Modes:**
+- `FACE` — track face for Follow Me
+- `HAND` — track hand for Follow Me
+- `NONE` — idle mode (no processing)
+
+**Topics:**
+- IN: `vision.follow.face.set`, `vision.follow.hand.set`, `vision.follow.stop`
+- OUT: `vision.tracking.offset`
+
+**API Endpoints:**
+- `/vision/tracker` — GET — retrieve latest annotated tracker frame (JPEG)
+- `/vision/snap-info` — includes tracker frame age and metadata
+- `/vision/follow/face` — POST — enable/disable face tracking
+- `/vision/follow/hand` — POST — enable/disable hand tracking
+
+**Configuration:**
+```bash
+TRACKING_DEAD_ZONE=0.1      # Center dead zone (±10%)
+TRACKING_MAX_FPS=10.0       # FPS limit for CPU efficiency
+SNAP_BASE=/path/to/snapshots # Frame output directory
+```
+
 ## Depth Estimation (Rekonesans Stage 3)
 
 ### Purpose

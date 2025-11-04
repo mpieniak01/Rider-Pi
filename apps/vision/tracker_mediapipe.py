@@ -24,6 +24,7 @@ ZMQ_ADDR_SUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
 
 SNAP_DIR = os.getenv("SNAP_BASE", "/home/pi/robot/snapshots")
 RAW_PATH = os.path.join(SNAP_DIR, "cam.jpg")
+TRACKER_PATH = os.path.join(SNAP_DIR, "tracker.jpg")
 
 # Tracking parameters
 DEAD_ZONE = float(os.getenv("TRACKING_DEAD_ZONE", "0.1"))  # ±10% center is "good enough"
@@ -186,6 +187,25 @@ def calculate_offset_x(detections: list, frame_width: float | None = None) -> fl
     return offset_x
 
 
+def save_tracker_frame(frame_bgr: Any) -> bool:
+    """Save annotated tracker frame to disk atomically."""
+    try:
+        os.makedirs(SNAP_DIR, exist_ok=True)
+        # Encode to JPEG
+        ok, encoded = cv2.imencode(".jpg", frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        if not ok:
+            return False
+        # Atomic write
+        tmp_path = TRACKER_PATH + ".tmp"
+        with open(tmp_path, "wb") as f:
+            f.write(encoded.tobytes())
+        os.replace(tmp_path, TRACKER_PATH)
+        return True
+    except Exception as e:
+        print(f"[tracker] save_tracker_frame error: {e}", flush=True)
+        return False
+
+
 def tracking_loop() -> None:
     """Main tracking loop using MediaPipe."""
     print("[tracker] tracking_loop started", flush=True)
@@ -205,11 +225,23 @@ def tracking_loop() -> None:
     frame_interval = 1.0 / MAX_FPS
     last_pub_ts = 0.0
 
+    # FPS calculation
+    fps_start_time = time.time()
+    fps_frame_count = 0
+    fps_value = 0.0
+
     while True:
         try:
             t0 = time.time()
             with FOLLOW_MODE_LOCK:
                 mode = FOLLOW_MODE
+
+            # Calculate FPS every second
+            fps_frame_count += 1
+            if t0 - fps_start_time >= 1.0:
+                fps_value = fps_frame_count / (t0 - fps_start_time)
+                fps_start_time = t0
+                fps_frame_count = 0
 
             if mode == "NONE":
                 # debug: report idle mode
@@ -227,11 +259,13 @@ def tracking_loop() -> None:
             h, w = rgb_frame.shape[:2]
 
             offset_x = None
+            detections = None
 
             if mode == "FACE":
                 results = face_detector.process(rgb_frame)
                 if results.detections:
                     offset_x = calculate_offset_x(results.detections)
+                    detections = results.detections
                     print(
                         f"[tracker] DETECTION FACE count={len(results.detections)} offset_x={offset_x}",
                         flush=True,
@@ -242,6 +276,7 @@ def tracking_loop() -> None:
                 results = hand_detector.process(rgb_frame)
                 if results.multi_hand_landmarks:
                     offset_x = calculate_offset_x(results.multi_hand_landmarks)
+                    detections = results.multi_hand_landmarks
                     print(
                         f"[tracker] DETECTION HAND count={len(results.multi_hand_landmarks)} offset_x={offset_x}",
                         flush=True,
@@ -250,6 +285,47 @@ def tracking_loop() -> None:
                     print("[tracker] DETECTION HAND none", flush=True)
             else:
                 print(f"[tracker] Unknown mode '{mode}'", flush=True)
+
+            # Create annotated frame
+            annotated_frame = frame.copy()
+
+            # Draw FPS
+            fps_text = f"FPS: {fps_value:.1f}"
+            cv2.putText(
+                annotated_frame,
+                fps_text,
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2,
+                cv2.LINE_AA,
+            )
+
+            # Draw detection circle/marker
+            if detections is not None and len(detections) > 0:
+                det = detections[0]
+                center_x, center_y = None, None
+
+                # For face detection (bounding box)
+                if hasattr(det, "location_data") and det.location_data.HasField("relative_bounding_box"):
+                    bbox = det.location_data.relative_bounding_box
+                    center_x = int((bbox.xmin + bbox.width / 2.0) * w)
+                    center_y = int((bbox.ymin + bbox.height / 2.0) * h)
+                    radius = int(max(bbox.width, bbox.height) * w / 2.0)
+                # For hand detection (landmarks)
+                elif hasattr(det, "landmark") and len(det.landmark) > 0:
+                    # Use wrist landmark (first landmark)
+                    center_x = int(det.landmark[0].x * w)
+                    center_y = int(det.landmark[0].y * h)
+                    radius = 40
+
+                if center_x is not None and center_y is not None:
+                    cv2.circle(annotated_frame, (center_x, center_y), radius, (0, 255, 255), 2)
+                    cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 255, 255), -1)
+
+            # Save annotated frame to disk
+            save_tracker_frame(annotated_frame)
 
             now = time.time()
             if offset_x is not None and (now - last_pub_ts) >= frame_interval:

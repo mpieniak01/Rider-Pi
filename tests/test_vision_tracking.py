@@ -151,3 +151,21 @@ def test_env_configuration():
     assert 0.0 < tracking_controller.DEAD_ZONE < 0.5
     assert 0.0 < tracking_controller.TIMEOUT_SEC < 10.0
     assert 0.0 < tracking_controller.MAX_SPEED <= 1.0
+
+
+def test_tracker_video_stream_endpoint():
+    """Test that tracker video stream endpoint exists in vision API."""
+    from services.api_core import vision_api
+
+    # Check that tracker endpoint function exists
+    assert hasattr(vision_api, "vision_tracker")
+    assert callable(vision_api.vision_tracker)
+
+
+def test_tracker_snap_info():
+    """Test that snap-info includes tracker information."""
+    from services.api_core import vision_api
+
+    # The snap_info function should be accessible
+    assert hasattr(vision_api, "snap_info")
+    assert callable(vision_api.snap_info)
