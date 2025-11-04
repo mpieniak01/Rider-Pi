@@ -35,11 +35,11 @@ ALLOW_UNITS=(
   "rider-choreographer.service"      # choreography/event orchestration
   "wifi-unblock.service"
   # -- Dodane nowe usługi:
+  "rider-google-bridge.service"
+  "rider-post-splash.service"
   "rider-mapper.service"
   "rider-odometry.service"
   "rider-tracker.service"
-  "rider-post-splash.service"
-  "rider-google-bridge.service"
   "rider-tracking-controller.service"
 )
 

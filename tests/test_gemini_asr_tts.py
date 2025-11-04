@@ -140,10 +140,10 @@ class TestGeminiTTS:
         mock_part = MagicMock()
         mock_inline_data = MagicMock()
 
-        # Simulate PCM audio data (16-bit mono at 24kHz)
+        # Simulate PCM audio data (16-bit mono at 48kHz)
         import array
 
-        audio_samples = array.array("h", [0] * 24000)  # 1 second of silence
+        audio_samples = array.array("h", [0] * 48000)  # 1 second of silence
         mock_inline_data.data = audio_samples.tobytes()
 
         mock_part.inline_data = mock_inline_data
@@ -160,7 +160,7 @@ class TestGeminiTTS:
         audio_bytes, sample_rate, fmt = synthesize("Hello world", config, logger=logger)
 
         assert len(audio_bytes) > 0
-        assert sample_rate == 24000
+        assert sample_rate == 48000
         assert fmt == "wav"
         mock_client_class.assert_called_once_with(api_key="fake-key-for-test")
 
