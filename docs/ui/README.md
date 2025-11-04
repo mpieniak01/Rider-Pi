@@ -56,10 +56,10 @@ System dashboard with live systemd service overview.
 **URL:** `http://robot-ip:8080/web/system.html`
 
 **Features:**
-- Status kart services (`active`, `inactive`, `failed`, `unknown`)
-- Wizualizacja zależności logicznych (graf powiązań)
-- Tabela z opisami i czasem aktywacji jednostek
-- Automatyczne odświeżanie co 5 s
+- Service status cards (`active`, `inactive`, `failed`, `unknown`)
+- Visualization of logical dependencies (dependency graph)
+- Table with descriptions and activation timestamps for units
+- Automatic refresh every 5 seconds
 
 ---
 
