@@ -173,18 +173,19 @@ def set_tracking_mode() -> Response:
 
     try:
         payload = request.get_json(silent=True) or {}
-        mode = payload.get("mode", "none").lower()
-        enabled = payload.get("enabled", mode in ["face", "hand"])
+        raw_mode = payload.get("mode", "none")
+        enabled = payload.get("enabled", raw_mode.lower() in ["face", "hand"])
+        mode = raw_mode.lower()
 
-        # If enabled=false, override mode to "none"
-        if not enabled:
-            mode = "none"
-
-        # Validate mode
+        # Validate mode before applying enabled override
         if mode not in ["face", "hand", "none"]:
             return _json_nocache(
                 {"ok": False, "error": f"Invalid mode: {mode}. Must be 'face', 'hand', or 'none'."}, 400
             )
+
+        # If enabled=false, override mode to "none"
+        if not enabled:
+            mode = "none"
 
         # Publish to unified topic
         pub = bus.BusPub()
