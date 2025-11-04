@@ -32,17 +32,9 @@ TOPIC_MOTION_HEIGHT = "cmd.height"
 # Payload: {"offset_x": float, "offset_y": float, "ts": float}
 TOPIC_VISION_TRACKING_OFFSET = "vision.tracking.offset"
 
-# Enable face tracking mode
-# Payload: {"enabled": bool, "ts": float}
-TOPIC_VISION_FOLLOW_FACE_SET = "vision.follow.face.set"
-
-# Enable hand tracking mode
-# Payload: {"enabled": bool, "ts": float}
-TOPIC_VISION_FOLLOW_HAND_SET = "vision.follow.hand.set"
-
-# Disable all tracking modes
-# Payload: {"ts": float}
-TOPIC_VISION_FOLLOW_STOP = "vision.follow.stop"
+# Unified tracking mode control
+# Payload: {"mode": "face"|"hand"|"none", "ts": float}
+TOPIC_TRACKING_MODE_SET = "tracking.mode:set"
 
 # ============================================================================
 # Topic constants for navigator (Rekonesans mode - Autonomous exploration)

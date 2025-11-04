@@ -281,7 +281,7 @@
 
   async function sendFollowFace(enabled){
     try{
-      const j = await httpPost('/api/vision/follow/face', {enable: enabled});
+      const j = await httpPost('/api/vision/tracking/mode', {mode: 'face', enabled: enabled});
       appendLog(`follow face → enabled:${enabled} :: ${JSON.stringify(j)}`, 'ok');
       // Disable hand tracking if face enabled
       if(enabled && followHandToggle.checked){
@@ -296,7 +296,7 @@
 
   async function sendFollowHand(enabled){
     try{
-      const j = await httpPost('/api/vision/follow/hand', {enable: enabled});
+      const j = await httpPost('/api/vision/tracking/mode', {mode: 'hand', enabled: enabled});
       appendLog(`follow hand → enabled:${enabled} :: ${JSON.stringify(j)}`, 'ok');
       // Disable face tracking if hand enabled
       if(enabled && followFaceToggle.checked){

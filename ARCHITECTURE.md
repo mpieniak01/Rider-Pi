@@ -136,7 +136,7 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 - `vision.face`, `vision.person`, `vision.motion`, `vision.obstacle`
 - `vision.obstacle.data` — dane przeszkód z dystansem (dla mappera, Stage 3)
 - `vision.tracking.offset` — offset śledzenia (Follow Me)
-- `vision.follow.face.set`, `vision.follow.hand.set`, `vision.follow.stop` — kontrola śledzenia
+- `tracking.mode:set` — ujednolicona kontrola trybu śledzenia (Follow Me: face/hand/none)
 - `voice.state`, `voice.kws`, `voice.vad`
 - `face.state`, `face.render`
 - `events.sentiment`, `events.nlu.emotion` — zdarzenia dla choreografa

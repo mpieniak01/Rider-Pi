@@ -102,12 +102,13 @@ VISION_CAMERA_FOV_H=60.0              # Pole widzenia kamery (stopnie)
 - `NONE` — tryb uśpienia (bez przetwarzania)
 
 **Topics:**
-- Subskrybuje: `vision.follow.face.set`, `vision.follow.hand.set`, `vision.follow.stop`
+- Subskrybuje: `tracking.mode:set` (ujednolicony temat kontroli trybu)
 - Publikuje: `vision.tracking.offset` (dane offsetu dla kontrolera ruchu)
 
 **Endpoint API:**
 - `/vision/tracker` — GET/HEAD — serwuje ostatnią klatkę z adnotacjami (JPEG)
 - `/vision/snap-info` — zawiera informacje o wieku klatki tracker
+- `/api/vision/tracking/mode` — POST — ujednolicony endpoint kontroli (payload: `{"mode": "face"|"hand"|"none", "enabled": true|false}`)
 
 **Konfiguracja ENV:**
 ```bash

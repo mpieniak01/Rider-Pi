@@ -11,26 +11,20 @@ def test_bus_topics_defined():
     from common import bus
 
     assert hasattr(bus, "TOPIC_VISION_TRACKING_OFFSET")
-    assert hasattr(bus, "TOPIC_VISION_FOLLOW_FACE_SET")
-    assert hasattr(bus, "TOPIC_VISION_FOLLOW_HAND_SET")
-    assert hasattr(bus, "TOPIC_VISION_FOLLOW_STOP")
+    assert hasattr(bus, "TOPIC_TRACKING_MODE_SET")
 
     # Check topic values are strings
     assert isinstance(bus.TOPIC_VISION_TRACKING_OFFSET, str)
-    assert isinstance(bus.TOPIC_VISION_FOLLOW_FACE_SET, str)
-    assert isinstance(bus.TOPIC_VISION_FOLLOW_HAND_SET, str)
-    assert isinstance(bus.TOPIC_VISION_FOLLOW_STOP, str)
+    assert isinstance(bus.TOPIC_TRACKING_MODE_SET, str)
 
 
 def test_vision_api_endpoints_exist():
-    """Verify vision API has follow endpoints."""
+    """Verify vision API has tracking mode endpoint."""
     from services.api_core import vision_api
 
-    # Check functions exist (blueprint not registered in tests)
-    assert hasattr(vision_api, "set_follow_face")
-    assert hasattr(vision_api, "set_follow_hand")
-    assert callable(vision_api.set_follow_face)
-    assert callable(vision_api.set_follow_hand)
+    # Check unified tracking mode endpoint exists
+    assert hasattr(vision_api, "set_tracking_mode")
+    assert callable(vision_api.set_tracking_mode)
 
 
 def test_tracker_imports():
