@@ -60,14 +60,16 @@ MediaPipe-based face and hand tracking with visual feedback:
 - `NONE` — idle mode (no processing)
 
 **Topics:**
-- IN: `vision.follow.face.set`, `vision.follow.hand.set`, `vision.follow.stop`
+- IN: `tracking.mode:set` (unified mode control)
 - OUT: `vision.tracking.offset`
 
 **API Endpoints:**
 - `/vision/tracker` — GET — retrieve latest annotated tracker frame (JPEG)
 - `/vision/snap-info` — includes tracker frame age and metadata
-- `/vision/follow/face` — POST — enable/disable face tracking
-- `/vision/follow/hand` — POST — enable/disable hand tracking
+- `/vision/tracking/mode` — POST — unified tracking mode control
+  - Payload: `{"mode": "face"|"hand"|"none", "enabled": true|false}`
+  - Example: `{"mode": "hand", "enabled": true}` enables hand tracking
+  - Example: `{"mode": "face", "enabled": false}` disables tracking (sets mode to "none")
 
 **Configuration:**
 ```bash

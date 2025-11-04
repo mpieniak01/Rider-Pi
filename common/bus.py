@@ -32,15 +32,19 @@ TOPIC_MOTION_HEIGHT = "cmd.height"
 # Payload: {"offset_x": float, "offset_y": float, "ts": float}
 TOPIC_VISION_TRACKING_OFFSET = "vision.tracking.offset"
 
-# Enable face tracking mode
+# Unified tracking mode control (NEW - replaces old follow topics)
+# Payload: {"mode": "face"|"hand"|"none", "ts": float}
+TOPIC_TRACKING_MODE_SET = "tracking.mode:set"
+
+# Enable face tracking mode (DEPRECATED - use TOPIC_TRACKING_MODE_SET)
 # Payload: {"enabled": bool, "ts": float}
 TOPIC_VISION_FOLLOW_FACE_SET = "vision.follow.face.set"
 
-# Enable hand tracking mode
+# Enable hand tracking mode (DEPRECATED - use TOPIC_TRACKING_MODE_SET)
 # Payload: {"enabled": bool, "ts": float}
 TOPIC_VISION_FOLLOW_HAND_SET = "vision.follow.hand.set"
 
-# Disable all tracking modes
+# Disable all tracking modes (DEPRECATED - use TOPIC_TRACKING_MODE_SET)
 # Payload: {"ts": float}
 TOPIC_VISION_FOLLOW_STOP = "vision.follow.stop"
 
