@@ -102,14 +102,17 @@ def _build_edges(edges: Iterable[tuple[str, str]]) -> list[dict[str, str]]:
 
 @bp.get("/graph")
 def services_graph() -> Any:
-    nodes = []
+    with ThreadPoolExecutor() as executor:
+        nodes = list(executor.map(_systemd_state, SERVICE_META.keys()))
+
     edges: list[tuple[str, str]] = []
-    for unit, meta in SERVICE_META.items():
-        node = _systemd_state(unit)
-        nodes.append(node)
+    for node in nodes:
+        unit = node["unit"]
+        meta = SERVICE_META[unit]
         for target in meta["edges_out"]:
             if target in UNIT_BY_ID:
                 edges.append((meta["id"], target))
+
     payload = {
         "nodes": nodes,
         "edges": _build_edges(edges),
