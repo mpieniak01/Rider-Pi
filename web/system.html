@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>System Dashboard – usługi Rider-Pi</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --bg: #0f1724;
+      --fg: #e7eef6;
+      --muted: #94a3b8;
+      --card: #142235;
+      --border: #1e334b;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      padding: 16px;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    header h1 {
+      font-size: 1.4rem;
+      margin: 0;
+    }
+    nav a {
+      color: #93c5fd;
+      text-decoration: none;
+      margin-left: 12px;
+      font-size: 0.95rem;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+    #status-line {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    #system-graph {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .service-node {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .service-node h2 {
+      font-size: 1rem;
+      margin: 0;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: rgba(148, 163, 184, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+    }
+    .status-running { background: #164; color: #f3faf5; border-color: rgba(22, 102, 64, 0.6); }
+    .status-failed { background: #822; color: #fee; border-color: rgba(130, 34, 34, 0.6); }
+    .status-inactive { background: #555; color: #f4f4f4; border-color: rgba(85, 85, 85, 0.6); }
+    .status-unknown { background: #666; color: #f5f5f5; border-color: rgba(102, 102, 102, 0.6); }
+    .edge-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .edge-list span {
+      background: rgba(59, 130, 246, 0.15);
+      color: #bfdbfe;
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 0.7rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    thead {
+      background: rgba(15, 118, 110, 0.18);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      font-size: 0.85rem;
+    }
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .desc {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    @media (max-width: 640px) {
+      nav {
+        width: 100%;
+        display: flex;
+        gap: 10px;
+      }
+      nav a {
+        margin-left: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>System Dashboard – usługi Rider-Pi</h1>
+    <nav>
+      <a href="/web/view.html">Podgląd</a>
+      <a href="/web/control.html">Sterowanie</a>
+    </nav>
+  </header>
+  <p id="status-line">Ładowanie danych usług…</p>
+  <section id="system-graph"></section>
+  <section id="system-table"></section>
+
+  <script>
+    const graphEl = document.getElementById('system-graph');
+    const tableEl = document.getElementById('system-table');
+    const statusEl = document.getElementById('status-line');
+
+    function statusClass(status) {
+      switch ((status || '').toLowerCase()) {
+        case 'active':
+          return 'status-running';
+        case 'failed':
+          return 'status-failed';
+        case 'inactive':
+          return 'status-inactive';
+        default:
+          return 'status-unknown';
+      }
+    }
+
+    function formatSince(value) {
+      if (!value) return 'n/a';
+      return value;
+    }
+
+    function renderGraph(nodes, edges) {
+      graphEl.innerHTML = '';
+      if (!nodes.length) {
+        graphEl.innerHTML = '<p>Brak danych usług.</p>';
+        return;
+      }
+      const groups = new Map();
+      nodes.forEach((node) => {
+        const bucket = groups.get(node.group) || [];
+        bucket.push(node);
+        groups.set(node.group, bucket);
+      });
+      const sortedGroups = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+      const groupFragments = [];
+      sortedGroups.forEach(([group, items]) => {
+        items.sort((a, b) => a.label.localeCompare(b.label));
+        items.forEach((node) => {
+          const card = document.createElement('article');
+          card.className = 'service-node';
+          const header = document.createElement('div');
+          const title = document.createElement('h2');
+          title.textContent = node.label;
+          header.appendChild(title);
+          const pill = document.createElement('span');
+          pill.className = `status-pill ${statusClass(node.status)}`;
+          pill.textContent = node.status || 'unknown';
+          header.appendChild(pill);
+          card.appendChild(header);
+
+          const unit = document.createElement('div');
+          unit.textContent = `Unit: ${node.unit}`;
+          unit.className = 'desc';
+          card.appendChild(unit);
+
+          const info = document.createElement('div');
+          info.textContent = `Grupa: ${group}`;
+          info.className = 'desc';
+          card.appendChild(info);
+
+          if (node.since) {
+            const since = document.createElement('div');
+            since.textContent = `Aktywny od: ${formatSince(node.since)}`;
+            since.className = 'desc';
+            card.appendChild(since);
+          }
+
+          if (node.edges_out && node.edges_out.length) {
+            const label = document.createElement('div');
+            label.textContent = 'Połączenia →';
+            label.className = 'desc';
+            card.appendChild(label);
+            const list = document.createElement('div');
+            list.className = 'edge-list';
+            node.edges_out.forEach((target) => {
+              const chip = document.createElement('span');
+              chip.textContent = target;
+              list.appendChild(chip);
+            });
+            card.appendChild(list);
+          }
+
+          groupFragments.push(card);
+        });
+      });
+      groupFragments.forEach((fragment) => graphEl.appendChild(fragment));
+    }
+
+    function renderTable(nodes) {
+      if (!nodes.length) {
+        tableEl.innerHTML = '';
+        return;
+      }
+      const rows = nodes
+        .slice()
+        .sort((a, b) => a.label.localeCompare(b.label))
+        .map((node) => `
+          <tr>
+            <td>${node.unit}</td>
+            <td>
+              <div>${node.label}</div>
+              <div class="desc">${node.description || ''}</div>
+            </td>
+            <td><span class="status-pill ${statusClass(node.status)}">${node.status || 'unknown'}</span></td>
+            <td>${node.group}</td>
+            <td>${formatSince(node.since)}</td>
+          </tr>
+        `)
+        .join('');
+      tableEl.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Unit</th>
+              <th>Opis</th>
+              <th>Status</th>
+              <th>Grupa</th>
+              <th>Aktywny od</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    async function loadGraph() {
+      try {
+        statusEl.textContent = 'Aktualizuję status usług…';
+        const resp = await fetch(`/api/services/graph?ts=${Date.now()}`, { cache: 'no-store' });
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const payload = await resp.json();
+        renderGraph(payload.nodes || [], payload.edges || []);
+        renderTable(payload.nodes || []);
+        const ts = payload.generated_at ? new Date(payload.generated_at * 1000) : new Date();
+        statusEl.textContent = `Ostatnia aktualizacja: ${ts.toLocaleTimeString()}`;
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = 'Błąd podczas pobierania danych usług.';
+      }
+    }
+
+    loadGraph();
+    setInterval(loadGraph, 5000);
+  </script>
+</body>
+</html>

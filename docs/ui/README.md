@@ -50,6 +50,19 @@ Vision system viewer and camera controls.
 
 ---
 
+### system.html
+System dashboard with live systemd service overview.
+
+**URL:** `http://robot-ip:8080/web/system.html`
+
+**Features:**
+- Service status cards (`active`, `inactive`, `failed`, `unknown`)
+- Visualization of logical dependencies (dependency graph)
+- Table with descriptions and activation timestamps for units
+- Automatic refresh every 5 seconds
+
+---
+
 ### google_home.html
 Google Home integration and device management.
 
@@ -99,6 +112,7 @@ web/
 ├── home.html         # Landing page
 ├── chat.html         # Chat interface
 ├── view.html         # Vision viewer
+├── system.html       # System dashboard (status + graph)
 ├── google_home.html  # Google Home integration
 └── i18n.js          # Internationalization support
 ```
