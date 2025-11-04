@@ -276,3 +276,14 @@ def svc_action(name: str) -> Response:
         "status": status_obj,
     }
     return _json(payload, status=(200 if ok else 500))
+
+
+try:
+    from .services_dashboard_api import bp as _services_dashboard_bp
+except Exception as exc:
+    if hasattr(C, 'app'):
+        C.app.logger.warning('[api] failed to import services dashboard blueprint: %s', exc)
+else:
+    if hasattr(C, 'app') and _services_dashboard_bp.name not in C.app.blueprints:
+        C.app.register_blueprint(_services_dashboard_bp)
+        C.app.logger.info('[api] services dashboard blueprint registered: /api/services/*')

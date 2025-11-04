@@ -29,6 +29,28 @@ This document provides a mapping of all systemd service files to the scripts the
 | **rider-web-bridge.service** | ✓ Valid | `/usr/bin/python3 -u -m services.web_motion_bridge` | Python module in `services/` |
 | **wifi-unblock.service** | ✓ Valid | `/usr/sbin/rfkill unblock wifi` | System command |
 
+## System Dashboard (system.html)
+
+Nowy widok `/web/system.html` wizualizuje status usług oraz zależności logiczne pomiędzy komponentami Rider-Pi. Dane pochodzą z endpointu `/api/services/graph`, który łączy metadane z `SERVICE_META` oraz rzeczywiste stany `systemd`.
+
+**Grupy logiczne:**
+
+- core – warstwa podstawowa (API, broker, web-bridge, boot, targety, wifi-unblock)
+- vision – pipeline wizyjny (vision, edge/ssd/cam preview, obstacle, tracker)
+- motion – kontrola ruchu (tracking-controller, motion-bridge, choreographer, mapper, odometry)
+- voice – obsługa głosu (voice, voice-web)
+- cloud – integracje zewnętrzne (google-bridge)
+- dev – narzędzia deweloperskie (jupyter)
+
+**Przepływy komunikacji:**
+
+- web-bridge → api → broker → vision → tracker → tracking-controller → motion-bridge
+- voice-web → voice → api → broker
+- google-bridge → api → broker
+- odometry → mapper → api
+
+Widok prezentuje siatkę kart z bieżącym statusem (`active`, `inactive`, `failed`, `unknown`), a także tabelę z opisami i znacznikami czasu aktywacji każdej jednostki.
+
 ## Changes Made in This PR
 
 ### Fixed Service Files
