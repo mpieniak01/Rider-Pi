@@ -308,7 +308,7 @@ function refreshCamLegends(){
 }
 async function refreshCamera(){
   const imgCam=el('img_cam'), imgProc=el('img_proc'), imgObst=el('img_obst'), imgTracker=el('img_tracker');
-  if(cameraShouldBeBlack()){ blackify(imgCam,true); blackify(imgProc,true); blackify(imgObst,true); }
+  if(cameraShouldBeBlack()){ blackify(imgCam,true); blackify(imgProc,true); blackify(imgObst,true); blackify(imgTracker,true); }
   const bust=Date.now();
   setImageSafely(imgCam, `/vision/cam?t=${bust}`, {get value(){return lastCamReq}, set value(v){lastCamReq=v;}});
   setImageSafely(imgProc, `/vision/edge?t=${bust}`,{get value(){return lastProcReq},set value(v){lastProcReq=v;}});
@@ -474,7 +474,9 @@ function applySnapInfo(si){
   setTxt('age_tracker',trackerAge!=null? fmt(trackerAge,1)+' s':'—');
   const ok=(rawAge!=null && rawAge<=SNAP_STALE_S);
   setCls('sb_cam','pill '+(ok?'ok':'bad'));
-  setTxt('sb_cam','CAM: '+(rawAge!=null? fmt(rawAge,1)+'s':'—')+' / '+(procAge!=null? fmt(procAge,1)+'s':'—'));
+  const camText='CAM: '+(rawAge!=null? fmt(rawAge,1)+'s':'—')+' / '+(procAge!=null? fmt(procAge,1)+'s':'—');
+  const trackerText=trackerAge!=null? ' • TRK: '+fmt(trackerAge,1)+'s':'';
+  setTxt('sb_cam',camText+trackerText);
   const imgCam=el('img_cam'); const imgProc=el('img_proc');
   if(rawAge!=null && rawAge>SNAP_STALE_S) blackify(imgCam,true); else blackify(imgCam,false);
   if(procAge!=null && procAge>SNAP_STALE_S) blackify(imgProc,true); else blackify(imgProc,false);
