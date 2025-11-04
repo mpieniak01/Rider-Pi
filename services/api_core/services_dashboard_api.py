@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify
 
 from .service_meta import SERVICE_META, UNIT_BY_ID
 
-bp = Blueprint("services", __name__, url_prefix="/api/services")
+bp = Blueprint("services_dashboard", __name__, url_prefix="/api/services")
 
 _SYSTEMCTL_ARGS = [
     "--no-page",
