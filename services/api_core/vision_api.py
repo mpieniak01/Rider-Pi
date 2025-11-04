@@ -73,6 +73,13 @@ def vision_ssd() -> Response:
     return _img_response(_ssd_path())
 
 
+@bp.route("/vision/tracker", methods=["GET", "HEAD"])
+def vision_tracker() -> Response:
+    """Serve tracker annotated frame (FPS + detection circle)."""
+    tracker_path = os.path.join(C.SNAP_DIR, "tracker.jpg")
+    return _img_response(tracker_path)
+
+
 # ---------- meta: snap-info ----------
 
 
@@ -99,6 +106,7 @@ def snap_info() -> Response:
         "raw": info(C.RAW_PATH),
         "proc": info(C.PROC_PATH),
         "ssd": info(_ssd_path()),
+        "tracker": info(os.path.join(C.SNAP_DIR, "tracker.jpg")),
     }
     return _json_nocache(payload, 200)
 

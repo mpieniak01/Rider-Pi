@@ -11,6 +11,7 @@ Moduł `apps/vision` implementuje **detekcję obiektów** z kamery — wykrywani
 - **`detector_tflite.py`** — detektor TensorFlow Lite
 - **`edge_preview.py`** — preview z Canny edge detection
 - **`obstacle_roi.py`** — detekcja przeszkód w ROI (Region of Interest)
+- **`tracker_mediapipe.py`** — śledzenie twarzy/dłoni dla trybu Follow Me z wizualnym podglądem
 
 ## Główne funkcje
 
@@ -84,6 +85,46 @@ VISION_CAMERA_FOV_H=60.0              # Pole widzenia kamery (stopnie)
 ```
 
 **Uwaga:** Obecna implementacja używa uproszczonej heurystyki. Dla dokładniejszego mapowania, planowane jest dodanie modelu mono-depth estimation (TFLite).
+
+### tracker_mediapipe.py (Follow Me — Visual Stream)
+
+**Śledzenie twarzy/dłoni z wizualnym podglądem:**
+- Używa MediaPipe do detekcji twarzy i dłoni w czasie rzeczywistym
+- Publikuje dane offsetu dla `tracking_controller.py` (zachowana funkcjonalność)
+- Generuje wizualny strumień wideo z adnotacjami:
+  - **FPS** — liczba klatek na sekundę przetwarzania (minimalna akceptowalna: 10 FPS)
+  - **Okrąg detekcji** — znacznik wokół wykrytego obiektu (twarz/dłoń)
+- Zapisuje klatki JPEG do `snapshots/tracker.jpg`
+
+**Tryby pracy:**
+- `FACE` — śledzenie twarzy
+- `HAND` — śledzenie dłoni
+- `NONE` — tryb uśpienia (bez przetwarzania)
+
+**Topics:**
+- Subskrybuje: `vision.follow.face.set`, `vision.follow.hand.set`, `vision.follow.stop`
+- Publikuje: `vision.tracking.offset` (dane offsetu dla kontrolera ruchu)
+
+**Endpoint API:**
+- `/vision/tracker` — GET/HEAD — serwuje ostatnią klatkę z adnotacjami (JPEG)
+- `/vision/snap-info` — zawiera informacje o wieku klatki tracker
+
+**Konfiguracja ENV:**
+```bash
+TRACKING_DEAD_ZONE=0.1      # Strefa martwa środka (±10%)
+TRACKING_MAX_FPS=10.0       # Limit FPS (oszczędność CPU)
+SNAP_BASE=/path/to/snapshots # Katalog zapisywania klatek
+```
+
+**Adnotacje na klatkach:**
+- Zielony tekst FPS w lewym górnym rogu
+- Żółty okrąg wokół wykrytego obiektu z punktem centralnym
+- Automatyczne obliczanie FPS na podstawie rzeczywistego przetwarzania
+
+**Integracja z UI:**
+- Podgląd dostępny w `web/view.html` jako "Camera — TRACKER (Follow Me)"
+- Automatyczne odświeżanie co ~2 sekundy
+- Wyświetlanie wieku klatki i statusu śledzenia
 
 ## Przepływ danych
 

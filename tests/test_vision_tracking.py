@@ -151,3 +151,43 @@ def test_env_configuration():
     assert 0.0 < tracking_controller.DEAD_ZONE < 0.5
     assert 0.0 < tracking_controller.TIMEOUT_SEC < 10.0
     assert 0.0 < tracking_controller.MAX_SPEED <= 1.0
+
+
+def test_tracker_video_stream_endpoint():
+    """Test that tracker video stream endpoint exists in vision API."""
+    from services.api_core import vision_api
+
+    # Check that tracker endpoint function exists
+    assert hasattr(vision_api, "vision_tracker")
+    assert callable(vision_api.vision_tracker)
+
+
+def test_tracker_snap_info():
+    """Test that snap-info includes tracker information."""
+    import os
+    from unittest.mock import MagicMock, patch
+
+    from services.api_core import vision_api
+
+    # Mock os.stat to simulate tracker file existence
+    with patch("os.stat") as mock_stat:
+        mock_stat_result = MagicMock()
+        mock_stat_result.st_mtime = 1234567890.0
+        mock_stat_result.st_size = 12345
+        mock_stat.return_value = mock_stat_result
+
+        # Mock file open for MD5 calculation
+        with patch("builtins.open", create=True) as mock_open:
+            mock_open.return_value.__enter__.return_value.read.return_value = b"fake_content"
+
+            # Call snap_info and verify tracker is in response
+            from flask import Flask
+
+            app = Flask(__name__)
+            with app.test_request_context():
+                response = vision_api.snap_info()
+                data = response.get_json()
+
+                # Verify tracker field exists in response
+                assert "tracker" in data
+                assert isinstance(data["tracker"], dict)
