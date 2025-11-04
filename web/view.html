@@ -308,7 +308,7 @@ function refreshCamLegends(){
 }
 async function refreshCamera(){
   const imgCam=el('img_cam'), imgProc=el('img_proc'), imgObst=el('img_obst'), imgTracker=el('img_tracker');
-  if(cameraShouldBeBlack()){ blackify(imgCam,true); blackify(imgProc,true); blackify(imgObst,true); blackify(imgTracker,true); }
+  if(cameraShouldBeBlack()){ blackify(imgCam,true); blackify(imgProc,true); blackify(imgObst,true); blackify(imgTracker,true); return; }
   const bust=Date.now();
   setImageSafely(imgCam, `/vision/cam?t=${bust}`, {get value(){return lastCamReq}, set value(v){lastCamReq=v;}});
   setImageSafely(imgProc, `/vision/edge?t=${bust}`,{get value(){return lastProcReq},set value(v){lastProcReq=v;}});

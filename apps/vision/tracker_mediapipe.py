@@ -236,13 +236,6 @@ def tracking_loop() -> None:
             with FOLLOW_MODE_LOCK:
                 mode = FOLLOW_MODE
 
-            # Calculate FPS every second
-            fps_frame_count += 1
-            if t0 - fps_start_time >= 1.0:
-                fps_value = fps_frame_count / (t0 - fps_start_time)
-                fps_start_time = t0
-                fps_frame_count = 0
-
             if mode == "NONE":
                 # debug: report idle mode
                 print("[tracker] tracking_loop idle (mode=NONE)", flush=True)
@@ -254,6 +247,13 @@ def tracking_loop() -> None:
                 print("[tracker] read frame failed", flush=True)
                 time.sleep(0.01)
                 continue
+
+            # Calculate FPS every second (only when processing frames)
+            fps_frame_count += 1
+            if t0 - fps_start_time >= 1.0:
+                fps_value = fps_frame_count / (t0 - fps_start_time)
+                fps_start_time = t0
+                fps_frame_count = 0
 
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w = rgb_frame.shape[:2]
@@ -324,8 +324,9 @@ def tracking_loop() -> None:
                     cv2.circle(annotated_frame, (center_x, center_y), radius, (0, 255, 255), 2)
                     cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 255, 255), -1)
 
-            # Save annotated frame to disk
-            save_tracker_frame(annotated_frame)
+            # Save annotated frame to disk only if detections exist
+            if detections is not None:
+                save_tracker_frame(annotated_frame)
 
             now = time.time()
             if offset_x is not None and (now - last_pub_ts) >= frame_interval:
