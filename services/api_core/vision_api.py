@@ -161,7 +161,7 @@ def set_tracking_mode() -> Response:
     """
     Unified tracking mode control endpoint.
     Payload: {"mode": "face"|"hand"|"none", "enabled": true|false}
-    
+
     If enabled=false, mode is automatically set to "none".
     """
     if request.method == "OPTIONS":
@@ -175,16 +175,15 @@ def set_tracking_mode() -> Response:
         payload = request.get_json(silent=True) or {}
         mode = payload.get("mode", "none").lower()
         enabled = payload.get("enabled", True)
-        
+
         # If enabled=false, override mode to "none"
         if not enabled:
             mode = "none"
-        
+
         # Validate mode
         if mode not in ["face", "hand", "none"]:
             return _json_nocache(
-                {"ok": False, "error": f"Invalid mode: {mode}. Must be 'face', 'hand', or 'none'."},
-                400
+                {"ok": False, "error": f"Invalid mode: {mode}. Must be 'face', 'hand', or 'none'."}, 400
             )
 
         # Publish to unified topic
@@ -196,57 +195,3 @@ def set_tracking_mode() -> Response:
     except Exception as e:
         logger.exception("Failed to set tracking mode: %s", e)
         return _json_nocache({"ok": False, "error": "Failed to set tracking mode"}, 500)
-
-
-@bp.route("/vision/follow/face", methods=["POST", "OPTIONS"])
-def set_follow_face() -> Response:
-    """Enable or disable face tracking mode."""
-    if request.method == "OPTIONS":
-        resp = make_response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        return resp
-
-    try:
-        payload = request.get_json(silent=True) or {}
-        enable = payload.get("enable", False)
-
-        pub = bus.BusPub()
-        if enable:
-            pub.publish(bus.TOPIC_VISION_FOLLOW_FACE_SET, {"enabled": True})
-        else:
-            pub.publish(bus.TOPIC_VISION_FOLLOW_STOP, {"mode": "face"})
-        pub.close()
-
-        return _json_nocache({"ok": True, "mode": "face", "enabled": enable}, 200)
-    except Exception as e:
-        logger.exception("Failed to set face tracking mode: %s", e)
-        return _json_nocache({"ok": False, "error": "Failed to set face tracking mode"}, 500)
-
-
-@bp.route("/vision/follow/hand", methods=["POST", "OPTIONS"])
-def set_follow_hand() -> Response:
-    """Enable or disable hand tracking mode."""
-    if request.method == "OPTIONS":
-        resp = make_response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        return resp
-
-    try:
-        payload = request.get_json(silent=True) or {}
-        enable = payload.get("enable", False)
-
-        pub = bus.BusPub()
-        if enable:
-            pub.publish(bus.TOPIC_VISION_FOLLOW_HAND_SET, {"enabled": True})
-        else:
-            pub.publish(bus.TOPIC_VISION_FOLLOW_STOP, {"mode": "hand"})
-        pub.close()
-
-        return _json_nocache({"ok": True, "mode": "hand", "enabled": enable}, 200)
-    except Exception as e:
-        logger.exception("Failed to set hand tracking mode: %s", e)
-        return _json_nocache({"ok": False, "error": "Failed to set hand tracking mode"}, 500)

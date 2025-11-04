@@ -108,7 +108,7 @@ def control_loop() -> None:
                 continue
 
             with FOLLOW_MODE_LOCK:
-                # New unified topic handling
+                # Unified topic handling
                 if topic == "tracking.mode:set":
                     mode = data.get("mode", "none").upper()
                     if mode in ["FACE", "HAND", "NONE"]:
@@ -116,16 +116,6 @@ def control_loop() -> None:
                         print(f"[tracker] mode → {mode}", flush=True)
                     else:
                         print(f"[tracker] invalid mode '{mode}' in data={data}", flush=True)
-                # Legacy topic handling (for backward compatibility during transition)
-                elif topic == "vision.follow.face.set":
-                    FOLLOW_MODE = "FACE"
-                    print("[tracker] mode → FACE (legacy topic)", flush=True)
-                elif topic == "vision.follow.hand.set":
-                    FOLLOW_MODE = "HAND"
-                    print("[tracker] mode → HAND (legacy topic)", flush=True)
-                elif topic == "vision.follow.stop":
-                    FOLLOW_MODE = "NONE"
-                    print("[tracker] mode → NONE (legacy topic)", flush=True)
                 else:
                     print(
                         f"[tracker] control_loop got unknown topic '{topic}' data={data}",
@@ -377,8 +367,8 @@ def tracking_loop() -> None:
 if __name__ == "__main__":
     print("[tracker] starting MediaPipe tracker", flush=True)
     PUB = zmq_pub()
-    # Subscribe to new unified topic and legacy topics for backward compatibility
-    SUB = zmq_sub(["tracking.mode:set", "vision.follow.face.set", "vision.follow.hand.set", "vision.follow.stop"])
+    # Subscribe to unified tracking mode topic
+    SUB = zmq_sub(["tracking.mode:set"])
 
     threading.Thread(target=control_loop, daemon=True).start()
     tracking_loop()
