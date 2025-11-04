@@ -7,7 +7,7 @@ This feature enables the robot to track and follow faces or hands using MediaPip
 The tracking system consists of two main components:
 
 1. **Vision Tracker** (`apps/vision/tracker_mediapipe.py`)
-   - Subscribes to control topics: `vision.follow.face.set`, `vision.follow.hand.set`, `vision.follow.stop`
+   - Subscribes to unified control topic: `tracking.mode:set`
    - Performs MediaPipe-based face/hand detection
    - Publishes horizontal offset to `vision.tracking.offset`
 
@@ -151,9 +151,16 @@ Common issues:
 
 1. Verify tracker service is running: `systemctl status rider-tracker.service`
 2. Check broker is running: `systemctl status rider-broker.service`
-3. Test API endpoints manually:
+3. Test API endpoint manually:
    ```bash
-   curl -X POST http://localhost:8080/api/vision/follow/face -H "Content-Type: application/json" -d '{"enable": true}'
+   # Enable face tracking
+   curl -X POST http://localhost:8080/api/vision/tracking/mode -H "Content-Type: application/json" -d '{"mode": "face", "enabled": true}'
+   
+   # Enable hand tracking
+   curl -X POST http://localhost:8080/api/vision/tracking/mode -H "Content-Type: application/json" -d '{"mode": "hand", "enabled": true}'
+   
+   # Disable tracking
+   curl -X POST http://localhost:8080/api/vision/tracking/mode -H "Content-Type: application/json" -d '{"mode": "none", "enabled": false}'
    ```
 
 ## Dependencies
