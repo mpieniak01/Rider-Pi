@@ -110,12 +110,19 @@ def control_loop() -> None:
             with FOLLOW_MODE_LOCK:
                 # Unified topic handling
                 if topic == "tracking.mode:set":
-                    mode = data.get("mode", "none").upper()
+                    mode_raw = data.get("mode", "none")
+                    if not isinstance(mode_raw, str):
+                        print(f"[tracker] invalid mode type {type(mode_raw)} in data={data}", flush=True)
+                        continue
+                    mode = mode_raw.upper()
                     if mode in ["FACE", "HAND", "NONE"]:
                         FOLLOW_MODE = mode
                         print(f"[tracker] mode → {mode}", flush=True)
                     else:
-                        print(f"[tracker] invalid mode '{mode}' in data={data}", flush=True)
+                        print(
+                            f"[tracker] invalid mode value '{mode_raw}' (expected face/hand/none) in data={data}",
+                            flush=True,
+                        )
                 else:
                     print(
                         f"[tracker] control_loop got unknown topic '{topic}' data={data}",

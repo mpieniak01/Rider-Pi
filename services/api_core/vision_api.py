@@ -174,7 +174,7 @@ def set_tracking_mode() -> Response:
     try:
         payload = request.get_json(silent=True) or {}
         mode = payload.get("mode", "none").lower()
-        enabled = payload.get("enabled", True)
+        enabled = payload.get("enabled", mode in ["face", "hand"])
 
         # If enabled=false, override mode to "none"
         if not enabled:
