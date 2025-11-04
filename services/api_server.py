@@ -594,6 +594,15 @@ try:
 except Exception as e:
     app.logger.exception("[api] failed to register google_proxy blueprint: %s", e)
 
+# Register services_dashboard blueprint
+try:
+    from services.api_core.services_dashboard_api import bp as services_dashboard_bp
+
+    app.register_blueprint(services_dashboard_bp)
+    app.logger.info("[api] services_dashboard blueprint registered: /api/services/*")
+except Exception as e:
+    app.logger.exception("[api] failed to register services_dashboard blueprint: %s", e)
+
 _register_chat_endpoints()
 
 
