@@ -729,14 +729,22 @@ except Exception as e:
 
 _register_chat_endpoints()
 
-# Register navigation WebSocket endpoint
+# Register navigation WebSocket endpoint (optional, controlled by RIDER_NAV_VISUALIZER_ENABLED)
 try:
-    from services.navigation_websocket_bridge import register_websocket_endpoint
+    if os.getenv("RIDER_NAV_VISUALIZER_ENABLED", "false").lower() == "true":
+        app.logger.info("[api] Loading optional module: Navigation Visualizer")
+        import importlib
 
-    register_websocket_endpoint(app)
-    app.logger.info("[api] navigation WebSocket endpoint registered: /ws/navigation")
+        nav_bridge_module = importlib.import_module("services.navigation_websocket_bridge")
+        register_websocket_endpoint = getattr(nav_bridge_module, "register_websocket_endpoint")
+        register_websocket_endpoint(app)
+        app.logger.info("[api] Navigation Visualizer loaded successfully. Endpoint: /ws/navigation")
+    else:
+        app.logger.info("[api] Navigation Visualizer is disabled (RIDER_NAV_VISUALIZER_ENABLED!=true)")
+except ImportError as e:
+    app.logger.error("[api] Failed to load navigation visualizer module: %s", e)
 except Exception as e:
-    app.logger.exception("[api] failed to register navigation WebSocket endpoint: %s", e)
+    app.logger.error("[api] Unexpected error loading navigation visualizer: %s", e)
 
 
 def main():
