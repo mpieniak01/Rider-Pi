@@ -731,10 +731,10 @@ _register_chat_endpoints()
 
 # Register navigation WebSocket endpoint (optional, controlled by RIDER_NAV_VISUALIZER_ENABLED)
 try:
+    import importlib
+
     if os.getenv("RIDER_NAV_VISUALIZER_ENABLED", "false").lower() == "true":
         app.logger.info("[api] Loading optional module: Navigation Visualizer")
-        import importlib
-
         nav_bridge_module = importlib.import_module("services.navigation_websocket_bridge")
         register_websocket_endpoint = getattr(nav_bridge_module, "register_websocket_endpoint")
         register_websocket_endpoint(app)
