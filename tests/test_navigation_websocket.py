@@ -13,8 +13,6 @@ import json
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def test_bridge_initialization():
     """Test that the bridge can be initialized"""

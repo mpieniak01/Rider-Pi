@@ -83,55 +83,53 @@ def main():
     print()
 
     # Create publisher
-    pub = BusPub()
-    print("✓ Connected to bus")
+    with BusPub() as pub:
+        print("✓ Connected to bus")
 
-    # Publish initial map
-    print("Publishing initial map...")
-    initial_map = generate_simple_map()
-    pub.publish(TOPIC_MAPPER_MAP_DATA, initial_map, add_ts=True)
-    print(
-        f"✓ Published map: {initial_map['width_cells']}x{initial_map['height_cells']} cells, "
-        f"{initial_map['resolution_m']}m resolution"
-    )
-    print()
-
-    # Publish odometry updates in a loop
-    print("Publishing odometry updates (robot moving in a circle)...")
-    start_time = time.time()
-    update_count = 0
-
-    try:
-        while True:
-            elapsed = time.time() - start_time
-
-            # Generate robot position
-            x, y, theta = generate_circular_path(elapsed)
-
-            # Publish pose
-            pose = {"x": x, "y": y, "theta": theta, "theta_deg": math.degrees(theta), "ts": time.time()}
-
-            pub.publish(TOPIC_ROBOT_POSE, pose, add_ts=True)
-
-            update_count += 1
-            if update_count % 10 == 0:
-                print(f"  {update_count} updates | Position: x={x:.2f}m, y={y:.2f}m, θ={math.degrees(theta):.1f}°")
-
-            # Update map occasionally (simulate new obstacle detection)
-            if update_count % 50 == 0:
-                print("  📍 Publishing updated map...")
-                updated_map = generate_simple_map()
-                pub.publish(TOPIC_MAPPER_MAP_DATA, updated_map, add_ts=True)
-
-            time.sleep(0.1)  # 10 Hz update rate
-
-    except KeyboardInterrupt:
+        # Publish initial map
+        print("Publishing initial map...")
+        initial_map = generate_simple_map()
+        pub.publish(TOPIC_MAPPER_MAP_DATA, initial_map, add_ts=True)
+        print(
+            f"✓ Published map: {initial_map['width_cells']}x{initial_map['height_cells']} cells, "
+            f"{initial_map['resolution_m']}m resolution"
+        )
         print()
-        print("=" * 60)
-        print(f"Demo stopped. Published {update_count} odometry updates.")
-        print("=" * 60)
-    finally:
-        pub.close()
+
+        # Publish odometry updates in a loop
+        print("Publishing odometry updates (robot moving in a circle)...")
+        start_time = time.time()
+        update_count = 0
+
+        try:
+            while True:
+                elapsed = time.time() - start_time
+
+                # Generate robot position
+                x, y, theta = generate_circular_path(elapsed)
+
+                # Publish pose
+                pose = {"x": x, "y": y, "theta": theta, "theta_deg": math.degrees(theta), "ts": time.time()}
+
+                pub.publish(TOPIC_ROBOT_POSE, pose, add_ts=True)
+
+                update_count += 1
+                if update_count % 10 == 0:
+                    print(f"  {update_count} updates | Position: x={x:.2f}m, y={y:.2f}m, θ={math.degrees(theta):.1f}°")
+
+                # Update map occasionally (simulate new obstacle detection)
+                if update_count % 50 == 0:
+                    print("  📍 Publishing updated map...")
+                    updated_map = generate_simple_map()
+                    pub.publish(TOPIC_MAPPER_MAP_DATA, updated_map, add_ts=True)
+
+                time.sleep(0.1)  # 10 Hz update rate
+
+        except KeyboardInterrupt:
+            print()
+            print("=" * 60)
+            print(f"Demo stopped. Published {update_count} odometry updates.")
+            print("=" * 60)
 
 
 if __name__ == "__main__":

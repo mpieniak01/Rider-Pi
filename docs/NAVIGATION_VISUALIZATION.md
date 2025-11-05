@@ -122,9 +122,8 @@ The demo will publish simulated robot movement in a circular path.
 
 Grid values:
 - `-1`: Unknown/unexplored
-- `0`: Free space
 - `1`: Obstacle
-- `2`: Visited/explored
+- `2`: Free space
 
 #### 3. Path Update (Future)
 ```json

@@ -36,6 +36,7 @@ from common.bus import (
 
 LOG_LEVEL = os.getenv("NAV_WS_LOG_LEVEL", "INFO").upper()
 LOG = logging.getLogger("nav_ws_bridge")
+LOG.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
 # Grid cell value constants (from mapper)
 MAPPER_CELL_OCCUPIED = 255  # Obstacle
@@ -68,10 +69,9 @@ class NavigationWebSocketBridge:
         self.last_pose: dict[str, Any] | None = None
         self.last_map: dict[str, Any] | None = None
 
-        LOG.info("NavigationWebSocketBridge initialized")
-
     def start(self) -> None:
         """Start the background thread that reads from bus and broadcasts to clients"""
+        LOG.info("NavigationWebSocketBridge initialized")
         if self.running:
             LOG.warning("Bridge already running")
             return
