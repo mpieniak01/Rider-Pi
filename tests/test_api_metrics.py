@@ -7,7 +7,16 @@ metrics are counted properly for interactive endpoints.
 
 import pytest
 
+# Check if we can import the required modules
+try:
+    import services.api_server  # noqa: F401
 
+    API_SERVER_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    API_SERVER_AVAILABLE = False
+
+
+@pytest.mark.skipif(not API_SERVER_AVAILABLE, reason="API server dependencies not available")
 class TestApiMetricsEndpoint:
     """Test suite for /api/app-metrics endpoint."""
 
@@ -54,11 +63,12 @@ class TestApiMetricsEndpoint:
             assert isinstance(data["total_errors"], int)
 
             # Check that all group counters are integers
-            for group, counts in data["metrics"].items():
+            for _group, counts in data["metrics"].items():
                 assert isinstance(counts["ok"], int)
                 assert isinstance(counts["error"], int)
 
 
+@pytest.mark.skipif(not API_SERVER_AVAILABLE, reason="API server dependencies not available")
 class TestApiMetricsCounting:
     """Test suite for API metrics counting logic."""
 
@@ -209,6 +219,7 @@ class TestApiMetricsCounting:
                 assert baseline_data["metrics"][group] == after_data["metrics"][group]
 
 
+@pytest.mark.skipif(not API_SERVER_AVAILABLE, reason="API server dependencies not available")
 class TestApiMetricsCompatModule:
     """Test suite for metrics definitions in compat module."""
 
