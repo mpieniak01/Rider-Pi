@@ -73,8 +73,7 @@ class TestNavigationVisualizerIntegration(unittest.TestCase):
                 mock_logger.info("[api] Loading optional module: Navigation Visualizer")
 
                 nav_bridge_module = importlib.import_module("services.navigation_websocket_bridge")
-                register_websocket_endpoint = getattr(nav_bridge_module, "register_websocket_endpoint")
-                register_websocket_endpoint(mock_app)
+                nav_bridge_module.register_websocket_endpoint(mock_app)
                 mock_logger.info("[api] Navigation Visualizer loaded successfully. Endpoint: /ws/navigation")
             else:
                 mock_logger.info("[api] Navigation Visualizer is disabled (RIDER_NAV_VISUALIZER_ENABLED!=true)")
