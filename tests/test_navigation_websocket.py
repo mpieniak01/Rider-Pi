@@ -51,8 +51,8 @@ def test_handle_pose_transformation():
 
     bridge = NavigationWebSocketBridge()
 
-    # Mock payload from odometry
-    odometry_payload = {"x": 1.5, "y": 2.3, "theta": 0.785, "theta_deg": 45.0, "ts": time.time()}
+    # Mock payload from odometry (using fixed timestamp for deterministic tests)
+    odometry_payload = {"x": 1.5, "y": 2.3, "theta": 0.785, "theta_deg": 45.0, "ts": 1234567890.0}
 
     # Test the transformation
     bridge._handle_pose(odometry_payload)
@@ -70,7 +70,7 @@ def test_handle_map_transformation():
 
     bridge = NavigationWebSocketBridge()
 
-    # Mock payload from mapper
+    # Mock payload from mapper (using fixed timestamp for deterministic tests)
     mapper_payload = {
         "grid": [[0, 127, 255], [255, 0, 127]],  # 2x3 grid
         "width_cells": 3,
@@ -78,7 +78,7 @@ def test_handle_map_transformation():
         "resolution_m": 0.05,
         "origin_x": 5.0,
         "origin_y": 5.0,
-        "ts": time.time(),
+        "ts": 1234567890.0,
     }
 
     # Test the transformation

@@ -37,6 +37,16 @@ from common.bus import (
 LOG_LEVEL = os.getenv("NAV_WS_LOG_LEVEL", "INFO").upper()
 LOG = logging.getLogger("nav_ws_bridge")
 
+# Grid cell value constants (from mapper)
+MAPPER_CELL_OCCUPIED = 255  # Obstacle
+MAPPER_CELL_FREE = 0  # Free space
+MAPPER_CELL_UNKNOWN = 127  # Unknown/unexplored
+
+# Frontend grid cell values
+FRONTEND_CELL_OBSTACLE = 1
+FRONTEND_CELL_FREE = 2
+FRONTEND_CELL_UNKNOWN = -1
+
 
 class NavigationWebSocketBridge:
     """
@@ -197,6 +207,11 @@ class NavigationWebSocketBridge:
         origin_x = payload.get("origin_x", 0.0)
         origin_y = payload.get("origin_y", 0.0)
 
+        # Validate resolution
+        if resolution_m <= 0:
+            LOG.warning(f"Invalid resolution_m={resolution_m}, using default 0.05")
+            resolution_m = 0.05
+
         # Flatten grid if it's 2D array
         if isinstance(grid, list) and grid and isinstance(grid[0], list):
             flat_grid = []
@@ -205,16 +220,15 @@ class NavigationWebSocketBridge:
         else:
             flat_grid = grid
 
-        # Convert occupancy values (0=free, 127=unknown, 255=occupied)
-        # to frontend values (0=unknown, 1=occupied, 2=visited/free)
+        # Convert occupancy values (mapper → frontend format)
         frontend_grid = []
         for cell in flat_grid:
-            if cell == 255:  # Occupied
-                frontend_grid.append(1)
-            elif cell == 0:  # Free
-                frontend_grid.append(2)
-            else:  # Unknown (127)
-                frontend_grid.append(-1)
+            if cell == MAPPER_CELL_OCCUPIED:
+                frontend_grid.append(FRONTEND_CELL_OBSTACLE)
+            elif cell == MAPPER_CELL_FREE:
+                frontend_grid.append(FRONTEND_CELL_FREE)
+            else:  # MAPPER_CELL_UNKNOWN or other
+                frontend_grid.append(FRONTEND_CELL_UNKNOWN)
 
         frontend_data = {
             "width": width_cells,
@@ -268,10 +282,8 @@ def register_websocket_endpoint(app) -> None:
         try:
             # Keep connection alive and handle incoming messages (if any)
             while True:
-                # WebSocket clients don't need to send data, but we need to keep
-                # the connection alive. receive() will block until a message arrives
-                # or the connection is closed.
-                data = ws.receive(timeout=1.0)
+                # Use short timeout for better responsiveness on disconnect
+                data = ws.receive(timeout=0.1)
                 if data is None:
                     # Timeout - connection still alive, continue
                     continue
