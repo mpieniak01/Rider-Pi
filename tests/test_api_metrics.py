@@ -5,8 +5,6 @@ Validates that /api/app-metrics returns correct structure and that
 metrics are counted properly for interactive endpoints.
 """
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 
@@ -68,11 +66,12 @@ class TestApiMetricsCounting:
         """Reset metrics before each test."""
         import services.api_core.compat as compat
 
-        # Reset all counters
-        for group in compat.API_METRICS:
-            compat.API_METRICS[group]["ok"] = 0
-            compat.API_METRICS[group]["error"] = 0
-        compat.API_METRICS_TOTAL["errors"] = 0
+        # Reset all counters (thread-safe)
+        with compat.API_METRICS_LOCK:
+            for group in compat.API_METRICS:
+                compat.API_METRICS[group]["ok"] = 0
+                compat.API_METRICS[group]["error"] = 0
+            compat.API_METRICS_TOTAL["errors"] = 0
 
     def test_control_endpoint_increments_control_metrics(self):
         """Test that /api/control calls increment control metrics."""
@@ -80,7 +79,7 @@ class TestApiMetricsCounting:
 
         with api_server.app.test_client() as client:
             # Make a call to control endpoint
-            response = client.post("/api/control", json={"dir": "forward", "v": 0.1, "t": 0.1})
+            client.post("/api/control", json={"dir": "forward", "v": 0.1, "t": 0.1})
 
             # Get metrics
             metrics_response = client.get("/api/app-metrics")
@@ -97,7 +96,7 @@ class TestApiMetricsCounting:
 
         with api_server.app.test_client() as client:
             # Make a call to navigator start endpoint
-            response = client.post("/api/navigator/start", json={})
+            client.post("/api/navigator/start", json={})
 
             # Get metrics
             metrics_response = client.get("/api/app-metrics")
@@ -113,7 +112,7 @@ class TestApiMetricsCounting:
 
         with api_server.app.test_client() as client:
             # Make a call to voice endpoint
-            response = client.post("/api/voice/capture", json={})
+            client.post("/api/voice/capture", json={})
 
             # Get metrics
             metrics_response = client.get("/api/app-metrics")

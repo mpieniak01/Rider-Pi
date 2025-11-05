@@ -138,6 +138,10 @@ API_METRICS = {
 }
 # Używamy słownika dla mutability w kontekście modułu
 API_METRICS_TOTAL = {"errors": 0}
+# Global lock for thread-safe mutation of API_METRICS and API_METRICS_TOTAL
+API_METRICS_LOCK = threading.Lock()
+
+# All mutations to API_METRICS and API_METRICS_TOTAL must be protected by API_METRICS_LOCK.
 
 
 # ── Pomocnicze: sanity i konwersje ────────────────────────────────────────────

@@ -532,7 +532,7 @@ async function refreshApiMetrics(){
     setTxt('metric_chat', `${m.chat?.ok ?? 0} / ${m.chat?.error ?? 0}`);
     setTxt('metric_face', `${m.face?.ok ?? 0} / ${m.face?.error ?? 0}`);
     
-    // Total Errors - wyróżniony
+    // Total Errors - highlighted
     const totalErr = j.total_errors ?? 0;
     setTxt('metric_total_errors', totalErr);
     setCls('metric_total_errors', totalErr > 0 ? 'bad' : 'ok');

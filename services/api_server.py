@@ -121,13 +121,14 @@ def _update_api_metrics(path: str, status_code: int) -> None:
     if group is None:
         return
 
-    # Zliczamy
+    # Zliczamy (thread-safe)
     is_ok = status_code < 400
-    if is_ok:
-        compat.API_METRICS[group]["ok"] += 1
-    else:
-        compat.API_METRICS[group]["error"] += 1
-        compat.API_METRICS_TOTAL["errors"] += 1
+    with compat.API_METRICS_LOCK:
+        if is_ok:
+            compat.API_METRICS[group]["ok"] += 1
+        else:
+            compat.API_METRICS[group]["error"] += 1
+            compat.API_METRICS_TOTAL["errors"] += 1
 
 
 # ── CORS global + metryki ────────────────────────────────────────────────────
@@ -472,10 +473,18 @@ def app_metrics():
     if not compat:
         return jsonify({"ok": True, "metrics": {}, "total_errors": 0}), 200
 
-    # Zwracamy kopię, aby uniknąć race condition przy odczycie
-    metrics_snapshot = {group: dict(counts) for group, counts in compat.API_METRICS.items()}
+    # Zwracamy kopię, aby uniknąć race condition przy odczycie (thread-safe)
+    with compat.API_METRICS_LOCK:
+        metrics_snapshot = {group: dict(counts) for group, counts in compat.API_METRICS.items()}
+        total_errors = compat.API_METRICS_TOTAL["errors"]
 
-    return jsonify({"ok": True, "metrics": metrics_snapshot, "total_errors": compat.API_METRICS_TOTAL["errors"]}), 200
+    return jsonify(
+        {
+            "ok": True,
+            "metrics": metrics_snapshot,
+            "total_errors": total_errors,
+        }
+    ), 200
 
 
 # ── Static / dashboard ───────────────────────────────────────────────────────
