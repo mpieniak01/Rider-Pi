@@ -8,6 +8,7 @@ mediapipe>=0.10.14
 
 # realtime ws
 websockets>=15.0
+flask-sock>=0.7.0
 
 # 2D simulator
 pygame>=2.5.0

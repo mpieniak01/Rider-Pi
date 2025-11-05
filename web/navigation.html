@@ -132,7 +132,7 @@
         let ws;
 
         function connectWebSocket() {
-            const wsProtocol = window.location.protocol === 'https:.' ? 'wss' : 'ws';
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
             const wsUrl = `${wsProtocol}://${window.location.host}/ws/navigation`;
             
             ws = new WebSocket(wsUrl);
