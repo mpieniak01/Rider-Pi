@@ -346,13 +346,13 @@ def speak(
 
     # fallback: pełny synth + odtwarzanie
     try:
-        audio_bytes, sample_rate, audio_fmt = synthesize(text, config, logger)
+        audio_bytes, sample_rate, channels, audio_fmt = synthesize(text, config, logger)
     except TTSError as exc:
         logger.event("tts.speak.failed", error=str(exc))
         return TTSStreamResult(False, None, "", 0, streamed=False)
 
     try:
-        play_bytes(audio_bytes, audio_fmt, playback, logger)
+        play_bytes(audio_bytes, audio_fmt, playback, logger, sample_rate=sample_rate, channels=channels)
     except PlaybackError as exc:
         logger.event("tts.playback.failed", error=str(exc))
         return TTSStreamResult(False, None, audio_fmt, sample_rate, streamed=False)
@@ -385,9 +385,9 @@ def synthesize(
     text: str,
     config: TTSConfig,
     logger: voice_logging.VoiceLogger | None = None,
-) -> tuple[bytes, int, str]:
+) -> tuple[bytes, int, int, str]:
     """
-    Pełna synteza (REST), zwraca (audio_bytes, sample_rate, audio_format).
+    Pełna synteza (REST), zwraca (audio_bytes, sample_rate, channels, audio_format).
     STRICT: zabronione, gdy transport=realtime.
     """
     logger = logger or voice_logging.get_logger("voice.tts")
@@ -410,10 +410,10 @@ def synthesize(
     raise TTSError(f"Unsupported TTS backend: {backend}")
 
 
-def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
+def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
     """
     OpenAI Text-to-Speech (v1/audio/speech).
-    Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav"), niezależnie od proszonego formatu.
+    Zwraca ZAWSZE WAV (audio_bytes, sample_rate, channels, "wav"), niezależnie od proszonego formatu.
     VOICE_GAIN (env) działa przez normalizację 16-bit + fade-in/out.
     """
     api_key = ensure_openai_key(logger)
@@ -558,7 +558,7 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
                 pcm = _maybe_gain(pcm, extra_gain)
             wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
-            return wav_bytes, sr, "wav"
+            return wav_bytes, sr, ch, "wav"
 
         except requests.RequestException as e:
             logger.event(
@@ -572,10 +572,11 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     raise TTSError(f"OpenAI TTS request failed: {last_err or 'unknown error'}")
 
 
-def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
+def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
     """
     Google Gemini Text-to-Speech using native audio generation.
-    Zwraca ZAWSZE WAV (audio_bytes, sample_rate, "wav").
+    Zwraca ZAWSZE WAV (audio_bytes, sample_rate, channels, "wav").
+    Zwraca natywny format Google (24kHz, 1ch) bez wymuszania resamplingu.
     """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -644,32 +645,20 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             sw = 2
             pcm = raw
 
-        # === START FIX: Resampling + Tail ===
-        # Google TTS (jak OpenAI) zwraca 24kHz.
-        # Resamplujemy do 48kHz i wymuszamy 2 KANAŁY (stereo)
-        TARGET_SR = 48000
-        TARGET_CH = 2  # <--- POPRAWKA: Wymuszenie 2 kanałów (stereo)
-
-        if sw == 2:  # Resampling działa tylko na 16-bit
-            try:
-                pcm, sr, ch = _resample_to(pcm, sr, ch, TARGET_SR, TARGET_CH)
-                sw = 2  # _resample_to zachowuje 16-bit
-            except Exception as e:
-                logger.event("tts.gemini.resample_failed", error=str(e))
-                # Kontynuuj z oryginalnym audio, jeśli resampling zawiedzie
-        # === END FIX ===
+        # Zwracamy natywny format Google bez wymuszania resamplingu
+        # (playback.py otrzyma faktyczne parametry i dostosuje się)
 
         # Opcjonalna normalizacja i fade (jak w OpenAI)
         extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
         if sw == 2:
             pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
             pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
-            pcm = _append_tail(pcm, sr, ch, 300)  # <--- POPRAWKA: Dodanie ciszy
-            pcm = _maybe_gain(pcm, extra_gain)  # <--- POPRAWKA: Dodanie gain
+            pcm = _append_tail(pcm, sr, ch, 300)
+            pcm = _maybe_gain(pcm, extra_gain)
         wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
-        logger.event("tts.gemini.ok", bytes=len(wav_bytes), sample_rate=sr)
-        return wav_bytes, sr, "wav"
+        logger.event("tts.gemini.ok", bytes=len(wav_bytes), sample_rate=sr, channels=ch)
+        return wav_bytes, sr, ch, "wav"
 
     except Exception as exc:
         logger.event("tts.gemini.error", error=str(exc))
@@ -678,7 +667,7 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
         raise TTSError(f"Gemini TTS failed: {exc}") from exc
 
 
-def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, str]:
+def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
     """
     Lokalny backend HTTP:
       POST {base_url}{endpoint}
@@ -814,8 +803,8 @@ def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) 
         pcm = _append_tail(pcm, sr, ch, 300)  # <--- POPRAWKA: Dodanie ciszy
     wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
 
-    logger.event("tts.local.ok", bytes=len(wav_bytes), sample_rate=sr)
-    return wav_bytes, sr, "wav"
+    logger.event("tts.local.ok", bytes=len(wav_bytes), sample_rate=sr, channels=ch)
+    return wav_bytes, sr, ch, "wav"
 
 
 async def speak_stream(

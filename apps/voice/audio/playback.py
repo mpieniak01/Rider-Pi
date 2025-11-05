@@ -172,7 +172,13 @@ def _unique(seq):
     return out
 
 
-def _iter_aplay_commands(cfg: PlaybackConfig, *, fmt: str | None):
+def _iter_aplay_commands(
+    cfg: PlaybackConfig,
+    *,
+    fmt: str | None,
+    sample_rate: int | None = None,
+    channels: int | None = None,
+):
     """
     aplay dla WAV/PCM. Kolejność:
       1) -D <alias/alsa_device> (np. wm8960_out / plughw:…)
@@ -186,13 +192,6 @@ def _iter_aplay_commands(cfg: PlaybackConfig, *, fmt: str | None):
 
     # Parametry dla surowego PCM (np. 'ding' 16k/mono)
     params_pcm16 = ["-f", "S16_LE", "-r", "16000", "-c", "1"]
-
-    # === POCZĄTEK POPRAWKI ===
-    # Parametry dla plików WAV. Zakładamy, że tts.py (OpenAI/Google)
-    # i web.py (local) dostarczają audio 48kHz, S16_LE, 2 kanały (stereo).
-    # Podajemy to jawnie, aby uniknąć błędów 'aplay' przy czytaniu nagłówka ze strumienia.
-    params_wav_48k_stereo = ["-f", "S16_LE", "-r", "48000", "-c", "2"]
-    # === KONIEC POPRAWKI ===
 
     # zbuduj kandydatów urządzeń
     preferred = []
@@ -215,12 +214,23 @@ def _iter_aplay_commands(cfg: PlaybackConfig, *, fmt: str | None):
         if fmt == "pcm16":
             commands.append(base + params_pcm16)
         elif fmt == "wav":
-            # === POCZĄTEK POPRAWKI ===
-            # Użyj jawnych parametrów dla WAV
-            commands.append(base + params_wav_48k_stereo)
-            # === KONIEC POPRAWKI ===
+            if sample_rate and channels:
+                # Mamy precyzyjne info z TTS! Użyjmy go.
+                # Zakładamy S16_LE, co jest prawdą dla wszystkich backendów TTS.
+                params_dynamic = [
+                    "-f",
+                    "S16_LE",
+                    "-r",
+                    str(sample_rate),
+                    "-c",
+                    str(channels),
+                ]
+                commands.append(base + params_dynamic)
+            else:
+                # Fallback: brak info, niech aplay próbuje czytać header (ryzykowne)
+                commands.append(base[:])
         else:
-            # Fallback - stary kod (może być potrzebny dla mp3?)
+            # Inne formaty (np. mp3) lub stary fallback
             commands.append(base[:])
 
     return commands
@@ -266,7 +276,12 @@ def _iter_sox_play_commands(fmt_hint: str):
 
 
 def _start_playback_process(
-    fmt: str, config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None
+    fmt: str,
+    config: PlaybackConfig,
+    logger: voice_logging.VoiceLogger | None = None,
+    *,
+    sample_rate: int | None = None,
+    channels: int | None = None,
 ) -> tuple[subprocess.Popen[bytes] | None, str]:
     """Start appropriate playback process. Returns (proc, resolved_backend)."""
     if logger is None:
@@ -280,7 +295,8 @@ def _start_playback_process(
         logger.info(
             f"playback.device.init: backend='{backend}', "
             f"device='{resolved_dev or config.device or 'default'}', "
-            f"volume={config.volume}, format='{fmt}'"
+            f"volume={config.volume}, format='{fmt}', "
+            f"sample_rate={sample_rate}, channels={channels}"
         )
 
     # MP3
@@ -295,26 +311,20 @@ def _start_playback_process(
         if backend == "pulse":
             generators = [
                 lambda: _iter_paplay_commands(config),
-                # === POCZĄTEK POPRAWKI: Przekazuj 'fmt' poprawnie ===
-                lambda: _iter_aplay_commands(config, fmt=fmt),
-                # === KONIEC POPRAWKI ===
+                lambda: _iter_aplay_commands(config, fmt=fmt, sample_rate=sample_rate, channels=channels),
                 _iter_ffplay_commands,
                 lambda: _iter_sox_play_commands(fmt),
             ]
         elif backend == "alsa":
             generators = [
-                # === POCZĄTEK POPRAWKI: Przekazuj 'fmt' poprawnie ===
-                lambda: _iter_aplay_commands(config, fmt=fmt),
-                # === KONIEC POPRAWKI ===
+                lambda: _iter_aplay_commands(config, fmt=fmt, sample_rate=sample_rate, channels=channels),
                 lambda: _iter_paplay_commands(config),
                 _iter_ffplay_commands,
                 lambda: _iter_sox_play_commands(fmt),
             ]
         else:  # auto → preferuj ALSA najpierw (Twoje środowisko tak działa)
             generators = [
-                # === POCZĄTEK POPRAWKI: Przekazuj 'fmt' poprawnie ===
-                lambda: _iter_aplay_commands(config, fmt=fmt),
-                # === KONIEC POPRAWKI ===
+                lambda: _iter_aplay_commands(config, fmt=fmt, sample_rate=sample_rate, channels=channels),
                 lambda: _iter_paplay_commands(config),
                 _iter_ffplay_commands,
                 lambda: _iter_sox_play_commands(fmt),
@@ -354,6 +364,8 @@ def start_stream(
     logger: voice_logging.VoiceLogger | None = None,
     *,
     accumulate: bool = False,
+    sample_rate: int | None = None,
+    channels: int | None = None,
 ) -> PlaybackStream | None:
     """Start streaming playback process.
 
@@ -362,6 +374,8 @@ def start_stream(
         config: Playback configuration
         logger: Logger instance
         accumulate: If True, buffer written data
+        sample_rate: Optional sample rate for WAV playback
+        channels: Optional number of channels for WAV playback
 
     Returns:
         PlaybackStream or None
@@ -369,7 +383,7 @@ def start_stream(
     if logger is None:
         logger = voice_logging.get_logger(__name__)
 
-    process, resolved_backend = _start_playback_process(fmt, config, logger)
+    process, resolved_backend = _start_playback_process(fmt, config, logger, sample_rate=sample_rate, channels=channels)
     if not process:
         return None
 
@@ -381,6 +395,9 @@ def play_bytes(
     fmt: str,
     config: PlaybackConfig,
     logger: voice_logging.VoiceLogger | None = None,
+    *,
+    sample_rate: int | None = None,
+    channels: int | None = None,
 ) -> bool:
     """Play audio bytes immediately (one-shot playback)."""
     if not audio_data:
@@ -389,7 +406,7 @@ def play_bytes(
     if logger is None:
         logger = voice_logging.get_logger(__name__)
 
-    stream = start_stream(fmt, config, logger)
+    stream = start_stream(fmt, config, logger, sample_rate=sample_rate, channels=channels)
     if not stream:
         logger.event("playback.bytes.no_stream", fmt=fmt)
         return False

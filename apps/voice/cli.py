@@ -382,18 +382,18 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
     return _wrap_wav(out, target_rate, target_ch, 2)
 
 
-def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> tuple[bytes, int, str]:
+def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> tuple[bytes, int, int, str]:
     """
     Normalizuje wyjście synthesize(...):
     - dekoduje JSON jeśli backend zwróci JSON z base64 audio
-    - zwraca (audio_bytes, sample_rate, fmt_label)
+    - zwraca (audio_bytes, sample_rate, channels, fmt_label)
     """
-    audio, sample_rate, fmt = synthesize(text, TTSConfig(**_filter_for_dataclass(tts_cfg, TTSConfig)))
+    audio, sample_rate, channels, fmt = synthesize(text, TTSConfig(**_filter_for_dataclass(tts_cfg, TTSConfig)))
     maybe = _decode_json_audio(audio)
     if maybe:
         raw, sr_json, fmt_json = maybe
-        return raw, int(sr_json) if sr_json else sample_rate, fmt_json or fmt
-    return audio, sample_rate, fmt
+        return raw, int(sr_json) if sr_json else sample_rate, channels, fmt_json or fmt
+    return audio, sample_rate, channels, fmt
 
 
 def _pulse_available() -> bool:
