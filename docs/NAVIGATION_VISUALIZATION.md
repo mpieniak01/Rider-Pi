@@ -1,8 +1,12 @@
 # Navigation Visualization System
 
+> **⚠️ IMPORTANT:** This feature is **optional** and **disabled by default**. To enable the navigation visualizer, you must set the environment variable `RIDER_NAV_VISUALIZER_ENABLED="true"` in your configuration file (e.g., `systemd/robot.env`) and restart the API service.
+
 ## Overview
 
 The navigation visualization system provides real-time monitoring and debugging capabilities for the robot's navigation stack. It displays the robot's position, map data, and planned paths in a web-based interface accessible at `/navigation`.
+
+**Note:** When disabled (default), the `/ws/navigation` WebSocket endpoint will not be registered, and the navigation visualizer module will not be loaded, ensuring zero overhead.
 
 ## Architecture
 
@@ -53,6 +57,37 @@ The navigation visualization system provides real-time monitoring and debugging 
 
 ## Usage
 
+### Enabling the Navigation Visualizer
+
+The navigation visualizer is **disabled by default**. To enable it:
+
+1. **Edit the environment configuration file:**
+   ```bash
+   nano systemd/robot.env
+   ```
+
+2. **Set the environment variable:**
+   ```bash
+   RIDER_NAV_VISUALIZER_ENABLED="true"
+   ```
+
+3. **Restart the API service:**
+   ```bash
+   sudo systemctl restart rider-api.service
+   # Or if running manually:
+   # make api
+   ```
+
+4. **Verify activation in logs:**
+   ```bash
+   sudo journalctl -u rider-api.service | grep -i "navigation visualizer"
+   ```
+   You should see:
+   ```
+   [api] Loading optional module: Navigation Visualizer
+   [api] Navigation Visualizer loaded successfully. Endpoint: /ws/navigation
+   ```
+
 ### Starting the System
 
 1. **Start the message broker:**
@@ -60,7 +95,7 @@ The navigation visualization system provides real-time monitoring and debugging 
    make broker
    ```
 
-2. **Start the API server** (includes WebSocket endpoint):
+2. **Start the API server** (with visualizer enabled):
    ```bash
    make api
    ```
@@ -155,6 +190,11 @@ The frontend renders the following:
 ## Configuration
 
 ### Environment Variables
+
+#### API Server
+- `RIDER_NAV_VISUALIZER_ENABLED`: Enable/disable navigation visualizer [default: "false"]
+  - Set to `"true"` to activate the `/ws/navigation` WebSocket endpoint
+  - When disabled, the module is not loaded (zero overhead)
 
 #### WebSocket Bridge
 - `NAV_WS_LOG_LEVEL`: Log level (DEBUG, INFO, WARNING, ERROR) [default: INFO]
