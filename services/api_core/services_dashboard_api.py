@@ -81,8 +81,13 @@ def _systemd_state(unit: str) -> dict[str, Any]:
     active_state = data.get("ActiveState", "").strip().lower() or None
     sub_state = data.get("SubState", "").strip().lower() or None
     status = _status_from_active(data.get("ActiveState", ""))
+
     since_raw = data.get("ActiveEnterTimestamp", "")
-    since = since_raw.strip() if since_raw and since_raw.strip().lower() not in {"", "n/a"} else None
+    since: str | None = None
+    if since_raw:
+        since_clean = since_raw.strip()
+        if since_clean and since_clean.lower() not in {"", "n/a"}:
+            since = since_clean
 
     payload.update(
         {
@@ -101,7 +106,7 @@ def _build_edges(edges: Iterable[tuple[str, str]]) -> list[dict[str, str]]:
     return [{"from": src, "to": dst} for src, dst in sorted(unique)]
 
 
-@bp.get("/graph")
+@bp.route("/graph", methods=["GET"])
 def services_graph() -> Any:
     with ThreadPoolExecutor() as executor:
         nodes = list(executor.map(_systemd_state, SERVICE_META.keys()))

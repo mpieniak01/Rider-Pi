@@ -18,9 +18,18 @@ import subprocess
 import threading
 import time
 
-from flask import Flask, Response, jsonify, make_response, request, stream_with_context
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    make_response,
+    request,
+    send_file,
+    stream_with_context,
+)
 
 import services.api_core.face_api as face_api
+from services.api_core.services_dashboard_api import bp as services_dashboard_bp
 
 # ── Konfiguracja ───────────────────────────────────────────────────────────────
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
@@ -40,6 +49,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SNAP_DIR = os.path.abspath(os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots"))
 VIEW_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
 CONTROL_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "control.html"))
+SYSTEM_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "system.html"))
 RAW_PATH = os.path.join(SNAP_DIR, "raw.jpg")
 PROC_PATH = os.path.join(SNAP_DIR, "proc.jpg")
 
@@ -59,6 +69,16 @@ if not hasattr(app, "get"):
 
     app.get = _get  # type: ignore
     app.post = _post  # type: ignore
+
+# Rejestracja blueprintu system dashboardu (API: /api/services/graph)
+app.register_blueprint(services_dashboard_bp)
+
+
+@app.get("/system/")
+def system_dashboard_html():
+    """Główny widok System Dashboard pod krótką trasą /system/."""
+    return send_file(SYSTEM_HTML)
+
 
 # ── Start timestamp (używany w wielu endpointach) ─────────────────────────────
 START_TS = time.time()
@@ -213,7 +233,10 @@ def healthz():
     xgo_age = (now - xgo_ts) if xgo_ts else None
     xgo_on = xgo_age is not None and xgo_age <= 5.0
 
-    inferred_pose = LAST_XGO.get("pose") or _classify_pose(LAST_XGO.get("roll"), LAST_XGO.get("pitch"))
+    inferred_pose = LAST_XGO.get("pose") or _classify_pose(
+        LAST_XGO.get("roll"),
+        LAST_XGO.get("pitch"),
+    )
     fw = XGO_FW if XGO_FW != "Null" else None
 
     yaw = LAST_XGO.get("yaw")
@@ -289,8 +312,6 @@ def livez():
 
 
 # === Version / Bus health / Refined readyz ====================================
-
-
 def _git_info():
     """Spróbuj wyciągnąć commit/describe z gita (best-effort)."""
     try:
@@ -381,7 +402,6 @@ def readyz():
 
 
 # === Flags (zgodne z dawnym plikiem data/flags/*) =============================
-
 FLAGS_DIR = os.path.join(BASE_DIR, "data", "flags")
 os.makedirs(FLAGS_DIR, exist_ok=True)
 
@@ -680,7 +700,9 @@ def _api_control_proxy_impl():
                 payload = {"type": "drive", "lx": vx, "az": az, "dur": t}
             else:
                 print("[api] /api/control proxy(v2): UNKNOWN ACTION ->", d, flush=True)
-                return jsonify({"ok": False, "error": "unknown action (compat-proxy)"}), 400
+                return jsonify(
+                    {"ok": False, "error": "unknown action (compat-proxy)"},
+                ), 400
 
         if requests is None:
             return jsonify({"ok": False, "error": "requests module missing"}), 500
@@ -757,5 +779,13 @@ def draw_face_route():
         return resp, code
 
 
-app.add_url_rule("/api/draw/face", view_func=draw_face_route, methods=["POST", "OPTIONS"])
-app.add_url_rule("/draw/face", view_func=draw_face_route, methods=["POST", "OPTIONS"])
+app.add_url_rule(
+    "/api/draw/face",
+    view_func=draw_face_route,
+    methods=["POST", "OPTIONS"],
+)
+app.add_url_rule(
+    "/draw/face",
+    view_func=draw_face_route,
+    methods=["POST", "OPTIONS"],
+)

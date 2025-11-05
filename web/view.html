@@ -147,6 +147,7 @@
         <div class="kv">
           <div data-i18n="dash.links.events">zdarzenia (SSE)</div><div><a href="/events" target="_blank">/events</a></div>
           <div data-i18n="dash.links.metrics">metryki</div><div><a href="/metrics" target="_blank">/metrics</a></div>
+          <div>system dashboard</div><div><a href="/system/" target="_blank">/system/</a></div>
           <div data-i18n="dash.links.control">sterowanie</div><div><a href="/control">/control</a></div>
           <div data-i18n="dash.links.home">google.home</div><div><a href="/home">/home</a></div>
         </div>
@@ -515,6 +516,7 @@ async function tick(){
   try{ await busHeartbeatFallback(); }catch{}
   try{ lastState  = await (await fetch('/state',{cache:'no-store'})).json(); updateStateUI(lastState);}catch{}
   try{ applyDevices({state:lastState, health:lastHealth}); }catch{}
+
   try{ const si = await (await fetch('/sysinfo',{cache:'no-store'})).json(); applySysinfo(si);}catch{}
 
   try{ await refreshSnapInfo(); }catch{}

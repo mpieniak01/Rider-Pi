@@ -85,7 +85,7 @@ def vision_tracker() -> Response:
 
 @bp.route("/vision/snap-info", methods=["GET", "HEAD"])
 def snap_info() -> Response:
-    def info(p: str):
+    def info(p: str) -> dict[str, Any]:
         try:
             st = os.stat(p)
             with open(p, "rb") as f:
@@ -180,7 +180,11 @@ def set_tracking_mode() -> Response:
         # Validate mode before applying enabled override
         if mode not in ["face", "hand", "none"]:
             return _json_nocache(
-                {"ok": False, "error": f"Invalid mode: {mode}. Must be 'face', 'hand', or 'none'."}, 400
+                {
+                    "ok": False,
+                    "error": (f"Invalid mode: {mode}. Must be 'face', 'hand', or 'none'."),
+                },
+                400,
             )
 
         # If enabled=false, override mode to "none"
@@ -192,7 +196,72 @@ def set_tracking_mode() -> Response:
         pub.publish(bus.TOPIC_TRACKING_MODE_SET, {"mode": mode}, add_ts=True)
         pub.close()
 
-        return _json_nocache({"ok": True, "mode": mode, "enabled": (mode != "none")}, 200)
+        return _json_nocache(
+            {"ok": True, "mode": mode, "enabled": (mode != "none")},
+            200,
+        )
     except Exception as e:
         logger.exception("Failed to set tracking mode: %s", e)
-        return _json_nocache({"ok": False, "error": "Failed to set tracking mode"}, 500)
+        return _json_nocache(
+            {"ok": False, "error": "Failed to set tracking mode"},
+            500,
+        )
+
+
+# ---------- Legacy Follow Me aliases (backward compatibility) ----------
+
+
+@bp.route("/vision/follow/face", methods=["POST", "OPTIONS"])
+def legacy_follow_face() -> Response:
+    """Legacy endpoint: Follow Face → tracking mode 'face'."""
+    return _legacy_follow_mode("face")
+
+
+@bp.route("/vision/follow/hand", methods=["POST", "OPTIONS"])
+def legacy_follow_hand() -> Response:
+    """Legacy endpoint: Follow Hand → tracking mode 'hand'."""
+    return _legacy_follow_mode("hand")
+
+
+def _legacy_follow_mode(mode: str) -> Response:
+    """
+    Wspólna obsługa starych endpointów follow face/hand.
+
+    Dzięki podwójnej rejestracji blueprintu w api_server:
+    - /vision/follow/<mode>
+    - /api/vision/follow/<mode>
+    oba aliasy będą działać.
+    """
+    if request.method == "OPTIONS":
+        resp = make_response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+
+    try:
+        if mode not in {"face", "hand"}:
+            return _json_nocache(
+                {"ok": False, "error": f"Invalid legacy mode: {mode}"},
+                400,
+            )
+
+        pub = bus.BusPub()
+        pub.publish(bus.TOPIC_TRACKING_MODE_SET, {"mode": mode}, add_ts=True)
+        pub.close()
+
+        return _json_nocache(
+            {
+                "ok": True,
+                "mode": mode,
+                "enabled": True,
+                "source": "legacy",
+            },
+            200,
+        )
+    except Exception as e:
+        logger.exception("Failed to set legacy follow mode %s: %s", mode, e)
+        return _json_nocache(
+            {"ok": False, "error": "Failed to set legacy follow mode"},
+            500,
+        )
