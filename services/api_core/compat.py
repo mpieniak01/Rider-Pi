@@ -126,6 +126,18 @@ EVENTS = collections.deque(maxlen=200)
 
 ENABLE_XGO_RO = os.getenv("ENABLE_XGO_RO", "1") == "1"
 
+# ── Metryki API (app-level) ──────────────────────────────────────────────────
+# Liczniki OK/Error dla interaktywnych endpointów API (bez systemu/monitoringu)
+API_METRICS = {
+    "control": {"ok": 0, "error": 0},
+    "navigator": {"ok": 0, "error": 0},
+    "voice": {"ok": 0, "error": 0},
+    "google_home": {"ok": 0, "error": 0},
+    "chat": {"ok": 0, "error": 0},
+    "face": {"ok": 0, "error": 0},
+}
+TOTAL_ERRORS = 0
+
 
 # ── Pomocnicze: sanity i konwersje ────────────────────────────────────────────
 def _sanitize_fw(v):
