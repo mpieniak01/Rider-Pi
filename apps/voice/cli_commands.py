@@ -180,10 +180,10 @@ def cmd_tts(args) -> None:
         _silence_logging_for_stdout()
 
     config, _ = _configure(args)
-    audio, sample_rate, fmt = _synthesize_bytes(args.text, config["tts"])
+    audio, sample_rate, channels, fmt = _synthesize_bytes(args.text, config["tts"])
 
     if args.play:
-        play_bytes(audio, fmt, PlaybackConfig(**config["playback"]))
+        play_bytes(audio, fmt, PlaybackConfig(**config["playback"]), sample_rate=sample_rate, channels=channels)
     else:
         wav_bytes = _ensure_wav_bytes(audio, sample_rate, fmt)
         # Optional gain adjustment via VOICE_GAIN env
@@ -376,7 +376,7 @@ def _filter_for_dataclass(config_dict: dict[str, Any], dataclass_type) -> dict[s
     return filtered
 
 
-def _synthesize_bytes(text: str, tts_config: dict[str, Any]) -> tuple[bytes, int, str]:
+def _synthesize_bytes(text: str, tts_config: dict[str, Any]) -> tuple[bytes, int, int, str]:
     """Synthesize text to audio bytes."""
     return synthesize(text, TTSConfig(**_filter_for_dataclass(tts_config, TTSConfig)))
 

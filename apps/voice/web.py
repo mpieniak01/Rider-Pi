@@ -678,7 +678,7 @@ def api_tts():
             )
 
         # W przeciwnym razie – chmurowy synth
-        audio, sr, fmt = synthesize(text, TTSConfig(**cfg["tts"]))
+        audio, sr, channels, fmt = synthesize(text, TTSConfig(**cfg["tts"]))
         wav = _ensure_wav_bytes(audio, sr, fmt)
         if not wav or not _is_wav(wav):
             return jsonify({"status": "error", "error": "synthesis produced no WAV"}), 500
