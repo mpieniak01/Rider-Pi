@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wizualizator Nawigacji | Rider-Pi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Prosty styl dla Canvas, aby dobrze wyglądał w ciemnym motywie */
+        canvas {
+            background-color: #1f2937; /* bg-gray-800 */
+            border-radius: 0.5rem; /* rounded-lg */
+            border: 1px solid #4b5563; /* border-gray-600 */
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden; /* Zapobiega scrollowaniu strony */
+        }
+        /* Ustawienie layoutu flex, aby canvas zajmował całą dostępną przestrzeń */
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+        main {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        #canvas-container {
+            flex-grow: 1;
+            position: relative; /* Potrzebne do responsywnego canvas */
+            width: 100%;
+            height: calc(100% - 100px); /* Odejmij wysokość nagłówka i legendy */
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-right: 1rem;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            margin-right: 0.5rem;
+            border: 1px solid #9ca3af;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans">
+
+    <main>
+        <!-- Nagłówek i Status -->
+        <header class="flex justify-between items-center mb-4">
+            <h1 class="text-2xl font-bold">Wizualizator Nawigacji</h1>
+            <div class="flex items-center">
+                <div id="status-indicator" class="w-4 h-4 rounded-full bg-yellow-500 mr-2" title="Łączenie..."></div>
+                <span id="status-text">Łączenie...</span>
+            </div>
+        </header>
+
+        <!-- Legenda -->
+        <div class="flex flex-wrap mb-4">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #06b6d4;"></div>
+                <span>Robot</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #22c55e;"></div>
+                <span>Start</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #eab308;"></div>
+                <span>Cel (Target)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #3b82f6;"></div>
+                <span>Ścieżka (Plan)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ef4444;"></div>
+                <span>Przeszkoda</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #4b5563;"></div>
+                <span>Odwiedzone</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #1f2937; border: 1px solid #4b5563;"></div>
+                <span>Nieznane</span>
+            </div>
+        </div>
+
+        <!-- Kontener Canvas (dla responsywności) -->
+        <div id="canvas-container">
+            <canvas id="mapCanvas"></canvas>
+        </div>
+    </main>
+
+    <script>
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        const canvasContainer = document.getElementById('canvas-container');
+
+        // Globalny stan do przechowywania danych
+        let state = {
+            map: {
+                width: 50, // Domyślna szerokość
+                height: 50, // Domyślna wysokość
+                data: [], // Tutaj będą dane mapy (np. 0 = wolne, 1 = przeszkoda)
+                origin: { x: 25, y: 25 } // Środek mapy (punkt 0,0)
+            },
+            robot: { x: 25, y: 25, angle: 0 }, // Pozycja w koordynatach mapy
+            path: [], // Planowana ścieżka od nawigatora
+            traveledPath: [], // Przebita ścieżka (z odometrii)
+            start: null, // Punkt startowy
+            target: null // Punkt docelowy
+        };
+
+        let ws;
+
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:.' ? 'wss' : 'ws';
+            const wsUrl = `${wsProtocol}://${window.location.host}/ws/navigation`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('Połączono z WebSocket /ws/navigation');
+                statusIndicator.className = 'w-4 h-4 rounded-full bg-green-500 mr-2';
+                statusText.textContent = 'Połączono';
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    
+                    // Aktualizacja stanu na podstawie typu wiadomości
+                    switch (message.type) {
+                        case 'map':
+                            state.map = message.data;
+                            if (!state.start) {
+                                // Jeśli nie mamy startu, użyj środka mapy
+                                state.start = message.data.origin || { x: message.data.width / 2, y: message.data.height / 2 };
+                                state.robot = { ...state.start, angle: 0 };
+                                state.traveledPath.push(state.start);
+                            }
+                            break;
+                        case 'odometry':
+                            state.robot = message.data; // Oczekuje { x, y, angle }
+                            state.traveledPath.push({x: message.data.x, y: message.data.y});
+                            // Ograniczenie długości ścieżki
+                            if (state.traveledPath.length > 500) {
+                                state.traveledPath.shift();
+                            }
+                            break;
+                        case 'path':
+                            state.path = message.data.path || [];
+                            state.target = message.data.target || null;
+                            break;
+                    }
+                    
+                    // Przeskaluj i przerysuj mapę
+                    resizeAndDraw();
+
+                } catch (e) {
+                    console.error('Błąd przetwarzania wiadomości:', e, event.data);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('Rozłączono z WebSocket. Próba ponownego połączenia...');
+                statusIndicator.className = 'w-4 h-4 rounded-full bg-red-500 mr-2';
+                statusText.textContent = 'Rozłączono';
+                setTimeout(connectWebSocket, 3000); // Spróbuj połączyć ponownie po 3 sekundach
+            };
+
+            ws.onerror = (error) => {
+                console.error('Błąd WebSocket:', error);
+                statusIndicator.className = 'w-4 h-4 rounded-full bg-red-500 mr-2';
+                statusText.textContent = 'Błąd';
+                ws.close();
+            };
+        }
+
+        // Funkcja do rysowania
+        function drawMap() {
+            if (!state.map.data || state.map.data.length === 0) {
+                return; // Nie rysuj, jeśli nie ma mapy
+            }
+
+            const mapWidth = state.map.width;
+            const mapHeight = state.map.height;
+
+            // Ustawienie rozdzielczości canvas na rozmiar kontenera
+            canvas.width = canvasContainer.clientWidth;
+            canvas.height = canvasContainer.clientHeight;
+
+            // Obliczanie rozmiaru komórki, aby mapa pasowała idealnie
+            const cellWidth = canvas.width / mapWidth;
+            const cellHeight = canvas.height / mapHeight;
+            const cellSize = Math.min(cellWidth, cellHeight); // Użyj mniejszego wymiaru, aby zachować proporcje
+
+            // Centrowanie mapy na canvas
+            const offsetX = (canvas.width - mapWidth * cellSize) / 2;
+            const offsetY = (canvas.height - mapHeight * cellSize) / 2;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+
+            // 1. Rysowanie Mapy (Przeszkody i Odwiedzone)
+            for (let y = 0; y < mapHeight; y++) {
+                for (let x = 0; x < mapWidth; x++) {
+                    const cellValue = state.map.data[y * mapWidth + x];
+                    
+                    if (cellValue === 1) { // Przeszkoda
+                        ctx.fillStyle = '#ef4444'; // Czerwony
+                    } else if (cellValue === 2) { // Odwiedzone
+                        ctx.fillStyle = '#4b5563'; // Ciemnoszary
+                    } else if (cellValue === 0) { // Wolne (ale znane)
+                        ctx.fillStyle = '#374151'; // Szary-800
+                    } else { // Nieznane (-1)
+                         ctx.fillStyle = '#1f2937'; // Szary-900 (tło)
+                    }
+
+                    if (cellValue !== -1) { // Rysuj tylko znane komórki
+                        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    }
+                }
+            }
+
+            // Funkcja pomocnicza do transformacji koordynatów mapy na canvas
+            const mapToCanvas = (coord) => {
+                return {
+                    x: coord.x * cellSize + cellSize / 2,
+                    y: coord.y * cellSize + cellSize / 2
+                };
+            };
+
+            // 2. Rysowanie przebytej ścieżki (Odometria)
+            if (state.traveledPath.length > 1) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#6b7280'; // Szary (ciemniejszy niż ścieżka planowana)
+                ctx.lineWidth = 1;
+                
+                let firstPoint = mapToCanvas(state.traveledPath[0]);
+                ctx.moveTo(firstPoint.x, firstPoint.y);
+                
+                for (let i = 1; i < state.traveledPath.length; i++) {
+                    let point = mapToCanvas(state.traveledPath[i]);
+                    ctx.lineTo(point.x, point.y);
+                }
+                ctx.stroke();
+            }
+
+            // 3. Rysowanie Planowanej Ścieżki (Nawigator)
+            if (state.path.length > 0) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#3b82f6'; // Niebieski
+                ctx.lineWidth = 2;
+                
+                let firstPoint = mapToCanvas(state.path[0]);
+                ctx.moveTo(firstPoint.x, firstPoint.y);
+                
+                for (let i = 1; i < state.path.length; i++) {
+                    let point = mapToCanvas(state.path[i]);
+                    ctx.lineTo(point.x, point.y);
+                }
+                ctx.stroke();
+            }
+
+            // 4. Rysowanie Punktu Startowego
+            if (state.start) {
+                let startPos = mapToCanvas(state.start);
+                ctx.fillStyle = '#22c55e'; // Zielony
+                ctx.beginPath();
+                ctx.arc(startPos.x, startPos.y, cellSize * 0.7, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+
+            // 5. Rysowanie Celu
+            if (state.target) {
+                let targetPos = mapToCanvas(state.target);
+                ctx.fillStyle = '#eab308'; // Żółty
+                // Rysuj gwiazdkę dla celu
+                drawStar(targetPos.x, targetPos.y, 5, cellSize * 0.8, cellSize * 0.4);
+            }
+
+            // 6. Rysowanie Robota
+            let robotPos = mapToCanvas(state.robot);
+            ctx.save();
+            ctx.translate(robotPos.x, robotPos.y);
+            ctx.rotate(state.robot.angle); // Obrót robota
+
+            // Ciało robota (kółko)
+            ctx.fillStyle = '#06b6d4'; // Cyan
+            ctx.beginPath();
+            ctx.arc(0, 0, cellSize * 0.6, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // "Przód" robota (linia)
+            ctx.strokeStyle = '#ffffff'; // Biały
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(cellSize * 0.6, 0);
+            ctx.stroke();
+
+            ctx.restore(); // Przywróć transformację
+
+            ctx.restore(); // Przywróć przesunięcie (offsetX, offsetY)
+        }
+
+        function drawStar(cx, cy, spikes, outerRadius, innerRadius) {
+            let rot = Math.PI / 2 * 3;
+            let x = cx;
+            let y = cy;
+            let step = Math.PI / spikes;
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - outerRadius);
+            for (let i = 0; i < spikes; i++) {
+                x = cx + Math.cos(rot) * outerRadius;
+                y = cy + Math.sin(rot) * outerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+
+                x = cx + Math.cos(rot) * innerRadius;
+                y = cy + Math.sin(rot) * innerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+            }
+            ctx.lineTo(cx, cy - outerRadius);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+
+        // Obsługa zmiany rozmiaru okna
+        const resizeAndDraw = () => {
+            drawMap();
+        };
+
+        window.addEventListener('resize', resizeAndDraw);
+
+        // Inicjalizacja
+        connectWebSocket();
+        resizeAndDraw(); // Pierwsze rysowanie
+
+    </script>
+</body>
+</html>
