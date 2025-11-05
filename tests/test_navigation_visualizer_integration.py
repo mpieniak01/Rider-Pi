@@ -6,6 +6,7 @@ This test verifies that the navigation visualizer module is loaded
 conditionally based on the RIDER_NAV_VISUALIZER_ENABLED environment variable.
 """
 
+import importlib
 import os
 import unittest
 from unittest.mock import MagicMock, patch
@@ -70,7 +71,6 @@ class TestNavigationVisualizerIntegration(unittest.TestCase):
             # Simulate the conditional loading logic
             if os.getenv("RIDER_NAV_VISUALIZER_ENABLED", "false").lower() == "true":
                 mock_logger.info("[api] Loading optional module: Navigation Visualizer")
-                import importlib
 
                 nav_bridge_module = importlib.import_module("services.navigation_websocket_bridge")
                 register_websocket_endpoint = getattr(nav_bridge_module, "register_websocket_endpoint")
