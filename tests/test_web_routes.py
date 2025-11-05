@@ -78,6 +78,18 @@ def test_chat_route():
     assert "text/html" in r.headers.get("Content-Type", "").lower()
 
 
+def test_navigation_page_no_redirect():
+    """Test that /navigation returns 200 without redirect (no 3xx)."""
+    _requires_api()
+    c = api.app.test_client()
+
+    r = c.get("/navigation")
+    assert r.status_code == 200, f"Expected 200 for /navigation, got {r.status_code}"
+    assert "text/html" in r.headers.get("Content-Type", "").lower()
+    # Verify it's the navigation HTML page
+    assert b"Wizualizator Nawigacji" in r.data or b"navigation" in r.data.lower()
+
+
 def test_camera_last_with_query_params():
     """Test that /camera/last?t=0 does not redirect (3xx)."""
     _requires_api()

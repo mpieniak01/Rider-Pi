@@ -529,9 +529,23 @@ def serve_chat():
     return _no_cache(resp)
 
 
+def serve_navigation():
+    """Krótka trasa /navigation → web/navigation.html"""
+    nav_path = os.path.join(STATIC_WEB_DIR, "navigation.html")
+    if not os.path.isfile(nav_path):
+        abort(404)
+    # czytaj surowo, ustaw content-type i anti-cache
+    with open(nav_path, "rb") as f:
+        data = f.read()
+    resp = make_response(data, 200)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    return _no_cache(resp)
+
+
 _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"], strict_slashes=False)
 _add_rule("/home", view_func=serve_home, methods=["GET"], strict_slashes=False)
 _add_rule("/chat", view_func=serve_chat, methods=["GET"], strict_slashes=False)  # no-redirect, no send_file
+_add_rule("/navigation", view_func=serve_navigation, methods=["GET"], strict_slashes=False)
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/view", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/control", view_func=dashboard.control_page, methods=["GET"], strict_slashes=False)
@@ -714,6 +728,15 @@ except Exception as e:
     app.logger.exception("[api] failed to register services_dashboard blueprint: %s", e)
 
 _register_chat_endpoints()
+
+# Register navigation WebSocket endpoint
+try:
+    from services.navigation_websocket_bridge import register_websocket_endpoint
+
+    register_websocket_endpoint(app)
+    app.logger.info("[api] navigation WebSocket endpoint registered: /ws/navigation")
+except Exception as e:
+    app.logger.exception("[api] failed to register navigation WebSocket endpoint: %s", e)
 
 
 def main():
