@@ -279,7 +279,7 @@ def _decode_json_audio(b: bytes):
     """
     Jeśli b wygląda na JSON → spróbuj wyciągnąć bajty audio.
     Obsługiwane pola: 'audio', 'data', 'bytes', 'b64', 'audio_b64'.
-    Zwraca (audio_bytes, sr|None, fmt|None) lub None jeśli nie JSON.
+    Zwraca (audio_bytes, sr|None, ch|None, fmt|None) lub None jeśli nie JSON.
     """
     try:
         txt = b.decode("utf-8", errors="ignore").strip()
@@ -313,8 +313,9 @@ def _decode_json_audio(b: bytes):
         else:
             return None
         sr = obj.get("sr") or obj.get("sample_rate")
+        ch = obj.get("ch") or obj.get("channels")
         fmt = obj.get("fmt") or obj.get("format")
-        return raw, sr, fmt
+        return raw, sr, ch, fmt
     except Exception:
         return None
 
@@ -360,9 +361,11 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
     # 0) JSON?
     m = _decode_json_audio(audio)
     if m:
-        audio, sr_json, fmt_json = m
+        audio, sr_json, ch_json, fmt_json = m
         if sr_json:
             sample_rate = int(sr_json)
+        if ch_json:
+            target_ch = int(ch_json)
         if fmt_json:
             pass
 
@@ -391,8 +394,13 @@ def _synthesize_bytes(text: str, tts_cfg: dict[str, Any]) -> tuple[bytes, int, i
     audio, sample_rate, channels, fmt = synthesize(text, TTSConfig(**_filter_for_dataclass(tts_cfg, TTSConfig)))
     maybe = _decode_json_audio(audio)
     if maybe:
-        raw, sr_json, fmt_json = maybe
-        return raw, int(sr_json) if sr_json else sample_rate, channels, fmt_json or fmt
+        raw, sr_json, ch_json, fmt_json = maybe
+        return (
+            raw,
+            int(sr_json) if sr_json else sample_rate,
+            int(ch_json) if ch_json else channels,
+            fmt_json or fmt,
+        )
     return audio, sample_rate, channels, fmt
 
 

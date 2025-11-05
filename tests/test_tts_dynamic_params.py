@@ -1,8 +1,6 @@
 """Unit tests for dynamic audio parameters in TTS playback."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from apps.voice.audio.playback import PlaybackConfig, _iter_aplay_commands
 
@@ -85,6 +83,5 @@ class TestDynamicAudioParams:
         assert "/usr/bin/aplay" in cmd[0]
         assert "-q" in cmd
         # When no params provided, we use a minimal command
-        # The command should be: [aplay, -q, -D, device] = 4 elements, so less than 10
-        MAX_MINIMAL_CMD_LENGTH = 10
-        assert len(cmd) < MAX_MINIMAL_CMD_LENGTH
+        # The command should be: [aplay, -q, -D, device] = 4 elements
+        assert len(cmd) == 4
