@@ -136,7 +136,8 @@ API_METRICS = {
     "chat": {"ok": 0, "error": 0},
     "face": {"ok": 0, "error": 0},
 }
-TOTAL_ERRORS = 0
+# Używamy słownika dla mutability w kontekście modułu
+API_METRICS_TOTAL = {"errors": 0}
 
 
 # ── Pomocnicze: sanity i konwersje ────────────────────────────────────────────

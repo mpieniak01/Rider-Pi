@@ -25,6 +25,67 @@ The API server runs on port **8080** and provides REST endpoints for controlling
 ### Health and Status
 - `GET /healthz` - System health check
 - `GET /api/status` - Detailed system status
+- `GET /api/app-metrics` - Application metrics (OK/Error counts for interactive APIs)
+
+## Application Metrics
+
+### GET /api/app-metrics
+
+Returns metrics for interactive API endpoints, tracking successful (OK) and failed (Error) requests.
+
+**No authentication required.**
+
+**Request:**
+```bash
+GET /api/app-metrics
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "metrics": {
+    "control": {
+      "ok": 42,
+      "error": 3
+    },
+    "navigator": {
+      "ok": 15,
+      "error": 0
+    },
+    "voice": {
+      "ok": 28,
+      "error": 2
+    },
+    "google_home": {
+      "ok": 10,
+      "error": 1
+    },
+    "chat": {
+      "ok": 5,
+      "error": 0
+    },
+    "face": {
+      "ok": 12,
+      "error": 0
+    }
+  },
+  "total_errors": 6
+}
+```
+
+**Monitored API Groups:**
+
+- **Control:** `/api/control`, `/api/cmd`, `/api/control/balance`, `/api/control/height`
+- **Navigator:** `/api/navigator/start`, `/api/navigator/stop`, `/api/navigator/config`, `/api/navigator/return_home`
+- **Voice:** `/api/voice/capture`, `/api/voice/say`, `/api/voice/tts`, `/api/voice/asr`
+- **GoogleHome:** `/api/home/command`
+- **Chat:** `/api/chat/send`
+- **Face:** `/face/render`, `/face/play`, `/face/stop`, `/api/draw/face`
+
+**Note:** System endpoints (health checks, status queries, camera streams, etc.) are **not** counted in these metrics. Only user-initiated interactive actions are tracked.
+
+**Displayed on:** Main dashboard at `/view` in the "API Metrics" card.
 
 ## Common Patterns
 

@@ -127,7 +127,7 @@ def _update_api_metrics(path: str, status_code: int) -> None:
         compat.API_METRICS[group]["ok"] += 1
     else:
         compat.API_METRICS[group]["error"] += 1
-        compat.TOTAL_ERRORS += 1
+        compat.API_METRICS_TOTAL["errors"] += 1
 
 
 # ── CORS global + metryki ────────────────────────────────────────────────────
@@ -475,7 +475,7 @@ def app_metrics():
     # Zwracamy kopię, aby uniknąć race condition przy odczycie
     metrics_snapshot = {group: dict(counts) for group, counts in compat.API_METRICS.items()}
 
-    return jsonify({"ok": True, "metrics": metrics_snapshot, "total_errors": compat.TOTAL_ERRORS}), 200
+    return jsonify({"ok": True, "metrics": metrics_snapshot, "total_errors": compat.API_METRICS_TOTAL["errors"]}), 200
 
 
 # ── Static / dashboard ───────────────────────────────────────────────────────
