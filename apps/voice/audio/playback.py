@@ -227,7 +227,8 @@ def _iter_aplay_commands(
                 ]
                 commands.append(base + params_dynamic)
             else:
-                # Fallback: brak info, niech aplay próbuje czytać header (ryzykowne)
+                # Fallback: brak info, niech aplay próbuje czytać header
+                # UWAGA: Czytanie headera ze strumienia może być zawodne
                 commands.append(base[:])
         else:
             # Inne formaty (np. mp3) lub stary fallback

@@ -85,5 +85,6 @@ class TestDynamicAudioParams:
         assert "/usr/bin/aplay" in cmd[0]
         assert "-q" in cmd
         # When no params provided, we use a minimal command
-        # The command should be shorter than with explicit params
-        assert len(cmd) < 10  # base + device should be less than 10 elements
+        # The command should be: [aplay, -q, -D, device] = 4 elements, so less than 10
+        MAX_MINIMAL_CMD_LENGTH = 10
+        assert len(cmd) < MAX_MINIMAL_CMD_LENGTH
