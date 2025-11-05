@@ -50,12 +50,98 @@ from services.api_core.face_api import render_face as face_render_shim
 from services.api_core.google_home_api import build_auth_url_preview
 
 
-# ── CORS global ──────────────────────────────────────────────────────────────
+# ── Metryki API helper ───────────────────────────────────────────────────────
+def _update_api_metrics(path: str, status_code: int) -> None:
+    """
+    Zlicza wywołania API dla interaktywnych endpointów.
+    Ignoruje endpointy systemowe, statusy, strumienie i monitoring.
+    """
+    # Pomijamy endpointy systemowe i monitorujące
+    ignore_prefixes = (
+        "/healthz",
+        "/health",
+        "/livez",
+        "/readyz",
+        "/state",
+        "/sysinfo",
+        "/metrics",
+        "/events",
+        "/camera/",
+        "/snapshots/",
+        "/vision/",
+        "/api/status",
+        "/api/devices",
+        "/api/last_frame",
+        "/api/metrics",
+        "/api/app-metrics",  # sam siebie też ignorujemy
+        "/api/bus/health",
+        "/api/flags",
+        "/api/version",
+        "/api/navigator/status",  # status do odczytu
+        "/web/",
+        "/",
+        "/view",
+        "/control",
+        "/home",
+        "/chat",
+        "/system/",
+        "/svc",
+    )
+
+    if path.startswith(ignore_prefixes):
+        return
+
+    # Określamy grupę API na podstawie ścieżki
+    group = None
+    if path.startswith(("/api/control", "/api/cmd")):
+        group = "control"
+    elif path.startswith("/api/navigator/"):
+        # tylko interaktywne akcje (start/stop/config/return_home)
+        if any(
+            path.startswith(p)
+            for p in [
+                "/api/navigator/start",
+                "/api/navigator/stop",
+                "/api/navigator/config",
+                "/api/navigator/return_home",
+            ]
+        ):
+            group = "navigator"
+    elif path.startswith("/api/voice/"):
+        group = "voice"
+    elif path.startswith("/api/home/"):
+        # tylko command jest interaktywny
+        if path.startswith("/api/home/command"):
+            group = "google_home"
+    elif path.startswith("/api/chat/send"):
+        group = "chat"
+    elif path.startswith(("/face/render", "/face/play", "/face/stop", "/api/draw/face")):
+        group = "face"
+
+    if group is None:
+        return
+
+    # Zliczamy (thread-safe)
+    is_ok = status_code < 400
+    with compat.API_METRICS_LOCK:
+        if is_ok:
+            compat.API_METRICS[group]["ok"] += 1
+        else:
+            compat.API_METRICS[group]["error"] += 1
+            compat.API_METRICS_TOTAL["errors"] += 1
+
+
+# ── CORS global + metryki ────────────────────────────────────────────────────
 @app.after_request
 def _cors_all(resp: Response) -> Response:
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS,HEAD"
+
+    # Zliczanie metryk dla interaktywnych endpointów (pomijamy system/monitorowanie)
+    if compat:
+        _update_api_metrics(request.path, resp.status_code)
+
     return resp
 
 
@@ -375,6 +461,30 @@ def _bus_health():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     return _corsify(jsonify({"ok": True})), 200
+
+
+# ── API Metrics ──────────────────────────────────────────────────────────────
+@app.route("/api/app-metrics", methods=["GET"])
+def app_metrics():
+    """
+    Endpoint zwracający metryki aplikacyjne (OK/Error) dla interaktywnych API.
+    Nie wymaga autentykacji, nie jest sam zliczany w metrykach.
+    """
+    if not compat:
+        return jsonify({"ok": True, "metrics": {}, "total_errors": 0}), 200
+
+    # Zwracamy kopię, aby uniknąć race condition przy odczycie (thread-safe)
+    with compat.API_METRICS_LOCK:
+        metrics_snapshot = {group: dict(counts) for group, counts in compat.API_METRICS.items()}
+        total_errors = compat.API_METRICS_TOTAL["errors"]
+
+    return jsonify(
+        {
+            "ok": True,
+            "metrics": metrics_snapshot,
+            "total_errors": total_errors,
+        }
+    ), 200
 
 
 # ── Static / dashboard ───────────────────────────────────────────────────────

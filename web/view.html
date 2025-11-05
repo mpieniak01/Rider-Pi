@@ -194,13 +194,17 @@
     </div>
 
     <div class="card">
-      <h3>Tracking Info</h3>
+      <h3>API Metrics</h3>
       <div class="kv">
-        <div>mode</div><div id="track_mode" class="muted">—</div>
-        <div>offset_x</div><div id="track_offset" class="muted">—</div>
-        <div>tracker.age</div><div id="age_tracker" class="muted">—</div>
+        <div>Control</div><div id="metric_control">—</div>
+        <div>Navigator</div><div id="metric_navigator">—</div>
+        <div>Voice</div><div id="metric_voice">—</div>
+        <div>GoogleHome</div><div id="metric_google_home">—</div>
+        <div>Chat</div><div id="metric_chat">—</div>
+        <div>Face</div><div id="metric_face">—</div>
+        <div style="font-weight:bold;margin-top:4px">Total Errors</div><div id="metric_total_errors" class="bad" style="font-weight:bold;margin-top:4px">—</div>
       </div>
-      <div class="hint" style="margin-top:6px;opacity:.7">Follow Me tracking status</div>
+      <div class="hint" style="margin-top:6px;opacity:.7">Interactive API call metrics (OK / Error)</div>
     </div>
 
     <div class="card" style="grid-column: span 2">
@@ -510,6 +514,31 @@ function applySysinfo(si){
   drawChart(si.hist_cpu || [], si.hist_mem || []);
 }
 
+/* ===== API Metrics ===== */
+async function refreshApiMetrics(){
+  try{
+    const r = await fetch('/api/app-metrics', {cache:'no-store'});
+    if(!r.ok) return;
+    const j = await r.json().catch(()=>null);
+    if(!j || !j.metrics) return;
+    
+    const m = j.metrics;
+    
+    // Format: "OK / Error"
+    setTxt('metric_control', `${m.control?.ok ?? 0} / ${m.control?.error ?? 0}`);
+    setTxt('metric_navigator', `${m.navigator?.ok ?? 0} / ${m.navigator?.error ?? 0}`);
+    setTxt('metric_voice', `${m.voice?.ok ?? 0} / ${m.voice?.error ?? 0}`);
+    setTxt('metric_google_home', `${m.google_home?.ok ?? 0} / ${m.google_home?.error ?? 0}`);
+    setTxt('metric_chat', `${m.chat?.ok ?? 0} / ${m.chat?.error ?? 0}`);
+    setTxt('metric_face', `${m.face?.ok ?? 0} / ${m.face?.error ?? 0}`);
+    
+    // Total Errors - highlighted
+    const totalErr = j.total_errors ?? 0;
+    setTxt('metric_total_errors', totalErr);
+    setCls('metric_total_errors', totalErr > 0 ? 'bad' : 'ok');
+  }catch{}
+}
+
 /* ===== Poll ===== */
 async function tick(){
   try{ lastHealth = await (await fetch('/healthz',{cache:'no-store'})).json(); updateHealth(lastHealth);}catch{}
@@ -528,6 +557,7 @@ function startSSE(){ try{ const es=new EventSource('/events'); es.onmessage=()=>
 
 setInterval(tick, REFRESH_MS); tick();
 setInterval(fetchObstacle, REFRESH_MS); fetchObstacle();
+setInterval(refreshApiMetrics, REFRESH_MS); refreshApiMetrics();
 startSSE();
 </script>
 </body>

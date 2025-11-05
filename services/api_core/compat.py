@@ -126,6 +126,23 @@ EVENTS = collections.deque(maxlen=200)
 
 ENABLE_XGO_RO = os.getenv("ENABLE_XGO_RO", "1") == "1"
 
+# ── Metryki API (app-level) ──────────────────────────────────────────────────
+# Liczniki OK/Error dla interaktywnych endpointów API (bez systemu/monitoringu)
+API_METRICS = {
+    "control": {"ok": 0, "error": 0},
+    "navigator": {"ok": 0, "error": 0},
+    "voice": {"ok": 0, "error": 0},
+    "google_home": {"ok": 0, "error": 0},
+    "chat": {"ok": 0, "error": 0},
+    "face": {"ok": 0, "error": 0},
+}
+# Używamy słownika dla mutability w kontekście modułu
+API_METRICS_TOTAL = {"errors": 0}
+# Global lock for thread-safe mutation of API_METRICS and API_METRICS_TOTAL
+API_METRICS_LOCK = threading.Lock()
+
+# All mutations to API_METRICS and API_METRICS_TOTAL must be protected by API_METRICS_LOCK.
+
 
 # ── Pomocnicze: sanity i konwersje ────────────────────────────────────────────
 def _sanitize_fw(v):
