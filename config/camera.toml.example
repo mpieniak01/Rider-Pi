@@ -9,6 +9,14 @@
 # Snapshot directory for camera images
 snap_dir = "/home/pi/robot/snapshots"
 
+# Snapshot file paths (used by API server)
+raw_path = "/home/pi/robot/snapshots/raw.jpg"
+proc_path = "/home/pi/robot/snapshots/proc.jpg"
+ssd_path = "/home/pi/robot/snapshots/ssd.jpg"
+
+# Source for camera preview (mjpeg, picamera2, v4l2)
+source = "mjpeg"
+
 # Preview rotation angle (0, 90, 180, 270)
 preview_rot = 270
 

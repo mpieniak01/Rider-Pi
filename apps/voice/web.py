@@ -1,7 +1,6 @@
 # apps/voice/web.py
 from __future__ import annotations
 
-import argparse
 import audioop
 import base64
 import io
@@ -922,16 +921,31 @@ def api_chat_local():
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Uruchamianie modułem: python -m apps.voice.web --bind 0.0.0.0:8092
+# Uruchamianie modułem: python -m apps.voice.web
 # ───────────────────────────────────────────────────────────────────────────────
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--bind", default="127.0.0.1:8092", help="host:port")
-    args = parser.parse_args()
-    host, port = args.bind.split(":")
-    app.run(host=host, port=int(port))
+    # Load bind address from config
+    try:
+        from . import config as voice_config
+
+        cfg_dict = voice_config.load("voice_web.toml")
+        bind_addr = cfg_dict.get("server", {}).get("bind", "127.0.0.1:8092")
+    except Exception:
+        # Fallback to default
+        bind_addr = "127.0.0.1:8092"
+
+    # Parse host:port
+    try:
+        host, port = bind_addr.split(":")
+        port = int(port)
+    except Exception:
+        _log_error("web.main.invalid_bind", bind=bind_addr)
+        host, port = "127.0.0.1", 8092
+
+    _log_info("web.main.starting", host=host, port=port)
+    app.run(host=host, port=port)
 
 
 if __name__ == "__main__":

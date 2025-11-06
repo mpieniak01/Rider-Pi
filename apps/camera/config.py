@@ -74,6 +74,10 @@ class CameraConfig:
     """Camera module configuration."""
 
     snap_dir: str = "/home/pi/robot/snapshots"
+    raw_path: str = "/home/pi/robot/snapshots/raw.jpg"
+    proc_path: str = "/home/pi/robot/snapshots/proc.jpg"
+    ssd_path: str = "/home/pi/robot/snapshots/ssd.jpg"
+    source: str = "mjpeg"
     preview_rot: int = 270
     preview_flip_h: bool = False
     preview_flip_v: bool = False
@@ -115,6 +119,22 @@ def load_config(path: str | Path | None = None) -> CameraConfig:
     snap_dir_env = os.getenv("SNAP_DIR")
     if snap_dir_env:
         cfg.snap_dir = snap_dir_env
+
+    raw_path_env = os.getenv("RAW_PATH")
+    if raw_path_env:
+        cfg.raw_path = raw_path_env
+
+    proc_path_env = os.getenv("PROC_PATH")
+    if proc_path_env:
+        cfg.proc_path = proc_path_env
+
+    ssd_path_env = os.getenv("SSD_PATH")
+    if ssd_path_env:
+        cfg.ssd_path = ssd_path_env
+
+    source_env = os.getenv("CAMERA_SOURCE")
+    if source_env:
+        cfg.source = source_env
 
     preview_rot_env = os.getenv("PREVIEW_ROT")
     if preview_rot_env:

@@ -70,6 +70,13 @@ def _read_toml(path: Path) -> dict[str, Any]:
 
 
 @dataclass
+class MotionBridgeConfig:
+    """Motion bridge configuration."""
+
+    serial_port: str = "/dev/ttyAMA0"
+
+
+@dataclass
 class TrackingConfig:
     """Tracking controller configuration."""
 
@@ -145,5 +152,42 @@ def load_config(path: str | Path | None = None) -> TrackingConfig:
     log_level_env = os.getenv("TRACKING_LOG_LEVEL")
     if log_level_env:
         cfg.log_level = log_level_env
+
+    return cfg
+
+
+def load_motion_bridge_config(path: str | Path | None = None) -> MotionBridgeConfig:
+    """Load motion bridge configuration from TOML file with ENV overrides.
+
+    Args:
+        path: Optional path to config file. If None, uses discovery.
+
+    Returns:
+        MotionBridgeConfig object with loaded configuration.
+    """
+    if path is None:
+        path = _discover_path()
+    else:
+        path = Path(path)
+
+    data = _read_toml(path)
+    section_data = data.get("motion_bridge", {})
+    if not isinstance(section_data, dict):
+        section_data = {}
+
+    cfg = MotionBridgeConfig()
+
+    # Load from TOML
+    for key, value in section_data.items():
+        if hasattr(cfg, key):
+            try:
+                setattr(cfg, key, value)
+            except Exception:
+                pass
+
+    # Apply ENV overrides (ENV > TOML > defaults)
+    serial_port_env = os.getenv("XGO_PORT")
+    if serial_port_env:
+        cfg.serial_port = serial_port_env
 
     return cfg

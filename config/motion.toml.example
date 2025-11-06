@@ -3,6 +3,13 @@
 # Copy to config/local/motion.toml and customize as needed
 
 # -----------------------------------------------------------------------------
+# Motion Bridge Configuration (rider-motion-bridge.service)
+# -----------------------------------------------------------------------------
+[motion_bridge]
+# Serial port for XGO communication
+serial_port = "/dev/ttyAMA0"
+
+# -----------------------------------------------------------------------------
 # Tracking Controller Configuration (rider-tracking-controller.service)
 # -----------------------------------------------------------------------------
 [tracking]
