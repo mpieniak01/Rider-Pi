@@ -22,12 +22,6 @@ Environment=LANG=C.UTF-8
 Environment=SAFE_MAX_DURATION=0.25
 Environment=WEB_BRIDGE_TIMEOUT=0.8
 
-# === ŚCIEŻKI SNAPSHOTÓW (spójne z services/api_core/compat.py) ===
-Environment=SNAP_DIR=/home/pi/robot/snapshots
-Environment=RAW_PATH=/home/pi/robot/snapshots/raw.jpg
-Environment=PROC_PATH=/home/pi/robot/snapshots/proc.jpg
-Environment=SSD_PATH=/home/pi/robot/snapshots/ssd.jpg
-
 # Sekrety (GOOGLE_*) wyłącznie w ~/.bash_profile
 # Świadomie bez EnvironmentFile.
 

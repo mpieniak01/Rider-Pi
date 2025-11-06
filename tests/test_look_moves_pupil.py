@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 from typing import Optional
 
@@ -9,7 +11,7 @@ from apps.ui.face.controller import FaceController
 
 def _pupil_centers(
     img: Image.Image,
-) -> tuple[Optional[tuple[float, float]], Optional[tuple[float, float]]]:
+) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
     w, h = img.size
     px = img.load()
     cx, cy = w // 2, h // 2
@@ -17,7 +19,7 @@ def _pupil_centers(
     eye_w = int(min(w, h) * 0.28)
     eye_h = int(min(w, h) * 0.12)
 
-    def scan_rect(x0, y0, x1, y1) -> Optional[tuple[float, float]]:
+    def scan_rect(x0, y0, x1, y1) -> tuple[float, float] | None:
         xs, ys, n = 0, 0, 0
         for yy in range(max(y0, 0), min(y1, h)):
             for xx in range(max(x0, 0), min(x1, w)):

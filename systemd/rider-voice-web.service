@@ -38,7 +38,7 @@ Environment=LOG_LEVEL=DEBUG
 # Bezpośrednio wskazujemy na poprawną binarkę 'piper' zainstalowaną przez --user
 ExecStartPre=/home/pi/.local/bin/piper -h
 ExecStartPre=/usr/bin/env bash -lc '[ -f "$PIPER_MODEL" ] && [ -f "$PIPER_CONFIG" ] || { echo "Brak modelu/konfigu PIPER"; exit 1; }'
-ExecStart=/usr/bin/python3 -m apps.voice.web --bind 0.0.0.0:8092
+ExecStart=/usr/bin/python3 -m apps.voice.web
 
 Restart=on-failure
 RestartSec=3

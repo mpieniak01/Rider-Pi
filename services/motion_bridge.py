@@ -37,13 +37,22 @@ from typing import Any  # noqa: E402
 
 import zmq  # type: ignore  # noqa: E402
 
+# --- Load motion bridge configuration ---
+try:
+    from apps.motion.config import load_motion_bridge_config
+
+    _motion_cfg = load_motion_bridge_config()
+    XGO_PORT = _motion_cfg.serial_port
+except (ImportError, ModuleNotFoundError):
+    # Fallback to ENV if config module unavailable
+    XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
+
 # --- ENV / parametry ---
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
 DRY_RUN = os.getenv("DRY_RUN", "1") == "1"
 BRIDGE_READONLY = os.getenv("BRIDGE_READONLY", "1") == "1"
 XGO_LAZY_OPEN = os.getenv("XGO_LAZY_OPEN", "1") == "1"
-XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
 BRIDGE_RATE_HZ = max(0.1, min(20.0, float(os.getenv("BRIDGE_RATE_HZ", "2"))))
 
 SPEED_LINEAR = float(os.getenv("SPEED_LINEAR", "12"))

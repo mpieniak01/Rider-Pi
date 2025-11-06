@@ -28,17 +28,31 @@ SCRIPTS_DIR = os.path.join(DIR, "scripts")
 if os.path.isdir(SCRIPTS_DIR) and SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
+# Load splash configuration from face config
+try:
+    from apps.ui.face.config import load_config as load_face_config
+
+    _face_cfg = load_face_config()
+    _SPLASH_LOGO_DEFAULT = _face_cfg.vendor_splash_logo_path
+    _SPLASH_ROTATE_DEFAULT = _face_cfg.splash_lcd_rotate
+except (ImportError, ModuleNotFoundError):
+    # Fallback to hardcoded defaults if config unavailable
+    _SPLASH_LOGO_DEFAULT = os.path.join(DATA_DIR, "splash_logo.png")
+    _SPLASH_ROTATE_DEFAULT = 270
+
 OUT_IMG = os.path.join(DATA_DIR, "splash_device_info.png")
 WIDTH = int(os.getenv("SPLASH_W", "480"))
 HEIGHT = int(os.getenv("SPLASH_H", "320"))
-ROTATE = int(os.getenv("SPLASH_ROTATE", os.getenv("PREVIEW_ROT", "0")) or 0)
+ROTATE = int(
+    os.getenv("SPLASH_ROTATE", os.getenv("PREVIEW_ROT", str(_SPLASH_ROTATE_DEFAULT))) or _SPLASH_ROTATE_DEFAULT
+)
 SECS = float(os.getenv("SPLASH_SECONDS", "8"))
 USE = os.getenv("SPLASH_USE", "auto")  # xgo|pygame|auto
 CLEAR = int(os.getenv("SPLASH_CLEAR", "1"))
 FBDEV = os.getenv("FBDEV", "/dev/fb1" if os.path.exists("/dev/fb1") else "/dev/fb0")
 
 # --- PRE-SLIDE (LOGO) ---
-SPLASH_LOGO = os.getenv("SPLASH_LOGO", os.path.join(DATA_DIR, "splash_logo.png"))
+SPLASH_LOGO = os.getenv("SPLASH_LOGO", _SPLASH_LOGO_DEFAULT)
 try:
     SPLASH_LOGO_SECONDS = float(os.getenv("SPLASH_LOGO_SECONDS", "0") or "0")
 except ValueError:

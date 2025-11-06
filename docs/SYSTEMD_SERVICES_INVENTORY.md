@@ -50,9 +50,9 @@
 
 ---
 
-### 3. rider-boot-prepare.service
+### 3. rider-boot-splash.service
 
-**Description:** Rider-Pi Boot Prepare (vendor cleanup, splash, LCD off)
+**Description:** Rider-Pi Boot Splash (vendor cleanup, splash screen, LCD off)
 
 **Type:** oneshot
 
@@ -72,7 +72,7 @@
 
 **File exists:** ✅ scripts/sys_boot-prepare.sh
 
-**Notes:** Boot-time initialization, runs once at startup
+**Notes:** Boot-time initialization and splash screen display, runs once at startup. Renamed from rider-boot-prepare.service to reflect focus on splash screen functionality.
 
 ---
 
