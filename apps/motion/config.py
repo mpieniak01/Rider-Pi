@@ -116,7 +116,8 @@ def load_config(path: str | Path | None = None) -> TrackingConfig:
         if hasattr(cfg, key):
             try:
                 setattr(cfg, key, value)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
+                # Skip values that can't be set (wrong type, etc.)
                 pass
 
     # Apply ENV overrides (ENV > TOML > defaults)
@@ -182,7 +183,8 @@ def load_motion_bridge_config(path: str | Path | None = None) -> MotionBridgeCon
         if hasattr(cfg, key):
             try:
                 setattr(cfg, key, value)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
+                # Skip values that can't be set (wrong type, etc.)
                 pass
 
     # Apply ENV overrides (ENV > TOML > defaults)

@@ -35,7 +35,7 @@ try:
     _face_cfg = load_face_config()
     _SPLASH_LOGO_DEFAULT = _face_cfg.vendor_splash_logo_path
     _SPLASH_ROTATE_DEFAULT = _face_cfg.splash_lcd_rotate
-except Exception:
+except (ImportError, ModuleNotFoundError):
     # Fallback to hardcoded defaults if config unavailable
     _SPLASH_LOGO_DEFAULT = os.path.join(DATA_DIR, "splash_logo.png")
     _SPLASH_ROTATE_DEFAULT = 270

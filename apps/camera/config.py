@@ -111,7 +111,8 @@ def load_config(path: str | Path | None = None) -> CameraConfig:
         if hasattr(cfg, key):
             try:
                 setattr(cfg, key, value)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
+                # Skip values that can't be set (wrong type, etc.)
                 pass
 
     # Apply ENV overrides (ENV > TOML > defaults)

@@ -932,7 +932,7 @@ def main():
 
         cfg_dict = voice_config.load("voice_web.toml")
         bind_addr = cfg_dict.get("server", {}).get("bind", "127.0.0.1:8092")
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         # Fallback to default
         bind_addr = "127.0.0.1:8092"
 
@@ -940,7 +940,7 @@ def main():
     try:
         host, port = bind_addr.split(":")
         port = int(port)
-    except Exception:
+    except (ValueError, IndexError):
         _log_error("web.main.invalid_bind", bind=bind_addr)
         host, port = "127.0.0.1", 8092
 

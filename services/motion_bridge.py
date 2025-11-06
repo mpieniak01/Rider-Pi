@@ -43,7 +43,7 @@ try:
 
     _motion_cfg = load_motion_bridge_config()
     XGO_PORT = _motion_cfg.serial_port
-except Exception:
+except (ImportError, ModuleNotFoundError):
     # Fallback to ENV if config module unavailable
     XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
 
