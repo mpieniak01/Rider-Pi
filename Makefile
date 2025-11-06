@@ -123,6 +123,7 @@ help:
 	@echo "  make face-bench       # krótki benchmark FPS"
 	@echo ""
 	@echo "═══ Configuration ═══"
+	@echo "  make config-init      # inicjalizuj pliki konfiguracyjne z szablonów"
 	@echo "  make config-edit-stream [PROVIDER=openai|google]*   # edytuj streaming cfg"
 	@echo "  make config-edit-file   [PROVIDER=openai|google|local] # edytuj file cfg"
 	@echo "      * Google streaming edytowany, jeśli istnieje config/voice_gemini_streaming.toml"
@@ -351,7 +352,11 @@ face-bench:
 
 # ───────────────────────────────────────────────
 # CONFIG HELPERS
-.PHONY: config-edit-stream config-edit-file
+.PHONY: config-init config-edit-stream config-edit-file
+config-init:
+	@echo "== Initializing config files from templates =="
+	@bash $(ROOT)/scripts/config-init.sh
+
 config-edit-stream:
 	@echo "== Editing voice streaming config (PROVIDER=$(PROVIDER)) =="
 	@if [ "$(PROVIDER)" = "google" ] && [ -f "$(ROOT)/config/voice_gemini_streaming.toml" ]; then \
