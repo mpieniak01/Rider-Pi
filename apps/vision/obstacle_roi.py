@@ -12,7 +12,6 @@ Zmiany vs poprzednia wersja:
 from __future__ import annotations
 
 import json
-import os
 import signal
 import sys
 import time
@@ -85,7 +84,7 @@ def atomic_write_json(path: str, obj: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(p.suffix + ".tmp")
     tmp.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
-    os.replace(tmp, p)
+    tmp.replace(p)
 
 
 def file_mtime_age(path: str) -> tuple[float, float]:

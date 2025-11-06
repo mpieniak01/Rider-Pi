@@ -205,92 +205,176 @@ def load_config(path: str | Path | None = None) -> VisionConfig:
 
     # Also check for legacy ENV names used in original code
     # EdgePreview legacy mappings
-    if os.getenv("SNAP_DIR"):
-        edge_preview.snap_dir = os.getenv("SNAP_DIR", edge_preview.snap_dir)
-    if os.getenv("EDGE_LOW"):
-        edge_preview.edge_low = int(os.getenv("EDGE_LOW", edge_preview.edge_low))
-    if os.getenv("EDGE_HIGH"):
-        edge_preview.edge_high = int(os.getenv("EDGE_HIGH", edge_preview.edge_high))
-    if os.getenv("SNAP_EVERY_MS"):
-        edge_preview.snap_every_ms = int(os.getenv("SNAP_EVERY_MS", edge_preview.snap_every_ms))
-    if os.getenv("PREVIEW_ROT"):
-        edge_preview.preview_rot = int(os.getenv("PREVIEW_ROT", edge_preview.preview_rot))
-    if os.getenv("PREVIEW_FLIP_H"):
-        edge_preview.preview_flip_h = os.getenv("PREVIEW_FLIP_H") == "1"
-    if os.getenv("FRAME_W"):
-        edge_preview.frame_w = int(os.getenv("FRAME_W", edge_preview.frame_w))
-    if os.getenv("FRAME_H"):
-        edge_preview.frame_h = int(os.getenv("FRAME_H", edge_preview.frame_h))
-    if os.getenv("LAST_FRAME"):
-        edge_preview.last_frame = os.getenv("LAST_FRAME", edge_preview.last_frame)
+    snap_dir_env = os.getenv("SNAP_DIR")
+    if snap_dir_env:
+        edge_preview.snap_dir = snap_dir_env
+
+    edge_low_env = os.getenv("EDGE_LOW")
+    if edge_low_env:
+        edge_preview.edge_low = int(edge_low_env)
+
+    edge_high_env = os.getenv("EDGE_HIGH")
+    if edge_high_env:
+        edge_preview.edge_high = int(edge_high_env)
+
+    snap_every_env = os.getenv("SNAP_EVERY_MS")
+    if snap_every_env:
+        edge_preview.snap_every_ms = int(snap_every_env)
+
+    preview_rot_env = os.getenv("PREVIEW_ROT")
+    if preview_rot_env:
+        edge_preview.preview_rot = int(preview_rot_env)
+
+    preview_flip_h_env = os.getenv("PREVIEW_FLIP_H")
+    if preview_flip_h_env:
+        edge_preview.preview_flip_h = preview_flip_h_env == "1"
+
+    frame_w_env = os.getenv("FRAME_W")
+    if frame_w_env:
+        edge_preview.frame_w = int(frame_w_env)
+
+    frame_h_env = os.getenv("FRAME_H")
+    if frame_h_env:
+        edge_preview.frame_h = int(frame_h_env)
+
+    last_frame_env = os.getenv("LAST_FRAME")
+    if last_frame_env:
+        edge_preview.last_frame = last_frame_env
 
     # Obstacle legacy mappings
-    if os.getenv("PROC_PATH"):
-        obstacle.proc_path = os.getenv("PROC_PATH", obstacle.proc_path)
-    if os.getenv("RAW_PATH"):
-        obstacle.raw_path = os.getenv("RAW_PATH", obstacle.raw_path)
-    if os.getenv("DATA_DIR"):
-        obstacle.data_dir = os.getenv("DATA_DIR", obstacle.data_dir)
-    if os.getenv("OBSTACLE_JSON"):
-        obstacle.obstacle_json = os.getenv("OBSTACLE_JSON", obstacle.obstacle_json)
-    if os.getenv("ROI_Y0"):
-        obstacle.roi_y0 = float(os.getenv("ROI_Y0", obstacle.roi_y0))
-    if os.getenv("ROI_H"):
-        obstacle.roi_h = float(os.getenv("ROI_H", obstacle.roi_h))
-    if os.getenv("EDGE_T_LOW"):
-        obstacle.edge_t_low = float(os.getenv("EDGE_T_LOW", obstacle.edge_t_low))
-    if os.getenv("EDGE_T_HIGH"):
-        obstacle.edge_t_high = float(os.getenv("EDGE_T_HIGH", obstacle.edge_t_high))
-    if os.getenv("DARK_LUMA"):
-        obstacle.dark_luma = float(os.getenv("DARK_LUMA", obstacle.dark_luma))
-    if os.getenv("LAPL_VAR_MIN"):
-        obstacle.lapl_var_min = float(os.getenv("LAPL_VAR_MIN", obstacle.lapl_var_min))
-    if os.getenv("CONF_GAIN"):
-        obstacle.conf_gain = float(os.getenv("CONF_GAIN", obstacle.conf_gain))
-    if os.getenv("SNAP_MAX_AGE_S"):
-        obstacle.snap_max_age_s = float(os.getenv("SNAP_MAX_AGE_S", obstacle.snap_max_age_s))
-    if os.getenv("OBST_DEC_N"):
-        obstacle.obst_dec_n = int(os.getenv("OBST_DEC_N", obstacle.obst_dec_n))
-    if os.getenv("PUBLISH"):
-        obstacle.publish = int(os.getenv("PUBLISH", obstacle.publish))
-    if os.getenv("OBST_ANN"):
-        obstacle.obst_ann = int(os.getenv("OBST_ANN", obstacle.obst_ann))
-    if os.getenv("OBST_ANN_PATH"):
-        obstacle.obst_ann_path = os.getenv("OBST_ANN_PATH", obstacle.obst_ann_path)
-    if os.getenv("OBST_BINS"):
-        obstacle.obst_bins = int(os.getenv("OBST_BINS", obstacle.obst_bins))
-    if os.getenv("EDGE_BIN_LOW"):
-        obstacle.edge_bin_low = float(os.getenv("EDGE_BIN_LOW", obstacle.edge_bin_low))
-    if os.getenv("EDGE_AREA_PCT"):
-        obstacle.edge_area_pct = float(os.getenv("EDGE_AREA_PCT", obstacle.edge_area_pct))
-    if os.getenv("EDGE_PIX_MIN"):
-        obstacle.edge_pix_min = int(os.getenv("EDGE_PIX_MIN", obstacle.edge_pix_min))
+    proc_path_env = os.getenv("PROC_PATH")
+    if proc_path_env:
+        obstacle.proc_path = proc_path_env
+
+    raw_path_env = os.getenv("RAW_PATH")
+    if raw_path_env:
+        obstacle.raw_path = raw_path_env
+
+    data_dir_env = os.getenv("DATA_DIR")
+    if data_dir_env:
+        obstacle.data_dir = data_dir_env
+
+    obstacle_json_env = os.getenv("OBSTACLE_JSON")
+    if obstacle_json_env:
+        obstacle.obstacle_json = obstacle_json_env
+
+    roi_y0_env = os.getenv("ROI_Y0")
+    if roi_y0_env:
+        obstacle.roi_y0 = float(roi_y0_env)
+
+    roi_h_env = os.getenv("ROI_H")
+    if roi_h_env:
+        obstacle.roi_h = float(roi_h_env)
+
+    edge_t_low_env = os.getenv("EDGE_T_LOW")
+    if edge_t_low_env:
+        obstacle.edge_t_low = float(edge_t_low_env)
+
+    edge_t_high_env = os.getenv("EDGE_T_HIGH")
+    if edge_t_high_env:
+        obstacle.edge_t_high = float(edge_t_high_env)
+
+    dark_luma_env = os.getenv("DARK_LUMA")
+    if dark_luma_env:
+        obstacle.dark_luma = float(dark_luma_env)
+
+    lapl_var_min_env = os.getenv("LAPL_VAR_MIN")
+    if lapl_var_min_env:
+        obstacle.lapl_var_min = float(lapl_var_min_env)
+
+    conf_gain_env = os.getenv("CONF_GAIN")
+    if conf_gain_env:
+        obstacle.conf_gain = float(conf_gain_env)
+
+    snap_max_age_env = os.getenv("SNAP_MAX_AGE_S")
+    if snap_max_age_env:
+        obstacle.snap_max_age_s = float(snap_max_age_env)
+
+    obst_dec_n_env = os.getenv("OBST_DEC_N")
+    if obst_dec_n_env:
+        obstacle.obst_dec_n = int(obst_dec_n_env)
+
+    publish_env = os.getenv("PUBLISH")
+    if publish_env:
+        obstacle.publish = int(publish_env)
+
+    obst_ann_env = os.getenv("OBST_ANN")
+    if obst_ann_env:
+        obstacle.obst_ann = int(obst_ann_env)
+
+    obst_ann_path_env = os.getenv("OBST_ANN_PATH")
+    if obst_ann_path_env:
+        obstacle.obst_ann_path = obst_ann_path_env
+
+    obst_bins_env = os.getenv("OBST_BINS")
+    if obst_bins_env:
+        obstacle.obst_bins = int(obst_bins_env)
+
+    edge_bin_low_env = os.getenv("EDGE_BIN_LOW")
+    if edge_bin_low_env:
+        obstacle.edge_bin_low = float(edge_bin_low_env)
+
+    edge_area_pct_env = os.getenv("EDGE_AREA_PCT")
+    if edge_area_pct_env:
+        obstacle.edge_area_pct = float(edge_area_pct_env)
+
+    edge_pix_min_env = os.getenv("EDGE_PIX_MIN")
+    if edge_pix_min_env:
+        obstacle.edge_pix_min = int(edge_pix_min_env)
 
     # SSD preview legacy mappings
-    if os.getenv("SNAP_DIR") and not os.getenv("SSD_SNAP_DIR"):
-        ssd_preview.snap_dir = os.getenv("SNAP_DIR", ssd_preview.snap_dir)
-    if os.getenv("PREVIEW_ROT"):
-        ssd_preview.preview_rot = int(os.getenv("PREVIEW_ROT", ssd_preview.preview_rot))
-    if os.getenv("PREVIEW_FLIP_H"):
-        ssd_preview.preview_flip_h = os.getenv("PREVIEW_FLIP_H") == "1"
-    if os.getenv("PREVIEW_FLIP_V"):
-        ssd_preview.preview_flip_v = os.getenv("PREVIEW_FLIP_V") == "1"
-    if os.getenv("DISABLE_LCD"):
-        ssd_preview.disable_lcd = os.getenv("DISABLE_LCD") == "1"
-    if os.getenv("NO_DRAW"):
-        ssd_preview.no_draw = os.getenv("NO_DRAW") == "1"
-    if os.getenv("SNAP_EXT"):
-        ssd_preview.snap_ext = os.getenv("SNAP_EXT", ssd_preview.snap_ext)
-    if os.getenv("DRAW_LATCH_MS"):
-        ssd_preview.draw_latch_ms = int(os.getenv("DRAW_LATCH_MS", ssd_preview.draw_latch_ms))
-    if os.getenv("SNAP_EVERY_MS"):
-        ssd_preview.snap_every_ms = int(os.getenv("SNAP_EVERY_MS", ssd_preview.snap_every_ms))
-    if os.getenv("SSD_CLASSES"):
-        ssd_preview.ssd_classes = os.getenv("SSD_CLASSES", ssd_preview.ssd_classes)
-    if os.getenv("SSD_SCORE"):
-        ssd_preview.ssd_score = float(os.getenv("SSD_SCORE", ssd_preview.ssd_score))
-    if os.getenv("EVERY") or os.getenv("SSD_EVERY"):
-        ssd_preview.ssd_every = int(os.getenv("EVERY", os.getenv("SSD_EVERY", str(ssd_preview.ssd_every))))
+    # Note: SNAP_DIR is shared between edge_preview and ssd_preview
+    # Only set ssd_preview.snap_dir if SSD_SNAP_DIR is set, otherwise it uses edge_preview's value
+    ssd_snap_dir_env = os.getenv("SSD_SNAP_DIR") or (os.getenv("SNAP_DIR") if not snap_dir_env else None)
+    if ssd_snap_dir_env:
+        ssd_preview.snap_dir = ssd_snap_dir_env
+
+    # PREVIEW_ROT is shared across modules
+    if preview_rot_env:
+        ssd_preview.preview_rot = int(preview_rot_env)
+
+    preview_flip_v_env = os.getenv("PREVIEW_FLIP_V")
+    if preview_flip_v_env:
+        ssd_preview.preview_flip_v = preview_flip_v_env == "1"
+
+    if preview_flip_h_env:
+        ssd_preview.preview_flip_h = preview_flip_h_env == "1"
+
+    disable_lcd_env = os.getenv("DISABLE_LCD")
+    if disable_lcd_env:
+        ssd_preview.disable_lcd = disable_lcd_env == "1"
+
+    no_draw_env = os.getenv("NO_DRAW")
+    if no_draw_env:
+        ssd_preview.no_draw = no_draw_env == "1"
+
+    snap_ext_env = os.getenv("SNAP_EXT")
+    if snap_ext_env:
+        ssd_preview.snap_ext = snap_ext_env
+
+    draw_latch_env = os.getenv("DRAW_LATCH_MS")
+    if draw_latch_env:
+        ssd_preview.draw_latch_ms = int(draw_latch_env)
+
+    snap_every_ssd_env = os.getenv("SNAP_EVERY_MS")
+    if snap_every_ssd_env:
+        ssd_preview.snap_every_ms = int(snap_every_ssd_env)
+
+    ssd_classes_env = os.getenv("SSD_CLASSES")
+    if ssd_classes_env:
+        ssd_preview.ssd_classes = ssd_classes_env
+
+    ssd_score_env = os.getenv("SSD_SCORE")
+    if ssd_score_env:
+        ssd_preview.ssd_score = float(ssd_score_env)
+
+    # Handle EVERY or SSD_EVERY (EVERY has priority for backward compat)
+    every_env = os.getenv("EVERY")
+    ssd_every_env = os.getenv("SSD_EVERY")
+    if every_env:
+        ssd_preview.ssd_every = int(every_env)
+    elif ssd_every_env:
+        ssd_preview.ssd_every = int(ssd_every_env)
 
     return VisionConfig(
         edge_preview=edge_preview,
