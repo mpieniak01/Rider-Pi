@@ -1,0 +1,21 @@
+# config/camera.toml.example
+# Camera module configuration template
+# Copy to config/local/camera.toml and customize as needed
+
+# -----------------------------------------------------------------------------
+# Camera Common Settings
+# -----------------------------------------------------------------------------
+[camera]
+# Snapshot directory for camera images
+snap_dir = "/home/pi/robot/snapshots"
+
+# Preview rotation angle (0, 90, 180, 270)
+preview_rot = 270
+
+# Flip settings
+preview_flip_h = false
+preview_flip_v = false
+
+# Camera frame dimensions (for compatibility)
+frame_w = 640
+frame_h = 480

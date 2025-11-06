@@ -24,31 +24,32 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 from typing import Any
 
 import zmq
 
+from apps.motion.config import load_config
 from common.bus import BusPub  # publikujemy tylko na bus
 
 # ── Konfiguracja ──────────────────────────────────────────────────────────────
-BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
+_cfg = load_config()
+BUS_SUB_PORT = _cfg.bus_sub_port
 ZMQ_ADDR_SUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
 
-KP = float(os.getenv("TRACKING_KP", "0.15"))
-DEAD_ZONE = float(os.getenv("TRACKING_DEAD_ZONE", "0.10"))
-TIMEOUT_SEC = float(os.getenv("TRACKING_TIMEOUT", "1.0"))
-MAX_SPEED = float(os.getenv("TRACKING_MAX_SPEED", "0.20"))
-CMD_DURATION = float(os.getenv("TRACKING_CMD_DURATION", "0.20"))
-CMD_PRIO = int(os.getenv("TRACKING_CMD_PRIO", "50"))
+KP = _cfg.kp
+DEAD_ZONE = _cfg.dead_zone
+TIMEOUT_SEC = _cfg.timeout_s
+MAX_SPEED = _cfg.max_speed
+CMD_DURATION = _cfg.cmd_duration
+CMD_PRIO = _cfg.cmd_prio
 RID = "tracking"  # identyfikator źródła
 LOOP_HZ = 10.0  # tylko do logu informacyjnego
 
 log = logging.getLogger("tracking_controller")
 logging.basicConfig(
-    level=os.getenv("TRACKING_LOG_LEVEL", "INFO"),
+    level=_cfg.log_level,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 

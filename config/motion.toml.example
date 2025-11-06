@@ -1,0 +1,23 @@
+# config/motion.toml.example
+# Motion control configuration template
+# Copy to config/local/motion.toml and customize as needed
+
+# -----------------------------------------------------------------------------
+# Tracking Controller Configuration (rider-tracking-controller.service)
+# -----------------------------------------------------------------------------
+[tracking]
+# Bus configuration
+bus_sub_port = 5556
+
+# PID controller parameters
+kp = 0.15               # Proportional gain
+dead_zone = 0.10        # Dead zone threshold (no action if offset < this)
+timeout_s = 1.0         # Timeout in seconds (stop if no updates)
+max_speed = 0.20        # Maximum rotation speed (0.0-1.0)
+
+# Command parameters
+cmd_duration = 0.20     # Duration of each motion command (seconds)
+cmd_prio = 50           # Command priority
+
+# Logging
+log_level = "INFO"      # Logging level (DEBUG, INFO, WARNING, ERROR)

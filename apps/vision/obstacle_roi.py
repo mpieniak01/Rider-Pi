@@ -12,7 +12,6 @@ Zmiany vs poprzednia wersja:
 from __future__ import annotations
 
 import json
-import os
 import signal
 import sys
 import time
@@ -23,55 +22,46 @@ from typing import Any
 import cv2  # type: ignore
 import numpy as np
 
+from apps.vision.config import load_config
+
 # --------------------------- config helpers ---------------------------------
 
+# Load configuration (TOML > ENV > defaults)
+_cfg = load_config()
+_obst_cfg = _cfg.obstacle
 
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, str(default)))
-    except Exception:
-        return default
+PROC_PATH = _obst_cfg.proc_path
+RAW_PATH = _obst_cfg.raw_path
+DATA_DIR = _obst_cfg.data_dir
+OBSTACLE_JSON = _obst_cfg.obstacle_json
 
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except Exception:
-        return default
-
-
-PROC_PATH = os.getenv("PROC_PATH", "/home/pi/robot/snapshots/proc.jpg")
-RAW_PATH = os.getenv("RAW_PATH", "/home/pi/robot/snapshots/raw.jpg")  # opcjonalny
-DATA_DIR = os.getenv("DATA_DIR", "/home/pi/robot/data")
-OBSTACLE_JSON = os.getenv("OBSTACLE_JSON", f"{DATA_DIR}/obstacle.json")
-
-ROI_Y0 = _env_float("ROI_Y0", 0.55)
-ROI_H = _env_float("ROI_H", 0.40)
+ROI_Y0 = _obst_cfg.roi_y0
+ROI_H = _obst_cfg.roi_h
 
 # Legacy (diag)
-EDGE_AREA_PCT = _env_float("EDGE_AREA_PCT", 0.18)
-EDGE_PIX_MIN = _env_int("EDGE_PIX_MIN", 16000)
+EDGE_AREA_PCT = _obst_cfg.edge_area_pct
+EDGE_PIX_MIN = _obst_cfg.edge_pix_min
 
 # Histereza
-EDGE_T_LOW = _env_float("EDGE_T_LOW", 0.10)
-EDGE_T_HIGH = _env_float("EDGE_T_HIGH", 0.18)
+EDGE_T_LOW = _obst_cfg.edge_t_low
+EDGE_T_HIGH = _obst_cfg.edge_t_high
 
 # Bezpieczniki
-DARK_LUMA = _env_float("DARK_LUMA", 0.15)  # 0..1
-LAPL_VAR_MIN = _env_float("LAPL_VAR_MIN", 30.0)
+DARK_LUMA = _obst_cfg.dark_luma
+LAPL_VAR_MIN = _obst_cfg.lapl_var_min
 
-CONF_GAIN = _env_float("CONF_GAIN", 4.0)
+CONF_GAIN = _obst_cfg.conf_gain
 
-SNAP_MAX_AGE_S = _env_float("SNAP_MAX_AGE_S", 3.0)
-OBST_DEC_N = _env_int("OBST_DEC_N", 3)
+SNAP_MAX_AGE_S = _obst_cfg.snap_max_age_s
+OBST_DEC_N = _obst_cfg.obst_dec_n
 
-PUBLISH = _env_int("PUBLISH", 0)
+PUBLISH = _obst_cfg.publish
 
 # Annotacje
-OBST_ANN = _env_int("OBST_ANN", 0)
-OBST_ANN_PATH = os.getenv("OBST_ANN_PATH", "/home/pi/robot/snapshots/obst_annot.jpg")
-OBST_BINS = _env_int("OBST_BINS", 24)
-EDGE_BIN_LOW = _env_float("EDGE_BIN_LOW", 0.06)
+OBST_ANN = _obst_cfg.obst_ann
+OBST_ANN_PATH = _obst_cfg.obst_ann_path
+OBST_BINS = _obst_cfg.obst_bins
+EDGE_BIN_LOW = _obst_cfg.edge_bin_low
 
 # sanity
 if EDGE_T_LOW > EDGE_T_HIGH:
@@ -94,7 +84,7 @@ def atomic_write_json(path: str, obj: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(p.suffix + ".tmp")
     tmp.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
-    os.replace(tmp, p)
+    tmp.replace(p)
 
 
 def file_mtime_age(path: str) -> tuple[float, float]:

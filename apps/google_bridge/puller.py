@@ -15,32 +15,34 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import signal
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger("google_bridge.puller")
+from apps.google_bridge.config import load_config
 
-# Configuration from environment
-GOOGLE_POLL_S = int(os.getenv("GOOGLE_POLL_S", "300"))  # 300 seconds (5 minutes) default
-GOOGLE_ENABLED = os.getenv("GOOGLE_ENABLED", "1") == "1"
-DATA_DIR = Path(os.getenv("DATA_DIR", Path.home() / "robot" / "data"))
-GOOGLE_DATA_DIR = DATA_DIR / "google"
+# Load configuration (TOML > ENV > defaults)
+_cfg = load_config()
+GOOGLE_POLL_S = _cfg.poll_interval_s
+GOOGLE_ENABLED = _cfg.enabled
+DATA_DIR = Path(_cfg.data_dir)
+GOOGLE_DATA_DIR = DATA_DIR / _cfg.google_data_dir
 
 # Ensure data directory exists
 GOOGLE_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-STATUS_FILE = GOOGLE_DATA_DIR / "status.json"
-LAST_FILE = GOOGLE_DATA_DIR / "last.json"
+STATUS_FILE = GOOGLE_DATA_DIR / _cfg.status_file
+LAST_FILE = GOOGLE_DATA_DIR / _cfg.last_file
+
+# Configure logging
+logging.basicConfig(
+    level=_cfg.log_level,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("google_bridge.puller")
 
 # Global shutdown flag
 _shutdown = False

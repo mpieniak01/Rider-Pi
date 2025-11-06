@@ -1,0 +1,26 @@
+# config/google_bridge.toml.example
+# Google Bridge configuration template
+# Copy to config/local/google_bridge.toml and customize as needed
+
+# -----------------------------------------------------------------------------
+# Google Bridge Configuration (rider-google-bridge.service)
+# -----------------------------------------------------------------------------
+[google_bridge]
+# Enable/disable Google Bridge worker
+enabled = true
+
+# Polling interval in seconds
+poll_interval_s = 300  # 5 minutes
+
+# Data directory
+data_dir = "/home/pi/robot/data"
+
+# Google data subdirectory (relative to data_dir)
+google_data_dir = "google"
+
+# Cache files (relative to google_data_dir)
+status_file = "status.json"
+last_file = "last.json"
+
+# Logging level
+log_level = "INFO"
