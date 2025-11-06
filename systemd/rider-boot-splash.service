@@ -1,5 +1,5 @@
 [Unit]
-Description=Rider-Pi Boot Prepare (vendor cleanup, splash, LCD off)
+Description=Rider-Pi Boot Splash (vendor cleanup, splash screen, LCD off)
 After=systemd-tmpfiles-setup.service sysinit.target local-fs.target basic.target
 Before=display-manager.service lightdm.service rider-broker.service rider-vision.service
 ConditionPathExists=!/run/rider/boot-prepared
@@ -8,7 +8,7 @@ ConditionPathExists=!/run/rider/boot-prepared
 Type=oneshot
 WorkingDirectory=/home/pi/robot
 
-EnvironmentFile=-/etc/default/rider-boot-prepare
+EnvironmentFile=-/etc/default/rider-boot-splash
 Environment=PYTHONPATH=/home/pi/robot
 
 # Splash (LCD 2")
