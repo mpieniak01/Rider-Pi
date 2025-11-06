@@ -329,7 +329,7 @@ class TestDashboardMetricsTracking:
                 compat.API_METRICS["control"]["error"] = 0
 
             # Test with valid payload (may fail due to backend, but should track metrics)
-            client.post("/api/control", json={"cmd": "stop"})
+            client.post("/api/control", json={"action": "stop"})
 
             # Get metrics after request
             metrics = client.get("/api/app-metrics").get_json()
@@ -340,7 +340,7 @@ class TestDashboardMetricsTracking:
 
             # Test with invalid payload (should increment error counter)
             initial_error = metrics["metrics"]["control"]["error"]
-            client.post("/api/control", json={"cmd": "invalid"})
+            client.post("/api/control", json={"action": "invalid"})
 
             after_metrics = client.get("/api/app-metrics").get_json()
             assert (

@@ -121,14 +121,12 @@ def _update_api_metrics(path: str, status_code: int) -> None:
     if group is None:
         return
 
-    # Zliczamy (thread-safe)
+    # Zliczamy (thread-safe) using centralized dashboard functions
     is_ok = status_code < 400
-    with compat.API_METRICS_LOCK:
-        if is_ok:
-            compat.API_METRICS[group]["ok"] += 1
-        else:
-            compat.API_METRICS[group]["error"] += 1
-            compat.API_METRICS_TOTAL["errors"] += 1
+    if is_ok:
+        dashboard.track_ok(group)
+    else:
+        dashboard.track_error(group)
 
 
 # ── CORS global + metryki ────────────────────────────────────────────────────
