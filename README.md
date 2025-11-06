@@ -86,8 +86,15 @@ cd Rider-Pi
 # Install dependencies
 pip3 install -r requirements-dev.txt
 
+# Initialize configuration files from templates
+make config-init
+
 # Configure environment (copy and edit)
 cp .env.example .env
+
+# Customize configuration files as needed
+nano config/vision.toml      # Vision system paths
+nano config/voice_web.toml   # Voice model paths
 ```
 
 ### Running Services
@@ -144,6 +151,7 @@ Rider-Pi/
 ## Documentation
 
 - [Architecture](ARCHITECTURE.md) - System architecture and design
+- [Configuration](docs/CONFIG.md) - Configuration management with TOML templates
 - [API Documentation](docs/api/README.md) - REST API endpoints
 - [Module Documentation](docs/modules/) - Detailed module docs
   - [Navigator](docs/modules/navigator.md) - Autonomous navigation
