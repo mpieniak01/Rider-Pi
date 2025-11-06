@@ -271,7 +271,7 @@ The legacy `robot.env` file and environment-based configuration has been fully r
 - Environment variables can still override TOML values when needed
 - The `rider-boot-splash.service` handles splash screen display without robot.env dependency
 
-### Systemd Service Configuration Migration (COMPLETED - Current Phase)
+### Systemd Service Configuration Migration (COMPLETED)
 
 All hardcoded configuration values have been migrated from systemd service files to TOML templates:
 

@@ -9,6 +9,7 @@ with the configured parameters.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -82,7 +83,11 @@ def main():
 
     # Allow ENV overrides
     ip = os.getenv("JUPYTER_IP", ip)
-    port = int(os.getenv("JUPYTER_PORT", str(port)))
+    try:
+        port = int(os.getenv("JUPYTER_PORT", str(port)))
+    except (ValueError, TypeError):
+        # Keep the port from config/defaults if ENV value is invalid
+        pass
     notebook_dir = os.getenv("JUPYTER_NOTEBOOK_DIR", notebook_dir)
     bash_profile = os.getenv("BASH_PROFILE", bash_profile)
 
@@ -101,7 +106,7 @@ def main():
     # If bash profile specified and exists, source it before running
     if bash_profile and Path(bash_profile).exists():
         # Use bash to source the profile and then exec jupyter
-        bash_cmd = f'source "{bash_profile}" && exec {" ".join(cmd)}'
+        bash_cmd = f'source {shlex.quote(bash_profile)} && exec {" ".join(shlex.quote(arg) for arg in cmd)}'
         cmd = ["/bin/bash", "-c", bash_cmd]
 
     print(f"[jupyter_runner] Starting Jupyter Lab: {cmd}", flush=True)
