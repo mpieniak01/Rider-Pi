@@ -3,7 +3,6 @@
 Unit tests for scripts/config-init.sh script
 """
 
-import os
 import subprocess
 import tempfile
 from pathlib import Path
