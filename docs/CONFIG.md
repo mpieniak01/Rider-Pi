@@ -144,9 +144,14 @@ Previously, many configuration values were hardcoded in Python files:
 
 **Important:** In this phase (Step 1/2), the Python code still uses the hardcoded values. The configuration templates document the default values that will be used in the next phase when the code is refactored to read from TOML files.
 
-### From robot.env
+### From robot.env (COMPLETED - Phase 3)
 
-The `robot.env` file and `rider-boot-prepare.service` mechanism will eventually be replaced by the TOML-based configuration system in future iterations.
+The legacy `robot.env` file and environment-based configuration has been fully replaced by the TOML-based configuration system:
+- All Python modules now load configuration from `.toml` files
+- systemd services no longer reference `robot.env` 
+- Configuration is loaded via module-specific config loaders (e.g., `apps/vision/config.py`)
+- Environment variables can still override TOML values when needed
+- The `rider-boot-splash.service` handles splash screen display without robot.env dependency
 
 ## Troubleshooting
 

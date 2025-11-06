@@ -117,7 +117,7 @@ Synchronizuje definicje usług systemd z repozytorium do `/etc/systemd/system`. 
 4. **Czyszczenie** — usuwa niezarządzane `rider-*` (nie w allowlist lub nie w repo)
 5. **Drop-iny** — usuwa `.service.d` (repo trzyma pełne definicje)
 6. **Reload** — `systemctl daemon-reload`
-7. **Enable** — włącza `rider-minimal.target` i `rider-boot-prepare.service`
+7. **Enable** — włącza `rider-minimal.target` i `rider-boot-splash.service`
 8. **Legacy mask** — maskuje przestarzałe usługi (np. `rider-dispatcher.service`)
 9. **Weryfikacja** — wyświetla tabelę statusu wszystkich `rider-*`
 
@@ -129,7 +129,7 @@ ALLOW_UNITS=(
   "rider-api.service"
   "rider-vision.service"
   "rider-motion-bridge.service"
-  "rider-boot-prepare.service"
+  "rider-boot-splash.service"
   "rider-minimal.target"
   "rider-edge-preview.service"
   "rider-obstacle.service"
@@ -227,16 +227,15 @@ ls -la /etc/systemd/system/rider-*.service
 
 ### Opis
 
-Skrypt przygotowania systemu przy starcie — uruchamiany przez `rider-boot-prepare.service`.
+Skrypt przygotowania systemu przy starcie — uruchamiany przez `rider-boot-splash.service`.
 
-⚠️ **Wymaga weryfikacji:** Szczegóły implementacji do uzupełnienia.
+### Funkcje
 
-### Funkcje (prawdopodobne)
-
-- Konfiguracja ALSA (ładowanie `asoundrc`)
-- Inicjalizacja GPIO
-- Sprawdzenie dostępności urządzeń (kamera, LCD)
-- Pre-flight checks dla usług
+- Vendor cleanup (zabijanie procesów vendora)
+- Display manager cleanup (opcjonalne zabijanie lightdm)
+- Wyświetlanie ekranu powitalnego (splash screen)
+- Konfiguracja podświetlenia LCD (backlight control)
+- Wyłączenie panelu LCD po splash
 
 ### Użycie
 
@@ -245,8 +244,20 @@ Skrypt przygotowania systemu przy starcie — uruchamiany przez `rider-boot-prep
 sudo ./scripts/sys_boot-prepare.sh
 
 # Przez systemd (automatyczne przy starcie)
-sudo systemctl start rider-boot-prepare.service
+sudo systemctl start rider-boot-splash.service
 ```
+
+### Konfiguracja
+
+Parametry przekazywane przez zmienne środowiskowe z pliku unit:
+- `SPLASH_SECONDS` - czas wyświetlania splash
+- `SPLASH_ROTATE` - rotacja obrazu splash
+- `SPLASH_CLEAR` - czyszczenie ekranu po splash
+- `SPLASH_USE` - backend do wyświetlania (xgo/pygame/auto)
+- `BOOT_VENDOR_GRACE` - czas oczekiwania przed zabiciem procesów vendora
+- `LCD_BL_GPIO` - pin GPIO dla backlight
+- `KEEP_BL_ON` - pozostaw podświetlenie włączone (debug)
+- `NO_KILL_DISPLAY` - nie zabijaj display managera
 
 ---
 

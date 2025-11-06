@@ -8,7 +8,7 @@ This document provides a mapping of all systemd service files to the scripts the
 |--------------|--------|----------------|-------|
 | **jupyter.service** | ✓ Valid | `/usr/bin/python3 -m jupyter lab` | System Python module |
 | **rider-api.service** | ✓ Valid | `/usr/bin/python3 -u -m services.api_server` | Python module in `services/` |
-| **rider-boot-prepare.service** | ✓ Valid | `/home/pi/robot/scripts/sys_boot-prepare.sh` | Script in `scripts/` |
+| **rider-boot-splash.service** | ✓ Valid | `/home/pi/robot/scripts/sys_boot-prepare.sh` | Script in `scripts/` (renamed from rider-boot-prepare.service) |
 | **rider-broker.service** | ✓ Valid | `/usr/bin/python3 -u services/broker.py` | Python script in `services/` |
 | **rider-cam-preview.service** | ✓ Valid | `/usr/bin/python3 apps/camera/preview_lcd.py` | Python script in `apps/` |
 | **rider-choreographer.service** | ✓ Valid | `/usr/bin/python3 -u -m apps.choreographer.main` | Emotion and sentiment choreography service |
