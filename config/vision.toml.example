@@ -1,0 +1,22 @@
+# Vision module configuration template
+# Copy this file to vision.toml and customize as needed
+
+[paths]
+# Snapshot directory for captured frames
+snap_dir = "/home/pi/robot/snapshots"
+
+# Data directory for persistent data
+data_dir = "/home/pi/robot/data"
+
+# Specific file paths
+last_frame = "/home/pi/robot/data/last_frame.jpg"
+proc_path = "/home/pi/robot/snapshots/proc.jpg"
+raw_path = "/home/pi/robot/snapshots/raw.jpg"
+obstacle_json = "/home/pi/robot/data/obstacle.json"
+obstacle_annotation = "/home/pi/robot/snapshots/obst_annot.jpg"
+
+[detector]
+# Vision detection parameters
+min_score = 0.50
+on_consecutive = 3
+off_ttl_sec = 2.0
