@@ -18,8 +18,6 @@ from typing import Any, Literal
 
 from flask import Response, jsonify, make_response, request
 
-import services.api_core.dashboard as dashboard
-
 MOTION_BRIDGE_URL = os.getenv("MOTION_BRIDGE_URL") or os.getenv("WEB_BRIDGE_URL") or "http://127.0.0.1:8081"
 HTTP_TIMEOUT_S = float(os.getenv("WEB_BRIDGE_TIMEOUT", "0.8"))
 SAFE_MAX_T = float(os.getenv("SAFE_MAX_DURATION", "0.5"))  # s, miękki limit pojedynczego ruchu
@@ -28,22 +26,6 @@ AllowedDir = Literal["forward", "backward", "left", "right"]
 
 
 # ───────────────────────────── helpers ───────────────────────────── #
-
-
-def _track_control_ok() -> None:
-    """Track successful control command."""
-    try:
-        dashboard.track_ok("control")
-    except Exception:
-        pass  # metrics nie mogą zepsuć API
-
-
-def _track_control_error() -> None:
-    """Track failed control command."""
-    try:
-        dashboard.track_error("control")
-    except Exception:
-        pass  # metrics nie mogą zepsuć API
 
 
 def _corsify(resp: Response) -> Response:
@@ -216,20 +198,14 @@ def control_proxy_core() -> tuple[dict[str, Any], int]:
 
 
 def control_proxy_handler():
-    """Handle /api/control and /api/cmd with CORS preflight and metrics tracking."""
+    """Handle /api/control and /api/cmd with CORS preflight."""
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     try:
         body, code = control_proxy_core()
-        # Track metrics based on response status
-        if code < 400:
-            _track_control_ok()
-        else:
-            _track_control_error()
         return _corsify(jsonify(body)), code
     except Exception as e:  # runtime errors (nie spodziewane)
         # ważne: NIE maskujemy 4xx z core; tu łapiemy tylko nieprzewidziane wyjątki
-        _track_control_error()
         return _corsify(jsonify({"ok": False, "error": f"proxy_control_failed: {e}"})), 502
 
 

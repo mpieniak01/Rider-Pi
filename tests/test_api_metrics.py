@@ -318,25 +318,34 @@ class TestDashboardMetricsTracking:
         dashboard.track_error("invalid_group")
 
     def test_control_metrics_increment(self):
-        """Test that /api/control calls increment control metrics via dashboard tracking."""
-        import services.api_core.dashboard as dashboard
+        """Test that /api/control endpoint increments control metrics."""
+        import services.api_core.compat as compat
+        import services.api_server as api_server
 
-        # Simulate what control_proxy does
-        initial_snapshot = dashboard.get_metrics_snapshot()
-        initial_ok = initial_snapshot["metrics"]["control"]["ok"]
-        initial_error = initial_snapshot["metrics"]["control"]["error"]
+        with api_server.app.test_client() as client:
+            # Reset control metrics
+            with compat.API_METRICS_LOCK:
+                compat.API_METRICS["control"]["ok"] = 0
+                compat.API_METRICS["control"]["error"] = 0
 
-        # Simulate successful control command
-        dashboard.track_ok("control")
-        after_ok = dashboard.get_metrics_snapshot()
-        assert after_ok["metrics"]["control"]["ok"] == initial_ok + 1
-        assert after_ok["metrics"]["control"]["error"] == initial_error
+            # Test with valid payload (may fail due to backend, but should track metrics)
+            client.post("/api/control", json={"cmd": "stop"})
 
-        # Simulate failed control command
-        dashboard.track_error("control")
-        after_error = dashboard.get_metrics_snapshot()
-        assert after_error["metrics"]["control"]["ok"] == initial_ok + 1
-        assert after_error["metrics"]["control"]["error"] == initial_error + 1
+            # Get metrics after request
+            metrics = client.get("/api/app-metrics").get_json()
+
+            # Metrics should have been incremented (either ok or error depending on backend)
+            total = metrics["metrics"]["control"]["ok"] + metrics["metrics"]["control"]["error"]
+            assert total >= 1, "Control metrics should be incremented after /api/control call"
+
+            # Test with invalid payload (should increment error counter)
+            initial_error = metrics["metrics"]["control"]["error"]
+            client.post("/api/control", json={"cmd": "invalid"})
+
+            after_metrics = client.get("/api/app-metrics").get_json()
+            assert after_metrics["metrics"]["control"]["error"] > initial_error, (
+                "Error counter should increment for invalid command"
+            )
 
 
 if __name__ == "__main__":
