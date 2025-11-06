@@ -324,8 +324,8 @@ def load_config(path: str | Path | None = None) -> VisionConfig:
 
     # SSD preview legacy mappings
     # Note: SNAP_DIR is shared between edge_preview and ssd_preview
-    # Only set ssd_preview.snap_dir if SSD_SNAP_DIR is set, otherwise it uses edge_preview's value
-    ssd_snap_dir_env = os.getenv("SSD_SNAP_DIR") or (os.getenv("SNAP_DIR") if not snap_dir_env else None)
+    # SSD_SNAP_DIR takes priority, otherwise falls back to SNAP_DIR
+    ssd_snap_dir_env = os.getenv("SSD_SNAP_DIR") or os.getenv("SNAP_DIR")
     if ssd_snap_dir_env:
         ssd_preview.snap_dir = ssd_snap_dir_env
 

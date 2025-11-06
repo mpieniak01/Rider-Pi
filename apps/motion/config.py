@@ -114,21 +114,36 @@ def load_config(path: str | Path | None = None) -> TrackingConfig:
 
     # Apply ENV overrides (ENV > TOML > defaults)
     # Legacy ENV names have priority for backwards compatibility
-    if os.getenv("BUS_SUB_PORT"):
-        cfg.bus_sub_port = int(os.getenv("BUS_SUB_PORT", cfg.bus_sub_port))
-    if os.getenv("TRACKING_KP"):
-        cfg.kp = float(os.getenv("TRACKING_KP", cfg.kp))
-    if os.getenv("TRACKING_DEAD_ZONE"):
-        cfg.dead_zone = float(os.getenv("TRACKING_DEAD_ZONE", cfg.dead_zone))
-    if os.getenv("TRACKING_TIMEOUT"):
-        cfg.timeout_s = float(os.getenv("TRACKING_TIMEOUT", cfg.timeout_s))
-    if os.getenv("TRACKING_MAX_SPEED"):
-        cfg.max_speed = float(os.getenv("TRACKING_MAX_SPEED", cfg.max_speed))
-    if os.getenv("TRACKING_CMD_DURATION"):
-        cfg.cmd_duration = float(os.getenv("TRACKING_CMD_DURATION", cfg.cmd_duration))
-    if os.getenv("TRACKING_CMD_PRIO"):
-        cfg.cmd_prio = int(os.getenv("TRACKING_CMD_PRIO", cfg.cmd_prio))
-    if os.getenv("TRACKING_LOG_LEVEL"):
-        cfg.log_level = os.getenv("TRACKING_LOG_LEVEL", cfg.log_level)
+    bus_sub_port_env = os.getenv("BUS_SUB_PORT")
+    if bus_sub_port_env:
+        cfg.bus_sub_port = int(bus_sub_port_env)
+
+    kp_env = os.getenv("TRACKING_KP")
+    if kp_env:
+        cfg.kp = float(kp_env)
+
+    dead_zone_env = os.getenv("TRACKING_DEAD_ZONE")
+    if dead_zone_env:
+        cfg.dead_zone = float(dead_zone_env)
+
+    timeout_env = os.getenv("TRACKING_TIMEOUT")
+    if timeout_env:
+        cfg.timeout_s = float(timeout_env)
+
+    max_speed_env = os.getenv("TRACKING_MAX_SPEED")
+    if max_speed_env:
+        cfg.max_speed = float(max_speed_env)
+
+    cmd_duration_env = os.getenv("TRACKING_CMD_DURATION")
+    if cmd_duration_env:
+        cfg.cmd_duration = float(cmd_duration_env)
+
+    cmd_prio_env = os.getenv("TRACKING_CMD_PRIO")
+    if cmd_prio_env:
+        cfg.cmd_prio = int(cmd_prio_env)
+
+    log_level_env = os.getenv("TRACKING_LOG_LEVEL")
+    if log_level_env:
+        cfg.log_level = log_level_env
 
     return cfg

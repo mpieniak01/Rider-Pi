@@ -113,15 +113,24 @@ def load_config(path: str | Path | None = None) -> GoogleBridgeConfig:
 
     # Apply ENV overrides (ENV > TOML > defaults)
     # Legacy ENV names have priority for backwards compatibility
-    if os.getenv("GOOGLE_ENABLED"):
-        cfg.enabled = os.getenv("GOOGLE_ENABLED") == "1"
-    if os.getenv("GOOGLE_POLL_S"):
-        cfg.poll_interval_s = int(os.getenv("GOOGLE_POLL_S", cfg.poll_interval_s))
-    if os.getenv("DATA_DIR"):
-        cfg.data_dir = os.getenv("DATA_DIR", cfg.data_dir)
-    if os.getenv("GOOGLE_DATA_DIR"):
-        cfg.google_data_dir = os.getenv("GOOGLE_DATA_DIR", cfg.google_data_dir)
-    if os.getenv("GOOGLE_BRIDGE_LOG_LEVEL"):
-        cfg.log_level = os.getenv("GOOGLE_BRIDGE_LOG_LEVEL", cfg.log_level)
+    google_enabled_env = os.getenv("GOOGLE_ENABLED")
+    if google_enabled_env:
+        cfg.enabled = google_enabled_env == "1"
+
+    google_poll_env = os.getenv("GOOGLE_POLL_S")
+    if google_poll_env:
+        cfg.poll_interval_s = int(google_poll_env)
+
+    data_dir_env = os.getenv("DATA_DIR")
+    if data_dir_env:
+        cfg.data_dir = data_dir_env
+
+    google_data_dir_env = os.getenv("GOOGLE_DATA_DIR")
+    if google_data_dir_env:
+        cfg.google_data_dir = google_data_dir_env
+
+    log_level_env = os.getenv("GOOGLE_BRIDGE_LOG_LEVEL")
+    if log_level_env:
+        cfg.log_level = log_level_env
 
     return cfg

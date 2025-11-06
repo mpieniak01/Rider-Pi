@@ -112,17 +112,28 @@ def load_config(path: str | Path | None = None) -> CameraConfig:
 
     # Apply ENV overrides (ENV > TOML > defaults)
     # Legacy ENV names have priority for backwards compatibility
-    if os.getenv("SNAP_DIR"):
-        cfg.snap_dir = os.getenv("SNAP_DIR", cfg.snap_dir)
-    if os.getenv("PREVIEW_ROT"):
-        cfg.preview_rot = int(os.getenv("PREVIEW_ROT", cfg.preview_rot))
-    if os.getenv("PREVIEW_FLIP_H"):
-        cfg.preview_flip_h = os.getenv("PREVIEW_FLIP_H") == "1"
-    if os.getenv("PREVIEW_FLIP_V"):
-        cfg.preview_flip_v = os.getenv("PREVIEW_FLIP_V") == "1"
-    if os.getenv("FRAME_W"):
-        cfg.frame_w = int(os.getenv("FRAME_W", cfg.frame_w))
-    if os.getenv("FRAME_H"):
-        cfg.frame_h = int(os.getenv("FRAME_H", cfg.frame_h))
+    snap_dir_env = os.getenv("SNAP_DIR")
+    if snap_dir_env:
+        cfg.snap_dir = snap_dir_env
+
+    preview_rot_env = os.getenv("PREVIEW_ROT")
+    if preview_rot_env:
+        cfg.preview_rot = int(preview_rot_env)
+
+    preview_flip_h_env = os.getenv("PREVIEW_FLIP_H")
+    if preview_flip_h_env:
+        cfg.preview_flip_h = preview_flip_h_env == "1"
+
+    preview_flip_v_env = os.getenv("PREVIEW_FLIP_V")
+    if preview_flip_v_env:
+        cfg.preview_flip_v = preview_flip_v_env == "1"
+
+    frame_w_env = os.getenv("FRAME_W")
+    if frame_w_env:
+        cfg.frame_w = int(frame_w_env)
+
+    frame_h_env = os.getenv("FRAME_H")
+    if frame_h_env:
+        cfg.frame_h = int(frame_h_env)
 
     return cfg
