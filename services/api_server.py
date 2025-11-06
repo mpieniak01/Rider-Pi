@@ -473,16 +473,13 @@ def app_metrics():
     if not compat:
         return jsonify({"ok": True, "metrics": {}, "total_errors": 0}), 200
 
-    # Zwracamy kopię, aby uniknąć race condition przy odczycie (thread-safe)
-    with compat.API_METRICS_LOCK:
-        metrics_snapshot = {group: dict(counts) for group, counts in compat.API_METRICS.items()}
-        total_errors = compat.API_METRICS_TOTAL["errors"]
-
+    # Use dashboard.get_metrics_snapshot() for consistent metrics retrieval
+    snapshot = dashboard.get_metrics_snapshot()
     return jsonify(
         {
             "ok": True,
-            "metrics": metrics_snapshot,
-            "total_errors": total_errors,
+            "metrics": snapshot["metrics"],
+            "total_errors": snapshot["total_errors"],
         }
     ), 200
 
