@@ -7,15 +7,21 @@ import time
 
 import cv2
 
-SNAP_DIR = os.environ.get("SNAP_DIR", "/home/pi/robot/snapshots")
-EDGE_LOW = int(os.environ.get("EDGE_LOW", "60"))
-EDGE_HIGH = int(os.environ.get("EDGE_HIGH", "120"))
-SNAP_EVERY_MS = int(os.environ.get("SNAP_EVERY_MS", "500"))
-PREVIEW_ROT = int(os.environ.get("PREVIEW_ROT", "0"))
-PREVIEW_FLIP_H = os.environ.get("PREVIEW_FLIP_H", "0") == "1"
-FRAME_W = int(os.environ.get("FRAME_W", "640"))
-FRAME_H = int(os.environ.get("FRAME_H", "480"))
-LAST = os.environ.get("LAST_FRAME", "/home/pi/robot/data/last_frame.jpg")
+from apps.vision.config import load_config
+
+# Load configuration (TOML > ENV > defaults)
+_cfg = load_config()
+_edge_cfg = _cfg.edge_preview
+
+SNAP_DIR = _edge_cfg.snap_dir
+EDGE_LOW = _edge_cfg.edge_low
+EDGE_HIGH = _edge_cfg.edge_high
+SNAP_EVERY_MS = _edge_cfg.snap_every_ms
+PREVIEW_ROT = _edge_cfg.preview_rot
+PREVIEW_FLIP_H = _edge_cfg.preview_flip_h
+FRAME_W = _edge_cfg.frame_w
+FRAME_H = _edge_cfg.frame_h
+LAST = _edge_cfg.last_frame
 
 RAW = os.path.join(SNAP_DIR, "raw.jpg")
 PROC = os.path.join(SNAP_DIR, "proc.jpg")
