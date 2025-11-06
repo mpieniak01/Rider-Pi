@@ -58,9 +58,7 @@ try:
     SSD_PATH = _camera_cfg.ssd_path
 except (ImportError, ModuleNotFoundError):
     # Fallback to legacy ENV-based paths if config module unavailable
-    SNAP_DIR = os.path.abspath(
-        os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots")
-    )
+    SNAP_DIR = os.path.abspath(os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots"))
     RAW_PATH = os.getenv("RAW_PATH") or os.path.join(SNAP_DIR, "raw.jpg")
     PROC_PATH = os.getenv("PROC_PATH") or os.path.join(SNAP_DIR, "proc.jpg")
     SSD_PATH = os.getenv("SSD_PATH") or os.path.join(SNAP_DIR, "ssd.jpg")
