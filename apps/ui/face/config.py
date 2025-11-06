@@ -22,6 +22,9 @@ REPO_PATH = pathlib.Path("config/face.toml")
 
 @dataclass
 class FaceConfigAll:
+    # Splash configuration
+    vendor_splash_logo_path: str = "/home/pi/robot/data/splash_logo.png"
+    splash_lcd_rotate: int = 270
     # Idle / gestures
     idle_enable: bool = True
     idle_blink_sec: float = 3.0

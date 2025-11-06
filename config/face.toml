@@ -1,4 +1,12 @@
-# ~/apps/ui/face/face.toml
+# config/face.toml
+
+# -----------------------------------------------------------------------------
+# Splash Screen Configuration
+# -----------------------------------------------------------------------------
+# Vendor splash logo path (used by post-boot splash screen)
+vendor_splash_logo_path = "/home/pi/robot/data/splash_logo.png"
+# LCD rotation for splash screens (0, 90, 180, 270)
+splash_lcd_rotate = 270
 
 # -----------------------------------------------------------------------------
 # Idle / mikro-gesty — sterowane przez kontroler (czytane jako ENV)

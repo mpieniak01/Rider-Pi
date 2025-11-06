@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/pi
-ExecStart=/usr/bin/python3 -m jupyter lab --notebook-dir=/home/pi --ip=0.0.0.0 --no-browser --port=8888
+ExecStart=/usr/bin/python3 -u /home/pi/robot/apps/jupyter_runner.py
 User=pi
 Group=pi
 Restart=always

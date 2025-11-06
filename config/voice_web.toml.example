@@ -15,7 +15,7 @@ llm_model = "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf"
 
 [server]
 # Web server bind address
-bind = "127.0.0.1:8092"
+bind = "0.0.0.0:8092"
 
 # ALSA audio device
 alsa_device = "plughw:1,0"
