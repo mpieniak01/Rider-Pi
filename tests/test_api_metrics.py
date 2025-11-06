@@ -247,5 +247,97 @@ class TestApiMetricsCompatModule:
         assert isinstance(compat.API_METRICS_TOTAL["errors"], int)
 
 
+@pytest.mark.skipif(not API_SERVER_AVAILABLE, reason="API server dependencies not available")
+class TestDashboardMetricsTracking:
+    """Test suite for dashboard metrics tracking functions."""
+
+    def setup_method(self):
+        """Reset metrics before each test."""
+        import services.api_core.compat as compat
+
+        # Reset all counters (thread-safe)
+        with compat.API_METRICS_LOCK:
+            for group in compat.API_METRICS:
+                compat.API_METRICS[group]["ok"] = 0
+                compat.API_METRICS[group]["error"] = 0
+            compat.API_METRICS_TOTAL["errors"] = 0
+
+    def test_track_ok_increments_counter(self):
+        """Test that track_ok increments the OK counter."""
+        import services.api_core.dashboard as dashboard
+
+        # Get initial state
+        initial_snapshot = dashboard.get_metrics_snapshot()
+        initial_control_ok = initial_snapshot["metrics"]["control"]["ok"]
+
+        # Track a successful control operation
+        dashboard.track_ok("control")
+
+        # Verify counter incremented
+        after_snapshot = dashboard.get_metrics_snapshot()
+        assert after_snapshot["metrics"]["control"]["ok"] == initial_control_ok + 1
+
+    def test_track_error_increments_counter(self):
+        """Test that track_error increments the error counter."""
+        import services.api_core.dashboard as dashboard
+
+        # Get initial state
+        initial_snapshot = dashboard.get_metrics_snapshot()
+        initial_control_error = initial_snapshot["metrics"]["control"]["error"]
+        initial_total_errors = initial_snapshot["total_errors"]
+
+        # Track a failed control operation
+        dashboard.track_error("control")
+
+        # Verify counters incremented
+        after_snapshot = dashboard.get_metrics_snapshot()
+        assert after_snapshot["metrics"]["control"]["error"] == initial_control_error + 1
+        assert after_snapshot["total_errors"] == initial_total_errors + 1
+
+    def test_track_multiple_operations(self):
+        """Test tracking multiple operations."""
+        import services.api_core.dashboard as dashboard
+
+        # Track multiple operations
+        dashboard.track_ok("control")
+        dashboard.track_ok("control")
+        dashboard.track_error("control")
+
+        # Verify counters
+        snapshot = dashboard.get_metrics_snapshot()
+        assert snapshot["metrics"]["control"]["ok"] == 2
+        assert snapshot["metrics"]["control"]["error"] == 1
+        assert snapshot["total_errors"] == 1
+
+    def test_track_invalid_group_does_not_crash(self):
+        """Test that tracking invalid group doesn't crash."""
+        import services.api_core.dashboard as dashboard
+
+        # Should not raise an exception
+        dashboard.track_ok("invalid_group")
+        dashboard.track_error("invalid_group")
+
+    def test_control_metrics_increment(self):
+        """Test that /api/control calls increment control metrics via dashboard tracking."""
+        import services.api_core.dashboard as dashboard
+
+        # Simulate what control_proxy does
+        initial_snapshot = dashboard.get_metrics_snapshot()
+        initial_ok = initial_snapshot["metrics"]["control"]["ok"]
+        initial_error = initial_snapshot["metrics"]["control"]["error"]
+
+        # Simulate successful control command
+        dashboard.track_ok("control")
+        after_ok = dashboard.get_metrics_snapshot()
+        assert after_ok["metrics"]["control"]["ok"] == initial_ok + 1
+        assert after_ok["metrics"]["control"]["error"] == initial_error
+
+        # Simulate failed control command
+        dashboard.track_error("control")
+        after_error = dashboard.get_metrics_snapshot()
+        assert after_error["metrics"]["control"]["ok"] == initial_ok + 1
+        assert after_error["metrics"]["control"]["error"] == initial_error + 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
