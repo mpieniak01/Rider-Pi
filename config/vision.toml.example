@@ -1,0 +1,102 @@
+# config/vision.toml.example
+# Vision module configuration template
+# Copy to config/local/vision.toml and customize as needed
+
+# -----------------------------------------------------------------------------
+# Edge Preview Configuration (rider-edge-preview.service)
+# -----------------------------------------------------------------------------
+[edge_preview]
+# Snapshot directory for camera images
+snap_dir = "/home/pi/robot/snapshots"
+
+# Edge detection thresholds (Canny algorithm)
+edge_low = 60
+edge_high = 120
+
+# Snapshot frequency in milliseconds
+snap_every_ms = 500
+
+# Preview rotation angle (0, 90, 180, 270)
+preview_rot = 0
+
+# Flip preview horizontally
+preview_flip_h = false
+
+# Camera frame dimensions
+frame_w = 640
+frame_h = 480
+
+# Path to last frame image
+last_frame = "/home/pi/robot/data/last_frame.jpg"
+
+# -----------------------------------------------------------------------------
+# Obstacle Detection Configuration (rider-obstacle.service)
+# -----------------------------------------------------------------------------
+[obstacle]
+# Input paths
+proc_path = "/home/pi/robot/snapshots/proc.jpg"
+raw_path = "/home/pi/robot/snapshots/raw.jpg"
+data_dir = "/home/pi/robot/data"
+obstacle_json = "/home/pi/robot/data/obstacle.json"
+
+# Region of Interest (ROI) - normalized coordinates (0.0 to 1.0)
+roi_y0 = 0.55      # Top of ROI (fraction of image height)
+roi_h = 0.40       # Height of ROI (fraction of image height)
+
+# Edge detection thresholds (fraction of pixels)
+edge_t_low = 0.10   # Low threshold for edge hysteresis
+edge_t_high = 0.18  # High threshold for edge hysteresis
+
+# Safety parameters
+dark_luma = 0.15       # Luma threshold for darkness detection (0.0-1.0)
+lapl_var_min = 30.0    # Minimum Laplacian variance (focus/blur detection)
+
+# Confidence calculation
+conf_gain = 4.0        # Gain for confidence calculation
+
+# Temporal filtering
+snap_max_age_s = 3.0   # Maximum age of snapshot in seconds
+obst_dec_n = 3         # Number of decisions to keep in history
+
+# Publishing
+publish = 0            # Enable ZMQ publishing (0=off, 1=on)
+
+# Annotation settings
+obst_ann = 0           # Enable obstacle annotations (0=off, 1=on)
+obst_ann_path = "/home/pi/robot/snapshots/obst_annot.jpg"
+obst_bins = 24         # Number of bins for column analysis
+edge_bin_low = 0.06    # Low edge threshold for bin coloring
+
+# Legacy parameters (for diagnostics)
+edge_area_pct = 0.18   # Legacy edge area percentage threshold
+edge_pix_min = 16000   # Legacy minimum edge pixels
+
+# -----------------------------------------------------------------------------
+# SSD Preview Configuration (rider-ssd-preview.service)
+# -----------------------------------------------------------------------------
+[ssd_preview]
+# Snapshot directory
+snap_dir = "/home/pi/robot/snapshots"
+
+# Preview rotation angle (0, 90, 180, 270)
+preview_rot = 270
+
+# Flip settings
+preview_flip_h = false
+preview_flip_v = false
+
+# LCD settings
+disable_lcd = false
+no_draw = false
+
+# Snapshot format
+snap_ext = ""  # Force snapshot extension: .jpg, .png, .bmp (empty = auto)
+
+# Anti-flicker and throttling
+draw_latch_ms = 700    # Keep detections visible for this duration (ms)
+snap_every_ms = 500    # Snapshot write frequency (ms)
+
+# SSD model parameters
+ssd_classes = "person"  # Comma-separated class names or "*" for all
+ssd_score = 0.55       # Minimum confidence score (0.0-1.0)
+ssd_every = 1          # Run inference every N frames
