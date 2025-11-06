@@ -55,6 +55,7 @@ try:
     SNAP_DIR = _camera_cfg.snap_dir
     RAW_PATH = _camera_cfg.raw_path
     PROC_PATH = _camera_cfg.proc_path
+    SSD_PATH = _camera_cfg.ssd_path
 except (ImportError, ModuleNotFoundError):
     # Fallback to legacy ENV-based paths if config module unavailable
     SNAP_DIR = os.path.abspath(
@@ -62,6 +63,7 @@ except (ImportError, ModuleNotFoundError):
     )
     RAW_PATH = os.getenv("RAW_PATH") or os.path.join(SNAP_DIR, "raw.jpg")
     PROC_PATH = os.getenv("PROC_PATH") or os.path.join(SNAP_DIR, "proc.jpg")
+    SSD_PATH = os.getenv("SSD_PATH") or os.path.join(SNAP_DIR, "ssd.jpg")
 
 VIEW_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "view.html"))
 CONTROL_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "control.html"))

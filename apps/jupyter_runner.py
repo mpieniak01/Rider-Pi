@@ -110,15 +110,14 @@ def main():
 
     # Execute Jupyter Lab
     try:
-        subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, check=False)
+        return result.returncode
     except KeyboardInterrupt:
         print("\n[jupyter_runner] Shutting down...", flush=True)
         return 0
     except Exception as e:
         print(f"[jupyter_runner] Error: {e}", file=sys.stderr, flush=True)
         return 1
-
-    return 0
 
 
 if __name__ == "__main__":
