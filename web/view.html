@@ -139,18 +139,20 @@
     </div>
   </div>
 
-  
-  <!-- RZĄD 3 -->
+  <!-- RZĄD 3: API Metrics -->
   <div class="grid" style="margin-top:18px">
     <div class="card">
-      <h3 data-i18n="dash.links.title">Linki</h3>
-        <div class="kv">
-          <div data-i18n="dash.links.events">zdarzenia (SSE)</div><div><a href="/events" target="_blank">/events</a></div>
-          <div data-i18n="dash.links.metrics">metryki</div><div><a href="/metrics" target="_blank">/metrics</a></div>
-          <div>system dashboard</div><div><a href="/system/" target="_blank">/system/</a></div>
-          <div data-i18n="dash.links.control">sterowanie</div><div><a href="/control">/control</a></div>
-          <div data-i18n="dash.links.home">google.home</div><div><a href="/home">/home</a></div>
-        </div>
+      <h3>API Metrics</h3>
+      <div class="kv">
+        <div>Control</div><div id="metric_control">—</div>
+        <div>Navigator</div><div id="metric_navigator">—</div>
+        <div>Voice</div><div id="metric_voice">—</div>
+        <div>GoogleHome</div><div id="metric_google_home">—</div>
+        <div>Chat</div><div id="metric_chat">—</div>
+        <div>Face</div><div id="metric_face">—</div>
+        <div style="font-weight:bold;margin-top:4px">Total Errors</div><div id="metric_total_errors" class="bad" style="font-weight:bold;margin-top:4px">—</div>
+      </div>
+      <div class="hint" style="margin-top:6px;opacity:.7">Interactive API call metrics (OK / Error)</div>
     </div>
 
     <div class="card">
@@ -181,8 +183,27 @@
     </div>
   </div>
 
-  <!-- RZĄD 4 -->
+  <!-- RZĄD 4: Info + Linki + TRACKER w jednym rzędzie -->
   <div class="grid" style="margin-top:18px">
+    <div class="card" style="grid-column: span 2">
+      <h3>Info</h3>
+      <div class="hint" style="opacity:.8">
+        Tracker stream pokazuje wykrywaną twarz lub dłoń z zaznaczonym okręgiem oraz aktualnym FPS przetwarzania.
+        Minimalna akceptowalna wartość FPS to 10. Użyj endpointu /api/vision/tracking/mode aby włączyć tryb Follow Me (face/hand).
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 data-i18n="dash.links.title">Linki</h3>
+      <div class="kv">
+        <div data-i18n="dash.links.events">zdarzenia (SSE)</div><div><a href="/events" target="_blank">/events</a></div>
+        <div data-i18n="dash.links.metrics">metryki</div><div><a href="/metrics" target="_blank">/metrics</a></div>
+        <div>system dashboard</div><div><a href="/system/" target="_blank">/system/</a></div>
+        <div data-i18n="dash.links.control">sterowanie</div><div><a href="/control">/control</a></div>
+        <div data-i18n="dash.links.home">google.home</div><div><a href="/home">/home</a></div>
+      </div>
+    </div>
+
     <div class="card">
       <h3>Camera — TRACKER (Follow Me)</h3>
       <div class="thumb">
@@ -190,28 +211,6 @@
       </div>
       <div class="legend">
         <span><i class="dot raw"></i><span id="leg_tracker_txt">TRACKER • FPS + detection circle</span></span>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>API Metrics</h3>
-      <div class="kv">
-        <div>Control</div><div id="metric_control">—</div>
-        <div>Navigator</div><div id="metric_navigator">—</div>
-        <div>Voice</div><div id="metric_voice">—</div>
-        <div>GoogleHome</div><div id="metric_google_home">—</div>
-        <div>Chat</div><div id="metric_chat">—</div>
-        <div>Face</div><div id="metric_face">—</div>
-        <div style="font-weight:bold;margin-top:4px">Total Errors</div><div id="metric_total_errors" class="bad" style="font-weight:bold;margin-top:4px">—</div>
-      </div>
-      <div class="hint" style="margin-top:6px;opacity:.7">Interactive API call metrics (OK / Error)</div>
-    </div>
-
-    <div class="card" style="grid-column: span 2">
-      <h3>Info</h3>
-      <div class="hint" style="opacity:.8">
-        Tracker stream pokazuje wykrywaną twarz lub dłoń z zaznaczonym okręgiem oraz aktualnym FPS przetwarzania.
-        Minimalna akceptowalna wartość FPS to 10. Użyj endpointu /api/vision/tracking/mode aby włączyć tryb Follow Me (face/hand).
       </div>
     </div>
   </div>

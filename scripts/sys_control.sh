@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
+# robot/scripts/sys_control.sh
 set -euo pipefail
+
 
 # ===== Whitelist (pełne nazwy unitów) =====
 ALLOW_UNITS=(
@@ -12,7 +14,11 @@ ALLOW_UNITS=(
   rider-edge-preview.service
   rider-ssd-preview.service
   rider-obstacle.service
-)
+  rider-odometry.service
+  rider-tracker.service
+  rider-tracking-controller.service
+  rider-tracker.service)
+
 
 USER_NAME="pi"
 USER_UID="$(id -u "$USER_NAME" 2>/dev/null || echo 1000)"

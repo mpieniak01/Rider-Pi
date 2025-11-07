@@ -23,7 +23,9 @@ ZMQ_ADDR_PUB = f"tcp://127.0.0.1:{BUS_PUB_PORT}"
 ZMQ_ADDR_SUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
 
 SNAP_DIR = os.getenv("SNAP_BASE", "/home/pi/robot/snapshots")
-RAW_PATH = os.path.join(SNAP_DIR, "cam.jpg")
+
+# Główne źródło obrazu – klatka z preview_lcd (camera.heartbeat)
+LAST_FRAME_PATH = os.getenv("TRACKER_LAST_FRAME_PATH", "/home/pi/robot/data/last_frame.jpg")
 TRACKER_PATH = os.path.join(SNAP_DIR, "tracker.jpg")
 
 # Tracking parameters
@@ -51,7 +53,7 @@ def zmq_sub(topics: list[str]) -> zmq.Socket:
     s.setsockopt(zmq.RCVTIMEO, 100)  # 100ms timeout for responsiveness
     for t in topics:
         s.setsockopt_string(zmq.SUBSCRIBE, t)
-        print(f"[tracker] zmq_sub subscribed to topic '{t}'", flush=True)
+        print(f"[tracker] zmq_sub subscribed to topic prefix '{t}'", flush=True)
     print(f"[tracker] zmq_sub connected to {ZMQ_ADDR_SUB}", flush=True)
     return s
 
@@ -97,69 +99,62 @@ def sub_recv() -> tuple[str, dict[str, Any]]:
 
 
 def control_loop() -> None:
-    """Listen for tracking mode control messages."""
-    global FOLLOW_MODE
+    """Listen for tracking mode control messages and camera heartbeats."""
+    global FOLLOW_MODE, LAST_FRAME_PATH
     print("[tracker] control_loop started", flush=True)
 
     while True:
         try:
             topic, data = sub_recv()
-            if not topic:
+            if not topic and not data:
                 continue
 
+            # Kamera – serce systemu: aktualizujemy ścieżkę do klatki
+            if topic == "camera.heartbeat":
+                lfp = data.get("last_frame_path")
+                if isinstance(lfp, str) and lfp:
+                    LAST_FRAME_PATH = lfp
+                # można też kiedyś wykorzystać fps, lcd, itp.
+                # print(f"[tracker] heartbeat last_frame_path={LAST_FRAME_PATH}", flush=True)
+                continue
+
+            # Interesują nas tylko tematy związane z trackingiem
+            if "tracking" not in topic:
+                continue
+
+            # Debug: pokaż wszystkie potencjalne sterowania
+            if "mode" in data or "enabled" in data:
+                print(f"[tracker] tracking control topic='{topic}' data={data}", flush=True)
+
+            mode_raw = str(data.get("mode", "none"))
+            enabled = bool(data.get("enabled", True))
+
+            mode_norm = mode_raw.strip().lower()
+
             with FOLLOW_MODE_LOCK:
-                # Unified topic handling
-                if topic == "tracking.mode:set":
-                    mode_raw = data.get("mode", "none")
-                    if not isinstance(mode_raw, str):
-                        print(f"[tracker] invalid mode type {type(mode_raw)} in data={data}", flush=True)
-                        continue
-                    mode = mode_raw.upper()
-                    if mode in ["FACE", "HAND", "NONE"]:
-                        FOLLOW_MODE = mode
-                        print(f"[tracker] mode → {mode}", flush=True)
-                    else:
-                        print(
-                            f"[tracker] invalid mode value '{mode_raw}' (expected face/hand/none) in data={data}",
-                            flush=True,
-                        )
-                else:
+                if not enabled or mode_norm in ("none", "off", "disable", "disabled", ""):
+                    FOLLOW_MODE = "NONE"
                     print(
-                        f"[tracker] control_loop got unknown topic '{topic}' data={data}",
+                        f"[tracker] mode → NONE (enabled={enabled}, raw='{mode_raw}')",
                         flush=True,
                     )
+                elif mode_norm in ("face", "hand"):
+                    FOLLOW_MODE = mode_norm.upper()
+                    print(
+                        f"[tracker] mode → {FOLLOW_MODE} (enabled={enabled})",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"[tracker] invalid tracking mode '{mode_raw}' (enabled={enabled}) in data={data}",
+                        flush=True,
+                    )
+
         except KeyboardInterrupt:
             break
         except Exception as e:
             print(f"[tracker] control_loop err: {e}", flush=True)
             time.sleep(0.1)
-
-
-def open_camera():
-    """Open camera for capturing frames."""
-    try:
-        from picamera2 import Picamera2
-
-        picam2 = Picamera2()
-        cfg = picam2.create_preview_configuration(main={"size": (320, 240), "format": "RGB888"})
-        picam2.configure(cfg)
-        picam2.start()
-
-        def read():
-            arr = picam2.capture_array()
-            return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-
-        print("[tracker] open_camera: using Picamera2", flush=True)
-        return read
-    except (ImportError, RuntimeError) as e:
-        print(
-            f"[tracker] PiCamera2 not available, using cv2.VideoCapture: {e}",
-            flush=True,
-        )
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-        return cap.read
 
 
 def calculate_offset_x(detections: list, frame_width: float | None = None) -> float | None:
@@ -197,11 +192,9 @@ def save_tracker_frame(frame_bgr: Any) -> bool:
     """Save annotated tracker frame to disk atomically."""
     try:
         os.makedirs(SNAP_DIR, exist_ok=True)
-        # Encode to JPEG
         ok, encoded = cv2.imencode(".jpg", frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         if not ok:
             return False
-        # Atomic write
         tmp_path = TRACKER_PATH + ".tmp"
         with open(tmp_path, "wb") as f:
             f.write(encoded.tobytes())
@@ -213,7 +206,9 @@ def save_tracker_frame(frame_bgr: Any) -> bool:
 
 
 def tracking_loop() -> None:
-    """Main tracking loop using MediaPipe."""
+    """Main tracking loop using MediaPipe on frames from last_frame.jpg."""
+    global LAST_FRAME_PATH
+
     print("[tracker] tracking_loop started", flush=True)
 
     mp_face = mp.solutions.face_detection
@@ -227,7 +222,6 @@ def tracking_loop() -> None:
         min_tracking_confidence=0.5,
     )
 
-    read = open_camera()
     frame_interval = 1.0 / MAX_FPS
     last_pub_ts = 0.0
 
@@ -243,18 +237,17 @@ def tracking_loop() -> None:
                 mode = FOLLOW_MODE
 
             if mode == "NONE":
-                # debug: report idle mode
-                print("[tracker] tracking_loop idle (mode=NONE)", flush=True)
+                # tryb wyłączony – nie przetwarzamy klatek
                 time.sleep(0.1)
                 continue
 
-            ok, frame = read()
-            if not ok:
-                print("[tracker] read frame failed", flush=True)
-                time.sleep(0.01)
+            # Wczytujemy ostatnią klatkę z preview
+            frame = cv2.imread(LAST_FRAME_PATH)
+            if frame is None:
+                print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
+                time.sleep(0.05)
                 continue
 
-            # Calculate FPS every second (only when processing frames)
             fps_frame_count += 1
             if t0 - fps_start_time >= 1.0:
                 fps_value = fps_frame_count / (t0 - fps_start_time)
@@ -292,10 +285,9 @@ def tracking_loop() -> None:
             else:
                 print(f"[tracker] Unknown mode '{mode}'", flush=True)
 
-            # Create annotated frame
             annotated_frame = frame.copy()
 
-            # Draw FPS
+            # FPS overlay
             fps_text = f"FPS: {fps_value:.1f}"
             cv2.putText(
                 annotated_frame,
@@ -308,31 +300,29 @@ def tracking_loop() -> None:
                 cv2.LINE_AA,
             )
 
-            # Draw detection circle/marker
+            # Detection marker
             if detections is not None and len(detections) > 0:
                 det = detections[0]
                 center_x, center_y = None, None
 
-                # For face detection (bounding box)
                 if hasattr(det, "location_data") and det.location_data.HasField("relative_bounding_box"):
                     bbox = det.location_data.relative_bounding_box
                     center_x = int((bbox.xmin + bbox.width / 2.0) * w)
                     center_y = int((bbox.ymin + bbox.height / 2.0) * h)
                     radius = int(max(bbox.width, bbox.height) * w / 2.0)
-                # For hand detection (landmarks)
                 elif hasattr(det, "landmark") and len(det.landmark) > 0:
-                    # Use wrist landmark (first landmark)
                     center_x = int(det.landmark[0].x * w)
                     center_y = int(det.landmark[0].y * h)
+                    radius = 40
+                else:
                     radius = 40
 
                 if center_x is not None and center_y is not None:
                     cv2.circle(annotated_frame, (center_x, center_y), radius, (0, 255, 255), 2)
                     cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 255, 255), -1)
 
-            # Save annotated frame to disk only if detections exist
-            if detections is not None:
-                save_tracker_frame(annotated_frame)
+            # Zapisujemy ramkę trackera zawsze przy aktywnym trybie
+            save_tracker_frame(annotated_frame)
 
             now = time.time()
             if offset_x is not None and (now - last_pub_ts) >= frame_interval:
@@ -342,7 +332,6 @@ def tracking_loop() -> None:
                 )
                 last_pub_ts = now
             else:
-                # debug: not publishing
                 if offset_x is None:
                     print("[tracker] no offset to publish", flush=True)
                 else:
@@ -374,8 +363,8 @@ def tracking_loop() -> None:
 if __name__ == "__main__":
     print("[tracker] starting MediaPipe tracker", flush=True)
     PUB = zmq_pub()
-    # Subscribe to unified tracking mode topic
-    SUB = zmq_sub(["tracking.mode:set"])
+    # Subskrybujemy wszystko, ale w control_loop filtrujemy po topicu
+    SUB = zmq_sub([""])
 
     threading.Thread(target=control_loop, daemon=True).start()
     tracking_loop()

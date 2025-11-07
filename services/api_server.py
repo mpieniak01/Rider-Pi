@@ -79,7 +79,7 @@ def _update_api_metrics(path: str, status_code: int) -> None:
         "/api/version",
         "/api/navigator/status",  # status do odczytu
         "/web/",
-        "/",
+        # "/",
         "/view",
         "/control",
         "/home",
