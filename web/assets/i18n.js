@@ -20,6 +20,20 @@ export const I18N = {
     obstacle_none:    { pl: "Przeszkoda: brak", en: "Obstacle: none" },
   },
 
+  nav: {
+    brand_title:   { pl: "Rider-Pi", en: "Rider-Pi" },
+    brand_sub:     { pl: "Panel operatora", en: "Operator console" },
+    view:          { pl: "Przegląd", en: "Overview" },
+    control:       { pl: "Sterowanie", en: "Control" },
+    navigation:    { pl: "Nawigacja", en: "Navigation" },
+    system:        { pl: "System", en: "System" },
+    home:          { pl: "Statusy", en: "Status" },
+    google_home:   { pl: "Google Home", en: "Google Home" },
+    chat:          { pl: "Chat", en: "Chat" },
+    lang_pl_title: { pl: "Przełącz na polski", en: "Switch to Polish" },
+    lang_en_title: { pl: "Przełącz na angielski", en: "Switch to English" },
+  },
+
   // ===== MINI DASHBOARD =====
   dash: {
     page_title:     { pl: "Rider-Pi — mini dashboard", en: "Rider-Pi — mini dashboard" },
@@ -142,6 +156,9 @@ export const I18N = {
     height:          { pl: "Wysokość", en: "Height" },
     follow_face:     { pl: "Śledź Twarz (Follow Face)", en: "Follow Face" },
     follow_hand:     { pl: "Śledź Dłoń (Follow Hand)", en: "Follow Hand" },
+    recon_mode:      { pl: "Tryb rekonesansu (autonomiczny)", en: "Recon mode (autonomous)" },
+    recon_strategy:  { pl: "Strategia", en: "Strategy" },
+    return_home:     { pl: "🏠 Powrót do bazy", en: "🏠 Return Home" },
   },
 
   services: {
@@ -244,11 +261,28 @@ export function applyDom(root = document) {
     });
   });
 }
+export function getLang() {
+  return CURRENT_LANG;
+}
+function emitLangChange(lang){
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  if (typeof CustomEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('dashboard:langchange', { detail: { lang } }));
+  } else if (typeof document !== 'undefined' && typeof document.createEvent === 'function') {
+    const evt = document.createEvent('CustomEvent');
+    evt.initCustomEvent('dashboard:langchange', false, false, { lang });
+    window.dispatchEvent(evt);
+  }
+}
 export function setLang(lang) {
   CURRENT_LANG = (lang === 'en') ? 'en' : 'pl';
   applyDom(document);
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.setAttribute('lang', CURRENT_LANG);
+  }
+  emitLangChange(CURRENT_LANG);
 }
 export function initI18n(lang = 'pl') {
   setLang(lang);
-  window.i18n = { t, setLang, applyDom };
+  window.i18n = { t, setLang, applyDom, getLang };
 }

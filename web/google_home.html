@@ -4,10 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Google Home Control</title>
+  <link rel="stylesheet" href="/web/assets/dashboard-common.css">
   <style>
     :root { --pad: 16px; --gap: 12px; }
-    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:var(--pad); background:#0e1823; color:#e6eef7; }
-    .wrap{max-width:1100px;margin:0 auto}
+    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:0; background:#0e1823; color:#e6eef7; }
+    .wrap{max-width:1100px;margin:0 auto;padding:var(--pad);}
     h1{font-size:20px;margin:0 0 var(--pad)}
     .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
     .card{ background:#0f2030; border:1px solid #1e3a56; border-radius:16px; box-shadow:0 1px 8px rgba(0,0,0,.25); padding:var(--pad); margin:0 0 var(--pad); }
@@ -38,9 +39,10 @@
     @keyframes spin{to{transform:rotate(360deg)}}
     .hidden{display:none}
     .status-msg{padding:8px 12px;border-radius:8px;margin:8px 0;background:#0b1a27;border:1px solid #1c3349}
-  </style>
+</style>
 </head>
-<body>
+<body data-page="google">
+<div data-dashboard-menu-target></div>
 <div class="wrap">
   
   <h1 data-i18n="home.page_title">
@@ -81,7 +83,7 @@
 
 <!-- APP (i18n + logika) -->
 <script type="module">
-  import { initI18n, applyDom, t } from '/web/i18n.js';
+import { initI18n, applyDom, t } from '/web/assets/i18n.js';
 
   // --- Inicjalizacja języka
   const urlLang = new URLSearchParams(location.search).get('lang');
@@ -92,8 +94,15 @@
   if (urlLang) localStorage.setItem('lang', lang);
   await initI18n(lang);
   applyDom();
-  document.documentElement.setAttribute('lang', lang);
-  document.title = t('home.page_title');
+  function syncLangMeta(code){
+    document.documentElement.setAttribute('lang', code);
+    document.title = t('home.page_title');
+  }
+  syncLangMeta(lang);
+  window.addEventListener('dashboard:langchange', (ev) => {
+    const next = ev?.detail?.lang;
+    if(next) syncLangMeta(next);
+  });
 
   // --- Helper functions
   const qs = (s)=>document.querySelector(s);
@@ -532,6 +541,7 @@
   // --- Initialize
   checkAuth();
 </script>
+<script type="module" src="/web/assets/menu.js"></script>
 
 </body>
 </html>

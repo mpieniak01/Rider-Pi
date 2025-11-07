@@ -2,7 +2,7 @@
 Tests for web routes to verify proper handling of static files and simple paths.
 
 Updated contract (post #170 clean-up):
-- GET /web/i18n.js?v=1 → 200 (no 3xx redirects)
+- GET /web/assets/i18n.js?v=1 → 200 (no 3xx redirects)
 - GET /home → 200   (krótka trasa zamiast /web/home/)
 - GET /chat → 200   (jeśli serwowane jako /web/chat.html – testuje plik)
 - GET /camera/last?t=0 → not a redirect (3xx niedozwolone)
@@ -29,12 +29,12 @@ def _requires_api():
 
 
 def test_web_static_file_no_redirect():
-    """Test that /web/i18n.js returns 200 without redirect (no 3xx)."""
+    """Test that /web/assets/i18n.js returns 200 without redirect (no 3xx)."""
     _requires_api()
     c = api.app.test_client()
 
     # Test without query params
-    r = c.get("/web/i18n.js")
+    r = c.get("/web/assets/i18n.js")
     assert r.status_code == 200, f"Expected 200, got {r.status_code}"
     assert (
         "text/javascript" in r.headers.get("Content-Type", "").lower()
@@ -42,11 +42,11 @@ def test_web_static_file_no_redirect():
     )
 
     # Test with query params (cache busting)
-    r = c.get("/web/i18n.js?v=1")
-    assert r.status_code == 200, f"Expected 200 for /web/i18n.js?v=1, got {r.status_code}"
+    r = c.get("/web/assets/i18n.js?v=1")
+    assert r.status_code == 200, f"Expected 200 for /web/assets/i18n.js?v=1, got {r.status_code}"
 
-    r = c.get("/web/i18n.js?v=3")
-    assert r.status_code == 200, f"Expected 200 for /web/i18n.js?v=3, got {r.status_code}"
+    r = c.get("/web/assets/i18n.js?v=3")
+    assert r.status_code == 200, f"Expected 200 for /web/assets/i18n.js?v=3, got {r.status_code}"
 
 
 def test_home_route_ok():
@@ -129,7 +129,7 @@ def test_anti_cache_headers():
     _requires_api()
     c = api.app.test_client()
 
-    r = c.get("/web/i18n.js")
+    r = c.get("/web/assets/i18n.js")
     if r.status_code == 200:
         cache_control = r.headers.get("Cache-Control", "").lower()
         assert "no-store" in cache_control or "no-cache" in cache_control, "Should have anti-cache headers"
@@ -142,7 +142,7 @@ def test_web_static_files_no_trailing_slash_redirect():
 
     # Test various static file paths
     test_files = [
-        "/web/i18n.js",
+        "/web/assets/i18n.js",
         "/web/view.html",
         "/web/control.html",
     ]

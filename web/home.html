@@ -4,10 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Google Feed</title>
+  <link rel="stylesheet" href="/web/assets/dashboard-common.css">
   <style>
     :root { --pad: 16px; --gap: 12px; }
-    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:var(--pad); background:#0e1823; color:#e6eef7; }
-    .wrap{max-width:1100px;margin:0 auto}
+    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:0; background:#0e1823; color:#e6eef7; }
+    .wrap{max-width:1100px;margin:0 auto;padding:var(--pad);}
     h1{font-size:20px;margin:0 0 var(--pad)}
     .card{ background:#0f2030; border:1px solid #1e3a56; border-radius:16px; box-shadow:0 1px 8px rgba(0,0,0,.25); padding:var(--pad); margin:0 0 var(--pad); }
     .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
@@ -25,9 +26,10 @@
     .data-value{color:#e6eef7}
     .spinner{display:inline-block;width:16px;height:16px;border:2px solid #24425e;border-top-color:#6de28a;border-radius:50%;animation:spin 0.8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-  </style>
+</style>
 </head>
-<body>
+<body data-page="home">
+<div data-dashboard-menu-target></div>
 <div class="wrap">
   
   <h1>
@@ -164,6 +166,7 @@
   // Poll every 5 seconds
   setInterval(updateAll, POLL_INTERVAL_MS);
 </script>
+<script type="module" src="/web/assets/menu.js"></script>
 
 </body>
 </html>

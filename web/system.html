@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>System Dashboard – usługi Rider-Pi</title>
+  <link rel="stylesheet" href="/web/assets/dashboard-common.css">
   <style>
     :root {
       color-scheme: dark;
@@ -18,7 +19,12 @@
       margin: 0;
       background: var(--bg);
       color: var(--fg);
+      padding: 0;
+    }
+    .system-shell {
       padding: 16px;
+      max-width: 1200px;
+      margin: 0 auto;
     }
     header {
       display: flex;
@@ -131,9 +137,11 @@
         margin-left: 0;
       }
     }
-  </style>
+</style>
 </head>
-<body>
+<body data-page="system">
+<div data-dashboard-menu-target></div>
+<div class="system-shell">
   <header>
     <h1>System Dashboard – usługi Rider-Pi</h1>
     <nav>
@@ -144,6 +152,7 @@
   <p id="status-line">Ładowanie danych usług…</p>
   <section id="system-graph"></section>
   <section id="system-table"></section>
+</div>
 
   <script>
     const graphEl = document.getElementById('system-graph');
@@ -293,5 +302,6 @@
     loadGraph();
     setInterval(loadGraph, 5000);
   </script>
+  <script type="module" src="/web/assets/menu.js"></script>
 </body>
 </html>

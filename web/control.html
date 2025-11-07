@@ -4,10 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Sterowanie ruchem (REST /api)</title>
+  <link rel="stylesheet" href="/web/assets/dashboard-common.css">
   <style>
     :root { --pad: 16px; --gap: 12px; }
-    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:var(--pad); background:#0e1823; color:#e6eef7; }
-    .wrap{max-width:1100px;margin:0 auto}
+    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:0; background:#0e1823; color:#e6eef7; }
+    .wrap{max-width:1100px;margin:0 auto;padding:var(--pad);}
     h1{font-size:20px;margin:0 0 var(--pad)}
     .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
     .grid{display:grid;grid-template-columns:repeat(3,160px);gap:var(--gap);justify-content:center;margin:16px 0}
@@ -31,9 +32,10 @@
     .svc-actions button{ display:inline-block; padding:6px 10px; font-size:14px; margin:2px 3px; border-radius:10px }
     .cam{width:100%;max-width:480px;border-radius:12px;border:1px solid #1c3349;background:#0b1a27; display:block; margin:0 auto;}
     .note{font-size:13px;color:#b7cee3}
-  </style>
+</style>
 </head>
-<body>
+<body data-page="control">
+<div data-dashboard-menu-target></div>
 <div class="wrap">
 
   <h1 data-i18n="meta.app_title">
@@ -183,7 +185,7 @@
 
 <!-- APP (i18n + logika) -->
 <script type="module">
-  import { initI18n, applyDom, t } from '/web/i18n.js';
+import { initI18n, applyDom, t } from '/web/assets/i18n.js';
 
   // --- Inicjalizacja języka z ?lang=, potem localStorage, potem język przeglądarki
   const urlLang = new URLSearchParams(location.search).get('lang');
@@ -194,8 +196,15 @@
   if (urlLang) localStorage.setItem('lang', lang);
   await initI18n(lang);
   applyDom();                                 // <- KLUCZ: przetłumacz całą stronę
-  document.documentElement.setAttribute('lang', lang);
-  document.title = t('meta.app_title');
+  function syncLangMeta(code){
+    document.documentElement.setAttribute('lang', code);
+    document.title = t('meta.app_title');
+  }
+  syncLangMeta(lang);
+  window.addEventListener('dashboard:langchange', (ev) => {
+    const next = ev?.detail?.lang;
+    if(next) syncLangMeta(next);
+  });
 
   // ====== poniżej oryginalna logika strony, z t() ======
   const qs = (s)=>document.querySelector(s);
@@ -630,7 +639,6 @@
   }
   esConnect();
 </script>
+<script type="module" src="/web/assets/menu.js"></script>
 </body>
 </html>
-
-

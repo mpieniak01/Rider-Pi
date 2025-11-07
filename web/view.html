@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title data-i18n="dash.page_title">Rider-Pi — mini dashboard</title>
+<link rel="stylesheet" href="/web/assets/dashboard-common.css">
 <style>
   body{margin:0;background:#0e1a24;color:#d7e2ee;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   .wrap{max-width:1180px;margin:28px auto;padding:0 18px}
@@ -39,15 +40,14 @@
   .sep{opacity:.4}
 </style>
 </head>
-<body>
+<body data-page="view">
+<div data-dashboard-menu-target></div>
 <div class="wrap">
   <h1 data-i18n="dash.page_title">Rider-Pi — mini dashboard</h1>
   <div class="hint">
     <span data-i18n="dash.hint_prefix">Auto-refresh co ≈ 2 s.</span>
     <span data-i18n="dash.hint_endpoints">Endpointy:</span>
     <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a>, <a href="/vision/snap-info">/vision/snap-info</a>
-    <span style="margin-left:8px">—</span>
-    <a href="#" id="langPL">PL</a> | <a href="#" id="langEN">EN</a>
   </div>
 
   <!-- RZĄD 1 -->
@@ -228,7 +228,7 @@
 </div>
 
 <script type="module">
-import { initI18n, applyDom, t, setLang } from '/web/i18n.js?v=3';
+import { initI18n, applyDom, t } from '/web/assets/i18n.js?v=3';
 
 const REFRESH_MS = 2000;
 const SNAP_STALE_S = 5;
@@ -249,9 +249,16 @@ const browser=(navigator.language||'').slice(0,2).toLowerCase();
 const pick=v=>v&&v.toLowerCase().startsWith('en')?'en':(v&&v.toLowerCase().startsWith('pl')?'pl':null);
 const lang=pick(urlLang)||pick(saved)||pick(browser)||'pl';
 if(urlLang) localStorage.setItem('lang',lang);
-await initI18n(lang); applyDom(); document.documentElement.setAttribute('lang',lang); document.title=t('dash.page_title');
-document.getElementById('langPL').addEventListener('click',e=>{e.preventDefault();localStorage.setItem('lang','pl');setLang('pl');document.documentElement.setAttribute('lang','pl');document.title=t('dash.page_title');});
-document.getElementById('langEN').addEventListener('click',e=>{e.preventDefault();localStorage.setItem('lang','en');setLang('en');document.documentElement.setAttribute('lang','en');document.title=t('dash.page_title');});
+await initI18n(lang); applyDom();
+function syncLangMeta(code){
+  document.documentElement.setAttribute('lang',code);
+  document.title=t('dash.page_title');
+}
+syncLangMeta(lang);
+window.addEventListener('dashboard:langchange',ev=>{
+  const next=ev?.detail?.lang;
+  if(next) syncLangMeta(next);
+});
 
 /* wykres CPU/MEM */
 function drawChart(cpuArr=[], memArr=[]){
@@ -559,5 +566,6 @@ setInterval(fetchObstacle, REFRESH_MS); fetchObstacle();
 setInterval(refreshApiMetrics, REFRESH_MS); refreshApiMetrics();
 startSSE();
 </script>
+<script type="module" src="/web/assets/menu.js"></script>
 </body>
 </html>

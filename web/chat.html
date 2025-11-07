@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>Rider-Pi — Chat</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/web/assets/dashboard-common.css">
 <style>
   :root{
     --bg:#0e1823; --fg:#e6eef7; --muted:#9ab1c9; --card:#122234; --accent:#98c7ff;
@@ -43,7 +44,8 @@
   .hint{font-size:12px;opacity:.7;margin-top:6px}
 </style>
 </head>
-<body>
+<body data-page="chat">
+  <div data-dashboard-menu-target></div>
   <div class="wrap">
     <header>
       <h1>Chat</h1>
@@ -198,5 +200,6 @@
   input.focus();
 })();
 </script>
+<script type="module" src="/web/assets/menu.js"></script>
 </body>
 </html>

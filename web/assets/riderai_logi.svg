@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="800"
+   height="300"
+   viewBox="0 0 800 300"
+   role="img"
+   aria-label="RIDER.AI OG (Canva)"
+   version="1.1"
+   id="svg9"
+   sodipodi:docname="riderai_canva_Mac2_.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   inkscape:export-filename="riderai_canva_Mac_.png"
+   inkscape:export-xdpi="32"
+   inkscape:export-ydpi="32"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview9"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="1.852381"
+     inkscape:cx="168.97172"
+     inkscape:cy="121.19537"
+     inkscape:window-width="3440"
+     inkscape:window-height="1369"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g8" />
+  <defs
+     id="defs2">
+    <linearGradient
+       id="g"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0%"
+         stop-color="#22C55E"
+         id="stop1" />
+      <stop
+         offset="100%"
+         stop-color="#0EA5E9"
+         id="stop2" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#g"
+       id="linearGradient9"
+       x1="104.43729"
+       y1="207.69402"
+       x2="221.3304"
+       y2="324.58713"
+       gradientTransform="matrix(0.80983344,0,0,1.2159486,12.413388,-47.516555)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#g"
+       id="linearGradient10"
+       x1="4.0302353"
+       y1="-172.24254"
+       x2="176.27278"
+       y2="0"
+       gradientTransform="matrix(2.1337681,0,0,0.50777022,-26.404458,8.5033507)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#g"
+       id="linearGradient12"
+       x1="-10.351089"
+       y1="-11.689592"
+       x2="236.19302"
+       y2="234.85452"
+       gradientTransform="scale(1.0626901,0.94100807)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#g"
+       id="linearGradient13"
+       x1="57.289413"
+       y1="250.91895"
+       x2="102.12461"
+       y2="295.75415"
+       gradientTransform="matrix(2.0073516,0,0,0.49816882,9.1409035,2.7055764)"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <rect
+     width="800"
+     height="300"
+     fill="#0b1220"
+     id="rect2"
+     x="-1.3969454e-05"
+     y="0.76346475"
+     style="display:inline;stroke-width:0.63961"
+     inkscape:label="rect2"
+     sodipodi:insensitive="true" />
+  <g
+     opacity="0.06"
+     stroke="#93c5fd"
+     id="g3"
+     transform="matrix(0.66535126,0,0,0.47163915,-6.3583548e-7,1.5269164)">
+    <path
+       d="M 0,105 H 1200 M 0,210 H 1200 M 0,315 H 1200 M 0,420 H 1200 M 0,525 h 1200"
+       id="path2" />
+    <path
+       d="M 120,0 V 630 M 240,0 V 630 M 360,0 V 630 M 480,0 V 630 M 600,0 V 630 M 720,0 V 630 M 840,0 V 630 M 960,0 V 630 M 1080,0 v 630"
+       id="path3" />
+  </g>
+  <g
+     transform="matrix(0.65972318,0,0,0.63475634,52.875036,31.531049)"
+     id="g6">
+    <ellipse
+       cx="327.29831"
+       cy="361.414"
+       fill="#f59e0b"
+       id="circle5-9"
+       style="stroke-width:1.66035"
+       rx="36.220604"
+       ry="30.444191"
+       transform="matrix(1.3990118,0,0,1.577967,-267.29783,-233.11434)" />
+    <path
+       d="m 105.52547,218.98848 77.59341,114.21645"
+       stroke="url(#g)"
+       stroke-width="21.8312"
+       stroke-linecap="round"
+       fill="none"
+       id="path4"
+       style="stroke:url(#linearGradient9)" />
+    <rect
+       x="100"
+       y="180"
+       width="70"
+       height="40"
+       rx="10"
+       fill="#0b1220"
+       id="rect4" />
+    <path
+       d="M 0,210 V 20 Q 0,0 20,0 h 100 q 60,0 90,30 30,30 30,75 0,45 -30,75 -30,30 -90,30 z"
+       fill="none"
+       stroke="url(#g)"
+       stroke-width="22"
+       stroke-linecap="round"
+       stroke-linejoin="round"
+       id="path5"
+       style="stroke:url(#linearGradient12)" />
+    <circle
+       cx="145"
+       cy="78"
+       r="20"
+       fill="#f59e0b"
+       id="circle5" />
+    <path
+       d="m 129.1409,132.70558 q 40,25 80,0"
+       fill="none"
+       stroke="url(#g)"
+       stroke-width="10"
+       stroke-linecap="round"
+       id="path6"
+       style="stroke:url(#linearGradient13)" />
+  </g>
+  <g
+     transform="matrix(0.77948173,0,0,0.93351525,302.58689,109.49573)"
+     font-family="Inter, system-ui, '-apple-system', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif"
+     id="g8">
+    <text
+       x="204.8344"
+       y="173.99159"
+       fill="#cbd5e1"
+       id="text9"
+       style="font-size:37.239px;stroke-width:1.16372"
+       transform="scale(1.0863502,0.92051347)"><tspan
+         style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:37.239px;font-family:Consolas;-inkscape-font-specification:'Consolas Italic';stroke-width:1.16372"
+         id="tspan24">by Maciej Pieniak</tspan></text>
+    <text
+       x="-26.404459"
+       y="8.5033512"
+       font-weight="900"
+       font-size="124.907px"
+       fill="url(#g)"
+       id="text6"
+       style="fill:url(#linearGradient10);stroke-width:1.0409"
+       transform="scale(0.96071104,1.0408957)">RIDER</text>
+    <text
+       x="445.36807"
+       y="8.2573156"
+       font-weight="900"
+       font-size="124.907px"
+       fill="#f8fafc"
+       id="text7"
+       transform="scale(0.96071104,1.0408957)"
+       style="stroke-width:1.0409">.AI</text>
+    <text
+       x="-22.592958"
+       y="72.656593"
+       font-size="34.1497px"
+       fill="#cbd5e1"
+       id="text8"
+       transform="scale(0.99042241,1.0096702)"
+       style="font-size:38.1471px;stroke-width:1.05233">Edge AI that sees, speaks, and moves</text>
+  </g>
+</svg>
