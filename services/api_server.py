@@ -185,6 +185,35 @@ def face_state():
     return _corsify(jsonify(res)), 200
 
 
+@app.route("/api/resource/<name>", methods=["GET", "POST"])
+def api_resource(name: str):
+    if request.method == "GET":
+        return services_api.resource_status(name)
+
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip().lower()
+
+    if action == "release":
+        pids_raw = payload.get("pids")
+        pids: list[int] = []
+        if isinstance(pids_raw, list):
+            for item in pids_raw:
+                try:
+                    pids.append(int(item))
+                except (TypeError, ValueError):
+                    return _corsify(jsonify({"error": "invalid pid"})), 400
+        return services_api.resource_release(name, pids)
+
+    if action == "stop":
+        units = payload.get("units")
+        if units is not None and not isinstance(units, list):
+            return _corsify(jsonify({"error": "units must be a list"})), 400
+        units_list = [str(u) for u in units] if isinstance(units, list) else None
+        return services_api.resource_stop(name, units_list)
+
+    return _corsify(jsonify({"error": "unknown action", "action": action})), 400
+
+
 # ── FACE: legacy ─────────────────────────────────────────────────────────────
 @app.route("/api/draw/face", methods=["POST", "OPTIONS"])
 def api_draw_face_legacy():

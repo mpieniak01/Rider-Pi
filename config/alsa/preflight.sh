@@ -32,6 +32,7 @@ FORCE=0
 CAPTURE_DEV=""
 PLAYBACK_DEV=""
 SCRIPT_NAME="[alsa-preflight]"
+LIMIT_PIDS=()
 
 # Skip lsof in test/CI environments
 SKIP_LSOF="${ALSA_SKIP_LSOF:-0}"
@@ -67,6 +68,7 @@ Options:
     --force                Kill blocking processes if devices are busy
     --capture DEVICE       Specify capture device to check (e.g., wm8960_in)
     --playback DEVICE      Specify playback device to check (e.g., wm8960_out)
+    --limit-pid PID        Limit cleanup to specific PID (can be repeated)
     --help                 Show this help
 
 Exit codes:
@@ -102,6 +104,10 @@ while [[ $# -gt 0 ]]; do
         --help|-h)
             usage
             exit 0
+            ;;
+        --limit-pid)
+            LIMIT_PIDS+=("$2")
+            shift 2
             ;;
         *)
             log_error "Unknown option: $1"
@@ -167,72 +173,78 @@ kill_blocking_processes() {
         log_info "Skipping lsof (test/CI environment)"
         return 0
     fi
-    
+
     log_info "Searching for processes using /dev/snd/*"
-    
-    local killed=0
+
     local output
     output="$(lsof /dev/snd/* 2>/dev/null || true)"
-    
+
     if [[ -z "$output" ]]; then
         log_info "No processes found using audio devices"
         return 0
     fi
-    
-    # Parse lsof output (skip header line)
-    echo "$output" | tail -n +2 | while read -r line; do
-        local cmd pid rest
+
+    local killed=0
+    local line cmd pid rest allowed limit
+    while read -r line; do
+        [[ -n "$line" ]] || continue
         read -r cmd pid rest <<< "$line"
-        
-        # Only kill known safe audio processes
-        if [[ "$cmd" =~ ^(arecord|aplay|python.*voice) ]]; then
-            log_warn "Found blocking process: PID=$pid CMD=$cmd"
-            
-            if [[ "$FORCE" == "1" ]]; then
-                log_info "Sending SIGTERM to PID=$pid ($cmd)"
-                kill -TERM "$pid" 2>/dev/null || {
-                    log_warn "Failed to send SIGTERM to PID=$pid"
-                    continue
-                }
-                
-                # Wait up to 1 second for graceful shutdown
-                for i in {1..10}; do
-                    if ! kill -0 "$pid" 2>/dev/null; then
-                        log_info "PID=$pid terminated gracefully"
-                        killed=$((killed + 1))
-                        break
-                    fi
-                    sleep 0.1
-                done
-                
-                # Force kill if still alive
-                if kill -0 "$pid" 2>/dev/null; then
-                    log_warn "PID=$pid did not terminate, sending SIGKILL"
-                    kill -KILL "$pid" 2>/dev/null || {
-                        log_error "Failed to SIGKILL PID=$pid"
-                        continue
-                    }
-                    sleep 0.2
-                    if ! kill -0 "$pid" 2>/dev/null; then
-                        log_info "PID=$pid force-killed"
-                        killed=$((killed + 1))
-                    else
-                        log_error "PID=$pid could not be killed"
-                    fi
-                fi
-            else
-                log_warn "Device busy (use --force to kill blocking processes)"
-            fi
-        else
-            log_info "Skipping non-audio process: PID=$pid CMD=$cmd"
+        if [[ ! "$cmd" =~ ^(arecord|aplay|python.*voice) ]]; then
+            continue
         fi
-    done
-    
+
+        if [[ ${#LIMIT_PIDS[@]} -gt 0 ]]; then
+            allowed=0
+            for limit in "${LIMIT_PIDS[@]}"; do
+                if [[ "$limit" == "$pid" ]]; then
+                    allowed=1
+                    break
+                fi
+            done
+            [[ $allowed -eq 1 ]] || continue
+        fi
+
+        log_warn "Found blocking process: PID=$pid CMD=$cmd"
+
+        if [[ "$FORCE" != "1" ]]; then
+            log_warn "Device busy (use --force to kill blocking processes)"
+            continue
+        fi
+
+        log_info "Sending SIGTERM to PID=$pid ($cmd)"
+        kill -TERM "$pid" 2>/dev/null || {
+            log_warn "Failed to send SIGTERM to PID=$pid"
+            continue
+        }
+        for _ in {1..10}; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+                log_info "PID=$pid terminated gracefully"
+                killed=$((killed + 1))
+                break
+            fi
+            sleep 0.1
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            log_warn "PID=$pid did not terminate, sending SIGKILL"
+            kill -KILL "$pid" 2>/dev/null || {
+                log_error "Failed to SIGKILL PID=$pid"
+                continue
+            }
+            sleep 0.2
+            if ! kill -0 "$pid" 2>/dev/null; then
+                log_info "PID=$pid force-killed"
+                killed=$((killed + 1))
+            else
+                log_error "PID=$pid could not be killed"
+            fi
+        fi
+    done < <(printf '%s\n' "$output" | tail -n +2)
+
     if [[ $killed -gt 0 ]]; then
         log_info "Killed $killed blocking process(es)"
         sleep 0.3  # Give system time to clean up
     fi
-    
+
     return 0
 }
 

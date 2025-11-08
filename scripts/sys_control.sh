@@ -7,6 +7,8 @@ set -euo pipefail
 ALLOW_UNITS=(
   rider-api.service
   rider-broker.service
+  rider-voice.service
+  rider-voice-web.service
   rider-motion-bridge.service
   rider-vision.service
   rider-web-bridge.service
@@ -83,4 +85,3 @@ else
   fi
 fi
 exit 5
-

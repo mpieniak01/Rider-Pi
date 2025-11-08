@@ -8,7 +8,7 @@ from typing import Any
 
 from flask import Response, request
 
-from . import compat as C
+from . import compat as C, resource_diag
 
 # --- whitelist aliasów -> pełne nazwy unitów ---
 ALLOWED_UNITS: dict[str, str] = {
@@ -156,6 +156,10 @@ def _build_sequence(unit: str, action: str) -> list[tuple[str, str]]:
     return steps
 
 
+def _known_resource(name: str) -> bool:
+    return name in resource_diag.available_resources()
+
+
 def _run_via_systemctl(unit: str, action: str) -> dict[str, Any]:
     """Fallback: wykonaj akcję bezpośrednio przez systemctl (sudo -n)."""
     proc = subprocess.run(
@@ -213,6 +217,42 @@ def _run_step(unit: str, action: str) -> dict[str, Any]:
         "stdout": (proc.stdout or "")[-4000:],
         "stderr": (proc.stderr or "")[-4000:],
     }
+
+
+def resource_status(name: str) -> Response:
+    if not _known_resource(name):
+        return _json({"error": "unknown resource", "name": name}, status=404)
+    data = resource_diag.inspect(name)
+    return _json(data)
+
+
+def resource_release(name: str, pids: list[int] | None = None) -> Response:
+    if not _known_resource(name):
+        return _json({"error": "unknown resource", "name": name}, status=404)
+    try:
+        data = resource_diag.release(name, limit_pids=pids or [])
+    except KeyError:
+        return _json({"error": "unknown resource", "name": name}, status=404)
+    status = 200 if data.get("ok") else 500
+    return _json(data, status=status)
+
+
+def resource_stop(name: str, units: list[str] | None = None) -> Response:
+    if not _known_resource(name):
+        return _json({"error": "unknown resource", "name": name}, status=404)
+
+    services = [u for u in (units or []) if u]
+    if not services:
+        snapshot = resource_diag.inspect(name)
+        services = sorted({h.get("service") for h in snapshot.get("holders", []) if h.get("service")})
+
+    services_whitelisted = [u for u in services if u in ALLOWED_UNITS.values()]
+    if not services_whitelisted:
+        return _json({"ok": False, "error": "no stoppable services", "services": services}, status=404)
+
+    results = [_run_step(unit, "stop") for unit in services_whitelisted]
+    ok = any(r.get("ok") for r in results)
+    return _json({"ok": ok, "results": results})
 
 
 # -------------------- endpoints --------------------

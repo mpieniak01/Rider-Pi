@@ -4,19 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Sterowanie ruchem (REST /api)</title>
-  <link rel="stylesheet" href="/web/assets/dashboard-common.css">
   <style>
     :root { --pad: 16px; --gap: 12px; }
-    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:0; background:#0e1823; color:#e6eef7; }
-    .wrap{max-width:1100px;margin:0 auto;padding:var(--pad);}
+    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:var(--pad); background:#0e1823; color:#e6eef7; }
+    .wrap{max-width:1100px;margin:0 auto}
     h1{font-size:20px;margin:0 0 var(--pad)}
     .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
     .grid{display:grid;grid-template-columns:repeat(3,160px);gap:var(--gap);justify-content:center;margin:16px 0}
     .card{ background:#0f2030; border:1px solid #1e3a56; border-radius:16px; box-shadow:0 1px 8px rgba(0,0,0,.25); padding:var(--pad); margin:0 0 var(--pad); }
-    .card-split{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:stretch;margin-bottom:var(--pad);}
-    .card-split>.card{flex:1 1 340px;margin:0;display:flex;flex-direction:column;}
-    .cam-card{flex:1 1 480px;}
-    .motion-card{flex:1 1 360px;}
     button{ padding:12px 16px; border:1px solid #24425e; border-radius:12px; background:#122435; color:#e6eef7; font-size:16px; cursor:pointer; transition:transform .03s ease, background .12s ease, border-color .12s ease; }
     button:hover{ background:#16304a; border-color:#2b5577 } button:active{ transform:scale(0.98) }
     .btn-sm{ padding:6px 10px; font-size:13px; border-radius:10px }
@@ -34,12 +29,12 @@
     .svc-table td:nth-child(3), .svc-table td:nth-child(4){ white-space:nowrap; }
     .svc-actions{ white-space:nowrap; }
     .svc-actions button{ display:inline-block; padding:6px 10px; font-size:14px; margin:2px 3px; border-radius:10px }
+    .res-holders{font-size:13px;color:#b7cee3}
     .cam{width:100%;max-width:480px;border-radius:12px;border:1px solid #1c3349;background:#0b1a27; display:block; margin:0 auto;}
     .note{font-size:13px;color:#b7cee3}
-</style>
+  </style>
 </head>
-<body data-page="control">
-<div data-dashboard-menu-target></div>
+<body>
 <div class="wrap">
 
   <h1 data-i18n="meta.app_title">
@@ -48,9 +43,8 @@
     <span id="obstBadge" class="pill warn" style="margin-left:10px;display:none" data-i18n="header.obstacle_na">Obstacle: n/a</span>
   </h1>
 
-  <div class="card-split">
   <!-- 1) KAMERA (na górze) -->
-  <div class="card cam-card" style="position:relative">
+  <div class="card" style="position:relative">
     <h2 style="font-size:16px;margin:0 0 8px" data-i18n="camera.title">Podgląd kamery</h2>
 
     <!-- przyciski po prawej -->
@@ -70,7 +64,7 @@
   </div>
 
   <!-- 2) STEROWANIE -->
-  <div class="card motion-card">
+  <div class="card">
     <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.title">Sterowanie ruchem</h2>
 
     <div class="row" style="margin:6px 0 10px">
@@ -100,22 +94,7 @@
       <div></div>
     </div>
 
-    <!-- Balance and Height Controls -->
-    <div class="row" style="margin:16px 0 10px; padding-top:16px; border-top:1px solid #1e3a56">
-      <label style="cursor:pointer">
-        <input id="balanceToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
-        <span data-i18n="motion.balance">Balance</span>
-      </label>
-      <div style="width:20px"></div>
-      <label>
-        <span data-i18n="motion.height">Height</span>
-        <span class="muted">(0..12 cm)</span>:
-        <input id="heightSlider" type="range" min="0" max="12" step="1" value="6" />
-        <span id="heightVal">6</span> cm
-      </label>
-    </div>
-
-    <div class="row" style="margin:16px 0 0; padding-top:16px; border-top:1px solid #1e3a56">
+    <div class="row">
       <span class="muted">
         <span data-i18n="motion.shortcuts_hint">Skróty</span>:
         <span class="kbd">W/S/A/D</span>
@@ -123,7 +102,6 @@
       </span>
       <div class="spacer"></div>
     </div>
-  </div>
   </div>
 
   <div class="card">
@@ -183,6 +161,54 @@
     </table>
   </div>
 
+  <!-- 3b) ZASOBY SPRZĘTOWE -->
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 8px">Diagnostyka zasobów</h2>
+    <div id="resInfo" class="muted">Ładowanie…</div>
+    <table class="svc-table" id="resTable">
+      <thead>
+        <tr>
+          <th>Zasób</th>
+          <th>Status</th>
+          <th>Blokujące procesy</th>
+          <th>Akcje</th>
+        </tr>
+      </thead>
+      <tbody id="resBody">
+        <tr data-res="mic">
+          <td>Mikrofon</td>
+          <td class="res-status">n/a</td>
+          <td class="res-holders">-</td>
+          <td class="svc-actions">
+            <button class="btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
+            <button class="btn-sm" data-res="mic" data-res-action="stop">Stop usługi</button>
+            <button class="btn-sm" data-res="mic" data-res-action="release">Zwolnij</button>
+          </td>
+        </tr>
+        <tr data-res="speaker">
+          <td>Głośnik</td>
+          <td class="res-status">n/a</td>
+          <td class="res-holders">-</td>
+          <td class="svc-actions">
+            <button class="btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
+            <button class="btn-sm" data-res="speaker" data-res-action="stop">Stop usługi</button>
+            <button class="btn-sm" data-res="speaker" data-res-action="release">Zwolnij</button>
+          </td>
+        </tr>
+        <tr data-res="camera">
+          <td>Kamera</td>
+          <td class="res-status">n/a</td>
+          <td class="res-holders">-</td>
+          <td class="svc-actions">
+            <button class="btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
+            <button class="btn-sm" data-res="camera" data-res-action="stop">Stop usługi</button>
+            <button class="btn-sm" data-res="camera" data-res-action="release">Zwolnij</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
   <!-- 4) LOG -->
   <div class="card">
     <h2 style="font-size:16px;margin:0 0 8px" data-i18n="events.title">Zdarzenia (SSE /events)</h2>
@@ -192,7 +218,7 @@
 
 <!-- APP (i18n + logika) -->
 <script type="module">
-import { initI18n, applyDom, t } from '/web/assets/i18n.js';
+  import { initI18n, applyDom, t } from '/web/i18n.js';
 
   // --- Inicjalizacja języka z ?lang=, potem localStorage, potem język przeglądarki
   const urlLang = new URLSearchParams(location.search).get('lang');
@@ -203,36 +229,15 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
   if (urlLang) localStorage.setItem('lang', lang);
   await initI18n(lang);
   applyDom();                                 // <- KLUCZ: przetłumacz całą stronę
-  function syncLangMeta(code){
-    document.documentElement.setAttribute('lang', code);
-    document.title = t('meta.app_title');
-  }
-  syncLangMeta(lang);
-  window.addEventListener('dashboard:langchange', (ev) => {
-    const next = ev?.detail?.lang;
-    if(next) syncLangMeta(next);
-  });
+  document.documentElement.setAttribute('lang', lang);
+  document.title = t('meta.app_title');
 
   // ====== poniżej oryginalna logika strony, z t() ======
   const qs = (s)=>document.querySelector(s);
   const logEl = qs('#log');
   function appendLog(msg, cls=""){ const line=document.createElement('div'); if(cls) line.className=cls; line.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; logEl.appendChild(line); logEl.scrollTop=logEl.scrollHeight; }
-  let suppressUiSync = false;
-  function withUiSync(fn){
-    const prev = suppressUiSync;
-    suppressUiSync = true;
-    try{ fn(); }finally{ suppressUiSync = prev; }
-  }
-
-  // --- Opcjonalne logowanie błędów JS do panelu (domyślnie OFF). Włącz: ?debugjs=1
-  (() => {
-    const dbgParam = new URLSearchParams(location.search).get('debugjs');
-    const DEBUG_LOG_JS = (dbgParam === '1' || dbgParam === 'true');
-    if (DEBUG_LOG_JS) {
-      window.addEventListener('error', e=> appendLog(`${t('events.log_js_err',{msg:e.message||e})}`, 'err'));
-      window.addEventListener('unhandledrejection', e=> appendLog(`${t('events.log_prom_err',{reason:e.reason||e})}`, 'err'));
-    }
-  })();
+  window.addEventListener('error', e=> appendLog(`${t('events.log_js_err',{msg:e.message||e})}`, 'err'));
+  window.addEventListener('unhandledrejection', e=> appendLog(`${t('events.log_prom_err',{reason:e.reason||e})}`, 'err'));
 
   const LIN_V = 0.10, LIN_T = 0.10;
   const spinEl = qs('#speedSpin'), spinVal = qs('#speedSpinVal'), durSpinEl = qs('#durationSpin');
@@ -271,269 +276,6 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
   qs('#btnStop').addEventListener('click', ()=>{try{doStop();}catch{}});
   qs('#btnStop2').addEventListener('click', ()=>{try{doStop();}catch{}});
 
-  // Balance control
-  const balanceToggle = qs('#balanceToggle');
-  async function sendBalance(enabled){
-    try{
-      const j = await httpPost('/api/control/balance', {enabled: enabled});
-      appendLog(`balance → enabled:${enabled} :: ${JSON.stringify(j)}`, 'ok');
-    }catch(e){
-      appendLog(`balance error: ${e.message}`, 'err');
-    }
-  }
-  balanceToggle.addEventListener('change', ()=>{
-    if(suppressUiSync) return;
-    try{sendBalance(balanceToggle.checked);}catch{}
-  });
-
-  // Height control
-  const heightSlider = qs('#heightSlider');
-  const heightVal = qs('#heightVal');
-  heightSlider.addEventListener('input', ()=> heightVal.textContent = heightSlider.value);
-  async function sendHeight(height){
-    try{
-      const j = await httpPost('/api/control/height', {height: parseInt(height)});
-      appendLog(`height → ${height}cm :: ${JSON.stringify(j)}`, 'ok');
-    }catch(e){
-      appendLog(`height error: ${e.message}`, 'err');
-    }
-  }
-  heightSlider.addEventListener('change', ()=>{try{sendHeight(heightSlider.value);}catch{}});
-
-  // Follow Me tracking controls
-  const followFaceToggle = qs('#followFaceToggle');
-  const followHandToggle = qs('#followHandToggle');
-
-  async function sendFollowFace(enabled){
-    try{
-      const j = await httpPost('/api/vision/tracking/mode', {mode: 'face', enabled: enabled});
-      appendLog(`follow face → enabled:${enabled} :: ${JSON.stringify(j)}`, 'ok');
-      // Disable hand tracking if face enabled
-      if(enabled && followHandToggle.checked){
-        followHandToggle.checked = false;
-        sendFollowHand(false);
-      }
-    }catch(e){
-      appendLog(`follow face error: ${e.message}`, 'err');
-      followFaceToggle.checked = false;
-    }
-  }
-
-  async function sendFollowHand(enabled){
-    try{
-      const j = await httpPost('/api/vision/tracking/mode', {mode: 'hand', enabled: enabled});
-      appendLog(`follow hand → enabled:${enabled} :: ${JSON.stringify(j)}`, 'ok');
-      // Disable face tracking if hand enabled
-      if(enabled && followFaceToggle.checked){
-        followFaceToggle.checked = false;
-        sendFollowFace(false);
-      }
-    }catch(e){
-      appendLog(`follow hand error: ${e.message}`, 'err');
-      followHandToggle.checked = false;
-    }
-  }
-
-  followFaceToggle.addEventListener('change', ()=>{
-    if(suppressUiSync) return;
-    try{
-      sendFollowFace(followFaceToggle.checked);
-    }catch(e){
-      console.error('Follow face toggle error:', e);
-      appendLog(`follow face toggle error: ${e.message}`, 'err');
-    }
-  });
-  followHandToggle.addEventListener('change', ()=>{
-    if(suppressUiSync) return;
-    try{
-      sendFollowHand(followHandToggle.checked);
-    }catch(e){
-      console.error('Follow hand toggle error:', e);
-      appendLog(`follow hand toggle error: ${e.message}`, 'err');
-    }
-  });
-
-  // --- Rekonesans (Autonomous Navigation) ---
-  const reconToggle = qs('#reconToggle');
-  const reconStrategy = qs('#reconStrategy');
-  const reconStatus = qs('#reconStatus');
-  const btnReturnHome = qs('#btnReturnHome');
-
-  async function sendReconStart(strategy){
-    try{
-      const j = await httpPost('/api/navigator/start', {strategy: strategy});
-      appendLog(`Rekonesans started with strategy ${strategy} :: ${JSON.stringify(j)}`, 'ok');
-      updateReconStatus('exploring', strategy);
-      // Show return to home button when recon is active
-      btnReturnHome.style.display = 'inline-block';
-    }catch(e){
-      appendLog(`Rekonesans start error: ${e.message}`, 'err');
-      reconToggle.checked = false;
-      reconStatus.style.display = 'none';
-      btnReturnHome.style.display = 'none';
-    }
-  }
-
-  async function sendReconStop(){
-    try{
-      const j = await httpPost('/api/navigator/stop', {});
-      appendLog(`Rekonesans stopped :: ${JSON.stringify(j)}`, 'ok');
-      updateReconStatus('stopped');
-      // Hide return to home button when recon stops
-      btnReturnHome.style.display = 'none';
-    }catch(e){
-      appendLog(`Rekonesans stop error: ${e.message}`, 'err');
-    }
-  }
-
-  async function sendReconConfig(strategy){
-    try{
-      const j = await httpPost('/api/navigator/config', {strategy: strategy});
-      appendLog(`Rekonesans strategy changed to ${strategy} :: ${JSON.stringify(j)}`, 'ok');
-    }catch(e){
-      appendLog(`Rekonesans config error: ${e.message}`, 'err');
-    }
-  }
-
-  async function sendReturnHome(){
-    try{
-      const j = await httpPost('/api/navigator/return_home', {});
-      appendLog(`Return to home started :: ${JSON.stringify(j)}`, 'ok');
-      updateReconStatus('returning_home');
-      // Uncheck recon toggle without triggering its event handler
-      reconToggle.removeEventListener('change', reconToggleHandler);
-      reconToggle.checked = false;
-      setTimeout(() => reconToggle.addEventListener('change', reconToggleHandler), 0);
-    }catch(e){
-      appendLog(`Return to home error: ${e.message}`, 'err');
-    }
-  }
-
-  function updateReconStatus(state, strategy){
-    if(state === 'exploring'){
-      reconStatus.textContent = `Active (${strategy || 'STOP'})`;
-      reconStatus.className = 'pill ok';
-      reconStatus.style.display = 'inline-flex';
-    } else if(state === 'stopped' || state === 'idle'){
-      reconStatus.textContent = 'Stopped';
-      reconStatus.className = 'pill';
-      reconStatus.style.display = 'inline-flex';
-      setTimeout(()=> reconStatus.style.display = 'none', 2000);
-    } else if(state === 'returning_home'){
-      reconStatus.textContent = 'Returning Home';
-      reconStatus.className = 'pill warn';
-      reconStatus.style.display = 'inline-flex';
-    } else if(state === 'path_blocked'){
-      reconStatus.textContent = 'Path Blocked';
-      reconStatus.className = 'pill err';
-      reconStatus.style.display = 'inline-flex';
-    } else {
-      reconStatus.style.display = 'none';
-    }
-  }
-
-  const reconToggleHandler = ()=>{
-    if(suppressUiSync) return;
-    try{
-      if(reconToggle.checked){
-        // Disable follow modes when starting recon
-        if(followFaceToggle.checked){
-          withUiSync(()=>{ followFaceToggle.checked = false; });
-          sendFollowFace(false);
-        }
-        if(followHandToggle.checked){
-          withUiSync(()=>{ followHandToggle.checked = false; });
-          sendFollowHand(false);
-        }
-        sendReconStart(reconStrategy.value);
-      } else {
-        sendReconStop();
-      }
-    }catch(e){
-      console.error('Rekonesans toggle error:', e);
-      appendLog(`Rekonesans toggle error: ${e.message}`, 'err');
-    }
-  };
-
-  reconToggle.addEventListener('change', reconToggleHandler);
-
-  reconStrategy.addEventListener('change', ()=>{
-    try{
-      if(reconToggle.checked){
-        sendReconConfig(reconStrategy.value);
-        updateReconStatus('exploring', reconStrategy.value);
-      }
-    }catch(e){
-      console.error('Rekonesans strategy change error:', e);
-      appendLog(`Rekonesans strategy error: ${e.message}`, 'err');
-    }
-  });
-
-  btnReturnHome.addEventListener('click', async ()=>{
-    try{
-      await sendReturnHome();
-    }catch(e){
-      console.error('Return to home error:', e);
-      appendLog(`Return to home error: ${e.message}`, 'err');
-    }
-  });
-
-  async function loadControlState(){
-    try{
-      const r = await fetch('/api/control/state', {cache:'no-store'});
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json().catch(()=> ({}));
-      applyControlState(j || {});
-    }catch(e){
-      console.warn('control state sync error', e);
-    }
-  }
-
-  function applyControlState(state){
-    const balance = (state && state.balance) || {};
-    withUiSync(()=>{ balanceToggle.checked = !!balance.enabled; });
-
-    const trackingMode = String(((state && state.tracking && state.tracking.mode) || 'none')).toLowerCase();
-    withUiSync(()=>{
-      followFaceToggle.checked = trackingMode === 'face';
-      followHandToggle.checked = trackingMode === 'hand';
-    });
-
-    const navigator = (state && state.navigator) || {};
-    const navStrategy = (navigator.strategy && ['STOP','AVOID'].includes(navigator.strategy)) ? navigator.strategy : reconStrategy.value;
-    withUiSync(()=>{
-      if(navStrategy) reconStrategy.value = navStrategy;
-      reconToggle.checked = !!navigator.active;
-    });
-
-    const navState = String(navigator.state || '').toLowerCase();
-    if(navState){
-      if(navState === 'returning_home'){
-        updateReconStatus('returning_home', navStrategy);
-        btnReturnHome.style.display = 'inline-block';
-      }else if(navState === 'path_blocked'){
-        updateReconStatus('path_blocked', navStrategy);
-        btnReturnHome.style.display = 'none';
-      }else if(navState === 'exploring' || navState === 'avoiding'){
-        updateReconStatus('exploring', navStrategy);
-        btnReturnHome.style.display = 'inline-block';
-      }else{
-        updateReconStatus('stopped');
-        btnReturnHome.style.display = 'none';
-      }
-    }else{
-      if(navigator.active){
-        updateReconStatus('exploring', navStrategy);
-        btnReturnHome.style.display = 'inline-block';
-      }else{
-        reconStatus.style.display = 'none';
-        btnReturnHome.style.display = 'none';
-      }
-    }
-  }
-
-  loadControlState();
-
   const pressed = new Set(); const isArrow = k => ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k);
   window.addEventListener('keydown', ev=>{ try{
     if(ev.repeat) return; const k=ev.key; if(isArrow(k)) ev.preventDefault(); pressed.add(k);
@@ -549,6 +291,84 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
   }catch{} });
   document.addEventListener('visibilitychange', ()=> { if (document.hidden) { try{doStop();}catch{} } });
   window.addEventListener('beforeunload', ()=> { try { navigator.sendBeacon('/api/control', new Blob(['{"cmd":"stop"}'], {type:'application/json'})); } catch{} });
+
+  const RESOURCES = [
+    { key:'mic', label:'Mikrofon' },
+    { key:'speaker', label:'Głośnik' },
+    { key:'camera', label:'Kamera' }
+  ];
+  const resInfo = qs('#resInfo');
+
+  function renderResourceStatus(name, data){
+    const row = qs(`tr[data-res="${name}"]`);
+    if(!row) return;
+    const statusEl = row.querySelector('.res-status');
+    const holdersEl = row.querySelector('.res-holders');
+    const stopBtn = row.querySelector('button[data-res-action="stop"]');
+    const releaseBtn = row.querySelector('button[data-res-action="release"]');
+    if(data.error){
+      statusEl.textContent = 'błąd';
+      statusEl.className = 'res-status err';
+      holdersEl.textContent = data.error;
+      if(releaseBtn) releaseBtn.disabled = true;
+      if(stopBtn) stopBtn.disabled = true;
+      return;
+    }
+    statusEl.textContent = data.free ? 'wolny' : 'zajęty';
+    statusEl.className = 'res-status ' + (data.free ? 'ok' : 'warn');
+    if(data.holders && data.holders.length){
+      holdersEl.textContent = data.holders.map(h=>{
+        const svc = h.service ? ` (${h.service})` : '';
+        return `${h.cmd || 'proc'}#${h.pid}${svc}`;
+      }).join(', ');
+    }else{
+      holdersEl.textContent = 'brak blokad';
+    }
+    if(stopBtn) stopBtn.disabled = !data.holders || data.holders.every(h=>!h.service);
+    if(releaseBtn) releaseBtn.disabled = !!data.free;
+  }
+
+  async function fetchResourceStatus(name){
+    try{
+      const r = await fetch(`/api/resource/${encodeURIComponent(name)}`, {cache:'no-store'});
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      renderResourceStatus(name, data);
+      if(resInfo) resInfo.textContent = `Ostatnia aktualizacja: ${new Date(data.checked_at * 1000 || Date.now()).toLocaleTimeString()}`;
+    }catch(e){
+      appendLog(`[resource ${name}] status error: ${e.message || e}`, 'err');
+    }
+  }
+
+  async function resourceAction(name, action){
+    try{
+      const body = {action};
+      const r = await fetch(`/api/resource/${encodeURIComponent(name)}`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const text = await r.text();
+      let data=null; try{ data = JSON.parse(text);}catch{}
+      if(!r.ok){ throw new Error((data && (data.error||data.stderr)) || text || `HTTP ${r.status}`); }
+      appendLog(`[resource ${name}] ${action} → ${(data && data.ok===false)?'warn':'ok'}`, data && data.ok ? 'ok':'warn');
+    }catch(e){
+      appendLog(`[resource ${name}] ${action} :: ${e.message || e}`,'err');
+    }finally{
+      fetchResourceStatus(name);
+    }
+  }
+
+  qs('#resBody').addEventListener('click', ev=>{
+    const btn = ev.target.closest('button[data-res]');
+    if(!btn) return;
+    const name = btn.getAttribute('data-res');
+    const action = btn.getAttribute('data-res-action');
+    if(action === 'refresh'){ fetchResourceStatus(name); return; }
+    btn.disabled = true;
+    resourceAction(name, action).finally(()=>{ btn.disabled = false; });
+  });
+
+  RESOURCES.forEach(({key})=> fetchResourceStatus(key));
+  setInterval(()=>{ RESOURCES.forEach(({key})=> fetchResourceStatus(key)); }, 6000);
 
   // obstacle badge
   async function pollObstacle(){
@@ -720,6 +540,5 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
   }
   esConnect();
 </script>
-<script type="module" src="/web/assets/menu.js"></script>
 </body>
 </html>

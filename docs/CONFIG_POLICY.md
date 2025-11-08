@@ -157,6 +157,9 @@ config/alsa/preflight.sh --capture wm8960_in --playback wm8960_out
 
 # Sprawdzenie z wymuszonym czyszczeniem
 config/alsa/preflight.sh --force --capture wm8960_in --playback wm8960_out
+
+# Zabij tylko konkretne PID-y (np. aplikacja testowa)
+config/alsa/preflight.sh --force --capture wm8960_in --limit-pid 1234 --limit-pid 9999
 ```
 
 **Zachowanie skryptu pre-flight:**
@@ -180,7 +183,13 @@ config/alsa/preflight.sh --force --capture wm8960_in --playback wm8960_out
   --playback wm8960_out || {
   echo "WARNING: Pre-flight failed, continuing anyway" >&2
 }
+
+# Diagnozuj i zwalniaj zasoby także spoza audio/kamery
+scripts/resource_diag.py status mic
+scripts/resource_diag.py release camera --pid 4242
 ```
+
+Więcej informacji oraz przykłady: [docs/resource_diagnostics.md](resource_diagnostics.md)
 
 **Bezpieczeństwo:**
 - NIE zabija procesów systemowych
@@ -188,6 +197,21 @@ config/alsa/preflight.sh --force --capture wm8960_in --playback wm8960_out
 - Loguje wszystkie PID i komendy przed zabiciem
 - Używa SIGTERM przed SIGKILL
 - Pomija `lsof` w środowiskach testowych (ENV: `ALSA_SKIP_LSOF=1`)
+
+### Diagnostyka zasobów sprzętowych
+
+Narzędzia dostępne od tej wersji pozwalają operatorowi stale monitorować
+stan mikrofonu, głośnika i kamery:
+
+- `scripts/resource_diag.py status <zasób>` pokazuje listę PID-ów i
+  powiązanych usług (`systemctl status --pid ...`).
+- `scripts/resource_diag.py release <zasób> [--pid ...]` uruchamia
+  odpowiedni skrypt sprzątający (ALSA preflight dla audio lub
+  `scripts/sys_camera-free.sh` dla kamery). Dzięki `--pid` można zabić
+  wyłącznie wskazany proces testowy.
+- Endpoint `/api/resource/<mic|speaker|camera>` (akcje `status`, `stop`,
+  `release`) zasila kartę „Diagnostyka zasobów” na stronie `/control`, co
+  pozwala robić to samo z poziomu UI.
 
 ### Skrypty operacyjne
 
@@ -197,16 +221,6 @@ Skrypty w `scripts/` **czytają** konfigurację z `config/`, nie **tworzą** jej
 # ale można je nadpisać:
 ALSA_DEVICE=wm8960_in scripts/sys_voice-run.sh
 ```
-
-### Pre-flight checks (planowane w PR-3)
-
-Przed uruchomieniem audio:
-1. Sprawdź dostępność urządzeń (`fuser`, `lsof`)
-2. Zidentyfikuj blokujące procesy
-3. Bezpieczne zamknięcie (SIGTERM → czekaj → SIGKILL jeśli trzeba)
-4. Logowanie wszystkich akcji
-
----
 
 ## 4. Standardy skryptów ops
 
