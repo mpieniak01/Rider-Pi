@@ -133,6 +133,16 @@ LAST_XGO = {
 }
 XGO_FW = None
 
+LAST_BALANCE = {"enabled": None, "ts": None}
+LAST_TRACKING_MODE = {"mode": "none", "enabled": False, "ts": None}
+LAST_NAVIGATOR = {
+    "active": False,
+    "state": None,
+    "strategy": None,
+    "obstacle_present": None,
+    "ts": None,
+}
+
 # Historia
 HIST_CPU = collections.deque(maxlen=HISTORY_LEN)
 HIST_MEM = collections.deque(maxlen=HISTORY_LEN)

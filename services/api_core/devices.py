@@ -100,6 +100,8 @@ def bus_sub_loop():
             "cmd.",
             "devices.",
             "xgo.",
+            "tracking.",
+            "navigator.",
         ):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
         try:
@@ -241,6 +243,46 @@ def bus_sub_loop():
                                 C.LAST_CAMERA["lcd"][k] = lcd[k]
                     except Exception:
                         pass
+                    continue
+
+                if topic == "cmd.balance":
+                    data = _json_or_raw(payload)
+                    enabled = None
+                    if isinstance(data, dict):
+                        enabled = data.get("enabled")
+                    elif isinstance(data, (int, float, bool)):
+                        enabled = bool(data)
+                    if enabled is not None:
+                        C.LAST_BALANCE["enabled"] = bool(enabled)
+                        C.LAST_BALANCE["ts"] = C.LAST_MSG_TS
+                    continue
+
+                if topic == "tracking.mode:set":
+                    data = _json_or_raw(payload)
+                    mode = None
+                    if isinstance(data, dict):
+                        mode = data.get("mode")
+                    elif isinstance(data, str):
+                        mode = data
+                    mode_str = "none" if mode is None else str(mode)
+                    mode_norm = mode_str.strip().lower() or "none"
+                    C.LAST_TRACKING_MODE["mode"] = mode_norm
+                    C.LAST_TRACKING_MODE["enabled"] = mode_norm in ("face", "hand")
+                    C.LAST_TRACKING_MODE["ts"] = C.LAST_MSG_TS
+                    continue
+
+                if topic == "navigator.state":
+                    data = _json_or_raw(payload)
+                    if isinstance(data, dict):
+                        if "active" in data:
+                            C.LAST_NAVIGATOR["active"] = bool(data.get("active"))
+                        if data.get("state") is not None:
+                            C.LAST_NAVIGATOR["state"] = data.get("state")
+                        if data.get("strategy") is not None:
+                            C.LAST_NAVIGATOR["strategy"] = data.get("strategy")
+                        if "obstacle_present" in data:
+                            C.LAST_NAVIGATOR["obstacle_present"] = bool(data.get("obstacle_present"))
+                        C.LAST_NAVIGATOR["ts"] = float(data.get("ts") or C.LAST_MSG_TS)
                     continue
 
             except Exception:

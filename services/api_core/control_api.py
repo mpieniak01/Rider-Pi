@@ -131,6 +131,44 @@ def api_height():
     return resp
 
 
+def api_control_state():
+    """Return last-known state for balance/tracking/recon controls."""
+    if request.method == "OPTIONS":
+        resp = Response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
+        return resp
+
+    balance = {
+        "enabled": C.LAST_BALANCE.get("enabled"),
+        "ts": C.LAST_BALANCE.get("ts"),
+    }
+    tracking = {
+        "mode": C.LAST_TRACKING_MODE.get("mode"),
+        "enabled": C.LAST_TRACKING_MODE.get("enabled"),
+        "ts": C.LAST_TRACKING_MODE.get("ts"),
+    }
+    navigator = {
+        "active": bool(C.LAST_NAVIGATOR.get("active")),
+        "state": C.LAST_NAVIGATOR.get("state"),
+        "strategy": C.LAST_NAVIGATOR.get("strategy"),
+        "obstacle_present": C.LAST_NAVIGATOR.get("obstacle_present"),
+        "ts": C.LAST_NAVIGATOR.get("ts"),
+    }
+    payload = {
+        "ok": True,
+        "balance": balance,
+        "tracking": tracking,
+        "navigator": navigator,
+    }
+    resp = Response(json.dumps(payload), mimetype="application/json")
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
+    return resp
+
+
 def api_control():
     data = request.get_json(silent=True) or {}
     action = (request.args.get("action") or data.get("action") or "").strip().lower()

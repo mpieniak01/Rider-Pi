@@ -13,6 +13,10 @@
     .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
     .grid{display:grid;grid-template-columns:repeat(3,160px);gap:var(--gap);justify-content:center;margin:16px 0}
     .card{ background:#0f2030; border:1px solid #1e3a56; border-radius:16px; box-shadow:0 1px 8px rgba(0,0,0,.25); padding:var(--pad); margin:0 0 var(--pad); }
+    .card-split{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:stretch;margin-bottom:var(--pad);}
+    .card-split>.card{flex:1 1 340px;margin:0;display:flex;flex-direction:column;}
+    .cam-card{flex:1 1 480px;}
+    .motion-card{flex:1 1 360px;}
     button{ padding:12px 16px; border:1px solid #24425e; border-radius:12px; background:#122435; color:#e6eef7; font-size:16px; cursor:pointer; transition:transform .03s ease, background .12s ease, border-color .12s ease; }
     button:hover{ background:#16304a; border-color:#2b5577 } button:active{ transform:scale(0.98) }
     .btn-sm{ padding:6px 10px; font-size:13px; border-radius:10px }
@@ -44,8 +48,9 @@
     <span id="obstBadge" class="pill warn" style="margin-left:10px;display:none" data-i18n="header.obstacle_na">Obstacle: n/a</span>
   </h1>
 
+  <div class="card-split">
   <!-- 1) KAMERA (na górze) -->
-  <div class="card" style="position:relative">
+  <div class="card cam-card" style="position:relative">
     <h2 style="font-size:16px;margin:0 0 8px" data-i18n="camera.title">Podgląd kamery</h2>
 
     <!-- przyciski po prawej -->
@@ -65,7 +70,7 @@
   </div>
 
   <!-- 2) STEROWANIE -->
-  <div class="card">
+  <div class="card motion-card">
     <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.title">Sterowanie ruchem</h2>
 
     <div class="row" style="margin:6px 0 10px">
@@ -110,8 +115,21 @@
       </label>
     </div>
 
-    <!-- Follow Me Tracking Controls -->
-    <div class="row" style="margin:16px 0 10px; padding-top:16px; border-top:1px solid #1e3a56">
+    <div class="row" style="margin:16px 0 0; padding-top:16px; border-top:1px solid #1e3a56">
+      <span class="muted">
+        <span data-i18n="motion.shortcuts_hint">Skróty</span>:
+        <span class="kbd">W/S/A/D</span>
+        <span data-i18n="motion.shortcuts_tail">lub strzałki; Spacja = stop.</span>
+      </span>
+      <div class="spacer"></div>
+    </div>
+  </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 8px">Funkcje</h2>
+
+    <div class="row" style="margin:6px 0 10px">
       <label style="cursor:pointer">
         <input id="followFaceToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
         <span data-i18n="motion.follow_face">Śledź Twarz (Follow Face)</span>
@@ -123,11 +141,10 @@
       </label>
     </div>
 
-    <!-- Rekonesans (Autonomous Navigation) Controls -->
     <div class="row" style="margin:16px 0 10px; padding-top:16px; border-top:1px solid #1e3a56">
       <label style="cursor:pointer">
         <input id="reconToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
-        <span data-i18n="motion.recon_mode">Tryb Rekonesans (Autonomous)</span>
+        <span data-i18n="motion.recon_mode">Tryb Rekonesans (autonomiczny)</span>
       </label>
       <div style="width:20px"></div>
       <label>
@@ -140,16 +157,6 @@
       <span id="reconStatus" class="pill" style="margin-left:10px;display:none"></span>
       <div style="width:20px"></div>
       <button id="btnReturnHome" class="btn-sm" style="display:none" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
-    </div>
-
-    <div class="row">
-      <span class="muted">
-        <span data-i18n="motion.shortcuts_hint">Skróty</span>:
-        <span class="kbd">W/S/A/D</span>
-        <span data-i18n="motion.shortcuts_tail">lub strzałki; Spacja = stop.</span>
-      </span>
-      <div class="spacer"></div>
-      <a href="/" class="muted" data-i18n="meta.dashboard">↩ dashboard</a>
     </div>
   </div>
 
@@ -210,6 +217,12 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
   const qs = (s)=>document.querySelector(s);
   const logEl = qs('#log');
   function appendLog(msg, cls=""){ const line=document.createElement('div'); if(cls) line.className=cls; line.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; logEl.appendChild(line); logEl.scrollTop=logEl.scrollHeight; }
+  let suppressUiSync = false;
+  function withUiSync(fn){
+    const prev = suppressUiSync;
+    suppressUiSync = true;
+    try{ fn(); }finally{ suppressUiSync = prev; }
+  }
 
   // --- Opcjonalne logowanie błędów JS do panelu (domyślnie OFF). Włącz: ?debugjs=1
   (() => {
@@ -268,7 +281,10 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
       appendLog(`balance error: ${e.message}`, 'err');
     }
   }
-  balanceToggle.addEventListener('change', ()=>{try{sendBalance(balanceToggle.checked);}catch{}});
+  balanceToggle.addEventListener('change', ()=>{
+    if(suppressUiSync) return;
+    try{sendBalance(balanceToggle.checked);}catch{}
+  });
 
   // Height control
   const heightSlider = qs('#heightSlider');
@@ -319,6 +335,7 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
   }
 
   followFaceToggle.addEventListener('change', ()=>{
+    if(suppressUiSync) return;
     try{
       sendFollowFace(followFaceToggle.checked);
     }catch(e){
@@ -327,6 +344,7 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
     }
   });
   followHandToggle.addEventListener('change', ()=>{
+    if(suppressUiSync) return;
     try{
       sendFollowHand(followHandToggle.checked);
     }catch(e){
@@ -396,7 +414,7 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
       reconStatus.textContent = `Active (${strategy || 'STOP'})`;
       reconStatus.className = 'pill ok';
       reconStatus.style.display = 'inline-flex';
-    } else if(state === 'stopped'){
+    } else if(state === 'stopped' || state === 'idle'){
       reconStatus.textContent = 'Stopped';
       reconStatus.className = 'pill';
       reconStatus.style.display = 'inline-flex';
@@ -405,19 +423,26 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
       reconStatus.textContent = 'Returning Home';
       reconStatus.className = 'pill warn';
       reconStatus.style.display = 'inline-flex';
+    } else if(state === 'path_blocked'){
+      reconStatus.textContent = 'Path Blocked';
+      reconStatus.className = 'pill err';
+      reconStatus.style.display = 'inline-flex';
+    } else {
+      reconStatus.style.display = 'none';
     }
   }
 
   const reconToggleHandler = ()=>{
+    if(suppressUiSync) return;
     try{
       if(reconToggle.checked){
         // Disable follow modes when starting recon
         if(followFaceToggle.checked){
-          followFaceToggle.checked = false;
+          withUiSync(()=>{ followFaceToggle.checked = false; });
           sendFollowFace(false);
         }
         if(followHandToggle.checked){
-          followHandToggle.checked = false;
+          withUiSync(()=>{ followHandToggle.checked = false; });
           sendFollowHand(false);
         }
         sendReconStart(reconStrategy.value);
@@ -452,6 +477,62 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
       appendLog(`Return to home error: ${e.message}`, 'err');
     }
   });
+
+  async function loadControlState(){
+    try{
+      const r = await fetch('/api/control/state', {cache:'no-store'});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json().catch(()=> ({}));
+      applyControlState(j || {});
+    }catch(e){
+      console.warn('control state sync error', e);
+    }
+  }
+
+  function applyControlState(state){
+    const balance = (state && state.balance) || {};
+    withUiSync(()=>{ balanceToggle.checked = !!balance.enabled; });
+
+    const trackingMode = String(((state && state.tracking && state.tracking.mode) || 'none')).toLowerCase();
+    withUiSync(()=>{
+      followFaceToggle.checked = trackingMode === 'face';
+      followHandToggle.checked = trackingMode === 'hand';
+    });
+
+    const navigator = (state && state.navigator) || {};
+    const navStrategy = (navigator.strategy && ['STOP','AVOID'].includes(navigator.strategy)) ? navigator.strategy : reconStrategy.value;
+    withUiSync(()=>{
+      if(navStrategy) reconStrategy.value = navStrategy;
+      reconToggle.checked = !!navigator.active;
+    });
+
+    const navState = String(navigator.state || '').toLowerCase();
+    if(navState){
+      if(navState === 'returning_home'){
+        updateReconStatus('returning_home', navStrategy);
+        btnReturnHome.style.display = 'inline-block';
+      }else if(navState === 'path_blocked'){
+        updateReconStatus('path_blocked', navStrategy);
+        btnReturnHome.style.display = 'none';
+      }else if(navState === 'exploring' || navState === 'avoiding'){
+        updateReconStatus('exploring', navStrategy);
+        btnReturnHome.style.display = 'inline-block';
+      }else{
+        updateReconStatus('stopped');
+        btnReturnHome.style.display = 'none';
+      }
+    }else{
+      if(navigator.active){
+        updateReconStatus('exploring', navStrategy);
+        btnReturnHome.style.display = 'inline-block';
+      }else{
+        reconStatus.style.display = 'none';
+        btnReturnHome.style.display = 'none';
+      }
+    }
+  }
+
+  loadControlState();
 
   const pressed = new Set(); const isArrow = k => ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k);
   window.addEventListener('keydown', ev=>{ try{

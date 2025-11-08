@@ -268,6 +268,11 @@ _add_rule(
     methods=["POST", "OPTIONS"],
 )
 _add_rule("/api/control/height", view_func=control_api.api_height, methods=["POST", "OPTIONS"])
+_add_rule(
+    "/api/control/state",
+    view_func=control_api.api_control_state,
+    methods=["GET", "OPTIONS"],
+)
 
 # navigator API (Rekonesans mode)
 _add_rule(

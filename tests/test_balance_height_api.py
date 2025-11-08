@@ -58,6 +58,7 @@ def test_api_server_routes():
     assert 'control_api' in content, "control_api should be imported"
     assert '/api/control/balance' in content, "balance endpoint should be registered"
     assert '/api/control/height' in content, "height endpoint should be registered"
+    assert '/api/control/state' in content, "control state endpoint should be registered"
     return True
 
 

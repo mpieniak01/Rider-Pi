@@ -38,13 +38,13 @@
       font-size: 1.4rem;
       margin: 0;
     }
-    nav a {
+    .system-links a {
       color: #93c5fd;
       text-decoration: none;
       margin-left: 12px;
       font-size: 0.95rem;
     }
-    nav a:hover {
+    .system-links a:hover {
       text-decoration: underline;
     }
     #status-line {
@@ -128,12 +128,12 @@
       font-size: 0.8rem;
     }
     @media (max-width: 640px) {
-      nav {
+      .system-links {
         width: 100%;
         display: flex;
         gap: 10px;
       }
-      nav a {
+      .system-links a {
         margin-left: 0;
       }
     }
@@ -144,7 +144,7 @@
 <div class="system-shell">
   <header>
     <h1>System Dashboard – usługi Rider-Pi</h1>
-    <nav>
+    <nav class="system-links">
       <a href="/web/view.html">Podgląd</a>
       <a href="/web/control.html">Sterowanie</a>
     </nav>
