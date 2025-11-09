@@ -45,12 +45,13 @@
     .feature-row{display:flex;flex-wrap:wrap;gap:12px;padding:12px;border:1px solid #1e3a56;border-radius:12px;background:#0b1a27}
     .feature-row.busy{opacity:0.75}
     .feature-row .feature-info{flex:1;min-width:240px}
-    .feature-title{font-weight:600;margin-bottom:4px}
-    .feature-desc{font-size:13px;color:#9bb5ce}
+    .feature-title{font-weight:600;margin:0}
+    .feature-desc{font-size:13px;color:#9bb5ce;margin-top:4px}
+    .feature-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
     .feature-status{display:flex;flex-direction:column;gap:6px;min-width:160px}
-    .feature-actions{display:flex;flex-wrap:wrap;gap:8px;min-width:160px}
+    .feature-actions{display:flex;flex-wrap:wrap;gap:8px;min-width:160px;align-items:center}
     .feature-actions button{min-width:100px}
-    .feature-note{font-size:12px;color:#9bb5ce;min-height:16px}
+    .feature-note{font-size:12px;color:#f0c36d;margin-top:8px;width:100%}
     .feature-select{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:#b7cee3}
     .feature-select select{background:#0b1a27;color:#e6eef7;border:1px solid #24425e;border-radius:10px;padding:6px 8px}
     .feature-resource{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:flex-start;margin:0 0 var(--pad)}
@@ -135,57 +136,63 @@
       <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.features_title">Funkcje</h2>
       <div class="feature-list" id="featureList">
         <div class="feature-row" data-feature="face">
-          <div class="feature-info">
+        <div class="feature-info">
+          <div class="feature-head">
             <div class="feature-title" data-i18n="motion.follow_face">Śledź Twarz (Follow Face)</div>
-            <div class="feature-desc" data-i18n="motion.feature_face_desc">Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
           </div>
-          <div class="feature-status">
-            <span class="pill feature-pill" data-feature-pill="face">n/a</span>
-            <div class="feature-note" data-feature-note="face"></div>
-          </div>
-          <div class="feature-actions">
-            <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-            <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-          </div>
+          <div class="feature-desc" data-i18n="motion.feature_face_desc">Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
         </div>
+        <div class="feature-status">
+          <span class="pill feature-pill" data-feature-pill="face">n/a</span>
+        </div>
+        <div class="feature-actions">
+          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
+          <div class="feature-note" data-feature-note="face"></div>
+        </div>
+      </div>
 
         <div class="feature-row" data-feature="hand">
-          <div class="feature-info">
+        <div class="feature-info">
+          <div class="feature-head">
             <div class="feature-title" data-i18n="motion.follow_hand">Śledź Dłoń (Follow Hand)</div>
-            <div class="feature-desc" data-i18n="motion.feature_hand_desc">Te same usługi tracker+controller, ale z trybem dłoni.</div>
           </div>
-          <div class="feature-status">
-            <span class="pill feature-pill" data-feature-pill="hand">n/a</span>
-            <div class="feature-note" data-feature-note="hand"></div>
-          </div>
-          <div class="feature-actions">
-            <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-            <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-          </div>
+          <div class="feature-desc" data-i18n="motion.feature_hand_desc">Te same usługi tracker+controller, ale z trybem dłoni.</div>
         </div>
+        <div class="feature-status">
+          <span class="pill feature-pill" data-feature-pill="hand">n/a</span>
+        </div>
+        <div class="feature-actions">
+          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
+          <div class="feature-note" data-feature-note="hand"></div>
+        </div>
+      </div>
 
         <div class="feature-row" data-feature="recon">
-          <div class="feature-info">
+        <div class="feature-info">
+          <div class="feature-head">
             <div class="feature-title" data-i18n="motion.recon_mode">Tryb Rekonesans (autonomiczny)</div>
-            <div class="feature-desc" data-i18n="motion.feature_recon_desc">Włącza odometrię, mapper oraz startuje navigatora.</div>
-            <div class="feature-select">
-              <span data-i18n="motion.recon_strategy">Strategia</span>:
-              <select id="reconStrategy">
-                <option value="STOP">STOP (zatrzymaj)</option>
-                <option value="AVOID">AVOID (omijaj)</option>
-              </select>
-            </div>
           </div>
-          <div class="feature-status">
-            <span class="pill feature-pill" data-feature-pill="recon">n/a</span>
-            <div class="feature-note" data-feature-note="recon"></div>
-          </div>
-          <div class="feature-actions">
-            <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-            <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-            <button class="btn-sm" id="btnReturnHome" data-feature-action="return-home" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
+          <div class="feature-desc" data-i18n="motion.feature_recon_desc">Włącza odometrię, mapper oraz startuje navigatora.</div>
+          <div class="feature-select">
+            <span data-i18n="motion.recon_strategy">Strategia</span>:
+            <select id="reconStrategy">
+              <option value="STOP">STOP (zatrzymaj)</option>
+              <option value="AVOID">AVOID (omijaj)</option>
+            </select>
           </div>
         </div>
+        <div class="feature-status">
+          <span class="pill feature-pill" data-feature-pill="recon">n/a</span>
+        </div>
+        <div class="feature-actions">
+          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
+          <button class="btn-sm" id="btnReturnHome" data-feature-action="return-home" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
+          <div class="feature-note" data-feature-note="recon"></div>
+        </div>
+      </div>
       </div>
     </div>
 
