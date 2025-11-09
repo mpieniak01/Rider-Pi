@@ -333,12 +333,6 @@ function setCamBadgeAndMeta(cam){
     sbMeta.textContent = `${fpsTxt}${extra}`;
   }
 }
-function cameraShouldBeBlack(){
-  const visionOff=(lastCamState.vision_enabled===false)||(lastCamState.on===false);
-  const rawTooOld=(lastSnapAges.raw!=null && lastSnapAges.raw>SNAP_STALE_S);
-  const procTooOld=(lastSnapAges.proc!=null && lastSnapAges.proc>SNAP_STALE_S);
-  return visionOff||rawTooOld||procTooOld;
-}
 function setImageSafely(imgEl,url,tagStore){
   const tag=Date.now(); tagStore.value=tag;
   const loader=new Image(); loader.decoding='async'; loader.loading='eager';
@@ -375,14 +369,30 @@ function refreshCamLegends(){
   }
   setTxt('leg_tracker_txt',partsTracker.join(' • '));
 }
+function visionOff(){
+  return (lastCamState.vision_enabled===false)||(lastCamState.on===false);
+}
+function feedTooOld(kind){
+  const age=lastSnapAges[kind];
+  return age!=null && age>SNAP_STALE_S;
+}
+function shouldBlankFeed(kind){
+  if(visionOff()) return true;
+  if(!kind) return false;
+  return feedTooOld(kind);
+}
+function refreshFeed(imgEl,url,kind,tagStore){
+  if(!imgEl) return;
+  if(shouldBlankFeed(kind)){ blackify(imgEl,true); return; }
+  setImageSafely(imgEl, url, tagStore);
+}
 async function refreshCamera(){
   const imgCam=el('img_cam'), imgProc=el('img_proc'), imgObst=el('img_obst'), imgTracker=el('img_tracker');
-  if(cameraShouldBeBlack()){ blackify(imgCam,true); blackify(imgProc,true); blackify(imgObst,true); blackify(imgTracker,true); return; }
   const bust=Date.now();
-  setImageSafely(imgCam, `/vision/cam?t=${bust}`, {get value(){return lastCamReq}, set value(v){lastCamReq=v;}});
-  setImageSafely(imgProc, `/vision/edge?t=${bust}`,{get value(){return lastProcReq},set value(v){lastProcReq=v;}});
-  setImageSafely(imgObst, `/snapshots/obst_annot.jpg?t=${bust}`, {get value(){return lastObstReq},set value(v){lastObstReq=v;}});
-  setImageSafely(imgTracker, `/vision/tracker?t=${bust}`, {get value(){return lastTrackerReq},set value(v){lastTrackerReq=v;}});
+  refreshFeed(imgCam, `/vision/cam?t=${bust}`, 'raw', {get value(){return lastCamReq;}, set value(v){lastCamReq=v;}});
+  refreshFeed(imgProc, `/vision/edge?t=${bust}`, 'proc', {get value(){return lastProcReq;}, set value(v){lastProcReq=v;}});
+  refreshFeed(imgObst, `/snapshots/obst_annot.jpg?t=${bust}`, null, {get value(){return lastObstReq;}, set value(v){lastObstReq=v;}});
+  refreshFeed(imgTracker, `/vision/tracker?t=${bust}`, 'tracker', {get value(){return lastTrackerReq;}, set value(v){lastTrackerReq=v;}});
 }
 
 async function refreshCameraResource(){

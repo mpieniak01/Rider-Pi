@@ -4,8 +4,10 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 import urllib.error
 import urllib.request
+from typing import Any
 
 from flask import Response, jsonify, make_response, request
 
@@ -15,6 +17,45 @@ from flask import Response, jsonify, make_response, request
 
 VOICE_WEB_BASE = os.getenv("VOICE_WEB_BASE", "http://127.0.0.1:8092").rstrip("/")
 HTTP_TIMEOUT = float(os.getenv("VOICE_HTTP_TIMEOUT", "45"))
+PROVIDER_TEST_TEXT = "To jest test TTS Rider-Pi."
+
+try:
+    from services.api_core import services_api
+except Exception:  # pragma: no cover - opcjonalne w środowisku testowym
+    services_api = None  # type: ignore
+
+
+_PROVIDER_DEFS: list[dict[str, Any]] = [
+    {
+        "id": "local",
+        "label": "Piper (lokalny)",
+        "backend": "piper",
+        "voice": "pl_PL-gosia-medium.onnx",
+        "model": None,
+        "description": "Offline TTS przez Piper na Rider-Pi.",
+        "service": "voice-web",
+    },
+    {
+        "id": "openai",
+        "label": "OpenAI gpt-4o-mini-tts",
+        "backend": "openai",
+        "voice": "alloy",
+        "model": "gpt-4o-mini-tts",
+        "description": "Chmurowy TTS OpenAI (wymaga OPENAI_API_KEY).",
+        "service": None,
+    },
+    {
+        "id": "google",
+        "label": "Google Gemini Kore",
+        "backend": "google",
+        "voice": "Kore",
+        "model": "gemini-2.5-flash-preview-tts",
+        "description": "Chmurowy TTS Gemini (wymaga GOOGLE_API_KEY).",
+        "service": None,
+    },
+]
+
+_PROVIDER_STATUS: dict[str, dict[str, Any]] = {}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CORS / preflight
@@ -33,6 +74,207 @@ def _preflight() -> Response:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Provider metadata & diagnostics
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _provider_lookup(provider_id: str) -> dict[str, Any] | None:
+    for entry in _PROVIDER_DEFS:
+        if entry["id"] == provider_id:
+            return entry
+    return None
+
+
+def _provider_status_snapshot(provider_id: str) -> dict[str, Any]:
+    status = _PROVIDER_STATUS.get(provider_id)
+    if status is None:
+        return {"state": "unknown", "detail": "nie testowano", "updated": None}
+    return status
+
+
+def _service_status(alias: str | None) -> dict[str, Any] | None:
+    """
+    Pobiera status jednostki systemd skojarzonej z providerem.
+    Korzystamy z istniejących helperów services_api, jeśli są dostępne.
+    """
+    if not alias or services_api is None:
+        return None
+    try:
+        unit = alias
+        if hasattr(services_api, "_unit_for"):
+            unit = services_api._unit_for(alias) or alias  # type: ignore[attr-defined]
+        if not unit:
+            return None
+        if hasattr(services_api, "_svc_status"):
+            status = services_api._svc_status(unit)  # type: ignore[attr-defined]
+        else:  # pragma: no cover - awaryjnie spróbuj publicznej ścieżki HTTP
+            status = {"unit": unit}
+        status.setdefault("unit", unit)
+        status.setdefault("alias", alias)
+        return status
+    except Exception as exc:  # pragma: no cover - diagnostyka
+        return {"unit": alias, "alias": alias, "error": str(exc)}
+
+
+def _probe_provider(entry: dict[str, Any]) -> dict[str, Any]:
+    started = time.time()
+    payload: dict[str, Any] = {
+        "text": PROVIDER_TEST_TEXT,
+        "backend": entry["backend"],
+    }
+    # voice/model opcjonalne – tylko gdy zdefiniowane
+    if entry.get("voice"):
+        payload["voice"] = entry["voice"]
+    if entry.get("model"):
+        payload["model"] = entry["model"]
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(f"{VOICE_WEB_BASE}/api/tts?b64=1", data=data, method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "application/json")
+
+    try:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+            body = resp.read()
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            status_code = resp.status
+    except urllib.error.HTTPError as e:
+        latency_ms = int((time.time() - started) * 1000)
+        try:
+            err_body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            err_body = ""
+        return {
+            "id": entry["id"],
+            "state": "error",
+            "error": f"http {e.code}",
+            "detail": err_body[:400],
+            "latency_ms": latency_ms,
+        }
+    except Exception as e:
+        latency_ms = int((time.time() - started) * 1000)
+        return {
+            "id": entry["id"],
+            "state": "error",
+            "error": str(e),
+            "detail": "",
+            "latency_ms": latency_ms,
+        }
+
+    latency_ms = int((time.time() - started) * 1000)
+    if status_code >= 400:
+        return {
+            "id": entry["id"],
+            "state": "error",
+            "error": f"http {status_code}",
+            "detail": body.decode("utf-8", errors="ignore")[:400],
+            "latency_ms": latency_ms,
+        }
+    if "application/json" not in ctype:
+        return {
+            "id": entry["id"],
+            "state": "error",
+            "error": "invalid content-type",
+            "detail": ctype or "n/a",
+            "latency_ms": latency_ms,
+        }
+
+    try:
+        obj = json.loads(body.decode("utf-8", errors="ignore"))
+    except Exception:
+        return {
+            "id": entry["id"],
+            "state": "error",
+            "error": "invalid json",
+            "detail": "",
+            "latency_ms": latency_ms,
+        }
+
+    if obj.get("status") != "ok" or not obj.get("audio_b64"):
+        return {
+            "id": entry["id"],
+            "state": "error",
+            "error": "tts failed",
+            "detail": str(obj)[:400],
+            "latency_ms": latency_ms,
+        }
+
+    return {
+        "id": entry["id"],
+        "state": "ok",
+        "detail": f"audio {len(obj.get('audio_b64', ''))} chars b64",
+        "latency_ms": latency_ms,
+    }
+
+
+def _update_provider_status(result: dict[str, Any]) -> None:
+    provider_id = result.get("id")
+    if not provider_id:
+        return
+    _PROVIDER_STATUS[provider_id] = {
+        "state": result.get("state", "unknown"),
+        "detail": result.get("detail") or result.get("error") or "",
+        "error": result.get("error"),
+        "latency_ms": result.get("latency_ms"),
+        "updated": time.time(),
+    }
+
+
+def providers_list_handler():
+    if request.method == "OPTIONS":
+        return _preflight()
+
+    payload = []
+    for entry in _PROVIDER_DEFS:
+        service_alias = entry.get("service")
+        payload.append(
+            {
+                "id": entry["id"],
+                "label": entry["label"],
+                "backend": entry["backend"],
+                "voice": entry.get("voice"),
+                "model": entry.get("model"),
+                "description": entry.get("description", ""),
+                "status": _provider_status_snapshot(entry["id"]),
+                "service": service_alias,
+                "service_state": _service_status(service_alias),
+            }
+        )
+
+    return _cors(jsonify({"ok": True, "providers": payload}))
+
+
+def providers_test_handler():
+    if request.method == "OPTIONS":
+        return _preflight()
+
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        payload = {}
+
+    requested = payload.get("providers") or payload.get("provider")
+    if requested is None:
+        provider_ids = [entry["id"] for entry in _PROVIDER_DEFS]
+    elif isinstance(requested, str):
+        provider_ids = [requested]
+    else:
+        provider_ids = [str(x) for x in requested if x]
+
+    results = []
+    for provider_id in provider_ids:
+        entry = _provider_lookup(provider_id)
+        if entry is None:
+            result = {"id": provider_id, "state": "error", "error": "unknown_provider", "detail": ""}
+        else:
+            result = _probe_provider(entry)
+        results.append(result)
+        _update_provider_status(result)
+
+    return _cors(jsonify({"ok": True, "results": results}))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # TTS: 8080 → (proxy) → 8092
 # Stabilizujemy format: zawsze prosimy backend o JSON { audio_b64 }.
 # Proxy dekoduje i oddaje 'audio/wav' (200) lub 502 z czytelnym błędem JSON.
@@ -48,14 +290,9 @@ def tts_local_handler():
         except Exception:
             payload = {}
 
-        # provider default → local (zachowujemy zgodność; backend i tak może to zignorować)
-        provider = (payload.get("provider") or payload.get("backend") or "").lower()
-        if provider not in ("local", "piper"):
-            payload["provider"] = "local"
-
         # Przekaż ewentualne nadpisania (voice/model/format/backend)
         passthrough = {}
-        for k in ("backend", "format", "voice", "model"):
+        for k in ("backend", "provider", "format", "voice", "model"):
             if k in payload:
                 passthrough[k] = payload[k]
         # Tekst musi być; walidacja minimalna

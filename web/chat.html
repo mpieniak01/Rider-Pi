@@ -41,7 +41,28 @@
   .btn:hover{background:#234769}
   .btn:disabled{opacity:.5;cursor:not-allowed}
   label{font-size:12px;opacity:.9}
+  select{background:#0b1520;color:var(--fg);border:1px solid #1a2c43;border-radius:8px;padding:8px;font:inherit;min-width:160px}
+  .btn-sm{padding:6px 10px;font-size:13px}
   .hint{font-size:12px;opacity:.7;margin-top:6px}
+  .providers-card{margin-top:18px;padding:16px;border:1px solid #1a2c43;border-radius:12px;background:var(--card);display:flex;flex-direction:column;gap:12px}
+  .providers-head{display:flex;align-items:center;gap:12px}
+  .providers-head h2{font-size:16px;margin:0}
+  .providers-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .provider-list{display:flex;flex-direction:column;gap:12px}
+  .provider-row{display:flex;flex-wrap:wrap;gap:12px;padding:12px;border-radius:10px;background:#0b1b2a;border:1px solid #1a2c43}
+  .provider-info{flex:2;min-width:220px}
+  .provider-name{font-weight:600;margin-bottom:4px}
+  .provider-desc{font-size:13px;color:var(--muted)}
+  .provider-meta{flex:1;min-width:180px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+  .provider-actions{display:flex;align-items:center;gap:8px}
+  .provider-detail,.provider-latency{font-size:12px;color:var(--muted)}
+  .provider-empty{font-size:13px;color:var(--muted)}
+  .provider-service{font-size:12px;color:var(--muted)}
+  .provider-service strong{color:#e6eef7}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:12px;border:1px solid #1a2c43;background:#15273b;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .pill.ok{border-color:#2c6b48;color:#8ef7ba;background:#123123}
+  .pill.err{border-color:#8a3a3a;color:#ffb4b4;background:#3b1b1b}
+  .pill.warn{border-color:#7a6434;color:#fde68a;background:#3b2b14}
 </style>
 </head>
 <body data-page="chat">
@@ -66,21 +87,52 @@
           <input type="checkbox" id="tts" />
           <label for="tts">Czytaj odpowiedzi (TTS)</label>
         </div>
+        <div class="controls">
+          <label for="ttsProvider">Provider TTS</label>
+          <select id="ttsProvider"></select>
+        </div>
+        <div class="hint" id="providerHint">Ładuję listę providerów…</div>
         <div class="hint">Chat API: <code>/api/chat/send</code> · TTS: <code>/api/voice/tts</code></div>
       </div>
     </div>
+
+    <section class="providers-card" aria-labelledby="providerTitle">
+      <div class="providers-head">
+        <h2 id="providerTitle">Providerzy TTS</h2>
+        <div class="providers-actions">
+          <button class="btn btn-sm" id="btnReloadProviders">Odśwież listę</button>
+          <button class="btn btn-sm" id="btnTestAll">Testuj wszystkie</button>
+        </div>
+      </div>
+      <div id="providerList" class="provider-list" aria-live="polite">
+        <div class="provider-empty">Ładowanie…</div>
+      </div>
+      <div class="hint">Kliknij „Test”, by wykonać próbę TTS i sprawdzić działanie usług.</div>
+    </section>
 
     <div class="meta" id="latency"></div>
   </div>
 
 <script>
 (function(){
-  const board   = document.getElementById('board');
-  const input   = document.getElementById('input');
-  const sendBtn = document.getElementById('sendBtn');
-  const status  = document.getElementById('status');
-  const latency = document.getElementById('latency');
-  const ttsChk  = document.getElementById('tts');
+  const board    = document.getElementById('board');
+  const input    = document.getElementById('input');
+  const sendBtn  = document.getElementById('sendBtn');
+  const status   = document.getElementById('status');
+  const latency  = document.getElementById('latency');
+  const ttsChk   = document.getElementById('tts');
+  const providerSelect = document.getElementById('ttsProvider');
+  const providerHint   = document.getElementById('providerHint');
+  const providerListEl = document.getElementById('providerList');
+  const btnTestAll     = document.getElementById('btnTestAll');
+  const btnReloadProviders = document.getElementById('btnReloadProviders');
+
+  const FALLBACK_PROVIDERS = [
+    { id: 'local',  label: 'Piper (lokalny)',         backend: 'piper',  voice: 'pl_PL-gosia-medium.onnx', description: 'Offline TTS Rider-Pi.', service: 'voice-web' },
+    { id: 'openai', label: 'OpenAI gpt-4o-mini-tts', backend: 'openai', voice: 'alloy', model: 'gpt-4o-mini-tts', description: 'Chmurowy TTS OpenAI.', service: null },
+    { id: 'google', label: 'Google Gemini Kore',     backend: 'google', voice: 'Kore',  model: 'gemini-2.5-flash-preview-tts', description: 'Chmurowy TTS Gemini.', service: null },
+  ];
+  let providerCatalog = [];
 
   // prosty storage historii w sesji
   const history = JSON.parse(sessionStorage.getItem('chat_history') || '[]');
@@ -135,15 +187,305 @@
     return res.json();
   }
 
+  function getProviderById(id){
+    return providerCatalog.find((p)=>p.id === id);
+  }
+
+  function providerStateClass(state){
+    if (state === 'ok') return 'pill ok';
+    if (state === 'error') return 'pill err';
+    return 'pill warn';
+  }
+
+  function serviceStateSummary(provider){
+    const state = provider?.service_state;
+    if (!state) return 'brak danych';
+    if (state.error) return `błąd (${state.error})`;
+    const parts = [];
+    if (state.active) parts.push(state.active);
+    if (state.sub && (!parts.length || state.sub !== parts[parts.length - 1])) {
+      parts.push(state.sub);
+    }
+    if (!parts.length && state.enabled) parts.push(state.enabled);
+    return parts.join(' / ') || 'n/a';
+  }
+
+  function isServiceActive(provider){
+    const state = provider?.service_state;
+    if (!state) return false;
+    const active = (state.active || '').toLowerCase();
+    const sub = (state.sub || '').toLowerCase();
+    return active === 'active' || sub === 'running';
+  }
+
+  function setProviderHint(provider){
+    if (!provider){
+      providerHint.textContent = 'Brak providerów TTS – używam trybu domyślnego.';
+      return;
+    }
+    const state = provider.status?.state || 'unknown';
+    const detail = provider.status?.detail ? ` — ${provider.status.detail}` : '';
+    const latencyText = typeof provider.status?.latency_ms === 'number' ? ` (${provider.status.latency_ms} ms)` : '';
+    let label = 'Brak danych';
+    if (state === 'ok') label = 'OK';
+    else if (state === 'error') label = 'Błąd';
+    const parts = [`${provider.label}: ${label}${detail}${latencyText}`];
+    if (provider.service){
+      parts.push(`Usługa ${provider.service}: ${serviceStateSummary(provider)}`);
+    }
+    providerHint.textContent = parts.join(' • ');
+  }
+
+  function renderProviderSelect(){
+    providerSelect.innerHTML = '';
+    if (!providerCatalog.length){
+      providerSelect.disabled = true;
+      setProviderHint(null);
+      return;
+    }
+    providerSelect.disabled = false;
+    for (const provider of providerCatalog){
+      const opt = document.createElement('option');
+      opt.value = provider.id;
+      opt.textContent = provider.label;
+      providerSelect.appendChild(opt);
+    }
+    const stored = localStorage.getItem('chat_tts_provider');
+    let current = stored && getProviderById(stored);
+    if (!current){
+      current = providerCatalog.find((p)=>p.status?.state === 'ok') || providerCatalog[0];
+    }
+    providerSelect.value = current?.id || providerCatalog[0].id;
+    localStorage.setItem('chat_tts_provider', providerSelect.value);
+    setProviderHint(getSelectedProvider());
+  }
+
+  function renderProviderList(){
+    providerListEl.innerHTML = '';
+    if (!providerCatalog.length){
+      const empty = document.createElement('div');
+      empty.className = 'provider-empty';
+      empty.textContent = 'Brak danych o providerach.';
+      providerListEl.appendChild(empty);
+      return;
+    }
+    for (const provider of providerCatalog){
+      const row = document.createElement('div');
+      row.className = 'provider-row';
+
+      const info = document.createElement('div');
+      info.className = 'provider-info';
+      const name = document.createElement('div');
+      name.className = 'provider-name';
+      name.textContent = provider.label;
+      const desc = document.createElement('div');
+      desc.className = 'provider-desc';
+      desc.textContent = provider.description || '';
+      info.appendChild(name);
+      info.appendChild(desc);
+
+      const meta = document.createElement('div');
+      meta.className = 'provider-meta';
+      const pill = document.createElement('span');
+      const state = provider.status?.state || 'unknown';
+      pill.className = providerStateClass(state);
+      pill.textContent = state === 'ok' ? 'OK' : state === 'error' ? 'Błąd' : '—';
+      meta.appendChild(pill);
+      if (provider.status?.detail){
+        const detail = document.createElement('div');
+        detail.className = 'provider-detail';
+        detail.textContent = provider.status.detail;
+        meta.appendChild(detail);
+      }
+      if (typeof provider.status?.latency_ms === 'number'){
+        const latencyInfo = document.createElement('div');
+        latencyInfo.className = 'provider-latency';
+        latencyInfo.textContent = `${provider.status.latency_ms} ms`;
+        meta.appendChild(latencyInfo);
+      }
+      if (provider.service){
+        const svcInfo = document.createElement('div');
+        svcInfo.className = 'provider-service';
+        svcInfo.innerHTML = `<strong>Usługa:</strong> ${provider.service} (${serviceStateSummary(provider)})`;
+        meta.appendChild(svcInfo);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'provider-actions';
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = 'Test';
+      btn.addEventListener('click', ()=>{
+        btn.disabled = true;
+        btn.textContent = '…';
+        runProviderChecks([provider.id])
+          .catch((err)=>{ providerHint.textContent = `Test ${provider.label} nieudany: ${err.message || err}`; })
+          .finally(()=>{
+            btn.disabled = false;
+            btn.textContent = 'Test';
+          });
+      });
+      actions.appendChild(btn);
+      if (provider.service){
+        const startBtn = document.createElement('button');
+        startBtn.className = 'btn btn-sm';
+        startBtn.textContent = 'Start';
+        if (isServiceActive(provider)) startBtn.disabled = true;
+        startBtn.addEventListener('click', ()=>{
+          handleServiceAction(provider, 'start', startBtn);
+        });
+        const stopBtn = document.createElement('button');
+        stopBtn.className = 'btn btn-sm';
+        stopBtn.textContent = 'Stop';
+        if (!isServiceActive(provider)) stopBtn.disabled = true;
+        stopBtn.addEventListener('click', ()=>{
+          handleServiceAction(provider, 'stop', stopBtn);
+        });
+        actions.appendChild(startBtn);
+        actions.appendChild(stopBtn);
+      }
+
+      row.appendChild(info);
+      row.appendChild(meta);
+      row.appendChild(actions);
+      providerListEl.appendChild(row);
+    }
+  }
+
+  function updateProviderStatus(providerId, result){
+    if (!providerId) return;
+    const provider = getProviderById(providerId);
+    if (!provider) return;
+    provider.status = provider.status || {};
+    if (result?.state) provider.status.state = result.state;
+    provider.status.state = provider.status.state || 'unknown';
+    if (result?.detail || result?.error){
+      provider.status.detail = result.detail || result.error;
+    }
+    if (typeof result?.latency_ms === 'number'){
+      provider.status.latency_ms = Math.round(result.latency_ms);
+    }
+    provider.status.updated = Date.now();
+    renderProviderList();
+    if (getSelectedProvider()?.id === providerId){
+      setProviderHint(provider);
+    }
+  }
+
+  async function loadProviders(){
+    providerHint.textContent = 'Ładuję listę providerów…';
+    try{
+      const res = await fetch('/api/voice/providers', { cache: 'no-store' });
+      if (!res.ok){
+        const errText = await res.text().catch(()=>`${res.status} ${res.statusText}`);
+        throw new Error(errText);
+      }
+      const data = await res.json();
+      providerCatalog = (data?.providers || []).map((item)=>({
+        ...item,
+        service_state: item.service_state || null,
+      }));
+      if (!providerCatalog.length){
+        providerCatalog = FALLBACK_PROVIDERS.map((p)=>({
+          ...p,
+          status: p.status || { state: 'warn', detail: 'domyślny fallback' },
+          service_state: p.service ? { unit: p.service, alias: p.service, active: 'inactive', sub: 'dead' } : null,
+        }));
+      }
+      providerHint.textContent = 'Wybierz provider do czytania odpowiedzi.';
+    }catch(err){
+      console.warn('voice providers list failed', err);
+      providerCatalog = FALLBACK_PROVIDERS.map((p)=>({
+        ...p,
+        status: { state: 'warn', detail: 'tryb offline' },
+        service_state: p.service ? { unit: p.service, alias: p.service, active: 'inactive', sub: 'dead' } : null,
+      }));
+      providerHint.textContent = 'Nie udało się pobrać listy providerów (tryb offline).';
+    }
+    renderProviderSelect();
+    renderProviderList();
+  }
+
+  function getSelectedProvider(){
+    const currentId = providerSelect.value;
+    if (!currentId) return undefined;
+    return getProviderById(currentId);
+  }
+
+  function buildTtsPayload(text){
+    const provider = getSelectedProvider();
+    if (!provider){
+      return { text, backend: 'piper', voice: 'pl_PL-gosia-medium.onnx' };
+    }
+    const payload = {
+      text,
+      backend: provider.backend || provider.id,
+      provider: provider.id,
+    };
+    if (provider.voice) payload.voice = provider.voice;
+    if (provider.model) payload.model = provider.model;
+    return payload;
+  }
+
+  async function runProviderChecks(ids){
+    if (!ids || !ids.length) return;
+    const res = await fetch('/api/voice/providers/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ providers: ids }),
+    });
+    if (!res.ok){
+      const errText = await res.text().catch(()=>`${res.status} ${res.statusText}`);
+      throw new Error(`Providers HTTP ${res.status}: ${errText}`);
+    }
+    const data = await res.json();
+    for (const item of data.results || []){
+      updateProviderStatus(item.id, item);
+    }
+    return data;
+  }
+
+  async function serviceAction(alias, action){
+    if (!alias) throw new Error('Nieznany alias usługi');
+    const res = await fetch(`/svc/${encodeURIComponent(alias)}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok){
+      const txt = await res.text().catch(()=>`${res.status} ${res.statusText}`);
+      throw new Error(`svc ${alias} ${action}: ${txt}`);
+    }
+    return res.json();
+  }
+
+  async function handleServiceAction(provider, action, button){
+    if (!provider?.service) return;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = action === 'start' ? 'Startuję…' : 'Zatrzymuję…';
+    try{
+      const data = await serviceAction(provider.service, action);
+      if (data?.status){
+        provider.service_state = data.status;
+      }
+      setProviderHint(getSelectedProvider());
+    }catch(err){
+      providerHint.textContent = `Usługa ${provider.service}: ${err.message || err}`;
+    }finally{
+      button.disabled = false;
+      button.textContent = original;
+      renderProviderList();
+    }
+  }
+
   async function speak(text){
+    const payload = buildTtsPayload(text);
+    const t0 = performance.now();
     const res = await fetch('/api/voice/tts', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        text,
-        backend: 'piper',
-        voice: 'pl_PL-gosia-medium.onnx' // dopasuj do swoich modeli, jeśli potrzeba
-      })
+      body: JSON.stringify(payload),
     });
     if (!res.ok){
       const txt = await res.text().catch(()=>`${res.status} ${res.statusText}`);
@@ -154,6 +496,9 @@
     const audio = new Audio(url);
     await audio.play().catch(()=>{});
     setTimeout(()=>URL.revokeObjectURL(url), 15000);
+    if (payload.provider){
+      updateProviderStatus(payload.provider, { id: payload.provider, state: 'ok', detail: 'Odtworzenie udane', latency_ms: Math.round(performance.now() - t0) });
+    }
   }
 
   async function send(){
@@ -174,8 +519,17 @@
       setStatus('OK','ok');
 
       if (ttsChk.checked){
-        try { await speak(reply); }
-        catch (e){ appendMessage('bot', '⚠︎ TTS: ' + (e.message || e), true); save('bot', 'TTS ERROR', true); }
+        try {
+          await speak(reply);
+        } catch (e){
+          const msg = e && e.message ? e.message : String(e);
+          appendMessage('bot', '⚠︎ TTS: ' + msg, true);
+          save('bot', 'TTS ERROR', true);
+          const provider = getSelectedProvider();
+          if (provider){
+            updateProviderStatus(provider.id, { id: provider.id, state: 'error', detail: msg });
+          }
+        }
       }
     }catch(e){
       const msg = (e && e.message) ? e.message : String(e);
@@ -196,8 +550,40 @@
     }
   });
 
+  providerSelect.addEventListener('change', ()=>{
+    const provider = getSelectedProvider();
+    if (provider){
+      localStorage.setItem('chat_tts_provider', provider.id);
+    }
+    setProviderHint(provider || null);
+  });
+
+  btnReloadProviders.addEventListener('click', (ev)=>{
+    ev.preventDefault();
+    btnReloadProviders.disabled = true;
+    btnReloadProviders.textContent = 'Ładuję…';
+    loadProviders().finally(()=>{
+      btnReloadProviders.disabled = false;
+      btnReloadProviders.textContent = 'Odśwież listę';
+    });
+  });
+
+  btnTestAll.addEventListener('click', (ev)=>{
+    ev.preventDefault();
+    if (!providerCatalog.length) return;
+    btnTestAll.disabled = true;
+    btnTestAll.textContent = 'Testuję…';
+    runProviderChecks(providerCatalog.map((p)=>p.id))
+      .catch((err)=>{ providerHint.textContent = `Test zbiorczy nieudany: ${err.message || err}`; })
+      .finally(()=>{
+        btnTestAll.disabled = false;
+        btnTestAll.textContent = 'Testuj wszystkie';
+      });
+  });
+
   setStatus('Gotowy','ok');
   input.focus();
+  loadProviders();
 })();
 </script>
 <script type="module" src="/web/assets/menu.js"></script>

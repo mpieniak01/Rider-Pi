@@ -51,11 +51,11 @@ SERVICE_META: dict[str, ServiceMeta] = {
         "description": "Sterowanie robotem (XGO) oraz telemetria ruchu.",
         "edges_out": [],
     },
-    "rider-boot-prepare.service": {
-        "id": "boot-prepare",
+    "rider-boot-splash.service": {
+        "id": "boot-splash",
         "group": "core",
-        "label": "Boot prepare",
-        "description": "Przygotowanie środowiska podczas startu systemu.",
+        "label": "Boot splash",
+        "description": "Przygotowanie środowiska i ekran startowy przy bootowaniu.",
         "edges_out": ["minimal-target"],
     },
     "rider-minimal.target": {

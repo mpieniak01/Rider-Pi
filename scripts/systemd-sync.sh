@@ -22,7 +22,7 @@ ALLOW_UNITS=(
   "rider-api.service"
   "rider-vision.service"
   "rider-motion-bridge.service"
-  "rider-boot-prepare.service"
+  "rider-boot-splash.service"
   "rider-minimal.target"
   "rider-edge-preview.service"       # edge preview (Canny)
   "rider-obstacle.service"           # obstacle ROI detector
@@ -123,7 +123,7 @@ log "systemctl daemon-reload"
 sudo systemctl daemon-reload
 for u in "${ALLOW_UNITS[@]}"; do
   case "$u" in
-    rider-minimal.target|rider-boot-prepare.service)
+    rider-minimal.target|rider-boot-splash.service)
       log "Enable rider unit: $u"
       sudo systemctl enable "$u" || true
       ;;

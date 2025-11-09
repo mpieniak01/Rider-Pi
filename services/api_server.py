@@ -349,6 +349,16 @@ _add_rule(
     view_func=voice_local_proxy.asr_local_handler,
     methods=["POST", "OPTIONS"],
 )
+_add_rule(
+    "/api/voice/providers",
+    view_func=voice_local_proxy.providers_list_handler,
+    methods=["GET", "OPTIONS"],
+)
+_add_rule(
+    "/api/voice/providers/test",
+    view_func=voice_local_proxy.providers_test_handler,
+    methods=["POST", "OPTIONS"],
+)
 
 
 # ── GOOGLE HOME ──────────────────────────────────────────────────────────────
