@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from typing import Any
 
@@ -20,6 +21,19 @@ from services.api_core import compat as C
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("vision_api", __name__)
+
+_TRACKING_PUB = None
+_TRACKING_PUB_LOCK = threading.Lock()
+
+
+def _tracking_pub() -> bus.BusPub:
+    global _TRACKING_PUB
+    if _TRACKING_PUB is None:
+        with _TRACKING_PUB_LOCK:
+            if _TRACKING_PUB is None:
+                _TRACKING_PUB = bus.BusPub()
+    return _TRACKING_PUB
+
 
 # ---------- helpers: nagłówki / ścieżki ----------
 
@@ -192,9 +206,8 @@ def set_tracking_mode() -> Response:
             mode = "none"
 
         # Publish to unified topic
-        pub = bus.BusPub()
+        pub = _tracking_pub()
         pub.publish(bus.TOPIC_TRACKING_MODE_SET, {"mode": mode}, add_ts=True)
-        pub.close()
 
         return _json_nocache(
             {"ok": True, "mode": mode, "enabled": (mode != "none")},
@@ -246,9 +259,8 @@ def _legacy_follow_mode(mode: str) -> Response:
                 400,
             )
 
-        pub = bus.BusPub()
+        pub = _tracking_pub()
         pub.publish(bus.TOPIC_TRACKING_MODE_SET, {"mode": mode}, add_ts=True)
-        pub.close()
 
         return _json_nocache(
             {

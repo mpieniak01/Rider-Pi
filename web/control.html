@@ -4,10 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Sterowanie ruchem (REST /api)</title>
+  <link rel="stylesheet" href="/web/assets/dashboard-common.css">
   <style>
     :root { --pad: 16px; --gap: 12px; }
-    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; padding:var(--pad); background:#0e1823; color:#e6eef7; }
-    .wrap{max-width:1100px;margin:0 auto}
+    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; background:#0e1823; color:#e6eef7; }
+    .wrap{max-width:1100px;margin:0 auto;padding:var(--pad);}
+    .panel-row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:stretch;margin:0 0 var(--pad);}
+    .panel-row .card{flex:1 1 360px;margin:0;}
+    .cam-card{position:relative;max-width:520px;}
+    .control-card{min-width:320px;}
+    @media(max-width:900px){
+      .panel-row{flex-direction:column;}
+      .panel-row .card{max-width:100%;}
+    }
     h1{font-size:20px;margin:0 0 var(--pad)}
     .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
     .grid{display:grid;grid-template-columns:repeat(3,160px);gap:var(--gap);justify-content:center;margin:16px 0}
@@ -32,9 +41,22 @@
     .res-holders{font-size:13px;color:#b7cee3}
     .cam{width:100%;max-width:480px;border-radius:12px;border:1px solid #1c3349;background:#0b1a27; display:block; margin:0 auto;}
     .note{font-size:13px;color:#b7cee3}
+    .feature-list{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+    .feature-row{display:flex;flex-wrap:wrap;gap:12px;padding:12px;border:1px solid #1e3a56;border-radius:12px;background:#0b1a27}
+    .feature-row.busy{opacity:0.75}
+    .feature-row .feature-info{flex:1;min-width:240px}
+    .feature-title{font-weight:600;margin-bottom:4px}
+    .feature-desc{font-size:13px;color:#9bb5ce}
+    .feature-status{display:flex;flex-direction:column;gap:6px;min-width:160px}
+    .feature-actions{display:flex;flex-wrap:wrap;gap:8px;min-width:160px}
+    .feature-actions button{min-width:100px}
+    .feature-note{font-size:12px;color:#9bb5ce;min-height:16px}
+    .feature-select{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:#b7cee3}
+    .feature-select select{background:#0b1a27;color:#e6eef7;border:1px solid #24425e;border-radius:10px;padding:6px 8px}
   </style>
 </head>
-<body>
+<body data-page="control">
+<div data-dashboard-menu-target></div>
 <div class="wrap">
 
   <h1 data-i18n="meta.app_title">
@@ -43,98 +65,124 @@
     <span id="obstBadge" class="pill warn" style="margin-left:10px;display:none" data-i18n="header.obstacle_na">Obstacle: n/a</span>
   </h1>
 
-  <!-- 1) KAMERA (na górze) -->
-  <div class="card" style="position:relative">
-    <h2 style="font-size:16px;margin:0 0 8px" data-i18n="camera.title">Podgląd kamery</h2>
+  <div class="panel-row">
+    <!-- 1) KAMERA (na górze) -->
+    <div class="card cam-card">
+      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="camera.title">Podgląd kamery</h2>
 
-    <!-- przyciski po prawej -->
-    <div style="position:absolute; right:16px; top:16px; display:flex; gap:8px; align-items:flex-end;">
-      <button id="camToggle" class="btn-sm" data-i18n="camera.auto_refresh_on">⟳ Auto-refresh (on)</button>
-      <button id="btnUseEdge" class="btn-sm" data-i18n="camera.use_edge">Use EDGE</button>
-      <button id="btnUseCam"  class="btn-sm" data-i18n="camera.use_cam">Use CAM</button>
+      <!-- przyciski po prawej -->
+      <div style="position:absolute; right:16px; top:16px; display:flex; gap:8px; align-items:flex-end;">
+        <button id="camToggle" class="btn-sm" data-i18n="camera.auto_refresh_on">⟳ Auto-refresh (on)</button>
+        <button id="btnUseEdge" class="btn-sm" data-i18n="camera.use_edge">Use EDGE</button>
+        <button id="btnUseCam"  class="btn-sm" data-i18n="camera.use_cam">Use CAM</button>
+      </div>
+
+      <!-- obrazek wycentrowany -->
+      <div class="row" style="align-items:flex-start; justify-content:center">
+        <div>
+          <img id="camPrev" class="cam" alt="camera preview" src="/camera/last?ts=0" />
+          <div class="note" id="camInfo" style="margin-top:6px" data-i18n="camera.last_frame_na">last frame: n/a · source: n/a</div>
+        </div>
+      </div>
     </div>
 
-    <!-- obrazek wycentrowany -->
-    <div class="row" style="align-items:flex-start; justify-content:center">
-      <div>
-        <img id="camPrev" class="cam" alt="camera preview" src="/camera/last?ts=0" />
-        <div class="note" id="camInfo" style="margin-top:6px" data-i18n="camera.last_frame_na">last frame: n/a · source: n/a</div>
+    <!-- 2) STEROWANIE -->
+    <div class="card control-card">
+      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.title">Sterowanie ruchem</h2>
+
+      <div class="row" style="margin:6px 0 10px">
+        <label>
+          <span data-i18n="motion.turning_speed">Prędkość skrętu</span>
+          <span class="muted" data-i18n="motion.turning_range">(0..1)</span>:
+          <input id="speedSpin" type="range" min="0" max="1" step="0.02" value="0.18" />
+          <span id="speedSpinVal">0.18</span>
+        </label>
+        <label>
+          <span data-i18n="motion.pulse_time">Czas impulsu [s]</span>:
+          <input id="durationSpin" type="number" min="0.05" step="0.05" value="0.10" />
+        </label>
+        <div class="spacer"></div>
+        <button id="btnStop" data-i18n="motion.btn_stop">■ STOP</button>
+      </div>
+
+      <div class="grid">
+        <div></div>
+        <button id="btnFwd" data-i18n="motion.btn_forward">↑ Forward</button>
+        <div></div>
+        <button id="btnLeft" data-i18n="motion.btn_left">← Left</button>
+        <button id="btnStop2" data-i18n="motion.btn_stop_small">■ Stop</button>
+        <button id="btnRight" data-i18n="motion.btn_right">Right →</button>
+        <div></div>
+        <button id="btnBack" data-i18n="motion.btn_backward">↓ Backward</button>
+        <div></div>
+      </div>
+
+      <div class="row">
+        <span class="muted">
+          <span data-i18n="motion.shortcuts_hint">Skróty</span>:
+          <span class="kbd">W/S/A/D</span>
+          <span data-i18n="motion.shortcuts_tail">lub strzałki; Spacja = stop.</span>
+        </span>
+        <div class="spacer"></div>
       </div>
     </div>
   </div>
 
-  <!-- 2) STEROWANIE -->
   <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.title">Sterowanie ruchem</h2>
+    <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.features_title">Funkcje</h2>
+    <div class="feature-list" id="featureList">
+      <div class="feature-row" data-feature="face">
+        <div class="feature-info">
+          <div class="feature-title" data-i18n="motion.follow_face">Śledź Twarz (Follow Face)</div>
+          <div class="feature-desc" data-i18n="motion.feature_face_desc">Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
+        </div>
+        <div class="feature-status">
+          <span class="pill feature-pill" data-feature-pill="face">n/a</span>
+          <div class="feature-note" data-feature-note="face"></div>
+        </div>
+        <div class="feature-actions">
+          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
+        </div>
+      </div>
 
-    <div class="row" style="margin:6px 0 10px">
-      <label>
-        <span data-i18n="motion.turning_speed">Prędkość skrętu</span>
-        <span class="muted" data-i18n="motion.turning_range">(0..1)</span>:
-        <input id="speedSpin" type="range" min="0" max="1" step="0.02" value="0.18" />
-        <span id="speedSpinVal">0.18</span>
-      </label>
-      <label>
-        <span data-i18n="motion.pulse_time">Czas impulsu [s]</span>:
-        <input id="durationSpin" type="number" min="0.05" step="0.05" value="0.10" />
-      </label>
-      <div class="spacer"></div>
-      <button id="btnStop" data-i18n="motion.btn_stop">■ STOP</button>
-    </div>
+      <div class="feature-row" data-feature="hand">
+        <div class="feature-info">
+          <div class="feature-title" data-i18n="motion.follow_hand">Śledź Dłoń (Follow Hand)</div>
+          <div class="feature-desc" data-i18n="motion.feature_hand_desc">Te same usługi tracker+controller, ale z trybem dłoni.</div>
+        </div>
+        <div class="feature-status">
+          <span class="pill feature-pill" data-feature-pill="hand">n/a</span>
+          <div class="feature-note" data-feature-note="hand"></div>
+        </div>
+        <div class="feature-actions">
+          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
+        </div>
+      </div>
 
-    <div class="grid">
-      <div></div>
-      <button id="btnFwd" data-i18n="motion.btn_forward">↑ Forward</button>
-      <div></div>
-      <button id="btnLeft" data-i18n="motion.btn_left">← Left</button>
-      <button id="btnStop2" data-i18n="motion.btn_stop_small">■ Stop</button>
-      <button id="btnRight" data-i18n="motion.btn_right">Right →</button>
-      <div></div>
-      <button id="btnBack" data-i18n="motion.btn_backward">↓ Backward</button>
-      <div></div>
-    </div>
-
-    <div class="row">
-      <span class="muted">
-        <span data-i18n="motion.shortcuts_hint">Skróty</span>:
-        <span class="kbd">W/S/A/D</span>
-        <span data-i18n="motion.shortcuts_tail">lub strzałki; Spacja = stop.</span>
-      </span>
-      <div class="spacer"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px">Funkcje</h2>
-
-    <div class="row" style="margin:6px 0 10px">
-      <label style="cursor:pointer">
-        <input id="followFaceToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
-        <span data-i18n="motion.follow_face">Śledź Twarz (Follow Face)</span>
-      </label>
-      <div style="width:20px"></div>
-      <label style="cursor:pointer">
-        <input id="followHandToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
-        <span data-i18n="motion.follow_hand">Śledź Dłoń (Follow Hand)</span>
-      </label>
-    </div>
-
-    <div class="row" style="margin:16px 0 10px; padding-top:16px; border-top:1px solid #1e3a56">
-      <label style="cursor:pointer">
-        <input id="reconToggle" type="checkbox" style="margin-right:8px;cursor:pointer" />
-        <span data-i18n="motion.recon_mode">Tryb Rekonesans (autonomiczny)</span>
-      </label>
-      <div style="width:20px"></div>
-      <label>
-        <span data-i18n="motion.recon_strategy">Strategia</span>:
-        <select id="reconStrategy" style="background:#0b1a27;color:#e6eef7;border:1px solid #24425e;border-radius:10px;padding:6px 8px;margin-left:8px">
-          <option value="STOP">STOP (zatrzymaj)</option>
-          <option value="AVOID">AVOID (omijaj)</option>
-        </select>
-      </label>
-      <span id="reconStatus" class="pill" style="margin-left:10px;display:none"></span>
-      <div style="width:20px"></div>
-      <button id="btnReturnHome" class="btn-sm" style="display:none" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
+      <div class="feature-row" data-feature="recon">
+        <div class="feature-info">
+          <div class="feature-title" data-i18n="motion.recon_mode">Tryb Rekonesans (autonomiczny)</div>
+          <div class="feature-desc" data-i18n="motion.feature_recon_desc">Włącza odometrię, mapper oraz startuje navigatora.</div>
+          <div class="feature-select">
+            <span data-i18n="motion.recon_strategy">Strategia</span>:
+            <select id="reconStrategy">
+              <option value="STOP">STOP (zatrzymaj)</option>
+              <option value="AVOID">AVOID (omijaj)</option>
+            </select>
+          </div>
+        </div>
+        <div class="feature-status">
+          <span class="pill feature-pill" data-feature-pill="recon">n/a</span>
+          <div class="feature-note" data-feature-note="recon"></div>
+        </div>
+        <div class="feature-actions">
+          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
+          <button class="btn-sm" id="btnReturnHome" data-feature-action="return-home" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -216,9 +264,10 @@
   </div>
 </div>
 
+<script type="module" src="/web/assets/menu.js"></script>
 <!-- APP (i18n + logika) -->
 <script type="module">
-  import { initI18n, applyDom, t } from '/web/i18n.js';
+  import { initI18n, applyDom, t } from '/web/assets/i18n.js';
 
   // --- Inicjalizacja języka z ?lang=, potem localStorage, potem język przeglądarki
   const urlLang = new URLSearchParams(location.search).get('lang');
@@ -235,7 +284,14 @@
   // ====== poniżej oryginalna logika strony, z t() ======
   const qs = (s)=>document.querySelector(s);
   const logEl = qs('#log');
-  function appendLog(msg, cls=""){ const line=document.createElement('div'); if(cls) line.className=cls; line.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; logEl.appendChild(line); logEl.scrollTop=logEl.scrollHeight; }
+  function appendLog(msg, cls=""){
+    if(!logEl) return;
+    const line=document.createElement('div');
+    if(cls) line.className=cls;
+    line.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop=logEl.scrollHeight;
+  }
   window.addEventListener('error', e=> appendLog(`${t('events.log_js_err',{msg:e.message||e})}`, 'err'));
   window.addEventListener('unhandledrejection', e=> appendLog(`${t('events.log_prom_err',{reason:e.reason||e})}`, 'err'));
 
@@ -247,11 +303,12 @@
   async function pingHealth(){
     try{
       const r=await fetch('/healthz',{cache:'no-store'}); const j=await r.json().catch(()=>({}));
-      const apiStatus = qs('#apiStatus'); const ok=!!j.ok;
+      const apiStatus = qs('#apiStatus'); if(!apiStatus) return;
+      const ok=!!j.ok;
       apiStatus.textContent = ok ? t('header.api_status_ok') : t('header.api_status_degraded');
       apiStatus.className = ok?'ok':'warn';
     }catch{
-      const apiStatus = qs('#apiStatus');
+      const apiStatus = qs('#apiStatus'); if(!apiStatus) return;
       apiStatus.textContent = t('header.api_status_down');
       apiStatus.className='err';
     }
@@ -292,6 +349,266 @@
   document.addEventListener('visibilitychange', ()=> { if (document.hidden) { try{doStop();}catch{} } });
   window.addEventListener('beforeunload', ()=> { try { navigator.sendBeacon('/api/control', new Blob(['{"cmd":"stop"}'], {type:'application/json'})); } catch{} });
 
+  const TRACKING_CORE_SERVICES = ['rider-tracker.service','rider-tracking-controller.service'];
+  const PREVIEW_SERVICES = ['rider-cam-preview.service','rider-edge-preview.service','rider-ssd-preview.service'];
+  const RECON_SERVICES = ['rider-vision.service','rider-obstacle.service','rider-motion-bridge.service','rider-odometry.service','rider-mapper.service'];
+  const svcCache = new Map();
+  const featureBusy = new Set();
+  let lastControlState = null;
+  let previewBeforeTracking = null;
+
+  function previewLabel(unit){
+    if(unit === 'rider-cam-preview.service') return t('motion.preview_cam');
+    if(unit === 'rider-edge-preview.service') return t('motion.preview_edge');
+    if(unit === 'rider-ssd-preview.service') return t('motion.preview_ssd');
+    return unit || 'n/a';
+  }
+
+  const FEATURE_STATUS = {
+    running: { cls: 'ok', key: 'motion.feature_status_running' },
+    stopped: { cls: 'warn', key: 'motion.feature_status_stopped' },
+    warn: { cls: 'warn', key: 'motion.feature_status_warn' },
+    error: { cls: 'err', key: 'motion.feature_status_error' },
+    unknown: { cls: 'warn', key: 'motion.feature_status_unknown' },
+    working: { cls: 'warn', key: 'motion.feature_status_working' },
+  };
+
+  const featureList = qs('#featureList');
+  if(featureList){
+    featureList.addEventListener('click', ev=>{
+      const btn = ev.target.closest('button[data-feature-action]');
+      if(!btn) return;
+      const row = btn.closest('[data-feature]');
+      if(!row) return;
+      const featureId = row.getAttribute('data-feature');
+      const action = btn.getAttribute('data-feature-action');
+      handleFeatureAction(featureId, action);
+    });
+  }
+
+  function setFeatureBusy(featureId, busy){
+    const row = document.querySelector(`[data-feature="${featureId}"]`);
+    if(!row) return;
+    if(busy) featureBusy.add(featureId); else featureBusy.delete(featureId);
+    row.classList.toggle('busy', !!busy);
+    row.querySelectorAll('button').forEach(btn => { btn.disabled = !!busy; });
+  }
+
+  function setFeatureStatus(featureId, stateKey, noteText=''){
+    const pill = document.querySelector(`.feature-pill[data-feature-pill="${featureId}"]`);
+    const note = document.querySelector(`.feature-note[data-feature-note="${featureId}"]`);
+    const meta = FEATURE_STATUS[stateKey] || FEATURE_STATUS.unknown;
+    if(pill){
+      pill.className = `pill feature-pill ${meta.cls}`;
+      pill.textContent = t(meta.key);
+    }
+    if(note){
+      note.textContent = noteText || '';
+    }
+  }
+
+  async function handleFeatureAction(featureId, action){
+    if(action === 'return-home'){
+      await runReturnHome();
+      return;
+    }
+    setFeatureBusy(featureId, true);
+    setFeatureStatus(featureId, 'working', t('motion.feature_note_waiting'));
+    try{
+      if(action === 'start'){
+        await startFeature(featureId);
+      }else if(action === 'stop'){
+        await stopFeature(featureId);
+      }
+    }catch(e){
+      appendLog(`[feature ${featureId}] ${action} :: ${e.message || e}`, 'err');
+      setFeatureStatus(featureId, 'error', e.message || String(e));
+    }finally{
+      setFeatureBusy(featureId, false);
+      try{ await fetchControlState(); }catch{}
+      try{ await fetchServices(); }catch{}
+    }
+  }
+
+  async function startFeature(featureId){
+    if(featureId === 'face') return startTrackingFeature('face');
+    if(featureId === 'hand') return startTrackingFeature('hand');
+    if(featureId === 'recon') return startReconFeature();
+    throw new Error(`unknown feature ${featureId}`);
+  }
+
+  async function stopFeature(featureId){
+    if(featureId === 'face') return stopTrackingFeature('face');
+    if(featureId === 'hand') return stopTrackingFeature('hand');
+    if(featureId === 'recon') return stopReconFeature();
+    throw new Error(`unknown feature ${featureId}`);
+  }
+
+  async function runReturnHome(){
+    setFeatureBusy('recon', true);
+    setFeatureStatus('recon','working', t('motion.feature_note_waiting'));
+    try{
+      await httpPost('/api/navigator/return_home', {});
+      appendLog(`[feature recon] return_home`, 'ok');
+    }catch(e){
+      appendLog(`[feature recon] return_home :: ${e.message || e}`, 'err');
+      setFeatureStatus('recon','error', e.message || String(e));
+    }finally{
+      setFeatureBusy('recon', false);
+      try{ await fetchControlState(); }catch{}
+    }
+  }
+
+  async function startTrackingFeature(mode){
+    await ensurePreviewForTracking();
+    await runServicesSequence(TRACKING_CORE_SERVICES, 'start');
+    await httpPost('/api/vision/tracking/mode', {mode, enabled:true});
+    appendLog(`[feature tracking] mode=${mode} start ok`, 'ok');
+  }
+
+  async function stopTrackingFeature(mode){
+    await httpPost('/api/vision/tracking/mode', {mode:'none', enabled:false});
+    await runServicesSequence(TRACKING_CORE_SERVICES, 'stop');
+    await restorePreviewAfterTracking();
+    appendLog(`[feature tracking] mode=${mode} stop ok`, 'ok');
+  }
+
+  async function startReconFeature(){
+    await runServicesSequence(RECON_SERVICES, 'start');
+    const strategySel = qs('#reconStrategy');
+    const strategy = (strategySel && strategySel.value ? String(strategySel.value).toUpperCase() : 'STOP');
+    await httpPost('/api/navigator/start', {strategy});
+    appendLog(`[feature recon] start strategy=${strategy}`, 'ok');
+  }
+
+  async function stopReconFeature(){
+    await httpPost('/api/navigator/stop', {});
+    await runServicesSequence(RECON_SERVICES, 'stop');
+    appendLog('[feature recon] stop', 'ok');
+  }
+
+  async function runServicesSequence(units, action){
+    const ordered = action === 'stop' ? [...units].reverse() : [...units];
+    for(const unit of ordered){
+      const svc = svcCache.get(unit);
+      if(action === 'start' && svc && svc.active === 'active'){
+        appendLog(`[svc] ${unit} already active`, 'warn');
+        continue;
+      }
+      if(action === 'stop' && svc && svc.active === 'inactive'){
+        appendLog(`[svc] ${unit} already inactive`, 'warn');
+        continue;
+      }
+      await svcAction(unit, action);
+    }
+  }
+
+  async function ensurePreviewForTracking(){
+    const camActive = isServiceActive('rider-cam-preview.service');
+    const currentPreview = getActivePreviewService();
+    previewBeforeTracking = (!camActive && currentPreview && currentPreview !== 'rider-cam-preview.service') ? currentPreview : null;
+    if(!camActive){
+      await svcAction('rider-cam-preview.service','start');
+    }
+  }
+
+  async function restorePreviewAfterTracking(){
+    if(previewBeforeTracking && previewBeforeTracking !== 'rider-cam-preview.service'){
+      await svcAction(previewBeforeTracking,'start');
+    }
+    previewBeforeTracking = null;
+  }
+
+  function getActivePreviewService(){
+    for(const unit of PREVIEW_SERVICES){
+      if(isServiceActive(unit)) return unit;
+    }
+    return null;
+  }
+
+  async function fetchControlState(){
+    try{
+      const r = await fetch('/api/control/state', {cache:'no-store'});
+      const data = await r.json();
+      lastControlState = data || {};
+      renderFeatureStatuses();
+    }catch(e){
+      appendLog(`[control state] ${e.message || e}`, 'err');
+    }
+  }
+
+  function renderFeatureStatuses(){
+    const tracking = (lastControlState && lastControlState.tracking) || {};
+    const trackingMode = String(tracking.mode || 'none').toLowerCase();
+    const trackingEnabled = Boolean(tracking.enabled && trackingMode !== 'none');
+    const trackingNote = trackingEnabled ? t('motion.feature_note_mode', {mode: trackingMode}) : '';
+    const missingTracking = TRACKING_CORE_SERVICES.filter(u => !isServiceActive(u));
+    const camActive = isServiceActive('rider-cam-preview.service');
+    const warnNotes = [];
+    if(!camActive){
+      warnNotes.push(t('motion.feature_note_need_preview'));
+    }
+    if(missingTracking.length){
+      warnNotes.push(t('motion.feature_note_missing_services', {count: missingTracking.join(', ')}));
+    }
+    const forcedPreviewNote = previewBeforeTracking ? t('motion.feature_note_preview_forced', {name: previewLabel(previewBeforeTracking)}) : '';
+    const combinedRunNote = [trackingNote, forcedPreviewNote].filter(Boolean).join(' · ');
+    if(warnNotes.length){
+      const note = warnNotes.join(' · ');
+      setFeatureStatus('face','warn', note);
+      setFeatureStatus('hand','warn', note);
+    }else if(trackingEnabled && trackingMode === 'face'){
+      setFeatureStatus('face','running', combinedRunNote || trackingNote);
+      setFeatureStatus('hand','stopped','');
+    }else if(trackingEnabled && trackingMode === 'hand'){
+      setFeatureStatus('hand','running', combinedRunNote || trackingNote);
+      setFeatureStatus('face','stopped','');
+    }else{
+      setFeatureStatus('face','stopped', trackingNote);
+      setFeatureStatus('hand','stopped', trackingNote);
+    }
+
+    const navigatorState = (lastControlState && lastControlState.navigator) || {};
+    const navActive = Boolean(navigatorState.active);
+    const navNote = navigatorState.state ? t('motion.feature_note_state', {state: navigatorState.state}) : '';
+    const missingRecon = RECON_SERVICES.filter(u => !isServiceActive(u));
+    if(navigatorState.strategy){
+      const sel = qs('#reconStrategy');
+      if(sel && sel.value !== navigatorState.strategy){
+        sel.value = navigatorState.strategy;
+      }
+    }
+    if(navActive){
+      setFeatureStatus('recon','running', navNote);
+    }else if(missingRecon.length){
+      setFeatureStatus('recon','warn', t('motion.feature_note_missing_services',{count: missingRecon.length}));
+    }else{
+      setFeatureStatus('recon','stopped','');
+    }
+    const btnReturn = qs('#btnReturnHome');
+    if(btnReturn){
+      btnReturn.disabled = !navActive;
+    }
+  }
+
+  function updateSvcCache(list){
+    svcCache.clear();
+    list.forEach(item=>{
+      if(item && item.unit){
+        svcCache.set(item.unit, item);
+      }
+    });
+    renderFeatureStatuses();
+  }
+
+  function isServiceActive(unit){
+    const entry = svcCache.get(unit);
+    return entry ? entry.active === 'active' : false;
+  }
+
+  fetchControlState();
+  setInterval(fetchControlState, 5000);
+
   const RESOURCES = [
     { key:'mic', label:'Mikrofon' },
     { key:'speaker', label:'Głośnik' },
@@ -306,6 +623,7 @@
     const holdersEl = row.querySelector('.res-holders');
     const stopBtn = row.querySelector('button[data-res-action="stop"]');
     const releaseBtn = row.querySelector('button[data-res-action="release"]');
+    if(!statusEl || !holdersEl) return;
     if(data.error){
       statusEl.textContent = 'błąd';
       statusEl.className = 'res-status err';
@@ -377,12 +695,12 @@
       if(!r.ok) throw 0;
       const j = await r.json().catch(()=>({}));
       const present = !!(j && (j.present || j.obstacle || (j.data && j.data.present)));
-      const obstBadge = qs('#obstBadge');
+      const obstBadge = qs('#obstBadge'); if(!obstBadge) return;
       obstBadge.style.display = 'inline-flex';
       obstBadge.textContent = present ? t('header.obstacle_present') : t('header.obstacle_none');
       obstBadge.className = 'pill ' + (present ? 'err' : 'ok');
     }catch{
-      const obstBadge = qs('#obstBadge');
+      const obstBadge = qs('#obstBadge'); if(!obstBadge) return;
       obstBadge.style.display = 'inline-flex';
       obstBadge.textContent = t('header.obstacle_na');
       obstBadge.className = 'pill warn';
@@ -393,13 +711,19 @@
   // kamera
   const camImg = qs('#camPrev'); const camToggle = qs('#camToggle'); const camInfo = qs('#camInfo');
   let camAuto = true; let camTimer = null;
-  function refreshCam(){ try{ camImg.src = '/camera/last?ts=' + Date.now(); }catch{} }
+  function refreshCam(){
+    if(!camImg) return;
+    try{ camImg.src = '/camera/last?ts=' + Date.now(); }catch{}
+  }
   function setCamAuto(on){
-    camAuto = on; camToggle.textContent = on ? t('camera.auto_refresh_on') : t('camera.auto_refresh_off');
+    camAuto = on;
+    if(camToggle){ camToggle.textContent = on ? t('camera.auto_refresh_on') : t('camera.auto_refresh_off'); }
     if(camTimer){ clearInterval(camTimer); camTimer=null; }
     if(on){ refreshCam(); camTimer = setInterval(()=>{try{refreshCam();}catch{}}, 1500); }
   }
-  camToggle.addEventListener('click', ()=> setCamAuto(!camAuto));
+  if(camToggle){
+    camToggle.addEventListener('click', ()=> setCamAuto(!camAuto));
+  }
   setCamAuto(true);
 
   async function probeLastFrameAge(){
@@ -413,18 +737,23 @@
         ageTxt = age.toFixed(1) + ' s';
       }
       const src = await guessFrameSource();
-      camInfo.textContent = t('camera.last_frame', { age: ageTxt, src });
-      camInfo.className = 'note ' + ((lm)? (parseFloat(ageTxt) < 3 ? 'ok':'warn') : 'err');
+      if(camInfo){
+        camInfo.textContent = t('camera.last_frame', { age: ageTxt, src });
+        camInfo.className = 'note ' + ((lm)? (parseFloat(ageTxt) < 3 ? 'ok':'warn') : 'err');
+      }
     }catch{
-      camInfo.textContent = t('camera.last_frame_na');
-      camInfo.className = 'note err';
+      if(camInfo){
+        camInfo.textContent = t('camera.last_frame_na');
+        camInfo.className = 'note err';
+      }
     }
   }
   setInterval(probeLastFrameAge, 1500); probeLastFrameAge();
 
   // /svc
   const svcInfo = qs('#svcInfo'); const svcTable = qs('#svcTable'); const svcBody = qs('#svcBody'); const svcTs = qs('#svcTs');
-  qs('#svcRefresh').addEventListener('click', ()=>{ try{fetchServices();}catch{} });
+  const svcRefreshBtn = qs('#svcRefresh');
+  if(svcRefreshBtn) svcRefreshBtn.addEventListener('click', ()=>{ try{fetchServices();}catch{} });
 
   function badge(active, sub){
     let cls='warn', txt=String(active||'unknown'); if(active==='active') cls='ok';
@@ -441,6 +770,8 @@
       const r = await fetch('/svc', {cache:'no-store'});
       const j = await r.json().catch(()=>null);
       const arr = (j && j.services)||[];
+      updateSvcCache(arr);
+      if(!svcInfo || !svcTable || !svcBody || !svcTs) return;
       if(!arr.length){ svcInfo.innerHTML=t('services.empty'); svcTable.style.display='none'; return; }
       svcInfo.textContent=''; svcTable.style.display='';
       svcTs.textContent = '· ' + new Date().toLocaleTimeString();
@@ -464,8 +795,10 @@
         </tr>`;
       }).join('');
     }catch(e){
-      svcInfo.innerHTML = t('services.error_fetch', { msg: String(e) });
-      svcTable.style.display='none';
+      if(svcInfo && svcTable){
+        svcInfo.innerHTML = t('services.error_fetch', { msg: String(e) });
+        svcTable.style.display='none';
+      }
     }
   }
   setInterval(fetchServices, 4000); fetchServices();
