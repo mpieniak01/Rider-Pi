@@ -28,6 +28,10 @@ def state() -> Response:
     inferred_pose = compat.LAST_XGO.get("pose") or compat._classify_pose(
         compat.LAST_XGO.get("roll"), compat.LAST_XGO.get("pitch")
     )
+    tracking_mode = compat.LAST_TRACKING_MODE
+    tracking_offset = compat.LAST_TRACKING_OFFSET
+    offset_ts = tracking_offset.get("ts")
+    offset_age = round(now - offset_ts, 3) if offset_ts else None
 
     resp = {
         "present": bool(compat.LAST_STATE.get("present", False)),
@@ -58,6 +62,15 @@ def state() -> Response:
                 if compat.LAST_XGO.get("ts")
                 else None
             )
+        },
+        "tracking": {
+            "mode": tracking_mode.get("mode"),
+            "enabled": tracking_mode.get("enabled"),
+            "ts": tracking_mode.get("ts"),
+            "offset": tracking_offset.get("offset"),
+            "offset_mode": tracking_offset.get("mode"),
+            "offset_ts": offset_ts,
+            "offset_age_s": offset_age,
         },
     }
     return Response(json.dumps(resp), mimetype="application/json")

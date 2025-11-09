@@ -71,6 +71,10 @@ export const I18N = {
       caption:        { pl: "podgląd (ostatnia klatka lub komunikat)", en: "preview (last frame or message)" },
       vision_on:      { pl: "vision: ON",            en: "vision: ON" },
       vision_off:     { pl: "vision: OFF",           en: "vision: OFF" },
+      resource_free_badge: { pl: "kamera: wolna", en: "camera: free" },
+      resource_busy_badge: { pl: "kamera: zajęta", en: "camera: busy" },
+      resource_busy_with_holder: { pl: "kamera: zajęta ({holder})", en: "camera: busy ({holder})" },
+      resource_error_badge: { pl: "kamera: błąd zasobu", en: "camera: resource error" },
       last_frame_ts:  { pl: "ostatnia klatka:",      en: "last frame:" },
       no_last_frame:  { pl: "brak ostatniej klatki", en: "no last frame" },
     },
@@ -105,6 +109,14 @@ export const I18N = {
     camera_proc: {
       title:   { pl: "Kamera — PROC", en: "Camera — PROC" },
       caption: { pl: "ramki / etykiety", en: "boxes / labels" },
+    },
+
+    tracker: {
+      legend:      { pl: "TRACKER", en: "TRACKER" },
+      offset:      { pl: "offset", en: "offset" },
+      offset_none: { pl: "offset: brak danych", en: "offset: n/a" },
+      mode:        { pl: "tryb", en: "mode" },
+      age:         { pl: "wiek", en: "age" },
     },
 
     // DODANE: sekcja repo używana przez kafel "Repozytorium"
@@ -174,9 +186,12 @@ export const I18N = {
     feature_note_mode:      { pl: "tryb: {mode}", en: "mode: {mode}" },
     feature_note_state:     { pl: "stan: {state}", en: "state: {state}" },
     feature_note_missing_services: { pl: "brak usług: {count}", en: "missing services: {count}" },
+    feature_note_missing_support:  { pl: "brak usług pomocniczych: {count}", en: "support services missing: {count}" },
     feature_note_waiting:   { pl: "czekam na wykonanie…", en: "waiting for sequence…" },
     feature_note_need_preview: { pl: "Wymagany podgląd CAM (rider-cam-preview).", en: "CAM preview service (rider-cam-preview) must be running." },
     feature_note_preview_forced: { pl: "CAM zastąpił: {name}", en: "CAM preview forced (replaced {name})." },
+    feature_error_camera_feed: { pl: "Brak świeżego podglądu CAM (sprawdź rider-cam-preview).", en: "Camera feed is stale (check rider-cam-preview)." },
+    feature_error_tracker_feed: { pl: "Brak świeżego podglądu TRACKER (sprawdź rider-tracker).", en: "Tracker feed is stale (check rider-tracker)." },
     preview_cam:  { pl: "CAM", en: "CAM" },
     preview_edge: { pl: "EDGE", en: "EDGE" },
     preview_ssd:  { pl: "PROC/SSD", en: "PROC/SSD" },

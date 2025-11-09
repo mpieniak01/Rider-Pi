@@ -277,12 +277,60 @@ let lastCamReq=0,lastProcReq=0,lastObstReq=0,lastTrackerReq=0;
 let lastSnapAges={raw:null,proc:null,tracker:null};
 let lastCamState={vision_enabled:undefined,on:undefined,res:null,fps:null};
 let lastObstacle={present:null,confidence:null};
+let lastCameraResource=null;
+let lastTrackingInfo={};
+
+function formatResourceHolders(list){
+  if(!Array.isArray(list) || !list.length) return '';
+  return list.map(h=>{
+    const pid = h?.pid != null ? String(h.pid) : '?';
+    const cmd = h?.cmd || 'proc';
+    const svc = h?.service ? ` (${h.service})` : '';
+    return `${cmd}#${pid}${svc}`;
+  }).join(', ');
+}
+
+function cameraResourceSummary(){
+  if(!lastCameraResource) return null;
+  if(lastCameraResource.error){
+    return {state:'error', text:t('dash.camera.resource_error_badge'), tooltip:lastCameraResource.error};
+  }
+  const holdersTxt = formatResourceHolders(lastCameraResource.holders);
+  if(lastCameraResource.free){
+    return {state:'free', text:t('dash.camera.resource_free_badge'), tooltip:holdersTxt, holders:holdersTxt};
+  }
+  return {
+    state:'busy',
+    text: holdersTxt ? t('dash.camera.resource_busy_with_holder',{holder:holdersTxt}) : t('dash.camera.resource_busy_badge'),
+    tooltip: holdersTxt,
+    holders: holdersTxt,
+  };
+}
 
 function setCamBadgeAndMeta(cam){
   const camBadge=el('camBadge');
+  const resourceInfo=cameraResourceSummary();
   if(camBadge){
-    camBadge.textContent = cam?.vision_enabled ? t('dash.camera.vision_on') : t('dash.camera.vision_off');
-    camBadge.className   = 'cam-badge' + (cam?.vision_enabled ? ' on' : '');
+    if(resourceInfo){
+      let cls='cam-badge';
+      if(resourceInfo.state==='busy') cls+=' on';
+      camBadge.className=cls.trim();
+      camBadge.textContent=resourceInfo.text;
+      if(resourceInfo.tooltip) camBadge.title=resourceInfo.tooltip;
+      else camBadge.removeAttribute('title');
+    }else{
+      const visionOn = cam?.vision_enabled !== false;
+      camBadge.textContent = visionOn ? t('dash.camera.vision_on') : t('dash.camera.vision_off');
+      camBadge.className   = 'cam-badge' + (visionOn ? ' on' : '');
+      camBadge.removeAttribute('title');
+    }
+  }
+  const sbMeta=el('sb_cam_meta');
+  if(sbMeta){
+    const fpsVal = (cam && cam.fps!=null) ? cam.fps : lastCamState.fps;
+    const fpsTxt = fpsVal!=null ? `${fmt(fpsVal,1)} fps` : 'fps: —';
+    const extra = resourceInfo && resourceInfo.tooltip ? ` • ${resourceInfo.tooltip}` : '';
+    sbMeta.textContent = `${fpsTxt}${extra}`;
   }
 }
 function cameraShouldBeBlack(){
@@ -313,8 +361,18 @@ function refreshCamLegends(){
   if(lastObstacle.confidence!=null) partsObst.push(`conf: ${fmt(lastObstacle.confidence,3)}`);
   setTxt('leg_obst_txt',partsObst.join(' • '));
 
-  const partsTracker=['TRACKER','FPS + detection'];
-  if(lastSnapAges.tracker!=null) partsTracker.push(`age: ${fmt(lastSnapAges.tracker,1)}s`);
+  const partsTracker=[t('dash.tracker.legend')];
+  if(lastTrackingInfo && typeof lastTrackingInfo.offset === 'number'){
+    partsTracker.push(`${t('dash.tracker.offset')}: ${fmt(lastTrackingInfo.offset,3)}`);
+  }else{
+    partsTracker.push(t('dash.tracker.offset_none'));
+  }
+  if(lastTrackingInfo && lastTrackingInfo.mode){
+    partsTracker.push(`${t('dash.tracker.mode')}: ${lastTrackingInfo.mode}`);
+  }
+  if(lastSnapAges.tracker!=null){
+    partsTracker.push(`${t('dash.tracker.age')}: ${fmt(lastSnapAges.tracker,1)}s`);
+  }
   setTxt('leg_tracker_txt',partsTracker.join(' • '));
 }
 async function refreshCamera(){
@@ -325,6 +383,19 @@ async function refreshCamera(){
   setImageSafely(imgProc, `/vision/edge?t=${bust}`,{get value(){return lastProcReq},set value(v){lastProcReq=v;}});
   setImageSafely(imgObst, `/snapshots/obst_annot.jpg?t=${bust}`, {get value(){return lastObstReq},set value(v){lastObstReq=v;}});
   setImageSafely(imgTracker, `/vision/tracker?t=${bust}`, {get value(){return lastTrackerReq},set value(v){lastTrackerReq=v;}});
+}
+
+async function refreshCameraResource(){
+  try{
+    const r = await fetch('/api/resource/camera',{cache:'no-store'});
+    const data = await r.json().catch(()=>null);
+    if(!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
+    lastCameraResource = data;
+  }catch(e){
+    lastCameraResource = {error: String(e.message || e)};
+  }
+  setCamBadgeAndMeta(lastState?.camera || {});
+  try{ applyDevices({state:lastState, health:lastHealth}); }catch{}
 }
 
 /* ===== HEALTH ===== */
@@ -379,6 +450,7 @@ function updateStateUI(s){
   lastCamState.res=(Array.isArray(resArr)&&resArr.length===2)?`${resArr[0]}×${resArr[1]}`:null;
   lastCamState.fps=(s?.camera?.fps!=null)? Number(s.camera.fps):null;
 
+  lastTrackingInfo = s?.tracking || {};
   setCamBadgeAndMeta(s?.camera||{});
   refreshCamLegends();
 }
@@ -394,9 +466,35 @@ function textFromLCD(lcd){
 }
 function applyDevices({state,health}){
   const cam = state?.camera ?? health?.devices?.camera ?? {};
-  const resTxt=(cam.res && cam.res.length===2)? ` ${cam.res[0]}×${cam.res[1]}`:'';
-  const camTxt=(cam.on?'ON':'OFF') + (cam.mode?(' · '+cam.mode):'') + resTxt + (cam.fps!=null? (' · '+fmt(cam.fps,1)+' fps'):'');
-  setTxt('d_cam',camTxt); setCls('d_cam',cam.on?'ok':'muted');
+  const resArr = Array.isArray(cam.res) && cam.res.length===2 ? cam.res : null;
+  const resTxt = resArr ? `${resArr[0]}×${resArr[1]}` : (lastCamState.res || '');
+  const fpsVal = cam.fps!=null ? cam.fps : lastCamState.fps;
+  const resourceInfo = cameraResourceSummary();
+  const holdersTxt = resourceInfo?.holders || formatResourceHolders(lastCameraResource?.holders);
+  const camParts=[];
+  const camStatus = typeof cam.on === 'boolean' ? cam.on : (resourceInfo ? resourceInfo.state==='busy' : null);
+  if(camStatus !== null){
+    camParts.push(camStatus ? 'ON' : 'OFF');
+  }
+  if(cam.mode) camParts.push(cam.mode);
+  if(resTxt) camParts.push(resTxt);
+  if(fpsVal!=null) camParts.push(`${fmt(fpsVal,1)} fps`);
+  if(resourceInfo){
+    if(resourceInfo.state==='busy') camParts.push(t('dash.camera.resource_busy_badge'));
+    else if(resourceInfo.state==='free') camParts.push(t('dash.camera.resource_free_badge'));
+    else if(resourceInfo.state==='error') camParts.push(t('dash.camera.resource_error_badge'));
+  }
+  if(holdersTxt) camParts.push(holdersTxt);
+  setTxt('d_cam', camParts.filter(Boolean).join(' · ') || '—');
+  let camClass='muted';
+  if(camStatus === true) camClass='ok';
+  else if(camStatus === false) camClass='muted';
+  else if(resourceInfo){
+    if(resourceInfo.state==='busy') camClass='ok';
+    else if(resourceInfo.state==='error') camClass='bad';
+    else camClass='muted';
+  }
+  setCls('d_cam', camClass);
 
   const lcd = state?.lcd ?? health?.devices?.lcd ?? null;
   const lcdTxt=textFromLCD(lcd);
@@ -406,15 +504,15 @@ function applyDevices({state,health}){
   const imuTxt=(xgo.on?'ON':'OFF') + (xgo.imu_ok===true?' · OK':(xgo.on?' · ?':''));
   setTxt('d_xgo_imu',imuTxt); setCls('d_xgo_imu',(xgo.on && xgo.imu_ok)?'ok':'muted');
 
-  const parts=[];
+  const poseParts=[];
   if(Array.isArray(xgo.pose) && xgo.pose.some(v=>v!=null)){
-    parts.push(xgo.pose.filter(v=>v!=null).map(v=>Number(v).toFixed(1)).join('°, ')+'°');
+    poseParts.push(xgo.pose.filter(v=>v!=null).map(v=>Number(v).toFixed(1)).join('°, ')+'°');
   }
-  if(typeof xgo.pose==='string' && xgo.pose.trim()) parts.push(xgo.pose.trim());
-  if(xgo.roll!=null)  parts.push(`r ${fmt(xgo.roll,1)}°`);
-  if(xgo.pitch!=null) parts.push(`p ${fmt(xgo.pitch,1)}°`);
-  if(xgo.yaw!=null)   parts.push(`y ${fmt(xgo.yaw,1)}°`);
-  setTxt('d_xgo_pose',parts.length? parts.join(' · ') : '—');
+  if(typeof xgo.pose==='string' && xgo.pose.trim()) poseParts.push(xgo.pose.trim());
+  if(xgo.roll!=null)  poseParts.push(`r ${fmt(xgo.roll,1)}°`);
+  if(xgo.pitch!=null) poseParts.push(`p ${fmt(xgo.pitch,1)}°`);
+  if(xgo.yaw!=null)   poseParts.push(`y ${fmt(xgo.yaw,1)}°`);
+  setTxt('d_xgo_pose',poseParts.length? poseParts.join(' · ') : '—');
 
   const battPct=(xgo.battery_pct ?? xgo.batt_pct ?? xgo.battery?.pct ?? xgo.battery);
   setTxt('d_xgo_batt',(battPct!=null? `${Number(battPct).toFixed(0)}%`:'—'));
@@ -551,6 +649,7 @@ async function tick(){
   try{ await busHeartbeatFallback(); }catch{}
   try{ lastState  = await (await fetch('/state',{cache:'no-store'})).json(); updateStateUI(lastState);}catch{}
   try{ applyDevices({state:lastState, health:lastHealth}); }catch{}
+  try{ await refreshCameraResource(); }catch{}
 
   try{ const si = await (await fetch('/sysinfo',{cache:'no-store'})).json(); applySysinfo(si);}catch{}
 

@@ -53,6 +53,8 @@
     .feature-note{font-size:12px;color:#9bb5ce;min-height:16px}
     .feature-select{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:#b7cee3}
     .feature-select select{background:#0b1a27;color:#e6eef7;border:1px solid #24425e;border-radius:10px;padding:6px 8px}
+    .feature-resource{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:flex-start;margin:0 0 var(--pad)}
+    .feature-card,.resource-card{flex:1 1 360px}
   </style>
 </head>
 <body data-page="control">
@@ -128,66 +130,124 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.features_title">Funkcje</h2>
-    <div class="feature-list" id="featureList">
-      <div class="feature-row" data-feature="face">
-        <div class="feature-info">
-          <div class="feature-title" data-i18n="motion.follow_face">Śledź Twarz (Follow Face)</div>
-          <div class="feature-desc" data-i18n="motion.feature_face_desc">Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
-        </div>
-        <div class="feature-status">
-          <span class="pill feature-pill" data-feature-pill="face">n/a</span>
-          <div class="feature-note" data-feature-note="face"></div>
-        </div>
-        <div class="feature-actions">
-          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-        </div>
-      </div>
-
-      <div class="feature-row" data-feature="hand">
-        <div class="feature-info">
-          <div class="feature-title" data-i18n="motion.follow_hand">Śledź Dłoń (Follow Hand)</div>
-          <div class="feature-desc" data-i18n="motion.feature_hand_desc">Te same usługi tracker+controller, ale z trybem dłoni.</div>
-        </div>
-        <div class="feature-status">
-          <span class="pill feature-pill" data-feature-pill="hand">n/a</span>
-          <div class="feature-note" data-feature-note="hand"></div>
-        </div>
-        <div class="feature-actions">
-          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-        </div>
-      </div>
-
-      <div class="feature-row" data-feature="recon">
-        <div class="feature-info">
-          <div class="feature-title" data-i18n="motion.recon_mode">Tryb Rekonesans (autonomiczny)</div>
-          <div class="feature-desc" data-i18n="motion.feature_recon_desc">Włącza odometrię, mapper oraz startuje navigatora.</div>
-          <div class="feature-select">
-            <span data-i18n="motion.recon_strategy">Strategia</span>:
-            <select id="reconStrategy">
-              <option value="STOP">STOP (zatrzymaj)</option>
-              <option value="AVOID">AVOID (omijaj)</option>
-            </select>
+  <div class="panel-row feature-resource">
+    <div class="card feature-card">
+      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.features_title">Funkcje</h2>
+      <div class="feature-list" id="featureList">
+        <div class="feature-row" data-feature="face">
+          <div class="feature-info">
+            <div class="feature-title" data-i18n="motion.follow_face">Śledź Twarz (Follow Face)</div>
+            <div class="feature-desc" data-i18n="motion.feature_face_desc">Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
+          </div>
+          <div class="feature-status">
+            <span class="pill feature-pill" data-feature-pill="face">n/a</span>
+            <div class="feature-note" data-feature-note="face"></div>
+          </div>
+          <div class="feature-actions">
+            <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+            <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
           </div>
         </div>
-        <div class="feature-status">
-          <span class="pill feature-pill" data-feature-pill="recon">n/a</span>
-          <div class="feature-note" data-feature-note="recon"></div>
+
+        <div class="feature-row" data-feature="hand">
+          <div class="feature-info">
+            <div class="feature-title" data-i18n="motion.follow_hand">Śledź Dłoń (Follow Hand)</div>
+            <div class="feature-desc" data-i18n="motion.feature_hand_desc">Te same usługi tracker+controller, ale z trybem dłoni.</div>
+          </div>
+          <div class="feature-status">
+            <span class="pill feature-pill" data-feature-pill="hand">n/a</span>
+            <div class="feature-note" data-feature-note="hand"></div>
+          </div>
+          <div class="feature-actions">
+            <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+            <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
+          </div>
         </div>
-        <div class="feature-actions">
-          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-          <button class="btn-sm" id="btnReturnHome" data-feature-action="return-home" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
+
+        <div class="feature-row" data-feature="recon">
+          <div class="feature-info">
+            <div class="feature-title" data-i18n="motion.recon_mode">Tryb Rekonesans (autonomiczny)</div>
+            <div class="feature-desc" data-i18n="motion.feature_recon_desc">Włącza odometrię, mapper oraz startuje navigatora.</div>
+            <div class="feature-select">
+              <span data-i18n="motion.recon_strategy">Strategia</span>:
+              <select id="reconStrategy">
+                <option value="STOP">STOP (zatrzymaj)</option>
+                <option value="AVOID">AVOID (omijaj)</option>
+              </select>
+            </div>
+          </div>
+          <div class="feature-status">
+            <span class="pill feature-pill" data-feature-pill="recon">n/a</span>
+            <div class="feature-note" data-feature-note="recon"></div>
+          </div>
+          <div class="feature-actions">
+            <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
+            <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
+            <button class="btn-sm" id="btnReturnHome" data-feature-action="return-home" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
+          </div>
         </div>
       </div>
     </div>
+
+    <div class="card resource-card">
+      <h2 style="font-size:16px;margin:0 0 8px">Diagnostyka zasobów</h2>
+      <div id="resInfo" class="muted">Ładowanie…</div>
+      <table class="svc-table" id="resTable">
+        <thead>
+          <tr>
+            <th>Zasób</th>
+            <th>Status</th>
+            <th>Blokujące procesy</th>
+            <th>Akcje</th>
+          </tr>
+        </thead>
+        <tbody id="resBody">
+          <tr data-res="mic">
+            <td>Mikrofon</td>
+            <td class="res-status">n/a</td>
+            <td class="res-holders">-</td>
+            <td class="svc-actions">
+              <button class="btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
+              <button class="btn-sm" data-res="mic" data-res-action="stop">Stop usługi</button>
+              <button class="btn-sm" data-res="mic" data-res-action="release">Zwolnij</button>
+            </td>
+          </tr>
+          <tr data-res="speaker">
+            <td>Głośnik</td>
+            <td class="res-status">n/a</td>
+            <td class="res-holders">-</td>
+            <td class="svc-actions">
+              <button class="btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
+              <button class="btn-sm" data-res="speaker" data-res-action="stop">Stop usługi</button>
+              <button class="btn-sm" data-res="speaker" data-res-action="release">Zwolnij</button>
+            </td>
+          </tr>
+          <tr data-res="camera">
+            <td>Kamera</td>
+            <td class="res-status">n/a</td>
+            <td class="res-holders">-</td>
+            <td class="svc-actions">
+              <button class="btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
+              <button class="btn-sm" data-res="camera" data-res-action="stop">Stop usługi</button>
+              <button class="btn-sm" data-res="camera" data-res-action="release">Zwolnij</button>
+            </td>
+          </tr>
+          <tr data-res="lcd">
+            <td>Ekran LCD 2"</td>
+            <td class="res-status">n/a</td>
+            <td class="res-holders">-</td>
+            <td class="svc-actions">
+              <button class="btn-sm" data-res="lcd" data-res-action="refresh">⟳</button>
+              <button class="btn-sm" data-res="lcd" data-res-action="stop">Stop usługi</button>
+              <button class="btn-sm" data-res="lcd" data-res-action="release">Zwolnij</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <!-- 3) USŁUGI -->
-  <div class="card">
+  <div class="card service-card">
     <h2 style="font-size:16px;margin:0 0 8px">
       <span data-i18n="services.title">Usługi (systemd)</span>
       <button id="svcRefresh" class="btn-sm" style="margin-left:8px" data-i18n="services.refresh">⟳ odśwież</button>
@@ -206,54 +266,6 @@
         </tr>
       </thead>
       <tbody id="svcBody"></tbody>
-    </table>
-  </div>
-
-  <!-- 3b) ZASOBY SPRZĘTOWE -->
-  <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px">Diagnostyka zasobów</h2>
-    <div id="resInfo" class="muted">Ładowanie…</div>
-    <table class="svc-table" id="resTable">
-      <thead>
-        <tr>
-          <th>Zasób</th>
-          <th>Status</th>
-          <th>Blokujące procesy</th>
-          <th>Akcje</th>
-        </tr>
-      </thead>
-      <tbody id="resBody">
-        <tr data-res="mic">
-          <td>Mikrofon</td>
-          <td class="res-status">n/a</td>
-          <td class="res-holders">-</td>
-          <td class="svc-actions">
-            <button class="btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
-            <button class="btn-sm" data-res="mic" data-res-action="stop">Stop usługi</button>
-            <button class="btn-sm" data-res="mic" data-res-action="release">Zwolnij</button>
-          </td>
-        </tr>
-        <tr data-res="speaker">
-          <td>Głośnik</td>
-          <td class="res-status">n/a</td>
-          <td class="res-holders">-</td>
-          <td class="svc-actions">
-            <button class="btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
-            <button class="btn-sm" data-res="speaker" data-res-action="stop">Stop usługi</button>
-            <button class="btn-sm" data-res="speaker" data-res-action="release">Zwolnij</button>
-          </td>
-        </tr>
-        <tr data-res="camera">
-          <td>Kamera</td>
-          <td class="res-status">n/a</td>
-          <td class="res-holders">-</td>
-          <td class="svc-actions">
-            <button class="btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
-            <button class="btn-sm" data-res="camera" data-res-action="stop">Stop usługi</button>
-            <button class="btn-sm" data-res="camera" data-res-action="release">Zwolnij</button>
-          </td>
-        </tr>
-      </tbody>
     </table>
   </div>
 
@@ -612,7 +624,8 @@
   const RESOURCES = [
     { key:'mic', label:'Mikrofon' },
     { key:'speaker', label:'Głośnik' },
-    { key:'camera', label:'Kamera' }
+    { key:'camera', label:'Kamera' },
+    { key:'lcd', label:'Ekran LCD 2"' }
   ];
   const resInfo = qs('#resInfo');
 

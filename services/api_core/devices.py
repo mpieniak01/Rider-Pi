@@ -271,6 +271,27 @@ def bus_sub_loop():
                     C.LAST_TRACKING_MODE["ts"] = C.LAST_MSG_TS
                     continue
 
+                if topic == "vision.tracking.offset":
+                    data = _json_or_raw(payload)
+                    if isinstance(data, dict):
+                        offset = data.get("offset_x")
+                        try:
+                            offset = None if offset is None else float(offset)
+                        except Exception:
+                            offset = None
+                        if offset is not None:
+                            C.LAST_TRACKING_OFFSET["offset"] = offset
+                        else:
+                            C.LAST_TRACKING_OFFSET["offset"] = None
+                        if "mode" in data and data.get("mode") is not None:
+                            C.LAST_TRACKING_OFFSET["mode"] = data.get("mode")
+                        ts_val = data.get("ts") or C.LAST_MSG_TS or time.time()
+                        try:
+                            C.LAST_TRACKING_OFFSET["ts"] = float(ts_val)
+                        except Exception:
+                            C.LAST_TRACKING_OFFSET["ts"] = time.time()
+                    continue
+
                 if topic == "navigator.state":
                     data = _json_or_raw(payload)
                     if isinstance(data, dict):

@@ -32,6 +32,7 @@ class ProcessInfo:
 
 ALSA_PREFLIGHT = os.path.join(C.BASE_DIR, "config", "alsa", "preflight.sh")
 CAMERA_FREE = os.path.join(C.BASE_DIR, "scripts", "sys_camera-free.sh")
+LCD_CONTROL = os.path.join(C.BASE_DIR, "scripts", "sys_lcd-control.py")
 
 
 def _default_capture_dev() -> str:
@@ -156,6 +157,15 @@ RESOURCE_SPECS: dict[str, dict[str, Any]] = {
             "args": ["--device", os.getenv("RESOURCE_CAMERA_DEVICE", "/dev/video0"), "--with-spi"],
         },
     },
+    "lcd": {
+        "label": 'LCD 2"',
+        "paths": ["/dev/spidev0.*", "/dev/fb1", "/dev/fb0"],
+        "matcher": re.compile(r"/(spidev|fb[01])"),
+        "release": {
+            "kind": "lcd",
+            "args": ["off"],
+        },
+    },
 }
 
 
@@ -235,6 +245,11 @@ def release(resource: str, *, limit_pids: Iterable[int] | None = None) -> dict[s
     if release_spec["kind"] == "camera":
         args = [arg() if callable(arg) else arg for arg in release_spec["args"]]
         cmd = [CAMERA_FREE, *args, *limit_args]
+        return _call_release(cmd)
+
+    if release_spec["kind"] == "lcd":
+        args = [arg() if callable(arg) else arg for arg in release_spec["args"]]
+        cmd = ["sudo", "-n", "python3", LCD_CONTROL, *args]
         return _call_release(cmd)
 
     return {"ok": False, "error": "unsupported release kind"}
