@@ -581,10 +581,23 @@ def serve_navigation():
     return _no_cache(resp)
 
 
+def serve_google_home():
+    """Krótka trasa /google_home → web/google_home.html"""
+    gh_path = os.path.join(STATIC_WEB_DIR, "google_home.html")
+    if not os.path.isfile(gh_path):
+        abort(404)
+    with open(gh_path, "rb") as f:
+        data = f.read()
+    resp = make_response(data, 200)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    return _no_cache(resp)
+
+
 _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"], strict_slashes=False)
 _add_rule("/home", view_func=serve_home, methods=["GET"], strict_slashes=False)
 _add_rule("/chat", view_func=serve_chat, methods=["GET"], strict_slashes=False)  # no-redirect, no send_file
 _add_rule("/navigation", view_func=serve_navigation, methods=["GET"], strict_slashes=False)
+_add_rule("/google_home", view_func=serve_google_home, methods=["GET"], strict_slashes=False)
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/view", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/control", view_func=dashboard.control_page, methods=["GET"], strict_slashes=False)

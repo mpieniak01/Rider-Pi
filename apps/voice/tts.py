@@ -5,6 +5,7 @@ import audioop
 import base64
 import io
 import os
+import re
 import time
 import wave
 from dataclasses import dataclass
@@ -71,6 +72,90 @@ def _read_wav(b: bytes) -> tuple[bytes, int, int, int]:
         sr = wf.getframerate()
         pcm = wf.readframes(wf.getnframes())
     return pcm, sr, ch, sw
+
+
+def _inline_audio_bytes(blob: bytes | str | None, logger: voice_logging.VoiceLogger) -> bytes:
+    """
+    Gemini SDK czasem zwraca inline_data.data jako base64 zakodowane w ASCII bytes.
+    Ta funkcja próbuje zdekodować base64 (validate=True), a w razie niepowodzenia
+    zwraca surowe bajty.
+    """
+    if blob is None:
+        return b""
+    if isinstance(blob, str):
+        raw = blob.encode("ascii", errors="ignore")
+    else:
+        raw = bytes(blob)
+    try:
+        decoded = base64.b64decode(raw, validate=True)
+        if decoded:
+            return decoded
+    except Exception as exc:  # pragma: no cover - diagnostyka
+        logger.event("tts.gemini.b64decode_failed", error=str(exc))
+    return raw
+
+
+def _is_linear16_mime(mime: str) -> bool:
+    """
+    Gemini zwraca inline_data zwykle jako audio/L16;codec=pcm;rate=24000 (big-endian).
+    Detekcja formatu pozwala skonwertować do little-endian zanim złożymy WAV.
+    """
+    if not mime:
+        return False
+    if "wav" in mime or "mpeg" in mime or "mp3" in mime:
+        return False
+    keywords = (
+        "audio/l16",
+        "audio/pcm",
+        "codec=pcm",
+        "codec=linear16",
+        "linear16",
+    )
+    return any(token in mime for token in keywords)
+
+
+def _avg_abs_sample(pcm: bytes, sample_width: int = 2, max_samples: int = 2000) -> float:
+    if not pcm or sample_width <= 0:
+        return float("inf")
+    n = min(len(pcm) // sample_width, max_samples)
+    if n == 0:
+        return float("inf")
+    mv = memoryview(pcm)
+    step = sample_width
+    total = 0
+    for i in range(n):
+        chunk = mv[i * step : i * step + step]
+        val = int.from_bytes(chunk, "little", signed=True)
+        total += abs(val)
+    return total / n
+
+
+def _normalize_linear16_endianness(pcm: bytes, mime: str, logger: voice_logging.VoiceLogger) -> bytes:
+    """
+    Gemini dokumentacja pokazuje, że inline_data to audio/L16 (24 kHz, mono).
+    W praktyce większość odpowiedzi jest już little-endian. Jeśli jednak dostaniemy big-endian,
+    wykrywamy to heurystycznie na podstawie średniej amplitudy przy obu interpretacjach.
+    """
+    if not pcm or not _is_linear16_mime(mime):
+        return pcm
+    try:
+        swapped = audioop.byteswap(pcm, 2)
+    except Exception as exc:  # pragma: no cover - diagnostyka
+        logger.event("tts.gemini.byteswap_failed", error=str(exc))
+        return pcm
+
+    orig_score = _avg_abs_sample(pcm)
+    swapped_score = _avg_abs_sample(swapped)
+
+    # Jeśli wersja po byteswapie ma wyraźnie mniejszą energię, traktujemy ją jako właściwą.
+    if swapped_score < orig_score * 0.5:
+        logger.event(
+            "tts.gemini.byteswap_applied",
+            orig_score=round(orig_score, 2),
+            swapped_score=round(swapped_score, 2),
+        )
+        return swapped
+    return pcm
 
 
 def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40) -> bytes:
@@ -582,22 +667,20 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     if not api_key:
         raise TTSError("GOOGLE_API_KEY not configured")
 
-    try:
-        from google import genai
-        from google.genai import types
-    except Exception as exc:  # pragma: no cover - optional dependency
-        raise TTSError(f"Google GenAI SDK unavailable: {exc}") from exc
-
     model_name = config.model or "gemini-2.5-flash-preview-tts"
     voice_name = config.voice or "Kore"  # Default voice
 
     logger.event("tts.gemini.request", model=model_name, voice=voice_name)
 
     try:
-        # Inicjalizuj klienta
+        from google import genai
+        from google.genai import types
+    except Exception as exc:  # pragma: no cover - opcjonalna zależność
+        raise TTSError(f"Google GenAI SDK unavailable: {exc}") from exc
+
+    try:
         client = genai.Client(api_key=api_key)
 
-        # Konfiguracja TTS z native audio
         response = client.models.generate_content(
             model=model_name,
             contents=text,
@@ -605,15 +688,12 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(
                     voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice_name,
-                        )
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
                     )
                 ),
             ),
         )
 
-        # Wyciągnij dane audio z odpowiedzi (bezpiecznie)
         cand = (getattr(response, "candidates", None) or [None])[0]
         content = getattr(cand, "content", None)
         parts = getattr(content, "parts", None) or []
@@ -627,28 +707,53 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
             pf = getattr(response, "prompt_feedback", None)
             raise TTSError(f"No audio data in Gemini response (parts empty). prompt_feedback={pf!r}")
 
-        raw = inline.data
-        # Google SDK bywa niespójne: czasem bytes, czasem base64 string
-        if isinstance(raw, str):
-            try:
-                raw = base64.b64decode(raw)
-            except Exception as e:
-                raise TTSError(f"Gemini inline_data.data not decodable base64: {e}") from e
+        raw = _inline_audio_bytes(getattr(inline, "data", None), logger)
 
-        # Rozpoznaj typ: WAV czy czysty PCM
-        if _is_wav(raw):
-            pcm, sr, ch, sw = _read_wav(raw)
+        mime_type = getattr(inline, "mime_type", None) or getattr(inline, "mimeType", None) or ""
+        mime_type_low = mime_type.lower()
+
+        wav_bytes: bytes | None = None
+        if _is_wav(raw) or "wav" in mime_type_low:
+            wav_bytes = raw
+        elif (
+            "mp3" in mime_type_low
+            or "mpeg" in mime_type_low
+            or raw[:3] == b"ID3"
+            or (len(raw) > 2 and raw[0] == 0xFF and (raw[1] & 0xE0) == 0xE0)
+        ):
+            wav_bytes = _decode_mp3_to_wav(raw, logger)
+        elif any(k in mime_type_low for k in ("ogg", "opus", "webm")):
+            wav_bytes = _decode_mp3_to_wav(raw, logger)
+
+        if wav_bytes:
+            try:
+                pcm, sr, ch, sw = _read_wav(wav_bytes)
+            except Exception as exc:
+                raise TTSError(f"Gemini audio parse failed: {exc}") from exc
         else:
-            # Załóżmy 16-bit PCM mono 24 kHz (obecne zachowanie Gemini TTS)
+            # Domyślne parametry 24 kHz mono — spróbuj wyciągnąć z mime_type
             sr = 24000
             ch = 1
             sw = 2
-            pcm = raw
+            match = re.search(r"rate=(\d+)", mime_type_low)
+            if match:
+                try:
+                    sr = int(match.group(1))
+                except Exception:
+                    sr = 24000
+            if "stereo" in mime_type_low or "channels=2" in mime_type_low:
+                ch = 2
+            pcm = _normalize_linear16_endianness(raw, mime_type_low, logger)
 
-        # Zwracamy natywny format Google bez wymuszania resamplingu
-        # (playback.py otrzyma faktyczne parametry i dostosuje się)
+        TARGET_SR = 48000
+        TARGET_CH = 2
+        if sw == 2:
+            try:
+                pcm, sr, ch = _resample_to(pcm, sr, ch, TARGET_SR, TARGET_CH)
+                sw = 2
+            except Exception as e:
+                logger.event("tts.gemini.resample_failed", error=str(e))
 
-        # Opcjonalna normalizacja i fade (jak w OpenAI)
         extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
         if sw == 2:
             pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)

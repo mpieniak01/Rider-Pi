@@ -56,6 +56,39 @@ _PROVIDER_DEFS: list[dict[str, Any]] = [
 ]
 
 _PROVIDER_STATUS: dict[str, dict[str, Any]] = {}
+_GOOGLE_ALLOWED_VOICES = {
+    "achernar",
+    "achird",
+    "algenib",
+    "algieba",
+    "alnilam",
+    "aoede",
+    "autonoe",
+    "callirrhoe",
+    "charon",
+    "despina",
+    "enceladus",
+    "erinome",
+    "fenrir",
+    "gacrux",
+    "iapetus",
+    "kore",
+    "laomedeia",
+    "leda",
+    "orus",
+    "puck",
+    "pulcherrima",
+    "rasalgethi",
+    "sadachbia",
+    "sadaltager",
+    "schedar",
+    "sulafat",
+    "umbriel",
+    "vindemiatrix",
+    "zephyr",
+    "zubenelgenubi",
+}
+_GOOGLE_DEFAULT_VOICE = "Kore"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CORS / preflight
@@ -78,10 +111,22 @@ def _preflight() -> Response:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _normalized_provider(entry: dict[str, Any]) -> dict[str, Any]:
+    data = dict(entry)
+    backend = (data.get("backend") or "").lower()
+    if backend == "google":
+        voice = (data.get("voice") or "").strip()
+        if voice.lower() not in _GOOGLE_ALLOWED_VOICES:
+            voice = _GOOGLE_DEFAULT_VOICE
+        data["voice"] = voice
+        data.setdefault("model", "gemini-2.5-flash-preview-tts")
+    return data
+
+
 def _provider_lookup(provider_id: str) -> dict[str, Any] | None:
     for entry in _PROVIDER_DEFS:
         if entry["id"] == provider_id:
-            return entry
+            return _normalized_provider(entry)
     return None
 
 
@@ -118,9 +163,11 @@ def _service_status(alias: str | None) -> dict[str, Any] | None:
 
 def _probe_provider(entry: dict[str, Any]) -> dict[str, Any]:
     started = time.time()
+    entry = _normalized_provider(entry)
     payload: dict[str, Any] = {
         "text": PROVIDER_TEST_TEXT,
         "backend": entry["backend"],
+        "provider": entry.get("id"),
     }
     # voice/model opcjonalne – tylko gdy zdefiniowane
     if entry.get("voice"):
@@ -225,7 +272,8 @@ def providers_list_handler():
         return _preflight()
 
     payload = []
-    for entry in _PROVIDER_DEFS:
+    for entry_raw in _PROVIDER_DEFS:
+        entry = _normalized_provider(entry_raw)
         service_alias = entry.get("service")
         payload.append(
             {

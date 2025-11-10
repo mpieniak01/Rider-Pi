@@ -90,6 +90,17 @@ def test_navigation_page_no_redirect():
     assert b"Wizualizator Nawigacji" in r.data or b"navigation" in r.data.lower()
 
 
+def test_google_home_route():
+    """Test that /google_home returns the Google Home UI."""
+    _requires_api()
+    c = api.app.test_client()
+
+    r = c.get("/google_home")
+    assert r.status_code == 200, f"Expected 200 for /google_home, got {r.status_code}"
+    assert "text/html" in r.headers.get("Content-Type", "").lower()
+    assert b"Google Home" in r.data or b"Google Feed" in r.data
+
+
 def test_camera_last_with_query_params():
     """Test that /camera/last?t=0 does not redirect (3xx)."""
     _requires_api()

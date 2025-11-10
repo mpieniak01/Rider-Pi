@@ -72,6 +72,29 @@ def _log_error(msg: str, **kwargs) -> None:
         logger.error(f"{msg} {kwargs}" if kwargs else msg)
 
 
+# ───────────────────────────────────────────────────────────────────────────────
+# ENV loader (~/.bash_profile) — zapewnia dostęp do kluczy API (np. OPENAI_API_KEY)
+# ───────────────────────────────────────────────────────────────────────────────
+try:
+    from .env_loader import ensure_env_from_bash_profile as _ensure_env_from_bash_profile  # type: ignore
+except Exception:  # pragma: no cover
+    _ensure_env_from_bash_profile = None  # type: ignore
+
+
+def _maybe_load_env_from_bash_profile() -> None:
+    if _ensure_env_from_bash_profile is None:
+        _log_warning("web.init", src="env_loader", detail="missing env_loader module")
+        return
+    try:
+        _ensure_env_from_bash_profile()
+        _log_info("web.init", src="~/.bash_profile", status="env loaded")
+    except Exception as exc:  # pragma: no cover
+        _log_warning("web.init", src="~/.bash_profile", error=str(exc))
+
+
+_maybe_load_env_from_bash_profile()
+
+
 def _dict_to_config_object(cfg_dict: dict) -> Any:
     """Convert nested dict to object with attribute access (cfg.chat.backend)."""
     return type(

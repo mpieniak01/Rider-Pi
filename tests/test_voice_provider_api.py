@@ -92,3 +92,26 @@ def test_tts_proxy_preserves_backend(monkeypatch: pytest.MonkeyPatch, client: An
     resp = client.post("/api/voice/tts", json={"text": "hej", "backend": "openai", "voice": "ash"})
     assert resp.status_code == 200
     assert captured["payload"]["backend"] == "openai"
+
+
+def test_google_voice_normalized(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
+    monkeypatch.setattr(
+        voice_local_proxy,
+        "_PROVIDER_DEFS",
+        [
+            {
+                "id": "google",
+                "label": "Google Gemini",
+                "backend": "google",
+                "voice": "pl_PL-gosia-medium",
+                "model": None,
+                "description": "",
+                "service": None,
+            }
+        ],
+        raising=False,
+    )
+    resp = client.get("/api/voice/providers")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["providers"][0]["voice"] == "Kore"
