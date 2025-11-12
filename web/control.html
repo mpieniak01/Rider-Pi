@@ -197,56 +197,56 @@
     </div>
 
     <div class="card resource-card">
-      <h2 style="font-size:16px;margin:0 0 8px">Diagnostyka zasobów</h2>
-      <div id="resInfo" class="muted">Ładowanie…</div>
+      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="resources.title">Diagnostyka zasobów</h2>
+      <div id="resInfo" class="muted" data-i18n="meta.loading">Ładowanie…</div>
       <table class="svc-table" id="resTable">
         <thead>
           <tr>
-            <th>Zasób</th>
-            <th>Status</th>
-            <th>Blokujące procesy</th>
-            <th>Akcje</th>
+            <th data-i18n="resources.column_name">Zasób</th>
+            <th data-i18n="resources.column_status">Status</th>
+            <th data-i18n="resources.column_holders">Blokujące procesy</th>
+            <th data-i18n="resources.column_actions">Akcje</th>
           </tr>
         </thead>
         <tbody id="resBody">
           <tr data-res="mic">
-            <td>Mikrofon</td>
+            <td data-i18n="resources.mic">Mikrofon</td>
             <td class="res-status">n/a</td>
             <td class="res-holders">-</td>
             <td class="svc-actions">
               <button class="btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
-              <button class="btn-sm" data-res="mic" data-res-action="stop">Stop usługi</button>
-              <button class="btn-sm" data-res="mic" data-res-action="release">Zwolnij</button>
+              <button class="btn-sm" data-res="mic" data-res-action="stop" data-i18n="resources.btn_stop_service">Stop usługi</button>
+              <button class="btn-sm" data-res="mic" data-res-action="release" data-i18n="resources.btn_release">Zwolnij</button>
             </td>
           </tr>
           <tr data-res="speaker">
-            <td>Głośnik</td>
+            <td data-i18n="resources.speaker">Głośnik</td>
             <td class="res-status">n/a</td>
             <td class="res-holders">-</td>
             <td class="svc-actions">
               <button class="btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
-              <button class="btn-sm" data-res="speaker" data-res-action="stop">Stop usługi</button>
-              <button class="btn-sm" data-res="speaker" data-res-action="release">Zwolnij</button>
+              <button class="btn-sm" data-res="speaker" data-res-action="stop" data-i18n="resources.btn_stop_service">Stop usługi</button>
+              <button class="btn-sm" data-res="speaker" data-res-action="release" data-i18n="resources.btn_release">Zwolnij</button>
             </td>
           </tr>
           <tr data-res="camera">
-            <td>Kamera</td>
+            <td data-i18n="resources.camera">Kamera</td>
             <td class="res-status">n/a</td>
             <td class="res-holders">-</td>
             <td class="svc-actions">
               <button class="btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
-              <button class="btn-sm" data-res="camera" data-res-action="stop">Stop usługi</button>
-              <button class="btn-sm" data-res="camera" data-res-action="release">Zwolnij</button>
+              <button class="btn-sm" data-res="camera" data-res-action="stop" data-i18n="resources.btn_stop_service">Stop usługi</button>
+              <button class="btn-sm" data-res="camera" data-res-action="release" data-i18n="resources.btn_release">Zwolnij</button>
             </td>
           </tr>
           <tr data-res="lcd">
-            <td>Ekran LCD 2"</td>
+            <td data-i18n="resources.lcd">Ekran LCD 2"</td>
             <td class="res-status">n/a</td>
             <td class="res-holders">-</td>
             <td class="svc-actions">
               <button class="btn-sm" data-res="lcd" data-res-action="refresh">⟳</button>
-              <button class="btn-sm" data-res="lcd" data-res-action="stop">Stop usługi</button>
-              <button class="btn-sm" data-res="lcd" data-res-action="release">Zwolnij</button>
+              <button class="btn-sm" data-res="lcd" data-res-action="stop" data-i18n="resources.btn_stop_service">Stop usługi</button>
+              <button class="btn-sm" data-res="lcd" data-res-action="release" data-i18n="resources.btn_release">Zwolnij</button>
             </td>
           </tr>
         </tbody>
@@ -256,25 +256,25 @@
 
   <div class="card motion-queue-card">
     <h2 style="font-size:16px;margin:0 0 8px">
-      Kolejka ruchu
-      <button id="btnMotionQueueFlush" class="btn-sm" style="margin-left:8px">⏹ stop & wyczyść</button>
+      <span data-i18n="motion_queue.title">Kolejka ruchu</span>
+      <button id="btnMotionQueueFlush" class="btn-sm" style="margin-left:8px" data-i18n="motion_queue.btn_flush">⏹ stop & wyczyść</button>
     </h2>
-    <div id="motionQueueInfo" class="muted">Brak danych…</div>
+    <div id="motionQueueInfo" class="muted" data-i18n="motion_queue.loading">Brak danych…</div>
     <table class="svc-table" id="motionQueueTable">
       <thead>
         <tr>
-          <th>Źródło</th>
-          <th>Vx</th>
-          <th>Vy</th>
-          <th>Yaw</th>
-          <th>Czas [s]</th>
-          <th>Status</th>
-          <th>Wiek</th>
+          <th data-i18n="motion_queue.column_source">Źródło</th>
+          <th data-i18n="motion_queue.column_vx">Vx</th>
+          <th data-i18n="motion_queue.column_vy">Vy</th>
+          <th data-i18n="motion_queue.column_yaw">Yaw</th>
+          <th data-i18n="motion_queue.column_time">Czas [s]</th>
+          <th data-i18n="motion_queue.column_status">Status</th>
+          <th data-i18n="motion_queue.column_age">Wiek</th>
         </tr>
       </thead>
       <tbody id="motionQueueBody">
         <tr>
-          <td colspan="7" class="muted">Brak zleceń ruchu.</td>
+          <td colspan="7" class="muted" data-i18n="motion_queue.empty_placeholder">Brak zleceń ruchu.</td>
         </tr>
       </tbody>
     </table>
@@ -570,7 +570,8 @@
   async function flushMotionQueue(reason='tracking-stop'){
     try{
       await apiControl({cmd:'stop', reason});
-      clearMotionQueueLocal('Wyczyszczono (stop)');
+      const reasonLabel = reason === 'manual-ui' ? t('motion_queue.reason_manual') : t('motion_queue.reason_tracking');
+      clearMotionQueueLocal(t('motion_queue.note_cleared_reason', {reason: reasonLabel}));
       appendLog(`[feature tracking] motion queue flushed (${reason})`, 'ok');
     }catch(e){
       appendLog(`[feature tracking] flush queue failed :: ${e.message || e}`,'warn');
@@ -694,14 +695,14 @@
     const releaseBtn = row.querySelector('button[data-res-action="release"]');
     if(!statusEl || !holdersEl) return;
     if(data.error){
-      statusEl.textContent = 'błąd';
+      statusEl.textContent = t('resources.status_error');
       statusEl.className = 'res-status err';
       holdersEl.textContent = data.error;
       if(releaseBtn) releaseBtn.disabled = true;
       if(stopBtn) stopBtn.disabled = true;
       return;
     }
-    statusEl.textContent = data.free ? 'wolny' : 'zajęty';
+    statusEl.textContent = data.free ? t('resources.status_free') : t('resources.status_busy');
     statusEl.className = 'res-status ' + (data.free ? 'ok' : 'warn');
     if(data.holders && data.holders.length){
       holdersEl.textContent = data.holders.map(h=>{
@@ -709,7 +710,7 @@
         return `${h.cmd || 'proc'}#${h.pid}${svc}`;
       }).join(', ');
     }else{
-      holdersEl.textContent = 'brak blokad';
+      holdersEl.textContent = t('resources.holders_none');
     }
     if(stopBtn) stopBtn.disabled = !data.holders || data.holders.every(h=>!h.service);
     if(releaseBtn) releaseBtn.disabled = !!data.free;
@@ -721,7 +722,10 @@
       const data = await r.json();
       if(!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       renderResourceStatus(name, data);
-      if(resInfo) resInfo.textContent = `Ostatnia aktualizacja: ${new Date(data.checked_at * 1000 || Date.now()).toLocaleTimeString()}`;
+      if(resInfo){
+        const tsText = new Date(data.checked_at * 1000 || Date.now()).toLocaleTimeString();
+        resInfo.textContent = t('resources.last_update', {time: tsText});
+      }
     }catch(e){
       appendLog(`[resource ${name}] status error: ${e.message || e}`, 'err');
     }
@@ -763,19 +767,19 @@
   const motionQueueBody = qs('#motionQueueBody');
   const motionQueueInfo = qs('#motionQueueInfo');
   const motionQueueFlushBtn = qs('#btnMotionQueueFlush');
-  let motionQueueNote = '';
+  let motionQueueNote = t('motion_queue.loading');
 
   if(motionQueueFlushBtn){
     motionQueueFlushBtn.addEventListener('click', ()=>{ try{ flushMotionQueue('manual-ui'); }catch{} });
   }
 
   const MOTION_STATUS_META = {
-    queued: { label: 'oczekuje', cls: 'warn' },
-    executing: { label: 'wykonywanie', cls: 'warn' },
-    done: { label: 'wykonane', cls: 'ok' },
-    skipped: { label: 'odrzucone', cls: 'err' },
-    stopped: { label: 'zatrzymane', cls: 'warn' },
-    cleared: { label: 'wyczyszczone', cls: 'warn' },
+    queued: { label: t('motion_queue.status_queued'), cls: 'warn' },
+    executing: { label: t('motion_queue.status_executing'), cls: 'warn' },
+    done: { label: t('motion_queue.status_done'), cls: 'ok' },
+    skipped: { label: t('motion_queue.status_skipped'), cls: 'err' },
+    stopped: { label: t('motion_queue.status_stopped'), cls: 'warn' },
+    cleared: { label: t('motion_queue.status_cleared'), cls: 'warn' },
   };
 
   function setMotionQueueNote(text){
@@ -798,9 +802,10 @@
   function renderMotionQueue(){
     if(!motionQueueBody) return;
     if(!motionQueue.length){
-      motionQueueBody.innerHTML = '<tr><td colspan="7" class="muted">Brak aktywnych komend ruchu.</td></tr>';
+      const emptyTxt = t('motion_queue.empty_placeholder');
+      motionQueueBody.innerHTML = `<tr><td colspan="7" class="muted">${emptyTxt}</td></tr>`;
       if(motionQueueInfo){
-        motionQueueInfo.textContent = motionQueueNote || 'Kolejka pusta';
+        motionQueueInfo.textContent = motionQueueNote || t('motion_queue.empty_state');
       }
       return;
     }
@@ -823,13 +828,21 @@
     }).join('');
     motionQueueBody.innerHTML = rows;
     if(motionQueueInfo){
-      motionQueueInfo.textContent = motionQueueNote || `Ostatnia aktualizacja: ${new Date().toLocaleTimeString()}`;
+      if(motionQueueNote){
+        motionQueueInfo.textContent = motionQueueNote;
+      }else{
+        motionQueueInfo.textContent = t('motion_queue.last_update', {time: new Date().toLocaleTimeString()});
+      }
     }
   }
 
   function clearMotionQueueLocal(reason){
     motionQueue.splice(0, motionQueue.length);
-    setMotionQueueNote(reason ? `Kolejka wyczyszczona (${reason})` : 'Kolejka pusta');
+    if(reason){
+      setMotionQueueNote(reason);
+    }else{
+      setMotionQueueNote(t('motion_queue.note_cleared'));
+    }
     renderMotionQueue();
   }
 
@@ -906,13 +919,13 @@
     if(evName === 'rx_cmd.move'){
       const matched = updateMotionEntryByRid(rid, item=>{
         item.status = 'executing';
-        item.note = 'bridge: rx';
+        item.note = t('motion_queue.note_bridge_rx');
       });
       if(!matched){
         addMotionQueueItemFromPayload('motion.bridge', detail, payload.ts);
         updateMotionEntryByRid(rid, item=>{
           item.status = 'executing';
-          item.note = 'bridge: rx';
+          item.note = t('motion_queue.note_bridge_rx');
         });
       }
       return;
@@ -920,28 +933,28 @@
     if(evName === 'skip_cmd.move'){
       updateMotionEntryByRid(rid, item=>{
         item.status = 'skipped';
-        item.note = detail.reason ? `powód: ${detail.reason}` : 'odrzucono';
+        item.note = detail.reason ? t('motion_queue.note_reason', {reason: detail.reason}) : t('motion_queue.status_skipped');
       });
       return;
     }
     if(['forward','backward','left','right'].includes(evName)){
       updateMotionEntryByRid(rid, item=>{
         item.status = 'done';
-        item.note = `wykonano: ${evName}`;
+        item.note = t('motion_queue.note_done', {dir: evName});
       });
       return;
     }
     if(evName === 'stop'){
       updateMotionEntryByRid(rid, item=>{
         item.status = 'stopped';
-        item.note = 'mostek zatrzymał';
+        item.note = t('motion_queue.note_bridge_stop');
       });
       return;
     }
     if(evName === 'auto_stop'){
       updateMotionEntryByRid(rid, item=>{
         item.status = 'stopped';
-        item.note = detail.after_s ? `auto-stop (${detail.after_s}s)` : 'auto-stop';
+        item.note = detail.after_s ? t('motion_queue.note_auto_stop_secs', {secs: detail.after_s}) : t('motion_queue.note_auto_stop');
       });
     }
   }
@@ -954,7 +967,7 @@
       return;
     }
     if(ev.topic === 'cmd.stop'){
-      markAllMotionEntries('stopped', 'cmd.stop');
+      markAllMotionEntries('stopped', t('motion_queue.note_cmd_stop'));
       return;
     }
     if(ev.topic === 'motion.bridge.event'){
