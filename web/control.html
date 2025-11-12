@@ -254,6 +254,32 @@
     </div>
   </div>
 
+  <div class="card motion-queue-card">
+    <h2 style="font-size:16px;margin:0 0 8px">
+      Kolejka ruchu
+      <button id="btnMotionQueueFlush" class="btn-sm" style="margin-left:8px">⏹ stop & wyczyść</button>
+    </h2>
+    <div id="motionQueueInfo" class="muted">Brak danych…</div>
+    <table class="svc-table" id="motionQueueTable">
+      <thead>
+        <tr>
+          <th>Źródło</th>
+          <th>Vx</th>
+          <th>Vy</th>
+          <th>Yaw</th>
+          <th>Czas [s]</th>
+          <th>Status</th>
+          <th>Wiek</th>
+        </tr>
+      </thead>
+      <tbody id="motionQueueBody">
+        <tr>
+          <td colspan="7" class="muted">Brak zleceń ruchu.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
   <div class="card service-card">
     <h2 style="font-size:16px;margin:0 0 8px">
       <span data-i18n="services.title">Usługi (systemd)</span>
@@ -375,6 +401,7 @@
   const featureBusy = new Set();
   let lastControlState = null;
   let previewBeforeTracking = null;
+  let previewAutoStarted = false;
 
   function previewLabel(unit){
     if(unit === 'rider-cam-preview.service') return t('motion.preview_cam');
@@ -488,6 +515,7 @@
   async function stopTrackingFeature(mode){
     await httpPost('/api/vision/tracking/mode', {mode:'none', enabled:false});
     await runServicesSequence(TRACKING_CORE_SERVICES, 'stop');
+    await flushMotionQueue();
     await restorePreviewAfterTracking();
     appendLog(`[feature tracking] mode=${mode} stop ok`, 'ok');
   }
@@ -524,18 +552,39 @@
 
   async function ensurePreviewForTracking(){
     const camActive = isServiceActive('rider-cam-preview.service');
-    const currentPreview = getActivePreviewService();
-    previewBeforeTracking = (!camActive && currentPreview && currentPreview !== 'rider-cam-preview.service') ? currentPreview : null;
     if(!camActive){
+      const currentPreview = getActivePreviewService();
+      if(!previewBeforeTracking && !previewAutoStarted){
+        if(currentPreview && currentPreview !== 'rider-cam-preview.service'){
+          previewBeforeTracking = currentPreview;
+          previewAutoStarted = false;
+        }else{
+          previewAutoStarted = true;
+          previewBeforeTracking = null;
+        }
+      }
       await svcAction('rider-cam-preview.service','start');
+    }
+  }
+
+  async function flushMotionQueue(reason='tracking-stop'){
+    try{
+      await apiControl({cmd:'stop', reason});
+      clearMotionQueueLocal('Wyczyszczono (stop)');
+      appendLog(`[feature tracking] motion queue flushed (${reason})`, 'ok');
+    }catch(e){
+      appendLog(`[feature tracking] flush queue failed :: ${e.message || e}`,'warn');
     }
   }
 
   async function restorePreviewAfterTracking(){
     if(previewBeforeTracking && previewBeforeTracking !== 'rider-cam-preview.service'){
       await svcAction(previewBeforeTracking,'start');
+    }else if(previewAutoStarted){
+      await svcAction('rider-cam-preview.service','stop');
     }
     previewBeforeTracking = null;
+    previewAutoStarted = false;
   }
 
   function getActivePreviewService(){
@@ -708,6 +757,213 @@
   RESOURCES.forEach(({key})=> fetchResourceStatus(key));
   setInterval(()=>{ RESOURCES.forEach(({key})=> fetchResourceStatus(key)); }, 6000);
 
+  // ===== Diagnostyka kolejki ruchu =====
+  const motionQueue = [];
+  const MOTION_QUEUE_LIMIT = 12;
+  const motionQueueBody = qs('#motionQueueBody');
+  const motionQueueInfo = qs('#motionQueueInfo');
+  const motionQueueFlushBtn = qs('#btnMotionQueueFlush');
+  let motionQueueNote = '';
+
+  if(motionQueueFlushBtn){
+    motionQueueFlushBtn.addEventListener('click', ()=>{ try{ flushMotionQueue('manual-ui'); }catch{} });
+  }
+
+  const MOTION_STATUS_META = {
+    queued: { label: 'oczekuje', cls: 'warn' },
+    executing: { label: 'wykonywanie', cls: 'warn' },
+    done: { label: 'wykonane', cls: 'ok' },
+    skipped: { label: 'odrzucone', cls: 'err' },
+    stopped: { label: 'zatrzymane', cls: 'warn' },
+    cleared: { label: 'wyczyszczone', cls: 'warn' },
+  };
+
+  function setMotionQueueNote(text){
+    motionQueueNote = text || '';
+  }
+
+  function formatMotionNumber(val){
+    if(val === undefined || val === null || Number.isNaN(Number(val))) return '—';
+    const num = Number(val);
+    return Math.abs(num) < 0.005 ? '0.00' : num.toFixed(2);
+  }
+
+  function normalizeTs(value, fallbackTs){
+    if(value === undefined || value === null) return fallbackTs || Date.now();
+    const num = Number(value);
+    if(!Number.isFinite(num)) return fallbackTs || Date.now();
+    return num > 1e12 ? num : num * 1000;
+  }
+
+  function renderMotionQueue(){
+    if(!motionQueueBody) return;
+    if(!motionQueue.length){
+      motionQueueBody.innerHTML = '<tr><td colspan="7" class="muted">Brak aktywnych komend ruchu.</td></tr>';
+      if(motionQueueInfo){
+        motionQueueInfo.textContent = motionQueueNote || 'Kolejka pusta';
+      }
+      return;
+    }
+    const rows = motionQueue.map(item=>{
+      const meta = MOTION_STATUS_META[item.status] || MOTION_STATUS_META.queued;
+      const age = Math.max(0, (Date.now() - item.createdAt) / 1000).toFixed(1);
+      const badge = `<span class="pill ${meta.cls}">${meta.label}</span>`;
+      const note = item.note ? `<div class="muted" style="font-size:11px">${item.note}</div>` : '';
+      const source = item.source || '—';
+      const ridLine = item.rid ? `<div class="muted" style="font-size:11px">${item.rid}</div>` : '';
+      return `<tr>
+        <td>${source}${ridLine}</td>
+        <td>${formatMotionNumber(item.vx)}</td>
+        <td>${formatMotionNumber(item.vy)}</td>
+        <td>${formatMotionNumber(item.yaw)}</td>
+        <td>${formatMotionNumber(item.duration)}</td>
+        <td>${badge}${note}</td>
+        <td>${age}s</td>
+      </tr>`;
+    }).join('');
+    motionQueueBody.innerHTML = rows;
+    if(motionQueueInfo){
+      motionQueueInfo.textContent = motionQueueNote || `Ostatnia aktualizacja: ${new Date().toLocaleTimeString()}`;
+    }
+  }
+
+  function clearMotionQueueLocal(reason){
+    motionQueue.splice(0, motionQueue.length);
+    setMotionQueueNote(reason ? `Kolejka wyczyszczona (${reason})` : 'Kolejka pusta');
+    renderMotionQueue();
+  }
+
+  function addMotionQueueItemFromPayload(topic, payload, eventTs){
+    if(!motionQueueBody || !payload || typeof payload !== 'object') return;
+    const entry = {
+      id: `mq-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      rid: payload.rid ? String(payload.rid) : '',
+      source: payload.source ? String(payload.source) : (payload.rid ? String(payload.rid) : topic || 'cmd.move'),
+      vx: payload.vx ?? payload.lx ?? 0,
+      vy: payload.vy ?? 0,
+      yaw: payload.yaw ?? payload.az ?? 0,
+      duration: payload.duration ?? payload.dur ?? 0,
+      status: 'queued',
+      note: '',
+      createdAt: normalizeTs(payload.ts, normalizeTs(eventTs, Date.now())),
+      updatedAt: Date.now(),
+    };
+    motionQueue.unshift(entry);
+    if(motionQueue.length > MOTION_QUEUE_LIMIT){
+      motionQueue.pop();
+    }
+    setMotionQueueNote('');
+    renderMotionQueue();
+  }
+
+  function updateMotionEntryByRid(rid, updater){
+    if(!rid) return false;
+    for(let i=0;i<motionQueue.length;i++){
+      const item = motionQueue[i];
+      if(item.rid === String(rid)){
+        const result = updater(item);
+        if(result !== false){
+          item.updatedAt = Date.now();
+          renderMotionQueue();
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function markAllMotionEntries(status, note){
+    if(!motionQueue.length) return;
+    motionQueue.forEach(item=>{
+      item.status = status;
+      item.note = note || item.note;
+      item.updatedAt = Date.now();
+    });
+    setMotionQueueNote(note || '');
+    renderMotionQueue();
+  }
+
+  function parseEventPayload(raw){
+    if(!raw) return null;
+    if(typeof raw === 'object') return raw;
+    if(typeof raw === 'string'){
+      const trimmed = raw.trim();
+      if(!trimmed) return null;
+      try{
+        return JSON.parse(trimmed);
+      }catch{
+        return null;
+      }
+    }
+    return null;
+  }
+
+  function handleMotionBridgeEvent(payload){
+    if(!payload || typeof payload !== 'object') return;
+    const evName = payload.event;
+    const detail = payload.detail || {};
+    const rid = detail && detail.rid ? String(detail.rid) : '';
+    if(evName === 'rx_cmd.move'){
+      const matched = updateMotionEntryByRid(rid, item=>{
+        item.status = 'executing';
+        item.note = 'bridge: rx';
+      });
+      if(!matched){
+        addMotionQueueItemFromPayload('motion.bridge', detail, payload.ts);
+        updateMotionEntryByRid(rid, item=>{
+          item.status = 'executing';
+          item.note = 'bridge: rx';
+        });
+      }
+      return;
+    }
+    if(evName === 'skip_cmd.move'){
+      updateMotionEntryByRid(rid, item=>{
+        item.status = 'skipped';
+        item.note = detail.reason ? `powód: ${detail.reason}` : 'odrzucono';
+      });
+      return;
+    }
+    if(['forward','backward','left','right'].includes(evName)){
+      updateMotionEntryByRid(rid, item=>{
+        item.status = 'done';
+        item.note = `wykonano: ${evName}`;
+      });
+      return;
+    }
+    if(evName === 'stop'){
+      updateMotionEntryByRid(rid, item=>{
+        item.status = 'stopped';
+        item.note = 'mostek zatrzymał';
+      });
+      return;
+    }
+    if(evName === 'auto_stop'){
+      updateMotionEntryByRid(rid, item=>{
+        item.status = 'stopped';
+        item.note = detail.after_s ? `auto-stop (${detail.after_s}s)` : 'auto-stop';
+      });
+    }
+  }
+
+  function handleMotionQueueSse(ev){
+    if(!ev || !ev.topic) return;
+    const payload = parseEventPayload(ev.data);
+    if(ev.topic === 'cmd.move'){
+      addMotionQueueItemFromPayload(ev.topic, payload || {}, ev.ts);
+      return;
+    }
+    if(ev.topic === 'cmd.stop'){
+      markAllMotionEntries('stopped', 'cmd.stop');
+      return;
+    }
+    if(ev.topic === 'motion.bridge.event'){
+      handleMotionBridgeEvent(payload);
+    }
+  }
+
+  renderMotionQueue();
+
   // obstacle badge
   async function pollObstacle(){
     try{
@@ -876,7 +1132,15 @@
       if(es){ try{es.close();}catch{} es=null; }
       es = new EventSource('/events');
       es.onopen = ()=>{ appendLog(t('events.sse_connected')); esDelay=1000; };
-      es.onmessage=(ev)=>{ try{ const obj=JSON.parse(ev.data); appendLog(obj.topic? `${obj.topic}`: t('events.generic_event')); }catch{ appendLog(t('events.generic_event')); } };
+      es.onmessage=(ev)=>{
+        try{
+          const obj=JSON.parse(ev.data);
+          appendLog(obj.topic? `${obj.topic}`: t('events.generic_event'));
+          handleMotionQueueSse(obj);
+        }catch{
+          appendLog(t('events.generic_event'));
+        }
+      };
       es.onerror = ()=>{
         appendLog(t('events.sse_reconnect'),'warn');
         try{ es.close(); }catch{}
