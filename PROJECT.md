@@ -1,55 +1,55 @@
-# Rider‑Pi Apps — PROJECT
+# Rider-Pi Apps — PROJECT
 
-> Rider‑Pi to nazwa urządzenia (sprzętu). Nasz projekt tworzy niezależne oprogramowanie **Rider‑Pi Apps**, które rozwija funkcje autonomii i interakcji ponad to, co dostarcza producent urządzenia.
+> Rider-Pi is the name of the device (hardware). Our project creates independent software **Rider-Pi Apps**, which extends the autonomy and interaction features beyond what the device manufacturer provides.
 
-> Dokument biznesowy (high‑level). Przedstawia **wizję i cele projektu** w języku zrozumiałym biznesowo, z lekkim żargonem technicznym tam, gdzie to ułatwia precyzję. Szczegóły implementacyjne i pełna architektura zostaną opisane w pliku **ARCHITECTURE.md**.
+> Business document (high-level). Presents **project vision and goals** in business-friendly language, with light technical jargon where it aids precision. Implementation details and full architecture will be described in **ARCHITECTURE.md**.
 
-## Wizja projektu
+## Project Vision
 
-Projekt oparty jest o gotowe rozwiązanie sprzętowe Rider‑Pi. Więcej informacji o urządzeniu można znaleźć na stronie producenta: [Yahboom Rider‑Pi](https://category.yahboom.net/products/rider-pi-robot). To dwukołowy robot edukacyjny oparty na Raspberry Pi 4B, wyposażony m.in. w kamerę HD, mikrofon, ekran LCD 2", żyroskop stabilizujący, serwo regulujące wysokość zawieszenia oraz moduł napędu. Urządzenie pracuje w oparciu o system Raspberry Pi OS, a oprogramowanie można rozwijać w języku Python. Szczegółowe parametry techniczne są dostępne na stronie producenta. Warto zaznaczyć, że zestaw w wersji bazowej nie posiada dedykowanej warstwy czujników zbliżeniowych i kolizyjnych, co stanowi wyzwanie, ale jednocześnie otwiera pole do dalszego rozwoju w ramach Rider‑Pi Apps.
+The project is based on the ready-made Rider-Pi hardware solution. More information about the device can be found on the manufacturer's website: [Yahboom Rider-Pi](https://category.yahboom.net/products/rider-pi-robot). It's a two-wheeled educational robot based on Raspberry Pi 4B, equipped with an HD camera, microphone, 2" LCD screen, stabilizing gyroscope, servo-controlled suspension height adjustment, and drive module. The device runs on Raspberry Pi OS, and software can be developed in Python. Detailed technical specifications are available on the manufacturer's website. It's worth noting that the base version doesn't include a dedicated layer of proximity and collision sensors, which presents a challenge, but also opens opportunities for further development within Rider-Pi Apps.
 
-Rider‑Pi Apps to lekki, autonomiczny projekt edukacyjno‑eksperymentalny. Powstał z myślą o osobach prywatnych i pasjonatach technologii, które chcą uczyć się poprzez praktykę i obserwację rozwoju własnego robota. Ma on pełnić rolę towarzysza w prostych, codziennych zadaniach – poruszać się, reagować na głos, wyrażać emocje i w czytelny sposób prezentować swój stan.
+Rider-Pi Apps is a lightweight, autonomous educational-experimental project. Created for private individuals and technology enthusiasts who want to learn through practice and observation of their own robot's development. It serves as a companion in simple, everyday tasks – moving around, responding to voice, expressing emotions, and clearly presenting its state.
 
-Projekt został zaprojektowany jako **energooszczędny** – działa w krótkich cyklach, co pozwala lepiej gospodarować baterią i utrzymywać stabilność pracy. Jest rozwijany iteracyjnie, w fazie edukacyjno‑eksperymentalnej, z wykorzystaniem narzędzi AI (ChatGPT, Codex) wspierających analizę i rozwój. Dzięki temu każda kolejna wersja to krok w stronę większej autonomii i lepszego zrozumienia, jak technologia może współpracować z człowiekiem. Aby zrealizować tę wizję, określiliśmy następujące cele nadrzędne.
+The project is designed to be **energy-efficient** – it operates in short cycles, allowing better battery management and maintaining operational stability. It's developed iteratively, in an educational-experimental phase, using AI tools (ChatGPT, Codex) supporting analysis and development. This way, each successive version is a step toward greater autonomy and better understanding of how technology can cooperate with humans. To realize this vision, we've established the following overarching goals.
 
-## Cele nadrzędne
+## Overarching Goals
 
-1. **Autonomia** – umożliwienie robotowi samodzielnego poruszania się w różnych trybach:
-   - **Tryb „biurko”** – drobne ruchy i manewry w bezpiecznej, ograniczonej przestrzeni.
-   - **Tryb „rozpoznawania terenu”** – skanowanie otoczenia i budowanie prostych map.
-   - **Tryb „podążanie za człowiekiem”** – śledzenie sylwetki lub znacznika i utrzymywanie dystansu.
-2. **Interakcja głosowa** – reagowanie na krótkie komendy, rozpoznawanie momentu przejścia do dialogu, opcjonalnie rozszerzone o integrację z usługą AI wspierającą rozmowę.
-3. **Prezentacja emocji** – wizualizacja stanu robota poprzez prostą mimikę („buźka”) odzwierciedlającą wykonywane zadanie lub przebieg rozmowy.
-4. **Monitoring i komunikacja** – możliwość śledzenia trybów i stanu w aplikacji web oraz na ekranie LCD.
-5. **Bezpieczeństwo** – mechanizmy awaryjnego zatrzymania, unikanie przeszkód, ograniczenie prędkości i czasu ruchu.
+1. **Autonomy** – enabling the robot to move independently in various modes:
+   - **"Desk" mode** – small movements and maneuvers in a safe, limited space.
+   - **"Reconnaissance" mode** – scanning surroundings and building simple maps.
+   - **"Follow me" mode** – tracking a person's silhouette or marker and maintaining distance.
+2. **Voice Interaction** – responding to short commands, recognizing moments to transition to dialogue, optionally extended with AI service integration supporting conversation.
+3. **Emotion Display** – visualizing robot state through simple facial expressions ("smiley face") reflecting the task being performed or conversation progress.
+4. **Monitoring and Communication** – ability to track modes and state in web application and on LCD screen.
+5. **Safety** – emergency stop mechanisms, obstacle avoidance, speed and movement time limitations.
 
-## Wartość biznesowa / użytkowa
+## Business / User Value
 
-Rider‑Pi Apps to projekt edukacyjny i eksperymentalny, w którym łączą się nauka, praktyka i kreatywne podejście do technologii. Pozwala:
+Rider-Pi Apps is an educational and experimental project that combines learning, practice, and creative approach to technology. It allows:
 
-- zdobywać wiedzę z zakresu robotyki, AI i interakcji człowiek–maszyna,
-- testować w praktyce koncepcje autonomii w bezpiecznej, małej skali,
-- doświadczać interakcji z robotem, który nie tylko wykonuje zadania, ale też komunikuje się i wyraża emocje.
+- gaining knowledge in robotics, AI, and human-machine interaction,
+- practically testing autonomy concepts on a safe, small scale,
+- experiencing interaction with a robot that not only performs tasks but also communicates and expresses emotions.
 
-Projekt ma charakter otwarty i poszukujący – rozwój jest procesem odkrywania, w którym sprawdzamy, jakie rozwiązania okażą się najbardziej wartościowe i praktyczne. Dzięki publikacji w repozytorium publicznym Rider‑Pi Apps wnosi także wartość dla innych: może inspirować, edukować i być przykładem otwartego podejścia do robotyki i AI.
+The project is open and exploratory in nature – development is a discovery process where we verify which solutions prove most valuable and practical. By publishing in a public repository, Rider-Pi Apps also brings value to others: it can inspire, educate, and be an example of an open approach to robotics and AI.
 
-## Zasady ogólne
+## General Principles
 
-Aby osiągnąć powyższe cele, kierujemy się kilkoma prostymi zasadami:
+To achieve the above goals, we follow several simple principles:
 
-- Rozwój etapami: małe, czytelne iteracje zamiast dużych, ryzykownych zmian.
-- Stabilne fundamenty: unikanie częstych zwrotów kierunku projektu.
-- Prostota i przejrzystość działania – zarówno w funkcjach, jak i w komunikacji z użytkownikiem.
-- Świadome gospodarowanie energią – dodatkowe tryby uruchamiane tylko wtedy, gdy są potrzebne.
+- Phased development: small, clear iterations instead of large, risky changes.
+- Stable foundations: avoiding frequent project direction pivots.
+- Simplicity and transparency of operation – both in functions and user communication.
+- Conscious energy management – additional modes activated only when needed.
 
-## Kamienie milowe (MVP)
+## Milestones (MVP)
 
-Aby uporządkować rozwój projektu i krok po kroku zbliżać się do pełnej autonomii, wyznaczyliśmy następujące etapy:
+To organize project development and step-by-step approach full autonomy, we've established the following stages:
 
-- **M1**: Buźka ↔ stan (emocje, panel trybów w UI).
-- **M2**: Głos (komendy lokalne, integracja z AI do dialogu jako opcja).
-- **M3**: Tryb „biurko” + bezpieczeństwo (awaryjne zatrzymanie, unikanie przeszkód).
-- **M4**: Tryb „rozpoznawanie terenu” (prosty zapis mapy/śladu).
-- **M5**: Tryb „podążanie za człowiekiem” (utrzymywanie dystansu).
+- **M1**: Face ↔ state (emotions, mode panel in UI).
+- **M2**: Voice (local commands, AI integration for dialogue as an option).
+- **M3**: "Desk" mode + safety (emergency stop, obstacle avoidance).
+- **M4**: "Reconnaissance" mode (simple map/trail recording).
+- **M5**: "Follow me" mode (distance maintenance).
 
 ---

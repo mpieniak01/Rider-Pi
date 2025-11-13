@@ -1,80 +1,80 @@
-# Ustalenia robocze
+# Working Agreements
 
 ---
-*Cel:** prowadź małe, bezpieczne przyrosty, które działają na RPi. Szanuj istniejące interfejsy. Nie instaluj nowych zależności. Utrzymuj energię/CPU nisko.
+**Goal:** deliver small, safe increments that work on RPi. Respect existing interfaces. Don't install new dependencies. Keep energy/CPU usage low.
 
 ---
 
-## 1) Zakres i odpowiedzialność
+## 1) Scope and Responsibility
 
-**Możesz modyfikować tylko:**
-- `services/**` – warstwa usług (API, bridge, rejestry, web sockety).
-- `apps/**` – aplikacje (UI/face, camera, vision, voice, motion).
-- `web/**` – zasoby webowe.
-- `tests/**` – testy jednostkowe/integracyjne.
-- `config/**` – jedynie pliki konfiguracyjne.
+**You can modify only:**
+- `services/**` – service layer (API, bridges, registries, web sockets).
+- `apps/**` – applications (UI/face, camera, vision, voice, motion).
+- `web/**` – web resources.
+- `tests/**` – unit/integration tests.
+- `config/**` – configuration files only.
 - `Makefile`, `pytest.ini`, `pyproject.toml`.
 
-**Nie wolno:**
-- zmieniać pinów/sprzętu ani unitów `systemd/` poza tymi wymienionymi w `scripts/systemd-sync.sh`,
-- dodawać zależności spoza repo (żadnego `pip install` online),
-- uruchamiać długowiecznych demonów poza `systemd`,
-- wysyłać telemetrii/eksfiltracji.
+**You must not:**
+- change pins/hardware or `systemd/` units except those listed in `scripts/systemd-sync.sh`,
+- add dependencies from outside repo (no online `pip install`),
+- run long-lived daemons outside `systemd`,
+- send telemetry/exfiltration.
 
-**Limit wielkości pliku:** ≤ 600 linii (miękkie; przy przekroczeniu – rozbij na moduły).
-
----
-
-## 2) Środowisko runtime
-
-- **Platforma:** Raspberry Pi (Debian/Bookworm), **Python 3.9**.
-- **Pakiety:** tylko to, co w repo i instalowane przez `make setup`.
-- **I/O sprzetowe:**
-  - UART `/dev/ttyAMA0` – wyłącznie przez *Motion Bridge*.
-  - LCD ILI9xx – przez `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), bez bezpośrednich SPI-write w innych miejscach.
+**File size limit:** ≤ 600 lines (soft; if exceeded – split into modules).
 
 ---
 
-## 3) Interfejsy, których nie łamiemy (kontrakty)
+## 2) Runtime Environment
+
+- **Platform:** Raspberry Pi (Debian/Bookworm), **Python 3.9**.
+- **Packages:** only what's in repo and installed via `make setup`.
+- **Hardware I/O:**
+  - UART `/dev/ttyAMA0` – exclusively via *Motion Bridge*.
+  - LCD ILI9xx – via `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), no direct SPI-write elsewhere.
+
+---
+
+## 3) Interfaces We Don't Break (Contracts)
 
 ### HTTP API (8080)
-- `GET /healthz` – zdrowie.
-- `POST /api/control` – `{action:"move|stop|turn", ...}` (walidacja czasu i zakresów).
-- `POST /api/chat/*` – integracja voice/chat.
-- Serwowanie plików z `data/`, `snapshots/`.
+- `GET /healthz` – health check.
+- `POST /api/control` – `{action:"move|stop|turn", ...}` (time and range validation).
+- `POST /api/chat/*` – voice/chat integration.
+- File serving from `data/`, `snapshots/`.
 
 ### BUS (ZMQ 5555/5556)
-- Przykładowe tematy: `motion.move|stop|state`, `vision.person|face|motion`, `voice.state`, `face.state`.
+- Example topics: `motion.move|stop|state`, `vision.person|face|motion`, `voice.state`, `face.state`.
 
-### Renderer twarzy
-- `apps/draw/face_primitives.py: draw_face(canvas, cfg, model, guide=False, quality="fast")` – **nie zmieniaj sygnatury**.
-- Pupil: drift+clamp, sprzęgło blink→look – sterowane ENV (patrz §7).
-
----
-
-## 4) Definicja Done
-
-- Działa na RPi; brak regresji w API i podstawowych ścieżkach.
-- `pytest` przechodzi lokalnie (`make test`); nowe funkcje mają test.
-- Zmiana portów/usług → aktualizacja `ARCHITECTURE.md`.
-- Zmiany opisane w `docs/` (skrót w commitach).
+### Face Renderer
+- `apps/draw/face_primitives.py: draw_face(canvas, cfg, model, guide=False, quality="fast")` – **don't change signature**.
+- Pupil: drift+clamp, blink→look coupling – controlled by ENV (see §7).
 
 ---
 
-## 5) Workflow developerski
+## 4) Definition of Done
 
-- Jedno Issue = jeden przyrost.
-- Gałąź: `codex/<nr>-krotki-opis`.
-- Commity: `feat|fix|chore(scope): opis (nr)`.
-- PR: opis + *Fixes <nr>* jeśli zamyka Issue.
+- Works on RPi; no regression in API and core paths.
+- `pytest` passes locally (`make test`); new features have tests.
+- Port/service changes → update `ARCHITECTURE.md`.
+- Changes described in `docs/` (summary in commits).
 
-**Przykład:**
+---
+
+## 5) Developer Workflow
+
+- One Issue = one increment.
+- Branch: `codex/<nr>-short-description`.
+- Commits: `feat|fix|chore(scope): description (nr)`.
+- PR: description + *Fixes <nr>* if closing Issue.
+
+**Example:**
 ```bash
 # start
 git switch -c codex/42-pupil-drift-tuning
 
-# praca
-make test  # uruchom lokalne testy
+# work
+make test  # run local tests
 
 # commit
 git commit -m "feat(face): pupil drift clamp improves edge cases (42)"
@@ -85,9 +85,9 @@ git push -u origin codex/42-pupil-drift-tuning
 
 ---
 
-## 6) Testowanie
+## 6) Testing
 
-- **Szybkie single-tests** (przykłady dla twarzy):
+- **Quick single-tests** (face examples):
 ```bash
 pytest -q tests/test_renderer_basics.py::test_basic_frame_renders_and_pupils_visible
 pytest -q tests/test_pupil_drift.py::test_pupil_drift_changes_bbox
@@ -100,7 +100,7 @@ curl -s -X POST http://localhost:8080/api/control -H 'Content-Type: application/
   -d '{"action":"move","vx":0.4,"yaw":0,"duration":0.2}'
 ```
 - **BUS spy:** `python3 scripts/dev_bus-sub.py motion`
-- **Demo LCD/PNG (face):**
+- **LCD/PNG demo (face):**
 ```bash
 sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
   FACE_IDLE_ENABLE=1 FACE_IDLE_BLINK_SEC=3.4 FACE_IDLE_LOOK_P=0.22 FACE_IDLE_LOOK_SEC=3.4 \
@@ -113,36 +113,36 @@ sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
 
 ---
 
-## 7) Konfiguracja mimiki (gałki ENV / config)
+## 7) Facial Expression Configuration (ENV / config knobs)
 
 **ENV (runtime):**
 - `FACE_IDLE_ENABLE` (0/1), `FACE_IDLE_BLINK_SEC`, `FACE_IDLE_LOOK_P`, `FACE_IDLE_LOOK_SEC`.
 - `FACE_GESTURE_BLINK_DUR`, `FACE_GESTURE_BLINK_HOLD`.
 - `FACE_GESTURE_LOOK_T`, `FACE_GESTURE_LOOK_AMP`.
 - **Pupil:** `FACE_PUPIL_DRIFT_AMP_K`, `FACE_PUPIL_DRIFT_FREQ`, `FACE_PUPIL_CLAMP_RATIO`.
-- **Sprzęgło:** `FACE_BLINK_SHIFT_PROB`.
-- **Follow:** `FACE_EYES_FOLLOW_KX/KY`, `FACE_BROW_FOLLOW_KX/KY` (małe wartości!).
+- **Coupling:** `FACE_BLINK_SHIFT_PROB`.
+- **Follow:** `FACE_EYES_FOLLOW_KX/KY`, `FACE_BROW_FOLLOW_KX/KY` (small values!).
 - **Debug:** `FACE_DEBUG_MOUTH`.
 
-**`config/face.toml` (dla renderera – klucze lowercase):**
+**`config/face.toml` (for renderer – lowercase keys):**
 - `head_ky`, `brow_y_k`, `mouth_y_k`.
-- Wstążka ust: `mouth_ribbon_taper_k`, `mouth_small_th_k_base`.
+- Mouth ribbon: `mouth_ribbon_taper_k`, `mouth_small_th_k_base`.
 - Per-shape: `mouth_*_lift_k`, `mouth_*_arch_k`.
-- Zachowane aliasy `FACE_*` dla zgodności (loader może mapować).
+- Preserved `FACE_*` aliases for compatibility (loader can map).
 
-> Zasada: **modyfikuj preferencyjnie ENV** dla strojenia; TOML trzymaj spójny z domyślną stylistyką.
+> Rule: **preferably modify ENV** for tuning; keep TOML consistent with default styling.
 
 ---
 
-## 8) Lint/format
+## 8) Lint/Format
 
-- **Ruff jest bramką jakości**: hook `pre-commit` uruchamia `ruff check/format` przy każdym commicie **i** na CI. Commity z błędami lintu **są odrzucane**.
-- **Nie omijaj** hooków `--no-verify` (dopuszczalne tylko lokalnie przy WIP – nigdy na `main`).
-- **Miejsce konfiguracji**: `pyproject.toml` (nie zmieniaj zasad bez uzasadnienia w PR).
-- **Wyjątki/wyciszenia**: preferuj lokalne `# noqa: ...` lub wpis w `per-file-ignores` **tylko** dla testów; unikaj globalnych ignorów.
-- **Reguły niezmieniane automatycznie**: `unfixable = ["UP006","UP045"]` – nie próbuj masowych modernizacji typów, jeśli psuje to zgodność.
+- **Ruff is quality gate**: `pre-commit` hook runs `ruff check/format` on every commit **and** on CI. Commits with lint errors **are rejected**.
+- **Don't bypass** hooks with `--no-verify` (acceptable only locally for WIP – never on `main`).
+- **Configuration location**: `pyproject.toml` (don't change rules without justification in PR).
+- **Exceptions/suppressions**: prefer local `# noqa: ...` or entry in `per-file-ignores` **only** for tests; avoid global ignores.
+- **Rules not auto-fixed**: `unfixable = ["UP006","UP045"]` – don't attempt mass type modernization if it breaks compatibility.
 
-**Szybkie komendy:**
+**Quick commands:**
 ```bash
 ruff check apps/ tests/ services/ common/ --statistics
 ruff format
@@ -150,46 +150,46 @@ ruff format
 
 ---
 
-## 9) Bezpieczeństwo i walidacja
+## 9) Security and Validation
 
-- Waliduj `/api/control`: dopuszczalne tylko `move|stop|turn`.
-- `SAFE_MAX_DURATION` i `MIN_CMD_GAP` – egzekwuj limity czasu i częstotliwości.
-- W razie wątpliwości – **nie wykonuj**; zwróć błąd i log z sugestią parametru.
-
----
-
-## 10) Energooszczędność / wydajność
-
-- Vision/Kamera – **OFF domyślnie**; włączaj tylko przy potrzebie.
-- LCD push – używaj fast-path RAW RGB565 tam, gdzie dostępne.
-- Unikaj pętli aktywnych; preferuj timery i taktowanie stałe.
+- Validate `/api/control`: only `move|stop|turn` allowed.
+- `SAFE_MAX_DURATION` and `MIN_CMD_GAP` – enforce time and frequency limits.
+- When in doubt – **don't execute**; return error and log with parameter suggestion.
 
 ---
 
-## 11) Logowanie
+## 10) Energy Efficiency / Performance
 
-- Zwięzłe, z prefiksami: `[api]`, `[bridge]`, `[vision]`, `[voice]`, `[face]`.
-- Bez danych wrażliwych; poziom INFO/DEBUG kontrolowany ENV.
-
----
-
-## 12) Współbieżność
-
-- Jeden aktywny przyrost naraz.
-- Jeżeli istnieje `.codex.lock` – nie wprowadzaj zmian.
+- Vision/Camera – **OFF by default**; enable only when needed.
+- LCD push – use fast-path RAW RGB565 where available.
+- Avoid active loops; prefer timers and fixed timing.
 
 ---
 
-## 13) Noty migracyjne — Face LCD fast-path (2025‑09)
+## 11) Logging
 
-- Usunięto zależności od `_apps/ui/face_renderers.py`.
-- Driver LCD: `apps/ui/face/driver_ili9xx.py` (mock w CI + SPI w runtime).
-- Fast-path RAW RGB565; mock zapisuje PNG/565/meta.
-- Konfiguracja panelu/rotacji: `apps/ui/face/panel_cfg.py`; I/O: `apps/ui/face/face_io.py`.
-- CLI: `scripts/dev_face-lcd-direct.py` i `scripts/dev_face-cli.py`.
-- Testy: `tests/test_face_raw_fastpath.py`, `tests/test_no_underscore_apps_dependency.py`.
+- Concise, with prefixes: `[api]`, `[bridge]`, `[vision]`, `[voice]`, `[face]`.
+- No sensitive data; INFO/DEBUG level controlled by ENV.
 
-**Przykład (mock, fast-path):**
+---
+
+## 12) Concurrency
+
+- One active increment at a time.
+- If `.codex.lock` exists – don't introduce changes.
+
+---
+
+## 13) Migration Notes — Face LCD Fast-path (2025-09)
+
+- Removed dependencies on `_apps/ui/face_renderers.py`.
+- LCD Driver: `apps/ui/face/driver_ili9xx.py` (mock in CI + SPI in runtime).
+- Fast-path RAW RGB565; mock saves PNG/565/meta.
+- Panel/rotation config: `apps/ui/face/panel_cfg.py`; I/O: `apps/ui/face/face_io.py`.
+- CLI: `scripts/dev_face-lcd-direct.py` and `scripts/dev_face-cli.py`.
+- Tests: `tests/test_face_raw_fastpath.py`, `tests/test_no_underscore_apps_dependency.py`.
+
+**Example (mock, fast-path):**
 ```bash
 export FACE_LCD_BACKEND=mock
 export FACE_LCD_ROTATE=270
@@ -199,13 +199,12 @@ python3 scripts/dev_face-lcd-direct.py --expr neutral --secs 4 --stats
 
 ---
 
-## 14) Checklist PR (skrót)
+## 14) PR Checklist (Summary)
 
-- [ ] Zmiany tylko w dozwolonych katalogach.
-- [ ] Bez nowych zależności.
-- [ ] `pytest` zielony (lokalnie, kluczowe testy twarzy).
-- [ ] Lint/format (ruff) wykonany.
-- [ ] `ARCHITECTURE.md` zaktualizowany przy zmianie usług/portów.
-- [ ] Logi z prefiksami.
-- [ ] Komentarz w commitach i link do Issue.
-
+- [ ] Changes only in allowed directories.
+- [ ] No new dependencies.
+- [ ] `pytest` green (locally, key face tests).
+- [ ] Lint/format (ruff) performed.
+- [ ] `ARCHITECTURE.md` updated if services/ports changed.
+- [ ] Logs with prefixes.
+- [ ] Comments in commits and link to Issue.

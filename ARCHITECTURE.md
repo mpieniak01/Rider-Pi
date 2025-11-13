@@ -1,242 +1,242 @@
-# Rider-Pi Apps — **ARCHITEKTURA**
+# Rider-Pi Apps — **ARCHITECTURE**
 
-## Cel i zasady ogólne
+## Goal and General Principles
 
-- **Niska energia** i **stabilność** — usługi lekkie, restartowalne przez `systemd`.
-- **Jedno wejście HTTP**: publiczne API na porcie 8080.
-- **Wymiana wewnętrzna**: ZMQ PUB/SUB (5555/5556) + pliki w `data/` i `snapshots/`.
-- **Środowisko docelowe**: Raspberry Pi (Debian/Bookworm), **Python 3.9**.
+- **Low Power** and **Stability** — lightweight services, restartable via `systemd`.
+- **Single HTTP Entry Point**: public API on port 8080.
+- **Internal Communication**: ZMQ PUB/SUB (5555/5556) + files in `data/` and `snapshots/`.
+- **Target Environment**: Raspberry Pi (Debian/Bookworm), **Python 3.9**.
 
 ---
 
-## Warstwy i procesy
+## Layers and Processes
 
-### 1) Interfejs HTTP
+### 1) HTTP Interface
 
 - `` — REST API (port **8080**).
-  - Ekspozycja zdrowia (`/healthz`), sterowanie (`/api/control`), chat, statusy, serwowanie assetów z `data/`, `snapshots/`.
-  - Proxy do wewnętrznych usług przez bus (ZMQ) i/lub wywołania lokalne.
+  - Exposes health (`/healthz`), control (`/api/control`), chat, status, serves assets from `data/`, `snapshots/`.
+  - Proxies to internal services via bus (ZMQ) and/or local calls.
 
-### 2) Ruch / Mostek Web
+### 2) Motion / Web Bridge
 
-- `` (port **8081**) — uproszczony interface www → ruch (opcjonalny).
-- **Motion Bridge** — jedyny komponent z dostępem do **UART **`` (sterowanie aktuatorami).
-  - Odbiera komendy z busa (np. `motion.move`, `motion.stop`), publikuje telemetrię `motion.state`.
+- `` (port **8081**) — simplified web interface → motion (optional).
+- **Motion Bridge** — the only component with access to **UART** `` (actuator control).
+  - Receives commands from the bus (e.g., `motion.move`, `motion.stop`), publishes telemetry `motion.state`.
 
-### 3) Wizja / Kamera
+### 3) Vision / Camera
 
-- **Vision/Camera** — moduły w `apps/camera/*` i `apps/vision/*`.
-  - Źródło obrazu (libcamera), detektory (HOG/SSD/TFLite).
-  - Wyniki zapisują do `snapshots/` / `data/` (ostatnia klatka, surowe ujęcia) i publikują eventy (np. `vision.person`, `vision.obstacle`).
+- **Vision/Camera** — modules in `apps/camera/*` and `apps/vision/*`.
+  - Image source (libcamera), detectors (HOG/SSD/TFLite).
+  - Results saved to `snapshots/` / `data/` (last frame, raw captures) and publish events (e.g., `vision.person`, `vision.obstacle`).
 
 ### 4) Navigator (Autonomous Exploration)
 
-- **Navigator** — moduł autonomicznej nawigacji w `apps/navigator/*`.
-  - Tryb „Rekonesans" (Stage 1): reaktywne unikanie przeszkód.
-  - Subskrybuje `vision.obstacle`, publikuje na `navigator.state`.
-  - Dwie strategie: STOP (zatrzymanie) i AVOID (omijanie).
-  - Sterowanie przez API: `/api/navigator/start`, `/api/navigator/stop`, `/api/navigator/config`.
-  - Integracja z interfejsem webowym w `control.html`.
-  - Zobacz: `docs/modules/navigator.md`
+- **Navigator** — autonomous navigation module in `apps/navigator/*`.
+  - "Reconnaissance" mode (Stage 1): reactive obstacle avoidance.
+  - Subscribes to `vision.obstacle`, publishes on `navigator.state`.
+  - Two strategies: STOP (halt) and AVOID (circumvent).
+  - API control: `/api/navigator/start`, `/api/navigator/stop`, `/api/navigator/config`.
+  - Integration with web interface in `control.html`.
+  - See: `docs/modules/navigator.md`
 
 ### 4a) Odometry (Position Tracking)
 
-- **Odometry** — moduł śledzenia pozycji robota w `apps/odometry/*`.
-  - Tryb „Rekonesans" (Stage 2): estymacja pozycji (x, y, theta) przez fuzję danych.
-  - Subskrybuje `motion` (komendy ruchu) i `imu.data` (czujnik orientacji).
-  - Publikuje `robot.pose` (estymowana pozycja i orientacja).
-  - Wykorzystuje dead reckoning z komend ruchu oraz korekcję IMU dla orientacji.
-  - Krytyczny komponent dla przyszłych etapów: mapowanie (Stage 3) i powrót do bazy (Stage 4).
-  - Zobacz: `docs/modules/odometry.md`
+- **Odometry** — robot position tracking module in `apps/odometry/*`.
+  - "Reconnaissance" mode (Stage 2): position estimation (x, y, theta) via data fusion.
+  - Subscribes to `motion` (movement commands) and `imu.data` (orientation sensor).
+  - Publishes `robot.pose` (estimated position and orientation).
+  - Uses dead reckoning from movement commands and IMU correction for orientation.
+  - Critical component for future stages: mapping (Stage 3) and return to base (Stage 4).
+  - See: `docs/modules/odometry.md`
 
 ### 4b) Mapper (SLAM Mapping)
 
-- **Mapper** — moduł budowania mapy otoczenia w `apps/mapper/*`.
-  - Tryb „Rekonesans" (Stage 3): budowanie siatki zajętości (occupancy grid) w czasie rzeczywistym.
-  - Subskrybuje `robot.pose` (z odometrii) i `vision.obstacle.data` (z wizji z estymacją głębi).
-  - Utrzymuje mapę w pamięci jako `numpy.array` (inspirowane `sim/world.py`).
-  - Transformuje współrzędne: z lokalnych robota → globalne mapy.
-  - Oznacza komórki jako zajęte/wolne/nieznane na podstawie detekcji przeszkód.
-  - Fundamentalny komponent SLAM — łączy percepcję (wizja) z lokalizacją (odometria).
-  - Zobacz: `docs/modules/mapper.md`
+- **Mapper** — environment mapping module in `apps/mapper/*`.
+  - "Reconnaissance" mode (Stage 3): real-time occupancy grid building.
+  - Subscribes to `robot.pose` (from odometry) and `vision.obstacle.data` (from vision with depth estimation).
+  - Maintains map in memory as `numpy.array` (inspired by `sim/world.py`).
+  - Transforms coordinates: from robot-local → map-global.
+  - Marks cells as occupied/free/unknown based on obstacle detection.
+  - Fundamental SLAM component — connects perception (vision) with localization (odometry).
+  - See: `docs/modules/mapper.md`
 
 ### 4c) Vision Depth (Depth Estimation for Mapping)
 
 - **Vision Depth Bridge** — `apps/vision/depth_bridge.py`.
-  - Rozszerzenie systemu wizyjnego o estymację głębi dla mapowania.
-  - Monitoruje stan nawigatora; aktywuje się w trybie „Rekonesans".
-  - Konwertuje detekcje przeszkód na pary (kąt, dystans) dla mappera.
-  - Obecna implementacja: uproszczona estymacja (heurystyka na podstawie confidence).
-  - Przyszła implementacja: mono-depth estimation (TFLite model).
-  - Publikuje `vision.obstacle.data` dla konsumpcji przez mapper.
-  - Zobacz: `docs/modules/vision.md`
+  - Vision system extension with depth estimation for mapping.
+  - Monitors navigator state; activates in "Reconnaissance" mode.
+  - Converts obstacle detections to (angle, distance) pairs for mapper.
+  - Current implementation: simplified estimation (heuristic based on confidence).
+  - Future implementation: mono-depth estimation (TFLite model).
+  - Publishes `vision.obstacle.data` for mapper consumption.
+  - See: `docs/modules/vision.md`
 
-### 5) Głos / Chat
+### 5) Voice / Chat
 
-- **Voice** — modułowa architektura głosowa w `apps/voice/` obsługująca dwa tryby pracy:
-  - **Tryb plikowy** (`file`): klasyczny pipeline capture→ASR→Chat→TTS→playback
-  - **Tryb strumieniowy** (`realtime`): WebSocket duplex z partial ASR, streaming chat/TTS
-  - **Komponenty kluczowe**:
-    - `svc_core.py` — wybór trybu (file/stream) i delegacja do odpowiedniego serwisu
-    - `svc_file.py` — implementacja trybu plikowego
-    - `svc_stream_runner.py` — wrappery CLI dla trybu strumieniowego
-    - `stream/svc_streaming.py` — główny serwis strumieniowy (StreamingVoiceService)
-    - `stream/transport.py` — transport WebSocket z auto-reconnect
-    - `stream/state.py` — maszyna stanów PTT (Push-To-Talk)
-    - `stream/handlers.py` — obsługa wiadomości/zdarzeń WebSocket
-    - `stream/playout.py` — capture audio i playback TTS
-    - `audio/capture.py`, `audio/playback.py` — moduły niskopoziomowe ALSA/Pulse
-  - Integracja: VAD, KWS, ASR, Chat, TTS; komunikacja przez bus (ZMQ) i socket ``
-- **Chat** — integracja przez `/api/chat/*` + wymiana stanów na busie.
+- **Voice** — modular voice architecture in `apps/voice/` supporting two operating modes:
+  - **File mode** (`file`): classic pipeline capture→ASR→Chat→TTS→playback
+  - **Streaming mode** (`realtime`): duplex WebSocket with partial ASR, streaming chat/TTS
+  - **Key Components**:
+    - `svc_core.py` — mode selection (file/stream) and delegation to appropriate service
+    - `svc_file.py` — file mode implementation
+    - `svc_stream_runner.py` — CLI wrappers for streaming mode
+    - `stream/svc_streaming.py` — main streaming service (StreamingVoiceService)
+    - `stream/transport.py` — WebSocket transport with auto-reconnect
+    - `stream/state.py` — PTT (Push-To-Talk) state machine
+    - `stream/handlers.py` — WebSocket message/event handling
+    - `stream/playout.py` — audio capture and TTS playback
+    - `audio/capture.py`, `audio/playback.py` — low-level ALSA/Pulse modules
+  - Integration: VAD, KWS, ASR, Chat, TTS; communication via bus (ZMQ) and socket ``
+- **Chat** — integration via `/api/chat/*` + state exchange on the bus.
 
-> **Szczegółowa dokumentacja**: `docs/modules/voice.md` — pełny opis architektury, konfiguracji, API
+> **Detailed documentation**: `docs/modules/voice.md` — complete description of architecture, configuration, API
 
-### 5) Twarz (Face)
+### 6) Face
 
-- **UI Face** w `apps/ui/face/*`:
-  - **Animator** → **Renderer** (PIL/RAW) → **LCD** (sterownik ILI9xx).
-  - Konfiguracja parametrów w `config/face.toml`; szyte ENV `FACE_*`.
-  - Najnowsze elementy: usta **„wstążka”**, brwi **arc**, drift+clamp źrenic, **sprzęgło blink→look**.
+- **UI Face** in `apps/ui/face/*`:
+  - **Animator** → **Renderer** (PIL/RAW) → **LCD** (ILI9xx driver).
+  - Parameter configuration in `config/face.toml`; custom ENV `FACE_*`.
+  - Latest elements: "ribbon" mouth, **arc** eyebrows, pupil drift+clamp, **blink→look coupling**.
 
 ---
 
-## Porty i gniazda
+## Ports and Sockets
 
-| Usługa / Kanał               | Protokół | Port / Ścieżka  | Rola                                                   |
+| Service / Channel            | Protocol | Port / Path     | Role                                                   |
 | ---------------------------- | -------- | --------------- | ------------------------------------------------------ |
-| API                          | HTTP     | **8080**        | Wejście REST (control/chat/healthz, serwowanie plików) |
-| Web-Motion Bridge (opcjonal) | HTTP     | **8081**        | Prostszy interfejs do ruchu                            |
-| Voice Web API (opcjonalne)   | HTTP     | **8092**        | Lokalny TTS/ASR (Piper/Vosk) przez HTTP                |
-| ZMQ PUB/SUB                  | ZMQ      | **5555 / 5556** | Wewnętrzny bus komunikatów                             |
-| Voice sock                   | UNIX     | ``              | Komunikacja voice                                      |
-| UART                         | Serial   | ``              | Kontrola aktuatorów (wyłącznie przez Motion Bridge)    |
+| API                          | HTTP     | **8080**        | REST entry point (control/chat/healthz, file serving) |
+| Web-Motion Bridge (optional) | HTTP     | **8081**        | Simpler motion interface                               |
+| Voice Web API (optional)     | HTTP     | **8092**        | Local TTS/ASR (Piper/Vosk) via HTTP                    |
+| ZMQ PUB/SUB                  | ZMQ      | **5555 / 5556** | Internal message bus                                   |
+| Voice sock                   | UNIX     | ``              | Voice communication                                    |
+| UART                         | Serial   | ``              | Actuator control (exclusively via Motion Bridge)       |
 
-> Domyślnie **brak** bezpośrednich zewnętrznych portów poza 8080/8081.
+> By default, **no** direct external ports except 8080/8081.
 
 ---
 
-## Przepływy danych (wysoki poziom)
+## Data Flows (High Level)
 
 ```text
 [HTTP Client] ──> (8080) API ─┬─> BUS PUB/SUB (5555/5556) ──> Vision/Voice/Motion/Face
-                              ├─> lokalne wywołania modułów
-                              └─> serwowanie plików z data/, snapshots/
+                              ├─> local module calls
+                              └─> file serving from data/, snapshots/
 
-Vision/Camera ──> snapshots/, data/ (+ eventy na BUS) ──> API/Clients
-Motion Bridge  ──(bus)──> UART /dev/ttyAMA0 ──> aktuatory
-Voice/Chat     ──(bus + sock)──> odpowiedzi/stan ──> API
-Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na LCD
+Vision/Camera ──> snapshots/, data/ (+ events on BUS) ──> API/Clients
+Motion Bridge  ──(bus)──> UART /dev/ttyAMA0 ──> actuators
+Voice/Chat     ──(bus + sock)──> responses/state ──> API
+Face (Animator→Renderer→LCD) ──> preview via API or directly on LCD
 ```
 
-**BUS (ZMQ)** — kanały przykładowe:
+**BUS (ZMQ)** — example channels:
 
 - `motion` (`motion.move`, `motion.stop`), `motion.state`
-- `cmd.balance` — kontrola stabilizacji robota
-- `cmd.height` — kontrola wysokości/zawieszenia
+- `cmd.balance` — robot stabilization control
+- `cmd.height` — height/suspension control
 - `vision.face`, `vision.person`, `vision.motion`, `vision.obstacle`
-- `vision.obstacle.data` — dane przeszkód z dystansem (dla mappera, Stage 3)
-- `vision.tracking.offset` — offset śledzenia (Follow Me)
-- `tracking.mode:set` — ujednolicona kontrola trybu śledzenia (Follow Me: face/hand/none)
+- `vision.obstacle.data` — obstacle data with distance (for mapper, Stage 3)
+- `vision.tracking.offset` — tracking offset (Follow Me)
+- `tracking.mode:set` — unified tracking mode control (Follow Me: face/hand/none)
 - `voice.state`, `voice.kws`, `voice.vad`
 - `face.state`, `face.render`
-- `events.sentiment`, `events.nlu.emotion` — zdarzenia dla choreografa
-- `command.face.expression` — komendy do twarzy z choreografa
-- `navigator.control`, `navigator.state` — autonomiczna nawigacja (Rekonesans Stage 1 & 4)
-- `navigator.map.request`, `mapper.map.data` — wymiana mapy (Stage 4: powrót do bazy)
-- `navigator.return_home.start` — start sekwencji powrotu do bazy (Stage 4)
-- `robot.pose` — estymowana pozycja robota (x, y, theta) z modułu odometrii (Rekonesans Stage 2)
-- `imu.data` — surowe dane z czujnika IMU (roll, pitch, yaw) publikowane przez motion bridge
+- `events.sentiment`, `events.nlu.emotion` — events for choreographer
+- `command.face.expression` — commands to face from choreographer
+- `navigator.control`, `navigator.state` — autonomous navigation (Reconnaissance Stage 1 & 4)
+- `navigator.map.request`, `mapper.map.data` — map exchange (Stage 4: return to base)
+- `navigator.return_home.start` — start return-to-base sequence (Stage 4)
+- `robot.pose` — estimated robot position (x, y, theta) from odometry module (Reconnaissance Stage 2)
+- `imu.data` — raw IMU sensor data (roll, pitch, yaw) published by motion bridge
 
 ---
 
-## Katalogi i artefakty
+## Directories and Artifacts
 
-| Katalog / plik | Przeznaczenie                                        |
-| -------------- | ---------------------------------------------------- |
-| `apps/`        | Moduły aplikacyjne (UI/face, camera, vision, voice…) |
-| `services/`    | Warstwa serwisowa (API, mostki, rejestry)            |
-| `web/`         | Frontend / assety web                                |
-| `config/`      | Konfiguracje                                         |
-| `data/`        | Dane pomocnicze/ostatnie pliki (np. `last_frame`)    |
-| `snapshots/`   | Zrzuty klatek / surowe ujęcia                        |
-| `scripts/`     | Skrypty operacyjne, deweloperskie, diagnostyczne     |
-| `drivers/`     | Sterowniki sprzętowe (XGO, LCD)                      |
-| `tests/`       | Testy unit/integration                               |
+| Directory / file | Purpose                                              |
+| ---------------- | ---------------------------------------------------- |
+| `apps/`          | Application modules (UI/face, camera, vision, voice…) |
+| `services/`      | Service layer (API, bridges, registries)             |
+| `web/`           | Frontend / web assets                                |
+| `config/`        | Configurations                                       |
+| `data/`          | Auxiliary data/latest files (e.g., `last_frame`)     |
+| `snapshots/`     | Frame captures / raw shots                           |
+| `scripts/`       | Operational, development, diagnostic scripts         |
+| `drivers/`       | Hardware drivers (XGO, LCD)                          |
+| `tests/`         | Unit/integration tests                               |
 
-### Historia reorganizacji struktury
+### Structure Reorganization History
 
-**PR #10 (2025-01):** Utworzenie warstwy sterowników `drivers/`
-- Przeniesiono sterowniki XGO i LCD z `apps/` do dedykowanego katalogu `drivers/`
-- Wprowadzono abstrakcję sprzętową oddzielającą logikę aplikacji od interfejsów sprzętowych
-- Zobacz: [docs/_pr_summaries/PR10_SUMMARY.md](docs/_pr_summaries/PR10_SUMMARY.md)
+**PR #10 (2025-01):** Creation of `drivers/` layer
+- Moved XGO and LCD drivers from `apps/` to dedicated `drivers/` directory
+- Introduced hardware abstraction separating application logic from hardware interfaces
+- See: [docs/_pr_summaries/PR10_SUMMARY.md](docs/_pr_summaries/PR10_SUMMARY.md)
 
-**PR #11 (2025-01):** Wprowadzenie trybu symulacji
-- Dodano symulowane implementacje sterowników (`drivers/xgo/sim.py`, `drivers/lcd/sim.py`)
-- Wprowadzono fabryki sterowników reagujące na zmienną `RIDER_SIMULATOR`
-- Umożliwiono rozwój i testowanie bez dostępu do fizycznego sprzętu
-- Zobacz: [docs/_pr_summaries/PR11_SUMMARY.md](docs/_pr_summaries/PR11_SUMMARY.md)
+**PR #11 (2025-01):** Introduction of simulation mode
+- Added simulated driver implementations (`drivers/xgo/sim.py`, `drivers/lcd/sim.py`)
+- Introduced driver factories responding to `RIDER_SIMULATOR` variable
+- Enabled development and testing without physical hardware access
+- See: [docs/_pr_summaries/PR11_SUMMARY.md](docs/_pr_summaries/PR11_SUMMARY.md)
 
-**PR #13 (2025-10):** Konsolidacja skryptów operacyjnych
-- Scalono skrypty z katalogów `ops/` i `tools/` do `scripts/`
-- Wprowadzono ujednoliconą konwencję nazewnictwa (prefiksy: `sys_`, `diag_`, `dev_`, `demo_`, `util_`)
-- Zobacz: [docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md), [scripts/README.md](scripts/README.md)
-
----
-
-## Konfiguracja i parametry
-
-- **Źródła konfiguracji**:
-
-  1. **ENV **`` — szybkie kręcenie gałkami (blink, look, drift, sprzęgło, follow).
-  2. `` — klucze **lowercase** dla renderera (np. `mouth_y_k`, `brow_y_k`), aliasy `FACE_*` dla zgodności.
-  3. Parametry usług (porty, poziomy logów) przez `systemd`/ENV.
-
-- **Reguła**: API i mostki **nie** sięgają bezpośrednio do sprzętu (poza wyspecjalizowanymi driverami). Sprzęt (UART/LCD) jest za dedykowanymi modułami.
+**PR #13 (2025-10):** Operational scripts consolidation
+- Merged scripts from `ops/` and `tools/` directories into `scripts/`
+- Introduced unified naming convention (prefixes: `sys_`, `diag_`, `dev_`, `demo_`, `util_`)
+- See: [docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md), [scripts/README.md](scripts/README.md)
 
 ---
 
-## Punkty integracji (interfejsy)
+## Configuration and Parameters
+
+- **Configuration Sources**:
+
+  1. **ENV** `` — quick parameter tuning (blink, look, drift, coupling, follow).
+  2. `` — **lowercase** keys for renderer (e.g., `mouth_y_k`, `brow_y_k`), `FACE_*` aliases for compatibility.
+  3. Service parameters (ports, log levels) via `systemd`/ENV.
+
+- **Rule**: API and bridges do **not** access hardware directly (except via specialized drivers). Hardware (UART/LCD) is behind dedicated modules.
+
+---
+
+## Integration Points (Interfaces)
 
 ### API (HTTP 8080)
 
-- `/healthz` — zdrowie całego systemu.
-- `/api/control` — ruch: `{"action":"move|stop|turn", ...}` (walidowane).
-- `/api/chat/*` — rozmowa / asysta (przekierowanie do komponentów voice/chat).
-- `/files/*` — serwowanie plików z `data/`, `snapshots/` (ostatnie klatki, PNG).
+- `/healthz` — overall system health.
+- `/api/control` — motion: `{"action":"move|stop|turn", ...}` (validated).
+- `/api/chat/*` — conversation / assistance (redirect to voice/chat components).
+- `/files/*` — file serving from `data/`, `snapshots/` (latest frames, PNG).
 
 ### BUS (ZMQ)
 
-- Wewnętrzny, namespacy jak wyżej. Subskrypcje per usługa.
+- Internal, namespaces as above. Per-service subscriptions.
 
 ### LCD / Render
 
-- `apps/ui/face/driver_ili9xx.py` — most do ekranu (RAW/ShowImage).
-- `scripts/dev_face-lcd-direct.py` — tryb demo (LCD/PNG).
+- `apps/ui/face/driver_ili9xx.py` — bridge to display (RAW/ShowImage).
+- `scripts/dev_face-lcd-direct.py` — demo mode (LCD/PNG).
 
 ---
 
-## Sekwencja startu (przykład)
+## Startup Sequence (Example)
 
-1. `rider-api.service` (HTTP 8080) → gotowy `/healthz`.
-2. Broker ZMQ i subskrybenci (Vision/Voice/Motion/Face).
-3. Vision/Camera (jeśli włączone) → publikuje eventy, zapisuje klatki.
-4. Motion Bridge → nasłuch na busie, dostęp do `/dev/ttyAMA0`.
-5. Face → animacje na LCD (jeśli urządzenie obecne).
+1. `rider-api.service` (HTTP 8080) → ready `/healthz`.
+2. ZMQ Broker and subscribers (Vision/Voice/Motion/Face).
+3. Vision/Camera (if enabled) → publishes events, saves frames.
+4. Motion Bridge → bus listener, access to `/dev/ttyAMA0`.
+5. Face → animations on LCD (if device present).
 
-> Usługi niezależne — restart jednej **nie** powinien blokować pozostałych.
-
----
-
-## Granice odpowiedzialności i bezpieczeństwo
-
-- **Kontrola ruchu**: tylko przez Motion Bridge; walidacja `action`, limity czasu i częstotliwości.
-- **Sprzęt**: UART i LCD wyłącznie przez dedykowane moduły.
-- **Dostęp zewnętrzny**: przez API 8080 (reszta lokalnie).
-- **Energia**: Vision/Kamera domyślnie wyłączone (aktywowane tylko przy potrzebie).
+> Services are independent — restart of one should **not** block others.
 
 ---
 
-## Diagram (skrót)
+## Responsibility Boundaries and Security
+
+- **Motion Control**: only via Motion Bridge; `action` validation, time and frequency limits.
+- **Hardware**: UART and LCD exclusively via dedicated modules.
+- **External Access**: via API 8080 (rest locally).
+- **Power**: Vision/Camera disabled by default (activated only when needed).
+
+---
+
+## Diagram (Summary)
 
 ```text
            +------------------+              +--------------------+
@@ -249,7 +249,7 @@ HTTP 8080  |  rider-api       |<--static----|  data/, snapshots/  |
                 v                                v
         +--------------+  PUB/SUB  +------------------+      +-----------------+
         | MotionBridge |<--------->| Vision/Camera    |      | Voice/Chat      |
-        | (/dev/tty*)  |           | (detektory, I/O) |      | (sock, TTS/VAD) |
+        | (/dev/tty*)  |           | (detectors, I/O) |      | (sock, TTS/VAD) |
         +--------------+           +------------------+      +-----------------+
                 |
                 |                               +-------------------------------+
@@ -259,73 +259,73 @@ HTTP 8080  |  rider-api       |<--static----|  data/, snapshots/  |
 
 ---
 
-## Moduł Voice — Architektura szczegółowa
+## Voice Module — Detailed Architecture
 
-### Struktura modułu (`apps/voice/`)
+### Module Structure (`apps/voice/`)
 
-Moduł voice został zrefaktoryzowany (PR#1–PR#4, 2024) w celu uproszczenia i modularyzacji. Obecna architektura wspiera dwa tryby pracy z elastycznym wyborem transportu.
+The voice module was refactored (PR#1–PR#4, 2024) for simplification and modularization. Current architecture supports two operating modes with flexible transport selection.
 
-#### Tryby pracy
+#### Operating Modes
 
-1. **Tryb plikowy (`file`)** — klasyczny pipeline:
-   - Capture → plik WAV → ASR → Chat (text) → TTS → playback
-   - Niskie zużycie zasobów, wysoka kompatybilność
-   - Brak partial results, pełna transkrypcja po zakończeniu nagrania
+1. **File mode (`file`)** — classic pipeline:
+   - Capture → WAV file → ASR → Chat (text) → TTS → playback
+   - Low resource usage, high compatibility
+   - No partial results, full transcription after recording completes
 
-2. **Tryb strumieniowy (`realtime`)** — WebSocket duplex:
+2. **Streaming mode (`realtime`)** — duplex WebSocket:
    - Audio chunks (20ms) → WebSocket → partial ASR + streaming Chat/TTS
-   - Barge-in (przerwanie TTS przez nową mowę)
-   - Auto-reconnect z exponential backoff
-   - Wymagany backend obsługujący realtime (np. OpenAI Realtime API)
+   - Barge-in (TTS interruption by new speech)
+   - Auto-reconnect with exponential backoff
+   - Requires backend supporting realtime (e.g., OpenAI Realtime API)
 
-#### Komponenty kluczowe
+#### Key Components
 
-**Wybór trybu i delegacja:**
-- `svc_core.py` — funkcje `run_listen()`, `run_once()`, `run_ptt()`
-  - Analizuje konfigurację `transport` w sekcjach `[asr]`, `[chat]`, `[tts]`
-  - Deleguje do `svc_file.py` (tryb file) lub `svc_stream_runner.py` (tryb realtime)
+**Mode Selection and Delegation:**
+- `svc_core.py` — functions `run_listen()`, `run_once()`, `run_ptt()`
+  - Analyzes `transport` configuration in `[asr]`, `[chat]`, `[tts]` sections
+  - Delegates to `svc_file.py` (file mode) or `svc_stream_runner.py` (realtime mode)
 
-**Tryb plikowy:**
-- `svc_file.py` — klasa `VoiceService`, funkcje `run_listen_file()`, `run_once_file()`
-- Wykorzystuje: `audio/capture.py`, `audio/playback.py`, `asr.py`, `chat.py`, `tts.py`
+**File Mode:**
+- `svc_file.py` — `VoiceService` class, functions `run_listen_file()`, `run_once_file()`
+- Uses: `audio/capture.py`, `audio/playback.py`, `asr.py`, `chat.py`, `tts.py`
 
-**Tryb strumieniowy:**
-- `svc_stream_runner.py` — wrappery CLI: `run_listen_stream()`, `run_ptt_stream()`, `run_once_stream()`
-- `stream/svc_streaming.py` — `StreamingVoiceService` (główny serwis, 700+ linii)
-  - Integruje mixiny: `StreamHandlersMixin`, `StreamPlayoutMixin`
-  - Zarządza lifecycle WebSocket, audio queues, worker threads
+**Streaming Mode:**
+- `svc_stream_runner.py` — CLI wrappers: `run_listen_stream()`, `run_ptt_stream()`, `run_once_stream()`
+- `stream/svc_streaming.py` — `StreamingVoiceService` (main service, 700+ lines)
+  - Integrates mixins: `StreamHandlersMixin`, `StreamPlayoutMixin`
+  - Manages WebSocket lifecycle, audio queues, worker threads
 - `stream/transport.py` — `WebSocketTransport`, `ReconnectingTransport`
-  - Obsługa ping/heartbeat, exponential backoff retry
-  - Wsparcie dla `websockets` (async) i `websocket-client` (sync fallback)
-- `stream/state.py` — `PTTStateMachine` (maszyna stanów Push-To-Talk)
-  - Stany: IDLE, LISTENING, SPEAKING, PROCESSING
-  - Eventy: PTT_START, PTT_STOP, ASR_PARTIAL, TTS_START, TTS_END
+  - Handles ping/heartbeat, exponential backoff retry
+  - Support for `websockets` (async) and `websocket-client` (sync fallback)
+- `stream/state.py` — `PTTStateMachine` (Push-To-Talk state machine)
+  - States: IDLE, LISTENING, SPEAKING, PROCESSING
+  - Events: PTT_START, PTT_STOP, ASR_PARTIAL, TTS_START, TTS_END
 - `stream/handlers.py` — `StreamHandlersMixin`
-  - Obsługa wiadomości WebSocket (ASR partial, TTS audio chunks, sesja)
+  - WebSocket message handling (ASR partial, TTS audio chunks, session)
   - Keyboard PTT loop, ding sounds
 - `stream/playout.py` — `StreamPlayoutMixin`
-  - Audio capture thread (wysyłanie chunków do WebSocket)
-  - TTS player thread (odtwarzanie przychodzących audio chunks)
+  - Audio capture thread (sending chunks to WebSocket)
+  - TTS player thread (playing incoming audio chunks)
   - Jitter buffer, barge-in handling
 
-**Moduły współdzielone:**
-- `audio/capture.py` — przechwytywanie audio (ALSA/Pulse/command)
-- `audio/playback.py` — odtwarzanie audio (ALSA/Pulse)
-- `audio/alsa.py` — narzędzia ALSA (lista urządzeń, konfiguracja)
-- `asr.py` — abstrakcja ASR (OpenAI, Vosk)
-- `chat.py` — integracja Chat API (streaming generator)
-- `tts.py` — synteza mowy (OpenAI, Piper)
+**Shared Modules:**
+- `audio/capture.py` — audio capture (ALSA/Pulse/command)
+- `audio/playback.py` — audio playback (ALSA/Pulse)
+- `audio/alsa.py` — ALSA utilities (device list, configuration)
+- `asr.py` — ASR abstraction (OpenAI, Vosk)
+- `chat.py` — Chat API integration (streaming generator)
+- `tts.py` — text-to-speech synthesis (OpenAI, Piper)
 - `vad.py` — Voice Activity Detection
 - `kws.py` — Keyword Spotting (hotword detection)
 
-**CLI i API:**
-- `cli.py` + `cli_commands.py` — interfejs linii poleceń
+**CLI and API:**
+- `cli.py` + `cli_commands.py` — command line interface
 - `web.py` — HTTP API (Flask): `/asr`, `/tts`, `/capture`, `/healthz`
-- `main.py` — główny entry point (używany przez systemd)
+- `main.py` — main entry point (used by systemd)
 
-### Przepływ danych
+### Data Flow
 
-#### Tryb plikowy (file)
+#### File Mode
 
 ```text
 1. [Hotword/PTT] → trigger capture
@@ -334,40 +334,40 @@ Moduł voice został zrefaktoryzowany (PR#1–PR#4, 2024) w celu uproszczenia i 
 4. chat.py → response (text)
 5. tts.py → audio file (WAV/MP3)
 6. audio/playback.py → speaker output
-7. Powrót do kroku 1 (w trybie listen)
+7. Return to step 1 (in listen mode)
 ```
 
-**Kluczowe punkty:**
-- Jeden plik WAV na capture (zapisywany opcjonalnie dla debugowania)
-- ASR dopiero po zakończeniu nagrania (brak partial results)
-- Chat zwraca pełną odpowiedź (nie streaming)
-- TTS generuje pełny plik audio przed playbackiem
+**Key Points:**
+- One WAV file per capture (optionally saved for debugging)
+- ASR only after recording completes (no partial results)
+- Chat returns full response (no streaming)
+- TTS generates complete audio file before playback
 
-#### Tryb strumieniowy (realtime)
+#### Streaming Mode
 
 ```text
 1. [PTT Start] → WebSocket session.create
 2. Capture thread → audio chunks (20ms PCM16) → WebSocket send
 3. WebSocket recv → partial ASR transcript → UI update
-4. [Silence detection] → audio.commit → finalna transkrypcja
-5. WebSocket recv → streaming Chat response (tekst) → sentence buffering
+4. [Silence detection] → audio.commit → final transcription
+5. WebSocket recv → streaming Chat response (text) → sentence buffering
 6. Sentence complete → TTS start → audio chunks PCM16
 7. TTS player thread → audio chunks → jitter buffer → playback
-8. [Barge-in] → stop TTS, przerwij playback, nowa tura (krok 2)
-9. [PTT Stop] → session cleanup, powrót do IDLE
+8. [Barge-in] → stop TTS, interrupt playback, new turn (step 2)
+9. [PTT Stop] → session cleanup, return to IDLE
 ```
 
-**Kluczowe punkty:**
-- Duplex audio: równoczesne wysyłanie capture i odbieranie TTS
-- Partial ASR publikowane na bieżąco (UI updates)
-- Streaming Chat: odpowiedź generowana jako async generator
-- Sentence buffering: TTS czeka na `.`, `!`, `?` przed syntezą
-- Barge-in: detekcja nowej mowy → cancel TTS, clear buffers
-- Reconnect: automatyczne wznawianie połączenia po utracie (exponential backoff)
+**Key Points:**
+- Duplex audio: simultaneous capture sending and TTS receiving
+- Partial ASR published in real-time (UI updates)
+- Streaming Chat: response generated as async generator
+- Sentence buffering: TTS waits for `.`, `!`, `?` before synthesis
+- Barge-in: new speech detection → cancel TTS, clear buffers
+- Reconnect: automatic connection resumption after loss (exponential backoff)
 
-### Konfiguracja trybu
+### Mode Configuration
 
-Tryb wybierany automatycznie na podstawie `transport` w konfiguracjach:
+Mode selected automatically based on `transport` in configurations:
 
 ```toml
 [asr]
@@ -383,34 +383,35 @@ backend = "openai"
 transport = "realtime"
 ```
 
-Jeśli **wszystkie** trzy (`asr`, `chat`, `tts`) mają `transport = "realtime"` → tryb strumieniowy.
-W przeciwnym razie → tryb plikowy (file).
+If **all** three (`asr`, `chat`, `tts`) have `transport = "realtime"` → streaming mode.
+Otherwise → file mode.
 
-> **Uwaga:** W przypadku konfiguracji mieszanej (np. tylko jeden z modułów ma `transport = "realtime"`, pozostałe `file`), system przechodzi w tryb plikowy dla wszystkich usług. Tryb częściowo strumieniowy nie jest obsługiwany.
-### Historia refaktoryzacji
+> **Note:** In case of mixed configuration (e.g., only one module has `transport = "realtime"`, others `file`), the system falls back to file mode for all services. Partially streaming mode is not supported.
+
+### Refactoring History
 
 **PR#1 (Clean & Freeze):**
-- Usunięto duplikaty: `ws_transport.py`, `stream_transport.py`
-- Pozostawiono `audio/*` do późniejszej migracji
+- Removed duplicates: `ws_transport.py`, `stream_transport.py`
+- Kept `audio/*` for later migration
 
 **PR#2 (CLI Unification):**
-- Konsolidacja CLI: usunięto odniesienia do nieistniejącego `cli_new.py`
-- Jeden spójny moduł `apps.voice.cli`
+- CLI consolidation: removed references to non-existent `cli_new.py`
+- One consistent `apps.voice.cli` module
 
 **PR#3 (Tests Migration & Shim Removal):**
-- Migracja testów z legacy shims do nowych modułów
-- Usunięto shimmy: `svc_stream.py`, `state.py`, `ptt_state.py`, mixiny
-- Nowy moduł: `svc_stream_runner.py` (wrappery dla CLI)
+- Test migration from legacy shims to new modules
+- Removed shims: `svc_stream.py`, `state.py`, `ptt_state.py`, mixins
+- New module: `svc_stream_runner.py` (wrappers for CLI)
 
 **PR#4 (WebSocket Transport Consolidation):**
-- Usunięto duplikat `apps/voice/transport.py`
-- Jeden transport: `apps/voice/stream/transport.py`
+- Removed duplicate `apps/voice/transport.py`
+- One transport: `apps/voice/stream/transport.py`
 
-**PR#5 (Dokumentacja):**
-- Aktualizacja `ARCHITECTURE.md` i `docs/modules/voice.md`
-- Spójny opis nowej architektury
+**PR#5 (Documentation):**
+- Updated `ARCHITECTURE.md` and `docs/modules/voice.md`
+- Consistent description of new architecture
 
-### Pliki usunięte (legacy)
+### Removed Files (Legacy)
 
 - `apps/voice/ws_transport.py` (PR#1)
 - `apps/voice/stream_transport.py` (PR#1)
@@ -419,17 +420,14 @@ W przeciwnym razie → tryb plikowy (file).
 - `apps/voice/ptt_state.py` (PR#3)
 - `apps/voice/transport.py` (PR#4)
 
-**Migracja**: patrz `docs/modules/voice.md` → sekcja "Deprecated / Legacy Files"
-
-
+**Migration**: see `docs/modules/voice.md` → "Deprecated / Legacy Files" section
 
 ---
 
-## Odniesienia
+## References
 
-- `AGENT.md` — kontrakt i zasady pracy (coding, Done, quality gate).
-- `PROJECT.md` — wizja, roadmapa.
-- `config/face.toml` — strojenie mimiki.
-- `scripts/dev_face-lcd-direct.py` — demo i diagnostyka renderera/LCD.
-- `tests/` — testy (m.in. źrenice, blink, look, clamp).
-
+- `AGENT.md` — contract and work principles (coding, Done, quality gate).
+- `PROJECT.md` — vision, roadmap.
+- `config/face.toml` — facial expression tuning.
+- `scripts/dev_face-lcd-direct.py` — renderer/LCD demo and diagnostics.
+- `tests/` — tests (including pupils, blink, look, clamp).
