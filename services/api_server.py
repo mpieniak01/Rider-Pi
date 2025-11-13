@@ -338,18 +338,6 @@ _add_rule(
     methods=["POST", "OPTIONS"],
 )
 
-# AI mode API (system configuration)
-_add_rule(
-    "/api/system/ai-mode",
-    view_func=ai_mode_api.api_ai_mode_get,
-    methods=["GET", "OPTIONS"],
-)
-_add_rule(
-    "/api/system/ai-mode",
-    view_func=ai_mode_api.api_ai_mode_set,
-    methods=["PUT", "POST", "OPTIONS"],
-)
-
 # voice proxy (zdalne/istniejące)
 _add_rule(
     "/api/voice/capture",

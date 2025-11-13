@@ -39,57 +39,44 @@ class TestAIModeAPI:
 
     def test_ai_mode_module_functions(self, temp_dirs):
         """Test AI mode module functions directly (no Flask)"""
-        config_dir, data_dir = temp_dirs
-        with (
-            patch("common.ai_mode.CONFIG_DIR", config_dir),
-            patch("common.ai_mode.DATA_DIR", data_dir),
-            patch("common.ai_mode.SYSTEM_CONFIG_FILE", config_dir / "system.toml"),
-            patch("common.ai_mode.STATE_FILE", data_dir / "ai_mode_state.toml"),
-        ):
-            from common import ai_mode
+        from common import ai_mode
 
-            # Test set and get
-            result = ai_mode.set_mode("local")
-            assert result["ok"] is True
-            assert result["mode"] == "local"
+        # Test initial mode (should be default)
+        mode = ai_mode.get_mode()
+        assert mode in ("local", "pc_offload")
 
-            mode = ai_mode.get_mode()
-            assert mode == "local"
+        # Test set_mode to local
+        changed = ai_mode.set_mode("local")
+        # changed can be True or False depending on initial state
+        assert ai_mode.get_mode() == "local"
 
-            # Test change
-            result = ai_mode.set_mode("pc_offload")
-            assert result["ok"] is True
-            assert result["mode"] == "pc_offload"
+        # Test set_mode to pc_offload
+        changed = ai_mode.set_mode("pc_offload")
+        assert changed is True  # Should have changed
+        assert ai_mode.get_mode() == "pc_offload"
 
-            mode = ai_mode.get_mode()
-            assert mode == "pc_offload"
+        # Test setting same mode again
+        changed = ai_mode.set_mode("pc_offload")
+        assert changed is False  # Should not have changed
+        assert ai_mode.get_mode() == "pc_offload"
 
     def test_ai_mode_api_handlers_directly(self, temp_dirs):
         """Test API handler functions directly (no Flask client)"""
-        config_dir, data_dir = temp_dirs
-        with (
-            patch("common.ai_mode.CONFIG_DIR", config_dir),
-            patch("common.ai_mode.DATA_DIR", data_dir),
-            patch("common.ai_mode.SYSTEM_CONFIG_FILE", config_dir / "system.toml"),
-            patch("common.ai_mode.STATE_FILE", data_dir / "ai_mode_state.toml"),
-            patch("services.api_core.compat.bus_pub"),
-        ):
-            from common import ai_mode
+        from common import ai_mode
 
-            # Initialize mode
-            ai_mode.set_mode("local")
+        # Initialize mode
+        ai_mode.set_mode("local")
 
-            # Test get_mode_info
-            info = ai_mode.get_mode_info()
-            assert info["mode"] == "local"
-            assert "changed_ts" in info
+        # Test get_mode_info
+        info = ai_mode.get_mode_info()
+        assert info["mode"] == "local"
+        assert "changed_ts" in info
 
-            # Test set_mode with ZMQ event
-            result = ai_mode.set_mode("pc_offload")
-            assert result["ok"] is True
-            assert result["mode"] == "pc_offload"
+        # Test set_mode
+        changed = ai_mode.set_mode("pc_offload")
+        assert changed is True
+        assert ai_mode.get_mode() == "pc_offload"
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
