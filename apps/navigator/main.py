@@ -22,11 +22,13 @@ import time
 from enum import Enum
 
 from apps.navigator import pathfinding
+from apps.navigator.ai_mode_adapter import log_navigator_mode_status, should_use_pc_enhanced_data
 from common.bus import (
     TOPIC_MAPPER_MAP_DATA,
     TOPIC_NAVIGATOR_MAP_REQUEST,
     TOPIC_NAVIGATOR_RETURN_HOME_START,
     TOPIC_ROBOT_POSE,
+    TOPIC_VISION_OBSTACLE_ENHANCED,
     BusPub,
     BusSub,
 )
@@ -81,11 +83,19 @@ class Navigator:
 
         # Bus connections
         self.sub_obstacle = BusSub(TOPIC_VISION_OBSTACLE)
+        self.sub_obstacle_enhanced = None  # Will be initialized if needed
         self.sub_control = BusSub(TOPIC_NAVIGATOR_CONTROL)
         self.sub_return_home = BusSub(TOPIC_NAVIGATOR_RETURN_HOME_START)
         self.sub_map_data = BusSub(TOPIC_MAPPER_MAP_DATA)
         self.sub_robot_pose = BusSub(TOPIC_ROBOT_POSE)
         self.pub = BusPub()
+
+        # Check if we should use enhanced PC data
+        self.use_pc_enhanced = should_use_pc_enhanced_data()
+        if self.use_pc_enhanced:
+            # In pc_offload mode, subscribe to enhanced obstacle data from PC
+            self.sub_obstacle_enhanced = BusSub(TOPIC_VISION_OBSTACLE_ENHANCED)
+            LOG.info("Navigator: Using PC-enhanced obstacle data (vision.obstacle.enhanced)")
 
         # State tracking
         self.last_obstacle_ts = 0.0
@@ -432,6 +442,7 @@ class Navigator:
     def run(self):
         """Main navigation loop"""
         LOG.info("Navigator main loop started")
+        log_navigator_mode_status()
         self.state_changed = True
         self._publish_state()
 
@@ -444,19 +455,43 @@ class Navigator:
 
         try:
             while True:
-                # Receive obstacle events from vision
-                topic, payload = self.sub_obstacle.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_VISION_OBSTACLE:
-                    present = payload.get("present", False)
-                    confidence = payload.get("confidence", 0.0)
-                    if self.active:
-                        self._handle_obstacle(present, confidence)
-                    # Check for obstacles during return to home
-                    elif self.state == NavigatorState.RETURNING_HOME and present:
-                        LOG.warning("Obstacle detected during return to home - stopping")
-                        self.state = NavigatorState.PATH_BLOCKED
-                        self.state_changed = True
-                        self._send_motion_stop()
+                # Receive obstacle events - check both local and enhanced sources
+                if self.use_pc_enhanced and self.sub_obstacle_enhanced:
+                    # In pc_offload mode, prioritize enhanced obstacle data
+                    topic, payload = self.sub_obstacle_enhanced.recv(timeout_ms=10)
+                    if topic and payload and topic == TOPIC_VISION_OBSTACLE_ENHANCED:
+                        present = payload.get("present", False)
+                        confidence = payload.get("confidence", 0.0)
+                        # Enhanced data includes distance and angle from PC
+                        distance = payload.get("distance")
+                        angle = payload.get("angle")
+                        if distance is not None and angle is not None:
+                            LOG.debug(
+                                f"Enhanced obstacle data from PC: present={present}, "
+                                f"distance={distance:.2f}m, angle={angle:.1f}°"
+                            )
+                        if self.active:
+                            self._handle_obstacle(present, confidence)
+                        # Check for obstacles during return to home
+                        elif self.state == NavigatorState.RETURNING_HOME and present:
+                            LOG.warning("Obstacle detected during return to home - stopping")
+                            self.state = NavigatorState.PATH_BLOCKED
+                            self.state_changed = True
+                            self._send_motion_stop()
+                else:
+                    # Local mode: use local vision obstacle data
+                    topic, payload = self.sub_obstacle.recv(timeout_ms=10)
+                    if topic and payload and topic == TOPIC_VISION_OBSTACLE:
+                        present = payload.get("present", False)
+                        confidence = payload.get("confidence", 0.0)
+                        if self.active:
+                            self._handle_obstacle(present, confidence)
+                        # Check for obstacles during return to home
+                        elif self.state == NavigatorState.RETURNING_HOME and present:
+                            LOG.warning("Obstacle detected during return to home - stopping")
+                            self.state = NavigatorState.PATH_BLOCKED
+                            self.state_changed = True
+                            self._send_motion_stop()
 
                 # Receive control commands from API
                 topic, payload = self.sub_control.recv(timeout_ms=10)
@@ -501,6 +536,8 @@ class Navigator:
         finally:
             self.stop()
             self.sub_obstacle.close()
+            if self.sub_obstacle_enhanced:
+                self.sub_obstacle_enhanced.close()
             self.sub_control.close()
             self.sub_return_home.close()
             self.sub_map_data.close()

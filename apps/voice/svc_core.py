@@ -12,6 +12,9 @@ os.environ.setdefault(
 import re
 from typing import Any
 
+# AI mode adapter for checking processing mode
+from .ai_mode_adapter import log_voice_mode_status, should_offload_to_pc
+
 # Importy "file mode" — zawsze dostępne
 from .svc_file import run_listen_file, run_once_file
 
@@ -70,6 +73,19 @@ def _mode_from_cfg(cfg: dict[str, Any]) -> str:
 
 
 def run_listen(cfg: dict[str, Any], args) -> int:
+    # Log AI mode status at startup
+    log_voice_mode_status()
+
+    # Check if we should offload to PC
+    if should_offload_to_pc():
+        print("[voice.svc_core] AI Mode: pc_offload - local ASR/TTS/NLU disabled", flush=True)
+        print("[voice.svc_core] In pc_offload mode, audio would be streamed to PC for processing", flush=True)
+        print("[voice.svc_core] PC offload implementation pending - exiting", flush=True)
+        return 0
+
+    # Local mode - proceed with normal operation
+    print("[voice.svc_core] AI Mode: local - using local ASR/TTS/NLU engines", flush=True)
+
     if _wants_stream(cfg, args):
         print("[voice.svc_core] INFO: Using streaming mode (realtime WebSocket)")
         try:

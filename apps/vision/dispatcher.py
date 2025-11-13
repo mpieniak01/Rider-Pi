@@ -18,6 +18,8 @@ from typing import Any  # noqa: E402
 
 import zmq  # noqa: E402
 
+from apps.vision.ai_mode_adapter import log_vision_mode_status  # noqa: E402
+
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
 ZMQ_ADDR_PUB = f"tcp://127.0.0.1:{BUS_PUB_PORT}"
@@ -277,6 +279,7 @@ def ttl_loop() -> None:
 
 if __name__ == "__main__":
     print("[dispatcher] starting (topics: vision.face/person/detections)", flush=True)
+    log_vision_mode_status()
     PUB = zmq_pub()
     SUB = zmq_sub(["vision.face", "vision.person", "vision.detections"])
     threading.Thread(target=heartbeat_loop, daemon=True).start()
