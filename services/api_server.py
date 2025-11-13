@@ -32,6 +32,7 @@ except Exception:
     DEFAULT_PORT = int(os.getenv("STATUS_API_PORT", "8080"))
 
 # --- importy modułów rdzeniowych (routing poniżej) ---
+import services.api_core.ai_mode_api as ai_mode_api
 import services.api_core.camera as camera
 import services.api_core.chat_api as chat_api  # noqa: F401
 import services.api_core.control_api as control_api
@@ -261,6 +262,13 @@ def _api_last_frame():
 
 
 _add_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
+
+# AI mode control
+_add_rule(
+    "/api/system/ai-mode",
+    view_func=ai_mode_api.ai_mode_handler,
+    methods=["GET", "PUT", "POST", "OPTIONS"],
+)
 
 
 # ── SERVICES (systemd) ──────────────────────────────────────────────────────

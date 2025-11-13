@@ -3,6 +3,15 @@
 # Copy to config/local/vision.toml and customize as needed
 
 # -----------------------------------------------------------------------------
+# AI Mode Configuration
+# -----------------------------------------------------------------------------
+[ai]
+# AI processing mode: "local" or "pc_offload"
+# Can be overridden with RIDER_AI_MODE environment variable
+# When pc_offload, vision detection is offloaded to PC via ZMQ
+mode = "local"
+
+# -----------------------------------------------------------------------------
 # Edge Preview Configuration (rider-edge-preview.service)
 # -----------------------------------------------------------------------------
 [edge_preview]

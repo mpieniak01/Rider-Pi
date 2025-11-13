@@ -1,5 +1,11 @@
 lang = "pl"
 
+[ai]
+# AI processing mode: "local" or "pc_offload"
+# Can be overridden with RIDER_AI_MODE environment variable
+# When pc_offload, ASR/TTS/NLU processing is offloaded to PC via ZMQ
+mode = "local"
+
 [capture]
 device = "wm8960_in"
 sample_rate = 16000
