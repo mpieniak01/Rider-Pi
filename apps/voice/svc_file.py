@@ -284,8 +284,8 @@ class VoiceService(BusIntegrationMixin):
                                 self.logger.event("ai_mode.offload_detected", action="stopping_service")
                                 self.stop()
                                 break
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.logger.event("ai_mode.monitor.loop_error", error=str(e))
 
                 sub.close()
                 self.logger.event("ai_mode.monitor.stop")

@@ -108,8 +108,9 @@ def main():
                                     hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
                             else:
                                 print("[hog] AI Mode: pc_offload - pausing local HOG detector", flush=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Ignore errors during AI mode change handling, but log for debugging
+                    print(f"[hog] Exception in AI mode change handler: {e}", flush=True)
 
             # If detector is not active (pc_offload mode), sleep and continue
             if not detector_active:
@@ -195,11 +196,7 @@ def main():
 
 
 if __name__ == "__main__":
-    sub_ai_mode_cleanup = None
     try:
         main()
     except KeyboardInterrupt:
-        pass
-    finally:
-        # Cleanup will be done in main() if needed, but this is a fallback
         pass

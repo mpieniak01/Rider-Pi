@@ -296,8 +296,9 @@ def main() -> int:
                             last_present = False
                         else:
                             print("[obst] AI Mode: pc_offload - pausing local detector", flush=True)
-            except Exception:
-                pass
+            except Exception as e:
+                # Ignore transient errors in AI mode subscription, but log for diagnosis
+                print(f"[obst] Exception in AI mode subscription: {e}", file=sys.stderr, flush=True)
 
         # If detector is not active (pc_offload mode), sleep and continue
         if not detector_active:
@@ -426,8 +427,8 @@ def main() -> int:
     if sub_ai_mode:
         try:
             sub_ai_mode.close()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[obst] WARNING: Could not close AI mode subscription: {e}", flush=True)
 
     return 0
 

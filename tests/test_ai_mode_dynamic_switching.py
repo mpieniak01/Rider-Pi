@@ -29,7 +29,7 @@ def test_navigator_subscribes_to_ai_mode_changes():
 
     with patch("apps.navigator.main.BusSub") as mock_sub:
         # Create navigator instance
-        nav = Navigator()
+        Navigator()
 
         # Verify subscription to AI mode changes was created
         # Should have subscriptions for: obstacle, control, return_home, map_data, robot_pose, ai_mode

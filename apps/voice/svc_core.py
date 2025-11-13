@@ -104,8 +104,8 @@ def _monitor_ai_mode_changes(service_instance, stop_event: threading.Event) -> N
                         break
                     elif new_mode == "local":
                         print("[voice.svc_core] Mode is local - voice service continues", flush=True)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[voice.svc_core] WARNING: Exception in AI mode monitor loop: {e}", flush=True)
 
         sub.close()
     except Exception as e:
