@@ -32,6 +32,7 @@ except Exception:
     DEFAULT_PORT = int(os.getenv("STATUS_API_PORT", "8080"))
 
 # --- importy modułów rdzeniowych (routing poniżej) ---
+import services.api_core.ai_mode_api as ai_mode_api
 import services.api_core.camera as camera
 import services.api_core.chat_api as chat_api  # noqa: F401
 import services.api_core.control_api as control_api
@@ -328,6 +329,18 @@ _add_rule(
     "/api/navigator/return_home",
     view_func=navigator_api.api_navigator_return_home,
     methods=["POST", "OPTIONS"],
+)
+
+# AI mode API (system configuration)
+_add_rule(
+    "/api/system/ai-mode",
+    view_func=ai_mode_api.api_ai_mode_get,
+    methods=["GET", "OPTIONS"],
+)
+_add_rule(
+    "/api/system/ai-mode",
+    view_func=ai_mode_api.api_ai_mode_set,
+    methods=["PUT", "POST", "OPTIONS"],
 )
 
 # voice proxy (zdalne/istniejące)

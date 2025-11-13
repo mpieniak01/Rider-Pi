@@ -1,0 +1,11 @@
+# System Configuration for Rider-Pi
+# This file contains system-wide settings
+
+[ai]
+# Default AI processing mode
+# Options: "local" (all processing on Pi) or "pc_offload" (heavy processing on PC)
+default_mode = "local"
+
+# ZMQ endpoints for PC offload mode (optional, can be overridden by environment)
+# pc_vision_endpoint = "tcp://192.168.1.100:5560"
+# pc_voice_endpoint = "tcp://192.168.1.100:5561"
