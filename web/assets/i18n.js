@@ -319,6 +319,21 @@ export const I18N = {
     error_auth:         { pl: "Błąd autoryzacji: {msg}", en: "Authentication error: {msg}" },
     error_timeout:      { pl: "Przekroczono czas oczekiwania na autoryzację. Spróbuj ponownie.", en: "Authentication timeout. Please try again." },
   },
+
+  // ===== AI MODE =====
+  ai_mode: {
+    title:              { pl: "Tryb AI", en: "AI Mode" },
+    description:        { pl: "Wybierz tryb przetwarzania AI: lokalny (wszystko na Pi) lub offload (ciężkie obliczenia na PC).", en: "Choose AI processing mode: local (all on Pi) or offload (heavy processing on PC)." },
+    loading:            { pl: "ładowanie…", en: "loading…" },
+    mode_local:         { pl: "🏠 Local (Pi)", en: "🏠 Local (Pi)" },
+    mode_offload:       { pl: "💻 PC Offload", en: "💻 PC Offload" },
+    btn_local:          { pl: "🏠 Local (Pi)", en: "🏠 Local (Pi)" },
+    btn_offload:        { pl: "💻 PC Offload", en: "💻 PC Offload" },
+    status_checking:    { pl: "sprawdzanie…", en: "checking…" },
+    status_active:      { pl: "aktywny: {mode}", en: "active: {mode}" },
+    status_error:       { pl: "błąd: {error}", en: "error: {error}" },
+    last_changed:       { pl: "Ostatnia zmiana:", en: "Last changed:" },
+  },
 };
 
 let CURRENT_LANG = 'pl';

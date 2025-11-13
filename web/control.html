@@ -254,6 +254,28 @@
     </div>
   </div>
 
+  <div class="card ai-mode-card">
+    <h2 style="font-size:16px;margin:0 0 8px">
+      <span data-i18n="ai_mode.title">Tryb AI</span>
+      <span id="aiModeCurrentBadge" class="pill warn" style="margin-left:8px" data-i18n="ai_mode.loading">ładowanie…</span>
+    </h2>
+    <div class="row" style="margin:6px 0 10px">
+      <div style="flex:1">
+        <p class="note" style="margin:0 0 8px" data-i18n="ai_mode.description">
+          Wybierz tryb przetwarzania AI: lokalny (wszystko na Pi) lub offload (ciężkie obliczenia na PC).
+        </p>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button id="btnAiModeLocal" class="btn-sm" data-i18n="ai_mode.btn_local">🏠 Local (Pi)</button>
+          <button id="btnAiModeOffload" class="btn-sm" data-i18n="ai_mode.btn_offload">💻 PC Offload</button>
+          <span id="aiModeStatus" class="muted" data-i18n="ai_mode.status_checking">sprawdzanie…</span>
+        </div>
+        <div id="aiModeLastChanged" class="note" style="margin-top:8px">
+          <span data-i18n="ai_mode.last_changed">Ostatnia zmiana:</span> <span id="aiModeChangedTime">n/a</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card motion-queue-card">
     <h2 style="font-size:16px;margin:0 0 8px">
       <span data-i18n="motion_queue.title">Kolejka ruchu</span>
@@ -976,6 +998,103 @@
   }
 
   renderMotionQueue();
+
+  // ===== AI Mode Management =====
+  const aiModeBadge = qs('#aiModeCurrentBadge');
+  const aiModeStatus = qs('#aiModeStatus');
+  const aiModeChangedTime = qs('#aiModeChangedTime');
+  const btnAiModeLocal = qs('#btnAiModeLocal');
+  const btnAiModeOffload = qs('#btnAiModeOffload');
+  let currentAiMode = null;
+
+  function updateAiModeUI(modeData){
+    if(!modeData) return;
+    currentAiMode = modeData.mode;
+    const isLocal = (modeData.mode === 'local');
+    const isOffload = (modeData.mode === 'pc_offload');
+    
+    if(aiModeBadge){
+      aiModeBadge.textContent = isLocal ? t('ai_mode.mode_local') : t('ai_mode.mode_offload');
+      aiModeBadge.className = 'pill ' + (isLocal ? 'ok' : 'warn');
+    }
+    
+    if(aiModeStatus){
+      aiModeStatus.textContent = t('ai_mode.status_active', {mode: modeData.mode});
+      aiModeStatus.className = 'ok';
+    }
+    
+    if(aiModeChangedTime && modeData.changed_ts){
+      const changedDate = new Date(modeData.changed_ts * 1000);
+      aiModeChangedTime.textContent = changedDate.toLocaleString();
+    }
+    
+    if(btnAiModeLocal){
+      btnAiModeLocal.disabled = isLocal;
+    }
+    if(btnAiModeOffload){
+      btnAiModeOffload.disabled = isOffload;
+    }
+  }
+
+  async function fetchAiMode(){
+    try{
+      const r = await fetch('/api/system/ai-mode', {cache:'no-store'});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      if(data.ok){
+        updateAiModeUI(data);
+      }else{
+        throw new Error(data.error || 'Unknown error');
+      }
+    }catch(e){
+      if(aiModeStatus){
+        aiModeStatus.textContent = t('ai_mode.status_error', {error: e.message || e});
+        aiModeStatus.className = 'err';
+      }
+      appendLog(`[ai-mode] fetch error: ${e.message || e}`, 'err');
+    }
+  }
+
+  async function setAiMode(mode){
+    try{
+      if(btnAiModeLocal) btnAiModeLocal.disabled = true;
+      if(btnAiModeOffload) btnAiModeOffload.disabled = true;
+      
+      const r = await fetch('/api/system/ai-mode', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode})
+      });
+      
+      const data = await r.json();
+      if(!r.ok || !data.ok){
+        throw new Error(data.error || `HTTP ${r.status}`);
+      }
+      
+      updateAiModeUI(data);
+      appendLog(`[ai-mode] switched to ${mode}`, 'ok');
+    }catch(e){
+      appendLog(`[ai-mode] set error: ${e.message || e}`, 'err');
+      if(aiModeStatus){
+        aiModeStatus.textContent = t('ai_mode.status_error', {error: e.message || e});
+        aiModeStatus.className = 'err';
+      }
+    }finally{
+      // Re-enable buttons based on current mode
+      setTimeout(fetchAiMode, 500);
+    }
+  }
+
+  if(btnAiModeLocal){
+    btnAiModeLocal.addEventListener('click', ()=> setAiMode('local'));
+  }
+  if(btnAiModeOffload){
+    btnAiModeOffload.addEventListener('click', ()=> setAiMode('pc_offload'));
+  }
+
+  // Initial fetch and periodic refresh
+  fetchAiMode();
+  setInterval(fetchAiMode, 5000);
 
   // obstacle badge
   async function pollObstacle(){
