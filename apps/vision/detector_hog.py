@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 from apps.vision.ai_mode_adapter import log_vision_mode_status, should_run_local_detectors
-from common.bus import BusPub
+from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusPub, BusSub
 from common.cam_heartbeat import CameraHB
 
 PUB = BusPub()
@@ -58,30 +58,74 @@ def main():
     # Log AI mode status at startup
     log_vision_mode_status()
 
-    # Check if local detectors should run
-    if not should_run_local_detectors():
-        print("[hog] AI Mode: pc_offload - local HOG detector disabled", flush=True)
-        print("[hog] In pc_offload mode, vision processing is handled by PC", flush=True)
-        return
+    # Subscribe to AI mode change events
+    sub_ai_mode = None
+    try:
+        sub_ai_mode = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
+    except Exception as e:
+        print(f"[hog] WARNING: Could not subscribe to AI mode changes: {e}", flush=True)
 
-    print("[hog] AI Mode: local - running local HOG detector", flush=True)
+    # Initial mode check
+    detector_active = should_run_local_detectors()
+    if not detector_active:
+        print("[hog] AI Mode: pc_offload - local HOG detector paused, waiting for mode change", flush=True)
+    else:
+        print("[hog] AI Mode: local - running local HOG detector", flush=True)
 
-    os.makedirs(SNAP_DIR, exist_ok=True)
-    read, _ = open_camera()
-    hog = cv2.HOGDescriptor()
-    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+    # Only initialize camera and HOG when in local mode initially
+    read = None
+    hog = None
+    if detector_active:
+        os.makedirs(SNAP_DIR, exist_ok=True)
+        read, _ = open_camera()
+        hog = cv2.HOGDescriptor()
+        hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
     last = time.time()
     ema = None
     # hej! od razu pierwsze HB
     HB.tick(None, 0.0, presenting=False)
 
-    while True:
-        t0 = time.time()
-        ok, frame = read()
-        if not ok:
-            time.sleep(0.01)
-            continue
+    try:
+        while True:
+            # Check for AI mode changes
+            if sub_ai_mode:
+                try:
+                    topic, payload = sub_ai_mode.recv(timeout_ms=10)
+                    if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+                        new_mode = payload.get("mode", "")
+                        print(f"[hog] AI mode change detected: {new_mode}", flush=True)
+                        old_active = detector_active
+                        detector_active = new_mode == "local"
+                        if old_active != detector_active:
+                            if detector_active:
+                                print("[hog] AI Mode: local - resuming local HOG detector", flush=True)
+                                # Initialize camera and HOG if not already done
+                                if read is None:
+                                    os.makedirs(SNAP_DIR, exist_ok=True)
+                                    read, _ = open_camera()
+                                    hog = cv2.HOGDescriptor()
+                                    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+                            else:
+                                print("[hog] AI Mode: pc_offload - pausing local HOG detector", flush=True)
+                except Exception:
+                    pass
+
+            # If detector is not active (pc_offload mode), sleep and continue
+            if not detector_active:
+                time.sleep(0.5)
+                continue
+
+            # Skip if camera not initialized
+            if read is None or hog is None:
+                time.sleep(0.1)
+                continue
+
+            t0 = time.time()
+            ok, frame = read()
+            if not ok:
+                time.sleep(0.01)
+                continue
 
         # skala 1.05…1.1, minNeighbors=4–6; 320x240 i tak ogranicza koszt
         rects, weights = hog.detectMultiScale(frame, winStride=(8, 8), padding=(8, 8), scale=1.05)
@@ -141,10 +185,21 @@ def main():
         spent = time.time() - t0
         if spent < min_dt:
             time.sleep(min_dt - spent)
+    finally:
+        # Cleanup
+        if sub_ai_mode:
+            try:
+                sub_ai_mode.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
+    sub_ai_mode_cleanup = None
     try:
         main()
     except KeyboardInterrupt:
+        pass
+    finally:
+        # Cleanup will be done in main() if needed, but this is a fallback
         pass
