@@ -75,8 +75,9 @@ def set_ai_mode() -> tuple[Response, int]:
         }
         return _corsify(jsonify(result)), 200
 
-    except ValueError as e:
-        return _corsify(jsonify({"error": str(e)})), 400
+    except ValueError:
+        # Don't expose internal error details to external users
+        return _corsify(jsonify({"error": "Invalid mode value"})), 400
 
 
 def _publish_mode_changed_event(mode: str, ts: float) -> None:
