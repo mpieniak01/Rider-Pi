@@ -77,6 +77,11 @@ TOPIC_MOTION_COMMAND = "motion"
 # angle in degrees (relative to robot heading), distance in meters
 TOPIC_VISION_OBSTACLE_DATA = "vision.obstacle.data"
 
+# Enhanced obstacle data from PC (published by PC when in offload mode)
+# Payload: {"present": bool, "confidence": float, "distance": float, "angle": float, "ts": float}
+# Used by navigator in pc_offload mode for enhanced obstacle detection with depth info
+TOPIC_VISION_OBSTACLE_ENHANCED = "vision.obstacle.enhanced"
+
 # Navigator requests occupancy grid map from mapper (published by navigator)
 # Payload: {"request_id": float, "ts": float}
 TOPIC_NAVIGATOR_MAP_REQUEST = "navigator.map.request"

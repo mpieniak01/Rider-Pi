@@ -22,6 +22,7 @@ from typing import Any
 import cv2  # type: ignore
 import numpy as np
 
+from apps.vision.ai_mode_adapter import log_vision_mode_status, should_run_local_detectors
 from apps.vision.config import load_config
 
 # --------------------------- config helpers ---------------------------------
@@ -247,6 +248,18 @@ def main() -> int:
     signal.signal(signal.SIGINT, _sigint)
     signal.signal(signal.SIGTERM, _sigint)
 
+    # Log AI mode status at startup
+    log_vision_mode_status()
+
+    # Check if local detectors should run
+    if not should_run_local_detectors():
+        print("[obst] AI Mode: pc_offload - local detector disabled, would subscribe to enhanced results", flush=True)
+        # In pc_offload mode, this detector would be disabled and replaced by
+        # a ZMQ client that subscribes to vision.obstacle.enhanced from PC
+        # For now, we exit gracefully
+        print("[obst] Exiting - waiting for PC offload implementation", flush=True)
+        return 0
+
     edge_hist = deque(maxlen=max(1, OBST_DEC_N))
     last_present = False
 
@@ -258,6 +271,7 @@ def main() -> int:
         ),
         flush=True,
     )
+    print("[obst] Running in LOCAL mode - using local edge detection", flush=True)
 
     while not _STOP:
         proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)

@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from apps.vision.ai_mode_adapter import log_vision_mode_status, should_run_local_detectors
 from common.bus import BusPub
 from common.cam_heartbeat import CameraHB
 
@@ -54,6 +55,17 @@ def save_jpeg_bgr(path: str, bgr: np.ndarray):
 
 
 def main():
+    # Log AI mode status at startup
+    log_vision_mode_status()
+
+    # Check if local detectors should run
+    if not should_run_local_detectors():
+        print("[hog] AI Mode: pc_offload - local HOG detector disabled", flush=True)
+        print("[hog] In pc_offload mode, vision processing is handled by PC", flush=True)
+        return
+
+    print("[hog] AI Mode: local - running local HOG detector", flush=True)
+
     os.makedirs(SNAP_DIR, exist_ok=True)
     read, _ = open_camera()
     hog = cv2.HOGDescriptor()
