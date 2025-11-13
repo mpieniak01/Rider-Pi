@@ -95,13 +95,17 @@ def test_ai_mode_is_offload(reset_ai_mode):
 
 def test_ai_mode_api_get(reset_ai_mode):
     """Test GET /api/system/ai-mode endpoint."""
+    from flask import Flask
+
     from services.api_core.ai_mode_api import get_ai_mode
 
-    resp, status = get_ai_mode()
-    assert status == 200
-    data = json.loads(resp.get_data(as_text=True))
-    assert data["mode"] == "local"
-    assert "changed_ts" in data
+    app = Flask(__name__)
+    with app.test_request_context("/api/system/ai-mode", method="GET"):
+        resp, status = get_ai_mode()
+        assert status == 200
+        data = json.loads(resp.get_data(as_text=True))
+        assert data["mode"] == "local"
+        assert "changed_ts" in data
 
 
 def test_ai_mode_api_set_local(reset_ai_mode):
@@ -165,7 +169,7 @@ def test_ai_mode_api_set_missing_mode(reset_ai_mode):
         assert "Missing 'mode' parameter" in data["error"]
 
 
-@patch("services.api_core.ai_mode_api.Publisher")
+@patch("common.bus.BusPub")
 def test_ai_mode_api_publishes_zmq_event(mock_publisher_cls, reset_ai_mode):
     """Test that changing AI mode publishes ZMQ event."""
     from flask import Flask
@@ -186,7 +190,7 @@ def test_ai_mode_api_publishes_zmq_event(mock_publisher_cls, reset_ai_mode):
         call_args = mock_pub.send.call_args[0]
         assert call_args[0] == "system.ai.mode.changed"
 
-        payload = json.loads(call_args[1])
+        payload = call_args[1]
         assert payload["mode"] == "pc_offload"
         assert "ts" in payload
 

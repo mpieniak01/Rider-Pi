@@ -16,8 +16,9 @@ import os
 import re
 import subprocess
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from . import compat as C
 

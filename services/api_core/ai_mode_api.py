@@ -7,8 +7,6 @@ Provides REST API endpoints for:
 
 from __future__ import annotations
 
-import json
-
 from flask import Response, jsonify, make_response, request
 
 from common import ai_mode
@@ -89,14 +87,14 @@ def _publish_mode_changed_event(mode: str, ts: float) -> None:
         ts: Timestamp of the change
     """
     try:
-        from common.bus import Publisher
+        from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusPub
 
-        pub = Publisher()
+        pub = BusPub()
         payload = {
             "mode": mode,
             "ts": ts,
         }
-        pub.send("system.ai.mode.changed", json.dumps(payload))
+        pub.send(TOPIC_SYSTEM_AI_MODE_CHANGED, payload)
         pub.close()
     except Exception:
         # Don't fail API call if event publishing fails

@@ -96,6 +96,14 @@ TOPIC_MAPPER_MAP_DATA = "mapper.map.data"
 # Payload: {"action": "return_home", "ts": float}
 TOPIC_NAVIGATOR_RETURN_HOME_START = "navigator.return_home.start"
 
+# ============================================================================
+# Topic constants for system events
+# ============================================================================
+
+# AI mode changed (published by API when switching between local and pc_offload)
+# Payload: {"mode": "local"|"pc_offload", "ts": float}
+TOPIC_SYSTEM_AI_MODE_CHANGED = "system.ai.mode.changed"
+
 
 def now_ts() -> float:
     return time.time()
