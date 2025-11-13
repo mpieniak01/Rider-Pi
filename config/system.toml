@@ -1,0 +1,8 @@
+# System-wide configuration for Rider-Pi
+
+[ai]
+# AI processing mode: "local" or "pc_offload"
+# - local: All AI tasks (ASR, NLU, Vision) run on Rider-Pi device
+# - pc_offload: AI tasks are offloaded to a PC over ZMQ
+# Can be overridden with RIDER_AI_MODE environment variable
+mode = "local"
