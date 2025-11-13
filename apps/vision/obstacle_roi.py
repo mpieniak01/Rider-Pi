@@ -24,6 +24,7 @@ import numpy as np
 
 from apps.vision.ai_mode_adapter import log_vision_mode_status, should_run_local_detectors
 from apps.vision.config import load_config
+from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusSub
 
 # --------------------------- config helpers ---------------------------------
 
@@ -251,14 +252,19 @@ def main() -> int:
     # Log AI mode status at startup
     log_vision_mode_status()
 
-    # Check if local detectors should run
-    if not should_run_local_detectors():
-        print("[obst] AI Mode: pc_offload - local detector disabled, would subscribe to enhanced results", flush=True)
-        # In pc_offload mode, this detector would be disabled and replaced by
-        # a ZMQ client that subscribes to vision.obstacle.enhanced from PC
-        # For now, we exit gracefully
-        print("[obst] Exiting - waiting for PC offload implementation", flush=True)
-        return 0
+    # Subscribe to AI mode change events
+    sub_ai_mode = None
+    try:
+        sub_ai_mode = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
+    except Exception as e:
+        print(f"[obst] WARNING: Could not subscribe to AI mode changes: {e}", flush=True)
+
+    # Initial mode check
+    detector_active = should_run_local_detectors()
+    if not detector_active:
+        print("[obst] AI Mode: pc_offload - local detector paused, waiting for mode change", flush=True)
+    else:
+        print("[obst] AI Mode: local - running local detector", flush=True)
 
     edge_hist = deque(maxlen=max(1, OBST_DEC_N))
     last_present = False
@@ -266,14 +272,38 @@ def main() -> int:
     print(
         (
             f"[obst] start PROC={PROC_PATH} RAW={RAW_PATH} ROI={ROI_Y0:.2f}+{ROI_H:.2f} "
-            f"LOW/HIGH={{EDGE_T_LOW:.3f}}/{{EDGE_T_HIGH:.3f}} DARK={DARK_LUMA:.2f} "
+            f"LOW/HIGH={EDGE_T_LOW:.3f}/{EDGE_T_HIGH:.3f} DARK={DARK_LUMA:.2f} "
             f"LAPL={LAPL_VAR_MIN:.1f} N={edge_hist.maxlen}"
         ),
         flush=True,
     )
-    print("[obst] Running in LOCAL mode - using local edge detection", flush=True)
 
     while not _STOP:
+        # Check for AI mode changes
+        if sub_ai_mode:
+            try:
+                topic, payload = sub_ai_mode.recv(timeout_ms=10)
+                if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+                    new_mode = payload.get("mode", "")
+                    print(f"[obst] AI mode change detected: {new_mode}", flush=True)
+                    old_active = detector_active
+                    detector_active = new_mode == "local"
+                    if old_active != detector_active:
+                        if detector_active:
+                            print("[obst] AI Mode: local - resuming local detector", flush=True)
+                            # Reset state when resuming
+                            edge_hist.clear()
+                            last_present = False
+                        else:
+                            print("[obst] AI Mode: pc_offload - pausing local detector", flush=True)
+            except Exception as e:
+                # Ignore transient errors in AI mode subscription, but log for diagnosis
+                print(f"[obst] Exception in AI mode subscription: {e}", file=sys.stderr, flush=True)
+
+        # If detector is not active (pc_offload mode), sleep and continue
+        if not detector_active:
+            time.sleep(0.5)
+            continue
         proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)
         img_proc = load_gray(PROC_PATH)
 
@@ -392,6 +422,13 @@ def main() -> int:
         )
 
         time.sleep(0.1)
+
+    # Cleanup
+    if sub_ai_mode:
+        try:
+            sub_ai_mode.close()
+        except Exception as e:
+            print(f"[obst] WARNING: Could not close AI mode subscription: {e}", flush=True)
 
     return 0
 

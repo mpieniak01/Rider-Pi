@@ -28,6 +28,7 @@ from common.bus import (
     TOPIC_NAVIGATOR_MAP_REQUEST,
     TOPIC_NAVIGATOR_RETURN_HOME_START,
     TOPIC_ROBOT_POSE,
+    TOPIC_SYSTEM_AI_MODE_CHANGED,
     TOPIC_VISION_OBSTACLE_ENHANCED,
     BusPub,
     BusSub,
@@ -88,6 +89,7 @@ class Navigator:
         self.sub_return_home = BusSub(TOPIC_NAVIGATOR_RETURN_HOME_START)
         self.sub_map_data = BusSub(TOPIC_MAPPER_MAP_DATA)
         self.sub_robot_pose = BusSub(TOPIC_ROBOT_POSE)
+        self.sub_ai_mode = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)  # Subscribe to AI mode changes
         self.pub = BusPub()
 
         # Check if we should use enhanced PC data
@@ -259,6 +261,38 @@ class Navigator:
 
         else:
             LOG.warning(f"Unknown control action: {action}")
+
+    def _handle_ai_mode_change(self, payload: dict):
+        """Handle AI mode change event dynamically.
+
+        Args:
+            payload: Event payload containing new mode
+        """
+        new_mode = payload.get("mode", "")
+        LOG.info(f"AI mode change detected: {new_mode}")
+
+        old_use_pc_enhanced = self.use_pc_enhanced
+        self.use_pc_enhanced = new_mode == "pc_offload"
+
+        # If mode changed, update subscriptions
+        if old_use_pc_enhanced != self.use_pc_enhanced:
+            if self.use_pc_enhanced:
+                # Switched to pc_offload mode - create enhanced data subscription
+                if not self.sub_obstacle_enhanced:
+                    self.sub_obstacle_enhanced = BusSub(TOPIC_VISION_OBSTACLE_ENHANCED)
+                    LOG.info("Navigator: Switched to PC-enhanced obstacle data (vision.obstacle.enhanced)")
+            else:
+                # Switched to local mode - close enhanced data subscription if it exists
+                if self.sub_obstacle_enhanced:
+                    self.sub_obstacle_enhanced.close()
+                    self.sub_obstacle_enhanced = None
+                    LOG.info("Navigator: Switched to local obstacle data (vision.obstacle)")
+
+            # Log the new mode
+            if self.use_pc_enhanced:
+                LOG.info("Navigator AI Mode: pc_offload - Using PC-enhanced obstacle data")
+            else:
+                LOG.info("Navigator AI Mode: local - Using local obstacle detection")
 
     def _handle_return_home_start(self, cmd: dict):
         """Handle return to home command from API"""
@@ -498,6 +532,11 @@ class Navigator:
                 if topic and payload and topic == TOPIC_NAVIGATOR_CONTROL:
                     self._handle_control_command(payload)
 
+                # Receive AI mode change events
+                topic, payload = self.sub_ai_mode.recv(timeout_ms=10)
+                if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+                    self._handle_ai_mode_change(payload)
+
                 # Receive return to home commands
                 topic, payload = self.sub_return_home.recv(timeout_ms=10)
                 if topic and payload and topic == TOPIC_NAVIGATOR_RETURN_HOME_START:
@@ -539,6 +578,7 @@ class Navigator:
             if self.sub_obstacle_enhanced:
                 self.sub_obstacle_enhanced.close()
             self.sub_control.close()
+            self.sub_ai_mode.close()
             self.sub_return_home.close()
             self.sub_map_data.close()
             self.sub_robot_pose.close()

@@ -10,6 +10,7 @@ os.environ.setdefault(
     os.environ.get("OPENAI_REALTIME_ENDPOINT", "wss://example.invalid"),
 )  # CI default dummy endpoint
 import re
+import threading
 from typing import Any
 
 # AI mode adapter for checking processing mode
@@ -70,6 +71,45 @@ def _mode_from_cfg(cfg: dict[str, Any]) -> str:
     """
     dummy_args = object()
     return "realtime" if _wants_stream(cfg, dummy_args) else "file"
+
+
+def _monitor_ai_mode_changes(service_instance, stop_event: threading.Event) -> None:
+    """Monitor AI mode changes and stop service if mode switches to pc_offload.
+
+    Args:
+        service_instance: VoiceService instance with stop_event
+        stop_event: Event to signal monitoring thread to stop
+    """
+    try:
+        from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusSub
+
+        sub = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
+        print("[voice.svc_core] AI mode monitor started", flush=True)
+
+        while not stop_event.is_set():
+            try:
+                topic, payload = sub.recv(timeout_ms=500)
+                if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+                    new_mode = payload.get("mode", "")
+                    print(f"[voice.svc_core] AI mode change detected: {new_mode}", flush=True)
+                    if new_mode == "pc_offload":
+                        print(
+                            "[voice.svc_core] Switching to pc_offload mode - stopping local voice service",
+                            flush=True,
+                        )
+                        # Stop the voice service
+                        if hasattr(service_instance, "stop_event"):
+                            service_instance.stop_event.set()
+                        stop_event.set()
+                        break
+                    elif new_mode == "local":
+                        print("[voice.svc_core] Mode is local - voice service continues", flush=True)
+            except Exception as e:
+                print(f"[voice.svc_core] WARNING: Exception in AI mode monitor loop: {e}", flush=True)
+
+        sub.close()
+    except Exception as e:
+        print(f"[voice.svc_core] WARNING: AI mode monitor error: {e}", flush=True)
 
 
 def run_listen(cfg: dict[str, Any], args) -> int:

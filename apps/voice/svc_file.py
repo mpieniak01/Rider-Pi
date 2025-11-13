@@ -129,6 +129,10 @@ class VoiceService(BusIntegrationMixin):
         self._bus_pub = ui_publisher if ui_publisher is not None else (BusPub() if BusPub else None)
         self._bus_sub = BusSub("tts.speak") if BusSub else None
 
+        # Start AI mode monitoring thread
+        self._ai_mode_monitor_thread = None
+        self._start_ai_mode_monitor()
+
         # ── Konfiguracje z bezpiecznymi domyślnymi ─────────────────────────────
         # CHAT
         chat_defaults = {
@@ -256,6 +260,40 @@ class VoiceService(BusIntegrationMixin):
 
         # Startowy stan
         self._publish_ui_state("idle")
+
+    # ─────────────────────────────────────────────
+    # AI Mode Monitoring
+
+    def _start_ai_mode_monitor(self) -> None:
+        """Start background thread to monitor AI mode changes."""
+
+        def monitor():
+            try:
+                from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusSub
+
+                sub = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
+                self.logger.event("ai_mode.monitor.start")
+
+                while not self.stop_event.is_set():
+                    try:
+                        topic, payload = sub.recv(timeout_ms=500)
+                        if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+                            new_mode = payload.get("mode", "")
+                            self.logger.event("ai_mode.changed", mode=new_mode)
+                            if new_mode == "pc_offload":
+                                self.logger.event("ai_mode.offload_detected", action="stopping_service")
+                                self.stop()
+                                break
+                    except Exception as e:
+                        self.logger.event("ai_mode.monitor.loop_error", error=str(e))
+
+                sub.close()
+                self.logger.event("ai_mode.monitor.stop")
+            except Exception as e:
+                self.logger.event("ai_mode.monitor.error", error=str(e))
+
+        self._ai_mode_monitor_thread = threading.Thread(target=monitor, daemon=True, name="ai-mode-monitor")
+        self._ai_mode_monitor_thread.start()
 
     # ─────────────────────────────────────────────
 
