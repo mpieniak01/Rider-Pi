@@ -97,16 +97,12 @@ TOPIC_MAPPER_MAP_DATA = "mapper.map.data"
 TOPIC_NAVIGATOR_RETURN_HOME_START = "navigator.return_home.start"
 
 # ============================================================================
-# Topic constants for AI mode management (System configuration)
+# Topic constants for system events
 # ============================================================================
 
-# AI mode change notification (published by API when mode changes)
-# Payload: {"mode": "local"|"pc_offload", "changed_ts": float, "ts": float}
+# AI mode changed (published by API when switching between local and pc_offload)
+# Payload: {"mode": "local"|"pc_offload", "ts": float}
 TOPIC_SYSTEM_AI_MODE_CHANGED = "system.ai.mode.changed"
-
-# Vision obstacle data with enhanced processing (from PC offload)
-# Payload: {"obstacles": [...], "enhanced": bool, "ts": float}
-TOPIC_VISION_OBSTACLE_ENHANCED = "vision.obstacle.enhanced"
 
 
 def now_ts() -> float:

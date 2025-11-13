@@ -263,6 +263,13 @@ def _api_last_frame():
 
 _add_rule("/api/last_frame", view_func=_api_last_frame, methods=["GET", "HEAD"])
 
+# AI mode control
+_add_rule(
+    "/api/system/ai-mode",
+    view_func=ai_mode_api.ai_mode_handler,
+    methods=["GET", "PUT", "POST", "OPTIONS"],
+)
+
 
 # ── SERVICES (systemd) ──────────────────────────────────────────────────────
 @app.route("/svc", methods=["GET"])

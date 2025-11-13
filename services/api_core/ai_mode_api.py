@@ -1,131 +1,118 @@
-#!/usr/bin/env python3
-"""
-AI Mode API - Control endpoints for AI processing mode management
+"""API endpoints for AI mode control.
 
-Provides REST API endpoints to query and change the AI processing mode
-between "local" (all processing on Pi) and "pc_offload" (heavy processing on PC).
+Provides REST API endpoints for:
+- GET /api/system/ai-mode - Query current AI processing mode
+- PUT /api/system/ai-mode - Change AI processing mode
 """
 
 from __future__ import annotations
 
-import json
-import time
-
-from flask import Response, request
+from flask import Response, jsonify, make_response, request
 
 from common import ai_mode
-from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED
-
-from . import compat as C
 
 
-def api_ai_mode_get():
-    """
-    GET /api/system/ai-mode
+def _corsify(resp: Response) -> Response:
+    """Add CORS headers to response."""
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, PUT, POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return resp
 
-    Returns current AI mode and timestamp of last change.
 
-    Response: {"ok": true, "mode": "local"|"pc_offload", "changed_ts": float}
-    """
-    if request.method == "OPTIONS":
-        resp = Response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
-        return resp
+def get_ai_mode() -> tuple[Response, int]:
+    """GET /api/system/ai-mode - Return current AI processing mode.
 
-    try:
-        mode_info = ai_mode.get_mode_info()
-        result = {
-            "ok": True,
-            "mode": mode_info["mode"],
-            "changed_ts": mode_info["changed_ts"],
+    Returns:
+        JSON response with mode and timestamp:
+        {
+            "mode": "local" | "pc_offload",
+            "changed_ts": <timestamp>
         }
-        resp = Response(json.dumps(result), mimetype="application/json")
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
-    except Exception as e:
-        resp = Response(
-            json.dumps({"ok": False, "error": str(e)}),
-            mimetype="application/json",
-            status=500,
-        )
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
-
-
-def api_ai_mode_set():
     """
-    PUT /api/system/ai-mode
-    POST /api/system/ai-mode
+    info = ai_mode.get_mode_info()
+    return _corsify(jsonify(info)), 200
 
-    Changes the AI processing mode.
 
-    Request body: {"mode": "local"|"pc_offload"}
-    Response: {"ok": true, "mode": str, "changed_ts": float}
+def set_ai_mode() -> tuple[Response, int]:
+    """PUT /api/system/ai-mode - Change AI processing mode.
+
+    Expected JSON payload:
+        {"mode": "local" | "pc_offload"}
+
+    Returns:
+        JSON response:
+        {
+            "mode": <new_mode>,
+            "changed": <bool>,
+            "changed_ts": <timestamp>
+        }
     """
+    # Handle OPTIONS for CORS preflight
     if request.method == "OPTIONS":
-        resp = Response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "PUT,POST,OPTIONS"
-        return resp
+        return _corsify(make_response("", 204)), 204
 
-    data = request.get_json(silent=True) or {}
-    new_mode = data.get("mode")
+    payload = request.get_json(force=True, silent=True) or {}
+    new_mode = payload.get("mode")
 
     if not new_mode:
-        resp = Response(
-            json.dumps({"ok": False, "error": "Missing 'mode' field in request body"}),
-            mimetype="application/json",
-            status=400,
-        )
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
+        return _corsify(jsonify({"error": "Missing 'mode' parameter"})), 400
 
     if new_mode not in ("local", "pc_offload"):
-        resp = Response(
-            json.dumps(
-                {
-                    "ok": False,
-                    "error": f"Invalid mode '{new_mode}'. Must be 'local' or 'pc_offload'",
-                }
-            ),
-            mimetype="application/json",
-            status=400,
-        )
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
+        return _corsify(jsonify({"error": "Invalid mode. Must be 'local' or 'pc_offload'"})), 400
 
     try:
-        # Update the mode
-        result = ai_mode.set_mode(new_mode)  # type: ignore
+        changed = ai_mode.set_mode(new_mode)
+        info = ai_mode.get_mode_info()
 
-        # Publish ZMQ event to notify all subscribers
-        event_payload = {
-            "mode": result["mode"],
-            "changed_ts": result["changed_ts"],
-            "ts": time.time(),
+        # Publish ZMQ event about mode change
+        _publish_mode_changed_event(new_mode, info["changed_ts"])
+
+        result = {
+            "mode": info["mode"],
+            "changed": changed,
+            "changed_ts": info["changed_ts"],
         }
-        C.bus_pub(TOPIC_SYSTEM_AI_MODE_CHANGED, event_payload)
+        return _corsify(jsonify(result)), 200
 
-        # Return success response
-        resp = Response(json.dumps(result), mimetype="application/json")
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
-    except ValueError as e:
-        resp = Response(
-            json.dumps({"ok": False, "error": str(e)}),
-            mimetype="application/json",
-            status=400,
-        )
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
-    except Exception as e:
-        resp = Response(
-            json.dumps({"ok": False, "error": str(e)}),
-            mimetype="application/json",
-            status=500,
-        )
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
+    except ValueError:
+        # Don't expose internal error details to external users
+        return _corsify(jsonify({"error": "Invalid mode value"})), 400
+
+
+def _publish_mode_changed_event(mode: str, ts: float) -> None:
+    """Publish system.ai.mode.changed event to ZMQ bus.
+
+    Args:
+        mode: New AI mode
+        ts: Timestamp of the change
+    """
+    try:
+        from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusPub
+
+        pub = BusPub()
+        payload = {
+            "mode": mode,
+            "ts": ts,
+        }
+        pub.send(TOPIC_SYSTEM_AI_MODE_CHANGED, payload)
+        pub.close()
+    except Exception:
+        # Don't fail API call if event publishing fails
+        # This could happen if ZMQ bus is not available
+        pass
+
+
+def ai_mode_handler() -> tuple[Response, int]:
+    """Route handler for /api/system/ai-mode endpoint.
+
+    Dispatches to GET or PUT handler based on request method.
+    """
+    if request.method == "GET":
+        return get_ai_mode()
+    elif request.method in ("PUT", "POST"):
+        return set_ai_mode()
+    elif request.method == "OPTIONS":
+        return _corsify(make_response("", 204)), 204
+    else:
+        return _corsify(jsonify({"error": "Method not allowed"})), 405

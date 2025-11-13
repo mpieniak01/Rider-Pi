@@ -196,6 +196,35 @@
       </div>
     </div>
 
+    <!-- AI Mode Switcher Card -->
+    <div class="card" style="flex:1 1 360px">
+      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="ai_mode.title">Tryb Pracy AI</h2>
+      <div style="margin-bottom:12px">
+        <div style="font-size:14px;color:#b7cee3;margin-bottom:8px" data-i18n="ai_mode.description">
+          Wybierz, gdzie wykonywane są zadania AI (ASR, NLU, Vision Detection):
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <label style="font-size:14px;display:block;margin-bottom:6px" data-i18n="ai_mode.current_mode">
+              Aktualny tryb:
+            </label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="aiModeStatus" class="pill ok" data-i18n="ai_mode.status_loading">Sprawdzanie...</span>
+              <span id="aiModeTime" class="muted" style="font-size:12px"></span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="btnAiModeLocal" class="btn-sm" data-i18n="ai_mode.btn_local">🖥️ Local</button>
+            <button id="btnAiModeOffload" class="btn-sm" data-i18n="ai_mode.btn_offload">💻 PC Offload</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:13px;color:#b7cee3;padding:8px;background:#0b1a27;border:1px solid #1c3349;border-radius:8px">
+        <div style="margin-bottom:6px"><strong data-i18n="ai_mode.mode_local_title">Local:</strong> <span data-i18n="ai_mode.mode_local_desc">Wszystkie obliczenia AI na Rider-Pi</span></div>
+        <div><strong data-i18n="ai_mode.mode_offload_title">PC Offload:</strong> <span data-i18n="ai_mode.mode_offload_desc">Kosztowne zadania AI przesyłane do PC</span></div>
+      </div>
+    </div>
+
     <div class="card resource-card">
       <h2 style="font-size:16px;margin:0 0 8px" data-i18n="resources.title">Diagnostyka zasobów</h2>
       <div id="resInfo" class="muted" data-i18n="meta.loading">Ładowanie…</div>
@@ -1255,6 +1284,100 @@
       if(isActive('rider-vision.service'))       return t('camera.src_vision');
       return t('camera.src_none');
     }catch{ return 'n/a'; }
+  }
+
+  // ====== AI Mode Switcher ======
+  const aiModeStatusEl = qs('#aiModeStatus');
+  const aiModeTimeEl = qs('#aiModeTime');
+  const btnAiModeLocal = qs('#btnAiModeLocal');
+  const btnAiModeOffload = qs('#btnAiModeOffload');
+
+  async function fetchAiMode(){
+    try{
+      const r = await fetch('/api/system/ai-mode', {cache:'no-store'});
+      const j = await r.json();
+      if(!aiModeStatusEl) return;
+      
+      const mode = j.mode || 'unknown';
+      const changedTs = j.changed_ts || 0;
+      
+      // Update status badge
+      if(mode === 'local'){
+        aiModeStatusEl.textContent = t('ai_mode.status_local') || '🖥️ Local';
+        aiModeStatusEl.className = 'pill ok';
+      }else if(mode === 'pc_offload'){
+        aiModeStatusEl.textContent = t('ai_mode.status_offload') || '💻 PC Offload';
+        aiModeStatusEl.className = 'pill warn';
+      }else{
+        aiModeStatusEl.textContent = t('ai_mode.status_unknown') || '❓ Unknown';
+        aiModeStatusEl.className = 'pill err';
+      }
+      
+      // Update timestamp
+      if(changedTs > 0 && aiModeTimeEl){
+        const ago = Math.floor((Date.now()/1000) - changedTs);
+        if(ago < 60){
+          aiModeTimeEl.textContent = t('ai_mode.changed_seconds', {seconds: ago}) || `(${ago}s ago)`;
+        }else{
+          const mins = Math.floor(ago / 60);
+          aiModeTimeEl.textContent = t('ai_mode.changed_minutes', {minutes: mins}) || `(${mins}m ago)`;
+        }
+      }
+      
+      // Update button states
+      if(btnAiModeLocal && btnAiModeOffload){
+        btnAiModeLocal.disabled = (mode === 'local');
+        btnAiModeOffload.disabled = (mode === 'pc_offload');
+      }
+    }catch(e){
+      if(aiModeStatusEl){
+        aiModeStatusEl.textContent = t('ai_mode.status_error') || '❌ Error';
+        aiModeStatusEl.className = 'pill err';
+      }
+      console.error('Failed to fetch AI mode:', e);
+    }
+  }
+
+  async function setAiMode(mode){
+    try{
+      const r = await fetch('/api/system/ai-mode', {
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({mode})
+      });
+      const j = await r.json();
+      if(!r.ok){
+        throw new Error(j.error || `HTTP ${r.status}`);
+      }
+      
+      const changed = j.changed ? t('ai_mode.log_changed') || 'changed' : t('ai_mode.log_already_set') || 'already set';
+      appendLog(t('ai_mode.log_set', {mode, changed}) || `AI mode → ${mode} (${changed})`, 'ok');
+      
+      // Refresh status immediately
+      await fetchAiMode();
+    }catch(e){
+      appendLog(t('ai_mode.log_error', {mode, msg: e.message}) || `AI mode error → ${mode}: ${e.message}`, 'err');
+    }
+  }
+
+  // Initial fetch and periodic refresh
+  if(aiModeStatusEl){
+    fetchAiMode();
+    setInterval(fetchAiMode, 3000);
+  }
+
+  // Button handlers
+  if(btnAiModeLocal){
+    btnAiModeLocal.addEventListener('click', async ()=>{
+      btnAiModeLocal.disabled = true;
+      try{ await setAiMode('local'); }finally{ btnAiModeLocal.disabled = false; }
+    });
+  }
+  if(btnAiModeOffload){
+    btnAiModeOffload.addEventListener('click', async ()=>{
+      btnAiModeOffload.disabled = true;
+      try{ await setAiMode('pc_offload'); }finally{ btnAiModeOffload.disabled = false; }
+    });
   }
 
   // SSE
