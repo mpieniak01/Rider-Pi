@@ -134,6 +134,7 @@ LAST_XGO = {
 XGO_FW = None
 
 LAST_BALANCE = {"enabled": None, "ts": None}
+LAST_HEIGHT = {"value": None, "ts": None}
 LAST_TRACKING_MODE = {"mode": "none", "enabled": False, "ts": None}
 LAST_TRACKING_OFFSET = {"offset": None, "mode": None, "ts": None}
 LAST_NAVIGATOR = {

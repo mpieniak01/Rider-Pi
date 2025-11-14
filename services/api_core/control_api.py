@@ -92,7 +92,10 @@ def api_balance():
             status=400,
         )
 
-    C.bus_pub(TOPIC_MOTION_BALANCE, {"enabled": enabled, "ts": time.time()})
+    ts = time.time()
+    C.LAST_BALANCE["enabled"] = enabled
+    C.LAST_BALANCE["ts"] = ts
+    C.bus_pub(TOPIC_MOTION_BALANCE, {"enabled": enabled, "ts": ts})
     resp = Response(
         json.dumps({"ok": True, "sent": {"enabled": enabled}}),
         mimetype="application/json",
@@ -122,7 +125,10 @@ def api_height():
             status=400,
         )
 
-    C.bus_pub(TOPIC_MOTION_HEIGHT, {"height": height, "ts": time.time()})
+    ts = time.time()
+    C.LAST_HEIGHT["value"] = height
+    C.LAST_HEIGHT["ts"] = ts
+    C.bus_pub(TOPIC_MOTION_HEIGHT, {"height": height, "ts": ts})
     resp = Response(
         json.dumps({"ok": True, "sent": {"height": height}}),
         mimetype="application/json",
@@ -144,6 +150,10 @@ def api_control_state():
         "enabled": C.LAST_BALANCE.get("enabled"),
         "ts": C.LAST_BALANCE.get("ts"),
     }
+    height = {
+        "value": C.LAST_HEIGHT.get("value"),
+        "ts": C.LAST_HEIGHT.get("ts"),
+    }
     tracking = {
         "mode": C.LAST_TRACKING_MODE.get("mode"),
         "enabled": C.LAST_TRACKING_MODE.get("enabled"),
@@ -159,6 +169,7 @@ def api_control_state():
     payload = {
         "ok": True,
         "balance": balance,
+        "height": height,
         "tracking": tracking,
         "navigator": navigator,
     }

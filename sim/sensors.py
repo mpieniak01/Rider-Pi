@@ -56,13 +56,10 @@ class VirtualGyro:
 
     def publish(self, angle: float) -> None:
         """Publish gyro angle if enough time has passed (rate-limited)."""
-        now_mono = monotonic()
-        if self._min_interval and (now_mono - self.last_pub) < self._min_interval:
+        start_mono = monotonic()
+        if self._min_interval and (start_mono - self.last_pub) < self._min_interval:
             # Zbyt wcześnie — brak wysyłki i brak zmiany last_pub
             return
-
-        # Aktualizacja znacznika dopiero przy realnej publikacji.
-        self.last_pub = now_mono
 
         if self._pub:
             try:
@@ -73,6 +70,9 @@ class VirtualGyro:
                 self._pub.send_multipart([GYRO_TOPIC.encode("utf-8"), payload])
             except Exception as e:  # noqa: BLE001
                 LOG.debug("Error publishing gyro: %s", e)
+
+        # Aktualizacja znacznika po zakończeniu próby publikacji
+        self.last_pub = monotonic()
 
 
 class VirtualCamera:
@@ -207,13 +207,10 @@ class VirtualCamera:
 
     def publish(self) -> None:
         """Publish camera frame if enough time has passed (rate-limited)."""
-        now_mono = monotonic()
-        if self._min_interval and (now_mono - self.last_pub) < self._min_interval:
+        start_mono = monotonic()
+        if self._min_interval and (start_mono - self.last_pub) < self._min_interval:
             # Zbyt wcześnie — brak wysyłki i brak zmiany last_pub
             return
-
-        # Aktualizujemy last_pub dopiero przy realnej publikacji
-        self.last_pub = now_mono
 
         if self._pub:
             try:
@@ -229,3 +226,6 @@ class VirtualCamera:
                 self._pub.send_multipart([CAMERA_TOPIC.encode("utf-8"), img_bytes])
             except Exception as e:  # noqa: BLE001
                 LOG.debug("Error publishing camera: %s", e)
+
+        # Aktualizujemy znacznik czasu po zakończeniu próby publikacji
+        self.last_pub = monotonic()

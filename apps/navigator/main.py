@@ -22,7 +22,7 @@ import time
 from enum import Enum
 
 from apps.navigator import pathfinding
-from apps.navigator.ai_mode_adapter import log_navigator_mode_status, should_use_pc_enhanced_data
+from apps.navigator.ai_mode_adapter import log_navigator_mode_status
 from common.bus import (
     TOPIC_MAPPER_MAP_DATA,
     TOPIC_NAVIGATOR_MAP_REQUEST,
@@ -84,20 +84,17 @@ class Navigator:
 
         # Bus connections
         self.sub_obstacle = BusSub(TOPIC_VISION_OBSTACLE)
-        self.sub_obstacle_enhanced = None  # Will be initialized if needed
+        self.sub_obstacle_enhanced: BusSub | None = None
         self.sub_control = BusSub(TOPIC_NAVIGATOR_CONTROL)
         self.sub_return_home = BusSub(TOPIC_NAVIGATOR_RETURN_HOME_START)
         self.sub_map_data = BusSub(TOPIC_MAPPER_MAP_DATA)
         self.sub_robot_pose = BusSub(TOPIC_ROBOT_POSE)
-        self.sub_ai_mode = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)  # Subscribe to AI mode changes
+        # Subscribe to AI mode changes (local / pc_offload)
+        self.sub_ai_mode = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
         self.pub = BusPub()
 
-        # Check if we should use enhanced PC data
-        self.use_pc_enhanced = should_use_pc_enhanced_data()
-        if self.use_pc_enhanced:
-            # In pc_offload mode, subscribe to enhanced obstacle data from PC
-            self.sub_obstacle_enhanced = BusSub(TOPIC_VISION_OBSTACLE_ENHANCED)
-            LOG.info("Navigator: Using PC-enhanced obstacle data (vision.obstacle.enhanced)")
+        # Start always in local mode; AI events will switch to pc_offload if needed
+        self.use_pc_enhanced: bool = False
 
         # State tracking
         self.last_obstacle_ts = 0.0
@@ -182,7 +179,7 @@ class Navigator:
             self._send_motion_drive(self.fwd_speed)
         else:
             # Obstacle detected
-            LOG.info(f"Obstacle detected (confidence: {confidence:.2f})")
+            LOG.info("Obstacle detected (confidence: %.2f)", confidence)
 
             if self.strategy == Strategy.STOP:
                 self._handle_stop_strategy()
@@ -228,7 +225,7 @@ class Navigator:
                 strategy = Strategy[strategy_str.upper()]
                 self.set_strategy(strategy)
             except KeyError:
-                LOG.warning(f"Invalid strategy in start command: {strategy_str}")
+                LOG.warning("Invalid strategy in start command: %s", strategy_str)
             self.start()
 
         elif action == "stop":
@@ -244,32 +241,32 @@ class Navigator:
                     self.set_strategy(strategy)
                     changed = True
                 except KeyError:
-                    LOG.warning(f"Invalid strategy in config: {config['strategy']}")
+                    LOG.warning("Invalid strategy in config: %s", config["strategy"])
 
             if "fwd_speed" in config:
                 self.fwd_speed = float(config["fwd_speed"])
-                LOG.info(f"Forward speed set to: {self.fwd_speed}")
+                LOG.info("Forward speed set to: %s", self.fwd_speed)
                 changed = True
 
             if "turn_speed" in config:
                 self.turn_speed = float(config["turn_speed"])
-                LOG.info(f"Turn speed set to: {self.turn_speed}")
+                LOG.info("Turn speed set to: %s", self.turn_speed)
                 changed = True
 
             if changed:
                 self.state_changed = True
 
         else:
-            LOG.warning(f"Unknown control action: {action}")
+            LOG.warning("Unknown control action: %s", action)
 
     def _handle_ai_mode_change(self, payload: dict):
         """Handle AI mode change event dynamically.
 
         Args:
-            payload: Event payload containing new mode
+            payload: Event payload containing new mode.
         """
         new_mode = payload.get("mode", "")
-        LOG.info(f"AI mode change detected: {new_mode}")
+        LOG.info("AI mode change detected: %s", new_mode)
 
         old_use_pc_enhanced = self.use_pc_enhanced
         self.use_pc_enhanced = new_mode == "pc_offload"
@@ -278,14 +275,16 @@ class Navigator:
         if old_use_pc_enhanced != self.use_pc_enhanced:
             if self.use_pc_enhanced:
                 # Switched to pc_offload mode - create enhanced data subscription
-                if not self.sub_obstacle_enhanced:
+                if self.sub_obstacle_enhanced is None:
                     self.sub_obstacle_enhanced = BusSub(TOPIC_VISION_OBSTACLE_ENHANCED)
                     LOG.info("Navigator: Switched to PC-enhanced obstacle data (vision.obstacle.enhanced)")
             else:
                 # Switched to local mode - close enhanced data subscription if it exists
-                if self.sub_obstacle_enhanced:
-                    self.sub_obstacle_enhanced.close()
-                    self.sub_obstacle_enhanced = None
+                if self.sub_obstacle_enhanced is not None:
+                    try:
+                        self.sub_obstacle_enhanced.close()
+                    finally:
+                        self.sub_obstacle_enhanced = None
                     LOG.info("Navigator: Switched to local obstacle data (vision.obstacle)")
 
             # Log the new mode
@@ -335,13 +334,18 @@ class Navigator:
         # Get current position
         start_pose = (self.current_pose[0], self.current_pose[1])
 
-        LOG.info(f"Planning path from {start_pose} to {self.goal_pose}")
+        LOG.info("Planning path from %s to %s", start_pose, self.goal_pose)
 
         # Find path using A*
         try:
-            path = pathfinding.find_path(grid_data, start_pose, self.goal_pose, allow_unknown=True)
-        except Exception as e:
-            LOG.exception(f"Error during pathfinding: {e}")
+            path = pathfinding.find_path(
+                grid_data,
+                start_pose,
+                self.goal_pose,
+                allow_unknown=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            LOG.exception("Error during pathfinding: %s", exc)
             path = None
 
         if path is None or len(path) == 0:
@@ -351,7 +355,7 @@ class Navigator:
             self._send_motion_stop()
             return
 
-        LOG.info(f"Path found with {len(path)} waypoints")
+        LOG.info("Path found with %d waypoints", len(path))
         self.current_path = path
         self.state_changed = True
 
@@ -386,8 +390,9 @@ class Navigator:
                 self._send_motion_stop()
             else:
                 LOG.warning(
-                    f"Path is empty but robot is not at goal "
-                    f"(distance={goal_distance:.2f}m > tolerance={GOAL_TOLERANCE:.2f}m)"
+                    "Path is empty but robot is not at goal (distance=%.2fm > tolerance=%.2fm)",
+                    goal_distance,
+                    GOAL_TOLERANCE,
                 )
                 # Stay in RETURNING_HOME state for potential replan
             return
@@ -403,7 +408,7 @@ class Navigator:
 
             # Check if we've reached the waypoint
             if distance < WAYPOINT_TOLERANCE:
-                LOG.info(f"Reached waypoint ({target_x:.2f}, {target_y:.2f})")
+                LOG.info("Reached waypoint (%.2f, %.2f)", target_x, target_y)
                 self.current_path.pop(0)
 
                 # Check if this was the last waypoint
@@ -447,11 +452,11 @@ class Navigator:
             # Turn towards waypoint
             turn_direction = 1.0 if angle_error > 0 else -1.0
             self._send_motion_drive(0.0, turn_direction * self.turn_speed)
-            LOG.debug(f"Turning: angle_error={math.degrees(angle_error):.1f}°")
+            LOG.debug("Turning: angle_error=%.1f°", math.degrees(angle_error))
         else:
             # Move forward towards waypoint
             self._send_motion_drive(self.fwd_speed, 0.0)
-            LOG.debug(f"Moving forward: distance={distance:.2f}m")
+            LOG.debug("Moving forward: distance=%.2fm", distance)
 
     def _publish_state(self, force: bool = False):
         """Publish navigator state to bus
@@ -501,14 +506,18 @@ class Navigator:
                         angle = payload.get("angle")
                         if distance is not None and angle is not None:
                             LOG.debug(
-                                f"Enhanced obstacle data from PC: present={present}, "
-                                f"distance={distance:.2f}m, angle={angle:.1f}°"
+                                "Enhanced obstacle data from PC: present=%s, distance=%.2fm, angle=%.1f°",
+                                present,
+                                distance,
+                                angle,
                             )
                         if self.active:
                             self._handle_obstacle(present, confidence)
                         # Check for obstacles during return to home
                         elif self.state == NavigatorState.RETURNING_HOME and present:
-                            LOG.warning("Obstacle detected during return to home - stopping")
+                            LOG.warning(
+                                "Obstacle detected during return to home - stopping",
+                            )
                             self.state = NavigatorState.PATH_BLOCKED
                             self.state_changed = True
                             self._send_motion_stop()
@@ -522,7 +531,9 @@ class Navigator:
                             self._handle_obstacle(present, confidence)
                         # Check for obstacles during return to home
                         elif self.state == NavigatorState.RETURNING_HOME and present:
-                            LOG.warning("Obstacle detected during return to home - stopping")
+                            LOG.warning(
+                                "Obstacle detected during return to home - stopping",
+                            )
                             self.state = NavigatorState.PATH_BLOCKED
                             self.state_changed = True
                             self._send_motion_stop()
@@ -570,12 +581,12 @@ class Navigator:
 
         except KeyboardInterrupt:
             LOG.info("Navigator interrupted by user")
-        except Exception as e:
-            LOG.exception(f"Error in navigator loop: {e}")
+        except Exception as exc:  # noqa: BLE001
+            LOG.exception("Error in navigator loop: %s", exc)
         finally:
             self.stop()
             self.sub_obstacle.close()
-            if self.sub_obstacle_enhanced:
+            if self.sub_obstacle_enhanced is not None:
                 self.sub_obstacle_enhanced.close()
             self.sub_control.close()
             self.sub_ai_mode.close()
@@ -597,7 +608,7 @@ def main():
     try:
         strategy = Strategy[STRATEGY.upper()]
     except KeyError:
-        LOG.warning(f"Invalid strategy '{STRATEGY}', using STOP")
+        LOG.warning("Invalid strategy '%s', using STOP", STRATEGY)
         strategy = Strategy.STOP
 
     navigator = Navigator(strategy=strategy)

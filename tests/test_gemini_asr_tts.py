@@ -157,10 +157,11 @@ class TestGeminiTTS:
 
         # Use proper logger with event method
         logger = voice_logging.get_logger("test")
-        audio_bytes, sample_rate, fmt = synthesize("Hello world", config, logger=logger)
+        audio_bytes, sample_rate, channels, fmt = synthesize("Hello world", config, logger=logger)
 
         assert len(audio_bytes) > 0
         assert sample_rate == 48000
+        assert channels == 2
         assert fmt == "wav"
         mock_client_class.assert_called_once_with(api_key="fake-key-for-test")
 

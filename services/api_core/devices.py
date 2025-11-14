@@ -257,6 +257,24 @@ def bus_sub_loop():
                         C.LAST_BALANCE["ts"] = C.LAST_MSG_TS
                     continue
 
+                if topic == "cmd.height":
+                    data = _json_or_raw(payload)
+                    height_val = None
+                    if isinstance(data, dict):
+                        height_val = data.get("height")
+                    elif isinstance(data, (int, float)):
+                        height_val = data
+                    if height_val is not None:
+                        try:
+                            height_int = int(height_val)
+                        except Exception:
+                            height_int = None
+                        if height_int is not None:
+                            height_int = max(0, min(12, height_int))
+                            C.LAST_HEIGHT["value"] = height_int
+                            C.LAST_HEIGHT["ts"] = C.LAST_MSG_TS
+                    continue
+
                 if topic == "tracking.mode:set":
                     data = _json_or_raw(payload)
                     mode = None

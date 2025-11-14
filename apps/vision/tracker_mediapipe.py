@@ -118,6 +118,10 @@ def control_loop() -> None:
                 # print(f"[tracker] heartbeat last_frame_path={LAST_FRAME_PATH}", flush=True)
                 continue
 
+            if topic == "tracking.mode:set":
+                # Nowe API sterowania trackingiem (alias dla tracking.mode)
+                print(f"[tracker] tracking.mode:set data={data}", flush=True)
+
             # Interesują nas tylko tematy związane z trackingiem
             if "tracking" not in topic:
                 continue
@@ -363,8 +367,14 @@ def tracking_loop() -> None:
 if __name__ == "__main__":
     print("[tracker] starting MediaPipe tracker", flush=True)
     PUB = zmq_pub()
-    # Subskrybujemy wszystko, ale w control_loop filtrujemy po topicu
-    SUB = zmq_sub([""])
+    # Subskrybujemy tematy sterujące nowym API + heartbeat kamery
+    SUB = zmq_sub(
+        [
+            "tracking.mode",
+            "tracking.mode:set",
+            "camera.heartbeat",
+        ]
+    )
 
     threading.Thread(target=control_loop, daemon=True).start()
     tracking_loop()

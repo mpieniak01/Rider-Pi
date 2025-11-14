@@ -709,7 +709,8 @@ def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
 
         raw = _inline_audio_bytes(getattr(inline, "data", None), logger)
 
-        mime_type = getattr(inline, "mime_type", None) or getattr(inline, "mimeType", None) or ""
+        raw_mime = getattr(inline, "mime_type", None) or getattr(inline, "mimeType", None)
+        mime_type = str(raw_mime or "")
         mime_type_low = mime_type.lower()
 
         wav_bytes: bytes | None = None

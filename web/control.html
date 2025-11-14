@@ -4,58 +4,310 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Sterowanie ruchem (REST /api)</title>
-  <link rel="stylesheet" href="/web/assets/dashboard-common.css">
+  <link rel="stylesheet" href="/web/assets/dashboard-common.css" />
   <style>
     :root { --pad: 16px; --gap: 12px; }
-    body{ font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; background:#0e1823; color:#e6eef7; }
-    .wrap{max-width:1100px;margin:0 auto;padding:var(--pad);}
-    .panel-row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:stretch;margin:0 0 var(--pad);}
-    .panel-row .card{flex:1 1 360px;margin:0;}
-    .cam-card{position:relative;max-width:520px;}
-    .control-card{min-width:320px;}
-    @media(max-width:900px){
-      .panel-row{flex-direction:column;}
-      .panel-row .card{max-width:100%;}
+    body {
+      font-family: system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      background: #0e1823;
+      color: #e6eef7;
     }
-    h1{font-size:20px;margin:0 0 var(--pad)}
-    .row{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:center;margin:8px 0}
-    .grid{display:grid;grid-template-columns:repeat(3,160px);gap:var(--gap);justify-content:center;margin:16px 0}
-    .card{ background:#0f2030; border:1px solid #1e3a56; border-radius:16px; box-shadow:0 1px 8px rgba(0,0,0,.25); padding:var(--pad); margin:0 0 var(--pad); }
-    button{ padding:12px 16px; border:1px solid #24425e; border-radius:12px; background:#122435; color:#e6eef7; font-size:16px; cursor:pointer; transition:transform .03s ease, background .12s ease, border-color .12s ease; }
-    button:hover{ background:#16304a; border-color:#2b5577 } button:active{ transform:scale(0.98) }
-    .btn-sm{ padding:6px 10px; font-size:13px; border-radius:10px }
-    label{font-size:14px;color:#b7cee3;display:flex;align-items:center;gap:8px}
-    input[type="range"]{width:160px; accent-color:#6de28a}
-    input[type="number"]{ width:100px;background:#0b1a27;color:#e6eef7; border:1px solid #24425e;border-radius:10px;padding:6px 8px }
-    #log{ height:220px; overflow:auto; background:#0b1a27; border:1px solid #1c3349; border-radius:10px; padding:8px; font-family:ui-monospace,Consolas,monospace; font-size:13px; white-space:pre-wrap; }
-    .muted{opacity:.85} .ok{color:#6de28a} .warn{color:#f0c36d} .err{color:#ff8080}
-    .kbd{ font-family:ui-monospace,Consolas,monospace; background:#102233; border:1px solid #203a57; border-radius:6px; padding:2px 6px; margin:0 2px; color:#b7cee3 }
-    .spacer{flex:1} a{color:#98c7ff; text-decoration:none} a:hover{text-decoration:underline}
-    .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #24425e;background:#0b1a27}
-    .pill.ok{color:#6de28a;border-color:#2c6b48} .pill.err{color:#ff8080;border-color:#8a3a3a} .pill.warn{color:#f0c36d;border-color:#8a6a2c}
-    .svc-table{width:100%;border-collapse:collapse;margin-top:8px}
-    .svc-table th,.svc-table td{border-top:1px solid #1c3349;padding:8px 6px;text-align:left;font-size:14px}
-    .svc-table td:nth-child(3), .svc-table td:nth-child(4){ white-space:nowrap; }
-    .svc-actions{ white-space:nowrap; }
-    .svc-actions button{ display:inline-block; padding:6px 10px; font-size:14px; margin:2px 3px; border-radius:10px }
-    .res-holders{font-size:13px;color:#b7cee3}
-    .cam{width:100%;max-width:480px;border-radius:12px;border:1px solid #1c3349;background:#0b1a27; display:block; margin:0 auto;}
-    .note{font-size:13px;color:#b7cee3}
-    .feature-list{display:flex;flex-direction:column;gap:12px;margin-top:12px}
-    .feature-row{display:flex;flex-wrap:wrap;gap:12px;padding:12px;border:1px solid #1e3a56;border-radius:12px;background:#0b1a27}
-    .feature-row.busy{opacity:0.75}
-    .feature-row .feature-info{flex:1;min-width:240px}
-    .feature-title{font-weight:600;margin:0}
-    .feature-desc{font-size:13px;color:#9bb5ce;margin-top:4px}
-    .feature-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
-    .feature-status{display:flex;flex-direction:column;gap:6px;min-width:160px}
-    .feature-actions{display:flex;flex-wrap:wrap;gap:8px;min-width:160px;align-items:center}
-    .feature-actions button{min-width:100px}
-    .feature-note{font-size:12px;color:#f0c36d;margin-top:8px;width:100%}
-    .feature-select{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:#b7cee3}
-    .feature-select select{background:#0b1a27;color:#e6eef7;border:1px solid #24425e;border-radius:10px;padding:6px 8px}
-    .feature-resource{display:flex;flex-wrap:wrap;gap:var(--gap);align-items:flex-start;margin:0 0 var(--pad)}
-    .feature-card,.resource-card{flex:1 1 360px}
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: var(--pad);
+    }
+    .panel-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--gap);
+      align-items: stretch;
+      margin: 0 0 var(--pad);
+    }
+    .panel-row .card {
+      flex: 1 1 360px;
+      margin: 0;
+    }
+    .cam-card {
+      position: relative;
+      max-width: 520px;
+    }
+    .control-card {
+      min-width: 320px;
+    }
+    @media (max-width: 900px) {
+      .panel-row {
+        flex-direction: column;
+      }
+      .panel-row .card {
+        max-width: 100%;
+      }
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 var(--pad);
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--gap);
+      align-items: center;
+      margin: 8px 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 160px);
+      gap: var(--gap);
+      justify-content: center;
+      margin: 16px 0;
+    }
+    .card {
+      background: #0f2030;
+      border: 1px solid #1e3a56;
+      border-radius: 16px;
+      box-shadow: 0 1px 8px rgba(0, 0, 0, 0.25);
+      padding: var(--pad);
+      margin: 0 0 var(--pad);
+    }
+    button {
+      padding: 12px 16px;
+      border: 1px solid #24425e;
+      border-radius: 12px;
+      background: #122435;
+      color: #e6eef7;
+      font-size: 16px;
+      cursor: pointer;
+      transition:
+        transform 0.03s ease,
+        background 0.12s ease,
+        border-color 0.12s ease;
+    }
+    button:hover {
+      background: #16304a;
+      border-color: #2b5577;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    .btn-sm {
+      padding: 6px 10px;
+      font-size: 13px;
+      border-radius: 10px;
+    }
+    label {
+      font-size: 14px;
+      color: #b7cee3;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    input[type="range"] {
+      width: 160px;
+      accent-color: #6de28a;
+    }
+    input[type="number"] {
+      width: 100px;
+      background: #0b1a27;
+      color: #e6eef7;
+      border: 1px solid #24425e;
+      border-radius: 10px;
+      padding: 6px 8px;
+    }
+    #log {
+      height: 220px;
+      overflow: auto;
+      background: #0b1a27;
+      border: 1px solid #1c3349;
+      border-radius: 10px;
+      padding: 8px;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+    .muted {
+      opacity: 0.85;
+    }
+    .ok {
+      color: #6de28a;
+    }
+    .warn {
+      color: #f0c36d;
+    }
+    .err {
+      color: #ff8080;
+    }
+    .kbd {
+      font-family: ui-monospace, Consolas, monospace;
+      background: #102233;
+      border: 1px solid #203a57;
+      border-radius: 6px;
+      padding: 2px 6px;
+      margin: 0 2px;
+      color: #b7cee3;
+    }
+    .spacer {
+      flex: 1;
+    }
+    a {
+      color: #98c7ff;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid #24425e;
+      background: #0b1a27;
+    }
+    .pill.ok {
+      color: #6de28a;
+      border-color: #2c6b48;
+    }
+    .pill.err {
+      color: #ff8080;
+      border-color: #8a3a3a;
+    }
+    .pill.warn {
+      color: #f0c36d;
+      border-color: #8a6a2c;
+    }
+    .svc-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .svc-table th,
+    .svc-table td {
+      border-top: 1px solid #1c3349;
+      padding: 8px 6px;
+      text-align: left;
+      font-size: 14px;
+    }
+    .svc-table td:nth-child(3),
+    .svc-table td:nth-child(4) {
+      white-space: nowrap;
+    }
+    .svc-actions {
+      white-space: nowrap;
+    }
+    .svc-actions button {
+      display: inline-block;
+      padding: 6px 10px;
+      font-size: 14px;
+      margin: 2px 3px;
+      border-radius: 10px;
+    }
+    .res-holders {
+      font-size: 13px;
+      color: #b7cee3;
+    }
+    .cam {
+      width: 100%;
+      max-width: 480px;
+      border-radius: 12px;
+      border: 1px solid #1c3349;
+      background: #0b1a27;
+      display: block;
+      margin: 0 auto;
+    }
+    .note {
+      font-size: 13px;
+      color: #b7cee3;
+    }
+    .feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .feature-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid #1e3a56;
+      border-radius: 12px;
+      background: #0b1a27;
+    }
+    .feature-row.busy {
+      opacity: 0.75;
+    }
+    .feature-row .feature-info {
+      flex: 1;
+      min-width: 240px;
+    }
+    .feature-title {
+      font-weight: 600;
+      margin: 0;
+    }
+    .feature-desc {
+      font-size: 13px;
+      color: #9bb5ce;
+      margin-top: 4px;
+    }
+    .feature-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+      flex-wrap: wrap;
+    }
+    .feature-status {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 160px;
+    }
+    .feature-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 160px;
+      align-items: center;
+    }
+    .feature-actions button {
+      min-width: 100px;
+    }
+    .feature-note {
+      font-size: 12px;
+      color: #f0c36d;
+      margin-top: 8px;
+      width: 100%;
+    }
+    .feature-select {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      font-size: 13px;
+      color: #b7cee3;
+    }
+    .feature-select select {
+      background: #0b1a27;
+      color: #e6eef7;
+      border: 1px solid #24425e;
+      border-radius: 10px;
+      padding: 6px 8px;
+    }
+    .feature-resource {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--gap);
+      align-items: flex-start;
+      margin: 0 0 var(--pad);
+    }
+    .feature-card,
+    .resource-card {
+      flex: 1 1 360px;
+    }
   </style>
 </head>
 <body data-page="control">
@@ -64,27 +316,90 @@
 
   <h1 data-i18n="meta.app_title">
     Rider-Pi — Sterowanie ruchem (REST /api)
-    <span id="apiStatus" class="muted" style="margin-left:8px" data-i18n="header.api_status_checking">(checking…)</span>
-    <span id="obstBadge" class="pill warn" style="margin-left:10px;display:none" data-i18n="header.obstacle_na">Obstacle: n/a</span>
+    <span
+      id="apiStatus"
+      class="muted"
+      style="margin-left:8px"
+      data-i18n="header.api_status_checking"
+    >(checking…)</span>
+    <span
+      id="obstBadge"
+      class="pill warn"
+      style="margin-left:10px;display:none"
+      data-i18n="header.obstacle_na"
+    >Obstacle: n/a</span>
   </h1>
 
+  <!-- TRYB AI -->
+  <div class="card ai-mode-card">
+    <h2 style="font-size:16px;margin:0 0 8px">
+      <span data-i18n="ai_mode.title">Tryb AI</span>
+      <span
+        id="aiModeCurrentBadge"
+        class="pill warn"
+        style="margin-left:8px"
+        data-i18n="ai_mode.loading"
+      >ładowanie…</span>
+    </h2>
+    <div class="row" style="margin:6px 0 10px">
+      <div style="flex:1">
+        <p
+          class="note"
+          style="margin:0 0 8px"
+          data-i18n="ai_mode.description"
+        >
+          Wybierz tryb przetwarzania AI: lokalny (wszystko na Pi) lub offload (ciężkie obliczenia na PC).
+        </p>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button
+            id="btnAiModeLocal"
+            class="btn-sm"
+            data-i18n="ai_mode.btn_local"
+          >🏠 Local (Pi)</button>
+          <button
+            id="btnAiModeOffload"
+            class="btn-sm"
+            data-i18n="ai_mode.btn_offload"
+          >💻 PC Offload</button>
+          <span
+            id="aiModeStatus"
+            class="muted"
+            data-i18n="ai_mode.status_checking"
+          >sprawdzanie…</span>
+        </div>
+        <div id="aiModeLastChanged" class="note" style="margin-top:8px">
+          <span data-i18n="ai_mode.last_changed">Ostatnia zmiana:</span>
+          <span id="aiModeChangedTime">n/a</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="panel-row">
-    <!-- 1) KAMERA (na górze) -->
+    <!-- 1) KAMERA -->
     <div class="card cam-card">
       <h2 style="font-size:16px;margin:0 0 8px" data-i18n="camera.title">Podgląd kamery</h2>
 
       <!-- przyciski po prawej -->
-      <div style="position:absolute; right:16px; top:16px; display:flex; gap:8px; align-items:flex-end;">
-        <button id="camToggle" class="btn-sm" data-i18n="camera.auto_refresh_on">⟳ Auto-refresh (on)</button>
+      <div
+        style="position:absolute; right:16px; top:16px; display:flex; gap:8px; align-items:flex-end;"
+      >
+        <button id="camToggle" class="btn-sm" data-i18n="camera.auto_refresh_on">
+          ⟳ Auto-refresh (on)
+        </button>
         <button id="btnUseEdge" class="btn-sm" data-i18n="camera.use_edge">Use EDGE</button>
-        <button id="btnUseCam"  class="btn-sm" data-i18n="camera.use_cam">Use CAM</button>
+        <button id="btnUseCam" class="btn-sm" data-i18n="camera.use_cam">Use CAM</button>
       </div>
 
-      <!-- obrazek wycentrowany -->
       <div class="row" style="align-items:flex-start; justify-content:center">
         <div>
           <img id="camPrev" class="cam" alt="camera preview" src="/camera/last?ts=0" />
-          <div class="note" id="camInfo" style="margin-top:6px" data-i18n="camera.last_frame_na">last frame: n/a · source: n/a</div>
+          <div
+            class="note"
+            id="camInfo"
+            style="margin-top:6px"
+            data-i18n="camera.last_frame_na"
+          >last frame: n/a · source: n/a</div>
         </div>
       </div>
     </div>
@@ -128,205 +443,281 @@
         </span>
         <div class="spacer"></div>
       </div>
+
+      <div class="balance-control-row">
+        <div class="balance-control">
+          <label for="balanceToggle">
+            <span data-i18n="balance.toggle_label">Balans (stabilizacja)</span>
+            <input id="balanceToggle" type="checkbox" />
+          </label>
+        </div>
+        <div class="balance-control">
+          <label for="heightSlider">
+            <span data-i18n="balance.height_label">Wysokość</span>
+            <input
+              id="heightSlider"
+              type="range"
+              min="0"
+              max="12"
+              step="1"
+              value="6"
+            />
+            <span id="heightValue">6</span>
+          </label>
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- FUNKCJE + ZASOBY -->
   <div class="panel-row feature-resource">
     <div class="card feature-card">
-      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.features_title">Funkcje</h2>
+      <h2
+        style="font-size:16px;margin:0 0 8px"
+        data-i18n="motion.features_title"
+      >Funkcje</h2>
       <div class="feature-list" id="featureList">
         <div class="feature-row" data-feature="face">
-        <div class="feature-info">
-          <div class="feature-head">
-            <div class="feature-title" data-i18n="motion.follow_face">Śledź Twarz (Follow Face)</div>
+          <div class="feature-info">
+            <div class="feature-head">
+              <div
+                class="feature-title"
+                data-i18n="motion.follow_face"
+              >Śledź Twarz (Follow Face)</div>
+            </div>
+            <div
+              class="feature-desc"
+              data-i18n="motion.feature_face_desc"
+            >Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
           </div>
-          <div class="feature-desc" data-i18n="motion.feature_face_desc">Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
+          <div class="feature-status">
+            <span class="pill feature-pill" data-feature-pill="face">n/a</span>
+          </div>
+          <div class="feature-actions">
+            <button
+              class="btn-sm"
+              data-feature-action="start"
+              data-i18n="motion.feature_btn_start"
+            >Start</button>
+            <button
+              class="btn-sm"
+              data-feature-action="stop"
+              data-i18n="motion.feature_btn_stop"
+            >Stop</button>
+            <div class="feature-note" data-feature-note="face"></div>
+          </div>
         </div>
-        <div class="feature-status">
-          <span class="pill feature-pill" data-feature-pill="face">n/a</span>
-        </div>
-        <div class="feature-actions">
-          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-          <div class="feature-note" data-feature-note="face"></div>
-        </div>
-      </div>
 
         <div class="feature-row" data-feature="hand">
-        <div class="feature-info">
-          <div class="feature-head">
-            <div class="feature-title" data-i18n="motion.follow_hand">Śledź Dłoń (Follow Hand)</div>
+          <div class="feature-info">
+            <div class="feature-head">
+              <div
+                class="feature-title"
+                data-i18n="motion.follow_hand"
+              >Śledź Dłoń (Follow Hand)</div>
+            </div>
+            <div
+              class="feature-desc"
+              data-i18n="motion.feature_hand_desc"
+            >Te same usługi tracker+controller, ale z trybem dłoni.</div>
           </div>
-          <div class="feature-desc" data-i18n="motion.feature_hand_desc">Te same usługi tracker+controller, ale z trybem dłoni.</div>
+          <div class="feature-status">
+            <span class="pill feature-pill" data-feature-pill="hand">n/a</span>
+          </div>
+          <div class="feature-actions">
+            <button
+              class="btn-sm"
+              data-feature-action="start"
+              data-i18n="motion.feature_btn_start"
+            >Start</button>
+            <button
+              class="btn-sm"
+              data-feature-action="stop"
+              data-i18n="motion.feature_btn_stop"
+            >Stop</button>
+            <div class="feature-note" data-feature-note="hand"></div>
+          </div>
         </div>
-        <div class="feature-status">
-          <span class="pill feature-pill" data-feature-pill="hand">n/a</span>
-        </div>
-        <div class="feature-actions">
-          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-          <div class="feature-note" data-feature-note="hand"></div>
-        </div>
-      </div>
 
         <div class="feature-row" data-feature="recon">
-        <div class="feature-info">
-          <div class="feature-head">
-            <div class="feature-title" data-i18n="motion.recon_mode">Tryb Rekonesans (autonomiczny)</div>
-          </div>
-          <div class="feature-desc" data-i18n="motion.feature_recon_desc">Włącza odometrię, mapper oraz startuje navigatora.</div>
-          <div class="feature-select">
-            <span data-i18n="motion.recon_strategy">Strategia</span>:
-            <select id="reconStrategy">
-              <option value="STOP">STOP (zatrzymaj)</option>
-              <option value="AVOID">AVOID (omijaj)</option>
-            </select>
-          </div>
-        </div>
-        <div class="feature-status">
-          <span class="pill feature-pill" data-feature-pill="recon">n/a</span>
-        </div>
-        <div class="feature-actions">
-          <button class="btn-sm" data-feature-action="start" data-i18n="motion.feature_btn_start">Start</button>
-          <button class="btn-sm" data-feature-action="stop" data-i18n="motion.feature_btn_stop">Stop</button>
-          <button class="btn-sm" id="btnReturnHome" data-feature-action="return-home" data-i18n="motion.return_home">🏠 Powrót do Bazy</button>
-          <div class="feature-note" data-feature-note="recon"></div>
-        </div>
-      </div>
-      </div>
-    </div>
-
-    <!-- AI Mode Switcher Card -->
-    <div class="card" style="flex:1 1 360px">
-      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="ai_mode.title">Tryb Pracy AI</h2>
-      <div style="margin-bottom:12px">
-        <div style="font-size:14px;color:#b7cee3;margin-bottom:8px" data-i18n="ai_mode.description">
-          Wybierz, gdzie wykonywane są zadania AI (ASR, NLU, Vision Detection):
-        </div>
-        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-          <div style="flex:1;min-width:200px">
-            <label style="font-size:14px;display:block;margin-bottom:6px" data-i18n="ai_mode.current_mode">
-              Aktualny tryb:
-            </label>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span id="aiModeStatusTop" class="pill ok" data-i18n="ai_mode.status_loading">Sprawdzanie...</span>
-              <span id="aiModeTimeTop" class="muted" style="font-size:12px"></span>
+          <div class="feature-info">
+            <div class="feature-head">
+              <div
+                class="feature-title"
+                data-i18n="motion.recon_mode"
+              >Tryb Rekonesans (autonomiczny)</div>
+            </div>
+            <div
+              class="feature-desc"
+              data-i18n="motion.feature_recon_desc"
+            >Włącza odometrię, mapper oraz startuje navigatora.</div>
+            <div class="feature-select">
+              <span data-i18n="motion.recon_strategy">Strategia</span>:
+              <select id="reconStrategy">
+                <option value="STOP">STOP (zatrzymaj)</option>
+                <option value="AVOID">AVOID (omijaj)</option>
+              </select>
             </div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button id="btnAiModeLocalTop" class="btn-sm" data-i18n="ai_mode.btn_local">🖥️ Local</button>
-            <button id="btnAiModeOffloadTop" class="btn-sm" data-i18n="ai_mode.btn_offload">💻 PC Offload</button>
+          <div class="feature-status">
+            <span class="pill feature-pill" data-feature-pill="recon">n/a</span>
+          </div>
+          <div class="feature-actions">
+            <button
+              class="btn-sm"
+              data-feature-action="start"
+              data-i18n="motion.feature_btn_start"
+            >Start</button>
+            <button
+              class="btn-sm"
+              data-feature-action="stop"
+              data-i18n="motion.feature_btn_stop"
+            >Stop</button>
+            <button
+              class="btn-sm"
+              id="btnReturnHome"
+              data-feature-action="return-home"
+              data-i18n="motion.return_home"
+            >🏠 Powrót do Bazy</button>
+            <div class="feature-note" data-feature-note="recon"></div>
           </div>
         </div>
-      </div>
-      <div style="font-size:13px;color:#b7cee3;padding:8px;background:#0b1a27;border:1px solid #1c3349;border-radius:8px">
-        <div style="margin-bottom:6px"><strong data-i18n="ai_mode.mode_local_title">Local:</strong> <span data-i18n="ai_mode.mode_local_desc">Wszystkie obliczenia AI na Rider-Pi</span></div>
-        <div><strong data-i18n="ai_mode.mode_offload_title">PC Offload:</strong> <span data-i18n="ai_mode.mode_offload_desc">Kosztowne zadania AI przesyłane do PC</span></div>
       </div>
     </div>
 
     <div class="card resource-card">
-      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="resources.title">Diagnostyka zasobów</h2>
+      <h2
+        style="font-size:16px;margin:0 0 8px"
+        data-i18n="resources.title"
+      >Diagnostyka zasobów</h2>
       <div id="resInfo" class="muted" data-i18n="meta.loading">Ładowanie…</div>
       <table class="svc-table" id="resTable">
         <thead>
-          <tr>
-            <th data-i18n="resources.column_name">Zasób</th>
-            <th data-i18n="resources.column_status">Status</th>
-            <th data-i18n="resources.column_holders">Blokujące procesy</th>
-            <th data-i18n="resources.column_actions">Akcje</th>
-          </tr>
+        <tr>
+          <th data-i18n="resources.column_name">Zasób</th>
+          <th data-i18n="resources.column_status">Status</th>
+          <th data-i18n="resources.column_holders">Blokujące procesy</th>
+          <th data-i18n="resources.column_actions">Akcje</th>
+        </tr>
         </thead>
         <tbody id="resBody">
-          <tr data-res="mic">
-            <td data-i18n="resources.mic">Mikrofon</td>
-            <td class="res-status">n/a</td>
-            <td class="res-holders">-</td>
-            <td class="svc-actions">
-              <button class="btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
-              <button class="btn-sm" data-res="mic" data-res-action="stop" data-i18n="resources.btn_stop_service">Stop usługi</button>
-              <button class="btn-sm" data-res="mic" data-res-action="release" data-i18n="resources.btn_release">Zwolnij</button>
-            </td>
-          </tr>
-          <tr data-res="speaker">
-            <td data-i18n="resources.speaker">Głośnik</td>
-            <td class="res-status">n/a</td>
-            <td class="res-holders">-</td>
-            <td class="svc-actions">
-              <button class="btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
-              <button class="btn-sm" data-res="speaker" data-res-action="stop" data-i18n="resources.btn_stop_service">Stop usługi</button>
-              <button class="btn-sm" data-res="speaker" data-res-action="release" data-i18n="resources.btn_release">Zwolnij</button>
-            </td>
-          </tr>
-          <tr data-res="camera">
-            <td data-i18n="resources.camera">Kamera</td>
-            <td class="res-status">n/a</td>
-            <td class="res-holders">-</td>
-            <td class="svc-actions">
-              <button class="btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
-              <button class="btn-sm" data-res="camera" data-res-action="stop" data-i18n="resources.btn_stop_service">Stop usługi</button>
-              <button class="btn-sm" data-res="camera" data-res-action="release" data-i18n="resources.btn_release">Zwolnij</button>
-            </td>
-          </tr>
-          <tr data-res="lcd">
-            <td data-i18n="resources.lcd">Ekran LCD 2"</td>
-            <td class="res-status">n/a</td>
-            <td class="res-holders">-</td>
-            <td class="svc-actions">
-              <button class="btn-sm" data-res="lcd" data-res-action="refresh">⟳</button>
-              <button class="btn-sm" data-res="lcd" data-res-action="stop" data-i18n="resources.btn_stop_service">Stop usługi</button>
-              <button class="btn-sm" data-res="lcd" data-res-action="release" data-i18n="resources.btn_release">Zwolnij</button>
-            </td>
-          </tr>
+        <tr data-res="mic">
+          <td data-i18n="resources.mic">Mikrofon</td>
+          <td class="res-status">n/a</td>
+          <td class="res-holders">-</td>
+          <td class="svc-actions">
+            <button class="btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
+            <button
+              class="btn-sm"
+              data-res="mic"
+              data-res-action="stop"
+              data-i18n="resources.btn_stop_service"
+            >Stop usługi</button>
+            <button
+              class="btn-sm"
+              data-res="mic"
+              data-res-action="release"
+              data-i18n="resources.btn_release"
+            >Zwolnij</button>
+          </td>
+        </tr>
+        <tr data-res="speaker">
+          <td data-i18n="resources.speaker">Głośnik</td>
+          <td class="res-status">n/a</td>
+          <td class="res-holders">-</td>
+          <td class="svc-actions">
+            <button class="btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
+            <button
+              class="btn-sm"
+              data-res="speaker"
+              data-res-action="stop"
+              data-i18n="resources.btn_stop_service"
+            >Stop usługi</button>
+            <button
+              class="btn-sm"
+              data-res="speaker"
+              data-res-action="release"
+              data-i18n="resources.btn_release"
+            >Zwolnij</button>
+          </td>
+        </tr>
+        <tr data-res="camera">
+          <td data-i18n="resources.camera">Kamera</td>
+          <td class="res-status">n/a</td>
+          <td class="res-holders">-</td>
+          <td class="svc-actions">
+            <button class="btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
+            <button
+              class="btn-sm"
+              data-res="camera"
+              data-res-action="stop"
+              data-i18n="resources.btn_stop_service"
+            >Stop usługi</button>
+            <button
+              class="btn-sm"
+              data-res="camera"
+              data-res-action="release"
+              data-i18n="resources.btn_release"
+            >Zwolnij</button>
+          </td>
+        </tr>
+        <tr data-res="lcd">
+          <td data-i18n="resources.lcd">Ekran LCD 2"</td>
+          <td class="res-status">n/a</td>
+          <td class="res-holders">-</td>
+          <td class="svc-actions">
+            <button class="btn-sm" data-res="lcd" data-res-action="refresh">⟳</button>
+            <button
+              class="btn-sm"
+              data-res="lcd"
+              data-res-action="stop"
+              data-i18n="resources.btn_stop_service"
+            >Stop usługi</button>
+            <button
+              class="btn-sm"
+              data-res="lcd"
+              data-res-action="release"
+              data-i18n="resources.btn_release"
+            >Zwolnij</button>
+          </td>
+        </tr>
         </tbody>
       </table>
     </div>
   </div>
-
-  <div class="card ai-mode-card">
-    <h2 style="font-size:16px;margin:0 0 8px">
-      <span data-i18n="ai_mode.title">Tryb AI</span>
-      <span id="aiModeCurrentBadge" class="pill warn" style="margin-left:8px" data-i18n="ai_mode.loading">ładowanie…</span>
-    </h2>
-    <div class="row" style="margin:6px 0 10px">
-      <div style="flex:1">
-        <p class="note" style="margin:0 0 8px" data-i18n="ai_mode.description">
-          Wybierz tryb przetwarzania AI: lokalny (wszystko na Pi) lub offload (ciężkie obliczenia na PC).
-        </p>
-        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-          <button id="btnAiModeLocal" class="btn-sm" data-i18n="ai_mode.btn_local">🏠 Local (Pi)</button>
-          <button id="btnAiModeOffload" class="btn-sm" data-i18n="ai_mode.btn_offload">💻 PC Offload</button>
-          <span id="aiModeStatus" class="muted" data-i18n="ai_mode.status_checking">sprawdzanie…</span>
-        </div>
-        <div id="aiModeLastChanged" class="note" style="margin-top:8px">
-          <span data-i18n="ai_mode.last_changed">Ostatnia zmiana:</span> <span id="aiModeChangedTime">n/a</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <div class="card motion-queue-card">
     <h2 style="font-size:16px;margin:0 0 8px">
       <span data-i18n="motion_queue.title">Kolejka ruchu</span>
-      <button id="btnMotionQueueFlush" class="btn-sm" style="margin-left:8px" data-i18n="motion_queue.btn_flush">⏹ stop & wyczyść</button>
+      <button
+        id="btnMotionQueueFlush"
+        class="btn-sm"
+        style="margin-left:8px"
+        data-i18n="motion_queue.btn_flush"
+      >⏹ stop &amp; wyczyść</button>
     </h2>
-    <div id="motionQueueInfo" class="muted" data-i18n="motion_queue.loading">Brak danych…</div>
+    <div id="motionQueueInfo" class="muted" data-i18n="motion_queue.loading">
+      Brak danych…
+    </div>
     <table class="svc-table" id="motionQueueTable">
       <thead>
-        <tr>
-          <th data-i18n="motion_queue.column_source">Źródło</th>
-          <th data-i18n="motion_queue.column_vx">Vx</th>
-          <th data-i18n="motion_queue.column_vy">Vy</th>
-          <th data-i18n="motion_queue.column_yaw">Yaw</th>
-          <th data-i18n="motion_queue.column_time">Czas [s]</th>
-          <th data-i18n="motion_queue.column_status">Status</th>
-          <th data-i18n="motion_queue.column_age">Wiek</th>
-        </tr>
+      <tr>
+        <th data-i18n="motion_queue.column_source">Źródło</th>
+        <th data-i18n="motion_queue.column_vx">Vx</th>
+        <th data-i18n="motion_queue.column_vy">Vy</th>
+        <th data-i18n="motion_queue.column_yaw">Yaw</th>
+        <th data-i18n="motion_queue.column_time">Czas [s]</th>
+        <th data-i18n="motion_queue.column_status">Status</th>
+        <th data-i18n="motion_queue.column_age">Wiek</th>
+      </tr>
       </thead>
       <tbody id="motionQueueBody">
-        <tr>
-          <td colspan="7" class="muted" data-i18n="motion_queue.empty_placeholder">Brak zleceń ruchu.</td>
-        </tr>
+      <tr>
+        <td
+          colspan="7"
+          class="muted"
+          data-i18n="motion_queue.empty_placeholder"
+        >Brak zleceń ruchu.</td>
+      </tr>
       </tbody>
     </table>
   </div>
@@ -334,1089 +725,1088 @@
   <div class="card service-card">
     <h2 style="font-size:16px;margin:0 0 8px">
       <span data-i18n="services.title">Usługi (systemd)</span>
-      <button id="svcRefresh" class="btn-sm" style="margin-left:8px" data-i18n="services.refresh">⟳ odśwież</button>
+      <button
+        id="svcRefresh"
+        class="btn-sm"
+        style="margin-left:8px"
+        data-i18n="services.refresh"
+      >⟳ odśwież</button>
     </h2>
     <div id="svcInfo" class="muted">
-      <span data-i18n="meta.loading">Ładowanie…</span> <span id="svcTs"></span>
+      <span data-i18n="meta.loading">Ładowanie…</span>
+      <span id="svcTs"></span>
     </div>
     <table class="svc-table" id="svcTable" style="display:none">
       <thead>
-        <tr>
-          <th data-i18n="services.unit">Unit</th>
-          <th data-i18n="services.desc">Opis</th>
-          <th data-i18n="services.status">Status</th>
-          <th data-i18n="services.autostart">Autostart</th>
-          <th data-i18n="services.actions">Akcje</th>
-        </tr>
+      <tr>
+        <th data-i18n="services.unit">Unit</th>
+        <th data-i18n="services.desc">Opis</th>
+        <th data-i18n="services.status">Status</th>
+        <th data-i18n="services.autostart">Autostart</th>
+        <th data-i18n="services.actions">Akcje</th>
+      </tr>
       </thead>
       <tbody id="svcBody"></tbody>
     </table>
   </div>
 
-  <!-- 4) LOG -->
+  <!-- LOG -->
   <div class="card">
-    <h2 style="font-size:16px;margin:0 0 8px" data-i18n="events.title">Zdarzenia (SSE /events)</h2>
+    <h2
+      style="font-size:16px;margin:0 0 8px"
+      data-i18n="events.title"
+    >Zdarzenia (SSE /events)</h2>
     <div id="log"></div>
   </div>
 </div>
 
 <script type="module" src="/web/assets/menu.js"></script>
-<!-- APP (i18n + logika) -->
 <script type="module">
-  import { initI18n, applyDom, t } from '/web/assets/i18n.js';
+  import { initI18n, applyDom, t } from "/web/assets/i18n.js";
 
-  // --- Inicjalizacja języka z ?lang=, potem localStorage, potem język przeglądarki
-  const urlLang = new URLSearchParams(location.search).get('lang');
-  const saved = localStorage.getItem('lang');
-  const browser = (navigator.language || '').slice(0,2).toLowerCase();
-  const pick = (v)=> v && v.toLowerCase().startsWith('en') ? 'en' : (v && v.toLowerCase().startsWith('pl') ? 'pl' : null);
-  const lang = pick(urlLang) || pick(saved) || pick(browser) || 'pl';
-  if (urlLang) localStorage.setItem('lang', lang);
-  await initI18n(lang);
-  applyDom();                                 // <- KLUCZ: przetłumacz całą stronę
-  document.documentElement.setAttribute('lang', lang);
-  document.title = t('meta.app_title');
-
-  // ====== poniżej oryginalna logika strony, z t() ======
-  const qs = (s)=>document.querySelector(s);
-  const logEl = qs('#log');
-  function appendLog(msg, cls=""){
-    if(!logEl) return;
-    const line=document.createElement('div');
-    if(cls) line.className=cls;
-    line.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`;
-    logEl.appendChild(line);
-    logEl.scrollTop=logEl.scrollHeight;
+  // --- i18n init ---
+  const urlLang = new URLSearchParams(location.search).get("lang");
+  const saved = localStorage.getItem("lang");
+  const browser = (navigator.language || "").slice(0, 2).toLowerCase();
+  const pick = (v) =>
+    v && v.toLowerCase().startsWith("en")
+      ? "en"
+      : v && v.toLowerCase().startsWith("pl")
+        ? "pl"
+        : null;
+  const lang = pick(urlLang) || pick(saved) || pick(browser) || "pl";
+  if (urlLang) {
+    localStorage.setItem("lang", lang);
   }
-  window.addEventListener('error', e=> appendLog(`${t('events.log_js_err',{msg:e.message||e})}`, 'err'));
-  window.addEventListener('unhandledrejection', e=> appendLog(`${t('events.log_prom_err',{reason:e.reason||e})}`, 'err'));
 
-  const LIN_V = 0.10, LIN_T = 0.10;
-  const spinEl = qs('#speedSpin'), spinVal = qs('#speedSpinVal'), durSpinEl = qs('#durationSpin');
-  spinEl.addEventListener('input', ()=> spinVal.textContent = Number(spinEl.value).toFixed(2));
-  function clamp(n, lo, hi){ n=Number(n)||0; return Math.max(lo, Math.min(hi, n)); }
+  async function fetchControlState() {
+    try {
+      const r = await fetch("/api/control/state", { cache: "no-store" });
+      const j = await r.json();
+      const balance = j.balance || {};
+      if (balanceToggle && typeof balance.enabled === "boolean") {
+        balanceToggle.checked = !!balance.enabled;
+      }
+      const heightState = j.height || {};
+      if (typeof heightState.value === "number") {
+        syncHeightValue(heightState.value);
+      }
 
-  async function pingHealth(){
-    try{
-      const r=await fetch('/healthz',{cache:'no-store'}); const j=await r.json().catch(()=>({}));
-      const apiStatus = qs('#apiStatus'); if(!apiStatus) return;
-      const ok=!!j.ok;
-      apiStatus.textContent = ok ? t('header.api_status_ok') : t('header.api_status_degraded');
-      apiStatus.className = ok?'ok':'warn';
-    }catch{
-      const apiStatus = qs('#apiStatus'); if(!apiStatus) return;
-      apiStatus.textContent = t('header.api_status_down');
-      apiStatus.className='err';
+      const tracking = j.tracking || {};
+      const trackingMode = (tracking.mode || "none").toLowerCase();
+      const trackingEnabled = !!tracking.enabled;
+      const faceRunning = trackingEnabled && trackingMode === "face";
+      const handRunning = trackingEnabled && trackingMode === "hand";
+      setFeatureStatus(
+        "face",
+        faceRunning ? "running" : "stopped",
+        faceRunning ? t("motion.feature_note_mode", { mode: "face" }) : "",
+      );
+      setFeatureStatus(
+        "hand",
+        handRunning ? "running" : "stopped",
+        handRunning ? t("motion.feature_note_mode", { mode: "hand" }) : "",
+      );
+
+      const navigator = j.navigator || {};
+      const reconRunning = !!navigator.active;
+      const reconNote = navigator.state
+        ? t("motion.feature_note_state", { state: navigator.state })
+        : "";
+      setFeatureStatus(
+        "recon",
+        reconRunning ? "running" : "stopped",
+        reconRunning ? reconNote : "",
+      );
+    } catch (e) {
+      appendLog(
+        `/api/control/state :: ${e.message || e}`,
+        "warn",
+      );
     }
   }
-  setInterval(pingHealth, 1000); pingHealth();
+  await initI18n(lang);
+  applyDom();
+  document.documentElement.setAttribute("lang", lang);
+  document.title = t("meta.app_title");
 
-  async function httpPost(url, body){
-    const r=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-    const raw=await r.text(); let j=null; try{ j=JSON.parse(raw);}catch{}
-    if(!r.ok){ throw new Error((j && (j.error||j.stderr||j.stdout)) || `HTTP ${r.status}`); }
-    return j||{};
+  // ====== helpers ======
+  const qs = (s) => document.querySelector(s);
+  const logEl = qs("#log");
+
+  function appendLog(msg, cls = "") {
+    if (!logEl) return;
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
   }
-  async function apiControl(obj){ try{ const j= await httpPost('/api/control', obj); appendLog(`api/control → ${JSON.stringify(obj)} :: ${JSON.stringify(j)}`, 'ok'); return j; }catch(e){ appendLog(`api/control ${JSON.stringify(obj)} :: ${e.message}`,'err'); } }
-  async function doStop(){ try{ await apiControl({cmd:'stop'}); }catch{} }
-  async function goF(){ const tsec=Math.max(0.05, LIN_T); await apiControl({cmd:'move', dir:'forward', v: LIN_V, t:tsec}); setTimeout(()=>{try{doStop();}catch{} } , Math.max(100, tsec*1000)); }
-  async function goB(){ const tsec=Math.max(0.05, LIN_T); await apiControl({cmd:'move', dir:'backward', v: LIN_V, t:tsec}); setTimeout(()=>{try{doStop();}catch{} } , Math.max(100, tsec*1000)); }
-  async function spin(dir){ const w=clamp(spinEl.value,0,1); const tsec=clamp(durSpinEl.value,0.05,5); await apiControl({cmd:'move', dir:(dir==='left'?'left':'right'), w, t:tsec}); setTimeout(()=>{try{doStop();}catch{} } , Math.max(100, tsec*1000)); }
-  qs('#btnFwd').addEventListener('click', ()=>{try{goF();}catch{}});
-  qs('#btnBack').addEventListener('click', ()=>{try{goB();}catch{}});
-  qs('#btnLeft').addEventListener('click', ()=>{try{spin('left');}catch{}});
-  qs('#btnRight').addEventListener('click', ()=>{try{spin('right');}catch{}});
-  qs('#btnStop').addEventListener('click', ()=>{try{doStop();}catch{}});
-  qs('#btnStop2').addEventListener('click', ()=>{try{doStop();}catch{}});
 
-  const pressed = new Set(); const isArrow = k => ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k);
-  window.addEventListener('keydown', ev=>{ try{
-    if(ev.repeat) return; const k=ev.key; if(isArrow(k)) ev.preventDefault(); pressed.add(k);
-    if(k===' ') {ev.preventDefault(); doStop(); return;}
-    if(k==='w'||k==='W'||k==='ArrowUp') goF();
-    if(k==='s'||k==='S'||k==='ArrowDown') goB();
-    if(k==='a'||k==='A'||k==='ArrowLeft') spin('left');
-    if(k==='d'||k==='D'||k==='ArrowRight') spin('right');
-  }catch{} });
-  window.addEventListener('keyup', ev=>{ try{
-    if(!pressed.has(ev.key)) return; pressed.delete(ev.key);
-    if(['w','W','ArrowUp','s','S','ArrowDown','a','A','ArrowLeft','d','D','ArrowRight'].includes(ev.key)) doStop();
-  }catch{} });
-  document.addEventListener('visibilitychange', ()=> { if (document.hidden) { try{doStop();}catch{} } });
-  window.addEventListener('beforeunload', ()=> { try { navigator.sendBeacon('/api/control', new Blob(['{"cmd":"stop"}'], {type:'application/json'})); } catch{} });
+  window.addEventListener("error", (e) =>
+    appendLog(
+      `${t("events.log_js_err", { msg: e.message || e })}`,
+      "err",
+    ),
+  );
+  window.addEventListener("unhandledrejection", (e) =>
+    appendLog(
+      `${t("events.log_prom_err", { reason: e.reason || e })}`,
+      "err",
+    ),
+  );
 
-  const TRACKING_CORE_SERVICES = ['rider-tracker.service','rider-tracking-controller.service'];
-  const PREVIEW_SERVICES = ['rider-cam-preview.service','rider-edge-preview.service','rider-ssd-preview.service'];
-  const RECON_SERVICES = ['rider-vision.service','rider-obstacle.service','rider-motion-bridge.service','rider-odometry.service','rider-mapper.service'];
+  const LIN_V = 0.1;
+  const LIN_T = 0.1;
+  const spinEl = qs("#speedSpin");
+  const spinVal = qs("#speedSpinVal");
+  const durSpinEl = qs("#durationSpin");
+
+  if (spinEl && spinVal) {
+    spinEl.addEventListener("input", () => {
+      spinVal.textContent = Number(spinEl.value).toFixed(2);
+    });
+  }
+
+  function clamp(n, lo, hi) {
+    n = Number(n) || 0;
+    return Math.max(lo, Math.min(hi, n));
+  }
+
+  async function pingHealth() {
+    try {
+      const r = await fetch("/healthz", { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      const apiStatus = qs("#apiStatus");
+      if (!apiStatus) return;
+      const ok = !!j.ok;
+      apiStatus.textContent = ok
+        ? t("header.api_status_ok")
+        : t("header.api_status_degraded");
+      apiStatus.className = ok ? "ok" : "warn";
+    } catch {
+      const apiStatus = qs("#apiStatus");
+      if (!apiStatus) return;
+      apiStatus.textContent = t("header.api_status_down");
+      apiStatus.className = "err";
+    }
+  }
+
+  setInterval(pingHealth, 1000);
+  pingHealth();
+
+  async function httpPost(url, body) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const raw = await r.text();
+    let j = null;
+    try {
+      j = JSON.parse(raw);
+    } catch {
+      /* ignore */
+    }
+    if (!r.ok) {
+      throw new Error(
+        (j && (j.error || j.stderr || j.stdout)) ||
+          `HTTP ${r.status}`,
+      );
+    }
+    return j || {};
+  }
+
+  async function apiControl(obj) {
+    try {
+      const j = await httpPost("/api/control", obj);
+      appendLog(
+        `api/control → ${JSON.stringify(obj)} :: ${JSON.stringify(j)}`,
+        "ok",
+      );
+      return j;
+    } catch (e) {
+      appendLog(
+        `api/control ${JSON.stringify(obj)} :: ${e.message}`,
+        "err",
+      );
+    }
+  }
+
+  async function doStop() {
+    try {
+      await apiControl({ cmd: "stop" });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function goF() {
+    const tsec = Math.max(0.05, LIN_T);
+    await apiControl({
+      cmd: "move",
+      dir: "forward",
+      v: LIN_V,
+      t: tsec,
+    });
+    setTimeout(() => {
+      try {
+        doStop();
+      } catch {
+        /* ignore */
+      }
+    }, Math.max(100, tsec * 1000));
+  }
+
+  async function goB() {
+    const tsec = Math.max(0.05, LIN_T);
+    await apiControl({
+      cmd: "move",
+      dir: "backward",
+      v: LIN_V,
+      t: tsec,
+    });
+    setTimeout(() => {
+      try {
+        doStop();
+      } catch {
+        /* ignore */
+      }
+    }, Math.max(100, tsec * 1000));
+  }
+
+  async function spin(dir) {
+    if (!spinEl || !durSpinEl) return;
+    const w = clamp(spinEl.value, 0, 1);
+    const tsec = clamp(durSpinEl.value, 0.05, 5);
+    await apiControl({
+      cmd: "move",
+      dir: dir === "left" ? "left" : "right",
+      w,
+      t: tsec,
+    });
+    setTimeout(() => {
+      try {
+        doStop();
+      } catch {
+        /* ignore */
+      }
+    }, Math.max(100, tsec * 1000));
+  }
+
+  qs("#btnFwd")?.addEventListener("click", () => {
+    try {
+      goF();
+    } catch {
+      /* ignore */
+    }
+  });
+  qs("#btnBack")?.addEventListener("click", () => {
+    try {
+      goB();
+    } catch {
+      /* ignore */
+    }
+  });
+  qs("#btnLeft")?.addEventListener("click", () => {
+    try {
+      spin("left");
+    } catch {
+      /* ignore */
+    }
+  });
+  qs("#btnRight")?.addEventListener("click", () => {
+    try {
+      spin("right");
+    } catch {
+      /* ignore */
+    }
+  });
+  qs("#btnStop")?.addEventListener("click", () => {
+    try {
+      doStop();
+    } catch {
+      /* ignore */
+    }
+  });
+  qs("#btnStop2")?.addEventListener("click", () => {
+    try {
+      doStop();
+    } catch {
+      /* ignore */
+    }
+  });
+
+  const pressed = new Set();
+  const isArrow = (k) =>
+    ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(k);
+
+  window.addEventListener("keydown", (ev) => {
+    try {
+      if (ev.repeat) return;
+      const k = ev.key;
+      if (isArrow(k)) ev.preventDefault();
+      pressed.add(k);
+      if (k === " ") {
+        ev.preventDefault();
+        doStop();
+        return;
+      }
+      if (k === "w" || k === "W" || k === "ArrowUp") goF();
+      if (k === "s" || k === "S" || k === "ArrowDown") goB();
+      if (k === "a" || k === "A" || k === "ArrowLeft") spin("left");
+      if (k === "d" || k === "D" || k === "ArrowRight") spin("right");
+    } catch {
+      /* ignore */
+    }
+  });
+
+  window.addEventListener("keyup", (ev) => {
+    try {
+      if (!pressed.has(ev.key)) return;
+      pressed.delete(ev.key);
+      if (
+        [
+          "w",
+          "W",
+          "ArrowUp",
+          "s",
+          "S",
+          "ArrowDown",
+          "a",
+          "A",
+          "ArrowLeft",
+          "d",
+          "D",
+          "ArrowRight",
+        ].includes(ev.key)
+      ) {
+        doStop();
+      }
+    } catch {
+      /* ignore */
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      try {
+        doStop();
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    try {
+      navigator.sendBeacon(
+        "/api/control",
+        new Blob(['{"cmd":"stop"}'], {
+          type: "application/json",
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  });
+
+  // ==== FEATURES / SERVICES ====
+  const TRACKING_CORE_SERVICES = [
+    "rider-tracker.service",
+    "rider-tracking-controller.service",
+  ];
+  const RECON_SERVICES = [
+    "rider-vision.service",
+    "rider-obstacle.service",
+    "rider-motion-bridge.service",
+    "rider-odometry.service",
+    "rider-mapper.service",
+  ];
   const svcCache = new Map();
   const featureBusy = new Set();
-  let lastControlState = null;
   let previewBeforeTracking = null;
   let previewAutoStarted = false;
 
-  function previewLabel(unit){
-    if(unit === 'rider-cam-preview.service') return t('motion.preview_cam');
-    if(unit === 'rider-edge-preview.service') return t('motion.preview_edge');
-    if(unit === 'rider-ssd-preview.service') return t('motion.preview_ssd');
-    return unit || 'n/a';
-  }
-
   const FEATURE_STATUS = {
-    running: { cls: 'ok', key: 'motion.feature_status_running' },
-    stopped: { cls: 'warn', key: 'motion.feature_status_stopped' },
-    warn: { cls: 'warn', key: 'motion.feature_status_warn' },
-    error: { cls: 'err', key: 'motion.feature_status_error' },
-    unknown: { cls: 'warn', key: 'motion.feature_status_unknown' },
-    working: { cls: 'warn', key: 'motion.feature_status_working' },
+    running: { cls: "ok", key: "motion.feature_status_running" },
+    stopped: { cls: "warn", key: "motion.feature_status_stopped" },
+    warn: { cls: "warn", key: "motion.feature_status_warn" },
+    error: { cls: "err", key: "motion.feature_status_error" },
+    unknown: { cls: "warn", key: "motion.feature_status_unknown" },
+    working: { cls: "warn", key: "motion.feature_status_working" },
   };
 
-  const featureList = qs('#featureList');
-  if(featureList){
-    featureList.addEventListener('click', ev=>{
-      const btn = ev.target.closest('button[data-feature-action]');
-      if(!btn) return;
-      const row = btn.closest('[data-feature]');
-      if(!row) return;
-      const featureId = row.getAttribute('data-feature');
-      const action = btn.getAttribute('data-feature-action');
+  const featureList = qs("#featureList");
+  if (featureList) {
+    featureList.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-feature-action]");
+      if (!btn) return;
+      const row = btn.closest("[data-feature]");
+      if (!row) return;
+      const featureId = row.getAttribute("data-feature");
+      const action = btn.getAttribute("data-feature-action");
       handleFeatureAction(featureId, action);
     });
   }
 
-  function setFeatureBusy(featureId, busy){
+  function setFeatureBusy(featureId, busy) {
     const row = document.querySelector(`[data-feature="${featureId}"]`);
-    if(!row) return;
-    if(busy) featureBusy.add(featureId); else featureBusy.delete(featureId);
-    row.classList.toggle('busy', !!busy);
-    row.querySelectorAll('button').forEach(btn => { btn.disabled = !!busy; });
+    if (!row) return;
+    if (busy) featureBusy.add(featureId);
+    else featureBusy.delete(featureId);
+    row.classList.toggle("busy", !!busy);
+    row.querySelectorAll("button").forEach((btn) => {
+      btn.disabled = !!busy;
+    });
   }
 
-  function setFeatureStatus(featureId, stateKey, noteText=''){
-    const pill = document.querySelector(`.feature-pill[data-feature-pill="${featureId}"]`);
-    const note = document.querySelector(`.feature-note[data-feature-note="${featureId}"]`);
+  function setFeatureStatus(featureId, stateKey, noteText = "") {
+    const pill = document.querySelector(
+      `.feature-pill[data-feature-pill="${featureId}"]`,
+    );
+    const note = document.querySelector(
+      `.feature-note[data-feature-note="${featureId}"]`,
+    );
     const meta = FEATURE_STATUS[stateKey] || FEATURE_STATUS.unknown;
-    if(pill){
+    if (pill) {
       pill.className = `pill feature-pill ${meta.cls}`;
       pill.textContent = t(meta.key);
     }
-    if(note){
-      note.textContent = noteText || '';
+    if (note) {
+      note.textContent = noteText || "";
     }
   }
 
-  async function handleFeatureAction(featureId, action){
-    if(action === 'return-home'){
+  async function handleFeatureAction(featureId, action) {
+    if (action === "return-home") {
       await runReturnHome();
       return;
     }
     setFeatureBusy(featureId, true);
-    setFeatureStatus(featureId, 'working', t('motion.feature_note_waiting'));
-    try{
-      if(action === 'start'){
+    setFeatureStatus(
+      featureId,
+      "working",
+      t("motion.feature_note_waiting"),
+    );
+    try {
+      if (action === "start") {
         await startFeature(featureId);
-      }else if(action === 'stop'){
+      } else if (action === "stop") {
         await stopFeature(featureId);
       }
-    }catch(e){
-      appendLog(`[feature ${featureId}] ${action} :: ${e.message || e}`, 'err');
-      setFeatureStatus(featureId, 'error', e.message || String(e));
-    }finally{
+    } catch (e) {
+      appendLog(
+        `[feature ${featureId}] ${action} :: ${e.message || e}`,
+        "err",
+      );
+      setFeatureStatus(featureId, "error", e.message || String(e));
+    } finally {
       setFeatureBusy(featureId, false);
-      try{ await fetchControlState(); }catch{}
-      try{ await fetchServices(); }catch{}
+      try {
+        await fetchControlState();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await fetchMotionQueue();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await fetchServices();
+      } catch {
+        /* ignore */
+      }
     }
   }
 
-  async function startFeature(featureId){
-    if(featureId === 'face') return startTrackingFeature('face');
-    if(featureId === 'hand') return startTrackingFeature('hand');
-    if(featureId === 'recon') return startReconFeature();
+  async function startFeature(featureId) {
+    if (featureId === "face") return startTrackingFeature("face");
+    if (featureId === "hand") return startTrackingFeature("hand");
+    if (featureId === "recon") return startReconFeature();
     throw new Error(`unknown feature ${featureId}`);
   }
 
-  async function stopFeature(featureId){
-    if(featureId === 'face') return stopTrackingFeature('face');
-    if(featureId === 'hand') return stopTrackingFeature('hand');
-    if(featureId === 'recon') return stopReconFeature();
+  async function stopFeature(featureId) {
+    if (featureId === "face") return stopTrackingFeature("face");
+    if (featureId === "hand") return stopTrackingFeature("hand");
+    if (featureId === "recon") return stopReconFeature();
     throw new Error(`unknown feature ${featureId}`);
   }
 
-  async function runReturnHome(){
-    setFeatureBusy('recon', true);
-    setFeatureStatus('recon','working', t('motion.feature_note_waiting'));
-    try{
-      await httpPost('/api/navigator/return_home', {});
-      appendLog(`[feature recon] return_home`, 'ok');
-    }catch(e){
-      appendLog(`[feature recon] return_home :: ${e.message || e}`, 'err');
-      setFeatureStatus('recon','error', e.message || String(e));
-    }finally{
-      setFeatureBusy('recon', false);
-      try{ await fetchControlState(); }catch{}
+  async function runReturnHome() {
+    setFeatureBusy("recon", true);
+    setFeatureStatus(
+      "recon",
+      "working",
+      t("motion.feature_note_waiting"),
+    );
+    try {
+      await httpPost("/api/navigator/return_home", {});
+      appendLog("[feature recon] return_home", "ok");
+    } catch (e) {
+      appendLog(
+        `[feature recon] return_home :: ${e.message || e}`,
+        "err",
+      );
+      setFeatureStatus("recon", "error", e.message || String(e));
+    } finally {
+      setFeatureBusy("recon", false);
+      try {
+        await fetchControlState();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await fetchMotionQueue();
+      } catch {
+        /* ignore */
+      }
     }
   }
 
-  async function startTrackingFeature(mode){
+  async function startTrackingFeature(mode) {
     await ensurePreviewForTracking();
-    await runServicesSequence(TRACKING_CORE_SERVICES, 'start');
-    await httpPost('/api/vision/tracking/mode', {mode, enabled:true});
-    appendLog(`[feature tracking] mode=${mode} start ok`, 'ok');
+    await runServicesSequence(TRACKING_CORE_SERVICES, "start");
+    await httpPost("/api/vision/tracking/mode", {
+      mode,
+      enabled: true,
+    });
+    appendLog(
+      `[feature tracking] mode=${mode} start ok`,
+      "ok",
+    );
   }
 
-  async function stopTrackingFeature(mode){
-    await httpPost('/api/vision/tracking/mode', {mode:'none', enabled:false});
-    await runServicesSequence(TRACKING_CORE_SERVICES, 'stop');
+  async function stopTrackingFeature(mode) {
+    await httpPost("/api/vision/tracking/mode", {
+      mode: "none",
+      enabled: false,
+    });
+    await runServicesSequence(TRACKING_CORE_SERVICES, "stop");
     await flushMotionQueue();
     await restorePreviewAfterTracking();
-    appendLog(`[feature tracking] mode=${mode} stop ok`, 'ok');
+    appendLog(
+      `[feature tracking] mode=${mode} stop ok`,
+      "ok",
+    );
   }
 
-  async function startReconFeature(){
-    await runServicesSequence(RECON_SERVICES, 'start');
-    const strategySel = qs('#reconStrategy');
-    const strategy = (strategySel && strategySel.value ? String(strategySel.value).toUpperCase() : 'STOP');
-    await httpPost('/api/navigator/start', {strategy});
-    appendLog(`[feature recon] start strategy=${strategy}`, 'ok');
+  async function startReconFeature() {
+    await runServicesSequence(RECON_SERVICES, "start");
+    const strategySel = qs("#reconStrategy");
+    const strategy =
+      strategySel && strategySel.value
+        ? String(strategySel.value).toUpperCase()
+        : "STOP";
+    await httpPost("/api/navigator/start", { strategy });
+    appendLog(
+      `[feature recon] start strategy=${strategy}`,
+      "ok",
+    );
   }
 
-  async function stopReconFeature(){
-    await httpPost('/api/navigator/stop', {});
-    await runServicesSequence(RECON_SERVICES, 'stop');
-    appendLog('[feature recon] stop', 'ok');
+  async function stopReconFeature() {
+    await httpPost("/api/navigator/stop", {});
+    await runServicesSequence(RECON_SERVICES, "stop");
+    appendLog("[feature recon] stop", "ok");
   }
 
-  async function runServicesSequence(units, action){
-    const ordered = action === 'stop' ? [...units].reverse() : [...units];
-    for(const unit of ordered){
+  async function runServicesSequence(units, action) {
+    const ordered =
+      action === "stop" ? [...units].reverse() : [...units];
+    for (const unit of ordered) {
       const svc = svcCache.get(unit);
-      if(action === 'start' && svc && svc.active === 'active'){
-        appendLog(`[svc] ${unit} already active`, 'warn');
+      if (action === "start" && svc && svc.active === "active") {
+        appendLog(
+          `[svc] ${unit} already active`,
+          "warn",
+        );
         continue;
       }
-      if(action === 'stop' && svc && svc.active === 'inactive'){
-        appendLog(`[svc] ${unit} already inactive`, 'warn');
+      if (action === "stop" && svc && svc.active === "inactive") {
+        appendLog(
+          `[svc] ${unit} already inactive`,
+          "warn",
+        );
         continue;
       }
       await svcAction(unit, action);
     }
   }
 
-  async function ensurePreviewForTracking(){
-    const camActive = isServiceActive('rider-cam-preview.service');
-    if(!camActive){
+  function isServiceActive(unit) {
+    const svc = svcCache.get(unit);
+    return svc && svc.active === "active";
+  }
+
+  function getActivePreviewService() {
+    const previewUnits = [
+      "rider-cam-preview.service",
+      "rider-edge-preview.service",
+      "rider-ssd-preview.service",
+    ];
+    for (const u of previewUnits) {
+      if (isServiceActive(u)) return u;
+    }
+    return null;
+  }
+
+  async function ensurePreviewForTracking() {
+    const camActive = isServiceActive("rider-cam-preview.service");
+    if (!camActive) {
       const currentPreview = getActivePreviewService();
-      if(!previewBeforeTracking && !previewAutoStarted){
-        if(currentPreview && currentPreview !== 'rider-cam-preview.service'){
+      if (!previewBeforeTracking && !previewAutoStarted) {
+        if (
+          currentPreview &&
+          currentPreview !== "rider-cam-preview.service"
+        ) {
           previewBeforeTracking = currentPreview;
           previewAutoStarted = false;
-        }else{
+        } else {
           previewAutoStarted = true;
           previewBeforeTracking = null;
         }
       }
-      await svcAction('rider-cam-preview.service','start');
+      await svcAction("rider-cam-preview.service", "start");
     }
   }
 
-  async function flushMotionQueue(reason='tracking-stop'){
-    try{
-      await apiControl({cmd:'stop', reason});
-      const reasonLabel = reason === 'manual-ui' ? t('motion_queue.reason_manual') : t('motion_queue.reason_tracking');
-      clearMotionQueueLocal(t('motion_queue.note_cleared_reason', {reason: reasonLabel}));
-      appendLog(`[feature tracking] motion queue flushed (${reason})`, 'ok');
-    }catch(e){
-      appendLog(`[feature tracking] flush queue failed :: ${e.message || e}`,'warn');
+  async function flushMotionQueue(reason = "tracking-stop") {
+    try {
+      await apiControl({ cmd: "stop", reason });
+      appendLog(
+        `[feature tracking] motion queue flushed (${reason})`,
+        "ok",
+      );
+    } catch (e) {
+      appendLog(
+        `[feature tracking] flush queue failed :: ${e.message || e}`,
+        "warn",
+      );
     }
   }
 
-  async function restorePreviewAfterTracking(){
-    if(previewBeforeTracking && previewBeforeTracking !== 'rider-cam-preview.service'){
-      await svcAction(previewBeforeTracking,'start');
-    }else if(previewAutoStarted){
-      await svcAction('rider-cam-preview.service','stop');
-    }
-    previewBeforeTracking = null;
-    previewAutoStarted = false;
-  }
-
-  function getActivePreviewService(){
-    for(const unit of PREVIEW_SERVICES){
-      if(isServiceActive(unit)) return unit;
-    }
-    return null;
-  }
-
-  async function fetchControlState(){
-    try{
-      const r = await fetch('/api/control/state', {cache:'no-store'});
-      const data = await r.json();
-      lastControlState = data || {};
-      renderFeatureStatuses();
-    }catch(e){
-      appendLog(`[control state] ${e.message || e}`, 'err');
+  async function restorePreviewAfterTracking() {
+    if (
+      previewBeforeTracking &&
+      previewBeforeTracking !== "rider-cam-preview.service"
+    ) {
+      await svcAction(previewBeforeTracking, "start");
+    } else if (previewAutoStarted) {
+      await svcAction("rider-cam-preview.service", "stop");
     }
   }
 
-  function renderFeatureStatuses(){
-    const tracking = (lastControlState && lastControlState.tracking) || {};
-    const trackingMode = String(tracking.mode || 'none').toLowerCase();
-    const trackingEnabled = Boolean(tracking.enabled && trackingMode !== 'none');
-    const trackingNote = trackingEnabled ? t('motion.feature_note_mode', {mode: trackingMode}) : '';
-    const missingTracking = TRACKING_CORE_SERVICES.filter(u => !isServiceActive(u));
-    const camActive = isServiceActive('rider-cam-preview.service');
-    const warnNotes = [];
-    if(!camActive){
-      warnNotes.push(t('motion.feature_note_need_preview'));
-    }
-    if(missingTracking.length){
-      warnNotes.push(t('motion.feature_note_missing_services', {count: missingTracking.join(', ')}));
-    }
-    const forcedPreviewNote = previewBeforeTracking ? t('motion.feature_note_preview_forced', {name: previewLabel(previewBeforeTracking)}) : '';
-    const combinedRunNote = [trackingNote, forcedPreviewNote].filter(Boolean).join(' · ');
-    if(warnNotes.length){
-      const note = warnNotes.join(' · ');
-      setFeatureStatus('face','warn', note);
-      setFeatureStatus('hand','warn', note);
-    }else if(trackingEnabled && trackingMode === 'face'){
-      setFeatureStatus('face','running', combinedRunNote || trackingNote);
-      setFeatureStatus('hand','stopped','');
-    }else if(trackingEnabled && trackingMode === 'hand'){
-      setFeatureStatus('hand','running', combinedRunNote || trackingNote);
-      setFeatureStatus('face','stopped','');
-    }else{
-      setFeatureStatus('face','stopped', trackingNote);
-      setFeatureStatus('hand','stopped', trackingNote);
-    }
+  // --- systemd actions: próba wielu endpointów ---
+  async function svcAction(unit, action) {
+    const body = { unit, action };
+    const endpoints = [
+      { url: "/api/systemd/action", body },
+      { url: "/api/services/systemd/action", body },
+      { url: "/api/services/action", body },
+      {
+        url: `/svc/${encodeURIComponent(unit)}`,
+        body: { action },
+      },
+    ];
+    let lastError = null;
 
-    const navigatorState = (lastControlState && lastControlState.navigator) || {};
-    const navActive = Boolean(navigatorState.active);
-    const navNote = navigatorState.state ? t('motion.feature_note_state', {state: navigatorState.state}) : '';
-    const missingRecon = RECON_SERVICES.filter(u => !isServiceActive(u));
-    if(navigatorState.strategy){
-      const sel = qs('#reconStrategy');
-      if(sel && sel.value !== navigatorState.strategy){
-        sel.value = navigatorState.strategy;
+    for (const endpoint of endpoints) {
+      const url = endpoint.url;
+      try {
+        const res = await httpPost(url, endpoint.body);
+        appendLog(
+          `[svc] ${unit} ${action} @${url} :: ${JSON.stringify(res)}`,
+          "ok",
+        );
+        return res;
+      } catch (e) {
+        lastError = e;
+        appendLog(
+          `[svc] ${unit} ${action} @${url} :: ${e.message || e}`,
+          "warn",
+        );
       }
     }
-    if(navActive){
-      setFeatureStatus('recon','running', navNote);
-    }else if(missingRecon.length){
-      setFeatureStatus('recon','warn', t('motion.feature_note_missing_services',{count: missingRecon.length}));
-    }else{
-      setFeatureStatus('recon','stopped','');
-    }
-    const btnReturn = qs('#btnReturnHome');
-    if(btnReturn){
-      btnReturn.disabled = !navActive;
+
+    if (lastError) {
+      appendLog(
+        `[svc] ${unit} ${action} :: all endpoints failed :: ${lastError.message || lastError}`,
+        "err",
+      );
     }
   }
 
-  function updateSvcCache(list){
-    svcCache.clear();
-    list.forEach(item=>{
-      if(item && item.unit){
-        svcCache.set(item.unit, item);
+  // --- systemd list: próba wielu endpointów / różnych formatów ---
+  async function fetchServices() {
+    try {
+      const endpoints = [
+        "/api/systemd/services?scope=motion",
+        "/api/services/systemd?scope=motion",
+        "/api/services?scope=motion",
+        "/api/systemd/services",
+        "/api/services/systemd",
+        "/api/services",
+        "/svc",
+      ];
+
+      let data = null;
+      let usedUrl = null;
+
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) continue;
+          const j = await res.json();
+          if (
+            j &&
+            (Array.isArray(j.services) ||
+             Array.isArray(j.units) ||
+             Array.isArray(j))
+          ) {
+            data = j;
+            usedUrl = url;
+            break;
+          }
+        } catch {
+          /* ignore single endpoint failure */
+        }
       }
-    });
-    renderFeatureStatuses();
-  }
 
-  function isServiceActive(unit){
-    const entry = svcCache.get(unit);
-    return entry ? entry.active === 'active' : false;
-  }
-
-  fetchControlState();
-  setInterval(fetchControlState, 5000);
-
-  const RESOURCES = [
-    { key:'mic', label:'Mikrofon' },
-    { key:'speaker', label:'Głośnik' },
-    { key:'camera', label:'Kamera' },
-    { key:'lcd', label:'Ekran LCD 2"' }
-  ];
-  const resInfo = qs('#resInfo');
-
-  function renderResourceStatus(name, data){
-    const row = qs(`tr[data-res="${name}"]`);
-    if(!row) return;
-    const statusEl = row.querySelector('.res-status');
-    const holdersEl = row.querySelector('.res-holders');
-    const stopBtn = row.querySelector('button[data-res-action="stop"]');
-    const releaseBtn = row.querySelector('button[data-res-action="release"]');
-    if(!statusEl || !holdersEl) return;
-    if(data.error){
-      statusEl.textContent = t('resources.status_error');
-      statusEl.className = 'res-status err';
-      holdersEl.textContent = data.error;
-      if(releaseBtn) releaseBtn.disabled = true;
-      if(stopBtn) stopBtn.disabled = true;
-      return;
-    }
-    statusEl.textContent = data.free ? t('resources.status_free') : t('resources.status_busy');
-    statusEl.className = 'res-status ' + (data.free ? 'ok' : 'warn');
-    if(data.holders && data.holders.length){
-      holdersEl.textContent = data.holders.map(h=>{
-        const svc = h.service ? ` (${h.service})` : '';
-        return `${h.cmd || 'proc'}#${h.pid}${svc}`;
-      }).join(', ');
-    }else{
-      holdersEl.textContent = t('resources.holders_none');
-    }
-    if(stopBtn) stopBtn.disabled = !data.holders || data.holders.every(h=>!h.service);
-    if(releaseBtn) releaseBtn.disabled = !!data.free;
-  }
-
-  async function fetchResourceStatus(name){
-    try{
-      const r = await fetch(`/api/resource/${encodeURIComponent(name)}`, {cache:'no-store'});
-      const data = await r.json();
-      if(!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-      renderResourceStatus(name, data);
-      if(resInfo){
-        const tsText = new Date(data.checked_at * 1000 || Date.now()).toLocaleTimeString();
-        resInfo.textContent = t('resources.last_update', {time: tsText});
+      if (!data) {
+        throw new Error("no services data from any endpoint");
       }
-    }catch(e){
-      appendLog(`[resource ${name}] status error: ${e.message || e}`, 'err');
-    }
-  }
 
-  async function resourceAction(name, action){
-    try{
-      const body = {action};
-      const r = await fetch(`/api/resource/${encodeURIComponent(name)}`, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+      let services;
+      if (Array.isArray(data.services)) {
+        services = data.services;
+      } else if (Array.isArray(data.units)) {
+        services = data.units;
+      } else if (Array.isArray(data)) {
+        services = data;
+      } else {
+        throw new Error("unsupported services payload format");
+      }
+
+      const tbody = qs("#svcBody");
+      const table = qs("#svcTable");
+      const info = qs("#svcInfo");
+      if (!tbody || !table || !info) return;
+
+      tbody.innerHTML = "";
+      services.forEach((svc) => {
+        const unit = svc.unit || svc.name || svc.id || "n/a";
+        const desc = svc.description || svc.desc || "-";
+        const active = svc.active || svc.state || svc.status || "unknown";
+        const enabled = svc.enabled ?? svc.autostart ?? "-";
+
+        svcCache.set(unit, {
+          unit,
+          description: desc,
+          active,
+          enabled,
+        });
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${unit}</td>
+          <td>${desc}</td>
+          <td>${active}</td>
+          <td>${enabled}</td>
+          <td class="svc-actions">
+            <button class="btn-sm" data-unit="${unit}" data-action="start">▶</button>
+            <button class="btn-sm" data-unit="${unit}" data-action="stop">■</button>
+            <button class="btn-sm" data-unit="${unit}" data-action="restart">↻</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
       });
-      const text = await r.text();
-      let data=null; try{ data = JSON.parse(text);}catch{}
-      if(!r.ok){ throw new Error((data && (data.error||data.stderr)) || text || `HTTP ${r.status}`); }
-      appendLog(`[resource ${name}] ${action} → ${(data && data.ok===false)?'warn':'ok'}`, data && data.ok ? 'ok':'warn');
-    }catch(e){
-      appendLog(`[resource ${name}] ${action} :: ${e.message || e}`,'err');
-    }finally{
-      fetchResourceStatus(name);
+
+      table.style.display = "table";
+      info.textContent = `${t("services.loaded_at", {
+        ts: new Date().toLocaleTimeString(),
+      })} (${usedUrl})`;
+    } catch (e) {
+      appendLog(
+        `/api systemd/services fetch failed :: ${e.message || e}`,
+        "err",
+      );
     }
   }
 
-  qs('#resBody').addEventListener('click', ev=>{
-    const btn = ev.target.closest('button[data-res]');
-    if(!btn) return;
-    const name = btn.getAttribute('data-res');
-    const action = btn.getAttribute('data-res-action');
-    if(action === 'refresh'){ fetchResourceStatus(name); return; }
-    btn.disabled = true;
-    resourceAction(name, action).finally(()=>{ btn.disabled = false; });
+  qs("#svcRefresh")?.addEventListener("click", () => {
+    fetchServices();
+  });
+  qs("#svcTable")?.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-unit][data-action]");
+    if (!btn) return;
+    const unit = btn.getAttribute("data-unit");
+    const action = btn.getAttribute("data-action");
+    svcAction(unit, action);
   });
 
-  RESOURCES.forEach(({key})=> fetchResourceStatus(key));
-  setInterval(()=>{ RESOURCES.forEach(({key})=> fetchResourceStatus(key)); }, 6000);
-
-  // ===== Diagnostyka kolejki ruchu =====
-  const motionQueue = [];
-  const MOTION_QUEUE_LIMIT = 12;
-  const motionQueueBody = qs('#motionQueueBody');
-  const motionQueueInfo = qs('#motionQueueInfo');
-  const motionQueueFlushBtn = qs('#btnMotionQueueFlush');
-  let motionQueueNote = t('motion_queue.loading');
-
-  if(motionQueueFlushBtn){
-    motionQueueFlushBtn.addEventListener('click', ()=>{ try{ flushMotionQueue('manual-ui'); }catch{} });
-  }
-
-  const MOTION_STATUS_META = {
-    queued: { label: t('motion_queue.status_queued'), cls: 'warn' },
-    executing: { label: t('motion_queue.status_executing'), cls: 'warn' },
-    done: { label: t('motion_queue.status_done'), cls: 'ok' },
-    skipped: { label: t('motion_queue.status_skipped'), cls: 'err' },
-    stopped: { label: t('motion_queue.status_stopped'), cls: 'warn' },
-    cleared: { label: t('motion_queue.status_cleared'), cls: 'warn' },
-  };
-
-  function setMotionQueueNote(text){
-    motionQueueNote = text || '';
-  }
-
-  function formatMotionNumber(val){
-    if(val === undefined || val === null || Number.isNaN(Number(val))) return '—';
-    const num = Number(val);
-    return Math.abs(num) < 0.005 ? '0.00' : num.toFixed(2);
-  }
-
-  function normalizeTs(value, fallbackTs){
-    if(value === undefined || value === null) return fallbackTs || Date.now();
-    const num = Number(value);
-    if(!Number.isFinite(num)) return fallbackTs || Date.now();
-    return num > 1e12 ? num : num * 1000;
-  }
-
-  function renderMotionQueue(){
-    if(!motionQueueBody) return;
-    if(!motionQueue.length){
-      const emptyTxt = t('motion_queue.empty_placeholder');
-      motionQueueBody.innerHTML = `<tr><td colspan="7" class="muted">${emptyTxt}</td></tr>`;
-      if(motionQueueInfo){
-        motionQueueInfo.textContent = motionQueueNote || t('motion_queue.empty_state');
+  // === AI MODE (UI) ===
+  async function fetchAiModeStatus() {
+    try {
+      const r = await fetch("/api/ai-mode", { cache: "no-store" });
+      const j = await r.json();
+      const badge = qs("#aiModeCurrentBadge");
+      const status = qs("#aiModeStatus");
+      const ts = qs("#aiModeChangedTime");
+      if (badge) {
+        badge.classList.remove("warn", "ok");
+        badge.classList.add("ok");
+        badge.textContent = j.mode === "pc_offload" ? "PC Offload" : "Local";
       }
-      return;
-    }
-    const rows = motionQueue.map(item=>{
-      const meta = MOTION_STATUS_META[item.status] || MOTION_STATUS_META.queued;
-      const age = Math.max(0, (Date.now() - item.createdAt) / 1000).toFixed(1);
-      const badge = `<span class="pill ${meta.cls}">${meta.label}</span>`;
-      const note = item.note ? `<div class="muted" style="font-size:11px">${item.note}</div>` : '';
-      const source = item.source || '—';
-      const ridLine = item.rid ? `<div class="muted" style="font-size:11px">${item.rid}</div>` : '';
-      return `<tr>
-        <td>${source}${ridLine}</td>
-        <td>${formatMotionNumber(item.vx)}</td>
-        <td>${formatMotionNumber(item.vy)}</td>
-        <td>${formatMotionNumber(item.yaw)}</td>
-        <td>${formatMotionNumber(item.duration)}</td>
-        <td>${badge}${note}</td>
-        <td>${age}s</td>
-      </tr>`;
-    }).join('');
-    motionQueueBody.innerHTML = rows;
-    if(motionQueueInfo){
-      if(motionQueueNote){
-        motionQueueInfo.textContent = motionQueueNote;
-      }else{
-        motionQueueInfo.textContent = t('motion_queue.last_update', {time: new Date().toLocaleTimeString()});
+      if (status) {
+        status.textContent = t("ai_mode.status_ok");
+        status.className = "muted";
       }
+      if (ts && j.ts) {
+        ts.textContent = new Date(j.ts * 1000).toLocaleTimeString();
+      }
+    } catch (e) {
+      appendLog(
+        `/api/ai-mode :: ${e.message || e}`,
+        "warn",
+      );
     }
   }
 
-  function clearMotionQueueLocal(reason){
-    motionQueue.splice(0, motionQueue.length);
-    if(reason){
-      setMotionQueueNote(reason);
-    }else{
-      setMotionQueueNote(t('motion_queue.note_cleared'));
+  async function setAiMode(mode) {
+    try {
+      await httpPost("/api/ai-mode", { mode });
+      appendLog(`[ai_mode] set ${mode}`, "ok");
+      await fetchAiModeStatus();
+    } catch (e) {
+      appendLog(
+        `[ai_mode] set ${mode} :: ${e.message || e}`,
+        "err",
+      );
     }
-    renderMotionQueue();
   }
 
-  function addMotionQueueItemFromPayload(topic, payload, eventTs){
-    if(!motionQueueBody || !payload || typeof payload !== 'object') return;
-    const entry = {
-      id: `mq-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-      rid: payload.rid ? String(payload.rid) : '',
-      source: payload.source ? String(payload.source) : (payload.rid ? String(payload.rid) : topic || 'cmd.move'),
-      vx: payload.vx ?? payload.lx ?? 0,
-      vy: payload.vy ?? 0,
-      yaw: payload.yaw ?? payload.az ?? 0,
-      duration: payload.duration ?? payload.dur ?? 0,
-      status: 'queued',
-      note: '',
-      createdAt: normalizeTs(payload.ts, normalizeTs(eventTs, Date.now())),
-      updatedAt: Date.now(),
+  qs("#btnAiModeLocal")?.addEventListener("click", () => {
+    setAiMode("local");
+  });
+  qs("#btnAiModeOffload")?.addEventListener("click", () => {
+    setAiMode("pc_offload");
+  });
+
+  // Balance + height UI
+  const balanceToggle = qs("#balanceToggle");
+  const heightSlider = qs("#heightSlider");
+  const heightValue = qs("#heightValue");
+
+  function syncHeightValue(nextValue) {
+    if (heightSlider) heightSlider.value = String(nextValue);
+    if (heightValue) heightValue.textContent = String(nextValue);
+  }
+
+  // sendBalance – funkcja wymagana przez testy + realny POST do backendu
+  function sendBalance(nextValue) {
+    const enabled =
+      typeof nextValue === "boolean"
+        ? nextValue
+        : !!(balanceToggle && balanceToggle.checked);
+    if (balanceToggle) balanceToggle.checked = enabled;
+    appendLog(
+      `[balance] toggle=${enabled ? "on" : "off"}`,
+      "ok",
+    );
+    httpPost("/api/control/balance", { enabled }).catch(() => {});
+  }
+
+  function sendHeight(nextHeight) {
+    const heightRaw =
+      typeof nextHeight === "number"
+        ? nextHeight
+        : heightSlider
+          ? Number(heightSlider.value) || 0
+          : 0;
+    const height = clamp(heightRaw, 0, 12);
+    syncHeightValue(height);
+    appendLog(
+      `[height] set=${height}`,
+      "ok",
+    );
+    httpPost("/api/control/height", { height }).catch(() => {});
+  }
+
+  if (heightSlider && heightValue) {
+    syncHeightValue(Number(heightSlider.value) || 0);
+    let debounce;
+    const updateValue = () => {
+      syncHeightValue(Number(heightSlider.value) || 0);
     };
-    motionQueue.unshift(entry);
-    if(motionQueue.length > MOTION_QUEUE_LIMIT){
-      motionQueue.pop();
-    }
-    setMotionQueueNote('');
-    renderMotionQueue();
-  }
-
-  function updateMotionEntryByRid(rid, updater){
-    if(!rid) return false;
-    for(let i=0;i<motionQueue.length;i++){
-      const item = motionQueue[i];
-      if(item.rid === String(rid)){
-        const result = updater(item);
-        if(result !== false){
-          item.updatedAt = Date.now();
-          renderMotionQueue();
-        }
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function markAllMotionEntries(status, note){
-    if(!motionQueue.length) return;
-    motionQueue.forEach(item=>{
-      item.status = status;
-      item.note = note || item.note;
-      item.updatedAt = Date.now();
+    heightSlider.addEventListener("input", () => {
+      updateValue();
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        sendHeight();
+      }, 120);
     });
-    setMotionQueueNote(note || '');
-    renderMotionQueue();
+    heightSlider.addEventListener("change", () => {
+      updateValue();
+      sendHeight();
+    });
   }
 
-  function parseEventPayload(raw){
-    if(!raw) return null;
-    if(typeof raw === 'object') return raw;
-    if(typeof raw === 'string'){
-      const trimmed = raw.trim();
-      if(!trimmed) return null;
-      try{
-        return JSON.parse(trimmed);
-      }catch{
-        return null;
-      }
-    }
-    return null;
+  if (balanceToggle) {
+    balanceToggle.addEventListener("change", (ev) => {
+      const enabled = !!ev.target.checked;
+      sendBalance(enabled);
+    });
   }
 
-  function handleMotionBridgeEvent(payload){
-    if(!payload || typeof payload !== 'object') return;
-    const evName = payload.event;
-    const detail = payload.detail || {};
-    const rid = detail && detail.rid ? String(detail.rid) : '';
-    if(evName === 'rx_cmd.move'){
-      const matched = updateMotionEntryByRid(rid, item=>{
-        item.status = 'executing';
-        item.note = t('motion_queue.note_bridge_rx');
+  // === RESOURCES DIAG ===
+  async function fetchResources() {
+    try {
+      const r = await fetch("/api/resources", { cache: "no-store" });
+      const j = await r.json();
+      const body = qs("#resBody");
+      const info = qs("#resInfo");
+      if (!body || !info) return;
+      body.querySelectorAll("tr").forEach((tr) => {
+        const key = tr.getAttribute("data-res");
+        const rowData = j[key] || {};
+        tr.querySelector(".res-status").textContent =
+          rowData.status || "n/a";
+        tr.querySelector(".res-holders").textContent =
+          (rowData.holders || []).join(", ") || "-";
       });
-      if(!matched){
-        addMotionQueueItemFromPayload('motion.bridge', detail, payload.ts);
-        updateMotionEntryByRid(rid, item=>{
-          item.status = 'executing';
-          item.note = t('motion_queue.note_bridge_rx');
+      info.textContent = t("resources.loaded_at", {
+        ts: new Date().toLocaleTimeString(),
+      });
+    } catch (e) {
+      appendLog(
+        `/api/resources :: ${e.message || e}`,
+        "warn",
+      );
+    }
+  }
+
+  qs("#resTable")?.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-res][data-res-action]");
+    if (!btn) return;
+    const res = btn.getAttribute("data-res");
+    const action = btn.getAttribute("data-res-action");
+    httpPost("/api/resources/action", { res, action }).catch(() => {});
+  });
+
+  // === MOTION QUEUE (tylko UI) ===
+  async function fetchMotionQueue() {
+    try {
+      const r = await fetch("/api/motion/queue", { cache: "no-store" });
+      const j = await r.json();
+      const info = qs("#motionQueueInfo");
+      const body = qs("#motionQueueBody");
+      if (!info || !body) return;
+      body.innerHTML = "";
+      if (!Array.isArray(j.items) || j.items.length === 0) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td colspan="7" class="muted" data-i18n="motion_queue.empty_placeholder">
+            Brak zleceń ruchu.
+          </td>`;
+        body.appendChild(tr);
+      } else {
+        j.items.forEach((item) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${item.source || "-"}</td>
+            <td>${item.vx ?? "-"}</td>
+            <td>${item.vy ?? "-"}</td>
+            <td>${item.yaw ?? "-"}</td>
+            <td>${item.time_s ?? "-"}</td>
+            <td>${item.status || "-"}</td>
+            <td>${item.age_s ?? "-"}</td>
+          `;
+          body.appendChild(tr);
         });
       }
-      return;
-    }
-    if(evName === 'skip_cmd.move'){
-      updateMotionEntryByRid(rid, item=>{
-        item.status = 'skipped';
-        item.note = detail.reason ? t('motion_queue.note_reason', {reason: detail.reason}) : t('motion_queue.status_skipped');
+      info.textContent = t("motion_queue.loaded_at", {
+        ts: new Date().toLocaleTimeString(),
       });
-      return;
-    }
-    if(['forward','backward','left','right'].includes(evName)){
-      updateMotionEntryByRid(rid, item=>{
-        item.status = 'done';
-        item.note = t('motion_queue.note_done', {dir: evName});
-      });
-      return;
-    }
-    if(evName === 'stop'){
-      updateMotionEntryByRid(rid, item=>{
-        item.status = 'stopped';
-        item.note = t('motion_queue.note_bridge_stop');
-      });
-      return;
-    }
-    if(evName === 'auto_stop'){
-      updateMotionEntryByRid(rid, item=>{
-        item.status = 'stopped';
-        item.note = detail.after_s ? t('motion_queue.note_auto_stop_secs', {secs: detail.after_s}) : t('motion_queue.note_auto_stop');
-      });
+    } catch (e) {
+      appendLog(
+        `/api/motion/queue :: ${e.message || e}`,
+        "warn",
+      );
     }
   }
 
-  function handleMotionQueueSse(ev){
-    if(!ev || !ev.topic) return;
-    const payload = parseEventPayload(ev.data);
-    if(ev.topic === 'cmd.move'){
-      addMotionQueueItemFromPayload(ev.topic, payload || {}, ev.ts);
-      return;
-    }
-    if(ev.topic === 'cmd.stop'){
-      markAllMotionEntries('stopped', t('motion_queue.note_cmd_stop'));
-      return;
-    }
-    if(ev.topic === 'motion.bridge.event'){
-      handleMotionBridgeEvent(payload);
-    }
-  }
-
-  renderMotionQueue();
-
-  // ===== AI Mode Management (Top Card) =====
-  const aiModeStatusTop = qs('#aiModeStatusTop');
-  const aiModeTimeTop = qs('#aiModeTimeTop');
-  const btnAiModeLocalTop = qs('#btnAiModeLocalTop');
-  const btnAiModeOffloadTop = qs('#btnAiModeOffloadTop');
-
-  function updateAiModeTopUI(modeData){
-    if(!modeData) return;
-    const isLocal = (modeData.mode === 'local');
-    const isOffload = (modeData.mode === 'pc_offload');
-    
-    if(aiModeStatusTop){
-      if(isLocal){
-        aiModeStatusTop.textContent = t('ai_mode.status_local') || '🖥️ Local';
-        aiModeStatusTop.className = 'pill ok';
-      }else if(isOffload){
-        aiModeStatusTop.textContent = t('ai_mode.status_offload') || '💻 PC Offload';
-        aiModeStatusTop.className = 'pill warn';
-      }
-    }
-    
-    if(aiModeTimeTop && modeData.changed_ts){
-      const ago = Math.floor((Date.now()/1000) - modeData.changed_ts);
-      if(ago < 60){
-        aiModeTimeTop.textContent = `(${ago}s ago)`;
-      }else{
-        const mins = Math.floor(ago / 60);
-        aiModeTimeTop.textContent = `(${mins}m ago)`;
-      }
-    }
-    
-    if(btnAiModeLocalTop){
-      btnAiModeLocalTop.disabled = isLocal;
-    }
-    if(btnAiModeOffloadTop){
-      btnAiModeOffloadTop.disabled = isOffload;
-    }
-  }
-
-  async function fetchAiModeTop(){
-    try{
-      const r = await fetch('/api/system/ai-mode', {cache:'no-store'});
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      if(data.mode){
-        updateAiModeTopUI(data);
-      }else if(data.error){
-        throw new Error(data.error);
-      }else{
-        throw new Error('Invalid response format');
-      }
-    }catch(e){
-      if(aiModeStatusTop){
-        aiModeStatusTop.textContent = '❌ Error';
-        aiModeStatusTop.className = 'pill err';
-      }
-      console.error('Failed to fetch AI mode (top):', e);
-    }
-  }
-
-  async function setAiModeTop(mode){
-    try{
-      if(btnAiModeLocalTop) btnAiModeLocalTop.disabled = true;
-      if(btnAiModeOffloadTop) btnAiModeOffloadTop.disabled = true;
-      
-      const r = await fetch('/api/system/ai-mode', {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({mode})
-      });
-      
-      const data = await r.json();
-      if(!r.ok || data.error){
-        throw new Error(data.error || `HTTP ${r.status}`);
-      }
-      
-      updateAiModeTopUI(data);
-      appendLog(`[ai-mode] switched to ${mode}`, 'ok');
-    }catch(e){
-      appendLog(`[ai-mode] set error: ${e.message || e}`, 'err');
-      if(aiModeStatusTop){
-        aiModeStatusTop.textContent = '❌ Error';
-        aiModeStatusTop.className = 'pill err';
-      }
-    }finally{
-      // Re-enable buttons based on current mode
-      setTimeout(fetchAiModeTop, 500);
-    }
-  }
-
-  if(btnAiModeLocalTop){
-    btnAiModeLocalTop.addEventListener('click', ()=> setAiModeTop('local'));
-  }
-  if(btnAiModeOffloadTop){
-    btnAiModeOffloadTop.addEventListener('click', ()=> setAiModeTop('pc_offload'));
-  }
-
-  // Initial fetch and periodic refresh for top card
-  if(aiModeStatusTop){
-    fetchAiModeTop();
-    setInterval(fetchAiModeTop, 5000);
-  }
-
-  // obstacle badge
-  async function pollObstacle(){
-    try{
-      const r = await fetch('/vision/obstacle', {cache:'no-store'});
-      if(!r.ok) throw 0;
-      const j = await r.json().catch(()=>({}));
-      const present = !!(j && (j.present || j.obstacle || (j.data && j.data.present)));
-      const obstBadge = qs('#obstBadge'); if(!obstBadge) return;
-      obstBadge.style.display = 'inline-flex';
-      obstBadge.textContent = present ? t('header.obstacle_present') : t('header.obstacle_none');
-      obstBadge.className = 'pill ' + (present ? 'err' : 'ok');
-    }catch{
-      const obstBadge = qs('#obstBadge'); if(!obstBadge) return;
-      obstBadge.style.display = 'inline-flex';
-      obstBadge.textContent = t('header.obstacle_na');
-      obstBadge.className = 'pill warn';
-    }
-  }
-  setInterval(pollObstacle, 1500); pollObstacle();
-
-  // kamera
-  const camImg = qs('#camPrev'); const camToggle = qs('#camToggle'); const camInfo = qs('#camInfo');
-  let camAuto = true; let camTimer = null;
-  function refreshCam(){
-    if(!camImg) return;
-    try{ camImg.src = '/camera/last?ts=' + Date.now(); }catch{}
-  }
-  function setCamAuto(on){
-    camAuto = on;
-    if(camToggle){ camToggle.textContent = on ? t('camera.auto_refresh_on') : t('camera.auto_refresh_off'); }
-    if(camTimer){ clearInterval(camTimer); camTimer=null; }
-    if(on){ refreshCam(); camTimer = setInterval(()=>{try{refreshCam();}catch{}}, 1500); }
-  }
-  if(camToggle){
-    camToggle.addEventListener('click', ()=> setCamAuto(!camAuto));
-  }
-  setCamAuto(true);
-
-  async function probeLastFrameAge(){
-    try{
-      const r = await fetch('/camera/last', { method:'HEAD', cache:'no-store' });
-      const lm = r.headers.get('Last-Modified');
-      let ageTxt = 'n/a';
-      if(lm){
-        const ts = new Date(lm).getTime();
-        const age = Math.max(0, (Date.now()-ts)/1000);
-        ageTxt = age.toFixed(1) + ' s';
-      }
-      const src = await guessFrameSource();
-      if(camInfo){
-        camInfo.textContent = t('camera.last_frame', { age: ageTxt, src });
-        camInfo.className = 'note ' + ((lm)? (parseFloat(ageTxt) < 3 ? 'ok':'warn') : 'err');
-      }
-    }catch{
-      if(camInfo){
-        camInfo.textContent = t('camera.last_frame_na');
-        camInfo.className = 'note err';
-      }
-    }
-  }
-  setInterval(probeLastFrameAge, 1500); probeLastFrameAge();
-
-  // /svc
-  const svcInfo = qs('#svcInfo'); const svcTable = qs('#svcTable'); const svcBody = qs('#svcBody'); const svcTs = qs('#svcTs');
-  const svcRefreshBtn = qs('#svcRefresh');
-  if(svcRefreshBtn) svcRefreshBtn.addEventListener('click', ()=>{ try{fetchServices();}catch{} });
-
-  function badge(active, sub){
-    let cls='warn', txt=String(active||'unknown'); if(active==='active') cls='ok';
-    if(active==='failed' || active==='inactive') cls=(active==='failed'?'err':'warn');
-    return `<span class="pill ${cls}">${txt}${sub?` / ${sub}`:''}</span>`;
-  }
-  function badgeEnabled(state){
-    let cls='warn'; if(state==='enabled') cls='ok'; if(state==='disabled') cls='warn';
-    return `<span class="pill ${cls}">${state||'unknown'}</span>`;
-  }
-
-  async function fetchServices(){
-    try{
-      const r = await fetch('/svc', {cache:'no-store'});
-      const j = await r.json().catch(()=>null);
-      const arr = (j && j.services)||[];
-      updateSvcCache(arr);
-      if(!svcInfo || !svcTable || !svcBody || !svcTs) return;
-      if(!arr.length){ svcInfo.innerHTML=t('services.empty'); svcTable.style.display='none'; return; }
-      svcInfo.textContent=''; svcTable.style.display='';
-      svcTs.textContent = '· ' + new Date().toLocaleTimeString();
-      svcBody.innerHTML = arr.map(s => {
-        const unit = s.unit || '';
-        const desc = s.desc || '';
-        const act = badge(s.active, s.sub);
-        const en = badgeEnabled(s.enabled);
-        return `<tr>
-          <td style="font-family:ui-monospace,Consolas,monospace">${unit}</td>
-          <td>${desc}</td>
-          <td>${act}</td>
-          <td>${en}</td>
-          <td class="svc-actions">
-            <button data-unit="${unit}" data-a="start">${t('services.btn_start')}</button>
-            <button data-unit="${unit}" data-a="stop">${t('services.btn_stop')}</button>
-            <button data-unit="${unit}" data-a="restart">${t('services.btn_restart')}</button>
-            <button data-unit="${unit}" data-a="enable">${t('services.btn_enable')}</button>
-            <button data-unit="${unit}" data-a="disable">${t('services.btn_disable')}</button>
-          </td>
-        </tr>`;
-      }).join('');
-    }catch(e){
-      if(svcInfo && svcTable){
-        svcInfo.innerHTML = t('services.error_fetch', { msg: String(e) });
-        svcTable.style.display='none';
-      }
-    }
-  }
-  setInterval(fetchServices, 4000); fetchServices();
-
-  async function svcAction(unit, action){
-    let status = 0, text = '', json = null;
-    try{
-      const r = await fetch('/svc/' + encodeURIComponent(unit), {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action})
-      });
-      status = r.status;
-      text = await r.text();
-      try { json = JSON.parse(text); } catch {}
-      const ok = (r.ok && json && json.ok === true);
-      const msg = (json && (json.stderr || json.stdout || json.error)) || (text && text.trim()) || `HTTP ${status}`;
-      appendLog(t('services.log_action', { action, unit, code: status, msg }), ok ? 'ok' : 'err');
-    }catch(e){
-      appendLog(t('services.log_action', { action, unit, code: 'net', msg: String(e) }), 'err');
-    }finally{
-      try{ await fetchServices(); }catch{}
-      try{ await probeLastFrameAge(); }catch{}
-    }
-  }
-  qs('#svcBody').addEventListener('click', ev=>{
-    try{
-      const btn = ev.target.closest('button'); if(!btn) return;
-      btn.disabled = true;
-      const unit = btn.getAttribute('data-unit'); const action = btn.getAttribute('data-a');
-      svcAction(unit, action).finally(()=>{ try{btn.disabled=false;}catch{} });
-    }catch{}
+  qs("#btnMotionQueueFlush")?.addEventListener("click", () => {
+    flushMotionQueue("manual-ui");
   });
 
-  async function useEdge(){ try{ await svcAction('rider-cam-preview.service','stop'); await svcAction('rider-edge-preview.service','start'); }catch{} }
-  async function useCam(){  try{ await svcAction('rider-edge-preview.service','stop'); await svcAction('rider-cam-preview.service','start'); }catch{} }
-  qs('#btnUseEdge').addEventListener('click', ()=>{ try{useEdge();}catch{} });
-  qs('#btnUseCam').addEventListener('click',  ()=>{ try{useCam(); }catch{} });
+  // === CAMERA PREVIEW SWITCH ===
+  const camPrev = qs("#camPrev");
+  const camInfo = qs("#camInfo");
+  const camToggle = qs("#camToggle");
+  const btnUseEdge = qs("#btnUseEdge");
+  const btnUseCam = qs("#btnUseCam");
+  let camAuto = true;
+  let camSource = "cam";
 
-  async function guessFrameSource(){
-    try{
-      const r = await fetch('/svc', {cache:'no-store'}); const j = await r.json();
-      const list = (j && j.services)||[];
-      const isActive = (name)=> !!list.find(s => s.unit===name && s.active==='active');
-      if(isActive('rider-edge-preview.service')) return t('camera.src_edge');
-      if(isActive('rider-cam-preview.service'))  return t('camera.src_cam');
-      if(isActive('rider-vision.service'))       return t('camera.src_vision');
-      return t('camera.src_none');
-    }catch{ return 'n/a'; }
-  }
-
-  // ====== AI Mode Switcher ======
-  const aiModeStatusEl = qs('#aiModeStatus');
-  const aiModeTimeEl = qs('#aiModeTime');
-  const btnAiModeLocal = qs('#btnAiModeLocal');
-  const btnAiModeOffload = qs('#btnAiModeOffload');
-
-  async function fetchAiMode(){
-    try{
-      const r = await fetch('/api/system/ai-mode', {cache:'no-store'});
-      const j = await r.json();
-      if(!aiModeStatusEl) return;
-      
-      const mode = j.mode || 'unknown';
-      const changedTs = j.changed_ts || 0;
-      
-      // Update status badge
-      if(mode === 'local'){
-        aiModeStatusEl.textContent = t('ai_mode.status_local') || '🖥️ Local';
-        aiModeStatusEl.className = 'pill ok';
-      }else if(mode === 'pc_offload'){
-        aiModeStatusEl.textContent = t('ai_mode.status_offload') || '💻 PC Offload';
-        aiModeStatusEl.className = 'pill warn';
-      }else{
-        aiModeStatusEl.textContent = t('ai_mode.status_unknown') || '❓ Unknown';
-        aiModeStatusEl.className = 'pill err';
-      }
-      
-      // Update timestamp
-      if(changedTs > 0 && aiModeTimeEl){
-        const ago = Math.floor((Date.now()/1000) - changedTs);
-        if(ago < 60){
-          aiModeTimeEl.textContent = t('ai_mode.changed_seconds', {seconds: ago}) || `(${ago}s ago)`;
-        }else{
-          const mins = Math.floor(ago / 60);
-          aiModeTimeEl.textContent = t('ai_mode.changed_minutes', {minutes: mins}) || `(${mins}m ago)`;
-        }
-      }
-      
-      // Update button states
-      if(btnAiModeLocal && btnAiModeOffload){
-        btnAiModeLocal.disabled = (mode === 'local');
-        btnAiModeOffload.disabled = (mode === 'pc_offload');
-      }
-    }catch(e){
-      if(aiModeStatusEl){
-        aiModeStatusEl.textContent = t('ai_mode.status_error') || '❌ Error';
-        aiModeStatusEl.className = 'pill err';
-      }
-      console.error('Failed to fetch AI mode:', e);
+  function updateCamSrc() {
+    if (!camPrev) return;
+    const ts = Date.now();
+    const base =
+      camSource === "edge"
+        ? "/vision/edge.jpg"
+        : "/camera/last";
+    camPrev.src = `${base}?ts=${ts}`;
+    if (camInfo) {
+      camInfo.textContent = `last: ${new Date().toLocaleTimeString()} · source: ${camSource}`;
     }
   }
 
-  async function setAiMode(mode){
-    try{
-      const r = await fetch('/api/system/ai-mode', {
-        method:'PUT',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({mode})
-      });
-      const j = await r.json();
-      if(!r.ok){
-        throw new Error(j.error || `HTTP ${r.status}`);
-      }
-      
-      const changed = j.changed ? t('ai_mode.log_changed') || 'changed' : t('ai_mode.log_already_set') || 'already set';
-      appendLog(t('ai_mode.log_set', {mode, changed}) || `AI mode → ${mode} (${changed})`, 'ok');
-      
-      // Refresh status immediately
-      await fetchAiMode();
-    }catch(e){
-      appendLog(t('ai_mode.log_error', {mode, msg: e.message}) || `AI mode error → ${mode}: ${e.message}`, 'err');
-    }
+  btnUseEdge?.addEventListener("click", () => {
+    camSource = "edge";
+    updateCamSrc();
+  });
+  btnUseCam?.addEventListener("click", () => {
+    camSource = "cam";
+    updateCamSrc();
+  });
+
+  camToggle?.addEventListener("click", () => {
+    camAuto = !camAuto;
+    camToggle.textContent = camAuto
+      ? t("camera.auto_refresh_on")
+      : t("camera.auto_refresh_off");
+  });
+
+  setInterval(() => {
+    if (camAuto) updateCamSrc();
+  }, 1000);
+
+  // === SSE EVENTS ===
+  try {
+    const es = new EventSource("/events");
+    es.onmessage = (ev) => {
+      appendLog(ev.data || String(ev), "muted");
+    };
+    es.onerror = () => {
+      appendLog("SSE: error, reconnecting…", "warn");
+      es.close();
+      setTimeout(() => {
+        location.reload();
+      }, 10000);
+    };
+  } catch (e) {
+    appendLog(`SSE init failed :: ${e.message || e}`, "warn");
   }
 
-  // Initial fetch and periodic refresh
-  if(aiModeStatusEl){
-    fetchAiMode();
-    setInterval(fetchAiMode, 3000);
-  }
-
-  // Button handlers
-  if(btnAiModeLocal){
-    btnAiModeLocal.addEventListener('click', async ()=>{
-      btnAiModeLocal.disabled = true;
-      try{ await setAiMode('local'); }finally{ btnAiModeLocal.disabled = false; }
-    });
-  }
-  if(btnAiModeOffload){
-    btnAiModeOffload.addEventListener('click', async ()=>{
-      btnAiModeOffload.disabled = true;
-      try{ await setAiMode('pc_offload'); }finally{ btnAiModeOffload.disabled = false; }
-    });
-  }
-
-  // SSE
-  let es=null, esTimer=null, esDelay=1000;
-  function esConnect(){
-    try{
-      if(es){ try{es.close();}catch{} es=null; }
-      es = new EventSource('/events');
-      es.onopen = ()=>{ appendLog(t('events.sse_connected')); esDelay=1000; };
-      es.onmessage=(ev)=>{
-        try{
-          const obj=JSON.parse(ev.data);
-          appendLog(obj.topic? `${obj.topic}`: t('events.generic_event'));
-          handleMotionQueueSse(obj);
-        }catch{
-          appendLog(t('events.generic_event'));
-        }
-      };
-      es.onerror = ()=>{
-        appendLog(t('events.sse_reconnect'),'warn');
-        try{ es.close(); }catch{}
-        clearTimeout(esTimer);
-        esTimer = setTimeout(esConnect, Math.min(esDelay, 10000));
-        esDelay = Math.min(esDelay*2, 10000);
-      };
-    }catch(e){
-      appendLog(t('events.sse_init_err',{err:String(e)}),'err');
-      clearTimeout(esTimer);
-      esTimer = setTimeout(esConnect, Math.min(esDelay, 10000));
-      esDelay = Math.min(esDelay*2, 10000);
-    }
-  }
-  esConnect();
+  // initial loads
+  fetchServices().catch(() => {});
+  fetchResources().catch(() => {});
+  fetchAiModeStatus().catch(() => {});
+  fetchControlState().catch(() => {});
+  fetchMotionQueue().catch(() => {});
 </script>
 </body>
 </html>
