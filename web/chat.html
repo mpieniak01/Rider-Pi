@@ -5,84 +5,28 @@
 <title>Rider-Pi — Chat</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/web/assets/dashboard-common.css">
-<style>
-  :root{
-    --bg:#0e1823; --fg:#e6eef7; --muted:#9ab1c9; --card:#122234; --accent:#98c7ff;
-    --mine:#1f3a57; --bot:#173149; --err:#4a1f27; --ok:#1c3b2b; --warn:#3b301c;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  .wrap{max-width:980px;margin:20px auto;padding:0 16px}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-  header h1{font-size:22px;margin:0}
-  header .links{margin-left:auto;font-size:13px}
-  header a{color:var(--accent);text-decoration:none}
-  header a:hover{text-decoration:underline}
-  .status{font-size:12px;opacity:.8}
-  .status.ok{color:#a7f3d0}
-  .status.warn{color:#fde68a}
-  .status.err{color:#fecaca}
-
-  .board{background:var(--card);border-radius:10px;padding:12px;min-height:58vh;
-         display:flex;flex-direction:column;gap:10px;border:1px solid #15273b}
-  .msg{max-width:78%;padding:10px 12px;border-radius:10px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
-  .msg.you{align-self:flex-end;background:var(--mine);border-top-right-radius:4px}
-  .msg.bot{align-self:flex-start;background:var(--bot);border-top-left-radius:4px}
-  .msg.err{background:var(--err)}
-  .meta{opacity:.65;font-size:12px;margin-top:6px}
-  .row{display:flex;gap:10px;margin-top:12px}
-  textarea{flex:1;min-height:64px;max-height:220px;resize:vertical;background:#0b1520;color:var(--fg);
-           border:1px solid #1a2c43;border-radius:8px;padding:10px;font:inherit}
-  textarea:focus{outline:1px solid #244769}
-  .side{display:flex;flex-direction:column;gap:8px;min-width:180px}
-  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .btn{appearance:none;border:0;border-radius:8px;padding:10px 14px;background:#1d3a58;color:var(--fg);cursor:pointer}
-  .btn:hover{background:#234769}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  label{font-size:12px;opacity:.9}
-  select{background:#0b1520;color:var(--fg);border:1px solid #1a2c43;border-radius:8px;padding:8px;font:inherit;min-width:160px}
-  .btn-sm{padding:6px 10px;font-size:13px}
-  .hint{font-size:12px;opacity:.7;margin-top:6px}
-  .providers-card{margin-top:18px;padding:16px;border:1px solid #1a2c43;border-radius:12px;background:var(--card);display:flex;flex-direction:column;gap:12px}
-  .providers-head{display:flex;align-items:center;gap:12px}
-  .providers-head h2{font-size:16px;margin:0}
-  .providers-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-  .provider-list{display:flex;flex-direction:column;gap:12px}
-  .provider-row{display:flex;flex-wrap:wrap;gap:12px;padding:12px;border-radius:10px;background:#0b1b2a;border:1px solid #1a2c43}
-  .provider-info{flex:2;min-width:220px}
-  .provider-name{font-weight:600;margin-bottom:4px}
-  .provider-desc{font-size:13px;color:var(--muted)}
-  .provider-meta{flex:1;min-width:180px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
-  .provider-actions{display:flex;align-items:center;gap:8px}
-  .provider-detail,.provider-latency{font-size:12px;color:var(--muted)}
-  .provider-empty{font-size:13px;color:var(--muted)}
-  .provider-service{font-size:12px;color:var(--muted)}
-  .provider-service strong{color:#e6eef7}
-  .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:12px;border:1px solid #1a2c43;background:#15273b;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-  .pill.ok{border-color:#2c6b48;color:#8ef7ba;background:#123123}
-  .pill.err{border-color:#8a3a3a;color:#ffb4b4;background:#3b1b1b}
-  .pill.warn{border-color:#7a6434;color:#fde68a;background:#3b2b14}
-</style>
+<link rel="stylesheet" href="/web/assets/chat.css">
 </head>
 <body data-page="chat">
   <div data-dashboard-menu-target></div>
   <div class="wrap">
-    <header>
+    <header class="l-row chat-head">
       <h1>Chat</h1>
       <div class="links">
-        <a href="/view">dashboard</a> · <a href="/home">Google&nbsp;Home</a>
+        <a href="/view">dashboard</a>
+        <span class="u-sep">·</span>
+        <a href="/home">Google&nbsp;Home</a>
       </div>
     </header>
 
-    <div class="status" id="status">Gotowy</div>
+    <div class="status c-status-msg" id="status">Gotowy</div>
 
-    <div class="board" id="board" aria-live="polite"></div>
+    <div class="board c-card" id="board" aria-live="polite"></div>
 
-    <div class="row">
+    <div class="l-row compose-row">
       <textarea id="input" placeholder="Napisz wiadomość… (Enter = wyślij, Shift+Enter = nowa linia)"></textarea>
       <div class="side">
-        <button class="btn" id="sendBtn">Wyślij</button>
+        <button class="c-btn" id="sendBtn">Wyślij</button>
         <div class="controls">
           <input type="checkbox" id="tts" />
           <label for="tts">Czytaj odpowiedzi (TTS)</label>
@@ -91,23 +35,24 @@
           <label for="ttsProvider">Provider TTS</label>
           <select id="ttsProvider"></select>
         </div>
-        <div class="hint" id="providerHint">Ładuję listę providerów…</div>
-        <div class="hint">Chat API: <code>/api/chat/send</code> · TTS: <code>/api/voice/tts</code></div>
+        <div class="c-hint" id="providerHint">Ładuję listę providerów…</div>
+        <div class="c-hint">Chat API: <code>/api/chat/send</code> · TTS: <code>/api/voice/tts</code></div>
       </div>
     </div>
 
-    <section class="providers-card" aria-labelledby="providerTitle">
-      <div class="providers-head">
+    <section class="providers-card c-card" aria-labelledby="providerTitle">
+      <div class="providers-head l-row">
         <h2 id="providerTitle">Providerzy TTS</h2>
+        <div class="u-spacer"></div>
         <div class="providers-actions">
-          <button class="btn btn-sm" id="btnReloadProviders">Odśwież listę</button>
-          <button class="btn btn-sm" id="btnTestAll">Testuj wszystkie</button>
+          <button class="c-btn c-btn-sm" id="btnReloadProviders">Odśwież listę</button>
+          <button class="c-btn c-btn-sm" id="btnTestAll">Testuj wszystkie</button>
         </div>
       </div>
       <div id="providerList" class="provider-list" aria-live="polite">
         <div class="provider-empty">Ładowanie…</div>
       </div>
-      <div class="hint">Kliknij „Test”, by wykonać próbę TTS i sprawdzić działanie usług.</div>
+      <div class="c-hint">Kliknij „Test”, by wykonać próbę TTS i sprawdzić działanie usług.</div>
     </section>
 
     <div class="meta" id="latency"></div>
@@ -146,7 +91,7 @@
 
   function setStatus(text, cls){
     status.textContent = text;
-    status.className = 'status' + (cls ? ' ' + cls : '');
+    status.className = 'status c-status-msg' + (cls ? ' ' + cls : '');
   }
 
   function appendMessage(role, text, isError){
@@ -192,9 +137,9 @@
   }
 
   function providerStateClass(state){
-    if (state === 'ok') return 'pill ok';
-    if (state === 'error') return 'pill err';
-    return 'pill warn';
+    if (state === 'ok') return 'c-pill ok';
+    if (state === 'error') return 'c-pill err';
+    return 'c-pill warn';
   }
 
   function serviceStateSummary(provider){
@@ -313,7 +258,7 @@
       const actions = document.createElement('div');
       actions.className = 'provider-actions';
       const btn = document.createElement('button');
-      btn.className = 'btn btn-sm';
+      btn.className = 'c-btn c-btn-sm';
       btn.textContent = 'Test';
       btn.addEventListener('click', ()=>{
         btn.disabled = true;
@@ -328,14 +273,14 @@
       actions.appendChild(btn);
       if (provider.service){
         const startBtn = document.createElement('button');
-        startBtn.className = 'btn btn-sm';
+        startBtn.className = 'c-btn c-btn-sm';
         startBtn.textContent = 'Start';
         if (isServiceActive(provider)) startBtn.disabled = true;
         startBtn.addEventListener('click', ()=>{
           handleServiceAction(provider, 'start', startBtn);
         });
         const stopBtn = document.createElement('button');
-        stopBtn.className = 'btn btn-sm';
+        stopBtn.className = 'c-btn c-btn-sm';
         stopBtn.textContent = 'Stop';
         if (!isServiceActive(provider)) stopBtn.disabled = true;
         stopBtn.addEventListener('click', ()=>{

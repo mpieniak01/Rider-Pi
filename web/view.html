@@ -5,56 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title data-i18n="dash.page_title">Rider-Pi — mini dashboard</title>
 <link rel="stylesheet" href="/web/assets/dashboard-common.css">
-<style>
-  body{margin:0;background:#0e1a24;color:#d7e2ee;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  .wrap{max-width:1180px;margin:28px auto;padding:0 18px}
-  h1{font-size:28px;margin:0 0 8px}
-  .hint{opacity:.6;font-size:12px;margin-bottom:18px}
-  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
-  .card{background:#0f2233;border:1px solid #1d3548;border-radius:12px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
-  .card h3{margin:0 0 10px;font-size:16px;color:#9cc8ff}
-  .kv{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:13px}
-  .kv div{opacity:.9}
-  .ok{color:#5fe39a} .bad{color:#ff6b6b} .muted{opacity:.6}
-  canvas{width:100%;height:140px;background:#0c1b28;border-radius:8px;border:1px solid #1d3548}
-  a{color:#87b7ff}
-
-  .legend{display:flex;gap:14px;margin-top:6px;font-size:12px;opacity:.8;flex-wrap:wrap}
-  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
-  .cpu{background:#6db3ff}.mem{background:#ffd36d}
-  .raw{background:#6db3ff}.proc{background:#ffd36d}.obst{background:#9be3b0}.edge{background:#6db3ff}
-
-  .thumb{background:#0c1b28;border:1px solid #1d3548;border-radius:10px;padding:8px}
-  .thumb img{display:block;width:100%;height:auto;border-radius:6px}
-  .thumb.blank{background:#000;border-color:#222}
-  @media (max-width:980px){.grid{grid-template-columns:1fr}}
-
-  .cam-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px;border:1px solid #2b5577;background:#11263a;color:#b7cee3}
-  .cam-badge.on{border-color:#2d6a4f;color:#9be3b0;background:#103226}
-  .cam-img{width:100%;height:auto;border-radius:10px;border:1px solid #1d3548;background:#0c1b28;aspect-ratio:16/9;object-fit:cover}
-
-  .statusbar{position:sticky;bottom:-1px;margin-top:18px;background:#0f2233;border:1px solid #1d3548;border-radius:10px;padding:10px 12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
-  .pill{padding:2px 10px;border-radius:999px;border:1px solid #2b5577;background:#11263a;color:#b7cee3}
-  .pill.ok{border-color:#2d6a4f;background:#103226;color:#9be3b0}
-  .pill.bad{border-color:#7a2b2b;background:#2a1212;color:#ff9f9f}
-  .sep{opacity:.4}
-</style>
+<link rel="stylesheet" href="/web/assets/view.css">
 </head>
 <body data-page="view">
 <div data-dashboard-menu-target></div>
 <div class="wrap">
   <h1 data-i18n="dash.page_title">Rider-Pi — mini dashboard</h1>
-  <div class="hint">
+  <div class="c-hint">
     <span data-i18n="dash.hint_prefix">Auto-refresh co ≈ 2 s.</span>
     <span data-i18n="dash.hint_endpoints">Endpointy:</span>
     <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a>, <a href="/vision/snap-info">/vision/snap-info</a>
   </div>
 
   <!-- RZĄD 1 -->
-  <div class="grid">
-    <div class="card">
+  <div class="l-grid">
+    <div class="c-card">
       <h3 data-i18n="dash.system.title">System</h3>
-      <div class="kv">
+      <div class="c-kv">
         <div data-i18n="dash.system.cpu_est">cpu (szac.)</div><div id="ci_cpu" class="muted">—</div>
         <div data-i18n="dash.system.load">load (1/5/15)</div><div id="ci_load" class="muted">—</div>
         <div data-i18n="dash.system.mem">pamięć</div><div id="ci_mem" class="muted">—</div>
@@ -64,9 +31,9 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3 data-i18n="dash.devices.title">Urządzenia</h3>
-      <div class="kv">
+      <div class="c-kv">
         <div data-i18n="dash.devices.camera">kamera</div><div id="d_cam" class="muted">—</div>
         <div data-i18n="dash.devices.lcd">lcd</div><div id="d_lcd" class="muted">—</div>
         <div data-i18n="dash.devices.xgo_imu">xgo.imu</div><div id="d_xgo_imu" class="muted">—</div>
@@ -76,34 +43,34 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3 data-i18n="dash.history.title">Historia (60 s) — CPU / MEM</h3>
       <canvas id="chart" width="300" height="140"></canvas>
-      <div class="legend">
-        <span><i class="dot cpu"></i><span data-i18n="dash.history.cpu">cpu%</span></span>
-        <span><i class="dot mem"></i><span data-i18n="dash.history.mem">mem%</span></span>
+      <div class="c-legend">
+        <span><i class="c-legend__dot cpu"></i><span data-i18n="dash.history.cpu">cpu%</span></span>
+        <span><i class="c-legend__dot mem"></i><span data-i18n="dash.history.mem">mem%</span></span>
       </div>
     </div>
 
-    <div class="card">
-      <h3 style="display:flex;align-items:center;gap:8px" data-i18n="dash.camera.title">
+    <div class="c-card">
+      <h3 class="cam-card-title" data-i18n="dash.camera.title">
         Kamera
         <span id="camBadge" class="cam-badge">…</span>
       </h3>
-      <div class="thumb">
+      <div class="c-thumb">
         <img id="img_cam" class="cam-img" src="/camera/placeholder" alt="kamera" decoding="async" loading="lazy">
       </div>
-      <div class="legend">
-        <span><i class="dot raw"></i><span id="leg_cam_txt">RAW • age: —</span></span>
+      <div class="c-legend">
+        <span><i class="c-legend__dot raw"></i><span id="leg_cam_txt">RAW • age: —</span></span>
       </div>
     </div>
   </div>
 
   <!-- RZĄD 2 -->
-  <div class="grid" style="margin-top:18px">
-    <div class="card">
+  <div class="l-grid">
+    <div class="c-card">
       <h3 data-i18n="dash.health.title">Health</h3>
-      <div class="kv">
+      <div class="c-kv">
         <div data-i18n="dash.health.status">status</div><div id="h_status" class="ok">OK</div>
         <div data-i18n="dash.health.uptime">uptime</div><div id="h_uptime" class="muted">—</div>
         <div data-i18n="dash.health.bus_last_msg_age">bus.last_msg_age</div><div id="h_msg" class="muted">—</div>
@@ -111,91 +78,91 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3>Obstacle</h3>
-      <div class="kv">
+      <div class="c-kv">
         <div>present</div><div id="obs_present" class="muted">—</div>
         <div>confidence</div><div id="obs_conf" class="muted">—</div>
         <div>edge_pct</div><div id="obs_edge" class="muted">—</div>
       </div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3>ROI histogram — edges</h3>
       <canvas id="binsCanvas" width="300" height="140"></canvas>
-      <div class="legend">
-        <span><i class="dot edge"></i><span id="binsLegendTxt">LOW/HIGH: — / — • edge_pct: —</span></span>
+      <div class="c-legend">
+        <span><i class="c-legend__dot edge"></i><span id="binsLegendTxt">LOW/HIGH: — / — • edge_pct: —</span></span>
       </div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3 data-i18n="dash.camera_proc.title">Kamera — PROC</h3>
-      <div class="thumb">
+      <div class="c-thumb">
         <img id="img_proc" class="cam-img" src="/camera/placeholder" alt="processed camera" decoding="async" loading="lazy">
       </div>
-      <div class="legend">
-        <span><i class="dot proc"></i><span id="leg_proc_txt">PROC • age: —</span></span>
+      <div class="c-legend">
+        <span><i class="c-legend__dot proc"></i><span id="leg_proc_txt">PROC • age: —</span></span>
       </div>
     </div>
   </div>
 
   <!-- RZĄD 3: API Metrics -->
-  <div class="grid" style="margin-top:18px">
-    <div class="card">
+  <div class="l-grid">
+    <div class="c-card">
       <h3>API Metrics</h3>
-      <div class="kv">
+      <div class="c-kv">
         <div>Control</div><div id="metric_control">—</div>
         <div>Navigator</div><div id="metric_navigator">—</div>
         <div>Voice</div><div id="metric_voice">—</div>
         <div>GoogleHome</div><div id="metric_google_home">—</div>
         <div>Chat</div><div id="metric_chat">—</div>
         <div>Face</div><div id="metric_face">—</div>
-        <div style="font-weight:bold;margin-top:4px">Total Errors</div><div id="metric_total_errors" class="bad" style="font-weight:bold;margin-top:4px">—</div>
+        <div class="metric-highlight">Total Errors</div><div id="metric_total_errors" class="bad metric-highlight">—</div>
       </div>
-      <div class="hint" style="margin-top:6px;opacity:.7">Interactive API call metrics (OK / Error)</div>
+      <div class="c-hint c-hint--sub">Interactive API call metrics (OK / Error)</div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3>Snap freshness</h3>
-      <div class="kv">
+      <div class="c-kv">
         <div>raw.age</div><div id="age_raw" class="muted">—</div>
         <div>proc.age</div><div id="age_proc" class="muted">—</div>
       </div>
-      <div class="hint" style="margin-top:6px;opacity:.7">Źródło: <code>/vision/snap-info</code></div>
+      <div class="c-hint c-hint--sub">Źródło: <code>/vision/snap-info</code></div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3 data-i18n="dash.repo.title">Repozytorium</h3>
-      <div class="kv">
+      <div class="c-kv">
         <div data-i18n="dash.repo.name">projekt</div><div><a href="https://github.com/mpieniak01/Rider-Pi" target="_blank">Rider-Pi</a></div>
         <div data-i18n="dash.repo.github">GitHub</div><div><a href="https://github.com/mpieniak01" target="_blank">@mpieniak01</a></div>
       </div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3>Camera — OBST (annot)</h3>
-      <div class="thumb">
+      <div class="c-thumb">
         <img id="img_obst" class="cam-img" src="/camera/placeholder" alt="obstacle annotated" decoding="async" loading="lazy">
       </div>
-      <div class="legend">
-        <span><i class="dot obst"></i><span id="leg_obst_txt">OBST • ROI overlay</span></span>
+      <div class="c-legend">
+        <span><i class="c-legend__dot obst"></i><span id="leg_obst_txt">OBST • ROI overlay</span></span>
       </div>
     </div>
   </div>
 
   <!-- RZĄD 4: Info + Linki + TRACKER w jednym rzędzie -->
-  <div class="grid" style="margin-top:18px">
-    <div class="card" style="grid-column: span 2">
+  <div class="l-grid">
+    <div class="c-card c-card--span2">
       <h3>Info</h3>
-      <div class="hint" style="opacity:.8">
+      <div class="c-hint c-hint--muted">
         Tracker stream pokazuje wykrywaną twarz lub dłoń z zaznaczonym okręgiem oraz aktualnym FPS przetwarzania.
         Minimalna akceptowalna wartość FPS to 10. Użyj endpointu /api/vision/tracking/mode aby włączyć tryb Follow Me (face/hand).
       </div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3 data-i18n="dash.links.title">Linki</h3>
-      <div class="kv">
+      <div class="c-kv">
         <div data-i18n="dash.links.events">zdarzenia (SSE)</div><div><a href="/events" target="_blank">/events</a></div>
         <div data-i18n="dash.links.metrics">metryki</div><div><a href="/metrics" target="_blank">/metrics</a></div>
         <div>system dashboard</div><div><a href="/system/" target="_blank">/system/</a></div>
@@ -204,25 +171,25 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="c-card">
       <h3>Camera — TRACKER (Follow Me)</h3>
-      <div class="thumb">
+      <div class="c-thumb">
         <img id="img_tracker" class="cam-img" src="/camera/placeholder" alt="tracker with FPS and detection" decoding="async" loading="lazy">
       </div>
-      <div class="legend">
-        <span><i class="dot raw"></i><span id="leg_tracker_txt">TRACKER • FPS + detection circle</span></span>
+      <div class="c-legend">
+        <span><i class="c-legend__dot raw"></i><span id="leg_tracker_txt">TRACKER • FPS + detection circle</span></span>
       </div>
     </div>
   </div>
 
-  <div class="statusbar" id="statusbar">
-    <span class="pill" id="sb_presence"><span data-i18n="dash.status.vision_prefix">VISION:</span>&nbsp;<span id="sb_presence_state">—</span></span>
-    <span class="sep">•</span>
+  <div class="c-statusbar" id="statusbar">
+    <span class="c-pill" id="sb_presence"><span data-i18n="dash.status.vision_prefix">VISION:</span>&nbsp;<span id="sb_presence_state">—</span></span>
+    <span class="u-sep">•</span>
     <span id="sb_mode" class="muted">mode: —</span>
-    <span class="sep">•</span>
+    <span class="u-sep">•</span>
     <span id="sb_conf" class="muted">conf: —</span>
-    <span class="sep">•</span>
-    <span class="pill" id="sb_cam">CAM: —</span>
+    <span class="u-sep">•</span>
+    <span class="c-pill" id="sb_cam">CAM: —</span>
     <span id="sb_cam_meta" class="muted">fps: —</span>
   </div>
 </div>
@@ -450,7 +417,7 @@ function updateStateUI(s){
   setTxt('p_ts',s.ts? new Date(s.ts*1000).toLocaleTimeString():'—');
   setTxt('p_age',(s.age_s!=null? fmt(s.age_s,1)+' s':'—'));
   setTxt('sb_presence_state',s.present? t('dash.status.present'): t('dash.status.idle'));
-  setCls('sb_presence','pill '+(s.present?'ok':'bad'));
+  setCls('sb_presence','c-pill '+(s.present?'ok':'bad'));
   setTxt('sb_mode',`${t('dash.status.mode')}: ${s.mode||'—'}`);
   setTxt('sb_conf',`${t('dash.status.conf')}: ${fmt(s.confidence,3)}`);
 
@@ -592,7 +559,7 @@ function applySnapInfo(si){
   setTxt('age_proc',procAge!=null? fmt(procAge,1)+' s':'—');
   setTxt('age_tracker',trackerAge!=null? fmt(trackerAge,1)+' s':'—');
   const ok=(rawAge!=null && rawAge<=SNAP_STALE_S);
-  setCls('sb_cam','pill '+(ok?'ok':'bad'));
+  setCls('sb_cam','c-pill '+(ok?'ok':'bad'));
   const camText='CAM: '+(rawAge!=null? fmt(rawAge,1)+'s':'—')+' / '+(procAge!=null? fmt(procAge,1)+'s':'—');
   const trackerText=trackerAge!=null? ' • TRK: '+fmt(trackerAge,1)+'s':'';
   setTxt('sb_cam',camText+trackerText);

@@ -1,0 +1,79 @@
+body[data-page="home"] {
+  background: #0e1823;
+  color: #e6eef7;
+  --page-max-width: 900px;
+  --page-padding: 24px 18px 60px;
+  --card-bg: #0f2030;
+  --card-border: #1e3a56;
+  --card-radius: 16px;
+  --card-padding: 20px;
+}
+
+body[data-page="home"] h1 {
+  font-size: 24px;
+  margin: 0 0 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+body[data-page="home"] .c-card + .c-card {
+  margin-top: 18px;
+}
+
+body[data-page="home"] .c-card__title {
+  font-size: 16px;
+}
+
+body[data-page="home"] .c-kv.data-list {
+  gap: 8px 12px;
+  font-size: 14px;
+}
+
+body[data-page="home"] .data-label {
+  color: #b7cee3;
+  min-width: 140px;
+}
+
+body[data-page="home"] .data-value {
+  color: #e6eef7;
+  font-weight: 600;
+}
+
+body[data-page="home"] .snapshot {
+  background: #0b1a27;
+  border: 1px solid #1c3349;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: auto;
+}
+
+body[data-page="home"] .spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #24425e;
+  border-top-color: #6de28a;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+body[data-page="home"] .footer-links {
+  margin-top: 24px;
+  gap: 8px;
+  font-size: 14px;
+}
+
+body[data-page="home"] .footer-links .u-sep {
+  margin: 0 8px;
+}

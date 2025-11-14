@@ -5,360 +5,55 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Sterowanie ruchem (REST /api)</title>
   <link rel="stylesheet" href="/web/assets/dashboard-common.css" />
-  <style>
-    :root { --pad: 16px; --gap: 12px; }
-    body {
-      font-family: system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      margin: 0;
-      background: #0e1823;
-      color: #e6eef7;
-    }
-    .wrap {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: var(--pad);
-    }
-    .panel-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--gap);
-      align-items: stretch;
-      margin: 0 0 var(--pad);
-    }
-    .panel-row .card {
-      flex: 1 1 360px;
-      margin: 0;
-    }
-    .cam-card {
-      position: relative;
-      max-width: 520px;
-    }
-    .control-card {
-      min-width: 320px;
-    }
-    @media (max-width: 900px) {
-      .panel-row {
-        flex-direction: column;
-      }
-      .panel-row .card {
-        max-width: 100%;
-      }
-    }
-    h1 {
-      font-size: 20px;
-      margin: 0 0 var(--pad);
-    }
-    .row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--gap);
-      align-items: center;
-      margin: 8px 0;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(3, 160px);
-      gap: var(--gap);
-      justify-content: center;
-      margin: 16px 0;
-    }
-    .card {
-      background: #0f2030;
-      border: 1px solid #1e3a56;
-      border-radius: 16px;
-      box-shadow: 0 1px 8px rgba(0, 0, 0, 0.25);
-      padding: var(--pad);
-      margin: 0 0 var(--pad);
-    }
-    button {
-      padding: 12px 16px;
-      border: 1px solid #24425e;
-      border-radius: 12px;
-      background: #122435;
-      color: #e6eef7;
-      font-size: 16px;
-      cursor: pointer;
-      transition:
-        transform 0.03s ease,
-        background 0.12s ease,
-        border-color 0.12s ease;
-    }
-    button:hover {
-      background: #16304a;
-      border-color: #2b5577;
-    }
-    button:active {
-      transform: scale(0.98);
-    }
-    .btn-sm {
-      padding: 6px 10px;
-      font-size: 13px;
-      border-radius: 10px;
-    }
-    label {
-      font-size: 14px;
-      color: #b7cee3;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    input[type="range"] {
-      width: 160px;
-      accent-color: #6de28a;
-    }
-    input[type="number"] {
-      width: 100px;
-      background: #0b1a27;
-      color: #e6eef7;
-      border: 1px solid #24425e;
-      border-radius: 10px;
-      padding: 6px 8px;
-    }
-    #log {
-      height: 220px;
-      overflow: auto;
-      background: #0b1a27;
-      border: 1px solid #1c3349;
-      border-radius: 10px;
-      padding: 8px;
-      font-family: ui-monospace, Consolas, monospace;
-      font-size: 13px;
-      white-space: pre-wrap;
-    }
-    .muted {
-      opacity: 0.85;
-    }
-    .ok {
-      color: #6de28a;
-    }
-    .warn {
-      color: #f0c36d;
-    }
-    .err {
-      color: #ff8080;
-    }
-    .kbd {
-      font-family: ui-monospace, Consolas, monospace;
-      background: #102233;
-      border: 1px solid #203a57;
-      border-radius: 6px;
-      padding: 2px 6px;
-      margin: 0 2px;
-      color: #b7cee3;
-    }
-    .spacer {
-      flex: 1;
-    }
-    a {
-      color: #98c7ff;
-      text-decoration: none;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 12px;
-      border: 1px solid #24425e;
-      background: #0b1a27;
-    }
-    .pill.ok {
-      color: #6de28a;
-      border-color: #2c6b48;
-    }
-    .pill.err {
-      color: #ff8080;
-      border-color: #8a3a3a;
-    }
-    .pill.warn {
-      color: #f0c36d;
-      border-color: #8a6a2c;
-    }
-    .svc-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-    }
-    .svc-table th,
-    .svc-table td {
-      border-top: 1px solid #1c3349;
-      padding: 8px 6px;
-      text-align: left;
-      font-size: 14px;
-    }
-    .svc-table td:nth-child(3),
-    .svc-table td:nth-child(4) {
-      white-space: nowrap;
-    }
-    .svc-actions {
-      white-space: nowrap;
-    }
-    .svc-actions button {
-      display: inline-block;
-      padding: 6px 10px;
-      font-size: 14px;
-      margin: 2px 3px;
-      border-radius: 10px;
-    }
-    .res-holders {
-      font-size: 13px;
-      color: #b7cee3;
-    }
-    .cam {
-      width: 100%;
-      max-width: 480px;
-      border-radius: 12px;
-      border: 1px solid #1c3349;
-      background: #0b1a27;
-      display: block;
-      margin: 0 auto;
-    }
-    .note {
-      font-size: 13px;
-      color: #b7cee3;
-    }
-    .feature-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-top: 12px;
-    }
-    .feature-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      padding: 12px;
-      border: 1px solid #1e3a56;
-      border-radius: 12px;
-      background: #0b1a27;
-    }
-    .feature-row.busy {
-      opacity: 0.75;
-    }
-    .feature-row .feature-info {
-      flex: 1;
-      min-width: 240px;
-    }
-    .feature-title {
-      font-weight: 600;
-      margin: 0;
-    }
-    .feature-desc {
-      font-size: 13px;
-      color: #9bb5ce;
-      margin-top: 4px;
-    }
-    .feature-head {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 4px;
-      flex-wrap: wrap;
-    }
-    .feature-status {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 160px;
-    }
-    .feature-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      min-width: 160px;
-      align-items: center;
-    }
-    .feature-actions button {
-      min-width: 100px;
-    }
-    .feature-note {
-      font-size: 12px;
-      color: #f0c36d;
-      margin-top: 8px;
-      width: 100%;
-    }
-    .feature-select {
-      margin-top: 8px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      font-size: 13px;
-      color: #b7cee3;
-    }
-    .feature-select select {
-      background: #0b1a27;
-      color: #e6eef7;
-      border: 1px solid #24425e;
-      border-radius: 10px;
-      padding: 6px 8px;
-    }
-    .feature-resource {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--gap);
-      align-items: flex-start;
-      margin: 0 0 var(--pad);
-    }
-    .feature-card,
-    .resource-card {
-      flex: 1 1 360px;
-    }
-  </style>
+  <link rel="stylesheet" href="/web/assets/control.css" />
+
 </head>
 <body data-page="control">
 <div data-dashboard-menu-target></div>
 <div class="wrap">
 
-  <h1 data-i18n="meta.app_title">
+  <h1 class="control-title" data-i18n="meta.app_title">
     Rider-Pi — Sterowanie ruchem (REST /api)
     <span
       id="apiStatus"
-      class="muted"
-      style="margin-left:8px"
+      class="muted control-status"
       data-i18n="header.api_status_checking"
     >(checking…)</span>
     <span
       id="obstBadge"
-      class="pill warn"
-      style="margin-left:10px;display:none"
+      class="c-pill warn control-badge"
+      hidden
       data-i18n="header.obstacle_na"
     >Obstacle: n/a</span>
   </h1>
 
   <!-- TRYB AI -->
-  <div class="card ai-mode-card">
-    <h2 style="font-size:16px;margin:0 0 8px">
+  <div class="c-card ai-mode-card">
+    <h2 class="c-card__title">
       <span data-i18n="ai_mode.title">Tryb AI</span>
       <span
         id="aiModeCurrentBadge"
-        class="pill warn"
-        style="margin-left:8px"
+        class="c-pill warn ai-mode-badge"
         data-i18n="ai_mode.loading"
       >ładowanie…</span>
     </h2>
-    <div class="row" style="margin:6px 0 10px">
-      <div style="flex:1">
+    <div class="l-row ai-mode-row">
+      <div class="ai-mode-col">
         <p
-          class="note"
-          style="margin:0 0 8px"
+          class="c-note"
           data-i18n="ai_mode.description"
         >
           Wybierz tryb przetwarzania AI: lokalny (wszystko na Pi) lub offload (ciężkie obliczenia na PC).
         </p>
-        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div class="ai-mode-actions">
           <button
             id="btnAiModeLocal"
-            class="btn-sm"
+            class="c-btn c-btn-sm"
             data-i18n="ai_mode.btn_local"
           >🏠 Local (Pi)</button>
           <button
             id="btnAiModeOffload"
-            class="btn-sm"
+            class="c-btn c-btn-sm"
             data-i18n="ai_mode.btn_offload"
           >💻 PC Offload</button>
           <span
@@ -367,7 +62,7 @@
             data-i18n="ai_mode.status_checking"
           >sprawdzanie…</span>
         </div>
-        <div id="aiModeLastChanged" class="note" style="margin-top:8px">
+        <div id="aiModeLastChanged" class="c-note ai-mode-meta">
           <span data-i18n="ai_mode.last_changed">Ostatnia zmiana:</span>
           <span id="aiModeChangedTime">n/a</span>
         </div>
@@ -375,29 +70,25 @@
     </div>
   </div>
 
-  <div class="panel-row">
+  <div class="panel-row l-row">
     <!-- 1) KAMERA -->
-    <div class="card cam-card">
-      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="camera.title">Podgląd kamery</h2>
+    <div class="c-card cam-card">
+      <h2 class="c-card__title" data-i18n="camera.title">Podgląd kamery</h2>
 
-      <!-- przyciski po prawej -->
-      <div
-        style="position:absolute; right:16px; top:16px; display:flex; gap:8px; align-items:flex-end;"
-      >
-        <button id="camToggle" class="btn-sm" data-i18n="camera.auto_refresh_on">
+      <div class="cam-actions">
+        <button id="camToggle" class="c-btn c-btn-sm" data-i18n="camera.auto_refresh_on">
           ⟳ Auto-refresh (on)
         </button>
-        <button id="btnUseEdge" class="btn-sm" data-i18n="camera.use_edge">Use EDGE</button>
-        <button id="btnUseCam" class="btn-sm" data-i18n="camera.use_cam">Use CAM</button>
+        <button id="btnUseEdge" class="c-btn c-btn-sm" data-i18n="camera.use_edge">Use EDGE</button>
+        <button id="btnUseCam" class="c-btn c-btn-sm" data-i18n="camera.use_cam">Use CAM</button>
       </div>
 
-      <div class="row" style="align-items:flex-start; justify-content:center">
+      <div class="cam-frame">
         <div>
           <img id="camPrev" class="cam" alt="camera preview" src="/camera/last?ts=0" />
           <div
-            class="note"
+            class="c-note cam-info"
             id="camInfo"
-            style="margin-top:6px"
             data-i18n="camera.last_frame_na"
           >last frame: n/a · source: n/a</div>
         </div>
@@ -405,10 +96,10 @@
     </div>
 
     <!-- 2) STEROWANIE -->
-    <div class="card control-card">
-      <h2 style="font-size:16px;margin:0 0 8px" data-i18n="motion.title">Sterowanie ruchem</h2>
+    <div class="c-card control-card">
+      <h2 class="c-card__title" data-i18n="motion.title">Sterowanie ruchem</h2>
 
-      <div class="row" style="margin:6px 0 10px">
+      <div class="l-row control-range-row">
         <label>
           <span data-i18n="motion.turning_speed">Prędkość skrętu</span>
           <span class="muted" data-i18n="motion.turning_range">(0..1)</span>:
@@ -419,29 +110,29 @@
           <span data-i18n="motion.pulse_time">Czas impulsu [s]</span>:
           <input id="durationSpin" type="number" min="0.05" step="0.05" value="0.10" />
         </label>
-        <div class="spacer"></div>
-        <button id="btnStop" data-i18n="motion.btn_stop">■ STOP</button>
+        <div class="u-spacer"></div>
+        <button id="btnStop" class="c-btn motion-btn" data-i18n="motion.btn_stop">■ STOP</button>
       </div>
 
-      <div class="grid">
+      <div class="motion-grid">
         <div></div>
-        <button id="btnFwd" data-i18n="motion.btn_forward">↑ Forward</button>
+        <button id="btnFwd" class="c-btn motion-btn" data-i18n="motion.btn_forward">↑ Forward</button>
         <div></div>
-        <button id="btnLeft" data-i18n="motion.btn_left">← Left</button>
-        <button id="btnStop2" data-i18n="motion.btn_stop_small">■ Stop</button>
-        <button id="btnRight" data-i18n="motion.btn_right">Right →</button>
+        <button id="btnLeft" class="c-btn motion-btn" data-i18n="motion.btn_left">← Left</button>
+        <button id="btnStop2" class="c-btn motion-btn" data-i18n="motion.btn_stop_small">■ Stop</button>
+        <button id="btnRight" class="c-btn motion-btn" data-i18n="motion.btn_right">Right →</button>
         <div></div>
-        <button id="btnBack" data-i18n="motion.btn_backward">↓ Backward</button>
+        <button id="btnBack" class="c-btn motion-btn" data-i18n="motion.btn_backward">↓ Backward</button>
         <div></div>
       </div>
 
-      <div class="row">
+      <div class="l-row">
         <span class="muted">
           <span data-i18n="motion.shortcuts_hint">Skróty</span>:
           <span class="kbd">W/S/A/D</span>
           <span data-i18n="motion.shortcuts_tail">lub strzałki; Spacja = stop.</span>
         </span>
-        <div class="spacer"></div>
+        <div class="u-spacer"></div>
       </div>
 
       <div class="balance-control-row">
@@ -471,11 +162,8 @@
 
   <!-- FUNKCJE + ZASOBY -->
   <div class="panel-row feature-resource">
-    <div class="card feature-card">
-      <h2
-        style="font-size:16px;margin:0 0 8px"
-        data-i18n="motion.features_title"
-      >Funkcje</h2>
+    <div class="c-card feature-card">
+      <h2 class="c-card__title" data-i18n="motion.features_title">Funkcje</h2>
       <div class="feature-list" id="featureList">
         <div class="feature-row" data-feature="face">
           <div class="feature-info">
@@ -491,16 +179,16 @@
             >Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
           </div>
           <div class="feature-status">
-            <span class="pill feature-pill" data-feature-pill="face">n/a</span>
+            <span class="c-pill feature-pill" data-feature-pill="face">n/a</span>
           </div>
           <div class="feature-actions">
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-feature-action="start"
               data-i18n="motion.feature_btn_start"
             >Start</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-feature-action="stop"
               data-i18n="motion.feature_btn_stop"
             >Stop</button>
@@ -522,16 +210,16 @@
             >Te same usługi tracker+controller, ale z trybem dłoni.</div>
           </div>
           <div class="feature-status">
-            <span class="pill feature-pill" data-feature-pill="hand">n/a</span>
+            <span class="c-pill feature-pill" data-feature-pill="hand">n/a</span>
           </div>
           <div class="feature-actions">
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-feature-action="start"
               data-i18n="motion.feature_btn_start"
             >Start</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-feature-action="stop"
               data-i18n="motion.feature_btn_stop"
             >Stop</button>
@@ -560,21 +248,21 @@
             </div>
           </div>
           <div class="feature-status">
-            <span class="pill feature-pill" data-feature-pill="recon">n/a</span>
+            <span class="c-pill feature-pill" data-feature-pill="recon">n/a</span>
           </div>
           <div class="feature-actions">
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-feature-action="start"
               data-i18n="motion.feature_btn_start"
             >Start</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-feature-action="stop"
               data-i18n="motion.feature_btn_stop"
             >Stop</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               id="btnReturnHome"
               data-feature-action="return-home"
               data-i18n="motion.return_home"
@@ -585,11 +273,8 @@
       </div>
     </div>
 
-    <div class="card resource-card">
-      <h2
-        style="font-size:16px;margin:0 0 8px"
-        data-i18n="resources.title"
-      >Diagnostyka zasobów</h2>
+    <div class="c-card resource-card">
+      <h2 class="c-card__title" data-i18n="resources.title">Diagnostyka zasobów</h2>
       <div id="resInfo" class="muted" data-i18n="meta.loading">Ładowanie…</div>
       <table class="svc-table" id="resTable">
         <thead>
@@ -606,15 +291,15 @@
           <td class="res-status">n/a</td>
           <td class="res-holders">-</td>
           <td class="svc-actions">
-            <button class="btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
+            <button class="c-btn c-btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-res="mic"
               data-res-action="stop"
               data-i18n="resources.btn_stop_service"
             >Stop usługi</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-res="mic"
               data-res-action="release"
               data-i18n="resources.btn_release"
@@ -626,15 +311,15 @@
           <td class="res-status">n/a</td>
           <td class="res-holders">-</td>
           <td class="svc-actions">
-            <button class="btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
+            <button class="c-btn c-btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-res="speaker"
               data-res-action="stop"
               data-i18n="resources.btn_stop_service"
             >Stop usługi</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-res="speaker"
               data-res-action="release"
               data-i18n="resources.btn_release"
@@ -646,15 +331,15 @@
           <td class="res-status">n/a</td>
           <td class="res-holders">-</td>
           <td class="svc-actions">
-            <button class="btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
+            <button class="c-btn c-btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-res="camera"
               data-res-action="stop"
               data-i18n="resources.btn_stop_service"
             >Stop usługi</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-res="camera"
               data-res-action="release"
               data-i18n="resources.btn_release"
@@ -666,15 +351,15 @@
           <td class="res-status">n/a</td>
           <td class="res-holders">-</td>
           <td class="svc-actions">
-            <button class="btn-sm" data-res="lcd" data-res-action="refresh">⟳</button>
+            <button class="c-btn c-btn-sm" data-res="lcd" data-res-action="refresh">⟳</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-res="lcd"
               data-res-action="stop"
               data-i18n="resources.btn_stop_service"
             >Stop usługi</button>
             <button
-              class="btn-sm"
+              class="c-btn c-btn-sm"
               data-res="lcd"
               data-res-action="release"
               data-i18n="resources.btn_release"
@@ -685,13 +370,12 @@
       </table>
     </div>
   </div>
-  <div class="card motion-queue-card">
-    <h2 style="font-size:16px;margin:0 0 8px">
+  <div class="c-card motion-queue-card">
+    <h2 class="c-card__title">
       <span data-i18n="motion_queue.title">Kolejka ruchu</span>
       <button
         id="btnMotionQueueFlush"
-        class="btn-sm"
-        style="margin-left:8px"
+        class="c-btn c-btn-sm section-action"
         data-i18n="motion_queue.btn_flush"
       >⏹ stop &amp; wyczyść</button>
     </h2>
@@ -722,13 +406,12 @@
     </table>
   </div>
 
-  <div class="card service-card">
-    <h2 style="font-size:16px;margin:0 0 8px">
+  <div class="c-card service-card">
+    <h2 class="c-card__title">
       <span data-i18n="services.title">Usługi (systemd)</span>
       <button
         id="svcRefresh"
-        class="btn-sm"
-        style="margin-left:8px"
+        class="c-btn c-btn-sm section-action"
         data-i18n="services.refresh"
       >⟳ odśwież</button>
     </h2>
@@ -736,7 +419,7 @@
       <span data-i18n="meta.loading">Ładowanie…</span>
       <span id="svcTs"></span>
     </div>
-    <table class="svc-table" id="svcTable" style="display:none">
+    <table class="svc-table" id="svcTable" hidden>
       <thead>
       <tr>
         <th data-i18n="services.unit">Unit</th>
@@ -751,11 +434,8 @@
   </div>
 
   <!-- LOG -->
-  <div class="card">
-    <h2
-      style="font-size:16px;margin:0 0 8px"
-      data-i18n="events.title"
-    >Zdarzenia (SSE /events)</h2>
+  <div class="c-card log-card">
+    <h2 class="c-card__title" data-i18n="events.title">Zdarzenia (SSE /events)</h2>
     <div id="log"></div>
   </div>
 </div>
@@ -1196,7 +876,7 @@
     );
     const meta = FEATURE_STATUS[stateKey] || FEATURE_STATUS.unknown;
     if (pill) {
-      pill.className = `pill feature-pill ${meta.cls}`;
+      pill.className = `c-pill feature-pill ${meta.cls}`;
       pill.textContent = t(meta.key);
     }
     if (note) {
@@ -1748,11 +1428,11 @@
           <td><span class="svc-state ${statusMeta.cls}">${activeLabel}</span></td>
           <td><span class="svc-state ${autostartMeta.cls}">${autostartMeta.text}</span></td>
           <td class="svc-actions">
-            <button class="btn-sm" data-unit="${unit}" data-action="start" title="${t("services.btn_start")}">▶</button>
-            <button class="btn-sm" data-unit="${unit}" data-action="stop" title="${t("services.btn_stop")}">■</button>
-            <button class="btn-sm" data-unit="${unit}" data-action="restart" title="${t("services.btn_restart")}">↻</button>
-            <button class="btn-sm" data-unit="${unit}" data-action="enable" title="${t("services.btn_enable")}">＋</button>
-            <button class="btn-sm" data-unit="${unit}" data-action="disable" title="${t("services.btn_disable")}">－</button>
+            <button class="c-btn c-btn-sm" data-unit="${unit}" data-action="start" title="${t("services.btn_start")}">▶</button>
+            <button class="c-btn c-btn-sm" data-unit="${unit}" data-action="stop" title="${t("services.btn_stop")}">■</button>
+            <button class="c-btn c-btn-sm" data-unit="${unit}" data-action="restart" title="${t("services.btn_restart")}">↻</button>
+            <button class="c-btn c-btn-sm" data-unit="${unit}" data-action="enable" title="${t("services.btn_enable")}">＋</button>
+            <button class="c-btn c-btn-sm" data-unit="${unit}" data-action="disable" title="${t("services.btn_disable")}">－</button>
           </td>
         `;
         tbody.appendChild(tr);

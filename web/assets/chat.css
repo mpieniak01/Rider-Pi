@@ -1,0 +1,229 @@
+body[data-page="chat"] {
+  background: #0e1823;
+  color: #e6eef7;
+  --page-max-width: 980px;
+  --page-padding: 20px 16px 60px;
+  --card-bg: #122234;
+  --card-border: #1a2c43;
+  --card-radius: 12px;
+  --card-padding: 16px;
+  --gap: 12px;
+  --chat-mine: #1f3a57;
+  --chat-bot: #173149;
+  --chat-err: #4a1f27;
+}
+
+body[data-page="chat"] .chat-head {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+body[data-page="chat"] .chat-head h1 {
+  font-size: 24px;
+  margin: 0;
+}
+
+body[data-page="chat"] .chat-head .links {
+  margin-left: auto;
+  font-size: 13px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+body[data-page="chat"] .chat-head a {
+  color: #98c7ff;
+  text-decoration: none;
+}
+
+body[data-page="chat"] .chat-head a:hover {
+  text-decoration: underline;
+}
+
+body[data-page="chat"] .status {
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+body[data-page="chat"] .status.ok {
+  color: #6de28a;
+}
+
+body[data-page="chat"] .status.warn {
+  color: #f0c36d;
+}
+
+body[data-page="chat"] .status.err {
+  color: #ff8080;
+}
+
+body[data-page="chat"] .board {
+  min-height: 58vh;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+body[data-page="chat"] .msg {
+  max-width: 78%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+body[data-page="chat"] .msg.you {
+  align-self: flex-end;
+  background: var(--chat-mine);
+  border-top-right-radius: 4px;
+}
+
+body[data-page="chat"] .msg.bot {
+  align-self: flex-start;
+  background: var(--chat-bot);
+  border-top-left-radius: 4px;
+}
+
+body[data-page="chat"] .msg.err {
+  background: var(--chat-err);
+}
+
+body[data-page="chat"] .meta {
+  opacity: 0.65;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+body[data-page="chat"] .compose-row {
+  gap: 12px;
+  margin-top: 16px;
+  align-items: flex-start;
+}
+
+body[data-page="chat"] textarea {
+  flex: 1;
+  min-height: 64px;
+  max-height: 220px;
+  resize: vertical;
+  background: #0b1520;
+  color: inherit;
+  border: 1px solid #1a2c43;
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+}
+
+body[data-page="chat"] textarea:focus {
+  outline: 1px solid #244769;
+}
+
+body[data-page="chat"] .side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+}
+
+body[data-page="chat"] .controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+body[data-page="chat"] label {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+body[data-page="chat"] select {
+  background: #0b1520;
+  color: inherit;
+  border: 1px solid #1a2c43;
+  border-radius: 8px;
+  padding: 8px;
+  font: inherit;
+  min-width: 160px;
+}
+
+body[data-page="chat"] .providers-card {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+body[data-page="chat"] .providers-head h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+body[data-page="chat"] .providers-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+body[data-page="chat"] .provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+body[data-page="chat"] .provider-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(11, 27, 42, 0.9);
+  border: 1px solid #1a2c43;
+}
+
+body[data-page="chat"] .provider-info {
+  flex: 2;
+  min-width: 220px;
+}
+
+body[data-page="chat"] .provider-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+body[data-page="chat"] .provider-desc {
+  font-size: 13px;
+  color: #9ab1c9;
+}
+
+body[data-page="chat"] .provider-meta {
+  flex: 1;
+  min-width: 180px;
+  font-size: 12px;
+  color: #9ab1c9;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+body[data-page="chat"] .provider-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body[data-page="chat"] .provider-empty {
+  font-size: 13px;
+  color: #9ab1c9;
+}
+
+body[data-page="chat"] .provider-service {
+  font-size: 12px;
+  color: #9ab1c9;
+}
+
+body[data-page="chat"] .provider-service strong {
+  color: #e6eef7;
+}
