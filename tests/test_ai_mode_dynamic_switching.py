@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def reset_ai_mode():
     """Reset AI mode to default before each test."""
     from common import ai_mode
