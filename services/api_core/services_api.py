@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from flask import Response, request
@@ -56,6 +57,27 @@ MUTEX_GROUPS: list[set[str]] = [
 ALLOWED_ACTIONS: tuple[str, ...] = ("start", "stop", "restart", "enable", "disable")
 
 SERVICE_CTL = os.path.join(C.BASE_DIR, "scripts", "sys_control.sh")
+SYSTEMD_DIR = Path(C.BASE_DIR) / "systemd"
+_DESC_CACHE: dict[str, str] = {}
+
+
+def _service_description_from_file(unit: str) -> str | None:
+    filename = unit if unit.endswith(".service") else f"{unit}.service"
+    cached = _DESC_CACHE.get(filename)
+    if cached is not None:
+        return cached
+    candidate = SYSTEMD_DIR / filename
+    if not candidate.exists():
+        return None
+    try:
+        for line in candidate.read_text(encoding="utf-8").splitlines():
+            if line.startswith("Description="):
+                desc = line.split("=", 1)[1].strip()
+                _DESC_CACHE[filename] = desc
+                return desc
+    except Exception:
+        return None
+    return None
 
 
 # -------------------- helpers --------------------
@@ -109,13 +131,18 @@ def _svc_status(unit: str) -> dict[str, str]:
     kv = _svc_show(unit)
     if "error" in kv:
         return {"unit": unit, "error": kv["error"]}
+    desc = kv.get("Description", "").strip()
+    if not desc or desc.lower() == unit.lower():
+        file_desc = _service_description_from_file(unit)
+        if file_desc:
+            desc = file_desc
     return {
         "unit": unit,
         "load": kv.get("LoadState", ""),
         "active": kv.get("ActiveState", ""),
         "sub": kv.get("SubState", ""),
         "enabled": kv.get("UnitFileState", ""),
-        "desc": kv.get("Description", ""),
+        "desc": desc,
     }
 
 

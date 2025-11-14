@@ -310,6 +310,11 @@ _add_rule(
     view_func=control_api.api_control_state,
     methods=["GET", "OPTIONS"],
 )
+_add_rule(
+    "/api/motion/queue",
+    view_func=control_api.api_motion_queue,
+    methods=["GET", "OPTIONS"],
+)
 
 # navigator API (Rekonesans mode)
 _add_rule(

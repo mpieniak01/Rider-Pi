@@ -100,6 +100,35 @@ body[data-page="control"] .balance-control label {
   gap: 12px;
   justify-content: space-between;
 }
+.svc-desc-pl {
+  font-weight: 600;
+  color: var(--fg);
+}
+.svc-desc-en {
+  font-size: 13px;
+  color: var(--muted);
+}
+.svc-desc-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.svc-state {
+  font-weight: 600;
+  color: var(--muted);
+}
+.svc-state-ok {
+  color: #6de28a;
+}
+.svc-state-warn {
+  color: #f0c36d;
+}
+.svc-state-err {
+  color: #ff8080;
+}
+.svc-state-unknown {
+  color: #b7cee3;
+}
 
 /* --- Wspólne menu --- */
 .dashboard-menu {

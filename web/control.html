@@ -781,8 +781,7 @@
 
   async function fetchControlState() {
     try {
-      const r = await fetch("/api/control/state", { cache: "no-store" });
-      const j = await r.json();
+      const j = await fetchJson("/api/control/state");
       const balance = j.balance || {};
       if (balanceToggle && typeof balance.enabled === "boolean") {
         balanceToggle.checked = !!balance.enabled;
@@ -895,26 +894,53 @@
   setInterval(pingHealth, 1000);
   pingHealth();
 
-  async function httpPost(url, body) {
+  const AI_MODE_ENDPOINT = "/api/system/ai-mode";
+
+  async function sendJson(url, body, method = "POST") {
     const r = await fetch(url, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
     });
     const raw = await r.text();
     let j = null;
     try {
-      j = JSON.parse(raw);
+      j = raw ? JSON.parse(raw) : {};
     } catch {
       /* ignore */
     }
     if (!r.ok) {
       throw new Error(
         (j && (j.error || j.stderr || j.stdout)) ||
-          `HTTP ${r.status}`,
+          `HTTP ${r.status} :: ${raw.slice(0, 160)}`,
       );
     }
-    return j || {};
+    if (!j) {
+      throw new Error(`HTTP ${r.status}: invalid JSON`);
+    }
+    return j;
+  }
+
+  async function httpPost(url, body) {
+    return sendJson(url, body, "POST");
+  }
+
+  async function fetchJson(url, options = {}) {
+    const r = await fetch(url, { cache: "no-store", ...options });
+    const raw = await r.text();
+    if (!r.ok) {
+      const snippet = raw.trim().slice(0, 160) || r.statusText;
+      throw new Error(`HTTP ${r.status} :: ${snippet}`);
+    }
+    if (!raw.trim()) {
+      return {};
+    }
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`invalid JSON :: ${err.message}`);
+    }
   }
 
   async function apiControl(obj) {
@@ -1402,10 +1428,15 @@
   // --- systemd actions: próba wielu endpointów ---
   async function svcAction(unit, action) {
     const body = { unit, action };
+    const preferSvcOnly = action === "enable" || action === "disable";
     const endpoints = [
-      { url: "/api/systemd/action", body },
-      { url: "/api/services/systemd/action", body },
-      { url: "/api/services/action", body },
+      ...(preferSvcOnly
+        ? []
+        : [
+            { url: "/api/systemd/action", body },
+            { url: "/api/services/systemd/action", body },
+            { url: "/api/services/action", body },
+          ]),
       {
         url: `/svc/${encodeURIComponent(unit)}`,
         body: { action },
@@ -1421,6 +1452,11 @@
           `[svc] ${unit} ${action} @${url} :: ${JSON.stringify(res)}`,
           "ok",
         );
+        try {
+          await fetchServices();
+        } catch {
+          /* ignore refresh failure */
+        }
         return res;
       } catch (e) {
         lastError = e;
@@ -1442,6 +1478,69 @@
   // --- systemd list: próba wielu endpointów / różnych formatów ---
   async function fetchServices() {
     try {
+      const SERVICE_DESCRIPTIONS = {
+        "rider-api.service": {
+          pl: "Serwer API sterowania i monitoringu (REST / SSE)",
+          en: "Control & monitoring API server (REST/SSE)",
+        },
+        "rider-broker.service": {
+          pl: "Mostek komunikacyjny ZMQ między modułami",
+          en: "ZMQ broker bridging modules",
+        },
+        "rider-cam-preview.service": {
+          pl: "Podgląd kamery zapisujący surowe klatki",
+          en: "Raw camera preview recorder",
+        },
+        "rider-edge-preview.service": {
+          pl: "Podgląd kamery z filtrem krawędziowym (Canny)",
+          en: "Edge-highlight camera preview (Canny)",
+        },
+        "rider-google-bridge.service": {
+          pl: "Integracja Google Home (pobieranie i wysyłanie danych)",
+          en: "Google Home integration and data feed",
+        },
+        "rider-mapper.service": {
+          pl: "Moduł mapowania SLAM (siatka zajętości)",
+          en: "SLAM mapper producing occupancy grid",
+        },
+        "rider-motion-bridge.service": {
+          pl: "Mostek ruchu/XGO – telemetria i sterowanie",
+          en: "Motion/XGO bridge for telemetry and control",
+        },
+        "rider-obstacle.service": {
+          pl: "Detektor przeszkód bazujący na ramkach krawędzi",
+          en: "Obstacle detector using edge ROIs",
+        },
+        "rider-odometry.service": {
+          pl: "Odometria robota (śledzenie pozycji)",
+          en: "Robot odometry tracking",
+        },
+        "rider-ssd-preview.service": {
+          pl: "Podgląd SSD z naniesionymi ramkami detektora",
+          en: "SSD detector preview with bounding boxes",
+        },
+        "rider-tracker.service": {
+          pl: "Wizualny tracker (MediaPipe – twarz/dłoń)",
+          en: "Vision tracker using MediaPipe (face/hand)",
+        },
+        "rider-tracking-controller.service": {
+          pl: "Kontroler rotacji w trybie Follow Me",
+          en: "Tracking rotation controller for Follow Me",
+        },
+        "rider-voice-web.service": {
+          pl: "Webowe API głosu (Piper TTS + Vosk ASR)",
+          en: "Voice web API (Piper TTS + Vosk ASR)",
+        },
+        "rider-voice.service": {
+          pl: "Asystent głosowy CLI używający lokalnego web ASR/TTS",
+          en: "CLI voice assistant using local web ASR/TTS",
+        },
+        "rider-web-bridge.service": {
+          pl: "Mostek HTTP→ZMQ dla komend ruchu",
+          en: "HTTP→ZMQ bridge for motion commands",
+        },
+      };
+
       const endpoints = [
         "/api/systemd/services?scope=motion",
         "/api/services/systemd?scope=motion",
@@ -1490,35 +1589,170 @@
         throw new Error("unsupported services payload format");
       }
 
-      const tbody = qs("#svcBody");
-      const table = qs("#svcTable");
-      const info = qs("#svcInfo");
+    const tbody = qs("#svcBody");
+    const table = qs("#svcTable");
+    const info = qs("#svcInfo");
       if (!tbody || !table || !info) return;
 
       tbody.innerHTML = "";
+      const normalizeSvcValue = (value) => String(value ?? "").trim().toLowerCase();
+
+      function describeStatus(activeValue, subValue) {
+        const activeNorm = normalizeSvcValue(activeValue);
+        const subNorm = normalizeSvcValue(subValue);
+        if (!activeNorm && !subNorm) {
+          return {
+            cls: "svc-state-unknown",
+            text: t("services.status_unknown"),
+          };
+        }
+        if (
+          activeNorm.includes("fail") ||
+          activeNorm.includes("error") ||
+          subNorm.includes("fail")
+        ) {
+          return { cls: "svc-state-err", text: t("services.status_failed") };
+        }
+        if (
+          activeNorm.startsWith("inactive") ||
+          activeNorm.startsWith("dead") ||
+          subNorm.startsWith("dead") ||
+          subNorm.startsWith("inactive")
+        ) {
+          return { cls: "svc-state-warn", text: t("services.status_inactive") };
+        }
+        if (
+          activeNorm.includes("deactivat") ||
+          activeNorm.includes("stopping") ||
+          subNorm.includes("stopping")
+        ) {
+          return { cls: "svc-state-warn", text: t("services.status_stopping") };
+        }
+        if (
+          activeNorm.startsWith("activating") ||
+          activeNorm.includes("start") ||
+          subNorm.includes("start")
+        ) {
+          return { cls: "svc-state-warn", text: t("services.status_starting") };
+        }
+        if (
+          activeNorm === "active" &&
+          (!subNorm || subNorm === "running" || subNorm === "listening")
+        ) {
+          return { cls: "svc-state-ok", text: t("services.status_active") };
+        }
+        if (activeNorm.includes("active")) {
+          return { cls: "svc-state-ok", text: t("services.status_active") };
+        }
+        return { cls: "svc-state-unknown", text: t("services.status_unknown") };
+      }
+
+      function describeAutostart(rawValue, loadState) {
+        const normalized = normalizeSvcValue(rawValue);
+        if (!normalized) {
+          const loadNorm = normalizeSvcValue(loadState);
+          if (loadNorm === "not-found" || loadNorm === "bad-setting") {
+            return {
+              cls: "svc-state-warn",
+              text: t("services.autostart_disabled"),
+            };
+          }
+          return { cls: "svc-state-unknown", text: t("services.autostart_unknown") };
+        }
+        if (normalized.startsWith("enabled")) {
+          return { cls: "svc-state-ok", text: t("services.autostart_enabled") };
+        }
+        if (normalized.startsWith("disabled")) {
+          return {
+            cls: "svc-state-warn",
+            text: t("services.autostart_disabled"),
+          };
+        }
+        if (normalized.startsWith("masked")) {
+          return { cls: "svc-state-err", text: t("services.autostart_masked") };
+        }
+        if (normalized.startsWith("static")) {
+          return { cls: "svc-state-unknown", text: t("services.autostart_static") };
+        }
+        if (normalized.startsWith("linked")) {
+          return {
+            cls: "svc-state-unknown",
+            text: t("services.autostart_linked"),
+          };
+        }
+        if (normalized.startsWith("generated")) {
+          return {
+            cls: "svc-state-unknown",
+            text: t("services.autostart_generated"),
+          };
+        }
+        if (normalized.startsWith("indirect")) {
+          return {
+            cls: "svc-state-unknown",
+            text: t("services.autostart_indirect"),
+          };
+        }
+        return {
+          cls: "svc-state-unknown",
+          text: rawValue || t("services.autostart_unknown"),
+        };
+      }
+
       services.forEach((svc) => {
         const unit = svc.unit || svc.name || svc.id || "n/a";
-        const desc = svc.description || svc.desc || "-";
-        const active = svc.active || svc.state || svc.status || "unknown";
-        const enabled = svc.enabled ?? svc.autostart ?? "-";
+        const overrideDesc = SERVICE_DESCRIPTIONS[unit];
+        const desc =
+          overrideDesc
+            ? `<div class="svc-desc-wrapper"><div class="svc-desc-pl">${overrideDesc.pl}</div><div class="svc-desc-en">${overrideDesc.en}</div></div>`
+            : (svc.desc || svc.description || "-");
+        const activeRaw =
+          svc.active ||
+          svc.ActiveState ||
+          svc.state ||
+          svc.status ||
+          "";
+        const subRaw = svc.sub || svc.SubState || "";
+        const enabledRaw =
+          (typeof svc.enabled === "boolean"
+            ? svc.enabled
+              ? "enabled"
+              : "disabled"
+            : null) ||
+          svc.enabled ||
+          svc.autostart ||
+          svc.UnitFileState ||
+          "";
+        const loadRaw = svc.load || svc.LoadState || "";
+        const statusMeta = describeStatus(activeRaw, subRaw);
+        const autostartMeta = describeAutostart(enabledRaw, loadRaw);
+        const activeLabel =
+          statusMeta.text +
+          (subRaw &&
+          !["running", "dead", "listening", ""].includes(
+            normalizeSvcValue(subRaw),
+          )
+            ? ` (${subRaw})`
+            : "");
 
         svcCache.set(unit, {
           unit,
           description: desc,
-          active,
-          enabled,
+          active: activeRaw,
+          enabled: enabledRaw,
         });
 
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${unit}</td>
           <td>${desc}</td>
-          <td>${active}</td>
-          <td>${enabled}</td>
+          <td><span class="svc-state ${statusMeta.cls}">${activeLabel}</span></td>
+          <td><span class="svc-state ${autostartMeta.cls}">${autostartMeta.text}</span></td>
           <td class="svc-actions">
-            <button class="btn-sm" data-unit="${unit}" data-action="start">▶</button>
-            <button class="btn-sm" data-unit="${unit}" data-action="stop">■</button>
-            <button class="btn-sm" data-unit="${unit}" data-action="restart">↻</button>
+            <button class="btn-sm" data-unit="${unit}" data-action="start" title="${t("services.btn_start")}">▶</button>
+            <button class="btn-sm" data-unit="${unit}" data-action="stop" title="${t("services.btn_stop")}">■</button>
+            <button class="btn-sm" data-unit="${unit}" data-action="restart" title="${t("services.btn_restart")}">↻</button>
+            <button class="btn-sm" data-unit="${unit}" data-action="enable" title="${t("services.btn_enable")}">＋</button>
+            <button class="btn-sm" data-unit="${unit}" data-action="disable" title="${t("services.btn_disable")}">－</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -1550,8 +1784,7 @@
   // === AI MODE (UI) ===
   async function fetchAiModeStatus() {
     try {
-      const r = await fetch("/api/ai-mode", { cache: "no-store" });
-      const j = await r.json();
+      const j = await fetchJson(AI_MODE_ENDPOINT);
       const badge = qs("#aiModeCurrentBadge");
       const status = qs("#aiModeStatus");
       const ts = qs("#aiModeChangedTime");
@@ -1577,7 +1810,7 @@
 
   async function setAiMode(mode) {
     try {
-      await httpPost("/api/ai-mode", { mode });
+      await sendJson(AI_MODE_ENDPOINT, { mode }, "PUT");
       appendLog(`[ai_mode] set ${mode}`, "ok");
       await fetchAiModeStatus();
     } catch (e) {
@@ -1662,29 +1895,47 @@
   }
 
   // === RESOURCES DIAG ===
+  async function updateResourceRow(resName) {
+    const tr = document.querySelector(`tr[data-res="${resName}"]`);
+    if (!tr) return;
+    const statusEl = tr.querySelector(".res-status");
+    const holdersEl = tr.querySelector(".res-holders");
+    if (statusEl) statusEl.textContent = t("meta.loading");
+    try {
+      const data = await fetchJson(`/api/resource/${encodeURIComponent(resName)}`);
+      const free = !!data.free;
+      if (statusEl) {
+        statusEl.textContent = data.error
+          ? `${t("resources.status_error")}: ${data.error}`
+          : free
+            ? t("resources.status_free")
+            : t("resources.status_busy");
+      }
+      if (holdersEl) {
+        const holders = (data.holders || []).map((holder) => {
+          const svc = holder.service ? ` [${holder.service}]` : "";
+          return `${holder.cmd || holder.pid || "pid"} (${holder.pid || "?"})${svc}`;
+        });
+        holdersEl.textContent = holders.length ? holders.join(", ") : t("resources.holders_none");
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = e.message || String(e);
+      if (holdersEl) holdersEl.textContent = "-";
+    }
+  }
+
   async function fetchResources() {
     try {
-      const r = await fetch("/api/resources", { cache: "no-store" });
-      const j = await r.json();
-      const body = qs("#resBody");
+      const rows = Array.from(document.querySelectorAll("tr[data-res]"));
+      await Promise.all(rows.map((tr) => updateResourceRow(tr.getAttribute("data-res"))));
       const info = qs("#resInfo");
-      if (!body || !info) return;
-      body.querySelectorAll("tr").forEach((tr) => {
-        const key = tr.getAttribute("data-res");
-        const rowData = j[key] || {};
-        tr.querySelector(".res-status").textContent =
-          rowData.status || "n/a";
-        tr.querySelector(".res-holders").textContent =
-          (rowData.holders || []).join(", ") || "-";
-      });
-      info.textContent = t("resources.loaded_at", {
-        ts: new Date().toLocaleTimeString(),
-      });
+      if (info) {
+        info.textContent = t("resources.last_update", {
+          time: new Date().toLocaleTimeString(),
+        });
+      }
     } catch (e) {
-      appendLog(
-        `/api/resources :: ${e.message || e}`,
-        "warn",
-      );
+      appendLog(`/api/resource :: ${e.message || e}`, "warn");
     }
   }
 
@@ -1693,14 +1944,21 @@
     if (!btn) return;
     const res = btn.getAttribute("data-res");
     const action = btn.getAttribute("data-res-action");
-    httpPost("/api/resources/action", { res, action }).catch(() => {});
+    if (action === "refresh") {
+      updateResourceRow(res);
+      return;
+    }
+    httpPost(`/api/resource/${encodeURIComponent(res)}`, { action })
+      .then(() => updateResourceRow(res))
+      .catch((err) => {
+        appendLog(`[resource ${res}] ${action} :: ${err.message || err}`, "warn");
+      });
   });
 
   // === MOTION QUEUE (tylko UI) ===
   async function fetchMotionQueue() {
     try {
-      const r = await fetch("/api/motion/queue", { cache: "no-store" });
-      const j = await r.json();
+      const j = await fetchJson("/api/motion/queue");
       const info = qs("#motionQueueInfo");
       const body = qs("#motionQueueBody");
       if (!info || !body) return;
@@ -1810,3 +2068,4 @@
 </script>
 </body>
 </html>
+  const AI_MODE_ENDPOINT = "/api/system/ai-mode";

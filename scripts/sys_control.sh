@@ -7,20 +7,26 @@ set -euo pipefail
 ALLOW_UNITS=(
   rider-api.service
   rider-broker.service
-  rider-voice.service
-  rider-voice-web.service
-  rider-motion-bridge.service
-  rider-vision.service
-  rider-web-bridge.service
   rider-cam-preview.service
   rider-edge-preview.service
-  rider-ssd-preview.service
+  rider-google-bridge.service
+  rider-mapper.service
+  rider-motion-bridge.service
   rider-obstacle.service
   rider-odometry.service
+  rider-ssd-preview.service
   rider-tracker.service
   rider-tracking-controller.service
-  rider-tracker.service)
+  rider-voice.service
+  rider-voice-web.service
+  rider-vision.service
+  rider-web-bridge.service
+)
 
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+UNIT_SRC_DIR="${BASE_DIR}/systemd"
 
 USER_NAME="pi"
 USER_UID="$(id -u "$USER_NAME" 2>/dev/null || echo 1000)"
@@ -49,8 +55,17 @@ if ! is_allowed "$UNIT"; then
 fi
 
 # --- helpers: spróbuj SYSTEM, potem USER; zbierz diagnostykę ---
+SYSTEMCTL_UNIT="$UNIT"
+if [[ "$ACTION" == "enable" ]]; then
+  UNIT_SRC_PATH="${UNIT_SRC_DIR}/${UNIT}"
+  if [[ -f "$UNIT_SRC_PATH" && ! -e "/etc/systemd/system/${UNIT}" ]]; then
+    SYSTEMCTL_UNIT="$UNIT_SRC_PATH"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+fi
+
 run_system() {
-  systemctl --no-pager "$ACTION" "$UNIT" 2>&1
+  systemctl --no-pager "$ACTION" "$SYSTEMCTL_UNIT" 2>&1
   return $?
 }
 run_user() {

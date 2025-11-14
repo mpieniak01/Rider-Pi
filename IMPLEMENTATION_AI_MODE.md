@@ -77,6 +77,7 @@ REST API implementation:
 - ZMQ event publishing on mode change
 - Full CORS support
 - Comprehensive error handling
+- **Important**: `/api/system/ai-mode` is the canonical endpoint. Legacy shortcuts such as `/api/ai-mode` no longer exist and will respond with 404 HTML. Update any integrations or documentation to avoid reverting to the old path.
 
 ### 5. API Server Integration (`services/api_server.py`)
 

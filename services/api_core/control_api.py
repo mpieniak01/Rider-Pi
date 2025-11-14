@@ -180,6 +180,23 @@ def api_control_state():
     return resp
 
 
+def api_motion_queue():
+    """Return placeholder motion queue to avoid 404s when UI polls."""
+    if request.method == "OPTIONS":
+        resp = Response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
+        return resp
+
+    payload = {"ok": True, "items": []}
+    resp = Response(json.dumps(payload), mimetype="application/json")
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
+    return resp
+
+
 def api_control():
     data = request.get_json(silent=True) or {}
     action = (request.args.get("action") or data.get("action") or "").strip().lower()
