@@ -512,6 +512,17 @@
   // ====== helpers ======
   const qs = (s) => document.querySelector(s);
   const logEl = qs("#log");
+  const MAX_ERR_SNIPPET = 140;
+
+  function formatHttpError(status, statusText, raw) {
+    const txt = (raw || "").trim();
+    if (!txt) {
+      return `HTTP ${status} :: ${statusText || "error"}`;
+    }
+    const stripped = txt.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    const preview = stripped || statusText || "error";
+    return `HTTP ${status} :: ${preview.slice(0, MAX_ERR_SNIPPET)}`;
+  }
 
   function appendLog(msg, cls = "") {
     if (!logEl) return;
@@ -591,10 +602,10 @@
       /* ignore */
     }
     if (!r.ok) {
-      throw new Error(
+      const snippet =
         (j && (j.error || j.stderr || j.stdout)) ||
-          `HTTP ${r.status} :: ${raw.slice(0, 160)}`,
-      );
+        formatHttpError(r.status, r.statusText, raw);
+      throw new Error(snippet);
     }
     if (!j) {
       throw new Error(`HTTP ${r.status}: invalid JSON`);
@@ -610,8 +621,7 @@
     const r = await fetch(url, { cache: "no-store", ...options });
     const raw = await r.text();
     if (!r.ok) {
-      const snippet = raw.trim().slice(0, 160) || r.statusText;
-      throw new Error(`HTTP ${r.status} :: ${snippet}`);
+      throw new Error(formatHttpError(r.status, r.statusText, raw));
     }
     if (!raw.trim()) {
       return {};
