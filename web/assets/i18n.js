@@ -350,6 +350,32 @@ export const I18N = {
     status_error:       { pl: "błąd: {error}", en: "error: {error}" },
     last_changed:       { pl: "Ostatnia zmiana:", en: "Last changed:" },
   },
+
+  provider: {
+    title:                { pl: "Provider Control", en: "Provider Control" },
+    description:          { pl: "Przełączaj źródło przetwarzania (lokalnie na Pi lub na komputerze PC).", en: "Switch processing source (local on Pi or offloaded to the PC)." },
+    btn_local:            { pl: "🏠 Local (Pi)", en: "🏠 Local (Pi)" },
+    btn_pc:               { pl: "💻 PC Offload", en: "💻 PC Offload" },
+    pc_status_unknown:    { pl: "PC: status nieznany", en: "PC: status unknown" },
+    pc_status_pending:    { pl: "PC: oczekiwanie", en: "PC: pending" },
+    pc_status_online:     { pl: "PC: online", en: "PC: online" },
+    pc_status_offline:    { pl: "PC: offline", en: "PC: offline" },
+    mode_local:           { pl: "Lokalny", en: "Local" },
+    mode_pc:              { pl: "PC", en: "PC" },
+    status_local_only:    { pl: "Tylko lokalnie", en: "Local only" },
+    status_pc_pending:    { pl: "PC: oczekiwanie", en: "PC pending" },
+    status_pc_active:     { pl: "PC: aktywny", en: "PC active" },
+    status_fallback:      { pl: "Fallback na lokalny", en: "Fallback to local" },
+    status_unknown:       { pl: "Status nieznany", en: "Unknown status" },
+    changed_label:        { pl: "Ostatnia zmiana:", en: "Last change:" },
+    changed_unknown:      { pl: "n/d", en: "n/a" },
+    domain_vision:        { pl: "Vision", en: "Vision" },
+    domain_voice:         { pl: "Voice", en: "Voice" },
+    domain_text:          { pl: "Text / LLM", en: "Text / LLM" },
+    domain_vision_desc:   { pl: "Detekcja przeszkód, przetwarzanie obrazu.", en: "Obstacle detection, vision processing." },
+    domain_voice_desc:    { pl: "ASR / TTS, komendy głosowe i rozmowy.", en: "ASR / TTS, voice commands and chat." },
+    domain_text_desc:     { pl: "LLM, odpowiedzi tekstowe i generowanie komend.", en: "LLM, textual replies and command generation." },
+  },
 };
 
 let CURRENT_LANG = 'pl';

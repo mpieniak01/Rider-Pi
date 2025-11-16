@@ -15,6 +15,7 @@ The most important documents are located in the project root directory:
 - [**AGENT.md**](../AGENT.md) — code assistant contract, developer guidelines
 - [**WORKING-AGREEMENTS.md**](../WORKING-AGREEMENTS.md) — team working agreements
 - [**CONFIG_POLICY.md**](CONFIG_POLICY.md) — **configuration and secrets policy** (single source of truth)
+- [**OFFLOAD_PROVIDER_PROTOCOL.md**](OFFLOAD_PROVIDER_PROTOCOL.md) — Pi ↔ PC provider/offload contract, endpoints, topics, roadmap
 
 ---
 

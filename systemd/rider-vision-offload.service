@@ -1,0 +1,15 @@
+[Unit]
+Description=Rider-Pi Vision Offload Dispatcher
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/robot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m apps.vision.offload_dispatcher
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

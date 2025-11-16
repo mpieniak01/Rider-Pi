@@ -22,7 +22,24 @@ except ImportError:
         return False
 
 
+try:
+    from common import provider_state
+except ImportError:
+    provider_state = None  # type: ignore
+
+
 logger = logging.getLogger(__name__)
+
+VISION_DOMAIN = "vision"
+
+
+def _provider_mode() -> str:
+    if provider_state is not None:
+        try:
+            return provider_state.get_domain_mode(VISION_DOMAIN)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Provider state read failed: %s", exc)
+    return "pc" if get_mode() == "pc_offload" else "local"
 
 
 def should_run_local_detectors() -> bool:
@@ -31,9 +48,9 @@ def should_run_local_detectors() -> bool:
     Returns:
         True if running in local mode, False if in pc_offload mode
     """
-    mode = get_mode()
-    logger.debug(f"AI mode check: {mode}, local detectors: {mode == 'local'}")
-    return mode == "local"
+    mode = _provider_mode()
+    logger.debug(f"Vision provider mode: {mode}, local detectors: {mode == 'local'}")
+    return mode != "pc"
 
 
 def should_publish_frames_to_pc() -> bool:
@@ -42,17 +59,18 @@ def should_publish_frames_to_pc() -> bool:
     Returns:
         True if running in pc_offload mode, False otherwise
     """
-    mode = get_mode()
-    logger.debug(f"AI mode check: {mode}, publish frames: {mode == 'pc_offload'}")
-    return mode == "pc_offload"
+    mode = _provider_mode()
+    logger.debug(f"Vision provider mode: {mode}, publish frames: {mode == 'pc'}")
+    return mode == "pc"
 
 
 def log_vision_mode_status() -> None:
     """Log current vision mode status."""
+    provider_mode = _provider_mode()
     mode = get_mode()
-    if is_local():
-        logger.info(f"Vision AI Mode: {mode} - Using local detectors (HOG, TFLite)")
-    elif is_offload():
-        logger.info(f"Vision AI Mode: {mode} - Offloading to PC via ZMQ")
+    if provider_mode == "local":
+        logger.info(f"Vision provider mode: local (AI Mode {mode}) - Using local detectors")
+    elif provider_mode == "pc":
+        logger.info(f"Vision provider mode: pc (AI Mode {mode}) - Offloading to PC")
     else:
-        logger.warning(f"Vision AI Mode: {mode} - Unknown mode, defaulting to local")
+        logger.warning(f"Vision provider mode: {provider_mode} (AI Mode {mode}) - Unknown, defaulting to local")

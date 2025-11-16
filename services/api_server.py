@@ -42,6 +42,7 @@ import services.api_core.face_anim as face_anim
 import services.api_core.google_home_api as google_home_api
 import services.api_core.google_proxy as google_proxy
 import services.api_core.navigator_api as navigator_api
+import services.api_core.provider_api as provider_api
 import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
@@ -268,6 +269,23 @@ _add_rule(
     "/api/system/ai-mode",
     view_func=ai_mode_api.ai_mode_handler,
     methods=["GET", "PUT", "POST", "OPTIONS"],
+)
+
+# Provider registry
+_add_rule(
+    "/api/providers/state",
+    view_func=provider_api.providers_state_handler,
+    methods=["GET", "OPTIONS"],
+)
+_add_rule(
+    "/api/providers/health",
+    view_func=provider_api.providers_health_handler,
+    methods=["GET", "OPTIONS"],
+)
+_add_rule(
+    "/api/providers/<domain>",
+    view_func=provider_api.provider_domain_handler,
+    methods=["GET", "PATCH", "OPTIONS"],
 )
 
 

@@ -371,6 +371,16 @@ pytest tests/test_ai_mode_integration.py -v
 - Check subscriber topic matches exactly
 - Validate ZMQ endpoint configuration
 
+## Provider Registry Integration
+
+The new Provider Registry (see [OFFLOAD_PROVIDER_PROTOCOL.md](OFFLOAD_PROVIDER_PROTOCOL.md)) builds on top of the AI mode primitives described here:
+
+- The registry keeps provider selection per domain (`vision`, `voice`, `text`) and, whenever a domain switches to `pc`, it emits the same `system.ai.mode.changed` events that existing services already consume.
+- Legacy services that only understand the global AI mode continue to operate, because the registry can keep `mode="local"` for incompatible domains while still offloading others.
+- On Rider-PC failure the registry forces `mode="local"` and publishes change events so detectors resume automatically.
+
+No code changes are required inside `common/ai_mode.py`; the registry simply orchestrates per-domain routing and enriches UI/PC telemetry.
+
 ## Support
 
 For issues or questions:

@@ -11,6 +11,7 @@ Zasady:
 from __future__ import annotations
 
 import audioop
+import base64
 import contextlib
 import math
 import os  # ← potrzebne dla VOICE_BEEP
@@ -28,7 +29,7 @@ from typing import Any
 from . import voice_logging as vlog
 from .asr import ASRConfig, Transcript, transcribe
 from .audio.capture import AudioCapture, CaptureConfig, CaptureError
-from .audio.playback import PlaybackConfig, play_ding
+from .audio.playback import PlaybackConfig, play_bytes, play_ding
 from .chat import ChatConfig, ChatSession
 from .common import ensure_event_logger, ensure_openai_key
 from .kws import HotwordConfig, HotwordDetector
@@ -455,53 +456,7 @@ class VoiceService(BusIntegrationMixin):
         start = time.time()
 
         transcript = transcribe(audio, self._capture_cfg.sample_rate, self._asr_cfg, self.logger)
-        self.logger.event("service.asr.transcript", text=transcript.text)
-        self._publish_transcript(transcript)
-
-        intent = self._nlu.route(transcript.text)
-        reply = self._handle_intent(intent)
-        reply_text = reply.strip()
-
-        # Mówienie (TTS): KLUCZOWE – bez streamingu
-        speech_task_enqueued = False
-        speech_result: TTSStreamResult | None = None
-
-        if speak and reply_text:
-            speech_task_enqueued = True
-            speech_result = self._request_speech(reply_text, source="chat", accumulate=False)
-
-        total_latency = time.time() - start
-        self.logger.event("service.cycle.done", latency=total_latency, intent=intent.kind)
-
-        audio_bytes = speech_result.audio if (speech_result and speech_result.audio) else None
-        audio_format = speech_result.audio_format if speech_result else ""
-        sample_rate = speech_result.sample_rate if speech_result else 0
-
-        if not speech_task_enqueued:
-            self._publish_ui_state("idle")
-
-        # krótki cooldown po mowie/PTT – nie łap echa
-        if self._hotword_engine == "ptt":
-            if self._post_tts_mute_ms > 0:
-                time.sleep(self._post_tts_mute_ms / 1000.0)
-            time.sleep(0.15)
-            try:
-                import sys
-                import termios
-
-                termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
-            except Exception:
-                pass
-
-        return VoiceResult(
-            transcript=transcript,
-            intent=intent,
-            reply=reply,
-            latency_s=total_latency,
-            audio=audio_bytes,
-            audio_format=audio_format,
-            sample_rate=sample_rate,
-        )
+        return self._process_transcript(transcript, speak=speak, start_ts=start)
 
     # ─────────────────────────────────────────────
     # Pomocnicze
@@ -776,6 +731,140 @@ class VoiceService(BusIntegrationMixin):
             wf.setframerate(self._capture_cfg.sample_rate)
             wf.writeframes(audio)
         self.logger.event("service.audio.saved", path=str(path))
+
+    def _decode_tts_override(self, payload: dict[str, Any]) -> tuple[bytes | None, str, int]:
+        if not isinstance(payload, dict):
+            return None, "", 0
+        data = payload.get("audio") or payload.get("data") or payload.get("chunk")
+        if not data:
+            return None, "", 0
+        try:
+            audio_bytes = base64.b64decode(data)
+        except Exception:
+            return None, "", 0
+        audio_format = (payload.get("format") or payload.get("mime") or "wav").lower()
+        if "mp3" in audio_format:
+            fmt = "mp3"
+        elif "pcm" in audio_format or "pcm16" in audio_format or "s16" in audio_format:
+            fmt = "pcm16"
+        else:
+            fmt = "wav"
+        sample_rate = int(payload.get("sample_rate") or payload.get("rate") or self._capture_cfg.sample_rate)
+        sample_rate = max(0, sample_rate)
+        return audio_bytes, fmt, sample_rate
+
+    def _process_transcript(
+        self,
+        transcript: Transcript,
+        *,
+        speak: bool,
+        start_ts: float | None = None,
+        intent_override: Intent | None = None,
+        reply_override: str | None = None,
+        tts_override: dict[str, Any] | None = None,
+    ) -> VoiceResult:
+        self.logger.event("service.asr.transcript", text=transcript.text)
+        self._publish_transcript(transcript)
+
+        intent = intent_override or self._nlu.route(transcript.text)
+        reply = reply_override if reply_override is not None else self._handle_intent(intent)
+        reply_text = reply.strip()
+
+        speech_task_enqueued = False
+        speech_result: TTSStreamResult | None = None
+
+        if speak and tts_override:
+            audio_bytes, audio_format, sample_rate = self._decode_tts_override(tts_override)
+            if audio_bytes:
+                ok = play_bytes(audio_bytes, audio_format, self._play_cfg, self.logger, sample_rate=sample_rate)
+                speech_result = TTSStreamResult(
+                    ok=ok,
+                    audio=audio_bytes,
+                    audio_format=audio_format,
+                    sample_rate=sample_rate,
+                    streamed=False,
+                    backend="pc",
+                )
+                speech_task_enqueued = True
+
+        if speak and reply_text and not speech_task_enqueued:
+            speech_task_enqueued = True
+            speech_result = self._request_speech(reply_text, source="chat", accumulate=False)
+
+        start_ts = start_ts or time.time()
+        total_latency = time.time() - start_ts
+        self.logger.event("service.cycle.done", latency=total_latency, intent=intent.kind)
+
+        audio_bytes = speech_result.audio if (speech_result and speech_result.audio) else None
+        audio_format = speech_result.audio_format if speech_result else ""
+        sample_rate = speech_result.sample_rate if speech_result else 0
+
+        if not speech_task_enqueued:
+            self._publish_ui_state("idle")
+
+        if self._hotword_engine == "ptt":
+            if self._post_tts_mute_ms > 0:
+                time.sleep(self._post_tts_mute_ms / 1000.0)
+            time.sleep(0.15)
+            try:
+                import sys
+                import termios
+
+                termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+            except Exception:
+                pass
+
+        return VoiceResult(
+            transcript=transcript,
+            intent=intent,
+            reply=reply,
+            latency_s=total_latency,
+            audio=audio_bytes,
+            audio_format=audio_format,
+            sample_rate=sample_rate,
+        )
+
+    def handle_external_transcript(
+        self,
+        text: str,
+        *,
+        language: str | None = None,
+        raw: dict[str, Any] | None = None,
+        speak: bool = True,
+    ) -> VoiceResult:
+        self._publish_ui_state("thinking")
+        raw = raw or {}
+        if "speak" in raw:
+            speak = bool(raw.get("speak", True))
+        intent_override = self._intent_from_raw(raw, fallback_text=text)
+        reply_override = raw.get("reply")
+        tts_override = raw.get("tts")
+        transcript = Transcript(text=text, language=language or "unknown", raw=raw)
+        return self._process_transcript(
+            transcript,
+            speak=speak,
+            start_ts=time.time(),
+            intent_override=intent_override,
+            reply_override=reply_override,
+            tts_override=tts_override if isinstance(tts_override, dict) else None,
+        )
+
+    def _intent_from_raw(self, raw: dict[str, Any], fallback_text: str) -> Intent | None:
+        if not isinstance(raw, dict):
+            return None
+        intent_data = raw.get("intent")
+        if isinstance(intent_data, dict):
+            kind = str(intent_data.get("kind") or intent_data.get("type") or "chat").strip() or "chat"
+            payload = dict(intent_data.get("payload") or {})
+            name = intent_data.get("name")
+            if name and "name" not in payload:
+                payload["name"] = name
+            payload.setdefault("text", fallback_text)
+            return Intent(kind=kind, payload=payload)
+        command_name = raw.get("command")
+        if isinstance(command_name, str) and command_name.strip():
+            return Intent(kind="command", payload={"name": command_name.strip(), "text": fallback_text})
+        return None
 
 
 # ──────────────────────────────────────────────────────────────────────────────

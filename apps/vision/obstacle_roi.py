@@ -24,7 +24,11 @@ import numpy as np
 
 from apps.vision.ai_mode_adapter import log_vision_mode_status, should_run_local_detectors
 from apps.vision.config import load_config
-from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusSub
+from common.bus import (
+    TOPIC_PROVIDER_VISION_STATE,
+    TOPIC_SYSTEM_AI_MODE_CHANGED,
+    BusSub,
+)
 
 # --------------------------- config helpers ---------------------------------
 
@@ -252,12 +256,12 @@ def main() -> int:
     # Log AI mode status at startup
     log_vision_mode_status()
 
-    # Subscribe to AI mode change events
+    # Subscribe to AI mode/provider change events
     sub_ai_mode = None
     try:
-        sub_ai_mode = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
+        sub_ai_mode = BusSub([TOPIC_SYSTEM_AI_MODE_CHANGED, TOPIC_PROVIDER_VISION_STATE])
     except Exception as e:
-        print(f"[obst] WARNING: Could not subscribe to AI mode changes: {e}", flush=True)
+        print(f"[obst] WARNING: Could not subscribe to AI/provider mode changes: {e}", flush=True)
 
     # Initial mode check
     detector_active = should_run_local_detectors()
@@ -279,23 +283,30 @@ def main() -> int:
     )
 
     while not _STOP:
-        # Check for AI mode changes
+        # Check for AI mode/provider changes
         if sub_ai_mode:
             try:
                 topic, payload = sub_ai_mode.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
-                    new_mode = payload.get("mode", "")
-                    print(f"[obst] AI mode change detected: {new_mode}", flush=True)
-                    old_active = detector_active
-                    detector_active = new_mode == "local"
+                if topic and payload:
+                    if topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+                        new_mode = payload.get("mode", "")
+                        old_active = detector_active
+                        detector_active = new_mode in ("local", "local_offload", "local_mode")
+                        print(f"[obst] AI mode event: {new_mode}", flush=True)
+                    elif topic == TOPIC_PROVIDER_VISION_STATE:
+                        new_mode = payload.get("mode", "")
+                        old_active = detector_active
+                        detector_active = new_mode != "pc"
+                        print(f"[obst] Provider vision state: {new_mode}", flush=True)
+                    else:
+                        continue
                     if old_active != detector_active:
                         if detector_active:
-                            print("[obst] AI Mode: local - resuming local detector", flush=True)
-                            # Reset state when resuming
+                            print("[obst] Vision provider: local - resuming detector", flush=True)
                             edge_hist.clear()
                             last_present = False
                         else:
-                            print("[obst] AI Mode: pc_offload - pausing local detector", flush=True)
+                            print("[obst] Vision provider: pc - pausing local detector", flush=True)
             except Exception as e:
                 # Ignore transient errors in AI mode subscription, but log for diagnosis
                 print(f"[obst] Exception in AI mode subscription: {e}", file=sys.stderr, flush=True)

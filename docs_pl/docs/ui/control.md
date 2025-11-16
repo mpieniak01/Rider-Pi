@@ -141,7 +141,23 @@ Two navigation strategies:
 
 ---
 
-### 6. Event Log
+### 6. Provider Control (panel offload)
+**Lokalizacja:** pod sekcją Rekonesansu (planowane w kolejnych wydaniach)
+
+**Cel:**
+- Prezentacja wybranej ścieżki przetwarzania dla domen (`Vision`, `Voice`, `Text`)
+- Status połączenia z Rider-PC (`online`, `degraded`, `offline`)
+- Przełączniki `Local (Pi)` / `PC Offload`
+
+**Zachowanie:**
+- Odczyt stanu poprzez `GET /api/providers/state`
+- Zmiany wysyłane `PATCH /api/providers/{domain}`
+- W razie braku Rider-PC panel automatycznie wraca do `Local` i pokazuje ostrzeżenie
+- Szerszy opis kontraktu: [OFFLOAD_PROVIDER_PROTOCOL.md](../OFFLOAD_PROVIDER_PROTOCOL.md)
+
+---
+
+### 7. Event Log
 **Location:** Bottom of page
 
 **Features:**

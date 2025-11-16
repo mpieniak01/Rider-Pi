@@ -43,6 +43,8 @@ ALLOW_UNITS=(
   "rider-odometry.service"
   "rider-tracker.service"
   "rider-tracking-controller.service"
+  "rider-navigator.service"
+  "rider-vision-offload.service"
 )
 
 # Usługi/targety, które muszą być zawsze „enabled” (baseline)

@@ -15,6 +15,7 @@ Najważniejsze dokumenty znajdują się w katalogu głównym projektu:
 - [**AGENT.md**](../AGENT.md) — kontrakt dla asystenta kodu, zasady developerskie
 - [**WORKING-AGREEMENTS.md**](../WORKING-AGREEMENTS.md) — ustalenia robocze zespołu
 - [**CONFIG_POLICY.md**](CONFIG_POLICY.md) — **polityka konfiguracji i sekretów** (single source of truth)
+- [**OFFLOAD_PROVIDER_PROTOCOL.md**](OFFLOAD_PROVIDER_PROTOCOL.md) — kontrakt Pi ↔ PC (offload), endpointy, tematy, roadmapa
 
 ---
 

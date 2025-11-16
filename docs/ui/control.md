@@ -141,7 +141,23 @@ Two navigation strategies:
 
 ---
 
-### 6. Event Log
+### 6. Provider Control (Offload Panel)
+**Location:** Below Rekonesans controls (planned for upcoming releases)
+
+**Purpose:**
+- Shows current provider mode per domain (`Vision`, `Voice`, `Text`)
+- Indicates Rider-PC connection state (`online`, `degraded`, `offline`)
+- Provides buttons to switch between `Local (Pi)` and `PC Offload`
+
+**Behavior:**
+- Reads state via `GET /api/providers/state`
+- Sends changes with `PATCH /api/providers/{domain}`
+- When Rider-PC is unreachable the panel auto-falls back to `Local` and shows a warning
+- Links to the detailed contract in [OFFLOAD_PROVIDER_PROTOCOL.md](../OFFLOAD_PROVIDER_PROTOCOL.md)
+
+---
+
+### 7. Event Log
 **Location:** Bottom of page
 
 **Features:**

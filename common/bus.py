@@ -48,6 +48,9 @@ TOPIC_NAVIGATOR_STATE = "navigator.state"
 # Obstacle detection from vision (binary - obstacle present/absent)
 # Payload: {"type": "obstacle", "present": bool, "confidence": float, "edge_pct": float, "ts": float}
 TOPIC_VISION_OBSTACLE = "vision.obstacle"
+# Raw frame stream for PC offload
+# Payload: {"ts": float, "frame_jpeg": "<base64>", "size": {"w": int, "h": int}}
+TOPIC_VISION_FRAME_OFFLOAD = "vision.frame.offload"
 
 # ============================================================================
 # Topic constants for odometry (Stage 2 - Position tracking)
@@ -108,6 +111,20 @@ TOPIC_NAVIGATOR_RETURN_HOME_START = "navigator.return_home.start"
 # AI mode changed (published by API when switching between local and pc_offload)
 # Payload: {"mode": "local"|"pc_offload", "ts": float}
 TOPIC_SYSTEM_AI_MODE_CHANGED = "system.ai.mode.changed"
+
+# Provider registry state updates
+# Payload: {"domain": "vision"|"voice"|"text", "mode": "local"|"pc", "status": str, ...}
+TOPIC_PROVIDER_VISION_STATE = "provider.vision.state"
+TOPIC_PROVIDER_VOICE_STATE = "provider.voice.state"
+TOPIC_PROVIDER_TEXT_STATE = "provider.text.state"
+
+# Voice offload topics
+# voice.asr.request/result are used when Rider-Pi streams audio to Rider-PC
+TOPIC_VOICE_ASR_REQUEST = "voice.asr.request"
+TOPIC_VOICE_ASR_RESULT = "voice.asr.result"
+# Optional TTS streaming topics for PC generated audio
+TOPIC_VOICE_TTS_REQUEST = "voice.tts.request"
+TOPIC_VOICE_TTS_CHUNK = "voice.tts.chunk"
 
 
 def now_ts() -> float:

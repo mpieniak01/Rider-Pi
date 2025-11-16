@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 os.environ.setdefault(
     "OPENAI_REALTIME_ENDPOINT",
@@ -15,9 +16,18 @@ from typing import Any
 
 # AI mode adapter for checking processing mode
 from .ai_mode_adapter import log_voice_mode_status, should_offload_to_pc
+from .audio.capture import AudioCapture, CaptureConfig
+from .audio.playback import play_bytes
+from .offload_bridge import VoiceOffloadBridge
 
 # Importy "file mode" — zawsze dostępne
-from .svc_file import run_listen_file, run_once_file
+from .svc_file import VoiceService, run_listen_file, run_once_file
+from .svc_signals import setup_signals
+
+try:
+    from services import provider_registry
+except ImportError:
+    provider_registry = None  # type: ignore
 
 
 def _wants_stream(cfg: dict[str, Any], args) -> bool:
@@ -81,29 +91,35 @@ def _monitor_ai_mode_changes(service_instance, stop_event: threading.Event) -> N
         stop_event: Event to signal monitoring thread to stop
     """
     try:
-        from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusSub
+        from common.bus import TOPIC_PROVIDER_VOICE_STATE, TOPIC_SYSTEM_AI_MODE_CHANGED, BusSub
 
-        sub = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
+        sub = BusSub([TOPIC_SYSTEM_AI_MODE_CHANGED, TOPIC_PROVIDER_VOICE_STATE])
         print("[voice.svc_core] AI mode monitor started", flush=True)
 
         while not stop_event.is_set():
             try:
                 topic, payload = sub.recv(timeout_ms=500)
-                if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+                if not (topic and payload):
+                    continue
+                if topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
                     new_mode = payload.get("mode", "")
                     print(f"[voice.svc_core] AI mode change detected: {new_mode}", flush=True)
-                    if new_mode == "pc_offload":
-                        print(
-                            "[voice.svc_core] Switching to pc_offload mode - stopping local voice service",
-                            flush=True,
-                        )
-                        # Stop the voice service
-                        if hasattr(service_instance, "stop_event"):
-                            service_instance.stop_event.set()
-                        stop_event.set()
-                        break
-                    elif new_mode == "local":
-                        print("[voice.svc_core] Mode is local - voice service continues", flush=True)
+                    trigger_stop = new_mode == "pc_offload"
+                elif topic == TOPIC_PROVIDER_VOICE_STATE:
+                    new_mode = payload.get("mode", "")
+                    print(f"[voice.svc_core] Provider voice state: {new_mode}", flush=True)
+                    trigger_stop = new_mode == "pc"
+                else:
+                    continue
+                if trigger_stop:
+                    print(
+                        "[voice.svc_core] Switching to PC provider - stopping local voice service",
+                        flush=True,
+                    )
+                    if hasattr(service_instance, "stop_event"):
+                        service_instance.stop_event.set()
+                    stop_event.set()
+                    break
             except Exception as e:
                 print(f"[voice.svc_core] WARNING: Exception in AI mode monitor loop: {e}", flush=True)
 
@@ -112,16 +128,88 @@ def _monitor_ai_mode_changes(service_instance, stop_event: threading.Event) -> N
         print(f"[voice.svc_core] WARNING: AI mode monitor error: {e}", flush=True)
 
 
+def _trigger_voice_fallback(reason: str) -> None:
+    print(f"[voice.svc_core] FALLBACK to local voice due to: {reason}", flush=True)
+    if provider_registry:
+        try:
+            provider_registry.update_domain_status("voice", "fallback", reason=reason)
+            provider_registry.set_domain_mode("voice", "local", reason=reason)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[voice.svc_core] WARNING: provider registry fallback failed: {exc}", flush=True)
+
+
+def _run_pc_offload(cfg: dict[str, Any], args) -> int:
+    print("[voice.svc_core] Provider mode = PC. Starting offload bridge…", flush=True)
+    cap_cfg = CaptureConfig(**dict(cfg.get("capture") or {}))
+    bridge = VoiceOffloadBridge()
+    service = VoiceService(cfg)
+    setup_signals(service)
+    timeout_s = float(os.getenv("VOICE_OFFLOAD_RESULT_TIMEOUT", "5.0"))
+    last_result_ts = time.time()
+    try:
+        bridge.start()
+        print(
+            f"[voice.svc_core] Streaming audio chunks (rate={cap_cfg.sample_rate} Hz) to PC topic voice.asr.request",
+            flush=True,
+        )
+        with AudioCapture(cap_cfg) as cap:
+            for frame in cap.frames():
+                if not should_offload_to_pc():
+                    print("[voice.svc_core] Provider switched to local - stopping offload", flush=True)
+                    return 0
+                bridge.publish_audio_chunk(frame, cap_cfg.sample_rate)
+                for result in bridge.iter_results():
+                    text = (result.get("text") or result.get("transcript") or "").strip()
+                    if not text:
+                        continue
+                    print(f"[voice.offload] ASR result: {text}", flush=True)
+                    language = result.get("language") or "unknown"
+                    speak_reply = bool(result.get("speak", True))
+                    last_result_ts = time.time()
+                    try:
+                        service.handle_external_transcript(
+                            text,
+                            language=language,
+                            raw=result,
+                            speak=speak_reply,
+                        )
+                    except Exception as exc:
+                        print(f"[voice.svc_core] ERROR processing PC transcript: {exc}", flush=True)
+                for chunk in bridge.iter_tts_chunks():
+                    try:
+                        audio_bytes, audio_format, sample_rate = service._decode_tts_override(chunk)  # noqa: SLF001
+                        if audio_bytes:
+                            play_bytes(
+                                audio_bytes,
+                                audio_format or "wav",
+                                service._play_cfg,
+                                service.logger,
+                                sample_rate=sample_rate,
+                            )
+                    except Exception as exc:
+                        print(f"[voice.svc_core] ERROR playing TTS chunk: {exc}", flush=True)
+                if timeout_s > 0 and (time.time() - last_result_ts) > timeout_s:
+                    _trigger_voice_fallback("pc_timeout")
+                    return 1
+    except KeyboardInterrupt:
+        print("[voice.svc_core] Offload interrupted by user", flush=True)
+    except Exception as exc:
+        print(f"[voice.svc_core] ERROR during PC offload: {exc}", flush=True)
+        _trigger_voice_fallback("pc_error")
+        return 2
+    finally:
+        service.stop()
+        bridge.stop()
+    return 0
+
+
 def run_listen(cfg: dict[str, Any], args) -> int:
     # Log AI mode status at startup
     log_voice_mode_status()
 
     # Check if we should offload to PC
     if should_offload_to_pc():
-        print("[voice.svc_core] AI Mode: pc_offload - local ASR/TTS/NLU disabled", flush=True)
-        print("[voice.svc_core] In pc_offload mode, audio would be streamed to PC for processing", flush=True)
-        print("[voice.svc_core] PC offload implementation pending - exiting", flush=True)
-        return 0
+        return _run_pc_offload(cfg, args)
 
     # Local mode - proceed with normal operation
     print("[voice.svc_core] AI Mode: local - using local ASR/TTS/NLU engines", flush=True)

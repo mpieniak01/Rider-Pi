@@ -70,6 +70,106 @@
     </div>
   </div>
 
+  <div class="c-card provider-card">
+    <h2 class="c-card__title">
+      <span data-i18n="provider.title">Provider Control</span>
+      <span
+        id="providerPcStatus"
+        class="c-pill warn"
+        data-i18n="provider.pc_status_unknown"
+      >PC status: unknown</span>
+    </h2>
+    <p class="c-note" data-i18n="provider.description">
+      Zarządzaj źródłami przetwarzania AI (lokalnie lub na PC). Przełączniki wysyłają żądania do rejestru providerów.
+    </p>
+    <div class="provider-table">
+      <div class="provider-row" data-provider="vision">
+        <div class="provider-info">
+          <div class="provider-title" data-i18n="provider.domain_vision">Vision</div>
+          <div class="muted" data-i18n="provider.domain_vision_desc">Detekcja przeszkód, rozpoznawanie obrazu.</div>
+        </div>
+        <div class="provider-status-col">
+          <span class="c-pill provider-pill" data-provider-pill>Local</span>
+          <div class="muted provider-status-text" data-provider-status>-</div>
+          <div class="muted provider-changed">
+            <span data-i18n="provider.changed_label">Ostatnia zmiana:</span>
+            <span data-provider-changed>n/a</span>
+          </div>
+        </div>
+        <div class="provider-actions">
+          <button
+            class="c-btn c-btn-sm"
+            data-provider-domain="vision"
+            data-provider-action="local"
+            data-i18n="provider.btn_local"
+          >🏠 Local (Pi)</button>
+          <button
+            class="c-btn c-btn-sm"
+            data-provider-domain="vision"
+            data-provider-action="pc"
+            data-i18n="provider.btn_pc"
+          >💻 PC Offload</button>
+        </div>
+      </div>
+      <div class="provider-row" data-provider="voice">
+        <div class="provider-info">
+          <div class="provider-title" data-i18n="provider.domain_voice">Voice</div>
+          <div class="muted" data-i18n="provider.domain_voice_desc">ASR / TTS, komendy głosowe, chatbot.</div>
+        </div>
+        <div class="provider-status-col">
+          <span class="c-pill provider-pill" data-provider-pill>Local</span>
+          <div class="muted provider-status-text" data-provider-status>-</div>
+          <div class="muted provider-changed">
+            <span data-i18n="provider.changed_label">Ostatnia zmiana:</span>
+            <span data-provider-changed>n/a</span>
+          </div>
+        </div>
+        <div class="provider-actions">
+          <button
+            class="c-btn c-btn-sm"
+            data-provider-domain="voice"
+            data-provider-action="local"
+            data-i18n="provider.btn_local"
+          >🏠 Local (Pi)</button>
+          <button
+            class="c-btn c-btn-sm"
+            data-provider-domain="voice"
+            data-provider-action="pc"
+            data-i18n="provider.btn_pc"
+          >💻 PC Offload</button>
+        </div>
+      </div>
+      <div class="provider-row" data-provider="text">
+        <div class="provider-info">
+          <div class="provider-title" data-i18n="provider.domain_text">Text / LLM</div>
+          <div class="muted" data-i18n="provider.domain_text_desc">LLM, odpowiedzi tekstowe, generowanie komend.</div>
+        </div>
+        <div class="provider-status-col">
+          <span class="c-pill provider-pill" data-provider-pill>Local</span>
+          <div class="muted provider-status-text" data-provider-status>-</div>
+          <div class="muted provider-changed">
+            <span data-i18n="provider.changed_label">Ostatnia zmiana:</span>
+            <span data-provider-changed>n/a</span>
+          </div>
+        </div>
+        <div class="provider-actions">
+          <button
+            class="c-btn c-btn-sm"
+            data-provider-domain="text"
+            data-provider-action="local"
+            data-i18n="provider.btn_local"
+          >🏠 Local (Pi)</button>
+          <button
+            class="c-btn c-btn-sm"
+            data-provider-domain="text"
+            data-provider-action="pc"
+            data-i18n="provider.btn_pc"
+          >💻 PC Offload</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="panel-row l-row">
     <!-- 1) KAMERA -->
     <div class="c-card cam-card">
@@ -609,6 +709,8 @@
   pingHealth();
 
   const AI_MODE_ENDPOINT = "/api/system/ai-mode";
+  const PROVIDER_STATE_ENDPOINT = "/api/providers/state";
+  const PROVIDER_DOMAINS = ["vision", "voice", "text"];
 
   async function sendJson(url, body, method = "POST") {
     const r = await fetch(url, {
@@ -1548,6 +1650,107 @@
     setAiMode("pc_offload");
   });
 
+  // === PROVIDER CONTROL ===
+  function providerModeLabel(mode) {
+    return mode === "pc" ? t("provider.mode_pc") : t("provider.mode_local");
+  }
+
+  function providerStatusLabel(status) {
+    if (!status) {
+      return t("provider.status_unknown");
+    }
+    const key = `provider.status_${status}`;
+    const text = t(key);
+    return typeof text === "string" && text !== key ? text : `${t("provider.status_unknown")} (${status})`;
+  }
+
+  function formatChangedTs(ts) {
+    if (!ts || Number.isNaN(Number(ts))) {
+      return t("provider.changed_unknown");
+    }
+    const epochMs = Number(ts) * 1000;
+    if (!Number.isFinite(epochMs)) {
+      return t("provider.changed_unknown");
+    }
+    return new Date(epochMs).toLocaleTimeString();
+  }
+
+  function updateProviderPcBadge(health = {}) {
+    const badge = qs("#providerPcStatus");
+    if (!badge) return;
+    const reachable = !!health.reachable;
+    let cls = "warn";
+    let key = "provider.pc_status_unknown";
+    if (reachable) {
+      cls = "ok";
+      key = "provider.pc_status_online";
+    } else if (health.status === "offline") {
+      cls = "err";
+      key = "provider.pc_status_offline";
+    } else if (health.reason === "not_initialized") {
+      cls = "warn";
+      key = "provider.pc_status_pending";
+    }
+    badge.className = `c-pill ${cls}`;
+    const latency = typeof health.latency_ms === "number" ? ` (${Math.round(health.latency_ms)} ms)` : "";
+    badge.textContent = `${t(key)}${latency}`;
+  }
+
+  function renderProviderDomain(domain, state = {}) {
+    const row = document.querySelector(`.provider-row[data-provider="${domain}"]`);
+    if (!row) return;
+    const pill = row.querySelector("[data-provider-pill]");
+    if (pill) {
+      pill.textContent = providerModeLabel(state.mode);
+      pill.className = `c-pill provider-pill ${state.mode === "pc" ? "warn" : "ok"}`;
+    }
+    const statusEl = row.querySelector("[data-provider-status]");
+    if (statusEl) {
+      const label = providerStatusLabel(state.status);
+      const reason = state.reason ? ` (${state.reason})` : "";
+      statusEl.textContent = `${label}${reason}`;
+    }
+    const changedEl = row.querySelector("[data-provider-changed]");
+    if (changedEl) {
+      changedEl.textContent = formatChangedTs(state.changed_ts);
+    }
+  }
+
+  async function fetchProviderState() {
+    try {
+      const data = await fetchJson(PROVIDER_STATE_ENDPOINT);
+      const domains = data.domains || {};
+      PROVIDER_DOMAINS.forEach((domain) => {
+        renderProviderDomain(domain, domains[domain] || {});
+      });
+      updateProviderPcBadge(data.pc_health);
+    } catch (e) {
+      appendLog(`[provider] fetch :: ${e.message || e}`, "warn");
+    }
+  }
+
+  async function setProviderMode(domain, target) {
+    try {
+      await sendJson(`/api/providers/${domain}`, { target }, "PATCH");
+      appendLog(`[provider] ${domain} → ${target}`, "ok");
+      await fetchProviderState();
+    } catch (e) {
+      appendLog(
+        `[provider] ${domain} → ${target} :: ${e.message || e}`,
+        "err",
+      );
+    }
+  }
+
+  document.querySelectorAll("[data-provider-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const domain = btn.getAttribute("data-provider-domain");
+      const target = btn.getAttribute("data-provider-action");
+      if (!domain || !target) return;
+      setProviderMode(domain, target);
+    });
+  });
+
   // Balance + height UI
   const balanceToggle = qs("#balanceToggle");
   const heightSlider = qs("#heightSlider");
@@ -1762,6 +1965,10 @@
     if (camAuto) updateCamSrc();
   }, 1000);
 
+  setInterval(() => {
+    fetchProviderState().catch(() => {});
+  }, 7000);
+
   // === SSE EVENTS ===
   try {
     const es = new EventSource("/events");
@@ -1783,6 +1990,7 @@
   fetchServices().catch(() => {});
   fetchResources().catch(() => {});
   fetchAiModeStatus().catch(() => {});
+  fetchProviderState().catch(() => {});
   fetchControlState().catch(() => {});
   fetchMotionQueue().catch(() => {});
 </script>

@@ -10,7 +10,12 @@ import numpy as np
 from PIL import Image
 
 from apps.vision.ai_mode_adapter import log_vision_mode_status, should_run_local_detectors
-from common.bus import TOPIC_SYSTEM_AI_MODE_CHANGED, BusPub, BusSub
+from common.bus import (
+    TOPIC_PROVIDER_VISION_STATE,
+    TOPIC_SYSTEM_AI_MODE_CHANGED,
+    BusPub,
+    BusSub,
+)
 from common.cam_heartbeat import CameraHB
 
 PUB = BusPub()
@@ -58,12 +63,12 @@ def main():
     # Log AI mode status at startup
     log_vision_mode_status()
 
-    # Subscribe to AI mode change events
+    # Subscribe to AI/provider mode change events
     sub_ai_mode = None
     try:
-        sub_ai_mode = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
+        sub_ai_mode = BusSub([TOPIC_SYSTEM_AI_MODE_CHANGED, TOPIC_PROVIDER_VISION_STATE])
     except Exception as e:
-        print(f"[hog] WARNING: Could not subscribe to AI mode changes: {e}", flush=True)
+        print(f"[hog] WARNING: Could not subscribe to AI/provider mode changes: {e}", flush=True)
 
     # Initial mode check
     detector_active = should_run_local_detectors()
@@ -88,26 +93,33 @@ def main():
 
     try:
         while True:
-            # Check for AI mode changes
+            # Check for AI/provider mode changes
             if sub_ai_mode:
                 try:
                     topic, payload = sub_ai_mode.recv(timeout_ms=10)
-                    if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
-                        new_mode = payload.get("mode", "")
-                        print(f"[hog] AI mode change detected: {new_mode}", flush=True)
-                        old_active = detector_active
-                        detector_active = new_mode == "local"
+                    if topic and payload:
+                        if topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+                            new_mode = payload.get("mode", "")
+                            old_active = detector_active
+                            detector_active = new_mode in ("local", "local_offload", "local_mode")
+                            print(f"[hog] AI mode change detected: {new_mode}", flush=True)
+                        elif topic == TOPIC_PROVIDER_VISION_STATE:
+                            new_mode = payload.get("mode", "")
+                            old_active = detector_active
+                            detector_active = new_mode != "pc"
+                            print(f"[hog] Provider vision state: {new_mode}", flush=True)
+                        else:
+                            continue
                         if old_active != detector_active:
                             if detector_active:
-                                print("[hog] AI Mode: local - resuming local HOG detector", flush=True)
-                                # Initialize camera and HOG if not already done
+                                print("[hog] Vision provider: local - resuming local HOG detector", flush=True)
                                 if read is None:
                                     os.makedirs(SNAP_DIR, exist_ok=True)
                                     read, _ = open_camera()
                                     hog = cv2.HOGDescriptor()
                                     hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
                             else:
-                                print("[hog] AI Mode: pc_offload - pausing local HOG detector", flush=True)
+                                print("[hog] Vision provider: pc - pausing local HOG detector", flush=True)
                 except Exception as e:
                     # Ignore errors during AI mode change handling, but log for debugging
                     print(f"[hog] Exception in AI mode change handler: {e}", flush=True)

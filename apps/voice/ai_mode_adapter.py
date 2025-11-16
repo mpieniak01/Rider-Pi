@@ -22,7 +22,23 @@ except ImportError:
         return False
 
 
+try:
+    from common import provider_state
+except ImportError:
+    provider_state = None  # type: ignore
+
+
 logger = logging.getLogger(__name__)
+VOICE_DOMAIN = "voice"
+
+
+def _provider_mode() -> str:
+    if provider_state is not None:
+        try:
+            return provider_state.get_domain_mode(VOICE_DOMAIN)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Provider state read failed: %s", exc)
+    return "pc" if get_mode() == "pc_offload" else "local"
 
 
 def should_run_local_asr() -> bool:
@@ -31,9 +47,9 @@ def should_run_local_asr() -> bool:
     Returns:
         True if running in local mode, False if in pc_offload mode
     """
-    mode = get_mode()
-    logger.debug(f"AI mode check: {mode}, local ASR: {mode == 'local'}")
-    return mode == "local"
+    mode = _provider_mode()
+    logger.debug(f"Voice provider mode: {mode}, local ASR: {mode != 'pc'}")
+    return mode != "pc"
 
 
 def should_run_local_tts() -> bool:
@@ -42,9 +58,9 @@ def should_run_local_tts() -> bool:
     Returns:
         True if running in local mode, False if in pc_offload mode
     """
-    mode = get_mode()
-    logger.debug(f"AI mode check: {mode}, local TTS: {mode == 'local'}")
-    return mode == "local"
+    mode = _provider_mode()
+    logger.debug(f"Voice provider mode: {mode}, local TTS: {mode != 'pc'}")
+    return mode != "pc"
 
 
 def should_run_local_nlu() -> bool:
@@ -53,9 +69,9 @@ def should_run_local_nlu() -> bool:
     Returns:
         True if running in local mode, False if in pc_offload mode
     """
-    mode = get_mode()
-    logger.debug(f"AI mode check: {mode}, local NLU: {mode == 'local'}")
-    return mode == "local"
+    mode = _provider_mode()
+    logger.debug(f"Voice provider mode: {mode}, local NLU: {mode != 'pc'}")
+    return mode != "pc"
 
 
 def should_offload_to_pc() -> bool:
@@ -64,17 +80,18 @@ def should_offload_to_pc() -> bool:
     Returns:
         True if running in pc_offload mode, False otherwise
     """
-    mode = get_mode()
-    logger.debug(f"AI mode check: {mode}, offload to PC: {mode == 'pc_offload'}")
-    return mode == "pc_offload"
+    mode = _provider_mode()
+    logger.debug(f"Voice provider mode: {mode}, offload to PC: {mode == 'pc'}")
+    return mode == "pc"
 
 
 def log_voice_mode_status() -> None:
     """Log current voice mode status."""
+    provider_mode = _provider_mode()
     mode = get_mode()
-    if is_local():
-        logger.info(f"Voice AI Mode: {mode} - Using local ASR/TTS/NLU engines")
-    elif is_offload():
-        logger.info(f"Voice AI Mode: {mode} - Offloading ASR/TTS/NLU to PC via ZMQ")
+    if provider_mode == "local":
+        logger.info(f"Voice provider mode: local (AI Mode {mode}) - Using local ASR/TTS/NLU engines")
+    elif provider_mode == "pc":
+        logger.info(f"Voice provider mode: pc (AI Mode {mode}) - Offloading ASR/TTS/NLU to PC")
     else:
-        logger.warning(f"Voice AI Mode: {mode} - Unknown mode, defaulting to local")
+        logger.warning(f"Voice provider mode: {provider_mode} (AI Mode {mode}) - Unknown, defaulting to local")
