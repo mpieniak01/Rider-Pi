@@ -234,14 +234,32 @@ def _classify_pose(roll, pitch):
 
 
 # ── Bus publish (opcjonalny) ─────────────────────────────────────────────────
-def bus_pub(topic: str, payload: dict):
-    try:
-        import zmq  # late import by need
+_BUS_PUB = None
+_BUS_PUB_LOCK = threading.Lock()
 
-        ctx = zmq.Context.instance()
-        pub = ctx.socket(zmq.PUB)
-        pub.connect(f"tcp://127.0.0.1:{BUS_PUB_PORT}")
-        pub.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
+
+def _get_bus_pub():
+    global _BUS_PUB
+    if _BUS_PUB is not None:
+        return _BUS_PUB
+    with _BUS_PUB_LOCK:
+        if _BUS_PUB is None:
+            warmup_ms = int(float(os.getenv("API_BUS_PUB_WARMUP_S", "0.2")) * 1000)
+            try:
+                from common.bus import BusPub
+
+                _BUS_PUB = BusPub(warmup_ms=warmup_ms)
+            except Exception:
+                _BUS_PUB = None
+        return _BUS_PUB
+
+
+def bus_pub(topic: str, payload: dict):
+    pub = _get_bus_pub()
+    if pub is None:
+        return
+    try:
+        pub.publish(topic, payload, add_ts=False)
     except Exception:
         pass
 

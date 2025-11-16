@@ -1,0 +1,32 @@
+[Unit]
+Description=Rider-Pi Navigator (autonomous recon controller)
+After=network-online.target rider-broker.service rider-motion-bridge.service rider-vision.service rider-obstacle.service rider-odometry.service rider-mapper.service
+Wants=network-online.target rider-broker.service
+Requires=rider-broker.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/pi/robot
+# Navigator tuning (override via /etc/default/rider-navigator)
+Environment=PYTHONFAULTHANDLER=1
+Environment=LOG_LEVEL=INFO
+EnvironmentFile=-/etc/default/rider
+EnvironmentFile=-/etc/default/rider-navigator
+
+ExecStart=/usr/bin/python3 -u -m apps.navigator.main
+
+Restart=always
+RestartSec=0.5
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=process
+KillSignal=SIGINT
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

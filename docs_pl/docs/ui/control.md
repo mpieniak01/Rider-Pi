@@ -47,8 +47,11 @@ The control interface provides a comprehensive dashboard for:
 ```
 
 #### Speed and Duration Settings
-- **Prędkość skrętu** (Turning speed): Slider 0.0 - 1.0 (default: 0.18)
+- **Prędkość skrętu** (Turning speed): Slider 0.0 - 1.0 (default: 0.18). Controls yaw (`w`) for left/right spins.
+- **Prędkość maksymalna** (Max speed): Slider 0.0 - 1.0 (default: 0.10). Limits the `v` argument for forward/backward moves.
 - **Czas impulsu** (Pulse time): Number input in seconds (default: 0.10s)
+
+All commands are validated on the server (`services/api_core/control_proxy.py`), enforcing `v` ∈ `[0,1]` and `t` ≤ safety cap (`SAFE_MAX_T`, default 0.5s).
 
 #### Stop Button
 - Dedicated `■ STOP` button for emergency stop

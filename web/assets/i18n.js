@@ -154,7 +154,9 @@ export const I18N = {
   motion: {
     title:           { pl: "Sterowanie ruchem", en: "Motion control" },
     turning_speed:   { pl: "Prędkość skrętu",   en: "Turning speed" },
-    turning_range:   { pl: "(0..1)",           en: "(0..1)" },
+    turning_range:   { pl: "(0..1)",            en: "(0..1)" },
+    max_speed:       { pl: "Prędkość maksymalna", en: "Max speed" },
+    max_speed_range: { pl: "(0..1)",            en: "(0..1)" },
     pulse_time:      { pl: "Czas impulsu [s]",  en: "Pulse time [s]" },
     btn_stop:        { pl: "■ STOP",            en: "■ STOP" },
     btn_stop_small:  { pl: "■ Stop",            en: "■ Stop" },

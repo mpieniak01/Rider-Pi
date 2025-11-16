@@ -107,6 +107,12 @@
           <span id="speedSpinVal">0.18</span>
         </label>
         <label>
+          <span data-i18n="motion.max_speed">Prędkość maksymalna</span>
+          <span class="muted" data-i18n="motion.max_speed_range">(0..1)</span>:
+          <input id="speedMax" type="range" min="0" max="1" step="0.05" value="0.10" />
+          <span id="speedMaxVal">0.10</span>
+        </label>
+        <label>
           <span data-i18n="motion.pulse_time">Czas impulsu [s]</span>:
           <input id="durationSpin" type="number" min="0.05" step="0.05" value="0.10" />
         </label>
@@ -546,10 +552,17 @@
     ),
   );
 
-  const LIN_V = 0.1;
+  const LIN_V_DEFAULT = 0.1;
   const LIN_T = 0.1;
+  let linV = LIN_V_DEFAULT;
+  function clamp(n, lo, hi) {
+    n = Number(n) || 0;
+    return Math.max(lo, Math.min(hi, n));
+  }
   const spinEl = qs("#speedSpin");
   const spinVal = qs("#speedSpinVal");
+  const speedMaxEl = qs("#speedMax");
+  const speedMaxVal = qs("#speedMaxVal");
   const durSpinEl = qs("#durationSpin");
 
   if (spinEl && spinVal) {
@@ -558,9 +571,19 @@
     });
   }
 
-  function clamp(n, lo, hi) {
-    n = Number(n) || 0;
-    return Math.max(lo, Math.min(hi, n));
+  function updateLinearSpeed() {
+    if (!speedMaxEl || !speedMaxVal) {
+      linV = LIN_V_DEFAULT;
+      return;
+    }
+    const val = clamp(speedMaxEl.value, 0, 1);
+    linV = val;
+    speedMaxVal.textContent = val.toFixed(2);
+  }
+
+  if (speedMaxEl) {
+    updateLinearSpeed();
+    speedMaxEl.addEventListener("input", updateLinearSpeed);
   }
 
   async function pingHealth() {
@@ -659,10 +682,11 @@
 
   async function goF() {
     const tsec = Math.max(0.05, LIN_T);
+    const v = clamp(linV, 0, 1);
     await apiControl({
       cmd: "move",
       dir: "forward",
-      v: LIN_V,
+      v,
       t: tsec,
     });
     setTimeout(() => {
@@ -676,10 +700,11 @@
 
   async function goB() {
     const tsec = Math.max(0.05, LIN_T);
+    const v = clamp(linV, 0, 1);
     await apiControl({
       cmd: "move",
       dir: "backward",
-      v: LIN_V,
+      v,
       t: tsec,
     });
     setTimeout(() => {
@@ -838,6 +863,7 @@
     "rider-motion-bridge.service",
     "rider-odometry.service",
     "rider-mapper.service",
+    "rider-navigator.service",
   ];
   const svcCache = new Map();
   const featureBusy = new Set();
@@ -1204,6 +1230,10 @@
         "rider-odometry.service": {
           pl: "Odometria robota (śledzenie pozycji)",
           en: "Robot odometry tracking",
+        },
+        "rider-navigator.service": {
+          pl: "Autonomiczny nawigator (Rekonesans)",
+          en: "Autonomous navigator (Recon mode)",
         },
         "rider-ssd-preview.service": {
           pl: "Podgląd SSD z naniesionymi ramkami detektora",

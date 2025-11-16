@@ -49,9 +49,13 @@ GOAL_TOLERANCE = float(os.getenv("NAVIGATOR_GOAL_TOLERANCE", "0.1"))  # meters
 
 # Bus topics
 TOPIC_VISION_OBSTACLE = "vision.obstacle"
-TOPIC_MOTION = "motion"
 TOPIC_NAVIGATOR_STATE = "navigator.state"
 TOPIC_NAVIGATOR_CONTROL = "navigator.control"
+TOPIC_CMD_MOVE = "cmd.move"
+TOPIC_CMD_STOP = "cmd.stop"
+CMD_RID = os.getenv("NAVIGATOR_CMD_RID", "navigator")
+CMD_DURATION = float(os.getenv("NAVIGATOR_CMD_DURATION", "0.3"))
+PUB_WARMUP_MS = int(os.getenv("NAVIGATOR_PUB_WARMUP_MS", "500"))
 
 LOG = logging.getLogger("navigator")
 
@@ -91,7 +95,7 @@ class Navigator:
         self.sub_robot_pose = BusSub(TOPIC_ROBOT_POSE)
         # Subscribe to AI mode changes (local / pc_offload)
         self.sub_ai_mode = BusSub(TOPIC_SYSTEM_AI_MODE_CHANGED)
-        self.pub = BusPub()
+        self.pub = BusPub(warmup_ms=PUB_WARMUP_MS)
 
         # Start always in local mode; AI events will switch to pc_offload if needed
         self.use_pc_enhanced: bool = False
@@ -147,17 +151,25 @@ class Navigator:
         self.state_changed = True
         self._publish_state()
 
-    def _send_motion_drive(self, lx: float, az: float = 0.0):
-        """Send drive command to motion system"""
-        cmd = {"type": "drive", "lx": lx, "az": az}
-        self.pub.publish(TOPIC_MOTION, cmd)
-        LOG.debug(f"Motion command: {cmd}")
+    def _send_motion_drive(self, lx: float, az: float = 0.0, duration: float | None = None):
+        """Send drive command via cmd.move topic."""
+        dur = max(0.05, float(duration if duration is not None else CMD_DURATION))
+        cmd = {
+            "vx": max(-1.0, min(1.0, float(lx))),
+            "vy": 0.0,
+            "yaw": max(-1.0, min(1.0, float(az))),
+            "duration": dur,
+            "rid": CMD_RID,
+            "ts": time.time(),
+        }
+        self.pub.publish(TOPIC_CMD_MOVE, cmd, add_ts=False)
+        LOG.info("Navigator cmd.move: %s", cmd)
 
     def _send_motion_stop(self):
-        """Send stop command to motion system"""
-        cmd = {"type": "stop"}
-        self.pub.publish(TOPIC_MOTION, cmd)
-        LOG.debug("Motion STOP command sent")
+        """Send stop command via cmd.stop topic."""
+        payload = {"rid": CMD_RID, "ts": time.time()}
+        self.pub.publish(TOPIC_CMD_STOP, payload, add_ts=False)
+        LOG.info("Navigator cmd.stop sent")
 
     def _handle_obstacle(self, present: bool, confidence: float):
         """Handle obstacle detection event"""
@@ -209,7 +221,7 @@ class Navigator:
 
         # Turn right (could be randomized or based on sensor data)
         LOG.info("AVOID strategy: turning to avoid obstacle")
-        self._send_motion_drive(0.0, -self.turn_speed)  # Turn right
+        self._send_motion_drive(0.0, -self.turn_speed, duration=TURN_DURATION)
 
         # Schedule return to forward motion after turn
         # Note: In a production system, this would be managed by a state machine

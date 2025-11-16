@@ -17,6 +17,7 @@ ALLOW_UNITS=(
   rider-ssd-preview.service
   rider-tracker.service
   rider-tracking-controller.service
+  rider-navigator.service
   rider-voice.service
   rider-voice-web.service
   rider-vision.service

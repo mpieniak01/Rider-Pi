@@ -521,10 +521,11 @@ while _running:
         _next_telem_ts = now + (1.0 / BRIDGE_RATE_HZ)
 
     # Odbiór komend – pobierz do N wiadomości i przetwarzaj KAŻDĄ (FIFO)
-    batch: list[str] = []
+    batch: list[list[str]] = []
     for _ in range(MAX_MSGS_PER_TICK):
         try:
-            batch.append(sub.recv_string(flags=zmq.NOBLOCK))
+            frames = sub.recv_multipart(flags=zmq.NOBLOCK)
+            batch.append([f.decode("utf-8", "ignore") for f in frames])
         except zmq.Again:
             break
         except Exception as e:
@@ -535,11 +536,18 @@ while _running:
         time.sleep(tick_dt)
         continue
 
-    for msg in batch:
-        try:
-            topic, payload = msg.split(" ", 1)
-        except ValueError:
-            topic, payload = msg, "{}"
+    for frames in batch:
+        if not frames:
+            continue
+        if len(frames) == 1:
+            msg = frames[0]
+            if " " in msg:
+                topic, payload = msg.split(" ", 1)
+            else:
+                topic, payload = msg, "{}"
+        else:
+            topic = frames[0]
+            payload = frames[1] if len(frames) == 2 else " ".join(frames[1:])
 
         try:
             data = json.loads(payload) if payload else {}

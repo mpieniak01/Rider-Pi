@@ -184,6 +184,13 @@ SERVICE_META: dict[str, ServiceMeta] = {
         "description": "Sterowanie ruchem na podstawie śledzenia.",
         "edges_out": ["motion-bridge"],
     },
+    "rider-navigator.service": {
+        "id": "navigator",
+        "group": "motion",
+        "label": "Navigator",
+        "description": "Autonomiczny rekonesans i sterowanie ruchem.",
+        "edges_out": ["motion-bridge"],
+    },
 }
 
 

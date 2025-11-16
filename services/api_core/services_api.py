@@ -31,6 +31,7 @@ ALLOWED_UNITS: dict[str, str] = {
     "ssd": "rider-ssd-preview.service",
     # detectors
     "obstacle": "rider-obstacle.service",
+    "vision": "rider-vision.service",
     # legacy aliases
     "last": "rider-ssd-preview.service",
     "lastframe": "rider-ssd-preview.service",
@@ -41,6 +42,7 @@ ALLOWED_UNITS: dict[str, str] = {
     # "post-splash": "rider-post-splash.service",
     "google-bridge": "rider-google-bridge.service",
     "tracking-controller": "rider-tracking-controller.service",
+    "navigator": "rider-navigator.service",
 }
 
 
