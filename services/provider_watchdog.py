@@ -39,6 +39,7 @@ DISABLED = os.getenv("PROVIDER_WATCHDOG_DISABLED", "").lower() in {
 _thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _lock = threading.Lock()
+_fallbacked_domains: set[str] = set()
 
 
 def _fetch_pc_capabilities(base_url: str) -> tuple[Any, float]:
@@ -61,12 +62,29 @@ def _fetch_pc_capabilities(base_url: str) -> tuple[Any, float]:
         return data, latency_ms
 
 
+def _restore_domains() -> None:
+    if not _fallbacked_domains:
+        return
+
+    restored = set()
+    for domain in list(_fallbacked_domains):
+        try:
+            state = registry.get_domain_state(domain)
+            if state.get("mode") == "local" and state.get("reason") == "pc_unreachable":
+                registry.set_domain_mode(domain, "pc", reason="heartbeat_recover")
+            restored.add(domain)
+        except Exception as exc:  # noqa: BLE001
+            LOG.warning("Watchdog restore failed for %s: %s", domain, exc)
+    _fallbacked_domains.difference_update(restored)
+
+
 def _fallback_to_local(reason: str) -> None:
     for domain in registry.DOMAINS:
         try:
             state = registry.get_domain_state(domain)
             if state.get("mode") == "pc":
                 registry.set_domain_mode(domain, "local", reason=reason)
+                _fallbacked_domains.add(domain)
         except Exception as exc:  # noqa: BLE001
             LOG.warning("Watchdog fallback failed for %s: %s", domain, exc)
 
@@ -96,6 +114,7 @@ def _loop() -> None:
                 reason=data.get("version") if isinstance(data, dict) else "ok",
             )
             last_health_status = "online"
+            _restore_domains()
             consecutive_failures = 0
 
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
@@ -157,6 +176,7 @@ def _heartbeat_only_cycle(consecutive_failures: int) -> int:
             status="online",
             reason="heartbeat",
         )
+        _restore_domains()
         return 0
 
     consecutive_failures += 1
