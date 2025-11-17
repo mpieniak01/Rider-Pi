@@ -106,6 +106,8 @@ Rider-Pi monitors Rider-PC reachability via the provider registry:
 
 - `PROVIDER_PC_BASE_URL` — optional override of the default PC URL (`http://127.0.0.1:8000`). When unset, the registry tracks the last base URL provided by Rider-PC heartbeats.
 - `PROVIDER_WATCHDOG_INTERVAL`, `PROVIDER_WATCHDOG_TIMEOUT`, `PROVIDER_WATCHDOG_FAIL_THRESHOLD` — tune how aggressively the watchdog checks the PC.
+- `PROVIDER_WATCHDOG_HEARTBEAT_ONLY` — when `true` (or `1`/`yes`), skip the HTTP capability check and let the watchdog rely solely on incoming heartbeats, which helps when Rider-Pi cannot initiate requests back to the PC but the PC still sends heartbeats.
+- `PROVIDER_WATCHDOG_HEARTBEAT_TIMEOUT_MULTIPLIER` — multiplier used in heartbeat-only mode to determine when a heartbeat is considered stale (defaults to `2.0`, i.e., two watchdog intervals).
 
 Rider-PC should periodically call `POST /api/providers/pc-heartbeat` (now implemented in the FastAPI panel). Missing heartbeats cause the watchdog to fall back to `local` mode automatically, so ensure firewalls/VPN allow access to the URL advertised via `PC_PUBLIC_BASE_URL`.
 
