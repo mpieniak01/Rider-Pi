@@ -7,6 +7,7 @@ based on the current AI processing mode (local vs pc_offload).
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 try:
     from common.ai_mode import get_mode, is_local, is_offload
@@ -34,10 +35,18 @@ VOICE_DOMAIN = "voice"
 
 def _provider_mode() -> str:
     if provider_state is not None:
-        try:
-            return provider_state.get_domain_mode(VOICE_DOMAIN)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Provider state read failed: %s", exc)
+        state_file = getattr(provider_state, "STATE_FILE", None)
+        state_path = Path(state_file) if isinstance(state_file, (str, Path)) else None
+        # If the registry file is present, respect its configuration. Otherwise,
+        # fall back to the classic AI mode switch so CI/local setups without
+        # provider control still behave correctly.
+        if state_path is None or state_path.exists():
+            try:
+                mode = provider_state.get_domain_mode(VOICE_DOMAIN)
+                if mode in {"local", "pc"}:
+                    return mode
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Provider state read failed: %s", exc)
     return "pc" if get_mode() == "pc_offload" else "local"
 
 
