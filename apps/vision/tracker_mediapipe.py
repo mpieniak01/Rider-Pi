@@ -17,6 +17,12 @@ import cv2
 import mediapipe as mp
 import zmq
 
+try:
+    from apps.vision.ai_mode_adapter import should_run_local_detectors
+except ImportError:  # pragma: no cover - fallback for standalone usage
+    def should_run_local_detectors() -> bool:  # type: ignore
+        return True
+
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
 ZMQ_ADDR_PUB = f"tcp://127.0.0.1:{BUS_PUB_PORT}"
@@ -228,6 +234,7 @@ def tracking_loop() -> None:
 
     frame_interval = 1.0 / MAX_FPS
     last_pub_ts = 0.0
+    tracker_active = False
 
     # FPS calculation
     fps_start_time = time.time()
@@ -236,6 +243,16 @@ def tracking_loop() -> None:
 
     while True:
         try:
+            if not should_run_local_detectors():
+                if tracker_active:
+                    print("[tracker] vision provider switched to PC -> pausing local tracker", flush=True)
+                tracker_active = False
+                time.sleep(0.25)
+                continue
+            if not tracker_active:
+                print("[tracker] vision provider local -> resuming tracker", flush=True)
+            tracker_active = True
+
             t0 = time.time()
             with FOLLOW_MODE_LOCK:
                 mode = FOLLOW_MODE
