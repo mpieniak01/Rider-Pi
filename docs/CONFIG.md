@@ -100,6 +100,15 @@ make config-init  # Creates config/jupyter.toml from template
 nano config/jupyter.toml  # Customize server settings
 ```
 
+### Provider Heartbeat Settings
+
+Rider-Pi monitors Rider-PC reachability via the provider registry:
+
+- `PROVIDER_PC_BASE_URL` — optional override of the default PC URL (`http://127.0.0.1:8000`). When unset, the registry tracks the last base URL provided by Rider-PC heartbeats.
+- `PROVIDER_WATCHDOG_INTERVAL`, `PROVIDER_WATCHDOG_TIMEOUT`, `PROVIDER_WATCHDOG_FAIL_THRESHOLD` — tune how aggressively the watchdog checks the PC.
+
+Rider-PC should periodically call `POST /api/providers/pc-heartbeat` (now implemented in the FastAPI panel). Missing heartbeats cause the watchdog to fall back to `local` mode automatically, so ensure firewalls/VPN allow access to the URL advertised via `PC_PUBLIC_BASE_URL`.
+
 ## Configuration File Structure
 
 ### Camera Configuration (`camera.toml`)
