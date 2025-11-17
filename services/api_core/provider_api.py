@@ -58,6 +58,13 @@ def provider_domain_handler(domain: str) -> tuple[Response, int]:
     if domain not in registry.DOMAINS:
         return _corsify(jsonify({"error": f"Unknown domain: {domain}"})), 404
 
+    if domain == "pc-heartbeat":
+        if request.method == "OPTIONS":
+            return _corsify(make_response("", 204)), 204
+        if request.method == "POST":
+            return providers_pc_heartbeat_handler()
+        return _corsify(jsonify({"error": "Method not allowed"})), 405
+
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204)), 204
 
