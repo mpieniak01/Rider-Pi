@@ -17,7 +17,15 @@ from apps.ui.face.renderer import FaceRenderer
 OUT_LATEST = os.environ.get("FACE_LATEST_PATH", "/tmp/face_latest.png")
 OUT_LEGACY = os.environ.get("FACE_LEGACY_PATH", "/tmp/face_runtime.png")
 
+
+def _env_sink_kind() -> str:
+    return (os.environ.get("FACE_SINK", "file") or "file").strip().lower()
+
+
+DEFAULT_SINK = _env_sink_kind()
+
 ALLOWED = {"neutral", "happy", "sad", "blink"}
+SINKS = {"file", "lcd", "null"}
 
 
 def _norm_expr(v: str) -> str:
@@ -66,9 +74,18 @@ class LcdNotAvailable(Exception):
     pass
 
 
+def _resolve_sink_kind() -> str:
+    """Return the sink kind based on the latest state or environment."""
+    kind = str(STATE.get("sink") or "").strip().lower()
+    if kind in SINKS:
+        return kind
+    env_kind = _env_sink_kind()
+    return env_kind if env_kind in SINKS else "file"
+
+
 def _make_sink() -> FaceSink:
-    """Wybór sinka wg ENV FACE_SINK: file | lcd | null (domyślnie: file)."""
-    kind = (os.environ.get("FACE_SINK") or "file").strip().lower()
+    """Wybór sinka wg STATE['sink'] lub domyślnego środowiska."""
+    kind = _resolve_sink_kind()
     if kind == "file":
         return FileSink(OUT_LATEST)
     elif kind == "lcd":
@@ -83,6 +100,15 @@ def _make_sink() -> FaceSink:
         return NullSink()
 
 
+def _apply_requested_sink(payload: dict[str, Any]) -> None:
+    sink_raw = payload.get("sink")
+    if sink_raw is None:
+        return
+    kind = str(sink_raw).strip().lower()
+    if kind in SINKS:
+        STATE["sink"] = kind
+
+
 # ====================== GLOBALNY STAN ANIMACJI ===============================
 
 STATE: dict[str, Any] = {
@@ -95,6 +121,7 @@ STATE: dict[str, Any] = {
     "frame_count": 0,
     "_last_payload": None,
     "error": None,
+    "sink": DEFAULT_SINK,
 }
 
 # ====================== ANIMATOR (wątek w tle) ===============================
@@ -184,6 +211,7 @@ _anim = _Animator()
 def play(payload: dict[str, Any]) -> dict[str, Any]:
     expr = _norm_expr(payload.get("expr"))
     fps = max(1, min(60, int(payload.get("fps", STATE.get("fps", 20) or 20))))
+    _apply_requested_sink(payload)
     STATE.update(
         {
             "expr": expr,

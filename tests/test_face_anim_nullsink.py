@@ -30,6 +30,7 @@ def _clean_anim(monkeypatch):
             "frame_count": 0,
             "error": None,
             "_last_payload": None,
+            "sink": fa.DEFAULT_SINK,
         }
     )
 

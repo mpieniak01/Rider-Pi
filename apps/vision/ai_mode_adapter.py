@@ -34,12 +34,24 @@ VISION_DOMAIN = "vision"
 
 
 def _provider_mode() -> str:
+    ai_override = "pc" if get_mode() == "pc_offload" else "local"
+    provider_mode: str | None = None
+
     if provider_state is not None:
         try:
-            return provider_state.get_domain_mode(VISION_DOMAIN)
+            mode = provider_state.get_domain_mode(VISION_DOMAIN)
+            if mode in {"local", "pc"}:
+                provider_mode = mode
         except Exception as exc:  # noqa: BLE001
             logger.debug("Provider state read failed: %s", exc)
-    return "pc" if get_mode() == "pc_offload" else "local"
+
+    if provider_mode == "pc" or ai_override == "pc":
+        return "pc"
+
+    if provider_mode == "local":
+        return "local"
+
+    return "local"
 
 
 def should_run_local_detectors() -> bool:

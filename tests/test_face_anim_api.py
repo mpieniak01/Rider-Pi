@@ -32,6 +32,7 @@ def _clean_anim():
             "started_ts": None,
             "last_ts": None,
             "frame_count": 0,
+            "sink": fa.DEFAULT_SINK,
         }
     )
 

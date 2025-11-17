@@ -25,6 +25,7 @@ from apps.navigator import pathfinding
 from apps.navigator.ai_mode_adapter import log_navigator_mode_status
 from common.bus import (
     TOPIC_MAPPER_MAP_DATA,
+    TOPIC_MOTION_COMMAND,
     TOPIC_NAVIGATOR_MAP_REQUEST,
     TOPIC_NAVIGATOR_RETURN_HOME_START,
     TOPIC_ROBOT_POSE,
@@ -163,12 +164,17 @@ class Navigator:
             "ts": time.time(),
         }
         self.pub.publish(TOPIC_CMD_MOVE, cmd, add_ts=False)
+        self.pub.publish(
+            TOPIC_MOTION_COMMAND,
+            {"type": "drive", "lx": cmd["vx"], "az": cmd["yaw"]},
+        )
         LOG.info("Navigator cmd.move: %s", cmd)
 
     def _send_motion_stop(self):
         """Send stop command via cmd.stop topic."""
         payload = {"rid": CMD_RID, "ts": time.time()}
         self.pub.publish(TOPIC_CMD_STOP, payload, add_ts=False)
+        self.pub.publish(TOPIC_MOTION_COMMAND, {"type": "stop"})
         LOG.info("Navigator cmd.stop sent")
 
     def _handle_obstacle(self, present: bool, confidence: float):
