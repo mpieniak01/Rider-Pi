@@ -283,6 +283,11 @@ _add_rule(
     methods=["GET", "OPTIONS"],
 )
 _add_rule(
+    "/api/providers/pc-heartbeat",
+    view_func=provider_api.providers_pc_heartbeat_handler,
+    methods=["POST", "OPTIONS"],
+)
+_add_rule(
     "/api/providers/<domain>",
     view_func=provider_api.provider_domain_handler,
     methods=["GET", "PATCH", "OPTIONS"],

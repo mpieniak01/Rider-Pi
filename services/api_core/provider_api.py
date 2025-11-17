@@ -26,6 +26,33 @@ def providers_health_handler() -> tuple[Response, int]:
     return _corsify(jsonify({"pc_health": health})), 200
 
 
+def providers_pc_heartbeat_handler() -> tuple[Response, int]:
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204)), 204
+
+    payload = request.get_json(silent=True) or {}
+    base_url = (payload.get("base_url") or "").strip()
+    if not base_url:
+        return _corsify(jsonify({"error": "base_url is required"})), 400
+
+    reason = payload.get("reason") or "heartbeat"
+    try:
+        normalized = registry.set_pc_base_url(base_url, reason=reason)
+    except ValueError as exc:
+        return _corsify(jsonify({"error": str(exc)})), 400
+
+    health_kwargs = {
+        "reachable": True,
+        "status": payload.get("status") or "online",
+        "reason": reason,
+    }
+    if "latency_ms" in payload:
+        health_kwargs["latency_ms"] = payload.get("latency_ms")
+    registry.update_pc_health(**health_kwargs)
+
+    return _corsify(jsonify({"ok": True, "base_url": normalized})), 200
+
+
 def provider_domain_handler(domain: str) -> tuple[Response, int]:
     domain = (domain or "").lower()
     if domain not in registry.DOMAINS:

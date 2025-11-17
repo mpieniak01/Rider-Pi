@@ -14,7 +14,7 @@ from services import provider_registry as registry
 
 LOG = logging.getLogger("provider_watchdog")
 
-PC_BASE_URL = os.getenv("PROVIDER_PC_BASE_URL", "http://127.0.0.1:8000")
+DEFAULT_PC_BASE_URL = os.getenv("PROVIDER_PC_BASE_URL", "http://127.0.0.1:8000")
 PC_CAP_PATH = os.getenv("PROVIDER_PC_CAP_PATH", "/providers/capabilities")
 CHECK_INTERVAL = float(os.getenv("PROVIDER_WATCHDOG_INTERVAL", "5.0"))
 FAIL_THRESHOLD = int(os.getenv("PROVIDER_WATCHDOG_FAIL_THRESHOLD", "3"))
@@ -26,8 +26,8 @@ _stop_event = threading.Event()
 _lock = threading.Lock()
 
 
-def _fetch_pc_capabilities() -> tuple[Any, float]:
-    url = f"{PC_BASE_URL.rstrip('/')}{PC_CAP_PATH}"
+def _fetch_pc_capabilities(base_url: str) -> tuple[Any, float]:
+    url = f"{base_url.rstrip('/')}{PC_CAP_PATH}"
     req = urllib.request.Request(url, method="GET")
     start = time.time()
     with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
@@ -57,7 +57,10 @@ def _loop() -> None:
     consecutive_failures = 0
     while not _stop_event.wait(CHECK_INTERVAL):
         try:
-            data, latency_ms = _fetch_pc_capabilities()
+            base_url = registry.get_pc_base_url()
+            if not base_url:
+                base_url = DEFAULT_PC_BASE_URL
+            data, latency_ms = _fetch_pc_capabilities(base_url)
             registry.update_pc_health(
                 reachable=True,
                 status="online",

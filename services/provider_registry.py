@@ -26,6 +26,7 @@ DOMAINS: tuple[str, ...] = ("vision", "voice", "text")
 DEFAULT_STATE_FILE = Path("data") / "providers_state.json"
 STATE_FILE = Path(os.getenv("PROVIDER_STATE_FILE", str(DEFAULT_STATE_FILE)))
 BUS_WARMUP_MS = int(os.getenv("PROVIDER_BUS_WARMUP_MS", "200") or "0")
+DEFAULT_PC_BASE_URL = os.getenv("PROVIDER_PC_BASE_URL", "http://127.0.0.1:8000")
 
 _state_lock = threading.RLock()
 _domains: dict[str, dict[str, Any]] = {}
@@ -36,6 +37,7 @@ _pc_health: dict[str, Any] = {
     "updated_ts": 0.0,
     "reason": "not_initialized",
 }
+_pc_base_url: str = DEFAULT_PC_BASE_URL
 _MISSING = object()
 _bus_pub_lock = threading.Lock()
 _bus_pub: BusPub | None = None
@@ -136,6 +138,7 @@ def get_state_snapshot() -> dict[str, Any]:
         return {
             "domains": deepcopy(_domains),
             "pc_health": deepcopy(_pc_health),
+            "pc_base_url": _pc_base_url,
         }
 
 
@@ -215,6 +218,28 @@ def update_pc_health(
 def get_health_snapshot() -> dict[str, Any]:
     with _state_lock:
         return deepcopy(_pc_health)
+
+
+def get_pc_base_url() -> str:
+    with _state_lock:
+        return _pc_base_url or DEFAULT_PC_BASE_URL
+
+
+def set_pc_base_url(base_url: str, *, reason: str = "manual") -> str:
+    normalized = (base_url or "").strip()
+    if not normalized:
+        raise ValueError("base_url must be non-empty")
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        target = normalized
+    else:
+        target = f"http://{normalized}"
+    global _pc_base_url
+    with _state_lock:
+        if target == _pc_base_url:
+            return _pc_base_url
+        _pc_base_url = target.rstrip("/")
+    LOGGER.info("PC base URL updated to %s (reason=%s)", _pc_base_url, reason)
+    return _pc_base_url
 
 
 def reset_state() -> None:
