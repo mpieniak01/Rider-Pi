@@ -191,6 +191,13 @@ SERVICE_META: dict[str, ServiceMeta] = {
         "description": "Autonomiczny rekonesans i sterowanie ruchem.",
         "edges_out": ["motion-bridge"],
     },
+    "rider-vision-offload.service": {
+        "id": "vision-offload",
+        "group": "vision",
+        "label": "Vision offload",
+        "description": "Dispatcher wizji publikujący strumień do PC.",
+        "edges_out": ["broker"],
+    },
 }
 
 
