@@ -333,6 +333,39 @@
       </table>
     </div>
   </div>
+  <div class="c-card service-card">
+    <h2 class="c-card__title">
+      <span data-i18n="services.title">Usługi (systemd)</span>
+      <button
+        id="svcRefresh"
+        class="c-btn c-btn-sm section-action"
+        data-i18n="services.refresh"
+      >⟳ odśwież</button>
+    </h2>
+    <div id="svcInfo" class="muted">
+      <span data-i18n="meta.loading">Ładowanie…</span>
+      <span id="svcTs"></span>
+    </div>
+    <table class="svc-table" id="svcTable" hidden>
+      <thead>
+      <tr>
+        <th data-i18n="services.unit">Unit</th>
+        <th data-i18n="services.desc">Opis</th>
+        <th data-i18n="services.status">Status</th>
+        <th data-i18n="services.autostart">Autostart</th>
+        <th data-i18n="services.actions">Akcje</th>
+      </tr>
+      </thead>
+      <tbody id="svcBody"></tbody>
+    </table>
+  </div>
+
+  <!-- LOG -->
+  <div class="c-card log-card">
+    <h2 class="c-card__title" data-i18n="events.title">Zdarzenia (SSE /events)</h2>
+    <div id="log"></div>
+  </div>
+
   <div class="c-card motion-queue-card">
     <h2 class="c-card__title">
       <span data-i18n="motion_queue.title">Kolejka ruchu</span>
@@ -367,39 +400,6 @@
       </tr>
       </tbody>
     </table>
-  </div>
-
-  <div class="c-card service-card">
-    <h2 class="c-card__title">
-      <span data-i18n="services.title">Usługi (systemd)</span>
-      <button
-        id="svcRefresh"
-        class="c-btn c-btn-sm section-action"
-        data-i18n="services.refresh"
-      >⟳ odśwież</button>
-    </h2>
-    <div id="svcInfo" class="muted">
-      <span data-i18n="meta.loading">Ładowanie…</span>
-      <span id="svcTs"></span>
-    </div>
-    <table class="svc-table" id="svcTable" hidden>
-      <thead>
-      <tr>
-        <th data-i18n="services.unit">Unit</th>
-        <th data-i18n="services.desc">Opis</th>
-        <th data-i18n="services.status">Status</th>
-        <th data-i18n="services.autostart">Autostart</th>
-        <th data-i18n="services.actions">Akcje</th>
-      </tr>
-      </thead>
-      <tbody id="svcBody"></tbody>
-    </table>
-  </div>
-
-  <!-- LOG -->
-  <div class="c-card log-card">
-    <h2 class="c-card__title" data-i18n="events.title">Zdarzenia (SSE /events)</h2>
-    <div id="log"></div>
   </div>
 </div>
 
@@ -616,16 +616,20 @@
   }
 
   async function apiControl(obj) {
+    const payload = { ...obj };
+    if (!payload.source) {
+      payload.source = "pc-ui";
+    }
     try {
-      const j = await httpPost("/api/control", obj);
+      const j = await httpPost("/api/control", payload);
       appendLog(
-        `api/control → ${JSON.stringify(obj)} :: ${JSON.stringify(j)}`,
+        `api/control → ${JSON.stringify(payload)} :: ${JSON.stringify(j)}`,
         "ok",
       );
       return j;
     } catch (e) {
       appendLog(
-        `api/control ${JSON.stringify(obj)} :: ${e.message}`,
+        `api/control ${JSON.stringify(payload)} :: ${e.message}`,
         "err",
       );
     }
@@ -1076,7 +1080,8 @@
 
   async function flushMotionQueue(reason = "tracking-stop") {
     try {
-      await apiControl({ cmd: "stop", reason });
+      await apiControl({ cmd: "stop", reason, clear: true });
+      await fetchMotionQueue();
       appendLog(
         `[feature tracking] motion queue flushed (${reason})`,
         "ok",
@@ -1747,7 +1752,8 @@
       const body = qs("#motionQueueBody");
       if (!info || !body) return;
       body.innerHTML = "";
-      if (!Array.isArray(j.items) || j.items.length === 0) {
+      const items = Array.isArray(j.items) ? j.items : [];
+      if (!items.length) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td colspan="7" class="muted" data-i18n="motion_queue.empty_placeholder">
@@ -1755,7 +1761,10 @@
           </td>`;
         body.appendChild(tr);
       } else {
-        j.items.forEach((item) => {
+        items.slice(0, 10).forEach((item) => {
+          const statusNote = item.reason
+            ? `<div class="muted">${item.reason}</div>`
+            : "";
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${item.source || "-"}</td>
@@ -1763,14 +1772,16 @@
             <td>${item.vy ?? "-"}</td>
             <td>${item.yaw ?? "-"}</td>
             <td>${item.time_s ?? "-"}</td>
-            <td>${item.status || "-"}</td>
+            <td>${item.status || "-"}${statusNote}</td>
             <td>${item.age_s ?? "-"}</td>
           `;
           body.appendChild(tr);
         });
       }
-      info.textContent = t("motion_queue.loaded_at", {
-        ts: new Date().toLocaleTimeString(),
+      info.textContent = t("motion_queue.last_update", {
+        time: j.generated_at
+          ? new Date(j.generated_at * 1000).toLocaleTimeString()
+          : new Date().toLocaleTimeString(),
       });
     } catch (e) {
       appendLog(

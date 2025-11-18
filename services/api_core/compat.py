@@ -12,11 +12,14 @@ Rider-Pi – core kompatybilności:
 from __future__ import annotations
 
 import collections
+from collections import deque
+import itertools
 import json
 import os
 import subprocess
 import threading
 import time
+from typing import Any
 
 from flask import (
     Flask,
@@ -144,6 +147,7 @@ LAST_NAVIGATOR = {
     "obstacle_present": None,
     "ts": None,
 }
+MOTION_QUEUE = deque(maxlen=int(os.getenv("MOTION_QUEUE_MAX", "50")))
 
 # Historia
 HIST_CPU = collections.deque(maxlen=HISTORY_LEN)
@@ -262,6 +266,30 @@ def bus_pub(topic: str, payload: dict):
         pub.publish(topic, payload, add_ts=False)
     except Exception:
         pass
+
+
+def motion_queue_append(entry: dict[str, Any]) -> None:
+    """Store latest motion control command."""
+    if not isinstance(entry, dict):
+        return
+    normalized = dict(entry)
+    try:
+        normalized["ts"] = float(normalized.get("ts") or time.time())
+    except Exception:
+        normalized["ts"] = time.time()
+    MOTION_QUEUE.appendleft(normalized)
+
+
+def motion_queue_snapshot(limit: int = 10) -> list[dict[str, Any]]:
+    """Return most recent motion commands."""
+    if limit and limit > 0:
+        return list(itertools.islice(MOTION_QUEUE, limit))
+    return list(MOTION_QUEUE)
+
+
+def motion_queue_clear() -> None:
+    """Clear stored motion commands."""
+    MOTION_QUEUE.clear()
 
 
 # ── System info (delegacja do modułu) ────────────────────────────────────────

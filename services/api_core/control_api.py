@@ -181,7 +181,7 @@ def api_control_state():
 
 
 def api_motion_queue():
-    """Return placeholder motion queue to avoid 404s when UI polls."""
+    """Return last motion commands for diagnostics."""
     if request.method == "OPTIONS":
         resp = Response("", 204)
         resp.headers["Access-Control-Allow-Origin"] = "*"
@@ -189,7 +189,31 @@ def api_motion_queue():
         resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
         return resp
 
-    payload = {"ok": True, "items": []}
+    now = time.time()
+    items = []
+    for entry in C.motion_queue_snapshot(limit=10):
+        ts = entry.get("ts")
+        age = None
+        if ts:
+            try:
+                age = max(0.0, now - float(ts))
+            except Exception:
+                age = None
+        items.append(
+            {
+                "source": entry.get("source"),
+                "vx": entry.get("vx"),
+                "vy": entry.get("vy"),
+                "yaw": entry.get("yaw"),
+                "time_s": entry.get("duration_s"),
+                "status": entry.get("status") or entry.get("action"),
+                "reason": entry.get("reason"),
+                "ts": ts,
+                "age_s": round(age, 2) if age is not None else None,
+            }
+        )
+
+    payload = {"ok": True, "items": items, "generated_at": now}
     resp = Response(json.dumps(payload), mimetype="application/json")
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
@@ -199,35 +223,94 @@ def api_motion_queue():
 
 def api_control():
     data = request.get_json(silent=True) or {}
+    source = (request.args.get("source") or data.get("source") or "api-control").strip() or "api-control"
+    reason = (request.args.get("reason") or data.get("reason") or "").strip()
     action = (request.args.get("action") or data.get("action") or "").strip().lower()
-    ms = request.args.get("ms") or data.get("ms") or request.args.get("duration") or data.get("duration") or 0
+    cmd = (request.args.get("cmd") or data.get("cmd") or "").strip().lower()
+    if not action and cmd in {"move", "stop"}:
+        if cmd == "move":
+            action = (data.get("dir") or "").strip().lower()
+        elif cmd == "stop":
+            action = "stop"
+    if not action and data.get("dir"):
+        action = str(data["dir"]).strip().lower()
+    ms = request.args.get("ms") or data.get("ms") or request.args.get("duration") or data.get("duration")
+    if ms is None and data.get("t") is not None:
+        try:
+            ms = float(data["t"]) * 1000.0
+        except Exception:
+            ms = 0
+    if ms is None:
+        ms = 0
     try:
         ms = int(ms)
     except Exception:
         ms = 0
 
     vx = 0.0
+    vy = 0.0
     yaw = 0.0
+    speed = data.get("v") or data.get("speed")
+    try:
+        speed = float(speed) if speed is not None else None
+    except Exception:
+        speed = None
+    base_lin = speed if speed is not None else 0.4
+    base_yaw = speed if speed is not None else 0.5
     if action in ("forward", "fwd", "up"):
-        vx = +0.4
+        vx = abs(base_lin)
     elif action in ("back", "backward", "down"):
-        vx = -0.4
+        vx = -abs(base_lin)
     elif action in ("left",):
-        yaw = -0.5
+        yaw = -abs(base_yaw)
     elif action in ("right",):
-        yaw = +0.5
+        yaw = +abs(base_yaw)
     elif action in ("stop", "halt"):
-        C.bus_pub("cmd.stop", {"ts": time.time()})
+        ts = time.time()
+        if str(request.args.get("clear") or data.get("clear")).lower() in {"1", "true", "yes"}:
+            C.motion_queue_clear()
+        C.bus_pub("cmd.stop", {"ts": ts})
+        C.motion_queue_append(
+            {
+                "source": source,
+                "status": "stop",
+                "reason": reason or None,
+                "ts": ts,
+            }
+        )
         return Response('{"ok": true, "sent": {"action": "stop"}}', mimetype="application/json")
 
     if vx == 0.0 and yaw == 0.0 and action not in ("stop",):
+        ts = time.time()
+        C.motion_queue_append(
+            {
+                "source": source,
+                "status": "unknown",
+                "reason": "invalid-action",
+                "ts": ts,
+            }
+        )
         return Response(
             '{"ok": false, "error": "unknown action"}',
             mimetype="application/json",
             status=400,
         )
 
-    C.bus_pub("cmd.move", {"vx": vx, "yaw": yaw, "duration": ms / 1000.0, "ts": time.time()})
+    duration_s = ms / 1000.0
+    ts = time.time()
+    C.bus_pub("cmd.move", {"vx": vx, "vy": vy, "yaw": yaw, "duration": duration_s, "ts": ts})
+    C.motion_queue_append(
+        {
+            "source": source,
+            "status": action or "move",
+            "vx": vx,
+            "vy": vy,
+            "yaw": yaw,
+            "duration_s": round(duration_s, 3),
+            "reason": reason or None,
+            "ts": ts,
+        }
+    )
     return Response(
         json.dumps({"ok": True, "sent": {"action": action, "vx": vx, "yaw": yaw, "ms": ms}}),
         mimetype="application/json",
