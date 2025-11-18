@@ -32,6 +32,9 @@ ALLOWED_UNITS: dict[str, str] = {
     # detectors
     "obstacle": "rider-obstacle.service",
     "vision": "rider-vision.service",
+    "vision-offload": "rider-vision-offload.service",
+    "offload": "rider-vision-offload.service",
+    "pc-offload": "rider-vision-offload.service",
     # legacy aliases
     "last": "rider-ssd-preview.service",
     "lastframe": "rider-ssd-preview.service",
@@ -52,6 +55,7 @@ MUTEX_GROUPS: list[set[str]] = [
         "rider-cam-preview.service",
         "rider-edge-preview.service",
         "rider-ssd-preview.service",
+        "rider-vision-offload.service",
     },
 ]
 
@@ -269,6 +273,20 @@ def resource_release(name: str, pids: list[int] | None = None) -> Response:
 def resource_stop(name: str, units: list[str] | None = None) -> Response:
     if not _known_resource(name):
         return _json({"error": "unknown resource", "name": name}, status=404)
+
+    if name == "camera":
+        try:
+            resource_diag.guard_camera("claim")
+        except Exception:
+            pass
+
+    if name == "camera":
+        try:
+            from . import resource_diag as _rd
+
+            _rd._run_guard("claim")
+        except Exception:
+            pass
 
     services = [u for u in (units or []) if u]
     if not services:

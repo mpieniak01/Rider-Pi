@@ -24,6 +24,7 @@ This document provides a mapping of all systemd service files to the scripts the
 | **rider-post-splash.service** | ✓ Fixed | `/usr/bin/python3 scripts/sys_splash-info.py` | **Updated from** `ops/splash_device_info.py` |
 | **rider-ssd-preview.service** | ✓ Valid | `/usr/bin/python3 -u apps/camera/preview_lcd_ssd.py` | Python script in `apps/` |
 | **rider-vision.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/dispatcher.py` | Python script in `apps/` |
+| **rider-vision-offload.service** | ✓ Valid | `/usr/bin/python3 -m apps.vision.offload_dispatcher` | Dispatcher wizji offload strumieniujący dane do PC |
 | **rider-voice-web.service** | ✓ Valid | `/usr/bin/python3 -m apps.voice.web` | Python module in `apps/` |
 | **rider-voice.service** | ✓ Valid | `/usr/bin/python3 -m apps.voice.cli listen` | Python module in `apps/` |
 | **rider-web-bridge.service** | ✓ Valid | `/usr/bin/python3 -u -m services.web_motion_bridge` | Python module in `services/` |

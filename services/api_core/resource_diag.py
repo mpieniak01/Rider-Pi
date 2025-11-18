@@ -169,6 +169,30 @@ RESOURCE_SPECS: dict[str, dict[str, Any]] = {
     },
 }
 
+VISION_RESOURCE_GUARD = os.path.join(C.BASE_DIR, "scripts", "vision-resource-guard.sh")
+
+
+def _run_guard(action: str) -> dict[str, Any]:
+    if action not in {"claim", "release"} or not os.path.isfile(VISION_RESOURCE_GUARD):
+        return {"ok": False, "error": "vision-resource-guard unavailable"}
+    try:
+        proc = subprocess.run(
+            ["sudo", "-n", VISION_RESOURCE_GUARD, action],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except FileNotFoundError:
+        return {"ok": False, "error": "vision-resource-guard missing"}
+
+    return {
+        "ok": proc.returncode == 0,
+        "rc": proc.returncode,
+        "stdout": (proc.stdout or "").strip(),
+        "stderr": (proc.stderr or "").strip(),
+    }
+
 
 def available_resources() -> list[str]:
     return sorted(RESOURCE_SPECS.keys())
@@ -246,7 +270,9 @@ def release(resource: str, *, limit_pids: Iterable[int] | None = None) -> dict[s
     if release_spec["kind"] == "camera":
         args = [arg() if callable(arg) else arg for arg in release_spec["args"]]
         cmd = [CAMERA_FREE, *args, *limit_args]
-        return _call_release(cmd)
+        result = _call_release(cmd)
+        result["guard"] = _run_guard("release")
+        return result
 
     if release_spec["kind"] == "lcd":
         args = [arg() if callable(arg) else arg for arg in release_spec["args"]]
@@ -260,8 +286,16 @@ def to_json(data: dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
+def guard_camera(action: str) -> dict[str, Any]:
+    """
+    Wywołaj skrypt guardujący zasób kamery (claim/release).
+    """
+    return _run_guard(action)
+
+
 __all__ = [
     "available_resources",
     "inspect",
     "release",
+    "guard_camera",
 ]

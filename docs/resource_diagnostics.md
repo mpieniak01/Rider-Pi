@@ -1,55 +1,63 @@
-# Diagnostyka zasobów sprzętowych
+# Resource diagnostics
 
-Ten moduł pozwala szybko ustalić, czy mikrofon, głośnik lub kamera są
-zajęte i umożliwia selektywne zwolnienie blokujących procesów. Całość
-oparta jest na prostych narzędziach (`lsof`, `fuser`) oraz istniejących
-skryptach (`config/alsa/preflight.sh`, `scripts/sys_camera-free.sh`).
+This page explains how the control panel inspects and frees hardware resources
+(microphone, speaker, camera, LCD) and how every action now flows through a single
+resource-guarding workflow so the camera is always claimed just once.
 
-## Narzędzie CLI
+## CLI tool
+
+The existing helper continues to work:
 
 ```
-scripts/resource_diag.py status mic
-scripts/resource_diag.py release camera --pid 1234
+./scripts/resource_diag.py status camera
+./scripts/resource_diag.py release camera --pid 1234
 ```
 
-- `status` – zwraca JSON ze stanem zasobu (lista PID-ów, nazwy usług
-  systemd, ścieżki urządzeń).
-- `release` – uruchamia odpowiedni skrypt czyszczący. Dla audio
-  wykorzystywany jest `config/alsa/preflight.sh --force`, dla kamery
-  `scripts/sys_camera-free.sh`. Opcjonalny `--pid` pozwala zawęzić
-  operację do konkretnych procesów.
+- `status` returns JSON about the matched `/dev/*` paths, blocking PIDs, and the
+  owning systemd units.
+- `release` runs a dedicated helper (`scripts/sys_camera-free.sh` for the camera,
+  `config/alsa/preflight.sh` for audio, `scripts/sys_lcd-control.py` for LCD) and
+  now also calls `scripts/vision-resource-guard.sh release` to restore the preview
+  services after the transfer.
 
-## API /panel sterowania
+## API / control panel
 
-Endpoint `/api/resource/<mic|speaker|camera>` obsługuje:
+`/api/resource/<mic|speaker|camera|lcd>` exposes:
 
-- `GET` – status jak wyżej.
-- `POST {"action":"stop"}` – zatrzymuje usługi systemd, które
-  aktualnie blokują zasób (np. `rider-voice.service`).
-- `POST {"action":"release"}` – wymusza zwolnienie urządzenia przez
-  skrypt (również przy procesach spoza systemd).
+- `GET` → current inspection data. Internally `services.api_core.resource_diag.inspect`
+  uses `lsof` and caches `ProcessInfo` per device.
+- `POST {"action":"stop"}` → stops the systemd units that hold the resource using
+  `services.api_core.service_diag.resource_stop`. Before stopping camera-related
+  units we call `resource_diag.guard_camera("claim")` so `/dev/video0` is released
+  once and for all.
+- `POST {"action":"release"}` → runs the dedicated release scripts and calls the
+  guard with `release`, so camera-preview services automatically restart afterwards.
 
-Panel `web/control.html` prezentuje dane oraz udostępnia trzy przyciski
-(odświeżenie, stop usługi, zwolnij zasób) dla mikrofonu, głośnika i
-kamery.
+The UI in `web/control.html` renders the diagnostic table with refresh/stop/release
+buttons for each row. Every button communicates with this API, which, in turn,
+delegates to the `resource_diag` module and the newly added `vision-resource-guard.sh`.
 
-## Integracja skryptów
+## Central guard integration
 
-- `config/alsa/preflight.sh` przyjmuje nową opcję `--limit-pid`, dzięki
-  czemu można zabić tylko wskazane procesy audio.
-- `scripts/sys_camera-free.sh` zabija wyłącznie procesy mające otwarte
-  `/dev/video*`/`/dev/spidev*`, opcjonalnie ograniczone do PID-ów.
-- `scripts/sys_control.sh` dopuszcza obsługę `rider-voice.service` oraz
-  `rider-voice-web.service`, aby panel mógł zatrzymać usługę blokującą
-  mikrofon.
+- `vision-resource-guard.sh` stops `rider-cam-preview.service`, `rider-edge-preview.service`,
+  and `rider-ssd-preview.service` before `rider-vision-offload.service` starts, and
+  starts them again when the offload stops.
+- `scripts/sys_control.sh` uses the guard when `/svc` is invoked for
+  `rider-vision-offload.service`. This keeps all `/svc`/resource API pathways aligned
+  and prevents multiple previews from fighting over `/dev/video0`.
+- `resource_diag.guard_camera(action)` is the shared helper that both the API and
+  the guard script can call, so stopping services and releasing resources always go
+  through the same mechanism.
 
-## Typowa procedura
+## Typical workflow
 
-1. Operator sprawdza kartę „Diagnostyka zasobów” w panelu.
-2. Jeśli widzi usługę systemd, klika „Stop usługi”, co woła `/svc`.
-3. Jeżeli zasób nadal zajęty (skrypt testowy), naciska „Zwolnij”, co
-   wywołuje odpowiedni skrypt czyszczący.
-4. Informacje trafiają też do logu zdarzeń w panelu.
+1. Operator opens the Control panel’s “Resource diagnostics” card.
+2. They click “Stop service” → `/api/resource/camera` triggers `vision-resource-guard.sh
+   claim` and stops preview units before the guard calls `rider-vision-offload`.
+3. If the resource still appears busy, “Release” runs `scripts/sys_camera-free.sh`,
+   and the guard script also restarts preview services afterwards.
+4. Logs and UI show the updated holders, freeing the team from manual `lsof`/`fuser`
+   guessing.
 
-Całość pozostaje prosta (shell + istniejące skrypty), ale eliminuje
-zgadywanie „kto trzyma urządzenie”.
+All diagnostic flows now rely on a single guard script, so locally running preview
+services never collide with the offload pipeline.

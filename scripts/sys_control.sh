@@ -21,6 +21,7 @@ ALLOW_UNITS=(
   rider-voice.service
   rider-voice-web.service
   rider-vision.service
+  rider-vision-offload.service
   rider-web-bridge.service
 )
 
@@ -28,6 +29,8 @@ ALLOW_UNITS=(
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 UNIT_SRC_DIR="${BASE_DIR}/systemd"
+VISION_RESOURCE_SCRIPT="${BASE_DIR}/scripts/vision-resource-guard.sh"
+VISION_RESOURCE_STATE="idle"
 
 USER_NAME="pi"
 USER_UID="$(id -u "$USER_NAME" 2>/dev/null || echo 1000)"
@@ -40,6 +43,32 @@ is_allowed() {
 }
 is_action() { case "$1" in start|stop|restart|enable|disable) return 0;; esac; return 1; }
 
+vision_claim_resources() {
+  if [[ "$VISION_RESOURCE_STATE" == "claimed" ]]; then
+    return
+  fi
+  if [[ -x "$VISION_RESOURCE_SCRIPT" ]]; then
+    "$VISION_RESOURCE_SCRIPT" claim || true
+    VISION_RESOURCE_STATE="claimed"
+  fi
+}
+
+vision_release_resources() {
+  if [[ "$VISION_RESOURCE_STATE" != "claimed" ]]; then
+    return
+  fi
+  if [[ -x "$VISION_RESOURCE_SCRIPT" ]]; then
+    "$VISION_RESOURCE_SCRIPT" release || true
+    VISION_RESOURCE_STATE="idle"
+  fi
+}
+
+maybe_release_resources() {
+  if [[ "$UNIT" == "rider-vision-offload.service" && "$ACTION" == "stop" ]]; then
+    vision_release_resources
+  fi
+}
+
 # --- parse args: akceptuj obie kolejności ---
 A="${1:-}"; B="${2:-}"
 [[ -z "$A" || -z "$B" ]] && { echo "usage: $0 <unit> <start|stop|restart|enable|disable> (order free)" >&2; exit 2; }
@@ -47,6 +76,10 @@ A="${1:-}"; B="${2:-}"
 if is_action "$A"; then ACTION="$A"; UNIT="$B"
 elif is_action "$B"; then UNIT="$A"; ACTION="$B"
 else echo "bad args: need unit + action (start/stop/restart/enable/disable)" >&2; exit 2
+fi
+
+if [[ "$UNIT" == "rider-vision-offload.service" && "$ACTION" == "start" ]]; then
+  vision_claim_resources
 fi
 
 # --- whitelist ---
@@ -78,6 +111,7 @@ run_user() {
 OUT_SYS="$(run_system)"; RC_SYS=$?
 if [[ $RC_SYS -eq 0 ]]; then
   [[ -n "$OUT_SYS" ]] && echo "$OUT_SYS"
+  maybe_release_resources
   exit 0
 fi
 
@@ -85,6 +119,7 @@ fi
 OUT_USER="$(run_user)"; RC_USER=$?
 if [[ $RC_USER -eq 0 ]]; then
   [[ -n "$OUT_USER" ]] && echo "$OUT_USER"
+  maybe_release_resources
   exit 0
 fi
 
