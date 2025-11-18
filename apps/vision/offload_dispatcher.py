@@ -9,6 +9,7 @@ import signal
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import cv2
 
@@ -23,6 +24,10 @@ from common.bus import (
 from common.provider_state import is_pc_mode
 
 LOG = logging.getLogger("vision.offload")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = REPO_ROOT / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+LAST_FRAME_PATH = DATA_DIR / "last_frame.jpg"
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -106,6 +111,10 @@ class VisionOffloadDispatcher:
                     LOG.warning("Vision offload: JPEG encode failed")
                     time.sleep(interval)
                     continue
+                try:
+                    LAST_FRAME_PATH.write_bytes(jpeg.tobytes())
+                except Exception as exc:
+                    LOG.warning("Vision offload: cannot write last frame: %s", exc)
                 payload = {
                     "ts": time.time(),
                     "frame_jpeg": base64.b64encode(jpeg.tobytes()).decode("ascii"),
