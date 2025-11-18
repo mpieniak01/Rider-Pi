@@ -20,8 +20,10 @@ import zmq
 try:
     from apps.vision.ai_mode_adapter import should_run_local_detectors
 except ImportError:  # pragma: no cover - fallback for standalone usage
+
     def should_run_local_detectors() -> bool:  # type: ignore
         return True
+
 
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
@@ -37,6 +39,9 @@ TRACKER_PATH = os.path.join(SNAP_DIR, "tracker.jpg")
 # Tracking parameters
 DEAD_ZONE = float(os.getenv("TRACKING_DEAD_ZONE", "0.1"))  # ±10% center is "good enough"
 MAX_FPS = float(os.getenv("TRACKING_MAX_FPS", "10.0"))  # Limit CPU usage
+IDLE_OVERLAY = os.getenv("TRACKER_IDLE_TEXT", "Tracker idle")
+PC_OVERLAY = os.getenv("TRACKER_PC_TEXT", "PC offload")
+MODE_OVERLAY = os.getenv("TRACKER_MODE_TEXT", "Follow {mode}")
 
 PUB: zmq.Socket | None = None
 SUB: zmq.Socket | None = None
@@ -243,30 +248,42 @@ def tracking_loop() -> None:
 
     while True:
         try:
-            if not should_run_local_detectors():
+            pc_mode = not should_run_local_detectors()
+            if pc_mode:
                 if tracker_active:
-                    print("[tracker] vision provider switched to PC -> pausing local tracker", flush=True)
+                    print("[tracker] vision provider switched to PC -> preview-only mode", flush=True)
                 tracker_active = False
-                time.sleep(0.25)
-                continue
-            if not tracker_active:
-                print("[tracker] vision provider local -> resuming tracker", flush=True)
-            tracker_active = True
+            else:
+                if not tracker_active:
+                    print("[tracker] vision provider local -> resuming tracker", flush=True)
+                tracker_active = True
 
             t0 = time.time()
             with FOLLOW_MODE_LOCK:
                 mode = FOLLOW_MODE
-
-            if mode == "NONE":
-                # tryb wyłączony – nie przetwarzamy klatek
-                time.sleep(0.1)
-                continue
 
             # Wczytujemy ostatnią klatkę z preview
             frame = cv2.imread(LAST_FRAME_PATH)
             if frame is None:
                 print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
                 time.sleep(0.05)
+                continue
+
+            if mode == "NONE":
+                overlay = frame.copy()
+                text = PC_OVERLAY if pc_mode else IDLE_OVERLAY
+                cv2.putText(
+                    overlay,
+                    text,
+                    (12, 28),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 255, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
+                save_tracker_frame(overlay)
+                time.sleep(0.25 if pc_mode else 0.1)
                 continue
 
             fps_frame_count += 1
@@ -281,7 +298,7 @@ def tracking_loop() -> None:
             offset_x = None
             detections = None
 
-            if mode == "FACE":
+            if mode == "FACE" and not pc_mode:
                 results = face_detector.process(rgb_frame)
                 if results.detections:
                     offset_x = calculate_offset_x(results.detections)
@@ -292,7 +309,7 @@ def tracking_loop() -> None:
                     )
                 else:
                     print("[tracker] DETECTION FACE none", flush=True)
-            elif mode == "HAND":
+            elif mode == "HAND" and not pc_mode:
                 results = hand_detector.process(rgb_frame)
                 if results.multi_hand_landmarks:
                     offset_x = calculate_offset_x(results.multi_hand_landmarks)
@@ -342,11 +359,30 @@ def tracking_loop() -> None:
                     cv2.circle(annotated_frame, (center_x, center_y), radius, (0, 255, 255), 2)
                     cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 255, 255), -1)
 
-            # Zapisujemy ramkę trackera zawsze przy aktywnym trybie
+            overlay_text = None
+            if pc_mode:
+                overlay_text = PC_OVERLAY
+            elif mode == "NONE":
+                overlay_text = IDLE_OVERLAY
+            else:
+                overlay_text = MODE_OVERLAY.format(mode=mode.title())
+            if overlay_text:
+                cv2.putText(
+                    annotated_frame,
+                    overlay_text,
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
+
+            # Zapisujemy ramkę trackera zawsze przy aktywnym trybie/preview
             save_tracker_frame(annotated_frame)
 
             now = time.time()
-            if offset_x is not None and (now - last_pub_ts) >= frame_interval:
+            if not pc_mode and offset_x is not None and (now - last_pub_ts) >= frame_interval:
                 pub(
                     "vision.tracking.offset",
                     {"offset_x": round(offset_x, 3), "mode": mode.lower(), "ts": now},
@@ -355,11 +391,12 @@ def tracking_loop() -> None:
             else:
                 if offset_x is None:
                     print("[tracker] no offset to publish", flush=True)
-                else:
+                elif not pc_mode:
                     print(
                         f"[tracker] publish skipped (interval) offset_x={offset_x}",
                         flush=True,
                     )
+                # In PC mode offsets are provided by Rider-PC, so we stay silent
 
             elapsed = time.time() - t0
             sleep_time = max(0.0, frame_interval - elapsed)

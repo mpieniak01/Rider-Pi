@@ -215,6 +215,27 @@ def draw_overlay(
         print("[obst][annot] ERROR:", e, flush=True)
 
 
+def copy_raw_snapshot(message: str | None = None) -> None:
+    try:
+        frame = cv2.imread(RAW_PATH)
+        if frame is None:
+            return
+        if message:
+            cv2.putText(
+                frame,
+                message,
+                (10, 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+        cv2.imwrite(OBST_ANN_PATH, frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+    except Exception as exc:
+        print(f"[obst][annot] idle copy failed: {exc}", flush=True)
+
+
 # ----------------------------- optional bus ---------------------------------
 
 _bus = None
@@ -313,6 +334,20 @@ def main() -> int:
 
         # If detector is not active (pc_offload mode), sleep and continue
         if not detector_active:
+            copy_raw_snapshot("PC offload")
+            payload = {
+                "type": "obstacle",
+                "present": False,
+                "confidence": 0.0,
+                "edge_pct": 0.0,
+                "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
+                "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
+                "ts": now_s(),
+                "age_s": 0.0,
+                "stale": False,
+                "source": "pc_offload",
+            }
+            atomic_write_json(OBSTACLE_JSON, payload)
             time.sleep(0.5)
             continue
         proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)

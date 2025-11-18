@@ -45,6 +45,9 @@ def _load_state_locked() -> None:
             return
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         domains = data.get("domains") if isinstance(data, dict) else data
+        if not isinstance(domains, dict) and isinstance(data, dict):
+            # backwards compatibility: file might contain plain domain map
+            domains = data
         if not isinstance(domains, dict):
             raise ValueError("invalid provider state format")
         new_state: dict[str, dict[str, Any]] = {}
