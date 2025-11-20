@@ -128,5 +128,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
-    finally:
-        _cleanup_resources()

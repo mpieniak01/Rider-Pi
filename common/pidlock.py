@@ -22,7 +22,8 @@ def single_instance(lock_path="/tmp/rider-motion.lock"):
             if os.path.exists(lock_path):
                 os.unlink(lock_path)
         except Exception:
+            # Ignore cleanup errors (e.g., file already closed or deleted) to avoid issues during process exit
             pass
 
     atexit.register(cleanup_lock)
-    return fd  # nie zamykaj; trzyma lock do końca procesu
+    return fd  # FD will be closed by cleanup_lock atexit handler

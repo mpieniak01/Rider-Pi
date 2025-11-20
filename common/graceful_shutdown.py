@@ -31,6 +31,7 @@ class GracefulShutdown:
         self.should_stop = False
         self._cleanup_handlers: list[Callable[[], None]] = []
         self._signals_registered = False
+        self._cleanup_done = False
 
     def register_cleanup(self, handler: Callable[[], None]) -> None:
         """Register a cleanup handler to be called on shutdown."""
@@ -47,6 +48,9 @@ class GracefulShutdown:
 
     def _run_cleanup(self) -> None:
         """Execute all registered cleanup handlers."""
+        if self._cleanup_done:
+            return
+        self._cleanup_done = True
         for handler in self._cleanup_handlers:
             try:
                 handler()

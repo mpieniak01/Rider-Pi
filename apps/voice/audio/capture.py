@@ -33,12 +33,14 @@ def _set_pdeathsig():
             if libc_name:
                 _libc = ctypes.CDLL(libc_name, use_errno=True)
         except Exception:
+            # Ignore errors: prctl may not be available or may fail on some platforms
             return  # Not available on this platform
     if _libc is not None:
         try:
             # SIGKILL = 9
             _libc.prctl(_PR_SET_PDEATHSIG, 9)
         except Exception:
+            # Ignore errors: prctl may not be available or may fail on some platforms
             pass
 
 

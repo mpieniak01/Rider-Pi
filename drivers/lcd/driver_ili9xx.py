@@ -137,6 +137,7 @@ class LCDRenderer:
         self.cfg = cfg or FaceConfig()
         self._spi_handle = None  # Track SPI for cleanup
         self._gpio_initialized = False  # Track GPIO state
+        self._cleanup_done = False  # Prevent double cleanup
 
         DevClass = _pick_device_class()
         try:
@@ -219,6 +220,10 @@ class LCDRenderer:
         Gracefully cleanup LCD resources: close SPI and reset GPIO pins.
         Should be called on service shutdown to prevent resource leaks.
         """
+        if self._cleanup_done:
+            return
+        self._cleanup_done = True
+
         print("[face] Cleaning up LCD resources...", flush=True)
 
         # Close SPI connection
@@ -243,8 +248,9 @@ class LCDRenderer:
                 rst_pin = int(os.getenv("FACE_LCD_RST_PIN", "27"))
                 GPIO.setup(dc_pin, GPIO.IN)
                 GPIO.setup(rst_pin, GPIO.IN)
-                GPIO.cleanup()
-                print("[face] GPIO cleaned up", flush=True)
+                # Cleanup only the specific pins used by LCD
+                GPIO.cleanup([bl_pin, dc_pin, rst_pin])
+                print("[face] GPIO cleaned up (LCD pins only)", flush=True)
             except Exception as e:
                 print(f"[face] Failed to cleanup GPIO: {e}", flush=True)
 
@@ -252,8 +258,9 @@ class LCDRenderer:
         """Destructor to ensure cleanup is called."""
         try:
             self.cleanup()
-        except Exception:
-            pass
+        except Exception as e:
+            # Suppress exceptions in destructor, but log them for debugging
+            print(f"[face] Exception during __del__ cleanup: {e}", flush=True)
 
     # --- rysowanie ---
     def ShowImage(self, img: Image.Image):

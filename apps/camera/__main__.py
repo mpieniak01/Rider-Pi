@@ -47,15 +47,8 @@ def main() -> int:
     try:
         return preview_main()
     finally:
-        # Cleanup camera resources
-        print("[camera] Cleaning up camera resources...", flush=True)
-        try:
-            import cv2
-
-            # Release any OpenCV VideoCapture objects
-            cv2.destroyAllWindows()
-        except Exception:
-            pass
+        # Camera resource cleanup is handled by context manager in preview_lcd_takeover.py
+        pass
 
 
 if __name__ == "__main__":

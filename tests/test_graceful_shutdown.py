@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import tempfile
 import time
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -82,11 +81,13 @@ class TestPIDLock:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             lock_path = os.path.join(tmpdir, "test.lock")
+            # Calculate project root from this test file
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
             # Create lock in subprocess to test cleanup
             script = f"""
 import sys
-sys.path.insert(0, '/home/runner/work/Rider-Pi/Rider-Pi')
+sys.path.insert(0, '{project_root}')
 from common.pidlock import single_instance
 fd = single_instance('{lock_path}')
 # Exit normally - atexit should cleanup
@@ -107,12 +108,14 @@ fd = single_instance('{lock_path}')
         # by a real process, not just in the same Python instance
         with tempfile.TemporaryDirectory() as tmpdir:
             lock_path = os.path.join(tmpdir, "test2.lock")
+            # Calculate project root from this test file
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
             # Start a subprocess that holds the lock
             script = f"""
 import sys
 import time
-sys.path.insert(0, '/home/runner/work/Rider-Pi/Rider-Pi')
+sys.path.insert(0, '{project_root}')
 from common.pidlock import single_instance
 fd = single_instance('{lock_path}')
 time.sleep(2)  # Hold lock for 2 seconds
@@ -279,8 +282,8 @@ class TestCameraCleanup:
         # Simple test to ensure cleanup function exists and can be called
         import sys
 
-        # Add module to path
-        sys.path.insert(0, "/home/runner/work/Rider-Pi/Rider-Pi")
+        # Add module to path dynamically
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
         try:
             from apps.camera import preview_lcd_takeover
