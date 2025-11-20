@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import os
-import signal
 import tempfile
-import time
 from unittest.mock import Mock, patch
 
 import pytest
@@ -85,6 +83,9 @@ def test_pidlock_cleanup():
             pid_str = f.read()
             assert pid_str == str(os.getpid())
 
+        # Close the file descriptor to avoid resource leak
+        os.close(fd)
+
 
 def test_pidlock_second_instance_fails():
     """Test that second instance with same lock fails."""
@@ -111,6 +112,9 @@ single_instance('{lock_path}')
         # Should exit with code 1
         assert result.returncode == 1
         assert b"another instance running" in result.stderr
+
+        # Close the file descriptor to avoid resource leak
+        os.close(fd1)
 
 
 def test_audio_capture_pdeathsig_setup():

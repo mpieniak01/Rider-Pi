@@ -22,9 +22,13 @@ try:
     libc = ctypes.CDLL("libc.so.6")
     PR_SET_PDEATHSIG = 1
 
+    # Declare argument and return types for prctl
+    libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+    libc.prctl.restype = ctypes.c_int
+
     def _set_pdeathsig():
         """Set PDEATHSIG to SIGKILL for subprocess - called in child process."""
-        libc.prctl(PR_SET_PDEATHSIG, _signal.SIGKILL)
+        libc.prctl(PR_SET_PDEATHSIG, _signal.SIGKILL, 0, 0, 0)
 except Exception:
     # Not on Linux or prctl not available
     def _set_pdeathsig():
