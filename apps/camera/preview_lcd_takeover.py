@@ -69,33 +69,58 @@ def main():
     except Exception:
         pass
 
-    while True:
-        ok, frame = read()
-        if not ok:
-            time.sleep(0.01)
-            continue
+    try:
+        while True:
+            ok, frame = read()
+            if not ok:
+                time.sleep(0.01)
+                continue
 
-        now = time.time()
-        dt = max(1e-6, now - prev_t)
-        inst = 1.0 / dt
-        fps_ema = inst if fps_ema is None else (0.9 * fps_ema + 0.1 * inst)
-        prev_t = now
+            now = time.time()
+            dt = max(1e-6, now - prev_t)
+            inst = 1.0 / dt
+            fps_ema = inst if fps_ema is None else (0.9 * fps_ema + 0.1 * inst)
+            prev_t = now
 
-        out = frame.copy()
-        lcd_show_bgr(out)
-        HB.tick(out, fps_ema, presenting=not NO_DRAW)
+            out = frame.copy()
+            lcd_show_bgr(out)
+            HB.tick(out, fps_ema, presenting=not NO_DRAW)
 
-        frame_counter += 1
-        if frame_counter % SAVE_EVERY == 0:
-            try:
-                tmp = LAST_FRAME_PATH + ".tmp"
-                Image.fromarray(cv2.cvtColor(out, cv2.COLOR_BGR2RGB)).save(tmp, "JPEG", quality=80)
-                os.replace(tmp, LAST_FRAME_PATH)
-            except Exception as e:
-                print(f"[save-frame] error: {e}", flush=True)
+            frame_counter += 1
+            if frame_counter % SAVE_EVERY == 0:
+                try:
+                    tmp = LAST_FRAME_PATH + ".tmp"
+                    Image.fromarray(cv2.cvtColor(out, cv2.COLOR_BGR2RGB)).save(tmp, "JPEG", quality=80)
+                    os.replace(tmp, LAST_FRAME_PATH)
+                except Exception as e:
+                    print(f"[save-frame] error: {e}", flush=True)
 
-        if frame_counter % 60 == 0:
-            print(f"[takeover] fps={fps_ema:.1f}", flush=True)
+            if frame_counter % 60 == 0:
+                print(f"[takeover] fps={fps_ema:.1f}", flush=True)
+    finally:
+        # Graceful cleanup of camera resources
+        try:
+            # Stop camera (OpenCV or Picamera2)
+            if hasattr(read, "__self__"):
+                cam = read.__self__
+                if hasattr(cam, "release"):
+                    cam.release()
+                elif hasattr(cam, "stop"):
+                    cam.stop()
+                elif hasattr(cam, "close"):
+                    cam.close()
+        except Exception as e:
+            print(f"[cleanup] camera: {e}", flush=True)
+
+        # Cleanup LCD
+        try:
+            if _LCD is not None:
+                if hasattr(_LCD, "cleanup"):
+                    _LCD.cleanup()
+                elif hasattr(_LCD, "close"):
+                    _LCD.close()
+        except Exception as e:
+            print(f"[cleanup] lcd: {e}", flush=True)
 
 
 if __name__ == "__main__":
