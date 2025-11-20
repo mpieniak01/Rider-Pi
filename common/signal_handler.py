@@ -2,6 +2,13 @@
 
 This module provides a reusable signal handler that can be used by any service
 to ensure proper cleanup on SIGTERM and SIGINT.
+
+Example usage:
+    from common.signal_handler import GracefulShutdown
+
+    shutdown = GracefulShutdown()
+    shutdown.register(cleanup_function)
+    shutdown.setup()
 """
 
 from __future__ import annotations
