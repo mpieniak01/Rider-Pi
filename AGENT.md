@@ -141,7 +141,9 @@ sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
 
 ## 8) Lint/format
 
-- **Ruff jest bramką jakości**: hook `pre-commit` uruchamia `ruff check/format` przy każdym commicie **i** na CI. Commity z błędami lintu **są odrzucane**.
+- **Ruff jest bramką jakości**: hook `pre-commit` uruchamia `ruff check/format` przy każdym commicie **i** na CI.
+- **Wersja narzędzia**: Projekt wymusza użycie **ruff==0.6.9**. Upewnij się, że masz zainstalowaną dokładnie tę wersję, aby uniknąć różnic w formatowaniu względem CI.
+- Commity z błędami lintu **są odrzucane**.
 - **Nie omijaj** hooków `--no-verify` (dopuszczalne tylko lokalnie przy WIP – nigdy na `main`).
 - **Miejsce konfiguracji**: `pyproject.toml` (nie zmieniaj zasad bez uzasadnienia w PR).
 - **Wyjątki/wyciszenia**: preferuj lokalne `# noqa: ...` lub wpis w `per-file-ignores` **tylko** dla testów; unikaj globalnych ignorów.
