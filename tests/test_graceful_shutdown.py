@@ -81,7 +81,7 @@ def test_pidlock_cleanup():
         assert fd is not None
 
         # Verify that PID was written to the file
-        with open(lock_path, "r") as f:
+        with open(lock_path) as f:
             pid_str = f.read()
             assert pid_str == str(os.getpid())
 
@@ -163,7 +163,7 @@ def test_lcd_renderer_cleanup():
 
         # Verify cleanup method exists
         assert hasattr(LCDRenderer, "cleanup")
-        assert callable(getattr(LCDRenderer, "cleanup"))
+        assert callable(LCDRenderer.cleanup)
     except Exception as e:
         # If we can't import due to missing xgoscreen, that's okay for this test
         # We've verified the code structure in our manual review
@@ -176,7 +176,7 @@ def test_camera_signal_handler_setup():
     import os
 
     camera_main_path = os.path.join(os.path.dirname(__file__), "..", "apps", "camera", "__main__.py")
-    with open(camera_main_path, "r") as f:
+    with open(camera_main_path) as f:
         content = f.read()
 
     # Verify signal handling code is present
