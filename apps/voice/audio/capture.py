@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
+import ctypes.util
 import shlex
 import shutil
 import subprocess
@@ -13,6 +15,31 @@ from typing import Final
 
 from .. import voice_logging as voice_logging
 from ..errors import CaptureError
+
+# PDEATHSIG support for subprocess cleanup
+_libc = None
+_PR_SET_PDEATHSIG = 1
+
+
+def _set_pdeathsig():
+    """
+    Set PR_SET_PDEATHSIG to SIGKILL for subprocess.
+    This ensures the subprocess is killed when the parent dies.
+    """
+    global _libc
+    if _libc is None:
+        try:
+            libc_name = ctypes.util.find_library("c")
+            if libc_name:
+                _libc = ctypes.CDLL(libc_name, use_errno=True)
+        except Exception:
+            return  # Not available on this platform
+    if _libc is not None:
+        try:
+            # SIGKILL = 9
+            _libc.prctl(_PR_SET_PDEATHSIG, 9)
+        except Exception:
+            pass
 
 
 @dataclass
@@ -185,6 +212,7 @@ class AudioCapture:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 bufsize=0,
+                preexec_fn=_set_pdeathsig,  # Kill subprocess if parent dies
             )
         except Exception as exc:
             raise CaptureError(f"Failed to start capture command: {exc}") from exc

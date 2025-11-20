@@ -135,6 +135,8 @@ class LCDRenderer:
             raise RuntimeError(f"xgoscreen niezaładowany: {_XGO_ERR}")
 
         self.cfg = cfg or FaceConfig()
+        self._spi_handle = None  # Track SPI for cleanup
+        self._gpio_initialized = False  # Track GPIO state
 
         DevClass = _pick_device_class()
         try:
@@ -147,6 +149,7 @@ class LCDRenderer:
         spi = getattr(self.device, "SPI", None)
         hz = self.cfg.lcd_spi_hz or int(os.getenv("FACE_LCD_SPI_HZ", "0") or 0)
         if spi is not None:
+            self._spi_handle = spi  # Store for cleanup
             try:
                 if hz:
                     spi.max_speed_hz = hz
@@ -168,6 +171,7 @@ class LCDRenderer:
             GPIO.setwarnings(False)
             GPIO.setup(bl_pin, GPIO.OUT)
             GPIO.output(bl_pin, 1)
+            self._gpio_initialized = True
         except Exception:
             pass
 
@@ -209,6 +213,47 @@ class LCDRenderer:
         # sanity: jeśli nie ma ani ShowImage ani RAW – nie ma sensu iść dalej
         if (self._present is None) and (self._raw_node is None):
             raise RuntimeError("Brak ShowImage() i brak pełnego RAW (command/spi_writebyte/SetWindows) w xgoscreen.*")
+
+    def cleanup(self) -> None:
+        """
+        Gracefully cleanup LCD resources: close SPI and reset GPIO pins.
+        Should be called on service shutdown to prevent resource leaks.
+        """
+        print("[face] Cleaning up LCD resources...", flush=True)
+
+        # Close SPI connection
+        if self._spi_handle is not None:
+            try:
+                if hasattr(self._spi_handle, "close"):
+                    self._spi_handle.close()
+                    print("[face] SPI closed", flush=True)
+            except Exception as e:
+                print(f"[face] Failed to close SPI: {e}", flush=True)
+
+        # Cleanup GPIO
+        if self._gpio_initialized:
+            try:
+                import RPi.GPIO as GPIO
+
+                # Turn off backlight
+                bl_pin = int(os.getenv("FACE_LCD_BL_PIN", str(self.cfg.lcd_bl_pin)))
+                GPIO.output(bl_pin, 0)
+                # Reset RST and DC pins if defined
+                dc_pin = int(os.getenv("FACE_LCD_DC_PIN", "25"))
+                rst_pin = int(os.getenv("FACE_LCD_RST_PIN", "27"))
+                GPIO.setup(dc_pin, GPIO.IN)
+                GPIO.setup(rst_pin, GPIO.IN)
+                GPIO.cleanup()
+                print("[face] GPIO cleaned up", flush=True)
+            except Exception as e:
+                print(f"[face] Failed to cleanup GPIO: {e}", flush=True)
+
+    def __del__(self) -> None:
+        """Destructor to ensure cleanup is called."""
+        try:
+            self.cleanup()
+        except Exception:
+            pass
 
     # --- rysowanie ---
     def ShowImage(self, img: Image.Image):

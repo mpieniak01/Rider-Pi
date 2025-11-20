@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 # apps/camera/preview_lcd_takeover.py
+import atexit
 import os
 import time
 
@@ -27,6 +28,10 @@ SAVE_EVERY = int(os.environ.get("SAVE_EVERY", 2))
 
 frame_counter = 0
 
+# Global references for cleanup
+_LCD = None
+_CAMERA_CAPTURE = None
+
 
 # --- LCD init ---
 def _lcd_init():
@@ -41,6 +46,26 @@ def _lcd_init():
     except Exception:
         return None
 
+
+def _cleanup_resources():
+    """Cleanup camera and LCD resources on exit."""
+    global _LCD, _CAMERA_CAPTURE
+    print("[takeover] Cleaning up camera and LCD resources...", flush=True)
+
+    # Cleanup LCD
+    if _LCD is not None:
+        try:
+            if hasattr(_LCD, "cleanup"):
+                _LCD.cleanup()
+        except Exception as e:
+            print(f"[takeover] LCD cleanup error: {e}", flush=True)
+
+    # Note: Camera cleanup is handled by open_camera's context manager
+    print("[takeover] Cleanup complete", flush=True)
+
+
+# Register cleanup handler
+atexit.register(_cleanup_resources)
 
 _LCD = _lcd_init()
 
@@ -103,3 +128,5 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
+    finally:
+        _cleanup_resources()

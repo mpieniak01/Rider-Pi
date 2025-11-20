@@ -42,7 +42,20 @@ def main() -> int:
         os.environ["PREVIEW_ALPHA"] = str(float(a.alpha))
     if a.beta is not None:
         os.environ["PREVIEW_BETA"] = str(float(a.beta))
-    return preview_main()
+
+    # Wrap preview_main in try/finally to ensure cleanup
+    try:
+        return preview_main()
+    finally:
+        # Cleanup camera resources
+        print("[camera] Cleaning up camera resources...", flush=True)
+        try:
+            import cv2
+
+            # Release any OpenCV VideoCapture objects
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

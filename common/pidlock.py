@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import fcntl
 import os
 import sys
@@ -13,4 +14,15 @@ def single_instance(lock_path="/tmp/rider-motion.lock"):
     except OSError:
         print(f"[PIDLOCK] another instance running (lock: {lock_path})", file=sys.stderr)
         sys.exit(1)
+
+    # Register cleanup handler to remove lock file on exit
+    def cleanup_lock():
+        try:
+            os.close(fd)
+            if os.path.exists(lock_path):
+                os.unlink(lock_path)
+        except Exception:
+            pass
+
+    atexit.register(cleanup_lock)
     return fd  # nie zamykaj; trzyma lock do końca procesu
