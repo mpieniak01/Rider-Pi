@@ -133,9 +133,9 @@ class TestDeviceNameValidation:
             is_alias = not device.startswith("hw:") and not device.startswith("plughw:")
             has_card_spec = "CARD=" in device
             is_named_hw = self._is_named_hw_device(device)
-            assert is_alias or has_card_spec or is_named_hw, (
-                f"Device {device} should use stable naming (is_alias={is_alias}, has_card_spec={has_card_spec}, is_named_hw={is_named_hw})"
-            )
+            assert (
+                is_alias or has_card_spec or is_named_hw
+            ), f"Device {device} should use stable naming (is_alias={is_alias}, has_card_spec={has_card_spec}, is_named_hw={is_named_hw})"
 
     @staticmethod
     def _is_named_hw_device(device: str) -> bool:
