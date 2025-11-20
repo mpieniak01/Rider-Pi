@@ -12,13 +12,13 @@ Rider-Pi – core kompatybilności:
 from __future__ import annotations
 
 import collections
-from collections import deque
 import itertools
 import json
 import os
 import subprocess
 import threading
 import time
+from collections import deque
 from typing import Any
 
 from flask import (
