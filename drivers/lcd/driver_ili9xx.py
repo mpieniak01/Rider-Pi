@@ -160,6 +160,7 @@ class LCDRenderer:
             print(f"[face] LCD: spi.hz={getattr(spi, 'max_speed_hz', hz)}  spi.mode={getattr(spi, 'mode', '-')}")
 
         # Backlight (BCM13 HIGH)
+        self._bl_pin = None
         try:
             import RPi.GPIO as GPIO
 
@@ -168,6 +169,7 @@ class LCDRenderer:
             GPIO.setwarnings(False)
             GPIO.setup(bl_pin, GPIO.OUT)
             GPIO.output(bl_pin, 1)
+            self._bl_pin = bl_pin
         except Exception:
             pass
 
@@ -209,6 +211,46 @@ class LCDRenderer:
         # sanity: jeśli nie ma ani ShowImage ani RAW – nie ma sensu iść dalej
         if (self._present is None) and (self._raw_node is None):
             raise RuntimeError("Brak ShowImage() i brak pełnego RAW (command/spi_writebyte/SetWindows) w xgoscreen.*")
+
+    def cleanup(self):
+        """Graceful cleanup of LCD resources (SPI, GPIO).
+
+        Note: This should only be called when the entire application is shutting down,
+        as GPIO.cleanup() will affect all GPIO pins used by the application.
+        """
+        # Close SPI connection
+        try:
+            spi = getattr(self.device, "SPI", None)
+            if spi is not None and hasattr(spi, "close"):
+                spi.close()
+        except Exception:
+            # Ignore SPI close errors during cleanup
+            pass
+
+        # Reset GPIO pins
+        try:
+            import RPi.GPIO as GPIO
+
+            # Reset backlight pin if it was set
+            if self._bl_pin is not None:
+                GPIO.output(self._bl_pin, 0)
+                # Cleanup only the backlight pin to avoid interfering with other GPIO users
+                GPIO.cleanup(self._bl_pin)
+        except Exception:
+            # Ignore GPIO cleanup errors
+            pass
+
+        # Close raw SPI if initialized
+        try:
+            if _RAWSPI.get("spi"):
+                raw_spi = _RAWSPI["spi"]
+                if hasattr(raw_spi, "close"):
+                    raw_spi.close()
+                _RAWSPI["spi"] = None
+                _RAWSPI["inited"] = False
+        except Exception:
+            # Ignore raw SPI cleanup errors
+            pass
 
     # --- rysowanie ---
     def ShowImage(self, img: Image.Image):

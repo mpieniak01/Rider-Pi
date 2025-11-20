@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import sys
 
 from apps.camera.preview_lcd_takeover import main as preview_main
@@ -27,6 +28,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # Setup signal handlers for graceful shutdown
+    def signal_handler(signum, frame):
+        print(f"\n[camera] Received signal {signum}, shutting down gracefully...", file=sys.stderr)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
     a = parse_args()
     if a.human is not None:
         os.environ["VISION_HUMAN"] = str(int(a.human))
