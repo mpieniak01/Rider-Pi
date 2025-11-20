@@ -5,3 +5,12 @@ requests==2.32.5
 Werkzeug==3.1.3
 pytest==8.4.2
 pytest-timeout==2.4.0
+
+# --- NON-NEGOTIABLE QUALITY CONSTRAINTS ---
+1. VERIFICATION FIRST: You imply strict adherence to "Definition of Done". You MUST run formatting and linting checks before declaring code as finished.
+2. NO BROKEN SYNTAX: Generated code must be valid Python 3.9+.
+3. LINTING IS MANDATORY: Code MUST pass `ruff check .` without errors. If you cannot fix a lint error, explain why, but prefer refactoring to comply.
+4. FORMATTING IS MANDATORY: Code MUST pass `ruff format . --check`.
+5. TEST INTEGRITY: If you modify a service or app, you MUST run `pytest tests/...` for that module.
+6. NO HALLUCINATED DEPS: Do NOT import packages not listed above or in `pyproject.toml`.
+7. SELF-CORRECTION: If you find an error during your internal thought process, correct it BEFORE outputting the final code block.
