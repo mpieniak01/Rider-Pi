@@ -33,6 +33,10 @@ SNAP_DIR = Path(os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or REPO_ROOT / "
 SNAP_DIR.mkdir(parents=True, exist_ok=True)
 RAW_PATH = Path(os.getenv("RAW_PATH") or SNAP_DIR / "raw.jpg")
 RAW_PATH.parent.mkdir(parents=True, exist_ok=True)
+PROC_PATH = Path(os.getenv("PROC_PATH") or SNAP_DIR / "proc.jpg")
+PROC_PATH.parent.mkdir(parents=True, exist_ok=True)
+EDGE_LOW = int(os.getenv("OFFLOAD_EDGE_LOW") or os.getenv("EDGE_LOW") or "60")
+EDGE_HIGH = int(os.getenv("OFFLOAD_EDGE_HIGH") or os.getenv("EDGE_HIGH") or "120")
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -46,12 +50,12 @@ def _bool_env(name: str, default: bool = False) -> bool:
 class VisionOffloadDispatcher:
     """Capture frames and send them to PC when provider vision=pc."""
 
-    source: str = field(default_factory=lambda: os.getenv("VISION_OFFLOAD_SOURCE", "file"))
+    source: str = field(default_factory=lambda: os.getenv("VISION_OFFLOAD_SOURCE", "auto"))
     width: int = int(os.getenv("VISION_OFFLOAD_WIDTH", "320"))
     height: int = int(os.getenv("VISION_OFFLOAD_HEIGHT", "240"))
     fps: float = float(os.getenv("VISION_OFFLOAD_FPS", "5"))
     topic_out: str = TOPIC_VISION_FRAME_OFFLOAD
-    frame_source: str = field(default_factory=lambda: os.getenv("VISION_OFFLOAD_SOURCE", "file"))
+    frame_source: str = field(default_factory=lambda: os.getenv("VISION_OFFLOAD_SOURCE", "auto"))
     frame_file: Path = field(
         default_factory=lambda: Path(
             os.getenv("VISION_OFFLOAD_FRAME_FILE")
@@ -59,28 +63,42 @@ class VisionOffloadDispatcher:
             or os.path.join(REPO_ROOT, "snapshots", "raw.jpg")
         )
     )
+    write_proc: bool = field(default_factory=lambda: _bool_env("VISION_OFFLOAD_WRITE_PROC", True))
+    fallback_camera: bool = field(default_factory=lambda: _bool_env("VISION_OFFLOAD_FALLBACK_CAMERA", True))
+    edge_low: int = EDGE_LOW
+    edge_high: int = EDGE_HIGH
+    proc_path: Path = PROC_PATH
     running: bool = field(default=False, init=False)
     _thread: threading.Thread | None = field(default=None, init=False)
     _stop: threading.Event = field(default_factory=threading.Event, init=False)
     _pub: BusPub | None = field(default=None, init=False)
     _cap: cv2.VideoCapture | None = field(default=None, init=False)
     _use_camera: bool = field(default=True, init=False)
+    _prefer_file: bool = field(default=False, init=False)
+    _mode_auto: bool = field(default=False, init=False)
+    _file_modes: set[str] = field(default_factory=set, init=False)
     _last_file_mtime: float = field(default=0.0, init=False)
 
     def __post_init__(self) -> None:
-        mode = (self.frame_source or "camera").strip().lower()
-        if mode in {"file", "raw", "last_frame", "", "none"}:
-            self._use_camera = False
-            if mode == "last_frame":
-                self.frame_file = LAST_FRAME_PATH
-        else:
-            self._use_camera = True
+        mode = (self.frame_source or "auto").strip().lower()
+        file_modes = {"file", "raw", "last_frame", "", "none"}
+        self._file_modes = file_modes
+        self._mode_auto = mode in {"auto", "smart", "mixed"}
+        self._prefer_file = self._mode_auto or mode in file_modes
+        if mode == "last_frame":
+            self.frame_file = LAST_FRAME_PATH
+        self._use_camera = self._mode_auto or mode not in file_modes
+
         self.frame_file = Path(self.frame_file)
         if not self.frame_file.exists():
             try:
                 self.frame_file.parent.mkdir(parents=True, exist_ok=True)
             except Exception:
                 pass
+        try:
+            self.proc_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
 
     def start(self) -> None:
         if self.running:
@@ -89,15 +107,7 @@ class VisionOffloadDispatcher:
         self.running = True
         self._pub = BusPub()
         if self._use_camera:
-            cam_source: int | str
-            try:
-                cam_source = int(self.source)
-            except ValueError:
-                cam_source = self.source
-            self._cap = cv2.VideoCapture(cam_source)
-            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-            self._cap.set(cv2.CAP_PROP_FPS, self.fps)
+            self._init_camera()
         self._thread = threading.Thread(target=self._loop, name="vision-offload", daemon=True)
         self._thread.start()
         LOG.info(
@@ -125,12 +135,49 @@ class VisionOffloadDispatcher:
             self._pub = None
         LOG.info("Vision offload dispatcher stopped")
 
+    def _init_camera(self) -> bool:
+        if self._cap:
+            return True
+        cam_source_raw = os.getenv("VISION_OFFLOAD_CAMERA")
+        cam_source: int | str = cam_source_raw if cam_source_raw is not None else self.source
+        if isinstance(cam_source, str) and cam_source.strip().lower() in self._file_modes:
+            cam_source = 0
+        try:
+            cam_source = int(cam_source)
+        except ValueError:
+            pass
+        if isinstance(cam_source, str):
+            cam_norm = cam_source.strip().lower()
+            if cam_norm in {"auto", ""}:
+                cam_source = 0
+        cap = cv2.VideoCapture(cam_source)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        cap.set(cv2.CAP_PROP_FPS, self.fps)
+        if not cap.isOpened():
+            LOG.warning("Vision offload: failed to open camera source=%s", cam_source)
+            return False
+        self._cap = cap
+        return True
+
+    def _capture_from_camera(self):
+        if not self._init_camera():
+            return None
+        assert self._cap is not None
+        ret, cam_frame = self._cap.read()
+        if not ret:
+            LOG.warning("Vision offload: capture failed, retrying…")
+            try:
+                self._cap.release()
+            except Exception:
+                pass
+            self._cap = None
+            return None
+        return cam_frame
+
     def _loop(self) -> None:
         if not self._pub:
             LOG.error("Vision offload dispatcher missing publisher")
-            return
-        if self._use_camera and not self._cap:
-            LOG.error("Vision offload dispatcher missing capture device")
             return
         interval = 1.0 / max(0.5, self.fps)
         provider_state_sub = BusSub(TOPIC_PROVIDER_VISION_STATE)
@@ -142,30 +189,22 @@ class VisionOffloadDispatcher:
                     continue
                 frame_bytes: bytes | None = None
                 frame = None
-                if self._use_camera:
-                    ret, cam_frame = self._cap.read()
-                    if not ret:
-                        LOG.warning("Vision offload: capture failed, retrying…")
-                        time.sleep(0.5)
-                        continue
-                    ok, jpeg = cv2.imencode(".jpg", cam_frame)
-                    if not ok:
-                        LOG.warning("Vision offload: JPEG encode failed")
-                        time.sleep(interval)
-                        continue
-                    frame = cam_frame
-                    frame_bytes = jpeg.tobytes()
-                else:
-                    file_frame = self._read_frame_from_file()
-                    if file_frame is None:
-                        time.sleep(interval)
-                        continue
-                    frame = file_frame
-                    ok, jpeg = cv2.imencode(".jpg", frame)
-                    if not ok:
-                        time.sleep(interval)
-                        continue
-                    frame_bytes = jpeg.tobytes()
+
+                if self._prefer_file:
+                    frame = self._read_frame_from_file()
+                if frame is None and (self._use_camera or self.fallback_camera):
+                    frame = self._capture_from_camera()
+                if frame is None:
+                    time.sleep(interval)
+                    continue
+
+                ok, jpeg = cv2.imencode(".jpg", frame)
+                if not ok:
+                    LOG.warning("Vision offload: JPEG encode failed")
+                    time.sleep(interval)
+                    continue
+                frame_bytes = jpeg.tobytes()
+
                 if frame_bytes:
                     try:
                         LAST_FRAME_PATH.write_bytes(frame_bytes)
@@ -175,6 +214,9 @@ class VisionOffloadDispatcher:
                         RAW_PATH.write_bytes(frame_bytes)
                     except Exception as exc:
                         LOG.warning("Vision offload: cannot write raw snapshot: %s", exc)
+                    if self.write_proc:
+                        self._write_proc_snapshot(frame)
+
                 payload = {
                     "ts": time.time(),
                     "frame_jpeg": base64.b64encode(frame_bytes).decode("ascii"),
@@ -208,6 +250,16 @@ class VisionOffloadDispatcher:
         except Exception as exc:
             LOG.warning("Vision offload: cannot read frame file %s: %s", self.frame_file, exc)
             return None
+
+    def _write_proc_snapshot(self, frame: np.ndarray) -> None:
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(gray, (5, 5), 1.0)
+            edges = cv2.Canny(blur, self.edge_low, self.edge_high)
+            edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+            cv2.imwrite(str(self.proc_path), edges_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        except Exception as exc:
+            LOG.debug("Vision offload: failed to write proc snapshot: %s", exc)
 
 
 class EnhancedObstacleBridge:
