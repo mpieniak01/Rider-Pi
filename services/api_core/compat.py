@@ -122,6 +122,11 @@ LAST_CAMERA = {
         "no_draw": ENV_NO_DRAW,
         "rot": ENV_ROT,
         "active": False,
+        "on": (not ENV_DISABLE_LCD) and (not ENV_NO_DRAW),
+        "presenting": False,
+        "holders": [],
+        "checked_at": None,
+        "auto_off_ts": None,
     },
 }
 
@@ -339,6 +344,11 @@ def healthz():
     if isinstance(bat, (int, float)) and bat == 0 and xgo_on and (last_msg_age is not None and last_msg_age < 2.0):
         bat = None
 
+    lcd_state = LAST_CAMERA.get("lcd", {})
+    lcd_on = lcd_state.get("on")
+    if lcd_on is None:
+        lcd_on = (not ENV_DISABLE_LCD) and (not ENV_NO_DRAW)
+
     devices = {
         "camera": {
             "on": camera_on,
@@ -347,9 +357,13 @@ def healthz():
             "fps": LAST_CAMERA.get("fps"),
         },
         "lcd": {
-            "on": (not ENV_DISABLE_LCD) and (not ENV_NO_DRAW),
-            "rot": LAST_CAMERA["lcd"].get("rot", ENV_ROT),
-            "no_draw": LAST_CAMERA["lcd"].get("no_draw", ENV_NO_DRAW),
+            "on": bool(lcd_on),
+            "rot": lcd_state.get("rot", ENV_ROT),
+            "no_draw": lcd_state.get("no_draw", ENV_NO_DRAW),
+            "presenting": lcd_state.get("presenting"),
+            "holders": lcd_state.get("holders"),
+            "checked_at": lcd_state.get("checked_at"),
+            "auto_off_ts": lcd_state.get("auto_off_ts"),
         },
         "xgo": {
             "on": xgo_on,
@@ -724,6 +738,24 @@ def start_xgo_ro():
         print("[api] xgo_ro_loop started", flush=True)
     except Exception as e:
         print("[api] xgo_ro_loop unavailable — skipping", e, flush=True)
+
+
+def start_lcd_idle_guard():
+    """Uruchom strażnik wygaszający LCD przy bezczynności."""
+    if getattr(start_lcd_idle_guard, "_started", False):
+        return
+    try:
+        from services import lcd_idle_guard
+
+        started = lcd_idle_guard.start()
+        start_lcd_idle_guard._started = True
+        if started:
+            print("[api] lcd_idle_guard started", flush=True)
+        else:
+            print("[api] lcd_idle_guard skipped (disabled or already running)", flush=True)
+    except Exception as e:
+        start_lcd_idle_guard._started = True
+        print("[api] lcd_idle_guard unavailable — skipping", e, flush=True)
 
 
 # ===== MONKEY-PATCH: /api/control → proxy do :8081/control (POST/OPTIONS) =====

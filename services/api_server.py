@@ -847,6 +847,7 @@ def main():
         if compat:
             compat.start_bus_sub()
             compat.start_xgo_ro()
+            compat.start_lcd_idle_guard()
     except Exception as e:
         app.logger.warning("compat init warning: %s", e)
     port = DEFAULT_PORT

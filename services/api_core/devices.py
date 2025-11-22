@@ -231,16 +231,23 @@ def bus_sub_loop():
                         C.LAST_CAMERA["mode"] = data.get("mode")
                         C.LAST_CAMERA["fps"] = data.get("fps")
                         lcd = data.get("lcd") or {}
-                        C.LAST_CAMERA["lcd"].update(
+                        lcd_state = C.LAST_CAMERA["lcd"]
+                        lcd_state.update(
                             {
                                 "enabled_env": (not C.ENV_DISABLE_LCD),
                                 "no_draw": C.ENV_NO_DRAW,
                                 "rot": C.ENV_ROT,
+                                "checked_at": C.LAST_MSG_TS,
                             }
                         )
-                        for k in ("enabled_env", "no_draw", "rot", "active"):
+                        for k in ("enabled_env", "no_draw", "rot", "active", "on", "presenting"):
                             if k in lcd:
-                                C.LAST_CAMERA["lcd"][k] = lcd[k]
+                                lcd_state[k] = lcd[k]
+                        if "active" in lcd:
+                            lcd_state["presenting"] = bool(lcd.get("active"))
+                            if lcd_state.get("on") is False and lcd_state["presenting"]:
+                                lcd_state["on"] = True
+                        lcd_state.setdefault("on", (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW))
                     except Exception:
                         pass
                     continue
