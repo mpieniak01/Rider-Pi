@@ -194,6 +194,6 @@ Typowa wydajność na Raspberry Pi 4:
 **Related docs:**
 - [draw.md](draw.md) — prymitywy renderowania
 - [ui.md](ui.md) — kontroler buźki
-- [docs/modules/face-lcd.md](../modules/face-lcd.md) — rendering na LCD
+- [face-lcd.md](./face-lcd.md) — rendering na LCD
 
 **Ostatnia aktualizacja:** 2025-01

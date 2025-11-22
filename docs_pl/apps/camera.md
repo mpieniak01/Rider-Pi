@@ -158,7 +158,7 @@ cat /dev/urandom > /dev/fb0  # powinno pokazać noise na ekranie
 - **Waveshare 4"** — HDMI/DSI
 - **Framebuffer `/dev/fb0`** — uniwersalny
 
-Zobacz: [docs/modules/face-lcd.md](../modules/face-lcd.md)
+Zobacz: [do./face-lcd.md](./face-lcd.md)
 
 ## Rozszerzenia (TODO)
 
@@ -173,6 +173,6 @@ Zobacz: [docs/modules/face-lcd.md](../modules/face-lcd.md)
 - [vision.md](vision.md) — detektory obiektów
 - [hw.md](hw.md) — sink LCD
 - [docs/ops/camera-scripts.md](../ops/camera-scripts.md) — skrypty pomocnicze
-- [docs/modules/face-lcd.md](../modules/face-lcd.md) — rendering na LCD
+- [do./face-lcd.md](./face-lcd.md) — rendering na LCD
 
 **Ostatnia aktualizacja:** 2025-01

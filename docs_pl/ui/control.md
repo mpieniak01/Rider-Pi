@@ -289,7 +289,7 @@ The interface supports Polish (pl) and English (en) languages.
 
 ## See Also
 
-- [Navigator API](../api/navigator.md) - Autonomous navigation API
-- [Control API](../api/control.md) - Movement control API  
-- [Navigator Module](../modules/navigator.md) - Navigation system details
+- [Navigator API](../api-specs/navigator.md) - Autonomous navigation API
+- [Control API](../api-specs/control.md) - Movement control API  
+- [Navigator Module](../apps/navigator.md) - Navigation system details
 - [Vision Module](../apps/vision.md) - Vision system details

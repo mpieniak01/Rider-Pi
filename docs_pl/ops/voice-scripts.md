@@ -184,12 +184,12 @@ python -m apps.voice.cli listen --config config/local/voice_dev.toml
 **Korzyści:**
 - Konfiguracja w TOML (łatwiej wersjonować)
 - Lepsze logowanie (JSON structured logs)
-- Zgodność z CONFIG_POLICY.md
+- Zgodność z config/POLICY.md
 
 ### Zobacz także
 
-- [docs/modules/voice.md](../modules/voice.md) — pełna dokumentacja modułu voice
-- [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md) — polityka konfiguracji
+- [docs/modules/voice.md](../apps/voice.md) — pełna dokumentacja modułu voice
+- [docs/config/POLICY.md](../config/POLICY.md) — polityka konfiguracji
 - [docs/config/voice.md](../config/voice.md) — parametry TOML
 
 ---
@@ -376,7 +376,7 @@ Patrz sekcja Troubleshooting w `talk_local.sh` — identyczne problemy i rozwią
 ### Zobacz także
 
 - [talk_local.sh](#talk_localsh) — prostszy wariant (jednorazowe echo)
-- [docs/modules/voice.md](../modules/voice.md) — pełna dokumentacja API
+- [docs/modules/voice.md](../apps/voice.md) — pełna dokumentacja API
 - [docs/config/voice.md](../config/voice.md) — konfiguracja lokalnych backendów
 - [systemd/rider-voice-web.service](../systemd/rider-voice-web.service) — definicja usługi
 

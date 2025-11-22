@@ -42,7 +42,7 @@ Moduł automatycznie próbuje załadować `OPENAI_API_KEY` z profili powłoki:
 
 Jeśli klucz nie zostanie znaleziony, moduł kończy działanie z błędem.
 
-**Zobacz także:** [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md) — polityka sekretów
+**Zobacz także:** [docs/config/POLICY.md](../config/POLICY.md) — polityka sekretów
 
 ### Model i parametry
 
@@ -140,7 +140,7 @@ python -c "from openai import OpenAI; print(OpenAI(api_key='$OPENAI_API_KEY').mo
 
 **Related docs:**
 - [nlu.md](nlu.md) — moduł NLU (rozpoznawanie komend ruchu)
-- [docs/modules/voice.md](../modules/voice.md) — źródło `audio.transcript`
-- [CONFIG_POLICY.md](../CONFIG_POLICY.md) — polityka konfiguracji i sekretów
+- [do./voice.md](./voice.md) — źródło `audio.transcript`
+- [config/POLICY.md](../config/POLICY.md) — polityka konfiguracji i sekretów
 
 **Ostatnia aktualizacja:** 2025-01

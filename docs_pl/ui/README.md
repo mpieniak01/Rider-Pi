@@ -121,7 +121,7 @@ web/
 
 ## See Also
 
-- [API Documentation](../api/README.md) - REST API endpoints
+- [API Documentation](../api-specs/README.md) - REST API endpoints
 - [ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
 - [Vision Module](../apps/vision.md) - Vision system
-- [Navigator Module](../modules/navigator.md) - Autonomous navigation
+- [Navigator Module](../apps/navigator.md) - Autonomous navigation

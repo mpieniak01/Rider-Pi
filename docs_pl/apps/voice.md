@@ -144,7 +144,7 @@ Moduł `apps/voice` przeszedł kompleksową refaktoryzację w ramach PR#1–PR#5
 
 **PR#5: Dokumentacja** (aktualizacja docs)
 - Aktualizacja `ARCHITECTURE.md` z nową sekcją "Moduł Voice — Architektura szczegółowa"
-- Rozszerzenie `docs/modules/voice.md` z sekcją "Architektura modułu"
+- Rozszerzenie `do./voice.md` z sekcją "Architektura modułu"
 - Konsolidacja informacji z PR#1–PR#4 summaries
 
 ### Statystyki refaktoryzacji
@@ -275,7 +275,7 @@ barge_in = true                 # Włącz przerwania TTS
 
 ### Pliki i ENV
 
-> **Pełna dokumentacja konfiguracji i polityki sekretów:** [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
+> **Pełna dokumentacja konfiguracji i polityki sekretów:** [docs/config/POLICY.md](../config/POLICY.md)
 
 1. Skopiuj przykładowe ENV i uzupełnij:
 

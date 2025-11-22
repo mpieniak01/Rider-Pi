@@ -104,7 +104,7 @@ ExecStart=/usr/bin/env bash -lc 'SPLASH_WAIT_IP_S=60 /usr/bin/python3 scripts/sy
 
 ## Script Migration Reference
 
-Based on `docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md`:
+Based on `docs/archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md`:
 
 | Old Path | New Path | Category |
 |----------|----------|----------|

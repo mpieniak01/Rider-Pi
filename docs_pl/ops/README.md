@@ -109,7 +109,7 @@ Przykład: `service_ctl.sh` akceptuje tylko zdefiniowaną listę usług.
 
 Skrypty operacyjne **czytają** konfigurację z `config/`, ale **nie nadpisują** istniejących wartości ENV.
 
-Zobacz: [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
+Zobacz: [docs/config/POLICY.md](../config/POLICY.md)
 
 ## Helper tools
 
@@ -175,10 +175,10 @@ Większość skryptów loguje do:
 ---
 
 **Related docs:**
-- [CONFIG_POLICY.md](../CONFIG_POLICY.md) — polityka konfiguracji
+- [config/POLICY.md](../config/POLICY.md) — polityka konfiguracji
 - [docs/apps/](../apps/) — moduły aplikacyjne
 - [docs/config/](../config/) — parametry konfiguracji
 - [scripts/README.md](../scripts/README.md) — pełna dokumentacja katalogu scripts/
-- [docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](../_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md) — szczegóły migracji ops/→scripts/
+- [../archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](../archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md) — szczegóły migracji ops/→scripts/
 
 **Ostatnia aktualizacja:** 2025-10 (po migracji do scripts/)

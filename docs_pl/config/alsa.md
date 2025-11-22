@@ -378,7 +378,7 @@ watch -n 1 'amixer -c wm8960soundcard contents | grep -A2 "Capture\|Playback"'
 
 - [docs/audio/wm8960.md](../audio/wm8960.md) — szczegółowa dokumentacja WM8960
 - [docs/config/voice.md](voice.md) — parametry voice (capture/playback)
-- [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md) — polityka konfiguracji
+- [docs/config/POLICY.md](../config/POLICY.md) — polityka konfiguracji
 
 **Ostatnia aktualizacja:** 2025-01  
 **Status:** ⚠️ Szczegóły wm8960-apply.sh i preflight.sh wymagają weryfikacji

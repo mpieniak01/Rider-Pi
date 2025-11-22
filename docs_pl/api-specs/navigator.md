@@ -254,8 +254,8 @@ The navigator is controlled through the web interface at `http://robot-ip:8080/c
 
 ## See Also
 
-- [Navigator Module Documentation](../modules/navigator.md) - Detailed module docs
-- [Odometry Module](../modules/odometry.md) - Position tracking
-- [Mapper Module](../modules/mapper.md) - SLAM mapping
+- [Navigator Module Documentation](../apps/navigator.md) - Detailed module docs
+- [Odometry Module](../apps/odometry.md) - Position tracking
+- [Mapper Module](../apps/mapper.md) - SLAM mapping
 - [Vision Module](../apps/vision.md) - Obstacle detection
 - [Control API](control.md) - Basic movement control
