@@ -38,7 +38,10 @@ TRACKER_PATH = os.path.join(SNAP_DIR, "tracker.jpg")
 
 # Tracking parameters
 DEAD_ZONE = float(os.getenv("TRACKING_DEAD_ZONE", "0.1"))  # ±10% center is "good enough"
-MAX_FPS = float(os.getenv("TRACKING_MAX_FPS", "10.0"))  # Limit CPU usage
+MAX_FPS = float(os.getenv("TRACKING_MAX_FPS", "15.0"))  # Limit CPU usage
+MIN_DET_CONF = float(os.getenv("TRACKING_MIN_DET_CONF", "0.35"))
+MIN_TRACK_CONF = float(os.getenv("TRACKING_MIN_TRACK_CONF", "0.35"))
+MODEL_COMPLEXITY = int(os.getenv("TRACKING_MODEL_COMPLEXITY", "0"))
 IDLE_OVERLAY = os.getenv("TRACKER_IDLE_TEXT", "Tracker idle")
 PC_OVERLAY = os.getenv("TRACKER_PC_TEXT", "PC offload")
 MODE_OVERLAY = os.getenv("TRACKER_MODE_TEXT", "Follow {mode}")
@@ -190,7 +193,10 @@ def calculate_offset_x(detections: list, frame_width: float | None = None) -> fl
         if frame_width is not None and center_x > 1.0:
             center_x /= frame_width
     elif hasattr(det, "landmark"):
-        center_x = det.landmark[0].x
+        xs = [lm.x for lm in det.landmark if hasattr(lm, "x")]
+        if not xs:
+            return None
+        center_x = sum(xs) / len(xs)
         if frame_width is not None and center_x > 1.0:
             center_x /= frame_width
     else:
@@ -233,8 +239,9 @@ def tracking_loop() -> None:
     hand_detector = mp_hands.Hands(
         static_image_mode=False,
         max_num_hands=1,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
+        model_complexity=MODEL_COMPLEXITY,
+        min_detection_confidence=MIN_DET_CONF,
+        min_tracking_confidence=MIN_TRACK_CONF,
     )
 
     frame_interval = 1.0 / MAX_FPS
@@ -268,6 +275,12 @@ def tracking_loop() -> None:
                 print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
                 time.sleep(0.05)
                 continue
+            try:
+                frame_age = max(0.0, t0 - os.path.getmtime(LAST_FRAME_PATH))
+                if frame_age > 1.0 and int(t0) % 5 == 0:
+                    print(f"[tracker] warning: last_frame age={frame_age:.2f}s path={LAST_FRAME_PATH}", flush=True)
+            except Exception:
+                frame_age = None
 
             if mode == "NONE":
                 overlay = frame.copy()
