@@ -5,6 +5,13 @@
 **Cel główny:**
 Przeniesienie logiki zarządzania zależnościami usług (systemd orchestration) z warstwy Frontend (HTML/JS) oraz API (Flask) do dedykowanej warstwy Core (Python). Umożliwienie sterowania funkcjami robota (np. "Hand Tracking") zarówno przez API, jak i niezależne CLI.
 
+**Stan obecny (XI 2025):**
+
+- Jedyny kod sterujący systemd znajduje się dziś w `services/api_core/services_api.py` – endpoint Flask nadal uruchamia `scripts/sys_control.sh` oraz `subprocess` i bezpośrednio obsługuje sekwencje start/stop.
+- Frontend (`web/control.html`) posiada pełną logikę funkcji `tracking`/`recon` (listy unitów, mutexy, start/stop sekwencji) oraz odpytuje `/api/vision/tracking/mode`, `/api/navigator/*` i `/svc/<unit>`.
+- Brakuje plików opisanych w tym planie: nie istnieją `common/systemd_ctrl.py`, `services/core/features.py`, `scripts/robot_ctl.py` ani API `services/api_core/features_api.py`.
+- Legacy endpointy `/vision/tracking/mode` i `/vision/follow/*` w `services/api_core/vision_api.py` są nadal aktywnie używane przez UI, więc ich usunięcie wymaga ukończenia nowej ścieżki.
+
 ---
 
 # FAZA 1 — Fundament Systemowy (Low-Level)
@@ -27,7 +34,7 @@ Nowy moduł odpowiedzialny za komunikację z systemd. Nie zwraca Response/JSON �
 ## 1.2 – Refaktoryzacja `services/api_core/services_api.py`
 
 **Opis:**
-Zastąpić dotychczasowe subprocess → `common.systemd_ctrl`.
+Zastąpić dotychczasowe subprocess → `common.systemd_ctrl`. Endpoint `svc_action` (oraz wszystkie helpery `_run_step`, `_build_sequence`, etc.) powinien używać nowego modułu i przestać znać szczegóły `sudo/systemctl`.
 
 **Warunek akceptacji:** Endpointy `/api/services` działają jak wcześniej.
 
@@ -39,7 +46,7 @@ Zastąpić dotychczasowe subprocess → `common.systemd_ctrl`.
 
 ## 2.1 – Moduł `services/core/features.py`
 
-**Opis:** Centralne sterowanie funkcjami.
+**Opis:** Centralne sterowanie funkcjami – kod zastępuje dotychczasową logikę z `web/control.html` (sekwencje start/stop, mutexy, sprawdzanie podglądu kamery) oraz publikuje zdarzenia ZMQ zamiast wykonywać requesty HTTP z UI.
 
 ### FEATURE_REGISTRY
 
@@ -92,6 +99,8 @@ payload: {"enabled": true}
 
 Integracja: rejestracja Blueprintu w `services/api_server.py`.
 
+**Notatka:** Po wdrożeniu API wszystkie interfejsy (CLI, UI, testy) muszą korzystać wyłącznie z `FeatureManagera`; UI nie powinno już wykonywać pojedynczych wywołań `/svc/…` ani `/api/vision/tracking/mode`.
+
 ---
 
 # FAZA 4 — Integracja Frontend + Cleanup
@@ -116,6 +125,8 @@ Usunąć:
 
 * `/vision/tracking/mode`
 * `/vision/follow/*`
+
+**Warunek:** Przed usunięciem upewnij się, że UI korzysta wyłącznie z `/api/logic/feature/<name>` i nie oczekuje już legacy endpointów.
 
 ---
 
