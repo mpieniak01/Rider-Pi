@@ -27,7 +27,7 @@
 - [**demos.md**](demos.md) — gotowe demonstracje (trajektorie, lemniskata)
 
 ### Voice
-⚠️ **Uwaga:** Moduł `apps/voice` ma dedykowaną pełną dokumentację w [`docs/modules/voice.md`](../modules/voice.md)
+⚠️ **Uwaga:** Moduł `apps/voice` ma dedykowaną pełną dokumentację w [`do./voice.md`](./voice.md)
 
 ## Konwencje
 
@@ -70,7 +70,7 @@ Zobacz [docs/ops/systemd-scripts.md](../ops/systemd-scripts.md) dla zarządzania
 ---
 
 **Related docs:**
-- [CONFIG_POLICY.md](../CONFIG_POLICY.md) — polityka konfiguracji
+- [config/POLICY.md](../config/POLICY.md) — polityka konfiguracji
 - [docs/ops/](../ops/) — skrypty operacyjne
 - [docs/config/](../config/) — parametry konfiguracji
 

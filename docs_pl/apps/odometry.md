@@ -310,6 +310,6 @@ Skalibruj `ODOMETRY_LINEAR_SPEED_SCALE` według instrukcji w sekcji Kalibracja.
 
 ## Zobacz Również
 
-- `docs/modules/navigator.md` — moduł nawigacji autonomicznej (Stage 1)
+- `do./navigator.md` — moduł nawigacji autonomicznej (Stage 1)
 - `ARCHITECTURE.md` — ogólna architektura systemu
 - `common/bus.py` — definicje tematów magistrali

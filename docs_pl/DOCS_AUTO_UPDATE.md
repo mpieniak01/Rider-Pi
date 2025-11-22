@@ -11,7 +11,7 @@ Ten dokument opisuje narzędzia automatycznej aktualizacji i walidacji referencj
 Automatycznie aktualizuje referencje do plików i komend w plikach `.md` zgodnie z aktualną architekturą projektu.
 
 **Funkcjonalność:**
-- Ekstrakcja mapy migracji z `docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md`
+- Ekstrakcja mapy migracji z `docs/archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md`
 - Dodawanie reguł repo-first (np. preferowanie `make lcd-on` zamiast `python3 ops/lcdctl.py on`)
 - Skanowanie wszystkich plików `.md` w repozytorium
 - Automatyczna podmiana starych ścieżek na nowe
@@ -123,7 +123,7 @@ Dodatkowe reguły nadpisujące domyślne mapowania:
 Skrypty **nie aktualizują** referencji w następujących kontekstach:
 
 1. **Pliki dokumentujące migracje:**
-   - `docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md`
+   - `docs/archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md`
    - `docs/OPS_REMOVAL.md`
 
 2. **Tabele markdown** pokazujące mapowania old→new:
@@ -233,6 +233,6 @@ if 'nowy-marker' in line.lower():
 
 ## Zobacz także
 
-- `docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md` – pełna mapa migracji scripts
+- `docs/archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md` – pełna mapa migracji scripts
 - `docs/OPS_REMOVAL.md` – dokumentacja usunięcia katalogu ops/
 - `scripts/README.md` – konwencje nazewnictwa w scripts/

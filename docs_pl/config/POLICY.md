@@ -404,7 +404,7 @@ A: Nie. Skrypty w `scripts/` **czytają** z `config/` i **uzupełniają** brakuj
 ### PR-1: Usunięcie bashenv (SECURITY CRITICAL) ✅
 - Usunięto schemat `bashenv:` z `svc_stream.py` (ryzyko odczytu z `.bash_history`)
 - Migracja: `bashenv:~/.bash_profile:VAR` → `env:VAR`
-- Utworzono `docs/CONFIG_POLICY.md`
+- Utworzono `docs/config/POLICY.md`
 
 ### PR-2: Centralizacja dostępu do konfiguracji ✅
 - Utworzono `scripts/util_load-config.sh` (helper dla skryptów)

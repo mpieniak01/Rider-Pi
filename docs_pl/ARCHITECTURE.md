@@ -37,7 +37,7 @@
   - Dwie strategie: STOP (zatrzymanie) i AVOID (omijanie).
   - Sterowanie przez API: `/api/navigator/start`, `/api/navigator/stop`, `/api/navigator/config`.
   - Integracja z interfejsem webowym w `control.html`.
-  - Zobacz: `docs/modules/navigator.md`
+  - Zobacz: `apps/navigator.md`
 
 ### 4a) Odometry (Position Tracking)
 
@@ -47,7 +47,7 @@
   - Publikuje `robot.pose` (estymowana pozycja i orientacja).
   - Wykorzystuje dead reckoning z komend ruchu oraz korekcję IMU dla orientacji.
   - Krytyczny komponent dla przyszłych etapów: mapowanie (Stage 3) i powrót do bazy (Stage 4).
-  - Zobacz: `docs/modules/odometry.md`
+  - Zobacz: `apps/odometry.md`
 
 ### 4b) Mapper (SLAM Mapping)
 
@@ -58,7 +58,7 @@
   - Transformuje współrzędne: z lokalnych robota → globalne mapy.
   - Oznacza komórki jako zajęte/wolne/nieznane na podstawie detekcji przeszkód.
   - Fundamentalny komponent SLAM — łączy percepcję (wizja) z lokalizacją (odometria).
-  - Zobacz: `docs/modules/mapper.md`
+  - Zobacz: `apps/mapper.md`
 
 ### 4c) Vision Depth (Depth Estimation for Mapping)
 
@@ -69,7 +69,7 @@
   - Obecna implementacja: uproszczona estymacja (heurystyka na podstawie confidence).
   - Przyszła implementacja: mono-depth estimation (TFLite model).
   - Publikuje `vision.obstacle.data` dla konsumpcji przez mapper.
-  - Zobacz: `docs/modules/vision.md`
+  - Zobacz: `apps/vision.md`
 
 ### 5) Głos / Chat
 
@@ -89,7 +89,7 @@
   - Integracja: VAD, KWS, ASR, Chat, TTS; komunikacja przez bus (ZMQ) i socket ``
 - **Chat** — integracja przez `/api/chat/*` + wymiana stanów na busie.
 
-> **Szczegółowa dokumentacja**: `docs/modules/voice.md` — pełny opis architektury, konfiguracji, API
+> **Szczegółowa dokumentacja**: `apps/voice.md` — pełny opis architektury, konfiguracji, API
 
 ### 5) Twarz (Face)
 
@@ -168,18 +168,18 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 **PR #10 (2025-01):** Utworzenie warstwy sterowników `drivers/`
 - Przeniesiono sterowniki XGO i LCD z `apps/` do dedykowanego katalogu `drivers/`
 - Wprowadzono abstrakcję sprzętową oddzielającą logikę aplikacji od interfejsów sprzętowych
-- Zobacz: [docs/_pr_summaries/PR10_SUMMARY.md](docs/_pr_summaries/PR10_SUMMARY.md)
+- Zobacz: [archive/_pr_summaries/PR10_SUMMARY.md](archive/_pr_summaries/PR10_SUMMARY.md)
 
 **PR #11 (2025-01):** Wprowadzenie trybu symulacji
 - Dodano symulowane implementacje sterowników (`drivers/xgo/sim.py`, `drivers/lcd/sim.py`)
 - Wprowadzono fabryki sterowników reagujące na zmienną `RIDER_SIMULATOR`
 - Umożliwiono rozwój i testowanie bez dostępu do fizycznego sprzętu
-- Zobacz: [docs/_pr_summaries/PR11_SUMMARY.md](docs/_pr_summaries/PR11_SUMMARY.md)
+- Zobacz: [archive/_pr_summaries/PR11_SUMMARY.md](archive/_pr_summaries/PR11_SUMMARY.md)
 
 **PR #13 (2025-10):** Konsolidacja skryptów operacyjnych
 - Scalono skrypty z katalogów `ops/` i `tools/` do `scripts/`
 - Wprowadzono ujednoliconą konwencję nazewnictwa (prefiksy: `sys_`, `diag_`, `dev_`, `demo_`, `util_`)
-- Zobacz: [docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md), [scripts/README.md](scripts/README.md)
+- Zobacz: [archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md), [scripts/README.md](scripts/README.md)
 
 ---
 
@@ -407,7 +407,7 @@ W przeciwnym razie → tryb plikowy (file).
 - Jeden transport: `apps/voice/stream/transport.py`
 
 **PR#5 (Dokumentacja):**
-- Aktualizacja `ARCHITECTURE.md` i `docs/modules/voice.md`
+- Aktualizacja `ARCHITECTURE.md` i `apps/voice.md`
 - Spójny opis nowej architektury
 
 ### Pliki usunięte (legacy)
@@ -419,7 +419,7 @@ W przeciwnym razie → tryb plikowy (file).
 - `apps/voice/ptt_state.py` (PR#3)
 - `apps/voice/transport.py` (PR#4)
 
-**Migracja**: patrz `docs/modules/voice.md` → sekcja "Deprecated / Legacy Files"
+**Migracja**: patrz `apps/voice.md` → sekcja "Deprecated / Legacy Files"
 
 
 

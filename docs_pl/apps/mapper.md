@@ -233,7 +233,7 @@ The occupancy grid structure is inspired by `sim/world.py` but implemented for d
 
 ## See Also
 
-- `docs/modules/navigator.md` - Stage 1: Obstacle avoidance
-- `docs/modules/odometry.md` - Stage 2: Position tracking
+- `do./navigator.md` - Stage 1: Obstacle avoidance
+- `do./odometry.md` - Stage 2: Position tracking
 - `sim/world.py` - Simulator world and map structure
 - `ARCHITECTURE.md` - Overall system architecture

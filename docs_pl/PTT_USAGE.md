@@ -136,4 +136,4 @@ The PTT functionality has been refactored. Use the following imports:
 - `apps.voice.ptt_state` → Use `PTTStateMachine` from `apps.voice.stream.state`
 - `apps.voice.svc_stream` → Use `apps.voice.stream.svc_streaming` or `apps.voice.svc_stream_runner`
 
-See [docs/modules/voice.md](modules/voice.md#deprecated--legacy-files) for complete migration guide.
+See [docs_pl/apps/voice.md](apps/voice.md#deprecated--legacy-files) for complete migration guide.

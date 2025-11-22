@@ -153,5 +153,5 @@ See:
 - [docs/modules/voice-refactoring-summary.md](modules/voice-refactoring-summary.md) - Complete PR#1–PR#5 refactoring summary
 - [docs/modules/voice.md](modules/voice.md) - Voice module architecture
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Overall system architecture
-- [PR4_SUMMARY.md](_pr_summaries/PR4_SUMMARY.md) - PR-4 transport consolidation details
+- [PR4_SUMMARY.md](archive/_pr_summaries/PR4_SUMMARY.md) - PR-4 transport consolidation details
 

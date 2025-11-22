@@ -2,171 +2,146 @@
 
 > Centralny indeks dokumentacji projektu **Rider-Pi Apps** — oprogramowania rozszerzającego możliwości urządzenia Rider-Pi.
 
-> **Uwaga**: Raporty historyczne w katalogu `docs/_pr_summaries/` mogą pozostać w języku angielskim, ponieważ stanowią zapis wcześniejszych wersji projektu.
+## 🚀 Szybki start
 
-## Dokumenty główne (katalog główny)
+Nowy w projekcie? Zacznij tutaj:
 
-Najważniejsze dokumenty znajdują się w katalogu głównym projektu:
+1. [**../README.md**](../README.md) — główny README projektu (instalacja, pierwsze kroki)
+2. [**PROJECT.md**](PROJECT.md) — wizja projektu, cele biznesowe, roadmapa
+3. [**ARCHITECTURE.md**](ARCHITECTURE.md) — architektura systemu, porty, przepływy danych
+4. [**ARCHITECTURE_DIAGRAM.md**](ARCHITECTURE_DIAGRAM.md) — diagramy architektury
 
-- [**README.md**](README.md) — wprowadzenie do projektu, instalacja, szybki start
-- [**PROJECT.md**](PROJECT.md) — wizja projektu, cele biznesowe, roadmapa
-- [**ARCHITECTURE.md**](ARCHITECTURE.md) — architektura systemu, porty, przepływy danych
+---
+
+## 📚 Mapa dokumentacji
+
+### 📖 Dokumenty główne
+
+- [**ARCHITECTURE.md**](ARCHITECTURE.md) — główna architektura systemu
 - [**ARCHITECTURE_DIAGRAM.md**](ARCHITECTURE_DIAGRAM.md) — diagramy architektury
-- [**AGENT.md**](AGENT.md) — kontrakt dla asystenta kodu, zasady developerskie
+- [**PROJECT.md**](PROJECT.md) — wizja projektu, cele biznesowe
 - [**WORKING-AGREEMENTS.md**](WORKING-AGREEMENTS.md) — ustalenia robocze zespołu
-- [**CONFIG_POLICY.md**](CONFIG_POLICY.md) — **polityka konfiguracji i sekretów** (single source of truth)
-- [**OFFLOAD_PROVIDER_PROTOCOL.md**](OFFLOAD_PROVIDER_PROTOCOL.md) — kontrakt Pi ↔ PC (offload), endpointy, tematy, roadmapa
-- [**README.md**](README.md) — wprowadzenie, szybki start oraz opis sterowania funkcjami (App Logic Core, systemd_ctrl, CLI/API/UI)
+- [**AGENT.md**](AGENT.md) — kontrakt dla asystenta kodu
+- [**OFFLOAD_PROVIDER_PROTOCOL.md**](OFFLOAD_PROVIDER_PROTOCOL.md) — kontrakt Pi ↔ PC (offload)
+
+### 🚀 Aplikacje ([`apps/`](apps/))
+
+Dokumentacja wszystkich modułów aplikacyjnych — pełna lista w [**apps/README.md**](apps/README.md).
+
+Główne moduły:
+- [**voice.md**](apps/voice.md) — pełny stos głosowy (ASR, TTS, VAD, KWS, chat)
+- [**vision.md**](apps/vision.md) — detekcja obiektów (HOG, TFLite, ROI)
+- [**face.md**](apps/face.md) — API statycznego renderu buźki
+- [**face-lcd.md**](apps/face-lcd.md) — renderowanie buźki na panelu LCD
+- [**chat.md**](apps/chat.md) — chat z OpenAI
+- [**motion.md**](apps/motion.md) — bridge ruchu
+- [**simulator.md**](apps/simulator.md) — symulator 2D Rider-Pi
+- [**camera.md**](apps/camera.md) — preview kamery z detekcją twarzy
+- [**navigator.md**](apps/navigator.md), [**mapper.md**](apps/mapper.md), [**odometry.md**](apps/odometry.md) — nawigacja i mapowanie
+- [**nlu.md**](apps/nlu.md) — rozpoznawanie intencji
+- [**safety.md**](apps/safety.md) — emergency stop
+- [**demos.md**](apps/demos.md), [**choreographer.md**](apps/choreographer.md) — demonstracje ruchu
+- [**ui.md**](apps/ui.md), [**launcher.md**](apps/launcher.md), [**menu.md**](apps/menu.md) — interfejs użytkownika
+- [**draw.md**](apps/draw.md), [**hw.md**](apps/hw.md) — prymitywy renderowania
+
+> **App Logic Core**: logika funkcji/feature'ów jest eksponowana przez `apps/app_logic_core` (FeatureManager) i używana przez API/CLI/UI.
+
+### ⚙️ Konfiguracja ([`config/`](config/))
+
+Parametry konfiguracji dla wszystkich modułów — szczegóły w [**config/README.md**](config/README.md).
+
+- [**config/POLICY.md**](config/POLICY.md) — **polityka konfiguracji i sekretów** (single source of truth)
+- [**config/voice.md**](config/voice.md) — konfiguracja voice (ASR, TTS, Chat)
+- [**config/face.md**](config/face.md) — konfiguracja face (geometria buźki, emocje, animacje)
+- [**config/alsa.md**](config/alsa.md) — konfiguracja ALSA
+- [**config/validation.md**](config/validation.md) — walidacja konfiguracji
+- [**CONFIG.md**](CONFIG.md) — główny dokument konfiguracji
+
+### 🔧 Skrypty operacyjne ([`ops/`](ops/))
+
+Dokumentacja skryptów operacyjnych — szczegóły w [**ops/README.md**](ops/README.md).
+
+> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` (patrz [../scripts/README.md](../scripts/README.md)). Dokumentacja w `docs_pl/ops/` pozostaje aktualna, ale ścieżki odnoszą się do nowej lokalizacji.
+
+- [**ops/voice-scripts.md**](ops/voice-scripts.md) — sys_voice-*.sh
+- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — sys_control.sh, systemd-sync.sh
+- [**ops/display-scripts.md**](ops/display-scripts.md) — sys_lcd-control.py, sys_led-control.py
+- [**ops/camera-scripts.md**](ops/camera-scripts.md) — sys_camera-*.sh
+- [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — diag_metrics.sh, diag_stream.sh
+- [**ops/utility-scripts.md**](ops/utility-scripts.md) — testy, diagnostyka
+
+### 🌐 API REST ([`api-specs/`](api-specs/))
+
+Specyfikacja REST API — szczegóły w [**api-specs/README.md**](api-specs/README.md).
+
+- [**api-specs/control.md**](api-specs/control.md) — API kontroli systemu
+- [**api-specs/navigator.md**](api-specs/navigator.md) — API nawigacji
+
+### 🔊 Audio ([`audio/`](audio/))
+
+Konfiguracja sprzętu audio:
+- [**audio/wm8960.md**](audio/wm8960.md) — konfiguracja karty WM8960 (ALSA, troubleshooting)
+
+### 🚦 Systemd
+
+Dokumentacja usług systemd:
+- [**SYSTEMD_SERVICES_MAPPING.md**](SYSTEMD_SERVICES_MAPPING.md) — mapowanie usług systemd → skrypty
+- [**SYSTEMD_SERVICES_INVENTORY.md**](SYSTEMD_SERVICES_INVENTORY.md) — inwentaryzacja jednostek systemd
+
+### 🔌 Integracje
+
+Dokumentacja integracji zewnętrznych:
+- [**google-home-integration.md**](google-home-integration.md) — integracja z Google Home
+- [**integracja-google-gemini.md**](integracja-google-gemini.md) — integracja z Google Gemini
+- [**ecosystem-google.md**](ecosystem-google.md) — ekosystem Google
+- [**google/home_command.md**](google/home_command.md) — komendy Google Home
+
+### 📊 Inne dokumenty
+
+- [**DOCS_AUTO_UPDATE.md**](DOCS_AUTO_UPDATE.md) — automatyczna aktualizacja dokumentacji
+- [**FOLLOW_ME_TRACKING.md**](FOLLOW_ME_TRACKING.md) — tracking dla trybu Follow Me
+- [**NAVIGATION_VISUALIZATION.md**](NAVIGATION_VISUALIZATION.md) — wizualizacja nawigacji
+- [**PTT_USAGE.md**](PTT_USAGE.md) — użycie Push-to-Talk
+- [**QUALITY_GUARDS.md**](QUALITY_GUARDS.md) — guardy jakości kodu
+- [**resource_diagnostics.md**](resource_diagnostics.md) — diagnostyka zasobów
+- [**voice_metrics.md**](voice_metrics.md) — metryki modułu voice
+- [**drivers/README.md**](drivers/README.md) — dokumentacja sterowników
+- [**scripts/README.md**](scripts/README.md) — dokumentacja skryptów
+- [**ui/README.md**](ui/README.md), [**ui/control.md**](ui/control.md) — dokumentacja UI
+
+### 📦 Release Notes
+
+Historia wydań projektu — w katalogu [`release-notes/`](release-notes/):
+- [**v0.6.md**](release-notes/v0.6.md)
+- [**v0.5.3.md**](release-notes/v0.5.3.md)
+- [**v0.5.2.md**](release-notes/v0.5.2.md)
+
+### 📦 Archiwum historyczne ([`archive/`](archive/))
+
+Raporty historyczne i dokumentacja przestarzała znajdują się w katalogu [**archive/**](archive/):
+- Raporty z PR (`archive/_pr_summaries/`)
+- Listy zadań (`archive/_todo/`)
+- Podsumowania implementacji (IMPLEMENTATION_*.md)
+- Legacy dokumentacja modułów
 
 ---
 
-## Dokumentacja modułów aplikacyjnych (`apps/*`)
-
-Szczegółowa dokumentacja wszystkich modułów aplikacyjnych:
-
-- [**apps/README.md**](apps/README.md) — **indeks modułów aplikacyjnych** (przegląd, zależności, uruchamianie)
-- [**apps/chat.md**](apps/chat.md) — chat z OpenAI (audio.transcript → GPT → tts.speak)
-- [**apps/nlu.md**](apps/nlu.md) — rozpoznawanie intencji ruchu z transkrypcji PL
-- [**apps/launcher.md**](apps/launcher.md) — menu startowe na 4 przyciski
-- [**apps/menu.md**](apps/menu.md) — menu nawigacyjne (duplikat launcher?)
-- [**apps/motion.md**](apps/motion.md) — bridge ruchu (motion.cmd → XGO adapter)
-- [**apps/safety.md**](apps/safety.md) — emergency stop (E-STOP)
-- [**apps/demos.md**](apps/demos.md) — gotowe demonstracje ruchu
-- [**apps/camera.md**](apps/camera.md) — preview kamery z detekcją twarzy na LCD
-- [**apps/vision.md**](apps/vision.md) — detekcja obiektów (HOG, TFLite, ROI)
-- [**apps/draw.md**](apps/draw.md) — prymitywy renderowania buźki
-- [**apps/hw.md**](apps/hw.md) — sink LCD (framebuffer)
-- [**apps/ui.md**](apps/ui.md) — przyciski, konfiguracja UI, kontroler buźki
-- **App Logic Core**: logika funkcji/feature’ów jest eksponowana przez `apps/app_logic_core` (FeatureManager) i używana przez API/CLI/UI.
-
-### Dokumentacja modułów (legacy — `docs/modules/`)
-
-- [**modules/voice.md**](modules/voice.md) — pełny stos głosowy (ASR, TTS, VAD, KWS, chat), tryby plikowy i strumieniowy
-- [**modules/face.md**](modules/face.md) — API statycznego renderu buźki (endpointy HTTP, konfiguracja)
-- [**modules/face-lcd.md**](modules/face-lcd.md) — renderowanie buźki na panelu LCD ILI9xx
-- [**modules/face-phase5-lcd.md**](modules/face-phase5-lcd.md) — dokumentacja fazy 5 implementacji (sink LCD RAW)
-- [**modules/sim.md**](modules/sim.md) — symulator 2D Rider-Pi, testowanie algorytmów nawigacji
-
----
-
-## Dokumentacja skryptów operacyjnych
-
-> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` (patrz [../scripts/README.md](scripts/README.md)).  
-> Dokumentacja w `docs/ops/` opisuje funkcjonalność (pozostaje aktualna), ale ścieżki odnoszą się do nowej lokalizacji.
-
-Skrypty operacyjne dla zarządzania systemem i usługami:
-
-- [**ops/README.md**](ops/README.md) — **indeks skryptów** (konwencje, bezpieczeństwo, kody wyjścia)
-- [**ops/voice-scripts.md**](ops/voice-scripts.md) — sys_voice-*.sh (uruchamianie aplikacji głosowej)
-- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — sys_control.sh, systemd-sync.sh (zarządzanie usługami)
-- [**ops/display-scripts.md**](ops/display-scripts.md) — sys_lcd-control.py, sys_led-control.py (kontrola wyświetlacza)
-- [**ops/camera-scripts.md**](ops/camera-scripts.md) — sys_camera-*.sh (zarządzanie kamerą)
-- [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — diag_metrics.sh, diag_stream.sh (monitorowanie)
-- [**ops/utility-scripts.md**](ops/utility-scripts.md) — testy, diagnostyka XGO, demo, narzędzia
-
-### Testy usług systemd
-
-Dokumentacja testowania i walidacji plików `.service`:
-
-- [**SYSTEMD_SERVICES_MAPPING.md**](SYSTEMD_SERVICES_MAPPING.md) — mapowanie usług systemd → skrypty, status po refaktoryzacji
-- [**SYSTEMD_SERVICES_INVENTORY.md**](SYSTEMD_SERVICES_INVENTORY.md) — pełna inwentaryzacja wszystkich jednostek systemd (ExecStart, status walidacji)
-- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — szczegółowa dokumentacja narzędzi walidacji
-
-**Dostępne testy:**
-
-1. **Testy statyczne** (bez systemd):
-   - `scripts/diag_validate-systemd-paths.py` — walidacja ścieżek w ExecStart
-   - `scripts/diag_systemd-smoke.sh` — kompleksowy test bash
-   - `pytest tests/test_systemd_services.py` — testy pytest
-
-2. **Testy smoke** (wymagają systemd):
-   - `SYSTEMD_SMOKE_TESTS=1 pytest tests/test_systemd_smoke.py` — weryfikacja z systemd
-
-**Uruchamianie lokalnie:**
-
-```bash
-# Szybka walidacja (bez zależności)
-bash scripts/diag_systemd-smoke.sh
-
-# Pełny zestaw pytest
-pip install pytest pytest-timeout
-pytest tests/test_systemd_services.py -v
-
-# Z systemd (na robocie)
-SYSTEMD_SMOKE_TESTS=1 pytest tests/test_systemd_smoke.py -v
-```
-
-Więcej informacji: [SYSTEMD_SERVICES_MAPPING.md](SYSTEMD_SERVICES_MAPPING.md#testing)
-
----
-
-## Dokumentacja konfiguracji (`config/*`)
-
-Parametry konfiguracji dla wszystkich modułów:
-
-- [**config/README.md**](config/README.md) — **indeks parametrów** (hierarchia, precedencja, polityka sekretów)
-- [**config/voice.md**](config/voice.md) — voice_openai_file.toml, voice_openai_streaming.toml (ASR, TTS, Chat)
-- [**config/face.md**](config/face.md) — face.toml (geometria buźki, emocje, animacje)
-- [**config/alsa.md**](config/alsa.md) — asoundrc.wm8960, wm8960-apply.sh (konfiguracja ALSA)
-
----
-
-## Dokumentacja audio
-
-Konfiguracja i wykorzystanie kart dźwiękowych:
-
-- [**wm8960.md**](audio/wm8960.md) — konfiguracja karty WM8960 dla dupleksowego strumieniowania audio (ALSA, troubleshooting)
-
----
-
-## Sterowanie funkcjami (App Logic Core)
-
-- Warstwa funkcji żyje w `apps/app_logic_core` (FeatureManager, rejestr funkcji).
-- Systemd obsługuje `common/systemd_ctrl.py` (start/stop/status), konsumowany przez Core/API/CLI.
-- API: `POST /api/logic/feature/<name>` (`enabled: true/false`) — cienka warstwa HTTP.
-- CLI: `scripts/robot_ctl.py start|stop <feature>` — deleguje do FeatureManagera.
-- UI wywołuje API; nie powiela logiki profili/usług.
-
-## Raporty implementacji
-
-Podsumowania zakończonych etapów prac:
-
-- [**completion-report.md**](_pr_summaries/completion-report.md) — raport końcowy projektu
-- [**implementation-summary.md**](_pr_summaries/implementation-summary.md) — podsumowanie implementacji
-- [**simulator-summary.md**](_pr_summaries/simulator-summary.md) — podsumowanie implementacji symulatora 2D
-- [**sim1-implementation-summary.md**](_pr_summaries/sim1-implementation-summary.md) — raport z implementacji SIM-1 (rdzeń środowiska i renderowanie mapy)
-- [**sim3-implementation.md**](_pr_summaries/sim3-implementation.md) — raport z implementacji SIM-3
-
----
-
-## Release Notes
-
-Historia wydań projektu:
-
-- [**v0.6.md**](release-notes/v0.6.md) — wersja 0.6
-- [**v0.5.3.md**](release-notes/v0.5.3.md) — wersja 0.5.3
-- [**v0.5.2.md**](release-notes/v0.5.2.md) — wersja 0.5.2
-
----
-
-## Jak dodawać nową dokumentację
-
-Przy dodawaniu nowych dokumentów należy przestrzegać następujących zasad:
+## 📝 Jak dodawać nową dokumentację
 
 ### 1. Wybór lokalizacji
 
-- **Katalog główny** — tylko dokumenty o zasięgu ogólnym (wizja, architektura, working agreements)
-- **`docs/apps/`** — dokumentacja modułów aplikacyjnych (`apps/*`)
-- **`docs/ops/`** — dokumentacja skryptów operacyjnych (skrypty w `scripts/`)
-- **`docs/config/`** — dokumentacja parametrów konfiguracji (`config/*`)
-- **`docs/modules/`** — dokumentacja modułów (legacy — nowe dokumenty powinny iść do `docs/apps/`)
-- **`docs/audio/`** — konfiguracja sprzętu audio
-- **`docs/summaries/`** — raporty z zakończonych prac (obecnie `docs/_pr_summaries/`)
-- **`docs/release-notes/`** — informacje o wydaniach
+- **Katalog główny `docs_pl/`** — tylko dokumenty o zasięgu ogólnym (wizja, architektura, working agreements)
+- **`docs_pl/apps/`** — dokumentacja modułów aplikacyjnych
+- **`docs_pl/ops/`** — dokumentacja skryptów operacyjnych
+- **`docs_pl/config/`** — dokumentacja parametrów konfiguracji
+- **`docs_pl/api-specs/`** — specyfikacje REST API
+- **`docs_pl/audio/`** — konfiguracja sprzętu audio
+- **`docs_pl/archive/`** — raporty historyczne i dokumentacja przestarzała
+- **`docs_pl/release-notes/`** — informacje o wydaniach
 
 ### 2. Konwencja nazewnicza
 
-- Używaj **kebab-case** dla nazw plików: `nazwa-modułu.md`
+- Używaj **kebab-case** dla nazw plików: `nazwa-modulu.md`
 - Unikaj wielkich liter i podkreślników w nazwach plików
 - Nazwy powinny być opisowe i jednoznaczne
 
@@ -177,7 +152,7 @@ Każdy dokument powinien zawierać:
 1. **Nagłówek H1** z tytułem
 2. **Krótki opis** — co dokument zawiera (1-2 zdania)
 3. **Sekcje tematyczne** — logiczny podział treści
-4. **Przykłady** — konkretne przykłady użycia tam, gdzie to stosowne
+4. **Przykłady** — konkretne przykłady użycia
 5. **Odnośniki** — linki do powiązanych dokumentów
 
 ### 4. Język
@@ -188,7 +163,7 @@ Każdy dokument powinien zawierać:
 
 ### 5. Aktualizacja indeksu
 
-Po dodaniu nowego dokumentu **zaktualizuj ten plik** (`docs/README.md`), dodając odnośnik w odpowiedniej sekcji.
+Po dodaniu nowego dokumentu **zaktualizuj ten plik** (`docs_pl/README.md`), dodając odnośnik w odpowiedniej sekcji.
 
 ### 6. Linki relatywne
 
@@ -204,11 +179,9 @@ Po dodaniu nowego dokumentu **zaktualizuj ten plik** (`docs/README.md`), dodają
 
 ---
 
-## Narzędzia i weryfikacja
+## 🔍 Narzędzia i weryfikacja
 
 ### Sprawdzenie linków
-
-Aby sprawdzić poprawność linków w dokumentacji:
 
 ```bash
 # Wyszukaj wszystkie linki relatywne i sprawdź ich istnienie
@@ -221,29 +194,20 @@ done
 
 ```bash
 # Sprawdź formatowanie Markdown (jeśli używasz markdownlint)
-markdownlint docs/**/*.md
+markdownlint docs_pl/**/*.md
 
 # Testy doctestów w dokumentacji
 pytest --doctest-glob="*.md" --doctest-modules -q
 ```
 
-### Spójność z kodem
-
-Regularnie weryfikuj, czy dokumentacja jest zgodna z kodem:
-
-```bash
-# Uruchom skrypt sprawdzający spójność (jeśli dostępny)
-python scripts/doc_sync_check.py
-```
-
 ---
 
-## Kontakt i wsparcie
+## 💬 Kontakt i wsparcie
 
 - **Issues**: Zgłaszanie błędów i sugestii przez [GitHub Issues](https://github.com/mpieniak01/Rider-Pi/issues)
 - **Pull Requests**: Propozycje zmian w dokumentacji są mile widziane
 
 ---
 
-**Ostatnia aktualizacja**: 2025-10 (aktualizacja po reorganizacji struktury: ops/tools/ → scripts/)  
+**Ostatnia aktualizacja**: 2025-11 (refaktoryzacja struktury: utworzenie archive/, konsolidacja modules/ → apps/)  
 **Wersja dokumentacji**: zgodna z kodem głównym (branch `main`)

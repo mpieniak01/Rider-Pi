@@ -191,6 +191,6 @@ print(f"FPS: {100/elapsed:.1f}")
 - [ui.md](ui.md) — kontroler buźki (high-level API)
 - [hw.md](hw.md) — sink LCD (output)
 - [docs/config/face.md](../config/face.md) — parametry konfiguracji
-- [docs/modules/face.md](../modules/face.md) — API statycznego renderu
+- [do./face.md](./face.md) — API statycznego renderu
 
 **Ostatnia aktualizacja:** 2025-01
