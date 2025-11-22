@@ -1,6 +1,6 @@
 # Integracja Google Gemini
 
-> **📖 Nowa dokumentacja**: Pełna dokumentacja ekosystemu Google Gemini (ASR + Chat + TTS) dostępna w [docs/ecosystem-google.md](./ecosystem-google.md)
+> **📖 Nowa dokumentacja**: Pełna dokumentacja ekosystemu Google Gemini (ASR + Chat + TTS) dostępna w [docs/ecosystem-google.md](ecosystem-google.md)
 
 ## Opis
 

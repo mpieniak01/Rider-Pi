@@ -287,6 +287,6 @@ python -m apps.voice.cli --config config/minimal.toml listen
 
 For complete list of all configuration options, see:
 - [voice.md](voice.md) - Voice configuration reference
-- [Voice config examples](../../config/) - Example TOML files
+- [Voice config examples](.) - Example TOML files
 
 For schema details, see: `apps/voice/config_loader.py`

@@ -462,4 +462,4 @@ git diff --cached | grep -i "sk-"  # sprawdź sekrety
 
 **Ostatnia aktualizacja:** 2025-01 (PR-3 complete)  
 **Wersja:** 1.0  
-**Related docs:** [voice.md](modules/voice.md), [wm8960.md](audio/wm8960.md), [AGENT.md](../AGENT.md)
+**Related docs:** [voice.md](modules/voice.md), [wm8960.md](audio/wm8960.md), [AGENT.md](AGENT.md)

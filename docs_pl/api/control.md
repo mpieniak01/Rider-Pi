@@ -158,5 +158,5 @@ Execute preset movement.
 ## See Also
 
 - [Navigator API](navigator.md) - Autonomous navigation
-- [common/bus.py](../../common/bus.py) - Bus topic definitions
+- [common/bus.py](../common/bus.py) - Bus topic definitions
 - [Motion Module](../apps/motion.md) - Motion system documentation

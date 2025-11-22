@@ -115,7 +115,7 @@ Mixins removed in PR-3:
 | `from apps.voice.ws_transport import ...` | `from apps.voice.stream.transport import ...` |
 | `from apps.voice.audio import alsa` | (Pending migration to top-level) |
 
-See [docs/modules/voice.md](../docs/modules/voice.md#deprecated--legacy-files) for full migration guide.
+See [docs/modules/voice.md](modules/voice.md#deprecated--legacy-files) for full migration guide.
 
 ## Troubleshooting
 
@@ -152,6 +152,6 @@ The guards run in CI via pre-commit hooks. PRs will fail if:
 See:
 - [docs/modules/voice-refactoring-summary.md](modules/voice-refactoring-summary.md) - Complete PR#1–PR#5 refactoring summary
 - [docs/modules/voice.md](modules/voice.md) - Voice module architecture
-- [ARCHITECTURE.md](../ARCHITECTURE.md) - Overall system architecture
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Overall system architecture
 - [PR4_SUMMARY.md](_pr_summaries/PR4_SUMMARY.md) - PR-4 transport consolidation details
 

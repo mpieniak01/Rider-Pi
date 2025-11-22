@@ -1,214 +1,239 @@
-# Rider-Pi
+# Dokumentacja Rider-Pi Apps
 
-> This is not an official repository for the Rider-PI robot. It is a sandbox for practicing robot programming.
+> Centralny indeks dokumentacji projektu **Rider-Pi Apps** — oprogramowania rozszerzającego możliwości urządzenia Rider-Pi.
 
-## Overview
+> **Uwaga**: Raporty historyczne w katalogu `docs/_pr_summaries/` mogą pozostać w języku angielskim, ponieważ stanowią zapis wcześniejszych wersji projektu.
 
-Rider-Pi is a comprehensive robotics platform built on Raspberry Pi, featuring:
+## Dokumenty główne (katalog główny)
 
-- **Autonomous Navigation** - Rekonesans (reconnaissance) mode with obstacle avoidance, SLAM mapping, and return-to-home capability
-- **Vision System** - Real-time object detection, face tracking, and depth estimation
-- **Voice Interaction** - Voice commands, text-to-speech, and conversational AI integration
-- **Expressive Face** - Animated LCD display with emotions and reactions
-- **Motion Control** - Quadruped movement with balance and height control
-- **Web Interface** - Comprehensive web UI for control and monitoring
-- **Modular Architecture** - Event-driven design using ZMQ message bus
+Najważniejsze dokumenty znajdują się w katalogu głównym projektu:
 
-## Key Features
+- [**README.md**](README.md) — wprowadzenie do projektu, instalacja, szybki start
+- [**PROJECT.md**](PROJECT.md) — wizja projektu, cele biznesowe, roadmapa
+- [**ARCHITECTURE.md**](ARCHITECTURE.md) — architektura systemu, porty, przepływy danych
+- [**ARCHITECTURE_DIAGRAM.md**](ARCHITECTURE_DIAGRAM.md) — diagramy architektury
+- [**AGENT.md**](AGENT.md) — kontrakt dla asystenta kodu, zasady developerskie
+- [**WORKING-AGREEMENTS.md**](WORKING-AGREEMENTS.md) — ustalenia robocze zespołu
+- [**CONFIG_POLICY.md**](CONFIG_POLICY.md) — **polityka konfiguracji i sekretów** (single source of truth)
+- [**OFFLOAD_PROVIDER_PROTOCOL.md**](OFFLOAD_PROVIDER_PROTOCOL.md) — kontrakt Pi ↔ PC (offload), endpointy, tematy, roadmapa
 
-### 🤖 Autonomous Navigation (Rekonesans Epic)
+---
 
-Multi-stage autonomous exploration system:
+## Dokumentacja modułów aplikacyjnych (`apps/*`)
 
-- **Stage 1**: Reactive obstacle avoidance (STOP and AVOID strategies)
-- **Stage 2**: Position tracking via odometry (IMU + dead reckoning fusion)
-- **Stage 3**: SLAM mapping with occupancy grid
-- **Stage 4**: Path planning and return-to-home using A* algorithm
+Szczegółowa dokumentacja wszystkich modułów aplikacyjnych:
 
-### 👁️ Vision System
+- [**apps/README.md**](apps/README.md) — **indeks modułów aplikacyjnych** (przegląd, zależności, uruchamianie)
+- [**apps/chat.md**](apps/chat.md) — chat z OpenAI (audio.transcript → GPT → tts.speak)
+- [**apps/nlu.md**](apps/nlu.md) — rozpoznawanie intencji ruchu z transkrypcji PL
+- [**apps/launcher.md**](apps/launcher.md) — menu startowe na 4 przyciski
+- [**apps/menu.md**](apps/menu.md) — menu nawigacyjne (duplikat launcher?)
+- [**apps/motion.md**](apps/motion.md) — bridge ruchu (motion.cmd → XGO adapter)
+- [**apps/safety.md**](apps/safety.md) — emergency stop (E-STOP)
+- [**apps/demos.md**](apps/demos.md) — gotowe demonstracje ruchu
+- [**apps/camera.md**](apps/camera.md) — preview kamery z detekcją twarzy na LCD
+- [**apps/vision.md**](apps/vision.md) — detekcja obiektów (HOG, TFLite, ROI)
+- [**apps/draw.md**](apps/draw.md) — prymitywy renderowania buźki
+- [**apps/hw.md**](apps/hw.md) — sink LCD (framebuffer)
+- [**apps/ui.md**](apps/ui.md) — przyciski, konfiguracja UI, kontroler buźki
 
-- Face and person detection (HOG, TFLite, SSD)
-- Follow-me tracking (face and hand tracking)
-- Obstacle detection with ROI analysis
-- Depth estimation for mapping
-- Edge TPU (Coral) acceleration support
+### Dokumentacja modułów (legacy — `docs/modules/`)
 
-### 🗣️ Voice & Chat
+- [**modules/voice.md**](modules/voice.md) — pełny stos głosowy (ASR, TTS, VAD, KWS, chat), tryby plikowy i strumieniowy
+- [**modules/face.md**](modules/face.md) — API statycznego renderu buźki (endpointy HTTP, konfiguracja)
+- [**modules/face-lcd.md**](modules/face-lcd.md) — renderowanie buźki na panelu LCD ILI9xx
+- [**modules/face-phase5-lcd.md**](modules/face-phase5-lcd.md) — dokumentacja fazy 5 implementacji (sink LCD RAW)
+- [**modules/sim.md**](modules/sim.md) — symulator 2D Rider-Pi, testowanie algorytmów nawigacji
 
-- Streaming and file-based voice modes
-- ASR (Automatic Speech Recognition)
-- Conversational AI (OpenAI, Google Gemini)
-- TTS (Text-to-Speech) with multiple backends
-- Push-to-Talk (PTT) support
-- Keyword spotting and voice activity detection
+---
 
-### 😊 Animated Face
+## Dokumentacja skryptów operacyjnych
 
-- LCD display with expressive animations
-- Emotions: happy, sad, neutral, surprised, angry
-- Eye movements and blinking
-- Responsive to events and sentiment
+> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` (patrz [../scripts/README.md](scripts/README.md)).  
+> Dokumentacja w `docs/ops/` opisuje funkcjonalność (pozostaje aktualna), ale ścieżki odnoszą się do nowej lokalizacji.
 
-### 🕹️ Web Interface
+Skrypty operacyjne dla zarządzania systemem i usługami:
 
-- Live camera preview
-- Manual movement controls
-- Balance and height adjustment
-- Vision tracking controls
-- Autonomous navigation dashboard
-- Real-time event logging
-- Multi-language support (Polish, English)
+- [**ops/README.md**](ops/README.md) — **indeks skryptów** (konwencje, bezpieczeństwo, kody wyjścia)
+- [**ops/voice-scripts.md**](ops/voice-scripts.md) — sys_voice-*.sh (uruchamianie aplikacji głosowej)
+- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — sys_control.sh, systemd-sync.sh (zarządzanie usługami)
+- [**ops/display-scripts.md**](ops/display-scripts.md) — sys_lcd-control.py, sys_led-control.py (kontrola wyświetlacza)
+- [**ops/camera-scripts.md**](ops/camera-scripts.md) — sys_camera-*.sh (zarządzanie kamerą)
+- [**ops/monitoring-scripts.md**](ops/monitoring-scripts.md) — diag_metrics.sh, diag_stream.sh (monitorowanie)
+- [**ops/utility-scripts.md**](ops/utility-scripts.md) — testy, diagnostyka XGO, demo, narzędzia
 
-### 🏗️ Architecture
+### Testy usług systemd
 
-- **Modular Design**: Independent services communicating via ZMQ message bus
-- **Event-Driven**: Publish-subscribe pattern for loose coupling
-- **REST API**: Unified HTTP API on port 8080
-- **Systemd Integration**: Managed services for reliability
-- **Simulation Mode**: Development without hardware
+Dokumentacja testowania i walidacji plików `.service`:
 
-## Quick Start
+- [**SYSTEMD_SERVICES_MAPPING.md**](SYSTEMD_SERVICES_MAPPING.md) — mapowanie usług systemd → skrypty, status po refaktoryzacji
+- [**SYSTEMD_SERVICES_INVENTORY.md**](SYSTEMD_SERVICES_INVENTORY.md) — pełna inwentaryzacja wszystkich jednostek systemd (ExecStart, status walidacji)
+- [**ops/systemd-scripts.md**](ops/systemd-scripts.md) — szczegółowa dokumentacja narzędzi walidacji
 
-### Prerequisites
+**Dostępne testy:**
 
-- Raspberry Pi 4 (or compatible)
-- Python 3.9+
-- XGO quadruped robot (or simulator mode)
-- Camera module (optional for vision features)
+1. **Testy statyczne** (bez systemd):
+   - `scripts/diag_validate-systemd-paths.py` — walidacja ścieżek w ExecStart
+   - `scripts/diag_systemd-smoke.sh` — kompleksowy test bash
+   - `pytest tests/test_systemd_services.py` — testy pytest
 
-### Installation
+2. **Testy smoke** (wymagają systemd):
+   - `SYSTEMD_SMOKE_TESTS=1 pytest tests/test_systemd_smoke.py` — weryfikacja z systemd
 
-```bash
-# Clone repository
-git clone https://github.com/mpieniak01/Rider-Pi.git
-cd Rider-Pi
-
-# Install dependencies
-pip3 install -r requirements-dev.txt
-
-# Initialize configuration files from templates
-make config-init
-
-# Configure environment (copy and edit)
-cp .env.example .env
-
-# Customize configuration files as needed
-nano config/vision.toml      # Vision system paths
-nano config/voice_web.toml   # Voice model paths
-```
-
-### Running Services
+**Uruchamianie lokalnie:**
 
 ```bash
-# Start core services
-sudo systemctl start rider-broker      # Message bus
-sudo systemctl start rider-api         # REST API server
+# Szybka walidacja (bez zależności)
+bash scripts/diag_systemd-smoke.sh
 
-# Start optional services
-sudo systemctl start rider-vision      # Vision system
-sudo systemctl start rider-odometry    # Position tracking
-sudo systemctl start rider-mapper      # SLAM mapping
-sudo systemctl start rider-voice       # Voice interaction
+# Pełny zestaw pytest
+pip install pytest pytest-timeout
+pytest tests/test_systemd_services.py -v
+
+# Z systemd (na robocie)
+SYSTEMD_SMOKE_TESTS=1 pytest tests/test_systemd_smoke.py -v
 ```
 
-### Web Interface
+Więcej informacji: [SYSTEMD_SERVICES_MAPPING.md](SYSTEMD_SERVICES_MAPPING.md#testing)
 
-Open browser: `http://robot-ip:8080/control.html`
+---
 
-## Project Structure
+## Dokumentacja konfiguracji (`config/*`)
 
-```
-Rider-Pi/
-├── apps/              # Application modules
-│   ├── camera/        # Camera capture
-│   ├── chat/          # Chat and NLU
-│   ├── mapper/        # SLAM mapping (Stage 3)
-│   ├── motion/        # Movement control
-│   ├── navigator/     # Autonomous navigation (Stages 1 & 4)
-│   ├── odometry/      # Position tracking (Stage 2)
-│   ├── ui/            # Face animations
-│   ├── vision/        # Vision and detection
-│   └── voice/         # Voice processing
-├── services/          # System services
-│   ├── api_server.py  # REST API
-│   ├── broker.py      # ZMQ message broker
-│   └── api_core/      # API endpoints
-├── common/            # Shared utilities
-│   └── bus.py         # Message bus definitions
-├── config/            # Configuration files
-├── docs/              # Documentation
-│   ├── api/           # API documentation
-│   ├── apps/          # Application docs
-│   ├── modules/       # Module documentation
-│   └── ui/            # Web UI documentation
-├── drivers/           # Hardware drivers
-├── scripts/           # Operational scripts
-├── systemd/           # Service definitions
-├── tests/             # Test suite
-└── web/               # Web interfaces
-```
+Parametry konfiguracji dla wszystkich modułów:
 
-## Documentation
+- [**config/README.md**](config/README.md) — **indeks parametrów** (hierarchia, precedencja, polityka sekretów)
+- [**config/voice.md**](config/voice.md) — voice_openai_file.toml, voice_openai_streaming.toml (ASR, TTS, Chat)
+- [**config/face.md**](config/face.md) — face.toml (geometria buźki, emocje, animacje)
+- [**config/alsa.md**](config/alsa.md) — asoundrc.wm8960, wm8960-apply.sh (konfiguracja ALSA)
 
-- [Architecture](ARCHITECTURE.md) - System architecture and design
-- [Configuration](docs/CONFIG.md) - Configuration management with TOML templates
-- [API Documentation](docs/api/README.md) - REST API endpoints
-- [Module Documentation](docs/modules/) - Detailed module docs
-  - [Navigator](docs/modules/navigator.md) - Autonomous navigation
-  - [Odometry](docs/modules/odometry.md) - Position tracking
-  - [Mapper](docs/modules/mapper.md) - SLAM mapping
-  - [Voice](docs/modules/voice.md) - Voice system
-- [Web UI Documentation](docs/ui/README.md) - Web interface guides
-- [Systemd Services](docs/SYSTEMD_SERVICES_MAPPING.md) - Service mappings
+---
 
-## Development
+## Dokumentacja audio
 
-### Running Tests
+Konfiguracja i wykorzystanie kart dźwiękowych:
+
+- [**wm8960.md**](audio/wm8960.md) — konfiguracja karty WM8960 dla dupleksowego strumieniowania audio (ALSA, troubleshooting)
+
+---
+
+## Raporty implementacji
+
+Podsumowania zakończonych etapów prac:
+
+- [**completion-report.md**](_pr_summaries/completion-report.md) — raport końcowy projektu
+- [**implementation-summary.md**](_pr_summaries/implementation-summary.md) — podsumowanie implementacji
+- [**simulator-summary.md**](_pr_summaries/simulator-summary.md) — podsumowanie implementacji symulatora 2D
+- [**sim1-implementation-summary.md**](_pr_summaries/sim1-implementation-summary.md) — raport z implementacji SIM-1 (rdzeń środowiska i renderowanie mapy)
+- [**sim3-implementation.md**](_pr_summaries/sim3-implementation.md) — raport z implementacji SIM-3
+
+---
+
+## Release Notes
+
+Historia wydań projektu:
+
+- [**v0.6.md**](release-notes/v0.6.md) — wersja 0.6
+- [**v0.5.3.md**](release-notes/v0.5.3.md) — wersja 0.5.3
+- [**v0.5.2.md**](release-notes/v0.5.2.md) — wersja 0.5.2
+
+---
+
+## Jak dodawać nową dokumentację
+
+Przy dodawaniu nowych dokumentów należy przestrzegać następujących zasad:
+
+### 1. Wybór lokalizacji
+
+- **Katalog główny** — tylko dokumenty o zasięgu ogólnym (wizja, architektura, working agreements)
+- **`docs/apps/`** — dokumentacja modułów aplikacyjnych (`apps/*`)
+- **`docs/ops/`** — dokumentacja skryptów operacyjnych (skrypty w `scripts/`)
+- **`docs/config/`** — dokumentacja parametrów konfiguracji (`config/*`)
+- **`docs/modules/`** — dokumentacja modułów (legacy — nowe dokumenty powinny iść do `docs/apps/`)
+- **`docs/audio/`** — konfiguracja sprzętu audio
+- **`docs/summaries/`** — raporty z zakończonych prac (obecnie `docs/_pr_summaries/`)
+- **`docs/release-notes/`** — informacje o wydaniach
+
+### 2. Konwencja nazewnicza
+
+- Używaj **kebab-case** dla nazw plików: `nazwa-modułu.md`
+- Unikaj wielkich liter i podkreślników w nazwach plików
+- Nazwy powinny być opisowe i jednoznaczne
+
+### 3. Struktura dokumentu
+
+Każdy dokument powinien zawierać:
+
+1. **Nagłówek H1** z tytułem
+2. **Krótki opis** — co dokument zawiera (1-2 zdania)
+3. **Sekcje tematyczne** — logiczny podział treści
+4. **Przykłady** — konkretne przykłady użycia tam, gdzie to stosowne
+5. **Odnośniki** — linki do powiązanych dokumentów
+
+### 4. Język
+
+- Dokumentacja jest prowadzona **w języku polskim**
+- Nazwy techniczne (klasy, metody, komendy CLI) pozostają w oryginale
+- Kod i komendy shell nie są tłumaczone
+
+### 5. Aktualizacja indeksu
+
+Po dodaniu nowego dokumentu **zaktualizuj ten plik** (`docs/README.md`), dodając odnośnik w odpowiedniej sekcji.
+
+### 6. Linki relatywne
+
+- Wszystkie linki między dokumentami powinny być **relatywne**
+- Testuj działanie linków lokalnie przed commitem
+- Linki powinny działać zarówno lokalnie, jak i na GitHubie
+
+### 7. Formatowanie
+
+- Używaj składni Markdown zgodnie z konwencjami projektu
+- Zachowaj spójność formatowania z istniejącymi dokumentami
+- Stosuj bloki kodu z określeniem języka: \`\`\`python, \`\`\`bash, \`\`\`toml
+
+---
+
+## Narzędzia i weryfikacja
+
+### Sprawdzenie linków
+
+Aby sprawdzić poprawność linków w dokumentacji:
 
 ```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific module tests
-pytest tests/test_navigator.py -v
-pytest tests/test_odometry.py -v
-pytest tests/test_mapper.py -v
-
-# Skip audio tests (requires ALSA)
-ALSA_SKIP_LSOF=1 pytest tests/ -v
+# Wyszukaj wszystkie linki relatywne i sprawdź ich istnienie
+rg -n -o '\[[^]]+\]\((?!http)([^)]+)\)' --glob '*.md' | while IFS=: read -r file _ path; do
+  p="${path%)}"; [ -f "$(dirname "$file")/$p" ] || echo "BROKEN LINK: $file -> $p";
+done
 ```
 
-### Linting
+### Linting dokumentacji
 
 ```bash
-# Run ruff linter
-ruff check --fix
+# Sprawdź formatowanie Markdown (jeśli używasz markdownlint)
+markdownlint docs/**/*.md
 
-# Format code
-ruff format
+# Testy doctestów w dokumentacji
+pytest --doctest-glob="*.md" --doctest-modules -q
 ```
 
-### Simulation Mode
+### Spójność z kodem
 
-Run without hardware using simulator:
+Regularnie weryfikuj, czy dokumentacja jest zgodna z kodem:
 
 ```bash
-export RIDER_SIMULATOR=1
-python3 -m apps.navigator.main
+# Uruchom skrypt sprawdzający spójność (jeśli dostępny)
+python scripts/doc_sync_check.py
 ```
 
-## Contributing
+---
 
-This is a personal learning project. Contributions, suggestions, and feedback are welcome!
+## Kontakt i wsparcie
 
-## License
+- **Issues**: Zgłaszanie błędów i sugestii przez [GitHub Issues](https://github.com/mpieniak01/Rider-Pi/issues)
+- **Pull Requests**: Propozycje zmian w dokumentacji są mile widziane
 
-See LICENSE file for details.
+---
 
-## Acknowledgments
-
-- XGO Robot platform
-- OpenCV, TensorFlow Lite for vision
-- OpenAI, Google Gemini for AI features
-- ZMQ for messaging infrastructure
-
+**Ostatnia aktualizacja**: 2025-10 (aktualizacja po reorganizacji struktury: ops/tools/ → scripts/)  
+**Wersja dokumentacji**: zgodna z kodem głównym (branch `main`)

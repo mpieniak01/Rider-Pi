@@ -109,6 +109,6 @@ Wszystkie tematy działają na istniejącym brokerze (`services/broker.py`, port
 
 ## 9. Dokumenty powiązane
 
-- [`docs/ui/control.md`](../../docs/ui/control.md) — opisuje kartę Provider Control w interfejsie WWW.
-- [`docs/AI_MODE_SWITCHER.md`](../../docs/AI_MODE_SWITCHER.md) — opis legacy AI mode switcher; rejestr providerów korzysta z niego do routingu per domena.
-- [`docs/_todo/rider_pi_device_architecture.md`](../../docs/_todo/rider_pi_device_architecture.md) — stary szkic; bieżący dokument go zastępuje.
+- [`ui/control.md`](ui/control.md) — opisuje kartę Provider Control w interfejsie WWW.
+- [`AI_MODE_SWITCHER.md`](AI_MODE_SWITCHER.md) — opis legacy AI mode switcher; rejestr providerów korzysta z niego do routingu per domena.
+- [`_todo/rider_pi_device_architecture.md`](_todo/rider_pi_device_architecture.md) — stary szkic; bieżący dokument go zastępuje.

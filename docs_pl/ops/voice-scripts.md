@@ -378,7 +378,7 @@ Patrz sekcja Troubleshooting w `talk_local.sh` — identyczne problemy i rozwią
 - [talk_local.sh](#talk_localsh) — prostszy wariant (jednorazowe echo)
 - [docs/modules/voice.md](../modules/voice.md) — pełna dokumentacja API
 - [docs/config/voice.md](../config/voice.md) — konfiguracja lokalnych backendów
-- [systemd/rider-voice-web.service](../../systemd/rider-voice-web.service) — definicja usługi
+- [systemd/rider-voice-web.service](../systemd/rider-voice-web.service) — definicja usługi
 
 ---
 

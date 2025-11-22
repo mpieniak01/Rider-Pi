@@ -23,7 +23,7 @@
 ## Skrypty operacyjne
 
 > **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` z ujednoliconą konwencją nazewnictwa.  
-> Zobacz [../scripts/README.md](../scripts/README.md) i [_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md)
+> Zobacz [../scripts/README.md](scripts/README.md) i [_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md)
 
 ### Skrypty głosowe (sys_voice-*)
 - `sys_voice-run.sh` — uruchamianie aplikacji głosowej (legacy z ENV)

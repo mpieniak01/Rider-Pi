@@ -299,6 +299,6 @@ python3 scripts/dev_bus-sub.py "command"
 - [motion.md](motion.md) — moduł ruchu (odbiera `command.motion.*`)
 - [ui.md](ui.md) — moduł UI/face (odbiera `command.face.*`)
 - [nlu.md](nlu.md) — analiza języka naturalnego (publikuje `events.sentiment`)
-- [../ARCHITECTURE.md](../../ARCHITECTURE.md) — architektura systemu
+- [../ARCHITECTURE.md](../ARCHITECTURE.md) — architektura systemu
 
 **Ostatnia aktualizacja:** 2025-01
