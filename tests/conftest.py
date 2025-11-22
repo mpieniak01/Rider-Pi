@@ -12,8 +12,27 @@ def _term_zmq_context():
     """
     yield
     try:
+        # zatrzymaj ewentualny watchdog providera, aby nie trzymał Contextu
+        from services import provider_watchdog
+
+        provider_watchdog.stop()
+    except Exception:
+        pass
+    try:
+        import threading
+
         import zmq
 
-        zmq.Context.instance().term()
+        ctx = zmq.Context.instance()
+
+        def _term():
+            try:
+                ctx.term()
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_term, name="zmq-term", daemon=True)
+        t.start()
+        t.join(timeout=1.0)
     except Exception:
         pass
