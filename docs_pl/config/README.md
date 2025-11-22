@@ -89,7 +89,7 @@ auth = "env:OPENAI_API_KEY"  # ✅ Dobre (czyta z ENV)
 - **NIE** trzymaj sekretów w `config/*.toml` (chyba że w `config/local/` — git-ignored)
 - **NIE** loguj kluczy API do stdout/plików
 
-Zobacz: [docs/config/POLICY.md](../config/POLICY.md)
+Zobacz: [docs/config/POLICY.md](POLICY.md)
 
 ## Konfiguracja lokalna (development)
 
@@ -229,7 +229,7 @@ export OPENAI_API_KEY=sk-prod-...
 ---
 
 **Related docs:**
-- [config/POLICY.md](../config/POLICY.md) — pełna polityka konfiguracji
+- [config/POLICY.md](POLICY.md) — pełna polityka konfiguracji
 - [docs/apps/](../apps/) — moduły aplikacyjne
 - [docs/ops/](../ops/) — skrypty operacyjne
 

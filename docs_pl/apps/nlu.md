@@ -192,6 +192,6 @@ Moduł pamięta **bieżącą prędkość** (`cur_speed`) między komendami:
 **Related docs:**
 - [chat.md](chat.md) — moduł chat (odpowiedzi konwersacyjne)
 - [motion.md](motion.md) — bridge ruchu (odbiera `motion.cmd`)
-- [do./voice.md](./voice.md) — źródło `audio.transcript`
+- [voice.md](./voice.md) — źródło `audio.transcript`
 
 **Ostatnia aktualizacja:** 2025-01

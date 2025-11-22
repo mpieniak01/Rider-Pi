@@ -443,7 +443,7 @@ aplay -D wm8960_out test.wav
 **Related docs:**
 - [docs/modules/voice.md](../apps/voice.md) — pełna dokumentacja modułu voice
 - [alsa.md](alsa.md) — konfiguracja ALSA
-- [config/POLICY.md](../config/POLICY.md) — polityka konfiguracji
+- [config/POLICY.md](POLICY.md) — polityka konfiguracji
 
 **Ostatnia aktualizacja:** 2025-01
 
