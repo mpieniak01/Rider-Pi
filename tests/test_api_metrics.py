@@ -343,9 +343,9 @@ class TestDashboardMetricsTracking:
             client.post("/api/control", json={"action": "invalid"})
 
             after_metrics = client.get("/api/app-metrics").get_json()
-            assert after_metrics["metrics"]["control"]["error"] > initial_error, (
-                "Error counter should increment for invalid command"
-            )
+            assert (
+                after_metrics["metrics"]["control"]["error"] > initial_error
+            ), "Error counter should increment for invalid command"
 
 
 if __name__ == "__main__":

@@ -78,11 +78,18 @@ def _provider_mode() -> str:
         except Exception as exc:  # noqa: BLE001
             logger.debug("Provider state read failed: %s", exc)
 
-    if provider_mode == "pc" or ai_override == "pc":
+    # AI mode jest nadrzędne: jeśli ustawiono lokalnie, wracamy do local,
+    # jeśli przełączono na pc_offload – wymuszamy pc.
+    if ai_override == "pc":
         return "pc"
+    if ai_override == "local":
+        return "local"
 
     if provider_mode == "local":
         return "local"
+
+    if provider_mode == "pc":
+        return "pc"
 
     return "local"
 

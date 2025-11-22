@@ -397,12 +397,19 @@ def tracking_loop() -> None:
 
             now = time.time()
             can_publish = (now - last_pub_ts) >= frame_interval
-            pc_fallback = pc_mode and PUBLISH_IN_PC and (PC_FALLBACK_SEC <= 0 or (now - last_real_pub_ts) >= PC_FALLBACK_SEC)
+            pc_fallback = (
+                pc_mode and PUBLISH_IN_PC and (PC_FALLBACK_SEC <= 0 or (now - last_real_pub_ts) >= PC_FALLBACK_SEC)
+            )
 
             if offset_x is not None and can_publish and (not pc_mode or pc_fallback):
                 pub(
                     "vision.tracking.offset",
-                    {"offset_x": round(offset_x, 3), "mode": mode.lower(), "ts": now, "source": "pc-fallback" if pc_mode else "local"},
+                    {
+                        "offset_x": round(offset_x, 3),
+                        "mode": mode.lower(),
+                        "ts": now,
+                        "source": "pc-fallback" if pc_mode else "local",
+                    },
                 )
                 last_pub_ts = now
                 last_real_pub_ts = now
@@ -414,7 +421,11 @@ def tracking_loop() -> None:
                 elif not can_publish:
                     print(f"[tracker] publish skipped (interval) offset_x={offset_x}", flush=True)
                 elif pc_mode and not pc_fallback:
-                    print("[tracker] PC mode: waiting for provider; local publish disabled (set TRACKING_PUBLISH_IN_PC=1)", flush=True)
+                    print(
+                        "[tracker] PC mode: waiting for provider; local publish disabled "
+                        "(set TRACKING_PUBLISH_IN_PC=1)",
+                        flush=True,
+                    )
 
             elapsed = time.time() - t0
             sleep_time = max(0.0, frame_interval - elapsed)

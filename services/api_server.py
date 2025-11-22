@@ -39,6 +39,7 @@ import services.api_core.control_api as control_api
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
+import services.api_core.features_api as features_api
 import services.api_core.google_home_api as google_home_api
 import services.api_core.google_proxy as google_proxy
 import services.api_core.navigator_api as navigator_api
@@ -363,6 +364,13 @@ _add_rule(
 _add_rule(
     "/api/navigator/return_home",
     view_func=navigator_api.api_navigator_return_home,
+    methods=["POST", "OPTIONS"],
+)
+
+# features (core business logic)
+_add_rule(
+    "/api/logic/feature/<name>",
+    view_func=features_api.feature_handler,
     methods=["POST", "OPTIONS"],
 )
 

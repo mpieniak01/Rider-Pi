@@ -176,3 +176,26 @@ def test_adapter_mode_switching(reset_ai_mode):
     assert should_run_local_detectors() is True
     assert should_run_local_asr() is True
     assert should_use_pc_enhanced_data() is False
+
+
+def test_local_mode_overrides_provider_state(monkeypatch, reset_ai_mode):
+    """Even jeśli provider raportuje pc, Rider-Pi w trybie local zostaje lokalny."""
+    import time
+
+    from apps.vision import ai_mode_adapter as vision_adapter
+    from apps.voice import ai_mode_adapter as voice_adapter
+    from common.ai_mode import set_mode
+
+    class FakeProvider:
+        def get_domain_mode(self, domain: str) -> str:
+            return "pc"
+
+        def get_pc_health(self):
+            return {"reachable": True, "status": "ok", "updated_ts": time.time()}
+
+    monkeypatch.setattr(vision_adapter, "provider_state", FakeProvider())
+    monkeypatch.setattr(voice_adapter, "provider_state", FakeProvider())
+
+    set_mode("local")
+    assert vision_adapter.should_run_local_detectors() is True
+    assert voice_adapter.should_run_local_asr() is True

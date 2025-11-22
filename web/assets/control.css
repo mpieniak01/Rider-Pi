@@ -222,6 +222,36 @@ body[data-page="control"] .feature-select {
   font-size: 13px;
 }
 
+/* Ujednolicone selecty w całym widoku control */
+body[data-page="control"] select {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8edf5;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-weight: 400;
+  font-size: 13px;
+  min-height: 32px;
+}
+
+body[data-page="control"] select:focus {
+  outline: 1px solid rgba(63, 209, 160, 0.6);
+}
+
+body[data-page="control"] select option {
+  background-color: #0f2233;
+  color: #e8edf5;
+}
+
+body[data-page="control"] select option:checked {
+  background-color: #163554;
+  color: #ffffff;
+}
+
+body[data-page="control"] select option:hover {
+  background-color: #1b4062;
+}
+
 body[data-page="control"] .feature-status {
   min-width: 120px;
   display: flex;
@@ -293,6 +323,83 @@ body[data-page="control"] .kbd {
 body[data-page="control"] .motion-queue-card,
 body[data-page="control"] .service-card {
   margin-top: 22px;
+}
+
+/* svc controls (refresh/filter) */
+body[data-page="control"] .svc-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-weight: 400;
+}
+
+body[data-page="control"] .svc-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cfd4dd;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+body[data-page="control"] .svc-control .svc-label {
+  font-weight: 400;
+}
+
+body[data-page="control"] .svc-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e8edf5;
+}
+
+body[data-page="control"] .svc-control input[type="checkbox"] {
+  accent-color: #3fd1a0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+body[data-page="control"] .svc-select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: inherit;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  min-height: 32px;
+}
+
+body[data-page="control"] .svc-select:focus {
+  outline: 1px solid rgba(63, 209, 160, 0.6);
+}
+
+/* dropdown options – lepszy kontrast w liście */
+body[data-page="control"] .svc-select option {
+  background-color: #0f2233;
+  color: #e8edf5;
+}
+
+body[data-page="control"] .svc-select option:checked {
+  background-color: #163554;
+  color: #ffffff;
+}
+
+body[data-page="control"] .svc-select option:hover {
+  background-color: #1b4062;
 }
 
 body[data-page="control"] .log-card {

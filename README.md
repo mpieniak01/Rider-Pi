@@ -67,6 +67,13 @@ Multi-stage autonomous exploration system:
 - **Systemd Integration**: Managed services for reliability
 - **Simulation Mode**: Development without hardware
 
+### 🔧 Service Control (App Logic Core)
+
+- Single source of truth for feature orchestration in `apps/app_logic_core` (FeatureManager).
+- Systemd operations are wrapped by `common/systemd_ctrl.py`.
+- Thin API `/api/logic/feature/<name>` and CLI `scripts/robot_ctl.py start|stop <feature>`.
+- Web UI calls the API only; business logic stays in the core layer.
+
 ## Quick Start
 
 ### Prerequisites
@@ -109,6 +116,10 @@ sudo systemctl start rider-vision      # Vision system
 sudo systemctl start rider-odometry    # Position tracking
 sudo systemctl start rider-mapper      # SLAM mapping
 sudo systemctl start rider-voice       # Voice interaction
+
+# Start/stop feature stacks via CLI (App Logic Core)
+sudo python3 scripts/robot_ctl.py start face_tracking
+sudo python3 scripts/robot_ctl.py stop recon
 ```
 
 ### Web Interface
@@ -119,22 +130,25 @@ Open browser: `http://robot-ip:8080/control.html`
 
 ```
 Rider-Pi/
-├── apps/              # Application modules
-│   ├── camera/        # Camera capture
-│   ├── chat/          # Chat and NLU
-│   ├── mapper/        # SLAM mapping (Stage 3)
-│   ├── motion/        # Movement control
-│   ├── navigator/     # Autonomous navigation (Stages 1 & 4)
-│   ├── odometry/      # Position tracking (Stage 2)
-│   ├── ui/            # Face animations
-│   ├── vision/        # Vision and detection
-│   └── voice/         # Voice processing
-├── services/          # System services
-│   ├── api_server.py  # REST API
-│   ├── broker.py      # ZMQ message broker
-│   └── api_core/      # API endpoints
-├── common/            # Shared utilities
-│   └── bus.py         # Message bus definitions
+├── apps/               # Application modules
+│   ├── camera/         # Camera capture
+│   ├── chat/           # Chat and NLU
+│   ├── mapper/         # SLAM mapping (Stage 3)
+│   ├── motion/         # Movement control
+│   ├── navigator/      # Autonomous navigation (Stages 1 & 4)
+│   ├── odometry/       # Position tracking (Stage 2)
+│   ├── ui/             # Face animations
+│   ├── vision/         # Vision and detection
+│   ├── voice/          # Voice processing
+│   └── app_logic_core/ # FeatureManager façade (App Logic Core)
+├── services/           # System services
+│   ├── api_server.py   # REST API
+│   ├── broker.py       # ZMQ message broker
+│   ├── api_core/       # API endpoints
+│   └── core/           # Core business logic (FeatureManager implementation)
+├── common/             # Shared utilities
+│   ├── bus.py          # Message bus definitions
+│   └── systemd_ctrl.py # Systemd wrapper (start/stop/status)
 ├── config/            # Configuration files
 ├── docs/              # Documentation
 │   ├── api/           # API documentation
@@ -153,6 +167,7 @@ Rider-Pi/
 - [Architecture](ARCHITECTURE.md) - System architecture and design
 - [Configuration](docs/CONFIG.md) - Configuration management with TOML templates
 - [API Documentation](docs/api/README.md) - REST API endpoints
+- [App Logic Core](docs/apps/README.md) - Feature orchestration and FeatureManager
 - [Module Documentation](docs/modules/) - Detailed module docs
   - [Navigator](docs/modules/navigator.md) - Autonomous navigation
   - [Odometry](docs/modules/odometry.md) - Position tracking
@@ -211,4 +226,3 @@ See LICENSE file for details.
 - OpenCV, TensorFlow Lite for vision
 - OpenAI, Google Gemini for AI features
 - ZMQ for messaging infrastructure
-

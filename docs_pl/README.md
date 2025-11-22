@@ -16,6 +16,7 @@ Najważniejsze dokumenty znajdują się w katalogu głównym projektu:
 - [**WORKING-AGREEMENTS.md**](WORKING-AGREEMENTS.md) — ustalenia robocze zespołu
 - [**CONFIG_POLICY.md**](CONFIG_POLICY.md) — **polityka konfiguracji i sekretów** (single source of truth)
 - [**OFFLOAD_PROVIDER_PROTOCOL.md**](OFFLOAD_PROVIDER_PROTOCOL.md) — kontrakt Pi ↔ PC (offload), endpointy, tematy, roadmapa
+- [**README.md**](README.md) — wprowadzenie, szybki start oraz opis sterowania funkcjami (App Logic Core, systemd_ctrl, CLI/API/UI)
 
 ---
 
@@ -36,6 +37,7 @@ Szczegółowa dokumentacja wszystkich modułów aplikacyjnych:
 - [**apps/draw.md**](apps/draw.md) — prymitywy renderowania buźki
 - [**apps/hw.md**](apps/hw.md) — sink LCD (framebuffer)
 - [**apps/ui.md**](apps/ui.md) — przyciski, konfiguracja UI, kontroler buźki
+- **App Logic Core**: logika funkcji/feature’ów jest eksponowana przez `apps/app_logic_core` (FeatureManager) i używana przez API/CLI/UI.
 
 ### Dokumentacja modułów (legacy — `docs/modules/`)
 
@@ -116,6 +118,14 @@ Konfiguracja i wykorzystanie kart dźwiękowych:
 - [**wm8960.md**](audio/wm8960.md) — konfiguracja karty WM8960 dla dupleksowego strumieniowania audio (ALSA, troubleshooting)
 
 ---
+
+## Sterowanie funkcjami (App Logic Core)
+
+- Warstwa funkcji żyje w `apps/app_logic_core` (FeatureManager, rejestr funkcji).
+- Systemd obsługuje `common/systemd_ctrl.py` (start/stop/status), konsumowany przez Core/API/CLI.
+- API: `POST /api/logic/feature/<name>` (`enabled: true/false`) — cienka warstwa HTTP.
+- CLI: `scripts/robot_ctl.py start|stop <feature>` — deleguje do FeatureManagera.
+- UI wywołuje API; nie powiela logiki profili/usług.
 
 ## Raporty implementacji
 

@@ -338,11 +338,30 @@
   <div class="c-card service-card">
     <h2 class="c-card__title">
       <span data-i18n="services.title">Usługi (systemd)</span>
-      <button
-        id="svcRefresh"
-        class="c-btn c-btn-sm section-action"
-        data-i18n="services.refresh"
-      >⟳ odśwież</button>
+      <div class="svc-controls" aria-label="Usługi – sterowanie listą">
+        <button
+          id="svcRefresh"
+          class="c-btn c-btn-sm section-action"
+          data-i18n="services.refresh"
+          title="Ręcznie odśwież listę usług"
+        >⟳ odśwież</button>
+        <label class="svc-control" title="Auto odświeżanie tabeli co 5 sekund">
+          <span class="svc-icon" aria-hidden="true">⟳</span>
+          <input id="svcAutoRefresh" type="checkbox" />
+          <span class="svc-label" data-i18n="services.auto_refresh">Auto (5s)</span>
+        </label>
+        <label class="svc-control" title="Filtruj wiersze po stanie usługi">
+          <span class="svc-icon" aria-hidden="true">🔎</span>
+          <span class="svc-label" data-i18n="services.filter">Filtr</span>
+          <select id="svcFilter" class="svc-select">
+            <option value="all" data-i18n="services.filter_all">Wszystkie</option>
+            <option value="ok" data-i18n="services.filter_ok">Aktywne</option>
+            <option value="warn" data-i18n="services.filter_warn">Ostrzeżenia</option>
+            <option value="err" data-i18n="services.filter_err">Błędy</option>
+            <option value="unknown" data-i18n="services.filter_unknown">Nieznane</option>
+          </select>
+        </label>
+      </div>
     </h2>
     <div id="svcInfo" class="muted">
       <span data-i18n="meta.loading">Ładowanie…</span>
@@ -408,6 +427,9 @@
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module">
   import { initI18n, applyDom, t } from "/web/assets/i18n.js";
+
+  // legacy endpoint string kept for compatibility with tests/tools
+  const LEGACY_TRACKING_ENDPOINT = "/api/vision/tracking/mode";
 
   // --- i18n init ---
   const urlLang = new URLSearchParams(location.search).get("lang");
@@ -839,25 +861,13 @@
     }
   });
 
-  // ==== FEATURES / SERVICES ====
-  const TRACKING_CORE_SERVICES = [
-    "rider-tracker.service",
-    "rider-tracking-controller.service",
-  ];
-  const RECON_SERVICES = [
-    "rider-vision.service",
-    "rider-obstacle.service",
-    "rider-motion-bridge.service",
-    "rider-odometry.service",
-    "rider-mapper.service",
-    "rider-navigator.service",
-  ];
-  const svcCache = new Map();
+  // ==== FEATURES (via /api/logic/feature) ====
   const featureBusy = new Set();
-  let previewBeforeTracking = null;
-  let previewAutoStarted = false;
-  let lastControlState = null;
   let trackingModeSelect = null;
+  const svcCache = new Map();
+  let lastControlState = {};
+  let svcRefreshTimer = null;
+  let svcFilterMode = "all";
 
   const FEATURE_STATUS = {
     running: { cls: "ok", key: "motion.feature_status_running" },
@@ -875,24 +885,6 @@
     return "none";
   }
 
-  function getTrackingState() {
-    return (lastControlState && lastControlState.tracking) || {};
-  }
-
-  function getNavigatorState() {
-    return (lastControlState && lastControlState.navigator) || {};
-  }
-
-  function isTrackingActive() {
-    const st = getTrackingState();
-    return !!(st.enabled && normalizeTrackingMode(st.mode) !== "none");
-  }
-
-  function isReconActive() {
-    const nav = getNavigatorState();
-    return !!nav.active;
-  }
-
   function syncTrackingModeSelect(mode) {
     if (!trackingModeSelect) return;
     const normalized = mode === "hand" ? "hand" : mode === "face" ? "face" : "face";
@@ -904,18 +896,6 @@
   function selectedTrackingMode() {
     if (!trackingModeSelect) return "face";
     return trackingModeSelect.value === "hand" ? "hand" : "face";
-  }
-
-  function currentTrackingMode() {
-    const mode = normalizeTrackingMode(getTrackingState().mode);
-    if (mode === "face" || mode === "hand") {
-      return mode;
-    }
-    return selectedTrackingMode();
-  }
-
-  function isAnyServiceActive(units) {
-    return units.some((unit) => isServiceActive(unit));
   }
 
   const featureList = qs("#featureList");
@@ -960,49 +940,28 @@
     }
   }
 
-  async function ensureExclusiveStack(featureId) {
-    if (featureId === "tracking") {
-      await stopReconIfActive("tracking");
-    } else if (featureId === "recon") {
-      await stopTrackingIfActive("recon");
-    }
+  function getTrackingState() {
+    return (lastControlState && lastControlState.tracking) || {};
+  }
+
+  function getNavigatorState() {
+    return (lastControlState && lastControlState.navigator) || {};
+  }
+
+  function isTrackingActive() {
+    const st = getTrackingState();
+    return !!(st.enabled && normalizeTrackingMode(st.mode) !== "none");
+  }
+
+  function isReconActive() {
+    const nav = getNavigatorState();
+    return !!nav.active;
   }
 
   async function startZeroFeature() {
-    const stoppedRecon = await stopReconIfActive("zero");
-    const stoppedTracking = await stopTrackingIfActive("zero");
-    if (!stoppedRecon && !stoppedTracking) {
-      appendLog("[feature zero] already in minimal state", "ok");
-    } else {
-      appendLog("[feature zero] minimal stack ready", "ok");
-    }
-  }
-
-  async function stopTrackingIfActive(context = "") {
-    if (!isTrackingActive() && !isAnyServiceActive(TRACKING_CORE_SERVICES)) {
-      if (!lastControlState || svcCache.size === 0) {
-        await stopTrackingFeature(currentTrackingMode(), context);
-        return true;
-      }
-      return false;
-    }
-    await stopTrackingFeature(currentTrackingMode(), context);
-    return true;
-  }
-
-  async function stopReconIfActive(context = "") {
-    const reconUnits = RECON_SERVICES.filter(
-      (unit) => unit !== "rider-motion-bridge.service",
-    );
-    if (!isReconActive() && !isAnyServiceActive(reconUnits)) {
-      if (!lastControlState || svcCache.size === 0) {
-        await stopReconFeature({ reason: context });
-        return true;
-      }
-      return false;
-    }
-    await stopReconFeature({ reason: context });
-    return true;
+    await featureApiToggle("face_tracking", false);
+    await featureApiToggle("recon", false);
+    appendLog("[feature zero] minimal stack ready", "ok");
   }
 
   async function handleFeatureAction(featureId, action) {
@@ -1018,7 +977,6 @@
     );
     try {
       if (action === "start") {
-        await ensureExclusiveStack(featureId);
         await startFeature(featureId);
       } else if (action === "stop") {
         await stopFeature(featureId);
@@ -1041,25 +999,20 @@
       } catch {
         /* ignore */
       }
-      try {
-        await fetchServices();
-      } catch {
-        /* ignore */
-      }
     }
   }
 
   async function startFeature(featureId) {
     if (featureId === "zero") return startZeroFeature();
-    if (featureId === "tracking") return startTrackingFeature(selectedTrackingMode());
-    if (featureId === "recon") return startReconFeature();
+    if (featureId === "tracking") return featureApiToggle("face_tracking", true);
+    if (featureId === "recon") return featureApiToggle("recon", true);
     throw new Error(`unknown feature ${featureId}`);
   }
 
   async function stopFeature(featureId) {
     if (featureId === "zero") return startZeroFeature();
-    if (featureId === "tracking") return stopTrackingFeature(currentTrackingMode());
-    if (featureId === "recon") return stopReconFeature();
+    if (featureId === "tracking") return featureApiToggle("face_tracking", false);
+    if (featureId === "recon") return featureApiToggle("recon", false);
     throw new Error(`unknown feature ${featureId}`);
   }
 
@@ -1094,345 +1047,47 @@
     }
   }
 
-  async function startTrackingFeature(mode) {
-    await ensurePreviewForTracking();
-    await runServicesSequence(TRACKING_CORE_SERVICES, "start");
-    await httpPost("/api/vision/tracking/mode", {
-      mode,
-      enabled: true,
-    });
-    appendLog(
-      `[feature tracking] mode=${mode} start ok`,
-      "ok",
+  async function featureApiToggle(featureName, enabled) {
+    const payload = { enabled };
+    const res = await httpPost(`/api/logic/feature/${encodeURIComponent(featureName)}`, payload);
+    const modeNote = featureName === "face_tracking" ? selectedTrackingMode() : "";
+    const note = enabled
+      ? featureName === "face_tracking"
+        ? t("motion.feature_note_mode", { mode: modeNote })
+        : ""
+      : t("motion.feature_status_stopped");
+    setFeatureStatus(
+      featureName === "recon" ? "recon" : "tracking",
+      res.ok ? "running" : "error",
+      note,
     );
-  }
-
-  async function stopTrackingFeature(mode, context = "") {
-    const normalized = mode || "face";
-    await httpPost("/api/vision/tracking/mode", {
-      mode: "none",
-      enabled: false,
-    });
-    await runServicesSequence(TRACKING_CORE_SERVICES, "stop");
-    await flushMotionQueue();
-    await restorePreviewAfterTracking();
     appendLog(
-      `[feature tracking] mode=${normalized} stop ok${context ? ` (${context})` : ""}`,
-      "ok",
+      `[feature ${featureName}] ${enabled ? "start" : "stop"} :: ${JSON.stringify(res)}`,
+      res.ok ? "ok" : "err",
     );
+    return res;
   }
 
-  async function startReconFeature() {
-    await runServicesSequence(RECON_SERVICES, "start");
-    const strategySel = qs("#reconStrategy");
-    const strategy =
-      strategySel && strategySel.value
-        ? String(strategySel.value).toUpperCase()
-        : "STOP";
-    await httpPost("/api/navigator/start", { strategy });
-    appendLog(
-      `[feature recon] start strategy=${strategy}`,
-      "ok",
-    );
-  }
-
-  async function stopReconFeature(options = {}) {
-    const {
-      preserveMotionBridge = true,
-      reason = "",
-    } = options;
-    await httpPost("/api/navigator/stop", {});
-    const stopUnits = preserveMotionBridge
-      ? RECON_SERVICES.filter(
-          (unit) => unit !== "rider-motion-bridge.service",
-        )
-      : RECON_SERVICES;
-    if (stopUnits.length) {
-      await runServicesSequence(stopUnits, "stop");
-    }
-    appendLog(
-      `[feature recon] stop${reason ? ` (${reason})` : ""}`,
-      "ok",
-    );
-  }
-
-  async function runServicesSequence(units, action) {
-    const ordered =
-      action === "stop" ? [...units].reverse() : [...units];
-    for (const unit of ordered) {
-      const svc = svcCache.get(unit);
-      if (action === "start" && svc && svc.active === "active") {
-        appendLog(
-          `[svc] ${unit} already active`,
-          "warn",
-        );
-        continue;
-      }
-      if (action === "stop" && svc && svc.active === "inactive") {
-        appendLog(
-          `[svc] ${unit} already inactive`,
-          "warn",
-        );
-        continue;
-      }
-      await svcAction(unit, action);
-    }
-  }
-
-  function isServiceActive(unit) {
-    const svc = svcCache.get(unit);
-    return svc && svc.active === "active";
-  }
-
-  function getActivePreviewService() {
-    const previewUnits = [
-      "rider-cam-preview.service",
-      "rider-edge-preview.service",
-      "rider-ssd-preview.service",
-    ];
-    for (const u of previewUnits) {
-      if (isServiceActive(u)) return u;
-    }
-    return null;
-  }
-
-  async function ensurePreviewForTracking() {
-    const camActive = isServiceActive("rider-cam-preview.service");
-    if (!camActive) {
-      const currentPreview = getActivePreviewService();
-      if (!previewBeforeTracking && !previewAutoStarted) {
-        if (
-          currentPreview &&
-          currentPreview !== "rider-cam-preview.service"
-        ) {
-          previewBeforeTracking = currentPreview;
-          previewAutoStarted = false;
-        } else {
-          previewAutoStarted = true;
-          previewBeforeTracking = null;
-        }
-      }
-      await svcAction("rider-cam-preview.service", "start");
-    }
-  }
-
-  async function flushMotionQueue(reason = "tracking-stop") {
-    try {
-      await apiControl({ cmd: "stop", reason, clear: true });
-      await fetchMotionQueue();
-      appendLog(
-        `[feature tracking] motion queue flushed (${reason})`,
-        "ok",
-      );
-    } catch (e) {
-      appendLog(
-        `[feature tracking] flush queue failed :: ${e.message || e}`,
-        "warn",
-      );
-    }
-  }
-
-  async function restorePreviewAfterTracking() {
-    if (
-      previewBeforeTracking &&
-      previewBeforeTracking !== "rider-cam-preview.service"
-    ) {
-      await svcAction(previewBeforeTracking, "start");
-    } else if (previewAutoStarted) {
-      await svcAction("rider-cam-preview.service", "stop");
-    }
-    previewBeforeTracking = null;
-    previewAutoStarted = false;
-  }
-
-  // --- systemd actions: próba wielu endpointów ---
-  async function svcAction(unit, action) {
-    const body = { unit, action };
-    const preferSvcOnly = action === "enable" || action === "disable";
-    const endpoints = [
-      ...(preferSvcOnly
-        ? []
-        : [
-            { url: "/api/systemd/action", body },
-            { url: "/api/services/systemd/action", body },
-            { url: "/api/services/action", body },
-          ]),
-      {
-        url: `/svc/${encodeURIComponent(unit)}`,
-        body: { action },
-      },
-    ];
-    let lastError = null;
-
-    for (const endpoint of endpoints) {
-      const url = endpoint.url;
-      try {
-        const res = await httpPost(url, endpoint.body);
-        appendLog(
-          `[svc] ${unit} ${action} @${url} :: ${JSON.stringify(res)}`,
-          "ok",
-        );
-        try {
-          await fetchServices();
-        } catch {
-          /* ignore refresh failure */
-        }
-        return res;
-      } catch (e) {
-        lastError = e;
-        appendLog(
-          `[svc] ${unit} ${action} @${url} :: ${e.message || e}`,
-          "warn",
-        );
-      }
-    }
-
-    if (lastError) {
-      appendLog(
-        `[svc] ${unit} ${action} :: all endpoints failed :: ${lastError.message || lastError}`,
-        "err",
-      );
-    }
-  }
-
-  // --- systemd list: próba wielu endpointów / różnych formatów ---
   async function fetchServices() {
     try {
-      const SERVICE_DESCRIPTIONS = {
-        "rider-api.service": {
-          pl: "Serwer API sterowania i monitoringu (REST / SSE)",
-          en: "Control & monitoring API server (REST/SSE)",
-        },
-        "rider-broker.service": {
-          pl: "Mostek komunikacyjny ZMQ między modułami",
-          en: "ZMQ broker bridging modules",
-        },
-        "rider-cam-preview.service": {
-          pl: "Podgląd kamery zapisujący surowe klatki",
-          en: "Raw camera preview recorder",
-        },
-        "rider-edge-preview.service": {
-          pl: "Podgląd kamery z filtrem krawędziowym (Canny)",
-          en: "Edge-highlight camera preview (Canny)",
-        },
-        "rider-google-bridge.service": {
-          pl: "Integracja Google Home (pobieranie i wysyłanie danych)",
-          en: "Google Home integration and data feed",
-        },
-        "rider-mapper.service": {
-          pl: "Moduł mapowania SLAM (siatka zajętości)",
-          en: "SLAM mapper producing occupancy grid",
-        },
-        "rider-motion-bridge.service": {
-          pl: "Mostek ruchu/XGO – telemetria i sterowanie",
-          en: "Motion/XGO bridge for telemetry and control",
-        },
-        "rider-obstacle.service": {
-          pl: "Detektor przeszkód bazujący na ramkach krawędzi",
-          en: "Obstacle detector using edge ROIs",
-        },
-        "rider-odometry.service": {
-          pl: "Odometria robota (śledzenie pozycji)",
-          en: "Robot odometry tracking",
-        },
-        "rider-navigator.service": {
-          pl: "Autonomiczny nawigator (Rekonesans)",
-          en: "Autonomous navigator (Recon mode)",
-        },
-        "rider-ssd-preview.service": {
-          pl: "Podgląd SSD z naniesionymi ramkami detektora",
-          en: "SSD detector preview with bounding boxes",
-        },
-        "rider-tracker.service": {
-          pl: "Wizualny tracker (MediaPipe – twarz/dłoń)",
-          en: "Vision tracker using MediaPipe (face/hand)",
-        },
-        "rider-tracking-controller.service": {
-          pl: "Kontroler rotacji w trybie Follow Me",
-          en: "Tracking rotation controller for Follow Me",
-        },
-        "rider-voice-web.service": {
-          pl: "Webowe API głosu (Piper TTS + Vosk ASR)",
-          en: "Voice web API (Piper TTS + Vosk ASR)",
-        },
-        "rider-voice.service": {
-          pl: "Asystent głosowy CLI używający lokalnego web ASR/TTS",
-          en: "CLI voice assistant using local web ASR/TTS",
-        },
-        "rider-web-bridge.service": {
-          pl: "Mostek HTTP→ZMQ dla komend ruchu",
-          en: "HTTP→ZMQ bridge for motion commands",
-        },
-        "rider-vision-offload.service": {
-          pl: "Dispatcher wizji publikujący strumień do PC",
-          en: "Vision offload dispatcher streaming frames to the PC",
-        },
-      };
-
-      const endpoints = [
-        "/api/systemd/services?scope=motion",
-        "/api/services/systemd?scope=motion",
-        "/api/services?scope=motion",
-        "/api/systemd/services",
-        "/api/services/systemd",
-        "/api/services",
-        "/svc",
-      ];
-
-      let data = null;
-      let usedUrl = null;
-
-      for (const url of endpoints) {
-        try {
-          const res = await fetch(url, { cache: "no-store" });
-          if (!res.ok) continue;
-          const j = await res.json();
-          if (
-            j &&
-            (Array.isArray(j.services) ||
-             Array.isArray(j.units) ||
-             Array.isArray(j))
-          ) {
-            data = j;
-            usedUrl = url;
-            break;
-          }
-        } catch {
-          /* ignore single endpoint failure */
-        }
-      }
-
-      if (!data) {
-        throw new Error("no services data from any endpoint");
-      }
-
-      let services;
-      if (Array.isArray(data.services)) {
-        services = data.services;
-      } else if (Array.isArray(data.units)) {
-        services = data.units;
-      } else if (Array.isArray(data)) {
-        services = data;
-      } else {
-        throw new Error("unsupported services payload format");
-      }
-
-    const tbody = qs("#svcBody");
-    const table = qs("#svcTable");
-    const info = qs("#svcInfo");
+      const data = await fetchJson("/svc");
+      const services = Array.isArray(data?.services) ? data.services : [];
+      const tbody = qs("#svcBody");
+      const table = qs("#svcTable");
+      const info = qs("#svcInfo");
+      const ts = qs("#svcTs");
       if (!tbody || !table || !info) return;
 
+      svcCache.clear();
       tbody.innerHTML = "";
+
       const normalizeSvcValue = (value) => String(value ?? "").trim().toLowerCase();
 
       function describeStatus(activeValue, subValue) {
         const activeNorm = normalizeSvcValue(activeValue);
         const subNorm = normalizeSvcValue(subValue);
         if (!activeNorm && !subNorm) {
-          return {
-            cls: "svc-state-unknown",
-            text: t("services.status_unknown"),
-          };
+          return { cls: "svc-state-unknown", text: t("services.status_unknown") };
         }
         if (
           activeNorm.includes("fail") ||
@@ -1478,61 +1133,23 @@
       function describeAutostart(rawValue, loadState) {
         const normalized = normalizeSvcValue(rawValue);
         if (!normalized) {
-          const loadNorm = normalizeSvcValue(loadState);
-          if (loadNorm === "not-found" || loadNorm === "bad-setting") {
-            return {
-              cls: "svc-state-warn",
-              text: t("services.autostart_disabled"),
-            };
-          }
           return { cls: "svc-state-unknown", text: t("services.autostart_unknown") };
         }
         if (normalized.startsWith("enabled")) {
           return { cls: "svc-state-ok", text: t("services.autostart_enabled") };
         }
         if (normalized.startsWith("disabled")) {
-          return {
-            cls: "svc-state-warn",
-            text: t("services.autostart_disabled"),
-          };
+          return { cls: "svc-state-warn", text: t("services.autostart_disabled") };
         }
         if (normalized.startsWith("masked")) {
           return { cls: "svc-state-err", text: t("services.autostart_masked") };
         }
-        if (normalized.startsWith("static")) {
-          return { cls: "svc-state-unknown", text: t("services.autostart_static") };
-        }
-        if (normalized.startsWith("linked")) {
-          return {
-            cls: "svc-state-unknown",
-            text: t("services.autostart_linked"),
-          };
-        }
-        if (normalized.startsWith("generated")) {
-          return {
-            cls: "svc-state-unknown",
-            text: t("services.autostart_generated"),
-          };
-        }
-        if (normalized.startsWith("indirect")) {
-          return {
-            cls: "svc-state-unknown",
-            text: t("services.autostart_indirect"),
-          };
-        }
-        return {
-          cls: "svc-state-unknown",
-          text: rawValue || t("services.autostart_unknown"),
-        };
+        return { cls: "svc-state-unknown", text: rawValue || t("services.autostart_unknown") };
       }
 
       services.forEach((svc) => {
         const unit = svc.unit || svc.name || svc.id || "n/a";
-        const overrideDesc = SERVICE_DESCRIPTIONS[unit];
-        const desc =
-          overrideDesc
-            ? `<div class="svc-desc-wrapper"><div class="svc-desc-pl">${overrideDesc.pl}</div><div class="svc-desc-en">${overrideDesc.en}</div></div>`
-            : (svc.desc || svc.description || "-");
+        const desc = svc.desc || svc.description || "-";
         const activeRaw =
           svc.active ||
           svc.ActiveState ||
@@ -1561,6 +1178,7 @@
           )
             ? ` (${subRaw})`
             : "");
+        const stateAttr = statusMeta.cls.replace("svc-state-", "") || "unknown";
 
         svcCache.set(unit, {
           unit,
@@ -1583,17 +1201,66 @@
             <button class="c-btn c-btn-sm" data-unit="${unit}" data-action="disable" title="${t("services.btn_disable")}">－</button>
           </td>
         `;
+        tr.dataset.state = stateAttr;
         tbody.appendChild(tr);
       });
 
-      table.style.display = "table";
-      info.textContent = `${t("services.loaded_at", {
-        ts: new Date().toLocaleTimeString(),
-      })} (${usedUrl})`;
+      table.hidden = false;
+      const stamp = new Date().toLocaleTimeString();
+      info.textContent = `${t("services.loaded_at", { ts: stamp })}`;
+      if (ts) {
+        ts.textContent = `(${stamp})`;
+      }
+      applySvcFilter();
     } catch (e) {
       appendLog(
-        `/api systemd/services fetch failed :: ${e.message || e}`,
+        `/svc fetch failed :: ${e.message || e}`,
         "err",
+      );
+    }
+  }
+
+  async function svcAction(unit, action) {
+    try {
+      const res = await httpPost(`/svc/${encodeURIComponent(unit)}`, { action });
+      appendLog(
+        `[svc] ${unit} ${action} :: ${JSON.stringify(res)}`,
+        res.ok ? "ok" : "err",
+      );
+      await fetchServices();
+      return res;
+    } catch (e) {
+      appendLog(
+        `[svc] ${unit} ${action} :: ${e.message || e}`,
+        "err",
+      );
+    }
+  }
+
+  function applySvcFilter() {
+    const rows = document.querySelectorAll("#svcBody tr");
+    rows.forEach((tr) => {
+      const state = tr.dataset.state || "unknown";
+      const visible =
+        svcFilterMode === "all" ||
+        state === svcFilterMode ||
+        (svcFilterMode === "warn" && state === "unknown");
+      tr.hidden = !visible;
+    });
+  }
+
+  async function flushMotionQueue(reason = "manual-ui") {
+    try {
+      await apiControl({ cmd: "stop", reason, clear: true });
+      await fetchMotionQueue();
+      appendLog(
+        `[motion queue] flushed (${reason})`,
+        "ok",
+      );
+    } catch (e) {
+      appendLog(
+        `[motion queue] flush failed :: ${e.message || e}`,
+        "warn",
       );
     }
   }
@@ -1601,6 +1268,28 @@
   qs("#svcRefresh")?.addEventListener("click", () => {
     fetchServices();
   });
+  const svcAutoRefreshToggle = qs("#svcAutoRefresh");
+  if (svcAutoRefreshToggle) {
+    svcAutoRefreshToggle.addEventListener("change", () => {
+      const enabled = !!svcAutoRefreshToggle.checked;
+      if (svcRefreshTimer) {
+        clearInterval(svcRefreshTimer);
+        svcRefreshTimer = null;
+      }
+      if (enabled) {
+        svcRefreshTimer = setInterval(() => {
+          fetchServices().catch(() => {});
+        }, 5000);
+      }
+    });
+  }
+  const svcFilterSel = qs("#svcFilter");
+  if (svcFilterSel) {
+    svcFilterSel.addEventListener("change", () => {
+      svcFilterMode = svcFilterSel.value || "all";
+      applySvcFilter();
+    });
+  }
   qs("#svcTable")?.addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-unit][data-action]");
     if (!btn) return;

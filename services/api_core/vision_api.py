@@ -226,54 +226,23 @@ def set_tracking_mode() -> Response:
 
 @bp.route("/vision/follow/face", methods=["POST", "OPTIONS"])
 def legacy_follow_face() -> Response:
-    """Legacy endpoint: Follow Face → tracking mode 'face'."""
-    return _legacy_follow_mode("face")
-
-
-@bp.route("/vision/follow/hand", methods=["POST", "OPTIONS"])
-def legacy_follow_hand() -> Response:
-    """Legacy endpoint: Follow Hand → tracking mode 'hand'."""
-    return _legacy_follow_mode("hand")
-
-
-def _legacy_follow_mode(mode: str) -> Response:
-    """
-    Wspólna obsługa starych endpointów follow face/hand.
-
-    Dzięki podwójnej rejestracji blueprintu w api_server:
-    - /vision/follow/<mode>
-    - /api/vision/follow/<mode>
-    oba aliasy będą działać.
-    """
+    """Legacy endpoint usunięty – użyj /api/logic/feature/<name>."""
     if request.method == "OPTIONS":
         resp = make_response("", 204)
         resp.headers["Access-Control-Allow-Origin"] = "*"
         resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
+    return _json_nocache({"ok": False, "error": "deprecated", "use": "/api/logic/feature"}, 410)
 
-    try:
-        if mode not in {"face", "hand"}:
-            return _json_nocache(
-                {"ok": False, "error": f"Invalid legacy mode: {mode}"},
-                400,
-            )
 
-        pub = _tracking_pub()
-        pub.publish(bus.TOPIC_TRACKING_MODE_SET, {"mode": mode}, add_ts=True)
-
-        return _json_nocache(
-            {
-                "ok": True,
-                "mode": mode,
-                "enabled": True,
-                "source": "legacy",
-            },
-            200,
-        )
-    except Exception as e:
-        logger.exception("Failed to set legacy follow mode %s: %s", mode, e)
-        return _json_nocache(
-            {"ok": False, "error": "Failed to set legacy follow mode"},
-            500,
-        )
+@bp.route("/vision/follow/hand", methods=["POST", "OPTIONS"])
+def legacy_follow_hand() -> Response:
+    """Legacy endpoint usunięty – użyj /api/logic/feature/<name>."""
+    if request.method == "OPTIONS":
+        resp = make_response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+    return _json_nocache({"ok": False, "error": "deprecated", "use": "/api/logic/feature"}, 410)
