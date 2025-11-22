@@ -305,6 +305,6 @@ nano config/local/face_dev.toml
 **Related docs:**
 - [docs/apps/draw.md](../apps/draw.md) — prymitywy renderowania
 - [docs/apps/ui.md](../apps/ui.md) — kontroler buźki
-- [docs/modules/face.md](../modules/face.md) — API buźki
+- [docs/modules/face.md](../apps/face.md) — API buźki
 
 **Ostatnia aktualizacja:** 2025-01

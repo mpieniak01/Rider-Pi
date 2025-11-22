@@ -237,7 +237,7 @@ echo 128 | sudo tee /sys/class/backlight/*/brightness
 
 **Related docs:**
 - [docs/apps/hw.md](../apps/hw.md) — sink LCD (low-level)
-- [docs/modules/face-lcd.md](../modules/face-lcd.md) — rendering na LCD
+- [docs/modules/face-lcd.md](../apps/face-lcd.md) — rendering na LCD
 
 **Ostatnia aktualizacja:** 2025-01  
 **Status:** ⚠️ Większość szczegółów wymaga weryfikacji kodu źródłowego

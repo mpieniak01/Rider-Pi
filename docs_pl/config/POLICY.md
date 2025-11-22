@@ -189,7 +189,7 @@ scripts/resource_diag.py status mic
 scripts/resource_diag.py release camera --pid 4242
 ```
 
-Więcej informacji oraz przykłady: [docs/resource_diagnostics.md](resource_diagnostics.md)
+Więcej informacji oraz przykłady: [docs/../resource_diagnostics.md](../resource_diagnostics.md)
 
 **Bezpieczeństwo:**
 - NIE zabija procesów systemowych
@@ -462,4 +462,4 @@ git diff --cached | grep -i "sk-"  # sprawdź sekrety
 
 **Ostatnia aktualizacja:** 2025-01 (PR-3 complete)  
 **Wersja:** 1.0  
-**Related docs:** [voice.md](modules/voice.md), [wm8960.md](audio/wm8960.md), [AGENT.md](AGENT.md)
+**Related docs:** [voice.md](apps/voice.md), [wm8960.md](../audio/wm8960.md), [../AGENT.md](../AGENT.md)
