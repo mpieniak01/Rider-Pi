@@ -14,7 +14,7 @@ The most important documents are located in the project root directory:
 - [**ARCHITECTURE_DIAGRAM.md**](../ARCHITECTURE_DIAGRAM.md) — architecture diagrams
 - [**AGENT.md**](../AGENT.md) — code assistant contract, developer guidelines
 - [**WORKING-AGREEMENTS.md**](../WORKING-AGREEMENTS.md) — team working agreements
-- [**CONFIG_POLICY.md**](CONFIG_POLICY.md) — **configuration and secrets policy** (single source of truth)
+- [**config/POLICY.md**](config/POLICY.md) — **configuration and secrets policy** (single source of truth)
 - [**OFFLOAD_PROVIDER_PROTOCOL.md**](OFFLOAD_PROVIDER_PROTOCOL.md) — Pi ↔ PC provider/offload contract, endpoints, topics, roadmap
 
 ---
@@ -37,19 +37,31 @@ Detailed documentation for all application modules:
 - [**apps/hw.md**](apps/hw.md) — LCD sink (framebuffer)
 - [**apps/ui.md**](apps/ui.md) — buttons, UI configuration, face controller
 
-### Module Documentation (legacy — `docs/modules/`)
+- [**apps/voice.md**](apps/voice.md) — complete voice stack (ASR, TTS, VAD, KWS, chat), file and streaming modes
+- [**apps/face.md**](apps/face.md) — static face render API (HTTP endpoints, configuration)
+- [**apps/face-lcd.md**](apps/face-lcd.md) — face rendering on ILI9xx LCD panel
+- [**apps/simulator.md**](apps/simulator.md) — Rider-Pi 2D simulator, navigation algorithm testing
+- [**apps/mapper.md**](apps/mapper.md) — SLAM mapping (Stage 3)
+- [**apps/navigator.md**](apps/navigator.md) — autonomous navigation (Stages 1 & 4)
+- [**apps/odometry.md**](apps/odometry.md) — position tracking (Stage 2)
 
-- [**modules/voice.md**](modules/voice.md) — complete voice stack (ASR, TTS, VAD, KWS, chat), file and streaming modes
-- [**modules/face.md**](modules/face.md) — static face render API (HTTP endpoints, configuration)
-- [**modules/face-lcd.md**](modules/face-lcd.md) — face rendering on ILI9xx LCD panel
-- [**modules/face-phase5-lcd.md**](modules/face-phase5-lcd.md) — phase 5 implementation documentation (LCD RAW sink)
-- [**modules/sim.md**](modules/sim.md) — Rider-Pi 2D simulator, navigation algorithm testing
+---
+
+---
+
+## API Specifications (`api-specs/*`)
+
+REST API endpoint documentation:
+
+- [**api-specs/README.md**](api-specs/README.md) — API overview and conventions
+- [**api-specs/control.md**](api-specs/control.md) — control API endpoints
+- [**api-specs/navigator.md**](api-specs/navigator.md) — navigator API endpoints
 
 ---
 
 ## Operational Scripts Documentation
 
-> **Note:** Scripts were moved from `ops/` and `tools/` to `scripts/` (see [../scripts/README.md](../scripts/README.md)).  
+> **Note:** Scripts were moved from `ops/` and `tools/` to `scripts/` (see [scripts/README.md](scripts/README.md)).  
 > Documentation in `docs/ops/` describes functionality (remains current), but paths refer to the new location.
 
 Operational scripts for system and service management:
@@ -113,29 +125,36 @@ Configuration parameters for all modules:
 
 Sound card configuration and usage:
 
-- [**wm8960.md**](audio/wm8960.md) — WM8960 card configuration for duplex audio streaming (ALSA, troubleshooting)
-
----
-
-## Implementation Reports
-
-Summaries of completed work stages:
-
-- [**completion-report.md**](_pr_summaries/completion-report.md) — project final report
-- [**implementation-summary.md**](_pr_summaries/implementation-summary.md) — implementation summary
-- [**simulator-summary.md**](_pr_summaries/simulator-summary.md) — 2D simulator implementation summary
-- [**sim1-implementation-summary.md**](_pr_summaries/sim1-implementation-summary.md) — SIM-1 implementation report (environment core and map rendering)
-- [**sim3-implementation.md**](_pr_summaries/sim3-implementation.md) — SIM-3 implementation report
+- [**audio/wm8960.md**](audio/wm8960.md) — WM8960 card configuration for duplex audio streaming (ALSA, troubleshooting)
 
 ---
 
 ## Release Notes
 
-Project release history:
+Project release history in the [`release-notes/`](release-notes/) directory:
 
 - [**v0.6.md**](release-notes/v0.6.md) — version 0.6
 - [**v0.5.3.md**](release-notes/v0.5.3.md) — version 0.5.3
 - [**v0.5.2.md**](release-notes/v0.5.2.md) — version 0.5.2
+
+---
+
+## Hardware Drivers (`drivers/`)
+
+Hardware abstraction layer documentation:
+
+- [**drivers/README.md**](drivers/README.md) — driver architecture, XGO and LCD drivers, factory patterns
+
+---
+
+## Historical Archive (`archive/`)
+
+Historical reports and deprecated documentation in the [`archive/`](archive/) directory:
+
+- PR summaries in [`archive/_pr_summaries/`](archive/_pr_summaries/)
+- Implementation reports (IMPLEMENTATION_*.md)
+- Legacy module documentation
+- Historical planning documents in [`archive/_todo/`](archive/_todo/)
 
 ---
 
@@ -145,14 +164,14 @@ When adding new documents, follow these guidelines:
 
 ### 1. Location Selection
 
-- **Root directory** — only documents with general scope (vision, architecture, working agreements)
+- **Root directory** (`docs/`) — only documents with general scope (vision, architecture, working agreements)
 - **`docs/apps/`** — application module documentation (`apps/*`)
+- **`docs/api-specs/`** — REST API endpoint documentation
 - **`docs/ops/`** — operational scripts documentation (scripts in `scripts/`)
 - **`docs/config/`** — configuration parameters documentation (`config/*`)
-- **`docs/api/`** — REST API endpoint documentation
-- **`docs/modules/`** — legacy module documentation (voice, face, sim)
-- **`docs/_pr_summaries/`** — PR summaries and implementation reports
-- **`docs/_todo/`** — planned work, design drafts
+- **`docs/archive/`** — historical reports, deprecated documentation
+- **`docs/archive/_pr_summaries/`** — PR summaries and implementation reports
+- **`docs/archive/_todo/`** — planned work, design drafts (historical)
 
 ### 2. File Naming
 

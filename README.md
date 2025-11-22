@@ -164,17 +164,21 @@ Rider-Pi/
 
 ## Documentation
 
+- [Documentation Index](docs/README.md) - Complete documentation index
 - [Architecture](ARCHITECTURE.md) - System architecture and design
+- [Project Vision](PROJECT.md) - Project goals and roadmap
 - [Configuration](docs/CONFIG.md) - Configuration management with TOML templates
-- [API Documentation](docs/api/README.md) - REST API endpoints
+- [API Documentation](docs/api-specs/README.md) - REST API endpoints
 - [App Logic Core](docs/apps/README.md) - Feature orchestration and FeatureManager
-- [Module Documentation](docs/modules/) - Detailed module docs
-  - [Navigator](docs/modules/navigator.md) - Autonomous navigation
-  - [Odometry](docs/modules/odometry.md) - Position tracking
-  - [Mapper](docs/modules/mapper.md) - SLAM mapping
-  - [Voice](docs/modules/voice.md) - Voice system
+- [Application Modules](docs/apps/) - Detailed module documentation
+  - [Navigator](docs/apps/navigator.md) - Autonomous navigation
+  - [Odometry](docs/apps/odometry.md) - Position tracking
+  - [Mapper](docs/apps/mapper.md) - SLAM mapping
+  - [Voice](docs/apps/voice.md) - Voice system
+  - [Face](docs/apps/face.md) - Animated face display
 - [Web UI Documentation](docs/ui/README.md) - Web interface guides
 - [Systemd Services](docs/SYSTEMD_SERVICES_MAPPING.md) - Service mappings
+- [Scripts](docs/scripts/README.md) - Operational and development scripts
 
 ## Development
 
