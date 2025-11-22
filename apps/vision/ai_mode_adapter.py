@@ -7,6 +7,8 @@ based on the current AI processing mode (local vs pc_offload).
 from __future__ import annotations
 
 import logging
+import os
+import time
 
 try:
     from common.ai_mode import get_mode, is_local, is_offload
@@ -31,6 +33,37 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 VISION_DOMAIN = "vision"
+PC_HEALTH_STALE_SEC = float(os.getenv("VISION_PC_HEALTH_STALE_SEC", "8.0"))
+
+
+def _pc_ready() -> bool:
+    if provider_state is None:
+        return False
+    try:
+        health = provider_state.get_pc_health()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Provider state health read failed: %s", exc)
+        return False
+    if not isinstance(health, dict) or not health:
+        return False
+    if not bool(health.get("reachable")):
+        return False
+    status = str(health.get("status") or "").lower()
+    if status in {"offline", "error"}:
+        return False
+    updated = health.get("updated_ts") or 0.0
+    try:
+        updated_ts = float(updated)
+    except (TypeError, ValueError):
+        updated_ts = 0.0
+    if PC_HEALTH_STALE_SEC > 0 and updated_ts > 0.0:
+        if time.time() - updated_ts > PC_HEALTH_STALE_SEC:
+            logger.debug("PC health stale: last update %.1fs ago", time.time() - updated_ts)
+            return False
+    return True
+
+
+PC_HEALTH_STALE_SEC = float(os.getenv("VISION_PC_HEALTH_STALE_SEC", "8.0"))
 
 
 def _provider_mode() -> str:
@@ -61,8 +94,16 @@ def should_run_local_detectors() -> bool:
         True if running in local mode, False if in pc_offload mode
     """
     mode = _provider_mode()
-    logger.debug(f"Vision provider mode: {mode}, local detectors: {mode == 'local'}")
-    return mode != "pc"
+    if mode != "pc":
+        logger.debug("Vision provider mode=%s -> local detectors enabled", mode)
+        return True
+
+    if not _pc_ready():
+        logger.info("Vision provider PC mode requested but health is offline/stale -> running local detectors")
+        return True
+
+    logger.debug("Vision provider PC mode active -> local detectors disabled")
+    return False
 
 
 def should_publish_frames_to_pc() -> bool:

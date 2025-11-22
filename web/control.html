@@ -128,52 +128,54 @@
     <div class="c-card feature-card">
       <h2 class="c-card__title" data-i18n="motion.features_title">Funkcje</h2>
       <div class="feature-list" id="featureList">
-        <div class="feature-row" data-feature="face">
+        <div class="feature-row" data-feature="zero">
           <div class="feature-info">
             <div class="feature-head">
               <div
                 class="feature-title"
-                data-i18n="motion.follow_face"
-              >Śledź Twarz (Follow Face)</div>
+                data-i18n="motion.zero_mode"
+              >Stan 0 – Sterowanie ręczne</div>
             </div>
             <div
               class="feature-desc"
-              data-i18n="motion.feature_face_desc"
-            >Uruchamia tracker i kontroler ruchu oraz śledzi twarz.</div>
+              data-i18n="motion.feature_zero_desc"
+            >Pozostawia tylko usługi bazowe (komunikacja + sterowanie ręczne), wyłączając rekonesans i śledzenie.</div>
           </div>
           <div class="feature-status">
-            <span class="c-pill feature-pill" data-feature-pill="face">n/a</span>
+            <span class="c-pill feature-pill" data-feature-pill="zero">n/a</span>
           </div>
           <div class="feature-actions">
             <button
               class="c-btn c-btn-sm"
               data-feature-action="start"
-              data-i18n="motion.feature_btn_start"
-            >Start</button>
-            <button
-              class="c-btn c-btn-sm"
-              data-feature-action="stop"
-              data-i18n="motion.feature_btn_stop"
-            >Stop</button>
-            <div class="feature-note" data-feature-note="face"></div>
+              data-i18n="motion.feature_zero_btn_reset"
+            >Reset</button>
+            <div class="feature-note" data-feature-note="zero"></div>
           </div>
         </div>
 
-        <div class="feature-row" data-feature="hand">
+        <div class="feature-row" data-feature="tracking">
           <div class="feature-info">
             <div class="feature-head">
               <div
                 class="feature-title"
-                data-i18n="motion.follow_hand"
-              >Śledź Dłoń (Follow Hand)</div>
+                data-i18n="motion.tracking_mode_title"
+              >Śledzenie (twarz / dłoń)</div>
             </div>
             <div
               class="feature-desc"
-              data-i18n="motion.feature_hand_desc"
-            >Te same usługi tracker+controller, ale z trybem dłoni.</div>
+              data-i18n="motion.feature_tracking_desc"
+            >Uruchamia tracker oraz kontroler ruchu – wybierz tryb śledzenia poniżej.</div>
+            <div class="feature-select">
+              <span data-i18n="motion.tracking_mode_label">Tryb śledzenia</span>:
+              <select id="trackingMode">
+                <option value="face" data-i18n="motion.tracking_mode_face">Twarz</option>
+                <option value="hand" data-i18n="motion.tracking_mode_hand">Dłoń</option>
+              </select>
+            </div>
           </div>
           <div class="feature-status">
-            <span class="c-pill feature-pill" data-feature-pill="hand">n/a</span>
+            <span class="c-pill feature-pill" data-feature-pill="tracking">n/a</span>
           </div>
           <div class="feature-actions">
             <button
@@ -186,7 +188,7 @@
               data-feature-action="stop"
               data-i18n="motion.feature_btn_stop"
             >Stop</button>
-            <div class="feature-note" data-feature-note="hand"></div>
+            <div class="feature-note" data-feature-note="tracking"></div>
           </div>
         </div>
 
@@ -434,32 +436,54 @@
         syncHeightValue(heightState.value);
       }
 
-      const tracking = j.tracking || {};
-      const trackingMode = (tracking.mode || "none").toLowerCase();
-      const trackingEnabled = !!tracking.enabled;
-      const faceRunning = trackingEnabled && trackingMode === "face";
-      const handRunning = trackingEnabled && trackingMode === "hand";
+      lastControlState = j || {};
+      const trackingState = getTrackingState();
+      const trackingMode = normalizeTrackingMode(trackingState.mode);
+      const trackingEnabled =
+        !!trackingState.enabled && trackingMode !== "none";
+      syncTrackingModeSelect(trackingMode);
+      const trackingNote = trackingEnabled
+        ? t("motion.feature_note_mode", { mode: trackingMode })
+        : "";
       setFeatureStatus(
-        "face",
-        faceRunning ? "running" : "stopped",
-        faceRunning ? t("motion.feature_note_mode", { mode: "face" }) : "",
-      );
-      setFeatureStatus(
-        "hand",
-        handRunning ? "running" : "stopped",
-        handRunning ? t("motion.feature_note_mode", { mode: "hand" }) : "",
+        "tracking",
+        trackingEnabled ? "running" : "stopped",
+        trackingNote,
       );
 
-      const navigator = j.navigator || {};
-      const reconRunning = !!navigator.active;
-      const reconNote = navigator.state
-        ? t("motion.feature_note_state", { state: navigator.state })
+      const navigatorState = getNavigatorState();
+      const reconRunning = !!navigatorState.active;
+      const reconNote = navigatorState.state
+        ? t("motion.feature_note_state", { state: navigatorState.state })
         : "";
       setFeatureStatus(
         "recon",
         reconRunning ? "running" : "stopped",
         reconRunning ? reconNote : "",
       );
+
+      if (!trackingEnabled && !reconRunning) {
+        setFeatureStatus(
+          "zero",
+          "running",
+          t("motion.feature_zero_note_ready"),
+        );
+      } else {
+        const active = [];
+        if (trackingEnabled) {
+          active.push(t("motion.zero_tracking_label"));
+        }
+        if (reconRunning) {
+          active.push(t("motion.zero_recon_label"));
+        }
+        setFeatureStatus(
+          "zero",
+          "warn",
+          t("motion.feature_zero_note_blocked", {
+            list: active.join(" · ") || "-",
+          }),
+        );
+      }
     } catch (e) {
       appendLog(
         `/api/control/state :: ${e.message || e}`,
@@ -832,6 +856,8 @@
   const featureBusy = new Set();
   let previewBeforeTracking = null;
   let previewAutoStarted = false;
+  let lastControlState = null;
+  let trackingModeSelect = null;
 
   const FEATURE_STATUS = {
     running: { cls: "ok", key: "motion.feature_status_running" },
@@ -842,7 +868,58 @@
     working: { cls: "warn", key: "motion.feature_status_working" },
   };
 
+  function normalizeTrackingMode(mode) {
+    const val = String(mode || "").toLowerCase();
+    if (val === "hand") return "hand";
+    if (val === "face") return "face";
+    return "none";
+  }
+
+  function getTrackingState() {
+    return (lastControlState && lastControlState.tracking) || {};
+  }
+
+  function getNavigatorState() {
+    return (lastControlState && lastControlState.navigator) || {};
+  }
+
+  function isTrackingActive() {
+    const st = getTrackingState();
+    return !!(st.enabled && normalizeTrackingMode(st.mode) !== "none");
+  }
+
+  function isReconActive() {
+    const nav = getNavigatorState();
+    return !!nav.active;
+  }
+
+  function syncTrackingModeSelect(mode) {
+    if (!trackingModeSelect) return;
+    const normalized = mode === "hand" ? "hand" : mode === "face" ? "face" : "face";
+    if (trackingModeSelect.value !== normalized) {
+      trackingModeSelect.value = normalized;
+    }
+  }
+
+  function selectedTrackingMode() {
+    if (!trackingModeSelect) return "face";
+    return trackingModeSelect.value === "hand" ? "hand" : "face";
+  }
+
+  function currentTrackingMode() {
+    const mode = normalizeTrackingMode(getTrackingState().mode);
+    if (mode === "face" || mode === "hand") {
+      return mode;
+    }
+    return selectedTrackingMode();
+  }
+
+  function isAnyServiceActive(units) {
+    return units.some((unit) => isServiceActive(unit));
+  }
+
   const featureList = qs("#featureList");
+  trackingModeSelect = qs("#trackingMode");
   if (featureList) {
     featureList.addEventListener("click", (ev) => {
       const btn = ev.target.closest("button[data-feature-action]");
@@ -883,6 +960,51 @@
     }
   }
 
+  async function ensureExclusiveStack(featureId) {
+    if (featureId === "tracking") {
+      await stopReconIfActive("tracking");
+    } else if (featureId === "recon") {
+      await stopTrackingIfActive("recon");
+    }
+  }
+
+  async function startZeroFeature() {
+    const stoppedRecon = await stopReconIfActive("zero");
+    const stoppedTracking = await stopTrackingIfActive("zero");
+    if (!stoppedRecon && !stoppedTracking) {
+      appendLog("[feature zero] already in minimal state", "ok");
+    } else {
+      appendLog("[feature zero] minimal stack ready", "ok");
+    }
+  }
+
+  async function stopTrackingIfActive(context = "") {
+    if (!isTrackingActive() && !isAnyServiceActive(TRACKING_CORE_SERVICES)) {
+      if (!lastControlState || svcCache.size === 0) {
+        await stopTrackingFeature(currentTrackingMode(), context);
+        return true;
+      }
+      return false;
+    }
+    await stopTrackingFeature(currentTrackingMode(), context);
+    return true;
+  }
+
+  async function stopReconIfActive(context = "") {
+    const reconUnits = RECON_SERVICES.filter(
+      (unit) => unit !== "rider-motion-bridge.service",
+    );
+    if (!isReconActive() && !isAnyServiceActive(reconUnits)) {
+      if (!lastControlState || svcCache.size === 0) {
+        await stopReconFeature({ reason: context });
+        return true;
+      }
+      return false;
+    }
+    await stopReconFeature({ reason: context });
+    return true;
+  }
+
   async function handleFeatureAction(featureId, action) {
     if (action === "return-home") {
       await runReturnHome();
@@ -896,6 +1018,7 @@
     );
     try {
       if (action === "start") {
+        await ensureExclusiveStack(featureId);
         await startFeature(featureId);
       } else if (action === "stop") {
         await stopFeature(featureId);
@@ -927,15 +1050,15 @@
   }
 
   async function startFeature(featureId) {
-    if (featureId === "face") return startTrackingFeature("face");
-    if (featureId === "hand") return startTrackingFeature("hand");
+    if (featureId === "zero") return startZeroFeature();
+    if (featureId === "tracking") return startTrackingFeature(selectedTrackingMode());
     if (featureId === "recon") return startReconFeature();
     throw new Error(`unknown feature ${featureId}`);
   }
 
   async function stopFeature(featureId) {
-    if (featureId === "face") return stopTrackingFeature("face");
-    if (featureId === "hand") return stopTrackingFeature("hand");
+    if (featureId === "zero") return startZeroFeature();
+    if (featureId === "tracking") return stopTrackingFeature(currentTrackingMode());
     if (featureId === "recon") return stopReconFeature();
     throw new Error(`unknown feature ${featureId}`);
   }
@@ -984,7 +1107,8 @@
     );
   }
 
-  async function stopTrackingFeature(mode) {
+  async function stopTrackingFeature(mode, context = "") {
+    const normalized = mode || "face";
     await httpPost("/api/vision/tracking/mode", {
       mode: "none",
       enabled: false,
@@ -993,7 +1117,7 @@
     await flushMotionQueue();
     await restorePreviewAfterTracking();
     appendLog(
-      `[feature tracking] mode=${mode} stop ok`,
+      `[feature tracking] mode=${normalized} stop ok${context ? ` (${context})` : ""}`,
       "ok",
     );
   }
@@ -1012,10 +1136,24 @@
     );
   }
 
-  async function stopReconFeature() {
+  async function stopReconFeature(options = {}) {
+    const {
+      preserveMotionBridge = true,
+      reason = "",
+    } = options;
     await httpPost("/api/navigator/stop", {});
-    await runServicesSequence(RECON_SERVICES, "stop");
-    appendLog("[feature recon] stop", "ok");
+    const stopUnits = preserveMotionBridge
+      ? RECON_SERVICES.filter(
+          (unit) => unit !== "rider-motion-bridge.service",
+        )
+      : RECON_SERVICES;
+    if (stopUnits.length) {
+      await runServicesSequence(stopUnits, "stop");
+    }
+    appendLog(
+      `[feature recon] stop${reason ? ` (${reason})` : ""}`,
+      "ok",
+    );
   }
 
   async function runServicesSequence(units, action) {
@@ -1103,6 +1241,8 @@
     } else if (previewAutoStarted) {
       await svcAction("rider-cam-preview.service", "stop");
     }
+    previewBeforeTracking = null;
+    previewAutoStarted = false;
   }
 
   // --- systemd actions: próba wielu endpointów ---

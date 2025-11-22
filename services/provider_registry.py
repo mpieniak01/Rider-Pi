@@ -107,15 +107,36 @@ def _load_state() -> None:
     try:
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         if isinstance(data, dict):
+            domains_raw = data.get("domains")
+            if isinstance(domains_raw, dict):
+                sources = domains_raw
+            else:
+                sources = data
             for domain in DOMAINS:
-                if isinstance(data.get(domain), dict):
-                    state = data[domain]
+                state = sources.get(domain) if isinstance(sources, dict) else None
+                if isinstance(state, dict):
                     _domains[domain] = {
                         "mode": state.get("mode", "local"),
                         "status": state.get("status", "local_only"),
                         "changed_ts": float(state.get("changed_ts", _now())),
                         "reason": state.get("reason", "load"),
                     }
+            health = data.get("pc_health")
+            if isinstance(health, dict):
+                _pc_health.clear()
+                _pc_health.update(
+                    {
+                        "reachable": bool(health.get("reachable")),
+                        "status": health.get("status", "unknown"),
+                        "latency_ms": health.get("latency_ms"),
+                        "updated_ts": float(health.get("updated_ts", 0.0)),
+                        "reason": health.get("reason", "load"),
+                    }
+                )
+            base_url = data.get("pc_base_url")
+            if isinstance(base_url, str) and base_url.strip():
+                global _pc_base_url
+                _pc_base_url = base_url.strip()
         LOGGER.info("Provider registry state loaded from %s", STATE_FILE)
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning("Failed to load provider state: %s", exc)
@@ -127,7 +148,12 @@ def _save_state() -> None:
     try:
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = STATE_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(_domains, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = {
+            "domains": deepcopy(_domains),
+            "pc_health": deepcopy(_pc_health),
+            "pc_base_url": _pc_base_url,
+        }
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(STATE_FILE)
     except Exception as exc:  # noqa: BLE001
         LOGGER.error("Failed to persist provider state: %s", exc)
@@ -212,7 +238,9 @@ def update_pc_health(
         if reason:
             _pc_health["reason"] = reason
         _pc_health["updated_ts"] = _now()
-        return deepcopy(_pc_health)
+        snapshot = deepcopy(_pc_health)
+        _save_state()
+        return snapshot
 
 
 def get_health_snapshot() -> dict[str, Any]:
@@ -238,6 +266,7 @@ def set_pc_base_url(base_url: str, *, reason: str = "manual") -> str:
         if target == _pc_base_url:
             return _pc_base_url
         _pc_base_url = target.rstrip("/")
+        _save_state()
     LOGGER.info("PC base URL updated to %s (reason=%s)", _pc_base_url, reason)
     return _pc_base_url
 
