@@ -42,6 +42,9 @@ MAX_FPS = float(os.getenv("TRACKING_MAX_FPS", "15.0"))  # Limit CPU usage
 MIN_DET_CONF = float(os.getenv("TRACKING_MIN_DET_CONF", "0.35"))
 MIN_TRACK_CONF = float(os.getenv("TRACKING_MIN_TRACK_CONF", "0.35"))
 MODEL_COMPLEXITY = int(os.getenv("TRACKING_MODEL_COMPLEXITY", "0"))
+# Fallback: pozwól publikować lokalny offset nawet w trybie PC, gdy nie ma danych z PC.
+PUBLISH_IN_PC = os.getenv("TRACKING_PUBLISH_IN_PC", "1") == "1"
+PC_FALLBACK_SEC = float(os.getenv("TRACKING_PC_FALLBACK_SEC", "1.0"))
 IDLE_OVERLAY = os.getenv("TRACKER_IDLE_TEXT", "Tracker idle")
 PC_OVERLAY = os.getenv("TRACKER_PC_TEXT", "PC offload")
 MODE_OVERLAY = os.getenv("TRACKER_MODE_TEXT", "Follow {mode}")
@@ -246,6 +249,7 @@ def tracking_loop() -> None:
 
     frame_interval = 1.0 / MAX_FPS
     last_pub_ts = 0.0
+    last_real_pub_ts = 0.0  # rzeczywista publikacja (również w fallbacku PC)
     tracker_active = False
 
     # FPS calculation
@@ -256,14 +260,11 @@ def tracking_loop() -> None:
     while True:
         try:
             pc_mode = not should_run_local_detectors()
-            if pc_mode:
-                if tracker_active:
-                    print("[tracker] vision provider switched to PC -> preview-only mode", flush=True)
-                tracker_active = False
-            else:
-                if not tracker_active:
-                    print("[tracker] vision provider local -> resuming tracker", flush=True)
-                tracker_active = True
+            if pc_mode and not tracker_active:
+                print("[tracker] vision provider switched to PC (local fallback enabled)", flush=True)
+            if not pc_mode and tracker_active is False:
+                print("[tracker] vision provider local -> resuming tracker", flush=True)
+            tracker_active = True  # włączony zawsze; w trybie PC będziemy ewentualnie publikować zależnie od fallbacku
 
             t0 = time.time()
             with FOLLOW_MODE_LOCK:
@@ -322,7 +323,7 @@ def tracking_loop() -> None:
                     )
                 else:
                     print("[tracker] DETECTION FACE none", flush=True)
-            elif mode == "HAND" and not pc_mode:
+            elif mode == "HAND":
                 results = hand_detector.process(rgb_frame)
                 if results.multi_hand_landmarks:
                     offset_x = calculate_offset_x(results.multi_hand_landmarks)
@@ -395,21 +396,25 @@ def tracking_loop() -> None:
             save_tracker_frame(annotated_frame)
 
             now = time.time()
-            if not pc_mode and offset_x is not None and (now - last_pub_ts) >= frame_interval:
+            can_publish = (now - last_pub_ts) >= frame_interval
+            pc_fallback = pc_mode and PUBLISH_IN_PC and (PC_FALLBACK_SEC <= 0 or (now - last_real_pub_ts) >= PC_FALLBACK_SEC)
+
+            if offset_x is not None and can_publish and (not pc_mode or pc_fallback):
                 pub(
                     "vision.tracking.offset",
-                    {"offset_x": round(offset_x, 3), "mode": mode.lower(), "ts": now},
+                    {"offset_x": round(offset_x, 3), "mode": mode.lower(), "ts": now, "source": "pc-fallback" if pc_mode else "local"},
                 )
                 last_pub_ts = now
+                last_real_pub_ts = now
+                if pc_mode and pc_fallback:
+                    print("[tracker] PC mode fallback -> published local offset", flush=True)
             else:
                 if offset_x is None:
                     print("[tracker] no offset to publish", flush=True)
-                elif not pc_mode:
-                    print(
-                        f"[tracker] publish skipped (interval) offset_x={offset_x}",
-                        flush=True,
-                    )
-                # In PC mode offsets are provided by Rider-PC, so we stay silent
+                elif not can_publish:
+                    print(f"[tracker] publish skipped (interval) offset_x={offset_x}", flush=True)
+                elif pc_mode and not pc_fallback:
+                    print("[tracker] PC mode: waiting for provider; local publish disabled (set TRACKING_PUBLISH_IN_PC=1)", flush=True)
 
             elapsed = time.time() - t0
             sleep_time = max(0.0, frame_interval - elapsed)
