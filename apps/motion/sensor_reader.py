@@ -56,8 +56,8 @@ def read_imu(adapter) -> tuple[float | None, float | None, float | None]:
                 float(data.get("pitch")) if data.get("pitch") is not None else None,
                 float(data.get("yaw")) if data.get("yaw") is not None else None,
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[sensor_reader] read_imu exception: {exc}", flush=True)
     return None, None, None
 
 
@@ -108,8 +108,6 @@ def main() -> int:
             print(f"[sensor_reader] imu: r={roll} p={pitch} y={yaw} batt={batt}", flush=True)
             last_telem = ts
         time.sleep(POLL_INTERVAL)
-
-    return 0
 
 
 if __name__ == "__main__":

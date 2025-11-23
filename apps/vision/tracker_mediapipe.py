@@ -93,6 +93,7 @@ class FrameStreamSubscriber:
             meta = json.loads(payload.decode("utf-8", "ignore"))
             _ = meta  # meta w razie debug
         except Exception:
+            # Ignore malformed metadata; only frame data is critical
             pass
         try:
             arr = np.frombuffer(data, dtype=np.uint8)
@@ -100,6 +101,7 @@ class FrameStreamSubscriber:
             if frame is not None:
                 self.last_frame = frame
         except Exception:
+            # Ignore decode errors; keep using last_frame
             pass
         return self.last_frame
 

@@ -98,8 +98,9 @@ class FrameDistributor:
                 if img is not None:
                     h, w = img.shape[:2]
                     meta["shape"] = {"width": int(w), "height": int(h)}
-            except Exception:
-                pass
+            except Exception as exc:
+                # Ignore image decode errors, but log for diagnostics
+                print(f"[frame-distributor] image decode error for {path}: {exc}", file=sys.stderr)
         return data, meta
 
     def loop(self) -> None:
