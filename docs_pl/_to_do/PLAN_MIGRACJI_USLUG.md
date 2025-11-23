@@ -1,6 +1,6 @@
 # Plan migracji usług do architektury scenariuszy (draft)
 
-Dokument opisuje, jak w bezpieczny sposób przejść ze stanu obecnego (systemd z licznymi `rider-*.service`) do architektury docelowej opisanej w `docs_pl/_to_do/SCENARIUSZE_BIZNESOWE.md` (S0–S11 + warstwy capture/processing/output). Ewentualne przybliżenia wynikają z analizy bieżącej dokumentacji – plan ma być żywy i aktualizowany w trakcie prac.
+Dokument opisuje, jak w bezpieczny sposób przejść ze stanu obecnego (systemd z licznymi `rider-*.service`) do architektury docelowej opisanej w [Scenariuszach biznesowych](SCENARIUSZE_BIZNESOWE.md) (S0–S11 + warstwy capture/processing/output). Ewentualne przybliżenia wynikają z analizy bieżącej dokumentacji – plan ma być żywy i aktualizowany w trakcie prac.
 
 ## Etap 0 – Inwentaryzacja i szybkie porządki
 
