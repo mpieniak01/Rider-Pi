@@ -125,15 +125,15 @@ Dokument będzie ewoluował, gdy dopracujemy rejestr usług. Wersja robocza (ta)
 
 | Scenariusz | Cel | Kluczowe jednostki systemd / komponenty |
 |-----------|-----|------------------------------------------|
-| **S0 – Tryb bazowy** | UI + komunikacja w trybie read only | • rider-api • rider-broker • rider-motion-bridge (readonly) • rider-web-bridge • rider-boot-splash • wifi-unblock |
-| **S1 – Sterowanie manualne** | Włączanie przekazywania komend ruchu | • S0 • rider-motion-bridge (write) • kontrola XGO |
+| **S0 – Tryb bazowy** | UI + komunikacja w trybie read only | • rider-api<br>• rider-broker<br>• rider-motion-bridge (readonly)<br>• rider-web-bridge<br>• rider-boot-splash<br>• wifi-unblock |
+| **S1 – Sterowanie manualne** | Włączanie przekazywania komend ruchu | • S0<br>• rider-motion-bridge (write)<br>• kontrola XGO |
 | **S2 – Podgląd kamery** | Uzyskanie obrazu bez przetwarzania | • rider-camera.service (raw/edge/ssd) |
-| **S3 – Follow Me** | Śledzenie twarzy/dłoni z ruchem | • rider-camera (tracking) • rider-tracker • rider-tracking-controller • rider-motion-bridge |
-| **S4 – Rekonesans / Patrol** | Autonomiczny patrol z przeszkodami i mapą | • rider-obstacle • rider-odometry • rider-mapper • rider-navigator |
-| **S5 – Komunikacja głosowa** | Asystent/sterowanie głosem | • rider-voice • rider-voice-web • rider-google-bridge (opcjonalnie) |
-| **S6 – Moduł śledzenia obiektów** | Samodzielny tracker do testów wizji | • rider-tracker • rider-tracking-controller • kamera |
-| **S7 – Moduł wykrywania przeszkód** | Analiza obrazu w tle, alerty | • rider-obstacle • rider-vision • edge/ssd preview |
-| **S8 – Rekonesans mapujący** | Tworzenie mapy (SLAM) | • rider-vision • rider-obstacle • rider-odometry • rider-mapper |
-| **S9 – Nawigacja po mapie** | Wykonywanie tras A→B | • rider-navigator • rider-motion-bridge • rider-odometry • rider-obstacle • loader map |
-| **S10 – Wybór providerów AI** | Przełączanie lokal/chmura dla głosu i wizji | • rider-voice • rider-google-bridge • rider-vision-offload • zmienne `VOICE_*`/`VISION_*` |
-| **S11 – Tryb deweloperski** | Narzędzia, previewy dev | • jupyter.service • rider-dev.target • rider-face • rider-edge-preview • rider-ssd-preview |
+| **S3 – Follow Me** | Śledzenie twarzy/dłoni z ruchem | • rider-camera (tracking)<br>• rider-tracker<br>• rider-tracking-controller<br>• rider-motion-bridge |
+| **S4 – Rekonesans / Patrol** | Autonomiczny patrol z przeszkodami i mapą | • rider-obstacle<br>• rider-odometry<br>• rider-mapper<br>• rider-navigator |
+| **S5 – Komunikacja głosowa** | Asystent/sterowanie głosem | • rider-voice<br>• rider-voice-web<br>• rider-google-bridge (opcjonalnie) |
+| **S6 – Moduł śledzenia obiektów** | Samodzielny tracker do testów wizji | • rider-tracker<br>• rider-tracking-controller<br>• kamera |
+| **S7 – Moduł wykrywania przeszkód** | Analiza obrazu w tle, alerty | • rider-obstacle<br>• rider-vision<br>• edge/ssd preview |
+| **S8 – Rekonesans mapujący** | Tworzenie mapy (SLAM) | • rider-vision<br>• rider-obstacle<br>• rider-odometry<br>• rider-mapper |
+| **S9 – Nawigacja po mapie** | Wykonywanie tras A→B | • rider-navigator<br>• rider-motion-bridge<br>• rider-odometry<br>• rider-obstacle<br>• loader map |
+| **S10 – Wybór providerów AI** | Przełączanie lokal/chmura dla głosu i wizji | • rider-voice<br>• rider-google-bridge<br>• rider-vision-offload<br>• zmienne `VOICE_*`/`VISION_*` |
+| **S11 – Tryb deweloperski** | Narzędzia, previewy dev | • jupyter.service<br>• rider-dev.target<br>• rider-face<br>• rider-edge-preview<br>• rider-ssd-preview |
