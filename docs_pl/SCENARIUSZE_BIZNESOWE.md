@@ -137,3 +137,25 @@ Dokument będzie ewoluował, gdy dopracujemy rejestr usług. Wersja robocza (ta)
 | **S9 – Nawigacja po mapie** | Wykonywanie tras A→B | • rider-navigator<br>• rider-motion-bridge<br>• rider-odometry<br>• rider-obstacle<br>• loader map |
 | **S10 – Wybór providerów AI** | Przełączanie lokal/chmura dla głosu i wizji | • rider-voice<br>• rider-google-bridge<br>• rider-vision-offload<br>• zmienne `VOICE_*`/`VISION_*` |
 | **S11 – Tryb deweloperski** | Narzędzia, previewy dev | • jupyter.service<br>• rider-dev.target<br>• rider-face<br>• rider-edge-preview<br>• rider-ssd-preview |
+
+## Zależność usług od zasobów fizycznych
+
+| Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia (IMU / sensory) | Sterowanie ruchem |
+|--------------------|:------:|:---:|:--------:|:-------:|:---------------------------------------:|:-----------------:|
+| rider-camera / rider-cam-preview / rider-edge-preview / rider-ssd-preview | ✔ | ✔ | – | – | – | – |
+| rider-tracker | ✔ | – | – | – | – | – |
+| rider-tracking-controller | – | – | – | – | ✔ (IMU/odometry) | ✔ |
+| rider-motion-bridge | – | – | – | – | ✔ (monitoring urządzenia) | ✔ |
+| rider-obstacle | ✔ | – | – | – | – | – |
+| rider-vision (dispatcher) | ✔ | – | – | – | – | – |
+| rider-vision-offload | ✔ | – | – | – | – | – |
+| rider-odometry | – | – | – | – | ✔ | – |
+| rider-mapper | ✔ | – | – | – | ✔ | – |
+| rider-navigator | – | – | – | – | ✔ | ✔ |
+| rider-voice | – | – | ✔ | ✔* | – | – |
+| rider-voice-web | – | – | ✔* | ✔* | – | – |
+| rider-google-bridge | – | – | – | – | – | – |
+| rider-boot-splash / rider-post-splash | – | ✔ | – | – | – | – |
+| rider-web-bridge / rider-api / rider-broker | – | – | – | – | – | – (pośrednio przekazują komendy) |
+
+\* w zależności od konfiguracji providerów (np. lokalny TTS vs urządzenie zewnętrzne).
