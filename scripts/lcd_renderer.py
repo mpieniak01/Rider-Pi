@@ -87,6 +87,7 @@ def load_state() -> dict:
         if isinstance(data, dict):
             return data
     except FileNotFoundError:
+        # State file doesn't exist yet; return empty dict
         pass
     except Exception as exc:
         print(f"[lcd_renderer] state read error: {exc}", flush=True)

@@ -37,6 +37,7 @@ def make_manager(runner: FakeRunner, publisher: NullPublisher) -> FeatureManager
     try:
         state_file.unlink()
     except FileNotFoundError:
+        # File doesn't exist yet; nothing to clean up
         pass
     return FeatureManager(
         registry=DEFAULT_REGISTRY,

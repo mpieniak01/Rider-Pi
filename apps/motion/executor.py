@@ -123,8 +123,6 @@ def main() -> int:
         )
         time.sleep(dt)
 
-    return 0
-
 
 if __name__ == "__main__":
     import sys

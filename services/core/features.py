@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -270,8 +271,9 @@ class FeatureManager:
             tmp_path = self._state_path.with_suffix(".tmp")
             tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
             tmp_path.replace(self._state_path)
-        except Exception:
-            pass
+        except Exception as exc:
+            # State persistence is best-effort; failures don't block operations
+            print(f"[features] WARNING: State save failed: {exc}", file=sys.stderr, flush=True)
 
     def state_snapshot(self) -> dict:
         return json.loads(json.dumps(self._state_cache, ensure_ascii=False))

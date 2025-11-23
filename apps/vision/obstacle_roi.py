@@ -432,8 +432,8 @@ def main() -> int:
                 if PROC_PATH:
                     try:
                         cv2.imwrite(PROC_PATH, img_proc, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[obst] WARNING: Could not save processed image to {PROC_PATH}: {e}", flush=True)
 
         if img_proc is None:
             proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)
