@@ -19,6 +19,7 @@ Environment=SPLASH_USE=xgo
 Environment=SPLASH_ROTATE=270
 Environment=SPLASH_SECONDS=5
 Environment=SPLASH_CLEAR=1
+Environment=SPLASH_LOGO_SECONDS=3
 # Tu włączamy czekanie na IPv4 wewnątrz Pythona (0 = nie czeka)
 Environment=SPLASH_WAIT_IP_S=60
 
@@ -42,6 +43,5 @@ RestartSec=3
 
 [Install]
 WantedBy=rider-minimal.target
-
 
 

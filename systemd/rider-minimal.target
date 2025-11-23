@@ -2,9 +2,8 @@
 Description=Rider-Pi Minimal Services (web + bus + dispatcher)
 Requires=multi-user.target
 After=multi-user.target
-Wants=network-online.target rider-boot-splash.service rider-broker.service rider-api.service rider-vision.service
+Wants=network-online.target rider-boot-splash.service rider-broker.service rider-api.service rider-motion-bridge.service rider-web-bridge.service
 
 [Install]
 WantedBy=multi-user.target
-
 
