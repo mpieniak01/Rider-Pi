@@ -121,6 +121,72 @@ Wnioski z panelu:
 
 Dokument będzie ewoluował, gdy dopracujemy rejestr usług. Wersja robocza (ta) ma pomóc w wspólnej dyskusji i „przepięciu” katalogu usług na realne korzyści biznesowe.
 
+## Definicja celu dla usług
+
+Aby zredukować chaos w katalogu usług, każda jednostka systemd powinna mieć z góry określony cel (biznesowy lub techniczny). Rekomendowane kryteria:
+
+- **Cel biznesowy** – opisuje, jakie doświadczenie użytkownika/usługę końcową zapewnia dana jednostka (np. „podgląd kamery dla operatora”, „śledzenie twarzy”, „rekonesans mapujący”). Usługa jest częścią jednego lub więcej scenariuszy z listy S0–S11.
+- **Cel techniczny** – w sytuacjach pomocniczych (np. mostki, integracje) definiujemy, jakie zadanie techniczne realizuje moduł (np. „serial → bus”, „generowanie splash screen”). Jeśli usługa nie wnosi nowej funkcji biznesowej, musi być jasno oznaczona jako komponent infrastruktury i opisana w dokumentacji.
+- **Jedna rola = jedna usługa** – każda jednostka odpowiada za pojedynczą funkcję. Tryby pracy (raw/edge/ssd) powinny być parametrami, a nie osobnymi unitami. Dzięki temu łatwiej przyporządkować usługę do scenariusza.
+- **Mapa zależności** – przy każdej usłudze określamy, jakie zasoby fizyczne i warstwy przetwarzania wykorzystuje (kamera, LCD, mikrofon, ML). Informacja trafia do tabeli zależności i do dokumentacji systemd.
+
+Jeśli usługa nie spełnia powyższych kryteriów (brak scenariusza lub celu technicznego), powinna trafić do katalogu „legacy/dev” albo być scalona z inną.
+
+### Zakresy dla usług wideo (capture → processing → output)
+
+Aby uniknąć dublowania pracy i kolizji o kamerę, dzielimy cały pipeline obrazu na logiczne warstwy:
+
+1. **Capture (surowe dane)**  
+   - Jedna usługa odpowiada za pobieranie klatek z kamery. Dostępne powinny być dwa tryby:  
+     • klatki (snapshoty do `snapshots/` + feed po ZMQ/IPC)  
+     • streaming (ciągły strumień do offload/web).  
+   - Usługa capture *nie wykonuje* przetwarzania wysokiego poziomu – jedynie dostarcza dane.
+
+2. **Przetwarzanie na Rider-Pi (frame-based)**  
+   - Ze względu na wydajność przetwarzamy tylko klatki (bez własnego otwierania /dev/video). Każdy moduł otrzymuje klatki z capture i wykonuje własne algorytmy.  
+   - Przykłady modułów:  
+     • Follow-Me tracker (MediaPipe)  
+     • Wykrywanie przeszkód / obiektów  
+     • Mapper / SLAM  
+   - Moduły mają jasno zdefiniowane wyjścia (topic, plik, mapa) i nie próbują ponownie generować snapshotów.
+
+3. **Wyniki / prezentacja**  
+   - Dane z modułów przetwarzania trafiają do UI/LCD/APIs. Może to być:  
+     • status (np. obstacles → badge w panelu)  
+     • mapy/koordinate → navigator  
+     • streaming/outbound feed (np. offload do PC).  
+   - Punkt ten nie wchodzi ponownie w capture – tylko udostępnia dane kolejnym warstwom.
+
+Zależność między usługami: capture dostarcza dane; moduły przetwarzania korzystają z capture; funkcje (S3, S4, S8, S9) korzystają z wyników modułów. W ten sposób unikamy sytuacji, w której każda usługa otwiera kamerę i generuje własne kopie danych.
+
+### Przepływ decyzji (dane → przetwarzanie → sterowanie)
+
+W wielu scenariuszach (zwłaszcza Follow Me, Rekonesans, Nawigacja) potrzebne jest pokazanie, co z czego wynika i który komponent podejmuje decyzję. Przykładowy łańcuch:
+
+0. **Wejścia fizyczne** – kamera dostarcza obraz, IMU i enkodery dają odczyty pozycji; wszystkie trafiają do warstwy capture/sensorów.
+1. **Capture** generuje klatki, udostępniając je dalszym modułom.
+2. **Moduł przetwarzający** (np. `rider-tracker`) wykrywa obiekt i publikuje dane `pose/target`.
+3. **Moduł decyzji** (np. `rider-tracking-controller`) wykorzystuje dane z przetwarzania + odczyty IMU i decyduje o następnym ruchu.
+4. **Mostek ruchu (`rider-motion-bridge`)** przyjmuje decyzję i wysyła ją do urządzenia.
+5. **Monitoring**: wyniki (np. „aktywne śledzenie”, „wykryto przeszkodę”) trafiają do API/UI.
+
+Ten wzór można przenieść na inne procesy:
+
+- **Obstacle → Navigator**: `rider-obstacle` dostarcza mapę przeszkód, `rider-navigator` aktualizuje trasę i steruje ruchem.
+- **SLAM → Navigator**: `rider-mapper` dostarcza mapę, `rider-navigator` definiuje punkty A/B.
+- **Follow Me**: tracker dostarcza pozycję celu, controller przelicza na komendy, motion-bridge wykonuje.  
+
+Każdy moduł w tym łańcuchu działa na dobrze zdefiniowanym interfejsie (np. ZMQ topics, pliki map). Dzięki temu inne funkcje mogą korzystać z tych samych danych bez powielania pracy.
+
+| Krok | Opis | Przykładowe jednostki / moduły |
+|------|------|--------------------------------|
+| 0 | Wejścia fizyczne (kamera, IMU, enkodery) | Kamera hw, IMU w XGO, odczyty wheel |
+| 1 | Capture generuje klatki / sygnały | rider-camera, moduły sensorowe |
+| 2 | Przetwarzanie klatek (ML / wizja) | rider-tracker, rider-obstacle, rider-vision |
+| 3 | Podejmowanie decyzji na podstawie wyników + stanu | rider-tracking-controller, rider-navigator |
+| 4 | Sterowanie ruchem | rider-motion-bridge, warstwa XGO |
+| 5 | Monitoring i prezentacja wyników | API/UI, badge w panelu, mapy |
+
 ## Tabela podsumowująca scenariusze
 
 | Scenariusz | Cel | Kluczowe jednostki systemd / komponenty |
@@ -138,7 +204,7 @@ Dokument będzie ewoluował, gdy dopracujemy rejestr usług. Wersja robocza (ta)
 | **S10 – Wybór providerów AI** | Przełączanie lokal/chmura dla głosu i wizji | • rider-voice<br>• rider-google-bridge<br>• rider-vision-offload<br>• zmienne `VOICE_*`/`VISION_*` |
 | **S11 – Tryb deweloperski** | Narzędzia, previewy dev | • jupyter.service<br>• rider-dev.target<br>• rider-face<br>• rider-edge-preview<br>• rider-ssd-preview |
 
-## Zależność usług od zasobów fizycznych
+## Zależność usług od zasobów fizycznych (AS-IS)
 
 | Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia (IMU / sensory) | Sterowanie ruchem | Warstwa przetwarzania |
 |--------------------|:------:|:---:|:--------:|:-------:|:---------------------------------------:|:-----------------:|----------------------|
@@ -159,3 +225,9 @@ Dokument będzie ewoluował, gdy dopracujemy rejestr usług. Wersja robocza (ta)
 | rider-web-bridge / rider-api / rider-broker | – | – | – | – | – | – (pośrednio) | JSON/REST → ZMQ |
 
 \* w zależności od konfiguracji providerów (np. lokalny TTS vs urządzenie zewnętrzne).
+
+## Zależność usług od zasobów fizycznych (TO-BE / TODO)
+
+| Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia | Sterowanie ruchem | Warstwa przetwarzania |
+|--------------------|:------:|:---:|:--------:|:-------:|:------------------------:|:-----------------:|----------------------|
+| *(todo)* |  |  |  |  |  |  |  |
