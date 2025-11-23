@@ -1,12 +1,12 @@
 # Plan migracji usług do architektury scenariuszy (draft)
 
-Dokument opisuje, jak w bezpieczny sposób przejść ze stanu obecnego (systemd z licznymi `rider-*.service`) do architektury docelowej opisanej w `SCENARIUSZE_BIZNESOWE.md` (S0–S11 + warstwy capture/processing/output). Ewentualne przybliżenia wynikają z analizy bieżącej dokumentacji – plan ma być żywy i aktualizowany w trakcie prac.
+Dokument opisuje, jak w bezpieczny sposób przejść ze stanu obecnego (systemd z licznymi `rider-*.service`) do architektury docelowej opisanej w `docs_pl/_to_do/SCENARIUSZE_BIZNESOWE.md` (S0–S11 + warstwy capture/processing/output). Ewentualne przybliżenia wynikają z analizy bieżącej dokumentacji – plan ma być żywy i aktualizowany w trakcie prac.
 
-## Etap 0 – Inwentaryzacja i sanitarne porządki
+## Etap 0 – Inwentaryzacja i szybkie porządki
 
 - **1. Spis obecnych usług** – potwierdzić listę `rider-*.service`, `systemd/*.target`. Odnotować, które są aktywne na starcie i w jakich stanach (`systemctl list-unit-files`, `/svc`).
 - **2. Zależności sprzętowe** – dla każdej usługi wskazać, jakiego fizycznego zasobu dotyka (kamera, mikrofon, LCD, XGO). Uzupełnić tabelę AS-IS w `SCENARIUSZE_BIZNESOWE.md` i oznaczyć konflikty (np. wiele usług otwierających kamerę).
-- **3. Test regressyjny** – uruchomić wszystkie scenariusze z aktualnego panelu (Stan 0, Śledzenie, Rekonesans) i zebrać logi, by później porównać zachowanie.
+- **3. Test regresyjny** – uruchomić wszystkie scenariusze z aktualnego panelu (Stan 0, Śledzenie, Rekonesans) i zebrać logi, by później porównać zachowanie.
 
 ## Etap 1 – Konsolidacja warstwy capture/output
 
@@ -16,14 +16,14 @@ Dokument opisuje, jak w bezpieczny sposób przejść ze stanu obecnego (systemd 
 - **2. Usługa `lcd-renderer`**  
   - Po uporządkowaniu `rider-boot-splash` i `rider-post-splash` pozostawić jedną usługę renderującą status (profil start/stop).
 - **3. Warstwa audio** – analogicznie scalić `rider-voice` / `rider-voice-web` w logiczne moduły `audio-input` i `audio-output`.
-- **4. Walidacja** – sprawdzić, że po konsolidacji panel /api nadal otrzymuje `snapshots`, a żadne scenariusze nie tracą podglądu.
+- **4. Walidacja** – sprawdzić, że po konsolidacji panel/API nadal otrzymuje `snapshots`, a żadne scenariusze nie tracą podglądu.
 
 ## Etap 2 – Wydzielenie modułów przetwarzania (processing)
 
 - **1. Tracker / obstacle / SLAM**  
   - Upewnić się, że `rider-tracker`, `rider-obstacle`, `rider-mapper` nie otwierają kamery samodzielnie – pobierają klatki z `camera-capture` / `frame-distributor`.  
   - Dostosować je do publikowania wyników w spójnych topicach (np. `tracking.pose`, `obstacle.map`, `slam.map`).
-- **2. `frame-distributor` & `stream-publisher`**  
+- **2. `frame-distributor` i `stream-publisher`**  
   - Stworzyć przejściowy moduł (może być skrypt), który buforuje klatki i udostępnia je modułom ML.  
   - Strumień HTTP/`/camera/stream` powinien korzystać z tego samego feedu.
 - **3. Sensor reader i motion executor** – uporządkować `rider-motion-bridge`, by wyraźnie oddzielić wejścia (IMU/odometry) od wyjść (komendy XGO).
@@ -58,6 +58,6 @@ Dokument opisuje, jak w bezpieczny sposób przejść ze stanu obecnego (systemd 
 
 - Każdy etap powinien być wdrażany w oddzielnej gałęzi, z możliwością rollbacku (ostatnia działająca kombinacja usług).  
 - Kluczowe moduły (motion, capture, App Logic) wymagają testów „na sucho” i dopiero potem z robotem.  
-- Warto od razu planować włączenie walidacji w CI (np. testy `systemd-analyze verify`, smoke testi scenariuszy).
+- Warto od razu planować włączenie walidacji w CI (np. testy `systemd-analyze verify`, smoke testy scenariuszy).
 
 Plan jest szkicem – priorytety i szczegóły należy dopracować wspólnie z zespołem. Ważne, aby przenosić funkcje stopniowo, weryfikując każdy krok na realnym urządzeniu.

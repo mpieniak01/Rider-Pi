@@ -1,6 +1,7 @@
 # Scenariusze biznesowe Rider-Pi
 
-Dokument porządkuje dotychczasowe funkcje robota ktore wizualizowane sa przez panele sterowainia. Na tej podstawie budujemy katalog scenariuszy biznesowych, który później zamapujemy na konkretne jednostki systemd (nowe lub uproszczone). Wszystkie opisy są w języku polskim, aby można je było bezpośrednio wykorzystać w dokumentacji użytkowej.
+Dokument porządkuje funkcje robota widoczne w panelach sterowania. Na tej podstawie budujemy katalog scenariuszy biznesowych, który później zamapujemy na konkretne jednostki systemd (nowe lub uproszczone). Wszystkie opisy są po polsku, gotowe do użycia w dokumentacji użytkowej.  
+**Powiązane**: plan wdrożenia scenariuszy znajduje się w `docs_pl/_to_do/PLAN_MIGRACJI_USLUG.md`.
 
 ## Kontekst panelu sterowania
 
