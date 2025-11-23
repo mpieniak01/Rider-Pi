@@ -226,8 +226,28 @@ Każdy moduł w tym łańcuchu działa na dobrze zdefiniowanym interfejsie (np. 
 
 \* w zależności od konfiguracji providerów (np. lokalny TTS vs urządzenie zewnętrzne).
 
-## Zależność usług od zasobów fizycznych (TO-BE / TODO)
+## Zależność usług od zasobów fizycznych (TO-BE)
 
-| Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia | Sterowanie ruchem | Warstwa przetwarzania |
+| Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia | Sterowanie ruchem | Warstwa przetwarzania / rola |
 |--------------------|:------:|:---:|:--------:|:-------:|:------------------------:|:-----------------:|----------------------|
-| *(todo)* |  |  |  |  |  |  |  |
+| Capture – kontrola kamery | ✔ | – | – | – | – | – | sterownik hw, eksport klatek do busa |
+| LCD renderer | – | ✔ | – | – | – | – | render statusów/snapów na ekranie |
+| Audio input service | – | – | ✔ | – | – | – | próbkowanie mikrofonu, publikacja audio |
+| Audio output service | – | – | – | ✔ | – | – | przyjmowanie TTS i odtwarzanie |
+| Sensor reader | – | – | – | – | ✔ | – | agregacja IMU/odometrii |
+| Motion executor | – | – | – | – | – | ✔ | tłumaczenie komend na XGO |
+| Frame distributor | – | – | – | – | – | – | bufor klatek, udostępnianie modułom ML |
+| Stream publisher | – | – | – | – | – | – | generowanie streamu HTTP/offload z feedu |
+| Tracker ML | – | – | – | – | – | – | MediaPipe / ML na klatkach |
+| Obstacle detector | – | – | – | – | – | – | detekcja kolizji / semantyka sceny |
+| SLAM mapper | – | – | – | – | – | – | budowa mapy z klatek + IMU |
+| Navigator | – | – | – | – | – | – | planowanie trasy na mapie |
+| Voice intelligence | – | – | – | – | – | – | ASR/NLU/TTS (korzysta z audio services) |
+| App Logic Core* | – | – | – | – | – | – | orkiestracja scenariuszy (steruje innymi usługami) |
+| API gateway / Backend** | – | – | – | – | – | – | HTTP/REST, zarządzanie stanem, /svc, /api |
+| Bus / Kolejka komunikatów** | – | – | – | – | – | – | ZMQ/pub-sub, dystrybucja zdarzeń |
+| Web bridge / UI backend** | – | – | – | – | – | – | HTTP→ZMQ, obsługa panelu sterowania |
+| Broker usług komunikacyjnych** | – | – | – | – | – | – | centralne przekazywanie komunikatów |
+
+\* App Logic Core działa jako meta-usługa: nie posiada własnych zasobów fizycznych, ale zarządza start/stop innych komponentów według scenariuszy biznesowych (S0–S11). Może udostępniać API/CLI/daemon, które wysyła polecenia do systemd lub dedykowanego command busa.
+\** Komponenty techniczne (API, kolejki, web bridge) odpowiadają za komunikację, stan i ekspozycję interfejsów – nie korzystają z zasobów fizycznych, ale są wymagane dla wszystkich scenariuszy.
