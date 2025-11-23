@@ -240,29 +240,31 @@ Takie podejście sprawia, że App Logic jest „centralnym mózgiem” – spina
 
 ## Zależność usług od zasobów fizycznych (TO-BE)
 
-| Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia | Sterowanie ruchem | Warstwa przetwarzania / rola |
-|--------------------|:------:|:---:|:--------:|:-------:|:------------------------:|:-----------------:|----------------------|
-| Capture – kontrola kamery | ✔ | – | – | – | – | – | sterownik hw, eksport klatek do busa |
-| LCD renderer | – | ✔ | – | – | – | – | render statusów/snapów na ekranie |
-| Audio input service | – | – | ✔ | – | – | – | próbkowanie mikrofonu, publikacja audio |
-| Audio output service | – | – | – | ✔ | – | – | przyjmowanie TTS i odtwarzanie |
-| Sensor reader | – | – | – | – | ✔ | – | agregacja IMU/odometrii |
-| Motion executor | – | – | – | – | – | ✔ | tłumaczenie komend na XGO |
-| Frame distributor | – | – | – | – | – | – | bufor klatek, udostępnianie modułom ML |
-| Stream publisher | – | – | – | – | – | – | generowanie streamu HTTP/offload z feedu |
-| Tracker ML | – | – | – | – | – | – | MediaPipe / ML na klatkach |
-| Obstacle detector | – | – | – | – | – | – | detekcja kolizji / semantyka sceny |
-| SLAM mapper | – | – | – | – | – | – | budowa mapy z klatek + IMU |
-| Navigator | – | – | – | – | – | – | planowanie trasy na mapie |
-| Voice intelligence | – | – | – | – | – | – | ASR/NLU/TTS (korzysta z audio services) |
-| App Logic Core* | – | – | – | – | – | – | orkiestracja scenariuszy (steruje innymi usługami) |
+| Nazwa techniczna | Opis usługi | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia | Sterowanie ruchem | Warstwa przetwarzania / rola |
+|------------------|-------------|:------:|:---:|:--------:|:-------:|:------------------------:|:-----------------:|----------------------|
+| `camera-capture` | Kontrola kamery, udostępnianie klatek | ✔ | – | – | – | – | – | sterownik hw, eksport klatek do busa |
+| `lcd-renderer` | Renderowanie informacji na LCD | – | ✔ | – | – | – | – | render statusów/snapów na ekranie |
+| `audio-input` | Obsługa mikrofonu (próbkowanie + publikacja) | – | – | ✔ | – | – | – | próbkowanie mikrofonu, publikacja audio |
+| `audio-output` | Odtwarzanie audio / TTS | – | – | – | ✔ | – | – | przyjmowanie TTS i odtwarzanie |
+| `sensor-reader` | Zbieranie danych IMU/odometrii | – | – | – | – | ✔ | – | agregacja IMU/odometrii |
+| `motion-executor` | Wysyłanie komend ruchu do robota | – | – | – | – | – | ✔ | tłumaczenie komend na XGO |
+| `frame-distributor` | Bufor i dystrybucja klatek do ML | – | – | – | – | – | – | bufor klatek, udostępnianie modułom ML |
+| `stream-publisher` | Generowanie strumienia HTTP/offload | – | – | – | – | – | – | generowanie streamu HTTP/offload z feedu |
+| `tracker-ml` | Moduł śledzenia obiektów (ML) | – | – | – | – | – | – | MediaPipe / ML na klatkach |
+| `obstacle-detector` | Detekcja przeszkód / semantyka | – | – | – | – | – | – | detekcja kolizji / semantyka sceny |
+| `slam-mapper` | Budowanie mapy (SLAM) | – | – | – | – | – | – | budowa mapy z klatek + IMU |
+| `navigator` | Planowanie trasy na mapie | – | – | – | – | – | – | planowanie trasy na mapie |
+| `voice-intelligence` | ASR/NLU/TTS korzystające z audio serwisów | – | – | – | – | – | – | przetwarzanie głosu |
+| `app-logic-core`* | Zarządzanie scenariuszami i usługami | – | – | – | – | – | – | orkiestracja scenariuszy (steruje innymi usługami) |
 
----
+#### Komponenty komunikacyjne (wspólne dla wszystkich scenariuszy)
 
-| API gateway / Backend** | – | – | – | – | – | – | HTTP/REST, zarządzanie stanem, /svc, /api |
-| Bus / Kolejka komunikatów** | – | – | – | – | – | – | ZMQ/pub-sub, dystrybucja zdarzeń |
-| Web bridge / UI backend** | – | – | – | – | – | – | HTTP→ZMQ, obsługa panelu sterowania |
-| Broker usług komunikacyjnych** | – | – | – | – | – | – | centralne przekazywanie komunikatów |
+| Nazwa techniczna | Opis usługi | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu | Sterowanie ruchem | Warstwa / rola |
+|------------------|-------------|:------:|:---:|:--------:|:-------:|:------------:|:-----------------:|----------------|
+| `api-gateway`** | Backend HTTP/REST, zarządzanie stanem (/svc, /api) | – | – | – | – | – | – | warstwa API |
+| `bus-broker`** | Kolejka komunikatów (ZMQ pub/sub) | – | – | – | – | – | – | dystrybucja zdarzeń |
+| `web-bridge`** | Mostek UI ↔ bus (HTTP→ZMQ) | – | – | – | – | – | – | obsługa panelu sterowania |
+| `comm-broker`** | Broker usług komunikacyjnych | – | – | – | – | – | – | centralne przekazywanie komunikatów |
 
 \* App Logic Core działa jako meta-usługa: nie posiada własnych zasobów fizycznych, ale zarządza start/stop innych komponentów według scenariuszy biznesowych (S0–S11). Może udostępniać API/CLI/daemon, które wysyła polecenia do systemd lub dedykowanego command busa.
 \** Komponenty techniczne (API, kolejki, web bridge) odpowiadają za komunikację, stan i ekspozycję interfejsów – nie korzystają z zasobów fizycznych, ale są wymagane dla wszystkich scenariuszy.
