@@ -226,6 +226,18 @@ Każdy moduł w tym łańcuchu działa na dobrze zdefiniowanym interfejsie (np. 
 
 \* w zależności od konfiguracji providerów (np. lokalny TTS vs urządzenie zewnętrzne).
 
+
+### Jak App Logic komunikuje się z resztą stosu (AS-IS)
+
+| Warstwa / kanał | Cel | Przykłady |
+|-----------------|-----|-----------|
+| Systemd / targety | Uruchamianie i zatrzymywanie scenariuszy (S0–S11) | `systemctl start rider-followme.target`, `feature_manager.set_feature()` |
+| Command bus (ZMQ) | Przekazywanie komend runtime, subskrypcja zdarzeń | publikacje do motion bridge, nasłuchiwanie telemetrycznych topiców |
+| API / UI / CLI | Interfejs dla operatora i integracji | `/api/logic/feature`, panel `/web/control.html`, `robot_ctl` |
+| Monitoring / stan | Udostępnianie obecnego scenariusza, statusu usług | `/svc`, `/run/rider/state`, tabelka usług, badge w UI |
+
+Takie podejście sprawia, że App Logic jest „centralnym mózgiem” – spina interfejsy użytkownika, warstwę komunikacyjną i usługową, ale nie miesza się w szczegóły przetwarzania danych czy kontroli hardware.
+
 ## Zależność usług od zasobów fizycznych (TO-BE)
 
 | Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia | Sterowanie ruchem | Warstwa przetwarzania / rola |
@@ -244,6 +256,9 @@ Każdy moduł w tym łańcuchu działa na dobrze zdefiniowanym interfejsie (np. 
 | Navigator | – | – | – | – | – | – | planowanie trasy na mapie |
 | Voice intelligence | – | – | – | – | – | – | ASR/NLU/TTS (korzysta z audio services) |
 | App Logic Core* | – | – | – | – | – | – | orkiestracja scenariuszy (steruje innymi usługami) |
+
+---
+
 | API gateway / Backend** | – | – | – | – | – | – | HTTP/REST, zarządzanie stanem, /svc, /api |
 | Bus / Kolejka komunikatów** | – | – | – | – | – | – | ZMQ/pub-sub, dystrybucja zdarzeń |
 | Web bridge / UI backend** | – | – | – | – | – | – | HTTP→ZMQ, obsługa panelu sterowania |
