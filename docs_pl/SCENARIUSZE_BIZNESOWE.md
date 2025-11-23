@@ -140,22 +140,22 @@ Dokument będzie ewoluował, gdy dopracujemy rejestr usług. Wersja robocza (ta)
 
 ## Zależność usług od zasobów fizycznych
 
-| Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia (IMU / sensory) | Sterowanie ruchem |
-|--------------------|:------:|:---:|:--------:|:-------:|:---------------------------------------:|:-----------------:|
-| rider-camera / rider-cam-preview / rider-edge-preview / rider-ssd-preview | ✔ | ✔ | – | – | – | – |
-| rider-tracker | ✔ | – | – | – | – | – |
-| rider-tracking-controller | – | – | – | – | ✔ (IMU/odometry) | ✔ |
-| rider-motion-bridge | – | – | – | – | ✔ (monitoring urządzenia) | ✔ |
-| rider-obstacle | ✔ | – | – | – | – | – |
-| rider-vision (dispatcher) | ✔ | – | – | – | – | – |
-| rider-vision-offload | ✔ | – | – | – | – | – |
-| rider-odometry | – | – | – | – | ✔ | – |
-| rider-mapper | ✔ | – | – | – | ✔ | – |
-| rider-navigator | – | – | – | – | ✔ | ✔ |
-| rider-voice | – | – | ✔ | ✔* | – | – |
-| rider-voice-web | – | – | ✔* | ✔* | – | – |
-| rider-google-bridge | – | – | – | – | – | – |
-| rider-boot-splash / rider-post-splash | – | ✔ | – | – | – | – |
-| rider-web-bridge / rider-api / rider-broker | – | – | – | – | – | – (pośrednio przekazują komendy) |
+| Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia (IMU / sensory) | Sterowanie ruchem | Warstwa przetwarzania |
+|--------------------|:------:|:---:|:--------:|:-------:|:---------------------------------------:|:-----------------:|----------------------|
+| rider-camera / rider-cam-preview / rider-edge-preview / rider-ssd-preview | ✔ | ✔ | – | – | – | – | surowe → opcjonalnie filtrowane (OpenCV) |
+| rider-tracker | ✔ | – | – | – | – | – | MediaPipe / ML |
+| rider-tracking-controller | – | – | – | – | ✔ (IMU/odometry) | ✔ | logika PID / bezpośrednie |
+| rider-motion-bridge | – | – | – | – | ✔ (monitoring urządzenia) | ✔ | bezpośrednie / mapowanie JSON → XGO |
+| rider-obstacle | ✔ | – | – | – | – | – | ML (detekcja przeszkód) |
+| rider-vision (dispatcher) | ✔ | – | – | – | – | – | agregacja ML, filtry wizji |
+| rider-vision-offload | ✔ | – | – | – | – | – | streaming/raw + offload |
+| rider-odometry | – | – | – | – | ✔ | – | przetwarzanie odometryczne |
+| rider-mapper | ✔ | – | – | – | ✔ | – | SLAM / mapowanie |
+| rider-navigator | – | – | – | – | ✔ | ✔ | planowanie trasy |
+| rider-voice | – | – | ✔ | ✔* | – | – | ASR/NLU/TTS (lokalnie/chmura) |
+| rider-voice-web | – | – | ✔* | ✔* | – | – | warstwa HTTP/websocket |
+| rider-google-bridge | – | – | – | – | – | – | integracja API |
+| rider-boot-splash / rider-post-splash | – | ✔ | – | – | – | – | proste grafiki / status |
+| rider-web-bridge / rider-api / rider-broker | – | – | – | – | – | – (pośrednio) | JSON/REST → ZMQ |
 
 \* w zależności od konfiguracji providerów (np. lokalny TTS vs urządzenie zewnętrzne).
