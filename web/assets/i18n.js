@@ -1,5 +1,3 @@
-import { BALANCE_I18N } from "./i18n.balance.js";
-
 // web/i18n.js
 export const I18N = {
   meta: {
@@ -213,7 +211,10 @@ export const I18N = {
     preview_ssd:  { pl: "PROC/SSD", en: "PROC/SSD" },
   },
 
-  ...BALANCE_I18N,
+  balance: {
+    toggle_label: { pl: "Stabilizacja", en: "Balance" },
+    height_label: { pl: "Wysokość", en: "Height" },
+  },
 
   resources: {
     title:           { pl: "Diagnostyka zasobów", en: "Resource diagnostics" },
