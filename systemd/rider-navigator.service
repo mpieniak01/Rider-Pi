@@ -1,7 +1,7 @@
 [Unit]
 Description=Rider-Pi Navigator (autonomous recon controller)
-After=network-online.target rider-broker.service rider-motion-bridge.service rider-vision.service rider-obstacle.service rider-odometry.service rider-mapper.service
-Wants=network-online.target rider-broker.service
+After=network-online.target rider-broker.service motion-executor.service rider-vision.service rider-obstacle.service rider-odometry.service rider-mapper.service
+Wants=network-online.target rider-broker.service motion-executor.service
 Requires=rider-broker.service
 
 [Service]

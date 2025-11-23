@@ -26,20 +26,20 @@ Wnioski z panelu:
 - **Cel**: uruchomić środowisko w trybie odczytu – UI, API, komunikacja z urządzeniem – bez możliwości wydawania komend ruchu.
 - **Korzyści dla operatora**: szybkie sprawdzenie stanu robota i telemetrii, bez ryzyka przypadkowego ruchu (np. tryb demo, audyt).
 - **Elementy panelu**: główny widok, wskaźniki stanu (bateria, IMU, logi), tabela usług.
-- **Jednostki systemd**: `rider-api.service`, `rider-broker.service`, `rider-motion-bridge.service`, `rider-web-bridge.service`, `rider-boot-splash.service`, `wifi-unblock.service` (wspólny target `rider-core.target`).
+- **Jednostki systemd**: `rider-core.target` (agreguje `rider-api.service`, `rider-broker.service`, `sensor-reader.service`, `motion-executor.service`, `rider-web-bridge.service`, `rider-boot-splash.service`, `wifi-unblock.service`).
 
 ### S1 — Sterowanie manualne
-- **Cel**: aktywować przekazywanie komend ruchu (HTTP → motion bridge) i umożliwić operatorowi sterowanie W/S/A/D.
+- **Cel**: aktywować przekazywanie komend ruchu (HTTP → motion-executor) i umożliwić operatorowi sterowanie W/S/A/D.
 - **Korzyści**: kontrola pozycji robota, testy kalibracji, możliwość natychmiastowego STOP.
 - **Elementy panelu**: sekcja „Sterowanie ruchem” (suwaki prędkości, przyciski, skróty klawiaturowe), przełączniki balansu/wysokości.
-- **Jednostki systemd**: S0 + `rider-motion-bridge` w trybie read/write (niektóre środowiska DEV blokują to, dlatego scenariusz opisuje świadome włączenie).
+- **Jednostki systemd**: S0 + `motion-executor.service` (sterowanie ruchem) w trybie read/write – w DEV można wymusić readonly.
 - **Uwagi**: w trybie deweloperskim można odpiąć ruch – ta sekcja ma jasno mówić, kiedy komendy są przekazywane.
 
 ### S2 — Podgląd kamery
 - **Cel**: operator chce zobaczyć obraz w UI (bez głębokiej analizy), np. do manualnego sterowania lub wstępnego ustawienia robota.
 - **Korzyści**: szybko potwierdza pozycję robota, nie uruchamiając całego pipeline’u wizji.
 - **Elementy panelu**: sekcja „Podgląd kamery” (CAM/EDGE), tryb auto-refresh.
-- **Jednostki systemd**: `rider-camera.service` (planowana konsolidacja `rider-cam-preview`, `rider-edge-preview`, `rider-ssd-preview` → jeden ExecStart + tryb), współdzielony lock `/tmp/camera.lock`.
+- **Jednostki systemd**: `camera-capture@raw.service` (nowy template `camera-capture@.service` z trybami pracy `raw|edge|ssd`), współdzielony lock `/tmp/camera.lock`.
 - **Uwagi**: scenariusz nie powinien startować detektorów ani sterowania śledzeniem; kończy się na przechwycie obrazu.
 
 ### S3 — Follow Me / Śledzenie osoby
@@ -50,7 +50,7 @@ Wnioski z panelu:
   - Wspólna kamera (`rider-camera.service` w trybie `tracking`).
   - `rider-tracker.service` (MediaPipe) lub jego nowszy odpowiednik.
   - `rider-tracking-controller.service` (sterowanie rotacją).
-  - `rider-motion-bridge.service` (już aktywny w S0).
+  - `motion-executor.service` + `sensor-reader.service` (aktywne w S0 jako baza).
 - **Uwagi**: FeatureManager musi dopilnować kolejności (kamera → tracker → controller) i blokady innych funkcji korzystających z tej samej kamery.
 
 ### S4 — Rekonesans / Patrol
@@ -83,21 +83,21 @@ Wnioski z panelu:
 - **Cel**: analiza obrazu w tle (obstacle detection, klasyfikacja obiektów) na potrzeby alertów i danych dla UI – niezależnie od scenariusza ruchu.
 - **Korzyści**: wykrywanie przeszkód podczas postoju, powiadomienia w UI, wzbogacona telemetria.
 - **Elementy panelu**: wskaźnik „Obstacle” (już istniejący badge), dodatkowy panel „Detekcje obiektów”.
-- **Jednostki systemd**: `rider-obstacle.service`, `rider-vision.service`, opcjonalne previewy (edge/ssd) działające jako sensory; można startować bez `rider-motion-bridge`.
+- **Jednostki systemd**: `rider-obstacle.service`, `rider-vision.service`, opcjonalne previewy (edge/ssd) działające jako sensory; może działać samodzielnie (bez warstwy ruchu).
 - **Uwagi**: moduł powinien mieć własny lifecycle (start/stop) i nie zależeć od S3/S4; wyniki trafiają do API niezależnie.
 
 ### S8 — Rekonesans mapujący
 - **Cel**: samodzielne tworzenie mapy przestrzeni (SLAM) z kompletnej telemetrii (odometria, przeszkody, wizja).
 - **Korzyści**: precyzyjne plany pomieszczeń, możliwość przyszłego wykorzystania mapy do nawigacji.
 - **Elementy panelu**: tryb „Tworzenie mapy” (wizualizacja postępu, heatmapa obszarów, log alertów).
-- **Jednostki systemd**: `rider-vision.service`, `rider-obstacle.service`, `rider-odometry.service`, `rider-mapper.service`, archiwizacja map (np. zapis do `/data/maps`), kamera w trybie SLAM.
+- **Jednostki systemd**: `rider-mapbuild.target` (kamera + frame-distributor + `rider-vision.service`, `rider-obstacle.service`, `rider-odometry.service`, `rider-mapper.service`), archiwizacja map (np. zapis do `/data/maps`).
 - **Uwagi**: podczas mapowania robot może poruszać się według z góry ustalonego wzoru (np. spirala). Scenariusz kończy się zapisaniem mapy i powrotem do S1/S0.
 
 ### S9 — Nawigacja po mapie (A→B)
 - **Cel**: wykonywanie poleceń „idź do punktu X” na podstawie wcześniej zapisanej mapy.
 - **Korzyści**: powtarzalne misje, np. patrol korytarza, powrót do stacji ładowania, dostawy.
 - **Elementy panelu**: widok mapy, wybór punktu docelowego, log trasy, status „return home”.
-- **Jednostki systemd**: `rider-navigator.service`, `rider-motion-bridge.service`, `rider-odometry.service`, `rider-obstacle.service` (w trybie runtime), loader map.
+- **Jednostki systemd**: `rider-navigate.target` (zawiera `rider-navigator.service`, `motion-executor.service`, `sensor-reader.service`, `rider-odometry.service`, `rider-obstacle.service` oraz kamerę/mapper).
 - **Uwagi**: scenariusz zależy od S8 (mapy muszą istnieć). Wymaga guardów bezpieczeństwa (bateria, komunikacja).
 
 ### S10 — Wybór providerów AI (głos / wizja)
@@ -168,14 +168,14 @@ W wielu scenariuszach (zwłaszcza Follow Me, Rekonesans, Nawigacja) potrzebne je
 1. **Capture** generuje klatki, udostępniając je dalszym modułom.
 2. **Moduł przetwarzający** (np. `rider-tracker`) wykrywa obiekt i publikuje dane `pose/target`.
 3. **Moduł decyzji** (np. `rider-tracking-controller`) wykorzystuje dane z przetwarzania + odczyty IMU i decyduje o następnym ruchu.
-4. **Mostek ruchu (`rider-motion-bridge`)** przyjmuje decyzję i wysyła ją do urządzenia.
+4. **Warstwa ruchu (`sensor-reader` + `motion-executor`)** przyjmuje decyzję i wysyła je do XGO (z deadman/E‑Stop).
 5. **Monitoring**: wyniki (np. „aktywne śledzenie”, „wykryto przeszkodę”) trafiają do API/UI.
 
 Ten wzór można przenieść na inne procesy:
 
 - **Obstacle → Navigator**: `rider-obstacle` dostarcza mapę przeszkód, `rider-navigator` aktualizuje trasę i steruje ruchem.
 - **SLAM → Navigator**: `rider-mapper` dostarcza mapę, `rider-navigator` definiuje punkty A/B.
-- **Follow Me**: tracker dostarcza pozycję celu, controller przelicza na komendy, motion-bridge wykonuje.  
+- **Follow Me**: tracker dostarcza pozycję celu, controller przelicza na komendy, motion-executor je wykonuje.  
 
 Każdy moduł w tym łańcuchu działa na dobrze zdefiniowanym interfejsie (np. ZMQ topics, pliki map). Dzięki temu inne funkcje mogą korzystać z tych samych danych bez powielania pracy.
 
@@ -185,34 +185,34 @@ Każdy moduł w tym łańcuchu działa na dobrze zdefiniowanym interfejsie (np. 
 | 1 | Capture generuje klatki / sygnały | rider-camera, moduły sensorowe |
 | 2 | Przetwarzanie klatek (ML / wizja) | rider-tracker, rider-obstacle, rider-vision |
 | 3 | Podejmowanie decyzji na podstawie wyników + stanu | rider-tracking-controller, rider-navigator |
-| 4 | Sterowanie ruchem | rider-motion-bridge, warstwa XGO |
+| 4 | Sterowanie ruchem | motion-executor + sensor-reader, warstwa XGO |
 | 5 | Monitoring i prezentacja wyników | API/UI, badge w panelu, mapy |
 
 ## Tabela podsumowująca scenariusze
 
 | Scenariusz | Cel | Kluczowe jednostki systemd / komponenty |
 |-----------|-----|------------------------------------------|
-| **S0 – Tryb bazowy** | UI + komunikacja w trybie read only | • rider-api<br>• rider-broker<br>• rider-motion-bridge (readonly)<br>• rider-web-bridge<br>• rider-boot-splash<br>• wifi-unblock |
-| **S1 – Sterowanie manualne** | Włączanie przekazywania komend ruchu | • S0<br>• rider-motion-bridge (write)<br>• kontrola XGO |
+| **S0 – Tryb bazowy** | UI + komunikacja w trybie read only | • rider-api<br>• rider-broker<br>• sensor-reader<br>• motion-executor (readonly)<br>• rider-web-bridge<br>• rider-boot-splash<br>• wifi-unblock |
+| **S1 – Sterowanie manualne** | Włączanie przekazywania komend ruchu | • S0<br>• motion-executor (write)<br>• kontrola XGO |
 | **S2 – Podgląd kamery** | Uzyskanie obrazu bez przetwarzania | • rider-camera.service (raw/edge/ssd) |
-| **S3 – Follow Me** | Śledzenie twarzy/dłoni z ruchem | • rider-camera (tracking)<br>• rider-tracker<br>• rider-tracking-controller<br>• rider-motion-bridge |
-| **S4 – Rekonesans / Patrol** | Autonomiczny patrol z przeszkodami i mapą | • rider-obstacle<br>• rider-odometry<br>• rider-mapper<br>• rider-navigator |
-| **S5 – Komunikacja głosowa** | Asystent/sterowanie głosem | • rider-voice<br>• rider-voice-web<br>• rider-google-bridge (opcjonalnie) |
+| **S3 – Follow Me** | Śledzenie twarzy/dłoni z ruchem | • rider-followme.target (capture + frame feed + tracker + motion) |
+| **S4 – Rekonesans / Patrol** | Autonomiczny patrol z przeszkodami i mapą | • rider-recon.target (capture + frame feed + obstacle + mapper + navigator) |
+| **S5 – Komunikacja głosowa** | Asystent/sterowanie głosem | • rider-voice.target (audio-input/output + rider-google-bridge) |
 | **S6 – Moduł śledzenia obiektów** | Samodzielny tracker do testów wizji | • rider-tracker<br>• rider-tracking-controller<br>• kamera |
 | **S7 – Moduł wykrywania przeszkód** | Analiza obrazu w tle, alerty | • rider-obstacle<br>• rider-vision<br>• edge/ssd preview |
-| **S8 – Rekonesans mapujący** | Tworzenie mapy (SLAM) | • rider-vision<br>• rider-obstacle<br>• rider-odometry<br>• rider-mapper |
-| **S9 – Nawigacja po mapie** | Wykonywanie tras A→B | • rider-navigator<br>• rider-motion-bridge<br>• rider-odometry<br>• rider-obstacle<br>• loader map |
+| **S8 – Rekonesans mapujący** | Tworzenie mapy (SLAM) | • rider-mapbuild.target (capture + obstacle + odometry + mapper + motion) |
+| **S9 – Nawigacja po mapie** | Wykonywanie tras A→B | • rider-navigate.target (navigator + motion-executor + sensor-reader + mapper/odometry/obstacle) |
 | **S10 – Wybór providerów AI** | Przełączanie lokal/chmura dla głosu i wizji | • rider-voice<br>• rider-google-bridge<br>• rider-vision-offload<br>• zmienne `VOICE_*`/`VISION_*` |
-| **S11 – Tryb deweloperski** | Narzędzia, previewy dev | • jupyter.service<br>• rider-dev.target<br>• rider-face<br>• rider-edge-preview<br>• rider-ssd-preview |
+| **S11 – Tryb deweloperski** | Narzędzia, previewy dev | • jupyter.service<br>• rider-dev.target<br>• rider-face<br>• camera-capture@edge<br>• camera-capture@ssd |
 
 ## Zależność usług od zasobów fizycznych (AS-IS)
 
 | Usługa / komponent | Kamera | LCD | Mikrofon | Głośnik | Odczyt stanu urządzenia (IMU / sensory) | Sterowanie ruchem | Warstwa przetwarzania |
 |--------------------|:------:|:---:|:--------:|:-------:|:---------------------------------------:|:-----------------:|----------------------|
-| rider-camera / rider-cam-preview / rider-edge-preview / rider-ssd-preview | ✔ | ✔ | – | – | – | – | surowe → opcjonalnie filtrowane (OpenCV) |
+| camera-capture (`camera-capture@raw|edge|ssd`) | ✔ | ✔ | – | – | – | – | surowe → opcjonalnie filtrowane (OpenCV) |
 | rider-tracker | ✔ | – | – | – | – | – | MediaPipe / ML |
 | rider-tracking-controller | – | – | – | – | ✔ (IMU/odometry) | ✔ | logika PID / bezpośrednie |
-| rider-motion-bridge | – | – | – | – | ✔ (monitoring urządzenia) | ✔ | bezpośrednie / mapowanie JSON → XGO |
+| motion-executor + sensor-reader | – | – | – | – | ✔ (monitoring urządzenia) | ✔ | mapowanie JSON → XGO |
 | rider-obstacle | ✔ | – | – | – | – | – | ML (detekcja przeszkód) |
 | rider-vision (dispatcher) | ✔ | – | – | – | – | – | agregacja ML, filtry wizji |
 | rider-vision-offload | ✔ | – | – | – | – | – | streaming/raw + offload |
@@ -222,7 +222,7 @@ Każdy moduł w tym łańcuchu działa na dobrze zdefiniowanym interfejsie (np. 
 | rider-voice | – | – | ✔ | ✔* | – | – | ASR/NLU/TTS (lokalnie/chmura) |
 | rider-voice-web | – | – | ✔* | ✔* | – | – | warstwa HTTP/websocket |
 | rider-google-bridge | – | – | – | – | – | – | integracja API |
-| rider-boot-splash / rider-post-splash | – | ✔ | – | – | – | – | proste grafiki / status |
+| rider-boot-splash / lcd-renderer | – | ✔ | – | – | – | – | proste grafiki / status |
 | rider-web-bridge / rider-api / rider-broker | – | – | – | – | – | – (pośrednio) | JSON/REST → ZMQ |
 
 \* w zależności od konfiguracji providerów (np. lokalny TTS vs urządzenie zewnętrzne).
@@ -233,7 +233,7 @@ Każdy moduł w tym łańcuchu działa na dobrze zdefiniowanym interfejsie (np. 
 | Warstwa / kanał | Cel | Przykłady |
 |-----------------|-----|-----------|
 | Systemd / targety | Uruchamianie i zatrzymywanie scenariuszy (S0–S11) | `systemctl start rider-followme.target`, `feature_manager.set_feature()` |
-| Command bus (ZMQ) | Przekazywanie komend runtime, subskrypcja zdarzeń | publikacje do motion bridge, nasłuchiwanie telemetrycznych topiców |
+| Command bus (ZMQ) | Przekazywanie komend runtime, subskrypcja zdarzeń | publikacje do motion-executor, nasłuchiwanie telemetrycznych topiców |
 | API / UI / CLI | Interfejs dla operatora i integracji | `/api/logic/feature`, panel `/web/control.html`, `robot_ctl` |
 | Monitoring / stan | Udostępnianie obecnego scenariusza, statusu usług | `/svc`, `/run/rider/state`, tabelka usług, badge w UI |
 

@@ -9,7 +9,7 @@ FACE_LCD_ROTATE ?= 270
 FACE_LCD_SPI_HZ ?= 32000000
 
 # Aktualny zestaw usług (repo-first systemd)
-SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service rider-cam-preview.service
+SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service camera-capture@raw.service
 
 # Provider wyboru backendu głosowego:
 # - openai (domyślnie)
@@ -162,9 +162,10 @@ status:
 	@systemctl --no-pager --full status rider-broker.service | sed -n '1,20p'
 	@systemctl --no-pager --full status rider-api.service    | sed -n '1,20p'
 	@systemctl --no-pager --full status rider-vision.service | sed -n '1,20p'
+	@systemctl --no-pager --full status camera-capture@raw.service | sed -n '1,20p'
 
 status-all:
-	@systemctl list-units --type=service --all | grep -E 'rider-(broker|api|vision|cam-preview)'
+	@systemctl list-units --type=service --all | grep -E 'rider-(broker|api|vision)|camera-capture@'
 
 logs-broker:
 	@journalctl -u rider-broker.service -n 120 --no-pager
@@ -173,7 +174,7 @@ logs-api:
 	@journalctl -u rider-api.service -n 120 --no-pager
 
 logs-preview:
-	@journalctl -u rider-cam-preview.service -n 120 --no-pager || true
+	@journalctl -u camera-capture@raw.service -n 120 --no-pager || true
 
 logs-all:
 	@journalctl -u rider-broker.service -n 80 --no-pager
@@ -182,7 +183,7 @@ logs-all:
 	@echo "───"
 	@journalctl -u rider-vision.service -n 80 --no-pager
 	@echo "───"
-	@journalctl -u rider-cam-preview.service -n 80 --no-pager || true
+	@journalctl -u camera-capture@raw.service -n 80 --no-pager || true
 
 logs-clean:
 	@echo "== Cleaning systemd logs for rider-* services =="
@@ -190,7 +191,7 @@ logs-clean:
 	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u rider-broker.service || true
 	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u rider-api.service || true
 	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u rider-vision.service || true
-	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u rider-cam-preview.service || true
+	@$(SUDO) journalctl --vacuum-time=1s --vacuum-size=1M -u camera-capture@raw.service || true
 	@echo "Logs cleaned."
 
 # ───────────────────────────────────────────────
@@ -262,13 +263,13 @@ bus-spy:
 # CAM PREVIEW (systemd on-demand)
 .PHONY: preview-on preview-off preview-status
 preview-on:
-	@$(SUDO) systemctl start rider-cam-preview.service
+	@$(SUDO) systemctl start camera-capture@raw.service
 
 preview-off:
-	@$(SUDO) systemctl stop rider-cam-preview.service || true
+	@$(SUDO) systemctl stop camera-capture@raw.service || true
 
 preview-status:
-	@systemctl --no-pager --full status rider-cam-preview.service | sed -n '1,25p' || true
+	@systemctl --no-pager --full status camera-capture@raw.service | sed -n '1,25p' || true
 
 # ───────────────────────────────────────────────
 # VISION CONTROL

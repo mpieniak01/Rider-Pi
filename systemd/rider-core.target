@@ -1,0 +1,14 @@
+[Unit]
+Description=Rider-Pi Core Services (API + komunikacja)
+Requires=multi-user.target
+After=multi-user.target
+Wants=network-online.target \
+    rider-broker.service \
+    rider-api.service \
+    rider-web-bridge.service \
+    sensor-reader.service \
+    motion-executor.service \
+    wifi-unblock.service
+
+[Install]
+WantedBy=multi-user.target

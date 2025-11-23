@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 from apps.app_logic_core import DEFAULT_REGISTRY, FeatureManager, NullPublisher
 from common import systemd_ctrl
 
@@ -30,11 +33,17 @@ class FakeRunner:
 
 
 def make_manager(runner: FakeRunner, publisher: NullPublisher) -> FeatureManager:
+    state_file = Path(tempfile.gettempdir()) / "feature_state_test.json"
+    try:
+        state_file.unlink()
+    except FileNotFoundError:
+        pass
     return FeatureManager(
         registry=DEFAULT_REGISTRY,
         runner=runner,
         status_fn=lambda unit: runner.state.get(unit, False),
         publisher=publisher,
+        state_path=state_file,
     )
 
 
@@ -48,9 +57,9 @@ def test_enable_face_tracking_starts_preview_and_services() -> None:
     assert result["ok"] is True
     # Preview starts first, then feature services
     assert runner.actions[:3] == [
-        ("rider-cam-preview.service", "start"),
-        ("rider-tracker.service", "start"),
-        ("rider-tracking-controller.service", "start"),
+        ("camera-capture@raw.service", "start"),
+        ("frame-distributor.service", "start"),
+        ("rider-followme.target", "start"),
     ]
     # Tracking mode event published
     assert publisher.sent[-1][0] == "tracking.mode:set"
@@ -59,22 +68,25 @@ def test_enable_face_tracking_starts_preview_and_services() -> None:
 
 def test_disable_face_tracking_stops_services_and_preview() -> None:
     runner = FakeRunner()
-    runner.state["rider-cam-preview.service"] = True  # already running (autostart flag set on enable)
+    runner.state["camera-capture@raw.service"] = True  # already running (autostart flag set on enable)
+    runner.state["frame-distributor.service"] = True
     runner.state["rider-tracker.service"] = True
     runner.state["rider-tracking-controller.service"] = True
+    runner.state["motion-executor.service"] = True
     publisher = NullPublisher()
     mgr = make_manager(runner, publisher)
     # symulacja wcześniejszego auto-startu podglądu
     mgr._preview_autostart = True
+    mgr._framefeed_autostart = True
 
     result = mgr.set_feature("face_tracking", False)
 
     assert result["ok"] is True
     # Stop services in reverse order, then preview
     assert runner.actions == [
-        ("rider-tracking-controller.service", "stop"),
-        ("rider-tracker.service", "stop"),
-        ("rider-cam-preview.service", "stop"),
+        ("rider-followme.target", "stop"),
+        ("frame-distributor.service", "stop"),
+        ("camera-capture@raw.service", "stop"),
     ]
     # Tracking mode is reset to none
     assert publisher.sent[-1][1]["mode"] == "none"
@@ -87,24 +99,45 @@ def test_enable_disable_recon_sequence_and_no_preview() -> None:
 
     enable = mgr.set_feature("recon", True)
     assert enable["ok"] is True
-    assert runner.actions[:6] == [
-        ("rider-vision.service", "start"),
-        ("rider-obstacle.service", "start"),
-        ("rider-motion-bridge.service", "start"),
-        ("rider-odometry.service", "start"),
-        ("rider-mapper.service", "start"),
-        ("rider-navigator.service", "start"),
-    ]
+    assert ("camera-capture@raw.service", "start") in runner.actions
+    assert ("frame-distributor.service", "start") in runner.actions
+    assert ("rider-recon.target", "start") in runner.actions
     assert publisher.sent == []  # brak eventów dla recon
 
     runner.actions.clear()
     disable = mgr.set_feature("recon", False)
     assert disable["ok"] is True
-    assert runner.actions == [
-        ("rider-navigator.service", "stop"),
-        ("rider-mapper.service", "stop"),
-        ("rider-odometry.service", "stop"),
-        ("rider-motion-bridge.service", "stop"),
-        ("rider-obstacle.service", "stop"),
-        ("rider-vision.service", "stop"),
-    ]
+    assert ("rider-recon.target", "stop") in runner.actions
+    assert ("frame-distributor.service", "stop") in runner.actions
+    assert ("camera-capture@raw.service", "stop") in runner.actions
+
+
+def test_describe_features_reports_metadata_and_status() -> None:
+    runner = FakeRunner()
+    publisher = NullPublisher()
+    mgr = make_manager(runner, publisher)
+    runner.state["rider-followme.target"] = True
+    runner.state["camera-capture@raw.service"] = True
+    runner.state["frame-distributor.service"] = True
+
+    data = mgr.describe_features()
+    s3 = next(item for item in data if item["name"] == "s3_follow_me_face")
+
+    assert s3["scenario"] == "S3"
+    assert "face_tracking" in s3["aliases"]
+    assert s3["active"] is True
+    assert {"rider-followme.target"} <= {svc["unit"] for svc in s3["services"]}
+
+
+def test_state_snapshot_tracks_active_features() -> None:
+    runner = FakeRunner()
+    publisher = NullPublisher()
+    mgr = make_manager(runner, publisher)
+
+    mgr.set_feature("face_tracking", True)
+    state = mgr.state_snapshot()
+    assert "s3_follow_me_face" in state["active"]
+
+    mgr.set_feature("face_tracking", False)
+    state2 = mgr.state_snapshot()
+    assert "s3_follow_me_face" not in state2["active"]

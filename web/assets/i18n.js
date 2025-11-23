@@ -1,3 +1,5 @@
+import { BALANCE_I18N } from "./i18n.balance.js";
+
 // web/i18n.js
 export const I18N = {
   meta: {
@@ -167,7 +169,9 @@ export const I18N = {
     shortcuts_hint:  { pl: "Skróty",            en: "Shortcuts" },
     shortcuts_tail:  { pl: "lub strzałki; Spacja = stop.", en: "or arrow keys; Space = stop." },
     balance:         { pl: "Stabilizacja", en: "Balance" },
+    balance_toggle_label: { pl: "Stabilizacja", en: "Balance" },
     height:          { pl: "Wysokość", en: "Height" },
+    balance_height_label: { pl: "Wysokość", en: "Height" },
     zero_mode:       { pl: "Stan 0 – Sterowanie ręczne", en: "State 0 – Manual control" },
     tracking_mode_title: { pl: "Śledzenie (twarz / dłoń)", en: "Tracking (face / hand)" },
     recon_mode:      { pl: "Tryb rekonesansu (autonomiczny)", en: "Recon mode (autonomous)" },
@@ -194,18 +198,22 @@ export const I18N = {
     feature_note_missing_services: { pl: "brak usług: {count}", en: "missing services: {count}" },
     feature_note_missing_support:  { pl: "brak usług pomocniczych: {count}", en: "support services missing: {count}" },
     feature_note_waiting:   { pl: "czekam na wykonanie…", en: "waiting for sequence…" },
-    feature_note_need_preview: { pl: "Wymagany podgląd CAM (rider-cam-preview).", en: "CAM preview service (rider-cam-preview) must be running." },
+    feature_note_need_preview: { pl: "Wymagany podgląd CAM (camera-capture@raw).", en: "CAM preview service (camera-capture@raw) must be running." },
     feature_note_preview_forced: { pl: "CAM zastąpił: {name}", en: "CAM preview forced (replaced {name})." },
     feature_zero_note_ready: { pl: "Aktywny tylko tryb ręczny", en: "Manual-only stack active" },
     feature_zero_note_blocked: { pl: "Aktywne: {list}", en: "Active: {list}" },
     zero_tracking_label: { pl: "Śledzenie", en: "Tracking" },
     zero_recon_label: { pl: "Rekonesans", en: "Recon" },
-    feature_error_camera_feed: { pl: "Brak świeżego podglądu CAM (sprawdź rider-cam-preview).", en: "Camera feed is stale (check rider-cam-preview)." },
+    active_scenarios_label: { pl: "Aktywne scenariusze", en: "Active scenarios" },
+    active_scenarios_none: { pl: "brak (S0)", en: "none (S0)" },
+    feature_error_camera_feed: { pl: "Brak świeżego podglądu CAM (sprawdź camera-capture@raw).", en: "Camera feed is stale (check camera-capture@raw)." },
     feature_error_tracker_feed: { pl: "Brak świeżego podglądu TRACKER (sprawdź rider-tracker).", en: "Tracker feed is stale (check rider-tracker)." },
     preview_cam:  { pl: "CAM", en: "CAM" },
     preview_edge: { pl: "EDGE", en: "EDGE" },
     preview_ssd:  { pl: "PROC/SSD", en: "PROC/SSD" },
   },
+
+  ...BALANCE_I18N,
 
   resources: {
     title:           { pl: "Diagnostyka zasobów", en: "Resource diagnostics" },
@@ -262,6 +270,8 @@ export const I18N = {
   services: {
     title:     { pl: "Usługi (systemd)", en: "Services (systemd)" },
     refresh:   { pl: "⟳ odśwież",       en: "⟳ refresh" },
+    auto_refresh: { pl: "Auto (5s)", en: "Auto (5s)" },
+    loaded_at: { pl: "Załadowano o: {ts}", en: "Loaded at: {ts}" },
     unit:      { pl: "Unit",            en: "Unit" },
     desc:      { pl: "Opis",            en: "Description" },
     status:    { pl: "Status",          en: "Status" },

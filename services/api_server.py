@@ -369,6 +369,16 @@ _add_rule(
 
 # features (core business logic)
 _add_rule(
+    "/api/logic/features",
+    view_func=features_api.feature_registry_handler,
+    methods=["GET", "OPTIONS"],
+)
+_add_rule(
+    "/api/logic/state",
+    view_func=features_api.feature_state_handler,
+    methods=["GET", "OPTIONS"],
+)
+_add_rule(
     "/api/logic/feature/<name>",
     view_func=features_api.feature_handler,
     methods=["POST", "OPTIONS"],

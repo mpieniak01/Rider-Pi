@@ -12,6 +12,7 @@ Zmiany vs poprzednia wersja:
 from __future__ import annotations
 
 import json
+import os
 import signal
 import sys
 import time
@@ -21,6 +22,11 @@ from typing import Any
 
 import cv2  # type: ignore
 import numpy as np
+
+try:
+    import zmq  # type: ignore
+except Exception:  # pragma: no cover
+    zmq = None  # type: ignore
 
 from apps.vision.ai_mode_adapter import log_vision_mode_status, should_run_local_detectors
 from apps.vision.config import load_config
@@ -68,6 +74,14 @@ OBST_ANN = _obst_cfg.obst_ann
 OBST_ANN_PATH = _obst_cfg.obst_ann_path
 OBST_BINS = _obst_cfg.obst_bins
 EDGE_BIN_LOW = _obst_cfg.edge_bin_low
+
+FRAME_STREAM_ADDR = os.getenv("OBST_FRAME_STREAM_ADDR", os.getenv("FRAME_STREAM_ADDR", "tcp://127.0.0.1:5562"))
+FRAME_STREAM_TOPIC = os.getenv("OBST_FRAME_STREAM_TOPIC", os.getenv("FRAME_STREAM_TOPIC", "camera.frame.raw"))
+FRAME_STREAM_TIMEOUT_MS = int(os.getenv("OBST_FRAME_STREAM_TIMEOUT_MS", "200"))
+USE_FRAME_STREAM = os.getenv("OBST_USE_FRAME_STREAM", "1") == "1"
+STREAM_CANNY_LOW = int(os.getenv("OBST_CANNY_LOW", "40"))
+STREAM_CANNY_HIGH = int(os.getenv("OBST_CANNY_HIGH", "120"))
+_LAST_STREAM_FRAME: np.ndarray | None = None
 
 # sanity
 if EDGE_T_LOW > EDGE_T_HIGH:
@@ -217,9 +231,13 @@ def draw_overlay(
 
 def copy_raw_snapshot(message: str | None = None) -> None:
     try:
-        frame = cv2.imread(RAW_PATH)
+        frame = None
+        if _LAST_STREAM_FRAME is not None:
+            frame = _LAST_STREAM_FRAME.copy()
         if frame is None:
-            return
+            frame = cv2.imread(RAW_PATH)
+            if frame is None:
+                return
         if message:
             cv2.putText(
                 frame,
@@ -236,13 +254,51 @@ def copy_raw_snapshot(message: str | None = None) -> None:
         print(f"[obst][annot] idle copy failed: {exc}", flush=True)
 
 
+class FrameStreamSubscriber:
+    def __init__(self, addr: str, topic: str) -> None:
+        if zmq is None:
+            raise RuntimeError("pyzmq unavailable")
+        self.ctx = zmq.Context.instance()
+        self.sock = self.ctx.socket(zmq.SUB)
+        self.sock.setsockopt(zmq.LINGER, 0)
+        self.sock.connect(addr)
+        self.sock.setsockopt(zmq.SUBSCRIBE, topic.encode("utf-8"))
+        self.poller = zmq.Poller()
+        self.poller.register(self.sock, zmq.POLLIN)
+
+    def recv(self, timeout_ms: int) -> np.ndarray | None:
+        global _LAST_STREAM_FRAME
+        try:
+            events = dict(self.poller.poll(timeout_ms))
+        except Exception:
+            return _LAST_STREAM_FRAME
+        if self.sock not in events:
+            return _LAST_STREAM_FRAME
+        try:
+            parts = self.sock.recv_multipart(zmq.NOBLOCK)
+        except zmq.Again:
+            return _LAST_STREAM_FRAME
+        if len(parts) < 3:
+            return _LAST_STREAM_FRAME
+        data = parts[2]
+        try:
+            arr = np.frombuffer(data, dtype=np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        except Exception:
+            frame = None
+        if frame is not None:
+            _LAST_STREAM_FRAME = frame
+            return frame.copy()
+        return _LAST_STREAM_FRAME
+
+
 # ----------------------------- optional bus ---------------------------------
 
 _bus = None
 if PUBLISH:
     try:
-        import zmq  # type: ignore
-
+        if zmq is None:
+            raise RuntimeError("pyzmq unavailable")
         _ctx = zmq.Context.instance()
         _bus = _ctx.socket(zmq.PUB)
         _bus.bind("tcp://127.0.0.1:5557")
@@ -303,6 +359,18 @@ def main() -> int:
         flush=True,
     )
 
+    frame_stream = None
+    if USE_FRAME_STREAM:
+        try:
+            frame_stream = FrameStreamSubscriber(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC)
+            print(
+                f"[obst] frame stream subscribed: {FRAME_STREAM_ADDR} topic={FRAME_STREAM_TOPIC}",
+                flush=True,
+            )
+        except Exception as exc:
+            frame_stream = None
+            print(f"[obst] WARN: frame stream disabled ({exc})", flush=True)
+
     while not _STOP:
         # Check for AI mode/provider changes
         if sub_ai_mode:
@@ -350,27 +418,56 @@ def main() -> int:
             atomic_write_json(OBSTACLE_JSON, payload)
             time.sleep(0.5)
             continue
-        proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)
-        img_proc = load_gray(PROC_PATH)
+        img_proc = None
+        img_raw_gray = None
+        proc_age_s = 0.0
+
+        frame_bgr = None
+        if frame_stream is not None:
+            frame_bgr = frame_stream.recv(FRAME_STREAM_TIMEOUT_MS)
+            if frame_bgr is not None:
+                img_raw_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                blur = cv2.GaussianBlur(img_raw_gray, (5, 5), 1.0)
+                img_proc = cv2.Canny(blur, STREAM_CANNY_LOW, STREAM_CANNY_HIGH)
+                if PROC_PATH:
+                    try:
+                        cv2.imwrite(PROC_PATH, img_proc, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                    except Exception:
+                        pass
 
         if img_proc is None:
-            payload = {
-                "type": "obstacle",
-                "present": False,
-                "confidence": 0.0,
-                "edge_pct": 0.0,
-                "edge_nz": 0,
-                "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
-                "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
-                "ts": now_s(),
-                "age_s": proc_age_s,
-                "stale": proc_age_s > SNAP_MAX_AGE_S,
-                "error": "proc_not_found",
-            }
-            atomic_write_json(OBSTACLE_JSON, payload)
-            publish("vision.obstacle", payload)
-            time.sleep(0.25)
-            continue
+            proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)
+            img_proc = load_gray(PROC_PATH)
+            if img_proc is None:
+                payload = {
+                    "type": "obstacle",
+                    "present": False,
+                    "confidence": 0.0,
+                    "edge_pct": 0.0,
+                    "edge_nz": 0,
+                    "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
+                    "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
+                    "ts": now_s(),
+                    "age_s": proc_age_s,
+                    "stale": proc_age_s > SNAP_MAX_AGE_S,
+                    "error": "proc_not_found" if frame_stream is None else "stream_no_frame",
+                }
+                atomic_write_json(OBSTACLE_JSON, payload)
+                publish("vision.obstacle", payload)
+                publish(
+                    "obstacle.map",
+                    {
+                        "present": False,
+                        "confidence": 0.0,
+                        "edge_pct": 0.0,
+                        "ts": payload["ts"],
+                        "source": "obstacle_roi",
+                        "error": payload.get("error", "missing_frame"),
+                    },
+                )
+                time.sleep(0.25)
+                continue
+            img_raw_gray = load_gray(RAW_PATH)
 
         h, w = img_proc.shape[:2]
         sl = roi_slice(h, ROI_Y0, ROI_H)
@@ -380,10 +477,9 @@ def main() -> int:
         edge_hist.append(float(edge_pct_raw))
         edge_pct = median_of(edge_hist)
 
-        img_raw = load_gray(RAW_PATH)
-        if img_raw is None:
-            img_raw = img_proc
-        mean_luma, lap_var = luma_and_focus(img_raw, sl)
+        if img_raw_gray is None:
+            img_raw_gray = img_proc
+        mean_luma, lap_var = luma_and_focus(img_raw_gray, sl)
 
         dark = mean_luma < DARK_LUMA
         blurry = lap_var < LAPL_VAR_MIN
@@ -455,6 +551,17 @@ def main() -> int:
 
         atomic_write_json(OBSTACLE_JSON, payload)
         publish("vision.obstacle", payload)
+        publish(
+            "obstacle.map",
+            {
+                "present": bool(present),
+                "confidence": round(float(conf), 3),
+                "edge_pct": round(float(edge_pct), 4),
+                "ts": payload["ts"],
+                "source": "obstacle_roi",
+                "roi": payload["roi_norm"],
+            },
+        )
 
         print(
             (

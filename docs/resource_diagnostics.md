@@ -39,9 +39,9 @@ delegates to the `resource_diag` module and the newly added `vision-resource-gua
 
 ## Central guard integration
 
-- `vision-resource-guard.sh` stops `rider-cam-preview.service`, `rider-edge-preview.service`,
-  and `rider-ssd-preview.service` before `rider-vision-offload.service` starts, and
-  starts them again when the offload stops.
+- `vision-resource-guard.sh` stops `camera-capture@raw.service`
+  (or inne instancje `camera-capture@<mode>`) before `rider-vision-offload.service`
+  starts, and przy zwalnianiu zasobów ponownie uruchamia odpowiedni tryb capture.
 - `scripts/sys_control.sh` uses the guard when `/svc` is invoked for
   `rider-vision-offload.service`. This keeps all `/svc`/resource API pathways aligned
   and prevents multiple previews from fighting over `/dev/video0`.

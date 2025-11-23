@@ -1,7 +1,7 @@
 [Unit]
 Description=Rider-Pi Obstacle detector (ROI on edges -> bus/state)
-After=network-online.target rider-edge-preview.service
-Wants=network-online.target rider-edge-preview.service
+After=network-online.target camera-capture@raw.service
+Wants=network-online.target camera-capture@raw.service
 StartLimitIntervalSec=30
 StartLimitBurst=10
 

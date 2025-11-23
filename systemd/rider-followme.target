@@ -1,0 +1,13 @@
+[Unit]
+Description=Rider-Pi Follow Me Scenario (S3)
+Requires=rider-core.target
+After=rider-core.target
+Wants=camera-capture@raw.service \
+    frame-distributor.service \
+    rider-tracker.service \
+    rider-tracking-controller.service \
+    motion-executor.service \
+    sensor-reader.service
+
+[Install]
+WantedBy=multi-user.target

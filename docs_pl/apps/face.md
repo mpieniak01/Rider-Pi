@@ -53,7 +53,7 @@ ls -l /tmp/legacy.png
 
 - Animacje/FaceLoop, TTS, visemy, sterownik LCD RAW
 - Brak `/face/state`
-- Plik unit: `systemd/rider-face.service`
+- Plik unit (legacy): `systemd/legacy/rider-face.service`
 - Domyślnie wyłączony: `sudo systemctl disable rider-face.service`
 - Włącz: `sudo systemctl enable rider-face.service && sudo systemctl start rider-face.service`
 - Edytuj parametry przez ENV w `systemd/robot.env` (np. `FACE_LCD_ROTATE`, `FACE_LCD_DRIVER`)

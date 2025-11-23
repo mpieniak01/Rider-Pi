@@ -42,7 +42,7 @@ PAUSE="${PAUSE:-0.30}"
 
   echo
   echo "== ostatnie logi bridge =="
-  journalctl -u rider-motion-bridge.service -n 120 --no-pager || true
+  journalctl -u motion-executor.service -n 120 --no-pager || true
 
   echo
   echo "== ostatnie logi web-bridge =="

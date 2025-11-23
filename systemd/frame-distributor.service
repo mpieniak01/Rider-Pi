@@ -1,0 +1,29 @@
+[Unit]
+Description=Rider-Pi frame distributor (camera feed -> ZMQ)
+After=network-online.target camera-capture@raw.service
+Wants=network-online.target camera-capture@raw.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONNOUSERSITE=1
+Environment=PYTHONPATH=/home/pi/robot
+EnvironmentFile=-/etc/default/rider
+EnvironmentFile=-/etc/default/rider-camera
+
+ExecStart=/usr/bin/python3 -u -m apps.camera.frame_distributor
+
+Restart=always
+RestartSec=0.5
+TimeoutStartSec=5
+TimeoutStopSec=5
+KillMode=process
+KillSignal=SIGINT
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

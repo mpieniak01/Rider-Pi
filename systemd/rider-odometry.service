@@ -1,7 +1,7 @@
 [Unit]
 Description=Rider-Pi Odometry (Position Tracking)
-After=network-online.target rider-broker.service rider-motion-bridge.service
-Wants=network-online.target rider-broker.service rider-motion-bridge.service
+After=network-online.target rider-broker.service motion-executor.service
+Wants=network-online.target rider-broker.service motion-executor.service
 StartLimitIntervalSec=30
 StartLimitBurst=10
 

@@ -15,6 +15,7 @@ from typing import Any
 
 import cv2
 import mediapipe as mp
+import numpy as np
 import zmq
 
 try:
@@ -34,6 +35,9 @@ SNAP_DIR = os.getenv("SNAP_BASE", "/home/pi/robot/snapshots")
 
 # Główne źródło obrazu – klatka z preview_lcd (camera.heartbeat)
 LAST_FRAME_PATH = os.getenv("TRACKER_LAST_FRAME_PATH", "/home/pi/robot/data/last_frame.jpg")
+FRAME_STREAM_ADDR = os.getenv("FRAME_STREAM_ADDR", "tcp://127.0.0.1:5562")
+FRAME_STREAM_TOPIC = os.getenv("FRAME_STREAM_TOPIC", "camera.frame.raw")
+TRACKER_USE_FRAME_STREAM = os.getenv("TRACKER_USE_FRAME_STREAM", "1") == "1"
 TRACKER_PATH = os.path.join(SNAP_DIR, "tracker.jpg")
 
 # Tracking parameters
@@ -53,6 +57,51 @@ PUB: zmq.Socket | None = None
 SUB: zmq.Socket | None = None
 FOLLOW_MODE_LOCK = threading.Lock()
 FOLLOW_MODE: str = "NONE"  # "NONE", "FACE", "HAND"
+
+
+class FrameStreamSubscriber:
+    """Odbiera klatki z frame-distributor (ZMQ SUB)."""
+
+    def __init__(self, addr: str, topic: str) -> None:
+        self.addr = addr
+        self.topic = topic.encode("utf-8")
+        self.ctx = zmq.Context.instance()
+        self.sock = self.ctx.socket(zmq.SUB)
+        self.sock.setsockopt(zmq.LINGER, 0)
+        self.sock.connect(addr)
+        self.sock.setsockopt(zmq.SUBSCRIBE, self.topic)
+        self.poller = zmq.Poller()
+        self.poller.register(self.sock, zmq.POLLIN)
+        self.last_frame = None
+
+    def recv(self, timeout_ms: int) -> Any:
+        try:
+            events = dict(self.poller.poll(timeout_ms))
+        except ValueError:
+            return self.last_frame
+        if self.sock not in events:
+            return self.last_frame
+        try:
+            parts = self.sock.recv_multipart(zmq.NOBLOCK)
+        except zmq.Again:
+            return self.last_frame
+        if len(parts) < 3:
+            return self.last_frame
+        payload = parts[1]
+        data = parts[2]
+        try:
+            meta = json.loads(payload.decode("utf-8", "ignore"))
+            _ = meta  # meta w razie debug
+        except Exception:
+            pass
+        try:
+            arr = np.frombuffer(data, dtype=np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if frame is not None:
+                self.last_frame = frame
+        except Exception:
+            pass
+        return self.last_frame
 
 
 def zmq_pub() -> zmq.Socket:
@@ -257,6 +306,8 @@ def tracking_loop() -> None:
     fps_frame_count = 0
     fps_value = 0.0
 
+    frame_stream = FrameStreamSubscriber(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC) if TRACKER_USE_FRAME_STREAM else None
+
     while True:
         try:
             pc_mode = not should_run_local_detectors()
@@ -270,17 +321,23 @@ def tracking_loop() -> None:
             with FOLLOW_MODE_LOCK:
                 mode = FOLLOW_MODE
 
-            # Wczytujemy ostatnią klatkę z preview
-            frame = cv2.imread(LAST_FRAME_PATH)
+            # Wczytujemy ostatnią klatkę ze streamu lub fallbacku
+            frame = None
+            if frame_stream is not None:
+                frame = frame_stream.recv(int(frame_interval * 1000))
             if frame is None:
-                print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
-                time.sleep(0.05)
-                continue
-            try:
-                frame_age = max(0.0, t0 - os.path.getmtime(LAST_FRAME_PATH))
-                if frame_age > 1.0 and int(t0) % 5 == 0:
-                    print(f"[tracker] warning: last_frame age={frame_age:.2f}s path={LAST_FRAME_PATH}", flush=True)
-            except Exception:
+                frame = cv2.imread(LAST_FRAME_PATH)
+                if frame is None:
+                    print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
+                    time.sleep(0.05)
+                    continue
+                try:
+                    frame_age = max(0.0, t0 - os.path.getmtime(LAST_FRAME_PATH))
+                    if frame_age > 1.0 and int(t0) % 5 == 0:
+                        print(f"[tracker] warning: last_frame age={frame_age:.2f}s path={LAST_FRAME_PATH}", flush=True)
+                except Exception:
+                    frame_age = None
+            else:
                 frame_age = None
 
             if mode == "NONE":
@@ -402,13 +459,20 @@ def tracking_loop() -> None:
             )
 
             if offset_x is not None and can_publish and (not pc_mode or pc_fallback):
+                payload = {
+                    "offset_x": round(offset_x, 3),
+                    "mode": mode.lower(),
+                    "ts": now,
+                    "source": "pc-fallback" if pc_mode else "local",
+                }
+                pub("vision.tracking.offset", payload)
                 pub(
-                    "vision.tracking.offset",
+                    "tracking.pose",
                     {
-                        "offset_x": round(offset_x, 3),
                         "mode": mode.lower(),
+                        "target": {"x": payload["offset_x"], "y": 0.0},
                         "ts": now,
-                        "source": "pc-fallback" if pc_mode else "local",
+                        "source": payload["source"],
                     },
                 )
                 last_pub_ts = now

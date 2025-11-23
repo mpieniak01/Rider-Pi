@@ -31,6 +31,7 @@ TOPIC_MOTION_HEIGHT = "cmd.height"
 # Published offset for tracking target
 # Payload: {"offset_x": float, "offset_y": float, "ts": float}
 TOPIC_VISION_TRACKING_OFFSET = "vision.tracking.offset"
+TOPIC_TRACKING_POSE = "tracking.pose"
 
 # Unified tracking mode control
 # Payload: {"mode": "face"|"hand"|"none", "ts": float}
@@ -48,6 +49,7 @@ TOPIC_NAVIGATOR_STATE = "navigator.state"
 # Obstacle detection from vision (binary - obstacle present/absent)
 # Payload: {"type": "obstacle", "present": bool, "confidence": float, "edge_pct": float, "ts": float}
 TOPIC_VISION_OBSTACLE = "vision.obstacle"
+TOPIC_OBSTACLE_MAP = "obstacle.map"
 # Raw frame stream for PC offload
 # Payload: {"ts": float, "frame_jpeg": "<base64>", "size": {"w": int, "h": int}}
 TOPIC_VISION_FRAME_OFFLOAD = "vision.frame.offload"

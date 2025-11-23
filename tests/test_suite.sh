@@ -29,6 +29,6 @@ say "Podsumowanie od 2 min"
 "$DIR/count_rx_since.sh" "2 minutes ago" | tee -a "$LOG"
 
 say "Logi bridge (150)"
-run journalctl -u rider-motion-bridge -n 150 --no-pager | egrep -i 'rx_cmd.move|forward|stop|drop_old|auto_stop|START|STOP' || true
+run journalctl -u motion-executor.service -n 150 --no-pager | egrep -i 'rx_cmd.move|forward|stop|drop_old|auto_stop|START|STOP' || true
 
 echo -e "\nSuite log: ${LOG}"

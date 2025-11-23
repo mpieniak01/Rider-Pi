@@ -17,7 +17,7 @@ def set_feature_manager(manager: FeatureManager) -> None:
 def _corsify(resp: Response) -> Response:
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return resp
 
 
@@ -44,4 +44,26 @@ def feature_handler(name: str):
         return _corsify(jsonify({"ok": False, "error": f"feature_error:{e}", "feature": name})), 500
 
 
-__all__ = ["feature_handler", "set_feature_manager", "feature_manager"]
+def feature_registry_handler():
+    """Endpoint: GET /api/logic/features – lista scenariuszy i status usług."""
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    data = feature_manager.describe_features()
+    return _corsify(jsonify({"ok": True, "features": data})), 200
+
+
+def feature_state_handler():
+    """Endpoint: GET /api/logic/state – aktywne scenariusze i snapshot."""
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    data = feature_manager.state_snapshot()
+    return _corsify(jsonify({"ok": True, "state": data})), 200
+
+
+__all__ = [
+    "feature_handler",
+    "feature_registry_handler",
+    "feature_state_handler",
+    "set_feature_manager",
+    "feature_manager",
+]

@@ -189,7 +189,7 @@ lsof /dev/video0
 ./scripts/sys_camera-preview.sh --human 1
 
 # (alternatywnie) Start przez systemd
-./scripts/sys_control.sh rider-cam-preview.service start
+./scripts/sys_control.sh camera-capture@raw.service start
 ```
 
 ### Pre-flight check (rekomendowane)

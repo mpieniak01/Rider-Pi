@@ -20,14 +20,16 @@ ALLOWED_UNITS: dict[str, str] = {
     "voice": "rider-voice.service",
     "voice-web": "rider-voice-web.service",
     # motion / xgo
-    "xgo": "rider-motion-bridge.service",
-    "motion": "rider-motion-bridge.service",
-    "motion-preview": "rider-motion-bridge.service",
+    "xgo": "motion-executor.service",
+    "motion": "motion-executor.service",
+    "motion-preview": "motion-executor.service",
+    "sensors": "sensor-reader.service",
+    "imu": "sensor-reader.service",
     # camera pipelines (preview)
-    "cam": "rider-cam-preview.service",
-    "camera": "rider-cam-preview.service",
-    "edge": "rider-edge-preview.service",
-    "ssd": "rider-ssd-preview.service",
+    "cam": "camera-capture@raw.service",
+    "camera": "camera-capture@raw.service",
+    "edge": "camera-capture@edge.service",
+    "ssd": "camera-capture@ssd.service",
     # detectors
     "obstacle": "rider-obstacle.service",
     "vision": "rider-vision.service",
@@ -35,8 +37,8 @@ ALLOWED_UNITS: dict[str, str] = {
     "offload": "rider-vision-offload.service",
     "pc-offload": "rider-vision-offload.service",
     # legacy aliases
-    "last": "rider-ssd-preview.service",
-    "lastframe": "rider-ssd-preview.service",
+    "last": "camera-capture@raw.service",
+    "lastframe": "camera-capture@raw.service",
     # new units added
     "mapper": "rider-mapper.service",
     "odometry": "rider-odometry.service",
@@ -51,9 +53,9 @@ ALLOWED_UNITS: dict[str, str] = {
 # --- grupy wzajemnie wykluczające (mutex) ---
 MUTEX_GROUPS: list[set[str]] = [
     {
-        "rider-cam-preview.service",
-        "rider-edge-preview.service",
-        "rider-ssd-preview.service",
+        "camera-capture@raw.service",
+        "camera-capture@edge.service",
+        "camera-capture@ssd.service",
         "rider-vision-offload.service",
     },
 ]

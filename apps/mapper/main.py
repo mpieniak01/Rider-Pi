@@ -27,6 +27,7 @@ from common.bus import (
     TOPIC_MAPPER_MAP_DATA,
     TOPIC_NAVIGATOR_MAP_REQUEST,
     TOPIC_ROBOT_POSE,
+    TOPIC_SLAM_MAP_STATE,
     TOPIC_VISION_OBSTACLE_DATA,
     BusPub,
     BusSub,
@@ -183,6 +184,7 @@ class Mapper:
         # Statistics
         self.obstacles_processed = 0
         self.last_stats_print_ts = time.time()
+        self.last_map_state_ts = 0.0
 
         LOG.info(f"Mapper initialized at robot position ({self.robot_x:.2f}, {self.robot_y:.2f})")
 
@@ -196,6 +198,7 @@ class Mapper:
         LOG.debug(
             f"Robot pose updated: ({self.robot_x:.3f}, {self.robot_y:.3f}, {math.degrees(self.robot_theta):.1f}°)"
         )
+        self._publish_map_state(reason="pose")
 
     def _handle_obstacle_data(self, payload: dict):
         """
@@ -242,6 +245,8 @@ class Mapper:
             valid_obstacles += 1
 
         self.obstacles_processed += valid_obstacles
+        if valid_obstacles > 0:
+            self._publish_map_state(reason="obstacle")
 
     def _handle_map_request(self, payload: dict):
         """
@@ -276,6 +281,21 @@ class Mapper:
             f"occupied={stats['occupied_percent']:.1f}%, "
             f"obstacles_processed={self.obstacles_processed}"
         )
+        self._publish_map_state(reason="stats")
+
+    def _publish_map_state(self, reason: str = "update") -> None:
+        now = time.time()
+        if reason == "pose" and (now - self.last_map_state_ts) < 1.0:
+            return
+        stats = self.grid.get_occupancy_info()
+        payload = {
+            "reason": reason,
+            "ts": now,
+            "pose": {"x": self.robot_x, "y": self.robot_y, "theta": self.robot_theta},
+            "stats": stats,
+        }
+        self.pub.publish(TOPIC_SLAM_MAP_STATE, payload, add_ts=False)
+        self.last_map_state_ts = now
 
     def run(self):
         """Main mapper loop"""

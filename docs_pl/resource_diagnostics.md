@@ -34,9 +34,9 @@ zostają odświeżone (`updateResourceRow` w `web/control.html:1645-1718`).
 
 ## Integracja ze strażnikiem zasobów
 
-- `scripts/vision-resource-guard.sh` zatrzymuje `rider-cam-preview.service`,
-  `rider-edge-preview.service` i `rider-ssd-preview.service` przed startem
-  `rider-vision-offload.service` oraz wznawia je po zatrzymaniu offloadu.
+- `scripts/vision-resource-guard.sh` zatrzymuje instancje `camera-capture@<mode>`
+  (np. `camera-capture@raw.service`) przed startem `rider-vision-offload.service`
+  i automatycznie je wznawia po zatrzymaniu offloadu.
 - `scripts/sys_control.sh` uruchamia tego strażnika podczas wywołania `/svc`
   (np. przez panel) – najpierw `claim`, potem `stop`/`start`, następnie `release`.
 - `resource_diag.guard_camera(action)` jest wspólną funkcją, z której korzystają

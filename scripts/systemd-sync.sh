@@ -21,13 +21,11 @@ ALLOW_UNITS=(
   "rider-broker.service"
   "rider-api.service"
   "rider-vision.service"
-  "rider-motion-bridge.service"
   "rider-boot-splash.service"
   "rider-minimal.target"
-  "rider-edge-preview.service"       # edge preview (Canny)
+  "camera-capture@.service"          # uniwersalna usługa capture (CAPTURE_MODE=%i)
+  "frame-distributor.service"
   "rider-obstacle.service"           # obstacle ROI detector
-  "rider-cam-preview.service"        # raw preview (no LCD when DISABLE_LCD=1)
-  "rider-ssd-preview.service"        # linkujemy, bez enable — start wg Wants/ lub ręcznie
   "jupyter.service"
   "rider-dev.target"
   "rider-web-bridge.service"
@@ -38,13 +36,23 @@ ALLOW_UNITS=(
   "wifi-unblock.service"
   # -- Dodane nowe usługi:
   "rider-google-bridge.service"
-  "rider-post-splash.service"
   "rider-mapper.service"
   "rider-odometry.service"
   "rider-tracker.service"
   "rider-tracking-controller.service"
   "rider-navigator.service"
   "rider-vision-offload.service"
+  "rider-core.target"
+  "rider-followme.target"
+  "rider-recon.target"
+  "rider-voice.target"
+  "rider-mapbuild.target"
+  "rider-navigate.target"
+  "audio-input.target"
+  "audio-output.target"
+  "lcd-renderer.service"
+  "sensor-reader.service"
+  "motion-executor.service"
 )
 
 # Usługi/targety, które muszą być zawsze „enabled” (baseline)
