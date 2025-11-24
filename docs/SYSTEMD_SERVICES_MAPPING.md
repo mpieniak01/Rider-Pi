@@ -31,6 +31,9 @@ This document provides a mapping of all systemd service files to the scripts the
 | **rider-voice.service** | ✓ Valid | `/usr/bin/python3 -m apps.voice.cli listen` | Python module in `apps/` |
 | **audio-input.target** | ✓ Valid | `Wants=rider-voice.service` | Logical audio input module (ASR) |
 | **audio-output.target** | ✓ Valid | `Wants=rider-voice-web.service` | Logical audio output module (TTS/web) |
+| **rider-tracker.target** | ✓ Valid | `Wants=camera-capture@raw frame-distributor rider-tracker rider-tracking-controller` | Scenario S6 – tracker module |
+| **rider-obstacle.target** | ✓ Valid | `Wants=camera-capture@raw frame-distributor rider-vision rider-obstacle rider-vision-offload` | Scenario S7 – obstacle detector |
+| **rider-ai-provider.target** | ✓ Valid | `Wants=rider-voice.service rider-google-bridge.service rider-vision-offload.service` | Scenario S10 – AI providers profile |
 | **rider-voice.target** | ✓ Valid | `Wants=audio-input.target audio-output.target rider-google-bridge.service` | Scenario S5 – voice/assistant |
 | **rider-mapbuild.target** | ✓ Valid | `Wants=camera-capture@raw frame-distributor rider-vision rider-obstacle rider-odometry rider-mapper motion-executor sensor-reader` | Scenario S8 – SLAM map build |
 | **rider-navigate.target** | ✓ Valid | `Wants=camera-capture@raw frame-distributor rider-obstacle rider-odometry rider-mapper rider-navigator motion-executor sensor-reader` | Scenario S9 – navigation A→B |

@@ -47,6 +47,11 @@ def make_app(fake_manager: FakeManager) -> Flask:
         methods=["GET", "OPTIONS"],
     )
     app.add_url_rule(
+        "/api/logic/summary",
+        view_func=features_api.feature_summary_handler,
+        methods=["GET", "OPTIONS"],
+    )
+    app.add_url_rule(
         "/api/logic/state",
         view_func=features_api.feature_state_handler,
         methods=["GET", "OPTIONS"],
@@ -114,3 +119,17 @@ def test_feature_state_handler_ok():
     data = resp.get_json()
     assert data["ok"] is True
     assert data["state"] == fake.state_dump
+
+
+def test_feature_summary_handler_ok():
+    fake = FakeManager()
+    app = make_app(fake)
+    client = app.test_client()
+
+    resp = client.get("/api/logic/summary")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    summary = data["summary"]
+    assert summary["counts"]["total"] == 1
+    assert summary["features"][0]["name"] == "s3_follow_me_face"

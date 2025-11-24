@@ -55,6 +55,7 @@ ls -l /tmp/legacy.png
 - Brak `/face/state`
 - Plik unit (legacy): `systemd/legacy/rider-face.service`
 - Domyślnie wyłączony: `sudo systemctl disable rider-face.service`
+- Aby podlinkować unit na urządzeniu, uruchom `./scripts/systemd-sync.sh --with-dev` (Tryb DEV linkuje `rider-face` i previewe z katalogu legacy).
 - Włącz: `sudo systemctl enable rider-face.service && sudo systemctl start rider-face.service`
 - Edytuj parametry przez ENV w `systemd/robot.env` (np. `FACE_LCD_ROTATE`, `FACE_LCD_DRIVER`)
 

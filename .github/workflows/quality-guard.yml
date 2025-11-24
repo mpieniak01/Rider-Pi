@@ -158,3 +158,24 @@ jobs:
           echo "Running pytest-based systemd validation..."
           pip install pytest pytest-timeout
           pytest tests/test_systemd_services.py -v --tb=short
+
+      - name: Feature API tests (UI summary)
+        shell: bash
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          pytest tests/test_features_api.py -q
+
+      - name: Scenario suite (S3–S11)
+        shell: bash
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          echo "Starting API server in background..."
+          python -m services.api_server >/tmp/api_server.log 2>&1 &
+          API_PID=$!
+          trap 'kill $API_PID || true' EXIT
+          sleep 5
+          bash tests/test_suite.sh http://127.0.0.1:8080

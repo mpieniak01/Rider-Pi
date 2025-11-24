@@ -7,8 +7,8 @@
 - [x] **S5 Głos** – `rider-voice.target` (audio-input/output + rider-google-bridge).
 - [x] **S8 Mapowanie** – `rider-mapbuild.target` (capture + frame-distributor + obstacle + odometry + mapper + motion).
 - [x] **S9 Nawigacja** – `rider-navigate.target` (capture + frame-distributor + obstacle + odometry + mapper + navigator + motion).
-- [ ] **S6/S7** – moduły wizji (tracker / obstacle) uruchamiane pojedynczymi unitami; brak dedykowanych targetów (nieplanowane w migracji).
-- [ ] **S10/S11** – tryby providerów AI / dev działają na istniejących usługach; brak osobnych targetów (poza `rider-dev.target`).
+- [x] **S6/S7** – moduły wizji (tracker / obstacle) agregowane jako `rider-tracker.target`, `rider-obstacle.target`.
+- [x] **S10/S11** – `rider-ai-provider.target` oraz `rider-dev.target` (z trybem `systemd-sync --with-dev` dla narzędzi legacy).
 
 ## 2. Zmiany w API / zakresach danych
 - [x] Aliasy API `/api/services/<name>`: `xgo`/`motion` kierują teraz na `motion-executor.service`, dodano aliasy `sensors`/`imu` → `sensor-reader.service`.
@@ -47,7 +47,7 @@
 **Zasada:** w środowisku produkcyjnym włączamy tylko unity spoza `systemd/legacy/`. Po pozytywnych testach HW: zamaskować/usunąć `rider-motion-bridge.service` i podglądy preview; zostawić ewentualnie `rider-face.service` jako narzędzie deweloperskie.
 
 ## 5. Jednostki w `systemd/` (bieżące) – co zostaje po testach
-- **Do utrzymania (produkcyjne/targety):** `rider-core.target`, `rider-followme.target`, `rider-recon.target`, `rider-voice.target`, `rider-mapbuild.target`, `rider-navigate.target`, `camera-capture@.service`, `frame-distributor.service`, `sensor-reader.service`, `motion-executor.service`, `rider-broker.service`, `rider-api.service`, `rider-web-bridge.service`, `rider-vision.service`, `rider-obstacle.service`, `rider-odometry.service`, `rider-mapper.service`, `rider-navigator.service`, `rider-tracker.service`, `rider-tracking-controller.service`, `rider-vision-offload.service`, `lcd-renderer.service`, `audio-input.target`, `audio-output.target`, `rider-google-bridge.service`, `wifi-unblock.service`.
+- **Do utrzymania (produkcyjne/targety):** `rider-core.target`, `rider-followme.target`, `rider-recon.target`, `rider-voice.target`, `rider-mapbuild.target`, `rider-navigate.target`, `rider-tracker.target`, `rider-obstacle.target`, `rider-ai-provider.target`, `camera-capture@.service`, `frame-distributor.service`, `sensor-reader.service`, `motion-executor.service`, `rider-broker.service`, `rider-api.service`, `rider-web-bridge.service`, `rider-vision.service`, `rider-obstacle.service`, `rider-odometry.service`, `rider-mapper.service`, `rider-navigator.service`, `rider-tracker.service`, `rider-tracking-controller.service`, `rider-vision-offload.service`, `lcd-renderer.service`, `audio-input.target`, `audio-output.target`, `rider-google-bridge.service`, `wifi-unblock.service`.
 - **DEV/tools (zostają jako pomocnicze, nie rozwijamy w produkcji):** `rider-dev.target`, `jupyter.service`, `rider-voice.service`/`rider-voice-web.service` gdy używane standalone, ewentualne offload/debug narzędzia.
 - **Do usunięcia po testach (jeśli okaże się zbędne):** nic poza katalogiem `legacy`; jeśli po walidacji okaże się, że któryś z powyższych nie jest używany w scenariuszach (np. `rider-vision-offload.service` w środowisku bez offload), przenosimy go do `legacy` zamiast rozwijać dalej.
 
@@ -61,7 +61,7 @@
 ## 7. Testy i diagnostyka po migracji
 - [x] Unit testy FeatureManager/API: `pytest tests/test_features_core.py tests/test_features_api.py` – zielone po zmianie na `motion-executor`/`sensor-reader`.
 - [x] Skrypty diag/smoke dostosowane: `tests/reboot_safety_check.sh`, `tests/diag_snapshot.sh`, `tests/watch.sh`, `tests/web_control_diag.sh`, `tests/test_suite.sh`, `tests/count_rx_since.sh` używają nowych usług; brak referencji do `rider-motion-bridge`.
-- [ ] Jeżeli dodane zostaną nowe testy scenariuszy (Etap 4), uzupełnić je o status nowych targetów (`rider-voice.target`, `rider-mapbuild.target`, `rider-navigate.target`).
+- [x] Dodano scenariusz App Logic do `tests/test_suite.sh` – sekwencyjny start/stop S3–S11 z weryfikacją `/api/logic/summary`.
 
 ## 8. Pliki uruchomieniowe / CLI po migracji
 - `scripts/robot_ctl.py` – obsługuje start/stop/status scenariuszy przez FeatureManager (registry na targetach: followme/recon/voice/mapbuild/navigate). Brak odniesień do legacy.

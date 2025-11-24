@@ -124,10 +124,19 @@ Synchronizuje definicje usług systemd z repozytorium do `/etc/systemd/system`. 
 ### Użycie
 
 ```bash
-./scripts/systemd-sync.sh
+./scripts/systemd-sync.sh [--with-dev]
 ```
 
+Parametr `--with-dev` podlinkowuje jednostki dev/legacy (`rider-face.service`, previewy) na żądanie, dzięki czemu można uruchomić tryb S11 bez ręcznego kopiowania plików. Domyślne uruchomienie pomija legacy, aby środowisko produkcyjne miało minimalny zestaw usług.
+
 ⚠️ **Wymaga sudo** — modyfikuje `/etc/systemd/system`
+
+**Weryfikacja po sync:**  
+```bash
+systemctl list-unit-files --type=service --type=target \
+  | grep -E '^(rider|camera-capture@|audio-)'
+```
+W produkcji zobaczysz wyłącznie targety/scenariusze (`rider-core`, `rider-followme`, `rider-recon`, `rider-voice`, `rider-mapbuild`, `rider-navigate`, `rider-tracker`, `rider-obstacle`, `rider-ai-provider`, `rider-dev`) oraz usługi bazowe (`camera-capture@.service`, `frame-distributor.service`, `sensor-reader.service`, `motion-executor.service`, `rider-api.service`, `rider-broker.service`, `rider-web-bridge.service`, `lcd-renderer.service`, `wifi-unblock.service`, `audio-input.target`, `audio-output.target`). Jednostki z `systemd/legacy/` pojawią się tylko po uruchomieniu `systemd-sync.sh --with-dev`.
 
 ### Funkcje
 

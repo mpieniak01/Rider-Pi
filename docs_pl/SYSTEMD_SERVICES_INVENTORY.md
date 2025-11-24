@@ -359,6 +359,106 @@
 
 **Notes:** Network initialization, runs before ConnMan
 
+## Targety scenariuszy i profilów
+
+### rider-core.target
+
+**Opis:** Bazowy target systemu – agreguje krytyczne usługi (broker, API, sensor-reader, motion-executor, wifi-unblock, web-bridge). Startuje przy boot (multi-user.target).
+
+**Wants:** `rider-broker.service`, `rider-api.service`, `rider-web-bridge.service`, `sensor-reader.service`, `motion-executor.service`, `wifi-unblock.service`, `camera-capture@raw.service`, `frame-distributor.service`.
+
+**Status:** ✅ Target produkcyjny. Wszystkie pozostałe scenariusze zakładają, że `rider-core.target` jest aktywny.
+
+---
+
+### rider-followme.target (S3)
+
+**Opis:** Scenariusz „Follow Me” – uruchamia pipeline kamery + tracker + kontroler ruchu.
+
+**Wants:** `camera-capture@raw.service`, `frame-distributor.service`, `rider-tracker.service`, `rider-tracking-controller.service`, `motion-executor.service`, `sensor-reader.service`.
+
+**Status:** ✅ Target produkcyjny, sterowany przez FeatureManager (alias `s3_follow_me_face` / `face_tracking`).
+
+---
+
+### rider-recon.target (S4)
+
+**Opis:** Scenariusz rekonesansowy – wizja, obstacle, mapper, navigator, motion.
+
+**Wants:** `camera-capture@raw.service`, `frame-distributor.service`, `rider-vision.service`, `rider-obstacle.service`, `rider-odometry.service`, `rider-mapper.service`, `rider-navigator.service`, `motion-executor.service`, `sensor-reader.service`.
+
+**Status:** ✅ Target produkcyjny (FeatureManager `s4_recon`).
+
+---
+
+### rider-voice.target (S5)
+
+**Opis:** Scenariusz komunikacji głosowej – bundluje wejście/wyjście audio oraz integrację z Google Bridge.
+
+**Wants:** `audio-input.target`, `audio-output.target`, `rider-google-bridge.service`.
+
+**Status:** ✅ Target produkcyjny (`s5_voice`). Podrzędne targety `audio-input.target` / `audio-output.target` dbają o `rider-voice.service` i `rider-voice-web.service`.
+
+---
+
+### rider-tracker.target (S6)
+
+**Opis:** Moduł trackera (wizja) uruchamiany standalone – pipeline kamery + tracker + tracking-controller.
+
+**Wants:** `camera-capture@raw.service`, `frame-distributor.service`, `rider-tracker.service`, `rider-tracking-controller.service`.
+
+**Status:** ✅ Target produkcyjny (`s6_tracker_module`). Dzięki temu tracker można uruchamiać bez ruchu/nawigacji.
+
+---
+
+### rider-obstacle.target (S7)
+
+**Opis:** Moduł wykrywania przeszkód – pipeline wizji (dispatcher) + obstacle ROI + offload.
+
+**Wants:** `camera-capture@raw.service`, `frame-distributor.service`, `rider-vision.service`, `rider-obstacle.service`, `rider-vision-offload.service`.
+
+**Status:** ✅ Target produkcyjny (`s7_obstacle_module`).
+
+---
+
+### rider-mapbuild.target (S8)
+
+**Opis:** Mapowanie SLAM – wizja, obstacle, odometria, mapper, motion.
+
+**Wants:** `camera-capture@raw.service`, `frame-distributor.service`, `rider-vision.service`, `rider-obstacle.service`, `rider-odometry.service`, `rider-mapper.service`, `sensor-reader.service`, `motion-executor.service`.
+
+**Status:** ✅ Target produkcyjny (`s8_mapping`).
+
+---
+
+### rider-navigate.target (S9)
+
+**Opis:** Nawigacja po zapisanej mapie – obstacle + odometria + mapper + navigator + motion.
+
+**Wants:** `camera-capture@raw.service`, `frame-distributor.service`, `rider-obstacle.service`, `rider-odometry.service`, `rider-mapper.service`, `rider-navigator.service`, `sensor-reader.service`, `motion-executor.service`.
+
+**Status:** ✅ Target produkcyjny (`s9_navigation`).
+
+---
+
+### rider-ai-provider.target (S10)
+
+**Opis:** Profil providerów AI – agreguje voice assistant + google bridge + vision offload (dla przełączania lokalny ↔ PC).
+
+**Wants:** `rider-voice.service`, `rider-google-bridge.service`, `rider-vision-offload.service`.
+
+**Status:** ✅ Target produkcyjny (`s10_ai_providers`). Sterowany przez FeatureManager lub UI providerów.
+
+---
+
+### rider-dev.target (S11 / DEV profile)
+
+**Opis:** Target narzędzi developerskich – uruchamia środowisko graficzne, Jupyter oraz previewy. Aby korzystać z komponentów legacy (`rider-face`, preview edge/ssd) należy wykonać `scripts/systemd-sync.sh --with-dev`, który linkuje jednostki z `systemd/legacy/`.
+
+**Wants:** `graphical.target`, `jupyter.service`, `camera-capture@edge.service`, `camera-capture@ssd.service` (po linkowaniu dev). 
+
+**Status:** ✅ Target developerski (`s11_dev_mode`). Nie włączany automatycznie na produkcji.
+
 ---
 
 ## Migration Summary
