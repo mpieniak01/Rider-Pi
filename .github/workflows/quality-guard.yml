@@ -178,4 +178,4 @@ jobs:
           API_PID=$!
           trap 'kill $API_PID || true' EXIT
           sleep 5
-          bash tests/test_suite.sh http://127.0.0.1:8080
+          bash tests/test_suite.sh 127.0.0.1:8080
