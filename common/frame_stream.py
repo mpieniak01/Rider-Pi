@@ -39,10 +39,12 @@ class FrameStreamClient:
         try:
             self._poller.unregister(self._sock)
         except Exception:
+            # Ignore errors if socket already unregistered or poller is closed
             pass
         try:
             self._sock.close()
         except Exception:
+            # Ignore errors during socket cleanup
             pass
 
     def _fallback(self) -> np.ndarray | None:
