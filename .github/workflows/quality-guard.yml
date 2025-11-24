@@ -32,8 +32,13 @@ jobs:
       - name: Install deps (ruff pinned)
         run: |
           python -m pip install --upgrade pip
-          pip install "ruff==0.6.9" flask pyzmq
+          pip install "ruff==0.6.9"
+          pip install "pillow>=8,<12" "numpy>=1.21,<2" \
+                      "requests>=2.31,<3" "pyzmq>=22,<26" \
+                      "flask<3" "werkzeug<3" \
+                      "google-auth>=2.0.0" "google-auth-oauthlib>=1.0.0"
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
 
       - name: Ruff version
         run: ruff --version
