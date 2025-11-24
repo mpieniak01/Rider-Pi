@@ -35,6 +35,7 @@ from common.bus import (
     TOPIC_SYSTEM_AI_MODE_CHANGED,
     BusSub,
 )
+from common.frame_stream import FrameStreamClient
 
 # --------------------------- config helpers ---------------------------------
 
@@ -254,44 +255,6 @@ def copy_raw_snapshot(message: str | None = None) -> None:
         print(f"[obst][annot] idle copy failed: {exc}", flush=True)
 
 
-class FrameStreamSubscriber:
-    def __init__(self, addr: str, topic: str) -> None:
-        if zmq is None:
-            raise RuntimeError("pyzmq unavailable")
-        self.ctx = zmq.Context.instance()
-        self.sock = self.ctx.socket(zmq.SUB)
-        self.sock.setsockopt(zmq.LINGER, 0)
-        self.sock.connect(addr)
-        self.sock.setsockopt(zmq.SUBSCRIBE, topic.encode("utf-8"))
-        self.poller = zmq.Poller()
-        self.poller.register(self.sock, zmq.POLLIN)
-
-    def recv(self, timeout_ms: int) -> np.ndarray | None:
-        global _LAST_STREAM_FRAME
-        try:
-            events = dict(self.poller.poll(timeout_ms))
-        except Exception:
-            return _LAST_STREAM_FRAME
-        if self.sock not in events:
-            return _LAST_STREAM_FRAME
-        try:
-            parts = self.sock.recv_multipart(zmq.NOBLOCK)
-        except zmq.Again:
-            return _LAST_STREAM_FRAME
-        if len(parts) < 3:
-            return _LAST_STREAM_FRAME
-        data = parts[2]
-        try:
-            arr = np.frombuffer(data, dtype=np.uint8)
-            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        except Exception:
-            frame = None
-        if frame is not None:
-            _LAST_STREAM_FRAME = frame
-            return frame.copy()
-        return _LAST_STREAM_FRAME
-
-
 # ----------------------------- optional bus ---------------------------------
 
 _bus = None
@@ -327,6 +290,7 @@ def _sigint(_a, _b):
 
 
 def main() -> int:
+    global _LAST_STREAM_FRAME
     signal.signal(signal.SIGINT, _sigint)
     signal.signal(signal.SIGTERM, _sigint)
 
@@ -359,10 +323,12 @@ def main() -> int:
         flush=True,
     )
 
-    frame_stream = None
+    frame_stream: FrameStreamClient | None = None
     if USE_FRAME_STREAM:
         try:
-            frame_stream = FrameStreamSubscriber(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC)
+            frame_stream = FrameStreamClient(
+                FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True, copy_frame=True
+            )
             print(
                 f"[obst] frame stream subscribed: {FRAME_STREAM_ADDR} topic={FRAME_STREAM_TOPIC}",
                 flush=True,
@@ -426,6 +392,7 @@ def main() -> int:
         if frame_stream is not None:
             frame_bgr = frame_stream.recv(FRAME_STREAM_TIMEOUT_MS)
             if frame_bgr is not None:
+                _LAST_STREAM_FRAME = frame_bgr.copy()
                 img_raw_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
                 blur = cv2.GaussianBlur(img_raw_gray, (5, 5), 1.0)
                 img_proc = cv2.Canny(blur, STREAM_CANNY_LOW, STREAM_CANNY_HIGH)

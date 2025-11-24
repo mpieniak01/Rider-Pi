@@ -98,6 +98,10 @@ TOPIC_NAVIGATOR_MAP_REQUEST = "navigator.map.request"
 # grid values: 0=free, 127=unknown, 255=occupied
 TOPIC_MAPPER_MAP_DATA = "mapper.map.data"
 
+# Mapper publishes lightweight state/pose/occupancy statistics for UI updates
+# Payload: {"reason": str, "pose": {...}, "stats": {...}, "ts": float}
+TOPIC_SLAM_MAP_STATE = "mapper.map.state"
+
 # ============================================================================
 # Topic constants for return to home (Stage 4 - Path planning)
 # ============================================================================

@@ -18,6 +18,8 @@ import mediapipe as mp
 import numpy as np
 import zmq
 
+from common.frame_stream import FrameStreamClient
+
 try:
     from apps.vision.ai_mode_adapter import should_run_local_detectors
 except ImportError:  # pragma: no cover - fallback for standalone usage
@@ -57,53 +59,6 @@ PUB: zmq.Socket | None = None
 SUB: zmq.Socket | None = None
 FOLLOW_MODE_LOCK = threading.Lock()
 FOLLOW_MODE: str = "NONE"  # "NONE", "FACE", "HAND"
-
-
-class FrameStreamSubscriber:
-    """Odbiera klatki z frame-distributor (ZMQ SUB)."""
-
-    def __init__(self, addr: str, topic: str) -> None:
-        self.addr = addr
-        self.topic = topic.encode("utf-8")
-        self.ctx = zmq.Context.instance()
-        self.sock = self.ctx.socket(zmq.SUB)
-        self.sock.setsockopt(zmq.LINGER, 0)
-        self.sock.connect(addr)
-        self.sock.setsockopt(zmq.SUBSCRIBE, self.topic)
-        self.poller = zmq.Poller()
-        self.poller.register(self.sock, zmq.POLLIN)
-        self.last_frame = None
-
-    def recv(self, timeout_ms: int) -> Any:
-        try:
-            events = dict(self.poller.poll(timeout_ms))
-        except ValueError:
-            return self.last_frame
-        if self.sock not in events:
-            return self.last_frame
-        try:
-            parts = self.sock.recv_multipart(zmq.NOBLOCK)
-        except zmq.Again:
-            return self.last_frame
-        if len(parts) < 3:
-            return self.last_frame
-        payload = parts[1]
-        data = parts[2]
-        try:
-            meta = json.loads(payload.decode("utf-8", "ignore"))
-            _ = meta  # meta w razie debug
-        except Exception:
-            # Ignore malformed metadata; only frame data is critical
-            pass
-        try:
-            arr = np.frombuffer(data, dtype=np.uint8)
-            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            if frame is not None:
-                self.last_frame = frame
-        except Exception:
-            # Ignore decode errors; keep using last_frame
-            pass
-        return self.last_frame
 
 
 def zmq_pub() -> zmq.Socket:
@@ -308,7 +263,9 @@ def tracking_loop() -> None:
     fps_frame_count = 0
     fps_value = 0.0
 
-    frame_stream = FrameStreamSubscriber(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC) if TRACKER_USE_FRAME_STREAM else None
+    frame_stream = (
+        FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True) if TRACKER_USE_FRAME_STREAM else None
+    )
 
     while True:
         try:

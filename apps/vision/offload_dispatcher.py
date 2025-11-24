@@ -14,11 +14,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-try:
-    import zmq
-except Exception:  # pragma: no cover
-    zmq = None  # type: ignore
-
 from common.bus import (
     TOPIC_PROVIDER_VISION_STATE,
     TOPIC_VISION_FRAME_OFFLOAD,
@@ -27,6 +22,7 @@ from common.bus import (
     BusPub,
     BusSub,
 )
+from common.frame_stream import FrameStreamClient
 from common.provider_state import is_pc_mode
 
 LOG = logging.getLogger("vision.offload")
@@ -89,7 +85,7 @@ class VisionOffloadDispatcher:
     _mode_auto: bool = field(default=False, init=False)
     _file_modes: set[str] = field(default_factory=set, init=False)
     _last_file_mtime: float = field(default=0.0, init=False)
-    _frame_stream: FrameStreamReader | None = field(default=None, init=False)
+    _frame_stream: FrameStreamClient | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         mode = (self.frame_source or "auto").strip().lower()
@@ -191,11 +187,11 @@ class VisionOffloadDispatcher:
         return cam_frame
 
     def _init_frame_stream(self) -> None:
-        if not self.use_frame_stream or zmq is None:
+        if not self.use_frame_stream:
             self._frame_stream = None
             return
         try:
-            self._frame_stream = FrameStreamReader(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC)
+            self._frame_stream = FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC)
             LOG.info("Vision offload: subscribed to frame stream %s topic=%s", FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC)
         except Exception as exc:
             self._frame_stream = None
@@ -293,41 +289,6 @@ class VisionOffloadDispatcher:
             cv2.imwrite(str(self.proc_path), edges_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         except Exception as exc:
             LOG.debug("Vision offload: failed to write proc snapshot: %s", exc)
-
-
-class FrameStreamReader:
-    """Odbiera klatki z frame-distributor (camera.frame.raw)."""
-
-    def __init__(self, addr: str, topic: str) -> None:
-        if zmq is None:
-            raise RuntimeError("pyzmq unavailable")
-        self.ctx = zmq.Context.instance()
-        self.sock = self.ctx.socket(zmq.SUB)
-        self.sock.setsockopt(zmq.LINGER, 0)
-        self.sock.connect(addr)
-        self.sock.setsockopt(zmq.SUBSCRIBE, topic.encode("utf-8"))
-        self.poller = zmq.Poller()
-        self.poller.register(self.sock, zmq.POLLIN)
-
-    def recv(self, timeout_ms: int) -> np.ndarray | None:
-        try:
-            events = dict(self.poller.poll(timeout_ms))
-        except Exception:
-            return None
-        if self.sock not in events:
-            return None
-        try:
-            parts = self.sock.recv_multipart(zmq.NOBLOCK)
-        except zmq.Again:
-            return None
-        if len(parts) < 3:
-            return None
-        data = parts[2]
-        try:
-            arr = np.frombuffer(data, dtype=np.uint8)
-            return cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        except Exception:
-            return None
 
 
 class EnhancedObstacleBridge:

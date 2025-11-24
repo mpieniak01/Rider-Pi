@@ -38,6 +38,23 @@ echo "Repository root: $REPO_ROOT"
 echo "Systemd directory: $SYSTEMD_DIR"
 echo ""
 
+# Ensure systemd-analyze can see repo units (including legacy ones) while
+# still having access to base system targets (sysinit.target, etc.).
+UNIT_PATHS=(
+    "$SYSTEMD_DIR"
+    "$SYSTEMD_DIR/legacy"
+    "/etc/systemd/system"
+    "/run/systemd/system"
+    "/usr/lib/systemd/system"
+    "/lib/systemd/system"
+)
+FILTERED_PATHS=()
+for path in "${UNIT_PATHS[@]}"; do
+    [[ -d "$path" ]] && FILTERED_PATHS+=("$path")
+done
+IFS=":" read -r -a _ <<< "" # reset IFS side-effects
+export SYSTEMD_UNIT_PATH="$(IFS=:; echo "${FILTERED_PATHS[*]}")"
+
 # Find all service files
 mapfile -t SERVICE_FILES < <(find "$SYSTEMD_DIR" -name "*.service" -type f | sort)
 
