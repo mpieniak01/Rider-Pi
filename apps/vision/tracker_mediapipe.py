@@ -136,6 +136,8 @@ def control_loop() -> None:
                 lfp = data.get("last_frame_path")
                 if isinstance(lfp, str) and lfp:
                     LAST_FRAME_PATH = lfp
+                # można też kiedyś wykorzystać fps, lcd, itp.
+                # print(f"[tracker] heartbeat last_frame_path={LAST_FRAME_PATH}", flush=True)
                 continue
 
             if topic == "tracking.mode:set":
