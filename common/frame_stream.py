@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 try:
     import cv2
     import numpy as np
@@ -26,7 +24,7 @@ class FrameStreamClient:
 
         self._return_last = return_last
         self._copy_frame = copy_frame
-        self._last_frame: Optional[np.ndarray] = None
+        self._last_frame: np.ndarray | None = None
 
         self._ctx = zmq.Context.instance()
         self._sock = self._ctx.socket(zmq.SUB)
@@ -47,12 +45,12 @@ class FrameStreamClient:
         except Exception:
             pass
 
-    def _fallback(self) -> Optional[np.ndarray]:
+    def _fallback(self) -> np.ndarray | None:
         if not self._return_last or self._last_frame is None:
             return None
         return self._last_frame.copy() if self._copy_frame else self._last_frame
 
-    def recv(self, timeout_ms: int) -> Optional[np.ndarray]:
+    def recv(self, timeout_ms: int) -> np.ndarray | None:
         """Receive next frame from the stream, optionally returning cached frame on timeouts."""
 
         try:
@@ -85,7 +83,7 @@ class FrameStreamClient:
         return frame.copy() if self._copy_frame else frame
 
     @property
-    def last_frame(self) -> Optional[np.ndarray]:
+    def last_frame(self) -> np.ndarray | None:
         if self._last_frame is None:
             return None
         return self._last_frame.copy() if self._copy_frame else self._last_frame
