@@ -13,6 +13,7 @@ jobs:
       ALLOW_OVERSIZE: '0'
       ALLOW_DELETE: '0'
       NOSTUB_STRICT: '0'
+      RUN_SCENARIO_SUITE: '0'
 
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +37,8 @@ jobs:
           pip install "pillow>=8,<12" "numpy>=1.21,<2" \
                       "requests>=2.31,<3" "pyzmq>=22,<26" \
                       "flask<3" "werkzeug<3" \
-                      "google-auth>=2.0.0" "google-auth-oauthlib>=1.0.0"
+                      "google-auth>=2.0.0" "google-auth-oauthlib>=1.0.0" \
+                      "pytest>=7.4,<9" "pytest-timeout>=2,<3"
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
 
@@ -54,6 +56,7 @@ jobs:
           case "$labels" in *"allow-oversize"*) echo "ALLOW_OVERSIZE=1" >>"$GITHUB_ENV";; esac
           case "$labels" in *"allow-delete"*)  echo "ALLOW_DELETE=1"  >>"$GITHUB_ENV";; esac
           case "$labels" in *"nostub-strict"*) echo "NOSTUB_STRICT=1" >>"$GITHUB_ENV";; esac
+          case "$labels" in *"scenario-suite"*) echo "RUN_SCENARIO_SUITE=1" >>"$GITHUB_ENV";; esac
 
       # ---- 600 linii / plik (aktywny gdy ALLOW_OVERSIZE=0) ----
       - name: Enforce max 600 lines per changed Python file
@@ -161,7 +164,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running pytest-based systemd validation..."
-          pip install pytest pytest-timeout
           pytest tests/test_systemd_services.py -v --tb=short
 
       - name: Feature API tests (UI summary)
@@ -172,6 +174,7 @@ jobs:
           set -euo pipefail
           pytest tests/test_features_api.py -q
 
+<<<<<<< HEAD
       - name: Scenario suite (S3–S11)
         shell: bash
         env:
@@ -183,6 +186,26 @@ jobs:
           API_PID=$!
           echo "$API_PID" > /tmp/api.pid
           
+=======
+      - name: Scenario suite (S3–S11) — requires Rider self-hosted runner
+        if: ${{ env.RUN_SCENARIO_SUITE == '1' }}
+        shell: bash
+        env:
+          PYTHONPATH: .
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          set -euo pipefail
+          if [ "${RUNNER_ENVIRONMENT:-}" != "self-hosted" ]; then
+            echo "::error::Scenario suite wymaga self-hosted runnera z dostępem do Rider-Pi (systemd units, hardware)." >&2
+            exit 1
+          fi
+          echo "Starting API server in background..."
+          python -u -m services.api_server >/tmp/api_server.log 2>&1 &
+          API_PID=$!
+          trap 'if [ -f /tmp/api.pid ]; then kill "$(cat /tmp/api.pid)" 2>/dev/null || true; fi' EXIT
+          echo "$API_PID" > /tmp/api.pid
+
+>>>>>>> 79bad05 (quality-guard: gate scenario suite + allow new targets)
           echo "Waiting for API server to be ready..."
           for i in $(seq 1 40); do
             if curl -fsS http://127.0.0.1:8080/api/version >/dev/null 2>&1; then
@@ -197,6 +220,7 @@ jobs:
             fi
             sleep 0.5
           done
+<<<<<<< HEAD
           
           if ! curl -fsS http://127.0.0.1:8080/api/version >/dev/null 2>&1; then
             echo "::error::API server failed to start within 20 seconds"
@@ -211,3 +235,13 @@ jobs:
           if [ -f /tmp/api.pid ]; then
             kill "$(cat /tmp/api.pid)" 2>/dev/null || true
           fi
+=======
+
+          if ! curl -fsS http://127.0.0.1:8080/api/version >/dev/null 2>&1; then
+            echo "::error::API server failed to start within timeout"
+            tail -n 50 /tmp/api_server.log || true
+            exit 1
+          fi
+
+          bash tests/test_suite.sh 127.0.0.1:8080
+>>>>>>> 79bad05 (quality-guard: gate scenario suite + allow new targets)

@@ -31,6 +31,10 @@ ALLOW_UNITS=(
   rider-voice.target
   rider-mapbuild.target
   rider-navigate.target
+  rider-tracker.target
+  rider-obstacle.target
+  rider-ai-provider.target
+  rider-dev.target
 )
 
 
