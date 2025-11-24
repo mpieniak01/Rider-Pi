@@ -118,8 +118,11 @@ sudo systemctl start rider-mapper      # SLAM mapping
 sudo systemctl start rider-voice       # Voice interaction
 
 # Start/stop feature stacks via CLI (App Logic Core)
-sudo python3 scripts/robot_ctl.py start face_tracking
-sudo python3 scripts/robot_ctl.py stop recon
+sudo python3 scripts/robot_ctl.py start s3_follow_me_face
+sudo python3 scripts/robot_ctl.py stop s4_recon
+
+# Check current scenario state snapshot
+sudo python3 scripts/robot_ctl.py status
 ```
 
 ### Web Interface
@@ -158,6 +161,7 @@ Rider-Pi/
 ├── drivers/           # Hardware drivers
 ├── scripts/           # Operational scripts
 ├── systemd/           # Service definitions
+│   ├── legacy/        # Deprecated/legacy units (manual install)
 ├── tests/             # Test suite
 └── web/               # Web interfaces
 ```

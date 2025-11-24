@@ -23,7 +23,7 @@ if command -v tmux >/dev/null 2>&1; then
   SESSION="rider-watch"
   if ! tmux has-session -t "$SESSION" 2>/dev/null; then
     tmux new-session -d -s "$SESSION" -n "logs"
-    tmux send-keys -t "$SESSION":0.0 "journalctl -fu rider-motion-bridge.service" C-m
+  tmux send-keys -t "$SESSION":0.0 "journalctl -fu motion-executor.service" C-m
     tmux split-window -h -t "$SESSION":0.0
     tmux send-keys -t "$SESSION":0.1 "journalctl -fu rider-web-bridge.service" C-m
     tmux split-window -v -t "$SESSION":0.0
@@ -37,7 +37,7 @@ if command -v tmux >/dev/null 2>&1; then
 fi
 
 echo "tmux nie znaleziony → fallback do logów w $LOGDIR i tail -F"
-stdbuf -oL journalctl -fu rider-motion-bridge.service > "$LOGDIR/motion.log" 2>&1 & echo $! > "$LOGDIR/motion.pid"
+stdbuf -oL journalctl -fu motion-executor.service > "$LOGDIR/motion.log" 2>&1 & echo $! > "$LOGDIR/motion.pid"
 stdbuf -oL journalctl -fu rider-web-bridge.service    > "$LOGDIR/web.log"    2>&1 & echo $! > "$LOGDIR/web.pid"
 stdbuf -oL journalctl -fu rider-api.service           > "$LOGDIR/api.log"    2>&1 & echo $! > "$LOGDIR/api.pid"
 ( while true; do ss -ltnp | grep -E ':(8080|8081|5555|5556)\s' || true; sleep 2; done ) > "$LOGDIR/ports.log" 2>&1 & echo $! > "$LOGDIR/ports.pid"

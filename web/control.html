@@ -335,9 +335,22 @@
       </table>
     </div>
   </div>
+
+  <div class="panel-row scenario-panel">
+    <div class="c-card scenario-card">
+      <h2 class="c-card__title">Scenariusze / targety</h2>
+      <div class="feature-list scenario-list" id="scenarioList">
+        <div class="muted" data-i18n="meta.loading">Ładowanie…</div>
+      </div>
+      <div id="scenarioInfo" class="muted"></div>
+    </div>
+  </div>
+
   <div class="c-card service-card">
-    <h2 class="c-card__title">
-      <span data-i18n="services.title">Usługi (systemd)</span>
+    <details class="svc-diagnostics" open>
+      <summary class="c-card__title svc-summary">
+        <span data-i18n="services.title">Usługi (systemd)</span>
+      </summary>
       <div class="svc-controls" aria-label="Usługi – sterowanie listą">
         <button
           id="svcRefresh"
@@ -362,23 +375,23 @@
           </select>
         </label>
       </div>
-    </h2>
-    <div id="svcInfo" class="muted">
-      <span data-i18n="meta.loading">Ładowanie…</span>
-      <span id="svcTs"></span>
-    </div>
-    <table class="svc-table" id="svcTable" hidden>
-      <thead>
-      <tr>
-        <th data-i18n="services.unit">Unit</th>
-        <th data-i18n="services.desc">Opis</th>
-        <th data-i18n="services.status">Status</th>
-        <th data-i18n="services.autostart">Autostart</th>
-        <th data-i18n="services.actions">Akcje</th>
-      </tr>
-      </thead>
-      <tbody id="svcBody"></tbody>
-    </table>
+      <div id="svcInfo" class="muted">
+        <span data-i18n="meta.loading">Ładowanie…</span>
+        <span id="svcTs"></span>
+      </div>
+      <table class="svc-table" id="svcTable" hidden>
+        <thead>
+        <tr>
+          <th data-i18n="services.unit">Unit</th>
+          <th data-i18n="services.desc">Opis</th>
+          <th data-i18n="services.status">Status</th>
+          <th data-i18n="services.autostart">Autostart</th>
+          <th data-i18n="services.actions">Akcje</th>
+        </tr>
+        </thead>
+        <tbody id="svcBody"></tbody>
+      </table>
+    </details>
   </div>
 
   <!-- LOG -->
@@ -912,6 +925,21 @@
     });
   }
 
+  const scenarioListEl = qs("#scenarioList");
+  const scenarioInfoEl = qs("#scenarioInfo");
+  const scenarioBusy = new Set();
+  if (scenarioListEl) {
+    scenarioListEl.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-scenario-action]");
+      if (!btn) return;
+      const row = btn.closest("[data-scenario]");
+      if (!row) return;
+      const featureName = row.getAttribute("data-scenario");
+      const action = btn.getAttribute("data-scenario-action");
+      handleScenarioAction(featureName, action);
+    });
+  }
+
   function setFeatureBusy(featureId, busy) {
     const row = document.querySelector(`[data-feature="${featureId}"]`);
     if (!row) return;
@@ -937,6 +965,141 @@
     }
     if (note) {
       note.textContent = noteText || "";
+    }
+  }
+
+  function scenarioStatusKey(feature) {
+    if (feature.active) return "running";
+    return feature.status === "partial" ? "warn" : "stopped";
+  }
+
+  function renderScenarioList(summary) {
+    if (!scenarioListEl) return;
+    const features = (summary && summary.features) || [];
+    if (!features.length) {
+      scenarioListEl.innerHTML =
+        '<div class="muted" data-i18n="motion.features_empty">Brak danych</div>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    features.forEach((feat) => {
+      const row = document.createElement("div");
+      row.className = "feature-row scenario-row";
+      row.setAttribute("data-scenario", feat.name);
+
+      const info = document.createElement("div");
+      info.className = "feature-info";
+
+      const head = document.createElement("div");
+      head.className = "feature-head";
+      const title = document.createElement("div");
+      title.className = "feature-title";
+      title.textContent = `${feat.scenario || ""} – ${feat.title || feat.name}`;
+      const desc = document.createElement("div");
+      desc.className = "feature-desc";
+      desc.textContent = feat.description || "";
+      head.appendChild(title);
+      head.appendChild(desc);
+
+      const meta = document.createElement("div");
+      meta.className = "feature-note muted";
+      meta.textContent = `Usługi: ${
+        feat.services_active ?? 0
+      }/${feat.services_total ?? 0}`;
+
+      info.appendChild(head);
+      info.appendChild(meta);
+
+      const statusCol = document.createElement("div");
+      statusCol.className = "feature-status";
+      const statusKey = scenarioStatusKey(feat);
+      const pillMeta = FEATURE_STATUS[statusKey] || FEATURE_STATUS.unknown;
+      const pill = document.createElement("span");
+      pill.className = `c-pill feature-pill ${pillMeta.cls}`;
+      pill.dataset.scenarioPill = feat.name;
+      pill.textContent = t(pillMeta.key);
+      statusCol.appendChild(pill);
+
+      const actions = document.createElement("div");
+      actions.className = "feature-actions";
+      const startBtn = document.createElement("button");
+      startBtn.className = "c-btn c-btn-sm";
+      startBtn.dataset.scenarioAction = "start";
+      startBtn.textContent = t("motion.feature_btn_start");
+      const stopBtn = document.createElement("button");
+      stopBtn.className = "c-btn c-btn-sm";
+      stopBtn.dataset.scenarioAction = "stop";
+      stopBtn.textContent = t("motion.feature_btn_stop");
+      actions.appendChild(startBtn);
+      actions.appendChild(stopBtn);
+
+      row.appendChild(info);
+      row.appendChild(statusCol);
+      row.appendChild(actions);
+      frag.appendChild(row);
+    });
+    scenarioListEl.innerHTML = "";
+    scenarioListEl.appendChild(frag);
+    if (scenarioInfoEl) {
+      const counts = summary && summary.counts ? summary.counts : {};
+      const total = counts.total ?? features.length;
+      scenarioInfoEl.textContent = `Aktywne: ${counts.active ?? 0}/${total}`;
+    }
+  }
+
+  function setScenarioBusy(row, busy) {
+    if (!row) return;
+    const name = row.getAttribute("data-scenario") || "";
+    if (busy) scenarioBusy.add(name);
+    else scenarioBusy.delete(name);
+    row.classList.toggle("busy", !!busy);
+    row.querySelectorAll("button").forEach((btn) => {
+      btn.disabled = !!busy;
+    });
+  }
+
+  async function refreshScenarioList(silent = false) {
+    if (!scenarioListEl) return;
+    try {
+      const data = await fetchJson("/api/logic/summary");
+      renderScenarioList(data.summary || {});
+    } catch (e) {
+      if (!silent) {
+        appendLog(`[scenario] fetch failed :: ${e.message || e}`, "err");
+      }
+    }
+  }
+
+  async function handleScenarioAction(featureName, action) {
+    if (!featureName || !action) return;
+    const row = document.querySelector(
+      `[data-scenario="${featureName}"]`,
+    );
+    if (!row) return;
+    setScenarioBusy(row, true);
+    try {
+      await logicFeatureToggle(featureName, action === "start");
+      appendLog(
+        `[scenario ${featureName}] ${action}`,
+        "ok",
+      );
+    } catch (e) {
+      appendLog(
+        `[scenario ${featureName}] ${action} :: ${e.message || e}`,
+        "err",
+      );
+    } finally {
+      setScenarioBusy(row, false);
+      try {
+        await refreshScenarioList(true);
+      } catch {
+        /* ignore */
+      }
+      try {
+        await fetchControlState();
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -999,6 +1162,11 @@
       } catch {
         /* ignore */
       }
+      try {
+        await refreshScenarioList(true);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -1047,9 +1215,12 @@
     }
   }
 
+  async function logicFeatureToggle(featureName, enabled) {
+    return httpPost(`/api/logic/feature/${encodeURIComponent(featureName)}`, { enabled });
+  }
+
   async function featureApiToggle(featureName, enabled) {
-    const payload = { enabled };
-    const res = await httpPost(`/api/logic/feature/${encodeURIComponent(featureName)}`, payload);
+    const res = await logicFeatureToggle(featureName, enabled);
     const modeNote = featureName === "face_tracking" ? selectedTrackingMode() : "";
     const note = enabled
       ? featureName === "face_tracking"
@@ -1669,6 +1840,9 @@
   setInterval(() => {
     fetchProviderState().catch(() => {});
   }, 7000);
+  setInterval(() => {
+    refreshScenarioList(true).catch(() => {});
+  }, 5000);
 
   // === SSE EVENTS ===
   try {
@@ -1694,6 +1868,7 @@
   fetchProviderState().catch(() => {});
   fetchControlState().catch(() => {});
   fetchMotionQueue().catch(() => {});
+  refreshScenarioList().catch(() => {});
 </script>
 </body>
 </html>

@@ -14,8 +14,8 @@ Dokument opisuje, jak w bezpieczny sposób przejść ze stanu obecnego (systemd 
   - Zastąpić `rider-cam-preview`, `rider-edge-preview`, `rider-ssd-preview` jednym unitem z parametrami `MODE=raw|edge|ssd`.  
   - Wystawić jednolity feed (np. ZMQ + snapshot) używany przez wszystkie moduły wizji.
 - **2. Usługa `lcd-renderer`**  
-  - Po uporządkowaniu `rider-boot-splash` i `rider-post-splash` pozostawić jedną usługę renderującą status (profil start/stop).
-- **3. Warstwa audio** – analogicznie scalić `rider-voice` / `rider-voice-web` w logiczne moduły `audio-input` i `audio-output`.
+  - Po uporządkowaniu `rider-boot-splash` i `rider-post-splash` pozostawić jedną usługę renderującą status (profil start/stop). ✅ Zrealizowano jako `lcd-renderer.service` (zastępuje `rider-post-splash`, który trafił do `systemd/legacy/`).
+- **3. Warstwa audio** – analogicznie scalić `rider-voice` / `rider-voice-web` w logiczne moduły `audio-input` i `audio-output`. ✅ Zrealizowano poprzez targety `audio-input.target` (mikrofon/ASR) i `audio-output.target` (TTS/web).
 - **4. Walidacja** – sprawdzić, że po konsolidacji panel/API nadal otrzymuje `snapshots`, a żadne scenariusze nie tracą podglądu.
 
 ## Etap 2 – Wydzielenie modułów przetwarzania (processing)
@@ -25,28 +25,22 @@ Dokument opisuje, jak w bezpieczny sposób przejść ze stanu obecnego (systemd 
   - Dostosować je do publikowania wyników w spójnych topicach (np. `tracking.pose`, `obstacle.map`, `slam.map`).
 - **2. `frame-distributor` i `stream-publisher`**  
   - Stworzyć przejściowy moduł (może być skrypt), który buforuje klatki i udostępnia je modułom ML.  
-  - Strumień HTTP/`/camera/stream` powinien korzystać z tego samego feedu.
-- **3. Sensor reader i motion executor** – uporządkować `rider-motion-bridge`, by wyraźnie oddzielić wejścia (IMU/odometry) od wyjść (komendy XGO).
+  - Strumień HTTP/`/camera/stream` powinien korzystać z tego samego feedu.  
+  - Moduły wizji (tracker, obstacle, offload) mają publikować z tego feedu wyniki w topicach `tracking.pose`, `obstacle.map`, `vision.frame.offload`.
+- **3. Sensor reader i motion executor** – **zrealizowano**: `sensor-reader.service` + `motion-executor.service` zastępują `rider-motion-bridge` (przeniesiony do `systemd/legacy/`). Wszystkie targety wykorzystują nowe usługi.
 - **4. Testy** – uruchomić follow-me, rekonesans w trybie testowym, sprawdzić czy pipeline’y dzielą feed bez konfliktów (monitor `/tmp/camera.lock`).
 
 ## Etap 3 – Targety scenariuszy i App Logic Core
 
-- **1. Targety**  
-  - Zdefiniować systemd targety `rider-core.target`, `rider-followme.target`, `rider-recon.target`, `rider-mapbuild.target`, `rider-navigate.target`, `rider-voice.target`, itp.  
-  - Każdy target uruchamia zdefiniowaną listę usług (capture + processing + komunikacja).
-- **2. App Logic Core**  
-  - Zapewnić jedną instancję (daemon lub wbudowany w API), która:  
-    - trzyma rejestr scenariuszy S0–S11,  
-    - steruje targetami (start/stop),  
-    - publikuje stan (np. `/run/rider/state`).  
-  - Aktualizować panel i CLI, by wywoływały App Logic zamiast `systemctl`.
-- **3. Warstwa komunikacji** – potwierdzić, że API, bus, web bridge nadal działają po zmianach i że App Logic z nich korzysta (według tabeli „Jak App Logic…”).
+- **1. Targety** – zdefiniowano `rider-core.target`, `rider-followme.target`, `rider-recon.target` oraz nowe: `rider-voice.target` (S5), `rider-mapbuild.target` (S8), `rider-navigate.target` (S9). Każdy target uruchamia spójny zestaw usług (capture + frame-distributor + moduły scenariusza + motion-executor/sensor-reader).
+- **2. App Logic Core** – FeatureManager steruje targetami scenariuszy, publikuje stan (`/api/logic/state`) i udostępnia rejestr (`/api/logic/features`). UI/CLI wywołują App Logic (API/CLI) zamiast `systemctl`.
+- **3. Warstwa komunikacji** – API, bus i web bridge korzystają z App Logic jako źródła prawdy; `/svc` nadal pokazuje statusy jednostek, ale logika scenariuszy została przeniesiona do App Logic.
 
-## Etap 4 – Walidacja funkcjonalna i regresja
+## Etap 4 – Walidacja funkcjonalna i monitoring
 
 - **1. Test scenariuszy** – przejść przez każdy z S0–S11 (chociaż S8–S11 mogą być draft), potwierdzić że panel/CLI zachowuje się poprawnie.
-- **2. Monitoring** – ujednolicić metryki i statusy w `/svc`, dodać informacje o aktualnym scenariuszu i statusie usług, aby UI mogło prezentować spójny obraz.
-- **3. Dokumentacja** – odświeżyć `SYSTEMD_SERVICES_MAPPING.md`, `SCENARIUSZE_BIZNESOWE.md` (tablice TO-BE uzupełnić o rzeczywiste nazwy), dodać README do App Logic.
+- **2. Monitoring** – spiąć `/api/logic/state`, `/api/logic/features` oraz `/svc`, tak aby panel mógł pokazywać aktywny scenariusz i status oznaczonych targetów.
+- **3. Dokumentacja** – odświeżyć `SYSTEMD_SERVICES_MAPPING.md`, `SCENARIUSZE_BIZNESOWE.md` (TO-BE) i README App Logic.
 
 ## Etap 5 – Deprecjacja starych usług
 

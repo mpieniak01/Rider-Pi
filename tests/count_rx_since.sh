@@ -2,8 +2,8 @@
 set -euo pipefail
 SINCE="${1:-2 minutes ago}"
 
-echo "== Zdarzenia BRIDGE (rider-motion-bridge.service) od: ${SINCE} =="
-journalctl -u rider-motion-bridge.service --since "${SINCE}" --no-pager \
+echo "== Zdarzenia motion-executor.service od: ${SINCE} =="
+journalctl -u motion-executor.service --since "${SINCE}" --no-pager \
   | awk 'BEGIN{rx=0;sk=0;as=0;st=0}
          /rx_cmd\.move/{rx++}
          /skip_cmd\.move/{sk++}

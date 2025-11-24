@@ -18,7 +18,7 @@ wait_health() {
 echo "== Rider-Pi PRE-FLIGHT @ $(date) =="
 echo "HEAD: $(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 
-NEEDED=(rider-broker.service rider-motion-bridge.service rider-web-bridge.service rider-api.service)
+NEEDED=(rider-broker.service motion-executor.service sensor-reader.service rider-web-bridge.service rider-api.service)
 echo "== is-enabled =="
 for s in "${NEEDED[@]}"; do
   st=$(systemctl is-enabled "$s" 2>/dev/null || echo "disabled")
@@ -27,13 +27,14 @@ for s in "${NEEDED[@]}"; do
 done
 
 echo "== systemd-analyze verify (repo/systemd/*.service) =="
-systemd-analyze verify "$ROOT/systemd"/rider-{broker,motion-bridge,web-bridge,api}.service || die "verify failed"
+systemd-analyze verify "$ROOT/systemd"/rider-{broker,web-bridge,api}.service "$ROOT/systemd"/{motion-executor,sensor-reader}.service || die "verify failed"
 
 echo "== daemon-reload & restart usług (bez rebootu) =="
 sudo systemctl daemon-reload
 sudo systemctl restart rider-broker.service
 sleep 0.5
-sudo systemctl restart rider-motion-bridge.service
+journalctl -u motion-executor.service -n 50 --no-pager || true
+sudo systemctl restart motion-executor.service
 sleep 0.5
 sudo systemctl restart rider-web-bridge.service
 sleep 0.5

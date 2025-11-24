@@ -11,14 +11,27 @@ from apps.app_logic_core import FeatureManager
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sterowanie funkcjami Rider-Pi przez FeatureManager.")
-    parser.add_argument("action", choices=["start", "stop"], help="Akcja na funkcji.")
-    parser.add_argument("feature", help="Nazwa funkcji (np. face_tracking, hand_tracking, recon).")
+    parser.add_argument("action", choices=["start", "stop", "status"], help="Akcja na funkcji.")
+    parser.add_argument(
+        "feature",
+        nargs="?",
+        help="Nazwa funkcji/scenariusza (np. s3_follow_me_face, face_tracking, s4_recon).",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     manager = FeatureManager()
+    if args.action == "status":
+        state = manager.state_snapshot()
+        print(json.dumps({"ok": True, "state": state}, ensure_ascii=False, indent=2))
+        return 0
+
+    if not args.feature:
+        print(json.dumps({"ok": False, "error": "feature_required"}))
+        return 2
+
     enabled = args.action == "start"
 
     try:

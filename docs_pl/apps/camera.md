@@ -100,9 +100,16 @@ Preview z SSD (Single Shot Detector) — detekcja obiektów w czasie rzeczywisty
 ## Integracja z systemd
 
 ```bash
-# Uruchom preview jako usługa
-sudo systemctl start rider-cam-preview.service
-sudo systemctl status rider-cam-preview.service
+# Uruchom podgląd jako usługa (tryb raw)
+sudo systemctl start camera-capture@raw.service
+sudo systemctl status camera-capture@raw.service
+
+# Dostępne są też warianty edge/ssd:
+sudo systemctl start camera-capture@edge.service
+sudo systemctl start camera-capture@ssd.service
+
+# Strumień klatek do modułów wizji:
+sudo systemctl start frame-distributor.service
 ```
 
 Zobacz: [docs/ops/systemd-scripts.md](../ops/systemd-scripts.md)

@@ -272,13 +272,13 @@ python3 -m apps.odometry.main
 
 **Możliwe przyczyny:**
 1. Brak komend ruchu na magistrali → sprawdź `motion` topic
-2. Motion bridge nie działa → sprawdź `rider-motion-bridge.service`
+2. Warstwa ruchu nie działa → sprawdź `motion-executor.service` i `sensor-reader.service`
 3. Broker ZMQ nie działa → sprawdź `rider-broker.service`
 
 **Diagnostyka:**
 ```bash
-# Sprawdź czy motion bridge działa
-systemctl status rider-motion-bridge
+# Sprawdź czy warstwa ruchu działa
+systemctl status motion-executor sensor-reader
 
 # Sprawdź logi odometry
 journalctl -u rider-odometry -n 50

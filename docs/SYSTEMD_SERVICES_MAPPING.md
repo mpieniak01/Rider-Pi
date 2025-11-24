@@ -10,23 +10,33 @@ This document provides a mapping of all systemd service files to the scripts the
 | **rider-api.service** | ✓ Valid | `/usr/bin/python3 -u -m services.api_server` | Python module in `services/` |
 | **rider-boot-splash.service** | ✓ Valid | `/home/pi/robot/scripts/sys_boot-prepare.sh` | Script in `scripts/` (renamed from rider-boot-prepare.service) |
 | **rider-broker.service** | ✓ Valid | `/usr/bin/python3 -u services/broker.py` | Python script in `services/` |
-| **rider-cam-preview.service** | ✓ Valid | `/usr/bin/python3 apps/camera/preview_lcd.py` | Python script in `apps/` |
+| **camera-capture@.service** | ✓ Valid | `/usr/bin/python3 -m apps.camera.capture_service` | Unified camera capture (`CAPTURE_MODE=raw|edge|ssd`) |
+| **frame-distributor.service** | ✓ Valid | `/usr/bin/python3 -m apps.camera.frame_distributor` | Publishes shared ZMQ frame feed for processing modules |
 | **rider-choreographer.service** | ✓ Valid | `/usr/bin/python3 -u -m apps.choreographer.main` | Emotion and sentiment choreography service |
 | **rider-edge-preview.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/edge_preview.py` | Python script in `apps/` |
 | **rider-face.service** | ✓ Fixed | `/usr/bin/python3 /home/pi/robot/scripts/dev_face-lcd-direct.py` | **Updated from** `/workspaces/Rider-Pi/tools/` |
 | **rider-google-bridge.service** | ✓ Valid | `/usr/bin/python3 -u -m apps.google_bridge.main` | Python module in `apps/` |
 | **rider-mapper.service** | ✓ Valid | `/usr/bin/python3 /home/pi/robot/apps/mapper/main.py` | **Rekonesans Stage 3**: SLAM mapping service |
-| **rider-motion-bridge.service** | ✓ Valid | `/usr/bin/python3 -u -m services.motion_bridge` | Python module in `services/` |
+| **sensor-reader.service** | ✓ Valid | `/usr/bin/python3 -m apps.motion.sensor_reader` | Publishes `imu.data` and `devices.xgo` telemetry |
+| **motion-executor.service** | ✓ Valid | `/usr/bin/python3 -m apps.motion.executor` | Executes `cmd.move`/`tracking.pose` with deadman/E‑Stop |
 | **rider-obstacle.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/obstacle_roi.py` | Python script in `apps/` |
 | **rider-odometry.service** | ✓ Valid | `/usr/bin/python3 -u -m apps.odometry.main` | **Rekonesans Stage 2**: Position tracking service |
 | **rider-tracker.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/tracker.py` | Vision tracking service |
 | **rider-tracking-controller.service** | ✓ Valid | `/usr/bin/python3 -u apps/motion/tracking_controller.py` | Motion tracking controller |
-| **rider-post-splash.service** | ✓ Fixed | `/usr/bin/python3 scripts/sys_splash-info.py` | **Updated from** `ops/splash_device_info.py` |
+| **lcd-renderer.service** | ✓ Valid | `/usr/bin/python3 scripts/lcd_renderer.py` | Runtime LCD status renderer (replaces rider-post-splash) |
 | **rider-ssd-preview.service** | ✓ Valid | `/usr/bin/python3 -u apps/camera/preview_lcd_ssd.py` | Python script in `apps/` |
 | **rider-vision.service** | ✓ Valid | `/usr/bin/python3 -u apps/vision/dispatcher.py` | Python script in `apps/` |
 | **rider-vision-offload.service** | ✓ Valid | `/usr/bin/python3 -m apps.vision.offload_dispatcher` | Vision offload dispatcher streaming camera data to the PC |
 | **rider-voice-web.service** | ✓ Valid | `/usr/bin/python3 -m apps.voice.web` | Python module in `apps/` |
 | **rider-voice.service** | ✓ Valid | `/usr/bin/python3 -m apps.voice.cli listen` | Python module in `apps/` |
+| **audio-input.target** | ✓ Valid | `Wants=rider-voice.service` | Logical audio input module (ASR) |
+| **audio-output.target** | ✓ Valid | `Wants=rider-voice-web.service` | Logical audio output module (TTS/web) |
+| **rider-tracker.target** | ✓ Valid | `Wants=camera-capture@raw frame-distributor rider-tracker rider-tracking-controller` | Scenario S6 – tracker module |
+| **rider-obstacle.target** | ✓ Valid | `Wants=camera-capture@raw frame-distributor rider-vision rider-obstacle rider-vision-offload` | Scenario S7 – obstacle detector |
+| **rider-ai-provider.target** | ✓ Valid | `Wants=rider-voice.service rider-google-bridge.service rider-vision-offload.service` | Scenario S10 – AI providers profile |
+| **rider-voice.target** | ✓ Valid | `Wants=audio-input.target audio-output.target rider-google-bridge.service` | Scenario S5 – voice/assistant |
+| **rider-mapbuild.target** | ✓ Valid | `Wants=camera-capture@raw frame-distributor rider-vision rider-obstacle rider-odometry rider-mapper motion-executor sensor-reader` | Scenario S8 – SLAM map build |
+| **rider-navigate.target** | ✓ Valid | `Wants=camera-capture@raw frame-distributor rider-obstacle rider-odometry rider-mapper rider-navigator motion-executor sensor-reader` | Scenario S9 – navigation A→B |
 | **rider-web-bridge.service** | ✓ Valid | `/usr/bin/python3 -u -m services.web_motion_bridge` | Python module in `services/` |
 | **wifi-unblock.service** | ✓ Valid | `/usr/sbin/rfkill unblock wifi` | System command |
 
@@ -38,14 +48,14 @@ Nowy widok `/web/system.html` wizualizuje status usług oraz zależności logicz
 
 - core – warstwa podstawowa (API, broker, web-bridge, boot, targety, wifi-unblock)
 - vision – pipeline wizyjny (vision, edge/ssd/cam preview, obstacle, tracker)
-- motion – kontrola ruchu (tracking-controller, motion-bridge, choreographer, mapper, odometry)
+- motion – motion control (sensor-reader, motion-executor, tracking-controller, choreographer, mapper, odometry)
 - voice – obsługa głosu (voice, voice-web)
 - cloud – integracje zewnętrzne (google-bridge)
 - dev – narzędzia deweloperskie (jupyter)
 
 **Przepływy komunikacji:**
 
-- web-bridge → api → broker → vision → tracker → tracking-controller → motion-bridge
+- web-bridge → api → broker → vision → tracker → tracking-controller → motion-executor
 - voice-web → voice → api → broker
 - google-bridge → api → broker
 - odometry → mapper → api
@@ -169,7 +179,7 @@ SYSTEMD_SMOKE_TESTS=1 SYSTEMD_SMOKE_FULL=1 pytest tests/test_systemd_smoke.py -v
 
 ```bash
 # Verify specific service file syntax
-systemd-analyze verify systemd/rider-face.service
+systemd-analyze verify systemd/legacy/rider-face.service
 
 # Test service on actual system
 sudo systemctl daemon-reload
@@ -249,34 +259,18 @@ Any PR that modifies service files or referenced scripts will be validated autom
 
 This ensures that any PR that modifies service files or referenced scripts will be validated automatically.
 
-## Notes on Rekonesans (Autonomous Navigation) Services
+## Notes on Recon/Navigation
 
-### Navigator Service
-**Note:** There is currently **no dedicated `rider-navigator.service`**. The navigator module (`apps/navigator/main.py`) is designed to be controlled via the API (`/api/navigator/*` endpoints) and does not run as a persistent background service. It can be started on-demand through the web interface or API calls.
-
-If a persistent navigator service is needed, it can be created similar to the odometry and mapper services.
-
-### Service Dependencies (Rekonesans Epic)
-The autonomous navigation (Rekonesans) feature spans multiple services:
-
-1. **rider-odometry.service** (Stage 2) - Position tracking
-   - Depends on: `rider-broker.service`, `rider-motion-bridge.service`
-   - Publishes: `robot.pose` (position and orientation)
-
-2. **rider-mapper.service** (Stage 3) - SLAM mapping
-   - Depends on: `rider-broker.service`, `rider-odometry.service`
-   - Subscribes: `robot.pose`, `vision.obstacle.data`
-   - Publishes: `mapper.map.data` (occupancy grid)
-
-3. **Navigator** (Stages 1 & 4) - Exploration and path planning
-   - Controlled via API: `/api/navigator/*`
-   - Subscribes: `vision.obstacle`, `robot.pose`, `mapper.map.data`
-   - Publishes: `navigator.state`, `motion` commands
+- `rider-motion-bridge.service` is now **legacy** (moved to `systemd/legacy/`). Its responsibilities are split into `sensor-reader.service` (IMU/XGO telemetry) and `motion-executor.service` (commands + deadman/E‑Stop).
+- Targeted scenarios:
+  - **S8 map build** – `rider-mapbuild.target` (capture + frame-distributor + obstacle + odometry + mapper + motion).
+  - **S9 navigation** – `rider-navigate.target` (mapper/odometry/obstacle + navigator + motion-executor + sensor-reader).
+- `rider-navigator.service` is a regular unit (After/Wants: broker, vision, obstacle, odometry, mapper, motion-executor) and is started via `rider-navigate.target`.
 
 ### Vision Depth Bridge
-The `apps/vision/depth_bridge.py` module provides obstacle distance estimation for mapping. It does not have a dedicated systemd service but can be integrated into the vision pipeline as needed.
+`apps/vision/depth_bridge.py` remains an auxiliary vision module; it has no dedicated systemd unit.
 
 ---
 
 **Last updated:** 2025-11-02  
-**Related PR:** Fix systemd services after file renames/move to `scripts/` + Documentation audit (PR #199)
+**Related PR:** Motion executor/sensor reader rollout + targets S5/S8/S9; rider-motion-bridge → legacy

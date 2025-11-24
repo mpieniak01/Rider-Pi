@@ -1,7 +1,11 @@
 [Unit]
-Description=Rider-Pi DEV profile (GUI + Jupyter)
+Description=Rider-Pi DEV profile (GUI + Jupyter + preview)
 After=network-online.target
-Wants=network-online.target graphical.target jupyter.service
+Wants=network-online.target \
+    graphical.target \
+    jupyter.service \
+    camera-capture@edge.service \
+    camera-capture@ssd.service
 
 [Install]
 WantedBy=multi-user.target

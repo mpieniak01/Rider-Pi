@@ -105,6 +105,21 @@ python3 -m services.api_server
 
 Then open `http://localhost:8080/control.html` in your browser.
 
+### Automated UI / E2E checks
+UI regressions shouldn’t be executed directly on the Rider-Pi device. Instead, run them on a PC clone of this repo (or in CI, e.g. GitHub Actions):
+
+```bash
+# 1. API smoke (FeatureManager HTTP layer)
+PYTHONPATH=. pytest tests/test_features_api.py -q
+
+# 2. Scenario dashboard + feature toggles
+bash tests/test_suite.sh http://127.0.0.1:8080
+```
+
+`tests/test_suite.sh` will sequentially start/stop scenarios S3–S11 via `/api/logic/feature/<name>` and verify the dashboard state using `/api/logic/summary`. Ensure the API server runs on the provided host/port before executing the suite.
+
+> **CI requirement:** Workflow `quality-guard.yml` uruchamia oba powyższe kroki na GitHub Actions (bez kontenerów/Dockera). Lokalne uruchomienie testów na PC odtwarza dokładnie ten sam scenariusz.
+
 ### File Structure
 ```
 web/

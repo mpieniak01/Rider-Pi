@@ -1,0 +1,18 @@
+[Unit]
+Description=Rider-Pi LCD Renderer (status panel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/pi/robot
+ExecStart=/usr/bin/python3 -u /home/pi/robot/scripts/lcd_renderer.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

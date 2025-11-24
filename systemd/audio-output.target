@@ -1,0 +1,7 @@
+[Unit]
+Description=Rider-Pi Audio Output Stack
+After=network-online.target
+Wants=rider-voice-web.service
+
+[Install]
+WantedBy=multi-user.target

@@ -7,14 +7,15 @@ set -euo pipefail
 ALLOW_UNITS=(
   rider-api.service
   rider-broker.service
-  rider-cam-preview.service
-  rider-edge-preview.service
+  camera-capture@raw.service
+  camera-capture@edge.service
+  camera-capture@ssd.service
   rider-google-bridge.service
   rider-mapper.service
-  rider-motion-bridge.service
+  motion-executor.service
+  sensor-reader.service
   rider-obstacle.service
   rider-odometry.service
-  rider-ssd-preview.service
   rider-tracker.service
   rider-tracking-controller.service
   rider-navigator.service
@@ -23,6 +24,17 @@ ALLOW_UNITS=(
   rider-vision.service
   rider-vision-offload.service
   rider-web-bridge.service
+  frame-distributor.service
+  rider-core.target
+  rider-followme.target
+  rider-recon.target
+  rider-voice.target
+  rider-mapbuild.target
+  rider-navigate.target
+  rider-tracker.target
+  rider-obstacle.target
+  rider-ai-provider.target
+  rider-dev.target
 )
 
 

@@ -97,15 +97,15 @@
 
 ---
 
-### 5. rider-cam-preview.service
+### 5. camera-capture@.service
 
-**Description:** Rider-Pi camera preview (no processing) -> snapshots/raw.*
+**Description:** Unified camera capture service (CAPTURE_MODE=raw|edge|ssd) responsible for snapshots/raw.* and camera heartbeat.
 
-**Type:** simple
+**Type:** simple (template)
 
 **ExecStart:**
 ```
-/usr/bin/flock -n /tmp/camera.lock /usr/bin/python3 apps/camera/preview_lcd.py
+/usr/bin/flock -n /tmp/camera.lock /usr/bin/python3 -u -m apps.camera.capture_service
 ```
 
 **WorkingDirectory:** /home/pi/robot
@@ -170,9 +170,9 @@
 
 ---
 
-### 8. rider-motion-bridge.service
+### 8. rider-motion-bridge.service (legacy)
 
-**Description:** Rider-Pi Motion/XGO bridge (telemetria + sterowanie)
+**Description:** Previous motion/XGO bridge. Replaced by `sensor-reader.service` (IMU/XGO telemetry) and `motion-executor.service` (commands with deadman/E‑Stop).
 
 **Type:** simple
 
@@ -183,9 +183,9 @@
 
 **WorkingDirectory:** /home/pi/robot
 
-**Status:** ✅ Valid - Python module in services/
+**Status:** ⚠️ Legacy – moved to `systemd/legacy/`; kept only for rollback.
 
-**Notes:** Bridge between high-level motion commands and XGO hardware
+**Notes:** Should be disabled once the new motion stack is validated on hardware.
 
 ---
 
@@ -387,9 +387,12 @@
 
 | Service | Path | Status |
 |---------|------|--------|
-| rider-cam-preview.service | apps/camera/preview_lcd.py | ✅ Valid |
+| camera-capture@.service | apps/camera/capture_service.py | ✅ Valid |
 | rider-edge-preview.service | apps/vision/edge_preview.py | ✅ Valid |
+| frame-distributor.service | apps/camera/frame_distributor.py | ✅ Valid |
 | rider-obstacle.service | apps/vision/obstacle_roi.py | ✅ Valid |
+| sensor-reader.service | apps/motion/sensor_reader.py | ✅ Valid |
+| motion-executor.service | apps/motion/executor.py | ✅ Valid |
 | rider-ssd-preview.service | apps/camera/preview_lcd_ssd.py | ✅ Valid |
 | rider-vision.service | apps/vision/dispatcher.py | ✅ Valid |
 | rider-voice-web.service | apps.voice.web (module) | ✅ Valid |
@@ -401,7 +404,7 @@
 |---------|------|--------|
 | rider-api.service | services.api_server (module) | ✅ Valid |
 | rider-broker.service | services/broker.py | ✅ Valid |
-| rider-motion-bridge.service | services.motion_bridge (module) | ✅ Valid |
+| rider-motion-bridge.service | services.motion_bridge (module) | ⚠️ Legacy (systemd/legacy/) |
 | rider-web-bridge.service | services.web_motion_bridge (module) | ✅ Valid |
 
 ### Services Using scripts/

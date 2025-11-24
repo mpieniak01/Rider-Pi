@@ -28,7 +28,7 @@ sec(){ echo -e "\n===== $* =====" | tee -a "$OUT"; }
   echo "Uptime: $(uptime)"
 } | tee "$OUT"
 
-SERVICES=(rider-broker.service rider-web-bridge.service rider-motion-bridge.service rider-api.service)
+SERVICES=(rider-broker.service rider-web-bridge.service motion-executor.service sensor-reader.service rider-api.service)
 
 sec "systemd: is-active / is-enabled"
 for s in "${SERVICES[@]}"; do

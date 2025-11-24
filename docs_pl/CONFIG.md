@@ -279,9 +279,9 @@ All hardcoded configuration values have been migrated from systemd service files
 - Snapshot paths (`SNAP_DIR`, `RAW_PATH`, `PROC_PATH`, `SSD_PATH`) → `config/camera.toml`
 - Now loads paths from `apps.camera.config` in `services/api_core/compat.py`
 
-**rider-motion-bridge.service**
+**rider-motion-bridge.service** (legacy)
 - Serial port (`XGO_PORT`) → `config/motion.toml` as `motion_bridge.serial_port`
-- Now loads from `apps.motion.config.load_motion_bridge_config()` in `services/motion_bridge.py`
+- Now loads from `apps.motion.config.load_motion_bridge_config()` in `services/motion_bridge.py` (ścieżka legacy); obecnie zastąpiony przez `motion-executor` / `sensor-reader` korzystające z tego samego pliku konfiguracyjnego.
 
 **rider-voice-web.service**
 - Bind address (`--bind` argument) → `config/voice_web.toml` as `server.bind`

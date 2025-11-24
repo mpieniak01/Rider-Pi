@@ -28,15 +28,35 @@ Dozwolone jednostki (hardcoded w skrypcie):
 ALLOW_UNITS=(
   rider-api.service
   rider-broker.service
-  rider-motion-bridge.service
-  rider-vision.service
-  rider-web-bridge.service
-  rider-cam-preview.service
-  rider-edge-preview.service
-  rider-ssd-preview.service
+  camera-capture@raw.service
+  camera-capture@edge.service
+  camera-capture@ssd.service
+  rider-google-bridge.service
+  rider-mapper.service
+  motion-executor.service
+  sensor-reader.service
   rider-obstacle.service
+  rider-odometry.service
+  rider-tracker.service
+  rider-tracking-controller.service
+  rider-navigator.service
+  rider-voice.service
+  rider-voice-web.service
+  rider-vision.service
+  rider-vision-offload.service
+  rider-web-bridge.service
+  frame-distributor.service
+  rider-core.target
+  rider-followme.target
+  rider-recon.target
+  rider-voice.target
+  rider-mapbuild.target
+  rider-navigate.target
 )
 ```
+
+> **Legacy:** jednostki `rider-cam-preview.service`, `rider-edge-preview.service`, `rider-ssd-preview.service` oraz `rider-face.service`
+> zostały przeniesione do `systemd/legacy/` i nie są już zarządzane automatycznie przez skrypt sync.
 
 ### Przykłady
 
@@ -104,10 +124,19 @@ Synchronizuje definicje usług systemd z repozytorium do `/etc/systemd/system`. 
 ### Użycie
 
 ```bash
-./scripts/systemd-sync.sh
+./scripts/systemd-sync.sh [--with-dev]
 ```
 
+Parametr `--with-dev` podlinkowuje jednostki dev/legacy (`rider-face.service`, previewy) na żądanie, dzięki czemu można uruchomić tryb S11 bez ręcznego kopiowania plików. Domyślne uruchomienie pomija legacy, aby środowisko produkcyjne miało minimalny zestaw usług.
+
 ⚠️ **Wymaga sudo** — modyfikuje `/etc/systemd/system`
+
+**Weryfikacja po sync:**  
+```bash
+systemctl list-unit-files --type=service --type=target \
+  | grep -E '^(rider|camera-capture@|audio-)'
+```
+W produkcji zobaczysz wyłącznie targety/scenariusze (`rider-core`, `rider-followme`, `rider-recon`, `rider-voice`, `rider-mapbuild`, `rider-navigate`, `rider-tracker`, `rider-obstacle`, `rider-ai-provider`, `rider-dev`) oraz usługi bazowe (`camera-capture@.service`, `frame-distributor.service`, `sensor-reader.service`, `motion-executor.service`, `rider-api.service`, `rider-broker.service`, `rider-web-bridge.service`, `lcd-renderer.service`, `wifi-unblock.service`, `audio-input.target`, `audio-output.target`). Jednostki z `systemd/legacy/` pojawią się tylko po uruchomieniu `systemd-sync.sh --with-dev`.
 
 ### Funkcje
 
@@ -128,17 +157,34 @@ ALLOW_UNITS=(
   "rider-broker.service"
   "rider-api.service"
   "rider-vision.service"
-  "rider-motion-bridge.service"
+  "frame-distributor.service"
+  "camera-capture@.service"
   "rider-boot-splash.service"
   "rider-minimal.target"
-  "rider-edge-preview.service"
   "rider-obstacle.service"
-  "rider-cam-preview.service"
-  "rider-ssd-preview.service"
   "jupyter.service"
   "rider-dev.target"
   "rider-web-bridge.service"
   "rider-voice.service"
+  "rider-voice-web.service"
+  "rider-google-bridge.service"
+  "rider-mapper.service"
+  "rider-odometry.service"
+  "rider-tracker.service"
+  "rider-tracking-controller.service"
+  "rider-navigator.service"
+  "rider-vision-offload.service"
+  "rider-core.target"
+  "rider-followme.target"
+  "rider-recon.target"
+  "rider-voice.target"
+  "rider-mapbuild.target"
+  "rider-navigate.target"
+  "audio-input.target"
+  "audio-output.target"
+  "lcd-renderer.service"
+  "sensor-reader.service"
+  "motion-executor.service"
   "wifi-unblock.service"
 )
 ```

@@ -17,6 +17,8 @@ import cv2
 import mediapipe as mp
 import zmq
 
+from common.frame_stream import FrameStreamClient
+
 try:
     from apps.vision.ai_mode_adapter import should_run_local_detectors
 except ImportError:  # pragma: no cover - fallback for standalone usage
@@ -34,6 +36,9 @@ SNAP_DIR = os.getenv("SNAP_BASE", "/home/pi/robot/snapshots")
 
 # Główne źródło obrazu – klatka z preview_lcd (camera.heartbeat)
 LAST_FRAME_PATH = os.getenv("TRACKER_LAST_FRAME_PATH", "/home/pi/robot/data/last_frame.jpg")
+FRAME_STREAM_ADDR = os.getenv("FRAME_STREAM_ADDR", "tcp://127.0.0.1:5562")
+FRAME_STREAM_TOPIC = os.getenv("FRAME_STREAM_TOPIC", "camera.frame.raw")
+TRACKER_USE_FRAME_STREAM = os.getenv("TRACKER_USE_FRAME_STREAM", "1") == "1"
 TRACKER_PATH = os.path.join(SNAP_DIR, "tracker.jpg")
 
 # Tracking parameters
@@ -257,6 +262,10 @@ def tracking_loop() -> None:
     fps_frame_count = 0
     fps_value = 0.0
 
+    frame_stream = (
+        FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True) if TRACKER_USE_FRAME_STREAM else None
+    )
+
     while True:
         try:
             pc_mode = not should_run_local_detectors()
@@ -270,17 +279,23 @@ def tracking_loop() -> None:
             with FOLLOW_MODE_LOCK:
                 mode = FOLLOW_MODE
 
-            # Wczytujemy ostatnią klatkę z preview
-            frame = cv2.imread(LAST_FRAME_PATH)
+            # Wczytujemy ostatnią klatkę ze streamu lub fallbacku
+            frame = None
+            if frame_stream is not None:
+                frame = frame_stream.recv(int(frame_interval * 1000))
             if frame is None:
-                print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
-                time.sleep(0.05)
-                continue
-            try:
-                frame_age = max(0.0, t0 - os.path.getmtime(LAST_FRAME_PATH))
-                if frame_age > 1.0 and int(t0) % 5 == 0:
-                    print(f"[tracker] warning: last_frame age={frame_age:.2f}s path={LAST_FRAME_PATH}", flush=True)
-            except Exception:
+                frame = cv2.imread(LAST_FRAME_PATH)
+                if frame is None:
+                    print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
+                    time.sleep(0.05)
+                    continue
+                try:
+                    frame_age = max(0.0, t0 - os.path.getmtime(LAST_FRAME_PATH))
+                    if frame_age > 1.0 and int(t0) % 5 == 0:
+                        print(f"[tracker] warning: last_frame age={frame_age:.2f}s path={LAST_FRAME_PATH}", flush=True)
+                except Exception:
+                    frame_age = None
+            else:
                 frame_age = None
 
             if mode == "NONE":
@@ -402,13 +417,20 @@ def tracking_loop() -> None:
             )
 
             if offset_x is not None and can_publish and (not pc_mode or pc_fallback):
+                payload = {
+                    "offset_x": round(offset_x, 3),
+                    "mode": mode.lower(),
+                    "ts": now,
+                    "source": "pc-fallback" if pc_mode else "local",
+                }
+                pub("vision.tracking.offset", payload)
                 pub(
-                    "vision.tracking.offset",
+                    "tracking.pose",
                     {
-                        "offset_x": round(offset_x, 3),
                         "mode": mode.lower(),
+                        "target": {"x": payload["offset_x"], "y": 0.0},
                         "ts": now,
-                        "source": "pc-fallback" if pc_mode else "local",
+                        "source": payload["source"],
                     },
                 )
                 last_pub_ts = now
