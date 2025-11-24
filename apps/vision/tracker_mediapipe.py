@@ -15,7 +15,6 @@ from typing import Any
 
 import cv2
 import mediapipe as mp
-import numpy as np
 import zmq
 
 from common.frame_stream import FrameStreamClient
@@ -137,8 +136,6 @@ def control_loop() -> None:
                 lfp = data.get("last_frame_path")
                 if isinstance(lfp, str) and lfp:
                     LAST_FRAME_PATH = lfp
-                # można też kiedyś wykorzystać fps, lcd, itp.
-                # print(f"[tracker] heartbeat last_frame_path={LAST_FRAME_PATH}", flush=True)
                 continue
 
             if topic == "tracking.mode:set":

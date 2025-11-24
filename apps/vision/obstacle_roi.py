@@ -326,9 +326,7 @@ def main() -> int:
     frame_stream: FrameStreamClient | None = None
     if USE_FRAME_STREAM:
         try:
-            frame_stream = FrameStreamClient(
-                FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True, copy_frame=True
-            )
+            frame_stream = FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True, copy_frame=True)
             print(
                 f"[obst] frame stream subscribed: {FRAME_STREAM_ADDR} topic={FRAME_STREAM_TOPIC}",
                 flush=True,
