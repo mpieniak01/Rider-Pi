@@ -141,7 +141,25 @@ Two navigation strategies:
 
 ---
 
-### 6. Provider Control (Offload Panel)
+### 6. Scenario / Target Dashboard
+**Location:** Below the feature cards, above the diagnostics table
+
+**Purpose:** Provide a consolidated list of App Logic scenarios (S3–S11) with their state, without digging into `/svc`.
+
+**Features:**
+- Pulls data from `GET /api/logic/summary` (new endpoint that aggregates `describe_features()` results).
+- Displays name, scenario code, short description, and `n_active / n_total` services for each target.
+- Pills indicate state:
+  - `✓ Running` – all dependent units active
+  - `⚠ Partial` – at least one service active, but not the entire set
+  - `Stopped` – no services running
+- Start/Stop buttons call `POST /api/logic/feature/<name> {enabled:true|false}`.
+
+**Notes:**
+- The legacy “Funkcje” card still exists for the classic S0/S3/S4 shortcuts, but the scenario dashboard is the authoritative view for target orchestration (Follow Me, Recon, Voice, Tracker, Obstacle, Mapbuild, Navigate, AI Providers, Dev Mode).
+- List auto-refreshes every 5 seconds; manual actions re-fetch the summary to keep it in sync.
+
+### 7. Provider Control (Offload Panel)
 **Location:** Below Rekonesans controls (planned for upcoming releases)
 
 **Purpose:**
@@ -157,7 +175,7 @@ Two navigation strategies:
 
 ---
 
-### 7. Event Log
+### 8. Event Log
 **Location:** Bottom of page
 
 **Features:**
@@ -177,6 +195,12 @@ Two navigation strategies:
 - Error messages
 
 ---
+
+## Diagnostics – Systemd services
+
+The systemd table (`/svc`) is now wrapped in a collapsible `<details>` section titled “Usługi (systemd)”. Operators use the scenario dashboard for day-to-day work, while the service table is kept for troubleshooting:
+- Manual refresh, auto-refresh toggle, status filters remain unchanged.
+- Table is hidden by default on mobile (details collapsed) but still present for full diagnostics.
 
 ## Header Status Indicators
 

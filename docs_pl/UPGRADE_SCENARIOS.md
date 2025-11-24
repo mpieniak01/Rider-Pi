@@ -8,7 +8,7 @@ Ten dokument opisuje, jak przejść z podejścia „ręczne uruchamianie unitów
    ```bash
    sudo systemctl stop rider-edge-preview.service rider-ssd-preview.service rider-face.service || true
    ```
-2. **Uruchom repo-first sync** (`scripts/systemd-sync.sh`) – skrypt usunie przestarzałe linki i zainstaluje tylko wspierane jednostki. Legacy pliki (`rider-face`, `rider-edge-preview`, `rider-ssd-preview`) znajdują się teraz w `systemd/legacy/` i nie są linkowane automatycznie.
+2. **Uruchom repo-first sync** (`scripts/systemd-sync.sh`) – skrypt usunie przestarzałe linki i zainstaluje tylko wspierane jednostki. Jeżeli potrzebujesz narzędzi DEV/S11 (np. `rider-face` albo previewy), użyj wariantu `./scripts/systemd-sync.sh --with-dev`, który tymczasowo linkuje jednostki z `systemd/legacy/`.
 3. **Zaktualizuj konfiguracje** (`systemd/robot.env`, `config/*.toml`) zgodnie z docelowymi scenariuszami.
 
 ## 2. Start scenariuszy przez App Logic
@@ -41,6 +41,12 @@ API analogiczne: `POST /api/logic/feature/<name> {"enabled": true|false}`.
 3. Legacy jednostki:
    - pozostają w `systemd/legacy/` (można je ręcznie skopiować do `/etc/systemd/system`, jeśli są potrzebne w trybie DEV/S11),
    - nie są już enumerowane przez `/svc` ani targety produkcyjne.
+4. Zweryfikuj listę usług:
+   ```bash
+   systemctl list-unit-files --type=service --type=target \
+     | grep -E '^(rider|camera-capture@|audio-)'
+   ```
+   Powinna zawierać tylko targety/scenariusze (`rider-core`, `rider-followme`, `rider-recon`, `rider-voice`, `rider-mapbuild`, `rider-navigate`, `rider-tracker`, `rider-obstacle`, `rider-ai-provider`, `rider-dev`) oraz bazowe usługi (`camera-capture@.service`, `frame-distributor.service`, `sensor-reader.service`, `motion-executor.service`, `rider-api.service`, `rider-broker.service`, `rider-web-bridge.service`, `lcd-renderer.service`, `wifi-unblock.service`, `audio-input.target`, `audio-output.target`). Legacy pojawią się tylko po uruchomieniu `systemd-sync.sh --with-dev`.
 
 ## 4. Najczęstsze problemy
 

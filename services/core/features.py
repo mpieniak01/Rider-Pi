@@ -100,10 +100,7 @@ DEFAULT_REGISTRY: dict[str, FeatureDefinition] = {
         scenario="S6",
         title="Moduł śledzenia obiektów",
         description="Samodzielny tracker (wizja) bez sterowania ruchem.",
-        services=(
-            "rider-tracker.service",
-            "rider-tracking-controller.service",
-        ),
+        services=("rider-tracker.target",),
         ensure_cam=True,
     ),
     "s7_obstacle_module": FeatureDefinition(
@@ -111,11 +108,7 @@ DEFAULT_REGISTRY: dict[str, FeatureDefinition] = {
         scenario="S7",
         title="Moduł wykrywania przeszkód",
         description="Analiza obrazu i alerty przeszkód w tle.",
-        services=(
-            "rider-vision.service",
-            "rider-obstacle.service",
-            "rider-vision-offload.service",
-        ),
+        services=("rider-obstacle.target",),
         ensure_cam=True,
     ),
     "s8_mapping": FeatureDefinition(
@@ -138,11 +131,7 @@ DEFAULT_REGISTRY: dict[str, FeatureDefinition] = {
         scenario="S10",
         title="Wybór providerów AI",
         description="Przełączanie między lokalnymi/chmurowymi providerami głosu i wizji.",
-        services=(
-            "rider-voice.service",
-            "rider-google-bridge.service",
-            "rider-vision-offload.service",
-        ),
+        services=("rider-ai-provider.target",),
     ),
     "s11_dev_mode": FeatureDefinition(
         name="s11_dev_mode",

@@ -1,0 +1,11 @@
+[Unit]
+Description=Rider-Pi Tracker Module (S6)
+Requires=rider-core.target
+After=rider-core.target
+Wants=camera-capture@raw.service \
+    frame-distributor.service \
+    rider-tracker.service \
+    rider-tracking-controller.service
+
+[Install]
+WantedBy=multi-user.target

@@ -76,14 +76,14 @@ Wnioski z panelu:
 - **Cel**: uruchomić dedykowaną usługę śledzenia (face/hand) niezależnie od pełnych scenariuszy ruchu – np. tylko do prezentacji wizji.
 - **Korzyści**: możliwość testowania i strojenia trackera bez uruchamiania wszystkich usług ruchu.
 - **Elementy panelu**: sekcja „Śledzenie (twarz / dłoń)” w trybie eksperckim – start/stop trackera, wybór trybu.
-- **Jednostki systemd**: `rider-tracker.service`, `rider-tracking-controller.service` (opcjonalnie w trybie dry-run), wspólna kamera.
+- **Jednostki systemd**: `rider-tracker.target` (kamery + `frame-distributor` + `rider-tracker.service` + `rider-tracking-controller.service`).
 - **Uwagi**: pipeline może działać samodzielnie (tylko publikacja telemetrii) lub być spięty z S3/S4 – ważne, aby UI pozwalało go włączyć osobno.
 
 ### S7 — Moduł wykrywania przeszkód / obiektów
 - **Cel**: analiza obrazu w tle (obstacle detection, klasyfikacja obiektów) na potrzeby alertów i danych dla UI – niezależnie od scenariusza ruchu.
 - **Korzyści**: wykrywanie przeszkód podczas postoju, powiadomienia w UI, wzbogacona telemetria.
 - **Elementy panelu**: wskaźnik „Obstacle” (już istniejący badge), dodatkowy panel „Detekcje obiektów”.
-- **Jednostki systemd**: `rider-obstacle.service`, `rider-vision.service`, opcjonalne previewy (edge/ssd) działające jako sensory; może działać samodzielnie (bez warstwy ruchu).
+- **Jednostki systemd**: `rider-obstacle.target` (kamera + feed + `rider-vision.service`, `rider-obstacle.service`, `rider-vision-offload.service`).
 - **Uwagi**: moduł powinien mieć własny lifecycle (start/stop) i nie zależeć od S3/S4; wyniki trafiają do API niezależnie.
 
 ### S8 — Rekonesans mapujący
@@ -104,14 +104,14 @@ Wnioski z panelu:
 - **Cel**: przełączać konfigurację pomiędzy lokalnymi a chmurowymi modelami dla różnych pipeline’ów (ASR, TTS, NLU, detekcja przeszkód, klasyfikacja obiektów).
 - **Korzyści**: kontrola kosztów i prywatności, możliwość miksowania (np. lokalny detector przeszkód + chmurowy opis sceny).
 - **Elementy panelu**: sekcja „Provider AI” z listą modułów (Głos→Tekst, Tekst→Komenda, Tekst→Głos, Kamera→Detekcje) i możliwością wyboru `local / cloud / custom`.
-- **Konfiguracja**: zmienne środowiskowe (np. `VOICE_ASR_PROVIDER`, `VISION_DETECTOR_PROVIDER`) i/lub osobne usługi (`rider-voice.service`, `rider-google-bridge.service`, `rider-vision-offload.service`, lokalne pipeline’y). Scenariusz nie uruchamia nowych usług – zmienia ustawienia tych istniejących i może wymagać restartu.
+- **Konfiguracja / jednostki systemd**: `rider-ai-provider.target` (startuje `rider-voice.service`, `rider-google-bridge.service`, `rider-vision-offload.service` oraz stosuje odpowiednie zmienne środowiskowe).
 - **Uwagi**: spójny interfejs wyboru providerów powinien obejmować zarówno głos, jak i wizję; trzeba przewidzieć synchronizację przy przełączaniu (np. stop → zmiana → start).
 
 ### S11 — Tryb deweloperski / diagnostyka
 - **Cel**: praca inżynierska, testowanie nowych modeli, korzystanie z JupyterLab.
 - **Korzyści**: szybkie prototypowanie bez ingerencji w profile produkcyjne.
 - **Elementy panelu**: brak (sterowanie CLI), ale w UI można dodać badge „DEV mode”.
-- **Jednostki systemd**: `jupyter.service`, `rider-dev.target` (agreguje wszystkie narzędzia), eksperymentalne previewy (`rider-face.service`, `rider-edge-preview.service`, `rider-ssd-preview.service` itp.) świadomie oznaczone jako legacy.
+- **Jednostki systemd**: `rider-dev.target` (profil DEV: grafika, Jupyter, previewy). Legacy usługi (`rider-face`, `rider-edge-preview`, `rider-ssd-preview`) linkowane tylko po uruchomieniu `scripts/systemd-sync.sh --with-dev`.
 
 ## Kolejne kroki
 

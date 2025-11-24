@@ -60,10 +60,60 @@ def feature_state_handler():
     return _corsify(jsonify({"ok": True, "state": data})), 200
 
 
+def feature_summary_handler():
+    """Endpoint: GET /api/logic/summary – podsumowanie scenariuszy/targetów."""
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+
+    rows = feature_manager.describe_features()
+    active_names: list[str] = []
+    partial_names: list[str] = []
+    summary_rows: list[dict] = []
+
+    for row in rows:
+        services = row.get("services", [])
+        total = len(services)
+        active_count = sum(1 for svc in services if svc.get("active"))
+        status = "active" if row.get("active") else ("partial" if active_count else "inactive")
+        if status == "active":
+            active_names.append(row["name"])
+        elif status == "partial":
+            partial_names.append(row["name"])
+
+        summary_rows.append(
+            {
+                "name": row.get("name"),
+                "scenario": row.get("scenario"),
+                "title": row.get("title"),
+                "description": row.get("description"),
+                "active": bool(row.get("active")),
+                "status": status,
+                "services_total": total,
+                "services_active": active_count,
+                "ensure_cam": row.get("ensure_cam"),
+                "tracking_mode": row.get("tracking_mode"),
+                "aliases": row.get("aliases", []),
+            }
+        )
+
+    payload = {
+        "features": summary_rows,
+        "active": active_names,
+        "partial": partial_names,
+        "counts": {
+            "total": len(summary_rows),
+            "active": len(active_names),
+            "partial": len(partial_names),
+        },
+    }
+    return _corsify(jsonify({"ok": True, "summary": payload})), 200
+
+
 __all__ = [
     "feature_handler",
     "feature_registry_handler",
     "feature_state_handler",
+    "feature_summary_handler",
     "set_feature_manager",
     "feature_manager",
 ]

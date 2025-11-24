@@ -33,7 +33,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install "ruff==0.6.9"
+          pip install "pillow>=8,<12" "numpy>=1.21,<2" \
+                      "requests>=2.31,<3" "pyzmq>=22,<26" \
+                      "flask<3" "werkzeug<3" \
+                      "google-auth>=2.0.0" "google-auth-oauthlib>=1.0.0"
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
 
       - name: Ruff version
         run: ruff --version
@@ -158,3 +163,51 @@ jobs:
           echo "Running pytest-based systemd validation..."
           pip install pytest pytest-timeout
           pytest tests/test_systemd_services.py -v --tb=short
+
+      - name: Feature API tests (UI summary)
+        shell: bash
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          pytest tests/test_features_api.py -q
+
+      - name: Scenario suite (S3–S11)
+        shell: bash
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          echo "Starting API server in background..."
+          python -u -m services.api_server >/tmp/api_server.log 2>&1 &
+          API_PID=$!
+          echo "$API_PID" > /tmp/api.pid
+          
+          echo "Waiting for API server to be ready..."
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8080/api/version >/dev/null 2>&1; then
+              echo "API server is up (PID: $API_PID)"
+              break
+            fi
+            if ! kill -0 "$API_PID" 2>/dev/null; then
+              echo "::error::API server process died unexpectedly"
+              echo "Last 50 lines of API server log:"
+              tail -n 50 /tmp/api_server.log || true
+              exit 1
+            fi
+            sleep 0.5
+          done
+          
+          if ! curl -fsS http://127.0.0.1:8080/api/version >/dev/null 2>&1; then
+            echo "::error::API server failed to start within 20 seconds"
+            echo "Last 50 lines of API server log:"
+            tail -n 50 /tmp/api_server.log || true
+            exit 1
+          fi
+          
+          bash tests/test_suite.sh 127.0.0.1:8080
+          
+          # Clean shutdown
+          if [ -f /tmp/api.pid ]; then
+            kill "$(cat /tmp/api.pid)" 2>/dev/null || true
+          fi

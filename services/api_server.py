@@ -374,6 +374,11 @@ _add_rule(
     methods=["GET", "OPTIONS"],
 )
 _add_rule(
+    "/api/logic/summary",
+    view_func=features_api.feature_summary_handler,
+    methods=["GET", "OPTIONS"],
+)
+_add_rule(
     "/api/logic/state",
     view_func=features_api.feature_state_handler,
     methods=["GET", "OPTIONS"],
