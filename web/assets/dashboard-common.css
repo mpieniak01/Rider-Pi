@@ -322,7 +322,7 @@ body[data-page="control"] .balance-control label {
   padding: 8px 14px;
   border-radius: 999px;
   text-decoration: none;
-  color: var(--fg);
+  color: var(--accent);
   font-size: 14px;
   border: 1px solid transparent;
   transition: background .15s ease, border-color .15s ease, color .15s ease;
