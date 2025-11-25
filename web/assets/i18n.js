@@ -67,6 +67,49 @@ export const I18N = {
     },
     history_pc_title: { pl: "Historia (60 s) — PC CPU / MEM", en: "History (60 s) — PC CPU / MEM" },
 
+    obstacle: {
+      title:      { pl: "Przeszkoda", en: "Obstacle" },
+      present:    { pl: "obecność",  en: "present" },
+      confidence: { pl: "pewność",   en: "confidence" },
+      edge_pct:   { pl: "edge_pct",  en: "edge_pct" },
+    },
+
+    roi_edges: {
+      title: { pl: "Histogram ROI — krawędzie", en: "ROI histogram — edges" },
+    },
+
+    api_metrics: {
+      title:       { pl: "Metryki API", en: "API Metrics" },
+      control:     { pl: "Sterowanie",  en: "Control" },
+      navigator:   { pl: "Nawigator",   en: "Navigator" },
+      voice:       { pl: "Głos",        en: "Voice" },
+      google_home: { pl: "Google Home", en: "GoogleHome" },
+      chat:        { pl: "Czat",        en: "Chat" },
+      face:        { pl: "Twarz",       en: "Face" },
+      total:       { pl: "Łączne błędy", en: "Total Errors" },
+      hint:        { pl: "Interaktywne metryki wywołań API (OK / Error)", en: "Interactive API call metrics (OK / Error)" },
+    },
+
+    snap: {
+      title:       { pl: "Świeżość snapów", en: "Snap freshness" },
+      raw_age:     { pl: "raw.age",        en: "raw.age" },
+      proc_age:    { pl: "proc.age",       en: "proc.age" },
+      hint_prefix: { pl: "Źródło:",        en: "Source:" },
+    },
+
+    camera_obst: {
+      title: { pl: "Kamera — OBST (adnotacje)", en: "Camera — OBST (annot)" },
+    },
+
+    camera_tracker: {
+      title: { pl: "Kamera — TRACKER (śledzenie)", en: "Camera — TRACKER (Follow Me)" },
+    },
+
+    info: {
+      title: { pl: "Info", en: "Info" },
+      body:  { pl: "Tracker stream pokazuje wykrywaną twarz lub dłoń z zaznaczonym okręgiem oraz aktualnym FPS przetwarzania. Minimalna akceptowalna wartość FPS to 10. Użyj endpointu /api/vision/tracking/mode aby włączyć tryb Follow Me (face/hand).", en: "The tracker stream shows the detected face or hand with a highlighted circle and the current processing FPS. Minimum acceptable FPS is 10. Use /api/vision/tracking/mode to enable Follow Me (face/hand)." },
+    },
+
     camera: {
       title:          { pl: "Kamera",                en: "Camera" },
       caption:        { pl: "podgląd (ostatnia klatka lub komunikat)", en: "preview (last frame or message)" },
@@ -103,7 +146,7 @@ export const I18N = {
       metrics: { pl: "metryki",       en: "metrics" },
       repo:    { pl: "repozytorium",  en: "repo" },
       control: { pl: "sterowanie",    en: "control" },
-      // zmiana etykiety na małe z kropką:
+      system_dashboard: { pl: "panel systemowy", en: "system dashboard" },
       home:    { pl: "google.home",   en: "google.home" },
     },
 

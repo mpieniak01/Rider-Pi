@@ -27,12 +27,12 @@ ENV (wycinek):
 """
 
 import json  # noqa: E402
+import math  # noqa: E402
 import os  # noqa: E402
+import re  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
-import math  # noqa: E402
-import re  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 from threading import Timer  # noqa: E402
 from typing import Any  # noqa: E402

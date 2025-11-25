@@ -79,16 +79,16 @@
     </div>
 
     <div class="c-card">
-      <h3>Obstacle</h3>
+      <h3 data-i18n="dash.obstacle.title">Obstacle</h3>
       <div class="c-kv">
-        <div>present</div><div id="obs_present" class="muted">—</div>
-        <div>confidence</div><div id="obs_conf" class="muted">—</div>
-        <div>edge_pct</div><div id="obs_edge" class="muted">—</div>
+        <div data-i18n="dash.obstacle.present">present</div><div id="obs_present" class="muted">—</div>
+        <div data-i18n="dash.obstacle.confidence">confidence</div><div id="obs_conf" class="muted">—</div>
+        <div data-i18n="dash.obstacle.edge_pct">edge_pct</div><div id="obs_edge" class="muted">—</div>
       </div>
     </div>
 
     <div class="c-card">
-      <h3>ROI histogram — edges</h3>
+      <h3 data-i18n="dash.roi_edges.title">ROI histogram — edges</h3>
       <canvas id="binsCanvas" width="300" height="140"></canvas>
       <div class="c-legend">
         <span><i class="c-legend__dot edge"></i><span id="binsLegendTxt">LOW/HIGH: — / — • edge_pct: —</span></span>
@@ -109,26 +109,26 @@
   <!-- RZĄD 3: API Metrics -->
   <div class="l-grid">
     <div class="c-card">
-      <h3>API Metrics</h3>
+      <h3 data-i18n="dash.api_metrics.title">API Metrics</h3>
       <div class="c-kv">
-        <div>Control</div><div id="metric_control">—</div>
-        <div>Navigator</div><div id="metric_navigator">—</div>
-        <div>Voice</div><div id="metric_voice">—</div>
-        <div>GoogleHome</div><div id="metric_google_home">—</div>
-        <div>Chat</div><div id="metric_chat">—</div>
-        <div>Face</div><div id="metric_face">—</div>
-        <div class="metric-highlight">Total Errors</div><div id="metric_total_errors" class="bad metric-highlight">—</div>
+        <div data-i18n="dash.api_metrics.control">Control</div><div id="metric_control">—</div>
+        <div data-i18n="dash.api_metrics.navigator">Navigator</div><div id="metric_navigator">—</div>
+        <div data-i18n="dash.api_metrics.voice">Voice</div><div id="metric_voice">—</div>
+        <div data-i18n="dash.api_metrics.google_home">GoogleHome</div><div id="metric_google_home">—</div>
+        <div data-i18n="dash.api_metrics.chat">Chat</div><div id="metric_chat">—</div>
+        <div data-i18n="dash.api_metrics.face">Face</div><div id="metric_face">—</div>
+        <div class="metric-highlight" data-i18n="dash.api_metrics.total">Total Errors</div><div id="metric_total_errors" class="bad metric-highlight">—</div>
       </div>
-      <div class="c-hint c-hint--sub">Interactive API call metrics (OK / Error)</div>
+      <div class="c-hint c-hint--sub" data-i18n="dash.api_metrics.hint">Interactive API call metrics (OK / Error)</div>
     </div>
 
     <div class="c-card">
-      <h3>Snap freshness</h3>
+      <h3 data-i18n="dash.snap.title">Snap freshness</h3>
       <div class="c-kv">
-        <div>raw.age</div><div id="age_raw" class="muted">—</div>
-        <div>proc.age</div><div id="age_proc" class="muted">—</div>
+        <div data-i18n="dash.snap.raw_age">raw.age</div><div id="age_raw" class="muted">—</div>
+        <div data-i18n="dash.snap.proc_age">proc.age</div><div id="age_proc" class="muted">—</div>
       </div>
-      <div class="c-hint c-hint--sub">Źródło: <code>/vision/snap-info</code></div>
+      <div class="c-hint c-hint--sub"><span data-i18n="dash.snap.hint_prefix">Źródło:</span> <code>/vision/snap-info</code></div>
     </div>
 
     <div class="c-card">
@@ -140,7 +140,7 @@
     </div>
 
     <div class="c-card">
-      <h3>Camera — OBST (annot)</h3>
+      <h3 data-i18n="dash.camera_obst.title">Camera — OBST (annot)</h3>
       <div class="c-thumb">
         <img id="img_obst" class="cam-img" src="/camera/placeholder" alt="obstacle annotated" decoding="async" loading="lazy">
       </div>
@@ -153,8 +153,8 @@
   <!-- RZĄD 4: Info + Linki + TRACKER w jednym rzędzie -->
   <div class="l-grid">
     <div class="c-card c-card--span2">
-      <h3>Info</h3>
-      <div class="c-hint c-hint--muted">
+      <h3 data-i18n="dash.info.title">Info</h3>
+      <div class="c-hint c-hint--muted" data-i18n="dash.info.body">
         Tracker stream pokazuje wykrywaną twarz lub dłoń z zaznaczonym okręgiem oraz aktualnym FPS przetwarzania.
         Minimalna akceptowalna wartość FPS to 10. Użyj endpointu /api/vision/tracking/mode aby włączyć tryb Follow Me (face/hand).
       </div>
@@ -165,14 +165,14 @@
       <div class="c-kv">
         <div data-i18n="dash.links.events">zdarzenia (SSE)</div><div><a href="/events" target="_blank">/events</a></div>
         <div data-i18n="dash.links.metrics">metryki</div><div><a href="/metrics" target="_blank">/metrics</a></div>
-        <div>system dashboard</div><div><a href="/system/" target="_blank">/system/</a></div>
+        <div data-i18n="dash.links.system_dashboard">system dashboard</div><div><a href="/system/" target="_blank">/system/</a></div>
         <div data-i18n="dash.links.control">sterowanie</div><div><a href="/control">/control</a></div>
         <div data-i18n="dash.links.home">google.home</div><div><a href="/home">/home</a></div>
       </div>
     </div>
 
     <div class="c-card">
-      <h3>Camera — TRACKER (Follow Me)</h3>
+      <h3 data-i18n="dash.camera_tracker.title">Camera — TRACKER (Follow Me)</h3>
       <div class="c-thumb">
         <img id="img_tracker" class="cam-img" src="/camera/placeholder" alt="tracker with FPS and detection" decoding="async" loading="lazy">
       </div>
