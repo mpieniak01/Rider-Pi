@@ -158,6 +158,10 @@ button:disabled, .btn:disabled, .c-btn:disabled { opacity:.55; cursor:not-allowe
   gap: 6px 12px;
   font-size: 13px;
 }
+.kv div:nth-child(odd),
+.c-kv div:nth-child(odd) {
+  text-transform: capitalize;
+}
 .thumb, .c-thumb {
   background: #08111c;
   border: 1px solid rgba(255,255,255,.08);
