@@ -483,7 +483,13 @@ function applyDevices({state,health}){
 
   const poseParts=[];
   if(Array.isArray(xgo.pose) && xgo.pose.some(v=>v!=null)){
-    poseParts.push(xgo.pose.filter(v=>v!=null).map(v=>Number(v).toFixed(1)).join('°, ')+'°');
+    const labels = ['X','Y','Z'];
+    labels.forEach((label, idx) => {
+      const val = xgo.pose[idx];
+      if(val != null){
+        poseParts.push(`${label} ${fmt(val,1)}°`);
+      }
+    });
   }
   if(typeof xgo.pose==='string' && xgo.pose.trim()) poseParts.push(xgo.pose.trim());
   if(xgo.roll!=null)  poseParts.push(`r ${fmt(xgo.roll,1)}°`);
