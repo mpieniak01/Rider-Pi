@@ -41,8 +41,8 @@ export const I18N = {
     hint_endpoints: { pl: "Endpointy:",                en: "Endpoints:" },
 
     system: {
-      title:  { pl: "System", en: "System" },
-      cpu_est:{ pl: "cpu (szac.)", en: "cpu (est)" },
+      title:  { pl: "System Pi", en: "Pi System" },
+      cpu_est:{ pl: "cpu", en: "cpu" },
       load:   { pl: "load (1/5/15)", en: "load (1/5/15)" },
       mem:    { pl: "pamięć", en: "mem" },
       disk:   { pl: "dysk",   en: "disk" },
@@ -51,7 +51,7 @@ export const I18N = {
     },
 
     devices: {
-      title:      { pl: "Urządzenia", en: "Devices" },
+      title:      { pl: "Urządzenia Pi", en: "Pi Devices" },
       camera:     { pl: "kamera",     en: "camera" },
       lcd:        { pl: "lcd",        en: "lcd" },
       xgo_imu:    { pl: "xgo.imu",    en: "xgo.imu" },
@@ -61,10 +61,11 @@ export const I18N = {
     },
 
     history: {
-      title: { pl: "Historia (60 s) — CPU / MEM", en: "History (60 s) — CPU / MEM" },
+      title: { pl: "Historia (60 s) — Pi CPU / MEM", en: "History (60 s) — Pi CPU / MEM" },
       cpu:   { pl: "cpu%", en: "cpu%" },
       mem:   { pl: "mem%", en: "mem%" },
     },
+    history_pc_title: { pl: "Historia (60 s) — PC CPU / MEM", en: "History (60 s) — PC CPU / MEM" },
 
     camera: {
       title:          { pl: "Kamera",                en: "Camera" },
