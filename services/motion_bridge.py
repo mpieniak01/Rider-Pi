@@ -31,6 +31,8 @@ import os  # noqa: E402
 import signal  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
+import math  # noqa: E402
+import re  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 from threading import Timer  # noqa: E402
 from typing import Any  # noqa: E402
@@ -231,6 +233,26 @@ def publish_event(name: str, detail: dict):
 
 
 # --- Telemetria: devices.xgo ---
+def _sanitize_angle(val: Any) -> float | None:
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return None
+        cleaned = re.sub(r"[^0-9+\-.]", "", s)
+        try:
+            return float(cleaned)
+        except Exception:
+            return None
+    try:
+        return float(val)
+    except Exception:
+        return None
+
+
 def _get_val(names: list[str], post: Callable[[Any], Any] | None = None) -> Any:
     dev = xgo or ensure_xgo_open()
     if not dev:
@@ -248,41 +270,60 @@ def _get_val(names: list[str], post: Callable[[Any], Any] | None = None) -> Any:
 
 def _read_attitude():
     dev = xgo or ensure_xgo_open()
-    if dev:
-        for m in ("read_heading", "rider_read_heading", "heading", "read_yaw_deg360"):
-            fn = getattr(dev, m, None)
-            if callable(fn):
-                try:
-                    h = float(fn())
-                    return (
-                        _get_val(["read_roll", "rider_read_roll"], float),
-                        _get_val(["read_pitch", "rider_read_pitch"], float),
-                        float(h),
-                        "heading_native",
-                    )
-                except Exception:
-                    pass
-    for trio in [
-        ("read_roll", "read_pitch", "read_yaw"),
-        ("rider_read_roll", "rider_read_pitch", "rider_read_yaw"),
-    ]:
-        dev = xgo or ensure_xgo_open()
-        if not dev:
-            return (None, None, None, "gyro_stabilized")
+    if not dev:
+        return (None, None, None, "gyro_stabilized")
+
+    def _axis(names):
+        return _get_val(names, _sanitize_angle)
+
+    roll = _axis(["read_roll", "rider_read_roll"])
+    pitch = _axis(["read_pitch", "rider_read_pitch"])
+    yaw_raw = _axis(["read_yaw", "rider_read_yaw"])
+    src = "gyro_stabilized"
+
+    for m in ("read_heading", "rider_read_heading", "heading", "read_yaw_deg360"):
+        fn = getattr(dev, m, None)
+        if not callable(fn):
+            continue
         try:
-            r = getattr(dev, trio[0])()
-            p = getattr(dev, trio[1])()
-            y = getattr(dev, trio[2])()
-            return (float(r), float(p), float(y), "gyro_stabilized")
+            yaw_raw = float(fn())
+            src = "heading_native"
+            break
         except Exception:
             continue
-    v = _get_val(["read_imu", "read_imu_int16", "rider_read_imu_int16"])
-    if isinstance(v, (list, tuple)) and len(v) >= 3:
-        try:
-            return (float(v[0]), float(v[1]), float(v[2]), "gyro_stabilized")
-        except Exception:
-            return (None, None, None, "gyro_stabilized")
-    return (None, None, None, "gyro_stabilized")
+
+    if roll is None or pitch is None or yaw_raw is None:
+        imu_vec = None
+        for n in ("read_imu", "read_imu_int16", "rider_read_imu_int16"):
+            fn = getattr(dev, n, None)
+            if not callable(fn):
+                continue
+            try:
+                imu_vec = fn()
+            except Exception:
+                imu_vec = None
+            if isinstance(imu_vec, (list, tuple)) and len(imu_vec) >= 3:
+                break
+            imu_vec = None
+        if isinstance(imu_vec, (list, tuple)) and len(imu_vec) >= 9:
+            def _rad_to_deg(val):
+                try:
+                    f = float(val)
+                except Exception:
+                    return None
+                if abs(f) <= math.pi * 2 + 1e-3:
+                    return math.degrees(f)
+                return f
+
+            if roll is None:
+                roll = _rad_to_deg(imu_vec[6])
+            if pitch is None:
+                pitch = _rad_to_deg(imu_vec[7])
+            if yaw_raw is None:
+                yaw_raw = _rad_to_deg(imu_vec[8])
+                src = "gyro_stabilized"
+
+    return (roll, pitch, yaw_raw, src)
 
 
 def read_xgo_telemetry() -> dict:
@@ -309,10 +350,14 @@ def read_xgo_telemetry() -> dict:
         yaw_stable, yaw_rate, _ = _stabilize_yaw(yaw_raw, ts, freeze=freeze)
         yaw_out, src_out = yaw_stable, "gyro_stabilized"
 
+    pose_axes = None
+    if any(v is not None for v in (roll, pitch, yaw_out)):
+        pose_axes = {"x": roll, "y": pitch, "z": yaw_out}
+
     return {
         "present": bool(xgo is not None),
         "imu_ok": (roll is not None and pitch is not None and yaw_raw is not None),
-        "pose": None,
+        "pose": pose_axes,
         "battery_pct": float(batt) if batt is not None else None,
         "roll": roll,
         "pitch": pitch,

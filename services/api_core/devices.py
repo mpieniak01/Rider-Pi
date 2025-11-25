@@ -46,6 +46,8 @@ def _update_xgo_from_dict(d: dict):
         C.LAST_XGO["imu_ok"] = bool(d.get("imu_ok"))
     if "pose" in d and d.get("pose") is not None:
         C.LAST_XGO["pose"] = d.get("pose")
+    if "pose_label" in d and d.get("pose_label") is not None:
+        C.LAST_XGO["pose_label"] = d.get("pose_label")
 
     bat = d.get("battery_pct", d.get("battery"))
     bat = C._sanitize_batt(bat) if bat is not None else None
@@ -136,6 +138,9 @@ def bus_sub_loop():
                         if suffix == "pose":
                             if data not in (None, "", []):
                                 C.LAST_XGO["pose"] = data
+                        elif suffix == "pose_label":
+                            if data not in (None, "", []):
+                                C.LAST_XGO["pose_label"] = data
                         elif suffix in ("battery", "battery_pct"):
                             b = C._sanitize_batt(data) if data is not None else None
                             if b is not None:
@@ -170,6 +175,9 @@ def bus_sub_loop():
                     if suffix == "pose":
                         if data not in (None, "", []):
                             C.LAST_XGO["pose"] = data
+                    elif suffix == "pose_label":
+                        if data not in (None, "", []):
+                            C.LAST_XGO["pose_label"] = data
                     elif suffix in ("battery", "battery_pct"):
                         b = C._sanitize_batt(data) if data is not None else None
                         if b is not None:
@@ -222,6 +230,37 @@ def bus_sub_loop():
                         C.LAST_STATE["ts"] = float(data.get("ts", C.LAST_MSG_TS))
                     except Exception:
                         pass
+                    continue
+
+                if topic == "imu.data":
+                    data = _json_or_raw(payload)
+                    if isinstance(data, dict):
+                        ts_val = data.get("ts") or C.LAST_MSG_TS
+                        try:
+                            C.LAST_XGO["ts"] = float(ts_val)
+                        except Exception:
+                            C.LAST_XGO["ts"] = C.LAST_MSG_TS
+                        axes = {"roll": None, "pitch": None, "yaw": None}
+                        for axis in ("roll", "pitch", "yaw"):
+                            if data.get(axis) is None:
+                                continue
+                            try:
+                                val = float(data.get(axis))
+                                if axis == "yaw":
+                                    val = C._norm_angle180(val)
+                                C.LAST_XGO[axis] = val
+                                axes[axis] = val
+                            except Exception:
+                                C.LAST_XGO[axis] = data.get(axis)
+                                axes[axis] = data.get(axis)
+                        src = data.get("yaw_src")
+                        if src:
+                            C.LAST_XGO["yaw_src"] = src
+                        if any(v is not None for v in axes.values()):
+                            C.LAST_XGO["pose"] = {"x": axes["roll"], "y": axes["pitch"], "z": axes["yaw"]}
+                            pose_label = C._classify_pose(axes["roll"], axes["pitch"])
+                            if pose_label:
+                                C.LAST_XGO["pose_label"] = pose_label
                     continue
 
                 if topic == "camera.heartbeat":
@@ -417,12 +456,14 @@ def xgo_ro_loop():
                 yaw_r = cli.read_yaw() if hasattr(cli, "read_yaw") else None
                 yaw = C._norm_angle180(yaw_r) if yaw_r is not None else None
 
-                pose = C._classify_pose(roll, pitch)
+                pose_label = C._classify_pose(roll, pitch)
                 imu_ok = roll is not None and pitch is not None and yaw is not None
 
                 upd = {"ts": time.time(), "imu_ok": bool(imu_ok)}
-                if pose is not None:
-                    upd["pose"] = pose
+                if any(v is not None for v in (roll, pitch, yaw)):
+                    upd["pose"] = {"x": roll, "y": pitch, "z": yaw}
+                if pose_label is not None:
+                    upd["pose_label"] = pose_label
                 if batt_pct is not None:
                     upd["battery"] = batt_pct
                 if roll is not None:

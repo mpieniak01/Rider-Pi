@@ -95,10 +95,18 @@ def main() -> int:
 
         batt = read_battery(adapter)
         fw = read_fw(adapter)
+        pose_axes = None
+        if any(v is not None for v in (roll, pitch, yaw)):
+            pose_axes = {"x": roll, "y": pitch, "z": yaw}
+
         dev_payload = {
             "battery_pct": batt,
             "fw": fw,
+            "roll": roll,
+            "pitch": pitch,
             "yaw": yaw,
+            "yaw_src": "imu",
+            "pose": pose_axes,
             "ts": ts,
             "imu_ok": roll is not None and pitch is not None and yaw is not None,
         }

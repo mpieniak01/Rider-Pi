@@ -442,7 +442,9 @@ function textFromLCD(lcd){
   return parts.join(' · ');
 }
 function applyDevices({state,health}){
-  const cam = state?.camera ?? health?.devices?.camera ?? {};
+  const stateDevices = state?.devices ?? {};
+  const healthDevices = health?.devices ?? {};
+  const cam = state?.camera ?? stateDevices?.camera ?? healthDevices?.camera ?? {};
   const resArr = Array.isArray(cam.res) && cam.res.length===2 ? cam.res : null;
   const resTxt = resArr ? `${resArr[0]}×${resArr[1]}` : (lastCamState.res || '');
   const fpsVal = cam.fps!=null ? cam.fps : lastCamState.fps;
@@ -473,37 +475,55 @@ function applyDevices({state,health}){
   }
   setCls('d_cam', camClass);
 
-  const lcd = state?.lcd ?? health?.devices?.lcd ?? null;
+  const lcd = stateDevices?.lcd ?? healthDevices?.lcd ?? state?.lcd ?? null;
   const lcdTxt=textFromLCD(lcd);
   setTxt('d_lcd',lcdTxt); setCls('d_lcd',(lcd && lcd.on)?'ok':'muted');
 
-  const xgo = state?.xgo ?? health?.devices?.xgo ?? {};
+  const xgo = stateDevices?.xgo ?? state?.xgo ?? healthDevices?.xgo ?? {};
   const imuTxt=(xgo.on?'ON':'OFF') + (xgo.imu_ok===true?' · OK':(xgo.on?' · ?':''));
   setTxt('d_xgo_imu',imuTxt); setCls('d_xgo_imu',(xgo.on && xgo.imu_ok)?'ok':'muted');
 
   const poseParts=[];
-  const poseArr = (() => {
-    if(Array.isArray(xgo.pose)) return xgo.pose;
-    if(xgo.pose && typeof xgo.pose==='object'){
-      return [xgo.pose.x ?? xgo.pose.X ?? null, xgo.pose.y ?? xgo.pose.Y ?? null, xgo.pose.z ?? xgo.pose.Z ?? null];
-    }
-    return null;
-  })();
+  const axes = {x:null,y:null,z:null};
+  const axisSrc = {x:null,y:null,z:null};
+  const setAxis=(axis,value,src)=>{
+    if(value==null || axes[axis]!=null) return;
+    axes[axis]=value;
+    axisSrc[axis]=src;
+  };
+  if(Array.isArray(xgo.pose)){
+    setAxis('x', xgo.pose[0], 'pose');
+    setAxis('y', xgo.pose[1], 'pose');
+    setAxis('z', xgo.pose[2], 'pose');
+  }else if(xgo.pose && typeof xgo.pose==='object'){
+    setAxis('x', xgo.pose.x ?? xgo.pose.X ?? null, 'pose');
+    setAxis('y', xgo.pose.y ?? xgo.pose.Y ?? null, 'pose');
+    setAxis('z', xgo.pose.z ?? xgo.pose.Z ?? null, 'pose');
+  }
+  setAxis('x', xgo.roll, 'roll');
+  setAxis('y', xgo.pitch, 'pitch');
+  setAxis('z', (xgo.yaw ?? xgo.yaw_raw), 'yaw');
+  const fmtAngle=v=>{
+    const num=Number(v);
+    const base=Number.isFinite(num)? fmt(num,1):fmt(v,1);
+    return `${base}°`;
+  };
   const poseText = (() => {
     if(typeof xgo.pose==='string' && xgo.pose.trim()) return xgo.pose.trim();
     if(typeof xgo.pose_label==='string' && xgo.pose_label.trim()) return xgo.pose_label.trim();
     return null;
   })();
-  if(poseArr && poseArr.some(v=>v!=null)){
-    ['X','Y','Z'].forEach((label, idx)=>{
-      const val=poseArr[idx];
-      if(val!=null) poseParts.push(`${label} ${fmt(val,1)}°`);
+  if(poseText){
+    poseParts.push(poseText);
+  }else{
+    ['x','y','z'].forEach(axis=>{
+      const val=axes[axis];
+      if(val!=null) poseParts.push(`${axis} ${fmtAngle(val)}`);
     });
   }
-  if(poseText) poseParts.push(poseText);
-  if(xgo.roll!=null)  poseParts.push(`r ${fmt(xgo.roll,1)}°`);
-  if(xgo.pitch!=null) poseParts.push(`p ${fmt(xgo.pitch,1)}°`);
-  if(xgo.yaw!=null)   poseParts.push(`y ${fmt(xgo.yaw,1)}°`);
+  if(xgo.roll!=null && axisSrc.x!=='roll')  poseParts.push(`r ${fmtAngle(xgo.roll)}`);
+  if(xgo.pitch!=null && axisSrc.y!=='pitch') poseParts.push(`p ${fmtAngle(xgo.pitch)}`);
+  if(xgo.yaw!=null && axisSrc.z!=='yaw')   poseParts.push(`y ${fmtAngle(xgo.yaw)}`);
   setTxt('d_xgo_pose',poseParts.length? poseParts.join(' · ') : '—');
 
   const battPct=(xgo.battery_pct ?? xgo.batt_pct ?? xgo.battery?.pct ?? xgo.battery);

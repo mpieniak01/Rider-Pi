@@ -158,6 +158,30 @@ class XgoAdapter:
             pass
         return None
 
+    def firmware(self) -> str | None:
+        """Zwraca oznaczenie firmware XGO, jeśli dostępne."""
+        if not self.ok():
+            return None
+        try:
+            fn = getattr(self._dog, "read_firmware", None) or getattr(self._dog, "version", None)
+            if callable(fn):
+                val = fn()
+                if val is None:
+                    return None
+                if isinstance(val, str):
+                    val = val.strip()
+                return val or None
+        except Exception:
+            pass
+        return None
+
+    # Aliasy zgodne z oczekiwaniami starszych modułów
+    def read_firmware(self) -> str | None:  # pragma: no cover - prosty passthrough
+        return self.firmware()
+
+    def version(self) -> str | None:  # pragma: no cover - prosty passthrough
+        return self.firmware()
+
     def set_stabilization(self, on: bool) -> None:
         """Ogólne imu(1/0) – tam gdzie brak rider_balance_*."""
         if not self.ok():

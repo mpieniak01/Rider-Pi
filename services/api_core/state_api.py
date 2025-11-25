@@ -26,7 +26,9 @@ def state() -> Response:
     cache_bust = int(raw_ts or now)
 
     raw_pose = compat.LAST_XGO.get("pose")
-    pose_label = raw_pose if isinstance(raw_pose, str) else None
+    pose_label = compat.LAST_XGO.get("pose_label")
+    if pose_label is None and isinstance(raw_pose, str):
+        pose_label = raw_pose
     roll = compat.LAST_XGO.get("roll")
     pitch = compat.LAST_XGO.get("pitch")
     yaw = compat.LAST_XGO.get("yaw")
@@ -39,6 +41,13 @@ def state() -> Response:
             "y": raw_pose[1] if len(raw_pose) >= 2 else None,
             "z": raw_pose[2] if len(raw_pose) >= 3 else None,
         }
+    if pose_axes is not None:
+        if pose_axes.get("x") is None and roll is not None:
+            pose_axes["x"] = roll
+        if pose_axes.get("y") is None and pitch is not None:
+            pose_axes["y"] = pitch
+        if pose_axes.get("z") is None and yaw is not None:
+            pose_axes["z"] = yaw
     if pose_axes is not None and not any(v is not None for v in pose_axes.values()):
         pose_axes = None
     if pose_axes is None and any(v is not None for v in (roll, pitch, yaw)):

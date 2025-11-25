@@ -54,9 +54,9 @@ export const I18N = {
       title:      { pl: "Urządzenia Pi", en: "Pi Devices" },
       camera:     { pl: "kamera",     en: "camera" },
       lcd:        { pl: "lcd",        en: "lcd" },
-      xgo_imu:    { pl: "xgo.imu",    en: "xgo.imu" },
-      xgo_pose:   { pl: "xgo.pozycja",en: "xgo.pose" },
-      xgo_battery:{ pl: "xgo.bateria",en: "xgo.battery" },
+      xgo_imu:    { pl: "imu",        en: "imu" },
+      xgo_pose:   { pl: "pozycja",    en: "pose" },
+      xgo_battery:{ pl: "bateria",    en: "battery" },
       temp:       { pl: "temp",       en: "temp" },
     },
 
