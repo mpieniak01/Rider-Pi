@@ -482,19 +482,25 @@ function applyDevices({state,health}){
   setTxt('d_xgo_imu',imuTxt); setCls('d_xgo_imu',(xgo.on && xgo.imu_ok)?'ok':'muted');
 
   const poseParts=[];
-  if(Array.isArray(xgo.pose) && xgo.pose.some(v=>v!=null)){
-    const labels = ['X','Y','Z'];
-    labels.forEach((label, idx) => {
-      const val = xgo.pose[idx];
-      if(val != null){
-        poseParts.push(`${label} ${fmt(val,1)}°`);
-      }
+  const xyzSource = (() => {
+    if(Array.isArray(xgo.pose) && xgo.pose.some(v=>v!=null)){
+      return xgo.pose;
+    }
+    if(xgo.pose && typeof xgo.pose==='object'){
+      const obj=xgo.pose;
+      const arr=[obj.x ?? obj.X ?? null, obj.y ?? obj.Y ?? null, obj.z ?? obj.Z ?? null];
+      if(arr.some(v=>v!=null)) return arr;
+    }
+    const fallback=[xgo.roll ?? null, xgo.pitch ?? null, xgo.yaw ?? null];
+    return fallback.some(v=>v!=null)? fallback : null;
+  })();
+  if(xyzSource){
+    ['X','Y','Z'].forEach((label, idx)=>{
+      const val=xyzSource[idx];
+      if(val!=null) poseParts.push(`${label} ${fmt(val,1)}°`);
     });
   }
   if(typeof xgo.pose==='string' && xgo.pose.trim()) poseParts.push(xgo.pose.trim());
-  if(xgo.roll!=null)  poseParts.push(`r ${fmt(xgo.roll,1)}°`);
-  if(xgo.pitch!=null) poseParts.push(`p ${fmt(xgo.pitch,1)}°`);
-  if(xgo.yaw!=null)   poseParts.push(`y ${fmt(xgo.yaw,1)}°`);
   setTxt('d_xgo_pose',poseParts.length? poseParts.join(' · ') : '—');
 
   const battPct=(xgo.battery_pct ?? xgo.batt_pct ?? xgo.battery?.pct ?? xgo.battery);
