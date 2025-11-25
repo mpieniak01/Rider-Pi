@@ -25,9 +25,26 @@ def state() -> Response:
     vision_enabled = bool((os.getenv("VISION_ENABLED", "0") == "1") or fresh)
     cache_bust = int(raw_ts or now)
 
-    inferred_pose = compat.LAST_XGO.get("pose") or compat._classify_pose(
-        compat.LAST_XGO.get("roll"), compat.LAST_XGO.get("pitch")
-    )
+    raw_pose = compat.LAST_XGO.get("pose")
+    pose_label = raw_pose if isinstance(raw_pose, str) else None
+    roll = compat.LAST_XGO.get("roll")
+    pitch = compat.LAST_XGO.get("pitch")
+    yaw = compat.LAST_XGO.get("yaw")
+    pose_axes = None
+    if isinstance(raw_pose, dict):
+        pose_axes = {k: raw_pose.get(k) for k in ("x", "y", "z")}
+    elif isinstance(raw_pose, (list, tuple)):
+        pose_axes = {
+            "x": raw_pose[0] if len(raw_pose) >= 1 else None,
+            "y": raw_pose[1] if len(raw_pose) >= 2 else None,
+            "z": raw_pose[2] if len(raw_pose) >= 3 else None,
+        }
+    if pose_axes is not None and not any(v is not None for v in pose_axes.values()):
+        pose_axes = None
+    if pose_axes is None and any(v is not None for v in (roll, pitch, yaw)):
+        pose_axes = {"x": roll, "y": pitch, "z": yaw}
+    if pose_label is None:
+        pose_label = compat._classify_pose(roll, pitch)
     tracking_mode = compat.LAST_TRACKING_MODE
     tracking_offset = compat.LAST_TRACKING_OFFSET
     offset_ts = tracking_offset.get("ts")
@@ -51,7 +68,8 @@ def state() -> Response:
                 {
                     "present": True,
                     "imu_ok": compat.LAST_XGO.get("imu_ok"),
-                    "pose": inferred_pose,
+                    "pose": pose_axes,
+                    "pose_label": pose_label,
                     "battery_pct": compat.LAST_XGO.get("battery"),
                     "roll": compat.LAST_XGO.get("roll"),
                     "pitch": compat.LAST_XGO.get("pitch"),

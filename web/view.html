@@ -489,13 +489,18 @@ function applyDevices({state,health}){
     }
     return null;
   })();
+  const poseText = (() => {
+    if(typeof xgo.pose==='string' && xgo.pose.trim()) return xgo.pose.trim();
+    if(typeof xgo.pose_label==='string' && xgo.pose_label.trim()) return xgo.pose_label.trim();
+    return null;
+  })();
   if(poseArr && poseArr.some(v=>v!=null)){
     ['X','Y','Z'].forEach((label, idx)=>{
       const val=poseArr[idx];
       if(val!=null) poseParts.push(`${label} ${fmt(val,1)}°`);
     });
   }
-  if(typeof xgo.pose==='string' && xgo.pose.trim()) poseParts.push(xgo.pose.trim());
+  if(poseText) poseParts.push(poseText);
   if(xgo.roll!=null)  poseParts.push(`r ${fmt(xgo.roll,1)}°`);
   if(xgo.pitch!=null) poseParts.push(`p ${fmt(xgo.pitch,1)}°`);
   if(xgo.yaw!=null)   poseParts.push(`y ${fmt(xgo.yaw,1)}°`);
