@@ -17,6 +17,10 @@
   --card-padding:var(--pad);
   --card-bg:var(--card);
   --card-border:var(--border);
+  --font-heading:16px;
+  --font-body:13px;
+  --font-label:13px;
+  --font-hint:12px;
 }
 [data-dashboard-menu-target] {
   position: sticky;
@@ -82,7 +86,7 @@ main, .wrap {
 }
 .card h3, .c-card__title {
   margin: 0 0 12px;
-  font-size: 16px;
+  font-size: var(--font-heading);
   color: #c7dbf5;
 }
 .pill, .c-pill {
@@ -102,12 +106,12 @@ main, .wrap {
 .pill.bad, .c-pill.is-bad { color:#ff9f9f; border-color:#7a2b2b; background:#2a1212; }
 .muted, .u-muted { color: var(--muted); opacity: .9; }
 .hint, .c-hint {
-  font-size: 13px;
+  font-size: var(--font-hint);
   color: var(--muted);
   opacity: .85;
 }
 .note, .c-note {
-  font-size: 13px;
+  font-size: var(--font-body);
   color: var(--fg);
   opacity: .75;
 }
@@ -156,10 +160,24 @@ button:disabled, .btn:disabled, .c-btn:disabled { opacity:.55; cursor:not-allowe
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 6px 12px;
-  font-size: 13px;
+  font-size: var(--font-body);
 }
 .kv div:nth-child(odd),
 .c-kv div:nth-child(odd) {
+  font-size: var(--font-label);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.kv div:nth-child(even),
+.c-kv div:nth-child(even) {
+  font-size: var(--font-body);
+  text-transform: none;
+}
+.label-text,
+.data-label,
+.provider-label,
+.section-label {
+  font-size: var(--font-label);
   text-transform: capitalize;
 }
 .thumb, .c-thumb {
