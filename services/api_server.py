@@ -247,6 +247,12 @@ if compat:
     _add_rule("/events", view_func=compat.events)
     _add_rule("/livez", view_func=compat.livez)
     _add_rule("/readyz", view_func=compat.readyz)
+    _add_rule("/api/flags", view_func=compat.api_flags_get, methods=["GET"])
+    _add_rule(
+        "/api/flags/<name>/<state>",
+        view_func=compat.api_flags_set,
+        methods=["POST"],
+    )
 _add_rule("/state", view_func=state_api.state_route)
 _add_rule("/sysinfo", view_func=system_info.sysinfo)
 _add_rule("/metrics", view_func=system_info.metrics)

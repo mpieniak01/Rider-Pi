@@ -127,6 +127,28 @@
   <div class="panel-row feature-resource">
     <div class="c-card feature-card">
       <h2 class="c-card__title" data-i18n="motion.features_title">Funkcje</h2>
+      <div class="feature-row motion-enable-row">
+        <div class="feature-info">
+          <div class="feature-head">
+            <div class="feature-title motion-enable-title" data-i18n="motion.motion_enable_label">
+              Zezwól na ruch
+            </div>
+          </div>
+          <div class="feature-desc" data-i18n="motion.motion_enable_desc">
+            Odblokowuje przekazywanie komend ruchu (tworzy plik data/flags/motion.enable).
+          </div>
+        </div>
+        <div class="feature-status">
+          <span class="c-pill feature-pill" id="motionEnableStatus">n/a</span>
+        </div>
+        <div class="feature-actions">
+          <label class="feature-toggle">
+            <input id="motionEnableToggle" type="checkbox" />
+            <span data-i18n="motion.motion_enable_toggle">Aktywuj zezwolenie</span>
+          </label>
+          <div class="feature-note" id="motionEnableNote"></div>
+        </div>
+      </div>
       <div class="feature-list" id="featureList">
         <div class="feature-row" data-feature="zero">
           <div class="feature-info">
@@ -535,6 +557,9 @@
   const qs = (s) => document.querySelector(s);
   const logEl = qs("#log");
   const MAX_ERR_SNIPPET = 140;
+  const motionEnableToggle = qs("#motionEnableToggle");
+  const motionEnableStatus = qs("#motionEnableStatus");
+  const motionEnableNote = qs("#motionEnableNote");
 
   function formatHttpError(status, statusText, raw) {
     const txt = (raw || "").trim();
@@ -671,6 +696,49 @@
       return JSON.parse(raw);
     } catch (err) {
       throw new Error(`invalid JSON :: ${err.message}`);
+    }
+  }
+
+  function syncMotionEnableUi(enabled) {
+    if (motionEnableToggle) {
+      motionEnableToggle.checked = enabled;
+    }
+    if (motionEnableStatus) {
+      motionEnableStatus.textContent = enabled
+        ? t("motion.motion_enable_status_on")
+        : t("motion.motion_enable_status_off");
+      motionEnableStatus.className = `c-pill feature-pill ${enabled ? "ok" : "warn"}`;
+    }
+    if (motionEnableNote) {
+      motionEnableNote.textContent = enabled
+        ? t("motion.motion_enable_status_on")
+        : t("motion.motion_enable_status_off");
+    }
+  }
+
+  async function fetchMotionEnable() {
+    if (!motionEnableToggle) return;
+    try {
+      const flags = await fetchJson("/api/flags");
+      const enabled = !!flags.motion_enable;
+      syncMotionEnableUi(enabled);
+    } catch (e) {
+      appendLog(`/api/flags :: ${e.message || e}`, "warn");
+    }
+  }
+
+  async function setMotionEnable(enabled) {
+    const target = enabled ? "on" : "off";
+    try {
+      await fetchJson(`/api/flags/motion.enable/${target}`, { method: "POST" });
+      appendLog(`[flags] motion.enable -> ${target}`, "ok");
+      syncMotionEnableUi(enabled);
+    } catch (e) {
+      appendLog(
+        t("motion.motion_enable_error", { err: e.message || e }),
+        "err",
+      );
+      fetchMotionEnable().catch(() => {});
     }
   }
 
@@ -924,6 +992,10 @@
       handleFeatureAction(featureId, action);
     });
   }
+
+  motionEnableToggle?.addEventListener("change", () => {
+    setMotionEnable(!!motionEnableToggle.checked);
+  });
 
   const scenarioListEl = qs("#scenarioList");
   const scenarioInfoEl = qs("#scenarioInfo");
@@ -1843,6 +1915,9 @@
   setInterval(() => {
     refreshScenarioList(true).catch(() => {});
   }, 5000);
+  setInterval(() => {
+    fetchMotionEnable().catch(() => {});
+  }, 6000);
 
   // === SSE EVENTS ===
   try {
@@ -1867,6 +1942,7 @@
   fetchAiModeStatus().catch(() => {});
   fetchProviderState().catch(() => {});
   fetchControlState().catch(() => {});
+  fetchMotionEnable().catch(() => {});
   fetchMotionQueue().catch(() => {});
   refreshScenarioList().catch(() => {});
 </script>

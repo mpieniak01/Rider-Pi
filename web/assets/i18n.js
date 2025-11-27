@@ -253,6 +253,18 @@ export const I18N = {
     preview_cam:  { pl: "CAM", en: "CAM" },
     preview_edge: { pl: "EDGE", en: "EDGE" },
     preview_ssd:  { pl: "PROC/SSD", en: "PROC/SSD" },
+    motion_enable_label: { pl: "Zezwól na ruch", en: "Allow motion" },
+    motion_enable_desc: {
+      pl: "Odblokowuje przekazywanie komend ruchu (tworzy plik data/flags/motion.enable).",
+      en: "Unlocks motion commands by toggling data/flags/motion.enable.",
+    },
+    motion_enable_toggle: { pl: "Aktywuj zezwolenie", en: "Enable permission" },
+    motion_enable_status_on: { pl: "ruch dozwolony", en: "motion allowed" },
+    motion_enable_status_off: { pl: "ruch zablokowany", en: "motion blocked" },
+    motion_enable_error: {
+      pl: "Błąd przełączania flagi ruchu: {err}",
+      en: "Failed to toggle motion flag: {err}",
+    },
   },
 
   balance: {

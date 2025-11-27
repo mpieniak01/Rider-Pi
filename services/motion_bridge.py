@@ -306,6 +306,7 @@ def _read_attitude():
                 break
             imu_vec = None
         if isinstance(imu_vec, (list, tuple)) and len(imu_vec) >= 9:
+
             def _rad_to_deg(val):
                 try:
                     f = float(val)

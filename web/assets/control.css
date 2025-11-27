@@ -276,6 +276,10 @@ body[data-page="control"] .feature-note {
   color: #9ab1c9;
 }
 
+body[data-page="control"] .motion-enable-row .motion-enable-title {
+  color: #ff6b6b;
+}
+
 body[data-page="control"] .section-action {
   margin-left: 8px;
 }
