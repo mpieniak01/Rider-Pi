@@ -44,6 +44,7 @@ import services.api_core.google_home_api as google_home_api
 import services.api_core.google_proxy as google_proxy
 import services.api_core.navigator_api as navigator_api
 import services.api_core.provider_api as provider_api
+import services.api_core.models_api as models_api
 import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
@@ -298,6 +299,13 @@ _add_rule(
     "/api/providers/<domain>",
     view_func=provider_api.provider_domain_handler,
     methods=["GET", "PATCH", "OPTIONS"],
+)
+
+# Model inventory
+_add_rule(
+    "/api/models/installed",
+    view_func=models_api.installed_models_handler,
+    methods=["GET", "OPTIONS"],
 )
 
 
