@@ -42,6 +42,7 @@ export const I18N = {
 
     system: {
       title:  { pl: "System Pi", en: "Pi System" },
+      host:   { pl: "Host", en: "Host" },
       cpu_est:{ pl: "cpu", en: "cpu" },
       load:   { pl: "load (1/5/15)", en: "load (1/5/15)" },
       mem:    { pl: "pamięć", en: "mem" },

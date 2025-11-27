@@ -22,6 +22,7 @@
     <div class="c-card">
       <h3 data-i18n="dash.system.title">System</h3>
       <div class="c-kv">
+        <div data-i18n="dash.system.host">Host</div><div id="ci_host" class="muted">—</div>
         <div data-i18n="dash.system.cpu_est">cpu (szac.)</div><div id="ci_cpu" class="muted">—</div>
         <div data-i18n="dash.system.load">load (1/5/15)</div><div id="ci_load" class="muted">—</div>
         <div data-i18n="dash.system.mem">pamięć</div><div id="ci_mem" class="muted">—</div>
@@ -611,6 +612,12 @@ async function refreshSnapInfo(){
 /* ===== SYSINFO ===== */
 function applySysinfo(si){
   if(!si) return;
+  const fallbackHost =
+    (typeof window !== 'undefined' && window.location && window.location.hostname)
+      ? window.location.hostname
+      : null;
+  const hostValue = si.host || si.hostname || fallbackHost;
+  setTxt('ci_host', hostValue || '—');
   setTxt('ci_cpu', si.cpu_pct!=null? fmt(si.cpu_pct,1)+'%':'—');
   setTxt('ci_load', `${fmt(si.load1,2)}/${fmt(si.load5,2)}/${fmt(si.load15,2)}`);
   const mb=v=> (v==null ? '—' : Number(v).toFixed(1)+' MB');
