@@ -1,0 +1,191 @@
+/**
+ * Control Page Styles - Rider-PC Dashboard
+ * Motion control page-specific overrides (~150 lines)
+ * ------------------------------------------------------------------
+ */
+
+/* Page token overrides */
+.page-control {
+  --page-padding: var(--space-xxl) var(--space-xl) 72px;
+  --card-padding: var(--space-xl);
+}
+
+/* Page header */
+.page-control .control-status {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+  margin-left: var(--space-sm);
+}
+
+.page-control .control-badge {
+  margin-left: var(--space-sm);
+}
+
+.page-control .control-section.is-camera { --card-title-accent-color: #a855f7; }
+
+.page-control .control-section.is-motion { --card-title-accent-color: #3b82f6; }
+
+.page-control .control-section.is-features { --card-title-accent-color: #22c55e; }
+
+.page-control .control-section.is-resources { --card-title-accent-color: #f97316; }
+
+.page-control .control-section.is-scenarios { --card-title-accent-color: #f59e0b; }
+
+.page-control .control-section.is-services { --card-title-accent-color: #0ea5e9; }
+
+.page-control .control-section.is-log { --card-title-accent-color: #94a3b8; }
+
+.page-control .control-section.is-queue { --card-title-accent-color: #38bdf8; }
+
+/* Camera card */
+.page-control .cam-card {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  height: 100%;
+  min-width: 0;
+}
+
+.page-control .cam-card .cam {
+  width: 100%;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+}
+
+.page-control .cam-card .media-frame {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-control .cam-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+/* Motion control grid */
+.page-control .motion-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 160px);
+  gap: var(--space-md);
+  justify-content: center;
+  margin: var(--space-xl) 0;
+}
+
+.page-control .motion-grid button,
+.page-control .motion-btn { min-height: 44px; font-size: var(--font-size-lg); }
+
+.page-control input[type="range"] {
+  width: 160px;
+  accent-color: var(--color-ok);
+}
+
+.page-control input[type="number"] {
+  width: 100px;
+  background: var(--color-bg-elevated);
+  color: var(--color-fg-primary);
+  border: 1px solid var(--color-off-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xs) var(--space-sm);
+}
+
+/* Feature rows */
+.page-control .feature-list { display: flex; flex-direction: column; gap: var(--space-md); }
+.page-control .feature-row { display: flex; flex-wrap: wrap; gap: var(--space-md); padding: var(--space-md) 0; border-top: 1px solid var(--color-border-subtle); }
+.page-control .feature-row:first-child { border-top: 0; padding-top: 0; }
+.page-control .feature-info { flex: 2; min-width: 220px; }
+.page-control .feature-status { min-width: 120px; display: flex; align-items: center; }
+.page-control .feature-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: center; }
+.page-control .feature-desc { font-size: var(--font-size-sm); color: var(--color-fg-hint); margin-top: var(--space-xxs); }
+.page-control .feature-pill { text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Service table */
+.page-control .svc-table {
+  margin-top: var(--space-md);
+  width: 100%;
+  table-layout: fixed;
+}
+
+.page-control .svc-table th,
+.page-control .svc-table td {
+  border-top: 1px solid var(--card-border);
+  padding: var(--space-sm) var(--space-xs);
+  text-align: left;
+}
+
+.page-control .svc-actions {
+  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.page-control .svc-summary { list-style: none; cursor: pointer; }
+.page-control .svc-summary::-webkit-details-marker { display: none; }
+
+.page-control .svc-select {
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border-interactive);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-primary);
+  font-size: var(--font-size-sm);
+  min-height: 32px;
+}
+
+/* Service controls toolbar */
+.page-control .svc-controls { display: flex; align-items: center; gap: var(--space-lg); flex-wrap: wrap; margin-top: var(--space-xs); }
+.page-control .svc-control { display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xxs) var(--space-sm); border-radius: var(--radius-sm); background: var(--color-bg-input); border: 1px solid var(--card-border); color: var(--color-fg-secondary); font-size: var(--font-size-sm); }
+.page-control .svc-icon { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.14); display: inline-flex; align-items: center; justify-content: center; font-size: var(--font-size-xs); background: rgba(255, 255, 255, 0.1); }
+
+.page-control .res-status {
+  min-width: 96px;
+  justify-content: center;
+}
+
+.page-control .motion-queue-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+/* Card heads */
+.page-control .card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  width: 100%;
+  margin-bottom: var(--space-md);
+}
+
+.page-control .card-head .c-card__title {
+  margin-bottom: 0;
+  flex: 1 1 auto;
+}
+
+.page-control .card-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Card spacing */
+.page-control .motion-queue-card,
+.page-control .service-card,
+.page-control .log-card,
+.page-control .balance-control-row { display: flex; flex-wrap: wrap; gap: var(--space-lg); align-items: center; border-top: 1px solid var(--color-border-subtle); padding-top: var(--space-md); margin-top: var(--space-md); }
+.page-control .balance-control { flex: 1 1 280px; min-width: 240px; }
+.page-control .balance-control label { display: flex; align-items: center; gap: var(--space-md); justify-content: space-between; }
+
+/* Feature/resource layout */
+.page-control .feature-resource {
+  margin-top: var(--space-xl);
+}

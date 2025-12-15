@@ -1,0 +1,55 @@
+:root[data-dashboard-theme="v2"] {
+  --card-bg: var(--color-bg-elevated);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --section-bg: rgba(8, 19, 32, 0.7);
+  --section-border: rgba(255, 255, 255, 0.08);
+  --theme-accent: var(--color-accent);
+  --button-bg: linear-gradient(135deg, rgba(26, 57, 92, 0.95), rgba(8, 25, 46, 0.9));
+  --button-border: rgba(126, 196, 255, 0.35);
+}
+
+:root[data-dashboard-theme="v2"] .layout-main {
+  background: radial-gradient(circle at 10% 0%, rgba(126, 196, 255, 0.08), transparent 45%),
+              radial-gradient(circle at 90% 0%, rgba(109, 226, 138, 0.06), transparent 40%),
+              var(--color-bg-primary);
+  padding: var(--space-xxl) var(--space-xxl) 60px;
+}
+
+:root[data-dashboard-theme="v2"] .c-section {
+  background: var(--section-bg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--section-border);
+  padding: var(--space-xxl);
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-dashboard-theme="v2"] .c-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-md);
+  transition: transform var(--transition-normal), border-color var(--transition-normal);
+}
+
+:root[data-dashboard-theme="v2"] .c-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-border-interactive);
+}
+
+:root[data-dashboard-theme="v2"] .c-card__title::before,
+:root[data-dashboard-theme="v2"] .section-title::before {
+  background: var(--theme-accent);
+}
+
+:root[data-dashboard-theme="v2"] .c-btn,
+:root[data-dashboard-theme="v2"] button {
+  background: var(--button-bg);
+  border-color: var(--button-border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-dashboard-theme="v2"] .c-btn:hover,
+:root[data-dashboard-theme="v2"] button:hover {
+  border-color: rgba(126, 196, 255, 0.6);
+  background: linear-gradient(135deg, rgba(33, 73, 118, 0.95), rgba(9, 28, 50, 0.95));
+}

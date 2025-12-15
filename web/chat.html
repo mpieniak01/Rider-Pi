@@ -1,25 +1,39 @@
 <!doctype html>
+<!--
+  Migrated to dashboard_base.html template structure
+  Uses shared layout classes: .layout-header, .layout-main, .layout-footer
+-->
 <html lang="pl">
 <head>
 <meta charset="utf-8">
-<title>Rider-Pi — Chat</title>
+<title>Rider-Pi: Chat</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="/web/assets/theme-loader.js" defer></script>
 <link rel="stylesheet" href="/web/assets/dashboard-common.css">
-<link rel="stylesheet" href="/web/assets/chat.css">
+<link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
+  <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
+<link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
+<link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
+<link rel="stylesheet" href="/web/assets/pages/chat.css">
 </head>
-<body data-page="chat">
-  <div data-dashboard-menu-target></div>
-  <div class="wrap">
-    <header class="l-row chat-head">
-      <h1>Chat</h1>
-      <div class="links">
+<body data-page="chat" class="page page-chat">
+  <!-- Header with Menu -->
+  <header class="layout-header" data-dashboard-menu-target></header>
+
+  <!-- Main content -->
+  <main class="layout-main">
+    <header class="page-header">
+      <div class="page-header__titles">
+        <h1 class="page-title"><span class="brand-accent">Rider-Pi</span>: <span class="page-title-text">Chat</span></h1>
+      </div>
+      <div class="page-header__actions page-header__actions--small links text-legend">
         <a href="/view">dashboard</a>
         <span class="u-sep">·</span>
         <a href="/home">Google&nbsp;Home</a>
       </div>
     </header>
 
-    <div class="status c-status-msg" id="status">Gotowy</div>
+    <p id="status-line" class="status-line c-status-msg">Gotowy</p>
 
     <div class="board c-card" id="board" aria-live="polite"></div>
 
@@ -35,12 +49,12 @@
           <label for="ttsProvider">Provider TTS</label>
           <select id="ttsProvider"></select>
         </div>
-        <div class="c-hint" id="providerHint">Ładuję listę providerów…</div>
         <div class="c-hint">Chat API: <code>/api/chat/send</code> · TTS: <code>/api/voice/tts</code></div>
       </div>
     </div>
+    <div id="provider-hint" class="provider-hint c-status-msg" hidden>Ładuję listę providerów…</div>
 
-    <section class="providers-card c-card" aria-labelledby="providerTitle">
+    <section class="providers-card c-card l-stack" aria-labelledby="providerTitle">
       <div class="providers-head l-row">
         <h2 id="providerTitle">Providerzy TTS</h2>
         <div class="u-spacer"></div>
@@ -50,27 +64,32 @@
         </div>
       </div>
       <div id="providerList" class="provider-list" aria-live="polite">
-        <div class="provider-empty">Ładowanie…</div>
+        <div class="provider-empty c-status-msg">Ładowanie…</div>
       </div>
       <div class="c-hint">Kliknij „Test”, by wykonać próbę TTS i sprawdzić działanie usług.</div>
     </section>
 
     <div class="meta" id="latency"></div>
-  </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="layout-footer" data-dashboard-footer-target></footer>
 
 <script>
 (function(){
   const board    = document.getElementById('board');
   const input    = document.getElementById('input');
   const sendBtn  = document.getElementById('sendBtn');
-  const status   = document.getElementById('status');
   const latency  = document.getElementById('latency');
+  const statusLine = document.getElementById('status-line');
   const ttsChk   = document.getElementById('tts');
   const providerSelect = document.getElementById('ttsProvider');
-  const providerHint   = document.getElementById('providerHint');
+  const providerHint   = document.getElementById('provider-hint');
   const providerListEl = document.getElementById('providerList');
   const btnTestAll     = document.getElementById('btnTestAll');
   const btnReloadProviders = document.getElementById('btnReloadProviders');
+  const urlParams = new URLSearchParams(window.location.search);
+  const auditMode = urlParams.get('audit') === '1';
 
   const FALLBACK_PROVIDERS = [
     { id: 'local',  label: 'Piper (lokalny)',         backend: 'piper',  voice: 'pl_PL-gosia-medium.onnx', description: 'Offline TTS Rider-Pi.', service: 'voice-web' },
@@ -83,15 +102,29 @@
   const history = JSON.parse(sessionStorage.getItem('chat_history') || '[]');
   for (const item of history) appendMessage(item.role, item.text, item.error);
 
+  function setStatus(text, state) {
+    if (!statusLine) return;
+    statusLine.textContent = text;
+    let cls = 'status-line c-status-msg';
+    if (state === 'ok') cls += ' is-ok';
+    else if (state === 'warn') cls += ' is-warn';
+    else if (state === 'err') cls += ' is-err';
+    statusLine.className = cls;
+  }
+
+  if (auditMode && history.length === 0) {
+    appendMessage('you', 'Przykładowa wiadomość użytkownika.');
+    appendMessage('bot', 'Przykładowa odpowiedź asystenta – status i TTS włączone.');
+    appendMessage('bot', '⚠️ TTS: przykładowy komunikat o błędzie.', true);
+    appendMessage('you', 'To jest tylko tryb audytu CSS.');
+    latency.textContent = 'Czas odpowiedzi: 42 ms';
+    setStatus('Tryb audytu CSS', 'warn');
+  }
+
   function save(role, text, error){
     history.push({role, text, error: !!error});
     if (history.length > 200) history.shift();
     sessionStorage.setItem('chat_history', JSON.stringify(history));
-  }
-
-  function setStatus(text, cls){
-    status.textContent = text;
-    status.className = 'status c-status-msg' + (cls ? ' ' + cls : '');
   }
 
   function appendMessage(role, text, isError){
@@ -137,9 +170,9 @@
   }
 
   function providerStateClass(state){
-    if (state === 'ok') return 'c-pill ok';
-    if (state === 'error') return 'c-pill err';
-    return 'c-pill warn';
+    if (state === 'ok') return 'c-pill is-ok';
+    if (state === 'error') return 'c-pill is-err';
+    return 'c-pill is-warn';
   }
 
   function serviceStateSummary(provider){
@@ -166,6 +199,7 @@
   function setProviderHint(provider){
     if (!provider){
       providerHint.textContent = 'Brak providerów TTS – używam trybu domyślnego.';
+      providerHint.hidden = false;
       return;
     }
     const state = provider.status?.state || 'unknown';
@@ -179,6 +213,7 @@
       parts.push(`Usługa ${provider.service}: ${serviceStateSummary(provider)}`);
     }
     providerHint.textContent = parts.join(' • ');
+    providerHint.hidden = false;
   }
 
   function renderProviderSelect(){
@@ -208,15 +243,15 @@
   function renderProviderList(){
     providerListEl.innerHTML = '';
     if (!providerCatalog.length){
-      const empty = document.createElement('div');
-      empty.className = 'provider-empty';
+    const empty = document.createElement('div');
+    empty.className = 'provider-empty c-status-msg';
       empty.textContent = 'Brak danych o providerach.';
       providerListEl.appendChild(empty);
       return;
     }
     for (const provider of providerCatalog){
       const row = document.createElement('div');
-      row.className = 'provider-row';
+      row.className = 'provider-row c-card';
 
       const info = document.createElement('div');
       info.className = 'provider-info';
@@ -318,6 +353,18 @@
   }
 
   async function loadProviders(){
+    if (auditMode) {
+      providerCatalog = FALLBACK_PROVIDERS.map((p, idx)=>({
+        ...p,
+        status: { state: idx === 0 ? 'ok' : 'warn', detail: idx === 0 ? 'Lokalny provider aktywny' : 'Proxy wymaga Rider-Pi' },
+        service_state: p.service ? { unit: p.service, alias: p.service, active: idx === 0 ? 'active' : 'inactive', sub: idx === 0 ? 'running' : 'stopped' } : null,
+      }));
+      providerHint.textContent = 'Tryb audytu CSS – dane przykładowe.';
+      providerHint.hidden = false;
+      renderProviderSelect();
+      renderProviderList();
+      return;
+    }
     providerHint.textContent = 'Ładuję listę providerów…';
     try{
       const res = await fetch('/api/voice/providers', { cache: 'no-store' });
@@ -532,5 +579,6 @@
 })();
 </script>
 <script type="module" src="/web/assets/menu.js"></script>
+<script type="module" src="/web/assets/footer.js"></script>
 </body>
 </html>

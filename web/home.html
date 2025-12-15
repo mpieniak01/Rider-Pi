@@ -4,55 +4,68 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rider-Pi — Google Feed</title>
+  <script src="/web/assets/theme-loader.js" defer></script>
   <link rel="stylesheet" href="/web/assets/dashboard-common.css">
-  <link rel="stylesheet" href="/web/assets/home.css">
+  <link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
+  <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
+  <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
+  <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
+  <link rel="stylesheet" href="/web/assets/pages/home.css">
 </head>
-<body data-page="home">
-<div data-dashboard-menu-target></div>
-<div class="wrap">
-  
-  <h1>
-    Rider-Pi — Google Feed
-    <span id="stateBadge" class="c-pill warn">
-      <span class="spinner"></span> Loading...
-    </span>
-  </h1>
+<body data-page="home" class="page page-home">
+  <header class="layout-header" data-dashboard-menu-target></header>
 
-  <!-- Status Card -->
-  <div class="c-card">
-    <h2 class="c-card__title">Status &amp; Metrics</h2>
-    
-    <div class="c-kv data-list">
-      <div class="data-label">State:</div>
-      <div class="data-value" id="stateValue">—</div>
+  <main class="layout-main">
+    <header class="page-header">
+      <div class="page-header__titles">
+        <h1 class="page-title">
+          <span class="brand-accent">Rider-Pi</span>: <span class="page-title-text">Google Feed</span>
+        </h1>
+      </div>
+      <div class="page-header__actions page-header__actions--small text-legend">
+        <span id="stateBadge" class="c-pill is-warn">
+          <span class="c-spinner"></span> Loading...
+        </span>
+      </div>
+    </header>
 
-      <div class="data-label">Last Update:</div>
-      <div class="data-value" id="timestampValue">—</div>
+    <section class="c-card u-mb-xl">
+      <h2 class="c-card__title">Status &amp; Metrics</h2>
+      <div class="c-data-list">
+        <div class="c-data-list__item">
+          <span class="c-data-list__label">State:</span>
+          <span class="c-data-list__value" id="stateValue">—</span>
+        </div>
+        <div class="c-data-list__item">
+          <span class="c-data-list__label">Last Update:</span>
+          <span class="c-data-list__value" id="timestampValue">—</span>
+        </div>
+        <div class="c-data-list__item">
+          <span class="c-data-list__label">Requests (24h):</span>
+          <span class="c-data-list__value" id="requestsValue">—</span>
+        </div>
+        <div class="c-data-list__item">
+          <span class="c-data-list__label">Errors (24h):</span>
+          <span class="c-data-list__value" id="errorsValue">—</span>
+        </div>
+      </div>
+    </section>
 
-      <div class="data-label">Requests (24h):</div>
-      <div class="data-value" id="requestsValue">—</div>
+    <section class="c-card">
+      <h2 class="c-card__title">Last Snapshot</h2>
+      <pre id="snapshotData" class="c-code-block u-muted">No data available</pre>
+    </section>
 
-      <div class="data-label">Errors (24h):</div>
-      <div class="data-value" id="errorsValue">—</div>
-    </div>
-  </div>
+    <nav class="l-row footer-links u-gap-sm u-mt-xl">
+      <a href="/view" class="muted">↩ dashboard</a>
+      <span class="u-sep">•</span>
+      <a href="/chat" class="muted">💬 chat</a>
+      <span class="u-sep">•</span>
+      <a href="/google_home" class="muted">🏠 Google Home</a>
+    </nav>
+  </main>
 
-  <!-- Snapshot Card -->
-  <div class="c-card">
-    <h2 class="c-card__title">Last Snapshot</h2>
-    <pre id="snapshotData" class="snapshot muted">No data available</pre>
-  </div>
-
-  <!-- Footer -->
-  <div class="l-row footer-links">
-    <a href="/web/view.html" class="muted">↩ dashboard</a>
-    <span class="u-sep">•</span>
-    <a href="/web/chat.html" class="muted">💬 chat</a>
-    <span class="u-sep">•</span>
-    <a href="/web/google_home.html" class="muted">🏠 Google Home</a>
-  </div>
-
-</div>
+  <footer class="layout-footer" data-dashboard-footer-target></footer>
 
 <!-- App Logic -->
 <script type="module">
@@ -140,6 +153,6 @@
   setInterval(updateAll, POLL_INTERVAL_MS);
 </script>
 <script type="module" src="/web/assets/menu.js"></script>
-
+<script type="module" src="/web/assets/footer.js"></script>
 </body>
 </html>

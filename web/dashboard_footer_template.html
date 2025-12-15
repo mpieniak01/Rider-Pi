@@ -1,0 +1,30 @@
+<!-- Wspólna stopka-c-statusbar z informacją o wersji -->
+<div class="c-statusbar" data-footer-root>
+  <span class="c-pill" data-footer-presence>
+    <span data-i18n="dash.status.vision_prefix">VISION:</span>&nbsp;
+    <span data-footer-presence-state>—</span>
+  </span>
+  <span class="u-sep">•</span>
+  <span class="muted" data-footer-mode data-i18n="dash.status.mode">mode: —</span>
+  <span class="u-sep">•</span>
+  <span class="muted" data-footer-conf data-i18n="dash.status.conf">conf: —</span>
+  <span class="u-sep">•</span>
+  <span class="c-pill" data-footer-camera>CAM: —</span>
+  <span class="muted" data-footer-camera-meta>fps: —</span>
+  <span class="u-sep">•</span>
+  <label class="footer-theme">
+    <span>Motyw</span>
+    <select data-footer-theme-select>
+      <option value="classic">Klasyczny</option>
+      <option value="classic-plus">Klasyczny +</option>
+      <option value="v2">Tryb V2</option>
+      <option value="v3">Neo (v3)</option>
+    </select>
+  </label>
+  <span class="u-spacer"></span>
+  <span class="footer-version" data-footer-version-block>
+    <span class="footer-version__label">Wersja</span>
+    <span class="c-pill footer-version__branch" data-footer-branch>—</span>
+    <button type="button" class="c-pill footer-version__commit" data-footer-commit title="Kliknij, aby skopiować hash">#unknown</button>
+  </span>
+</div>

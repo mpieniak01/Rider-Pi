@@ -3,24 +3,35 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title data-i18n="dash.page_title">Rider-Pi — mini dashboard</title>
+<title>Rider-Pi: Przegląd</title>
+<script src="/web/assets/theme-loader.js" defer></script>
 <link rel="stylesheet" href="/web/assets/dashboard-common.css">
-<link rel="stylesheet" href="/web/assets/view.css">
+<link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
+<link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
+<link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
+<link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
+<link rel="stylesheet" href="/web/assets/pages/view.css">
 </head>
-<body data-page="view">
-<div data-dashboard-menu-target></div>
-<div class="wrap">
-  <h1 data-i18n="dash.page_title">Rider-Pi — mini dashboard</h1>
-  <div class="c-hint">
+<body data-page="view" class="page page-view">
+<header class="layout-header" data-dashboard-menu-target></header>
+<main class="layout-main">
+  <header class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-title" data-i18n="dash.page_title">
+        <span class="brand-accent">Rider-Pi</span>: <span class="page-title-text">mini dashboard</span>
+      </h1>
+    </div>
+  </header>
+  <div class="c-hint text-legend">
     <span data-i18n="dash.hint_prefix">Auto-refresh co ≈ 2 s.</span>
     <span data-i18n="dash.hint_endpoints">Endpointy:</span>
     <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a>, <a href="/vision/snap-info">/vision/snap-info</a>
   </div>
 
   <!-- RZĄD 1 -->
-  <div class="l-grid">
-    <div class="c-card">
-      <h3 data-i18n="dash.system.title">System</h3>
+  <div class="l-grid l-grid--4 view-row view-row--1">
+  <div class="c-card">
+    <h3 data-i18n="dash.system.title">System</h3>
       <div class="c-kv">
         <div data-i18n="dash.system.host">Host</div><div id="ci_host" class="muted">—</div>
         <div data-i18n="dash.system.cpu_est">cpu (szac.)</div><div id="ci_cpu" class="muted">—</div>
@@ -68,7 +79,7 @@
   </div>
 
   <!-- RZĄD 2 -->
-  <div class="l-grid">
+  <div class="l-grid view-row view-row--2">
     <div class="c-card">
       <h3 data-i18n="dash.health.title">Health</h3>
       <div class="c-kv">
@@ -108,7 +119,7 @@
   </div>
 
   <!-- RZĄD 3: API Metrics -->
-  <div class="l-grid">
+  <div class="l-grid view-row view-row--3">
     <div class="c-card">
       <h3 data-i18n="dash.api_metrics.title">API Metrics</h3>
       <div class="c-kv">
@@ -151,8 +162,8 @@
     </div>
   </div>
 
-  <!-- RZĄD 4: Info + Linki + TRACKER w jednym rzędzie -->
-  <div class="l-grid">
+  <!-- RZĄD 4: Info + Linki + TRACKER -->
+  <div class="l-grid view-row view-row--4">
     <div class="c-card c-card--span2">
       <h3 data-i18n="dash.info.title">Info</h3>
       <div class="c-hint c-hint--muted" data-i18n="dash.info.body">
@@ -193,7 +204,9 @@
     <span class="c-pill" id="sb_cam">CAM: —</span>
     <span id="sb_cam_meta" class="muted">fps: —</span>
   </div>
-</div>
+</main>
+
+<footer class="layout-footer" data-dashboard-footer-target></footer>
 
 <script type="module">
 import { initI18n, applyDom, t } from '/web/assets/i18n.js?v=3';
@@ -685,5 +698,6 @@ setInterval(refreshApiMetrics, REFRESH_MS); refreshApiMetrics();
 startSSE();
 </script>
 <script type="module" src="/web/assets/menu.js"></script>
+<script type="module" src="/web/assets/footer.js"></script>
 </body>
 </html>

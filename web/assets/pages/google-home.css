@@ -1,0 +1,121 @@
+/**
+ * Google Home Page Styles - Rider-PC Dashboard
+ * Google Home integration page-specific overrides (~80 lines)
+ * ------------------------------------------------------------------
+ */
+
+/* Page token overrides */
+.page-google {
+  --page-padding: 26px var(--space-xl) 60px;
+  --card-radius: var(--radius-xxl);
+  --card-padding: var(--space-xl);
+}
+
+/* Auth button styling */
+.page-google .btn-auth {
+  padding: var(--space-md) var(--space-xxl);
+  font-size: var(--font-size-lg);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(135deg, var(--color-accent), #4ba6ff);
+  border: 1px solid var(--color-accent-border);
+  color: #041321;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.page-google .btn-auth:hover {
+  background: linear-gradient(135deg, #8dd0ff, #5ab8ff);
+  border-color: var(--color-accent);
+}
+
+.page-google .btn-auth:active {
+  transform: scale(0.98);
+}
+
+.page-google .btn-auth.btn-auth--ghost {
+  padding: var(--space-xs) var(--space-lg);
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+}
+
+/* Device grid */
+.page-google .device-grid {
+  --grid-min: 280px;
+  --grid-gap: var(--space-xl);
+  margin: var(--space-lg) 0;
+}
+
+.page-google .device-card {
+  --card-padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  min-height: 200px;
+}
+
+.page-google .device-name {
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+}
+
+.page-google .device-type {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Device controls */
+.page-google .control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  align-items: center;
+}
+
+.page-google input[type="range"] {
+  width: 200px;
+  accent-color: var(--color-ok);
+}
+
+.page-google input[type="color"] {
+  width: 60px;
+  height: 36px;
+  border: 1px solid var(--color-off-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-input);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.page-google select {
+  padding: var(--space-xs) var(--space-lg);
+  border: 1px solid var(--color-off-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-input);
+  color: var(--color-fg-primary);
+  cursor: pointer;
+}
+
+/* Status messages */
+.page-google .c-status-msg {
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--color-border-secondary);
+  background: var(--color-bg-elevated);
+}
+
+.page-google .c-status-msg.ok {
+  border-color: var(--color-ok-border);
+  color: var(--color-ok);
+}
+
+.page-google .c-status-msg.err {
+  border-color: var(--color-error-border);
+  color: #ff9f9f;
+}
+
+.page-google .hidden {
+  display: none !important;
+}

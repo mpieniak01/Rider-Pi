@@ -1,63 +1,85 @@
 <!DOCTYPE html>
+<!--
+  Migrated to dashboard_base.html template structure
+  Uses shared layout classes: .layout-header, .layout-main, .layout-footer
+-->
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wizualizator Nawigacji | Rider-Pi</title>
+    <title>Rider-Pi: Wizualizator Nawigacji</title>
+    <script src="/web/assets/theme-loader.js" defer></script>
     <link rel="stylesheet" href="/web/assets/dashboard-common.css">
-    <link rel="stylesheet" href="/web/assets/navigation.css">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
+    <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
+    <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
+    <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
+    <link rel="stylesheet" href="/web/assets/pages/navigation.css">
 </head>
-<body class="bg-gray-900 text-gray-200 font-sans" data-page="navigation">
-    <div data-dashboard-menu-target></div>
+<body data-page="navigation" class="page page-navigation">
+    <!-- Header with Menu -->
+    <header class="layout-header" data-dashboard-menu-target></header>
 
-    <main>
+    <!-- Main content -->
+    <main class="layout-main navigation-main">
         <!-- Nagłówek i Status -->
-        <header class="flex justify-between items-center mb-4">
-            <h1 class="text-2xl font-bold">Wizualizator Nawigacji</h1>
-            <div class="flex items-center">
-                <div id="status-indicator" class="w-4 h-4 rounded-full bg-yellow-500 mr-2" title="Łączenie..."></div>
+        <header class="page-header">
+            <div class="page-header__titles">
+                <h1 class="page-title"><span class="brand-accent">Rider-Pi</span>: <span class="page-title-text">Wizualizator Nawigacji</span></h1>
+            </div>
+            <div class="page-header__actions page-header__actions--small cluster text-legend">
+                <div id="status-indicator" class="status-dot" title="Łączenie..."></div>
                 <span id="status-text">Łączenie...</span>
             </div>
         </header>
 
         <!-- Legenda -->
-        <div class="flex flex-wrap mb-4">
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #06b6d4;"></div>
-                <span>Robot</span>
+        <div class="c-legend cluster u-mb-lg">
+            <div class="c-legend__item">
+                <span class="c-legend__dot" style="background-color: #06b6d4;"></span>
+                <span class="text-legend">Robot</span>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #22c55e;"></div>
-                <span>Start</span>
+            <div class="c-legend__item">
+                <span class="c-legend__dot" style="background-color: #22c55e;"></span>
+                <span class="text-legend">Start</span>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #eab308;"></div>
-                <span>Cel (Target)</span>
+            <div class="c-legend__item">
+                <span class="c-legend__dot" style="background-color: #eab308;"></span>
+                <span class="text-legend">Cel (Target)</span>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #3b82f6;"></div>
-                <span>Ścieżka (Plan)</span>
+            <div class="c-legend__item">
+                <span class="c-legend__dot" style="background-color: #3b82f6;"></span>
+                <span class="text-legend">Ścieżka (Plan)</span>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #ef4444;"></div>
-                <span>Przeszkoda</span>
+            <div class="c-legend__item">
+                <span class="c-legend__dot" style="background-color: #ef4444;"></span>
+                <span class="text-legend">Przeszkoda</span>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #4b5563;"></div>
-                <span>Odwiedzone</span>
+            <div class="c-legend__item">
+                <span class="c-legend__dot" style="background-color: #4b5563;"></span>
+                <span class="text-legend">Odwiedzone</span>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #1f2937; border: 1px solid #4b5563;"></div>
-                <span>Nieznane</span>
+            <div class="c-legend__item">
+                <span class="c-legend__dot" style="background-color: #1f2937; border: 1px solid #4b5563;"></span>
+                <span class="text-legend">Nieznane</span>
             </div>
         </div>
 
         <!-- Kontener Canvas (dla responsywności) -->
-        <div id="canvas-container">
+        <section class="media-frame navigation-canvas" id="canvas-container">
             <canvas id="mapCanvas"></canvas>
+        </section>
+
+        <!-- Ukryty podgląd klas (tylko dla zwiększenia pokrycia CSS) -->
+        <div class="navigation-style-preview" aria-hidden="true" hidden>
+            <div class="page-navigation navigation-main navigation-style-preview__layout"></div>
+            <span class="c-legend__dot"></span>
         </div>
+
     </main>
+
+    <!-- Footer -->
+    <footer class="layout-footer" data-dashboard-footer-target></footer>
 
     <script>
         const canvas = document.getElementById('mapCanvas');
@@ -91,7 +113,7 @@
 
             ws.onopen = () => {
                 console.log('Połączono z WebSocket /ws/navigation');
-                statusIndicator.className = 'w-4 h-4 rounded-full bg-green-500 mr-2';
+                statusIndicator.className = 'status-dot is-connected';
                 statusText.textContent = 'Połączono';
             };
 
@@ -134,14 +156,14 @@
 
             ws.onclose = () => {
                 console.log('Rozłączono z WebSocket. Próba ponownego połączenia...');
-                statusIndicator.className = 'w-4 h-4 rounded-full bg-red-500 mr-2';
+                statusIndicator.className = 'status-dot is-disconnected';
                 statusText.textContent = 'Rozłączono';
                 setTimeout(connectWebSocket, 3000); // Spróbuj połączyć ponownie po 3 sekundach
             };
 
             ws.onerror = (error) => {
                 console.error('Błąd WebSocket:', error);
-                statusIndicator.className = 'w-4 h-4 rounded-full bg-red-500 mr-2';
+                statusIndicator.className = 'status-dot is-disconnected';
                 statusText.textContent = 'Błąd';
                 ws.close();
             };
@@ -314,5 +336,6 @@
 
     </script>
     <script type="module" src="/web/assets/menu.js"></script>
+    <script type="module" src="/web/assets/footer.js"></script>
 </body>
 </html>

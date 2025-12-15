@@ -1,0 +1,181 @@
+/**
+ * Project Page Styles - Rider-PC Dashboard
+ * GitHub issues dashboard page-specific overrides (~140 lines)
+ * ------------------------------------------------------------------
+ */
+
+/* Page token overrides */
+.page-project {
+  --grid-min: 320px;
+}
+
+/* Status line */
+.page-project .status-line {
+  --status-line-spacing: var(--space-xl);
+}
+
+/* Issues grid */
+.page-project .issues-grid {
+  --grid-gap: var(--space-xl);
+  --grid-min: 320px;
+}
+
+/* Issue card */
+.page-project .issue-card {
+  --card-padding: var(--space-lg);
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.page-project .issue-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-accent-border);
+}
+
+.page-project .issue-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.page-project .issue-number {
+  flex-shrink: 0;
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+}
+
+.page-project .issue-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Progress bar */
+.page-project .progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  margin-bottom: var(--space-sm);
+}
+
+.page-project .progress-fill {
+  height: 100%;
+  border-radius: var(--radius-xs);
+  transition: width var(--transition-slow);
+}
+
+.page-project .progress-minimal .progress-fill {
+  background: linear-gradient(90deg, #7a4040, #a05050);
+}
+
+.page-project .progress-low .progress-fill {
+  background: linear-gradient(90deg, #7a6030, #a08040);
+}
+
+.page-project .progress-medium .progress-fill {
+  background: linear-gradient(90deg, #607030, #80a040);
+}
+
+.page-project .progress-high .progress-fill {
+  background: linear-gradient(90deg, #408060, #50a080);
+}
+
+.page-project .progress-complete .progress-fill {
+  background: linear-gradient(90deg, #40a060, #50c080);
+}
+
+.page-project .progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+}
+
+.page-project .progress-pct {
+  font-weight: var(--font-weight-semibold);
+}
+
+.page-project .progress-complete .progress-pct {
+  color: var(--color-ok);
+}
+
+/* Issue footer */
+.page-project .issue-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-sm);
+}
+
+.page-project .issue-assignee {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xxs);
+}
+
+/* Git strategy options */
+.page-project .git-strategy-group {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-top: var(--space-sm);
+}
+
+.page-project .git-strategy-group legend {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 0 var(--space-sm);
+}
+
+.page-project .radio-option,
+.checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-lg) 0;
+  cursor: pointer;
+  font-size: var(--font-size-md);
+}
+
+.page-project .radio-option input[type="radio"],
+.checkbox-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+/* Error banner */
+.page-project .error-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+/* Empty state */
+.page-project .empty-state {
+  text-align: center;
+  padding: 60px var(--space-xl);
+}
+
+.page-project .empty-icon {
+  font-size: 3rem;
+  margin-bottom: var(--space-lg);
+  opacity: 0.5;
+}
+
+/* Modal loading */
+/* Responsive */
+@media (max-width: 600px) {
+  .page-project .c-form-row { flex-direction: column; gap: 0; }
+  .c-modal__container { max-height: 100vh; border-radius: 0; }
+}

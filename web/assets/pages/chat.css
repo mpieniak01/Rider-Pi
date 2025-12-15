@@ -1,0 +1,131 @@
+/**
+ * Chat Page Styles - Rider-PC Dashboard
+ * Chat interface page-specific overrides (~100 lines)
+ * ------------------------------------------------------------------
+ */
+
+/* Page token overrides */
+.page-chat {
+  --page-padding: var(--space-xl) var(--space-lg) 60px;
+  --card-radius: var(--radius-xl);
+  --card-padding: var(--space-lg);
+  --chat-mine: #1f3a57;
+  --chat-bot: #173149;
+  --chat-err: #4a1f27;
+}
+
+/* Status line */
+.page-chat .status-line {
+  --status-line-spacing: var(--space-md);
+}
+
+/* Chat board */
+.page-chat .board {
+  min-height: clamp(200px, 35vh, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.page-chat .provider-hint {
+  margin-top: var(--space-md);
+}
+
+.page-chat .side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-width: 260px;
+  max-width: 360px;
+}
+
+.page-chat #provider-hint {
+  display: block;
+  word-break: break-word;
+}
+
+/* Chat messages */
+.page-chat .msg {
+  max-width: 78%;
+  padding: var(--space-lg) var(--space-md);
+  border-radius: var(--radius-lg);
+  line-height: var(--line-height-normal);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.page-chat .msg.you {
+  align-self: flex-end;
+  background: var(--chat-mine);
+  border-top-right-radius: var(--radius-xxs);
+}
+
+.page-chat .msg.bot {
+  align-self: flex-start;
+  background: var(--chat-bot);
+  border-top-left-radius: var(--radius-xxs);
+}
+
+.page-chat .msg.err {
+  background: var(--chat-err);
+}
+
+/* Compose area */
+.page-chat .compose-row {
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+  align-items: flex-start;
+}
+
+.page-chat textarea {
+  flex: 1;
+  min-height: 64px;
+  max-height: 220px;
+  resize: vertical;
+  background: var(--color-bg-input);
+  color: inherit;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  font: inherit;
+}
+
+.page-chat select {
+  background: var(--color-bg-input);
+  color: inherit;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+  font: inherit;
+  min-width: 160px;
+}
+
+/* Provider card */
+.page-chat .providers-card {
+  margin-top: var(--space-xxl);
+
+  --stack-gap: var(--space-lg);
+}
+
+.page-chat .provider-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+
+  --card-padding: var(--space-md);
+}
+
+.page-chat .provider-info {
+  flex: 2;
+  min-width: 220px;
+}
+
+.page-chat .provider-name {
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-xxs);
+}
+
+.page-chat .provider-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-hint);
+}

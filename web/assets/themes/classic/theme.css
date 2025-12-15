@@ -1,0 +1,46 @@
+/* Classic theme base styles */
+:root[data-dashboard-theme="classic"] {
+  --card-bg: var(--color-bg-secondary);
+  --card-border: var(--color-border-primary);
+  --section-bg: transparent;
+  --section-border: transparent;
+  --button-bg: #1d3349;
+  --button-border: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-dashboard-theme="classic"] .layout-main {
+  background: var(--color-bg-primary);
+  padding: var(--page-padding);
+}
+
+:root[data-dashboard-theme="classic"] .c-section {
+  background: var(--section-bg);
+  border: 1px solid var(--section-border);
+  padding: var(--space-xl);
+  box-shadow: none;
+}
+
+:root[data-dashboard-theme="classic"] .c-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+:root[data-dashboard-theme="classic"] .c-card__title::before,
+:root[data-dashboard-theme="classic"] .section-title::before {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+:root[data-dashboard-theme="classic"] .c-btn,
+:root[data-dashboard-theme="classic"] button {
+  background: var(--button-bg);
+  border-color: var(--button-border);
+  color: var(--color-fg-primary);
+  box-shadow: none;
+}
+
+:root[data-dashboard-theme="classic"] .c-btn:hover,
+:root[data-dashboard-theme="classic"] button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}

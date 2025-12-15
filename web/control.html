@@ -1,47 +1,64 @@
 <!doctype html>
+<!--
+  Migrated to dashboard_base.html template structure
+  Uses shared layout classes: .layout-header, .layout-main, .layout-footer
+-->
 <html lang="pl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rider-Pi — Sterowanie ruchem (REST /api)</title>
+  <title>Rider-Pi: Sterowanie ruchem (REST /api)</title>
+  <script src="/web/assets/theme-loader.js" defer></script>
   <link rel="stylesheet" href="/web/assets/dashboard-common.css" />
-  <link rel="stylesheet" href="/web/assets/control.css" />
-
+  <link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic" />
+  <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
+  <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled />
+  <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled />
+  <link rel="stylesheet" href="/web/assets/pages/control.css" />
 </head>
-<body data-page="control">
-<div data-dashboard-menu-target></div>
-<div class="wrap">
+<body data-page="control" class="page page-control">
+  <!-- Header with Menu -->
+  <header class="layout-header" data-dashboard-menu-target></header>
 
-  <h1 class="control-title" data-i18n="meta.app_title">
-    Rider-Pi — Sterowanie ruchem (REST /api)
-    <span
-      id="apiStatus"
-      class="muted control-status"
-      data-i18n="header.api_status_checking"
-    >(checking…)</span>
-    <span
-      id="obstBadge"
-      class="c-pill warn control-badge"
-      hidden
-      data-i18n="header.obstacle_na"
-    >Obstacle: n/a</span>
-  </h1>
-
-  <div class="panel-row l-row">
-    <!-- 1) KAMERA -->
-    <div class="c-card cam-card">
-      <h2 class="c-card__title" data-i18n="camera.title">Podgląd kamery</h2>
-
-      <div class="cam-actions">
-        <button id="camToggle" class="c-btn c-btn-sm" data-i18n="camera.auto_refresh_on">
-          ⟳ Auto-refresh (on)
-        </button>
-        <button id="btnUseEdge" class="c-btn c-btn-sm" data-i18n="camera.use_edge">Use EDGE</button>
-        <button id="btnUseCam" class="c-btn c-btn-sm" data-i18n="camera.use_cam">Use CAM</button>
+  <!-- Main content -->
+  <main class="layout-main">
+    <!-- Page header -->
+    <header class="page-header">
+      <div class="page-header__titles">
+        <h1 class="page-title control-title">
+          <span class="brand-accent">Rider-Pi</span>: <span class="page-title-text">Sterowanie ruchem</span>
+        </h1>
       </div>
+      <div class="page-header__actions page-header__actions--small text-legend">
+        <span
+          id="apiStatus"
+          class="u-muted control-status text-legend"
+          data-i18n="header.api_status_checking"
+        >(checking…)</span>
+        <span
+          id="obstBadge"
+          class="c-pill is-warn control-badge"
+          hidden
+          data-i18n="header.obstacle_na"
+        >Obstacle: n/a</span>
+      </div>
+    </header>
 
-      <div class="cam-frame">
-        <div>
+    <div class="panel-row">
+      <!-- 1) KAMERA -->
+      <div class="c-card c-section cam-card control-section is-camera">
+        <h2 class="c-card__title" data-i18n="camera.title">Podgląd kamery</h2>
+
+        <div class="cam-actions cluster">
+          <button id="camToggle" class="c-btn c-btn-sm" data-i18n="camera.auto_refresh_on">
+            ⟳ Auto-refresh (on)
+          </button>
+          <button id="btnUseEdge" class="c-btn c-btn-sm" data-i18n="camera.use_edge">Use EDGE</button>
+          <button id="btnUseCam" class="c-btn c-btn-sm" data-i18n="camera.use_cam">Use CAM</button>
+        </div>
+
+        <div class="media-frame">
+          <div>
           <img id="camPrev" class="cam" alt="camera preview" src="/camera/last?ts=0" />
           <div
             class="c-note cam-info"
@@ -53,7 +70,7 @@
     </div>
 
     <!-- 2) STEROWANIE -->
-    <div class="c-card control-card">
+    <div class="c-card c-section control-card control-section is-motion">
       <h2 class="c-card__title" data-i18n="motion.title">Sterowanie ruchem</h2>
 
       <div class="l-row control-range-row">
@@ -125,30 +142,8 @@
 
   <!-- FUNKCJE + ZASOBY -->
   <div class="panel-row feature-resource">
-    <div class="c-card feature-card">
+    <div class="c-card c-section feature-card control-section is-features">
       <h2 class="c-card__title" data-i18n="motion.features_title">Funkcje</h2>
-      <div class="feature-row motion-enable-row">
-        <div class="feature-info">
-          <div class="feature-head">
-            <div class="feature-title motion-enable-title" data-i18n="motion.motion_enable_label">
-              Zezwól na ruch
-            </div>
-          </div>
-          <div class="feature-desc" data-i18n="motion.motion_enable_desc">
-            Odblokowuje przekazywanie komend ruchu (tworzy plik data/flags/motion.enable).
-          </div>
-        </div>
-        <div class="feature-status">
-          <span class="c-pill feature-pill" id="motionEnableStatus">n/a</span>
-        </div>
-        <div class="feature-actions">
-          <label class="feature-toggle">
-            <input id="motionEnableToggle" type="checkbox" />
-            <span data-i18n="motion.motion_enable_toggle">Aktywuj zezwolenie</span>
-          </label>
-          <div class="feature-note" id="motionEnableNote"></div>
-        </div>
-      </div>
       <div class="feature-list" id="featureList">
         <div class="feature-row" data-feature="zero">
           <div class="feature-info">
@@ -260,10 +255,10 @@
       </div>
     </div>
 
-    <div class="c-card resource-card">
+    <div class="c-card c-section resource-card control-section is-resources">
       <h2 class="c-card__title" data-i18n="resources.title">Diagnostyka zasobów</h2>
       <div id="resInfo" class="muted" data-i18n="meta.loading">Ładowanie…</div>
-      <table class="svc-table" id="resTable">
+      <table class="svc-table c-table" id="resTable">
         <thead>
         <tr>
           <th data-i18n="resources.column_name">Zasób</th>
@@ -275,7 +270,7 @@
         <tbody id="resBody">
         <tr data-res="mic">
           <td data-i18n="resources.mic">Mikrofon</td>
-          <td class="res-status">n/a</td>
+          <td><span class="res-status c-pill is-off">n/a</span></td>
           <td class="res-holders">-</td>
           <td class="svc-actions">
             <button class="c-btn c-btn-sm" data-res="mic" data-res-action="refresh">⟳</button>
@@ -295,7 +290,7 @@
         </tr>
         <tr data-res="speaker">
           <td data-i18n="resources.speaker">Głośnik</td>
-          <td class="res-status">n/a</td>
+          <td><span class="res-status c-pill is-off">n/a</span></td>
           <td class="res-holders">-</td>
           <td class="svc-actions">
             <button class="c-btn c-btn-sm" data-res="speaker" data-res-action="refresh">⟳</button>
@@ -315,7 +310,7 @@
         </tr>
         <tr data-res="camera">
           <td data-i18n="resources.camera">Kamera</td>
-          <td class="res-status">n/a</td>
+          <td><span class="res-status c-pill is-off">n/a</span></td>
           <td class="res-holders">-</td>
           <td class="svc-actions">
             <button class="c-btn c-btn-sm" data-res="camera" data-res-action="refresh">⟳</button>
@@ -335,7 +330,7 @@
         </tr>
         <tr data-res="lcd">
           <td data-i18n="resources.lcd">Ekran LCD 2"</td>
-          <td class="res-status">n/a</td>
+          <td><span class="res-status c-pill is-off">n/a</span></td>
           <td class="res-holders">-</td>
           <td class="svc-actions">
             <button class="c-btn c-btn-sm" data-res="lcd" data-res-action="refresh">⟳</button>
@@ -359,7 +354,7 @@
   </div>
 
   <div class="panel-row scenario-panel">
-    <div class="c-card scenario-card">
+    <div class="c-card c-section scenario-card control-section is-scenarios">
       <h2 class="c-card__title">Scenariusze / targety</h2>
       <div class="feature-list scenario-list" id="scenarioList">
         <div class="muted" data-i18n="meta.loading">Ładowanie…</div>
@@ -368,12 +363,10 @@
     </div>
   </div>
 
-  <div class="c-card service-card">
-    <details class="svc-diagnostics" open>
-      <summary class="c-card__title svc-summary">
-        <span data-i18n="services.title">Usługi (systemd)</span>
-      </summary>
-      <div class="svc-controls" aria-label="Usługi – sterowanie listą">
+  <div class="c-card c-section service-card control-section is-services">
+    <div class="card-head svc-head">
+      <h2 class="c-card__title" data-i18n="services.title">Usługi (systemd)</h2>
+      <div class="svc-controls card-actions" aria-label="Usługi – sterowanie listą">
         <button
           id="svcRefresh"
           class="c-btn c-btn-sm section-action"
@@ -397,44 +390,48 @@
           </select>
         </label>
       </div>
-      <div id="svcInfo" class="muted">
-        <span data-i18n="meta.loading">Ładowanie…</span>
-        <span id="svcTs"></span>
-      </div>
-      <table class="svc-table" id="svcTable" hidden>
-        <thead>
-        <tr>
-          <th data-i18n="services.unit">Unit</th>
-          <th data-i18n="services.desc">Opis</th>
-          <th data-i18n="services.status">Status</th>
-          <th data-i18n="services.autostart">Autostart</th>
-          <th data-i18n="services.actions">Akcje</th>
-        </tr>
-        </thead>
-        <tbody id="svcBody"></tbody>
-      </table>
-    </details>
+    </div>
+    <div id="svcInfo" class="muted">
+      <span data-i18n="meta.loading">Ładowanie…</span>
+      <span id="svcTs"></span>
+    </div>
+    <table class="svc-table c-table" id="svcTable" hidden>
+      <thead>
+      <tr>
+        <th data-i18n="services.unit">Unit</th>
+        <th data-i18n="services.desc">Opis</th>
+        <th data-i18n="services.status">Status</th>
+        <th data-i18n="services.autostart">Autostart</th>
+        <th data-i18n="services.actions">Akcje</th>
+      </tr>
+      </thead>
+      <tbody id="svcBody"></tbody>
+    </table>
   </div>
 
   <!-- LOG -->
-  <div class="c-card log-card">
-    <h2 class="c-card__title" data-i18n="events.title">Zdarzenia (SSE /events)</h2>
-    <div id="log"></div>
-  </div>
+  <section class="log-panel c-card c-section control-section is-log">
+    <header class="log-header l-cluster">
+      <h2 class="section-title" data-i18n="events.title">Zdarzenia (SSE /events)</h2>
+    </header>
+    <div id="log" class="log-terminal" role="log" aria-live="polite" aria-label="Zdarzenia"></div>
+  </section>
 
-  <div class="c-card motion-queue-card">
-    <h2 class="c-card__title">
-      <span data-i18n="motion_queue.title">Kolejka ruchu</span>
-      <button
-        id="btnMotionQueueFlush"
-        class="c-btn c-btn-sm section-action"
-        data-i18n="motion_queue.btn_flush"
-      >⏹ stop &amp; wyczyść</button>
-    </h2>
+  <div class="c-card c-section motion-queue-card control-section is-queue">
+    <div class="card-head motion-queue-head">
+      <h2 class="c-card__title" data-i18n="motion_queue.title">Kolejka ruchu</h2>
+      <div class="motion-queue-actions card-actions">
+        <button
+          id="btnMotionQueueFlush"
+          class="c-btn c-btn-sm"
+          data-i18n="motion_queue.btn_flush"
+        >⏹ stop &amp; wyczyść</button>
+      </div>
+    </div>
     <div id="motionQueueInfo" class="muted" data-i18n="motion_queue.loading">
       Brak danych…
     </div>
-    <table class="svc-table" id="motionQueueTable">
+    <table class="svc-table c-table" id="motionQueueTable">
       <thead>
       <tr>
         <th data-i18n="motion_queue.column_source">Źródło</th>
@@ -450,16 +447,41 @@
       <tr>
         <td
           colspan="7"
-          class="muted"
+          class="u-muted"
           data-i18n="motion_queue.empty_placeholder"
         >Brak zleceń ruchu.</td>
       </tr>
       </tbody>
     </table>
   </div>
-</div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="layout-footer" data-dashboard-footer-target></footer>
+
+  <div class="coverage-probe" aria-hidden="true" style="display:none;">
+    <div class="feature-row">
+      <div class="feature-info">
+        <div class="feature-title">Probe feature</div>
+        <div class="feature-desc">Opis funkcji</div>
+      </div>
+      <div class="feature-actions">
+        <button class="c-btn c-btn-sm">Start</button>
+      </div>
+    </div>
+    <div class="pc-service">
+      <span class="pc-service-dot ok"></span>
+      <div class="pc-service-name">Probe service</div>
+      <div class="pc-service-meta">meta</div>
+    </div>
+    <div class="svc-controls">
+      <div class="svc-control">probe</div>
+      <select class="svc-select"><option>opt</option></select>
+    </div>
+  </div>
 
 <script type="module" src="/web/assets/menu.js"></script>
+<script type="module" src="/web/assets/footer.js"></script>
 <script type="module">
   import { initI18n, applyDom, t } from "/web/assets/i18n.js";
 
@@ -557,9 +579,6 @@
   const qs = (s) => document.querySelector(s);
   const logEl = qs("#log");
   const MAX_ERR_SNIPPET = 140;
-  const motionEnableToggle = qs("#motionEnableToggle");
-  const motionEnableStatus = qs("#motionEnableStatus");
-  const motionEnableNote = qs("#motionEnableNote");
 
   function formatHttpError(status, statusText, raw) {
     const txt = (raw || "").trim();
@@ -696,49 +715,6 @@
       return JSON.parse(raw);
     } catch (err) {
       throw new Error(`invalid JSON :: ${err.message}`);
-    }
-  }
-
-  function syncMotionEnableUi(enabled) {
-    if (motionEnableToggle) {
-      motionEnableToggle.checked = enabled;
-    }
-    if (motionEnableStatus) {
-      motionEnableStatus.textContent = enabled
-        ? t("motion.motion_enable_status_on")
-        : t("motion.motion_enable_status_off");
-      motionEnableStatus.className = `c-pill feature-pill ${enabled ? "ok" : "warn"}`;
-    }
-    if (motionEnableNote) {
-      motionEnableNote.textContent = enabled
-        ? t("motion.motion_enable_status_on")
-        : t("motion.motion_enable_status_off");
-    }
-  }
-
-  async function fetchMotionEnable() {
-    if (!motionEnableToggle) return;
-    try {
-      const flags = await fetchJson("/api/flags");
-      const enabled = !!flags.motion_enable;
-      syncMotionEnableUi(enabled);
-    } catch (e) {
-      appendLog(`/api/flags :: ${e.message || e}`, "warn");
-    }
-  }
-
-  async function setMotionEnable(enabled) {
-    const target = enabled ? "on" : "off";
-    try {
-      await fetchJson(`/api/flags/motion.enable/${target}`, { method: "POST" });
-      appendLog(`[flags] motion.enable -> ${target}`, "ok");
-      syncMotionEnableUi(enabled);
-    } catch (e) {
-      appendLog(
-        t("motion.motion_enable_error", { err: e.message || e }),
-        "err",
-      );
-      fetchMotionEnable().catch(() => {});
     }
   }
 
@@ -992,10 +968,6 @@
       handleFeatureAction(featureId, action);
     });
   }
-
-  motionEnableToggle?.addEventListener("change", () => {
-    setMotionEnable(!!motionEnableToggle.checked);
-  });
 
   const scenarioListEl = qs("#scenarioList");
   const scenarioInfoEl = qs("#scenarioInfo");
@@ -1755,22 +1727,34 @@
     });
   }
 
+  const RES_STATUS_CLASSES = ["is-ok", "is-warn", "is-err", "is-off"];
+  function setResourceStatus(el, state, text) {
+    if (!el) return;
+    el.textContent = text;
+    RES_STATUS_CLASSES.forEach((cls) => el.classList.remove(cls));
+    if (state) el.classList.add(state);
+  }
+
   // === RESOURCES DIAG ===
   async function updateResourceRow(resName) {
     const tr = document.querySelector(`tr[data-res="${resName}"]`);
     if (!tr) return;
     const statusEl = tr.querySelector(".res-status");
     const holdersEl = tr.querySelector(".res-holders");
-    if (statusEl) statusEl.textContent = t("meta.loading");
+    setResourceStatus(statusEl, "is-off", t("meta.loading"));
     try {
       const data = await fetchJson(`/api/resource/${encodeURIComponent(resName)}`);
       const free = !!data.free;
-      if (statusEl) {
-        statusEl.textContent = data.error
-          ? `${t("resources.status_error")}: ${data.error}`
-          : free
-            ? t("resources.status_free")
-            : t("resources.status_busy");
+      if (data.error) {
+        setResourceStatus(
+          statusEl,
+          "is-err",
+          `${t("resources.status_error")}: ${data.error}`,
+        );
+      } else if (free) {
+        setResourceStatus(statusEl, "is-ok", t("resources.status_free"));
+      } else {
+        setResourceStatus(statusEl, "is-warn", t("resources.status_busy"));
       }
       if (holdersEl) {
         const holders = (data.holders || []).map((holder) => {
@@ -1780,7 +1764,7 @@
         holdersEl.textContent = holders.length ? holders.join(", ") : t("resources.holders_none");
       }
     } catch (e) {
-      if (statusEl) statusEl.textContent = e.message || String(e);
+      setResourceStatus(statusEl, "is-err", e.message || String(e));
       if (holdersEl) holdersEl.textContent = "-";
     }
   }
@@ -1915,9 +1899,6 @@
   setInterval(() => {
     refreshScenarioList(true).catch(() => {});
   }, 5000);
-  setInterval(() => {
-    fetchMotionEnable().catch(() => {});
-  }, 6000);
 
   // === SSE EVENTS ===
   try {
@@ -1942,7 +1923,6 @@
   fetchAiModeStatus().catch(() => {});
   fetchProviderState().catch(() => {});
   fetchControlState().catch(() => {});
-  fetchMotionEnable().catch(() => {});
   fetchMotionQueue().catch(() => {});
   refreshScenarioList().catch(() => {});
 </script>
