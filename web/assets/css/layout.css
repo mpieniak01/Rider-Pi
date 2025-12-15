@@ -1,0 +1,278 @@
+/**
+ * Layout Styles - Rider-PC Dashboard
+ * Page layout, grid systems, and structural components.
+ * ------------------------------------------------------------------
+ */
+
+/* ===== Page Layout ===== */
+.layout-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.layout-header {
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+  display: block;
+  margin: 0;
+  background: linear-gradient(180deg, rgba(5, 11, 24, 0.96), rgba(5, 11, 24, 0.88));
+  box-shadow: var(--shadow-menu);
+}
+
+.layout-header:empty {
+  min-height: var(--menu-height);
+}
+
+.layout-header.menu-ready {
+  margin-bottom: var(--space-xl);
+}
+
+.layout-main {
+  flex: 1;
+  max-width: var(--page-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--page-padding);
+}
+
+.layout-footer {
+  display: block;
+  margin-top: var(--space-xl);
+  position: sticky;
+  bottom: 0;
+  z-index: 900;
+  width: 100%;
+  background: rgba(5, 11, 24, 0.96);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-footer);
+}
+
+/* Legacy support */
+main,
+.wrap,
+.page {
+  max-width: var(--page-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--page-padding);
+}
+
+/* ===== Flex Row Layouts ===== */
+.l-row,
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap, var(--space-md));
+  align-items: center;
+}
+
+.l-row--stretch {
+  align-items: stretch;
+}
+
+.l-row--start {
+  align-items: flex-start;
+}
+
+.l-row--between {
+  justify-content: space-between;
+}
+
+.l-row--center {
+  justify-content: center;
+}
+
+/* ===== Grid Layouts ===== */
+.l-grid,
+.grid {
+  display: grid;
+  gap: var(--grid-gap, var(--space-xl));
+  grid-template-columns: repeat(auto-fit, minmax(var(--grid-min, 240px), 1fr));
+  align-items: stretch;
+}
+
+.l-grid > *,
+.grid > * {
+  height: 100%;
+}
+
+.l-grid .c-card,
+.grid .c-card {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.l-grid--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.l-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.l-grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1100px) {
+  .l-grid--4 {
+    grid-template-columns: repeat(auto-fit, minmax(var(--grid-min, 240px), 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .l-grid--2,
+  .l-grid--3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Stack Layouts ===== */
+.l-stack,
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-gap, var(--space-md));
+}
+
+.l-stack--sm {
+  gap: var(--space-sm);
+}
+
+.l-stack--lg {
+  gap: var(--space-xl);
+}
+
+/* ===== Cluster Layout ===== */
+.l-cluster,
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  align-items: center;
+}
+
+/* ===== Flow Layout (consistent vertical rhythm) ===== */
+.flow > * + * {
+  margin-top: var(--flow-space, var(--space-md));
+}
+
+.flow--sm > * + * {
+  margin-top: var(--space-sm);
+}
+
+.flow--lg > * + * {
+  margin-top: var(--space-xl);
+}
+
+/* ===== Auto Grid (responsive equal columns) ===== */
+.auto-grid {
+  display: grid;
+  gap: var(--grid-gap, var(--space-xl));
+  grid-template-columns: repeat(auto-fit, minmax(var(--auto-grid-min, 280px), 1fr));
+}
+
+.auto-grid--sm {
+  --auto-grid-min: 200px;
+}
+
+.auto-grid--lg {
+  --auto-grid-min: 360px;
+}
+
+/* ===== Form Grid ===== */
+.form-grid {
+  display: grid;
+  gap: var(--space-lg);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.form-grid--single {
+  grid-template-columns: 1fr;
+}
+
+/* ===== Media Frame ===== */
+.media-frame {
+  background: #08111c;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-sm);
+  overflow: hidden;
+}
+
+.media-frame img,
+.media-frame video,
+.media-frame canvas {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-md);
+}
+
+.media-frame--blank {
+  background: #000;
+  border-color: #222;
+}
+
+/* ===== Surface/Section ===== */
+.surface,
+.section {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  padding: var(--card-padding);
+}
+
+.surface + .surface,
+.section + .section {
+  margin-top: var(--space-xl);
+}
+
+/* ===== Panel Row ===== */
+.panel-row {
+  display: grid;
+  gap: var(--space-xl);
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  align-items: stretch;
+  grid-auto-rows: 1fr;
+  margin-bottom: var(--space-xl);
+}
+
+.panel-row > .c-card {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== Split Layout ===== */
+.layout-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xl);
+}
+
+@media (max-width: 768px) {
+  .layout-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Content Width Variants ===== */
+.layout-main--narrow {
+  --page-max-width: 900px;
+}
+
+.layout-main--wide {
+  --page-max-width: 1400px;
+}
+
+/* ===== Responsive Container ===== */
+.container {
+  width: 100%;
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding-left: var(--space-xl);
+  padding-right: var(--space-xl);
+}

@@ -1,0 +1,80 @@
+html[data-dashboard-theme="v3"] .page-models {
+  --models-card-bg: rgba(7, 18, 32, 0.9);
+  --models-card-border: rgba(126, 196, 255, 0.25);
+  --models-input-bg: rgba(4, 12, 20, 0.9);
+  --models-text-primary: var(--color-fg-primary);
+  --models-text-secondary: var(--color-fg-muted);
+  --models-accent-pc: #9bcfff;
+  --models-accent-pi: #6de6a4;
+  --models-status-success: #6de6a4;
+  --models-status-cloud: #8bb7ff;
+  --models-status-error: var(--color-error);
+  --models-brand-primary: #9bcfff;
+}
+
+html[data-dashboard-theme="v3"] .page-models .pipeline-section {
+  border-radius: 18px;
+  background: linear-gradient(120deg, rgba(8, 22, 40, 0.95), rgba(5, 11, 18, 0.8));
+  border-color: rgba(126, 196, 255, 0.2);
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.5);
+}
+
+html[data-dashboard-theme="v3"] .page-models .pipeline-card,
+html[data-dashboard-theme="v3"] .page-models .engine-card {
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  border-radius: 14px;
+  border-color: rgba(126, 196, 255, 0.2);
+  background: rgba(6, 16, 28, 0.95);
+}
+
+html[data-dashboard-theme="v3"] .page-models .pipeline-card-header {
+  padding: 1rem 1.25rem;
+  font-weight: 600;
+  font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--models-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+html[data-dashboard-theme="v3"] .page-models .pc-card .pipeline-card-header {
+  background: linear-gradient(to right, rgba(126, 196, 255, 0.12), transparent);
+}
+
+html[data-dashboard-theme="v3"] .page-models .pc-card .pipeline-card-header .icon {
+  color: var(--models-accent-pc);
+}
+
+html[data-dashboard-theme="v3"] .page-models .pi-card .pipeline-card-header {
+  background: linear-gradient(to right, rgba(109, 226, 138, 0.12), transparent);
+}
+
+html[data-dashboard-theme="v3"] .page-models .pi-card .pipeline-card-header .icon {
+  color: var(--models-accent-pi);
+}
+
+html[data-dashboard-theme="v3"] .page-models .active-status-bar {
+  border-left: 3px solid var(--models-brand-primary);
+  background: rgba(8, 20, 34, 0.9);
+  color: var(--models-text-secondary);
+}
+
+html[data-dashboard-theme="v3"] .page-models .active-status-bar.is-active-cloud {
+  box-shadow: inset 0 0 0 1px rgba(126, 196, 255, 0.3);
+  border-left-color: var(--models-status-cloud);
+  color: var(--models-text-primary);
+}
+
+html[data-dashboard-theme="v3"] .page-models .active-status-bar.is-active-local {
+  box-shadow: inset 0 0 0 1px rgba(109, 226, 138, 0.3);
+  border-left-color: var(--models-status-success);
+  color: var(--models-text-primary);
+}
+
+html[data-dashboard-theme="v3"] .page-models .pipeline-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(126, 196, 255, 0.45);
+}

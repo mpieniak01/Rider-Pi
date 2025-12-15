@@ -1,0 +1,47 @@
+:root[data-dashboard-theme="classic-plus"] {
+  --card-bg: var(--color-bg-elevated);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --section-bg: rgba(7, 16, 28, 0.85);
+  --section-border: rgba(255, 255, 255, 0.08);
+  --button-bg: linear-gradient(135deg, rgba(18, 40, 68, 0.95), rgba(5, 18, 34, 0.9));
+  --button-border: rgba(126, 196, 255, 0.25);
+}
+
+:root[data-dashboard-theme="classic-plus"] .layout-main {
+  background: var(--color-bg-primary);
+  padding: var(--space-xxl) var(--space-xl) 72px;
+}
+
+:root[data-dashboard-theme="classic-plus"] .c-section {
+  background: var(--section-bg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--section-border);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-dashboard-theme="classic-plus"] .c-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-dashboard-theme="classic-plus"] .c-card__title::before,
+:root[data-dashboard-theme="classic-plus"] .section-title::before {
+  background: rgba(126, 196, 255, 0.5);
+}
+
+:root[data-dashboard-theme="classic-plus"] .c-btn,
+:root[data-dashboard-theme="classic-plus"] button {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+  color: var(--color-fg-primary);
+  box-shadow: none;
+}
+
+:root[data-dashboard-theme="classic-plus"] .c-btn:hover,
+:root[data-dashboard-theme="classic-plus"] button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+}

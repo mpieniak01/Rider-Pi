@@ -1,0 +1,137 @@
+/**
+ * Design Tokens - Rider-PC Dashboard
+ * Centralized design variables for consistent styling across all pages.
+ * ------------------------------------------------------------------
+ */
+
+:root {
+  /* ===== Color Tokens ===== */
+  /* Background colors */
+  --color-bg-primary: #050b12;
+  --color-bg-secondary: #0d1926;
+  --color-bg-surface: #0f2030;
+  --color-bg-elevated: #0b1a27;
+  --color-bg-input: #0b1520;
+  --color-bg-overlay: rgba(5, 11, 24, 0.97);
+  --color-bg-overlay-dark: rgba(0, 0, 0, 0.75);
+
+  /* Foreground colors */
+  --color-fg-primary: #e6eef7;
+  --color-fg-secondary: #b7cee3;
+  --color-fg-muted: #93a8c1;
+  --color-fg-hint: #9ab1c9;
+
+  /* Accent colors */
+  --color-accent: #7ec4ff;
+  --color-accent-light: #98c7ff;
+  --color-accent-hover: rgba(126, 196, 255, 0.15);
+  --color-accent-border: rgba(126, 196, 255, 0.45);
+
+  /* Status colors */
+  --color-ok: #6de28a;
+  --color-ok-bg: #0d2418;
+  --color-ok-border: #2c6b48;
+  --color-warn: #f0c36d;
+  --color-warn-bg: #2a2418;
+  --color-warn-border: #7a6434;
+  --color-error: #ff8080;
+  --color-error-bg: #2a1818;
+  --color-error-border: #8a3a3a;
+  --color-off: #b7cee3;
+  --color-off-bg: #0b1a27;
+  --color-off-border: #24425e;
+
+  /* Border colors */
+  --color-border-primary: #152536;
+  --color-border-secondary: #1e3a56;
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-interactive: rgba(255, 255, 255, 0.12);
+
+  /* ===== Spacing Tokens ===== */
+  --space-xxs: 4px;
+  --space-xs: 6px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 18px;
+  --space-xxl: 24px;
+  --space-xxxl: 40px;
+
+  /* ===== Typography Tokens ===== */
+  --font-family-ui: system-ui, "Segoe UI", roboto, helvetica, arial, sans-serif;
+  --font-family-mono: ui-monospace, consolas, "Fira Code", monaco, monospace;
+  --font-size-xxs: 11px;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-xxl: 24px;
+  --font-size-body: var(--font-size-md);
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.45;
+  --line-height-relaxed: 1.6;
+
+  /* ===== Border Radius Tokens ===== */
+  --radius-xxs: 4px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-xxl: 16px;
+  --radius-pill: 999px;
+
+  /* ===== Shadow Tokens ===== */
+  --shadow-sm: 0 3px 8px rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 6px 14px rgba(0, 0, 0, 0.26);
+  --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.32);
+  --shadow-xl: 0 16px 46px rgba(0, 0, 0, 0.4);
+  --shadow-menu: 0 6px 17px rgba(0, 0, 0, 0.45);
+  --shadow-footer: 0 -6px 17px rgba(0, 0, 0, 0.45);
+
+  /* ===== Layout Tokens ===== */
+  --page-max-width: 1180px;
+  --page-padding: 24px 18px 40px;
+  --menu-height: 78px;
+
+  /* ===== Card Tokens ===== */
+  --card-bg: #0f2030;
+  --card-border: #1e3a56;
+  --card-radius: var(--radius-xxl);
+  --card-padding: var(--space-lg);
+  --card-shadow: var(--shadow-lg);
+
+  /* ===== Grid Tokens ===== */
+  --grid-gap: var(--space-xl);
+  --grid-min: 240px;
+  --stack-gap: var(--space-md);
+
+  /* ===== Transition Tokens ===== */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* ===== Semantic aliases (backward compatibility) ===== */
+  --bg: var(--color-bg-primary);
+  --fg: var(--color-fg-primary);
+  --muted: var(--color-fg-muted);
+  --accent: var(--color-accent);
+  --border: var(--color-border-primary);
+  --card: var(--color-bg-secondary);
+  --shadow: var(--shadow-lg);
+  --pad: var(--space-lg);
+  --gap: var(--space-md);
+  --gap-sm: var(--space-sm);
+  --gap-lg: var(--space-xl);
+}
+
+/* Dark theme - applied by default */
+body,
+[data-theme="dark"] {
+  color-scheme: dark;
+}

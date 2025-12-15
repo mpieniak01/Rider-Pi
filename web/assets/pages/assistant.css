@@ -1,0 +1,38 @@
+.page-assistant{--page-padding:26px var(--space-xl) 60px;--card-radius:var(--radius-xxl);--card-padding:var(--space-xl);}
+.page-assistant .custom-command-row{display:flex;gap:var(--space-md);align-items:center;flex-wrap:wrap;}
+.page-assistant .custom-input{flex:1;min-width:200px;padding:var(--space-md) var(--space-lg);border:1px solid var(--color-off-border);border-radius:var(--radius-lg);background:var(--color-bg-input);color:var(--color-fg-primary);font-size:var(--font-size-md);}
+.page-assistant .custom-input:focus{outline:none;border-color:var(--color-ok);}
+.page-assistant .custom-input::placeholder{color:var(--color-fg-secondary);}
+.page-assistant .device-grid{--grid-min:260px;--grid-gap:var(--space-xl);margin:var(--space-lg) 0;}
+.page-assistant .device-card{--card-padding:var(--space-md);display:flex;flex-direction:column;gap:var(--space-md);min-height:160px;transition:transform var(--transition-fast),box-shadow var(--transition-fast);}
+.page-assistant .device-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+.page-assistant .device-header{display:flex;align-items:center;gap:var(--space-md);}
+.page-assistant .device-header .status-dot{--status-dot-size:12px;width:var(--status-dot-size);height:var(--status-dot-size);flex-shrink:0;}
+.page-assistant .device-info{flex:1;}
+.page-assistant .device-name{font-weight:var(--font-weight-semibold);font-size:15px;}
+.page-assistant .device-room,.page-assistant .device-category{font-size:var(--font-size-xs);color:var(--color-fg-secondary);}
+.page-assistant .device-category{text-transform:uppercase;letter-spacing:.04em;}
+.page-assistant .device-controls{display:flex;flex-wrap:wrap;gap:var(--space-sm);margin-top:auto;}
+.page-assistant .btn-on,.page-assistant .btn-off,.page-assistant .btn-dock{color:var(--color-bg-primary);border-color:transparent;}
+.page-assistant .btn-on{background:var(--color-ok);border-color:var(--color-ok-border);}
+.page-assistant .btn-on:hover{background:#7bf2a1;border-color:var(--color-ok);}
+.page-assistant .btn-off{background:var(--color-border-primary);border-color:var(--color-border-primary);color:var(--color-fg-primary);}
+.page-assistant .btn-off:hover{background:var(--color-border-secondary);border-color:var(--color-border-secondary);}
+.page-assistant .btn-dock{background:var(--color-accent);border-color:var(--color-accent-border);color:#041321;}
+.page-assistant .btn-dock:hover{background:#8dd0ff;border-color:var(--color-accent);}
+.page-assistant .brightness-row{width:100%;margin-top:var(--space-sm);}
+.page-assistant .brightness-row .control-label{display:flex;align-items:center;gap:var(--space-sm);font-size:var(--font-size-sm);}
+.page-assistant input[type="range"]{width:120px;accent-color:var(--color-ok);}
+.page-assistant .brightness-value{font-size:var(--font-size-xs);color:var(--color-fg-secondary);min-width:40px;}
+.page-assistant .history-list{display:flex;flex-direction:column;gap:var(--space-sm);max-height:300px;overflow-y:auto;}
+.page-assistant .history-item{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-sm) var(--space-md);border-radius:var(--radius-md);background:var(--color-bg-elevated);border:1px solid var(--color-off-border);}
+.page-assistant .history-item.success{border-left:3px solid var(--color-ok);}
+.page-assistant .history-item.failed{border-left:3px solid var(--color-error);}
+.page-assistant .history-time{font-size:var(--font-size-xs);color:var(--color-fg-secondary);min-width:70px;}
+.page-assistant .history-command{flex:1;font-size:var(--font-size-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.page-assistant .history-status{font-size:var(--font-size-md);}
+.page-assistant .history-item.success .history-status{color:var(--color-ok);}
+.page-assistant .history-item.failed .history-status{color:var(--color-error);}
+.page-assistant .c-status-msg{margin-bottom:var(--space-md);}
+.page-assistant .c-status-msg.ok{border-color:var(--color-ok-border);color:var(--color-ok);}
+.page-assistant .c-status-msg.err{border-color:var(--color-error-border);color:#ff9f9f;}

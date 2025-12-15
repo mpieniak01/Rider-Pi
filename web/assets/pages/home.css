@@ -1,0 +1,42 @@
+/**
+ * Home Page Styles - Rider-PC Dashboard
+ * Page-specific overrides (~50 lines)
+ * Migrated: Uses .page-home instead of body[data-page="home"]
+ * ------------------------------------------------------------------
+ */
+
+/* Page token overrides */
+.page-home {
+  --page-padding: var(--space-xxl) var(--space-xl) 60px;
+  --card-padding: var(--space-xl);
+}
+
+/* Data list styling */
+.page-home .c-data-list {
+  gap: var(--space-sm);
+}
+
+.page-home .c-data-list__label {
+  color: var(--color-fg-secondary);
+  min-width: 140px;
+}
+
+.page-home .c-data-list__value {
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Code block for snapshot */
+.page-home .c-code-block {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.page-home .footer-links {
+  align-items: center;
+  font-size: var(--font-size-sm);
+}
+
+.page-home .footer-links .u-sep {
+  margin: 0 var(--space-xs);
+  color: var(--color-fg-muted);
+}

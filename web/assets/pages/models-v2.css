@@ -1,0 +1,13 @@
+html[data-dashboard-theme="v2"] .page-models {
+  --models-card-bg: var(--color-bg-elevated);
+  --models-card-border: rgba(255, 255, 255, 0.08);
+  --models-input-bg: rgba(8, 19, 32, 0.7);
+  --models-text-primary: var(--color-fg-primary);
+  --models-text-secondary: var(--color-fg-muted);
+  --models-accent-pc: var(--color-accent);
+  --models-accent-pi: var(--color-ok);
+  --models-status-success: var(--color-ok);
+  --models-status-cloud: var(--color-accent);
+  --models-status-error: var(--color-error);
+  --models-brand-primary: var(--color-accent);
+}

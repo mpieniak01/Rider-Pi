@@ -1,0 +1,41 @@
+/**
+ * Navigation Page Styles - Rider-PC Dashboard
+ * Navigation visualizer page-specific overrides (~80 lines)
+ * Migrated: Uses .page-navigation instead of Tailwind-like utilities
+ * ------------------------------------------------------------------
+ */
+
+/* Page-specific overrides */
+.page-navigation {
+  --page-padding: var(--space-lg);
+}
+
+.navigation-main {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 140px);
+}
+
+/* Canvas container - uses media-frame from layout.css */
+.navigation-canvas {
+  flex-grow: 1;
+  position: relative;
+  width: 100%;
+  min-height: 400px;
+  padding: 0;
+}
+
+.navigation-canvas canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #1f2937;
+  border-radius: var(--radius-md);
+}
+
+/* Legend items - extends c-legend from components.css */
+.page-navigation .c-legend__dot {
+  border: 1px solid #9ca3af;
+}

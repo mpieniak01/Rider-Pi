@@ -1,26 +1,45 @@
 <!doctype html>
+<!--
+  Migrated to dashboard_base.html template structure
+  Uses shared layout classes: .layout-header, .layout-main, .layout-footer
+-->
 <html lang="pl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rider-Pi — Google Home Control</title>
+  <title>Rider-Pi: Google Home Control</title>
+  <script src="/web/assets/theme-loader.js" defer></script>
   <link rel="stylesheet" href="/web/assets/dashboard-common.css">
-  <link rel="stylesheet" href="/web/assets/google-home.css">
+  <link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
+  <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
+  <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
+  <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
+  <link rel="stylesheet" href="/web/assets/pages/google-home.css">
 </head>
-<body data-page="google">
-<div data-dashboard-menu-target></div>
-<div class="wrap">
+<body data-page="google" class="page page-google">
+  <!-- Header with Menu -->
+  <header class="layout-header" data-dashboard-menu-target></header>
+
+  <!-- Main content -->
+  <main class="layout-main">
   
-  <h1 data-i18n="home.page_title">
-    Rider-Pi — Google Home Control
-    <span id="authBadge" class="c-pill warn" data-i18n="home.auth_checking">Checking…</span>
-  </h1>
+  <header class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-title"><span class="brand-accent">Rider-Pi</span>: <span class="page-title-text">Google Home Control</span></h1>
+    </div>
+    <div class="page-header__actions page-header__actions--small text-legend">
+      <span id="authBadge" class="c-pill warn" data-i18n="home.auth_checking">Checking…</span>
+      <button class="c-btn btn-auth btn-auth--ghost" type="button" data-auth-trigger="header">
+        <span data-i18n="home.auth_button">Sign in with Google</span>
+      </button>
+    </div>
+  </header>
 
   <!-- AUTH SECTION -->
   <div id="authSection" class="c-card hidden">
     <h2 class="c-card__title" data-i18n="home.auth_title">Authentication Required</h2>
     <p data-i18n="home.auth_description">To control your Google Home devices, please sign in with your Google account.</p>
-    <button id="btnAuth" class="btn-auth" data-i18n="home.auth_button">Sign in with Google</button>
+    <button id="btnAuth" class="c-btn btn-auth" type="button" data-auth-trigger="primary" data-i18n="home.auth_button">Sign in with Google</button>
   </div>
 
   <!-- DEVICES SECTION -->
@@ -32,22 +51,19 @@
     </div>
     
     <div id="statusMsg" class="c-status-msg hidden"></div>
+    <div class="c-status-msg ok status-preview" style="display:none" aria-hidden="true"></div>
+    <div class="c-status-msg err status-preview" style="display:none" aria-hidden="true"></div>
     
     <div id="devicesList" class="device-grid l-grid">
       <div class="muted" data-i18n="meta.loading">Loading…</div>
     </div>
   </div>
+  </main>
 
-  <!-- FOOTER -->
-  <div class="l-row footer-links">
-    <a href="/" class="muted" data-i18n="meta.dashboard">↩ dashboard</a>
-    <span class="u-sep">•</span>
-    <a href="/chat" class="muted">💬 chat</a>
-  </div>
+  <!-- Footer -->
+  <footer class="layout-footer" data-dashboard-footer-target></footer>
 
-</div>
-
-<!-- APP (i18n + logika) -->
+  <!-- APP (i18n + logika) -->
 <script type="module">
 import { initI18n, applyDom, t } from '/web/assets/i18n.js';
 
@@ -455,30 +471,26 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
     return div.innerHTML;
   }
 
-  // --- Event listeners
-  qs('#btnAuth').addEventListener('click', async ()=> {
-    const btn = qs('#btnAuth');
-    const originalText = btn.textContent;
-    
+  async function handleAuth(button){
+    if(!button) return;
+    const originalText = button.textContent;
     try {
-      btn.disabled = true;
-      btn.textContent = t('meta.loading') + '...';
-      
-      // POST request with extended timeout for blocking OAuth flow
+      button.disabled = true;
+      button.textContent = `${t('meta.loading')}...`;
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
-      
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+
       const response = await fetch('/api/home/auth', {
         method: 'POST',
-        signal: controller.signal
+        signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
       const result = await response.json().catch(() => ({}));
-      
+
       if (response.ok && result.ok) {
         showStatus(t('home.auth_success'), 'ok');
-        // Refresh to show devices
         await checkAuth();
       } else {
         throw new Error(result.error || 'Authentication failed');
@@ -489,9 +501,14 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
       } else {
         showStatus(t('home.error_auth', {msg: e.message}), 'err');
       }
-      btn.disabled = false;
-      btn.textContent = originalText;
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
     }
+  }
+
+  document.querySelectorAll('[data-auth-trigger]').forEach(btn => {
+    btn.addEventListener('click', ()=> handleAuth(btn));
   });
 
   qs('#btnRefresh').addEventListener('click', ()=> loadDevices());
@@ -508,6 +525,7 @@ import { initI18n, applyDom, t } from '/web/assets/i18n.js';
   checkAuth();
 </script>
 <script type="module" src="/web/assets/menu.js"></script>
+<script type="module" src="/web/assets/footer.js"></script>
 
 </body>
 </html>
