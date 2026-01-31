@@ -224,13 +224,15 @@ python3 -m apps.navigator.main
 
 This is a personal learning project. Contributions, suggestions, and feedback are welcome!
 
-## License
-
-See LICENSE file for details.
-
 ## Acknowledgments
 
 - XGO Robot platform
 - OpenCV, TensorFlow Lite for vision
 - OpenAI, Google Gemini for AI features
 - ZMQ for messaging infrastructure
+
+## 📝 License
+
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
+
+Copyright (c) 2025-2026 Maciej Pieniak
