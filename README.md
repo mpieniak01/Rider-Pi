@@ -2,6 +2,14 @@
 
 > This is not an official repository for the Rider-PI robot. It is a sandbox for practicing robot programming.
 
+<p align="center">
+  <a href="./data/Rider-Pi_01_a64b25c8-2cba-4f4e-b1d8-8cd5d543a9fb_600x.webp">
+    <img src="./data/Rider-Pi_01_a64b25c8-2cba-4f4e-b1d8-8cd5d543a9fb_600x.webp" width="400">
+  </a>
+</p>
+
+
+
 ## Overview
 
 Rider-Pi is a comprehensive robotics platform built on Raspberry Pi, featuring:
