@@ -100,7 +100,7 @@ def test_tracker_subscribes_to_correct_topic():
 
 def test_documentation_updated():
     """Test that documentation reflects the new endpoint."""
-    with open("docs/modules/vision.md") as f:
+    with open("docs/apps/vision.md") as f:
         content = f.read()
         # Check that documentation mentions the new endpoint
         assert "/vision/tracking/mode" in content

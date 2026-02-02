@@ -64,11 +64,13 @@ def test_mqtt_integration():
         msg = json.dumps(cmd, separators=(",", ":"))
         pub.send_multipart([MOTION_TOPIC.encode("utf-8"), msg.encode("utf-8")])
 
-        # Wait for message to propagate
-        time.sleep(0.2)
-
-        # Process commands
-        robot.recv_commands()
+        # Wait for message to propagate and subscription to settle
+        deadline = time.time() + 2.0
+        while time.time() < deadline and robot.linear_vel <= 0.0:
+            robot.recv_commands()
+            if robot.linear_vel > 0.0:
+                break
+            time.sleep(0.05)
 
         # Verify robot received command
         assert robot.linear_vel > 0.0, "Robot should have positive linear velocity"
@@ -81,8 +83,12 @@ def test_mqtt_integration():
         msg = json.dumps(cmd, separators=(",", ":"))
         pub.send_multipart([MOTION_TOPIC.encode("utf-8"), msg.encode("utf-8")])
 
-        time.sleep(0.2)
-        robot.recv_commands()
+        deadline = time.time() + 2.0
+        while time.time() < deadline and robot.linear_vel != 0.0:
+            robot.recv_commands()
+            if robot.linear_vel == 0.0:
+                break
+            time.sleep(0.05)
 
         # Verify robot stopped
         assert robot.linear_vel == 0.0, "Robot should have zero linear velocity"
