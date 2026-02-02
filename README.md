@@ -1,13 +1,21 @@
-# Rider-Pi
+<p align="center">
+  <img src="./data/splash_logo.png" width="200">
+</p>
 
-> This is not an official repository for the Rider-PI robot. It is a sandbox for practicing robot programming.
+<h1 align="center">Rider-Pi</h1>
+
+<p align="center">
+  <em>
+    This is not an official repository for the Rider-Pi robot.<br>
+    It is a sandbox for practicing robot programming.
+  </em>
+</p>
 
 <p align="center">
   <a href="./data/Rider-Pi_01_a64b25c8-2cba-4f4e-b1d8-8cd5d543a9fb_600x.webp">
-    <img src="./data/Rider-Pi_01_a64b25c8-2cba-4f4e-b1d8-8cd5d543a9fb_600x.webp" width="400">
+    <img src="./data/Rider-Pi_01_a64b25c8-2cba-4f4e-b1d8-8cd5d543a9fb_600x.webp" width="420">
   </a>
 </p>
-
 
 
 ## Overview
