@@ -14,11 +14,11 @@ def healthz(C):
 
     cam_ts = C.LAST_CAMERA.get("ts")
     cam_age = (now - cam_ts) if cam_ts else None
-    camera_on = cam_age is not None and cam_age <= 5.0
+    camera_on = cam_age is not None and 0 <= cam_age <= 5.0
 
     xgo_ts = C.LAST_XGO.get("ts")
     xgo_age = (now - xgo_ts) if xgo_ts else None
-    xgo_on = xgo_age is not None and xgo_age <= 5.0
+    xgo_on = xgo_age is not None and 0 <= xgo_age <= 5.0
 
     inferred_pose = C.LAST_XGO.get("pose") or C._classify_pose(
         C.LAST_XGO.get("roll"),
@@ -70,7 +70,20 @@ def healthz(C):
             "roll": C.LAST_XGO.get("roll"),
             "pitch": C.LAST_XGO.get("pitch"),
             "yaw": yaw,
+            "yaw_raw": C.LAST_XGO.get("yaw_raw"),
             "fw": fw,
+            "ts": xgo_ts,
+            "observed_at": C.LAST_XGO.get("observed_at", xgo_ts),
+            "source": C.LAST_XGO.get("source", "unknown"),
+            "stale": C.LAST_XGO.get("stale") is True,
+            "offline": C.LAST_XGO.get("offline") is True,
+            "error": C.LAST_XGO.get("error"),
+            "sensor_quality": C.LAST_XGO.get("sensor_quality", {}),
+            "sensor_observed_at": C.LAST_XGO.get("sensor_observed_at", {}),
+            "battery_observed_at": C.LAST_XGO.get("battery_observed_at"),
+            "battery_ok": C.LAST_XGO.get("battery_ok"),
+            "imu_observed_at": C.LAST_XGO.get("imu_observed_at"),
+            "physical_validation": "unverified",
         },
     }
 

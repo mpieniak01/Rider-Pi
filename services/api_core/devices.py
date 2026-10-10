@@ -36,15 +36,17 @@ def _json_or_raw(payload: str):
         return s
 
 
+def _source_time(value):
+    try:
+        return value if type(value) in (int, float) and math.isfinite(value) and value > 0 else None
+    except OverflowError:
+        return None
+
+
 def _update_xgo_from_dict(d: dict):
     if not isinstance(d, dict):
         return
-    observed = d.get("observed_at", d.get("ts"))
-    try:
-        if type(observed) not in (int, float) or not math.isfinite(observed) or observed <= 0:
-            observed = None
-    except OverflowError:
-        observed = None
+    observed = _source_time(d.get("observed_at", d.get("ts")))
     C.LAST_XGO.update(
         ts=observed,
         observed_at=observed,
@@ -53,6 +55,27 @@ def _update_xgo_from_dict(d: dict):
         offline=d.get("offline") is True,
         error=d.get("error"),
     )
+    # IMU and battery have independent observation times. A partial IMU must
+    # not discard a valid battery reading or make it fresh at API reception.
+    incoming_quality = d.get("sensor_quality")
+    incoming_quality = incoming_quality if isinstance(incoming_quality, dict) else {}
+    incoming_quality = incoming_quality.get("sensors", incoming_quality)
+    incoming_quality = incoming_quality if isinstance(incoming_quality, dict) else {}
+    quality = dict(C.LAST_XGO.get("sensor_quality", {}))
+    times = dict(C.LAST_XGO.get("sensor_observed_at", {}))
+    incoming_times = d.get("sensor_observed_at")
+    incoming_times = incoming_times if isinstance(incoming_times, dict) else {}
+    for key in ("battery_observed_at", "imu_observed_at"):
+        carries_value = (
+            ("battery_pct" in d or "battery" in d)
+            if key == "battery_observed_at"
+            else any(axis in d for axis in ("roll", "pitch", "yaw"))
+        )
+        if key in d and carries_value:
+            value = d[key]
+            C.LAST_XGO[key] = _source_time(value)
+    if "battery_ok" in d and ("battery_pct" in d or "battery" in d):
+        C.LAST_XGO["battery_ok"] = d["battery_ok"] if isinstance(d["battery_ok"], bool) else None
     for key in ("imu_ok", "pose", "pose_label", "uart_owner"):
         if key in d:
             C.LAST_XGO[key] = d[key]
@@ -65,9 +88,56 @@ def _update_xgo_from_dict(d: dict):
                 value = float(d[key]) if d[key] is not None else None
                 if value is not None and not math.isfinite(value):
                     value = None
+                if key == "yaw":
+                    C.LAST_XGO["yaw_raw"] = value
                 C.LAST_XGO[key] = C._norm_angle180(value) if key == "yaw" and value is not None else value
             except (TypeError, ValueError, OverflowError):
                 C.LAST_XGO[key] = None
+                if key == "yaw":
+                    C.LAST_XGO["yaw_raw"] = None
+    for name in ("roll", "pitch", "yaw", "battery"):
+        present = ("battery_pct" in d or "battery" in d) if name == "battery" else name in d
+        if not present:
+            continue
+        # imu.data also carries battery metadata, but no battery value. Never
+        # attach a newer timestamp to the cached value from devices.xgo.
+        row = incoming_quality.get(name)
+        row = dict(row) if isinstance(row, dict) else None
+        key = "battery_observed_at" if name == "battery" else "imu_observed_at"
+        at = (
+            row["observed_at"]
+            if row is not None and "observed_at" in row
+            else incoming_times[name]
+            if name in incoming_times
+            else d[key]
+            if key in d
+            else observed
+        )
+        at = _source_time(at)
+        value = C.LAST_XGO.get("battery" if name == "battery" else name)
+        ready = value is not None and at is not None and d.get("offline") is not True and not d.get("error")
+        ready = ready and (
+            row.get("ready") is True
+            if row is not None
+            else d.get("stale") is not True
+            and (d.get("battery_ok") is not False if name == "battery" else d.get("imu_ok") is not False)
+        )
+        if row is not None:
+            ready = ready and not row.get("error") and row.get("offline") is not True and row.get("stale") is not True
+        times[name] = at
+        quality[name] = {
+            **(row or {}),
+            "ready": bool(ready),
+            "observed_at": at,
+            "source": (row or {}).get("source", C.LAST_XGO["source"]),
+        }
+        if name == "battery":
+            C.LAST_XGO["battery_observed_at"] = at
+            C.LAST_XGO["battery_ok"] = bool(ready)
+    C.LAST_XGO["sensor_quality"] = quality
+    C.LAST_XGO["sensor_observed_at"] = times
+    axis_times = [times.get(name) for name in ("roll", "pitch", "yaw")]
+    C.LAST_XGO["imu_observed_at"] = min(axis_times) if all(at is not None for at in axis_times) else None
     if "fw" in d:
         C.XGO_FW = C._sanitize_fw(d["fw"])
 

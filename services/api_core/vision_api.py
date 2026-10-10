@@ -102,8 +102,10 @@ def snap_info() -> Response:
     def info(p: str) -> dict[str, Any]:
         try:
             st = os.stat(p)
-            with open(p, "rb") as f:
-                md5 = hashlib.md5(f.read()).hexdigest()
+            md5 = None
+            if request.args.get("light") != "1":
+                with open(p, "rb") as f:
+                    md5 = hashlib.md5(f.read()).hexdigest()
             now = time.time()
             return {
                 "exists": True,
@@ -121,6 +123,7 @@ def snap_info() -> Response:
         "proc": info(C.PROC_PATH),
         "ssd": info(_ssd_path()),
         "tracker": info(os.path.join(C.SNAP_DIR, "tracker.jpg")),
+        "obst": info(os.path.join(C.SNAP_DIR, "obst_annot.jpg")),
     }
     return _json_nocache(payload, 200)
 

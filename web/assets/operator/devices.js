@@ -1,14 +1,38 @@
-import { cameraFrame, fresh, presentationReady, displayValue } from './model.js';
+import { cameraFrame, fresh, presentationReady, displayValue, ageOf } from './model.js';
 import { request, poll } from './transport.js';
-import { el, freshPill, kv, tr, ageStamp, text, showError, rawDetails } from './ui.js';
+import { el, freshPill, pill, kv, tr, ageStamp, text, showError, rawDetails } from './ui.js';
+export function telemetryChannel(xgo, name, unavailable = false) {
+  const quality = xgo?.sensor_quality?.sensors || xgo?.sensor_quality || {};
+  const channel = quality[name];
+  const times = xgo?.sensor_observed_at || {};
+  const independent = channel && typeof channel === 'object';
+  const at = independent && Object.hasOwn(channel, 'observed_at') ? channel.observed_at
+    : Object.hasOwn(times, name) ? times[name]
+      : name === 'battery' && Object.hasOwn(xgo || {}, 'battery_observed_at') ? xgo.battery_observed_at
+        : xgo && Object.hasOwn(xgo, 'observed_at') ? xgo.observed_at : xgo?.ts;
+  const row = { ...(independent ? channel : {}), observed_at: at,
+    offline: unavailable || xgo?.offline === true, error: channel?.error || xgo?.error,
+    stale: independent ? channel.stale === true : xgo?.stale === true,
+    source: channel?.source || xgo?.source || 'unknown' };
+  const value = name === 'battery' ? xgo?.battery_pct : name === 'yaw' ? xgo?.yaw_raw ?? xgo?.yaw : xgo?.[name];
+  const good = typeof value === 'number' && Number.isFinite(value)
+    && (name !== 'battery' || value >= 0 && value <= 100)
+    && (!independent || channel.ready === true) && presentationReady(row, 2.5)
+    && (name !== 'battery' || xgo?.battery_ok !== false);
+  return { ...row, value, ready: good };
+}
 export class Devices {
   constructor() {
     this.imageBusy = false; this.preview = false; this.meta = null; this.lastFrame = null; this.displayed = null; this.pendingImage = null;
+    this.xgo = null; this.telemetryUnavailable = true;
     this.image = document.getElementById('camera-image');
     this.image?.addEventListener('load', () => { this.displayed = this.pendingImage; this.pendingImage = null; this.imageBusy = false; clearTimeout(this.imageTimeout); this.renderPreview(); });
     this.image?.addEventListener('error', () => { this.pendingImage = null; this.displayed = null; this.imageBusy = false; clearTimeout(this.imageTimeout); this.lastFrame = null; text('camera-display-age', tr('Nie udało się wczytać klatki', 'Frame load failed')); });
-    this.expiry = setInterval(() => { if (!document.hidden) this.renderPreview(); }, 1000);
-    window.addEventListener('pagehide', () => { clearInterval(this.expiry); clearTimeout(this.imageTimeout); });
+    this.expiry = setInterval(() => { if (!document.hidden) { this.renderPreview(); this.renderTelemetry(); } }, 1000);
+    window.addEventListener('pagehide', () => {
+      clearInterval(this.expiry); clearTimeout(this.imageTimeout);
+      this.poller.stop(); this.telemetryPoller.stop(); this.previewPoller.stop();
+    });
     document.getElementById('preview-toggle')?.addEventListener('click', () => { this.preview = !this.preview; this.renderPreview(); });
     document.getElementById('preview-refresh')?.addEventListener('click', () => this.fetchFrame());
     document.getElementById('preview-kind')?.addEventListener('change', () => { this.lastFrame = null; this.frame(); });
@@ -17,21 +41,22 @@ export class Devices {
     });
     this.poller = poll(() => this.load(), { interval: 10000, onError: showError,
       onVisibility: hidden => { if (hidden) { this.preview = false; this.renderPreview(); } } });
+    this.telemetryPoller = poll(() => this.loadTelemetry(), { interval: 2000,
+      onError: error => { this.telemetryUnavailable = true; this.renderTelemetry(); showError(error); } });
     this.previewPoller = poll(async () => {
       if (!this.preview) return;
-      this.meta = (await request('/vision/snap-info')).data; this.renderPreview();
+      this.meta = (await request('/vision/snap-info?light=1')).data; this.renderPreview();
     }, { interval: 2000, onError: error => { this.meta = null; this.renderPreview(); showError(error); } });
   }
   async fetchFrame() {
-    try { this.meta = (await request('/vision/snap-info')).data; this.renderPreview(); this.frame(true); }
+    try { this.meta = (await request('/vision/snap-info?light=1')).data; this.renderPreview(); this.frame(true); }
     catch (error) { this.meta = null; this.renderPreview(); showError(error); }
   }
   async load() {
     const target = document.getElementById('device-list');
-    const [stateResult, snapResult, ...resources] = await Promise.allSettled([
-      request('/state'), request('/vision/snap-info'), ...['camera', 'mic', 'speaker', 'lcd', 'uart'].map(name => request(`/api/resource/${name}`))
+    const [snapResult, ...resources] = await Promise.allSettled([
+      request('/vision/snap-info?light=1'), ...['camera', 'mic', 'speaker', 'lcd', 'uart'].map(name => request(`/api/resource/${name}`))
     ]);
-    const state = stateResult.status === 'fulfilled' ? stateResult.value.data : null;
     this.meta = snapResult.status === 'fulfilled' ? snapResult.value.data : null;
     const rows = resources.map((result, index) => {
       const name = ['camera', 'mic', 'speaker', 'lcd', 'uart'][index];
@@ -46,13 +71,41 @@ export class Devices {
       if (data.error) card.append(el('p', 'operator-error', data.error));
       card.append(rawDetails(data)); return card;
     });
-    const xgo = state?.devices?.xgo;
-    const telemetry = el('article', 'c-card');
-    telemetry.append(el('h3', '', tr('Bateria i IMU', 'Battery and IMU')), freshPill(xgo, presentationReady(xgo) ? tr('świeże', 'fresh') : tr('brak / stare', 'missing / stale'), presentationReady(xgo) ? 'ok' : 'warn', 3),
-      kv([[tr('Wiek pomiaru', 'Measurement age'), ageStamp(xgo)], [tr('Bateria', 'Battery'), displayValue(xgo?.battery_pct, '%')],
-        ['Roll / pitch / yaw', [xgo?.roll, xgo?.pitch, xgo?.yaw].map(value => displayValue(value)).join(' / ')]]));
-    target?.replaceChildren(telemetry, ...rows);
+    target?.replaceChildren(...rows);
     this.renderPreview();
+  }
+  async loadTelemetry() {
+    const data = (await request('/state')).data;
+    if (data?.error) throw new Error(data.error);
+    this.xgo = data?.devices?.xgo || null; this.telemetryUnavailable = false;
+    this.renderTelemetry();
+  }
+  renderTelemetry() {
+    const target = document.getElementById('telemetry-list'); if (!target) return;
+    const xgo = this.xgo;
+    const samples = Object.fromEntries(['roll', 'pitch', 'yaw', 'battery'].map(name => [name, telemetryChannel(xgo, name, this.telemetryUnavailable)]));
+    const axes = ['roll', 'pitch', 'yaw'].map(name => samples[name]);
+    const readyAxes = axes.filter(row => row.ready).length;
+    const imuAt = axes.every(row => typeof row.observed_at === 'number') ? Math.min(...axes.map(row => row.observed_at)) : null;
+    const label = readyAxes === 3 ? tr('IMU: świeży transport', 'IMU: fresh transport')
+      : readyAxes ? tr('IMU: częściowy odczyt', 'IMU: partial reading') : tr('IMU: brak / stare dane', 'IMU: missing / stale data');
+    const telemetry = el('article', 'c-card');
+    telemetry.append(el('h3', '', tr('Bateria i IMU', 'Battery and IMU')),
+      pill(label, readyAxes === 3 ? 'ok' : 'warn'));
+    const reading = (row, unit) => `${displayValue(row.value, unit)} · ${row.ready ? tr('świeży odczyt', 'fresh reading')
+      : tr('niepotwierdzony / stary', 'unconfirmed / stale')}`;
+    telemetry.append(kv([
+      [tr('Firmware (zapamiętane)', 'Firmware (cached)'), displayValue(xgo?.fw)],
+      [tr('Źródło', 'Source'), xgo?.source || 'unknown'], [tr('Właściciel UART', 'UART owner'), xgo?.uart_owner || 'unknown'],
+      [tr('Bateria', 'Battery'), reading(samples.battery, '%')], [tr('Wiek baterii', 'Battery age'), ageStamp(samples.battery, 2.5)],
+      ...['roll', 'pitch', 'yaw'].flatMap(name => [[name === 'yaw' ? xgo?.yaw_raw != null ? tr('Yaw surowy', 'Raw yaw') : tr('Yaw (prezentacja)', 'Yaw (presentation)') : name,
+        reading(samples[name], name === 'yaw' ? '' : '°')], [`${name} · ${tr('wiek', 'age')}`, ageStamp(samples[name], 2.5)]]),
+      [tr('Yaw zawinięty (prezentacja)', 'Wrapped yaw (presentation)'), displayValue(xgo?.yaw, '°')],
+      [tr('Wiek całego IMU', 'Complete IMU age'), ageOf({ observed_at: imuAt }) === null ? tr('nieznany', 'unknown') : ageStamp({ observed_at: imuAt }, 2.5)]
+    ]), el('p', 'operator-muted', tr('Świeży transport nie potwierdza poprawności fizycznej pomiaru. Semantyka surowego yaw wymaga weryfikacji; zawinięcie nie koryguje sensora.',
+      'Fresh transport does not validate the physical measurement. Raw yaw semantics require verification; wrapping does not correct the sensor.')));
+    const source = rawDetails(xgo); source.open = target.querySelector('details')?.open === true;
+    telemetry.append(source); target.replaceChildren(telemetry);
   }
   renderPreview() {
     text('preview-toggle', this.preview ? tr('Wyłącz odświeżanie obrazu', 'Disable image refresh') : tr('Włącz odświeżanie obrazu', 'Enable image refresh'));
@@ -71,7 +124,7 @@ export class Devices {
     const frame = cameraFrame(this.meta, kind);
     if (!frame.exists || frame.age === null) return;
     const custom = document.getElementById('preview-url').value.trim();
-    const defaults = { raw: '/camera/raw', proc: '/camera/proc', ssd: '/vision/ssd', tracker: '/vision/tracker' };
+    const defaults = { raw: '/vision/cam', proc: '/vision/edge', ssd: '/vision/ssd', tracker: '/vision/tracker' };
     let url;
     try {
       url = new URL(custom || defaults[kind], location.origin);

@@ -55,6 +55,10 @@ def state() -> Response:
         pose_axes = {"x": roll, "y": pitch, "z": yaw}
     if pose_label is None:
         pose_label = compat._classify_pose(roll, pitch)
+    has_telemetry = bool(compat.LAST_XGO.get("sensor_quality")) or any(
+        compat.LAST_XGO.get(key) is not None for key in ("ts", "battery", "battery_observed_at", "roll", "pitch", "yaw")
+    )
+    has_telemetry = has_telemetry or compat.XGO_FW not in (None, "Null")
     tracking_mode = compat.LAST_TRACKING_MODE
     tracking_offset = compat.LAST_TRACKING_OFFSET
     offset_ts = tracking_offset.get("ts")
@@ -84,6 +88,7 @@ def state() -> Response:
                     "roll": compat.LAST_XGO.get("roll"),
                     "pitch": compat.LAST_XGO.get("pitch"),
                     "yaw": compat.LAST_XGO.get("yaw"),
+                    "yaw_raw": compat.LAST_XGO.get("yaw_raw"),
                     "fw": compat.XGO_FW,
                     "ts": compat.LAST_XGO.get("ts"),
                     "observed_at": compat.LAST_XGO.get("observed_at", compat.LAST_XGO.get("ts")),
@@ -91,8 +96,15 @@ def state() -> Response:
                     "stale": compat.LAST_XGO.get("stale") is True or compat.LAST_XGO.get("offline") is True,
                     "offline": compat.LAST_XGO.get("offline") is True,
                     "error": compat.LAST_XGO.get("error"),
+                    "sensor_quality": compat.LAST_XGO.get("sensor_quality", {}),
+                    "sensor_observed_at": compat.LAST_XGO.get("sensor_observed_at", {}),
+                    "battery_observed_at": compat.LAST_XGO.get("battery_observed_at"),
+                    "battery_ok": compat.LAST_XGO.get("battery_ok"),
+                    "imu_observed_at": compat.LAST_XGO.get("imu_observed_at"),
+                    "uart_owner": compat.LAST_XGO.get("uart_owner"),
+                    "physical_validation": "unverified",
                 }
-                if compat.LAST_XGO.get("ts")
+                if has_telemetry
                 else None
             )
         },
