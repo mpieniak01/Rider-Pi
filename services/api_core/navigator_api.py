@@ -13,6 +13,7 @@ from common.bus import TOPIC_NAVIGATOR_RETURN_HOME_START
 from services.safety_contract import read_status, request_stop
 
 from . import compat as C
+from .navigation_state import snapshot as navigation_snapshot
 
 TOPIC_NAVIGATOR_CONTROL = "navigator.control"
 TOPIC_NAVIGATOR_STATE = "navigator.state"
@@ -105,6 +106,12 @@ def api_navigator_config():
 
 def api_navigator_status():
     status = dict(C.LAST_NAVIGATOR)
-    observed = status.get("ts")
-    status.update(observed_at=observed, stale=not observed or time.time() - observed > 3, safety=read_status())
+    observed = status.get("observed_at", status.get("ts"))
+    age = time.time() - observed if type(observed) in (float, int) and math.isfinite(observed) else None
+    status.update(
+        observed_at=observed,
+        stale=status.get("stale") is True or age is None or age < -0.1 or age > 3,
+        safety=read_status(),
+        navigation=navigation_snapshot(),
+    )
     return _response(status)

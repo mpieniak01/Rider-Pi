@@ -29,7 +29,7 @@ from flask import (
     make_response,
     request,
     send_file,
-    stream_with_context,
+    stream_with_context,  # noqa: F401 - public namespace used by event handler
 )
 
 import services.api_core.face_api as face_api
@@ -212,7 +212,7 @@ def _coerce_batt_like(v) -> int | None:
         f = float(v)
     except Exception:
         return None
-    if 0.0 < f <= 1.0:
+    if 0.0 <= f <= 1.0:
         return int(round(f * 100.0))
     if 1.0 < f <= 100.0:
         return int(round(f))
@@ -266,12 +266,14 @@ def _get_bus_pub():
         return _BUS_PUB
 
 
-def bus_pub(topic: str, payload: dict):
+def bus_pub(topic: str, payload: dict, *, add_ts: bool = False):
+    if add_ts is not False:
+        raise ValueError("producer timestamps must remain unchanged")
     pub = _get_bus_pub()
     if pub is None:
         return
     try:
-        pub.publish(topic, payload, add_ts=False)
+        pub.publish(topic, payload, add_ts=add_ts)
     except Exception:
         pass
 
@@ -432,24 +434,7 @@ def metrics():
 
 
 def events():
-    @stream_with_context
-    def gen():
-        last_idx = 0
-        while True:
-            try:
-                time.sleep(1.0)
-                if last_idx >= len(EVENTS):
-                    continue
-                for i in range(last_idx, len(EVENTS)):
-                    ev = EVENTS[i]
-                    yield f"data: {json.dumps(ev)}\n\n"
-                last_idx = len(EVENTS)
-            except GeneratorExit:
-                break
-            except Exception:
-                time.sleep(0.5)
-
-    return Response(gen(), mimetype="text/event-stream")
+    return compat_health.events(sys.modules[__name__])
 
 
 # ── Startery wątków ──────────────────────────────────────────────────────────

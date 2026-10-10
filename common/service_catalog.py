@@ -167,6 +167,7 @@ DEFAULT_REGISTRY = {
         "rider-tracker.target",
         (*CAMERA_UNITS, "rider-tracker.service"),
         ("camera", "frame_feed"),
+        option_kind="tracking",
     ),
     "s7_obstacle_module": _feature(
         "s7_obstacle_module",
@@ -222,6 +223,16 @@ DEFAULT_ALIASES = {
 }
 
 OPTION_SCHEMAS = {
+    "tracking": {
+        "field": "mode",
+        "default": "face",
+        "end_value": "none",
+        "choices": [
+            {"value": "face", "label": "Twarz — pasywnie", "label_en": "Face — passive"},
+            {"value": "hand", "label": "Dłoń — pasywnie", "label_en": "Hand — passive"},
+            {"value": "none", "label": "Zakończ obserwację", "label_en": "End observation"},
+        ],
+    },
     "voice": {
         "field": "domain",
         "default": "voice",
@@ -261,6 +272,15 @@ OPTION_SCHEMAS = {
 
 def option_schema(feature: FeatureDefinition) -> dict | None:
     return OPTION_SCHEMAS.get(feature.option_kind)
+
+
+def tracking_mode_for(feature: FeatureDefinition, options: dict | None = None) -> str | None:
+    if feature.option_kind == "tracking":
+        mode = (options or {}).get("mode", "face")
+        if mode not in {"face", "hand", "none"}:
+            raise ValueError("tracking mode must be face, hand or none")
+        return mode
+    return feature.tracking_mode
 
 
 # (unit, id/alias, group, label, lifecycle, resources, can_move)
@@ -435,10 +455,14 @@ def task_units(feature: FeatureDefinition, options: dict | None = None) -> tuple
         if kind in {"voice", "provider"}
         else {"tool"}
         if kind == "tool"
+        else {"mode"}
+        if kind == "tracking"
         else set()
     )
     if set(options) - allowed_keys:
         raise ValueError("unsupported task option")
+    if kind == "tracking":
+        tracking_mode_for(feature, options)
     if kind == "vision":
         provider = options.get("provider", "local")
         if provider not in {"local", "pc"}:

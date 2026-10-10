@@ -1,129 +1,28 @@
-# Rider-Pi Web UI Documentation
+# Interfejsy webowe Rider-Pi
 
-This directory contains documentation for the Rider-Pi web user interfaces.
+Aktualnym interfejsem jest [panel operatora](operator-panel.md).
+Dokument opisuje bezpieczeństwo, przygotowanie zadań, właścicieli zasobów,
+odświeżanie oraz potwierdzanie żądań.
 
-Aktualny stan i weryfikacja: [Diagnostyka Pi, nawigacja i wersja](panel-diagnostyka.md).
+| Adres | Przeznaczenie |
+| --- | --- |
+| /view, / | Przegląd: połączenie, bateria, aktualność, zadania i blokady |
+| /control | Jeden katalog zadań, jawna zgoda na ruch, żądania i ACK |
+| /devices | Kamera, audio, LCD, UART, właściciele i konsumenci; obraz na życzenie |
+| /system | Odczyt usług; jawna administracja i osobna zmiana autostartu |
+| /navigation | Aktualność mapy/pozycji/planu, żądania nawigacji i konfiguracja w DISARMED |
+| /chat | Tekst i opcjonalne TTS; potrzebna domena przygotowywana dopiero przy wysłaniu |
 
-## Available Interfaces
+Menu obsługuje język polski i angielski. Język oraz motyw są lokalnymi
+preferencjami; nie uruchamiają zadań. Zachowane adresy /home i /google_home
+pozostają osobnymi starszymi integracjami.
 
-### [control.html](control.md)
-Main control interface for robot movement, camera, and autonomous navigation.
+## Weryfikacja lokalna
 
-**URL:** `http://robot-ip:8080/control`
+Użyj [serwera fixture](operator-panel.md#weryfikacja-bez-robota)
+i izolowanych testów. Nie importują API robota, BUS, SDK ani systemd.
+Uruchomienie produkcyjnego API nie zastępuje weryfikacji na atrapach.
 
-**Features:**
-- Camera live preview
-- Manual movement controls
-- Balance and height adjustment
-- Vision tracking (Follow Me)
-- Autonomous navigation (Rekonesans mode)
-- Event log
-
----
-
-### home.html
-Google Feed diagnostics, retained as a direct route and omitted from the current menu. The overview is `/` or `/view`.
-
-**URL:** `http://robot-ip:8080/home`
-
----
-
-### chat.html
-Voice and text chat interface.
-
-**URL:** `http://robot-ip:8080/chat`
-
-**Features:**
-- Text chat with AI assistant
-- Voice input/output
-- Conversation history
-
----
-
-### view.html
-Vision system viewer and camera controls.
-
-**URL:** `http://robot-ip:8080/view`
-
-**Features:**
-- Camera stream with detection overlays
-- Face/person/object detection visualization
-- Vision system status
-
----
-
-### system.html
-System dashboard with live systemd service overview.
-
-**URL:** `http://robot-ip:8080/system/`
-
-**Features:**
-- Service status cards (`active`, `inactive`, `failed`, `unknown`)
-- Grouped service cards and component connections (not systemd boot dependencies)
-- Collapsible, horizontally scrollable details table with activation timestamps
-- Automatic refresh every 5 seconds
-
----
-
-### google_home.html
-Google Home integration and device management.
-
-**URL:** `http://robot-ip:8080/google_home`
-
-**Features:**
-- Google Home device pairing
-- Smart home control
-- Voice command testing
-
----
-
-## Common Features
-
-### Internationalization (i18n)
-All interfaces support Polish (pl) and English (en) languages.
-
-**Implementation:** `web/assets/i18n.js`
-
-Language can be selected in the menu; the selection is saved locally.
-
-### API Integration
-All UIs communicate with the robot via REST API on port 8080.
-
-**Base URL:** `http://robot-ip:8080/api`
-
-### Real-time Updates
-Some interfaces use polling or WebSocket connections for real-time data updates.
-
----
-
-## Development
-
-### Testing Locally
-The web interfaces can be tested locally by running the API server:
-
-```bash
-python3 -m services.api_server
-```
-
-Then open `http://localhost:8080/control` in your browser.
-
-### File Structure
-```
-web/
-├── control.html      # Main control interface
-├── home.html         # Landing page
-├── chat.html         # Chat interface
-├── view.html         # Vision viewer
-├── system.html       # System dashboard (status + graph)
-├── google_home.html  # Google Home integration
-└── i18n.js          # Internationalization support
-```
-
----
-
-## See Also
-
-- [API Documentation](../api-specs/README.md) - REST API endpoints
-- [ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
-- [Vision Module](../apps/vision.md) - Vision system
-- [Navigator Module](../apps/navigator.md) - Autonomous navigation
+[Sterowanie](control.md) ·
+[Projekcja nawigacji](../NAVIGATION_VISUALIZATION.md) ·
+[Dotychczasowa diagnostyka i wersja w stopce](panel-diagnostyka.md)

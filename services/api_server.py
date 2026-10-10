@@ -54,6 +54,7 @@ from services.api_core.chat_routes import register_chat_endpoints
 from services.api_core.face_api import render_face as face_render_shim
 from services.api_core.home_auth_route import home_auth as home_auth_flow, home_auth_url as home_auth_request
 from services.api_core.resource_api import api_resource
+from services.api_core.service_logs import service_logs
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
 
 # ── Metryki API helper ───────────────────────────────────────────────────────
@@ -223,6 +224,7 @@ def svc_name_route(name: str):
 
 
 _add_rule("/svc/<name>/status", view_func=services_api.svc_status, methods=["GET"])
+_add_rule("/api/services/<unit>/logs", view_func=service_logs, methods=["GET"])
 
 # control proxy
 _add_rule(
@@ -466,6 +468,7 @@ _add_rule("/google_home", view_func=serve_google_home, methods=["GET"], strict_s
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/view", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/control", view_func=dashboard.control_page, methods=["GET"], strict_slashes=False)
+_add_rule("/devices", view_func=dashboard.devices_page, methods=["GET"], strict_slashes=False)
 
 
 # ── Local control fallback ───────────────────────────────────────────────────

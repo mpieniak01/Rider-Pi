@@ -1,44 +1,39 @@
 <!doctype html>
 <html lang="pl">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rider-Pi — Diagnostyka</title>
-  <script src="/web/assets/theme-loader.js" defer></script>
-  <link rel="stylesheet" href="/web/assets/dashboard-common.css">
-  <link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
-  <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
-  <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
-  <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-  <link rel="stylesheet" href="/web/assets/pages/system.css">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rider-Pi — System</title>
+<script src="/web/assets/theme-loader.js" defer></script>
+<link rel="stylesheet" href="/web/assets/dashboard-common.css">
+<link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
+<link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
+<link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
+<link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
+<link rel="stylesheet" href="/web/assets/operator/operator.css">
 </head>
 <body data-page="system" class="page page-system">
-  <header class="layout-header" data-dashboard-menu-target></header>
-  <main class="layout-main">
-    <header class="page-header">
-      <div class="page-header__titles">
-        <h1 class="page-title"><span class="brand-accent">Rider-Pi</span>: <span class="page-title-text" data-i18n="system_ui.title">Diagnostyka</span></h1>
-      </div>
-      <div class="page-header__actions page-header__actions--small system-links">
-        <a href="/view" data-i18n="nav.view">Przegląd</a>
-        <a href="/control" data-i18n="nav.control">Sterowanie robotem</a>
-      </div>
-    </header>
-    <p class="muted" data-i18n="system_ui.description">Stan usług i połączenia komponentów. Ten ekran służy do odczytu; robotem sterujesz w zakładce Sterowanie robotem.</p>
-    <p id="status-line" class="status-line c-statusbar" role="status" aria-live="polite"></p>
-    <div id="system-summary" class="l-cluster system-summary" aria-label="Podsumowanie usług" data-i18n-attr="aria-label:system_ui.summary"></div>
-    <section id="system-network" class="system-section is-network" aria-live="polite"></section>
-    <div id="system-graph" class="system-groups"></div>
-    <details class="system-details c-card">
-      <summary data-i18n="system_ui.details">Szczegóły usług</summary>
-      <div class="system-table-scroll" tabindex="0" role="region" aria-label="Tabela usług" data-i18n-attr="aria-label:system_ui.table">
-        <table id="system-table" class="c-table"><thead></thead><tbody></tbody></table>
-      </div>
-    </details>
-  </main>
-  <footer class="layout-footer" data-dashboard-footer-target></footer>
-  <script type="module" src="/web/assets/pages/system.js"></script>
-  <script type="module" src="/web/assets/menu.js"></script>
-  <script type="module" src="/web/assets/footer.js"></script>
+<header class="layout-header" data-dashboard-menu-target></header>
+<main class="layout-main operator-shell">
+<header class="page-header"><h1 class="page-title" data-pl="System" data-en="System">System</h1></header>
+<p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
+<div class="operator-grid"><section class="c-card operator-safety" aria-labelledby="safety-heading">
+<h2 id="safety-heading" data-pl="Bezpieczeństwo ruchu" data-en="Motion safety">Bezpieczeństwo ruchu</h2>
+<div class="operator-row"><strong id="safety-state">UNKNOWN</strong><button class="c-btn operator-stop" type="button" data-stop>■ STOP</button></div>
+<dl class="operator-kv"><dt data-pl="Gotowość wykonawcy" data-en="Executor readiness">Gotowość wykonawcy</dt><dd id="safety-ready">unknown</dd><dt data-pl="Wiek stanu" data-en="State age">Wiek stanu</dt><dd id="safety-age">—</dd><dt data-pl="Właściciel" data-en="Owner">Właściciel</dt><dd id="safety-owner">—</dd><dt data-pl="Pozostała zgoda" data-en="Lease remaining">Pozostała zgoda</dt><dd id="safety-lease">—</dd><dt data-pl="Powód blokady" data-en="Block reason">Powód blokady</dt><dd id="safety-reason">—</dd></dl>
+<p class="operator-muted" data-pl="STOP unieważnia wcześniejsze polecenia. Przyjęcie SDK nie potwierdza fizycznego zatrzymania." data-en="STOP invalidates previous commands. SDK acceptance does not confirm physical stopping.">STOP unieważnia wcześniejsze polecenia. Przyjęcie SDK nie potwierdza fizycznego zatrzymania.</p>
+</section><section class="c-card"><h2 data-pl="System — odczyt domyślny" data-en="System — read only by default">System — odczyt domyślny</h2><p id="system-contract">unknown</p><p id="network-status">unknown</p><label><input id="admin-mode" type="checkbox"> <span data-pl="Jawnie włączam administrację usługami w tej karcie" data-en="Explicitly enable service administration in this tab">Jawnie włączam administrację usługami w tej karcie</span></label><p data-pl="start / stop / restart dotyczy procesu. enable / disable zmienia osobno autostart. Zakończ zadanie przed zatrzymaniem współdzielonej usługi." data-en="start / stop / restart affects the process. enable / disable separately changes autostart. End a task before stopping a shared service.">start / stop / restart dotyczy procesu. enable / disable zmienia osobno autostart. Zakończ zadanie przed zatrzymaniem współdzielonej usługi.</p></section></div>
+<div id="service-list"></div><details class="c-card"><summary data-pl="Graf, zasoby CPU i szczegóły" data-en="Graph, CPU resources and details">Graf, zasoby CPU i szczegóły</summary><div id="system-details-data"></div></details>
+<details class="c-card"><summary data-pl="Procedura wymuszonego odzyskania zasobu" data-en="Forced resource recovery procedure">Procedura wymuszonego odzyskania zasobu</summary>
+<p class="operator-warning" data-pl="Najpierw STOP, zakończenie zadań i zwykłe zatrzymanie właściciela. Wymuszone zwolnienie jest ręczną procedurą awaryjną. API chroni UART, LCD i usługi bazowe." data-en="First STOP, end tasks and normally stop their owner. Forced release is a manual recovery procedure. API protects UART, LCD and base services.">Najpierw STOP, zakończenie zadań i zwykłe zatrzymanie właściciela. Wymuszone zwolnienie jest ręczną procedurą awaryjną. API chroni UART, LCD i usługi bazowe.</p>
+<label><span data-pl="Zasób" data-en="Resource">Zasób</span> <select id="rescue-resource"><option value="camera">camera</option><option value="mic">mic</option><option value="speaker">speaker</option></select></label>
+<button id="rescue-inspect" type="button" class="c-btn" data-pl="Odczytaj właścicieli" data-en="Read owners">Odczytaj właścicieli</button><p id="rescue-status">unknown</p><div id="rescue-owners"></div>
+<label><span data-pl="Wpisz dokładną nazwę zasobu" data-en="Type exact resource name">Wpisz dokładną nazwę zasobu</span><input id="rescue-confirm" type="text"></label>
+<label><input id="rescue-consent" type="checkbox"> <span data-pl="Świadomie zezwalam na zwolnienie tylko wybranych PID" data-en="Explicitly authorize release of only the selected PIDs">Świadomie zezwalam na zwolnienie tylko wybranych PID</span></label>
+<button id="rescue-release" type="button" disabled class="c-btn" data-pl="Wymuś zwolnienie wybranych PID" data-en="Force release selected PIDs">Wymuś zwolnienie wybranych PID</button></details><section class="c-card"><h2 data-pl="Żądania i potwierdzenia" data-en="Requests and acknowledgements">Żądania i potwierdzenia</h2><p data-pl="pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów." data-en="pending = awaiting ACK; executed = SDK accepted. Physical completion remains unverified. Request history is not actuator state.">pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów.</p><ol id="request-history"></ol><p id="last-event" class="operator-muted">—</p></section>
+</main>
+<footer class="layout-footer" data-dashboard-footer-target></footer>
+<script type="module" src="/web/assets/operator/app.js"></script>
+<script type="module" src="/web/assets/menu.js"></script>
+<script type="module" src="/web/assets/footer.js"></script>
 </body>
 </html>

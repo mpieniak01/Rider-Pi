@@ -18,7 +18,7 @@ planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona.
 - [Kontrakt providerów Pi ↔ PC](OFFLOAD_PROVIDER_PROTOCOL.md).
 - [Indeks API](api-specs/README.md), [sterowanie](api-specs/control.md), [nawigacja](api-specs/navigator.md).
 - [Moduły aplikacyjne](apps/README.md), [sterowniki sprzętu](drivers/README.md).
-- [Ekrany webowe](ui/README.md), [diagnostyka i wersja w stopce](ui/panel-diagnostyka.md).
+- [Ekrany webowe](ui/README.md), [panel operatora](ui/operator-panel.md), [diagnostyka i wersja w stopce](ui/panel-diagnostyka.md).
 - [Follow Me](FOLLOW_ME_TRACKING.md), [wizualizacja nawigacji](NAVIGATION_VISUALIZATION.md).
 - [Push-to-talk](PTT_USAGE.md), [metryki głosu](voice_metrics.md), [diagnostyka zasobów](resource_diagnostics.md).
 

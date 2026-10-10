@@ -68,12 +68,19 @@ def test_html_controls_present():
     with open(html_file) as f:
         content = f.read()
 
-    assert 'balanceToggle' in content, "Balance toggle should be in HTML"
-    assert 'heightSlider' in content, "Height slider should be in HTML"
-    assert 'sendBalance' in content, "sendBalance function should be in JavaScript"
-    assert 'sendHeight' in content, "sendHeight function should be in JavaScript"
-    assert '/api/control/balance' in content, "Balance API endpoint should be called"
-    assert '/api/control/height' in content, "Height API endpoint should be called"
+    assert 'id="balance"' in content and 'id="height"' in content
+    assert 'data-actuator="height" disabled' in content
+    assert 'data-actuator="balance" disabled' in content
+    script = (project_root / "web/assets/operator/app.js").read_text()
+    assert "safety.send('height', { height:" in script
+    assert "safety.send('balance', { enabled:" in script
+    transport = (project_root / "web/assets/operator/safety.js").read_text()
+    assert "endpoint = '/api/control'" in transport
+    assert "this.envelope(action, params, owner)" in transport
+    assert (
+        "const capability = safety?.capabilities?.[action]"
+        in (project_root / "web/assets/operator/model.js").read_text()
+    )
     return True
 
 

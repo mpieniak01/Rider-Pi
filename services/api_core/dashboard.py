@@ -58,3 +58,11 @@ def control_page():
     if not os.path.isfile(C.CONTROL_HTML):
         return Response("<h1>control.html missing</h1>", mimetype="text/html"), 404
     return send_file(C.CONTROL_HTML)
+
+
+def devices_page():
+    """Read-only page load: never acquires or starts a physical device."""
+    path = os.path.join(os.path.dirname(C.VIEW_HTML), "devices.html")
+    if not os.path.isfile(path):
+        return Response("<h1>devices.html missing</h1>", mimetype="text/html"), 404
+    return send_file(path)

@@ -40,11 +40,18 @@ def _update_xgo_from_dict(d: dict):
     if not isinstance(d, dict):
         return
     observed = d.get("observed_at", d.get("ts"))
+    try:
+        if type(observed) not in (int, float) or not math.isfinite(observed) or observed <= 0:
+            observed = None
+    except OverflowError:
+        observed = None
     C.LAST_XGO.update(
         ts=observed,
         observed_at=observed,
-        stale=d.get("stale", observed is None),
+        stale=d.get("stale") is True or observed is None,
         source=d.get("src", d.get("source", "unknown")),
+        offline=d.get("offline") is True,
+        error=d.get("error"),
     )
     for key in ("imu_ok", "pose", "pose_label", "uart_owner"):
         if key in d:
@@ -59,10 +66,73 @@ def _update_xgo_from_dict(d: dict):
                 if value is not None and not math.isfinite(value):
                     value = None
                 C.LAST_XGO[key] = C._norm_angle180(value) if key == "yaw" and value is not None else value
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 C.LAST_XGO[key] = None
     if "fw" in d:
         C.XGO_FW = C._sanitize_fw(d["fw"])
+
+
+def observe_xgo(topic: str, data: object) -> bool:
+    """Project source measurements, never timestamp missing data at reception."""
+    prefixes = ("devices.xgo", "xgo", "motion.bridge.telemetry")
+    prefix = next((value for value in prefixes if topic == value or topic.startswith(value + ".")), None)
+    if topic == "imu.data":
+        row = dict(data) if isinstance(data, dict) else {}
+    elif prefix is None:
+        if topic != "motion.bridge.battery_pct":
+            return False
+        row = dict(data) if isinstance(data, dict) else {"battery_pct": data}
+    else:
+        suffix = topic[len(prefix) :].lstrip(".")
+        if not suffix:
+            row = dict(data) if isinstance(data, dict) else {}
+        elif isinstance(data, dict) and any(key in data for key in (suffix, "value", "observed_at", "ts")):
+            row = dict(data)
+            row[suffix] = data.get(suffix, data.get("value"))
+        else:
+            row = {suffix: data}
+    _update_xgo_from_dict(row)
+    if "yaw_src" in row:
+        C.LAST_XGO["yaw_src"] = row["yaw_src"]
+    if topic == "imu.data":
+        axes = {axis: C.LAST_XGO.get(axis) for axis in ("roll", "pitch", "yaw")}
+        C.LAST_XGO["pose"] = {"x": axes["roll"], "y": axes["pitch"], "z": axes["yaw"]}
+        C.LAST_XGO["pose_label"] = C._classify_pose(axes["roll"], axes["pitch"])
+    return True
+
+
+def observe_navigator(data: object) -> None:
+    """Keep producer state and request identity; transport receipt is no ACK."""
+    if not isinstance(data, dict):
+        return
+    fields = (
+        "active",
+        "state",
+        "strategy",
+        "obstacle_present",
+        "generation",
+        "request_id",
+        "accepted",
+        "data_ready",
+        "navigation_ready",
+        "data_error",
+        "reason",
+    )
+    for key in fields:
+        if key in data:
+            C.LAST_NAVIGATOR[key] = data[key]
+    observed = data.get("observed_at", data.get("ts"))
+    try:
+        if type(observed) not in (int, float) or not math.isfinite(observed) or observed <= 0:
+            observed = None
+    except OverflowError:
+        observed = None
+    C.LAST_NAVIGATOR.update(
+        ts=observed,
+        observed_at=observed,
+        source=data.get("source", "navigator.state"),
+        stale=data.get("stale") is True or observed is None,
+    )
 
 
 def _decode_frames(frames):
@@ -116,6 +186,9 @@ def bus_sub_loop():
             "xgo.",
             "tracking.",
             "navigator.",
+            "robot.pose",
+            "mapper.map.data",
+            "imu.data",
         ):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
         try:
@@ -135,101 +208,16 @@ def bus_sub_loop():
 
                 C.LAST_MSG_TS = time.time()
                 C.EVENTS.append({"ts": C.LAST_MSG_TS, "topic": topic, "data": payload})
+                if topic in {"robot.pose", "mapper.map.data", "navigator.path"}:
+                    from .navigation_state import observe
+
+                    observe(topic, _json_or_raw(payload))
 
                 if topic == "vision.dispatcher.heartbeat":
                     C.LAST_HEARTBEAT_TS = C.LAST_MSG_TS
                     continue
 
-                if topic.startswith("devices.xgo"):
-                    suffix = topic[len("devices.xgo") :].lstrip(".")
-                    data = _json_or_raw(payload)
-                    if suffix == "" and isinstance(data, dict):
-                        _update_xgo_from_dict(data)
-                    else:
-                        C.LAST_XGO["ts"] = C.LAST_MSG_TS
-                        if suffix == "pose":
-                            if data not in (None, "", []):
-                                C.LAST_XGO["pose"] = data
-                        elif suffix == "pose_label":
-                            if data not in (None, "", []):
-                                C.LAST_XGO["pose_label"] = data
-                        elif suffix in ("battery", "battery_pct"):
-                            b = C._sanitize_batt(data) if data is not None else None
-                            if b is not None:
-                                C.LAST_XGO["battery"] = b
-                        elif suffix in ("roll", "pitch", "yaw"):
-                            try:
-                                v = float(data) if data is not None else None
-                                if v is not None:
-                                    if suffix == "yaw":
-                                        v = C._norm_angle180(v)
-                                    prev = C.LAST_XGO.get(suffix)
-                                    if (v == 0.0) and (prev not in (None, 0.0)):
-                                        pass
-                                    else:
-                                        C.LAST_XGO[suffix] = v
-                            except Exception:
-                                C.LAST_XGO[suffix] = data
-                        elif suffix == "imu_ok":
-                            C.LAST_XGO["imu_ok"] = bool(data)
-                        elif suffix == "fw":
-                            fw = C._sanitize_fw(data)
-                            if fw is not None:
-                                C.XGO_FW = fw
-                        elif isinstance(data, dict):
-                            _update_xgo_from_dict(data)
-                    continue
-
-                if topic.startswith("xgo."):
-                    suffix = topic[len("xgo.") :].lstrip(".")
-                    data = _json_or_raw(payload)
-                    C.LAST_XGO["ts"] = C.LAST_MSG_TS
-                    if suffix == "pose":
-                        if data not in (None, "", []):
-                            C.LAST_XGO["pose"] = data
-                    elif suffix == "pose_label":
-                        if data not in (None, "", []):
-                            C.LAST_XGO["pose_label"] = data
-                    elif suffix in ("battery", "battery_pct"):
-                        b = C._sanitize_batt(data) if data is not None else None
-                        if b is not None:
-                            C.LAST_XGO["battery"] = b
-                    elif suffix in ("roll", "pitch", "yaw"):
-                        try:
-                            v = float(data) if data is not None else None
-                            if v is not None:
-                                if suffix == "yaw":
-                                    v = C._norm_angle180(v)
-                                prev = C.LAST_XGO.get(suffix)
-                                if (v == 0.0) and (prev not in (None, 0.0)):
-                                    pass
-                                else:
-                                    C.LAST_XGO[suffix] = v
-                        except Exception:
-                            C.LAST_XGO[suffix] = data
-                    elif suffix == "imu_ok":
-                        C.LAST_XGO["imu_ok"] = bool(data)
-                    elif suffix == "fw":
-                        fw = C._sanitize_fw(data)
-                        if fw is not None:
-                            C.XGO_FW = fw
-                    elif isinstance(data, dict):
-                        _update_xgo_from_dict(data)
-                    continue
-
-                if topic.startswith("motion.bridge.telemetry"):
-                    try:
-                        d = json.loads(payload) if payload else {}
-                        _update_xgo_from_dict(d)
-                    except Exception:
-                        pass
-                    continue
-
-                if topic == "motion.bridge.battery_pct":
-                    b = C._sanitize_batt(_json_or_raw(payload))
-                    if b is not None:
-                        C.LAST_XGO["ts"] = C.LAST_MSG_TS
-                        C.LAST_XGO["battery"] = b
+                if observe_xgo(topic, _json_or_raw(payload)):
                     continue
 
                 if topic == "vision.state":
@@ -242,37 +230,6 @@ def bus_sub_loop():
                         C.LAST_STATE["ts"] = float(data.get("ts", C.LAST_MSG_TS))
                     except Exception:
                         pass
-                    continue
-
-                if topic == "imu.data":
-                    data = _json_or_raw(payload)
-                    if isinstance(data, dict):
-                        ts_val = data.get("ts") or C.LAST_MSG_TS
-                        try:
-                            C.LAST_XGO["ts"] = float(ts_val)
-                        except Exception:
-                            C.LAST_XGO["ts"] = C.LAST_MSG_TS
-                        axes = {"roll": None, "pitch": None, "yaw": None}
-                        for axis in ("roll", "pitch", "yaw"):
-                            if data.get(axis) is None:
-                                continue
-                            try:
-                                val = float(data.get(axis))
-                                if axis == "yaw":
-                                    val = C._norm_angle180(val)
-                                C.LAST_XGO[axis] = val
-                                axes[axis] = val
-                            except Exception:
-                                C.LAST_XGO[axis] = data.get(axis)
-                                axes[axis] = data.get(axis)
-                        src = data.get("yaw_src")
-                        if src:
-                            C.LAST_XGO["yaw_src"] = src
-                        if any(v is not None for v in axes.values()):
-                            C.LAST_XGO["pose"] = {"x": axes["roll"], "y": axes["pitch"], "z": axes["yaw"]}
-                            pose_label = C._classify_pose(axes["roll"], axes["pitch"])
-                            if pose_label:
-                                C.LAST_XGO["pose_label"] = pose_label
                     continue
 
                 if topic == "camera.heartbeat":
@@ -361,17 +318,7 @@ def bus_sub_loop():
                     continue
 
                 if topic == "navigator.state":
-                    data = _json_or_raw(payload)
-                    if isinstance(data, dict):
-                        if "active" in data:
-                            C.LAST_NAVIGATOR["active"] = bool(data.get("active"))
-                        if data.get("state") is not None:
-                            C.LAST_NAVIGATOR["state"] = data.get("state")
-                        if data.get("strategy") is not None:
-                            C.LAST_NAVIGATOR["strategy"] = data.get("strategy")
-                        if "obstacle_present" in data:
-                            C.LAST_NAVIGATOR["obstacle_present"] = bool(data.get("obstacle_present"))
-                        C.LAST_NAVIGATOR["ts"] = float(data.get("ts") or C.LAST_MSG_TS)
+                    observe_navigator(_json_or_raw(payload))
                     continue
 
             except Exception:
