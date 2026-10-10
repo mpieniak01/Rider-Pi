@@ -1,37 +1,30 @@
 # Documentation policy
 
-The repository contains maintained project documentation in `docs/` (English)
-and `docs_pl/` (Polish): vision, architecture, interfaces, configuration,
-development instructions and user guides. Update both language indexes when
-adding or moving a public document.
+Maintain two current versions of project documentation: `docs_pl/` (Polish)
+and `docs/` (English). Polish is the starting point; update contracts,
+configuration and instructions in English in the same commit.
+Both language indexes link only to maintained documents and their assets.
 
 | Material | Location | GitHub |
 | --- | --- | --- |
-| Project documentation and released changes | `docs/`, `docs_pl/`, root project guides | Published |
-| Images and diagrams used by public guides | `docs/assets/`, `docs_pl/assets/` | Published |
-| Plans, task checklists and work in progress | `_to_do/` | Local, ignored |
-| Completed task notes, audits and session reports | `_done/` or `done/` | Local, ignored |
-| Developer configuration and credentials | `.env`, private `.env.*`, `evn.ssh.local`, `config/local/` | Local, ignored |
-| Public configuration templates | `.env.example`, `.env.*.example` | Published with placeholders |
+| Vision, architecture, contracts, guides and releases | `docs_pl/`, `docs/`, root guides | Published |
+| Images and diagrams used by guides | `docs/assets/`, or `docs_pl/assets/` when needed | Published |
+| Plans and work in progress | `docs_pl/_to_do/` | Local, ignored |
+| Completed tasks, audits and session reports | `docs_pl/_done/` | Local, ignored |
+| Developer settings and credentials | `.env`, private `.env.*`, `evn.ssh.local`, `config/local/` | Local, ignored |
+| Configuration templates without secrets | `.env.example`, `.env.*.example` | Published |
 
-The local directories may also exist inside either documentation tree. They
-are deliberately absent from Git: do not force-add them, attach them to PRs or
-include them in deployment packages. The old `archive/`, `_todo/` and
-`_pr_summaries/` names are also reserved for local working material.
+Operational directories exist only in `docs_pl/`. Do not create copies
+in `docs/` or separate `done` directories. Remove empty directories after
+consolidation. Historical material can remain under `_done/`; label different
+versions and avoid keeping identical copies.
 
-Before publishing a document, remove session-specific paths, host inventories,
-execution logs, review conversations and task checkboxes. Keep the resulting
-interface descriptions, operating instructions and architectural decisions in
-the public guide. Record the date, revision and result of a particular test in
-the local task record. Describe planned features as plans, without declaring
-that they have been verified on hardware.
+Publish the result of the work: an interface description, procedure or design
+decision. Logs, checklists, host inventory and individual execution results
+stay local. Never force-add them, attach them to PRs or include them in
+deployment packages. Public links must not point to local plans or reports.
+Describe planned features as planned.
 
-Public links must resolve to other published files, to project assets or to
-stable external resources. A link to an ignored local report will not work for
-someone cloning the repository. Keep one maintained source for each document;
-translations can have their own names and indexes.
-
-When retiring an already tracked operational file, preserve its local copy and
-remove it from the Git index. Ignore rules alone do not untrack existing files.
-Review `git diff --cached --name-status` before committing. Never use
-`git add -f` for local notes or credentials.
+Before committing, check `git diff --cached --name-status` and
+`git diff --cached --check`. Ignore rules do not remove already tracked files;
+untrack operational material while preserving its local copy.

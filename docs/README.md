@@ -31,3 +31,6 @@ for top-level coordination; its integration is deferred.
 
 Public guides describe the project and its interfaces. Plans, task reports and
 results from individual devices remain in ignored local operational directories.
+
+Polish is the starting point; keep English contracts and guides current.
+Local plans and reports exist only in `docs_pl/_to_do/` and `docs_pl/_done/`.

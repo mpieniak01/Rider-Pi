@@ -20,8 +20,11 @@ Recenzuj PR-y tak, by **nie tracić funkcjonalności**. Egzekwuj:
 
 ## Dokumentacja i materiały lokalne
 
-Stosuj [politykę dokumentacji](../docs_pl/POLITYKA_DOKUMENTACJI.md). Plany w `_to_do/` i raporty
-w `_done/` lub `done/` są lokalne, ignorowane i nie trafiają do commitów
+Stosuj [politykę dokumentacji](../docs_pl/POLITYKA_DOKUMENTACJI.md). Plany w `docs_pl/_to_do/` i raporty
+w `docs_pl/_done/` są lokalne, ignorowane i nie trafiają do commitów
 ani załączników PR. Utrzymywane instrukcje i używane przez nie assety
 publikujemy w `docs/` i `docs_pl/`. Nie stosuj `git add -f` dla materiałów
 lokalnych. Przy usuwaniu ich z indeksu Git zachowuj kopie na dysku.
+
+Wersja polska jest punktem wyjścia. Aktualizuj także wersję angielską
+kontraktów i instrukcji; katalogi operacyjne utrzymuj wyłącznie w `docs_pl/`.

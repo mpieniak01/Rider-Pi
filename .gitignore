@@ -133,7 +133,7 @@ llama.cpp/
 *.ggufmodels/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
 models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
 
-# Local operational documentation; never publish
+# Local operational documentation lives only in docs_pl; legacy locations stay ignored
 **/_to_do/
 **/_todo/
 **/_done/

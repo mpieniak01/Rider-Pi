@@ -31,3 +31,6 @@ planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona.
 
 Publiczne przewodniki opisują projekt i interfejsy. Plany, raporty zadań i wyniki
 sprawdzeń konkretnego urządzenia pozostają w ignorowanych katalogach lokalnych.
+
+Wersja polska jest punktem wyjścia; aktualizujemy też instrukcje EN.
+Lokalne plany i raporty utrzymujemy tylko w `docs_pl/_to_do/` i `docs_pl/_done/`.

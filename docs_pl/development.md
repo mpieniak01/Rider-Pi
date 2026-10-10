@@ -31,8 +31,8 @@ Prywatny plik SSH powinien mieć uprawnienia `600`. Hasło wpisuj w lokalnym
 edytorze, bez przekazywania go w argumentach poleceń lub dokumentacji.
 Zwykły SSH nie wczytuje automatycznie `evn.ssh.local`.
 
-Plany zadań zapisuj w ignorowanym `_to_do/`, a ukończone notatki i audyty
-sesji w `_done/` lub `done/`. Utrzymywane instrukcje i potrzebne obrazy
+Plany zadań zapisuj w ignorowanym `docs_pl/_to_do/`, a ukończone notatki
+i audyty sesji w `docs_pl/_done/`. Nie tworzymy ich angielskich kopii. Utrzymywane instrukcje i potrzebne obrazy
 publikuj zgodnie z [polityką dokumentacji](POLITYKA_DOKUMENTACJI.md).
 Przed commitem sprawdź `git diff --cached --name-status` oraz
 `git diff --cached --check`. Nie dodawaj plików lokalnych przez `git add -f`.
@@ -50,7 +50,7 @@ Użyj Ruff 0.6.9 z dostępnego środowiska i odpowiednich testów bezpośrednich
 ```bash
 ruff check .
 ruff format --check .
-.venv/bin/python -m pytest tests/test_systemd_services.py tests/config/ -q
+make test TEST_ARGS="-q tests/test_systemd_services.py tests/config/"
 .venv/bin/python -m pytest tests/test_version_api.py -q
 ```
 
