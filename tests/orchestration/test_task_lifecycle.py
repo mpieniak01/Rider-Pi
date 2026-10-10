@@ -117,7 +117,7 @@ def test_passive_tracker_never_starts_controller_or_publishes_motion(tmp_path):
     manager = world.manager(tmp_path)
     assert manager.set_feature("s6_tracker_module", True)["ok"]
     assert "rider-tracking-controller.service" not in world.active
-    assert manager.publisher.sent == []
+    assert manager.publisher.sent == [("tracking.mode:set", {"mode": "face"})]
     row = next(row for row in manager.describe_features() if row["name"] == "s6_tracker_module")
     assert row["ready"] and row["can_move"] is False
 

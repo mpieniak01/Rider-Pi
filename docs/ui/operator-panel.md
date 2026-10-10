@@ -1,0 +1,146 @@
+# Operator panel
+
+The panel uses one catalog: `GET /api/logic/catalog`, version 2. Tasks,
+domain options, service members and resource consumers come from the API.
+A missing or older catalog enables observation and blocks starting tasks.
+
+## Views
+
+| View | Information and actions |
+| --- | --- |
+| Overview `/view` | Connection, telemetry age, battery, current tasks and blocks. System contains details. |
+| Tasks and control `/control` | Catalog, explicit operator consent, short pulses, actuator capabilities, requests and ACK. |
+| Devices `/devices` | Process owners, task consumers, camera, audio, LCD and UART. Image preview on demand. |
+| System `/system` | Services and dependencies. Administration explicitly enabled in the current tab. Separate autostart changes. |
+| Navigation `/navigation` | Map, pose, data age and quality; explicit start/return requests and configuration while DISARMED. |
+| Chat `/chat` | Selected AI domain and optional TTS. Sending explicitly prepares the required domain. |
+
+Viewing pages, cards, provider lists or refreshing data never starts services
+or actuators. Selecting an option does not start a task. Task buttons and
+message sending are separate, explicit requests.
+
+## Motion and acknowledgements
+
+`GET /api/control/state` supplies `safety.contract_version = 1`. Missing fresh
+state, UNKNOWN, wrong owner, expired permission or unverified actuator
+`available`/`stop_verified` blocks motion. DISARMED and ESTOP have
+`read_only: true`; explicit ARM and clearing ESTOP use separate preparation
+rules. ARM also requires hardware_ready and ready. Clearing ESTOP returns to DISARMED.
+
+ARM needs a specific plan, confirmation that the robot is prepared, a selected
+owner and a lease of at most 30 seconds. Opening a view or reconnecting never
+automatically arms. With wired power, the operator must provide clear space
+and secure the cable. Navigation and System provide the same explicit
+preparation form in their safety card; leaving the current view revokes
+permission rather than carrying it into another view.
+
+Every actuator, ARM or clear request creates one envelope: `request_id`,
+`generation`, increasing `seq`, `source`, `ts`, `ttl_ms <= 500`. Mutations are
+never automatically retried or given refreshed metadata. A manual pulse is
+at most 0.25 seconds.
+
+The API's `server_time` is separate from measurement `observed_at`. The panel
+aligns its clock during safety reads: command time uses the lower network
+latency bound, while observation age uses the upper bound. An unconfirmed
+clock or RTT above 500 ms blocks new movement commands. STOP is independent
+of clock alignment.
+
+Request history is separate from executor state. `pending` means waiting.
+Only an exact terminal ACK changes a request to `executed` or `rejected`.
+`executed` means SDK acceptance; physical completion remains `unverified`.
+An ACK timeout becomes `unknown`, never assumed success.
+
+Navigation separately matches task state to the original `request_id`
+and `generation`. Task activity confirmation is not an actuator execution ACK.
+A Chat domain start response with `starting` or `partial` does not yet allow
+sending text: the matching domain must report fresh `ready`. Producer errors
+remain visible in task cards and details; echo and fallback audio do not
+confirm working AI/TTS.
+
+Height, balance and prebuilt actions remain visible.
+`manual_characterization_required` explicitly blocks invocation until manual
+work establishes safe interruption. Parameter fields are proposed requests,
+not measured robot posture.
+
+STOP is always available and needs no safety metadata. W/S/A/D and arrows
+operate only in Control, outside editing fields, without key repetition,
+with fresh permission for owner `manual`. Space sends STOP outside fields.
+Connection loss, focus loss or hiding the tab suspends local motion control
+and attempts STOP. A lost connection never produces a claim of confirmed
+physical stopping.
+A locally revoked generation cannot regain permission by reading the same
+ARMED state again: STOP and explicit new arming are required.
+
+## Devices and resource use
+
+RAW/PROC/SSD/TRACKER identify frame types. Capture is the process holding the
+camera; URL is the source of an existing image. Disabling refresh does not
+stop the camera or task. Changing a URL does not acquire the camera. Only
+same-origin HTTP paths under `/camera/`, `/vision/` and `/snapshots/` are
+accepted. Frame age comes from the frame timestamp. Metadata age and the timestamp
+of the frame actually loaded are shown separately; stale displayed images dim.
+
+Reads allow one active request per address, a timeout, bounded backoff and
+pause in hidden tabs. Safety polls once per second, catalog and System every
+5 seconds, device ownership every 10 seconds. Images are fetched individually,
+on demand or every 2 seconds with preview enabled. SSE applies real events
+and retains producer timestamps; unavailable SSE leaves periodic reads active.
+Zero is a valid reading, `null` remains unknown. Polling never makes an old
+measurement fresh.
+
+One executor owns UART and publishes telemetry through BUS. The LCD is
+mounted sideways: preserve 270° compensation, boot sequence, SSH and Wi-Fi.
+
+## Administration and resource recovery
+
+System defaults to observation. Explicit administration enables
+`start`/`stop`/`restart`. `enable`/`disable` separately changes autostart; the
+API prevents enabling autostart for on-demand units. Dependencies, consumers
+and refusal reasons remain visible.
+
+Recent logs are read only after clicking the unit's log button. The journal
+endpoint accepts units from the common catalog, uses no shell or sudo and
+limits reads to 50 lines, 64 KiB and two seconds. Missing permission remains
+unknown. CPU, memory, disk, temperature, Git and raw graph data are in details.
+
+First STOP, end the task and normally stop its owner. Forced release is a
+separate manual procedure: fresh inventory, exact selected PIDs, typing the
+resource name and separate consent. The backend protects base services,
+UART and LCD. Recovery is never automatic.
+
+
+### Passive tracker
+
+S6 selects `face`, `hand` or `none` from the catalog `option_schema`.
+Selection sends no request; a separate button starts or ends observation.
+S6 starts no motion controller and writes no actuator authorization.
+A different mode requested by active Follow Me returns `409` with
+`blocked_by`; the operator ends that task before changing the mode.
+Ending S6 preserves the tracker and mode required by remaining consumers.
+The legacy `/vision/tracking/mode` and its `/api` alias use the same
+orchestrator; GET only observes.
+
+### Presentation quality
+
+The API preserves `observed_at`, explicit `stale`/`offline`, errors and
+data readiness. A newly published error is not a healthy measurement.
+Null or invalid packets expire previous geometry. Quality changes at
+the same timestamp redraw the presentation. Older healthy observations
+cannot replace newer ones, while explicit source failure expires a healthy
+appearance. A fresh FAILED/IDLE task status remains visible regardless of
+map readiness. Zero is preserved for battery measurements as well.
+Navigation reads the bounded map, pose and path cache through `/state` and
+`/api/navigator/status`; reads neither refresh source time nor start producers.
+
+## Verification without the robot
+
+```bash
+node --experimental-vm-modules --test tests/operator_panel.test.mjs tests/operator_panel_shared_review.test.mjs tests/legacy_catalog.test.mjs
+RIDER_TEST_ISOLATED=1 .venv/bin/python -m pytest --noconftest -q tests/test_operator_event_cursor.py tests/test_operator_navigation_state.py tests/test_operator_service_logs.py
+.venv/bin/python tests/operator_fixture_server.py
+```
+
+The fixture server binds loopback only and uses stdlib and in-memory data.
+It does not import the robot API, SDK, BUS or systemd. It prints its local URL.
+Automated tests do not authorize physical movement. Actuator tests require
+separate explicit consent from a prepared operator.

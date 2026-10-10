@@ -18,7 +18,7 @@ for top-level coordination; its integration is deferred.
 - [Pi ↔ PC provider contract](OFFLOAD_PROVIDER_PROTOCOL.md).
 - [API index](api-specs/README.md), [control](api-specs/control.md), [navigation](api-specs/navigator.md).
 - [Application modules](apps/README.md), [hardware drivers](drivers/README.md).
-- [Web screens](ui/README.md), [diagnostics and version footer](ui/panel-diagnostics.md).
+- [Web screens](ui/README.md), [operator panel](ui/operator-panel.md), [diagnostics and version footer](ui/panel-diagnostics.md).
 - [Follow Me tracking](FOLLOW_ME_TRACKING.md), [navigation visualization](NAVIGATION_VISUALIZATION.md).
 - [Push-to-talk](PTT_USAGE.md), [voice metrics](voice_metrics.md), [resource diagnostics](resource_diagnostics.md).
 

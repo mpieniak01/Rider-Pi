@@ -14,6 +14,7 @@ from common.service_catalog import (
     task_domain,
     task_resources,
     task_units,
+    tracking_mode_for,
 )
 
 MOVING_PRODUCERS = {"rider-tracking-controller.service", "rider-navigator.service"}
@@ -134,7 +135,7 @@ class FeatureStateMixin:
             "title_en": feature.title_en,
             "description_en": feature.description_en,
             "ensure_cam": feature.ensure_cam,
-            "tracking_mode": feature.tracking_mode,
+            "tracking_mode": tracking_mode_for(feature, options),
             "aliases": sorted(alias for alias, target in self.aliases.items() if target == name),
             "host": "pi",
             "source": "pi",

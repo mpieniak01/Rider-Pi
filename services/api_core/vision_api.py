@@ -170,7 +170,7 @@ def vision_obstacle() -> Response:
 # ---------- Follow Me tracking control endpoints ----------
 
 
-@bp.route("/vision/tracking/mode", methods=["POST", "OPTIONS"])
+@bp.route("/vision/tracking/mode", methods=["GET", "POST", "OPTIONS"])
 def set_tracking_mode() -> Response:
     """
     Unified tracking mode control endpoint.
@@ -181,14 +181,26 @@ def set_tracking_mode() -> Response:
     if request.method == "OPTIONS":
         resp = make_response("", 204)
         resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
 
     try:
-        payload = request.get_json(silent=True) or {}
+        from .features_api import feature_manager
+
+        if request.method == "GET":
+            task = next(row for row in feature_manager.describe_features() if row["name"] == "s6_tracker_module")
+            mode = task["tracking_mode"] if task["requested"] else "none"
+            return _json_nocache({"ok": True, "mode": mode, "enabled": task["requested"], "task": task})
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return _json_nocache({"ok": False, "error": "JSON_object_required"}, 400)
         raw_mode = payload.get("mode", "none")
+        if not isinstance(raw_mode, str):
+            return _json_nocache({"ok": False, "error": "invalid_mode"}, 400)
         enabled = payload.get("enabled", raw_mode.lower() in ["face", "hand"])
+        if not isinstance(enabled, bool):
+            return _json_nocache({"ok": False, "error": "enabled_must_be_boolean"}, 400)
         mode = raw_mode.lower()
 
         # Validate mode before applying enabled override
@@ -205,13 +217,19 @@ def set_tracking_mode() -> Response:
         if not enabled:
             mode = "none"
 
-        # Publish to unified topic
-        pub = _tracking_pub()
-        pub.publish(bus.TOPIC_TRACKING_MODE_SET, {"mode": mode}, add_ts=True)
-
+        result = feature_manager.set_feature("s6_tracker_module", mode != "none", options={"mode": mode})
+        ok = result.get("ok") is True
+        status = 200 if ok else 409 if result.get("error") in {"resource_conflict", "stop_before_reconfigure"} else 503
         return _json_nocache(
-            {"ok": True, "mode": mode, "enabled": (mode != "none")},
-            200,
+            {
+                "ok": ok,
+                "mode": mode,
+                "enabled": (mode != "none"),
+                "result": result,
+                "blocked_by": result.get("blocked_by", result.get("consumers", [])),
+                "error": result.get("error"),
+            },
+            status,
         )
     except Exception as e:
         logger.exception("Failed to set tracking mode: %s", e)

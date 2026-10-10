@@ -33,9 +33,6 @@ def healthz(C):
         pass
 
     bat = C.LAST_XGO.get("battery")
-    # Jednorazowe błyski 0% traktuj jako "brak odczytu".
-    if isinstance(bat, (int, float)) and bat == 0 and xgo_on and (last_msg_age is not None and last_msg_age < 2.0):
-        bat = None
 
     lcd_state = C.LAST_CAMERA.get("lcd", {})
     lcd_on = lcd_state.get("on")
@@ -304,3 +301,31 @@ def api_last_frame(C):
     # ale realny plik to snapshots/raw.jpg — aplikacje i tak korzystały z /camera/last.
     payload = {"exists": bool(exists), "mtime": mtime, "path": "data/last_frame.jpg"}
     return C.Response(C.json.dumps(payload), mimetype="application/json")
+
+
+def events(C):
+    from .event_stream import EventCursor
+
+    @C.stream_with_context
+    def gen():
+        cursor = EventCursor()
+        idle = 0
+        while True:
+            try:
+                C.time.sleep(1.0)
+                rows = cursor.drain(list(C.EVENTS))
+                for ev in rows:
+                    yield f'data: {C.json.dumps(ev)}\n\n'
+                idle = 0 if rows else idle + 1
+                if idle >= 10:
+                    yield ': keepalive\n\n'
+                    idle = 0
+            except GeneratorExit:
+                break
+            except Exception:
+                C.time.sleep(0.5)
+
+    response = C.Response(gen(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response

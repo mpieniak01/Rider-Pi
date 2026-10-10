@@ -1,0 +1,38 @@
+/* Shared operator surfaces use the existing dashboard tokens and primitives. */
+.operator-shell { max-width: 1280px; margin: 0 auto; padding: 1rem; }
+.operator-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 1rem; }
+.operator-row { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin: .6rem 0; }
+.operator-row h3 { flex: 1; margin: 0; }
+.operator-kv { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: .45rem 1rem; margin: .8rem 0; }
+.operator-kv dt { opacity: .7; }
+.operator-kv dd { margin: 0; overflow-wrap: anywhere; }
+.operator-shell .c-card { padding: 1rem; overflow: hidden; }
+.operator-shell .c-btn:disabled { opacity: .45; cursor: not-allowed; }
+.operator-shell input, .operator-shell select, .operator-shell textarea { font: inherit; color: inherit; background: var(--bg, #141b23); border: 1px solid var(--border, #58616d); border-radius: .4rem; padding: .5rem; max-width: 100%; }
+.operator-shell textarea { display: block; width: 100%; box-sizing: border-box; min-height: 5rem; }
+.operator-shell input[type=checkbox] { width: 1.1rem; height: 1.1rem; }
+.operator-shell label { display: block; margin: .5rem 0; }
+.operator-option select { display: block; width: 100%; }
+:root .operator-shell .c-btn.operator-stop { background: #b42132; color: white; border: 2px solid #ed6273; min-height: 44px; padding: .5rem 1.25rem; font-weight: 700; }
+:root .operator-shell .c-btn.operator-stop:hover { background: #941c29; }
+.operator-global-stop { position: fixed; right: 1rem; top: 8rem; z-index: 1400; box-shadow: 0 3px 12px #0009; }
+.operator-safety { border-left: 4px solid #eebd62; }
+.operator-muted { opacity: .75; }
+.operator-error { color: #f6939d; overflow-wrap: anywhere; }
+.operator-message { min-height: 1.5rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.operator-json { font-size: .8rem; max-height: 340px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.operator-drive { display: grid; grid-template-columns: repeat(3, minmax(60px, 1fr)); max-width: 380px; gap: .5rem; margin: 1rem auto; }
+.operator-drive button { min-height: 52px; }
+.operator-media { width: 100%; min-height: 100px; border-radius: .5rem; background: #192430; }
+.operator-stale-frame { opacity: .45; }
+.operator-shell [hidden] { display: none !important; }
+.operator-map { display: block; width: 100%; min-height: 240px; }
+.operator-chat-message { padding: .75rem; border-bottom: 1px solid var(--border, #58616d); }
+.operator-chat-message p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.operator-chat-message.is-operator { border-left: 3px solid #7fb9e6; }
+.operator-shell details { margin-top: .75rem; }
+.operator-shell summary { cursor: pointer; padding: .4rem 0; }
+.operator-shell h2 { margin-top: .3rem; }
+.operator-shell .operator-warning { border: 1px solid #b98b3a; padding: .7rem; border-radius: .4rem; }
+.operator-shell :focus-visible { outline: 3px solid #83c6eb; outline-offset: 3px; }
+@media (max-width: 600px) { .operator-shell { padding: .5rem; } .operator-kv { grid-template-columns: 1fr; gap: .2rem; } .operator-kv dd { margin-bottom: .4rem; } .operator-global-stop { top: auto; bottom: 1rem; } }

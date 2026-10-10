@@ -78,14 +78,19 @@ def test_endpoint_route():
 
 
 def test_ui_calls_correct_endpoint():
-    """Test that the UI JavaScript calls the correct endpoint."""
-    with open("web/control.html") as f:
-        content = f.read()
-        # Check that the UI calls the new endpoint
-        assert "/api/vision/tracking/mode" in content
-        # Check that the payload format is correct
-        assert "mode:" in content  # mode: 'face' or mode: 'hand'
-        assert "enabled:" in content  # enabled: true/false
+    """The modular panel chooses passive modes from the authoritative catalog."""
+    from pathlib import Path
+
+    from common.service_catalog import DEFAULT_REGISTRY, option_schema
+
+    task = DEFAULT_REGISTRY["s6_tracker_module"]
+    assert task.can_move is False
+    schema = option_schema(task)
+    assert schema["field"] == "mode" and schema["end_value"] == "none"
+    assert {choice["value"] for choice in schema["choices"]} == {"face", "hand", "none"}
+    content = Path("web/assets/operator/tasks.js").read_text()
+    assert "task.option_schema" in content and "options" in content
+    assert "/api/logic/feature/" in content
 
 
 def test_tracker_subscribes_to_correct_topic():

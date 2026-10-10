@@ -1,17 +1,9 @@
 # Pi diagnostics and version footer
 
-The Pi dashboard is served by Flask on port 8080. `/` and `/view` are the overview;
-`/control` is Robot control; `/system/` is Diagnostics. Service administration remains
-in the advanced section of Robot control. `/home` is the Google Feed screen, not the
-landing page. `/home` and `/google_home` remain accessible directly but are omitted
-from the current menu. Both Polish and English labels are supported.
-
-Diagnostics displays service cards grouped by component and a collapsible details
-table. Status counts distinguish inactive services from failures. Component connections
-come from `SERVICE_META`; they do not represent systemd boot dependencies.
-The page reads `GET /api/services/graph` every five seconds with one request in flight
-and a twelve-second timeout. An error preserves the last successful data and marks
-its timestamp as stale. This page sends no control or service commands.
+Current operator views are described in [Operator panel](operator-panel.md).
+System is read only by default; administration and autostart changes are explicit.
+Service consumers and actual dependencies come from the version 2 catalog.
+This page retains the network and version API details.
 
 The **Network** section reports the actual `wlan0` state independently of service
 statuses: carrier and an IPv4 address indicate a LAN connection. It reads radio blocks,
@@ -40,6 +32,10 @@ wraps and follows normal document flow.
 When verifying changes, cover API contracts, four themes, multiple screen
 widths, both languages, slow/failed responses and the footer on every page.
 Store individual audit results locally.
+
+## Historical screenshots
+
+The images below show the previous diagnostic layout.
 
 ![Desktop diagnostics](../assets/ui/diagnostics-desktop.png)
 ![Mobile diagnostics](../assets/ui/diagnostics-mobile.png)

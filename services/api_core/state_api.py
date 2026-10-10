@@ -7,6 +7,7 @@ import time
 from flask import Response, jsonify
 
 from services.api_core import compat
+from services.api_core.navigation_state import snapshot as navigation_snapshot
 from services.api_core.vision_api import load_obstacle  # reużywamy jednej logiki
 
 
@@ -85,6 +86,11 @@ def state() -> Response:
                     "yaw": compat.LAST_XGO.get("yaw"),
                     "fw": compat.XGO_FW,
                     "ts": compat.LAST_XGO.get("ts"),
+                    "observed_at": compat.LAST_XGO.get("observed_at", compat.LAST_XGO.get("ts")),
+                    "source": compat.LAST_XGO.get("source", "unknown"),
+                    "stale": compat.LAST_XGO.get("stale") is True or compat.LAST_XGO.get("offline") is True,
+                    "offline": compat.LAST_XGO.get("offline") is True,
+                    "error": compat.LAST_XGO.get("error"),
                 }
                 if compat.LAST_XGO.get("ts")
                 else None
@@ -99,6 +105,7 @@ def state() -> Response:
             "offset_ts": offset_ts,
             "offset_age_s": offset_age,
         },
+        "navigation": navigation_snapshot(),
     }
     return Response(json.dumps(resp), mimetype="application/json")
 

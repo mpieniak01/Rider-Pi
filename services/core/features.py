@@ -23,6 +23,7 @@ from common.service_catalog import (
     task_domain,
     task_resources,
     task_units,
+    tracking_mode_for,
 )
 from services.core.feature_admin import FeatureAdminMixin
 from services.core.feature_state import FeatureStateMixin
@@ -290,19 +291,21 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             }
         return None
 
-    def _conflicts(self, canonical: str, units: tuple[str, ...]) -> list[str]:
+    def _conflicts(self, canonical: str, units: tuple[str, ...], options: dict) -> list[str]:
         requested_capture = set(units) & CAMERA_CAPTURE_UNITS
         feature = self.registry[canonical]
+        mode = tracking_mode_for(feature, options)
         conflicts: list[str] = []
-        for name, options in self._requested.items():
+        for name, other_options in self._requested.items():
             if name == canonical:
                 continue
             other = self.registry[name]
-            captures = set(task_units(other, options)) & CAMERA_CAPTURE_UNITS
+            captures = set(task_units(other, other_options)) & CAMERA_CAPTURE_UNITS
+            other_mode = tracking_mode_for(other, other_options)
             if (
                 (requested_capture and captures and requested_capture != captures)
                 or (feature.can_move and other.can_move)
-                or (feature.tracking_mode and other.tracking_mode and feature.tracking_mode != other.tracking_mode)
+                or (mode and other_mode and mode != other_mode)
             ):
                 conflicts.append(name)
         # A raw/edge/ssd owner outside this task must not be stopped automatically.
@@ -337,9 +340,9 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             denied = self._intent_permission(control)
             if denied:
                 return denied
-        conflicts = self._conflicts(canonical, units)
+        conflicts = self._conflicts(canonical, units, options)
         if conflicts:
-            return {"ok": False, "error": "resource_conflict", "consumers": conflicts}
+            return {"ok": False, "error": "resource_conflict", "consumers": conflicts, "blocked_by": conflicts}
         if canonical in self._requested:
             if (
                 self._requested[canonical] != options
@@ -434,10 +437,11 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 self._requested[canonical] = dict(options)
             self._errors[canonical] = denied["error"]
             return {**denied, "steps": steps, "rollback": rollback, "state": self._states[canonical]}
-        if feature.tracking_mode:
+        mode = tracking_mode_for(feature, options)
+        if mode:
             try:
-                self._publish_tracking_mode(feature.tracking_mode)
-                events.append({"topic": "tracking.mode:set", "mode": feature.tracking_mode})
+                self._publish_tracking_mode(mode)
+                events.append({"topic": "tracking.mode:set", "mode": mode})
             except Exception as exc:
                 rollback = self._rollback(feature, started)
                 self._states[canonical] = "partial" if any(not row.get("ok") for row in rollback) else "failed"
@@ -486,10 +490,18 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._states[canonical] = "stopped"
         self._errors.pop(canonical, None)
         events = []
-        if feature.tracking_mode:
+        if tracking_mode_for(feature, options):
+            remaining_mode = next(
+                (
+                    tracking_mode_for(self.registry[name], opts)
+                    for name, opts in self._requested.items()
+                    if tracking_mode_for(self.registry[name], opts)
+                ),
+                "none",
+            )
             try:
-                self._publish_tracking_mode("none")
-                events.append({"topic": "tracking.mode:set", "mode": "none"})
+                self._publish_tracking_mode(remaining_mode)
+                events.append({"topic": "tracking.mode:set", "mode": remaining_mode})
             except Exception as exc:
                 return {"ok": False, "error": "tracking_mode_failed", "steps": steps, "detail": str(exc)}
         return {"ok": True, "steps": steps, "events": events, "task": self._describe(canonical)}
@@ -500,6 +512,10 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         try:
             with self.transaction():
                 canonical = self._resolve_name(name)
+                if enabled and self.registry[canonical].option_kind == "tracking":
+                    task_units(self.registry[canonical], options or {})
+                    if tracking_mode_for(self.registry[canonical], options) == "none":
+                        enabled = False
                 try:
                     result = self._start(canonical, options or {}, control) if enabled else self._stop(canonical)
                 finally:
