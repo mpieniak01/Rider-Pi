@@ -27,6 +27,7 @@ for top-level coordination; its integration is deferred.
 - [Configuration index](config/README.md), [voice](config/voice.md), [face](config/face.md), [validation](config/validation.md).
 - [WM8960 audio](audio/wm8960.md), [ALSA](config/alsa.md).
 - [Scripts](scripts/README.md), [script guides](ops/README.md), [systemd mapping](SYSTEMD_SERVICES_MAPPING.md), [unit catalogue](SYSTEMD_SERVICES_INVENTORY.md).
+- [Tasks, services and resources](TASKS_SERVICES_RESOURCES.md), [scenario migration](UPGRADE_SCENARIOS.md).
 - [Google Gemini](ecosystem-google.md), [Google Home](google-home-integration.md), [Home command API](google/home_command.md).
 - [Quality guards](QUALITY_GUARDS.md), [working agreements](../WORKING-AGREEMENTS.md), [agent instructions](../AGENT.md).
 - Releases: [v0.6](release-notes/v0.6.md), [v0.5.3](release-notes/v0.5.3.md), [v0.5.2](release-notes/v0.5.2.md).

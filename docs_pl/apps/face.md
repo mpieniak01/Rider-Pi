@@ -53,11 +53,15 @@ ls -l /tmp/legacy.png
 
 - Animacje/FaceLoop, TTS, visemy, sterownik LCD RAW
 - Brak `/face/state`
-- Plik unit (legacy): `systemd/legacy/rider-face.service`
-- Domyślnie wyłączony: `sudo systemctl disable rider-face.service`
-- Aby podlinkować unit na urządzeniu, uruchom `./scripts/systemd-sync.sh --with-dev` (Tryb DEV linkuje `rider-face` i previewe z katalogu legacy).
-- Włącz: `sudo systemctl enable rider-face.service && sudo systemctl start rider-face.service`
+- Katalog usług wersji 2 nie instaluje `rider-face` ani innych jednostek legacy.
+  S11 wybiera jedno narzędzie kamery; LCD korzysta z zachowanej usługi renderera.
+  `systemd-sync.sh` pokazuje plan, a `--with-dev` jest wyłącznie opcją kompatybilności.
+  Zobacz [kontrakt zadań i zasobów](../ZADANIA_USLUGI_ZASOBY.md).
 - Edytuj parametry przez ENV w `systemd/robot.env` (np. `FACE_LCD_ROTATE`, `FACE_LCD_DRIVER`)
+- W `/healthz` `ownership_state` opisuje właścicieli zasobu. Udany odczyt `lsof`
+  nie dowodzi zasilania LCD. `on` pozostaje `null`, a `power_known=false`, dopóki
+  renderer nie zgłosi jawnego stanu; `configured_on` opisuje tylko konfigurację.
+  Po błędzie inspekcji sam powrót znanej własności nie ustawia ekranu jako włączony.
 
 ## Testy
 - `pytest -q tests/test_face_render_pupil.py tests/test_face_render_rotation.py tests/test_sink_lcd_path.py`

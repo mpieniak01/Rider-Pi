@@ -53,6 +53,7 @@ from services.api_core.api_metrics import _update_api_metrics
 from services.api_core.chat_routes import register_chat_endpoints
 from services.api_core.face_api import render_face as face_render_shim
 from services.api_core.home_auth_route import home_auth as home_auth_flow, home_auth_url as home_auth_request
+from services.api_core.resource_api import api_resource
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
 
 # ── Metryki API helper ───────────────────────────────────────────────────────
@@ -114,33 +115,7 @@ def face_state():
     return _corsify(jsonify(res)), 200
 
 
-@app.route("/api/resource/<name>", methods=["GET", "POST"])
-def api_resource(name: str):
-    if request.method == "GET":
-        return services_api.resource_status(name)
-
-    payload = request.get_json(silent=True) or {}
-    action = str(payload.get("action") or "").strip().lower()
-
-    if action == "release":
-        pids_raw = payload.get("pids")
-        pids: list[int] = []
-        if isinstance(pids_raw, list):
-            for item in pids_raw:
-                try:
-                    pids.append(int(item))
-                except (TypeError, ValueError):
-                    return _corsify(jsonify({"error": "invalid pid"})), 400
-        return services_api.resource_release(name, pids)
-
-    if action == "stop":
-        units = payload.get("units")
-        if units is not None and not isinstance(units, list):
-            return _corsify(jsonify({"error": "units must be a list"})), 400
-        units_list = [str(u) for u in units] if isinstance(units, list) else None
-        return services_api.resource_stop(name, units_list)
-
-    return _corsify(jsonify({"error": "unknown action", "action": action})), 400
+app.add_url_rule("/api/resource/<name>", view_func=api_resource, methods=["GET", "POST", "OPTIONS"])
 
 
 # ── FACE: legacy ─────────────────────────────────────────────────────────────
@@ -308,6 +283,11 @@ _add_rule(
 )
 
 # features (core business logic)
+_add_rule(
+    "/api/logic/catalog",
+    view_func=features_api.feature_catalog_handler,
+    methods=["GET", "OPTIONS"],
+)
 _add_rule(
     "/api/logic/features",
     view_func=features_api.feature_registry_handler,

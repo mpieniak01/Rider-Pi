@@ -485,6 +485,7 @@
 <script type="module" src="/web/assets/footer.js"></script>
 <script type="module">
   import { initI18n, applyDom, t } from "/web/assets/i18n.js";
+  import { blockLegacyButton, legacyBlocked, legacyContractMessage, legacyResourceState } from "/web/assets/legacy-catalog.js";
 
   // legacy endpoint string kept for compatibility with tests/tools
   const LEGACY_TRACKING_ENDPOINT = "/api/vision/tracking/mode";
@@ -957,11 +958,12 @@
   }
 
   const featureList = qs("#featureList");
+  document.querySelectorAll('[data-feature="tracking"] [data-feature-action="start"], [data-feature="recon"] [data-feature-action="start"], [data-feature-action="return-home"], [data-res-action="release"], [data-res-action="stop"]').forEach(blockLegacyButton);
   trackingModeSelect = qs("#trackingMode");
   if (featureList) {
     featureList.addEventListener("click", (ev) => {
       const btn = ev.target.closest("button[data-feature-action]");
-      if (!btn) return;
+      if (!btn || legacyBlocked(btn)) return;
       const row = btn.closest("[data-feature]");
       if (!row) return;
       const featureId = row.getAttribute("data-feature");
@@ -992,7 +994,7 @@
     else featureBusy.delete(featureId);
     row.classList.toggle("busy", !!busy);
     row.querySelectorAll("button").forEach((btn) => {
-      btn.disabled = !!busy;
+      btn.disabled = !!busy || legacyBlocked(btn);
     });
   }
 
@@ -1071,6 +1073,7 @@
       startBtn.className = "c-btn c-btn-sm";
       startBtn.dataset.scenarioAction = "start";
       startBtn.textContent = t("motion.feature_btn_start");
+      blockLegacyButton(startBtn);
       const stopBtn = document.createElement("button");
       stopBtn.className = "c-btn c-btn-sm";
       stopBtn.dataset.scenarioAction = "stop";
@@ -1099,7 +1102,7 @@
     else scenarioBusy.delete(name);
     row.classList.toggle("busy", !!busy);
     row.querySelectorAll("button").forEach((btn) => {
-      btn.disabled = !!busy;
+      btn.disabled = !!busy || legacyBlocked(btn);
     });
   }
 
@@ -1230,37 +1233,11 @@
   }
 
   async function runReturnHome() {
-    setFeatureBusy("recon", true);
-    setFeatureStatus(
-      "recon",
-      "working",
-      t("motion.feature_note_waiting"),
-    );
-    try {
-      await httpPost("/api/navigator/return_home", {});
-      appendLog("[feature recon] return_home", "ok");
-    } catch (e) {
-      appendLog(
-        `[feature recon] return_home :: ${e.message || e}`,
-        "err",
-      );
-      setFeatureStatus("recon", "error", e.message || String(e));
-    } finally {
-      setFeatureBusy("recon", false);
-      try {
-        await fetchControlState();
-      } catch {
-        /* ignore */
-      }
-      try {
-        await fetchMotionQueue();
-      } catch {
-        /* ignore */
-      }
-    }
+    throw new Error(legacyContractMessage);
   }
 
   async function logicFeatureToggle(featureName, enabled) {
+    if (enabled) throw new Error(legacyContractMessage);
     return httpPost(`/api/logic/feature/${encodeURIComponent(featureName)}`, { enabled });
   }
 
@@ -1745,17 +1722,19 @@
     setResourceStatus(statusEl, "is-off", t("meta.loading"));
     try {
       const data = await fetchJson(`/api/resource/${encodeURIComponent(resName)}`);
-      const free = !!data.free;
-      if (data.error) {
+      const observed = legacyResourceState(data);
+      if (observed.error) {
         setResourceStatus(
           statusEl,
           "is-err",
           `${t("resources.status_error")}: ${data.error}`,
         );
-      } else if (free) {
+      } else if (observed.state === "free") {
         setResourceStatus(statusEl, "is-ok", t("resources.status_free"));
-      } else {
+      } else if (observed.state === "busy") {
         setResourceStatus(statusEl, "is-warn", t("resources.status_busy"));
+      } else {
+        setResourceStatus(statusEl, "is-off", observed.state);
       }
       if (holdersEl) {
         const holders = (data.holders || []).map((holder) => {
@@ -1794,6 +1773,7 @@
       updateResourceRow(res);
       return;
     }
+    if (legacyBlocked(btn)) return;
     httpPost(`/api/resource/${encodeURIComponent(res)}`, { action })
       .then(() => updateResourceRow(res))
       .catch((err) => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Automatyczne wygaszanie LCD 2" przy bezczynności (oszczędzanie energii)."""
+"""Observe LCD ownership/idle time; mutations require an explicit admin action."""
 
 from __future__ import annotations
 
@@ -34,12 +34,21 @@ def _update_lcd_state(
         return
 
     if snapshot is not None:
-        lcd["presenting"] = not snapshot.get("free", False)
+        known = not snapshot.get("error") and isinstance(snapshot.get("free"), bool)
+        lcd["presenting"] = not snapshot["free"] if known else None
         lcd["holders"] = snapshot.get("holders") or []
-        lcd["checked_at"] = snapshot.get("checked_at") or time.time()
+        lcd["checked_at"] = snapshot.get("checked_at")
+        lcd["ownership_state"] = snapshot.get(
+            "state", "unknown" if not known else "free" if snapshot["free"] else "busy"
+        )
+        lcd["ownership_error"] = snapshot.get("error")
+        if not known:
+            lcd["on"] = None
+            lcd["power_known"] = False
 
     if on is not None:
         lcd["on"] = bool(on)
+        lcd["power_known"] = True
         if not on:
             lcd["active"] = False
             lcd["presenting"] = False
@@ -50,7 +59,7 @@ def _update_lcd_state(
 
 def _poll_once(now: float | None = None) -> None:
     """Wykonaj pojedyncze sprawdzenie LCD; wywoływane cyklicznie w tle."""
-    global _last_busy_ts, _last_action_ts, _power_state
+    global _last_busy_ts, _power_state
 
     if not ENABLED:
         return
@@ -62,42 +71,22 @@ def _poll_once(now: float | None = None) -> None:
         snapshot = resource_diag.inspect("lcd")
     except Exception as exc:  # noqa: BLE001
         LOG.warning("LCD idle guard: inspect failed: %s", exc)
-        return
+        snapshot = {"free": None, "state": "unknown", "holders": [], "error": str(exc), "checked_at": None}
 
-    busy = not snapshot.get("free", False)
     _update_lcd_state(snapshot=snapshot)
+    if snapshot.get("error") or not isinstance(snapshot.get("free"), bool):
+        _power_state = None
+        return
 
-    if busy:
+    if snapshot["free"] is False:
         _last_busy_ts = now
-        _power_state = True
-        _update_lcd_state(on=True)
         return
-
-    if snapshot.get("error"):
-        return
-
     idle_for = now - _last_busy_ts
-    already_off = _power_state is False
-    if idle_for < IDLE_OFF_AFTER_S or already_off:
-        return
-
-    if (now - _last_action_ts) < CHECK_INTERVAL_S:
-        return
-
-    try:
-        result = resource_diag.release("lcd")
-    except Exception as exc:  # noqa: BLE001
-        LOG.warning("LCD idle guard: off failed: %s", exc)
-        _last_action_ts = now
-        return
-
-    _last_action_ts = now
-    if result.get("ok"):
-        _power_state = False
-        _update_lcd_state(on=False, auto_off_ts=now)
-        LOG.info("LCD idle guard: turned off LCD after %.1fs idle", idle_for)
-    else:
-        LOG.warning("LCD idle guard: off command failed: %s", result)
+    # A free SPI descriptor does not prove a dark LCD. The panel may retain its
+    # last image, and LCD/UART are protected from generic resource release.
+    # Keep explicitly reported power state; publish an operator hint only.
+    C.LAST_CAMERA["lcd"]["idle_for_s"] = max(0.0, idle_for)
+    C.LAST_CAMERA["lcd"]["idle_release_requires_operator"] = idle_for >= IDLE_OFF_AFTER_S
 
 
 def _loop() -> None:
@@ -106,7 +95,7 @@ def _loop() -> None:
         return
 
     LOG.info(
-        "LCD idle guard started (interval=%.1fs, idle_off=%.1fs)",
+        "LCD ownership observer started (interval=%.1fs, operator_idle_hint=%.1fs)",
         CHECK_INTERVAL_S,
         IDLE_OFF_AFTER_S,
     )

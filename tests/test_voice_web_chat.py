@@ -67,6 +67,7 @@ def test_api_chat_checks_binary_exists(client, mock_config):
         with (
             patch("apps.voice.web.g") as mock_g,
             patch("apps.voice.web.os.path.exists") as mock_exists,
+            patch("apps.voice.web.shutil.which", return_value=None),
         ):
             mock_g.config = mock_config
             # First call (binary check) returns False
@@ -92,6 +93,7 @@ def test_api_chat_checks_model_exists(client, mock_config):
         with (
             patch("apps.voice.web.g") as mock_g,
             patch("apps.voice.web.os.path.exists") as mock_exists,
+            patch("apps.voice.web.shutil.which", return_value=None),
         ):
             mock_g.config = mock_config
             # First call (binary) True, second call (model) False

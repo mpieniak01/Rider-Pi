@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from common import systemd_snapshot
+from common.service_catalog import UNIT_CATALOG
+
 BASE_DIR = Path(__file__).resolve().parents[1]
 SERVICE_CTL = BASE_DIR / "scripts" / "sys_control.sh"
 SYSTEMD_DIR = BASE_DIR / "systemd"
@@ -84,37 +87,44 @@ def _svc_show(unit: str) -> dict[str, str]:
 
 def status(unit: str) -> dict[str, str]:
     """Zwróć status unitu systemd w spójnym formacie."""
-    kv = _svc_show(unit)
-    if "error" in kv:
-        return {"unit": unit, "error": kv["error"]}
-    desc = kv.get("Description", "").strip()
+    kv = systemd_snapshot.snapshot((unit,))[unit]
+    desc = kv.get("desc", "").strip()
     if not desc or desc.lower() == unit.lower():
         file_desc = _service_description_from_file(unit)
         if file_desc:
             desc = file_desc
-    return {
-        "unit": unit,
-        "load": kv.get("LoadState", ""),
-        "active": kv.get("ActiveState", ""),
-        "sub": kv.get("SubState", ""),
-        "enabled": kv.get("UnitFileState", ""),
-        "desc": desc,
-    }
+    return {**kv, "desc": desc}
+
+
+def status_many(units: tuple[str, ...] | None = None, *, force: bool = False) -> dict[str, dict]:
+    return systemd_snapshot.snapshot(units, force=force)
+
+
+def invalidate_snapshot() -> None:
+    systemd_snapshot.invalidate()
 
 
 def is_loaded(unit: str) -> bool:
     """Czy unit istnieje (LoadState=loaded)?"""
-    kv = _svc_show(unit)
-    return kv.get("LoadState") == "loaded"
+    kv = status(unit)
+    return kv.get("load") == "loaded" and not kv.get("error")
 
 
 def is_active(unit: str) -> bool:
     """Czy unit jest aktywny (ActiveState=active)?"""
-    kv = _svc_show(unit)
-    return kv.get("ActiveState") == "active"
+    kv = status(unit)
+    return kv.get("active") == "active" and not kv.get("error")
 
 
 def _run_via_systemctl(unit: str, action: str, timeout: float) -> ActionResult:
+    from common.service_action_guard import check
+
+    try:
+        admission = check(unit, action)
+    except (ImportError, OSError, ValueError) as exc:
+        admission = {"ok": False, "error": str(exc)}
+    if admission.get("ok") is not True:
+        return ActionResult(unit, action, "denied", False, 3, "", str(admission.get("error")))
     proc = subprocess.run(
         ["sudo", "-n", "systemctl", action, unit],
         check=False,
@@ -122,6 +132,7 @@ def _run_via_systemctl(unit: str, action: str, timeout: float) -> ActionResult:
         text=True,
         timeout=timeout,
     )
+    invalidate_snapshot()
     return ActionResult(
         unit=unit,
         action=action,
@@ -138,7 +149,9 @@ def run_unit_action(unit: str, action: str, *, timeout: float = 25.0) -> ActionR
     Uruchom akcję na unicie (preferując scripts/sys_control.sh, z fallbackiem na systemctl).
     Dla stop/disable brakującego unitu zwraca wynik 'skipped'.
     """
-    if action in {"stop", "disable"} and not is_loaded(unit):
+    if unit not in UNIT_CATALOG or action not in {"start", "stop", "restart", "enable", "disable"}:
+        return ActionResult(unit, action, "denied", False, 3, "", "unit/action outside canonical catalog")
+    if action in {"stop", "disable"} and status(unit).get("load") == "not-found":
         return ActionResult(
             unit=unit,
             action=action,
@@ -150,6 +163,7 @@ def run_unit_action(unit: str, action: str, *, timeout: float = 25.0) -> ActionR
             stderr="",
         )
 
+    invalidate_snapshot()
     use_script = SERVICE_CTL.exists() and os.access(SERVICE_CTL, os.X_OK)
     if use_script:
         proc = subprocess.run(
@@ -159,6 +173,7 @@ def run_unit_action(unit: str, action: str, *, timeout: float = 25.0) -> ActionR
             text=True,
             timeout=timeout,
         )
+        invalidate_snapshot()
         return ActionResult(
             unit=unit,
             action=action,
@@ -178,4 +193,6 @@ __all__ = [
     "is_loaded",
     "run_unit_action",
     "status",
+    "status_many",
+    "invalidate_snapshot",
 ]

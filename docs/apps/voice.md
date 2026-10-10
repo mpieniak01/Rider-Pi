@@ -565,6 +565,24 @@ ptt_state = PTTStateMachine(logger)
 ptt_state.handle_event(PTTEvent.PTT_START)
 ```
 
+## Selected domain readiness
+
+The service catalog resolves the default domain: S5 uses `voice`, S10 uses
+`text`. Dependency, resource and worker heartbeat checks use that same choice.
+The text profile neither requires nor loads Vosk/Piper. `VOICE_DOMAIN_CONFIG`
+selects the shared configuration for readiness and handlers; a missing or empty
+value uses the default `config/voice.toml`. A `stub` configuration is unavailable AI.
+
+The selected local TTS profile admits only the effective `local` or `piper`
+backend, including JSON sent as `text/plain`. Admission and the handler resolve
+the same aliases and configured default. Another backend or a payload other
+than an object returns 400 before synthesis. Admission does not replace the
+operator choice with a cloud backend. Only the selected domain loads its models.
+
+A transient heartbeat write failure does not stop profile observation. The
+existing loop retries writes; a stale heartbeat blocks readiness and requests
+until a successful report. No packages or models are installed or downloaded.
+
 ### Quality Guards
 
 Automatyczne sprawdzanie w pre-commit i CI (`scripts/dev_check-legacy-imports.py`):

@@ -1,12 +1,16 @@
 [Unit]
 Description=Rider-Pi Vision Offload Dispatcher
 After=network.target
+Wants=frame-distributor.service
+After=frame-distributor.service
 
 [Service]
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/robot
 Environment=PYTHONUNBUFFERED=1
+Environment=VISION_OFFLOAD_SOURCE=raw
+Environment=VISION_OFFLOAD_FALLBACK_CAMERA=0
 ExecStart=/usr/bin/python3 -m apps.vision.offload_dispatcher
 Restart=always
 RestartSec=2

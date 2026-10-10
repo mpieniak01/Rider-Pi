@@ -33,12 +33,13 @@ Environment=PATH=/home/pi/robot/bin:/home/pi/.local/bin:/usr/local/sbin:/usr/loc
 
 Environment=PYTHONUNBUFFERED=1
 Environment=LOG_LEVEL=DEBUG
+Environment=FEATURE_STATE_PATH=/run/rider-motion/feature_state.json
+Environment=VOICE_DOMAIN_CONFIG=/home/pi/robot/config/voice_local_file.toml
+Environment=VOICE_WEB_LOAD_PROFILE=0
 
-# Pre-checki (pomagają złapać zły PATH/plik modelu zanim web wstanie)
-# Bezpośrednio wskazujemy na poprawną binarkę 'piper' zainstalowaną przez --user
-ExecStartPre=/home/pi/.local/bin/piper -h
-ExecStartPre=/usr/bin/env bash -lc '[ -f "$PIPER_MODEL" ] && [ -f "$PIPER_CONFIG" ] || { echo "Brak modelu/konfigu PIPER"; exit 1; }'
-ExecStart=/usr/bin/python3 -m apps.voice.web
+# Only selected domains are checked; ASR does not require Piper or chat.
+ExecStartPre=/usr/bin/python3 -m apps.voice.domain_worker --check
+ExecStart=/usr/bin/python3 -m apps.voice.domain_worker
 
 Restart=on-failure
 RestartSec=3

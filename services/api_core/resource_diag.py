@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Diagnostyka i zwalnianie zasobów sprzętowych (audio/kamera).
-
-Udostępnia wspólne funkcje wykorzystywane przez API oraz skrypt CLI
-``scripts/resource_diag.py``. Podejście celowo jest możliwie proste:
-wykorzystujemy `lsof` do wykrywania blokujących procesów, a do
-zwalniania posługujemy się istniejącymi skryptami (ALSA preflight oraz
-`sys_camera-free.sh`).
-"""
+"""Read-only exact device ownership; recovery is an explicit operator action."""
 
 from __future__ import annotations
 
@@ -18,9 +11,10 @@ import subprocess
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from . import compat as C
+BASE_DIR = str(Path(__file__).resolve().parents[2])
 
 
 @dataclass
@@ -31,9 +25,9 @@ class ProcessInfo:
     paths: list[str]
 
 
-ALSA_PREFLIGHT = os.path.join(C.BASE_DIR, "config", "alsa", "preflight.sh")
-CAMERA_FREE = os.path.join(C.BASE_DIR, "scripts", "sys_camera-free.sh")
-LCD_CONTROL = os.path.join(C.BASE_DIR, "scripts", "sys_lcd-control.py")
+ALSA_PREFLIGHT = os.path.join(BASE_DIR, "config", "alsa", "preflight.sh")
+CAMERA_FREE = os.path.join(BASE_DIR, "scripts", "sys_camera-free.sh")
+LCD_CONTROL = os.path.join(BASE_DIR, "scripts", "sys_lcd-control.py")
 
 
 def _default_capture_dev() -> str:
@@ -56,7 +50,10 @@ def _existing_paths(patterns: Iterable[str]) -> list[str]:
 def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
     if not paths:
         return []
-    cmd = ["lsof", "-FpcuLn0", "--", *paths]
+    # A user-only /proc scan can silently miss root-owned descriptors. Request
+    # an existing noninteractive sudo read; unavailable privilege is unknown.
+    prefix = [] if os.geteuid() == 0 else ["sudo", "-n"]
+    cmd = [*prefix, "lsof", "-FpcuLn0", "--", *paths]
     try:
         proc = subprocess.run(
             cmd,
@@ -68,15 +65,21 @@ def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
     except FileNotFoundError:
         raise RuntimeError("lsof not found on PATH") from None
 
-    # lsof zwraca rc=1 gdy brak pasujących procesów — traktujemy to jak „brak danych”
-    if proc.returncode not in (0, 1):
+    # With several paths rc=1 can mean only some are open; complete owners
+    # from the remaining paths still prove that this resource is occupied.
+    if proc.returncode not in (0, 1) or proc.stderr.strip():
         msg = proc.stderr.strip() or proc.stdout.strip() or "unknown error"
         raise RuntimeError(f"lsof failed (rc={proc.returncode}): {msg}")
+    if proc.returncode == 0 and not proc.stdout.strip():
+        raise RuntimeError("lsof returned inconsistent ownership data")
+    if len(paths) == 1 and proc.returncode == 1 and proc.stdout.strip():
+        raise RuntimeError("single-device lsof returned inconsistent ownership data")
 
     entries: list[ProcessInfo] = []
     current: ProcessInfo | None = None
     current_paths: list[str] = []
     for token in proc.stdout.split("\0"):
+        token = token.lstrip("\n")
         if not token:
             continue
         field = token[0]
@@ -88,7 +91,9 @@ def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
             try:
                 pid = int(value)
             except ValueError:
-                continue
+                raise RuntimeError("lsof returned malformed owner PID") from None
+            if pid <= 1:
+                raise RuntimeError("lsof returned invalid owner PID")
             current = ProcessInfo(pid=pid, command="", user="", paths=[])
         elif current is None:
             continue
@@ -97,9 +102,13 @@ def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
         elif field == "L":
             current.user = value
         elif field == "n":
+            if not value.strip():
+                raise RuntimeError("lsof returned empty owner path")
             current_paths.append(value)
     if current is not None:
         entries.append(ProcessInfo(current.pid, current.command, current.user, current_paths))
+    if proc.stdout.strip() and (not entries or any(not entry.paths for entry in entries)):
+        raise RuntimeError("lsof ownership data is incomplete")
     return entries
 
 
@@ -108,8 +117,16 @@ UNIT_REGEX = re.compile(r"[●•]\s+([\w@.-]+\.service)")
 
 def _systemd_unit_for_pid(pid: int) -> str | None:
     try:
+        cgroup = Path(f"/proc/{pid}/cgroup").read_text(encoding="utf-8")
+        for line in cgroup.splitlines():
+            for component in line.split(":", 2)[-1].split("/"):
+                if component.endswith(".service"):
+                    return component
+    except OSError:
+        pass
+    try:
         out = subprocess.check_output(
-            ["systemctl", "status", "--no-pager", "--lines=0", f"--pid={pid}"],
+            ["systemctl", "status", "--no-pager", "--lines=0", str(pid)],
             stderr=subprocess.STDOUT,
             text=True,
             timeout=2,
@@ -151,25 +168,30 @@ RESOURCE_SPECS: dict[str, dict[str, Any]] = {
     },
     "camera": {
         "label": "Camera",
-        "paths": ["/dev/video*", "/dev/spidev0.*"],
-        "matcher": re.compile(r"/(video|spidev)"),
+        "paths": ["/dev/video*"],
+        "matcher": re.compile(r"/dev/video\d+"),
         "release": {
             "kind": "camera",
-            "args": ["--device", os.getenv("RESOURCE_CAMERA_DEVICE", "/dev/video0"), "--with-spi"],
+            "args": ["--device", os.getenv("RESOURCE_CAMERA_DEVICE", "/dev/video0")],
         },
     },
     "lcd": {
         "label": 'LCD 2"',
         "paths": ["/dev/spidev0.*", "/dev/fb1", "/dev/fb0"],
-        "matcher": re.compile(r"/(spidev|fb[01])"),
+        "matcher": re.compile(r"/dev/(spidev\d+\.\d+|fb[01])"),
         "release": {
             "kind": "lcd",
             "args": ["off"],
         },
     },
+    "uart": {
+        "label": "UART — executor only",
+        "paths": ["/dev/ttyAMA0"],
+        "matcher": re.compile(r"/dev/ttyAMA0$"),
+    },
 }
 
-VISION_RESOURCE_GUARD = os.path.join(C.BASE_DIR, "scripts", "vision-resource-guard.sh")
+VISION_RESOURCE_GUARD = os.path.join(BASE_DIR, "scripts", "vision-resource-guard.sh")
 
 
 def _run_guard(action: str) -> dict[str, Any]:
@@ -211,10 +233,10 @@ def inspect(resource: str) -> dict[str, Any]:
         matcher: re.Pattern[str] = spec["matcher"]
         for proc in processes:
             for path in proc.paths:
-                if matcher.search(path):
+                if matcher.fullmatch(path):
                     holders.append(_holder_dict(proc, path))
                     break
-    except RuntimeError as exc:
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
         error = str(exc)
 
     return {
@@ -222,7 +244,11 @@ def inspect(resource: str) -> dict[str, Any]:
         "label": spec["label"],
         "checked_at": time.time(),
         "holders": holders,
-        "free": not holders,
+        "paths": paths,
+        "observed_at": time.time(),
+        "source": "lsof",
+        "state": "unknown" if error else "unavailable" if not paths else "busy" if holders else "free",
+        "free": None if error or not paths else not holders,
         "error": error,
     }
 
@@ -244,42 +270,59 @@ def _call_release(cmd: list[str]) -> dict[str, Any]:
     }
 
 
-def release(resource: str, *, limit_pids: Iterable[int] | None = None) -> dict[str, Any]:
+def release(
+    resource: str, *, limit_pids: Iterable[int] | None = None, force: bool = False, operator_consent: bool = False
+) -> dict[str, Any]:
     if resource not in RESOURCE_SPECS:
         raise KeyError(f"unknown resource '{resource}'")
 
-    spec = RESOURCE_SPECS[resource]
-    release_spec = spec.get("release")
-    if not release_spec:
-        return {"ok": False, "error": "resource not releasable"}
+    from common.service_catalog import PROTECTED_UNITS
 
-    limit_args: list[str] = []
-    if limit_pids:
-        flag = "--limit-pid" if release_spec["kind"] == "alsa" else "--pid"
-        for pid in limit_pids:
-            limit_args.extend([flag, str(pid)])
+    from .features_api import feature_manager
 
-    if release_spec["kind"] == "alsa":
-        args = release_spec["args"]
-        resolved_args: list[str] = []
-        for arg in args:
-            resolved_args.append(arg() if callable(arg) else arg)
-        cmd = [ALSA_PREFLIGHT, "--force", *resolved_args, *limit_args]
-        return _call_release(cmd)
+    try:
+        with feature_manager.transaction():
+            return _release_locked(resource, limit_pids, force, operator_consent, feature_manager, PROTECTED_UNITS)
+    except OSError as exc:
+        return {"ok": False, "error": "orchestration_lock_unavailable", "detail": str(exc)}
 
-    if release_spec["kind"] == "camera":
-        args = [arg() if callable(arg) else arg for arg in release_spec["args"]]
-        cmd = [CAMERA_FREE, *args, *limit_args]
-        result = _call_release(cmd)
-        result["guard"] = _run_guard("release")
-        return result
 
-    if release_spec["kind"] == "lcd":
-        args = [arg() if callable(arg) else arg for arg in release_spec["args"]]
-        cmd = ["sudo", "-n", "python3", LCD_CONTROL, *args]
-        return _call_release(cmd)
-
-    return {"ok": False, "error": "unsupported release kind"}
+def _release_locked(resource, limit_pids, force, operator_consent, feature_manager, protected_units) -> dict:
+    observed = inspect(resource)
+    pids = sorted(set(limit_pids or []))
+    consumers = feature_manager.resource_consumers().get(resource, [])
+    # A separate maintenance CLI must also respect the API's recorded consumers.
+    try:
+        state = json.loads(feature_manager._state_path.read_text(encoding="utf-8"))
+        recorded = state.get("resource_consumers", {}).get(resource, [])
+        if not isinstance(recorded, list):
+            raise ValueError("invalid recorded consumers")
+        consumers = sorted(set(consumers + recorded))
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, AttributeError, TypeError):
+        return {"ok": False, "error": "task_ownership_unknown", "resource": resource}
+    plan = {
+        "resource": resource,
+        "owners": observed["holders"],
+        "pids": pids,
+        "effects": ["SIGTERM for selected observed owners; no SIGKILL; no service restart"],
+        "consumers": consumers,
+    }
+    if resource in {"uart", "lcd"}:
+        return {"ok": False, "error": "protected_resource", **plan}
+    if not force or not operator_consent or not pids or any(not isinstance(pid, int) or pid <= 1 for pid in pids):
+        return {"ok": False, "error": "manual_recovery_confirmation_required", **plan}
+    if observed.get("state") in {"unknown", "unavailable"} or plan["consumers"]:
+        return {"ok": False, "error": "ownership_unknown_or_in_use", **plan}
+    owners = {owner["pid"]: owner for owner in observed["holders"]}
+    if any(
+        pid not in owners or not owners[pid].get("service") or owners[pid].get("service") in protected_units
+        for pid in pids
+    ):
+        return {"ok": False, "error": "owner_mismatch_or_protected", **plan}
+    result = _call_release(["sudo", "-n", "kill", "-TERM", "--", *(str(pid) for pid in pids)])
+    return {**result, **plan}
 
 
 def to_json(data: dict[str, Any]) -> str:
