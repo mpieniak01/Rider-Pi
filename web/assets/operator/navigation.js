@@ -10,10 +10,10 @@ export class Navigation {
     document.getElementById('nav-config-form')?.addEventListener('submit', event => { event.preventDefault(); this.config().catch(showError); });
     this.poller = poll(async () => {
       const data = (await request('/api/navigator/status')).data;
-      this.observeSnapshot(data.navigation);
+      this.observeSnapshot(data.navigation, data);
       const status = data.navigator || data.status || data;
-      this.observeRequest(status);
-      text('nav-status', `${fresh(status) ? status.state || status.mode || 'unknown' : 'unknown / stale'} · ${tr('wiek', 'age')}: ${ageOf(status)?.toFixed(1) ?? '—'} s`);
+      this.observeRequest(status, data);
+      text('nav-status', `${this.statusCurrent(status, data) ? status.state || status.mode || 'unknown' : 'unknown / stale'} · ${tr('wiek', 'age')}: ${ageOf(status)?.toFixed(1) ?? '—'} s`);
       this.render();
     }, { interval: 2000, onError: error => {
       for (const name of ['map', 'pose', 'path']) this[name] = { ...this[name], offline: true, error: error.message };
@@ -21,16 +21,19 @@ export class Navigation {
     } });
     window.addEventListener('resize', () => { this.drawKey = null; this.draw(); });
   }
-  observeSnapshot(snapshot) {
+  observeSnapshot(snapshot, outer = {}) {
     for (const name of ['map', 'pose', 'path']) {
       const child = snapshot?.[name];
       const row = child && typeof child === 'object' && !Array.isArray(child) ? { ...child } : null;
       // A cached envelope can fail independently of its original observations.
       // Propagate only failures; preserve each child's source and source time.
       if (row) {
-        for (const key of ['stale', 'offline']) if (snapshot[key] === true) row[key] = true;
+        for (const parent of [snapshot, outer]) {
+          for (const key of ['stale', 'offline']) if (parent[key] === true) row[key] = true;
+          for (const key of ['error', 'data_error']) if (parent[key]) row[key] = parent[key];
+        }
+        // Outer task readiness is distinct from cached measurement readiness.
         for (const key of ['data_ready', 'navigation_ready']) if (snapshot[key] === false) row[key] = false;
-        for (const key of ['error', 'data_error']) if (snapshot[key]) row[key] = snapshot[key];
         const quality = typeof snapshot.quality === 'string' ? snapshot.quality.toLowerCase() : snapshot.quality;
         if (quality === null || ['unknown', 'unavailable', 'invalid', 'error', 'failed'].includes(quality)) row.quality = snapshot.quality;
       }
@@ -78,8 +81,11 @@ export class Navigation {
     if (event.topic?.startsWith('navigator.')) text('nav-event', `${event.topic} · ${data.state || data.status || data.reason || 'received'} · ${timestamp ?? '—'}`);
     this.render();
   }
-  observeRequest(status) {
-    if (!fresh(status) || typeof status.active !== 'boolean' || typeof status.state !== 'string') return;
+  statusCurrent(status, outer = {}) {
+    return fresh(status) && ![status, outer].some(row => row?.stale === true || row?.offline === true || row?.error || row?.data_error);
+  }
+  observeRequest(status, outer = {}) {
+    if (!this.statusCurrent(status, outer) || typeof status.active !== 'boolean' || typeof status.state !== 'string') return;
     const entry = this.history.find(row => row.request_id === status.request_id && row.generation === status.generation && status.observed_at >= row.ts);
     if (!entry) return;
     entry.status = 'task_observed'; entry.state = status.state; entry.active = status.active;

@@ -125,3 +125,25 @@ test('cached navigation parent failures expire nested geometry without restampin
   assert.equal(navigation.map.observed_at, null); assert.equal(navigation.map.grid, undefined);
   assert.equal(navigation.pose.x, undefined); assert.equal(model.presentationReady(navigation.path), false);
 });
+
+test('outer proxy failures invalidate cached navigation and cannot confirm a pending task', async () => {
+  const f = await fixture(); const { Navigation } = await f.load('navigation.js'); const model = await f.load('model.js');
+  f.elements.set('nav-status', new Element());
+  const children = { map: { observed_at: 1000, grid: [0] }, pose: { observed_at: 1000, x: 0, y: 0, theta: 0 },
+    path: { observed_at: 1000, path: [[0, 0]] } };
+  const status = { observed_at: 1000, state: 'EXPLORING', active: true, generation: 'g', request_id: 'r' };
+  const navigation = new Navigation({ can: () => false, state: null }); await flush();
+  navigation.history = [{ generation: 'g', request_id: 'r', ts: 1000, status: 'pending' }];
+  for (const failure of [{ offline: true }, { stale: true }, { error: 'proxy unavailable' }, { data_error: 'source invalid' }]) {
+    f.replies.set('/api/navigator/status', { navigation: children, navigator: status, ...failure }); await navigation.poller.refresh();
+    assert.ok(f.elements.get('nav-status').textContent.startsWith('unknown / stale'));
+    assert.equal(navigation.history[0].status, 'pending');
+    for (const name of ['map', 'pose', 'path']) assert.equal(model.presentationReady(navigation[name]), false, JSON.stringify(failure));
+  }
+  // A fresh failed task is useful status, even when its measurements are unusable.
+  f.replies.set('/api/navigator/status', { navigation: children, navigator: { ...status, state: 'FAILED', active: false }, data_ready: false });
+  await navigation.poller.refresh();
+  assert.ok(f.elements.get('nav-status').textContent.startsWith('FAILED'));
+  assert.equal(navigation.history[0].status, 'task_observed'); assert.equal(navigation.history[0].active, false);
+  assert.equal(model.presentationReady(navigation.map), true, 'task readiness does not invalidate an independently fresh cached map');
+});
