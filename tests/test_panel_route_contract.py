@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from services.api_core import version_api
 from services.api_server import app
 
 
@@ -49,10 +50,12 @@ def test_invalid_feature_payload_is_400_not_missing_route():
     assert response.get_json()["error"] == "enabled_required"
 
 
-def test_version_route_is_registered_in_full_application():
+def test_version_route_is_registered_in_full_application(monkeypatch):
+    expected = {"available": True, "branch": "test", "commit": "a1b2c3d", "dirty": False}
+    monkeypatch.setattr(version_api, "get_version_info", lambda: expected)
     response = app.test_client().get("/api/status/version")
     assert response.status_code == 200
-    assert response.get_json()["available"] is True
+    assert response.get_json() == expected
 
 
 def test_wrong_method_and_unknown_route_are_distinct():
