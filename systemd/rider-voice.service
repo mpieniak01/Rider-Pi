@@ -1,7 +1,7 @@
 [Unit]
 Description=Rider Voice Assistant (CLI listener using local web ASR/TTS)
 After=network-online.target sound.target rider-voice-web.service
-Wants=network-online.target rider-voice-web.service
+Wants=network-online.target
 ConditionPathExists=/home/pi/robot
 
 [Service]

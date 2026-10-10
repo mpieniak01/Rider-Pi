@@ -1,246 +1,170 @@
 #!/usr/bin/env python3
+"""Service administration shares the authoritative task ownership lock."""
+
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from flask import Response, request
 
 from common import systemd_ctrl
+from common.service_catalog import CONTRACT_VERSION, UNIT_ALIASES, UNIT_CATALOG
 
 from . import resource_diag
 
-# --- whitelist aliasów -> pełne nazwy unitów ---
-ALLOWED_UNITS: dict[str, str] = {
-    # core
-    "api": "rider-api.service",
-    "broker": "rider-broker.service",
-    "web": "rider-web-bridge.service",
-    # voice
-    "voice": "rider-voice.service",
-    "voice-web": "rider-voice-web.service",
-    # motion / xgo
-    "xgo": "motion-executor.service",
-    "motion": "motion-executor.service",
-    "motion-preview": "motion-executor.service",
-    "sensors": "sensor-reader.service",
-    "imu": "sensor-reader.service",
-    # camera pipelines (preview)
-    "cam": "camera-capture@raw.service",
-    "camera": "camera-capture@raw.service",
-    "edge": "camera-capture@edge.service",
-    "ssd": "camera-capture@ssd.service",
-    # detectors
-    "obstacle": "rider-obstacle.service",
-    "vision": "rider-vision.service",
-    "vision-offload": "rider-vision-offload.service",
-    "offload": "rider-vision-offload.service",
-    "pc-offload": "rider-vision-offload.service",
-    # legacy aliases
-    "last": "camera-capture@raw.service",
-    "lastframe": "camera-capture@raw.service",
-    # new units added
-    "mapper": "rider-mapper.service",
-    "odometry": "rider-odometry.service",
-    "tracker": "rider-tracker.service",
-    # "post-splash": "rider-post-splash.service",
-    "google-bridge": "rider-google-bridge.service",
-    "tracking-controller": "rider-tracking-controller.service",
-    "navigator": "rider-navigator.service",
-}
+ALLOWED_UNITS = UNIT_ALIASES
+ALLOWED_ACTIONS = ("start", "stop", "restart", "enable", "disable")
+MUTEX_GROUPS = [{"camera-capture@raw.service", "camera-capture@edge.service", "camera-capture@ssd.service"}]
 
 
-# --- grupy wzajemnie wykluczające (mutex) ---
-MUTEX_GROUPS: list[set[str]] = [
-    {
-        "camera-capture@raw.service",
-        "camera-capture@edge.service",
-        "camera-capture@ssd.service",
-        "rider-vision-offload.service",
-    },
-]
-
-# dozwolone akcje
-ALLOWED_ACTIONS: tuple[str, ...] = ("start", "stop", "restart", "enable", "disable")
-
-
-# -------------------- helpers --------------------
 def _json(payload: Any, status: int = 200) -> Response:
-    return Response(
-        json.dumps(payload, ensure_ascii=False),
-        mimetype="application/json",
-        status=status,
-    )
+    return Response(json.dumps(payload, ensure_ascii=False), mimetype="application/json", status=status)
+
+
+def _manager():
+    from .features_api import feature_manager
+
+    return feature_manager
 
 
 def _unit_for(name: str | None) -> str | None:
-    """Zwraca pełną nazwę unitu (whitelist); akceptuje alias lub pełną nazwę z whitelisty."""
-    if not name:
-        return None
     key = (name or "").strip().lower()
-    if key in ALLOWED_UNITS:
-        return ALLOWED_UNITS[key]
-    if key in ALLOWED_UNITS.values():
-        return key
-    return None
+    return key if key in UNIT_CATALOG else ALLOWED_UNITS.get(key)
 
 
-def _svc_status(unit: str) -> dict[str, str]:
-    return systemd_ctrl.status(unit)
+def _svc_status(unit: str) -> dict:
+    row = systemd_ctrl.status(unit)
+    meta = UNIT_CATALOG[unit]
+    owner = meta["motion_owner"]
+    dependencies = sorted(set(row.get("wants", []) + row.get("requires", [])))
+    return {
+        **meta,
+        **row,
+        "actions": list(ALLOWED_ACTIONS),
+        "motion_owner": owner,
+        "consumers": _manager().unit_consumers(unit),
+        "dependencies": dependencies,
+        "edges_out": [UNIT_CATALOG[dependency]["id"] for dependency in dependencies if dependency in UNIT_CATALOG],
+    }
 
 
 def _conflicts(unit: str) -> list[str]:
-    """Jednostki z tej samej grupy mutex (poza samym unitem)."""
-    out: list[str] = []
-    for grp in MUTEX_GROUPS:
-        if unit in grp:
-            out.extend(sorted(u for u in grp if u != unit))
-    return out
+    return sorted({candidate for group in MUTEX_GROUPS if unit in group for candidate in group if candidate != unit})
 
 
 def _build_sequence(unit: str, action: str) -> list[tuple[str, str]]:
-    """
-    Zwróć sekwencję kroków (unit, action) z uwzględnieniem konfliktów.
-    - start/restart: najpierw stop konfliktów, potem start/restart celu
-    - restart: rozbijamy na stop→start (czyściej)
-    """
-    steps: list[tuple[str, str]] = []
-    if action in {"start", "restart"}:
-        for u in _conflicts(unit):
-            steps.append((u, "stop"))
-        if action == "restart":
-            steps.append((unit, "stop"))
-            steps.append((unit, "start"))
-        else:
-            steps.append((unit, "start"))
-    elif action in {"stop", "enable", "disable"}:
-        steps.append((unit, action))
-    else:
-        steps.append((unit, action))
-    return steps
+    # Conflicts now deny an action rather than stopping another task implicitly.
+    return [(unit, action)]
 
 
 def _known_resource(name: str) -> bool:
     return name in resource_diag.available_resources()
 
 
-def _run_step(unit: str, action: str) -> dict[str, Any]:
-    """
-    Uruchom pojedynczy krok przez warstwę systemd_ctrl (preferuje sys_control.sh).
-    Jeśli unit nie istnieje i akcja to 'stop'/'disable' – oznacz jako 'skipped'.
-    """
-    result = systemd_ctrl.run_unit_action(unit, action)
-    return result.as_dict()
+def _run_step(unit: str, action: str) -> dict:
+    return systemd_ctrl.run_unit_action(unit, action).as_dict()
 
 
 def resource_status(name: str) -> Response:
     if not _known_resource(name):
-        return _json({"error": "unknown resource", "name": name}, status=404)
+        return _json({"error": "unknown resource", "name": name}, 404)
     data = resource_diag.inspect(name)
-    return _json(data)
+    return _json(
+        {
+            **data,
+            "contract_version": CONTRACT_VERSION,
+            "host": "pi",
+            "consumers": _manager().resource_consumers().get(name, []),
+        }
+    )
 
 
 def resource_release(name: str, pids: list[int] | None = None) -> Response:
     if not _known_resource(name):
-        return _json({"error": "unknown resource", "name": name}, status=404)
-    try:
-        data = resource_diag.release(name, limit_pids=pids or [])
-    except KeyError:
-        return _json({"error": "unknown resource", "name": name}, status=404)
-    status = 200 if data.get("ok") else 500
-    return _json(data, status=status)
+        return _json({"error": "unknown resource", "name": name}, 404)
+    payload = request.get_json(silent=True) or {}
+    data = resource_diag.release(
+        name,
+        limit_pids=pids or [],
+        force=payload.get("force") is True,
+        operator_consent=payload.get("operator_consent") is True,
+    )
+    return _json(data, 200 if data.get("ok") else 409)
 
 
 def resource_stop(name: str, units: list[str] | None = None) -> Response:
     if not _known_resource(name):
-        return _json({"error": "unknown resource", "name": name}, status=404)
-
-    if name == "camera":
-        try:
-            resource_diag.guard_camera("claim")
-        except Exception:
-            pass
-
-    if name == "camera":
-        try:
-            from . import resource_diag as _rd
-
-            _rd._run_guard("claim")
-        except Exception:
-            pass
-
-    services = [u for u in (units or []) if u]
-    if not services:
-        snapshot = resource_diag.inspect(name)
-        services = sorted({h.get("service") for h in snapshot.get("holders", []) if h.get("service")})
-
-    services_whitelisted = [u for u in services if u in ALLOWED_UNITS.values()]
-    if not services_whitelisted:
-        return _json({"ok": False, "error": "no stoppable services", "services": services}, status=404)
-
-    results = [_run_step(unit, "stop") for unit in services_whitelisted]
-    ok = any(r.get("ok") for r in results)
-    return _json({"ok": ok, "results": results})
+        return _json({"error": "unknown resource", "name": name}, 404)
+    with _manager().transaction():
+        return _resource_stop_locked(name, units)
 
 
-# -------------------- endpoints --------------------
+def _resource_stop_locked(name: str, units: list[str] | None) -> Response:
+    consumers = _manager().resource_consumers().get(name, [])
+    if consumers:
+        return _json(
+            {"ok": False, "error": "resource_in_use", "consumers": consumers, "hint": "Stop the owning task first."},
+            409,
+        )
+    observed = resource_diag.inspect(name)
+    if observed.get("error") or observed.get("state") in {"unknown", "unavailable"}:
+        return _json({"ok": False, "error": "ownership_unknown", "resource": observed}, 409)
+    services = units or sorted(
+        {holder.get("service") for holder in observed.get("holders", []) if holder.get("service")}
+    )
+    allowed = [unit for unit in services if unit in UNIT_CATALOG and name in UNIT_CATALOG[unit]["resources"]]
+    if not allowed or len(allowed) != len(services):
+        return _json({"ok": False, "error": "no_stoppable_services", "services": services}, 409)
+    results = []
+    for unit in allowed:
+        result = _manager().service_action(unit, "stop")
+        results.append(result)
+        if not result.get("ok"):
+            break
+    ok = len(results) == len(allowed) and all(row.get("ok") for row in results)
+    return _json({"ok": ok, "results": results}, 200 if ok else 409)
+
+
 def svc_list() -> Response:
-    """Zwraca statusy wszystkich unikalnych unitów z whitelisty."""
-    unique_units = sorted(set(ALLOWED_UNITS.values()))
-    services = [_svc_status(u) for u in unique_units]
-    return _json({"services": services})
+    services = [_svc_status(unit) for unit in sorted(UNIT_CATALOG)]
+    return _json(
+        {
+            "contract_version": CONTRACT_VERSION,
+            "catalog_version": CONTRACT_VERSION,
+            "host": "pi",
+            "source": "pi",
+            "observed_at": time.time(),
+            "stale": any(row.get("stale") for row in services),
+            "services": services,
+        }
+    )
 
 
 def svc_status(name: str) -> Response:
-    unit = _unit_for(name or "")
+    unit = _unit_for(name)
     if not unit:
-        return _json({"error": "unknown service", "name": name}, status=404)
-    return _json(_svc_status(unit))
+        return _json({"error": "unknown service", "name": name}, 404)
+    return _json({"contract_version": CONTRACT_VERSION, **_svc_status(unit)})
 
 
 def svc_action(name: str) -> Response:
-    unit = _unit_for(name or "")
+    unit = _unit_for(name)
     if not unit:
-        return _json({"error": "unknown service", "name": name}, status=404)
-
-    data = request.get_json(silent=True) or {}
-    action = str(data.get("action") or "").strip().lower()
-
+        return _json({"error": "unknown service", "name": name}, 404)
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return _json({"ok": False, "error": "JSON object required"}, 400)
+    action = str(payload.get("action") or "").strip().lower()
     if action not in ALLOWED_ACTIONS:
-        return _json({"error": "bad action", "allowed": list(ALLOWED_ACTIONS)}, status=400)
-
-    # BEZPIECZNIK: nie pozwalaj zatrzymać/restartować samego API przez API
-    if unit == "rider-api.service" and action in {"stop", "restart"}:
-        return _json(
-            {
-                "ok": False,
-                "error": "forbidden_on_api",
-                "hint": "Zatrzymywanie/restart API wykonaj przez systemctl w shellu.",
-                "unit": unit,
-                "action": action,
-            },
-            status=409,
-        )
-
-    # zbuduj sekwencję kroków (uwzględnia konflikty)
-    steps = _build_sequence(unit, action)
-
-    results: list[dict[str, Any]] = []
-    for u, a in steps:
-        results.append(_run_step(u, a))
-
-    # końcowy status celu
-    status_obj = _svc_status(unit)
-
-    # sukces: wszystkie kroki ok LUB docelowy krok ok
-    ok_all = all(r.get("ok") for r in results)
-    ok_target = any(r.get("ok") and r["unit"] == unit for r in results) if results else False
-    ok = ok_all or ok_target
-
-    payload = {
-        "ok": ok,
-        "sequence": steps,
-        "results": results,
-        "status": status_obj,
-    }
-    return _json(payload, status=(200 if ok else 500))
+        return _json({"ok": False, "error": "bad action", "allowed": list(ALLOWED_ACTIONS)}, 400)
+    if unit == "rider-api.service" and action in {"stop", "restart", "disable"}:
+        return _json({"ok": False, "error": "forbidden_on_api", "unit": unit, "action": action}, 409)
+    try:
+        result = _manager().service_action(unit, action, control=payload)
+    except OSError as exc:
+        result = {"ok": False, "error": "orchestration_lock_unavailable", "detail": str(exc), "http_status": 503}
+    return _json(
+        {"contract_version": CONTRACT_VERSION, **result}, result.get("http_status", 200 if result.get("ok") else 503)
+    )

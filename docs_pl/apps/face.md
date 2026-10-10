@@ -55,7 +55,10 @@ ls -l /tmp/legacy.png
 - Brak `/face/state`
 - Plik unit (legacy): `systemd/legacy/rider-face.service`
 - Domyślnie wyłączony: `sudo systemctl disable rider-face.service`
-- Aby podlinkować unit na urządzeniu, uruchom `./scripts/systemd-sync.sh --with-dev` (Tryb DEV linkuje `rider-face` i previewe z katalogu legacy).
+- Katalog usług wersji 2 nie instaluje `rider-face` ani innych jednostek legacy.
+  S11 wybiera jedno narzędzie kamery; LCD korzysta z zachowanej usługi renderera.
+  `systemd-sync.sh` pokazuje plan, a `--with-dev` jest wyłącznie opcją kompatybilności.
+  Zobacz [kontrakt zadań i zasobów](../ZADANIA_USLUGI_ZASOBY.md).
 - Włącz: `sudo systemctl enable rider-face.service && sudo systemctl start rider-face.service`
 - Edytuj parametry przez ENV w `systemd/robot.env` (np. `FACE_LCD_ROTATE`, `FACE_LCD_DRIVER`)
 

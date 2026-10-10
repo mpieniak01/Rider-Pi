@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import time
+
 from flask import Response, jsonify, make_response, request
 
 from apps.app_logic_core import FeatureManager
+from common.service_catalog import CONTRACT_VERSION
 
 feature_manager: FeatureManager = FeatureManager()
 
@@ -26,20 +29,51 @@ def feature_handler(name: str):
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
 
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return _corsify(jsonify({"ok": False, "error": "JSON_object_required"})), 400
     if "enabled" not in payload:
         return _corsify(jsonify({"ok": False, "error": "enabled_required"})), 400
 
-    enabled = bool(payload.get("enabled"))
+    enabled = payload.get("enabled")
+    options = payload.get("options", {})
+    if not isinstance(enabled, bool) or not isinstance(options, dict):
+        return _corsify(jsonify({"ok": False, "error": "invalid_feature_payload"})), 400
 
     try:
-        result = feature_manager.set_feature(name, enabled)
+        result = feature_manager.set_feature(name, enabled, options=options, control=payload)
         ok = bool(result.get("ok", False))
         return _corsify(jsonify({"ok": ok, "feature": name, "enabled": enabled, "result": result})), (
-            200 if ok else 500
+            200
+            if ok
+            else (
+                409
+                if result.get("error")
+                in {
+                    "operator_motion_permission_required",
+                    "actuator_capability_unavailable",
+                    "stale_or_invalid_operator_intent",
+                    "operator_intent_replay",
+                    "operator_generation_changed",
+                    "resource_conflict",
+                    "stop_before_reconfigure",
+                    "stop_unconfirmed",
+                }
+                else 503
+            )
         )
-    except ValueError:
-        return _corsify(jsonify({"ok": False, "error": "unknown_feature", "feature": name})), 404
+    except ValueError as exc:
+        unknown = str(exc).startswith("unknown feature")
+        return _corsify(
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "unknown_feature" if unknown else "invalid_options",
+                    "detail": str(exc),
+                    "feature": name,
+                }
+            )
+        ), 404 if unknown else 400
     except Exception as e:
         return _corsify(jsonify({"ok": False, "error": f"feature_error:{e}", "feature": name})), 500
 
@@ -49,7 +83,25 @@ def feature_registry_handler():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     data = feature_manager.describe_features()
-    return _corsify(jsonify({"ok": True, "features": data})), 200
+    return _corsify(jsonify({**_contract(), "ok": True, "features": data})), 200
+
+
+def _contract() -> dict:
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "catalog_version": CONTRACT_VERSION,
+        "schema_version": CONTRACT_VERSION,
+        "host": "pi",
+        "source": "pi",
+        "observed_at": time.time(),
+    }
+
+
+def feature_catalog_handler():
+    """GET /api/logic/catalog: one authoritative versioned task/unit catalog."""
+    if request.method == "OPTIONS":
+        return _corsify(make_response("", 204))
+    return _corsify(jsonify({**_contract(), "ok": True, **feature_manager.catalog()})), 200
 
 
 def feature_state_handler():
@@ -57,7 +109,7 @@ def feature_state_handler():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     data = feature_manager.state_snapshot()
-    return _corsify(jsonify({"ok": True, "state": data})), 200
+    return _corsify(jsonify({**_contract(), "ok": True, "state": data})), 200
 
 
 def feature_summary_handler():
@@ -74,14 +126,15 @@ def feature_summary_handler():
         services = row.get("services", [])
         total = len(services)
         active_count = sum(1 for svc in services if svc.get("active"))
-        status = "active" if row.get("active") else ("partial" if active_count else "inactive")
-        if status == "active":
+        status = row.get("state", "unknown")
+        if row.get("active"):
             active_names.append(row["name"])
         elif status == "partial":
             partial_names.append(row["name"])
 
         summary_rows.append(
             {
+                **row,
                 "name": row.get("name"),
                 "scenario": row.get("scenario"),
                 "title": row.get("title"),
@@ -106,7 +159,7 @@ def feature_summary_handler():
             "partial": len(partial_names),
         },
     }
-    return _corsify(jsonify({"ok": True, "summary": payload})), 200
+    return _corsify(jsonify({**_contract(), "ok": True, "summary": payload})), 200
 
 
 __all__ = [
@@ -114,6 +167,7 @@ __all__ = [
     "feature_registry_handler",
     "feature_state_handler",
     "feature_summary_handler",
+    "feature_catalog_handler",
     "set_feature_manager",
     "feature_manager",
 ]

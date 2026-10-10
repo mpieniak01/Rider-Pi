@@ -57,7 +57,7 @@ def test_idle_guard_skips_when_busy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert lcd["holders"]
 
 
-def test_idle_guard_powers_off_when_free(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_idle_guard_free_resource_requires_explicit_operator_action(monkeypatch: pytest.MonkeyPatch) -> None:
     guard = _reload_guard(monkeypatch)
     monkeypatch.setattr(guard.C, "LAST_CAMERA", {"lcd": _base_lcd_state()})
 
@@ -79,8 +79,30 @@ def test_idle_guard_powers_off_when_free(monkeypatch: pytest.MonkeyPatch) -> Non
 
     guard._poll_once(now=5.0)
 
-    assert called["release"] == 1
+    assert called["release"] == 0
     lcd = guard.C.LAST_CAMERA["lcd"]
-    assert lcd["on"] is False
+    assert lcd["on"] is True
     assert lcd["presenting"] is False
-    assert lcd["auto_off_ts"] == 5.0
+    assert lcd["auto_off_ts"] is None
+    assert lcd["idle_release_requires_operator"] is True
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        {"free": None, "state": "unknown", "error": "permission denied"},
+        {"free": None, "state": "unavailable", "error": None},
+        {"free": False, "state": "unknown", "error": "partial inventory"},
+    ],
+)
+def test_unknown_ownership_cannot_fabricate_power_or_release(monkeypatch, snapshot):
+    guard = _reload_guard(monkeypatch)
+    monkeypatch.setattr(guard.C, "LAST_CAMERA", {"lcd": _base_lcd_state()})
+    monkeypatch.setattr(guard.resource_diag, "inspect", lambda _: snapshot)
+    monkeypatch.setattr(guard.resource_diag, "release", lambda _: pytest.fail("automatic release forbidden"))
+    guard._poll_once(now=100.0)
+    lcd = guard.C.LAST_CAMERA["lcd"]
+    assert lcd["on"] is None and lcd["presenting"] is None and lcd["power_known"] is False
+    with guard.C.app.test_request_context():
+        status = guard.C.healthz().get_json()["devices"]["lcd"]
+    assert status["on"] is None and status["power_known"] is False

@@ -1,63 +1,60 @@
 # Resource diagnostics
 
-This page explains how the control panel inspects and frees hardware resources
-(microphone, speaker, camera, LCD) and how every action now flows through a single
-resource-guarding workflow so the camera is always claimed just once.
+See the [task and resource contract](TASKS_SERVICES_RESOURCES.md) for ownership,
+states and the installation migration.
 
-## CLI tool
+## Inspection
 
-The existing helper continues to work:
+`GET /api/resource/<camera|mic|speaker|lcd|uart>` reports exact device paths,
+observed PIDs, owning systemd units, consumers and `observed_at`.
+It never initializes the robot SDK or changes a process.
 
-```
+| State | Meaning | free |
+| --- | --- | --- |
+| free | Successful ownership observation with no holder | true |
+| busy | One or more observed holders | false |
+| unavailable | No matching device path | null |
+| unknown | Ownership could not be read reliably | null |
+
+Camera paths are V4L2 `/dev/videoN`; SPI/framebuffers belong to LCD.
+UART is a separate resource, reserved for the sole motion executor.
+The sensor reader consumes BUS telemetry.
+
+The CLI provides the same inspection:
+
+```bash
 ./scripts/resource_diag.py status camera
-./scripts/resource_diag.py release camera --pid 1234
+./scripts/resource_diag.py status uart
 ```
 
-- `status` returns JSON about the matched `/dev/*` paths, blocking PIDs, and the
-  owning systemd units.
-- `release` runs a dedicated helper (`scripts/sys_camera-free.sh` for the camera,
-  `config/alsa/preflight.sh` for audio, `scripts/sys_lcd-control.py` for LCD) and
-  now also calls `scripts/vision-resource-guard.sh release` to restore the preview
-  services after the transfer.
+## Stop and manual recovery
 
-## API / control panel
+Stop the owning task through its task API first. Shared consumers keep their units
+until the last task stops. A moving task requires confirmed STOP before releasing
+services. Administration refuses to stop a unit leased by another task.
 
-`/api/resource/<mic|speaker|camera|lcd>` exposes:
+`POST {"action":"stop"}` on the resource endpoint stops only catalogued services
+whose metadata includes that resource. Unknown owners/read failures are refused.
+All requested steps must complete before the operation reports success.
 
-- `GET` → current inspection data. Internally `services.api_core.resource_diag.inspect`
-  uses `lsof` and caches `ProcessInfo` per device.
-- `POST {"action":"stop"}` → stops the systemd units that hold the resource using
-  `services.api_core.service_diag.resource_stop`. Before stopping camera-related
-  units we call `resource_diag.guard_camera("claim")` so `/dev/video0` is released
-  once and for all.
-- `POST {"action":"release"}` → runs the dedicated release scripts and calls the
-  guard with `release`, so camera-preview services automatically restart afterwards.
+Release is a separate, explicitly reviewed recovery. It requires `force: true`,
+`operator_consent: true` and exact currently observed PIDs. The response lists
+owners, consumers and effects; active task consumers prevent release.
+The command sends SIGTERM only to the selected owners. It does not escalate to
+SIGKILL or automatically start another service. UART, LCD and base units are protected.
 
-The UI in `web/control.html` renders the diagnostic table with refresh/stop/release
-buttons for each row. Every button communicates with this API, which, in turn,
-delegates to the `resource_diag` module and the newly added `vision-resource-guard.sh`.
+```bash
+# Only after reviewing owners and stopping their tasks:
+./scripts/resource_diag.py release camera --pid 1234 --force --operator-consent
+```
 
-## Central guard integration
+## Camera feed and guard
 
-- `vision-resource-guard.sh` stops `camera-capture@raw.service`
-  (or inne instancje `camera-capture@<mode>`) before `rider-vision-offload.service`
-  starts, and przy zwalnianiu zasobów ponownie uruchamia odpowiedni tryb capture.
-- `scripts/sys_control.sh` uses the guard when `/svc` is invoked for
-  `rider-vision-offload.service`. This keeps all `/svc`/resource API pathways aligned
-  and prevents multiple previews from fighting over `/dev/video0`.
-- `resource_diag.guard_camera(action)` is the shared helper that both the API and
-  the guard script can call, so stopping services and releasing resources always go
-  through the same mechanism.
+RAW capture owns the camera; frame-distributor supplies consumers including PC
+offload. Offload cannot fall back to a second physical camera owner.
+`vision-resource-guard.sh claim|release` checks these conditions read only.
+It neither kills another owner nor resumes preview. RAW/EDGE/SSD conflicts are
+refused; select one tool through the task API.
 
-## Typical workflow
-
-1. Operator opens the Control panel’s “Resource diagnostics” card.
-2. They click “Stop service” → `/api/resource/camera` triggers `vision-resource-guard.sh
-   claim` and stops preview units before the guard calls `rider-vision-offload`.
-3. If the resource still appears busy, “Release” runs `scripts/sys_camera-free.sh`,
-   and the guard script also restarts preview services afterwards.
-4. Logs and UI show the updated holders, freeing the team from manual `lsof`/`fuser`
-   guessing.
-
-All diagnostic flows now rely on a single guard script, so locally running preview
-services never collide with the offload pipeline.
+Automated checks use fake ownership and processes. Physical motion trials require
+operator consent for the exact plan; viewing camera data does not grant that consent.

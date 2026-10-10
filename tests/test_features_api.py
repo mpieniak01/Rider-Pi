@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import pytest
 from flask import Flask
 
 from services.api_core import features_api
+
+
+@pytest.fixture(autouse=True)
+def restore_manager(monkeypatch):
+    """A route fixture cannot replace the shared manager for later modules."""
+    monkeypatch.setattr(features_api, "feature_manager", features_api.feature_manager)
 
 
 class FakeManager:
@@ -20,7 +27,7 @@ class FakeManager:
         ]
         self.state_dump = {"active": ["s3_follow_me_face"], "ts": 123.0, "features": self.registry_dump}
 
-    def set_feature(self, name: str, enabled: bool):
+    def set_feature(self, name: str, enabled: bool, options=None, control=None):
         if name == "unknown":
             raise ValueError("unknown feature")
         self.calls.append((name, enabled))

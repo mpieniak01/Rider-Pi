@@ -28,6 +28,8 @@ def main() -> int:
     parser.add_argument("action", choices=["status", "release"], help="Akcja")
     parser.add_argument("resource", choices=resource_diag.available_resources(), help="Nazwa zasobu")
     parser.add_argument("--pid", dest="pids", action="append", help="Ogranicz działanie do wskazanego PID")
+    parser.add_argument("--force", action="store_true", help="Explicit selected-owner SIGTERM recovery")
+    parser.add_argument("--operator-consent", action="store_true", help="Operator consent for this recovery")
     args = parser.parse_args()
 
     if args.action == "status":
@@ -36,7 +38,9 @@ def main() -> int:
         return 0
 
     limit_pids = _parse_pids(args.pids)
-    data = resource_diag.release(args.resource, limit_pids=limit_pids)
+    data = resource_diag.release(
+        args.resource, limit_pids=limit_pids, force=args.force, operator_consent=args.operator_consent
+    )
     print(json.dumps(data, ensure_ascii=False, indent=2))
     return 0 if data.get("ok") else 1
 

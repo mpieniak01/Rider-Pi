@@ -1,10 +1,8 @@
 [Unit]
 Description=Rider-Pi DEV profile (GUI + preview)
-After=network-online.target
-Wants=network-online.target \
-    graphical.target \
-    camera-capture@edge.service \
-    camera-capture@ssd.service
+# Task marker: the API catalog owns explicit members and resource leases.
+Requires=rider-core.target
+After=rider-core.target
 
 [Install]
 WantedBy=multi-user.target

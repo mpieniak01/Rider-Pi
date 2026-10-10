@@ -62,43 +62,59 @@ def _try_local_agent(prompt: str) -> tuple[bool, str]:
     return False, ""
 
 
-def _try_remote_api(prompt: str) -> tuple[bool, str]:
-    """Jeśli ustawione CHAT_REMOTE_URL, wyślij POST JSON {text}. Bez zewn. zależności."""
+def _remote_reply(prompt: str) -> tuple[bool, str, str]:
+    """Use explicit or selected backend; preserve truthful result provenance."""
     url = os.getenv("CHAT_REMOTE_URL", "").strip()
     if not url:
-        return False, ""
+        from .text_profile import selected_endpoint
+
+        url = selected_endpoint()
+    if not url:
+        return False, "ai_backend_unavailable", "unavailable"
     try:
         import urllib.request
 
         req = urllib.request.Request(
             url,
-            data=json.dumps({"text": prompt}).encode("utf-8"),
+            data=json.dumps({"text": prompt, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:  # nosec - kontrolowany URL z env
+        with urllib.request.urlopen(req, timeout=20) as resp:  # nosec - configured backend URL
             if resp.status >= 400:
-                return False, f"remote_http_{resp.status}"
-            payload = json.loads(resp.read().decode("utf-8") or "{}")
-            # akceptuj różne klucze
-            text = (
-                payload.get("reply")
-                or payload.get("text")
-                or payload.get("message")
-                or payload.get("content")
-                or (
-                    payload.get("choices", [{}])[0].get("message", {}).get("content")
-                    if isinstance(payload.get("choices"), list)
-                    else None
-                )
-                or ""
-            )
-            if str(text).strip():
-                return True, str(text)
-            # jeśli nie ma treści, zwróć cały JSON
-            return True, json.dumps(payload, ensure_ascii=False)
-    except Exception as e:  # noqa: BLE001
-        return False, f"remote_error: {e}"
+                return False, f"remote_http_{resp.status}", "unavailable"
+            raw = resp.read(1048577)
+            if len(raw) > 1048576:
+                return False, "remote_reply_too_large", "unavailable"
+            payload = json.loads(raw.decode("utf-8") or "{}")
+            if not isinstance(payload, dict) or ("ok" in payload and payload["ok"] is not True) or payload.get("error"):
+                return False, "remote_backend_error", "unavailable"
+            source = payload.get("source") or payload.get("backend") or "remote"
+            if (
+                not isinstance(source, str)
+                or source.strip().lower() in {"echo", "mock", "demo", "stub", "fallback", "simulated"}
+                or any(payload.get(flag) is True for flag in ("demo", "mock", "simulated"))
+            ):
+                return False, "remote_demo_or_echo", "unavailable"
+            candidates = [payload.get(key) for key in ("reply", "text", "content")]
+            message = payload.get("message")
+            candidates.append(message.get("content") if isinstance(message, dict) else message)
+            choices = payload.get("choices")
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                message = choices[0].get("message")
+                candidates.append(message.get("content") if isinstance(message, dict) else None)
+            text = next((item.strip() for item in candidates if isinstance(item, str) and item.strip()), None)
+            if text is None:
+                return False, "remote_empty_reply", "unavailable"
+            return True, text, source.strip()
+    except Exception as exc:  # noqa: BLE001
+        return False, f"remote_error: {exc}", "unavailable"
+
+
+def _try_remote_api(prompt: str) -> tuple[bool, str]:
+    """Compatibility helper retains its original two-value result."""
+    ok, text, _source = _remote_reply(prompt)
+    return ok, text
 
 
 # ── HANDLERY HTTP ────────────────────────────────────────────────────────────
@@ -127,21 +143,24 @@ def chat_send():
     # zapisujemy wejście
     _store_add({"user": user, "msg": msg})
 
-    # 1) lokalny agent
     ok, text = _try_local_agent(msg)
-    # 2) zdalne API (jeśli brak lub fail lokalnego)
+    source = "local"
+    backend_error = None
     if not ok:
-        ok, text2 = _try_remote_api(msg)
-        if ok:
-            text = text2
-
+        ok, text, source = _remote_reply(msg)
     if not ok:
-        # 3) fallback: echo
-        text = msg
+        backend_error, text, source = text, msg, "echo"
 
-    # zapisujemy odpowiedź bota
-    _store_add({"user": "bot", "msg": text})
-    return jsonify({"ok": True, "reply": text, "source": ("local" if ok else "echo")}), 200
+    _store_add({"user": "bot", "msg": text, "source": source})
+    return jsonify(
+        {
+            "ok": ok,
+            "reply": text,
+            "source": source,
+            "error": None if ok else "ai_backend_unavailable",
+            "backend_error": backend_error,
+        }
+    ), 200 if ok else 503
 
 
 # ── Rejestracja tras ─────────────────────────────────────────────────────────

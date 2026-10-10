@@ -1,133 +1,77 @@
-# services/api_core/services_dashboard_api.py
+"""Service graph uses the same cached observation as tasks and /svc."""
+
 from __future__ import annotations
 
-import subprocess
 import time
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from flask import Blueprint, jsonify
+
+from common import systemd_ctrl
+from common.service_catalog import CONTRACT_VERSION
 
 from .network_state import get_wifi_state
 from .service_meta import SERVICE_META, UNIT_BY_ID
 
 bp = Blueprint("services_dashboard", __name__, url_prefix="/api/services")
 
-_SYSTEMCTL_ARGS = [
-    "--no-page",
-    "--property=Id,ActiveState,SubState,Description,ActiveEnterTimestamp",
-]
-
 
 def _parse_systemctl(output: str) -> dict[str, str]:
-    data: dict[str, str] = {}
-    for line in output.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        data[key.strip()] = value.strip()
-    return data
+    return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
 
 
 def _status_from_active(active: str) -> str:
-    normalized = (active or "").strip().lower()
-    if normalized in {"active", "inactive", "failed"}:
-        return normalized
-    return "unknown"
+    return active if active in {"active", "inactive", "failed"} else "unknown"
 
 
 def _systemd_state(unit: str) -> dict[str, Any]:
-    meta = SERVICE_META[unit]
-    payload: dict[str, Any] = {
+    from .features_api import feature_manager
+
+    row = systemd_ctrl.status(unit)
+    dependencies = sorted(set(row.get("wants", []) + row.get("requires", [])))
+    return {
+        **SERVICE_META[unit],
+        **row,
         "unit": unit,
-        "id": meta["id"],
-        "group": meta["group"],
-        "label": meta["label"],
-        "description": meta["description"],
-        "edges_out": list(meta["edges_out"]),
+        "host": "pi",
+        "status": "unknown" if row.get("error") else _status_from_active(row.get("active", "")),
+        "active_state": row.get("active"),
+        "sub_state": row.get("sub"),
+        "load_state": row.get("load"),
+        "unit_file_state": row.get("enabled"),
+        "systemd_description": row.get("desc"),
+        "actions": ["start", "stop", "restart", "enable", "disable"],
+        "motion_owner": SERVICE_META[unit]["motion_owner"],
+        "consumers": feature_manager.unit_consumers(unit),
+        "dependencies": dependencies,
+        "edges_out": [SERVICE_META[dependency]["id"] for dependency in dependencies if dependency in SERVICE_META],
     }
-    try:
-        output = subprocess.check_output(
-            ["systemctl", "show", unit, *_SYSTEMCTL_ARGS],
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=3.0,
-        )
-    except subprocess.CalledProcessError as exc:
-        payload.update(
-            {
-                "status": "unknown",
-                "active_state": None,
-                "sub_state": None,
-                "since": None,
-                "systemd_description": None,
-                "error": (exc.output or str(exc)).strip(),
-            }
-        )
-        return payload
-    except Exception as exc:  # pragma: no cover - defensive catch
-        payload.update(
-            {
-                "status": "unknown",
-                "active_state": None,
-                "sub_state": None,
-                "since": None,
-                "systemd_description": None,
-                "error": str(exc),
-            }
-        )
-        return payload
-
-    data = _parse_systemctl(output)
-    active_state = data.get("ActiveState", "").strip().lower() or None
-    sub_state = data.get("SubState", "").strip().lower() or None
-    status = _status_from_active(data.get("ActiveState", ""))
-
-    since_raw = data.get("ActiveEnterTimestamp", "")
-    since: str | None = None
-    if since_raw:
-        since_clean = since_raw.strip()
-        if since_clean and since_clean.lower() not in {"", "n/a"}:
-            since = since_clean
-
-    payload.update(
-        {
-            "status": status,
-            "active_state": active_state,
-            "sub_state": sub_state,
-            "since": since,
-            "systemd_description": data.get("Description"),
-        }
-    )
-    return payload
 
 
 def _build_edges(edges: Iterable[tuple[str, str]]) -> list[dict[str, str]]:
-    unique: set[tuple[str, str]] = set(edges)
-    return [{"from": src, "to": dst} for src, dst in sorted(unique)]
+    return [{"from": src, "to": dst} for src, dst in sorted(set(edges))]
 
 
 @bp.route("/graph", methods=["GET"])
 def services_graph() -> Any:
-    with ThreadPoolExecutor() as executor:
-        nodes = list(executor.map(_systemd_state, SERVICE_META.keys()))
-
-    edges: list[tuple[str, str]] = []
-    for node in nodes:
-        unit = node["unit"]
-        meta = SERVICE_META[unit]
-        for target in meta["edges_out"]:
-            if target in UNIT_BY_ID:
-                edges.append((meta["id"], target))
-
-    payload = {
-        "nodes": nodes,
-        "edges": _build_edges(edges),
-        "generated_at": time.time(),
-        "network": {"wifi": get_wifi_state()},
-    }
-    return jsonify(payload)
+    nodes = [_systemd_state(unit) for unit in SERVICE_META]
+    edges = [(node["id"], target) for node in nodes for target in node["edges_out"] if target in UNIT_BY_ID]
+    return jsonify(
+        {
+            "contract_version": CONTRACT_VERSION,
+            "schema_version": CONTRACT_VERSION,
+            "catalog_version": CONTRACT_VERSION,
+            "host": "pi",
+            "source": "pi",
+            "observed_at": min((row["observed_at"] for row in nodes), default=time.time()),
+            "stale": any(row.get("stale") for row in nodes),
+            "nodes": nodes,
+            "edges": _build_edges(edges),
+            "generated_at": time.time(),
+            "network": {"wifi": get_wifi_state()},
+        }
+    )
 
 
 __all__ = ["bp", "services_graph"]

@@ -1,56 +1,59 @@
 # Diagnostyka zasobów sprzętowych
 
-Opisujemy, jak karta „Diagnostyka zasobów” na `/web/control.html` inspekcjonuje
-mikrofon, głośnik, kamerę i ekran LCD oraz jak każda operacja (stop/zakończ
-zajęcie) trafia do jednego strażnika zasobów, żeby `/dev/video0` nigdy nie był
-jednocześnie blokowany przez wiele usług.
+Własność, stany i migrację instalacji opisuje [kontrakt zadań i zasobów](ZADANIA_USLUGI_ZASOBY.md).
 
-## Narzędzie CLI
+## Odczyt
 
-```
+`GET /api/resource/<camera|mic|speaker|lcd|uart>` pokazuje dokładne ścieżki
+urządzeń, obserwowane PID, jednostki systemd, konsumentów i `observed_at`.
+Nie inicjalizuje SDK robota ani nie zmienia procesów.
+
+| Stan | Znaczenie | free |
+| --- | --- | --- |
+| free | Poprawny odczyt własności bez właściciela | true |
+| busy | Co najmniej jeden obserwowany właściciel | false |
+| unavailable | Brak pasującej ścieżki urządzenia | null |
+| unknown | Nie udało się wiarygodnie odczytać własności | null |
+
+Kamera obejmuje V4L2 `/dev/videoN`; SPI i framebuffer należą do LCD.
+UART jest odrębnym zasobem, zarezerwowanym dla jednego executora ruchu.
+Sensor-reader korzysta z telemetrii BUS.
+
+CLI wykonuje ten sam odczyt:
+
+```bash
 ./scripts/resource_diag.py status camera
-./scripts/resource_diag.py release camera --pid 1234
+./scripts/resource_diag.py status uart
 ```
 
-- `status` zwraca JSON z listą PID-ów i jednostek systemd trzymających dany zasób.
-- `release` uruchamia skrypt czyszczący (dla kamery `scripts/sys_camera-free.sh`,
-  dla audio `config/alsa/preflight.sh`, dla LCD `scripts/sys_lcd-control.py`) i
-  wywołuje `scripts/vision-resource-guard.sh release`, żeby po zwolnieniu zasobu
-  ponownie włączyć preview.
+## Stop i ręczne recovery
 
-## API / panel sterowania
+Najpierw zakończ zadanie przez API zadań. Współdzielone jednostki działają, dopóki
+nie zakończy się ostatni konsument. Zadanie ruchowe wymaga potwierdzonego STOP
+przed zwalnianiem usług. Administracja odmawia zatrzymania jednostki używanej przez zadanie.
 
-Endpoint `/api/resource/<mic|speaker|camera|lcd>` obsługuje:
+`POST {"action":"stop"}` na endpoint zasobu zatrzymuje tylko jednostki katalogu,
+których metadane zawierają dany zasób. Nieznany właściciel lub błąd odczytu oznacza
+odmowę. Sukces wymaga zakończenia wszystkich żądanych kroków.
 
-- `GET` → taką samą inspekcję co CLI (`resource_diag.inspect` z `lsof` + `ProcessInfo`).
-- `POST {"action":"stop"}` → zatrzymuje usługi blokujące zasób przez
-  `resource_stop`, a przed kamerą zawsze uruchamia `resource_diag.guard_camera("claim")`,
-  więc kamera jest „przydzielona” raz i nie ląduje w stanie „zajęty”.
-- `POST {"action":"release"}` → wywołuje skrypty czyszczenia i guard z `release`,
-  dzięki czemu po odblokowaniu preview wracają automatycznie.
+Release jest osobnym, świadomie sprawdzonym recovery. Wymaga `force: true`,
+`operator_consent: true` i dokładnych obecnie obserwowanych PID. Odpowiedź pokazuje
+właścicieli, konsumentów i skutki. Aktywni konsumenci zadania blokują release.
+Polecenie wysyła SIGTERM wyłącznie wybranym właścicielom. Nie przechodzi do
+SIGKILL ani nie uruchamia automatycznie innej usługi. UART, LCD i baza są chronione.
 
-Przyciski „Odśwież”, „Stop usługi” i „Zwolnij” korzystają z tego API, a dane
-zostają odświeżone (`updateResourceRow` w `web/control.html:1645-1718`).
+```bash
+# Wyłącznie po sprawdzeniu właścicieli i zakończeniu ich zadań:
+./scripts/resource_diag.py release camera --pid 1234 --force --operator-consent
+```
 
-## Integracja ze strażnikiem zasobów
+## Feed kamery i blokada
 
-- `scripts/vision-resource-guard.sh` zatrzymuje instancje `camera-capture@<mode>`
-  (np. `camera-capture@raw.service`) przed startem `rider-vision-offload.service`
-  i automatycznie je wznawia po zatrzymaniu offloadu.
-- `scripts/sys_control.sh` uruchamia tego strażnika podczas wywołania `/svc`
-  (np. przez panel) – najpierw `claim`, potem `stop`/`start`, następnie `release`.
-- `resource_diag.guard_camera(action)` jest wspólną funkcją, z której korzystają
-  API i systemowe skrypty, więc wszystkie ścieżki prowadzą do tego samego
-  mechanizmu zarządzania kamerą.
+RAW capture jest właścicielem kamery; frame-distributor dostarcza dane konsumentom,
+także offloadowi PC. Offload nie może awaryjnie otworzyć drugiej fizycznej kamery.
+`vision-resource-guard.sh claim|release` sprawdza te warunki odczytowo.
+Nie zabija innego właściciela ani nie wznawia preview. Konflikt RAW/EDGE/SSD oznacza
+odmowę; wybierz jedno narzędzie przez API zadań.
 
-## Procedura
-
-1. Operator sprawdza kartę „Diagnostyka zasobów”.
-2. „Stop usługi” zatrzymuje service’y przez `/svc` i jednocześnie wywołuje guard,
-   który zwalnia `/dev/video0`.
-3. „Zwolnij” uruchamia skrypt (np. `sys_camera-free.sh`) i guard w wersji `release`,
-   który odtwarza preview.
-4. Panel pokazuje nowe statusy i logi, więc nie trzeba ręcznie analizować `lsof`.
-
-Dzięki temu wszystkie mechanizmy (CLI, `/svc`, UI) korzystają z jednej ścieżki
-zarządzania zasobem kamery.
+Automatyczne sprawdzenia korzystają z atrap własności i procesów. Fizyczna próba
+ruchu wymaga zgody operatora dla konkretnego planu. Podgląd kamery nie daje takiej zgody.

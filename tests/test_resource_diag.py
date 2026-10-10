@@ -1,10 +1,25 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from services.api_core import resource_diag
+from services.api_core import features_api, resource_diag
+
+
+@pytest.fixture(autouse=True)
+def isolated_task_ownership(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        features_api,
+        "feature_manager",
+        SimpleNamespace(
+            transaction=nullcontext,
+            resource_consumers=lambda: {},
+            _state_path=tmp_path / "feature_state.json",
+        ),
+    )
 
 
 def test_inspect_mic_reports_holders(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -30,7 +45,7 @@ def test_inspect_mic_reports_holders(monkeypatch: pytest.MonkeyPatch) -> None:
     assert holder["service"] == "rider-voice.service"
 
 
-def test_release_audio_uses_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_release_audio_terminates_only_confirmed_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     executed: dict[str, Any] = {}
 
     def fake_call(cmd: list[str]) -> dict[str, Any]:
@@ -38,17 +53,19 @@ def test_release_audio_uses_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
         return {"ok": True}
 
     monkeypatch.setattr(resource_diag, "_call_release", fake_call)
+    monkeypatch.setattr(
+        resource_diag,
+        "inspect",
+        lambda _: {"state": "busy", "holders": [{"pid": pid, "service": "rider-voice.service"} for pid in [42, 43]]},
+    )
 
-    res = resource_diag.release("mic", limit_pids=[42, 43])
+    res = resource_diag.release("mic", limit_pids=[42, 43], force=True, operator_consent=True)
     assert res["ok"] is True
     cmd = executed["cmd"]
-    assert cmd[0].endswith("preflight.sh")
-    assert "--capture" in cmd
-    assert cmd.count("--limit-pid") == 2
-    assert "42" in cmd and "43" in cmd
+    assert cmd == ["sudo", "-n", "kill", "-TERM", "--", "42", "43"]
 
 
-def test_release_camera_calls_helper(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_release_camera_never_touches_lcd_or_spi(monkeypatch: pytest.MonkeyPatch) -> None:
     executed: dict[str, Any] = {}
 
     def fake_call(cmd: list[str]) -> dict[str, Any]:
@@ -56,10 +73,13 @@ def test_release_camera_calls_helper(monkeypatch: pytest.MonkeyPatch) -> None:
         return {"ok": True}
 
     monkeypatch.setattr(resource_diag, "_call_release", fake_call)
-    monkeypatch.setattr(resource_diag, "_run_guard", lambda action: {"ok": True})
+    monkeypatch.setattr(
+        resource_diag,
+        "inspect",
+        lambda _: {"state": "busy", "holders": [{"pid": 77, "service": "camera-capture@raw.service"}]},
+    )
 
-    res = resource_diag.release("camera", limit_pids=[77])
+    res = resource_diag.release("camera", limit_pids=[77], force=True, operator_consent=True)
     assert res["ok"] is True
     cmd = executed["cmd"]
-    assert cmd[0].endswith("sys_camera-free.sh")
-    assert "--pid" in cmd and "77" in cmd
+    assert cmd == ["sudo", "-n", "kill", "-TERM", "--", "77"]

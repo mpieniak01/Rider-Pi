@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 from pathlib import Path
 
 from apps.app_logic_core import DEFAULT_REGISTRY, FeatureManager, NullPublisher
@@ -32,20 +33,58 @@ class FakeRunner:
         )
 
 
-def make_manager(runner: FakeRunner, publisher: NullPublisher) -> FeatureManager:
+def make_manager(runner: FakeRunner, publisher: NullPublisher, owner: str = "follow_me") -> FeatureManager:
     state_file = Path(tempfile.gettempdir()) / "feature_state_test.json"
     try:
         state_file.unlink()
     except FileNotFoundError:
         # File doesn't exist yet; nothing to clean up
         pass
-    return FeatureManager(
+    manager = FeatureManager(
         registry=DEFAULT_REGISTRY,
         runner=runner,
         status_fn=lambda unit: runner.state.get(unit, False),
         publisher=publisher,
         state_path=state_file,
+        safety_status=lambda: {
+            "ready": True,
+            "can_move": True,
+            "owner": owner,
+            "generation": "fake-generation",
+            "capabilities": {action: {"available": True, "stop_verified": True} for action in ("move", "turn")},
+        },
+        safety_stop=lambda owner: {"ok": True, "confirmed": True},
+        dependency_check=lambda *args: [],
     )
+    manager.producer_status = lambda unit: {
+        "unit": unit,
+        "accepted": True,
+        "active": True,
+        "generation": "fake-generation",
+        "request_id": manager._service_intents().get(unit, {}).get("request_id"),
+        "domains": ["asr", "tts", "chat"],
+        "capabilities": {domain: {"ready": True} for domain in ("asr", "tts", "chat")},
+    }
+    original = manager.set_feature
+    sequence = [0]
+
+    def fake_intent(name, enabled):
+        sequence[0] += 1
+        return original(
+            name,
+            enabled,
+            control={
+                "source": "manual",
+                "generation": "fake-generation",
+                "seq": sequence[0],
+                "ts": time.time(),
+                "ttl_ms": 500,
+                "request_id": f"fake-{sequence[0]}",
+            },
+        )
+
+    manager.set_feature = fake_intent
+    return manager
 
 
 def test_enable_face_tracking_starts_preview_and_services() -> None:
@@ -56,12 +95,13 @@ def test_enable_face_tracking_starts_preview_and_services() -> None:
     result = mgr.set_feature("face_tracking", True)
 
     assert result["ok"] is True
-    # Preview starts first, then feature services
-    assert runner.actions[:3] == [
-        ("camera-capture@raw.service", "start"),
-        ("frame-distributor.service", "start"),
-        ("rider-followme.target", "start"),
-    ]
+    assert (
+        runner.actions.index(("camera-capture@raw.service", "start"))
+        < runner.actions.index(("frame-distributor.service", "start"))
+        < runner.actions.index(("rider-followme.target", "start"))
+    )
+    assert ("rider-tracker.service", "start") in runner.actions
+    assert ("rider-tracking-controller.service", "start") in runner.actions
     # Tracking mode event published
     assert publisher.sent[-1][0] == "tracking.mode:set"
     assert publisher.sent[-1][1]["mode"] == "face"
@@ -86,19 +126,15 @@ def test_disable_face_tracking_stops_services_and_preview() -> None:
     runner.state["motion-executor.service"] = True
     publisher = NullPublisher()
     mgr = make_manager(runner, publisher)
-    # symulacja wcześniejszego auto-startu podglądu
-    mgr._preview_autostart = True
-    mgr._framefeed_autostart = True
+    # Adopt an explicit task; camera/feed existed before the manager and stay external.
+    assert mgr.set_feature("face_tracking", True)["ok"]
+    runner.actions.clear()
 
     result = mgr.set_feature("face_tracking", False)
 
     assert result["ok"] is True
-    # Stop services in reverse order, then preview
-    assert runner.actions == [
-        ("rider-followme.target", "stop"),
-        ("frame-distributor.service", "stop"),
-        ("camera-capture@raw.service", "stop"),
-    ]
+    assert runner.actions == [("rider-followme.target", "stop")]
+    assert runner.state["camera-capture@raw.service"] and runner.state["frame-distributor.service"]
     # Tracking mode is reset to none
     assert publisher.sent[-1][1]["mode"] == "none"
 
@@ -106,7 +142,7 @@ def test_disable_face_tracking_stops_services_and_preview() -> None:
 def test_enable_disable_recon_sequence_and_no_preview() -> None:
     runner = FakeRunner()
     publisher = NullPublisher()
-    mgr = make_manager(runner, publisher)
+    mgr = make_manager(runner, publisher, owner="navigation")
 
     enable = mgr.set_feature("recon", True)
     assert enable["ok"] is True
@@ -127,9 +163,7 @@ def test_describe_features_reports_metadata_and_status() -> None:
     runner = FakeRunner()
     publisher = NullPublisher()
     mgr = make_manager(runner, publisher)
-    runner.state["rider-followme.target"] = True
-    runner.state["camera-capture@raw.service"] = True
-    runner.state["frame-distributor.service"] = True
+    assert mgr.set_feature("face_tracking", True)["ok"]
 
     data = mgr.describe_features()
     s3 = next(item for item in data if item["name"] == "s3_follow_me_face")

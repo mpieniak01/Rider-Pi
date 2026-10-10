@@ -52,9 +52,10 @@ ls -l /tmp/legacy.png
 
 - Animations/FaceLoop, TTS, visemes, RAW LCD driver
 - No `/face/state`
-- Unit file: `systemd/rider-face.service`
-- Disabled by default: `sudo systemctl disable rider-face.service`
-- Enable: `sudo systemctl enable rider-face.service && sudo systemctl start rider-face.service`
+- Service catalog version 2 does not install `rider-face` or other legacy units.
+- S11 selects one camera tool; LCD uses the preserved renderer service.
+- `systemd-sync.sh` prints a plan; `--with-dev` is compatibility only.
+- See [task and resource contract](../TASKS_SERVICES_RESOURCES.md).
 - Edit parameters via ENV in `systemd/robot.env` (e.g., `FACE_LCD_ROTATE`, `FACE_LCD_DRIVER`)
 
 ## Tests

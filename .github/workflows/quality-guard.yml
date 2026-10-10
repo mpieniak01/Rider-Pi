@@ -61,7 +61,7 @@ jobs:
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          CHANGED="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
+          CHANGED="$(git diff --name-only --diff-filter=ACMR "$base" "$head" -- '*.py' || true)"
           [ -z "$CHANGED" ] && exit 0
           MAX=600; FAIL=0
           while IFS= read -r f; do
@@ -83,7 +83,7 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
 
-          CHANGED_PY="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
+          CHANGED_PY="$(git diff --name-only --diff-filter=ACMR "$base" "$head" -- '*.py' || true)"
           if [ -z "$CHANGED_PY" ]; then
             echo "NO-STUB: no Python changes -> skip"
             exit 0
@@ -121,7 +121,7 @@ jobs:
           set -euo pipefail
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          CHANGED="$(git diff --name-only "$base" "$head" -- '*.py' || true)"
+          CHANGED="$(git diff --name-only --diff-filter=ACMR "$base" "$head" -- '*.py' || true)"
           [ -z "$CHANGED" ] && exit 0
           FAIL=0
           while IFS= read -r f; do

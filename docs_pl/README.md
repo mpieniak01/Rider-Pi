@@ -27,6 +27,7 @@ planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona.
 - [Indeks konfiguracji](config/README.md), [głos](config/voice.md), [twarz](config/face.md), [walidacja](config/validation.md).
 - [Audio WM8960](audio/wm8960.md), [ALSA](config/alsa.md).
 - [Skrypty](scripts/README.md), [instrukcje skryptów](ops/README.md), [mapowanie systemd](SYSTEMD_SERVICES_MAPPING.md), [katalog unitów](SYSTEMD_SERVICES_INVENTORY.md).
+- [Zadania, usługi i zasoby](ZADANIA_USLUGI_ZASOBY.md), [migracja scenariuszy](UPGRADE_SCENARIOS.md).
 - [Google Gemini](ecosystem-google.md), [Google Home](google-home-integration.md), [API Home command](google/home_command.md).
 - [Kontrole jakości](QUALITY_GUARDS.md), [ustalenia pracy](WORKING-AGREEMENTS.md), [instrukcje agenta](../AGENT.md).
 - Wydania: [v0.6](release-notes/v0.6.md), [v0.5.3](release-notes/v0.5.3.md), [v0.5.2](release-notes/v0.5.2.md).
