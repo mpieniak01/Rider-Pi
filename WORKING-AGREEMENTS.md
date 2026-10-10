@@ -15,6 +15,7 @@
 - `web/**` – web resources.
 - `tests/**` – unit/integration tests.
 - `config/**` – configuration files only.
+- `scripts/dev_pi-deploy.py` – short preview and application release through Git/SSH.
 - `docs/**`, `docs_pl/**`, root guides and documentation rules.
 - `Makefile`, `pytest.ini`, `pyproject.toml`.
 
@@ -35,6 +36,8 @@
 - **Hardware I/O:**
   - UART `/dev/ttyAMA0` – exclusively via *Motion Bridge*.
   - LCD ILI9xx – via `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), no direct SPI-write elsewhere.
+  - LCD mounting is sideways on this robot. Preserve its orientation and the Face
+    compensation `FACE_LCD_ROTATE=270`; camera and splash rotations are independent.
 
 ---
 
@@ -58,7 +61,9 @@
 ## 4) Definition of Done
 
 - Works on RPi; no regression in API and core paths.
-- `pytest` passes locally (`make test`); new features have tests.
+- Relevant checks pass; confirm hardware functions on the Pi.
+- A short iteration can use a relevant WSL test and a device test; full `make test`
+  is not mandatory before every preview.
 - Port/service changes → update `ARCHITECTURE.md`.
 - Changes described in `docs/` (summary in commits).
 
@@ -70,6 +75,9 @@
 - Branch: `codex/<nr>-short-description`.
 - Commits: `feat|fix|chore(scope): description (nr)`.
 - PR: description + *Fixes <nr>* if closing Issue.
+- Two paths: local commit → `make pi-preview` → Pi function test; then
+  push → PR/review → merge → `make pi-release PI_COMMIT=<sha>`.
+- Return from preview with `make pi-rollback`. See [deployment](docs/DEPLOYMENT.md).
 
 **Example:**
 ```bash
@@ -77,10 +85,13 @@
 git switch -c codex/42-pupil-drift-tuning
 
 # work
-make test  # run local tests
+# optionally run a short check or relevant WSL test
 
 # commit
 git commit -m "feat(face): pupil drift clamp improves edge cases (42)"
+
+# preview and function test on the physical Pi before publication
+make pi-preview
 
 # PR/push
 git push -u origin codex/42-pupil-drift-tuning

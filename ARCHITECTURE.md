@@ -21,6 +21,17 @@ checkout. Editing the unit alone does not remove old links. See the
 
 ---
 
+## Physical LCD orientation
+
+The 2-inch LCD in this Rider-Pi is mounted sideways relative to its factory orientation. Treat
+this installed orientation as the device baseline. The Face renderer compensates in software
+with `FACE_LCD_ROTATE=270`; this rotates the rendered image, not the physical panel. Face
+rendering, camera preview (`PREVIEW_ROT`) and the splash screen (`SPLASH_ROTATE`) use separate
+transforms. Preserve the installed panel orientation and each renderer's own setting; do not
+apply a global display or boot rotation when changing one screen.
+
+---
+
 ## Layers and Processes
 
 ### 1) HTTP Interface

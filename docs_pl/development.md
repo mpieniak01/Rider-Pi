@@ -19,6 +19,18 @@ Zmiany aplikacji prowadź na osobnej gałęzi, z odpowiednimi kontrolami
 i review w PR. Same porządki dokumentacyjne mogą trafić bezpośrednio
 na `main`, jeżeli właściciel repozytorium tak poleci.
 
+## Dwie ścieżki pracy z urządzeniem
+
+Drobna poprawka może przejść krótką ścieżkę: lokalny commit → `make pi-preview`
+→ test funkcji na Pi. Kontrola w WSL jest dobrana do zmiany; pełny pytest nie jest
+obowiązkowym krokiem każdej iteracji. Podgląd działa przed push i PR. Kolejny
+commit można od razu sprawdzić na urządzeniu; `make pi-rollback` przywraca bazę.
+
+Zaakceptowany kod utrwalamy ścieżką wydania: push → PR → powiązane kontrole
+i review → merge → `make pi-release PI_COMMIT=<pełny-hash-main>`.
+Kod po review musi odpowiadać temu sprawdzonemu na Pi. Szczegóły, restart
+zmienionego komponentu i odzyskiwanie opisuje [wdrożenie](WDROZENIE.md).
+
 ## Konfiguracja i notatki lokalne
 
 Korzystamy ze zwykłych lokalnych plików env. `.env`, prywatne `.env.*`,
@@ -55,7 +67,9 @@ make test TEST_ARGS="-q tests/test_systemd_services.py tests/config/"
 ```
 
 Testy wersji wymagają zależności API. Sprzęt, audio, vision i przeglądarka
-mają osobne wymagania; zakres dobieraj do zmiany. Rewizję, polecenie i wynik
+mają osobne wymagania; zakres dobieraj do zmiany. Polecenia powyżej są
+przykładami, a nie obowiązkowym pełnym zestawem przed każdym podglądem.
+Rewizję, polecenie i wynik
 zapisuj w lokalnej notatce zadania. Mocki nie potwierdzają pracy silników,
 sensorów ani fizycznego śledzenia.
 

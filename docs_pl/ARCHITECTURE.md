@@ -21,6 +21,17 @@ usuwa. Zobacz [procedurę migracji Jupytera](WDROZENIE.md#migracja-autostartu-ju
 
 ---
 
+## Fizyczna orientacja LCD
+
+Ekran LCD 2″ w tym Rider-Pi jest zamontowany bokiem względem orientacji fabrycznej. Traktuj
+obecny montaż jako stan bazowy urządzenia. Renderer buźki kompensuje go programowo ustawieniem
+`FACE_LCD_ROTATE=270`; obraca ono renderowany obraz, a nie fizyczny panel. Renderer buźki,
+podgląd kamery (`PREVIEW_ROT`) i ekran startowy (`SPLASH_ROTATE`) mają osobne transformacje.
+Zachowaj obecny montaż ekranu i ustawienia każdego renderera; zmiana jednego widoku nie
+uzasadnia globalnego obrotu ekranu ani grafiki startowej.
+
+---
+
 ## Warstwy i procesy
 
 ### 1) Interfejs HTTP
