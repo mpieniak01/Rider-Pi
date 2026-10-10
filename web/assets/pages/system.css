@@ -19,6 +19,7 @@
 }
 
 .page-system .system-section.is-network { --card-title-accent-color: #a855f7; }
+.page-system .wifi-card { margin-top: var(--space-lg); padding: var(--space-lg); overflow-wrap: anywhere; }
 .page-system .system-section.is-pc { --card-title-accent-color: #3b82f6; }
 .page-system .system-section.is-pi { --card-title-accent-color: var(--color-ok); }
 

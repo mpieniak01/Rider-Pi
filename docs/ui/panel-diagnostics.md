@@ -13,6 +13,22 @@ The page reads `GET /api/services/graph` every five seconds with one request in 
 and a twelve-second timeout. An error preserves the last successful data and marks
 its timestamp as stale. This page sends no control or service commands.
 
+The **Network** section reports the actual `wlan0` state independently of service
+statuses: carrier and an IPv4 address indicate a LAN connection. It reads radio blocks,
+addresses, the default route and `dhcpcd` autostart. Missing tools or data mean unknown
+state, rather than a disconnected link. This is not an Internet reachability check.
+The `network.wifi` field in `/api/services/graph` uses sysfs and read-only `ip`/systemd
+commands with one-second timeouts. It exposes no SSID, password or network config contents.
+
+`wifi-unblock.service` only unblocks the radio before network configuration; its
+success does not prove Wi-Fi connectivity. On the manufacturer image, `dhcpcd` and
+its wpa_supplicant hook own `wlan0`. Do not start another `wpa_supplicant@wlan0`
+instance or a competing interface manager. Inactive ConnMan does not need
+`connman-wait-online`. Configure Wi-Fi locally on the device without publishing
+password-bearing files. Radio unblocking and state persistence are documented in
+[rfkill](https://manpages.debian.org/bullseye/rfkill/rfkill.8.en.html) and
+[systemd-rfkill](https://manpages.debian.org/bullseye/systemd/systemd-rfkill.service.8.en.html).
+
 The shared footer reads `GET /api/status/version` once after loading. Its response
 contains `available`, `branch`, `commit`, `dirty`, `message`, and `ts`. Metadata comes
 from the repository containing the running code, using read-only Git commands with

@@ -138,8 +138,8 @@ SERVICE_META: dict[str, ServiceMeta] = {
     "wifi-unblock.service": {
         "id": "wifi-unblock",
         "group": "core",
-        "label": "Wi-Fi unblock",
-        "description": "Odblokowanie modułu Wi-Fi przy starcie.",
+        "label": "Wi-Fi radio unblock",
+        "description": "Odblokowanie radia przy starcie. Stan połączenia jest pokazany osobno w sekcji Sieć.",
         "edges_out": [],
     },
     "rider-google-bridge.service": {

@@ -1,15 +1,16 @@
 [Unit]
-Description=Unblock Wi-Fi and bring wlan0 up before ConnMan
-After=local-fs.target
-Before=connman.service network-pre.target
+Description=Unblock Wi-Fi radio before network configuration
+After=local-fs.target systemd-rfkill.service
+Before=dhcpcd.service connman.service network-pre.target
 DefaultDependencies=no
 
 [Service]
 Type=oneshot
 ExecStart=/usr/sbin/rfkill unblock wifi
-ExecStart=/usr/bin/ip link set wlan0 up
-ExecStart=/bin/sleep 1
+# dhcpcd owns the interface and starts its wpa_supplicant hook.
+# Do not access wlan0 here: the radio can appear before the network interface.
 RemainAfterExit=yes
+TimeoutStartSec=5
 
 [Install]
 WantedBy=multi-user.target

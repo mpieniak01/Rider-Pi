@@ -9,6 +9,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify
 
+from .network_state import get_wifi_state
 from .service_meta import SERVICE_META, UNIT_BY_ID
 
 bp = Blueprint("services_dashboard", __name__, url_prefix="/api/services")
@@ -124,6 +125,7 @@ def services_graph() -> Any:
         "nodes": nodes,
         "edges": _build_edges(edges),
         "generated_at": time.time(),
+        "network": {"wifi": get_wifi_state()},
     }
     return jsonify(payload)
 

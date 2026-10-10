@@ -59,6 +59,7 @@ def panel(browser):
     context = browser.new_context(viewport={"width": 1365, "height": 900}, locale="pl-PL")
     state = {
         "graph": GRAPH,
+        "network": None,
         "version": VERSION,
         "graph_status": 200,
         "version_status": 200,
@@ -83,7 +84,9 @@ def panel(browser):
                 state["held_graph"].append(route)
                 return
             route.fulfill(
-                status=state["graph_status"], content_type="application/json", body=json.dumps(state["graph"])
+                status=state["graph_status"],
+                content_type="application/json",
+                body=json.dumps({**state["graph"], "network": state["network"]}),
             )
         elif path == "/api/status/version":
             if state["hold_version"]:
@@ -256,3 +259,39 @@ def test_version_timeout_is_nonfatal(panel):
     assert page.locator("[data-footer-commit]").is_disabled()
     assert "Wersja niedostępna" in page.locator("[data-footer-version-block]").inner_text()
     assert page.locator(".service-node").count() == 4
+
+
+@pytest.mark.parametrize(
+    ("status", "label"),
+    [("connected", "Połączono"), ("blocked", "Radio zablokowane"), ("unknown", "Stan nieznany")],
+)
+def test_wifi_link_state_is_separate_from_failed_boot_helper(panel, status, label):
+    page, state = panel
+    page.set_viewport_size({"width": 320, "height": 900})
+    state["network"] = {
+        "wifi": {
+            "interface": "wlan0",
+            "status": status,
+            "addresses": ["192.168.1.14"],
+            "default_route": True,
+            "gateway": "192.168.1.1",
+            "manager": "dhcpcd",
+            "autostart": True,
+        }
+    }
+    state["graph"] = {
+        "nodes": [
+            {"id": "wifi-unblock", "unit": "wifi-unblock.service", "group": "core", "status": "failed"},
+        ]
+    }
+    page.goto("http://rider-pi.test/system/")
+    page.wait_for_selector(".wifi-card")
+    assert page.locator(".wifi-card .status-pill").inner_text() == label.upper()
+    assert "192.168.1.14" in page.locator(".wifi-card").inner_text()
+    assert "dhcpcd / Włączony" in page.locator(".wifi-card").inner_text()
+    assert page.locator(".service-node .status-pill").inner_text() == "BŁĘDY"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.locator("button[data-lang=en]").click()
+    expected = {"connected": "Connected", "blocked": "Radio blocked", "unknown": "Unknown state"}
+    assert page.locator(".wifi-card .status-pill").inner_text() == expected[status].upper()
+    assert state["writes"] == []

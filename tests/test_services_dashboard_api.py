@@ -11,7 +11,8 @@ from services.api_core.service_meta import SERVICE_META
 
 
 @pytest.fixture()
-def client() -> Iterator[Any]:
+def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
+    monkeypatch.setattr(services_dashboard_api, "get_wifi_state", lambda: {"status": "connected"})
     app = Flask(__name__)
     app.register_blueprint(services_dashboard_api.bp)
     with app.test_client() as test_client:
@@ -61,3 +62,4 @@ def test_services_graph_returns_nodes_and_edges(monkeypatch: pytest.MonkeyPatch,
     assert any(edge["from"] == "web-bridge" and edge["to"] == "api" for edge in edges)
     assert any(edge["from"] == "voice-web" and edge["to"] == "voice" for edge in edges)
     assert payload["generated_at"] is not None
+    assert payload["network"]["wifi"]["status"] == "connected"
