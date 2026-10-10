@@ -1,262 +1,333 @@
-#!/usr/bin/env python3
-"""
-drivers/xgo/adapter.py — cienka warstwa nad biblioteką XGO (CM4/Rider)
+"""Sole-owner XGO adapter; public construction never opens physical hardware.
 
-Cel:
-- Jednolite, bezpieczne API do ruchu/LED/baterii/IMU + parę udogodnień.
-- Domyślnie NIE uruchamia fizycznego ruchu (MOTION_ENABLE=0). Włączenie: MOTION_ENABLE=1.
-
-Wspierane środowisko:
-- Pakiet 'xgolib' (wchodzi m.in. z xgodoglib); łagodne fallbacki metod.
-
-Publiczne metody (best-effort, brak side-effectów gdy brak HW/ENABLE):
-- ok() -> bool
-- available_methods() -> list[str]
-- stop()
-- set_stabilization(on: bool)
-- enable_balance(on: bool)
-- set_height(h: int)
-- drive(dir: "forward"|"backward", speed: 0..1, dur: float|None = None, *, block=False)
-- spin(dir: "left"|"right", speed: 0..1, dur: float|None = None, deg: float|None = None, *, block=False)
-- action(name: str)   # 'sit'|'stand'|'wave'|'default'
-- led(idx: int, rgb: tuple[int,int,int])
-- battery() -> float|None   # 0..1, None gdy brak odczytu
-- imu() -> dict|None        # {"roll":..,"pitch":..,"yaw":..} lub None
+Only the executor supplies an in-process MotionGate and owner=True. The vendor
+constructor calls reset/action255, so it is wrapped before any construction.
+No second firmware autodetection constructor, timers, or direct client UART.
 """
 
 from __future__ import annotations
 
+import fcntl
+import importlib
 import os
 import time
 from collections.abc import Iterable
+from pathlib import Path
 
-# ── Import biblioteki XGO (łagodnie) ─────────────────────────────────────────
-try:
-    from xgolib import XGO  # typowe wejście
+from apps.safety.gate import MotionGate, finite_number
 
-    _HAS_XGO = True
-except Exception:
-    XGO = None  # type: ignore
-    _HAS_XGO = False
-
-# ── Konfiguracja przez ENV ───────────────────────────────────────────────────
 XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
-XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")  # xgomini|xgolite|xgorider
-MOTION_ENABLE = os.getenv("MOTION_ENABLE", "0") == "1"  # domyślnie OFF (bezpiecznie)
-_DEFAULT_PULSE = float(os.getenv("RIDER_PULSE", "0.30"))  # domyślny czas impulsu (s)
+XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")
+MOTION_ENABLE = False  # compatibility only; ENV never grants a lease
+_MIN_STEP, _MAX_STEP = 1, 12
+_TURN_MIN, _TURN_MAX = 20, 70
 
-# Skala „kroków” w funkcjach ogólnych (np. move_x/turn) – mała, delikatna
-_MIN_STEP = 1
-_MAX_STEP = 12
 
-# Skala dla legacy `turnleft/turnright` (wg vendor UI; duża, wyraźna)
-_TURN_FALLBACK_MIN = int(os.getenv("TURN_FALLBACK_MIN", "20"))
-_TURN_FALLBACK_MAX = int(os.getenv("TURN_FALLBACK_MAX", "70"))
+def uart_inventory(port: str, *, proc_root: str | Path | None = None) -> dict:
+    """Inspect open descriptors without touching the device or sending signals.
 
-# Maks. czas bloku przy block=True
-_MAX_BLOCK_S = 5.0
+    An unreadable process is UNKNOWN, never evidence that UART is free. The
+    deployment procedure must stop old non-cooperating clients and provide a
+    readable process inventory; this lock alone cannot exclude a legacy reader.
+    """
+    if proc_root is None:
+        from common.uart_ownership import read_uart_owners
+
+        return read_uart_owners(port, timeout_s=2.0)
+    target = str(Path(port).resolve())
+    owners = []
+    unreadable = []
+    try:
+        processes = list(Path(proc_root).iterdir())
+    except OSError:
+        return {"known": False, "owners": [], "unreadable": ["proc"]}
+    for process in processes:
+        if not process.name.isdigit():
+            continue
+        try:
+            descriptors = list((process / "fd").iterdir())
+        except FileNotFoundError:
+            continue  # process exited during this passive snapshot
+        except OSError:
+            unreadable.append(process.name)
+            continue
+        for descriptor in descriptors:
+            try:
+                destination = os.readlink(descriptor)
+                if str(Path(destination).resolve()) == target:
+                    owners.append(int(process.name))
+                    break
+            except FileNotFoundError:
+                continue
+            except OSError:
+                unreadable.append(process.name)
+                break
+    return {"known": not unreadable, "owners": sorted(set(owners)), "unreadable": sorted(set(unreadable))}
+
+
+def guarded_sdk_class(base, gate: MotionGate):
+    """Guard the installed 1.4.2 SDK private write hook before its __init__.
+
+    Reads are separate from __send. Unknown SDK layouts fail closed instead of
+    constructing an unguarded object. During STOP only the explicit allowlist
+    below is writable; no action/reset fallback can change the robot's posture.
+    """
+    send = getattr(base, "_XGO__send", None)
+    unpack = getattr(base, "_XGO__unpack", None)
+    if not callable(send) or not callable(unpack):
+        raise RuntimeError("unsupported_sdk_write_contract")
+
+    class GuardedXGO(base):
+        _initializing = True
+        _stopping = False
+
+        def __init__(self, *args, **kwargs):
+            self._initializing = True
+            try:
+                super().__init__(*args, **kwargs)
+                self._initializing = False
+                serial = getattr(self, "ser", None)
+                waiting = getattr(serial, "inWaiting", None)
+                if callable(waiting):
+
+                    def yielding_wait():
+                        available = waiting()
+                        if not available:
+                            time.sleep(0.001)
+                        return available
+
+                    # SDK __unpack busy-spins on this method; yield only on the
+                    # owned serial object instead of adding a polling daemon.
+                    serial.inWaiting = yielding_wait
+            except Exception:
+                serial = getattr(self, "ser", None)
+                if serial is not None:
+                    serial.close()
+                raise
+
+        def reset(self):
+            # Vendor constructor reset is a physical action, not initialization.
+            if not self._initializing and gate.can_actuate():
+                return super().reset()
+            return None
+
+        def _XGO__send(self, key, index=1, len=1):
+            stopping_keys = {"VX", "VY", "VYAW", "MarkTime"}
+            if self._initializing:
+                return None
+            if self._stopping:
+                # Jawny STOP może wysłać tylko zera napędu; nie odpytuje bramy
+                # ani trwałego zatrzasku. Błąd statusu nie może opóźnić STOP.
+                if key not in stopping_keys:
+                    raise PermissionError("unsupported_stop_write")
+                return send(self, key, index=index, len=len)
+            if not gate.can_actuate():
+                raise PermissionError("motion_gate_disarmed")
+            return send(self, key, index=index, len=len)
+
+        def _XGO__unpack(self, timeout=1):
+            budget = 0.25 if self._initializing else 0.03
+            result = unpack(self, timeout=min(timeout, budget))
+            if not result:
+                raise TimeoutError("sensor_read_timeout")
+            return result
+
+    return GuardedXGO
 
 
 class XgoAdapter:
-    def __init__(self, port: str = XGO_PORT, version: str = XGO_VERSION):
+    def __init__(
+        self,
+        port: str = XGO_PORT,
+        version: str = XGO_VERSION,
+        *,
+        gate: MotionGate | None = None,
+        owner: bool = False,
+        sdk_factory=None,
+        lock_path: str | Path | None = None,
+        uart_probe=None,
+    ):
         self._dog = None
-        self._port = port
-        self._version = version
-
-        if not _HAS_XGO:
-            return  # brak biblioteki — tryb stub
-
-        # Inicjalizacja i łagodna autodetekcja wariantu FW (M/L/R)
+        self._lock_fd = None
+        self._gate = gate
+        self._port, self._version = port, version
+        self.error = "not_uart_owner"
+        self.uart_inventory = None
+        if not owner or gate is None:
+            return
+        if os.getenv("RIDER_TEST_ISOLATED") == "1" and sdk_factory is None:
+            self.error = "physical_sdk_blocked_in_tests"
+            return
         try:
-            self._dog = XGO(port=port, version=version)
-            rf = getattr(self._dog, "read_firmware", None)
-            if callable(rf):
-                try:
-                    fw = rf()
-                    if isinstance(fw, str) and fw:
-                        lead = fw[0].upper()
-                        if lead == "M" and version != "xgomini":
-                            self._dog = XGO(port=port, version="xgomini")
-                        elif lead == "L" and version != "xgolite":
-                            self._dog = XGO(port=port, version="xgolite")
-                        elif lead == "R" and version != "xgorider":
-                            self._dog = XGO(port=port, version="xgorider")
-                except Exception:
-                    pass
-        except Exception:
-            self._dog = None  # nie dało się zainicjalizować
+            if sdk_factory is None and port != "/dev/ttyAMA0":
+                raise RuntimeError("sdk_1_4_2_ignores_custom_serial_port")
+            path = Path(lock_path or f"/tmp/rider-motion-uart-{Path(port).name}.lock")
+            self._lock_fd = os.open(str(path), os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Injection exists only for an explicit fake SDK; production uses
+            # the exact privileged read-only inventory, never an ENV free flag.
+            probe = uart_probe if sdk_factory is not None and uart_probe is not None else uart_inventory
+            self.uart_inventory = probe(port)
+            if self.uart_inventory.get("owners"):
+                raise RuntimeError("uart_owned_by_existing_process")
+            if self.uart_inventory.get("known") is not True:
+                raise RuntimeError("uart_inventory_unreadable")
+            if sdk_factory is None:
+                module = importlib.import_module("xgolib")
+                if getattr(module, "__version__", None) != "1.4.2":
+                    raise RuntimeError("unsupported_sdk_version")
+                base = module.XGO
+            else:
+                base = sdk_factory
+            sdk = guarded_sdk_class(base, gate)
+            self._dog = sdk(port=port, version=version)
+            self.error = None
+            if not self.stop():
+                raise RuntimeError("sdk_stop_unavailable")
+        except Exception as exc:
+            self.error = f"uart_initialization_failed:{type(exc).__name__}:{exc}"
+            self.close()
 
-    # ── podstawy ──────────────────────────────────────────────────────────────
     def ok(self) -> bool:
-        """Czy biblioteka/urządzenie są dostępne."""
-        return self._dog is not None
+        return self._dog is not None and self.error is None
 
     def available_methods(self) -> list[str]:
-        if not self.ok():
-            return []
-        return sorted([m for m in dir(self._dog) if not m.startswith("_")])
+        return sorted(m for m in dir(self._dog) if not m.startswith("_")) if self.ok() else []
 
-    def _call(self, name: str, *args, **kwargs) -> bool:
-        """Wywołaj metodę urządzenia, jeśli istnieje; zwróć True przy sukcesie."""
-        if not self.ok():
+    def _allowed(self) -> bool:
+        return bool(self.ok() and self._gate is not None and self._gate.can_actuate())
+
+    def _call(self, name: str, *args) -> bool:
+        # A transport fault is latched for this owner. STOP remains retryable.
+        if self.error is not None and name != "stop":
             return False
         fn = getattr(self._dog, name, None)
         if not callable(fn):
             return False
         try:
-            fn(*args, **kwargs)
+            result = fn(*args)
+            if result is False:
+                self.error = f"sdk_call_unconfirmed:{name}"
+                return False
             return True
-        except Exception:
+        except Exception as exc:
+            self.error = f"sdk_call_failed:{name}:{type(exc).__name__}"
             return False
 
-    # ── STOP (zawsze bezpieczny) ─────────────────────────────────────────────
-    def stop(self) -> None:
-        """Natychmiastowy STOP (bez względu na MOTION_ENABLE)."""
-        if not self.ok():
-            return
-        if not self._call("stop"):
-            self._call("action", 0)
+    def stop(self) -> bool:
+        if self._dog is None:
+            return False
+        self._dog._stopping = True
+        try:
+            stopped = self._call("stop")
+            if not stopped and self.error is None:
+                self.error = "sdk_stop_unconfirmed"
+            return stopped
+        finally:
+            self._dog._stopping = False
 
-    # ── LED / telemetria ─────────────────────────────────────────────────────
-    def led(self, idx: int, rgb: Iterable[int]) -> None:
-        """Ustaw LED (nie wymaga MOTION_ENABLE). idx: 0/1."""
-        if not self.ok():
-            return
-        r, g, b = list(rgb)[:3] if rgb else (0, 0, 0)
-        self._call("rider_led", int(idx), [int(r), int(g), int(b)])
+    def close(self) -> None:
+        if self._dog is not None:
+            try:
+                self.stop()
+                serial = getattr(self._dog, "ser", None)
+                if serial is not None:
+                    try:
+                        serial.close()
+                    except Exception as exc:
+                        self.error = self.error or f"sdk_close_failed:{type(exc).__name__}"
+            finally:
+                self._dog = None
+        if self._lock_fd is not None:
+            os.close(self._lock_fd)
+            self._lock_fd = None
 
-    def battery(self) -> float | None:
-        """Zwraca poziom baterii w skali 0..1 (None, jeśli brak odczytu)."""
+    def _read(self, names: tuple[str, ...]):
         if not self.ok():
             return None
-        try:
-            v = getattr(self._dog, "rider_read_battery", None) or getattr(self._dog, "read_battery", None)
-            if callable(v):
-                raw = v()
+        for name in names:
+            fn = getattr(self._dog, name, None)
+            if callable(fn):
                 try:
-                    f = float(raw)
-                    if f > 1.0:
-                        f = f / 100.0
-                    return max(0.0, min(1.0, f))
+                    return fn()
+                except OSError as exc:
+                    self.error = f"sdk_read_failed:{name}:{type(exc).__name__}"
+                    return None
                 except Exception:
                     return None
-        except Exception:
-            pass
         return None
+
+    def battery(self) -> float | None:
+        value = self._read(("rider_read_battery", "read_battery"))
+        try:
+            value = finite_number(value, "battery")
+        except ValueError:
+            return None
+        # SDK 1.4.2 returns a percentage byte, including 0% and 1%.
+        if not 0 <= value <= 100 or int(value) != value:
+            return None
+        return value / 100.0
 
     def imu(self) -> dict | None:
-        """Zwraca orientację, jeśli dostępna: {'roll':..,'pitch':..,'yaw':..}."""
-        if not self.ok():
-            return None
+        values = {axis: self._read((f"rider_read_{axis}", f"read_{axis}")) for axis in ("roll", "pitch", "yaw")}
         try:
-            r = getattr(self._dog, "rider_read_roll", None) or getattr(self._dog, "read_roll", None)
-            p = getattr(self._dog, "rider_read_pitch", None) or getattr(self._dog, "read_pitch", None)
-            y = getattr(self._dog, "rider_read_yaw", None) or getattr(self._dog, "read_yaw", None)
-            if callable(r) and callable(p) and callable(y):
-                return {"roll": float(r()), "pitch": float(p()), "yaw": float(y())}
-        except Exception:
-            pass
-        return None
+            return {key: finite_number(value, key) for key, value in values.items()}
+        except ValueError:
+            return None
+
+    def read_axis(self, axis: str) -> float | None:
+        if axis not in {"roll", "pitch", "yaw"}:
+            return None
+        value = self._read((f"rider_read_{axis}", f"read_{axis}"))
+        try:
+            return finite_number(value, axis)
+        except ValueError:
+            return None
 
     def firmware(self) -> str | None:
-        """Zwraca oznaczenie firmware XGO, jeśli dostępne."""
-        if not self.ok():
-            return None
-        try:
-            fn = getattr(self._dog, "read_firmware", None) or getattr(self._dog, "version", None)
-            if callable(fn):
-                val = fn()
-                if val is None:
-                    return None
-                if isinstance(val, str):
-                    val = val.strip()
-                return val or None
-        except Exception:
-            pass
-        return None
+        value = self._read(("rider_read_firmware", "read_firmware"))
+        return value.strip() if isinstance(value, str) and value.strip() else None
 
-    # Aliasy zgodne z oczekiwaniami starszych modułów
-    def read_firmware(self) -> str | None:  # pragma: no cover - prosty passthrough
-        return self.firmware()
+    read_firmware = firmware
+    version = firmware
 
-    def version(self) -> str | None:  # pragma: no cover - prosty passthrough
-        return self.firmware()
+    def led(self, idx: int, rgb: Iterable[int]) -> bool:
+        if not self._allowed():
+            return False
+        return self._call("rider_led", int(idx), list(rgb)[:3])
 
-    def set_stabilization(self, on: bool) -> None:
-        """Ogólne imu(1/0) – tam gdzie brak rider_balance_*."""
-        if not self.ok():
-            return
-        try:
-            fn = getattr(self._dog, "imu", None)
-            if callable(fn):
-                fn(1 if on else 0)
-        except Exception:
-            pass
+    def set_stabilization(self, on: bool) -> bool:
+        return self.enable_balance(on)
 
-    def enable_balance(self, on: bool) -> None:
-        """Włącza/wyłącza aktywny balans (preferuj rider_balance_roll, fallback imu)."""
-        if not self.ok():
-            return
-        if not self._call("rider_balance_roll", 1 if on else 0):
-            self._call("imu", 1 if on else 0)
+    def enable_balance(self, on: bool) -> bool:
+        if not self._allowed() or not isinstance(on, bool):
+            return False
+        if not self.capabilities()["balance"]["stop_verified"]:
+            self.error = "balance_manual_characterization_required"
+            return False
+        return self._call("rider_balance_roll", int(on)) or self._call("imu", int(on))
 
-    def set_height(self, h: int) -> None:
-        """Ustaw wysokość zawieszenia (bezpieczny clamp)."""
-        if not self.ok():
-            return
-        try:
-            h = int(h)
-        except Exception:
-            return
-        h = max(70, min(115, h))  # bezpieczne widełki
-        self._call("rider_height", h)
+    def set_height(self, h: int) -> bool:
+        if not self._allowed() or isinstance(h, bool) or not isinstance(h, int) or not 70 <= h <= 115:
+            return False
+        if not self.capabilities()["height"]["stop_verified"]:
+            self.error = "height_manual_characterization_required"
+            return False
+        return self._call("rider_height", h)
 
-    # ── prymitywy ruchu ──────────────────────────────────────────────────────
-    @staticmethod
-    def _clamp01(x: float) -> float:
-        try:
-            f = float(x)
-        except Exception:
-            return 0.0
-        return 0.0 if f < 0.0 else 1.0 if f > 1.0 else f
-
-    def _scale_to_step(self, f: float) -> int:
-        """Skaluj 0..1 → 1..12 (delikatnie)."""
-        s = self._clamp01(f)
-        step = int(round(_MIN_STEP + s * (_MAX_STEP - _MIN_STEP)))
-        return max(_MIN_STEP, min(_MAX_STEP, step))
-
-    def drive(self, dir: str, speed: float, dur: float | None = None, *, block: bool = False) -> None:
-        """
-        Jazda liniowa (forward/backward).
-        Używa impulsu (runtime), po którym domyślnie STOP (bez block=True).
-        speed: 0..1 (skalowane do kroków API, ~1..12)
-        dur: czas impulsu w sekundach (domyślnie RIDER_PULSE).
-        """
-        if not self.ok() or not MOTION_ENABLE:
-            return
-
-        d = (dir or "").lower()
-        if d not in ("forward", "backward"):
-            return
-
-        step = self._scale_to_step(speed)
-        t = float(dur) if dur is not None else _DEFAULT_PULSE
-
-        # Rider-spec → ogólne → bardzo ogólne
-        if d == "forward":
-            called = (
-                self._call("rider_move_x", +step, t) or self._call("move_x", +step, t) or self._call("forward", +step)
-            )
-        else:
-            called = self._call("rider_move_x", -step, t) or self._call("move_x", -step, t) or self._call("back", +step)
-
-        if called:
-            if block and t > 0:
-                time.sleep(min(t, _MAX_BLOCK_S))
-                self.stop()
-            else:
-                self.stop()
+    def drive(self, dir: str, speed: float, dur: float | None = None, *, block: bool = False) -> bool:
+        if not self._allowed() or dir not in {"forward", "backward"}:
+            return False
+        value = finite_number(speed, "speed")
+        if not 0 <= value <= 1:
+            return False
+        step = 0 if value == 0 else round(_MIN_STEP + value * (_MAX_STEP - _MIN_STEP))
+        step *= 1 if dir == "forward" else -1
+        # Never invoke vendor runtime sleeps: executor owns the duration deadline.
+        done = self._call("rider_move_x", step, 0) or self._call("move_x", step, 0)
+        if block and dur is not None:
+            self._bounded_wait(dur)
+        return done
 
     def spin(
         self,
@@ -266,48 +337,44 @@ class XgoAdapter:
         deg: float | None = None,
         *,
         block: bool = False,
-    ) -> None:
-        """
-        Obrót w miejscu (left/right) — używa vendorowych metod turnleft/turnright,
-        bo są potwierdzone jako działające na Twoim FW.
-        speed 0..1 → skalowane do kroków 20..70 (legacy skala).
-        """
-        if not self.ok() or not MOTION_ENABLE:
-            return
+    ) -> bool:
+        if not self._allowed() or dir not in {"left", "right"} or deg is not None:
+            return False
+        value = finite_number(speed, "speed")
+        if not 0 <= value <= 1:
+            return False
+        step = 0 if value == 0 else round(_TURN_MIN + value * (_TURN_MAX - _TURN_MIN))
+        name = "turnleft" if dir == "left" else "turnright"
+        done = self._call(name, step)
+        if block and dur is not None:
+            self._bounded_wait(dur)
+        return done
 
-        d = (dir or "").lower()
-        if d not in ("left", "right"):
-            return
+    def _bounded_wait(self, duration: float) -> None:
+        deadline = time.monotonic() + min(0.25, max(0.0, finite_number(duration, "duration")))
+        while self._allowed() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.stop()
 
-        # skalowanie do vendorowej skali (20..70)
-        s = self._clamp01(speed)
-        turn_step = int(round(_TURN_FALLBACK_MIN + s * (_TURN_FALLBACK_MAX - _TURN_FALLBACK_MIN)))
-        t_eff = float(dur) if dur is not None else _DEFAULT_PULSE
+    def action(self, name: str) -> bool:
+        if not self._allowed() or name not in {"default", "stand", "sit", "wave"}:
+            return False
+        if not self.capabilities()["action"]["stop_verified"]:
+            self.error = "action_manual_characterization_required"
+            return False
+        action_id = {"default": 255, "stand": 1, "sit": 2, "wave": 6}[name]
+        return self._call("rider_action", action_id, False) or self._call("action", action_id, False)
 
-        if d == "left":
-            called = self._call("turnleft", turn_step)
-        else:
-            called = self._call("turnright", turn_step)
-
-        if called:
-            if block and t_eff > 0:
-                time.sleep(min(t_eff, _MAX_BLOCK_S))
-                self.stop()
-            else:
-                self.stop()
-
-    def action(self, name: str) -> None:
-        """
-        Akcje/pozy (best-effort): preferuje rider_action(id), fallback na action(id).
-        Dopuszczalne nazwy: 'sit','stand','wave','default'.
-        """
-        if not self.ok() or not MOTION_ENABLE:
-            return
-        n = (name or "").lower().strip()
-        if not n:
-            return
-        MAP = {"default": 0, "stand": 1, "sit": 2, "wave": 6}
-        if n in MAP and self._call("rider_action", MAP[n], False):
-            return
-        if n in MAP:
-            self._call("action", MAP[n], False)
+    def capabilities(self) -> dict:
+        # Source proves that stop writes zero velocity. Physical behavior has
+        # not been measured. Height/balance/actions have no cancellation proof.
+        result = {}
+        for name in ("move", "turn", "balance", "height", "action"):
+            stop_verified = name in {"move", "turn"}
+            result[name] = {
+                "available": bool(self.ok() and stop_verified),
+                "stop_verified": stop_verified,
+                "verification": "sdk_source" if stop_verified else "manual_characterization_required",
+                "physical_completion": "unverified",
+            }
+        return result

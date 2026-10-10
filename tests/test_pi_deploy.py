@@ -87,8 +87,9 @@ class Repositories:
 
 
 @pytest.fixture
-def repos(tmp_path):
+def repos(tmp_path, monkeypatch):
     """Provide independent real Git repositories for each deployment test."""
+    monkeypatch.setenv("RIDER_TEST_GIT_ROOT", str(tmp_path))
     return Repositories(tmp_path)
 
 

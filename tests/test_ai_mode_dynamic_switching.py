@@ -82,11 +82,12 @@ def test_navigator_handles_mode_change_to_local():
         assert nav.use_pc_enhanced is False
 
 
-def test_vision_adapter_should_run_local_detectors():
+def test_vision_adapter_should_run_local_detectors(monkeypatch):
     """Test vision adapter functions respond to AI mode."""
     from apps.vision.ai_mode_adapter import should_run_local_detectors
     from common import ai_mode
 
+    monkeypatch.setattr("apps.vision.ai_mode_adapter._pc_ready", lambda: True)
     # Set to local mode
     ai_mode.set_mode("local")
     assert should_run_local_detectors() is True

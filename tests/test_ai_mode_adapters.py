@@ -33,7 +33,7 @@ def test_vision_adapter_local_mode(reset_ai_mode):
     assert should_publish_frames_to_pc() is False
 
 
-def test_vision_adapter_offload_mode(reset_ai_mode):
+def test_vision_adapter_offload_mode(reset_ai_mode, monkeypatch):
     """Test vision adapter in pc_offload mode."""
     from apps.vision.ai_mode_adapter import (
         should_publish_frames_to_pc,
@@ -41,6 +41,7 @@ def test_vision_adapter_offload_mode(reset_ai_mode):
     )
     from common.ai_mode import set_mode
 
+    monkeypatch.setattr("apps.vision.ai_mode_adapter._pc_ready", lambda: True)
     set_mode("pc_offload")
     assert should_run_local_detectors() is False
     assert should_publish_frames_to_pc() is True
@@ -152,13 +153,14 @@ def test_adapter_logging(reset_ai_mode, caplog):
     assert "offload" in caplog.text.lower() or "pc" in caplog.text.lower()
 
 
-def test_adapter_mode_switching(reset_ai_mode):
+def test_adapter_mode_switching(reset_ai_mode, monkeypatch):
     """Test adapters respond correctly to mode switching."""
     from apps.navigator.ai_mode_adapter import should_use_pc_enhanced_data
     from apps.vision.ai_mode_adapter import should_run_local_detectors
     from apps.voice.ai_mode_adapter import should_run_local_asr
     from common.ai_mode import set_mode
 
+    monkeypatch.setattr("apps.vision.ai_mode_adapter._pc_ready", lambda: True)
     # Start in local
     set_mode("local")
     assert should_run_local_detectors() is True

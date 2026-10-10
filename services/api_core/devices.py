@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import os
+import math
 import time
 
 from . import compat as C
@@ -39,38 +39,30 @@ def _json_or_raw(payload: str):
 def _update_xgo_from_dict(d: dict):
     if not isinstance(d, dict):
         return
-    ts = float(d.get("ts") or time.time())
-    C.LAST_XGO["ts"] = ts
-
-    if "imu_ok" in d:
-        C.LAST_XGO["imu_ok"] = bool(d.get("imu_ok"))
-    if "pose" in d and d.get("pose") is not None:
-        C.LAST_XGO["pose"] = d.get("pose")
-    if "pose_label" in d and d.get("pose_label") is not None:
-        C.LAST_XGO["pose_label"] = d.get("pose_label")
-
-    bat = d.get("battery_pct", d.get("battery"))
-    bat = C._sanitize_batt(bat) if bat is not None else None
-    if bat is not None:
-        C.LAST_XGO["battery"] = bat
-
-    for k in ("roll", "pitch", "yaw"):
-        if k in d and d.get(k) is not None:
+    observed = d.get("observed_at", d.get("ts"))
+    C.LAST_XGO.update(
+        ts=observed,
+        observed_at=observed,
+        stale=d.get("stale", observed is None),
+        source=d.get("src", d.get("source", "unknown")),
+    )
+    for key in ("imu_ok", "pose", "pose_label", "uart_owner"):
+        if key in d:
+            C.LAST_XGO[key] = d[key]
+    if "battery_pct" in d or "battery" in d:
+        value = d.get("battery_pct", d.get("battery"))
+        C.LAST_XGO["battery"] = C._sanitize_batt(value) if value is not None else None
+    for key in ("roll", "pitch", "yaw"):
+        if key in d:
             try:
-                val = float(d.get(k))
-                if k == "yaw":
-                    val = C._norm_angle180(val)
-                prev = C.LAST_XGO.get(k)
-                if (val == 0.0) and (prev not in (None, 0.0)):
-                    pass
-                else:
-                    C.LAST_XGO[k] = val
-            except Exception:
-                C.LAST_XGO[k] = d.get(k)
-
-    fw = C._sanitize_fw(d.get("fw"))
-    if fw is not None:
-        C.XGO_FW = fw
+                value = float(d[key]) if d[key] is not None else None
+                if value is not None and not math.isfinite(value):
+                    value = None
+                C.LAST_XGO[key] = C._norm_angle180(value) if key == "yaw" and value is not None else value
+            except (TypeError, ValueError):
+                C.LAST_XGO[key] = None
+    if "fw" in d:
+        C.XGO_FW = C._sanitize_fw(d["fw"])
 
 
 def _decode_frames(frames):
@@ -377,109 +369,5 @@ def bus_sub_loop():
 
 
 def xgo_ro_loop():
-    try:
-        time.sleep(0.5)
-        try:
-            # import z scripts/dev_xgo-client.py (ma myślnik w nazwie)
-            from common.xgo_loader import load_xgo_client_ro
-
-            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            XGOClientRO = load_xgo_client_ro(repo_root)
-        except Exception as e:
-            print("[api] xgo_ro_loop import error:", e, flush=True)
-            return
-
-        def _try_battery(cli):
-            getters = [
-                ("pct", getattr(cli, "read_battery_pct", None)),
-                ("pct", getattr(cli, "get_battery_pct", None)),
-                ("pct", getattr(cli, "battery_pct", None)),
-                ("raw", getattr(cli, "read_battery", None)),
-                ("raw", getattr(cli, "get_battery", None)),
-                ("volt", getattr(cli, "read_voltage", None)),
-                ("volt", getattr(cli, "get_voltage", None)),
-                ("volt", getattr(cli, "voltage", None)),
-            ]
-            for kind, fn in getters:
-                if not callable(fn):
-                    continue
-                try:
-                    val = fn()
-                except Exception:
-                    continue
-                if val is None:
-                    continue
-                if kind == "pct":
-                    pct = C._sanitize_batt(val)
-                elif kind == "volt":
-                    pct = C._voltage_to_pct(val)
-                else:
-                    pct = C._sanitize_batt(val)
-                if pct is not None:
-                    return pct
-            return None
-
-        def _try_fw(cli):
-            fns = [
-                getattr(cli, "read_firmware", None),
-                getattr(cli, "get_firmware", None),
-                getattr(cli, "read_version", None),
-                getattr(cli, "get_version", None),
-            ]
-            for fn in fns:
-                if not callable(fn):
-                    continue
-                try:
-                    v = C._sanitize_fw(fn())
-                    if v:
-                        return v
-                except Exception:
-                    pass
-            return None
-
-        cli = None
-        while True:
-            try:
-                if cli is None:
-                    cli = XGOClientRO(port="/dev/ttyAMA0")
-                    print("[api] XGO RO connected: /dev/ttyAMA0", flush=True)
-
-                if C.XGO_FW is None:
-                    fw = _try_fw(cli)
-                    if fw:
-                        C.XGO_FW = fw
-
-                batt_pct = _try_battery(cli)
-
-                roll = cli.read_roll() if hasattr(cli, "read_roll") else None
-                pitch = cli.read_pitch() if hasattr(cli, "read_pitch") else None
-                yaw_r = cli.read_yaw() if hasattr(cli, "read_yaw") else None
-                yaw = C._norm_angle180(yaw_r) if yaw_r is not None else None
-
-                pose_label = C._classify_pose(roll, pitch)
-                imu_ok = roll is not None and pitch is not None and yaw is not None
-
-                upd = {"ts": time.time(), "imu_ok": bool(imu_ok)}
-                if any(v is not None for v in (roll, pitch, yaw)):
-                    upd["pose"] = {"x": roll, "y": pitch, "z": yaw}
-                if pose_label is not None:
-                    upd["pose_label"] = pose_label
-                if batt_pct is not None:
-                    upd["battery"] = batt_pct
-                if roll is not None:
-                    if not (float(roll) == 0.0 and C.LAST_XGO.get("roll") not in (None, 0.0)):
-                        upd["roll"] = float(roll)
-                if pitch is not None:
-                    if not (float(pitch) == 0.0 and C.LAST_XGO.get("pitch") not in (None, 0.0)):
-                        upd["pitch"] = float(pitch)
-                if yaw is not None:
-                    if not (float(yaw) == 0.0 and C.LAST_XGO.get("yaw") not in (None, 0.0)):
-                        upd["yaw"] = float(yaw)
-
-                C.LAST_XGO.update(upd)
-                time.sleep(1.0)
-            except Exception:
-                time.sleep(1.0)
-                cli = None
-    except Exception as e:
-        print(f"[api] xgo_ro_loop error: {e}", flush=True)
+    """Legacy read-only entry uses the shared telemetry bus, never opens UART."""
+    C.start_bus_sub()

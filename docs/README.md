@@ -8,6 +8,8 @@ for top-level coordination; its integration is deferred.
 
 - [Project vision](../PROJECT.md), [architecture](../ARCHITECTURE.md), [diagrams](../ARCHITECTURE_DIAGRAM.md).
 - [Development](development.md), [deployment and recovery](DEPLOYMENT.md).
+- [Environment, dependency and test policy](ENVIRONMENT_POLICY.md).
+- [Motion architecture](apps/motion.md), [guards and physical robot operation](apps/safety.md).
 - [Documentation policy](DOCUMENTATION_POLICY.md), [configuration and secrets policy](config/POLICY.md).
 - [Polish documentation](../docs_pl/README.md).
 

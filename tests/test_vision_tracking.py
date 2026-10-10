@@ -3,7 +3,16 @@ from __future__ import annotations
 # tests/test_vision_tracking.py
 """Tests for vision tracking (Follow Me) feature."""
 
+import sys
+from types import ModuleType
+
 import pytest
+
+
+@pytest.fixture
+def detector_sdk(monkeypatch):
+    """Geometry tests do not load MediaPipe's optional audio/models runtime."""
+    monkeypatch.setitem(sys.modules, "mediapipe", ModuleType("mediapipe"))
 
 
 def test_bus_topics_defined():
@@ -27,7 +36,7 @@ def test_vision_api_endpoints_exist():
     assert callable(vision_api.set_tracking_mode)
 
 
-def test_tracker_imports():
+def test_tracker_imports(detector_sdk):
     """Verify tracker module can be imported."""
     try:
         import apps.vision.tracker_mediapipe as tracker
@@ -61,7 +70,7 @@ def test_tracking_controller_imports():
         pytest.skip(f"Tracking controller import failed (expected in CI): {e}")
 
 
-def test_tracking_offset_calculation():
+def test_tracking_offset_calculation(detector_sdk):
     """Test offset calculation logic."""
     try:
         import apps.vision.tracker_mediapipe as tracker

@@ -53,11 +53,8 @@ class RiderMotion:
         self._last_cmd = None
         self._last_ts = 0.0
 
-        # włącz autobalans (nie wymaga MOTION_ENABLE)
-        try:
-            self._ada.set_stabilization(bool(self.IMU_ON))
-        except Exception:
-            pass
+        # Construction has no balance/height/movement side effects. This legacy
+        # direct interface cannot acquire the executor's operator consent lease.
 
     def _ok(self, key: str) -> bool:
         """Anty-powielanie tej samej komendy (np. 3x ten sam transcript)."""
@@ -72,47 +69,23 @@ class RiderMotion:
 
     # --- API wysokiego poziomu ---
     def stop(self) -> None:
-        self._ada.stop()
+        from services.safety_contract import request_stop
+
+        request_stop()
 
     def forward(self) -> None:
-        if not self._ok("forward"):
-            return
-        print(f"[MOVE] forward v={self.SPEED_LIN:.2f} t={self.PULSE:.2f}")
-        self._ada.drive("forward", self.SPEED_LIN, self.PULSE, block=False)
+        raise PermissionError("legacy direct motion retired; use operator consent API")
 
     def backward(self) -> None:
-        if not self._ok("backward"):
-            return
-        print(f"[MOVE] backward v={self.SPEED_LIN:.2f} t={self.PULSE:.2f}")
-        self._ada.drive("backward", self.SPEED_LIN, self.PULSE, block=False)
+        raise PermissionError("legacy direct motion retired; use operator consent API")
 
     def left(self) -> None:
-        if not self._ok("left"):
-            return
-        print(f"[TURN] left v={self.SPEED_YAW:.2f} t={self.PULSE:.2f}")
-        self._ada.spin("left", self.SPEED_YAW, self.PULSE, block=False)
+        raise PermissionError("legacy direct motion retired; use operator consent API")
 
     def right(self) -> None:
-        if not self._ok("right"):
-            return
-        print(f"[TURN] right v={self.SPEED_YAW:.2f} t={self.PULSE:.2f}")
-        self._ada.spin("right", self.SPEED_YAW, self.PULSE, block=False)
+        raise PermissionError("legacy direct motion retired; use operator consent API")
 
 
 # Szybki tryb demo z CLI: python3 -m apps.motion.rider_control
 if __name__ == "__main__":
-    rm = RiderMotion()
-    print("[rider_control] demo: fwd, back, left, right, stop")
-    try:
-        rm.forward()
-        time.sleep(0.1)
-        rm.backward()
-        time.sleep(0.1)
-        rm.left()
-        time.sleep(0.1)
-        rm.right()
-        time.sleep(0.1)
-        rm.stop()
-    except KeyboardInterrupt:
-        rm.stop()
-        print("[rider_control] abort")
+    raise SystemExit("Automatic actuator demo retired. Use the explicit operator test workflow.")

@@ -1,210 +1,68 @@
-# Moduł Motion (`apps/motion`)
+# Architektura ruchu Rider-Pi
 
-## Opis
+Stan kontraktu bramy v1. SDK ACK nie jest pomiarem fizycznego wykonania.
+Zobacz [bezpieczeństwo](safety.md) i [politykę środowisk](../POLITYKA_SRODOWISK.md).
 
-Moduł `apps/motion` to **bridge ruchu** Rider-Pi — odbiera komendy `motion.cmd` z BUS i przekształca je na sterowanie hardware XGO. Implementuje bezpieczeństwo, watchdog, rampy prędkości i telemetrię.
+## Ścieżka sterowania
 
-### Główne pliki
+Panel Pi/PC → API :8080 lub opcjonalny HTTP bridge :8081 →
+`services.safety_contract` → BUS `motion.command` → `apps.motion.executor`
+(brama, regulator, SDK) → UART. Tylko wykonawca posiada UART dla ruchu i odczytów.
+Sprawdza lock i rzeczywistego ownera portu; cudzy/nieznany owner oznacza odmowę.
+`sensor-reader` projektuje `motion.sensors.raw` na BUS i nie tworzy SDK.
+Odczyt panelu korzysta ze snapshotu, błędne dane są null.
 
-- **`main.py`** — pętla główna motion, watchdog, telemetria
-- **`xgo_adapter.py`** — adapter do hardware XGO (drive, spin, stop)
-- **`rider_control.py`** — ⚠️ starszy kontroler (wymaga weryfikacji użycia)
+Domyślny `XgoAdapter` bez ownera i bramy pozostaje nieaktywny. Guard SDK 1.4.2
+blokuje reset/action255 w konstruktorze. Nieznany SDK odmawia startu.
+`motion.main` deleguje do wykonawcy; legacy bridge nie steruje SDK.
+Passive vision/tracker nie uruchamia jazdy. Follow potrzebuje bieżącego task
+intent z katalogu; stary controller nie przejmuje zgody nowej generacji.
 
-### Główne funkcje
+## Zgoda i koperta
 
-- **Watchdog:** Auto-stop po braku komend (domyślnie 500 ms)
-- **Rampa prędkości:** Miękki start/stop (ramp_lx, ramp_az)
-- **Sterowanie impulsowe:** Krótkie impulsy ruchu zamiast ciągłego sterowania
-- **Bezpieczeństwo:** E-STOP, limity prędkości, flagi enable/disable
-- **Telemetria:** Publikacja `motion.state` (prędkość, timestamp, bateria)
+| Stan | Znaczenie |
+| --- | --- |
+| DISARMED | Odczyty, brak aktuacji; stan każdego startu |
+| ARMED | Konkretny plan, owner i lease do 30 s |
+| ESTOP | Zatrzaśnięta blokada; osobny clear pozostawia DISARMED |
+| UNKNOWN | Brak świeżego snapshotu; klient blokuje sterowanie |
 
-## Przepływ danych
+ARM/clear wymagają operator_consent=true, niepustego operator_plan i oryginalnej
+koperty. Owner: manual/follow_me/navigation. Aktuatory wymagają request_id,
+source, generation, rosnącego seq, ts oraz ttl_ms 1–500. API i wykonawca
+walidują niezależnie. Klient korzysta z server_time API; nie odświeża starego
+żądania. Jazda/obrót: [-1,1], impuls do 0,25 s. STOP/disarm/E-Stop nie wymagają
+świeżej koperty. STOP zmienia generację i usuwa cel. Nowszy cel zastępuje pending
+z terminalnym ACK; polecenia nie wracają po ARM.
 
-```
-Wejście:  SUB("motion") → {"type": "drive", "lx": 0.5, "az": 0.0}
-                        → {"type": "stop"}
-          ↓
-Filtr:    E-STOP check, MOTION_ENABLE flag, safe_speed clamp
-          ↓
-Rampa:    Miękki start/stop (ramp_lx/ramp_az)
-          ↓
-Adapter:  XgoAdapter.drive(dir, speed, dur) lub .spin(dir, speed, dur)
-          ↓
-Wyjście:  PUB("motion.state") → {"lx": ..., "az": ..., "ts": ..., "battery": ...}
-```
+## Potwierdzenie
 
-## Konfiguracja
+GET /api/control/state i GET /api/safety są tylko odczytem. Polecenia używają POST.
+Aktuacja przez GET jest zabroniona; legacy aliasy nie pomijają koperty.
+accepted/202 oznacza pending. executed/confirmed oznacza przekazanie SDK;
+rejected oznacza odmowę/anulowanie/błąd. physical_completion pozostaje unverified.
+Terminalny ACK dopasowuje ID/akcję/source/seq i czas po wysłaniu. Snapshot
+zachowuje ograniczoną historię wyników. Historia panelu nie jest kolejką ruchu.
+Brak BUS/ACK nie jest sukcesem. Zwolnienie ruchowego zasobu wymaga confirmed STOP.
 
-### Zmienne środowiskowe
+## Dynamika i granice
 
-| Zmienna | Typ | Domyślna | Opis |
-|---------|-----|----------|------|
-| `MOTION_WATCHDOG_MS` | int | `500` | Timeout watchdog (ms) — auto-stop bez komend |
-| `MOTION_LOOP_DT` | float | `0.02` | Okres pętli głównej (s) → 50 Hz |
-| `MOTION_SPEED_LIMIT` | float | `0.6` | Maksymalna prędkość (clamp 0.0–1.0) |
-| `MOTION_RAMP_LX` | float | `1.0` | Rampa liniowa (jednostki/s) |
-| `MOTION_RAMP_AZ` | float | `2.0` | Rampa obrotowa (jednostki/s) |
-| `MOTION_EPS` | float | `0.01` | Próg "ruch = 0" (ignore małe wartości) |
-| `MOTION_DRIVE_IMPULSE_SEC` | float | `0.15` | Czas impulsu ruchu liniowego (s) |
-| `MOTION_YAW_IMPULSE_SEC` | float | `0.18` | Czas impulsu obrotu (s) |
-| `BUS_SUB_ADDR` | str | `tcp://127.0.0.1:5556` | Adres SUB (XPUB broker) |
-| `MOTION_TOPIC` | str | `motion` | Topik subskrypcji komend |
-| `BUS_PUB_ADDR` | str | `tcp://127.0.0.1:5555` | Adres PUB telemetrii |
-| `MOTION_STATE_TOPIC` | str | `motion.state` | Topik publikacji stanu |
-| `MOTION_TELEM_HZ` | float | `5.0` | Częstotliwość telemetrii (Hz) |
-| `MOTION_LOG_LEVEL` | str | `INFO` | Poziom logów (DEBUG, INFO, WARNING) |
+Regulator ma dt, rampę i termin krótkiego celu. Safety STOP zeruje cel natychmiast.
+Znormalizowane wartości nie mierzą m/s ani drogi hamowania.
+Awaria UART/SDK lub niepotwierdzony STOP blokuje readiness i nowy ARM; potrzebny
+jest nowy sprawny wykonawca. SDK źródłowo potwierdza zerowanie prędkości.
+Height/balance/canned actions pozostają niedostępne do ręcznej charakterystyki
+bezpiecznego przerwania. SIGTERM uruchamia cleanup; SIGKILL, utrata UART/zasilania
+Pi nie mają fizycznego dowodu STOP. Nie deklarujemy watchdoga firmware.
 
-### Tryby adaptera
+## Runtime i migracja
 
-- **Real:** `MOTION_ENABLE=1` → XgoAdapter (prawdziwy ruch)
-- **Sim:** `MOTION_ENABLE=0` → _SimAdapter (logi, brak ruchu)
+Status: /run/rider-motion/status.json; intent: feature_state.json w tym katalogu.
+MOTION_STATE_PATH/FEATURE_STATE_PATH służą izolacji. Pliki przeżywają restart,
+ale nowa generacja unieważnia zgodę. Producer status jest osobnym <unit>.json.
 
-## Struktura komend motion
-
-### Drive (jazda liniowa)
-```json
-{
-  "type": "drive",
-  "lx": 0.5,     // -1.0 (do tyłu) do 1.0 (do przodu)
-  "az": 0.0      // opcjonalny: -1.0 (w prawo) do 1.0 (w lewo)
-}
-```
-
-### Spin (obrót w miejscu)
-```json
-{
-  "type": "drive",
-  "lx": 0.0,
-  "az": 0.5      // -1.0 (w prawo) do 1.0 (w lewo)
-}
-```
-
-### Stop
-```json
-{
-  "type": "stop"
-}
-```
-
-## Struktura telemetrii motion.state
-
-```json
-{
-  "lx": 0.5,           // aktualna prędkość liniowa
-  "az": 0.0,           // aktualna prędkość obrotowa
-  "ts": 1704067200.5,  // timestamp
-  "battery": 0.85      // poziom baterii (0.0–1.0)
-}
-```
-
-## Przykład użycia
-
-### Uruchomienie ręczne (SIM)
-
-```bash
-# Tryb symulacji (bez prawdziwego ruchu)
-export MOTION_ENABLE=0
-python -m apps.motion.main
-```
-
-### Uruchomienie na urządzeniu (REAL)
-
-```bash
-# Prawdziwy ruch (wymaga XGO)
-export MOTION_ENABLE=1
-sudo python -m apps.motion.main  # sudo jeśli wymagane dla GPIO/I2C
-```
-
-### Wysyłanie komend testowych
-
-```bash
-# Terminal 1: uruchom motion
-python -m apps.motion.main
-
-# Terminal 2: wyślij komendę
-python -c "from common.bus import BusPub; BusPub().publish('motion', {'type': 'drive', 'lx': 0.3, 'az': 0.0})"
-
-# Terminal 3: stop
-python -c "from common.bus import BusPub; BusPub().publish('motion', {'type': 'stop'})"
-```
-
-## Błędy i diagnostyka
-
-### Logowanie
-
-Logger `motion` → poziom `INFO` (domyślnie):
-
-```
-[INFO] Init RealAdapter (XgoAdapter) — real movement ENABLED
-[INFO] [SIM] move lx=0.500 az=0.000
-[INFO] WATCHDOG: no command for 500ms → STOP
-```
-
-### Typowe problemy
-
-| Problem | Przyczyna | Rozwiązanie |
-|---------|-----------|-------------|
-| Brak ruchu mimo komend | `MOTION_ENABLE=0` (tryb SIM) | Ustaw `MOTION_ENABLE=1` |
-| Auto-stop zbyt szybki | Watchdog timeout za krótki | Zwiększ `MOTION_WATCHDOG_MS` |
-| Ruch zbyt gwałtowny | Rampa zbyt duża | Zmniejsz `MOTION_RAMP_LX`/`MOTION_RAMP_AZ` |
-| E-STOP blokuje ruch | Flaga bezpieczeństwa aktywna | Sprawdź `apps/safety/estop.py` |
-
-### Diagnostyka
-
-```bash
-# Sprawdź tryb adaptera
-env | grep MOTION_ENABLE
-
-# Monitoruj telemetrię
-python -c "from common.bus import BusSub; import json; s=BusSub('motion.state'); print(json.dumps(s.recv()[1], indent=2))"
-
-# Debuguj logi
-export MOTION_LOG_LEVEL=DEBUG
-python -m apps.motion.main
-```
-
-## Zależności
-
-### Wewnętrzne (w repo)
-- `apps.safety.estop` — sprawdzanie E-STOP, flagi MOTION_ENABLE
-- `apps.motion.xgo_adapter.XgoAdapter` — hardware adapter
-- `common.pidlock.single_instance` — blokada pojedynczej instancji
-- `common.bus` — komunikacja ZeroMQ/Redis
-
-### Zewnętrzne
-- `zmq` — ZeroMQ (BUS)
-- Hardware XGO (I2C, GPIO) — tylko w trybie REAL
-
-## XgoAdapter API
-
-### `drive(direction, speed, dur, block=False)`
-- **direction:** `"forward"` | `"backward"`
-- **speed:** `0.0–1.0`
-- **dur:** czas trwania (s)
-- **block:** czekaj na zakończenie (domyślnie `False`)
-
-### `spin(direction, speed, dur, deg=None, block=False)`
-- **direction:** `"left"` | `"right"`
-- **speed:** `0.0–1.0`
-- **dur:** czas trwania (s)
-- **deg:** opcjonalny kąt obrotu (°)
-- **block:** czekaj na zakończenie
-
-### `stop()`
-Natychmiastowy stop (przerywa impulsy w toku).
-
-## Rozszerzenia (TODO)
-
-- [ ] Konfiguracja przez TOML zamiast tylko ENV
-- [ ] Precyzyjniejsza odometria (enkodery, IMU fusion)
-- [ ] Feedback z hardware (rzeczywista prędkość, błędy)
-- [ ] Wsparcie dla różnych platform (nie tylko XGO)
-
----
-
-**Related docs:**
-- [nlu.md](nlu.md) — generuje komendy `motion.cmd`
-- [safety.md](safety.md) — E-STOP, flagi bezpieczeństwa
-- [demos.md](demos.md) — demonstracje wykorzystujące motion
-
-**Ostatnia aktualizacja:** 2025-01
+Zmiana właściciela UART i unitów wymaga osobnego planu i kopii unitów. Zwykły
+pi-preview chroni drivers/systemd. W uzgodnionym oknie, bez autonomii, zatrzymaj
+starego ownera, zaktualizuj kod/wybrane unity, wykonaj daemon-reload i uruchom
+jednego nowego ownera DISARMED. Rollback przywraca zgodny kod i unity.
+Migracja nie wykonuje automatycznej próby ruchu. Zachowaj LCD 270°, boot, Wi-Fi i SSH.

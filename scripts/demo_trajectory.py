@@ -1,45 +1,12 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
-# scripts/demo_trajectory.py
-# Proste demo „ósemki” (lemniskata) na prymitywach XgoAdapter:
-# w każdej iteracji: krótki yaw + krótki forward; po N krokach zmiana kierunku yaw.
-import os
-import time
-
-from drivers.xgo import XgoAdapter
+"""Legacy direct actuation is disabled; explicit operator probes use the API."""
 
 
 def main():
-    os.environ.setdefault("MOTION_ENABLE", "1")
-    ada = XgoAdapter()
-    if not ada.ok():
-        print("[ERR] XgoAdapter not OK")
-        return
-
-    steps_per_loop = int(os.getenv("LEM_STEPS", "24"))
-    loops = int(os.getenv("LEM_LOOPS", "2"))
-    yaw_speed = float(os.getenv("LEM_YAW_SPEED", "0.20"))
-    drive_speed = float(os.getenv("LEM_DRIVE_SPEED", "0.10"))
-    yaw_dur = float(os.getenv("LEM_YAW_DUR", os.getenv("MOTION_YAW_IMPULSE_SEC", "0.18")))
-    drive_dur = float(os.getenv("LEM_DRIVE_DUR", os.getenv("MOTION_DRIVE_IMPULSE_SEC", "0.15")))
-    pause = float(os.getenv("LEM_PAUSE", "0.02"))
-
-    try:
-        ada.stop()
-        for loop in range(loops):
-            yaw_dir = "left" if (loop % 2 == 0) else "right"
-            print(f"[LEM] loop {loop + 1}/{loops} yaw={yaw_dir}")
-            for _ in range(steps_per_loop):
-                ada.spin(yaw_dir, yaw_speed, dur=yaw_dur, deg=None, block=False)
-                time.sleep(pause)
-                ada.drive("forward", drive_speed, dur=drive_dur, block=False)
-                time.sleep(pause)
-        ada.stop()
-        print("[LEM] done")
-    except KeyboardInterrupt:
-        ada.stop()
-        print("[LEM] aborted")
+    raise SystemExit(
+        "Automatic movement sequence disabled. Use scripts/manual_motion-probe.py "
+        "for one prepared, operator-approved attempt."
+    )
 
 
 if __name__ == "__main__":

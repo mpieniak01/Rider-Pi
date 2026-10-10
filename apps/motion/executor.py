@@ -1,28 +1,31 @@
-#!/usr/bin/env python3
-"""
-apps.motion.executor
+"""Only UART owner and actuator executor. Commands require explicit consent.
 
-Przyjmuje komendy ruchu z busa (`cmd.move`, `cmd.stop`, `cmd.motion.*`, `tracking.pose`)
-i wykonuje je na XGO z zachowaniem watchdog/deadman.
+Passive tracking topics are deliberately not subscribed. Legacy actuator topic
+names may carry the *same* authenticated envelope; bare legacy motion is refused.
 """
 
 from __future__ import annotations
 
-import os
+import logging
+import signal
 import time
-from typing import Any
 
-from apps.motion.main import MotionController, _make_adapter, estop_triggered, motion_enabled
-from common import bus
+from apps.motion.main import MotionController, _make_adapter
+from apps.safety.gate import ACTUATORS, MAX_DURATION_S, MotionGate, finite_number
+from apps.safety.state import write_status
 
-DEADMAN_MS = float(os.getenv("MOTION_EXECUTOR_DEADMAN_MS", "600"))
-TRACKING_LX = float(os.getenv("MOTION_TRACKING_LX", "0.12"))
-TRACKING_AZ_GAIN = float(os.getenv("MOTION_TRACKING_AZ_GAIN", "1.0"))
-CMD_TIMEOUT_MS = float(os.getenv("MOTION_CMD_TIMEOUT_MS", "1000"))
-
+LOG = logging.getLogger("motion.executor")
 SUB_TOPICS = [
+    "motion.command",
     "cmd.move",
     "cmd.stop",
+    "cmd.balance",
+    "cmd.height",
+    "cmd.motion.",
+    "motion.cmd",
+    "motion",
+]
+COMMAND_TOPICS = frozenset(SUB_TOPICS) | {
     "cmd.motion.forward",
     "cmd.motion.backward",
     "cmd.motion.left",
@@ -30,101 +33,411 @@ SUB_TOPICS = [
     "cmd.motion.turn_left",
     "cmd.motion.turn_right",
     "cmd.motion.stop",
-    "tracking.pose",
-]
+}
 
 
-def clamp(v: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, v))
+def canonical_command(topic: str, payload: dict) -> dict:
+    command = dict(payload)
+    if topic in {"cmd.stop", "cmd.motion.stop"}:
+        command["action"] = "stop"
+    elif topic == "cmd.move":
+        command.setdefault("action", "move")
+    elif topic == "cmd.balance":
+        command.setdefault("action", "balance")
+    elif topic == "cmd.height":
+        command.setdefault("action", "height")
+    elif topic in {"motion", "motion.cmd"}:
+        if command.get("type") == "stop" or command.get("cmd") == "stop":
+            command["action"] = "stop"
+        elif command.get("type") == "drive":
+            command.setdefault("action", "move")
+            command.setdefault("vx", command.get("lx", 0.0))
+            command.setdefault("yaw", command.get("az", 0.0))
+    return command
 
 
-def as_move_from_tracking(payload: dict[str, Any]) -> tuple[float, float]:
-    target = payload.get("target") or {}
-    x = float(target.get("x", 0.0) or 0.0)
-    az = clamp(x * TRACKING_AZ_GAIN, -1.0, 1.0)
-    lx = TRACKING_LX
-    return lx, az
+def validate_actuator(command: dict) -> dict:
+    action = command.get("action")
+    if not isinstance(action, str):
+        raise ValueError("unknown_action")
+    values = {}
+    if action in {"move", "turn"}:
+        vx = finite_number(command.get("vx", 0.0), "invalid_vx")
+        yaw = finite_number(command.get("yaw", command.get("az", 0.0)), "invalid_yaw")
+        duration = finite_number(command.get("duration"), "duration_required")
+        if abs(vx) > 1 or abs(yaw) > 1 or not 0 < duration <= MAX_DURATION_S:
+            raise ValueError("motion_limits_exceeded")
+        values = {"vx": vx, "yaw": yaw, "duration": duration}
+    elif action in {"balance", "stabilization"}:
+        if not isinstance(command.get("enabled"), bool):
+            raise ValueError("enabled_boolean_required")
+        values = {"enabled": command["enabled"]}
+    elif action == "height":
+        height = command.get("height")
+        if isinstance(height, bool) or not isinstance(height, int) or not 0 <= height <= 12:
+            raise ValueError("height_integer_0_12_required")
+        values = {"height": round(70 + height * 45 / 12)}
+    elif action == "action":
+        name = command.get("name")
+        if name is None:
+            action_id = command.get("action_id")
+            if not isinstance(action_id, int) or isinstance(action_id, bool):
+                raise ValueError("unsupported_action")
+            name = {255: "default", 1: "stand", 2: "sit", 6: "wave"}.get(action_id)
+        if not isinstance(name, str) or name not in {"default", "stand", "sit", "wave"}:
+            raise ValueError("unsupported_action")
+        values = {"name": name}
+    return values
 
 
-def as_move_from_legacy(topic: str, payload: dict[str, Any]) -> tuple[float, float]:
-    speed = float(payload.get("speed", 0.3) or 0.3)
-    if "forward" in topic:
-        return speed, 0.0
-    if "backward" in topic:
-        return -speed, 0.0
-    if "left" in topic:
-        return 0.0, 0.5
-    if "right" in topic:
-        return 0.0, -0.5
-    if "turn_left" in topic:
-        return 0.0, 1.0
-    if "turn_right" in topic:
-        return 0.0, -1.0
-    return 0.0, 0.0
+class MotionExecutor:
+    def __init__(self, *, gate=None, adapter=None, publisher=None, status_writer=write_status):
+        self.gate = gate or MotionGate()
+        self.adapter = adapter if adapter is not None else _make_adapter(self.gate)
+        self.controller = MotionController(self.adapter, self.gate)
+        self.publisher = publisher
+        self.status_writer = status_writer
+        self.last_ack = None
+        self.recent_acks = []
+        self.pending = None
+        self.last_snapshot = 0.0
+        self.last_sensors = 0.0
+        self.last_firmware = 0.0
+        self.firmware = None
+        self.sensor_values = {}
+        self.sensor_times = {}
+        self.sensor_index = 0
+        self.error = getattr(self.adapter, "error", None)
+        self.shutdown = False
+        self.actuators = {
+            "balance": {"enabled": None, "ts": None, "physical_completion": "unverified"},
+            "height": {"value": None, "ts": None, "physical_completion": "unverified"},
+        }
+        # Controller deadline/watchdog stops use the same fault latch.
+        self._controller_stop = self.controller.stop
+        self.controller.stop = self._stop_hardware
+        self.controller.stop()
+        self.publish_status(force=True)
+
+    def _hardware_ready(self):
+        error = getattr(self.adapter, "error", None)
+        if error or not self.adapter.ok():
+            self._hardware_fault(error or "hardware_unavailable")
+        return bool(not self.shutdown and not self.error and self.adapter.ok())
+
+    def _hardware_fault(self, reason, *, stop=True):
+        # A later successful zero write never restores consent or readiness.
+        # Recovery requires a newly initialized executor/adapter.
+        self.error = self.error or reason
+        if self.gate.state == "ARMED":
+            self.gate.disarm("hardware_unavailable")
+            if stop:
+                self.controller.stop()
+
+    def _stop_hardware(self):
+        try:
+            stopped = self._controller_stop() is True
+        except Exception as exc:
+            self._hardware_fault(f"hardware_stop_failed:{type(exc).__name__}", stop=False)
+            return False
+        if not stopped:
+            self._hardware_fault(getattr(self.adapter, "error", None) or "hardware_stop_unconfirmed", stop=False)
+        elif getattr(self.adapter, "error", None):
+            self._hardware_fault(self.adapter.error, stop=False)
+        return stopped
+
+    def _publish(self, topic, payload):
+        if self.publisher is not None:
+            self.publisher.publish(topic, payload, add_ts=False)
+
+    def snapshot(self):
+        ready = self._hardware_ready()
+        state = self.gate.snapshot()
+        state.update(
+            observed_at=self.gate.wall_clock(),
+            ts=self.gate.wall_clock(),
+            ready=ready,
+            hardware_ready=ready,
+            hardware_initialized=bool(self.adapter.ok()),
+            can_move=bool(ready and self.gate.can_actuate()),
+            read_only=not bool(ready and self.gate.can_actuate()),
+            error=self.error or getattr(self.adapter, "error", None),
+            last_ack=self.last_ack,
+            recent_acks=list(self.recent_acks),
+            simulated=bool(getattr(self.adapter, "simulated", False)),
+            moving=not self.controller.stopped,
+            target={"lx": self.controller.t_lx, "az": self.controller.t_az},
+            output={"lx": self.controller.o_lx, "az": self.controller.o_az},
+            uart_owner="motion-executor",
+            physical_completion="unverified",
+            capabilities=self.capabilities(),
+            actuators=self.actuators,
+        )
+        return state
+
+    def capabilities(self):
+        method = getattr(self.adapter, "capabilities", None)
+        if callable(method):
+            result = method()
+            if not self._hardware_ready():
+                return {name: {**value, "available": False} for name, value in result.items()}
+            return result
+        ready = self._hardware_ready()
+        return {
+            action: {
+                "available": ready and action in {"move", "turn", "balance", "height"},
+                "stop_verified": True,
+                "verification": "simulated",
+            }
+            for action in {"move", "turn", "balance", "height", "action"}
+        }
+
+    def publish_status(self, *, force=False):
+        now = self.gate.clock()
+        if force or now - self.last_snapshot >= 1.0:
+            snapshot = self.snapshot()
+            self.status_writer(snapshot)
+            self._publish("motion.state", snapshot)
+            self.last_snapshot = now
+
+    def _ack(self, command, status, reason, **details):
+        self.last_ack = {
+            "request_id": command.get("request_id", command.get("rid")),
+            "action": command.get("action"),
+            "status": status,
+            "reason": reason,
+            "source": command.get("source"),
+            "seq": command.get("seq"),
+            "generation": self.gate.generation,
+            "command_generation": command.get("generation"),
+            "observed_at": self.gate.wall_clock(),
+            "physical_completion": "unverified",
+            "accepted": status in {"accepted", "executed"},
+            "error": reason if status == "rejected" else None,
+            **details,
+        }
+        if status in {"executed", "rejected"}:
+            self.recent_acks.append(dict(self.last_ack))
+            del self.recent_acks[:-16]
+        self._publish("motion.ack", self.last_ack)
+        self.publish_status(force=True)
+        return dict(self.last_ack)
+
+    def apply(self, payload, *, topic="motion.command"):
+        if not isinstance(payload, dict) or topic not in COMMAND_TOPICS:
+            return self._ack({}, "rejected", "passive_or_invalid_command")
+        command = canonical_command(topic, payload)
+        action = command.get("action")
+        try:
+            values = validate_actuator(command)
+        except ValueError as exc:
+            return self._ack(command, "rejected", str(exc))
+        authorized, reason = self.gate.authorize(command)
+        if not authorized:
+            return self._ack(command, "rejected", reason)
+        if action in {"stop", "disarm", "estop", "clear_estop"}:
+            pending, self.pending = self.pending, None
+            stopped = self.controller.stop()
+            if pending is not None:
+                self._ack(pending, "rejected", f"cancelled_by_{action}", cancelled_by=command.get("request_id"))
+            # Ostatni ACK pozostaje ACK zatrzymania, wcześniejszy cel ma osobny
+            # terminalny wpis w ledgerze zamiast wiecznego pending.
+            return self._ack(
+                command,
+                "executed" if stopped else "rejected",
+                reason if stopped else "hardware_stop_unconfirmed",
+                gate_reason=reason,
+                hardware_stop_sent=stopped,
+            )
+        if action == "arm":
+            if not self._hardware_ready():
+                self.gate.disarm("hardware_unavailable")
+                return self._ack(command, "rejected", "hardware_unavailable")
+            return self._ack(command, "executed", "armed_no_actuation")
+        if action in ACTUATORS:
+            if not self._hardware_ready():
+                self.controller.stop()
+                return self._ack(command, "rejected", "hardware_unavailable")
+            capability = self.capabilities().get("balance" if action == "stabilization" else action, {})
+            if not capability.get("available") or not capability.get("stop_verified"):
+                return self._ack(command, "rejected", "manual_characterization_required")
+        if action in {"move", "turn"}:
+            if not self.controller.drive(values["vx"], values["yaw"], values["duration"]):
+                return self._ack(command, "rejected", "motion_disarmed")
+            previous, self.pending = self.pending, None
+            if previous is not None:
+                self._ack(previous, "rejected", "goal_superseded", superseded_by=command.get("request_id"))
+            self.pending = command
+            return self._ack(command, "accepted", "goal_accepted")
+        method, argument = {
+            "balance": ("enable_balance", values.get("enabled")),
+            "stabilization": ("enable_balance", values.get("enabled")),
+            "height": ("set_height", values.get("height")),
+            "action": ("action", values.get("name")),
+        }[action]
+        if getattr(self.adapter, method)(argument):
+            if action in {"balance", "height"}:
+                key = "enabled" if action == "balance" else "value"
+                self.actuators[action] = {
+                    key: command.get(key if action == "balance" else "height"),
+                    "ts": self.gate.wall_clock(),
+                    "physical_completion": "unverified",
+                }
+            return self._ack(command, "executed", "sdk_accepted")
+        self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
+        self.gate.disarm("actuator_failed")
+        self.controller.stop()
+        return self._ack(command, "rejected", "actuator_failed")
+
+    def tick(self, dt):
+        generation = self.gate.generation
+        self._hardware_ready()
+        self.gate.poll()
+        if generation != self.gate.generation:
+            pending, self.pending = self.pending, None
+            self.controller.stop()
+            if pending is not None:
+                self._ack(pending, "rejected", self.gate.reason)
+            self.publish_status(force=True)
+        try:
+            executed = self.controller.tick(dt)
+        except Exception as exc:
+            self._hardware_fault(f"actuator_transport_failed:{type(exc).__name__}")
+            self.controller.stop()
+            executed = False
+        if self.gate.reason == "actuator_failed":
+            self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
+        if self.pending is not None and executed:
+            pending, self.pending = self.pending, None
+            self._ack(pending, "executed", "sdk_accepted")
+        elif self.pending is not None and not self.controller.deadline:
+            pending, self.pending = self.pending, None
+            reason = self.gate.reason if self.gate.state != "ARMED" else "goal_expired_before_execution"
+            self._ack(pending, "rejected", reason)
+        self.publish_status()
+
+    def process_batch(self, messages):
+        commands = [
+            (topic, payload) for topic, payload in messages if topic in COMMAND_TOPICS and isinstance(payload, dict)
+        ]
+        stops = [
+            (topic, payload)
+            for topic, payload in commands
+            if isinstance(canonical_command(topic, payload).get("action"), str)
+            and canonical_command(topic, payload).get("action") in {"stop", "disarm", "estop"}
+        ]
+        if stops:
+            # No goal in the same received burst is ever applied around STOP.
+            # Preserve its ACK snapshot; cancellation events cannot hide it.
+            for topic, payload in stops:
+                self.apply(payload, topic=topic)
+            return
+        for topic, payload in commands:
+            self.apply(payload, topic=topic)
+
+    def poll_sensors(self):
+        if not self._hardware_ready():
+            self.publish_status(force=True)
+            return
+        now = self.gate.clock()
+        if now - self.last_sensors < 0.1:
+            return
+        # One transaction per pass: at most one 30ms vendor response wait before
+        # returning to command dispatch. No second thread shares the serial port.
+        self.last_sensors = now
+        read_sensor = getattr(self.adapter, "read_sensor", None)
+        if callable(read_sensor):
+            if now - self.last_firmware >= 30.0:
+                name = "firmware"
+                self.last_firmware = now
+            else:
+                name = ("roll", "pitch", "yaw", "battery")[self.sensor_index]
+                self.sensor_index = (self.sensor_index + 1) % 4
+            value = read_sensor(name)
+            self.sensor_values[name] = value
+            self.sensor_times[name] = now
+            imu = {axis: self.sensor_values.get(axis) for axis in ("roll", "pitch", "yaw")}
+            if any(value is None for value in imu.values()):
+                imu = None
+            battery = self.sensor_values.get("battery")
+            self.firmware = self.sensor_values.get("firmware")
+        else:
+            # Injected simulation adapters have no UART or blocking reads.
+            imu = self.adapter.get_imu()
+            battery = self.adapter.battery()
+            self.firmware = self.adapter.firmware()
+        sensor = {
+            "ts": self.gate.wall_clock(),
+            "observed_at": self.gate.wall_clock(),
+            "imu": imu,
+            "battery": battery,
+            "fw": self.firmware,
+            "src": "motion-executor",
+            "uart_owner": "motion-executor",
+            "imu_ok": imu is not None,
+            "battery_ok": battery is not None,
+            "sensor_age_s": {key: max(0.0, now - ts) for key, ts in self.sensor_times.items()},
+        }
+        self._publish("motion.sensor.raw", sensor)
+
+    def close(self, reason="executor_shutdown"):
+        self.shutdown = True
+        self.pending = None
+        self.gate.disarm(reason)
+        try:
+            self.controller.stop()
+        finally:
+            self.adapter.close()
+            self.publish_status(force=True)
 
 
 def main() -> int:
-    adapter = _make_adapter()
-    controller = MotionController(adapter)
-    sub = bus.BusSub(SUB_TOPICS)
-    pub = bus.BusPub()
+    from common import bus
 
-    last_cmd_ts = 0.0
-    last_move = (0.0, 0.0)
+    executor = None
+    sub = pub = None
+    stopping = False
 
-    while True:
-        topic, payload = sub.recv(timeout_ms=50)
-        now = time.time()
+    def stop_signal(_signum, _frame):
+        nonlocal stopping
+        stopping = True
+        if executor is not None:
+            executor.gate.disarm("process_signal")
+            executor.controller.stop()
 
-        if topic is None:
-            pass
-        elif topic == "cmd.stop" or topic.endswith("cmd.motion.stop"):
-            controller.stop()
-            pub.publish("motion.bridge.event", {"event": "stop", "ts": now}, add_ts=False)
-        elif topic == "cmd.move":
-            lx = float(payload.get("vx", 0.0) or 0.0)
-            az = float(payload.get("az", payload.get("yaw", 0.0) or 0.0))
-            controller.drive(lx, az)
-            last_cmd_ts = now
-            last_move = (lx, az)
-        elif topic.startswith("cmd.motion."):
-            lx, az = as_move_from_legacy(topic, payload or {})
-            controller.drive(lx, az)
-            last_cmd_ts = now
-            last_move = (lx, az)
-        elif topic == "tracking.pose":
-            lx, az = as_move_from_tracking(payload or {})
-            controller.drive(lx, az)
-            last_cmd_ts = now
-            last_move = (lx, az)
-
-        # watchdog/deadman
-        if last_cmd_ts and (now - last_cmd_ts) * 1000.0 > DEADMAN_MS:
-            controller.stop()
-            last_cmd_ts = 0.0
-            pub.publish("motion.bridge.event", {"event": "auto_stop", "reason": "deadman"}, add_ts=True)
-
-        # sterowanie rampą + watchdog
-        dt = 0.02
-        if motion_enabled() and not estop_triggered():
-            controller.tick(dt)
-        else:
-            controller.stop()
-
-        # telemetria stanu ruchu
-        pub.publish(
-            "motion.state",
-            {
-                "ts": time.time(),
-                "cmd": {"lx": last_move[0], "az": last_move[1]},
-                "moving": (abs(last_move[0]) > 0.0 or abs(last_move[1]) > 0.0),
-            },
-            add_ts=False,
-        )
-        time.sleep(dt)
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(signum, stop_signal)
+    try:
+        sub, pub = bus.BusSub(SUB_TOPICS), bus.BusPub()
+        executor = MotionExecutor(publisher=pub)
+        previous = time.monotonic()
+        while not stopping:
+            topic, payload = sub.recv(timeout_ms=20)
+            messages = []
+            if topic in COMMAND_TOPICS:
+                messages.append((topic, payload))
+            # Drain a bounded burst before executing a goal. Any STOP wins this
+            # burst and invalidates earlier or later queued generation tokens.
+            for _ in range(63):
+                topic, payload = sub.recv(timeout_ms=0)
+                if topic is None:
+                    break
+                if topic in COMMAND_TOPICS:
+                    messages.append((topic, payload))
+            executor.process_batch(messages)
+            now = time.monotonic()
+            executor.tick(now - previous)
+            previous = now
+            executor.poll_sensors()
+        return 0
+    finally:
+        if executor is not None:
+            executor.close()
+        if sub is not None:
+            sub.close()
+        if pub is not None:
+            pub.close()
 
 
 if __name__ == "__main__":
-    import sys
-
-    sys.exit(main())
+    raise SystemExit(main())

@@ -1,258 +1,99 @@
-# Skrypty pomocnicze i narzędziowe (`ops/`)
+# Skrypty pomocnicze i diagnostyka
 
-## Skrypty testowe
+Obowiązuje [polityka środowisk](../POLITYKA_SRODOWISK.md) oraz
+[polityka konfiguracji](../config/POLICY.md). Odczyt, próba sprzętu i ruch mają
+osobne procedury. Skrypt diagnostyczny nie jest zgodą na ruch.
 
-### test_suite.sh
+## Testy oprogramowania w WSL
 
-Zestaw testów systemowych — weryfikacja funkcjonalności robota.
-
-```bash
-./scripts/diag_test-suite.sh
-```
-
-⚠️ **Wymaga weryfikacji:** Zakres testów do uzupełnienia.
-
-Prawdopodobne testy:
-- BUS connectivity (Redis/ZMQ)
-- Hardware (GPIO, I2C, SPI)
-- Kamera (capture, preview)
-- Audio (ALSA, playback, capture)
-- Usługi systemd (status, startup)
-
----
-
-### tests_audit.sh
-
-Audyt testów — sprawdzenie pokrycia, brakujące testy, jakość.
+`scripts/diag_test-suite.sh` uruchamia wybrane izolowane testy kontraktu ruchu,
+HTTP i piaskownicy. Nie otwiera kamery, audio, LCD ani UART. Użyj istniejącego venv:
 
 ```bash
-./scripts/diag_tests-audit.sh
+PYTHON=/home/pi/Rider-Pi/.venv/bin/python scripts/diag_test-suite.sh
+RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 /home/pi/Rider-Pi/.venv/bin/python -m pytest
 ```
 
-⚠️ **Wymaga weryfikacji:** Szczegóły do uzupełnienia.
+Pełny pytest uruchamiaj w WSL. Nie instaluj pełnego zestawu testowego na lekkim Pi
+i nie traktuj starych nazw `diag_*` jako dowodu, że skrypt jest tylko odczytowy.
+`diag_tests-audit.sh` analizuje zestaw testów; benchmark detekcji jest osobnym
+zadaniem dla wybranego backendu i wejścia. Próba na rzeczywistej kamerze wymaga
+decyzji operatora i przygotowanego profilu.
 
----
+## Odczyt wykonawcy i usług
 
-### bench_detect.sh
-
-Benchmark detekcji — wydajność detektorów wizyjnych.
+`diag_motion-status.py`, `diag_sensors.py` i `sys_xgo-init.py` korzystają ze statusu
+jednego wykonawcy. Nie tworzą drugiej instancji SDK, nie resetują robota i nie
+udzielają zgody na napędy. Nazwa `sys_xgo-init` zachowuje kompatybilność CLI;
+nie oznacza już fizycznej inicjalizacji.
 
 ```bash
-./scripts/diag_bench-detect.sh [detector_type]
+python3 scripts/diag_motion-status.py
+systemctl show motion-executor.service -p LoadState -p ActiveState -p SubState -p UnitFileState -p MainPID
+journalctl -u motion-executor.service --since "5 min ago" -n 50 --no-pager
+curl --fail http://127.0.0.1:8080/api/control/state
 ```
 
-Prawdopodobnie testuje:
-- HOG detector FPS
-- TFLite detector FPS
-- Edge TPU detector FPS
-- Latencja detekcji
+Aktywny proces i ACK transportu nie dowodzą zatrzymania napędów. Safety status
+pokazuje zgodę, generację, potwierdzenie STOP i dostępność poszczególnych aktuatorów.
+Nieopisane możliwości sprzętu pozostają niedostępne do czasu osobnej próby ręcznej.
 
----
+`diag_xgo-bootloader.py` jest historycznie błędnie nazwanym skryptem LCD: inicjalizuje
+wyświetlacz i zmienia podświetlenie. Nie jest odczytem wersji firmware ani UART;
+nie uruchamiaj go w automatycznej diagnostyce. Ekran ma zachować obrót
+`FACE_LCD_ROTATE=270` i aktualną sekwencję startową.
 
-## Diagnostyka XGO
+## Ruch i E-STOP
 
-### check_xgo_sensors.py
+`demo_trajectory.py` ma wyłączoną dawną automatyczną sekwencję ruchu.
+`manual_motion-probe.py` wykonuje pojedynczą próbę przez API, po przygotowaniu
+konkretnego planu, aktualnej zgodzie i w obecności operatora. Nigdy nie wywołujemy
+go z pytest, CI, wdrożenia ani ogólnego skryptu testów. Robot dev ma kabel zasilający;
+operator musi przygotować przewód i przestrzeń.
 
-Sprawdzenie czujników platformy XGO.
+`sys_emergency-stop.py` używa kanonicznego API safety:
 
 ```bash
-./scripts/diag_sensors.py
+python3 scripts/sys_emergency-stop.py status
+python3 scripts/sys_emergency-stop.py stop
+python3 scripts/sys_emergency-stop.py on
 ```
 
-Sprawdza:
-- IMU (akcelerometr, żyroskop)
-- Enkodery silników
-- Czujniki dystansu (jeśli są)
-- Bateria (napięcie, prąd)
+`stop` unieważnia zgodę i żąda STOP; `on` zatrzaskuje E-STOP. `off` wymaga osobnego
+planu i interaktywnej zgody, a jego wynik pozostaje DISARMED. Nie ma bezpośredniego
+otwierania UART ani automatycznego ponownego uzbrojenia. Oceniaj `confirmed` i ACK
+wykonawcy, nie tylko kod HTTP czy kod wyjścia CLI.
+[Kontrakt bezpieczeństwa](../apps/safety.md) opisuje szczegóły.
 
-### Przykład output
+## Usługi, zasoby i migracja PR03
 
-```
-[XGO Sensors Check]
-IMU:        OK (ax=0.02, ay=-0.01, az=9.81 m/s²)
-Gyro:       OK (gx=0.1, gy=-0.2, gz=0.0 °/s)
-Encoders:   OK (FL=0, FR=0, RL=0, RR=0)
-Battery:    OK (12.3V, 85%)
-```
-
----
-
-### xgo_bl_probe.py
-
-Diagnostyka bootloadera XGO.
+Do diagnostyki wystarcza odczyt katalogu, stanu jednostek i właścicieli zasobów:
 
 ```bash
-./scripts/diag_xgo-bootloader.py
+curl --fail http://127.0.0.1:8080/api/logic/catalog
+curl --fail http://127.0.0.1:8080/svc
+python3 scripts/resource_diag.py status camera
+python3 scripts/resource_diag.py status uart
+scripts/systemd-sync.sh
 ```
 
-⚠️ **Wymaga weryfikacji:** Szczegóły do uzupełnienia.
+Katalog i domyślny plan `systemd-sync` należą do PR03; starsza wersja może jeszcze
+ich nie udostępniać. Przed użyciem starego `systemd-sync` sprawdź wersję skryptu,
+bo stary wariant zmieniał system. Instalacja planu PR03 wymaga jawnego `--apply`.
+Zmiana autostartu jest osobną operacją `--consolidate-boot`; żaden przykład odczytu
+nie oznacza zatwierdzenia tych zmian.
 
-Prawdopodobnie:
-- Wersja firmware
-- Status połączenia I2C/UART
-- Możliwość flash'owania
+Uruchamiaj tylko wybrane zadanie przez panel/API katalogu, po sprawdzeniu
+zależności i wymaganych urządzeń. Stan zadania `requested/starting/ready` jest
+odrębny od `ActiveState` usługi. Zakończenie zadania ruchowego wymaga potwierdzonego
+STOP przed zwolnieniem zasobów. Recovery jest ręczne, dla wskazanych właścicieli,
+z jawnie opisanymi skutkami. UART i SPI/LCD nie należą do zwalniania kamery.
 
----
+`util_export-env.sh` i `util_load-config.sh` służą do lokalnej konfiguracji bieżącego
+procesu; nie dodawaj globalnej instalacji pakietów ani zmian profilu Ubuntu.
+`sys_cleanup.sh` zmienia pliki: przeczytaj jego zakres przed osobnym użyciem;
+nie jest rutynową diagnostyką lub krokiem każdego wdrożenia.
 
-### xgo_safe_init.py
-
-Bezpieczna inicjalizacja XGO — sprawdzenie pre-flight przed ruchem.
-
-```bash
-./scripts/sys_xgo-init.py
-```
-
-Sprawdza:
-- Połączenie I2C/UART z kontrolerem
-- Kalibracja IMU
-- Stan baterii (min voltage)
-- Temperatury silników
-- E-STOP status
-
-**Wyjście:** 
-- `0` — OK, można używać
-- `1` — błąd, nie uruchamiaj ruchu
-
----
-
-## Demo
-
-### demo_lemniscate.py
-
-Demonstracja ruchu w kształcie lemniskaty (∞).
-
-```bash
-./scripts/demo_trajectory.py
-```
-
-Parametry (ENV):
-```bash
-export DEMO_SPEED=0.3
-export DEMO_SIZE=1.0  # rozmiar pętli
-./scripts/demo_trajectory.py
-```
-
-Zobacz także: [docs/apps/demos.md](../apps/demos.md)
-
----
-
-## Narzędzia systemowe
-
-### export_env.sh
-
-Eksport zmiennych środowiskowych dla robota.
-
-```bash
-source ./scripts/util_export-env.sh
-```
-
-Ustawia:
-- `PYTHONPATH`
-- `RIDER_ROOT`
-- `CONFIG_DIR`
-- Inne globalne zmienne
-
-**Use case:** Source'uj w `.bashrc` lub `.profile`.
-
----
-
-### volume_hooks.sh
-
-Hooki zmiany głośności — triggerowane przez ALSA/PulseAudio.
-
-⚠️ **Wymaga weryfikacji:** Szczegóły do uzupełnienia.
-
-Prawdopodobnie:
-- Synchronizacja hardware volume
-- Feedback UI (LED, LCD)
-- Ograniczenia głośności (safety)
-
----
-
-### services_cleanup.sh
-
-Czyszczenie przestarzałych usług i plików tymczasowych.
-
-```bash
-./scripts/sys_cleanup.sh
-```
-
-Czyści:
-- Stare logi (`/var/log/rider/`)
-- PID files (`/run/rider/`)
-- Temp files (`/tmp/rider-*`)
-- Przestarzałe cache
-
----
-
-### estop.py
-
-Emergency stop — zatrzymanie wszystkich ruchów.
-
-```bash
-./scripts/sys_emergency-stop.py
-```
-
-Wysyła:
-- `motion.cmd = {"type": "stop"}`
-- Bezpośrednie zatrzymanie hardware (jeśli dostępne)
-- Flaga `ESTOP_ACTIVE = 1`
-
-**Kody wyjścia:**
-- `0` — sukces (robot zatrzymany)
-
-Zobacz: [docs/apps/safety.md](../apps/safety.md)
-
----
-
-## Workflow: uruchomienie z czystego systemu
-
-```bash
-# 1. Sync systemd
-sudo ./scripts/systemd-sync.sh
-
-# 2. Check XGO
-./scripts/sys_xgo-init.py || exit 1
-
-# 3. Start core services
-./scripts/sys_control.sh rider-broker.service start
-./scripts/sys_control.sh rider-api.service start
-
-# 4. Start aplikacji
-./scripts/sys_control.sh rider-voice.service start
-./scripts/sys_control.sh rider-vision.service start
-
-# 5. Monitor
-./scripts/diag_metrics.sh 10 &
-```
-
----
-
-## Workflow: debug problemu
-
-```bash
-# 1. Check sensors
-./scripts/diag_sensors.py
-
-# 2. Check services
-systemctl status rider-*.service
-
-# 3. Check logs
-journalctl -u rider-broker.service --since "5 min ago"
-
-# 4. Test suite
-./scripts/diag_test-suite.sh
-
-# 5. Monitor streams
-./scripts/diag_stream.sh motion vision.state
-```
-
----
-
-**Related docs:**
-- [docs/apps/](../apps/) — moduły aplikacyjne
-- [docs/ops/systemd-scripts.md](systemd-scripts.md) — zarządzanie usługami
-- [docs/apps/safety.md](../apps/safety.md) — emergency stop
-
-**Ostatnia aktualizacja:** 2025-01  
-**Status:** ⚠️ Większość szczegółów wymaga weryfikacji kodu źródłowego
+[Diagnostyka zasobów](../resource_diagnostics.md) ·
+[Zarządzanie systemd](systemd-scripts.md) ·
+[Moduły aplikacyjne](../apps/)

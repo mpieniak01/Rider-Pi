@@ -1,0 +1,446 @@
+"""Isolated executor/SDK contract tests: no real SDK, sockets or robot address."""
+
+from __future__ import annotations
+
+import json
+import time
+
+import pytest
+from motion_fakes import FakeAdapter, FakeSDK, arm, command, executor as executor
+
+from apps.motion.executor import MotionExecutor
+from apps.motion.sensor_reader import project_sensor_payload
+from apps.safety import estop
+from apps.safety.gate import MotionGate
+from apps.safety.state import read_status, write_status
+from drivers.xgo.adapter import XgoAdapter, uart_inventory
+
+
+@pytest.mark.parametrize(
+    "action,fields",
+    [
+        ("move", {}),
+        ("turn", {"yaw": 0.1}),
+        ("balance", {"enabled": True}),
+        ("height", {"height": 4}),
+        ("action", {"name": "wave"}),
+    ],
+)
+def test_all_actuators_rejected_disarmed(executor, action, fields):
+    instance, _ = executor
+    before = list(instance.adapter.calls)
+    ack = instance.apply(command(instance, action, **fields))
+    assert ack["status"] == "rejected"
+    assert ack["reason"] == "motion_disarmed"
+    assert instance.adapter.calls == before
+
+
+def test_permission_requires_consent_and_plan(executor):
+    instance, _ = executor
+    assert instance.apply(command(instance, "arm"))["reason"] == "operator_consent_required"
+    assert instance.apply(command(instance, "arm", operator_consent=True))["reason"] == "operator_plan_required"
+    assert arm(instance)["status"] == "executed"
+    assert instance.snapshot()["state"] == "ARMED"
+    assert not any(call[0] == "move" for call in instance.adapter.calls)
+
+
+def test_stop_invalidates_old_generation_and_clears_target(executor):
+    instance, _ = executor
+    arm(instance)
+    previous = command(instance)
+    assert instance.apply(previous)["status"] == "accepted"
+    instance.tick(0.02)
+    assert instance.last_ack["status"] == "executed"
+    stop = instance.apply({"action": "stop"})
+    assert stop["hardware_stop_sent"] is True
+    assert instance.snapshot()["moving"] is False
+    assert instance.controller.t_lx == instance.controller.o_lx == 0
+    before = list(instance.adapter.calls)
+    assert instance.apply(previous)["reason"] == "stale_generation"
+    instance.tick(0.02)
+    assert instance.adapter.calls == before
+
+
+@pytest.mark.parametrize(
+    "fields,reason",
+    [
+        ({"ts": 900.0}, "expired_command"),
+        ({"ts": 1002.0}, "expired_command"),
+        ({"ttl_ms": 3000}, "expired_command"),
+        ({"generation": "old"}, "stale_generation"),
+        ({"seq": -1}, "stale_sequence"),
+        ({"source": "navigation"}, "owner_mismatch"),
+        ({"vx": float("nan")}, "invalid_vx"),
+        ({"duration": 1.0}, "motion_limits_exceeded"),
+    ],
+)
+def test_invalid_or_delayed_goals_never_execute(executor, fields, reason):
+    instance, _ = executor
+    arm(instance)
+    before = list(instance.adapter.calls)
+    assert instance.apply(command(instance, **fields))["reason"] == reason
+    instance.tick(0.02)
+    assert instance.adapter.calls == before
+
+
+def test_estop_is_latched_and_clear_does_not_rearm(executor):
+    instance, _ = executor
+    arm(instance)
+    instance.apply(command(instance))
+    instance.tick(0.02)
+    instance.apply({"action": "estop"})
+    assert estop.ESTOP_FLAG.exists()
+    assert instance.gate.state == "ESTOP"
+    assert instance.apply(command(instance))["reason"] == "estop_latched"
+    assert (
+        instance.apply(
+            command(
+                instance,
+                "clear_estop",
+                operator_consent=True,
+                operator_plan="Mock E-Stop reset",
+            )
+        )["status"]
+        == "executed"
+    )
+    assert instance.gate.state == "DISARMED"
+    assert not estop.ESTOP_FLAG.exists()
+
+
+def test_lease_timeout_stops_and_restart_does_not_restore_consent(executor):
+    instance, clock = executor
+    arm(instance)
+    instance.apply(command(instance))
+    instance.tick(0.02)
+    clock.now += 11.0
+    instance.tick(0.02)
+    assert instance.gate.state == "DISARMED"
+    assert instance.controller.stopped
+    replacement = MotionGate(clock=clock, wall_clock=clock, blocked=lambda: False)
+    assert replacement.state == "DISARMED"
+    assert replacement.generation != instance.gate.generation
+
+
+def test_duration_stops_without_new_goal_and_ack_is_stable(executor):
+    instance, clock = executor
+    arm(instance)
+    instance.apply(command(instance, duration=0.1))
+    instance.tick(0.02)
+    ack = dict(instance.last_ack)
+    clock.now += 0.2
+    instance.tick(0.02)
+    assert instance.controller.stopped
+    assert instance.last_ack == ack
+
+
+def test_passive_tracking_and_bare_legacy_commands_do_not_drive(executor):
+    instance, _ = executor
+    arm(instance)
+    before = list(instance.adapter.calls)
+    assert instance.apply({"target": {"x": 1.0}}, topic="tracking.pose")["status"] == "rejected"
+    assert instance.apply({"vx": 0.5, "duration": 0.2}, topic="cmd.move")["status"] == "rejected"
+    instance.tick(0.02)
+    assert instance.adapter.calls == before
+
+
+def test_exit_stops_then_closes_hardware(executor):
+    instance, _ = executor
+    arm(instance)
+    instance.apply(command(instance))
+    instance.tick(0.02)
+    instance.close()
+    assert instance.adapter.calls[-2:] == [("stop",), ("close",)]
+    assert instance.gate.state == "DISARMED"
+    assert instance.snapshot()["ready"] is False
+
+
+def test_stop_wins_burst_and_self_telemetry_cannot_form_feedback(executor):
+    instance, _ = executor
+    arm(instance)
+    move = command(instance)
+    before = list(instance.adapter.calls)
+    instance.process_batch(
+        [
+            ("motion.command", move),
+            ("cmd.stop", {"request_id": "stop-request"}),
+            ("motion.command", move),
+            ("motion.state", {"action": "arm"}),
+            ("motion.ack", {"action": "move"}),
+        ]
+    )
+    instance.tick(0.02)
+    assert instance.adapter.calls == before + [("stop",)]
+    assert instance.last_ack["request_id"] == "stop-request"
+    assert instance.last_ack["accepted"] is True
+    assert instance.gate.state == "DISARMED"
+
+
+def test_state_reads_fail_closed_and_do_not_import_sdk(monkeypatch, tmp_path):
+    path = tmp_path / "status.json"
+    monkeypatch.setenv("MOTION_STATE_PATH", str(path))
+    assert read_status()["state"] == "UNKNOWN"
+    write_status(
+        {
+            "contract_version": 1,
+            "state": "ARMED",
+            "observed_at": time.time() - 10,
+            "ready": True,
+            "hardware_ready": True,
+            "can_move": True,
+        }
+    )
+    assert read_status()["error"] == "executor_stale"
+    assert read_status()["can_move"] is False
+    path.write_text(json.dumps({"contract_version": 2}))
+    assert read_status()["state"] == "UNKNOWN"
+
+
+def test_adapter_default_is_inert_and_owner_init_cannot_reset(monkeypatch, tmp_path, executor):
+    instance, _ = executor
+    before = len(FakeSDK.constructed)
+    adapter = XgoAdapter(sdk_factory=FakeSDK, lock_path=tmp_path / "owner.lock")
+    assert not adapter.ok()
+    assert len(FakeSDK.constructed) == before
+
+    def free(_port):
+        return {"known": True, "owners": []}
+
+    physical = XgoAdapter(
+        gate=instance.gate,
+        owner=True,
+        sdk_factory=FakeSDK,
+        lock_path=tmp_path / "owner.lock",
+        uart_probe=free,
+    )
+    try:
+        assert physical.ok()
+        assert ("reset",) not in physical._dog.events
+        assert ("write", "ACTION") not in physical._dog.events
+        assert ("write", "IMU") not in physical._dog.events
+        assert physical.battery() == 0.8
+        assert physical.imu() == {"roll": 1.0, "pitch": 2.0, "yaw": 3.0}
+        assert physical.drive("forward", 0.2) is False
+        second = XgoAdapter(
+            gate=instance.gate,
+            owner=True,
+            sdk_factory=FakeSDK,
+            lock_path=tmp_path / "owner.lock",
+            uart_probe=free,
+        )
+        assert not second.ok()
+        assert "BlockingIOError" in second.error
+        arm(instance)
+        assert physical.drive("forward", 0.2) is True
+        instance.gate.disarm()
+        assert physical.drive("forward", 0.2) is False
+        assert physical.enable_balance(True) is False
+        assert physical.set_height(90) is False
+        assert physical.action("wave") is False
+        assert physical.stop() is True
+    finally:
+        physical.close()
+
+
+def test_physical_factory_refused_during_isolated_tests(monkeypatch, executor, tmp_path):
+    instance, _ = executor
+    monkeypatch.setenv("RIDER_TEST_ISOLATED", "1")
+    physical = XgoAdapter(gate=instance.gate, owner=True, lock_path=tmp_path / "unused.lock")
+    assert physical.error == "physical_sdk_blocked_in_tests"
+    assert not (tmp_path / "unused.lock").exists()
+
+
+def test_sensor_projection_marks_old_or_missing_data_unknown():
+    imu, device = project_sensor_payload({"ts": 50, "imu": {"yaw": 1}, "battery": 0.8}, now=100)
+    assert imu["stale"] is True
+    assert device["battery_pct"] is None
+    imu, device = project_sensor_payload({"ts": 100, "imu": {"roll": 1, "pitch": 2, "yaw": 3}}, now=100)
+    assert imu["imu_ok"] is True
+    assert device["pose"] == {"x": 1, "y": 2, "z": 3}
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"action": {}},
+        {"source": []},
+        {"source": {}},
+        {"seq": True},
+        {"seq": 2**70},
+        {"action": "action", "action_id": {}},
+    ],
+)
+def test_malformed_bus_objects_are_rejected_without_process_failure(executor, invalid):
+    instance, _ = executor
+    arm(instance)
+    before = list(instance.adapter.calls)
+    assert instance.apply(command(instance, **invalid))["status"] == "rejected"
+    instance.tick(0.02)
+    assert instance.adapter.calls == before
+
+
+def test_env_and_legacy_enable_flag_never_arm(monkeypatch, executor, tmp_path):
+    _, clock = executor
+    flag = tmp_path / "motion.enable"
+    flag.touch()
+    monkeypatch.setattr(estop, "MOTION_ENABLE_FLAG", flag)
+    monkeypatch.setenv("MOTION_ENABLE", "1")
+    gate = MotionGate(clock=clock, wall_clock=clock)
+    assert gate.state == "DISARMED"
+    assert gate.can_actuate() is False
+
+
+def test_single_bounded_sensor_transaction_while_disarmed(executor):
+    instance, clock = executor
+    transactions = []
+    instance.adapter.read_sensor = lambda name: transactions.append(name) or 1.0
+    for _ in range(6):
+        before = len(transactions)
+        instance.poll_sensors()
+        assert len(transactions) == before + 1
+        clock.now += 0.2
+    assert instance.gate.state == "DISARMED"
+    assert not any(call[0] == "move" for call in instance.adapter.calls)
+
+
+def test_sdk_failure_reports_rejected_ack_and_disarms(executor):
+    instance, _ = executor
+    arm(instance)
+    instance.adapter.move = lambda **_kwargs: False
+    instance.apply(command(instance))
+    instance.tick(0.02)
+    assert instance.last_ack["status"] == "rejected"
+    assert instance.last_ack["reason"] == "actuator_failed"
+    assert instance.gate.state == "DISARMED"
+    assert instance.snapshot()["moving"] is False
+
+
+def test_existing_noncooperating_uart_owner_blocks_sdk_initialization(executor, tmp_path):
+    instance, _ = executor
+    proc = tmp_path / "proc"
+    descriptors = proc / "144437" / "fd"
+    descriptors.mkdir(parents=True)
+    (descriptors / "9").symlink_to("/dev/ttyAMA0")
+    inventory = uart_inventory("/dev/ttyAMA0", proc_root=proc)
+    assert inventory == {"known": True, "owners": [144437], "unreadable": []}
+    constructed = len(FakeSDK.constructed)
+    physical = XgoAdapter(
+        gate=instance.gate,
+        owner=True,
+        sdk_factory=FakeSDK,
+        lock_path=tmp_path / "owner.lock",
+        uart_probe=lambda _port: inventory,
+    )
+    assert not physical.ok()
+    assert "uart_owned_by_existing_process" in physical.error
+    assert len(FakeSDK.constructed) == constructed
+
+
+def test_unknown_uart_inventory_fails_closed(executor, tmp_path):
+    instance, _ = executor
+    constructed = len(FakeSDK.constructed)
+    physical = XgoAdapter(
+        gate=instance.gate,
+        owner=True,
+        sdk_factory=FakeSDK,
+        lock_path=tmp_path / "owner.lock",
+        uart_probe=lambda _port: {"known": False, "owners": []},
+    )
+    assert not physical.ok()
+    assert "uart_inventory_unreadable" in physical.error
+    assert len(FakeSDK.constructed) == constructed
+
+
+def test_ack_ledger_retains_only_terminal_states_and_is_bounded(executor):
+    instance, _ = executor
+    arm(instance)
+    instance.apply(command(instance))
+    assert not any(ack["status"] == "accepted" for ack in instance.recent_acks)
+    instance.tick(0.02)
+    assert instance.recent_acks[-1]["status"] == "executed"
+    for index in range(25):
+        instance.apply(command(instance, request_id=f"rejected-{index}", generation="old"))
+    ledger = instance.snapshot()["recent_acks"]
+    assert len(ledger) == 16
+    assert ledger[-1]["request_id"] == "rejected-24"
+    assert ledger[-1]["command_generation"] == "old"
+
+
+@pytest.mark.parametrize("operation", ["mkdir", "touch"])
+def test_estop_persistence_failure_never_prevents_stop(executor, monkeypatch, operation):
+    instance, _ = executor
+    arm(instance)
+    instance.apply(command(instance, request_id="pending-before-estop"))
+    instance.tick(0.02)
+    before = len(instance.adapter.calls)
+    with monkeypatch.context() as failures:
+        failures.setattr(
+            type(estop.ESTOP_FLAG),
+            operation,
+            lambda *args, **kwargs: (_ for _ in ()).throw(OSError("isolated_disk_failure")),
+        )
+        ack = instance.apply({"action": "estop", "request_id": "estop-request"})
+        assert ack["status"] == "executed" and ack["hardware_stop_sent"] is True
+        assert instance.gate.state == "ESTOP"
+        assert instance.snapshot()["persistence_error"].startswith("estop_persistence_failed")
+        assert instance.adapter.calls[before:] == [("stop",)]
+        assert instance.gate.can_actuate() is False
+    cleared = instance.apply(command(instance, "clear_estop", operator_consent=True, operator_plan="Isolated reset"))
+    assert cleared["status"] == "executed"
+    assert instance.gate.state == "DISARMED"
+    assert instance.snapshot()["persistence_error"] is None
+
+
+def test_existing_estop_latch_does_not_write_each_poll(executor, monkeypatch):
+    instance, _ = executor
+    instance.apply({"action": "estop"})
+    assert estop.ESTOP_FLAG.exists()
+
+    def forbidden_write(*args, **kwargs):
+        raise AssertionError("An existing latch must not be rewritten by polling")
+
+    monkeypatch.setattr(type(estop.ESTOP_FLAG), "touch", forbidden_write)
+    for _ in range(5):
+        assert instance.gate.can_actuate() is False
+
+
+def test_explicit_sdk_stop_never_polls_gate(executor, monkeypatch, tmp_path):
+    instance, _ = executor
+    physical = XgoAdapter(
+        gate=instance.gate,
+        owner=True,
+        sdk_factory=FakeSDK,
+        lock_path=tmp_path / "stop.lock",
+        uart_probe=lambda _port: {"known": True, "owners": []},
+    )
+    assert physical.ok()
+    try:
+        physical._dog.events.clear()
+
+        def broken_gate():
+            raise OSError("isolated_gate_failure")
+
+        monkeypatch.setattr(instance.gate, "can_actuate", broken_gate)
+        assert physical.stop() is True
+        assert physical._dog.events == [("write", "VX"), ("write", "VYAW")]
+    finally:
+        physical.close()
+
+
+def test_sdk_stop_rejects_posture_write_even_when_armed(executor, monkeypatch, tmp_path):
+    instance, _ = executor
+    arm(instance)
+    physical = XgoAdapter(
+        gate=instance.gate,
+        owner=True,
+        sdk_factory=FakeSDK,
+        lock_path=tmp_path / "stop-allowlist.lock",
+        uart_probe=lambda _port: {"known": True, "owners": []},
+    )
+    assert physical.ok()
+    try:
+        physical._dog.events.clear()
+        monkeypatch.setattr(physical._dog, "stop", lambda: physical._dog._XGO__send("ACTION"))
+        assert physical.stop() is False
+        assert ("write", "ACTION") not in physical._dog.events
+    finally:
+        physical.close()

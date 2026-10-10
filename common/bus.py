@@ -228,6 +228,9 @@ class BusSub:
             topic_b, payload_b = frames[0], frames[-1]
         else:
             topic_b, payload_b = b"", frames[0]
+            raw = bytes(payload_b).lstrip()
+            if not raw.startswith((b"{", b"[")) and b" " in raw:
+                topic_b, payload_b = raw.split(b" ", 1)
 
         # decode topic
         try:

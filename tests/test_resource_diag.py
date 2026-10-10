@@ -56,6 +56,7 @@ def test_release_camera_calls_helper(monkeypatch: pytest.MonkeyPatch) -> None:
         return {"ok": True}
 
     monkeypatch.setattr(resource_diag, "_call_release", fake_call)
+    monkeypatch.setattr(resource_diag, "_run_guard", lambda action: {"ok": True})
 
     res = resource_diag.release("camera", limit_pids=[77])
     assert res["ok"] is True

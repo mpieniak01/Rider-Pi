@@ -3,6 +3,7 @@
 Unit tests for Navigator module (Rekonesans mode Stage 1)
 """
 
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -37,8 +38,82 @@ class TestNavigator(unittest.TestCase):
         self.mock_sub.side_effect = sub_side_effect
         self.mock_pub.return_value = self.mock_pub_instance
 
+        self.safety = {
+            "contract_version": 1,
+            "state": "ARMED",
+            "ready": True,
+            "hardware_ready": True,
+            "can_move": True,
+            "owner": "navigation",
+            "generation": "operator-navigation",
+            "last_seq": -1,
+            "capabilities": {name: {"available": True, "stop_verified": True} for name in ("move", "turn")},
+        }
+        self.intent = {
+            "generation": "operator-navigation",
+            "request_id": "task-click",
+            "seq": 0,
+            "source": "manual",
+            "ts": time.time(),
+            "ttl_ms": 500,
+        }
+        self.sequence = 0
+        self.extra_patches = []
+        for target in (
+            "services.safety_contract.read_status",
+            "apps.safety.state.read_status",
+            "apps.navigator.safety.read_status",
+        ):
+            item = patch(target, side_effect=lambda *args, **kwargs: dict(self.safety))
+            item.start()
+            self.extra_patches.append(item)
+        for target in (
+            "apps.navigator.motion.read_service_intent",
+            "apps.safety.intent.read_service_intent",
+            "apps.navigator.safety.read_service_intent",
+        ):
+            item = patch(
+                target,
+                create=True,
+                side_effect=lambda unit, generation: dict(self.intent)
+                if generation == self.intent["generation"]
+                else None,
+            )
+            item.start()
+            self.extra_patches.append(item)
+        item = patch("apps.navigator.motion.write_intent_status", return_value=True)
+        self.intent_writer = item.start()
+        self.extra_patches.append(item)
+
+    def envelope(self, **values):
+        self.sequence += 1
+        return {
+            "source": "manual",
+            "generation": self.safety["generation"],
+            "seq": self.sequence,
+            "ts": time.time(),
+            "ttl_ms": 500,
+            "request_id": f"operator-{self.sequence}",
+            **values,
+        }
+
+    def authorized_start(self, nav):
+        nav._handle_control_command(self.envelope(action="start", strategy=nav.strategy.value))
+
+    def authorize(self, nav):
+        self.assertTrue(nav._accept_motion_request(self.envelope()))
+
+    def motion_calls(self, action):
+        return [
+            call
+            for call in self.mock_pub_instance.publish.call_args_list
+            if call[0][0] == "motion.command" and call[0][1].get("action") == action
+        ]
+
     def tearDown(self):
         """Clean up patches"""
+        for item in reversed(self.extra_patches):
+            item.stop()
         self.bus_sub_patch.stop()
         self.bus_pub_patch.stop()
 
@@ -53,7 +128,7 @@ class TestNavigator(unittest.TestCase):
     def test_navigator_start(self):
         """Test navigator starts correctly"""
         nav = Navigator(strategy=Strategy.STOP)
-        nav.start()
+        self.authorized_start(nav)
 
         self.assertTrue(nav.active)
         self.assertEqual(nav.state, NavigatorState.EXPLORING)
@@ -64,7 +139,7 @@ class TestNavigator(unittest.TestCase):
     def test_navigator_stop(self):
         """Test navigator stops correctly"""
         nav = Navigator(strategy=Strategy.STOP)
-        nav.start()
+        self.authorized_start(nav)
         nav.stop()
 
         self.assertFalse(nav.active)
@@ -72,7 +147,7 @@ class TestNavigator(unittest.TestCase):
 
         # Should send stop command to motion
         calls = self.mock_pub_instance.publish.call_args_list
-        motion_stop_calls = [c for c in calls if c[0][0] == "motion" and c[0][1].get("type") == "stop"]
+        motion_stop_calls = [c for c in calls if c[0][0] == "motion.command" and c[0][1].get("action") == "stop"]
         self.assertGreater(len(motion_stop_calls), 0)
 
     def test_strategy_change(self):
@@ -86,7 +161,7 @@ class TestNavigator(unittest.TestCase):
     def test_obstacle_detected_stop_strategy(self):
         """Test obstacle handling with STOP strategy"""
         nav = Navigator(strategy=Strategy.STOP)
-        nav.start()
+        self.authorized_start(nav)
 
         # Simulate obstacle detection
         nav._handle_obstacle(present=True, confidence=0.8)
@@ -96,32 +171,34 @@ class TestNavigator(unittest.TestCase):
 
         # Should send stop command
         calls = self.mock_pub_instance.publish.call_args_list
-        motion_stop_calls = [c for c in calls if c[0][0] == "motion" and c[0][1].get("type") == "stop"]
+        motion_stop_calls = [c for c in calls if c[0][0] == "motion.command" and c[0][1].get("action") == "stop"]
         self.assertGreater(len(motion_stop_calls), 0)
 
-    def test_obstacle_cleared_continue_forward(self):
-        """Test resuming forward motion when obstacle cleared"""
+    def test_obstacle_cleared_requires_new_operator_request(self):
+        """A cleared obstacle cannot restore the generation revoked by STOP."""
         nav = Navigator(strategy=Strategy.STOP)
-        nav.start()
+        self.authorized_start(nav)
 
         # First detect obstacle
         nav._handle_obstacle(present=True, confidence=0.8)
 
-        # Then clear obstacle
+        # STOP invalidates the bound generation; clearing data grants no consent.
+        self.mock_pub_instance.publish.reset_mock()
         nav._handle_obstacle(present=False, confidence=0.0)
 
         self.assertFalse(nav.obstacle_present)
-        self.assertEqual(nav.state, NavigatorState.EXPLORING)
+        self.assertEqual(nav.state, NavigatorState.STOPPED)
+        self.assertFalse(nav.active)
 
         # Should send drive command
         calls = self.mock_pub_instance.publish.call_args_list
-        motion_drive_calls = [c for c in calls if c[0][0] == "motion" and c[0][1].get("type") == "drive"]
-        self.assertGreater(len(motion_drive_calls), 0)
+        motion_drive_calls = [c for c in calls if c[0][0] == "motion.command" and c[0][1].get("action") == "move"]
+        self.assertEqual(len(motion_drive_calls), 0)
 
     def test_obstacle_detected_avoid_strategy(self):
         """Test obstacle handling with AVOID strategy"""
         nav = Navigator(strategy=Strategy.AVOID)
-        nav.start()
+        self.authorized_start(nav)
 
         # Simulate obstacle detection
         nav._handle_obstacle(present=True, confidence=0.8)
@@ -132,7 +209,9 @@ class TestNavigator(unittest.TestCase):
         # Should send turn command (az != 0)
         calls = self.mock_pub_instance.publish.call_args_list
         motion_turn_calls = [
-            c for c in calls if c[0][0] == "motion" and c[0][1].get("type") == "drive" and c[0][1].get("az", 0.0) != 0.0
+            c
+            for c in calls
+            if c[0][0] == "motion.command" and c[0][1].get("action") == "move" and c[0][1].get("yaw", 0.0) != 0.0
         ]
         self.assertGreater(len(motion_turn_calls), 0)
 
@@ -140,17 +219,24 @@ class TestNavigator(unittest.TestCase):
         """Test sending drive commands"""
         nav = Navigator()
 
+        self.authorize(nav)
         nav._send_motion_drive(lx=0.3, az=0.0)
 
-        self.mock_pub_instance.publish.assert_called_with("motion", {"type": "drive", "lx": 0.3, "az": 0.0})
+        command = self.motion_calls("move")[-1][0][1]
+        self.assertEqual(command["vx"], 0.3)
+        self.assertEqual(command["yaw"], 0.0)
+        self.assertEqual(command["source"], "navigation")
+        self.assertEqual(command["generation"], self.safety["generation"])
+        self.assertLessEqual(command["duration"], 0.25)
 
     def test_send_motion_stop(self):
         """Test sending stop commands"""
         nav = Navigator()
 
+        self.authorize(nav)
         nav._send_motion_stop()
-
-        self.mock_pub_instance.publish.assert_called_with("motion", {"type": "stop"})
+        command = self.motion_calls("stop")[-1][0][1]
+        self.assertEqual(command["source"], "navigation")
 
     def test_publish_state(self):
         """Test state publishing"""
@@ -187,7 +273,7 @@ class TestNavigator(unittest.TestCase):
     def test_avoid_cooldown(self):
         """Test that avoid strategy respects cooldown period"""
         nav = Navigator(strategy=Strategy.AVOID)
-        nav.start()
+        self.authorized_start(nav)
 
         # First obstacle triggers avoid
         nav._handle_obstacle(present=True, confidence=0.8)
@@ -241,10 +327,10 @@ class TestNavigator(unittest.TestCase):
     def test_return_home_state_transition(self):
         """Test transition to RETURNING_HOME state"""
         nav = Navigator(strategy=Strategy.STOP)
-        nav.start()  # Start in exploring mode
+        self.authorized_start(nav)  # Start in exploring mode
 
         # Trigger return to home
-        nav._handle_return_home_start({})
+        nav._handle_return_home_start(self.envelope(action="return_home"))
 
         # Should transition to RETURNING_HOME state
         self.assertEqual(nav.state, NavigatorState.RETURNING_HOME)
@@ -270,6 +356,7 @@ class TestNavigator(unittest.TestCase):
     def test_path_following_waypoint_reached(self):
         """Test path following removes waypoint when reached"""
         nav = Navigator()
+        self.authorize(nav)
         nav.state = NavigatorState.RETURNING_HOME
         nav.current_pose = (1.0, 1.0, 0.0)
         nav.current_path = [(1.05, 1.05), (2.0, 2.0)]  # First waypoint very close
@@ -283,6 +370,7 @@ class TestNavigator(unittest.TestCase):
     def test_path_following_goal_reached(self):
         """Test reaching final goal"""
         nav = Navigator()
+        self.authorize(nav)
         nav.state = NavigatorState.RETURNING_HOME
         nav.goal_pose = (0.0, 0.0)
         nav.current_pose = (0.05, 0.05, 0.0)  # Very close to goal
@@ -295,8 +383,49 @@ class TestNavigator(unittest.TestCase):
 
         # Should send stop command
         calls = self.mock_pub_instance.publish.call_args_list
-        motion_stop_calls = [c for c in calls if c[0][0] == "motion" and c[0][1].get("type") == "stop"]
+        motion_stop_calls = [c for c in calls if c[0][0] == "motion.command" and c[0][1].get("action") == "stop"]
         self.assertGreater(len(motion_stop_calls), 0)
+
+    def test_start_without_fresh_operator_envelope_stays_inactive(self):
+        nav = Navigator()
+        nav._handle_control_command({"action": "start"})
+        self.assertFalse(nav.active)
+        self.assertEqual(self.motion_calls("move"), [])
+
+    def test_new_process_cannot_resume_consumed_intent(self):
+        nav = Navigator()
+        self.intent_writer.return_value = False  # persistent claim belongs to previous process
+        nav._consume_task_intent()
+        self.assertFalse(nav.active)
+        self.assertEqual(self.motion_calls("move"), [])
+
+    def test_stale_generation_cannot_restart_navigation(self):
+        nav = Navigator()
+        stale = self.envelope(action="start")
+        self.safety["generation"] = "new-operator-plan"
+        nav._handle_control_command(stale)
+        self.assertFalse(nav.active)
+        self.assertEqual(self.motion_calls("move"), [])
+
+    def test_expired_operator_request_is_denied(self):
+        nav = Navigator()
+        nav._handle_control_command(self.envelope(action="start", ts=time.time() - 2))
+        self.assertFalse(nav.active)
+        self.assertEqual(self.motion_calls("move"), [])
+
+    def test_disarmed_configuration_does_not_activate_navigation(self):
+        nav = Navigator()
+        self.safety.update(state="DISARMED", can_move=False)
+        nav._handle_control_command({"action": "config", "config": {"fwd_speed": 0.2, "strategy": "AVOID"}})
+        self.assertEqual(nav.fwd_speed, 0.2)
+        self.assertFalse(nav.active)
+        self.assertEqual(self.motion_calls("move"), [])
+
+    def test_armed_configuration_is_denied(self):
+        nav = Navigator()
+        initial = nav.fwd_speed
+        nav._handle_control_command({"action": "config", "config": {"fwd_speed": 0.2}})
+        self.assertEqual(nav.fwd_speed, initial)
 
 
 if __name__ == "__main__":

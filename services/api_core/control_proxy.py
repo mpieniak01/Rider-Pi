@@ -164,37 +164,10 @@ def _validate_control_payload(p: dict[str, Any]) -> tuple[str, float, float]:
 
 
 def control_proxy_core() -> tuple[dict[str, Any], int]:
-    """Interpret control command and forward to the motion bridge."""
-    data = request.get_json(force=False, silent=True) or {}
+    """Aliases HTTP use the same executor gate; no separate bridge authorization."""
+    from services.control_commands import submit_control
 
-    # 1) Lokalna walidacja – BEFORE any forward
-    try:
-        dir_, v, t = _validate_control_payload(dict(data))  # kopia, bo modyfikujemy aliasy
-    except BadRequest as e:
-        return {"ok": False, "error": str(e)}, 400
-
-    # 2) Delegacja po walidacji:
-    #    - 'stop' → GET /api/stop
-    #    - 'move' → GET /api/move?dir=&v=&t=[&w=]
-    cmd = (str(data.get("cmd") or data.get("action") or "")).lower().strip()
-    if not cmd and "dir" in data:
-        cmd = "move"
-
-    if cmd == "stop" or data.get("stop") is True:
-        try:
-            return _proxy_get("/api/stop", None)
-        except Exception as e:  # network errors
-            return {"ok": False, "error": f"proxy_stop_failed: {e}"}, 502
-
-    # move:
-    qs = {"dir": dir_, "v": v, "t": t}
-    if "w" in data:
-        qs["w"] = data["w"]  # w nie walidujemy, zgodnie z kontraktem (backward-compat)
-
-    try:
-        return _proxy_get("/api/move", qs)
-    except Exception as e:  # network errors
-        return {"ok": False, "error": f"proxy_move_failed: {e}"}, 502
+    return submit_control(request.get_json(silent=True) or {})
 
 
 def control_proxy_handler():
@@ -210,18 +183,12 @@ def control_proxy_handler():
 
 
 def proxy_move_get():
-    """GET compatibility wrapper for /api/move."""
-    try:
-        body, code = _proxy_get("/api/move", request.args.to_dict(flat=False))
-    except Exception as e:  # network errors
-        body, code = {"ok": False, "err": f"proxy_move_failed: {e}"}, 502
-    return jsonify(body), code
+    """GET is read-only; actuator commands require explicit POST metadata."""
+    return jsonify({"ok": False, "error": "actuator_requires_post_with_generation"}), 405
 
 
 def proxy_stop_get():
-    """GET compatibility wrapper for /api/stop."""
-    try:
-        body, code = _proxy_get("/api/stop", None)
-    except Exception as e:  # network errors
-        body, code = {"ok": False, "err": f"proxy_stop_failed: {e}"}, 502
+    from services.control_commands import submit_control
+
+    body, code = submit_control({"action": "stop"})
     return jsonify(body), code

@@ -98,14 +98,8 @@ smoke() {
 }
 
 flags_cycle() {
-  echo "== before ==";            $CURL "$BASE/api/flags" | pp
-  echo "== enable motion ==";     $CURL -X POST "$BASE/api/flags/motion.enable/on" | pp
-                                  $CURL "$BASE/api/flags" | pp
-  echo "== estop on ==";          $CURL -X POST "$BASE/api/flags/estop.on/on" | pp
-                                  $CURL "$BASE/api/flags" | pp
-  echo "== cleanup ==";           $CURL -X POST "$BASE/api/flags/estop.on/off" | pp
-                                  $CURL -X POST "$BASE/api/flags/motion.enable/off" | pp
-                                  $CURL "$BASE/api/flags" | pp
+  echo "== observed safety state (read-only) =="
+  $CURL "$BASE/api/control/state" | pp
 }
 
 latency() {

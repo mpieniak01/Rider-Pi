@@ -182,7 +182,7 @@ class FeatureManager:
         self.registry = registry or DEFAULT_REGISTRY
         self.runner = runner or systemd_ctrl.run_unit_action
         self.status_fn = status_fn or systemd_ctrl.is_active
-        self.publisher = publisher or bus.BusPub()
+        self.publisher = publisher
         self.aliases = aliases or DEFAULT_ALIASES
         self._preview_autostart = False
         self._framefeed_autostart = False
@@ -202,6 +202,8 @@ class FeatureManager:
 
     def _publish_tracking_mode(self, mode: str) -> None:
         """Publikuj zmianę trybu śledzenia (Follow Me)."""
+        if self.publisher is None:
+            self.publisher = bus.BusPub()
         self.publisher.publish(bus.TOPIC_TRACKING_MODE_SET, {"mode": mode}, add_ts=True)
 
     def _ensure_preview(self, feature: FeatureDefinition) -> list[dict]:

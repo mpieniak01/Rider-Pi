@@ -20,8 +20,8 @@
 - [**menu.md**](menu.md) — menu nawigacyjne (dema, autonomia, teleop)
 
 ### Ruch i bezpieczeństwo
-- [**motion.md**](motion.md) — bridge ruchu: motion.cmd → XGO adapter
-- [**safety.md**](safety.md) — emergency stop (E-STOP)
+- [**motion.md**](motion.md) — command paths, executors, ramps and command replacement
+- [**safety.md**](safety.md) — physical robot operation, actual guards and verification commands
 
 ### Demonstracje
 - [**demos.md**](demos.md) — gotowe demonstracje (trajektorie, lemniskata)

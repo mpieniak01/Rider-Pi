@@ -3,7 +3,7 @@
 ---
 > **Boot is critical:** application work preserves boot, network, SSH/getty and graphics startup. Do not run broad systemd synchronization or vendor boot scripts during a panel update. See [deployment](docs/DEPLOYMENT.md).
 
-**Goal:** deliver small, safe increments that work on RPi. Respect existing interfaces. Don't install new dependencies. Keep energy/CPU usage low.
+**Goal:** deliver safe increments that work on RPi. Respect existing interfaces and keep energy/CPU usage low. Follow the [environment policy](docs/ENVIRONMENT_POLICY.md).
 
 ---
 
@@ -21,7 +21,8 @@
 
 **You must not:**
 - change pins/hardware or `systemd/` units except those listed in `scripts/systemd-sync.sh`,
-- add dependencies from outside repo (no online `pip install`),
+- install packages ad hoc on the robot; device runtime changes require a separate plan,
+- install globally in Ubuntu or into Venom/Rider-PC; fill declared Rider-Pi WSL gaps in its existing `.venv` according to the environment policy,
 - run long-lived daemons outside `systemd`,
 - send telemetry/exfiltration.
 
@@ -32,9 +33,12 @@
 ## 2) Runtime Environment
 
 - **Platform:** Raspberry Pi (Debian 11/Bullseye), **Python 3.9**.
-- **Packages:** only what's in repo and installed via `make setup`.
+- **Pi packages:** dependencies required by the selected profile, without an automatic test/dev installation.
+- **WSL:** reuse the existing Rider-Pi `.venv` for worktrees; use `config/agent/requirements-wsl.txt` and the pip cache. `pyzmq` is required for BUS. A WSL package gap is not a robot limitation.
 - **Hardware I/O:**
-  - UART `/dev/ttyAMA0` – exclusively via *Motion Bridge*.
+  - UART `/dev/ttyAMA0` – intended single owner for movement and reads.
+    Check ownership before starting a component; see [motion architecture](docs/apps/motion.md).
+    Do not open a second adapter on an occupied UART.
   - LCD ILI9xx – via `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), no direct SPI-write elsewhere.
   - LCD mounting is sideways on this robot. Preserve its orientation and the Face
     compensation `FACE_LCD_ROTATE=270`. Splash selects `SPLASH_ROTATE`, then `PREVIEW_ROT`
@@ -45,13 +49,14 @@
 ## 3) Interfaces We Don't Break (Contracts)
 
 ### HTTP API (8080)
-- `GET /healthz` – health check.
-- `POST /api/control` – `{action:"move|stop|turn", ...}` (time and range validation).
-- `POST /api/chat/*` – voice/chat integration.
-- File serving from `data/`, `snapshots/`.
+- GET /healthz: health; GET /api/control/state and /api/safety: gate v1 and server_time.
+- POST /api/control: actuators require request_id/source/generation/seq/ts/TTL.
+- POST /api/safety: explicit plan/consent for ARM/clear; STOP/E-Stop always available.
+- POST /api/chat/* and file-serving interfaces remain available.
 
 ### BUS (ZMQ 5555/5556)
-- Example topics: `motion.move|stop|state`, `vision.person|face|motion`, `voice.state`, `face.state`.
+- Commands: motion.command; state/confirmation: motion.state, motion.ack.
+- Legacy actuator topics require the same envelope. Passive tracking cannot authorize motion.
 
 ### Face Renderer
 - `apps/draw/face_primitives.py: draw_face(canvas, cfg, model, guide=False, quality="fast")` – **don't change signature**.
@@ -104,18 +109,33 @@ git push -u origin codex/42-pupil-drift-tuning
 
 ## 6) Testing
 
+
+### Test categories — binding rule
+
+- **Automatic:** software tests with mocks/simulation isolated from the real
+  robot and its command bus. They must not arm the device.
+- **Hardware without movement:** e.g. camera, LCD or telemetry reads; a separate
+  scope with confirmation that neither autonomy nor actuators are started.
+- **Movement/actuators:** driving, turning, height, balance, actions and any
+  scenario that can move the robot — manual tests only after explicit operator
+  consent for the specific plan. Never trigger these through automatic
+  pytest/E2E/CI, general diagnostics, deployment, schedules or opening a panel.
+  Permission for cameras, service startup or deployment is not movement consent.
+
+Consent for one attempt does not arm later tests. Before an attempt, the operator
+confirms space, surface, cable and stopping procedure. Diagnostics must not
+clear E-Stop or enable movement to make a test work.
 - **Quick single-tests** (face examples):
 ```bash
 pytest -q tests/test_renderer_basics.py::test_basic_frame_renders_and_pupils_visible
 pytest -q tests/test_pupil_drift.py::test_pupil_drift_changes_bbox
 pytest -q tests/test_blink_shift_coupling.py::test_blink_can_trigger_look_when_coupling_enabled
 ```
-- **E2E REST**:
+- **REST read without movement**:
 ```bash
 curl -s http://localhost:8080/healthz | jq .
-curl -s -X POST http://localhost:8080/api/control -H 'Content-Type: application/json' \
-  -d '{"action":"move","vx":0.4,"yaw":0,"duration":0.2}'
 ```
+- Motion tests require prepared hardware and operator consent (section 9).
 - **BUS spy:** `python3 scripts/dev_bus-sub.py motion`
 - **LCD/PNG demo (face):**
 ```bash
@@ -169,15 +189,33 @@ ruff format
 
 ## 9) Security and Validation
 
-- Validate `/api/control`: only `move|stop|turn` allowed.
+- Validate the current `/api/control` contract and validate again at the executor.
 - `SAFE_MAX_DURATION` and `MIN_CMD_GAP` – enforce time and frequency limits.
 - When in doubt – **don't execute**; return error and log with parameter suggestion.
+
+### Physical robot during development
+
+- The robot may be connected to a power cable. Treat it as unprepared for movement
+  until the operator confirms readiness. Describe intended movement/duration/speed,
+  then obtain confirmation of space, surface and safe cable routing.
+- Driving, turning, height and balance are physical actions. For panel/API changes
+  use reads and mocks in the existing local WSL environment.
+- Diagnostics must not arm movement or clear E-Stop. Read test/demo effects before
+  running it; some scripts change guards.
+- `MOTION_ENABLE=0`, `DRY_RUN`, S0/S11 labels and `make stop-all` do not confirm
+  a global guard. Deployment preview does not disarm executors.
+- Account for acceleration, inertia and braking distance. Ramped ordinary STOP
+  and latched emergency STOP have different purposes. Never replay pending
+  movement after rearming. See current gaps in [safety](docs/apps/safety.md).
 
 ---
 
 ## 10) Energy Efficiency / Performance
 
 - Vision/Camera – **OFF by default**; enable only when needed.
+- Start voice, tracking and navigation on demand for a specific scenario.
+  Check actual processes afterward: stopping a target may leave shared services
+  running. Reading battery telemetry is not an automatic movement guard.
 - LCD push – use fast-path RAW RGB565 where available.
 - Avoid active loops; prefer timers and fixed timing.
 

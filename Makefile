@@ -3,13 +3,16 @@
 PY      ?= /usr/bin/python3
 SUDO    ?= sudo
 ROOT    ?= $(CURDIR)
+# All worktrees reuse the primary checkout's existing WSL virtualenv.
+TEST_PY ?= $(abspath $(shell git rev-parse --git-common-dir)/..)/.venv/bin/python
+TEST_ARGS ?= -q
 
 # Domyślne LCD ENV (możesz nadpisać przy wywołaniu: FACE_LCD_ROTATE=270 make lcd-on)
 FACE_LCD_ROTATE ?= 270
 FACE_LCD_SPI_HZ ?= 32000000
 
 # Aktualny zestaw usług (repo-first systemd)
-SYSTEMD_SERVICES = rider-broker.service rider-api.service rider-vision.service camera-capture@raw.service
+SYSTEMD_SERVICES = $(filter-out rider-splash.service rider-wifi-unblock.service,$(notdir $(wildcard $(ROOT)/systemd/*.service)))
 
 # Provider wyboru backendu głosowego:
 # - openai (domyślnie)
@@ -55,10 +58,11 @@ help:
 	@echo "  make api              # uruchom API (foreground)"
 	@echo "  make up               # restart broker+api (systemd)"
 	@echo "  make stop-all         # zatrzymaj wszystkie usługi Rider-Pi"
-	@echo "  make safemode         # tryb awaryjny (kill vendor, stop, LCD off, LED off)"
+	@echo "  make safemode         # zatrzaśnij E-Stop i wymagaj ACK wykonawcy"
 	@echo ""
 	@echo "═══ System Status & Logs ═══"
-	@echo "  make status           # status broker+api+vision"
+	@echo "  make status           # stan usług aplikacji i bramy ruchu"
+	@echo "  make safety-status    # tylko odczyt stanu bramy, bez SDK"
 	@echo "  make status-all       # status wszystkich usług rider-*"
 	@echo "  make logs-broker      # logi brokera"
 	@echo "  make logs-api         # logi API"
@@ -160,16 +164,19 @@ up:
 	@$(SUDO) systemctl restart rider-broker.service rider-api.service
 
 stop-all:
-	-@$(SUDO) systemctl stop $(SYSTEMD_SERVICES) || true
+	@$(PY) $(ROOT)/scripts/sys_emergency-stop.py stop
+	@$(SUDO) systemctl stop $(SYSTEMD_SERVICES)
 
 status:
-	@systemctl --no-pager --full status rider-broker.service | sed -n '1,20p'
-	@systemctl --no-pager --full status rider-api.service    | sed -n '1,20p'
-	@systemctl --no-pager --full status rider-vision.service | sed -n '1,20p'
-	@systemctl --no-pager --full status camera-capture@raw.service | sed -n '1,20p'
+	@systemctl --no-pager show $(SYSTEMD_SERVICES) --property=Id,LoadState,ActiveState,SubState
+	@$(MAKE) safety-status
+
+.PHONY: safety-status
+safety-status:
+	@$(PY) $(ROOT)/scripts/sys_emergency-stop.py status
 
 status-all:
-	@systemctl list-units --type=service --all | grep -E 'rider-(broker|api|vision)|camera-capture@'
+	@$(MAKE) status
 
 logs-broker:
 	@journalctl -u rider-broker.service -n 120 --no-pager
@@ -202,11 +209,7 @@ logs-clean:
 # SAFE MODE
 .PHONY: safemode face-kill lcd-off-safe
 safemode:
-	-@$(ROOT)/scripts/sys_camera-kill.sh || true
-	-@$(MAKE) face-kill
-	-@$(SUDO) systemctl stop $(SYSTEMD_SERVICES) || true
-	-@$(MAKE) lcd-off
-	-@$(PY) $(ROOT)/scripts/sys_led-control.py off || true
+	@$(PY) $(ROOT)/scripts/sys_emergency-stop.py on
 
 # zabij wszystko co może rysować na LCD
 face-kill:
@@ -486,11 +489,10 @@ lcd-off-hard:
 # ───────────────────────────────────────────────
 # TESTS & BENCH
 .PHONY: test bench
-TEST_PY ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PY))
-TEST_ARGS ?= -q tests
 test:
-	@echo "Testy Rider-Pi..."
-	@$(TEST_PY) -m pytest $(TEST_ARGS)
+	@test -x "$(TEST_PY)" || { echo "Missing Rider-Pi WSL venv; see docs/ENVIRONMENT_POLICY.md"; exit 1; }
+	@echo "Izolowane testy programowe Rider-Pi; bez fizycznych aktuatorów..."
+	@"$(TEST_PY)" -m pytest $(TEST_ARGS)
 
 bench:
 	bash scripts/diag_bench-detect.sh 10
@@ -532,10 +534,21 @@ google-logs:
 # HEALTH CHECK (API na 8080)
 .PHONY: health
 health:
-	@curl -fsS http://127.0.0.1:8080/healthz && echo || true
+	@curl -fsS http://127.0.0.1:8080/healthz
 
 # Agent targets (do not remove)
 -include config/agent/Makefile.agent
+
+.PHONY: test-env lint
+test-env:
+	@test -x "$(TEST_PY)" || { echo "Missing Rider-Pi WSL venv; see docs/ENVIRONMENT_POLICY.md"; exit 1; }
+	"$(TEST_PY)" -m pip check
+	"$(TEST_PY)" -m ruff --version
+
+lint:
+	@test -x "$(TEST_PY)" || { echo "Missing Rider-Pi WSL venv; see docs/ENVIRONMENT_POLICY.md"; exit 1; }
+	"$(TEST_PY)" -m ruff check .
+	"$(TEST_PY)" -m ruff format --check .
 
 # ───────────────────────────────────────────────
 # SYSTEMD SYNC

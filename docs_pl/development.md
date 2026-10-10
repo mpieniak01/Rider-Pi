@@ -51,6 +51,10 @@ Przed commitem sprawdź `git diff --cached --name-status` oraz
 
 ## Środowisko Pi i kontrole
 
+Stosuj [politykę środowisk i testów](POLITYKA_SRODOWISK.md): deklarowane braki
+WSL uzupełniaj w istniejącym `.venv` Rider-Pi. Pełne testy automatyczne działają
+w WSL/CI, a urządzenie zachowuje zależności wybranych profili wykonawczych.
+
 Runtime obrazu producenta korzysta z Pythona 3.9 na Raspberry Pi OS / Debian.
 Nowszy interpreter WSL nie potwierdza zgodności z tym środowiskiem.
 Przeczytaj [instrukcje agenta](../AGENT.md) i [ustalenia pracy](WORKING-AGREEMENTS.md).

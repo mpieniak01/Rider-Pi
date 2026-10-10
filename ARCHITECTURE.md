@@ -41,11 +41,14 @@ apply a global display or boot rotation when changing one screen.
   - Exposes health (`/healthz`), control (`/api/control`), chat, status, serves assets from `data/`, `snapshots/`.
   - Proxies to internal services via bus (ZMQ) and/or local calls.
 
-### 2) Motion / Web Bridge
-
-- `` (port **8081**) — simplified web interface → motion (optional).
-- **Motion Bridge** — the only component with access to **UART** `` (actuator control).
-  - Receives commands from the bus (e.g., `motion.move`, `motion.stop`), publishes telemetry `motion.state`.
+### 2) Motion and safety
+- API :8080 / optional bridge :8081 delegate to services.safety_contract.
+- motion.command reaches one apps.motion.executor gate and UART owner.
+- SDK construction suppresses reset/action255; legacy bridges do not own hardware.
+- sensor-reader is a BUS projection without SDK/UART.
+- Gate v1: DISARMED/ARMED/ESTOP; original consent and generation/seq/ts/TTL.
+- SDK ACK is not physical completion. See [motion](docs/apps/motion.md) and [safety](docs/apps/safety.md).
+- [Environment policy](docs/ENVIRONMENT_POLICY.md): minimal Pi runtime, full tests in WSL/CI.
 
 ### 3) Vision / Camera
 
@@ -133,7 +136,7 @@ apply a global display or boot rotation when changing one screen.
 | Voice Web API (optional)     | HTTP     | **8092**        | Local TTS/ASR (Piper/Vosk) via HTTP                    |
 | ZMQ PUB/SUB                  | ZMQ      | **5555 / 5556** | Internal message bus                                   |
 | Voice sock                   | UNIX     | ``              | Voice communication                                    |
-| UART                         | Serial   | ``              | Actuator control (exclusively via Motion Bridge)       |
+| UART                         | Serial   | `/dev/ttyAMA0`   | Movement/sensors; single owner is the intended contract |
 
 > By default, **no** direct external ports except 8080/8081.
 
@@ -147,14 +150,14 @@ apply a global display or boot rotation when changing one screen.
                               └─> file serving from data/, snapshots/
 
 Vision/Camera ──> snapshots/, data/ (+ events on BUS) ──> API/Clients
-Motion Bridge  ──(bus)──> UART /dev/ttyAMA0 ──> actuators
+Selected motion backend ──> UART /dev/ttyAMA0 ──> actuators
 Voice/Chat     ──(bus + sock)──> responses/state ──> API
 Face (Animator→Renderer→LCD) ──> preview via API or directly on LCD
 ```
 
 **BUS (ZMQ)** — example channels:
 
-- `motion` (`motion.move`, `motion.stop`), `motion.state`
+- `cmd.move`/`cmd.stop`, alternative `motion`, legacy `motion.cmd`; `motion.state`
 - `cmd.balance` — robot stabilization control
 - `cmd.height` — height/suspension control
 - `vision.face`, `vision.person`, `vision.motion`, `vision.obstacle`
@@ -169,7 +172,7 @@ Face (Animator→Renderer→LCD) ──> preview via API or directly on LCD
 - `navigator.map.request`, `mapper.map.data` — map exchange (Stage 4: return to base)
 - `navigator.return_home.start` — start return-to-base sequence (Stage 4)
 - `robot.pose` — estimated robot position (x, y, theta) from odometry module (Reconnaissance Stage 2)
-- `imu.data` — raw IMU sensor data (roll, pitch, yaw) published by motion bridge
+- `imu.data` — raw IMU data (roll, pitch, yaw), including `sensor-reader`
 
 ---
 
@@ -224,7 +227,7 @@ Face (Animator→Renderer→LCD) ──> preview via API or directly on LCD
 ### API (HTTP 8080)
 
 - `/healthz` — overall system health.
-- `/api/control` — motion: `{"action":"move|stop|turn", ...}` (validated).
+- `/api/control` — current proxy: `{"cmd":"move|stop", "dir":..., "v":..., "t":...}`.
 - `/api/chat/*` — conversation / assistance (redirect to voice/chat components).
 - `/files/*` — file serving from `data/`, `snapshots/` (latest frames, PNG).
 
@@ -244,7 +247,7 @@ Face (Animator→Renderer→LCD) ──> preview via API or directly on LCD
 1. `rider-api.service` (HTTP 8080) → ready `/healthz`.
 2. ZMQ Broker and subscribers (Vision/Voice/Motion/Face).
 3. Vision/Camera (if enabled) → publishes events, saves frames.
-4. Motion Bridge → bus listener, access to `/dev/ttyAMA0`.
+4. Selected motion executor and sensor reader; verify UART ownership and guards.
 5. Face → animations on LCD (if device present).
 
 > Services are independent — restart of one should **not** block others.
@@ -253,7 +256,9 @@ Face (Animator→Renderer→LCD) ──> preview via API or directly on LCD
 
 ## Responsibility Boundaries and Security
 
-- **Motion Control**: only via Motion Bridge; `action` validation, time and frequency limits.
+- **Motion Control**: intended shared actuator gate; current executor/legacy guards
+  differ. See [safety](docs/apps/safety.md). Development on a power cable requires
+  operator readiness confirmation before any physical motion test.
 - **Hardware**: UART and LCD exclusively via dedicated modules.
 - **External Access**: via API 8080 (rest locally).
 - **Power**: Vision/Camera disabled by default (activated only when needed).
