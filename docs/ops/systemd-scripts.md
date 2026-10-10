@@ -309,7 +309,7 @@ Parametry przekazywane przez zmienne środowiskowe z pliku unit:
 
 ## Zobacz także
 
-- [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md) — standardy konfiguracji
+- [docs/CONFIG_POLICY.md](../config/POLICY.md) — standardy konfiguracji
 - Katalog `systemd/` w repo — definicje usług
 
 ---

@@ -185,5 +185,5 @@ tests/
 └── test_simulator_init.py   # Headless test
 
 demo_simulator.sh            # Demo script
-IMPLEMENTATION_SUMMARY.md    # Technical documentation
+docs/README.md               # Project documentation index
 ```

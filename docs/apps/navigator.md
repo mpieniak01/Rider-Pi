@@ -223,7 +223,7 @@ RIDER_SIMULATOR=1 python3 apps/navigator/main.py
 
 ## Related Documentation
 
-- [Architecture](../ARCHITECTURE.md#4-navigator-autonomous-exploration)
+- [Architecture](../../ARCHITECTURE.md#4-navigator-autonomous-exploration)
 - [Odometry](odometry.md) — Position tracking
 - [Mapper](mapper.md) — SLAM mapping
 - [Vision](vision.md) — Obstacle detection

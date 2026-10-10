@@ -128,7 +128,7 @@ pytest tests/test_mapper_integration.py -v
 
 ## Related Documentation
 
-- [Architecture](../ARCHITECTURE.md#4b-mapper-slam-mapping)
+- [Architecture](../../ARCHITECTURE.md#4b-mapper-slam-mapping)
 - [Odometry](odometry.md) — Position tracking (Stage 2)
 - [Navigator](navigator.md) — Path planning with map (Stage 4)
 - [Vision](vision.md) — Depth estimation for mapping

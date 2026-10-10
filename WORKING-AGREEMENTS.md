@@ -1,6 +1,8 @@
 # Working Agreements
 
 ---
+> **Boot is critical:** application work preserves boot, network, SSH/getty and graphics startup. Do not run broad systemd synchronization or vendor boot scripts during a panel update. See [deployment](docs/DEPLOYMENT.md).
+
 **Goal:** deliver small, safe increments that work on RPi. Respect existing interfaces. Don't install new dependencies. Keep energy/CPU usage low.
 
 ---
@@ -13,6 +15,7 @@
 - `web/**` – web resources.
 - `tests/**` – unit/integration tests.
 - `config/**` – configuration files only.
+- `docs/**`, `docs_pl/**`, root guides and documentation rules.
 - `Makefile`, `pytest.ini`, `pyproject.toml`.
 
 **You must not:**
@@ -27,7 +30,7 @@
 
 ## 2) Runtime Environment
 
-- **Platform:** Raspberry Pi (Debian/Bookworm), **Python 3.9**.
+- **Platform:** Raspberry Pi (Debian 11/Bullseye), **Python 3.9**.
 - **Packages:** only what's in repo and installed via `make setup`.
 - **Hardware I/O:**
   - UART `/dev/ttyAMA0` – exclusively via *Motion Bridge*.
@@ -208,3 +211,7 @@ python3 scripts/dev_face-lcd-direct.py --expr neutral --secs 4 --stats
 - [ ] `ARCHITECTURE.md` updated if services/ports changed.
 - [ ] Logs with prefixes.
 - [ ] Comments in commits and link to Issue.
+
+## Documentation
+
+Follow the [documentation policy](docs/DOCUMENTATION_POLICY.md). Task plans and reports stay local.

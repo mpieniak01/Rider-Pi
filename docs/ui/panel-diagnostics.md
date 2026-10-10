@@ -21,16 +21,10 @@ with `available=false`; detached HEAD is identified explicitly. Commit copying a
 works over LAN HTTP through the legacy clipboard fallback. On small screens the footer
 wraps and follows normal document flow.
 
-Verification includes API contracts and browser checks for four themes, four screen
-widths, both languages, slow/failed API responses, and version display on every page.
-See the [dated implementation and Pi/PC route audit](../../docs_pl/ui/panel-diagnostyka-20261010.md)
-for results, screenshots, existing baseline test failures, and missing PC routes.
-The changes have not been deployed to the robot.
+When verifying changes, cover API contracts, four themes, multiple screen
+widths, both languages, slow/failed responses and the footer on every page.
+Store individual audit results locally.
 
-```bash
-PYTHONPATH=. RIDER_PI_CI=1 RIDER_PI_MOCK_HW=1 pytest -q tests/test_version_api.py tests/test_panel_route_contract.py tests/test_web_routes.py tests/test_services_dashboard_api.py
-```
-
-`tests/test_dashboard_browser.py` optionally uses an existing Playwright environment.
-Set `RIDER_TEST_BROWSER` to an installed Chromium executable if necessary. No browser
-dependency or new CI job is required by this change.
+![Desktop diagnostics](../assets/ui/diagnostics-desktop.png)
+![Mobile diagnostics](../assets/ui/diagnostics-mobile.png)
+![Mobile version footer](../assets/ui/version-footer-mobile.png)

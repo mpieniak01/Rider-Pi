@@ -2,7 +2,7 @@
 
 > Indeks dokumentacji wszystkich skryptów operacyjnych (obecnie w katalogu `scripts/`)
 
-> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` z ujednoliconą konwencją nazewnictwa. Zobacz [../scripts/README.md](../scripts/README.md) dla szczegółów migracji.
+> **Uwaga:** Skrypty zostały przeniesione z `ops/` i `tools/` do `scripts/` z ujednoliconą konwencją nazewnictwa. Zobacz [Guide](../scripts/README.md) dla szczegółów migracji.
 
 ## Spis dokumentów
 
@@ -18,7 +18,7 @@
 ## Szybki indeks skryptów
 
 > Wszystkie skrypty znajdują się teraz w katalogu `scripts/` z prefiksami kategorii.  
-> Pełna lista i konwencja nazewnictwa: [scripts/README.md](../scripts/README.md)
+> Pełna lista i konwencja nazewnictwa: [Guide](../scripts/README.md)
 
 ### Skrypty głosowe (prefiks `sys_`)
 - `sys_voice-run.sh` — uruchamianie aplikacji głosowej (legacy z ENV)
@@ -178,7 +178,7 @@ Większość skryptów loguje do:
 - [config/POLICY.md](../config/POLICY.md) — polityka konfiguracji
 - [docs/apps/](../apps/) — moduły aplikacyjne
 - [docs/config/](../config/) — parametry konfiguracji
-- [scripts/README.md](../scripts/README.md) — pełna dokumentacja katalogu scripts/
-- [../archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](../archive/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md) — szczegóły migracji ops/→scripts/
+- [Guide](../scripts/README.md) — pełna dokumentacja katalogu scripts/
+- [Guide](../scripts/README.md) — szczegóły migracji ops/→scripts/
 
 **Ostatnia aktualizacja:** 2025-10 (po migracji do scripts/)

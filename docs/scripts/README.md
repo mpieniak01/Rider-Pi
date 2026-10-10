@@ -95,7 +95,7 @@ Detailed mapping of moves can be found in **`SCRIPTS_MIGRATION_SUMMARY.md`** in 
 ## Related Documentation
 
 - `docs/ops/` – detailed descriptions of operational scripts  
-- `docs/archive/SCRIPTS_MIGRATION_SUMMARY.md` – complete migration information  
+- [Script guide](README.md) – categories and naming conventions
 - `Makefile` – build system integration  
 
 ---

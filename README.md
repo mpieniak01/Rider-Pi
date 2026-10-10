@@ -17,6 +17,12 @@
   </a>
 </p>
 
+## Project documentation
+
+Start with [project vision](PROJECT.md), [development](docs/development.md),
+[deployment](docs/DEPLOYMENT.md) and the [documentation policy](docs/DOCUMENTATION_POLICY.md).
+Rider-Pi executes hardware commands and local applications; Rider-PC adds operator
+controls and AI processing. Venom integration is planned for a later stage.
 
 ## Overview
 
@@ -26,7 +32,7 @@ Rider-Pi is a comprehensive robotics platform built on Raspberry Pi, featuring:
 - **Vision System** - Real-time object detection, face tracking, and depth estimation
 - **Voice Interaction** - Voice commands, text-to-speech, and conversational AI integration
 - **Expressive Face** - Animated LCD display with emotions and reactions
-- **Motion Control** - Quadruped movement with balance and height control
+- **Motion Control** - Two-wheeled movement with balance and height control
 - **Web Interface** - Comprehensive web UI for control and monitoring
 - **Modular Architecture** - Event-driven design using ZMQ message bus
 

@@ -13,6 +13,7 @@
 - `web/**` – zasoby webowe.
 - `tests/**` – testy jednostkowe/integracyjne.
 - `config/**` – jedynie pliki konfiguracyjne.
+- `docs/**`, `docs_pl/**`, główne przewodniki i reguły dokumentacji.
 - `Makefile`, `pytest.ini`, `pyproject.toml`.
 
 **Nie wolno:**
@@ -27,7 +28,7 @@
 
 ## 2) Środowisko runtime
 
-- **Platforma:** Raspberry Pi (Debian/Bookworm), **Python 3.9**.
+- **Platforma:** Raspberry Pi (obraz producenta, Debian 11/Bullseye), **Python 3.9**.
 - **Pakiety:** tylko to, co w repo i instalowane przez `make setup`.
 - **I/O sprzetowe:**
   - UART `/dev/ttyAMA0` – wyłącznie przez *Motion Bridge*.
@@ -209,3 +210,7 @@ python3 scripts/dev_face-lcd-direct.py --expr neutral --secs 4 --stats
 - [ ] Logi z prefiksami.
 - [ ] Komentarz w commitach i link do Issue.
 
+## Dokumentacja i rozruch
+
+Stosuj [politykę dokumentacji](POLITYKA_DOKUMENTACJI.md). Plany i raporty są lokalne.
+Przy pracach aplikacyjnych zachowuj rozruch, sieć i SSH; zobacz [wdrożenie](WDROZENIE.md).

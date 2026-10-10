@@ -1,5 +1,7 @@
 # Integracja z providerem PC / Offload
 
+> Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Venom jest planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
+
 Jedyna aktualna referencja kontraktu pomiędzy urządzeniem Rider-Pi a towarzyszącym stosem Rider-PC.  
 Dokument uzupełnia zewnętrzne notatki projektowe w repozytorium Rider-PC (zob.
 [`Rider-Pc/docs/RIDER_PI_ARCH.md`](https://github.com/mpieniak01/Rider-Pc/blob/main/docs/RIDER_PI_ARCH.md) oraz
@@ -110,5 +112,4 @@ Wszystkie tematy działają na istniejącym brokerze (`services/broker.py`, port
 ## 9. Dokumenty powiązane
 
 - [`ui/control.md`](ui/control.md) — opisuje kartę Provider Control w interfejsie WWW.
-- [`../docs/AI_MODE_SWITCHER.md`](../docs/AI_MODE_SWITCHER.md) — opis legacy AI mode switcher; rejestr providerów korzysta z niego do routingu per domena.
-- [`archive/_todo/rider_pi_device_architecture.md`](archive/_todo/rider_pi_device_architecture.md) — stary szkic; bieżący dokument go zastępuje.
+- Dawny szkic `rider_pi_device_architecture.md` nie jest obecny w tym checkoutcie; bieżący kontrakt zastępuje jego historyczne odwołania.

@@ -150,8 +150,8 @@ The guards run in CI via pre-commit hooks. PRs will fail if:
 ## Questions?
 
 See:
-- [docs/archive/voice-refactoring-summary.md](archive/voice-refactoring-summary.md) - Complete PR#1–PR#5 refactoring summary
-- [docs/apps/voice.md](apps/voice.md) - Voice module architecture
+- [Guide](apps/voice.md) - Complete PR#1–PR#5 refactoring summary
+- [Guide](apps/voice.md) - Voice module architecture
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Overall system architecture
-- [PR4_SUMMARY.md](archive/_pr_summaries/PR4_SUMMARY.md) - PR-4 transport consolidation details
+- [Guide](apps/voice.md) - PR-4 transport consolidation details
 

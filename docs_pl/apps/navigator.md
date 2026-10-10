@@ -541,4 +541,4 @@ If an obstacle is detected while returning home:
 - [ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
 - [Epic Issue](https://github.com/mpieniak01/Rider-Pi/issues/XXX) - Full Rekonesans roadmap
 - [Vision Module](vision.md) - Obstacle detection system
-- [Motion Module](../apps/motion/main.py) - Motion control system
+- [Motion Module](../../apps/motion/main.py) - Motion control system

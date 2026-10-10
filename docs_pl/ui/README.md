@@ -2,7 +2,7 @@
 
 This directory contains documentation for the Rider-Pi web user interfaces.
 
-Aktualny stan i weryfikacja: [Diagnostyka Pi, nawigacja i wersja](panel-diagnostyka-20261010.md).
+Aktualny stan i weryfikacja: [Diagnostyka Pi, nawigacja i wersja](panel-diagnostyka.md).
 
 ## Available Interfaces
 

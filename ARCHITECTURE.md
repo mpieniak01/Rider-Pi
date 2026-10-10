@@ -89,7 +89,7 @@
   - Integration: VAD, KWS, ASR, Chat, TTS; communication via bus (ZMQ) and socket ``
 - **Chat** — integration via `/api/chat/*` + state exchange on the bus.
 
-> **Detailed documentation**: `docs/modules/voice.md` — complete description of architecture, configuration, API
+> **Detailed documentation**: `docs/apps/voice.md` — complete description of architecture, configuration, API
 
 ### 6) Face
 
@@ -168,18 +168,18 @@ Face (Animator→Renderer→LCD) ──> preview via API or directly on LCD
 **PR #10 (2025-01):** Creation of `drivers/` layer
 - Moved XGO and LCD drivers from `apps/` to dedicated `drivers/` directory
 - Introduced hardware abstraction separating application logic from hardware interfaces
-- See: [docs/_pr_summaries/PR10_SUMMARY.md](docs/_pr_summaries/PR10_SUMMARY.md)
+- See: [Guide](docs/drivers/README.md)
 
 **PR #11 (2025-01):** Introduction of simulation mode
 - Added simulated driver implementations (`drivers/xgo/sim.py`, `drivers/lcd/sim.py`)
 - Introduced driver factories responding to `RIDER_SIMULATOR` variable
 - Enabled development and testing without physical hardware access
-- See: [docs/_pr_summaries/PR11_SUMMARY.md](docs/_pr_summaries/PR11_SUMMARY.md)
+- See: [Guide](docs/apps/simulator.md)
 
 **PR #13 (2025-10):** Operational scripts consolidation
 - Merged scripts from `ops/` and `tools/` directories into `scripts/`
 - Introduced unified naming convention (prefixes: `sys_`, `diag_`, `dev_`, `demo_`, `util_`)
-- See: [docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md](docs/_pr_summaries/SCRIPTS_MIGRATION_SUMMARY.md), [scripts/README.md](scripts/README.md)
+- See: [Guide](docs/scripts/README.md), [scripts/README.md](scripts/README.md)
 
 ---
 
@@ -408,7 +408,7 @@ Otherwise → file mode.
 - One transport: `apps/voice/stream/transport.py`
 
 **PR#5 (Documentation):**
-- Updated `ARCHITECTURE.md` and `docs/modules/voice.md`
+- Updated `ARCHITECTURE.md` and `docs/apps/voice.md`
 - Consistent description of new architecture
 
 ### Removed Files (Legacy)
@@ -420,7 +420,7 @@ Otherwise → file mode.
 - `apps/voice/ptt_state.py` (PR#3)
 - `apps/voice/transport.py` (PR#4)
 
-**Migration**: see `docs/modules/voice.md` → "Deprecated / Legacy Files" section
+**Migration**: see `docs/apps/voice.md` → "Deprecated / Legacy Files" section
 
 ---
 

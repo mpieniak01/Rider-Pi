@@ -16,12 +16,6 @@ The API server runs on port **8080** and provides REST endpoints for controlling
 - [Control API](control.md) - Robot movement and control
 - [Navigator API](navigator.md) - Autonomous navigation (Rekonesans mode)
 
-<!-- The following API documentation files are planned for future documentation: -->
-<!-- - [Camera API](camera.md) - Camera access and vision system -->
-<!-- - [Chat API](chat.md) - Voice and text chat interface -->
-<!-- - [Face API](face.md) - Robot face animation control -->
-<!-- - [Google Home API](google-home.md) - Google Home integration -->
-
 ### Health and Status
 - `GET /healthz` - System health check
 - `GET /api/status` - Detailed system status
@@ -129,5 +123,5 @@ Many API endpoints publish commands to the internal ZMQ message bus. See `common
 ## See Also
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md) - Overall system architecture
-- [common/bus.py](../common/bus.py) - Bus topic definitions
-- [services/api_server.py](../services/api_server.py) - API server implementation
+- [common/bus.py](../../common/bus.py) - Bus topic definitions
+- [services/api_server.py](../../services/api_server.py) - API server implementation

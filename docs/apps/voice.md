@@ -144,7 +144,7 @@ Moduł `apps/voice` przeszedł kompleksową refaktoryzację w ramach PR#1–PR#5
 
 **PR#5: Dokumentacja** (aktualizacja docs)
 - Aktualizacja `ARCHITECTURE.md` z nową sekcją "Moduł Voice — Architektura szczegółowa"
-- Rozszerzenie `docs/modules/voice.md` z sekcją "Architektura modułu"
+- Rozszerzenie `docs/apps/voice.md` z sekcją "Architektura modułu"
 - Konsolidacja informacji z PR#1–PR#4 summaries
 
 ### Statystyki refaktoryzacji
@@ -155,8 +155,6 @@ Moduł `apps/voice` przeszedł kompleksową refaktoryzację w ramach PR#1–PR#5
 - **Pliki usunięte**: 6 (ws_transport, stream_transport, svc_stream, state, ptt_state, transport)
 - **Pliki dodane**: 1 (svc_stream_runner)
 - **Testy**: 100% migracja z legacy shims, wszystkie przechodzą
-
-
 
 ---
 
@@ -275,7 +273,7 @@ barge_in = true                 # Włącz przerwania TTS
 
 ### Pliki i ENV
 
-> **Pełna dokumentacja konfiguracji i polityki sekretów:** [docs/CONFIG_POLICY.md](../CONFIG_POLICY.md)
+> **Pełna dokumentacja konfiguracji i polityki sekretów:** [docs/CONFIG_POLICY.md](../config/POLICY.md)
 
 1. Skopiuj przykładowe ENV i uzupełnij:
 
@@ -478,7 +476,6 @@ pytest -q -k voice
 **Q:** „Czy Web API można wystawić poza localhost?”\
 **A:** Tak, `--bind 0.0.0.0:8092` lub `VOICE_BIND=0.0.0.0:8092` (pamiętaj o zaporze).
 
-
 ## WM8960 (Raspberry Pi) – realtime
 - ALSA: ustaw `~/.asoundrc` z `dmix` (play) + `dsnoop` (cap) i aliasami `wm8960_out`, `wm8960_in` (16 kHz).
 - W `config/voice.toml` ustaw:
@@ -573,5 +570,4 @@ ptt_state.handle_event(PTTEvent.PTT_START)
 Automatyczne sprawdzanie w pre-commit i CI (`scripts/dev_check-legacy-imports.py`):
 - **Blokuje** importy usuniętych plików (exit code 1)
 - **Ostrzega** o importach `audio/*` (exit code 0, soft warning)
-
 
