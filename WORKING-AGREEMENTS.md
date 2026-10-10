@@ -37,7 +37,8 @@
   - UART `/dev/ttyAMA0` – exclusively via *Motion Bridge*.
   - LCD ILI9xx – via `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), no direct SPI-write elsewhere.
   - LCD mounting is sideways on this robot. Preserve its orientation and the Face
-    compensation `FACE_LCD_ROTATE=270`; camera and splash rotations are independent.
+    compensation `FACE_LCD_ROTATE=270`. Splash selects `SPLASH_ROTATE`, then `PREVIEW_ROT`
+    if unset, then Face config `splash_lcd_rotate` (default 270).
 
 ---
 

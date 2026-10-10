@@ -41,7 +41,8 @@
   - LCD ILI9xx – przez `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), bez bezpośrednich SPI-write w innych miejscach.
   - **Orientacja LCD:** ekran 2″ jest w tym urządzeniu zamontowany bokiem względem orientacji
     fabrycznej. Zachowaj ten montaż. Dla buźki pozostaw kompensację obrazu `FACE_LCD_ROTATE=270`;
-    podgląd kamery (`PREVIEW_ROT`) i splash (`SPLASH_ROTATE`) mają osobne ustawienia. Nie zmieniaj
+    splash wybiera `SPLASH_ROTATE`, przy jego braku `PREVIEW_ROT`, potem `splash_lcd_rotate`
+    z konfiguracji buźki (domyślnie 270). Zmiana obrotu kamery może więc wpływać na splash. Nie zmieniaj
     globalnego obrotu wyświetlacza przy pracy nad pojedynczym widokiem.
 
 ---

@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent if "__file__" in globals() else Pa
 
 
 def run(args, cwd=None, check=True):
+    """Run a bounded command and report its captured failure output."""
     result = subprocess.run(args, cwd=cwd, text=True, capture_output=True, timeout=90)
     if check and result.returncode:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "Command failed")
@@ -28,20 +29,24 @@ def run(args, cwd=None, check=True):
 
 
 def git(repo, *args):
+    """Run Git in the selected checkout and return trimmed output."""
     return run(["git", *args], cwd=repo).stdout.strip()
 
 
 def check_clean(repo):
+    """Refuse deployment when tracked or ordinary untracked work exists."""
     if git(repo, "status", "--porcelain", "--untracked-files=normal"):
         raise RuntimeError("Checkout has local changes; preserve them before deployment.")
 
 
 def changed_paths(repo, base, target):
+    """List every changed path, treating renames as deletion and addition."""
     output = run(["git", "diff", "--name-only", "--no-renames", "-z", base, target], cwd=repo).stdout
     return [p for p in output.split("\0") if p]
 
 
 def check_paths(paths):
+    """Reject private data and changes requiring a separate deployment scope."""
     for path in paths:
         parts = PurePosixPath(path).parts
         name = parts[-1]
@@ -61,6 +66,7 @@ def check_paths(paths):
 
 
 def check_local_files(repo, paths):
+    """Prevent new tracked paths from replacing existing local files."""
     for path in paths:
         file_path = repo / path
         tracked = run(["git", "ls-files", "--error-unmatch", "--", path], cwd=repo, check=False)
@@ -71,6 +77,7 @@ def check_local_files(repo, paths):
 
 
 def check_python(repo, target, paths):
+    """Parse changed Python blobs with the current device interpreter."""
     for path in paths:
         if not path.endswith(".py"):
             continue
@@ -81,6 +88,7 @@ def check_python(repo, target, paths):
 
 
 def check_history(repo, base, target):
+    """Validate every bundled commit, including files later removed."""
     for commit in git(repo, "rev-list", f"{base}..{target}").splitlines():
         paths = run(
             ["git", "diff-tree", "-m", "--no-commit-id", "--name-only", "-r", "-z", commit], cwd=repo
@@ -89,10 +97,12 @@ def check_history(repo, base, target):
 
 
 def read_record(path):
+    """Read an optional deployment record from the Git directory."""
     return json.loads(path.read_text()) if path.exists() else None
 
 
 def write_record(path, data):
+    """Replace a deployment record atomically with owner-only permissions."""
     temporary = path.with_suffix(".tmp")
     with temporary.open("w") as stream:
         os.chmod(temporary, 0o600)
@@ -101,6 +111,7 @@ def write_record(path, data):
 
 
 def restart_api():
+    """Restart only the API service and wait for its HTTP health endpoint."""
     run(["sudo", "-n", "systemctl", "restart", "rider-api.service"])
     for _ in range(20):
         try:
@@ -113,12 +124,14 @@ def restart_api():
 
 
 def check_api_active():
+    """Require an already active API before a deployment restarts it."""
     result = run(["systemctl", "is-active", "rider-api.service"], check=False)
     if result.returncode:
         raise RuntimeError("API is not active; restarting an inactive service requires its own scope.")
 
 
 def status(repo, record_path):
+    """Describe the checked-out revision and any recorded preview."""
     return {
         "branch": git(repo, "branch", "--show-current"),
         "commit": git(repo, "rev-parse", "HEAD"),
@@ -128,6 +141,7 @@ def status(repo, record_path):
 
 
 def preview(repo, record_path, request):
+    """Check a Git bundle and activate a reversible preview commit."""
     check_clean(repo)
     previous = read_record(record_path)
     restart_required = request["restart_api"] or bool(previous and previous["restart_api"])
@@ -183,6 +197,7 @@ def preview(repo, record_path, request):
 
 
 def rollback(repo, record_path):
+    """Restore saved main and the API when its restart was recorded."""
     check_clean(repo)
     record = read_record(record_path)
     if not record:
@@ -201,6 +216,7 @@ def rollback(repo, record_path):
 
 
 def release(repo, record_path, request):
+    """Fast-forward to expected GitHub main after checking preview contents."""
     check_clean(repo)
     previous = read_record(record_path)
     current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
@@ -240,6 +256,7 @@ def release(repo, record_path, request):
 
 
 def remote(request):
+    """Dispatch a device operation under an exclusive deployment lock."""
     repo = Path(request["repo"]).resolve()
     if Path(git(repo, "rev-parse", "--show-toplevel")).resolve() != repo:
         raise RuntimeError("Device path must be the Git checkout root.")
@@ -261,6 +278,7 @@ def remote(request):
 
 
 def ssh(env_file, request, bundle):
+    """Send source, request and bundle using the locally configured SSH password."""
     if not env_file.is_file() or env_file.stat().st_mode & 0o077:
         raise RuntimeError("SSH env file must exist with mode 600.")
     destination = run(
@@ -310,6 +328,7 @@ def ssh(env_file, request, bundle):
 
 
 def main():
+    """Build a local deployment request or handle the transmitted device request."""
     if len(sys.argv) > 1 and sys.argv[1] == "_remote":
         print(json.dumps(remote(json.loads(sys.argv[2]))))
         return

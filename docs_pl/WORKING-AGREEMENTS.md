@@ -35,7 +35,8 @@
   - UART `/dev/ttyAMA0` – wyłącznie przez *Motion Bridge*.
   - LCD ILI9xx – przez `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), bez bezpośrednich SPI-write w innych miejscach.
   - Ekran w tym robocie jest zamontowany bokiem. Zachowaj jego orientację oraz
-    kompensację buźki `FACE_LCD_ROTATE=270`; kamera i splash mają osobne obroty.
+    kompensację buźki `FACE_LCD_ROTATE=270`. Splash wybiera `SPLASH_ROTATE`, przy jego braku
+    `PREVIEW_ROT`, potem `splash_lcd_rotate` z konfiguracji buźki (domyślnie 270).
 
 ---
 

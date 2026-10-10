@@ -15,6 +15,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/dev_pi-deploy.py"
 
 class Repositories:
     def __init__(self, directory):
+        """Create isolated source, origin and device repositories with local config."""
         self.directory = directory
         self.origin = directory / "origin.git"
         self.source = directory / "source"
@@ -36,16 +37,19 @@ class Repositories:
 
     @staticmethod
     def command(repo, *args):
+        """Run Git and return its output for fixture setup and assertions."""
         result = subprocess.run(["git", *args], cwd=repo, text=True, capture_output=True, check=True)
         return result.stdout.strip()
 
     @staticmethod
     def write(repo, path, text):
+        """Write fixture content after creating its parent directories."""
         target = repo / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
 
     def candidate(self, path="web/index.html", content="preview page\n"):
+        """Commit a candidate and bundle its history relative to the fixture base."""
         self.write(self.source, path, content)
         self.command(self.source, "add", "--force", path)
         self.command(self.source, "commit", "-m", "candidate")
@@ -55,6 +59,7 @@ class Repositories:
         return target, bundle.read_bytes()
 
     def deploy(self, action, commit=None, bundle=b"", check=True):
+        """Run the exact transmitted helper source as a separate device process."""
         request = {
             "action": action,
             "repo": str(self.device),
@@ -74,6 +79,7 @@ class Repositories:
         return result.stderr.decode()
 
     def assert_base(self):
+        """Verify rollback preserved main, private config and record cleanup."""
         assert self.command(self.device, "rev-parse", "HEAD") == self.base
         assert self.command(self.device, "branch", "--show-current") == "main"
         assert (self.device / ".env").read_text() == "LOCAL_CONFIG=keep-me\n"
@@ -82,10 +88,12 @@ class Repositories:
 
 @pytest.fixture
 def repos(tmp_path):
+    """Provide independent real Git repositories for each deployment test."""
     return Repositories(tmp_path)
 
 
 def test_preview_update_rollback_and_repeat_preserve_main_and_local_config(repos):
+    """Exercise repeated previews and rollback without losing local configuration."""
     commit, bundle = repos.candidate()
     result = repos.deploy("preview", commit, bundle)
     assert result["branch"] == f"rider-preview/{commit[:12]}"
@@ -104,6 +112,7 @@ def test_preview_update_rollback_and_repeat_preserve_main_and_local_config(repos
 
 
 def test_release_accepts_reviewed_squash_with_identical_tree(repos):
+    """Accept a reviewed squash whose file tree matches the tested preview."""
     candidate, bundle = repos.candidate()
     repos.deploy("preview", candidate, bundle)
     repos.command(repos.source, "switch", "main")
@@ -121,6 +130,7 @@ def test_release_accepts_reviewed_squash_with_identical_tree(repos):
 
 
 def test_preview_inherits_api_restart_and_rollback_restores_running_revision(repos, monkeypatch):
+    """Keep API restart intent through subsequent previews and rollback."""
     module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
     globals_map = module["preview"].__globals__
     calls = []
@@ -140,6 +150,7 @@ def test_preview_inherits_api_restart_and_rollback_restores_running_revision(rep
 
 
 def test_inherited_api_restart_checks_service_before_checkout(repos, monkeypatch):
+    """Reject inherited restart when the API stopped, preserving the current preview."""
     module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
     globals_map = module["preview"].__globals__
     monkeypatch.setitem(globals_map, "check_api_active", lambda: None)
@@ -153,6 +164,7 @@ def test_inherited_api_restart_checks_service_before_checkout(repos, monkeypatch
     request.update(commit=second, restart_api=False)
 
     def inactive_api():
+        """Simulate an API preflight failure without invoking systemd."""
         raise RuntimeError("API is not active")
 
     monkeypatch.setitem(globals_map, "check_api_active", inactive_api)
@@ -164,6 +176,7 @@ def test_inherited_api_restart_checks_service_before_checkout(repos, monkeypatch
 
 
 def test_release_without_preview_uses_expected_main(repos):
+    """Release reviewed main directly from an unchanged device base."""
     repos.command(repos.source, "switch", "main")
     commit, _ = repos.candidate()
     repos.command(repos.source, "push", "origin", "main")
@@ -173,6 +186,7 @@ def test_release_without_preview_uses_expected_main(repos):
 
 
 def test_release_retry_after_api_failure_preserves_previous_revision(repos, monkeypatch):
+    """Retain the recovery revision when an API health failure is retried."""
     repos.command(repos.source, "switch", "main")
     commit, _ = repos.candidate()
     repos.command(repos.source, "push", "origin", "main")
@@ -181,6 +195,7 @@ def test_release_retry_after_api_failure_preserves_previous_revision(repos, monk
     monkeypatch.setitem(globals_map, "check_api_active", lambda: None)
 
     def failed_restart():
+        """Simulate failure after the release checkout has been updated."""
         raise RuntimeError("API health check failed")
 
     monkeypatch.setitem(globals_map, "restart_api", failed_restart)
@@ -197,6 +212,7 @@ def test_release_retry_after_api_failure_preserves_previous_revision(repos, monk
 
 
 def test_dirty_device_is_rejected_without_discarding_changes(repos):
+    """Preserve device edits when its checkout is not clean."""
     commit, bundle = repos.candidate()
     repos.write(repos.device, "web/index.html", "device work\n")
     assert "local changes" in repos.deploy("preview", commit, bundle, check=False)
@@ -205,6 +221,7 @@ def test_dirty_device_is_rejected_without_discarding_changes(repos):
 
 
 def test_ignored_file_collision_is_rejected(repos):
+    """Prevent a candidate from overwriting an ignored device file."""
     commit, bundle = repos.candidate("web/ignored.txt", "candidate file\n")
     repos.write(repos.device, "web/ignored.txt", "existing device data\n")
     assert "overwrite a local file" in repos.deploy("preview", commit, bundle, check=False)
@@ -226,24 +243,28 @@ def test_ignored_file_collision_is_rejected(repos):
     ],
 )
 def test_protected_scope_is_rejected(repos, path):
+    """Reject private, runtime and separately deployed paths."""
     commit, bundle = repos.candidate(path, "private or separately deployed file\n")
     assert "protected path" in repos.deploy("preview", commit, bundle, check=False)
     repos.assert_base()
 
 
 def test_invalid_python_is_rejected_before_checkout(repos):
+    """Leave the device at its base when candidate syntax is invalid."""
     commit, bundle = repos.candidate("apps/example.py", "def :\n")
     assert "invalid syntax" in repos.deploy("preview", commit, bundle, check=False)
     repos.assert_base()
 
 
 def test_bundle_must_match_requested_commit(repos):
+    """Reject transport contents that identify a different commit."""
     _, bundle = repos.candidate()
     assert "Bundle HEAD" in repos.deploy("preview", repos.base, bundle, check=False)
     repos.assert_base()
 
 
 def test_review_changes_must_be_previewed_again(repos):
+    """Prevent releasing reviewed contents different from the active preview."""
     candidate, bundle = repos.candidate()
     repos.deploy("preview", candidate, bundle)
     repos.command(repos.source, "switch", "main")
@@ -255,11 +276,13 @@ def test_review_changes_must_be_previewed_again(repos):
 
 
 def test_wrong_release_commit_is_rejected(repos):
+    """Require the expected full revision to match origin main."""
     assert "expected merged commit" in repos.deploy("release", "0" * 40, check=False)
     repos.assert_base()
 
 
 def test_wrong_base_is_rejected(repos):
+    """Refuse the first preview when its base does not match device main."""
     candidate, bundle = repos.candidate()
     repos.base = "0" * 40
     assert "local base commit" in repos.deploy("preview", candidate, bundle, check=False)
@@ -267,6 +290,7 @@ def test_wrong_base_is_rejected(repos):
 
 
 def test_deployment_lock_is_not_removed_by_another_run(repos):
+    """Preserve a deployment lock owned by another invocation."""
     lock = repos.device / ".git/rider-deploy.lock"
     lock.write_text("other operation")
     assert "rider-deploy.lock" in repos.deploy("rollback", check=False)
@@ -275,6 +299,7 @@ def test_deployment_lock_is_not_removed_by_another_run(repos):
 
 
 def test_rollback_preserves_unexpected_checkout(repos):
+    """Refuse rollback after an unexpected manual checkout change."""
     commit, bundle = repos.candidate()
     repos.deploy("preview", commit, bundle)
     repos.command(repos.device, "switch", "--detach", commit)
@@ -284,6 +309,7 @@ def test_rollback_preserves_unexpected_checkout(repos):
 
 
 def test_secret_removed_from_final_tree_is_rejected_before_ssh(repos, monkeypatch):
+    """Block private history locally even when its file no longer exists."""
     repos.candidate(".env.local", "do-not-transfer-this-history\n")
     repos.command(repos.source, "rm", ".env.local")
     repos.command(repos.source, "commit", "-m", "remove local configuration")
@@ -293,6 +319,7 @@ def test_secret_removed_from_final_tree_is_rejected_before_ssh(repos, monkeypatc
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "preview", "--base", repos.base])
 
     def forbidden_ssh(*args):
+        """Fail if private history reaches the transport boundary."""
         raise AssertionError("Private history must be rejected before transport")
 
     monkeypatch.setitem(globals_map, "ssh", forbidden_ssh)
