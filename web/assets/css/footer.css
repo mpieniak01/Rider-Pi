@@ -36,6 +36,17 @@
   gap: var(--space-lg);
   font-size: var(--font-size-sm);
   color: var(--color-fg-muted);
+  flex-shrink: 0;
+}
+
+.footer-version__dirty { color: var(--color-warn); font-size: var(--font-size-xs); }
+
+@media (max-width: 640px) {
+  [data-dashboard-footer-target] { position: static; }
+  [data-dashboard-footer-target] .c-statusbar { flex-wrap: wrap; overflow-x: visible; padding: var(--space-md); }
+  [data-dashboard-footer-target] .u-spacer { display: none; }
+  .footer-version { width: 100%; flex-wrap: wrap; gap: var(--space-sm); min-width: 0; }
+  .footer-version__branch { max-width: 100%; overflow-wrap: anywhere; }
 }
 
 .footer-version__label {

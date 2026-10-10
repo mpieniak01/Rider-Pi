@@ -1,3 +1,7 @@
+import { initI18n, applyDom, t } from '/web/assets/i18n.js';
+
+if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
+
 (function () {
   const targets = Array.from(document.querySelectorAll('[data-dashboard-footer-target]'));
   if (!targets.length) {
@@ -29,12 +33,17 @@
             camMetaEl: root.querySelector('[data-footer-camera-meta]'),
             camMetaLabel: extractLabel(root.querySelector('[data-footer-camera-meta]'), 'fps'),
             themeSelect: root.querySelector('[data-footer-theme-select]'),
+            branchEl: root.querySelector('[data-footer-branch]'),
+            commitBtn: root.querySelector('[data-footer-commit]'),
+            dirtyEl: root.querySelector('[data-footer-dirty]'),
           };
         })
         .filter(Boolean);
 
       setupThemeSwitcher(contexts);
       setupUpdateBridge(contexts, pendingQueue);
+      targets.forEach(target => applyDom(target));
+      setupVersion(contexts);
     })
     .catch((err) => {
       console.error('Nie udało się przygotować stopki:', err);
@@ -82,13 +91,87 @@
     </select>
   </label>
   <span class="u-spacer"></span>
-  <span class="footer-version">
-    <span class="footer-version__label">Wersja</span>
-    <span class="footer-version__branch">—</span>
-    <button type="button" class="footer-version__commit" disabled>#unknown</button>
+  <span class="footer-version" data-footer-version-block>
+    <span class="footer-version__label" data-i18n="footer.version">Wersja Pi</span>
+    <span class="footer-version__branch" data-footer-branch>—</span>
+    <button type="button" class="footer-version__commit" data-footer-commit disabled>—</button>
+    <span class="footer-version__dirty" data-footer-dirty hidden></span>
   </span>
 </div>
 `.trim();
+  }
+
+  function setupVersion(contexts) {
+    let version = null;
+    const render = () => contexts.forEach(ctx => renderVersion(ctx, version));
+    render();
+    window.addEventListener('dashboard:langchange', render);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    fetch('/api/status/version', { cache: 'no-store', signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(data => { version = data; render(); })
+      .catch(() => { version = null; render(); })
+      .finally(() => clearTimeout(timeout));
+  }
+
+  function renderVersion(ctx, data) {
+    const commit = data?.available && /^[0-9a-f]{7,40}$/.test(data.commit || '') ? data.commit : '';
+    if (ctx.branchEl) ctx.branchEl.textContent = commit
+      ? data.branch === 'HEAD' ? t('footer.detached') : data.branch || '—'
+      : t('footer.unavailable');
+    if (ctx.dirtyEl) {
+      ctx.dirtyEl.hidden = !commit || !data.dirty;
+      ctx.dirtyEl.textContent = t('footer.dirty');
+    }
+    const button = ctx.commitBtn;
+    if (!button) return;
+    button.textContent = commit ? `#${commit}` : '—';
+    button.disabled = !commit;
+    button.title = commit
+      ? data.message ? t('footer.last_commit', { message: data.message }) : t('footer.copy')
+      : t('footer.unavailable');
+    button.onclick = commit ? () => copyCommit(button, commit) : null;
+  }
+
+  async function copyCommit(button, commit) {
+    const original = button.textContent;
+    const title = button.title;
+    try {
+      let copied = false;
+      if (navigator.clipboard?.writeText) {
+        try { await navigator.clipboard.writeText(commit); copied = true; } catch { /* Use HTTP fallback. */ }
+      }
+      if (!copied) {
+        const input = document.createElement('textarea');
+        const focused = document.activeElement;
+        input.value = commit;
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        input.setAttribute('readonly', '');
+        document.body.append(input);
+        try {
+          input.select();
+          copied = document.execCommand('copy');
+        } finally {
+          input.remove();
+          focused?.focus({ preventScroll: true });
+        }
+      }
+      if (!copied) throw new Error('Clipboard unavailable');
+      button.classList.add('is-copied');
+      button.textContent = t('footer.copied');
+      setTimeout(() => {
+        button.classList.remove('is-copied');
+        button.textContent = original;
+        button.title = title;
+      }, 1500);
+    } catch {
+      button.title = t('footer.copy_failed');
+    }
   }
 
   function extractLabel(el, fallback) {

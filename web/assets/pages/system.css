@@ -131,6 +131,19 @@
 .page-system #local-ip-card .network-value { font-family: var(--font-family-mono); }
 
 /* Responsive */
+.page-system .system-groups { display: grid; gap: var(--space-xl); min-width: 0; }
+.page-system .services-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.page-system .service-node { cursor: default; height: auto; min-width: 0; overflow-wrap: anywhere; }
+.page-system .service-node:hover { transform: none; }
+.page-system .service-node__head { flex-wrap: wrap; align-items: flex-start; }
+.page-system .service-node__title { flex: 1; min-width: 0; }
+.page-system .system-summary { margin-bottom: var(--space-xl); }
+.page-system .system-details { margin-top: var(--space-xl); height: auto; min-width: 0; }
+.page-system .system-details summary { cursor: pointer; font-weight: var(--font-weight-semibold); }
+.page-system .system-table-scroll { max-width: 100%; min-width: 0; overflow-x: auto; margin-top: var(--space-md); }
+.page-system .c-table { min-width: 700px; }
+.page-system .c-table td { overflow-wrap: anywhere; }
+.page-system .status-line.is-stale { color: var(--color-warn); }
 @media (max-width: 640px) {
   .page-system .system-links { width: 100%; display: flex; gap: var(--space-lg); }
   .page-system .system-links a { margin-left: 0; }

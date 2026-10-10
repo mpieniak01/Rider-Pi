@@ -2,12 +2,14 @@
 
 This directory contains documentation for the Rider-Pi web user interfaces.
 
+Aktualny stan i weryfikacja: [Diagnostyka Pi, nawigacja i wersja](panel-diagnostyka-20261010.md).
+
 ## Available Interfaces
 
 ### [control.html](control.md)
 Main control interface for robot movement, camera, and autonomous navigation.
 
-**URL:** `http://robot-ip:8080/control.html`
+**URL:** `http://robot-ip:8080/control`
 
 **Features:**
 - Camera live preview
@@ -20,16 +22,16 @@ Main control interface for robot movement, camera, and autonomous navigation.
 ---
 
 ### home.html
-Landing page with system overview and navigation.
+Google Feed diagnostics, retained as a direct route and omitted from the current menu. The overview is `/` or `/view`.
 
-**URL:** `http://robot-ip:8080/home.html` or `http://robot-ip:8080/`
+**URL:** `http://robot-ip:8080/home`
 
 ---
 
 ### chat.html
 Voice and text chat interface.
 
-**URL:** `http://robot-ip:8080/chat.html`
+**URL:** `http://robot-ip:8080/chat`
 
 **Features:**
 - Text chat with AI assistant
@@ -41,7 +43,7 @@ Voice and text chat interface.
 ### view.html
 Vision system viewer and camera controls.
 
-**URL:** `http://robot-ip:8080/view.html`
+**URL:** `http://robot-ip:8080/view`
 
 **Features:**
 - Camera stream with detection overlays
@@ -53,12 +55,12 @@ Vision system viewer and camera controls.
 ### system.html
 System dashboard with live systemd service overview.
 
-**URL:** `http://robot-ip:8080/web/system.html`
+**URL:** `http://robot-ip:8080/system/`
 
 **Features:**
 - Service status cards (`active`, `inactive`, `failed`, `unknown`)
-- Visualization of logical dependencies (dependency graph)
-- Table with descriptions and activation timestamps for units
+- Grouped service cards and component connections (not systemd boot dependencies)
+- Collapsible, horizontally scrollable details table with activation timestamps
 - Automatic refresh every 5 seconds
 
 ---
@@ -66,7 +68,7 @@ System dashboard with live systemd service overview.
 ### google_home.html
 Google Home integration and device management.
 
-**URL:** `http://robot-ip:8080/google_home.html`
+**URL:** `http://robot-ip:8080/google_home`
 
 **Features:**
 - Google Home device pairing
@@ -80,9 +82,9 @@ Google Home integration and device management.
 ### Internationalization (i18n)
 All interfaces support Polish (pl) and English (en) languages.
 
-**Implementation:** `web/i18n.js`
+**Implementation:** `web/assets/i18n.js`
 
-Language is automatically detected from browser settings or can be manually selected.
+Language can be selected in the menu; the selection is saved locally.
 
 ### API Integration
 All UIs communicate with the robot via REST API on port 8080.
@@ -103,7 +105,7 @@ The web interfaces can be tested locally by running the API server:
 python3 -m services.api_server
 ```
 
-Then open `http://localhost:8080/control.html` in your browser.
+Then open `http://localhost:8080/control` in your browser.
 
 ### File Structure
 ```

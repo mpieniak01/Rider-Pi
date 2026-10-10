@@ -42,12 +42,13 @@ import services.api_core.face_anim as face_anim
 import services.api_core.features_api as features_api
 import services.api_core.google_home_api as google_home_api
 import services.api_core.google_proxy as google_proxy
+import services.api_core.models_api as models_api
 import services.api_core.navigator_api as navigator_api
 import services.api_core.provider_api as provider_api
-import services.api_core.models_api as models_api
 import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
+import services.api_core.version_api as version_api
 import services.api_core.voice_local_proxy as voice_local_proxy
 import services.api_core.voice_proxy as voice_proxy
 from services.api_core.face_api import render_face as face_render_shim
@@ -831,10 +832,12 @@ try:
     if _bp is None:
         raise RuntimeError("vision_api.bp missing (circular import?)")
     app.register_blueprint(_bp)  # /vision/*
-    app.register_blueprint(_bp, url_prefix="/api")  # /api/vision/*
+    app.register_blueprint(_bp, url_prefix="/api", name="vision_api_alias")  # /api/vision/*
     app.logger.info("[api] vision_api blueprints registered: /vision/* and /api/vision/*")
 except Exception as e:
     app.logger.exception("[api] failed to register vision_api blueprint: %s", e)
+
+app.register_blueprint(version_api.bp)
 
 # Register google_proxy blueprint
 try:
@@ -847,7 +850,8 @@ except Exception as e:
 try:
     from services.api_core.services_dashboard_api import bp as services_dashboard_bp
 
-    app.register_blueprint(services_dashboard_bp)
+    if "services_dashboard" not in app.blueprints:
+        app.register_blueprint(services_dashboard_bp)
     app.logger.info("[api] services_dashboard blueprint registered: /api/services/*")
 except Exception as e:
     app.logger.exception("[api] failed to register services_dashboard blueprint: %s", e)
