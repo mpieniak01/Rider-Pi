@@ -37,6 +37,8 @@ Git działa wyłącznie do odczytu, z limitem 1 sekundy na polecenie i cache 60 
 również dla wyniku niedostępnego. Brak Git/repo zwraca HTTP 200 z `available=false`.
 Detached HEAD jest oznaczony jawnie. Stopka obsługuje błędy HTTP, timeout, szablon awaryjny
 i kopiowanie hasha na HTTP w LAN. Na telefonie zawija się i ma pozycję statyczną.
+Szybkie ponowne kopiowanie restartuje komunikat i przywraca właściwy hash;
+przypadek wskazany przez CodeRabbit jest objęty testem przeglądarkowym.
 
 Rejestracja aliasów `/api/vision/*` używa jawnych reguł z osobną przestrzenią nazw,
 bez opcji `name=` blueprintu dodanej dopiero w Flask 2.0.2.

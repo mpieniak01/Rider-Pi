@@ -188,6 +188,10 @@ def test_footer_fallback_and_http_copy(panel):
     page.locator("[data-footer-commit]").click()
     assert page.evaluate("window.lastCopy") == "copy"
     assert page.locator("[data-footer-commit]").inner_text() == "Skopiowano"
+    page.locator("[data-footer-commit]").click()
+    page.wait_for_timeout(1800)
+    assert page.locator("[data-footer-commit]").inner_text() == "#461fc4e"
+    assert not page.locator("[data-footer-commit]").evaluate("e => e.classList.contains('is-copied')")
 
 
 @pytest.mark.parametrize("status", [404, 500])

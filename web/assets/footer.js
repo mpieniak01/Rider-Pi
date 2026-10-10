@@ -138,7 +138,7 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
   }
 
   async function copyCommit(button, commit) {
-    const original = button.textContent;
+    const original = `#${commit}`;
     const title = button.title;
     try {
       let copied = false;
@@ -164,7 +164,8 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
       if (!copied) throw new Error('Clipboard unavailable');
       button.classList.add('is-copied');
       button.textContent = t('footer.copied');
-      setTimeout(() => {
+      clearTimeout(button._copyTimer);
+      button._copyTimer = setTimeout(() => {
         button.classList.remove('is-copied');
         button.textContent = original;
         button.title = title;
