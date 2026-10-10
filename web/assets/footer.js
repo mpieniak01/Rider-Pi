@@ -271,7 +271,7 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
     if (!ctx.presencePill || !ctx.presenceState || !ctx.modeEl || !ctx.confEl) {
       return;
     }
-    const sourceTs = state?.observed_at ?? state?.ts;
+    const sourceTs = state && Object.hasOwn(state, 'observed_at') ? state.observed_at : state?.ts;
     const sourceAge = typeof sourceTs === 'number' ? Date.now() / 1000 - sourceTs : null;
     const known = sourceAge !== null && sourceAge >= 0 && sourceAge <= 3 && !state?.error && state?.stale !== true && state?.offline !== true && typeof state?.present === 'boolean';
     const present = known && state.present;

@@ -40,7 +40,7 @@ IMU orientation is not robot position. Raw SDK yaw is shown separately
 with its unverified physical semantics. `healthz: ok` confirms API
 availability, not every sensor's health.
 
-Overview reads measurements and image metadata about every 2 seconds.
+Overview reads telemetry every second and other measurements and image metadata about every 2 seconds.
 `/vision/snap-info?light=1` uses file statistics without reading images to
 compute MD5. Previews fetch only fresh frames from an active camera.
 Disabled cameras, missing images and old cache are explicitly labelled.
@@ -110,7 +110,7 @@ of the frame actually loaded are shown separately; stale displayed images dim.
 
 Reads allow one active request per address, a timeout, bounded backoff and
 pause in hidden tabs. Safety polls once per second, catalog and System every
-5 seconds, device telemetry every 2 seconds and ownership every 10 seconds.
+5 seconds, device telemetry every second and ownership every 10 seconds.
 Device images are fetched individually on demand or every 2 seconds with
 preview enabled; Overview refreshes fresh images from active producers. SSE applies real events
 and retains producer timestamps; unavailable SSE leaves periodic reads active.

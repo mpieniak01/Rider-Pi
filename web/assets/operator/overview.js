@@ -1,7 +1,7 @@
 import { request, poll } from './transport.js';
 import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown } from './model.js';
 import { el, text, tr, statusLabel } from './ui.js';
-import { telemetryChannel } from './devices.js?v=overview-restored-1';
+import { telemetryChannel } from './devices.js?v=overview-restored-2';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const fmt = (value, digits = 1) => finite(value) ? value.toFixed(digits) : '—';
@@ -17,12 +17,20 @@ export class Overview {
     this.state = null; this.health = null; this.system = null; this.catalog = null;
     this.snap = null; this.obstacle = null; this.metrics = null;
     this.poller = poll(async () => {
-      const results = await Promise.allSettled(['/state', '/healthz', '/sysinfo', '/api/logic/catalog']
+      const results = await Promise.allSettled(['/healthz', '/sysinfo', '/api/logic/catalog']
         .map(path => request(path)));
-      [this.state, this.health, this.system, this.catalog] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
+      [this.health, this.system, this.catalog] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
       this.render();
-      if (this.state) window.dispatchEvent(new CustomEvent('dashboard:update', { detail: this.state }));
     }, { interval: 2000 });
+    // One small telemetry read per second avoids expiring healthy 1 Hz samples
+    // between refreshes. Filesystem/image metadata remains on its slower poll.
+    this.telemetryPoller = poll(async () => {
+      try { this.state = (await request('/state')).data; }
+      catch { this.state = null; }
+      this.renderTelemetry();
+      window.dashboardFooter?.update({ state: this.state });
+      if (this.state) window.dispatchEvent(new CustomEvent('dashboard:update', { detail: this.state }));
+    }, { interval: 1000 });
     this.visionPoller = poll(async () => {
       const results = await Promise.allSettled([request('/vision/snap-info?light=1'), request('/vision/obstacle')]);
       [this.snap, this.obstacle] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
@@ -77,7 +85,7 @@ export class Overview {
       ? batteryChannel.value * 100 : samples.battery.ready ? samples.battery.value : null;
     const quality = this.safety.state?.sensor_quality?.sensors;
     const imuReady = ['roll', 'pitch', 'yaw'].every(key => samples[key].ready) || (!quality && ready && values.every(finite));
-    text('d_xgo_imu', imuReady ? tr('Świeży odczyt', 'Fresh reading') : unknown());
+    text('d_xgo_imu', imuReady ? tr('Świeży odczyt', 'Fresh reading') : values.some(finite) ? tr('Częściowy odczyt', 'Partial reading') : unknown());
     text('d_xgo_pose', values.some(finite) ? `R ${fmt(values[0])} · P ${fmt(values[1])} · Y ${fmt(values[2])}` : '—');
     text('d_xgo_batt', finite(battery) ? `${fmt(battery, 0)}% · ${age(batteryChannel || samples.battery)}` : unknown());
     text('xgo-age', `${age(xgo)}${ready ? '' : ` · ${unknown()}`}`);
@@ -123,7 +131,7 @@ export class Overview {
       const tag = String(frame.ts);
       if (node.dataset.frame !== tag) {
         node.dataset.frame = tag;
-        node.onerror = () => { if (node.dataset.frame === tag) { node.src = BLANK; text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${tr('błąd odczytu obrazu', 'image read failed')}`); } };
+        node.onerror = () => { if (node.dataset.frame === tag) { node.onerror = null; node.src = BLANK; text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${tr('błąd odczytu obrazu', 'image read failed')}`); } };
         node.src = `${endpoint}?v=${encodeURIComponent(tag)}`;
       }
     }

@@ -40,7 +40,7 @@ Orientacja IMU nie jest pozycją robota. Surowy yaw SDK ma osobny opis
 niezweryfikowanej semantyki fizycznej. Samo `healthz: ok` potwierdza API,
 nie sprawność wszystkich czujników.
 
-Przegląd odczytuje dane i metadane obrazów co około 2 sekundy. Wariant
+Przegląd odczytuje telemetrię co sekundę, pozostałe pomiary i metadane obrazów co około 2 sekundy. Wariant
 `/vision/snap-info?light=1` korzysta ze statystyki pliku bez czytania obrazu
 do wyliczenia MD5. Podgląd pobiera wyłącznie świeżą klatkę aktywnej kamery.
 Wyłączona kamera, brak obrazu i stary cache mają jawne etykiety; otwarcie
@@ -110,7 +110,7 @@ i klatki faktycznie wczytanej jest oddzielony; stary obraz zostaje przygaszony.
 
 Odczyty mają jeden aktywny request na adres, timeout, ograniczony backoff
 i pauzę w ukrytej karcie. Safety odczytywane jest raz na sekundę, katalog
-i System co 5 sekund, telemetria urządzeń co 2 sekundy, właściciele urządzeń
+i System co 5 sekund, telemetria urządzeń co sekundę, właściciele urządzeń
 co 10 sekund. Obraz urządzeń pobierany jest pojedynczo na żądanie lub z włączonym
 podglądem co 2 sekundy; Przegląd odświeża świeże obrazy aktywnych producentów.
 SSE aktualizuje rzeczywiste zdarzenia i zachowuje czas producenta;

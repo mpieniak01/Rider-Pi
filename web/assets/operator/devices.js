@@ -41,7 +41,7 @@ export class Devices {
     });
     this.poller = poll(() => this.load(), { interval: 10000, onError: showError,
       onVisibility: hidden => { if (hidden) { this.preview = false; this.renderPreview(); } } });
-    this.telemetryPoller = poll(() => this.loadTelemetry(), { interval: 2000,
+    this.telemetryPoller = poll(() => this.loadTelemetry(), { interval: 1000,
       onError: error => { this.telemetryUnavailable = true; this.renderTelemetry(); showError(error); } });
     this.previewPoller = poll(async () => {
       if (!this.preview) return;
