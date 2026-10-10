@@ -39,7 +39,16 @@ def read_service_intent(unit: str, generation: str | None) -> dict | None:
         return None
 
 
-def write_intent_status(unit: str, intent: dict, *, active: bool, accepted: bool = True) -> bool:
+def write_intent_status(
+    unit: str,
+    intent: dict,
+    *,
+    active: bool,
+    accepted: bool = True,
+    data_ready=None,
+    navigation_ready=None,
+    data_error=None,
+) -> bool:
     if unit not in PRODUCERS:
         return False
     root = Path(os.getenv("FEATURE_STATE_PATH", "/run/rider-motion/feature_state.json")).parent
@@ -53,6 +62,11 @@ def write_intent_status(unit: str, intent: dict, *, active: bool, accepted: bool
         "instance_id": _PRODUCER_INSTANCE,
         "pid": os.getpid(),
     }
+    for key, value in (("data_ready", data_ready), ("navigation_ready", navigation_ready)):
+        if type(value) is bool:
+            status[key] = value
+    if data_error is not None:
+        status["data_error"] = str(data_error)[:256]
     try:
         root.mkdir(parents=True, exist_ok=True)
         path = root / (unit + ".json")

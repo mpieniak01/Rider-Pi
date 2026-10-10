@@ -5,36 +5,35 @@ from __future__ import annotations
 import time
 from typing import Any
 
-MAX_SENSOR_AGE_S = 2.5
+from apps.motion.sensor_quality import AXES, projected_samples
 
 
 def project_sensor_payload(sensor: dict | None, *, now: float | None = None) -> tuple[dict, dict]:
     now = time.time() if now is None else now
-    sensor = sensor or {}
-    observed = sensor.get("observed_at", sensor.get("ts"))
-    try:
-        age = now - float(observed)
-        fresh = 0 <= age <= MAX_SENSOR_AGE_S
-    except (TypeError, ValueError):
-        fresh = False
-    imu = sensor.get("imu") if fresh else None
-    imu = imu if isinstance(imu, dict) else {}
-    axes = {key: imu.get(key) for key in ("roll", "pitch", "yaw")}
-    imu_ok = fresh and all(value is not None for value in axes.values())
+    sensor = sensor if isinstance(sensor, dict) else {}
+    values, quality = projected_samples(sensor, now=now)
+    axes = {key: values[key] for key in AXES}
+    imu_ok = all(quality[key]["ready"] for key in AXES)
+    imu_times = [quality[key]["observed_at"] for key in AXES if quality[key]["observed_at"] is not None]
+    observed = min(imu_times) if len(imu_times) == len(AXES) else None
     base = {
         **axes,
-        "ts": now,
+        "ts": observed,
         "observed_at": observed,
         "yaw_src": "imu",
         "src": "motion-executor",
         "uart_owner": "motion-executor",
-        "stale": not fresh,
+        "stale": not imu_ok,
         "imu_ok": bool(imu_ok),
+        "sensor_observed_at": {key: row["observed_at"] for key, row in quality.items()},
+        "sensor_quality": quality,
     }
     device = {
         **base,
-        "battery_pct": sensor.get("battery") if fresh else None,
-        "fw": sensor.get("fw") if fresh else None,
+        "battery_pct": values["battery"],
+        "battery_observed_at": quality["battery"]["observed_at"],
+        "battery_ok": quality["battery"]["ready"],
+        "fw": sensor.get("fw"),
         "pose": {"x": axes["roll"], "y": axes["pitch"], "z": axes["yaw"]} if imu_ok else None,
     }
     return base, device

@@ -47,6 +47,18 @@ requires confirmed STOP.
 
 ## Dynamics and limits
 
+See [software quality and the open manual characterization checklist](physical-motion.md)
+and [odometry/reference contracts](odometry.md). IMU/battery channels retain original
+measurement times. Missing/stale data denies ARM and disarms active motion through
+the same gate; no physical battery/tilt thresholds are invented. Fresh zero MOVE
+is an immediate acknowledged pause, whereas expiry/data/intent faults revoke consent.
+
+The owned SDK response parser uses a monotonic deadline and correlates reply
+address/length/checksum. Serial read/write waits are bounded on that owned object.
+The protocol has no transaction ID: two late identical address/length replies
+cannot be distinguished. Type is preserved without inventing a reply-type rule.
+Transport waits and mechanical stopping still need operator latency measurements.
+
 The controller uses dt, ramps and bounded deadlines. Safety STOP immediately
 clears targets. Normalized limits are not measured m/s or braking distances.
 UART/SDK faults or failed STOP block readiness and subsequent ARM until a new

@@ -7,6 +7,8 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
+from quality_fakes import fake_home, fake_map
+
 from apps.navigator.main import Navigator, NavigatorState, Strategy
 
 
@@ -98,10 +100,33 @@ class TestNavigator(unittest.TestCase):
         }
 
     def authorized_start(self, nav):
-        nav._handle_control_command(self.envelope(action="start", strategy=nav.strategy.value))
+        envelope = self.envelope(action="start", strategy=nav.strategy.value)
+        self.seed_quality(nav, observed_at=envelope["ts"])
+        nav._handle_control_command(envelope)
 
     def authorize(self, nav):
-        self.assertTrue(nav._accept_motion_request(self.envelope()))
+        envelope = self.envelope()
+        self.assertTrue(nav._accept_motion_request(envelope))
+        self.seed_quality(nav, observed_at=envelope["ts"])
+
+    def seed_quality(self, nav, *, observed_at=None):
+        observed_at = time.time() if observed_at is None else observed_at
+        nav.obstacle_sample = {"present": False, "confidence": 0.8, "observed_at": observed_at}
+        nav.last_observation = observed_at
+        nav.pose_sample = {
+            "x": 0.0,
+            "y": 0.0,
+            "theta": 0.0,
+            "observed_at": observed_at,
+            "navigation_ready": True,
+            "reference_id": "fake-origin",
+            "calibration_id": "mock-only",
+            "home": fake_home("mock-only"),
+            "confidence": 0.8,
+        }
+        nav.current_pose = (0.0, 0.0, 0.0)
+        nav.map_sample = fake_map(observed_at, "mock-only")
+        nav.goal_pose = (0, 0)  # Fictional HOME explicitly supplied by this fixture.
 
     def motion_calls(self, action):
         return [
@@ -164,7 +189,7 @@ class TestNavigator(unittest.TestCase):
         self.authorized_start(nav)
 
         # Simulate obstacle detection
-        nav._handle_obstacle(present=True, confidence=0.8)
+        nav._handle_obstacle(present=True, confidence=0.8, observed_at=time.time())
 
         self.assertEqual(nav.state, NavigatorState.STOPPED)
         self.assertTrue(nav.obstacle_present)
@@ -180,11 +205,11 @@ class TestNavigator(unittest.TestCase):
         self.authorized_start(nav)
 
         # First detect obstacle
-        nav._handle_obstacle(present=True, confidence=0.8)
+        nav._handle_obstacle(present=True, confidence=0.8, observed_at=time.time())
 
         # STOP invalidates the bound generation; clearing data grants no consent.
         self.mock_pub_instance.publish.reset_mock()
-        nav._handle_obstacle(present=False, confidence=0.0)
+        nav._handle_obstacle(present=False, confidence=0.8, observed_at=time.time())
 
         self.assertFalse(nav.obstacle_present)
         self.assertEqual(nav.state, NavigatorState.STOPPED)
@@ -201,9 +226,9 @@ class TestNavigator(unittest.TestCase):
         self.authorized_start(nav)
 
         # Simulate obstacle detection
-        nav._handle_obstacle(present=True, confidence=0.8)
+        nav._handle_obstacle(present=True, confidence=0.8, observed_at=time.time())
 
-        self.assertEqual(nav.state, NavigatorState.AVOIDING)
+        self.assertEqual(nav.state, NavigatorState.STOPPED)
         self.assertTrue(nav.obstacle_present)
 
         # Should send turn command (az != 0)
@@ -213,21 +238,19 @@ class TestNavigator(unittest.TestCase):
             for c in calls
             if c[0][0] == "motion.command" and c[0][1].get("action") == "move" and c[0][1].get("yaw", 0.0) != 0.0
         ]
-        self.assertGreater(len(motion_turn_calls), 0)
+        self.assertEqual(len(motion_turn_calls), 0)
 
     def test_send_motion_drive(self):
         """Test sending drive commands"""
         nav = Navigator()
 
         self.authorize(nav)
+        nav.state = NavigatorState.RETURNING_HOME
         nav._send_motion_drive(lx=0.3, az=0.0)
 
-        command = self.motion_calls("move")[-1][0][1]
-        self.assertEqual(command["vx"], 0.3)
-        self.assertEqual(command["yaw"], 0.0)
-        self.assertEqual(command["source"], "navigation")
-        self.assertEqual(command["generation"], self.safety["generation"])
-        self.assertLessEqual(command["duration"], 0.25)
+        self.assertEqual(self.motion_calls("move"), [])
+        self.assertTrue(self.motion_calls("stop"))
+        self.assertEqual(nav.data_error, "navigation_traversal_unverified")
 
     def test_send_motion_stop(self):
         """Test sending stop commands"""
@@ -265,7 +288,7 @@ class TestNavigator(unittest.TestCase):
 
         initial_state = nav.state
 
-        nav._handle_obstacle(present=True, confidence=0.8)
+        nav._handle_obstacle(present=True, confidence=0.8, observed_at=time.time())
 
         # State should not change
         self.assertEqual(nav.state, initial_state)
@@ -276,11 +299,11 @@ class TestNavigator(unittest.TestCase):
         self.authorized_start(nav)
 
         # First obstacle triggers avoid
-        nav._handle_obstacle(present=True, confidence=0.8)
+        nav._handle_obstacle(present=True, confidence=0.8, observed_at=time.time())
         first_avoid_ts = nav.last_avoid_ts
 
         # Immediate second obstacle should be ignored (cooldown)
-        nav._handle_obstacle(present=True, confidence=0.8)
+        nav._handle_obstacle(present=True, confidence=0.8, observed_at=time.time())
         second_avoid_ts = nav.last_avoid_ts
 
         # Timestamps should be the same (second call was in cooldown)
@@ -330,7 +353,9 @@ class TestNavigator(unittest.TestCase):
         self.authorized_start(nav)  # Start in exploring mode
 
         # Trigger return to home
-        nav._handle_return_home_start(self.envelope(action="return_home"))
+        envelope = self.envelope(action="return_home")
+        self.seed_quality(nav, observed_at=envelope["ts"])
+        nav._handle_return_home_start(envelope)
 
         # Should transition to RETURNING_HOME state
         self.assertEqual(nav.state, NavigatorState.RETURNING_HOME)
@@ -346,7 +371,17 @@ class TestNavigator(unittest.TestCase):
         """Test updating robot pose from odometry"""
         nav = Navigator()
 
-        pose_payload = {"x": 1.5, "y": 2.3, "theta": 0.785}  # ~45 degrees
+        pose_payload = {
+            "x": 1.5,
+            "y": 2.3,
+            "theta": 0.785,
+            "observed_at": time.time(),
+            "navigation_ready": True,
+            "reference_id": "fake-origin",
+            "calibration_id": "mock-only",
+            "home": fake_home("mock-only"),
+            "confidence": 0.8,
+        }
         nav._handle_robot_pose(pose_payload)
 
         self.assertAlmostEqual(nav.current_pose[0], 1.5)
@@ -363,9 +398,9 @@ class TestNavigator(unittest.TestCase):
 
         nav._update_path_following()
 
-        # First waypoint should be removed since we're within tolerance
-        self.assertEqual(len(nav.current_path), 1)
-        self.assertEqual(nav.current_path[0], (2.0, 2.0))
+        self.assertEqual(nav.current_path, [])
+        self.assertEqual(nav.state, NavigatorState.PATH_BLOCKED)
+        self.assertEqual(self.motion_calls("move"), [])
 
     def test_path_following_goal_reached(self):
         """Test reaching final goal"""
@@ -378,8 +413,8 @@ class TestNavigator(unittest.TestCase):
 
         nav._update_path_following()
 
-        # Should transition to IDLE
-        self.assertEqual(nav.state, NavigatorState.IDLE)
+        # Model proximity cannot claim physical arrival or activate a route.
+        self.assertEqual(nav.state, NavigatorState.PATH_BLOCKED)
 
         # Should send stop command
         calls = self.mock_pub_instance.publish.call_args_list

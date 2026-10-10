@@ -58,8 +58,8 @@ def world_to_grid(x: float, y: float, resolution_m: float, origin_x: float, orig
     Returns:
         Tuple of (grid_x, grid_y) in cells
     """
-    grid_x = int((x + origin_x) / resolution_m)
-    grid_y = int((y + origin_y) / resolution_m)
+    grid_x = math.floor((x + origin_x) / resolution_m)
+    grid_y = math.floor((y + origin_y) / resolution_m)
     return grid_x, grid_y
 
 
@@ -247,6 +247,15 @@ def find_path_grid(
         # Explore neighbors
         for nx, ny, cost in get_neighbors(current.x, current.y):
             if not is_traversable(grid, nx, ny, width, height, allow_unknown):
+                continue
+            if (
+                nx != current.x
+                and ny != current.y
+                and (
+                    not is_traversable(grid, nx, current.y, width, height, allow_unknown)
+                    or not is_traversable(grid, current.x, ny, width, height, allow_unknown)
+                )
+            ):
                 continue
 
             if (nx, ny) in closed_set:

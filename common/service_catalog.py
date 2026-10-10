@@ -43,7 +43,10 @@ _EN = {
     "s6_tracker_module": ("Passive tracker", "Observation without a motion controller."),
     "s7_obstacle_module": ("Obstacles", "Local vision or PC offload."),
     "s8_mapping": ("Passive mapping", "Build a map from observations without starting navigation."),
-    "s9_navigation": ("Navigation", "Follow a route after operator consent."),
+    "s9_navigation": (
+        "Passive navigation",
+        "Observe existing plans; physical traversal and DISARMED planning requests are unavailable.",
+    ),
     "s10_ai_providers": ("AI domain", "Start only the selected domain."),
     "s11_dev_mode": ("Developer tool", "One tool; Jupyter is manual."),
 }
@@ -190,8 +193,8 @@ DEFAULT_REGISTRY = {
     "s9_navigation": _feature(
         "s9_navigation",
         "S9",
-        "Nawigacja",
-        "Realizacja trasy po zgodzie operatora.",
+        "Pasywna nawigacja",
+        "Odczyt istniejącego planu; ruch i osobne żądanie planowania w DISARMED są niedostępne.",
         "rider-navigate.target",
         (*MAP_UNITS, "rider-navigator.service"),
         ("camera", "frame_feed", "control"),

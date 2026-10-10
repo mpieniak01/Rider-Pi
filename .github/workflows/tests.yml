@@ -84,6 +84,11 @@ jobs:
           pytest -q tests/orchestration tests/test_robot_ctl_contract.py \
                     tests/test_lcd_idle_guard.py tests/test_resource_diag.py tests/test_resource_api.py
           pytest -q tests/test_operator_*.py tests/test_tracking_mode_api.py tests/test_balance_height_api.py
+          pytest -q tests/test_physical_quality.py tests/test_sensor_transaction.py \
+                    tests/test_frame_source_quality.py tests/test_roi_source_quality.py \
+                    tests/test_mapper_quality.py tests/test_navigation_quality.py \
+                    tests/test_odometry_reference.py tests/test_operator_navigation_state.py \
+                    tests/test_mapper.py tests/test_navigator.py tests/test_odometry.py tests/test_odometry_idle.py
           pytest -q -k voice -m "not hardware and not network" \
                  --cov=. --cov-report=term-missing --cov-report=html
 

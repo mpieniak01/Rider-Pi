@@ -253,7 +253,7 @@ def test_sensor_projection_marks_old_or_missing_data_unknown():
     imu, device = project_sensor_payload({"ts": 50, "imu": {"yaw": 1}, "battery": 0.8}, now=100)
     assert imu["stale"] is True
     assert device["battery_pct"] is None
-    imu, device = project_sensor_payload({"ts": 100, "imu": {"roll": 1, "pitch": 2, "yaw": 3}}, now=100)
+    imu, device = project_sensor_payload({"observed_at": 100, "imu": {"roll": 1, "pitch": 2, "yaw": 3}}, now=100)
     assert imu["imu_ok"] is True
     assert device["pose"] == {"x": 1, "y": 2, "z": 3}
 

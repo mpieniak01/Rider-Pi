@@ -56,6 +56,7 @@ export class Tasks {
           [tr('Właściciel sterowania', 'Control owner'), task.motion_owner], [tr('Źródło', 'Source'), task.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(task, 10)],
           [tr('Zasoby', 'Resources'), (task.resources || []).join(', ')]]));
       if (task.error) card.append(el('p', 'operator-error', task.error));
+      if (task.start_available === false) card.append(el('p', 'operator-error', task.start_unavailable_reason || 'task_start_unavailable'));
       const choice = this.choice(task); if (choice) card.append(choice);
       const actions = el('div', 'operator-row');
       actions.append(button(tr('Uruchom zadanie', 'Start task'), () => this.change(task, true).catch(showError), !valid || task.requested === true || !taskCanStart(task, this.catalog, this.safety.state) || (task.can_move && !this.safety.can(task.motion_owner)) || this.busy.has(task.name)),

@@ -4,10 +4,12 @@ Unit tests for Mapper module (Rekonesans Stage 3)
 """
 
 import math
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+from quality_fakes import fake_home
 
 from apps.mapper.main import CELL_OCCUPIED, CELL_UNKNOWN, Mapper, OccupancyGrid
 
@@ -131,6 +133,8 @@ class TestMapper(unittest.TestCase):
         self.bus_sub_patch = patch("apps.mapper.main.BusSub")
 
         self.mock_sub = self.bus_sub_patch.start()
+        self.bus_pub_patch = patch("apps.mapper.main.BusPub")
+        self.bus_pub_patch.start()
 
         # Create mock instances
         self.mock_sub_pose = MagicMock()
@@ -149,28 +153,36 @@ class TestMapper(unittest.TestCase):
     def tearDown(self):
         """Clean up patches"""
         self.bus_sub_patch.stop()
+        self.bus_pub_patch.stop()
 
     def test_mapper_initialization(self):
         """Test mapper initializes correctly"""
         mapper = Mapper()
 
         self.assertIsNotNone(mapper.grid)
-        self.assertEqual(mapper.robot_x, 0.0)
-        self.assertEqual(mapper.robot_y, 0.0)
-        self.assertEqual(mapper.robot_theta, 0.0)
+        self.assertIsNone(mapper.robot_x)
+        self.assertIsNone(mapper.robot_y)
+        self.assertIsNone(mapper.robot_theta)
         self.assertEqual(mapper.obstacles_processed, 0)
 
     def test_handle_robot_pose(self):
         """Test handling robot pose updates"""
         mapper = Mapper()
 
-        pose = {"x": 1.0, "y": 2.0, "theta": math.pi / 4, "ts": 1234567890.0}
+        pose = {"x": 1.0, "y": 2.0, "theta": math.pi / 4, "observed_at": time.time()}
+        pose.update(
+            navigation_ready=True,
+            calibration_id="mock-only",
+            reference_id="fake-origin",
+            confidence=0.8,
+            home=fake_home("mock-only"),
+        )
         mapper._handle_robot_pose(pose)
 
         self.assertEqual(mapper.robot_x, 1.0)
         self.assertEqual(mapper.robot_y, 2.0)
         self.assertAlmostEqual(mapper.robot_theta, math.pi / 4)
-        self.assertEqual(mapper.last_pose_ts, 1234567890.0)
+        self.assertEqual(mapper.last_pose_ts, pose["observed_at"])
 
     def test_handle_obstacle_data_single_obstacle(self):
         """Test handling obstacle data with single obstacle"""
@@ -184,9 +196,32 @@ class TestMapper(unittest.TestCase):
         # Obstacle straight ahead at 2m
         obstacle_data = {
             "obstacles": [{"angle": 0.0, "distance": 2.0}],
-            "ts": 1234567890.0,
+            "observed_at": time.time(),
         }
 
+        mapper._handle_robot_pose(
+            {
+                "x": mapper.robot_x or 0.0,
+                "y": mapper.robot_y or 0.0,
+                "theta": mapper.robot_theta or 0.0,
+                "observed_at": time.time(),
+                "navigation_ready": True,
+                "reference_id": "fake-origin",
+                "calibration_id": "mock-only",
+                "home": fake_home("mock-only"),
+                "confidence": 0.8,
+            }
+        )
+        obstacle_data.update(
+            range_verified=True,
+            calibration_id="mock-only",
+            reference_id="fake-origin",
+            footprint_verified=True,
+            footprint_radius_m=0.1,
+            traversability_verified=True,
+            stopping_horizon_verified=True,
+            stopping_horizon_m=0.2,
+        )
         mapper._handle_obstacle_data(obstacle_data)
 
         # Check that obstacle was marked
@@ -208,9 +243,32 @@ class TestMapper(unittest.TestCase):
         # Obstacle straight ahead (relative to robot) at 2m
         obstacle_data = {
             "obstacles": [{"angle": 0.0, "distance": 2.0}],
-            "ts": 1234567890.0,
+            "observed_at": time.time(),
         }
 
+        mapper._handle_robot_pose(
+            {
+                "x": mapper.robot_x or 0.0,
+                "y": mapper.robot_y or 0.0,
+                "theta": mapper.robot_theta or 0.0,
+                "observed_at": time.time(),
+                "navigation_ready": True,
+                "reference_id": "fake-origin",
+                "calibration_id": "mock-only",
+                "home": fake_home("mock-only"),
+                "confidence": 0.8,
+            }
+        )
+        obstacle_data.update(
+            range_verified=True,
+            calibration_id="mock-only",
+            reference_id="fake-origin",
+            footprint_verified=True,
+            footprint_radius_m=0.1,
+            traversability_verified=True,
+            stopping_horizon_verified=True,
+            stopping_horizon_m=0.2,
+        )
         mapper._handle_obstacle_data(obstacle_data)
 
         # Obstacle should be at approximately (0.0, 2.0) in world coordinates
@@ -240,9 +298,32 @@ class TestMapper(unittest.TestCase):
         # Obstacle straight ahead at 1m
         obstacle_data = {
             "obstacles": [{"angle": 0.0, "distance": 1.0}],
-            "ts": 1234567890.0,
+            "observed_at": time.time(),
         }
 
+        mapper._handle_robot_pose(
+            {
+                "x": mapper.robot_x or 0.0,
+                "y": mapper.robot_y or 0.0,
+                "theta": mapper.robot_theta or 0.0,
+                "observed_at": time.time(),
+                "navigation_ready": True,
+                "reference_id": "fake-origin",
+                "calibration_id": "mock-only",
+                "home": fake_home("mock-only"),
+                "confidence": 0.8,
+            }
+        )
+        obstacle_data.update(
+            range_verified=True,
+            calibration_id="mock-only",
+            reference_id="fake-origin",
+            footprint_verified=True,
+            footprint_radius_m=0.1,
+            traversability_verified=True,
+            stopping_horizon_verified=True,
+            stopping_horizon_m=0.2,
+        )
         mapper._handle_obstacle_data(obstacle_data)
 
         # Obstacle should be at (2.0, 1.0) in world coordinates
@@ -264,9 +345,32 @@ class TestMapper(unittest.TestCase):
                 {"angle": math.pi / 2, "distance": 1.5},  # To the left
                 {"angle": -math.pi / 2, "distance": 1.5},  # To the right
             ],
-            "ts": 1234567890.0,
+            "observed_at": time.time(),
         }
 
+        mapper._handle_robot_pose(
+            {
+                "x": mapper.robot_x or 0.0,
+                "y": mapper.robot_y or 0.0,
+                "theta": mapper.robot_theta or 0.0,
+                "observed_at": time.time(),
+                "navigation_ready": True,
+                "reference_id": "fake-origin",
+                "calibration_id": "mock-only",
+                "home": fake_home("mock-only"),
+                "confidence": 0.8,
+            }
+        )
+        obstacle_data.update(
+            range_verified=True,
+            calibration_id="mock-only",
+            reference_id="fake-origin",
+            footprint_verified=True,
+            footprint_radius_m=0.1,
+            traversability_verified=True,
+            stopping_horizon_verified=True,
+            stopping_horizon_m=0.2,
+        )
         mapper._handle_obstacle_data(obstacle_data)
 
         self.assertEqual(mapper.obstacles_processed, 3)
@@ -275,8 +379,31 @@ class TestMapper(unittest.TestCase):
         """Test handling empty obstacle data"""
         mapper = Mapper()
 
-        obstacle_data = {"obstacles": [], "ts": 1234567890.0}
+        obstacle_data = {"obstacles": [], "observed_at": time.time()}
 
+        mapper._handle_robot_pose(
+            {
+                "x": mapper.robot_x or 0.0,
+                "y": mapper.robot_y or 0.0,
+                "theta": mapper.robot_theta or 0.0,
+                "observed_at": time.time(),
+                "navigation_ready": True,
+                "reference_id": "fake-origin",
+                "calibration_id": "mock-only",
+                "home": fake_home("mock-only"),
+                "confidence": 0.8,
+            }
+        )
+        obstacle_data.update(
+            range_verified=True,
+            calibration_id="mock-only",
+            reference_id="fake-origin",
+            footprint_verified=True,
+            footprint_radius_m=0.1,
+            traversability_verified=True,
+            stopping_horizon_verified=True,
+            stopping_horizon_m=0.2,
+        )
         mapper._handle_obstacle_data(obstacle_data)
 
         self.assertEqual(mapper.obstacles_processed, 0)
@@ -291,9 +418,32 @@ class TestMapper(unittest.TestCase):
                 {"angle": 0.0, "distance": 0.0},
                 {"angle": 0.0, "distance": -1.0},
             ],
-            "ts": 1234567890.0,
+            "observed_at": time.time(),
         }
 
+        mapper._handle_robot_pose(
+            {
+                "x": mapper.robot_x or 0.0,
+                "y": mapper.robot_y or 0.0,
+                "theta": mapper.robot_theta or 0.0,
+                "observed_at": time.time(),
+                "navigation_ready": True,
+                "reference_id": "fake-origin",
+                "calibration_id": "mock-only",
+                "home": fake_home("mock-only"),
+                "confidence": 0.8,
+            }
+        )
+        obstacle_data.update(
+            range_verified=True,
+            calibration_id="mock-only",
+            reference_id="fake-origin",
+            footprint_verified=True,
+            footprint_radius_m=0.1,
+            traversability_verified=True,
+            stopping_horizon_verified=True,
+            stopping_horizon_m=0.2,
+        )
         mapper._handle_obstacle_data(obstacle_data)
 
         # No obstacles should be processed
@@ -311,9 +461,32 @@ class TestMapper(unittest.TestCase):
 
         obstacle_data = {
             "obstacles": [{"angle": 0.0, "distance": 2.0}],
-            "ts": 1234567890.0,
+            "observed_at": time.time(),
         }
 
+        mapper._handle_robot_pose(
+            {
+                "x": mapper.robot_x or 0.0,
+                "y": mapper.robot_y or 0.0,
+                "theta": mapper.robot_theta or 0.0,
+                "observed_at": time.time(),
+                "navigation_ready": True,
+                "reference_id": "fake-origin",
+                "calibration_id": "mock-only",
+                "home": fake_home("mock-only"),
+                "confidence": 0.8,
+            }
+        )
+        obstacle_data.update(
+            range_verified=True,
+            calibration_id="mock-only",
+            reference_id="fake-origin",
+            footprint_verified=True,
+            footprint_radius_m=0.1,
+            traversability_verified=True,
+            stopping_horizon_verified=True,
+            stopping_horizon_m=0.2,
+        )
         mapper._handle_obstacle_data(obstacle_data)
 
         # Expected obstacle position in world: (0, 2)

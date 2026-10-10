@@ -15,13 +15,13 @@ import math
 import os
 import time
 
-from apps.navigator import pathfinding
 from apps.navigator.ai_mode_adapter import log_navigator_mode_status
 from apps.navigator.motion import MotionProducer
+from apps.navigator.path_control import PathControl
+from apps.navigator.quality import NavigationQuality
 from apps.navigator.state import NavigatorState, StatePublisher, Strategy
 from common.bus import (
     TOPIC_MAPPER_MAP_DATA,
-    TOPIC_NAVIGATOR_MAP_REQUEST,
     TOPIC_NAVIGATOR_RETURN_HOME_START,
     TOPIC_ROBOT_POSE,
     TOPIC_SYSTEM_AI_MODE_CHANGED,
@@ -52,14 +52,16 @@ PUB_WARMUP_MS = int(os.getenv("NAVIGATOR_PUB_WARMUP_MS", "500"))
 LOG = logging.getLogger("navigator")
 
 
-class Navigator(MotionProducer, StatePublisher):
+class Navigator(MotionProducer, PathControl, NavigationQuality, StatePublisher):
     """Autonomous navigation controller"""
 
-    def __init__(self, strategy: Strategy = Strategy.STOP):
+    def __init__(self, strategy: Strategy = Strategy.STOP, *, wall_clock=time.time, clock=time.monotonic):
+        self.wall_clock, self.clock = wall_clock, clock
         self.strategy = strategy
         self.state = NavigatorState.IDLE
         self.active = False
         self._intent = None
+        self._request_id = None
         self._consumed_intent = None
         self._intent_status_at = 0.0
 
@@ -90,9 +92,13 @@ class Navigator(MotionProducer, StatePublisher):
 
         # Return to home state
         self.current_path = []  # List of waypoints (x, y) in world coordinates
-        self.goal_pose = (0.0, 0.0)  # Default goal is origin
-        self.current_pose = (0.0, 0.0, 0.0)  # (x, y, theta)
+        self.goal_pose = None  # HOME is operator-confirmed in a current reference.
+        self.current_pose = None  # Unknown until a verified pose arrives.
         self.waiting_for_map = False
+        self.waypoint_tolerance = WAYPOINT_TOLERANCE
+        self.angle_tolerance = ANGLE_TOLERANCE
+        self.goal_tolerance = GOAL_TOLERANCE
+        self._init_quality()
 
         LOG.info(f"Navigator initialized with strategy: {self.strategy.value}")
 
@@ -104,18 +110,30 @@ class Navigator(MotionProducer, StatePublisher):
 
         self.active = True
         self.state = NavigatorState.EXPLORING
+        self._map_inflight = False
+        self._request_navigation_map(force=True)
         LOG.info("Navigator started - beginning exploration")
-        self._send_motion_drive(self.fwd_speed)
+        # This task remains passive until its physical corridor/stopping model
+        # has been characterized. Starting a service never sends forward motion.
+        self.data_error = self.navigation_quality()["data_error"]
         self.state_changed = True
         self._publish_state()
 
     def stop(self):
         """Stop autonomous exploration"""
-        if not self.active:
+        if (
+            not self.active
+            and self.state != NavigatorState.RETURNING_HOME
+            and not self._passive_planning
+            and not self.current_path
+        ):
             return
 
         self.active = False
         self.state = NavigatorState.STOPPED
+        self._passive_planning = False
+        self._map_inflight = self.waiting_for_map = False
+        self._clear_plan()
         self._send_motion_stop()
         LOG.info("Navigator stopped")
         self.state_changed = True
@@ -128,7 +146,7 @@ class Navigator(MotionProducer, StatePublisher):
         self.state_changed = True
         self._publish_state()
 
-    def _handle_obstacle(self, present: bool, confidence: float):
+    def _react_obstacle(self, present: bool, confidence: float):
         """Handle obstacle detection event"""
         # Only react if navigator is active
         if not self.active:
@@ -138,7 +156,7 @@ class Navigator(MotionProducer, StatePublisher):
         old_state = self.state
 
         self.obstacle_present = present
-        self.last_obstacle_ts = time.time()
+        self.last_obstacle_ts = self.last_observation
 
         if not present:
             # No obstacle - resume exploration
@@ -161,13 +179,12 @@ class Navigator(MotionProducer, StatePublisher):
 
     def _handle_stop_strategy(self):
         """STOP strategy: stop when obstacle detected"""
-        self._send_motion_stop()
-        self.state = NavigatorState.STOPPED
+        self._quality_failure("obstacle_present", stop=True)
         LOG.info("STOP strategy: robot stopped due to obstacle")
 
     def _handle_avoid_strategy(self):
         """AVOID strategy: turn and continue when obstacle detected"""
-        now = time.time()
+        now = time.monotonic()
 
         # Cooldown check to prevent rapid turns
         if now - self.last_avoid_ts < COOLDOWN_AFTER_AVOID:
@@ -178,7 +195,7 @@ class Navigator(MotionProducer, StatePublisher):
 
         # Turn right (could be randomized or based on sensor data)
         LOG.info("AVOID strategy: turning to avoid obstacle")
-        self._send_motion_drive(0.0, -self.turn_speed, duration=TURN_DURATION)
+        self._send_motion_drive(0.0, self.turn_speed, duration=TURN_DURATION)
 
         # Schedule return to forward motion after turn
         # Note: In a production system, this would be managed by a state machine
@@ -262,6 +279,8 @@ class Navigator(MotionProducer, StatePublisher):
 
         # If mode changed, update subscriptions
         if old_use_pc_enhanced != self.use_pc_enhanced:
+            self.obstacle_sample = None
+            self._quality_failure("obstacle_source_changed")
             if self.use_pc_enhanced:
                 # Switched to pc_offload mode - create enhanced data subscription
                 if self.sub_obstacle_enhanced is None:
@@ -282,173 +301,6 @@ class Navigator(MotionProducer, StatePublisher):
             else:
                 LOG.info("Navigator AI Mode: local - Using local obstacle detection")
 
-    def _handle_return_home_start(self, cmd: dict):
-        """Handle return to home command from API"""
-        if not self._accept_motion_request(cmd):
-            return
-        LOG.info("Return to home command received")
-
-        # Stop current activity
-        if self.active:
-            self._send_motion_drive(0.0, 0.0)
-            self.active = False
-
-        # Set state to returning home
-        self.state = NavigatorState.RETURNING_HOME
-        self.goal_pose = (0.0, 0.0)  # Return to origin
-        self.current_path = []
-        self.waiting_for_map = True
-        self.state_changed = True
-
-        # Request map from mapper
-        LOG.info("Requesting map from mapper")
-        self.pub.publish(TOPIC_NAVIGATOR_MAP_REQUEST, {"request_id": time.time()}, add_ts=True)
-
-    def _handle_map_data(self, payload: dict):
-        """Handle map data from mapper"""
-        if self.state != NavigatorState.RETURNING_HOME or not self.waiting_for_map:
-            return
-
-        LOG.info("Received map data from mapper")
-        self.waiting_for_map = False
-
-        # Prepare grid data
-        grid_data = {
-            "grid": payload.get("grid", []),
-            "width_cells": payload.get("width_cells", 0),
-            "height_cells": payload.get("height_cells", 0),
-            "resolution_m": payload.get("resolution_m", 0.05),
-            "origin_x": payload.get("origin_x", 5.0),
-            "origin_y": payload.get("origin_y", 5.0),
-        }
-
-        # Get current position
-        start_pose = (self.current_pose[0], self.current_pose[1])
-
-        LOG.info("Planning path from %s to %s", start_pose, self.goal_pose)
-
-        # Find path using A*
-        try:
-            path = pathfinding.find_path(
-                grid_data,
-                start_pose,
-                self.goal_pose,
-                allow_unknown=True,
-            )
-        except Exception as exc:  # noqa: BLE001
-            LOG.exception("Error during pathfinding: %s", exc)
-            path = None
-
-        if path is None or len(path) == 0:
-            LOG.error("No path found to goal")
-            self.state = NavigatorState.PATH_BLOCKED
-            self.state_changed = True
-            self._send_motion_stop()
-            return
-
-        LOG.info("Path found with %d waypoints", len(path))
-        self.current_path = path
-        self.state_changed = True
-
-        # Start following the path
-        self._update_path_following()
-
-    def _handle_robot_pose(self, payload: dict):
-        """Update current robot pose from odometry"""
-        self.current_pose = (
-            float(payload.get("x", 0.0)),
-            float(payload.get("y", 0.0)),
-            float(payload.get("theta", 0.0)),
-        )
-
-    def _update_path_following(self):
-        """Update path following logic"""
-        if self.state != NavigatorState.RETURNING_HOME:
-            return
-
-        if not self.current_path:
-            # Path is empty, check if we're actually at the goal
-            current_x, current_y, _ = self.current_pose
-            goal_x, goal_y = self.goal_pose[0], self.goal_pose[1]
-            goal_dx = goal_x - current_x
-            goal_dy = goal_y - current_y
-            goal_distance = math.sqrt(goal_dx**2 + goal_dy**2)
-
-            if goal_distance < GOAL_TOLERANCE:
-                LOG.info("Reached goal position!")
-                self.state = NavigatorState.IDLE
-                self.state_changed = True
-                self._send_motion_stop()
-            else:
-                LOG.warning(
-                    "Path is empty but robot is not at goal (distance=%.2fm > tolerance=%.2fm)",
-                    goal_distance,
-                    GOAL_TOLERANCE,
-                )
-                # Stay in RETURNING_HOME state for potential replan
-            return
-
-        # Loop to process consecutive waypoints within tolerance
-        current_x, current_y, current_theta = self.current_pose
-
-        while self.current_path:
-            target_x, target_y = self.current_path[0]
-            dx = target_x - current_x
-            dy = target_y - current_y
-            distance = math.sqrt(dx**2 + dy**2)
-
-            # Check if we've reached the waypoint
-            if distance < WAYPOINT_TOLERANCE:
-                LOG.info("Reached waypoint (%.2f, %.2f)", target_x, target_y)
-                self.current_path.pop(0)
-
-                # Check if this was the last waypoint
-                if not self.current_path:
-                    # Check if we're close enough to the goal
-                    goal_dx = self.goal_pose[0] - current_x
-                    goal_dy = self.goal_pose[1] - current_y
-                    goal_distance = math.sqrt(goal_dx**2 + goal_dy**2)
-
-                    if goal_distance < GOAL_TOLERANCE:
-                        LOG.info("Successfully reached home position!")
-                        self.state = NavigatorState.IDLE
-                        self.state_changed = True
-                        self._send_motion_stop()
-                        return
-                # Continue to next waypoint in the loop
-                continue
-            else:
-                break
-
-        # If there are no more waypoints after the loop, return
-        if not self.current_path:
-            return
-
-        # Calculate required heading to waypoint
-        target_x, target_y = self.current_path[0]
-        current_x, current_y, current_theta = self.current_pose
-        dx = target_x - current_x
-        dy = target_y - current_y
-        target_angle = math.atan2(dy, dx)
-
-        # Normalize angle difference to [-pi, pi]
-        angle_error = target_angle - current_theta
-        while angle_error > math.pi:
-            angle_error -= 2 * math.pi
-        while angle_error < -math.pi:
-            angle_error += 2 * math.pi
-
-        # If angle error is large, turn in place
-        if abs(angle_error) > ANGLE_TOLERANCE:
-            # Turn towards waypoint
-            turn_direction = 1.0 if angle_error > 0 else -1.0
-            self._send_motion_drive(0.0, turn_direction * self.turn_speed)
-            LOG.debug("Turning: angle_error=%.1f°", math.degrees(angle_error))
-        else:
-            # Move forward towards waypoint
-            self._send_motion_drive(self.fwd_speed, 0.0)
-            LOG.debug("Moving forward: distance=%.2fm", distance)
-
     def run(self):
         """Main navigation loop"""
         LOG.info("Navigator main loop started")
@@ -461,7 +313,7 @@ class Navigator(MotionProducer, StatePublisher):
         # Path following update interval
         PATH_UPDATE_INTERVAL = 0.2  # 5Hz
 
-        last_path_update = time.time()
+        last_path_update = time.monotonic()
 
         try:
             while True:
@@ -471,44 +323,11 @@ class Navigator(MotionProducer, StatePublisher):
                     # In pc_offload mode, prioritize enhanced obstacle data
                     topic, payload = self.sub_obstacle_enhanced.recv(timeout_ms=10)
                     if topic and payload and topic == TOPIC_VISION_OBSTACLE_ENHANCED:
-                        present = payload.get("present", False)
-                        confidence = payload.get("confidence", 0.0)
-                        # Enhanced data includes distance and angle from PC
-                        distance = payload.get("distance")
-                        angle = payload.get("angle")
-                        if distance is not None and angle is not None:
-                            LOG.debug(
-                                "Enhanced obstacle data from PC: present=%s, distance=%.2fm, angle=%.1f°",
-                                present,
-                                distance,
-                                angle,
-                            )
-                        if self.active:
-                            self._handle_obstacle(present, confidence)
-                        # Check for obstacles during return to home
-                        elif self.state == NavigatorState.RETURNING_HOME and present:
-                            LOG.warning(
-                                "Obstacle detected during return to home - stopping",
-                            )
-                            self.state = NavigatorState.PATH_BLOCKED
-                            self.state_changed = True
-                            self._send_motion_stop()
+                        self._handle_obstacle_sample(payload)
                 else:
-                    # Local mode: use local vision obstacle data
                     topic, payload = self.sub_obstacle.recv(timeout_ms=10)
                     if topic and payload and topic == TOPIC_VISION_OBSTACLE:
-                        present = payload.get("present", False)
-                        confidence = payload.get("confidence", 0.0)
-                        if self.active:
-                            self._handle_obstacle(present, confidence)
-                        # Check for obstacles during return to home
-                        elif self.state == NavigatorState.RETURNING_HOME and present:
-                            LOG.warning(
-                                "Obstacle detected during return to home - stopping",
-                            )
-                            self.state = NavigatorState.PATH_BLOCKED
-                            self.state_changed = True
-                            self._send_motion_stop()
+                        self._handle_obstacle_sample(payload)
 
                 # Receive control commands from API
                 topic, payload = self.sub_control.recv(timeout_ms=10)
@@ -535,9 +354,11 @@ class Navigator(MotionProducer, StatePublisher):
                 if topic and payload and topic == TOPIC_ROBOT_POSE:
                     self._handle_robot_pose(payload)
 
+                self._quality_tick()
+
                 # Update path following if in return to home mode
                 if self.state == NavigatorState.RETURNING_HOME:
-                    now = time.time()
+                    now = time.monotonic()
                     if now - last_path_update >= PATH_UPDATE_INTERVAL:
                         self._update_path_following()
                         last_path_update = now

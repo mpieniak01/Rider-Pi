@@ -32,6 +32,7 @@ from common.bus import (
     BusPub,
     BusSub,
 )
+from common.data_quality import finite_number, frame_identity, pose_status, sample_status
 
 # Environment configuration
 LOG_LEVEL = os.getenv("MAPPER_LOG_LEVEL", "INFO").upper()
@@ -54,6 +55,8 @@ CELL_OCCUPIED = 255  # Occupied by obstacle (black)
 OBSTACLE_INFLATION_RADIUS = float(os.getenv("MAPPER_INFLATION_RADIUS", "0.1"))  # Inflate obstacles by this radius (m)
 
 LOG = logging.getLogger("mapper")
+MAX_MAP_CELLS = 65536
+MAX_MAP_AGE_S = 3.0
 
 
 class OccupancyGrid:
@@ -68,6 +71,14 @@ class OccupancyGrid:
             height_m: Map height in meters
             resolution_m: Cell size in meters
         """
+        if not all(finite_number(value) and value > 0 for value in (width_m, height_m, resolution_m)):
+            raise ValueError("invalid_grid_geometry")
+        dimensions = (width_m / resolution_m, height_m / resolution_m)
+        if not all(finite_number(value) for value in dimensions):
+            raise ValueError("grid_too_large")
+        width, height = (math.ceil(value) for value in dimensions)
+        if width * height > MAX_MAP_CELLS:
+            raise ValueError("grid_too_large")
         self.width_m = width_m
         self.height_m = height_m
         self.resolution_m = resolution_m
@@ -79,6 +90,8 @@ class OccupancyGrid:
         # Initialize grid (all cells unknown)
         # Note: Grid uses (height, width) indexing following numpy convention: grid[row, col] = grid[y, x]
         self.grid = np.full((self.height_cells, self.width_cells), CELL_UNKNOWN, dtype=np.uint8)
+        self.observed = np.zeros((self.height_cells, self.width_cells), dtype=float)
+        self.observation_time = None
 
         # Origin is at the center of the map
         self.origin_x = width_m / 2.0
@@ -101,8 +114,8 @@ class OccupancyGrid:
             Tuple of (grid_x, grid_y) in cells
         """
         # Transform from world coordinates (origin at center) to grid coordinates
-        grid_x = int((x + self.origin_x) / self.resolution_m)
-        grid_y = int((y + self.origin_y) / self.resolution_m)
+        grid_x = math.floor((x + self.origin_x) / self.resolution_m)
+        grid_y = math.floor((y + self.origin_y) / self.resolution_m)
         return grid_x, grid_y
 
     def is_valid_cell(self, grid_x: int, grid_y: int) -> bool:
@@ -113,11 +126,33 @@ class OccupancyGrid:
         """Mark a cell as occupied"""
         if self.is_valid_cell(grid_x, grid_y):
             self.grid[grid_y, grid_x] = CELL_OCCUPIED
+            self.observed[grid_y, grid_x] = self.observation_time or 0.0
 
     def set_free(self, grid_x: int, grid_y: int):
         """Mark a cell as free"""
         if self.is_valid_cell(grid_x, grid_y):
-            self.grid[grid_y, grid_x] = CELL_FREE
+            # A ray never clears a newer occupied cell.
+            if self.grid[grid_y, grid_x] != CELL_OCCUPIED:
+                self.grid[grid_y, grid_x] = CELL_FREE
+                self.observed[grid_y, grid_x] = self.observation_time or 0.0
+
+    def snapshot(self, now=None):
+        now = time.time() if now is None else now
+        result = self.grid.copy()
+        result[(now - self.observed > MAX_MAP_AGE_S) | (self.observed <= 0) | (self.observed > now + 0.1)] = (
+            CELL_UNKNOWN
+        )
+        return result.tolist()
+
+    def mark_ray(self, start_x, start_y, end_x, end_y):
+        x0, y0 = self.world_to_grid(start_x, start_y)
+        x1, y1 = self.world_to_grid(end_x, end_y)
+        steps = max(abs(x1 - x0), abs(y1 - y0))
+        if steps > MAX_MAP_CELLS or not steps:
+            return
+        for index in range(steps):
+            fraction = index / steps
+            self.set_free(round(x0 + (x1 - x0) * fraction), round(y0 + (y1 - y0) * fraction))
 
     def mark_obstacle(self, x: float, y: float, inflation_radius: float = 0.0):
         """
@@ -146,12 +181,13 @@ class OccupancyGrid:
                     if math.sqrt(dx**2 + dy**2) * self.resolution_m <= inflation_radius:
                         self.set_occupied(grid_x + dx, grid_y + dy)
 
-    def get_occupancy_info(self) -> dict:
+    def get_occupancy_info(self, now=None) -> dict:
         """Get statistics about the occupancy grid"""
-        total_cells = self.grid.size
-        occupied_cells = np.sum(self.grid == CELL_OCCUPIED)
-        free_cells = np.sum(self.grid == CELL_FREE)
-        unknown_cells = np.sum(self.grid == CELL_UNKNOWN)
+        grid = self.grid if now is None else np.asarray(self.snapshot(now), dtype=np.uint8)
+        total_cells = grid.size
+        occupied_cells = np.sum(grid == CELL_OCCUPIED)
+        free_cells = np.sum(grid == CELL_FREE)
+        unknown_cells = np.sum(grid == CELL_UNKNOWN)
 
         return {
             "total_cells": int(total_cells),
@@ -166,7 +202,8 @@ class OccupancyGrid:
 class Mapper:
     """SLAM Mapper - builds occupancy grid from robot pose and obstacle data"""
 
-    def __init__(self):
+    def __init__(self, *, wall_clock=time.time):
+        self.wall_clock = wall_clock
         self.grid = OccupancyGrid(width_m=MAP_WIDTH_M, height_m=MAP_HEIGHT_M, resolution_m=MAP_RESOLUTION_M)
 
         # Bus connections
@@ -176,24 +213,40 @@ class Mapper:
         self.pub = BusPub()
 
         # Current robot pose
-        self.robot_x = ROBOT_INIT_X
-        self.robot_y = ROBOT_INIT_Y
-        self.robot_theta = 0.0
+        self.robot_x = self.robot_y = self.robot_theta = None
         self.last_pose_ts = 0.0
+        self.pose_sample = self.range_sample = None
+        self.frame = None
+        self.data_error = "inputs_pending"
+        self.last_range_ts = None
 
         # Statistics
         self.obstacles_processed = 0
-        self.last_stats_print_ts = time.time()
+        self.last_stats_print_ts = self.wall_clock()
         self.last_map_state_ts = 0.0
 
-        LOG.info(f"Mapper initialized at robot position ({self.robot_x:.2f}, {self.robot_y:.2f})")
+        LOG.info("Mapper initialized with unknown physical pose")
 
     def _handle_robot_pose(self, payload: dict):
         """Update current robot pose from odometry"""
-        self.robot_x = float(payload.get("x", 0.0))
-        self.robot_y = float(payload.get("y", 0.0))
-        self.robot_theta = float(payload.get("theta", 0.0))
-        self.last_pose_ts = payload.get("ts", time.time())
+        quality = pose_status(payload, previous_ts=self.last_pose_ts, now=self.wall_clock())
+        if not quality["ready"]:
+            self.pose_sample = None
+            self.data_error = quality["error"]
+            self._publish_map_state(reason="pose")
+            return
+        identity = frame_identity(payload)
+        if self.frame != identity:
+            self.grid.grid.fill(CELL_UNKNOWN)
+            self.grid.observed.fill(0.0)
+            self.grid.observation_time = None
+            self.range_sample = None
+            self.last_range_ts = None
+            self.data_error = "new_frame_range_pending"
+            self.frame = identity
+        self.robot_x, self.robot_y, self.robot_theta = (payload[key] for key in ("x", "y", "theta"))
+        self.last_pose_ts = quality["observed_at"]
+        self.pose_sample = dict(payload)
 
         LOG.debug(
             f"Robot pose updated: ({self.robot_x:.3f}, {self.robot_y:.3f}, {math.degrees(self.robot_theta):.1f}°)"
@@ -213,10 +266,57 @@ class Mapper:
             "ts": 1234567890.123
         }
         """
-        obstacles = payload.get("obstacles", [])
-
-        if not obstacles:
+        quality = sample_status(payload, max_age_s=0.5, previous_ts=self.last_range_ts, now=self.wall_clock())
+        pose = pose_status(self.pose_sample, now=self.wall_clock())
+        if not quality["ready"] or not pose["ready"]:
+            self.range_sample = None
+            self.data_error = quality["error"] or pose["error"]
+            self._publish_map_state(reason="range")
             return
+        if (
+            payload.get("range_verified") is not True
+            or not isinstance(payload.get("calibration_id"), str)
+            or not payload["calibration_id"]
+        ):
+            self.range_sample = None
+            self.data_error = "range_manual_characterization_required"
+            return
+        radius = payload.get("footprint_radius_m")
+        if (
+            payload.get("traversability_verified") is not True
+            or payload.get("footprint_verified") is not True
+            or payload.get("stopping_horizon_verified") is not True
+            or not finite_number(payload.get("stopping_horizon_m"))
+            or payload["stopping_horizon_m"] <= 0
+            or not finite_number(radius)
+            or not 0 < radius <= min(self.grid.width_m, self.grid.height_m)
+        ):
+            self.range_sample = None
+            self.data_error = "footprint_range_and_stopping_horizon_unverified"
+            return
+        obstacles = payload.get("obstacles")
+        if not isinstance(obstacles, list) or not 0 < len(obstacles) <= 128:
+            self.range_sample = None
+            self.data_error = "range_geometry_unknown"
+            return
+        for obs in obstacles:
+            if (
+                not isinstance(obs, dict)
+                or not all(finite_number(obs.get(key)) for key in ("angle", "distance"))
+                or obs["distance"] <= 0
+            ):
+                self.range_sample = None
+                self.data_error = "invalid_range_geometry"
+                return
+        # Conservatively bound source synchronization to the same data budget.
+        if abs(quality["observed_at"] - pose["observed_at"]) > 0.5:
+            self.range_sample = None
+            self.data_error = "pose_range_unsynchronized"
+            return
+        self.range_sample = dict(payload)
+        self.last_range_ts = quality["observed_at"]
+        self.grid.observation_time = min(quality["observed_at"], pose["observed_at"])
+        self.data_error = None
 
         # Transform each obstacle from robot local coordinates to global map coordinates
         valid_obstacles = 0
@@ -235,7 +335,8 @@ class Mapper:
             obs_y = self.robot_y + distance * math.sin(angle_global)
 
             # Mark obstacle on the map
-            self.grid.mark_obstacle(obs_x, obs_y, inflation_radius=OBSTACLE_INFLATION_RADIUS)
+            self.grid.mark_ray(self.robot_x, self.robot_y, obs_x, obs_y)
+            self.grid.mark_obstacle(obs_x, obs_y, inflation_radius=radius)
 
             LOG.debug(
                 f"Obstacle: local_angle={math.degrees(angle_local):.1f}°, "
@@ -258,7 +359,7 @@ class Mapper:
 
         # Prepare map data for transmission
         map_data = {
-            "grid": self.grid.grid.tolist(),  # Convert numpy array to list for JSON serialization
+            "grid": self.grid.snapshot(self.wall_clock()),
             "width_cells": self.grid.width_cells,
             "height_cells": self.grid.height_cells,
             "resolution_m": self.grid.resolution_m,
@@ -266,7 +367,9 @@ class Mapper:
             "origin_y": self.grid.origin_y,
             "width_m": self.grid.width_m,
             "height_m": self.grid.height_m,
-            "ts": time.time(),
+            "ts": self.wall_clock(),
+            "request_id": payload.get("request_id"),
+            **self.quality(),
         }
 
         # Publish map data
@@ -275,7 +378,7 @@ class Mapper:
 
     def _print_statistics(self):
         """Print mapping statistics periodically"""
-        stats = self.grid.get_occupancy_info()
+        stats = self.grid.get_occupancy_info(self.wall_clock())
         LOG.info(
             f"Map stats: explored={stats['explored_percent']:.1f}%, "
             f"occupied={stats['occupied_percent']:.1f}%, "
@@ -283,16 +386,42 @@ class Mapper:
         )
         self._publish_map_state(reason="stats")
 
+    def quality(self):
+        pose = pose_status(self.pose_sample, now=self.wall_clock())
+        ranges = sample_status(self.range_sample, max_age_s=0.5, now=self.wall_clock())
+        error = self.data_error or pose["error"] or ranges["error"]
+        observed = min(pose["observed_at"], ranges["observed_at"]) if pose["ready"] and ranges["ready"] else None
+        return {
+            "data_ready": error is None,
+            "planning_ready": error is None,
+            "navigation_ready": False,
+            "navigation_error": "navigation_traversal_unverified",
+            "error": error,
+            "observed_at": observed,
+            "pose_quality": pose,
+            "range_quality": ranges,
+            "calibration_id": self.frame[0] if self.frame else None,
+            "reference_id": self.frame[1] if self.frame else None,
+            "home": self.pose_sample.get("home") if self.pose_sample else None,
+            "range_calibration_id": self.range_sample.get("calibration_id") if self.range_sample else None,
+            "stopping_horizon_verified": self.range_sample.get("stopping_horizon_verified")
+            if self.range_sample
+            else False,
+            "stopping_horizon_m": self.range_sample.get("stopping_horizon_m") if self.range_sample else None,
+            "physical_completion": "unverified",
+        }
+
     def _publish_map_state(self, reason: str = "update") -> None:
-        now = time.time()
+        now = self.wall_clock()
         if reason == "pose" and (now - self.last_map_state_ts) < 1.0:
             return
-        stats = self.grid.get_occupancy_info()
+        stats = self.grid.get_occupancy_info(now)
         payload = {
             "reason": reason,
             "ts": now,
             "pose": {"x": self.robot_x, "y": self.robot_y, "theta": self.robot_theta},
             "stats": stats,
+            **self.quality(),
         }
         self.pub.publish(TOPIC_SLAM_MAP_STATE, payload, add_ts=False)
         self.last_map_state_ts = now
@@ -334,7 +463,7 @@ class Mapper:
                         self._handle_map_request(payload)
 
                 # Print statistics periodically
-                now = time.time()
+                now = self.wall_clock()
                 if now - self.last_stats_print_ts >= STATS_INTERVAL:
                     self._print_statistics()
                     self.last_stats_print_ts = now

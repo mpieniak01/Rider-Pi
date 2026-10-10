@@ -49,6 +49,7 @@ import services.api_core.system_info as system_info
 import services.api_core.version_api as version_api
 import services.api_core.voice_local_proxy as voice_local_proxy
 import services.api_core.voice_proxy as voice_proxy
+import services.odometry_api as odometry_api
 from services.api_core.api_metrics import _update_api_metrics
 from services.api_core.chat_routes import register_chat_endpoints
 from services.api_core.face_api import render_face as face_render_shim
@@ -240,6 +241,8 @@ _add_rule(
 
 # control API - balance and height
 _add_rule("/api/safety", view_func=control_api.api_safety, methods=["GET", "POST", "OPTIONS"])
+_add_rule("/api/odometry/state", view_func=odometry_api.reference_state, methods=["GET"])
+_add_rule("/api/odometry/reference", view_func=odometry_api.operator_reference, methods=["POST"])
 _add_rule(
     "/api/control/balance",
     view_func=control_api.api_balance,

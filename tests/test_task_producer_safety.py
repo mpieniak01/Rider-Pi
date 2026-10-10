@@ -166,9 +166,11 @@ def test_navigator_requires_task_intent_before_start(monkeypatch):
 def test_navigator_consumes_intent_once_and_stops_on_lost_lease(monkeypatch):
     nav, sent, state = navigator(monkeypatch, authorization=intent())
     nav._consume_task_intent()
+    nav._handle_obstacle_sample({"observed_at": time.time(), "present": False, "confidence": 0.8})
     nav._consume_task_intent()
     moves = [data for topic, data in sent if topic == "motion.command" and data["action"] == "move"]
-    assert len(moves) == 1 and moves[0]["generation"] == "current"
+    assert moves == []  # Clear pixels cannot manufacture physical geometry or HOME.
+    assert not nav.navigation_quality()["navigation_ready"]
     state["can_move"] = False
     nav._consume_task_intent()
     assert not nav.active and sent[-1][1]["action"] == "stop"

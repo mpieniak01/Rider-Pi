@@ -7,6 +7,8 @@ import math
 import threading
 import time
 
+from common.data_quality import confirmed_home, frame_identity, pose_status, sample_status
+
 TOPICS = {"mapper.map.data": "map", "robot.pose": "pose", "navigator.path": "path"}
 MAX_CELLS = 65536
 MAX_PATH = 2000
@@ -33,12 +35,22 @@ def _point(value: object) -> list[float] | None:
 
 def _metadata(data: dict, topic: str, ts: float | None) -> dict:
     row = {"observed_at": ts, "source": topic}
-    for key in ("stale", "offline", "data_ready", "navigation_ready"):
+    for key in ("stale", "offline", "data_ready", "navigation_ready", "planning_ready", "planning_only"):
         if type(data.get(key)) is bool:
             row[key] = data[key]
-    for key in ("error", "data_error", "calibration_id"):
+    for key in ("error", "data_error", "calibration_id", "reference_id", "physical_completion"):
         if isinstance(data.get(key), str):
             row[key] = data[key][:512]
+    if confirmed_home(data) is not None and all(
+        len(data["home"][key]) <= 512 for key in ("calibration_id", "reference_id")
+    ):
+        row["home"] = {
+            key: data["home"][key] for key in ("x", "y", "calibration_id", "reference_id", "operator_confirmed")
+        }
+    if type(data.get("path_length")) is int and 0 <= data["path_length"] <= MAX_CELLS:
+        row["path_length"] = data["path_length"]
+    if type(data.get("path_truncated")) is bool:
+        row["path_truncated"] = data["path_truncated"]
     if isinstance(data.get("quality"), str):
         row["quality"] = data["quality"][:128]
     elif "quality" in data and data["quality"] is None:
@@ -62,10 +74,18 @@ def _store(name: str, row: dict) -> bool:
             isinstance(quality, str) and quality.lower() in {"unknown", "unavailable", "invalid", "error", "failed"}
         )
     )
+    passive = (
+        row.get("planning_only") is True
+        and row.get("planning_ready") is True
+        and row.get("stale") is not True
+        and row.get("offline") is not True
+        and not row.get("error")
+        and row.get("data_error") == "navigation_traversal_unverified"
+    )
     with _lock:
         previous = _rows[name]
         if previous is not None and _finite(previous.get("observed_at")) and _finite(row.get("observed_at")):
-            if previous["observed_at"] > row["observed_at"] and healthy:
+            if previous["observed_at"] > row["observed_at"] and (healthy or passive):
                 return False
         _rows[name] = row
     return True
@@ -161,4 +181,120 @@ def snapshot() -> dict:
                 or age < -0.1
                 or age > (10 if name == "map" else 3)
             )
+    path = rows["path"]
+    if path and path.get("planning_only") is True:
+        for name, source in (("map", rows["map"]), ("pose", rows["pose"])):
+            if (
+                source is None
+                or frame_identity(source) != frame_identity(path)
+                or confirmed_home(source) != confirmed_home(path)
+            ):
+                path.update(stale=True, planning_ready=False, error="plan_frame_mismatch")
+            elif (
+                not sample_status(source, max_age_s=3 if name == "map" else 0.5, now=now)["ready"]
+                or source.get("data_ready") is not True
+                or source.get("data_error")
+                or "quality" in source
+                and source["quality"] is None
+                or isinstance(source.get("quality"), str)
+                and source["quality"].lower() in {"unknown", "unavailable", "invalid", "error", "failed"}
+                or source.get("planning_ready" if name == "map" else "navigation_ready") is not True
+                or name == "pose"
+                and not pose_status(source, max_age_s=0.5, now=now)["ready"]
+                or name == "map"
+                and (
+                    not all(_finite(source.get(key)) for key in ("resolution_m", "origin_x", "origin_y"))
+                    or source["resolution_m"] <= 0
+                )
+            ):
+                path.update(stale=True, planning_ready=False, error="plan_sources_unavailable")
     return rows
+
+
+def observe_plan(data: object) -> dict:
+    """Project a passive point plan using its source age, never heartbeat age."""
+    topic = "navigator.state"
+    empty = {
+        "planning_only": True,
+        "goal_pose": None,
+        "planned_path": [],
+        "planned_path_length": 0,
+        "planned_path_truncated": False,
+        "plan_observed_at": None,
+        "plan_calibration_id": None,
+        "plan_reference_id": None,
+        "plan_home": None,
+    }
+    if not isinstance(data, dict) or data.get("planning_only") is not True:
+        _invalidate("path", topic, data)
+        return {**empty, "planning_only": None}
+    at = data.get("plan_observed_at")
+    heartbeat = data.get("observed_at")
+    path = data.get("planned_path")
+    total = data.get("planned_path_length")
+    truncated = data.get("planned_path_truncated")
+    frame = {
+        "calibration_id": data.get("plan_calibration_id"),
+        "reference_id": data.get("plan_reference_id"),
+        "home": data.get("plan_home"),
+    }
+    points = [_point(point) for point in path] if isinstance(path, list) and len(path) <= 128 else None
+    target = _point(data.get("goal_pose"))
+    valid = (
+        _finite(at)
+        and at > 0
+        and _finite(heartbeat)
+        and at <= heartbeat <= time.time() + 0.1
+        and time.time() - heartbeat <= 3
+        and frame_identity(frame) is not None
+        and all(len(frame[key]) <= 512 for key in ("calibration_id", "reference_id"))
+        and confirmed_home(frame) is not None
+        and points is not None
+        and bool(points)
+        and all(point is not None for point in points)
+        and target is not None
+        and tuple(target) == confirmed_home(frame)
+        and type(total) is int
+        and len(points) <= total <= MAX_CELLS
+        and type(truncated) is bool
+        and truncated == (total > len(points))
+        and not data.get("error")
+        and data.get("data_ready") is True
+        and data.get("data_error") in (None, "navigation_traversal_unverified")
+        and data.get("stale") is not True
+        and data.get("offline") is not True
+    )
+    if not valid:
+        _invalidate("path", topic, data, at if _finite(at) and at > 0 else None)
+        return empty
+    row = {
+        **frame,
+        "observed_at": at,
+        "path": points,
+        "path_length": total,
+        "path_truncated": truncated,
+        "target": target,
+        "planning_only": True,
+        "planning_ready": True,
+        "data_ready": True,
+        "navigation_ready": False,
+        "data_error": "navigation_traversal_unverified",
+        "physical_completion": "unverified",
+        "quality": "point_plan",
+    }
+    row["home"] = {
+        key: frame["home"][key] for key in ("x", "y", "calibration_id", "reference_id", "operator_confirmed")
+    }
+    observe("navigator.path", row)
+    return {
+        "planning_only": True,
+        "goal_pose": target,
+        "planned_path": points,
+        "planned_path_length": total,
+        "planned_path_truncated": truncated,
+        "plan_observed_at": at,
+        "plan_calibration_id": frame["calibration_id"],
+        "plan_reference_id": frame["reference_id"],
+        "plan_home": copy.deepcopy(row["home"]),
+        "physical_completion": "unverified",
+    }

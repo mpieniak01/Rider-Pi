@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+
+from common.data_quality import finite_number
+
 try:
     import cv2
     import numpy as np
@@ -25,6 +29,7 @@ class FrameStreamClient:
         self._return_last = return_last
         self._copy_frame = copy_frame
         self._last_frame: np.ndarray | None = None
+        self._last_metadata = {}
 
         self._ctx = zmq.Context.instance()
         self._sock = self._ctx.socket(zmq.SUB)
@@ -78,11 +83,26 @@ class FrameStreamClient:
         if frame is None:
             return self._fallback()
 
+        # Keep source metadata with the decoded frame. Cached returns preserve
+        # exactly this observation time; they never inherit the poll time.
+        try:
+            metadata = json.loads(parts[1]) if len(parts[1]) <= 8192 else {}
+        except (ValueError, TypeError, UnicodeDecodeError):
+            metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        observed = metadata.get("observed_at", metadata.get("mtime"))
+        self._last_metadata = dict(metadata, observed_at=observed if finite_number(observed) else None)
+
         if self._return_last:
             # Store an immutable reference if the caller expects to reuse cached frames.
             self._last_frame = frame.copy()
 
         return frame.copy() if self._copy_frame else frame
+
+    @property
+    def metadata(self) -> dict:
+        return dict(self._last_metadata)
 
     @property
     def last_frame(self) -> np.ndarray | None:

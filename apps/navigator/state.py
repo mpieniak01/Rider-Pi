@@ -1,6 +1,5 @@
 """Navigation states shared by the controller and its motion producer."""
 
-import time
 from enum import Enum
 
 
@@ -37,11 +36,21 @@ class StatePublisher:
             "state": self.state.value,
             "strategy": self.strategy.value,
             "obstacle_present": self.obstacle_present,
-            "ts": time.time(),
-            "observed_at": time.time(),
-            "generation": getattr(self, "_motion_generation", None),
+            "ts": self.wall_clock(),
+            "observed_at": self.wall_clock(),
+            "generation": getattr(self, "_request_generation", None),
             "request_id": getattr(self, "_request_id", None),
+            "planning_only": True,
+            "goal_pose": self.goal_pose,
+            "planned_path": self.current_path[:128],
+            "planned_path_length": len(self.current_path),
+            "planned_path_truncated": len(self.current_path) > 128,
+            "plan_observed_at": self.plan_observed_at,
+            "plan_calibration_id": self.plan_frame[0] if self.plan_frame else None,
+            "plan_reference_id": self.plan_frame[1] if self.plan_frame else None,
+            "plan_home": self.plan_home,
         }
+        state.update(self.navigation_quality())
         self.pub.publish("navigator.state", state, add_ts=True)
         self.state_changed = False
-        self.last_state_publish_ts = time.time()
+        self.last_state_publish_ts = self.wall_clock()

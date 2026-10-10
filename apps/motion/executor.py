@@ -9,8 +9,10 @@ from __future__ import annotations
 import logging
 import signal
 import time
+import uuid
 
 from apps.motion.main import MotionController, _make_adapter
+from apps.motion.sensor_quality import AXES, SensorSamples
 from apps.safety.gate import ACTUATORS, MAX_DURATION_S, MotionGate, finite_number
 from apps.safety.state import write_status
 
@@ -93,6 +95,7 @@ def validate_actuator(command: dict) -> dict:
 class MotionExecutor:
     def __init__(self, *, gate=None, adapter=None, publisher=None, status_writer=write_status):
         self.gate = gate or MotionGate()
+        self.instance_id = uuid.uuid4().hex
         self.adapter = adapter if adapter is not None else _make_adapter(self.gate)
         self.controller = MotionController(self.adapter, self.gate)
         self.publisher = publisher
@@ -107,6 +110,10 @@ class MotionExecutor:
         self.sensor_values = {}
         self.sensor_times = {}
         self.sensor_index = 0
+        self.samples = SensorSamples(self.gate.clock, self.gate.wall_clock)
+        self.last_output = 0.0
+        self.output_generation = None
+        self.output_observed_at = None
         self.error = getattr(self.adapter, "error", None)
         self.shutdown = False
         self.actuators = {
@@ -139,11 +146,19 @@ class MotionExecutor:
             stopped = self._controller_stop() is True
         except Exception as exc:
             self._hardware_fault(f"hardware_stop_failed:{type(exc).__name__}", stop=False)
+            self.output_observed_at = self.gate.wall_clock()
+            self.publish_output(force=True, accepted=False)
+            self.publish_status(force=True)
             return False
         if not stopped:
             self._hardware_fault(getattr(self.adapter, "error", None) or "hardware_stop_unconfirmed", stop=False)
         elif getattr(self.adapter, "error", None):
             self._hardware_fault(self.adapter.error, stop=False)
+        self.output_observed_at = self.gate.wall_clock()
+        self.publish_output(force=True, accepted=stopped)
+        # A zero write remains valid while idle only with this exact executor
+        # heartbeat. Deadline stops also need it before the output ages out.
+        self.publish_status(force=True)
         return stopped
 
     def _publish(self, topic, payload):
@@ -151,17 +166,22 @@ class MotionExecutor:
             self.publisher.publish(topic, payload, add_ts=False)
 
     def snapshot(self):
-        ready = self._hardware_ready()
+        hardware_ready = self._hardware_ready()
+        quality = self.samples.quality()
+        ready = hardware_ready and quality["ready"] and self.controller.limits.valid
         state = self.gate.snapshot()
         state.update(
             observed_at=self.gate.wall_clock(),
             ts=self.gate.wall_clock(),
             ready=ready,
-            hardware_ready=ready,
+            hardware_ready=hardware_ready,
             hardware_initialized=bool(self.adapter.ok()),
             can_move=bool(ready and self.gate.can_actuate()),
             read_only=not bool(ready and self.gate.can_actuate()),
-            error=self.error or getattr(self.adapter, "error", None),
+            error=self.error
+            or getattr(self.adapter, "error", None)
+            or quality["error"]
+            or self.controller.limits.status()["error"],
             last_ack=self.last_ack,
             recent_acks=list(self.recent_acks),
             simulated=bool(getattr(self.adapter, "simulated", False)),
@@ -169,20 +189,24 @@ class MotionExecutor:
             target={"lx": self.controller.t_lx, "az": self.controller.t_az},
             output={"lx": self.controller.o_lx, "az": self.controller.o_az},
             uart_owner="motion-executor",
+            instance_id=self.instance_id,
             physical_completion="unverified",
             capabilities=self.capabilities(),
             actuators=self.actuators,
+            sensor_quality=quality,
+            dynamics=self.controller.limits.status(),
+            sdk_output=self.sdk_output(),
         )
         return state
 
     def capabilities(self):
+        ready = self._hardware_ready() and self.samples.quality()["ready"] and self.controller.limits.valid
         method = getattr(self.adapter, "capabilities", None)
         if callable(method):
             result = method()
-            if not self._hardware_ready():
+            if not ready:
                 return {name: {**value, "available": False} for name, value in result.items()}
             return result
-        ready = self._hardware_ready()
         return {
             action: {
                 "available": ready and action in {"move", "turn", "balance", "height"},
@@ -191,6 +215,27 @@ class MotionExecutor:
             }
             for action in {"move", "turn", "balance", "height", "action"}
         }
+
+    def sdk_output(self, accepted=True):
+        method = getattr(self.adapter, "output_status", None)
+        output = method() if callable(method) else {"linear_step": None, "turn_step": None}
+        return {
+            **output,
+            "observed_at": self.output_observed_at,
+            "generation": self.gate.generation,
+            "accepted": bool(accepted and not self.error and self.adapter.ok()),
+            "stopped": self.controller.stopped,
+            "source": "motion-executor",
+            "instance_id": self.instance_id,
+            "physical_completion": "unverified",
+        }
+
+    def publish_output(self, *, force=False, accepted=True):
+        now = self.gate.clock()
+        if force or self.output_generation != self.gate.generation or now - self.last_output >= 0.1:
+            self._publish("motion.output", self.sdk_output(accepted))
+            self.last_output = now
+            self.output_generation = self.gate.generation
 
     def publish_status(self, *, force=False):
         now = self.gate.clock()
@@ -228,12 +273,36 @@ class MotionExecutor:
             return self._ack({}, "rejected", "passive_or_invalid_command")
         command = canonical_command(topic, payload)
         action = command.get("action")
+        is_actuator = isinstance(action, str) and action in ACTUATORS
+        if (
+            isinstance(action, str)
+            and action not in {"stop", "disarm", "estop"}
+            and self.controller.deadline
+            and self.gate.clock() >= self.controller.deadline
+        ):
+            self.gate.disarm("motion_goal_timeout")
+            self.controller.stop()
+            if self.pending is not None:
+                previous, self.pending = self.pending, None
+                self._ack(previous, "rejected", "motion_goal_timeout")
         try:
             values = validate_actuator(command)
         except ValueError as exc:
+            if is_actuator and self.controller.deadline:
+                self.gate.disarm("invalid_motion_intent")
+                self.controller.stop()
+                previous, self.pending = self.pending, None
+                if previous is not None:
+                    self._ack(previous, "rejected", "invalid_motion_intent", cancelled_by=command.get("request_id"))
             return self._ack(command, "rejected", str(exc))
         authorized, reason = self.gate.authorize(command)
         if not authorized:
+            if is_actuator and self.controller.deadline:
+                self.gate.disarm("invalid_motion_intent")
+                self.controller.stop()
+                previous, self.pending = self.pending, None
+                if previous is not None:
+                    self._ack(previous, "rejected", "invalid_motion_intent", cancelled_by=command.get("request_id"))
             return self._ack(command, "rejected", reason)
         if action in {"stop", "disarm", "estop", "clear_estop"}:
             pending, self.pending = self.pending, None
@@ -253,11 +322,23 @@ class MotionExecutor:
             if not self._hardware_ready():
                 self.gate.disarm("hardware_unavailable")
                 return self._ack(command, "rejected", "hardware_unavailable")
+            quality = self.samples.quality()
+            if not quality["ready"] or not self.controller.limits.valid:
+                reason = quality["error"] or "invalid_motion_limits"
+                self.gate.disarm(reason)
+                self.controller.stop()
+                return self._ack(command, "rejected", reason)
             return self._ack(command, "executed", "armed_no_actuation")
         if action in ACTUATORS:
             if not self._hardware_ready():
                 self.controller.stop()
                 return self._ack(command, "rejected", "hardware_unavailable")
+            quality = self.samples.quality()
+            if not quality["ready"] or not self.controller.limits.valid:
+                reason = quality["error"] or "invalid_motion_limits"
+                self.gate.disarm(reason)
+                self.controller.stop()
+                return self._ack(command, "rejected", reason)
             capability = self.capabilities().get("balance" if action == "stabilization" else action, {})
             if not capability.get("available") or not capability.get("stop_verified"):
                 return self._ack(command, "rejected", "manual_characterization_required")
@@ -267,6 +348,10 @@ class MotionExecutor:
             previous, self.pending = self.pending, None
             if previous is not None:
                 self._ack(previous, "rejected", "goal_superseded", superseded_by=command.get("request_id"))
+            if values["vx"] == 0 and values["yaw"] == 0:
+                self.output_observed_at = self.gate.wall_clock()
+                self.publish_output(force=True)
+                return self._ack(command, "executed", "sdk_zero_accepted")
             self.pending = command
             return self._ack(command, "accepted", "goal_accepted")
         method, argument = {
@@ -293,6 +378,9 @@ class MotionExecutor:
         generation = self.gate.generation
         self._hardware_ready()
         self.gate.poll()
+        quality = self.samples.quality()
+        if self.gate.state == "ARMED" and not quality["ready"]:
+            self.gate.disarm(quality["error"])
         if generation != self.gate.generation:
             pending, self.pending = self.pending, None
             self.controller.stop()
@@ -307,6 +395,9 @@ class MotionExecutor:
             executed = False
         if self.gate.reason == "actuator_failed":
             self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
+        if executed:
+            self.output_observed_at = self.gate.wall_clock()
+            self.publish_output()
         if self.pending is not None and executed:
             pending, self.pending = self.pending, None
             self._ack(pending, "executed", "sdk_accepted")
@@ -353,32 +444,22 @@ class MotionExecutor:
             else:
                 name = ("roll", "pitch", "yaw", "battery")[self.sensor_index]
                 self.sensor_index = (self.sensor_index + 1) % 4
+            measured_at = self.gate.wall_clock()
             value = read_sensor(name)
             self.sensor_values[name] = value
             self.sensor_times[name] = now
-            imu = {axis: self.sensor_values.get(axis) for axis in ("roll", "pitch", "yaw")}
-            if any(value is None for value in imu.values()):
-                imu = None
-            battery = self.sensor_values.get("battery")
+            if name in (*AXES, "battery"):
+                self.samples.observe(name, value, measured_at=measured_at, monotonic_at=now)
             self.firmware = self.sensor_values.get("firmware")
         else:
             # Injected simulation adapters have no UART or blocking reads.
             imu = self.adapter.get_imu()
             battery = self.adapter.battery()
             self.firmware = self.adapter.firmware()
-        sensor = {
-            "ts": self.gate.wall_clock(),
-            "observed_at": self.gate.wall_clock(),
-            "imu": imu,
-            "battery": battery,
-            "fw": self.firmware,
-            "src": "motion-executor",
-            "uart_owner": "motion-executor",
-            "imu_ok": imu is not None,
-            "battery_ok": battery is not None,
-            "sensor_age_s": {key: max(0.0, now - ts) for key, ts in self.sensor_times.items()},
-        }
-        self._publish("motion.sensor.raw", sensor)
+            for name in AXES:
+                self.samples.observe(name, imu.get(name) if isinstance(imu, dict) else None, monotonic_at=now)
+            self.samples.observe("battery", battery, monotonic_at=now)
+        self._publish("motion.sensor.raw", self.samples.payload(self.firmware))
 
     def close(self, reason="executor_shutdown"):
         self.shutdown = True

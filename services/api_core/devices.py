@@ -105,6 +105,9 @@ def observe_navigator(data: object) -> None:
     """Keep producer state and request identity; transport receipt is no ACK."""
     if not isinstance(data, dict):
         return
+    from .navigation_state import observe_plan
+
+    C.LAST_NAVIGATOR.update(observe_plan(data))
     fields = (
         "active",
         "state",
