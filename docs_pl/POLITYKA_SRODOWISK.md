@@ -22,6 +22,11 @@ tylko po to, żeby pominąć jego instalację. Mock sprzętu lub zewnętrznego
 providera jest jawną częścią zakresu testu. Brak opcjonalnego backendu oznacza
 niedostępną funkcję, a nie gotową usługę. `pyzmq` należy do wymaganego runtime.
 
+Biblioteki Google OAuth są zależnościami opcjonalnej integracji, ładowanymi
+dopiero przy żądaniu autoryzacji lub odświeżeniu tokenu. Ich brak nie blokuje
+startu podstawowego API; OAuth zgłasza niedostępność. Nie należą do bazowego
+zestawu testów WSL ani automatycznej instalacji na Pi.
+
 ## Przygotowanie WSL
 
 Używamy istniejącego `.venv` Rider-Pi także z jego worktree. Nie tworzymy

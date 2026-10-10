@@ -14,6 +14,7 @@ jobs:
       ALLOW_DELETE: '0'
       NOSTUB_STRICT: '0'
       RUN_SCENARIO_SUITE: '0'
+      PYTHONPATH: .
 
     steps:
       - uses: actions/checkout@v4

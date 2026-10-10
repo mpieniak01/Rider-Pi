@@ -22,6 +22,11 @@ it. Hardware and external provider mocks are explicit test scope choices.
 A missing optional backend means unavailable functionality, never ready.
 `pyzmq` is a required runtime package.
 
+Google OAuth libraries are optional integration dependencies, loaded only
+when authentication or token refresh is requested. Their absence does not
+prevent the core API from starting; OAuth reports unavailable. They are not
+part of the basic WSL test set or an automatic Pi installation.
+
 ## Prepare WSL
 
 Reuse the existing Rider-Pi `.venv`, including from worktrees. Do not create

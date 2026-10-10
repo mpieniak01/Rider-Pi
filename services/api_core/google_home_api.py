@@ -7,6 +7,7 @@ Smart Device Management (SDM) API communication.
 
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 import os
@@ -15,9 +16,12 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+
+# Optional integration: importing the core API must not require Google packages.
+# Keep these names patchable for isolated callers/tests; resolve on first use.
+Request = None
+Credentials = None
+InstalledAppFlow = None
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +53,14 @@ API_BASE = "https://smartdevicemanagement.googleapis.com/v1"
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
+def _oauth_dependency(name: str, module: str):
+    dependency = globals()[name]
+    if dependency is None:
+        dependency = getattr(importlib.import_module(module), name)
+        globals()[name] = dependency
+    return dependency
+
+
 def _ensure_token_dir() -> None:
     """Ensure token directory exists."""
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -121,7 +133,11 @@ def build_auth_url_preview() -> dict[str, Any]:
             "token_uri": "https://oauth2.googleapis.com/token",
         }
     }
-    flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
+    try:
+        flow_type = _oauth_dependency("InstalledAppFlow", "google_auth_oauthlib.flow")
+    except ImportError:
+        return {"ok": False, "error": "oauth_dependency_unavailable"}
+    flow = flow_type.from_client_config(client_config, scopes=SCOPES)
 
     port = _pick_oauth_port()
     if port == 0:
@@ -172,7 +188,8 @@ def start_oauth_flow() -> dict[str, Any]:
     }
 
     try:
-        flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
+        flow_type = _oauth_dependency("InstalledAppFlow", "google_auth_oauthlib.flow")
+        flow = flow_type.from_client_config(client_config, scopes=SCOPES)
 
         # Użyj DOKŁADNIE OAUTH_CALLBACK_PORT (test patchuje tę wartość i tego oczekuje).
         port = OAUTH_CALLBACK_PORT
@@ -205,6 +222,8 @@ def start_oauth_flow() -> dict[str, Any]:
         logger.info("OAuth tokens saved to %s", TOKEN_FILE)
         return {"ok": True, "message": "Authentication successful"}
 
+    except ImportError:
+        return {"ok": False, "error": "oauth_dependency_unavailable"}
     except Exception as e:
         logger.error("OAuth flow error: %s", e, exc_info=True)
         return {
@@ -219,7 +238,7 @@ def is_authenticated() -> bool:
     return TOKEN_FILE.exists()
 
 
-def _load_credentials() -> Credentials | None:
+def _load_credentials() -> Any | None:
     """
     Load credentials from token file.
 
@@ -243,7 +262,8 @@ def _load_credentials() -> Credentials | None:
             logger.error("Token file is missing required fields; re-authentication needed.")
             return None
 
-        creds = Credentials(
+        credentials_type = _oauth_dependency("Credentials", "google.oauth2.credentials")
+        creds = credentials_type(
             token=None,
             refresh_token=refresh_token,
             token_uri=token_uri,
@@ -271,7 +291,8 @@ def refresh_access_token() -> str | None:
 
     try:
         # creds.valid może być False, ale bez tokenu – odśwież.
-        creds.refresh(Request())
+        request_type = _oauth_dependency("Request", "google.auth.transport.requests")
+        creds.refresh(request_type())
         if not creds.token:
             logger.error("Token refresh returned no access token.")
             return None

@@ -24,6 +24,7 @@ jobs:
       ESTOP_GPIO: "-1"
       BUS_PUB_ADDR: "inproc://rider-ci-publish"
       BUS_SUB_ADDR: "inproc://rider-ci-subscribe"
+      FEATURE_STATE_PATH: "${{ runner.temp }}/rider-feature-state.json"
 
     steps:
       - name: Checkout
@@ -76,7 +77,7 @@ jobs:
           pytest -q tests/test_motion_safety_contract.py tests/test_uart_ownership.py \
                     tests/test_control_safety_http.py tests/test_test_sandbox.py \
                     tests/test_task_producer_safety.py tests/test_motion_failure_contract.py \
-                    tests/test_xgo_sensor_contract.py
+                    tests/test_xgo_sensor_contract.py tests/test_optional_oauth.py
           pytest -q -k voice -m "not hardware and not network" \
                  --cov=. --cov-report=term-missing --cov-report=html
 
