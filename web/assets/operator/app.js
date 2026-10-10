@@ -4,6 +4,7 @@ import { Tasks } from './tasks.js';
 import { Devices } from './devices.js';
 import { System } from './system.js';
 import { Navigation } from './navigation.js';
+import { Calibration } from './calibration.js';
 import { Chat } from './chat.js';
 import { request, poll, events } from './transport.js';
 import { fresh, presentationReady, ageOf, displayValue, catalogKnown, safetyKnown } from './model.js';
@@ -14,15 +15,16 @@ setInterval(refreshAges, 1000);
 const page = document.body.dataset.page;
 const globalStop = el('button', 'c-btn operator-stop operator-global-stop', '■ STOP');
 globalStop.type = 'button'; globalStop.dataset.stop = ''; document.querySelector('main').append(globalStop);
-let tasks, system, navigation, chat, lastKey = '';
+let tasks, system, navigation, chat, calibration, lastKey = '';
 const safety = new SafetyPanel(state => {
   const key = JSON.stringify([state?.state, state?.generation, state?.can_move, state?.ready, state?.hardware_ready, state?.capabilities,
     fresh(state), safety.clockFresh(), safety.revokedGenerations.has(state?.generation), ['manual', 'follow_me', 'navigation'].map(owner => safety.can(owner))]);
   if (key !== lastKey) { lastKey = key; tasks?.render(); system?.render(); }
-  navigation?.render();
+  navigation?.render(); calibration?.render();
   renderCapabilities(state);
 });
 if (page === 'control') tasks = new Tasks(safety);
+if (page === 'calibration') calibration = new Calibration(safety);
 if (page === 'devices') new Devices();
 if (page === 'system') system = new System(safety);
 if (page === 'navigation') { tasks = new Tasks(safety, 'task-list', task => task.motion_owner === 'navigation' || task.scenario === 'S8'); navigation = new Navigation(safety); }
@@ -69,5 +71,5 @@ const numberInput = id => { const value = document.getElementById(id)?.value.tri
 document.getElementById('height-apply')?.addEventListener('click', () => safety.send('height', { height: numberInput('height') }).catch(showError));
 document.getElementById('balance-apply')?.addEventListener('click', () => safety.send('balance', { enabled: document.getElementById('balance').checked }).catch(showError));
 document.getElementById('action-apply')?.addEventListener('click', () => safety.send('action', { action_id: numberInput('action-id') }).catch(showError));
-window.addEventListener('dashboard:langchange', () => { localizeStatic(); lastKey = ''; safety.render(); tasks?.render(); system?.render(); navigation?.render(); });
+window.addEventListener('dashboard:langchange', () => { localizeStatic(); lastKey = ''; safety.render(); tasks?.render(); system?.render(); navigation?.render(); calibration?.render(); });
 if (chat) setInterval(() => { if (!chat.busy) document.getElementById('chat-send').disabled = !catalogKnown(tasks.catalog); }, 1000);

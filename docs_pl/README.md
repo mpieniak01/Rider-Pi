@@ -9,6 +9,7 @@ planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona.
 - [Wizja projektu](PROJECT.md), [architektura](ARCHITECTURE.md), [diagramy](ARCHITECTURE_DIAGRAM.md).
 - [Development](development.md), [wdrożenie i odtwarzanie](WDROZENIE.md).
 - [Polityka środowisk, zależności i testów](POLITYKA_SRODOWISK.md).
+- [Profile kalibracji i pomiary](apps/calibration.md).
 - [Architektura ruchu](apps/motion.md), [blokady i praca z fizycznym robotem](apps/safety.md).
 - [Polityka dokumentacji](POLITYKA_DOKUMENTACJI.md), [konfiguracja i sekrety](config/POLICY.md).
 - [Dokumentacja angielska](../docs/README.md).

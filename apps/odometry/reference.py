@@ -38,6 +38,7 @@ class ReferenceControl:
             "error": error,
             "observed_at": self.clock(),
             "reference_id": self.estimator.reference_id,
+            "profile_digest": self.estimator.calibration_digest,
             "home": self.estimator.home,
             "instance_id": self.instance_id,
             "physical_completion": "unverified",
@@ -54,6 +55,24 @@ class ReferenceControl:
         error = validate_reference(row, state, now=self.clock(), started_at=self.started_at)
         if error:
             return self._ack(row, error=error)
+        digest = row.get("profile_digest")
+        if digest is not None or self.estimator.calibration_digest is not None:
+            binding = self.estimator.calibration_state()
+            config = state.get("calibration", {})
+            observed = binding.get("observed_at")
+            if (
+                self.estimator.calibration_digest != digest
+                or binding.get("error")
+                or binding.get("profile_digest") != digest
+                or binding.get("motion_instance_id") != state.get("instance_id")
+                or any(
+                    type(binding.get(key)) is not type(config.get(key)) or binding.get(key) != config.get(key)
+                    for key in ("source", "activation_request_id", "command_generation", "seq", "applied_generation")
+                )
+                or not finite_number(observed)
+                or not 0 <= self.clock() - observed <= 3.0
+            ):
+                return self._ack(row, error="reference_profile_unconfirmed")
         _, sequence_path = reference_paths()
         try:
             sequence_path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +135,7 @@ class ReferenceControl:
             "home": self.estimator.home,
             "last_ack": self.last_ack,
             "pose": self.estimator.get_pose(),
+            "calibration": self.estimator.calibration_state(),
             "actuation": False,
         }
         try:
@@ -141,6 +161,21 @@ def validate_reference(row, state, *, now, started_at=None):
         return "safety_stale"
     if row.get("generation") != state.get("generation") or not isinstance(row.get("generation"), str):
         return "stale_generation"
+    config = state.get("calibration")
+    current_digest = config.get("profile_digest") if isinstance(config, dict) else None
+    requested_digest = row.get("profile_digest")
+    if current_digest is not None or requested_digest is not None:
+        if (
+            not isinstance(requested_digest, str)
+            or len(requested_digest) != 64
+            or any(char not in "0123456789abcdef" for char in requested_digest)
+            or requested_digest != current_digest
+            or config.get("error")
+            or config.get("instance_id") != state.get("instance_id")
+            or not finite_number(config.get("observed_at"))
+            or not 0 <= now - config["observed_at"] <= 3.0
+        ):
+            return "reference_profile_mismatch"
     if row.get("source") != "manual" or type(row.get("seq")) is not int or row["seq"] < 0:
         return "reference_metadata_required"
     if not isinstance(row.get("request_id"), str) or not 0 < len(row["request_id"]) <= 128:

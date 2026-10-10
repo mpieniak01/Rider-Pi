@@ -229,6 +229,26 @@ class Mapper:
 
     def _handle_robot_pose(self, payload: dict):
         """Update current robot pose from odometry"""
+        # A replacement calibration invalidates old cells even before a new
+        # manual reference exists. Publication time is used only to discard
+        # history, never to claim a fresh physical pose or map observation.
+        revision = payload.get("calibration_id") if isinstance(payload, dict) else None
+        published = payload.get("ts") if isinstance(payload, dict) else None
+        if (
+            self.frame is not None
+            and isinstance(revision, str)
+            and revision
+            and revision != self.frame[0]
+            and finite_number(published)
+            and 0 <= self.wall_clock() - published <= 3.0
+        ):
+            self.grid.grid.fill(CELL_UNKNOWN)
+            self.grid.observed.fill(0.0)
+            self.grid.observation_time = None
+            self.range_sample = None
+            self.last_range_ts = None
+            self.frame = None
+            self.robot_x = self.robot_y = self.robot_theta = None
         quality = pose_status(payload, previous_ts=self.last_pose_ts, now=self.wall_clock())
         if not quality["ready"]:
             self.pose_sample = None

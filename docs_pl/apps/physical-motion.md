@@ -2,7 +2,9 @@
 
 Ten przyrost zawiera zabezpieczenia programu i weryfikację na mockach.
 **Robot nie został poruszony w ramach tej pracy. Pomiary fizyczne nie są zakończone.**
-Issue #256 pozostaje otwarte. ACK SDK potwierdza zapis, nie ruch, stabilność,
+#256 dotyczy kodu i [narzędzi kalibracji](calibration.md). Recenzja narzędzi
+nie wymaga pomiarów fizycznych: wartości profilu są lokalną konfiguracją
+operatora, bez osobnego PR. ACK SDK potwierdza zapis, nie ruch, stabilność,
 odległość, czas zatrzymania ani fizyczne dotarcie do celu.
 
 ## Działanie programu

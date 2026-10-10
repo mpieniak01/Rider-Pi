@@ -2,7 +2,9 @@
 
 This release implements software safeguards and mock verification. **The robot
 has not been driven for this work. Physical characterization is not complete.**
-Issue #256 remains open. A SDK ACK confirms a write, not motion, stability,
+#256 covers code and [calibration tools](calibration.md). Tool review does not
+require physical measurements: profile values are local operator configuration,
+without a separate PR. An SDK ACK confirms a write, not motion, stability,
 distance, stopping time or physical arrival.
 
 ## Implemented behavior

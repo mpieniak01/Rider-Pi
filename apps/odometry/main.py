@@ -13,7 +13,7 @@ import math
 import os
 import time
 
-from apps.odometry.calibration import calibration_status, load_calibration, measured_rate
+from apps.odometry.calibration import CalibrationBinding, calibration_status, load_calibration, measured_rate
 from common.bus import TOPIC_IMU_DATA, TOPIC_ROBOT_POSE, BusPub, BusSub
 from common.data_quality import finite_number, sample_status
 
@@ -51,6 +51,29 @@ class OdometryEstimator:
         self.executor_state_received_at = None
         self._idle_confirmed = False
         self._pending_output_since = None
+        self.calibration_digest = None
+        self.calibration_applied_at = None
+        self.profile_binding = CalibrationBinding(self) if calibration is None else None
+
+    def reset_calibration(self, calibration, digest):
+        binding = self.profile_binding
+        self.__init__(calibration=calibration, clock=self.clock, wall_clock=self.wall_clock)
+        self.profile_binding = binding
+        self.calibration_digest = digest
+
+    def calibration_state(self):
+        return (
+            self.profile_binding.status()
+            if self.profile_binding is not None
+            else {
+                "profile_digest": self.calibration_digest,
+                "source": "legacy_file",
+                "error": None,
+                "odometry_error": self.calibration_error,
+                "model_ready": self.quality()["data_ready"],
+                "record_verified": self.calibration.get("manual_verified") is True,
+            }
+        )
 
     def _executor_quality(self, *, allow_transition=False):
         row = self.executor_state
@@ -135,6 +158,8 @@ class OdometryEstimator:
         return dict(status, ready=False, error="executor_stationary_unconfirmed")
 
     def update_executor_state(self, payload):
+        if self.profile_binding is not None:
+            self.profile_binding.observe(payload)
         # State is liveness, never another SDK write or mechanical stop proof.
         previous = self.executor_state.get("observed_at") if self.executor_state else None
         if self._idle_confirmed and not self._output_quality(for_continuity=True)["ready"]:
@@ -221,6 +246,10 @@ class OdometryEstimator:
         """In-process reference after a manual position check; never restored."""
         if operator_consent is not True or not isinstance(reference_id, str) or not reference_id.strip():
             return False
+        if self.calibration_digest is not None and self.output is None:
+            return False
+        if self.calibration_state()["error"]:
+            return False
         if self.last_lx != 0 or self.last_az != 0:
             return False
         if self.output is not None and self.output.get("stopped") is not True:
@@ -247,7 +276,7 @@ class OdometryEstimator:
                 "y": home_y,
                 "operator_confirmed": True,
                 "reference_id": reference_id,
-                "calibration_id": self.calibration.get("measurement_id"),
+                "calibration_id": self.calibration_digest or self.calibration.get("measurement_id"),
             }
             if home_operator_confirmed
             else None
@@ -271,6 +300,11 @@ class OdometryEstimator:
         valid = valid and isinstance(payload.get("instance_id"), str) and bool(payload["instance_id"])
         valid = valid and all(type(payload.get(key)) is int for key in ("linear_step", "turn_step"))
         valid = valid and type(payload.get("stopped")) is bool
+        valid = valid and (
+            self.calibration_applied_at is None
+            or status["ready"]
+            and status["observed_at"] > self.calibration_applied_at
+        )
         if not valid:
             self.last_lx = self.last_az = 0.0
             self.output = None
@@ -330,7 +364,12 @@ class OdometryEstimator:
                 self.continuity_error = self.continuity_error or "imu_gap_before_replacement"
         row = dict(payload or {}, yaw=yaw, observed_at=observed_at)
         status = sample_status(row, max_age_s=IMU_MAX_AGE_S, now=self.wall_clock(), previous_ts=self.last_imu_ts)
-        if not status["ready"] or not finite_number(yaw):
+        if (
+            not status["ready"]
+            or not finite_number(yaw)
+            or self.calibration_applied_at is not None
+            and observed_at <= self.calibration_applied_at
+        ):
             self.imu_available = False
             self.imu = None
             if self._has_moved or self._pending_output_since is not None:
@@ -350,7 +389,8 @@ class OdometryEstimator:
     def quality(self):
         output = self._output_quality()
         imu = sample_status(self.imu, max_age_s=IMU_MAX_AGE_S, now=self.wall_clock())
-        error = self.calibration_error or self.continuity_error
+        error = self.profile_binding.error if self.profile_binding is not None else None
+        error = error or self.calibration_error or self.continuity_error
         if not error and not self.reference_verified:
             error = "current_manual_reference_required"
         if not error:
@@ -369,7 +409,8 @@ class OdometryEstimator:
             "observed_at": observed,
             "last_sdk_output_observed_at": self.last_motion_ts,
             "stationary_model_basis": "accepted_sdk_zero_and_executor_heartbeat" if self._idle_confirmed else None,
-            "calibration_id": self.calibration.get("measurement_id"),
+            "calibration_id": self.calibration_digest or self.calibration.get("measurement_id"),
+            "measurement_id": self.calibration.get("measurement_id"),
             "reference_id": self.reference_id,
             "home": self.home,
             "confidence": None,

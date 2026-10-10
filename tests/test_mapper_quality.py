@@ -114,6 +114,28 @@ def test_new_coordinate_frame_clears_previous_cells_and_range(mapper, field):
     assert instance.quality()["planning_ready"] and instance.quality()[field] == "new-frame"
 
 
+def test_new_calibration_discards_cells_before_manual_reference(mapper):
+    instance, clock, _ = mapper
+    instance._handle_obstacle_data(ranges(clock))
+    assert any(cell != CELL_UNKNOWN for row in instance.grid.snapshot(clock.now) for cell in row)
+    instance._handle_robot_pose(
+        {
+            "calibration_id": "replacement-profile-digest",
+            "reference_id": None,
+            "home": None,
+            "ts": clock.now,
+            "observed_at": None,
+            "data_ready": False,
+            "error": "current_manual_reference_required",
+        }
+    )
+    assert instance.frame is None and instance.range_sample is None
+    assert instance.grid.observation_time is None
+    assert instance.robot_x is None and instance.robot_theta is None
+    assert not instance.quality()["planning_ready"]
+    assert all(cell == CELL_UNKNOWN for row in instance.grid.snapshot(clock.now) for cell in row)
+
+
 def test_expired_cells_are_unknown_in_operator_statistics(mapper):
     instance, clock, _ = mapper
     instance._handle_obstacle_data(ranges(clock))

@@ -13,6 +13,10 @@
       const nav = target.querySelector('.dashboard-menu');
       if (!nav) return;
       setupMenu(nav);
+      const localize = () => target.querySelectorAll('[data-pl][data-en]').forEach(node => {
+        node.textContent = document.documentElement.lang.startsWith('en') ? node.dataset.en : node.dataset.pl;
+      });
+      localize(); window.addEventListener('dashboard:langchange', localize);
       if (window.i18n?.applyDom) {
         window.i18n.applyDom(target);
       }
