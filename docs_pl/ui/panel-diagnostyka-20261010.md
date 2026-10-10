@@ -38,7 +38,8 @@ również dla wyniku niedostępnego. Brak Git/repo zwraca HTTP 200 z `available=
 Detached HEAD jest oznaczony jawnie. Stopka obsługuje błędy HTTP, timeout, szablon awaryjny
 i kopiowanie hasha na HTTP w LAN. Na telefonie zawija się i ma pozycję statyczną.
 
-Rejestracja aliasów `/api/vision/*` ma własną nazwę blueprintu, wymaganą przez nowszy Flask.
+Rejestracja aliasów `/api/vision/*` używa jawnych reguł z osobną przestrzenią nazw,
+bez opcji `name=` blueprintu dodanej dopiero w Flask 2.0.2.
 Usunięto też powtórną rejestrację już obecnego blueprintu diagnostyki usług.
 
 Krytyczne naprawy istniejącego CI: usunięte znaczniki konfliktu w Quality Guard,
@@ -46,13 +47,16 @@ sprawdzanie gotowości przez istniejące `/healthz`, właściwy port 8080 i star
 Poprawiono istniejące błędy Ruff w importach i adnotacjach `models_api.py`.
 Nie dodano zadań CI, zależności, ochrony gałęzi ani zmian usług/portów.
 Istniejący duży `api_server.py` wymaga etykiety PR `allow-oversize`.
+Scenariusze sprzętowe pozostają wyłączone: job działa na `ubuntu-latest`, więc etykieta
+`scenario-suite` nie udostępnia runnera Pi. Dalsza konfiguracja runnera wymaga osobnego
+zakresu. Oczekiwanie na API sprawdza też PID i odrzuca już działający stary serwer.
 
 ## Testy i ograniczenia
 
 | Kontrola | Wynik |
 | --- | --- |
 | Żywe panele przed zmianą: Pi 8 stron, PC 14 stron | 22 strony HTTP 200; 789 odpowiedzi; brak nieobsłużonych błędów JS i prób zapisów |
-| Pi: endpoint wersji, mapa metod UI, trasy HTML, diagnostyka usług, Google Home, features, statyczne systemd i renderer | 74 passed |
+| Pi: endpoint wersji, mapa metod UI, trasy HTML, diagnostyka usług, Google Home, features, statyczne systemd i renderer | 76 passed |
 | Pi: Chromium, wszystkie motywy i szerokości 320/390/768/1365 px, PL/EN, błędy/powrót API, wolny odczyt, stopka na 8 stronach | 33 passed |
 | PC: domyślny zestaw `pc_client/tests` | 290 passed, 35 skipped |
 | PC: istniejące testy API z `RIDER_ENABLE_API_TESTS=1` | 19 passed; adapter sprzętu wyłączony |

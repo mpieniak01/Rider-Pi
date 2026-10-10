@@ -62,3 +62,11 @@ def test_wrong_method_and_unknown_route_are_distinct():
     client = app.test_client()
     assert client.get("/api/control").status_code == 405
     assert client.get("/api/does-not-exist").status_code == 404
+
+
+@pytest.mark.parametrize("prefix", ["", "/api"])
+def test_vision_aliases_keep_options_and_deprecated_response(prefix):
+    client = app.test_client()
+    assert client.options(prefix + "/vision/cam").status_code == 200
+    assert client.post(prefix + "/vision/follow/face", json={}).status_code == 410
+    assert client.post(prefix + "/vision/follow/hand", json={}).status_code == 410

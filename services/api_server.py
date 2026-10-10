@@ -832,7 +832,17 @@ try:
     if _bp is None:
         raise RuntimeError("vision_api.bp missing (circular import?)")
     app.register_blueprint(_bp)  # /vision/*
-    app.register_blueprint(_bp, url_prefix="/api", name="vision_api_alias")  # /api/vision/*
+    # Explicit aliases also work on Flask 1.1 (before blueprint name overrides).
+    prefix = _bp.name + "."
+    for rule in list(app.url_map.iter_rules()):
+        if rule.endpoint.startswith(prefix):
+            app.add_url_rule(
+                "/api" + rule.rule,
+                endpoint="vision_api_alias." + rule.endpoint[len(prefix) :],
+                view_func=app.view_functions[rule.endpoint],
+                methods=rule.methods,
+                provide_automatic_options=rule.provide_automatic_options,
+            )
     app.logger.info("[api] vision_api blueprints registered: /vision/* and /api/vision/*")
 except Exception as e:
     app.logger.exception("[api] failed to register vision_api blueprint: %s", e)
