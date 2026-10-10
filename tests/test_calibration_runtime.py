@@ -184,7 +184,9 @@ def test_estop_during_persistence_leaves_partial_and_inhibited(executor, monkeyp
     before = list(instance.adapter.calls)
     ack = activate(instance)
     assert ack["error"] == "calibration_state_changed_during_apply"
-    assert profiles.read_active()["profile_digest"] == ack["profile_digest"]
+    with pytest.raises(ValueError, match="active_profile_pending"):
+        profiles.read_active()
+    assert profiles.read_active(include_pending=True)["profile_digest"] == ack["profile_digest"]
     assert instance.calibration.profile_digest is None and not instance.snapshot()["ready"]
     assert instance.adapter.calls == before
 

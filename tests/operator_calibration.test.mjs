@@ -17,7 +17,7 @@ const runtime = () => ({ schema_version: 1, actuation: false, stale: false, erro
 function applied() {
   const row = runtime();
   row.status = 'applied'; row.confirmation = 'executed'; row.model_ready = false;
-  row.active = { profile_digest: digest, activated_at: 990, request_id: 'activation-fixture', command_generation: generation, seq: 5 };
+  row.active = { activation_state: 'applied', profile_digest: digest, activated_at: 990, request_id: 'activation-fixture', command_generation: generation, seq: 5 };
   row.motion.calibration = { observed_at: now, profile_digest: digest, source: 'profile', instance_id: 'motion-fixture',
     activation_request_id: 'activation-fixture', command_generation: generation, applied_generation: 'new-generation', odometry_error: 'manual_calibration_required',
     applied_ack: { observed_at: 991, action: 'activate_calibration', accepted: true, actuation: false, source: 'manual',
@@ -362,4 +362,16 @@ test('fresh software dynamics stay observable through hardware failure while phy
   assert.equal(model.sensorObservations(motion, now).yaw.ready, false);
   motion.calibration.error = 'active_profile_invalid';
   assert.equal(model.currentDynamics(motion, now).ready, false);
+});
+
+test('pending or legacy pointer never proves applied configuration even with forged successful consumers', () => {
+  for (const activation_state of ['pending', undefined, null, 'unknown']) {
+    const state = applied(); state.active.activation_state = activation_state;
+    assert.equal(model.activationView(state, digest, now).applied, false);
+    assert.equal(model.activationAllowed(state, safe(), true, now), true, 'explicit repair remains available');
+  }
+  const state = applied(); state.active.activation_state = 'pending';
+  state.status = 'partial'; state.error = 'active_profile_pending';
+  assert.equal(model.activationAllowed(state, safe(), true, now), true);
+  assert.equal(model.activationView(state, digest, now).status, 'partial');
 });

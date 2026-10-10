@@ -81,6 +81,17 @@ rejection in last_ack does not replace the accepted configuration applied_ack.
 After restart, fresh matching hashes from saved_profile give
 confirmation=loaded_from_saved without inventing a new ACK.
 
+Activation first persists a local pointer with activation_state=pending.
+The executor rechecks DISARMED, no goal/motion, generation and TTL; only after
+logical configuration acceptance and generation rotation does it persist
+activation_state=applied. A pending entry is not an active profile: the API
+shows partial/active_profile_pending, and restart blocks ARM and the odometry
+model. E-Stop before logical acceptance or final persistence failure leaves
+this entry for repair through a new explicit request. There is no automatic
+rollback or acceptance at restart. Older unmarked pointers are also rejected.
+E-Stop after logical acceptance is a separate latched safety state; a successful
+final write confirms configuration alone and does not clear E-Stop.
+
 Applied describes configuration. Verified measurement record (record_verified),
 current model_ready and physical_completion=unverified remain separate.
 Missing, stale, rejected or single-consumer confirmation stays unknown/partial.

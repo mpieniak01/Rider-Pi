@@ -229,9 +229,13 @@ def _atomic(path, value):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
+        temporary = None  # Rename is the commit point; no fallible cleanup after it.
     finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass  # Preserve the original failure; a leftover temp is never active.
 
 
 def _immutable(path, value):
@@ -319,7 +323,7 @@ def save_profile(profile):
     return {"digest": digest, "profile": value, "created": True}
 
 
-def read_active():
+def read_active(*, include_pending=False):
     path = storage_dir() / "active.json"
     if not path.exists():
         return None
@@ -332,7 +336,17 @@ def read_active():
         or value["activated_at"] <= 0
     ):
         raise ValueError("active_profile_invalid")
-    if set(value) - {"schema_version", "profile_digest", "activated_at", "request_id", "command_generation", "seq"}:
+    if value.get("activation_state") not in ("pending", "applied"):
+        raise ValueError("active_profile_state_invalid")
+    if set(value) - {
+        "schema_version",
+        "profile_digest",
+        "activated_at",
+        "request_id",
+        "command_generation",
+        "seq",
+        "activation_state",
+    }:
         raise ValueError("active_profile_invalid")
     if any(key in value for key in ("request_id", "command_generation", "seq")):
         _text(value.get("request_id"), "active_request_id_invalid", limit=128, required=True)
@@ -340,23 +354,64 @@ def read_active():
         if type(value.get("seq")) is not int or not 0 <= value["seq"] < 2**63:
             raise ValueError("active_sequence_invalid")
     read_profile(_digest(value.get("profile_digest")))
+    if value["activation_state"] == "pending":
+        if not all(key in value for key in ("request_id", "command_generation", "seq")):
+            raise ValueError("active_profile_invalid")
+        if not include_pending:
+            raise ValueError("active_profile_pending")
     return value
 
 
-def write_active(digest, *, request_id=None, command_generation=None, seq=None, now=None):
-    """Sole executor calls this after accepting a DISARMED activation, never the API."""
+def write_active(digest, *, request_id=None, command_generation=None, seq=None, now=None, activation_state="applied"):
+    """Sole executor stages pending; explicit applied default preserves local fixtures."""
     read_profile(digest)
     observed = time.time() if now is None else now
     if not finite_number(observed) or observed <= 0:
         raise ValueError("active_timestamp_invalid")
-    value = {"schema_version": 1, "profile_digest": digest, "activated_at": observed}
-    if any(item is not None for item in (request_id, command_generation, seq)):
+    if activation_state not in ("pending", "applied"):
+        raise ValueError("active_profile_state_invalid")
+    value = {
+        "schema_version": 1,
+        "profile_digest": digest,
+        "activated_at": observed,
+        "activation_state": activation_state,
+    }
+    if activation_state == "pending" or any(item is not None for item in (request_id, command_generation, seq)):
         _text(request_id, "active_request_id_invalid", limit=128, required=True)
         _text(command_generation, "active_generation_invalid", limit=128, required=True)
         if type(seq) is not int or not 0 <= seq < 2**63:
             raise ValueError("active_sequence_invalid")
         value.update(request_id=request_id, command_generation=command_generation, seq=seq)
     with _lock() as root:
+        _atomic(root / "active.json", value)
+    return value
+
+
+def commit_active(digest, *, request_id, command_generation, seq):
+    """Commit exactly one staged transaction after the executor's logical apply."""
+    _digest(digest)
+    _text(request_id, "active_request_id_invalid", limit=128, required=True)
+    _text(command_generation, "active_generation_invalid", limit=128, required=True)
+    if type(seq) is not int or not 0 <= seq < 2**63:
+        raise ValueError("active_sequence_invalid")
+    with _lock() as root:
+        pending = read_active(include_pending=True)
+        expected = {
+            "profile_digest": digest,
+            "request_id": request_id,
+            "command_generation": command_generation,
+            "seq": seq,
+        }
+        if (
+            pending is None
+            or pending.get("activation_state") != "pending"
+            or any(
+                type(pending.get(key)) is not type(value) or pending.get(key) != value
+                for key, value in expected.items()
+            )
+        ):
+            raise ValueError("active_profile_transaction_mismatch")
+        value = dict(pending, activation_state="applied")
         _atomic(root / "active.json", value)
     return value
 
@@ -458,6 +513,8 @@ def _matches_ack(ack, active, motion, now):
 
 def profile_confirmation(active, motion, odometry, now):
     """Pure proof shared by configuration status and manual-reference admission."""
+    if not isinstance(active, dict) or active.get("activation_state") != "applied":
+        return "unconfirmed"
     mc, oc = _calibration(motion), _calibration(odometry)
     if (
         not _fresh(motion, now)

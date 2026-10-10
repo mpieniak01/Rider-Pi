@@ -113,7 +113,7 @@ export function activationView(state, expectedDigest = null, now = Date.now() / 
     && odom.applied_generation === motion.applied_generation && ack.generation === motion.applied_generation
     && ack.instance_id === state.motion.instance_id && motion.instance_id === state.motion.instance_id
     && finite(ack.observed_at) && finite(active.activated_at) && active.activated_at <= ack.observed_at && ack.observed_at <= now;
-  const applied = Boolean(current && same && state.status === 'applied' && (boot || executed));
+  const applied = Boolean(current && same && active?.activation_state === 'applied' && state.status === 'applied' && (boot || executed));
   return { applied, status: applied ? 'applied' : state?.stale === true || !freshCalibration(state?.motion, now) ? 'unknown' : state?.status === 'partial' ? 'partial' : 'pending',
     digest: wanted || null, confirmation: applied ? state.confirmation : 'unconfirmed',
     recordVerified: applied && odom?.record_verified === true,

@@ -79,6 +79,17 @@ odmowa last_ack nie zastępuje dowodu przyjętej konfiguracji applied_ack.
 Po restarcie świeże matching hash ze źródła saved_profile dają
 confirmation=loaded_from_saved, bez udawania nowego ACK.
 
+Aktywacja zapisuje najpierw lokalny wskaźnik z activation_state=pending.
+Wykonawca ponownie sprawdza DISARMED, brak celu/ruchu, generację i TTL;
+dopiero po logicznym przyjęciu konfiguracji i zmianie generacji zapisuje
+activation_state=applied. Wpis pending nie jest aktywnym profilem: API pokazuje
+partial/active_profile_pending, a restart blokuje ARM i model odometrii.
+E-Stop przed logicznym przyjęciem lub błąd końcowego zapisu pozostawiają ten
+wpis do naprawy przez nowe jawne żądanie. Nie ma automatycznego rollbacku ani
+przyjęcia przy restarcie. Starszy wskaźnik bez znacznika również jest odrzucany.
+E-Stop po logicznym przyjęciu jest osobnym zatrzaśniętym stanem bezpieczeństwa;
+udany końcowy zapis potwierdza wyłącznie konfigurację i nie kasuje E-Stop.
+
 Applied dotyczy konfiguracji. Zweryfikowany zapis pomiarów record_verified,
 bieżący model_ready i physical_completion=unverified są oddzielne.
 Brak, stare dane, odmowa i tylko jeden zgodny proces pozostają unknown/partial.

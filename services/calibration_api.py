@@ -46,7 +46,7 @@ def snapshot():
         "physical_completion": "unverified",
     }
     try:
-        active = profiles.read_active()
+        active = profiles.read_active(include_pending=True)
     except (ValueError, OSError):
         result["error"] = "active_profile_unavailable"
         return result
@@ -57,7 +57,11 @@ def snapshot():
         result["confirmation"] = _confirmation(active, motion, odometry, now)
         result["status"] = "partial" if result["confirmation"] == "unconfirmed" else "applied"
         if result["status"] == "partial":
-            result["error"] = "profile_not_confirmed_by_both_processes"
+            result["error"] = (
+                "active_profile_pending"
+                if active["activation_state"] == "pending"
+                else "profile_not_confirmed_by_both_processes"
+            )
         result["model_ready"] = bool(
             result["status"] == "applied" and oc.get("model_ready") is True and not result["calibration_error"]
         )
@@ -81,6 +85,10 @@ def snapshot():
                 error=ack.get("error") or ack.get("reason") or "activation_rejected",
                 confirmation="unconfirmed",
                 model_ready=False,
+            )
+        elif active and active["activation_state"] == "pending":
+            result.update(
+                status="partial", error="active_profile_pending", confirmation="unconfirmed", model_ready=False
             )
         elif now - pending["ts"] <= 5:
             result.update(status="pending", error=None, confirmation="unconfirmed", model_ready=False)

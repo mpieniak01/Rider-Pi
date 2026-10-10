@@ -165,6 +165,74 @@ def test_executor_pointer_metadata_and_current_time(profile):
         store.write_active(digest, request_id="incomplete")
 
 
+def test_staged_pointer_is_inspectable_but_never_boot_loadable(profile):
+    digest = store.save_profile(profile)["digest"]
+    pending = store.write_active(
+        digest, request_id="r", command_generation="g", seq=1, now=1000, activation_state="pending"
+    )
+    assert store.read_active(include_pending=True) == pending
+    with pytest.raises(ValueError, match="active_profile_pending"):
+        store.read_active()
+    assert store.profile_confirmation(pending, {}, {}, 1000) == "unconfirmed"
+    applied = store.commit_active(digest, request_id="r", command_generation="g", seq=1)
+    assert applied["activation_state"] == "applied" and applied["activated_at"] == 1000
+    assert store.read_active() == applied
+
+
+@pytest.mark.parametrize("changes", [{"request_id": "other"}, {"command_generation": "other"}, {"seq": 2}])
+def test_commit_only_accepts_exact_pending_transaction(profile, changes):
+    digest = store.save_profile(profile)["digest"]
+    pending = store.write_active(
+        digest, request_id="r", command_generation="g", seq=1, now=1000, activation_state="pending"
+    )
+    metadata = {"request_id": "r", "command_generation": "g", "seq": 1}
+    metadata.update(changes)
+    with pytest.raises(ValueError, match="active_profile_transaction_mismatch"):
+        store.commit_active(digest, **metadata)
+    assert store.read_active(include_pending=True) == pending
+    with pytest.raises(ValueError, match="active_profile_pending"):
+        store.read_active()
+
+
+def test_commit_disk_failure_keeps_pending_for_restart(profile, monkeypatch):
+    digest = store.save_profile(profile)["digest"]
+    pending = store.write_active(
+        digest, request_id="r", command_generation="g", seq=1, now=1000, activation_state="pending"
+    )
+
+    def failed(*_args):
+        raise OSError("fake atomic write failure")
+
+    monkeypatch.setattr(store, "_atomic", failed)
+    with pytest.raises(OSError):
+        store.commit_active(digest, request_id="r", command_generation="g", seq=1)
+    assert store.read_active(include_pending=True) == pending
+    with pytest.raises(ValueError, match="active_profile_pending"):
+        store.read_active()
+
+
+def test_successful_commit_has_no_fallible_temporary_cleanup(profile, monkeypatch):
+    digest = store.save_profile(profile)["digest"]
+    store.write_active(digest, request_id="r", command_generation="g", seq=1, now=1000, activation_state="pending")
+
+    def forbidden_cleanup(*_args):
+        raise OSError("fake cleanup failure after successful rename")
+
+    monkeypatch.setattr(store.os, "unlink", forbidden_cleanup)
+    pointer = store.commit_active(digest, request_id="r", command_generation="g", seq=1)
+    assert pointer["activation_state"] == "applied" and store.read_active() == pointer
+
+
+def test_unmarked_pointer_cannot_recover_precheck_rejected_profile(profile):
+    digest = store.save_profile(profile)["digest"]
+    pointer = store.write_active(digest, request_id="r", command_generation="g", seq=1, now=1000)
+    pointer.pop("activation_state")
+    (store.storage_dir() / "active.json").write_text(json.dumps(pointer))
+    with pytest.raises(ValueError, match="active_profile_state_invalid"):
+        store.read_active()
+    assert store.profile_confirmation(pointer, {}, {}, 1000) == "unconfirmed"
+
+
 def test_catalog_verification_comes_from_hashed_revision_not_editable_index(profile):
     store.save_profile(profile)
     path = store.storage_dir() / "catalog.json"

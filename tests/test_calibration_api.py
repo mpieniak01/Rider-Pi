@@ -380,3 +380,50 @@ def test_reference_http_preserves_explicit_legacy_file_contract(world):
     row.pop("profile_digest")
     assert world.client.post("/api/odometry/reference", json=row).status_code == 202
     assert world.sent[0][1] == row
+
+
+def test_pending_pointer_is_partial_despite_matching_fresh_runtime(world):
+    pointer = applied(world)
+    store.write_active(
+        pointer["profile_digest"],
+        request_id=pointer["request_id"],
+        command_generation=pointer["command_generation"],
+        seq=pointer["seq"],
+        now=1000,
+        activation_state="pending",
+    )
+    response = world.client.get("/api/calibration/state")
+    assert response.json["status"] == "partial" and response.json["error"] == "active_profile_pending"
+    assert response.json["active"]["activation_state"] == "pending"
+    assert response.json["active"]["profile_digest"] == pointer["profile_digest"]
+    assert response.json["confirmation"] == "unconfirmed" and response.json["model_ready"] is False
+    assert response.json["motion"]["calibration"]["profile_digest"] == pointer["profile_digest"]
+
+
+def test_pending_saved_profile_never_becomes_applied_or_reference(world):
+    pointer = applied(world)
+    row = reference_http(world)
+    for process in (world.motion, world.odometry):
+        process["calibration"].update(source="saved_profile", activation_request_id=None, applied_generation=None)
+    world.motion["calibration"].update(last_ack=None, applied_ack=None)
+    store.write_active(
+        pointer["profile_digest"],
+        request_id=pointer["request_id"],
+        command_generation=pointer["command_generation"],
+        seq=pointer["seq"],
+        now=1000,
+        activation_state="pending",
+    )
+    state = world.client.get("/api/calibration/state").json
+    assert state["status"] == "partial" and state["confirmation"] == "unconfirmed"
+    assert world.client.post("/api/odometry/reference", json=row).status_code == 409
+    assert not world.sent
+
+
+def test_unmarked_pointer_is_unknown_even_with_live_hashes(world):
+    pointer = applied(world)
+    pointer.pop("activation_state")
+    (store.storage_dir() / "active.json").write_text(json.dumps(pointer))
+    state = world.client.get("/api/calibration/state").json
+    assert state["status"] == "unknown" and state["error"] == "active_profile_unavailable"
+    assert state["confirmation"] == "unconfirmed"

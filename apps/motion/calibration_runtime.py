@@ -77,6 +77,7 @@ class CalibrationRuntime:
                 command_generation=row["generation"],
                 seq=row["seq"],
                 now=gate.wall_clock(),
+                activation_state="pending",
             )
             gate.poll()
             if (
@@ -97,6 +98,19 @@ class CalibrationRuntime:
             # but the controller is already idle: no SDK STOP or ARM here.
             gate.disarm("calibration_applied")
             self.applied_generation = gate.generation
+            # Logical acceptance has happened in DISARMED. An E-Stop arriving
+            # during commit is a later safety event; it cannot turn this saved
+            # software configuration into a rejected request after reboot.
+            try:
+                self.pointer = profiles.commit_active(
+                    row["profile_digest"],
+                    request_id=row["request_id"],
+                    command_generation=row["generation"],
+                    seq=row["seq"],
+                )
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                self.error = "calibration_commit_failed:" + type(exc).__name__
+                raise ValueError(self.error) from exc
             error = None
         except (OSError, ValueError, TypeError, KeyError) as exc:
             error = str(exc) if isinstance(exc, ValueError) else "calibration_apply_failed:" + type(exc).__name__
@@ -109,7 +123,7 @@ class CalibrationRuntime:
             "request_id": row.get("request_id"),
             "source": row.get("source"),
             "seq": row.get("seq"),
-            "generation": gate.generation,
+            "generation": self.applied_generation if error is None else gate.generation,
             "command_generation": row.get("generation"),
             "profile_digest": row.get("profile_digest"),
             "observed_at": gate.wall_clock(),
