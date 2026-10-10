@@ -45,22 +45,32 @@ jobs:
                                 "requests>=2.31,<3" "pyzmq>=22,<26" \
                                 "flask<3" "werkzeug<3"
 
-      - name: Start API (background on :8000)
+      - name: Start API (background on :8080)
+        env:
+          STATUS_API_PORT: "8080"
         run: |
           set -euo pipefail
-          python -u services/api_server.py & echo $! > api.pid
+          python -u -m services.api_server > api.log 2>&1 & echo $! > api.pid
           for i in $(seq 1 40); do
-            if curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
               echo "API is up"; break
+            fi
+            if ! kill -0 "$(cat api.pid)" 2>/dev/null; then
+              tail -n 50 api.log
+              exit 1
             fi
             sleep 0.5
           done
+          if ! curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+            tail -n 50 api.log
+            exit 1
+          fi
 
       - name: Run tests
         env:
           RUN_DEVICE_TESTS: "0"
           VOICE_EXPERIMENTAL: "1"
-          BASE_URL: "http://127.0.0.1:8000"
+          BASE_URL: "http://127.0.0.1:8080"
         run: |
           pytest -q -k voice -m "not hardware and not network" \
                  --cov=. --cov-report=term-missing --cov-report=html

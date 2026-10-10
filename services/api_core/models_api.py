@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from flask import Response, jsonify, make_response, request
 
-MODEL_EXTENSIONS: Tuple[str, ...] = (".pt", ".onnx", ".tflite", ".gguf", ".bin")
-CATEGORY_PATTERNS: Dict[str, Tuple[str, ...]] = {
+MODEL_EXTENSIONS: tuple[str, ...] = (".pt", ".onnx", ".tflite", ".gguf", ".bin")
+CATEGORY_PATTERNS: dict[str, tuple[str, ...]] = {
     "vision": ("yolo", "detection", "vision", "mediapipe"),
     "voice_asr": ("whisper", "asr", "stt", "speech-to-text"),
     "voice_tts": ("piper", "tts", "text-to-speech", "voice"),
@@ -25,7 +25,7 @@ def _corsify(resp: Response) -> Response:
     return resp
 
 
-def _detect_category(name: str) -> Tuple[str, str]:
+def _detect_category(name: str) -> tuple[str, str]:
     lowered = name.lower()
     for category, patterns in CATEGORY_PATTERNS.items():
         if any(pat in lowered for pat in patterns):
@@ -33,8 +33,8 @@ def _detect_category(name: str) -> Tuple[str, str]:
     return "unknown", "unknown"
 
 
-def _scan_models() -> List[Dict[str, Any]]:
-    models: List[Dict[str, Any]] = []
+def _scan_models() -> list[dict[str, Any]]:
+    models: list[dict[str, Any]] = []
     if not MODELS_DIR.exists():
         return models
 
@@ -66,7 +66,7 @@ def _scan_models() -> List[Dict[str, Any]]:
     return models
 
 
-def installed_models_handler() -> Tuple[Response, int]:
+def installed_models_handler() -> tuple[Response, int]:
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204)), 204
 

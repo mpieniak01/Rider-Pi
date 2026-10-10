@@ -26,7 +26,7 @@
     <header class="page-header">
       <div class="page-header__titles">
         <h1 class="page-title control-title">
-          <span class="brand-accent">Rider-Pi</span>: <span class="page-title-text">Sterowanie ruchem</span>
+          <span class="brand-accent">Rider-Pi</span>: <span class="page-title-text" data-i18n="nav.control">Sterowanie robotem</span>
         </h1>
       </div>
       <div class="page-header__actions page-header__actions--small text-legend">
@@ -44,6 +44,7 @@
       </div>
     </header>
 
+    <p class="muted" data-i18n="control_ui.description">Ruch, funkcje i zasoby robota. Stan usług oraz połączenia komponentów sprawdzisz w zakładce Diagnostyka.</p>
     <div class="panel-row">
       <!-- 1) KAMERA -->
       <div class="c-card c-section cam-card control-section is-camera">
@@ -365,7 +366,7 @@
 
   <div class="c-card c-section service-card control-section is-services">
     <div class="card-head svc-head">
-      <h2 class="c-card__title" data-i18n="services.title">Usługi (systemd)</h2>
+      <h2 class="c-card__title" data-i18n="control_ui.services">Administracja usług — zaawansowane</h2>
       <div class="svc-controls card-actions" aria-label="Usługi – sterowanie listą">
         <button
           id="svcRefresh"
