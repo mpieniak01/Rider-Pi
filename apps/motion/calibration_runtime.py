@@ -115,6 +115,8 @@ class CalibrationRuntime:
         except (OSError, ValueError, TypeError, KeyError) as exc:
             error = str(exc) if isinstance(exc, ValueError) else "calibration_apply_failed:" + type(exc).__name__
         self.last_ack = {
+            "contract_id": "rider.calibration.ack",
+            "contract_version": 1,
             "action": "activate_calibration",
             "status": "rejected" if error else "executed",
             "accepted": error is None,
@@ -140,6 +142,8 @@ class CalibrationRuntime:
     def status(self, *, now, instance_id):
         live = self.source == "profile"
         return {
+            "contract_id": "rider.calibration",
+            "contract_version": 1,
             "profile_digest": self.profile_digest,
             "source": self.source,
             "error": self.error,

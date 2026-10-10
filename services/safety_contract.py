@@ -7,9 +7,9 @@ import time
 import uuid
 from typing import Any
 
-from common.bus import BusPub
+from common.bus import TOPIC_MOTION_COMMAND, BusPub
 
-TOPIC_COMMAND = "motion.command"
+TOPIC_COMMAND = TOPIC_MOTION_COMMAND
 SAFE_MAX_DURATION = 0.25
 OWNERS = frozenset({"manual", "follow_me", "navigation"})
 ACTUATORS = frozenset({"move", "turn", "height", "balance", "action"})
@@ -38,7 +38,7 @@ def read_status(max_age_s: float = 3.0) -> dict[str, Any]:
 
 
 def _number(value: Any, name: str, minimum: float, maximum: float) -> float:
-    if isinstance(value, bool):
+    if type(value) not in (int, float):
         raise ValueError(f"{name} must be numeric")
     number = float(value)
     if not math.isfinite(number) or not minimum <= number <= maximum:
@@ -62,7 +62,7 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     if action in {"arm", "clear_estop"}:
         if payload.get("operator_consent") is not True:
             raise ValueError("explicit operator consent required")
-        if not isinstance(payload.get("operator_plan"), str) or not payload["operator_plan"].strip():
+        if not isinstance(payload.get("operator_plan"), str) or not 1 <= len(payload["operator_plan"].strip()) <= 512:
             raise ValueError("specific operator_plan required")
         if payload.get("owner", "manual") not in OWNERS:
             raise ValueError("invalid owner")
@@ -73,12 +73,18 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
         seq = payload.get("seq")
         if not isinstance(generation, str) or not generation:
             raise ValueError("generation required")
-        if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
+        if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq < 2**63:
             raise ValueError("nonnegative integer seq required")
-        if command["source"] not in OWNERS:
+        if payload.get("source") not in OWNERS:
             raise ValueError("invalid command source")
+        request_id = payload.get("request_id")
+        if not isinstance(request_id, str) or not 1 <= len(request_id) <= 128:
+            raise ValueError("request_id required")
         command["ts"] = _number(payload.get("ts"), "ts", 0, time.time() + 0.1)
-        command["ttl_ms"] = _number(payload.get("ttl_ms", 250), "ttl_ms", 1, 500)
+        if type(payload.get("ttl_ms")) is not int:
+            raise ValueError("integer ttl_ms required")
+        command["ttl_ms"] = payload["ttl_ms"]
+        _number(command["ttl_ms"], "ttl_ms", 1, 500)
         if (time.time() - command["ts"]) * 1000 > command["ttl_ms"]:
             raise ValueError("expired command")
         if action in {"move", "turn"}:
@@ -93,8 +99,8 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
         elif action == "balance" and not isinstance(payload.get("enabled"), bool):
             raise ValueError("enabled must be boolean")
     else:
-        command["ts"] = time.time()
-        command["ttl_ms"] = 500
+        command.setdefault("ts", time.time())
+        command.setdefault("ttl_ms", 500)
     return command
 
 

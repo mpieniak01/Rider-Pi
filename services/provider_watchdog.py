@@ -44,21 +44,20 @@ _fallbacked_domains: set[str] = set()
 
 def _fetch_pc_capabilities(base_url: str) -> tuple[Any, float]:
     url = f"{base_url.rstrip('/')}{PC_CAP_PATH}"
-    req = urllib.request.Request(url, method="GET")
+    req = urllib.request.Request(url, method="GET", headers={"Accept": "application/vnd.rider.api+json;version=1"})
     start = time.time()
 
     with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
         raw = resp.read()
         latency_ms = (time.time() - start) * 1000.0
 
-        if not raw:
-            return {}, latency_ms
-
-        try:
-            data = json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError:
-            data = {}
-
+        data = json.loads(raw.decode("utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("meta"), dict):
+            if data["meta"].get("envelope_version") != 1 or data.get("ok") is not True:
+                raise ValueError("invalid peer capabilities envelope")
+            data = data.get("data")
+        if not isinstance(data, dict) or not all(isinstance(data.get(domain), dict) for domain in registry.DOMAINS):
+            raise ValueError("invalid peer capabilities")
         return data, latency_ms
 
 
@@ -70,8 +69,8 @@ def _restore_domains() -> None:
     for domain in list(_fallbacked_domains):
         try:
             state = registry.get_domain_state(domain)
-            if state.get("mode") == "local" and state.get("reason") == "pc_unreachable":
-                registry.set_domain_mode(domain, "pc", reason="heartbeat_recover")
+            if state.get("mode") == "pc":
+                registry.update_domain_status(domain, "pc_pending", reason="heartbeat_recover")
             restored.add(domain)
         except Exception as exc:  # noqa: BLE001
             LOG.warning("Watchdog restore failed for %s: %s", domain, exc)
@@ -83,7 +82,8 @@ def _fallback_to_local(reason: str) -> None:
         try:
             state = registry.get_domain_state(domain)
             if state.get("mode") == "pc":
-                registry.set_domain_mode(domain, "local", reason=reason)
+                # Record the outage; configured routing belongs to the operator.
+                registry.update_domain_status(domain, "pc_unavailable", reason=reason)
                 _fallbacked_domains.add(domain)
         except Exception as exc:  # noqa: BLE001
             LOG.warning("Watchdog fallback failed for %s: %s", domain, exc)
@@ -112,6 +112,9 @@ def _loop() -> None:
                 status="online",
                 latency_ms=latency_ms,
                 reason=data.get("version") if isinstance(data, dict) else "ok",
+                capabilities=data,
+                observed_at=None,
+                received_at=time.time(),
             )
             last_health_status = "online"
             _restore_domains()
@@ -125,6 +128,7 @@ def _loop() -> None:
                 status="offline",
                 latency_ms=None,
                 reason=str(exc)[:120],
+                refresh=False,
             )
 
             if last_health_status != "offline":
@@ -147,6 +151,7 @@ def _loop() -> None:
                 status="error",
                 latency_ms=None,
                 reason=str(exc)[:120],
+                refresh=False,
             )
 
             if last_health_status != "error":
@@ -162,12 +167,12 @@ def _loop() -> None:
 def _heartbeat_only_cycle(consecutive_failures: int) -> int:
     """Evaluate reachability only based on incoming heartbeats."""
     snapshot = registry.get_health_snapshot()
-    last_updated = snapshot.get("updated_ts") or 0.0
-    elapsed = max(0.0, time.time() - last_updated)
+    last_updated = snapshot.get("received_at", snapshot.get("updated_ts")) or 0.0
+    elapsed = time.time() - last_updated
 
     timeout = CHECK_INTERVAL * HEARTBEAT_TIMEOUT_MULTIPLIER
 
-    if elapsed <= timeout:
+    if last_updated > 0 and -0.1 <= elapsed <= timeout:
         if snapshot.get("reachable") is not True:
             LOG.info("Provider watchdog heartbeat recovered (elapsed=%.1fs)", elapsed)
 
@@ -175,6 +180,7 @@ def _heartbeat_only_cycle(consecutive_failures: int) -> int:
             reachable=True,
             status="online",
             reason="heartbeat",
+            refresh=False,
         )
         _restore_domains()
         return 0
@@ -185,6 +191,7 @@ def _heartbeat_only_cycle(consecutive_failures: int) -> int:
         reachable=False,
         status="offline",
         reason="heartbeat_timeout",
+        refresh=False,
     )
 
     LOG.warning(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from apps.motion.dynamics import finite
+from common.observations import CONTRACT_ID, CONTRACT_VERSION, UNITS, measurement, normalize_xgo_observation
 
 MAX_SENSOR_AGE_S = 2.5
 AXES = ("roll", "pitch", "yaw")
@@ -10,8 +11,10 @@ REQUIRED = AXES + ("battery",)
 
 
 class SensorSamples:
-    def __init__(self, clock, wall_clock):
+    def __init__(self, clock, wall_clock, *, instance_id=None, simulated=False):
         self.clock, self.wall_clock = clock, wall_clock
+        self.instance_id = instance_id
+        self.simulated = bool(simulated)
         self.rows = {}
 
     def observe(self, name, value, *, measured_at=None, monotonic_at=None):
@@ -51,6 +54,12 @@ class SensorSamples:
                 "age_s": max(0.0, age) if finite(age) else None,
                 "ready": bool(ready),
                 "error": None if ready else row.get("error") or "measurement_stale_or_missing",
+                "unit": UNITS[name],
+                "source": "motion-executor",
+                "instance_id": self.instance_id,
+                "simulated": self.simulated,
+                "max_age_s": MAX_SENSOR_AGE_S,
+                "physical_validity": "unverified",
             }
         missing = [name for name, row in rows.items() if not row["ready"]]
         times = [row["observed_at"] for row in rows.values() if finite(row["observed_at"])]
@@ -72,7 +81,13 @@ class SensorSamples:
         imu_ok = all(rows[name]["ready"] for name in AXES)
         imu_times = [rows[name]["observed_at"] for name in AXES if finite(rows[name]["observed_at"])]
         return {
+            "contract_id": CONTRACT_ID,
+            "contract_version": CONTRACT_VERSION,
             "ts": self.wall_clock(),  # Publication time, never measurement time.
+            "generated_at": self.wall_clock(),
+            "source": "motion-executor",
+            "instance_id": self.instance_id,
+            "simulated": self.simulated,
             "observed_at": quality["observed_at"],
             "sensor_observed_at": {name: row["observed_at"] for name, row in rows.items()},
             "sensor_age_s": {name: row["age_s"] for name, row in rows.items()},
@@ -91,27 +106,12 @@ class SensorSamples:
 
 def projected_samples(sensor, *, now):
     """Validate original per-channel timestamps again at the BUS consumer."""
-    sensor = sensor if isinstance(sensor, dict) else {}
-    times = sensor.get("sensor_observed_at")
-    times = times if isinstance(times, dict) else {}
-    imu = sensor.get("imu")
-    imu = imu if isinstance(imu, dict) else {}
+    sensor = normalize_xgo_observation("motion.sensor.raw", sensor, now=now)
     values, quality = {}, {}
     for name in REQUIRED:
-        # `ts` is publication time, never replacement observation metadata.
-        ts = times.get(name, sensor.get("observed_at"))
-        age = now - ts if finite(ts) else None
-        value = sensor.get("battery") if name == "battery" else imu.get(name)
-        good = finite(value) and (name != "battery" or 0 <= value <= 1) and finite(age) and 0 <= age <= MAX_SENSOR_AGE_S
-        # Explicit producer failure remains a failure even if the timestamp is fresh.
-        producer = sensor.get("sensor_quality")
-        producer = producer if isinstance(producer, dict) else {}
-        flags = producer.get("sensors")
-        row = flags.get(name) if isinstance(flags, dict) else None
-        if isinstance(row, dict) and row.get("ready") is False:
-            good = False
-        if sensor.get("battery_ok" if name == "battery" else "imu_ok") is False:
-            good = False
-        values[name] = value if good else None
-        quality[name] = {"ready": bool(good), "observed_at": ts, "age_s": age if finite(age) else None}
+        row = sensor["sensor_quality"]["sensors"].get(name)
+        row = row if isinstance(row, dict) else measurement(name, None, None, now=now)
+        good = row.get("ready") is True
+        values[name] = row.get("value") if good else None
+        quality[name] = {**row, "ready": good, "observed_at": row.get("observed_at"), "age_s": row.get("age_s")}
     return values, quality

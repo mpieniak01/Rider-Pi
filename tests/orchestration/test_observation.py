@@ -105,7 +105,9 @@ def test_forced_release_requires_current_owners_and_exact_consent(monkeypatch):
     assert not resource_diag.release("camera", limit_pids=[123])["ok"]
     assert not resource_diag.release("camera", limit_pids=[999], force=True, operator_consent=True)["ok"]
     assert calls == []
-    assert resource_diag.release("camera", limit_pids=[123], force=True, operator_consent=True)["ok"]
+    result = resource_diag.release("camera", limit_pids=[123], force=True, operator_consent=True)
+    assert result['signal_sent'] is True and result['pending'] is True
+    assert result['ok'] is False and result['released'] is False
     assert calls == [["sudo", "-n", "kill", "-TERM", "--", "123"]]
 
 

@@ -7,16 +7,18 @@ import os
 
 from flask import Flask, jsonify, request
 
+from services.api_core.http_contract import install
 from services.control_commands import submit_control
 from services.safety_contract import read_status
 
 app = Flask(__name__)
+install(app, after_request=True)
 
 
 @app.after_request
 def _add_cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Accept"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
 
@@ -46,26 +48,30 @@ def control_post():
 
 @app.route("/api/move", methods=["GET", "POST", "OPTIONS"])
 def api_move():
-    if request.method == "GET":
+    if request.method not in {"POST", "OPTIONS"}:
         return jsonify({"ok": False, "error": "actuator_requires_post_with_generation"}), 405
     return _submit({"action": "move"})
 
 
 @app.route("/api/stop", methods=["GET", "POST", "OPTIONS"])
 def api_stop():
+    if request.method not in {"POST", "OPTIONS"}:
+        response = jsonify({"ok": False, "error": "stop_requires_post"})
+        response.headers["Allow"] = "POST, OPTIONS"
+        return response, 405
     return _submit({"action": "stop"})
 
 
 @app.route("/api/balance", methods=["GET", "POST", "OPTIONS"])
 def api_balance():
-    if request.method == "GET":
+    if request.method not in {"POST", "OPTIONS"}:
         return jsonify({"ok": False, "error": "actuator_requires_post_with_generation"}), 405
     return _submit({"action": "balance"})
 
 
 @app.route("/api/height", methods=["GET", "POST", "OPTIONS"])
 def api_height():
-    if request.method == "GET":
+    if request.method not in {"POST", "OPTIONS"}:
         return jsonify({"ok": False, "error": "actuator_requires_post_with_generation"}), 405
     return _submit({"action": "height"})
 

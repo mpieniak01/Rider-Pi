@@ -11,6 +11,7 @@ from common.service_catalog import (
     UNIT_CATALOG,
     catalog_payload,
     option_schema,
+    task_availability,
     task_domain,
     task_resources,
     task_units,
@@ -87,6 +88,7 @@ class FeatureStateMixin:
         requested = name in self._requested or name in self._pending
         options = self._requested.get(name, self._pending.get(name, {}))
         units = task_units(feature, options)
+        available = task_availability(feature, options)
         services = []
         for unit in units:
             row = self._status(unit)
@@ -184,10 +186,20 @@ class FeatureStateMixin:
             "members": list(units),
             "required_actuators": ["move", "turn"] if feature.can_move else [],
             "actions": ["start", "stop"],
-            "start_available": "rider-navigator.service" not in units,
-            "start_unavailable_reason": "navigation_traversal_unverified"
-            if "rider-navigator.service" in units
-            else None,
+            "permissions": {
+                "start": {
+                    "allowed": available["start_available"] and installed and self._permission(feature) is None,
+                    "reason": available["start_unavailable_reason"]
+                    if not available["start_available"]
+                    else "unit_unavailable"
+                    if not installed
+                    else None
+                    if self._permission(feature) is None
+                    else "operator_motion_permission_required",
+                },
+                "stop": {"allowed": True, "reason": None},
+            },
+            **available,
             "planning_request_available": False if "rider-navigator.service" in units else None,
             "resources": list(task_resources(feature, options)),
             "services": services,
@@ -215,6 +227,8 @@ class FeatureStateMixin:
     def catalog(self) -> dict:
         return {
             **catalog_payload(),
+            "api_envelope_versions": [1],
+            "api_media_type": "application/vnd.rider.api+json;version=1",
             "observed_at": time.time(),
             "features": self.describe_features(),
             "resource_consumers": self.resource_consumers(),

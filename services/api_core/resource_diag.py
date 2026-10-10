@@ -245,7 +245,7 @@ def inspect(resource: str) -> dict[str, Any]:
         "checked_at": time.time(),
         "holders": holders,
         "paths": paths,
-        "observed_at": time.time(),
+        "observed_at": None if error else time.time(),
         "source": "lsof",
         "state": "unknown" if error else "unavailable" if not paths else "busy" if holders else "free",
         "free": None if error or not paths else not holders,
@@ -322,7 +322,21 @@ def _release_locked(resource, limit_pids, force, operator_consent, feature_manag
     ):
         return {"ok": False, "error": "owner_mismatch_or_protected", **plan}
     result = _call_release(["sudo", "-n", "kill", "-TERM", "--", *(str(pid) for pid in pids)])
-    return {**result, **plan}
+    if not result.get("ok"):
+        return {**result, **plan, "signal_sent": False, "released": False}
+    after = inspect(resource)
+    released = after.get("free") is True and not after.get("error")
+    return {
+        **result,
+        **plan,
+        "ok": released,
+        "signal_sent": True,
+        "released": released,
+        "pending": not released and not after.get("error"),
+        "state": "released" if released else "unknown" if after.get("error") else "pending",
+        "after": after,
+        "error": after.get("error"),
+    }
 
 
 def to_json(data: dict[str, Any]) -> str:

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import fcntl
-import glob
 import os
 import platform
 import re
@@ -10,8 +8,6 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Iterable
-from contextlib import contextmanager
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -73,17 +69,11 @@ REFRESH_EVERY = float(os.getenv("SPLASH_REFRESH_EVERY", "0.5"))
 XGO_BL_GPIO = int(os.getenv("XGO_BL_GPIO", "-1"))
 RASPI_GPIO_BIN = "raspi-gpio"
 
-# Wygładzanie odczytów baterii
-BATT_CACHE_SEC = float(os.getenv("BATT_CACHE_SEC", "5"))
-
 LOG = os.path.join(DATA_DIR, "splash_trace.log")
 
 # Znaczniki czasu dla IP (pierwsze udane wykrycie)
 _START_TS = time.time()  # (pozostaje — już nie używamy do IP)
 _IP_FIRST_SEEN_AT: float | None = None  # teraz: sekundy OD STARTU SYSTEMU (uptime)
-
-# Cache baterii (wartość, timestamp)
-_last_batt: tuple[str | None, float] = (None, 0.0)
 
 
 def _log(msg: str) -> None:
@@ -194,175 +184,30 @@ def read_temp_c() -> str:
         return "?"
 
 
-# ---- BATERIA: sysfs ➜ XGOClientRO (UART) ----
-def _read_batt_sysfs_once() -> int | None:
-    base = "/sys/class/power_supply"
-    try:
-        found = False
-        for d in glob.glob(f"{base}/*"):
-            found = True
-            tpath = os.path.join(d, "type")
-            if os.path.isfile(tpath):
-                try:
-                    t = open(tpath).read().strip().lower()
-                    if t and t != "battery":
-                        continue
-                except Exception:
-                    pass
-            cap = os.path.join(d, "capacity")
-            if os.path.isfile(cap):
-                try:
-                    v = int(float(open(cap).read().strip()))
-                    if 0 <= v <= 100:
-                        return v
-                except Exception:
-                    pass
-            uevent = os.path.join(d, "uevent")
-            if os.path.isfile(uevent):
-                try:
-                    for ln in open(uevent, encoding="utf-8", errors="ignore"):
-                        if ln.startswith("POWER_SUPPLY_CAPACITY="):
-                            v = int(float(ln.split("=", 1)[1].strip()))
-                            if 0 <= v <= 100:
-                                return v
-                except Exception:
-                    pass
-            pairs: Iterable[tuple[str, str]] = (
-                ("charge_now", "charge_full"),
-                ("energy_now", "energy_full"),
-            )
-            for now_name, full_name in pairs:
-                p_now = os.path.join(d, now_name)
-                p_full = os.path.join(d, full_name)
-                if os.path.isfile(p_now) and os.path.isfile(p_full):
-                    try:
-                        now = float(open(p_now).read().strip())
-                        full = float(open(p_full).read().strip())
-                        if full > 0:
-                            return int(max(0.0, min(100.0, (now / full) * 100.0)))
-                    except Exception:
-                        pass
-        if not found:
-            _log("battery: no entries under /sys/class/power_supply")
-        else:
-            _log("battery: power_supply present but no capacity/uevent/ratio")
-    except Exception as e:
-        _log(f"battery sysfs error: {e}")
-    return None
-
-
-@contextmanager
-def _serial_batt_lock():
-    """
-    Prosty lockfile, żeby unikać równoległego dostępu do UART.
-    Jeśli lock zajęty — logujemy i pozwalamy funkcji kontynuować (zwróci None).
-    """
-    lock_path = "/run/lock/xgo_batt.lock"
-    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
-    f = open(lock_path, "w")
-    try:
-        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        yield
-    except BlockingIOError:
-        _log("battery: lock held by another process; skipping this read")
-        yield
-    finally:
-        try:
-            fcntl.flock(f, fcntl.LOCK_UN)
-        except Exception:
-            pass
-        f.close()
-
-
-def _read_batt_xgo_uart_once() -> int | None:
-    """
-    Bezpośredni odczyt z XGO po UART (biblioteka producenta).
-    Autodetekcja portu: ENV XGO_UART_PORTS="/dev/ttyAMA0,/dev/ttyS0,/dev/ttyUSB0"
-    + skan ttyUSB*.
-    Dynamicznie ładujemy scripts/dev_xgo-client.py.
-    """
-    # załaduj scripts/dev_xgo-client.py (ma myślnik w nazwie)
-    try:
-        from common.xgo_loader import load_xgo_client_ro
-
-        XGOCls = load_xgo_client_ro(DIR)
-    except Exception as e_dyn:
-        _log(f"battery: loading dev_xgo-client.py failed: {e_dyn}")
-        return None
-
-    if XGOCls is None:
-        return None
-
-    env_ports = os.getenv("XGO_UART_PORTS", "/dev/ttyAMA0,/dev/ttyS0")
-    candidates = [p for p in (x.strip() for x in env_ports.split(",")) if p]
-    try:
-        candidates += sorted(glob.glob("/dev/ttyUSB*"))
-    except Exception:
-        pass
-
-    tried: list[str] = []
-
-    # ochrona portu lockiem
-    with _serial_batt_lock():
-        for port in candidates:
-            tried.append(port)
-            # drobny backoff 2 próby, bo czasem pierwszy odczyt po openie zwraca pustkę
-            for _attempt in range(2):
-                try:
-                    with XGOCls(port=port) as cli:
-                        if hasattr(cli, "read_battery_pct"):
-                            v = cli.read_battery_pct()
-                            if v is not None:
-                                vv = int(v)
-                                _log(f"battery: XGO UART {port} -> {vv}%")
-                                return vv
-                        v2 = cli.read_battery() if hasattr(cli, "read_battery") else None
-                        if v2 is not None:
-                            vv = int(v2)
-                            _log(f"battery: XGO UART {port} -> {vv}%")
-                            return vv
-                except Exception as e:
-                    _log(f"battery: XGO UART read failed on {port}: {e}")
-                    time.sleep(0.12)  # krótki backoff i jeszcze raz
-                    continue
-
-    _log(f"battery: no working UART among: {', '.join(tried) if tried else '(none)'}")
-    return None
-
-
+# ---- BATERIA: istniejący, jedyny właściciel UART → snapshot BUS ----
 def read_battery_once() -> str | None:
-    for getter in (_read_batt_sysfs_once, _read_batt_xgo_uart_once):
-        v = getter()
-        if isinstance(v, int):
-            _log(f"battery source: {getter.__name__} -> {v}%")
-            return str(v)
+    # Snapshot keeps the original measurement timestamp and ratio unit. Boot
+    # before executor/broker intentionally has no battery; never open SDK/UART.
+    from apps.safety.state import read_status
+    from apps.ui.status_panel import battery_observation
+
+    sample = battery_observation(read_status(), now=time.time())
+    if sample.get("ready") is True:
+        return f"{sample['value'] * 100:.0f}"
     return None
 
 
 def pick_battery_nonblocking() -> str:
-    """
-    Zwraca świeży odczyt, a przy krótkich dropach portu — ostatnią dobrą wartość
-    z cache (do BATT_CACHE_SEC). Po upływie WAIT_BATT i bez cache zwraca '—'.
-    """
-    global _last_batt
-    t_end = time.time() + max(0, WAIT_BATT)
-
+    # A bounded source wait is allowed only within the configured splash. No
+    # cache refresh, voltage guessing or hardware query can invent a reading.
+    deadline = time.monotonic() + max(0, WAIT_BATT)
     while True:
-        now = time.time()
-        v = read_battery_once()
-        if v is not None:
-            _last_batt = (v, now)
-            return v
-
-        # brak świeżego odczytu — użyj cache, jeśli nieprzeterminowany
-        last_v, last_ts = _last_batt
-        if last_v is not None and (now - last_ts) <= BATT_CACHE_SEC:
-            return last_v
-
-        if now >= t_end:
+        value = read_battery_once()
+        if value is not None:
+            return value
+        if time.monotonic() >= deadline:
             return "—"
-
-        time.sleep(0.25)
+        time.sleep(0.1)
 
 
 def _get_ipv4() -> str | None:

@@ -5,6 +5,8 @@ import json
 import math
 import time
 
+from common.observations import legacy_xgo, normalize_xgo_observation, observation, refresh_observation, source_time
+
 from . import compat as C
 
 
@@ -37,138 +39,87 @@ def _json_or_raw(payload: str):
 
 
 def _source_time(value):
-    try:
-        return value if type(value) in (int, float) and math.isfinite(value) and value > 0 else None
-    except OverflowError:
-        return None
+    return source_time(value)
 
 
-def _update_xgo_from_dict(d: dict):
-    if not isinstance(d, dict):
-        return
-    observed = _source_time(d.get("observed_at", d.get("ts")))
-    C.LAST_XGO.update(
-        ts=observed,
-        observed_at=observed,
-        stale=d.get("stale") is True or observed is None,
-        source=d.get("src", d.get("source", "unknown")),
-        offline=d.get("offline") is True,
-        error=d.get("error"),
+def _update_xgo_from_dict(data, topic="devices.xgo"):
+    row = normalize_xgo_observation(topic, data)
+    if row is None:
+        return False
+    previous = C.LAST_XGO.get("observation")
+    previous = previous if isinstance(previous, dict) else {}
+    rows = dict(previous.get("sensor_quality", {}).get("sensors", {}))
+    instance_changed = (
+        previous.get("instance_id") and row.get("instance_id") and previous["instance_id"] != row["instance_id"]
     )
-    # IMU and battery have independent observation times. A partial IMU must
-    # not discard a valid battery reading or make it fresh at API reception.
-    incoming_quality = d.get("sensor_quality")
-    incoming_quality = incoming_quality if isinstance(incoming_quality, dict) else {}
-    incoming_quality = incoming_quality.get("sensors", incoming_quality)
-    incoming_quality = incoming_quality if isinstance(incoming_quality, dict) else {}
-    quality = dict(C.LAST_XGO.get("sensor_quality", {}))
-    times = dict(C.LAST_XGO.get("sensor_observed_at", {}))
-    incoming_times = d.get("sensor_observed_at")
-    incoming_times = incoming_times if isinstance(incoming_times, dict) else {}
-    for key in ("battery_observed_at", "imu_observed_at"):
-        carries_value = (
-            ("battery_pct" in d or "battery" in d)
-            if key == "battery_observed_at"
-            else any(axis in d for axis in ("roll", "pitch", "yaw"))
-        )
-        if key in d and carries_value:
-            value = d[key]
-            C.LAST_XGO[key] = _source_time(value)
-    if "battery_ok" in d and ("battery_pct" in d or "battery" in d):
-        C.LAST_XGO["battery_ok"] = d["battery_ok"] if isinstance(d["battery_ok"], bool) else None
-    for key in ("imu_ok", "pose", "pose_label", "uart_owner"):
-        if key in d:
-            C.LAST_XGO[key] = d[key]
-    if "battery_pct" in d or "battery" in d:
-        value = d.get("battery_pct", d.get("battery"))
-        C.LAST_XGO["battery"] = C._sanitize_batt(value) if value is not None else None
-    for key in ("roll", "pitch", "yaw"):
-        if key in d:
-            try:
-                value = float(d[key]) if d[key] is not None else None
-                if value is not None and not math.isfinite(value):
-                    value = None
-                if key == "yaw":
-                    C.LAST_XGO["yaw_raw"] = value
-                C.LAST_XGO[key] = C._norm_angle180(value) if key == "yaw" and value is not None else value
-            except (TypeError, ValueError, OverflowError):
-                C.LAST_XGO[key] = None
-                if key == "yaw":
-                    C.LAST_XGO["yaw_raw"] = None
-    for name in ("roll", "pitch", "yaw", "battery"):
-        present = ("battery_pct" in d or "battery" in d) if name == "battery" else name in d
-        if not present:
-            continue
-        # imu.data also carries battery metadata, but no battery value. Never
-        # attach a newer timestamp to the cached value from devices.xgo.
-        row = incoming_quality.get(name)
-        row = dict(row) if isinstance(row, dict) else None
-        key = "battery_observed_at" if name == "battery" else "imu_observed_at"
-        at = (
-            row["observed_at"]
-            if row is not None and "observed_at" in row
-            else incoming_times[name]
-            if name in incoming_times
-            else d[key]
-            if key in d
-            else observed
-        )
-        at = _source_time(at)
-        value = C.LAST_XGO.get("battery" if name == "battery" else name)
-        ready = value is not None and at is not None and d.get("offline") is not True and not d.get("error")
-        ready = ready and (
-            row.get("ready") is True
-            if row is not None
-            else d.get("stale") is not True
-            and (d.get("battery_ok") is not False if name == "battery" else d.get("imu_ok") is not False)
-        )
-        if row is not None:
-            ready = ready and not row.get("error") and row.get("offline") is not True and row.get("stale") is not True
-        times[name] = at
-        quality[name] = {
-            **(row or {}),
-            "ready": bool(ready),
-            "observed_at": at,
-            "source": (row or {}).get("source", C.LAST_XGO["source"]),
-        }
-        if name == "battery":
-            C.LAST_XGO["battery_observed_at"] = at
-            C.LAST_XGO["battery_ok"] = bool(ready)
-    C.LAST_XGO["sensor_quality"] = quality
-    C.LAST_XGO["sensor_observed_at"] = times
-    axis_times = [times.get(name) for name in ("roll", "pitch", "yaw")]
-    C.LAST_XGO["imu_observed_at"] = min(axis_times) if all(at is not None for at in axis_times) else None
-    if "fw" in d:
-        C.XGO_FW = C._sanitize_fw(d["fw"])
+    if instance_changed:
+        rows.clear()
+    for name, sample in row["sensor_quality"]["sensors"].items():
+        old = rows.get(name, {})
+        if (
+            source_time(old.get("observed_at")) is not None
+            and source_time(sample.get("observed_at")) is not None
+            and sample["observed_at"] < old["observed_at"]
+        ):
+            sample = {**sample, "ready": False, "error": "measurement_out_of_order"}
+        rows[name] = sample
+    combined = observation(
+        rows,
+        source=row["source"],
+        firmware=row.get("fw") if "fw" in data else previous.get("fw"),
+        instance_id=row.get("instance_id") or previous.get("instance_id"),
+        uart_owner=row.get("uart_owner") or previous.get("uart_owner"),
+        generated_at=row.get("generated_at"),
+        offline=row["offline"],
+        error=row["error"],
+    )
+    legacy = legacy_xgo(combined)
+    C.LAST_XGO.update(legacy)
+    C.LAST_XGO["battery"] = legacy["battery_pct"]  # cache legacy percent, never magnitude inference
+    C.LAST_XGO["pose_label"] = None  # raw SDK axes are not evidence of posture
+    if row.get("fw") is not None:
+        C.XGO_FW = C._sanitize_fw(row["fw"])
+    if "yaw_src" in data:
+        C.LAST_XGO["yaw_src"] = data["yaw_src"]
+    return True
 
 
 def observe_xgo(topic: str, data: object) -> bool:
-    """Project source measurements, never timestamp missing data at reception."""
-    prefixes = ("devices.xgo", "xgo", "motion.bridge.telemetry")
-    prefix = next((value for value in prefixes if topic == value or topic.startswith(value + ".")), None)
-    if topic == "imu.data":
-        row = dict(data) if isinstance(data, dict) else {}
-    elif prefix is None:
-        if topic != "motion.bridge.battery_pct":
-            return False
-        row = dict(data) if isinstance(data, dict) else {"battery_pct": data}
-    else:
-        suffix = topic[len(prefix) :].lstrip(".")
-        if not suffix:
-            row = dict(data) if isinstance(data, dict) else {}
-        elif isinstance(data, dict) and any(key in data for key in (suffix, "value", "observed_at", "ts")):
-            row = dict(data)
-            row[suffix] = data.get(suffix, data.get("value"))
-        else:
-            row = {suffix: data}
-    _update_xgo_from_dict(row)
-    if "yaw_src" in row:
-        C.LAST_XGO["yaw_src"] = row["yaw_src"]
-    if topic == "imu.data":
-        axes = {axis: C.LAST_XGO.get(axis) for axis in ("roll", "pitch", "yaw")}
-        C.LAST_XGO["pose"] = {"x": axes["roll"], "y": axes["pitch"], "z": axes["yaw"]}
-        C.LAST_XGO["pose_label"] = C._classify_pose(axes["roll"], axes["pitch"])
-    return True
+    """Project source measurements without receipt timestamps or unit guesses."""
+    if normalize_xgo_observation(topic, data) is None:
+        return False
+    normalized = data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        # The named scalar topic adapter also preserves unknown source time.
+        prefix = next(
+            (
+                p
+                for p in ("devices.xgo", "xgo", "motion.bridge.telemetry", "motion.bridge")
+                if topic.startswith(p + ".")
+            ),
+            None,
+        )
+        if prefix:
+            normalized = {topic[len(prefix) + 1 :]: data}
+    return _update_xgo_from_dict(normalized, topic)
+
+
+def xgo_snapshot(*, now=None):
+    """Legacy HTTP projection plus its exact canonical observation.
+
+    negotiated HTTP data replaces this object with `observation`; both come
+    from the same cache and original per-channel times. No I/O occurs here.
+    """
+    cached = C.LAST_XGO.get("observation")
+    if not isinstance(cached, dict):
+        # Existing cache schema is HTTP percent, independently of value size.
+        old = dict(C.LAST_XGO)
+        old.update(battery=old.get("battery"), battery_unit="percent", fw=C.XGO_FW)
+        if "yaw_raw" in old:
+            old["yaw"] = old["yaw_raw"]
+        cached = normalize_xgo_observation("xgo", old, now=now)
+    current = refresh_observation(cached, now=now)
+    return legacy_xgo(current)
 
 
 def observe_navigator(data: object) -> None:
@@ -235,8 +186,11 @@ def observe_lcd(data: dict) -> None:
     if "on" in lcd:
         state["on"] = lcd["on"] if isinstance(lcd["on"], bool) else None
         state["power_known"] = isinstance(lcd["on"], bool)
-        state["power_source"] = "camera.heartbeat"
-        state["power_observed_at"] = data.get("observed_at", data.get("ts"))
+        state["power_source"] = data.get("source") or "camera.heartbeat"
+        state["power_observed_at"] = source_time(data.get("observed_at", data.get("ts")))
+        for key in ("confirmation", "physical_validity", "reason"):
+            if key in lcd:
+                state[key] = lcd[key]
 
 
 def bus_sub_loop():
@@ -262,6 +216,7 @@ def bus_sub_loop():
             "robot.pose",
             "mapper.map.data",
             "imu.data",
+            "ui.lcd.state",
         ):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
         try:
@@ -281,6 +236,9 @@ def bus_sub_loop():
 
                 C.LAST_MSG_TS = time.time()
                 C.EVENTS.append({"ts": C.LAST_MSG_TS, "topic": topic, "data": payload})
+                if topic == "ui.lcd.state":
+                    observe_lcd(_json_or_raw(payload))
+                    continue
                 if topic in {"robot.pose", "mapper.map.data", "navigator.path"}:
                     from .navigation_state import observe
 
@@ -300,7 +258,10 @@ def bus_sub_loop():
                         C.LAST_STATE["confidence"] = float(data.get("confidence", C.LAST_STATE["confidence"]))
                         if "mode" in data:
                             C.LAST_STATE["mode"] = data.get("mode")
-                        C.LAST_STATE["ts"] = float(data.get("ts", C.LAST_MSG_TS))
+                        C.LAST_STATE["ts"] = _source_time(data.get("observed_at", data.get("ts")))
+                        for key in ("source", "observed_at", "stale", "offline", "error", "data_ready"):
+                            if key in data:
+                                C.LAST_STATE[key] = data[key]
                     except Exception:
                         pass
                     continue
@@ -308,7 +269,10 @@ def bus_sub_loop():
                 if topic == "camera.heartbeat":
                     try:
                         data = json.loads(payload) if payload else {}
-                        C.LAST_CAMERA["ts"] = C.LAST_MSG_TS
+                        C.LAST_CAMERA["ts"] = _source_time(data.get("observed_at", data.get("ts")))
+                        for key in ("observed_at", "source", "stale", "offline", "error", "capture_at", "frame_id"):
+                            if key in data:
+                                C.LAST_CAMERA[key] = data[key]
                         C.LAST_CAMERA["mode"] = data.get("mode")
                         C.LAST_CAMERA["fps"] = data.get("fps")
                         lcd_state = C.LAST_CAMERA["lcd"]
@@ -325,34 +289,9 @@ def bus_sub_loop():
                         pass
                     continue
 
-                if topic == "cmd.balance":
-                    data = _json_or_raw(payload)
-                    enabled = None
-                    if isinstance(data, dict):
-                        enabled = data.get("enabled")
-                    elif isinstance(data, (int, float, bool)):
-                        enabled = bool(data)
-                    if enabled is not None:
-                        C.LAST_BALANCE["enabled"] = bool(enabled)
-                        C.LAST_BALANCE["ts"] = C.LAST_MSG_TS
-                    continue
-
-                if topic == "cmd.height":
-                    data = _json_or_raw(payload)
-                    height_val = None
-                    if isinstance(data, dict):
-                        height_val = data.get("height")
-                    elif isinstance(data, (int, float)):
-                        height_val = data
-                    if height_val is not None:
-                        try:
-                            height_int = int(height_val)
-                        except Exception:
-                            height_int = None
-                        if height_int is not None:
-                            height_int = max(0, min(12, height_int))
-                            C.LAST_HEIGHT["value"] = height_int
-                            C.LAST_HEIGHT["ts"] = C.LAST_MSG_TS
+                # Command receipt is an intent, never observed actuator state.
+                # /api/control/state reads actuators from the executor's ACK/state.
+                if topic in {"cmd.balance", "cmd.height"}:
                     continue
 
                 if topic == "tracking.mode:set":
@@ -366,7 +305,9 @@ def bus_sub_loop():
                     mode_norm = mode_str.strip().lower() or "none"
                     C.LAST_TRACKING_MODE["mode"] = mode_norm
                     C.LAST_TRACKING_MODE["enabled"] = mode_norm in ("face", "hand")
-                    C.LAST_TRACKING_MODE["ts"] = C.LAST_MSG_TS
+                    C.LAST_TRACKING_MODE["ts"] = (
+                        _source_time(data.get("observed_at", data.get("ts"))) if isinstance(data, dict) else None
+                    )
                     continue
 
                 if topic == "vision.tracking.offset":
@@ -383,11 +324,7 @@ def bus_sub_loop():
                             C.LAST_TRACKING_OFFSET["offset"] = None
                         if "mode" in data and data.get("mode") is not None:
                             C.LAST_TRACKING_OFFSET["mode"] = data.get("mode")
-                        ts_val = data.get("ts") or C.LAST_MSG_TS or time.time()
-                        try:
-                            C.LAST_TRACKING_OFFSET["ts"] = float(ts_val)
-                        except Exception:
-                            C.LAST_TRACKING_OFFSET["ts"] = time.time()
+                        C.LAST_TRACKING_OFFSET["ts"] = _source_time(data.get("observed_at", data.get("ts")))
                     continue
 
                 if topic == "navigator.state":

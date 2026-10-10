@@ -7,8 +7,10 @@ based on the current AI processing mode (local vs pc_offload).
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
+from pathlib import Path
 
 try:
     from common.ai_mode import get_mode, is_local, is_offload
@@ -46,7 +48,7 @@ def _pc_ready() -> bool:
         return False
     if not isinstance(health, dict) or not health:
         return False
-    if not bool(health.get("reachable")):
+    if health.get("reachable") is not True or health.get("stale") is True:
         return False
     status = str(health.get("status") or "").lower()
     if status in {"offline", "error"}:
@@ -56,14 +58,7 @@ def _pc_ready() -> bool:
         updated_ts = float(updated)
     except (TypeError, ValueError):
         updated_ts = 0.0
-    if PC_HEALTH_STALE_SEC > 0 and updated_ts > 0.0:
-        if time.time() - updated_ts > PC_HEALTH_STALE_SEC:
-            logger.debug("PC health stale: last update %.1fs ago", time.time() - updated_ts)
-            return False
-    return True
-
-
-PC_HEALTH_STALE_SEC = float(os.getenv("VISION_PC_HEALTH_STALE_SEC", "8.0"))
+    return math.isfinite(updated_ts) and updated_ts > 0 and -0.1 <= time.time() - updated_ts <= PC_HEALTH_STALE_SEC
 
 
 def _provider_mode() -> str:
@@ -71,6 +66,9 @@ def _provider_mode() -> str:
     provider_mode: str | None = None
 
     if provider_state is not None:
+        state_file = getattr(provider_state, "STATE_FILE", None)
+        if isinstance(state_file, (str, Path)) and not Path(state_file).exists():
+            return ai_override
         try:
             mode = provider_state.get_domain_mode(VISION_DOMAIN)
             if mode in {"local", "pc"}:
@@ -78,20 +76,8 @@ def _provider_mode() -> str:
         except Exception as exc:  # noqa: BLE001
             logger.debug("Provider state read failed: %s", exc)
 
-    # AI mode jest nadrzędne: jeśli ustawiono lokalnie, wracamy do local,
-    # jeśli przełączono na pc_offload – wymuszamy pc.
-    if ai_override == "pc":
-        return "pc"
-    if ai_override == "local":
-        return "local"
-
-    if provider_mode == "local":
-        return "local"
-
-    if provider_mode == "pc":
-        return "pc"
-
-    return "local"
+        return provider_mode or "unknown"
+    return ai_override
 
 
 def should_run_local_detectors() -> bool:
@@ -101,7 +87,9 @@ def should_run_local_detectors() -> bool:
         True if running in local mode, False if in pc_offload mode
     """
     mode = _provider_mode()
-    if mode != "pc":
+    if mode == "unknown":
+        return False
+    if mode == "local":
         logger.debug("Vision provider mode=%s -> local detectors enabled", mode)
         return True
 

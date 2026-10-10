@@ -1,5 +1,8 @@
 # Rider-Pi REST API Documentation
 
+[Unified Pi/PC API contracts](contracts.md) — New clients negotiate the v1 envelope through Accept; examples without negotiation describe the legacy projection. Reception time does not replace observation time.
+
+
 This directory contains documentation for the Rider-Pi REST API endpoints.
 
 ## API Server

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 
 from flask import Response, jsonify
 
+from common.observations import source_time
 from services.api_core import compat
+from services.api_core.devices import xgo_snapshot
+from services.api_core.frames import describe as describe_frame
 from services.api_core.navigation_state import snapshot as navigation_snapshot
 from services.api_core.vision_api import load_obstacle  # reużywamy jednej logiki
 
@@ -16,49 +18,16 @@ def state() -> Response:
     now = time.time()
     ts = compat.LAST_STATE.get("ts")
     age = (now - ts) if ts else None
-    raw_ts = None
-    try:
-        st = os.stat(compat.RAW_PATH)
-        raw_ts = float(st.st_mtime)
-    except Exception:
-        pass
-    fresh = raw_ts is not None and (now - float(raw_ts)) <= float(os.getenv("LAST_FRESH_S", "3"))
-    vision_enabled = bool((os.getenv("VISION_ENABLED", "0") == "1") or fresh)
+    # Same file resolver as the image route; file mtime is an artifact time,
+    # never a camera measurement or proof that the capture service is running.
+    frame = describe_frame("raw", now=now)
+    raw_ts = frame["file_observed_at"]
     cache_bust = int(raw_ts or now)
+    camera_at = source_time(compat.LAST_CAMERA.get("ts"))
+    camera_age = now - camera_at if camera_at is not None else None
 
-    raw_pose = compat.LAST_XGO.get("pose")
-    pose_label = compat.LAST_XGO.get("pose_label")
-    if pose_label is None and isinstance(raw_pose, str):
-        pose_label = raw_pose
-    roll = compat.LAST_XGO.get("roll")
-    pitch = compat.LAST_XGO.get("pitch")
-    yaw = compat.LAST_XGO.get("yaw")
-    pose_axes = None
-    if isinstance(raw_pose, dict):
-        pose_axes = {k: raw_pose.get(k) for k in ("x", "y", "z")}
-    elif isinstance(raw_pose, (list, tuple)):
-        pose_axes = {
-            "x": raw_pose[0] if len(raw_pose) >= 1 else None,
-            "y": raw_pose[1] if len(raw_pose) >= 2 else None,
-            "z": raw_pose[2] if len(raw_pose) >= 3 else None,
-        }
-    if pose_axes is not None:
-        if pose_axes.get("x") is None and roll is not None:
-            pose_axes["x"] = roll
-        if pose_axes.get("y") is None and pitch is not None:
-            pose_axes["y"] = pitch
-        if pose_axes.get("z") is None and yaw is not None:
-            pose_axes["z"] = yaw
-    if pose_axes is not None and not any(v is not None for v in pose_axes.values()):
-        pose_axes = None
-    if pose_axes is None and any(v is not None for v in (roll, pitch, yaw)):
-        pose_axes = {"x": roll, "y": pitch, "z": yaw}
-    if pose_label is None:
-        pose_label = compat._classify_pose(roll, pitch)
-    has_telemetry = bool(compat.LAST_XGO.get("sensor_quality")) or any(
-        compat.LAST_XGO.get(key) is not None for key in ("ts", "battery", "battery_observed_at", "roll", "pitch", "yaw")
-    )
-    has_telemetry = has_telemetry or compat.XGO_FW not in (None, "Null")
+    xgo = xgo_snapshot(now=now)
+    has_telemetry = xgo["present"]
     tracking_mode = compat.LAST_TRACKING_MODE
     tracking_offset = compat.LAST_TRACKING_OFFSET
     offset_ts = tracking_offset.get("ts")
@@ -70,44 +39,37 @@ def state() -> Response:
         "mode": compat.LAST_STATE.get("mode"),
         "ts": ts,
         "age_s": round(age, 3) if age is not None else None,
+        "source": "pi-telemetry-cache",
+        "observed_at": xgo.get("observed_at"),
+        "partial": xgo["observation"]["partial"],
+        # A camera/domain fault is not a transport failure of independent XGO
+        # measurements. Legacy vision fields above retain their original ts.
+        "vision": {
+            "state": {
+                "source": compat.LAST_STATE.get("source", "vision.state"),
+                "observed_at": ts,
+                "stale": compat.LAST_STATE.get("stale") is True or age is None or not 0 <= age <= 3,
+                "offline": compat.LAST_STATE.get("offline") is True,
+                "error": compat.LAST_STATE.get("error"),
+            }
+        },
         "camera": {
-            "vision_enabled": vision_enabled,
-            "has_last_frame": bool(raw_ts),
+            "vision_enabled": compat.LAST_CAMERA.get("vision_enabled"),
+            "has_last_frame": frame["exists"],
             "last_frame_ts": int(raw_ts) if raw_ts else None,
             "preview_url": f"/camera/last?t={cache_bust}",
             "placeholder_url": "/camera/placeholder",
+            "frame": frame,
+            "source": compat.LAST_CAMERA.get("source", "camera.heartbeat"),
+            "observed_at": camera_at,
+            "age_s": camera_age,
+            "capture_at": compat.LAST_CAMERA.get("capture_at"),
+            "frame_id": compat.LAST_CAMERA.get("frame_id"),
+            "stale": compat.LAST_CAMERA.get("stale") is True or camera_age is None or not 0 <= camera_age <= 5,
+            "offline": compat.LAST_CAMERA.get("offline") is True,
+            "error": compat.LAST_CAMERA.get("error"),
         },
-        "devices": {
-            "xgo": (
-                {
-                    "present": True,
-                    "imu_ok": compat.LAST_XGO.get("imu_ok"),
-                    "pose": pose_axes,
-                    "pose_label": pose_label,
-                    "battery_pct": compat.LAST_XGO.get("battery"),
-                    "roll": compat.LAST_XGO.get("roll"),
-                    "pitch": compat.LAST_XGO.get("pitch"),
-                    "yaw": compat.LAST_XGO.get("yaw"),
-                    "yaw_raw": compat.LAST_XGO.get("yaw_raw"),
-                    "fw": compat.XGO_FW,
-                    "ts": compat.LAST_XGO.get("ts"),
-                    "observed_at": compat.LAST_XGO.get("observed_at", compat.LAST_XGO.get("ts")),
-                    "source": compat.LAST_XGO.get("source", "unknown"),
-                    "stale": compat.LAST_XGO.get("stale") is True or compat.LAST_XGO.get("offline") is True,
-                    "offline": compat.LAST_XGO.get("offline") is True,
-                    "error": compat.LAST_XGO.get("error"),
-                    "sensor_quality": compat.LAST_XGO.get("sensor_quality", {}),
-                    "sensor_observed_at": compat.LAST_XGO.get("sensor_observed_at", {}),
-                    "battery_observed_at": compat.LAST_XGO.get("battery_observed_at"),
-                    "battery_ok": compat.LAST_XGO.get("battery_ok"),
-                    "imu_observed_at": compat.LAST_XGO.get("imu_observed_at"),
-                    "uart_owner": compat.LAST_XGO.get("uart_owner"),
-                    "physical_validation": "unverified",
-                }
-                if has_telemetry
-                else None
-            )
-        },
+        "devices": {"xgo": xgo if has_telemetry else None},
         "tracking": {
             "mode": tracking_mode.get("mode"),
             "enabled": tracking_mode.get("enabled"),

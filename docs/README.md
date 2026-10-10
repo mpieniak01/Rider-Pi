@@ -1,5 +1,8 @@
 # Rider-Pi documentation
 
+[Unified Pi/PC API contracts](api-specs/contracts.md) — New clients negotiate the v1 envelope through Accept; examples without negotiation describe the legacy projection. Reception time does not replace observation time.
+
+
 Rider-Pi executes robot commands and hosts local robot applications. Rider-PC
 provides the operator interface and additional AI processing. Venom is planned
 for top-level coordination; its integration is deferred.

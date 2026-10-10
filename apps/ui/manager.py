@@ -9,6 +9,8 @@ import time
 
 import zmq
 
+from apps.ui.motion_status import display_motion
+
 try:
     from PIL import Image
 except Exception:
@@ -251,7 +253,7 @@ def main():
 
     disp.ensure_on()
     set_draw(True)
-    motion_stopped = True
+    motion = {}
     vision_moving = False
     vision_human = False
     while True:
@@ -260,16 +262,15 @@ def main():
             topic, payload = sub.recv_multipart()
             data = json.loads(payload.decode("utf-8"))
             if topic == MOTION_T:
-                motion_stopped = bool(data.get("stopped", True))
-                age = int(data.get("last_cmd_age_ms", 9999))
-                if age < 500 or not motion_stopped:
+                motion = data
+                if display_motion(motion)["moving"] is True:
                     last_activity = time.time()
             elif topic == VISION_T:
                 vision_moving = bool(data.get("moving", False))
                 vision_human = bool(data.get("human", False))
                 if vision_moving or vision_human:
                     last_activity = time.time()
-        if not motion_stopped:
+        if display_motion(motion)["moving"] is True:
             set_draw(False)
         else:
             set_draw((CHAT_MODE == 1) and (vision_human or vision_moving))

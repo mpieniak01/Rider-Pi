@@ -47,13 +47,23 @@ def get_last_frame_info():
 
 
 def get_bus_health():
-    # TODO: wpiąć realny heartbeat z brokera (z busa lub pliku).
-    return {"broker": "unknown", "last_seen_ts": None}
+    from . import compat as C
+    from .bus_health import snapshot
+
+    return snapshot(C)
 
 
 def get_devices_summary():
+    from .devices import xgo_snapshot
+
+    xgo = xgo_snapshot()
+    rows = xgo.get("observation", {}).get("sensor_quality", {}).get("sensors", {})
     return {
-        "xgo": {"connected": None, "last_telemetry_ts": None},
+        "xgo": {
+            "connected": True if any(row.get("ready") is True for row in rows.values()) else None,
+            "last_telemetry_ts": xgo.get("observed_at"),
+            "observation": xgo.get("observation"),
+        },
         "vision": {"running": None, "last_frame": get_last_frame_info()},
         "bus": get_bus_health(),
         "flags": get_motion_flags(),
@@ -63,5 +73,7 @@ def get_devices_summary():
 def snapshot():
     return {
         "ts": time.time(),
+        "generated_at": time.time(),
+        "observed_at": None,
         "summary": get_devices_summary(),
     }

@@ -1,0 +1,658 @@
+{
+  "description": "Synthetic hardware-free golden contracts. Timestamps use fixed now=1000; these are not physical measurements.",
+  "now": 1000,
+  "cases": {
+    "telemetry": {
+      "status": 200,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.telemetry",
+          "contract_version": 1,
+          "host": "pi",
+          "source": "motion-executor",
+          "observed_at": null,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": false,
+          "offline": false,
+          "partial": false
+        },
+        "ok": true,
+        "data": {
+          "devices": {
+            "xgo": {
+              "contract_id": "rider.telemetry",
+              "contract_version": 1,
+              "source": "motion-executor",
+              "uart_owner": "motion-executor",
+              "instance_id": "fixture-motion",
+              "observed_at": 999.8,
+              "generated_at": 1000,
+              "fw": "fixture-fw",
+              "stale": false,
+              "offline": false,
+              "error": null,
+              "sensor_quality": {
+                "max_age_s": 2.5,
+                "ready": true,
+                "sensors": {
+                  "roll": {
+                    "value": 0,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  },
+                  "pitch": {
+                    "value": -2.5,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  },
+                  "yaw": {
+                    "value": 170,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  },
+                  "battery": {
+                    "value": 0.5,
+                    "unit": "ratio",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  }
+                }
+              },
+              "physical_validity": "unverified"
+            }
+          }
+        },
+        "error": null,
+        "operation": null
+      }
+    },
+    "partial_telemetry": {
+      "status": 200,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.telemetry",
+          "contract_version": 1,
+          "host": "pi",
+          "source": "motion-executor",
+          "observed_at": null,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": false,
+          "offline": false,
+          "partial": true
+        },
+        "ok": true,
+        "data": {
+          "devices": {
+            "xgo": {
+              "contract_id": "rider.telemetry",
+              "contract_version": 1,
+              "source": "motion-executor",
+              "uart_owner": "motion-executor",
+              "instance_id": "fixture-motion",
+              "observed_at": 999.8,
+              "generated_at": 1000,
+              "fw": "fixture-fw",
+              "stale": false,
+              "offline": false,
+              "error": null,
+              "sensor_quality": {
+                "max_age_s": 2.5,
+                "ready": false,
+                "sensors": {
+                  "roll": {
+                    "value": 0,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  },
+                  "pitch": {
+                    "value": -2.5,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  },
+                  "yaw": {
+                    "value": null,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": false,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": "yaw_unavailable",
+                    "physical_validity": "unverified"
+                  },
+                  "battery": {
+                    "value": 0.5,
+                    "unit": "ratio",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  }
+                }
+              },
+              "physical_validity": "unverified"
+            }
+          }
+        },
+        "error": null,
+        "operation": null
+      }
+    },
+    "pending": {
+      "status": 202,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.safety",
+          "contract_version": 1,
+          "host": "pi",
+          "source": "motion-executor",
+          "observed_at": null,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": false,
+          "offline": false,
+          "partial": false
+        },
+        "ok": false,
+        "data": {
+          "request_id": "fixture-command",
+          "pending": true,
+          "confirmed": false,
+          "physical_completion": "unverified"
+        },
+        "error": null,
+        "operation": {
+          "request_id": "fixture-command",
+          "action": "move",
+          "target": "motion-executor",
+          "status": "pending",
+          "confirmed": false,
+          "ack_kind": null,
+          "ack": null,
+          "actuation": true,
+          "physical_completion": "unverified"
+        }
+      }
+    },
+    "rejected": {
+      "status": 409,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.safety",
+          "contract_version": 1,
+          "host": "pi",
+          "source": "motion-executor",
+          "observed_at": null,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": false,
+          "offline": false,
+          "partial": false
+        },
+        "ok": false,
+        "data": {},
+        "error": {
+          "code": "motion_estop",
+          "message": "Emergency stop is active",
+          "retryable": false,
+          "details": {}
+        },
+        "operation": {
+          "request_id": "fixture-command",
+          "action": "move",
+          "target": "motion-executor",
+          "status": "rejected",
+          "confirmed": false,
+          "ack_kind": "domain",
+          "ack": null,
+          "actuation": false,
+          "physical_completion": "unverified"
+        }
+      }
+    },
+    "catalog": {
+      "status": 200,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.catalog",
+          "contract_version": 2,
+          "host": "pi",
+          "source": "feature-manager",
+          "observed_at": 1000,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": false,
+          "offline": false,
+          "partial": false
+        },
+        "ok": true,
+        "data": {
+          "contract_version": 2,
+          "catalog_version": 2,
+          "api_envelope_versions": [
+            1
+          ],
+          "observed_at": 1000,
+          "features": [],
+          "units": []
+        },
+        "error": null,
+        "operation": null
+      }
+    },
+    "unknown_time": {
+      "status": 200,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.system",
+          "contract_version": 1,
+          "host": "pi",
+          "source": "sysinfo",
+          "observed_at": null,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": false,
+          "offline": false,
+          "partial": false
+        },
+        "ok": true,
+        "data": {
+          "observed_at": null,
+          "cpu_pct": 0,
+          "mem_pct": 0
+        },
+        "error": null,
+        "operation": null
+      }
+    },
+    "transport_failure": {
+      "status": 502,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.telemetry",
+          "contract_version": 1,
+          "host": "pi",
+          "source": "motion-executor",
+          "observed_at": null,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": true,
+          "offline": true,
+          "partial": false
+        },
+        "ok": false,
+        "data": {
+          "devices": {
+            "xgo": {
+              "contract_id": "rider.telemetry",
+              "contract_version": 1,
+              "source": "motion-executor",
+              "uart_owner": "motion-executor",
+              "instance_id": "fixture-motion",
+              "observed_at": 999.8,
+              "generated_at": 1000,
+              "fw": "fixture-fw",
+              "stale": false,
+              "offline": false,
+              "error": null,
+              "sensor_quality": {
+                "max_age_s": 2.5,
+                "ready": true,
+                "sensors": {
+                  "roll": {
+                    "value": 0,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  },
+                  "pitch": {
+                    "value": -2.5,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  },
+                  "yaw": {
+                    "value": 170,
+                    "unit": "sdk_raw",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  },
+                  "battery": {
+                    "value": 0.5,
+                    "unit": "ratio",
+                    "observed_at": 999.8,
+                    "age_s": 0.2,
+                    "source": "motion-executor",
+                    "instance_id": "fixture-motion",
+                    "generation": "fixture-generation",
+                    "max_age_s": 2.5,
+                    "ready": true,
+                    "stale": false,
+                    "offline": false,
+                    "simulated": false,
+                    "error": null,
+                    "physical_validity": "unverified"
+                  }
+                }
+              },
+              "physical_validity": "unverified"
+            }
+          }
+        },
+        "error": {
+          "code": "pi_unreachable",
+          "message": "Pi transport unavailable",
+          "retryable": true,
+          "details": {}
+        },
+        "operation": null
+      }
+    },
+    "services": {
+      "status": 200,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.services",
+          "contract_version": 2,
+          "host": "pi",
+          "source": "systemd",
+          "observed_at": 1000,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": false,
+          "offline": false,
+          "partial": false
+        },
+        "ok": true,
+        "data": {
+          "contract_version": 2,
+          "observed_at": 1000,
+          "services": [
+            {
+              "identity": "pi:rider-api.service",
+              "host": "pi",
+              "unit": "rider-api.service",
+              "source": "systemd",
+              "observed_at": 1000,
+              "load_state": "loaded",
+              "active_state": "active",
+              "sub_state": "running",
+              "unit_file_state": "enabled",
+              "process_running": true,
+              "ready": null,
+              "can_move": false
+            }
+          ]
+        },
+        "error": null,
+        "operation": null
+      }
+    },
+    "frames": {
+      "status": 200,
+      "body": {
+        "meta": {
+          "envelope_version": 1,
+          "contract_id": "rider.frames",
+          "contract_version": 1,
+          "host": "pi",
+          "source": "motion-executor",
+          "observed_at": null,
+          "generated_at": 1000,
+          "server_time": 1000,
+          "stale": false,
+          "offline": false,
+          "partial": false
+        },
+        "ok": true,
+        "data": {
+          "raw": {
+            "exists": true,
+            "observed_at": 999.8,
+            "source": "camera.raw",
+            "kind": "raw",
+            "max_age_s": 3,
+            "stale": false,
+            "placeholder": false,
+            "url": "/vision/cam"
+          },
+          "proc": {
+            "exists": true,
+            "observed_at": null,
+            "mtime": 1000,
+            "source": "camera.proc",
+            "kind": "proc",
+            "stale": true
+          },
+          "obst": {
+            "exists": false,
+            "observed_at": null,
+            "source": "vision.obstacle",
+            "kind": "obst"
+          },
+          "ssd": {
+            "exists": true,
+            "observed_at": 999.8,
+            "source": "vision.ssd",
+            "kind": "ssd",
+            "stale": false
+          },
+          "tracker": {
+            "exists": false,
+            "observed_at": null,
+            "source": "vision.tracker",
+            "kind": "tracker"
+          }
+        },
+        "error": null,
+        "operation": null
+      }
+    }
+  },
+  "legacy_rest_percent": {
+    "observed_at": 999.8,
+    "source": "rest-v0",
+    "battery_pct": 1,
+    "battery_ok": true,
+    "roll": 0,
+    "pitch": -2.5,
+    "yaw": 170,
+    "yaw_raw": 170
+  },
+  "legacy_safety_ratio": {
+    "contract_version": 1,
+    "observed_at": 1000,
+    "source": "motion-executor",
+    "generation": "fixture-generation",
+    "instance_id": "fixture-motion",
+    "uart_owner": "motion-executor",
+    "hardware_ready": true,
+    "sensor_quality": {
+      "sensors": {
+        "battery": {
+          "value": 1,
+          "unit": "ratio",
+          "observed_at": 999.8,
+          "age_s": 0.2,
+          "source": "motion-executor",
+          "instance_id": "fixture-motion",
+          "generation": "fixture-generation",
+          "max_age_s": 2.5,
+          "ready": true,
+          "stale": false,
+          "offline": false,
+          "simulated": false,
+          "error": null,
+          "physical_validity": "unverified"
+        },
+        "roll": {
+          "value": 0,
+          "unit": "sdk_raw",
+          "observed_at": 999.8,
+          "age_s": 0.2,
+          "source": "motion-executor",
+          "instance_id": "fixture-motion",
+          "generation": "fixture-generation",
+          "max_age_s": 2.5,
+          "ready": true,
+          "stale": false,
+          "offline": false,
+          "simulated": false,
+          "error": null,
+          "physical_validity": "unverified"
+        },
+        "pitch": {
+          "value": -2.5,
+          "unit": "sdk_raw",
+          "observed_at": 999.8,
+          "age_s": 0.2,
+          "source": "motion-executor",
+          "instance_id": "fixture-motion",
+          "generation": "fixture-generation",
+          "max_age_s": 2.5,
+          "ready": true,
+          "stale": false,
+          "offline": false,
+          "simulated": false,
+          "error": null,
+          "physical_validity": "unverified"
+        },
+        "yaw": {
+          "value": 170,
+          "unit": "sdk_raw",
+          "observed_at": 999.8,
+          "age_s": 0.2,
+          "source": "motion-executor",
+          "instance_id": "fixture-motion",
+          "generation": "fixture-generation",
+          "max_age_s": 2.5,
+          "ready": true,
+          "stale": false,
+          "offline": false,
+          "simulated": false,
+          "error": null,
+          "physical_validity": "unverified"
+        }
+      }
+    }
+  }
+}
+

@@ -115,6 +115,7 @@ export function authorized(safety, owner, action = 'move', now = nowSeconds()) {
 }
 export function catalogKnown(catalog, now = nowSeconds()) {
   return catalog?.contract_version === 2 && catalog?.catalog_version === 2
+    && catalog.contract_compatibility !== 'legacy_read_only'
     && catalog.offline !== true && !catalog.error
     && Array.isArray(catalog.features) && Array.isArray(catalog.units)
     && fresh(catalog, 10, now);
@@ -137,15 +138,19 @@ export function matchingAck(ack, command, submittedAt, confirmedHttp = false) {
     && ['executed', 'rejected'].includes(ack.status);
 }
 export function displayValue(value, suffix = '') {
+  if (value && typeof value === 'object') return `${value.message || value.code || JSON.stringify(value)}${suffix}`;
   return value === null || value === undefined ? '—' : `${value}${suffix}`;
 }
 export function cameraFrame(meta, kind, now = nowSeconds()) {
   const row = meta?.[kind];
-  const ts = row && Object.hasOwn(row, 'observed_at') ? row.observed_at : row?.mtime;
+  const fileTime = row?.provenance === 'file_mtime' && row?.observed_at == null;
+  const ts = fileTime ? row.file_observed_at : row && Object.hasOwn(row, 'observed_at') ? row.observed_at : row?.mtime;
   const age = ageOf({ observed_at: ts }, now);
-  return { exists: row?.exists === true, ts, age,
+  return { exists: row?.exists === true, ts, age, time_basis: fileTime ? 'file_mtime' : 'observation',
+    capture_at: row?.capture_at ?? null,
     fresh: meta?.offline !== true && meta?.stale !== true && !meta?.error && row?.stale !== true
-      && row?.exists === true && age !== null && age <= 3 };
+      && row?.offline !== true && !row?.error && row?.placeholder !== true
+      && row?.exists === true && age !== null && age <= Math.min(3, row?.max_age_s > 0 ? row.max_age_s : 3) };
 }
 export function gridPoint(map, point) {
   const x = Array.isArray(point) ? point[0] : point?.x, y = Array.isArray(point) ? point[1] : point?.y;

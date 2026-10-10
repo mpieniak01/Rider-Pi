@@ -4,10 +4,10 @@ export function tr(pl, en = pl) { return language() === 'en' ? en : pl; }
 export function el(tag, className = '', text) {
   const node = document.createElement(tag);
   node.className = className;
-  if (text !== undefined) node.textContent = String(text);
+  if (text !== undefined) node.textContent = displayValue(text);
   return node;
 }
-export function text(id, value) { const node = document.getElementById(id); if (node) node.textContent = String(value ?? '—'); }
+export function text(id, value) { const node = document.getElementById(id); if (node) node.textContent = displayValue(value); }
 export function button(label, action, disabled = false, className = 'c-btn c-btn-sm') {
   const node = el('button', className, label); node.type = 'button'; node.disabled = disabled;
   node.addEventListener('click', action); return node;

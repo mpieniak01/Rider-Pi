@@ -18,6 +18,7 @@ def envelope(action="move", **changes):
         "generation": "g",
         "source": "manual",
         "seq": 2,
+        "request_id": "fixture-request",
         "ts": time.time(),
         "ttl_ms": 500,
         "duration": 0.1,

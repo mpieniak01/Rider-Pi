@@ -30,6 +30,8 @@ def snapshot():
     motion, odometry = read_status(), odometry_snapshot()
     oc = _calibration(odometry)
     result = {
+        "contract_id": "rider.calibration",
+        "contract_version": 1,
         "schema_version": 1,
         "server_time": now,
         "motion": motion,
@@ -142,7 +144,7 @@ def catalog():
                 raise ValueError("profile_schema")
             profile = dict(profile, provenance=dict(profile["provenance"], kind="historical"))
         saved = profiles.save_profile(profile)
-        return jsonify(dict(saved, actuation=False)), 201 if saved["created"] else 200
+        return jsonify(dict(saved, ok=True, persisted=True, actuation=False)), 201 if saved["created"] else 200
     except ValueError as exc:
         return _error(str(exc), 400)
     except BlockingIOError:

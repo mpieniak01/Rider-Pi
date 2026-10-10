@@ -37,7 +37,7 @@ export class System {
     return node;
   }
   async action(row, action) {
-    if (!this.admin || !catalogKnown(this.catalog) || !fresh(this.services, 10) || !fresh(row, 10) || row.load !== 'loaded' || row.error || this.services.contract_version !== 2 || this.busy.has(row.unit)) return;
+    if (!this.admin || !catalogKnown(this.catalog) || !fresh(this.services, 10) || !fresh(row, 10) || (row.load_state ?? row.load) !== 'loaded' || row.error || this.services.contract_version !== 2 || this.busy.has(row.unit)) return;
     if (['start', 'restart'].includes(action) && typeof row.can_move !== 'boolean') return;
     const body = { action };
     if (row.can_move && ['start', 'restart'].includes(action)) {
@@ -67,11 +67,11 @@ export class System {
       for (const row of entries) {
         const card = el('article', 'c-card');
         const identity = `${row.host || 'pi'}:${row.unit}`;
-        const current = valid && fresh(row, 10) && row.load === 'loaded' && !row.error;
-        card.append(el('h3', '', row.label || row.unit), freshPill(row, current ? row.active || 'unknown' : 'unknown', current && row.active === 'active' ? 'ok' : row.error || row.active === 'failed' ? 'err' : 'warn'),
+        const current = valid && fresh(row, 10) && (row.load_state ?? row.load) === 'loaded' && !row.error;
+        card.append(el('h3', '', row.label || row.unit), freshPill(row, current ? row.active_state || row.active || 'unknown' : 'unknown', current && (row.active_state ?? row.active) === 'active' ? 'ok' : row.error || (row.active_state ?? row.active) === 'failed' ? 'err' : 'warn'),
           kv([[tr('Jednostka', 'Unit'), row.unit], [tr('Źródło', 'Source'), row.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(row, 10)],
             [tr('Konsumenci', 'Consumers'), (row.consumers || []).join(', ')], [tr('Zależności', 'Dependencies'), (row.dependencies || []).join(', ')],
-            [tr('Powód / błąd', 'Reason / error'), row.error || row.reason || row.sub], [tr('Autostart', 'Autostart'), row.enabled]]));
+            [tr('Powód / błąd', 'Reason / error'), row.error || row.reason || row.sub_state || row.sub], [tr('Autostart', 'Autostart'), (row.unit_file_state ?? row.enabled)]]));
         const actions = el('div', 'operator-row');
         for (const action of ['start', 'stop', 'restart']) {
           const movementBlocked = ['start', 'restart'].includes(action) && (typeof row.can_move !== 'boolean' || (row.can_move && (!this.safety.can(row.motion_owner) || !this.safety.can(row.motion_owner, 'turn'))));

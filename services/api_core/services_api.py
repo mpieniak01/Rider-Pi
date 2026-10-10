@@ -10,7 +10,15 @@ from typing import Any
 from flask import Response, request
 
 from common import systemd_ctrl
-from common.service_catalog import CONTRACT_VERSION, UNIT_ALIASES, UNIT_CATALOG
+from common.service_catalog import (
+    CONTRACT_VERSION,
+    DEFAULT_REGISTRY,
+    UNIT_ALIASES,
+    UNIT_CATALOG,
+    task_resources,
+    unit_availability,
+)
+from services.core.service_permissions import permissions
 
 from . import resource_diag
 
@@ -43,6 +51,8 @@ def _svc_status(unit: str) -> dict:
         **meta,
         **row,
         "actions": list(ALLOWED_ACTIONS),
+        **unit_availability(unit),
+        "permissions": permissions(unit, row, _manager()),
         "motion_owner": owner,
         "consumers": _manager().unit_consumers(unit),
         "dependencies": dependencies,
@@ -60,7 +70,9 @@ def _build_sequence(unit: str, action: str) -> list[tuple[str, str]]:
 
 
 def _known_resource(name: str) -> bool:
-    return name in resource_diag.available_resources()
+    return name in resource_diag.available_resources() or any(
+        name in task_resources(feature) for feature in DEFAULT_REGISTRY.values()
+    )
 
 
 def _run_step(unit: str, action: str) -> dict:
@@ -70,12 +82,29 @@ def _run_step(unit: str, action: str) -> dict:
 def resource_status(name: str) -> Response:
     if not _known_resource(name):
         return _json({"error": "unknown resource", "name": name}, 404)
-    data = resource_diag.inspect(name)
+    physical = name in resource_diag.available_resources()
+    data = (
+        resource_diag.inspect(name)
+        if physical
+        else {
+            "resource": name,
+            "state": "unknown",
+            "free": None,
+            "holders": [],
+            "paths": [],
+            "source": "task-catalog",
+            "observed_at": None,
+            "error": None,
+        }
+    )
     return _json(
         {
             **data,
             "contract_version": CONTRACT_VERSION,
             "host": "pi",
+            "physical": physical,
+            "logical": not physical,
+            "diagnostic_available": physical,
             "consumers": _manager().resource_consumers().get(name, []),
         }
     )
@@ -84,6 +113,8 @@ def resource_status(name: str) -> Response:
 def resource_release(name: str, pids: list[int] | None = None) -> Response:
     if not _known_resource(name):
         return _json({"error": "unknown resource", "name": name}, 404)
+    if name not in resource_diag.available_resources():
+        return _json({"ok": False, "error": "resource_diagnostic_unavailable", "name": name}, 409)
     payload = request.get_json(silent=True) or {}
     data = resource_diag.release(
         name,
@@ -91,7 +122,9 @@ def resource_release(name: str, pids: list[int] | None = None) -> Response:
         force=payload.get("force") is True,
         operator_consent=payload.get("operator_consent") is True,
     )
-    return _json(data, 200 if data.get("ok") else 409)
+    return _json(
+        data, 200 if data.get("released") else 202 if data.get("pending") else 503 if data.get("signal_sent") else 409
+    )
 
 
 def resource_stop(name: str, units: list[str] | None = None) -> Response:
@@ -102,6 +135,8 @@ def resource_stop(name: str, units: list[str] | None = None) -> Response:
 
 
 def _resource_stop_locked(name: str, units: list[str] | None) -> Response:
+    if name not in resource_diag.available_resources():
+        return _json({"ok": False, "error": "resource_diagnostic_unavailable", "name": name}, 409)
     consumers = _manager().resource_consumers().get(name, [])
     if consumers:
         return _json(
@@ -124,7 +159,19 @@ def _resource_stop_locked(name: str, units: list[str] | None) -> Response:
         if not result.get("ok"):
             break
     ok = len(results) == len(allowed) and all(row.get("ok") for row in results)
-    return _json({"ok": ok, "results": results}, 200 if ok else 409)
+    after = resource_diag.inspect(name)
+    released = ok and after.get("free") is True and not after.get("error")
+    return _json(
+        {
+            "ok": released,
+            "released": released,
+            "results": results,
+            "after": after,
+            "pending": ok and not released,
+            "error": after.get("error"),
+        },
+        200 if released else 202 if ok else 409,
+    )
 
 
 def svc_list() -> Response:

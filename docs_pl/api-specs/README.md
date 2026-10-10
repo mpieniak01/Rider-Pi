@@ -1,5 +1,8 @@
 # Rider-Pi REST API Documentation
 
+[Jednolity standard kontraktów Pi/PC](contracts.md) — Nowy klient negocjuje kopertę v1 nagłówkiem Accept; przykłady bez negocjacji opisują projekcję legacy. Czas odbioru nie zastępuje czasu pomiaru.
+
+
 This directory contains documentation for the Rider-Pi REST API endpoints.
 
 ## API Server

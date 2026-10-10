@@ -44,7 +44,9 @@ async function fixture() {
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
     fetch: async (url, options) => {
       assert.equal(options.method, 'GET', 'presentation must never mutate the robot'); calls.push(url);
-      return { ok: true, status: 200, json: async () => replies.get(url) || {} };
+      const reply = replies.get(url) || {};
+      return { ok: true, status: 200, headers: { get: name => name.toLowerCase() === 'content-type'
+        ? (reply.meta ? 'application/vnd.rider.api+json;version=1' : 'application/json') : null }, json: async () => reply };
     } });
   const modules = new Map();
   async function load(name) {
@@ -82,7 +84,10 @@ test('service polling preserves operator expansion and collapsed logs by host an
   const f = await fixture();
   const row = { host: 'pi', unit: 'rider-camera.service', lifecycle: 'on_demand', load: 'loaded', active: 'active', can_move: false, observed_at: 1000 };
   const second = { ...row, unit: 'rider-api.service' };
-  f.replies.set('/api/logic/catalog', { contract_version: 2, catalog_version: 2, observed_at: 1000, features: [], units: [row, second] });
+  f.replies.set('/api/logic/catalog', { ok: true, error: null, operation: null,
+    meta: { envelope_version: 1, contract_id: 'rider.catalog', contract_version: 2,
+      source_host: 'pi', observed_at: 1000, generated_at: 1000, server_time: 1000, stale: false, offline: false },
+    data: { ok: true, contract_version: 2, catalog_version: 2, api_envelope_versions: [1], observed_at: 1000, features: [], units: [row, second] } });
   const services = { contract_version: 2, observed_at: 1000, services: [row, second] };
   f.replies.set('/svc', services); f.replies.set('/api/services/rider-camera.service/logs', { lines: ['fixture only'], source: 'journal', observed_at: 1000 });
   const { System } = await f.load('system.js'); const system = new System({ can: () => false }); await flush();

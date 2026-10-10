@@ -10,6 +10,7 @@ from __future__ import annotations
 from flask import Response, jsonify, make_response, request
 
 from common import ai_mode
+from services import provider_registry as registry
 
 
 def _corsify(resp: Response) -> Response:
@@ -62,13 +63,18 @@ def set_ai_mode() -> tuple[Response, int]:
         return _corsify(jsonify({"error": "Invalid mode. Must be 'local' or 'pc_offload'"})), 400
 
     try:
-        changed = ai_mode.set_mode(new_mode)
+        domains, domain_changed = registry.set_all_domain_modes("pc" if new_mode == "pc_offload" else "local")
+        changed = ai_mode.set_mode(new_mode) or domain_changed
         info = ai_mode.get_mode_info()
 
         # Publish ZMQ event about mode change
         _publish_mode_changed_event(new_mode, info["changed_ts"])
 
         result = {
+            "ok": True,
+            "persisted": True,
+            "affected_domains": list(registry.DOMAINS),
+            "domains": domains,
             "mode": info["mode"],
             "changed": changed,
             "changed_ts": info["changed_ts"],
@@ -78,6 +84,8 @@ def set_ai_mode() -> tuple[Response, int]:
     except ValueError:
         # Don't expose internal error details to external users
         return _corsify(jsonify({"error": "Invalid mode value"})), 400
+    except OSError:
+        return _corsify(jsonify({"ok": False, "error": "provider_persistence_failed", "persisted": False})), 503
 
 
 def _publish_mode_changed_event(mode: str, ts: float) -> None:

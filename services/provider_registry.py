@@ -3,17 +3,16 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
+import tempfile
 import threading
 import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-try:
-    from common import ai_mode
-except ImportError:  # pragma: no cover - fallback for docs/tools
-    ai_mode = None  # type: ignore
+from common.provider_state import normalize_domain_state
 
 try:
     from common.bus import BusPub
@@ -41,6 +40,7 @@ _pc_base_url: str = DEFAULT_PC_BASE_URL
 _MISSING = object()
 _bus_pub_lock = threading.Lock()
 _bus_pub: BusPub | None = None
+_load_error: str | None = None
 
 
 def _get_bus_pub() -> BusPub | None:
@@ -71,16 +71,6 @@ def _publish_provider_state_event(domain: str, state: dict[str, Any]) -> None:
         LOGGER.warning("Failed to publish provider.%s.state: %s", domain, exc)
 
 
-def _sync_global_ai_mode(domains_snapshot: dict[str, dict[str, Any]]) -> None:
-    if not ai_mode:
-        return
-    try:
-        target = "pc_offload" if any(st.get("mode") == "pc" for st in domains_snapshot.values()) else "local"
-        ai_mode.set_mode(target)  # set_mode already ignores when unchanged
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.warning("Provider registry failed to sync AI mode: %s", exc)
-
-
 def _now() -> float:
     return time.time()
 
@@ -100,12 +90,15 @@ def _ensure_defaults() -> None:
 
 
 def _load_state() -> None:
+    global _load_error
     if not STATE_FILE.exists():
         _ensure_defaults()
         return
 
     try:
         data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("provider state must be an object")
         if isinstance(data, dict):
             domains_raw = data.get("domains")
             if isinstance(domains_raw, dict):
@@ -113,24 +106,21 @@ def _load_state() -> None:
             else:
                 sources = data
             for domain in DOMAINS:
-                state = sources.get(domain) if isinstance(sources, dict) else None
-                if isinstance(state, dict):
-                    _domains[domain] = {
-                        "mode": state.get("mode", "local"),
-                        "status": state.get("status", "local_only"),
-                        "changed_ts": float(state.get("changed_ts", _now())),
-                        "reason": state.get("reason", "load"),
-                    }
+                _domains[domain] = normalize_domain_state(sources.get(domain), reason="load")
+            _load_error = None
             health = data.get("pc_health")
             if isinstance(health, dict):
                 _pc_health.clear()
                 _pc_health.update(
                     {
-                        "reachable": bool(health.get("reachable")),
+                        "reachable": health.get("reachable") is True,
                         "status": health.get("status", "unknown"),
                         "latency_ms": health.get("latency_ms"),
                         "updated_ts": float(health.get("updated_ts", 0.0)),
                         "reason": health.get("reason", "load"),
+                        "observed_at": health.get("observed_at"),
+                        "received_at": health.get("received_at"),
+                        "capabilities": health.get("capabilities"),
                     }
                 )
             base_url = data.get("pc_base_url")
@@ -139,24 +129,43 @@ def _load_state() -> None:
                 _pc_base_url = base_url.strip()
         LOGGER.info("Provider registry state loaded from %s", STATE_FILE)
     except Exception as exc:  # noqa: BLE001
+        _load_error = "provider_state_invalid"
+        _domains.clear()
+        _domains.update(
+            {
+                domain: {"mode": None, "status": "unknown", "changed_ts": None, "reason": _load_error}
+                for domain in DOMAINS
+            }
+        )
         LOGGER.warning("Failed to load provider state: %s", exc)
     finally:
         _ensure_defaults()
 
 
 def _save_state() -> None:
+    global _load_error
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "domains": deepcopy(_domains),
+        "pc_health": deepcopy(_pc_health),
+        "pc_base_url": _pc_base_url,
+    }
+    fd, name = tempfile.mkstemp(prefix=".providers-", dir=STATE_FILE.parent)
     try:
-        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = STATE_FILE.with_suffix(".tmp")
-        payload = {
-            "domains": deepcopy(_domains),
-            "pc_health": deepcopy(_pc_health),
-            "pc_base_url": _pc_base_url,
-        }
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(STATE_FILE)
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.error("Failed to persist provider state: %s", exc)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, ensure_ascii=False, allow_nan=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, STATE_FILE)
+        # Unknown domains remain explicit in their own rows. A successfully
+        # persisted registry is readable even while another domain needs repair.
+        _load_error = None
+    finally:
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
 
 
 def get_state_snapshot() -> dict[str, Any]:
@@ -165,6 +174,10 @@ def get_state_snapshot() -> dict[str, Any]:
             "domains": deepcopy(_domains),
             "pc_health": deepcopy(_pc_health),
             "pc_base_url": _pc_base_url,
+            "source": "provider-registry",
+            "observed_at": None,
+            "persisted": STATE_FILE.is_file(),
+            "error": _load_error,
         }
 
 
@@ -186,6 +199,8 @@ def set_domain_mode(domain: str, target: str, *, reason: str = "manual") -> tupl
     with _state_lock:
         current = _domains[domain]
         if current["mode"] == target:
+            if not STATE_FILE.is_file():
+                _save_state()
             return deepcopy(current), False
 
         new_state = dict(current)
@@ -194,13 +209,42 @@ def set_domain_mode(domain: str, target: str, *, reason: str = "manual") -> tupl
         new_state["changed_ts"] = _now()
         new_state["reason"] = reason
         _domains[domain] = new_state
-        snapshot = deepcopy(_domains)
+        try:
+            _save_state()
+        except (OSError, ValueError):
+            _domains[domain] = current
+            raise
         result = deepcopy(new_state)
-        _save_state()
         LOGGER.info("Provider domain %s changed to %s (reason=%s)", domain, target, reason)
     _publish_provider_state_event(domain, result)
-    _sync_global_ai_mode(snapshot)
     return result, True
+
+
+def set_all_domain_modes(target: str, *, reason: str = "legacy_global") -> tuple[dict, bool]:
+    """Only the explicit legacy global operation changes all domains atomically."""
+    if target not in {"local", "pc"}:
+        raise ValueError("invalid provider mode")
+    with _state_lock:
+        previous = deepcopy(_domains)
+        changed = any(row.get("mode") != target for row in _domains.values())
+        for row in _domains.values():
+            if row.get("mode") != target:
+                row.update(
+                    mode=target,
+                    status="pc_pending" if target == "pc" else "local_only",
+                    changed_ts=_now(),
+                    reason=reason,
+                )
+        try:
+            _save_state()
+        except (OSError, ValueError):
+            _domains.clear()
+            _domains.update(previous)
+            raise
+        result = deepcopy(_domains)
+    for domain, row in result.items():
+        _publish_provider_state_event(domain, row)
+    return result, changed
 
 
 def update_domain_status(domain: str, status: str, *, reason: str | None = None) -> dict[str, Any]:
@@ -208,16 +252,20 @@ def update_domain_status(domain: str, status: str, *, reason: str | None = None)
     if domain not in DOMAINS:
         raise ValueError(f"Unknown domain: {domain}")
     with _state_lock:
-        state = _domains[domain]
+        previous = deepcopy(_domains[domain])
+        state = dict(previous)
         state["status"] = status
         if reason:
             state["reason"] = reason
         state["changed_ts"] = _now()
-        snapshot = deepcopy(_domains)
+        _domains[domain] = state
+        try:
+            _save_state()
+        except (OSError, ValueError):
+            _domains[domain] = previous
+            raise
         result = deepcopy(state)
-        _save_state()
     _publish_provider_state_event(domain, result)
-    _sync_global_ai_mode(snapshot)
     return result
 
 
@@ -227,8 +275,13 @@ def update_pc_health(
     status: str | None = None,
     latency_ms: float | None | object = _MISSING,
     reason: str | None = None,
+    observed_at: float | None | object = _MISSING,
+    received_at: float | None | object = _MISSING,
+    capabilities: dict | object = _MISSING,
+    refresh: bool = True,
 ) -> dict[str, Any]:
     with _state_lock:
+        previous = deepcopy(_pc_health)
         if reachable is not None:
             _pc_health["reachable"] = bool(reachable)
         if status is not None:
@@ -237,15 +290,37 @@ def update_pc_health(
             _pc_health["latency_ms"] = latency_ms
         if reason:
             _pc_health["reason"] = reason
-        _pc_health["updated_ts"] = _now()
+        if refresh:
+            _pc_health["updated_ts"] = _now()
+        if observed_at is not _MISSING:
+            _pc_health["observed_at"] = observed_at
+        if received_at is not _MISSING:
+            _pc_health["received_at"] = received_at
+        if capabilities is not _MISSING:
+            _pc_health["capabilities"] = deepcopy(capabilities)
         snapshot = deepcopy(_pc_health)
-        _save_state()
+        try:
+            _save_state()
+        except (OSError, ValueError):
+            _pc_health.clear()
+            _pc_health.update(previous)
+            raise
         return snapshot
 
 
 def get_health_snapshot() -> dict[str, Any]:
     with _state_lock:
-        return deepcopy(_pc_health)
+        result = deepcopy(_pc_health)
+    received = result.get("received_at", result.get("updated_ts"))
+    age = _now() - received if type(received) in {int, float} and math.isfinite(received) else None
+    result.update(
+        source="pc-heartbeat",
+        stale=age is None or not -0.1 <= age <= 10,
+        offline=result.get("reachable") is not True,
+        transport={"received_at": received},
+        observed_at=result.get("observed_at"),
+    )
+    return result
 
 
 def get_pc_base_url() -> str:
@@ -265,10 +340,53 @@ def set_pc_base_url(base_url: str, *, reason: str = "manual") -> str:
     with _state_lock:
         if target == _pc_base_url:
             return _pc_base_url
+        previous = _pc_base_url
         _pc_base_url = target.rstrip("/")
-        _save_state()
+        try:
+            _save_state()
+        except (OSError, ValueError):
+            _pc_base_url = previous
+            raise
     LOGGER.info("PC base URL updated to %s (reason=%s)", _pc_base_url, reason)
     return _pc_base_url
+
+
+def record_pc_heartbeat(base_url: str, payload: dict) -> str:
+    """Persist address and transport heartbeat as a single transaction."""
+    from urllib.parse import urlsplit
+
+    target = base_url.strip().rstrip("/")
+    target = target if target.startswith(("http://", "https://")) else "http://" + target
+    parsed = urlsplit(target)
+    if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("invalid peer base_url")
+    observed = payload.get("observed_at")
+    if observed is not None and (type(observed) not in {int, float} or not math.isfinite(observed) or observed <= 0):
+        raise ValueError("invalid peer observed_at")
+    capabilities = payload.get("capabilities")
+    if capabilities is not None and not isinstance(capabilities, dict):
+        raise ValueError("invalid peer capabilities")
+    global _pc_base_url
+    with _state_lock:
+        previous_url, previous_health = _pc_base_url, deepcopy(_pc_health)
+        _pc_base_url = target
+        _pc_health.update(
+            reachable=True,
+            status="online",
+            reason=payload.get("reason", "heartbeat"),
+            observed_at=observed,
+            updated_ts=_now(),
+            received_at=_now(),
+            capabilities=capabilities,
+        )
+        try:
+            _save_state()
+        except (OSError, ValueError):
+            _pc_base_url = previous_url
+            _pc_health.clear()
+            _pc_health.update(previous_health)
+            raise
+    return target
 
 
 def reset_state() -> None:

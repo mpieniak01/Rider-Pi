@@ -9,9 +9,11 @@ import pytest
 
 
 @pytest.fixture
-def reset_ai_mode():
-    """Reset AI mode to default state before each test."""
-    from common import ai_mode
+def reset_ai_mode(monkeypatch, tmp_path):
+    """Legacy mode tests have no configured per-domain registry."""
+    from common import ai_mode, provider_state
+
+    monkeypatch.setattr(provider_state, "STATE_FILE", tmp_path / "unconfigured-providers.json")
 
     ai_mode._current_mode = "local"
     ai_mode._mode_changed_ts = time.time()
@@ -180,8 +182,8 @@ def test_adapter_mode_switching(reset_ai_mode, monkeypatch):
     assert should_use_pc_enhanced_data() is False
 
 
-def test_local_mode_overrides_provider_state(monkeypatch, reset_ai_mode):
-    """Even jeśli provider raportuje pc, Rider-Pi w trybie local zostaje lokalny."""
+def test_configured_domain_is_not_overridden_by_legacy_global(monkeypatch, reset_ai_mode):
+    """A scoped configured domain remains authoritative over legacy global state."""
     import time
 
     from apps.vision import ai_mode_adapter as vision_adapter
@@ -199,5 +201,5 @@ def test_local_mode_overrides_provider_state(monkeypatch, reset_ai_mode):
     monkeypatch.setattr(voice_adapter, "provider_state", FakeProvider())
 
     set_mode("local")
-    assert vision_adapter.should_run_local_detectors() is True
-    assert voice_adapter.should_run_local_asr() is True
+    assert vision_adapter.should_run_local_detectors() is False
+    assert voice_adapter.should_run_local_asr() is False

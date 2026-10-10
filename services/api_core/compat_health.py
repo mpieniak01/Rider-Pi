@@ -16,23 +16,14 @@ def healthz(C):
     cam_age = (now - cam_ts) if cam_ts else None
     camera_on = cam_age is not None and 0 <= cam_age <= 5.0
 
-    xgo_ts = C.LAST_XGO.get("ts")
-    xgo_age = (now - xgo_ts) if xgo_ts else None
-    xgo_on = xgo_age is not None and 0 <= xgo_age <= 5.0
+    from .devices import xgo_snapshot
 
-    inferred_pose = C.LAST_XGO.get("pose") or C._classify_pose(
-        C.LAST_XGO.get("roll"),
-        C.LAST_XGO.get("pitch"),
-    )
-    fw = C.XGO_FW if C.XGO_FW != "Null" else None
-
-    yaw = C.LAST_XGO.get("yaw")
-    try:
-        yaw = round(float(yaw), 2) if yaw is not None else None
-    except Exception:
-        pass
-
-    bat = C.LAST_XGO.get("battery")
+    xgo = xgo_snapshot(now=now)
+    channels = xgo["observation"]["sensor_quality"]["sensors"]
+    times = [row["observed_at"] for row in channels.values() if row["observed_at"] is not None]
+    xgo_age = min(now - at for at in times) if times else None
+    # Unknown is never OFF. An available channel does not prove all IMU ready.
+    xgo_on = True if any(row["ready"] for row in channels.values()) else None
 
     lcd_state = C.LAST_CAMERA.get("lcd", {})
     lcd_on = lcd_state.get("on")
@@ -50,7 +41,8 @@ def healthz(C):
             "on": bool(lcd_on) if lcd_on is not None else None,
             "power_known": lcd_on is not None,
             "configured_on": (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW),
-            "rot": lcd_state.get("rot", C.ENV_ROT),
+            "rot": lcd_state.get("rot"),
+            "configured_rot": C.ENV_ROT,
             "no_draw": lcd_state.get("no_draw", C.ENV_NO_DRAW),
             "presenting": lcd_state.get("presenting"),
             "holders": lcd_state.get("holders"),
@@ -61,30 +53,7 @@ def healthz(C):
             "idle_for_s": lcd_state.get("idle_for_s"),
             "idle_release_requires_operator": lcd_state.get("idle_release_requires_operator"),
         },
-        "xgo": {
-            "on": xgo_on,
-            "age_s": (round(xgo_age, 3) if xgo_age is not None else None),
-            "imu_ok": C.LAST_XGO.get("imu_ok"),
-            "pose": inferred_pose,
-            "battery_pct": bat,
-            "roll": C.LAST_XGO.get("roll"),
-            "pitch": C.LAST_XGO.get("pitch"),
-            "yaw": yaw,
-            "yaw_raw": C.LAST_XGO.get("yaw_raw"),
-            "fw": fw,
-            "ts": xgo_ts,
-            "observed_at": C.LAST_XGO.get("observed_at", xgo_ts),
-            "source": C.LAST_XGO.get("source", "unknown"),
-            "stale": C.LAST_XGO.get("stale") is True,
-            "offline": C.LAST_XGO.get("offline") is True,
-            "error": C.LAST_XGO.get("error"),
-            "sensor_quality": C.LAST_XGO.get("sensor_quality", {}),
-            "sensor_observed_at": C.LAST_XGO.get("sensor_observed_at", {}),
-            "battery_observed_at": C.LAST_XGO.get("battery_observed_at"),
-            "battery_ok": C.LAST_XGO.get("battery_ok"),
-            "imu_observed_at": C.LAST_XGO.get("imu_observed_at"),
-            "physical_validation": "unverified",
-        },
+        "xgo": {**xgo, "on": xgo_on, "age_s": round(xgo_age, 3) if xgo_age is not None else None},
     }
 
     status = "ok"
@@ -162,54 +131,17 @@ def api_version(C):
 
 
 def api_bus_health(C):
-    """
-    /api/bus/health — zdrowie magistrali/telemetrii.
-    """
-    now = C.time.time()
-    last_msg_age = (now - C.LAST_MSG_TS) if C.LAST_MSG_TS else None
-    last_hb_age = (now - C.LAST_HEARTBEAT_TS) if C.LAST_HEARTBEAT_TS else None
-    payload = {
-        "zmq": {"available": bool(C._ZMQ_OK)},
-        "ports": {"pub": C.BUS_PUB_PORT, "sub": C.BUS_SUB_PORT},
-        "last_msg_age_s": (round(last_msg_age, 3) if last_msg_age is not None else None),
-        "last_heartbeat_age_s": (round(last_hb_age, 3) if last_hb_age is not None else None),
-        "ready_hint": (last_msg_age is None) or (last_msg_age < 30.0),
-    }
+    from .bus_health import snapshot
+
+    payload = snapshot(C)
     return C.Response(C.json.dumps(payload), mimetype="application/json")
 
 
 def readyz(C):
-    """
-    /readyz — gotowość do obsługi żądań.
-    - Jeśli pyzmq nieobecne → ready=True (nie blokujemy startu).
-    - Jeśli BUS jest dostępny: gotowe, gdy ostatnia wiadomość nie starsza niż 30s.
-    - Zawsze zwraca JSON (nawet gdy pojawi się wyjątek) — bez 500 z tracebackiem.
-    """
-    try:
-        now = C.time.time()
-        # LAST_MSG_TS bywa None lub liczbą; zabezpieczamy rzutowanie:
-        last_msg_ts = C.LAST_MSG_TS
-        last_msg_age = (now - float(last_msg_ts)) if last_msg_ts else None
+    from .bus_health import snapshot
 
-        # Zabezpieczenie na wypadek, gdyby _ZMQ_OK nie był jeszcze w globals()
-        zmq_ok = bool(getattr(C, "_ZMQ_OK", False))
-
-        if not zmq_ok:
-            ready = True
-        else:
-            # brak wiadomości jeszcze po starcie też traktujemy jako "ready"
-            ready = (last_msg_age is None) or (last_msg_age < 30.0)
-
-        payload = {
-            "ready": bool(ready),
-            "last_msg_age_s": (round(last_msg_age, 3) if last_msg_age is not None else None),
-            "zmq_available": bool(zmq_ok),
-        }
-        return C.Response(C.json.dumps(payload), mimetype="application/json")
-    except Exception as e:
-        # awaryjnie: jasny JSON zamiast HTML 500
-        err = {"ready": False, "error": str(e)}
-        return C.Response(C.json.dumps(err), mimetype="application/json", status=500)
+    payload = snapshot(C)
+    return C.Response(C.json.dumps(payload), mimetype="application/json", status=200 if payload["ready"] else 503)
 
 
 def api_status(C):

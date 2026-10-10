@@ -9,7 +9,7 @@ import time
 
 from flask import Response, abort, make_response, send_file
 
-from . import compat as C
+from . import compat as C, frames
 
 # --- konfiguracja i pomocnicze ---
 _EXTS = (".jpg", ".png", ".bmp")
@@ -80,23 +80,11 @@ def _json_error(name: str, status: int = 404) -> Response:
 
 # --- endpoints ---
 def camera_raw():
-    r = _resolve_snap("raw")
-    if not r:
-        return _json_error("no_raw", 404)
-    full, _ext, mime = r
-    if not _fresh(full):
-        return _json_error("stale_raw", 404)
-    return _nocache_file_response(full, mime)
+    return frames.response("raw")
 
 
 def camera_proc():
-    r = _resolve_snap("proc")
-    if not r:
-        return _json_error("no_proc", 404)
-    full, _ext, mime = r
-    if not _fresh(full):
-        return _json_error("stale_proc", 404)
-    return _nocache_file_response(full, mime)
+    return frames.response("proc")
 
 
 def camera_last():
@@ -104,11 +92,7 @@ def camera_last():
     Alias do RAW, z silnymi nagłówkami anti-cache.
     HEAD zachowuje się jak GET (200/404), bez body – obsługiwane automatycznie przez Flask.
     """
-    r = _resolve_snap("raw")
-    if not r:
-        return _json_error("no_raw", 404)
-    full, _ext, mime = r
-    return _nocache_file_response(full, mime)
+    return frames.response("raw")
 
 
 def camera_placeholder():
@@ -129,6 +113,9 @@ def camera_placeholder():
     resp.headers["Content-Type"] = "image/svg+xml"
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Rider-Source"] = "placeholder"
+    resp.headers["X-Rider-Placeholder"] = "true"
+    resp.headers.pop("Last-Modified", None)
     return resp
 
 
@@ -143,8 +130,6 @@ def snapshots_static(fname: str):
         return abort(403)
     if not os.path.isfile(safe):
         return abort(404)
-    mime = _MIME.get(
-        os.path.splitext(safe)[1].lower(),
-        mimetypes.guess_type(safe)[0] or "application/octet-stream",
-    )
-    return _nocache_file_response(safe, mime)
+    base = os.path.basename(safe).split(".", 1)[0]
+    stream = next((name for name, (_, filename, _) in frames.STREAMS.items() if filename == base), "raw")
+    return frames.response(stream, path=safe, archive=True)

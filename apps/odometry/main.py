@@ -438,10 +438,15 @@ class OdometryEstimator:
 
     def get_pose(self):
         return {
+            "contract_id": "rider.odometry.pose",
+            "contract_version": 1,
             "x": self.x,
             "y": self.y,
             "theta": self.theta,
             "theta_deg": math.degrees(self.theta),
+            "units": {"x": "m", "y": "m", "theta": "rad", "theta_deg": "deg"},
+            "theta_deg_derivation": "radians_to_degrees_display_only",
+            "physical_validity": "unverified",
             "ts": self.wall_clock(),
             **self.quality(),
         }

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from common.service_catalog import CAMERA_CAPTURE_UNITS, UNIT_CATALOG
+from common.service_catalog import CAMERA_CAPTURE_UNITS, UNIT_CATALOG, unit_availability
 
 
 class FeatureAdminMixin:
@@ -10,6 +10,10 @@ class FeatureAdminMixin:
         """Administration shares task serialization and cannot steal a lease."""
         with self.transaction():
             meta = UNIT_CATALOG[unit]
+            available = unit_availability(unit)
+            if action in {"start", "restart", "enable"} and not available["start_available"]:
+                return {"ok": False, "error": available["start_unavailable_reason"], **available, "http_status": 409}
+            moving_start = meta["can_move"] and unit != "motion-executor.service"
             previous_domain = self._service_domains.get(unit)
             consumers = [name for name in self._consumers().get(unit, []) if not name.startswith("admin:")]
             if consumers and action in {"stop", "restart", "disable"}:
@@ -38,7 +42,7 @@ class FeatureAdminMixin:
                         else:
                             self._service_domains.pop(unit, None)
                         return {"ok": False, "error": "profile_journal_unavailable", "http_status": 503}
-            if meta["can_move"] and action in {"start", "restart"}:
+            if (moving_start or action == "restart" and meta["can_move"]) and action in {"start", "restart"}:
                 safety = self.safety_status()
                 owner = meta["motion_owner"]
                 if (
@@ -92,7 +96,7 @@ class FeatureAdminMixin:
                     self._service_domains[unit] = previous_domain
                 else:
                     self._service_domains.pop(unit, None)
-            if meta["can_move"] and action == "start":
+            if moving_start and action == "start":
                 failed = not result.get("ok") or not self._running(unit)
                 safety = self.safety_status()
                 capabilities = safety.get("capabilities", {})

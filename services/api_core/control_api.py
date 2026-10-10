@@ -36,8 +36,11 @@ def _submit(overrides=None):
     try:
         data = _payload()
         data.update(overrides or {})
-        if request.method != "POST" and data.get("action") != "stop":
-            return _response({"ok": False, "error": "actuator_requires_post_with_generation"}, 405)
+        if request.method != "POST":
+            error = "stop_requires_post" if data.get("action") == "stop" else "actuator_requires_post_with_generation"
+            response, code = _response({"ok": False, "error": error}, 405)
+            response.headers["Allow"] = "POST, OPTIONS"
+            return response, code
     except ValueError as exc:
         return _response({"ok": False, "error": str(exc)}, 400)
     body, code = submit_control(data)

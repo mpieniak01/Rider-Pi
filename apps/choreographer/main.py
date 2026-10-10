@@ -87,6 +87,27 @@ def execute_action(pub: BusPub, action: dict):
         LOG.warning("Action missing 'topic' field, skipping")
         return
 
+    from common.motion_commands import protected_topic
+
+    if protected_topic(topic):
+        LOG.warning("Actuator choreography denied; publish a passive proposal instead: %s", topic)
+        pub.publish(
+            "motion.intent",
+            {
+                "contract_id": "rider.motion.intent",
+                "contract_version": 1,
+                "proposal": payload,
+                "requested_topic": topic,
+                "source": "choreographer",
+                "observed_at": None,
+                "actuation": False,
+                "executable": False,
+                "reason": "explicit_operator_envelope_required",
+            },
+            add_ts=False,
+        )
+        return
+
     try:
         pub.publish(topic, payload, add_ts=True)
         LOG.debug(f"Published to {topic}: {payload}")

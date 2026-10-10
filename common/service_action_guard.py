@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from common.service_catalog import UNIT_CATALOG
+from common.service_catalog import UNIT_CATALOG, unit_availability
 
 
 def _intent(unit: str) -> dict:
@@ -23,6 +23,9 @@ def check(unit: str, action: str) -> dict:
     meta = UNIT_CATALOG.get(unit)
     if not meta or action not in {"start", "stop", "restart", "enable", "disable"}:
         return {"ok": False, "error": "unit_or_action_not_catalogued"}
+    available = unit_availability(unit)
+    if action in {"start", "restart", "enable"} and not available["start_available"]:
+        return {"ok": False, "error": available["start_unavailable_reason"], **available}
     if action == "enable" and meta["lifecycle"] != "startup":
         return {"ok": False, "error": "on_demand_autostart_forbidden"}
     if unit == "motion-executor.service" and action == "start":

@@ -1,7 +1,7 @@
 import { request, poll } from './transport.js';
 import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown } from './model.js';
 import { el, text, tr, statusLabel } from './ui.js';
-import { telemetryChannel } from './devices.js?v=overview-restored-2';
+import { telemetryChannel } from './devices.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const fmt = (value, digits = 1) => finite(value) ? value.toFixed(digits) : '—';
@@ -68,32 +68,22 @@ export class Overview {
     text('system-age', `${age(si)}${usable ? '' : ` · ${unknown()}`}`);
     this.drawHistory(usable ? si.hist_cpu : [], usable ? si.hist_mem : []);
   }
-  channel(name) {
-    const parent = this.safety.state, channel = parent?.sensor_quality?.sensors?.[name];
-    const maxAge = Math.min(3, parent?.sensor_quality?.max_age_s || 2.5);
-    if (fresh(parent) && channel?.ready === true && !channel.error && fresh(channel, maxAge) && finite(channel.value)) return channel;
-    return null;
-  }
   renderTelemetry() {
     const xgo = this.state?.devices?.xgo;
-    const ready = presentationReady(xgo);
-    const samples = Object.fromEntries(['roll', 'pitch', 'yaw', 'battery'].map(key => [key, telemetryChannel(xgo, key)]));
-    const values = ['roll', 'pitch', 'yaw'].map(key => samples[key].ready && finite(xgo?.[key]) ? xgo[key] : null);
-    // /state battery_pct is already percent. Only the safety battery channel is a ratio.
-    const batteryChannel = this.channel('battery');
-    const battery = batteryChannel && batteryChannel.value >= 0 && batteryChannel.value <= 1
-      ? batteryChannel.value * 100 : samples.battery.ready ? samples.battery.value : null;
-    const quality = this.safety.state?.sensor_quality?.sensors;
-    const imuReady = ['roll', 'pitch', 'yaw'].every(key => samples[key].ready) || (!quality && ready && values.every(finite));
+    const unavailable = this.state?.offline === true || this.state?.meta?.offline === true
+      || this.state?.stale === true || this.state?.meta?.stale === true || Boolean(this.state?.error);
+    const samples = Object.fromEntries(['roll', 'pitch', 'yaw', 'battery'].map(key => [key, telemetryChannel(xgo, key, unavailable)]));
+    const values = ['roll', 'pitch', 'yaw'].map(key => samples[key].value);
+    const battery = samples.battery.value;
+    const imuReady = ['roll', 'pitch', 'yaw'].every(key => samples[key].ready);
     text('d_xgo_imu', imuReady ? tr('Świeży odczyt', 'Fresh reading') : values.some(finite) ? tr('Częściowy odczyt', 'Partial reading') : unknown());
-    text('d_xgo_pose', values.some(finite) ? `R ${fmt(values[0])} · P ${fmt(values[1])} · Y ${fmt(values[2])}` : '—');
-    text('d_xgo_batt', finite(battery) ? `${fmt(battery, 0)}% · ${age(batteryChannel || samples.battery)}` : unknown());
-    text('xgo-age', `${age(xgo)}${ready ? '' : ` · ${unknown()}`}`);
-    const rawYaw = this.channel('yaw');
-    text('imu-yaw-raw', rawYaw ? `${fmt(rawYaw.value, 2)} · ${age(rawYaw)}` : samples.yaw.ready && finite(xgo?.yaw_raw) ? `${fmt(samples.yaw.value, 2)} · ${age(samples.yaw)}` : unknown());
+    text('d_xgo_pose', values.some(finite) ? `R ${fmt(values[0])} · P ${fmt(values[1])} · Y ${fmt(values[2])} · sdk_raw` : '—');
+    text('d_xgo_batt', finite(battery) ? `${fmt(battery, 0)}% · ${age(samples.battery)}` : unknown());
+    text('xgo-age', `${age(xgo)}${imuReady ? '' : ` · ${unknown()}`}`);
+    text('imu-yaw-raw', samples.yaw.ready ? `${fmt(samples.yaw.value, 2)} sdk_raw · ${age(samples.yaw)}` : unknown());
     text('ci_fw', xgo?.fw || this.health?.devices?.xgo?.fw || '—');
     const lcd = this.state?.devices?.lcd || this.health?.devices?.lcd;
-    const lcdStatus = lcd?.on === true ? tr('Aktywny', 'Active') : lcd?.on === false ? 'OFF' : tr('Stan nieznany', 'State unknown');
+    const lcdStatus = presentationReady(lcd, 10) ? lcd?.on === true ? tr('Aktywny', 'Active') : lcd?.on === false ? 'OFF' : tr('Stan nieznany', 'State unknown') : tr('Stan nieznany', 'State unknown');
     text('d_lcd', lcdStatus);
   }
   renderHealth() {
@@ -125,7 +115,7 @@ export class Overview {
       const freshFrame = active && frame.fresh;
       const label = !frame.exists ? tr('brak klatki', 'no frame') : freshFrame ? frameAge(frame.age) : `${tr('stara klatka', 'old frame')} · ${frameAge(frame.age)}`;
       text(`age_${kind}`, label);
-      text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${cameraText} · ${label}`);
+      text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${cameraText} · ${label}${frame.time_basis === 'file_mtime' ? tr(' · wiek pliku; przechwycenie niepotwierdzone', ' · file age; capture unconfirmed') : ''}`);
       if (!node) continue;
       if (!freshFrame || document.hidden) { node.dataset.frame = ''; if (node.getAttribute('src') !== BLANK) node.src = BLANK; continue; }
       const tag = String(frame.ts);
@@ -139,11 +129,11 @@ export class Overview {
     const valid = presentationReady(o, 3) && typeof o?.present === 'boolean';
     text('obs_present', valid ? String(o.present) : unknown());
     text('obs_conf', valid ? fmt(o.confidence, 3) : '—');
-    text('obs_edge', valid ? fmt(o.edge_pct, 3) : '—');
+    text('obs_edge', valid ? fmt(o.edge_ratio ?? o.edge_pct, 3) : '—');
     text('obstacle-age', age(o));
     const diag = valid ? o.diag : null;
-    text('binsLegendTxt', `LOW/HIGH: ${fmt(diag?.t_low, 2)} / ${fmt(diag?.t_high, 2)} · edge_pct: ${valid ? fmt(diag?.edge_pct_raw ?? o.edge_pct, 3) : '—'}`);
-    this.drawBins(diag?.bins, valid ? diag?.edge_pct_raw ?? o.edge_pct : null);
+    text('binsLegendTxt', `LOW/HIGH: ${fmt(diag?.t_low, 2)} / ${fmt(diag?.t_high, 2)} · edge_pct: ${valid ? fmt(diag?.edge_ratio_raw ?? diag?.edge_pct_raw ?? o.edge_ratio ?? o.edge_pct, 3) : '—'}`);
+    this.drawBins(diag?.bins, valid ? diag?.edge_ratio_raw ?? diag?.edge_pct_raw ?? o.edge_ratio ?? o.edge_pct : null);
   }
   renderMetrics() {
     for (const key of ['control', 'navigator', 'voice', 'google_home', 'chat', 'face']) {

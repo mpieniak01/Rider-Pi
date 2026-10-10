@@ -1,12 +1,12 @@
 import { initI18n } from '/web/assets/i18n.js';
 import { SafetyPanel } from './safety.js';
 import { Tasks } from './tasks.js';
-import { Devices } from './devices.js?v=overview-restored-2';
-import { System } from './system.js?v=overview-restored-2';
+import { Devices } from './devices.js';
+import { System } from './system.js';
 import { Navigation } from './navigation.js';
 import { Calibration } from './calibration.js';
 import { Chat } from './chat.js';
-import { Overview } from './overview.js?v=overview-restored-2';
+import { Overview } from './overview.js';
 import { events } from './transport.js';
 import { fresh, catalogKnown, safetyKnown } from './model.js';
 import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';

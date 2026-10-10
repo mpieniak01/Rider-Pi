@@ -9,15 +9,15 @@ import json
 import logging
 import os
 import threading
-import time
 from typing import Any
 
-from flask import Blueprint, Response, jsonify, make_response, request, send_file
+from flask import Blueprint, Response, jsonify, make_response, request
 
 from common import bus
 
 # Używamy stałych ścieżek z compat (RAW_PATH/PROC_PATH/SNAP_DIR, opcjonalnie DATA_DIR)
-from services.api_core import compat as C
+from services.api_core import compat as C, frames
+from services.api_core.http_contract import canonical_data, negotiated
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("vision_api", __name__)
@@ -61,37 +61,34 @@ def _ssd_path() -> str:
 
 
 def _img_response(path: str) -> Response:
-    """Zwróć obraz z wyłączonym cache; nie rzucaj 500 dla HEAD/GET."""
-    if not os.path.isfile(path):
-        # spójny 404 (text/plain — brak pliku)
-        resp = make_response(f"Not found: {path}", 404)
-        resp.headers["Content-Type"] = "text/plain; charset=utf-8"
-        return _nocache(resp)
-    # jeżeli plik istnieje — serwuj bezwarunkowo (HEAD otrzyma 200 bez body)
-    resp = send_file(path, mimetype="image/jpeg", conditional=True)
-    return _nocache(resp)
+    stream = next((name for name in frames.STREAMS if str(frames.resolve(name)) == path), "raw")
+    return frames.response(stream, path=path)
 
 
 @bp.route("/vision/cam", methods=["GET", "HEAD"])
 def vision_cam() -> Response:
-    return _img_response(C.RAW_PATH)
+    return frames.response("raw")
 
 
 @bp.route("/vision/edge", methods=["GET", "HEAD"])
 def vision_edge() -> Response:
-    return _img_response(C.PROC_PATH)
+    return frames.response("proc")
 
 
 @bp.route("/vision/ssd", methods=["GET", "HEAD"])
 def vision_ssd() -> Response:
-    return _img_response(_ssd_path())
+    return frames.response("ssd")
 
 
 @bp.route("/vision/tracker", methods=["GET", "HEAD"])
 def vision_tracker() -> Response:
     """Serve tracker annotated frame (FPS + detection circle)."""
-    tracker_path = os.path.join(C.SNAP_DIR, "tracker.jpg")
-    return _img_response(tracker_path)
+    return frames.response("tracker")
+
+
+@bp.route("/vision/obst", methods=["GET", "HEAD"])
+def vision_obst() -> Response:
+    return frames.response("obst")
 
 
 # ---------- meta: snap-info ----------
@@ -99,33 +96,31 @@ def vision_tracker() -> Response:
 
 @bp.route("/vision/snap-info", methods=["GET", "HEAD"])
 def snap_info() -> Response:
-    def info(p: str) -> dict[str, Any]:
-        try:
-            st = os.stat(p)
-            md5 = None
+    payload = {name: {**frames.describe(name), "md5": None} for name in frames.STREAMS}
+    if negotiated():
+        canonical_data(payload)
+        return _json_nocache(payload, 200)
+    legacy = {}
+    for name, row in payload.items():
+        value = {
+            "exists": row["exists"],
+            "path": row["path"],
+            "source": "filesystem",
+            "provenance": "file_mtime",
+            "stale": row["stale"],
+            "error": row["error"],
+        }
+        if row["exists"]:
+            digest = None
             if request.args.get("light") != "1":
-                with open(p, "rb") as f:
-                    md5 = hashlib.md5(f.read()).hexdigest()
-            now = time.time()
-            return {
-                "exists": True,
-                "path": p,
-                "mtime": int(st.st_mtime),
-                "size": st.st_size,
-                "md5": md5,
-                "age_s": round(max(0.0, now - float(st.st_mtime)), 3),
-            }
-        except FileNotFoundError:
-            return {"exists": False, "path": p}
-
-    payload = {
-        "raw": info(C.RAW_PATH),
-        "proc": info(C.PROC_PATH),
-        "ssd": info(_ssd_path()),
-        "tracker": info(os.path.join(C.SNAP_DIR, "tracker.jpg")),
-        "obst": info(os.path.join(C.SNAP_DIR, "obst_annot.jpg")),
-    }
-    return _json_nocache(payload, 200)
+                try:
+                    with open(row["path"], "rb") as stream:
+                        digest = hashlib.md5(stream.read()).hexdigest()
+                except OSError:
+                    value.update(stale=True, error="frame_unavailable")
+            value.update(mtime=row["mtime"], size=row["size"], md5=digest, age_s=row["age_s"])
+        legacy[name] = value
+    return _json_nocache(legacy, 200)
 
 
 # ---------- helpers: obstacle (kompatybilność dla state_api) ----------

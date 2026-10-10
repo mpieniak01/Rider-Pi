@@ -99,6 +99,8 @@ class MotionGate:
         if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq < 2**63 or seq <= self.last_seq:
             raise ValueError("stale_sequence")
         sent = finite_number(command.get("ts"), "timestamp_required")
+        if type(command.get("ttl_ms")) is not int:
+            raise ValueError("ttl_required")
         ttl = finite_number(command.get("ttl_ms"), "ttl_required")
         age_ms = (self.wall_clock() - sent) * 1000.0
         if not 0 < ttl <= MAX_TTL_MS or age_ms < -100.0 or age_ms > ttl:

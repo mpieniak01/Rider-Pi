@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 VOICE_DOMAIN = "voice"
 
 
-def _provider_mode() -> str:
+def _provider_mode(domain: str = VOICE_DOMAIN) -> str:
     ai_override = "pc" if get_mode() == "pc_offload" else "local"
     provider_mode: str | None = None
 
@@ -45,25 +45,15 @@ def _provider_mode() -> str:
         # provider control still behave correctly.
         if state_path is None or state_path.exists():
             try:
-                mode = provider_state.get_domain_mode(VOICE_DOMAIN)
+                mode = provider_state.get_domain_mode(domain)
                 if mode in {"local", "pc"}:
                     provider_mode = mode
             except Exception as exc:  # noqa: BLE001
                 logger.debug("Provider state read failed: %s", exc)
 
-    # AI mode overrides provider: local must stay local; pc_offload forces pc.
-    if ai_override == "pc":
-        return "pc"
-    if ai_override == "local":
-        return "local"
-
-    if provider_mode == "local":
-        return "local"
-
-    if provider_mode == "pc":
-        return "pc"
-
-    return "local"
+            # A malformed configured registry is unavailable, never a local fallback.
+            return provider_mode or "unknown"
+    return ai_override
 
 
 def should_run_local_asr() -> bool:
@@ -74,7 +64,7 @@ def should_run_local_asr() -> bool:
     """
     mode = _provider_mode()
     logger.debug(f"Voice provider mode: {mode}, local ASR: {mode != 'pc'}")
-    return mode != "pc"
+    return mode == "local"
 
 
 def should_run_local_tts() -> bool:
@@ -85,7 +75,7 @@ def should_run_local_tts() -> bool:
     """
     mode = _provider_mode()
     logger.debug(f"Voice provider mode: {mode}, local TTS: {mode != 'pc'}")
-    return mode != "pc"
+    return mode == "local"
 
 
 def should_run_local_nlu() -> bool:
@@ -94,9 +84,9 @@ def should_run_local_nlu() -> bool:
     Returns:
         True if running in local mode, False if in pc_offload mode
     """
-    mode = _provider_mode()
+    mode = _provider_mode("text")
     logger.debug(f"Voice provider mode: {mode}, local NLU: {mode != 'pc'}")
-    return mode != "pc"
+    return mode == "local"
 
 
 def should_offload_to_pc() -> bool:
@@ -119,4 +109,4 @@ def log_voice_mode_status() -> None:
     elif provider_mode == "pc":
         logger.info(f"Voice provider mode: pc (AI Mode {mode}) - Offloading ASR/TTS/NLU to PC")
     else:
-        logger.warning(f"Voice provider mode: {provider_mode} (AI Mode {mode}) - Unknown, defaulting to local")
+        logger.warning(f"Voice provider mode: {provider_mode} (AI Mode {mode}) - Unknown, unavailable")

@@ -60,7 +60,8 @@ def test_release_audio_terminates_only_confirmed_owner(monkeypatch: pytest.Monke
     )
 
     res = resource_diag.release("mic", limit_pids=[42, 43], force=True, operator_consent=True)
-    assert res["ok"] is True
+    assert res["ok"] is False
+    assert res['signal_sent'] is True and res['pending'] is True and res['released'] is False
     cmd = executed["cmd"]
     assert cmd == ["sudo", "-n", "kill", "-TERM", "--", "42", "43"]
 
@@ -80,7 +81,8 @@ def test_release_camera_never_touches_lcd_or_spi(monkeypatch: pytest.MonkeyPatch
     )
 
     res = resource_diag.release("camera", limit_pids=[77], force=True, operator_consent=True)
-    assert res["ok"] is True
+    assert res["ok"] is False
+    assert res['signal_sent'] is True and res['pending'] is True and res['released'] is False
     cmd = executed["cmd"]
     assert cmd == ["sudo", "-n", "kill", "-TERM", "--", "77"]
 
