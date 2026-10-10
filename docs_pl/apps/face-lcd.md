@@ -2,6 +2,12 @@
 
 Dokument opisuje renderowanie „buźki” na panelu LCD (ILI9xx): tryby, komendy, zmienne środowiskowe, benchmark, recovery i FAQ. Sprawdzone na Raspberry Pi + SPI w repo `Rider-Pi`.
 
+> **Orientacja na urządzeniu:** ekran 2″ jest zamontowany bokiem względem orientacji fabrycznej.
+> To jest stan bazowy tego robota. `FACE_LCD_ROTATE=270` obraca obraz buźki programowo i pozostaje
+> jego bieżącą kompensacją. Nie zmieniaj montażu panelu ani obrotu całego ekranu, aby poprawiać
+> pojedynczy widok. Splash wybiera `SPLASH_ROTATE`, przy jego braku `PREVIEW_ROT`, a następnie
+> `splash_lcd_rotate` z konfiguracji buźki (domyślnie 270). Zmiana `PREVIEW_ROT` może więc wpływać na splash.
+
 ---
 
 ## 1) TL;DR — szybki start

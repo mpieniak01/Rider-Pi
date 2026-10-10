@@ -129,6 +129,10 @@ help:
 	@echo "      * Google streaming edytowany, jeśli istnieje config/voice_gemini_streaming.toml"
 	@echo ""
 	@echo "═══ Diagnostics & Utilities ═══"
+	@echo "  make pi-preview       # podgląd lokalnego commitu na Pi przed GitHubem"
+	@echo "  make pi-preview-status # wersja i stan podglądu Pi"
+	@echo "  make pi-rollback      # powrót z podglądu do poprzedniego main"
+	@echo "  make pi-release PI_COMMIT=<sha> # wdrożenie zrecenzowanego main z GH"
 	@echo "  make bus-spy          # podsłuch magistrali"
 	@echo "  make test             # testy"
 	@echo "  make bench            # benchmark detekcji"
@@ -538,3 +542,19 @@ health:
 .PHONY: systemd-sync
 systemd-sync:
 	bash scripts/systemd-sync.sh
+
+# Deployment runs from WSL and uses only Python's standard library, Git and SSH.
+PI_DEPLOY_ARGS ?=
+.PHONY: pi-preview pi-preview-status pi-rollback pi-release
+pi-preview:
+	$(PY) scripts/dev_pi-deploy.py preview $(PI_DEPLOY_ARGS)
+
+pi-preview-status:
+	$(PY) scripts/dev_pi-deploy.py status $(PI_DEPLOY_ARGS)
+
+pi-rollback:
+	$(PY) scripts/dev_pi-deploy.py rollback $(PI_DEPLOY_ARGS)
+
+pi-release:
+	@test -n "$(PI_COMMIT)" || { echo "Podaj PI_COMMIT: pełny hash main po merge PR."; exit 1; }
+	$(PY) scripts/dev_pi-deploy.py release --commit "$(PI_COMMIT)" $(PI_DEPLOY_ARGS)

@@ -19,6 +19,18 @@ resetting it. Use a separate feature branch for application changes and a
 focused PR with relevant checks and review. Documentation-only changes can
 be committed directly to main when the repository owner requests it.
 
+## Two paths for device work
+
+A small fix can take the short path: local commit → `make pi-preview` →
+function test on the Pi. Choose WSL checks for the change; full pytest is
+not mandatory for every iteration. Preview happens before push or PR.
+Preview the next local commit immediately; `make pi-rollback` restores the base.
+
+Record accepted code through release: push → PR → relevant checks and review
+→ merge → `make pi-release PI_COMMIT=<full-main-sha>`.
+Reviewed contents must match what was tested on the Pi. See
+[deployment](DEPLOYMENT.md) for details, component restart and recovery.
+
 ## Configuration and local notes
 
 Use ordinary local env files. `.env`, private `.env.*`, `evn.ssh.local` and
@@ -57,7 +69,8 @@ make test TEST_ARGS="-q tests/test_systemd_services.py tests/config/"
 
 The version endpoint tests require the API dependencies. Hardware, audio,
 vision and browser checks have separate prerequisites; choose the scope
-required by the change. Record the revision, command and result in a local
+required by the change. The commands above are examples, not a mandatory
+full set before every preview. Record the revision, command and result in a local
 task note. Mocked tests do not verify motors, sensors or physical tracking.
 
 The [Pi dashboard](ui/panel-diagnostics.md) uses port `8080`.

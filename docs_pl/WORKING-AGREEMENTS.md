@@ -13,6 +13,7 @@
 - `web/**` – zasoby webowe.
 - `tests/**` – testy jednostkowe/integracyjne.
 - `config/**` – jedynie pliki konfiguracyjne.
+- `scripts/dev_pi-deploy.py` – krótki podgląd i wydanie aplikacji przez Git/SSH.
 - `docs/**`, `docs_pl/**`, główne przewodniki i reguły dokumentacji.
 - `Makefile`, `pytest.ini`, `pyproject.toml`.
 
@@ -33,6 +34,9 @@
 - **I/O sprzetowe:**
   - UART `/dev/ttyAMA0` – wyłącznie przez *Motion Bridge*.
   - LCD ILI9xx – przez `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), bez bezpośrednich SPI-write w innych miejscach.
+  - Ekran w tym robocie jest zamontowany bokiem. Zachowaj jego orientację oraz
+    kompensację buźki `FACE_LCD_ROTATE=270`. Splash wybiera `SPLASH_ROTATE`, przy jego braku
+    `PREVIEW_ROT`, potem `splash_lcd_rotate` z konfiguracji buźki (domyślnie 270).
 
 ---
 
@@ -56,7 +60,11 @@
 ## 4) Definicja Done
 
 - Działa na RPi; brak regresji w API i podstawowych ścieżkach.
-- `pytest` przechodzi lokalnie (`make test`); nowe funkcje mają test.
+- Przechodzą kontrole dobrane do zmiany; funkcje sprzętowe potwierdź na Pi.
+- Krótka iteracja może mieć powiązany test w WSL i test na urządzeniu;
+  pełny `make test` nie jest obowiązkowy przed każdym podglądem.
+- Wydanie wymaga review PR i zielonych istniejących kontroli CI;
+  wersja sprawdzona na Pi musi odpowiadać wydaniu.
 - Zmiana portów/usług → aktualizacja `ARCHITECTURE.md`.
 - Zmiany opisane w `docs/` (skrót w commitach).
 
@@ -68,6 +76,9 @@
 - Gałąź: `codex/<nr>-krotki-opis`.
 - Commity: `feat|fix|chore(scope): opis (nr)`.
 - PR: opis + *Fixes <nr>* jeśli zamyka Issue.
+- Dwie ścieżki: lokalny commit → `make pi-preview` → test na Pi; następnie
+  push → PR/review → merge → `make pi-release PI_COMMIT=<hash>`.
+- Powrót z podglądu: `make pi-rollback`. Zobacz [wdrożenie](WDROZENIE.md).
 
 **Przykład:**
 ```bash
@@ -75,10 +86,13 @@
 git switch -c codex/42-pupil-drift-tuning
 
 # praca
-make test  # uruchom lokalne testy
+# ewentualna krótka kontrola lub powiązany test w WSL
 
 # commit
 git commit -m "feat(face): pupil drift clamp improves edge cases (42)"
+
+# podgląd i test funkcji na fizycznym Pi przed publikacją
+make pi-preview
 
 # PR/push
 git push -u origin codex/42-pupil-drift-tuning

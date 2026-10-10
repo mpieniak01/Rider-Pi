@@ -72,6 +72,7 @@ jobs:
           VOICE_EXPERIMENTAL: "1"
           BASE_URL: "http://127.0.0.1:8080"
         run: |
+          pytest -q tests/test_pi_deploy.py
           pytest -q -k voice -m "not hardware and not network" \
                  --cov=. --cov-report=term-missing --cov-report=html
 

@@ -6,61 +6,98 @@ procedure. Confirm the device checkout path from the service unit before
 using it. WSL main, GitHub main and the running device can have different
 revisions.
 
-## Application update
+## Two paths
 
-Log in using the locally configured host and user. Do not include the
-password in the command. In the device checkout:
+| Path | Order | Use |
+| --- | --- | --- |
+| Short | local change and commit → Pi preview → function test | small fixes and hardware iterations before publication |
+| Release | push → PR → checks and review → merge → Pi update | record accepted code on GitHub and the device |
+
+Develop in WSL on a feature branch. Choose WSL checks for the change; the full
+suite is not a prerequisite for every short iteration. Confirm hardware
+behavior on the Pi. `scripts/dev_pi-deploy.py` uses existing Git, SSH and the
+Python standard library. It reads the local `evn.ssh.local` file with mode
+`600`; the password is excluded from process arguments and the bundle.
+
+## Short path: preview and test on the Pi
+
+Before the first preview, device `main` and the local feature branch base
+must identify the same commit. Commit selected changes locally in WSL;
+neither a push nor a PR is required. From the Rider-Pi checkout:
 
 ```bash
-git status --short --branch
-git rev-parse HEAD
-git fetch origin main
-git log --oneline HEAD..origin/main
-git diff --stat HEAD..origin/main
+git switch -c codex/short-description
+# edit; optionally run a short check or relevant WSL test
+git add <explicit-file-list>
+git commit -m "fix(scope): describe the change"
+make pi-preview
+make pi-preview-status
 ```
 
-Record the previous revision locally. Continue only with a clean checkout
-on main and a reviewed update compatible with the device Python and
-dependencies. Preserve local work instead of resetting it.
+Preview transfers a Git increment over SSH, checks changed Python syntax
+using the device interpreter and switches the Pi to `rider-preview/<hash>`.
+Previous `main` remains the rollback point. For each correction, create a
+new local commit and run `make pi-preview` again. Do not `git pull` in preview.
+The commit and branch identify the complete file set; footer metadata has
+a 60-second cache.
+
+For API backend changes:
 
 ```bash
+make pi-preview PI_DEPLOY_ARGS='--restart-api'
+```
+
+This restarts only `rider-api.service` and checks HTTP health. Reload the
+browser for static web changes. The option carries over to subsequent previews.
+For another application service, choose its
+restart and test according to the changed component. Preview does not prove
+hardware behavior. Avoid simultaneous processes sharing UART, LCD, camera
+or audio.
+
+Return to the previous `main`:
+
+```bash
+make pi-rollback
+```
+
+Rollback restores the recorded commit. If preview restarted the API,
+rollback also restarts it and checks health. Preview branches retain history.
+A dirty checkout, local file collision or unexpected state stops deployment.
+Preserve earlier work rather than resetting it.
+
+## Release path: PR, merge and Pi update
+
+After accepting the function on the Pi, push the branch, open a PR and run
+relevant checks and review. Preview review fixes again when they change
+tested code. After merging, use the full `main` SHA:
+
+```bash
+git switch main
 git pull --ff-only origin main
+make pi-release PI_COMMIT=<full-main-sha-after-merge>
+make pi-preview-status
 ```
 
-When backend code changes, restart only its application service:
+The tool fetches device `origin/main`, verifies the expected SHA and updates
+`main` by fast-forward only. Active preview and release must have identical
+file trees; squash merging may change the commit SHA. Changed contents
+require another preview. A reviewed `main` can also be released directly
+without an active preview. `.git/rider-last-release.json` records the prior
+revision. For API changes, add `PI_DEPLOY_ARGS='--restart-api'`; this option
+is also inherited from the active preview.
 
-```bash
-sudo systemctl restart rider-api.service
-systemctl status rider-api.service --no-pager
-curl --max-time 5 http://127.0.0.1:8080/healthz
-curl --max-time 5 http://127.0.0.1:8080/api/status/version
-```
+Compare Git, `/api/status/version` and `/healthz`, then verify the changed
+function. The panel uses `8080`; the separate motion bridge uses `8081`.
+Do not use movement as a web deployment health check. Rider-PC code runs
+in its existing WSL environment (`make start-dev` in Rider-PC); test its
+integration with the Pi while keeping PC packages and models on the PC.
 
-Compare the returned version with the checked-out commit. Open `/system/`
-and `/control`, check network requests and browser errors. Static web files
-normally need a browser reload; documentation-only changes need no service
-restart. The motion web bridge on `8081` is separate from the panel on `8080`.
-Do not send a movement command as a web deployment health check.
-
-Application updates do not include boot targets, vendor boot scripts,
-network/SSH/getty settings, graphics startup or broad systemd synchronization.
-Do not run `systemd-sync.sh` or `run_boot` as part of a panel update.
-Unit or dependency changes require their own reviewed deployment scope.
-
-## Device preview before publication
-
-Changes can first be previewed on the robot as local file changes. Record
-the base commit, an explicit file list and SHA-256 hashes, and back up the
-previous versions of those files outside the checkout. Transfer only selected
-code and unit files; private configuration and operational directories stay
-local. Before replacing files, confirm a clean checkout and matching base
-contents. Validate with the device Python and `systemd-analyze verify`.
-
-The device checkout now contains local modifications: its base Git hash does
-not identify the entire running file set. Do not use `git pull` in this state.
-After accepting the preview, publish and review the same changes, compare file
-hashes, restore the clean base, then update through Git. Rollback restores the
-selected files and the recorded service and autostart state.
+Both paths preserve local configuration, runtime and the display orientation
+described in [architecture](../ARCHITECTURE.md#physical-lcd-orientation).
+The tool rejects private env files, `config/local/`, runtime data and local
+notes, including files added and later removed within bundled history.
+Systemd units, drivers, boot and dependencies require a separate deployment
+scope. Do not run `systemd-sync.sh` or `run_boot` during a panel update.
 
 ## Jupyter autostart migration
 
@@ -87,6 +124,12 @@ For an application failure, use the recorded previous revision and review
 the diff before switching versions. Preserve device configuration and local
 changes, then repeat the application health checks. Avoid a blanket reset
 or reinstall for a web error.
+
+`make pi-rollback` applies to an active preview. After release, read the prior
+commit from device `.git/rider-last-release.json`. In a clean checkout, return
+to it with `git switch --detach <previous-sha>`, restart only the changed
+service and repeat its checks. Released `main` remains in Git; establish
+the next base explicitly before another increment.
 
 After a global system failure, start with the manufacturer's Linux image,
 then restore the repository, required packages and local configuration.
