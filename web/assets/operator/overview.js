@@ -113,9 +113,10 @@ export class Overview {
       const name = kind === 'raw' ? 'cam' : kind;
       const node = document.getElementById(`img_${name}`);
       const freshFrame = active && frame.fresh;
-      const label = !frame.exists ? tr('brak klatki', 'no frame') : freshFrame ? frameAge(frame.age) : `${tr('stara klatka', 'old frame')} · ${frameAge(frame.age)}`;
+      // A frame artifact does not prove that its particular producer is on.
+      const label = !frame.exists ? tr('brak klatki', 'no frame') : frame.fresh ? frameAge(frame.age) : `${tr('stara klatka', 'old frame')} · ${frameAge(frame.age)}`;
       text(`age_${kind}`, label);
-      text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${cameraText} · ${label}${frame.time_basis === 'file_mtime' ? tr(' · wiek pliku; przechwycenie niepotwierdzone', ' · file age; capture unconfirmed') : ''}`);
+      text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${label}${frame.time_basis === 'file_mtime' ? tr(' · wiek pliku; przechwycenie niepotwierdzone', ' · file age; capture unconfirmed') : ''}`);
       if (!node) continue;
       if (!freshFrame || document.hidden) { node.dataset.frame = ''; if (node.getAttribute('src') !== BLANK) node.src = BLANK; continue; }
       const tag = String(frame.ts);

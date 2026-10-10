@@ -59,6 +59,41 @@ async function fixture() {
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
+test('active RAW capture does not label inactive derivative preview producers as enabled', async () => {
+  const f = await fixture();
+  const { Overview } = await f.load('overview.js');
+  for (const id of ['d_cam', 'camBadge', 'age_raw', 'age_proc', 'age_obst', 'age_tracker']) f.elements.set(id, new Element());
+  for (const name of ['cam', 'proc', 'obst', 'tracker']) {
+    f.elements.set(`leg_${name}_txt`, new Element());
+    const image = new Element('img');
+    image.getAttribute = key => image[key];
+    f.elements.set(`img_${name}`, image);
+  }
+  const file = (exists, at) => ({ exists, observed_at: null, capture_at: null,
+    file_observed_at: at, provenance: 'file_mtime', stale: exists && at < 997, max_age_s: 3 });
+  const overview = { health: { devices: { camera: { on: true } } }, state: { camera: { mode: 'raw', fps: 12 } },
+    snap: { raw: file(true, 999.8), proc: file(false, null), obst: file(false, null), tracker: file(true, 900) },
+    obstacle: null, drawBins() {} };
+  for (const lang of ['pl', 'en']) {
+    f.document.documentElement.lang = lang;
+    Overview.prototype.renderVision.call(overview);
+    assert.ok(f.elements.get('d_cam').textContent.startsWith(lang === 'pl' ? 'Włączona' : 'Enabled'));
+    assert.equal(f.elements.get('camBadge').textContent, 'ON');
+    for (const [name, kind] of [['cam', 'RAW'], ['proc', 'PROC'], ['obst', 'OBST'], ['tracker', 'TRACKER']]) {
+      const label = f.elements.get(`leg_${name}_txt`).textContent;
+      assert.ok(label.startsWith(`${kind} · `));
+      assert.doesNotMatch(label, /Włączona|Wyłączona|Enabled|Off — on demand/);
+    }
+    assert.ok(f.elements.get('leg_proc_txt').textContent.includes(lang === 'pl' ? 'brak klatki' : 'no frame'));
+    assert.ok(f.elements.get('leg_obst_txt').textContent.includes(lang === 'pl' ? 'brak klatki' : 'no frame'));
+    assert.ok(f.elements.get('leg_tracker_txt').textContent.includes(lang === 'pl' ? 'stara klatka' : 'old frame'));
+    assert.ok(f.elements.get('leg_cam_txt').textContent.includes(lang === 'pl' ? 'wiek pliku' : 'file age'));
+    assert.ok(f.elements.get('img_cam').src.startsWith('/vision/cam?v='));
+    for (const name of ['proc', 'obst', 'tracker']) assert.ok(f.elements.get(`img_${name}`).src.startsWith('data:image/svg+xml,'));
+  }
+  assert.equal(f.calls.length, 0, 'rendering never starts or queries a producer');
+});
+
 test('explicit unknown observation never becomes fresh through age refresh or legacy ts', async () => {
   const f = await fixture(); const ui = await f.load('ui.js');
   for (const observed_at of [null, undefined, NaN, Infinity, 0]) {
