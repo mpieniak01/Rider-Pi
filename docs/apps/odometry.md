@@ -26,6 +26,21 @@ the first integration step. A gap or unobserved generation transition makes
 continuity unknown until a new manual reference. A new executor instance also
 invalidates the reference. Publication `ts` never replaces absent `observed_at`.
 
+During idle, an independently received fresh accepted SDK zero can remain the
+model's last command while matching `motion.state` heartbeats confirm the same
+executor instance/generation, zero output/target and healthy stationary state.
+The heartbeat has a 3 s source and monotonic arrival budget; IMU must remain fresh.
+It cannot supply a missing SDK write or repair a history gap. The original write
+time stays in `last_sdk_output_observed_at`; idle pose `observed_at` is the oldest
+heartbeat/IMU observation supporting the current estimate. A stale STOP without
+this continuity cannot confirm a new manual reference. These are model inputs,
+not evidence of mechanical stopping; `physical_completion` remains `unverified`.
+MOVE admission can arrive before its independent SDK output. A healthy matching
+executor transition may defer the model for up to 0.25 s with `sdk_output_pending`;
+it cannot integrate movement, refresh the STOP or extend that wait with heartbeats.
+Missing output, a liveness gap, invalid integration dt or stale IMU still breaks
+continuity. Only the independently received accepted SDK write ends the wait.
+
 ## Recorded model
 
 `ODOMETRY_CALIBRATION_PATH` optionally points to a bounded JSON record. Start with

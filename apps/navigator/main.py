@@ -61,6 +61,7 @@ class Navigator(MotionProducer, PathControl, NavigationQuality, StatePublisher):
         self.state = NavigatorState.IDLE
         self.active = False
         self._intent = None
+        self._request_id = None
         self._consumed_intent = None
         self._intent_status_at = 0.0
 

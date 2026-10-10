@@ -47,6 +47,30 @@ def output(clock, **fields):
     }
 
 
+def executor_state(instance, clock, **fields):
+    return {
+        "contract_version": 1,
+        "state": "DISARMED",
+        "ready": True,
+        "hardware_ready": True,
+        "error": None,
+        "uart_owner": "motion-executor",
+        "instance_id": "fake-executor",
+        "generation": "fake-generation",
+        "moving": False,
+        "target": {"lx": 0.0, "az": 0.0},
+        "output": {"lx": 0.0, "az": 0.0},
+        "sdk_output": dict(instance.output or {}),
+        "observed_at": clock.now,
+        **fields,
+    }
+
+
+def accept_stop(instance, clock):
+    assert instance.update_output(output(clock, linear_step=0, stopped=True))
+    assert instance.update_executor_state(executor_state(instance, clock))
+
+
 @pytest.mark.parametrize(
     "angle,expected",
     [
@@ -223,7 +247,7 @@ def test_bus_projection_uses_output_topic_and_preserves_source(monkeypatch):
     odometry = Odometry()
     odometry._handle_motion_command({"type": "drive", "lx": 1, "az": 1})
     odometry._publish_pose()
-    assert subscriptions == ["motion.output", "imu.data", "odometry.reference"]
+    assert subscriptions == ["motion.output", "motion.state", "imu.data", "odometry.reference"]
     assert sent[0][1]["observed_at"] is None
     assert not sent[0][1]["navigation_ready"]
 

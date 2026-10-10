@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from quality_fakes import fake_home, fake_map, fake_pose
 
+from apps.navigator import main as navigator_module
 from apps.navigator.main import Navigator, NavigatorState, Strategy
 from apps.navigator.path_control import checked_grid
 from apps.navigator.pathfinding import find_path, world_to_grid
@@ -52,6 +53,29 @@ def test_start_without_observation_waits_without_actuation(navigator):
     nav, _, _, sent = navigator
     nav.start()
     assert nav.active and not commands(sent, "move")
+    assert not nav.navigation_quality()["navigation_ready"]
+
+
+def test_auto_start_without_accepted_request_does_not_request_map(monkeypatch):
+    sent = []
+    instances = []
+    monkeypatch.setenv("NAVIGATOR_AUTO_START", "1")
+    monkeypatch.setattr(
+        navigator_module, "BusPub", lambda **kw: SimpleNamespace(publish=lambda *a, **kw: sent.append(a))
+    )
+    monkeypatch.setattr(navigator_module, "BusSub", lambda *a: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(Navigator, "run", lambda nav: instances.append(nav))
+    navigator_module.main()
+    nav = instances[0]
+    assert nav._request_id is None and nav._intent is None
+    nav._handle_map_data({"request_id": "unsolicited", "observed_at": 1000})
+    nav._handle_map_data({"request_id": None, "observed_at": 1000})
+    nav._request_navigation_map(force=True)
+    nav._quality_tick()
+    assert nav._map_request_seq == 0 and not nav._map_inflight
+    assert nav._map_request_id is None and nav.map_sample is None
+    assert not any(topic == "navigator.map.request" for topic, row in sent)
+    assert not commands(sent, "move")
     assert not nav.navigation_quality()["navigation_ready"]
 
 

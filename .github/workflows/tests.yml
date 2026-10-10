@@ -88,7 +88,7 @@ jobs:
                     tests/test_frame_source_quality.py tests/test_roi_source_quality.py \
                     tests/test_mapper_quality.py tests/test_navigation_quality.py \
                     tests/test_odometry_reference.py tests/test_operator_navigation_state.py \
-                    tests/test_mapper.py tests/test_navigator.py tests/test_odometry.py
+                    tests/test_mapper.py tests/test_navigator.py tests/test_odometry.py tests/test_odometry_idle.py
           pytest -q -k voice -m "not hardware and not network" \
                  --cov=. --cov-report=term-missing --cov-report=html
 

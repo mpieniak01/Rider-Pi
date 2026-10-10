@@ -45,6 +45,8 @@ def checked_grid(payload):
 
 class PathControl:
     def _request_navigation_map(self, *, force=False):
+        if not isinstance(self._request_id, str) or not self._request_id.strip():
+            return
         if self._map_inflight or not force and self.clock() - self._map_requested_at < 0.25:
             return
         self._map_request_seq += 1
@@ -81,7 +83,11 @@ class PathControl:
     def _handle_map_data(self, payload):
         if not (self.active or self.state == NavigatorState.RETURNING_HOME):
             return
-        if not isinstance(payload, dict) or payload.get("request_id") != self._map_request_id:
+        if (
+            self._map_request_id is None
+            or not isinstance(payload, dict)
+            or payload.get("request_id") != self._map_request_id
+        ):
             return
         self._map_inflight = False
         status = sample_status(payload, max_age_s=MAP_MAX_AGE_S, now=self.wall_clock())

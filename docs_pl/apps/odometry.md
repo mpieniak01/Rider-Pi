@@ -27,6 +27,22 @@ Zaakceptowane niezerowe wyjście już oznacza możliwy ruch, przed pierwszym kro
 całkowania. Nieobserwowana zmiana generacji i nowy proces wykonawcy unieważniają
 odniesienie. ts publikacji nigdy nie zastępuje brakującego observed_at.
 
+Podczas bezczynności odebrane niezależnie świeże, zaakceptowane zero SDK może
+pozostać ostatnim poleceniem modelu, gdy zgodny heartbeat motion.state potwierdza
+ten sam proces wykonawcy/generację, zerowe wyjście/cel oraz zdrowy stan bez ruchu.
+Heartbeat ma budżet 3 s dla czasu źródłowego i monotonicznego czasu odbioru;
+IMU nadal musi być świeże. Heartbeat nie dostarcza brakującego zapisu SDK ani nie
+naprawia luki historii. Pierwotny czas zapisu pozostaje w last_sdk_output_observed_at;
+observed_at pozycji podczas postoju pochodzi z najstarszej obserwacji heartbeat/IMU
+potwierdzającej bieżący model. Stary STOP bez takiej ciągłości nie potwierdza nowego
+ręcznego odniesienia. To wejścia modelu, bez dowodu mechanicznego zatrzymania;
+physical_completion pozostaje unverified.
+Przyjęcie MOVE może dotrzeć przed niezależnym wyjściem SDK. Zdrowy, zgodny wykonawca
+może odroczyć model najwyżej o 0,25 s ze stanem sdk_output_pending; nie pozwala to
+całkować ruchu, odmładzać STOP ani wydłużać oczekiwania kolejnymi heartbeat.
+Brak wyjścia, luka żywotności, nieprawidłowy dt lub stare IMU nadal łamią ciągłość.
+Oczekiwanie kończy dopiero niezależnie odebrany, zaakceptowany zapis SDK.
+
 ## Zapisany model
 
 ODOMETRY_CALIBRATION_PATH opcjonalnie wskazuje ograniczony plik JSON. Wzór:

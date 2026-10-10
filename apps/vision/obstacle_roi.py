@@ -35,7 +35,7 @@ from common.bus import (
     TOPIC_SYSTEM_AI_MODE_CHANGED,
     BusSub,
 )
-from common.data_quality import sample_status
+from common.data_quality import finite_number, sample_status
 from common.frame_stream import FrameStreamClient
 
 # --------------------------- config helpers ---------------------------------
@@ -432,7 +432,7 @@ def main() -> int:
                     "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
                     "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
                     "ts": now_s(),
-                    "age_s": proc_age_s,
+                    "age_s": round(proc_age_s, 3) if finite_number(proc_age_s) else None,
                     "stale": proc_age_s > SNAP_MAX_AGE_S,
                     "error": "proc_not_found" if frame_stream is None else "stream_no_frame",
                     "observed_at": None,
@@ -527,11 +527,13 @@ def main() -> int:
             "roi": {"y0": int(y0), "y1": int(y1), "w": int(w), "h": int(h)},
             "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
             "ts": now_s(),
-            "age_s": round(proc_age_s, 3),
+            "age_s": round(proc_age_s, 3) if finite_number(proc_age_s) else None,
             "stale": not frame_quality["ready"],
             "observed_at": observed_at,
             "data_ready": frame_quality["ready"],
-            "error": frame_quality["error"],
+            "error": source_payload["error"]
+            if isinstance(source_payload.get("error"), str) and source_payload["error"].strip()
+            else frame_quality["error"],
             "diag": {
                 "edge_pct_raw": round(float(edge_pct_raw), 4),
                 "roi_px": int(roi_px),

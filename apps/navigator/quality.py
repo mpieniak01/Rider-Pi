@@ -20,6 +20,7 @@ class NavigationQuality:
         self._data_blocked = False
         self.data_error = "inputs_pending"
         self._map_inflight = False
+        self._map_request_id = None
         self._map_request_seq = 0
         self._map_requested_at = 0.0
         self._passive_planning = False

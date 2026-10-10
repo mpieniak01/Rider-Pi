@@ -148,6 +148,7 @@ class MotionExecutor:
             self._hardware_fault(f"hardware_stop_failed:{type(exc).__name__}", stop=False)
             self.output_observed_at = self.gate.wall_clock()
             self.publish_output(force=True, accepted=False)
+            self.publish_status(force=True)
             return False
         if not stopped:
             self._hardware_fault(getattr(self.adapter, "error", None) or "hardware_stop_unconfirmed", stop=False)
@@ -155,6 +156,9 @@ class MotionExecutor:
             self._hardware_fault(self.adapter.error, stop=False)
         self.output_observed_at = self.gate.wall_clock()
         self.publish_output(force=True, accepted=stopped)
+        # A zero write remains valid while idle only with this exact executor
+        # heartbeat. Deadline stops also need it before the output ages out.
+        self.publish_status(force=True)
         return stopped
 
     def _publish(self, topic, payload):
@@ -391,6 +395,9 @@ class MotionExecutor:
             executed = False
         if self.gate.reason == "actuator_failed":
             self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
+        if executed:
+            self.output_observed_at = self.gate.wall_clock()
+            self.publish_output()
         if self.pending is not None and executed:
             pending, self.pending = self.pending, None
             self._ack(pending, "executed", "sdk_accepted")
@@ -398,9 +405,6 @@ class MotionExecutor:
             pending, self.pending = self.pending, None
             reason = self.gate.reason if self.gate.state != "ARMED" else "goal_expired_before_execution"
             self._ack(pending, "rejected", reason)
-        if executed:
-            self.output_observed_at = self.gate.wall_clock()
-            self.publish_output()
         self.publish_status()
 
     def process_batch(self, messages):
