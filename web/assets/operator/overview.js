@@ -1,5 +1,5 @@
 import { request, poll } from './transport.js';
-import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown } from './model.js';
+import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown, nowSeconds } from './model.js';
 import { el, text, tr, statusLabel } from './ui.js';
 import { telemetryChannel } from './devices.js';
 
@@ -82,9 +82,18 @@ export class Overview {
     text('xgo-age', `${age(xgo)}${imuReady ? '' : ` · ${unknown()}`}`);
     text('imu-yaw-raw', samples.yaw.ready ? `${fmt(samples.yaw.value, 2)} sdk_raw · ${age(samples.yaw)}` : unknown());
     text('ci_fw', xgo?.fw || this.health?.devices?.xgo?.fw || '—');
-    const lcd = this.state?.devices?.lcd || this.health?.devices?.lcd;
-    const lcdStatus = presentationReady(lcd, 10) ? lcd?.on === true ? tr('Aktywny', 'Active') : lcd?.on === false ? 'OFF' : tr('Stan nieznany', 'State unknown') : tr('Stan nieznany', 'State unknown');
-    text('d_lcd', lcdStatus);
+    const lcdParent = this.state?.devices?.lcd ? this.state : this.health;
+    const lcd = lcdParent?.devices?.lcd;
+    const lcdNow = nowSeconds();
+    const lcdAge = ageOf({ observed_at: lcd?.power_observed_at }, lcdNow);
+    const lcdFailure = [lcdParent, lcdParent?.meta, lcd].some(row => row?.offline === true
+      || row?.stale === true || row?.simulated === true || Boolean(row?.error));
+    const lcdConfirmed = !lcdFailure && lcd?.power_known === true && typeof lcd.on === 'boolean'
+      && typeof lcd.source === 'string' && Boolean(lcd.source.trim()) && lcd.power_source === lcd.source
+      && lcd.confirmation === 'control_write_accepted' && lcdAge !== null && lcd.power_observed_at <= lcdNow;
+    // LCD reports accepted control events, not periodic physical measurements.
+    text('d_lcd', lcdConfirmed ? `${lcd.on ? 'ON' : 'OFF'} · ${tr('ostatnie potwierdzenie', 'last confirmation')} ${lcdAge.toFixed(1)} s`
+      : tr('Stan nieznany', 'State unknown'));
   }
   renderHealth() {
     const h = this.health;

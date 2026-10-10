@@ -94,6 +94,55 @@ test('active RAW capture does not label inactive derivative preview producers as
   assert.equal(f.calls.length, 0, 'rendering never starts or queries a producer');
 });
 
+test('LCD control events retain ON/OFF with original confirmation age beyond ten seconds', async () => {
+  const f = await fixture(); const { Overview } = await f.load('overview.js');
+  f.elements.set('d_lcd', new Element());
+  const lcd = { source: 'lcd-renderer', power_source: 'lcd-renderer', power_known: true,
+    confirmation: 'control_write_accepted', power_observed_at: 1000, observed_at: 1000,
+    physical_validity: 'unverified', rot: 270 };
+  const overview = { state: null, health: { devices: { lcd } } };
+  for (const lang of ['pl', 'en']) {
+    f.document.documentElement.lang = lang;
+    for (const on of [false, true]) {
+      lcd.on = on;
+      Overview.prototype.renderTelemetry.call(overview);
+      const label = f.elements.get('d_lcd').textContent;
+      assert.ok(label.startsWith(`${on ? 'ON' : 'OFF'} · `));
+      assert.ok(label.includes(lang === 'pl' ? 'ostatnie potwierdzenie' : 'last confirmation'));
+    }
+  }
+  f.advance(11);
+  Overview.prototype.renderTelemetry.call(overview);
+  assert.equal(f.elements.get('d_lcd').textContent, 'ON · last confirmation 11.0 s');
+  assert.equal(lcd.power_observed_at, 1000, 'rendering never refreshes the original confirmation time');
+  lcd.on = false;
+  f.advance(45);
+  Overview.prototype.renderTelemetry.call(overview);
+  assert.equal(f.elements.get('d_lcd').textContent, 'OFF · last confirmation 56.0 s');
+  assert.equal(f.calls.length, 0, 'event presentation makes no API or GPIO request');
+});
+
+test('LCD labels are unknown without explicit power proof or with transport failure', async () => {
+  const f = await fixture(); const { Overview } = await f.load('overview.js');
+  f.elements.set('d_lcd', new Element());
+  const lcd = { source: 'lcd-renderer', power_source: 'lcd-renderer', power_known: true, on: false,
+    confirmation: 'control_write_accepted', power_observed_at: 990, observed_at: 1000 };
+  for (const change of [{ power_known: false }, { power_known: undefined }, { on: null }, { source: '' },
+    { source: null }, { power_source: 'camera-preview' }, { confirmation: 'frame_write_accepted' },
+    { power_observed_at: null, ts: 1000 }, { power_observed_at: 1001 }, { power_observed_at: 1000.01 }, { offline: true },
+    { stale: true }, { error: 'source_failed' }, { simulated: true }]) {
+    Overview.prototype.renderTelemetry.call({ state: null, health: { devices: { lcd: { ...lcd, ...change } } } });
+    assert.equal(f.elements.get('d_lcd').textContent, 'State unknown', JSON.stringify(change));
+  }
+  for (const failure of [{ offline: true }, { stale: true }, { error: 'API unavailable' },
+    { meta: { offline: true } }, { meta: { stale: true } }, { meta: { error: 'proxy failed' } }]) {
+    Overview.prototype.renderTelemetry.call({ state: null, health: { devices: { lcd }, ...failure } });
+    assert.equal(f.elements.get('d_lcd').textContent, 'State unknown', JSON.stringify(failure));
+  }
+  Overview.prototype.renderTelemetry.call({ state: { devices: { lcd }, offline: true }, health: { devices: { lcd } } });
+  assert.equal(f.elements.get('d_lcd').textContent, 'State unknown', 'explicit failing selected parent cannot use healthy fallback');
+});
+
 test('explicit unknown observation never becomes fresh through age refresh or legacy ts', async () => {
   const f = await fixture(); const ui = await f.load('ui.js');
   for (const observed_at of [null, undefined, NaN, Infinity, 0]) {
