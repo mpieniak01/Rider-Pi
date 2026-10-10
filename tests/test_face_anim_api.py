@@ -178,7 +178,11 @@ def test_no_lcd_spi_imports():
     forbidden = [
         k
         for k in sys.modules.keys()
-        if (k.startswith("apps.hw") or "sink_lcd" in k or "spi" in k)
+        if (
+            k.startswith("apps.hw")
+            or "sink_lcd" in k
+            or any(part.lower() in {"spi", "spidev"} for part in k.split("."))
+        )
         and not (k.startswith("tests") or k.startswith("test_"))
     ]
     # dozwolone: puste — nie chcemy HW w tej fazie

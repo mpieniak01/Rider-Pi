@@ -1,4 +1,5 @@
-import { ageOf, fresh, safetyKnown, gridPoint, nowSeconds, presentationReady, navigationObservation } from './model.js';
+import { ageOf, fresh, safetyKnown, gridPoint, nowSeconds, presentationReady, navigationObservation,
+  planningPresentationReady, passivePlanObservation, sameNavigationFrame, passivePlanCurrent } from './model.js';
 import { request, poll } from './transport.js';
 import { el, text, tr, showError } from './ui.js';
 export class Navigation {
@@ -12,6 +13,7 @@ export class Navigation {
       const data = (await request('/api/navigator/status')).data;
       this.observeSnapshot(data.navigation, data);
       const status = data.navigator || data.status || data;
+      this.observeStatus(status, data);
       this.observeRequest(status, data);
       text('nav-status', `${this.statusCurrent(status, data) ? status.state || status.mode || 'unknown' : 'unknown / stale'} · ${tr('wiek', 'age')}: ${ageOf(status)?.toFixed(1) ?? '—'} s`);
       this.render();
@@ -30,7 +32,11 @@ export class Navigation {
       if (row) {
         for (const parent of [snapshot, outer]) {
           for (const key of ['stale', 'offline']) if (parent[key] === true) row[key] = true;
-          for (const key of ['error', 'data_error']) if (parent[key]) row[key] = parent[key];
+          for (const key of ['error', 'data_error']) if (parent[key]) {
+            if (parent === outer && key === 'data_error' && parent.planning_only === true
+              && parent.data_error === 'navigation_traversal_unverified') continue;
+            row[key] = parent[key];
+          }
         }
         // Outer task readiness is distinct from cached measurement readiness.
         for (const key of ['data_ready', 'navigation_ready']) if (snapshot[key] === false) row[key] = false;
@@ -41,18 +47,10 @@ export class Navigation {
     }
   }
   async command(action) {
-    if (this.busy || !this.safety.can('navigation') || !this.safety.can('navigation', 'turn')) return;
-    const envelope = this.safety.envelope('move', {}, 'navigation');
-    const body = { ...envelope, strategy: document.getElementById('nav-strategy').value }; delete body.action;
-    const entry = { action, request_id: envelope.request_id, generation: envelope.generation, ts: envelope.ts, status: 'pending' };
-    this.history.unshift(entry); this.history = this.history.slice(0, 20);
-    this.busy = true; this.render();
-    text('nav-request', `${action}: pending`);
-    try {
-      const { data, status } = await request(`/api/navigator/${action}`, { method: 'POST', body });
-      text('nav-request', `${action}: ${status === 202 || data.pending ? 'pending' : 'response_received'} · ${data.request_id || envelope.request_id}`);
-    } catch (error) { entry.status = error.status ? 'rejected' : 'unknown'; text('nav-request', `${action}: ${entry.status}`); showError(error); }
-    finally { this.busy = false; this.render(); this.poller.refresh(); }
+    // A point plan has no physical corridor proof. The retained legacy route
+    // requires motion consent; it is not a DISARMED planning interface.
+    text('nav-request', `${action}: ${action === 'return_home' ? 'passive_plan_request_unavailable' : 'navigation_traversal_unverified'}`);
+    this.render();
   }
   async config() {
     if (!safetyKnown(this.safety.state) || this.safety.state.state !== 'DISARMED' || this.busy) return;
@@ -77,27 +75,49 @@ export class Navigation {
     }
     if (!data || typeof data !== 'object') { this.render(); return; }
     const timestamp = Object.hasOwn(data, 'observed_at') ? data.observed_at : data.ts;
-    if (event.topic === 'navigator.state') this.observeRequest(data);
+    if (event.topic === 'navigator.state') { this.observeStatus(data); this.observeRequest(data); }
     if (event.topic?.startsWith('navigator.')) text('nav-event', `${event.topic} · ${data.state || data.status || data.reason || 'received'} · ${timestamp ?? '—'}`);
     this.render();
   }
   statusCurrent(status, outer = {}) {
-    return fresh(status) && ![status, outer].some(row => row?.stale === true || row?.offline === true || row?.error || row?.data_error);
+    // A fresh passive domain refusal is useful task state. An outer proxy
+    // failure or an explicit transport error cannot confirm any observation.
+    return fresh(status) && ![status, outer].some(row => row?.stale === true || row?.offline === true || row?.error)
+      && (!status.data_error || (status.planning_only === true && typeof status.data_error === 'string'))
+      && (outer === status || !outer.data_error);
+  }
+  observeStatus(status, outer = {}) {
+    this.status = status;
+    if (!status || typeof status !== 'object') return;
+    if (status.planning_only === true || Object.hasOwn(status, 'planned_path')) {
+      const row = { ...status };
+      if (outer !== status) {
+        for (const key of ['stale', 'offline']) if (outer[key] === true) row[key] = true;
+        for (const key of ['error', 'data_error']) if (outer[key]) row[key] = outer[key];
+      }
+      this.path = passivePlanObservation(row, this.path);
+    }
   }
   observeRequest(status, outer = {}) {
     if (!this.statusCurrent(status, outer) || typeof status.active !== 'boolean' || typeof status.state !== 'string') return;
     const entry = this.history.find(row => row.request_id === status.request_id && row.generation === status.generation && status.observed_at >= row.ts);
     if (!entry) return;
-    entry.status = 'task_observed'; entry.state = status.state; entry.active = status.active;
-    text('nav-request', `${entry.action}: ${tr('stan zadania potwierdzony', 'task state observed')} · ${status.state} · ${entry.request_id}`);
+    entry.status = 'task_observed'; entry.state = status.state; entry.active = status.active; entry.error = status.data_error;
+    text('nav-request', `${entry.action}: ${tr('stan zadania potwierdzony', 'task state observed')} · ${status.state} · ${status.data_error || '—'} · ${entry.request_id}`);
   }
   render() {
-    const allowed = this.safety.can('navigation') && this.safety.can('navigation', 'turn');
-    for (const action of ['start', 'return_home']) { const button = document.getElementById(`nav-${action}`); if (button) button.disabled = !allowed || this.busy; }
+    for (const action of ['start', 'return_home']) { const button = document.getElementById(`nav-${action}`); if (button) button.disabled = true; }
     const config = document.getElementById('nav-config'); if (config) config.disabled = !safetyKnown(this.safety.state) || this.safety.state.state !== 'DISARMED' || this.busy;
-    text('map-age', `${tr('Mapa', 'Map')}: ${ageOf(this.map)?.toFixed(1) ?? '—'} s · ${this.map?.quality ?? 'unknown'}${presentationReady(this.map, 10) ? '' : ' · unavailable / stale'}`);
-    text('pose-age', `${tr('Pozycja', 'Pose')}: ${ageOf(this.pose)?.toFixed(1) ?? '—'} s · ${this.pose?.quality ?? 'unknown'}${presentationReady(this.pose) ? '' : ' · unavailable / stale'}`);
-    text('path-age', `${tr('Plan trasy', 'Planned path')}: ${ageOf(this.path)?.toFixed(1) ?? '—'} s · ${this.path?.quality ?? 'unknown'}${presentationReady(this.path) ? '' : ' · unavailable / stale'}`);
+    text('map-age', `${tr('Mapa', 'Map')}: ${ageOf(this.map)?.toFixed(1) ?? '—'} s · ${this.map?.quality ?? 'unknown'}${planningPresentationReady(this.map, 3) ? tr(' · tylko planowanie', ' · planning only') : presentationReady(this.map, 10) ? '' : ' · unavailable / stale'}`);
+    text('pose-age', `${tr('Pozycja', 'Pose')}: ${ageOf(this.pose)?.toFixed(1) ?? '—'} s · ${this.pose?.quality ?? 'unknown'}${presentationReady(this.pose, .5) ? '' : ' · unavailable / stale'}`);
+    const planReady = passivePlanCurrent(this.path, this.map, this.pose);
+    text('path-age', `${tr('Pasywny plan punktowy', 'Passive point plan')}: ${ageOf(this.path)?.toFixed(1) ?? '—'} s${planReady ? '' : ' · unavailable / stale'} · ${tr('fizycznie niezweryfikowany', 'physically unverified')}`);
+    if (this.path?.path_truncated === true) text('path-age', `${document.getElementById('path-age')?.textContent || ''} · ${tr('fragment', 'prefix')}: ${this.path.path.length}/${this.path.path_length}`);
+    text('nav-reason', `${tr('Ruch autonomiczny niedostępny', 'Autonomous motion unavailable')}: ${this.status?.data_error || 'navigation_traversal_unverified'} · passive_plan_request_unavailable`);
+    const target = this.path?.target;
+    text('nav-goal', target && sameNavigationFrame(this.pose, this.path) && sameNavigationFrame(this.map, this.path)
+      ? `HOME: (${target[0]}, ${target[1]}) · ${this.path.reference_id} · ${planReady ? tr('plan tylko do odczytu', 'read-only plan') : tr('stary plan', 'stale plan')}`
+      : tr('HOME / cel niepotwierdzony w bieżącej ramie', 'HOME / target unconfirmed in current frame'));
     for (const entry of this.history) if (entry.status === 'pending' && nowSeconds() - entry.ts > 8) entry.status = 'unknown';
     document.getElementById('nav-request-history')?.replaceChildren(...this.history.map(entry => el('li', '', `${entry.action} · ${entry.status === 'task_observed' ? tr('stan zadania potwierdzony', 'task state observed') : entry.status} · ${entry.state || '—'} · ${entry.request_id}`)));
     this.draw();
@@ -105,9 +125,10 @@ export class Navigation {
   draw() {
     if (!this.canvas) return;
     const displayWidth = Math.min(1000, this.canvas.clientWidth || 600);
-    const key = JSON.stringify([displayWidth, ...['map', 'pose', 'path'].map(name => {
+    const key = JSON.stringify([displayWidth, passivePlanCurrent(this.path, this.map, this.pose), ...['map', 'pose', 'path'].map(name => {
       const row = this[name];
       return [row?.observed_at, presentationReady(row, name === 'map' ? 10 : 3),
+        planningPresentationReady(row), row?.calibration_id, row?.reference_id, row?.home,
         row?.quality, row?.stale, row?.offline, row?.error, row?.data_ready, row?.navigation_ready, row?.data_error];
     })]);
     if (key === this.drawKey) return;
@@ -125,23 +146,24 @@ export class Navigation {
     if (data.some(value => !Number.isFinite(value))) return;
     const scale = Math.min(this.canvas.width / width, this.canvas.height / height);
     const offsetX = (this.canvas.width - width * scale) / 2, offsetY = (this.canvas.height - height * scale) / 2;
-    ctx.save(); ctx.translate(offsetX, offsetY); ctx.globalAlpha = presentationReady(this.map, 10) ? 1 : .45;
+    ctx.save(); ctx.translate(offsetX, offsetY); ctx.globalAlpha = planningPresentationReady(this.map, 3) || presentationReady(this.map, 10) ? 1 : .45;
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       const cell = data[y * width + x]; ctx.fillStyle = cell === 255 ? '#f77272' : cell === 0 ? '#708793' : '#263442'; ctx.fillRect(x * scale, y * scale, scale, scale);
     }
-    const waypoints = Array.isArray(this.path?.path) && this.path.path.length <= 2000
+    const pathFrame = sameNavigationFrame(this.map, this.path) && sameNavigationFrame(this.pose, this.path);
+    const waypoints = pathFrame && Array.isArray(this.path?.path) && this.path.path.length <= 2000
       ? this.path.path.map(point => gridPoint(this.map, point)).filter(Boolean) : [];
-    ctx.globalAlpha = presentationReady(this.path) ? 1 : .35; ctx.strokeStyle = '#7dadff'; ctx.lineWidth = 2;
+    ctx.globalAlpha = passivePlanCurrent(this.path, this.map, this.pose) ? 1 : .35; ctx.strokeStyle = '#7dadff'; ctx.lineWidth = 2;
     if (waypoints.length > 1) {
       ctx.beginPath(); ctx.moveTo(waypoints[0][0] * scale, waypoints[0][1] * scale);
       for (const [x, y] of waypoints.slice(1)) ctx.lineTo(x * scale, y * scale);
       ctx.stroke();
     }
-    const target = gridPoint(this.map, this.path?.target);
+    const target = pathFrame ? gridPoint(this.map, this.path?.target) : null;
     if (target) { ctx.fillStyle = '#ffce78'; ctx.beginPath(); ctx.arc(target[0] * scale, target[1] * scale, 5, 0, Math.PI * 2); ctx.fill(); }
-    const pose = gridPoint(this.map, this.pose);
+    const pose = sameNavigationFrame(this.map, this.pose) ? gridPoint(this.map, this.pose) : null;
     if (pose && Number.isFinite(this.pose.theta)) {
-      ctx.globalAlpha = presentationReady(this.pose) ? 1 : .35; ctx.translate(pose[0] * scale, pose[1] * scale); ctx.rotate(this.pose.theta);
+      ctx.globalAlpha = presentationReady(this.pose, .5) ? 1 : .35; ctx.translate(pose[0] * scale, pose[1] * scale); ctx.rotate(this.pose.theta);
       ctx.fillStyle = '#4ae0d2'; ctx.beginPath(); ctx.arc(0, 0, Math.max(3, scale * .6), 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.max(7, scale), 0); ctx.stroke();
     }

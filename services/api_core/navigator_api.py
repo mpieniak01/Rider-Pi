@@ -113,5 +113,10 @@ def api_navigator_status():
         stale=status.get("stale") is True or age is None or age < -0.1 or age > 3,
         safety=read_status(),
         navigation=navigation_snapshot(),
+        planning_request_available=False,
+        planning_unavailable_reason="passive_plan_request_unavailable",
+        navigation_actuation_available=False,
+        navigation_block_reason="navigation_traversal_unverified",
+        physical_completion="unverified",
     )
     return _response(status)

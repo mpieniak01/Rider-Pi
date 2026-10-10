@@ -106,6 +106,7 @@ def test_startup_stop_failure_requires_new_healthy_executor(executor):
 
     replacement_gate = MotionGate(clock=clock, wall_clock=clock, blocked=lambda: False)
     replacement = MotionExecutor(gate=replacement_gate, adapter=FakeAdapter(), status_writer=lambda _state: None)
+    replacement.poll_sensors()  # Hardware readiness alone cannot grant permission.
     assert replacement.snapshot()["ready"] is True
     assert replacement.gate.state == "DISARMED"
     assert replacement.gate.generation != unhealthy.gate.generation

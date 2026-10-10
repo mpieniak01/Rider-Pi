@@ -86,24 +86,24 @@ class Element {
   replaceChildren(...values) { this.children = values; }
   closest(selector) { return this.editing && selector.includes('input') ? this : null; }
 }
-async function fixture(initial = disarmed()) {
+async function fixture(initial = disarmed(), { page = 'control', safetyCard = null, clock = null } = {}) {
   const elements = new Map(['arm', 'clear-estop', 'disarm', 'estop', 'operator-plan', 'operator-consent', 'control-owner', 'lease',
     'duration', 'speed', 'yaw-speed', 'request-history', 'safety-state', 'safety-owner', 'safety-reason', 'safety-lease', 'operator-message'].map(id => [id, new Element(id)]));
   elements.get('control-owner').value = 'manual'; elements.get('lease').value = '10'; elements.get('duration').value = '.1';
   elements.get('speed').value = '.1'; elements.get('yaw-speed').value = '.18';
   const listeners = {}, timers = new Map(), calls = [];
   let timerId = 0, current = initial; const replies = new Map();
-  const document = { hidden: false, documentElement: { lang: 'pl' }, body: { dataset: { page: 'control' } },
-    getElementById: id => elements.get(id), querySelector: () => null, querySelectorAll: () => [], createElement: () => new Element(),
+  const document = { hidden: false, documentElement: { lang: 'pl' }, body: { dataset: { page } },
+    getElementById: id => elements.get(id), querySelector: selector => selector === '.operator-safety' ? safetyCard : null, querySelectorAll: () => [], createElement: () => new Element(),
     addEventListener: (name, action) => { listeners[name] = action; }, removeEventListener() {} };
   const context = vm.createContext({ document, window: { addEventListener() {} }, console,
-    Date, Math, Number, String, Boolean, JSON, Map, Set, Error, AbortController,
+    Date: clock ? class extends Date { static now() { return clock.now * 1000; } } : Date, Math, Number, String, Boolean, JSON, Map, Set, Error, AbortController,
     setTimeout: callback => { timers.set(++timerId, callback); return timerId; }, clearTimeout: id => timers.delete(id),
     setInterval: callback => { timers.set(++timerId, callback); return timerId; }, clearInterval: id => timers.delete(id),
     fetch: async (url, options) => {
       calls.push({ url, ...options, body: options.body ? JSON.parse(options.body) : undefined });
       return { ok: true, status: options.method === 'POST' ? 202 : 200,
-        json: async () => replies.has(url) ? replies.get(url) : options.method === 'POST' ? { pending: true, confirmed: false } : { safety: current, server_time: Date.now() / 1000 } };
+        json: async () => replies.has(url) ? replies.get(url) : options.method === 'POST' ? { pending: true, confirmed: false } : { safety: current, server_time: clock ? clock.now : Date.now() / 1000 } };
     } });
   const modules = new Map();
   async function load(name) {
@@ -193,7 +193,7 @@ test('out of range, blank and nonfinite pulse values never produce an HTTP mutat
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.calls.filter(call => call.method === 'POST').length, 0);
 });
-test('navigation view reads only; explicit owner matching start preserves click envelope and 202 pending', async () => {
+test('passive navigation view never requests ARM, service start or unverified autonomous motion', async () => {
   const f = await fixture({ ...armed(), owner: 'navigation' });
   for (const id of ['nav-strategy', 'nav-speed', 'nav-turn', 'nav-start', 'nav-return_home', 'nav-stop', 'nav-config']) f.elements.set(id, new Element(id));
   f.elements.get('nav-strategy').value = 'STOP';
@@ -201,16 +201,17 @@ test('navigation view reads only; explicit owner matching start preserves click 
   await new Promise(resolve => setImmediate(resolve));
   assert.ok(f.calls.every(call => call.method === 'GET'));
   await navigation.command('start');
-  const post = f.calls.find(call => call.method === 'POST');
-  assert.equal(post.url, '/api/navigator/start'); assert.equal(post.body.source, 'manual');
-  assert.equal(post.body.generation, 'fixture-generation'); assert.equal(post.body.ttl_ms, 500);
-  assert.equal(post.body.action, undefined); assert.ok(post.body.request_id);
-  const entry = navigation.history[0]; assert.equal(entry.status, 'pending');
+  await navigation.command('return_home');
+  assert.equal(f.calls.filter(call => call.method === 'POST').length, 0);
+  assert.equal(f.elements.get('nav-start').disabled, true);
+  assert.equal(f.elements.get('nav-return_home').disabled, true);
+  const entry = { request_id: 'old-explicit-intent', generation: 'fixture-generation', ts: Date.now() / 1000, status: 'pending' };
+  navigation.history = [entry];
   const runtime = { active: true, state: 'EXPLORING', observed_at: Date.now() / 1000, generation: entry.generation, request_id: entry.request_id };
   navigation.observeRequest({ ...runtime, request_id: 'another-request' }); assert.equal(entry.status, 'pending');
   navigation.observeRequest(runtime); assert.equal(entry.status, 'task_observed');
   f.setState({ ...armed(), owner: 'manual' }); await navigation.command('return_home');
-  assert.equal(f.calls.filter(call => call.method === 'POST').length, 1);
+  assert.equal(f.calls.filter(call => call.method === 'POST').length, 0);
 });
 test('System is GET-only until explicit administration and a fresh, known unit action', async () => {
   const f = await fixture();
@@ -403,4 +404,128 @@ test('resource recovery requires explicit current PID inventory and operator con
   assert.equal(post.body.action, 'release'); assert.equal(post.body.pids[0], 42);
   assert.equal(post.body.force, true); assert.equal(post.body.operator_consent, true);
   assert.equal(f.elements.get('rescue-consent').checked, false);
+});
+
+function passiveFixture(now = Date.now() / 1000) {
+  const home = { x: 1, y: 0, calibration_id: 'record', reference_id: 'origin', operator_confirmed: true };
+  return { observed_at: now, planning_only: true, data_ready: true, navigation_ready: false,
+    data_error: 'navigation_traversal_unverified', state: 'path_blocked', active: false,
+    plan_observed_at: now - .2, plan_calibration_id: 'record', plan_reference_id: 'origin', plan_home: home,
+    goal_pose: [1, 0], planned_path: [[0, 0], [1, 0]], planned_path_length: 2, planned_path_truncated: false };
+}
+test('point plans preserve original source age and never count as movement readiness', () => {
+  const now = Date.now() / 1000, status = passiveFixture(now);
+  const plan = model.passivePlanObservation(status, null, now);
+  assert.equal(plan.observed_at, status.plan_observed_at);
+  assert.equal(model.planningPresentationReady(plan, 3, now), true);
+  assert.equal(model.presentationReady(plan, 3, now), false);
+  assert.equal(plan.navigation_ready, false); assert.equal(plan.physical_completion, 'unverified');
+  const heartbeat = model.passivePlanObservation({ ...status, observed_at: now + 4 }, plan, now + 4);
+  assert.equal(heartbeat.observed_at, plan.observed_at);
+  assert.equal(model.planningPresentationReady(heartbeat, 3, now + 4), false);
+  assert.equal(model.passivePlanObservation({ ...status, plan_observed_at: now - .3 }, plan, now), plan);
+});
+test('failed, mismatched, oversized or missing plan observations cannot recover through a heartbeat', () => {
+  const now = Date.now() / 1000, status = passiveFixture(now), plan = model.passivePlanObservation(status, null, now);
+  for (const change of [{ plan_observed_at: null }, { plan_observed_at: now + .1 }, { plan_reference_id: 'old' },
+    { plan_home: null }, { goal_pose: [0, 0] }, { planned_path: [] }, { planned_path: Array.from({ length: 129 }, () => [0, 0]) },
+    { planned_path: [[NaN, 0]] }, { offline: true }, { error: 'lost' }, { data_ready: false }, { data_error: 'camera_failed' }]) {
+    const invalid = model.passivePlanObservation({ ...status, ...change }, plan, now);
+    assert.equal(invalid.observed_at, null, JSON.stringify(change));
+    assert.equal(model.planningPresentationReady(invalid, 3, now), false);
+  }
+  const frame = { calibration_id: 'record', reference_id: 'origin', home: status.plan_home };
+  assert.equal(model.sameNavigationFrame(frame, plan), true);
+  assert.equal(model.sameNavigationFrame({ ...frame, reference_id: 'new' }, plan), false);
+  assert.equal(model.sameNavigationFrame({ ...frame, home: { ...frame.home, x: 2 } }, plan), false);
+});
+test('catalog explicitly unavailable navigation cannot start even with a current operator lease', () => {
+  const now = Date.now() / 1000;
+  const task = { installed: true, observed_at: now, state: 'stopped', can_move: true, motion_owner: 'navigation', start_available: false };
+  const catalog = { contract_version: 2, catalog_version: 2, observed_at: now, features: [task], units: [] };
+  assert.equal(model.taskCanStart(task, catalog, { ...armed(now), owner: 'navigation' }, now), false);
+});
+test('navigation reads passive HOME and plan without ARM or POST and hides a changed frame', async () => {
+  const f = await fixture(disarmed());
+  for (const id of ['nav-start', 'nav-return_home', 'nav-config', 'nav-stop', 'nav-goal', 'nav-reason', 'nav-status', 'path-age']) f.elements.set(id, new Element(id));
+  const status = passiveFixture(), frame = { calibration_id: 'record', reference_id: 'origin', home: status.plan_home };
+  const pose = { ...frame, x: 0, y: 0, theta: 0, observed_at: status.plan_observed_at, data_ready: true, navigation_ready: true };
+  const map = { ...frame, width_cells: 2, height_cells: 1, grid: [0, 0], resolution_m: 1, origin_x: 0, origin_y: 0, observed_at: status.plan_observed_at, data_ready: true, planning_ready: true, navigation_ready: false };
+  f.setReply('/api/navigator/status', { ...status, navigation: { pose, map, path: null } });
+  const { Navigation } = await f.load('navigation.js'); const navigation = new Navigation(f.panel);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(navigation.path.observed_at, status.plan_observed_at);
+  assert.ok(f.elements.get('nav-goal').textContent.includes('HOME: (1, 0)'));
+  assert.ok(f.elements.get('nav-goal').textContent.includes('plan tylko do odczytu'));
+  assert.ok(f.elements.get('path-age').textContent.includes('fizycznie niezweryfikowany'));
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+  assert.ok(f.elements.get('nav-status').textContent.startsWith('path_blocked'));
+  const newer = { ...pose, reference_id: 'new', home: { ...pose.home, reference_id: 'new' } };
+  navigation.event({ topic: 'robot.pose', data: newer });
+  assert.ok(f.elements.get('nav-goal').textContent.includes('niepotwierdzony'));
+  f.setReply('/api/navigator/status', { offline: true, navigator: status, navigation: { pose, map, path: null } });
+  await navigation.poller.refresh();
+  assert.equal(navigation.path.observed_at, null);
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+
+test('fresh passive domain refusal is observed state, while outer proxy failure cannot confirm it', async () => {
+  const f = await fixture(), status = { ...passiveFixture(), generation: 'g', request_id: 'r' };
+  const { Navigation } = await f.load('navigation.js'); const navigation = new Navigation(f.panel);
+  await new Promise(resolve => setImmediate(resolve));
+  const entry = { generation: 'g', request_id: 'r', ts: status.observed_at - .1, status: 'pending' };
+  navigation.history = [entry];
+  for (const failure of [{ offline: true }, { stale: true }, { error: 'proxy lost' }, { data_error: 'proxy invalid' }]) {
+    navigation.observeRequest(status, failure); assert.equal(entry.status, 'pending');
+  }
+  navigation.observeRequest(status, status);
+  assert.equal(entry.status, 'task_observed'); assert.equal(entry.active, false);
+  assert.equal(entry.error, 'navigation_traversal_unverified');
+  assert.notEqual(entry.status, 'executed'); assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+
+test('a real navigation safety card never receives an ARM form; explicit system preparation remains available', async () => {
+  const navigationCard = new Element();
+  const navigation = await fixture(disarmed(), { page: 'navigation', safetyCard: navigationCard });
+  assert.equal(navigationCard.children.length, 0, 'passive navigation cannot append motion consent controls');
+  assert.ok(navigation.calls.every(call => call.method === 'GET'));
+  const systemCard = new Element();
+  const system = await fixture(disarmed(), { page: 'system', safetyCard: systemCard });
+  const nodes = value => [value, ...(value.children || []).flatMap(nodes)];
+  assert.ok(nodes(systemCard).some(node => node.id === 'arm-form'));
+  assert.ok(system.calls.every(call => call.method === 'GET'));
+});
+
+test('a passive plan is current only while both same-frame source observations remain usable', () => {
+  const now = Date.now() / 1000, status = passiveFixture(now), plan = model.passivePlanObservation(status, null, now);
+  const frame = { calibration_id: 'record', reference_id: 'origin', home: status.plan_home, observed_at: now - .2, data_ready: true };
+  const pose = { ...frame, x: 0, y: 0, theta: 0, navigation_ready: true }, map = { ...frame, width_cells: 2, height_cells: 1, grid: [0, 0], resolution_m: 1, origin_x: 0, origin_y: 0, planning_ready: true, navigation_ready: false };
+  assert.equal(model.passivePlanCurrent(plan, map, pose, now), true, 'map physical navigation flag stays false');
+  for (const failure of [{ stale: true }, { offline: true }, { error: 'lost' }, { data_ready: false }, { data_ready: null },
+    { data_error: 'invalid' }, { quality: 'unknown' }, { observed_at: now - 4 }]) {
+    assert.equal(model.passivePlanCurrent(plan, { ...map, ...failure }, pose, now), false, JSON.stringify(failure));
+    assert.equal(model.passivePlanCurrent(plan, map, { ...pose, ...failure }, now), false, JSON.stringify(failure));
+  }
+  assert.equal(model.passivePlanCurrent(plan, map, { ...pose, observed_at: now - .6 }, now), false);
+  for (const invalid of [{ x: null }, { y: NaN }, { theta: undefined }]) assert.equal(model.passivePlanCurrent(plan, map, { ...pose, ...invalid }, now), false);
+  for (const invalid of [{ grid: [] }, { grid: [0, NaN] }, { width_cells: 65537 }, { resolution_m: 0 }]) assert.equal(model.passivePlanCurrent(plan, { ...map, ...invalid }, pose, now), false);
+  const truncated = model.passivePlanObservation({ ...status, planned_path_length: 150, planned_path_truncated: true }, null, now);
+  assert.equal(truncated.path_length, 150); assert.equal(truncated.path_truncated, true);
+});
+
+test('point-plan rendering expires at the pose age budget without a new timestamp', async () => {
+  const clock = { now: 1000 }, f = await fixture(disarmed(1000), { clock }), strokes = [];
+  const context = { globalAlpha: 1, fillStyle: '', fillRect() {}, save() {}, restore() {}, translate() {}, rotate() {},
+    beginPath() {}, moveTo() {}, lineTo() {}, stroke() { strokes.push(this.globalAlpha); }, arc() {}, fill() {} };
+  const canvas = new Element('map-canvas'); canvas.clientWidth = 600; canvas.getContext = () => context; f.elements.set('map-canvas', canvas);
+  const status = passiveFixture(1000), frame = { calibration_id: 'record', reference_id: 'origin', home: status.plan_home, observed_at: 999.8, data_ready: true };
+  const pose = { ...frame, x: 0, y: 0, theta: 0, navigation_ready: true };
+  const map = { ...frame, width_cells: 2, height_cells: 1, grid: [0, 0], resolution_m: 1, origin_x: 0, origin_y: 0, planning_ready: true, navigation_ready: false };
+  f.setReply('/api/navigator/status', { ...status, navigation: { pose, map, path: null } });
+  const { Navigation } = await f.load('navigation.js'); const navigation = new Navigation(f.panel);
+  await new Promise(resolve => setImmediate(resolve));
+  const key = navigation.drawKey; assert.ok(strokes.includes(1));
+  clock.now += .4; navigation.render();
+  assert.notEqual(navigation.drawKey, key); assert.equal(strokes.at(-1), .35);
+  assert.ok(f.calls.every(call => call.method === 'GET'));
 });

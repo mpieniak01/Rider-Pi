@@ -28,14 +28,14 @@ export class SafetyPanel {
     window.addEventListener('pagehide', () => { this.suspend(); clearInterval(this.expiry); this.poller.stop(); });
   }
   preparation() {
-    if (document.getElementById('arm-form') || !['navigation', 'system'].includes(document.body.dataset.page)) return;
+    if (document.getElementById('arm-form') || document.body.dataset.page !== 'system') return;
     const card = document.querySelector('.operator-safety'); if (!card) return;
     const translated = (tag, pl, en) => { const node = el(tag, '', tr(pl, en)); node.dataset.pl = pl; node.dataset.en = en; return node; };
     const section = el('details'); section.append(translated('summary', 'Przygotuj zgodę na tym widoku', 'Prepare permission in this view'));
     const form = el('form'); form.id = 'arm-form';
     const owner = el('select'); owner.id = 'control-owner';
     for (const name of ['manual', 'follow_me', 'navigation']) { const option = el('option', '', name); option.value = name; owner.append(option); }
-    owner.value = document.body.dataset.page === 'navigation' ? 'navigation' : 'manual';
+    owner.value = 'manual';
     const lease = el('input'); lease.id = 'lease'; lease.type = 'number'; lease.min = '1'; lease.max = '30'; lease.value = '10'; lease.required = true;
     const plan = el('textarea'); plan.id = 'operator-plan'; plan.required = true; plan.maxLength = 1000;
     const consent = el('input'); consent.id = 'operator-consent'; consent.type = 'checkbox'; consent.required = true;

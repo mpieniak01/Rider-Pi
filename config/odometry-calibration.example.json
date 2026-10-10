@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "manual_verified": false,
+  "measurement_id": "",
+  "conditions": {
+    "firmware": "",
+    "surface": "",
+    "load": "",
+    "battery": "",
+    "power_cable": "",
+    "operator": "",
+    "date": ""
+  },
+  "imu_yaw_sign": null,
+  "linear_m_s": {},
+  "turn_rad_s": {},
+  "observations": {
+    "minimum_steps": null,
+    "acceleration": null,
+    "deceleration": null,
+    "reversal": null,
+    "stop_distance": null,
+    "stop_delay": null,
+    "position_error": null,
+    "heading_error": null,
+    "battery_policy": null,
+    "tilt_policy": null
+  }
+}

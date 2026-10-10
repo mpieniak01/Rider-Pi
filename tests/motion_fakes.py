@@ -71,6 +71,8 @@ def executor(monkeypatch, tmp_path):
     gate = MotionGate(clock=clock, wall_clock=clock, blocked=lambda: estop.ESTOP_FLAG.exists())
     adapter = FakeAdapter()
     instance = MotionExecutor(gate=gate, adapter=adapter, status_writer=lambda _state: None)
+    instance.poll_sensors()  # Fake adapter only; supplies known finite measurements.
+    instance.last_sensors = 0.0  # Tests may independently exercise the fake read schedule.
     return instance, clock
 
 
@@ -125,6 +127,12 @@ class FakeSDK:
 
     def _XGO__unpack(self, timeout=1):
         return True
+
+    def _XGO__read(self, addr, read_len=1):
+        self.rx_ADDR = addr
+        self.rx_LEN = read_len + 8
+        self.rx_COUNT = read_len - 1
+        self.rx_data = bytearray(read_len)
 
     def stop(self):
         self._XGO__send("VX")

@@ -122,6 +122,43 @@ def test_real_compat_publisher_accepts_navigation_keyword_without_restamping(cli
         compat.bus_pub("fixture", {}, add_ts=True)
 
 
+def test_passive_plan_is_bounded_readonly_and_does_not_enable_navigation(client, monkeypatch):
+    observed = time.time() - 1
+    home = {"x": 1, "y": 0, "calibration_id": "record", "reference_id": "reference", "operator_confirmed": True}
+    frame = {"calibration_id": "record", "reference_id": "reference", "home": home}
+    navigation_state.observe("robot.pose", {**frame, "x": 0, "y": 0, "theta": 0, "observed_at": observed})
+    navigation_state.observe(
+        "mapper.map.data", {**frame, "width_cells": 2, "height_cells": 1, "grid": [[0, 0]], "observed_at": observed}
+    )
+    devices.observe_navigator(
+        {
+            "state": "path_blocked",
+            "active": False,
+            "observed_at": time.time(),
+            "planning_only": True,
+            "data_ready": True,
+            "navigation_ready": False,
+            "data_error": "navigation_traversal_unverified",
+            "plan_observed_at": observed,
+            "plan_calibration_id": "record",
+            "plan_reference_id": "reference",
+            "plan_home": home,
+            "goal_pose": [1, 0],
+            "planned_path": [[0, 0], [1, 0]],
+            "planned_path_length": 2,
+            "planned_path_truncated": False,
+        }
+    )
+    monkeypatch.setattr(navigator_api, "read_status", lambda: {"state": "DISARMED"})
+    status = client.get("/api/navigator/status").get_json()
+    assert status["planning_request_available"] is False and status["navigation_actuation_available"] is False
+    assert status["planning_unavailable_reason"] == "passive_plan_request_unavailable"
+    assert status["goal_pose"] == [1, 0] and status["plan_observed_at"] == observed
+    assert status["navigation"]["path"]["observed_at"] == observed
+    assert status["navigation"]["path"]["physical_completion"] == "unverified"
+    assert status["navigation_ready"] is False
+
+
 def test_events_wrapper_uses_live_rotating_buffer(client, monkeypatch):
     first, second = {"topic": "fixture.one", "ts": 5}, {"topic": "fixture.two", "ts": 4}
     events = deque([first], maxlen=1)

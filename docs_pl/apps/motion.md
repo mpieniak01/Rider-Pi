@@ -47,6 +47,19 @@ Brak BUS/ACK nie jest sukcesem. Zwolnienie ruchowego zasobu wymaga confirmed STO
 
 ## Dynamika i granice
 
+Zobacz [jakość programu i otwartą listę ręcznych pomiarów](physical-motion.md)
+oraz [kontrakt odometrii/odniesienia](odometry.md). IMU/bateria zachowują oryginalne
+czasy osobnych odczytów. Brak/stare dane blokują ARM i rozbrajają aktywny ruch
+przez tę samą bramę; nie wymyślamy fizycznych progów baterii/przechylenia.
+Świeże MOVE=0 jest natychmiast potwierdzoną pauzą, a timeout/błąd danych/intencji
+unieważniają zgodę.
+
+Parser odpowiedzi SDK używa monotonicznego deadline i dopasowuje adres/długość/
+sumę kontrolną. Odczyt/zapis serial mają ograniczony czas na tym jednym obiekcie.
+Protokół nie ma ID transakcji: dwóch spóźnionych identycznych adresów/długości
+nie można odróżnić. Typ odpowiedzi zachowujemy, bez zgadywania jego reguły.
+Opóźnienie transportu i mechaniczne zatrzymanie nadal wymagają pomiaru operatora.
+
 Regulator ma dt, rampę i termin krótkiego celu. Safety STOP zeruje cel natychmiast.
 Znormalizowane wartości nie mierzą m/s ani drogi hamowania.
 Awaria UART/SDK lub niepotwierdzony STOP blokuje readiness i nowy ARM; potrzebny

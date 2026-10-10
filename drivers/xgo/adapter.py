@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from apps.safety.gate import MotionGate, finite_number
+from drivers.xgo.protocol import bound_serial, read_response
 
 XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
 XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")
@@ -74,7 +75,8 @@ def guarded_sdk_class(base, gate: MotionGate):
     """
     send = getattr(base, "_XGO__send", None)
     unpack = getattr(base, "_XGO__unpack", None)
-    if not callable(send) or not callable(unpack):
+    read = getattr(base, "_XGO__read", None)
+    if not callable(send) or not callable(unpack) or not callable(read):
         raise RuntimeError("unsupported_sdk_write_contract")
 
     class GuardedXGO(base):
@@ -83,10 +85,12 @@ def guarded_sdk_class(base, gate: MotionGate):
 
         def __init__(self, *args, **kwargs):
             self._initializing = True
+            self._expected_read = None
             try:
                 super().__init__(*args, **kwargs)
                 self._initializing = False
                 serial = getattr(self, "ser", None)
+                bound_serial(serial, 0.03)
                 waiting = getattr(serial, "inWaiting", None)
                 if callable(waiting):
 
@@ -125,12 +129,37 @@ def guarded_sdk_class(base, gate: MotionGate):
                 raise PermissionError("motion_gate_disarmed")
             return send(self, key, index=index, len=len)
 
+        def _XGO__read(self, addr, read_len=1):
+            if type(addr) is not int or not 0 <= addr <= 255 or type(read_len) is not int or not 0 < read_len <= 50:
+                raise ValueError("unsupported_sensor_transaction")
+            # A partial previous frame must not complete as the new sample.
+            self.rx_FLAG = self.rx_COUNT = self.rx_ADDR = self.rx_LEN = 0
+            self._expected_read = (addr, read_len, time.monotonic())
+            try:
+                bound_serial(self.ser, 0.25 if self._initializing else 0.03)
+                return read(self, addr, read_len=read_len)
+            except Exception:
+                self._expected_read = None
+                raise
+
         def _XGO__unpack(self, timeout=1):
             budget = 0.25 if self._initializing else 0.03
-            result = unpack(self, timeout=min(timeout, budget))
-            if not result:
-                raise TimeoutError("sensor_read_timeout")
-            return result
+            expected, self._expected_read = self._expected_read, None
+            if expected is None:
+                raise TimeoutError("sensor_transaction_missing")
+            addr, length, started = expected
+            response = read_response(
+                self.ser,
+                address=addr,
+                length=length,
+                started_at=started,
+                budget=min(timeout, budget),
+                clock=time.monotonic,
+            )
+            self.rx_ADDR, self.rx_LEN, self.rx_TYPE = response["address"], response["length"], response["type"]
+            self.rx_COUNT, self.rx_FLAG = length - 1, 0
+            self.rx_data = bytearray(response["payload"])
+            return True
 
     return GuardedXGO
 
@@ -153,6 +182,7 @@ class XgoAdapter:
         self._port, self._version = port, version
         self.error = "not_uart_owner"
         self.uart_inventory = None
+        self._sdk_output = {"linear_step": None, "turn_step": None}
         if not owner or gate is None:
             return
         if os.getenv("RIDER_TEST_ISOLATED") == "1" and sdk_factory is None:
@@ -222,6 +252,8 @@ class XgoAdapter:
             stopped = self._call("stop")
             if not stopped and self.error is None:
                 self.error = "sdk_stop_unconfirmed"
+            if stopped:
+                self._sdk_output = {"linear_step": 0, "turn_step": 0}
             return stopped
         finally:
             self._dog._stopping = False
@@ -325,6 +357,8 @@ class XgoAdapter:
         step *= 1 if dir == "forward" else -1
         # Never invoke vendor runtime sleeps: executor owns the duration deadline.
         done = self._call("rider_move_x", step, 0) or self._call("move_x", step, 0)
+        if done:
+            self._sdk_output["linear_step"] = step
         if block and dur is not None:
             self._bounded_wait(dur)
         return done
@@ -346,6 +380,8 @@ class XgoAdapter:
         step = 0 if value == 0 else round(_TURN_MIN + value * (_TURN_MAX - _TURN_MIN))
         name = "turnleft" if dir == "left" else "turnright"
         done = self._call(name, step)
+        if done:
+            self._sdk_output["turn_step"] = step if dir == "left" else -step
         if block and dur is not None:
             self._bounded_wait(dur)
         return done
@@ -378,3 +414,7 @@ class XgoAdapter:
                 "physical_completion": "unverified",
             }
         return result
+
+    def output_status(self) -> dict:
+        """Accepted SDK command units, never encoder/velocity measurements."""
+        return {**self._sdk_output, "units": "sdk_command_steps", "physical_completion": "unverified"}

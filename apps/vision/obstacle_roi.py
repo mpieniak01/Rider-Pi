@@ -35,6 +35,7 @@ from common.bus import (
     TOPIC_SYSTEM_AI_MODE_CHANGED,
     BusSub,
 )
+from common.data_quality import sample_status
 from common.frame_stream import FrameStreamClient
 
 # --------------------------- config helpers ---------------------------------
@@ -312,6 +313,7 @@ def main() -> int:
         print("[obst] AI Mode: local - running local detector", flush=True)
 
     edge_hist = deque(maxlen=max(1, OBST_DEC_N))
+    edge_times = deque(maxlen=edge_hist.maxlen)
     last_present = False
 
     print(
@@ -357,6 +359,7 @@ def main() -> int:
                         if detector_active:
                             print("[obst] Vision provider: local - resuming detector", flush=True)
                             edge_hist.clear()
+                            edge_times.clear()
                             last_present = False
                         else:
                             print("[obst] Vision provider: pc - pausing local detector", flush=True)
@@ -377,6 +380,9 @@ def main() -> int:
                 "ts": now_s(),
                 "age_s": 0.0,
                 "stale": False,
+                "observed_at": None,
+                "data_ready": False,
+                "error": "local_detector_paused",
                 "source": "pc_offload",
             }
             atomic_write_json(OBSTACLE_JSON, payload)
@@ -384,24 +390,37 @@ def main() -> int:
             continue
         img_proc = None
         img_raw_gray = None
-        proc_age_s = 0.0
+        proc_age_s = float("inf")
+        proc_mtime = None
+        source_payload = {}
 
         frame_bgr = None
         if frame_stream is not None:
             frame_bgr = frame_stream.recv(FRAME_STREAM_TIMEOUT_MS)
             if frame_bgr is not None:
+                source_payload = frame_stream.metadata
+                frame_quality = sample_status(source_payload, max_age_s=SNAP_MAX_AGE_S)
+                proc_mtime = frame_quality["observed_at"]
+                proc_age_s = frame_quality["age_s"] if frame_quality["age_s"] is not None else float("inf")
                 _LAST_STREAM_FRAME = frame_bgr.copy()
                 img_raw_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
                 blur = cv2.GaussianBlur(img_raw_gray, (5, 5), 1.0)
                 img_proc = cv2.Canny(blur, STREAM_CANNY_LOW, STREAM_CANNY_HIGH)
                 if PROC_PATH:
                     try:
-                        cv2.imwrite(PROC_PATH, img_proc, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                        if frame_quality["ready"]:
+                            cv2.imwrite(PROC_PATH, img_proc, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                            os.utime(PROC_PATH, (proc_mtime, proc_mtime))
+                        elif Path(PROC_PATH).exists():
+                            # A derived file cannot erase an explicit capture fault
+                            # after stream/process restart and file fallback.
+                            os.utime(PROC_PATH, (0, 0))
                     except Exception as e:
                         print(f"[obst] WARNING: Could not save processed image to {PROC_PATH}: {e}", flush=True)
 
         if img_proc is None:
             proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)
+            source_payload = {"observed_at": proc_mtime}
             img_proc = load_gray(PROC_PATH)
             if img_proc is None:
                 payload = {
@@ -416,6 +435,8 @@ def main() -> int:
                     "age_s": proc_age_s,
                     "stale": proc_age_s > SNAP_MAX_AGE_S,
                     "error": "proc_not_found" if frame_stream is None else "stream_no_frame",
+                    "observed_at": None,
+                    "data_ready": False,
                 }
                 atomic_write_json(OBSTACLE_JSON, payload)
                 publish("vision.obstacle", payload)
@@ -428,6 +449,8 @@ def main() -> int:
                         "ts": payload["ts"],
                         "source": "obstacle_roi",
                         "error": payload.get("error", "missing_frame"),
+                        "observed_at": None,
+                        "data_ready": False,
                     },
                 )
                 time.sleep(0.25)
@@ -439,7 +462,13 @@ def main() -> int:
         y0, y1 = sl.start, sl.stop
 
         edge_nz, roi_px, edge_pct_raw = edge_stats(img_proc, sl)
-        edge_hist.append(float(edge_pct_raw))
+        source_quality = sample_status(source_payload, max_age_s=SNAP_MAX_AGE_S)
+        if not source_quality["ready"] or (edge_times and proc_mtime < edge_times[-1]):
+            edge_hist.clear()
+            edge_times.clear()
+        if source_quality["ready"] and (not edge_times or proc_mtime > edge_times[-1]):
+            edge_hist.append(float(edge_pct_raw))
+            edge_times.append(proc_mtime)
         edge_pct = median_of(edge_hist)
 
         if img_raw_gray is None:
@@ -487,6 +516,8 @@ def main() -> int:
                 ann_path=OBST_ANN_PATH,
             )
 
+        observed_at = min(edge_times) if edge_times else proc_mtime
+        frame_quality = sample_status(dict(source_payload, observed_at=observed_at), max_age_s=SNAP_MAX_AGE_S)
         payload = {
             "type": "obstacle",
             "present": bool(present),
@@ -497,7 +528,10 @@ def main() -> int:
             "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
             "ts": now_s(),
             "age_s": round(proc_age_s, 3),
-            "stale": bool(proc_age_s > SNAP_MAX_AGE_S),
+            "stale": not frame_quality["ready"],
+            "observed_at": observed_at,
+            "data_ready": frame_quality["ready"],
+            "error": frame_quality["error"],
             "diag": {
                 "edge_pct_raw": round(float(edge_pct_raw), 4),
                 "roi_px": int(roi_px),
@@ -525,6 +559,10 @@ def main() -> int:
                 "ts": payload["ts"],
                 "source": "obstacle_roi",
                 "roi": payload["roi_norm"],
+                "observed_at": payload["observed_at"],
+                "data_ready": payload["data_ready"],
+                "stale": payload["stale"],
+                "error": payload["error"],
             },
         )
 

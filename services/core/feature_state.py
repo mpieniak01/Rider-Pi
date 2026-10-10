@@ -39,13 +39,22 @@ class FeatureStateMixin:
                 and status.get("request_id") == intent.get("request_id")
                 and bool(intent.get("request_id"))
             )
+            if unit == "rider-navigator.service":
+                valid = (
+                    valid
+                    and status.get("data_ready") is True
+                    and status.get("navigation_ready") is True
+                    and status.get("offline") is not True
+                    and not status.get("error")
+                    and not status.get("data_error")
+                )
             observed_unit = self._status(unit)
             if "pid" in observed_unit:
                 observed_pid = observed_unit["pid"]
                 valid = valid and isinstance(observed_pid, int) and not isinstance(observed_pid, bool)
                 valid = valid and observed_pid > 0 and status.get("pid") == observed_pid
             accepted = accepted and valid
-            statuses.append({**status, "matches_task": valid})
+            statuses.append({**status, "unit": unit, "matches_task": valid})
         if "rider-voice-web.service" in units:
             status = self.producer_status("rider-voice-web.service")
             domains = expand(task_domain(feature, options))
@@ -101,6 +110,19 @@ class FeatureStateMixin:
         if feature.can_move and requested:
             permitted = permitted and intent.get("generation") == self.safety_status().get("generation")
         accepted, producers = self._producer_readiness(feature, units, options) if requested else (True, [])
+        navigation = next((row for row in producers if row.get("unit") == "rider-navigator.service"), {})
+        producer_error = navigation.get("data_error") or navigation.get("error")
+        if (
+            navigation.get("stale") is True
+            or navigation.get("generation") != intent.get("generation")
+            or navigation.get("request_id") != intent.get("request_id")
+            or not intent.get("request_id")
+            or not isinstance(producer_error, str)
+            or not producer_error
+        ):
+            producer_error = None
+        else:
+            producer_error = producer_error[:512]
         state = self._states.get(name, "stopped")
         if requested and state == "starting" and running and permitted and accepted:
             state = "ready"
@@ -109,6 +131,7 @@ class FeatureStateMixin:
             and state == "starting"
             and (
                 not permitted
+                or producer_error is not None
                 or time.monotonic() - self._started_at.get(name, time.monotonic()) >= 5
                 or any(status.get("stale") is not True and status.get("missing") for status in producers)
             )
@@ -119,6 +142,8 @@ class FeatureStateMixin:
         error = self._errors.get(name)
         if not installed:
             error = "members_unavailable"
+        elif requested and producer_error:
+            error = producer_error
         elif requested and not permitted:
             error = (
                 "baseline_executor_unavailable"
@@ -159,11 +184,19 @@ class FeatureStateMixin:
             "members": list(units),
             "required_actuators": ["move", "turn"] if feature.can_move else [],
             "actions": ["start", "stop"],
+            "start_available": "rider-navigator.service" not in units,
+            "start_unavailable_reason": "navigation_traversal_unverified"
+            if "rider-navigator.service" in units
+            else None,
+            "planning_request_available": False if "rider-navigator.service" in units else None,
             "resources": list(task_resources(feature, options)),
             "services": services,
             "error": error,
             "baseline_safety": baseline_safety,
             "producer_statuses": producers,
+            "data_ready": navigation.get("data_ready") is True if navigation else None,
+            "navigation_ready": navigation.get("navigation_ready") is True if navigation else None,
+            "data_error": producer_error,
             "missing_runtime_dependencies": self._dependency_errors.get(name, []),
         }
 

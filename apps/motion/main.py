@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import os
 
+from apps.motion.dynamics import RampLimits, approach, finite
 from apps.safety.estop import estop_triggered as estop_triggered, motion_enabled as motion_enabled, safe_speed
 from apps.safety.gate import MAX_DURATION_S, MotionGate
 
-WATCHDOG_MS = float(os.getenv("MOTION_WATCHDOG_MS", "500"))
+DYNAMICS = RampLimits.from_env()
+WATCHDOG_MS = DYNAMICS.watchdog_s * 1000
 LOOP_DT = 0.02
-SPEED_LIMIT = min(1.0, max(0.0, float(os.getenv("MOTION_SPEED_LIMIT", "0.6"))))
-RAMP_LX = float(os.getenv("MOTION_RAMP_LX", "1.0"))
-RAMP_AZ = float(os.getenv("MOTION_RAMP_AZ", "2.0"))
+SPEED_LIMIT = DYNAMICS.speed_limit
+RAMP_LX = DYNAMICS.linear_rate
+RAMP_AZ = DYNAMICS.turn_rate
 EPS = 0.001
 
 
@@ -110,6 +112,9 @@ class _RealAdapter:
     def close(self):
         self._ada.close()
 
+    def output_status(self):
+        return self._ada.output_status()
+
 
 def _make_adapter(gate: MotionGate | None = None):
     if os.getenv("RIDER_SIMULATOR") == "1" or os.getenv("RIDER_TEST_ISOLATED") == "1":
@@ -119,9 +124,10 @@ def _make_adapter(gate: MotionGate | None = None):
 
 
 class MotionController:
-    def __init__(self, robot, gate: MotionGate | None = None):
+    def __init__(self, robot, gate: MotionGate | None = None, *, limits=None):
         self.robot = robot
         self.gate = gate or MotionGate()
+        self.limits = limits or DYNAMICS
         self.last_cmd_ts = 0.0
         self.deadline = 0.0
         self.stopped = True
@@ -136,31 +142,53 @@ class MotionController:
     stop = _stop_immediate
 
     def drive(self, lx: float, az: float, duration: float = MAX_DURATION_S):
-        if not self.gate.can_actuate():
+        if not self.limits.valid or not self.gate.can_actuate():
             self.stop()
             return False
-        self.t_lx = safe_speed(lx, SPEED_LIMIT)
-        self.t_az = safe_speed(az, SPEED_LIMIT)
+        if (
+            not all(finite(value) for value in (lx, az, duration))
+            or max(abs(lx), abs(az)) > 1
+            or not 0 < duration <= MAX_DURATION_S
+        ):
+            self.gate.disarm("invalid_motion_intent")
+            self.stop()
+            return False
+        self.t_lx = safe_speed(lx, self.limits.speed_limit)
+        self.t_az = safe_speed(az, self.limits.speed_limit)
+        if self.t_lx == 0 and self.t_az == 0:
+            # A fresh zero goal is a pause within the current lease. STOP still
+            # revokes the lease; deceleration never delays either zero output.
+            self.o_lx = self.o_az = 0.0
+            self.stopped = True
+            if not self.robot.move(lx=0.0, az=0.0):
+                self.gate.disarm("actuator_failed")
+                self.stop()
+                return False
         self.last_cmd_ts = self.gate.clock()
-        self.deadline = self.last_cmd_ts + min(duration, WATCHDOG_MS / 1000.0)
+        self.deadline = self.last_cmd_ts + min(duration, self.limits.watchdog_s)
         return True
 
     @staticmethod
     def _approach(cur: float, tgt: float, rate: float, dt: float) -> float:
-        delta = max(-rate * dt, min(rate * dt, tgt - cur))
-        return cur + delta
+        return approach(cur, tgt, rate, dt)
 
     def tick(self, dt: float):
         if not self.gate.can_actuate() or (self.deadline and self.gate.clock() >= self.deadline):
+            if self.deadline and self.gate.clock() >= self.deadline:
+                self.gate.disarm("motion_goal_timeout")
             if not self.stopped or self.deadline:
                 self.stop()
             return False
         if not self.deadline:
             return False
-        dt = max(0.0, min(0.1, dt))
-        self.o_lx = self._approach(self.o_lx, self.t_lx, RAMP_LX, dt)
-        self.o_az = self._approach(self.o_az, self.t_az, RAMP_AZ, dt)
-        self.stopped = abs(self.o_lx) <= EPS and abs(self.o_az) <= EPS
+        if not self.limits.valid or not finite(dt) or not 0 < dt <= self.limits.max_dt_s:
+            self.gate.disarm("control_timing_invalid" if self.limits.valid else "invalid_motion_limits")
+            self.stop()
+            return False
+        self.o_lx = self._approach(self.o_lx, self.t_lx, self.limits.linear_rate, dt)
+        self.o_az = self._approach(self.o_az, self.t_az, self.limits.turn_rate, dt)
+        # Every nonzero normalized output may quantize to a physical SDK step.
+        self.stopped = self.o_lx == 0 and self.o_az == 0
         # Repeat current output while a fresh bounded goal exists. No SDK timers.
         if not self.robot.move(lx=self.o_lx, az=self.o_az):
             self.gate.disarm("actuator_failed")
