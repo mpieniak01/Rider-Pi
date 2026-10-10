@@ -1,216 +1,160 @@
 #!/usr/bin/env python3
-"""
-apps/motion/tracking_controller.py
-
-Subskrybuje vision.tracking.offset i wystawia komendy ruchu na bus:
-- cmd.move {vx, vy, yaw, duration, rid, prio, ts}
-- cmd.stop {rid, reason, ts}
-
-Regulator P z martwą strefą i watchdogiem. NIE steruje sprzętem bezpośrednio
-(od tego jest rider-motion-bridge), dzięki czemu warstwa WEB i TRACKING są
-niezależne i odporne na awarie jednej z nich.
-
-Tunable (ENV):
-- TRACKING_KP (default 0.15)
-- TRACKING_DEAD_ZONE (default 0.10)
-- TRACKING_TIMEOUT (s, default 1.0)
-- TRACKING_MAX_SPEED (default 0.20, 0..1)
-- TRACKING_CMD_DURATION (s, default 0.20)  # czas „dawki” ruchu
-- TRACKING_CMD_PRIO (int, default 50)      # priorytet źródła „tracking”
-- BUS_SUB_PORT (default 5556)
-"""
+"""Explicit follow task producer; never owns UART or changes consent."""
 
 from __future__ import annotations
 
-import json
 import logging
+import math
 import threading
 import time
-from typing import Any
-
-import zmq
 
 from apps.motion.config import load_config
-from common.bus import BusPub  # publikujemy tylko na bus
+from apps.safety.intent import read_service_intent, write_intent_status
+from apps.safety.state import read_status
+from common.bus import BusPub, BusSub
 
-# ── Konfiguracja ──────────────────────────────────────────────────────────────
 _cfg = load_config()
-BUS_SUB_PORT = _cfg.bus_sub_port
-ZMQ_ADDR_SUB = f"tcp://127.0.0.1:{BUS_SUB_PORT}"
-
 KP = _cfg.kp
 DEAD_ZONE = _cfg.dead_zone
 TIMEOUT_SEC = _cfg.timeout_s
 MAX_SPEED = _cfg.max_speed
-CMD_DURATION = _cfg.cmd_duration
+CMD_DURATION = min(0.25, _cfg.cmd_duration)
 CMD_PRIO = _cfg.cmd_prio
-RID = "tracking"  # identyfikator źródła
-LOOP_HZ = 10.0  # tylko do logu informacyjnego
-
+RID = "tracking"
+UNIT = "rider-tracking-controller.service"
 log = logging.getLogger("tracking_controller")
-logging.basicConfig(
-    level=_cfg.log_level,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
-
-
-def _json_loads(text: str) -> dict[str, Any]:
-    try:
-        return json.loads(text)
-    except Exception:
-        return {}
-
-
-def _zmq_sub(topics) -> zmq.Socket:
-    ctx = zmq.Context.instance()
-    s = ctx.socket(zmq.SUB)
-    s.connect(ZMQ_ADDR_SUB)
-    s.setsockopt(zmq.RCVTIMEO, 100)  # 100 ms
-    for t in topics:
-        s.setsockopt_string(zmq.SUBSCRIBE, t)
-    return s
-
-
-def _sub_recv(sock: zmq.Socket) -> tuple[str, dict[str, Any]]:
-    """Odbierz (topic, payload_json) z SUB."""
-    try:
-        parts = sock.recv_multipart()
-        if not parts:
-            return "", {}
-        if len(parts) == 1:
-            s = parts[0].decode("utf-8", "replace")
-            if " " in s:
-                topic, payload = s.split(" ", 1)
-                return topic, _json_loads(payload)
-            return s, {}
-        topic = parts[0].decode("utf-8", "replace")
-        payload = "".join(p.decode("utf-8", "replace") for p in parts[1:])
-        return topic, _json_loads(payload)
-    except zmq.Again:
-        return "", {}
-    except Exception:
-        return "", {}
 
 
 class TrackingController:
-    def __init__(self) -> None:
-        self.bus = BusPub(warmup_ms=5)
-        self.lock = threading.Lock()
+    def __init__(
+        self,
+        *,
+        bus=None,
+        status_reader=read_status,
+        intent_reader=read_service_intent,
+        intent_writer=write_intent_status,
+    ):
+        self.bus = bus if bus is not None else BusPub(warmup_ms=5)
+        self.status_reader = status_reader
+        self.intent_reader = intent_reader
+        self.intent_writer = intent_writer
+        self.last_intent_status = 0.0
+        self.publisher_thread = threading.get_ident()
         self.last_offset_ts = 0.0
         self.current_mode = "NONE"
+        self.generation = None
+        self.intent_id = None
+        self.intent_ts = 0.0
+        self.sequence = -1
+        log.info("passive until a current follow_me task intent and consent")
 
-        log.info(
-            "[tracking_controller] params: KP=%.3f DEAD=%.3f TIMEOUT=%.2fs MAX=%.3f DURATION=%.2fs PRIO=%d HZ=%.1f",
-            KP,
-            DEAD_ZONE,
-            TIMEOUT_SEC,
-            MAX_SPEED,
-            CMD_DURATION,
-            CMD_PRIO,
-            LOOP_HZ,
-        )
-
-    # ── Publikacja na busie (kontrakt cmd.move / cmd.stop) ────────────────────
-    def _send_move(
-        self,
-        yaw: float,
-        duration: float = CMD_DURATION,
-        vx: float = 0.0,
-        vy: float = 0.0,
-    ) -> None:
-        msg = {
-            "vx": float(vx),
-            "vy": float(vy),
-            "yaw": float(yaw),
-            "duration": float(duration),
-            "rid": RID,
-            "prio": int(CMD_PRIO),
+    def _authorized_envelope(self, action: str) -> dict | None:
+        state = self.status_reader()
+        if not state.get("can_move") or state.get("owner") != "follow_me":
+            return None
+        intent = self.intent_reader(UNIT, state.get("generation"))
+        if not intent:
+            return None
+        if self.generation != intent["generation"] or self.intent_id != intent["request_id"]:
+            self.generation = intent["generation"]
+            self.intent_id = intent["request_id"]
+            self.intent_ts = intent["ts"]
+            self.sequence = max(intent["seq"], int(state.get("last_seq", -1)))
+            self.current_mode = "NONE"
+            self.last_intent_status = 0.0
+        if time.monotonic() - self.last_intent_status >= 0.5:
+            if not self.intent_writer(UNIT, intent, active=True):
+                self._send_stop("tracking_intent_status_unavailable")
+                return None
+            self.last_intent_status = time.monotonic()
+        self.sequence = max(self.sequence, int(state.get("last_seq", -1))) + 1
+        return {
+            "action": action,
+            "source": "follow_me",
+            "generation": self.generation,
+            "seq": self.sequence,
             "ts": time.time(),
+            "ttl_ms": 250,
+            "request_id": f"tracking-{self.generation}-{self.sequence}",
         }
-        self.bus.publish("cmd.move", msg, add_ts=False)  # ts już w msg
 
-    def _send_stop(self, reason: str) -> None:
-        msg = {
-            "rid": RID,
-            "reason": str(reason),
-            "ts": time.time(),
-        }
-        self.bus.publish("cmd.stop", msg, add_ts=False)
+    def _publish(self, command):
+        if threading.get_ident() != self.publisher_thread:
+            raise RuntimeError("Tracking BUS publisher belongs to the controller thread")
+        self.bus.publish("motion.command", command, add_ts=False)
 
-    # ── Logika regulatora ─────────────────────────────────────────────────────
-    def on_tracking_offset(self, offset_x: float, mode: str) -> None:
-        """offset_x: -1.0 (lewo) .. +1.0 (prawo), 0.0 = center."""
-        now = time.time()
-        with self.lock:
-            self.last_offset_ts = now
-            self.current_mode = mode
-
-            if abs(offset_x) < DEAD_ZONE:
-                log.info("[tracking] STOP (dead-zone)")
-                self._send_stop("dead-zone")
-                return
-
-            # regulator P
-            az = KP * offset_x  # yaw docelowy
-            az = max(-MAX_SPEED, min(MAX_SPEED, az))  # clamp [-MAX_SPEED, +MAX_SPEED]
-
-            direction = "right" if az > 0 else "left"
-            log.info(
-                "[tracking] rotate %s @ %.3f (offset=%.3f, mode=%s)",
-                direction,
-                abs(az),
-                offset_x,
-                mode,
+    def _send_move(self, yaw: float, duration: float = CMD_DURATION, vx: float = 0.0, vy: float = 0.0):
+        envelope = self._authorized_envelope("move")
+        if envelope is not None:
+            self._publish(
+                {
+                    **envelope,
+                    "vx": float(vx),
+                    "vy": float(vy),
+                    "yaw": float(yaw),
+                    "duration": min(0.25, float(duration)),
+                    "rid": RID,
+                }
             )
 
-            # publikacja dawki ruchu na busie
-            self._send_move(yaw=az, duration=CMD_DURATION)
+    def _send_stop(self, reason: str):
+        state = self.status_reader()
+        if state.get("owner") == "follow_me" and state.get("generation") == self.generation:
+            self._publish({"action": "stop", "source": "follow_me", "reason": reason})
 
-    def watchdog_loop(self) -> None:
-        """Stop, gdy brak update'ów przez TIMEOUT_SEC."""
-        while True:
-            try:
-                time.sleep(0.2)
-                now = time.time()
-                with self.lock:
-                    if self.current_mode != "NONE" and now - self.last_offset_ts > TIMEOUT_SEC:
-                        log.info(
-                            "[tracking] timeout (%.1fs) - stopping",
-                            now - self.last_offset_ts,
-                        )
-                        self._send_stop("timeout")
-                        self.current_mode = "NONE"
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                log.warning("[tracking] watchdog error: %s", e)
-                time.sleep(0.2)
-
-
-def main() -> None:
-    log.info("[tracking_controller] starting")
-    ctrl = TrackingController()
-
-    threading.Thread(target=ctrl.watchdog_loop, daemon=True).start()
-
-    sub = _zmq_sub(["vision.tracking.offset"])
-    log.info("[tracking_controller] listening for tracking offset...")
-
-    try:
-        while True:
-            topic, data = _sub_recv(sub)
-            if topic != "vision.tracking.offset":
-                continue
-            offset_x = float(data.get("offset_x", 0.0))
-            mode = str(data.get("mode", "unknown"))
-            ctrl.on_tracking_offset(offset_x, mode)
-    except KeyboardInterrupt:
-        log.info("[tracking_controller] interrupted")
-    finally:
+    def on_tracking_offset(self, offset_x: float, mode: str, *, observed_at=None):
+        if isinstance(offset_x, bool) or isinstance(observed_at, bool):
+            return
         try:
-            ctrl._send_stop("shutdown")
+            offset_x, observed = float(offset_x), float(observed_at)
+        except (ValueError, TypeError, OverflowError):
+            return
+        now = time.time()
+        if not math.isfinite(offset_x) or not math.isfinite(observed) or not -1 <= offset_x <= 1:
+            return
+        if not -0.1 <= now - observed <= min(TIMEOUT_SEC, 0.5):
+            return
+        envelope = self._authorized_envelope("move")
+        if envelope is None or observed < self.intent_ts:
+            return
+        self.last_offset_ts = observed
+        self.current_mode = mode
+        yaw = 0.0 if abs(offset_x) < DEAD_ZONE else max(-MAX_SPEED, min(MAX_SPEED, KP * offset_x))
+        self._publish({**envelope, "vx": 0.0, "yaw": yaw, "duration": CMD_DURATION, "rid": RID})
+
+    def watchdog_tick(self):
+        # Bind a newly authorized task even while waiting for its first target.
+        self._authorized_envelope("move")
+        if self.current_mode != "NONE" and time.time() - self.last_offset_ts > TIMEOUT_SEC:
+            self._send_stop("tracking_observation_timeout")
+            self.current_mode = "NONE"
+
+    def watchdog_loop(self):
+        """Compatibility entry point; run on the owning publisher thread."""
+        while True:
+            self.watchdog_tick()
+            time.sleep(0.2)
+
+
+def main():
+    logging.basicConfig(level=_cfg.log_level)
+    ctrl = TrackingController()
+    with BusSub(["vision.tracking.offset"]) as subscriber:
+        try:
+            while True:
+                topic, data = subscriber.recv(timeout_ms=100)
+                ctrl.watchdog_tick()
+                if topic == "vision.tracking.offset" and isinstance(data, dict):
+                    ctrl.on_tracking_offset(
+                        data.get("offset_x"), str(data.get("mode", "unknown")), observed_at=data.get("ts")
+                    )
+        except KeyboardInterrupt:
+            pass
         finally:
-            log.info("[tracking_controller] shutdown complete")
+            try:
+                ctrl._send_stop("tracking_shutdown")
+            finally:
+                ctrl.bus.close()
 
 
 if __name__ == "__main__":

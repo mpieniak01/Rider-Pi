@@ -42,11 +42,15 @@ uzasadnia globalnego obrotu ekranu ani grafiki startowej.
   - Ekspozycja zdrowia (`/healthz`), sterowanie (`/api/control`), chat, statusy, serwowanie assetów z `data/`, `snapshots/`.
   - Proxy do wewnętrznych usług przez bus (ZMQ) i/lub wywołania lokalne.
 
-### 2) Ruch / Mostek Web
+### 2) Ruch i bezpieczeństwo
 
-- `` (port **8081**) — uproszczony interface www → ruch (opcjonalny).
-- **Motion Bridge** — jedyny komponent z dostępem do **UART **`` (sterowanie aktuatorami).
-  - Odbiera komendy z busa (np. `motion.move`, `motion.stop`), publikuje telemetrię `motion.state`.
+- API :8080 / opcjonalny bridge :8081 delegują do services.safety_contract.
+- motion.command trafia do jednej bramy apps.motion.executor i jednego ownera UART.
+- Konstruktor SDK bez reset/action255; legacy bridge nie steruje sprzętem.
+- sensor-reader projektuje BUS bez SDK/UART.
+- Brama v1: DISARMED/ARMED/ESTOP; zgoda i oryginalne generation/seq/ts/TTL.
+- ACK SDK nie dowodzi fizycznego wykonania. [Ruch](apps/motion.md), [bezpieczeństwo](apps/safety.md).
+- [Polityka środowisk](POLITYKA_SRODOWISK.md): minimalny Pi runtime, pełne testy WSL/CI.
 
 ### 3) Wizja / Kamera
 
@@ -134,7 +138,7 @@ uzasadnia globalnego obrotu ekranu ani grafiki startowej.
 | Voice Web API (opcjonalne)   | HTTP     | **8092**        | Lokalny TTS/ASR (Piper/Vosk) przez HTTP                |
 | ZMQ PUB/SUB                  | ZMQ      | **5555 / 5556** | Wewnętrzny bus komunikatów                             |
 | Voice sock                   | UNIX     | ``              | Komunikacja voice                                      |
-| UART                         | Serial   | ``              | Kontrola aktuatorów (wyłącznie przez Motion Bridge)    |
+| UART                         | Serial   | `/dev/ttyAMA0`   | Ruch/czujniki; docelowo jeden właściciel UART           |
 
 > Domyślnie **brak** bezpośrednich zewnętrznych portów poza 8080/8081.
 
@@ -148,14 +152,14 @@ uzasadnia globalnego obrotu ekranu ani grafiki startowej.
                               └─> serwowanie plików z data/, snapshots/
 
 Vision/Camera ──> snapshots/, data/ (+ eventy na BUS) ──> API/Clients
-Motion Bridge  ──(bus)──> UART /dev/ttyAMA0 ──> aktuatory
+Wybrany backend ruchu ──> UART /dev/ttyAMA0 ──> aktuatory
 Voice/Chat     ──(bus + sock)──> odpowiedzi/stan ──> API
 Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na LCD
 ```
 
 **BUS (ZMQ)** — kanały przykładowe:
 
-- `motion` (`motion.move`, `motion.stop`), `motion.state`
+- `cmd.move`/`cmd.stop`, alternatywne `motion`, legacy `motion.cmd`; `motion.state`
 - `cmd.balance` — kontrola stabilizacji robota
 - `cmd.height` — kontrola wysokości/zawieszenia
 - `vision.face`, `vision.person`, `vision.motion`, `vision.obstacle`
@@ -170,7 +174,7 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 - `navigator.map.request`, `mapper.map.data` — wymiana mapy (Stage 4: powrót do bazy)
 - `navigator.return_home.start` — start sekwencji powrotu do bazy (Stage 4)
 - `robot.pose` — estymowana pozycja robota (x, y, theta) z modułu odometrii (Rekonesans Stage 2)
-- `imu.data` — surowe dane z czujnika IMU (roll, pitch, yaw) publikowane przez motion bridge
+- `imu.data` — surowe dane IMU (roll, pitch, yaw), m.in. z `sensor-reader`
 
 ---
 
@@ -225,7 +229,7 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 ### API (HTTP 8080)
 
 - `/healthz` — zdrowie całego systemu.
-- `/api/control` — ruch: `{"action":"move|stop|turn", ...}` (walidowane).
+- `/api/control` — bieżący proxy: `{"cmd":"move|stop", "dir":..., "v":..., "t":...}`.
 - `/api/chat/*` — rozmowa / asysta (przekierowanie do komponentów voice/chat).
 - `/files/*` — serwowanie plików z `data/`, `snapshots/` (ostatnie klatki, PNG).
 
@@ -245,7 +249,7 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 1. `rider-api.service` (HTTP 8080) → gotowy `/healthz`.
 2. Broker ZMQ i subskrybenci (Vision/Voice/Motion/Face).
 3. Vision/Camera (jeśli włączone) → publikuje eventy, zapisuje klatki.
-4. Motion Bridge → nasłuch na busie, dostęp do `/dev/ttyAMA0`.
+4. Wybrany wykonawca ruchu i odczyt czujników; sprawdź właściciela UART i blokady.
 5. Face → animacje na LCD (jeśli urządzenie obecne).
 
 > Usługi niezależne — restart jednej **nie** powinien blokować pozostałych.
@@ -254,7 +258,9 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 
 ## Granice odpowiedzialności i bezpieczeństwo
 
-- **Kontrola ruchu**: tylko przez Motion Bridge; walidacja `action`, limity czasu i częstotliwości.
+- **Kontrola ruchu**: docelowo wspólna brama aktuatorów; obecne blokady executor/legacy
+  są różne. Zobacz [bezpieczeństwo](apps/safety.md). Test ruchu podczas developmentu
+  na kablu wymaga potwierdzenia przygotowania przez operatora.
 - **Sprzęt**: UART i LCD wyłącznie przez dedykowane moduły.
 - **Dostęp zewnętrzny**: przez API 8080 (reszta lokalnie).
 - **Energia**: Vision/Kamera domyślnie wyłączone (aktywowane tylko przy potrzebie).

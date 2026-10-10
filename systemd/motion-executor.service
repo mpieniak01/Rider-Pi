@@ -1,18 +1,23 @@
 [Unit]
 Description=Rider-Pi Motion Executor (cmd.move → XGO)
-After=network-online.target
-Wants=network-online.target
+After=network-online.target rider-broker.service
+Wants=network-online.target rider-broker.service
 
 [Service]
 Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/robot
+RuntimeDirectory=rider-motion
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/home/pi/robot
 ExecStart=/usr/bin/python3 -u -m apps.motion.executor
 Restart=always
 RestartSec=1
+TimeoutStopSec=5
+KillSignal=SIGTERM
 
 [Install]
 WantedBy=multi-user.target

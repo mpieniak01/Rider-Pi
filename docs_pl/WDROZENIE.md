@@ -20,6 +20,13 @@ z uprawnieniami `600`; hasło nie trafia do argumentów procesu ani do paczki.
 
 ## Krótka ścieżka: podgląd i test na Pi
 
+Robot developerski może być na kablu zasilania. Podgląd i restart aplikacji
+nie rozbrajają ruchu ani autonomii. Dla zmian panelu korzystaj z odczytów i mocków.
+Przed jazdą, skrętem, wysokością lub balansem opisz test i uzyskaj potwierdzenie
+wolnego miejsca, stabilnego podłoża i bezpiecznego kabla. Sprawdź faktyczne
+blokady aktywnego wykonawcy; pojedyncza flaga ENV nie potwierdza ich wszystkich.
+Procedura i ograniczenia: [bezpieczeństwo robota](apps/safety.md).
+
 Przed pierwszym podglądem `main` robota i baza lokalnej gałęzi muszą wskazywać
 ten sam commit. W WSL zapisz wybrane zmiany w lokalnym commicie; nie wymaga to
 push ani PR. Przykład z katalogu Rider-Pi:

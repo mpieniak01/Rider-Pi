@@ -1,62 +1,61 @@
-#!/usr/bin/env python3
+"""Hardware-free compatibility reads; flags or ENV never grant motion consent."""
+
 from __future__ import annotations
 
+import math
 import os
 from pathlib import Path
 
-BASE = Path("/home/pi/robot")
-FLAGS = BASE / "data" / "flags"
-FLAGS.mkdir(parents=True, exist_ok=True)
-
-MOTION_ENABLE_FLAG = FLAGS / "motion.enable"
+BASE = Path(__file__).resolve().parents[2]
+FLAGS = Path(os.getenv("MOTION_FLAGS_DIR", str(BASE / "data" / "flags")))
+MOTION_ENABLE_FLAG = FLAGS / "motion.enable"  # legacy, deliberately not an authority
 ESTOP_FLAG = FLAGS / "estop.on"
+_gpio = None
+_gpio_failed = False
 
-# GPIO (opcjonalnie): ustaw ESTOP_GPIO=17 (BCM). Aktywne niskim stanem.
-GPIO_PIN = int(os.getenv("ESTOP_GPIO", "-1"))
-_ACTIVE_LOW = True
-_gpio_ok = False
 
-try:
-    if GPIO_PIN >= 0:
-        import RPi.GPIO as GPIO
+def external_estop(*, include_flag: bool = True) -> bool:
+    """Read configured E-Stop; a failed configured GPIO inhibits motion."""
+    global _gpio, _gpio_failed
+    if (include_flag and ESTOP_FLAG.exists()) or os.getenv("ESTOP", "0") == "1":
+        return True
+    try:
+        pin = int(os.getenv("ESTOP_GPIO", "-1"))
+    except ValueError:
+        return True
+    if pin < 0:
+        return False
+    if _gpio_failed:
+        return True
+    try:
+        if _gpio is None:
+            import RPi.GPIO as gpio
 
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(
-            GPIO_PIN,
-            GPIO.IN,
-            pull_up_down=GPIO.PUD_UP if _ACTIVE_LOW else GPIO.PUD_DOWN,
-        )
-        _gpio_ok = True
-except Exception:
-    _gpio_ok = False  # brak biblioteki lub sprzętu → fallback
+            gpio.setmode(gpio.BCM)
+            gpio.setup(pin, gpio.IN, pull_up_down=gpio.PUD_UP)
+            _gpio = gpio
+        return _gpio.input(pin) == 0
+    except Exception:
+        _gpio_failed = True
+        return True
 
 
 def estop_triggered() -> bool:
-    """
-    E-Stop aktywny jeśli:
-      1) plik-flag 'estop.on' istnieje, LUB
-      2) fizyczny przycisk na GPIO (jeśli skonfigurowany), LUB
-      3) ESTOP=1 w środowisku (tylko do testów poza systemd).
-    """
-    if ESTOP_FLAG.exists():
-        return True
-    if _gpio_ok:
-        val = GPIO.input(GPIO_PIN)
-        return (val == 0) if _ACTIVE_LOW else (val == 1)
-    return os.getenv("ESTOP", "0") == "1"
+    return external_estop()
 
 
 def motion_enabled() -> bool:
-    """
-    Ruch dozwolony, gdy:
-      - MOTION_ENABLE=1 w środowisku (np. gdy uruchamiasz ręcznie), LUB
-      - istnieje plik-flag 'motion.enable'.
-    """
-    if os.getenv("MOTION_ENABLE", "0") == "1":
-        return True
-    return MOTION_ENABLE_FLAG.exists()
+    from apps.safety.state import read_status
+
+    return bool(read_status().get("can_move", False))
 
 
 def safe_speed(v: float, limit: float = 0.6) -> float:
-    """Clamp prędkości."""
-    return max(-limit, min(limit, v))
+    try:
+        value = float(v)
+        ceiling = abs(float(limit))
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(value) or not math.isfinite(ceiling):
+        return 0.0
+    return max(-ceiling, min(ceiling, value))

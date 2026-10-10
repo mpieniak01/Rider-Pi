@@ -52,6 +52,10 @@ Before committing, review `git diff --cached --name-status` and
 
 ## Pi environment and checks
 
+Follow the [environment and test policy](ENVIRONMENT_POLICY.md): fill declared
+WSL gaps in the existing Rider-Pi virtualenv. Full automated tests run in WSL/CI;
+the device retains dependencies required by selected runtime profiles.
+
 The manufacturer runtime uses Python 3.9 on Raspberry Pi OS / Debian.
 A newer WSL interpreter does not establish compatibility with that runtime.
 Read [agent instructions](../AGENT.md) and [working agreements](../WORKING-AGREEMENTS.md).

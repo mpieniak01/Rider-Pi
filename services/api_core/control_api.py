@@ -1,317 +1,138 @@
 #!/usr/bin/env python3
+"""Sterowanie wyłącznie przez wspólną bramę; historia nie jest ACK hardware."""
+
 from __future__ import annotations
 
-import json
 import time
 
-from flask import Response, request
+from flask import Response, jsonify, request
 
-from common.bus import TOPIC_MOTION_BALANCE, TOPIC_MOTION_HEIGHT
+from services.control_commands import submit_control
+from services.safety_contract import read_status
 
 from . import compat as C
 
 
-def api_move():
-    data = request.get_json(silent=True) or {}
-    vx = float(data.get("vx", 0.0))
-    vy = float(data.get("vy", 0.0))
-    yaw = float(data.get("yaw", 0.0))
-    duration = float(data.get("duration", 0.0))
-    C.bus_pub(
-        "cmd.move",
-        {"vx": vx, "vy": vy, "yaw": yaw, "duration": duration, "ts": time.time()},
+def _response(body, code=200):
+    response = jsonify({**body, "server_time": time.time()})
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    return response, code
+
+
+def _payload():
+    data = request.get_json(silent=True)
+    if data is None:
+        data = request.args.to_dict()
+    if not isinstance(data, dict):
+        raise ValueError("JSON object expected")
+    return data
+
+
+def _submit(overrides=None):
+    if request.method == "OPTIONS":
+        return Response("", 204)
+    try:
+        data = _payload()
+        data.update(overrides or {})
+        if request.method != "POST" and data.get("action") != "stop":
+            return _response({"ok": False, "error": "actuator_requires_post_with_generation"}, 405)
+    except ValueError as exc:
+        return _response({"ok": False, "error": str(exc)}, 400)
+    body, code = submit_control(data)
+    C.motion_queue_append(
+        {
+            "source": data.get("source", "manual"),
+            "status": "confirmed" if body.get("confirmed") else "pending" if code == 202 else "rejected",
+            "action": data.get("action", data.get("cmd")),
+            "request_id": body.get("request_id"),
+            "reason": body.get("error"),
+            "ts": time.time(),
+        }
     )
-    return Response('{"ok": true}', mimetype="application/json")
+    return _response(body, code)
+
+
+def api_move():
+    if request.method == "GET":
+        return _response({"ok": False, "error": "actuator_requires_post_with_generation"}, 405)
+    return _submit({"action": "move"})
 
 
 def api_stop():
-    C.bus_pub("cmd.stop", {"ts": time.time()})
-    return Response('{"ok": true}', mimetype="application/json")
+    return _submit({"action": "stop"})
 
 
 def api_preset():
-    name = (request.get_json(silent=True) or {}).get("name")
-    C.bus_pub("cmd.preset", {"name": name, "ts": time.time()})
-    return Response('{"ok": true}', mimetype="application/json")
+    return _submit({"action": "action"})
 
 
 def api_voice():
-    text = (request.get_json(silent=True) or {}).get("text", "")
-    C.bus_pub("cmd.voice", {"text": text, "ts": time.time()})
-    return Response('{"ok": true}', mimetype="application/json")
+    data = _payload()
+    C.bus_pub("cmd.voice", {"text": data.get("text", ""), "ts": time.time()})
+    return _response({"ok": True, "physical_completion": "not_applicable"})
 
 
 def api_cmd():
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        return Response('{"error":"JSON object expected"}', mimetype="application/json", status=400)
-    t = (data.get("type") or "").lower()
-    ts = time.time()
-    try:
-        if t == "drive":
-            vx = float(data.get("lx") or data.get("vx") or 0.0)
-            yaw = float(data.get("az") or data.get("yaw") or 0.0)
-            dur = float(data.get("dur") or data.get("duration") or 0.0)
-            C.bus_pub("cmd.move", {"vx": vx, "yaw": yaw, "duration": dur, "ts": ts})
-            return Response('{"ok": true}', mimetype="application/json")
-        if t == "stop":
-            C.bus_pub("cmd.stop", {"ts": ts})
-            return Response('{"ok": true}', mimetype="application/json")
-        if t == "spin":
-            dir_ = (data.get("dir") or "").lower()
-            speed = float(data.get("speed") or 0.3)
-            dur = float(data.get("dur") or data.get("duration") or 0.45)
-            yaw = -abs(speed) if dir_ == "left" else +abs(speed)
-            C.bus_pub("cmd.move", {"vx": 0.0, "yaw": yaw, "duration": dur, "ts": ts})
-            return Response('{"ok": true}', mimetype="application/json")
-        C.bus_pub("cmd.raw", {"payload": data, "ts": ts})
-        return Response(
-            '{"ok": true, "note": "unknown type -> cmd.raw"}',
-            mimetype="application/json",
-        )
-    except Exception as e:
-        return Response(json.dumps({"error": str(e)}), mimetype="application/json", status=500)
+    return _submit()
 
 
 def api_balance():
-    """Handle balance/stabilization control."""
-    if request.method == "OPTIONS":
-        resp = Response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
-        return resp
-
-    data = request.get_json(silent=True) or {}
-    try:
-        enabled = bool(data.get("enabled", False))
-    except Exception:
-        return Response(
-            json.dumps({"ok": False, "error": "invalid enabled value"}),
-            mimetype="application/json",
-            status=400,
-        )
-
-    ts = time.time()
-    C.LAST_BALANCE["enabled"] = enabled
-    C.LAST_BALANCE["ts"] = ts
-    C.bus_pub(TOPIC_MOTION_BALANCE, {"enabled": enabled, "ts": ts})
-    resp = Response(
-        json.dumps({"ok": True, "sent": {"enabled": enabled}}),
-        mimetype="application/json",
-    )
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    return resp
+    return _submit({"action": "balance"})
 
 
 def api_height():
-    """Handle height/suspension control."""
-    if request.method == "OPTIONS":
-        resp = Response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
-        return resp
-
-    data = request.get_json(silent=True) or {}
-    try:
-        height = int(data.get("height", 0))
-        # Clamp to safe range (0-12 cm as per issue requirements)
-        height = max(0, min(12, height))
-    except Exception:
-        return Response(
-            json.dumps({"ok": False, "error": "invalid height value"}),
-            mimetype="application/json",
-            status=400,
-        )
-
-    ts = time.time()
-    C.LAST_HEIGHT["value"] = height
-    C.LAST_HEIGHT["ts"] = ts
-    C.bus_pub(TOPIC_MOTION_HEIGHT, {"height": height, "ts": ts})
-    resp = Response(
-        json.dumps({"ok": True, "sent": {"height": height}}),
-        mimetype="application/json",
-    )
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    return resp
-
-
-def api_control_state():
-    """Return last-known state for balance/tracking/recon controls."""
-    if request.method == "OPTIONS":
-        resp = Response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
-        return resp
-
-    balance = {
-        "enabled": C.LAST_BALANCE.get("enabled"),
-        "ts": C.LAST_BALANCE.get("ts"),
-    }
-    height = {
-        "value": C.LAST_HEIGHT.get("value"),
-        "ts": C.LAST_HEIGHT.get("ts"),
-    }
-    tracking = {
-        "mode": C.LAST_TRACKING_MODE.get("mode"),
-        "enabled": C.LAST_TRACKING_MODE.get("enabled"),
-        "ts": C.LAST_TRACKING_MODE.get("ts"),
-    }
-    navigator = {
-        "active": bool(C.LAST_NAVIGATOR.get("active")),
-        "state": C.LAST_NAVIGATOR.get("state"),
-        "strategy": C.LAST_NAVIGATOR.get("strategy"),
-        "obstacle_present": C.LAST_NAVIGATOR.get("obstacle_present"),
-        "ts": C.LAST_NAVIGATOR.get("ts"),
-    }
-    payload = {
-        "ok": True,
-        "balance": balance,
-        "height": height,
-        "tracking": tracking,
-        "navigator": navigator,
-    }
-    resp = Response(json.dumps(payload), mimetype="application/json")
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
-    return resp
-
-
-def api_motion_queue():
-    """Return last motion commands for diagnostics."""
-    if request.method == "OPTIONS":
-        resp = Response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
-        return resp
-
-    now = time.time()
-    items = []
-    for entry in C.motion_queue_snapshot(limit=10):
-        ts = entry.get("ts")
-        age = None
-        if ts:
-            try:
-                age = max(0.0, now - float(ts))
-            except Exception:
-                age = None
-        items.append(
-            {
-                "source": entry.get("source"),
-                "vx": entry.get("vx"),
-                "vy": entry.get("vy"),
-                "yaw": entry.get("yaw"),
-                "time_s": entry.get("duration_s"),
-                "status": entry.get("status") or entry.get("action"),
-                "reason": entry.get("reason"),
-                "ts": ts,
-                "age_s": round(age, 2) if age is not None else None,
-            }
-        )
-
-    payload = {"ok": True, "items": items, "generated_at": now}
-    resp = Response(json.dumps(payload), mimetype="application/json")
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
-    return resp
+    return _submit({"action": "height"})
 
 
 def api_control():
-    data = request.get_json(silent=True) or {}
-    source = (request.args.get("source") or data.get("source") or "api-control").strip() or "api-control"
-    reason = (request.args.get("reason") or data.get("reason") or "").strip()
-    action = (request.args.get("action") or data.get("action") or "").strip().lower()
-    cmd = (request.args.get("cmd") or data.get("cmd") or "").strip().lower()
-    if not action and cmd in {"move", "stop"}:
-        if cmd == "move":
-            action = (data.get("dir") or "").strip().lower()
-        elif cmd == "stop":
-            action = "stop"
-    if not action and data.get("dir"):
-        action = str(data["dir"]).strip().lower()
-    ms = request.args.get("ms") or data.get("ms") or request.args.get("duration") or data.get("duration")
-    if ms is None and data.get("t") is not None:
-        try:
-            ms = float(data["t"]) * 1000.0
-        except Exception:
-            ms = 0
-    if ms is None:
-        ms = 0
+    return _submit()
+
+
+def api_safety():
+    if request.method == "GET":
+        return _response({"ok": True, "safety": read_status()})
+    if request.method == "OPTIONS":
+        return Response("", 204)
     try:
-        ms = int(ms)
-    except Exception:
-        ms = 0
+        data = _payload()
+    except ValueError as exc:
+        return _response({"ok": False, "error": str(exc)}, 400)
+    if data.get("action") not in {"arm", "disarm", "estop", "clear_estop", "stop"}:
+        return _response({"ok": False, "error": "invalid safety action"}, 400)
+    return _submit()
 
-    vx = 0.0
-    vy = 0.0
-    yaw = 0.0
-    speed = data.get("v") or data.get("speed")
-    try:
-        speed = float(speed) if speed is not None else None
-    except Exception:
-        speed = None
-    base_lin = speed if speed is not None else 0.4
-    base_yaw = speed if speed is not None else 0.5
-    if action in ("forward", "fwd", "up"):
-        vx = abs(base_lin)
-    elif action in ("back", "backward", "down"):
-        vx = -abs(base_lin)
-    elif action in ("left",):
-        yaw = -abs(base_yaw)
-    elif action in ("right",):
-        yaw = +abs(base_yaw)
-    elif action in ("stop", "halt"):
-        ts = time.time()
-        if str(request.args.get("clear") or data.get("clear")).lower() in {"1", "true", "yes"}:
-            C.motion_queue_clear()
-        C.bus_pub("cmd.stop", {"ts": ts})
-        C.motion_queue_append(
-            {
-                "source": source,
-                "status": "stop",
-                "reason": reason or None,
-                "ts": ts,
-            }
-        )
-        return Response('{"ok": true, "sent": {"action": "stop"}}', mimetype="application/json")
 
-    if vx == 0.0 and yaw == 0.0 and action not in ("stop",):
-        ts = time.time()
-        C.motion_queue_append(
-            {
-                "source": source,
-                "status": "unknown",
-                "reason": "invalid-action",
-                "ts": ts,
-            }
-        )
-        return Response(
-            '{"ok": false, "error": "unknown action"}',
-            mimetype="application/json",
-            status=400,
-        )
-
-    duration_s = ms / 1000.0
-    ts = time.time()
-    C.bus_pub("cmd.move", {"vx": vx, "vy": vy, "yaw": yaw, "duration": duration_s, "ts": ts})
-    C.motion_queue_append(
+def api_control_state():
+    if request.method == "OPTIONS":
+        return Response("", 204)
+    safety = read_status()
+    ack = safety.get("last_ack") or {}
+    actuator_state = safety.get("actuators") or {}
+    return _response(
         {
-            "source": source,
-            "status": action or "move",
-            "vx": vx,
-            "vy": vy,
-            "yaw": yaw,
-            "duration_s": round(duration_s, 3),
-            "reason": reason or None,
-            "ts": ts,
+            "ok": True,
+            "safety": safety,
+            "balance": actuator_state.get("balance", {"enabled": None, "ts": None}),
+            "height": actuator_state.get("height", {"value": None, "ts": None}),
+            "tracking": dict(C.LAST_TRACKING_MODE),
+            "navigator": dict(C.LAST_NAVIGATOR),
+            "ack": ack,
+            "observed_at": safety.get("observed_at"),
         }
     )
-    return Response(
-        json.dumps({"ok": True, "sent": {"action": action, "vx": vx, "yaw": yaw, "ms": ms}}),
-        mimetype="application/json",
+
+
+def api_motion_queue():
+    if request.method == "OPTIONS":
+        return Response("", 204)
+    return _response(
+        {
+            "ok": True,
+            "kind": "request_history",
+            "items": C.motion_queue_snapshot(limit=10),
+            "generated_at": time.time(),
+            "ack": read_status().get("last_ack"),
+        }
     )

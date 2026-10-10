@@ -1,89 +1,59 @@
-# Moduł Safety (`apps/safety`)
+# Bezpieczeństwo fizycznego robota
 
-## Opis
+Lekki robot ma bezwładność, równowagę i drogę hamowania. Zgoda programowa oraz
+ACK SDK nie są dowodem fizycznego wykonania.
 
-Moduł `apps/safety` implementuje **emergency stop (E-STOP)** dla robota — natychmiastowe zatrzymanie ruchu w sytuacjach awaryjnych.
+## Kategorie testów
 
-### Główny plik
+- Pełne automatyczne testy i E2E działają w WSL/CI. Izolacja przed kolekcją
+  odcina SDK, urządzenia, produkcyjny BUS, robot, mutacje usług i subprocessy.
+  Mock sprzętu jest jawny; hardware/physical_motion nie uruchamia realnego testu.
+- Na Pi sprawdzamy wybrane funkcje bez ruchu: kamerę, LCD, telemetrię.
+  Diagnostyka nie uzbraja bramy, nie czyści E-Stop i nie uruchamia autonomii.
+- Jazda, obrót, wysokość, balans, akcje i autonomia wymagają ręcznej zgody
+  operatora na konkretną próbę. Nigdy nie uruchamiają ich pytest/E2E/CI,
+  wdrożenie, harmonogram lub wejście na stronę.
 
-- **`estop.py`** — implementacja E-STOP
+Zgoda na kamerę, usługę, instalację WSL czy deploy nie jest zgodą na ruch.
+Pakiety: [polityka środowisk](../POLITYKA_SRODOWISK.md).
 
-### Główne funkcje
+## Operator i kabel
 
-⚠️ **Wymaga weryfikacji:** Szczegóły implementacji `estop.py` wymagają odczytu kodu źródłowego.
+Robot w development może być na kablu. Traktuj go jako niegotowy do ruchu
+do potwierdzenia przygotowania. Przed KAŻDĄ próbą opisz aktuator, kierunek,
+prędkość znormalizowaną i czas. Operator potwierdza wolne miejsce, podłoże,
+kabel i przygotowany STOP. Sprawdź wersję, ownera UART i świeży stan bramy.
+Jedna krótka ręczna próba, potem STOP, ocena fizycznego stanu i notatka.
+Kolejna próba wymaga nowej zgody. Nie podnoś limitów dla wygody diagnozy.
 
-## Przepływ danych
+## Mechanizmy
 
-```
-Wejście:  Trigger E-STOP (przycisk, sygnał, komenda)
-          ↓
-Akcja:    Natychmiastowe zatrzymanie silników
-          ↓
-Wyjście:  PUB("motion.cmd") → {"type": "stop"}
-          Bezpośrednie wywołanie hardware stop (jeśli dostępne)
-```
+Jedna brama DISARMED/ARMED/ESTOP obejmuje wszystkie aktuatory. Owner i lease
+ograniczają zgodę; generation/seq/ts/TTL odrzucają stare i cudze komendy.
+Task intent uniemożliwia staremu follow/nav przejęcie nowego ARM.
+Lock i rzeczywisty owner UART wykluczają drugiego SDK. Guard SDK blokuje reset
+konstruktora. MOTION_ENABLE=0 jest dodatkowym wetem. E-Stop flag/GPIO zatrzaskuje
+blokadę; błąd zapisu nie przerywa STOP w pamięci i jest persistence_error.
+Błąd UART/STOP obniża readiness i blokuje następny ARM.
 
-## Konfiguracja
+Sam DRY_RUN/BRIDGE_READONLY/nazwa profilu/kod HTTP nie dowodzi globalnej blokady.
+confirmed STOP wymaga terminalnego ACK; physical_completion jest unverified.
+Height/balance/actions pozostają zablokowane do ręcznej charakterystyki przerwania.
 
-⚠️ **Wymaga weryfikacji:** Parametry do uzupełnienia po analizie kodu.
+## Polecenia
 
-### Możliwe źródła E-STOP
+make safety-status i diag_motion-status.py tylko odczytują.
+make safemode / sys_emergency-stop.py on wymagają ACK E-Stop.
+make stop-all wymaga confirmed STOP przed zatrzymaniem usług aplikacji.
+manual_motion-probe.py wymaga interaktywnego terminala, planu i wpisanego
+jednorazowego tokena; jedna próba, STOP w finally. Odmawia w CI/pytest i dla
+niezweryfikowanego capability. Dawne automatyczne burst/cascade/move smokes/demo
+są wyłączone. Clear E-Stop ma osobną zgodę i pozostawia DISARMED, bez odtwarzania.
+Diagnostyka i deploy nie usuwają flag.
 
-- Fizyczny przycisk E-STOP (GPIO)
-- Komenda z BUS (`safety.estop`)
-- Detekcja przechylenia (IMU)
-- Timeout watchdog
-- Niski poziom baterii
+## Granice
 
-## Przykład użycia
-
-### Uruchomienie ręczne
-
-```bash
-python -m apps.safety.estop
-```
-
-### Wyzwolenie E-STOP przez BUS
-
-```bash
-# Wyślij komendę E-STOP
-python -c "from common.bus import BusPub; BusPub().publish('safety.estop', {'source': 'manual'})"
-```
-
-## Błędy i diagnostyka
-
-### Logowanie
-
-⚠️ **Wymaga weryfikacji:** Format logów do uzupełnienia.
-
-### Typowe problemy
-
-| Problem | Przyczyna | Rozwiązanie |
-|---------|-----------|-------------|
-| E-STOP nie działa | Moduł nie uruchomiony | Sprawdź status usługi systemd |
-| Fałszywe alarmy | Czuły threshold IMU/baterii | Dostosuj parametry w konfiguracji |
-
-## Zależności
-
-### Wewnętrzne (w repo)
-- `common.bus` — komunikacja przez BUS
-- `apps.motion` — wysyłanie komend stop
-
-### Zewnętrzne
-- ⚠️ **Wymaga weryfikacji:** GPIO, sensors, etc.
-
-## Priorytet bezpieczeństwa
-
-E-STOP ma **najwyższy priorytet** w systemie:
-- Przerywa wszystkie komendy ruchu
-- Nie jest blokowany przez inne moduły
-- Działa niezależnie od stanu baterii
-
----
-
-**Related docs:**
-- [motion.md](motion.md) — odbiorca komend `motion.cmd`
-- [launcher.md](launcher.md) — przycisk BACK jako miękki stop
-
-**Ostatnia aktualizacja:** 2025-01  
-**Status:** ⚠️ Wymaga uzupełnienia szczegółów implementacji
+SIGTERM uruchamia cleanup. SIGKILL, utrata UART lub zasilania Pi nie mają dowodu
+fizycznego zatrzymania. Firmware może zachować ostatni cel; lease procesu Pi nie
+jest niezależnym zabezpieczeniem sprzętu. Ręczna charakterystyka jest konieczna.
+Zobacz [architekturę](motion.md). Zachowuj LCD 270°, boot, Wi-Fi i SSH.

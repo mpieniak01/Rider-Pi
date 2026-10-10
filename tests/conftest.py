@@ -3,6 +3,17 @@
 
 import pytest
 
+from common.test_sandbox import install
+
+# Collection imports happen before fixtures: isolation must already be enforced.
+install()
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        if item.get_closest_marker("hardware") or item.get_closest_marker("physical_motion"):
+            item.add_marker(pytest.mark.skip(reason="Hardware is outside automatic pytest; operator procedure only"))
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _force_face_file_sink():

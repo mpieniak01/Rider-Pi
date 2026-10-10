@@ -21,6 +21,13 @@ Python standard library. It reads the local `evn.ssh.local` file with mode
 
 ## Short path: preview and test on the Pi
 
+The development robot may be on a power cable. Preview and application restarts
+do not disarm movement or autonomy. Use reads and mocks for panel changes.
+Before driving, turning, height or balance tests, describe the test and obtain
+confirmation of free space, a stable surface and safe cable routing. Check the
+active executor's actual guards; one ENV flag does not confirm all of them.
+See [robot safety](apps/safety.md) for the procedure and limitations.
+
 Before the first preview, device `main` and the local feature branch base
 must identify the same commit. Commit selected changes locally in WSL;
 neither a push nor a PR is required. From the Rider-Pi checkout:

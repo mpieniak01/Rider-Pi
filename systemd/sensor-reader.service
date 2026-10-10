@@ -1,7 +1,7 @@
 [Unit]
-Description=Rider-Pi Sensor Reader (IMU/telemetry)
-After=network-online.target
-Wants=network-online.target
+Description=Rider-Pi Sensor BUS Projection (no UART ownership)
+After=network-online.target rider-broker.service motion-executor.service
+Wants=network-online.target rider-broker.service motion-executor.service
 
 [Service]
 Type=simple

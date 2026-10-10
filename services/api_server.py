@@ -11,11 +11,9 @@ from typing import Any
 from flask import (
     Flask,
     Response,
-    abort,
     jsonify,
     make_response,
     request,
-    send_from_directory,
 )
 
 # --- preferuj istniejący app/konfigurację z compat ---
@@ -51,87 +49,13 @@ import services.api_core.system_info as system_info
 import services.api_core.version_api as version_api
 import services.api_core.voice_local_proxy as voice_local_proxy
 import services.api_core.voice_proxy as voice_proxy
+from services.api_core.api_metrics import _update_api_metrics
+from services.api_core.chat_routes import register_chat_endpoints
 from services.api_core.face_api import render_face as face_render_shim
-from services.api_core.google_home_api import build_auth_url_preview
-
+from services.api_core.home_auth_route import home_auth as home_auth_flow, home_auth_url as home_auth_request
+from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
 
 # ── Metryki API helper ───────────────────────────────────────────────────────
-def _update_api_metrics(path: str, status_code: int) -> None:
-    """
-    Zlicza wywołania API dla interaktywnych endpointów.
-    Ignoruje endpointy systemowe, statusy, strumienie i monitoring.
-    """
-    # Pomijamy endpointy systemowe i monitorujące
-    ignore_prefixes = (
-        "/healthz",
-        "/health",
-        "/livez",
-        "/readyz",
-        "/state",
-        "/sysinfo",
-        "/metrics",
-        "/events",
-        "/camera/",
-        "/snapshots/",
-        "/vision/",
-        "/api/status",
-        "/api/devices",
-        "/api/last_frame",
-        "/api/metrics",
-        "/api/app-metrics",  # sam siebie też ignorujemy
-        "/api/bus/health",
-        "/api/flags",
-        "/api/version",
-        "/api/navigator/status",  # status do odczytu
-        "/web/",
-        # "/",
-        "/view",
-        "/control",
-        "/home",
-        "/chat",
-        "/system/",
-        "/svc",
-    )
-
-    if path.startswith(ignore_prefixes):
-        return
-
-    # Określamy grupę API na podstawie ścieżki
-    group = None
-    if path.startswith(("/api/control", "/api/cmd")):
-        group = "control"
-    elif path.startswith("/api/navigator/"):
-        # tylko interaktywne akcje (start/stop/config/return_home)
-        if any(
-            path.startswith(p)
-            for p in [
-                "/api/navigator/start",
-                "/api/navigator/stop",
-                "/api/navigator/config",
-                "/api/navigator/return_home",
-            ]
-        ):
-            group = "navigator"
-    elif path.startswith("/api/voice/"):
-        group = "voice"
-    elif path.startswith("/api/home/"):
-        # tylko command jest interaktywny
-        if path.startswith("/api/home/command"):
-            group = "google_home"
-    elif path.startswith("/api/chat/send"):
-        group = "chat"
-    elif path.startswith(("/face/render", "/face/play", "/face/stop", "/api/draw/face")):
-        group = "face"
-
-    if group is None:
-        return
-
-    # Zliczamy (thread-safe) using centralized dashboard functions
-    is_ok = status_code < 400
-    if is_ok:
-        dashboard.track_ok(group)
-    else:
-        dashboard.track_error(group)
 
 
 # ── CORS global + metryki ────────────────────────────────────────────────────
@@ -338,6 +262,7 @@ _add_rule(
 )
 
 # control API - balance and height
+_add_rule("/api/safety", view_func=control_api.api_safety, methods=["GET", "POST", "OPTIONS"])
 _add_rule(
     "/api/control/balance",
     view_func=control_api.api_balance,
@@ -470,60 +395,12 @@ def _auto_refresh_token_and_retry(api_call: Callable[..., dict[str, Any]], *args
 
 @app.route("/api/home/auth/url", methods=["GET", "OPTIONS"])  # NEW
 def home_auth_url():
-    if request.method == "OPTIONS":
-        return _corsify(make_response("", 204))
-    preview = build_auth_url_preview()
-    code = 200 if preview.get("ok") else 400
-    return _corsify(jsonify(preview)), code
+    return home_auth_request(_corsify, app.logger)
 
 
 @app.route("/api/home/auth", methods=["POST", "OPTIONS"])
 def home_auth():
-    if request.method == "OPTIONS":
-        return _corsify(make_response("", 204))
-
-    # log preview to journald (wrap lines for ruff)
-    try:
-        import json as _json
-        import subprocess
-
-        preview = build_auth_url_preview()
-        if preview.get("ok"):
-            auth_url = preview.get("auth_url", "")
-            port = preview.get("port")
-
-            cmd1 = [
-                "/bin/sh",
-                "-lc",
-                (
-                    "printf '%s' "
-                    + _json.dumps("[google-oauth] auth_url: " + auth_url)
-                    + " | systemd-cat -t rider-api-env -p info"
-                ),
-            ]
-            subprocess.run(cmd1, check=False)
-
-            if port:
-                cmd2 = [
-                    "/bin/sh",
-                    "-lc",
-                    (
-                        "printf '%s' "
-                        + _json.dumps("[google-oauth] loopback port: " + str(port))
-                        + " | systemd-cat -t rider-api-env -p info"
-                    ),
-                ]
-                subprocess.run(cmd2, check=False)
-    except Exception as _e:
-        app.logger.warning("auth preview log failed: %s", _e)
-
-    try:
-        result = google_home_api.start_oauth_flow()
-        status_code = 200 if result.get("ok") else 500
-        return _corsify(jsonify(result)), status_code
-    except Exception as e:
-        app.logger.error("OAuth flow error: %s", e, exc_info=True)
-        return _corsify(jsonify({"ok": False, "error": "Authentication configuration error"})), 500
+    return home_auth_flow(_corsify, app.logger)
 
 
 @app.route("/api/home/status", methods=["GET", "OPTIONS"])
@@ -601,72 +478,6 @@ def app_metrics():
 
 
 # ── Static / dashboard ───────────────────────────────────────────────────────
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
-
-
-def _no_cache(resp: Response) -> Response:
-    """Wspólne nagłówki anti-cache dla statyków."""
-    try:
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        resp.headers["Pragma"] = "no-cache"
-        resp.headers["Expires"] = "0"
-    except Exception:
-        pass
-    return resp
-
-
-def serve_web(fname: str):
-    """Serwuje pliki z katalogu web/ (wyłącznie pliki, brak tras katalogowych)."""
-    if not fname or ".." in fname or fname.startswith(("/", "\\")):
-        abort(404)
-    resp = send_from_directory(STATIC_WEB_DIR, fname)
-    return _no_cache(resp)
-
-
-def serve_home():
-    """Krótka trasa /home → web/home.html (bez katalogów, bez redirectów)."""
-    return _no_cache(send_from_directory(STATIC_WEB_DIR, "home.html"))
-
-
-def serve_chat():
-    """Krótka trasa /chat → web/chat.html bez 30x."""
-    chat_path = os.path.join(STATIC_WEB_DIR, "chat.html")
-    if not os.path.isfile(chat_path):
-        abort(404)
-    # czytaj surowo, ustaw content-type i anti-cache
-    with open(chat_path, "rb") as f:
-        data = f.read()
-    resp = make_response(data, 200)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    return _no_cache(resp)
-
-
-def serve_navigation():
-    """Krótka trasa /navigation → web/navigation.html"""
-    nav_path = os.path.join(STATIC_WEB_DIR, "navigation.html")
-    if not os.path.isfile(nav_path):
-        abort(404)
-    # czytaj surowo, ustaw content-type i anti-cache
-    with open(nav_path, "rb") as f:
-        data = f.read()
-    resp = make_response(data, 200)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    return _no_cache(resp)
-
-
-def serve_google_home():
-    """Krótka trasa /google_home → web/google_home.html"""
-    gh_path = os.path.join(STATIC_WEB_DIR, "google_home.html")
-    if not os.path.isfile(gh_path):
-        abort(404)
-    with open(gh_path, "rb") as f:
-        data = f.read()
-    resp = make_response(data, 200)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    return _no_cache(resp)
-
-
 _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"], strict_slashes=False)
 _add_rule("/home", view_func=serve_home, methods=["GET"], strict_slashes=False)
 _add_rule("/chat", view_func=serve_chat, methods=["GET"], strict_slashes=False)  # no-redirect, no send_file
@@ -679,54 +490,11 @@ _add_rule("/control", view_func=dashboard.control_page, methods=["GET"], strict_
 
 # ── Local control fallback ───────────────────────────────────────────────────
 def _register_local_control_fallback() -> None:
-    try:
-        _has_bridge = bool(os.getenv("WEB_BRIDGE_URL", "").strip())
-    except Exception:
-        _has_bridge = False
-
-    rules_now = {r.rule for r in app.url_map.iter_rules()}
-    need_local = (not _has_bridge) and ("/api/control" not in rules_now)
-    if not need_local:
-        return
-
-    try:
-        import json as _json
-
-        from flask import jsonify as _jsonify, make_response as _mk, request as _req
-
-        try:
-            import zmq  # type: ignore
-
-            _ctx = zmq.Context.instance()
-            _bus_addr = os.getenv("BUS_PUB_ADDR") or f"tcp://127.0.0.1:{os.getenv('BUS_PUB_PORT', '5555')}"
-            _pub = _ctx.socket(zmq.PUB)
-            _pub.connect(_bus_addr)
-            _PUBLISH = True
-        except Exception as _e:
-            _PUBLISH = False
-            app.logger.warning("[control-local] pyzmq not available or BUS connect failed: %s", _e)
-
-        def _control_local():
-            if _req.method == "OPTIONS":
-                return _corsify(_mk("", 204))
-            payload = _req.get_json(silent=True) or {}
-            if "cmd" not in payload:
-                payload = {"cmd": "move", "dir": payload.get("dir", "stop")}
-            info: dict[str, Any] = {"ok": True, "mode": "local", "published": False}
-            if _PUBLISH:
-                try:
-                    topic = "motion.cmd"
-                    _pub.send_string(f"{topic} {_json.dumps(payload)}")
-                    info["published"] = True
-                except Exception as e:
-                    info.update(ok=False, error=f"bus_publish_failed: {e}")
-            return _corsify(_jsonify(info)), 200 if info.get("ok") else 500
-
-        app.add_url_rule("/api/control", view_func=_control_local, methods=["POST", "OPTIONS"])
-        app.add_url_rule("/api/cmd", view_func=_control_local, methods=["POST", "OPTIONS"])
-        app.logger.info("[control-local] registered /api/control,/api/cmd (no WEB_BRIDGE_URL)")
-    except Exception as e:
-        app.logger.warning("[control-local] fallback not active: %s", e)
+    """Missing routing uses the canonical handler, never an unguarded BUS publisher."""
+    rules_now = {rule.rule for rule in app.url_map.iter_rules()}
+    for path in ("/api/control", "/api/cmd"):
+        if path not in rules_now:
+            app.add_url_rule(path, view_func=control_api.api_control, methods=["POST", "OPTIONS"])
 
 
 _register_local_control_fallback()
@@ -734,93 +502,7 @@ _register_local_control_fallback()
 
 # ── CHAT bootstrap ───────────────────────────────────────────────────────────
 def _register_chat_endpoints() -> None:
-    try:
-        if hasattr(chat_api, "register"):
-            chat_api.register(app)
-            app.logger.info("[chat] blueprint/handlers registered via chat_api.register(app)")
-    except Exception as e:
-        app.logger.warning("[chat] register(app) failed: %s", e)
-
-    rules_now = {r.rule for r in app.url_map.iter_rules()}
-    need_history = "/api/chat/history" not in rules_now
-    need_send = "/api/chat/send" not in rules_now
-    need_ping = "/api/chat/ping" not in rules_now
-    if not (need_history or need_send or need_ping):
-        return
-
-    try:
-        from services.api_core import chat_store as _chat_store  # type: ignore
-    except Exception as e:
-        _chat_store = None  # type: ignore
-        app.logger.warning("[chat] chat_store import failed: %s", e)
-
-    def _ok(data: dict[str, Any], code: int = 200):
-        return _corsify(jsonify({"ok": True, **data})), code
-
-    def _err(msg: str, code: int = 400):
-        return _corsify(jsonify({"ok": False, "error": msg})), code
-
-    if need_ping:
-
-        def _chat_ping():
-            if request.method == "OPTIONS":
-                return _corsify(make_response("", 204))
-            return _ok({"service": "chat", "mode": "fallback"})
-
-        _add_rule("/api/chat/ping", view_func=_chat_ping, methods=["GET", "OPTIONS"])
-
-    if need_history:
-
-        def _chat_history():
-            if request.method == "OPTIONS":
-                return _corsify(make_response("", 204))
-            limit = request.args.get("limit")
-            try:
-                n = int(limit) if limit is not None else None
-            except Exception:
-                n = None
-            try:
-                if _chat_store and hasattr(_chat_store, "history"):
-                    items = list(_chat_store.history(n))  # type: ignore[attr-defined]
-                elif _chat_store and hasattr(_chat_store, "get_store"):
-                    items = _chat_store.get_store().list(limit=n)  # type: ignore[call-arg]
-                else:
-                    items = []
-                return _ok({"items": items})
-            except Exception as e:
-                return _err(f"history_failed: {e}", 500)
-
-        _add_rule("/api/chat/history", view_func=_chat_history, methods=["GET", "OPTIONS"])
-
-    if need_send:
-
-        def _chat_send():
-            if request.method == "OPTIONS":
-                return _corsify(make_response("", 204))
-            payload = request.get_json(silent=True) or {}
-            msg = (payload.get("msg") or "").strip()
-            user = (payload.get("user") or "web").strip()
-            if not msg:
-                return _err("empty_msg", 400)
-            try:
-                if _chat_store and hasattr(_chat_store, "append"):
-                    item = _chat_store.append({"msg": msg, "user": user})  # type: ignore[attr-defined]
-                elif _chat_store and hasattr(_chat_store, "get_store"):
-                    item = _chat_store.get_store().add(msg=msg, user=user)  # type: ignore[attr-defined]
-                else:
-                    item = {"msg": msg, "user": user}
-                return _ok({"item": item})
-            except Exception as e:
-                return _err(f"send_failed: {e}", 500)
-
-        _add_rule("/api/chat/send", view_func=_chat_send, methods=["POST", "OPTIONS"])
-
-    app.logger.info(
-        "[chat] fallback endpoints active: "
-        f"{'history ' if need_history else ''}"
-        f"{'send ' if need_send else ''}"
-        f"{'ping' if need_ping else ''}".strip()
-    )
+    register_chat_endpoints(app, _add_rule, _corsify)
 
 
 # ── BOOTSTRAP ────────────────────────────────────────────────────────────────

@@ -1,465 +1,108 @@
 # Polityka konfiguracji Rider-Pi
 
-> **Zasada nadrzędna:** *Jedno miejsce prawdy dla konfiguracji oprogramowania i sprzętu → `config/`*
+`config/` jest źródłem konfiguracji. Zależności i podział urządzenie/WSL opisuje
+[polityka środowisk](../POLITYKA_SRODOWISK.md). Rider-Pi jest lekkim robotem:
+na urządzeniu utrzymujemy pakiety wykonawcze potrzebne do używanego profilu.
 
-## 1. Źródło konfiguracji
+## Źródło i nadpisania
 
-### Hierarchia katalogów
+`apps/voice/config.py` wczytuje wskazany TOML, a `load(None)` używa repozytoryjnego
+`config/voice.toml`; potem nakłada jawnie przekazane overrides. CLI może wskazać
+plik i nałożyć własne argumenty/ustawienia procesu. Nie zakładaj, że samo
+`load(None)` uwzględni `VOICE_CONFIG`. Używaj istniejących plików w `config/`
+i lokalnych nadpisań w `config/local/`.
+Nie kopiuj konfiguracji sprzętu Pi do współdzielonego Ubuntu w WSL.
 
-Wszystkie pliki konfiguracyjne rezydują w `config/` lub jego podkatalogach:
+| Obszar | Lokalizacja |
+| --- | --- |
+| Głos | `config/voice*.toml` |
+| Twarz i LCD | `config/face.toml` |
+| ALSA WM8960 | `config/alsa/asoundrc.wm8960` i `config/alsa/wm8960-apply.sh` |
+| Sekrety i lokalne nadpisania | `config/local/`; pliki ignorowane przez Git |
 
-```
-config/
-├── voice_openai_file.toml          # Konfiguracja voice (tryb plikowy)
-├── voice_openai_streaming.toml     # Konfiguracja voice (tryb strumieniowy)
-├── face.toml                # Konfiguracja renderingu twarzy
-├── asoundrc.wm8960          # Szablon ALSA dla WM8960
-├── wm8960-apply.sh          # Skrypt konfiguracji miksera WM8960
-└── local/                   # Lokalne nadpisania (git-ignored)
-    └── secrets.env          # Lokalne sekrety (nie w repo)
-```
+Orientacja zamontowanego wyświetlacza jest utrwalona: `FACE_LCD_ROTATE=270`.
+Urządzenie ma ekran zamontowany bokiem; nie zmieniaj obrotu podczas zwykłej poprawki.
 
-### Precedencja konfiguracji (dla aplikacji voice)
+## Sekrety i Git
 
-1. **Domyślne wartości** — wbudowane w kod (`apps/voice/config.py`)
-2. **Plik TOML** — w kolejności:
-   - `$VOICE_CONFIG` (jeśli ustawione)
-   - `$RIDER_CONFIG_DIR/voice.toml`
-   - `./config/voice.toml` (preferowane)
-   - `./configs/voice.yaml` (legacy, deprecated)
-3. **Zmienne środowiskowe** — prefiks `VOICE_*`
-4. **CLI overrides** — argumenty linii poleceń
+Sekretów nie zapisujemy w repozytorium, historii komend, opisie PR ani logu.
+Używaj zmiennych środowiskowych lub pliku w ignorowanym `config/local/` z prawami
+`600`. Istniejące poświadczenia SSH w `env.ssh.local` pozostają lokalne;
+przed zmianą sprawdź rzeczywistą nazwę pliku i regułę `.gitignore`.
+Nie pokazuj wartości sekretu do diagnostyki. Sprawdzaj jego obecność lub nazwę.
 
-**Przykład:**
-```bash
-# Domyślnie używa config/voice.toml
-python -m apps.voice.cli listen
+W TOML wskazuj `auth = "env:OPENAI_API_KEY"` albo `auth = "file:config/local/openai.key"`.
+Nie przywracaj przestarzałego schematu `bashenv:`. Skrypty mają czytać konfigurację,
+respektować istniejące ENV i nie dopisywać sekretów do profili użytkownika.
 
-# Override konkretnych ustawień przez CLI
-python -m apps.voice.cli listen --asr backend=vosk --tts voice=pl
+## WSL i urządzenie
 
-# Override przez ENV
-export VOICE_ASR_BACKEND=vosk
-python -m apps.voice.cli listen
-```
+Pełne testy oprogramowania oraz narzędzia deweloperskie są w istniejącym lokalnym
+`Rider-Pi/.venv`. Rider-Pc i Venom zachowują osobne stosy; nie instaluj globalnie,
+nie twórz następnego venv dla kolejnego worktree i nie instaluj pakietu po każdym
+komunikacie o imporcie. Najpierw ustal aktywny profil, interpreter i wymagania.
 
----
-
-## 2. Polityka sekretów (API keys)
-
-### ⚠️ Zabronione metody
-
-**NIE używaj:**
-- `~/.bash_history` — historia poleceń może zawierać sekrety przez przypadek
-- Automatyczne nadpisywanie `~/.bash_profile` przez skrypty
-- Commitowanie sekretów do repo
-- Przekazywanie sekretów przez argumenty CLI (widoczne w `ps`)
-
-### ✅ Zalecane metody
-
-#### Metoda 1: Zmienna środowiskowa (najlepsze dla automatyzacji)
-
-**Dla użytkownika:**
-```bash
-# W ~/.bash_profile lub ~/.profile
-export OPENAI_API_KEY="sk-..."
-
-# Zreładuj profil
-source ~/.bash_profile
-```
-
-**W aplikacji:**
-```toml
-# config/voice_openai_streaming.toml
-[stream]
-auth = "env:OPENAI_API_KEY"
-```
-
-**Skrypty automatycznie ładują profil:**
-```bash
-# scripts/sys_voice-run.sh już robi:
-if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  OPENAI_API_KEY="$(bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf "%s" "$OPENAI_API_KEY"')"
-  export OPENAI_API_KEY
-fi
-```
-
-#### Metoda 2: Plik z kluczem (najlepsze dla development)
-
-**Utwórz plik sekretów:**
-```bash
-# Utwórz katalog dla lokalnych sekretów
-mkdir -p config/local
-
-# Dodaj klucz do pliku (git-ignored)
-echo "sk-..." > config/local/openai.key
-chmod 600 config/local/openai.key
-```
-
-**W aplikacji:**
-```toml
-# config/voice_openai_streaming.toml
-[stream]
-auth = "file:config/local/openai.key"
-```
-
-#### Metoda 3: Literal w configu (tylko dla testów)
-
-```toml
-# config/local/voice_test.toml (git-ignored)
-[stream]
-auth = "sk-test-key-not-for-production"
-```
-
-**UWAGA:** Nigdy nie commituj tego do repo!
-
-### Zmiana z bashenv (deprecated)
-
-**Stara konfiguracja (USUNIĘTA):**
-```toml
-# ❌ NIE DZIAŁA OD WERSJI X.Y.Z
-[stream]
-auth = "bashenv:~/.bash_profile:OPENAI_API_KEY"
-```
-
-**Nowa konfiguracja:**
-```toml
-# ✅ UŻYJ TEGO
-[stream]
-auth = "env:OPENAI_API_KEY"
-```
-
-**Powód usunięcia:** Schemat `bashenv:` mógł odczytywać zmienne z `~/.bash_history`, co stanowiło ryzyko bezpieczeństwa.
-
----
-
-## 3. Konfiguracja sprzętu (ALSA)
-
-### Źródło prawdy: `config/alsa/asoundrc.wm8960`
-
-Konfiguracja ALSA dla WM8960 jest **szablonem** w repo:
-```bash
-cp config/alsa/asoundrc.wm8960 ~/.asoundrc
-```
-
-**Struktura aliasów:**
-- `wm8960_in` — capture (dsnoop, 16kHz mono)
-- `wm8960_out` — playback (dmix, 48kHz stereo)
-- `wm8960` — control interface
-
-### Pre-flight checks (nowe w PR-3)
-
-Przed uruchomieniem aplikacji audio, należy sprawdzić dostępność urządzeń:
+Jawnie zatwierdzone przygotowanie WSL korzysta z tego samego środowiska:
 
 ```bash
-# Sprawdzenie bez zabijania procesów
-config/alsa/preflight.sh --capture wm8960_in --playback wm8960_out
-
-# Sprawdzenie z wymuszonym czyszczeniem
-config/alsa/preflight.sh --force --capture wm8960_in --playback wm8960_out
-
-# Zabij tylko konkretne PID-y (np. aplikacja testowa)
-config/alsa/preflight.sh --force --capture wm8960_in --limit-pid 1234 --limit-pid 9999
+/home/pi/Rider-Pi/.venv/bin/python -m pip install -r config/agent/requirements-wsl.txt
+/home/pi/Rider-Pi/.venv/bin/python -m pip check
 ```
 
-**Zachowanie skryptu pre-flight:**
+To instrukcja dla WSL, nie dla fizycznego Pi. Na Pi nie instaluj
+`requirements-dev.txt` ani manifestu WSL. Biblioteki ML, testy i narzędzia nie są
+automatyczną zależnością urządzenia. Brak wymaganej zależności aktywnego profilu ma
+być jawnym `unavailable`/błędem startu; start usługi nie uruchamia instalacji ani
+pobierania modelu. Zmiana runtime Pi wymaga osobnego planu zgodności i wycofania.
 
-1. **Sprawdzenie urządzenia** — próba otwarcia dla test capture/playback (0.1s)
-2. **Wykrycie procesów** — użycie `lsof /dev/snd/*` (pomijane w CI/testach)
-3. **Bezpieczne zabijanie** (tylko z `--force` i tylko znane procesy):
-   - Wysyła `SIGTERM` do `arecord`, `aplay`, `python.*voice`
-   - Czeka do 1s na graceful shutdown
-   - Jeśli proces nadal istnieje, wysyła `SIGKILL`
-   - Loguje wszystkie akcje z PID i nazwą komendy
-4. **Ponowne sprawdzenie** — po czyszczeniu ponownie testuje urządzenia
-5. **Raport** — zwraca exit code 0 jeśli OK, 1 jeśli błąd
+## Sprzęt i diagnostyka
 
-**Integracja w skryptach:**
-```bash
-# W scripts/sys_voice-once.sh:
-"$RIDER_CONFIG_DIR/config/alsa/preflight.sh" \
-  --force \
-  --capture wm8960_in \
-  --playback wm8960_out || {
-  echo "WARNING: Pre-flight failed, continuing anyway" >&2
-}
+Odczyt stanu oddzielamy od prób otwierających urządzenie. Domyślna diagnostyka:
+API safety/telemetria, `systemctl show`, `journalctl` i właściciele zasobów.
+Nie tworzymy SDK dla odczytu UART; wykonawca ruchu jest jego jedynym właścicielem.
+`scripts/diag_sensors.py` i `scripts/sys_xgo-init.py` czytają status wykonawcy;
+nie inicjalizują napędów.
 
-# Diagnozuj i zwalniaj zasoby także spoza audio/kamery
-scripts/resource_diag.py status mic
-scripts/resource_diag.py release camera --pid 4242
-```
-
-Więcej informacji oraz przykłady: [docs/../resource_diagnostics.md](../resource_diagnostics.md)
-
-**Bezpieczeństwo:**
-- NIE zabija procesów systemowych
-- Wymaga jawnego `--force` do zabicia czegokolwiek
-- Loguje wszystkie PID i komendy przed zabiciem
-- Używa SIGTERM przed SIGKILL
-- Pomija `lsof` w środowiskach testowych (ENV: `ALSA_SKIP_LSOF=1`)
-
-### Diagnostyka zasobów sprzętowych
-
-Narzędzia dostępne od tej wersji pozwalają operatorowi stale monitorować
-stan mikrofonu, głośnika i kamery:
-
-- `scripts/resource_diag.py status <zasób>` pokazuje listę PID-ów i
-  powiązanych usług (`systemctl status --pid ...`).
-- `scripts/resource_diag.py release <zasób> [--pid ...]` uruchamia
-  odpowiedni skrypt sprzątający (ALSA preflight dla audio lub
-  `scripts/sys_camera-free.sh` dla kamery). Dzięki `--pid` można zabić
-  wyłącznie wskazany proces testowy.
-- Endpoint `/api/resource/<mic|speaker|camera>` (akcje `status`, `stop`,
-  `release`) zasila kartę „Diagnostyka zasobów” na stronie `/control`, co
-  pozwala robić to samo z poziomu UI.
-
-### Skrypty operacyjne
-
-Skrypty w `scripts/` **czytają** konfigurację z `config/`, nie **tworzą** jej:
-```bash
-# scripts/sys_voice-run.sh eksportuje ENV z domyślnymi wartościami,
-# ale można je nadpisać:
-ALSA_DEVICE=wm8960_in scripts/sys_voice-run.sh
-```
-
-## 4. Standardy skryptów ops
-
-### Helper dla skryptów: `scripts/util_load-config.sh`
-
-Zamiast duplikować logikę wykrywania ścieżek i ładowania konfiguracji, skrypty mogą użyć:
+ALSA preflight z otwarciem capture/playback jest próbą sprzętową, wymagającą
+przygotowanego profilu i decyzji operatora. `--force` w starym preflight nie jest
+zwykłą procedurą diagnostyczną ani krokiem automatycznego startu.
+Po PR03 używaj diagnostyki zasobów i najpierw zatrzymaj zadanie właściciela:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Załaduj pomocnicze funkcje
-source "$(dirname "$0")/../scripts/util_load-config.sh"
-
-# Skonfiguruj środowisko automatycznie
-setup_voice_env
-
-# Uruchom aplikację (RIDER_CONFIG_DIR i API key już ustawione)
-python -m apps.voice.cli listen
+python3 scripts/resource_diag.py status mic
+python3 scripts/resource_diag.py status camera
+python3 scripts/resource_diag.py status uart
 ```
 
-**Dostępne funkcje:**
+Ręczne recovery w kontrakcie PR03 wymaga `--force --operator-consent --pid <PID>`
+dla aktualnie zaobserwowanego właściciela. Zasoby dzierżawione przez zadanie,
+UART, LCD i baza są chronione; brak odczytu oznacza `unknown`, nie `free`.
+Nie ma domyślnego zabijania, SIGKILL ani automatycznego wznawiania usług.
+[Diagnostyka zasobów](../resource_diagnostics.md) podaje dokładny kontrakt.
 
-- `get_rider_root` — wykryj katalog główny projektu
-- `get_config_dir` — zwróć katalog config (respektuje `RIDER_CONFIG_DIR`)
-- `load_api_key [VARNAME]` — załaduj klucz API z `~/.bash_profile`
-- `setup_voice_env` — skonfiguruj pełne środowisko (locale, PYTHONPATH, API key)
-- `exec_with_config CMD...` — setup + exec w jednej linii
+## Walidacja i ścieżki wdrożenia
 
-**Przykład użycia w jednej linii:**
-```bash
-source scripts/util_load-config.sh && exec_with_config python -m apps.voice.cli ptt
-```
-
-### Nagłówek skryptu
-```bash
-#!/usr/bin/env bash
-# nazwa-skryptu.sh — krótki opis
-# Użycie:
-#   ./nazwa-skryptu.sh [argumenty]
-
-set -euo pipefail  # fail fast
-```
-
-### Ścieżki
-```bash
-# ❌ Nie hardcoduj
-ROBOT_ROOT="/home/pi/robot"
-
-# ✅ Użyj zmiennej lub wykryj automatycznie
-ROBOT_ROOT="${RIDER_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-```
-
-### Logowanie
-```bash
-# Standardowy prefix
-echo "[script-name] Starting..." >&2
-echo "[script-name] Config loaded from: $CONFIG_FILE" >&2
-
-# Błędy
-echo "[script-name] ERROR: Device not found" >&2
-exit 1
-```
-
-### Idempotencja
-```bash
-# Skrypt można uruchomić wielokrotnie bezpiecznie
-if [[ -f ~/.asoundrc ]]; then
-  echo "[alsa-setup] ~/.asoundrc already exists, skipping" >&2
-  exit 0
-fi
-
-cp config/asoundrc.wm8960 ~/.asoundrc
-```
-
----
-
-## 5. Migracja z poprzednich wersji
-
-### Jeśli używałeś `bashenv:`
-
-**Przed (przestarzałe):**
-```toml
-[stream]
-auth = "bashenv:~/.bash_profile:OPENAI_API_KEY"
-```
-
-**Po (aktualne):**
-```toml
-[stream]
-auth = "env:OPENAI_API_KEY"
-```
-
-**Upewnij się, że zmienna jest eksportowana:**
-```bash
-# ~/.bash_profile lub ~/.profile
-export OPENAI_API_KEY="sk-..."
-
-# Sprawdź
-echo $OPENAI_API_KEY
-```
-
-### Jeśli masz konfigurację w wielu miejscach
-
-**Skonsoliduj do `config/`:**
-```bash
-# Przenieś konfigurację do standardowej lokalizacji
-mv ~/robot/configs/voice.yaml config/local/voice_legacy.yaml
-
-# Użyj TOML zamiast YAML
-python -m apps.voice.cli diag --config config/local/voice_legacy.yaml
-# (sprawdź co działa, potem przenieś ustawienia do config/voice.toml)
-```
-
----
-
-## 6. CI i walidacja
-
-### Sprawdzanie przed commitem
+Format, importy i testy oprogramowania sprawdzaj w WSL, z atrapami sprzętu:
 
 ```bash
-# Sprawdź format
-ruff check apps/ tests/ --fix
-ruff format apps/ tests/
-
-# Sprawdź czy nie ma sekretów
-git diff --cached | grep -i "sk-" && echo "WARNING: Possible secret in commit"
-
-# Waliduj TOML
-python -c "import tomllib; tomllib.load(open('config/voice.toml', 'rb'))"
+/home/pi/Rider-Pi/.venv/bin/ruff check apps/ common/ services/ scripts/ tests/
+/home/pi/Rider-Pi/.venv/bin/ruff format --check apps/ common/ services/ scripts/ tests/
+RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 /home/pi/Rider-Pi/.venv/bin/python -m pytest
+git diff --check
 ```
 
-### CI checks (PR-6)
+Polecenie pytest dotyczy WSL i izolowanego zestawu oprogramowania. Testy ruchu są
+wyłącznie osobnymi próbami za zgodą obecnego operatora, nigdy częścią pytest,
+CI ani ogólnego skryptu diagnostycznego. Próby kamery/audio również nie są
+automatycznie uruchamiane podczas diagnozy. Robot w trybie dev jest zasilany
+kablem; ruch wymaga przygotowanej przestrzeni, przewodu i konkretnego planu.
 
-- Brak `bashenv` w kodzie
-- Brak hardcoded `/home/pi/robot`
-- Wszystkie `.toml` są poprawne składniowo
-- Brak sekretów w commitach
+Krótka ścieżka DEV służy sprawdzeniu zmiany na sprzęcie przed publikacją GH,
+zgodnie z dokumentem wdrożenia i zgodą dla wymaganych prób fizycznych.
+Ścieżka wydania: lokalny Git → zdalna gałąź GH → PR/recenzja → merge →
+pobranie na urządzeniu. Sprawdzamy konkretną wersję, lokalne nadpisania i możliwość
+wycofania. Zmiana kodu nie oznacza zgody na ruch ani zmianę autostartu.
 
----
-
-## 7. FAQ
-
-**Q: Gdzie mogę nadpisać konfigurację lokalnie?**
-A: Użyj `config/local/` (git-ignored) lub zmiennych ENV.
-
-**Q: Czy mogę mieć wiele plików voice.toml?**
-A: Tak, użyj `--config` lub `VOICE_CONFIG`:
-```bash
-python -m apps.voice.cli listen --config config/local/voice_dev.toml
-```
-
-**Q: Jak przetestować bez klucza API?**
-A: Użyj trybu PTT z lokalnym ASR (Vosk) i TTS (Piper):
-```bash
-python -m apps.voice.cli ptt --asr backend=vosk --tts backend=piper
-```
-
-**Q: Co jeśli potrzebuję różnych kluczy dla różnych środowisk?**
-A: Użyj osobnych plików w `config/local/`:
-```bash
-# Development
-export VOICE_CONFIG=config/local/voice_dev.toml
-
-# Production
-export VOICE_CONFIG=config/local/voice_prod.toml
-```
-
-**Q: Czy skrypty operacyjne nadpisują konfigurację?**
-A: Nie. Skrypty w `scripts/` **czytają** z `config/` i **uzupełniają** brakujące ENV, ale nie nadpisują istniejących wartości.
-
----
-
-**Ostatnia aktualizacja:** 2025-01 (PR-1)
-**Kontakt:** Issues w repozytorium GitHub
-
----
-
-## 8. Podsumowanie zmian (seria PR-ów config unification)
-
-### PR-1: Usunięcie bashenv (SECURITY CRITICAL) ✅
-- Usunięto schemat `bashenv:` z `svc_stream.py` (ryzyko odczytu z `.bash_history`)
-- Migracja: `bashenv:~/.bash_profile:VAR` → `env:VAR`
-- Utworzono `docs/config/POLICY.md`
-
-### PR-2: Centralizacja dostępu do konfiguracji ✅
-- Utworzono `scripts/util_load-config.sh` (helper dla skryptów)
-- Zaktualizowano `scripts/sys_voice-once.sh` (nowoczesny wzorzec)
-- Oznaczono `scripts/sys_voice-run.sh` jako LEGACY
-
-### PR-3: Pre-flight checks ALSA ✅
-- Utworzono `config/alsa/preflight.sh` (bezpieczne zabijanie procesów)
-- Reorganizacja: `config/alsa/` dla ALSA-specyficznych plików
-- Przeniesiono `asoundrc.wm8960` i `wm8960-apply.sh`
-
----
-
-## 9. Checklist dla nowych deweloperów
-
-**Setup środowiska:**
-```bash
-# 1. Clone i install
-git clone https://github.com/mpieniak01/Rider-Pi.git
-cd Rider-Pi
-pip install -r requirements-dev.txt
-
-# 2. ALSA config
-cp config/alsa/asoundrc.wm8960 ~/.asoundrc
-
-# 3. API key
-echo 'export OPENAI_API_KEY="sk-..."' >> ~/.bash_profile
-source ~/.bash_profile
-
-# 4. Pre-flight check
-config/alsa/preflight.sh --capture wm8960_in --playback wm8960_out
-
-# 5. Test
-python -m apps.voice.cli diag
-```
-
-**Tworzenie nowego skryptu ops:**
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-source "$(dirname "$0")/../scripts/util_load-config.sh"
-setup_voice_env
-# Twój kod tutaj
-```
-
-**Przed commitem:**
-```bash
-ruff check apps/ tests/ --fix
-ruff format apps/ tests/
-pytest -q
-git diff --cached | grep -i "sk-"  # sprawdź sekrety
-```
-
----
-
-**Ostatnia aktualizacja:** 2025-01 (PR-3 complete)  
-**Wersja:** 1.0  
-**Related docs:** [voice.md](../apps/voice.md), [wm8960.md](../audio/wm8960.md), [AGENT.md](../../AGENT.md)
+[Skrypty operacyjne](../ops/utility-scripts.md) ·
+[Zarządzanie usługami](../ops/systemd-scripts.md) ·
+[Bezpieczeństwo](../apps/safety.md)

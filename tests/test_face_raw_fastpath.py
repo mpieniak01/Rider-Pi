@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 
 
 def run_cli(expr="neutral", rotate=0, fit="fill", force="raw:rgb565"):
     cmd = [
-        "python3",
+        sys.executable,
         "scripts/dev_face-cli.py",
         "--expr",
         expr,

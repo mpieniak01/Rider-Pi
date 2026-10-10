@@ -2,11 +2,6 @@
 """
 Navigator - Autonomous Rekonesans (Reconnaissance) Mode
 
-Stage 1: Reactive obstacle avoidance
-- Subscribes to vision.obstacle topic
-- Implements STOP and AVOID strategies
-- Publishes movement commands to motion topic
-
 Stage 4: Return to Home
 - Path planning with A* algorithm
 - Autonomous navigation back to starting position
@@ -19,13 +14,13 @@ import logging
 import math
 import os
 import time
-from enum import Enum
 
 from apps.navigator import pathfinding
 from apps.navigator.ai_mode_adapter import log_navigator_mode_status
+from apps.navigator.motion import MotionProducer
+from apps.navigator.state import NavigatorState, StatePublisher, Strategy
 from common.bus import (
     TOPIC_MAPPER_MAP_DATA,
-    TOPIC_MOTION_COMMAND,
     TOPIC_NAVIGATOR_MAP_REQUEST,
     TOPIC_NAVIGATOR_RETURN_HOME_START,
     TOPIC_ROBOT_POSE,
@@ -52,40 +47,21 @@ GOAL_TOLERANCE = float(os.getenv("NAVIGATOR_GOAL_TOLERANCE", "0.1"))  # meters
 TOPIC_VISION_OBSTACLE = "vision.obstacle"
 TOPIC_NAVIGATOR_STATE = "navigator.state"
 TOPIC_NAVIGATOR_CONTROL = "navigator.control"
-TOPIC_CMD_MOVE = "cmd.move"
-TOPIC_CMD_STOP = "cmd.stop"
-CMD_RID = os.getenv("NAVIGATOR_CMD_RID", "navigator")
-CMD_DURATION = float(os.getenv("NAVIGATOR_CMD_DURATION", "0.3"))
 PUB_WARMUP_MS = int(os.getenv("NAVIGATOR_PUB_WARMUP_MS", "500"))
 
 LOG = logging.getLogger("navigator")
 
 
-class Strategy(Enum):
-    """Navigation strategy when obstacle detected"""
-
-    STOP = "STOP"
-    AVOID = "AVOID"
-
-
-class NavigatorState(Enum):
-    """Navigator operational states"""
-
-    IDLE = "idle"
-    EXPLORING = "exploring"
-    AVOIDING = "avoiding"
-    STOPPED = "stopped"
-    RETURNING_HOME = "returning_home"  # Stage 4: Navigating back to start
-    PATH_BLOCKED = "path_blocked"  # Stage 4: Obstacle detected during return
-
-
-class Navigator:
+class Navigator(MotionProducer, StatePublisher):
     """Autonomous navigation controller"""
 
     def __init__(self, strategy: Strategy = Strategy.STOP):
         self.strategy = strategy
         self.state = NavigatorState.IDLE
         self.active = False
+        self._intent = None
+        self._consumed_intent = None
+        self._intent_status_at = 0.0
 
         # Bus connections
         self.sub_obstacle = BusSub(TOPIC_VISION_OBSTACLE)
@@ -152,31 +128,6 @@ class Navigator:
         self.state_changed = True
         self._publish_state()
 
-    def _send_motion_drive(self, lx: float, az: float = 0.0, duration: float | None = None):
-        """Send drive command via cmd.move topic."""
-        dur = max(0.05, float(duration if duration is not None else CMD_DURATION))
-        cmd = {
-            "vx": max(-1.0, min(1.0, float(lx))),
-            "vy": 0.0,
-            "yaw": max(-1.0, min(1.0, float(az))),
-            "duration": dur,
-            "rid": CMD_RID,
-            "ts": time.time(),
-        }
-        self.pub.publish(TOPIC_CMD_MOVE, cmd, add_ts=False)
-        self.pub.publish(
-            TOPIC_MOTION_COMMAND,
-            {"type": "drive", "lx": cmd["vx"], "az": cmd["yaw"]},
-        )
-        LOG.info("Navigator cmd.move: %s", cmd)
-
-    def _send_motion_stop(self):
-        """Send stop command via cmd.stop topic."""
-        payload = {"rid": CMD_RID, "ts": time.time()}
-        self.pub.publish(TOPIC_CMD_STOP, payload, add_ts=False)
-        self.pub.publish(TOPIC_MOTION_COMMAND, {"type": "stop"})
-        LOG.info("Navigator cmd.stop sent")
-
     def _handle_obstacle(self, present: bool, confidence: float):
         """Handle obstacle detection event"""
         # Only react if navigator is active
@@ -235,10 +186,16 @@ class Navigator:
 
     def _handle_control_command(self, cmd: dict):
         """Handle control commands from API"""
-        action = cmd.get("action", "").lower()
+        if not isinstance(cmd, dict) or not isinstance(cmd.get("action"), str):
+            return
+        action = cmd["action"].lower()
 
         if action == "start":
             strategy_str = cmd.get("strategy", "STOP")
+            if not isinstance(strategy_str, str) or strategy_str.upper() not in {"STOP", "AVOID"}:
+                return
+            if not self._accept_motion_request(cmd):
+                return
             try:
                 strategy = Strategy[strategy_str.upper()]
                 self.set_strategy(strategy)
@@ -250,7 +207,21 @@ class Navigator:
             self.stop()
 
         elif action == "config":
+            from apps.safety.state import read_status
+
             config = cmd.get("config", {})
+            if read_status().get("state") != "DISARMED" or not isinstance(config, dict):
+                return
+            try:
+                speeds = {key: float(config[key]) for key in ("fwd_speed", "turn_speed") if key in config}
+                if any(
+                    isinstance(config[k], bool) or not math.isfinite(v) or not 0 <= v <= 1 for k, v in speeds.items()
+                ):
+                    return
+                if "strategy" in config and config["strategy"] not in {"STOP", "AVOID"}:
+                    return
+            except (ValueError, TypeError, OverflowError):
+                return
             changed = False
 
             if "strategy" in config:
@@ -313,11 +284,13 @@ class Navigator:
 
     def _handle_return_home_start(self, cmd: dict):
         """Handle return to home command from API"""
+        if not self._accept_motion_request(cmd):
+            return
         LOG.info("Return to home command received")
 
         # Stop current activity
         if self.active:
-            self._send_motion_stop()
+            self._send_motion_drive(0.0, 0.0)
             self.active = False
 
         # Set state to returning home
@@ -476,26 +449,6 @@ class Navigator:
             self._send_motion_drive(self.fwd_speed, 0.0)
             LOG.debug("Moving forward: distance=%.2fm", distance)
 
-    def _publish_state(self, force: bool = False):
-        """Publish navigator state to bus
-
-        Args:
-            force: If True, publish regardless of state change (for heartbeat)
-        """
-        if not force and not self.state_changed:
-            return
-
-        state = {
-            "active": self.active,
-            "state": self.state.value,
-            "strategy": self.strategy.value,
-            "obstacle_present": self.obstacle_present,
-            "ts": time.time(),
-        }
-        self.pub.publish(TOPIC_NAVIGATOR_STATE, state, add_ts=True)
-        self.state_changed = False
-        self.last_state_publish_ts = time.time()
-
     def run(self):
         """Main navigation loop"""
         LOG.info("Navigator main loop started")
@@ -503,8 +456,8 @@ class Navigator:
         self.state_changed = True
         self._publish_state()
 
-        # Heartbeat interval: publish state every 5 seconds even if unchanged
-        HEARTBEAT_INTERVAL = 5.0
+        # Keep the lightweight snapshot younger than the API's three-second TTL.
+        HEARTBEAT_INTERVAL = 1.0
         # Path following update interval
         PATH_UPDATE_INTERVAL = 0.2  # 5Hz
 
@@ -512,6 +465,7 @@ class Navigator:
 
         try:
             while True:
+                self._consume_task_intent()
                 # Receive obstacle events - check both local and enhanced sources
                 if self.use_pc_enhanced and self.sub_obstacle_enhanced:
                     # In pc_offload mode, prioritize enhanced obstacle data

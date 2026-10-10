@@ -35,7 +35,7 @@ def test_config_init_creates_missing_files(tmp_path):
 
     # Run the script
     result = subprocess.run(
-        [str(test_script)],
+        ["bash", str(test_script)],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
@@ -87,7 +87,7 @@ def test_config_init_skips_existing_files(tmp_path):
 
     # Run the script
     result = subprocess.run(
-        [str(test_script)],
+        ["bash", str(test_script)],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
@@ -127,7 +127,7 @@ def test_config_init_handles_empty_directory(tmp_path):
 
     # Run the script
     result = subprocess.run(
-        [str(test_script)],
+        ["bash", str(test_script)],
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
