@@ -224,7 +224,10 @@ def release(repo, record_path, request):
     check_python(repo, target, paths)
     if previous and git(repo, "rev-parse", f"{current}^{{tree}}") != git(repo, "rev-parse", f"{target}^{{tree}}"):
         raise RuntimeError("Reviewed main differs from the tested preview; preview the new content first.")
-    write_record(record_path.with_name("rider-last-release.json"), {"previous": base, "commit": target})
+    release_record = record_path.with_name("rider-last-release.json")
+    last_release = read_record(release_record)
+    if base != target or not last_release or last_release["commit"] != target:
+        write_record(release_record, {"previous": base, "commit": target})
     if previous:
         git(repo, "switch", "main")
     git(repo, "merge", "--ff-only", "origin/main")

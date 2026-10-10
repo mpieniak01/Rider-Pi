@@ -127,6 +127,30 @@ def test_release_without_preview_uses_expected_main(repos):
     assert result["branch"] == "main"
 
 
+def test_release_retry_after_api_failure_preserves_previous_revision(repos, monkeypatch):
+    repos.command(repos.source, "switch", "main")
+    commit, _ = repos.candidate()
+    repos.command(repos.source, "push", "origin", "main")
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    globals_map = module["release"].__globals__
+    monkeypatch.setitem(globals_map, "check_api_active", lambda: None)
+
+    def failed_restart():
+        raise RuntimeError("API health check failed")
+
+    monkeypatch.setitem(globals_map, "restart_api", failed_restart)
+    record_path = repos.device / ".git/rider-preview.json"
+    request = {"commit": commit, "restart_api": True}
+    with pytest.raises(RuntimeError, match="API health"):
+        module["release"](repos.device, record_path, request)
+    assert repos.command(repos.device, "rev-parse", "HEAD") == commit
+    monkeypatch.setitem(globals_map, "restart_api", lambda: None)
+    result = module["release"](repos.device, record_path, request)
+    assert result["commit"] == commit
+    saved = json.loads((repos.device / ".git/rider-last-release.json").read_text())
+    assert saved == {"previous": repos.base, "commit": commit}
+
+
 def test_dirty_device_is_rejected_without_discarding_changes(repos):
     commit, bundle = repos.candidate()
     repos.write(repos.device, "web/index.html", "device work\n")
