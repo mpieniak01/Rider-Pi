@@ -24,7 +24,6 @@ jobs:
       ESTOP_GPIO: "-1"
       BUS_PUB_ADDR: "inproc://rider-ci-publish"
       BUS_SUB_ADDR: "inproc://rider-ci-subscribe"
-      FEATURE_STATE_PATH: "${{ runner.temp }}/rider-feature-state.json"
 
     steps:
       - name: Checkout
@@ -49,6 +48,7 @@ jobs:
       - name: Start API (background on :8080)
         env:
           STATUS_API_PORT: "8080"
+          FEATURE_STATE_PATH: "${{ runner.temp }}/rider-feature-state.json"
         run: |
           set -euo pipefail
           python -u -m services.api_server > api.log 2>&1 & echo $! > api.pid
