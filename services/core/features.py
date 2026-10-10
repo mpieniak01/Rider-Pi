@@ -20,6 +20,7 @@ from common.service_catalog import (
     PROTECTED_UNITS,
     UNIT_CATALOG,
     FeatureDefinition,
+    task_domain,
     task_resources,
     task_units,
 )
@@ -361,7 +362,11 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             self._states[canonical] = "failed"
             self._errors[canonical] = "members_unavailable"
             return {"ok": False, "error": "members_unavailable", "missing": missing, "unknown": uncertain}
-        dependencies = self.dependency_check(units, options)
+        check_options = dict(options)
+        domain = task_domain(feature, options)
+        if domain is not None:
+            check_options["domain"] = domain
+        dependencies = self.dependency_check(units, check_options)
         self._dependency_errors[canonical] = dependencies
         if dependencies:
             self._states[canonical] = "failed"

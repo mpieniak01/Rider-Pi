@@ -181,3 +181,7 @@ Mutacje unieważniają snapshot systemd przed i po wykonaniu.
 PATCH rejestru providerów nie jest startem/stopem zadania; minimalny zestaw domen
 wybieraj przez opcje zadania z katalogu. Dawny provider state/health pozostaje
 diagnostyką do czasu usunięcia globalnych skutków zmiany trybu.
+
+## Stare wywołania podczas migracji panelu
+
+Stary panel zachowuje odczyt i STOP. Przyciski startu zadań, powrotu do bazy i odzyskiwania zasobów są wyłączone do czasu panelu v2 z potwierdzeniem operatora i aktualnym odczytem PID. Stan unknown/unavailable jest widoczny wprost. Start zadania ruchowego przez CLI wymaga interaktywnego TTY operatora, wcześniejszego jawnego ARM z konkretnym planem i `--control-file`: ograniczonego pliku JSON z dokładną świeżą kopertą bieżącej akcji (generation, request_id, source, seq, ts, ttl_ms). Manager sprawdza ją bez zmian; CLI nie uzbraja, nie odnawia czasu i nie tworzy zgody. Plik przygotowuje się bezpośrednio przed wysłaniem; przeterminowane polecenie jest odrzucane. STOP nie wymaga pliku.

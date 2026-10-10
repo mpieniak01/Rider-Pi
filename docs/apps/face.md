@@ -57,6 +57,10 @@ ls -l /tmp/legacy.png
 - `systemd-sync.sh` prints a plan; `--with-dev` is compatibility only.
 - See [task and resource contract](../TASKS_SERVICES_RESOURCES.md).
 - Edit parameters via ENV in `systemd/robot.env` (e.g., `FACE_LCD_ROTATE`, `FACE_LCD_DRIVER`)
+- In `/healthz`, `ownership_state` describes resource holders. A successful
+  `lsof` read does not prove LCD power. `on` stays `null` and `power_known=false`
+  until an explicit renderer report; `configured_on` describes configuration only.
+  Recovered ownership after an inspection error does not mark the display as on.
 
 ## Tests
 

@@ -92,7 +92,7 @@ def availability(domains: set[str], *, find_spec=importlib.util.find_spec) -> di
             try:
                 from apps.voice import config
 
-                chat = config.load(os.getenv("VOICE_DOMAIN_CONFIG", "voice_local_file.toml")).get("chat", {})
+                chat = config.load(os.getenv("VOICE_DOMAIN_CONFIG") or None).get("chat", {})
             except (ImportError, OSError, ValueError):
                 chat = {}
             command = os.getenv("VOICE_LLM_MAIN_PATH", chat.get("llm_main_path", "llama.cpp/main"))

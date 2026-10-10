@@ -416,6 +416,13 @@ PROTECTED_UNITS = frozenset(
 )
 
 
+def task_domain(feature: FeatureDefinition, options: dict | None = None) -> str | None:
+    """Use the catalog default for every selected-domain consumer."""
+    if feature.option_kind not in {"voice", "provider"}:
+        return None
+    return (options or {}).get("domain", option_schema(feature)["default"])
+
+
 def task_units(feature: FeatureDefinition, options: dict | None = None) -> tuple[str, ...]:
     """Resolve one minimal domain/tool. Invalid choices never fall back silently."""
     options = options or {}
@@ -445,7 +452,7 @@ def task_units(feature: FeatureDefinition, options: dict | None = None) -> tuple
             ),
         )
     elif kind in {"voice", "provider"}:
-        domain = options.get("domain", "voice" if kind == "voice" else "text")
+        domain = task_domain(feature, options)
         domains = {
             "voice": ("rider-voice-web.service", "rider-voice.service"),
             "asr": ("rider-voice-web.service",),
@@ -474,7 +481,7 @@ def task_resources(feature: FeatureDefinition, options: dict | None = None) -> t
     if feature.can_move:
         resources.add("control")
     if feature.option_kind in {"voice", "provider"}:
-        domain = (options or {}).get("domain", "voice" if feature.option_kind == "voice" else "text")
+        domain = task_domain(feature, options)
         if domain in {"voice", "asr"}:
             resources.add("mic")
         if domain in {"voice", "tts"}:

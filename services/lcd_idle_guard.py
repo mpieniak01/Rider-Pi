@@ -48,6 +48,7 @@ def _update_lcd_state(
 
     if on is not None:
         lcd["on"] = bool(on)
+        lcd["power_known"] = True
         if not on:
             lcd["active"] = False
             lcd["presenting"] = False
@@ -83,7 +84,7 @@ def _poll_once(now: float | None = None) -> None:
     idle_for = now - _last_busy_ts
     # A free SPI descriptor does not prove a dark LCD. The panel may retain its
     # last image, and LCD/UART are protected from generic resource release.
-    # Keep configured/reported power state; publish an operator hint only.
+    # Keep explicitly reported power state; publish an operator hint only.
     C.LAST_CAMERA["lcd"]["idle_for_s"] = max(0.0, idle_for)
     C.LAST_CAMERA["lcd"]["idle_release_requires_operator"] = idle_for >= IDLE_OFF_AFTER_S
 

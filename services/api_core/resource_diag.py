@@ -65,12 +65,15 @@ def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
     except FileNotFoundError:
         raise RuntimeError("lsof not found on PATH") from None
 
-    # lsof zwraca rc=1 gdy brak pasujących procesów — traktujemy to jak „brak danych”
+    # With several paths rc=1 can mean only some are open; complete owners
+    # from the remaining paths still prove that this resource is occupied.
     if proc.returncode not in (0, 1) or proc.stderr.strip():
         msg = proc.stderr.strip() or proc.stdout.strip() or "unknown error"
         raise RuntimeError(f"lsof failed (rc={proc.returncode}): {msg}")
-    if (proc.returncode == 0 and not proc.stdout.strip()) or (proc.returncode == 1 and proc.stdout.strip()):
+    if proc.returncode == 0 and not proc.stdout.strip():
         raise RuntimeError("lsof returned inconsistent ownership data")
+    if len(paths) == 1 and proc.returncode == 1 and proc.stdout.strip():
+        raise RuntimeError("single-device lsof returned inconsistent ownership data")
 
     entries: list[ProcessInfo] = []
     current: ProcessInfo | None = None
@@ -88,7 +91,9 @@ def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
             try:
                 pid = int(value)
             except ValueError:
-                continue
+                raise RuntimeError("lsof returned malformed owner PID") from None
+            if pid <= 1:
+                raise RuntimeError("lsof returned invalid owner PID")
             current = ProcessInfo(pid=pid, command="", user="", paths=[])
         elif current is None:
             continue
@@ -97,10 +102,12 @@ def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
         elif field == "L":
             current.user = value
         elif field == "n":
+            if not value.strip():
+                raise RuntimeError("lsof returned empty owner path")
             current_paths.append(value)
     if current is not None:
         entries.append(ProcessInfo(current.pid, current.command, current.user, current_paths))
-    if proc.returncode == 0 and (not entries or any(not entry.paths for entry in entries)):
+    if proc.stdout.strip() and (not entries or any(not entry.paths for entry in entries)):
         raise RuntimeError("lsof ownership data is incomplete")
     return entries
 

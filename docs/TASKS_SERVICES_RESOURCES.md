@@ -179,3 +179,7 @@ resource. Mutations invalidate systemd observations before and after execution.
 Provider registry PATCH routes are not task start/stop; use catalog task options
 for selecting a minimal running domain. Legacy provider state/health stays
 diagnostic until its global mode side effects are removed.
+
+## Legacy callers during panel migration
+
+The old panel keeps observation and STOP. Its task starts, return-home and resource recovery buttons are disabled until the catalog v2 operator panel supplies consent and current inventory. Unknown/unavailable resources are shown explicitly. CLI moving starts require an interactive operator TTY, a prior explicit ARM with a concrete plan, and `--control-file`: a bounded JSON file containing the exact fresh envelope from the current operator action (generation, request_id, source, seq, ts, ttl_ms). The manager validates it unchanged; the CLI never arms, renews timestamps or creates consent. Prepare the file immediately before submission; expired intent is rejected. STOP requires no file.

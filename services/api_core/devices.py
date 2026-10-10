@@ -76,6 +76,26 @@ def _decode_frames(frames):
     return topic, payload
 
 
+def observe_lcd(data: dict) -> None:
+    """A renderer report can describe power; descriptor ownership cannot."""
+    if not isinstance(data, dict):
+        return
+    lcd = data.get("lcd")
+    if not isinstance(lcd, dict):
+        return
+    state = C.LAST_CAMERA["lcd"]
+    for key in ("enabled_env", "no_draw", "rot", "active", "presenting"):
+        if key in lcd:
+            state[key] = lcd[key]
+    if isinstance(lcd.get("active"), bool):
+        state["presenting"] = lcd["active"]
+    if "on" in lcd:
+        state["on"] = lcd["on"] if isinstance(lcd["on"], bool) else None
+        state["power_known"] = isinstance(lcd["on"], bool)
+        state["power_source"] = "camera.heartbeat"
+        state["power_observed_at"] = data.get("observed_at", data.get("ts"))
+
+
 def bus_sub_loop():
     try:
         import zmq
@@ -261,7 +281,6 @@ def bus_sub_loop():
                         C.LAST_CAMERA["ts"] = C.LAST_MSG_TS
                         C.LAST_CAMERA["mode"] = data.get("mode")
                         C.LAST_CAMERA["fps"] = data.get("fps")
-                        lcd = data.get("lcd") or {}
                         lcd_state = C.LAST_CAMERA["lcd"]
                         lcd_state.update(
                             {
@@ -271,14 +290,7 @@ def bus_sub_loop():
                                 "checked_at": C.LAST_MSG_TS,
                             }
                         )
-                        for k in ("enabled_env", "no_draw", "rot", "active", "on", "presenting"):
-                            if k in lcd:
-                                lcd_state[k] = lcd[k]
-                        if "active" in lcd:
-                            lcd_state["presenting"] = bool(lcd.get("active"))
-                            if lcd_state.get("on") is False and lcd_state["presenting"]:
-                                lcd_state["on"] = True
-                        lcd_state.setdefault("on", (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW))
+                        observe_lcd(data)
                     except Exception:
                         pass
                     continue

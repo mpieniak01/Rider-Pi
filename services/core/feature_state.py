@@ -11,6 +11,7 @@ from common.service_catalog import (
     UNIT_CATALOG,
     catalog_payload,
     option_schema,
+    task_domain,
     task_resources,
     task_units,
 )
@@ -46,7 +47,7 @@ class FeatureStateMixin:
             statuses.append({**status, "matches_task": valid})
         if "rider-voice-web.service" in units:
             status = self.producer_status("rider-voice-web.service")
-            domains = expand(options.get("domain", "voice"))
+            domains = expand(task_domain(feature, options))
             capabilities = status.get("capabilities", {})
             observed_domains = status.get("domains")
             valid = (

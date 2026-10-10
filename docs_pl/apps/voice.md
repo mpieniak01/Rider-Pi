@@ -568,6 +568,24 @@ ptt_state = PTTStateMachine(logger)
 ptt_state.handle_event(PTTEvent.PTT_START)
 ```
 
+## Gotowość wybranej domeny
+
+Katalog usług rozstrzyga domyślną domenę: S5 używa `voice`, S10 używa `text`.
+Kontrola zależności, zasobów i heartbeat workera korzysta z tego samego wyboru.
+Profil tekstowy nie wymaga ani nie ładuje Vosk/Piper. `VOICE_DOMAIN_CONFIG`
+wskazuje konfigurację wspólną dla gotowości i handlerów; brak lub pusta wartość
+używa domyślnego `config/voice.toml`. Konfiguracja `stub` oznacza brak gotowego AI.
+
+Wybrany lokalny profil TTS przyjmuje wyłącznie efektywny backend `local` lub
+`piper`, także dla JSON przesłanego jako `text/plain`. Guard i handler stosują
+identyczne aliasy oraz skonfigurowaną wartość domyślną. Inny backend albo payload
+inny niż obiekt kończy się błędem 400 przed syntezą; guard nie zastępuje wyboru
+operatora backendem chmurowym. Modele ładuje tylko jawnie wybrana domena.
+
+Przejściowy błąd zapisu heartbeat nie kończy obserwacji profilu. Worker ponawia
+zapis w istniejącej pętli; przeterminowany heartbeat blokuje gotowość i żądania
+do czasu poprawnego raportu. Nie instaluje pakietów ani nie pobiera modeli.
+
 ### Quality Guards
 
 Automatyczne sprawdzanie w pre-commit i CI (`scripts/dev_check-legacy-imports.py`):

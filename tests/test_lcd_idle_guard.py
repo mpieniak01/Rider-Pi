@@ -106,3 +106,44 @@ def test_unknown_ownership_cannot_fabricate_power_or_release(monkeypatch, snapsh
     with guard.C.app.test_request_context():
         status = guard.C.healthz().get_json()["devices"]["lcd"]
     assert status["on"] is None and status["power_known"] is False
+
+
+@pytest.mark.parametrize("free", [True, False])
+def test_recovered_ownership_does_not_infer_power_from_configuration(monkeypatch, free):
+    guard = _reload_guard(monkeypatch)
+    monkeypatch.setattr(guard.C, "LAST_CAMERA", {"lcd": _base_lcd_state()})
+    monkeypatch.setattr(guard.C, "ENV_DISABLE_LCD", False)
+    monkeypatch.setattr(guard.C, "ENV_NO_DRAW", False)
+    guard._update_lcd_state(snapshot={"free": None, "state": "unknown", "error": "temporary"})
+    guard._update_lcd_state(snapshot={"free": free, "state": "free" if free else "busy"})
+    lcd = guard.C.LAST_CAMERA["lcd"]
+    assert lcd["presenting"] is (not free) and lcd["on"] is None and lcd["power_known"] is False
+    with guard.C.app.test_request_context():
+        status = guard.C.healthz().get_json()["devices"]["lcd"]
+    assert status["on"] is None and not status["power_known"] and status["configured_on"]
+
+
+@pytest.mark.parametrize("on", [False, True])
+def test_explicit_renderer_power_report_recovers_unknown_state(monkeypatch, on):
+    from services.api_core import devices
+
+    guard = _reload_guard(monkeypatch)
+    monkeypatch.setattr(guard.C, "LAST_CAMERA", {"lcd": _base_lcd_state()})
+    guard._update_lcd_state(snapshot={"free": None, "error": "temporary"})
+    devices.observe_lcd({"ts": 123.0, "lcd": {"active": True}})
+    assert guard.C.LAST_CAMERA["lcd"]["on"] is None
+    devices.observe_lcd({"ts": 123.0, "lcd": {"on": on}})
+    with guard.C.app.test_request_context():
+        status = guard.C.healthz().get_json()["devices"]["lcd"]
+    assert status["on"] is on and status["power_known"]
+    assert guard.C.LAST_CAMERA["lcd"]["power_observed_at"] == 123.0
+
+
+def test_initial_lcd_unknown_has_no_env_power_fallback(monkeypatch):
+    guard = _reload_guard(monkeypatch)
+    monkeypatch.setattr(guard.C, "LAST_CAMERA", {"lcd": {}})
+    monkeypatch.setattr(guard.C, "ENV_DISABLE_LCD", False)
+    monkeypatch.setattr(guard.C, "ENV_NO_DRAW", False)
+    with guard.C.app.test_request_context():
+        status = guard.C.healthz().get_json()["devices"]["lcd"]
+    assert status["on"] is None and status["power_known"] is False

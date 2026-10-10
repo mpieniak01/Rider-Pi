@@ -52,6 +52,7 @@ def test_worker_waits_for_loaded_model_heartbeat(monkeypatch, domain):
     status = {"stale": False, **healthy({domain})}
     status["capabilities"][domain].pop("model_loaded")
     client = domain_worker.create_app(legacy, profile_status=lambda: status).test_client()
-    assert client.post("/api/" + domain).status_code == 503
+    payload = {"text": "fixture", "backend": "local"}
+    assert client.post("/api/" + domain, json=payload).status_code == 503
     status["capabilities"][domain]["model_loaded"] = True
-    assert client.post("/api/" + domain).status_code == 200
+    assert client.post("/api/" + domain, json=payload).status_code == 200

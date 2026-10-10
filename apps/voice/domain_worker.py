@@ -7,7 +7,7 @@ import os
 import sys
 import threading
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 
 from apps.voice.domain_profiles import availability, requested_domains, worker_bind
 from apps.voice.profile_state import write_status
@@ -79,9 +79,15 @@ def create_app(legacy=None, profile_status=None) -> Flask:
         if domain not in domains:
             return jsonify({"ok": False, "error": "voice_domain_inactive", "domain": domain}), 503
         if domain == "tts" and request.method == "POST":
-            payload = request.get_json(silent=True) or {}
-            backend = payload.get("backend", payload.get("provider", payload.get("tts", "local")))
-            if backend not in {"local", "piper"}:
+            # The legacy handler accepts JSON independently of Content-Type.
+            # Resolve exactly its configured default before admitting text.
+            payload = request.get_json(force=True, silent=True)
+            if not isinstance(payload, dict):
+                return jsonify({"ok": False, "error": "invalid_tts_payload"}), 400
+            legacy._load_config()
+            configured = getattr(getattr(getattr(g, "config", None), "tts", None), "backend", "")
+            backend = payload.get("backend") or payload.get("provider") or payload.get("tts") or configured
+            if not isinstance(backend, str) or backend.strip().lower() not in {"local", "piper"}:
                 return jsonify({"ok": False, "error": "selected_profile_is_local_tts"}), 400
         status = observed_profile({domain})
         if not status["ready"]:
@@ -101,6 +107,18 @@ def create_app(legacy=None, profile_status=None) -> Flask:
     return app
 
 
+def observe_profiles(legacy, stop) -> None:
+    """Retry bounded heartbeat writes; stale data keeps admission unavailable."""
+    while not stop.wait(0.5):
+        try:
+            update_profile(legacy, requested_domains())
+        except Exception as exc:
+            print(
+                json.dumps({"ok": False, "error": "voice_profile_heartbeat_failed", "type": type(exc).__name__}),
+                file=sys.stderr,
+            )
+
+
 def main() -> int:
     status = availability(requested_domains())
     if not status["ready"]:
@@ -116,14 +134,7 @@ def main() -> int:
         return 3
     stop = threading.Event()
 
-    def observe_profiles():
-        while not stop.wait(0.5):
-            try:
-                update_profile(web, requested_domains())
-            except (OSError, ValueError):
-                stop.set()
-
-    worker = threading.Thread(target=observe_profiles, name="voice-profile", daemon=True)
+    worker = threading.Thread(target=observe_profiles, args=(web, stop), name="voice-profile", daemon=True)
     worker.start()
     host, port = worker_bind()
     try:

@@ -83,3 +83,40 @@ def test_release_camera_never_touches_lcd_or_spi(monkeypatch: pytest.MonkeyPatch
     assert res["ok"] is True
     cmd = executed["cmd"]
     assert cmd == ["sudo", "-n", "kill", "-TERM", "--", "77"]
+
+
+def test_lsof_partial_multi_path_result_reports_observed_busy_owner(monkeypatch):
+    monkeypatch.setattr(resource_diag, "_existing_paths", lambda _: ["/dev/video0", "/dev/video1"])
+    monkeypatch.setattr(resource_diag, "_systemd_unit_for_pid", lambda _: "camera-capture@raw.service")
+    monkeypatch.setattr(
+        resource_diag.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(stdout="p123\0cpython\0Lpi\0n/dev/video0\0\n", stderr="", returncode=1),
+    )
+    result = resource_diag.inspect("camera")
+    assert result["state"] == "busy" and result["free"] is False
+    assert result["holders"][0]["pid"] == 123
+
+
+@pytest.mark.parametrize(
+    "output",
+    ["p123\0cpython\0", "garbled", "pbad\0n/dev/video0\0", "p0\0n/dev/video0\0", "p123\0n\0", "p123\0n  \0"],
+)
+def test_lsof_partial_incomplete_output_stays_unknown(monkeypatch, output):
+    monkeypatch.setattr(resource_diag, "_existing_paths", lambda _: ["/dev/video0", "/dev/video1"])
+    monkeypatch.setattr(
+        resource_diag.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(stdout=output, stderr="", returncode=1)
+    )
+    result = resource_diag.inspect("camera")
+    assert result["state"] == "unknown" and result["free"] is None and result["error"]
+
+
+def test_lsof_single_uart_rc1_with_output_remains_unknown(monkeypatch):
+    monkeypatch.setattr(resource_diag, "_existing_paths", lambda _: ["/dev/ttyAMA0"])
+    monkeypatch.setattr(
+        resource_diag.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(stdout="p123\0n/dev/ttyAMA0\0", stderr="", returncode=1),
+    )
+    result = resource_diag.inspect("uart")
+    assert result["state"] == "unknown" and result["free"] is None

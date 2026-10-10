@@ -39,8 +39,8 @@ def healthz(C):
 
     lcd_state = C.LAST_CAMERA.get("lcd", {})
     lcd_on = lcd_state.get("on")
-    if lcd_on is None and lcd_state.get("power_known") is not False:
-        lcd_on = (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW)
+    if not isinstance(lcd_on, bool) or lcd_state.get("power_known") is False:
+        lcd_on = None
 
     devices = {
         "camera": {
@@ -52,6 +52,7 @@ def healthz(C):
         "lcd": {
             "on": bool(lcd_on) if lcd_on is not None else None,
             "power_known": lcd_on is not None,
+            "configured_on": (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW),
             "rot": lcd_state.get("rot", C.ENV_ROT),
             "no_draw": lcd_state.get("no_draw", C.ENV_NO_DRAW),
             "presenting": lcd_state.get("presenting"),
