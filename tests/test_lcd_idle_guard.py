@@ -129,10 +129,17 @@ def test_explicit_renderer_power_report_recovers_unknown_state(monkeypatch, on):
 
     guard = _reload_guard(monkeypatch)
     monkeypatch.setattr(guard.C, "LAST_CAMERA", {"lcd": _base_lcd_state()})
+    monkeypatch.setattr(devices.time, "time", lambda: 123.0)
     guard._update_lcd_state(snapshot={"free": None, "error": "temporary"})
     devices.observe_lcd({"ts": 123.0, "lcd": {"active": True}})
     assert guard.C.LAST_CAMERA["lcd"]["on"] is None
-    devices.observe_lcd({"ts": 123.0, "lcd": {"on": on}})
+    devices.observe_lcd(
+        {
+            "source": "lcd-renderer",
+            "observed_at": 123.0,
+            "lcd": {"on": on, "power_known": True, "confirmation": "control_write_accepted"},
+        }
+    )
     with guard.C.app.test_request_context():
         status = guard.C.healthz().get_json()["devices"]["lcd"]
     assert status["on"] is on and status["power_known"]

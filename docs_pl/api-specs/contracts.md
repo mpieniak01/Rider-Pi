@@ -447,3 +447,7 @@ Inwentarz wygenerowany z aplikacji Flask bez uruchamiania sprzętu i procesów. 
 | GET, HEAD, OPTIONS | `/web/<path:fname>` | `serve_web` | `rider.http` | 1 |
 
 Wdrożenie LCD obejmuje chronione pliki startowe i jednostki systemd; wymaga osobno zapisanej procedury z kopią plików i stanu usług. Nie omijaj blokad pi-preview ani nie odtwarzaj vendor cleanup podczas testów. KEEP_BL_ON domyślnie wynosi 0. Odczyt baterii pochodzi wyłącznie od jedynego wykonawcy UART. Wczesny splash przed brokerem nie ma jeszcze pomiaru; po uruchomieniu wykonawcy LCD pokazuje ten sam gotowy ekran Device Info z IP i baterią, zachowuje orientację 270° i gaśnie po 45 s. Nie wprowadza nowego panelu zadań. Odbiór ekranu jest możliwy bez restartu robota i bez ruchu.
+
+Pole `configured_rot` pochodzi z `PREVIEW_ROT` procesu API (domyślnie 0); opisuje konfigurację podglądu, nie montaż ani orientację ekranu startowego. Rzeczywisty renderer startowy zgłasza `rot=270`. Konfiguracja kamery bez LCD nie może nadpisywać tej obserwacji ani potwierdzać stanu podświetlenia.
+
+LCD `preview_config` ma osobny czas źródłowy. Rzeczywiste `source`/`observed_at` opisują raport cyklu renderera; `power_source`/`power_observed_at` wymagają jawnego `power_known=true` i `control_write_accepted`. `frame_source`/`frame_observed_at` zachowują czas pierwotnego raportu przyjęcia pikseli; raport wygaszenia nie nadaje im ani pomiarowi baterii nowego czasu. Przyjęcie przez oprogramowanie pozostawia fizyczną widoczność niezweryfikowaną; potwierdzenie operatora jest osobnym zapisem odbioru.

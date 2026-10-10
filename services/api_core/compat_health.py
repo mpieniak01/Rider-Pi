@@ -6,6 +6,61 @@ No hardware, subscribers or application instance are created by this module.
 
 from __future__ import annotations
 
+from common.observations import source_time
+
+
+def lcd_snapshot(C, *, now):
+    """Reported LCD I/O and preview settings have different owners and clocks."""
+    state = C.LAST_CAMERA.get("lcd", {})
+    at = source_time(state.get("observed_at"))
+    source = state.get("source")
+    reported = isinstance(source, str) and bool(source.strip()) and at is not None
+    power_at = source_time(state.get("power_observed_at"))
+    known = (
+        reported
+        and isinstance(state.get("on"), bool)
+        and state.get("power_known") is True
+        and state.get("confirmation") == "control_write_accepted"
+        and state.get("power_source") == source
+        and power_at == at
+    )
+    return {
+        "on": state["on"] if known else None,
+        "power_known": bool(known),
+        "source": source if reported else None,
+        "observed_at": at if reported else None,
+        "observed_age_s": round(now - at, 3) if reported else None,
+        "power_source": state.get("power_source") if known else None,
+        "power_observed_at": power_at if known else None,
+        "confirmation": state.get("confirmation") if reported else None,
+        "physical_validity": state.get("physical_validity") if reported else None,
+        "reason": state.get("reason") if reported else None,
+        "rot": state.get("rot") if reported else None,
+        "no_draw": state.get("no_draw") if reported else None,
+        "presenting": state.get("presenting"),
+        "frame": state.get("frame") if reported else None,
+        "frame_source": state.get("frame_source") if reported else None,
+        "frame_observed_at": state.get("frame_observed_at") if reported else None,
+        "battery": state.get("battery") if reported else None,
+        "configured_on": (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW),
+        "configured_no_draw": C.ENV_NO_DRAW,
+        "configured_rot": C.ENV_ROT,
+        "configured_rot_source": "api_env.PREVIEW_ROT",
+        "preview_config": state.get("preview_config"),
+        **{
+            key: state.get(key)
+            for key in (
+                "holders",
+                "checked_at",
+                "auto_off_ts",
+                "ownership_state",
+                "ownership_error",
+                "idle_for_s",
+                "idle_release_requires_operator",
+            )
+        },
+    }
+
 
 def healthz(C):
     now = C.time.time()
@@ -25,11 +80,6 @@ def healthz(C):
     # Unknown is never OFF. An available channel does not prove all IMU ready.
     xgo_on = True if any(row["ready"] for row in channels.values()) else None
 
-    lcd_state = C.LAST_CAMERA.get("lcd", {})
-    lcd_on = lcd_state.get("on")
-    if not isinstance(lcd_on, bool) or lcd_state.get("power_known") is False:
-        lcd_on = None
-
     devices = {
         "camera": {
             "on": camera_on,
@@ -37,22 +87,7 @@ def healthz(C):
             "mode": C.LAST_CAMERA.get("mode"),
             "fps": C.LAST_CAMERA.get("fps"),
         },
-        "lcd": {
-            "on": bool(lcd_on) if lcd_on is not None else None,
-            "power_known": lcd_on is not None,
-            "configured_on": (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW),
-            "rot": lcd_state.get("rot"),
-            "configured_rot": C.ENV_ROT,
-            "no_draw": lcd_state.get("no_draw", C.ENV_NO_DRAW),
-            "presenting": lcd_state.get("presenting"),
-            "holders": lcd_state.get("holders"),
-            "checked_at": lcd_state.get("checked_at"),
-            "auto_off_ts": lcd_state.get("auto_off_ts"),
-            "ownership_state": lcd_state.get("ownership_state"),
-            "ownership_error": lcd_state.get("ownership_error"),
-            "idle_for_s": lcd_state.get("idle_for_s"),
-            "idle_release_requires_operator": lcd_state.get("idle_release_requires_operator"),
-        },
+        "lcd": lcd_snapshot(C, now=now),
         "xgo": {**xgo, "on": xgo_on, "age_s": round(xgo_age, 3) if xgo_age is not None else None},
     }
 

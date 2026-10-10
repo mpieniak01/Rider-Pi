@@ -170,27 +170,92 @@ def _decode_frames(frames):
     return topic, payload
 
 
-def observe_lcd(data: dict) -> None:
-    """A renderer report can describe power; descriptor ownership cannot."""
+def observe_lcd(data: dict, *, topic="ui.lcd.state", now=None) -> None:
+    """Keep accepted LCD reports separate from camera preview configuration.
+
+    Headless camera heartbeats describe their own preview settings, not the
+    current screen or its power. Only an explicit renderer report with source,
+    original time and control/frame acceptance can update the LCD observation.
+    Acceptance describes software I/O; physical visibility remains unverified.
+    """
     if not isinstance(data, dict):
         return
     lcd = data.get("lcd")
     if not isinstance(lcd, dict):
         return
     state = C.LAST_CAMERA["lcd"]
-    for key in ("enabled_env", "no_draw", "rot", "active", "presenting"):
+    at = source_time(data.get("observed_at", data.get("ts")))
+    if topic == "camera.heartbeat":
+        state["preview_config"] = {
+            **{key: lcd[key] for key in ("enabled_env", "no_draw", "rot", "active") if key in lcd},
+            **{key: data[key] for key in ("stale", "offline", "error", "simulated") if key in data},
+            "source": data.get("source") or topic,
+            "observed_at": at,
+        }
+        return
+    now = time.time() if now is None else now
+    source = data.get("source")
+    confirmation = lcd.get("confirmation")
+    if (
+        topic != "ui.lcd.state"
+        or not isinstance(source, str)
+        or not source.strip()
+        or at is None
+        or type(now) not in (int, float)
+        or not math.isfinite(now)
+        or not 0 <= now - at <= 5
+        or any(data.get(key) is True or lcd.get(key) is True for key in ("stale", "offline", "simulated"))
+        or data.get("error")
+        or lcd.get("error")
+        or not isinstance(confirmation, str)
+        or confirmation not in {"control_write_accepted", "frame_write_accepted"}
+    ):
+        return
+    previous_at = source_time(state.get("observed_at"))
+    if previous_at is not None and at < previous_at:
+        return
+    if previous_at is None:
+        # The initial cache contains API environment defaults, not observations.
+        for key in ("rot", "no_draw", "active", "presenting"):
+            state.pop(key, None)
+    state.update(source=source, observed_at=at, confirmation=confirmation)
+    for key in ("physical_validity", "reason", "no_draw"):
         if key in lcd:
             state[key] = lcd[key]
-    if isinstance(lcd.get("active"), bool):
-        state["presenting"] = lcd["active"]
-    if "on" in lcd:
-        state["on"] = lcd["on"] if isinstance(lcd["on"], bool) else None
-        state["power_known"] = isinstance(lcd["on"], bool)
-        state["power_source"] = data.get("source") or "camera.heartbeat"
-        state["power_observed_at"] = source_time(data.get("observed_at", data.get("ts")))
-        for key in ("confirmation", "physical_validity", "reason"):
-            if key in lcd:
-                state[key] = lcd[key]
+    if type(lcd.get("rot")) is int and lcd["rot"] in (0, 90, 180, 270):
+        state["rot"] = lcd["rot"]
+    for key in ("frame", "battery"):
+        if isinstance(lcd.get(key), dict):
+            state[key] = dict(lcd[key])  # preserve original frame/measurement times
+    if isinstance(lcd.get("frame"), dict):
+        # Original frame-acceptance report time, not camera capture or receipt.
+        state.update(frame_source=source, frame_observed_at=at)
+    if isinstance(lcd.get("presenting"), bool):
+        state["presenting"] = lcd["presenting"]
+    known = (
+        lcd.get("power_known") is True and isinstance(lcd.get("on"), bool) and confirmation == "control_write_accepted"
+    )
+    state.update(
+        on=lcd["on"] if known else None,
+        power_known=known,
+        power_source=source if known else None,
+        power_observed_at=at if known else None,
+    )
+    if known and lcd["on"] is False:
+        state["presenting"] = False
+
+
+def observe_camera_heartbeat(data: object) -> None:
+    """Preserve camera source time without changing another LCD owner's state."""
+    if not isinstance(data, dict):
+        return
+    C.LAST_CAMERA["ts"] = _source_time(data.get("observed_at", data.get("ts")))
+    for key in ("observed_at", "source", "stale", "offline", "error", "capture_at", "frame_id"):
+        if key in data:
+            C.LAST_CAMERA[key] = data[key]
+    C.LAST_CAMERA["mode"] = data.get("mode")
+    C.LAST_CAMERA["fps"] = data.get("fps")
+    observe_lcd(data, topic="camera.heartbeat")
 
 
 def bus_sub_loop():
@@ -268,23 +333,7 @@ def bus_sub_loop():
 
                 if topic == "camera.heartbeat":
                     try:
-                        data = json.loads(payload) if payload else {}
-                        C.LAST_CAMERA["ts"] = _source_time(data.get("observed_at", data.get("ts")))
-                        for key in ("observed_at", "source", "stale", "offline", "error", "capture_at", "frame_id"):
-                            if key in data:
-                                C.LAST_CAMERA[key] = data[key]
-                        C.LAST_CAMERA["mode"] = data.get("mode")
-                        C.LAST_CAMERA["fps"] = data.get("fps")
-                        lcd_state = C.LAST_CAMERA["lcd"]
-                        lcd_state.update(
-                            {
-                                "enabled_env": (not C.ENV_DISABLE_LCD),
-                                "no_draw": C.ENV_NO_DRAW,
-                                "rot": C.ENV_ROT,
-                                "checked_at": C.LAST_MSG_TS,
-                            }
-                        )
-                        observe_lcd(data)
+                        observe_camera_heartbeat(_json_or_raw(payload))
                     except Exception:
                         pass
                     continue
