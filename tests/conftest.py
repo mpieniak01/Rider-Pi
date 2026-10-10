@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Global test fixtures."""
 
+import os
+
 import pytest
 
 from common.test_sandbox import install
 
 # Collection imports happen before fixtures: isolation must already be enforced.
 install()
+os.environ["RIDER_CALIBRATION_DIR"] = os.path.join(install.sandbox.name, "calibration")
+os.environ["ODOMETRY_STATE_DIR"] = os.path.join(install.sandbox.name, "odometry")
+os.environ["ODOMETRY_CALIBRATION_PATH"] = os.path.join(install.sandbox.name, "legacy-calibration.json")
 
 
 def pytest_collection_modifyitems(items):

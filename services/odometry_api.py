@@ -5,6 +5,7 @@ import time
 
 from flask import jsonify, request
 
+from apps.motion.calibration_profiles import profile_confirmation, read_active
 from apps.odometry.reference import reference_paths, validate_reference
 from apps.safety.state import read_status
 from common.bus import BusPub
@@ -82,6 +83,25 @@ def reference_state():
     return jsonify(snapshot())
 
 
+def _profile_error(row, state, current):
+    expected = row.get("profile_digest")
+    config = state.get("calibration")
+    model = current.get("calibration")
+    motion_digest = config.get("profile_digest") if isinstance(config, dict) else None
+    odometry_digest = model.get("profile_digest") if isinstance(model, dict) else None
+    if expected is None and motion_digest is None and odometry_digest is None:
+        return None  # Existing explicit legacy-file references remain supported.
+    try:
+        active = read_active()
+        if active is None or active["profile_digest"] != expected:
+            return "reference_profile_unconfirmed"
+        if profile_confirmation(active, state, current, wall_clock()) == "unconfirmed":
+            return "reference_profile_unconfirmed"
+    except (OSError, ValueError, KeyError, TypeError):
+        return "reference_profile_unavailable"
+    return None
+
+
 def operator_reference():
     row = request.get_json(silent=True)
     state = read_status()
@@ -91,7 +111,9 @@ def operator_reference():
     current = snapshot()
     if current.get("error"):
         return jsonify({"accepted": False, "error": current["error"], "actuation": False}), 503
+    state = read_status()
     error = validate_reference(row, state, now=wall_clock(), started_at=current.get("started_at"))
+    error = error or _profile_error(row, state, current)
     if error:
         return jsonify({"accepted": False, "error": error, "actuation": False}), 409
     global _publisher
@@ -109,6 +131,7 @@ def operator_reference():
             "generation": row["generation"],
             "source": row["source"],
             "seq": row["seq"],
+            "profile_digest": row.get("profile_digest"),
             "actuation": False,
             "physical_completion": "unverified",
         }

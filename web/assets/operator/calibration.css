@@ -1,0 +1,9 @@
+/* Calibration tables reuse the existing dashboard theme. */
+.calibration-table-wrap { overflow-x: auto; margin-top: .8rem; }
+.calibration-table { width: 100%; border-collapse: collapse; }
+.calibration-table th, .calibration-table td { text-align: left; padding: .55rem; border-bottom: 1px solid var(--border, #58616d); }
+.calibration-table td { max-width: 18rem; overflow-wrap: anywhere; }
+.calibration-rate-row { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; margin-bottom: .6rem; }
+.calibration-rate-row label { flex: 1; min-width: 8rem; }
+.calibration-rate-row input { width: 100%; box-sizing: border-box; }
+.calibration-digest { font-family: monospace; overflow-wrap: anywhere; }

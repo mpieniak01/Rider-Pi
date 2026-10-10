@@ -20,6 +20,8 @@
 - [**menu.md**](menu.md) — menu nawigacyjne (dema, autonomia, teleop)
 
 ### Ruch i bezpieczeństwo
+
+- [**calibration.md**](calibration.md) — profile revisions, operator measurements and explicit activation
 - [**motion.md**](motion.md) — command paths, executors, ramps and command replacement
 - [**safety.md**](safety.md) — physical robot operation, actual guards and verification commands
 

@@ -2,7 +2,9 @@
 
 Odometria jest modelem na podstawie potwierdzonych wyjść SDK i obserwacji IMU.
 Nie jest czujnikiem lokalizacji. W tym wydaniu nie ma zmierzonej dokładności,
-prędkości ani drogi zatrzymania. Charakterystyka sprzętu pozostaje otwarta w #256.
+prędkości ani drogi zatrzymania. Charakterystyka sprzętu jest lokalną pracą
+operatora. #256 dostarcza [narzędzia konfiguracji i kalibracji](calibration.md),
+które można zrecenzować i wydać niezależnie od wpisania fizycznych pomiarów.
 
 ## Źródła i ważność
 
@@ -45,6 +47,13 @@ Oczekiwanie kończy dopiero niezależnie odebrany, zaakceptowany zapis SDK.
 
 ## Zapisany model
 
+Panel Kalibracja zarządza lokalnymi wersjami profilu ruchu i odometrii.
+Po jego świadomym zastosowaniu `calibration_id` jest skrótem dokładnej wersji,
+a `measurement_id` pozostaje etykietą pomiaru. Zmiana wersji unieważnia
+odniesienie/HOME oraz poprzednie komórki mapy, także przed nowym odniesieniem.
+Zapis szkicu i przyjęcie konfiguracji nie potwierdzają jakości fizycznego modelu.
+
+Przy braku profilu panelu zachowany jest starszy interfejs:
 ODOMETRY_CALIBRATION_PATH opcjonalnie wskazuje ograniczony plik JSON. Wzór:
 [`config/odometry-calibration.example.json`](../../config/odometry-calibration.example.json).
 Wzór celowo jest niezweryfikowany i nie zawiera fizycznych wartości.

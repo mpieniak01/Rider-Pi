@@ -49,6 +49,7 @@ import services.api_core.system_info as system_info
 import services.api_core.version_api as version_api
 import services.api_core.voice_local_proxy as voice_local_proxy
 import services.api_core.voice_proxy as voice_proxy
+import services.calibration_api as calibration_api
 import services.odometry_api as odometry_api
 from services.api_core.api_metrics import _update_api_metrics
 from services.api_core.chat_routes import register_chat_endpoints
@@ -243,6 +244,10 @@ _add_rule(
 _add_rule("/api/safety", view_func=control_api.api_safety, methods=["GET", "POST", "OPTIONS"])
 _add_rule("/api/odometry/state", view_func=odometry_api.reference_state, methods=["GET"])
 _add_rule("/api/odometry/reference", view_func=odometry_api.operator_reference, methods=["POST"])
+_add_rule("/api/calibration/state", view_func=calibration_api.state, methods=["GET"])
+_add_rule("/api/calibration/profiles", view_func=calibration_api.catalog, methods=["GET", "POST"])
+_add_rule("/api/calibration/profiles/<digest>", view_func=calibration_api.profile, methods=["GET"])
+_add_rule("/api/calibration/activate", view_func=calibration_api.activate, methods=["POST"])
 _add_rule(
     "/api/control/balance",
     view_func=control_api.api_balance,
@@ -467,6 +472,7 @@ _add_rule("/web/<path:fname>", view_func=serve_web, methods=["GET"], strict_slas
 _add_rule("/home", view_func=serve_home, methods=["GET"], strict_slashes=False)
 _add_rule("/chat", view_func=serve_chat, methods=["GET"], strict_slashes=False)  # no-redirect, no send_file
 _add_rule("/navigation", view_func=serve_navigation, methods=["GET"], strict_slashes=False)
+_add_rule("/calibration", view_func=calibration_api.page, methods=["GET"], strict_slashes=False)
 _add_rule("/google_home", view_func=serve_google_home, methods=["GET"], strict_slashes=False)
 _add_rule("/", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)
 _add_rule("/view", view_func=dashboard.dashboard, methods=["GET"], strict_slashes=False)

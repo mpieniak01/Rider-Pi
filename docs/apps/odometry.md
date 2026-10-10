@@ -2,7 +2,9 @@
 
 Odometry is a model estimate from accepted SDK output and IMU observations. It is
 not a localization sensor. There is no measured accuracy, speed or stopping
-distance in this release. Physical characterization remains open in issue #256.
+distance in this release. Hardware characterization is local operator work.
+#256 provides [configuration and calibration tools](calibration.md), which
+can be reviewed and released independently of entering physical measurements.
 
 ## Sources and validity
 
@@ -43,6 +45,13 @@ continuity. Only the independently received accepted SDK write ends the wait.
 
 ## Recorded model
 
+The Calibration panel manages local revisions of the motion and odometry profile.
+After explicit application, `calibration_id` is the exact revision digest, while
+`measurement_id` remains a measurement label. A revision change invalidates
+reference/HOME and previous map cells, including before a new reference is set.
+Saving a draft and accepting configuration do not verify the physical model.
+
+When no panel profile exists, the legacy interface remains available:
 `ODOMETRY_CALIBRATION_PATH` optionally points to a bounded JSON record. Start with
 [`config/odometry-calibration.example.json`](../../config/odometry-calibration.example.json).
 The example is intentionally unverified and contains no physical numbers.

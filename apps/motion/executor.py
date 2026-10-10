@@ -11,6 +11,7 @@ import signal
 import time
 import uuid
 
+from apps.motion.calibration_runtime import CalibrationRuntime
 from apps.motion.main import MotionController, _make_adapter
 from apps.motion.sensor_quality import AXES, SensorSamples
 from apps.safety.gate import ACTUATORS, MAX_DURATION_S, MotionGate, finite_number
@@ -18,6 +19,7 @@ from apps.safety.state import write_status
 
 LOG = logging.getLogger("motion.executor")
 SUB_TOPICS = [
+    "calibration.activate",
     "motion.command",
     "cmd.move",
     "cmd.stop",
@@ -98,6 +100,8 @@ class MotionExecutor:
         self.instance_id = uuid.uuid4().hex
         self.adapter = adapter if adapter is not None else _make_adapter(self.gate)
         self.controller = MotionController(self.adapter, self.gate)
+        self.calibration = CalibrationRuntime(self.controller.limits)
+        self.controller.limits = self.calibration.limits
         self.publisher = publisher
         self.status_writer = status_writer
         self.last_ack = None
@@ -168,7 +172,7 @@ class MotionExecutor:
     def snapshot(self):
         hardware_ready = self._hardware_ready()
         quality = self.samples.quality()
-        ready = hardware_ready and quality["ready"] and self.controller.limits.valid
+        ready = hardware_ready and quality["ready"] and self.controller.limits.valid and not self.calibration.error
         state = self.gate.snapshot()
         state.update(
             observed_at=self.gate.wall_clock(),
@@ -181,6 +185,7 @@ class MotionExecutor:
             error=self.error
             or getattr(self.adapter, "error", None)
             or quality["error"]
+            or self.calibration.error
             or self.controller.limits.status()["error"],
             last_ack=self.last_ack,
             recent_acks=list(self.recent_acks),
@@ -196,11 +201,17 @@ class MotionExecutor:
             sensor_quality=quality,
             dynamics=self.controller.limits.status(),
             sdk_output=self.sdk_output(),
+            calibration=self.calibration.status(now=self.gate.wall_clock(), instance_id=self.instance_id),
         )
         return state
 
     def capabilities(self):
-        ready = self._hardware_ready() and self.samples.quality()["ready"] and self.controller.limits.valid
+        ready = (
+            self._hardware_ready()
+            and self.samples.quality()["ready"]
+            and self.controller.limits.valid
+            and not self.calibration.error
+        )
         method = getattr(self.adapter, "capabilities", None)
         if callable(method):
             result = method()
@@ -269,10 +280,14 @@ class MotionExecutor:
         return dict(self.last_ack)
 
     def apply(self, payload, *, topic="motion.command"):
+        if topic == "calibration.activate":
+            return self.calibration.activate(payload, self)
         if not isinstance(payload, dict) or topic not in COMMAND_TOPICS:
             return self._ack({}, "rejected", "passive_or_invalid_command")
         command = canonical_command(topic, payload)
         action = command.get("action")
+        if action == "arm" and self.calibration.error:
+            return self._ack(command, "rejected", self.calibration.error)
         is_actuator = isinstance(action, str) and action in ACTUATORS
         if (
             isinstance(action, str)
