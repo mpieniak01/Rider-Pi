@@ -1,10 +1,12 @@
 """Exercise deployment transactions with real Git repos, without SSH or hardware."""
 
+import io
 import json
 import runpy
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -116,6 +118,49 @@ def test_release_accepts_reviewed_squash_with_identical_tree(repos):
     assert result["preview"] is None
     assert result["previous"] == repos.base
     assert (repos.device / ".env").read_text() == "LOCAL_CONFIG=keep-me\n"
+
+
+def test_preview_inherits_api_restart_and_rollback_restores_running_revision(repos, monkeypatch):
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    globals_map = module["preview"].__globals__
+    calls = []
+    monkeypatch.setitem(globals_map, "check_api_active", lambda: calls.append("active"))
+    monkeypatch.setitem(globals_map, "restart_api", lambda: calls.append("restart"))
+    record_path = repos.device / ".git/rider-preview.json"
+    request = {"base": repos.base, "restart_api": True}
+    for restart, content in [(True, "first API\n"), (False, "next API\n")]:
+        commit, bundle = repos.candidate(content=content)
+        request.update(commit=commit, restart_api=restart)
+        monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(bundle)))
+        result = module["preview"](repos.device, record_path, request)
+        assert result["preview"]["restart_api"] is True
+    module["rollback"](repos.device, record_path)
+    assert calls == ["active", "restart", "active", "restart", "restart"]
+    repos.assert_base()
+
+
+def test_inherited_api_restart_checks_service_before_checkout(repos, monkeypatch):
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    globals_map = module["preview"].__globals__
+    monkeypatch.setitem(globals_map, "check_api_active", lambda: None)
+    monkeypatch.setitem(globals_map, "restart_api", lambda: None)
+    first, bundle = repos.candidate()
+    record_path = repos.device / ".git/rider-preview.json"
+    request = {"base": repos.base, "commit": first, "restart_api": True}
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(bundle)))
+    module["preview"](repos.device, record_path, request)
+    second, bundle = repos.candidate(content="next API\n")
+    request.update(commit=second, restart_api=False)
+
+    def inactive_api():
+        raise RuntimeError("API is not active")
+
+    monkeypatch.setitem(globals_map, "check_api_active", inactive_api)
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(bundle)))
+    with pytest.raises(RuntimeError, match="API is not active"):
+        module["preview"](repos.device, record_path, request)
+    assert repos.command(repos.device, "rev-parse", "HEAD") == first
+    assert json.loads(record_path.read_text())["commit"] == first
 
 
 def test_release_without_preview_uses_expected_main(repos):

@@ -46,7 +46,8 @@ make pi-preview PI_DEPLOY_ARGS='--restart-api'
 ```
 
 Ta opcja restartuje tylko `rider-api.service` i sprawdza HTTP health.
-Statyczny web wymaga odświeżenia przeglądarki. Dla innej usługi aplikacyjnej
+Statyczny web wymaga odświeżenia przeglądarki. Opcja przechodzi na kolejne podglądy.
+Dla innej usługi aplikacyjnej
 restart i test dobierz do zmienionego komponentu. Podgląd nie zastępuje
 sprawdzenia funkcji na sprzęcie. Nie uruchamiaj równolegle drugiego procesu
 korzystającego z tego samego UART, LCD, kamery lub audio.

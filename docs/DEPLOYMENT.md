@@ -48,7 +48,8 @@ make pi-preview PI_DEPLOY_ARGS='--restart-api'
 ```
 
 This restarts only `rider-api.service` and checks HTTP health. Reload the
-browser for static web changes. For another application service, choose its
+browser for static web changes. The option carries over to subsequent previews.
+For another application service, choose its
 restart and test according to the changed component. Preview does not prove
 hardware behavior. Avoid simultaneous processes sharing UART, LCD, camera
 or audio.

@@ -69,6 +69,8 @@
 - Przechodzą kontrole dobrane do zmiany; funkcje sprzętowe potwierdź na Pi.
 - Krótka iteracja może mieć tylko powiązany test w WSL i test na urządzeniu;
   pełny `make test` nie jest obowiązkowy przed każdym podglądem.
+- Wydanie wymaga review PR i zielonych istniejących kontroli CI;
+  wersja sprawdzona na Pi musi odpowiadać wydaniu.
 - Zmiana portów/usług → aktualizacja `ARCHITECTURE.md`.
 - Zmiany opisane w `docs/` (skrót w commitach).
 

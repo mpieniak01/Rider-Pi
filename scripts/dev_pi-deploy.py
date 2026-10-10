@@ -129,9 +129,10 @@ def status(repo, record_path):
 
 def preview(repo, record_path, request):
     check_clean(repo)
-    if request["restart_api"]:
-        check_api_active()
     previous = read_record(record_path)
+    restart_required = request["restart_api"] or bool(previous and previous["restart_api"])
+    if restart_required:
+        check_api_active()
     base, target = request["base"], request["commit"]
     current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
     if previous:
@@ -162,7 +163,7 @@ def preview(repo, record_path, request):
         "branch": "main",
         "commit": target,
         "preview_branch": preview_branch,
-        "restart_api": request["restart_api"] or bool(previous and previous["restart_api"]),
+        "restart_api": restart_required,
     }
     write_record(record_path, record)
     try:
@@ -176,7 +177,7 @@ def preview(repo, record_path, request):
         else:
             record_path.unlink()
         raise
-    if request["restart_api"]:
+    if restart_required:
         restart_api()
     return {"action": "preview", "files": paths, **status(repo, record_path)}
 

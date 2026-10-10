@@ -64,6 +64,8 @@
 - Relevant checks pass; confirm hardware functions on the Pi.
 - A short iteration can use a relevant WSL test and a device test; full `make test`
   is not mandatory before every preview.
+- Release requires PR review and green existing CI checks;
+  the version tested on the Pi must match the release.
 - Port/service changes → update `ARCHITECTURE.md`.
 - Changes described in `docs/` (summary in commits).
 
