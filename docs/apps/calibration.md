@@ -4,6 +4,24 @@ The /calibration page uses existing JavaScript modules and Flask.
 It installs no packages or models. Opening the page reads state;
 it starts no services and sends no ARM, STOP or motion trial.
 
+## Actual executor observations
+
+The panel shows signed linear_step/turn_step only from motion.sdk_output:
+accepted, motion-executor source, original observed_at, exact instance_id and
+generation must match fresh executor status. SDK writes have a 0.25 s budget.
+Older matching steps are marked history/stale without claiming current motion;
+rejected or mismatched data stays unknown. Panel targets and form values
+never determine SDK steps.
+
+Roll, pitch and yaw retain raw SDK values without assuming unverified units.
+Battery converts only a finite 0–1 fraction to %, preserving real zero.
+Each channel has its own observed_at, ready, error and age with a 2.5 s budget.
+Fresh status publication never renews observations; a larger producer-reported
+age is also respected. One channel's failure neither confirms nor invalidates
+others, while a stale parent or hardware/UART failure expires all channels.
+The three current motion.dynamics parameters are shown separately from ENV
+ceilings, including during hardware failure when software configuration is valid and fresh. Hardware errors are shown separately. Physical_completion remains unverified.
+
 ## Profile and units
 
 | Field | Meaning |

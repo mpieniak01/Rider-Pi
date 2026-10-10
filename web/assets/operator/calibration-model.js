@@ -154,3 +154,64 @@ export function activationPendingResult(state, command, now) {
     && state.status === 'partial' && typeof state.error === 'string' && state.error) return { status: 'partial', reason: state.error };
   return now - command.ts > 8 ? { status: 'unknown', reason: 'activation_confirmation_timeout_no_retry' } : null;
 }
+
+// Status publication time never replaces original SDK/sensor observations.
+function motionParent(motion, now) {
+  const identity = motion?.contract_version === 1 && motion.uart_owner === 'motion-executor'
+    && typeof motion.instance_id === 'string' && Boolean(motion.instance_id)
+    && typeof motion.generation === 'string' && Boolean(motion.generation);
+  const error = typeof motion?.error === 'string' && motion.error.startsWith('sensor_quality:') ? null : motion?.error;
+  return Boolean(identity && freshCalibration(motion, now) && motion.hardware_ready === true
+    && !error && !motion.data_error);
+}
+function sourceAge(row, now) {
+  return finite(row?.observed_at) && row.observed_at > 0 && row.observed_at <= now ? now - row.observed_at : null;
+}
+export function sdkOutputObservation(motion, now) {
+  const row = motion?.sdk_output, age = sourceAge(row, now);
+  const steps = object(row) && Number.isInteger(row.linear_step) && Math.abs(row.linear_step) <= 12
+    && Number.isInteger(row.turn_step) && (row.turn_step === 0 || (Math.abs(row.turn_step) >= 20 && Math.abs(row.turn_step) <= 70))
+    && typeof row.stopped === 'boolean' && (!row.stopped || (row.linear_step === 0 && row.turn_step === 0));
+  const trusted = Boolean(motionParent(motion, now) && steps && row.source === 'motion-executor' && row.accepted === true
+    && row.instance_id === motion.instance_id && row.generation === motion.generation
+    && row.stale !== true && row.offline !== true && !row.error && !row.data_error && age !== null);
+  const ready = trusted && age <= .25;
+  return { ready, status: ready ? 'observed' : trusted ? 'stale' : 'unknown', age_s: age,
+    linear_step: trusted ? row.linear_step : null, turn_step: trusted ? row.turn_step : null,
+    accepted: row?.accepted === true, source: row?.source ?? null, observed_at: row?.observed_at ?? null,
+    instance_id: row?.instance_id ?? null, generation: row?.generation ?? null,
+    error: ready ? null : trusted ? 'sdk_output_stale' : row?.error || 'sdk_output_unconfirmed',
+    physical_completion: 'unverified' };
+}
+export function sensorObservations(motion, now) {
+  const parent = motionParent(motion, now), quality = motion?.sensor_quality;
+  const elapsed = freshCalibration(motion, now) ? now - motion.observed_at : null;
+  return Object.fromEntries(['roll', 'pitch', 'yaw', 'battery'].map(name => {
+    const row = quality?.sensors?.[name], source = sourceAge(row, now);
+    const age = source !== null && finite(row?.age_s) && row.age_s >= 0 && elapsed !== null
+      ? Math.max(source, row.age_s + elapsed) : null;
+    const valueValid = finite(row?.value) && (name !== 'battery' || (row.value >= 0 && row.value <= 1));
+    const ready = Boolean(parent && object(quality) && quality.stale !== true && quality.offline !== true
+      && valueValid && age !== null && age <= 2.5 && row?.ready === true
+      && row.stale !== true && row.offline !== true && !row.error && !row.data_error);
+    return [name, { ready, status: ready ? 'observed' : age !== null && age > 2.5 ? 'stale' : 'unknown',
+      value: ready ? (name === 'battery' ? row.value * 100 : row.value) : null,
+      observed_at: row?.observed_at ?? null, age_s: age,
+      producer_ready: row?.ready === true,
+      error: ready ? null : row?.error || (!parent ? 'motion_parent_unconfirmed' : 'measurement_stale_or_missing'),
+      unit: name === 'battery' ? '%' : 'raw_sdk', physical_completion: 'unverified' }];
+  }));
+}
+export function currentDynamics(motion, now) {
+  const row = motion?.dynamics;
+  const ready = motion?.contract_version === 1 && freshCalibration(motion, now)
+    && motion.uart_owner === 'motion-executor' && typeof motion.instance_id === 'string' && Boolean(motion.instance_id)
+    && typeof motion.generation === 'string' && Boolean(motion.generation) && !motion.calibration?.error
+    && object(row) && row.ready === true && !row.error
+    && ['speed_limit', 'linear_rate', 'turn_rate'].every(key => finite(row[key])
+      && row[key] > 0 && row[key] <= (key === 'speed_limit' ? 1 : 100));
+  return { ready: Boolean(ready), observed_at: motion?.observed_at ?? null, age_s: sourceAge(motion, now),
+    speed_limit: ready ? row.speed_limit : null, linear_rate: ready ? row.linear_rate : null,
+    turn_rate: ready ? row.turn_rate : null, error: ready ? null : row?.error || 'motion_dynamics_unconfirmed',
+    physical_completion: 'unverified' };
+}

@@ -2,7 +2,7 @@ import { request, poll } from './transport.js';
 import { nowSeconds, commandSeconds } from './model.js';
 import { el, text, tr, kv, button, ageLabel, showError } from './ui.js';
 import { MAX_PROFILE_BYTES, digestValid, defaultProfile, measuredTable, profileError,
-  parseImportedProfile, trialAverage, activationAllowed, activationView, pulseValues, referenceConfirmed, freshCalibration, activationPendingResult } from './calibration-model.js';
+  parseImportedProfile, trialAverage, activationAllowed, activationView, pulseValues, referenceConfirmed, freshCalibration, activationPendingResult, sdkOutputObservation, sensorObservations, currentDynamics } from './calibration-model.js';
 
 const byId = id => document.getElementById(id);
 const conditions = [['firmware', 'Firmware', 'Firmware'], ['surface', 'Podłoże', 'Surface'],
@@ -347,6 +347,35 @@ export class Calibration {
       : tr('niegotowy / niezweryfikowany', 'unready / unverified') + ' · ' + (view.modelError || 'unknown')]);
     rows.push([tr('Wykonanie fizyczne', 'Physical completion'), 'unverified']);
     byId('calibration-runtime').replaceChildren(kv(rows));
+    const motion = state?.motion, at = nowSeconds(), sdk = sdkOutputObservation(motion, at);
+    const sensors = sensorObservations(motion, at), dynamics = currentDynamics(motion, at);
+    const age = value => value === null ? tr('wiek nieznany', 'age unknown') : value.toFixed(2) + ' s';
+    const timestamp = value => typeof value === 'number' && Number.isFinite(value) ? String(value) : 'unknown';
+    const liveRows = [[tr('Sprzęt wykonawcy: gotowość / błąd', 'Executor hardware: readiness / error'),
+      (freshCalibration(motion, at) && typeof motion?.hardware_ready === 'boolean' ? String(motion.hardware_ready) : 'unknown')
+        + ' · ' + (motion?.error || '—') + ' · ' + ageLabel(motion)],
+      [tr('Signed SDK steps: jazda / skręt', 'Signed SDK steps: linear / turn'),
+      (sdk.linear_step === null ? 'unknown' : String(sdk.linear_step)) + ' / '
+        + (sdk.turn_step === null ? 'unknown' : String(sdk.turn_step)) + ' · ' + sdk.status + ' · ' + age(sdk.age_s)
+        + (sdk.status === 'stale' ? ' · ' + tr('historia; bieżący ruch niepotwierdzony', 'history; current motion unconfirmed') : '')],
+      [tr('Zapis SDK: accepted / źródło / czas', 'SDK write: accepted / source / time'),
+        String(sdk.accepted) + ' · ' + (sdk.source || 'unknown') + ' · observed_at ' + timestamp(sdk.observed_at)],
+      [tr('Zapis SDK: instancja / generacja', 'SDK write: instance / generation'),
+        (sdk.instance_id || 'unknown') + ' · ' + (sdk.generation || 'unknown') + (sdk.error ? ' · ' + sdk.error : '')]];
+    for (const [name, row] of Object.entries(sensors)) {
+      liveRows.push([name === 'battery' ? tr('Bateria (%)', 'Battery (%)') : 'IMU ' + name + ' · ' + tr('surowa wartość SDK', 'raw SDK value'),
+        (row.value === null ? 'unknown' : String(row.value)) + ' · ' + row.status + ' · '
+          + tr('ready', 'ready') + '=' + String(row.ready) + ' · ' + age(row.age_s)
+          + ' · observed_at ' + timestamp(row.observed_at) + (row.error ? ' · ' + row.error : '')]);
+    }
+    for (const [key, title] of [['speed_limit', tr('Bieżący limit (0–1)', 'Current limit (0–1)')],
+      ['linear_rate', tr('Bieżąca rampa jazdy (znormalizowane/s)', 'Current linear ramp (normalized/s)')],
+      ['turn_rate', tr('Bieżąca rampa skrętu (znormalizowane/s)', 'Current turn ramp (normalized/s)')]]) {
+      liveRows.push([title, (dynamics[key] === null ? 'unknown' : String(dynamics[key])) + ' · '
+        + age(dynamics.age_s) + (dynamics.error ? ' · ' + dynamics.error : '')]);
+    }
+    liveRows.push([tr('Wykonanie fizyczne', 'Physical completion'), 'unverified']);
+    byId('calibration-live-data').replaceChildren(kv(liveRows));
     const ceilings = state?.motion?.calibration?.ceilings;
     text('calibration-ceilings', tr('Pułapy uruchomionego wykonawcy', 'Running executor ceilings') + ': '
       + (ceilings ? JSON.stringify(ceilings) : 'unknown') + ' · ' + tr('nie są pomiarami fizycznymi', 'not physical measurements'));

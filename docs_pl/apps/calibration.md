@@ -4,6 +4,24 @@ Panel /calibration korzysta z istniejących modułów JavaScript i Flask.
 Nie instaluje pakietów ani modeli. Otwarcie strony wykonuje odczyty;
 nie uruchamia usług, nie wysyła ARM, STOP ani prób ruchu.
 
+## Rzeczywiste odczyty wykonawcy
+
+Panel pokazuje signed linear_step/turn_step wyłącznie z motion.sdk_output:
+accepted, źródło motion-executor, oryginalny observed_at, dokładne instance_id
+i generation muszą pasować do świeżego statusu wykonawcy. Budżet zapisu SDK
+wynosi 0.25 s. Starsze pasujące kroki są oznaczone jako historia/stale,
+bez twierdzenia o aktualnym ruchu; dane odrzucone lub niezgodne są unknown.
+Cel panelu i wartości formularza nigdy nie służą do wyliczenia kroków SDK.
+
+Roll, pitch i yaw są surowymi wartościami SDK bez przypisywania niepotwierdzonych
+jednostek. Bateria jest przeliczana z finite fraction 0–1 na %, z zachowaniem
+prawdziwego zera. Każdy kanał ma własne observed_at, ready, error i wiek
+z budżetem 2.5 s. Świeża publikacja statusu nie odmładza pomiaru; uwzględniony
+jest także większy wiek zgłoszony przez producenta. Błąd jednego kanału
+nie potwierdza ani nie psuje innych, ale brak świeżego rodzica lub błąd
+UART/sprzętu wygasza całość. Bieżące trzy parametry motion.dynamics są
+pokazywane oddzielnie od pułapów ENV, także przy błędzie sprzętu, gdy konfiguracja jest poprawna i świeża. Błąd sprzętu jest pokazany osobno. Physical_completion pozostaje unverified.
+
 ## Profil i jednostki
 
 | Pole | Znaczenie |

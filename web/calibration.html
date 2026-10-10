@@ -36,7 +36,12 @@
 <p id="calibration-runtime-status" role="status">unknown</p><div id="calibration-runtime"></div>
 <p class="operator-muted" data-pl="Odpowiedź 202 to oczekiwanie. Aktywny profil wymaga świeżego potwierdzenia tego samego skrótu przez motion i odometry. Brak lub stary ACK pozostaje niepotwierdzony." data-en="A 202 response is pending. An active profile requires fresh confirmation of the same digest by motion and odometry. Missing or stale ACK remains unconfirmed.">Odpowiedź 202 to oczekiwanie. Aktywny profil wymaga świeżego potwierdzenia tego samego skrótu przez motion i odometry. Brak lub stary ACK pozostaje niepotwierdzony.</p>
 </section></div>
-<section class="c-card"><h2 data-pl="Profil i warunki pomiaru" data-en="Profile and measurement conditions">Profil i warunki pomiaru</h2>
+<section class="c-card"><h2 data-pl="Rzeczywiste odczyty wykonawcy" data-en="Actual executor observations">Rzeczywiste odczyty wykonawcy</h2>
+<p data-pl="Kroki SDK pochodzą wyłącznie z zaakceptowanego zapisu motion-executor. Stare kroki są historią, nie dowodem bieżącego ruchu. Każdy kanał IMU i baterii ma własny czas pomiaru; publikacja statusu go nie odnawia." data-en="SDK steps come only from an accepted motion-executor write. Old steps are history, not proof of current motion. Each IMU and battery channel has its own observation time; status publication does not renew it.">Kroki SDK pochodzą wyłącznie z zaakceptowanego zapisu motion-executor. Stare kroki są historią, nie dowodem bieżącego ruchu. Każdy kanał IMU i baterii ma własny czas pomiaru; publikacja statusu go nie odnawia.</p>
+<div id="calibration-live-data"></div>
+<p class="operator-muted" data-pl="IMU pokazuje surowe wartości SDK — jednostki nie są zgadywane. Bateria jest przeliczana z poprawnego ułamka 0–1 na %. Przyjęcie zapisu SDK i świeże czujniki nie potwierdzają wykonania fizycznego." data-en="IMU shows raw SDK values — units are not guessed. Battery converts a valid 0–1 fraction to %. SDK acceptance and fresh sensors do not confirm physical completion.">IMU pokazuje surowe wartości SDK — jednostki nie są zgadywane. Bateria jest przeliczana z poprawnego ułamka 0–1 na %. Przyjęcie zapisu SDK i świeże czujniki nie potwierdzają wykonania fizycznego.</p>
+</section>
+<section class="c-card"><h2 data-pl="Profil i warunki pomiaru"  data-en="Profile and measurement conditions">Profil i warunki pomiaru</h2>
 <p id="calibration-loaded">—</p>
 <form id="calibration-profile-form">
 <div class="operator-grid">

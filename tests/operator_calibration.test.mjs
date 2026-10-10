@@ -146,7 +146,7 @@ async function fixture() {
   const el = (tag, css = '', value) => { const node = new Element(tag); node.textContent = value ?? ''; return node; };
   const ctx = vm.createContext({ ...model, document, structuredClone, TextEncoder, Date, Math, Number, String, Object,
     JSON, Promise, Boolean, Error, window: { addEventListener() {} }, setTimeout() {}, globalThis: { crypto: { randomUUID: () => counter++ === 0 ? 'fixture-request' : 'fixture-request-' + counter } },
-    nowSeconds: () => moment, commandSeconds: () => moment, el, tr: pl => pl, ageLabel: () => '0 s', kv: () => new Element(),
+    nowSeconds: () => moment, commandSeconds: () => moment, el, tr: pl => pl, ageLabel: () => '0 s', kv: values => { const node = new Element(); node.rows = values; return node; },
     button: (title, callback) => { const node = new Element('button'); node.listeners.click = callback; return node; },
     text: (id, value) => { elements.get(id).textContent = value; }, showError() {},
     request: async (route, options = {}) => {
@@ -251,4 +251,115 @@ test('reference denies old consumer after profile change and correlates expected
       instance_id: 'odom', action: 'reference', status: 'executed', accepted: true, actuation: false, profile_digest: digest } };
   assert.equal(model.referenceConfirmed(snapshot, command, now), true);
   snapshot.pose.calibration_id = 'old'; assert.equal(model.referenceConfirmed(snapshot, command, now), false);
+});
+
+function measuredMotion() {
+  const motion = { ...runtime().motion, contract_version: 1, hardware_ready: true, uart_owner: 'motion-executor' };
+  motion.sdk_output = { accepted: true, source: 'motion-executor', instance_id: motion.instance_id,
+    generation, observed_at: now - .1, linear_step: -1, turn_step: 20, stopped: false };
+  motion.sensor_quality = { ready: true, error: null, sensors: Object.fromEntries(
+    [['roll', 0], ['pitch', -2.5], ['yaw', 170], ['battery', .5]].map(([name, value]) =>
+      [name, { value, observed_at: now - .2, age_s: .2, ready: true, error: null }])) };
+  motion.dynamics = { ready: true, error: null, speed_limit: .2, linear_rate: .4, turn_rate: .8 };
+  motion.calibration = { ceilings: { speed_limit: .6, linear_rate: 1, turn_rate: 2 } };
+  return motion;
+}
+test('SDK steps preserve actual signed values, identity and original write time, never form inputs', () => {
+  const motion = measuredMotion(), value = model.sdkOutputObservation(motion, now);
+  assert.equal(value.ready, true); assert.equal(value.linear_step, -1); assert.equal(value.turn_step, 20);
+  assert.equal(value.source, 'motion-executor'); assert.equal(value.instance_id, motion.instance_id);
+  assert.equal(value.generation, generation); assert.equal(value.observed_at, now - .1);
+  assert.equal(value.physical_completion, 'unverified');
+  motion.target = { lx: .9, az: -.9 }; motion.output = { lx: .8, az: -.8 };
+  assert.equal(model.sdkOutputObservation(motion, now).linear_step, -1);
+});
+test('stale SDK write is labeled historical and cannot be renewed by parent publication', () => {
+  const motion = measuredMotion(); motion.observed_at = now + 1;
+  const value = model.sdkOutputObservation(motion, now + 1);
+  assert.equal(value.ready, false); assert.equal(value.status, 'stale');
+  assert.equal(value.linear_step, -1); assert.equal(value.observed_at, now - .1);
+  assert.equal(value.physical_completion, 'unverified');
+});
+test('unknown, rejected, wrong-identity and malformed SDK observations stay unknown', () => {
+  for (const patch of [{ accepted: false }, { source: 'panel' }, { instance_id: 'other' }, { generation: 'other' },
+    { observed_at: null }, { observed_at: now + .1 }, { linear_step: 1.5 }, { turn_step: true }, { stopped: true }]) {
+    const motion = measuredMotion(); Object.assign(motion.sdk_output, patch);
+    const value = model.sdkOutputObservation(motion, now);
+    assert.equal(value.ready, false); assert.equal(value.status, 'unknown'); assert.equal(value.linear_step, null);
+  }
+  for (const patch of [{ observed_at: now - 4 }, { hardware_ready: false }, { error: 'uart_failed' }, { offline: true }]) {
+    const value = model.sdkOutputObservation({ ...measuredMotion(), ...patch }, now);
+    assert.equal(value.ready, false); assert.equal(value.linear_step, null);
+  }
+});
+test('IMU raw SDK values and battery fractions retain independent source times and quality', () => {
+  const motion = measuredMotion(), rows = model.sensorObservations(motion, now);
+  assert.equal(rows.roll.value, 0); assert.equal(rows.pitch.value, -2.5); assert.equal(rows.yaw.value, 170);
+  assert.equal(rows.yaw.unit, 'raw_sdk'); assert.equal(rows.battery.value, 50); assert.equal(rows.battery.unit, '%');
+  for (const row of Object.values(rows)) {
+    assert.equal(row.ready, true); assert.equal(row.observed_at, now - .2); assert.equal(row.physical_completion, 'unverified');
+  }
+  motion.error = motion.sensor_quality.error = 'sensor_quality:battery'; motion.sensor_quality.ready = false;
+  Object.assign(motion.sensor_quality.sensors.battery, { ready: false, value: null, error: 'missing_battery' });
+  const partial = model.sensorObservations(motion, now);
+  assert.equal(partial.roll.ready, true); assert.equal(partial.yaw.ready, true);
+  assert.equal(partial.battery.ready, false); assert.equal(partial.battery.error, 'missing_battery');
+});
+test('new parent and aggregate timestamps never refresh expired/null/future sensor times', () => {
+  const motion = measuredMotion();
+  motion.sensor_quality.observed_at = motion.observed_at = now + 3;
+  const rows = model.sensorObservations(motion, now + 3);
+  for (const row of Object.values(rows)) assert.equal(row.ready, false);
+  assert.equal(rows.yaw.status, 'stale'); assert.equal(rows.yaw.observed_at, now - .2);
+  for (const patch of [{ observed_at: null }, { observed_at: now + .1 }, { ready: false }, { error: 'failed' },
+    { age_s: null }, { age_s: 3 }, { stale: true }, { value: NaN }]) {
+    const sample = measuredMotion(); Object.assign(sample.sensor_quality.sensors.yaw, patch);
+    assert.equal(model.sensorObservations(sample, now).yaw.ready, false);
+  }
+  const oldParent = measuredMotion(); oldParent.observed_at = now - 4;
+  assert.equal(model.sensorObservations(oldParent, now).yaw.ready, false);
+  assert.equal(model.sensorObservations({ ...measuredMotion(), error: 'uart_failed' }, now).roll.ready, false);
+});
+test('battery conversion accepts only finite fractions including real zero', () => {
+  for (const [fraction, expected] of [[0, 0], [1, 100], [.23, 23]]) {
+    const motion = measuredMotion(); motion.sensor_quality.sensors.battery.value = fraction;
+    assert.equal(model.sensorObservations(motion, now).battery.value, expected);
+  }
+  for (const value of [-.01, 1.01, 50, Infinity, NaN, null, true]) {
+    const motion = measuredMotion(); motion.sensor_quality.sensors.battery.value = value;
+    assert.equal(model.sensorObservations(motion, now).battery.ready, false);
+    assert.equal(model.sensorObservations(motion, now).battery.value, null);
+  }
+});
+test('current dynamics report runtime parameters separately from ENV ceilings and form values', () => {
+  const motion = measuredMotion(), value = model.currentDynamics(motion, now);
+  assert.equal(value.ready, true);
+  assert.equal(value.speed_limit, .2); assert.equal(value.linear_rate, .4); assert.equal(value.turn_rate, .8);
+  assert.notEqual(value.speed_limit, motion.calibration.ceilings.speed_limit);
+  for (const patch of [{ ready: false }, { error: 'invalid_motion_limits' }, { speed_limit: null }, { linear_rate: NaN }]) {
+    const sample = measuredMotion(); Object.assign(sample.dynamics, patch);
+    assert.equal(model.currentDynamics(sample, now).ready, false);
+  }
+});
+test('live observation rendering is read only and expires each source without extra requests', async () => {
+  const row = await fixture(), state = runtime(); state.motion = measuredMotion(); row.setState(state);
+  row.elements.get('motion-speed-limit').value = '.9';
+  row.panel.render();
+  const values = () => row.elements.get('calibration-live-data').children[0].rows.map(pair => pair.join(': ')).join('\n');
+  assert.match(values(), /-1 \/ 20.*observed/); assert.match(values(), /Bateria.*50/);
+  assert.match(values(), /Bieżący limit.*0.2/); assert.match(values(), /unverified/);
+  const count = row.calls.length; row.setTime(now + 3);
+  state.motion.observed_at = now + 3; row.panel.render();
+  assert.match(values(), /stale.*historia/); assert.match(values(), /yaw.*unknown.*stale/);
+  assert.equal(row.calls.length, count); assert.equal(row.moves.length, 0);
+});
+
+test('fresh software dynamics stay observable through hardware failure while physical observations fail closed', () => {
+  const motion = measuredMotion(); motion.hardware_ready = false; motion.error = 'uart_failed';
+  assert.equal(model.currentDynamics(motion, now).ready, true);
+  assert.equal(model.currentDynamics(motion, now).speed_limit, .2);
+  assert.equal(model.sdkOutputObservation(motion, now).ready, false);
+  assert.equal(model.sensorObservations(motion, now).yaw.ready, false);
+  motion.calibration.error = 'active_profile_invalid';
+  assert.equal(model.currentDynamics(motion, now).ready, false);
 });
