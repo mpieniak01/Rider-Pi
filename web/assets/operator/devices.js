@@ -24,7 +24,7 @@ export function telemetryChannel(xgo, name, unavailable = false) {
 export class Devices {
   constructor() {
     this.imageBusy = false; this.preview = false; this.meta = null; this.lastFrame = null; this.displayed = null; this.pendingImage = null;
-    this.xgo = null; this.telemetryUnavailable = true;
+    this.xgo = null; this.telemetryUnavailable = true; this.resourceRows = [];
     this.image = document.getElementById('camera-image');
     this.image?.addEventListener('load', () => { this.displayed = this.pendingImage; this.pendingImage = null; this.imageBusy = false; clearTimeout(this.imageTimeout); this.renderPreview(); });
     this.image?.addEventListener('error', () => { this.pendingImage = null; this.displayed = null; this.imageBusy = false; clearTimeout(this.imageTimeout); this.lastFrame = null; text('camera-display-age', tr('Nie udało się wczytać klatki', 'Frame load failed')); });
@@ -71,7 +71,13 @@ export class Devices {
       if (data.error) card.append(el('p', 'operator-error', data.error));
       card.append(rawDetails(data)); return card;
     });
-    target?.replaceChildren(...rows);
+    this.resourceRows = rows;
+    if (document.getElementById('telemetry-list')) target?.replaceChildren(...rows);
+    else if (target) {
+      // Cached older markup has one list for measurements and resource owners.
+      try { await this.loadTelemetry(); }
+      catch (error) { this.telemetryUnavailable = true; this.renderTelemetry(); showError(error); }
+    }
     this.renderPreview();
   }
   async loadTelemetry() {
@@ -81,7 +87,8 @@ export class Devices {
     this.renderTelemetry();
   }
   renderTelemetry() {
-    const target = document.getElementById('telemetry-list'); if (!target) return;
+    const measurements = document.getElementById('telemetry-list');
+    const target = measurements || document.getElementById('device-list'); if (!target) return;
     const xgo = this.xgo;
     const samples = Object.fromEntries(['roll', 'pitch', 'yaw', 'battery'].map(name => [name, telemetryChannel(xgo, name, this.telemetryUnavailable)]));
     const axes = ['roll', 'pitch', 'yaw'].map(name => samples[name]);
@@ -104,8 +111,8 @@ export class Devices {
       [tr('Wiek całego IMU', 'Complete IMU age'), ageOf({ observed_at: imuAt }) === null ? tr('nieznany', 'unknown') : ageStamp({ observed_at: imuAt }, 2.5)]
     ]), el('p', 'operator-muted', tr('Świeży transport nie potwierdza poprawności fizycznej pomiaru. Semantyka surowego yaw wymaga weryfikacji; zawinięcie nie koryguje sensora.',
       'Fresh transport does not validate the physical measurement. Raw yaw semantics require verification; wrapping does not correct the sensor.')));
-    const source = rawDetails(xgo); source.open = target.querySelector('details')?.open === true;
-    telemetry.append(source); target.replaceChildren(telemetry);
+    const source = rawDetails(xgo); source.open = target.querySelector?.('details')?.open === true;
+    telemetry.append(source); target.replaceChildren(telemetry, ...(measurements ? [] : this.resourceRows));
   }
   renderPreview() {
     text('preview-toggle', this.preview ? tr('Wyłącz odświeżanie obrazu', 'Disable image refresh') : tr('Włącz odświeżanie obrazu', 'Enable image refresh'));
