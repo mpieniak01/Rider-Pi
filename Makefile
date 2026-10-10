@@ -483,9 +483,11 @@ lcd-off-hard:
 # ───────────────────────────────────────────────
 # TESTS & BENCH
 .PHONY: test bench
+TEST_PY ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PY))
+TEST_ARGS ?= -q tests
 test:
 	@echo "Testy Rider-Pi..."
-	@(pytest -q tests 2>/dev/null || $(PY) -m unittest discover -s tests -p "test_*.py" || true)
+	@$(TEST_PY) -m pytest $(TEST_ARGS)
 
 bench:
 	bash scripts/diag_bench-detect.sh 10
