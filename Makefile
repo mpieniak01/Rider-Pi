@@ -243,7 +243,6 @@ vendor-kill:
 	@$(SUDO) systemctl stop yahboom* || true
 	@$(SUDO) systemctl stop rider-vendor* || true
 	@$(SUDO) systemctl stop jupyter.service || true
-	@$(SUDO) systemctl start jupyter.service || true
 
 # alias dla literówki
 vendir-kill:

@@ -97,15 +97,15 @@ SERVICE_META: dict[str, ServiceMeta] = {
         "id": "jupyter",
         "group": "dev",
         "label": "Jupyter Lab",
-        "description": "Środowisko deweloperskie Jupyter Lab.",
+        "description": "Opcjonalne środowisko Jupyter Lab, uruchamiane wyłącznie ręcznie.",
         "edges_out": [],
     },
     "rider-dev.target": {
         "id": "dev-target",
         "group": "core",
         "label": "Dev target",
-        "description": "Cel systemd dla usług developerskich (np. Jupyter).",
-        "edges_out": ["jupyter"],
+        "description": "Ręczny profil GUI i podglądu legacy, bez automatycznego startu Jupyter.",
+        "edges_out": ["camera-capture-edge", "camera-capture-ssd"],
     },
     "rider-web-bridge.service": {
         "id": "web-bridge",

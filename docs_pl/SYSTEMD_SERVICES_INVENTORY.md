@@ -16,18 +16,18 @@
 
 ### 1. jupyter.service
 
-**Description:** JupyterLab (developer mode)
+**Description:** JupyterLab (manual developer tool)
 
 **Type:** simple
 
 **ExecStart:**
 ```
-/usr/bin/python3 -m jupyter lab --notebook-dir=/home/pi --ip=0.0.0.0 --no-browser --port=8888
+/usr/bin/python3 -u /home/pi/robot/apps/jupyter_runner.py
 ```
 
-**Status:** ✅ Valid - System Python module
+**Status:** ✅ Valid — optional manual tool; no boot install target
 
-**Notes:** Developer tool, not critical for robot operation
+**Uwagi:** Port 8888; start/stop ręczny. Przy aktualizacji usuń stare linki autostartu w targetach, zachowując link do definicji unitu w repo (zobacz WDROZENIE.md). DEV S11 i sprzątanie producenta nie uruchamiają Jupytera.
 
 ---
 
@@ -453,9 +453,9 @@
 
 ### rider-dev.target (S11 / DEV profile)
 
-**Opis:** Target narzędzi developerskich – uruchamia środowisko graficzne, Jupyter oraz previewy. Aby korzystać z komponentów legacy (`rider-face`, preview edge/ssd) należy wykonać `scripts/systemd-sync.sh --with-dev`, który linkuje jednostki z `systemd/legacy/`.
+**Opis:** Ręczny target deweloperski – uruchamia środowisko graficzne i previewy; Jupyter pozostaje osobnym narzędziem ręcznym. Aby korzystać z komponentów legacy (`rider-face`, preview edge/ssd) należy wykonać `scripts/systemd-sync.sh --with-dev`, który linkuje jednostki z `systemd/legacy/`.
 
-**Wants:** `graphical.target`, `jupyter.service`, `camera-capture@edge.service`, `camera-capture@ssd.service` (po linkowaniu dev). 
+**Wants:** `graphical.target`, `camera-capture@edge.service`, `camera-capture@ssd.service` (po linkowaniu dev).
 
 **Status:** ✅ Target developerski (`s11_dev_mode`). Nie włączany automatycznie na produkcji.
 

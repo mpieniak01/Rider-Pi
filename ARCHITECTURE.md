@@ -5,7 +5,19 @@
 - **Low Power** and **Stability** — lightweight services, restartable via `systemd`.
 - **Single HTTP Entry Point**: public API on port 8080.
 - **Internal Communication**: ZMQ PUB/SUB (5555/5556) + files in `data/` and `snapshots/`.
-- **Target Environment**: Raspberry Pi (Debian/Bookworm), **Python 3.9**.
+- **Target Environment**: Raspberry Pi (Debian 11/Bullseye), **Python 3.9**.
+
+---
+
+## Optional developer tools
+
+Jupyter Lab on port 8888 is an optional manual tool. `jupyter.service` has no
+boot install target; neither vendor cleanup nor the S11 DEV profile starts it.
+Use `sudo systemctl start jupyter.service` or `sudo systemctl stop jupyter.service`
+explicitly when needed. When upgrading the old setup, remove its target autostart
+links and preserve `/etc/systemd/system/jupyter.service`, which points into the
+checkout. Editing the unit alone does not remove old links. See the
+[Jupyter migration procedure](docs/DEPLOYMENT.md#jupyter-autostart-migration).
 
 ---
 

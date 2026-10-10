@@ -5,7 +5,19 @@
 - **Niska energia** i **stabilność** — usługi lekkie, restartowalne przez `systemd`.
 - **Jedno wejście HTTP**: publiczne API na porcie 8080.
 - **Wymiana wewnętrzna**: ZMQ PUB/SUB (5555/5556) + pliki w `data/` i `snapshots/`.
-- **Środowisko docelowe**: Raspberry Pi (Debian/Bookworm), **Python 3.9**.
+- **Środowisko docelowe**: Raspberry Pi (Debian 11/Bullseye), **Python 3.9**.
+
+---
+
+## Narzędzia deweloperskie
+
+Jupyter Lab na porcie 8888 pozostaje narzędziem uruchamianym ręcznie.
+`jupyter.service` nie ma targetu instalacji przy starcie, a sprzątanie
+producenta i profil DEV S11 nie uruchamiają go. W razie potrzeby używaj
+`sudo systemctl start jupyter.service` lub `sudo systemctl stop jupyter.service`.
+Po aktualizacji starej instalacji usuń linki autostartu w targetach, zachowując
+`/etc/systemd/system/jupyter.service` wskazujący repo. Sama edycja unitu ich nie
+usuwa. Zobacz [procedurę migracji Jupytera](WDROZENIE.md#migracja-autostartu-jupytera).
 
 ---
 

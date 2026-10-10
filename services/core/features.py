@@ -137,10 +137,9 @@ DEFAULT_REGISTRY: dict[str, FeatureDefinition] = {
         name="s11_dev_mode",
         scenario="S11",
         title="Tryb deweloperski",
-        description="Profile testowe i narzędzia developerskie (Jupyter, legacy preview).",
+        description="Profile testowe i podgląd legacy; Jupyter uruchamiany osobno, ręcznie.",
         services=(
             "rider-dev.target",
-            "jupyter.service",
             "rider-face.service",
             "camera-capture@edge.service",
             "camera-capture@ssd.service",

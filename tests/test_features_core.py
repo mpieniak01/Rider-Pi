@@ -67,6 +67,16 @@ def test_enable_face_tracking_starts_preview_and_services() -> None:
     assert publisher.sent[-1][1]["mode"] == "face"
 
 
+def test_dev_profile_does_not_start_or_stop_manual_jupyter() -> None:
+    runner = FakeRunner()
+    runner.state["jupyter.service"] = True
+    mgr = make_manager(runner, NullPublisher())
+    assert mgr.set_feature("s11_dev_mode", True)["ok"] is True
+    assert mgr.set_feature("s11_dev_mode", False)["ok"] is True
+    assert not any(unit == "jupyter.service" for unit, _ in runner.actions)
+    assert runner.state["jupyter.service"] is True
+
+
 def test_disable_face_tracking_stops_services_and_preview() -> None:
     runner = FakeRunner()
     runner.state["camera-capture@raw.service"] = True  # already running (autostart flag set on enable)

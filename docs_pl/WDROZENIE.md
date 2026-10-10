@@ -46,6 +46,40 @@ ustawień sieci/SSH/getty, startu grafiki ani zbiorczej synchronizacji systemd.
 Nie uruchamiaj `systemd-sync.sh` ani `run_boot` przy aktualizacji panelu.
 Zmiany unitów i zależności wymagają osobnego zakresu wdrożenia i przeglądu.
 
+## Podgląd na urządzeniu przed publikacją
+
+Zmiany można najpierw sprawdzić na robocie jako lokalny zestaw plików.
+Zapisz bazowy commit, listę zmienianych plików i ich sumy SHA-256 oraz kopię
+poprzednich wersji tych plików poza repo. Przenoś wyłącznie jawnie wybrane
+pliki kodu i unitów; konfiguracja prywatna i katalogi operacyjne pozostają lokalne.
+Przed podmianą potwierdź czysty katalog roboczy i zgodność plików z bazą.
+Sprawdź składnię na Pythonie urządzenia oraz definicje przez `systemd-analyze verify`.
+
+Repo urządzenia będzie zawierać lokalne zmiany; bazowy hash Git nie opisuje
+całego uruchomionego zestawu. Nie wykonuj wtedy `git pull`. Po akceptacji
+podglądu opublikuj i zrecenzuj ten sam zestaw, sprawdź zgodność sum plików,
+wycofaj lokalną podmianę i dopiero zaktualizuj czyste repo przez Git.
+Wycofanie przywraca wybrane pliki oraz zapisany stan usług i autostartu.
+
+## Migracja autostartu Jupytera
+
+Po podmianie definicji Jupytera na ręczną sprawdź istniejące linki w targetach.
+Dla starego linku potwierdzonego w `multi-user.target.wants`:
+
+```bash
+sudo systemctl stop jupyter.service
+sudo rm -f /etc/systemd/system/multi-user.target.wants/jupyter.service
+sudo systemctl daemon-reload
+systemctl show jupyter.service -p ActiveState -p UnitFileState
+```
+
+Zachowaj `/etc/systemd/system/jupyter.service` wskazujący plik repo.
+`systemctl disable` usuwa również ten link, bo definicja znajduje się poza
+ścieżką jednostek systemd. Stan `linked` po usunięciu członkostwa w targetach
+jest poprawny: jednostka pozostaje dostępna do ręcznego uruchomienia.
+Sprawdź też brak innych linków `.wants`/`.requires`, brak startu w sprzątaniu
+producenta i brak zależności w DEV. Nie usuwaj ani nie odinstalowuj Jupyter Lab.
+
 ## Odtwarzanie
 
 Przy awarii aplikacji korzystaj z zapisanej poprzedniej rewizji i przejrzyj

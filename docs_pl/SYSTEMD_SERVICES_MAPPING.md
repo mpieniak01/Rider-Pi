@@ -6,7 +6,7 @@ This document provides a mapping of all systemd service files to the scripts the
 
 | Service File | Status | ExecStart Path | Notes |
 |--------------|--------|----------------|-------|
-| **jupyter.service** | ✓ Valid | `/usr/bin/python3 -m jupyter lab` | System Python module |
+| **jupyter.service** | ✓ Valid | `/usr/bin/python3 -u /home/pi/robot/apps/jupyter_runner.py` | Manual only; no boot target |
 | **rider-api.service** | ✓ Valid | `/usr/bin/python3 -u -m services.api_server` | Python module in `services/` |
 | **rider-boot-splash.service** | ✓ Valid | `/home/pi/robot/scripts/sys_boot-prepare.sh` | Script in `scripts/` (renamed from rider-boot-prepare.service) |
 | **rider-broker.service** | ✓ Valid | `/usr/bin/python3 -u services/broker.py` | Python script in `services/` |

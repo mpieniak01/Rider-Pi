@@ -47,6 +47,40 @@ network/SSH/getty settings, graphics startup or broad systemd synchronization.
 Do not run `systemd-sync.sh` or `run_boot` as part of a panel update.
 Unit or dependency changes require their own reviewed deployment scope.
 
+## Device preview before publication
+
+Changes can first be previewed on the robot as local file changes. Record
+the base commit, an explicit file list and SHA-256 hashes, and back up the
+previous versions of those files outside the checkout. Transfer only selected
+code and unit files; private configuration and operational directories stay
+local. Before replacing files, confirm a clean checkout and matching base
+contents. Validate with the device Python and `systemd-analyze verify`.
+
+The device checkout now contains local modifications: its base Git hash does
+not identify the entire running file set. Do not use `git pull` in this state.
+After accepting the preview, publish and review the same changes, compare file
+hashes, restore the clean base, then update through Git. Rollback restores the
+selected files and the recorded service and autostart state.
+
+## Jupyter autostart migration
+
+After installing the manual Jupyter unit, inspect its existing target links.
+For the old link confirmed in `multi-user.target.wants`:
+
+```bash
+sudo systemctl stop jupyter.service
+sudo rm -f /etc/systemd/system/multi-user.target.wants/jupyter.service
+sudo systemctl daemon-reload
+systemctl show jupyter.service -p ActiveState -p UnitFileState
+```
+
+Keep `/etc/systemd/system/jupyter.service` pointing to the checkout. Running
+`systemctl disable` also removes this definition link because its target is
+outside systemd's unit search path. The resulting `linked` state is correct:
+the unit remains available for manual start without target membership.
+Also confirm no other `.wants`/`.requires` links, no vendor cleanup start and
+no DEV dependency. Keep Jupyter Lab installed.
+
 ## Recovery
 
 For an application failure, use the recorded previous revision and review

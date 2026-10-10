@@ -16,18 +16,18 @@
 
 ### 1. jupyter.service
 
-**Description:** JupyterLab (developer mode)
+**Description:** JupyterLab (manual developer tool)
 
 **Type:** simple
 
 **ExecStart:**
 ```
-/usr/bin/python3 -m jupyter lab --notebook-dir=/home/pi --ip=0.0.0.0 --no-browser --port=8888
+/usr/bin/python3 -u /home/pi/robot/apps/jupyter_runner.py
 ```
 
-**Status:** ✅ Valid - System Python module
+**Status:** ✅ Valid — optional manual tool; no boot install target
 
-**Notes:** Developer tool, not critical for robot operation
+**Notes:** Default port 8888; manual start/stop only. Remove old target enable links when upgrading; preserve the repo-backed unit definition link (see DEPLOYMENT.md). DEV S11 and vendor cleanup do not start Jupyter.
 
 ---
 

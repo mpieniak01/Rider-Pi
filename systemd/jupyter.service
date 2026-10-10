@@ -1,5 +1,5 @@
 [Unit]
-Description=JupyterLab (developer mode)
+Description=JupyterLab (manual developer tool)
 After=network.target
 
 [Service]
@@ -13,5 +13,4 @@ RestartSec=10
 MemoryHigh=150M
 MemoryMax=220M
 
-[Install]
-WantedBy=multi-user.target
+# Manual start only. Remove old target enable links; preserve this repo-backed unit link.
