@@ -10,15 +10,15 @@ const assets = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../we
 const model = await import(`data:text/javascript;base64,${Buffer.from(await readFile(path.join(assets, 'model.js'))).toString('base64')}`);
 const instant = Date.now() / 1000;
 const capability = { available: true, stop_verified: true };
-const armed = () => ({ contract_version: 1, state: 'ARMED', generation: 'fixture-generation', owner: 'manual',
-  ready: true, hardware_ready: true, can_move: true, read_only: false, observed_at: Date.now() / 1000, lease_remaining_s: 10, last_seq: 4,
+const armed = (now = Date.now() / 1000) => ({ contract_version: 1, state: 'ARMED', generation: 'fixture-generation', owner: 'manual',
+  ready: true, hardware_ready: true, can_move: true, read_only: false, observed_at: now, lease_remaining_s: 10, last_seq: 4,
   capabilities: { move: capability, turn: capability, height: { available: false, stop_verified: false, verification: 'manual_characterization_required' } } });
-const disarmed = () => ({ ...armed(), state: 'DISARMED', owner: null, can_move: false, read_only: true });
+const disarmed = (now = Date.now() / 1000) => ({ ...armed(now), state: 'DISARMED', owner: null, can_move: false, read_only: true });
 
 test('movement requires version, fresh observation, state, owner, lease and stop capability', () => {
-  const state = armed();
+  const state = armed(instant);
   assert.equal(model.authorized(state, 'manual', 'move', instant), true);
-  for (const patch of [{ contract_version: 0 }, { observed_at: instant - 4 }, { observed_at: null },
+  for (const patch of [{ contract_version: 0 }, { observed_at: instant - 4 }, { observed_at: instant + .2 }, { observed_at: null },
     { state: 'DISARMED' }, { ready: false }, { hardware_ready: false }, { can_move: false }, { read_only: true },
     { owner: 'navigation' }, { lease_remaining_s: 0 }, { lease_remaining_s: 31 }, { lease_remaining_s: Infinity }, { generation: '' },
     { capabilities: { move: { available: true, stop_verified: false } } }]) {
@@ -27,8 +27,8 @@ test('movement requires version, fresh observation, state, owner, lease and stop
   assert.equal(model.authorized(state, 'manual', 'height', instant), false);
 });
 test('DISARMED read_only is a valid known contract for explicit preparation', () => {
-  assert.equal(model.safetyKnown(disarmed()), true);
-  assert.equal(model.authorized(disarmed(), 'manual'), false);
+  assert.equal(model.safetyKnown(disarmed(instant), instant), true);
+  assert.equal(model.authorized(disarmed(instant), 'manual', 'move', instant), false);
 });
 test('zero is a measurement; null and stale frame timestamps remain unknown', () => {
   assert.equal(model.displayValue(0, '%'), '0%');
@@ -43,11 +43,11 @@ test('zero is a measurement; null and stale frame timestamps remain unknown', ()
 test('old catalog and moving owner mismatch cannot start a task', () => {
   const task = { installed: true, observed_at: instant, state: 'stopped', can_move: true, motion_owner: 'navigation' };
   const catalog = { contract_version: 2, catalog_version: 2, observed_at: instant, features: [task], units: [] };
-  assert.equal(model.taskCanStart(task, catalog, armed(), instant), false);
-  assert.equal(model.taskCanStart(task, { ...catalog, contract_version: 1 }, { ...armed(), owner: 'navigation' }, instant), false);
-  assert.equal(model.taskCanStart(task, catalog, { ...armed(), owner: 'navigation' }, instant), true);
-  for (const can_move of [undefined, null]) assert.equal(model.taskCanStart({ ...task, can_move }, catalog, armed(), instant), false);
-  assert.equal(model.taskCanStart({ ...task, can_move: false }, { ...catalog, offline: true }, armed(), instant), false);
+  assert.equal(model.taskCanStart(task, catalog, armed(instant), instant), false);
+  assert.equal(model.taskCanStart(task, { ...catalog, contract_version: 1 }, { ...armed(instant), owner: 'navigation' }, instant), false);
+  assert.equal(model.taskCanStart(task, catalog, { ...armed(instant), owner: 'navigation' }, instant), true);
+  for (const can_move of [undefined, null]) assert.equal(model.taskCanStart({ ...task, can_move }, catalog, armed(instant), instant), false);
+  assert.equal(model.taskCanStart({ ...task, can_move: false }, { ...catalog, offline: true }, armed(instant), instant), false);
 });
 test('ACK matches action, source, sequence, request and send time; accepted is not execution', () => {
   const command = { request_id: 'fixture', action: 'move', source: 'manual', seq: 5, generation: 'fixture-generation' };
@@ -145,12 +145,14 @@ test('explicit arm carries one fresh envelope, plan and consent; never auto arms
   const f = await fixture();
   f.elements.get('operator-plan').value = 'Przestrzeń wolna, kabel zabezpieczony, impuls 0.1 s.';
   f.elements.get('operator-consent').checked = true;
+  const sentAt = Date.now() / 1000;
   await f.panel.arm('arm');
   const commands = f.calls.filter(call => call.method === 'POST'); assert.equal(commands.length, 1);
   const body = commands[0].body;
   assert.equal(commands[0].url, '/api/safety'); assert.equal(body.action, 'arm');
   assert.equal(body.generation, 'fixture-generation'); assert.equal(body.seq, 5); assert.equal(body.ttl_ms, 500);
-  assert.equal(body.operator_consent, true); assert.ok(body.operator_plan); assert.ok(body.ts > instant - 1);
+  assert.equal(body.operator_consent, true); assert.ok(body.operator_plan);
+  assert.ok(body.ts >= sentAt - .1 && body.ts <= Date.now() / 1000 + .1);
   assert.equal(f.elements.get('operator-consent').checked, false);
 });
 test('202 remains pending until exact terminal ACK; stale/accepted ACK cannot turn green', async () => {
