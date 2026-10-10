@@ -1,37 +1,47 @@
 #!/usr/bin/env python3
-"""
-scripts/lcd_renderer.py – prosty renderer statusów scenariuszy na LCD.
+"""Refresh the existing boot Device Info screen after executor startup.
 
-Wyświetla listę aktywnych scenariuszy oraz podstawowe informacje z
-`/run/rider-motion/feature_state.json`. Jeżeli LCD lub sterownik nie są dostępne,
-skrypt wypisuje dane w logach i kontynuuje.
+Uses the original IP/battery splash layout and rotation, then yields the LCD
+after the existing idle interval. Reads executor snapshots, never UART/SDK.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import signal
 import sys
+import tempfile
 import time
 from pathlib import Path
-from typing import Iterable
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 from apps.safety.state import read_status
 from apps.ui.status_panel import StatusPanelLifecycle, battery_observation
 from common.observations import source_time
 
-FONT_PATH = os.getenv("LCD_RENDERER_FONT", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-WIDTH = int(os.getenv("LCD_RENDERER_WIDTH", "240"))
-HEIGHT = int(os.getenv("LCD_RENDERER_HEIGHT", "320"))
 REFRESH = float(os.getenv("LCD_RENDERER_REFRESH", "5.0"))
 STATE_PATH = Path(os.getenv("FEATURE_STATE_PATH", "/run/rider-motion/feature_state.json"))
-BG_COLOR = (0, 0, 0)
-TITLE_COLOR = (255, 255, 255)
-TEXT_COLOR = (0, 255, 128)
-WARN_COLOR = (255, 200, 0)
+_splash = None
+
+
+def existing_splash():
+    """Load composition/data helpers only; never execute the splash main."""
+    global _splash
+    if _splash is None:
+        path = Path(__file__).with_name("sys_splash-info.py")
+        spec = importlib.util.spec_from_file_location("rider_existing_splash", path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("existing_splash_unavailable")
+        _splash = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_splash)
+        # Executor may not have produced the first battery yet. An unknown
+        # sample is shown explicitly, then replaced on the regular next poll.
+        _splash.WAIT_BATT = 0
+        _splash.WAIT_IP = 0
+    return _splash
 
 
 class LCDRenderer:
@@ -45,13 +55,10 @@ class LCDRenderer:
                 return Driver(FaceConfig(lcd_bl_pin=0))
 
         self.lcd = driver_factory()
-        self.rotate = int(os.getenv("FACE_LCD_ROTATE", "270"))
-        try:
-            self.font_title = ImageFont.truetype(FONT_PATH, 20)
-            self.font_body = ImageFont.truetype(FONT_PATH, 16)
-        except Exception:
-            self.font_title = ImageFont.load_default()
-            self.font_body = ImageFont.load_default()
+        self.splash = existing_splash()
+        self.rotate = self.splash.ROTATE
+        self.frame_observation = None
+        self.frame_path = Path(os.getenv("LCD_RUNTIME_FRAME", "/run/rider-motion/splash_device_info.png"))
 
     def close(self):
         # Do not call driver.cleanup(): it also writes shared GPIO. The power
@@ -75,29 +82,52 @@ class LCDRenderer:
         # exception. BCM0 is a valid pin; never test its truthiness.
         return getattr(self.lcd, "_bl_pin", None) is not None
 
-    def _render_lines(self, lines: Iterable[tuple[str, tuple[int, int, int]]]) -> Image.Image:
-        img = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
-        draw = ImageDraw.Draw(img)
-        y = 8
-        for text, color in lines:
-            draw.text((8, y), text, font=self.font_body, fill=color)
-            y += getattr(self.font_body, "size", 16) + 6
-            if y > HEIGHT - 20:
-                break
-        return img
-
-    def display(self, title: str, lines: list[str], warn: bool = False) -> None:
-        if not self.lcd:
-            print("[lcd_renderer]", title, " | ".join(lines))
-            return
-        draw_lines = [(title, TITLE_COLOR if not warn else WARN_COLOR)]
-        draw_lines += [(line, TEXT_COLOR) for line in lines]
-        img = self._render_lines(draw_lines)
+    def display(self, title: str, lines: list[str], warn: bool = False, *, frame=None) -> None:
+        info = frame if isinstance(frame, dict) else self.splash.gather_info()
+        img = self.splash.draw_splash_with(info, self.splash.WIDTH, self.splash.HEIGHT)
+        img = self.splash.maybe_rotate(img)
+        device = getattr(self.lcd, "device", self.lcd)
+        target = (
+            int(getattr(device, "W", getattr(device, "width", 240))),
+            int(getattr(device, "H", getattr(device, "height", 320))),
+        )
+        if img.size != target:
+            img = img.resize(target, Image.BICUBIC)
         try:
-            self.lcd.ShowImage(img.rotate(self.rotate, expand=True) if self.rotate else img)
+            self.lcd.ShowImage(img)
         except Exception as exc:
             print(f"[lcd_renderer] present failed: {exc}", flush=True)
             raise
+        # The tmpfs artifact proves the submitted pixels, not physical panel
+        # visibility. Failure to save diagnostic pixels never repeats GPIO.
+        temporary = None
+        saved = False
+        try:
+            fd, temporary = tempfile.mkstemp(prefix=".lcd-frame-", suffix=".png", dir=self.frame_path.parent)
+            os.close(fd)
+            img.save(temporary)
+            os.replace(temporary, self.frame_path)
+            temporary = None
+            saved = True
+        except OSError as exc:
+            print("[lcd_renderer] frame artifact unavailable:", type(exc).__name__, flush=True)
+        finally:
+            if temporary is not None:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+        self.frame_observation = {
+            "layout": "existing_device_info",
+            "ip": info.get("IP"),
+            "battery_text": info.get("Battery"),
+            "rot": self.rotate,
+            "width": target[0],
+            "height": target[1],
+            "path": str(self.frame_path) if saved else None,
+            "confirmation": "frame_write_accepted",
+            "physical_validity": "unverified",
+        }
 
 
 def load_state() -> dict:
@@ -161,7 +191,7 @@ def main() -> int:
 
     def report(**fields):
         nonlocal publisher
-        print("[lcd_renderer]", fields["reason"], "on=", fields["on"], flush=True)
+        print("[lcd_renderer]", json.dumps(fields, ensure_ascii=True), flush=True)
         try:
             if publisher is None:
                 from common.bus import BusPub
@@ -194,13 +224,15 @@ def main() -> int:
     )
     try:
         while running:
-            state = load_state()
-            title, lines, warn = summarize_state(state)
-            battery = battery_observation(read_status(), now=time.time())
-            try:
-                lifecycle.step(state, battery, title, lines, warn)
-            except Exception as exc:
-                print("[lcd_renderer] render failed:", type(exc).__name__, flush=True)
+            if not lifecycle.off_confirmed:
+                battery = battery_observation(read_status(), now=time.time())
+                info = existing_splash().gather_info(battery=battery)
+                try:
+                    # IP/battery/date updates are telemetry, not user activity;
+                    # they do not postpone OFF or wake a finished startup display.
+                    lifecycle.step({}, battery, "Rider-Pi — Device Info", [], frame=info)
+                except Exception as exc:
+                    print("[lcd_renderer] render failed:", type(exc).__name__, flush=True)
             time.sleep(max(1.0, REFRESH))
     finally:
         lifecycle.close()

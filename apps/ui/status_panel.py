@@ -103,7 +103,7 @@ class StatusPanelLifecycle:
             self.sink.close()  # owned descriptors only; never GPIO/power here
             self.sink = None
 
-    def step(self, state, battery, title, lines, warn=False):
+    def step(self, state, battery, title, lines, warn=False, *, frame=None):
         now = self.clock()
         key = task_fingerprint(state)
         if self.fingerprint is not None and key != self.fingerprint:
@@ -133,13 +133,16 @@ class StatusPanelLifecycle:
                     rot=self.rotate,
                 )
             return "idle_off" if self.off_confirmed else "idle_off_unconfirmed"
-        screen = (title, tuple(lines) + (battery_text(battery),), bool(warn))
+        screen = (title, tuple(lines) + (battery_text(battery),), bool(warn), frame)
         if self.sink is None:
             self.sink = self.sink_factory()
             self.rotate = getattr(self.sink, "rotate", None)
             self.last_screen = None
         if screen != self.last_screen:
-            self.sink.display(screen[0], list(screen[1]), warn=screen[2])
+            if frame is None:
+                self.sink.display(screen[0], list(screen[1]), warn=screen[2])
+            else:
+                self.sink.display(screen[0], list(screen[1]), warn=screen[2], frame=frame)
             self.last_screen = screen
             power_known = getattr(self.sink, "power_known", False) is True
             self.report(
@@ -148,6 +151,8 @@ class StatusPanelLifecycle:
                 power_known=power_known,
                 presenting=True,
                 rot=self.rotate,
+                frame=getattr(self.sink, "frame_observation", None),
+                battery={key: battery.get(key) for key in ("value", "unit", "source", "observed_at", "ready")},
             )
         self.initial_battery_shown |= battery.get("ready") is True
         return "presenting"

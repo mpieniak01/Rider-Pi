@@ -327,9 +327,9 @@ Matching porównuje digest, executor instance, request_id, command_generation, s
 
 
 
-## Registered endpoint inventory
+## Inwentarz zarejestrowanych endpointów
 
-Generated from the instantiated main Flask app without hardware or runtime startup. Separate bridge8081 and optional voice services are independently deployed interfaces; native binary/SSE/Prometheus routes retain their MIME. Registration does not prove optional provider readiness.
+Inwentarz wygenerowany z aplikacji Flask bez uruchamiania sprzętu i procesów. Osobny most 8081 i opcjonalne usługi głosowe są niezależnymi interfejsami. Obrazy, SSE i metryki Prometheus zachowują swój typ MIME. Zarejestrowana trasa nie potwierdza gotowości opcjonalnego providera.
 
 | Methods | Path | Handler | Domain | Version |
 | --- | --- | --- | --- | --- |
@@ -446,4 +446,4 @@ Generated from the instantiated main Flask app without hardware or runtime start
 | GET, HEAD, OPTIONS, POST | `/vision/tracking/mode` | `vision_api.set_tracking_mode` | `rider.tasks` | 2 |
 | GET, HEAD, OPTIONS | `/web/<path:fname>` | `serve_web` | `rider.http` | 1 |
 
-LCD deployment includes protected boot files and unit defaults; use a separately recorded controlled deployment with backups. Do not force ordinary pi-preview guards or replay the boot vendor cleanup for testing. KEEP_BL_ON defaults to0; LCD idle policy is45s. Battery is unknown before a fresh executor observation exists. Runtime acceptance tests the status display without a reboot or orientation change.
+Wdrożenie LCD obejmuje chronione pliki startowe i jednostki systemd; wymaga osobno zapisanej procedury z kopią plików i stanu usług. Nie omijaj blokad pi-preview ani nie odtwarzaj vendor cleanup podczas testów. KEEP_BL_ON domyślnie wynosi 0. Odczyt baterii pochodzi wyłącznie od jedynego wykonawcy UART. Wczesny splash przed brokerem nie ma jeszcze pomiaru; po uruchomieniu wykonawcy LCD pokazuje ten sam gotowy ekran Device Info z IP i baterią, zachowuje orientację 270° i gaśnie po 45 s. Nie wprowadza nowego panelu zadań. Odbiór ekranu jest możliwy bez restartu robota i bez ruchu.

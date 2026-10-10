@@ -140,6 +140,76 @@ def test_battery_and_heartbeat_changes_do_not_keep_light_on():
     assert reports[-1]["rot"] == 270
 
 
+def test_existing_ip_battery_frames_do_not_postpone_off_or_wake_idle():
+    panel, clock, sinks, off, _, _ = lifecycle()
+    panel.step({}, {"ready": True, "value": 0}, "Device Info", [], frame={"IP": "10.0.0.1", "Battery": "0%"})
+    clock.now = 9
+    panel.step({}, {"ready": True, "value": 1}, "Device Info", [], frame={"IP": "10.0.0.2", "Battery": "100%"})
+    assert len(sinks[0].frames) == 2
+    clock.now = 10
+    assert panel.step({}, {"ready": True, "value": 1}, "Device Info", [], frame={"Date": "changed"}) == "idle_off"
+    clock.now = 100
+    assert panel.step({}, {"ready": True, "value": 1}, "Device Info", [], frame={"IP": "changed"}) == "idle_off"
+    assert len(sinks) == 1 and off == [True]
+
+
+def test_renderer_reuses_exact_existing_ip_battery_pixels_and_rotation(tmp_path, monkeypatch):
+    from PIL import Image
+
+    from scripts.lcd_renderer import LCDRenderer, existing_splash
+
+    frame_path = tmp_path / "frame.png"
+    monkeypatch.setenv("LCD_RUNTIME_FRAME", str(frame_path))
+    splash = existing_splash()
+    monkeypatch.setattr(splash, "ROTATE", 270)
+    submitted = []
+    driver = SimpleNamespace(
+        device=SimpleNamespace(W=320, H=240), _bl_pin=0, ShowImage=lambda im: submitted.append(im.copy())
+    )
+    renderer = LCDRenderer(driver_factory=lambda: driver)
+    info = {
+        "Host": "rider",
+        "Date": "2026-10-12 00:00:00",
+        "OS": "Ubuntu",
+        "Kernel": "test",
+        "Temp CPU": "40.0°C",
+        "Battery": "100%",
+        "IP": "10.0.0.1",
+    }
+    renderer.display("unused legacy status", ["Stan 0"], frame=info)
+    expected = splash.maybe_rotate(splash.draw_splash_with(info, splash.WIDTH, splash.HEIGHT)).resize(
+        (320, 240), Image.BICUBIC
+    )
+    assert submitted[0].tobytes() == expected.tobytes()
+    with Image.open(frame_path) as artifact:
+        assert artifact.tobytes() == submitted[0].tobytes()
+    assert renderer.frame_observation["layout"] == "existing_device_info"
+    assert renderer.frame_observation["battery_text"] == "100%" and renderer.frame_observation["ip"] == "10.0.0.1"
+    assert renderer.rotate == 270 and renderer.power_known
+    assert renderer.frame_observation["physical_validity"] == "unverified"
+
+
+def test_late_existing_splash_uses_one_supplied_sample_without_wait_or_cache(monkeypatch):
+    from scripts.lcd_renderer import existing_splash
+
+    splash = existing_splash()
+    assert splash.WAIT_BATT == 0 and splash.WAIT_IP == 0
+    monkeypatch.setattr(splash, "pick_battery_nonblocking", lambda: pytest.fail("must reuse the assessed sample"))
+    monkeypatch.setattr(splash, "pick_ip_nonblocking", lambda: "10.0.0.1")
+    assert splash.gather_info(battery={"ready": True, "value": 0})["Battery"] == "0%"
+    assert splash.gather_info(battery={"ready": False, "value": 1})["Battery"] == "—"
+
+
+def test_existing_splash_renderer_unit_waits_for_early_boot_and_executor_without_starting_them():
+    from pathlib import Path
+
+    unit = (Path(__file__).resolve().parents[1] / "systemd/lcd-renderer.service").read_text()
+    assert "After=network-online.target rider-boot-splash.service motion-executor.service" in unit
+    assert "Wants=network-online.target\n" in unit
+    assert "Environment=SPLASH_ROTATE=270" in unit and "Environment=LCD_IDLE_OFF_AFTER_S=45" in unit
+    assert "Wants=motion-executor" not in unit and "ExecStartPre" not in unit
+
+
 def test_meaningful_task_change_wakes_but_cannot_take_another_owner():
     panel, clock, sinks, off, _, ownership = lifecycle()
     panel.step({}, {"ready": False}, "Stan 0", [])

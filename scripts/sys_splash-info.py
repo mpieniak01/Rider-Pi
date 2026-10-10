@@ -290,8 +290,16 @@ def _ip_label(ip_value: str) -> str:
     return ip_value
 
 
-def gather_info():
-    batt = pick_battery_nonblocking()
+def gather_info(*, battery=None):
+    # A late renderer supplies the exact already-assessed executor sample.
+    # Standalone boot splash retains its bounded source wait and old layout.
+    batt = (
+        f"{battery['value'] * 100:.0f}"
+        if isinstance(battery, dict) and battery.get("ready") is True and battery.get("value") is not None
+        else "—"
+        if battery is not None
+        else pick_battery_nonblocking()
+    )
     batt_str = f"{batt}%" if batt.isdigit() else batt
     ip_raw = pick_ip_nonblocking()
     ip_str = _ip_label(ip_raw)

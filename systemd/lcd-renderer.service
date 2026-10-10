@@ -1,6 +1,6 @@
 [Unit]
-Description=Rider-Pi LCD Renderer (status panel)
-After=network-online.target
+Description=Rider-Pi LCD Renderer (existing IP and battery startup screen)
+After=network-online.target rider-boot-splash.service motion-executor.service
 Wants=network-online.target
 
 [Service]
@@ -10,6 +10,8 @@ Group=pi
 WorkingDirectory=/home/pi/robot
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/home/pi/robot
+Environment=SPLASH_ROTATE=270
+Environment=LCD_IDLE_OFF_AFTER_S=45
 ExecStart=/usr/bin/python3 -u /home/pi/robot/scripts/lcd_renderer.py
 Restart=always
 RestartSec=2

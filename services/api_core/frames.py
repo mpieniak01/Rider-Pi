@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import mimetypes
 import os
+import stat
 import time
 from pathlib import Path
 
@@ -32,17 +33,19 @@ def resolve(stream: str) -> Path:
     return next((path for path in candidates if path.is_file()), default)
 
 
-def describe(stream: str, *, path=None, now=None, archive=False) -> dict:
+def describe(stream: str, *, path=None, now=None, archive=False, stat_result=None) -> dict:
     now = time.time() if now is None else now
     selected = Path(path) if path is not None else resolve(stream)
     at = None
     size = None
     error = None
     try:
-        stat = selected.stat()
-        at = stat.st_mtime if math.isfinite(stat.st_mtime) and stat.st_mtime > 0 else None
-        size = stat.st_size
-        exists = selected.is_file()
+        metadata = selected.stat() if stat_result is None else stat_result
+        at = metadata.st_mtime if math.isfinite(metadata.st_mtime) and metadata.st_mtime > 0 else None
+        size = metadata.st_size
+        exists = stat.S_ISREG(metadata.st_mode)
+        if not exists:
+            error = "frame_unavailable"
     except FileNotFoundError:
         exists, error = False, "frame_not_found"
     except OSError:
@@ -95,9 +98,40 @@ def headers(response, row):
 
 def response(stream: str, *, path=None, archive=None):
     archive = request.args.get("archive") == "1" if archive is None else archive
-    row = describe(stream, path=path, archive=archive)
-    if not row["exists"] or row["stale"] and not archive:
-        return headers(make_response(jsonify({"ok": False, "error": row["error"], "frame": row}), 404), row)
-    mime = mimetypes.guess_type(row["path"])[0] or "application/octet-stream"
-    result = make_response(send_file(row["path"], mimetype=mime, conditional=False))
-    return headers(result, row)
+    selected = Path(path) if path is not None else resolve(stream)
+    descriptor = None
+    handle = None
+    try:
+        try:
+            # Atomic camera replacement must not change the inode between
+            # metadata and transfer. NONBLOCK also makes FIFO races harmless.
+            descriptor = os.open(selected, os.O_RDONLY | os.O_NONBLOCK)
+            metadata = os.fstat(descriptor)
+            row = describe(stream, path=selected, archive=archive, stat_result=metadata)
+            if not row["exists"] or row["stale"] and not archive:
+                return headers(make_response(jsonify({"ok": False, "error": row["error"], "frame": row}), 404), row)
+            handle = os.fdopen(descriptor, "rb")
+            descriptor = None
+        except OSError as exc:
+            row = describe(stream, path=selected, archive=archive)
+            row.update(
+                exists=False,
+                stale=True,
+                error="frame_not_found" if isinstance(exc, FileNotFoundError) else "frame_unavailable",
+            )
+            return headers(make_response(jsonify({"ok": False, "error": row["error"], "frame": row}), 404), row)
+        mime = mimetypes.guess_type(str(selected))[0] or "application/octet-stream"
+        result = make_response(
+            send_file(handle, mimetype=mime, conditional=False, last_modified=row["file_observed_at"])
+        )
+        result.content_length = row["size"]
+        result.call_on_close(handle.close)
+        result = headers(result, row)
+        # Werkzeug's file wrapper owns this descriptor until transfer closes.
+        handle = None
+        return result
+    finally:
+        if handle is not None:
+            handle.close()
+        if descriptor is not None:
+            os.close(descriptor)
