@@ -5,6 +5,7 @@ SKINS = {
     "human": {"pl": "Piegusek", "en": "Freckles", "ink": (64, 39, 38)},
     "cat": {"pl": "Kotek", "en": "Kitten", "ink": (66, 39, 35)},
     "robot": {"pl": "Robocik", "en": "Little robot", "ink": (18, 47, 64)},
+    "professional": {"pl": "Profesjonalna", "en": "Professional", "ink": (53, 53, 58)},
 }
 
 
@@ -77,3 +78,45 @@ def draw_character(canvas, skin):
         for x in (40, 200):
             ellipse((x - 3, 47, x + 3, 53), edge)
         line([(81, 212), (159, 212)], edge, 3)
+
+    elif skin == "professional":
+        face, hair = (203, 181, 165), (80, 76, 75)
+        for bounds in ((19, 99, 42, 141), (198, 99, 221, 141)):
+            ellipse(bounds, face)
+        ellipse((29, 16, 211, 231), face)
+        for bounds in ((25, 110, 35, 132), (205, 110, 215, 132)):
+            ellipse(bounds, (171, 145, 135))
+        # Rounded quadratic corners produce a softer oval/hair outline.
+        points = [
+            (34, 79),
+            (36, 48),
+            (56, 24),
+            (99, 9),
+            (154, 17),
+            (193, 36),
+            (206, 65),
+            (202, 92),
+            (191, 68),
+            (179, 48),
+            (149, 40),
+            (118, 44),
+            (92, 37),
+            (69, 51),
+            (46, 61),
+            (42, 89),
+        ]
+        rounded = []
+        for index, middle in enumerate(points):
+            previous, following = points[index - 1], points[(index + 1) % len(points)]
+            start = tuple((a + b) / 2 for a, b in zip(previous, middle))
+            end = tuple((a + b) / 2 for a, b in zip(middle, following))
+            for step in range(7):
+                t = step / 6
+                rounded.append(
+                    tuple((1 - t) ** 2 * a + 2 * (1 - t) * t * b + t * t * c for a, b, c in zip(start, middle, end))
+                )
+        polygon(rounded, hair)
+        line([(48, 57), (69, 39), (89, 30)], (123, 116, 112), 2)
+        line([(194, 64), (187, 46), (173, 36)], (123, 116, 112), 2)
+        # Fixed nose geometry belongs in the cached shell, not the frame loop.
+        line([(119, 121), (114, 147), (121, 151), (128, 147)], (155, 127, 115), 2)

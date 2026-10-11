@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw
 from apps.draw.face_primitives import draw_face
 from apps.ui.face.characters import SKINS, draw_character
 from apps.ui.face.friendly import PALETTES, draw_friendly
+from apps.ui.face.professional import draw_professional
 
 STYLES = ("friendly", "minimal", "legacy")
 
@@ -33,7 +34,7 @@ class FaceRenderer:
             for field in fields:
                 value = getattr(obj, field, None)
                 values.append(round(value, 4) if isinstance(value, (int, float)) else value)
-        if self.style == "legacy":
+        if self.style == "legacy" and self.skin != "professional":
             values.append(getattr(state, "render_time", None))
         return tuple(values)
 
@@ -49,12 +50,17 @@ class FaceRenderer:
             background_key = (self.style, self.skin)
             if self._background_style != background_key:
                 color = PALETTES[self.style]["background"] if self.style != "legacy" else (30, 58, 138)
-                self._background = Image.new("RGB", (self.size, self.size), color)
+                background_size = self.size * 2 if self.skin == "professional" else self.size
+                self._background = Image.new("RGB", (background_size, background_size), color)
                 draw_character(ImageDraw.Draw(self._background), self.skin)
+                if background_size != self.size:
+                    self._background = self._background.resize((self.size, self.size), Image.Resampling.LANCZOS)
                 self._background_style = background_key
             img = self._background.copy()
             canvas = ImageDraw.Draw(img)
-            if self.style == "legacy":
+            if self.skin == "professional":
+                draw_professional(canvas, state, self.style)
+            elif self.style == "legacy":
                 draw_face(canvas, self.cfg, state, guide=self.guide, quality=self.quality)
             else:
                 draw_friendly(canvas, state, self.style, self.skin)

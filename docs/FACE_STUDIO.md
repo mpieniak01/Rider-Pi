@@ -105,8 +105,8 @@ Device results: [performance report](FACE_PERFORMANCE.md).
 ## Character shells
 
 The **Character** selector is separate from the eye style: No character,
-Freckles, Kitten and Little robot. No character remains the default and
-preserves the previous image. The three shells add a head, ears and hair or
+Freckles, Kitten, Little robot and Professional. No character remains the default and
+preserves the previous image. The character shells add a head, ears and hair or
 an antenna; the same animated eyes, brows and mouth are drawn on top.
 
 The optional `skin` setting is persisted on Pi with the other face settings.
@@ -119,3 +119,12 @@ Descriptors expose `skins` with stable IDs and PL/EN names. Older settings
 without `skin` use `none`; invalid IDs are rejected. Background geometry is
 cached once per skin/style change. The existing three preview renderers and
 16-frame PNG cache remain bounded; there are no new image packages or files.
+
+
+The Professional character uses its own adult facial proportions: a smooth
+oval, almond eyes, restrained brows and mouth, a subtle nose and hair, without
+cartoon blush. All seven emotions, blinking, gaze and the audio-envelope hook
+use the shared animator. It is a visual variant, not a separate personality
+or speech provider. Eye styles tint the character; its adult geometry is
+retained in every style. Only the static shell is antialiased and resized
+once on selection; frames are drawn directly at LCD resolution.

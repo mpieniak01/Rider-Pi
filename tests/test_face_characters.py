@@ -52,7 +52,7 @@ def test_changing_only_character_invalidates_image_and_png():
     assert renderer.render_count == renderer.encode_count == 2
 
 
-@pytest.mark.parametrize("skin", ["human", "cat", "robot"])
+@pytest.mark.parametrize("skin", ["human", "cat", "robot", "professional"])
 def test_character_keeps_animated_features_and_no_png_on_image_path(skin):
     face = FaceController(style="friendly", skin=skin, idle=False)
     resting = face.frame_image()
@@ -80,7 +80,7 @@ def test_preview_matches_controller_with_saved_character(client):
     assert frame.status_code == 200
     key = client.post("/api/face-studio/gestures", json=body).get_json()["id"]
     clock = [0.0]
-    face = FaceController(style="friendly", idle=False, clock=lambda: clock[0])
+    face = FaceController(style="friendly", idle=False, clock=lambda clock=clock: clock[0])
     face.configure({**catalog.get_settings(), "active_gestures": [key]})
     assert face.do(key)
     clock[0] = 1
@@ -103,3 +103,61 @@ def test_existing_settings_without_character_default_to_none(client):
     old.pop("skin")
     catalog.atomic_write(catalog.settings_path(), old)
     assert catalog.get_settings()["skin"] == "none"
+
+
+def test_running_worker_loads_skin_change_without_restarting(client):
+    from services.api_core import face_anim
+    from tests.test_face_runtime_settings import wait_for
+
+    client.post("/api/face-studio/runtime/play", json={"sink": "null"})
+    wait_for(lambda: face_anim.STATE["frame_count"] > 0)
+    thread = face_anim._anim._thr
+    assert client.post("/api/face-studio/runtime", json={"skin": "robot"}).status_code == 200
+    wait_for(lambda: face_anim.STATE.get("skin") == "robot", seconds=2)
+    assert face_anim._anim._thr is thread
+    image = Image.open(BytesIO(client.get("/api/face-studio/runtime/frame").data)).convert("RGB")
+    assert image.getpixel((120, 24)) == (113, 190, 203)
+
+
+@pytest.mark.parametrize("expression", ["neutral", "calm", "happy", "sad", "curious", "surprised", "sleepy"])
+def test_professional_supports_each_emotion_and_shared_gestures(expression):
+    from apps.ui.face.schema import MOODS
+
+    clock = [0.0]
+    face = FaceController(style="friendly", skin="professional", idle=False, clock=lambda clock=clock: clock[0])
+    face.set_mood(expression)
+    clock[0] = 1
+    face.frame_image()
+    assert face.anim.state.expr == expression
+    for key, value in MOODS[expression].items():
+        assert face.anim.value(key) == pytest.approx(value)
+    assert face.do("blink")
+    assert face.do("look")
+    face.audio_envelope(0.6)
+    clock[0] += 0.08
+    assert face.frame_image().size == (240, 240)
+    assert face.anim.state.mouth.open == pytest.approx(0.6)
+    assert face.renderer.encode_count == 0
+
+
+def test_professional_has_seven_distinct_emotion_poses():
+    frames = set()
+    for expression in ("neutral", "calm", "happy", "sad", "curious", "surprised", "sleepy"):
+        clock = [0.0]
+        face = FaceController(style="friendly", skin="professional", idle=False, clock=lambda clock=clock: clock[0])
+        face.set_mood(expression)
+        clock[0] = 1
+        frames.add(face.frame_image().tobytes())
+    assert len(frames) == 7
+
+
+def test_professional_static_frame_does_not_depend_on_legacy_clock():
+    state = FaceState()
+    state.render_time = 0
+    renderer = FaceRenderer({}, style="legacy", skin="professional")
+    first = renderer.render_image(state)
+    background = renderer._background
+    state.render_time = 10
+    assert renderer.render_image(state).tobytes() == first.tobytes()
+    assert renderer._background is background
+    assert renderer.render_count == 1

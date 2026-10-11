@@ -45,10 +45,12 @@ def controller_class(reference):
 
 
 def main():
+    from apps.ui.face.characters import SKINS
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-ref")
     parser.add_argument("--style", choices=["friendly", "minimal", "legacy"], default="friendly")
-    parser.add_argument("--skin", choices=["none", "human", "cat", "robot"], default="none")
+    parser.add_argument("--skin", choices=tuple(SKINS), default="none")
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--paced-seconds", type=float, default=3)
     args = parser.parse_args()

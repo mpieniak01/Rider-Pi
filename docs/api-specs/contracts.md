@@ -319,7 +319,7 @@ Default pulse is 0.25 s; software ramps are 3 linear / 4 turn normalized units p
 Graphic intent and audio envelope APIs have actuation=false; they never authorize motor commands.
 
 The face runtime settings add optional `skin` (`none`, `human`, `cat`,
-`robot`), defaulting to `none` for existing files. The frame endpoint accepts
+`robot`, `professional`), defaulting to `none` for existing files. The frame endpoint accepts
 the same field; runtime settings/descriptors expose the shared selection and
 `skins` metadata. This is an additive appearance setting in rider.face v1,
 independent of gesture definitions and physical movement.

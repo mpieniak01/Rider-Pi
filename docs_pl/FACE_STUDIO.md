@@ -110,8 +110,8 @@ Wyniki urządzenia zapisujemy w [raporcie pomiarów](FACE_PERFORMANCE.md).
 ## Oprawa postaci
 
 Wybór **Postać** jest niezależny od stylu oczu: Bez oprawy, Piegusek, Kotek
-i Robocik. Bez oprawy pozostaje domyślne i zachowuje dotychczasowy obraz.
-Trzy skórki dodają głowę, uszy i włosy lub antenkę; na nich rysowane są te
+, Robocik i Profesjonalna. Bez oprawy pozostaje domyślne i zachowuje dotychczasowy obraz.
+Skórki dodają głowę, uszy i włosy lub antenkę; na nich rysowane są te
 same animowane oczy, brwi i usta.
 
 Opcjonalne ustawienie `skin` zapisuje się na Pi razem z resztą nastaw buźki.
@@ -124,3 +124,12 @@ Starsze ustawienia bez `skin` korzystają z `none`; nieznane identyfikatory są
 odrzucane. Oprawa jest rysowana do cache tylko przy zmianie postaci/stylu.
 Nadal są najwyżej trzy renderery podglądu i 16 klatek PNG w cache; nie
 dodajemy pakietów graficznych ani plików obrazków.
+
+
+Postać Profesjonalna ma własne dorosłe proporcje: gładki owal, migdałowe oczy,
+subtelne brwi i usta, nos oraz włosy, bez kreskówkowych policzków. Wszystkie
+siedem emocji, mruganie, spojrzenia i wejście obwiedni audio korzystają ze
+wspólnego animatora. To wariant wyglądu; nie tworzy odrębnej osobowości ani
+dostawcy mowy. Style zmieniają barwy; dorosła geometria pozostaje w każdym
+stylu. Wygładzana i skalowana jest wyłącznie statyczna oprawa przy wyborze;
+klatki są rysowane bezpośrednio w rozdzielczości LCD.
