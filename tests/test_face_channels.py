@@ -158,3 +158,17 @@ def test_idle_blink_returns_to_sleepy_resting_eyelids(monkeypatch):
     clock[0] = 1
     assert face.frame_image()
     assert face.anim.state.eyes.blink == 0.65
+
+
+def test_small_rounded_shapes_use_integer_bounds_for_cm4_pillow():
+    from apps.ui.face.friendly import _rounded
+
+    class Canvas:
+        def rounded_rectangle(self, box, *, radius, fill):
+            assert all(type(value) is int for value in box)
+            assert type(radius) is int
+            assert radius * 2 <= box[3] - box[1]
+            assert radius * 2 <= box[2] - box[0]
+
+    for height in (5.1, 5.9, 6.2, 20.7):
+        _rounded(Canvas(), (96.4, 174.2 - height / 2, 143.6, 174.2 + height / 2), height / 2, "white")

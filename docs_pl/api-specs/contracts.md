@@ -536,3 +536,9 @@ Domyślny impuls trwa 0.25 s; rampy programowe wynoszą 3 dla jazdy i 4 dla skr�
 ## Parametry i ciągłe sterowanie ręczne
 
 [Kontrakt parametrów, jednostek i trybów sterowania](manual-motion.md).
+
+
+## Grafika twarzy — rider.face v1
+
+[Face Studio: schema, units, bounded previews and runtime events](../FACE_STUDIO.md).
+Graphic intent and audio envelope APIs have actuation=false; they never authorize motor commands.

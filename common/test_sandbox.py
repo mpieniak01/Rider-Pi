@@ -89,6 +89,8 @@ def install() -> None:
         RIDER_TEST_ISOLATED="1",
         RIDER_PI_CI="1",
         RIDER_PI_MOCK_HW="1",
+        FACE_STUDIO_LIBRARY=str(sandbox / "face-library.json"),
+        FACE_RUNTIME_SETTINGS=str(sandbox / "face-runtime.json"),
         MOTION_ENABLE="0",
         MOTION_STATE_PATH=str(sandbox / "motion-status.json"),
         MOTION_FLAGS_DIR=str(sandbox / "flags"),

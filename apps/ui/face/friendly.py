@@ -8,6 +8,13 @@ PALETTES = {
 }
 
 
+def _rounded(canvas, box, radius, fill):
+    # Integer bounds also work with the older Pillow installed on CM4.
+    box = tuple(round(value) for value in box)
+    radius = min(int(radius), (box[2] - box[0]) // 2, (box[3] - box[1]) // 2)
+    canvas.rounded_rectangle(box, radius=max(0, radius), fill=fill)
+
+
 def draw_friendly(canvas, state, style):
     palette = PALETTES[style]
     size = min(canvas.im.size)
@@ -31,7 +38,7 @@ def draw_friendly(canvas, state, style):
         if blink > 0.93:
             canvas.line((box[0], ey, box[2], ey), fill=palette["eye"], width=stroke)
         else:
-            canvas.rounded_rectangle(box, radius=min(eye_w, eye_h) * 0.47, fill=palette["eye"])
+            _rounded(canvas, box, min(eye_w, eye_h) * 0.47, palette["eye"])
             radius = min(size * 0.065, eye_h * 0.38)
             px = ex + dx * (eye_w / 2 - radius - size * 0.014)
             py = ey + dy * (eye_h / 2 - radius - size * 0.006)
@@ -64,10 +71,11 @@ def draw_friendly(canvas, state, style):
     my, mw = size * 0.73, size * 0.29
     if open_level > 0.03:
         height = size * (0.02 + open_level * 0.12)
-        canvas.rounded_rectangle(
+        _rounded(
+            canvas,
             (cx - mw * 0.34, my - height / 2, cx + mw * 0.34, my + height / 2),
-            radius=min(mw * 0.20, height / 2),
-            fill=palette["eye"],
+            min(mw * 0.20, height / 2),
+            palette["eye"],
         )
         canvas.ellipse((cx - mw * 0.19, my, cx + mw * 0.19, my + height * 0.35), fill=palette["accent"])
     else:

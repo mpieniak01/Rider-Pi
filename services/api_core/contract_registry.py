@@ -72,7 +72,20 @@ _GROUPS = {
     "rider.api_metrics": (1, ("/api/app-metrics",)),
     "rider.face": (
         1,
-        ("/face/ping", "/face/render", "/face/play", "/face/stop", "/face/state", "/api/draw/face", "/draw/face"),
+        (
+            "/face/ping",
+            "/face/render",
+            "/face/play",
+            "/face/stop",
+            "/face/state",
+            "/api/draw/face",
+            "/draw/face",
+            "/api/face-studio/runtime",
+            "/api/face-studio/runtime/play",
+            "/api/face-studio/runtime/stop",
+            "/api/face-studio/runtime/event",
+            "/api/face-studio/runtime/frame",
+        ),
     ),
     "rider.face_studio": (
         1,
