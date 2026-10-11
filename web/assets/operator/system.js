@@ -41,8 +41,12 @@ export class System {
     if (['start', 'restart'].includes(action) && typeof row.can_move !== 'boolean') return;
     const body = { action };
     if (row.can_move && ['start', 'restart'].includes(action)) {
-      const envelope = this.safety.envelope('move', {}, row.motion_owner);
-      for (const key of ['generation', 'seq', 'source', 'ts', 'ttl_ms', 'request_id']) body[key] = envelope[key];
+      this.busy.add(row.unit);
+      try {
+        await this.safety.prepare();
+        const envelope = this.safety.envelope('move', {}, row.motion_owner);
+        for (const key of ['generation', 'seq', 'source', 'ts', 'ttl_ms', 'request_id']) body[key] = envelope[key];
+      } catch (error) { this.busy.delete(row.unit); this.render(); throw error; }
     }
     this.busy.add(row.unit); this.results.set(row.unit, 'pending'); this.render();
     try {

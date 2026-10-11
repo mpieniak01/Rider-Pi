@@ -95,7 +95,7 @@ function catalogReply(features = [], now = Date.now() / 1000) {
   return canonicalReply('rider.catalog', 2, { contract_version: 2, catalog_version: 2,
     api_envelope_versions: [1], observed_at: now, features, units: [] }, now);
 }
-async function fixture(initial = disarmed(), { page = 'control', safetyCard = null, clock = null, legacySafety = false, canonicalMime = 'application/vnd.rider.api+json;version=1' } = {}) {
+async function fixture(initial = disarmed(), { page = 'control', safetyCard = null, clock = null, legacySafety = false, canonicalMime = 'application/vnd.rider.api+json;version=1', interactive = true, catalogDelay = 0 } = {}) {
   const elements = new Map(['arm', 'clear-estop', 'disarm', 'estop', 'operator-plan', 'operator-consent', 'control-owner', 'lease',
     'duration', 'speed', 'yaw-speed', 'request-history', 'safety-state', 'safety-owner', 'safety-reason', 'safety-lease', 'operator-message'].map(id => [id, new Element(id)]));
   elements.get('control-owner').value = 'manual'; elements.get('lease').value = '10'; elements.get('duration').value = '.1';
@@ -111,6 +111,7 @@ async function fixture(initial = disarmed(), { page = 'control', safetyCard = nu
     setInterval: callback => { timers.set(++timerId, callback); return timerId; }, clearInterval: id => timers.delete(id),
     fetch: async (url, options) => {
       calls.push({ url, ...options, body: options.body ? JSON.parse(options.body) : undefined });
+      if (url === '/api/logic/catalog' && clock) clock.now += catalogDelay;
       const now = clock ? clock.now : Date.now() / 1000;
       const state = { safety: current, server_time: now };
       const reply = replies.has(url) ? replies.get(url) : options.method === 'POST' ? { pending: true, confirmed: false }
@@ -130,7 +131,7 @@ async function fixture(initial = disarmed(), { page = 'control', safetyCard = nu
     return module;
   }
   const module = await load('safety.js'); await module.evaluate();
-  const panel = new module.namespace.SafetyPanel();
+  const panel = new module.namespace.SafetyPanel(() => {}, { interactive });
   await new Promise(resolve => setImmediate(resolve));
   return { panel, elements, calls, listeners, document, timers, setReply(url, data) { replies.set(url, data); }, async load(name) { const module = await load(name); await module.evaluate(); return module.namespace; }, setState(value) { current = value; panel.update(value); } };
 }
@@ -139,6 +140,9 @@ test('opening control issues GET only and permits explicit ARM from known DISARM
   const f = await fixture();
   assert.ok(f.calls.length > 0);
   assert.ok(f.calls.every(call => call.method === 'GET'));
+  assert.equal(f.elements.get('arm').disabled, true, 'unprepared form cannot arm');
+  f.elements.get('operator-plan').value = 'Isolated prepared fixture';
+  f.elements.get('operator-consent').checked = true; f.panel.render();
   assert.equal(f.elements.get('arm').disabled, false);
   assert.equal(f.elements.get('clear-estop').disabled, true);
 });
@@ -574,4 +578,55 @@ test('point-plan rendering expires at the pose age budget without a new timestam
   clock.now += .4; navigation.render();
   assert.notEqual(navigation.drawKey, key); assert.equal(strokes.at(-1), .35);
   assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+
+test('passive pages never bind or dispatch motion shortcuts or a blur STOP', async () => {
+  const f = await fixture(armed(), { interactive: false });
+  assert.equal(f.panel.can('manual'), false);
+  assert.equal(f.listeners.keydown, undefined);
+  f.panel.key({ code: 'Space', target: new Element(), preventDefault() { throw new Error('passive shortcut captured'); } });
+  f.panel.suspend();
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+test('clearing ESTOP remains disabled until preparation and never automatically arms', async () => {
+  const f = await fixture({ ...disarmed(), state: 'ESTOP' });
+  assert.equal(f.elements.get('clear-estop').disabled, true);
+  f.elements.get('operator-plan').value = 'Prepared isolated fixture, no physical robot';
+  f.elements.get('operator-consent').checked = true; f.panel.render();
+  assert.equal(f.elements.get('clear-estop').disabled, false);
+  await f.panel.arm('clear_estop');
+  const writes = f.calls.filter(call => call.method === 'POST');
+  assert.equal(writes.length, 1); assert.equal(writes[0].body.action, 'clear_estop');
+  assert.equal(writes[0].body.operator_consent, true);
+  f.setState({ ...disarmed(), generation: 'cleared-fixture' }); f.panel.render();
+  assert.equal(f.elements.get('arm').disabled, true, 'clear consumes consent; another explicit consent is required');
+});
+test('another presentation clock cannot invalidate the safety permission clock', async () => {
+  const f = await fixture(armed());
+  assert.equal(f.panel.can('manual'), true);
+  const clock = await f.load('model.js'), now = Date.now() / 1000;
+  clock.setServerClock(now - 100, now, now);
+  assert.equal(f.panel.can('manual'), true);
+});
+test('service inspection does not grant movement before administration is enabled', async () => {
+  const f = await fixture(armed());
+  f.document.body.dataset.page = 'system';
+  assert.equal(f.panel.can('manual'), false);
+  f.panel.key({ code: 'Space', target: new Element(), preventDefault() { throw new Error('read-only admin captured'); } });
+  f.panel.suspend();
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+
+test('catalogue preflight completes before a 500 ms clear-estop envelope is created', async () => {
+  const clock = { now: 1000 };
+  const f = await fixture({ ...disarmed(1000), state: 'ESTOP' }, { clock, catalogDelay: .7 });
+  f.elements.get('operator-plan').value = 'Isolated fixture';
+  f.elements.get('operator-consent').checked = true;
+  await f.panel.arm('clear_estop');
+  const write = f.calls.find(call => call.method === 'POST');
+  assert.ok(write);
+  assert.equal(write.body.ts, clock.now);
+  assert.equal(write.body.ttl_ms, 500);
+  const paths = f.calls.map(call => call.url);
+  assert.ok(paths.indexOf('/api/logic/catalog') < paths.indexOf('/api/safety'));
 });

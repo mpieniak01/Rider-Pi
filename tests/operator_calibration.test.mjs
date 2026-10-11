@@ -160,7 +160,7 @@ async function fixture() {
   const source = (await readFile(path.join(root, 'web/assets/operator/calibration.js'), 'utf8'))
     .replace(/^import[\s\S]*?;\n/gm, '').replace('export class Calibration', 'globalThis.Calibration = class Calibration');
   vm.runInContext(source, ctx);
-  const safety = { state: safe(), seq: 4, update(state) { this.state = state; }, clockFresh: () => true, can: () => true,
+  const safety = { prepare: async () => {}, now: () => moment, commandTime: () => moment, state: safe(), seq: 4, update(state) { this.state = state; }, clockFresh: () => true, can: () => true,
     send: async (action, body) => { moves.push({ action, body }); return { pending: true }; } };
   const panel = new ctx.globalThis.Calibration(safety);
   await new Promise(resolve => setImmediate(resolve));

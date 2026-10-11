@@ -451,3 +451,13 @@ Wdrożenie LCD obejmuje chronione pliki startowe i jednostki systemd; wymaga oso
 Pole `configured_rot` pochodzi z `PREVIEW_ROT` procesu API (domyślnie 0); opisuje konfigurację podglądu, nie montaż ani orientację ekranu startowego. Rzeczywisty renderer startowy zgłasza `rot=270`. Konfiguracja kamery bez LCD nie może nadpisywać tej obserwacji ani potwierdzać stanu podświetlenia.
 
 LCD `preview_config` ma osobny czas źródłowy. Rzeczywiste `source`/`observed_at` opisują raport cyklu renderera; `power_source`/`power_observed_at` wymagają jawnego `power_known=true` i `control_write_accepted`. `frame_source`/`frame_observed_at` zachowują czas pierwotnego raportu przyjęcia pikseli; raport wygaszenia nie nadaje im ani pomiarowi baterii nowego czasu. Przyjęcie przez oprogramowanie pozostawia fizyczną widoczność niezweryfikowaną; potwierdzenie operatora jest osobnym zapisem odbioru.
+
+
+## Zakres panelu ruchu
+- Przegląd, Urządzenia i Chat: odczyty oraz operacje bez napędów; bez formularza zgody, przycisków ruchu i skrótu STOP. Obserwator stanu może dostarczać pomiary, ale nie wysyła poleceń po utracie fokusu.
+- Nawigacja pozostaje pasywnym wizualizatorem. Bez formularza ARM; katalog tego widoku pokazuje tylko zadania bez ruchu. Autonomia nadal wymaga ręcznej charakterystyki i pozostaje niedostępna.
+- Sterowanie i Kalibracja: lokalna zgoda, krótkie uzbrojenie, STOP, właściwy właściciel i świeży stan wymagane dla napędów.
+- System: diagnostyka domyślnie; kontrolki zgody i STOP widoczne dopiero po włączeniu administracji, ponieważ start/restart określonych usług może uruchomić napędy.
+- Zwolnienie ESTOP jest jawną operacją operatora z planem i potwierdzeniem. Kończy się stanem DISARMED; nie uzbraja automatycznie. ARM wymaga ponownego potwierdzenia.
+- Sprawdzenie kontraktu i odświeżenie stanu odbywają się przed utworzeniem polecenia z TTL 500 ms. Nie odmładza się gotowych poleceń ani nie powtarza żądań automatycznie.
+- Czas poleceń pochodzi z osobnego oszacowania zegara odpowiedzi bezpieczeństwa Pi. Odczyty innych hostów nie zmieniają tego oszacowania.

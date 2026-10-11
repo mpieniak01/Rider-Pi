@@ -36,3 +36,8 @@
 .operator-shell .operator-warning { border: 1px solid #b98b3a; padding: .7rem; border-radius: .4rem; }
 .operator-shell :focus-visible { outline: 3px solid #83c6eb; outline-offset: 3px; }
 @media (max-width: 600px) { .operator-shell { padding: .5rem; } .operator-kv { grid-template-columns: 1fr; gap: .2rem; } .operator-kv dd { margin-bottom: .4rem; } .operator-global-stop { top: auto; bottom: 1rem; } }
+
+/* Passive pages show measurements, not actuator permission forms. */
+.page-devices .operator-grid:has(> section:only-child) { grid-template-columns: minmax(0, 1fr); }
+.overview-read-status { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: .75rem; }
+.page-system .operator-grid > [data-motion-admin][hidden] + section { grid-column: 1 / -1; }

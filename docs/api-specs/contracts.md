@@ -235,3 +235,13 @@ LCD deployment includes protected boot files and unit defaults; use a separately
 `configured_rot` comes from the API process `PREVIEW_ROT` configuration (default0); it describes preview configuration, not the mounted startup display. The startup renderer reports `rot=270`. Headless camera configuration cannot replace this observation or confirm backlight power.
 
 LCD `preview_config` has its own source time. Actual LCD `source`/`observed_at` describe the renderer lifecycle report; `power_source`/`power_observed_at` require explicit `power_known=true` and `control_write_accepted`. `frame_source`/`frame_observed_at` retain the original report accepting the submitted pixels; an idle/OFF report does not restamp them or the battery measurement. Software acceptance leaves physical visibility unverified; operator confirmation is a separate acceptance record.
+
+
+## Motion panel scope
+- Overview, Devices and Chat expose observations and non-actuating operations, without motion consent forms or STOP shortcuts. Their state observer may provide measurements but does not send commands on focus loss.
+- Navigation remains a passive visualizer without an ARM form. Its task catalog shows only non-actuating tasks. Autonomous motion remains unavailable pending manual characterization.
+- Control and Calibration require local consent, a short lease, STOP, the correct owner and fresh state for actuator operations.
+- System opens as diagnostics. Consent and STOP controls appear after enabling administration because starting/restarting some services can actuate the robot.
+- Clearing ESTOP requires an explicit operator plan and consent. It ends in DISARMED and never automatically arms. ARM requires renewed consent.
+- Contract negotiation and state refresh finish before constructing the 500 ms command envelope. Existing commands are never restamped or automatically retried.
+- Command time uses a separate estimate from the Pi safety response. Observations from other hosts cannot change this estimate.

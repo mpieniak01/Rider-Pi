@@ -1,5 +1,5 @@
 import { request, poll } from './transport.js';
-import { nowSeconds, commandSeconds } from './model.js';
+import { nowSeconds } from './model.js';
 import { el, text, tr, kv, button, ageLabel, showError } from './ui.js';
 import { MAX_PROFILE_BYTES, digestValid, defaultProfile, measuredTable, profileError,
   parseImportedProfile, trialAverage, activationAllowed, activationView, pulseValues, referenceConfirmed, freshCalibration, activationPendingResult, sdkOutputObservation, sensorObservations, currentDynamics } from './calibration-model.js';
@@ -245,13 +245,17 @@ export class Calibration {
     const digest = this.selectedDigest(), plan = byId('calibration-activation-plan').value.trim();
     if (!byId('calibration-activation-consent').checked || !plan) throw new Error('explicit_configuration_consent_required');
     if (!activationAllowed(this.state, this.safety.state, this.safety.clockFresh(), nowSeconds())) throw new Error('fresh_disarmed_configuration_state_required');
-    const command = { profile_digest: digest, generation: this.safety.state.generation, seq: ++this.safety.seq,
-      source: 'manual', ts: commandSeconds(), ttl_ms: 500,
-      request_id: globalThis.crypto?.randomUUID?.() || 'calibration-' + Date.now() + '-' + Math.random().toString(16).slice(2),
-      operator_consent: true, operator_plan: plan };
-    byId('calibration-activation-consent').checked = false;
-    this.busy = true; this.awaiting = command; this.render();
+    this.busy = true; this.render();
     try {
+      await this.safety.prepare();
+      await this.load();
+      if (!activationAllowed(this.state, this.safety.state, this.safety.clockFresh(), this.safety.now())) throw new Error('fresh_disarmed_configuration_state_required');
+      const command = { profile_digest: digest, generation: this.safety.state.generation, seq: ++this.safety.seq,
+        source: 'manual', ts: this.safety.commandTime(), ttl_ms: 500,
+        request_id: globalThis.crypto?.randomUUID?.() || 'calibration-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+        operator_consent: true, operator_plan: plan };
+      byId('calibration-activation-consent').checked = false;
+      this.awaiting = command; this.render();
       await request('/api/calibration/activate', { method: 'POST', body: command });
       text('calibration-activation-result', tr('Żądanie wysłane; oczekiwanie na odczyt obu modułów.', 'Request sent; waiting for both consumers to be observed.'));
     } catch (error) {
@@ -287,15 +291,19 @@ export class Calibration {
     const coordinates = { x: number('reference-x'), y: number('reference-y'), theta: number('reference-theta') };
     if (!Object.values(coordinates).every(Number.isFinite)
       || (home && !['reference-home-x', 'reference-home-y'].every(id => Number.isFinite(number(id))))) throw new Error('measured_reference_coordinates_required');
-    const command = { ...coordinates, home_operator_confirmed: home,
-      ...(this.state.active ? { profile_digest: this.state.active.profile_digest } : {}),
-      ...(home ? { home_x: number('reference-home-x'), home_y: number('reference-home-y') } : {}),
-      generation: this.safety.state.generation, seq: ++this.safety.seq, source: 'manual',
-      ts: commandSeconds(), ttl_ms: 500,
-      request_id: globalThis.crypto?.randomUUID?.() || 'reference-' + Date.now() + '-' + Math.random().toString(16).slice(2),
-      operator_consent: true, operator_plan: plan };
-    this.referencePending = command; this.busy = true; this.render();
+    this.busy = true; this.render();
     try {
+      await this.safety.prepare();
+      await this.load();
+      if (!this.referenceAllowed()) throw new Error('fresh_disarmed_reference_state_required');
+      const command = { ...coordinates, home_operator_confirmed: home,
+        ...(this.state.active ? { profile_digest: this.state.active.profile_digest } : {}),
+        ...(home ? { home_x: number('reference-home-x'), home_y: number('reference-home-y') } : {}),
+        generation: this.safety.state.generation, seq: ++this.safety.seq, source: 'manual',
+        ts: this.safety.commandTime(), ttl_ms: 500,
+        request_id: globalThis.crypto?.randomUUID?.() || 'reference-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+        operator_consent: true, operator_plan: plan };
+      this.referencePending = command; this.render();
       await request('/api/odometry/reference', { method: 'POST', body: command });
       text('calibration-reference-result', tr('pending — wymagany zgodny ACK i odczyt odniesienia', 'pending — matching ACK and reference observation required'));
     } catch (error) { this.referencePending = null; throw error; }
