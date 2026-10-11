@@ -87,10 +87,10 @@ def test_api_profile_creation_armed_idle_never_actuates(executor, monkeypatch):
     assert instance.gate.state == "ARMED" and instance.gate.generation == generation
 
 
-def test_profiles_cannot_raise_existing_ceiling(executor):
+def test_profiles_cannot_exceed_full_command_range(executor):
     row = settings.read()
     with pytest.raises(ValueError):
-        settings.manage_profile({"action": "create", "name": "Wyścig"}, row["revision"], patch={"speed_limit": 1})
+        settings.manage_profile({"action": "create", "name": "Wyścig"}, row["revision"], patch={"speed_limit": 1.01})
     assert settings.read() == row
 
 

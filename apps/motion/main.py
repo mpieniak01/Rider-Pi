@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 from apps.motion.dynamics import RampLimits, approach, finite
+from apps.motion.manual_settings import MAX_PANEL_DURATION_S
 from apps.safety.estop import estop_triggered as estop_triggered, motion_enabled as motion_enabled
 from apps.safety.gate import MAX_DURATION_S, MotionGate
 
@@ -145,14 +146,21 @@ class MotionController:
 
     stop = _stop_immediate
 
-    def drive(self, lx: float, az: float, duration: float = MAX_DURATION_S):
+    def drive(self, lx: float, az: float, duration: float = MAX_DURATION_S, *, panel_pulse=False):
         if not self.limits.valid or not self.gate.can_actuate():
             self.stop()
             return False
+        panel_pulse = bool(
+            panel_pulse
+            and self.gate.arming_mode == "operator"
+            and self.gate.execution_context == "panel"
+            and self.gate.owner == "manual"
+        )
+        duration_limit = MAX_PANEL_DURATION_S if panel_pulse else MAX_DURATION_S
         if (
             not all(finite(value) for value in (lx, az, duration))
             or max(abs(lx), abs(az)) > 1
-            or not 0 < duration <= MAX_DURATION_S
+            or not 0 < duration <= duration_limit
         ):
             self.gate.disarm("invalid_motion_intent")
             self.stop()
@@ -179,7 +187,7 @@ class MotionController:
                 self.stop()
                 return False
         self.last_cmd_ts = self.gate.clock()
-        self.deadline = self.last_cmd_ts + min(duration, self.limits.watchdog_s)
+        self.deadline = self.last_cmd_ts + (duration if panel_pulse else min(duration, self.limits.watchdog_s))
         return True
 
     @staticmethod

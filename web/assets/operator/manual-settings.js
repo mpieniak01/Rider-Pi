@@ -1,7 +1,7 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
 import { showError, text, tr, el } from './ui.js';
-import { fields, directions, settingsValid, settingsPulse } from './manual-settings-model.js?v=device-profiles-3';
+import { fields, directions, settingsValid, settingsPulse } from './manual-settings-model.js?v=full-range-7';
 
 const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 // Display units only: canonical Pi values stay normalized commands and seconds.
@@ -113,8 +113,8 @@ export class ManualSettings {
   }
   effective(){
     if(!this.state)return null;
-    return {values:{...this.state.values,...this.pending},
-      directions:Object.fromEntries(directions.map(name=>[name,{...this.state.directions[name],...this.directionEdits[name]}]))};
+    const rows=Object.fromEntries(directions.map(name=>[name,{...this.state.directions[name],...this.directionEdits[name]}]));
+    return {values:{...this.state.values,...this.pending,speed_limit:Math.max(...directions.map(name=>rows[name].maximum))},directions:rows};
   }
   validation(){
     const effective=this.effective();if(!effective)return [];
@@ -125,9 +125,9 @@ export class ManualSettings {
       for(const key of ['speed','duration','minimum','maximum','step']){
         if(!Number.isFinite(d[key]))add(prefix+key,caption+'Wpisz liczbę.',caption+'Enter a number.');
       }
-      if(!(d.duration>=.01 && d.duration<=.25))add(prefix+'duration',caption+'Czas: 10–250 ms.',caption+'Duration: 10–250 ms.');
+      if(!(d.duration>=.01 && d.duration<=1))add(prefix+'duration',caption+'Czas: 10–1000 ms.',caption+'Duration: 10–1000 ms.');
       if(!(d.minimum>=0 && d.minimum<=d.maximum))add(prefix+'minimum',caption+'Minimum musi mieścić się między 0 a maksimum.',caption+'Minimum must be between zero and maximum.');
-      if(!(d.maximum>=0 && d.maximum<=v.speed_limit))add(prefix+'maximum',caption+'Maksimum nie może przekroczyć '+percent(v.speed_limit)+'.',caption+'Maximum cannot exceed '+percent(v.speed_limit)+'.');
+      if(!(d.maximum>=0 && d.maximum<=this.state.limits.speed_limit))add(prefix+'maximum',caption+'Maksimum nie może przekroczyć '+percent(this.state.limits.speed_limit)+'.',caption+'Maximum cannot exceed '+percent(this.state.limits.speed_limit)+'.');
       if(!(d.step>0 && d.step<=d.maximum-d.minimum))add(prefix+'step',caption+'Krok musi być większy od 0 i nie większy od zakresu ('+percent(d.maximum-d.minimum)+').',caption+'Step must be positive and no larger than the range ('+percent(d.maximum-d.minimum)+').');
       if(!(d.speed===0 || d.speed>=d.minimum && d.speed<=d.maximum))add(prefix+'speed',caption+'Siła musi mieścić się w zakresie; 0 zatrzymuje.',caption+'Magnitude must be within the range; zero stops.');
       const a=v[name==='forward'||name==='backward'?'linear_rate':'turn_rate'];
@@ -151,7 +151,7 @@ export class ManualSettings {
   reportError(error){
     text('manual-settings-result','');
     const message=error.message==='manual_settings_direction_step_or_duration'
-      ?tr('Zapis odrzucony: sprawdź krok oraz czas 10–250 ms.','Write rejected: check the step and duration of 10–250 ms.')
+      ?tr('Zapis odrzucony: sprawdź krok oraz czas 10–1000 ms.','Write rejected: check the step and duration of 10–1000 ms.')
       :error.message;
     showError({...error,message});
   }
@@ -270,7 +270,7 @@ export class ManualSettings {
         node.disabled=!editable;
         if(known){
           node.min=key==='duration'?10:key==='step'?.001:0;
-          node.max=key==='duration'?250:key==='step'?100:key==='speed'?displayNumber(Math.max(0,effective.directions[name].maximum)*100):displayNumber(this.state.values.speed_limit*100);
+          node.max=key==='duration'?1000:key==='step'?100:key==='speed'?displayNumber(Math.max(0,effective.directions[name].maximum)*100):displayNumber(this.state.limits.speed_limit*100);
           // Browser step rounding must never rewrite an authoritative value.
           node.step='any';
           const value=effective.directions[name][key];

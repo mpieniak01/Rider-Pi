@@ -52,7 +52,14 @@ def validate_actuator(command: dict) -> dict:
         vx = finite_number(command.get("vx", 0.0), "invalid_vx")
         yaw = finite_number(command.get("yaw", command.get("az", 0.0)), "invalid_yaw")
         duration = finite_number(command.get("duration"), "duration_required")
-        if abs(vx) > 1 or abs(yaw) > 1 or not 0 < duration <= MAX_DURATION_S:
+        panel_pulse = (
+            command.get("device_settings") is True
+            and command.get("direction") in manual_settings.DIRECTIONS
+            and command.get("execution_context") == "panel"
+            and command.get("source") == "manual"
+        )
+        duration_limit = manual_settings.MAX_PANEL_DURATION_S if panel_pulse else MAX_DURATION_S
+        if abs(vx) > 1 or abs(yaw) > 1 or not 0 < duration <= duration_limit:
             raise ValueError("motion_limits_exceeded")
         values = {"vx": vx, "yaw": yaw, "duration": duration}
     elif action in {"balance", "stabilization"}:
@@ -430,7 +437,12 @@ class MotionExecutor:
             if not capability.get("available") or not capability.get("stop_verified"):
                 return self._ack(command, "rejected", "manual_characterization_required")
         if action in {"move", "turn"}:
-            if not self.controller.drive(values["vx"], values["yaw"], values["duration"]):
+            if not self.controller.drive(
+                values["vx"],
+                values["yaw"],
+                values["duration"],
+                panel_pulse=command.get("device_settings") is True,
+            ):
                 return self._ack(command, "rejected", "motion_disarmed")
             previous, self.pending = self.pending, None
             if previous is not None:

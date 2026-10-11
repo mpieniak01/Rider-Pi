@@ -14,7 +14,7 @@ export function settingsValid(row, now) {
       return d && ['minimum','maximum','step','speed','duration'].every(k=>Number.isFinite(d[k]))
         && d.minimum>=0 && d.minimum<=d.maximum && d.maximum<=row.values.speed_limit
         && d.speed>=0 && (d.speed===0 || d.speed>=d.minimum) && d.speed<=d.maximum
-        && d.step>0 && d.step<=1 && d.duration>=.01 && d.duration<=.25;
+        && d.step>0 && d.step<=1 && d.duration>=.01 && d.duration<=1;
     });
 }
 export function settingsPulse(row, direction) {

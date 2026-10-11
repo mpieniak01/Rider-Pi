@@ -16,6 +16,8 @@ from apps.motion.dynamics import RampLimits, finite
 
 FIELDS = {"linear_speed", "turn_speed", "pulse_duration", "speed_limit", "linear_rate", "turn_rate"}
 SMOOTHING = {"linear_deceleration", "turn_deceleration", "reversal_pause"}
+MAX_PANEL_DURATION_S = 1.0
+
 DIRECTIONS = ("forward", "backward", "left", "right")
 _LOCK = threading.RLock()
 _LOCAL = threading.local()
@@ -59,14 +61,13 @@ def locked(*, blocking=True):
 
 
 def limits():
-    row = RampLimits.from_env()
     return {
-        "linear_speed": row.speed_limit,
-        "turn_speed": row.speed_limit,
-        "pulse_duration": 0.25,
-        "speed_limit": row.speed_limit,
-        "linear_rate": row.linear_rate,
-        "turn_rate": row.turn_rate,
+        "linear_speed": 1.0,
+        "turn_speed": 1.0,
+        "pulse_duration": MAX_PANEL_DURATION_S,
+        "speed_limit": 1.0,
+        "linear_rate": 100.0,
+        "turn_rate": 100.0,
         "linear_deceleration": 100.0,
         "turn_deceleration": 100.0,
         "reversal_pause": 0.25,
@@ -75,15 +76,16 @@ def limits():
 
 def defaults():
     cap = limits()
+    baseline = RampLimits.from_env()
     return {
         "linear_speed": min(0.2, cap["speed_limit"]),
         "turn_speed": min(0.35, cap["speed_limit"]),
         "pulse_duration": 0.25,
         "speed_limit": cap["speed_limit"],
-        "linear_rate": cap["linear_rate"],
-        "turn_rate": cap["turn_rate"],
-        "linear_deceleration": cap["linear_rate"],
-        "turn_deceleration": cap["turn_rate"],
+        "linear_rate": baseline.linear_rate,
+        "turn_rate": baseline.turn_rate,
+        "linear_deceleration": baseline.linear_rate,
+        "turn_deceleration": baseline.turn_rate,
         "reversal_pause": 0.0,
     }
 
@@ -127,7 +129,7 @@ def validate_directions(directions, values):
             raise ValueError("manual_settings_direction_number")
         if not 0 <= row["minimum"] <= row["maximum"] <= values["speed_limit"]:
             raise ValueError("manual_settings_direction_range")
-        if not 0 < row["step"] <= 1 or not 0.01 <= row["duration"] <= 0.25:
+        if not 0 < row["step"] <= 1 or not 0.01 <= row["duration"] <= MAX_PANEL_DURATION_S:
             raise ValueError("manual_settings_direction_step_or_duration")
         if row["speed"] != 0 and not row["minimum"] <= row["speed"] <= row["maximum"] or row["speed"] < 0:
             raise ValueError("manual_settings_direction_speed")
@@ -361,6 +363,18 @@ def _updated(current, patch, directions):
             if not isinstance(edits, dict):
                 raise ValueError("manual_settings_direction_fields")
             rows[name].update(edits)
+    if any(not all(finite(value) for value in row.values()) for row in rows.values()):
+        raise ValueError("manual_settings_direction_number")
+    # The global command limit is a derived compatibility alias, not a second
+    # hidden cap below the per-direction calibration maxima.
+    if "speed_limit" not in patch:
+        values["speed_limit"] = max(row["maximum"] for row in rows.values())
+    values.update(
+        linear_speed=rows["forward"]["speed"],
+        turn_speed=rows["right"]["speed"],
+        pulse_duration=max(row["duration"] for row in rows.values()),
+    )
+    values = validate(values)
     rows = validate_directions(rows, values)
     row = _canonical(dict(current, values=values, directions=rows))
     return row

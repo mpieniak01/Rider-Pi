@@ -32,8 +32,8 @@ def test_one_persistent_revision_and_stale_writer_conflict(store):
     [
         {"linear_speed": True},
         {"turn_speed": float("nan")},
-        {"pulse_duration": 0.5},
-        {"linear_rate": 100},
+        {"pulse_duration": 1.01},
+        {"linear_rate": 101},
         {"speed_limit": 0.8},
         {"unknown": 1},
     ],
@@ -149,3 +149,67 @@ def test_shared_defaults_reach_requested_speed_within_default_pulse(executor):
             else abs(instance.controller.o_az) == row["values"]["turn_speed"]
         )
         instance.poll_sensors()
+
+
+def test_full_manual_range_and_second_pulse_are_persisted(store):
+    before = store.read()
+    row = store.update(
+        {"linear_rate": 8, "linear_deceleration": 8},
+        before["revision"],
+        directions={"forward": {"maximum": 1, "speed": 1, "duration": 1}},
+    )
+    assert row["directions"]["forward"]["speed"] == 1
+    assert row["directions"]["forward"]["duration"] == 1
+    assert row["values"]["speed_limit"] == 1
+    assert store.read() == row
+
+
+def test_legacy_sixty_percent_cap_is_derived_from_new_direction_maximum(store):
+    row = store.read()
+    # Reproduce the deployed legacy settings without touching any hardware.
+    for item in row["directions"].values():
+        item["maximum"] = 0.6
+    row["values"]["speed_limit"] = 0.6
+    store._atomic(row)
+    changed = store.update({}, row["revision"], directions={"backward": {"maximum": 1}})
+    assert changed["values"]["speed_limit"] == 1
+    assert changed["directions"]["backward"]["speed"] == row["directions"]["backward"]["speed"]
+    assert changed["directions"]["forward"] == row["directions"]["forward"]
+
+
+def test_second_panel_pulse_is_not_clipped_by_command_freshness(executor):
+    instance, clock = executor
+    operator_arm(instance)
+    row = settings.read()
+    row = settings.update({}, row["revision"], directions={"forward": {"duration": 1}})
+    request = command(
+        instance,
+        direction="forward",
+        device_settings=True,
+        execution_context="panel",
+        settings_revision=row["revision"],
+    )
+    started = clock.now
+    ack = instance.apply(request)
+    assert ack["status"] == "accepted", ack
+    assert instance.controller.deadline == started + 1
+    for _ in range(35):
+        clock.now += 0.02
+        instance.poll_sensors()
+        instance.tick(0.02)
+    assert not instance.controller.stopped  # Still running after 500 ms.
+    assert instance.apply(command(instance, "stop"))["status"] == "executed"
+    assert instance.controller.stopped
+
+
+def test_second_pulse_does_not_allow_old_or_raw_commands(executor):
+    instance, clock = executor
+    operator_arm(instance)
+    row = settings.read()
+    row = settings.update({}, row["revision"], directions={"forward": {"duration": 1}})
+    stale = command(instance, direction="forward", device_settings=True, settings_revision=row["revision"])
+    clock.now += 0.6
+    assert instance.apply(stale)["status"] == "rejected"
+    assert not any(c[0] == "move" for c in instance.adapter.calls)
+    raw = command(instance, vx=0.2, duration=1, settings_revision=row["revision"])
+    assert instance.apply(raw)["status"] == "rejected"

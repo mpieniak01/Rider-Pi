@@ -35,6 +35,7 @@ async function screen(shared,{postError=null,nodes={},elFactory=()=>({})}={}){
           values:{...shared.current.values,...options.body.values},
           directions:{...shared.current.directions,...Object.fromEntries(Object.entries(options.body.directions||{})
             .map(([key,value])=>[key,{...shared.current.directions[key],...value}]))}};
+        shared.current.values.speed_limit=Math.max(...Object.values(shared.current.directions).map(row=>row.maximum));
       }
       return {canonical:true,data:structuredClone(shared.current)};
     }});
@@ -114,10 +115,10 @@ test('invalid stored step never rounds the displayed slider down to zero',async(
 
 test('invalid duration is caught before POST and draft is retained',async()=>{
   const a=await screen({current:row()});
-  a.panel.edit(()=>{a.panel.directionEdits.backward={duration:1};});
-  await assert.rejects(()=>a.panel.save(),/10–250 ms/);
+  a.panel.edit(()=>{a.panel.directionEdits.backward={duration:1.001};});
+  await assert.rejects(()=>a.panel.save(),/10–1000 ms/);
   assert.equal(a.posts(),0);
-  assert.equal(a.panel.directionEdits.backward.duration,1);
+  assert.equal(a.panel.directionEdits.backward.duration,1.001);
   assert.equal(a.panel.dirty(),true);
 });
 
@@ -157,4 +158,15 @@ test('typing percent and milliseconds converts once before persistence',async()=
   assert.equal(shared.current.directions.backward.speed,.35);
   assert.equal(shared.current.directions.backward.step,.01);
   assert.equal(shared.current.directions.backward.duration,.2);
+});
+
+test('one second duration and full calibrated maximum pass UI validation',async()=>{
+  const shared={current:row()};
+  shared.current.limits={...limits,speed_limit:1,linear_speed:1,turn_speed:1,pulse_duration:1,linear_rate:100,turn_rate:100};
+  const a=await screen(shared);
+  a.panel.edit(()=>{a.panel.directionEdits.backward={maximum:1,speed:1,duration:1};});
+  assert.equal(a.panel.validation().length,0);
+  await a.panel.save();
+  assert.equal(shared.current.directions.backward.speed,1);
+  assert.equal(shared.current.directions.backward.duration,1);
 });
