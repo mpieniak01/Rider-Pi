@@ -3,14 +3,9 @@ import { nowSeconds } from './model.js';
 import { showError, text, tr, el } from './ui.js';
 import { fields, directions, settingsValid, settingsPulse } from './manual-settings-model.js?v=device-profiles-3';
 
+const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 const labels = {forward:['Przód','Forward'],backward:['Tył','Backward'],left:['Lewo','Left'],right:['Prawo','Right']};
-const smoothing = [
-  ['linear_rate','Narastanie jazdy','Linear acceleration'],
-  ['linear_deceleration','Wygaszanie jazdy','Linear deceleration'],
-  ['turn_rate','Narastanie skrętu','Turn acceleration'],
-  ['turn_deceleration','Wygaszanie skrętu','Turn deceleration'],
-  ['reversal_pause','Przerwa nawrotu (s)','Reversal pause (s)']
-];
+
 export class ManualSettings {
   constructor(safety) {
     this.safety=safety;this.state=null;this.pending={};this.directionEdits={};
@@ -47,7 +42,8 @@ export class ManualSettings {
     callback();this.paint();this.safety.render();
   }
   input(id, caption, update){
-    const label=el('label'), node=el('input');node.id=id;node.type=id.endsWith('-speed')?'range':'number';node.step='any';
+    const label=el('label','motion-setting-field'), node=el('input');node.id=id;node.type=id.endsWith('-speed')?'range':'number';node.step='any';node.inputMode='decimal';
+    label.dataset.field=node.type==='range'?'speed':'number';
     const title=el('span','',caption);label.append(title,node);
     if(node.type==='range'){const output=el('output');output.id=id+'-value';label.append(output);}
     node.addEventListener('input',()=>this.edit(()=>update(Number(node.value))));
@@ -57,8 +53,11 @@ export class ManualSettings {
     const target=document.getElementById('manual-direction-settings');if(!target)return;
     const calibration=document.body.dataset.page==='calibration';
     for(const name of directions){
-      const row=el('div','operator-row');row.dataset.directionSettings=name;
-      row.append(el('strong','',tr(...labels[name])));
+      const row=el('div','motion-setting-row');row.dataset.directionSettings=name;
+      const heading=el('strong','motion-direction');
+      const arrow=el('span','motion-direction-arrow',arrows[name]);arrow.setAttribute('aria-hidden','true');
+      const title=el('span','',tr(...labels[name]));title.id='setting-'+name+'-title';
+      heading.append(arrow,title);row.append(heading);
       for(const [key,pl,en] of [
         ['speed','Siła polecenia','Command magnitude'],['duration','Czas (s)','Duration (s)'],
         ...(calibration?[['minimum','Minimum','Minimum'],['maximum','Maksimum','Maximum'],['step','Krok','Step']]:[])
@@ -67,11 +66,24 @@ export class ManualSettings {
           this.directionEdits[name]={...this.directionEdits[name],[key]:value};
         }));
       }
-      const hint=el('small','operator-muted','');hint.id='setting-'+name+'-hint';row.append(hint);target.append(row);
+      const hint=el('small','operator-muted motion-setting-hint','');hint.id='setting-'+name+'-hint';row.append(hint);target.append(row);
     }
     const ramps=document.getElementById('manual-smoothing-settings');
-    if(ramps)for(const [key,pl,en] of smoothing){
-      ramps.append(this.input('setting-'+key,tr(pl,en),value=>{this.pending[key]=value;}));
+    if(ramps){
+      for(const [keys,pl,en] of [
+        [['linear_rate','linear_deceleration'],'↑ ↓ Jazda','↑ ↓ Travel'],
+        [['turn_rate','turn_deceleration'],'← → Skręt','← → Turn'],
+        [['reversal_pause'],'Nawrót','Reversal']
+      ]){
+        const group=el('fieldset','motion-smoothing-group');
+        group.append(el('legend','',tr(pl,en)));
+        for(const key of keys){
+          const caption=key==='reversal_pause'?tr('Przerwa (s)','Pause (s)')
+            :key.endsWith('deceleration')?tr('Hamowanie','Deceleration'):tr('Narastanie','Acceleration');
+          group.append(this.input('setting-'+key,caption,value=>{this.pending[key]=value;}));
+        }
+        ramps.append(group);
+      }
     }
   }
   async refresh(){
@@ -167,13 +179,14 @@ export class ManualSettings {
     const known=settingsValid(this.state,nowSeconds()), editable=this.editable();
     this.paintProfiles(known,editable);
     for(const name of directions){
+      text('setting-'+name+'-title',tr(...labels[name]));
       if(known){
         const item=this.state.directions[name], v=this.state.values;
         const a=['forward','backward'].includes(name)?v.linear_rate:v.turn_rate;
         const d=['forward','backward'].includes(name)?v.linear_deceleration:v.turn_deceleration;
         const peak=Math.min(item.speed,item.duration/(1/a+1/d));
         text('setting-'+name+'-hint',tr('Zakres ','Range ')+item.minimum+'–'+item.maximum
-          +tr(' · szacowane maksimum polecenia w impulsie ≤',' · estimated pulse command peak ≤')+peak.toFixed(3));
+          +tr(' · szczyt impulsu ≤',' · pulse peak ≤')+peak.toFixed(3));
       }
       for(const key of ['speed','duration','minimum','maximum','step']){
         const node=document.getElementById('setting-'+name+'-'+key);if(!node)continue;

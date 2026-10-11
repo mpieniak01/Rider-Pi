@@ -21,3 +21,7 @@
 .calibration-preparation, .calibration-advanced { margin-top: 1rem; }
 .calibration-advanced > summary, .calibration-tuning summary { cursor: pointer; margin-bottom: 1rem; }
 @media (max-width: 800px) { .calibration-primary { grid-template-columns: minmax(0, 1fr); } }
+
+.page-calibration .control-primary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+.page-calibration .control-primary > .c-card { min-width: 0; box-sizing: border-box; }
+@media (max-width: 800px) { .page-calibration .control-primary { grid-template-columns: minmax(0, 1fr); } }

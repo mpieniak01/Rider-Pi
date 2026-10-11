@@ -9,8 +9,8 @@
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css?v=device-profiles-3">
-<link rel="stylesheet" href="/web/assets/operator/calibration.css?v=device-profiles-3">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=compact-calibration-4b">
+<link rel="stylesheet" href="/web/assets/operator/calibration.css?v=compact-calibration-4b">
 </head>
 <body data-page="calibration" class="page page-calibration">
 <header class="layout-header" data-dashboard-menu-target></header>
@@ -40,11 +40,11 @@
 <p data-pl="Strzałki stosują te same ustawienia co Sterowanie. Próba wymaga przygotowanej przestrzeni i świadomego uzbrojenia." data-en="Arrows use the same settings as Control. A trial requires prepared space and deliberate arming.">Strzałki stosują te same ustawienia co Sterowanie. Próba wymaga przygotowanej przestrzeni i świadomego uzbrojenia.</p><div class="operator-drive motion-grid"><span></span><button class="c-btn" type="button" data-direction="forward" data-pl="↑ Przód" data-en="↑ Forward" disabled>↑ Przód</button><span></span><button class="c-btn" type="button" data-direction="left" data-pl="← Lewo" data-en="← Left" disabled>← Lewo</button><button class="c-btn operator-stop" type="button" data-stop>STOP</button><button class="c-btn" type="button" data-direction="right" data-pl="→ Prawo" data-en="→ Right" disabled>→ Prawo</button><span></span><button class="c-btn" type="button" data-direction="backward" data-pl="↓ Tył" data-en="↓ Backward" disabled>↓ Tył</button><span></span></div></section></div>
 <section class="c-card">
 <h2 data-pl="Zakresy kierunków" data-en="Direction ranges">Zakresy kierunków</h2>
-<p data-pl="Siła polecenia 0–1, nie pomiar prędkości. Minimum to najmniejsze skuteczne polecenie określone przez operatora. Zero zatrzymuje. Czas obejmuje narastanie i wygaszenie." data-en="Command magnitude 0–1, not measured speed. Minimum is the smallest effective command determined by the operator. Zero stops. Duration includes acceleration and deceleration.">Siła polecenia 0–1, nie pomiar prędkości. Minimum to najmniejsze skuteczne polecenie określone przez operatora. Zero zatrzymuje. Czas obejmuje narastanie i wygaszenie.</p>
+<p data-pl="Ustaw każdy kierunek osobno. Siła 0–1 oznacza polecenie, nie zmierzoną prędkość. Czas obejmuje cały impuls." data-en="Tune each direction separately. Magnitude 0–1 is a command, not measured speed. Duration includes the whole pulse.">Ustaw każdy kierunek osobno. Siła 0–1 oznacza polecenie, nie zmierzoną prędkość. Czas obejmuje cały impuls.</p>
 <div id="manual-direction-settings"></div>
 <h2 data-pl="Wygładzanie poleceń" data-en="Command smoothing">Wygładzanie poleceń</h2>
 <p data-pl="Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem." data-en="Command change per second. Does not change the robot balance controller. STOP bypasses smoothing.">Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem.</p>
-<div id="manual-smoothing-settings" class="operator-grid"></div>
+<div id="manual-smoothing-settings" class="motion-smoothing"></div>
 <button id="manual-settings-save" class="c-btn" type="button" disabled data-pl="Zapisz ustawienia na robocie" data-en="Save settings on robot">Zapisz ustawienia na robocie</button>
 <p id="manual-settings-result" role="status"></p>
 <p data-pl="Ustawienia można zmieniać przy uzbrojonym robocie, między impulsami. Oba ekrany odczytują ten sam zapis; konflikt nie jest automatycznie nadpisywany." data-en="Settings can be changed while armed, between pulses. Both screens read the same record; conflicts are not automatically overwritten.">Ustawienia można zmieniać przy uzbrojonym robocie, między impulsami. Oba ekrany odczytują ten sam zapis; konflikt nie jest automatycznie nadpisywany.</p>
@@ -53,7 +53,7 @@
 <ol id="request-history"></ol><p id="last-event" class="operator-muted"></p>
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=device-profiles-3"></script>
+<script type="module" src="/web/assets/operator/app.js?v=compact-calibration-4b"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>
