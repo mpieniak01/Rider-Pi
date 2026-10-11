@@ -9,51 +9,41 @@
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css?v=compact-calibration-4b">
-<link rel="stylesheet" href="/web/assets/operator/calibration.css?v=compact-calibration-4b">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=compact-calibration-5f">
+<link rel="stylesheet" href="/web/assets/operator/calibration.css?v=compact-calibration-5f">
 </head>
 <body data-page="calibration" class="page page-calibration">
 <header class="layout-header" data-dashboard-menu-target></header>
 <main class="layout-main operator-shell">
-<header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Kalibracja" data-en="Rider-Pi — Calibration">Rider-Pi — Kalibracja</h1></header>
-<p id="manual-settings-status" role="status">Synchronizacja ustawień</p>
+<header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Kalibracja" data-en="Rider-Pi — Calibration">Rider-Pi — Kalibracja</h1><p id="manual-settings-status" role="status">Synchronizacja ustawień</p></header>
 <p id="operator-message" role="status"></p>
-<section class="c-card motion-profiles"><h2 data-pl="Profil ruchu" data-en="Motion profile">Profil ruchu</h2>
+<div class="panel-row control-primary"><section class="c-card motion-profiles"><div class="profile-heading"><h2 data-pl="Profil ruchu" data-en="Motion profile">Profil ruchu</h2><p id="motion-profile-status" role="status"></p></div>
 <div class="operator-row"><label><span data-pl="Profil" data-en="Profile">Profil</span><select id="motion-profile-select"><option value="">Bieżące nastawy</option></select></label>
-<button id="motion-profile-apply" class="c-btn" type="button" disabled data-pl="Zastosuj wybrany" data-en="Apply selected">Zastosuj wybrany</button></div>
-<p id="motion-profile-status" role="status"></p>
+<button id="motion-profile-apply" class="c-btn" type="button" disabled data-pl="Zastosuj" data-en="Apply">Zastosuj</button></div>
 <div class="operator-row"><label><span data-pl="Nazwa" data-en="Name">Nazwa</span><input id="motion-profile-name" maxlength="60" placeholder="np. Delikatnie — biurko"></label>
 <button id="motion-profile-create" class="c-btn" type="button" disabled data-pl="Zapisz jako nowy" data-en="Save as new">Zapisz jako nowy</button>
-<button id="motion-profile-save" class="c-btn" type="button" disabled data-pl="Aktualizuj wybrany" data-en="Update selected">Aktualizuj wybrany</button>
-<button id="motion-profile-delete" class="c-btn" type="button" disabled data-pl="Usuń wybrany" data-en="Delete selected">Usuń wybrany</button></div>
-<p class="operator-muted" data-pl="Profil zapamiętuje zakresy, siłę, czas i wygładzanie wszystkich kierunków. Nazwa opisuje zastosowanie; nie potwierdza bezpieczeństwa podłoża. Zastosowanie nie uruchamia ruchu." data-en="A profile stores all direction ranges, magnitudes, durations and smoothing. Its name describes use; it does not certify the surface. Applying never starts motion.">Profil zapamiętuje zakresy, siłę, czas i wygładzanie wszystkich kierunków. Nazwa opisuje zastosowanie; nie potwierdza bezpieczeństwa podłoża. Zastosowanie nie uruchamia ruchu.</p>
-</section>
-<div class="panel-row control-primary"><section class="c-card c-section cam-card control-section is-camera">
-<h2 data-pl="Podgląd kamery" data-en="Camera preview">Podgląd kamery</h2>
-<div class="cam-actions"><button id="control-camera-toggle" type="button" class="c-btn">⟳</button><button type="button" class="c-btn" data-camera-kind="raw">CAM / RAW</button><button type="button" class="c-btn" data-camera-kind="proc">EDGE / PROC</button></div>
-<div class="media-frame"><img id="control-camera-image" class="cam" alt="Podgląd kamery robota" hidden><p id="control-camera-empty" data-pl="Brak bieżącej klatki kamery" data-en="No current camera frame">Brak bieżącej klatki kamery</p></div>
-<p id="control-camera-status" class="operator-muted" role="status"></p>
-<p class="operator-muted" data-pl="Podgląd odczytuje działającą kamerę. Nie uruchamia usług ani ruchu." data-en="Preview reads the running camera. It does not start services or motion.">Podgląd odczytuje działającą kamerę. Nie uruchamia usług ani ruchu.</p>
-<a href="/devices" data-pl="Urządzenia i zarządzanie kamerą" data-en="Devices and camera management">Urządzenia i zarządzanie kamerą</a>
+<button id="motion-profile-save" class="c-btn" type="button" disabled data-pl="Zapisz profil" data-en="Save profile">Zapisz profil</button>
+<button id="motion-profile-delete" class="c-btn" type="button" disabled data-pl="Usuń profil" data-en="Delete profile">Usuń profil</button></div>
+
 </section><section class="c-card control-card">
 <h2 data-pl="Próba ręczna" data-en="Manual trial">Próba ręczna</h2>
-<p data-pl="Strzałki stosują te same ustawienia co Sterowanie. Próba wymaga przygotowanej przestrzeni i świadomego uzbrojenia." data-en="Arrows use the same settings as Control. A trial requires prepared space and deliberate arming.">Strzałki stosują te same ustawienia co Sterowanie. Próba wymaga przygotowanej przestrzeni i świadomego uzbrojenia.</p><div class="operator-drive motion-grid"><span></span><button class="c-btn" type="button" data-direction="forward" data-pl="↑ Przód" data-en="↑ Forward" disabled>↑ Przód</button><span></span><button class="c-btn" type="button" data-direction="left" data-pl="← Lewo" data-en="← Left" disabled>← Lewo</button><button class="c-btn operator-stop" type="button" data-stop>STOP</button><button class="c-btn" type="button" data-direction="right" data-pl="→ Prawo" data-en="→ Right" disabled>→ Prawo</button><span></span><button class="c-btn" type="button" data-direction="backward" data-pl="↓ Tył" data-en="↓ Backward" disabled>↓ Tył</button><span></span></div></section></div>
-<section class="c-card">
+<p data-pl="Strzałki korzystają z zapisanych nastaw. Uzbrój robota, aby wykonać próbę." data-en="Arrows use saved settings. Arm the robot to try them.">Strzałki korzystają z zapisanych nastaw. Uzbrój robota, aby wykonać próbę.</p><div class="operator-drive motion-grid"><span></span><button class="c-btn" type="button" data-direction="forward" data-pl="↑ Przód" data-en="↑ Forward" disabled>↑ Przód</button><span></span><button class="c-btn" type="button" data-direction="left" data-pl="← Lewo" data-en="← Left" disabled>← Lewo</button><button class="c-btn operator-stop" type="button" data-stop>STOP</button><button class="c-btn" type="button" data-direction="right" data-pl="→ Prawo" data-en="→ Right" disabled>→ Prawo</button><span></span><button class="c-btn" type="button" data-direction="backward" data-pl="↓ Tył" data-en="↓ Backward" disabled>↓ Tył</button><span></span></div></section></div>
+<section class="c-card calibration-settings">
 <h2 data-pl="Zakresy kierunków" data-en="Direction ranges">Zakresy kierunków</h2>
 <p data-pl="Ustaw każdy kierunek osobno. Siła 0–1 oznacza polecenie, nie zmierzoną prędkość. Czas obejmuje cały impuls." data-en="Tune each direction separately. Magnitude 0–1 is a command, not measured speed. Duration includes the whole pulse.">Ustaw każdy kierunek osobno. Siła 0–1 oznacza polecenie, nie zmierzoną prędkość. Czas obejmuje cały impuls.</p>
 <div id="manual-direction-settings"></div>
-<h2 data-pl="Wygładzanie poleceń" data-en="Command smoothing">Wygładzanie poleceń</h2>
-<p data-pl="Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem." data-en="Command change per second. Does not change the robot balance controller. STOP bypasses smoothing.">Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem.</p>
-<div id="manual-smoothing-settings" class="motion-smoothing"></div>
-<button id="manual-settings-save" class="c-btn" type="button" disabled data-pl="Zapisz ustawienia na robocie" data-en="Save settings on robot">Zapisz ustawienia na robocie</button>
+<h2 title="Tempo zmiany polecenia na sekundę. STOP działa natychmiast; nie zmienia regulatora równowagi robota." data-pl="Wygładzanie poleceń" data-en="Command smoothing">Wygładzanie poleceń</h2>
+<p class="smoothing-help" data-pl="Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem." data-en="Command change per second. Does not change the robot balance controller. STOP bypasses smoothing.">Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem.</p>
+<div class="calibration-save-row"><div id="manual-smoothing-settings" class="motion-smoothing"></div>
+<button id="manual-settings-save" class="c-btn" type="button" disabled data-pl="Zapisz ustawienia na robocie" data-en="Save settings on robot">Zapisz ustawienia na robocie</button></div>
 <p id="manual-settings-result" role="status"></p>
-<p data-pl="Ustawienia można zmieniać przy uzbrojonym robocie, między impulsami. Oba ekrany odczytują ten sam zapis; konflikt nie jest automatycznie nadpisywany." data-en="Settings can be changed while armed, between pulses. Both screens read the same record; conflicts are not automatically overwritten.">Ustawienia można zmieniać przy uzbrojonym robocie, między impulsami. Oba ekrany odczytują ten sam zapis; konflikt nie jest automatycznie nadpisywany.</p>
+
 </section>
-<details class="c-card"><summary data-pl="Diagnostyka wykonawcy" data-en="Executor diagnostics">Diagnostyka wykonawcy</summary><pre id="calibration-output"></pre></details>
-<ol id="request-history"></ol><p id="last-event" class="operator-muted"></p>
+<details class="c-card"><summary data-pl="Diagnostyka wykonawcy" data-en="Executor diagnostics">Diagnostyka wykonawcy</summary><pre id="calibration-output"></pre><ol id="request-history"></ol><p id="last-event" class="operator-muted"></p></details>
+
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=compact-calibration-4b"></script>
+<script type="module" src="/web/assets/operator/app.js?v=compact-calibration-5f"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

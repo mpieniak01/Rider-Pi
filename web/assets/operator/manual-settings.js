@@ -187,6 +187,8 @@ export class ManualSettings {
         const peak=Math.min(item.speed,item.duration/(1/a+1/d));
         text('setting-'+name+'-hint',tr('Zakres ','Range ')+item.minimum+'–'+item.maximum
           +tr(' · szczyt impulsu ≤',' · pulse peak ≤')+peak.toFixed(3));
+        const row=document.getElementById('setting-'+name+'-title')?.closest('.motion-setting-row');
+        if(row)row.title=document.getElementById('setting-'+name+'-hint').textContent;
       }
       for(const key of ['speed','duration','minimum','maximum','step']){
         const node=document.getElementById('setting-'+name+'-'+key);if(!node)continue;

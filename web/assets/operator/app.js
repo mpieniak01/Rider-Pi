@@ -1,4 +1,4 @@
-import { ManualSettings } from './manual-settings.js?v=compact-calibration-4b';
+import { ManualSettings } from './manual-settings.js?v=compact-calibration-5';
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
 import { initI18n } from '/web/assets/i18n.js';
 import { SafetyPanel } from './safety.js?v=compact-calibration-4b';
@@ -31,7 +31,7 @@ const safety = new SafetyPanel(state => {
   renderCapabilities(state);
 }, { interactive: motionPage });
 if (['control', 'calibration'].includes(page)) safety.controls = new ManualSettings(safety);
-if (['control', 'calibration'].includes(page)) new ControlCamera();
+if (page === 'control') new ControlCamera();
 
 if (page === 'control') tasks = new Tasks(safety);
 if (page === 'calibration') calibration = new Calibration(safety);
