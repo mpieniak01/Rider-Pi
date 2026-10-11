@@ -61,7 +61,7 @@ def check_paths(paths, restart_motion=False):
         )
         critical = path.startswith(("systemd/", "drivers/", "scripts/sys_", "requirements"))
         critical = critical or path in {"scripts/systemd-sync.sh", "pyproject.toml"}
-        if path == "drivers/xgo/adapter.py" and restart_motion:
+        if path in {"drivers/xgo/adapter.py", "drivers/xgo/sniffer.py"} and restart_motion:
             critical = False  # Explicit motion deployment scope, never a general driver bypass.
         if private or critical:
             raise RuntimeError(f"Separate deployment scope required for protected path: {path}")
@@ -381,7 +381,7 @@ def main():
         command.add_argument(
             "--restart-motion",
             action="store_true",
-            help="Explicit motion scope: stop executor before checkout, restart disarmed; allows its XGO adapter",
+            help="Stop executor before checkout, restart disarmed; allow the XGO adapter and optional UART tap",
         )
         if action == "preview":
             command.add_argument("--base", default="origin/main")

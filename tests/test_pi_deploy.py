@@ -328,11 +328,12 @@ def test_secret_removed_from_final_tree_is_rejected_before_ssh(repos, monkeypatc
         module["main"]()
 
 
-def test_motion_scope_allows_only_its_adapter():
+def test_motion_scope_allows_only_its_adapter_and_tap():
     module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
     with pytest.raises(RuntimeError):
         module["check_paths"](["drivers/xgo/adapter.py"])
     module["check_paths"](["drivers/xgo/adapter.py"], True)
+    module["check_paths"](["drivers/xgo/sniffer.py"], True)
     for path in ("drivers/other.py", "systemd/motion-executor.service", "evn.ssh.local"):
         with pytest.raises(RuntimeError):
             module["check_paths"]([path], True)
