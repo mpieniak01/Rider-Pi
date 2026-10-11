@@ -109,8 +109,8 @@ Wyniki urządzenia zapisujemy w [raporcie pomiarów](FACE_PERFORMANCE.md).
 
 ## Oprawa postaci
 
-Wybór **Postać** jest niezależny od stylu oczu: Bez oprawy, Piegusek, Kotek
-, Robocik i Profesjonalna. Bez oprawy pozostaje domyślne i zachowuje dotychczasowy obraz.
+Wybór **Postać** jest niezależny od stylu oczu: Bez oprawy, Piegusek, Kotek,
+Robocik i Profesjonalna. Bez oprawy pozostaje domyślne i zachowuje dotychczasowy obraz.
 Skórki dodają głowę, uszy i włosy lub antenkę; na nich rysowane są te
 same animowane oczy, brwi i usta.
 

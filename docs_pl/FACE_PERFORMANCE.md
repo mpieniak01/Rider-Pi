@@ -59,8 +59,8 @@ python3 scripts/face_benchmark.py --baseline-ref 354cfddccb7602de4e642d0f454af8f
 
 ## Weryfikacja programowa
 
-Końcowa regresja lokalna: **1817 testów Python zaliczonych**, 40 pominiętych,
-8 podtestów zaliczonych; **141 testów JavaScript zaliczonych**; Ruff i kontrola
+Końcowa regresja lokalna: **1849 testów Python zaliczonych**, 40 pominiętych,
+8 podtestów zaliczonych; **143 testów JavaScript zaliczonych**; Ruff i kontrola
 diff zakończone poprawnie. Testy bez sprzętu obejmują zastępowanie/priorytet
 animacji, watchdog audio, cache obrazu, limity katalogu, zapis atomowy,
 konflikt rewizji, własność LCD, orientację i zamknięcie oraz usuwanie zapytań
@@ -69,3 +69,33 @@ i timerów w ukrytej karcie.
 Współpraca z kamerą/głosem na fizycznym sprzęcie, długi pomiar CPU/RAM,
 reprezentatywne czasy SPI i zużycie energii pozostają dalszymi pomiarami.
 Nie deklarujemy zmierzonej oszczędności baterii ani integracji z dostawcą mowy.
+
+## Rozszerzenie o postaci
+
+Weryfikacja na podglądzie `019aad712addc09eca2e8db23ad1526f8dfc194c`.
+Owal/uszy/włosy korzystają z istniejącego cache tła. Postać Profesjonalna ma
+własną dorosłą geometrię; wygładzana jest tylko oprawa statyczna.
+
+Ten sam pomiar komponentu, styl oczu Przyjazna:
+
+| Postać | Średnia | p95 | CPU przy 12 FPS | Szczytowe RSS | Wzrost RSS w pętli |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Piegusek | 4,849 ms | 5,514 ms | 5,77% | 35,13 MiB | 2,09 MiB |
+| Kotek | 4,814 ms | 5,760 ms | 8,29% | 35,29 MiB | 2,09 MiB |
+| Robocik | 4,902 ms | 5,776 ms | 5,85% | 35,30 MiB | 2,10 MiB |
+| Profesjonalna | 3,573 ms | 4,159 ms | 4,04% | 34,92 MiB | 2,01 MiB |
+
+Każda próba zakodowała zero PNG. Przykład:
+`python3 scripts/face_benchmark.py --skin professional`.
+
+Na Pi poprawnie wyrenderowano 72 kombinacje klatek pierwszych skórek oraz
+21 kombinacji siedmiu emocji Profesjonalnej we wszystkich trzech stylach.
+Przeglądarkowo sprawdzono zapis postaci, przywrócenie dotychczasowego wyboru
+i etykiety PL/EN. Po próbach przywrócono opcję Bez oprawy. LCD pozostawał
+wyłączony: nowe skórki oceniono jako PNG generowane na Pi, nie na fizycznym LCD.
+
+Poprawiono uwagi naturalnej recenzji: fsync katalogu po rename, bezpieczną
+kolejność zapisów podczas usuwania gestu oraz dokumentację. Testy przerwania
+obejmują oba etapy usuwania i sprzątanie deskryptora katalogu. Profesjonalna
+ma też testy każdej emocji, mrugania, spojrzeń, wejścia audio i cache
+nieruchomej klatki.
