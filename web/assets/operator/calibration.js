@@ -148,8 +148,11 @@ export class Calibration {
       }
     }
     byId('measurements-confirmed').checked = false; byId('calibration-activation-consent').checked = false;
-    text('calibration-loaded', digest ? tr('Wczytano rewizję', 'Loaded revision') + ': ' + digest
-      : tr('Nowy / zaimportowany szkic — bez aktywacji', 'New / imported draft — not activated'));
+    text('calibration-loaded', (digest ? tr('Wczytano rewizję', 'Loaded revision') + ': ' + digest
+      : tr('Nowy / zaimportowany szkic — bez aktywacji', 'New / imported draft — not activated'))
+      + ' · ' + tr('Ustawienia w profilu', 'Profile settings') + ': ' + JSON.stringify({ motion: profile.motion, interaction: tuning })
+      + ' · ' + tr('Suwaki pokazują bieżące wspólne ustawienia robota. Przywrócenie zastosuje wartości profilu.',
+        'Sliders show current shared robot settings. Restore applies the profile values.'));
     this.safety.controls?.paint();
     this.renderObservations(); this.render();
   }
@@ -191,8 +194,17 @@ export class Calibration {
           ? { command_mapping: COMMAND_MAPPING } : {}) }, linear_m_s: table('linear'), turn_rad_s: table('turn') },
       measurements: structuredClone(this.measurements) };
   }
+  profileMatchesControls(profile) {
+    if (!this.safety.controls) return true;
+    const values = this.safety.controls.state?.values;
+    return values && Object.entries({ ...profile.motion, ...interactionSettings(profile.interaction) })
+      .every(([key, value]) => values[key] === value);
+  }
   async save() {
     if (this.busy) return;
+    if (this.loadedDigest && !this.profileMatchesControls(this.profile))
+      throw new Error(tr('Profil ma inne ustawienia niż robot. Przywróć profil albo utwórz nowy szkic przed zapisem.',
+        'Profile settings differ from robot settings. Restore the profile or create a new draft before saving.'));
     const profile = this.buildProfile(), error = profileError(profile);
     if (error) throw new Error(error);
     if (new TextEncoder().encode(JSON.stringify(profile)).length > MAX_PROFILE_BYTES) throw new Error('profile_too_large');
@@ -264,6 +276,10 @@ export class Calibration {
   async activate() {
     if (this.busy || this.awaiting) return;
     const digest = this.selectedDigest(), plan = byId('calibration-activation-plan').value.trim();
+    const selected = await this.revision();
+    if (!this.profileMatchesControls(selected.profile))
+      throw new Error(tr('Najpierw użyj Przywróć, aby zsynchronizować ustawienia profilu na wszystkich ekranach.',
+        'Use Restore first to synchronize profile settings across all screens.'));
     if (!byId('calibration-activation-consent').checked || !plan) throw new Error('explicit_configuration_consent_required');
     if (!activationAllowed(this.state, this.safety.state, this.safety.clockFresh(), nowSeconds())) throw new Error('fresh_disarmed_configuration_state_required');
     this.busy = true; this.render();
@@ -292,7 +308,18 @@ export class Calibration {
   async applyTuning(saveCurrent) {
     if (this.busy || this.awaiting) return;
     if (saveCurrent) await this.save();
-    else await this.loadRevision();
+    else {
+      await this.loadRevision();
+      const controls = this.safety.controls;
+      if (controls) {
+        await controls.refresh();
+        await request('/api/calibration/controls', { method: 'POST', body: {
+          revision: controls.state.revision,
+          values: { ...this.profile.motion, ...interactionSettings(this.profile.interaction) },
+        } });
+        await controls.refresh();
+      }
+    }
     byId('calibration-activation-plan').value = tr('Zastosowanie ustawień sterowania wybranych przez operatora; bez ruchu.',
       'Apply operator-selected control settings; no motion.');
     byId('calibration-activation-consent').checked = true;

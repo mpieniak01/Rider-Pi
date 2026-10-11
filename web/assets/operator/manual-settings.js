@@ -42,7 +42,7 @@ export class ManualSettings {
       if(!result.canonical || !settingsValid(result.data,nowSeconds()))throw new Error('manual_settings_unconfirmed');
       this.state=result.data;
     } catch(error) {
-      this.pending={};this.state=null;
+      this.state=null;
       try{await this.refresh();}catch{}
       throw error;
     } finally {
