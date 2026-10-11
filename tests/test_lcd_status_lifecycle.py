@@ -261,7 +261,7 @@ def test_power_off_uses_installed_xgo_gpio_zero_without_reset(monkeypatch):
     result = off_if_free(probe=lambda: {"free": True, "holders": []}, runner=run)
     command, options = commands[0]
     assert command[:2] == ["sudo", "-n"]
-    assert command[-5:] == ["off", "--bl", "0", "--rst", "-1"]
+    assert command[-5:] == ["off", "--bl", "0", "--rst", "27"]
     assert options["timeout"] == 3 and options["check"] is False
     assert result["on"] is False and result["physical_validity"] == "unverified"
     assert result["confirmation"] == "control_write_accepted"

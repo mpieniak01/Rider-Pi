@@ -199,3 +199,5 @@ Zatrzymanie usługi przechwytywania przez SIGTERM wykonuje sprzątanie LCD:
 zamyka własny uchwyt SPI i wyłącza ekran tylko po potwierdzeniu braku innych
 właścicieli. Tryb bez LCD nie zmienia jego zasilania. Błąd odczytu właścicieli
 pozostawia zasilanie bez zmian i trafia do logu usługi.
+
+Po zatrzymaniu usługi przechwytywania kamery orkiestrator wykonuje pełne LCD OFF (reset panelu, uśpienie i wyłączenie podświetlenia), jeśli odczyt właścicieli LCD wskazuje wolny zasób. Zatrzymaj renderer w ekranie System wyłącza też panel po wcześniej zatrzymanej usłudze i zwraca błąd, gdy wyłączenie nie jest potwierdzone.

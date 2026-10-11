@@ -200,3 +200,5 @@ Stopping capture with SIGTERM performs LCD cleanup: it closes its own SPI
 handle and switches the display off only after confirming no other owners.
 Headless capture does not change display power. An ownership inspection
 failure leaves power unchanged and is recorded in the service log.
+
+After a camera capture unit stops, orchestration performs a full LCD OFF (panel reset, sleep and backlight off) if the LCD descriptor inventory is free. The System renderer Stop action also powers off an already inactive panel and returns a failure if that cannot be confirmed.

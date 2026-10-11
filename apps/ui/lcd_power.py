@@ -32,10 +32,11 @@ def off_if_free(*, probe=None, runner=None):
     # Installed xgoscreen LCD_2inch backend uses BCM0. Generic ST7789/face
     # backends have different defaults and must not override the XGO board.
     pin = os.getenv("FACE_LCD_BL_PIN", "0")
+    reset = os.getenv("FACE_LCD_RST_PIN", "27")
     prefix = [] if os.geteuid() == 0 else ["sudo", "-n"]
     try:
         result = runner(
-            [*prefix, sys.executable, str(controller), "off", "--bl", pin, "--rst", "-1"],
+            [*prefix, sys.executable, str(controller), "off", "--bl", pin, "--rst", reset],
             timeout=3,
             capture_output=True,
             text=True,
