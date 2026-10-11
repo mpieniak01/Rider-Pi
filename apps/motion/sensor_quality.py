@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from apps.motion.dynamics import finite
-from common.observations import CONTRACT_ID, CONTRACT_VERSION, UNITS, measurement, normalize_xgo_observation
+from common.observations import (
+    CONTRACT_ID,
+    CONTRACT_VERSION,
+    OPTIONAL_SENSORS,
+    UNITS,
+    measurement,
+    normalize_xgo_observation,
+)
 
 MAX_SENSOR_AGE_S = 2.5
 AXES = ("roll", "pitch", "yaw")
@@ -20,7 +27,11 @@ class SensorSamples:
     def observe(self, name, value, *, measured_at=None, monotonic_at=None):
         measured_at = self.wall_clock() if measured_at is None else measured_at
         monotonic_at = self.clock() if monotonic_at is None else monotonic_at
-        valid = finite(value) and (name != "battery" or 0 <= value <= 1)
+        valid = (
+            finite(value)
+            and (name != "battery" or 0 <= value <= 1)
+            and (name != "work_status" or type(value) is int and value in {0, 1})
+        )
         previous = self.rows.get(name)
         if (
             previous
@@ -40,7 +51,7 @@ class SensorSamples:
     def quality(self):
         now, wall = self.clock(), self.wall_clock()
         rows = {}
-        for name in REQUIRED:
+        for name in REQUIRED + tuple(n for n in OPTIONAL_SENSORS if n in self.rows):
             row = self.rows.get(name, {})
             ts, mono = row.get("observed_at"), row.get("monotonic_at")
             mono_age = now - mono if finite(mono) else None
@@ -61,8 +72,8 @@ class SensorSamples:
                 "max_age_s": MAX_SENSOR_AGE_S,
                 "physical_validity": "unverified",
             }
-        missing = [name for name, row in rows.items() if not row["ready"]]
-        times = [row["observed_at"] for row in rows.values() if finite(row["observed_at"])]
+        missing = [name for name in REQUIRED if not rows[name]["ready"]]
+        times = [rows[name]["observed_at"] for name in REQUIRED if finite(rows[name]["observed_at"])]
         return {
             "ready": not missing,
             "error": "sensor_quality:" + ",".join(missing) if missing else None,
@@ -106,11 +117,12 @@ class SensorSamples:
 
 def projected_samples(sensor, *, now):
     """Validate original per-channel timestamps again at the BUS consumer."""
+    simulated = sensor.get("simulated") is True
     sensor = normalize_xgo_observation("motion.sensor.raw", sensor, now=now)
     values, quality = {}, {}
-    for name in REQUIRED:
+    for name in REQUIRED + OPTIONAL_SENSORS:
         row = sensor["sensor_quality"]["sensors"].get(name)
-        row = row if isinstance(row, dict) else measurement(name, None, None, now=now)
+        row = row if isinstance(row, dict) else measurement(name, None, None, now=now, quality={"simulated": simulated})
         good = row.get("ready") is True
         values[name] = row.get("value") if good else None
         quality[name] = {**row, "ready": good, "observed_at": row.get("observed_at"), "age_s": row.get("age_s")}

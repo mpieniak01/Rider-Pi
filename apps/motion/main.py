@@ -88,11 +88,17 @@ class _RealAdapter:
     def get_imu(self):
         return self._ada.imu()
 
+    extended_sensor_reads = False
+
     def read_sensor(self, name):
         if name == "battery":
             return self._ada.battery()
         if name == "firmware":
-            return self._ada.firmware()
+            value = self._ada.firmware()
+            self.extended_sensor_reads = value == "R-1.1.6"
+            return value
+        if name in {"imu_packet", "work_status"}:
+            return self._ada.read_extended_sensor(name)
         return self._ada.read_axis(name)
 
     def battery(self):

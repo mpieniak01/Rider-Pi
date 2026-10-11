@@ -1,5 +1,5 @@
 import { cameraFrame, fresh, displayValue, ageOf, nowSeconds } from './model.js';
-import { observationChannel } from './observations.js';
+import { observationChannel } from './observations.js?v=extended-telemetry-1';
 import { request, poll } from './transport.js';
 import { el, freshPill, pill, kv, tr, ageStamp, text, showError, rawDetails } from './ui.js';
 export function telemetryChannel(xgo, name, unavailable = false) {

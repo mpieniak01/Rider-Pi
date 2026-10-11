@@ -1,7 +1,7 @@
 import { request, poll } from './transport.js';
 import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown, nowSeconds } from './model.js';
 import { el, text, tr, statusLabel } from './ui.js';
-import { telemetryChannel } from './devices.js';
+import { telemetryChannel } from './devices.js?v=extended-telemetry-1';
 import { telemetrySummary, orientationSummary } from './overview-model.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -79,6 +79,10 @@ export class Overview {
     const imuReady = ['roll', 'pitch', 'yaw'].every(key => samples[key].ready);
     text('d_xgo_imu', imuReady ? tr('Świeży odczyt', 'Fresh reading') : values.some(finite) ? tr('Częściowy odczyt', 'Partial reading') : unknown());
     text('d_xgo_pose', orientationSummary(samples));
+    const work = telemetryChannel(xgo, 'work_status', unavailable);
+    text('d_xgo_work', work.ready ? (work.value === 1 ? tr('Normalny', 'Normal') : work.value === 0 ? tr('Przewrócony', 'Fallen') : unknown()) : unknown());
+    const accel = ['accel_x', 'accel_y', 'accel_z'].map(key => telemetryChannel(xgo, key, unavailable));
+    text('d_xgo_accel', accel.every(row => row.ready) ? accel.map(row => fmt(row.value, 2)).join(' / ') : unknown());
     text('d_xgo_batt', finite(battery) ? `${fmt(battery, 0)}%` : unknown());
     const group = telemetrySummary(samples, nowSeconds());
     text('xgo-age', group.complete ? `${fmt(group.age)} s` : tr('Częściowa / niedostępna', 'Partial / unavailable'));
