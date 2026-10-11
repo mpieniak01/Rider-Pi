@@ -326,3 +326,36 @@ def test_secret_removed_from_final_tree_is_rejected_before_ssh(repos, monkeypatc
     monkeypatch.setitem(globals_map, "ssh", forbidden_ssh)
     with pytest.raises(RuntimeError, match="protected path"):
         module["main"]()
+
+
+def test_motion_scope_allows_only_its_adapter():
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    with pytest.raises(RuntimeError):
+        module["check_paths"](["drivers/xgo/adapter.py"])
+    module["check_paths"](["drivers/xgo/adapter.py"], True)
+    for path in ("drivers/other.py", "systemd/motion-executor.service", "evn.ssh.local"):
+        with pytest.raises(RuntimeError):
+            module["check_paths"]([path], True)
+
+
+def test_motion_preview_stops_before_checkout_and_restarts(repos, monkeypatch):
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    original_run = module["preview"].__globals__["run"]
+    calls = []
+
+    def run(args, *a, **kwargs):
+        if "systemctl" in args:
+            calls.append((tuple(args), repos.command(repos.device, "rev-parse", "HEAD")))
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return original_run(args, *a, **kwargs)
+
+    monkeypatch.setitem(module["preview"].__globals__, "run", run)
+    commit, bundle = repos.candidate("drivers/xgo/adapter.py", "# fake adapter\n")
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(bundle)))
+    record = repos.device / ".git/rider-preview.json"
+    module["preview"](
+        repos.device, record, {"base": repos.base, "commit": commit, "restart_api": False, "restart_motion": True}
+    )
+    assert next(head for args, head in calls if "stop" in args) == repos.base
+    assert next(head for args, head in calls if "start" in args) == commit
+    assert json.loads(record.read_text())["restart_motion"] is True

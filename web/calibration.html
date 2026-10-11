@@ -9,97 +9,52 @@
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css?v=shared-controls-1">
-<link rel="stylesheet" href="/web/assets/operator/calibration.css?v=shared-controls-1">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=device-profiles-3">
+<link rel="stylesheet" href="/web/assets/operator/calibration.css?v=device-profiles-3">
 </head>
 <body data-page="calibration" class="page page-calibration">
 <header class="layout-header" data-dashboard-menu-target></header>
 <main class="layout-main operator-shell">
 <header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Kalibracja" data-en="Rider-Pi — Calibration">Rider-Pi — Kalibracja</h1></header>
 <p id="manual-settings-status" role="status">Synchronizacja ustawień</p>
-<p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
-<p data-pl="Dopasuj reakcję robota na kliknięcia. Suwaki nie są pomiarem prędkości. Ręczna próba wymaga uzbrojenia globalnym przyciskiem." data-en="Tune the robot response to clicks. Sliders are not velocity measurements. A manual trial requires arming with the global button.">Dopasuj reakcję robota na kliknięcia. Suwaki nie są pomiarem prędkości. Ręczna próba wymaga uzbrojenia globalnym przyciskiem.</p>
-<div class="calibration-primary"><section class="c-card c-section cam-card control-section is-camera">
+<p id="operator-message" role="status"></p>
+<section class="c-card motion-profiles"><h2 data-pl="Profil ruchu" data-en="Motion profile">Profil ruchu</h2>
+<div class="operator-row"><label><span data-pl="Profil" data-en="Profile">Profil</span><select id="motion-profile-select"><option value="">Bieżące nastawy</option></select></label>
+<button id="motion-profile-apply" class="c-btn" type="button" disabled data-pl="Zastosuj wybrany" data-en="Apply selected">Zastosuj wybrany</button></div>
+<p id="motion-profile-status" role="status"></p>
+<div class="operator-row"><label><span data-pl="Nazwa" data-en="Name">Nazwa</span><input id="motion-profile-name" maxlength="60" placeholder="np. Delikatnie — biurko"></label>
+<button id="motion-profile-create" class="c-btn" type="button" disabled data-pl="Zapisz jako nowy" data-en="Save as new">Zapisz jako nowy</button>
+<button id="motion-profile-save" class="c-btn" type="button" disabled data-pl="Aktualizuj wybrany" data-en="Update selected">Aktualizuj wybrany</button>
+<button id="motion-profile-delete" class="c-btn" type="button" disabled data-pl="Usuń wybrany" data-en="Delete selected">Usuń wybrany</button></div>
+<p class="operator-muted" data-pl="Profil zapamiętuje zakresy, siłę, czas i wygładzanie wszystkich kierunków. Nazwa opisuje zastosowanie; nie potwierdza bezpieczeństwa podłoża. Zastosowanie nie uruchamia ruchu." data-en="A profile stores all direction ranges, magnitudes, durations and smoothing. Its name describes use; it does not certify the surface. Applying never starts motion.">Profil zapamiętuje zakresy, siłę, czas i wygładzanie wszystkich kierunków. Nazwa opisuje zastosowanie; nie potwierdza bezpieczeństwa podłoża. Zastosowanie nie uruchamia ruchu.</p>
+</section>
+<div class="panel-row control-primary"><section class="c-card c-section cam-card control-section is-camera">
 <h2 data-pl="Podgląd kamery" data-en="Camera preview">Podgląd kamery</h2>
 <div class="cam-actions"><button id="control-camera-toggle" type="button" class="c-btn">⟳</button><button type="button" class="c-btn" data-camera-kind="raw">CAM / RAW</button><button type="button" class="c-btn" data-camera-kind="proc">EDGE / PROC</button></div>
 <div class="media-frame"><img id="control-camera-image" class="cam" alt="Podgląd kamery robota" hidden><p id="control-camera-empty" data-pl="Brak bieżącej klatki kamery" data-en="No current camera frame">Brak bieżącej klatki kamery</p></div>
 <p id="control-camera-status" class="operator-muted" role="status"></p>
 <p class="operator-muted" data-pl="Podgląd odczytuje działającą kamerę. Nie uruchamia usług ani ruchu." data-en="Preview reads the running camera. It does not start services or motion.">Podgląd odczytuje działającą kamerę. Nie uruchamia usług ani ruchu.</p>
 <a href="/devices" data-pl="Urządzenia i zarządzanie kamerą" data-en="Devices and camera management">Urządzenia i zarządzanie kamerą</a>
-</section><section class="c-card calibration-tuning"><h2 data-pl="Dopasowanie sterowania" data-en="Tune controls">Dopasowanie sterowania</h2><p id="calibration-loaded">—</p><form id="calibration-profile-form"><label><span data-pl="Nazwa profilu" data-en="Profile name">Nazwa profilu</span><input id="profile-name" maxlength="80" required></label><label><span data-pl="Jazda: wolniej ↔ szybciej" data-en="Travel: slower ↔ faster">Jazda: wolniej ↔ szybciej</span><input id="calibration-linear-speed" type="range" min="0" max="1" step=".01" value=".1"><output id="calibration-linear-speed-value" for="calibration-linear-speed"></output></label><label><span data-pl="Skręt: wolniej ↔ szybciej" data-en="Turn: slower ↔ faster">Skręt: wolniej ↔ szybciej</span><input id="calibration-turn-speed" type="range" min="0" max="1" step=".01" value=".18"><output id="calibration-turn-speed-value" for="calibration-turn-speed"></output></label><label><span data-pl="Reakcja jazdy: łagodniejsza ↔ szybsza" data-en="Travel response: gentler ↔ faster">Reakcja jazdy: łagodniejsza ↔ szybsza</span><input id="motion-linear-rate" type="range" min=".001" max="1" step=".001" value="1"><output id="motion-linear-rate-value" for="motion-linear-rate"></output></label><label><span data-pl="Reakcja skrętu: łagodniejsza ↔ szybsza" data-en="Turn response: gentler ↔ faster">Reakcja skrętu: łagodniejsza ↔ szybsza</span><input id="motion-turn-rate" type="range" min=".001" max="2" step=".001" value="2"><output id="motion-turn-rate-value" for="motion-turn-rate"></output></label>
-<details><summary data-pl="Czas kliknięcia i pomiary zaawansowane" data-en="Click duration and advanced measurements">Czas kliknięcia i pomiary zaawansowane</summary>
-<label><span data-pl="Czas pojedynczego kliknięcia (s)" data-en="Single click duration (s)">Czas pojedynczego kliknięcia (s)</span><input id="pulse-duration" type="number" min="0.01" max="0.25" step="0.01" value="0.1" required></label>
-<label><span data-pl="Maksymalne polecenie (0–1)" data-en="Maximum command (0–1)">Maksymalne polecenie (0–1)</span><input id="motion-speed-limit" type="number" min="0.001" max="1" step="any" value="0.6" required></label>
-
-<div class="operator-grid">
-<div>
-<label><span data-pl="Pochodzenie" data-en="Provenance">Pochodzenie</span><select id="profile-kind"><option value="draft" data-pl="Szkic — niezweryfikowany" data-en="Draft — unverified">Szkic — niezweryfikowany</option><option value="historical" data-pl="Historyczny — niezweryfikowany" data-en="Historical — unverified">Historyczny — niezweryfikowany</option><option value="manual" data-pl="Własne ręczne pomiary" data-en="Own manual measurements">Własne ręczne pomiary</option></select></label>
-<label><span data-pl="Opis dowodów i ograniczeń" data-en="Evidence and limitations">Opis dowodów i ograniczeń</span><textarea id="profile-notes" maxlength="4096"></textarea></label>
-<label><span data-pl="Identyfikator pomiarów" data-en="Measurement identifier">Identyfikator pomiarów</span><input id="measurement-id" maxlength="120"></label></div>
-<div id="calibration-conditions"></div>
-<div><h3 data-pl="Dynamika programowa" data-en="Software dynamics">Dynamika programowa</h3>
-
-
-
-<p id="calibration-ceilings" class="operator-muted" data-pl="Wartości początkowe formularza to ustawienia programowe, nie pomiary robota. Pułapy uruchomionego wykonawcy: unknown." data-en="Initial form values are software settings, not robot measurements. Running executor ceilings: unknown.">Wartości początkowe formularza to ustawienia programowe, nie pomiary robota. Pułapy uruchomionego wykonawcy: unknown.</p>
-<label><span data-pl="Kierunek IMU yaw" data-en="IMU yaw direction">Kierunek IMU yaw</span><select id="imu-yaw-sign"><option value="">unknown</option><option value="1">+1</option><option value="-1">−1</option></select></label>
-<p data-pl="Watchdog i granice bezpieczeństwa nie są edytowane w tym formularzu." data-en="This form does not edit watchdog or safety boundaries.">Watchdog i granice bezpieczeństwa nie są edytowane w tym formularzu.</p></div></div>
-<h3 data-pl="Zmierzona jazda — signed command level → m/s" data-en="Measured linear motion — signed command level → m/s">Zmierzona jazda — signed command level → m/s</h3>
-<div id="calibration-linear-table"></div><button id="add-linear-rate" type="button" class="c-btn" data-pl="Dodaj pomiar jazdy" data-en="Add linear measurement">Dodaj pomiar jazdy</button>
-<h3 data-pl="Zmierzony skręt — signed command level → rad/s" data-en="Measured turn — signed command level → rad/s">Zmierzony skręt — signed command level → rad/s</h3>
-<div id="calibration-turn-table"></div><button id="add-turn-rate" type="button" class="c-btn" data-pl="Dodaj pomiar skrętu" data-en="Add turn measurement">Dodaj pomiar skrętu</button>
-<p data-pl="Średnia dystans/czas z całej próby obejmuje rampę. Nie jest automatycznie prędkością ustaloną ani wpisem tabeli. Wpisz tylko wartości rzeczywiście zmierzone dla konkretnego signed command level." data-en="Whole-trial distance/time averages include ramps. They are not automatically steady rates or table entries. Enter only actual measurements for the specific signed command level.">Średnia dystans/czas z całej próby obejmuje rampę. Nie jest automatycznie prędkością ustaloną ani wpisem tabeli. Wpisz tylko wartości rzeczywiście zmierzone dla konkretnego signed command level.</p>
-<details><summary data-pl="Dynamika fizyczna i ograniczenia pomiarów" data-en="Physical dynamics and measurement limitations">Dynamika fizyczna i ograniczenia pomiarów</summary>
-<p data-pl="Nieznane wartości pozostaw puste. Wpisz zmierzoną wartość z jednostką lub notatkę z dowodami. Te obserwacje to notatki operatora, nie aktywne blokady baterii lub przechyłu; nie odblokowują autonomii." data-en="Leave unknown values blank. Enter a measured value with units or an evidence note. These observations are operator notes, not active battery or tilt guards; they do not unlock autonomy.">Nieznane wartości pozostaw puste. Wpisz zmierzoną wartość z jednostką lub notatkę z dowodami. Te obserwacje to notatki operatora, nie aktywne blokady baterii lub przechyłu; nie odblokowują autonomii.</p>
-<div id="calibration-physical-observations" class="operator-grid"></div><p id="calibration-extra-evidence" class="operator-muted"></p></details>
-<label><input id="measurements-confirmed"  type="checkbox"><span data-pl="Potwierdzam własne pomiary dla aktualnej skali poleceń, znaki, warunki i dowody" data-en="I confirm my own measurements, signs, conditions and evidence; historical data is not this robot's calibration">Potwierdzam własne pomiary dla aktualnej skali poleceń, znaki, warunki i dowody</span></label>
-</details>
-<p id="calibration-tuning-status" role="status"></p>
-<div class="operator-row"><button id="save-calibration-profile" type="submit" class="c-btn" data-pl="Zapisz ustawienia" data-en="Save settings">Zapisz ustawienia</button><button id="apply-current-tuning" type="button" class="c-btn" disabled data-pl="Zapisz i zastosuj — bez ruchu" data-en="Save and apply — no motion">Zapisz i zastosuj — bez ruchu</button><button id="new-calibration-profile" type="button" class="c-btn" data-pl="Nowe ustawienia" data-en="New settings">Nowe ustawienia</button></div></form>
-<p class="operator-muted" data-pl="Suwaki synchronizują wspólne ustawienia robota na wszystkich ekranach. Zmiana nie uruchamia ruchu." data-en="Speed sliders set the next manual trial. Response changes require saving and applying. Saving never starts motion.">Suwaki synchronizują wspólne ustawienia robota na wszystkich ekranach. Zmiana nie uruchamia ruchu.</p>
-<form id="calibration-pulse-form"><input id="pulse-vx" type="hidden" value="0"><input id="pulse-yaw" type="hidden" value="0"><input id="pulse-plan" type="hidden" value="">
-<div class="calibration-arrows"><span></span><button type="button" class="c-btn" data-calibration-direction="forward" disabled>↑</button><span></span><button type="button" class="c-btn" data-calibration-direction="left" disabled>←</button><button type="button" class="c-btn operator-stop" data-stop>STOP</button><button type="button" class="c-btn" data-calibration-direction="right" disabled>→</button><span></span><button type="button" class="c-btn" data-calibration-direction="backward" disabled>↓</button><span></span></div>
-<button id="calibration-pulse" type="submit" hidden disabled>Impuls / Pulse</button><p id="calibration-pulse-result" role="status">—</p></form>
-</section></div><div class="calibration-preparation">
-<section class="c-card"><h2 data-pl="Historia, import i eksport" data-en="History, import and export">Historia, import i eksport</h2>
-<p data-pl="Zapis tworzy rewizję identyfikowaną SHA-256. Wybierz wcześniejszą rewizję, aby ją obejrzeć, wyeksportować lub jawnie aktywować jako powrót wersji." data-en="Saving creates a revision identified by SHA-256. Select an earlier revision to inspect, export or explicitly activate it as a rollback.">Zapis tworzy rewizję identyfikowaną SHA-256. Wybierz wcześniejszą rewizję, aby ją obejrzeć, wyeksportować lub jawnie aktywować jako powrót wersji.</p>
-<label><span data-pl="Rewizja" data-en="Revision">Rewizja</span><select id="calibration-revision"><option value="">—</option></select></label>
-<button id="restore-tuning" type="button" class="c-btn" disabled data-pl="Zastosuj wybraną zapisaną wersję — bez ruchu" data-en="Apply selected saved version — no motion">Zastosuj wybraną zapisaną wersję — bez ruchu</button><div class="operator-row"><button id="refresh-calibration-history" type="button" class="c-btn" data-pl="Odśwież historię" data-en="Refresh history">Odśwież historię</button><button id="load-calibration-revision" type="button" class="c-btn" data-pl="Wczytaj do formularza" data-en="Load into form">Wczytaj do formularza</button><button id="export-calibration-revision" type="button" class="c-btn" data-pl="Eksportuj wybraną rewizję" data-en="Export selected revision">Eksportuj wybraną rewizję</button></div>
-<details><summary data-pl="Import, eksport i aktywacja zaawansowana" data-en="Advanced import, export and activation">Import, eksport i aktywacja zaawansowana</summary><label><span data-pl="Import JSON (maks. 65536 bajtów, zawsze niezweryfikowany)" data-en="Import JSON (maximum 65536 bytes, always unverified)">Import JSON (maks. 65536 bajtów, zawsze niezweryfikowany)</span><input id="import-calibration-file" type="file" accept=".json,application/json"></label>
-<p id="calibration-profile-history-status">unknown</p>
-<form id="calibration-activate-form">
-<p id="calibration-activation-target">—</p>
-<label><span data-pl="Plan zmiany konfiguracji / powrotu wersji" data-en="Configuration change / rollback plan">Plan zmiany konfiguracji / powrotu wersji</span><textarea id="calibration-activation-plan" maxlength="1000" required></textarea></label>
-<label><input id="calibration-activation-consent" type="checkbox" required><span data-pl="Robot jest DISARMED; świadomie aktywuję wybraną zapisaną rewizję. To nie jest zgoda na ruch." data-en="Robot is DISARMED; I explicitly activate the selected saved revision. This is not motion consent.">Robot jest DISARMED; świadomie aktywuję wybraną zapisaną rewizję. To nie jest zgoda na ruch.</span></label>
-<button id="activate-calibration" type="submit" class="c-btn" disabled data-pl="Aktywuj wybraną rewizję — DISARMED" data-en="Activate selected revision — DISARMED">Aktywuj wybraną rewizję — DISARMED</button>
-<p id="calibration-activation-result" role="status">—</p>
-</form></details></section>
-<details class="calibration-advanced"><summary data-pl="Diagnostyka, odometria i HOME" data-en="Diagnostics, odometry and HOME">Diagnostyka, odometria i HOME</summary>
-<section class="c-card"><h2 data-pl="Profil odczytany przez moduły" data-en="Profile observed by consumers">Profil odczytany przez moduły</h2>
-<p id="calibration-runtime-status" role="status">unknown</p><div id="calibration-runtime"></div>
-<p class="operator-muted" data-pl="Odpowiedź 202 to oczekiwanie. Aktywny profil wymaga świeżego potwierdzenia tego samego skrótu przez motion i odometry. Brak lub stary ACK pozostaje niepotwierdzony." data-en="A 202 response is pending. An active profile requires fresh confirmation of the same digest by motion and odometry. Missing or stale ACK remains unconfirmed.">Odpowiedź 202 to oczekiwanie. Aktywny profil wymaga świeżego potwierdzenia tego samego skrótu przez motion i odometry. Brak lub stary ACK pozostaje niepotwierdzony.</p>
-</section><section class="c-card"><h2 data-pl="Rzeczywiste odczyty wykonawcy" data-en="Actual executor observations">Rzeczywiste odczyty wykonawcy</h2>
-<p data-pl="Poziomy poleceń pochodzą wyłącznie z zaakceptowanego zapisu motion-executor. Stare kroki są historią, nie dowodem bieżącego ruchu. Każdy kanał IMU i baterii ma własny czas pomiaru; publikacja statusu go nie odnawia." data-en="SDK steps come only from an accepted motion-executor write. Old steps are history, not proof of current motion. Each IMU and battery channel has its own observation time; status publication does not renew it.">Poziomy poleceń pochodzą wyłącznie z zaakceptowanego zapisu motion-executor. Stare kroki są historią, nie dowodem bieżącego ruchu. Każdy kanał IMU i baterii ma własny czas pomiaru; publikacja statusu go nie odnawia.</p>
-<div id="calibration-live-data"></div>
-<p class="operator-muted" data-pl="IMU pokazuje surowe wartości SDK — jednostki nie są zgadywane. Bateria jest przeliczana z poprawnego ułamka 0–1 na %. Przyjęcie zapisu SDK i świeże czujniki nie potwierdzają wykonania fizycznego." data-en="IMU shows raw SDK values — units are not guessed. Battery converts a valid 0–1 fraction to %. SDK acceptance and fresh sensors do not confirm physical completion.">IMU pokazuje surowe wartości SDK — jednostki nie są zgadywane. Bateria jest przeliczana z poprawnego ułamka 0–1 na %. Przyjęcie zapisu SDK i świeże czujniki nie potwierdzają wykonania fizycznego.</p>
-</section><section class="c-card"><h2 data-pl="Obserwacje prób — wpisy operatora" data-en="Trial observations — operator records">Obserwacje prób — wpisy operatora</h2>
-<p data-pl="Udane i nieudane próby są zapisem dowodów. Dodanie rekordu nie wysyła ruchu ani nie potwierdza jego zakończenia." data-en="Successful and failed trials record evidence. Adding a record does not send motion or confirm its completion.">Udane i nieudane próby są zapisem dowodów. Dodanie rekordu nie wysyła ruchu ani nie potwierdza jego zakończenia.</p>
-<form id="calibration-observation-form"><div class="operator-grid" id="calibration-observation-fields"></div><button type="submit" class="c-btn" data-pl="Dodaj obserwację" data-en="Add observation">Dodaj obserwację</button></form>
-<div id="calibration-observations" class="calibration-table-wrap"></div></section><section class="c-card"><h2 data-pl="Odniesienie pozycji i HOME" data-en="Pose reference and HOME">Odniesienie pozycji i HOME</h2>
-<p id="calibration-reference-state">unknown</p>
-<details><summary data-pl="Jawnie ustaw zmierzone odniesienie — bez ruchu" data-en="Explicitly set a measured reference — no motion">Jawnie ustaw zmierzone odniesienie — bez ruchu</summary>
-<p data-pl="Po aktywacji profil kasuje stare odniesienie. Jawnie użyj STOP, sprawdź zatrzymanie i pozycję fizycznie, następnie potwierdź odniesienie. Ten formularz nie wysyła STOP ani ARM. HOME nie jest domyślnym (0,0)." data-en="Activating a profile clears the old reference. Explicitly use STOP, physically check stopping and position, then confirm the reference. This form sends neither STOP nor ARM. HOME is not an assumed (0,0).">Po aktywacji profil kasuje stare odniesienie. Jawnie użyj STOP, sprawdź zatrzymanie i pozycję fizycznie, następnie potwierdź odniesienie. Ten formularz nie wysyła STOP ani ARM. HOME nie jest domyślnym (0,0).</p>
-<form id="calibration-reference-form"><div class="operator-row">
-<label>x (m)<input id="reference-x" type="number" step="any" required></label><label>y (m)<input id="reference-y" type="number" step="any" required></label><label>theta (rad)<input id="reference-theta" type="number" step="any" required></label>
-</div><label><input id="reference-home-confirmed" type="checkbox"><span data-pl="Osobno potwierdzam zmierzoną pozycję HOME w tej samej ramie" data-en="I separately confirm measured HOME in this same frame">Osobno potwierdzam zmierzoną pozycję HOME w tej samej ramie</span></label>
-<div class="operator-row"><label>HOME x (m)<input id="reference-home-x" type="number" step="any"></label><label>HOME y (m)<input id="reference-home-y" type="number" step="any"></label></div>
-<label><span data-pl="Plan i opis fizycznego sprawdzenia pozycji" data-en="Plan and physical position check">Plan i opis fizycznego sprawdzenia pozycji</span><textarea id="reference-plan" maxlength="1000" required></textarea></label>
-<label><input id="reference-consent" type="checkbox" required><span data-pl="Osobiście sprawdziłem pozycję; potwierdzam to odniesienie, bez zgody na ruch" data-en="I personally checked the position; I confirm this reference without motion consent">Osobiście sprawdziłem pozycję; potwierdzam to odniesienie, bez zgody na ruch</span></label>
-<button id="calibration-reference" type="submit" class="c-btn" disabled data-pl="Potwierdź odniesienie — DISARMED" data-en="Confirm reference — DISARMED">Potwierdź odniesienie — DISARMED</button>
-<p id="calibration-reference-result" role="status">—</p></form></details></section></details></div><ol id="request-history"></ol><p><a href="/control" data-pl="Zadania i sterowanie" data-en="Tasks and control">Zadania i sterowanie</a> · <a href="/navigation" data-pl="Pozycja, HOME i pasywny plan" data-en="Pose, HOME and passive plan">Pozycja, HOME i pasywny plan</a></p>
-<p id="last-event" class="operator-muted">—</p>
-</main><footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=shared-controls-1"></script>
+</section><section class="c-card control-card">
+<h2 data-pl="Próba ręczna" data-en="Manual trial">Próba ręczna</h2>
+<p data-pl="Strzałki stosują te same ustawienia co Sterowanie. Próba wymaga przygotowanej przestrzeni i świadomego uzbrojenia." data-en="Arrows use the same settings as Control. A trial requires prepared space and deliberate arming.">Strzałki stosują te same ustawienia co Sterowanie. Próba wymaga przygotowanej przestrzeni i świadomego uzbrojenia.</p><div class="operator-drive motion-grid"><span></span><button class="c-btn" type="button" data-direction="forward" data-pl="↑ Przód" data-en="↑ Forward" disabled>↑ Przód</button><span></span><button class="c-btn" type="button" data-direction="left" data-pl="← Lewo" data-en="← Left" disabled>← Lewo</button><button class="c-btn operator-stop" type="button" data-stop>STOP</button><button class="c-btn" type="button" data-direction="right" data-pl="→ Prawo" data-en="→ Right" disabled>→ Prawo</button><span></span><button class="c-btn" type="button" data-direction="backward" data-pl="↓ Tył" data-en="↓ Backward" disabled>↓ Tył</button><span></span></div></section></div>
+<section class="c-card">
+<h2 data-pl="Zakresy kierunków" data-en="Direction ranges">Zakresy kierunków</h2>
+<p data-pl="Siła polecenia 0–1, nie pomiar prędkości. Minimum to najmniejsze skuteczne polecenie określone przez operatora. Zero zatrzymuje. Czas obejmuje narastanie i wygaszenie." data-en="Command magnitude 0–1, not measured speed. Minimum is the smallest effective command determined by the operator. Zero stops. Duration includes acceleration and deceleration.">Siła polecenia 0–1, nie pomiar prędkości. Minimum to najmniejsze skuteczne polecenie określone przez operatora. Zero zatrzymuje. Czas obejmuje narastanie i wygaszenie.</p>
+<div id="manual-direction-settings"></div>
+<h2 data-pl="Wygładzanie poleceń" data-en="Command smoothing">Wygładzanie poleceń</h2>
+<p data-pl="Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem." data-en="Command change per second. Does not change the robot balance controller. STOP bypasses smoothing.">Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem.</p>
+<div id="manual-smoothing-settings" class="operator-grid"></div>
+<button id="manual-settings-save" class="c-btn" type="button" disabled data-pl="Zapisz ustawienia na robocie" data-en="Save settings on robot">Zapisz ustawienia na robocie</button>
+<p id="manual-settings-result" role="status"></p>
+<p data-pl="Ustawienia można zmieniać przy uzbrojonym robocie, między impulsami. Oba ekrany odczytują ten sam zapis; konflikt nie jest automatycznie nadpisywany." data-en="Settings can be changed while armed, between pulses. Both screens read the same record; conflicts are not automatically overwritten.">Ustawienia można zmieniać przy uzbrojonym robocie, między impulsami. Oba ekrany odczytują ten sam zapis; konflikt nie jest automatycznie nadpisywany.</p>
+</section>
+<details class="c-card"><summary data-pl="Diagnostyka wykonawcy" data-en="Executor diagnostics">Diagnostyka wykonawcy</summary><pre id="calibration-output"></pre></details>
+<ol id="request-history"></ol><p id="last-event" class="operator-muted"></p>
+</main>
+<footer class="layout-footer" data-dashboard-footer-target></footer>
+<script type="module" src="/web/assets/operator/app.js?v=device-profiles-3"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
-</body></html>
+</body>
+</html>

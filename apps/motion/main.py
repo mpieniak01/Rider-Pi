@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from apps.motion.dynamics import RampLimits, approach, finite
-from apps.safety.estop import estop_triggered as estop_triggered, motion_enabled as motion_enabled, safe_speed
+from apps.safety.estop import estop_triggered as estop_triggered, motion_enabled as motion_enabled
 from apps.safety.gate import MAX_DURATION_S, MotionGate
 
 DYNAMICS = RampLimits.from_env()
@@ -132,9 +132,13 @@ class MotionController:
         self.deadline = 0.0
         self.stopped = True
         self.t_lx = self.t_az = self.o_lx = self.o_az = 0.0
+        self.reversing = False
+        self.reverse_until = None
 
     def _stop_immediate(self):
         self.t_lx = self.t_az = self.o_lx = self.o_az = 0.0
+        self.reversing = False
+        self.reverse_until = None
         self.deadline = self.last_cmd_ts = 0.0
         self.stopped = True
         return self.robot.stop()
@@ -153,18 +157,22 @@ class MotionController:
             self.gate.disarm("invalid_motion_intent")
             self.stop()
             return False
-        if self.o_lx * lx < 0 or self.o_az * az < 0:
-            # Cancel the previous pulse before starting the opposite direction.
-            # Its deceleration must never consume the new pulse's entire budget.
-            if self.stop() is False:
-                self.gate.disarm("actuator_failed")
-                return False
-        self.t_lx = safe_speed(lx, self.limits.speed_limit)
-        self.t_az = safe_speed(az, self.limits.speed_limit)
+        if max(abs(lx), abs(az)) > self.limits.speed_limit:
+            return False
+        crossing = self.o_lx * lx < 0 or self.o_az * az < 0
+        continuing_pause = (
+            self.reversing and self.reverse_until is not None and (self.t_lx * lx > 0 or self.t_az * az > 0)
+        )
+        self.reversing = crossing or continuing_pause
+        if not continuing_pause:
+            self.reverse_until = None
+        self.t_lx, self.t_az = lx, az
         if self.t_lx == 0 and self.t_az == 0:
             # A fresh zero goal is a pause within the current lease. STOP still
             # revokes the lease; deceleration never delays either zero output.
             self.o_lx = self.o_az = 0.0
+            self.reversing = False
+            self.reverse_until = None
             self.stopped = True
             if not self.robot.move(lx=0.0, az=0.0):
                 self.gate.disarm("actuator_failed")
@@ -198,8 +206,26 @@ class MotionController:
             self.gate.disarm("control_timing_invalid" if self.limits.valid else "invalid_motion_limits")
             self.stop()
             return False
-        self.o_lx = self._approach(self.o_lx, self.t_lx, self.limits.linear_rate, dt)
-        self.o_az = self._approach(self.o_az, self.t_az, self.limits.turn_rate, dt)
+        remaining = max(0.0, self.deadline - self.gate.clock())
+        targets = [self.t_lx, self.t_az]
+        if self.reversing:
+            targets = [0.0, 0.0]
+            if self.o_lx == 0 and self.o_az == 0:
+                if self.reverse_until is None:
+                    self.reverse_until = self.gate.clock() + self.limits.reversal_pause
+                if self.gate.clock() >= self.reverse_until:
+                    self.reversing = False
+                    targets = [self.t_lx, self.t_az]
+        outputs = []
+        for current, target, acceleration, deceleration in (
+            (self.o_lx, targets[0], self.limits.linear_rate, self.limits.linear_deceleration),
+            (self.o_az, targets[1], self.limits.turn_rate, self.limits.turn_deceleration),
+        ):
+            # Reserve deceleration inside the original deadline, never extend TTL.
+            target = max(-deceleration * remaining, min(deceleration * remaining, target))
+            slowing = abs(target) < abs(current) or current * target < 0
+            outputs.append(self._approach(current, target, deceleration if slowing else acceleration, dt))
+        self.o_lx, self.o_az = outputs
         # Every nonzero normalized output may quantize to a physical SDK step.
         self.stopped = self.o_lx == 0 and self.o_az == 0
         # Repeat current output while a fresh bounded goal exists. No SDK timers.

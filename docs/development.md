@@ -80,3 +80,24 @@ task note. Mocked tests do not verify motors, sensors or physical tracking.
 The [Pi dashboard](ui/panel-diagnostics.md) uses port `8080`.
 Application work must preserve boot, network and SSH services.
 See [deployment and recovery](DEPLOYMENT.md) before updating the device.
+
+
+## Small fixes and natural reviews — agreement 2026-10-11
+
+- Local commits and device previews require no push, PR or review.
+  Use the existing Pi Git/SSH tool instead of temporary file-copy helpers.
+- Do not request paid reviews, invoke bots through mentions or commands,
+  repeat reviews, or add empty commits to trigger them. Collect naturally
+  arriving reviews, verify findings and fix valid issues. Missing optional
+  reviews or service limits do not block release. Do not change GitHub settings
+  without a separate request.
+- Group fixes into one coherent release. Satisfy existing required CI and
+  actual branch protection. Do not wait for optional reviewers; report any
+  approval explicitly required by branch protection as a concrete blocker.
+- Small iterations do not run full suites or install packages. Choose checks
+  for the change; run tests when requested. Physical movement requires separate
+  operator consent for the specific trial.
+- Web/CSS/JS updates need a browser refresh, without service restarts.
+  API backend changes request an API-only restart. Other services follow
+  the changed component. Never restart the robot, LCD, motion executor
+  or all services for a panel fix.

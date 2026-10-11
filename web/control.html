@@ -9,14 +9,19 @@
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css?v=shared-controls-1">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=device-profiles-3">
 <link rel="stylesheet" href="/web/assets/pages/control.css?v=control-restored-1">
 </head>
 <body data-page="control" class="page page-control">
 <header class="layout-header" data-dashboard-menu-target></header>
 <main class="layout-main operator-shell">
 <header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Sterowanie robotem" data-en="Rider-Pi — Robot control">Rider-Pi — Sterowanie robotem</h1></header>
-<p><a href="/calibration" data-pl="Kalibracja: profile, pomiary i odniesienie pozycji" data-en="Calibration: profiles, measurements and pose reference">Kalibracja: profile, pomiary i odniesienie pozycji</a></p>
+<p><a href="/calibration" data-pl="Kalibracja: zakresy i wygładzanie ruchu" data-en="Calibration: profiles, measurements and pose reference">Kalibracja: zakresy i wygładzanie ruchu</a></p>
+<section class="c-card motion-profiles"><h2 data-pl="Profil ruchu" data-en="Motion profile">Profil ruchu</h2>
+<div class="operator-row"><label><span data-pl="Profil" data-en="Profile">Profil</span><select id="motion-profile-select"><option value="">Bieżące nastawy</option></select></label>
+<button id="motion-profile-apply" class="c-btn" type="button" disabled data-pl="Zastosuj wybrany" data-en="Apply selected">Zastosuj wybrany</button></div>
+<p id="motion-profile-status" role="status"></p>
+<a href="/calibration" data-pl="Zarządzaj profilami w Kalibracji" data-en="Manage profiles in Calibration">Zarządzaj profilami w Kalibracji</a></section>
 <p id="manual-settings-status" role="status">Synchronizacja ustawień</p>
 <p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
 <div class="panel-row control-primary"><section class="c-card c-section cam-card control-section is-camera">
@@ -27,22 +32,24 @@
 <p class="operator-muted" data-pl="Podgląd odczytuje działającą kamerę. Nie uruchamia usług ani ruchu." data-en="Preview reads the running camera. It does not start services or motion.">Podgląd odczytuje działającą kamerę. Nie uruchamia usług ani ruchu.</p>
 <a href="/devices" data-pl="Urządzenia i zarządzanie kamerą" data-en="Devices and camera management">Urządzenia i zarządzanie kamerą</a>
 </section><section class="c-card c-section control-card control-section is-motion"><h2 data-pl="Sterowanie ruchem" data-en="Motion control">Sterowanie ruchem</h2>
-<label><span data-pl="Prędkość do przodu / tyłu (0–1)" data-en="Forward / reverse speed (0–1)">Prędkość do przodu / tyłu (0–1)</span><input id="speed" aria-describedby="speed-value" type="range" min="0" max="1" step="0.01" value="0.1"> <output id="speed-value" for="speed"></output></label>
-<label><span data-pl="Prędkość skrętu (0–1)" data-en="Turn speed (0–1)">Prędkość skrętu (0–1)</span><input id="yaw-speed" aria-describedby="yaw-speed-value" type="range" min="0" max="1" step="0.01" value="0.18"> <output id="yaw-speed-value" for="yaw-speed"></output></label>
-<label><span data-pl="Czas impulsu [s], maks. 0.25" data-en="Pulse duration [s], max. 0.25">Czas impulsu [s], maks. 0.25</span><input id="duration" type="number" min="0.01" max="0.25" step="0.01" value="0.1"></label>
 <div class="operator-drive motion-grid"><span></span><button class="c-btn" type="button" data-direction="forward" data-pl="↑ Przód" data-en="↑ Forward" disabled>↑ Przód</button><span></span><button class="c-btn" type="button" data-direction="left" data-pl="← Lewo" data-en="← Left" disabled>← Lewo</button><button class="c-btn operator-stop" type="button" data-stop>STOP</button><button class="c-btn" type="button" data-direction="right" data-pl="→ Prawo" data-en="→ Right" disabled>→ Prawo</button><span></span><button class="c-btn" type="button" data-direction="backward" data-pl="↓ Tył" data-en="↓ Backward" disabled>↓ Tył</button><span></span></div>
+<div id="manual-direction-settings"></div>
+<button id="manual-settings-save" class="c-btn" type="button" disabled data-pl="Zapisz ustawienia" data-en="Save settings">Zapisz ustawienia</button>
+<p id="manual-settings-result" role="status"></p>
+<p data-pl="Siła polecenia 0–1; osobne nastawy kierunków. Zapis między impulsami; uzbrojenie pozostaje aktywne." data-en="Command magnitude 0–1; separate direction settings. Save between pulses; arming remains active.">Siła polecenia 0–1; osobne nastawy kierunków. Zapis między impulsami; uzbrojenie pozostaje aktywne.</p>
+
 <p data-pl="W/S/A/D i strzałki: tylko ten widok, świeża zgoda manual i poza polami tekstowymi. Spacja: STOP poza polami. Utrata połączenia, fokusu lub ukrycie karty unieważnia obsługę ruchu." data-en="W/S/A/D and arrows: this view only, fresh manual permission, outside input fields. Space: STOP outside fields. Connection loss, focus loss or hidden tab suspends motion control.">W/S/A/D i strzałki: tylko ten widok, świeża zgoda manual i poza polami tekstowymi. Spacja: STOP poza polami. Utrata połączenia, fokusu lub ukrycie karty unieważnia obsługę ruchu.</p>
 </section></div>
 <section class="c-card"><h2 data-pl="Możliwości napędów" data-en="Actuator capabilities">Możliwości napędów</h2><ul id="actuator-capabilities"></ul>
 <details><summary data-pl="Postawa i akcje — wymagają potwierdzonej możliwości przerwania" data-en="Posture and actions — require verified interruption">Postawa i akcje — wymagają potwierdzonej możliwości przerwania</summary>
-<label><span data-pl="Wysokość (0–12)" data-en="Height (0–12)">Wysokość (0–12)</span> <input id="height" type="number" min="0" max="12" step="1" value="6"></label><button id="height-apply" type="button" class="c-btn" data-actuator="height" disabled data-pl="Wyślij wysokość" data-en="Send height">Wyślij wysokość</button>
+<label><span data-pl="Wysokość (75–115)" data-en="Height (75–115)">Wysokość (75–115)</span> <input id="height" type="number" min="75" max="115" step="1" value="85"></label><button id="height-apply" type="button" class="c-btn" data-actuator="height" disabled data-pl="Wyślij wysokość" data-en="Send height">Wyślij wysokość</button>
 <label><input id="balance" type="checkbox"> <span data-pl="Balans" data-en="Balance">Balans</span></label><button id="balance-apply" type="button" class="c-btn" data-actuator="balance" disabled data-pl="Wyślij balans" data-en="Send balance">Wyślij balans</button>
 <label><span data-pl="ID akcji" data-en="Action ID">ID akcji</span> <input id="action-id" type="number" min="1" max="255" step="1" value="1"></label><button id="action-apply" type="button" class="c-btn" data-actuator="action" disabled data-pl="Wyślij akcję" data-en="Send action">Wyślij akcję</button>
 <p data-pl="Wartości pól są propozycją żądania, nie zmierzonym stanem robota. Dostępność wynika wyłącznie z API. Wymagana charakterystyka jest blokadą." data-en="Field values are proposed requests, not measured robot state. Availability comes only from API. Required characterization blocks execution.">Wartości pól są propozycją żądania, nie zmierzonym stanem robota. Dostępność wynika wyłącznie z API. Wymagana charakterystyka jest blokadą.</p></details></section>
 <h2 data-pl="Katalog zadań" data-en="Task catalog">Katalog zadań</h2><p id="catalog-status">unknown</p><div id="task-list" class="operator-grid"></div><section class="c-card"><h2 data-pl="Żądania i potwierdzenia" data-en="Requests and acknowledgements">Żądania i potwierdzenia</h2><p data-pl="pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów." data-en="pending = awaiting ACK; executed = SDK accepted. Physical completion remains unverified. Request history is not actuator state.">pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów.</p><ol id="request-history"></ol><p id="last-event" class="operator-muted">—</p></section>
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=shared-controls-1"></script>
+<script type="module" src="/web/assets/operator/app.js?v=device-profiles-3"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

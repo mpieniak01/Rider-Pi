@@ -22,8 +22,8 @@ from drivers.xgo.adapter import XgoAdapter, uart_inventory
         ("move", {}),
         ("turn", {"yaw": 0.1}),
         ("balance", {"enabled": True}),
-        ("height", {"height": 4}),
-        ("action", {"name": "wave"}),
+        ("height", {"height": 85}),
+        ("action", {"name": "circular"}),
     ],
 )
 def test_all_actuators_rejected_disarmed(executor, action, fields):

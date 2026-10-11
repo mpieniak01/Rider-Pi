@@ -39,15 +39,24 @@ def test_one_persistent_revision_and_stale_writer_conflict(store):
     ],
 )
 def test_invalid_settings_do_not_create_a_config(store, patch):
+    before = store.read()
     with pytest.raises(ValueError):
         store.update(patch, 0)
-    assert not store.path().exists()
+    assert store.read() == before
 
 
 def test_settings_api_never_publishes_movement(store, monkeypatch):
     app = Flask(__name__)
     app.add_url_rule("/api/calibration/controls", view_func=calibration_api.controls, methods=["GET", "POST"])
-    state = {"ready": True, "stale": False, "moving": False, "output": {"lx": 0, "az": 0}}
+    state = {
+        "ready": True,
+        "state": "DISARMED",
+        "observed_at": calibration_api.wall_clock(),
+        "stale": False,
+        "moving": False,
+        "output": {"lx": 0, "az": 0},
+        "target": {"lx": 0, "az": 0},
+    }
     monkeypatch.setattr(calibration_api, "read_status", lambda: state)
     monkeypatch.setattr(calibration_api, "_publish", lambda *a: pytest.fail("settings must not publish"))
     client = app.test_client()
@@ -95,22 +104,30 @@ def test_old_panel_revision_and_old_values_are_rejected(executor):
 
 
 @pytest.mark.parametrize("initial,next_direction", [(0.6, -0.6), (-0.6, 0.6)])
-def test_reversal_never_executes_previous_sign_in_new_pulse(executor, initial, next_direction):
+def test_reversal_brakes_through_zero_within_original_deadline(executor, initial, next_direction):
     instance, clock = executor
-    arm(instance)
+    operator_arm(instance)
     instance.apply(command(instance, vx=initial, duration=0.25))
-    for _ in range(8):
+    for _ in range(6):
         clock.now += 0.02
         instance.tick(0.02)
-    assert instance.controller.o_lx * initial > 0
+    previous = instance.controller.o_lx
+    assert previous * initial > 0
     instance.adapter.calls = []
-    instance.apply(command(instance, vx=next_direction, duration=0.1))
-    assert instance.adapter.calls[0] == ("stop",)
-    for _ in range(4):
+    instance.apply(command(instance, vx=next_direction, duration=0.25))
+    deadline = instance.controller.deadline
+    outputs = []
+    for _ in range(13):
         clock.now += 0.02
         instance.tick(0.02)
-    writes = [c[1] for c in instance.adapter.calls if c[0] == "move"]
-    assert writes and all(v * next_direction > 0 for v in writes)
+        outputs.append(instance.controller.o_lx)
+        if instance.controller.deadline:
+            assert instance.controller.deadline == deadline
+    opposite = next(i for i, value in enumerate(outputs) if value * next_direction > 0)
+    assert any(value == 0 for value in outputs[:opposite])
+    assert all(abs(value) <= abs(previous) for value in outputs[:opposite])
+    assert instance.controller.stopped
+    assert instance.gate.state == "ARMED"
 
 
 def test_shared_defaults_reach_requested_speed_within_default_pulse(executor):

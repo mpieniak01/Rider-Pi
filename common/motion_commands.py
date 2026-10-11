@@ -31,6 +31,13 @@ def normalize_control(data):
     if action in {"drive", "spin"}:
         action = "move"
     if action in {"move", "turn"}:
+        if data.get("device_settings") is True:
+            if direction not in {"forward", "backward", "left", "right"}:
+                raise ValueError("invalid direction")
+            if any(key in data for key in ("vx", "lx", "yaw", "az", "w", "v", "speed", "duration", "dur", "t", "ms")):
+                raise ValueError("device_settings_ambiguous_command")
+            command.update(action=action, direction=direction)
+            return command
         speed = data.get("v", data.get("speed", 0.1))
         vx, yaw = data.get("vx", data.get("lx", 0)), data.get("yaw", data.get("az", data.get("w", 0)))
         if direction and direction not in {"forward", "backward", "left", "right"}:

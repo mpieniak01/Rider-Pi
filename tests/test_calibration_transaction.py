@@ -57,8 +57,8 @@ def test_final_commit_failure_inhibits_current_arm_and_next_boot(executor, monke
     assert ack["status"] == "rejected" and ack["error"] == "calibration_commit_failed:OSError"
     assert instance.calibration.error == ack["error"]
     assert instance.gate.state == "DISARMED" and instance.gate.generation != previous_generation
-    assert instance.controller.limits.speed_limit == 0.4  # actual logical application is visible
-    assert not instance.snapshot()["ready"] and not arm(instance)["accepted"]
+    assert instance.controller.limits.speed_limit == 0.6  # archive cannot change the effective device profile
+    assert instance.snapshot()["ready"] and arm(instance)["accepted"]
     assert instance.calibration.applied_ack is None and instance.adapter.calls == before
     assert profiles.read_active(include_pending=True)["activation_state"] == "pending"
     restored = CalibrationRuntime(instance.calibration.ceilings)

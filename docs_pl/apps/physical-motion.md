@@ -16,7 +16,7 @@ odległość, czas zatrzymania ani fizyczne dotarcie do celu.
 | SDK | rider_move_x(runtime=0) jest podtrzymany do zastąpienia; ponawiane wyjście jest ograniczone istniejącą bramą celu/zgody |
 | Znak skrętu | Canonical yaw ujemny=w lewo, dodatni=w prawo; kąt pozycji dodatni przeciwnie do wskazówek zegara |
 | Polecenie zerowe | Świeże uprawnione MOVE=0 natychmiast zapisuje zera, zachowuje ważną zgodę i otrzymuje ACK SDK |
-| Błąd/timeout | Utrata czujnika/intencji/źródła i timeout celu zatrzymują przez tę samą bramę oraz rozbrajają; dane nie przywracają zgody |
+| Błąd/timeout | Błędy czujnika/intencji/źródła i wygaśnięcie sesji czasowej zatrzymują i rozbrajają; zwykły impuls panelu kończy się zerowym wyjściem przy zachowaniu uzbrojenia |
 | Czujniki | Jeden właściciel UART, jeden odczyt na przebieg; skończone oryginalne czasy osobnych osi i baterii, budżet wieku 2,5 s |
 | Bateria | Procent SDK 0..100 przechodzi na 0..1; 1%=0,01; brak/nieważny odczyt=null, nigdy zdrowe zero |
 | Polityka baterii/przechylenia | Progi i reakcja fizyczna pozostają manual_characterization_required |

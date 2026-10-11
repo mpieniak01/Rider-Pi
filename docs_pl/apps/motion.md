@@ -51,7 +51,8 @@ Zobacz [jakość programu i otwartą listę ręcznych pomiarów](physical-motion
 oraz [kontrakt odometrii/odniesienia](odometry.md). IMU/bateria zachowują oryginalne
 czasy osobnych odczytów. Brak/stare dane blokują ARM i rozbrajają aktywny ruch
 przez tę samą bramę; nie wymyślamy fizycznych progów baterii/przechylenia.
-Świeże MOVE=0 jest natychmiast potwierdzoną pauzą, a timeout/błąd danych/intencji
+Świeże MOVE=0 jest natychmiast potwierdzoną pauzą. Koniec impulsu panelu
+zachowuje uzbrojenie; wygaśnięcie sesji czasowej i błędy danych/intencji
 unieważniają zgodę.
 
 Parser odpowiedzi SDK używa monotonicznego deadline i dopasowuje adres/długość/
@@ -79,3 +80,11 @@ pi-preview chroni drivers/systemd. W uzgodnionym oknie, bez autonomii, zatrzymaj
 starego ownera, zaktualizuj kod/wybrane unity, wykonaj daemon-reload i uruchom
 jednego nowego ownera DISARMED. Rollback przywraca zgodny kod i unity.
 Migracja nie wykonuje automatycznej próby ruchu. Zachowaj LCD 270°, boot, Wi-Fi i SSH.
+
+## Wspólne ustawienia urządzenia
+
+Nastawy ruchu i panel kalibracji korzystają z [kontraktu ustawień Pi](calibration.md).
+Polecenia chronione zawierają settings_revision; strzałki wysyłają kierunek
+i device_settings=true. Uzbrojenie operatora trwa między impulsami. Koniec
+impulsu zatrzymuje bez rozbrojenia; błędy i STOP nadal unieważniają sesję.
+Zgoda testowa pozostaje oddzielna.

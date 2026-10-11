@@ -23,14 +23,7 @@ class CalibrationRuntime:
             pointer = profiles.read_active()
             if pointer is not None:
                 profile = profiles.read_profile(pointer["profile_digest"])
-                self.limits = self.profile_limits(profile)
                 self._record(profile, pointer, "saved_profile")
-                from apps.motion import manual_settings
-
-                shared = manual_settings.read()
-                if shared["revision"] == 0:
-                    patch = dict(profile["motion"], **(profile.get("interaction") or {}))
-                    manual_settings.update(patch, shared["revision"])
         except (OSError, ValueError, TypeError, KeyError) as exc:
             self.error = "saved_profile_unavailable:" + str(exc)
 
@@ -78,7 +71,7 @@ class CalibrationRuntime:
             # retried with the same authorization envelope.
             gate.last_seq = row["seq"]
             profile = profiles.read_profile(row["profile_digest"])
-            limits = self.profile_limits(profile)
+            self.profile_limits(profile)  # Validate archival metadata, never apply it to movement.
             pointer = profiles.write_active(
                 row["profile_digest"],
                 request_id=row["request_id"],
@@ -100,14 +93,8 @@ class CalibrationRuntime:
                 self.error = "calibration_state_changed_during_apply"
                 raise ValueError(self.error)
             # No blocking hardware call occurs between persistence and apply.
-            from apps.motion import manual_settings
-
-            shared = manual_settings.read()
-            patch = dict(profile["motion"])
-            if profile.get("interaction"):
-                patch.update(profile["interaction"])
-            manual_settings.update(patch, shared["revision"])
-            controller.limits = self.limits = limits
+            # Archived profile motion/interaction values are historical.
+            # Only device settings may determine current movement.
             self._record(profile, pointer, "profile")
             # Configuration invalidates every queued authorization envelope,
             # but the controller is already idle: no SDK STOP or ARM here.

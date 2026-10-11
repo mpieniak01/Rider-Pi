@@ -90,10 +90,9 @@ def command(executor, action="move", **kwargs):
         "yaw": 0.0,
         "duration": 0.2,
     }
-    if executor.gate.arming_mode == "operator":
-        from apps.motion.manual_settings import read
+    from apps.motion.manual_settings import read
 
-        result["settings_revision"] = read()["revision"]
+    result["settings_revision"] = read()["revision"]
     result.update(kwargs)
     return result
 

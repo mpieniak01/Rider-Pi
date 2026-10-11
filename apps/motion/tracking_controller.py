@@ -71,6 +71,7 @@ class TrackingController:
         return {
             "action": action,
             "source": "follow_me",
+            "settings_revision": (state.get("manual_settings") or {}).get("revision"),
             "generation": self.generation,
             "seq": self.sequence,
             "ts": time.time(),

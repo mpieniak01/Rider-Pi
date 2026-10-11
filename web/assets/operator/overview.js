@@ -2,6 +2,7 @@ import { request, poll } from './transport.js';
 import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown, nowSeconds } from './model.js';
 import { el, text, tr, statusLabel } from './ui.js';
 import { telemetryChannel } from './devices.js';
+import { telemetrySummary, orientationSummary } from './overview-model.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const fmt = (value, digits = 1) => finite(value) ? value.toFixed(digits) : '—';
@@ -77,9 +78,10 @@ export class Overview {
     const battery = samples.battery.value;
     const imuReady = ['roll', 'pitch', 'yaw'].every(key => samples[key].ready);
     text('d_xgo_imu', imuReady ? tr('Świeży odczyt', 'Fresh reading') : values.some(finite) ? tr('Częściowy odczyt', 'Partial reading') : unknown());
-    text('d_xgo_pose', values.some(finite) ? `R ${fmt(values[0])} · P ${fmt(values[1])} · Y ${fmt(values[2])} · sdk_raw` : '—');
-    text('d_xgo_batt', finite(battery) ? `${fmt(battery, 0)}% · ${age(samples.battery)}` : unknown());
-    text('xgo-age', `${age(xgo)}${imuReady ? '' : ` · ${unknown()}`}`);
+    text('d_xgo_pose', orientationSummary(samples));
+    text('d_xgo_batt', finite(battery) ? `${fmt(battery, 0)}%` : unknown());
+    const group = telemetrySummary(samples, nowSeconds());
+    text('xgo-age', group.complete ? `${fmt(group.age)} s` : tr('Częściowa / niedostępna', 'Partial / unavailable'));
     text('imu-yaw-raw', samples.yaw.ready ? `${fmt(samples.yaw.value, 2)} sdk_raw · ${age(samples.yaw)}` : unknown());
     text('ci_fw', xgo?.fw || this.health?.devices?.xgo?.fw || '—');
     const lcdParent = this.state?.devices?.lcd ? this.state : this.health;

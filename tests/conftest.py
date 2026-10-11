@@ -10,6 +10,7 @@ from common.test_sandbox import install
 # Collection imports happen before fixtures: isolation must already be enforced.
 install()
 os.environ["RIDER_CALIBRATION_DIR"] = os.path.join(install.sandbox.name, "calibration")
+os.environ["RIDER_MANUAL_SETTINGS_PATH"] = os.path.join(install.sandbox.name, "motion-settings.json")
 os.environ["ODOMETRY_STATE_DIR"] = os.path.join(install.sandbox.name, "odometry")
 os.environ["ODOMETRY_CALIBRATION_PATH"] = os.path.join(install.sandbox.name, "legacy-calibration.json")
 os.environ["PROVIDER_STATE_FILE"] = os.path.join(install.sandbox.name, "providers-state.json")

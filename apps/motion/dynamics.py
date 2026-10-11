@@ -28,6 +28,9 @@ class RampLimits:
     turn_rate: float = 4.0
     watchdog_s: float = 0.5
     max_dt_s: float = 0.1
+    linear_deceleration: float = 3.0
+    turn_deceleration: float = 4.0
+    reversal_pause: float = 0.0
 
     @classmethod
     def from_env(cls):
@@ -47,6 +50,12 @@ class RampLimits:
             and all(value > 0 for value in values[1:])
             and self.watchdog_s <= 0.5
             and self.max_dt_s <= 0.1
+            and finite(self.linear_deceleration)
+            and self.linear_deceleration > 0
+            and finite(self.turn_deceleration)
+            and self.turn_deceleration > 0
+            and finite(self.reversal_pause)
+            and 0 <= self.reversal_pause <= 0.25
         )
 
     def status(self):
@@ -58,6 +67,9 @@ class RampLimits:
             "turn_rate": self.turn_rate if finite(self.turn_rate) else None,
             "speed_limit": self.speed_limit if finite(self.speed_limit) else None,
             "max_dt_s": self.max_dt_s,
+            "linear_deceleration": self.linear_deceleration,
+            "turn_deceleration": self.turn_deceleration,
+            "reversal_pause": self.reversal_pause,
             "physical_calibration": "unverified",
             "yaw_convention": "negative_left_positive_right",
             "stop_bypasses_ramp": True,

@@ -1,58 +1,86 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { readFile } from 'node:fs/promises';
+import {readFile} from 'node:fs/promises';
 const root=new URL('../web/assets/operator/',import.meta.url);
 const source=await readFile(new URL('manual-settings-model.js',root),'utf8');
 const model=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
-const values={linear_speed:.2,turn_speed:.35,pulse_duration:.25,speed_limit:.6,linear_rate:3,turn_rate:4};
-const limits={linear_speed:1,turn_speed:1,pulse_duration:.25,speed_limit:.6,linear_rate:3,turn_rate:4};
-const row=()=>({contract_id:'rider.manual_settings',contract_version:1,revision:0,values:{...values},limits,observed_at:1000,actuation:false});
-test('one revision supplies all four signed directions and bounded duration',()=>{
-  for(const [direction,vx,yaw] of [['forward',.2,0],['backward',-.2,0],['left',0,-.35],['right',0,.35]]){
-    assert.deepEqual(model.settingsPulse(row(),direction),{direction,vx,yaw,duration:.25,settings_revision:0});
-  }
+const values={linear_speed:.2,turn_speed:.35,pulse_duration:.25,speed_limit:.6,linear_rate:3,turn_rate:4,
+  linear_deceleration:3,turn_deceleration:4,reversal_pause:0};
+const limits={...values,linear_speed:.6,turn_speed:.6,linear_deceleration:100,turn_deceleration:100,reversal_pause:.25};
+const row=()=>({contract_id:'rider.manual_settings',contract_version:2,schema_version:2,authority:'device',revision:0,
+  values:{...values},limits,directions:Object.fromEntries(model.directions.map(name=>[name,
+    {minimum:0,maximum:.6,step:.01,speed:['forward','backward'].includes(name)?.2:.35,duration:.25}])),
+  observed_at:1000,actuation:false});
+test('panel sends direction and revision only; Pi maps commands',()=>{
+  for(const direction of model.directions)
+    assert.deepEqual(model.settingsPulse(row(),direction),{direction,device_settings:true,settings_revision:0});
   assert.equal(model.settingsValid(row(),1000),true);
   assert.equal(model.settingsValid(row(),1004),false);
-  assert.equal(model.settingsValid({...row(),values:{...values,turn_speed:NaN}},1000),false);
+  assert.equal(model.settingsValid({...row(),directions:{}},1000),false);
+  assert.equal(model.settingsValid({...row(),contract_version:1},1000),false);
 });
-async function screen(ids, shared){
-  const nodes=new Map(ids.map(id=>[id,{id,value:'0',events:{},addEventListener(name,fn){this.events[name]=fn;}}]));
+async function screen(shared,{postError=null,nodes={}}={}){
   const raw=(await readFile(new URL('manual-settings.js',root),'utf8')).replace(/^import .*;$/gm,'').replace('export class','class');
-  const context=vm.createContext({document:{getElementById:id=>nodes.get(id)||null},window:{addEventListener(){}},
+  let posts=0;
+  const context=vm.createContext({document:{getElementById:id=>nodes[id]||null},window:{addEventListener(){}},
     nowSeconds:()=>1000,settingsValid:model.settingsValid,settingsPulse:model.settingsPulse,
-    text(){},tr:(pl,en)=>en,showError(){},clearTimeout(){},setTimeout:()=>1,poll:()=>({stop(){}}),
-    request:async(path,options={})=>{
+    fields:model.fields,directions:model.directions,text(){},tr:(pl,en)=>en,showError(){},
+    poll:()=>({stop(){}}),request:async(path,options={})=>{
       if(options.method==='POST'){
+        posts++;
+        if(postError)throw postError;
         assert.equal(options.body.revision,shared.current.revision);
-        shared.current={...shared.current,revision:shared.current.revision+1,values:{...shared.current.values,...options.body.values}};
+        shared.current={...shared.current,revision:shared.current.revision+1,
+          values:{...shared.current.values,...options.body.values},
+          directions:{...shared.current.directions,...Object.fromEntries(Object.entries(options.body.directions||{})
+            .map(([key,value])=>[key,{...shared.current.directions[key],...value}]))}};
       }
       return {canonical:true,data:structuredClone(shared.current)};
     }});
   const Class=vm.runInContext(raw+';ManualSettings',context);
-  const panel=new Class({render(){}});
+  const panel=new Class({state:{state:'ARMED'},clockFresh:()=>true,render(){}});
   await panel.refresh();
-  return {panel,nodes};
+  return {panel,posts:()=>posts};
 }
-test('calibration writes shared values; control reads identical confirmed values and version',async()=>{
-  const shared={current:row()};
-  const a=await screen(['calibration-linear-speed','calibration-turn-speed','pulse-duration','motion-linear-rate'],shared);
-  const b=await screen(['speed','yaw-speed','duration'],shared);
-  a.nodes.get('calibration-turn-speed').value='.5';
-  a.nodes.get('calibration-turn-speed').events.input();
+test('armed calibration saves settings and control reads identical revision',async()=>{
+  const shared={current:row()}, a=await screen(shared), b=await screen(shared);
+  assert.equal(a.panel.editable(),true);
+  a.panel.edit(()=>{a.panel.directionEdits.left={speed:.5};});
   assert.equal(a.panel.ready(),false);
   assert.throws(()=>a.panel.pulse('left'),/unconfirmed/);
-  await a.panel.save();
-  await b.panel.refresh();
-  assert.equal(Number(b.nodes.get('yaw-speed').value),.5);
-  assert.equal(a.panel.pulse('left').yaw,b.panel.pulse('left').yaw);
+  await a.panel.save();await b.panel.refresh();
+  assert.equal(a.panel.state.directions.left.speed,.5);
+  assert.equal(b.panel.state.directions.left.speed,.5);
   assert.equal(a.panel.state.revision,b.panel.state.revision);
   assert.equal(b.panel.pulse('right').settings_revision,1);
 });
-test('invalid or missing remote settings never enable movement',async()=>{
+test('conflict is displayed and never automatically retried',async()=>{
   const shared={current:row()};
-  const a=await screen(['speed'],shared);
+  const a=await screen(shared,{postError:Object.assign(new Error('conflict'),{status:409})});
+  a.panel.edit(()=>{a.panel.directionEdits.forward={speed:.3};});
+  shared.current.revision++;
+  await assert.rejects(()=>a.panel.save(),/Write rejected/);
+  assert.equal(a.posts(),1);
+  assert.equal(a.panel.state.revision,1);
+  assert.equal(a.panel.dirty(),false);
+});
+test('unconfirmed remote values block movement',async()=>{
+  const shared={current:row()}, a=await screen(shared);
   shared.current.contract_version=0;
   await assert.rejects(()=>a.panel.refresh(),/unconfirmed/);
-  assert.equal(a.panel.ready(),false);
+});
+
+
+test('slider expands bounds before receiving a larger authoritative value',async()=>{
+  let magnitude=.2;
+  const slider={max:.2,min:0,step:.01,get value(){return magnitude;},set value(x){magnitude=Math.min(Number(x),Number(this.max));}};
+  const shared={current:row()};
+  shared.current.directions.forward={...shared.current.directions.forward,maximum:.2,speed:.2};
+  const a=await screen(shared,{nodes:{'setting-forward-speed':slider}});
+  shared.current.revision++;
+  shared.current.directions.forward={...shared.current.directions.forward,maximum:.6,speed:.4};
+  await a.panel.refresh();
+  assert.equal(slider.value,.4);
+  assert.equal(a.panel.state.directions.forward.speed,.4);
 });

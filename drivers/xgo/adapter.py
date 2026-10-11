@@ -354,7 +354,7 @@ class XgoAdapter:
         return self._call("rider_balance_roll", int(on)) or self._call("imu", int(on))
 
     def set_height(self, h: int) -> bool:
-        if not self._allowed() or isinstance(h, bool) or not isinstance(h, int) or not 70 <= h <= 115:
+        if not self._allowed() or isinstance(h, bool) or not isinstance(h, int) or not 75 <= h <= 115:
             return False
         if not self.capabilities()["height"]["stop_verified"]:
             self.error = "height_manual_characterization_required"
@@ -408,12 +408,12 @@ class XgoAdapter:
         self.stop()
 
     def action(self, name: str) -> bool:
-        if not self._allowed() or name not in {"default", "stand", "sit", "wave"}:
+        if not self._allowed() or name not in {"default", "sway", "vertical", "lift_rotate", "circular"}:
             return False
         if not self.capabilities()["action"]["stop_verified"]:
             self.error = "action_manual_characterization_required"
             return False
-        action_id = {"default": 255, "stand": 1, "sit": 2, "wave": 6}[name]
+        action_id = {"default": 255, "sway": 1, "vertical": 2, "lift_rotate": 5, "circular": 6}[name]
         return self._call("rider_action", action_id, False) or self._call("action", action_id, False)
 
     def capabilities(self) -> dict:

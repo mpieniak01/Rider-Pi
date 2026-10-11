@@ -236,19 +236,44 @@ def activate():
 def controls():
     from apps.motion import manual_settings
 
+    def idle():
+        motion = read_status()
+        if not profiles._fresh(motion, wall_clock()):
+            raise ValueError("motion_status_unavailable")
+        if (
+            motion.get("state") not in {"DISARMED", "ARMED"}
+            or motion.get("moving") is not False
+            or motion.get("deadline", 0)
+            or any((motion.get("output") or {}).values())
+            or any((motion.get("target") or {}).values())
+        ):
+            raise ValueError("manual_settings_requires_idle")
+
     try:
         if request.method == "POST":
             row = _body()
-            if set(row) != {"revision", "values"}:
+            if set(row) - {"revision", "values", "directions", "profile"} or not {"revision", "values"} <= set(row):
                 raise ValueError("manual_settings_request")
-            motion = read_status()
-            if motion.get("stale") is True or motion.get("ready") is not True:
-                return _error("motion_status_unavailable", 409)
-            if motion.get("moving") is True or any((motion.get("output") or {}).values()):
-                return _error("manual_settings_requires_idle", 409)
-            manual_settings.update(row["values"], row["revision"])
+            if "profile" in row:
+                manual_settings.manage_profile(
+                    row["profile"],
+                    row["revision"],
+                    patch=row["values"],
+                    directions=row.get("directions"),
+                    validate_state=idle,
+                )
+            else:
+                manual_settings.update(
+                    row["values"], row["revision"], directions=row.get("directions"), validate_state=idle
+                )
         return jsonify(dict(manual_settings.snapshot(), ok=True))
     except ValueError as exc:
-        return _error(str(exc), 409 if str(exc) == "manual_settings_conflict" else 400)
+        code = str(exc)
+        status = (
+            409
+            if code in {"manual_settings_conflict", "motion_status_unavailable", "manual_settings_requires_idle"}
+            else 400
+        )
+        return _error(code, status)
     except (OSError, TypeError):
         return _error("manual_settings_unavailable", 503)
