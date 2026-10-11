@@ -42,6 +42,7 @@ class MotionGate:
         self.blocked = blocked or estop.external_estop
         self.state = "DISARMED"
         self.owner = None
+        self.execution_context = None
         self.generation = uuid.uuid4().hex
         self.last_seq = -1
         self.lease_deadline = 0.0
@@ -54,6 +55,7 @@ class MotionGate:
         self.state = state
         self.reason = reason
         self.owner = None
+        self.execution_context = None
         self.plan = None
         self.lease_deadline = 0.0
         self.generation = uuid.uuid4().hex
@@ -120,6 +122,11 @@ class MotionGate:
             return True, "estop_latched"
         try:
             self._validate_envelope(command)
+            context = command.get("execution_context", "panel")
+            if not isinstance(context, str) or context not in {"panel", "test"}:
+                raise ValueError("unknown_execution_context")
+            if context == "test" and command.get("test_operator_consent") is not True:
+                raise ValueError("test_operator_consent_required")
             if action == "clear_estop":
                 if command.get("operator_consent") is not True:
                     raise ValueError("operator_consent_required")
@@ -156,6 +163,7 @@ class MotionGate:
                     raise ValueError("invalid_lease")
                 self.state = "ARMED"
                 self.owner = owner
+                self.execution_context = context
                 self.plan = plan.strip()
                 self.reason = "operator_consent"
                 self.lease_deadline = self.clock() + lease
@@ -165,6 +173,8 @@ class MotionGate:
                 raise ValueError("unknown_action")
             if not self.can_actuate():
                 raise ValueError("motion_disarmed" if self.state != "ESTOP" else "estop_latched")
+            if context != self.execution_context:
+                raise ValueError("execution_context_mismatch")
             if command.get("source") != self.owner:
                 raise ValueError("owner_mismatch")
             self.last_seq = command["seq"]
@@ -178,6 +188,9 @@ class MotionGate:
             "contract_version": 1,
             "state": self.state,
             "owner": self.owner,
+            "execution_context": self.execution_context,
+            "panel_motion_enabled": self.state == "ARMED" and self.execution_context == "panel",
+            "test_motion_enabled": self.state == "ARMED" and self.execution_context == "test",
             "generation": self.generation,
             "last_seq": self.last_seq,
             "lease_remaining_s": max(0.0, self.lease_deadline - self.clock()),

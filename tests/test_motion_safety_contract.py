@@ -241,8 +241,11 @@ def test_adapter_default_is_inert_and_owner_init_cannot_reset(monkeypatch, tmp_p
         physical.close()
 
 
-def test_physical_factory_refused_during_isolated_tests(monkeypatch, executor, tmp_path):
+@pytest.mark.parametrize("execution_context", ["panel", "test"])
+def test_physical_factory_refused_during_isolated_tests(monkeypatch, executor, tmp_path, execution_context):
     instance, _ = executor
+    assert arm(instance, execution_context=execution_context, test_operator_consent=True)["status"] == "executed"
+    assert instance.snapshot()[execution_context + "_motion_enabled"] is True
     monkeypatch.setenv("RIDER_TEST_ISOLATED", "1")
     physical = XgoAdapter(gate=instance.gate, owner=True, lock_path=tmp_path / "unused.lock")
     assert physical.error == "physical_sdk_blocked_in_tests"
@@ -444,3 +447,114 @@ def test_sdk_stop_rejects_posture_write_even_when_armed(executor, monkeypatch, t
         assert ("write", "ACTION") not in physical._dog.events
     finally:
         physical.close()
+
+
+def test_native_rider_mapping_uses_bounded_speed_and_protocol_neutral(monkeypatch, tmp_path, executor):
+    import sys
+
+    from common.motion_mapping import LINEAR_LEVELS, MAPPING_ID, linear_sdk_value, native_command_byte
+
+    instance, _ = executor
+    orders = {"VX": [0x30, 0], "VY": [0x31, 0], "VYAW": [0x32, 0]}
+    monkeypatch.setattr(sys.modules[__name__], "XGOorder", orders, raising=False)
+
+    class RecordingSDK(FakeSDK):
+        def rider_move_x(self, speed, runtime=0):
+            self.events.append(("native_linear", speed, runtime))
+            super().rider_move_x(speed, runtime)
+
+        def _XGO__send(self, key, index=1, len=1):
+            self.events.append(("byte", key, orders[key][1]))
+
+    adapter = XgoAdapter(
+        gate=instance.gate,
+        owner=True,
+        sdk_factory=RecordingSDK,
+        lock_path=tmp_path / "mapping.lock",
+        uart_probe=lambda _: {"known": True, "owners": []},
+    )
+    try:
+        assert adapter.ok()
+        assert ("byte", "VX", 128) in adapter._dog.events
+        assert ("byte", "VYAW", 128) in adapter._dog.events
+        arm(instance)
+        for direction, sign in [("forward", 1), ("backward", -1)]:
+            for speed in [0, 0.01, 0.1, 0.5, 1]:
+                assert adapter.drive(direction, speed)
+                level = sign * round(speed * LINEAR_LEVELS)
+                native = linear_sdk_value(level)
+                assert ("native_linear", native, 0) in adapter._dog.events
+                assert abs(native) <= 1.5
+                assert adapter.output_status()["linear_step"] == level
+                assert adapter.output_status()["linear_sdk_value"] == native
+                assert adapter._dog.events[-1] == ("byte", "VX", native_command_byte(native, 1.5))
+        assert linear_sdk_value(round(0.1 * LINEAR_LEVELS)) < 0.2
+        assert adapter.output_status()["mapping_id"] == MAPPING_ID
+        assert adapter.drive("forward", 0.01)
+        assert 128 < adapter._dog.events[-1][2] < 140
+        instance.gate.disarm()
+        assert adapter.stop()
+        assert adapter._dog.events[-2:] == [("byte", "VX", 128), ("byte", "VYAW", 128)]
+    finally:
+        adapter.close()
+
+
+def test_panel_permission_cannot_authorize_physical_test_commands(executor):
+    instance, _ = executor
+    arm(instance)
+    snapshot = instance.snapshot()
+    assert snapshot["panel_motion_enabled"] is True
+    assert snapshot["test_motion_enabled"] is False
+    before = list(instance.adapter.calls)
+    denied = instance.apply(command(instance, execution_context="test"))
+    assert denied["reason"] == "test_operator_consent_required"
+    denied = instance.apply(command(instance, execution_context="test", test_operator_consent=True))
+    assert denied["reason"] == "execution_context_mismatch"
+    assert instance.adapter.calls == before
+
+
+def test_test_permission_is_separate_and_every_attempt_requires_operator_consent(executor):
+    instance, _ = executor
+    denied = instance.apply(
+        command(
+            instance,
+            "arm",
+            owner="manual",
+            operator_consent=True,
+            operator_plan="Prepared isolated test",
+            lease_s=5,
+            execution_context="test",
+        )
+    )
+    assert denied["reason"] == "test_operator_consent_required"
+    allowed = instance.apply(
+        command(
+            instance,
+            "arm",
+            owner="manual",
+            operator_consent=True,
+            test_operator_consent=True,
+            operator_plan="Prepared isolated test",
+            lease_s=5,
+            execution_context="test",
+        )
+    )
+    assert allowed["status"] == "executed"
+    snapshot = instance.snapshot()
+    assert snapshot["test_motion_enabled"] is True
+    assert snapshot["panel_motion_enabled"] is False
+    assert instance.apply(command(instance))["reason"] == "execution_context_mismatch"
+    assert instance.apply(command(instance, execution_context="test"))["reason"] == "test_operator_consent_required"
+    assert (
+        instance.apply(command(instance, execution_context="test", test_operator_consent=True))["status"] == "accepted"
+    )
+    instance.apply({"action": "stop"})
+    assert instance.snapshot()["test_motion_enabled"] is False
+    assert instance.snapshot()["panel_motion_enabled"] is False
+
+
+def test_unknown_test_context_is_rejected_without_hardware(executor):
+    instance, _ = executor
+    arm(instance)
+    for context in (None, {}, [], True, "automatic"):
+        assert instance.apply(command(instance, execution_context=context))["reason"] == "unknown_execution_context"

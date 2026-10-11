@@ -72,7 +72,18 @@ def _fields(value, expected, code):
 def validate_profile(profile):
     """Return canonical content. Historical/draft records cannot assert verification."""
     value = _bounded(profile)
-    _fields(value, ("schema_version", "name", "provenance", "motion", "odometry", "measurements"), "profile_schema")
+    required = {"schema_version", "name", "provenance", "motion", "odometry", "measurements"}
+    if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"interaction"}:
+        raise ValueError("profile_schema")
+    if "interaction" in value:
+        interaction = value["interaction"]
+        _fields(interaction, ("linear_speed", "turn_speed", "pulse_duration"), "profile_interaction_fields")
+        for field in ("linear_speed", "turn_speed", "pulse_duration"):
+            number = interaction[field]
+            upper = 0.25 if field == "pulse_duration" else 1.0
+            lower = 0.01 if field == "pulse_duration" else 0.0
+            if not finite_number(number) or not lower <= number <= upper:
+                raise ValueError("profile_interaction_" + field)
     if type(value["schema_version"]) is not int or value["schema_version"] != 1:
         raise ValueError("profile_schema_version")
     value["name"] = _text(value["name"], "profile_name", limit=80, required=True).strip()
@@ -118,7 +129,7 @@ def validate_profile(profile):
         type(record["imu_yaw_sign"]) is not int or record["imu_yaw_sign"] not in (-1, 1)
     ):
         raise ValueError("profile_imu_yaw_sign")
-    for field, ceiling in (("linear_m_s", 12), ("turn_rad_s", 70)):
+    for field, ceiling in (("linear_m_s", 127), ("turn_rad_s", 70)):
         table = record[field]
         if not isinstance(table, dict) or len(table) > 2 * ceiling:
             raise ValueError("profile_sdk_table")
@@ -127,7 +138,7 @@ def validate_profile(profile):
                 step = int(key)
             except (TypeError, ValueError):
                 raise ValueError("profile_sdk_step") from None
-            minimum = 20 if field == "turn_rad_s" else 1
+            minimum = 1
             if str(step) != key or not minimum <= abs(step) <= ceiling:
                 raise ValueError("profile_sdk_step")
             if not finite_number(item) or item * step <= 0:
@@ -148,11 +159,11 @@ def validate_profile(profile):
                 raise ValueError("profile_measurement_outcome")
         if row.get("sdk_step") is not None:
             step = row["sdk_step"]
-            minimum, maximum = (20, 70) if row.get("kind") == "turn" else (1, 12)
+            minimum, maximum = (1, 70) if row.get("kind") == "turn" else (1, 127)
             if type(step) is not int or not minimum <= abs(step) <= maximum:
                 raise ValueError("profile_measurement_sdk_step")
     if record["manual_verified"]:
-        error = calibration_status(record)
+        error = calibration_status(record, require_mapping=False)
         if error:
             raise ValueError(error)
         if not conditions.get("operator", "").strip() or not conditions.get("date", "").strip():
@@ -292,6 +303,10 @@ def list_profiles():
 
 def save_profile(profile):
     value = validate_profile(profile)
+    if value["odometry"]["manual_verified"]:
+        error = calibration_status(value["odometry"])
+        if error:
+            raise ValueError(error)
     digest = profile_digest(value)
     with _lock() as root:
         rows = _catalog(root)

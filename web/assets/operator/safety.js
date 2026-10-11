@@ -1,6 +1,6 @@
 import { ageOf, authorized, safetyKnown, editingTarget, matchingAck, setServerClock } from './model.js';
 import { request, poll, prepareMutation } from './transport.js';
-import { el, text, tr, statusLabel, showError } from './ui.js';
+import { text, tr, statusLabel, showError } from './ui.js';
 export class SafetyPanel {
   constructor(onChange = () => {}, { interactive = true } = {}) {
     this.interactive = interactive; this.upperOffset = 0; this.lowerOffset = 0;
@@ -8,7 +8,8 @@ export class SafetyPanel {
     this.history = []; this.pending = new Map(); this.mutating = false;
     this.revokedGenerations = new Set();
     this.clockReady = false; this.clockObserved = 0;
-    if (this.interactive) this.preparation();
+    this.toggling = false; this.toggleEpoch = 0;
+    document.getElementById('global-motion-toggle')?.addEventListener('click', () => this.toggleMotion().catch(showError));
     this.poller = poll(async () => {
       const response = await request('/api/control/state');
       this.clockReady = response.canonical === true && response.meta?.contract_id === 'rider.safety' && response.meta.contract_version === 1 && setServerClock(response.data.server_time, response.sent_at, response.received_at);
@@ -19,40 +20,13 @@ export class SafetyPanel {
       { interval: 1000, onError: error => { this.suspend(); showError(error); } });
     this.expiry = setInterval(() => this.render(), 250);
     if (this.interactive) {
-      document.getElementById('arm-form')?.addEventListener('input', () => this.render());
       document.querySelectorAll('[data-stop]').forEach(node => node.addEventListener('click', () => this.stop()));
-      document.getElementById('arm-form')?.addEventListener('submit', event => { event.preventDefault(); this.arm('arm'); });
-      document.getElementById('clear-estop')?.addEventListener('click', () => this.arm('clear_estop'));
-      document.getElementById('disarm')?.addEventListener('click', () => this.send('disarm', {}, '/api/safety').catch(showError));
-      document.getElementById('estop')?.addEventListener('click', () => this.send('estop', {}, '/api/safety').catch(showError));
       document.querySelectorAll('[data-direction]').forEach(node => node.addEventListener('click', () => this.move(node.dataset.direction)));
       document.addEventListener('keydown', event => this.key(event));
       window.addEventListener('blur', () => this.suspend());
       document.addEventListener('visibilitychange', () => { if (document.hidden) this.suspend(); });
     }
-    window.addEventListener('pagehide', () => { this.suspend(); clearInterval(this.expiry); this.poller.stop(); });
-  }
-  preparation() {
-    if (document.getElementById('arm-form') || document.body.dataset.page !== 'system') return;
-    const card = document.querySelector('.operator-safety'); if (!card) return;
-    const translated = (tag, pl, en) => { const node = el(tag, '', tr(pl, en)); node.dataset.pl = pl; node.dataset.en = en; return node; };
-    const section = el('details'); section.append(translated('summary', 'Przygotuj zgodę na tym widoku', 'Prepare permission in this view'));
-    const form = el('form'); form.id = 'arm-form';
-    const owner = el('select'); owner.id = 'control-owner';
-    for (const name of ['manual', 'follow_me', 'navigation']) { const option = el('option', '', name); option.value = name; owner.append(option); }
-    owner.value = 'manual';
-    const lease = el('input'); lease.id = 'lease'; lease.type = 'number'; lease.min = '1'; lease.max = '30'; lease.value = '10'; lease.required = true;
-    const plan = el('textarea'); plan.id = 'operator-plan'; plan.required = true; plan.maxLength = 1000;
-    const consent = el('input'); consent.id = 'operator-consent'; consent.type = 'checkbox'; consent.required = true;
-    for (const [pl, en, field] of [['Właściciel', 'Owner', owner], ['Czas zgody (s, maks. 30)', 'Lease (s, maximum 30)', lease], ['Konkretny plan: przestrzeń, kabel, próba i STOP', 'Specific plan: space, cable, trial and STOP', plan], ['Robot i przestrzeń przygotowane; świadomie udzielam zgody', 'Robot and space prepared; I explicitly grant permission', consent]]) {
-      const wrapper = el('label'); wrapper.append(translated('span', pl, en), field); form.append(wrapper);
-    }
-    const controls = el('div', 'operator-row');
-    for (const [id, pl, en] of [['arm', 'ARM', 'ARM'], ['clear-estop', 'Kasuj ESTOP → DISARMED', 'Clear ESTOP → DISARMED'], ['disarm', 'DISARM', 'DISARM'], ['estop', 'ESTOP', 'ESTOP']]) {
-      const button = translated('button', pl, en); button.className = 'c-btn'; button.id = id; button.type = id === 'arm' ? 'submit' : 'button'; button.disabled = ['arm', 'clear-estop'].includes(id); controls.append(button);
-    }
-    const instructions = translated('p', '', ''); instructions.id = 'safety-instructions'; instructions.role = 'status'; form.append(instructions);
-    form.append(controls); section.append(form); card.append(section);
+    window.addEventListener('pagehide', () => { clearInterval(this.expiry); this.poller.stop(); });
   }
   revoke() {
     if (this.state?.state !== 'ARMED') return;
@@ -71,23 +45,25 @@ export class SafetyPanel {
   commandTime() { return Date.now() / 1000 + this.lowerOffset; }
   async prepare() { await prepareMutation(); await this.poller.refresh(); }
   clockFresh() { const age = Date.now() / 1000 - this.clockObserved; return this.clockReady && age >= 0 && age <= 3; }
-  can(owner = 'manual', action = 'move') { return this.controlsActive() && this.clockFresh() && !this.revokedGenerations.has(this.state?.generation) && authorized(this.state, owner, action, this.now()); }
+  can(owner = 'manual', action = 'move') { return this.state?.execution_context !== 'test' && this.controlsActive() && this.clockFresh() && !this.revokedGenerations.has(this.state?.generation) && authorized(this.state, owner, action, this.now()); }
   envelope(action, params = {}, owner = 'manual') {
     if (!safetyKnown(this.state, this.now()) || !this.clockFresh()) throw new Error(tr('Brak świeżego kontraktu bezpieczeństwa v1 i potwierdzonego zegara', 'No fresh safety contract v1 and confirmed clock'));
     if (!['arm', 'clear_estop'].includes(action) && (!this.can(owner, action) || (action === 'move' && params.yaw && !this.can(owner, 'turn')))) throw new Error(tr('Napęd zablokowany: stan, właściciel lub możliwości', 'Actuator blocked: state, owner or capability'));
     if (action === 'arm' && this.state.state !== 'DISARMED' || action === 'clear_estop' && this.state.state !== 'ESTOP') throw new Error(tr('Stan zmienił się — sprawdź ponownie zgodę', 'State changed — review permission again'));
-    return { ...params, action, source: 'manual', generation: this.state.generation, seq: ++this.seq,
+    return { ...params, action, source: 'manual', execution_context: 'panel', generation: this.state.generation, seq: ++this.seq,
       request_id: globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       ts: this.commandTime(), ttl_ms: 500 };
   }
   async send(action, params = {}, endpoint = '/api/control', owner = 'manual') {
     const exempt = ['stop', 'disarm', 'estop'].includes(action);
+    if (action === 'arm' && (!Number.isFinite(params.lease_s) || params.lease_s <= 0 || params.lease_s > 30))
+      throw new Error('invalid_lease');
     if (['move', 'turn'].includes(action) && (![params.vx, params.yaw, params.duration].every(Number.isFinite)
       || Math.abs(params.vx) > 1 || Math.abs(params.yaw) > 1 || params.duration < .01 || params.duration > .25)) throw new Error(tr('Nieprawidłowy impuls: wartości -1–1, czas 0.01–0.25 s', 'Invalid pulse: values -1–1, duration 0.01–0.25 s'));
     if (action === 'height' && (!Number.isInteger(params.height) || params.height < 0 || params.height > 12)) throw new Error(tr('Wysokość musi być liczbą całkowitą 0–12', 'Height must be an integer 0–12'));
     if (action === 'action' && (!Number.isInteger(params.action_id) || params.action_id < 1 || params.action_id > 255)) throw new Error(tr('ID akcji musi być liczbą całkowitą 1–255', 'Action ID must be an integer 1–255'));
     if (this.mutating && !exempt) throw new Error(tr('Poczekaj na odpowiedź poprzedniego żądania', 'Wait for the previous request'));
-    if (!this.controlsActive()) throw new Error('Motion controls are unavailable on this view');
+    if (!this.controlsActive() && !['arm', 'clear_estop', 'stop', 'disarm', 'estop'].includes(action)) throw new Error('Motion controls are unavailable on this view');
     if (!exempt) {
       this.mutating = true; this.render();
       try { await this.prepare(); }
@@ -97,7 +73,7 @@ export class SafetyPanel {
     try {
       command = exempt ? { action, source: owner, request_id: `web-${Date.now()}-${Math.random().toString(16).slice(2)}` } : this.envelope(action, params, owner);
     } catch (error) { if (!exempt) this.mutating = false; this.render(); throw error; }
-    if (exempt) { this.revoke(); this.render(); }
+    if (exempt) { this.toggleEpoch++; this.revoke(); this.render(); }
     const submittedAt = this.commandTime();
     const entry = { command, submittedAt, status: 'sending' };
     this.history.unshift(entry); this.history = this.history.slice(0, 20); this.pending.set(command.request_id, entry);
@@ -123,17 +99,44 @@ export class SafetyPanel {
     entry.status = ack.status; entry.ack = ack; entry.reason = ack.reason || ack.error;
     this.pending.delete(ack.request_id); this.renderHistory();
   }
-  async arm(action) {
-    if (!safetyKnown(this.state, this.now()) || !this.clockFresh() || this.mutating || this.state.state !== (action === 'arm' ? 'DISARMED' : 'ESTOP')) return;
-    if (action === 'arm' && (this.state.ready !== true || this.state.hardware_ready !== true)) return;
-    const plan = document.getElementById('operator-plan')?.value.trim();
-    const consent = document.getElementById('operator-consent')?.checked === true;
-    if (!consent || !plan) return showError(new Error(tr('Podaj konkretny plan i potwierdź przygotowanie robota', 'Enter a specific plan and confirm the robot is prepared')));
+  async toggleMotion() {
+    if (this.toggling) return;
+    // Disarming/STOP never needs a fresh clock or an authorization envelope.
+    if (this.state?.state === 'ARMED') { await this.send('stop'); return; }
+    if (!safetyKnown(this.state, this.now()) || !this.clockFresh()
+      || this.state.ready !== true || this.state.hardware_ready !== true) return;
+    const epoch = this.toggleEpoch;
+    this.toggling = true; this.render();
+    const consent = { operator_consent: true, operator_plan: tr(
+      'Operator uzbroił robot przyciskiem globalnym; przestrzeń i kabel przygotowane.',
+      'Operator armed the robot with the global button; space and cable prepared.'),
+      owner: 'manual', lease_s: 30 };
     try {
-      await this.send(action, { operator_consent: true, operator_plan: plan,
-        owner: document.getElementById('control-owner').value, lease_s: Number(document.getElementById('lease').value) }, '/api/safety');
-    } catch (error) { showError(error); }
-    finally { document.getElementById('operator-consent').checked = false; }
+      if (this.state.state === 'ESTOP') {
+        await this.send('clear_estop', consent, '/api/safety');
+        await this.poller.refresh();
+      }
+      // A fresh executor state must confirm clearing; never guess from HTTP acceptance.
+      if (epoch !== this.toggleEpoch || !safetyKnown(this.state, this.now()) || !this.clockFresh() || this.state.state !== 'DISARMED')
+        throw new Error(tr('Brak potwierdzonego rozbrojenia — uzbrojenie przerwane', 'Disarming unconfirmed — arming cancelled'));
+      await this.send('arm', consent, '/api/safety');
+    } finally { this.toggling = false; this.render(); }
+  }
+  renderGlobalToggle() {
+    const node = document.getElementById('global-motion-toggle'); if (!node) return;
+    const known = safetyKnown(this.state, this.now()) && this.clockFresh();
+    const armed = known && this.state.state === 'ARMED' && this.state.can_move === true
+      && this.state.lease_remaining_s > ageOf(this.state, this.now())
+      && !this.revokedGenerations.has(this.state.generation);
+    node.textContent = armed ? tr('Robot uzbrojony', 'Robot armed') : tr('Robot rozbrojony', 'Robot disarmed');
+    node.classList.toggle('is-armed', armed); node.classList.toggle('is-disarmed', !armed);
+    node.setAttribute('aria-pressed', String(armed));
+    node.disabled = this.state?.state !== 'ARMED' && (this.toggling || this.mutating || (!armed && (!known
+      || this.state.ready !== true || this.state.hardware_ready !== true)));
+    node.title = armed ? tr('Kliknij, aby zatrzymać i rozbroić. Zgoda wygasa po 30 s.',
+      'Click to stop and disarm. Permission expires after 30 s.') : tr(
+      'Kliknięcie zezwala na sterowanie z panelu. Przygotuj przestrzeń i kabel.',
+      'Click to permit panel control. Prepare space and cable.');
   }
   stop() { this.send('stop').catch(showError); }
   suspend() {
@@ -166,6 +169,7 @@ export class SafetyPanel {
         entry.status = 'unknown'; entry.reason = 'ack_timeout'; this.pending.delete(id); this.renderHistory();
       }
     }
+    this.renderGlobalToggle();
     if (!this.interactive) { this.onChange(this.state); return; }
     const known = safetyKnown(this.state, this.now());
     text('safety-state', known ? this.state.state : 'UNKNOWN');
@@ -175,19 +179,6 @@ export class SafetyPanel {
     text('safety-reason', this.revokedGenerations.has(this.state?.generation) ? tr('Zgoda lokalnie unieważniona; wymagane STOP i nowe uzbrojenie', 'Permission locally revoked; STOP and new arming required') : !this.clockFresh() ? tr('Zegar serwera niepotwierdzony lub wolne połączenie — tylko odczyt', 'Server clock unconfirmed or slow connection — read only') : known ? this.state.error || this.state.reason || '—' : tr('Brak świeżych danych / stary kontrakt: tylko odczyt', 'Missing fresh data / old contract: read only'));
     text('safety-lease', known && typeof this.state.lease_remaining_s === 'number' ? `${Math.max(0, this.state.lease_remaining_s - Math.max(0, this.now() - this.state.observed_at)).toFixed(1)} s` : '—');
     document.querySelectorAll('[data-direction]').forEach(node => { node.disabled = !this.can('manual', ['left', 'right'].includes(node.dataset.direction) ? 'turn' : 'move') || this.mutating; });
-    const plan = document.getElementById('operator-plan')?.value.trim();
-    const consent = document.getElementById('operator-consent')?.checked === true;
-    const lease = Number(document.getElementById('lease')?.value);
-    const prepared = !!plan && plan.length <= 512 && consent && Number.isFinite(lease) && lease >= .1 && lease <= 30;
-    text('safety-instructions', !known || !this.clockFresh()
-      ? tr('Oczekiwanie na świeży stan i zegar urządzenia.', 'Waiting for fresh device state and clock.')
-      : this.state.state === 'ESTOP'
-        ? tr('1. Wpisz plan i potwierdź przygotowanie. 2. Skasuj ESTOP do DISARMED — robot pozostanie rozbrojony. 3. Ponownie potwierdź zgodę i wybierz ARM.', '1. Enter the plan and confirm preparation. 2. Clear ESTOP to DISARMED — the robot remains disarmed. 3. Confirm consent again and select ARM.')
-        : this.state.state === 'DISARMED'
-          ? tr('Robot rozbrojony. Plan i potwierdzenie pozwalają uzbroić wybranego właściciela na podany czas.', 'Robot disarmed. The plan and consent allow arming the selected owner for the specified time.')
-          : tr('Zgoda aktywna tylko do końca jej czasu; STOP ją unieważnia.', 'Permission is active until its deadline; STOP revokes it.'));
-    const arm = document.getElementById('arm'); if (arm) arm.disabled = !prepared || !known || !this.clockFresh() || this.state.state !== 'DISARMED' || this.state.ready !== true || this.state.hardware_ready !== true || this.mutating;
-    const clear = document.getElementById('clear-estop'); if (clear) clear.disabled = !prepared || !known || !this.clockFresh() || this.state.state !== 'ESTOP' || this.mutating;
     this.onChange(this.state);
   }
   renderHistory() {

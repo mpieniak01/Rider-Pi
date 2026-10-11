@@ -1,8 +1,8 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
 import { el, text, tr, kv, button, ageLabel, showError } from './ui.js';
-import { MAX_PROFILE_BYTES, digestValid, defaultProfile, measuredTable, profileError,
-  parseImportedProfile, trialAverage, activationAllowed, activationView, pulseValues, referenceConfirmed, freshCalibration, activationPendingResult, sdkOutputObservation, sensorObservations, currentDynamics } from './calibration-model.js';
+import { MAX_PROFILE_BYTES, COMMAND_MAPPING, interactionSettings, digestValid, defaultProfile, measuredTable, profileError,
+  parseImportedProfile, trialAverage, activationAllowed, activationView, pulseValues, referenceConfirmed, freshCalibration, activationPendingResult, sdkOutputObservation, sensorObservations, currentDynamics } from './calibration-model.js?v=calibration-tuning-1';
 
 const byId = id => document.getElementById(id);
 const conditions = [['firmware', 'Firmware', 'Firmware'], ['surface', 'Podłoże', 'Surface'],
@@ -53,8 +53,16 @@ export class Calibration {
     act('calibration-activate-form', 'submit', () => this.activate());
     act('calibration-pulse-form', 'submit', () => this.pulse());
     act('calibration-reference-form', 'submit', () => this.reference());
+    act('apply-current-tuning', 'click', () => this.applyTuning(true));
+    act('restore-tuning', 'click', () => this.applyTuning(false));
+    document.querySelectorAll('[data-calibration-direction]').forEach(node => node.addEventListener('click', () =>
+      this.direction(node.dataset.calibrationDirection).catch(showError)));
+    for (const id of ['calibration-linear-speed', 'calibration-turn-speed', 'motion-linear-rate', 'motion-turn-rate']) {
+      byId(id).addEventListener('input', () => this.render());
+    }
     byId('calibration-profile-form').addEventListener('input', event => {
       this.dirty = true;
+      this.render();
       if (event.target.id !== 'measurements-confirmed') byId('measurements-confirmed').checked = false;
     });
     byId('calibration-revision').addEventListener('change', () => {
@@ -70,7 +78,7 @@ export class Calibration {
   observationFields() {
     const node = byId('calibration-observation-fields');
     node.append(field('trial-kind', 'Rodzaj', 'Kind', '', [['linear', 'Jazda', 'Linear'], ['turn', 'Skręt', 'Turn']]),
-      field('trial-step', 'Signed SDK step (nie wartość panelu)', 'Signed SDK step (not panel value)', 'number'),
+      field('trial-step', 'Poziom polecenia ze znakiem / Signed command level (nie wartość panelu)', 'Poziom polecenia ze znakiem / Signed command level (not panel value)', 'number'),
       field('trial-duration', 'Zmierzony czas (s)', 'Measured duration (s)', 'number'),
       field('trial-distance', 'Podpisany dystans (m)', 'Signed distance (m)', 'number'),
       field('trial-angle', 'Podpisany kąt (rad)', 'Signed angle (rad)', 'number'),
@@ -91,6 +99,13 @@ export class Calibration {
         const value = this.state?.motion?.dynamics?.[key];
         if (Number.isFinite(value) && value > 0) byId('motion-' + key.replaceAll('_', '-')).value = value;
       }
+    }
+    const digest = this.state?.active?.profile_digest;
+    if (!this.runtimeLoaded && !this.dirty && !this.loadedDigest && digestValid(digest)
+      && activationView(this.state, digest, nowSeconds()).applied) {
+      const saved = (await request('/api/calibration/profiles/' + digest)).data;
+      if (saved.digest !== digest || profileError(saved.profile)) throw new Error('active_profile_invalid');
+      if (!this.dirty && !this.loadedDigest) { this.loadProfile(saved.profile, digest); this.runtimeLoaded = true; }
     }
     this.render();
   }
@@ -113,7 +128,9 @@ export class Calibration {
   loadProfile(profile, digest = null) {
     this.profile = structuredClone(profile); this.loadedDigest = digest;
     this.measurements = structuredClone(profile.measurements || []); this.dirty = false;
-    const values = { 'profile-name': profile.name, 'profile-kind': profile.provenance.kind,
+    const tuning = interactionSettings(profile.interaction);
+    const values = { 'calibration-linear-speed': tuning.linear_speed, 'calibration-turn-speed': tuning.turn_speed,
+      'pulse-duration': tuning.pulse_duration, 'profile-name': profile.name || tr('Sterowanie ręczne', 'Manual controls'), 'profile-kind': profile.provenance.kind,
       'profile-notes': profile.provenance.notes, 'measurement-id': profile.odometry.measurement_id,
       'imu-yaw-sign': profile.odometry.imu_yaw_sign ?? '', 'motion-speed-limit': profile.motion.speed_limit,
       'motion-linear-rate': profile.motion.linear_rate, 'motion-turn-rate': profile.motion.turn_rate };
@@ -136,9 +153,9 @@ export class Calibration {
   }
   addRate(kind, step = '', rate = '', edited = true) {
     const target = byId('calibration-' + kind + '-table');
-    if (target.children.length >= (kind === 'linear' ? 24 : 140)) throw new Error('measurement_table_limit');
+    if (target.children.length >= (kind === 'linear' ? 128 : 128)) throw new Error('measurement_table_limit');
     const row = el('div', 'calibration-rate-row');
-    const stepField = field('', 'Signed SDK step', 'Signed SDK step', 'number');
+    const stepField = field('', 'Poziom polecenia ze znakiem / Signed command level', 'Poziom polecenia ze znakiem / Signed command level', 'number');
     const rateField = field('', kind === 'linear' ? 'Prędkość (m/s)' : 'Prędkość (rad/s)',
       kind === 'linear' ? 'Rate (m/s)' : 'Rate (rad/s)', 'number');
     const inputs = [stepField.querySelector('input'), rateField.querySelector('input')];
@@ -154,10 +171,11 @@ export class Calibration {
   buildProfile() {
     const table = kind => measuredTable([...byId('calibration-' + kind + '-table').children].map(row => ({
       step: row.querySelector('[data-step]').value, rate: row.querySelector('[data-rate]').value,
-    })), kind === 'linear' ? 12 : 70);
+    })), kind === 'linear' ? 127 : 70);
     const kind = byId('profile-kind').value;
     return { schema_version: 1, name: byId('profile-name').value.trim(),
       provenance: { kind, notes: byId('profile-notes').value.trim() },
+      interaction: { linear_speed: number('calibration-linear-speed'), turn_speed: number('calibration-turn-speed'), pulse_duration: number('pulse-duration') },
       motion: { speed_limit: number('motion-speed-limit'), linear_rate: number('motion-linear-rate'),
         turn_rate: number('motion-turn-rate') },
       odometry: { schema_version: 1, manual_verified: kind === 'manual' && byId('measurements-confirmed').checked === true,
@@ -167,7 +185,8 @@ export class Calibration {
           const value = byId('observation-' + key).value.trim(), original = this.profile.odometry.observations?.[key];
           return [key, value === observationText(original) ? structuredClone(original ?? null) : value || null];
         })) },
-        conditions: this.currentConditions(), linear_m_s: table('linear'), turn_rad_s: table('turn') },
+        conditions: { ...this.currentConditions(), ...(kind === 'manual' && byId('measurements-confirmed').checked
+          ? { command_mapping: COMMAND_MAPPING } : {}) }, linear_m_s: table('linear'), turn_rad_s: table('turn') },
       measurements: structuredClone(this.measurements) };
   }
   async save() {
@@ -189,7 +208,7 @@ export class Calibration {
     const kind = byId('trial-kind').value, step = number('trial-step'), duration = number('trial-duration');
     const distance = byId('trial-distance').value.trim() ? number('trial-distance') : null;
     const angle = byId('trial-angle').value.trim() ? number('trial-angle') : null;
-    if (!Number.isInteger(step) || step === 0 || Math.abs(step) > (kind === 'linear' ? 12 : 70) || (kind === 'turn' && Math.abs(step) < 20)
+    if (!Number.isInteger(step) || step === 0 || Math.abs(step) > (kind === 'linear' ? 127 : 70) || (kind === 'turn' && Math.abs(step) < 1)
       || !Number.isFinite(duration) || duration <= 0
       || [distance, angle].some(value => value !== null && !Number.isFinite(value))) throw new Error('invalid_trial_observation');
     const row = { measurement_id: byId('measurement-id').value.trim(), kind, sdk_step: step, duration_s: duration,
@@ -262,11 +281,34 @@ export class Calibration {
       this.awaiting = null; throw error;
     } finally { this.busy = false; this.poller.refresh(); this.render(); }
   }
+  renderTuning() {
+    for (const id of ['calibration-linear-speed', 'calibration-turn-speed', 'motion-linear-rate', 'motion-turn-rate']) {
+      text(id + '-value', number(id).toFixed(3));
+    }
+    text('calibration-tuning-status', this.dirty
+      ? tr('Zmiany formularza: rampa zacznie działać po zastosowaniu.', 'Form changed: response applies after activation.')
+      : tr('Ustawienia gotowe do ręcznej próby po zgodzie operatora.', 'Settings ready for a manual trial after operator consent.'));
+  }
+  async applyTuning(saveCurrent) {
+    if (this.busy || this.awaiting) return;
+    if (saveCurrent) await this.save();
+    else await this.loadRevision();
+    byId('calibration-activation-plan').value = tr('Zastosowanie ustawień sterowania wybranych przez operatora; bez ruchu.',
+      'Apply operator-selected control settings; no motion.');
+    byId('calibration-activation-consent').checked = true;
+    await this.activate();
+  }
+  async direction(direction) {
+    const linear = number('calibration-linear-speed'), turn = number('calibration-turn-speed');
+    const values = { forward: [linear, 0], backward: [-linear, 0], left: [0, -turn], right: [0, turn] }[direction];
+    if (!values || this.busy) return;
+    byId('pulse-vx').value = values[0]; byId('pulse-yaw').value = values[1];
+    byId('pulse-plan').value = this.safety.state?.plan || tr('Ręczne sterowanie z panelu kalibracji.', 'Manual calibration panel control.');
+    await this.pulse();
+  }
   async pulse() {
     if (this.busy) return;
-    const consent = byId('pulse-consent').checked, plan = byId('pulse-plan').value.trim();
-    byId('pulse-consent').checked = false;
-    if (!consent || !plan) throw new Error('explicit_single_trial_consent_required');
+    const plan = byId('pulse-plan').value.trim();
     const values = pulseValues(byId('pulse-vx').value, byId('pulse-yaw').value, byId('pulse-duration').value);
     if (!this.safety.can('manual', 'move') || (values.yaw !== 0 && !this.safety.can('manual', 'turn'))) throw new Error('manual_trial_gate_not_ready');
     this.busy = true; this.render();
@@ -362,7 +404,7 @@ export class Calibration {
     const liveRows = [[tr('Sprzęt wykonawcy: gotowość / błąd', 'Executor hardware: readiness / error'),
       (freshCalibration(motion, at) && typeof motion?.hardware_ready === 'boolean' ? String(motion.hardware_ready) : 'unknown')
         + ' · ' + (motion?.error || '—') + ' · ' + ageLabel(motion)],
-      [tr('Signed SDK steps: jazda / skręt', 'Signed SDK steps: linear / turn'),
+      [tr('Poziomy polecenia / Command levels: jazda / skręt', 'Poziomy polecenia / Command levels: linear / turn'),
       (sdk.linear_step === null ? 'unknown' : String(sdk.linear_step)) + ' / '
         + (sdk.turn_step === null ? 'unknown' : String(sdk.turn_step)) + ' · ' + sdk.status + ' · ' + age(sdk.age_s)
         + (sdk.status === 'stale' ? ' · ' + tr('historia; bieżący ruch niepotwierdzony', 'history; current motion unconfirmed') : '')],
@@ -393,6 +435,23 @@ export class Calibration {
       || !activationAllowed(state, this.safety.state, this.safety.clockFresh(), nowSeconds());
     byId('save-calibration-profile').disabled = this.busy;
     byId('calibration-pulse').disabled = this.busy || !this.safety.can('manual', 'move');
+    document.querySelectorAll('[data-calibration-direction]').forEach(node => {
+      const turn = ['left', 'right'].includes(node.dataset.calibrationDirection);
+      const speed = number(turn ? 'calibration-turn-speed' : 'calibration-linear-speed');
+      node.disabled = this.busy || Boolean(this.awaiting) || speed <= 0
+        || !this.safety.can('manual', turn ? 'turn' : 'move');
+      const labels = { forward: ['Przód', 'Forward'], backward: ['Tył', 'Backward'], left: ['Lewo', 'Left'], right: ['Prawo', 'Right'] };
+      const label = labels[node.dataset.calibrationDirection];
+      node.setAttribute('aria-label', tr(...label));
+    });
+    const configurable = !this.busy && !this.awaiting && activationAllowed(state, this.safety.state, this.safety.clockFresh(), nowSeconds());
+    byId('apply-current-tuning').disabled = !configurable;
+    byId('restore-tuning').disabled = !configurable || !digestValid(selected);
+    const limits = state?.motion?.calibration?.ceilings;
+    for (const [id, key] of [['motion-linear-rate', 'linear_rate'], ['motion-turn-rate', 'turn_rate']]) {
+      if (freshCalibration(state?.motion, nowSeconds()) && Number.isFinite(limits?.[key]) && limits[key] > 0) byId(id).max = limits[key];
+    }
+    this.renderTuning();
     if (this.awaiting) text('calibration-activation-result',
       'pending · ' + this.awaiting.request_id + ' · ' + tr('potwierdzenie obu modułów niepełne', 'both consumer confirmations incomplete'));
   }

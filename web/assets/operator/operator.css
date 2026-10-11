@@ -41,3 +41,9 @@
 .page-devices .operator-grid:has(> section:only-child) { grid-template-columns: minmax(0, 1fr); }
 .overview-read-status { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: .75rem; }
 .page-system .operator-grid > [data-motion-admin][hidden] + section { grid-column: 1 / -1; }
+
+#global-motion-toggle { position: fixed; top: 7.5rem; right: 1rem; z-index: 1000; min-width: 11rem; padding: .8rem 1rem; color: #fff; transition: none; font-weight: 700; border: 2px solid; box-shadow: 0 2px 10px #0006; }
+#global-motion-toggle.is-disarmed { background: #a51d32; border-color: #ef6072; }
+#global-motion-toggle.is-armed { background: #147d40; border-color: #50d58a; }
+#global-motion-toggle:disabled { opacity: .85; cursor: wait; }
+@media (max-width: 600px) { #global-motion-toggle { top: auto; bottom: 5rem; right: .5rem; min-width: 9rem; } }

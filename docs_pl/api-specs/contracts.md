@@ -461,3 +461,64 @@ LCD `preview_config` ma osobny czas źródłowy. Rzeczywiste `source`/`observed_
 - Zwolnienie ESTOP jest jawną operacją operatora z planem i potwierdzeniem. Kończy się stanem DISARMED; nie uzbraja automatycznie. ARM wymaga ponownego potwierdzenia.
 - Sprawdzenie kontraktu i odświeżenie stanu odbywają się przed utworzeniem polecenia z TTL 500 ms. Nie odmładza się gotowych poleceń ani nie powtarza żądań automatycznie.
 - Czas poleceń pochodzi z osobnego oszacowania zegara odpowiedzi bezpieczeństwa Pi. Odczyty innych hostów nie zmieniają tego oszacowania.
+
+
+## Sterowanie ręczne i prosta kalibracja reakcji
+
+Widok podstawowy zawiera kamerę, strzałki i STOP oraz suwaki jazdy, skrętu i reakcji.
+Czas kliknięcia znajduje się w ustawieniach zaawansowanych. Suwaki prędkości ustawiają
+następną pojedynczą próbę; rampa zaczyna obowiązywać po zapisaniu i zastosowaniu.
+Ręczne sterowanie wymaga uzbrojenia jednym globalnym przyciskiem po prawej. Nie ma dodatkowej zgody przy każdej strzałce.
+Zmiana suwaka, odczyt, zapis, zastosowanie lub powrót wersji nie uruchamiają ruchu.
+Nie ma automatycznego powtarzania ani sekwencji kalibracyjnej.
+
+Opcjonalny obiekt profilu interaction zapisuje linear_speed i turn_speed (0–1)
+oraz pulse_duration (0.01–0.25 s). Wykonawca udostępnia go w
+motion.calibration.interaction; Pi i PC odczytują te same ustawienia z Pi.
+Parametry nie stanowią zgody na ruch. Stare profile bez tego obiektu pozostają czytelne.
+Rampa i pułap polecenia zachowują dotychczasowy format motion i ograniczenia wykonawcy.
+Przyjęcie ustawień nadal wymaga potwierdzenia obu modułów, niezależnie od gotowości
+metrycznej odometrii. Zwykłe strojenie nie wymaga dystansu, kątów, HOME ani tabel m/s.
+
+### Mapowanie do SDK Rider 1.4.2
+
+Identyfikator: rider-1.4.2-levels-v2.
+- linear_step: podpisany poziom polecenia −127..127, nie licznik obrotów.
+- Parametr przekazany do rider_move_x: linear_step * 1.5 / 127, zakres ±1.5.
+- turn_step: podpisany poziom −70..70; parametr skrętu SDK ma tę samą wartość.
+- motion.output.units = command_levels; mapping_id, linear_sdk_value i
+  turn_sdk_value opisują mapowanie, nie zmierzoną prędkość ani ukończenie ruchu.
+- Neutralny bajt rejestrów prędkości to 128. Adapter koryguje zaokrąglanie SDK
+  w swoim kontrolowanym hooku; nie modyfikuje zainstalowanej biblioteki.
+- Czas ogranicza długość polecenia. Prędkość ogranicza jego wartość.
+- Pomiary odometrii wymagają conditions.command_mapping zgodnego z tym identyfikatorem.
+  Dawne zapisy pozostają do wglądu, lecz bez zgodności skali model jest niegotowy.
+  Zmiana mapowania wymaga nowych pomiarów; nie migrujemy współczynników automatycznie.
+
+Formularze pomiarów, odometrii, HOME i diagnostyka pozostają w zwiniętej części
+zaawansowanej. Ocena operatora „za szybko / za wolno” służy dopasowaniu sterowania;
+nie potwierdza metrycznej odometrii ani autonomii.
+
+## Globalne uzbrojenie panelu i oddzielna zgoda testowa
+
+Jeden przycisk po prawej pokazuje potwierdzony stan wykonawcy: czerwony
+„Robot rozbrojony”, zielony „Robot uzbrojony”. Kliknięcie czerwonego jest
+zgodą operatora na ręczne sterowanie z panelu; kliknięcie zielonego wysyła STOP.
+Kasowanie programowego ESTOP i ARM odbywa się po jednym świadomym kliknięciu,
+sekwencyjnie, dopiero po świeżym potwierdzeniu DISARMED. Zewnętrzny ESTOP,
+brak sprzętu, brak świeżego zegara lub brak potwierdzenia nadal blokują ARM.
+Uzbrojenie nie wywołuje ruchu. Nie ma automatycznego uzbrajania ani odnawiania
+zgody; pozostaje limit 30 sekund. Przejście do innego widoku nie wysyła STOP.
+
+Kontrakt bezpieczeństwa dodaje execution_context (panel/test),
+panel_motion_enabled i test_motion_enabled. Panel wysyła execution_context=panel.
+Zgoda panelu nie uprawnia poleceń testowych, nawet z test_operator_consent=true.
+Ręczna fizyczna próba ma osobną sesję execution_context=test i jawne
+test_operator_consent=true przy ARM i każdym poleceniu ruchu. Sesja testowa
+nie uprawnia panelu. Jedna sesja wykonawcy zapobiega równoległemu sterowaniu.
+STOP zawsze unieważnia obie flagi.
+
+Automatyczne pytest/CI pozostaje izolowane: prawdziwy SDK, porty sprzętowe,
+SSH i sieć robota są zablokowane niezależnie od obu flag. Flaga zgody testowej
+nie wyłącza tej izolacji. Skrypt manual_motion-probe.py wymaga obecnego
+operatora, terminala i wpisania jednorazowego potwierdzenia; po próbie wysyła STOP.

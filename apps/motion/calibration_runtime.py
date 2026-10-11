@@ -9,6 +9,7 @@ class CalibrationRuntime:
     def __init__(self, limits):
         self.ceilings = limits
         self.limits = limits
+        self.interaction = None
         self.profile_digest = None
         self.source = "legacy_env"
         self.error = None
@@ -45,6 +46,7 @@ class CalibrationRuntime:
         self.error = None
         self.odometry_error = calibration_status(profile["odometry"])
         self.provenance_kind = profile["provenance"]["kind"]
+        self.interaction = profile.get("interaction")
 
     def activate(self, command, executor):
         gate = executor.gate
@@ -149,6 +151,7 @@ class CalibrationRuntime:
             "error": self.error,
             "odometry_error": self.odometry_error,
             "provenance_kind": self.provenance_kind,
+            "interaction": self.interaction,
             "last_ack": self.last_ack,
             "applied_ack": self.applied_ack,
             "observed_at": now,

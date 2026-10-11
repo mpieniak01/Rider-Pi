@@ -1,30 +1,26 @@
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
 import { initI18n } from '/web/assets/i18n.js';
-import { SafetyPanel } from './safety.js?v=page-scope-1';
-import { Tasks } from './tasks.js?v=page-scope-1';
+import { SafetyPanel } from './safety.js?v=global-motion-1';
+import { Tasks } from './tasks.js?v=global-motion-1';
 import { Devices } from './devices.js';
-import { System } from './system.js?v=page-scope-1';
+import { System } from './system.js?v=global-motion-1';
 import { Navigation } from './navigation.js';
-import { Calibration } from './calibration.js?v=page-scope-1';
-import { Chat } from './chat.js?v=page-scope-1';
+import { Calibration } from './calibration.js?v=global-motion-1';
+import { Chat } from './chat.js?v=global-motion-1';
 import { Overview } from './overview.js';
 import { events } from './transport.js';
-import { fresh, catalogKnown, safetyKnown } from './model.js';
+import { fresh, catalogKnown, safetyKnown, nowSeconds } from './model.js';
 import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';
 
 initI18n(localStorage.getItem('lang') || 'pl'); localizeStatic();
 setInterval(refreshAges, 1000);
 const page = document.body.dataset.page;
 const motionPage = ['control', 'calibration', 'system'].includes(page);
-const globalStop = el('button', 'c-btn operator-stop operator-global-stop', '■ STOP');
-globalStop.type = 'button'; globalStop.dataset.stop = ''; if (motionPage) document.querySelector('main').append(globalStop);
-if (page === 'system') {
-  globalStop.hidden = true;
-  document.getElementById('admin-mode')?.addEventListener('change', event => {
-    globalStop.hidden = !event.target.checked;
-    document.querySelectorAll('[data-motion-admin]').forEach(node => { node.hidden = !event.target.checked; });
-  });
-}
+const motionToggle = el('button', 'c-btn operator-motion-toggle is-disarmed');
+motionToggle.id = 'global-motion-toggle'; motionToggle.type = 'button';
+motionToggle.textContent = tr('Robot rozbrojony', 'Robot disarmed');
+motionToggle.disabled = true; motionToggle.setAttribute('aria-pressed', 'false');
+document.querySelector('main').append(motionToggle);
 let tasks, system, navigation, chat, calibration, overview, lastKey = '';
 const safety = new SafetyPanel(state => {
   const key = JSON.stringify([state?.state, state?.generation, state?.can_move, state?.ready, state?.hardware_ready, state?.capabilities,
@@ -33,7 +29,8 @@ const safety = new SafetyPanel(state => {
   navigation?.render(); calibration?.render(); overview?.renderTelemetry();
   renderCapabilities(state);
 }, { interactive: motionPage });
-if (page === 'control') new ControlCamera();
+if (['control', 'calibration'].includes(page)) new ControlCamera();
+if (page === 'control') loadControlTuning();
 if (page === 'control') tasks = new Tasks(safety);
 if (page === 'calibration') calibration = new Calibration(safety);
 if (page === 'devices') new Devices();
@@ -71,3 +68,24 @@ document.getElementById('balance-apply')?.addEventListener('click', () => safety
 document.getElementById('action-apply')?.addEventListener('click', () => safety.send('action', { action_id: numberInput('action-id') }).catch(showError));
 window.addEventListener('dashboard:langchange', () => { localizeStatic(); lastKey = ''; safety.render(); tasks?.render(); system?.render(); navigation?.render(); calibration?.render(); });
 if (chat) setInterval(() => { if (!chat.busy) document.getElementById('chat-send').disabled = !catalogKnown(tasks.catalog); }, 1000);
+
+
+// Fetch shared Pi defaults once; never overwrite settings the operator has touched.
+async function loadControlTuning() {
+  const touched = new Set();
+  for (const id of ['speed', 'yaw-speed', 'duration']) {
+    document.getElementById(id)?.addEventListener('input', () => touched.add(id));
+  }
+  try {
+    const [{ request }, { interactionValid, freshCalibration }] = await Promise.all([
+      import('./transport.js'), import('./calibration-model.js?v=calibration-tuning-1')
+    ]);
+    const state = (await request('/api/calibration/state')).data, motion = state?.motion;
+    const tuning = motion?.calibration?.interaction;
+    if (!freshCalibration(motion, nowSeconds()) || motion.calibration?.error || !interactionValid(tuning)) return;
+    for (const [id, key] of [['speed', 'linear_speed'], ['yaw-speed', 'turn_speed'], ['duration', 'pulse_duration']]) {
+      const node = document.getElementById(id);
+      if (node && !touched.has(id)) { node.value = tuning[key]; node.dispatchEvent(new Event('input')); }
+    }
+  } catch { /* Read failure keeps existing controls; it never enables motion. */ }
+}

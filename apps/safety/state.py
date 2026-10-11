@@ -30,6 +30,9 @@ def read_status(max_age_s: float = 3.0) -> dict:
         "read_only": True,
         "observed_at": None,
         "owner": None,
+        "execution_context": None,
+        "panel_motion_enabled": False,
+        "test_motion_enabled": False,
         "generation": None,
         "hardware_ready": False,
         "error": "executor_unavailable",
@@ -65,6 +68,9 @@ def read_status(max_age_s: float = 3.0) -> dict:
             result["can_move"] = False
             result["reason"] = "consent_expired_since_snapshot"
         result["read_only"] = not result["can_move"]
+        context = state.get("execution_context", "panel")
+        result["panel_motion_enabled"] = result["can_move"] and context == "panel"
+        result["test_motion_enabled"] = result["can_move"] and context == "test"
         return result
     except (OSError, ValueError, KeyError, TypeError, OverflowError):
         return unknown

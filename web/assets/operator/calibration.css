@@ -7,3 +7,17 @@
 .calibration-rate-row label { flex: 1; min-width: 8rem; }
 .calibration-rate-row input { width: 100%; box-sizing: border-box; }
 .calibration-digest { font-family: monospace; overflow-wrap: anywhere; }
+
+.calibration-primary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.calibration-primary > *, .calibration-tuning { min-width: 0; }
+.calibration-primary .cam { width: 100%; max-height: 32rem; object-fit: contain; }
+.calibration-primary .media-frame { min-height: 14rem; display: grid; place-items: center; background: #000; border-radius: .8rem; }
+.calibration-primary .cam-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .7rem; }
+.calibration-tuning input[type="range"] { width: 100%; }
+.calibration-tuning output { display: block; font-variant-numeric: tabular-nums; }
+.calibration-arrows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; margin: 1rem 0; }
+.calibration-arrows button { min-height: 3.5rem; font-size: 1.8rem; }
+.calibration-arrows .operator-stop { font-size: 1rem; }
+.calibration-preparation, .calibration-advanced { margin-top: 1rem; }
+.calibration-advanced > summary, .calibration-tuning summary { cursor: pointer; margin-bottom: 1rem; }
+@media (max-width: 800px) { .calibration-primary { grid-template-columns: minmax(0, 1fr); } }
