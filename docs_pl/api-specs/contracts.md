@@ -542,3 +542,9 @@ Domyślny impuls trwa 0.25 s; rampy programowe wynoszą 3 dla jazdy i 4 dla skr�
 
 [Face Studio: schema, units, bounded previews and runtime events](../FACE_STUDIO.md).
 Graphic intent and audio envelope APIs have actuation=false; they never authorize motor commands.
+
+Nastawy buźki rozszerza opcjonalne `skin` (`none`, `human`, `cat`, `robot`),
+domyślnie `none` dla istniejących plików. Endpoint klatki przyjmuje to samo
+pole; nastawy i deskryptory zwracają wspólny wybór oraz metadane `skins`.
+To addytywne ustawienie wyglądu w rider.face v1, niezależne od definicji gestu
+i ruchu fizycznego.

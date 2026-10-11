@@ -170,6 +170,7 @@ class _Animator:
                         last_ts=time.time(),
                         fps=fps,
                         style=controller.renderer.style,
+                        skin=controller.renderer.skin,
                         power_mode=controller.power_mode,
                         channels=controller.anim.owners,
                         render_ms=round(render_ms, 3),

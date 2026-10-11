@@ -5,15 +5,17 @@ from io import BytesIO
 from PIL import Image, ImageDraw
 
 from apps.draw.face_primitives import draw_face
+from apps.ui.face.characters import SKINS, draw_character
 from apps.ui.face.friendly import PALETTES, draw_friendly
 
 STYLES = ("friendly", "minimal", "legacy")
 
 
 class FaceRenderer:
-    def __init__(self, cfg, size=240, guide=False, quality="fast", style=None):
+    def __init__(self, cfg, size=240, guide=False, quality="fast", style=None, skin=None):
         self.cfg, self.size, self.guide, self.quality = cfg, size, guide, quality
         self.style = style or (cfg.get("style", "legacy") if isinstance(cfg, dict) else "legacy")
+        self.skin = skin or (cfg.get("skin", "none") if isinstance(cfg, dict) else "none")
         self._background = None
         self._background_style = None
         self._key = self._image = self._png = None
@@ -21,7 +23,7 @@ class FaceRenderer:
         self.render_count = self.encode_count = 0
 
     def _state_key(self, state):
-        values = [self.style, self.guide, state.expr]
+        values = [self.style, self.skin, self.guide, state.expr]
         for node, fields in (
             ("eyes", ("dx", "dy", "blink")),
             ("brows", ("lift", "tilt")),
@@ -39,19 +41,23 @@ class FaceRenderer:
         state = state if state is not None else face_state
         if self.style not in STYLES:
             raise ValueError("invalid_face_style")
+        if self.skin not in SKINS:
+            raise ValueError("invalid_face_skin")
         key = self._state_key(state)
         self.last_changed = key != self._key or self._image is None
         if self.last_changed:
-            if self._background_style != self.style:
+            background_key = (self.style, self.skin)
+            if self._background_style != background_key:
                 color = PALETTES[self.style]["background"] if self.style != "legacy" else (30, 58, 138)
                 self._background = Image.new("RGB", (self.size, self.size), color)
-                self._background_style = self.style
+                draw_character(ImageDraw.Draw(self._background), self.skin)
+                self._background_style = background_key
             img = self._background.copy()
             canvas = ImageDraw.Draw(img)
             if self.style == "legacy":
                 draw_face(canvas, self.cfg, state, guide=self.guide, quality=self.quality)
             else:
-                draw_friendly(canvas, state, self.style)
+                draw_friendly(canvas, state, self.style, self.skin)
             self._key, self._image, self._png = key, img, None
             self.render_count += 1
         return self._image.copy()

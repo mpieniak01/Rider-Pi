@@ -12,6 +12,7 @@ import threading
 import uuid
 from pathlib import Path
 
+from .characters import SKINS
 from .gestures import blink, look
 from .renderer import STYLES
 from .schema import (
@@ -145,6 +146,7 @@ CATALOG = Catalog()
 def get_settings():
     defaults = {
         "style": "friendly",
+        "skin": "none",
         "power_mode": "battery",
         "idle": True,
         "intensity": 1.0,
@@ -166,6 +168,8 @@ def settings_revision(settings=None):
 def _validate_settings(settings):
     if settings["style"] not in STYLES or settings["power_mode"] not in {"battery", "cable"}:
         raise ValueError("invalid_face_settings")
+    if settings["skin"] not in SKINS:
+        raise ValueError("invalid_face_skin")
     if type(settings["idle"]) is not bool:
         raise ValueError("invalid_face_settings")
     settings["intensity"] = number(settings["intensity"], 0, 1)
@@ -209,6 +213,7 @@ def descriptors():
             {"id": "minimal", "pl": "Prosta", "en": "Simple"},
             {"id": "legacy", "pl": "Dotychczasowa", "en": "Original"},
         ],
+        "skins": [{"id": key, "pl": value["pl"], "en": value["en"]} for key, value in SKINS.items()],
         "expressions": list(MOODS),
         "intensity": {"min": 0, "max": 100, "step": 1, "unit": "%"},
         "tempo": {"min": 50, "max": 200, "step": 5, "unit": "%"},

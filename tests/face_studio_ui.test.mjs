@@ -21,8 +21,9 @@ function fixture() {
   for(const [id,value] of Object.entries({source:'draft',zoom:'240'}))get(id).value=value;
   const events={},jobs=new Map(),calls=[];let id=0,revision='first',pending=null,hold=false;
   const fields={'eyes.dx':[-1,1],'mouth.open':[0,1],'mouth.curve':[-1,1]};
-  let settings={style:'friendly',power_mode:'battery',idle:true,intensity:1,tempo:1,transition:'original',active_gestures:['builtin:happy']};
+  let settings={style:'friendly',skin:'none',power_mode:'battery',idle:true,intensity:1,tempo:1,transition:'original',active_gestures:['builtin:happy']};
   const descriptors={contract_version:1,styles:[{id:'friendly',pl:'Przyjazna',en:'Friendly'},{id:'minimal',pl:'Prosta',en:'Simple'}],
+    skins:[{id:'none',pl:'Bez oprawy',en:'No character'},{id:'human',pl:'Piegusek',en:'Freckles'},{id:'cat',pl:'Kotek',en:'Kitten'},{id:'robot',pl:'Robocik',en:'Little robot'}],
     expressions:['neutral','happy'],expression_defaults:{neutral:{'mouth.curve':.15},happy:{'mouth.curve':.8}},
     intensity:{min:0,max:100,step:1},tempo:{min:50,max:200,step:5},duration:{max:10000,step:10},transitions:['original','lin','in_out'],fps:{preview:12}};
   const gesture={id:'builtin:happy',builtin:true,name:'happy',expr:'happy',duration:1,initial:{'mouth.curve':.8},tracks:{}};
@@ -80,4 +81,18 @@ test('reload fetches current shared settings without activating the face',async(
   await f.get('reload-settings').onclick();
   assert.equal(f.get('style').value,'minimal');assert.equal(f.get('tempo').value,50);
   assert.ok(f.calls.every(x=>!x.url.includes('/play')));
+});
+
+test('character is shared by draft frames, save and reloading another tab',async()=>{
+  const f=fixture();await f.ready();await f.frame();
+  assert.equal(f.get('skin').value,'none');
+  f.get('skin').value='cat';f.get('skin').onchange();await f.frame();
+  const frame=JSON.parse(f.calls.filter(x=>x.url.endsWith('/frame')).at(-1).options.body);
+  assert.equal(frame.skin,'cat');assert.equal(f.get('lcd-play').disabled,true);
+  await f.get('apply').onclick();
+  const saved=JSON.parse(f.calls.find(x=>x.url.endsWith('/runtime')&&x.options.method==='POST').options.body);
+  assert.equal(saved.skin,'cat');
+  f.external({skin:'human'});await f.get('reload-settings').onclick();
+  assert.equal(f.get('skin').value,'human');
+  assert.ok(f.calls.every(x=>!x.url.includes('/play')&&!x.url.includes('/motion')));
 });

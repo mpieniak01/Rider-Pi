@@ -15,13 +15,23 @@ from .schema import prepare
 
 class FaceController:
     def __init__(
-        self, size=240, fps=12, idle=True, *, clock=None, rng=None, style="legacy", power_mode="cable", catalog=None
+        self,
+        size=240,
+        fps=12,
+        idle=True,
+        *,
+        clock=None,
+        rng=None,
+        style="legacy",
+        power_mode="cable",
+        catalog=None,
+        skin="none",
     ):
         self.size, self.fps = size, fps
         self.clock = clock or time.monotonic
         self.rng = rng or random.Random()
         self.catalog = catalog or CATALOG
-        self.renderer = FaceRenderer({}, size=size, style=style)
+        self.renderer = FaceRenderer({}, size=size, style=style, skin=skin)
         self.anim = Animator(clock=self.clock)
         env_idle = os.getenv("FACE_IDLE_ENABLE")
         self.idle = (env_idle.lower() not in {"0", "false", "no"}) if env_idle is not None else idle
@@ -43,6 +53,7 @@ class FaceController:
 
     def configure(self, settings):
         self.renderer.style = settings["style"]
+        self.renderer.skin = settings.get("skin", "none")
         self.power_mode, self.idle = settings["power_mode"], settings["idle"]
         self.intensity, self.tempo, self.transition = settings["intensity"], settings["tempo"], settings["transition"]
         self.active_gestures = set(settings["active_gestures"])

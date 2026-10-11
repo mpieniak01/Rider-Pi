@@ -106,3 +106,21 @@ Raport rozdziela koszt render+RGB565, CPU jednego rdzenia przy 12 FPS i RAM.
 RAM procesu obejmuje zależności; przyrost pętli nie jest pomiarem energii.
 Runtime pokazuje także czas renderowania i przekazania zmienionej klatki.
 Wyniki urządzenia zapisujemy w [raporcie pomiarów](FACE_PERFORMANCE.md).
+
+## Oprawa postaci
+
+Wybór **Postać** jest niezależny od stylu oczu: Bez oprawy, Piegusek, Kotek
+i Robocik. Bez oprawy pozostaje domyślne i zachowuje dotychczasowy obraz.
+Trzy skórki dodają głowę, uszy i włosy lub antenkę; na nich rysowane są te
+same animowane oczy, brwi i usta.
+
+Opcjonalne ustawienie `skin` zapisuje się na Pi razem z resztą nastaw buźki.
+Studio wysyła je do podglądu szkicu, a wykonawca korzysta z tej samej zapisanej
+wartości. Zapis nie uruchamia LCD. Skórka zmienia wygląd; nie zmienia emocji,
+ruchu ani zachowania robota. Import/eksport gestu jest niezależny od postaci.
+
+Deskryptory zwracają `skins` ze stałymi identyfikatorami i nazwami PL/EN.
+Starsze ustawienia bez `skin` korzystają z `none`; nieznane identyfikatory są
+odrzucane. Oprawa jest rysowana do cache tylko przy zmianie postaci/stylu.
+Nadal są najwyżej trzy renderery podglądu i 16 klatek PNG w cache; nie
+dodajemy pakietów graficznych ani plików obrazków.

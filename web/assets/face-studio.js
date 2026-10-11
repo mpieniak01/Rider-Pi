@@ -23,7 +23,7 @@
   }
   function duration(){return spec.duration/(Number($('tempo').value)/100);}
   function tuning() {
-    return {style:$('style').value,intensity:Number($('intensity').value)/100,tempo:Number($('tempo').value)/100,transition:$('transition').value};
+    return {style:$('style').value,skin:$('skin').value,intensity:Number($('intensity').value)/100,tempo:Number($('tempo').value)/100,transition:$('transition').value};
   }
   function updateSettingsStatus() {
     $('settings-status').textContent=settingsDirty?tr('Niezapisane ustawienia podglądu.','Unsaved preview settings.'):tr('Ustawienia zapisane na tym robocie.','Settings saved on this robot.');
@@ -41,6 +41,7 @@
   function setupMeta(data) {
     meta=data.descriptors;settings=data.settings;settingsRevision=data.settings_revision;bounds=data.fields;fields=Object.keys(bounds);
     $('style').replaceChildren();meta.styles.forEach(s=>$('style').add(new Option(tr(s.pl,s.en),s.id)));
+    $('skin').replaceChildren();meta.skins.forEach(s=>$('skin').add(new Option(tr(s.pl,s.en),s.id)));
     $('expression').replaceChildren();meta.expressions.forEach(id=>$('expression').add(new Option(names[id]?tr(...names[id]):id,id)));
     $('transition').replaceChildren();meta.transitions.forEach(id=>$('transition').add(new Option(tr(...transitions[id]),id)));
     for(const id of ['intensity','tempo'])Object.assign($(id),{min:meta[id].min,max:meta[id].max,step:meta[id].step,value:Math.round(settings[id]*100)});
@@ -49,7 +50,7 @@
   function applySettings(data) {
     settings=clone(data);playing=false;
     for(const id of ['intensity','tempo'])$(id).value=Math.round(settings[id]*100);
-    $('style').value=settings.style;$('transition').value=settings.transition;$('power-mode').value=settings.power_mode;$('idle').checked=settings.idle;
+    $('style').value=settings.style;$('skin').value=settings.skin??'none';$('transition').value=settings.transition;$('power-mode').value=settings.power_mode;$('idle').checked=settings.idle;
     $('intensity-value').textContent=$('intensity').value+'%';$('tempo-value').textContent=$('tempo').value+'%';
     if(spec){at=Math.min(at,duration());$('scrub').max=Math.round(duration()*1000);}
   }
@@ -160,7 +161,7 @@
   $('scrub').oninput=()=>{playing=false;at=Number($('scrub').value)/1000;invalidate();};
   $('zoom').onchange=()=>{$('studio-image').style.maxWidth=$('zoom').value+'px';};
   $('source').onchange=()=>{playing=false;clearImage();const live=$('source').value==='live';['play','pause','rewind','scrub','speech-preview'].forEach(id=>$(id).disabled=live);invalidate();};
-  ['style','intensity','tempo','transition'].forEach(id=>$(id).addEventListener(id==='intensity'||id==='tempo'?'input':'change',updateTuning));
+  ['style','skin','intensity','tempo','transition'].forEach(id=>$(id).addEventListener(id==='intensity'||id==='tempo'?'input':'change',updateTuning));
   $('speech-preview').onchange=()=>{invalidate();};
   ['power-mode','idle'].forEach(id=>$(id).onchange=()=>{settingsDirty=true;updateSettingsStatus();});
   $('active-gesture').onchange=()=>{

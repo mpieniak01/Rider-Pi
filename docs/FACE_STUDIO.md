@@ -101,3 +101,21 @@ The report separates render/RGB565, single-core CPU at 12 FPS and RAM.
 Process RSS includes dependencies; loop allocation growth does not measure energy.
 Runtime exposes render and submission times for changed frames.
 Device results: [performance report](FACE_PERFORMANCE.md).
+
+## Character shells
+
+The **Character** selector is separate from the eye style: No character,
+Freckles, Kitten and Little robot. No character remains the default and
+preserves the previous image. The three shells add a head, ears and hair or
+an antenna; the same animated eyes, brows and mouth are drawn on top.
+
+The optional `skin` setting is persisted on Pi with the other face settings.
+Studio sends it for draft preview and runtime loads the same saved value.
+Saving it does not start the LCD. A skin changes appearance; it does not
+change emotion, robot movement or behaviour. Gesture import/export stays
+independent of the current character.
+
+Descriptors expose `skins` with stable IDs and PL/EN names. Older settings
+without `skin` use `none`; invalid IDs are rejected. Background geometry is
+cached once per skin/style change. The existing three preview renderers and
+16-frame PNG cache remain bounded; there are no new image packages or files.

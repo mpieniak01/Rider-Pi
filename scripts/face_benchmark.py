@@ -48,6 +48,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-ref")
     parser.add_argument("--style", choices=["friendly", "minimal", "legacy"], default="friendly")
+    parser.add_argument("--skin", choices=["none", "human", "cat", "robot"], default="none")
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--paced-seconds", type=float, default=3)
     args = parser.parse_args()
@@ -57,7 +58,7 @@ def main():
 
     factory, temporary = controller_class(args.baseline_ref)
     try:
-        face = factory(idle=False, style=args.style)
+        face = factory(idle=False, style=args.style, skin=args.skin)
     except TypeError:
         face = factory(idle=False)
     before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -93,6 +94,7 @@ def main():
             {
                 "hardware_access": False,
                 "style": "legacy" if args.baseline_ref else args.style,
+                "skin": "none" if args.baseline_ref else args.skin,
                 "baseline_ref": args.baseline_ref,
                 "frames": len(times),
                 "mean_ms": round(statistics.mean(times), 3),

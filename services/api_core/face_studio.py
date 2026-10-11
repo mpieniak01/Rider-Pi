@@ -61,6 +61,9 @@ def _preview(body):
     options = descriptors()
     if style not in {item["id"] for item in options["styles"]}:
         raise ValueError("invalid_face_style")
+    skin = body.get("skin", settings["skin"])
+    if skin not in {item["id"] for item in options["skins"]}:
+        raise ValueError("invalid_face_skin")
     spec = prepare(
         body, body.get("intensity", 1), body.get("tempo", 1), body.get("transition", "original"), defaults=True
     )
@@ -68,7 +71,7 @@ def _preview(body):
     simulated = body.get("simulate_speech", False)
     if type(simulated) is not bool:
         raise ValueError("invalid_speech_preview")
-    identity = hashlib.sha256(json.dumps([spec, at, style, simulated], sort_keys=True).encode()).hexdigest()
+    identity = hashlib.sha256(json.dumps([spec, at, style, skin, simulated], sort_keys=True).encode()).hexdigest()
     with _CACHE_LOCK:
         cached = _CACHE.get(identity)
         if cached is not None:
@@ -90,6 +93,7 @@ def _preview(body):
         if style not in _RENDERERS:
             _RENDERERS[style] = FaceRenderer({}, size=240, style=style)
         renderer = _RENDERERS[style]
+        renderer.skin = skin
         png = renderer.render_png_bytes(anim.state)
         with _CACHE_LOCK:
             _CACHE[identity] = png

@@ -2,6 +2,8 @@
 
 import math
 
+from .characters import SKINS
+
 PALETTES = {
     "friendly": {"background": (20, 39, 57), "eye": (242, 249, 255), "iris": (75, 188, 226), "accent": (238, 141, 130)},
     "minimal": {"background": (22, 34, 48), "eye": (169, 235, 222), "iris": (39, 120, 141), "accent": (97, 186, 183)},
@@ -15,8 +17,9 @@ def _rounded(canvas, box, radius, fill):
     canvas.rounded_rectangle(box, radius=max(0, radius), fill=fill)
 
 
-def draw_friendly(canvas, state, style):
+def draw_friendly(canvas, state, style, skin="none"):
     palette = PALETTES[style]
+    ink = SKINS[skin]["ink"] or palette["eye"]
     size = min(canvas.im.size)
     cx, cy = size / 2, size * 0.46
     eyes, brows, mouth = state.eyes, state.brows, state.mouth
@@ -61,7 +64,7 @@ def draw_friendly(canvas, state, style):
             (ex + (i / 12 - 0.5) * size * 0.20, by - math.sin(i / 12 * math.pi) * size * 0.025 + (i / 6 - 1) * tilt)
             for i in range(13)
         ]
-        canvas.line(points, fill=palette["eye"], width=stroke, joint="curve")
+        canvas.line(points, fill=ink, width=stroke, joint="curve")
         if style == "friendly":
             cheek_y = cy + size * 0.215
             canvas.ellipse(
@@ -75,11 +78,11 @@ def draw_friendly(canvas, state, style):
             canvas,
             (cx - mw * 0.34, my - height / 2, cx + mw * 0.34, my + height / 2),
             min(mw * 0.20, height / 2),
-            palette["eye"],
+            ink,
         )
         canvas.ellipse((cx - mw * 0.19, my, cx + mw * 0.19, my + height * 0.35), fill=palette["accent"])
     else:
         points = [(cx + (i / 24 - 0.5) * mw, my + curve * size * 0.075 * (1 - (i / 12 - 1) ** 2)) for i in range(25)]
-        canvas.line(points, fill=palette["eye"], width=stroke + 1, joint="curve")
+        canvas.line(points, fill=ink, width=stroke + 1, joint="curve")
         for x, y in (points[0], points[-1]):
-            canvas.ellipse((x - stroke / 2, y - stroke / 2, x + stroke / 2, y + stroke / 2), fill=palette["eye"])
+            canvas.ellipse((x - stroke / 2, y - stroke / 2, x + stroke / 2, y + stroke / 2), fill=ink)
