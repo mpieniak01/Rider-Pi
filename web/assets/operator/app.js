@@ -1,4 +1,4 @@
-import { ManualSettings } from './manual-settings.js?v=full-range-7';
+import { ManualSettings } from './manual-settings.js?v=settings-feedback-8';
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
 import { initI18n } from '/web/assets/i18n.js';
 import { SafetyPanel } from './safety.js?v=compact-calibration-4b';

@@ -13,10 +13,10 @@ const labels = {forward:['Przód','Forward'],backward:['Tył','Backward'],left:[
 export class ManualSettings {
   constructor(safety) {
     this.safety=safety;this.state=null;this.pending={};this.directionEdits={};
-    this.busy=false;this.draftRevision=null;this.selectedProfile=null;
+    this.busy=false;this.draftRevision=null;this.selectedProfile=null;this.profileSelectionDirty=false;
     this.build();
     document.getElementById('motion-profile-select')?.addEventListener('change',event=>{
-      this.selectedProfile=event.target.value;
+      this.selectedProfile=event.target.value;this.profileSelectionDirty=true;
       const name=document.getElementById('motion-profile-name');
       if(name)name.value=this.state?.profiles?.[this.selectedProfile]?.name||'';
       this.paint();
@@ -105,7 +105,14 @@ export class ManualSettings {
     try{
       const result=await request('/api/calibration/controls');
       if(!result.canonical || !settingsValid(result.data,nowSeconds()))throw new Error('manual_settings_unconfirmed');
-      if(!this.state || result.data.revision>=this.state.revision)this.state=result.data;
+      if(!this.state || result.data.revision>=this.state.revision){
+        if(this.state?.active_profile!==result.data.active_profile && !this.profileSelectionDirty){
+          this.selectedProfile=result.data.active_profile||'';
+          const name=document.getElementById('motion-profile-name');
+          if(name)name.value=result.data.profiles?.[this.selectedProfile]?.name||'';
+        }
+        this.state=result.data;
+      }
       this.paint();this.safety.render();return this.state;
     }catch(error){
       this.state=null;this.paint();this.safety.render();throw error;
@@ -199,7 +206,7 @@ export class ManualSettings {
       if(!result.canonical || !settingsValid(result.data,nowSeconds()))throw new Error('manual_settings_unconfirmed');
       this.state=result.data;
       this.pending={};this.directionEdits={};this.draftRevision=null;
-      this.selectedProfile=this.state.active_profile||'';
+      this.selectedProfile=this.state.active_profile||'';this.profileSelectionDirty=false;
       const name=document.getElementById('motion-profile-name');
       if(name)name.value=this.state.profiles?.[this.selectedProfile]?.name||'';
       text('manual-settings-result',action==='delete'
@@ -260,7 +267,7 @@ export class ManualSettings {
         const a=['forward','backward'].includes(name)?v.linear_rate:v.turn_rate;
         const d=['forward','backward'].includes(name)?v.linear_deceleration:v.turn_deceleration;
         const peak=Math.min(item.speed,item.duration/(1/a+1/d));
-        text('setting-'+name+'-hint',tr('Zakres ','Range ')+percent(item.minimum)+'–'+percent(item.maximum));
+        text('setting-'+name+'-hint',tr('Zakres ','Range ')+percent(item.minimum)+'–'+percent(item.maximum)+tr(' · krok ',' · step ')+percent(item.step));
         const row=document.getElementById('setting-'+name+'-title')?.closest('.motion-setting-row');
         if(row)row.title=tr('Teoretyczny szczyt impulsu od postoju: ','Theoretical pulse peak from rest: ')+percent(peak);
         text('setting-'+name+'-speed-value',Number.isFinite(item.speed)?percent(item.speed)+tr(' · impuls ≤',' · pulse ≤')+percent(peak):'—');
@@ -296,6 +303,21 @@ export class ManualSettings {
       let message=document.getElementById(name+'-error');
       if(!message){message=el('small','operator-error motion-field-error');message.id=name+'-error';node.parentElement.append(message);node.setAttribute('aria-describedby',message.id);}
       const error=errors.find(error=>error.id===name);message.textContent=error?.message||'';message.hidden=!error;
+    }
+    const feedback=document.getElementById('manual-settings-feedback');
+    if(feedback){
+      if(!known)feedback.textContent=tr('Brak potwierdzonych nastaw z Pi.','No confirmed settings from Pi.');
+      else{
+        const v=this.state.values, runtime=this.safety.state?.manual_settings;
+        const matched=runtime?.revision===this.state.revision
+          && fields.every(key=>runtime.values?.[key]===v[key])
+          && directions.every(name=>['minimum','maximum','step','speed','duration'].every(key=>runtime.directions?.[name]?.[key]===this.state.directions[name][key]));
+        feedback.textContent=(matched?tr('Wykonawca potwierdza nastawy. ','Executor confirms settings. '):tr('Oczekiwanie na potwierdzenie wykonawcy. ','Waiting for executor confirmation. '))
+          +tr('Jazda ↑/↓: ','Travel ↑/↓: ')+percent(v.linear_rate)+'/s / '+percent(v.linear_deceleration)+'/s'
+          +tr(' · Skręt ←/→: ',' · Turn ←/→: ')+percent(v.turn_rate)+'/s / '+percent(v.turn_deceleration)+'/s'
+          +tr(' (narastanie / hamowanie) · Nawrót: ',' (acceleration / deceleration) · Reversal: ')+displayNumber(v.reversal_pause*1000)+' ms.'
+          +(this.dirty()?tr(' Suwaki zawierają niezapisane zmiany.',' Sliders include unsaved edits.'):'');
+      }
     }
     const save=document.getElementById('manual-settings-save');if(save)save.disabled=!editable || !this.dirty() || errors.length>0;
     for(const id of ['motion-profile-create','motion-profile-save']){

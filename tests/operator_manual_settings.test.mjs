@@ -170,3 +170,30 @@ test('one second duration and full calibrated maximum pass UI validation',async(
   assert.equal(shared.current.directions.backward.speed,1);
   assert.equal(shared.current.directions.backward.duration,1);
 });
+
+test('calibration readback updates control bounds, duration and slider in percent',async()=>{
+  const shared={current:row()},slider={},duration={};
+  const control=await screen(shared,{nodes:{'setting-backward-speed':slider,'setting-backward-duration':duration}});
+  shared.current.limits={...limits,speed_limit:1,linear_speed:1,turn_speed:1,pulse_duration:1};
+  shared.current.values.speed_limit=1;
+  shared.current.revision++;
+  shared.current.directions.backward={...shared.current.directions.backward,maximum:1,step:.02,speed:.42,duration:.8};
+  await control.panel.refresh();
+  assert.equal(slider.value,42);
+  assert.equal(slider.max,100);
+  assert.equal(duration.value,800);
+  assert.equal(control.panel.state.directions.backward.step,.02);
+});
+
+test('remote active profile changes are reflected unless operator is choosing another',async()=>{
+  const shared={current:{...row(),profiles:{a:{name:'Desk'},b:{name:'Floor'}},active_profile:'a'}};
+  const select={dataset:{},replaceChildren(){},addEventListener(){}};
+  const a=await screen(shared,{nodes:{'motion-profile-select':select}});
+  shared.current={...shared.current,revision:1,active_profile:'b'};
+  await a.panel.refresh();
+  assert.equal(select.value,'b');
+  a.panel.profileSelectionDirty=true;a.panel.selectedProfile='a';
+  shared.current.revision++;
+  await a.panel.refresh();
+  assert.equal(select.value,'a');
+});

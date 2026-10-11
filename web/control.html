@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css?v=full-range-7">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=settings-feedback-8">
 <link rel="stylesheet" href="/web/assets/pages/control.css?v=control-restored-1">
 </head>
 <body data-page="control" class="page page-control">
@@ -36,7 +36,8 @@
 <div id="manual-direction-settings"></div>
 <button id="manual-settings-save" class="c-btn" type="button" disabled data-pl="Zapisz ustawienia" data-en="Save settings">Zapisz ustawienia</button>
 <p id="manual-settings-result" role="status"></p>
-<p data-pl="Siła polecenia 0–1; osobne nastawy kierunków. Zapis między impulsami; uzbrojenie pozostaje aktywne." data-en="Command magnitude 0–1; separate direction settings. Save between pulses; arming remains active.">Siła polecenia 0–1; osobne nastawy kierunków. Zapis między impulsami; uzbrojenie pozostaje aktywne.</p>
+<p id="manual-settings-feedback" class="operator-muted" role="status"></p>
+<p data-pl="Siła w %, czas w ms. Wspólny zapis z Kalibracją; zmiana na dowolnym ekranie odświeża pozostałe." data-en="Magnitude in %, duration in ms. Shared with Calibration; edits on either screen refresh the others.">Siła w %, czas w ms. Wspólny zapis z Kalibracją; zmiana na dowolnym ekranie odświeża pozostałe.</p>
 
 <p data-pl="W/S/A/D i strzałki: tylko ten widok, świeża zgoda manual i poza polami tekstowymi. Spacja: STOP poza polami. Utrata połączenia, fokusu lub ukrycie karty unieważnia obsługę ruchu." data-en="W/S/A/D and arrows: this view only, fresh manual permission, outside input fields. Space: STOP outside fields. Connection loss, focus loss or hidden tab suspends motion control.">W/S/A/D i strzałki: tylko ten widok, świeża zgoda manual i poza polami tekstowymi. Spacja: STOP poza polami. Utrata połączenia, fokusu lub ukrycie karty unieważnia obsługę ruchu.</p>
 </section></div>
@@ -49,7 +50,7 @@
 <h2 data-pl="Katalog zadań" data-en="Task catalog">Katalog zadań</h2><p id="catalog-status">unknown</p><div id="task-list" class="operator-grid"></div><section class="c-card"><h2 data-pl="Żądania i potwierdzenia" data-en="Requests and acknowledgements">Żądania i potwierdzenia</h2><p data-pl="pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów." data-en="pending = awaiting ACK; executed = SDK accepted. Physical completion remains unverified. Request history is not actuator state.">pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów.</p><ol id="request-history"></ol><p id="last-event" class="operator-muted">—</p></section>
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=full-range-7"></script>
+<script type="module" src="/web/assets/operator/app.js?v=settings-feedback-8"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>
