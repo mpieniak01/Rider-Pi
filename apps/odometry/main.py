@@ -140,8 +140,14 @@ class OdometryEstimator:
             and row["state"] == "ARMED"
             and isinstance(row.get("owner"), str)
             and row.get("owner") in {"manual", "follow_me", "navigation"}
-            and finite_number(row.get("lease_remaining_s"))
-            and row["lease_remaining_s"] > 0
+            and (
+                (
+                    row.get("arming_mode") == "operator"
+                    and row.get("execution_context") == "panel"
+                    and row["owner"] == "manual"
+                )
+                or (finite_number(row.get("lease_remaining_s")) and row["lease_remaining_s"] > 0)
+            )
             and not target_zero
             and reported.get("source") == "motion-executor"
             and reported.get("accepted") is True

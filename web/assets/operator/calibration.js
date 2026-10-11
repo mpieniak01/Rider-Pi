@@ -1,8 +1,8 @@
 import { request, poll } from './transport.js';
-import { nowSeconds, commandSeconds } from './model.js';
+import { nowSeconds } from './model.js';
 import { el, text, tr, kv, button, ageLabel, showError } from './ui.js';
-import { MAX_PROFILE_BYTES, digestValid, defaultProfile, measuredTable, profileError,
-  parseImportedProfile, trialAverage, activationAllowed, activationView, pulseValues, referenceConfirmed, freshCalibration, activationPendingResult, sdkOutputObservation, sensorObservations, currentDynamics } from './calibration-model.js';
+import { MAX_PROFILE_BYTES, COMMAND_MAPPING, interactionSettings, digestValid, defaultProfile, measuredTable, profileError,
+  parseImportedProfile, trialAverage, activationAllowed, activationView, pulseValues, referenceConfirmed, freshCalibration, activationPendingResult, sdkOutputObservation, sensorObservations, currentDynamics } from './calibration-model.js?v=calibration-tuning-1';
 
 const byId = id => document.getElementById(id);
 const conditions = [['firmware', 'Firmware', 'Firmware'], ['surface', 'Podłoże', 'Surface'],
@@ -53,8 +53,16 @@ export class Calibration {
     act('calibration-activate-form', 'submit', () => this.activate());
     act('calibration-pulse-form', 'submit', () => this.pulse());
     act('calibration-reference-form', 'submit', () => this.reference());
+    act('apply-current-tuning', 'click', () => this.applyTuning(true));
+    act('restore-tuning', 'click', () => this.applyTuning(false));
+    document.querySelectorAll('[data-calibration-direction]').forEach(node => node.addEventListener('click', () =>
+      this.direction(node.dataset.calibrationDirection).catch(showError)));
+    for (const id of ['calibration-linear-speed', 'calibration-turn-speed', 'motion-linear-rate', 'motion-turn-rate']) {
+      byId(id).addEventListener('input', () => this.render());
+    }
     byId('calibration-profile-form').addEventListener('input', event => {
       this.dirty = true;
+      this.render();
       if (event.target.id !== 'measurements-confirmed') byId('measurements-confirmed').checked = false;
     });
     byId('calibration-revision').addEventListener('change', () => {
@@ -70,7 +78,7 @@ export class Calibration {
   observationFields() {
     const node = byId('calibration-observation-fields');
     node.append(field('trial-kind', 'Rodzaj', 'Kind', '', [['linear', 'Jazda', 'Linear'], ['turn', 'Skręt', 'Turn']]),
-      field('trial-step', 'Signed SDK step (nie wartość panelu)', 'Signed SDK step (not panel value)', 'number'),
+      field('trial-step', 'Poziom polecenia ze znakiem / Signed command level (nie wartość panelu)', 'Poziom polecenia ze znakiem / Signed command level (not panel value)', 'number'),
       field('trial-duration', 'Zmierzony czas (s)', 'Measured duration (s)', 'number'),
       field('trial-distance', 'Podpisany dystans (m)', 'Signed distance (m)', 'number'),
       field('trial-angle', 'Podpisany kąt (rad)', 'Signed angle (rad)', 'number'),
@@ -92,6 +100,14 @@ export class Calibration {
         if (Number.isFinite(value) && value > 0) byId('motion-' + key.replaceAll('_', '-')).value = value;
       }
     }
+    const digest = this.state?.active?.profile_digest;
+    if (!this.runtimeLoaded && !this.dirty && !this.loadedDigest && digestValid(digest)
+      && activationView(this.state, digest, nowSeconds()).applied) {
+      const saved = (await request('/api/calibration/profiles/' + digest)).data;
+      if (saved.digest !== digest || profileError(saved.profile)) throw new Error('active_profile_invalid');
+      if (!this.dirty && !this.loadedDigest) { this.loadProfile(saved.profile, digest); this.runtimeLoaded = true; }
+    }
+    this.safety.controls?.paint();
     this.render();
   }
   async loadCatalog() {
@@ -113,7 +129,9 @@ export class Calibration {
   loadProfile(profile, digest = null) {
     this.profile = structuredClone(profile); this.loadedDigest = digest;
     this.measurements = structuredClone(profile.measurements || []); this.dirty = false;
-    const values = { 'profile-name': profile.name, 'profile-kind': profile.provenance.kind,
+    const tuning = interactionSettings(profile.interaction);
+    const values = { 'calibration-linear-speed': tuning.linear_speed, 'calibration-turn-speed': tuning.turn_speed,
+      'pulse-duration': tuning.pulse_duration, 'profile-name': profile.name || tr('Sterowanie ręczne', 'Manual controls'), 'profile-kind': profile.provenance.kind,
       'profile-notes': profile.provenance.notes, 'measurement-id': profile.odometry.measurement_id,
       'imu-yaw-sign': profile.odometry.imu_yaw_sign ?? '', 'motion-speed-limit': profile.motion.speed_limit,
       'motion-linear-rate': profile.motion.linear_rate, 'motion-turn-rate': profile.motion.turn_rate };
@@ -130,15 +148,19 @@ export class Calibration {
       }
     }
     byId('measurements-confirmed').checked = false; byId('calibration-activation-consent').checked = false;
-    text('calibration-loaded', digest ? tr('Wczytano rewizję', 'Loaded revision') + ': ' + digest
-      : tr('Nowy / zaimportowany szkic — bez aktywacji', 'New / imported draft — not activated'));
+    text('calibration-loaded', (digest ? tr('Wczytano rewizję', 'Loaded revision') + ': ' + digest
+      : tr('Nowy / zaimportowany szkic — bez aktywacji', 'New / imported draft — not activated'))
+      + ' · ' + tr('Ustawienia w profilu', 'Profile settings') + ': ' + JSON.stringify({ motion: profile.motion, interaction: tuning })
+      + ' · ' + tr('Suwaki pokazują bieżące wspólne ustawienia robota. Przywrócenie zastosuje wartości profilu.',
+        'Sliders show current shared robot settings. Restore applies the profile values.'));
+    this.safety.controls?.paint();
     this.renderObservations(); this.render();
   }
   addRate(kind, step = '', rate = '', edited = true) {
     const target = byId('calibration-' + kind + '-table');
-    if (target.children.length >= (kind === 'linear' ? 24 : 140)) throw new Error('measurement_table_limit');
+    if (target.children.length >= (kind === 'linear' ? 254 : 360)) throw new Error('measurement_table_limit');
     const row = el('div', 'calibration-rate-row');
-    const stepField = field('', 'Signed SDK step', 'Signed SDK step', 'number');
+    const stepField = field('', 'Poziom polecenia ze znakiem / Signed command level', 'Poziom polecenia ze znakiem / Signed command level', 'number');
     const rateField = field('', kind === 'linear' ? 'Prędkość (m/s)' : 'Prędkość (rad/s)',
       kind === 'linear' ? 'Rate (m/s)' : 'Rate (rad/s)', 'number');
     const inputs = [stepField.querySelector('input'), rateField.querySelector('input')];
@@ -154,10 +176,11 @@ export class Calibration {
   buildProfile() {
     const table = kind => measuredTable([...byId('calibration-' + kind + '-table').children].map(row => ({
       step: row.querySelector('[data-step]').value, rate: row.querySelector('[data-rate]').value,
-    })), kind === 'linear' ? 12 : 70);
+    })), kind === 'linear' ? 127 : 180);
     const kind = byId('profile-kind').value;
     return { schema_version: 1, name: byId('profile-name').value.trim(),
       provenance: { kind, notes: byId('profile-notes').value.trim() },
+      interaction: { linear_speed: number('calibration-linear-speed'), turn_speed: number('calibration-turn-speed'), pulse_duration: number('pulse-duration') },
       motion: { speed_limit: number('motion-speed-limit'), linear_rate: number('motion-linear-rate'),
         turn_rate: number('motion-turn-rate') },
       odometry: { schema_version: 1, manual_verified: kind === 'manual' && byId('measurements-confirmed').checked === true,
@@ -167,11 +190,21 @@ export class Calibration {
           const value = byId('observation-' + key).value.trim(), original = this.profile.odometry.observations?.[key];
           return [key, value === observationText(original) ? structuredClone(original ?? null) : value || null];
         })) },
-        conditions: this.currentConditions(), linear_m_s: table('linear'), turn_rad_s: table('turn') },
+        conditions: { ...this.currentConditions(), ...(kind === 'manual' && byId('measurements-confirmed').checked
+          ? { command_mapping: COMMAND_MAPPING } : {}) }, linear_m_s: table('linear'), turn_rad_s: table('turn') },
       measurements: structuredClone(this.measurements) };
+  }
+  profileMatchesControls(profile) {
+    if (!this.safety.controls) return true;
+    const values = this.safety.controls.state?.values;
+    return values && Object.entries({ ...profile.motion, ...interactionSettings(profile.interaction) })
+      .every(([key, value]) => values[key] === value);
   }
   async save() {
     if (this.busy) return;
+    if (this.loadedDigest && !this.profileMatchesControls(this.profile))
+      throw new Error(tr('Profil ma inne ustawienia niż robot. Przywróć profil albo utwórz nowy szkic przed zapisem.',
+        'Profile settings differ from robot settings. Restore the profile or create a new draft before saving.'));
     const profile = this.buildProfile(), error = profileError(profile);
     if (error) throw new Error(error);
     if (new TextEncoder().encode(JSON.stringify(profile)).length > MAX_PROFILE_BYTES) throw new Error('profile_too_large');
@@ -189,7 +222,7 @@ export class Calibration {
     const kind = byId('trial-kind').value, step = number('trial-step'), duration = number('trial-duration');
     const distance = byId('trial-distance').value.trim() ? number('trial-distance') : null;
     const angle = byId('trial-angle').value.trim() ? number('trial-angle') : null;
-    if (!Number.isInteger(step) || step === 0 || Math.abs(step) > (kind === 'linear' ? 12 : 70) || (kind === 'turn' && Math.abs(step) < 20)
+    if (!Number.isInteger(step) || step === 0 || Math.abs(step) > (kind === 'linear' ? 127 : 180) || (kind === 'turn' && Math.abs(step) < 1)
       || !Number.isFinite(duration) || duration <= 0
       || [distance, angle].some(value => value !== null && !Number.isFinite(value))) throw new Error('invalid_trial_observation');
     const row = { measurement_id: byId('measurement-id').value.trim(), kind, sdk_step: step, duration_s: duration,
@@ -243,34 +276,70 @@ export class Calibration {
   async activate() {
     if (this.busy || this.awaiting) return;
     const digest = this.selectedDigest(), plan = byId('calibration-activation-plan').value.trim();
+    if (this.safety.controls) {
+      const selected = await this.revision();
+      if (!this.profileMatchesControls(selected.profile))
+        throw new Error(tr('Najpierw użyj Przywróć, aby zsynchronizować ustawienia profilu na wszystkich ekranach.',
+          'Use Restore first to synchronize profile settings across all screens.'));
+    }
     if (!byId('calibration-activation-consent').checked || !plan) throw new Error('explicit_configuration_consent_required');
     if (!activationAllowed(this.state, this.safety.state, this.safety.clockFresh(), nowSeconds())) throw new Error('fresh_disarmed_configuration_state_required');
-    const command = { profile_digest: digest, generation: this.safety.state.generation, seq: ++this.safety.seq,
-      source: 'manual', ts: commandSeconds(), ttl_ms: 500,
-      request_id: globalThis.crypto?.randomUUID?.() || 'calibration-' + Date.now() + '-' + Math.random().toString(16).slice(2),
-      operator_consent: true, operator_plan: plan };
-    byId('calibration-activation-consent').checked = false;
-    this.busy = true; this.awaiting = command; this.render();
+    this.busy = true; this.render();
     try {
+      await this.safety.prepare();
+      await this.load();
+      if (!activationAllowed(this.state, this.safety.state, this.safety.clockFresh(), this.safety.now())) throw new Error('fresh_disarmed_configuration_state_required');
+      const command = { profile_digest: digest, generation: this.safety.state.generation, seq: ++this.safety.seq,
+        source: 'manual', ts: this.safety.commandTime(), ttl_ms: 500,
+        request_id: globalThis.crypto?.randomUUID?.() || 'calibration-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+        operator_consent: true, operator_plan: plan };
+      byId('calibration-activation-consent').checked = false;
+      this.awaiting = command; this.render();
       await request('/api/calibration/activate', { method: 'POST', body: command });
       text('calibration-activation-result', tr('Żądanie wysłane; oczekiwanie na odczyt obu modułów.', 'Request sent; waiting for both consumers to be observed.'));
     } catch (error) {
       this.awaiting = null; throw error;
     } finally { this.busy = false; this.poller.refresh(); this.render(); }
   }
-  async pulse() {
+  renderTuning() {
+    for (const id of ['calibration-linear-speed', 'calibration-turn-speed', 'motion-linear-rate', 'motion-turn-rate']) {
+      text(id + '-value', number(id).toFixed(3));
+    }
+    text('calibration-tuning-status', tr('Wspólne ustawienia robota; zmiany suwaków synchronizują się automatycznie.', 'Shared robot settings; slider changes synchronize automatically.'));
+  }
+  async applyTuning(saveCurrent) {
+    if (this.busy || this.awaiting) return;
+    if (saveCurrent) await this.save();
+    else {
+      await this.loadRevision();
+      const controls = this.safety.controls;
+      if (controls) {
+        await controls.refresh();
+        await request('/api/calibration/controls', { method: 'POST', body: {
+          revision: controls.state.revision,
+          values: { ...this.profile.motion, ...interactionSettings(this.profile.interaction) },
+        } });
+        await controls.refresh();
+      }
+    }
+    byId('calibration-activation-plan').value = tr('Zastosowanie ustawień sterowania wybranych przez operatora; bez ruchu.',
+      'Apply operator-selected control settings; no motion.');
+    byId('calibration-activation-consent').checked = true;
+    await this.activate();
+  }
+  async direction(direction) {
     if (this.busy) return;
-    const consent = byId('pulse-consent').checked, plan = byId('pulse-plan').value.trim();
-    byId('pulse-consent').checked = false;
-    if (!consent || !plan) throw new Error('explicit_single_trial_consent_required');
-    const values = pulseValues(byId('pulse-vx').value, byId('pulse-yaw').value, byId('pulse-duration').value);
-    if (!this.safety.can('manual', 'move') || (values.yaw !== 0 && !this.safety.can('manual', 'turn'))) throw new Error('manual_trial_gate_not_ready');
-    this.busy = true; this.render();
+    if (!this.safety.can("manual", ["left","right"].includes(direction) ? "turn" : "move")) throw new Error("manual_trial_gate_not_ready");
+    this.busy=true;this.render();
     try {
-      const response = await this.safety.send('move', { ...values, operator_consent: true, operator_plan: plan });
-      text('calibration-pulse-result', (response.pending ? 'pending' : tr('Odpowiedź odebrana — zobacz ACK', 'Response received — inspect ACK'))
-        + ' · ' + tr('fizyczne zakończenie niepotwierdzone', 'physical completion unverified'));
-    } finally { this.busy = false; this.render(); }
+      await this.safety.send('move', { direction });
+      text('calibration-pulse-result', tr('Żądanie wysłane; fizyczny ruch niepotwierdzony', 'Request sent; physical movement unverified'));
+    } finally {this.busy=false;this.render();}
+  }
+  async pulse() {
+    const vx=number('pulse-vx'), yaw=number('pulse-yaw');
+    if(vx && yaw || !vx && !yaw)throw new Error('manual_direction_required');
+    return this.direction(vx ? vx>0?'forward':'backward' : yaw<0?'left':'right');
   }
   referenceAllowed() {
     return activationAllowed(this.state, this.safety.state, this.safety.clockFresh(), nowSeconds())
@@ -287,15 +356,19 @@ export class Calibration {
     const coordinates = { x: number('reference-x'), y: number('reference-y'), theta: number('reference-theta') };
     if (!Object.values(coordinates).every(Number.isFinite)
       || (home && !['reference-home-x', 'reference-home-y'].every(id => Number.isFinite(number(id))))) throw new Error('measured_reference_coordinates_required');
-    const command = { ...coordinates, home_operator_confirmed: home,
-      ...(this.state.active ? { profile_digest: this.state.active.profile_digest } : {}),
-      ...(home ? { home_x: number('reference-home-x'), home_y: number('reference-home-y') } : {}),
-      generation: this.safety.state.generation, seq: ++this.safety.seq, source: 'manual',
-      ts: commandSeconds(), ttl_ms: 500,
-      request_id: globalThis.crypto?.randomUUID?.() || 'reference-' + Date.now() + '-' + Math.random().toString(16).slice(2),
-      operator_consent: true, operator_plan: plan };
-    this.referencePending = command; this.busy = true; this.render();
+    this.busy = true; this.render();
     try {
+      await this.safety.prepare();
+      await this.load();
+      if (!this.referenceAllowed()) throw new Error('fresh_disarmed_reference_state_required');
+      const command = { ...coordinates, home_operator_confirmed: home,
+        ...(this.state.active ? { profile_digest: this.state.active.profile_digest } : {}),
+        ...(home ? { home_x: number('reference-home-x'), home_y: number('reference-home-y') } : {}),
+        generation: this.safety.state.generation, seq: ++this.safety.seq, source: 'manual',
+        ts: this.safety.commandTime(), ttl_ms: 500,
+        request_id: globalThis.crypto?.randomUUID?.() || 'reference-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+        operator_consent: true, operator_plan: plan };
+      this.referencePending = command; this.render();
       await request('/api/odometry/reference', { method: 'POST', body: command });
       text('calibration-reference-result', tr('pending — wymagany zgodny ACK i odczyt odniesienia', 'pending — matching ACK and reference observation required'));
     } catch (error) { this.referencePending = null; throw error; }
@@ -354,7 +427,7 @@ export class Calibration {
     const liveRows = [[tr('Sprzęt wykonawcy: gotowość / błąd', 'Executor hardware: readiness / error'),
       (freshCalibration(motion, at) && typeof motion?.hardware_ready === 'boolean' ? String(motion.hardware_ready) : 'unknown')
         + ' · ' + (motion?.error || '—') + ' · ' + ageLabel(motion)],
-      [tr('Signed SDK steps: jazda / skręt', 'Signed SDK steps: linear / turn'),
+      [tr('Poziomy polecenia / Command levels: jazda / skręt', 'Poziomy polecenia / Command levels: linear / turn'),
       (sdk.linear_step === null ? 'unknown' : String(sdk.linear_step)) + ' / '
         + (sdk.turn_step === null ? 'unknown' : String(sdk.turn_step)) + ' · ' + sdk.status + ' · ' + age(sdk.age_s)
         + (sdk.status === 'stale' ? ' · ' + tr('historia; bieżący ruch niepotwierdzony', 'history; current motion unconfirmed') : '')],
@@ -385,6 +458,23 @@ export class Calibration {
       || !activationAllowed(state, this.safety.state, this.safety.clockFresh(), nowSeconds());
     byId('save-calibration-profile').disabled = this.busy;
     byId('calibration-pulse').disabled = this.busy || !this.safety.can('manual', 'move');
+    document.querySelectorAll('[data-calibration-direction]').forEach(node => {
+      const turn = ['left', 'right'].includes(node.dataset.calibrationDirection);
+      const speed = number(turn ? 'calibration-turn-speed' : 'calibration-linear-speed');
+      node.disabled = this.busy || Boolean(this.awaiting) || speed <= 0
+        || !this.safety.can('manual', turn ? 'turn' : 'move');
+      const labels = { forward: ['Przód', 'Forward'], backward: ['Tył', 'Backward'], left: ['Lewo', 'Left'], right: ['Prawo', 'Right'] };
+      const label = labels[node.dataset.calibrationDirection];
+      node.setAttribute('aria-label', tr(...label));
+    });
+    const configurable = !this.busy && !this.awaiting && activationAllowed(state, this.safety.state, this.safety.clockFresh(), nowSeconds());
+    byId('apply-current-tuning').disabled = !configurable;
+    byId('restore-tuning').disabled = !configurable || !digestValid(selected);
+    const limits = state?.motion?.calibration?.ceilings;
+    for (const [id, key] of [['motion-linear-rate', 'linear_rate'], ['motion-turn-rate', 'turn_rate']]) {
+      if (freshCalibration(state?.motion, nowSeconds()) && Number.isFinite(limits?.[key]) && limits[key] > 0) byId(id).max = limits[key];
+    }
+    this.renderTuning();
     if (this.awaiting) text('calibration-activation-result',
       'pending · ' + this.awaiting.request_id + ' · ' + tr('potwierdzenie obu modułów niepełne', 'both consumer confirmations incomplete'));
   }

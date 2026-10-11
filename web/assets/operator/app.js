@@ -1,21 +1,27 @@
+import { ManualSettings } from './manual-settings.js?v=shared-controls-1';
+import { ControlCamera } from './control-camera.js?v=control-restored-1';
 import { initI18n } from '/web/assets/i18n.js';
-import { SafetyPanel } from './safety.js';
-import { Tasks } from './tasks.js';
+import { SafetyPanel } from './safety.js?v=operator-arming-1';
+import { Tasks } from './tasks.js?v=operator-arming-1';
 import { Devices } from './devices.js';
-import { System } from './system.js';
+import { System } from './system.js?v=operator-arming-1';
 import { Navigation } from './navigation.js';
-import { Calibration } from './calibration.js';
-import { Chat } from './chat.js';
+import { Calibration } from './calibration.js?v=operator-arming-1';
+import { Chat } from './chat.js?v=operator-arming-1';
 import { Overview } from './overview.js';
 import { events } from './transport.js';
-import { fresh, catalogKnown, safetyKnown } from './model.js';
+import { fresh, catalogKnown, safetyKnown, nowSeconds } from './model.js';
 import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';
 
 initI18n(localStorage.getItem('lang') || 'pl'); localizeStatic();
 setInterval(refreshAges, 1000);
 const page = document.body.dataset.page;
-const globalStop = el('button', 'c-btn operator-stop operator-global-stop', '■ STOP');
-globalStop.type = 'button'; globalStop.dataset.stop = ''; document.querySelector('main').append(globalStop);
+const motionPage = ['control', 'calibration', 'system'].includes(page);
+const motionToggle = el('button', 'c-btn operator-motion-toggle is-disarmed');
+motionToggle.id = 'global-motion-toggle'; motionToggle.type = 'button';
+motionToggle.textContent = tr('Robot rozbrojony', 'Robot disarmed');
+motionToggle.disabled = true; motionToggle.setAttribute('aria-pressed', 'false');
+document.querySelector('main').append(motionToggle);
 let tasks, system, navigation, chat, calibration, overview, lastKey = '';
 const safety = new SafetyPanel(state => {
   const key = JSON.stringify([state?.state, state?.generation, state?.can_move, state?.ready, state?.hardware_ready, state?.capabilities,
@@ -23,13 +29,16 @@ const safety = new SafetyPanel(state => {
   if (key !== lastKey) { lastKey = key; tasks?.render(); system?.render(); }
   navigation?.render(); calibration?.render(); overview?.renderTelemetry();
   renderCapabilities(state);
-});
+}, { interactive: motionPage });
+if (['control', 'calibration'].includes(page)) safety.controls = new ManualSettings(safety);
+if (['control', 'calibration'].includes(page)) new ControlCamera();
+
 if (page === 'control') tasks = new Tasks(safety);
 if (page === 'calibration') calibration = new Calibration(safety);
 if (page === 'devices') new Devices();
 if (page === 'system') system = new System(safety);
-if (page === 'navigation') { tasks = new Tasks(safety, 'task-list', task => task.motion_owner === 'navigation' || task.scenario === 'S8'); navigation = new Navigation(safety); }
-if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind)); chat = new Chat(tasks); }
+if (page === 'navigation') { tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
+if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); }
 if (page === 'view') overview = new Overview(safety);
 
 events(event => {

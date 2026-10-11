@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from common.data_quality import finite_number, sample_status
+from common.motion_mapping import MAPPING_ID
 
 
 def load_calibration(path=None):
@@ -21,7 +22,7 @@ def load_calibration(path=None):
         return {}
 
 
-def calibration_status(record):
+def calibration_status(record, *, require_mapping=True):
     if (
         not isinstance(record, dict)
         or type(record.get("schema_version")) is not int
@@ -36,6 +37,8 @@ def calibration_status(record):
         not conditions.get(key) for key in ("firmware", "surface", "load", "battery")
     ):
         return "measurement_conditions_required"
+    if require_mapping and conditions.get("command_mapping") != MAPPING_ID:
+        return "command_mapping_measurements_required"
     if record.get("imu_yaw_sign") not in (-1, 1) or type(record.get("imu_yaw_sign")) is bool:
         return "imu_yaw_direction_unverified"
     for name in ("linear_m_s", "turn_rad_s"):

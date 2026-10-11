@@ -50,7 +50,7 @@ test('signed measured tables enforce reachable SDK steps without inferring panel
   assert.deepEqual(model.measuredTable([{ step: -20, rate: -.4 }, { step: 70, rate: .9 }], 70), { '-20': -.4, '70': .9 });
   for (const rows of [[{ step: 0, rate: 0 }], [{ step: 1, rate: -.2 }], [{ step: 1, rate: Infinity }],
     [{ step: '', rate: .2 }], [{ step: 1, rate: .2 }, { step: 1, rate: .3 }]]) assert.throws(() => model.measuredTable(rows, 12));
-  for (const step of [1, 19, -19, 71]) assert.throws(() => model.measuredTable([{ step, rate: step / 100 }], 70));
+  for (const step of [0, -71, 71]) assert.throws(() => model.measuredTable([{ step, rate: step / 100 }], 70));
 });
 test('manual verification requires matching raw evidence and all actual conditions', () => {
   const profile = model.defaultProfile(); profile.name = 'manual'; profile.provenance = { kind: 'manual', notes: 'fixture evidence' };
@@ -136,6 +136,7 @@ class Element {
       const found = child.querySelector(selector); if (found) return found;
     } return null;
   }
+  setAttribute(key, value) { this[key] = value; }
   remove() { this.parent.children.splice(this.parent.children.indexOf(this), 1); }
 }
 async function fixture() {
@@ -143,7 +144,10 @@ async function fixture() {
   const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(match => [match[1], new Element()]));
   const calls = [], moves = []; let current = runtime(), moment = now, counter = 0;
   const find = (node, id) => node.id === id ? node : node.children.map(child => find(child, id)).find(Boolean);
-  const document = { getElementById: id => elements.get(id) || [...elements.values()].map(node => find(node, id)).find(Boolean), createElement: tag => new Element(tag) };
+  const arrows = ['forward', 'backward', 'left', 'right'].map(direction => {
+    const node = new Element('button'); node.dataset.calibrationDirection = direction; return node;
+  });
+  const document = { querySelectorAll: selector => selector === '[data-calibration-direction]' ? arrows : [], getElementById: id => elements.get(id) || [...elements.values()].map(node => find(node, id)).find(Boolean), createElement: tag => new Element(tag) };
   const el = (tag, css = '', value) => { const node = new Element(tag); node.textContent = value ?? ''; return node; };
   const ctx = vm.createContext({ ...model, document, structuredClone, TextEncoder, Date, Math, Number, String, Object,
     JSON, Promise, Boolean, Error, window: { addEventListener() {} }, setTimeout() {}, globalThis: { crypto: { randomUUID: () => counter++ === 0 ? 'fixture-request' : 'fixture-request-' + counter } },
@@ -160,11 +164,11 @@ async function fixture() {
   const source = (await readFile(path.join(root, 'web/assets/operator/calibration.js'), 'utf8'))
     .replace(/^import[\s\S]*?;\n/gm, '').replace('export class Calibration', 'globalThis.Calibration = class Calibration');
   vm.runInContext(source, ctx);
-  const safety = { state: safe(), seq: 4, update(state) { this.state = state; }, clockFresh: () => true, can: () => true,
+  const safety = { prepare: async () => {}, now: () => moment, commandTime: () => moment, state: safe(), seq: 4, update(state) { this.state = state; }, clockFresh: () => true, can: () => true,
     send: async (action, body) => { moves.push({ action, body }); return { pending: true }; } };
   const panel = new ctx.globalThis.Calibration(safety);
   await new Promise(resolve => setImmediate(resolve));
-  return { panel, elements, calls, moves, setTime: value => { moment = value; }, setState: row => { current = row; panel.state = row; } };
+  return { panel, elements, arrows, calls, moves, setTime: value => { moment = value; }, setState: row => { current = row; panel.state = row; } };
 }
 test('opening and polling the page never mutates, starts services or repeatedly reads revisions', async () => {
   const row = await fixture();
@@ -187,15 +191,17 @@ test('activation creates one original DISARMED envelope and stays pending after 
   assert.equal(row.moves.length, 0); await row.panel.activate();
   assert.equal(row.calls.filter(value => value.method === 'POST').length, 1);
 });
-test('single pulse requires fresh consent every attempt and never starts ARM', async () => {
+test('manual pulse uses the global gate without another consent form or ARM', async () => {
   const row = await fixture();
   for (const [key, value] of [['pulse-vx', '.1'], ['pulse-yaw', '0'], ['pulse-duration', '.1'], ['pulse-plan', 'fake one trial']])
     row.elements.get(key).value = value;
-  await assert.rejects(row.panel.pulse(), /explicit_single_trial_consent_required/);
-  row.elements.get('pulse-consent').checked = true; await row.panel.pulse();
-  assert.equal(row.elements.get('pulse-consent').checked, false); assert.equal(row.moves.length, 1);
-  assert.equal(row.moves[0].action, 'move'); await assert.rejects(row.panel.pulse());
-  assert.equal(row.moves.length, 1); assert.equal(row.calls.some(call => call.route === '/api/safety'), false);
+  row.panel.safety.can = () => false;
+  await assert.rejects(row.panel.pulse(), /manual_trial_gate_not_ready/);
+  assert.equal(row.moves.length, 0);
+  row.panel.safety.can = () => true;
+  await row.panel.pulse(); await row.panel.pulse();
+  assert.equal(row.moves.length, 2);
+  assert.equal(row.calls.some(call => call.route === '/api/safety'), false);
 });
 test('profile form preserves unknown historical condition and observation structures', async () => {
   const row = await fixture(), profile = model.defaultProfile(); profile.name = 'history';
@@ -375,4 +381,49 @@ test('pending or legacy pointer never proves applied configuration even with for
   state.status = 'partial'; state.error = 'active_profile_pending';
   assert.equal(model.activationAllowed(state, safe(), true, now), true);
   assert.equal(model.activationView(state, digest, now).status, 'partial');
+});
+
+
+test('calibration arrows follow the global gate and chosen values without per-click consent or ARM', async () => {
+  const row = await fixture();
+  row.panel.safety.can = () => false;
+  await assert.rejects(() => row.panel.direction('forward'), /manual_trial_gate_not_ready/);
+  assert.equal(row.moves.length, 0);
+  row.panel.safety.can = () => true;
+  row.elements.get('calibration-linear-speed').value = '.07';
+  row.elements.get('calibration-turn-speed').value = '.12';
+  row.elements.get('pulse-duration').value = '.15';
+  await row.panel.direction('forward');
+  assert.equal(row.moves[0].action, 'move'); assert.equal(row.moves[0].body.direction, 'forward');
+  assert.equal(row.moves[0].body.vx, undefined); // shared values are resolved by SafetyPanel
+  await row.panel.direction('left');
+  assert.equal(row.moves[1].body.direction, 'left');
+  assert.equal(row.calls.some(call => call.method === 'POST'), false);
+});
+test('tuning form carries interaction defaults while odometry can remain unverified and empty', async () => {
+  const row = await fixture();
+  const profile = row.panel.buildProfile();
+  assert.equal(model.profileError(profile), null);
+  assert.equal(profile.odometry.manual_verified, false);
+  assert.deepEqual(Object.keys(profile.odometry.linear_m_s), []);
+  assert.equal(profile.interaction.linear_speed, .2);
+  assert.equal(profile.interaction.turn_speed, .35);
+  assert.equal(profile.interaction.pulse_duration, .25);
+  assert.equal(model.interactionValid({ linear_speed: .1, turn_speed: .2, pulse_duration: 1 }), false);
+});
+
+test('restoring tuning loads selected settings before requesting configuration activation', async () => {
+  const row = await fixture(), steps = [];
+  row.panel.loadRevision = async () => {
+    steps.push('load');
+    row.elements.get('calibration-linear-speed').value = '.06';
+  };
+  row.panel.activate = async () => {
+    steps.push('activate');
+    assert.equal(row.elements.get('calibration-linear-speed').value, '.06');
+    assert.equal(row.elements.get('calibration-activation-consent').checked, true);
+  };
+  await row.panel.applyTuning(false);
+  assert.deepEqual(steps, ['load', 'activate']);
+  assert.equal(row.moves.length, 0);
 });

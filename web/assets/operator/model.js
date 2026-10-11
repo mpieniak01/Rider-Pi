@@ -110,7 +110,8 @@ export function authorized(safety, owner, action = 'move', now = nowSeconds()) {
   const age = ageOf(safety, now);
   return safetyKnown(safety, now) && safety.state === 'ARMED'
     && safety.ready === true && safety.hardware_ready === true && safety.can_move === true && safety.read_only === false && safety.owner === owner
-    && Number.isFinite(safety.lease_remaining_s) && safety.lease_remaining_s > age && safety.lease_remaining_s <= 30
+    && ((safety.arming_mode === 'operator' && safety.execution_context === 'panel' && safety.owner === 'manual')
+      || (Number.isFinite(safety.lease_remaining_s) && safety.lease_remaining_s > age && safety.lease_remaining_s <= 30))
     && capability?.available === true && capability.stop_verified === true;
 }
 export function catalogKnown(catalog, now = nowSeconds()) {

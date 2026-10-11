@@ -1,5 +1,6 @@
 // Pure calibration presentation rules; no transport, clock synchronization or actuation.
 import { observationChannel } from './observations.js';
+export const COMMAND_MAPPING = 'rider-1.4.2-levels-v3';
 export const MAX_PROFILE_BYTES = 65536;
 export const digestValid = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -12,9 +13,10 @@ export function freshCalibration(row, now, maxAge = 3) {
 export function defaultProfile(dynamics = {}) {
   const value = (key, fallback) => finite(dynamics[key]) && dynamics[key] > 0 ? dynamics[key] : fallback;
   return { schema_version: 1, name: '', provenance: { kind: 'draft', notes: '' },
-    motion: { speed_limit: value('speed_limit', .6), linear_rate: value('linear_rate', 1), turn_rate: value('turn_rate', 2) },
+    motion: { speed_limit: value('speed_limit', .6), linear_rate: value('linear_rate', 3), turn_rate: value('turn_rate', 4) },
+    interaction: { linear_speed: .2, turn_speed: .35, pulse_duration: .25 },
     odometry: { schema_version: 1, manual_verified: false, measurement_id: '', imu_yaw_sign: null,
-      conditions: { firmware: '', surface: '', load: '', battery: '', power_cable: '', operator: '', date: '', commit: '' },
+      conditions: { firmware: '', surface: '', load: '', battery: '', power_cable: '', operator: '', date: '', commit: '', command_mapping: COMMAND_MAPPING },
       linear_m_s: {}, turn_rad_s: {}, observations: Object.fromEntries([
         'minimum_steps', 'acceleration', 'deceleration', 'reversal', 'stop_distance', 'stop_delay',
         'position_error', 'heading_error', 'battery_policy', 'tilt_policy'].map(key => [key, null])) }, measurements: [] };
@@ -24,7 +26,7 @@ export function measuredTable(rows, maxStep) {
   for (const row of rows) {
     if (String(row.step).trim() === '' || String(row.rate).trim() === '') throw new Error('measurement_value_required');
     const step = Number(row.step), rate = Number(row.rate);
-    if (!Number.isInteger(step) || step === 0 || Math.abs(step) > maxStep || (maxStep === 70 && Math.abs(step) < 20)
+    if (!Number.isInteger(step) || step === 0 || Math.abs(step) > maxStep || (maxStep === 180 && Math.abs(step) < 1)
       || !finite(rate) || rate * step <= 0 || Object.hasOwn(table, String(step))) throw new Error('invalid_or_duplicate_signed_measurement');
     table[String(step)] = rate;
   }
@@ -37,14 +39,15 @@ export function profileError(profile) {
     || typeof profile.provenance.notes !== 'string' || profile.provenance.notes.length > 4096) return 'invalid_provenance';
   if (!object(profile.motion) || !['speed_limit', 'linear_rate', 'turn_rate'].every(key => finite(profile.motion[key])
     && profile.motion[key] > 0 && profile.motion[key] <= (key === 'speed_limit' ? 1 : 100))) return 'invalid_motion_dynamics';
+  if (profile.interaction !== undefined && !interactionValid(profile.interaction)) return 'invalid_interaction_settings';
   if (!object(profile.odometry) || profile.odometry.schema_version !== 1
     || typeof profile.odometry.manual_verified !== 'boolean') return 'invalid_odometry_record';
-  for (const [name, maxStep] of [['linear_m_s', 12], ['turn_rad_s', 70]]) {
+  for (const [name, maxStep] of [['linear_m_s', 127], ['turn_rad_s', 180]]) {
     const table = profile.odometry[name];
     if (!object(table) || Object.keys(table).length > 2 * maxStep) return 'invalid_measurement_table';
     for (const [key, value] of Object.entries(table)) {
       const step = Number(key);
-      if (!Number.isInteger(step) || String(step) !== key || step === 0 || Math.abs(step) > maxStep || (maxStep === 70 && Math.abs(step) < 20)
+      if (!Number.isInteger(step) || String(step) !== key || step === 0 || Math.abs(step) > maxStep || (maxStep === 180 && Math.abs(step) < 1)
         || !finite(value) || value * step <= 0) return 'invalid_signed_measurement';
     }
   }
@@ -170,8 +173,8 @@ function sourceAge(row, now) {
 }
 export function sdkOutputObservation(motion, now) {
   const row = motion?.sdk_output, age = sourceAge(row, now);
-  const steps = object(row) && Number.isInteger(row.linear_step) && Math.abs(row.linear_step) <= 12
-    && Number.isInteger(row.turn_step) && (row.turn_step === 0 || (Math.abs(row.turn_step) >= 20 && Math.abs(row.turn_step) <= 70))
+  const steps = object(row) && Number.isInteger(row.linear_step) && Math.abs(row.linear_step) <= 127
+    && Number.isInteger(row.turn_step) && (row.turn_step === 0 || (Math.abs(row.turn_step) >= 1 && Math.abs(row.turn_step) <= 180))
     && typeof row.stopped === 'boolean' && (!row.stopped || (row.linear_step === 0 && row.turn_step === 0));
   const trusted = Boolean(motionParent(motion, now) && steps && row.source === 'motion-executor' && row.accepted === true
     && row.instance_id === motion.instance_id && row.generation === motion.generation
@@ -200,4 +203,12 @@ export function currentDynamics(motion, now) {
     speed_limit: ready ? row.speed_limit : null, linear_rate: ready ? row.linear_rate : null,
     turn_rate: ready ? row.turn_rate : null, error: ready ? null : row?.error || 'motion_dynamics_unconfirmed',
     physical_completion: 'unverified' };
+}
+
+export function interactionValid(row) {
+  return object(row) && ['linear_speed', 'turn_speed'].every(key => finite(row[key]) && row[key] >= 0 && row[key] <= 1)
+    && finite(row.pulse_duration) && row.pulse_duration >= .01 && row.pulse_duration <= .25;
+}
+export function interactionSettings(row) {
+  return interactionValid(row) ? { ...row } : { linear_speed: .2, turn_speed: .35, pulse_duration: .25 };
 }

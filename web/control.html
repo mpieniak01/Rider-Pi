@@ -2,40 +2,35 @@
 <html lang="pl">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Rider-Pi — Zadania i sterowanie</title>
+<title>Rider-Pi — Sterowanie robotem</title>
 <script src="/web/assets/theme-loader.js" defer></script>
 <link rel="stylesheet" href="/web/assets/dashboard-common.css?v=overview-restored-2">
 <link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css?v=overview-restored-2">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=shared-controls-1">
+<link rel="stylesheet" href="/web/assets/pages/control.css?v=control-restored-1">
 </head>
 <body data-page="control" class="page page-control">
 <header class="layout-header" data-dashboard-menu-target></header>
 <main class="layout-main operator-shell">
-<header class="page-header"><h1 class="page-title" data-pl="Zadania i sterowanie" data-en="Tasks and control">Zadania i sterowanie</h1></header>
+<header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Sterowanie robotem" data-en="Rider-Pi — Robot control">Rider-Pi — Sterowanie robotem</h1></header>
 <p><a href="/calibration" data-pl="Kalibracja: profile, pomiary i odniesienie pozycji" data-en="Calibration: profiles, measurements and pose reference">Kalibracja: profile, pomiary i odniesienie pozycji</a></p>
+<p id="manual-settings-status" role="status">Synchronizacja ustawień</p>
 <p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
-<div class="operator-grid"><section class="c-card operator-safety" aria-labelledby="safety-heading">
-<h2 id="safety-heading" data-pl="Bezpieczeństwo ruchu" data-en="Motion safety">Bezpieczeństwo ruchu</h2>
-<div class="operator-row"><strong id="safety-state">UNKNOWN</strong><button class="c-btn operator-stop" type="button" data-stop>■ STOP</button></div>
-<dl class="operator-kv"><dt data-pl="Gotowość wykonawcy" data-en="Executor readiness">Gotowość wykonawcy</dt><dd id="safety-ready">unknown</dd><dt data-pl="Wiek stanu" data-en="State age">Wiek stanu</dt><dd id="safety-age">—</dd><dt data-pl="Właściciel" data-en="Owner">Właściciel</dt><dd id="safety-owner">—</dd><dt data-pl="Pozostała zgoda" data-en="Lease remaining">Pozostała zgoda</dt><dd id="safety-lease">—</dd><dt data-pl="Powód blokady" data-en="Block reason">Powód blokady</dt><dd id="safety-reason">—</dd></dl>
-<p class="operator-muted" data-pl="STOP unieważnia wcześniejsze polecenia. Przyjęcie SDK nie potwierdza fizycznego zatrzymania." data-en="STOP invalidates previous commands. SDK acceptance does not confirm physical stopping.">STOP unieważnia wcześniejsze polecenia. Przyjęcie SDK nie potwierdza fizycznego zatrzymania.</p>
-</section><section class="c-card"><h2 data-pl="Zgoda operatora" data-en="Operator consent">Zgoda operatora</h2>
-<p class="operator-warning" data-pl="Robot jest fizycznym urządzeniem. Przy zasilaniu przewodem zapewnij przestrzeń, usuń przeszkody i zabezpiecz kabel. Każda zgoda jest krótka i dotyczy wybranego właściciela." data-en="This is a physical robot. With wired power, provide space, clear obstacles and secure the cable. Each short permission applies to the selected owner.">Robot jest fizycznym urządzeniem. Przy zasilaniu przewodem zapewnij przestrzeń, usuń przeszkody i zabezpiecz kabel. Każda zgoda jest krótka i dotyczy wybranego właściciela.</p>
-<form id="arm-form">
-<label><span data-pl="Właściciel sterowania" data-en="Control owner">Właściciel sterowania</span><select id="control-owner"><option value="manual">manual</option><option value="follow_me">follow_me</option><option value="navigation">navigation</option></select></label>
-<label><span data-pl="Zgoda na czas [s], maks. 30" data-en="Lease [s], max. 30">Zgoda na czas [s], maks. 30</span><input id="lease" type="number" min="0.1" max="30" step="0.1" value="10" required></label>
-<label for="operator-plan" data-pl="Konkretny plan ruchu i przygotowania urządzenia" data-en="Specific motion and preparation plan">Konkretny plan ruchu i przygotowania urządzenia</label><textarea id="operator-plan" maxlength="512" required></textarea>
-<label><input id="operator-consent" type="checkbox" required> <span data-pl="Potwierdzam przygotowanie robota i świadomie zezwalam na ten plan." data-en="I confirm the robot is prepared and explicitly authorize this plan.">Potwierdzam przygotowanie robota i świadomie zezwalam na ten plan.</span></label>
-<div class="operator-row"><button id="arm" type="submit" class="c-btn" disabled data-pl="Uzbrój wybranego właściciela" data-en="Arm selected owner">Uzbrój wybranego właściciela</button><button id="clear-estop" type="button" class="c-btn" disabled data-pl="Skasuj ESTOP do DISARMED" data-en="Clear ESTOP to DISARMED">Skasuj ESTOP do DISARMED</button></div>
-</form><div class="operator-row"><button id="disarm" type="button" class="c-btn" data-pl="Rozbrój" data-en="Disarm">Rozbrój</button><button id="estop" type="button" class="c-btn operator-stop">ESTOP</button></div>
-</section><section class="c-card"><h2 data-pl="Ręczny impuls ruchu" data-en="Manual motion pulse">Ręczny impuls ruchu</h2>
-<label><span data-pl="Prędkość do przodu / tyłu (0–1)" data-en="Forward / reverse speed (0–1)">Prędkość do przodu / tyłu (0–1)</span><input id="speed" type="number" min="0" max="1" step="0.01" value="0.1"></label>
-<label><span data-pl="Prędkość skrętu (0–1)" data-en="Turn speed (0–1)">Prędkość skrętu (0–1)</span><input id="yaw-speed" type="number" min="0" max="1" step="0.01" value="0.18"></label>
+<div class="panel-row control-primary"><section class="c-card c-section cam-card control-section is-camera">
+<h2 data-pl="Podgląd kamery" data-en="Camera preview">Podgląd kamery</h2>
+<div class="cam-actions"><button id="control-camera-toggle" type="button" class="c-btn">⟳</button><button type="button" class="c-btn" data-camera-kind="raw">CAM / RAW</button><button type="button" class="c-btn" data-camera-kind="proc">EDGE / PROC</button></div>
+<div class="media-frame"><img id="control-camera-image" class="cam" alt="Podgląd kamery robota" hidden><p id="control-camera-empty" data-pl="Brak bieżącej klatki kamery" data-en="No current camera frame">Brak bieżącej klatki kamery</p></div>
+<p id="control-camera-status" class="operator-muted" role="status"></p>
+<p class="operator-muted" data-pl="Podgląd odczytuje działającą kamerę. Nie uruchamia usług ani ruchu." data-en="Preview reads the running camera. It does not start services or motion.">Podgląd odczytuje działającą kamerę. Nie uruchamia usług ani ruchu.</p>
+<a href="/devices" data-pl="Urządzenia i zarządzanie kamerą" data-en="Devices and camera management">Urządzenia i zarządzanie kamerą</a>
+</section><section class="c-card c-section control-card control-section is-motion"><h2 data-pl="Sterowanie ruchem" data-en="Motion control">Sterowanie ruchem</h2>
+<label><span data-pl="Prędkość do przodu / tyłu (0–1)" data-en="Forward / reverse speed (0–1)">Prędkość do przodu / tyłu (0–1)</span><input id="speed" aria-describedby="speed-value" type="range" min="0" max="1" step="0.01" value="0.1"> <output id="speed-value" for="speed"></output></label>
+<label><span data-pl="Prędkość skrętu (0–1)" data-en="Turn speed (0–1)">Prędkość skrętu (0–1)</span><input id="yaw-speed" aria-describedby="yaw-speed-value" type="range" min="0" max="1" step="0.01" value="0.18"> <output id="yaw-speed-value" for="yaw-speed"></output></label>
 <label><span data-pl="Czas impulsu [s], maks. 0.25" data-en="Pulse duration [s], max. 0.25">Czas impulsu [s], maks. 0.25</span><input id="duration" type="number" min="0.01" max="0.25" step="0.01" value="0.1"></label>
-<div class="operator-drive"><span></span><button class="c-btn" type="button" data-direction="forward" disabled>↑</button><span></span><button class="c-btn" type="button" data-direction="left" disabled>←</button><button class="c-btn operator-stop" type="button" data-stop>STOP</button><button class="c-btn" type="button" data-direction="right" disabled>→</button><span></span><button class="c-btn" type="button" data-direction="backward" disabled>↓</button><span></span></div>
+<div class="operator-drive motion-grid"><span></span><button class="c-btn" type="button" data-direction="forward" data-pl="↑ Przód" data-en="↑ Forward" aria-label="Przód" disabled>↑ Przód</button><span></span><button class="c-btn" type="button" data-direction="left" data-pl="← Lewo" data-en="← Left" aria-label="Lewo" disabled>← Lewo</button><button class="c-btn operator-stop" type="button" data-stop>STOP</button><button class="c-btn" type="button" data-direction="right" data-pl="→ Prawo" data-en="→ Right" aria-label="Prawo" disabled>→ Prawo</button><span></span><button class="c-btn" type="button" data-direction="backward" data-pl="↓ Tył" data-en="↓ Backward" aria-label="Tył" disabled>↓ Tył</button><span></span></div>
 <p data-pl="W/S/A/D i strzałki: tylko ten widok, świeża zgoda manual i poza polami tekstowymi. Spacja: STOP poza polami. Utrata połączenia, fokusu lub ukrycie karty unieważnia obsługę ruchu." data-en="W/S/A/D and arrows: this view only, fresh manual permission, outside input fields. Space: STOP outside fields. Connection loss, focus loss or hidden tab suspends motion control.">W/S/A/D i strzałki: tylko ten widok, świeża zgoda manual i poza polami tekstowymi. Spacja: STOP poza polami. Utrata połączenia, fokusu lub ukrycie karty unieważnia obsługę ruchu.</p>
 </section></div>
 <section class="c-card"><h2 data-pl="Możliwości napędów" data-en="Actuator capabilities">Możliwości napędów</h2><ul id="actuator-capabilities"></ul>
@@ -47,7 +42,7 @@
 <h2 data-pl="Katalog zadań" data-en="Task catalog">Katalog zadań</h2><p id="catalog-status">unknown</p><div id="task-list" class="operator-grid"></div><section class="c-card"><h2 data-pl="Żądania i potwierdzenia" data-en="Requests and acknowledgements">Żądania i potwierdzenia</h2><p data-pl="pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów." data-en="pending = awaiting ACK; executed = SDK accepted. Physical completion remains unverified. Request history is not actuator state.">pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów.</p><ol id="request-history"></ol><p id="last-event" class="operator-muted">—</p></section>
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=contracts-v1"></script>
+<script type="module" src="/web/assets/operator/app.js?v=shared-controls-1"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

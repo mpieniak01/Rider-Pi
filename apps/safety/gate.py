@@ -42,9 +42,11 @@ class MotionGate:
         self.blocked = blocked or estop.external_estop
         self.state = "DISARMED"
         self.owner = None
+        self.execution_context = None
         self.generation = uuid.uuid4().hex
         self.last_seq = -1
         self.lease_deadline = 0.0
+        self.arming_mode = "timed"
         self.reason = "startup_disarmed"
         self.plan = None
         self.persistence_error = None
@@ -54,8 +56,10 @@ class MotionGate:
         self.state = state
         self.reason = reason
         self.owner = None
+        self.execution_context = None
         self.plan = None
         self.lease_deadline = 0.0
+        self.arming_mode = "timed"
         self.generation = uuid.uuid4().hex
         self.last_seq = -1
 
@@ -79,7 +83,7 @@ class MotionGate:
     def poll(self) -> None:
         if self.blocked():
             self.latch_estop("external_estop")
-        elif self.state == "ARMED" and self.clock() >= self.lease_deadline:
+        elif self.state == "ARMED" and self.arming_mode == "timed" and self.clock() >= self.lease_deadline:
             self.disarm("consent_expired")
         elif self.state == "ARMED" and os.getenv("MOTION_ENABLE") == "0":
             self.disarm("environment_inhibit")
@@ -120,6 +124,11 @@ class MotionGate:
             return True, "estop_latched"
         try:
             self._validate_envelope(command)
+            context = command.get("execution_context", "panel")
+            if not isinstance(context, str) or context not in {"panel", "test"}:
+                raise ValueError("unknown_execution_context")
+            if context == "test" and command.get("test_operator_consent") is not True:
+                raise ValueError("test_operator_consent_required")
             if action == "clear_estop":
                 if command.get("operator_consent") is not True:
                     raise ValueError("operator_consent_required")
@@ -151,13 +160,20 @@ class MotionGate:
                     raise ValueError("unknown_owner")
                 if self.state == "ARMED":
                     raise ValueError("already_armed_disarm_first")
-                lease = finite_number(command.get("lease_s", 15.0), "invalid_lease")
-                if not 0 < lease <= MAX_LEASE_S:
+                mode = command.get("arming_mode", "timed")
+                if not isinstance(mode, str) or mode not in {"timed", "operator"}:
+                    raise ValueError("invalid_arming_mode")
+                if mode == "operator" and (context != "panel" or owner != "manual" or "lease_s" in command):
+                    raise ValueError("operator_arming_panel_only")
+                lease = 0.0 if mode == "operator" else finite_number(command.get("lease_s", 15.0), "invalid_lease")
+                if mode == "timed" and not 0 < lease <= MAX_LEASE_S:
                     raise ValueError("invalid_lease")
                 self.state = "ARMED"
                 self.owner = owner
+                self.execution_context = context
                 self.plan = plan.strip()
                 self.reason = "operator_consent"
+                self.arming_mode = mode
                 self.lease_deadline = self.clock() + lease
                 self.last_seq = command["seq"]
                 return True, "armed"
@@ -165,6 +181,8 @@ class MotionGate:
                 raise ValueError("unknown_action")
             if not self.can_actuate():
                 raise ValueError("motion_disarmed" if self.state != "ESTOP" else "estop_latched")
+            if context != self.execution_context:
+                raise ValueError("execution_context_mismatch")
             if command.get("source") != self.owner:
                 raise ValueError("owner_mismatch")
             self.last_seq = command["seq"]
@@ -178,9 +196,15 @@ class MotionGate:
             "contract_version": 1,
             "state": self.state,
             "owner": self.owner,
+            "execution_context": self.execution_context,
+            "panel_motion_enabled": self.state == "ARMED" and self.execution_context == "panel",
+            "test_motion_enabled": self.state == "ARMED" and self.execution_context == "test",
             "generation": self.generation,
             "last_seq": self.last_seq,
-            "lease_remaining_s": max(0.0, self.lease_deadline - self.clock()),
+            "arming_mode": self.arming_mode,
+            "lease_remaining_s": None
+            if self.arming_mode == "operator"
+            else max(0.0, self.lease_deadline - self.clock()),
             "reason": self.reason,
             "plan": self.plan,
             "persistence_error": self.persistence_error,

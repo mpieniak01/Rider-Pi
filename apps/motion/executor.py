@@ -11,7 +11,9 @@ import signal
 import time
 import uuid
 
+from apps.motion import manual_settings
 from apps.motion.calibration_runtime import CalibrationRuntime
+from apps.motion.dynamics import RampLimits
 from apps.motion.main import MotionController, _make_adapter
 from apps.motion.sensor_quality import AXES, SensorSamples
 from apps.safety.gate import ACTUATORS, MAX_DURATION_S, MotionGate, finite_number
@@ -106,6 +108,8 @@ class MotionExecutor:
         self.output_command_generation = None
         self.output_observed_at = None
         self.error = getattr(self.adapter, "error", None)
+        self.controls = None
+        self.controls_checked_at = 0.0
         self.shutdown = False
         self.actuators = {
             "balance": {"enabled": None, "ts": None, "physical_completion": "unverified"},
@@ -158,12 +162,33 @@ class MotionExecutor:
         if self.publisher is not None:
             self.publisher.publish(topic, payload, add_ts=False)
 
+    def refresh_controls(self, force=False):
+        now = self.gate.clock()
+        if not force and self.controls is not None and now - self.controls_checked_at < 0.2:
+            return
+        self.controls_checked_at = now
+        try:
+            row = manual_settings.read()
+            values = row["values"]
+            self.controller.limits = RampLimits(
+                speed_limit=values["speed_limit"],
+                linear_rate=values["linear_rate"],
+                turn_rate=values["turn_rate"],
+                watchdog_s=self.calibration.ceilings.watchdog_s,
+                max_dt_s=self.calibration.ceilings.max_dt_s,
+            )
+            self.controls = row
+        except (ValueError, OSError, TypeError):
+            self._hardware_fault("manual_settings_unavailable")
+            self.controls = None
+
     def snapshot(self):
         hardware_ready = self._hardware_ready()
         quality = self.samples.quality()
         ready = hardware_ready and quality["ready"] and self.controller.limits.valid and not self.calibration.error
         state = self.gate.snapshot()
         state.update(
+            manual_settings=self.controls,
             contract_id="rider.safety",
             observed_at=self.gate.wall_clock(),
             ts=self.gate.wall_clock(),
@@ -262,6 +287,8 @@ class MotionExecutor:
             "command_generation": command.get("generation"),
             "observed_at": self.gate.wall_clock(),
             "physical_completion": "unverified",
+            "requested": {key: command.get(key) for key in ("direction", "vx", "yaw", "duration", "settings_revision")},
+            "output": {"lx": self.controller.o_lx, "az": self.controller.o_az},
             "accepted": status in {"accepted", "executed"},
             "error": reason if status == "rejected" else None,
             **details,
@@ -285,6 +312,22 @@ class MotionExecutor:
             # path rather than escaping the executor loop.
             command = {**payload, "action": "move", "duration": None}
         action = command.get("action")
+        if action in {"move", "turn"} and self.gate.arming_mode == "operator":
+            self.refresh_controls(force=True)
+            if (
+                self.controls is None
+                or type(command.get("settings_revision")) is not int
+                or command["settings_revision"] != self.controls["revision"]
+            ):
+                return self._ack(command, "rejected", "manual_settings_stale")
+            if "direction" in command:
+                try:
+                    expected = manual_settings.pulse(self.controls, command["direction"])
+                    if any(command.get(key) != value for key, value in expected.items()):
+                        return self._ack(command, "rejected", "manual_settings_mismatch")
+                except ValueError as exc:
+                    return self._ack(command, "rejected", str(exc))
+
         if action == "arm" and self.calibration.error:
             return self._ack(command, "rejected", self.calibration.error)
         is_actuator = isinstance(action, str) and action in ACTUATORS
@@ -294,8 +337,7 @@ class MotionExecutor:
             and self.controller.deadline
             and self.gate.clock() >= self.controller.deadline
         ):
-            self.gate.disarm("motion_goal_timeout")
-            self.controller.stop()
+            self.controller.expire_goal()
             if self.pending is not None:
                 previous, self.pending = self.pending, None
                 self._ack(previous, "rejected", "motion_goal_timeout")
@@ -389,6 +431,8 @@ class MotionExecutor:
         return self._ack(command, "rejected", "actuator_failed")
 
     def tick(self, dt):
+        if not self.controller.deadline:
+            self.refresh_controls()
         generation = self.gate.generation
         self._hardware_ready()
         self.gate.poll()

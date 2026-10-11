@@ -9,6 +9,7 @@ class CalibrationRuntime:
     def __init__(self, limits):
         self.ceilings = limits
         self.limits = limits
+        self.interaction = None
         self.profile_digest = None
         self.source = "legacy_env"
         self.error = None
@@ -24,6 +25,12 @@ class CalibrationRuntime:
                 profile = profiles.read_profile(pointer["profile_digest"])
                 self.limits = self.profile_limits(profile)
                 self._record(profile, pointer, "saved_profile")
+                from apps.motion import manual_settings
+
+                shared = manual_settings.read()
+                if shared["revision"] == 0:
+                    patch = dict(profile["motion"], **(profile.get("interaction") or {}))
+                    manual_settings.update(patch, shared["revision"])
         except (OSError, ValueError, TypeError, KeyError) as exc:
             self.error = "saved_profile_unavailable:" + str(exc)
 
@@ -45,6 +52,7 @@ class CalibrationRuntime:
         self.error = None
         self.odometry_error = calibration_status(profile["odometry"])
         self.provenance_kind = profile["provenance"]["kind"]
+        self.interaction = profile.get("interaction")
 
     def activate(self, command, executor):
         gate = executor.gate
@@ -92,6 +100,13 @@ class CalibrationRuntime:
                 self.error = "calibration_state_changed_during_apply"
                 raise ValueError(self.error)
             # No blocking hardware call occurs between persistence and apply.
+            from apps.motion import manual_settings
+
+            shared = manual_settings.read()
+            patch = dict(profile["motion"])
+            if profile.get("interaction"):
+                patch.update(profile["interaction"])
+            manual_settings.update(patch, shared["revision"])
             controller.limits = self.limits = limits
             self._record(profile, pointer, "profile")
             # Configuration invalidates every queued authorization envelope,
@@ -149,6 +164,7 @@ class CalibrationRuntime:
             "error": self.error,
             "odometry_error": self.odometry_error,
             "provenance_kind": self.provenance_kind,
+            "interaction": self.interaction,
             "last_ack": self.last_ack,
             "applied_ack": self.applied_ack,
             "observed_at": now,

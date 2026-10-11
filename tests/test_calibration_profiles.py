@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from apps.motion import calibration_profiles as store
+from common.motion_mapping import MAPPING_ID
 
 
 @pytest.fixture
@@ -36,6 +37,7 @@ def verified(profile):
     value["odometry"]["conditions"] = dict.fromkeys(
         ("firmware", "surface", "load", "battery", "operator", "date"), "mock"
     )
+    value["odometry"]["conditions"]["command_mapping"] = MAPPING_ID
     value["measurements"] = [{"measurement_id": "fake-001", "notes": "Fake measurement, no physical test"}]
     return value
 
@@ -87,16 +89,16 @@ def test_explicit_verified_record_preserves_conditions_and_evidence(profile):
         lambda p: p["odometry"].update(imu_yaw_sign=True),
         lambda p: p.update(measurements=[{}] * 129),
         lambda p: p["provenance"].update(notes="a" * 4097),
-        lambda p: p["odometry"].update(linear_m_s={"13": 0.1}),
-        lambda p: p["odometry"].update(turn_rad_s={"19": 0.1}),
-        lambda p: p["odometry"].update(turn_rad_s={"71": 0.1}),
+        lambda p: p["odometry"].update(linear_m_s={"128": 0.1}),
+        lambda p: p["odometry"].update(turn_rad_s={"0": 0.1}),
+        lambda p: p["odometry"].update(turn_rad_s={"181": 0.1}),
         lambda p: p["odometry"].update(turn_rad_s={"020": 0.1}),
         lambda p: p["odometry"].update(linear_m_s={"1": -0.1}),
         lambda p: p.update(measurements=[{"duration_s": 0}]),
         lambda p: p.update(measurements=[{"duration_s": True}]),
         lambda p: p.update(measurements=[{"phase": "fiction"}]),
         lambda p: p.update(measurements=[{"outcome": "automatic_verified"}]),
-        lambda p: p.update(measurements=[{"kind": "turn", "sdk_step": 1}]),
+        lambda p: p.update(measurements=[{"kind": "turn", "sdk_step": 0}]),
     ],
 )
 def test_invalid_profiles_rejected_before_storage(profile, edit):
@@ -280,3 +282,28 @@ def test_activation_validation_accepts_nonready_but_idle_disarmed(profile):
     assert store.validate_activate(dict(row, seq=1), state, now=1000) == "activation_sequence_replayed"
     assert store.validate_activate(row, dict(state, state="ARMED"), now=1000)
     assert store.validate_activate(row, dict(state, output={"lx": 0.1, "az": 0}), now=1000)
+
+
+def test_interaction_defaults_are_shared_configuration_not_motion_permission(profile):
+    row = copy.deepcopy(profile)
+    row["interaction"] = {"linear_speed": 0.1, "turn_speed": 0.18, "pulse_duration": 0.1}
+    saved = store.save_profile(row)
+    assert store.read_profile(saved["digest"])["interaction"] == row["interaction"]
+    assert store.read_active() is None
+    for key, invalid in [("linear_speed", True), ("turn_speed", 1.1), ("pulse_duration", 0.26)]:
+        changed = copy.deepcopy(row)
+        changed["interaction"][key] = invalid
+        with pytest.raises(ValueError, match="interaction"):
+            store.save_profile(changed)
+
+
+def test_legacy_measurements_remain_inspectable_but_cannot_be_reused(profile):
+    from apps.odometry.calibration import calibration_status
+
+    row = verified(profile)
+    row["odometry"]["conditions"].pop("command_mapping")
+    # Read validation preserves immutable historical content and its digest.
+    assert store.validate_profile(row)["odometry"]["manual_verified"] is True
+    assert calibration_status(row["odometry"]) == "command_mapping_measurements_required"
+    with pytest.raises(ValueError, match="command_mapping"):
+        store.save_profile(row)

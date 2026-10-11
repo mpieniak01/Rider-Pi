@@ -29,8 +29,12 @@ export class Tasks {
     const body = { enabled, options };
     if (enabled && task.can_move) {
       // Metadata is generated exactly once at the operator's click.
-      const envelope = this.safety.envelope('move', {}, task.motion_owner);
-      for (const key of ['generation', 'seq', 'source', 'ts', 'ttl_ms', 'request_id']) body[key] = envelope[key];
+      this.busy.add(task.name);
+      try {
+        await this.safety.prepare();
+        const envelope = this.safety.envelope('move', {}, task.motion_owner);
+        for (const key of ['generation', 'seq', 'source', 'ts', 'ttl_ms', 'request_id']) body[key] = envelope[key];
+      } catch (error) { this.busy.delete(task.name); this.render(); throw error; }
     }
     this.busy.add(task.name); this.results.set(task.name, { status: 'pending', submitted_at: nowSeconds() }); this.render();
     try {

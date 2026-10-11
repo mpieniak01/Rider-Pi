@@ -15,13 +15,12 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from apps.safety.gate import MotionGate, finite_number
+from common.motion_mapping import LINEAR_LEVELS, MAPPING_ID, TURN_LEVELS, linear_sdk_value, native_command_byte
 from drivers.xgo.protocol import bound_serial, read_response
 
 XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
 XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")
 MOTION_ENABLE = False  # compatibility only; ENV never grants a lease
-_MIN_STEP, _MAX_STEP = 1, 12
-_TURN_MIN, _TURN_MAX = 20, 70
 
 
 def uart_inventory(port: str, *, proc_root: str | Path | None = None) -> dict:
@@ -79,6 +78,8 @@ def guarded_sdk_class(base, gate: MotionGate):
     if not callable(send) or not callable(unpack) or not callable(read):
         raise RuntimeError("unsupported_sdk_write_contract")
 
+    orders = getattr(importlib.import_module(base.__module__), "XGOorder", None)
+
     class GuardedXGO(base):
         _initializing = True
         _stopping = False
@@ -124,9 +125,14 @@ def guarded_sdk_class(base, gate: MotionGate):
                 # ani trwałego zatrzasku. Błąd statusu nie może opóźnić STOP.
                 if key not in stopping_keys:
                     raise PermissionError("unsupported_stop_write")
+                if orders is not None and key in {"VX", "VY", "VYAW"}:
+                    orders[key][1] = 128
                 return send(self, key, index=index, len=len)
             if not gate.can_actuate():
                 raise PermissionError("motion_gate_disarmed")
+            native = getattr(self, "_command_native", None)
+            if orders is not None and native is not None and native[0] == key:
+                orders[key][1] = native_command_byte(native[1], native[2])
             return send(self, key, index=index, len=len)
 
         def _XGO__read(self, addr, read_len=1):
@@ -234,6 +240,12 @@ class XgoAdapter:
         fn = getattr(self._dog, name, None)
         if not callable(fn):
             return False
+        native = None
+        if args and name in {"rider_move_x", "move_x"}:
+            native = ("VX", args[0], 1.5)
+        elif args and name in {"turnleft", "turnright"}:
+            native = ("VYAW", abs(args[0]) * (1 if name == "turnleft" else -1), 360.0)
+        self._dog._command_native = native
         try:
             result = fn(*args)
             if result is False:
@@ -243,6 +255,8 @@ class XgoAdapter:
         except Exception as exc:
             self.error = f"sdk_call_failed:{name}:{type(exc).__name__}"
             return False
+        finally:
+            self._dog._command_native = None
 
     def stop(self) -> bool:
         if self._dog is None:
@@ -353,10 +367,11 @@ class XgoAdapter:
         value = finite_number(speed, "speed")
         if not 0 <= value <= 1:
             return False
-        step = 0 if value == 0 else round(_MIN_STEP + value * (_MAX_STEP - _MIN_STEP))
+        step = round(value * LINEAR_LEVELS)
         step *= 1 if dir == "forward" else -1
         # Never invoke vendor runtime sleeps: executor owns the duration deadline.
-        done = self._call("rider_move_x", step, 0) or self._call("move_x", step, 0)
+        sdk_value = linear_sdk_value(step)
+        done = self._call("rider_move_x", sdk_value, 0) or self._call("move_x", sdk_value, 0)
         if done:
             self._sdk_output["linear_step"] = step
         if block and dur is not None:
@@ -377,7 +392,7 @@ class XgoAdapter:
         value = finite_number(speed, "speed")
         if not 0 <= value <= 1:
             return False
-        step = 0 if value == 0 else round(_TURN_MIN + value * (_TURN_MAX - _TURN_MIN))
+        step = round(value * TURN_LEVELS)
         name = "turnleft" if dir == "left" else "turnright"
         done = self._call(name, step)
         if done:
@@ -417,4 +432,12 @@ class XgoAdapter:
 
     def output_status(self) -> dict:
         """Accepted SDK command units, never encoder/velocity measurements."""
-        return {**self._sdk_output, "units": "sdk_command_steps", "physical_completion": "unverified"}
+        linear = self._sdk_output["linear_step"]
+        return {
+            **self._sdk_output,
+            "units": "command_levels",
+            "mapping_id": MAPPING_ID,
+            "linear_sdk_value": linear_sdk_value(linear) if linear is not None else None,
+            "turn_sdk_value": self._sdk_output["turn_step"],
+            "physical_completion": "unverified",
+        }

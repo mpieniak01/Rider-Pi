@@ -136,3 +136,63 @@ actual physical parameters locally without an additional PR.
 
 See [odometry](odometry.md), [physical motion](physical-motion.md)
 and [robot operation](safety.md).
+
+
+## Manual control and response tuning
+
+The main calibration view provides the camera, direction arrows, STOP, travel/turn
+speed sliders and response ramps. Click duration is an advanced setting.
+Speed sliders select the next manual trial; ramps apply only after saving and
+explicit activation. Manual control uses the single global arm/disarm button;
+there is no additional per-arrow consent. Reading, sliders, save, apply and rollback never start movement.
+There are no automatic repeats or calibration sequences.
+
+The optional profile object interaction contains linear_speed, turn_speed (0–1)
+and pulse_duration (0.01–0.25 s). Both clients read shared Pi settings from
+motion.calibration.interaction. They do not grant motion authority.
+Legacy profiles remain readable. Existing motion ramps and executor ceilings
+stay authoritative. Application still needs both consumer confirmations;
+manual response tuning does not require measured odometry or HOME.
+
+Mapping rider-1.4.2-levels-v2 reports signed linear_step command levels in
+−127..127, converted to native SDK input by level * 1.5 / 127.
+Signed turn_step is −70..70 and corresponds to native SDK turn input.
+motion.output.units is command_levels; mapping_id, linear_sdk_value and
+turn_sdk_value describe commands, never measured velocity or wheel encoders.
+The guarded write hook rounds around protocol neutral 128, including STOP;
+the installed vendor library is not modified. Pulse duration bounds time;
+command magnitude bounds requested speed.
+Measured odometry requires matching conditions.command_mapping.
+Old measurements remain inspectable but cannot verify the changed mapping.
+Coefficients are never converted automatically.
+
+Measurement tables, pose/HOME, import and detailed observations are advanced
+facilities. Operator judgement tunes manual control without verifying metric
+odometry or enabling autonomy.
+
+## Global panel arming and separate test permission
+
+The single button on the right displays the confirmed executor state:
+red "Robot disarmed", green "Robot armed". Clicking red grants manual panel
+permission; clicking green sends STOP. Clearing software ESTOP and ARM follow
+one explicit click, sequentially, only after a fresh DISARMED confirmation.
+External ESTOP, unavailable hardware, an unconfirmed clock or a missing
+confirmation still block ARM. Arming does not move the robot. The panel uses arming_mode=operator: permission remains until operator STOP
+or disarming, without a timer or automatic renewal. Changing views does not send STOP.
+
+The safety contract adds execution_context (panel/test), panel_motion_enabled
+and test_motion_enabled. The panel sends execution_context=panel. Panel consent
+cannot authorize test commands, even with test_operator_consent=true.
+A manual physical probe uses its own execution_context=test session and explicit
+test_operator_consent=true at ARM and every motion attempt. A test session cannot
+authorize panel controls. A single executor session prevents simultaneous control.
+STOP invalidates both flags.
+
+Automated pytest/CI remains isolated: real SDK, hardware devices, SSH and robot
+network access are blocked independently of either flag. Test consent does not
+disable isolation. manual_motion-probe.py requires a present operator, an
+interactive terminal and a one-time typed approval; it sends STOP after the probe.
+
+Panel: arming_mode=operator, lease_remaining_s=null. View and focus changes do not disarm. Physical test sessions remain timed with separate consent. Hardware faults and external ESTOP still stop the executor; stale data blocks new commands.
+
+A bounded panel movement pulse stops the drive when it ends, while operator arming remains active for the next click. STOP/disarm revokes the session; test sessions keep their timeout behavior.

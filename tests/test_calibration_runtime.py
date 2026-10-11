@@ -132,7 +132,7 @@ def test_cap_ceiling_preserved_when_lowering_then_raising(executor):
     assert activate(instance)["accepted"]
     digest = profiles.save_profile(profile(speed_limit=0.6, linear_rate=1.0, turn_rate=2.0))["digest"]
     assert activate(instance, digest)["accepted"]
-    high = profiles.save_profile(profile(linear_rate=1.01))["digest"]
+    high = profiles.save_profile(profile(linear_rate=instance.calibration.ceilings.linear_rate + 0.01))["digest"]
     assert activate(instance, high)["error"] == "initial_motion_ceiling_exceeded"
     assert instance.controller.limits.linear_rate == 1
 

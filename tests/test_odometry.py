@@ -6,12 +6,19 @@ from types import SimpleNamespace
 import pytest
 
 from apps.odometry.main import Odometry, OdometryEstimator, normalize_angle
+from common.motion_mapping import MAPPING_ID
 
 MOCK_CALIBRATION = {
     "schema_version": 1,
     "manual_verified": True,
     "measurement_id": "fictional-unit-fixture",
-    "conditions": {"firmware": "fake", "surface": "fake", "load": "fake", "battery": "fake"},
+    "conditions": {
+        "command_mapping": MAPPING_ID,
+        "firmware": "fake",
+        "surface": "fake",
+        "load": "fake",
+        "battery": "fake",
+    },
     "imu_yaw_sign": 1,
     "linear_m_s": {"1": 0.2, "-1": -0.2},
     "turn_rad_s": {"20": 1.0, "-20": -1.0},

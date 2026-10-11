@@ -48,6 +48,8 @@ def context(snapshot):
         "ts": time.time(),
         "ttl_ms": 500,
         "source": "manual",
+        "execution_context": "test",
+        "test_operator_consent": True,
     }
 
 

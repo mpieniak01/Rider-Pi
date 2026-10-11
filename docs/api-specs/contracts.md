@@ -235,3 +235,79 @@ LCD deployment includes protected boot files and unit defaults; use a separately
 `configured_rot` comes from the API process `PREVIEW_ROT` configuration (default0); it describes preview configuration, not the mounted startup display. The startup renderer reports `rot=270`. Headless camera configuration cannot replace this observation or confirm backlight power.
 
 LCD `preview_config` has its own source time. Actual LCD `source`/`observed_at` describe the renderer lifecycle report; `power_source`/`power_observed_at` require explicit `power_known=true` and `control_write_accepted`. `frame_source`/`frame_observed_at` retain the original report accepting the submitted pixels; an idle/OFF report does not restamp them or the battery measurement. Software acceptance leaves physical visibility unverified; operator confirmation is a separate acceptance record.
+
+
+## Motion panel scope
+- Overview, Devices and Chat expose observations and non-actuating operations, without motion consent forms or STOP shortcuts. Their state observer may provide measurements but does not send commands on focus loss.
+- Navigation remains a passive visualizer without an ARM form. Its task catalog shows only non-actuating tasks. Autonomous motion remains unavailable pending manual characterization.
+- Control and Calibration require local consent, a short lease, STOP, the correct owner and fresh state for actuator operations.
+- System opens as diagnostics. Consent and STOP controls appear after enabling administration because starting/restarting some services can actuate the robot.
+- Clearing ESTOP requires an explicit operator plan and consent. It ends in DISARMED and never automatically arms. ARM requires renewed consent.
+- Contract negotiation and state refresh finish before constructing the 500 ms command envelope. Existing commands are never restamped or automatically retried.
+- Command time uses a separate estimate from the Pi safety response. Observations from other hosts cannot change this estimate.
+
+
+## Manual control and response tuning
+
+The main calibration view provides the camera, direction arrows, STOP, travel/turn
+speed sliders and response ramps. Click duration is an advanced setting.
+Speed sliders select the next manual trial; ramps apply only after saving and
+explicit activation. Manual control uses the single global arm/disarm button;
+there is no additional per-arrow consent. Reading, sliders, save, apply and rollback never start movement.
+There are no automatic repeats or calibration sequences.
+
+The optional profile object interaction contains linear_speed, turn_speed (0–1)
+and pulse_duration (0.01–0.25 s). Both clients read shared Pi settings from
+motion.calibration.interaction. They do not grant motion authority.
+Legacy profiles remain readable. Existing motion ramps and executor ceilings
+stay authoritative. Application still needs both consumer confirmations;
+manual response tuning does not require measured odometry or HOME.
+
+Mapping rider-1.4.2-levels-v2 reports signed linear_step command levels in
+−127..127, converted to native SDK input by level * 1.5 / 127.
+Signed turn_step is −70..70 and corresponds to native SDK turn input.
+motion.output.units is command_levels; mapping_id, linear_sdk_value and
+turn_sdk_value describe commands, never measured velocity or wheel encoders.
+The guarded write hook rounds around protocol neutral 128, including STOP;
+the installed vendor library is not modified. Pulse duration bounds time;
+command magnitude bounds requested speed.
+Measured odometry requires matching conditions.command_mapping.
+Old measurements remain inspectable but cannot verify the changed mapping.
+Coefficients are never converted automatically.
+
+Measurement tables, pose/HOME, import and detailed observations are advanced
+facilities. Operator judgement tunes manual control without verifying metric
+odometry or enabling autonomy.
+
+## Global panel arming and separate test permission
+
+The single button on the right displays the confirmed executor state:
+red "Robot disarmed", green "Robot armed". Clicking red grants manual panel
+permission; clicking green sends STOP. Clearing software ESTOP and ARM follow
+one explicit click, sequentially, only after a fresh DISARMED confirmation.
+External ESTOP, unavailable hardware, an unconfirmed clock or a missing
+confirmation still block ARM. Arming does not move the robot. The panel uses arming_mode=operator: permission remains until operator STOP
+or disarming, without a timer or automatic renewal. Changing views does not send STOP.
+
+The safety contract adds execution_context (panel/test), panel_motion_enabled
+and test_motion_enabled. The panel sends execution_context=panel. Panel consent
+cannot authorize test commands, even with test_operator_consent=true.
+A manual physical probe uses its own execution_context=test session and explicit
+test_operator_consent=true at ARM and every motion attempt. A test session cannot
+authorize panel controls. A single executor session prevents simultaneous control.
+STOP invalidates both flags.
+
+Automated pytest/CI remains isolated: real SDK, hardware devices, SSH and robot
+network access are blocked independently of either flag. Test consent does not
+disable isolation. manual_motion-probe.py requires a present operator, an
+interactive terminal and a one-time typed approval; it sends STOP after the probe.
+
+Panel: arming_mode=operator, lease_remaining_s=null. View and focus changes do not disarm. Physical test sessions remain timed with separate consent. Hardware faults and external ESTOP still stop the executor; stale data blocks new commands.
+
+A bounded panel movement pulse stops the drive when it ends, while operator arming remains active for the next click. STOP/disarm revokes the session; test sessions keep their timeout behavior.
+
+
+## Shared manual controls
+GET/POST /api/calibration/controls exposes the Pi-owned rider.manual_settings v1 object: revision, values, limits, observed_at, actuation=false. values contains linear_speed, turn_speed, pulse_duration, speed_limit, linear_rate and turn_rate. POST accepts revision plus a values patch, writes atomically, requires an idle executor and never sends an actuator command. Stale writes return 409.
+Both Pi and PC control/calibration views poll this same object and disable movement while changes are pending or data is missing/stale. Every operator movement carries direction and settings_revision with the exact shared vx/yaw/duration. The executor rejects obsolete revisions and inconsistent values. Opening a view, importing a draft, or reading a historical profile never replaces live settings. Explicit activation of a saved profile updates the shared settings.
+Default pulse is 0.25 s; software ramps are 3 linear / 4 turn normalized units per second, with the existing speed cap 0.6 and pulse cap 0.25 s retained. Turn mapping v3 uses 180 native SDK units at normalized 1; old physical measurements for mapping v2 must not be reused as verified v3 data. A reversal writes a neutral drive command before ramping in the newly requested direction, without disarming the panel. These are software defaults, not physically measured calibration.
