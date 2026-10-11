@@ -63,6 +63,11 @@ def atomic_write(path, data):
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -132,11 +137,11 @@ class Catalog:
             if key not in data:
                 return False
             settings = get_settings()
-            del data[key]
-            atomic_write(library_path(), data)
             if key in settings["active_gestures"]:
                 settings["active_gestures"] = [item for item in settings["active_gestures"] if item != key]
                 atomic_write(settings_path(), settings)
+            del data[key]
+            atomic_write(library_path(), data)
             return True
 
 

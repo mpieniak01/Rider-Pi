@@ -540,8 +540,8 @@ Domyślny impuls trwa 0.25 s; rampy programowe wynoszą 3 dla jazdy i 4 dla skr�
 
 ## Grafika twarzy — rider.face v1
 
-[Face Studio: schema, units, bounded previews and runtime events](../FACE_STUDIO.md).
-Graphic intent and audio envelope APIs have actuation=false; they never authorize motor commands.
+[Studio buźki: schemat, jednostki, ograniczone podglądy i zdarzenia runtime](../FACE_STUDIO.md).
+API intencji graficznych i obwiedni audio mają `actuation=false`; nigdy nie autoryzują poleceń napędów.
 
 Nastawy buźki rozszerza opcjonalne `skin` (`none`, `human`, `cat`, `robot`),
 domyślnie `none` dla istniejących plików. Endpoint klatki przyjmuje to samo

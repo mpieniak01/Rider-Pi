@@ -214,7 +214,11 @@
   });
   window.addEventListener('beforeunload',event=>{if(dirty||settingsDirty){event.preventDefault();event.returnValue='';}});
   window.addEventListener('dashboard:langchange',()=>{
-    document.querySelectorAll('[data-pl][data-en]').forEach(node=>node.textContent=tr(node.dataset.pl,node.dataset.en));showPoses();updateSettingsStatus();
+    document.querySelectorAll('[data-pl][data-en]').forEach(node=>node.textContent=tr(node.dataset.pl,node.dataset.en));
+    if(meta)for(const [id,items] of [['style',meta.styles],['skin',meta.skins]]){
+      const selected=$(id).value;$(id).replaceChildren();items.forEach(s=>$(id).add(new Option(tr(s.pl,s.en),s.id)));$(id).value=selected;
+    }
+    showPoses();updateSettingsStatus();
   });
   refresh(undefined,true).then(()=>poll()).catch(error=>status(error.message));
 })();

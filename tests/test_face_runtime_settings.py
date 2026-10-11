@@ -165,3 +165,60 @@ def test_oversized_local_write_keeps_previous_library(client, monkeypatch):
     with pytest.raises(ValueError, match="face_file_too_large"):
         catalog.atomic_write(path, {"large": "x" * 100})
     assert catalog.read_json(path) == {"small": "kept"}
+
+
+@pytest.mark.parametrize("failed_store", ["settings", "library"])
+def test_delete_interruption_keeps_readable_settings(client, monkeypatch, failed_store):
+    key, _ = catalog.CATALOG.save({"name": "Kept", "duration": 1})
+    settings = catalog.get_settings()
+    catalog.save_settings({"active_gestures": settings["active_gestures"] + [key]})
+    real_write = catalog.atomic_write
+    failed_path = catalog.settings_path() if failed_store == "settings" else catalog.library_path()
+
+    def write(path, data):
+        if path == failed_path:
+            raise OSError("simulated interrupted write")
+        return real_write(path, data)
+
+    monkeypatch.setattr(catalog, "atomic_write", write)
+    assert client.delete("/api/face-studio/gestures/" + key).status_code == 400
+    assert catalog.CATALOG.get(key) is not None
+    assert (key in catalog.get_settings()["active_gestures"]) == (failed_store == "settings")
+
+
+def test_atomic_write_syncs_file_then_directory(client, monkeypatch):
+    import os
+    import stat
+
+    real_sync = os.fsync
+    calls = []
+
+    def sync(fd):
+        calls.append("directory" if stat.S_ISDIR(os.fstat(fd).st_mode) else "file")
+        real_sync(fd)
+
+    monkeypatch.setattr(catalog.os, "fsync", sync)
+    catalog.atomic_write(catalog.settings_path(), {"skin": "human"})
+    assert calls == ["file", "directory"]
+
+
+def test_directory_sync_failure_closes_descriptor_and_cleans_temp(client, monkeypatch):
+    import os
+    import stat
+
+    real_sync = os.fsync
+    directory_fds = []
+
+    def sync(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            directory_fds.append(fd)
+            raise OSError("simulated fsync failure")
+        real_sync(fd)
+
+    monkeypatch.setattr(catalog.os, "fsync", sync)
+    path = catalog.settings_path()
+    with pytest.raises(OSError, match="simulated"):
+        catalog.atomic_write(path, {"skin": "human"})
+    assert not list(path.parent.glob(".face-*"))
+    with pytest.raises(OSError):
+        os.fstat(directory_fds[0])

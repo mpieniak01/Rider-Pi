@@ -61,7 +61,7 @@ python3 scripts/face_benchmark.py --baseline-ref 354cfddccb7602de4e642d0f454af8f
 
 Końcowa regresja lokalna: **1817 testów Python zaliczonych**, 40 pominiętych,
 8 podtestów zaliczonych; **141 testów JavaScript zaliczonych**; Ruff i kontrola
-diff zakończone poprawnie. Testy bez sprzętu obejmują zastępowanie/prioritet
+diff zakończone poprawnie. Testy bez sprzętu obejmują zastępowanie/priorytet
 animacji, watchdog audio, cache obrazu, limity katalogu, zapis atomowy,
 konflikt rewizji, własność LCD, orientację i zamknięcie oraz usuwanie zapytań
 i timerów w ukrytej karcie.

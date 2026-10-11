@@ -23,7 +23,7 @@ function fixture() {
   const fields={'eyes.dx':[-1,1],'mouth.open':[0,1],'mouth.curve':[-1,1]};
   let settings={style:'friendly',skin:'none',power_mode:'battery',idle:true,intensity:1,tempo:1,transition:'original',active_gestures:['builtin:happy']};
   const descriptors={contract_version:1,styles:[{id:'friendly',pl:'Przyjazna',en:'Friendly'},{id:'minimal',pl:'Prosta',en:'Simple'}],
-    skins:[{id:'none',pl:'Bez oprawy',en:'No character'},{id:'human',pl:'Piegusek',en:'Freckles'},{id:'cat',pl:'Kotek',en:'Kitten'},{id:'robot',pl:'Robocik',en:'Little robot'}],
+    skins:[{id:'none',pl:'Bez oprawy',en:'No character'},{id:'human',pl:'Piegusek',en:'Freckles'},{id:'cat',pl:'Kotek',en:'Kitten'},{id:'robot',pl:'Robocik',en:'Little robot'},{id:'professional',pl:'Profesjonalna',en:'Professional'}],
     expressions:['neutral','happy'],expression_defaults:{neutral:{'mouth.curve':.15},happy:{'mouth.curve':.8}},
     intensity:{min:0,max:100,step:1},tempo:{min:50,max:200,step:5},duration:{max:10000,step:10},transitions:['original','lin','in_out'],fps:{preview:12}};
   const gesture={id:'builtin:happy',builtin:true,name:'happy',expr:'happy',duration:1,initial:{'mouth.curve':.8},tracks:{}};
@@ -95,4 +95,11 @@ test('character is shared by draft frames, save and reloading another tab',async
   f.external({skin:'human'});await f.get('reload-settings').onclick();
   assert.equal(f.get('skin').value,'human');
   assert.ok(f.calls.every(x=>!x.url.includes('/play')&&!x.url.includes('/motion')));
+});
+
+test('character labels change language without losing the selected skin',async()=>{
+  const f=fixture();await f.ready();f.get('skin').value='cat';
+  f.document.documentElement.lang='en';f.events['dashboard:langchange']();
+  assert.equal(f.get('skin').value,'cat');
+  assert.equal(f.get('skin').children.find(x=>x.value==='cat').text,'Kitten');
 });

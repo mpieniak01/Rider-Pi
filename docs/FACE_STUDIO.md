@@ -47,7 +47,7 @@ LCD output nor physical movement.
 | GET /api/face-studio/gestures | Catalog, ranges, descriptors, settings and revisions |
 | POST /api/face-studio/gestures | Save; optional id updates a custom gesture |
 | DELETE /api/face-studio/gestures/&lt;id&gt; | Delete custom gesture and its active selection |
-| POST /api/face-studio/frame | Draft PNG 240×240 at at seconds |
+| POST /api/face-studio/frame | Draft PNG 240×240 at time `at` (seconds) |
 | GET /api/face-studio/runtime | Worker state, settings, settings_revision, descriptors |
 | POST /api/face-studio/runtime | Settings patch; optional if_revision |
 | POST /api/face-studio/runtime/play | Explicit start: sink=lcd/file/null, expr, gesture_id, fps, duration_s |
