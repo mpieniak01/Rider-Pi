@@ -11,7 +11,7 @@ function fixture(patch = {}, { stale = false, rejected = false, others = [] } = 
   const task = { name: 's2_camera_preview', can_move: false, installed: true, observed_at: now,
     state: 'stopped', requested: false, ready: false, ...patch };
   const catalog = { contract_version: 2, catalog_version: 2, observed_at: stale ? now - 30 : now, features: [task, ...others], units: [] };
-  const calls = [], errors = [], messages = new Map(), buttons = new Map(['camera-start', 'camera-stop'].map(id => [id, { disabled: true, addEventListener() {} }]));
+  const calls = [], errors = [], messages = new Map(), buttons = new Map(['camera-start', 'camera-stop', 'camera-toggle'].map(id => [id, { disabled: true, listeners: {}, addEventListener(name, callback) { this.listeners[name] = callback; }, setAttribute(name, value) { this[name] = value; } }]));
   let started = 0, stopped = 0;
   const context = vm.createContext({ ...model,
     document: { getElementById: id => buttons.get(id) }, window: { addEventListener() {} },
@@ -64,4 +64,22 @@ test('another consumer is shown without stopping its task', async () => {
   await f.power.change(false);
   const posts = f.calls.filter(row => row.method === 'POST');
   assert.equal(posts.length, 1); assert.equal(posts[0].path, '/api/logic/feature/s2_camera_preview');
+});
+
+test('single overview toggle reflects confirmed task state and alternates on/off', async () => {
+  const f = fixture(); const button = f.buttons.get('camera-toggle');
+  assert.equal(button.disabled, true);
+  await f.power.load(); assert.equal(button.textContent, 'Kamera: OFF'); assert.equal(button.disabled, false);
+  await button.listeners.click();
+  assert.equal(button.textContent, 'Kamera: ON'); assert.equal(button['aria-pressed'], 'true');
+  await button.listeners.click();
+  assert.equal(button.textContent, 'Kamera: OFF'); assert.equal(button['aria-pressed'], 'false');
+  assert.deepEqual(f.calls.filter(row => row.method === 'POST').map(row => row.body.enabled), [true, false]);
+});
+test('unknown state and duplicate clicks cannot issue toggle commands', async () => {
+  const f = fixture({}, { stale: true }); await f.power.load(); await f.buttons.get('camera-toggle').listeners.click();
+  assert.equal(f.calls.filter(row => row.method === 'POST').length, 0);
+  const busy = fixture(); await busy.power.load(); busy.power.busy = true;
+  await busy.buttons.get('camera-toggle').listeners.click();
+  assert.equal(busy.calls.filter(row => row.method === 'POST').length, 0);
 });

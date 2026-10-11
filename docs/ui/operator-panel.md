@@ -175,3 +175,5 @@ Automated tests do not authorize physical movement. Actuator tests require
 separate explicit consent from a prepared operator.
 
 The System page enables service controls immediately when fresh API permissions allow the action. No administration switch is required. Disabled actions show their reason, including protected API operations and on demand autostart restrictions.
+
+The overview (/view) RAW camera card has one Camera ON/OFF button. It controls the passive camera preview task through explicit clicks. Opening the page does not start the camera; other camera consumers are shown alongside its state.

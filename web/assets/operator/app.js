@@ -1,3 +1,4 @@
+import { CameraPower } from './camera-power.js?v=overview-camera-1';
 import { Posture } from './posture.js?v=posture-1';
 import { ManualSettings } from './manual-settings.js?v=motion-curves-14';
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
@@ -41,7 +42,11 @@ if (page === 'devices') new Devices(safety);
 if (page === 'system') system = new System(safety);
 if (page === 'navigation') { tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
 if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); }
-if (page === 'view') overview = new Overview(safety);
+if (page === 'view') {
+  overview = new Overview(safety);
+  new CameraPower({ onStarted: () => { overview.poller.refresh(); overview.visionPoller.refresh(); },
+    onStopped: () => { overview.snap = null; overview.renderVision(); overview.poller.refresh(); } });
+}
 
 events(event => {
   let data = event.data;

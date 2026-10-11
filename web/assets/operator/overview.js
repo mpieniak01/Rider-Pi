@@ -11,7 +11,7 @@ const frameAge = seconds => !finite(seconds) ? '—' : seconds >= 86400 ? `${Mat
 const unknown = () => tr('brak / stary pomiar', 'missing / stale reading');
 const BLANK = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"%3E%3Crect width="640" height="360" fill="%2306090d"/%3E%3C/svg%3E';
 
-// Read-only measurements dashboard. No task, camera or actuator is started here.
+// Measurements remain read-only. The separate CameraPower control handles explicit camera clicks.
 export class Overview {
   constructor(safety) {
     this.safety = safety;

@@ -8,6 +8,8 @@ export class CameraPower {
   constructor({ onStarted = () => {}, onStopped = () => {} } = {}) {
     this.catalog = null; this.busy = false; this.onStarted = onStarted; this.onStopped = onStopped;
     this.start = document.getElementById('camera-start'); this.stop = document.getElementById('camera-stop');
+    this.toggle = document.getElementById('camera-toggle');
+    this.toggle?.addEventListener('click', () => { if (this.known()) return this.change(this.task().requested !== true); });
     this.start?.addEventListener('click', () => this.change(true));
     this.stop?.addEventListener('click', () => this.change(false));
     this.poller = poll(() => this.load(), { interval: 5000, onError: error => {
@@ -52,6 +54,13 @@ export class CameraPower {
     const task = this.task(), known = this.known();
     if (this.start) this.start.disabled = this.busy || !known || task.requested === true || !taskCanStart(task, this.catalog, null);
     if (this.stop) this.stop.disabled = this.busy || !known || task.requested !== true;
+    if (this.toggle) {
+      const enabled = known && task.requested === true;
+      this.toggle.disabled = this.busy || !known || (!enabled && !taskCanStart(task, this.catalog, null));
+      this.toggle.setAttribute('aria-pressed', String(enabled));
+      this.toggle.textContent = `Kamera: ${enabled ? 'ON' : 'OFF'}`;
+      this.toggle.title = enabled ? tr('Wyłącz kamerę', 'Turn camera off') : tr('Włącz kamerę', 'Turn camera on');
+    }
     let label = !known ? tr('Stan kamery nieznany — odczytywanie stanu', 'Camera state unknown — reading status')
       : task.requested === true ? task.ready === true ? tr('Kamera włączona', 'Camera on') : tr('Kamera uruchamiana — oczekiwanie na gotowość', 'Camera starting — waiting for readiness')
       : tr('Podgląd kamery wyłączony', 'Camera preview off');

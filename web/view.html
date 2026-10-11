@@ -73,6 +73,8 @@
         <span data-i18n="dash.camera.title">Kamera</span>
         <span id="camBadge" class="cam-badge">…</span>
       </h3>
+      <button id="camera-toggle" type="button" class="c-btn" aria-pressed="false" disabled>Kamera: OFF</button>
+      <p id="camera-power-state" class="c-hint" role="status">Odczytywanie stanu kamery…</p>
       <div class="c-thumb">
         <img id="img_cam" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="kamera" decoding="async" loading="lazy">
       </div>
@@ -204,7 +206,7 @@
 
 <footer class="layout-footer" data-dashboard-footer-target></footer>
 
-<script type="module" src="/web/assets/operator/app.js?v=extended-telemetry-1"></script>
+<script type="module" src="/web/assets/operator/app.js?v=overview-camera-1"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>
