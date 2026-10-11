@@ -105,7 +105,7 @@ def face_play():
         return _corsify(make_response("", 204))
     payload = request.get_json(silent=True) or {}
     res = face_anim.play(payload)
-    return _corsify(jsonify(res)), 200
+    return _corsify(jsonify(res)), res.get("status", 200)
 
 
 @app.route("/face/stop", methods=["POST", "OPTIONS"])
@@ -577,7 +577,10 @@ def main():
     except Exception as e:
         app.logger.warning("compat init warning: %s", e)
     port = DEFAULT_PORT
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    try:
+        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    finally:
+        face_anim.stop()
 
 
 if __name__ == "__main__":

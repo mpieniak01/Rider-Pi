@@ -9,6 +9,7 @@ from services.api_core import face_studio
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("FACE_STUDIO_LIBRARY", str(tmp_path / "library.json"))
+    monkeypatch.setenv("FACE_RUNTIME_SETTINGS", str(tmp_path / "runtime.json"))
     app = Flask(__name__)
     face_studio.register(app)
     return app.test_client()

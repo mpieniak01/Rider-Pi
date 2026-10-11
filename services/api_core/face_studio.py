@@ -1,122 +1,26 @@
-"""Hardware-free face studio using the production renderer and animator."""
+"""Face studio: common catalog, on-demand previews and explicit runtime controls."""
 
+from __future__ import annotations
+
+import hashlib
 import json
 import math
-import os
-import tempfile
 import threading
-import uuid
-from pathlib import Path
+from collections import OrderedDict
 
 from flask import Response, jsonify, request
 
 from apps.ui.face.animator import Animator
-from apps.ui.face.gestures import GESTURES
+from apps.ui.face.catalog import CATALOG, LOCK, descriptors, get_settings, save_settings, settings_revision
 from apps.ui.face.renderer import FaceRenderer
+from apps.ui.face.schema import FIELDS, number as _number, prepare, validate
 from services.api_core.static_pages import serve_web
 
-FIELDS = {
-    "eyes.dx": (-1, 1),
-    "eyes.dy": (-1, 1),
-    "eyes.blink": (0, 1),
-    "brows.lift": (-1, 1),
-    "brows.tilt": (-1, 1),
-    "mouth.open": (0, 1),
-}
-EXPRESSIONS = {"neutral", "happy", "sad"}
-EASING = {"lin", "in", "out", "in_out"}
-_lock = threading.Lock()
-
-
-def _path():
-    return Path(os.environ.get("FACE_STUDIO_LIBRARY", "config/local/face-studio.json"))
-
-
-def _number(value, lo, hi):
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError("invalid_number")
-    value = float(value)
-    if not math.isfinite(value) or not lo <= value <= hi:
-        raise ValueError("value_out_of_range")
-    return value
-
-
-def validate(body):
-    if not isinstance(body, dict):
-        raise ValueError("invalid_gesture")
-    name = body.get("name", "")
-    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 60:
-        raise ValueError("name_required")
-    expr = body.get("expr", "neutral")
-    if not isinstance(expr, str) or expr not in EXPRESSIONS:
-        raise ValueError("invalid_expression")
-    duration = _number(body.get("duration", 1), 0.05, 10)
-    initial, tracks = body.get("initial", {}), body.get("tracks", {})
-    if not isinstance(initial, dict) or not isinstance(tracks, dict):
-        raise ValueError("invalid_tracks")
-    clean_initial, clean_tracks = {}, {}
-    for field, value in initial.items():
-        if field not in FIELDS:
-            raise ValueError("invalid_field")
-        clean_initial[field] = _number(value, *FIELDS[field])
-    for field, segments in tracks.items():
-        if field not in FIELDS or not isinstance(segments, list) or len(segments) > 32:
-            raise ValueError("invalid_track")
-        clean_tracks[field] = []
-        end = 0
-        for segment in segments:
-            if not isinstance(segment, dict):
-                raise ValueError("invalid_segment")
-            t0 = _number(segment["t0"], end, duration)
-            t1 = _number(segment["t1"], t0, duration)
-            ease = segment.get("ease", "lin")
-            if t1 <= t0 or not isinstance(ease, str) or ease not in EASING:
-                raise ValueError("invalid_segment")
-            clean_tracks[field].append(
-                {
-                    "t0": t0,
-                    "t1": t1,
-                    "v0": _number(segment["v0"], *FIELDS[field]),
-                    "v1": _number(segment["v1"], *FIELDS[field]),
-                    "ease": ease,
-                }
-            )
-            end = t1
-    return {"name": name.strip(), "expr": expr, "duration": duration, "initial": clean_initial, "tracks": clean_tracks}
-
-
-def _read():
-    path = _path()
-    if not path.exists():
-        return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or len(data) > 200:
-        raise ValueError("invalid_library")
-    return data
-
-
-def _write(data):
-    path = _path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".face-studio-")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-
-
-def _builtins():
-    result = []
-    for name, make in GESTURES.items():
-        result.append({"id": "builtin:" + name, "builtin": True, **validate({**make(), "expr": "neutral"})})
-    for expr in ("neutral", "happy", "sad"):
-        result.append(
-            {"id": "builtin:" + expr, "builtin": True, **validate({"name": expr, "expr": expr, "duration": 1})}
-        )
-    return result
+_CACHE = OrderedDict()
+_CACHE_LOCK = threading.Lock()
+_RENDER_SLOT = threading.BoundedSemaphore(1)
+_RENDERERS = {}
+MAX_CACHED_FRAMES = 16
 
 
 def page():
@@ -125,67 +29,142 @@ def page():
 
 def library():
     try:
-        with _lock:
-            data = _read()
-            if request.method == "POST":
-                body = request.get_json(silent=True)
-                spec = validate(body)
-                key = body.get("id")
-                if key and (not isinstance(key, str) or key not in data):
-                    raise ValueError("unknown_gesture")
-                if not key and len(data) >= 200:
-                    raise ValueError("library_full")
-                key = key or uuid.uuid4().hex
-                data[key] = spec
-                _write(data)
-                return jsonify(ok=True, id=key, gesture=spec, actuation=False)
-            return jsonify(
-                ok=True,
-                gestures=_builtins() + [{"id": key, "builtin": False, **validate(spec)} for key, spec in data.items()],
-                fields=FIELDS,
-                actuation=False,
-            )
+        if request.method == "POST":
+            key, spec = CATALOG.save(request.get_json(silent=True))
+            return jsonify(ok=True, id=key, gesture=spec, actuation=False)
+        return jsonify(
+            ok=True,
+            gestures=CATALOG.items(),
+            fields=FIELDS,
+            descriptors=descriptors(),
+            settings=get_settings(),
+            settings_revision=settings_revision(),
+            revision=CATALOG.revision,
+            actuation=False,
+        )
     except (ValueError, TypeError, KeyError, OSError, OverflowError) as error:
         return jsonify(ok=False, error=str(error), actuation=False), 400
 
 
 def delete(key):
     try:
-        with _lock:
-            data = _read()
-            if key not in data:
-                return jsonify(ok=False, error="unknown_gesture"), 404
-            del data[key]
-            _write(data)
+        if not CATALOG.delete(key):
+            return jsonify(ok=False, error="unknown_gesture"), 404
         return jsonify(ok=True, actuation=False)
     except (ValueError, OSError):
         return jsonify(ok=False, error="library_unavailable"), 400
 
 
-def frame():
+def _preview(body):
+    settings = get_settings()
+    style = body.get("style", settings["style"])
+    options = descriptors()
+    if style not in {item["id"] for item in options["styles"]}:
+        raise ValueError("invalid_face_style")
+    spec = prepare(
+        body, body.get("intensity", 1), body.get("tempo", 1), body.get("transition", "original"), defaults=True
+    )
+    at = round(_number(body.get("at", 0), 0, spec["duration"]), 3)
+    simulated = body.get("simulate_speech", False)
+    if type(simulated) is not bool:
+        raise ValueError("invalid_speech_preview")
+    identity = hashlib.sha256(json.dumps([spec, at, style, simulated], sort_keys=True).encode()).hexdigest()
+    with _CACHE_LOCK:
+        cached = _CACHE.get(identity)
+        if cached is not None:
+            _CACHE.move_to_end(identity)
+            return cached
+    if not _RENDER_SLOT.acquire(blocking=False):
+        return None
     try:
-        body = request.get_json(silent=True)
-        spec = validate(body)
-        at = _number(body.get("at", 0), 0, spec["duration"])
         clock = [0.0]
         anim = Animator(clock=lambda: clock[0])
         anim.state.expr = spec["expr"]
-        anim.state.mouth.shape = spec["expr"]
-        for field, value in spec["initial"].items():
-            node, attr = field.split(".")
-            setattr(getattr(anim.state, node), attr, value)
-        anim.start(spec)
-        moments = {0, at}
-        for segments in spec["tracks"].values():
-            moments.update(s["t1"] for s in segments if s["t1"] < at)
-        for moment in sorted(moments):
-            clock[0] = moment
-            anim.tick()
+        anim.state.mouth.shape = spec["expr"] if spec["expr"] in {"happy", "sad", "neutral"} else "neutral"
+        anim.start(spec, mode="replace")
+        clock[0] = at
+        anim.tick()
+        if simulated:
+            anim.state.mouth.open = max(0, math.sin(at * 13)) * 0.65
         anim.state.render_time = at
-        png = FaceRenderer(cfg={}, size=240).render_png_bytes(anim.state)
+        if style not in _RENDERERS:
+            _RENDERERS[style] = FaceRenderer({}, size=240, style=style)
+        renderer = _RENDERERS[style]
+        png = renderer.render_png_bytes(anim.state)
+        with _CACHE_LOCK:
+            _CACHE[identity] = png
+            while len(_CACHE) > MAX_CACHED_FRAMES:
+                _CACHE.popitem(last=False)
+        return png
+    finally:
+        _RENDER_SLOT.release()
+
+
+def frame():
+    try:
+        if request.content_length and request.content_length > 65536:
+            return jsonify(ok=False, error="gesture_too_large"), 413
+        body = request.get_json(silent=True)
+        validate(body)
+        png = _preview(body)
+        if png is None:
+            return jsonify(ok=False, error="preview_busy"), 429, {"Retry-After": "1"}
         return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
-    except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, OSError):
         return jsonify(ok=False, error="invalid_frame", actuation=False), 400
+
+
+def runtime():
+    from services.api_core import face_anim
+
+    try:
+        with LOCK:
+            if request.method == "POST":
+                body = request.get_json(silent=True)
+                if not isinstance(body, dict):
+                    raise ValueError("invalid_face_settings")
+                save_settings(body, body.pop("if_revision", None))
+            settings = get_settings()
+            revision = settings_revision(settings)
+        return jsonify(
+            **face_anim.get_state(), settings=settings, settings_revision=revision, descriptors=descriptors()
+        )
+    except (ValueError, TypeError, KeyError, OSError) as error:
+        conflict = str(error) == "face_settings_conflict"
+        return jsonify(ok=False, error=str(error), actuation=False), 409 if conflict else 400
+
+
+def runtime_play():
+    from services.api_core import face_anim
+
+    result = face_anim.play(request.get_json(silent=True) or {})
+    return jsonify(result), result.get("status", 200)
+
+
+def runtime_stop():
+    from services.api_core import face_anim
+
+    return jsonify(face_anim.stop())
+
+
+def runtime_event():
+    from services.api_core import face_anim
+
+    try:
+        return jsonify(face_anim.command(request.get_json(silent=True)))
+    except (ValueError, TypeError, KeyError, OSError) as error:
+        return jsonify(ok=False, error=str(error), actuation=False), 409
+
+
+def runtime_frame():
+    from services.api_core import face_anim
+
+    png = face_anim.latest_png()
+    if png is None:
+        return jsonify(ok=False, error="face_not_running"), 404
+    return Response(
+        png, mimetype="image/png", headers={"Cache-Control": "no-store", "X-Face-Source": "active-face-worker"}
+    )
 
 
 def register(app):
@@ -193,3 +172,8 @@ def register(app):
     app.add_url_rule("/api/face-studio/gestures", "face_studio_library", library, methods=["GET", "POST"])
     app.add_url_rule("/api/face-studio/gestures/<key>", "face_studio_delete", delete, methods=["DELETE"])
     app.add_url_rule("/api/face-studio/frame", "face_studio_frame", frame, methods=["POST"])
+    app.add_url_rule("/api/face-studio/runtime", "face_studio_runtime", runtime, methods=["GET", "POST"])
+    app.add_url_rule("/api/face-studio/runtime/play", "face_studio_runtime_play", runtime_play, methods=["POST"])
+    app.add_url_rule("/api/face-studio/runtime/stop", "face_studio_runtime_stop", runtime_stop, methods=["POST"])
+    app.add_url_rule("/api/face-studio/runtime/event", "face_studio_runtime_event", runtime_event, methods=["POST"])
+    app.add_url_rule("/api/face-studio/runtime/frame", "face_studio_runtime_frame", runtime_frame)
