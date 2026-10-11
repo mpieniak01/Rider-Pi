@@ -210,3 +210,15 @@ test('unknown descriptor version blocks mutation',async()=>{
   const current=row();current.parameter_schema.version=99;
   await assert.rejects(()=>screen({current}),/unconfirmed/);
 });
+
+test('slider step starts at calibrated minimum and preserves zero',async()=>{
+  const factory=()=>({dataset:{},children:[],value:'',append(...nodes){this.children.push(...nodes);},
+    addEventListener(event,fn){this[event]=fn;}});
+  const current=row();current.directions.forward={...current.directions.forward,minimum:.15,step:.1};
+  const a=await screen({current},{elFactory:factory});
+  const label=a.panel.input('setting-forward-speed','speed',value=>{a.panel.directionEdits.forward={speed:value};});
+  const node=label.children[1];node.value='26';node.input();
+  assert.equal(a.panel.directionEdits.forward.speed,.25);
+  node.value='0';node.input();
+  assert.equal(a.panel.directionEdits.forward.speed,0);
+});
