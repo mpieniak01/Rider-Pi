@@ -185,11 +185,6 @@
 .page-control .balance-control { flex: 1 1 280px; min-width: 240px; }
 .page-control .balance-control label { display: flex; align-items: center; gap: var(--space-md); justify-content: space-between; }
 
-/* Feature/resource layout */
-.page-control .feature-resource {
-  margin-top: var(--space-xl);
-}
-
 /* Restored camera and direction panels; command gating stays in SafetyPanel. */
 .page-control .control-primary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 1rem; align-items: stretch; margin-bottom: 1rem; }
 .page-control .control-primary .cam-card { height: auto; }
