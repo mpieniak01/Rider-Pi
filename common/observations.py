@@ -213,7 +213,7 @@ def observation(
     and quality; it never replaces or validates the original SDK value.
     """
     rows = {name: dict(row) for name, row in rows.items() if name in ALL_SENSORS and isinstance(row, dict)}
-    times = [rows.get(name, {}).get("observed_at") for name in SENSORS]
+    times = [row.get("observed_at") for name, row in rows.items() if name in SENSORS]
     observed = min(times) if times and all(source_time(at) is not None for at in times) else None
     partial = any(name not in rows or rows[name].get("ready") is not True for name in SENSORS)
     ready = not partial and not offline and not error
