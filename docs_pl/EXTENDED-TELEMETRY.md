@@ -13,3 +13,6 @@ osobne odczyty kątów; inne firmware zachowują dotychczasowe odczyty.
 Opcjonalne kanały accel_x/y/z (m/s^2) i work_status (code) zachowują czas,
 źródło i jakość w rider.telemetry v1. Ich brak nie blokuje ruchu.
 Panel Przegląd pobiera je ze wspólnego kontraktu, bez ponownego odczytu UART.
+
+Etykieta panelu: Akcelerometr XYZ (m/s², z grawitacją). Osobne kąty IMU
+opisują orientację; XYZ nie jest przyspieszeniem jazdy bez grawitacji.
