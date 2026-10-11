@@ -146,7 +146,7 @@ export function referenceConfirmed(snapshot, command, now) {
 
 export function activationPendingResult(state, command, now) {
   const fresh = freshCalibration(state?.motion, now) && freshCalibration(state?.odometry, now) && state?.stale !== true;
-  if (!fresh) return null;
+  if (!fresh) return now - command.ts > 8 ? { status: 'unknown', reason: 'activation_confirmation_timeout_no_retry' } : null;
   const active = state.active, requested = state.requested;
   if (activationView(state, command.profile_digest, now).applied && active?.request_id === command.request_id
     && active.command_generation === command.generation && active.seq === command.seq) return { status: 'applied', reason: null };

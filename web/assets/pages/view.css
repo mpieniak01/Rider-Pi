@@ -174,7 +174,7 @@
 .page-view .c-kv > div { overflow-wrap: anywhere; }
 .page-view .c-thumb { aspect-ratio: 16 / 9; }
 .page-view .cam-img { width: 100%; height: 100%; object-fit: contain; }
-.page-view .view-operator-status { margin-top: var(--spacing-xl); }
+.page-view .view-operator-status { margin-top: var(--space-xl); }
 @media (max-width: 1050px) { .page-view .view-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .page-view .view-row { grid-template-columns: minmax(0, 1fr); } .page-view .c-card--span2 { grid-column: auto; } }
 
