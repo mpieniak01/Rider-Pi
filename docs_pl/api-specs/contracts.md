@@ -507,8 +507,8 @@ zgodą operatora na ręczne sterowanie z panelu; kliknięcie zielonego wysyła S
 Kasowanie programowego ESTOP i ARM odbywa się po jednym świadomym kliknięciu,
 sekwencyjnie, dopiero po świeżym potwierdzeniu DISARMED. Zewnętrzny ESTOP,
 brak sprzętu, brak świeżego zegara lub brak potwierdzenia nadal blokują ARM.
-Uzbrojenie nie wywołuje ruchu. Nie ma automatycznego uzbrajania ani odnawiania
-zgody; pozostaje limit 30 sekund. Przejście do innego widoku nie wysyła STOP.
+Uzbrojenie nie wywołuje ruchu. Panel używa arming_mode=operator: uzbrojenie trwa do STOP lub rozbrojenia
+przez operatora, bez limitu czasu i bez automatycznego odnawiania. Przejście do innego widoku nie wysyła STOP.
 
 Kontrakt bezpieczeństwa dodaje execution_context (panel/test),
 panel_motion_enabled i test_motion_enabled. Panel wysyła execution_context=panel.
@@ -522,3 +522,7 @@ Automatyczne pytest/CI pozostaje izolowane: prawdziwy SDK, porty sprzętowe,
 SSH i sieć robota są zablokowane niezależnie od obu flag. Flaga zgody testowej
 nie wyłącza tej izolacji. Skrypt manual_motion-probe.py wymaga obecnego
 operatora, terminala i wpisania jednorazowego potwierdzenia; po próbie wysyła STOP.
+
+Panel: arming_mode=operator, lease_remaining_s=null. Zmiana widoku i fokusu nie rozbraja robota. Próby testowe pozostają w trybie timed, z osobną zgodą. Błędy sprzętu i zewnętrzny ESTOP nadal wymuszają zatrzymanie; stare dane blokują nowe polecenia.
+
+A bounded panel movement pulse stops the drive when it ends, while operator arming remains active for the next click. STOP/disarm revokes the session; test sessions keep their timeout behavior.

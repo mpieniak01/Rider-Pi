@@ -55,8 +55,15 @@ def read_status(max_age_s: float = 3.0) -> dict:
             raise ValueError("unknown executor state")
         result = dict(state)
         result.update(stale=False, age_s=max(0.0, age))
+        operator_armed = (
+            state.get("arming_mode") == "operator"
+            and state.get("execution_context") == "panel"
+            and state.get("owner") == "manual"
+        )
         lease = state.get("lease_remaining_s", 0)
-        if isinstance(lease, bool) or not isinstance(lease, (int, float)) or not math.isfinite(lease) or lease < 0:
+        if not operator_armed and (
+            isinstance(lease, bool) or not isinstance(lease, (int, float)) or not math.isfinite(lease) or lease < 0
+        ):
             raise ValueError("invalid consent lease")
         result["can_move"] = bool(
             state.get("ready") is True
@@ -64,7 +71,7 @@ def read_status(max_age_s: float = 3.0) -> dict:
             and state.get("state") == "ARMED"
             and state.get("can_move") is True
         )
-        if result["can_move"] and age >= lease:
+        if result["can_move"] and not operator_armed and age >= lease:
             result["can_move"] = False
             result["reason"] = "consent_expired_since_snapshot"
         result["read_only"] = not result["can_move"]

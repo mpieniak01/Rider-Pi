@@ -1,12 +1,12 @@
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
 import { initI18n } from '/web/assets/i18n.js';
-import { SafetyPanel } from './safety.js?v=global-motion-1';
-import { Tasks } from './tasks.js?v=global-motion-1';
+import { SafetyPanel } from './safety.js?v=operator-arming-1';
+import { Tasks } from './tasks.js?v=operator-arming-1';
 import { Devices } from './devices.js';
-import { System } from './system.js?v=global-motion-1';
+import { System } from './system.js?v=operator-arming-1';
 import { Navigation } from './navigation.js';
-import { Calibration } from './calibration.js?v=global-motion-1';
-import { Chat } from './chat.js?v=global-motion-1';
+import { Calibration } from './calibration.js?v=operator-arming-1';
+import { Chat } from './chat.js?v=operator-arming-1';
 import { Overview } from './overview.js';
 import { events } from './transport.js';
 import { fresh, catalogKnown, safetyKnown, nowSeconds } from './model.js';

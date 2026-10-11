@@ -294,8 +294,7 @@ class MotionExecutor:
             and self.controller.deadline
             and self.gate.clock() >= self.controller.deadline
         ):
-            self.gate.disarm("motion_goal_timeout")
-            self.controller.stop()
+            self.controller.expire_goal()
             if self.pending is not None:
                 previous, self.pending = self.pending, None
                 self._ack(previous, "rejected", "motion_goal_timeout")

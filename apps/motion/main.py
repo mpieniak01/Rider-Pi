@@ -172,10 +172,17 @@ class MotionController:
     def _approach(cur: float, tgt: float, rate: float, dt: float) -> float:
         return approach(cur, tgt, rate, dt)
 
+    def expire_goal(self):
+        # A bounded panel pulse ends movement, not the operator session.
+        if self.gate.arming_mode != "operator":
+            self.gate.disarm("motion_goal_timeout")
+        if self.stop() is False:
+            self.gate.disarm("actuator_failed")
+
     def tick(self, dt: float):
         if not self.gate.can_actuate() or (self.deadline and self.gate.clock() >= self.deadline):
             if self.deadline and self.gate.clock() >= self.deadline:
-                self.gate.disarm("motion_goal_timeout")
+                self.expire_goal()
             if not self.stopped or self.deadline:
                 self.stop()
             return False

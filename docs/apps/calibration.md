@@ -177,8 +177,8 @@ red "Robot disarmed", green "Robot armed". Clicking red grants manual panel
 permission; clicking green sends STOP. Clearing software ESTOP and ARM follow
 one explicit click, sequentially, only after a fresh DISARMED confirmation.
 External ESTOP, unavailable hardware, an unconfirmed clock or a missing
-confirmation still block ARM. Arming does not move the robot. Permission expires
-after 30 seconds without automatic renewal. Changing views does not send STOP.
+confirmation still block ARM. Arming does not move the robot. The panel uses arming_mode=operator: permission remains until operator STOP
+or disarming, without a timer or automatic renewal. Changing views does not send STOP.
 
 The safety contract adds execution_context (panel/test), panel_motion_enabled
 and test_motion_enabled. The panel sends execution_context=panel. Panel consent
@@ -192,3 +192,7 @@ Automated pytest/CI remains isolated: real SDK, hardware devices, SSH and robot
 network access are blocked independently of either flag. Test consent does not
 disable isolation. manual_motion-probe.py requires a present operator, an
 interactive terminal and a one-time typed approval; it sends STOP after the probe.
+
+Panel: arming_mode=operator, lease_remaining_s=null. View and focus changes do not disarm. Physical test sessions remain timed with separate consent. Hardware faults and external ESTOP still stop the executor; stale data blocks new commands.
+
+A bounded panel movement pulse stops the drive when it ends, while operator arming remains active for the next click. STOP/disarm revokes the session; test sessions keep their timeout behavior.

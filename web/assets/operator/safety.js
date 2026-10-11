@@ -56,7 +56,7 @@ export class SafetyPanel {
   }
   async send(action, params = {}, endpoint = '/api/control', owner = 'manual') {
     const exempt = ['stop', 'disarm', 'estop'].includes(action);
-    if (action === 'arm' && (!Number.isFinite(params.lease_s) || params.lease_s <= 0 || params.lease_s > 30))
+    if (action === 'arm' && params.arming_mode !== 'operator' && (!Number.isFinite(params.lease_s) || params.lease_s <= 0 || params.lease_s > 30))
       throw new Error('invalid_lease');
     if (['move', 'turn'].includes(action) && (![params.vx, params.yaw, params.duration].every(Number.isFinite)
       || Math.abs(params.vx) > 1 || Math.abs(params.yaw) > 1 || params.duration < .01 || params.duration > .25)) throw new Error(tr('Nieprawidłowy impuls: wartości -1–1, czas 0.01–0.25 s', 'Invalid pulse: values -1–1, duration 0.01–0.25 s'));
@@ -110,7 +110,7 @@ export class SafetyPanel {
     const consent = { operator_consent: true, operator_plan: tr(
       'Operator uzbroił robot przyciskiem globalnym; przestrzeń i kabel przygotowane.',
       'Operator armed the robot with the global button; space and cable prepared.'),
-      owner: 'manual', lease_s: 30 };
+      owner: 'manual', arming_mode: 'operator' };
     try {
       if (this.state.state === 'ESTOP') {
         await this.send('clear_estop', consent, '/api/safety');
@@ -126,20 +126,26 @@ export class SafetyPanel {
     const node = document.getElementById('global-motion-toggle'); if (!node) return;
     const known = safetyKnown(this.state, this.now()) && this.clockFresh();
     const armed = known && this.state.state === 'ARMED' && this.state.can_move === true
-      && this.state.lease_remaining_s > ageOf(this.state, this.now())
+      && ((this.state.arming_mode === 'operator' && this.state.execution_context === 'panel' && this.state.owner === 'manual')
+        || this.state.lease_remaining_s > ageOf(this.state, this.now()))
       && !this.revokedGenerations.has(this.state.generation);
     node.textContent = armed ? tr('Robot uzbrojony', 'Robot armed') : tr('Robot rozbrojony', 'Robot disarmed');
     node.classList.toggle('is-armed', armed); node.classList.toggle('is-disarmed', !armed);
     node.setAttribute('aria-pressed', String(armed));
     node.disabled = this.state?.state !== 'ARMED' && (this.toggling || this.mutating || (!armed && (!known
       || this.state.ready !== true || this.state.hardware_ready !== true)));
-    node.title = armed ? tr('Kliknij, aby zatrzymać i rozbroić. Zgoda wygasa po 30 s.',
-      'Click to stop and disarm. Permission expires after 30 s.') : tr(
+    node.title = armed ? tr('Kliknij, aby zatrzymać i rozbroić. Uzbrojenie trwa do decyzji operatora.',
+      'Click to stop and disarm. Arming remains until the operator disarms.') : tr(
       'Kliknięcie zezwala na sterowanie z panelu. Przygotuj przestrzeń i kabel.',
       'Click to permit panel control. Prepare space and cable.');
   }
   stop() { this.send('stop').catch(showError); }
   suspend() {
+    // Operator permission survives focus changes and read failures; fresh data
+    // still gates every new command. Hardware faults are handled by the executor.
+    if (this.state?.arming_mode === 'operator' && this.state?.execution_context === 'panel') {
+      this.state = null; this.render(); return;
+    }
     if (this.controlsActive() && this.state?.state === 'ARMED') {
       this.revoke();
       this.stop();

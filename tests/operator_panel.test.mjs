@@ -636,6 +636,8 @@ test('one global toggle arms explicitly without a plan form or owner options', a
   assert.equal(writes[0].body.owner, 'manual');
   assert.equal(writes[0].body.operator_consent, true);
   assert.equal(writes[0].body.execution_context, 'panel');
+  assert.equal(writes[0].body.arming_mode, 'operator');
+  assert.equal(writes[0].body.lease_s, undefined);
   assert.equal(writes[0].body.test_operator_consent, undefined);
   assert.equal(button.textContent, 'Robot rozbrojony', 'HTTP acceptance never turns button green');
   f.setState(armed());
@@ -670,4 +672,14 @@ test('test lease never enables panel direction controls', async () => {
   assert.equal(f.panel.can('manual'), false);
   f.panel.move('forward');
   assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+
+test('operator arming survives thirty seconds and focus suspension without auto STOP', async () => {
+  const f = await fixture({ ...armed(), execution_context: 'panel', arming_mode: 'operator', lease_remaining_s: null });
+  assert.equal(f.panel.can('manual'), true);
+  f.panel.suspend();
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+  f.setState({ ...armed(), execution_context: 'panel', arming_mode: 'operator', lease_remaining_s: null });
+  assert.equal(f.panel.can('manual'), true);
+  assert.equal(f.elements.get('global-motion-toggle').textContent, 'Robot uzbrojony');
 });

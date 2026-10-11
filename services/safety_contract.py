@@ -66,7 +66,18 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("specific operator_plan required")
         if payload.get("owner", "manual") not in OWNERS:
             raise ValueError("invalid owner")
-        command["lease_s"] = _number(payload.get("lease_s", 10), "lease_s", 0.1, 30)
+        mode = payload.get("arming_mode", "timed")
+        if not isinstance(mode, str) or mode not in {"timed", "operator"}:
+            raise ValueError("invalid_arming_mode")
+        if mode == "operator":
+            if (
+                payload.get("execution_context", "panel") != "panel"
+                or payload.get("owner", "manual") != "manual"
+                or "lease_s" in payload
+            ):
+                raise ValueError("operator_arming_panel_only")
+        else:
+            command["lease_s"] = _number(payload.get("lease_s", 10), "lease_s", 0.1, 30)
         command["owner"] = payload.get("owner", "manual")
     if action in ACTUATORS | {"arm", "clear_estop"}:
         generation = payload.get("generation")
