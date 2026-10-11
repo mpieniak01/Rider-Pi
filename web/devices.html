@@ -16,7 +16,10 @@
 <main class="layout-main operator-shell">
 <header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Urządzenia" data-en="Rider-Pi — Devices">Rider-Pi — Urządzenia</h1></header>
 <p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
-<div class="operator-grid"><section class="c-card"><h2 data-pl="Podgląd obrazu" data-en="Image preview">Podgląd obrazu</h2><p data-pl="Wyłączenie odświeżania obrazu nie zatrzymuje procesu kamery ani zadania. RAW to klatka; capture to właściciel urządzenia; URL to źródło podglądu." data-en="Disabling image refresh does not stop camera capture or a task. RAW is a frame; capture is the device owner; URL is the preview source.">Wyłączenie odświeżania obrazu nie zatrzymuje procesu kamery ani zadania. RAW to klatka; capture to właściciel urządzenia; URL to źródło podglądu.</p>
+<div class="operator-grid"><section class="c-card"><h2 data-pl="Kamera i podgląd" data-en="Camera and preview">Kamera i podgląd</h2>
+<div class="operator-row"><button id="camera-start" type="button" class="c-btn" disabled data-pl="Włącz kamerę i podgląd" data-en="Turn on camera and preview">Włącz kamerę i podgląd</button><button id="camera-stop" type="button" class="c-btn" disabled data-pl="Wyłącz kamerę" data-en="Turn off camera">Wyłącz kamerę</button></div>
+<p id="camera-power-state" role="status" aria-live="polite">Odczytywanie stanu kamery…</p>
+<p data-pl="Włączenie kamery uruchamia podgląd RAW. Odświeżanie obrazu można zatrzymać osobno. Wyłączenie kończy zadanie podglądu; kamera pozostaje aktywna, jeśli korzysta z niej inne zadanie." data-en="Turning on the camera starts the RAW preview. Image refresh can be stopped separately. Turning off ends the preview task; the camera remains active if another task uses it.">Włączenie kamery uruchamia podgląd RAW. Odświeżanie obrazu można zatrzymać osobno. Wyłączenie kończy zadanie podglądu; kamera pozostaje aktywna, jeśli korzysta z niej inne zadanie.</p>
 <div class="operator-row"><select id="preview-kind" aria-label="Preview frame"><option value="raw">RAW</option><option value="proc">PROC</option><option value="ssd">SSD</option><option value="tracker">TRACKER</option></select><button id="preview-toggle" type="button" class="c-btn" data-pl="Włącz odświeżanie obrazu" data-en="Enable image refresh">Włącz odświeżanie obrazu</button><button id="preview-refresh" type="button" class="c-btn" data-pl="Pobierz jedną klatkę" data-en="Fetch one frame">Pobierz jedną klatkę</button></div>
 <form id="preview-url-form"><label>URL <input id="preview-url" type="text" placeholder="/vision/cam"></label><button type="submit" class="c-btn" data-pl="Pobierz z URL" data-en="Fetch URL">Pobierz z URL</button></form>
 <p id="camera-preview-state"></p><p id="camera-age">—</p><p id="camera-display-age">—</p><img id="camera-image" class="operator-media" alt="Camera snapshot" hidden>
@@ -25,7 +28,7 @@
 <h2 data-pl="Właściciele i konsumenci" data-en="Owners and consumers">Właściciele i konsumenci</h2><p data-pl="Skany właścicieli co 10 sekund. Wejście na stronę nie uruchamia urządzeń ani usług." data-en="Owner scans every 10 seconds. Opening this page does not start devices or services.">Skany właścicieli co 10 sekund. Wejście na stronę nie uruchamia urządzeń ani usług.</p><div id="device-list" class="operator-grid"></div>
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=motion-curves-14"></script>
+<script type="module" src="/web/assets/operator/app.js?v=camera-preview-1"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js"></script>
 </body>

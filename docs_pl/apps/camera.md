@@ -183,3 +183,14 @@ Zobacz: [do./face-lcd.md](./face-lcd.md)
 - [do./face-lcd.md](./face-lcd.md) — rendering na LCD
 
 **Ostatnia aktualizacja:** 2025-01
+
+## Kamera w panelu urządzeń
+
+Na stronie `/devices` przycisk **Włącz kamerę i podgląd** uruchamia pasywne
+zadanie `s2_camera_preview` i odświeżanie obrazu RAW. **Wyłącz kamerę** kończy
+to zadanie oraz odświeżanie obrazu w bieżącej karcie. Inni konsumenci mogą
+pozostawić kamerę aktywną; panel pokazuje ich nazwy. Samo wejście na stronę
+nie uruchamia kamery. Brak świeżego katalogu blokuje przełączniki.
+
+Przyciski odświeżania i pobrania jednej klatki sterują tylko podglądem.
+Usługi start/stop/restart pozostają na stronie `/system` w trybie administracji.
