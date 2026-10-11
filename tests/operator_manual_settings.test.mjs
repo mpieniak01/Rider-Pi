@@ -234,14 +234,25 @@ test('all panel presentations follow device units, including feedback and captio
   const title={},duration={parentElement:{querySelector:()=>title,append(){}},setAttribute(){}},feedback={};
   const a=await screen({current},{nodes:{'setting-forward-duration':duration,'manual-settings-feedback':feedback}});
   assert.equal(duration.value,.25);assert.equal(duration.max,1);
-  assert.equal(title.textContent,'Duration (s)');
+  assert.equal(title.textContent,'Pulse (s)');
   assert.match(feedback.textContent,/3 level\/s/);
   assert.match(feedback.textContent,/Reversal: 0 s/);
   assert.equal(a.panel.range('duration'),'0,01–1 s');
 });
-test('formatter preserves finer saved values instead of rounding them to another setting',()=>{
+test('formatter rounds labels to descriptor precision while inputs retain exact values',()=>{
   const current=row();
-  assert.equal(model.formatParameter(current,'speed',.0055,'en'),'0.55%');
-  assert.equal(model.formatParameter(current,'duration',.2505,'en'),'250.5 ms');
+  assert.equal(model.formatParameter(current,'speed',.0055,'en'),'0.6%');
+  assert.equal(model.formatParameter(current,'duration',.2505,'en'),'251 ms');
   assert.equal(model.formatParameter(null,'duration',.25),'—');
+});
+
+test('computed repeating fractions use device precision without changing editable values',()=>{
+  const current=row();
+  assert.equal(model.formatParameter(current,'speed',.25/(1/.5+1/1),'pl'),'8,3%');
+  assert.equal(model.formatParameter(current,'speed',.25/(1/.5+1/1),'en'),'8.3%');
+  assert.equal(model.formatParameter(current,'speed',.6,'pl'),'60%');
+  assert.equal(model.formatParameter(current,'speed',NaN,'pl'),'—');
+  assert.equal(model.displayValue(current,'speed',.0055),.55);
+  assert.equal(model.displayValue(current,'duration',.2505),250.5);
+  assert.equal(current.values.linear_rate,3);
 });

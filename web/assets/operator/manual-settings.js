@@ -1,7 +1,7 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
 import { showError, text, tr, el } from './ui.js';
-import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=command-labels-11';
+import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=panel-precision-12';
 
 const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 // Display units only: canonical Pi values stay normalized commands and seconds.

@@ -33,10 +33,8 @@ export function displayValue(row, key, value) {
 export function formatParameter(row, key, value, lang='pl') {
   if(!Number.isFinite(value) || !parameter(row,key))return '—';
   const p=parameter(row,key), shown=displayValue(row,key,value);
-  // Precision is a display hint, never permission to hide a finer saved value.
-  const exact=String(shown), exponent=Number(exact.split('e')[1]||0);
-  const decimals=Math.max(0,(exact.split('e')[0].split('.')[1]?.length||0)-exponent);
-  const precision=Math.min(20,Math.max(p.display_precision||0,decimals));
+  // Round display labels using Pi's precision; editable values remain unchanged.
+  const precision=Number.isInteger(p.display_precision) ? Math.max(0,Math.min(20,p.display_precision)) : 0;
   const number=shown.toLocaleString(lang,{maximumFractionDigits:precision,useGrouping:false});
   return number+(p.display_unit.startsWith('%')?'':' ')+p.display_unit;
 }
