@@ -92,3 +92,5 @@
 }
 
 [data-direction].is-held { outline: 2px solid #73c8ff; background: #24516c; }
+
+.motion-curve-setting { max-width: 17rem; margin: .65rem 0; }

@@ -1,7 +1,7 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
 import { showError, text, tr, el } from './ui.js';
-import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=motion-curves-13';
+import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=motion-curves-14';
 
 const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 // Display units only: canonical Pi values stay normalized commands and seconds.
@@ -79,7 +79,7 @@ export class ManualSettings {
   }
   build(){
     const target=document.getElementById('manual-direction-settings');if(!target)return;
-    const modeLabel=el('label','motion-setting-field');
+    const modeLabel=el('label','motion-setting-field motion-curve-setting');
     modeLabel.append(el('span','',tr('Przebieg zmiany siły','Command curve')));
     const modeSelect=el('select');modeSelect.id='setting-ramp-mode';
     modeSelect.addEventListener('change',()=>this.edit(()=>{this.pending.ramp_mode=Number(modeSelect.value);}));
@@ -285,9 +285,13 @@ export class ManualSettings {
     const modeSelect=document.getElementById('setting-ramp-mode');
     if(modeSelect){
       const options=known?this.state.parameter_schema.ramp_modes||[]:[];
-      modeSelect.replaceChildren(...options.map(item=>{
-        const option=el('option','',tr(item.label_pl,item.label_en));option.value=item.value;return option;
-      }));
+      const signature=JSON.stringify(options)+this.language();
+      if(modeSelect.dataset.optionsSignature!==signature){
+        modeSelect.replaceChildren(...options.map(item=>{
+          const option=el('option','',tr(item.label_pl,item.label_en));option.value=item.value;return option;
+        }));
+        modeSelect.dataset.optionsSignature=signature;
+      }
       modeSelect.disabled=!editable || !options.length;
       modeSelect.value=effective?.values.ramp_mode??0;
       modeSelect.title=Number(modeSelect.value)===2
