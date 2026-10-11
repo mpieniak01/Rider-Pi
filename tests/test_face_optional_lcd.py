@@ -68,3 +68,29 @@ def test_reports_submitted_frame_and_accepted_power_off():
     assert reports[0]["power_known"] is True
     assert reports[0]["frame"]["physical_validity"] == "unverified"
     assert reports[1]["on"] is False
+
+
+def test_vendor_shared_spi_reopens_only_after_free_ownership(monkeypatch):
+    import os
+
+    from apps.ui.face import lcd_sink
+
+    monkeypatch.setattr(lcd_sink, "_CLOSED_SPI", None)
+    state = {"free": True, "holders": []}
+    calls = []
+    spi = SimpleNamespace(open=lambda *address: calls.append(("open", address)), close=lambda: calls.append("close"))
+
+    def factory():
+        state.update(free=False, holders=[{"pid": os.getpid(), "path": "/dev/spidev0.0"}])
+        return SimpleNamespace(device=SimpleNamespace(SPI=spi), ShowImage=lambda image: None)
+
+    first = LcdSink(probe=lambda: state, factory=factory, power_off=lambda: None)
+    first.close()
+    state.update(free=False, holders=[{"pid": 999, "path": "/dev/spidev0.0"}])
+    with pytest.raises(LcdUnavailable):
+        LcdSink(probe=lambda: state, factory=factory, power_off=lambda: None)
+    assert calls == ["close"]
+    state.update(free=True, holders=[])
+    second = LcdSink(probe=lambda: state, factory=factory, power_off=lambda: None)
+    assert calls == ["close", ("open", (0, 0))]
+    second.close()

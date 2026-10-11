@@ -49,13 +49,19 @@ async function fixture() {
         ? (reply.meta ? 'application/vnd.rider.api+json;version=1' : 'application/json') : null }, json: async () => reply };
     } });
   const modules = new Map();
-  async function load(name) {
-    if (modules.has(name)) return modules.get(name);
-    const module = new vm.SourceTextModule(await readFile(path.join(assets, name), 'utf8'), { context, identifier: name });
-    modules.set(name, module); await module.link(specifier => load(path.basename(specifier).split("?")[0])); return module;
+  function load(name) {
+    if (!modules.has(name)) modules.set(name, readFile(path.join(assets, name), 'utf8').then(source =>
+      new vm.SourceTextModule(source, { context, identifier: name })));
+    return modules.get(name);
   }
   return { document, elements, calls, replies, advance: seconds => { clock += seconds; },
-    async load(name) { const module = await load(name); await module.evaluate(); return module.namespace; } };
+    async load(name) {
+      const module = await load(name);
+      if (module.status === 'unlinked') await module.link(specifier => load(path.basename(specifier).split('?')[0]));
+      if (module.status === 'linked') await module.evaluate();
+      return module.namespace;
+    } };
+
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 

@@ -3,12 +3,39 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 
 from PIL import Image
 
 from apps.ui.status_panel import ownership_permits
+
+_CLOSED_SPI = None
+
+
+def _owned_spi_address(snapshot):
+    paths = {row.get("path") for row in snapshot.get("holders", []) if row.get("pid") == os.getpid()}
+    addresses = [
+        tuple(map(int, match.groups()))
+        for path in paths
+        if isinstance(path, str) and (match := re.fullmatch(r"/dev/spidev(\d+)\.(\d+)", path))
+    ]
+    return addresses[0] if len(addresses) == 1 else None
+
+
+def _reopen_shared_spi():
+    global _CLOSED_SPI
+    if _CLOSED_SPI is None:
+        return None
+    spi, address = _CLOSED_SPI
+    try:
+        spi.open(*address)
+    except Exception:
+        spi.close()
+        raise
+    _CLOSED_SPI = None
+    return spi
 
 
 class LcdUnavailable(RuntimeError):
@@ -36,7 +63,17 @@ class LcdSink:
             def factory():
                 return LCDRenderer(FaceConfig(lcd_bl_pin=0))
 
-        self.driver = factory()
+        reopened = _reopen_shared_spi()
+        try:
+            self.driver = factory()
+        except Exception:
+            if reopened is not None:
+                reopened.close()
+            raise
+        # Vendor lcdconfig keeps SpiDev in a shared constructor default. Retain
+        # only the address observed for our descriptor so a later start can
+        # reopen that handle after a stop released ownership.
+        self._spi_address = _owned_spi_address(self.probe())
         self.power_off = power_off
         self.report = report
         self._last_probe = self.clock()
@@ -76,6 +113,7 @@ class LcdSink:
             )
 
     def close(self):
+        global _CLOSED_SPI
         if getattr(self, "_closed", False):
             return
         self._closed = True
@@ -83,6 +121,8 @@ class LcdSink:
         spi = getattr(device, "SPI", None)
         if spi is not None:
             spi.close()
+            if self._spi_address is not None and callable(getattr(spi, "open", None)):
+                _CLOSED_SPI = (spi, self._spi_address)
         module = sys.modules.get(type(self.driver).__module__)
         raw = getattr(module, "_RAWSPI", None)
         raw_spi = raw.get("spi") if isinstance(raw, dict) else None

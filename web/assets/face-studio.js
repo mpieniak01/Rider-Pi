@@ -9,7 +9,7 @@
   let fields=[], bounds={}, meta, settings, gestures=[], spec, selected=null, poses=[];
   let playing=false, at=0, startedAt=0, startedTime=0, dirty=false, settingsDirty=false, valid=true;
   let busy=false, frameAbort=null, imageURL=null, frameBlob=null, revision=0, rendered='';
-  let timer=null, pollTimer=null, runtimeState={}, settingsRevision=null;
+  let timer=null, pollTimer=null, runtimeState={}, settingsRevision=null, renderError=false, retries=0;
   const status=(pl,en=pl)=>{$('studio-status').textContent=tr(pl,en);};
   function errorMessage(code) {
     const map={lcd_unavailable:['LCD jest niedostępny na tym urządzeniu.','LCD is unavailable on this device.'],face_settings_conflict:['Ustawienia zmieniono w innej karcie. Wczytaj je przed zapisem.','Settings changed in another tab. Reload before saving.'],name_required:['Wpisz nazwę gestu.','Enter a gesture name.'],unknown_gesture:['Gest nie jest dostępny. Odśwież bibliotekę.','Gesture is unavailable. Refresh the library.'],gesture_not_active:['Dodaj gest do zestawu i zapisz ustawienia.','Include the gesture in the set and save settings.'],lcd_owned_or_unknown:['LCD jest używany przez inną funkcję.','LCD is used by another feature.'],face_not_running:['Buźka nie jest uruchomiona.','The face is not running.'],library_full:['Biblioteka jest pełna.','Library is full.']};
@@ -30,7 +30,7 @@
     $('lcd-play').disabled=settingsDirty||dirty||!valid||!selected?.id;
   }
   function invalidate() {
-    revision++;rendered='';if(frameAbort)frameAbort.abort();wake();
+    revision++;rendered='';retries=0;if(frameAbort)frameAbort.abort();wake();
   }
   function updateTuning() {
     $('intensity-value').textContent=$('intensity').value+'%';
@@ -117,9 +117,10 @@
     $('library').replaceChildren();gestures.forEach(g=>$('library').add(new Option((g.builtin?tr('Wbudowany: ','Built-in: '):'')+(g.builtin&&names[g.name]?tr(...names[g.name]):g.name),g.id)));
     const item=gestures.find(g=>g.id===id)||gestures[0];if(item){$('library').value=item.id;load(item);}
   }
+  function clearImage(){if(imageURL)URL.revokeObjectURL(imageURL);imageURL=null;frameBlob=null;$('png').disabled=true;$('studio-image').removeAttribute('src');}
   function setImage(blob) {
     if(imageURL)URL.revokeObjectURL(imageURL);
-    frameBlob=blob;imageURL=URL.createObjectURL(blob);$('studio-image').src=imageURL;
+    $('png').disabled=false;frameBlob=blob;imageURL=URL.createObjectURL(blob);$('studio-image').src=imageURL;
   }
   async function render() {
     if(busy||!spec||!valid||document.hidden)return;
@@ -133,13 +134,13 @@
         body:live?undefined:JSON.stringify({...spec,...tuning(),simulate_speech:$('speech-preview').checked,at:time})
       });
       if(response.status===429){retry=true;return;}
-      if(live&&response.status===404){$('studio-image').removeAttribute('src');$('image-caption').textContent=tr('Buźka nie jest uruchomiona.','The face is not running.');return;}
+      if(live&&response.status===404){clearImage();$('image-caption').textContent=tr('Buźka nie jest uruchomiona.','The face is not running.');return;}
       if(!response.ok)throw Error(tr('Nie udało się odczytać obrazu. Sprawdź czas i tempo.','Could not read the image. Check time and tempo.'));
       const blob=await response.blob();if(stamp!==revision||document.hidden)return;
-      setImage(blob);rendered=key;
+      setImage(blob);rendered=key;retries=0;if(renderError){renderError=false;status(dirty?'Niezapisany gest.':'Gest wczytany.',dirty?'Unsaved gesture.':'Gesture loaded.');}
       $('image-caption').textContent=live?tr('Obraz aktywnego wykonawcy buźki.','Image from the active face worker.'):$('speech-preview').checked?tr('Podgląd · symulacja mówienia','Preview · simulated speech'):tr('Podgląd gestu · bez LCD','Gesture preview · without LCD');
       if(!live){$('scrub').value=Math.round(time*1000);$('time').textContent=Math.round(time*1000)+' ms';}
-    }catch(error){if(error.name!=='AbortError'){playing=false;status(error.message);}}finally{busy=false;frameAbort=null;if(!document.hidden){if(retry)timer=setTimeout(wake,1000);else if(stamp!==revision)wake();}}
+    }catch(error){if(error.name!=='AbortError'){playing=false;renderError=true;retry=++retries<=3;status(error.message==='Failed to fetch'?tr('Brak połączenia. Ponawiam odczyt obrazu.','Connection lost. Retrying the image.'):error.message);}}finally{busy=false;frameAbort=null;if(!document.hidden){if(retry)timer=setTimeout(wake,1000);else if(stamp!==revision)wake();}}
   }
   function wake() {
     if(timer!==null){clearTimeout(timer);timer=null;}
@@ -158,7 +159,7 @@
   $('pause').onclick=()=>{playing=false;wake();};$('rewind').onclick=()=>{playing=false;at=0;invalidate();};
   $('scrub').oninput=()=>{playing=false;at=Number($('scrub').value)/1000;invalidate();};
   $('zoom').onchange=()=>{$('studio-image').style.maxWidth=$('zoom').value+'px';};
-  $('source').onchange=()=>{playing=false;const live=$('source').value==='live';['play','pause','rewind','scrub','speech-preview'].forEach(id=>$(id).disabled=live);invalidate();};
+  $('source').onchange=()=>{playing=false;clearImage();const live=$('source').value==='live';['play','pause','rewind','scrub','speech-preview'].forEach(id=>$(id).disabled=live);invalidate();};
   ['style','intensity','tempo','transition'].forEach(id=>$(id).addEventListener(id==='intensity'||id==='tempo'?'input':'change',updateTuning));
   $('speech-preview').onchange=()=>{invalidate();};
   ['power-mode','idle'].forEach(id=>$(id).onchange=()=>{settingsDirty=true;updateSettingsStatus();});

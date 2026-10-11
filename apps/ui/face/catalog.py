@@ -51,11 +51,14 @@ def read_json(path):
 
 
 def atomic_write(path, data):
+    encoded = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False)
+    if len(encoded.encode("utf-8")) > MAX_BYTES:
+        raise ValueError("face_file_too_large")
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".face-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, ensure_ascii=False, indent=2, allow_nan=False)
+            handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)

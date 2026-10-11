@@ -156,3 +156,12 @@ def test_invalid_gesture_does_not_stop_existing_worker(client):
 def test_slow_tempo_keeps_full_authored_timeline(client):
     body = {"name": "Slow", "duration": 10, "tempo": 0.5, "at": 20}
     assert client.post("/api/face-studio/frame", json=body).status_code == 200
+
+
+def test_oversized_local_write_keeps_previous_library(client, monkeypatch):
+    path = catalog.library_path()
+    catalog.atomic_write(path, {"small": "kept"})
+    monkeypatch.setattr(catalog, "MAX_BYTES", 30)
+    with pytest.raises(ValueError, match="face_file_too_large"):
+        catalog.atomic_write(path, {"large": "x" * 100})
+    assert catalog.read_json(path) == {"small": "kept"}

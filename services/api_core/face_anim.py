@@ -104,7 +104,7 @@ class _Animator:
     def stop(self):
         self._stop.set()
         if self._thr and self._thr is not threading.current_thread():
-            self._thr.join(timeout=0.45)
+            self._thr.join(timeout=3.5)
 
     def latest_png(self):
         with self._frame_lock:
@@ -164,6 +164,7 @@ class _Animator:
                         FileSink(OUT_LATEST).present(image)
                     with _STATE_LOCK:
                         STATE["frame_count"] += 1
+                        STATE["last_present_ms"] = round(present_ms, 3)
                 with _STATE_LOCK:
                     STATE.update(
                         last_ts=time.time(),
@@ -272,8 +273,14 @@ def play(payload):
         )
         code = "lcd_unavailable" if unavailable else str(error)
         with _STATE_LOCK:
-            STATE["error"] = code
-        return {"ok": False, "error": code, "status": 503 if unavailable else 409 if "lcd_" in code else 400}
+            if not STATE["playing"]:
+                STATE["error"] = code
+        return {
+            "ok": False,
+            "error": code,
+            "detail": str(error),
+            "status": 503 if unavailable else 409 if "lcd_" in code else 400,
+        }
 
 
 def stop(_payload=None):
