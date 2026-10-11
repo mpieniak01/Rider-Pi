@@ -4,7 +4,7 @@ import { text, tr, statusLabel, showError } from './ui.js';
 export class SafetyPanel {
   constructor(onChange = () => {}, { interactive = true } = {}) {
     this.interactive = interactive; this.upperOffset = 0; this.lowerOffset = 0;
-    this.state = null; this.onChange = onChange; this.seq = -1; this.generation = null;
+    this.lastArmed = false; this.state = null; this.onChange = onChange; this.seq = -1; this.generation = null;
     this.history = []; this.pending = new Map(); this.mutating = false;
     this.revokedGenerations = new Set();
     this.clockReady = false; this.clockObserved = 0;
@@ -34,6 +34,7 @@ export class SafetyPanel {
     while (this.revokedGenerations.size > 16) this.revokedGenerations.delete(this.revokedGenerations.values().next().value);
   }
   update(state) {
+    if (state) this.lastArmed = state.state === 'ARMED';
     this.state = state;
     if (this.generation !== state?.generation) { this.generation = state?.generation; this.seq = -1; }
     this.seq = Math.max(this.seq, Number.isInteger(state?.last_seq) ? state.last_seq : -1);
@@ -109,7 +110,7 @@ export class SafetyPanel {
   async toggleMotion() {
     if (this.toggling) return;
     // Disarming/STOP never needs a fresh clock or an authorization envelope.
-    if (this.state?.state === 'ARMED') { await this.send('stop'); return; }
+    if (this.state?.state === 'ARMED' || (!this.state && this.lastArmed)) { await this.send('stop'); return; }
     if (!safetyKnown(this.state, this.now()) || !this.clockFresh()
       || this.state.ready !== true || this.state.hardware_ready !== true) return;
     const epoch = this.toggleEpoch;
@@ -136,12 +137,13 @@ export class SafetyPanel {
       && ((this.state.arming_mode === 'operator' && this.state.execution_context === 'panel' && this.state.owner === 'manual')
         || this.state.lease_remaining_s > ageOf(this.state, this.now()))
       && !this.revokedGenerations.has(this.state.generation);
-    node.textContent = armed ? tr('Robot uzbrojony', 'Robot armed') : tr('Robot rozbrojony', 'Robot disarmed');
+    const unknownArmed = !this.state && this.lastArmed;
+    node.textContent = unknownArmed ? tr('Stan niepotwierdzony — rozbrój', 'State unconfirmed — disarm') : armed ? tr('Robot uzbrojony', 'Robot armed') : tr('Robot rozbrojony', 'Robot disarmed');
     node.classList.toggle('is-armed', armed); node.classList.toggle('is-disarmed', !armed);
     node.setAttribute('aria-pressed', String(armed));
-    node.disabled = this.state?.state !== 'ARMED' && (this.toggling || this.mutating || (!armed && (!known
+    node.disabled = !unknownArmed && this.state?.state !== 'ARMED' && (this.toggling || this.mutating || (!armed && (!known
       || this.state.ready !== true || this.state.hardware_ready !== true)));
-    node.title = armed ? tr('Kliknij, aby zatrzymać i rozbroić. Uzbrojenie trwa do decyzji operatora.',
+    node.title = (armed || unknownArmed) ? tr('Kliknij, aby zatrzymać i rozbroić. Uzbrojenie trwa do decyzji operatora.',
       'Click to stop and disarm. Arming remains until the operator disarms.') : tr(
       'Kliknięcie zezwala na sterowanie z panelu. Przygotuj przestrzeń i kabel.',
       'Click to permit panel control. Prepare space and cable.');

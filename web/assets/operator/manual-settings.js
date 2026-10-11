@@ -32,7 +32,7 @@ export class ManualSettings {
       this.state=null;this.paint();this.safety.render();throw error;
     }
   }
-  async save(){
+  async save(retryConflict=true){
     if(this.busy || !Object.keys(this.pending).length)return;
     this.busy=true;this.safety.render();
     const patch=this.pending;this.pending={};
@@ -44,10 +44,15 @@ export class ManualSettings {
     } catch(error) {
       this.state=null;
       try{await this.refresh();}catch{}
-      throw error;
+      if(error.status===409 && retryConflict && settingsValid(this.state,nowSeconds())) {
+        this.pending={...patch,...this.pending};
+      } else {
+        if(error.status===409) error.message=tr('Konflikt ustawień: zapis nie został zastosowany. Sprawdź wartości robota i ponów zmianę.', 'Settings conflict: write was not applied. Check robot values and retry.');
+        throw error;
+      }
     } finally {
       this.busy=false;this.paint();this.safety.render();
-      if(Object.keys(this.pending).length)this.save().catch(showError);
+      if(Object.keys(this.pending).length)this.save(false).catch(showError);
     }
   }
   paint(){

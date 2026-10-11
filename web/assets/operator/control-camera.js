@@ -44,6 +44,7 @@ export class ControlCamera {
     this.cancel(); this.loaded = null; this.lastKey = null; this.failed = true; this.render();
   }
   render() {
+    this.image.alt = tr('Podgląd kamery robota', 'Robot camera preview');
     const frame = cameraFrame(this.meta, this.kind);
     const loaded = cameraFrame({ shown: { exists: !!this.loaded, observed_at: this.loaded?.ts } }, 'shown');
     const current = frame.fresh && loaded.fresh && this.loaded?.kind === this.kind;
