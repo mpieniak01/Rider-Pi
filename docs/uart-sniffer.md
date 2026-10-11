@@ -1,12 +1,8 @@
-# Opcjonalny sniffer UART
+# Optional UART sniffer
 
-Obserwator korzysta z istniejącego właściciela UART. Nie otwiera drugiego portu,
-nie odpytuje rejestrów, nie wysyła poleceń i nie zmienia uzbrojenia.
-Domyślnie zapis jest wyłączony. Sterowanie wymaga tego samego użytkownika systemu.
-
-## Podłączanie i odłączanie
-
-Po załadowaniu nowego adaptera przez wykonawcę przy jego następnym uruchomieniu:
+The tap observes the existing UART owner. It never opens a second port, reads
+extra registers, changes arming, or sends robot commands. Recording is disabled
+by default. Attach/detach controls must run as the same operating-system user.
 
 ~~~sh
 python3 scripts/uart_sniffer.py list
@@ -15,62 +11,75 @@ python3 scripts/uart_sniffer.py status --pid PID
 python3 scripts/uart_sniffer.py detach --pid PID
 ~~~
 
-Attach rozpoczyna zapis; detach kończy sesję i zamyka plik.
-Lekki obserwator pozostaje w procesie bez zapisu, aby umożliwić ponowne podłączenie.
-Komendy nie uruchamiają ani nie restartują wykonawcy. Po restarcie zapis jest wyłączony.
-Nie uruchamiaj drugiego czytnika /dev/ttyAMA0.
+Status returns the exact capture path. Private JSONL captures live in
+/tmp/rider-uart-sniffer-UID with mode 600. Sessions last 1–300 seconds with an
+8 MiB limit and a bounded 1024-event queue. Overflow drops records rather than
+blocking UART. The final event reports drops, including queued events discarded
+at detach. Multiple sessions have no shared storage cap; manage files manually.
 
-Status zwraca dokładną ścieżkę pliku. Pliki mają uprawnienia 600 w prywatnym katalogu
-/tmp/rider-uart-sniffer-UID/. Sesja trwa 1–300 sekund i ma limit 8 MiB.
-Przekroczenie limitu automatycznie kończy zapis. Bufor mieści 1024 zdarzenia;
-przepełnienie powoduje utratę wpisów, nie blokuje UART. Końcowy wpis podaje
-liczbę pominiętych zdarzeń, również tych pozostałych w kolejce przy odłączeniu.
-Pliki pozostają po sesji: skopiuj potrzebne na WSL i usuń zbędne ręcznie.
-Wiele sesji nie ma wspólnego limitu dysku ani automatycznej rotacji.
-
-## Dekodowanie na WSL
+## Offline decoding and analysis
 
 ~~~sh
-python3 scripts/uart_sniffer.py decode capture.jsonl > frames.jsonl
+python3 scripts/uart_sniffer.py decode capture.jsonl --firmware R-1.1.6 > frames.jsonl
+python3 scripts/uart_sniffer.py analyze capture.jsonl --firmware R-1.1.6 \
+  --output report.json --markdown report.md
 ~~~
 
-Dekoder łączy fragmenty ramek, sprawdza długość i checksum oraz pokazuje adres,
-tryb i surowe dane. Nazwy rejestrów odpowiadają sprawdzonemu SDK 1.4.2.
-Nieznane adresy pozostają unknown. Zapis nie potwierdza fizycznego wykonania ruchu.
-Czas ramki to czas ostatniego fragmentu obserwowanego przez aplikację,
-nie czas każdego bajtu na przewodzie. TX opisuje bajty przyjęte przez serial.write,
-nie dowodzi ich odbioru przez firmware. Błędy read/write są rejestrowane i przekazywane
-właścicielowi bez zmiany ich obsługi.
+The report includes frame checksums, raw payloads, host chunk times, named
+registers, command changes, write intervals, sensor ranges and read transactions.
+It decodes action IDs, performance, balance, height/roll setpoints, periodic
+generators, neutral command byte 128, battery, work status and the confirmed
+R-1.1.6 IMU packet. Acceleration includes gravity. SDK-mapped setpoints are
+not measured positions; command bytes are not physical velocity.
 
-FlushInput / reset_input_buffer oznacza lukę: usuniętych bajtów nie odczytujemy.
-Protokół nie ma identyfikatorów żądań; opóźnione odpowiedzi na identyczne odczyty
-mogą być niejednoznaczne. Sniffer Rider-Pi obejmuje ruch i istniejące odczyty czujników;
-nie przechwytuje HTTP i nie wiąże ramek z identyfikatorem żądania panelu.
-Adapter instaluje obserwator po konstruktorze SDK, więc pierwsze odczyty konstruktora
-nie są rejestrowane. Pełny zapis elektryczny wymaga zewnętrznego analizatora.
+The controller format comes from an observed firmware response or an explicit
+--firmware argument. Earlier samples with unknown format remain raw.
+Action labels are documentation mappings, not hardware validation.
+Writes do not confirm reception or physical execution. ActionTime is not an ACK.
 
-## Aplikacja dostawcy — sesja operatora
+Read pairing uses address, length and an observation window (100 ms by default,
+--response-timeout-ms). This is an analysis setting, not a motion timeout.
+Overlapping identical reads are marked ambiguous. Late identical responses
+cannot always be distinguished, since the protocol has no transaction IDs.
 
-Najpierw zakończ bieżącego właściciela UART normalną procedurą.
-Poniższa komenda wykonuje oryginalną aplikację: inicjalizacja może zmienić
-pozycję lub wywołać ruch. Nie uruchamiać w CI ani w testach jednostkowych.
+## Observation limits and deeper capture
+
+SerialTap observes serial calls, not every byte on the wire. Flushes create
+continuity gaps whose discarded data is unknown. TX records accepted serial
+writes; RX records data read by the owner. Constructor reads precede tap
+installation. The tap does not correlate HTTP request IDs.
+
+An external logic analyzer on the Pi/controller UART can capture discarded
+bytes and wire timing. A separate tap on the controller/motor bus is needed
+for internal commands. Identify the interface, signal levels, pins and
+directions from the correct board schematic before connecting equipment.
+Do not assume UART, RS485, CAN or voltage levels.
+
+External exports can use JSONL direction tx/rx, hex bytes and monotonic time_ns,
+with start/end metadata and gap records. Apply the XGO decoder only to an
+interface that actually carries XGO frames; a motor bus may use another protocol.
+The report identifies input provenance separately from serial-call timing.
+
+## Vendor application
+
+Only in an operator-approved actuator session, release the existing UART owner
+and run the vendor application using its original working directory/interpreter:
 
 ~~~sh
 python3 /home/pi/robot/scripts/uart_sniffer_vendor.py --operator-session /home/pi/RaspberryPi-CM4-main/app/app_TwoCar.py
 ~~~
 
-Użyj dotychczasowego katalogu roboczego oraz interpretera aplikacji dostawcy.
-W drugim terminalu uruchom list / attach / status / detach z repo Rider-Pi.
-Launcher obserwuje /dev/ttyAMA0; nie zmienia plików SDK ani globalnych pakietów.
-Ruch aplikacji dostawcy nie jest chroniony bramą Rider-Pi.
-Polecenia wykonane przed ręcznym attach nie trafią do zapisu.
+This executes vendor code, which may reset posture or move the robot. It is
+not protected by Rider-Pi's motion gate. Never run it in CI/unit tests.
+Use list/attach/status/detach from another terminal. Calls before attach
+are not captured. The launcher does not modify vendor files or global packages.
 
-## Narzut i zakres wdrożenia
+One background thread serves recording and its local socket. Capture failure
+must not alter serial results. Detach needs no restart; offline analyzer updates
+need no executor restart. Changing tap installation requires restarting its owner.
 
-Jeden wątek tła obsługuje lokalne gniazdo i plik. W ścieżce UART pozostaje
-sprawdzenie aktywności i nieblokująca próba dodania wpisu do kolejki.
-To obserwacja programowa, nie gwarancja zerowego narzutu czasowego.
-Błędy rejestratora nie mogą zmienić wyniku odczytu / zapisu UART.
-Sniffer można całkowicie usunąć z przyszłych uruchomień, usuwając instalację
-obserwatora w adapterze; odłączenie sesji nie wymaga restartu.
-Wdrożenie adaptera do już działającego wykonawcy wymaga jego kontrolowanego restartu.
+External XGO export example / Przykład zewnętrznego eksportu XGO:
+
+~~~sh
+python3 scripts/uart_sniffer.py analyze wire.jsonl --source wire_export --firmware R-1.1.6 --output wire-report.json
+~~~

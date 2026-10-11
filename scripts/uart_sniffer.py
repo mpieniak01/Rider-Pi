@@ -12,6 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from drivers.xgo.sniffer import runtime_directory
+from drivers.xgo.sniffer_analysis import analyze, markdown
+from drivers.xgo.sniffer_semantics import REGISTERS, meaning
 
 
 def control(pid, action, seconds=60):
@@ -33,19 +35,37 @@ def control(pid, action, seconds=60):
             client.close()
 
 
-def decode(rows):
+def decode(rows, *, firmware=None):
+    starts = {"tx": None, "rx": None}
     buffers = {"tx": bytearray(), "rx": bytearray()}
     for row in rows:
+        if row.get("event") in {"start", "end"}:
+            for name, pending in buffers.items():
+                if pending:
+                    yield {"event": "partial_frame", "direction": name, "hex": pending.hex()}
+                    pending.clear()
+                starts[name] = None
+            yield row
+            continue
         direction = row.get("direction")
         if direction == "gap":
             buffers["rx"].clear()
+            starts["rx"] = None
             yield row
             continue
         if direction not in buffers:
             yield row
             continue
         pending = buffers[direction]
-        pending.extend(bytes.fromhex(row.get("hex", "")))
+        if not pending:
+            starts[direction] = row.get("time_ns")
+        try:
+            pending.extend(bytes.fromhex(row.get("hex", "")))
+        except (ValueError, TypeError):
+            pending.clear()
+            starts[direction] = None
+            yield {"event": "invalid_capture_hex", "direction": direction, "time_ns": row.get("time_ns")}
+            continue
         while len(pending) >= 3:
             offset = pending.find(bytes([0x55, 0x00]))
             if offset < 0:
@@ -72,29 +92,23 @@ def decode(rows):
                 continue
             del pending[:size]
             address = frame[4]
-            names = {
-                0x30: "VX",
-                0x31: "VY",
-                0x32: "VYAW",
-                0x5C: "MOTOR_SPEED",
-                0x01: "BATTERY",
-                0x07: "FIRMWARE_VERSION",
-                0x62: "ROLL",
-                0x63: "PITCH",
-                0x64: "YAW",
-            }
-            yield {
+            decoded = {
                 "event": "frame",
                 "direction": direction,
                 "time_ns": row.get("time_ns"),
-                "timestamp": "last_observed_chunk",
+                "first_time_ns": starts[direction],
+                "timestamp": "host_serial_chunks_not_wire",
                 "mode": frame[3],
                 "address": address,
-                "name": names.get(address, "unknown"),
+                "name": REGISTERS.get(address, "unknown"),
                 "payload_hex": frame[5:-3].hex(),
                 "hex": frame.hex(),
                 "checksum_valid": True,
             }
+            if firmware is not None:
+                decoded["semantic"] = meaning(decoded, firmware)
+            yield decoded
+            starts[direction] = row.get("time_ns") if pending else None
         if row.get("truncated"):
             pending.clear()
             yield {"event": "gap", "direction": direction, "cause": "capture_truncated"}
@@ -112,13 +126,35 @@ def main():
         cmd.add_argument("--pid", type=int, required=True)
         if action == "attach":
             cmd.add_argument("--seconds", type=int, default=60)
-    cmd = subs.add_parser("decode")
-    cmd.add_argument("file", type=Path)
+    for action in ("decode", "analyze"):
+        cmd = subs.add_parser(action)
+        cmd.add_argument("file", type=Path)
+        cmd.add_argument("--firmware", help="Explicit controller format, e.g. R-1.1.6")
+        if action == "analyze":
+            cmd.add_argument("--output", type=Path)
+            cmd.add_argument("--markdown", type=Path)
+            cmd.add_argument("--response-timeout-ms", type=int, default=100)
+            cmd.add_argument(
+                "--source", choices=("serial_calls", "wire_export", "controller_bus_export"), default="serial_calls"
+            )
     args = parser.parse_args()
-    if args.action == "decode":
+    if args.action in {"decode", "analyze"}:
         with args.file.open() as stream:
-            for row in decode(json.loads(line) for line in stream if line.strip()):
-                print(json.dumps(row))
+            events = decode((json.loads(line) for line in stream if line.strip()), firmware=args.firmware)
+            if args.action == "decode":
+                for row in events:
+                    print(json.dumps(row))
+            else:
+                report = analyze(
+                    events, firmware=args.firmware, response_timeout_ms=args.response_timeout_ms, source=args.source
+                )
+                content = json.dumps(report, indent=2)
+                if args.output:
+                    args.output.write_text(content + "\n")
+                else:
+                    print(content)
+                if args.markdown:
+                    args.markdown.write_text(markdown(report))
     elif args.action == "list":
         print(
             json.dumps(
