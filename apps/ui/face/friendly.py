@@ -11,7 +11,7 @@ PALETTES = {
 def _rounded(canvas, box, radius, fill):
     # Integer bounds also work with the older Pillow installed on CM4.
     box = tuple(round(value) for value in box)
-    radius = min(int(radius), (box[2] - box[0]) // 2, (box[3] - box[1]) // 2)
+    radius = min(int(radius), (box[2] - box[0] - 2) // 2, (box[3] - box[1] - 2) // 2)
     canvas.rounded_rectangle(box, radius=max(0, radius), fill=fill)
 
 
