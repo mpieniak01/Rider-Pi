@@ -1,111 +1,123 @@
+"""Monotonic, bounded animation channels. New intent replaces the same channel."""
+
 from __future__ import annotations
 
+import copy
+import math
 import time
 from dataclasses import dataclass
-from typing import Any
 
 from .model import FaceState
+from .schema import MAX_PLAYBACK_DURATION_S
+
+PATHS = {"eyes.dx", "eyes.dy", "eyes.blink", "brows.lift", "brows.tilt", "mouth.open", "mouth.curve"}
 
 
-def _ease(kind: str, t01: float) -> float:
+def _ease(kind, t):
     if kind in ("in", "ease_in"):
-        return t01 * t01
+        return t * t
     if kind in ("out", "ease_out"):
-        u = 1.0 - t01
-        return 1.0 - u * u
+        return 1 - (1 - t) ** 2
     if kind in ("in_out", "ease_in_out"):
-        if t01 < 0.5:
-            return 2.0 * t01 * t01
-        u = (t01 - 0.5) * 2.0
-        return 0.5 + 0.5 * (1.0 - (1.0 - u) * (1.0 - u))
-    return t01  # lin
+        return t * t * (3 - 2 * t)
+    return t
 
 
 @dataclass
-class _Active:
-    spec: dict[str, Any]
-    t0: float
-    t1: float
+class _Channel:
+    segments: list
+    started: float
+    ends: float
+    priority: int
+    owner: str
+    initial: float
 
 
 class Animator:
-    """
-    Prosty animator „tracks/segments”:
-      spec = {
-        "duration": float,
-        "tracks": {
-          "eyes.blink": [{"t0":0.0,"t1":0.08,"v0":0.0,"v1":1.0,"ease":"in"}, ...],
-          ...
-        }
-      }
-    - Każdy segment działa w oknie [t0..t1] względem startu animacji.
-    - Jeśli FPS jest niski i przeskoczymy jakiś segment, „snapujemy” do końcowego v1
-      po upływie całej animacji, żeby nie utknąć np. z zamkniętym okiem.
-    """
-
     def __init__(self, clock=None):
-        self._clock = clock or time.time
+        self._clock = clock or time.monotonic
         self.state = FaceState()
-        self._actives: list[_Active] = []
+        self._channels = {}
 
-    def start(self, spec: dict[str, Any], prio: int = 10, mode: str = "blend") -> None:
-        dur = float(spec.get("duration", 0.2))
+    @property
+    def busy(self):
+        return bool(self._channels)
+
+    @property
+    def owners(self):
+        return {path: channel.owner for path, channel in self._channels.items()}
+
+    def value(self, path):
+        node, field = path.split(".")
+        value = getattr(getattr(self.state, node), field)
+        if value is None and path == "mouth.curve":
+            shape = self.state.expr if self.state.mouth.shape == "auto" else self.state.mouth.shape
+            return {"happy": 0.75, "sad": -0.65}.get(shape, 0.15)
+        return float(value)
+
+    def _set(self, path, value):
+        node, field = path.split(".")
+        setattr(getattr(self.state, node), field, value)
+
+    def start(self, spec, prio=10, mode="blend", owner="gesture"):
+        if mode not in {"blend", "replace"}:
+            raise ValueError("invalid_animation_mode")
+        duration = float(spec.get("duration", 0.2))
+        if not math.isfinite(duration) or not 0 < duration <= MAX_PLAYBACK_DURATION_S:
+            raise ValueError("invalid_animation_duration")
+        self.tick()
         now = self._clock()
-        self._actives.append(_Active(spec=spec, t0=now, t1=now + dur))
-
-    def _apply_track_segment(self, path: str, seg: dict[str, Any], now: float, t0: float) -> bool:
-        s0, s1 = float(seg["t0"]), float(seg["t1"])
-        t_abs0, t_abs1 = t0 + s0, t0 + s1
-        if now < t_abs0 or now > t_abs1:
-            return False
-        # pozycja 0..1 w obrębie segmentu
-        k = (now - t_abs0) / max(1e-6, (t_abs1 - t_abs0))
-        k = max(0.0, min(1.0, k))
-        k = _ease(seg.get("ease", "lin"), k)
-        v = float(seg["v0"]) + (float(seg["v1"]) - float(seg["v0"])) * k
-
-        # zapis do modelu (obsługa ścieżek typu "eyes.blink")
-        node = self.state
-        parts = path.split(".")
-        for p in parts[:-1]:
-            node = getattr(node, p)
-        setattr(node, parts[-1], v)
-        return True
-
-    def _apply_track_final(self, path: str, segs: list[dict[str, Any]]) -> None:
-        """Ustaw końcowe v1 ostatniego segmentu danego tracku."""
-        if not segs:
-            return
-        last = segs[-1]
-        v = float(last.get("v1", 0.0))
-        node = self.state
-        parts = path.split(".")
-        for p in parts[:-1]:
-            node = getattr(node, p)
-        setattr(node, parts[-1], v)
-
-    def tick(self) -> FaceState:
-        now = self._clock()
-
-        still_active: list[_Active] = []
-        for a in self._actives:
-            spec = a.spec
-            tracks: dict[str, list[dict[str, Any]]] = spec.get("tracks", {})
-
-            if now >= a.t1:
-                # Animacja zakończona → „snap” do stanów końcowych wszystkich tracków
-                for path, segs in tracks.items():
-                    self._apply_track_final(path, segs)
-                # nie dokładamy do still_active → znika po tym ticku
+        tracks = copy.deepcopy(spec.get("tracks", {}))
+        initial = spec.get("initial", {})
+        for path in set(tracks) | set(initial):
+            if path not in PATHS:
+                raise ValueError("invalid_animation_channel")
+            previous = self._channels.get(path)
+            if previous and previous.priority > prio:
                 continue
+            if mode == "replace" and path in initial:
+                self._set(path, float(initial[path]))
+            current = self.value(path)
+            segments = tracks.get(path, [])
+            if not segments and path in initial:
+                if mode == "replace":
+                    segments = [{"t0": 0, "t1": duration, "v0": current, "v1": current, "ease": "lin"}]
+                else:
+                    segments = [
+                        {
+                            "t0": 0,
+                            "t1": duration,
+                            "v0": current,
+                            "v1": float(initial[path]),
+                            "ease": "in_out",
+                        }
+                    ]
+            elif segments and mode == "blend" and segments[0]["t0"] == 0:
+                segments[0]["v0"] = current
+            if segments:
+                self._channels[path] = _Channel(segments, now, now + duration, prio, owner, current)
 
-            # W trakcie trwania animacji: stosujemy segmenty, które trafiały w okna czasowe
-            for path, segs in tracks.items():
-                # Jeśli przeskoczyliśmy segmenty (niski FPS), nic się nie nałoży – to OK.
-                for seg in segs:
-                    self._apply_track_segment(path, seg, now, a.t0)
+    def cancel(self, owner=None):
+        self._channels = {
+            path: item for path, item in self._channels.items() if owner is not None and item.owner != owner
+        }
 
-            still_active.append(a)
-
-        self._actives = still_active
+    def tick(self):
+        now = self._clock()
+        for path, channel in list(self._channels.items()):
+            elapsed = max(0, now - channel.started)
+            value = channel.initial
+            for segment in channel.segments:
+                if elapsed < segment["t0"]:
+                    break
+                if elapsed >= segment["t1"]:
+                    value = segment["v1"]
+                else:
+                    k = (elapsed - segment["t0"]) / (segment["t1"] - segment["t0"])
+                    value = segment["v0"] + (segment["v1"] - segment["v0"]) * _ease(segment.get("ease", "lin"), k)
+                    break
+            self._set(path, float(value))
+            if now >= channel.ends:
+                self._set(path, float(channel.segments[-1]["v1"]))
+                del self._channels[path]
         return self.state

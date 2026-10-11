@@ -42,8 +42,8 @@ def blink(duration: float = None, hold: float = None, max_close: float = 1.0) ->
     max_close w [0..1]: 1.0 = pełne zamknięcie, 0.6 = pół-mrugnięcie."""
     import os
 
-    duration = float(os.getenv("FACE_GESTURE_BLINK_DUR", str(duration if duration else 0.16)))
-    hold = float(os.getenv("FACE_GESTURE_BLINK_HOLD", str(hold if hold else 0.02)))
+    duration = float(duration if duration is not None else os.getenv("FACE_GESTURE_BLINK_DUR", "0.16"))
+    hold = float(hold if hold is not None else os.getenv("FACE_GESTURE_BLINK_HOLD", "0.02"))
     # clamp
     if max_close < 0.0:
         max_close = 0.0
@@ -65,14 +65,14 @@ def blink(duration: float = None, hold: float = None, max_close: float = 1.0) ->
     return {"duration": close_t + hold + open_t, "tracks": tracks, "name": "blink"}
 
 
-def look(t: float = None, amp: float = None, jitter: float = None) -> dict[str, Any]:
+def look(t: float = None, amp: float = None, jitter: float = None, rng=None) -> dict[str, Any]:
     """Sakkada źrenic: szybki skok, overshoot, tłumienie + mikro-jitter."""
-    t = float(os.getenv("FACE_GESTURE_LOOK_T", str(t if t else 0.55)))
-    amp = float(os.getenv("FACE_GESTURE_LOOK_AMP", str(amp if amp else 0.45)))
-    jitter = float(os.getenv("FACE_GESTURE_LOOK_JITTER", str(jitter if jitter else 0.02)))
+    t = float(t if t is not None else os.getenv("FACE_GESTURE_LOOK_T", "0.55"))
+    amp = float(amp if amp is not None else os.getenv("FACE_GESTURE_LOOK_AMP", "0.45"))
+    jitter = float(jitter if jitter is not None else os.getenv("FACE_GESTURE_LOOK_JITTER", "0.02"))
 
     # cel spojrzenia – losowy kierunek w kole
-    theta = random.random() * math.tau
+    theta = (rng or random).random() * math.tau
     dx_goal = amp * math.cos(theta)
     dy_goal = amp * math.sin(theta)
 
