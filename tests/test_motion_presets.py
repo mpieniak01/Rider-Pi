@@ -92,3 +92,23 @@ def test_profiles_cannot_raise_existing_ceiling(executor):
     with pytest.raises(ValueError):
         settings.manage_profile({"action": "create", "name": "Wyścig"}, row["revision"], patch={"speed_limit": 1})
     assert settings.read() == row
+
+
+def test_negotiated_http_confirms_persisted_profile(executor, monkeypatch):
+    from services.api_core.http_contract import install
+
+    instance, clock = executor
+    monkeypatch.setattr(calibration_api, "read_status", instance.snapshot)
+    monkeypatch.setattr(calibration_api, "wall_clock", clock)
+    app = Flask(__name__)
+    install(app, after_request=True)
+    app.add_url_rule("/api/calibration/controls", view_func=calibration_api.controls, methods=["GET", "POST"])
+    response = app.test_client().post(
+        "/api/calibration/controls",
+        headers={"Accept": "application/vnd.rider.api+json;version=1"},
+        json={"revision": settings.read()["revision"], "values": {}, "profile": {"action": "create", "name": "Test"}},
+    )
+    assert response.status_code == 200
+    assert response.json["ok"] is True
+    assert response.json["operation"]["ack_kind"] == "configuration_persisted"
+    assert response.json["operation"]["actuation"] is False

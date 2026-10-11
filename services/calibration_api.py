@@ -266,7 +266,7 @@ def controls():
                 manual_settings.update(
                     row["values"], row["revision"], directions=row.get("directions"), validate_state=idle
                 )
-        return jsonify(dict(manual_settings.snapshot(), ok=True))
+        return jsonify(dict(manual_settings.snapshot(), ok=True, persisted=request.method == "POST"))
     except ValueError as exc:
         code = str(exc)
         status = (
