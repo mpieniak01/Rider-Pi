@@ -403,7 +403,10 @@ def main():
         if request["commit"] == request["base"]:
             raise RuntimeError("Commit your local change on a feature branch before previewing it.")
         git(ROOT, "merge-base", "--is-ancestor", request["base"], request["commit"])
-        check_history(ROOT, request["base"], request["commit"], args.restart_motion)
+        # Check all history for private files before SSH. The exact motion adapter
+        # may already be in the recorded preview; its deployment scope is checked
+        # again against the actual transfer base below and on the device.
+        check_history(ROOT, request["base"], request["commit"], True)
         device = ssh(args.env_file.resolve(), {"action": "status", "repo": args.device_repo}, b"")
         if device["dirty"]:
             raise RuntimeError("Device checkout has local changes; preserve them before preview.")
