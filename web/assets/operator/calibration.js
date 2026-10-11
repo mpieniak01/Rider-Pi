@@ -276,10 +276,12 @@ export class Calibration {
   async activate() {
     if (this.busy || this.awaiting) return;
     const digest = this.selectedDigest(), plan = byId('calibration-activation-plan').value.trim();
-    const selected = await this.revision();
-    if (!this.profileMatchesControls(selected.profile))
-      throw new Error(tr('Najpierw użyj Przywróć, aby zsynchronizować ustawienia profilu na wszystkich ekranach.',
-        'Use Restore first to synchronize profile settings across all screens.'));
+    if (this.safety.controls) {
+      const selected = await this.revision();
+      if (!this.profileMatchesControls(selected.profile))
+        throw new Error(tr('Najpierw użyj Przywróć, aby zsynchronizować ustawienia profilu na wszystkich ekranach.',
+          'Use Restore first to synchronize profile settings across all screens.'));
+    }
     if (!byId('calibration-activation-consent').checked || !plan) throw new Error('explicit_configuration_consent_required');
     if (!activationAllowed(this.state, this.safety.state, this.safety.clockFresh(), nowSeconds())) throw new Error('fresh_disarmed_configuration_state_required');
     this.busy = true; this.render();
