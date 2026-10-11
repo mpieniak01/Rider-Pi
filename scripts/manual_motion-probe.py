@@ -73,8 +73,8 @@ def main():
             raise ValueError("Finite values required.")
         if not -1 <= args.vx <= 1 or not -1 <= args.yaw <= 1 or not 0.01 <= args.duration <= 0.25:
             raise ValueError("Speed [-1,1], duration 0.01..0.25 seconds required.")
-        if args.action == "height" and (args.height is None or not 0 <= args.height <= 12):
-            raise ValueError("Explicit height 0..12 required.")
+        if args.action == "height" and (args.height is None or not 75 <= args.height <= 115):
+            raise ValueError("Explicit height 75..115 required.")
         if args.action == "balance" and args.enabled is None:
             raise ValueError("Explicit balance setting required.")
         if args.action == "action" and args.action_id is None:
@@ -83,7 +83,7 @@ def main():
         if snapshot.get("state") != "DISARMED":
             raise RuntimeError("DISARMED required; never clear ESTOP automatically.")
         capability = snapshot.get("capabilities", {}).get(args.action, {})
-        if not capability.get("available") or not capability.get("stop_verified"):
+        if not capability.get("available") or (args.action != "height" and not capability.get("stop_verified")):
             raise RuntimeError("Unavailable or uncharacterized capability: " + json.dumps(capability))
         token = uuid.uuid4().hex[:8]
         command = {
@@ -114,7 +114,11 @@ def main():
             attempted = True
             request_json(args.api, "/api/safety", arm)
             snapshot = request_json(args.api, "/api/control/state")["safety"]
-            command.update(context(snapshot), request_id="probe-" + token)
+            command.update(
+                context(snapshot),
+                request_id="probe-" + token,
+                settings_revision=snapshot["manual_settings"]["revision"],
+            )
             result = request_json(args.api, "/api/control", command)
             print(json.dumps(result, ensure_ascii=False))
             print("SDK acknowledgement does not verify physical completion.")

@@ -51,7 +51,8 @@ See [software quality and the open manual characterization checklist](physical-m
 and [odometry/reference contracts](odometry.md). IMU/battery channels retain original
 measurement times. Missing/stale data denies ARM and disarms active motion through
 the same gate; no physical battery/tilt thresholds are invented. Fresh zero MOVE
-is an immediate acknowledged pause, whereas expiry/data/intent faults revoke consent.
+is an immediate acknowledged pause. Normal panel pulse expiry retains operator
+arming; timed session expiry and data/intent faults revoke consent.
 
 The owned SDK response parser uses a monotonic deadline and correlates reply
 address/length/checksum. Serial read/write waits are bounded on that owned object.
@@ -78,3 +79,11 @@ protects drivers/systemd. In an agreed maintenance window without autonomy,
 stop the old owner, update selected code/units, reload systemd and start one new
 DISARMED owner. Rollback restores matching code and units. Migration never runs
 an automatic motion probe. Preserve LCD rotation 270, boot, Wi-Fi and SSH.
+
+## Device settings authority
+
+Motion settings and panel calibration use the [device settings contract](calibration.md).
+Every protected motion command includes settings_revision; panel arrows send
+direction plus device_settings=true. Operator arming persists between bounded
+pulses. Normal pulse expiry stops without disarming; faults and STOP still revoke
+the session. Test consent stays separate.

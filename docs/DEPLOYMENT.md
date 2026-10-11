@@ -55,7 +55,8 @@ make pi-preview PI_DEPLOY_ARGS='--restart-api'
 ```
 
 This restarts only `rider-api.service` and checks HTTP health. Reload the
-browser for static web changes. The option carries over to subsequent previews.
+browser for static web changes. Each iteration requests API restart explicitly;
+a previous restart does not force another restart for web-only changes.
 For another application service, choose its
 restart and test according to the changed component. Preview does not prove
 hardware behavior. Avoid simultaneous processes sharing UART, LCD, camera
@@ -75,7 +76,8 @@ Preserve earlier work rather than resetting it.
 ## Release path: PR, merge and Pi update
 
 After accepting the function on the Pi, push the branch, open a PR and run
-relevant checks and review. Preview review fixes again when they change
+required checks. Collect naturally arriving reviews without invoking or repeating
+them. Missing optional reviews do not block release. Preview valid review fixes when they change
 tested code. After merging, use the full `main` SHA:
 
 ```bash
@@ -88,10 +90,10 @@ make pi-preview-status
 The tool fetches device `origin/main`, verifies the expected SHA and updates
 `main` by fast-forward only. Active preview and release must have identical
 file trees; squash merging may change the commit SHA. Changed contents
-require another preview. A reviewed `main` can also be released directly
+require another preview. An accepted `main` can also be released directly
 without an active preview. `.git/rider-last-release.json` records the prior
-revision. For API changes, add `PI_DEPLOY_ARGS='--restart-api'`; this option
-is also inherited from the active preview.
+revision. For API changes, add `PI_DEPLOY_ARGS='--restart-api'`; restart is explicit.
+Releasing identical code already running in preview does not inherit API restart.
 
 Compare Git, `/api/status/version` and `/healthz`, then verify the changed
 function. The panel uses `8080`; the separate motion bridge uses `8081`.
@@ -147,3 +149,23 @@ inventory and recovery results in local operational notes, without secrets.
 
 See [development](development.md), [systemd mapping](SYSTEMD_SERVICES_MAPPING.md)
 and [configuration policy](config/POLICY.md).
+
+
+## Incremental transfer and elapsed time
+
+make pi-preview reads the device commit and sends only new commits since the
+last preview, retaining original main as the rollback point. A device revision
+change between preflight and deployment stops the operation.
+Repeating the same commit transfers no bundle and does not switch branches.
+Results include elapsed_s, transfer_bytes and actual changed files.
+Separate pi-preview-status is only needed for diagnosis.
+Rollback remembers whether any iteration restarted the API; web changes
+do not inherit previous restarts.
+
+## Explicit motion preview
+
+For executor updates including drivers/xgo/adapter.py use the preview command
+with --restart-api --restart-motion. This scope permits only that adapter among
+protected drivers. Stop executor before checkout, restart disarmed, then restart
+API. No reboot, automatic ARM, movement trial or GH publication. Rollback remembers
+the executor restart. Settings remain outside checkout.

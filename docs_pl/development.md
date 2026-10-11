@@ -80,3 +80,24 @@ sensorów ani fizycznego śledzenia.
 [Panel Pi](ui/panel-diagnostyka.md) korzysta z portu `8080`.
 Prace aplikacyjne zachowują rozruch, sieć i SSH.
 Przed aktualizacją urządzenia przeczytaj [wdrożenie i odtwarzanie](WDROZENIE.md).
+
+
+## Szybkie poprawki i naturalne recenzje — ustalenie 2026-10-11
+
+- Lokalny commit i podgląd na urządzeniu nie wymagają push, PR ani recenzji.
+  Korzystaj z istniejącego narzędzia Git/SSH Pi, bez doraźnych skryptów
+  kopiujących pojedyncze pliki i bez kopiowania całego workspace.
+- Nie żądaj płatnych recenzji, nie wywołuj botów przez wzmianki/komendy,
+  nie ponawiaj przeglądów i nie dodawaj pustych commitów dla ich uruchomienia.
+  Zbieraj naturalnie pojawiające się recenzje, sprawdzaj zasadność uwag
+  i naprawiaj rzeczywiste problemy. Brak opcjonalnej recenzji lub limit usługi
+  nie blokuje wydania. Nie zmieniaj ustawień GitHub bez osobnego polecenia.
+- Zbierz poprawki w spójny zakres wydania. Obowiązują istniejące wymagane CI
+  i rzeczywista ochrona gałęzi. Nie czekaj na opcjonalnego recenzenta;
+  ewentualną wymaganą przez ochronę gałęzi zgodę zgłoś jako konkretną blokadę.
+- Drobne iteracje nie uruchamiają pełnych testów ani instalacji pakietów.
+  Kontrole dobieraj do zmiany; testy na polecenie operatora.
+  Ruch fizyczny zawsze wymaga osobnej zgody na konkretną próbę.
+- Web/CSS/JS: wdrożenie i odświeżenie strony, bez restartu usług.
+  Backend API: jawny restart tylko API. Inne usługi według zakresu zmiany.
+  Nie restartuj robota, LCD, executora ruchu ani wszystkich usług dla panelu.

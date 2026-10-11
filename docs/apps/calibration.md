@@ -1,198 +1,107 @@
-# Calibration: profiles, measurements and reference
+# Calibration: device settings and manual trials
 
-The /calibration page uses existing JavaScript modules and Flask.
-It installs no packages or models. Opening the page reads state;
-it starts no services and sends no ARM, STOP or motion trial.
-
-## Actual executor observations
-
-The panel shows signed linear_step/turn_step only from motion.sdk_output:
-accepted, motion-executor source, original observed_at, exact instance_id and
-generation must match fresh executor status. SDK writes have a 0.25 s budget.
-Older matching steps are marked history/stale without claiming current motion;
-rejected or mismatched data stays unknown. Panel targets and form values
-never determine SDK steps.
-
-Roll, pitch and yaw retain raw SDK values without assuming unverified units.
-Battery converts only a finite 0–1 fraction to %, preserving real zero.
-Each channel has its own observed_at, ready, error and age with a 2.5 s budget.
-Fresh status publication never renews observations; a larger producer-reported
-age is also respected. One channel's failure neither confirms nor invalidates
-others, while a stale parent or hardware/UART failure expires all channels.
-The three current motion.dynamics parameters are shown separately from ENV
-ceilings, including during hardware failure when software configuration is valid and fresh. Hardware errors are shown separately. Physical_completion remains unverified.
-
-## Profile and units
-
-| Field | Meaning |
-| --- | --- |
-| motion.speed_limit | Executor limit 0–1 in normalized units, not m/s. |
-| motion.linear_rate / turn_rate | Normalized ramp units/s, not measured physical acceleration. |
-| odometry.linear_m_s / turn_rad_s | Own measured rates for signed SDK steps: linear ±1…12, turn ±20…70. |
-| odometry.conditions | Firmware, surface, load, battery, cable, operator, date and commit. Extra fields are preserved. |
-| odometry.observations | Evidence/notes: minimum steps, acceleration, deceleration, reversal, stopping distance/delay, position/heading error, battery and tilt. |
-| measurements | Raw successful and failed observations, duration, distance/angle, phase, step and evidence. |
-
-Runtime applies three motion parameters, odometry tables and IMU sign.
-Observations, including battery_policy and tilt_policy, record operator notes;
-they are not enforced thresholds or guards and do not unlock autonomy.
-This change does not migrate SDK scales or existing ENV units.
-
-The form starts with an unverified draft. Initial 0.6/1/2 values are software
-settings, not measurements; reported current dynamics can replace them.
-Activation respects ENV ceilings captured at executor startup. The watchdog
-is not editable. Blank observations remain unknown without physical defaults.
+The /calibration and /control pages use the same settings stored on Rider-Pi.
+Opening either page only reads state. It does not start services or arm the robot.
 
 ## Operator workflow
 
-1. Enter a profile, conditions and evidence. Saving creates an immutable SHA-256
-   revision; it neither activates configuration nor moves the robot.
-2. Prepare space and the power cable for physical trials. Explicitly grant
-   ARM using the collapsible form, a specific plan and a short lease.
-3. Each single pulse requires its own plan and checkbox. Consent resets
-   before sending, including on errors. Duration is 0.01–0.25 s; there are
-   no sequences, retries or automatic ARM. Watch the robot and use the
-   always available STOP. SDK ACK does not prove physical stopping or measurements.
-4. Record your own observations, including failures. Whole-trial distance/time
-   averages include the ramp and never automatically populate steady-rate tables.
-   Read signed SDK steps from executor output, not a slider.
-5. After actual measurements, choose manual provenance and explicitly confirm
-   your own evidence. Both tables, IMU sign, identifier, operator/date, evidence
-   notes and a matching measurement_id record with notes are required.
-   Editing the data resets consent.
-6. Activate the saved revision in fresh DISARMED with separate configuration
-   consent and plan. This grants no motion permission. An unavailable odometry
-   model does not block configuration when both consumers are live and motion
-   confirms zero target/output.
-7. Activation rotates generation and clears the old reference/HOME without SDK STOP.
-   Separately use STOP, physically check stopping and position, then enter measured
-   x/y/theta and optional HOME in the same frame. The reference form sends neither
-   ARM nor STOP; HOME is never assumed to be (0,0).
+1. Prepare the robot, space and cable. Arm once with the global button.
+2. Set direction magnitude and duration. Calibration additionally exposes minimum,
+   maximum and slider step per direction, acceleration/deceleration for each axis,
+   and reversal pause.
+3. Save between pulses. Saving is allowed in ARMED and DISARMED when the executor
+   reports zero target/output, no active deadline and no motion. It preserves
+   arming and the session generation. A save never sends a movement command.
+4. Click an arrow, observe the physical result, adjust and save again. Unsaved
+   drafts disable new pulses until confirmed. Normal pulse expiry stops the
+   drive while keeping operator arming; STOP disarms and invalidates queued commands.
+5. Both screens poll the same settings. An intervening revision change requires
+   reviewing values and another click; a conflicting save is never retried automatically.
 
-Automated tests never execute physical trials. LCD mounting orientation
-and the startup sequence stay unchanged.
+The sliders tune commands, not measured speed. “Too fast/too slow” is operator
+feedback, not proof of metric odometry. Minimum is an operator supplied usable
+target threshold; it is not a lower bound on every intermediate ramp output.
 
-## Confirmation and history
+## Authoritative settings contract
 
-HTTP 202 / pending means submission. GET confirms activation only with the
-same hash in both fresh consumers, matching motion instance, applied_ack,
-request/seq and command_generation/applied_generation. An unrelated latest
-rejection in last_ack does not replace the accepted configuration applied_ack.
-After restart, fresh matching hashes from saved_profile give
-confirmation=loaded_from_saved without inventing a new ACK.
+GET /api/calibration/controls returns rider.manual_settings version 2 inside
+the existing version 1 HTTP envelope. The schema contains:
 
-Activation first persists a local pointer with activation_state=pending.
-The executor rechecks DISARMED, no goal/motion, generation and TTL; only after
-logical configuration acceptance and generation rotation does it persist
-activation_state=applied. A pending entry is not an active profile: the API
-shows partial/active_profile_pending, and restart blocks ARM and the odometry
-model. E-Stop before logical acceptance or final persistence failure leaves
-this entry for repair through a new explicit request. There is no automatic
-rollback or acceptance at restart. Older unmarked pointers are also rejected.
-E-Stop after logical acceptance is a separate latched safety state; a successful
-final write confirms configuration alone and does not clear E-Stop.
-
-Applied describes configuration. Verified measurement record (record_verified),
-current model_ready and physical_completion=unverified remain separate.
-Missing, stale, rejected or single-consumer confirmation stays unknown/partial.
-Mutations are never automatically retried or restamped. References require
-matching terminal ACK and observed reference_id/HOME, not HTTP success alone.
-Rejection or 8 s without matching confirmation releases the form for a new
-explicit request; it never retries. References with an active profile require
-the exact profile_digest and a matching transaction in both consumers.
-
-History loads initially, after saving or via “Refresh history”; 2 s polling
-only reads runtime. Export uses a saved revision. UTF-8 JSON imports are
-limited to 65536 bytes and always become historical with manual_verified=false,
-even when the file claims verification. Rollback explicitly activates an
-earlier digest with the same guards. Catalogs retain up to 64 revisions;
-profiles hold up to 128 raw trial records.
-
-## API and local files
-
-| Endpoint | Operation |
+| Field | Meaning |
 | --- | --- |
-| GET /api/calibration/state | Both consumers, active/requested hash, confirmation, model/errors; read only. |
-| GET /api/calibration/profiles | Saved revision metadata. |
-| POST /api/calibration/profiles | {profile, imported?:bool}; returns digest, profile, created, actuation:false. |
-| GET /api/calibration/profiles/<digest> | Selected revision for editing/export. |
-| POST /api/calibration/activate | Explicit configuration intent; HTTP 202 remains pending. |
-| GET /api/odometry/state | Current reference, model and last ACK. |
-| POST /api/odometry/reference | Explicit reference and optional HOME without actuation. |
+| schema_version | Stored shape, currently 2. |
+| revision | Persistent integer for concurrent updates and motion admission. |
+| directions.forward/backward/left/right | minimum, maximum, step, speed, duration. |
+| values.speed_limit | Global normalized ceiling within deployment limits. |
+| values.linear_rate/turn_rate | Command acceleration per second. |
+| values.linear_deceleration/turn_deceleration | Command deceleration per second. |
+| values.reversal_pause | Pause at zero during reversal, seconds. |
 
-Activation/reference retain the envelope: generation, increasing seq, source=manual,
-request_id, ts, ttl_ms<=500, operator_consent=true and nonblank operator_plan.
-Activation always includes profile_digest; references include it when a profile
-is active. Existing configuration without a profile retains its contract.
-SafetyPanel synchronizes server time; RTT above 500 ms or missing fresh state
-blocks mutations. Configuration, reference, ARM and individual trials have
-separate consent.
+Normalized magnitudes are 0–1, bounded by the configured global ceiling (default
+0.6). Duration is 0.01–0.25 seconds including ramp up and down. Short pulses may
+not attain their requested magnitude. The panel displays a software estimate
+of the reachable command peak; it is not a physical speed prediction.
+Impossible direction minima are rejected. Zero remains a stop.
 
-The default config/local/motion-calibration/ directory is ignored by Git.
-RIDER_CALIBRATION_DIR may point to another absolute local directory.
-Do not publish physical results, profiles, exports or measurements in PRs/GitHub.
-These tools and contracts complete calibration issue #256; operators collect
-actual physical parameters locally without an additional PR.
+POST uses {revision, values, directions}; directions and their fields may be
+partial. The server validates an atomic update against fresh idle executor
+status and the expected revision. Conflict or non-idle status returns 409.
+Invalid values return 400; unavailable storage returns 503.
+No command is issued by this endpoint.
 
-See [odometry](odometry.md), [physical motion](physical-motion.md)
-and [robot operation](safety.md).
+Panel arrows send device_settings=true, direction and settings_revision in the
+existing safety envelope. Pi resolves the magnitude and duration, then its single
+executor applies smoothing and writes through the UART adapter. Other protected
+motion producers must also include the current revision. Old revisions are rejected.
 
+Compatibility values linear_speed and turn_speed mirror forward.speed and
+right.speed; pulse_duration mirrors the largest directional duration.
+They do not define independent runtime settings. Legacy writes explicitly affect
+both directions of their axis; new clients should use directions.
 
-## Manual control and response tuning
+## Persistence and migration
 
-The main calibration view provides the camera, direction arrows, STOP, travel/turn
-speed sliders and response ramps. Click duration is an advanced setting.
-Speed sliders select the next manual trial; ramps apply only after saving and
-explicit activation. Manual control uses the single global arm/disarm button;
-there is no additional per-arrow consent. Reading, sliders, save, apply and rollback never start movement.
-There are no automatic repeats or calibration sequences.
+Default location: ~/.local/state/rider/motion/settings.json outside the checkout.
+RIDER_MANUAL_SETTINGS_PATH overrides it for isolated environments. Files are
+atomically replaced with permissions 0600. Existing manual settings are migrated
+once, preserving previously effective capped values. Only when no manual store
+exists may a legacy active profile seed the initial settings. Corrupt existing
+stores never silently fall back to defaults.
 
-The optional profile object interaction contains linear_speed, turn_speed (0–1)
-and pulse_duration (0.01–0.25 s). Both clients read shared Pi settings from
-motion.calibration.interaction. They do not grant motion authority.
-Legacy profiles remain readable. Existing motion ramps and executor ceilings
-stay authoritative. Application still needs both consumer confirmations;
-manual response tuning does not require measured odometry or HOME.
+Archived profile/measurement/odometry APIs remain available. Activating an archive
+does not overwrite motion settings or create motion consent. These records are
+evidence for odometry; they are no longer the panel's motion configuration form.
+Unverified autonomy remains blocked.
 
-Mapping rider-1.4.2-levels-v2 reports signed linear_step command levels in
-−127..127, converted to native SDK input by level * 1.5 / 127.
-Signed turn_step is −70..70 and corresponds to native SDK turn input.
-motion.output.units is command_levels; mapping_id, linear_sdk_value and
-turn_sdk_value describe commands, never measured velocity or wheel encoders.
-The guarded write hook rounds around protocol neutral 128, including STOP;
-the installed vendor library is not modified. Pulse duration bounds time;
-command magnitude bounds requested speed.
-Measured odometry requires matching conditions.command_mapping.
-Old measurements remain inspectable but cannot verify the changed mapping.
-Coefficients are never converted automatically.
+## Hardware interpretation and safety
 
-Measurement tables, pose/HOME, import and detailed observations are advanced
-facilities. Operator judgement tunes manual control without verifying metric
-odometry or enabling autonomy.
+Rider SDK commands describe UART goals; they expose no motor current/voltage
+control. Magnitudes and ramp rates are not m/s or physical acceleration.
+Height uses the Rider interface's native 75–115 range. Rider figure codes are
+1 sway, 2 vertical, 5 lift_rotate, 6 circular (255 reset). Posture and figures
+remain unavailable where safe cancellation has not been verified.
+Do not infer encoder feedback from read_motor, or repair implausible raw yaw
+with modulo. Raw observations retain original timestamps in diagnostics.
 
-## Global panel arming and separate test permission
+Panel arming and physical test consent are separate. Automatic pytest/CI uses
+fake adapters and isolated files; it cannot gain hardware access from panel consent.
+Physical trials require a prepared operator and separate explicit authorization.
 
-The single button on the right displays the confirmed executor state:
-red "Robot disarmed", green "Robot armed". Clicking red grants manual panel
-permission; clicking green sends STOP. Clearing software ESTOP and ARM follow
-one explicit click, sequentially, only after a fresh DISARMED confirmation.
-External ESTOP, unavailable hardware, an unconfirmed clock or a missing
-confirmation still block ARM. Arming does not move the robot. The panel uses arming_mode=operator: permission remains until operator STOP
-or disarming, without a timer or automatic renewal. Changing views does not send STOP.
+## Simple named motion profiles
 
-The safety contract adds execution_context (panel/test), panel_motion_enabled
-and test_motion_enabled. The panel sends execution_context=panel. Panel consent
-cannot authorize test commands, even with test_operator_consent=true.
-A manual physical probe uses its own execution_context=test session and explicit
-test_operator_consent=true at ARM and every motion attempt. A test session cannot
-authorize panel controls. A single executor session prevents simultaneous control.
-STOP invalidates both flags.
+Profiles live in the same device settings file (up to 16), each holding every
+direction and smoothing value. Select a profile then Apply selected; this is an
+atomic idle settings change and never arms or starts motion. Save as new stores
+current settings and any visible draft under the entered name. Update selected
+replaces that preset and can change its name. Delete selected removes the preset
+while retaining current settings. Normal Save settings changes current settings
+only; a modified active preset is explicitly marked. Pending drafts must be saved
+before applying another profile or deleting. Revision conflicts require review,
+never automatic retry. Both screens show the active profile; full management is
+on Calibration. Names such as Desk or Floor describe operator use, without preset
+speed assumptions or a claim of surface safety. Profiles cannot raise deployment
+limits or enable unverified actuators/autonomy.
 
-Automated pytest/CI remains isolated: real SDK, hardware devices, SSH and robot
-network access are blocked independently of either flag. Test consent does not
-disable isolation. manual_motion-probe.py requires a present operator, an
-interactive terminal and a one-time typed approval; it sends STOP after the probe.
+## Posture controls
 
-Panel: arming_mode=operator, lease_remaining_s=null. View and focus changes do not disarm. Physical test sessions remain timed with separate consent. Hardware faults and external ESTOP still stop the executor; stale data blocks new commands.
-
-A bounded panel movement pulse stops the drive when it ends, while operator arming remains active for the next click. STOP/disarm revokes the session; test sessions keep their timeout behavior.
+Control and Calibration share one posture component. Height (75–115) sends on slider release; roll balance has an explicit Apply button. Both use the global operator arming gate, current settings revision and the same executor state. Reported values are last accepted commands, not measured actuator positions. Polling preserves an edited selection. Height and balance are position/mode settings; stop_verified remains false and does not claim cancellation. Manufacturer figures remain blocked until interruption is characterized. Automated motion tests remain independently disabled.

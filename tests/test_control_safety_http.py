@@ -148,6 +148,7 @@ def test_goal_accepted_ack_is_still_pending(monkeypatch):
         "contract_version": 1,
         "owner": "manual",
         "generation": "g",
+        "manual_settings": {"revision": 0},
         "ready": True,
         "can_move": True,
         "capabilities": {"move": {"available": True, "stop_verified": True}},
@@ -160,7 +161,7 @@ def test_goal_accepted_ack_is_still_pending(monkeypatch):
         observation["last_ack"]["status"] = "accepted"
 
     monkeypatch.setattr(safety.BusPub, "publish", accepted_only)
-    assert safety.publish_command(envelope(), timeout_s=0)["pending"]
+    assert safety.publish_command(envelope(settings_revision=0), timeout_s=0)["pending"]
 
 
 def test_get_with_json_cannot_trigger_actuator(monkeypatch):

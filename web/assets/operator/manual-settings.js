@@ -1,72 +1,381 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
-import { showError, text, tr } from './ui.js';
-import { settingsValid, settingsPulse } from './manual-settings-model.js';
-const binding = { speed:'linear_speed', 'yaw-speed':'turn_speed', duration:'pulse_duration',
-  'calibration-linear-speed':'linear_speed', 'calibration-turn-speed':'turn_speed', 'pulse-duration':'pulse_duration',
-  'motion-speed-limit':'speed_limit', 'motion-linear-rate':'linear_rate', 'motion-turn-rate':'turn_rate' };
+import { showError, text, tr, el } from './ui.js';
+import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=motion-curves-14';
+
+const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
+// Display units only: canonical Pi values stay normalized commands and seconds.
+
+const displayNumber = value => Number((value).toFixed(6));
+const labels = {forward:['Przód','Forward'],backward:['Tył','Backward'],left:['Lewo','Left'],right:['Prawo','Right']};
+
 export class ManualSettings {
   constructor(safety) {
-    this.safety=safety; this.state=null; this.pending={}; this.busy=false;
-    for(const [id,key] of Object.entries(binding)) {
-      const node=document.getElementById(id); if(!node) continue;
-      node.disabled=true;
-      node.addEventListener('input',()=>{
-        this.pending[key]=Number(node.value); this.safety.render();
-        clearTimeout(this.timer); this.timer=setTimeout(()=>this.save().catch(showError),200);
-      });
+    this.safety=safety;this.state=null;this.pending={};this.directionEdits={};
+    this.busy=false;this.draftRevision=null;this.selectedProfile=null;this.profileSelectionDirty=false;
+    this.build();
+    document.getElementById('motion-profile-select')?.addEventListener('change',event=>{
+      this.selectedProfile=event.target.value;this.profileSelectionDirty=true;
+      const name=document.getElementById('motion-profile-name');
+      if(name)name.value=this.state?.profiles?.[this.selectedProfile]?.name||'';
+      this.paint();
+    });
+    for(const [id,action] of [['motion-profile-apply','apply'],['motion-profile-create','create'],
+      ['motion-profile-save','save'],['motion-profile-delete','delete']]){
+      document.getElementById(id)?.addEventListener('click',()=>this.profile(action).catch(error=>this.reportError(error)));
     }
+    document.getElementById('manual-settings-save')?.addEventListener('click',()=>this.save().catch(error=>this.reportError(error)));
     this.poller=poll(()=>this.refresh(),{interval:1000,onError:error=>{
-      this.state=null;this.paint();this.safety.render();showError(error);
+      this.state=null;this.paint();this.safety.render();this.reportError(error);
     }});
-    window.addEventListener('pagehide',()=>{clearTimeout(this.timer);this.poller.stop();});
+    window.addEventListener('pagehide',()=>this.poller.stop());
+    window.addEventListener('dashboard:langchange',()=>this.paint());
   }
-  ready(){return !this.busy && Object.keys(this.pending).length===0 && settingsValid(this.state,nowSeconds());}
-  pulse(direction){if(!this.ready())throw new Error('manual_settings_unconfirmed');return settingsPulse(this.state,direction);}
+  dirty(){return Object.keys(this.pending).length>0 || Object.keys(this.directionEdits).length>0;}
+  descriptor(key){return parameter(this.state,key);}
+  factor(key){return displayFactor(this.state,key);}
+  language(){return document.documentElement?.lang || 'pl';}
+  format(key,value){return formatParameter(this.state,key,value,this.language());}
+  range(key){return parameterRange(this.state,key,this.language());}
+  shown(key,value){return displayValue(this.state,key,value);}
+  caption(key){
+    const names={speed:['Siła','Magnitude'],duration:['Impuls','Pulse'],
+      minimum:['Min.','Min.'],maximum:['Maks.','Max.'],step:['Krok','Step'],
+      reversal_pause:['Przerwa','Pause'],linear_rate:['Zwiększanie siły','Magnitude increase'],
+      turn_rate:['Zwiększanie siły','Magnitude increase'],linear_deceleration:['Zmniejszanie siły','Magnitude decrease'],
+      turn_deceleration:['Zmniejszanie siły','Magnitude decrease']};
+    return tr(...names[key])+' ('+(this.descriptor(key)?.display_unit || '—')+')';
+  }
+  ready(){return !this.busy && !this.dirty() && settingsValid(this.state,nowSeconds()) && !this.validation().length;}
+  editable(){return settingsValid(this.state,nowSeconds()) && ['DISARMED','ARMED'].includes(this.safety.state?.state)
+    && !this.busy;}
+  pulse(direction){
+    if(!this.ready())throw new Error('manual_settings_unconfirmed');
+    return settingsPulse(this.state,direction);
+  }
+  edit(callback){
+    if(!this.editable())return;
+    if(this.draftRevision===null)this.draftRevision=this.state.revision;
+    text('operator-message','');text('manual-settings-result','');
+    callback();this.paint();this.safety.render();
+  }
+  input(id, caption, update){
+    const label=el('label','motion-setting-field'), node=el('input');node.id=id;node.type=id.endsWith('-speed')?'range':'number';node.step='any';node.inputMode='decimal';
+    label.dataset.field=node.type==='range'?'speed':'number';
+    const title=el('span','',caption);title.dataset.caption=caption;label.append(title,node);
+    if(node.type==='range'){const output=el('output');output.id=id+'-value';label.append(output);}
+    node.addEventListener('input',()=>this.edit(()=>{
+      const key=id.replace(/^setting-(forward|backward|left|right)-/,'').replace(/^setting-/,'');
+      let value=node.value.trim()==='' ? NaN : Number(node.value)/this.factor(key);
+      if(node.type==='range' && Number.isFinite(value)){
+        const direction=id.split('-')[1], item=this.effective().directions[direction];
+        if(value!==0 && item.step>0 && item.step<=item.maximum-item.minimum){
+          value=displayNumber(Math.min(item.maximum,Math.max(item.minimum,item.minimum+Math.round((value-item.minimum)/item.step)*item.step)));
+        }
+      }
+      update(value);
+    }));
+    return label;
+  }
+  build(){
+    const target=document.getElementById('manual-direction-settings');if(!target)return;
+    const modeLabel=el('label','motion-setting-field motion-curve-setting');
+    modeLabel.append(el('span','',tr('Przebieg zmiany siły','Command curve')));
+    const modeSelect=el('select');modeSelect.id='setting-ramp-mode';
+    modeSelect.addEventListener('change',()=>this.edit(()=>{this.pending.ramp_mode=Number(modeSelect.value);}));
+    modeLabel.append(modeSelect);
+    target.before(modeLabel);
+    const calibration=document.body.dataset.page==='calibration';
+    for(const name of directions){
+      const row=el('div','motion-setting-row');row.dataset.directionSettings=name;
+      const heading=el('strong','motion-direction');
+      const arrow=el('span','motion-direction-arrow',arrows[name]);arrow.setAttribute('aria-hidden','true');
+      const title=el('span','',tr(...labels[name]));title.id='setting-'+name+'-title';
+      heading.append(arrow,title);row.append(heading);
+      for(const [key,pl,en] of [
+        ['speed','Siła','Magnitude'],['duration','Impuls','Pulse'],
+        ...(calibration?[['minimum','Min.','Min.'],['maximum','Maks.','Max.'],['step','Krok','Step']]:[])
+      ]){
+        row.append(this.input('setting-'+name+'-'+key,tr(pl,en),value=>{
+          this.directionEdits[name]={...this.directionEdits[name],[key]:value};
+        }));
+      }
+      const hint=el('small','operator-muted motion-setting-hint','');hint.id='setting-'+name+'-hint';row.append(hint);target.append(row);
+    }
+    const ramps=document.getElementById('manual-smoothing-settings');
+    if(ramps){
+      for(const [keys,pl,en] of [
+        [['linear_rate','linear_deceleration'],'↑ ↓ Jazda','↑ ↓ Travel'],
+        [['turn_rate','turn_deceleration'],'← → Skręt','← → Turn'],
+        [['reversal_pause'],'Nawrót','Reversal']
+      ]){
+        const group=el('fieldset','motion-smoothing-group');
+        group.append(el('legend','',tr(pl,en)));
+        for(const key of keys){
+          const caption=key==='reversal_pause'?tr('Przerwa','Pause')
+            :key.endsWith('deceleration')?tr('Zmniejszanie siły','Magnitude decrease'):tr('Zwiększanie siły','Magnitude increase');
+          group.append(this.input('setting-'+key,caption,value=>{this.pending[key]=value;}));
+        }
+        ramps.append(group);
+      }
+    }
+  }
   async refresh(){
-    try {
+    try{
       const result=await request('/api/calibration/controls');
-      if(!result.canonical || !settingsValid(result.data,nowSeconds()))throw new Error('manual_settings_unconfirmed');
-      this.state=result.data;this.paint();this.safety.render();return this.state;
-    } catch(error) {
+      if(!result.canonical || !settingsValid(result.data,nowSeconds()) || !descriptionsValid(result.data))throw new Error('manual_settings_unconfirmed');
+      if(!this.state || result.data.revision>=this.state.revision){
+        if(this.state?.active_profile!==result.data.active_profile && !this.profileSelectionDirty){
+          this.selectedProfile=result.data.active_profile||'';
+          const name=document.getElementById('motion-profile-name');
+          if(name)name.value=result.data.profiles?.[this.selectedProfile]?.name||'';
+        }
+        this.state=result.data;
+      }
+      this.paint();this.safety.render();return this.state;
+    }catch(error){
       this.state=null;this.paint();this.safety.render();throw error;
     }
   }
-  async save(retryConflict=true){
-    if(this.busy || !Object.keys(this.pending).length)return;
-    this.busy=true;this.safety.render();
-    const patch=this.pending;this.pending={};
-    try {
-      if(!settingsValid(this.state,nowSeconds()))await this.refresh();
-      const result=await request('/api/calibration/controls',{method:'POST',body:{revision:this.state.revision,values:patch}});
-      if(!result.canonical || !settingsValid(result.data,nowSeconds()))throw new Error('manual_settings_unconfirmed');
-      this.state=result.data;
-    } catch(error) {
-      this.state=null;
-      try{await this.refresh();}catch{}
-      if(error.status===409 && retryConflict && settingsValid(this.state,nowSeconds())) {
-        this.pending={...patch,...this.pending};
-      } else {
-        if(error.status===409) error.message=tr('Konflikt ustawień: zapis nie został zastosowany. Sprawdź wartości robota i ponów zmianę.', 'Settings conflict: write was not applied. Check robot values and retry.');
-        throw error;
-      }
-    } finally {
-      this.busy=false;this.paint();this.safety.render();
-      if(Object.keys(this.pending).length)this.save(false).catch(showError);
+  effective(){
+    if(!this.state)return null;
+    const rows=Object.fromEntries(directions.map(name=>[name,{...this.state.directions[name],...this.directionEdits[name]}]));
+    return {values:{...this.state.values,...this.pending,speed_limit:Math.max(...directions.map(name=>rows[name].maximum))},directions:rows};
+  }
+  validation(){
+    const effective=this.effective();if(!effective)return [];
+    const errors=[], add=(id,pl,en)=>errors.push({id,message:tr(pl,en)});
+    const v=effective.values;
+    if(v.ramp_mode!==undefined && !this.state.parameter_schema.ramp_modes?.some(item=>item.value===v.ramp_mode)){
+      add('setting-ramp-mode','Wybierz dostępny przebieg.','Choose an available curve.');
     }
+    for(const name of directions){
+      const d=effective.directions[name], prefix='setting-'+name+'-', caption=tr(...labels[name])+': ';
+      for(const key of ['speed','duration','minimum','maximum','step']){
+        if(!Number.isFinite(d[key]))add(prefix+key,caption+'Wpisz liczbę.',caption+'Enter a number.');
+      }
+      if(!(d.duration>=this.descriptor('duration').minimum && d.duration<=this.descriptor('duration').maximum))add(prefix+'duration',caption+'Czas: '+this.range('duration')+'.',caption+'Duration: '+this.range('duration')+'.');
+      if(!(d.minimum>=0 && d.minimum<=d.maximum))add(prefix+'minimum',caption+'Minimum musi mieścić się między 0 a maksimum.',caption+'Minimum must be between zero and maximum.');
+      if(!(d.maximum>=0 && d.maximum<=this.descriptor('maximum').maximum))add(prefix+'maximum',caption+'Maksimum nie może przekroczyć '+this.format('maximum',this.descriptor('maximum').maximum)+'.',caption+'Maximum cannot exceed '+this.format('maximum',this.descriptor('maximum').maximum)+'.');
+      if(!(d.step>0 && (d.maximum===d.minimum || d.step<=d.maximum-d.minimum)))add(prefix+'step',caption+'Krok musi być większy od 0 i nie większy od zakresu ('+this.format('step',d.maximum-d.minimum)+').',caption+'Step must be positive and no larger than the range ('+this.format('step',d.maximum-d.minimum)+').');
+      if(!(d.speed===0 || d.speed>=d.minimum && d.speed<=d.maximum))add(prefix+'speed',caption+'Siła musi mieścić się w zakresie; 0 zatrzymuje.',caption+'Magnitude must be within the range; zero stops.');
+      const a=v[name==='forward'||name==='backward'?'linear_rate':'turn_rate'];
+      const dec=v[name==='forward'||name==='backward'?'linear_deceleration':'turn_deceleration'];
+      const peak=d.duration/(1/a+1/dec);
+      if(d.minimum>peak)add(prefix+'minimum',caption+'Impuls jest za krótki dla tego minimum (szczyt ≤'+this.format('speed',peak)+').',caption+'Pulse is too short for this minimum (peak ≤'+this.format('speed',peak)+').');
+    }
+    for(const key of ['linear_rate','turn_rate','linear_deceleration','turn_deceleration','reversal_pause']){
+      const {minimum:min,maximum:cap}=this.descriptor(key);
+      if(!Number.isFinite(v[key]) || v[key]<min || v[key]>cap){
+        add('setting-'+key,'Wygładzanie: dopuszczalny zakres '+this.range(key)+'.',
+          'Smoothing: allowed range '+this.range(key)+'.');
+      }
+    }
+    return errors;
+  }
+  checkDraft(){
+    const error=this.validation()[0];
+    if(error){document.getElementById(error.id)?.focus?.();throw new Error(error.message);}
+  }
+  reportError(error){
+    text('manual-settings-result','');
+    const message=error.message==='manual_settings_direction_step_or_duration'
+      ?tr('Zapis odrzucony: sprawdź krok oraz czas: ','Write rejected: check the step and duration: ')+this.range('duration')+'.'
+      :error.message;
+    showError({...error,message});
+  }
+  async save(){
+    if(this.busy || !this.dirty())return;
+    if(!this.editable())throw new Error(tr('Poczekaj na aktualny stan robota przed zmianą ustawień.','Wait for current robot state before changing settings.'));
+    this.checkDraft();
+    this.busy=true;this.paint();this.safety.render();
+    text('operator-message','');text('manual-settings-result',tr('Zapisywanie…','Saving…'));
+    const patch={revision:this.draftRevision,values:{...this.pending},directions:Object.fromEntries(Object.entries(this.directionEdits).map(([name,row])=>[name,{...row}]))};
+    try{
+      const result=await request('/api/calibration/controls',{method:'POST',body:patch});
+      if(!result.canonical || !settingsValid(result.data,nowSeconds()) || !descriptionsValid(result.data))throw new Error('manual_settings_unconfirmed');
+      this.state=result.data;
+      this.pending={};this.directionEdits={};this.draftRevision=null;
+      text('manual-settings-result',tr('Zapis potwierdzony przez robota.','Save confirmed by the robot.'));
+    }catch(error){
+      text('manual-settings-result','');
+      if(error.status!==400){
+        this.pending={};this.directionEdits={};this.draftRevision=null;this.state=null;
+        try{await this.refresh();}catch{}
+      }
+      if(error.status===409)error.message=tr(
+        'Zapis odrzucony. Sprawdź aktualne wartości i zakończenie impulsu, następnie ponów zmianę.',
+        'Write rejected. Review current values and pulse completion, then make the change again.');
+      throw error;
+    }finally{this.busy=false;this.paint();this.safety.render();}
+  }
+  async profile(action){
+    if(!this.editable())throw new Error(tr('Poczekaj na aktualne ustawienia.','Wait for current settings.'));
+    if(!['create','save'].includes(action) && this.dirty())throw new Error(tr('Najpierw zapisz zmienione nastawy.','Save changed settings first.'));
+    const operation={action};
+    if(action!=='create')operation.id=this.selectedProfile;
+    if(['create','save'].includes(action)){
+      operation.name=document.getElementById('motion-profile-name')?.value.trim();
+      if(!operation.name)throw new Error(tr('Podaj nazwę profilu.','Enter a profile name.'));
+    }
+    if(['create','save'].includes(action))this.checkDraft();
+    this.busy=true;this.paint();this.safety.render();
+    text('operator-message','');text('manual-settings-result',tr('Zapisywanie…','Saving…'));
+    try{
+      const result=await request('/api/calibration/controls',{method:'POST',body:{
+        revision:this.draftRevision??this.state.revision,values:this.pending,
+        directions:this.directionEdits,profile:operation}});
+      if(!result.canonical || !settingsValid(result.data,nowSeconds()) || !descriptionsValid(result.data))throw new Error('manual_settings_unconfirmed');
+      this.state=result.data;
+      this.pending={};this.directionEdits={};this.draftRevision=null;
+      this.selectedProfile=this.state.active_profile||'';this.profileSelectionDirty=false;
+      const name=document.getElementById('motion-profile-name');
+      if(name)name.value=this.state.profiles?.[this.selectedProfile]?.name||'';
+      text('manual-settings-result',action==='delete'
+        ?tr('Usunięto profil. Bieżące nastawy pozostały.','Profile deleted. Current settings retained.')
+        :tr('Profil zapisany / zastosowany. Ruch nie został uruchomiony.','Profile saved / applied. No motion started.'));
+    }catch(error){
+      text('manual-settings-result','');
+      if(error.status===409){
+        this.pending={};this.directionEdits={};this.draftRevision=null;
+        await this.refresh();
+        error.message=tr('Sprawdź aktualne nastawy i zakończenie impulsu, następnie ponów operację.','Review current settings and pulse completion, then retry.');
+      }
+      throw error;
+    }finally{this.busy=false;this.paint();this.safety.render();}
+  }
+  paintProfiles(known,editable){
+    const select=document.getElementById('motion-profile-select');if(!select)return;
+    if(!known){
+      select.disabled=true;
+      for(const id of ['motion-profile-name','motion-profile-apply','motion-profile-create','motion-profile-save','motion-profile-delete']){
+        const node=document.getElementById(id);if(node)node.disabled=true;
+      }
+      return;
+    }
+    const profiles=known?this.state.profiles||{}:{};
+    const signature=JSON.stringify(profiles);
+    if(this.selectedProfile===null && known)this.selectedProfile=this.state.active_profile||'';
+    if(this.selectedProfile && !profiles[this.selectedProfile])this.selectedProfile='';
+    if(select.dataset.profiles!==signature){
+      const blank=el('option','',tr('Bieżące / własne nastawy','Current / custom settings'));blank.value='';
+      select.replaceChildren(blank,...Object.entries(profiles).map(([id,row])=>{
+        const option=el('option','',row.name);option.value=id;return option;
+      }));select.dataset.profiles=signature;
+    }
+    select.value=this.selectedProfile||'';select.disabled=!editable;
+    const selected=Boolean(profiles[this.selectedProfile]);
+    for(const [id,enabled] of [['motion-profile-apply',selected&&!this.dirty()],
+      ['motion-profile-create',true],['motion-profile-save',selected],['motion-profile-delete',selected&&!this.dirty()]]){
+      const node=document.getElementById(id);if(node)node.disabled=!editable||!enabled;
+    }
+    const name=document.getElementById('motion-profile-name');
+    if(name){name.disabled=!editable;if(name.dataset.initialized!== 'true' && known){
+      name.value=profiles[this.selectedProfile]?.name||'';name.dataset.initialized='true';
+    }}
+    const active=profiles[this.state?.active_profile];
+    text('motion-profile-status',active?tr('Aktywny: ','Active: ')+active.name
+      +(this.state.profile_modified?tr(' · zmienione nastawy, profil nieaktualizowany',' · modified settings, preset not updated'):'')
+      :tr('Własne nastawy — bez wybranego profilu','Custom settings — no active profile'));
   }
   paint(){
-    const known=settingsValid(this.state,nowSeconds());
-    for(const [id,key] of Object.entries(binding)){
-      const node=document.getElementById(id);if(!node)continue;
-      node.disabled=!known;
-      if(known && !this.busy && !(key in this.pending)){
-        node.max=this.state.limits[key];node.value=this.state.values[key];
-        text(id+'-value',Number(node.value).toFixed(3));
+    const known=settingsValid(this.state,nowSeconds()), editable=this.editable();
+    const effective=known?this.effective():null, errors=known?this.validation():[];
+    this.paintProfiles(known,editable);
+    const modeSelect=document.getElementById('setting-ramp-mode');
+    if(modeSelect){
+      const options=known?this.state.parameter_schema.ramp_modes||[]:[];
+      const signature=JSON.stringify(options)+this.language();
+      if(modeSelect.dataset.optionsSignature!==signature){
+        modeSelect.replaceChildren(...options.map(item=>{
+          const option=el('option','',tr(item.label_pl,item.label_en));option.value=item.value;return option;
+        }));
+        modeSelect.dataset.optionsSignature=signature;
+      }
+      modeSelect.disabled=!editable || !options.length;
+      modeSelect.value=effective?.values.ramp_mode??0;
+      modeSelect.title=Number(modeSelect.value)===2
+        ?tr('Najszybsza zmiana na początku, następnie coraz wolniej.','Fastest change at the beginning, then progressively slower.')
+        :Number(modeSelect.value)===1?tr('Łagodny początek i koniec zmiany.','Smooth beginning and end of the change.'):tr('Stałe tempo zmiany.','Constant rate of change.');
+    }
+    text('manual-settings-units',known
+      ?tr('Siła w ','Magnitude in ')+this.descriptor('speed').display_unit
+        +tr(', czas w ',', duration in ')+this.descriptor('duration').display_unit
+        +tr('. Wspólne ustawienia z Pi; zmiany odświeżają pozostałe ekrany.',
+          '. Shared settings from Pi; changes refresh the other screens.')
+      :tr('Oczekiwanie na jednostki i ustawienia z Pi.','Waiting for units and settings from Pi.'));
+    for(const name of directions){
+      text('setting-'+name+'-title',tr(...labels[name]));
+      if(known){
+        const item=effective.directions[name], v=effective.values;
+        const a=['forward','backward'].includes(name)?v.linear_rate:v.turn_rate;
+        const d=['forward','backward'].includes(name)?v.linear_deceleration:v.turn_deceleration;
+        const peak=Math.min(item.speed,item.duration/(1/a+1/d));
+        text('setting-'+name+'-hint',tr('Zakres ','Range ')+this.format('minimum',item.minimum)+'–'+this.format('maximum',item.maximum)+tr(' · krok ',' · step ')+this.format('step',item.step));
+        const row=document.getElementById('setting-'+name+'-title')?.closest('.motion-setting-row');
+        if(row)row.title=tr('Teoretyczny szczyt impulsu od postoju: ','Theoretical pulse peak from rest: ')+this.format('speed',peak);
+        text('setting-'+name+'-speed-value',Number.isFinite(item.speed)?this.format('speed',item.speed)+tr(' · impuls ≤',' · pulse ≤')+this.format('speed',peak):'—');
+      }else text('setting-'+name+'-speed-value','—');
+      for(const key of ['speed','duration','minimum','maximum','step']){
+        const node=document.getElementById('setting-'+name+'-'+key);if(!node)continue;
+        node.disabled=!editable;
+        const caption=node.parentElement?.querySelector?.('span');
+        if(caption)caption.textContent=this.caption(key);
+        if(!known && !this.dirty())node.value='';
+        if(known){
+          node.min=this.shown(key,this.descriptor(key).minimum);
+          node.max=this.shown(key,key==='speed'?Math.max(0,effective.directions[name].maximum):this.descriptor(key).maximum);
+          // Browser step rounding must never rewrite an authoritative value.
+          node.step='any';
+          const value=effective.directions[name][key];
+          if(Number.isFinite(value) && (key==='speed' || !(key in (this.directionEdits[name]||{}))))node.value=this.shown(key,value);
+        }
+        node.setAttribute?.('aria-invalid',String(errors.some(error=>error.id===node.id)));
       }
     }
-    text('manual-settings-status',this.ready()
-      ? tr('Wspólne ustawienia robota · wersja ','Shared robot settings · revision ')+this.state.revision
-      : tr('Synchronizacja ustawień — ruch z panelu zablokowany','Synchronizing settings — panel movement blocked'));
+    for(const key of fields){
+      const node=document.getElementById('setting-'+key);if(!node)continue;
+      node.disabled=!editable;
+      const caption=node.parentElement?.querySelector?.('span');
+      if(caption)caption.textContent=this.caption(key);
+      if(!known && !this.dirty())node.value='';
+      if(known){
+        node.max=this.shown(key,this.descriptor(key).maximum);
+        node.min=this.shown(key,this.descriptor(key).minimum);node.step='any';
+        if(!(key in this.pending))node.value=this.shown(key,this.state.values[key]);
+      }
+      node.setAttribute?.('aria-invalid',String(errors.some(error=>error.id===node.id)));
+    }
+    // A visible field error is attached to its input, not only to a page banner.
+    for(const name of [...directions.flatMap(name=>['speed','duration','minimum','maximum','step'].map(key=>'setting-'+name+'-'+key)),
+      ...fields.map(key=>'setting-'+key)]){
+      const node=document.getElementById(name);if(!node?.parentElement)continue;
+      let message=document.getElementById(name+'-error');
+      if(!message){message=el('small','operator-error motion-field-error');message.id=name+'-error';node.parentElement.append(message);node.setAttribute('aria-describedby',message.id);}
+      const error=errors.find(error=>error.id===name);message.textContent=error?.message||'';message.hidden=!error;
+    }
+    const feedback=document.getElementById('manual-settings-feedback');
+    if(feedback){
+      if(!known)feedback.textContent=tr('Brak potwierdzonych nastaw z Pi.','No confirmed settings from Pi.');
+      else{
+        const v=this.state.values, runtime=this.safety.state?.manual_settings;
+        const matched=runtime?.revision===this.state.revision
+          && fields.every(key=>runtime.values?.[key]===v[key])
+          && directions.every(name=>['minimum','maximum','step','speed','duration'].every(key=>runtime.directions?.[name]?.[key]===this.state.directions[name][key]));
+        feedback.textContent=(matched?tr('Wykonawca potwierdza nastawy. ','Executor confirms settings. '):tr('Oczekiwanie na potwierdzenie wykonawcy. ','Waiting for executor confirmation. '))
+          +tr('Jazda ↑/↓: ','Travel ↑/↓: ')+this.format('linear_rate',v.linear_rate)+' / '+this.format('linear_deceleration',v.linear_deceleration)
+          +tr(' · Skręt ←/→: ',' · Turn ←/→: ')+this.format('turn_rate',v.turn_rate)+' / '+this.format('turn_deceleration',v.turn_deceleration)
+          +tr(' (narastanie / hamowanie) · Nawrót: ',' (acceleration / deceleration) · Reversal: ')+this.format('reversal_pause',v.reversal_pause)+'.'
+          +(this.dirty()?tr(' Suwaki zawierają niezapisane zmiany.',' Sliders include unsaved edits.'):'');
+      }
+    }
+    const save=document.getElementById('manual-settings-save');if(save)save.disabled=!editable || !this.dirty() || errors.length>0;
+    for(const id of ['motion-profile-create','motion-profile-save']){
+      const node=document.getElementById(id);if(node && errors.length)node.disabled=true;
+    }
+    text('manual-settings-status',known
+      ?tr('Ustawienia robota · rewizja ','Robot settings · revision ')+this.state.revision
+        +(this.dirty()?tr(' · niezapisane zmiany',' · unsaved changes'):'')
+      :tr('Brak potwierdzonych ustawień robota','Robot settings unconfirmed'));
   }
 }

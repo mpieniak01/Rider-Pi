@@ -54,7 +54,7 @@ def estimate(clock):
     return OdometryEstimator(clock=clock, wall_clock=clock)
 
 
-def test_activation_changes_only_limits_and_pointer(executor):
+def test_odometry_activation_preserves_device_motion_settings(executor):
     instance, clock = executor
     before = list(instance.adapter.calls)
     generation = instance.gate.generation
@@ -64,7 +64,7 @@ def test_activation_changes_only_limits_and_pointer(executor):
     assert instance.adapter.calls == before
     assert instance.gate.state == "DISARMED" and instance.gate.generation != generation
     assert ack["generation"] == instance.gate.generation and ack["command_generation"] == generation
-    assert instance.controller.limits == RampLimits(0.4, 0.5, 1.0)
+    assert instance.controller.limits.speed_limit == instance.controls["values"]["speed_limit"]
     assert instance.controller.limits.watchdog_s == 0.5
     assert profiles.read_active()["activated_at"] == clock.now
     assert instance.snapshot()["calibration"]["profile_digest"] == ack["profile_digest"]
@@ -134,7 +134,7 @@ def test_cap_ceiling_preserved_when_lowering_then_raising(executor):
     assert activate(instance, digest)["accepted"]
     high = profiles.save_profile(profile(linear_rate=instance.calibration.ceilings.linear_rate + 0.01))["digest"]
     assert activate(instance, high)["error"] == "initial_motion_ceiling_exceeded"
-    assert instance.controller.limits.linear_rate == 1
+    assert instance.controller.limits.linear_rate == 3
 
 
 def test_invalid_initial_caps_have_no_guessed_recovery(executor):
@@ -160,15 +160,15 @@ def test_activation_can_repair_bad_pointer_without_sensors_or_hardware(executor)
     assert instance.adapter.calls == before
 
 
-def test_bad_persisted_revision_inhibits_arm(executor):
+def test_bad_archival_odometry_profile_does_not_override_motion_settings(executor):
     instance, _ = executor
     digest = profiles.save_profile(profile())["digest"]
     profiles.write_active(digest, now=1000)
     (profiles.storage_dir() / "revisions" / (digest + ".json")).write_text("{}")
     instance.calibration = CalibrationRuntime(instance.controller.limits)
     before = list(instance.adapter.calls)
-    assert not instance.snapshot()["ready"] and not arm(instance)["accepted"]
-    assert instance.gate.state == "DISARMED" and instance.adapter.calls == before
+    assert instance.snapshot()["ready"] and arm(instance)["accepted"]
+    assert instance.gate.state == "ARMED" and instance.adapter.calls == before
 
 
 def test_estop_during_persistence_leaves_partial_and_inhibited(executor, monkeypatch):
@@ -187,7 +187,7 @@ def test_estop_during_persistence_leaves_partial_and_inhibited(executor, monkeyp
     with pytest.raises(ValueError, match="active_profile_pending"):
         profiles.read_active()
     assert profiles.read_active(include_pending=True)["profile_digest"] == ack["profile_digest"]
-    assert instance.calibration.profile_digest is None and not instance.snapshot()["ready"]
+    assert instance.calibration.profile_digest is None and not instance.snapshot()["can_move"]
     assert instance.adapter.calls == before
 
 

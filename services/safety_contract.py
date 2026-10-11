@@ -99,11 +99,29 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
         if (time.time() - command["ts"]) * 1000 > command["ttl_ms"]:
             raise ValueError("expired command")
         if action in {"move", "turn"}:
-            command["vx"] = _number(payload.get("vx", 0), "vx", -1, 1)
-            command["yaw"] = _number(payload.get("yaw", 0), "yaw", -1, 1)
-            command["duration"] = _number(payload.get("duration", 0.1), "duration", 0.01, SAFE_MAX_DURATION)
+            if not isinstance(payload.get("mode", "pulse"), str) or payload.get("mode", "pulse") not in {
+                "pulse",
+                "hold",
+                "release",
+            }:
+                raise ValueError("unsupported_motion_mode")
+            if payload.get("mode", "pulse") != "pulse" and not (
+                payload.get("device_settings") is True
+                and payload.get("source") == "manual"
+                and payload.get("execution_context") == "panel"
+            ):
+                raise ValueError("hold_operator_panel_only")
+            if payload.get("device_settings") is True:
+                if payload.get("direction") not in {"forward", "backward", "left", "right"}:
+                    raise ValueError("manual_direction")
+                if any(key in payload for key in ("vx", "yaw", "duration")):
+                    raise ValueError("device_settings_ambiguous_command")
+            else:
+                command["vx"] = _number(payload.get("vx", 0), "vx", -1, 1)
+                command["yaw"] = _number(payload.get("yaw", 0), "yaw", -1, 1)
+                command["duration"] = _number(payload.get("duration", 0.1), "duration", 0.01, SAFE_MAX_DURATION)
         elif action == "height":
-            height = _number(payload.get("height"), "height", 0, 12)
+            height = _number(payload.get("height"), "height", 75, 115)
             if int(height) != height:
                 raise ValueError("height must be integer")
             command["height"] = int(height)
@@ -124,8 +142,13 @@ def _permission(command: dict[str, Any], status: dict[str, Any]) -> str | None:
         return "motion_not_ready"
     if status.get("owner") != command["source"] or status.get("generation") != command["generation"]:
         return "stale_generation_or_wrong_owner"
+    settings = status.get("manual_settings") or {}
+    if type(command.get("settings_revision")) is not int or command["settings_revision"] != settings.get("revision"):
+        return "manual_settings_stale"
     capability = (status.get("capabilities") or {}).get(command["action"], {})
-    if capability.get("available") is not True or capability.get("stop_verified") is not True:
+    if capability.get("available") is not True or (
+        command["action"] not in {"height", "balance"} and capability.get("stop_verified") is not True
+    ):
         return "actuator_unavailable_or_uncharacterized"
     return None
 

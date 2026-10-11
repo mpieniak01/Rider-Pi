@@ -129,7 +129,7 @@ async function fixture(initial = disarmed(), { page = 'control', safetyCard = nu
     if (modules.has(name)) return modules.get(name);
     const source = await readFile(path.join(assets, name), 'utf8');
     const module = new vm.SourceTextModule(source, { context, identifier: name }); modules.set(name, module);
-    await module.link(specifier => load(path.basename(specifier)));
+    await module.link(specifier => load(path.basename(specifier).split("?")[0]));
     return module;
   }
   const module = await load('safety.js'); await module.evaluate();
@@ -377,16 +377,16 @@ test('navigation quality changes at the same timestamp redraw and unknown events
 
 test('posture controls retain canonical envelopes and require verified capabilities', async () => {
   const f = await fixture(armed());
-  await assert.rejects(f.panel.send('height', { height: 6 }));
+  await assert.rejects(f.panel.send('height', { height: 90 }));
   assert.equal(f.calls.filter(call => call.method === 'POST').length, 0);
   f.setState({ ...armed(), capabilities: { move: capability, turn: capability, height: capability, balance: capability } });
-  await f.panel.send('height', { height: 6 });
+  await f.panel.send('height', { height: 90 });
   await f.panel.send('balance', { enabled: false });
   const posts = f.calls.filter(call => call.method === 'POST');
   assert.equal(posts.length, 2);
   assert.ok(posts.every(call => call.url === '/api/control' && call.body.generation === 'fixture-generation'
     && call.body.source === 'manual' && call.body.ttl_ms === 500 && Number.isFinite(call.body.ts)));
-  assert.equal(posts[0].body.action, 'height'); assert.equal(posts[0].body.height, 6);
+  assert.equal(posts[0].body.action, 'height'); assert.equal(posts[0].body.height, 90);
   assert.equal(posts[1].body.action, 'balance'); assert.equal(posts[1].body.enabled, false);
 });
 

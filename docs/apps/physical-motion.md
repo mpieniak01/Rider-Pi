@@ -16,7 +16,7 @@ distance, stopping time or physical arrival.
 | SDK | `rider_move_x(runtime=0)` is held until replaced; repeated accepted output is bounded by the existing goal/lease gate |
 | Yaw | Canonical yaw negative=left, positive=right; pose heading is CCW positive |
 | Zero goal | A fresh authorized zero MOVE writes zero immediately, retains the current valid lease, and gets a SDK ACK |
-| Fault/timeout | Sensor/intent/source loss and goal timeout stop through the same gate and disarm; fresh data never restores consent |
+| Fault/timeout | Sensor/intent/source faults and timed session expiry stop and disarm; a normal panel pulse ends with zero output while retaining operator arming |
 | Sensors | One UART owner, one transaction per pass; finite original per-axis and battery observation times, 2.5 s software age budget |
 | Battery | SDK percent 0..100 becomes normalized 0..1; 1% is 0.01; invalid/missing data is null, never a healthy zero |
 | Tilt/battery policy | Thresholds and physical reaction remain manual_characterization_required |

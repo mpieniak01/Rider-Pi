@@ -1,3 +1,4 @@
+import { HeldMotion } from './held-motion.js?v=motion-descriptors-9';
 import { ageOf, authorized, safetyKnown, editingTarget, matchingAck, setServerClock } from './model.js';
 import { request, poll, prepareMutation } from './transport.js';
 import { text, tr, statusLabel, showError } from './ui.js';
@@ -8,6 +9,18 @@ export class SafetyPanel {
     this.history = []; this.pending = new Map(); this.mutating = false;
     this.revokedGenerations = new Set();
     this.clockReady = false; this.clockObserved = 0;
+    this.held = new HeldMotion({
+      send:(intent,valid)=>this.sendIntent(intent,valid),
+      modes:()=>this.controls?.state?.control_modes || {},
+      allowed:direction=>Boolean(this.controls?.state?.control_modes?.supported?.includes('hold'))
+        && this.can('manual',['left','right'].includes(direction)?'turn':'move'),
+      error:showError,
+      active:direction=>document.querySelectorAll('[data-direction]').forEach(node=>{
+        const pressed=node.dataset.direction===direction;
+        node.setAttribute('aria-pressed',String(pressed));
+        node.classList.toggle('is-held',pressed);
+      })
+    });
     this.toggling = false; this.toggleEpoch = 0;
     document.getElementById('global-motion-toggle')?.addEventListener('click', () => this.toggleMotion().catch(showError));
     this.poller = poll(async () => {
@@ -21,12 +34,25 @@ export class SafetyPanel {
     this.expiry = setInterval(() => this.render(), 250);
     if (this.interactive) {
       document.querySelectorAll('[data-stop]').forEach(node => node.addEventListener('click', () => this.stop()));
-      document.querySelectorAll('[data-direction]').forEach(node => node.addEventListener('click', () => this.move(node.dataset.direction)));
+      document.querySelectorAll('[data-direction]').forEach(node => {
+        node.style.touchAction='none';
+        node.addEventListener('pointerdown',event=>{
+          if(event.button!==0)return;
+          event.preventDefault();
+          node.setPointerCapture(event.pointerId);
+          this.held.begin(node.dataset.direction,event.pointerId);
+        });
+        node.addEventListener('pointerup',event=>{event.preventDefault();this.held.end(event.pointerId);});
+        node.addEventListener('pointercancel',event=>this.held.end(event.pointerId,true));
+        node.addEventListener('lostpointercapture',event=>this.held.end(event.pointerId,true));
+        node.addEventListener('click',event=>{if(event.detail===0)this.held.click(node.dataset.direction);});
+      });
       document.addEventListener('keydown', event => this.key(event));
+      document.addEventListener('keyup', event => this.held.end(event.code));
       window.addEventListener('blur', () => this.suspend());
       document.addEventListener('visibilitychange', () => { if (document.hidden) this.suspend(); });
     }
-    window.addEventListener('pagehide', () => { clearInterval(this.expiry); this.poller.stop(); });
+    window.addEventListener('pagehide', () => { this.held.end(undefined,true); clearInterval(this.expiry); this.poller.stop(); });
   }
   revoke() {
     if (this.state?.state !== 'ARMED') return;
@@ -56,13 +82,14 @@ export class SafetyPanel {
       ts: this.commandTime(), ttl_ms: 500 };
   }
   async send(action, params = {}, endpoint = '/api/control', owner = 'manual') {
-    if (action === 'move' && this.controls) params = { ...params, ...this.controls.pulse(params.direction) };
+    if (action === 'move' && this.controls) params = this.controls.pulse(params.direction);
+    if (['turn', 'height', 'balance', 'stabilization', 'action'].includes(action) && this.controls) params.settings_revision = this.controls.state?.revision;
     const exempt = ['stop', 'disarm', 'estop'].includes(action);
     if (action === 'arm' && params.arming_mode !== 'operator' && (!Number.isFinite(params.lease_s) || params.lease_s <= 0 || params.lease_s > 30))
       throw new Error('invalid_lease');
-    if (['move', 'turn'].includes(action) && (![params.vx, params.yaw, params.duration].every(Number.isFinite)
+    if (['move', 'turn'].includes(action) && params.device_settings !== true && (![params.vx, params.yaw, params.duration].every(Number.isFinite)
       || Math.abs(params.vx) > 1 || Math.abs(params.yaw) > 1 || params.duration < .01 || params.duration > .25)) throw new Error(tr('Nieprawidłowy impuls: wartości -1–1, czas 0.01–0.25 s', 'Invalid pulse: values -1–1, duration 0.01–0.25 s'));
-    if (action === 'height' && (!Number.isInteger(params.height) || params.height < 0 || params.height > 12)) throw new Error(tr('Wysokość musi być liczbą całkowitą 0–12', 'Height must be an integer 0–12'));
+    if (action === 'height' && (!Number.isInteger(params.height) || params.height < 75 || params.height > 115)) throw new Error(tr('Wysokość musi być liczbą całkowitą 75–115', 'Height must be an integer 75–115'));
     if (action === 'action' && (!Number.isInteger(params.action_id) || params.action_id < 1 || params.action_id > 255)) throw new Error(tr('ID akcji musi być liczbą całkowitą 1–255', 'Action ID must be an integer 1–255'));
     if (this.mutating && !exempt) throw new Error(tr('Poczekaj na odpowiedź poprzedniego żądania', 'Wait for the previous request'));
     if (!this.controlsActive() && !['arm', 'clear_estop', 'stop', 'disarm', 'estop'].includes(action)) throw new Error('Motion controls are unavailable on this view');
@@ -72,7 +99,9 @@ export class SafetyPanel {
         await this.prepare();
         if (action === 'move' && this.controls) {
           await this.controls.refresh();
-          params = { ...params, ...this.controls.pulse(params.direction) };
+          const revision = params.settings_revision;
+          if (this.controls.state.revision !== revision) throw new Error(tr('Ustawienia zmieniły się — sprawdź wartości i kliknij ponownie.', 'Settings changed — review values and click again.'));
+          params = this.controls.pulse(params.direction);
         }
       }
       catch (error) { this.mutating = false; this.render(); throw error; }
@@ -81,7 +110,7 @@ export class SafetyPanel {
     try {
       command = exempt ? { action, source: owner, request_id: `web-${Date.now()}-${Math.random().toString(16).slice(2)}` } : this.envelope(action, params, owner);
     } catch (error) { if (!exempt) this.mutating = false; this.render(); throw error; }
-    if (exempt) { this.toggleEpoch++; this.revoke(); this.render(); }
+    if (exempt) { this.held.stop(); this.toggleEpoch++; this.revoke(); this.render(); }
     const submittedAt = this.commandTime();
     const entry = { command, submittedAt, status: 'sending' };
     this.history.unshift(entry); this.history = this.history.slice(0, 20); this.pending.set(command.request_id, entry);
@@ -100,6 +129,30 @@ export class SafetyPanel {
       entry.status = error.status ? 'rejected' : 'unknown'; entry.reason = error.message;
       this.pending.delete(command.request_id); throw error;
     } finally { if (!exempt) this.mutating = false; this.renderHistory(); this.poller.refresh(); }
+  }
+  async sendIntent(intent, valid) {
+    const revision=this.controls?.state?.revision;
+    const generation=this.state?.generation;
+    const permittedAtStart=this.can('manual',['left','right'].includes(intent.direction)?'turn':'move');
+    const neutralCommand=intent.mode==='release' && permittedAtStart
+      ?this.envelope('move',{...this.controls.pulse(intent.direction),mode:'release'}):null;
+    await prepareMutation();
+    const check=()=>{
+      if(!valid() || (this.state && generation!==this.state.generation) || revision!==this.controls?.state?.revision
+        || (!(neutralCommand && !this.state && Date.now()/1000-this.clockObserved<=3) && !this.can('manual',['left','right'].includes(intent.direction)?'turn':'move')))
+        throw new Error('manual_intent_cancelled_or_stale');
+    };
+    check();
+    const params={...this.controls.pulse(intent.direction),mode:intent.mode};
+    const command=neutralCommand || this.envelope('move',params);
+    const result=await request('/api/control',{method:'POST',body:command,timeout:500,beforeSend:check});
+    if(result.data.safety)this.update(result.data.safety);
+    if(result.data.ack?.status==='rejected')throw new Error(result.data.ack.reason||'motion_rejected');
+    text('operator-message',intent.mode==='release'
+      ?tr('Wyhamowanie; robot pozostaje uzbrojony.','Decelerating; robot remains armed.')
+      :intent.mode==='hold'?tr('Przytrzymanie — jazda ciągła.','Held — continuous command.')
+      :tr('Wysłano impuls.','Pulse sent.'));
+    return result.data;
   }
   ack(ack, confirmedHttp = false) {
     const entry = this.pending.get(ack?.request_id);
@@ -150,6 +203,7 @@ export class SafetyPanel {
   }
   stop() { this.send('stop').catch(showError); }
   suspend() {
+    this.held.end(undefined,true);
     // Operator permission survives focus changes and read failures; fresh data
     // still gates every new command. Hardware faults are handled by the executor.
     if (this.state?.arming_mode === 'operator' && this.state?.execution_context === 'panel') {
@@ -175,9 +229,9 @@ export class SafetyPanel {
     if (!this.controlsActive()) return;
     if (editingTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
     if (event.code === 'Space') { event.preventDefault(); this.stop(); return; }
-    if (document.body.dataset.page !== 'control' || !this.can()) return;
+    if (!['control','calibration'].includes(document.body.dataset.page) || !this.can()) return;
     const direction = { KeyW: 'forward', ArrowUp: 'forward', KeyS: 'backward', ArrowDown: 'backward', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' }[event.code];
-    if (direction) { event.preventDefault(); this.move(direction); }
+    if (direction) { event.preventDefault(); this.held.begin(direction,event.code); }
   }
   render() {
     for (const [id, entry] of this.pending) {
@@ -194,7 +248,7 @@ export class SafetyPanel {
     text('safety-owner', known ? this.state.owner || '—' : '—');
     text('safety-reason', this.revokedGenerations.has(this.state?.generation) ? tr('Zgoda lokalnie unieważniona; wymagane STOP i nowe uzbrojenie', 'Permission locally revoked; STOP and new arming required') : !this.clockFresh() ? tr('Zegar serwera niepotwierdzony lub wolne połączenie — tylko odczyt', 'Server clock unconfirmed or slow connection — read only') : known ? this.state.error || this.state.reason || '—' : tr('Brak świeżych danych / stary kontrakt: tylko odczyt', 'Missing fresh data / old contract: read only'));
     text('safety-lease', known && typeof this.state.lease_remaining_s === 'number' ? `${Math.max(0, this.state.lease_remaining_s - Math.max(0, this.now() - this.state.observed_at)).toFixed(1)} s` : '—');
-    document.querySelectorAll('[data-direction]').forEach(node => { node.disabled = !this.can('manual', ['left', 'right'].includes(node.dataset.direction) ? 'turn' : 'move') || this.mutating; });
+    document.querySelectorAll('[data-direction]').forEach(node => { node.disabled = !this.can('manual', ['left', 'right'].includes(node.dataset.direction) ? 'turn' : 'move'); });
     this.onChange(this.state);
   }
   renderHistory() {

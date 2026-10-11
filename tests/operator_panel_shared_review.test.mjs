@@ -52,7 +52,7 @@ async function fixture() {
   async function load(name) {
     if (modules.has(name)) return modules.get(name);
     const module = new vm.SourceTextModule(await readFile(path.join(assets, name), 'utf8'), { context, identifier: name });
-    modules.set(name, module); await module.link(specifier => load(path.basename(specifier))); return module;
+    modules.set(name, module); await module.link(specifier => load(path.basename(specifier).split("?")[0])); return module;
   }
   return { document, elements, calls, replies, advance: seconds => { clock += seconds; },
     async load(name) { const module = await load(name); await module.evaluate(); return module.namespace; } };

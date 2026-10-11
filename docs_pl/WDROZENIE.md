@@ -53,7 +53,8 @@ make pi-preview PI_DEPLOY_ARGS='--restart-api'
 ```
 
 Ta opcja restartuje tylko `rider-api.service` i sprawdza HTTP health.
-Statyczny web wymaga odświeżenia przeglądarki. Opcja przechodzi na kolejne podglądy.
+Statyczny web wymaga odświeżenia przeglądarki. Restart API jest jawny dla
+każdej iteracji; wcześniejszy restart nie wymusza restartów kolejnych zmian weba.
 Dla innej usługi aplikacyjnej
 restart i test dobierz do zmienionego komponentu. Podgląd nie zastępuje
 sprawdzenia funkcji na sprzęcie. Nie uruchamiaj równolegle drugiego procesu
@@ -73,7 +74,9 @@ operację. Wcześniejsze prace zachowaj zamiast resetować.
 ## Wydanie: PR, merge i aktualizacja Pi
 
 Po zaakceptowaniu funkcji na Pi opublikuj gałąź, utwórz PR i przeprowadź
-powiązane kontrole oraz review. Poprawkę z review sprawdź ponownie w podglądzie,
+powiązane wymagane kontrole. Recenzje zbieraj naturalnie, bez wymuszania
+i ponawiania. Brak opcjonalnej recenzji nie blokuje wydania.
+Poprawkę z otrzymanej recenzji sprawdź ponownie w podglądzie,
 jeżeli zmienia testowany kod. Po merge użyj pełnego hasha `main`:
 
 ```bash
@@ -86,10 +89,10 @@ make pi-preview-status
 Narzędzie pobiera `origin/main` na Pi, sprawdza oczekiwany hash i aktualizuje
 `main` tylko przez fast-forward. Aktywny podgląd musi mieć identyczne drzewo
 plików jak wydanie; squash może zmienić hash commitu. Przy różnicy plików
-potrzebny jest nowy podgląd. Bez aktywnego podglądu można wdrożyć zrecenzowany
+potrzebny jest nowy podgląd. Bez aktywnego podglądu można wdrożyć zaakceptowany
 `main` bezpośrednio. Poprzednią rewizję zapisuje `.git/rider-last-release.json`.
-Przy zmianie API dodaj `PI_DEPLOY_ARGS='--restart-api'`; opcja jest dziedziczona
-także z aktywnego podglądu.
+Przy zmianie API dodaj `PI_DEPLOY_ARGS='--restart-api'`; restart jest jawny.
+Wydanie identycznego, uruchomionego już podglądu nie dziedziczy restartu API.
 
 Porównaj Git, `/api/status/version` i `/healthz`, następnie sprawdź zmienioną
 funkcję. Panel działa na `8080`, bridge ruchu na `8081`. Polecenie ruchu nie jest
@@ -145,3 +148,23 @@ notatkach operacyjnych, bez sekretów.
 
 Zobacz [development](development.md), [mapowanie systemd](SYSTEMD_SERVICES_MAPPING.md)
 i [politykę konfiguracji](config/POLICY.md).
+
+
+## Szybki przyrost i czas wdrożenia
+
+make pi-preview odczytuje commit Pi i przesyła tylko nowe commity od ostatniego
+podglądu. Punkt powrotu pozostaje na pierwotnym main. Zmiana rewizji Pi między
+odczytem a wdrożeniem zatrzymuje operację.
+Powtórzenie tego samego commitu nie przesyła paczki ani nie przełącza gałęzi.
+Wynik zawiera elapsed_s, transfer_bytes i faktyczne zmienione files;
+osobne pi-preview-status jest potrzebne tylko do diagnozy.
+Rollback pamięta, czy którakolwiek iteracja restartowała API, aby poprawnie
+odtworzyć poprzedni backend. Zmiany weba nie dziedziczą restartów.
+
+## Podgląd zmian wykonawcy ruchu
+
+Zakres obejmujący drivers/xgo/adapter.py wdrażaj komendą preview z flagami
+--restart-api --restart-motion. Flaga dopuszcza tylko ten adapter spośród
+chronionych sterowników. Wykonawca jest zatrzymywany przed zmianą kodu i wraca
+rozbrojony; potem restart API. Bez restartu robota, automatycznego ARM, prób
+ruchu i publikacji GH. Rollback pamięta restart wykonawcy. Nastawy poza checkoutem.

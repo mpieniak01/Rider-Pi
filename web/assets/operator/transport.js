@@ -29,7 +29,7 @@ export function request(path, options = {}) {
   }
   return flight;
 }
-async function performRequest(path, { method = 'GET', body, timeout = 6000 } = {}) {
+async function performRequest(path, { method = 'GET', body, timeout = 6000, beforeSend = () => {} } = {}) {
   const stop = path === '/api/control' && body?.action === 'stop'
     || path === '/api/safety' && ['disarm', 'estop'].includes(body?.action);
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !stop) {
@@ -39,6 +39,7 @@ async function performRequest(path, { method = 'GET', body, timeout = 6000 } = {
   const timer = setTimeout(() => controller.abort(), timeout);
   const sentAt = Date.now() / 1000;
   try {
+    beforeSend();
     const response = await fetch(path, { method, cache: 'no-store', signal: controller.signal,
       headers: body === undefined ? { Accept: API_ACCEPT } : { Accept: API_ACCEPT, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body) });

@@ -17,6 +17,7 @@ from pathlib import Path
 from apps.safety.gate import MotionGate, finite_number
 from common.motion_mapping import LINEAR_LEVELS, MAPPING_ID, TURN_LEVELS, linear_sdk_value, native_command_byte
 from drivers.xgo.protocol import bound_serial, read_response
+from drivers.xgo.sniffer import install as install_sniffer
 
 XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
 XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")
@@ -91,6 +92,7 @@ def guarded_sdk_class(base, gate: MotionGate):
                 super().__init__(*args, **kwargs)
                 self._initializing = False
                 serial = getattr(self, "ser", None)
+                self.ser = serial = install_sniffer(serial)
                 bound_serial(serial, 0.03)
                 waiting = getattr(serial, "inWaiting", None)
                 if callable(waiting):
@@ -348,16 +350,15 @@ class XgoAdapter:
     def enable_balance(self, on: bool) -> bool:
         if not self._allowed() or not isinstance(on, bool):
             return False
-        if not self.capabilities()["balance"]["stop_verified"]:
+        if not self.capabilities()["balance"]["available"]:
             self.error = "balance_manual_characterization_required"
             return False
-        return self._call("rider_balance_roll", int(on)) or self._call("imu", int(on))
+        return self._call("rider_balance_roll", int(on))
 
     def set_height(self, h: int) -> bool:
-        if not self._allowed() or isinstance(h, bool) or not isinstance(h, int) or not 70 <= h <= 115:
+        if not self._allowed() or isinstance(h, bool) or not isinstance(h, int) or not 75 <= h <= 115:
             return False
-        if not self.capabilities()["height"]["stop_verified"]:
-            self.error = "height_manual_characterization_required"
+        if not self.capabilities()["height"]["available"]:
             return False
         return self._call("rider_height", h)
 
@@ -408,24 +409,44 @@ class XgoAdapter:
         self.stop()
 
     def action(self, name: str) -> bool:
-        if not self._allowed() or name not in {"default", "stand", "sit", "wave"}:
+        if not self._allowed() or name not in {"default", "sway", "vertical", "lift_rotate", "circular"}:
             return False
         if not self.capabilities()["action"]["stop_verified"]:
             self.error = "action_manual_characterization_required"
             return False
-        action_id = {"default": 255, "stand": 1, "sit": 2, "wave": 6}[name]
+        action_id = {"default": 255, "sway": 1, "vertical": 2, "lift_rotate": 5, "circular": 6}[name]
         return self._call("rider_action", action_id, False) or self._call("action", action_id, False)
 
     def capabilities(self) -> dict:
-        # Source proves that stop writes zero velocity. Physical behavior has
-        # not been measured. Height/balance/actions have no cancellation proof.
+        # STOP cancels velocity; height is a persistent position setpoint.
+        # Position support does not claim physical completion or cancellation.
         result = {}
         for name in ("move", "turn", "balance", "height", "action"):
             stop_verified = name in {"move", "turn"}
             result[name] = {
-                "available": bool(self.ok() and stop_verified),
+                "available": bool(
+                    self.ok()
+                    and (
+                        stop_verified
+                        or (
+                            name in {"height", "balance"}
+                            and callable(
+                                getattr(
+                                    self._dog, {"height": "rider_height", "balance": "rider_balance_roll"}[name], None
+                                )
+                            )
+                        )
+                    )
+                ),
                 "stop_verified": stop_verified,
-                "verification": "sdk_source" if stop_verified else "manual_characterization_required",
+                "verification": "sdk_source"
+                if stop_verified or name in {"height", "balance"}
+                else "manual_characterization_required",
+                "control_kind": "position_setpoint"
+                if name == "height"
+                else "mode_setting"
+                if name == "balance"
+                else "motion",
                 "physical_completion": "unverified",
             }
         return result

@@ -133,6 +133,7 @@ class MotionProducer:
             {
                 "action": "move",
                 "source": "navigation",
+                "settings_revision": (safety.get("manual_settings") or {}).get("revision"),
                 "generation": generation,
                 "seq": self._motion_seq,
                 "ts": self.wall_clock(),
