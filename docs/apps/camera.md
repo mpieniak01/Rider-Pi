@@ -195,3 +195,8 @@ starts the camera. Missing fresh catalog observations disable the controls.
 
 Refresh and single-frame buttons only control the browser preview.
 Service start/stop/restart remain on `/system` in administration mode.
+
+Stopping capture with SIGTERM performs LCD cleanup: it closes its own SPI
+handle and switches the display off only after confirming no other owners.
+Headless capture does not change display power. An ownership inspection
+failure leaves power unchanged and is recorded in the service log.

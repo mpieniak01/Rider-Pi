@@ -194,3 +194,8 @@ nie uruchamia kamery. Brak świeżego katalogu blokuje przełączniki.
 
 Przyciski odświeżania i pobrania jednej klatki sterują tylko podglądem.
 Usługi start/stop/restart pozostają na stronie `/system` w trybie administracji.
+
+Zatrzymanie usługi przechwytywania przez SIGTERM wykonuje sprzątanie LCD:
+zamyka własny uchwyt SPI i wyłącza ekran tylko po potwierdzeniu braku innych
+właścicieli. Tryb bez LCD nie zmienia jego zasilania. Błąd odczytu właścicieli
+pozostawia zasilanie bez zmian i trafia do logu usługi.
