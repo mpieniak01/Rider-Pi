@@ -140,7 +140,7 @@ export class ManualSettings {
     const select=document.getElementById('motion-profile-select');if(!select)return;
     const profiles=known?this.state.profiles||{}:{};
     const signature=JSON.stringify(profiles);
-    if(this.selectedProfile===null)this.selectedProfile=this.state?.active_profile||'';
+    if(this.selectedProfile===null && known)this.selectedProfile=this.state.active_profile||'';
     if(this.selectedProfile && !profiles[this.selectedProfile])this.selectedProfile='';
     if(select.dataset.profiles!==signature){
       const blank=el('option','',tr('Bieżące / własne nastawy','Current / custom settings'));blank.value='';
@@ -148,7 +148,7 @@ export class ManualSettings {
         const option=el('option','',row.name);option.value=id;return option;
       }));select.dataset.profiles=signature;
     }
-    select.value=this.selectedProfile;select.disabled=!editable;
+    select.value=this.selectedProfile||'';select.disabled=!editable;
     const selected=Boolean(profiles[this.selectedProfile]);
     for(const [id,enabled] of [['motion-profile-apply',selected&&!this.dirty()],
       ['motion-profile-create',true],['motion-profile-save',selected],['motion-profile-delete',selected&&!this.dirty()]]){

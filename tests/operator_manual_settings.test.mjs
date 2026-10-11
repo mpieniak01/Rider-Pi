@@ -25,7 +25,7 @@ async function screen(shared,{postError=null,nodes={}}={}){
   let posts=0;
   const context=vm.createContext({document:{getElementById:id=>nodes[id]||null},window:{addEventListener(){}},
     nowSeconds:()=>1000,settingsValid:model.settingsValid,settingsPulse:model.settingsPulse,
-    fields:model.fields,directions:model.directions,text(){},tr:(pl,en)=>en,showError(){},
+    fields:model.fields,directions:model.directions,el:()=>({}),text(){},tr:(pl,en)=>en,showError(){},
     poll:()=>({stop(){}}),request:async(path,options={})=>{
       if(options.method==='POST'){
         posts++;
@@ -83,4 +83,13 @@ test('slider expands bounds before receiving a larger authoritative value',async
   await a.panel.refresh();
   assert.equal(slider.value,.4);
   assert.equal(a.panel.state.directions.forward.speed,.4);
+});
+
+
+test('active profile is selected after the first confirmed read',async()=>{
+  const shared={current:{...row(),active_profile:'preset',profiles:{preset:{name:'Desk'}}}};
+  const select={dataset:{},replaceChildren(){},addEventListener(){}};
+  const a=await screen(shared,{nodes:{'motion-profile-select':select}});
+  assert.equal(a.panel.selectedProfile,'preset');
+  assert.equal(select.value,'preset');
 });
