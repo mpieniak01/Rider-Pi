@@ -90,3 +90,5 @@
 @media (max-width: 480px) {
   .motion-setting-field[data-field=speed] { grid-template-columns: minmax(0, 1fr) 10rem; }
 }
+
+[data-direction].is-held { outline: 2px solid #73c8ff; background: #24516c; }

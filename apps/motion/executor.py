@@ -226,6 +226,7 @@ class MotionExecutor:
             recent_acks=list(self.recent_acks),
             simulated=bool(getattr(self.adapter, "simulated", False)),
             moving=not self.controller.stopped,
+            intent_mode=getattr(self.controller, "intent_mode", "pulse"),
             target={"lx": self.controller.t_lx, "az": self.controller.t_az},
             output={"lx": self.controller.o_lx, "az": self.controller.o_az},
             uart_owner="motion-executor",
@@ -345,6 +346,19 @@ class MotionExecutor:
             # path rather than escaping the executor loop.
             command = {**payload, "action": "move", "duration": None}
         action = command.get("action")
+        mode = command.get("mode", "pulse")
+        if action in {"move", "turn"}:
+            if not isinstance(mode, str) or mode not in {"pulse", "hold", "release"}:
+                return self._ack(command, "rejected", "unsupported_motion_mode")
+            if mode != "pulse" and not (
+                command.get("device_settings") is True
+                and command.get("source") == "manual"
+                and command.get("execution_context") == "panel"
+                and self.gate.arming_mode == "operator"
+                and self.gate.execution_context == "panel"
+                and self.gate.owner == "manual"
+            ):
+                return self._ack(command, "rejected", "hold_operator_panel_only")
         if action in {"arm", "move", "turn", "height", "balance", "stabilization", "action"}:
             self.refresh_controls(force=True)
         if action in {"move", "turn", "height", "balance", "stabilization", "action"}:
@@ -361,6 +375,10 @@ class MotionExecutor:
                     expected = manual_settings.pulse(self.controls, command["direction"])
                     if command.get("device_settings") is True:
                         command.update(expected)
+                        if mode in {"hold", "release"}:
+                            command["duration"] = manual_settings.HOLD_TIMEOUT_S
+                        if mode == "release":
+                            command.update(vx=0.0, yaw=0.0)
                     elif any(command.get(key) != value for key, value in expected.items()):
                         return self._ack(command, "rejected", "manual_settings_mismatch")
                 except ValueError as exc:
@@ -380,7 +398,7 @@ class MotionExecutor:
         try:
             values = validate_actuator(command)
             if action in {"move", "turn"}:
-                manual_settings.validate_command(self.controls, values)
+                manual_settings.validate_command(self.controls, values, mode=mode)
         except ValueError as exc:
             if is_actuator and self.controller.deadline:
                 self.gate.disarm("invalid_motion_intent")
@@ -391,7 +409,13 @@ class MotionExecutor:
             return self._ack(command, "rejected", str(exc))
         authorized, reason = self.gate.authorize(command)
         if not authorized:
-            if is_actuator and self.controller.deadline:
+            # Delayed renewals never undo a newer manual intent or release.
+            obsolete = mode in {"hold", "release"} and reason in {
+                "stale_sequence",
+                "stale_generation",
+                "expired_command",
+            }
+            if is_actuator and self.controller.deadline and not obsolete:
                 self.gate.disarm("invalid_motion_intent")
                 self.controller.stop()
                 previous, self.pending = self.pending, None
@@ -442,12 +466,13 @@ class MotionExecutor:
                 values["yaw"],
                 values["duration"],
                 panel_pulse=command.get("device_settings") is True,
+                mode=mode,
             ):
                 return self._ack(command, "rejected", "motion_disarmed")
             previous, self.pending = self.pending, None
             if previous is not None:
                 self._ack(previous, "rejected", "goal_superseded", superseded_by=command.get("request_id"))
-            if values["vx"] == 0 and values["yaw"] == 0:
+            if values["vx"] == 0 and values["yaw"] == 0 and mode != "release":
                 self.output_observed_at = self.gate.wall_clock()
                 self.publish_output(force=True)
                 return self._ack(command, "executed", "sdk_zero_accepted")

@@ -74,6 +74,76 @@ def limits():
     }
 
 
+# Public descriptions and timing are owned by the device, never by clients.
+HOLD_RENEWAL_S = 0.15
+HOLD_TIMEOUT_S = 0.5
+
+
+def parameter_schema():
+    def field(unit, display_unit, factor, minimum, maximum, precision, meaning):
+        return {
+            "type": "number",
+            "unit": unit,
+            "display_unit": display_unit,
+            "display_factor": factor,
+            "minimum": minimum,
+            "maximum": maximum,
+            "display_precision": precision,
+            "meaning": meaning,
+        }
+
+    def magnitude(meaning):
+        return field("normalized_command", "%", 100, 0, 1, 1, meaning)
+
+    cap = limits()
+    return {
+        "version": 1,
+        "direction_fields": {
+            "speed": magnitude("command_magnitude_not_physical_speed"),
+            "minimum": magnitude("operator_defined_minimum_nonzero_command"),
+            "maximum": magnitude("profile_command_ceiling"),
+            "step": field("normalized_command", "%", 100, 0, 1, 3, "manual_adjustment_step")
+            | {"exclusive_minimum": True},
+            "duration": field("s", "ms", 1000, 0.01, MAX_PANEL_DURATION_S, 0, "whole_click_pulse"),
+        },
+        "value_fields": {
+            key: field("normalized_command/s", "%/s", 100, 0.001, cap[key], 1, key)
+            for key in ("linear_rate", "turn_rate", "linear_deceleration", "turn_deceleration")
+        }
+        | {"reversal_pause": field("s", "ms", 1000, 0, cap["reversal_pause"], 0, "pause_before_reversal")},
+        "constraints": [
+            {"id": "direction_range", "rule": "minimum <= maximum"},
+            {"id": "direction_speed", "rule": "speed == 0 or minimum <= speed <= maximum"},
+            {"id": "direction_step", "rule": "step > 0; zero-width range permits a disabled slider"},
+            {"id": "pulse_minimum", "rule": "minimum <= duration / (1/acceleration + 1/deceleration)"},
+        ],
+    }
+
+
+def control_modes():
+    return {
+        "version": 1,
+        "supported": ["pulse", "hold", "release"],
+        "default": "pulse",
+        "directions": list(DIRECTIONS),
+        "hold_renewal_ms": round(HOLD_RENEWAL_S * 1000),
+        "hold_timeout_ms": round(HOLD_TIMEOUT_S * 1000),
+        "click_threshold_ms": 180,
+        "request_ttl_ms": 500,
+        "replacement": "latest_valid_sequence_wins",
+        "release": "decelerate_keep_armed",
+        "release_timeout_ms": round(HOLD_TIMEOUT_S * 1000),
+        "stop": "immediate_disarm",
+        "hold_permission": "operator_manual_panel",
+        "settings_change": "idle_only",
+        "command": {
+            "endpoint": "/api/control",
+            "action": "move",
+            "fields": ["direction", "mode", "device_settings", "settings_revision"],
+        },
+    }
+
+
 def defaults():
     cap = limits()
     baseline = RampLimits.from_env()
@@ -293,6 +363,9 @@ def snapshot():
         limits=limits(),
         actuation=False,
         units="normalized_command",
+        legacy_units_scope="command_magnitude_only; use parameter_schema for individual fields",
+        parameter_schema=parameter_schema(),
+        control_modes=control_modes(),
         authority="device",
         profile_modified=profile_modified(row),
         legacy_aliases={
@@ -332,7 +405,7 @@ def pulse(row, direction):
     return {"vx": vx, "yaw": yaw, "duration": item["duration"]}
 
 
-def validate_command(row, values):
+def validate_command(row, values, *, mode="pulse"):
     for axis, positive, negative in (("vx", "forward", "backward"), ("yaw", "right", "left")):
         value = values[axis]
         if value == 0:
@@ -340,7 +413,7 @@ def validate_command(row, values):
         bounds = row["directions"][positive if value > 0 else negative]
         if not bounds["minimum"] <= abs(value) <= bounds["maximum"]:
             raise ValueError("manual_settings_direction_range")
-        if values["duration"] > bounds["duration"]:
+        if mode == "pulse" and values["duration"] > bounds["duration"]:
             raise ValueError("manual_settings_duration")
 
 

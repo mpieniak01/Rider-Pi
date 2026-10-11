@@ -1,7 +1,7 @@
-import { ManualSettings } from './manual-settings.js?v=settings-feedback-8';
+import { ManualSettings } from './manual-settings.js?v=motion-descriptors-9';
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
 import { initI18n } from '/web/assets/i18n.js';
-import { SafetyPanel } from './safety.js?v=compact-calibration-4b';
+import { SafetyPanel } from './safety.js?v=motion-descriptors-9';
 import { Tasks } from './tasks.js?v=compact-calibration-4b';
 import { Devices } from './devices.js';
 import { System } from './system.js?v=compact-calibration-4b';

@@ -146,7 +146,7 @@ class MotionController:
 
     stop = _stop_immediate
 
-    def drive(self, lx: float, az: float, duration: float = MAX_DURATION_S, *, panel_pulse=False):
+    def drive(self, lx: float, az: float, duration: float = MAX_DURATION_S, *, panel_pulse=False, mode="pulse"):
         if not self.limits.valid or not self.gate.can_actuate():
             self.stop()
             return False
@@ -156,6 +156,13 @@ class MotionController:
             and self.gate.execution_context == "panel"
             and self.gate.owner == "manual"
         )
+        if (
+            not isinstance(mode, str)
+            or mode not in {"pulse", "hold", "release"}
+            or (mode != "pulse" and not panel_pulse)
+        ):
+            return False
+        self.intent_mode = mode
         duration_limit = MAX_PANEL_DURATION_S if panel_pulse else MAX_DURATION_S
         if (
             not all(finite(value) for value in (lx, az, duration))
@@ -175,7 +182,7 @@ class MotionController:
         if not continuing_pause:
             self.reverse_until = None
         self.t_lx, self.t_az = lx, az
-        if self.t_lx == 0 and self.t_az == 0:
+        if self.t_lx == 0 and self.t_az == 0 and mode != "release":
             # A fresh zero goal is a pause within the current lease. STOP still
             # revokes the lease; deceleration never delays either zero output.
             self.o_lx = self.o_az = 0.0
@@ -230,7 +237,8 @@ class MotionController:
             (self.o_az, targets[1], self.limits.turn_rate, self.limits.turn_deceleration),
         ):
             # Reserve deceleration inside the original deadline, never extend TTL.
-            target = max(-deceleration * remaining, min(deceleration * remaining, target))
+            if getattr(self, "intent_mode", "pulse") == "pulse":
+                target = max(-deceleration * remaining, min(deceleration * remaining, target))
             slowing = abs(target) < abs(current) or current * target < 0
             outputs.append(self._approach(current, target, deceleration if slowing else acceleration, dt))
         self.o_lx, self.o_az = outputs
@@ -241,6 +249,8 @@ class MotionController:
             self.gate.disarm("actuator_failed")
             self.stop()
             return False
+        if getattr(self, "intent_mode", "pulse") == "release" and self.stopped:
+            self.deadline = 0.0
         return True
 
 

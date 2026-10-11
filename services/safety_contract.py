@@ -99,6 +99,18 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
         if (time.time() - command["ts"]) * 1000 > command["ttl_ms"]:
             raise ValueError("expired command")
         if action in {"move", "turn"}:
+            if not isinstance(payload.get("mode", "pulse"), str) or payload.get("mode", "pulse") not in {
+                "pulse",
+                "hold",
+                "release",
+            }:
+                raise ValueError("unsupported_motion_mode")
+            if payload.get("mode", "pulse") != "pulse" and not (
+                payload.get("device_settings") is True
+                and payload.get("source") == "manual"
+                and payload.get("execution_context") == "panel"
+            ):
+                raise ValueError("hold_operator_panel_only")
             if payload.get("device_settings") is True:
                 if payload.get("direction") not in {"forward", "backward", "left", "right"}:
                     raise ValueError("manual_direction")

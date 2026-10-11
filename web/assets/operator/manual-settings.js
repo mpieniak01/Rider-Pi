@@ -1,11 +1,11 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
 import { showError, text, tr, el } from './ui.js';
-import { fields, directions, settingsValid, settingsPulse } from './manual-settings-model.js?v=full-range-7';
+import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid } from './manual-settings-model.js?v=motion-descriptors-9';
 
 const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 // Display units only: canonical Pi values stay normalized commands and seconds.
-const scale = key => ['duration','reversal_pause','pulse_duration'].includes(key) ? 1000 : 100;
+
 const displayNumber = value => Number((value).toFixed(6));
 const percent = value => Number.isFinite(value) ? displayNumber(value * 100).toLocaleString(document.documentElement?.lang || 'pl', {maximumFractionDigits: 3})+'%' : '—';
 const labels = {forward:['Przód','Forward'],backward:['Tył','Backward'],left:['Lewo','Left'],right:['Prawo','Right']};
@@ -33,6 +33,8 @@ export class ManualSettings {
     window.addEventListener('dashboard:langchange',()=>this.paint());
   }
   dirty(){return Object.keys(this.pending).length>0 || Object.keys(this.directionEdits).length>0;}
+  descriptor(key){return parameter(this.state,key);}
+  factor(key){return displayFactor(this.state,key);}
   ready(){return !this.busy && !this.dirty() && settingsValid(this.state,nowSeconds()) && !this.validation().length;}
   editable(){return settingsValid(this.state,nowSeconds()) && ['DISARMED','ARMED'].includes(this.safety.state?.state)
     && !this.busy;}
@@ -49,11 +51,11 @@ export class ManualSettings {
   input(id, caption, update){
     const label=el('label','motion-setting-field'), node=el('input');node.id=id;node.type=id.endsWith('-speed')?'range':'number';node.step='any';node.inputMode='decimal';
     label.dataset.field=node.type==='range'?'speed':'number';
-    const title=el('span','',caption);label.append(title,node);
+    const title=el('span','',caption);title.dataset.caption=caption;label.append(title,node);
     if(node.type==='range'){const output=el('output');output.id=id+'-value';label.append(output);}
     node.addEventListener('input',()=>this.edit(()=>{
       const key=id.replace(/^setting-(forward|backward|left|right)-/,'').replace(/^setting-/,'');
-      let value=node.value.trim()==='' ? NaN : Number(node.value)/scale(key);
+      let value=node.value.trim()==='' ? NaN : Number(node.value)/this.factor(key);
       if(node.type==='range' && Number.isFinite(value)){
         const direction=id.split('-')[1], item=this.effective().directions[direction];
         if(item.step>0 && item.step<=item.maximum-item.minimum){
@@ -104,7 +106,7 @@ export class ManualSettings {
   async refresh(){
     try{
       const result=await request('/api/calibration/controls');
-      if(!result.canonical || !settingsValid(result.data,nowSeconds()))throw new Error('manual_settings_unconfirmed');
+      if(!result.canonical || !settingsValid(result.data,nowSeconds()) || !descriptionsValid(result.data))throw new Error('manual_settings_unconfirmed');
       if(!this.state || result.data.revision>=this.state.revision){
         if(this.state?.active_profile!==result.data.active_profile && !this.profileSelectionDirty){
           this.selectedProfile=result.data.active_profile||'';
@@ -132,10 +134,10 @@ export class ManualSettings {
       for(const key of ['speed','duration','minimum','maximum','step']){
         if(!Number.isFinite(d[key]))add(prefix+key,caption+'Wpisz liczbę.',caption+'Enter a number.');
       }
-      if(!(d.duration>=.01 && d.duration<=1))add(prefix+'duration',caption+'Czas: 10–1000 ms.',caption+'Duration: 10–1000 ms.');
+      if(!(d.duration>=this.descriptor('duration').minimum && d.duration<=this.descriptor('duration').maximum))add(prefix+'duration',caption+'Czas: '+this.descriptor('duration').minimum*this.factor('duration')+'–'+this.descriptor('duration').maximum*this.factor('duration')+' ms.',caption+'Duration: '+this.descriptor('duration').minimum*this.factor('duration')+'–'+this.descriptor('duration').maximum*this.factor('duration')+' ms.');
       if(!(d.minimum>=0 && d.minimum<=d.maximum))add(prefix+'minimum',caption+'Minimum musi mieścić się między 0 a maksimum.',caption+'Minimum must be between zero and maximum.');
-      if(!(d.maximum>=0 && d.maximum<=this.state.limits.speed_limit))add(prefix+'maximum',caption+'Maksimum nie może przekroczyć '+percent(this.state.limits.speed_limit)+'.',caption+'Maximum cannot exceed '+percent(this.state.limits.speed_limit)+'.');
-      if(!(d.step>0 && d.step<=d.maximum-d.minimum))add(prefix+'step',caption+'Krok musi być większy od 0 i nie większy od zakresu ('+percent(d.maximum-d.minimum)+').',caption+'Step must be positive and no larger than the range ('+percent(d.maximum-d.minimum)+').');
+      if(!(d.maximum>=0 && d.maximum<=this.descriptor('maximum').maximum))add(prefix+'maximum',caption+'Maksimum nie może przekroczyć '+percent(this.descriptor('maximum').maximum)+'.',caption+'Maximum cannot exceed '+percent(this.descriptor('maximum').maximum)+'.');
+      if(!(d.step>0 && (d.maximum===d.minimum || d.step<=d.maximum-d.minimum)))add(prefix+'step',caption+'Krok musi być większy od 0 i nie większy od zakresu ('+percent(d.maximum-d.minimum)+').',caption+'Step must be positive and no larger than the range ('+percent(d.maximum-d.minimum)+').');
       if(!(d.speed===0 || d.speed>=d.minimum && d.speed<=d.maximum))add(prefix+'speed',caption+'Siła musi mieścić się w zakresie; 0 zatrzymuje.',caption+'Magnitude must be within the range; zero stops.');
       const a=v[name==='forward'||name==='backward'?'linear_rate':'turn_rate'];
       const dec=v[name==='forward'||name==='backward'?'linear_deceleration':'turn_deceleration'];
@@ -143,10 +145,10 @@ export class ManualSettings {
       if(d.minimum>peak)add(prefix+'minimum',caption+'Impuls jest za krótki dla tego minimum (szczyt ≤'+percent(peak)+').',caption+'Pulse is too short for this minimum (peak ≤'+percent(peak)+').');
     }
     for(const key of ['linear_rate','turn_rate','linear_deceleration','turn_deceleration','reversal_pause']){
-      const min=key==='reversal_pause'?0:.001, cap=this.state.limits[key];
+      const {minimum:min,maximum:cap}=this.descriptor(key);
       if(!Number.isFinite(v[key]) || v[key]<min || v[key]>cap){
-        add('setting-'+key,'Wygładzanie: dopuszczalny zakres '+displayNumber(min*scale(key))+'–'+displayNumber(cap*scale(key))+(key==='reversal_pause'?' ms.':' %/s.'),
-          'Smoothing: allowed range '+displayNumber(min*scale(key))+'–'+displayNumber(cap*scale(key))+(key==='reversal_pause'?' ms.':' %/s.'));
+        add('setting-'+key,'Wygładzanie: dopuszczalny zakres '+displayNumber(min*this.factor(key))+'–'+displayNumber(cap*this.factor(key))+(key==='reversal_pause'?' ms.':' %/s.'),
+          'Smoothing: allowed range '+displayNumber(min*this.factor(key))+'–'+displayNumber(cap*this.factor(key))+(key==='reversal_pause'?' ms.':' %/s.'));
       }
     }
     return errors;
@@ -171,7 +173,7 @@ export class ManualSettings {
     const patch={revision:this.draftRevision,values:{...this.pending},directions:Object.fromEntries(Object.entries(this.directionEdits).map(([name,row])=>[name,{...row}]))};
     try{
       const result=await request('/api/calibration/controls',{method:'POST',body:patch});
-      if(!result.canonical || !settingsValid(result.data,nowSeconds()))throw new Error('manual_settings_unconfirmed');
+      if(!result.canonical || !settingsValid(result.data,nowSeconds()) || !descriptionsValid(result.data))throw new Error('manual_settings_unconfirmed');
       this.state=result.data;
       this.pending={};this.directionEdits={};this.draftRevision=null;
       text('manual-settings-result',tr('Zapis potwierdzony przez robota.','Save confirmed by the robot.'));
@@ -203,7 +205,7 @@ export class ManualSettings {
       const result=await request('/api/calibration/controls',{method:'POST',body:{
         revision:this.draftRevision??this.state.revision,values:this.pending,
         directions:this.directionEdits,profile:operation}});
-      if(!result.canonical || !settingsValid(result.data,nowSeconds()))throw new Error('manual_settings_unconfirmed');
+      if(!result.canonical || !settingsValid(result.data,nowSeconds()) || !descriptionsValid(result.data))throw new Error('manual_settings_unconfirmed');
       this.state=result.data;
       this.pending={};this.directionEdits={};this.draftRevision=null;
       this.selectedProfile=this.state.active_profile||'';this.profileSelectionDirty=false;
@@ -276,12 +278,14 @@ export class ManualSettings {
         const node=document.getElementById('setting-'+name+'-'+key);if(!node)continue;
         node.disabled=!editable;
         if(known){
-          node.min=key==='duration'?10:key==='step'?.001:0;
-          node.max=key==='duration'?1000:key==='step'?100:key==='speed'?displayNumber(Math.max(0,effective.directions[name].maximum)*100):displayNumber(this.state.limits.speed_limit*100);
+          const caption=node.parentElement?.querySelector?.('span');
+          if(caption?.dataset.caption)caption.textContent=caption.dataset.caption.replace(/\([^)]*\)/, '('+this.descriptor(key).display_unit+')');
+          node.min=displayNumber(this.descriptor(key).minimum*this.factor(key));
+          node.max=displayNumber((key==='speed'?Math.max(0,effective.directions[name].maximum):this.descriptor(key).maximum)*this.factor(key));
           // Browser step rounding must never rewrite an authoritative value.
           node.step='any';
           const value=effective.directions[name][key];
-          if(Number.isFinite(value) && (key==='speed' || !(key in (this.directionEdits[name]||{}))))node.value=displayNumber(value*scale(key));
+          if(Number.isFinite(value) && (key==='speed' || !(key in (this.directionEdits[name]||{}))))node.value=displayNumber(value*this.factor(key));
         }
         node.setAttribute?.('aria-invalid',String(errors.some(error=>error.id===node.id)));
       }
@@ -290,9 +294,11 @@ export class ManualSettings {
       const node=document.getElementById('setting-'+key);if(!node)continue;
       node.disabled=!editable;
       if(known){
-        node.max=displayNumber(this.state.limits[key]*scale(key));
-        node.min=key==='reversal_pause'?0:.1;node.step='any';
-        if(!(key in this.pending))node.value=displayNumber(this.state.values[key]*scale(key));
+        const caption=node.parentElement?.querySelector?.('span');
+        if(caption?.dataset.caption)caption.textContent=caption.dataset.caption.replace(/\([^)]*\)/, '('+this.descriptor(key).display_unit+')');
+        node.max=displayNumber(this.descriptor(key).maximum*this.factor(key));
+        node.min=displayNumber(this.descriptor(key).minimum*this.factor(key));node.step='any';
+        if(!(key in this.pending))node.value=displayNumber(this.state.values[key]*this.factor(key));
       }
       node.setAttribute?.('aria-invalid',String(errors.some(error=>error.id===node.id)));
     }

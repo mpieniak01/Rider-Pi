@@ -8,8 +8,9 @@ const model=await import('data:text/javascript;base64,'+Buffer.from(source).toSt
 const values={linear_speed:.2,turn_speed:.35,pulse_duration:.25,speed_limit:.6,linear_rate:3,turn_rate:4,
   linear_deceleration:3,turn_deceleration:4,reversal_pause:0};
 const limits={...values,linear_speed:.6,turn_speed:.6,linear_deceleration:100,turn_deceleration:100,reversal_pause:.25};
+const descriptions={"parameter_schema": {"version": 1, "direction_fields": {"speed": {"type": "number", "unit": "normalized_command", "display_unit": "%", "display_factor": 100, "minimum": 0, "maximum": 1, "display_precision": 1, "meaning": "command_magnitude_not_physical_speed"}, "minimum": {"type": "number", "unit": "normalized_command", "display_unit": "%", "display_factor": 100, "minimum": 0, "maximum": 1, "display_precision": 1, "meaning": "operator_defined_minimum_nonzero_command"}, "maximum": {"type": "number", "unit": "normalized_command", "display_unit": "%", "display_factor": 100, "minimum": 0, "maximum": 1, "display_precision": 1, "meaning": "profile_command_ceiling"}, "step": {"type": "number", "unit": "normalized_command", "display_unit": "%", "display_factor": 100, "minimum": 0, "maximum": 1, "display_precision": 3, "meaning": "manual_adjustment_step", "exclusive_minimum": true}, "duration": {"type": "number", "unit": "s", "display_unit": "ms", "display_factor": 1000, "minimum": 0.01, "maximum": 1.0, "display_precision": 0, "meaning": "whole_click_pulse"}}, "value_fields": {"linear_rate": {"type": "number", "unit": "normalized_command/s", "display_unit": "%/s", "display_factor": 100, "minimum": 0.001, "maximum": 100.0, "display_precision": 1, "meaning": "linear_rate"}, "turn_rate": {"type": "number", "unit": "normalized_command/s", "display_unit": "%/s", "display_factor": 100, "minimum": 0.001, "maximum": 100.0, "display_precision": 1, "meaning": "turn_rate"}, "linear_deceleration": {"type": "number", "unit": "normalized_command/s", "display_unit": "%/s", "display_factor": 100, "minimum": 0.001, "maximum": 100.0, "display_precision": 1, "meaning": "linear_deceleration"}, "turn_deceleration": {"type": "number", "unit": "normalized_command/s", "display_unit": "%/s", "display_factor": 100, "minimum": 0.001, "maximum": 100.0, "display_precision": 1, "meaning": "turn_deceleration"}, "reversal_pause": {"type": "number", "unit": "s", "display_unit": "ms", "display_factor": 1000, "minimum": 0, "maximum": 0.25, "display_precision": 0, "meaning": "pause_before_reversal"}}, "constraints": [{"id": "direction_range", "rule": "minimum <= maximum"}, {"id": "direction_speed", "rule": "speed == 0 or minimum <= speed <= maximum"}, {"id": "direction_step", "rule": "step > 0; zero-width range permits a disabled slider"}, {"id": "pulse_minimum", "rule": "minimum <= duration / (1/acceleration + 1/deceleration)"}]}, "control_modes": {"version": 1, "supported": ["pulse", "hold", "release"], "default": "pulse", "directions": ["forward", "backward", "left", "right"], "hold_renewal_ms": 150, "hold_timeout_ms": 500, "click_threshold_ms": 180, "request_ttl_ms": 500, "replacement": "latest_valid_sequence_wins", "release": "decelerate_keep_armed", "release_timeout_ms": 500, "stop": "immediate_disarm", "hold_permission": "operator_manual_panel", "settings_change": "idle_only", "command": {"endpoint": "/api/control", "action": "move", "fields": ["direction", "mode", "device_settings", "settings_revision"]}}};
 const row=()=>({contract_id:'rider.manual_settings',contract_version:2,schema_version:2,authority:'device',revision:0,
-  values:{...values},limits,directions:Object.fromEntries(model.directions.map(name=>[name,
+  ...structuredClone(descriptions),values:{...values},limits,directions:Object.fromEntries(model.directions.map(name=>[name,
     {minimum:0,maximum:.6,step:.01,speed:['forward','backward'].includes(name)?.2:.35,duration:.25}])),
   observed_at:1000,actuation:false});
 test('panel sends direction and revision only; Pi maps commands',()=>{
@@ -25,7 +26,7 @@ async function screen(shared,{postError=null,nodes={},elFactory=()=>({})}={}){
   let posts=0;
   const context=vm.createContext({document:{getElementById:id=>nodes[id]||null},window:{addEventListener(){}},
     nowSeconds:()=>1000,settingsValid:model.settingsValid,settingsPulse:model.settingsPulse,
-    fields:model.fields,directions:model.directions,el:elFactory,text(){},tr:(pl,en)=>en,showError(){},
+    fields:model.fields,directions:model.directions,parameter:model.parameter,displayFactor:model.displayFactor,descriptionsValid:model.descriptionsValid,el:elFactory,text(){},tr:(pl,en)=>en,showError(){},
     poll:()=>({stop(){}}),request:async(path,options={})=>{
       if(options.method==='POST'){
         posts++;
@@ -196,4 +197,16 @@ test('remote active profile changes are reflected unless operator is choosing an
   shared.current.revision++;
   await a.panel.refresh();
   assert.equal(select.value,'a');
+});
+
+test('parameter descriptions drive time bounds instead of client constants',async()=>{
+  const current=row();current.parameter_schema.direction_fields.duration.maximum=2;
+  current.limits.pulse_duration=2;current.directions.forward.duration=1.5;
+  const a=await screen({current});
+  assert.equal(a.panel.validation().length,0);
+  assert.equal(a.panel.factor('duration'),1000);
+});
+test('unknown descriptor version blocks mutation',async()=>{
+  const current=row();current.parameter_schema.version=99;
+  await assert.rejects(()=>screen({current}),/unconfirmed/);
 });
