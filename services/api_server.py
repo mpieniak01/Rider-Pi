@@ -37,6 +37,7 @@ import services.api_core.control_api as control_api
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
+import services.api_core.face_studio as face_studio
 import services.api_core.features_api as features_api
 import services.api_core.google_home_api as google_home_api
 import services.api_core.google_proxy as google_proxy
@@ -61,6 +62,7 @@ from services.api_core.service_logs import service_logs
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
 
 http_contract.install(app)
+face_studio.register(app)
 
 # ── Metryki API helper ───────────────────────────────────────────────────────
 

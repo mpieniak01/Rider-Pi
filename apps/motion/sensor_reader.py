@@ -46,6 +46,10 @@ def project_sensor_payload(sensor: dict | None, *, now: float | None = None) -> 
             generated_at=sensor.get("generated_at", sensor.get("ts")),
         ),
         "battery": values["battery"],
+        "acceleration": {axis: values["accel_" + axis] for axis in ("x", "y", "z")},
+        "acceleration_unit": "m/s^2",
+        "acceleration_includes_gravity": True,
+        "work_status": values["work_status"],
         # Existing BUS alias always meant ratio. Unit is explicit; HTTP default
         # percent projection is made only by common.observations.legacy_xgo.
         "battery_pct": values["battery"],

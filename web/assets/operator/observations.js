@@ -46,7 +46,10 @@ export function observationChannel(input, name, { now = Date.now() / 1000, unava
     && parent.hardware_ready === true
     && (!row?.instance_id || row.instance_id === parent.instance_id)
     && (!row?.generation || row.generation === parent.generation);
-  const validValue = finite(value) && unit === (name === 'battery' ? 'ratio' : 'sdk_raw')
+  const expectedUnit = name === 'battery' ? 'ratio' : name === 'work_status' ? 'code'
+    : ['accel_x', 'accel_y', 'accel_z'].includes(name) ? 'm/s^2' : 'sdk_raw';
+  const validValue = finite(value) && unit === expectedUnit
+    && (name !== 'work_status' || Number.isInteger(value) && [0, 1].includes(value))
     && (name !== 'battery' || value >= 0 && value <= 1);
   const error = row?.error || row?.data_error || parentError || parent?.data_error || null;
   const offline = unavailable || parent?.offline === true || row?.offline === true || parent?.meta?.offline === true;
@@ -58,7 +61,7 @@ export function observationChannel(input, name, { now = Date.now() / 1000, unava
     stale,
     ready, producer_ready: row?.ready === true, status: ready ? 'observed' : age_s !== null && age_s > maxAge ? 'stale' : 'unknown',
     value: ready ? name === 'battery' ? value * 100 : value : null,
-    raw_value: value, raw_unit: unit, unit: name === 'battery' ? '%' : 'sdk_raw',
+    raw_value: value, raw_unit: unit, unit: name === 'battery' ? '%' : expectedUnit,
     source: row?.source || parent?.source || 'unknown',
     error: ready ? null : error || (!identity ? 'motion_parent_unconfirmed' : 'measurement_stale_or_missing'),
     physical_validity: 'unverified', physical_completion: 'unverified' };

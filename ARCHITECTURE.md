@@ -11,6 +11,12 @@
 
 ## Optional developer tools
 
+The panel's `/face-studio` page provides hardware-free face preview and gesture
+authoring through `/api/face-studio/*` on the existing API port. It reuses the
+production renderer/animator, renders on request, and stores custom gestures in
+ignored `config/local/face-studio.json`. It opens no hardware or extra service.
+See [Face studio](docs/FACE_STUDIO.md).
+
 Jupyter Lab on port 8888 is an optional manual tool. `jupyter.service` has no
 boot install target; neither vendor cleanup nor the S11 DEV profile starts it.
 Use `sudo systemctl start jupyter.service` or `sudo systemctl stop jupyter.service`

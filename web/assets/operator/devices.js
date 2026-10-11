@@ -1,5 +1,6 @@
+import { CameraPower } from './camera-power.js?v=camera-preview-1';
 import { cameraFrame, fresh, displayValue, ageOf, nowSeconds } from './model.js';
-import { observationChannel } from './observations.js';
+import { observationChannel } from './observations.js?v=extended-telemetry-1';
 import { request, poll } from './transport.js';
 import { el, freshPill, pill, kv, tr, ageStamp, text, showError, rawDetails } from './ui.js';
 export function telemetryChannel(xgo, name, unavailable = false) {
@@ -10,6 +11,20 @@ export class Devices {
     this.imageBusy = false; this.preview = false; this.meta = null; this.lastFrame = null; this.displayed = null; this.pendingImage = null;
     this.xgo = null; this.telemetryUnavailable = true; this.resourceRows = [];
     this.image = document.getElementById('camera-image');
+    this.cameraPower = new CameraPower({
+      onStarted: () => {
+        this.preview = true; this.lastFrame = null;
+        const kind = document.getElementById('preview-kind'); if (kind) kind.value = 'raw';
+        const url = document.getElementById('preview-url'); if (url) url.value = '';
+        this.renderPreview(); this.previewPoller.refresh();
+      },
+      onStopped: () => {
+        this.preview = false; this.meta = null; this.lastFrame = null; this.displayed = null; this.pendingImage = null;
+        clearTimeout(this.imageTimeout); this.imageBusy = false;
+        this.image?.removeAttribute('src'); if (this.image) this.image.hidden = true;
+        this.renderPreview();
+      }
+    });
     this.image?.addEventListener('load', () => { this.displayed = this.pendingImage; this.pendingImage = null; this.imageBusy = false; clearTimeout(this.imageTimeout); this.renderPreview(); });
     this.image?.addEventListener('error', () => { this.pendingImage = null; this.displayed = null; this.imageBusy = false; clearTimeout(this.imageTimeout); this.lastFrame = null; text('camera-display-age', tr('Nie udało się wczytać klatki', 'Frame load failed')); });
     this.expiry = setInterval(() => { if (!document.hidden) { this.renderPreview(); this.renderTelemetry(); } }, 1000);

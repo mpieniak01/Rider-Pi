@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rider-Pi — Studio buźki</title>
+<link rel="stylesheet" href="/web/assets/dashboard-common.css">
+<link rel="stylesheet" href="/web/assets/themes/classic/theme.css">
+<link rel="stylesheet" href="/web/assets/face-studio.css">
+</head>
+<body data-page="face-studio" class="page">
+<header class="layout-header" data-dashboard-menu-target></header>
+<main class="layout-main">
+<h1 data-pl="Rider-Pi — Studio buźki" data-en="Rider-Pi — Face studio">Rider-Pi — Studio buźki</h1>
+<p data-pl="Podgląd bez LCD. Gesty dotyczą tylko obrazu twarzy." data-en="Preview without LCD. Gestures affect the face image only.">Podgląd bez LCD. Gesty dotyczą tylko obrazu twarzy.</p>
+<p id="studio-status" role="status" aria-live="polite"></p>
+<div class="studio-grid">
+<section class="c-card studio-preview">
+<h2 data-pl="Podgląd" data-en="Preview">Podgląd</h2>
+<img id="studio-image" width="240" height="240" style="max-width:240px" alt="Podgląd buźki">
+<div class="studio-buttons">
+<button id="play" type="button" data-pl="▶ Odtwórz" data-en="▶ Play">▶ Odtwórz</button>
+<button id="pause" type="button" data-pl="Ⅱ Pauza" data-en="Ⅱ Pause">Ⅱ Pauza</button>
+<button id="rewind" type="button" data-pl="↤ Początek" data-en="↤ Start">↤ Początek</button>
+<label><input id="loop" type="checkbox"><span data-pl="Pętla" data-en="Loop">Pętla</span></label>
+</div>
+<label class="studio-scrub"><span data-pl="Czas" data-en="Time">Czas</span><input id="scrub" type="range" min="0" max="1000" step="10" value="0"><output id="time">0 ms</output></label>
+<div class="studio-buttons"><button id="png" type="button" data-pl="Zapisz klatkę PNG" data-en="Save PNG frame">Zapisz klatkę PNG</button><label><span data-pl="Powiększenie" data-en="Zoom">Powiększenie</span> <select id="zoom"><option value="240" selected>1×</option><option value="480">2×</option></select></label></div>
+</section>
+<section class="c-card">
+<h2 data-pl="Biblioteka gestów" data-en="Gesture library">Biblioteka gestów</h2>
+<label><span data-pl="Gest" data-en="Gesture">Gest</span><select id="library"></select></label>
+<div class="studio-buttons"><button id="new" type="button" data-pl="＋ Nowy" data-en="＋ New">＋ Nowy</button><button id="copy" type="button" data-pl="Kopia" data-en="Duplicate">Kopia</button><button id="delete" type="button" disabled data-pl="Usuń" data-en="Delete">Usuń</button></div>
+<label><span data-pl="Nazwa" data-en="Name">Nazwa</span><input id="name" maxlength="60" value="Nowy gest"></label>
+<label><span data-pl="Wyraz twarzy" data-en="Expression">Wyraz twarzy</span><select id="expression"><option value="neutral" data-pl="Neutralny" data-en="Neutral">Neutralny</option><option value="happy" data-pl="Radosny" data-en="Happy">Radosny</option><option value="sad" data-pl="Smutny" data-en="Sad">Smutny</option></select></label>
+<div class="studio-buttons"><button id="save" type="button" data-pl="Zapisz jako nowy" data-en="Save as new">Zapisz jako nowy</button><button id="update" type="button" disabled data-pl="Aktualizuj" data-en="Update">Aktualizuj</button></div>
+<p data-pl="Własne gesty zapisują się na serwerze panelu. Wbudowane można kopiować." data-en="Custom gestures are saved on the panel server. Built-in gestures can be duplicated.">Własne gesty zapisują się na serwerze panelu. Wbudowane można kopiować.</p>
+<div class="studio-buttons"><button id="export" type="button" data-pl="Eksport JSON" data-en="Export JSON">Eksport JSON</button><label class="studio-import"><span data-pl="Import JSON" data-en="Import JSON">Import JSON</span><input id="import" type="file" accept="application/json,.json"></label></div>
+</section>
+</div>
+<section class="c-card studio-editor">
+<h2 data-pl="Pozy i przejścia" data-en="Poses and transitions">Pozy i przejścia</h2>
+<p data-pl="Czas od początku w ms. Spojrzenie i brwi: −100…100; powieki i usta: 0…100. Pierwsza poza to stan początkowy." data-en="Time from start in ms. Gaze and brows: −100…100; eyelids and mouth: 0…100. The first pose is the initial state.">Czas od początku w ms. Spojrzenie i brwi: −100…100; powieki i usta: 0…100. Pierwsza poza to stan początkowy.</p>
+<div class="studio-table-wrap"><table><thead><tr><th>ms</th><th data-pl="← Oczy →" data-en="← Eyes →">← Oczy →</th><th data-pl="↑ Oczy ↓" data-en="↑ Eyes ↓">↑ Oczy ↓</th><th data-pl="Powieki" data-en="Eyelids">Powieki</th><th data-pl="Brwi ↑↓" data-en="Brows ↑↓">Brwi ↑↓</th><th data-pl="Brwi ↗↘" data-en="Brows ↗↘">Brwi ↗↘</th><th data-pl="Usta" data-en="Mouth">Usta</th><th data-pl="Przejście" data-en="Transition">Przejście</th><th></th></tr></thead><tbody id="poses"></tbody></table></div>
+<button id="add" type="button" data-pl="＋ Dodaj pozę" data-en="＋ Add pose">＋ Dodaj pozę</button>
+</section>
+</main>
+<script src="/web/assets/menu.js" defer></script>
+<script src="/web/assets/face-studio.js" defer></script>
+</body></html>

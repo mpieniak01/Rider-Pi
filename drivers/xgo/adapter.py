@@ -332,6 +332,25 @@ class XgoAdapter:
         except ValueError:
             return None
 
+    def read_extended_sensor(self, name):
+        if not self.ok() or name not in {"imu_packet", "work_status"}:
+            return None
+        address, length = (0x65, 24) if name == "imu_packet" else (0x02, 1)
+        try:
+            self._dog._XGO__read(address, read_len=length)
+            if not self._dog._XGO__unpack():
+                return None
+            if self._dog.rx_TYPE != 0x12:
+                return None
+            payload = bytes(self._dog.rx_data)
+            if name == "imu_packet":
+                from drivers.xgo.telemetry import decode_imu_packet
+
+                return decode_imu_packet(payload)
+            return payload[0] if len(payload) == 1 and payload[0] in {0, 1} else None
+        except Exception:
+            return None
+
     def firmware(self) -> str | None:
         value = self._read(("rider_read_firmware", "read_firmware"))
         return value.strip() if isinstance(value, str) and value.strip() else None

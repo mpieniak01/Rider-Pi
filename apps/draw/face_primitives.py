@@ -134,7 +134,8 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
             ey + ph // 2 + off_y,
         )
 
-    t = time.time()
+    render_time = getattr(model, "render_time", None)
+    t = time.time() if render_time is None else float(render_time)
     drift_freq = float(os.getenv("FACE_PUPIL_DRIFT_FREQ", "0.8"))
     drift_amp_k = float(os.getenv("FACE_PUPIL_DRIFT_AMP_K", "0.04"))
     amp_px = eye_w * max(0.0, drift_amp_k)
@@ -188,6 +189,10 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
     brow_follow_ky = float(os.getenv("FACE_BROW_FOLLOW_KY", str(_cfg(cfg, "brow_follow_ky", 0.20))))
     brow_off_x = int(eyes_dx * eye_w * brow_follow_kx)
     brow_off_y = int(eyes_dy * eye_h * brow_follow_ky)
+    brows = getattr(model, "brows", None)
+    brow_lift = _clampf(float(getattr(brows, "lift", 0.0)), -1.0, 1.0)
+    brow_tilt = _clampf(float(getattr(brows, "tilt", 0.0)), -1.0, 1.0)
+    brow_off_y -= int(brow_lift * S * 0.07)
 
     def draw_brow(ex: int, k: float):
         x0 = ex - brow_w // 2 + brow_off_x
@@ -195,6 +200,17 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
         x1 = ex + brow_w // 2 + brow_off_x
         y1 = brow_y + brow_h + brow_off_y
         start, end = (20, 160) if k < 0 else (200, 340)
+        if brow_tilt:
+            points = []
+            direction = 1 if ex < cx else -1
+            for angle in range(start, end + 1, 5):
+                rad = math.radians(angle)
+                x = (x0 + x1) / 2 + (x1 - x0) / 2 * math.cos(rad)
+                y = (y0 + y1) / 2 + (y1 - y0) / 2 * math.sin(rad)
+                y += (x - (x0 + x1) / 2) * brow_tilt * direction * 0.6
+                points.append((x, y))
+            canvas.line(points, fill=(255, 255, 255), width=stroke)
+            return
         canvas.arc(
             [(x0, y0), (x1, y1)],
             start=start,

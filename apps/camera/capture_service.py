@@ -15,8 +15,11 @@ from __future__ import annotations
 import importlib
 import os
 import runpy
+import signal
 import sys
 from dataclasses import dataclass
+
+from apps.camera.lcd_shutdown import close_preview_lcd
 
 
 @dataclass(frozen=True)
@@ -66,6 +69,13 @@ def main() -> int:
         return 2
 
     print(f"[capture] starting mode={mode} ({cfg.module})", flush=True)
+    previous_term = signal.getsignal(signal.SIGTERM)
+
+    def terminate(_signum, _frame):
+        # systemd uses SIGTERM; unwind mode cleanup instead of exiting abruptly.
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, terminate)
     try:
         return _run_mode(cfg)
     except KeyboardInterrupt:
@@ -75,6 +85,9 @@ def main() -> int:
     except Exception as exc:  # pragma: no cover - zależne od środowiska kamer
         print(f"[capture] fatal error in mode={mode}: {exc}", file=sys.stderr)
         return 1
+    finally:
+        close_preview_lcd(sys.modules.get(cfg.module))
+        signal.signal(signal.SIGTERM, previous_term)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,16 @@
+import { CameraPower } from './camera-power.js?v=overview-vision-2';
 import { Posture } from './posture.js?v=posture-1';
 import { ManualSettings } from './manual-settings.js?v=motion-curves-14';
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
 import { initI18n } from '/web/assets/i18n.js';
 import { SafetyPanel } from './safety.js?v=motion-descriptors-9';
 import { Tasks } from './tasks.js?v=compact-calibration-4b';
-import { Devices } from './devices.js';
-import { System } from './system.js?v=compact-calibration-4b';
+import { Devices } from './devices.js?v=camera-preview-1';
+import { System } from './system.js?v=system-controls-1';
 import { Navigation } from './navigation.js';
 import { Calibration } from './calibration.js?v=compact-calibration-4b';
 import { Chat } from './chat.js?v=compact-calibration-4b';
-import { Overview } from './overview.js';
+import { Overview } from './overview.js?v=extended-telemetry-1';
 import { events } from './transport.js';
 import { fresh, catalogKnown, safetyKnown, nowSeconds } from './model.js';
 import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';
@@ -41,7 +42,24 @@ if (page === 'devices') new Devices(safety);
 if (page === 'system') system = new System(safety);
 if (page === 'navigation') { tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
 if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); }
-if (page === 'view') overview = new Overview(safety);
+if (page === 'view') {
+  overview = new Overview(safety);
+  const refreshVision = () => { overview.snap = null; overview.renderVision(); overview.poller.refresh(); overview.visionPoller.refresh(); };
+  const raw = new CameraPower({ onStarted: refreshVision, onStopped: refreshVision, label: '' });
+  const processed = new CameraPower({ taskName: 's7_obstacle_module', options: { provider: 'local' },
+    toggleIds: ['camera-proc-toggle', 'camera-obst-toggle'], statusIds: ['camera-proc-state', 'camera-obst-state'],
+    startId: null, stopId: null, label: '', onStarted: refreshVision, onStopped: refreshVision });
+  const tracker = new CameraPower({ taskName: 's6_tracker_module', options: { mode: 'face' },
+    toggleIds: ['camera-tracker-toggle'], statusIds: ['camera-tracker-state'], startId: null, stopId: null,
+    label: '', onStarted: refreshVision, onStopped: refreshVision });
+  for (const control of [raw, processed, tracker]) {
+    const started = control.onStarted, stopped = control.onStopped;
+    const refreshControls = () => { for (const other of [raw, processed, tracker]) if (other !== control) other.poller.refresh(); };
+    control.onStarted = () => { started(); refreshControls(); };
+    control.onStopped = () => { stopped(); refreshControls(); };
+  }
+
+}
 
 events(event => {
   let data = event.data;

@@ -19,6 +19,8 @@ planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona.
 
 ## Interfejsy i aplikacje
 
+- [Studio buźki — podgląd i edytor gestów](FACE_STUDIO.md).
+
 - [Kontrakt providerów Pi ↔ PC](OFFLOAD_PROVIDER_PROTOCOL.md).
 - [Indeks API](api-specs/README.md), [sterowanie](api-specs/control.md), [nawigacja](api-specs/navigator.md).
 - [Moduły aplikacyjne](apps/README.md), [sterowniki sprzętu](drivers/README.md).

@@ -16,7 +16,7 @@ from apps.motion.actuator_contract import COMMAND_TOPICS, SUB_TOPICS, validate_a
 from apps.motion.calibration_runtime import CalibrationRuntime
 from apps.motion.dynamics import RampLimits
 from apps.motion.main import MotionController, _make_adapter
-from apps.motion.sensor_quality import AXES, SensorSamples
+from apps.motion.sensor_quality import SensorSamples
 from apps.safety.gate import ACTUATORS, MotionGate
 from apps.safety.state import write_status
 from common.motion_commands import canonical_command  # public re-export
@@ -502,39 +502,9 @@ class MotionExecutor:
             self.apply(payload, topic=topic)
 
     def poll_sensors(self):
-        if not self._hardware_ready():
-            self.publish_status(force=True)
-            return
-        now = self.gate.clock()
-        if now - self.last_sensors < 0.1:
-            return
-        # One transaction per pass: at most one 30ms vendor response wait before
-        # returning to command dispatch. No second thread shares the serial port.
-        self.last_sensors = now
-        read_sensor = getattr(self.adapter, "read_sensor", None)
-        if callable(read_sensor):
-            if now - self.last_firmware >= 30.0:
-                name = "firmware"
-                self.last_firmware = now
-            else:
-                name = ("roll", "pitch", "yaw", "battery")[self.sensor_index]
-                self.sensor_index = (self.sensor_index + 1) % 4
-            measured_at = self.gate.wall_clock()
-            value = read_sensor(name)
-            self.sensor_values[name] = value
-            self.sensor_times[name] = now
-            if name in (*AXES, "battery"):
-                self.samples.observe(name, value, measured_at=measured_at, monotonic_at=now)
-            self.firmware = self.sensor_values.get("firmware")
-        else:
-            # Injected simulation adapters have no UART or blocking reads.
-            imu = self.adapter.get_imu()
-            battery = self.adapter.battery()
-            self.firmware = self.adapter.firmware()
-            for name in AXES:
-                self.samples.observe(name, imu.get(name) if isinstance(imu, dict) else None, monotonic_at=now)
-            self.samples.observe("battery", battery, monotonic_at=now)
-        self._publish("motion.sensor.raw", self.samples.payload(self.firmware))
+        from apps.motion.telemetry_poll import poll
+
+        poll(self)
 
     def close(self, reason="executor_shutdown"):
         self.shutdown = True

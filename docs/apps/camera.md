@@ -184,3 +184,21 @@ Zobacz: [docs/modules/face-lcd.md](face-lcd.md)
 - [docs/modules/face-lcd.md](face-lcd.md) — rendering na LCD
 
 **Ostatnia aktualizacja:** 2025-01
+
+## Camera in the devices panel
+
+On `/devices`, **Turn on camera and preview** starts the passive
+`s2_camera_preview` task and RAW image refresh. **Turn off camera** ends
+that task and image refresh in the current tab. Other consumers may keep
+the camera active; the panel lists their names. Opening the page never
+starts the camera. Missing fresh catalog observations disable the controls.
+
+Refresh and single-frame buttons only control the browser preview.
+Service start/stop/restart remain on `/system` in administration mode.
+
+Stopping capture with SIGTERM performs LCD cleanup: it closes its own SPI
+handle and switches the display off only after confirming no other owners.
+Headless capture does not change display power. An ownership inspection
+failure leaves power unchanged and is recorded in the service log.
+
+After a camera capture unit stops, orchestration performs a full LCD OFF (panel reset, sleep and backlight off) if the LCD descriptor inventory is free. The System renderer Stop action also powers off an already inactive panel and returns a failure if that cannot be confirmed.

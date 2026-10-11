@@ -261,15 +261,14 @@ test('passive navigation view never requests ARM, service start or unverified au
   f.setState({ ...armed(), owner: 'manual' }); await navigation.command('return_home');
   assert.equal(f.calls.filter(call => call.method === 'POST').length, 0);
 });
-test('System is GET-only until explicit administration and a fresh, known unit action', async () => {
+test('System is GET-only on entry and permits an explicit fresh known unit action', async () => {
   const f = await fixture();
-  for (const id of ['service-list', 'admin-mode', 'rescue-resource', 'rescue-consent', 'rescue-confirm', 'rescue-release']) f.elements.set(id, new Element(id));
+  for (const id of ['service-list', 'rescue-resource', 'rescue-consent', 'rescue-confirm', 'rescue-release']) f.elements.set(id, new Element(id));
   const { System } = await f.load('system.js'); const system = new System(f.panel);
   await new Promise(resolve => setImmediate(resolve));
-  assert.ok(f.calls.every(call => call.method === 'GET')); assert.equal(system.admin, false);
-  const row = { unit: 'fixture.service', can_move: false, load: 'loaded', observed_at: Date.now() / 1000 };
-  await system.action(row, 'start'); assert.equal(f.calls.filter(call => call.method === 'POST').length, 0);
-  system.admin = true; system.catalog = { contract_version: 2, catalog_version: 2, features: [], units: [], observed_at: Date.now() / 1000 };
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+  const row = { unit: 'fixture.service', can_move: false, load: 'loaded', observed_at: Date.now() / 1000, permissions: { start: { allowed: true } } };
+  system.catalog = { contract_version: 2, catalog_version: 2, features: [], units: [], observed_at: Date.now() / 1000 };
   system.services = { contract_version: 2, services: [], observed_at: Date.now() / 1000 };
   await system.action({ ...row, can_move: undefined }, 'start'); assert.equal(f.calls.filter(call => call.method === 'POST').length, 0);
   await system.action(row, 'start'); assert.equal(f.calls.filter(call => call.method === 'POST').length, 1);
@@ -429,7 +428,6 @@ test('resource recovery requires explicit current PID inventory and operator con
   const { System } = await f.load('system.js'); const system = new System(f.panel);
   await new Promise(resolve => setImmediate(resolve));
   system.catalog = { contract_version: 2, catalog_version: 2, features: [], units: [], observed_at: Date.now() / 1000 };
-  system.admin = true;
   f.elements.get('rescue-resource').value = 'camera';
   f.elements.get('rescue-confirm').value = 'camera';
   const selected = new Element(); selected.value = '42';

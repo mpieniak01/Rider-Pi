@@ -14,7 +14,14 @@ CONTRACT_VERSION = 1
 MAX_AGE_S = 2.5
 AXES = ("roll", "pitch", "yaw")
 SENSORS = AXES + ("battery",)
-UNITS = {**dict.fromkeys(AXES, "sdk_raw"), "battery": "ratio"}
+OPTIONAL_SENSORS = ("accel_x", "accel_y", "accel_z", "work_status")
+ALL_SENSORS = SENSORS + OPTIONAL_SENSORS
+UNITS = {
+    **dict.fromkeys(AXES, "sdk_raw"),
+    "battery": "ratio",
+    **dict.fromkeys(OPTIONAL_SENSORS[:3], "m/s^2"),
+    "work_status": "code",
+}
 PREFIXES = ("devices.xgo", "xgo", "motion.bridge.telemetry")
 
 
@@ -54,7 +61,11 @@ def measurement(name, value, observed_at, *, quality=None, source="unknown", now
     at = source_time(observed_at)
     age = now - at if at is not None and finite(now) else None
     unit = UNITS[name] if unit is None else unit
-    valid = finite(value) and (name != "battery" or 0 <= value <= 1)
+    valid = (
+        finite(value)
+        and (name != "battery" or 0 <= value <= 1)
+        and (name != "work_status" or type(value) is int and value in {0, 1})
+    )
     if unit != UNITS[name]:
         error = error or "measurement_unit_unknown"
         valid = False
@@ -126,7 +137,7 @@ def normalize_xgo_observation(topic, payload, *, now=None):
     imu = data.get("imu")
     imu = imu if isinstance(imu, dict) else {}
     normalized = {}
-    for name in SENSORS:
+    for name in ALL_SENSORS:
         row = rows.get(name)
         row = row if isinstance(row, dict) else {}
         key = "battery_pct" if name == "battery" and "battery" not in data else name
@@ -201,8 +212,8 @@ def observation(
     display-only wrap of the raw yaw, retaining that measurement's source time
     and quality; it never replaces or validates the original SDK value.
     """
-    rows = {name: dict(row) for name, row in rows.items() if name in SENSORS and isinstance(row, dict)}
-    times = [row.get("observed_at") for row in rows.values()]
+    rows = {name: dict(row) for name, row in rows.items() if name in ALL_SENSORS and isinstance(row, dict)}
+    times = [row.get("observed_at") for name, row in rows.items() if name in SENSORS]
     observed = min(times) if times and all(source_time(at) is not None for at in times) else None
     partial = any(name not in rows or rows[name].get("ready") is not True for name in SENSORS)
     ready = not partial and not offline and not error
@@ -262,7 +273,7 @@ def refresh_observation(data, *, now=None):
             unit=row.get("unit"),
         )
         for name, row in _rows(data).items()
-        if name in SENSORS and isinstance(row, dict)
+        if name in ALL_SENSORS and isinstance(row, dict)
     }
     return observation(
         rows,
@@ -307,6 +318,13 @@ def legacy_xgo(data):
         "error": data.get("error"),
         "imu_ok": all(rows.get(name, {}).get("ready") is True for name in AXES),
         "battery_ok": rows.get("battery", {}).get("ready") is True,
+        "acceleration": {
+            axis: rows.get("accel_" + axis, {}).get("value") if rows.get("accel_" + axis, {}).get("ready") else None
+            for axis in ("x", "y", "z")
+        },
+        "acceleration_unit": "m/s^2",
+        "acceleration_includes_gravity": True,
+        "work_status": rows.get("work_status", {}).get("value") if rows.get("work_status", {}).get("ready") else None,
         "sensor_quality": rows,
         "sensor_observed_at": {name: row.get("observed_at") for name, row in rows.items()},
         "imu_observed_at": imu_at,

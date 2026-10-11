@@ -172,3 +172,9 @@ Serwer fixture działa wyłącznie na loopback, używa stdlib i danych w pamięc
 Nie importuje API robota, SDK, BUS ani systemd. Wypisuje lokalny URL.
 Automatyczne testy nie są upoważnieniem do ruchu fizycznego. Test sprzętowy
 napędów wymaga osobnej świadomej zgody przygotowanego operatora.
+
+Ekran System udostępnia sterowanie usługami od razu, gdy świeże uprawnienia API pozwalają na działanie. Nie wymaga przełącznika administracji. Nieaktywne działania pokazują powód, w tym ochronę API i zakaz autostartu usług na żądanie.
+
+Karta kamery RAW na stronie głównej (/view) ma jeden przycisk Kamera ON/OFF. Steruje zadaniem podglądu kamery po kliknięciu operatora. Wejście na stronę nie włącza kamery; inni konsumenci kamery są pokazani obok stanu.
+
+Małe przyciski ON/OFF przy RAW, PROC, OBST i TRACKER sterują zadaniami pasywnymi. PROC i OBST korzystają ze wspólnego lokalnego procesu wykrywania przeszkód i przełączają się razem. TRACKER wybiera pasywną detekcję twarzy bez kontrolera ruchu. Zadania współdzielą kamerę RAW i dystrybutor klatek: wyłączenie jednego zachowuje je dla pozostałych konsumentów.

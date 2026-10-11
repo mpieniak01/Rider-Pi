@@ -43,13 +43,14 @@ class Animator:
       po upływie całej animacji, żeby nie utknąć np. z zamkniętym okiem.
     """
 
-    def __init__(self):
+    def __init__(self, clock=None):
+        self._clock = clock or time.time
         self.state = FaceState()
         self._actives: list[_Active] = []
 
     def start(self, spec: dict[str, Any], prio: int = 10, mode: str = "blend") -> None:
         dur = float(spec.get("duration", 0.2))
-        now = time.time()
+        now = self._clock()
         self._actives.append(_Active(spec=spec, t0=now, t1=now + dur))
 
     def _apply_track_segment(self, path: str, seg: dict[str, Any], now: float, t0: float) -> bool:
@@ -84,7 +85,7 @@ class Animator:
         setattr(node, parts[-1], v)
 
     def tick(self) -> FaceState:
-        now = time.time()
+        now = self._clock()
 
         still_active: list[_Active] = []
         for a in self._actives:

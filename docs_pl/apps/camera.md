@@ -183,3 +183,21 @@ Zobacz: [do./face-lcd.md](./face-lcd.md)
 - [do./face-lcd.md](./face-lcd.md) — rendering na LCD
 
 **Ostatnia aktualizacja:** 2025-01
+
+## Kamera w panelu urządzeń
+
+Na stronie `/devices` przycisk **Włącz kamerę i podgląd** uruchamia pasywne
+zadanie `s2_camera_preview` i odświeżanie obrazu RAW. **Wyłącz kamerę** kończy
+to zadanie oraz odświeżanie obrazu w bieżącej karcie. Inni konsumenci mogą
+pozostawić kamerę aktywną; panel pokazuje ich nazwy. Samo wejście na stronę
+nie uruchamia kamery. Brak świeżego katalogu blokuje przełączniki.
+
+Przyciski odświeżania i pobrania jednej klatki sterują tylko podglądem.
+Usługi start/stop/restart pozostają na stronie `/system` w trybie administracji.
+
+Zatrzymanie usługi przechwytywania przez SIGTERM wykonuje sprzątanie LCD:
+zamyka własny uchwyt SPI i wyłącza ekran tylko po potwierdzeniu braku innych
+właścicieli. Tryb bez LCD nie zmienia jego zasilania. Błąd odczytu właścicieli
+pozostawia zasilanie bez zmian i trafia do logu usługi.
+
+Po zatrzymaniu usługi przechwytywania kamery orkiestrator wykonuje pełne LCD OFF (reset panelu, uśpienie i wyłączenie podświetlenia), jeśli odczyt właścicieli LCD wskazuje wolny zasób. Zatrzymaj renderer w ekranie System wyłącza też panel po wcześniej zatrzymanej usłudze i zwraca błąd, gdy wyłączenie nie jest potwierdzone.
