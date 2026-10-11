@@ -58,8 +58,8 @@ export class ManualSettings {
       let value=node.value.trim()==='' ? NaN : Number(node.value)/this.factor(key);
       if(node.type==='range' && Number.isFinite(value)){
         const direction=id.split('-')[1], item=this.effective().directions[direction];
-        if(item.step>0 && item.step<=item.maximum-item.minimum){
-          value=displayNumber(Math.min(item.maximum,Math.max(item.minimum,Math.round(value/item.step)*item.step)));
+        if(value!==0 && item.step>0 && item.step<=item.maximum-item.minimum){
+          value=displayNumber(Math.min(item.maximum,Math.max(item.minimum,item.minimum+Math.round((value-item.minimum)/item.step)*item.step)));
         }
       }
       update(value);

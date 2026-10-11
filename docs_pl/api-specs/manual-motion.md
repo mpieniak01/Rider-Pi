@@ -2,7 +2,8 @@
 
 Rider-Pi przechowuje kalibrację i profile. Klienci odczytują
 GET /api/calibration/controls w kanonicznej kopercie API v1,
-rodzina rider.manual_settings v2. Zapis pozostaje na tym samym URL przez POST.
+koperta rodziny rider.calibration v1; wewnątrz dane rider.manual_settings v2.
+Zapis pozostaje na tym samym URL przez POST.
 Nie powstaje druga kopia konfiguracji na PC ani w Venom.
 
 ## Opis parametrów
