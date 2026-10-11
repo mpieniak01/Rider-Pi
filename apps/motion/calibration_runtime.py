@@ -25,6 +25,12 @@ class CalibrationRuntime:
                 profile = profiles.read_profile(pointer["profile_digest"])
                 self.limits = self.profile_limits(profile)
                 self._record(profile, pointer, "saved_profile")
+                from apps.motion import manual_settings
+
+                shared = manual_settings.read()
+                if shared["revision"] == 0:
+                    patch = dict(profile["motion"], **(profile.get("interaction") or {}))
+                    manual_settings.update(patch, shared["revision"])
         except (OSError, ValueError, TypeError, KeyError) as exc:
             self.error = "saved_profile_unavailable:" + str(exc)
 

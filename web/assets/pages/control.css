@@ -197,7 +197,7 @@
 .page-control .control-primary .cam { display: block; max-height: 480px; object-fit: contain; border: 0; }
 .page-control .control-primary .motion-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 520px; gap: .65rem; }
 .page-control .control-primary .motion-grid button { min-height: 74px; font-size: 1.1rem; padding: .65rem .3rem; }
-.page-control .control-primary input[type=range] { width: min(70%, 300px); }
+.page-control .control-primary input[type="range"] { width: min(70%, 300px); }
 .page-control .control-primary output { display: inline-block; min-width: 3ch; }
 .page-control .control-preparation { margin-bottom: 1rem; }
 @media (max-width: 800px) { .page-control .control-primary { grid-template-columns: minmax(0, 1fr); } }
