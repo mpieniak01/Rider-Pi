@@ -231,3 +231,24 @@ def activate():
         return _error("profile_not_found", 404)
     except Exception:
         return _error("activation_transport_or_storage_failed", 503)
+
+
+def controls():
+    from apps.motion import manual_settings
+
+    try:
+        if request.method == "POST":
+            row = _body()
+            if set(row) != {"revision", "values"}:
+                raise ValueError("manual_settings_request")
+            motion = read_status()
+            if motion.get("stale") is True or motion.get("ready") is not True:
+                return _error("motion_status_unavailable", 409)
+            if motion.get("moving") is True or any((motion.get("output") or {}).values()):
+                return _error("manual_settings_requires_idle", 409)
+            manual_settings.update(row["values"], row["revision"])
+        return jsonify(dict(manual_settings.snapshot(), ok=True))
+    except ValueError as exc:
+        return _error(str(exc), 409 if str(exc) == "manual_settings_conflict" else 400)
+    except (OSError, TypeError):
+        return _error("manual_settings_unavailable", 503)

@@ -1,8 +1,8 @@
 """Command levels are not physical velocity measurements."""
 
-MAPPING_ID = "rider-1.4.2-levels-v2"
+MAPPING_ID = "rider-1.4.2-levels-v3"
 LINEAR_LEVELS = 127
-TURN_LEVELS = 70
+TURN_LEVELS = 180
 LINEAR_SDK_LIMIT = 1.5
 
 

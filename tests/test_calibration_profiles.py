@@ -91,7 +91,7 @@ def test_explicit_verified_record_preserves_conditions_and_evidence(profile):
         lambda p: p["provenance"].update(notes="a" * 4097),
         lambda p: p["odometry"].update(linear_m_s={"128": 0.1}),
         lambda p: p["odometry"].update(turn_rad_s={"0": 0.1}),
-        lambda p: p["odometry"].update(turn_rad_s={"71": 0.1}),
+        lambda p: p["odometry"].update(turn_rad_s={"181": 0.1}),
         lambda p: p["odometry"].update(turn_rad_s={"020": 0.1}),
         lambda p: p["odometry"].update(linear_m_s={"1": -0.1}),
         lambda p: p.update(measurements=[{"duration_s": 0}]),

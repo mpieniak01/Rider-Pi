@@ -9,13 +9,14 @@
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css?v=operator-arming-1">
-<link rel="stylesheet" href="/web/assets/operator/calibration.css?v=operator-arming-1">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=shared-controls-1">
+<link rel="stylesheet" href="/web/assets/operator/calibration.css?v=shared-controls-1">
 </head>
 <body data-page="calibration" class="page page-calibration">
 <header class="layout-header" data-dashboard-menu-target></header>
 <main class="layout-main operator-shell">
 <header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Kalibracja" data-en="Rider-Pi — Calibration">Rider-Pi — Kalibracja</h1></header>
+<p id="manual-settings-status" role="status">Synchronizacja ustawień</p>
 <p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
 <p data-pl="Dopasuj reakcję robota na kliknięcia. Suwaki nie są pomiarem prędkości. Ręczna próba wymaga uzbrojenia globalnym przyciskiem." data-en="Tune the robot response to clicks. Sliders are not velocity measurements. A manual trial requires arming with the global button.">Dopasuj reakcję robota na kliknięcia. Suwaki nie są pomiarem prędkości. Ręczna próba wymaga uzbrojenia globalnym przyciskiem.</p>
 <div class="calibration-primary"><section class="c-card c-section cam-card control-section is-camera">
@@ -55,7 +56,7 @@
 </details>
 <p id="calibration-tuning-status" role="status"></p>
 <div class="operator-row"><button id="save-calibration-profile" type="submit" class="c-btn" data-pl="Zapisz ustawienia" data-en="Save settings">Zapisz ustawienia</button><button id="apply-current-tuning" type="button" class="c-btn" disabled data-pl="Zapisz i zastosuj — bez ruchu" data-en="Save and apply — no motion">Zapisz i zastosuj — bez ruchu</button><button id="new-calibration-profile" type="button" class="c-btn" data-pl="Nowe ustawienia" data-en="New settings">Nowe ustawienia</button></div></form>
-<p class="operator-muted" data-pl="Suwaki prędkości określają następną ręczną próbę. Zmiana reakcji wymaga zapisania i zastosowania. Zapis nie uruchamia ruchu." data-en="Speed sliders set the next manual trial. Response changes require saving and applying. Saving never starts motion.">Suwaki prędkości określają następną ręczną próbę. Zmiana reakcji wymaga zapisania i zastosowania. Zapis nie uruchamia ruchu.</p>
+<p class="operator-muted" data-pl="Suwaki synchronizują wspólne ustawienia robota na wszystkich ekranach. Zmiana nie uruchamia ruchu." data-en="Speed sliders set the next manual trial. Response changes require saving and applying. Saving never starts motion.">Suwaki synchronizują wspólne ustawienia robota na wszystkich ekranach. Zmiana nie uruchamia ruchu.</p>
 <form id="calibration-pulse-form"><input id="pulse-vx" type="hidden" value="0"><input id="pulse-yaw" type="hidden" value="0"><input id="pulse-plan" type="hidden" value="">
 <div class="calibration-arrows"><span></span><button type="button" class="c-btn" data-calibration-direction="forward" disabled>↑</button><span></span><button type="button" class="c-btn" data-calibration-direction="left" disabled>←</button><button type="button" class="c-btn operator-stop" data-stop>STOP</button><button type="button" class="c-btn" data-calibration-direction="right" disabled>→</button><span></span><button type="button" class="c-btn" data-calibration-direction="backward" disabled>↓</button><span></span></div>
 <button id="calibration-pulse" type="submit" hidden disabled>Impuls / Pulse</button><p id="calibration-pulse-result" role="status">—</p></form>
@@ -98,7 +99,7 @@
 <p id="calibration-reference-result" role="status">—</p></form></details></section></details><ol id="request-history"></ol><p><a href="/control" data-pl="Zadania i sterowanie" data-en="Tasks and control">Zadania i sterowanie</a> · <a href="/navigation" data-pl="Pozycja, HOME i pasywny plan" data-en="Pose, HOME and passive plan">Pozycja, HOME i pasywny plan</a></p>
 <p id="last-event" class="operator-muted">—</p>
 </main><footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=operator-arming-1"></script>
+<script type="module" src="/web/assets/operator/app.js?v=shared-controls-1"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body></html>

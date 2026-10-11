@@ -526,3 +526,9 @@ operatora, terminala i wpisania jednorazowego potwierdzenia; po próbie wysyła 
 Panel: arming_mode=operator, lease_remaining_s=null. Zmiana widoku i fokusu nie rozbraja robota. Próby testowe pozostają w trybie timed, z osobną zgodą. Błędy sprzętu i zewnętrzny ESTOP nadal wymuszają zatrzymanie; stare dane blokują nowe polecenia.
 
 A bounded panel movement pulse stops the drive when it ends, while operator arming remains active for the next click. STOP/disarm revokes the session; test sessions keep their timeout behavior.
+
+
+## Shared manual controls
+GET/POST /api/calibration/controls exposes the Pi-owned rider.manual_settings v1 object: revision, values, limits, observed_at, actuation=false. values contains linear_speed, turn_speed, pulse_duration, speed_limit, linear_rate and turn_rate. POST accepts revision plus a values patch, writes atomically, requires an idle executor and never sends an actuator command. Stale writes return 409.
+Both Pi and PC control/calibration views poll this same object and disable movement while changes are pending or data is missing/stale. Every operator movement carries direction and settings_revision with the exact shared vx/yaw/duration. The executor rejects obsolete revisions and inconsistent values. Opening a view, importing a draft, or reading a historical profile never replaces live settings. Explicit activation of a saved profile updates the shared settings.
+Default pulse is 0.25 s; software ramps are 3 linear / 4 turn normalized units per second, with the existing speed cap 0.6 and pulse cap 0.25 s retained. Turn mapping v3 uses 180 native SDK units at normalized 1; old physical measurements for mapping v2 must not be reused as verified v3 data. A reversal writes a neutral drive command before ramping in the newly requested direction, without disarming the panel. These are software defaults, not physically measured calibration.

@@ -153,6 +153,12 @@ class MotionController:
             self.gate.disarm("invalid_motion_intent")
             self.stop()
             return False
+        if self.o_lx * lx < 0 or self.o_az * az < 0:
+            # Cancel the previous pulse before starting the opposite direction.
+            # Its deceleration must never consume the new pulse's entire budget.
+            if self.stop() is False:
+                self.gate.disarm("actuator_failed")
+                return False
         self.t_lx = safe_speed(lx, self.limits.speed_limit)
         self.t_az = safe_speed(az, self.limits.speed_limit)
         if self.t_lx == 0 and self.t_az == 0:

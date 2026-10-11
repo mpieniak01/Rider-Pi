@@ -94,6 +94,13 @@ class CalibrationRuntime:
                 self.error = "calibration_state_changed_during_apply"
                 raise ValueError(self.error)
             # No blocking hardware call occurs between persistence and apply.
+            from apps.motion import manual_settings
+
+            shared = manual_settings.read()
+            patch = dict(profile["motion"])
+            if profile.get("interaction"):
+                patch.update(profile["interaction"])
+            manual_settings.update(patch, shared["revision"])
             controller.limits = self.limits = limits
             self._record(profile, pointer, "profile")
             # Configuration invalidates every queued authorization envelope,

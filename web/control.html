@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css?v=operator-arming-1">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=shared-controls-1">
 <link rel="stylesheet" href="/web/assets/pages/control.css?v=control-restored-1">
 </head>
 <body data-page="control" class="page page-control">
@@ -17,6 +17,7 @@
 <main class="layout-main operator-shell">
 <header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Sterowanie robotem" data-en="Rider-Pi — Robot control">Rider-Pi — Sterowanie robotem</h1></header>
 <p><a href="/calibration" data-pl="Kalibracja: profile, pomiary i odniesienie pozycji" data-en="Calibration: profiles, measurements and pose reference">Kalibracja: profile, pomiary i odniesienie pozycji</a></p>
+<p id="manual-settings-status" role="status">Synchronizacja ustawień</p>
 <p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
 <div class="panel-row control-primary"><section class="c-card c-section cam-card control-section is-camera">
 <h2 data-pl="Podgląd kamery" data-en="Camera preview">Podgląd kamery</h2>
@@ -41,7 +42,7 @@
 <h2 data-pl="Katalog zadań" data-en="Task catalog">Katalog zadań</h2><p id="catalog-status">unknown</p><div id="task-list" class="operator-grid"></div><section class="c-card"><h2 data-pl="Żądania i potwierdzenia" data-en="Requests and acknowledgements">Żądania i potwierdzenia</h2><p data-pl="pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów." data-en="pending = awaiting ACK; executed = SDK accepted. Physical completion remains unverified. Request history is not actuator state.">pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów.</p><ol id="request-history"></ol><p id="last-event" class="operator-muted">—</p></section>
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=operator-arming-1"></script>
+<script type="module" src="/web/assets/operator/app.js?v=shared-controls-1"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

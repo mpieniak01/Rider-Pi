@@ -60,6 +60,7 @@ _GROUPS = {
         1,
         (
             "/api/calibration/state",
+            "/api/calibration/controls",
             "/api/calibration/profiles",
             "/api/calibration/profiles/<digest>",
             "/api/calibration/activate",

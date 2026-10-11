@@ -24,8 +24,8 @@ def _env(name, default):
 @dataclass(frozen=True)
 class RampLimits:
     speed_limit: float = 0.6
-    linear_rate: float = 1.0
-    turn_rate: float = 2.0
+    linear_rate: float = 3.0
+    turn_rate: float = 4.0
     watchdog_s: float = 0.5
     max_dt_s: float = 0.1
 
@@ -33,8 +33,8 @@ class RampLimits:
     def from_env(cls):
         return cls(
             speed_limit=_env("MOTION_SPEED_LIMIT", 0.6),
-            linear_rate=_env("MOTION_RAMP_LX", 1.0),
-            turn_rate=_env("MOTION_RAMP_AZ", 2.0),
+            linear_rate=_env("MOTION_RAMP_LX", 3.0),
+            turn_rate=_env("MOTION_RAMP_AZ", 4.0),
             watchdog_s=_env("MOTION_WATCHDOG_MS", 500) / 1000.0,
         )
 

@@ -63,6 +63,7 @@ class FakeAdapter:
 @pytest.fixture
 def executor(monkeypatch, tmp_path):
     monkeypatch.setenv("RIDER_TEST_ISOLATED", "1")
+    monkeypatch.setenv("RIDER_MANUAL_SETTINGS_PATH", str(tmp_path / "manual-controls.json"))
     monkeypatch.delenv("MOTION_ENABLE", raising=False)
     monkeypatch.delenv("ESTOP", raising=False)
     monkeypatch.setenv("ESTOP_GPIO", "-1")
@@ -89,6 +90,10 @@ def command(executor, action="move", **kwargs):
         "yaw": 0.0,
         "duration": 0.2,
     }
+    if executor.gate.arming_mode == "operator":
+        from apps.motion.manual_settings import read
+
+        result["settings_revision"] = read()["revision"]
     result.update(kwargs)
     return result
 

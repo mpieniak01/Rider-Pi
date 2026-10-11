@@ -129,7 +129,7 @@ def validate_profile(profile):
         type(record["imu_yaw_sign"]) is not int or record["imu_yaw_sign"] not in (-1, 1)
     ):
         raise ValueError("profile_imu_yaw_sign")
-    for field, ceiling in (("linear_m_s", 127), ("turn_rad_s", 70)):
+    for field, ceiling in (("linear_m_s", 127), ("turn_rad_s", 180)):
         table = record[field]
         if not isinstance(table, dict) or len(table) > 2 * ceiling:
             raise ValueError("profile_sdk_table")
@@ -159,7 +159,7 @@ def validate_profile(profile):
                 raise ValueError("profile_measurement_outcome")
         if row.get("sdk_step") is not None:
             step = row["sdk_step"]
-            minimum, maximum = (1, 70) if row.get("kind") == "turn" else (1, 127)
+            minimum, maximum = (1, 180) if row.get("kind") == "turn" else (1, 127)
             if type(step) is not int or not minimum <= abs(step) <= maximum:
                 raise ValueError("profile_measurement_sdk_step")
     if record["manual_verified"]:

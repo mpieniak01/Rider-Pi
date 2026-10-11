@@ -247,6 +247,7 @@ _add_rule(
 _add_rule("/api/safety", view_func=control_api.api_safety, methods=["GET", "POST", "OPTIONS"])
 _add_rule("/api/odometry/state", view_func=odometry_api.reference_state, methods=["GET"])
 _add_rule("/api/odometry/reference", view_func=odometry_api.operator_reference, methods=["POST"])
+_add_rule("/api/calibration/controls", view_func=calibration_api.controls, methods=["GET", "POST"])
 _add_rule("/api/calibration/state", view_func=calibration_api.state, methods=["GET"])
 _add_rule("/api/calibration/profiles", view_func=calibration_api.catalog, methods=["GET", "POST"])
 _add_rule("/api/calibration/profiles/<digest>", view_func=calibration_api.profile, methods=["GET"])

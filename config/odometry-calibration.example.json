@@ -10,7 +10,7 @@
     "power_cable": "",
     "operator": "",
     "date": "",
-    "command_mapping": "rider-1.4.2-levels-v2"
+    "command_mapping": "rider-1.4.2-levels-v3"
   },
   "imu_yaw_sign": null,
   "linear_m_s": {},

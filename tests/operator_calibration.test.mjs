@@ -394,10 +394,10 @@ test('calibration arrows follow the global gate and chosen values without per-cl
   row.elements.get('calibration-turn-speed').value = '.12';
   row.elements.get('pulse-duration').value = '.15';
   await row.panel.direction('forward');
-  assert.equal(row.moves[0].action, 'move'); assert.equal(row.moves[0].body.vx, .07);
-  assert.equal(row.moves[0].body.yaw, 0); assert.equal(row.moves[0].body.duration, .15);
+  assert.equal(row.moves[0].action, 'move'); assert.equal(row.moves[0].body.direction, 'forward');
+  assert.equal(row.moves[0].body.vx, undefined); // shared values are resolved by SafetyPanel
   await row.panel.direction('left');
-  assert.equal(row.moves[1].body.vx, 0); assert.equal(row.moves[1].body.yaw, -.12);
+  assert.equal(row.moves[1].body.direction, 'left');
   assert.equal(row.calls.some(call => call.method === 'POST'), false);
 });
 test('tuning form carries interaction defaults while odometry can remain unverified and empty', async () => {
@@ -406,9 +406,9 @@ test('tuning form carries interaction defaults while odometry can remain unverif
   assert.equal(model.profileError(profile), null);
   assert.equal(profile.odometry.manual_verified, false);
   assert.deepEqual(Object.keys(profile.odometry.linear_m_s), []);
-  assert.equal(profile.interaction.linear_speed, .1);
-  assert.equal(profile.interaction.turn_speed, .18);
-  assert.equal(profile.interaction.pulse_duration, .1);
+  assert.equal(profile.interaction.linear_speed, .2);
+  assert.equal(profile.interaction.turn_speed, .35);
+  assert.equal(profile.interaction.pulse_duration, .25);
   assert.equal(model.interactionValid({ linear_speed: .1, turn_speed: .2, pulse_duration: 1 }), false);
 });
 

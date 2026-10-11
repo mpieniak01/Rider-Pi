@@ -33,7 +33,9 @@ def normalize_control(data):
     if action in {"move", "turn"}:
         speed = data.get("v", data.get("speed", 0.1))
         vx, yaw = data.get("vx", data.get("lx", 0)), data.get("yaw", data.get("az", data.get("w", 0)))
-        if direction:
+        if direction and direction not in {"forward", "backward", "left", "right"}:
+            raise ValueError("invalid direction")
+        if direction and not any(key in data for key in ("vx", "lx", "yaw", "az", "w")):
             if direction not in {"forward", "backward", "left", "right"}:
                 raise ValueError("invalid direction")
             speed = data.get("w", speed) if direction in {"left", "right"} else speed

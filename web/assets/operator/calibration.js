@@ -107,6 +107,7 @@ export class Calibration {
       if (saved.digest !== digest || profileError(saved.profile)) throw new Error('active_profile_invalid');
       if (!this.dirty && !this.loadedDigest) { this.loadProfile(saved.profile, digest); this.runtimeLoaded = true; }
     }
+    this.safety.controls?.paint();
     this.render();
   }
   async loadCatalog() {
@@ -149,6 +150,7 @@ export class Calibration {
     byId('measurements-confirmed').checked = false; byId('calibration-activation-consent').checked = false;
     text('calibration-loaded', digest ? tr('Wczytano rewizję', 'Loaded revision') + ': ' + digest
       : tr('Nowy / zaimportowany szkic — bez aktywacji', 'New / imported draft — not activated'));
+    this.safety.controls?.paint();
     this.renderObservations(); this.render();
   }
   addRate(kind, step = '', rate = '', edited = true) {
@@ -171,7 +173,7 @@ export class Calibration {
   buildProfile() {
     const table = kind => measuredTable([...byId('calibration-' + kind + '-table').children].map(row => ({
       step: row.querySelector('[data-step]').value, rate: row.querySelector('[data-rate]').value,
-    })), kind === 'linear' ? 127 : 70);
+    })), kind === 'linear' ? 127 : 180);
     const kind = byId('profile-kind').value;
     return { schema_version: 1, name: byId('profile-name').value.trim(),
       provenance: { kind, notes: byId('profile-notes').value.trim() },
@@ -208,7 +210,7 @@ export class Calibration {
     const kind = byId('trial-kind').value, step = number('trial-step'), duration = number('trial-duration');
     const distance = byId('trial-distance').value.trim() ? number('trial-distance') : null;
     const angle = byId('trial-angle').value.trim() ? number('trial-angle') : null;
-    if (!Number.isInteger(step) || step === 0 || Math.abs(step) > (kind === 'linear' ? 127 : 70) || (kind === 'turn' && Math.abs(step) < 1)
+    if (!Number.isInteger(step) || step === 0 || Math.abs(step) > (kind === 'linear' ? 127 : 180) || (kind === 'turn' && Math.abs(step) < 1)
       || !Number.isFinite(duration) || duration <= 0
       || [distance, angle].some(value => value !== null && !Number.isFinite(value))) throw new Error('invalid_trial_observation');
     const row = { measurement_id: byId('measurement-id').value.trim(), kind, sdk_step: step, duration_s: duration,
@@ -285,9 +287,7 @@ export class Calibration {
     for (const id of ['calibration-linear-speed', 'calibration-turn-speed', 'motion-linear-rate', 'motion-turn-rate']) {
       text(id + '-value', number(id).toFixed(3));
     }
-    text('calibration-tuning-status', this.dirty
-      ? tr('Zmiany formularza: rampa zacznie działać po zastosowaniu.', 'Form changed: response applies after activation.')
-      : tr('Ustawienia gotowe do ręcznej próby po zgodzie operatora.', 'Settings ready for a manual trial after operator consent.'));
+    text('calibration-tuning-status', tr('Wspólne ustawienia robota; zmiany suwaków synchronizują się automatycznie.', 'Shared robot settings; slider changes synchronize automatically.'));
   }
   async applyTuning(saveCurrent) {
     if (this.busy || this.awaiting) return;
@@ -299,24 +299,18 @@ export class Calibration {
     await this.activate();
   }
   async direction(direction) {
-    const linear = number('calibration-linear-speed'), turn = number('calibration-turn-speed');
-    const values = { forward: [linear, 0], backward: [-linear, 0], left: [0, -turn], right: [0, turn] }[direction];
-    if (!values || this.busy) return;
-    byId('pulse-vx').value = values[0]; byId('pulse-yaw').value = values[1];
-    byId('pulse-plan').value = this.safety.state?.plan || tr('Ręczne sterowanie z panelu kalibracji.', 'Manual calibration panel control.');
-    await this.pulse();
+    if (this.busy) return;
+    if (!this.safety.can("manual", ["left","right"].includes(direction) ? "turn" : "move")) throw new Error("manual_trial_gate_not_ready");
+    this.busy=true;this.render();
+    try {
+      await this.safety.send('move', { direction });
+      text('calibration-pulse-result', tr('Żądanie wysłane; fizyczny ruch niepotwierdzony', 'Request sent; physical movement unverified'));
+    } finally {this.busy=false;this.render();}
   }
   async pulse() {
-    if (this.busy) return;
-    const plan = byId('pulse-plan').value.trim();
-    const values = pulseValues(byId('pulse-vx').value, byId('pulse-yaw').value, byId('pulse-duration').value);
-    if (!this.safety.can('manual', 'move') || (values.yaw !== 0 && !this.safety.can('manual', 'turn'))) throw new Error('manual_trial_gate_not_ready');
-    this.busy = true; this.render();
-    try {
-      const response = await this.safety.send('move', { ...values, operator_consent: true, operator_plan: plan });
-      text('calibration-pulse-result', (response.pending ? 'pending' : tr('Odpowiedź odebrana — zobacz ACK', 'Response received — inspect ACK'))
-        + ' · ' + tr('fizyczne zakończenie niepotwierdzone', 'physical completion unverified'));
-    } finally { this.busy = false; this.render(); }
+    const vx=number('pulse-vx'), yaw=number('pulse-yaw');
+    if(vx && yaw || !vx && !yaw)throw new Error('manual_direction_required');
+    return this.direction(vx ? vx>0?'forward':'backward' : yaw<0?'left':'right');
   }
   referenceAllowed() {
     return activationAllowed(this.state, this.safety.state, this.safety.clockFresh(), nowSeconds())

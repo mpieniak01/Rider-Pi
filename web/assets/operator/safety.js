@@ -45,7 +45,7 @@ export class SafetyPanel {
   commandTime() { return Date.now() / 1000 + this.lowerOffset; }
   async prepare() { await prepareMutation(); await this.poller.refresh(); }
   clockFresh() { const age = Date.now() / 1000 - this.clockObserved; return this.clockReady && age >= 0 && age <= 3; }
-  can(owner = 'manual', action = 'move') { return this.state?.execution_context !== 'test' && this.controlsActive() && this.clockFresh() && !this.revokedGenerations.has(this.state?.generation) && authorized(this.state, owner, action, this.now()); }
+  can(owner = 'manual', action = 'move') { return (!this.controls || this.controls.ready()) && this.state?.execution_context !== 'test' && this.controlsActive() && this.clockFresh() && !this.revokedGenerations.has(this.state?.generation) && authorized(this.state, owner, action, this.now()); }
   envelope(action, params = {}, owner = 'manual') {
     if (!safetyKnown(this.state, this.now()) || !this.clockFresh()) throw new Error(tr('Brak świeżego kontraktu bezpieczeństwa v1 i potwierdzonego zegara', 'No fresh safety contract v1 and confirmed clock'));
     if (!['arm', 'clear_estop'].includes(action) && (!this.can(owner, action) || (action === 'move' && params.yaw && !this.can(owner, 'turn')))) throw new Error(tr('Napęd zablokowany: stan, właściciel lub możliwości', 'Actuator blocked: state, owner or capability'));
@@ -55,6 +55,7 @@ export class SafetyPanel {
       ts: this.commandTime(), ttl_ms: 500 };
   }
   async send(action, params = {}, endpoint = '/api/control', owner = 'manual') {
+    if (action === 'move' && this.controls) params = { ...params, ...this.controls.pulse(params.direction) };
     const exempt = ['stop', 'disarm', 'estop'].includes(action);
     if (action === 'arm' && params.arming_mode !== 'operator' && (!Number.isFinite(params.lease_s) || params.lease_s <= 0 || params.lease_s > 30))
       throw new Error('invalid_lease');
@@ -66,7 +67,13 @@ export class SafetyPanel {
     if (!this.controlsActive() && !['arm', 'clear_estop', 'stop', 'disarm', 'estop'].includes(action)) throw new Error('Motion controls are unavailable on this view');
     if (!exempt) {
       this.mutating = true; this.render();
-      try { await this.prepare(); }
+      try {
+        await this.prepare();
+        if (action === 'move' && this.controls) {
+          await this.controls.refresh();
+          params = { ...params, ...this.controls.pulse(params.direction) };
+        }
+      }
       catch (error) { this.mutating = false; this.render(); throw error; }
     }
     let command;
@@ -153,6 +160,7 @@ export class SafetyPanel {
     this.state = null; this.render();
   }
   move(direction) {
+    if (this.controls) { this.send('move', { direction }).catch(showError); return; }
     if (!this.can('manual', direction === 'left' || direction === 'right' ? 'turn' : 'move')) return;
     const speedText = document.getElementById('speed')?.value, yawText = document.getElementById('yaw-speed')?.value, durationText = document.getElementById('duration')?.value;
     const speed = speedText?.trim() ? Number(speedText) : NaN;
