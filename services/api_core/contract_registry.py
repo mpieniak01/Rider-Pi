@@ -74,6 +74,10 @@ _GROUPS = {
         1,
         ("/face/ping", "/face/render", "/face/play", "/face/stop", "/face/state", "/api/draw/face", "/draw/face"),
     ),
+    "rider.face_studio": (
+        1,
+        ("/api/face-studio/gestures", "/api/face-studio/gestures/<key>", "/api/face-studio/frame"),
+    ),
     "rider.chat": (1, ("/api/chat", "/api/chat/ping", "/api/chat/history", "/api/chat/send")),
     "rider.home": (
         1,

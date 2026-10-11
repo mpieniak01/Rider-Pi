@@ -19,6 +19,8 @@ for top-level coordination; its integration is deferred.
 
 ## Interfaces and applications
 
+- [Face studio — preview and gesture editor](FACE_STUDIO.md).
+
 - [Pi ↔ PC provider contract](OFFLOAD_PROVIDER_PROTOCOL.md).
 - [API index](api-specs/README.md), [control](api-specs/control.md), [navigation](api-specs/navigator.md).
 - [Application modules](apps/README.md), [hardware drivers](drivers/README.md).
