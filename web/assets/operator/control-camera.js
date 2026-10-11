@@ -52,7 +52,7 @@ export class ControlCamera {
     text('control-camera-status', this.kind.toUpperCase() + ' · ' +
       (current ? tr('bieżąca klatka', 'current frame') : this.failed ? tr('błąd odczytu klatki', 'frame load failed') : tr('brak / stary obraz', 'missing / stale image')) +
       ' · ' + (loaded.age === null ? '—' : loaded.age.toFixed(1) + ' s') +
-      (frame.time_basis === 'file_mtime' ? tr(' · wiek pliku; czas przechwycenia niepotwierdzony', ' · file age; capture time unverified') : ''));
+      (frame.timeBasis === 'file' ? tr(' · wiek pliku; czas przechwycenia niepotwierdzony', ' · file age; capture time unverified') : ''));
     document.querySelectorAll('[data-camera-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.cameraKind === this.kind)));
   }
   frame() {

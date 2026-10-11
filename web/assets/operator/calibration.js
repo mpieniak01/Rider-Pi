@@ -158,7 +158,7 @@ export class Calibration {
   }
   addRate(kind, step = '', rate = '', edited = true) {
     const target = byId('calibration-' + kind + '-table');
-    if (target.children.length >= (kind === 'linear' ? 128 : 128)) throw new Error('measurement_table_limit');
+    if (target.children.length >= (kind === 'linear' ? 254 : 360)) throw new Error('measurement_table_limit');
     const row = el('div', 'calibration-rate-row');
     const stepField = field('', 'Poziom polecenia ze znakiem / Signed command level', 'Poziom polecenia ze znakiem / Signed command level', 'number');
     const rateField = field('', kind === 'linear' ? 'Prędkość (m/s)' : 'Prędkość (rad/s)',
