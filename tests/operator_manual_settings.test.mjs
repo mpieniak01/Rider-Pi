@@ -20,12 +20,12 @@ test('panel sends direction and revision only; Pi maps commands',()=>{
   assert.equal(model.settingsValid({...row(),directions:{}},1000),false);
   assert.equal(model.settingsValid({...row(),contract_version:1},1000),false);
 });
-async function screen(shared,{postError=null,nodes={}}={}){
+async function screen(shared,{postError=null,nodes={},elFactory=()=>({})}={}){
   const raw=(await readFile(new URL('manual-settings.js',root),'utf8')).replace(/^import .*;$/gm,'').replace('export class','class');
   let posts=0;
   const context=vm.createContext({document:{getElementById:id=>nodes[id]||null},window:{addEventListener(){}},
     nowSeconds:()=>1000,settingsValid:model.settingsValid,settingsPulse:model.settingsPulse,
-    fields:model.fields,directions:model.directions,el:()=>({}),text(){},tr:(pl,en)=>en,showError(){},
+    fields:model.fields,directions:model.directions,el:elFactory,text(){},tr:(pl,en)=>en,showError(){},
     poll:()=>({stop(){}}),request:async(path,options={})=>{
       if(options.method==='POST'){
         posts++;
@@ -81,7 +81,7 @@ test('slider expands bounds before receiving a larger authoritative value',async
   shared.current.revision++;
   shared.current.directions.forward={...shared.current.directions.forward,maximum:.6,speed:.4};
   await a.panel.refresh();
-  assert.equal(slider.value,.4);
+  assert.equal(slider.value,40);
   assert.equal(a.panel.state.directions.forward.speed,.4);
 });
 
@@ -92,4 +92,69 @@ test('active profile is selected after the first confirmed read',async()=>{
   const a=await screen(shared,{nodes:{'motion-profile-select':select}});
   assert.equal(a.panel.selectedProfile,'preset');
   assert.equal(select.value,'preset');
+});
+
+test('invalid stored step never rounds the displayed slider down to zero',async()=>{
+  let magnitude=0;
+  const slider={max:60,min:0,step:1,get value(){return magnitude;},set value(x){
+    magnitude=this.step==='any'?Number(x):Math.round(Number(x)/Number(this.step))*Number(this.step);
+  }};
+  const shared={current:row()};
+  shared.current.directions.backward={...shared.current.directions.backward,step:1,speed:.6};
+  const a=await screen(shared,{nodes:{'setting-backward-speed':slider}});
+  assert.equal(slider.value,60);
+  assert.equal(slider.step,'any');
+  assert.equal(a.panel.ready(),false);
+  assert.ok(a.panel.validation().some(e=>e.id==='setting-backward-step'));
+  a.panel.edit(()=>{a.panel.directionEdits.backward={step:.01};});
+  await a.panel.save();
+  assert.equal(shared.current.directions.backward.step,.01);
+  assert.equal(shared.current.directions.backward.speed,.6);
+});
+
+test('invalid duration is caught before POST and draft is retained',async()=>{
+  const a=await screen({current:row()});
+  a.panel.edit(()=>{a.panel.directionEdits.backward={duration:1};});
+  await assert.rejects(()=>a.panel.save(),/10–250 ms/);
+  assert.equal(a.posts(),0);
+  assert.equal(a.panel.directionEdits.backward.duration,1);
+  assert.equal(a.panel.dirty(),true);
+});
+
+test('server validation error retains editable draft and never retries',async()=>{
+  const a=await screen({current:row()},{postError:Object.assign(new Error('validation'),{status:400})});
+  a.panel.edit(()=>{a.panel.directionEdits.forward={speed:.3};});
+  await assert.rejects(()=>a.panel.save(),/validation/);
+  assert.equal(a.posts(),1);
+  assert.equal(a.panel.directionEdits.forward.speed,.3);
+  assert.equal(a.panel.dirty(),true);
+  assert.equal(a.panel.ready(),false);
+});
+
+test('milliseconds and percent display preserve canonical units',async()=>{
+  const duration={},rate={},speed={};
+  const a=await screen({current:row()},{nodes:{
+    'setting-forward-duration':duration,'setting-linear_rate':rate,'setting-forward-speed':speed}});
+  assert.equal(duration.value,250);
+  assert.equal(rate.value,300);
+  assert.equal(speed.value,20);
+  assert.equal(a.panel.state.directions.forward.duration,.25);
+  assert.equal(a.panel.state.directions.forward.speed,.2);
+});
+
+test('typing percent and milliseconds converts once before persistence',async()=>{
+  const factory=()=>({dataset:{},children:[],value:'',append(...nodes){this.children.push(...nodes);},
+    addEventListener(event,fn){this[event]=fn;}});
+  const shared={current:row()},a=await screen(shared,{elFactory:factory});
+  for(const [key,display,canonical] of [['step','1',.01],['duration','200',.2],['speed','35',.35]]){
+    const label=a.panel.input('setting-backward-'+key,key,value=>{
+      a.panel.directionEdits.backward={...a.panel.directionEdits.backward,[key]:value};
+    });
+    const node=label.children[1];node.value=display;node.input();
+    assert.equal(a.panel.directionEdits.backward[key],canonical);
+  }
+  await a.panel.save();
+  assert.equal(shared.current.directions.backward.speed,.35);
+  assert.equal(shared.current.directions.backward.step,.01);
+  assert.equal(shared.current.directions.backward.duration,.2);
 });

@@ -80,3 +80,13 @@
   .page-control .motion-setting-hint { grid-column: 1 / -1; }
   .motion-profiles .operator-row { gap: .5rem; }
 }
+
+/* Percentages and milliseconds are UI units; canonical settings stay on Pi. */
+.motion-setting-field[data-field=speed] { grid-template-columns: minmax(0, 1fr) 11rem; }
+.motion-setting-field output { font-size: .8rem; white-space: nowrap; }
+.motion-field-error { white-space: normal; font-size: .75rem; max-width: 18rem; grid-column: 1 / -1; }
+.operator-shell input[aria-invalid=true] { border: 2px solid #ef6072; }
+.page-calibration .motion-smoothing-group legend { font-size: .85rem; }
+@media (max-width: 480px) {
+  .motion-setting-field[data-field=speed] { grid-template-columns: minmax(0, 1fr) 10rem; }
+}
