@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/pages/view.css?v=overview-restored-2">
+<link rel="stylesheet" href="/web/assets/pages/view.css?v=overview-vision-2">
 <link rel="stylesheet" href="/web/assets/operator/operator.css?v=motion-curves-14">
 </head>
 <body data-page="view" class="page page-view">
@@ -72,8 +72,8 @@
       <h3 class="cam-card-title">
         <span data-i18n="dash.camera.title">Kamera</span>
         <span id="camBadge" class="cam-badge">…</span>
+        <button id="camera-toggle" type="button" class="c-btn c-btn-sm view-camera-toggle" aria-pressed="false" disabled>OFF</button>
       </h3>
-      <button id="camera-toggle" type="button" class="c-btn" aria-pressed="false" disabled>Kamera: OFF</button>
       <p id="camera-power-state" class="c-hint" role="status">Odczytywanie stanu kamery…</p>
       <div class="c-thumb">
         <img id="img_cam" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="kamera" decoding="async" loading="lazy">
@@ -115,7 +115,8 @@
     </div>
 
     <div class="c-card">
-      <h3 data-i18n="dash.camera_proc.title">Kamera — PROC</h3>
+      <h3 class="cam-card-title"><span>Kamera — PROC</span><button id="camera-proc-toggle" type="button" class="c-btn c-btn-sm view-camera-toggle" aria-pressed="false" disabled>OFF</button></h3>
+      <p id="camera-proc-state" class="c-hint" role="status">Odczytywanie stanu…</p>
       <div class="c-thumb">
         <img id="img_proc" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="processed camera" decoding="async" loading="lazy">
       </div>
@@ -161,7 +162,8 @@
     </div>
 
     <div class="c-card">
-      <h3 data-i18n="dash.camera_obst.title">Camera — OBST (annot)</h3>
+      <h3 class="cam-card-title"><span>Kamera — OBST</span><button id="camera-obst-toggle" type="button" class="c-btn c-btn-sm view-camera-toggle" aria-pressed="false" disabled>OFF</button></h3>
+      <p id="camera-obst-state" class="c-hint" role="status">Odczytywanie stanu…</p>
       <div class="c-thumb">
         <img id="img_obst" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="obstacle annotated" decoding="async" loading="lazy">
       </div>
@@ -175,7 +177,7 @@
   <div class="l-grid view-row view-row--4">
     <div class="c-card c-card--span2">
       <h3 data-i18n="dash.info.title">Info</h3>
-      <div class="c-kv"><div data-pl="Yaw surowy SDK" data-en="Raw SDK yaw">Yaw surowy SDK</div><div id="imu-yaw-raw">—</div><div data-pl="Znaczenie" data-en="Meaning">Znaczenie</div><div data-pl="Surowa wartość; semantyka fizyczna niezweryfikowana" data-en="Raw value; physical semantics unverified">Surowa wartość; semantyka fizyczna niezweryfikowana</div></div><p class="c-hint" data-pl="Orientacja IMU nie jest pozycją ani odometrią. Kamerę i tracker włącza operator w katalogu zadań." data-en="IMU orientation is not position or odometry. The operator enables camera and tracker in the task catalog.">Orientacja IMU nie jest pozycją ani odometrią. Kamerę i tracker włącza operator w katalogu zadań.</p>
+      <div class="c-kv"><div data-pl="Yaw surowy SDK" data-en="Raw SDK yaw">Yaw surowy SDK</div><div id="imu-yaw-raw">—</div><div data-pl="Znaczenie" data-en="Meaning">Znaczenie</div><div data-pl="Surowa wartość; semantyka fizyczna niezweryfikowana" data-en="Raw value; physical semantics unverified">Surowa wartość; semantyka fizyczna niezweryfikowana</div></div><p class="c-hint" data-pl="Orientacja IMU nie jest pozycją ani odometrią. Kamerę i pasywne przetwarzanie włączają przyciski ON/OFF przy podglądach." data-en="IMU orientation is not position or odometry. ON/OFF buttons beside the previews enable camera and passive processing.">Orientacja IMU nie jest pozycją ani odometrią. Kamerę i pasywne przetwarzanie włączają przyciski ON/OFF przy podglądach.</p>
     </div>
 
     <div class="c-card">
@@ -190,7 +192,8 @@
     </div>
 
     <div class="c-card">
-      <h3 data-i18n="dash.camera_tracker.title">Camera — TRACKER (Follow Me)</h3>
+      <h3 class="cam-card-title"><span>Kamera — TRACKER</span><button id="camera-tracker-toggle" type="button" class="c-btn c-btn-sm view-camera-toggle" aria-pressed="false" disabled>OFF</button></h3>
+      <p id="camera-tracker-state" class="c-hint" role="status">Odczytywanie stanu…</p>
       <div class="c-thumb">
         <img id="img_tracker" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="tracker with FPS and detection" decoding="async" loading="lazy">
       </div>
@@ -206,7 +209,7 @@
 
 <footer class="layout-footer" data-dashboard-footer-target></footer>
 
-<script type="module" src="/web/assets/operator/app.js?v=overview-camera-1"></script>
+<script type="module" src="/web/assets/operator/app.js?v=overview-vision-2"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

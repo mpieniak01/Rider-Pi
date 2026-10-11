@@ -6,12 +6,12 @@ import test from 'node:test';
 const assets = new URL('../web/assets/operator/', import.meta.url);
 const model = await import('data:text/javascript;base64,' + Buffer.from(await readFile(new URL('model.js', assets))).toString('base64'));
 const source = (await readFile(new URL('camera-power.js', assets), 'utf8')).replace(/^import .*;$/gm, '').replace('export class CameraPower', 'globalThis.CameraPower = class CameraPower');
-function fixture(patch = {}, { stale = false, rejected = false, others = [] } = {}) {
+function fixture(patch = {}, { stale = false, rejected = false, others = [], control = {} } = {}) {
   const now = Date.now() / 1000;
   const task = { name: 's2_camera_preview', can_move: false, installed: true, observed_at: now,
     state: 'stopped', requested: false, ready: false, ...patch };
   const catalog = { contract_version: 2, catalog_version: 2, observed_at: stale ? now - 30 : now, features: [task, ...others], units: [] };
-  const calls = [], errors = [], messages = new Map(), buttons = new Map(['camera-start', 'camera-stop', 'camera-toggle'].map(id => [id, { disabled: true, listeners: {}, addEventListener(name, callback) { this.listeners[name] = callback; }, setAttribute(name, value) { this[name] = value; } }]));
+  const calls = [], errors = [], messages = new Map(), buttons = new Map(['camera-start', 'camera-stop', 'camera-toggle', 'camera-proc-toggle', 'camera-obst-toggle', 'camera-tracker-toggle'].map(id => [id, { disabled: true, listeners: {}, addEventListener(name, callback) { this.listeners[name] = callback; }, setAttribute(name, value) { this[name] = value; } }]));
   let started = 0, stopped = 0;
   const context = vm.createContext({ ...model,
     document: { getElementById: id => buttons.get(id) }, window: { addEventListener() {} },
@@ -29,7 +29,7 @@ function fixture(patch = {}, { stale = false, rejected = false, others = [] } = 
     }
   });
   vm.runInContext(source, context);
-  const power = new context.CameraPower({ onStarted: () => started++, onStopped: () => stopped++ });
+  const power = new context.CameraPower({ onStarted: () => started++, onStopped: () => stopped++, ...control });
   return { power, task, calls, errors, messages, buttons, count: () => ({ started, stopped }) };
 }
 test('page entry and state reads never start the camera', async () => {
@@ -82,4 +82,26 @@ test('unknown state and duplicate clicks cannot issue toggle commands', async ()
   const busy = fixture(); await busy.power.load(); busy.power.busy = true;
   await busy.buttons.get('camera-toggle').listeners.click();
   assert.equal(busy.calls.filter(row => row.method === 'POST').length, 0);
+});
+
+test('PROC and OBST buttons share one passive local task and one pending lock', async () => {
+  const f = fixture({ name: 's7_obstacle_module' }, { control: { taskName: 's7_obstacle_module',
+    options: { provider: 'local' }, toggleIds: ['camera-proc-toggle', 'camera-obst-toggle'], label: '' } });
+  await f.power.load();
+  await f.buttons.get('camera-proc-toggle').listeners.click();
+  for (const id of ['camera-proc-toggle', 'camera-obst-toggle']) assert.equal(f.buttons.get(id).textContent, 'ON');
+  await f.buttons.get('camera-obst-toggle').listeners.click();
+  for (const id of ['camera-proc-toggle', 'camera-obst-toggle']) assert.equal(f.buttons.get(id).textContent, 'OFF');
+  const posts = f.calls.filter(row => row.method === 'POST');
+  assert.ok(posts.every(row => row.path === '/api/logic/feature/s7_obstacle_module' && row.body.options.provider === 'local'));
+  assert.deepEqual(posts.map(row => row.body.enabled), [true, false]);
+});
+test('tracker toggle selects only passive tracking and explicit face mode', async () => {
+  const f = fixture({ name: 's6_tracker_module' }, { control: { taskName: 's6_tracker_module',
+    options: { mode: 'face' }, toggleIds: ['camera-tracker-toggle'] } });
+  await f.power.load(); await f.buttons.get('camera-tracker-toggle').listeners.click();
+  const post = f.calls.find(row => row.method === 'POST');
+  assert.equal(post.path, '/api/logic/feature/s6_tracker_module'); assert.equal(post.body.options.mode, 'face');
+  const moving = fixture({ name: 's3_follow_me_face', can_move: true }, { control: { taskName: 's3_follow_me_face' } });
+  await moving.power.change(true); assert.equal(moving.calls.filter(row => row.method === 'POST').length, 0);
 });

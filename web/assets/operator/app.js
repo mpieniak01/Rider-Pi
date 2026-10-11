@@ -1,4 +1,4 @@
-import { CameraPower } from './camera-power.js?v=overview-camera-1';
+import { CameraPower } from './camera-power.js?v=overview-vision-2';
 import { Posture } from './posture.js?v=posture-1';
 import { ManualSettings } from './manual-settings.js?v=motion-curves-14';
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
@@ -44,8 +44,21 @@ if (page === 'navigation') { tasks = new Tasks(safety, 'task-list', task => task
 if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); }
 if (page === 'view') {
   overview = new Overview(safety);
-  new CameraPower({ onStarted: () => { overview.poller.refresh(); overview.visionPoller.refresh(); },
-    onStopped: () => { overview.snap = null; overview.renderVision(); overview.poller.refresh(); } });
+  const refreshVision = () => { overview.snap = null; overview.renderVision(); overview.poller.refresh(); overview.visionPoller.refresh(); };
+  const raw = new CameraPower({ onStarted: refreshVision, onStopped: refreshVision, label: '' });
+  const processed = new CameraPower({ taskName: 's7_obstacle_module', options: { provider: 'local' },
+    toggleIds: ['camera-proc-toggle', 'camera-obst-toggle'], statusIds: ['camera-proc-state', 'camera-obst-state'],
+    startId: null, stopId: null, label: '', onStarted: refreshVision, onStopped: refreshVision });
+  const tracker = new CameraPower({ taskName: 's6_tracker_module', options: { mode: 'face' },
+    toggleIds: ['camera-tracker-toggle'], statusIds: ['camera-tracker-state'], startId: null, stopId: null,
+    label: '', onStarted: refreshVision, onStopped: refreshVision });
+  for (const control of [raw, processed, tracker]) {
+    const started = control.onStarted, stopped = control.onStopped;
+    const refreshControls = () => { for (const other of [raw, processed, tracker]) if (other !== control) other.poller.refresh(); };
+    control.onStarted = () => { started(); refreshControls(); };
+    control.onStopped = () => { stopped(); refreshControls(); };
+  }
+
 }
 
 events(event => {

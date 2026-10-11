@@ -5,11 +5,16 @@ import { text, tr, showError } from './ui.js';
 const CAMERA_TASK = 's2_camera_preview';
 // Explicit operator clicks only. Page entry and polling remain read-only.
 export class CameraPower {
-  constructor({ onStarted = () => {}, onStopped = () => {} } = {}) {
+  constructor({ onStarted = () => {}, onStopped = () => {}, taskName = CAMERA_TASK, options = {},
+    toggleIds = ['camera-toggle'], statusIds = ['camera-power-state'], label = 'Kamera',
+    startId = 'camera-start', stopId = 'camera-stop' } = {}) {
+    this.taskName = taskName; this.options = options; this.statusIds = statusIds; this.label = label;
     this.catalog = null; this.busy = false; this.onStarted = onStarted; this.onStopped = onStopped;
-    this.start = document.getElementById('camera-start'); this.stop = document.getElementById('camera-stop');
-    this.toggle = document.getElementById('camera-toggle');
-    this.toggle?.addEventListener('click', () => { if (this.known()) return this.change(this.task().requested !== true); });
+    this.start = document.getElementById(startId); this.stop = document.getElementById(stopId);
+    this.toggles = toggleIds.map(id => document.getElementById(id)).filter(Boolean);
+    for (const toggle of this.toggles) toggle.addEventListener('click', () => {
+      if (this.known()) return this.change(this.task().requested !== true);
+    });
     this.start?.addEventListener('click', () => this.change(true));
     this.stop?.addEventListener('click', () => this.change(false));
     this.poller = poll(() => this.load(), { interval: 5000, onError: error => {
@@ -23,7 +28,7 @@ export class CameraPower {
   async load() {
     this.catalog = (await request('/api/logic/catalog')).data; this.render();
   }
-  task() { return this.catalog?.features?.find(task => task.name === CAMERA_TASK); }
+  task() { return this.catalog?.features?.find(task => task.name === this.taskName); }
   known() {
     const task = this.task();
     return catalogKnown(this.catalog) && task?.can_move === false && fresh(task, 10);
@@ -38,8 +43,8 @@ export class CameraPower {
       if (!this.known() || (enabled ? task.requested === true || !taskCanStart(task, this.catalog, null) : task.requested !== true)) {
         throw new Error(tr('Nie można zmienić kamery przy obecnym stanie zadania.', 'Camera task cannot be changed in its current state.'));
       }
-      const result = await request(`/api/logic/feature/${CAMERA_TASK}`, {
-        method: 'POST', body: { enabled, options: {} }, timeout: 20000
+      const result = await request(`/api/logic/feature/${this.taskName}`, {
+        method: 'POST', body: { enabled, options: this.options }, timeout: 20000
       });
       if (result.data?.ok !== true) throw new Error(result.data?.result?.error || result.data?.error || 'camera_request_failed');
       if (enabled) this.onStarted(); else this.onStopped();
@@ -54,20 +59,20 @@ export class CameraPower {
     const task = this.task(), known = this.known();
     if (this.start) this.start.disabled = this.busy || !known || task.requested === true || !taskCanStart(task, this.catalog, null);
     if (this.stop) this.stop.disabled = this.busy || !known || task.requested !== true;
-    if (this.toggle) {
+    for (const toggle of this.toggles) {
       const enabled = known && task.requested === true;
-      this.toggle.disabled = this.busy || !known || (!enabled && !taskCanStart(task, this.catalog, null));
-      this.toggle.setAttribute('aria-pressed', String(enabled));
-      this.toggle.textContent = `Kamera: ${enabled ? 'ON' : 'OFF'}`;
-      this.toggle.title = enabled ? tr('Wyłącz kamerę', 'Turn camera off') : tr('Włącz kamerę', 'Turn camera on');
+      toggle.disabled = this.busy || !known || (!enabled && !taskCanStart(task, this.catalog, null));
+      toggle.setAttribute('aria-pressed', String(enabled));
+      toggle.textContent = `${this.label ? this.label + ': ' : ''}${enabled ? 'ON' : 'OFF'}`;
+      toggle.title = enabled ? tr('Wyłącz kamerę', 'Turn camera off') : tr('Włącz kamerę', 'Turn camera on');
     }
     let label = !known ? tr('Stan kamery nieznany — odczytywanie stanu', 'Camera state unknown — reading status')
       : task.requested === true ? task.ready === true ? tr('Kamera włączona', 'Camera on') : tr('Kamera uruchamiana — oczekiwanie na gotowość', 'Camera starting — waiting for readiness')
       : tr('Podgląd kamery wyłączony', 'Camera preview off');
     if (known && task.error) label = tr('Błąd kamery: ', 'Camera error: ') + task.error;
     if (known && task.start_available === false) label += ' · ' + (task.start_unavailable_reason || tr('Uruchomienie niedostępne', 'Start unavailable'));
-    const others = known ? this.catalog.features.filter(row => row.name !== CAMERA_TASK && row.requested === true && row.resources?.includes('camera')) : [];
+    const others = known ? this.catalog.features.filter(row => row.name !== this.taskName && row.requested === true && row.resources?.includes('camera')) : [];
     if (others.length) label += ' · ' + tr('Z kamery korzystają też: ', 'Camera also used by: ') + others.map(row => tr(row.title || row.name, row.title_en || row.name)).join(', ');
-    text('camera-power-state', this.busy ? tr('Zmiana stanu kamery…', 'Changing camera state…') : label);
+    for (const id of this.statusIds) text(id, this.busy ? tr('Zmiana stanu kamery…', 'Changing camera state…') : label);
   }
 }
