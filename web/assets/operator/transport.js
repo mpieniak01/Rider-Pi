@@ -1,4 +1,18 @@
+import { API_ACCEPT, decodeResponse, errorMessage, responseFamily } from './contract.js';
+import { setServerClock } from './model.js';
 const reads = new Map();
+let contractProof = null;
+function rememberContract(decoded, response, receivedAt) {
+  const { data, meta } = decoded;
+  const age = meta?.server_time - meta?.observed_at;
+  const valid = response.status === 200 && decoded.canonical && meta.contract_id === 'rider.catalog'
+    && meta.contract_version === 2 && typeof meta.observed_at === 'number' && Number.isFinite(age) && age >= 0 && age <= 10
+    && data?.ok === true && data.contract_version === 2 && data.catalog_version === 2
+    && Array.isArray(data.features) && Array.isArray(data.units)
+    && Array.isArray(data.api_envelope_versions) && data.api_envelope_versions.includes(1)
+    && !data.error && data.offline !== true && data.stale !== true;
+  contractProof = valid ? { receivedAt } : null;
+}
 export function request(path, options = {}) {
   const method = options.method || 'GET';
   if (method === 'GET' && reads.has(path)) return reads.get(path);
@@ -10,16 +24,35 @@ export function request(path, options = {}) {
   return flight;
 }
 async function performRequest(path, { method = 'GET', body, timeout = 6000 } = {}) {
+  const stop = path === '/api/control' && body?.action === 'stop'
+    || path === '/api/safety' && ['disarm', 'estop'].includes(body?.action);
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !stop) {
+    const age = Date.now() / 1000 - (contractProof?.receivedAt ?? 0);
+    if (!contractProof || age < 0 || age > 5) await request('/api/logic/catalog');
+    if (!contractProof) throw Object.assign(new Error('Unsupported Rider contract; read only'), { status: 409 });
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const sentAt = Date.now() / 1000;
   try {
     const response = await fetch(path, { method, cache: 'no-store', signal: controller.signal,
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      headers: body === undefined ? { Accept: API_ACCEPT } : { Accept: API_ACCEPT, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body) });
-    const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error(data.error || data.detail || data.result?.error || `HTTP ${response.status}`), { data, status: response.status });
-    return { data, status: response.status, sent_at: sentAt, received_at: Date.now() / 1000 };
+    const payload = await response.json();
+    const decoded = decodeResponse(payload, response.status, responseFamily(path)), { data, meta, operation } = decoded;
+    if (decoded.canonical) {
+      const mime = (response.headers?.get?.('content-type') || '').toLowerCase();
+      if (mime.split(';')[0].trim() !== 'application/vnd.rider.api+json'
+        || !/;\s*version\s*=\s*(?:1|"1")\s*(?:;|$)/.test(mime)) {
+        if (path === '/api/logic/catalog') contractProof = null;
+        throw Object.assign(new Error('Unsupported Rider response Content-Type; read only'), { status: 502 });
+      }
+    }
+    const receivedAt = Date.now() / 1000;
+    if (path === '/api/logic/catalog') rememberContract(decoded, response, receivedAt);
+    if (meta) setServerClock(meta.server_time, sentAt, receivedAt);
+    if (!response.ok) throw Object.assign(new Error(errorMessage(payload.error || data?.error || data?.detail || data?.result?.error, `HTTP ${response.status}`)), { data, meta, operation, status: response.status });
+    return { ...decoded, status: response.status, sent_at: sentAt, received_at: receivedAt };
   } finally { clearTimeout(timer); }
 }
 // One flight per poller, bounded timeout, bounded backoff, hidden tabs sleep.

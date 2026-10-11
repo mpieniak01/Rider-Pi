@@ -4,12 +4,14 @@ from __future__ import annotations
 """
 apps/menu/main.py — proste menu na 4 przyciski (bez LCD)
 Sub: ui.button, motion.state
-Pub: system.mode, motion.cmd(stop), system.menu.state
+Pub: system.mode, motion.command(stop), system.menu.state
 """
 
 import sys  # noqa: E402
 import time  # noqa: E402
+import uuid  # noqa: E402
 
+from apps.ui.status_panel import battery_observation  # noqa: E402
 from common.bus import BusPub, BusSub  # noqa: E402
 
 PROJ_ROOT = "/home/pi/robot"
@@ -17,9 +19,9 @@ if PROJ_ROOT not in sys.path:
     sys.path.insert(0, PROJ_ROOT)
 
 
-PUB = BusPub()
-SUB_BTN = BusSub("ui.button")
-SUB_MS = BusSub("motion.state")
+PUB = None
+SUB_BTN = None
+SUB_MS = None
 
 HOME_ITEMS = ["Dema", "Autonomia", "Teleop", "Ustawienia", "Logi"]
 LOW_BATTERY_LIMIT = 0.15
@@ -32,6 +34,9 @@ state = {
 
 
 def pub(topic, payload):
+    global PUB
+    if PUB is None:
+        PUB = BusPub()
     # kompatybilnie z różnymi implementacjami BusPub
     for m in ("send", "publish", "pub"):
         if hasattr(PUB, m):
@@ -39,7 +44,10 @@ def pub(topic, payload):
 
 
 def pub_stop():
-    pub("motion.cmd", {"type": "stop"})
+    pub(
+        "motion.command",
+        {"action": "stop", "source": "manual", "origin": "physical_menu", "request_id": uuid.uuid4().hex},
+    )
 
 
 def pub_menu_state():
@@ -107,8 +115,11 @@ def log(msg):
 
 
 def main():
+    global SUB_BTN, SUB_MS
+    SUB_BTN, SUB_MS = BusSub("ui.button"), BusSub("motion.state")
     log("Menu: start (buttons + motion.state)")
     last_pub = 0
+    latest_motion = {}
     try:
         while True:
             # buttons
@@ -127,12 +138,11 @@ def main():
                         on_back()
             # battery
             t2, p2 = SUB_MS.recv(timeout_ms=0)
-            if t2:
-                b = p2.get("battery")
-                try:
-                    state["battery"] = float(b) if b is not None else None
-                except Exception:
-                    pass
+            if t2 and isinstance(p2, dict):
+                latest_motion = p2
+            sample = battery_observation(latest_motion, now=time.time())
+            state["battery"] = sample["value"] if sample["ready"] else None
+            state["battery_observation"] = sample
             # periodic menu state (dla debug/logów)
             if time.time() - last_pub > 1.0:
                 last_pub = time.time()

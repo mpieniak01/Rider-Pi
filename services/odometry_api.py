@@ -68,6 +68,7 @@ def snapshot():
         return value
     except (OSError, ValueError, TypeError):
         return {
+            "contract_id": "rider.odometry",
             "contract_version": 1,
             "reference_verified": False,
             "reference_id": None,

@@ -1,4 +1,5 @@
 // Pure calibration presentation rules; no transport, clock synchronization or actuation.
+import { observationChannel } from './observations.js';
 export const MAX_PROFILE_BYTES = 65536;
 export const digestValid = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -145,7 +146,7 @@ export function referenceConfirmed(snapshot, command, now) {
 
 export function activationPendingResult(state, command, now) {
   const fresh = freshCalibration(state?.motion, now) && freshCalibration(state?.odometry, now) && state?.stale !== true;
-  if (!fresh) return null;
+  if (!fresh) return now - command.ts > 8 ? { status: 'unknown', reason: 'activation_confirmation_timeout_no_retry' } : null;
   const active = state.active, requested = state.requested;
   if (activationView(state, command.profile_digest, now).applied && active?.request_id === command.request_id
     && active.command_generation === command.generation && active.seq === command.seq) return { status: 'applied', reason: null };
@@ -184,23 +185,8 @@ export function sdkOutputObservation(motion, now) {
     physical_completion: 'unverified' };
 }
 export function sensorObservations(motion, now) {
-  const parent = motionParent(motion, now), quality = motion?.sensor_quality;
-  const elapsed = freshCalibration(motion, now) ? now - motion.observed_at : null;
-  return Object.fromEntries(['roll', 'pitch', 'yaw', 'battery'].map(name => {
-    const row = quality?.sensors?.[name], source = sourceAge(row, now);
-    const age = source !== null && finite(row?.age_s) && row.age_s >= 0 && elapsed !== null
-      ? Math.max(source, row.age_s + elapsed) : null;
-    const valueValid = finite(row?.value) && (name !== 'battery' || (row.value >= 0 && row.value <= 1));
-    const ready = Boolean(parent && object(quality) && quality.stale !== true && quality.offline !== true
-      && valueValid && age !== null && age <= 2.5 && row?.ready === true
-      && row.stale !== true && row.offline !== true && !row.error && !row.data_error);
-    return [name, { ready, status: ready ? 'observed' : age !== null && age > 2.5 ? 'stale' : 'unknown',
-      value: ready ? (name === 'battery' ? row.value * 100 : row.value) : null,
-      observed_at: row?.observed_at ?? null, age_s: age,
-      producer_ready: row?.ready === true,
-      error: ready ? null : row?.error || (!parent ? 'motion_parent_unconfirmed' : 'measurement_stale_or_missing'),
-      unit: name === 'battery' ? '%' : 'raw_sdk', physical_completion: 'unverified' }];
-  }));
+  return Object.fromEntries(['roll', 'pitch', 'yaw', 'battery'].map(name =>
+    [name, observationChannel(motion, name, { now, requireMotion: true })]));
 }
 export function currentDynamics(motion, now) {
   const row = motion?.dynamics;

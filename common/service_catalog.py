@@ -522,7 +522,9 @@ def catalog_payload() -> dict:
         "catalog_version": CONTRACT_VERSION,
         "host": HOST,
         "source": "pi",
-        "units": list(UNIT_CATALOG.values()),
+        "api_envelope_versions": [1],
+        "api_media_type": "application/vnd.rider.api+json;version=1",
+        "units": [{**meta, **unit_availability(unit)} for unit, meta in UNIT_CATALOG.items()],
         "features": [
             {
                 **asdict(feature),
@@ -535,6 +537,29 @@ def catalog_payload() -> dict:
         ],
         "capabilities": ["task_lifecycle", "resource_consumers", "installed_state", "motion_gate", "domain_selection"],
     }
+
+
+def unit_availability(unit: str) -> dict:
+    """Implementation availability, separate from installation and ARM permission."""
+    meta = UNIT_CATALOG.get(unit, {})
+    members = {member for rows in meta.get("task_members", {}).values() for member in rows}
+    unavailable = unit == "rider-navigator.service" or "rider-navigator.service" in members
+    return {
+        "start_available": bool(meta) and not unavailable,
+        "start_unavailable_reason": "navigation_traversal_unverified"
+        if unavailable
+        else None
+        if meta
+        else "unit_or_action_not_catalogued",
+    }
+
+
+def task_availability(feature: FeatureDefinition, options: dict | None = None) -> dict:
+    for unit in task_units(feature, options):
+        available = unit_availability(unit)
+        if not available["start_available"]:
+            return available
+    return {"start_available": True, "start_unavailable_reason": None}
 
 
 for _feature_definition in DEFAULT_REGISTRY.values():

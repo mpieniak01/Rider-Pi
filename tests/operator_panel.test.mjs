@@ -86,7 +86,16 @@ class Element {
   replaceChildren(...values) { this.children = values; }
   closest(selector) { return this.editing && selector.includes('input') ? this : null; }
 }
-async function fixture(initial = disarmed(), { page = 'control', safetyCard = null, clock = null } = {}) {
+function canonicalReply(contractId, contractVersion, data, now = Date.now() / 1000) {
+  return { meta: { envelope_version: 1, contract_id: contractId, contract_version: contractVersion,
+    host: 'pi', source: 'pi', observed_at: now, generated_at: now, server_time: now,
+    stale: false, offline: false, partial: false }, ok: true, data, error: null, operation: null };
+}
+function catalogReply(features = [], now = Date.now() / 1000) {
+  return canonicalReply('rider.catalog', 2, { contract_version: 2, catalog_version: 2,
+    api_envelope_versions: [1], observed_at: now, features, units: [] }, now);
+}
+async function fixture(initial = disarmed(), { page = 'control', safetyCard = null, clock = null, legacySafety = false, canonicalMime = 'application/vnd.rider.api+json;version=1' } = {}) {
   const elements = new Map(['arm', 'clear-estop', 'disarm', 'estop', 'operator-plan', 'operator-consent', 'control-owner', 'lease',
     'duration', 'speed', 'yaw-speed', 'request-history', 'safety-state', 'safety-owner', 'safety-reason', 'safety-lease', 'operator-message'].map(id => [id, new Element(id)]));
   elements.get('control-owner').value = 'manual'; elements.get('lease').value = '10'; elements.get('duration').value = '.1';
@@ -102,8 +111,15 @@ async function fixture(initial = disarmed(), { page = 'control', safetyCard = nu
     setInterval: callback => { timers.set(++timerId, callback); return timerId; }, clearInterval: id => timers.delete(id),
     fetch: async (url, options) => {
       calls.push({ url, ...options, body: options.body ? JSON.parse(options.body) : undefined });
+      const now = clock ? clock.now : Date.now() / 1000;
+      const state = { safety: current, server_time: now };
+      const reply = replies.has(url) ? replies.get(url) : options.method === 'POST' ? { pending: true, confirmed: false }
+        : url === '/api/logic/catalog' ? catalogReply([], now)
+          : url === '/api/control/state' && !legacySafety ? canonicalReply('rider.safety', 1, state, now) : state;
       return { ok: true, status: options.method === 'POST' ? 202 : 200,
-        json: async () => replies.has(url) ? replies.get(url) : options.method === 'POST' ? { pending: true, confirmed: false } : { safety: current, server_time: clock ? clock.now : Date.now() / 1000 } };
+        headers: { get: name => name.toLowerCase() === 'content-type'
+          ? reply.meta ? canonicalMime : 'application/json' : null },
+        json: async () => reply };
     } });
   const modules = new Map();
   async function load(name) {
@@ -125,6 +141,36 @@ test('opening control issues GET only and permits explicit ARM from known DISARM
   assert.ok(f.calls.every(call => call.method === 'GET'));
   assert.equal(f.elements.get('arm').disabled, false);
   assert.equal(f.elements.get('clear-estop').disabled, true);
+});
+test('legacy safety is read only and cannot ARM despite a valid inner state and consent', async () => {
+  const f = await fixture(disarmed(), { legacySafety: true });
+  f.elements.get('operator-plan').value = 'Prepared isolated fixture';
+  f.elements.get('operator-consent').checked = true;
+  assert.equal(f.panel.clockReady, false);
+  assert.equal(f.elements.get('arm').disabled, true);
+  await f.panel.arm('arm');
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+test('legacy and unknown catalog responses deny mutation before any POST', async () => {
+  const now = Date.now() / 1000;
+  const canonical = catalogReply([], now);
+  for (const reply of [canonical.data, { ...canonical, meta: { ...canonical.meta, envelope_version: 2 } }]) {
+    const f = await fixture(); f.setReply('/api/logic/catalog', reply);
+    const { request } = await f.load('transport.js');
+    await assert.rejects(request('/api/logic/feature/fixture-passive', { method: 'POST', body: { enabled: true } }),
+      /Unsupported|read only/);
+    assert.ok(f.calls.some(call => call.url === '/api/logic/catalog' && call.method === 'GET'));
+    assert.ok(f.calls.every(call => call.method === 'GET'), 'catalog rejection must precede mutation dispatch');
+  }
+});
+test('a canonical-looking body with wrong MIME cannot authorize mutation', async () => {
+  for (const canonicalMime of ['application/json', 'application/vnd.rider.api+json;version=2', '']) {
+    const f = await fixture(disarmed(), { canonicalMime });
+    const { request } = await f.load('transport.js');
+    await assert.rejects(request('/api/logic/feature/fixture-passive', { method: 'POST', body: { enabled: true } }), /Content-Type/);
+    assert.ok(f.calls.every(call => call.method === 'GET'));
+    assert.equal(f.panel.clockReady, false);
+  }
 });
 test('typing, select, repeated key and modifier do not issue movement', async () => {
   const f = await fixture(armed());
@@ -254,7 +300,7 @@ test('chat viewing reads providers; explicit send requests only text domain and 
 });
 
 test('poll never overlaps and waits while the page is hidden', async () => {
-  const source = await readFile(path.join(assets, 'transport.js'), 'utf8');
+  const source = (await readFile(path.join(assets, 'transport.js'), 'utf8')).replace(/^import .*;$/gm, '');
   let resolve, loads = 0; const timers = new Map(); const document = { hidden: false, addEventListener() {}, removeEventListener() {} };
   const context = vm.createContext({ document, Date, AbortController, setTimeout: action => { timers.set(timers.size + 1, action); return timers.size; }, clearTimeout: id => timers.delete(id) });
   const module = new vm.SourceTextModule(source, { context }); await module.link(() => {}); await module.evaluate();
@@ -347,7 +393,7 @@ test('passive task mode comes from catalog choices and never allocates motion au
   const task = { name: 'fixture-passive', scenario: 'S6', title: 'Fixture passive tracker', can_move: false,
     installed: true, requested: false, state: 'stopped', observed_at: Date.now() / 1000, resources: [], options: {},
     option_schema: { field: 'mode', default: 'face', end_value: 'none', choices: [{ value: 'face' }, { value: 'hand' }, { value: 'none' }] } };
-  f.setReply('/api/logic/catalog', { contract_version: 2, catalog_version: 2, observed_at: Date.now() / 1000, features: [task], units: [] });
+  f.setReply('/api/logic/catalog', catalogReply([task]));
   const { Tasks } = await f.load('tasks.js'); const tasks = new Tasks(f.panel);
   await new Promise(resolve => setImmediate(resolve));
   assert.ok(f.calls.every(call => call.method === 'GET'));

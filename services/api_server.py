@@ -40,6 +40,7 @@ import services.api_core.face_anim as face_anim
 import services.api_core.features_api as features_api
 import services.api_core.google_home_api as google_home_api
 import services.api_core.google_proxy as google_proxy
+import services.api_core.http_contract as http_contract
 import services.api_core.models_api as models_api
 import services.api_core.navigator_api as navigator_api
 import services.api_core.provider_api as provider_api
@@ -59,6 +60,8 @@ from services.api_core.resource_api import api_resource
 from services.api_core.service_logs import service_logs
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
 
+http_contract.install(app)
+
 # ── Metryki API helper ───────────────────────────────────────────────────────
 
 
@@ -73,7 +76,7 @@ def _cors_all(resp: Response) -> Response:
     if compat:
         _update_api_metrics(request.path, resp.status_code)
 
-    return resp
+    return http_contract.enhance(resp)
 
 
 def _corsify(resp: Response) -> Response:
@@ -438,12 +441,15 @@ def home_command():
     return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
-# bus health (stub)
+# Shared transport observation; no readiness from HTTP alone.
 @app.route("/api/bus/health", methods=["GET", "OPTIONS"])
 def _bus_health():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
-    return _corsify(jsonify({"ok": True})), 200
+    from services.api_core.bus_health import snapshot
+
+    data = snapshot(compat)
+    return _corsify(jsonify(data)), 200
 
 
 # ── API Metrics ──────────────────────────────────────────────────────────────

@@ -17,11 +17,11 @@ XSUB_ENDPOINT = os.getenv("BUS_XSUB", "tcp://127.0.0.1:5555")  # PUB łączy si�
 # ============================================================================
 
 # Balance/stabilization control
-# Payload: {"enabled": bool, "ts": float}
+# Legacy topic alias. Payload must contain the complete motion.command envelope.
 TOPIC_MOTION_BALANCE = "cmd.balance"
 
 # Height/suspension control
-# Payload: {"height": int (0-255), "ts": float}
+# Legacy alias. height is a logical integer 0..12, not meters or SDK units.
 TOPIC_MOTION_HEIGHT = "cmd.height"
 
 # ============================================================================
@@ -63,15 +63,25 @@ TOPIC_VISION_FRAME_OFFLOAD = "vision.frame.offload"
 # Coordinates: x, y in meters; theta in radians (0 = forward at start)
 TOPIC_ROBOT_POSE = "robot.pose"
 
-# Raw IMU data from robot sensors (published by motion bridge)
-# Payload: {"roll": float, "pitch": float, "yaw": float, "ts": float}
-# Angles in degrees; yaw is used by odometry for orientation correction
+# Sole UART owner -> BUS sensor reader. Raw SDK axes are physically unverified;
+# original per-channel observed_at/quality/unit are authoritative, not publish ts.
 TOPIC_IMU_DATA = "imu.data"
 
 # Motion commands for robot movement (published by navigator, API, manual control)
-# Payload: {"type": "drive"|"stop", "lx": float, "az": float, "ts": float}
-# lx: linear velocity (-1.0 to 1.0), az: angular velocity (-1.0 to 1.0)
-TOPIC_MOTION_COMMAND = "motion"
+# Flat {action,source,generation,seq,request_id,ts,ttl_ms,...}. vx/yaw are
+# normalized [-1,1], duration seconds <=.25. STOP needs no permission metadata.
+TOPIC_MOTION_COMMAND = "motion.command"
+TOPIC_MOTION_COMMAND_LEGACY = "motion"
+TOPIC_MOTION_STATE = "motion.state"
+TOPIC_MOTION_ACK = "motion.ack"
+TOPIC_MOTION_OUTPUT = "motion.output"
+TOPIC_MOTION_SENSOR_RAW = "motion.sensor.raw"
+TOPIC_DEVICES_XGO = "devices.xgo"
+TOPIC_ODOMETRY_REFERENCE = "odometry.reference"
+TOPIC_ODOMETRY_REFERENCE_ACK = "odometry.reference.ack"
+TOPIC_CALIBRATION_ACTIVATE = "calibration.activate"
+TOPIC_CALIBRATION_ACK = "calibration.ack"
+TOPIC_MOTION_INTENT = "motion.intent"  # proposal only; never an actuator topic
 
 # ============================================================================
 # Topic constants for mapper (Stage 3 - SLAM mapping)
@@ -161,7 +171,11 @@ class BusPub:
         """
         Wyślij wiadomość. Jeśli add_ts=True i brak 'ts' w payload, doda znacznik czasu.
         """
-        if add_ts and "ts" not in payload:
+        from common.motion_commands import protected_topic
+
+        # Legacy helpers may ask for automatic timestamps. Permission-bearing
+        # messages must keep the caller's time (or remain missing/fail closed).
+        if add_ts and not protected_topic(self._full_topic(topic)) and "ts" not in payload:
             payload = dict(payload)
             payload["ts"] = now_ts()
         t = self._full_topic(topic).encode("utf-8")

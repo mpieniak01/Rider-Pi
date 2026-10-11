@@ -18,7 +18,7 @@
 @import url('./css/layout.css');
 @import url('./css/components.css');
 @import url('./css/utilities.css');
-@import url('./css/menu.css');
+@import url('./css/menu.css?v=overview-restored-2');
 @import url('./css/footer.css');
 
 /* ===== Legacy Backward Compatibility ===== */

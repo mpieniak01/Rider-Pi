@@ -5,6 +5,8 @@ import json
 import math
 import time
 
+from common.observations import legacy_xgo, normalize_xgo_observation, observation, refresh_observation, source_time
+
 from . import compat as C
 
 
@@ -36,69 +38,88 @@ def _json_or_raw(payload: str):
         return s
 
 
-def _update_xgo_from_dict(d: dict):
-    if not isinstance(d, dict):
-        return
-    observed = d.get("observed_at", d.get("ts"))
-    try:
-        if type(observed) not in (int, float) or not math.isfinite(observed) or observed <= 0:
-            observed = None
-    except OverflowError:
-        observed = None
-    C.LAST_XGO.update(
-        ts=observed,
-        observed_at=observed,
-        stale=d.get("stale") is True or observed is None,
-        source=d.get("src", d.get("source", "unknown")),
-        offline=d.get("offline") is True,
-        error=d.get("error"),
+def _source_time(value):
+    return source_time(value)
+
+
+def _update_xgo_from_dict(data, topic="devices.xgo"):
+    row = normalize_xgo_observation(topic, data)
+    if row is None:
+        return False
+    previous = C.LAST_XGO.get("observation")
+    previous = previous if isinstance(previous, dict) else {}
+    rows = dict(previous.get("sensor_quality", {}).get("sensors", {}))
+    instance_changed = (
+        previous.get("instance_id") and row.get("instance_id") and previous["instance_id"] != row["instance_id"]
     )
-    for key in ("imu_ok", "pose", "pose_label", "uart_owner"):
-        if key in d:
-            C.LAST_XGO[key] = d[key]
-    if "battery_pct" in d or "battery" in d:
-        value = d.get("battery_pct", d.get("battery"))
-        C.LAST_XGO["battery"] = C._sanitize_batt(value) if value is not None else None
-    for key in ("roll", "pitch", "yaw"):
-        if key in d:
-            try:
-                value = float(d[key]) if d[key] is not None else None
-                if value is not None and not math.isfinite(value):
-                    value = None
-                C.LAST_XGO[key] = C._norm_angle180(value) if key == "yaw" and value is not None else value
-            except (TypeError, ValueError, OverflowError):
-                C.LAST_XGO[key] = None
-    if "fw" in d:
-        C.XGO_FW = C._sanitize_fw(d["fw"])
+    if instance_changed:
+        rows.clear()
+    for name, sample in row["sensor_quality"]["sensors"].items():
+        old = rows.get(name, {})
+        if (
+            source_time(old.get("observed_at")) is not None
+            and source_time(sample.get("observed_at")) is not None
+            and sample["observed_at"] < old["observed_at"]
+        ):
+            sample = {**sample, "ready": False, "error": "measurement_out_of_order"}
+        rows[name] = sample
+    combined = observation(
+        rows,
+        source=row["source"],
+        firmware=row.get("fw") if "fw" in data else previous.get("fw"),
+        instance_id=row.get("instance_id") or previous.get("instance_id"),
+        uart_owner=row.get("uart_owner") or previous.get("uart_owner"),
+        generated_at=row.get("generated_at"),
+        offline=row["offline"],
+        error=row["error"],
+    )
+    legacy = legacy_xgo(combined)
+    C.LAST_XGO.update(legacy)
+    C.LAST_XGO["battery"] = legacy["battery_pct"]  # cache legacy percent, never magnitude inference
+    C.LAST_XGO["pose_label"] = None  # raw SDK axes are not evidence of posture
+    if row.get("fw") is not None:
+        C.XGO_FW = C._sanitize_fw(row["fw"])
+    if "yaw_src" in data:
+        C.LAST_XGO["yaw_src"] = data["yaw_src"]
+    return True
 
 
 def observe_xgo(topic: str, data: object) -> bool:
-    """Project source measurements, never timestamp missing data at reception."""
-    prefixes = ("devices.xgo", "xgo", "motion.bridge.telemetry")
-    prefix = next((value for value in prefixes if topic == value or topic.startswith(value + ".")), None)
-    if topic == "imu.data":
-        row = dict(data) if isinstance(data, dict) else {}
-    elif prefix is None:
-        if topic != "motion.bridge.battery_pct":
-            return False
-        row = dict(data) if isinstance(data, dict) else {"battery_pct": data}
-    else:
-        suffix = topic[len(prefix) :].lstrip(".")
-        if not suffix:
-            row = dict(data) if isinstance(data, dict) else {}
-        elif isinstance(data, dict) and any(key in data for key in (suffix, "value", "observed_at", "ts")):
-            row = dict(data)
-            row[suffix] = data.get(suffix, data.get("value"))
-        else:
-            row = {suffix: data}
-    _update_xgo_from_dict(row)
-    if "yaw_src" in row:
-        C.LAST_XGO["yaw_src"] = row["yaw_src"]
-    if topic == "imu.data":
-        axes = {axis: C.LAST_XGO.get(axis) for axis in ("roll", "pitch", "yaw")}
-        C.LAST_XGO["pose"] = {"x": axes["roll"], "y": axes["pitch"], "z": axes["yaw"]}
-        C.LAST_XGO["pose_label"] = C._classify_pose(axes["roll"], axes["pitch"])
-    return True
+    """Project source measurements without receipt timestamps or unit guesses."""
+    if normalize_xgo_observation(topic, data) is None:
+        return False
+    normalized = data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        # The named scalar topic adapter also preserves unknown source time.
+        prefix = next(
+            (
+                p
+                for p in ("devices.xgo", "xgo", "motion.bridge.telemetry", "motion.bridge")
+                if topic.startswith(p + ".")
+            ),
+            None,
+        )
+        if prefix:
+            normalized = {topic[len(prefix) + 1 :]: data}
+    return _update_xgo_from_dict(normalized, topic)
+
+
+def xgo_snapshot(*, now=None):
+    """Legacy HTTP projection plus its exact canonical observation.
+
+    negotiated HTTP data replaces this object with `observation`; both come
+    from the same cache and original per-channel times. No I/O occurs here.
+    """
+    cached = C.LAST_XGO.get("observation")
+    if not isinstance(cached, dict):
+        # Existing cache schema is HTTP percent, independently of value size.
+        old = dict(C.LAST_XGO)
+        old.update(battery=old.get("battery"), battery_unit="percent", fw=C.XGO_FW)
+        if "yaw_raw" in old:
+            old["yaw"] = old["yaw_raw"]
+        cached = normalize_xgo_observation("xgo", old, now=now)
+    current = refresh_observation(cached, now=now)
+    return legacy_xgo(current)
 
 
 def observe_navigator(data: object) -> None:
@@ -149,24 +170,92 @@ def _decode_frames(frames):
     return topic, payload
 
 
-def observe_lcd(data: dict) -> None:
-    """A renderer report can describe power; descriptor ownership cannot."""
+def observe_lcd(data: dict, *, topic="ui.lcd.state", now=None) -> None:
+    """Keep accepted LCD reports separate from camera preview configuration.
+
+    Headless camera heartbeats describe their own preview settings, not the
+    current screen or its power. Only an explicit renderer report with source,
+    original time and control/frame acceptance can update the LCD observation.
+    Acceptance describes software I/O; physical visibility remains unverified.
+    """
     if not isinstance(data, dict):
         return
     lcd = data.get("lcd")
     if not isinstance(lcd, dict):
         return
     state = C.LAST_CAMERA["lcd"]
-    for key in ("enabled_env", "no_draw", "rot", "active", "presenting"):
+    at = source_time(data.get("observed_at", data.get("ts")))
+    if topic == "camera.heartbeat":
+        state["preview_config"] = {
+            **{key: lcd[key] for key in ("enabled_env", "no_draw", "rot", "active") if key in lcd},
+            **{key: data[key] for key in ("stale", "offline", "error", "simulated") if key in data},
+            "source": data.get("source") or topic,
+            "observed_at": at,
+        }
+        return
+    now = time.time() if now is None else now
+    source = data.get("source")
+    confirmation = lcd.get("confirmation")
+    if (
+        topic != "ui.lcd.state"
+        or not isinstance(source, str)
+        or not source.strip()
+        or at is None
+        or type(now) not in (int, float)
+        or not math.isfinite(now)
+        or not 0 <= now - at <= 5
+        or any(data.get(key) is True or lcd.get(key) is True for key in ("stale", "offline", "simulated"))
+        or data.get("error")
+        or lcd.get("error")
+        or not isinstance(confirmation, str)
+        or confirmation not in {"control_write_accepted", "frame_write_accepted"}
+    ):
+        return
+    previous_at = source_time(state.get("observed_at"))
+    if previous_at is not None and at < previous_at:
+        return
+    if previous_at is None:
+        # The initial cache contains API environment defaults, not observations.
+        for key in ("rot", "no_draw", "active", "presenting"):
+            state.pop(key, None)
+    state.update(source=source, observed_at=at, confirmation=confirmation)
+    for key in ("physical_validity", "reason", "no_draw"):
         if key in lcd:
             state[key] = lcd[key]
-    if isinstance(lcd.get("active"), bool):
-        state["presenting"] = lcd["active"]
-    if "on" in lcd:
-        state["on"] = lcd["on"] if isinstance(lcd["on"], bool) else None
-        state["power_known"] = isinstance(lcd["on"], bool)
-        state["power_source"] = "camera.heartbeat"
-        state["power_observed_at"] = data.get("observed_at", data.get("ts"))
+    if type(lcd.get("rot")) is int and lcd["rot"] in (0, 90, 180, 270):
+        state["rot"] = lcd["rot"]
+    for key in ("frame", "battery"):
+        if isinstance(lcd.get(key), dict):
+            state[key] = dict(lcd[key])  # preserve original frame/measurement times
+    if isinstance(lcd.get("frame"), dict):
+        # Original frame-acceptance report time, not camera capture or receipt.
+        state.update(frame_source=source, frame_observed_at=at)
+    if isinstance(lcd.get("presenting"), bool):
+        state["presenting"] = lcd["presenting"]
+    known = (
+        lcd.get("power_known") is True and isinstance(lcd.get("on"), bool) and confirmation == "control_write_accepted"
+    )
+    state.update(
+        on=lcd["on"] if known else None,
+        power_known=known,
+        power_source=source if known else None,
+        power_observed_at=at if known else None,
+    )
+    if known and lcd["on"] is False:
+        state["presenting"] = False
+
+
+def observe_camera_heartbeat(data: object) -> None:
+    """Preserve camera source time without changing another LCD owner's state."""
+    if not isinstance(data, dict):
+        return
+    C.LAST_CAMERA["ts"] = _source_time(data.get("observed_at", data.get("ts")))
+    for key in ("observed_at", "source", "stale", "offline", "error", "capture_at", "frame_id"):
+        if key in data:
+            C.LAST_CAMERA[key] = data[key]
+    C.LAST_CAMERA["mode"] = data.get("mode")
+    C.LAST_CAMERA["fps"] = data.get("fps")
+    observe_lcd(data, topic="camera.heartbeat")
 
 
 def bus_sub_loop():
@@ -192,6 +281,7 @@ def bus_sub_loop():
             "robot.pose",
             "mapper.map.data",
             "imu.data",
+            "ui.lcd.state",
         ):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
         try:
@@ -211,6 +301,9 @@ def bus_sub_loop():
 
                 C.LAST_MSG_TS = time.time()
                 C.EVENTS.append({"ts": C.LAST_MSG_TS, "topic": topic, "data": payload})
+                if topic == "ui.lcd.state":
+                    observe_lcd(_json_or_raw(payload))
+                    continue
                 if topic in {"robot.pose", "mapper.map.data", "navigator.path"}:
                     from .navigation_state import observe
 
@@ -230,59 +323,24 @@ def bus_sub_loop():
                         C.LAST_STATE["confidence"] = float(data.get("confidence", C.LAST_STATE["confidence"]))
                         if "mode" in data:
                             C.LAST_STATE["mode"] = data.get("mode")
-                        C.LAST_STATE["ts"] = float(data.get("ts", C.LAST_MSG_TS))
+                        C.LAST_STATE["ts"] = _source_time(data.get("observed_at", data.get("ts")))
+                        for key in ("source", "observed_at", "stale", "offline", "error", "data_ready"):
+                            if key in data:
+                                C.LAST_STATE[key] = data[key]
                     except Exception:
                         pass
                     continue
 
                 if topic == "camera.heartbeat":
                     try:
-                        data = json.loads(payload) if payload else {}
-                        C.LAST_CAMERA["ts"] = C.LAST_MSG_TS
-                        C.LAST_CAMERA["mode"] = data.get("mode")
-                        C.LAST_CAMERA["fps"] = data.get("fps")
-                        lcd_state = C.LAST_CAMERA["lcd"]
-                        lcd_state.update(
-                            {
-                                "enabled_env": (not C.ENV_DISABLE_LCD),
-                                "no_draw": C.ENV_NO_DRAW,
-                                "rot": C.ENV_ROT,
-                                "checked_at": C.LAST_MSG_TS,
-                            }
-                        )
-                        observe_lcd(data)
+                        observe_camera_heartbeat(_json_or_raw(payload))
                     except Exception:
                         pass
                     continue
 
-                if topic == "cmd.balance":
-                    data = _json_or_raw(payload)
-                    enabled = None
-                    if isinstance(data, dict):
-                        enabled = data.get("enabled")
-                    elif isinstance(data, (int, float, bool)):
-                        enabled = bool(data)
-                    if enabled is not None:
-                        C.LAST_BALANCE["enabled"] = bool(enabled)
-                        C.LAST_BALANCE["ts"] = C.LAST_MSG_TS
-                    continue
-
-                if topic == "cmd.height":
-                    data = _json_or_raw(payload)
-                    height_val = None
-                    if isinstance(data, dict):
-                        height_val = data.get("height")
-                    elif isinstance(data, (int, float)):
-                        height_val = data
-                    if height_val is not None:
-                        try:
-                            height_int = int(height_val)
-                        except Exception:
-                            height_int = None
-                        if height_int is not None:
-                            height_int = max(0, min(12, height_int))
-                            C.LAST_HEIGHT["value"] = height_int
-                            C.LAST_HEIGHT["ts"] = C.LAST_MSG_TS
+                # Command receipt is an intent, never observed actuator state.
+                # /api/control/state reads actuators from the executor's ACK/state.
+                if topic in {"cmd.balance", "cmd.height"}:
                     continue
 
                 if topic == "tracking.mode:set":
@@ -296,7 +354,9 @@ def bus_sub_loop():
                     mode_norm = mode_str.strip().lower() or "none"
                     C.LAST_TRACKING_MODE["mode"] = mode_norm
                     C.LAST_TRACKING_MODE["enabled"] = mode_norm in ("face", "hand")
-                    C.LAST_TRACKING_MODE["ts"] = C.LAST_MSG_TS
+                    C.LAST_TRACKING_MODE["ts"] = (
+                        _source_time(data.get("observed_at", data.get("ts"))) if isinstance(data, dict) else None
+                    )
                     continue
 
                 if topic == "vision.tracking.offset":
@@ -313,11 +373,7 @@ def bus_sub_loop():
                             C.LAST_TRACKING_OFFSET["offset"] = None
                         if "mode" in data and data.get("mode") is not None:
                             C.LAST_TRACKING_OFFSET["mode"] = data.get("mode")
-                        ts_val = data.get("ts") or C.LAST_MSG_TS or time.time()
-                        try:
-                            C.LAST_TRACKING_OFFSET["ts"] = float(ts_val)
-                        except Exception:
-                            C.LAST_TRACKING_OFFSET["ts"] = time.time()
+                        C.LAST_TRACKING_OFFSET["ts"] = _source_time(data.get("observed_at", data.get("ts")))
                     continue
 
                 if topic == "navigator.state":

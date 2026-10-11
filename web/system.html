@@ -4,12 +4,12 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Rider-Pi — System</title>
 <script src="/web/assets/theme-loader.js" defer></script>
-<link rel="stylesheet" href="/web/assets/dashboard-common.css">
+<link rel="stylesheet" href="/web/assets/dashboard-common.css?v=overview-restored-2">
 <link rel="stylesheet" href="/web/assets/themes/classic/theme.css" data-theme-skin="classic">
 <link rel="stylesheet" href="/web/assets/themes/classic-plus/theme.css" data-theme-skin="classic-plus" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v2/theme.css" data-theme-skin="v2" disabled>
 <link rel="stylesheet" href="/web/assets/themes/v3/theme.css" data-theme-skin="v3" disabled>
-<link rel="stylesheet" href="/web/assets/operator/operator.css">
+<link rel="stylesheet" href="/web/assets/operator/operator.css?v=overview-restored-2">
 </head>
 <body data-page="system" class="page page-system">
 <header class="layout-header" data-dashboard-menu-target></header>
@@ -22,7 +22,7 @@
 <dl class="operator-kv"><dt data-pl="Gotowość wykonawcy" data-en="Executor readiness">Gotowość wykonawcy</dt><dd id="safety-ready">unknown</dd><dt data-pl="Wiek stanu" data-en="State age">Wiek stanu</dt><dd id="safety-age">—</dd><dt data-pl="Właściciel" data-en="Owner">Właściciel</dt><dd id="safety-owner">—</dd><dt data-pl="Pozostała zgoda" data-en="Lease remaining">Pozostała zgoda</dt><dd id="safety-lease">—</dd><dt data-pl="Powód blokady" data-en="Block reason">Powód blokady</dt><dd id="safety-reason">—</dd></dl>
 <p class="operator-muted" data-pl="STOP unieważnia wcześniejsze polecenia. Przyjęcie SDK nie potwierdza fizycznego zatrzymania." data-en="STOP invalidates previous commands. SDK acceptance does not confirm physical stopping.">STOP unieważnia wcześniejsze polecenia. Przyjęcie SDK nie potwierdza fizycznego zatrzymania.</p>
 </section><section class="c-card"><h2 data-pl="System — odczyt domyślny" data-en="System — read only by default">System — odczyt domyślny</h2><p id="system-contract">unknown</p><p id="network-status">unknown</p><label><input id="admin-mode" type="checkbox"> <span data-pl="Jawnie włączam administrację usługami w tej karcie" data-en="Explicitly enable service administration in this tab">Jawnie włączam administrację usługami w tej karcie</span></label><p data-pl="start / stop / restart dotyczy procesu. enable / disable zmienia osobno autostart. Zakończ zadanie przed zatrzymaniem współdzielonej usługi." data-en="start / stop / restart affects the process. enable / disable separately changes autostart. End a task before stopping a shared service.">start / stop / restart dotyczy procesu. enable / disable zmienia osobno autostart. Zakończ zadanie przed zatrzymaniem współdzielonej usługi.</p></section></div>
-<div id="service-list"></div><details class="c-card"><summary data-pl="Graf, zasoby CPU i szczegóły" data-en="Graph, CPU resources and details">Graf, zasoby CPU i szczegóły</summary><div id="system-details-data"></div></details>
+<section class="c-card"><h2 data-pl="Pomiary systemu" data-en="System measurements">Pomiary systemu</h2><div id="system-details-data"></div></section><div id="service-list"></div>
 <details class="c-card"><summary data-pl="Procedura wymuszonego odzyskania zasobu" data-en="Forced resource recovery procedure">Procedura wymuszonego odzyskania zasobu</summary>
 <p class="operator-warning" data-pl="Najpierw STOP, zakończenie zadań i zwykłe zatrzymanie właściciela. Wymuszone zwolnienie jest ręczną procedurą awaryjną. API chroni UART, LCD i usługi bazowe." data-en="First STOP, end tasks and normally stop their owner. Forced release is a manual recovery procedure. API protects UART, LCD and base services.">Najpierw STOP, zakończenie zadań i zwykłe zatrzymanie właściciela. Wymuszone zwolnienie jest ręczną procedurą awaryjną. API chroni UART, LCD i usługi bazowe.</p>
 <label><span data-pl="Zasób" data-en="Resource">Zasób</span> <select id="rescue-resource"><option value="camera">camera</option><option value="mic">mic</option><option value="speaker">speaker</option></select></label>
@@ -32,8 +32,8 @@
 <button id="rescue-release" type="button" disabled class="c-btn" data-pl="Wymuś zwolnienie wybranych PID" data-en="Force release selected PIDs">Wymuś zwolnienie wybranych PID</button></details><section class="c-card"><h2 data-pl="Żądania i potwierdzenia" data-en="Requests and acknowledgements">Żądania i potwierdzenia</h2><p data-pl="pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów." data-en="pending = awaiting ACK; executed = SDK accepted. Physical completion remains unverified. Request history is not actuator state.">pending = oczekuje na ACK; executed = SDK przyjął. Zakończenie fizyczne pozostaje niepotwierdzone. Historia żądań nie jest stanem napędów.</p><ol id="request-history"></ol><p id="last-event" class="operator-muted">—</p></section>
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js"></script>
+<script type="module" src="/web/assets/operator/app.js?v=contracts-v1"></script>
 <script type="module" src="/web/assets/menu.js"></script>
-<script type="module" src="/web/assets/footer.js"></script>
+<script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>
 </html>

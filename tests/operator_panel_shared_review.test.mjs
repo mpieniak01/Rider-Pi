@@ -44,7 +44,9 @@ async function fixture() {
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
     fetch: async (url, options) => {
       assert.equal(options.method, 'GET', 'presentation must never mutate the robot'); calls.push(url);
-      return { ok: true, status: 200, json: async () => replies.get(url) || {} };
+      const reply = replies.get(url) || {};
+      return { ok: true, status: 200, headers: { get: name => name.toLowerCase() === 'content-type'
+        ? (reply.meta ? 'application/vnd.rider.api+json;version=1' : 'application/json') : null }, json: async () => reply };
     } });
   const modules = new Map();
   async function load(name) {
@@ -56,6 +58,90 @@ async function fixture() {
     async load(name) { const module = await load(name); await module.evaluate(); return module.namespace; } };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+test('active RAW capture does not label inactive derivative preview producers as enabled', async () => {
+  const f = await fixture();
+  const { Overview } = await f.load('overview.js');
+  for (const id of ['d_cam', 'camBadge', 'age_raw', 'age_proc', 'age_obst', 'age_tracker']) f.elements.set(id, new Element());
+  for (const name of ['cam', 'proc', 'obst', 'tracker']) {
+    f.elements.set(`leg_${name}_txt`, new Element());
+    const image = new Element('img');
+    image.getAttribute = key => image[key];
+    f.elements.set(`img_${name}`, image);
+  }
+  const file = (exists, at) => ({ exists, observed_at: null, capture_at: null,
+    file_observed_at: at, provenance: 'file_mtime', stale: exists && at < 997, max_age_s: 3 });
+  const overview = { health: { devices: { camera: { on: true } } }, state: { camera: { mode: 'raw', fps: 12 } },
+    snap: { raw: file(true, 999.8), proc: file(false, null), obst: file(false, null), tracker: file(true, 900) },
+    obstacle: null, drawBins() {} };
+  for (const lang of ['pl', 'en']) {
+    f.document.documentElement.lang = lang;
+    Overview.prototype.renderVision.call(overview);
+    assert.ok(f.elements.get('d_cam').textContent.startsWith(lang === 'pl' ? 'Włączona' : 'Enabled'));
+    assert.equal(f.elements.get('camBadge').textContent, 'ON');
+    for (const [name, kind] of [['cam', 'RAW'], ['proc', 'PROC'], ['obst', 'OBST'], ['tracker', 'TRACKER']]) {
+      const label = f.elements.get(`leg_${name}_txt`).textContent;
+      assert.ok(label.startsWith(`${kind} · `));
+      assert.doesNotMatch(label, /Włączona|Wyłączona|Enabled|Off — on demand/);
+    }
+    assert.ok(f.elements.get('leg_proc_txt').textContent.includes(lang === 'pl' ? 'brak klatki' : 'no frame'));
+    assert.ok(f.elements.get('leg_obst_txt').textContent.includes(lang === 'pl' ? 'brak klatki' : 'no frame'));
+    assert.ok(f.elements.get('leg_tracker_txt').textContent.includes(lang === 'pl' ? 'stara klatka' : 'old frame'));
+    assert.ok(f.elements.get('leg_cam_txt').textContent.includes(lang === 'pl' ? 'wiek pliku' : 'file age'));
+    assert.ok(f.elements.get('img_cam').src.startsWith('/vision/cam?v='));
+    for (const name of ['proc', 'obst', 'tracker']) assert.ok(f.elements.get(`img_${name}`).src.startsWith('data:image/svg+xml,'));
+  }
+  assert.equal(f.calls.length, 0, 'rendering never starts or queries a producer');
+});
+
+test('LCD control events retain ON/OFF with original confirmation age beyond ten seconds', async () => {
+  const f = await fixture(); const { Overview } = await f.load('overview.js');
+  f.elements.set('d_lcd', new Element());
+  const lcd = { source: 'lcd-renderer', power_source: 'lcd-renderer', power_known: true,
+    confirmation: 'control_write_accepted', power_observed_at: 1000, observed_at: 1000,
+    physical_validity: 'unverified', rot: 270 };
+  const overview = { state: null, health: { devices: { lcd } } };
+  for (const lang of ['pl', 'en']) {
+    f.document.documentElement.lang = lang;
+    for (const on of [false, true]) {
+      lcd.on = on;
+      Overview.prototype.renderTelemetry.call(overview);
+      const label = f.elements.get('d_lcd').textContent;
+      assert.ok(label.startsWith(`${on ? 'ON' : 'OFF'} · `));
+      assert.ok(label.includes(lang === 'pl' ? 'ostatnie potwierdzenie' : 'last confirmation'));
+    }
+  }
+  f.advance(11);
+  Overview.prototype.renderTelemetry.call(overview);
+  assert.equal(f.elements.get('d_lcd').textContent, 'ON · last confirmation 11.0 s');
+  assert.equal(lcd.power_observed_at, 1000, 'rendering never refreshes the original confirmation time');
+  lcd.on = false;
+  f.advance(45);
+  Overview.prototype.renderTelemetry.call(overview);
+  assert.equal(f.elements.get('d_lcd').textContent, 'OFF · last confirmation 56.0 s');
+  assert.equal(f.calls.length, 0, 'event presentation makes no API or GPIO request');
+});
+
+test('LCD labels are unknown without explicit power proof or with transport failure', async () => {
+  const f = await fixture(); const { Overview } = await f.load('overview.js');
+  f.elements.set('d_lcd', new Element());
+  const lcd = { source: 'lcd-renderer', power_source: 'lcd-renderer', power_known: true, on: false,
+    confirmation: 'control_write_accepted', power_observed_at: 990, observed_at: 1000 };
+  for (const change of [{ power_known: false }, { power_known: undefined }, { on: null }, { source: '' },
+    { source: null }, { power_source: 'camera-preview' }, { confirmation: 'frame_write_accepted' },
+    { power_observed_at: null, ts: 1000 }, { power_observed_at: 1001 }, { power_observed_at: 1000.01 }, { offline: true },
+    { stale: true }, { error: 'source_failed' }, { simulated: true }]) {
+    Overview.prototype.renderTelemetry.call({ state: null, health: { devices: { lcd: { ...lcd, ...change } } } });
+    assert.equal(f.elements.get('d_lcd').textContent, 'State unknown', JSON.stringify(change));
+  }
+  for (const failure of [{ offline: true }, { stale: true }, { error: 'API unavailable' },
+    { meta: { offline: true } }, { meta: { stale: true } }, { meta: { error: 'proxy failed' } }]) {
+    Overview.prototype.renderTelemetry.call({ state: null, health: { devices: { lcd }, ...failure } });
+    assert.equal(f.elements.get('d_lcd').textContent, 'State unknown', JSON.stringify(failure));
+  }
+  Overview.prototype.renderTelemetry.call({ state: { devices: { lcd }, offline: true }, health: { devices: { lcd } } });
+  assert.equal(f.elements.get('d_lcd').textContent, 'State unknown', 'explicit failing selected parent cannot use healthy fallback');
+});
 
 test('explicit unknown observation never becomes fresh through age refresh or legacy ts', async () => {
   const f = await fixture(); const ui = await f.load('ui.js');
@@ -82,7 +168,10 @@ test('service polling preserves operator expansion and collapsed logs by host an
   const f = await fixture();
   const row = { host: 'pi', unit: 'rider-camera.service', lifecycle: 'on_demand', load: 'loaded', active: 'active', can_move: false, observed_at: 1000 };
   const second = { ...row, unit: 'rider-api.service' };
-  f.replies.set('/api/logic/catalog', { contract_version: 2, catalog_version: 2, observed_at: 1000, features: [], units: [row, second] });
+  f.replies.set('/api/logic/catalog', { ok: true, error: null, operation: null,
+    meta: { envelope_version: 1, contract_id: 'rider.catalog', contract_version: 2,
+      source_host: 'pi', observed_at: 1000, generated_at: 1000, server_time: 1000, stale: false, offline: false },
+    data: { ok: true, contract_version: 2, catalog_version: 2, api_envelope_versions: [1], observed_at: 1000, features: [], units: [row, second] } });
   const services = { contract_version: 2, observed_at: 1000, services: [row, second] };
   f.replies.set('/svc', services); f.replies.set('/api/services/rider-camera.service/logs', { lines: ['fixture only'], source: 'journal', observed_at: 1000 });
   const { System } = await f.load('system.js'); const system = new System({ can: () => false }); await flush();

@@ -139,24 +139,15 @@ def test_disable_face_tracking_stops_services_and_preview() -> None:
     assert publisher.sent[-1][1]["mode"] == "none"
 
 
-def test_enable_disable_recon_sequence_and_no_preview() -> None:
+def test_recon_unavailable_denied_before_preview_or_journal() -> None:
     runner = FakeRunner()
     publisher = NullPublisher()
     mgr = make_manager(runner, publisher, owner="navigation")
 
     enable = mgr.set_feature("recon", True)
-    assert enable["ok"] is True
-    assert ("camera-capture@raw.service", "start") in runner.actions
-    assert ("frame-distributor.service", "start") in runner.actions
-    assert ("rider-recon.target", "start") in runner.actions
-    assert publisher.sent == []  # brak eventów dla recon
-
-    runner.actions.clear()
-    disable = mgr.set_feature("recon", False)
-    assert disable["ok"] is True
-    assert ("rider-recon.target", "stop") in runner.actions
-    assert ("frame-distributor.service", "stop") in runner.actions
-    assert ("camera-capture@raw.service", "stop") in runner.actions
+    assert enable["ok"] is False and enable["error"] == "navigation_traversal_unverified"
+    assert not runner.actions and not publisher.sent
+    assert not mgr._intents and not mgr._pending and "s4_recon" not in mgr._requested
 
 
 def test_describe_features_reports_metadata_and_status() -> None:

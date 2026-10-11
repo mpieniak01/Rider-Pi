@@ -16,6 +16,7 @@ from apps.motion.main import MotionController, _make_adapter
 from apps.motion.sensor_quality import AXES, SensorSamples
 from apps.safety.gate import ACTUATORS, MAX_DURATION_S, MotionGate, finite_number
 from apps.safety.state import write_status
+from common.motion_commands import canonical_command  # public re-export
 
 LOG = logging.getLogger("motion.executor")
 SUB_TOPICS = [
@@ -38,26 +39,6 @@ COMMAND_TOPICS = frozenset(SUB_TOPICS) | {
     "cmd.motion.turn_right",
     "cmd.motion.stop",
 }
-
-
-def canonical_command(topic: str, payload: dict) -> dict:
-    command = dict(payload)
-    if topic in {"cmd.stop", "cmd.motion.stop"}:
-        command["action"] = "stop"
-    elif topic == "cmd.move":
-        command.setdefault("action", "move")
-    elif topic == "cmd.balance":
-        command.setdefault("action", "balance")
-    elif topic == "cmd.height":
-        command.setdefault("action", "height")
-    elif topic in {"motion", "motion.cmd"}:
-        if command.get("type") == "stop" or command.get("cmd") == "stop":
-            command["action"] = "stop"
-        elif command.get("type") == "drive":
-            command.setdefault("action", "move")
-            command.setdefault("vx", command.get("lx", 0.0))
-            command.setdefault("yaw", command.get("az", 0.0))
-    return command
 
 
 def validate_actuator(command: dict) -> dict:
@@ -114,9 +95,15 @@ class MotionExecutor:
         self.sensor_values = {}
         self.sensor_times = {}
         self.sensor_index = 0
-        self.samples = SensorSamples(self.gate.clock, self.gate.wall_clock)
+        self.samples = SensorSamples(
+            self.gate.clock,
+            self.gate.wall_clock,
+            instance_id=self.instance_id,
+            simulated=getattr(self.adapter, "simulated", False),
+        )
         self.last_output = 0.0
         self.output_generation = None
+        self.output_command_generation = None
         self.output_observed_at = None
         self.error = getattr(self.adapter, "error", None)
         self.shutdown = False
@@ -151,6 +138,7 @@ class MotionExecutor:
         except Exception as exc:
             self._hardware_fault(f"hardware_stop_failed:{type(exc).__name__}", stop=False)
             self.output_observed_at = self.gate.wall_clock()
+            self.output_command_generation = self.gate.generation
             self.publish_output(force=True, accepted=False)
             self.publish_status(force=True)
             return False
@@ -159,6 +147,7 @@ class MotionExecutor:
         elif getattr(self.adapter, "error", None):
             self._hardware_fault(self.adapter.error, stop=False)
         self.output_observed_at = self.gate.wall_clock()
+        self.output_command_generation = self.gate.generation
         self.publish_output(force=True, accepted=stopped)
         # A zero write remains valid while idle only with this exact executor
         # heartbeat. Deadline stops also need it before the output ages out.
@@ -175,6 +164,7 @@ class MotionExecutor:
         ready = hardware_ready and quality["ready"] and self.controller.limits.valid and not self.calibration.error
         state = self.gate.snapshot()
         state.update(
+            contract_id="rider.safety",
             observed_at=self.gate.wall_clock(),
             ts=self.gate.wall_clock(),
             ready=ready,
@@ -232,8 +222,10 @@ class MotionExecutor:
         output = method() if callable(method) else {"linear_step": None, "turn_step": None}
         return {
             **output,
+            "contract_id": "rider.motion.output",
+            "contract_version": 1,
             "observed_at": self.output_observed_at,
-            "generation": self.gate.generation,
+            "generation": self.output_command_generation,
             "accepted": bool(accepted and not self.error and self.adapter.ok()),
             "stopped": self.controller.stopped,
             "source": "motion-executor",
@@ -258,6 +250,8 @@ class MotionExecutor:
 
     def _ack(self, command, status, reason, **details):
         self.last_ack = {
+            "contract_id": "rider.motion.ack",
+            "contract_version": 1,
             "request_id": command.get("request_id", command.get("rid")),
             "action": command.get("action"),
             "status": status,
@@ -284,7 +278,12 @@ class MotionExecutor:
             return self.calibration.activate(payload, self)
         if not isinstance(payload, dict) or topic not in COMMAND_TOPICS:
             return self._ack({}, "rejected", "passive_or_invalid_command")
-        command = canonical_command(topic, payload)
+        try:
+            command = canonical_command(topic, payload)
+        except (TypeError, ValueError, OverflowError):
+            # Invalid alias frames use the ordinary validation/cancellation
+            # path rather than escaping the executor loop.
+            command = {**payload, "action": "move", "duration": None}
         action = command.get("action")
         if action == "arm" and self.calibration.error:
             return self._ack(command, "rejected", self.calibration.error)
@@ -412,6 +411,7 @@ class MotionExecutor:
             self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
         if executed:
             self.output_observed_at = self.gate.wall_clock()
+            self.output_command_generation = self.gate.generation
             self.publish_output()
         if self.pending is not None and executed:
             pending, self.pending = self.pending, None

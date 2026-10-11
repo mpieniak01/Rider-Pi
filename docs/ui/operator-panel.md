@@ -8,7 +8,7 @@ A missing or older catalog enables observation and blocks starting tasks.
 
 | View | Information and actions |
 | --- | --- |
-| Overview `/view` | Connection, telemetry age, battery, current tasks and blocks. System contains details. |
+| Overview `/view` | Complete Rider-Pi dashboard: system, devices, CPU/RAM history, BUS health, obstacle and ROI histogram, RAW/PROC/OBST/TRACKER, API metrics and frame ages. Tasks and blocks supplement measurements. |
 | Tasks and control `/control` | Catalog, explicit operator consent, short pulses, actuator capabilities, requests and ACK. |
 | Devices `/devices` | Process owners, task consumers, camera, audio, LCD and UART. Image preview on demand. |
 | System `/system` | Services and dependencies. Administration explicitly enabled in the current tab. Separate autostart changes. |
@@ -18,6 +18,34 @@ A missing or older catalog enables observation and blocks starting tasks.
 Viewing pages, cards, provider lists or refreshing data never starts services
 or actuators. Selecting an option does not start a task. Task buttons and
 message sending are separate, explicit requests.
+
+## Complete measurements dashboard
+
+The heading names the device and Overview. Measurement cards, both charts
+and all four image previews remain visible without opening details or
+navigating to System. The layout uses four columns on wide screens, two
+on smaller screens and one on phones. Safety, task catalog and calibration
+changes preserve these functions.
+
+`/sysinfo` provides flat CPU, 1/5/15 minute load, memory, disk, temperature
+and history fields. API fields named MB/GB mean MiB/GiB. History contains
+at most 60 samples, not a guaranteed 60 seconds. Missing chart values form
+gaps; zero remains a measurement.
+
+`/state.devices.xgo` supplies IMU and battery observations; `on` is not
+required. Source ages and flags determine usability. Channels in
+`safety.sensor_quality.sensors` retain independent times and quality:
+battery there is a 0–1 ratio, whereas `battery_pct` is already percent.
+IMU orientation is not robot position. Raw SDK yaw is shown separately
+with its unverified physical semantics. `healthz: ok` confirms API
+availability, not every sensor's health.
+
+Overview reads telemetry every second and other measurements and image metadata about every 2 seconds.
+`/vision/snap-info?light=1` uses file statistics without reading images to
+compute MD5. Previews fetch only fresh frames from an active camera.
+Disabled cameras, missing images and old cache are explicitly labelled.
+Opening the dashboard starts no producer or task. System shows its basic
+measurements before the service list; source JSON stays in details.
 
 ## Motion and acknowledgements
 
@@ -82,8 +110,9 @@ of the frame actually loaded are shown separately; stale displayed images dim.
 
 Reads allow one active request per address, a timeout, bounded backoff and
 pause in hidden tabs. Safety polls once per second, catalog and System every
-5 seconds, device ownership every 10 seconds. Images are fetched individually,
-on demand or every 2 seconds with preview enabled. SSE applies real events
+5 seconds, device telemetry every second and ownership every 10 seconds.
+Device images are fetched individually on demand or every 2 seconds with
+preview enabled; Overview refreshes fresh images from active producers. SSE applies real events
 and retains producer timestamps; unavailable SSE leaves periodic reads active.
 Zero is a valid reading, `null` remains unknown. Polling never makes an old
 measurement fresh.

@@ -165,3 +165,21 @@
   margin-top: 2px;
   word-break: break-all;
 }
+
+/* Preserve the complete measurements grid; safety supplements the dashboard. */
+.page-view .operator-shell { max-width: 1440px; }
+.page-view .view-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.page-view .c-card { min-width: 0; }
+.page-view .c-kv { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); }
+.page-view .c-kv > div { overflow-wrap: anywhere; }
+.page-view .c-thumb { aspect-ratio: 16 / 9; }
+.page-view .cam-img { width: 100%; height: 100%; object-fit: contain; }
+.page-view .view-operator-status { margin-top: var(--space-xl); }
+@media (max-width: 1050px) { .page-view .view-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .page-view .view-row { grid-template-columns: minmax(0, 1fr); } .page-view .c-card--span2 { grid-column: auto; } }
+
+.page-view .operator-message:empty { display: none; }
+.page-view .c-kv { font-size: 13px; line-height: 1.45; }
+.page-view .c-kv > div:nth-child(odd) { text-transform: none; }
+.page-view .view-row--4 .c-card--span2 { grid-column: span 2; }
+@media (max-width: 600px) { .page-view .view-row--4 .c-card--span2 { grid-column: auto; } }

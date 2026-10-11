@@ -27,6 +27,8 @@ class ReferenceControl:
 
     def _ack(self, command, *, error=None):
         self.last_ack = {
+            "contract_id": "rider.odometry.reference.ack",
+            "contract_version": 1,
             "request_id": command.get("request_id"),
             "action": "reference",
             "source": command.get("source"),
@@ -126,6 +128,7 @@ class ReferenceControl:
         self.last_status = now
         status_path, _ = reference_paths()
         snapshot = {
+            "contract_id": "rider.odometry",
             "contract_version": 1,
             "observed_at": now,
             "instance_id": self.instance_id,

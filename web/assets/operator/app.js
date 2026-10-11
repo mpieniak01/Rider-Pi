@@ -6,21 +6,22 @@ import { System } from './system.js';
 import { Navigation } from './navigation.js';
 import { Calibration } from './calibration.js';
 import { Chat } from './chat.js';
-import { request, poll, events } from './transport.js';
-import { fresh, presentationReady, ageOf, displayValue, catalogKnown, safetyKnown } from './model.js';
-import { el, text, tr, statusLabel, localizeStatic, refreshAges, showError } from './ui.js';
+import { Overview } from './overview.js';
+import { events } from './transport.js';
+import { fresh, catalogKnown, safetyKnown } from './model.js';
+import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';
 
 initI18n(localStorage.getItem('lang') || 'pl'); localizeStatic();
 setInterval(refreshAges, 1000);
 const page = document.body.dataset.page;
 const globalStop = el('button', 'c-btn operator-stop operator-global-stop', '■ STOP');
 globalStop.type = 'button'; globalStop.dataset.stop = ''; document.querySelector('main').append(globalStop);
-let tasks, system, navigation, chat, calibration, lastKey = '';
+let tasks, system, navigation, chat, calibration, overview, lastKey = '';
 const safety = new SafetyPanel(state => {
   const key = JSON.stringify([state?.state, state?.generation, state?.can_move, state?.ready, state?.hardware_ready, state?.capabilities,
     fresh(state), safety.clockFresh(), safety.revokedGenerations.has(state?.generation), ['manual', 'follow_me', 'navigation'].map(owner => safety.can(owner))]);
   if (key !== lastKey) { lastKey = key; tasks?.render(); system?.render(); }
-  navigation?.render(); calibration?.render();
+  navigation?.render(); calibration?.render(); overview?.renderTelemetry();
   renderCapabilities(state);
 });
 if (page === 'control') tasks = new Tasks(safety);
@@ -29,21 +30,8 @@ if (page === 'devices') new Devices();
 if (page === 'system') system = new System(safety);
 if (page === 'navigation') { tasks = new Tasks(safety, 'task-list', task => task.motion_owner === 'navigation' || task.scenario === 'S8'); navigation = new Navigation(safety); }
 if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind)); chat = new Chat(tasks); }
-if (page === 'view') {
-  poll(async () => {
-    const results = await Promise.allSettled([request('/state'), request('/healthz'), request('/api/logic/catalog')]);
-    const [state, health, catalog] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
-    const xgo = state?.devices?.xgo;
-    text('overview-connection', health?.status === 'ok' || health?.ok === true ? tr('API odpowiada', 'API responding') : tr('Brak potwierdzenia', 'Unconfirmed'));
-    text('overview-battery', `${displayValue(xgo?.battery_pct, '%')} · ${presentationReady(xgo) ? tr('świeży pomiar', 'fresh reading') : tr('brak / stary pomiar', 'missing / stale reading')}`);
-    text('overview-age', ageOf(xgo) === null ? '—' : `${ageOf(xgo).toFixed(1)} s`);
-    const active = catalog?.features?.filter(task => task.requested) || [];
-    document.getElementById('overview-tasks').replaceChildren(...active.map(task => el('li', '', `${tr(task.title || task.name, task.title_en || task.name)} · ${catalogKnown(catalog) && fresh(task, 10) ? statusLabel(task.state) : 'unknown / stale'}${task.error ? ` · ${task.error}` : ''}`)));
-    text('overview-task-status', catalogKnown(catalog) ? tr('Stan z katalogu v2', 'State from catalog v2') : tr('Nieznany / stary katalog', 'Unknown / old catalog'));
-    if (state) window.dispatchEvent(new CustomEvent('dashboard:update', { detail: state }));
-    if (!health || !state || !catalog) throw new Error(tr('Niepełny odczyt; brak danych nie oznacza sprawnego urządzenia', 'Incomplete read; missing data does not mean healthy hardware'));
-  }, { interval: 3000, onError: error => { text('overview-connection', 'unknown'); showError(error); } });
-}
+if (page === 'view') overview = new Overview(safety);
+
 events(event => {
   let data = event.data;
   try { if (typeof data === 'string') data = JSON.parse(data); } catch { navigation?.event(event); return; }

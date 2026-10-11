@@ -30,7 +30,8 @@ def test_resource_status_endpoint(monkeypatch: pytest.MonkeyPatch, client: Any) 
     assert data["free"] is True
 
 
-def test_resource_release_endpoint(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
+@pytest.mark.parametrize('released', [True, False])
+def test_resource_release_endpoint(monkeypatch: pytest.MonkeyPatch, client: Any, released: bool) -> None:
     monkeypatch.setattr(resource_diag, "available_resources", lambda: ["mic"])
 
     called: dict[str, Any] = {}
@@ -39,20 +40,39 @@ def test_resource_release_endpoint(monkeypatch: pytest.MonkeyPatch, client: Any)
         called["name"] = name
         called["pids"] = limit_pids
         called["consent"] = kwargs
-        return {"ok": True}
+        return {
+            "ok": released,
+            "released": released,
+            "pending": not released,
+            "signal_sent": True,
+            "after": {"free": released, "state": "free" if released else "busy"},
+        }
 
     monkeypatch.setattr(resource_diag, "release", fake_release)
 
     resp = client.post(
         "/api/resource/mic", json={"action": "release", "pids": [123, 124], "force": True, "operator_consent": True}
     )
-    assert resp.status_code == 200
+    assert resp.status_code == (200 if released else 202)
+    assert resp.get_json()['released'] is released
+    assert resp.get_json()['pending'] is not released
     assert called == {"name": "mic", "pids": [123, 124], "consent": {"force": True, "operator_consent": True}}
 
 
-def test_resource_stop_endpoint(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
+@pytest.mark.parametrize('released', [True, False])
+def test_resource_stop_endpoint(monkeypatch: pytest.MonkeyPatch, client: Any, released: bool) -> None:
     monkeypatch.setattr(resource_diag, "available_resources", lambda: ["mic"])
-    monkeypatch.setattr(resource_diag, "inspect", lambda name: {"holders": [{"service": "rider-voice.service"}]})
+    observations = iter(
+        [
+            {"state": "busy", "free": False, "holders": [{"service": "rider-voice.service"}]},
+            {
+                "state": "free" if released else "busy",
+                "free": released,
+                "holders": [] if released else [{"service": "rider-voice.service"}],
+            },
+        ]
+    )
+    monkeypatch.setattr(resource_diag, "inspect", lambda name: next(observations))
 
     called: list[str] = []
 
@@ -67,5 +87,6 @@ def test_resource_stop_endpoint(monkeypatch: pytest.MonkeyPatch, client: Any) ->
     )
 
     resp = client.post("/api/resource/mic", json={"action": "stop"})
-    assert resp.status_code == 200
+    assert resp.status_code == (200 if released else 202)
+    assert resp.get_json()['released'] is released
     assert called == ["rider-voice.service:stop"]

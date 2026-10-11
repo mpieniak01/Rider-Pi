@@ -7,9 +7,11 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def reset_ai_mode():
+def reset_ai_mode(monkeypatch, tmp_path):
     """Reset AI mode to default before each test."""
-    from common import ai_mode
+    from common import ai_mode, provider_state
+
+    monkeypatch.setattr(provider_state, "STATE_FILE", tmp_path / "unconfigured-providers.json")
 
     # Store original mode
     original_mode = ai_mode.get_mode()

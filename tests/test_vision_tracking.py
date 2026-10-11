@@ -177,6 +177,7 @@ def test_tracker_snap_info():
         mock_stat_result = MagicMock()
         mock_stat_result.st_mtime = 1234567890.0
         mock_stat_result.st_size = 12345
+        mock_stat_result.st_mode = 0o100644
         mock_stat.return_value = mock_stat_result
 
         # Mock file open for MD5 calculation

@@ -174,6 +174,8 @@ def control_proxy_handler():
     """Handle /api/control and /api/cmd with CORS preflight."""
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
+    if request.method != "POST":
+        return _corsify(jsonify({"ok": False, "error": "actuator_requires_post_with_generation"})), 405
     try:
         body, code = control_proxy_core()
         return _corsify(jsonify(body)), code
@@ -188,7 +190,6 @@ def proxy_move_get():
 
 
 def proxy_stop_get():
-    from services.control_commands import submit_control
-
-    body, code = submit_control({"action": "stop"})
-    return jsonify(body), code
+    response = jsonify({"ok": False, "error": "stop_requires_post"})
+    response.headers["Allow"] = "POST, OPTIONS"
+    return response, 405

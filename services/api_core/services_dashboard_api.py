@@ -8,7 +8,6 @@ from typing import Any
 
 from flask import Blueprint, jsonify
 
-from common import systemd_ctrl
 from common.service_catalog import CONTRACT_VERSION
 
 from .network_state import get_wifi_state
@@ -26,9 +25,9 @@ def _status_from_active(active: str) -> str:
 
 
 def _systemd_state(unit: str) -> dict[str, Any]:
-    from .features_api import feature_manager
+    from .services_api import _svc_status
 
-    row = systemd_ctrl.status(unit)
+    row = _svc_status(unit)
     dependencies = sorted(set(row.get("wants", []) + row.get("requires", [])))
     return {
         **SERVICE_META[unit],
@@ -43,7 +42,7 @@ def _systemd_state(unit: str) -> dict[str, Any]:
         "systemd_description": row.get("desc"),
         "actions": ["start", "stop", "restart", "enable", "disable"],
         "motion_owner": SERVICE_META[unit]["motion_owner"],
-        "consumers": feature_manager.unit_consumers(unit),
+        "consumers": row["consumers"],
         "dependencies": dependencies,
         "edges_out": [SERVICE_META[dependency]["id"] for dependency in dependencies if dependency in SERVICE_META],
     }

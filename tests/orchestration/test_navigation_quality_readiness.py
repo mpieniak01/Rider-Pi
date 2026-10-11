@@ -5,12 +5,21 @@ import time
 import pytest
 from test_task_lifecycle import World
 
+from common.service_catalog import DEFAULT_REGISTRY, task_units
+
 
 def setup(tmp_path):
     world = World()
     world.safety["owner"] = "navigation"
     manager = world.manager(tmp_path)
-    assert manager.set_feature("s9_navigation", True)["ok"]
+    # A historical/external task can still be observed, but starting this
+    # implementation is unavailable. Inject recorded facts without effects.
+    assert manager.set_feature("s9_navigation", True)["error"] == "navigation_traversal_unverified"
+    assert world.actions == []
+    manager._requested["s9_navigation"] = {}
+    manager._states["s9_navigation"] = "starting"
+    manager._intents["s9_navigation"] = {"generation": world.safety["generation"], "request_id": "recorded-intent"}
+    world.active.update(task_units(DEFAULT_REGISTRY["s9_navigation"]))
     intent = manager._service_intents()["rider-navigator.service"]
     producer = {
         "unit": "rider-navigator.service",

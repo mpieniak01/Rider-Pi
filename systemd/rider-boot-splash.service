@@ -27,15 +27,10 @@ Environment=WAIT_IP=3
 Environment=WAIT_BATT=1
 Environment=SPLASH_IFACES=wlan0,eth0
 
-# UART
-Environment=XGO_UART_PORTS=/dev/ttyAMA0
-
 # Po splashu
 Environment=SPLASH_CLEAR=0
-Environment=KEEP_BL_ON=1
+Environment=KEEP_BL_ON=0
 Environment=LCD_BL_GPIO=0
-# Uwaga: wartość z przestrzeniami MUSI być w cudzysłowie
-Environment="LCD_OFF_CMD=/usr/bin/make -C /home/pi/robot lcd-off"
 Environment=XGO_BL_GPIO=-1
 
 # Timingi / rysowanie

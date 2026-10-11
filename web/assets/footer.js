@@ -271,12 +271,15 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
     if (!ctx.presencePill || !ctx.presenceState || !ctx.modeEl || !ctx.confEl) {
       return;
     }
-    const present = Boolean(state?.present);
+    const sourceTs = state && Object.hasOwn(state, 'observed_at') ? state.observed_at : state?.ts;
+    const sourceAge = typeof sourceTs === 'number' ? Date.now() / 1000 - sourceTs : null;
+    const known = sourceAge !== null && sourceAge >= 0 && sourceAge <= 3 && !state?.error && state?.stale !== true && state?.offline !== true && typeof state?.present === 'boolean';
+    const present = known && state.present;
     ctx.presencePill.className = 'c-pill ' + (present ? 'ok' : 'off');
-    ctx.presenceState.textContent = present ? 'ACTIVE' : 'IDLE';
-    const modeValue = state?.mode || '—';
+    ctx.presenceState.textContent = known ? present ? 'ACTIVE' : 'IDLE' : '—';
+    const modeValue = known ? state?.mode || '—' : '—';
     ctx.modeEl.textContent = `${ctx.modeLabel}: ${modeValue}`;
-    const confValue = state?.confidence != null ? Number(state.confidence).toFixed(3) : '—';
+    const confValue = known && state?.confidence != null ? Number(state.confidence).toFixed(3) : '—';
     ctx.confEl.textContent = `${ctx.confLabel}: ${confValue}`;
   }
 
@@ -291,7 +294,8 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
     const procTxt = formatAge(procAge);
     const trackerTxt = formatAge(trackerAge);
     ctx.camEl.textContent = `${ctx.camLabel}: ${rawTxt} / ${procTxt} • TRK: ${trackerTxt}`;
-    const cameraOk = isCameraOnline(state);
+    const cameraOk = isCameraOnline(state) && typeof rawAge === 'number' && rawAge >= 0 && rawAge <= 3;
+    if (state?.camera?.vision_enabled === false) ctx.camEl.textContent = `${ctx.camLabel}: OFF`;
     ctx.camEl.className = 'c-pill ' + (cameraOk ? 'ok' : 'off');
 
     const metaParts = [];
@@ -317,14 +321,14 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
     if (state.camera.on === false) {
       return false;
     }
-    return true;
+    return state.camera.vision_enabled === true || state.camera.on === true;
   }
 
   function formatAge(value) {
     if (value == null || Number.isNaN(Number(value))) {
       return '—';
     }
-    return `${Number(value).toFixed(1)}s`;
+    return Number(value) >= 86400 ? `${Math.floor(Number(value) / 86400)}d` : `${Number(value).toFixed(1)}s`;
   }
 
   function describeCameraResource(resource) {

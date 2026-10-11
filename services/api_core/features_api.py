@@ -58,6 +58,7 @@ def feature_handler(name: str):
                     "resource_conflict",
                     "stop_before_reconfigure",
                     "stop_unconfirmed",
+                    "navigation_traversal_unverified",
                 }
                 else 503
             )

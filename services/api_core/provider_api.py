@@ -6,6 +6,8 @@ from flask import Response, jsonify, make_response, request
 
 from services import provider_registry as registry, provider_watchdog
 
+from .provider_observation import snapshot as observed_snapshot
+
 provider_watchdog.ensure_started()
 
 
@@ -17,13 +19,23 @@ def _corsify(resp: Response) -> Response:
 
 
 def providers_state_handler() -> tuple[Response, int]:
-    snapshot = registry.get_state_snapshot()
+    snapshot = observed_snapshot()
     return _corsify(jsonify(snapshot)), 200
 
 
 def providers_health_handler() -> tuple[Response, int]:
-    health = registry.get_health_snapshot()
-    return _corsify(jsonify({"pc_health": health})), 200
+    observed = observed_snapshot()
+    return _corsify(
+        jsonify(
+            {
+                "pc_health": observed["pc_health"],
+                "domains": observed["domains"],
+                "source": "provider-registry",
+                "observed_at": None,
+                "partial": observed["partial"],
+            }
+        )
+    ), 200
 
 
 def providers_pc_heartbeat_handler() -> tuple[Response, int]:
@@ -31,30 +43,25 @@ def providers_pc_heartbeat_handler() -> tuple[Response, int]:
         return _corsify(make_response("", 204)), 204
 
     payload = request.get_json(silent=True) or {}
-    base_url = (payload.get("base_url") or "").strip()
+    if not isinstance(payload, dict) or not isinstance(payload.get("base_url"), str):
+        return _corsify(jsonify({"ok": False, "error": "base_url is required"})), 400
+    base_url = payload["base_url"].strip()
     if not base_url:
         return _corsify(jsonify({"error": "base_url is required"})), 400
 
-    reason = payload.get("reason") or "heartbeat"
     try:
-        normalized = registry.set_pc_base_url(base_url, reason=reason)
+        normalized = registry.record_pc_heartbeat(base_url, payload)
     except ValueError as exc:
         return _corsify(jsonify({"error": str(exc)})), 400
+    except OSError:
+        return _corsify(jsonify({"ok": False, "persisted": False, "error": "provider_persistence_failed"})), 503
 
-    health_kwargs = {
-        "reachable": True,
-        "status": payload.get("status") or "online",
-        "reason": reason,
-    }
-    if "latency_ms" in payload:
-        health_kwargs["latency_ms"] = payload.get("latency_ms")
-    registry.update_pc_health(**health_kwargs)
-
-    return _corsify(jsonify({"ok": True, "base_url": normalized})), 200
+    return _corsify(jsonify({"ok": True, "persisted": True, "base_url": normalized})), 200
 
 
 def provider_domain_handler(domain: str) -> tuple[Response, int]:
-    domain = (domain or "").lower()
+    requested_domain = (domain or "").lower()
+    domain = {"asr": "voice", "tts": "voice"}.get(requested_domain, requested_domain)
     if domain not in registry.DOMAINS:
         return _corsify(jsonify({"error": f"Unknown domain: {domain}"})), 404
 
@@ -70,11 +77,16 @@ def provider_domain_handler(domain: str) -> tuple[Response, int]:
 
     if request.method == "GET":
         state = registry.get_domain_state(domain)
-        return _corsify(jsonify({"domain": domain, "state": state})), 200
+        observed = observed_snapshot()["domains"][domain]
+        return _corsify(
+            jsonify({"domain": domain, "requested_domain": requested_domain, "state": {**state, **observed}})
+        ), 200
 
     if request.method == "PATCH":
         payload = request.get_json(force=True, silent=True) or {}
-        target = (payload.get("target") or "").strip().lower()
+        if not isinstance(payload, dict) or not isinstance(payload.get("target"), str):
+            return _corsify(jsonify({"ok": False, "error": "target must be 'local' or 'pc'"})), 400
+        target = payload["target"].strip().lower()
         reason = payload.get("reason") or "manual"
 
         if target not in ("local", "pc"):
@@ -84,11 +96,27 @@ def provider_domain_handler(domain: str) -> tuple[Response, int]:
             state, changed = registry.set_domain_mode(domain, target, reason=reason)
         except ValueError as exc:
             return _corsify(jsonify({"error": str(exc)})), 400
+        except OSError:
+            return _corsify(
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "provider_persistence_failed",
+                        "persisted": False,
+                        "domain": domain,
+                        "changed": False,
+                    }
+                )
+            ), 503
 
         return (
             _corsify(
                 jsonify(
                     {
+                        "ok": True,
+                        "persisted": True,
+                        "affected_domains": [domain],
+                        "requested_domain": requested_domain,
                         "domain": domain,
                         "state": state,
                         "changed": changed,

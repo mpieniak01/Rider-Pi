@@ -8,7 +8,7 @@ Sub:
   audio.transcript {"text":"...", "lang":"pl", "source":"voice", "is_final":true?}
 
 Pub:
-  motion.cmd  {"type":"drive|spin|stop", "dir":"forward|backward|left|right", "speed":0.4, "dur":1.0}
+  motion.intent (proposal only); motion.command (STOP only)
 
 Założenia:
 - Reagujemy tylko na lang=="pl" i source=="voice".
@@ -25,8 +25,11 @@ import re  # noqa: E402
 import sys  # noqa: E402
 import time  # noqa: E402
 import unicodedata  # noqa: E402
+import uuid  # noqa: E402
 
 from common.bus import BusPub, BusSub  # noqa: E402
+from common.motion_commands import normalize_control  # noqa: E402
+from common.observations import source_time  # noqa: E402
 
 PROJ_ROOT = "/home/pi/robot"
 if PROJ_ROOT not in sys.path:
@@ -40,8 +43,8 @@ except Exception:
     pass
 
 
-SUB = BusSub("audio.transcript")
-PUB = BusPub()
+SUB = None
+PUB = None
 
 # --- ENV / stan ---
 DEFAULT_SPEED = float(os.getenv("NLU_DEFAULT_SPEED", "0.5"))
@@ -59,6 +62,9 @@ def log(msg):
 
 def _bus_publish(topic: str, payload: dict):
     """Kompatybilnie z Twoim BusPub (scripts/dev_bus-pub.py używa .send)."""
+    global PUB
+    if PUB is None:
+        PUB = BusPub()
     for m in ("send", "publish", "pub"):
         if hasattr(PUB, m):
             return getattr(PUB, m)(topic, payload)
@@ -235,8 +241,34 @@ def should_process(msg: dict) -> bool:
     return True
 
 
+def proposal(message, decision):
+    """Speech is a proposal, never fresh operator permission for actuators."""
+    command = normalize_control(decision)
+    observed = source_time(message.get("observed_at", message.get("ts")))
+    if command["action"] == "stop":
+        return "motion.command", {
+            "action": "stop",
+            "source": "manual",
+            "origin": "nlu",
+            "ts": observed,
+            "request_id": uuid.uuid4().hex,
+        }
+    return "motion.intent", {
+        "contract_id": "rider.motion.intent",
+        "contract_version": 1,
+        "proposal": command,
+        "source": "nlu",
+        "observed_at": observed,
+        "actuation": False,
+        "executable": False,
+        "reason": "explicit_operator_envelope_required",
+    }
+
+
 def main():
-    log("NLU v0.1: start (sub audio.transcript → pub motion.cmd)")
+    global SUB
+    SUB = BusSub("audio.transcript")
+    log("NLU: audio.transcript → motion.intent; STOP → motion.command")
     while True:
         topic, payload = SUB.recv(timeout_ms=500)
         if topic is None:
@@ -254,8 +286,9 @@ def main():
 
             cmd, _ = decide(text)
             if cmd:
-                _bus_publish("motion.cmd", cmd)
-                log(f"NLU → motion.cmd: {cmd}")
+                out_topic, out = proposal(msg, cmd)
+                _bus_publish(out_topic, out)
+                log(f"NLU → {out_topic}: {out}")
         except KeyboardInterrupt:
             raise
         except Exception as e:

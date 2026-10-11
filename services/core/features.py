@@ -20,6 +20,7 @@ from common.service_catalog import (
     PROTECTED_UNITS,
     UNIT_CATALOG,
     FeatureDefinition,
+    task_availability,
     task_domain,
     task_resources,
     task_units,
@@ -333,6 +334,9 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
     def _start(self, canonical: str, options: dict, control: dict | None = None) -> dict:
         feature = self.registry[canonical]
         units = task_units(feature, options)
+        available = task_availability(feature, options)
+        if not available["start_available"]:
+            return {"ok": False, "error": available["start_unavailable_reason"], **available}
         denied = self._permission(feature)
         if denied:
             return denied

@@ -10,7 +10,8 @@ export class SafetyPanel {
     this.preparation();
     this.poller = poll(async () => {
       const response = await request('/api/control/state');
-      this.clockReady = setServerClock(response.data.server_time, response.sent_at, response.received_at);
+      this.clockReady = response.canonical === true && response.meta?.contract_id === 'rider.safety'
+        && response.meta.contract_version === 1 && setServerClock(response.data.server_time, response.sent_at, response.received_at);
       if (this.clockReady) this.clockObserved = Date.now() / 1000;
       this.update(response.data.safety);
     },

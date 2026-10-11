@@ -8,6 +8,8 @@ import time
 import pygame
 import zmq
 
+from apps.ui.motion_status import display_motion, number_label
+
 os.environ.setdefault("SDL_VIDEODRIVER", "kmsdrm")
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
@@ -60,12 +62,12 @@ def main():
         if draw_enabled:
             screen.fill((0, 0, 0))
             lines = []
-            m = state.get("motion", {})
+            m = display_motion(state.get("motion", {}))
             v = state.get("vision", {})
-            lines.append(f"MOTION: en={m.get('enabled')} estop={m.get('estop')} stopped={m.get('stopped')}")
+            lines.append(f"SAFETY: {m['state']} can_move={m['can_move']}")
             out = m.get("output", {})
-            lines.append(f"OUT: lx={out.get('lx', 0):.2f} az={out.get('az', 0):.2f}")
-            lines.append(f"WD: {m.get('last_cmd_age_ms', 0)}ms / {m.get('watchdog_ms', 0)}ms")
+            lines.append(f"OUT normalized: lx={number_label(out.get('lx'))} az={number_label(out.get('az'))}")
+            lines.append("Physical motion/stop: unverified")
             lines.append(
                 f"VISION: moving={v.get('moving')} human={v.get('human', False)} motion={v.get('motion', 0):.1f}"
             )

@@ -93,6 +93,8 @@ def install() -> None:
         MOTION_STATE_PATH=str(sandbox / "motion-status.json"),
         MOTION_FLAGS_DIR=str(sandbox / "flags"),
         FEATURE_STATE_PATH=str(sandbox / "feature_state.json"),
+        PROVIDER_STATE_FILE=str(sandbox / "providers-state.json"),
+        PROVIDER_WATCHDOG_DISABLED="1",
         ESTOP_GPIO="-1",
         ESTOP="0",
         BUS_XSUB="inproc://rider-pytest-publish",

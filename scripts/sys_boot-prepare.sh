@@ -9,8 +9,6 @@ SPLASH_CLEAR="${SPLASH_CLEAR:-1}"
 SPLASH_USE="${SPLASH_USE:-}"                 # opcjonalnie: xgo|pygame|auto
 BOOT_VENDOR_GRACE="${BOOT_VENDOR_GRACE:-5}"
 LCD_BL_GPIO="${LCD_BL_GPIO:-0}"              # domyślnie BCM0
-# Domyślnie przechodzimy na Makefile (lcd-off) — uwaga na spacje:
-LCD_OFF_CMD="${LCD_OFF_CMD:-/usr/bin/make -C /home/pi/robot lcd-off}"
 KEEP_BL_ON="${KEEP_BL_ON:-0}"                # 1 = zostaw BL włączone
 NO_KILL_DISPLAY="${NO_KILL_DISPLAY:-0}"      # 1 = NIE ubijaj lightdm/display-manager
 
@@ -75,23 +73,15 @@ else
   log "splash script not found: ${SPLASH_SH} / ${SPLASH_PY}"
 fi
 
-# 5) Backlight
-if command -v raspi-gpio >/dev/null 2>&1; then
-  if [[ "${KEEP_BL_ON}" = "1" ]]; then
-    log "leaving LCD backlight ON (debug); forcing GPIO${LCD_BL_GPIO}=HIGH"
-    raspi-gpio set "${LCD_BL_GPIO}" op dh || true
-  else
-    log "turning LCD backlight off via raspi-gpio GPIO${LCD_BL_GPIO}"
-    raspi-gpio set "${LCD_BL_GPIO}" op dl || true
+# 5–6) LCD-only OFF. Do not clear/initialize the driver or pulse reset here.
+# A renderer that acquired SPI after the splash keeps its display untouched.
+if [[ "${KEEP_BL_ON}" = "1" ]]; then
+  log "KEEP_BL_ON=1 -> preserving existing backlight state (debug)"
+else
+  log "LCD off only if descriptor ownership is known and free"
+  if ! FACE_LCD_BL_PIN="${LCD_BL_GPIO}" /usr/bin/python3 "${ROBOT_ROOT}/scripts/sys_lcd-power.py"; then
+    log "LCD off skipped or unconfirmed; external owner/unknown inventory is preserved"
   fi
-fi
-
-# 6) Panel OFF
-if [[ -n "${LCD_OFF_CMD}" ]]; then
-  log "turning LCD panel off: ${LCD_OFF_CMD}"
-  set +e
-  bash -lc "${LCD_OFF_CMD}"
-  set -e
 fi
 
 # 7) Marker

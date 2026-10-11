@@ -174,3 +174,19 @@
 [data-dashboard-menu-target].menu-ready {
   margin-bottom: var(--space-xl);
 }
+
+/* Leave space for all operator pages without splitting a single nav item. */
+.dashboard-menu .brand-spacer, .dashboard-menu .flex-spacer { display: none; }
+.dashboard-menu .brand { margin-right: 0; }
+.dashboard-menu a { white-space: nowrap; }
+@media (min-width: 1051px) {
+  .dashboard-menu { max-width: 1440px; gap: var(--space-md); padding-inline: var(--space-lg); }
+  .dashboard-menu ul { flex-wrap: nowrap; }
+}
+@media (max-width: 1050px) {
+  .dashboard-menu { flex-wrap: wrap; }
+  .dashboard-menu .menu-toggle { display: block; }
+  .dashboard-menu ul { flex-basis: 100%; flex-direction: column; display: none; order: 4; }
+  .dashboard-menu.menu-open ul { display: flex; }
+  .dashboard-menu .lang-switch { width: auto; margin-left: auto; }
+}

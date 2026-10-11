@@ -8,7 +8,7 @@ Brak katalogu albo jego starsza wersja oznacza odczyt i blokadę uruchamiania.
 
 | Widok | Dane i działania |
 | --- | --- |
-| Przegląd `/view` | Połączenie, wiek telemetrii, bateria, bieżące zadania i blokady. Szczegóły w Systemie. |
+| Przegląd `/view` | Pełny pulpit Rider-Pi: system, urządzenia, historia CPU/RAM, kondycja BUS, przeszkoda i histogram ROI, RAW/PROC/OBST/TRACKER, metryki API i wiek obrazów. Zadania i blokady uzupełniają pomiary. |
 | Zadania i sterowanie `/control` | Katalog, jawna zgoda operatora, krótkie impulsy, możliwości napędów, żądania i ACK. |
 | Urządzenia `/devices` | Właściciele procesów, konsumenci zadań, kamera, audio, LCD i UART. Podgląd obrazu na życzenie. |
 | System `/system` | Odczyt usług i zależności. Administracja włączana jawnie w bieżącej karcie. Autostart zmieniany oddzielnie. |
@@ -18,6 +18,34 @@ Brak katalogu albo jego starsza wersja oznacza odczyt i blokadę uruchamiania.
 Otwarcie widoku, karty, listy providerów lub odświeżenie danych nie uruchamia
 usług ani napędów. Wybór opcji również nie uruchamia zadania. Jawny przycisk
 zadania lub wysłanie wiadomości stanowi oddzielne żądanie.
+
+## Pełny pulpit pomiarowy
+
+Nagłówek zawiera nazwę urządzenia i „Przegląd”. Karty pomiarowe, oba wykresy
+oraz cztery podglądy obrazów są widoczne bez otwierania szczegółów i bez
+przechodzenia do Systemu. Układ ma cztery kolumny na szerokim ekranie,
+dwie na węższym i jedną na telefonie. Rozbudowa bezpieczeństwa, katalogu
+zadań lub kalibracji zachowuje te funkcje.
+
+`/sysinfo` dostarcza płaskie pola CPU, obciążenia 1/5/15 min, RAM, dysku,
+temperatury i historii. MB/GB w nazwach API oznaczają MiB/GiB. Historia
+obejmuje najwyżej 60 próbek, a nie gwarantowane 60 sekund. Brak wartości
+tworzy przerwę w wykresie; zero pozostaje pomiarem.
+
+`/state.devices.xgo` dostarcza obserwację IMU i baterii; pole `on` nie jest
+wymagane. Wiek oraz flagi źródła decydują o przydatności pomiaru. Kanały
+`safety.sensor_quality.sensors` mają oddzielne czasy i jakość: bateria w tym
+kontrakcie jest proporcją 0–1, natomiast `battery_pct` już procentem.
+Orientacja IMU nie jest pozycją robota. Surowy yaw SDK ma osobny opis
+niezweryfikowanej semantyki fizycznej. Samo `healthz: ok` potwierdza API,
+nie sprawność wszystkich czujników.
+
+Przegląd odczytuje telemetrię co sekundę, pozostałe pomiary i metadane obrazów co około 2 sekundy. Wariant
+`/vision/snap-info?light=1` korzysta ze statystyki pliku bez czytania obrazu
+do wyliczenia MD5. Podgląd pobiera wyłącznie świeżą klatkę aktywnej kamery.
+Wyłączona kamera, brak obrazu i stary cache mają jawne etykiety; otwarcie
+pulpitu nie uruchamia żadnego producenta ani zadania. System pokazuje
+podstawowe pomiary przed listą usług; surowy JSON pozostaje w szczegółach.
 
 ## Ruch i potwierdzenia
 
@@ -82,8 +110,9 @@ i klatki faktycznie wczytanej jest oddzielony; stary obraz zostaje przygaszony.
 
 Odczyty mają jeden aktywny request na adres, timeout, ograniczony backoff
 i pauzę w ukrytej karcie. Safety odczytywane jest raz na sekundę, katalog
-i System co 5 sekund, właściciele urządzeń co 10 sekund. Obraz pobierany
-jest pojedynczo, wyłącznie na żądanie lub z włączonym podglądem co 2 sekundy.
+i System co 5 sekund, telemetria urządzeń co sekundę, właściciele urządzeń
+co 10 sekund. Obraz urządzeń pobierany jest pojedynczo na żądanie lub z włączonym
+podglądem co 2 sekundy; Przegląd odświeża świeże obrazy aktywnych producentów.
 SSE aktualizuje rzeczywiste zdarzenia i zachowuje czas producenta;
 brak strumienia pozostawia okresowy odczyt. Zero jest prawidłowym pomiarem,
 `null` pozostaje nieznane. Stary pomiar nie staje się świeży przez polling.

@@ -6,8 +6,9 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const model = await import('data:text/javascript;base64,' + Buffer.from(await readFile(
-  path.join(root, 'web/assets/operator/calibration-model.js'))).toString('base64'));
+const observationUrl = 'data:text/javascript;base64,' + Buffer.from(await readFile(path.join(root, 'web/assets/operator/observations.js'))).toString('base64');
+const modelSource = (await readFile(path.join(root, 'web/assets/operator/calibration-model.js'), 'utf8')).replace('./observations.js', observationUrl);
+const model = await import('data:text/javascript;base64,' + Buffer.from(modelSource).toString('base64'));
 const now = 1000, digest = 'a'.repeat(64), generation = 'fixture-generation';
 const safe = () => ({ contract_version: 1, state: 'DISARMED', generation, observed_at: now,
   ready: true, hardware_ready: true, last_seq: 4 });
@@ -295,7 +296,7 @@ test('unknown, rejected, wrong-identity and malformed SDK observations stay unkn
 test('IMU raw SDK values and battery fractions retain independent source times and quality', () => {
   const motion = measuredMotion(), rows = model.sensorObservations(motion, now);
   assert.equal(rows.roll.value, 0); assert.equal(rows.pitch.value, -2.5); assert.equal(rows.yaw.value, 170);
-  assert.equal(rows.yaw.unit, 'raw_sdk'); assert.equal(rows.battery.value, 50); assert.equal(rows.battery.unit, '%');
+  assert.equal(rows.yaw.unit, 'sdk_raw'); assert.equal(rows.battery.value, 50); assert.equal(rows.battery.unit, '%');
   for (const row of Object.values(rows)) {
     assert.equal(row.ready, true); assert.equal(row.observed_at, now - .2); assert.equal(row.physical_completion, 'unverified');
   }
