@@ -17,6 +17,7 @@ from pathlib import Path
 from apps.safety.gate import MotionGate, finite_number
 from common.motion_mapping import LINEAR_LEVELS, MAPPING_ID, TURN_LEVELS, linear_sdk_value, native_command_byte
 from drivers.xgo.protocol import bound_serial, read_response
+from drivers.xgo.sniffer import install as install_sniffer
 
 XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
 XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")
@@ -91,6 +92,7 @@ def guarded_sdk_class(base, gate: MotionGate):
                 super().__init__(*args, **kwargs)
                 self._initializing = False
                 serial = getattr(self, "ser", None)
+                self.ser = serial = install_sniffer(serial)
                 bound_serial(serial, 0.03)
                 waiting = getattr(serial, "inWaiting", None)
                 if callable(waiting):
