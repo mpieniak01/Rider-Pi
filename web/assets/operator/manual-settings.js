@@ -36,7 +36,7 @@ export class ManualSettings {
   dirty(){return Object.keys(this.pending).length>0 || Object.keys(this.directionEdits).length>0;}
   ready(){return !this.busy && !this.dirty() && settingsValid(this.state,nowSeconds());}
   editable(){return settingsValid(this.state,nowSeconds()) && ['DISARMED','ARMED'].includes(this.safety.state?.state)
-    && this.safety.clockFresh() && !this.busy;}
+    && !this.busy;}
   pulse(direction){
     if(!this.ready())throw new Error('manual_settings_unconfirmed');
     return settingsPulse(this.state,direction);
