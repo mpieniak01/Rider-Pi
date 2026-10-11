@@ -1,7 +1,7 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
 import { showError, text, tr, el } from './ui.js';
-import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=shared-unit-rendering-10';
+import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=command-labels-11';
 
 const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 // Display units only: canonical Pi values stay normalized commands and seconds.
@@ -39,11 +39,11 @@ export class ManualSettings {
   range(key){return parameterRange(this.state,key,this.language());}
   shown(key,value){return displayValue(this.state,key,value);}
   caption(key){
-    const names={speed:['Siła','Magnitude'],duration:['Czas','Duration'],
+    const names={speed:['Siła','Magnitude'],duration:['Impuls','Pulse'],
       minimum:['Min.','Min.'],maximum:['Maks.','Max.'],step:['Krok','Step'],
-      reversal_pause:['Przerwa','Pause'],linear_rate:['Narastanie','Acceleration'],
-      turn_rate:['Narastanie','Acceleration'],linear_deceleration:['Hamowanie','Deceleration'],
-      turn_deceleration:['Hamowanie','Deceleration']};
+      reversal_pause:['Przerwa','Pause'],linear_rate:['Zwiększanie siły','Magnitude increase'],
+      turn_rate:['Zwiększanie siły','Magnitude increase'],linear_deceleration:['Zmniejszanie siły','Magnitude decrease'],
+      turn_deceleration:['Zmniejszanie siły','Magnitude decrease']};
     return tr(...names[key])+' ('+(this.descriptor(key)?.display_unit || '—')+')';
   }
   ready(){return !this.busy && !this.dirty() && settingsValid(this.state,nowSeconds()) && !this.validation().length;}
@@ -87,7 +87,7 @@ export class ManualSettings {
       const title=el('span','',tr(...labels[name]));title.id='setting-'+name+'-title';
       heading.append(arrow,title);row.append(heading);
       for(const [key,pl,en] of [
-        ['speed','Siła','Magnitude'],['duration','Czas','Duration'],
+        ['speed','Siła','Magnitude'],['duration','Impuls','Pulse'],
         ...(calibration?[['minimum','Min.','Min.'],['maximum','Maks.','Max.'],['step','Krok','Step']]:[])
       ]){
         row.append(this.input('setting-'+name+'-'+key,tr(pl,en),value=>{
@@ -107,7 +107,7 @@ export class ManualSettings {
         group.append(el('legend','',tr(pl,en)));
         for(const key of keys){
           const caption=key==='reversal_pause'?tr('Przerwa','Pause')
-            :key.endsWith('deceleration')?tr('Hamowanie','Deceleration'):tr('Narastanie','Acceleration');
+            :key.endsWith('deceleration')?tr('Zmniejszanie siły','Magnitude decrease'):tr('Zwiększanie siły','Magnitude increase');
           group.append(this.input('setting-'+key,caption,value=>{this.pending[key]=value;}));
         }
         ramps.append(group);

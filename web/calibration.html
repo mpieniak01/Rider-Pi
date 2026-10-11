@@ -32,8 +32,8 @@
 <h2 data-pl="Zakresy kierunków" data-en="Direction ranges">Zakresy kierunków</h2>
 <p id="manual-settings-units"></p><p class="operator-muted" data-pl="Siła oznacza polecenie, nie zmierzoną prędkość. „Impuls ≤” to szacowany szczyt od postoju po wygładzaniu." data-en="Magnitude is a command, not measured speed. “Pulse ≤” estimates the peak from rest after smoothing.">Siła oznacza polecenie, nie zmierzoną prędkość. „Impuls ≤” to szacowany szczyt od postoju po wygładzaniu.</p>
 <div id="manual-direction-settings"></div>
-<h2 title="Tempo zmiany polecenia na sekundę. STOP działa natychmiast; nie zmienia regulatora równowagi robota." data-pl="Wygładzanie poleceń" data-en="Command smoothing">Wygładzanie poleceń</h2>
-<p class="smoothing-help" data-pl="Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem." data-en="Command change per second. Does not change the robot balance controller. STOP bypasses smoothing.">Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem.</p>
+<h2 title="Tempo zmiany siły polecenia; większa wartość oznacza szybszą zmianę." data-pl="Zmiana siły polecenia" data-en="Command magnitude change">Zmiana siły polecenia</h2>
+
 <div class="calibration-save-row"><div id="manual-smoothing-settings" class="motion-smoothing"></div>
 <button id="manual-settings-save" class="c-btn" type="button" disabled data-pl="Zapisz ustawienia na robocie" data-en="Save settings on robot">Zapisz ustawienia na robocie</button></div>
 <p id="manual-settings-result" role="status"></p>
@@ -43,7 +43,7 @@
 
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=shared-unit-rendering-10"></script>
+<script type="module" src="/web/assets/operator/app.js?v=command-labels-11"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

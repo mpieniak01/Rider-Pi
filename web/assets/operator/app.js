@@ -1,4 +1,4 @@
-import { ManualSettings } from './manual-settings.js?v=shared-unit-rendering-10';
+import { ManualSettings } from './manual-settings.js?v=command-labels-11';
 import { ControlCamera } from './control-camera.js?v=control-restored-1';
 import { initI18n } from '/web/assets/i18n.js';
 import { SafetyPanel } from './safety.js?v=motion-descriptors-9';
