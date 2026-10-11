@@ -1,13 +1,12 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
 import { showError, text, tr, el } from './ui.js';
-import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid } from './manual-settings-model.js?v=motion-descriptors-9';
+import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=shared-unit-rendering-10';
 
 const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 // Display units only: canonical Pi values stay normalized commands and seconds.
 
 const displayNumber = value => Number((value).toFixed(6));
-const percent = value => Number.isFinite(value) ? displayNumber(value * 100).toLocaleString(document.documentElement?.lang || 'pl', {maximumFractionDigits: 3})+'%' : '—';
 const labels = {forward:['Przód','Forward'],backward:['Tył','Backward'],left:['Lewo','Left'],right:['Prawo','Right']};
 
 export class ManualSettings {
@@ -35,6 +34,18 @@ export class ManualSettings {
   dirty(){return Object.keys(this.pending).length>0 || Object.keys(this.directionEdits).length>0;}
   descriptor(key){return parameter(this.state,key);}
   factor(key){return displayFactor(this.state,key);}
+  language(){return document.documentElement?.lang || 'pl';}
+  format(key,value){return formatParameter(this.state,key,value,this.language());}
+  range(key){return parameterRange(this.state,key,this.language());}
+  shown(key,value){return displayValue(this.state,key,value);}
+  caption(key){
+    const names={speed:['Siła','Magnitude'],duration:['Czas','Duration'],
+      minimum:['Min.','Min.'],maximum:['Maks.','Max.'],step:['Krok','Step'],
+      reversal_pause:['Przerwa','Pause'],linear_rate:['Narastanie','Acceleration'],
+      turn_rate:['Narastanie','Acceleration'],linear_deceleration:['Hamowanie','Deceleration'],
+      turn_deceleration:['Hamowanie','Deceleration']};
+    return tr(...names[key])+' ('+(this.descriptor(key)?.display_unit || '—')+')';
+  }
   ready(){return !this.busy && !this.dirty() && settingsValid(this.state,nowSeconds()) && !this.validation().length;}
   editable(){return settingsValid(this.state,nowSeconds()) && ['DISARMED','ARMED'].includes(this.safety.state?.state)
     && !this.busy;}
@@ -76,8 +87,8 @@ export class ManualSettings {
       const title=el('span','',tr(...labels[name]));title.id='setting-'+name+'-title';
       heading.append(arrow,title);row.append(heading);
       for(const [key,pl,en] of [
-        ['speed','Siła (%)','Magnitude (%)'],['duration','Czas (ms)','Duration (ms)'],
-        ...(calibration?[['minimum','Min. (%)','Min. (%)'],['maximum','Maks. (%)','Max. (%)'],['step','Krok (%)','Step (%)']]:[])
+        ['speed','Siła','Magnitude'],['duration','Czas','Duration'],
+        ...(calibration?[['minimum','Min.','Min.'],['maximum','Maks.','Max.'],['step','Krok','Step']]:[])
       ]){
         row.append(this.input('setting-'+name+'-'+key,tr(pl,en),value=>{
           this.directionEdits[name]={...this.directionEdits[name],[key]:value};
@@ -88,14 +99,14 @@ export class ManualSettings {
     const ramps=document.getElementById('manual-smoothing-settings');
     if(ramps){
       for(const [keys,pl,en] of [
-        [['linear_rate','linear_deceleration'],'↑ ↓ Jazda (%/s)','↑ ↓ Travel (%/s)'],
-        [['turn_rate','turn_deceleration'],'← → Skręt (%/s)','← → Turn (%/s)'],
+        [['linear_rate','linear_deceleration'],'↑ ↓ Jazda','↑ ↓ Travel'],
+        [['turn_rate','turn_deceleration'],'← → Skręt','← → Turn'],
         [['reversal_pause'],'Nawrót','Reversal']
       ]){
         const group=el('fieldset','motion-smoothing-group');
         group.append(el('legend','',tr(pl,en)));
         for(const key of keys){
-          const caption=key==='reversal_pause'?tr('Przerwa (ms)','Pause (ms)')
+          const caption=key==='reversal_pause'?tr('Przerwa','Pause')
             :key.endsWith('deceleration')?tr('Hamowanie','Deceleration'):tr('Narastanie','Acceleration');
           group.append(this.input('setting-'+key,caption,value=>{this.pending[key]=value;}));
         }
@@ -134,21 +145,21 @@ export class ManualSettings {
       for(const key of ['speed','duration','minimum','maximum','step']){
         if(!Number.isFinite(d[key]))add(prefix+key,caption+'Wpisz liczbę.',caption+'Enter a number.');
       }
-      if(!(d.duration>=this.descriptor('duration').minimum && d.duration<=this.descriptor('duration').maximum))add(prefix+'duration',caption+'Czas: '+this.descriptor('duration').minimum*this.factor('duration')+'–'+this.descriptor('duration').maximum*this.factor('duration')+' ms.',caption+'Duration: '+this.descriptor('duration').minimum*this.factor('duration')+'–'+this.descriptor('duration').maximum*this.factor('duration')+' ms.');
+      if(!(d.duration>=this.descriptor('duration').minimum && d.duration<=this.descriptor('duration').maximum))add(prefix+'duration',caption+'Czas: '+this.range('duration')+'.',caption+'Duration: '+this.range('duration')+'.');
       if(!(d.minimum>=0 && d.minimum<=d.maximum))add(prefix+'minimum',caption+'Minimum musi mieścić się między 0 a maksimum.',caption+'Minimum must be between zero and maximum.');
-      if(!(d.maximum>=0 && d.maximum<=this.descriptor('maximum').maximum))add(prefix+'maximum',caption+'Maksimum nie może przekroczyć '+percent(this.descriptor('maximum').maximum)+'.',caption+'Maximum cannot exceed '+percent(this.descriptor('maximum').maximum)+'.');
-      if(!(d.step>0 && (d.maximum===d.minimum || d.step<=d.maximum-d.minimum)))add(prefix+'step',caption+'Krok musi być większy od 0 i nie większy od zakresu ('+percent(d.maximum-d.minimum)+').',caption+'Step must be positive and no larger than the range ('+percent(d.maximum-d.minimum)+').');
+      if(!(d.maximum>=0 && d.maximum<=this.descriptor('maximum').maximum))add(prefix+'maximum',caption+'Maksimum nie może przekroczyć '+this.format('maximum',this.descriptor('maximum').maximum)+'.',caption+'Maximum cannot exceed '+this.format('maximum',this.descriptor('maximum').maximum)+'.');
+      if(!(d.step>0 && (d.maximum===d.minimum || d.step<=d.maximum-d.minimum)))add(prefix+'step',caption+'Krok musi być większy od 0 i nie większy od zakresu ('+this.format('step',d.maximum-d.minimum)+').',caption+'Step must be positive and no larger than the range ('+this.format('step',d.maximum-d.minimum)+').');
       if(!(d.speed===0 || d.speed>=d.minimum && d.speed<=d.maximum))add(prefix+'speed',caption+'Siła musi mieścić się w zakresie; 0 zatrzymuje.',caption+'Magnitude must be within the range; zero stops.');
       const a=v[name==='forward'||name==='backward'?'linear_rate':'turn_rate'];
       const dec=v[name==='forward'||name==='backward'?'linear_deceleration':'turn_deceleration'];
       const peak=d.duration/(1/a+1/dec);
-      if(d.minimum>peak)add(prefix+'minimum',caption+'Impuls jest za krótki dla tego minimum (szczyt ≤'+percent(peak)+').',caption+'Pulse is too short for this minimum (peak ≤'+percent(peak)+').');
+      if(d.minimum>peak)add(prefix+'minimum',caption+'Impuls jest za krótki dla tego minimum (szczyt ≤'+this.format('speed',peak)+').',caption+'Pulse is too short for this minimum (peak ≤'+this.format('speed',peak)+').');
     }
     for(const key of ['linear_rate','turn_rate','linear_deceleration','turn_deceleration','reversal_pause']){
       const {minimum:min,maximum:cap}=this.descriptor(key);
       if(!Number.isFinite(v[key]) || v[key]<min || v[key]>cap){
-        add('setting-'+key,'Wygładzanie: dopuszczalny zakres '+displayNumber(min*this.factor(key))+'–'+displayNumber(cap*this.factor(key))+(key==='reversal_pause'?' ms.':' %/s.'),
-          'Smoothing: allowed range '+displayNumber(min*this.factor(key))+'–'+displayNumber(cap*this.factor(key))+(key==='reversal_pause'?' ms.':' %/s.'));
+        add('setting-'+key,'Wygładzanie: dopuszczalny zakres '+this.range(key)+'.',
+          'Smoothing: allowed range '+this.range(key)+'.');
       }
     }
     return errors;
@@ -160,7 +171,7 @@ export class ManualSettings {
   reportError(error){
     text('manual-settings-result','');
     const message=error.message==='manual_settings_direction_step_or_duration'
-      ?tr('Zapis odrzucony: sprawdź krok oraz czas 10–1000 ms.','Write rejected: check the step and duration of 10–1000 ms.')
+      ?tr('Zapis odrzucony: sprawdź krok oraz czas: ','Write rejected: check the step and duration: ')+this.range('duration')+'.'
       :error.message;
     showError({...error,message});
   }
@@ -262,6 +273,12 @@ export class ManualSettings {
     const known=settingsValid(this.state,nowSeconds()), editable=this.editable();
     const effective=known?this.effective():null, errors=known?this.validation():[];
     this.paintProfiles(known,editable);
+    text('manual-settings-units',known
+      ?tr('Siła w ','Magnitude in ')+this.descriptor('speed').display_unit
+        +tr(', czas w ',', duration in ')+this.descriptor('duration').display_unit
+        +tr('. Wspólne ustawienia z Pi; zmiany odświeżają pozostałe ekrany.',
+          '. Shared settings from Pi; changes refresh the other screens.')
+      :tr('Oczekiwanie na jednostki i ustawienia z Pi.','Waiting for units and settings from Pi.'));
     for(const name of directions){
       text('setting-'+name+'-title',tr(...labels[name]));
       if(known){
@@ -269,23 +286,24 @@ export class ManualSettings {
         const a=['forward','backward'].includes(name)?v.linear_rate:v.turn_rate;
         const d=['forward','backward'].includes(name)?v.linear_deceleration:v.turn_deceleration;
         const peak=Math.min(item.speed,item.duration/(1/a+1/d));
-        text('setting-'+name+'-hint',tr('Zakres ','Range ')+percent(item.minimum)+'–'+percent(item.maximum)+tr(' · krok ',' · step ')+percent(item.step));
+        text('setting-'+name+'-hint',tr('Zakres ','Range ')+this.format('minimum',item.minimum)+'–'+this.format('maximum',item.maximum)+tr(' · krok ',' · step ')+this.format('step',item.step));
         const row=document.getElementById('setting-'+name+'-title')?.closest('.motion-setting-row');
-        if(row)row.title=tr('Teoretyczny szczyt impulsu od postoju: ','Theoretical pulse peak from rest: ')+percent(peak);
-        text('setting-'+name+'-speed-value',Number.isFinite(item.speed)?percent(item.speed)+tr(' · impuls ≤',' · pulse ≤')+percent(peak):'—');
+        if(row)row.title=tr('Teoretyczny szczyt impulsu od postoju: ','Theoretical pulse peak from rest: ')+this.format('speed',peak);
+        text('setting-'+name+'-speed-value',Number.isFinite(item.speed)?this.format('speed',item.speed)+tr(' · impuls ≤',' · pulse ≤')+this.format('speed',peak):'—');
       }else text('setting-'+name+'-speed-value','—');
       for(const key of ['speed','duration','minimum','maximum','step']){
         const node=document.getElementById('setting-'+name+'-'+key);if(!node)continue;
         node.disabled=!editable;
+        const caption=node.parentElement?.querySelector?.('span');
+        if(caption)caption.textContent=this.caption(key);
+        if(!known && !this.dirty())node.value='';
         if(known){
-          const caption=node.parentElement?.querySelector?.('span');
-          if(caption?.dataset.caption)caption.textContent=caption.dataset.caption.replace(/\([^)]*\)/, '('+this.descriptor(key).display_unit+')');
-          node.min=displayNumber(this.descriptor(key).minimum*this.factor(key));
-          node.max=displayNumber((key==='speed'?Math.max(0,effective.directions[name].maximum):this.descriptor(key).maximum)*this.factor(key));
+          node.min=this.shown(key,this.descriptor(key).minimum);
+          node.max=this.shown(key,key==='speed'?Math.max(0,effective.directions[name].maximum):this.descriptor(key).maximum);
           // Browser step rounding must never rewrite an authoritative value.
           node.step='any';
           const value=effective.directions[name][key];
-          if(Number.isFinite(value) && (key==='speed' || !(key in (this.directionEdits[name]||{}))))node.value=displayNumber(value*this.factor(key));
+          if(Number.isFinite(value) && (key==='speed' || !(key in (this.directionEdits[name]||{}))))node.value=this.shown(key,value);
         }
         node.setAttribute?.('aria-invalid',String(errors.some(error=>error.id===node.id)));
       }
@@ -293,12 +311,13 @@ export class ManualSettings {
     for(const key of fields){
       const node=document.getElementById('setting-'+key);if(!node)continue;
       node.disabled=!editable;
+      const caption=node.parentElement?.querySelector?.('span');
+      if(caption)caption.textContent=this.caption(key);
+      if(!known && !this.dirty())node.value='';
       if(known){
-        const caption=node.parentElement?.querySelector?.('span');
-        if(caption?.dataset.caption)caption.textContent=caption.dataset.caption.replace(/\([^)]*\)/, '('+this.descriptor(key).display_unit+')');
-        node.max=displayNumber(this.descriptor(key).maximum*this.factor(key));
-        node.min=displayNumber(this.descriptor(key).minimum*this.factor(key));node.step='any';
-        if(!(key in this.pending))node.value=displayNumber(this.state.values[key]*this.factor(key));
+        node.max=this.shown(key,this.descriptor(key).maximum);
+        node.min=this.shown(key,this.descriptor(key).minimum);node.step='any';
+        if(!(key in this.pending))node.value=this.shown(key,this.state.values[key]);
       }
       node.setAttribute?.('aria-invalid',String(errors.some(error=>error.id===node.id)));
     }
@@ -319,9 +338,9 @@ export class ManualSettings {
           && fields.every(key=>runtime.values?.[key]===v[key])
           && directions.every(name=>['minimum','maximum','step','speed','duration'].every(key=>runtime.directions?.[name]?.[key]===this.state.directions[name][key]));
         feedback.textContent=(matched?tr('Wykonawca potwierdza nastawy. ','Executor confirms settings. '):tr('Oczekiwanie na potwierdzenie wykonawcy. ','Waiting for executor confirmation. '))
-          +tr('Jazda ↑/↓: ','Travel ↑/↓: ')+percent(v.linear_rate)+'/s / '+percent(v.linear_deceleration)+'/s'
-          +tr(' · Skręt ←/→: ',' · Turn ←/→: ')+percent(v.turn_rate)+'/s / '+percent(v.turn_deceleration)+'/s'
-          +tr(' (narastanie / hamowanie) · Nawrót: ',' (acceleration / deceleration) · Reversal: ')+displayNumber(v.reversal_pause*1000)+' ms.'
+          +tr('Jazda ↑/↓: ','Travel ↑/↓: ')+this.format('linear_rate',v.linear_rate)+' / '+this.format('linear_deceleration',v.linear_deceleration)
+          +tr(' · Skręt ←/→: ',' · Turn ←/→: ')+this.format('turn_rate',v.turn_rate)+' / '+this.format('turn_deceleration',v.turn_deceleration)
+          +tr(' (narastanie / hamowanie) · Nawrót: ',' (acceleration / deceleration) · Reversal: ')+this.format('reversal_pause',v.reversal_pause)+'.'
           +(this.dirty()?tr(' Suwaki zawierają niezapisane zmiany.',' Sliders include unsaved edits.'):'');
       }
     }

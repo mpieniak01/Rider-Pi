@@ -18,12 +18,33 @@ export function descriptionsValid(row) {
 function validParameter(p) {
   return p?.type==='number' && typeof p.unit==='string' && typeof p.display_unit==='string'
     && Number.isFinite(p.display_factor) && p.display_factor>0
-    && Number.isFinite(p.minimum) && Number.isFinite(p.maximum) && p.minimum<=p.maximum;
+    && Number.isFinite(p.minimum) && Number.isFinite(p.maximum) && p.minimum<=p.maximum
+    && Number.isInteger(p.display_precision) && p.display_precision>=0 && p.display_precision<=20;
 }
 export function displayFactor(row, key) {
   const value=parameter(row,key)?.display_factor;
   if(!Number.isFinite(value) || value<=0)throw new Error('parameter_description_unavailable');
   return value;
+}
+// All screens use the same device-provided display units and factors.
+export function displayValue(row, key, value) {
+  return Number.isFinite(value) ? Number((value * displayFactor(row,key)).toPrecision(15)) : NaN;
+}
+export function formatParameter(row, key, value, lang='pl') {
+  if(!Number.isFinite(value) || !parameter(row,key))return '—';
+  const p=parameter(row,key), shown=displayValue(row,key,value);
+  // Precision is a display hint, never permission to hide a finer saved value.
+  const exact=String(shown), exponent=Number(exact.split('e')[1]||0);
+  const decimals=Math.max(0,(exact.split('e')[0].split('.')[1]?.length||0)-exponent);
+  const precision=Math.min(20,Math.max(p.display_precision||0,decimals));
+  const number=shown.toLocaleString(lang,{maximumFractionDigits:precision,useGrouping:false});
+  return number+(p.display_unit.startsWith('%')?'':' ')+p.display_unit;
+}
+export function parameterRange(row,key,lang='pl') {
+  const p=parameter(row,key);
+  if(!p)return '—';
+  const number=value=>displayValue(row,key,value).toLocaleString(lang,{maximumFractionDigits:20,useGrouping:false});
+  return number(p.minimum)+'–'+number(p.maximum)+' '+p.display_unit;
 }
 export function settingsValid(row, now) {
   return row?.contract_id === 'rider.manual_settings' && row.contract_version === 2

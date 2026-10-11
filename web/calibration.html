@@ -30,7 +30,7 @@
 <p data-pl="Kliknij — impuls; przytrzymaj — jazda; puść — wyhamowanie. Strzałki korzystają z zapisanych nastaw. Uzbrój robota, aby wykonać próbę." data-en="Click for a pulse; hold to drive; release to decelerate. Arrows use saved settings. Arm the robot to try them.">Kliknij — impuls; przytrzymaj — jazda; puść — wyhamowanie. Strzałki korzystają z zapisanych nastaw. Uzbrój robota, aby wykonać próbę.</p><div class="operator-drive motion-grid"><span></span><button class="c-btn" type="button" data-direction="forward" data-pl="↑ Przód" data-en="↑ Forward" disabled>↑ Przód</button><span></span><button class="c-btn" type="button" data-direction="left" data-pl="← Lewo" data-en="← Left" disabled>← Lewo</button><button class="c-btn operator-stop" type="button" data-stop>STOP</button><button class="c-btn" type="button" data-direction="right" data-pl="→ Prawo" data-en="→ Right" disabled>→ Prawo</button><span></span><button class="c-btn" type="button" data-direction="backward" data-pl="↓ Tył" data-en="↓ Backward" disabled>↓ Tył</button><span></span></div></section></div>
 <section class="c-card calibration-settings">
 <h2 data-pl="Zakresy kierunków" data-en="Direction ranges">Zakresy kierunków</h2>
-<p data-pl="Siła w % oznacza polecenie. „Impuls ≤” to szacowany szczyt od postoju po wygładzaniu. Czas w ms obejmuje cały impuls." data-en="Magnitude in % is a command. “Pulse ≤” estimates the peak from rest after smoothing. Duration in ms includes the whole pulse.">Siła w % oznacza polecenie. „Impuls ≤” to szacowany szczyt od postoju po wygładzaniu. Czas w ms obejmuje cały impuls.</p>
+<p id="manual-settings-units"></p><p class="operator-muted" data-pl="Siła oznacza polecenie, nie zmierzoną prędkość. „Impuls ≤” to szacowany szczyt od postoju po wygładzaniu." data-en="Magnitude is a command, not measured speed. “Pulse ≤” estimates the peak from rest after smoothing.">Siła oznacza polecenie, nie zmierzoną prędkość. „Impuls ≤” to szacowany szczyt od postoju po wygładzaniu.</p>
 <div id="manual-direction-settings"></div>
 <h2 title="Tempo zmiany polecenia na sekundę. STOP działa natychmiast; nie zmienia regulatora równowagi robota." data-pl="Wygładzanie poleceń" data-en="Command smoothing">Wygładzanie poleceń</h2>
 <p class="smoothing-help" data-pl="Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem." data-en="Command change per second. Does not change the robot balance controller. STOP bypasses smoothing.">Tempo zmiany polecenia na sekundę. Nie zmienia regulatora równowagi robota. STOP działa natychmiast poza wygładzaniem.</p>
@@ -43,7 +43,7 @@
 
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=motion-descriptors-9"></script>
+<script type="module" src="/web/assets/operator/app.js?v=shared-unit-rendering-10"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

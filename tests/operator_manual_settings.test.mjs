@@ -26,7 +26,7 @@ async function screen(shared,{postError=null,nodes={},elFactory=()=>({})}={}){
   let posts=0;
   const context=vm.createContext({document:{getElementById:id=>nodes[id]||null},window:{addEventListener(){}},
     nowSeconds:()=>1000,settingsValid:model.settingsValid,settingsPulse:model.settingsPulse,
-    fields:model.fields,directions:model.directions,parameter:model.parameter,displayFactor:model.displayFactor,descriptionsValid:model.descriptionsValid,el:elFactory,text(){},tr:(pl,en)=>en,showError(){},
+    fields:model.fields,directions:model.directions,parameter:model.parameter,displayFactor:model.displayFactor,descriptionsValid:model.descriptionsValid,displayValue:model.displayValue,formatParameter:model.formatParameter,parameterRange:model.parameterRange,el:elFactory,text(){},tr:(pl,en)=>en,showError(){},
     poll:()=>({stop(){}}),request:async(path,options={})=>{
       if(options.method==='POST'){
         posts++;
@@ -221,4 +221,27 @@ test('slider step starts at calibrated minimum and preserves zero',async()=>{
   assert.equal(a.panel.directionEdits.forward.speed,.25);
   node.value='0';node.input();
   assert.equal(a.panel.directionEdits.forward.speed,0);
+});
+
+test('all panel presentations follow device units, including feedback and captions',async()=>{
+  const current=row();
+  current.parameter_schema.direction_fields.duration.display_unit='s';
+  current.parameter_schema.direction_fields.duration.display_factor=1;
+  current.parameter_schema.value_fields.reversal_pause.display_unit='s';
+  current.parameter_schema.value_fields.reversal_pause.display_factor=1;
+  current.parameter_schema.value_fields.linear_rate.display_unit='level/s';
+  current.parameter_schema.value_fields.linear_rate.display_factor=1;
+  const title={},duration={parentElement:{querySelector:()=>title,append(){}},setAttribute(){}},feedback={};
+  const a=await screen({current},{nodes:{'setting-forward-duration':duration,'manual-settings-feedback':feedback}});
+  assert.equal(duration.value,.25);assert.equal(duration.max,1);
+  assert.equal(title.textContent,'Duration (s)');
+  assert.match(feedback.textContent,/3 level\/s/);
+  assert.match(feedback.textContent,/Reversal: 0 s/);
+  assert.equal(a.panel.range('duration'),'0,01–1 s');
+});
+test('formatter preserves finer saved values instead of rounding them to another setting',()=>{
+  const current=row();
+  assert.equal(model.formatParameter(current,'speed',.0055,'en'),'0.55%');
+  assert.equal(model.formatParameter(current,'duration',.2505,'en'),'250.5 ms');
+  assert.equal(model.formatParameter(null,'duration',.25),'—');
 });
