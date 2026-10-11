@@ -35,7 +35,7 @@ if (['control', 'calibration'].includes(page)) new ControlCamera();
 
 if (page === 'control') tasks = new Tasks(safety);
 if (page === 'calibration') calibration = new Calibration(safety);
-if (page === 'devices') new Devices();
+if (page === 'devices') new Devices(safety);
 if (page === 'system') system = new System(safety);
 if (page === 'navigation') { tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
 if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); }

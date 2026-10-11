@@ -315,11 +315,17 @@ export class Calibration {
       const controls = this.safety.controls;
       if (controls) {
         await controls.refresh();
-        await request('/api/calibration/controls', { method: 'POST', body: {
-          revision: controls.state.revision,
-          values: { ...this.profile.motion, ...interactionSettings(this.profile.interaction) },
-        } });
+        const values = { ...this.profile.motion, ...interactionSettings(this.profile.interaction) };
+        if (Object.entries(values).some(([key, value]) => !Number.isFinite(value) || value > controls.state.limits[key]))
+          throw new Error(tr('Profil przekracza limity ustawień robota.', 'Profile exceeds robot settings limits.'));
+        const revision = controls.state.revision;
+        const result = await request('/api/calibration/controls', { method: 'POST', body: { revision, values } });
+        if (!result.canonical || !Number.isInteger(result.data.revision) || result.data.revision < revision
+          || Object.entries(values).some(([key, value]) => result.data.values?.[key] !== value))
+          throw new Error(tr('Robot nie potwierdził przywrócenia ustawień.', 'Robot did not confirm settings restore.'));
         await controls.refresh();
+        if (controls.state.revision !== result.data.revision || !this.profileMatchesControls(this.profile))
+          throw new Error(tr('Ustawienia zmieniły się podczas przywracania. Ponów operację.', 'Settings changed during restore. Retry.'));
       }
     }
     byId('calibration-activation-plan').value = tr('Zastosowanie ustawień sterowania wybranych przez operatora; bez ruchu.',
