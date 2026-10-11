@@ -95,3 +95,7 @@ próby nadpisania. Oba ekrany pokazują aktywny profil; zarządzanie jest w Kali
 Nazwy „Biurko”, „Podłoga” opisują zastosowanie operatora; nie narzucamy przykładowej
 szybkości ani nie potwierdzamy bezpieczeństwa podłoża. Profile nie podnoszą limitów
 wdrożenia i nie odblokowują niezweryfikowanych aktuatorów ani autonomii.
+
+## Sterowanie postawą
+
+Sterowanie i Kalibracja używają jednego komponentu postawy. Wysokość (75–115) jest wysyłana po puszczeniu suwaka; balans przechyłu wymaga przycisku Ustaw. Obie funkcje korzystają z globalnego uzbrojenia operatora, aktualnej rewizji ustawień i wspólnego stanu wykonawcy. Wartości oznaczają ostatnie przyjęte polecenia, nie pomiar pozycji. Odczyt okresowy zachowuje edytowany wybór. Wysokość i balans są nastawami pozycji/trybu; stop_verified pozostaje false i nie potwierdza możliwości przerwania. Figury producenta pozostają zablokowane do charakterystyki przerwania. Automatyczne testy ruchu pozostają niezależnie wyłączone.

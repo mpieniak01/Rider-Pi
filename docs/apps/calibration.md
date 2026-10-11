@@ -101,3 +101,7 @@ never automatic retry. Both screens show the active profile; full management is
 on Calibration. Names such as Desk or Floor describe operator use, without preset
 speed assumptions or a claim of surface safety. Profiles cannot raise deployment
 limits or enable unverified actuators/autonomy.
+
+## Posture controls
+
+Control and Calibration share one posture component. Height (75–115) sends on slider release; roll balance has an explicit Apply button. Both use the global operator arming gate, current settings revision and the same executor state. Reported values are last accepted commands, not measured actuator positions. Polling preserves an edited selection. Height and balance are position/mode settings; stop_verified remains false and does not claim cancellation. Manufacturer figures remain blocked until interruption is characterized. Automated motion tests remain independently disabled.

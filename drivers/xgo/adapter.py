@@ -350,16 +350,15 @@ class XgoAdapter:
     def enable_balance(self, on: bool) -> bool:
         if not self._allowed() or not isinstance(on, bool):
             return False
-        if not self.capabilities()["balance"]["stop_verified"]:
+        if not self.capabilities()["balance"]["available"]:
             self.error = "balance_manual_characterization_required"
             return False
-        return self._call("rider_balance_roll", int(on)) or self._call("imu", int(on))
+        return self._call("rider_balance_roll", int(on))
 
     def set_height(self, h: int) -> bool:
         if not self._allowed() or isinstance(h, bool) or not isinstance(h, int) or not 75 <= h <= 115:
             return False
-        if not self.capabilities()["height"]["stop_verified"]:
-            self.error = "height_manual_characterization_required"
+        if not self.capabilities()["height"]["available"]:
             return False
         return self._call("rider_height", h)
 
@@ -419,15 +418,35 @@ class XgoAdapter:
         return self._call("rider_action", action_id, False) or self._call("action", action_id, False)
 
     def capabilities(self) -> dict:
-        # Source proves that stop writes zero velocity. Physical behavior has
-        # not been measured. Height/balance/actions have no cancellation proof.
+        # STOP cancels velocity; height is a persistent position setpoint.
+        # Position support does not claim physical completion or cancellation.
         result = {}
         for name in ("move", "turn", "balance", "height", "action"):
             stop_verified = name in {"move", "turn"}
             result[name] = {
-                "available": bool(self.ok() and stop_verified),
+                "available": bool(
+                    self.ok()
+                    and (
+                        stop_verified
+                        or (
+                            name in {"height", "balance"}
+                            and callable(
+                                getattr(
+                                    self._dog, {"height": "rider_height", "balance": "rider_balance_roll"}[name], None
+                                )
+                            )
+                        )
+                    )
+                ),
                 "stop_verified": stop_verified,
-                "verification": "sdk_source" if stop_verified else "manual_characterization_required",
+                "verification": "sdk_source"
+                if stop_verified or name in {"height", "balance"}
+                else "manual_characterization_required",
+                "control_kind": "position_setpoint"
+                if name == "height"
+                else "mode_setting"
+                if name == "balance"
+                else "motion",
                 "physical_completion": "unverified",
             }
         return result

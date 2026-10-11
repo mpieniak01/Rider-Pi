@@ -146,7 +146,9 @@ def _permission(command: dict[str, Any], status: dict[str, Any]) -> str | None:
     if type(command.get("settings_revision")) is not int or command["settings_revision"] != settings.get("revision"):
         return "manual_settings_stale"
     capability = (status.get("capabilities") or {}).get(command["action"], {})
-    if capability.get("available") is not True or capability.get("stop_verified") is not True:
+    if capability.get("available") is not True or (
+        command["action"] not in {"height", "balance"} and capability.get("stop_verified") is not True
+    ):
         return "actuator_unavailable_or_uncharacterized"
     return None
 

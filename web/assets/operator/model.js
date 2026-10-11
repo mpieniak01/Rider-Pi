@@ -112,7 +112,7 @@ export function authorized(safety, owner, action = 'move', now = nowSeconds()) {
     && safety.ready === true && safety.hardware_ready === true && safety.can_move === true && safety.read_only === false && safety.owner === owner
     && ((safety.arming_mode === 'operator' && safety.execution_context === 'panel' && safety.owner === 'manual')
       || (Number.isFinite(safety.lease_remaining_s) && safety.lease_remaining_s > age && safety.lease_remaining_s <= 30))
-    && capability?.available === true && capability.stop_verified === true;
+    && capability?.available === true && (['height', 'balance'].includes(action) || capability.stop_verified === true);
 }
 export function catalogKnown(catalog, now = nowSeconds()) {
   return catalog?.contract_version === 2 && catalog?.catalog_version === 2

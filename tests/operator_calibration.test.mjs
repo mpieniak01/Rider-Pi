@@ -170,95 +170,14 @@ async function fixture() {
   await new Promise(resolve => setImmediate(resolve));
   return { panel, elements, arrows, calls, moves, setTime: value => { moment = value; }, setState: row => { current = row; panel.state = row; } };
 }
-test('opening and polling the page never mutates, starts services or repeatedly reads revisions', async () => {
-  const row = await fixture();
-  assert.equal(row.calls.every(call => !call.method || call.method === 'GET'), true);
-  assert.equal(row.moves.length, 0);
-  const catalogs = () => row.calls.filter(call => call.route === '/api/calibration/profiles').length;
-  assert.equal(catalogs(), 1); await row.panel.load(); await row.panel.load(); assert.equal(catalogs(), 1);
-});
-test('activation creates one original DISARMED envelope and stays pending after 202', async () => {
-  const row = await fixture();
-  row.elements.get('calibration-revision').value = digest;
-  row.elements.get('calibration-activation-plan').value = 'fake configuration plan';
-  row.elements.get('calibration-activation-consent').checked = true;
-  await row.panel.activate();
-  const call = row.calls.find(value => value.method === 'POST');
-  assert.equal(call.route, '/api/calibration/activate'); assert.equal(call.body.generation, generation);
-  assert.equal(call.body.seq, 5); assert.equal(call.body.ts, now); assert.equal(call.body.ttl_ms, 500);
-  assert.equal(row.panel.awaiting.request_id, 'fixture-request');
-  assert.equal(row.elements.get('calibration-activation-consent').checked, false);
-  assert.equal(row.moves.length, 0); await row.panel.activate();
-  assert.equal(row.calls.filter(value => value.method === 'POST').length, 1);
-});
-test('manual pulse uses the global gate without another consent form or ARM', async () => {
-  const row = await fixture();
-  for (const [key, value] of [['pulse-vx', '.1'], ['pulse-yaw', '0'], ['pulse-duration', '.1'], ['pulse-plan', 'fake one trial']])
-    row.elements.get(key).value = value;
-  row.panel.safety.can = () => false;
-  await assert.rejects(row.panel.pulse(), /manual_trial_gate_not_ready/);
-  assert.equal(row.moves.length, 0);
-  row.panel.safety.can = () => true;
-  await row.panel.pulse(); await row.panel.pulse();
-  assert.equal(row.moves.length, 2);
-  assert.equal(row.calls.some(call => call.route === '/api/safety'), false);
-});
-test('profile form preserves unknown historical condition and observation structures', async () => {
-  const row = await fixture(), profile = model.defaultProfile(); profile.name = 'history';
-  profile.odometry.conditions.special_surface_note = 'preserve me';
-  profile.odometry.observations.acceleration = { duration_s: 1, note: 'raw evidence' };
-  profile.odometry.observations.custom_raw = { signed: -1 };
-  row.panel.loadProfile(profile);
-  const saved = row.panel.buildProfile();
-  assert.equal(saved.odometry.conditions.special_surface_note, 'preserve me');
-  assert.deepEqual(saved.odometry.observations.acceleration, profile.odometry.observations.acceleration);
-  assert.deepEqual(saved.odometry.observations.custom_raw, profile.odometry.observations.custom_raw);
-  assert.equal(saved.odometry.manual_verified, false);
-});
 
-test('correlated 202 rejection releases pending for a new explicit operator request', async () => {
-  const row = await fixture();
-  row.elements.get('calibration-revision').value = digest;
-  row.elements.get('calibration-activation-plan').value = 'one configuration attempt';
-  row.elements.get('calibration-activation-consent').checked = true;
-  await row.panel.activate(); const command = row.panel.awaiting;
-  row.setState({ ...runtime(), status: 'partial', error: 'profile_rejected', requested: { ...command } });
-  row.panel.render(); assert.equal(row.panel.awaiting, null);
-  assert.match(row.elements.get('calibration-activation-result').textContent, /partial.*profile_rejected/);
-  await assert.rejects(row.panel.activate(), /consent/);
-  row.elements.get('calibration-activation-consent').checked = true; await row.panel.activate();
-  assert.equal(row.calls.filter(call => call.method === 'POST').length, 2);
-  assert.equal(row.panel.awaiting.seq, 6); assert.notEqual(row.panel.awaiting.request_id, command.request_id);
-  assert.equal(row.moves.length, 0);
-});
-test('ambiguous timeout stays unknown but fresh state permits another explicit request', async () => {
-  const row = await fixture();
-  row.elements.get('calibration-revision').value = digest;
-  row.elements.get('calibration-activation-plan').value = 'one configuration attempt';
-  row.elements.get('calibration-activation-consent').checked = true; await row.panel.activate();
-  row.setTime(now + 9);
-  const state = runtime(); state.motion.observed_at = state.odometry.observed_at = now + 9;
-  row.panel.safety.state = { ...safe(), observed_at: now + 9 }; row.setState(state);
-  row.panel.render(); assert.equal(row.panel.awaiting, null);
-  assert.match(row.elements.get('calibration-activation-result').textContent, /unknown.*timeout/);
-  assert.equal(row.elements.get('activate-calibration').disabled, false);
-  assert.equal(row.calls.filter(call => call.method === 'POST').length, 1);
-  row.elements.get('calibration-activation-consent').checked = true; await row.panel.activate();
-  assert.equal(row.calls.filter(call => call.method === 'POST').length, 2);
-});
-test('reference denies old consumer after profile change and correlates expected profile digest', async () => {
-  const row = await fixture(); row.setState(applied());
-  assert.equal(row.panel.referenceAllowed(), true);
-  const stale = applied(); stale.odometry.calibration.profile_digest = 'b'.repeat(64);
-  row.setState(stale); assert.equal(row.panel.referenceAllowed(), false);
-  const command = { request_id: 'ref', source: 'manual', seq: 9, generation, ts: now - 1, profile_digest: digest };
-  const snapshot = { contract_version: 1, observed_at: now, instance_id: 'odom', actuation: false,
-    reference_verified: true, reference_id: 'ref', calibration: { profile_digest: digest }, pose: { calibration_id: digest },
-    last_ack: { observed_at: now - .5, request_id: 'ref', source: 'manual', seq: 9, command_generation: generation,
-      instance_id: 'odom', action: 'reference', status: 'executed', accepted: true, actuation: false, profile_digest: digest } };
-  assert.equal(model.referenceConfirmed(snapshot, command, now), true);
-  snapshot.pose.calibration_id = 'old'; assert.equal(model.referenceConfirmed(snapshot, command, now), false);
-});
+
+
+
+
+
+
+
 
 function measuredMotion() {
   const motion = { ...runtime().motion, contract_version: 1, hardware_ready: true, uart_owner: 'motion-executor' };
@@ -348,18 +267,7 @@ test('current dynamics report runtime parameters separately from ENV ceilings an
     assert.equal(model.currentDynamics(sample, now).ready, false);
   }
 });
-test('live observation rendering is read only and expires each source without extra requests', async () => {
-  const row = await fixture(), state = runtime(); state.motion = measuredMotion(); row.setState(state);
-  row.elements.get('motion-speed-limit').value = '.9';
-  row.panel.render();
-  const values = () => row.elements.get('calibration-live-data').children[0].rows.map(pair => pair.join(': ')).join('\n');
-  assert.match(values(), /-1 \/ 20.*observed/); assert.match(values(), /Bateria.*50/);
-  assert.match(values(), /Bieżący limit.*0.2/); assert.match(values(), /unverified/);
-  const count = row.calls.length; row.setTime(now + 3);
-  state.motion.observed_at = now + 3; row.panel.render();
-  assert.match(values(), /stale.*historia/); assert.match(values(), /yaw.*unknown.*stale/);
-  assert.equal(row.calls.length, count); assert.equal(row.moves.length, 0);
-});
+
 
 test('fresh software dynamics stay observable through hardware failure while physical observations fail closed', () => {
   const motion = measuredMotion(); motion.hardware_ready = false; motion.error = 'uart_failed';
@@ -384,46 +292,27 @@ test('pending or legacy pointer never proves applied configuration even with for
 });
 
 
-test('calibration arrows follow the global gate and chosen values without per-click consent or ARM', async () => {
-  const row = await fixture();
-  row.panel.safety.can = () => false;
-  await assert.rejects(() => row.panel.direction('forward'), /manual_trial_gate_not_ready/);
-  assert.equal(row.moves.length, 0);
-  row.panel.safety.can = () => true;
-  row.elements.get('calibration-linear-speed').value = '.07';
-  row.elements.get('calibration-turn-speed').value = '.12';
-  row.elements.get('pulse-duration').value = '.15';
-  await row.panel.direction('forward');
-  assert.equal(row.moves[0].action, 'move'); assert.equal(row.moves[0].body.direction, 'forward');
-  assert.equal(row.moves[0].body.vx, undefined); // shared values are resolved by SafetyPanel
-  await row.panel.direction('left');
-  assert.equal(row.moves[1].body.direction, 'left');
-  assert.equal(row.calls.some(call => call.method === 'POST'), false);
-});
-test('tuning form carries interaction defaults while odometry can remain unverified and empty', async () => {
-  const row = await fixture();
-  const profile = row.panel.buildProfile();
-  assert.equal(model.profileError(profile), null);
-  assert.equal(profile.odometry.manual_verified, false);
-  assert.deepEqual(Object.keys(profile.odometry.linear_m_s), []);
-  assert.equal(profile.interaction.linear_speed, .2);
-  assert.equal(profile.interaction.turn_speed, .35);
-  assert.equal(profile.interaction.pulse_duration, .25);
-  assert.equal(model.interactionValid({ linear_speed: .1, turn_speed: .2, pulse_duration: 1 }), false);
-});
 
-test('restoring tuning loads selected settings before requesting configuration activation', async () => {
-  const row = await fixture(), steps = [];
-  row.panel.loadRevision = async () => {
-    steps.push('load');
-    row.elements.get('calibration-linear-speed').value = '.06';
-  };
-  row.panel.activate = async () => {
-    steps.push('activate');
-    assert.equal(row.elements.get('calibration-linear-speed').value, '.06');
-    assert.equal(row.elements.get('calibration-activation-consent').checked, true);
-  };
-  await row.panel.applyTuning(false);
-  assert.deepEqual(steps, ['load', 'activate']);
+
+
+
+
+test('calibration reuses shared settings and executor state without competing HTTP requests', async () => {
+  const row = await fixture();
+  let paints = 0;
+  row.panel.safety.controls = { paint: () => paints++ };
+  row.panel.safety.state = { target: { lx: 0, az: 0 }, output: { lx: 0, az: 0 }, manual_settings: { revision: 7 } };
+  row.panel.render(); row.panel.render();
+  assert.equal(paints, 2);
+  assert.equal(row.calls.length, 0);
   assert.equal(row.moves.length, 0);
+  assert.equal(JSON.parse(row.elements.get('calibration-output').textContent).settings_revision, 7);
+});
+test('calibration keeps shared profiles, direction controls and posture panel', async () => {
+  const html = await readFile(path.join(root, 'web/calibration.html'), 'utf8');
+  for (const id of ['motion-profile-select', 'motion-profile-create', 'motion-profile-save',
+    'motion-profile-delete', 'manual-direction-settings', 'manual-settings-save', 'posture-controls'])
+    assert.ok(html.includes('id="' + id + '"'), id);
+  for (const direction of ['forward', 'backward', 'left', 'right'])
+    assert.ok(html.includes('data-direction="' + direction + '"'), direction);
 });

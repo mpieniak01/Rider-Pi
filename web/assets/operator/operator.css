@@ -94,3 +94,5 @@
 [data-direction].is-held { outline: 2px solid #73c8ff; background: #24516c; }
 
 .motion-curve-setting { max-width: 17rem; margin: .65rem 0; }
+
+.posture-row{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;margin:.6rem 0}.posture-row input[type=range]{flex:1;min-width:140px;max-width:420px}.posture-row output{min-width:3ch;font-variant-numeric:tabular-nums}.posture-row select{width:auto;max-width:100%}

@@ -64,7 +64,7 @@ def test_odometry_activation_preserves_device_motion_settings(executor):
     assert instance.adapter.calls == before
     assert instance.gate.state == "DISARMED" and instance.gate.generation != generation
     assert ack["generation"] == instance.gate.generation and ack["command_generation"] == generation
-    assert instance.controller.limits == RampLimits()
+    assert instance.controller.limits.speed_limit == instance.controls["values"]["speed_limit"]
     assert instance.controller.limits.watchdog_s == 0.5
     assert profiles.read_active()["activated_at"] == clock.now
     assert instance.snapshot()["calibration"]["profile_digest"] == ack["profile_digest"]

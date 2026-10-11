@@ -64,16 +64,13 @@ def test_api_server_routes():
 
 def test_html_controls_present():
     """Test that control.html contains the new UI controls."""
-    html_file = project_root / "web" / "control.html"
-    with open(html_file) as f:
-        content = f.read()
-
-    assert 'id="balance"' in content and 'id="height"' in content
-    assert 'data-actuator="height" disabled' in content
-    assert 'data-actuator="balance" disabled' in content
-    script = (project_root / "web/assets/operator/app.js").read_text()
-    assert "safety.send('height', { height:" in script
-    assert "safety.send('balance', { enabled:" in script
+    for page in ("control.html", "calibration.html"):
+        content = (project_root / "web" / page).read_text()
+        assert 'id="posture-controls"' in content
+    script = (project_root / "web/assets/operator/posture.js").read_text()
+    assert 'id="posture-height"' in script and 'id="posture-balance"' in script
+    assert "this.send('height'" in script
+    assert "this.send('balance'" in script
     transport = (project_root / "web/assets/operator/safety.js").read_text()
     assert "endpoint = '/api/control'" in transport
     assert "this.envelope(action, params, owner)" in transport
