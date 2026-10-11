@@ -5,7 +5,7 @@ import { initI18n } from '/web/assets/i18n.js';
 import { SafetyPanel } from './safety.js?v=motion-descriptors-9';
 import { Tasks } from './tasks.js?v=compact-calibration-4b';
 import { Devices } from './devices.js?v=camera-preview-1';
-import { System } from './system.js?v=compact-calibration-4b';
+import { System } from './system.js?v=system-controls-1';
 import { Navigation } from './navigation.js';
 import { Calibration } from './calibration.js?v=compact-calibration-4b';
 import { Chat } from './chat.js?v=compact-calibration-4b';

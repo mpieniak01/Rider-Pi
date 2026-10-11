@@ -1,14 +1,14 @@
+import { serviceActionBlock } from './service-actions.js';
 import { catalogKnown, fresh, displayValue } from './model.js';
 import { request, poll } from './transport.js';
 import { el, kv, freshPill, button, details, tr, ageLabel, ageStamp, text, showError, rawDetails } from './ui.js';
 export class System {
   constructor(safety) {
-    this.safety = safety; this.admin = false; this.catalog = null; this.services = null; this.resources = new Map();
+    this.safety = safety; this.catalog = null; this.services = null; this.resources = new Map();
     this.busy = new Set(); this.results = new Map();
     this.logBusy = new Set(); this.logResults = new Map(); this.version = null;
     this.expandedDetails = new Map();
     request('/api/status/version').then(result => { this.version = result.data; this.render(); }, () => {});
-    document.getElementById('admin-mode')?.addEventListener('change', event => { this.admin = event.target.checked; this.render(); });
     document.getElementById('rescue-inspect')?.addEventListener('click', () => this.inspectRescue());
     document.getElementById('rescue-release')?.addEventListener('click', () => this.release());
     for (const id of ['rescue-confirm', 'rescue-consent']) document.getElementById(id)?.addEventListener('input', () => this.renderRescue());
@@ -37,8 +37,8 @@ export class System {
     return node;
   }
   async action(row, action) {
-    if (!this.admin || !catalogKnown(this.catalog) || !fresh(this.services, 10) || !fresh(row, 10) || (row.load_state ?? row.load) !== 'loaded' || row.error || this.services.contract_version !== 2 || this.busy.has(row.unit)) return;
-    if (['start', 'restart'].includes(action) && typeof row.can_move !== 'boolean') return;
+    const blocked = serviceActionBlock(row, action, this);
+    if (blocked) return showError(new Error(this.blockLabel(blocked)));
     const body = { action };
     if (row.can_move && ['start', 'restart'].includes(action)) {
       this.busy.add(row.unit);
@@ -78,14 +78,24 @@ export class System {
             [tr('Powód / błąd', 'Reason / error'), row.error || row.reason || row.sub_state || row.sub], [tr('Autostart', 'Autostart'), (row.unit_file_state ?? row.enabled)]]));
         const actions = el('div', 'operator-row');
         for (const action of ['start', 'stop', 'restart']) {
-          const movementBlocked = ['start', 'restart'].includes(action) && (typeof row.can_move !== 'boolean' || (row.can_move && (!this.safety.can(row.motion_owner) || !this.safety.can(row.motion_owner, 'turn'))));
-          actions.append(button(action, () => this.action(row, action).catch(showError), !this.admin || !current || this.busy.has(row.unit) || movementBlocked));
+          const reason = serviceActionBlock(row, action, this);
+          const label = { start: tr('Uruchom', 'Start'), stop: tr('Zatrzymaj', 'Stop'), restart: tr('Uruchom ponownie', 'Restart') }[action];
+          const control = button(label, () => this.action(row, action).catch(showError), Boolean(reason));
+          if (reason) control.title = this.blockLabel(reason);
+          actions.append(control);
         }
         card.append(actions);
+        const reasons = [...new Set(['start', 'stop', 'restart'].map(action => serviceActionBlock(row, action, this)).filter(Boolean))];
+        if (reasons.length) card.append(el('p', 'operator-muted', reasons.map(reason => this.blockLabel(reason)).join(' · ')));
         const autostart = el('div', 'operator-row');
-        autostart.append(el('span', '', tr('Osobna zmiana autostartu:', 'Separate autostart change:')),
-          button('enable', () => this.action(row, 'enable').catch(showError), !this.admin || !current || row.lifecycle !== 'startup' || this.busy.has(row.unit)),
-          button('disable', () => this.action(row, 'disable').catch(showError), !this.admin || !current || this.busy.has(row.unit)));
+        autostart.append(el('span', '', tr('Osobna zmiana autostartu:', 'Separate autostart change:')));
+        for (const action of ['enable', 'disable']) {
+          const reason = serviceActionBlock(row, action, this);
+          const control = button(action === 'enable' ? tr('Włącz autostart', 'Enable autostart') : tr('Wyłącz autostart', 'Disable autostart'), () => this.action(row, action).catch(showError), Boolean(reason));
+          if (reason) control.title = this.blockLabel(reason);
+          autostart.append(control);
+          if (reason) autostart.append(el('span', 'operator-muted', this.blockLabel(reason)));
+        }
         card.append(this.keepDetails(`autostart:${identity}`, details(tr('Autostart', 'Autostart'), autostart)));
         if (this.results.has(row.unit)) card.append(el('p', 'operator-muted', this.results.get(row.unit)));
         card.append(button(tr('Odczytaj ostatnie logi', 'Read recent logs'), () => this.logs(row), !valid || this.logBusy.has(row.unit)));
@@ -107,6 +117,19 @@ export class System {
     ]), this.keepDetails('source:system', rawDetails({ system: this.system, graph: this.graph, version: this.version })));
     const wifi = this.graph?.network?.wifi;
     text('network-status', wifi ? `${wifi.status || 'unknown'} · ${(wifi.addresses || []).join(', ')} · ${wifi.interface || 'wlan0'}` : 'unknown');
+  }
+  blockLabel(reason) {
+    const labels = {
+      service_data_unavailable: ['Brak świeżych danych usług / katalogu', 'Fresh service / catalog data unavailable'],
+      service_not_loaded_or_stale: ['Usługa niezainstalowana lub odczyt nieaktualny', 'Service not loaded or observation stale'],
+      operation_pending: ['Operacja w toku', 'Operation pending'],
+      permission_unknown: ['API nie potwierdziło uprawnień', 'API permissions unconfirmed'],
+      motion_authorization_required: ['Brak zgody na ruch dla właściciela tej usługi', 'Motion authorization unavailable for this service owner'],
+      movement_effect_unknown: ['Nieznany wpływ usługi na ruch', 'Movement effect unknown'],
+      on_demand_autostart_forbidden: ['Usługa na żądanie — autostart niedozwolony', 'On demand service — autostart forbidden'],
+      forbidden_on_api: ['Operacja chroniona dla serwera API', 'Operation protected for the API server'],
+    };
+    return labels[reason] ? tr(...labels[reason]) : reason;
   }
   async logs(row) {
     if (!catalogKnown(this.catalog) || this.logBusy.has(row.unit)) return;
@@ -135,7 +158,7 @@ export class System {
     const name = document.getElementById('rescue-resource')?.value, data = this.resources.get(name);
     const pids = [...document.querySelectorAll('[name="rescue-pid"]:checked')].map(node => Number(node.value));
     const permitted = new Set((data?.holders || []).map(owner => Number(owner.pid)));
-    return this.admin && catalogKnown(this.catalog) && data?.contract_version === 2 && fresh(data, 10)
+    return catalogKnown(this.catalog) && data?.contract_version === 2 && fresh(data, 10)
       && data.state === 'busy' && data.free === false && !data.error && data.offline !== true
       && Array.isArray(data.consumers) && data.consumers.length === 0 && pids.length > 0
       && pids.every(pid => Number.isInteger(pid) && pid > 1 && permitted.has(pid))
@@ -146,7 +169,7 @@ export class System {
     const name = document.getElementById('rescue-resource').value;
     const pids = [...document.querySelectorAll('[name="rescue-pid"]:checked')].map(node => Number(node.value));
     if (!this.rescuePermitted()) {
-      return showError(new Error(tr('Wymagany tryb administracji, świeży odczyt, wybrane PID, nazwa zasobu i zgoda.', 'Administration, fresh inventory, selected PIDs, resource name and consent are required.')));
+      return showError(new Error(tr('Wymagany świeży odczyt, wybrane PID, nazwa zasobu i zgoda.', 'Fresh inventory, selected PIDs, resource name and consent are required.')));
     }
     const button = document.getElementById('rescue-release'); button.disabled = true;
     try {

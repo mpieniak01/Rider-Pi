@@ -172,3 +172,5 @@ Serwer fixture działa wyłącznie na loopback, używa stdlib i danych w pamięc
 Nie importuje API robota, SDK, BUS ani systemd. Wypisuje lokalny URL.
 Automatyczne testy nie są upoważnieniem do ruchu fizycznego. Test sprzętowy
 napędów wymaga osobnej świadomej zgody przygotowanego operatora.
+
+Ekran System udostępnia sterowanie usługami od razu, gdy świeże uprawnienia API pozwalają na działanie. Nie wymaga przełącznika administracji. Nieaktywne działania pokazują powód, w tym ochronę API i zakaz autostartu usług na żądanie.

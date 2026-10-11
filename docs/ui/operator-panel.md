@@ -173,3 +173,5 @@ The fixture server binds loopback only and uses stdlib and in-memory data.
 It does not import the robot API, SDK, BUS or systemd. It prints its local URL.
 Automated tests do not authorize physical movement. Actuator tests require
 separate explicit consent from a prepared operator.
+
+The System page enables service controls immediately when fresh API permissions allow the action. No administration switch is required. Disabled actions show their reason, including protected API operations and on demand autostart restrictions.
