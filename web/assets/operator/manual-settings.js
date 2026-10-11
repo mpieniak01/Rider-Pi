@@ -1,7 +1,7 @@
 import { request, poll } from './transport.js';
 import { nowSeconds } from './model.js';
 import { showError, text, tr, el } from './ui.js';
-import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=panel-precision-12';
+import { fields, directions, settingsValid, settingsPulse, parameter, displayFactor, descriptionsValid, displayValue, formatParameter, parameterRange } from './manual-settings-model.js?v=motion-curves-13';
 
 const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 // Display units only: canonical Pi values stay normalized commands and seconds.
@@ -79,6 +79,12 @@ export class ManualSettings {
   }
   build(){
     const target=document.getElementById('manual-direction-settings');if(!target)return;
+    const modeLabel=el('label','motion-setting-field');
+    modeLabel.append(el('span','',tr('Przebieg zmiany siły','Command curve')));
+    const modeSelect=el('select');modeSelect.id='setting-ramp-mode';
+    modeSelect.addEventListener('change',()=>this.edit(()=>{this.pending.ramp_mode=Number(modeSelect.value);}));
+    modeLabel.append(modeSelect);
+    target.before(modeLabel);
     const calibration=document.body.dataset.page==='calibration';
     for(const name of directions){
       const row=el('div','motion-setting-row');row.dataset.directionSettings=name;
@@ -140,6 +146,9 @@ export class ManualSettings {
     const effective=this.effective();if(!effective)return [];
     const errors=[], add=(id,pl,en)=>errors.push({id,message:tr(pl,en)});
     const v=effective.values;
+    if(v.ramp_mode!==undefined && !this.state.parameter_schema.ramp_modes?.some(item=>item.value===v.ramp_mode)){
+      add('setting-ramp-mode','Wybierz dostępny przebieg.','Choose an available curve.');
+    }
     for(const name of directions){
       const d=effective.directions[name], prefix='setting-'+name+'-', caption=tr(...labels[name])+': ';
       for(const key of ['speed','duration','minimum','maximum','step']){
@@ -273,6 +282,18 @@ export class ManualSettings {
     const known=settingsValid(this.state,nowSeconds()), editable=this.editable();
     const effective=known?this.effective():null, errors=known?this.validation():[];
     this.paintProfiles(known,editable);
+    const modeSelect=document.getElementById('setting-ramp-mode');
+    if(modeSelect){
+      const options=known?this.state.parameter_schema.ramp_modes||[]:[];
+      modeSelect.replaceChildren(...options.map(item=>{
+        const option=el('option','',tr(item.label_pl,item.label_en));option.value=item.value;return option;
+      }));
+      modeSelect.disabled=!editable || !options.length;
+      modeSelect.value=effective?.values.ramp_mode??0;
+      modeSelect.title=Number(modeSelect.value)===2
+        ?tr('Najszybsza zmiana na początku, następnie coraz wolniej.','Fastest change at the beginning, then progressively slower.')
+        :Number(modeSelect.value)===1?tr('Łagodny początek i koniec zmiany.','Smooth beginning and end of the change.'):tr('Stałe tempo zmiany.','Constant rate of change.');
+    }
     text('manual-settings-units',known
       ?tr('Siła w ','Magnitude in ')+this.descriptor('speed').display_unit
         +tr(', czas w ',', duration in ')+this.descriptor('duration').display_unit

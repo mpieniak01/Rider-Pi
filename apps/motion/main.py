@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from apps.motion.dynamics import RampLimits, approach, finite
+from apps.motion.dynamics import CurveRamp, RampLimits, approach, curve_factor, finite
 from apps.motion.manual_settings import MAX_PANEL_DURATION_S
 from apps.safety.estop import estop_triggered as estop_triggered, motion_enabled as motion_enabled
 from apps.safety.gate import MAX_DURATION_S, MotionGate
@@ -126,6 +126,8 @@ def _make_adapter(gate: MotionGate | None = None):
 
 class MotionController:
     def __init__(self, robot, gate: MotionGate | None = None, *, limits=None):
+        self.curves = [CurveRamp(), CurveRamp()]
+        self.curve_braking = [False, False]
         self.robot = robot
         self.gate = gate or MotionGate()
         self.limits = limits or DYNAMICS
@@ -137,6 +139,9 @@ class MotionController:
         self.reverse_until = None
 
     def _stop_immediate(self):
+        for curve in self.curves:
+            curve.reset()
+        self.curve_braking = [False, False]
         self.t_lx = self.t_az = self.o_lx = self.o_az = 0.0
         self.reversing = False
         self.reverse_until = None
@@ -185,6 +190,8 @@ class MotionController:
         if self.t_lx == 0 and self.t_az == 0 and mode != "release":
             # A fresh zero goal is a pause within the current lease. STOP still
             # revokes the lease; deceleration never delays either zero output.
+            for curve in self.curves:
+                curve.reset()
             self.o_lx = self.o_az = 0.0
             self.reversing = False
             self.reverse_until = None
@@ -193,6 +200,8 @@ class MotionController:
                 self.gate.disarm("actuator_failed")
                 self.stop()
                 return False
+        if mode == "pulse":
+            self.curve_braking = [False, False]
         self.last_cmd_ts = self.gate.clock()
         self.deadline = self.last_cmd_ts + (duration if panel_pulse else min(duration, self.limits.watchdog_s))
         return True
@@ -232,15 +241,29 @@ class MotionController:
                     self.reversing = False
                     targets = [self.t_lx, self.t_az]
         outputs = []
-        for current, target, acceleration, deceleration in (
-            (self.o_lx, targets[0], self.limits.linear_rate, self.limits.linear_deceleration),
-            (self.o_az, targets[1], self.limits.turn_rate, self.limits.turn_deceleration),
+        for axis, (current, target, acceleration, deceleration) in enumerate(
+            (
+                (self.o_lx, targets[0], self.limits.linear_rate, self.limits.linear_deceleration),
+                (self.o_az, targets[1], self.limits.turn_rate, self.limits.turn_deceleration),
+            )
         ):
             # Reserve deceleration inside the original deadline, never extend TTL.
             if getattr(self, "intent_mode", "pulse") == "pulse":
-                target = max(-deceleration * remaining, min(deceleration * remaining, target))
+                if self.limits.ramp_mode:
+                    if remaining <= abs(current) * curve_factor(self.limits.ramp_mode) / deceleration + dt:
+                        self.curve_braking[axis] = True
+                    if self.curve_braking[axis]:
+                        target = 0.0
+                else:
+                    target = max(-deceleration * remaining, min(deceleration * remaining, target))
+            else:
+                self.curve_braking[axis] = False
             slowing = abs(target) < abs(current) or current * target < 0
-            outputs.append(self._approach(current, target, deceleration if slowing else acceleration, dt))
+            outputs.append(
+                self.curves[axis].step(
+                    current, target, deceleration if slowing else acceleration, dt, self.limits.ramp_mode
+                )
+            )
         self.o_lx, self.o_az = outputs
         # Every nonzero normalized output may quantize to a physical SDK step.
         self.stopped = self.o_lx == 0 and self.o_az == 0

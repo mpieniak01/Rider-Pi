@@ -49,6 +49,7 @@ export function settingsValid(row, now) {
     && row.schema_version === 2 && row.authority === 'device'
     && Number.isInteger(row.revision) && row.revision >= 0 && row.actuation === false
     && Number.isFinite(row.observed_at) && now >= row.observed_at && now - row.observed_at <= 3
+    && (row.values?.ramp_mode===undefined || row.parameter_schema?.ramp_modes?.some(item=>item.value===row.values.ramp_mode))
     && fields.every(key => Number.isFinite(row.values?.[key]) && row.values[key] >= 0
       && Number.isFinite(row.limits?.[key]) && row.values[key] <= row.limits[key])
     && directions.every(name => {

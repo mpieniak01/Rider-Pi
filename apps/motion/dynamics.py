@@ -31,6 +31,7 @@ class RampLimits:
     linear_deceleration: float = 3.0
     turn_deceleration: float = 4.0
     reversal_pause: float = 0.0
+    ramp_mode: int = 0
 
     @classmethod
     def from_env(cls):
@@ -56,6 +57,8 @@ class RampLimits:
             and self.turn_deceleration > 0
             and finite(self.reversal_pause)
             and 0 <= self.reversal_pause <= 0.25
+            and type(self.ramp_mode) is int
+            and self.ramp_mode in (0, 1, 2)
         )
 
     def status(self):
@@ -73,6 +76,7 @@ class RampLimits:
             "physical_calibration": "unverified",
             "yaw_convention": "negative_left_positive_right",
             "stop_bypasses_ramp": True,
+            "ramp_mode": self.ramp_mode,
         }
 
 
@@ -83,3 +87,54 @@ def approach(current, target, rate, dt):
         target = 0.0
     delta = max(-rate * dt, min(rate * dt, target - current))
     return current + delta
+
+
+def curve_factor(mode):
+    """Maximum slope of the normalized curve, so rate remains a ceiling."""
+    return (1.0, 1.875, 4.0 / math.log(5.0))[mode]
+
+
+def curve_fraction(mode, progress):
+    x = max(0.0, min(1.0, progress))
+    if mode == 1:
+        return x * x * x * (10 + x * (-15 + 6 * x))
+    if mode == 2:
+        return math.log1p(4 * x) / math.log(5.0)
+    return x
+
+
+class CurveRamp:
+    """Bounded command curves; unchanged hold renewals preserve progress.
+
+    Goal changes replan from the current output. This is not a full physical
+    jerk controller, and a changed goal can change the command slope.
+    """
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.plan = None
+        self.elapsed = 0.0
+        self.origin = 0.0
+        self.duration = 0.0
+
+    def step(self, current, target, rate, dt, mode):
+        if mode == 0:
+            self.reset()
+            return approach(current, target, rate, dt)
+        if current * target < 0:
+            target = 0.0
+        plan = (target, rate, mode)
+        if self.plan != plan:
+            self.plan = plan
+            self.origin = current
+            self.elapsed = 0.0
+            self.duration = abs(target - current) * curve_factor(mode) / rate
+        if not self.duration:
+            return target
+        self.elapsed = min(self.duration, self.elapsed + dt)
+        output = self.origin + (target - self.origin) * curve_fraction(mode, self.elapsed / self.duration)
+        # Explicit rate ceiling also handles changes in clock / floating precision.
+        result = approach(current, output, rate, dt)
+        return result

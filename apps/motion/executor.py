@@ -192,6 +192,7 @@ class MotionExecutor:
                 linear_deceleration=values["linear_deceleration"],
                 turn_deceleration=values["turn_deceleration"],
                 reversal_pause=values["reversal_pause"],
+                ramp_mode=values["ramp_mode"],
                 watchdog_s=self.calibration.ceilings.watchdog_s,
                 max_dt_s=self.calibration.ceilings.max_dt_s,
             )

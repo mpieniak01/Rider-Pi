@@ -256,3 +256,15 @@ test('computed repeating fractions use device precision without changing editabl
   assert.equal(model.displayValue(current,'duration',.2505),250.5);
   assert.equal(current.values.linear_rate,3);
 });
+
+test('curve selection is validated and saved in the common robot settings',async()=>{
+  const current=row();
+  current.values.ramp_mode=0;current.limits.ramp_mode=2;
+  current.parameter_schema.ramp_modes=[{value:0},{value:1},{value:2}];
+  const shared={current}, a=await screen(shared), b=await screen(shared);
+  a.panel.edit(()=>{a.panel.pending.ramp_mode=1;});
+  await a.panel.save();await b.panel.refresh();
+  assert.equal(b.panel.state.values.ramp_mode,1);
+  const bad=structuredClone(shared.current);bad.values.ramp_mode=3;
+  assert.equal(model.settingsValid(bad,100),false);
+});

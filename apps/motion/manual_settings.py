@@ -15,7 +15,7 @@ from pathlib import Path
 from apps.motion.dynamics import RampLimits, finite
 
 FIELDS = {"linear_speed", "turn_speed", "pulse_duration", "speed_limit", "linear_rate", "turn_rate"}
-SMOOTHING = {"linear_deceleration", "turn_deceleration", "reversal_pause"}
+SMOOTHING = {"linear_deceleration", "turn_deceleration", "reversal_pause", "ramp_mode"}
 MAX_PANEL_DURATION_S = 1.0
 
 DIRECTIONS = ("forward", "backward", "left", "right")
@@ -71,6 +71,7 @@ def limits():
         "linear_deceleration": 100.0,
         "turn_deceleration": 100.0,
         "reversal_pause": 0.25,
+        "ramp_mode": 2,
     }
 
 
@@ -98,6 +99,11 @@ def parameter_schema():
     cap = limits()
     return {
         "version": 1,
+        "ramp_modes": [
+            {"value": 0, "id": "linear", "label_pl": "Liniowy", "label_en": "Linear"},
+            {"value": 1, "id": "smooth_s", "label_pl": "Łagodny S", "label_en": "Smooth S"},
+            {"value": 2, "id": "logarithmic", "label_pl": "Logarytmiczny", "label_en": "Logarithmic"},
+        ],
         "direction_fields": {
             "speed": magnitude("command_magnitude_not_physical_speed"),
             "minimum": magnitude("operator_defined_minimum_nonzero_command"),
@@ -157,6 +163,7 @@ def defaults():
         "linear_deceleration": baseline.linear_rate,
         "turn_deceleration": baseline.turn_rate,
         "reversal_pause": 0.0,
+        "ramp_mode": 0,
     }
 
 
@@ -165,6 +172,10 @@ def validate(values):
         raise ValueError("manual_settings_fields")
     cap = limits()
     for key, value in values.items():
+        if key == "ramp_mode":
+            if type(value) is not int or value not in (0, 1, 2):
+                raise ValueError("manual_settings_ramp_mode")
+            continue
         minimum = (
             0 if key in {"linear_speed", "turn_speed", "reversal_pause"} else 0.01 if key == "pulse_duration" else 0.001
         )
@@ -251,6 +262,9 @@ def _canonical(row):
         values.update(
             linear_deceleration=values["linear_rate"], turn_deceleration=values["turn_rate"], reversal_pause=0.0
         )
+    if not isinstance(values, dict):
+        raise ValueError("manual_settings_fields")
+    values = dict(values, ramp_mode=values.get("ramp_mode", 0))
     values = validate(values)
     directions = validate_directions(row.get("directions", direction_defaults(values)), values)
     # Explicit aliases for older readers, derived from the authoritative rows.
