@@ -5,7 +5,9 @@ from apps.motion.sensor_quality import AXES
 
 def poll(executor):
     if not executor._hardware_ready():
-        executor.publish_status(force=True)
+        # This owner also receives the legacy "motion" prefix. A forced
+        # state publish here feeds its own subscription and spins on failure.
+        executor.publish_status()
         return
     now = executor.gate.clock()
     if now - executor.last_sensors < 0.1:
