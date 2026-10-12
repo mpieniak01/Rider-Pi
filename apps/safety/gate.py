@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Callable
 
 from apps.safety import estop
+from common.agent_control import MANUAL_AGENT_GRACE_S, verify_command
 
 OWNERS = frozenset({"manual", "follow_me", "navigation"})
 ACTUATORS = frozenset({"move", "turn", "balance", "height", "action", "stabilization"})
@@ -50,6 +51,10 @@ class MotionGate:
         self.reason = "startup_disarmed"
         self.plan = None
         self.persistence_error = None
+        self.agent_epoch = uuid.uuid4().hex
+        self.agent_last_seq = -1
+        self.agent_intents = []
+        self.manual_grace_until = 0.0
         self.poll()
 
     def _invalidate(self, state: str, reason: str) -> None:
@@ -62,6 +67,13 @@ class MotionGate:
         self.arming_mode = "timed"
         self.generation = uuid.uuid4().hex
         self.last_seq = -1
+        self.invalidate_agent()
+
+    def invalidate_agent(self, *, manual=False) -> None:
+        self.agent_epoch = uuid.uuid4().hex
+        self.agent_last_seq = -1
+        self.agent_intents = []
+        self.manual_grace_until = self.clock() + MANUAL_AGENT_GRACE_S if manual else 0.0
 
     def disarm(self, reason: str = "operator_stop") -> None:
         self._invalidate("ESTOP" if self.state == "ESTOP" else "DISARMED", reason)
@@ -95,12 +107,13 @@ class MotionGate:
     def _validate_envelope(self, command: dict) -> None:
         if not isinstance(command.get("request_id"), str) or not 0 < len(command["request_id"]) <= 128:
             raise ValueError("request_id_required")
-        if not isinstance(command.get("source"), str) or command["source"] not in OWNERS:
+        if not isinstance(command.get("source"), str) or command["source"] not in OWNERS | {'agent'}:
             raise ValueError("unknown_source")
         if command.get("generation") != self.generation:
             raise ValueError("stale_generation")
         seq = command.get("seq")
-        if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq < 2**63 or seq <= self.last_seq:
+        last_seq = self.agent_last_seq if command.get('source') == 'agent' else self.last_seq
+        if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq < 2**63 or seq <= last_seq:
             raise ValueError("stale_sequence")
         sent = finite_number(command.get("ts"), "timestamp_required")
         if type(command.get("ttl_ms")) is not int:
@@ -125,10 +138,29 @@ class MotionGate:
         try:
             self._validate_envelope(command)
             context = command.get("execution_context", "panel")
-            if not isinstance(context, str) or context not in {"panel", "test"}:
+            if not isinstance(context, str) or context not in {"panel", "test", "agent"}:
                 raise ValueError("unknown_execution_context")
             if context == "test" and command.get("test_operator_consent") is not True:
                 raise ValueError("test_operator_consent_required")
+            if context == 'agent' or command.get('source') == 'agent':
+                verify_command(command, resolved=True)
+                if (
+                    self.state != 'ARMED'
+                    or self.arming_mode != 'operator'
+                    or self.execution_context != 'panel'
+                    or self.owner != 'manual'
+                ):
+                    raise ValueError('agent_operator_arm_required')
+                if command['agent_epoch'] != self.agent_epoch:
+                    raise ValueError('agent_epoch_stale')
+                if self.clock() < self.manual_grace_until:
+                    raise ValueError('agent_manual_priority')
+                if command['intent_id'] in self.agent_intents:
+                    raise ValueError('agent_intent_already_used')
+                self.agent_last_seq = command['seq']
+                self.agent_intents.append(command['intent_id'])
+                del self.agent_intents[:-32]
+                return True, 'authorized'
             if action == "clear_estop":
                 if command.get("operator_consent") is not True:
                     raise ValueError("operator_consent_required")
@@ -176,6 +208,7 @@ class MotionGate:
                 self.arming_mode = mode
                 self.lease_deadline = self.clock() + lease
                 self.last_seq = command["seq"]
+                self.invalidate_agent(manual=owner == 'manual')
                 return True, "armed"
             if action not in ACTUATORS:
                 raise ValueError("unknown_action")
@@ -186,6 +219,8 @@ class MotionGate:
             if command.get("source") != self.owner:
                 raise ValueError("owner_mismatch")
             self.last_seq = command["seq"]
+            if command.get('source') == 'manual':
+                self.invalidate_agent(manual=True)
             return True, "authorized"
         except ValueError as exc:
             return False, str(exc)
@@ -208,4 +243,8 @@ class MotionGate:
             "reason": self.reason,
             "plan": self.plan,
             "persistence_error": self.persistence_error,
+            "agent_epoch": self.agent_epoch,
+            "agent_last_seq": self.agent_last_seq,
+            "manual_agent_grace_s": MANUAL_AGENT_GRACE_S,
+            "manual_agent_grace_remaining_s": max(0.0, self.manual_grace_until - self.clock()),
         }

@@ -24,6 +24,7 @@ def client(monkeypatch):
     socket = Socket()
     poller = SimpleNamespace(poll=lambda timeout: [(socket, 1)])
     monkeypatch.setattr(frame_stream, "cv2", SimpleNamespace(imdecode=lambda *a: frame, IMREAD_COLOR=1))
+    monkeypatch.setattr(frame_stream, "np", np)
     monkeypatch.setattr(frame_stream, "zmq", SimpleNamespace(NOBLOCK=0, Again=RuntimeError))
     instance = object.__new__(frame_stream.FrameStreamClient)
     instance._return_last, instance._copy_frame = True, True

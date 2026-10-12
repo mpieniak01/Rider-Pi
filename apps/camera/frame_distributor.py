@@ -18,13 +18,7 @@ from typing import Any
 
 import zmq
 
-try:
-    import cv2
-    import numpy as np
-except Exception:  # pragma: no cover - OpenCV dostępne na urządzeniu
-    cv2 = None  # type: ignore
-    np = None  # type: ignore
-
+from apps.camera.frame_metadata import file_identity, read_frame
 from common import bus
 
 FRAME_STREAM_TOPIC = os.getenv("FRAME_STREAM_TOPIC", "camera.frame.raw").encode("utf-8")
@@ -39,6 +33,7 @@ class FrameDistributor:
         self.ctx = zmq.Context.instance()
         self.pub = self.ctx.socket(zmq.PUB)
         self.pub.setsockopt(zmq.LINGER, 0)
+        self.pub.setsockopt(zmq.SNDHWM, 2)
         self.pub.bind(FRAME_STREAM_BIND)
 
         self.sub = None
@@ -50,6 +45,7 @@ class FrameDistributor:
         self.frame_path = DEFAULT_FRAME_PATH
         self.frame_mode = "raw"
         self.last_mtime = 0.0
+        self.last_identity = None
         self.frame_id = 0
         self.running = True
 
@@ -62,7 +58,7 @@ class FrameDistributor:
     def _drain_heartbeat(self) -> None:
         if self.sub is None:
             return
-        while True:
+        for _ in range(32):
             topic, payload = self.sub.recv(timeout_ms=0)
             if topic is None:
                 break
@@ -77,7 +73,10 @@ class FrameDistributor:
 
     def _load_frame_bytes(self, path: str) -> tuple[bytes, dict[str, Any]] | None:
         try:
-            data = Path(path).read_bytes()
+            loaded = read_frame(Path(path))
+            if loaded is None:
+                return None
+            data, source_metadata = loaded
         except FileNotFoundError:
             return None
         except Exception as exc:
@@ -90,17 +89,8 @@ class FrameDistributor:
             "mode": self.frame_mode,
             "ts": time.time(),
             "id": self.frame_id,
+            **source_metadata,
         }
-        if cv2 is not None and np is not None:
-            try:
-                arr = np.frombuffer(data, dtype=np.uint8)
-                img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                if img is not None:
-                    h, w = img.shape[:2]
-                    meta["shape"] = {"width": int(w), "height": int(h)}
-            except Exception as exc:
-                # Ignore image decode errors, but log for diagnostics
-                print(f"[frame-distributor] image decode error for {path}: {exc}", file=sys.stderr)
         return data, meta
 
     def close(self) -> None:
@@ -116,16 +106,16 @@ class FrameDistributor:
         while self.running:
             self._drain_heartbeat()
             path = self.frame_path
-            if not path or not os.path.exists(path):
+            if not path:
                 time.sleep(FRAME_POLL_INTERVAL)
                 continue
             try:
-                mtime = os.path.getmtime(path)
+                identity = file_identity(Path(path).stat())
             except Exception:
                 time.sleep(FRAME_POLL_INTERVAL)
                 continue
 
-            if mtime <= self.last_mtime:
+            if identity == self.last_identity:
                 time.sleep(FRAME_POLL_INTERVAL)
                 continue
 
@@ -135,7 +125,6 @@ class FrameDistributor:
                 time.sleep(FRAME_POLL_INTERVAL)
                 continue
             data, meta = payload
-            meta["mtime"] = mtime
             try:
                 self.pub.send_multipart(
                     [
@@ -144,7 +133,8 @@ class FrameDistributor:
                         data,
                     ]
                 )
-                self.last_mtime = mtime
+                self.last_mtime = meta['mtime']
+                self.last_identity = meta['file_identity']
             except Exception as exc:
                 print(f"[frame-distributor] publish error: {exc}", file=sys.stderr)
             time.sleep(FRAME_POLL_INTERVAL)

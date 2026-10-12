@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 
 from common.actuator_parameters import HEIGHT_MAX, HEIGHT_MIN
+from common.agent_control import is_agent, verify_command
 from common.bus import TOPIC_MOTION_COMMAND, BusPub
 
 TOPIC_COMMAND = TOPIC_MOTION_COMMAND
@@ -60,6 +61,8 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
         request_id=str(payload.get("request_id") or uuid.uuid4().hex),
         source=str(payload.get("source") or "manual"),
     )
+    if is_agent(command) and action in ACTUATORS | {'arm', 'clear_estop'}:
+        verify_command(command)
     if action in {"arm", "clear_estop"}:
         if payload.get("operator_consent") is not True:
             raise ValueError("explicit operator consent required")
@@ -87,7 +90,7 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("generation required")
         if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq < 2**63:
             raise ValueError("nonnegative integer seq required")
-        if payload.get("source") not in OWNERS:
+        if payload.get("source") not in OWNERS | {'agent'}:
             raise ValueError("invalid command source")
         request_id = payload.get("request_id")
         if not isinstance(request_id, str) or not 1 <= len(request_id) <= 128:
@@ -141,8 +144,22 @@ def _permission(command: dict[str, Any], status: dict[str, Any]) -> str | None:
         return "motion_not_armed"
     if status.get("ready") is not True or status.get("can_move") is not True:
         return "motion_not_ready"
-    if status.get("owner") != command["source"] or status.get("generation") != command["generation"]:
+    agent = is_agent(command)
+    if agent and not (
+        status.get('owner') == 'manual'
+        and status.get('execution_context') == 'panel'
+        and status.get('arming_mode') == 'operator'
+    ):
+        return 'agent_operator_arm_required'
+    if status.get("generation") != command["generation"] or (not agent and status.get("owner") != command["source"]):
         return "stale_generation_or_wrong_owner"
+    if agent:
+        if command.get('agent_epoch') != status.get('agent_epoch'):
+            return 'agent_epoch_stale'
+        if command.get('seq', -1) <= status.get('agent_last_seq', -1):
+            return 'stale_sequence'
+        if status.get('agent_manual_active') or status.get('manual_agent_grace_remaining_s', 0) > 0:
+            return 'agent_manual_priority'
     settings = status.get("manual_settings") or {}
     if type(command.get("settings_revision")) is not int or command["settings_revision"] != settings.get("revision"):
         return "manual_settings_stale"

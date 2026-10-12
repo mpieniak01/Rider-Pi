@@ -18,6 +18,7 @@ from typing import Any
 from .. import voice_logging as voice_logging
 from ..errors import PlaybackError
 from .alsa import resolved_alsa
+from .ownership import own_playback
 
 
 @dataclass
@@ -60,6 +61,7 @@ class PlaybackStream:
     _idle_timeout_s: float = 2.0
     _closer_thread: threading.Thread | None = None
     _closer_stop: threading.Event = field(default_factory=threading.Event)
+    _ownership: Any = None
 
     def __post_init__(self) -> None:
         if self.accumulate:
@@ -117,6 +119,7 @@ class PlaybackStream:
         except Exception:
             with contextlib.suppress(Exception):
                 self.process.kill()
+                self.process.wait(timeout=1.0)
             rc = -1
 
         stdout_data = None
@@ -124,13 +127,20 @@ class PlaybackStream:
 
         if self.process.stdout:
             with contextlib.suppress(Exception):
-                stdout_data = self.process.stdout.read()
+                stdout_data = self.process.stdout.read(65536)
+            with contextlib.suppress(Exception):
+                self.process.stdout.close()
         if self.process.stderr:
             with contextlib.suppress(Exception):
-                stderr_data = self.process.stderr.read()
+                stderr_data = self.process.stderr.read(65536)
+            with contextlib.suppress(Exception):
+                self.process.stderr.close()
 
         success = rc == 0 and not self._failed
         output = self._buffer[:] if self._buffer else stdout_data
+        ownership, self._ownership = self._ownership, None
+        if ownership is not None:
+            ownership.__exit__(None, None, None)
 
         return (
             success,
@@ -384,11 +394,25 @@ def start_stream(
     if logger is None:
         logger = voice_logging.get_logger(__name__)
 
-    process, resolved_backend = _start_playback_process(fmt, config, logger, sample_rate=sample_rate, channels=channels)
-    if not process:
+    ownership = own_playback()
+    try:
+        ownership.__enter__()
+    except (OSError, TimeoutError):
+        logger.event('playback.resource.busy')
         return None
-
-    return PlaybackStream(process=process, fmt=fmt, backend=resolved_backend, accumulate=accumulate)
+    try:
+        process, resolved_backend = _start_playback_process(
+            fmt, config, logger, sample_rate=sample_rate, channels=channels
+        )
+        if not process:
+            ownership.__exit__(None, None, None)
+            return None
+        return PlaybackStream(
+            process=process, fmt=fmt, backend=resolved_backend, accumulate=accumulate, _ownership=ownership
+        )
+    except Exception:
+        ownership.__exit__(None, None, None)
+        raise
 
 
 def play_bytes(
@@ -399,10 +423,13 @@ def play_bytes(
     *,
     sample_rate: int | None = None,
     channels: int | None = None,
+    stop_event: threading.Event | None = None,
 ) -> bool:
     """Play audio bytes immediately (one-shot playback)."""
     if not audio_data:
         return True
+    if stop_event is not None and stop_event.is_set():
+        return False
 
     if logger is None:
         logger = voice_logging.get_logger(__name__)
@@ -411,6 +438,30 @@ def play_bytes(
     if not stream:
         logger.event("playback.bytes.no_stream", fmt=fmt)
         return False
+    # A one-shot WAV is already bounded by close/goal deadlines. The streaming
+    # idle timer must not truncate speech merely because stdin has been filled.
+    idle_stop = getattr(stream, '_closer_stop', None)
+    if idle_stop is not None:
+        idle_stop.set()
+
+    completed = threading.Event()
+    watcher = None
+    if stop_event is not None:
+
+        def cancel_playback():
+            while not completed.wait(0.05):
+                if stop_event.is_set():
+                    with contextlib.suppress(Exception):
+                        stream.process.terminate()
+                    try:
+                        stream.process.wait(timeout=0.2)
+                    except Exception:
+                        with contextlib.suppress(Exception):
+                            stream.process.kill()
+                    break
+
+        watcher = threading.Thread(target=cancel_playback, name="playback-goal-stop", daemon=True)
+        watcher.start()
 
     try:
         stream.write(audio_data)
@@ -419,11 +470,17 @@ def play_bytes(
         if not success and error:
             logger.event("playback.bytes.error", error=error[:200])
 
-        return success
+        return success and not (stop_event is not None and stop_event.is_set())
 
     except Exception as e:
         logger.event("playback.bytes.exception", error=str(e))
         return False
+    finally:
+        completed.set()
+        if watcher is not None:
+            watcher.join(timeout=0.3)
+        with contextlib.suppress(Exception):
+            stream.close(timeout=0.25)
 
 
 def play_ding(config: PlaybackConfig, logger: voice_logging.VoiceLogger | None = None) -> bool:

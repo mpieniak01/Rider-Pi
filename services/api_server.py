@@ -30,9 +30,11 @@ except Exception:
     DEFAULT_PORT = int(os.getenv("STATUS_API_PORT", "8080"))
 
 # --- importy modułów rdzeniowych (routing poniżej) ---
+import services.api_core.agent_control_api as agent_control_api
 import services.api_core.ai_mode_api as ai_mode_api
 import services.api_core.camera as camera
 import services.api_core.chat_api as chat_api  # noqa: F401
+import services.api_core.compute_api as compute_api
 import services.api_core.control_api as control_api
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
@@ -45,6 +47,7 @@ import services.api_core.google_proxy as google_proxy
 import services.api_core.http_contract as http_contract
 import services.api_core.models_api as models_api
 import services.api_core.navigator_api as navigator_api
+import services.api_core.playback_api as playback_api
 import services.api_core.provider_api as provider_api
 import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
@@ -63,6 +66,8 @@ from services.api_core.service_logs import service_logs
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
 
 http_contract.install(app)
+agent_control_api.register(app)
+playback_api.register(app)
 face_studio.register(app)
 
 # ── Metryki API helper ───────────────────────────────────────────────────────
@@ -130,6 +135,9 @@ def face_state():
 
 
 app.add_url_rule("/api/resource/<name>", view_func=api_resource, methods=["GET", "POST", "OPTIONS"])
+app.add_url_rule("/api/compute/config", view_func=compute_api.config_handler, methods=["GET", "POST", "OPTIONS"])
+app.add_url_rule("/api/compute/status", view_func=compute_api.status_handler, methods=["GET"])
+app.add_url_rule("/api/compute/tasks/<task>", view_func=compute_api.task_handler, methods=["POST"])
 
 
 # ── FACE: legacy ─────────────────────────────────────────────────────────────
@@ -590,6 +598,7 @@ def main():
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
     finally:
         face_anim.stop()
+        playback_api.close(app)
 
 
 if __name__ == "__main__":

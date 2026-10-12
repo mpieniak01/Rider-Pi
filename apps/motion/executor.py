@@ -19,6 +19,7 @@ from apps.motion.main import MotionController, _make_adapter
 from apps.motion.sensor_quality import SensorSamples
 from apps.safety.gate import ACTUATORS, MotionGate
 from apps.safety.state import write_status
+from common.agent_control import is_agent, verify_command
 from common.motion_commands import canonical_command  # public re-export
 
 LOG = logging.getLogger("motion.executor")
@@ -59,6 +60,7 @@ class MotionExecutor:
         self.controls_pending_revision = None
         self.controls_checked_at = 0.0
         self.shutdown = False
+        self.intent_source = None
         self.actuators = {
             "balance": {"enabled": None, "ts": None, "physical_completion": "unverified"},
             "height": {"value": None, "ts": None, "physical_completion": "unverified"},
@@ -171,6 +173,8 @@ class MotionExecutor:
             simulated=bool(getattr(self.adapter, "simulated", False)),
             moving=not self.controller.stopped,
             intent_mode=getattr(self.controller, "intent_mode", "pulse"),
+            active_source=self.intent_source if self.controller.deadline > self.gate.clock() else None,
+            agent_manual_active=bool(self.intent_source == 'manual' and self.controller.deadline > self.gate.clock()),
             target={"lx": self.controller.t_lx, "az": self.controller.t_az},
             output={"lx": self.controller.o_lx, "az": self.controller.o_az},
             uart_owner="motion-executor",
@@ -246,6 +250,10 @@ class MotionExecutor:
             "status": status,
             "reason": reason,
             "source": command.get("source"),
+            "execution_context": command.get("execution_context"),
+            "channel": command.get("channel"),
+            "intent_id": command.get("intent_id"),
+            "agent_epoch": command.get("agent_epoch"),
             "seq": command.get("seq"),
             "generation": self.gate.generation,
             "command_generation": command.get("generation"),
@@ -290,6 +298,14 @@ class MotionExecutor:
             # path rather than escaping the executor loop.
             command = {**payload, "action": "move", "duration": None}
         action = command.get("action")
+        agent = is_agent(command)
+        if agent and action not in {'stop', 'disarm', 'estop'}:
+            try:
+                verify_command(command)
+                if self.intent_source == 'manual' and self.controller.deadline > self.gate.clock():
+                    raise ValueError('agent_manual_priority')
+            except ValueError as exc:
+                return self._ack(command, 'rejected', str(exc))
         mode = command.get("mode", "pulse")
         if action in {"move", "turn"}:
             if not isinstance(mode, str) or mode not in {"pulse", "hold", "release"}:
@@ -346,7 +362,7 @@ class MotionExecutor:
             if action in {"move", "turn"}:
                 manual_settings.validate_command(self.controls, values, mode=mode)
         except ValueError as exc:
-            if is_actuator and self.controller.deadline:
+            if is_actuator and self.controller.deadline and not agent:
                 self.gate.disarm("invalid_motion_intent")
                 self.controller.stop()
                 previous, self.pending = self.pending, None
@@ -361,7 +377,7 @@ class MotionExecutor:
                 "stale_generation",
                 "expired_command",
             }
-            if is_actuator and self.controller.deadline and not obsolete:
+            if is_actuator and self.controller.deadline and not obsolete and not agent:
                 self.gate.disarm("invalid_motion_intent")
                 self.controller.stop()
                 previous, self.pending = self.pending, None
@@ -369,6 +385,7 @@ class MotionExecutor:
                     self._ack(previous, "rejected", "invalid_motion_intent", cancelled_by=command.get("request_id"))
             return self._ack(command, "rejected", reason)
         if action in {"stop", "disarm", "estop", "clear_estop"}:
+            self.intent_source = None
             pending, self.pending = self.pending, None
             stopped = self.controller.stop()
             if pending is not None:
@@ -408,6 +425,12 @@ class MotionExecutor:
                 action not in {"height", "balance", "stabilization"} and not capability.get("stop_verified")
             ):
                 return self._ack(command, "rejected", "manual_characterization_required")
+            if command.get('source') == 'manual' and self.intent_source == 'agent' and action not in {'move', 'turn'}:
+                previous, self.pending = self.pending, None
+                self.controller.stop()
+                self.intent_source = None
+                if previous is not None:
+                    self._ack(previous, 'rejected', 'manual_takeover', cancelled_by=command.get('request_id'))
         if action in {"move", "turn"}:
             if not self.controller.drive(
                 values["vx"],
@@ -418,6 +441,7 @@ class MotionExecutor:
             ):
                 return self._ack(command, "rejected", "motion_disarmed")
             previous, self.pending = self.pending, None
+            self.intent_source = command.get('source')
             if previous is not None:
                 self._ack(previous, "rejected", "goal_superseded", superseded_by=command.get("request_id"))
             if values["vx"] == 0 and values["yaw"] == 0 and mode != "release":

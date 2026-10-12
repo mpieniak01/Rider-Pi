@@ -140,6 +140,28 @@ def chat_send():
     if not msg:
         return jsonify({"ok": False, "error": "empty_msg"}), 400
 
+    from apps.compute.client import ComputeError
+    from services import compute_config
+    from services.compute_operations import execute
+
+    try:
+        selected = compute_config.selected_executor()
+        if selected is not None:
+            result, _ = execute(
+                "text.respond",
+                msg.encode("utf-8"),
+                "text/plain; charset=utf-8",
+                {"language": payload.get("language", "pl")},
+            )
+            reply = result.get("data", {}).get("text", "")
+            _store_add({"user": user, "msg": msg})
+            _store_add({"user": "bot", "msg": reply, "source": selected["id"]})
+            return jsonify({"ok": True, "reply": reply, "source": selected["id"], "observation": result}), 200
+    except ComputeError as exc:
+        return jsonify({"ok": False, "error": exc.code}), exc.status if 400 <= exc.status <= 599 else 503
+    except (ValueError, OSError):
+        return jsonify({"ok": False, "error": "compute_configuration_unavailable"}), 503
+
     # zapisujemy wejście
     _store_add({"user": user, "msg": msg})
 

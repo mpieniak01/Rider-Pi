@@ -71,6 +71,66 @@ def snapshot(*, worker=None, unit=None, now=None) -> dict:
     now = time.time() if now is None else now
     state = registry.get_state_snapshot()
     health = registry.get_health_snapshot()
+    from services import compute_config
+
+    try:
+        compute = compute_config.observed_status()
+    except (ValueError, OSError):
+        return {
+            **state,
+            "domains": {
+                domain: {
+                    "domain": domain,
+                    "requested": None,
+                    "effective": "unavailable",
+                    "configured": False,
+                    "ready": False,
+                    "initialized": False,
+                    "source": "compute-configuration",
+                    "error": "compute_configuration_unavailable",
+                }
+                for domain in registry.DOMAINS
+            },
+            "partial": True,
+            "domain_aliases": {"asr": "voice", "tts": "voice"},
+        }
+    if compute.get("selected_executor") is not None:
+        executor = compute["selected_executor"]
+        domains = {}
+        for domain in registry.DOMAINS:
+            sample = compute["domains"].get("vision" if domain == "vision" else "voice", {})
+            fresh = sample.get("stale") is False
+            tasks = sample.get("capabilities", {})
+            tasks = tasks if isinstance(tasks, dict) else {}
+            required = (
+                ("vision.describe",) if domain == "vision" else ("audio.transcribe", "text.respond", "audio.synthesize")
+            )
+            ready = fresh and all(
+                isinstance(tasks.get(task), dict) and tasks[task].get("ready") is True for task in required
+            )
+            domains[domain] = {
+                "domain": domain,
+                "mode": executor,
+                "requested": executor,
+                "effective": executor if ready else "unavailable",
+                "configured": True,
+                "ready": ready,
+                "initialized": fresh,
+                "model_loaded": None,
+                "backend": sample.get("runtime", {}).get("provider"),
+                "host": "venom",
+                "backend_state": sample,
+                "source": "compute-client",
+                "observed_at": sample.get("observed_at"),
+                "error": sample.get("error"),
+            }
+        return {
+            **state,
+            "domains": domains,
+            "compute": compute,
+            "partial": any(not row["ready"] for row in domains.values()),
+            "domain_aliases": {"asr": "voice", "tts": "voice"},
+        }
     worker = task_runtime.read_status("rider-voice-web.service") if worker is None else worker
     unit = systemd_ctrl.status("rider-voice-web.service") if unit is None else unit
     domains = {}

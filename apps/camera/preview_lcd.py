@@ -38,10 +38,12 @@ import json
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 
 from PIL import Image  # PIL używany do LCD
 
+from apps.camera.frame_metadata import write_metadata
 from apps.camera.utils import open_camera
 
 # ── ENV / ustawienia
@@ -217,7 +219,7 @@ def _atomic_write_bytes(path: Path, data: bytes) -> bool:
         return False
 
 
-def save_last_frame(frame_bgr):
+def save_last_frame(frame_bgr, *, captured_at=None, frame_id=None):
     """Zapisz klatkę: wybór działającego formatu (jednorazowo), potem atomowy zapis."""
     global _SELECTED_EXT, _last_frame_used_path
     try:
@@ -244,6 +246,7 @@ def save_last_frame(frame_bgr):
             data = _try_encode(_SELECTED_EXT, img, params)
         out_path = LAST_BASE.with_suffix(_SELECTED_EXT)
         if data is not None and _atomic_write_bytes(out_path, data):
+            write_metadata(out_path, captured_at=captured_at, frame_id=frame_id, shape=img.shape)
             _last_frame_used_path = str(out_path)
             # loguj rzadziej, by nie spamować
             print(f"[preview] last_frame updated: {out_path}", flush=True)
@@ -253,7 +256,7 @@ def save_last_frame(frame_bgr):
         print(f"[preview] save_last_frame ERROR: {e}", flush=True)
 
 
-def save_raw_snapshot(frame_bgr):
+def save_raw_snapshot(frame_bgr, *, captured_at=None, frame_id=None):
     """Dodatkowy zapis RAW do snapshots/raw.(ext) — bez nowych pętli, używa tego samego rozszerzenia."""
     global _SELECTED_EXT
     try:
@@ -278,6 +281,7 @@ def save_raw_snapshot(frame_bgr):
             data = _try_encode(_SELECTED_EXT, img, params)
         out_path = Path(SNAP_DIR) / f"raw{_SELECTED_EXT}"
         if data is not None and _atomic_write_bytes(out_path, data):
+            write_metadata(out_path, captured_at=captured_at, frame_id=frame_id, shape=img.shape)
             # dla kompatybilności UI: jeśli nie .jpg, zrób symlink raw.jpg → raw.<ext>
             if _SELECTED_EXT != ".jpg":
                 try:
@@ -450,10 +454,12 @@ def main():
     t0 = time.time()
     t_hb_last = 0.0
     face_cascade = None
+    capture_session = uuid.uuid4().hex
 
     try:
         while True:
             ok, frame = read()
+            captured_at = time.time()
             if not ok:
                 time.sleep(0.02)
                 continue
@@ -539,8 +545,9 @@ def main():
 
             # Zapis last_frame + RAW snapshot — pierwsza klatka od razu, potem co SAVE_LAST_EVERY
             if frames == 0 or (frames % SAVE_LAST_EVERY == 0):
-                save_last_frame(frame)
-                save_raw_snapshot(frame)
+                frame_id = f'{capture_session}-{frames}'
+                save_last_frame(frame, captured_at=captured_at, frame_id=frame_id)
+                save_raw_snapshot(frame, captured_at=captured_at, frame_id=frame_id)
 
             # Wyświetlenie na LCD
             if LCD_ok and not ENV_NO_DRAW:

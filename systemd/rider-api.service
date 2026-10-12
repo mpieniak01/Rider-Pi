@@ -23,7 +23,8 @@ Environment=SAFE_MAX_DURATION=0.25
 Environment=WEB_BRIDGE_TIMEOUT=0.8
 
 # Sekrety (GOOGLE_*) wyłącznie w ~/.bash_profile
-# Świadomie bez EnvironmentFile.
+# Obliczenia używają wspólnego prywatnego env API/voice/vision.
+EnvironmentFile=-/etc/default/rider-compute
 
 # Serwer API — na :8080 (zgodne z UI)
 Environment=API_HOST=0.0.0.0

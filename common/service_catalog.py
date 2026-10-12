@@ -30,9 +30,12 @@ class FeatureDefinition:
     option_kind: str | None = None
     title_en: str | None = None
     description_en: str | None = None
+    compute_tasks: Sequence[str] = ()
 
 
 _EN = {
+    "s12_venom_vision": ("Venom scene description", "Observe the camera scene; no obstacle or motion clearance."),
+    "s13_venom_voice": ("Venom conversation", "Microphone, Venom STT/text/TTS and Pi playback; no motion tools."),
     "s0_core": ("Base / observation", "API and telemetry, without actuator permission."),
     "s1_manual": ("Manual control", "Requires separate operator arming."),
     "s2_camera_preview": ("Camera preview", "Passive camera feed."),
@@ -95,6 +98,26 @@ def _feature(
 
 
 DEFAULT_REGISTRY = {
+    "s12_venom_vision": _feature(
+        "s12_venom_vision",
+        "S12",
+        "Opis sceny w Venomie",
+        "Obserwacja kamery; bez oceny przeszkód i zgody na przejazd.",
+        "rider-ai-provider.target",
+        (*CAMERA_UNITS, "rider-vision-offload.service"),
+        ("camera", "frame_feed"),
+        compute_tasks=("vision.describe",),
+    ),
+    "s13_venom_voice": _feature(
+        "s13_venom_voice",
+        "S13",
+        "Rozmowa przez Venom",
+        "Mikrofon, STT/tekst/TTS Venoma i odtwarzanie na Pi; bez narzędzi ruchu.",
+        "rider-voice.target",
+        ("rider-voice.service",),
+        ("mic", "speaker"),
+        compute_tasks=("audio.transcribe", "text.respond", "audio.synthesize"),
+    ),
     "s0_core": _feature(
         "s0_core", "S0", "Baza / odczyt", "API i telemetria, bez zgody na napędy.", "rider-core.target", BASE_UNITS
     ),
@@ -321,9 +344,9 @@ _ROWS = (
         "rider-vision-offload.service",
         "vision-offload",
         "vision",
-        "Offload PC",
+        "Offload obrazu",
         "on-demand",
-        ("camera", "frame_feed"),
+        ("frame_feed",),
         False,
     ),
     ("rider-voice.service", "voice", "voice", "Pełna rozmowa CLI", "on-demand", ("mic", "speaker"), False),
@@ -555,6 +578,15 @@ def unit_availability(unit: str) -> dict:
 
 
 def task_availability(feature: FeatureDefinition, options: dict | None = None) -> dict:
+    if feature.compute_tasks:
+        from services import compute_config
+
+        try:
+            executor = compute_config.selected_executor()
+        except (ValueError, OSError):
+            executor = None
+        if executor is None or set(feature.compute_tasks) - set(executor["tasks"]):
+            return {"start_available": False, "start_unavailable_reason": "compute_executor_unavailable"}
     for unit in task_units(feature, options):
         available = unit_availability(unit)
         if not available["start_available"]:
