@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import time
 from typing import Optional
 
@@ -56,7 +57,7 @@ def test_look_gesture_shifts_pupils_right_or_left(monkeypatch):
     monkeypatch.setenv("FACE_IDLE_ENABLE", "0")
     monkeypatch.setenv("FACE_PUPIL_DRIFT_AMP_K", "0.0")
 
-    fc = FaceController(size=240, fps=20, idle=False)
+    fc = FaceController(size=240, fps=20, idle=False, rng=random.Random(0))
 
     # Pozycja startowa
     img0 = fc.frame_image()

@@ -2,11 +2,27 @@
 
 Obserwator korzysta z istniejącego właściciela UART. Nie otwiera drugiego portu,
 nie odpytuje rejestrów, nie wysyła poleceń i nie zmienia uzbrojenia.
-Domyślnie zapis jest wyłączony. Sterowanie wymaga tego samego użytkownika systemu.
+Domyślnie cały sniffer jest wyłączony: `RIDER_UART_SNIFFER_ENABLED=0`.
+Adapter korzysta wtedy bezpośrednio z serial, bez wrappera, kolejki, gniazda
+i wątku obserwatora. Sterowanie wymaga tego samego użytkownika systemu.
+
+## Przełącznik uruchomienia
+
+`RIDER_UART_SNIFFER_ENABLED=1` w środowisku właściciela UART włącza możliwość
+podłączania sniffera; tylko dokładna wartość `1` ją włącza.
+Zmienna jest odczytywana przy tworzeniu adaptera. Zmiana wymaga ponownego
+uruchomienia właściciela; nie restartuj go bez uwzględnienia stanu i decyzji
+operatora o rozbrojeniu. Dla usługi ustaw ją w środowisku
+`motion-executor.service`; eksport w terminalu klienta nie zmienia środowiska
+już działającej usługi.
+
+Przy `0` lub braku zmiennej nie ma gniazda sniffera i `list` nie pokaże tego
+właściciela. Kod dekodera i analizatora pozostaje dostępny offline.
+Po uruchomieniu z `1` zapis nadal jest wyłączony aż do jawnego `attach`.
 
 ## Podłączanie i odłączanie
 
-Po załadowaniu nowego adaptera przez wykonawcę przy jego następnym uruchomieniu:
+Po uruchomieniu właściciela UART z `RIDER_UART_SNIFFER_ENABLED=1`:
 
 ~~~sh
 python3 scripts/uart_sniffer.py list
@@ -16,7 +32,8 @@ python3 scripts/uart_sniffer.py detach --pid PID
 ~~~
 
 Attach rozpoczyna zapis; detach kończy sesję i zamyka plik.
-Lekki obserwator pozostaje w procesie bez zapisu, aby umożliwić ponowne podłączenie.
+Przy włączonym przełączniku obserwator pozostaje w procesie bez zapisu,
+aby umożliwić ponowne podłączenie.
 Komendy nie uruchamiają ani nie restartują wykonawcy. Po restarcie zapis jest wyłączony.
 Nie uruchamiaj drugiego czytnika /dev/ttyAMA0.
 
@@ -56,7 +73,7 @@ Poniższa komenda wykonuje oryginalną aplikację: inicjalizacja może zmienić
 pozycję lub wywołać ruch. Nie uruchamiać w CI ani w testach jednostkowych.
 
 ~~~sh
-python3 /home/pi/robot/scripts/uart_sniffer_vendor.py --operator-session /home/pi/RaspberryPi-CM4-main/app/app_TwoCar.py
+RIDER_UART_SNIFFER_ENABLED=1 python3 /home/pi/robot/scripts/uart_sniffer_vendor.py --operator-session /home/pi/RaspberryPi-CM4-main/app/app_TwoCar.py
 ~~~
 
 Użyj dotychczasowego katalogu roboczego oraz interpretera aplikacji dostawcy.
@@ -71,8 +88,9 @@ Jeden wątek tła obsługuje lokalne gniazdo i plik. W ścieżce UART pozostaje
 sprawdzenie aktywności i nieblokująca próba dodania wpisu do kolejki.
 To obserwacja programowa, nie gwarancja zerowego narzutu czasowego.
 Błędy rejestratora nie mogą zmienić wyniku odczytu / zapisu UART.
-Sniffer można całkowicie usunąć z przyszłych uruchomień, usuwając instalację
-obserwatora w adapterze; odłączenie sesji nie wymaga restartu.
+Całkowite wyłączenie w przyszłych uruchomieniach wymaga tylko
+`RIDER_UART_SNIFFER_ENABLED=0`, bez usuwania kodu. `detach` wyłącza zapis
+bieżącej sesji bez restartu; nie usuwa wrappera ani wątku z już działającego procesu.
 Wdrożenie adaptera do już działającego wykonawcy wymaga jego kontrolowanego restartu.
 
 

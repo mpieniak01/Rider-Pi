@@ -82,6 +82,7 @@ class Brows:
 class Mouth:
     shape: str = "auto"  # "auto" | "happy" | "sad" | "neutral"
     open: float = 0.0  # 0..1 (mowa)
+    curve: float | None = None  # -1..1, continuous emotion; None preserves legacy shape
 
     def open_clamped(self) -> float:
         return _clamp01(self.open)

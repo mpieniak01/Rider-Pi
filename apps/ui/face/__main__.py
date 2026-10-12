@@ -12,6 +12,7 @@ from io import BytesIO
 from PIL import Image, ImageDraw
 
 from apps.ui.face.controller import FaceController  # type: ignore
+from apps.ui.face.face_io import to_rgb565
 
 
 # --- RIDER_APPS_PATH support ---
@@ -57,18 +58,7 @@ def rgb565(r, g, b):
 
 
 def img_to_rgb565(img: Image.Image) -> bytes:
-    im = img.convert("RGB")
-    w, h = im.size
-    out = bytearray(w * h * 2)
-    i = 0
-    px = im.load()
-    for y in range(h):
-        for x in range(w):
-            v = rgb565(*px[x, y])
-            out[i] = (v >> 8) & 0xFF
-            out[i + 1] = v & 0xFF
-            i += 2
-    return bytes(out)
+    return to_rgb565(img)
 
 
 def _load_face_api_module() -> object | None:
@@ -147,7 +137,7 @@ def main():
     backend = os.getenv("FACE_BACKEND", "lcd").lower()
     rotate = int(os.getenv("FACE_LCD_ROTATE", os.getenv("FACE_ROTATE", "0")) or 0)
     size = int(os.getenv("FACE_SIZE", "240") or 240)  # rozmiar buźki (kwadrat)
-    fps = int(os.getenv("FACE_FPS", "20") or 20)
+    fps = min(12, max(1, int(os.getenv("FACE_FPS", "12") or 12)))
     expr = os.getenv("FACE_EXPR", "neutral")
     idle_on = os.getenv("FACE_IDLE", "1") not in ("0", "false", "False", "")
     outfile = os.getenv("FACE_OUTFILE", "/tmp/face.png")
@@ -166,8 +156,9 @@ def main():
         running = False
 
     signal.signal(signal.SIGINT, _sigint)
+    signal.signal(signal.SIGTERM, _sigint)
 
-    last = time.time()
+    last = time.monotonic()
     n = 0
     last_sink = ""
     print(
@@ -178,8 +169,11 @@ def main():
     )
     while running:
         # 1) render buźki
-        png = fc.frame()
-        face = Image.open(BytesIO(png)).convert("RGB")
+        frame_started = time.monotonic()
+        face = fc.frame_image()
+        if not fc.renderer.last_changed:
+            time.sleep(max(0, 1 / fps - (time.monotonic() - frame_started)))
+            continue
 
         # 2) kanwa pełnoekranowa (żeby przykryć stare piksele)
         canvas = Image.new("RGB", (fb_w, fb_h), (20, 0, 40) if debug else (8, 36, 70))
@@ -205,7 +199,7 @@ def main():
                 canvas.save(f, "PNG")
             sink = f"file:{outfile}"
         else:
-            if use_api and push_via_face_api(png, outfile):
+            if use_api and push_via_face_api(fc.renderer.render_png_bytes(fc.anim.state), outfile):
                 sink = "face_api"
             else:
                 rgb = img_to_rgb565(canvas)
@@ -221,10 +215,12 @@ def main():
             last_sink = sink
 
         n += 1
-        time.sleep(1.0 / max(1, fps))
-        if time.time() - last >= 5.0:
+        time.sleep(max(0, 1 / fps - (time.monotonic() - frame_started)))
+        if time.monotonic() - last >= 5.0:
             print(f"[face] frames={n} ~{fps}fps")
-            last = time.time()
+            last = time.monotonic()
+
+    fc.close()
 
 
 if __name__ == "__main__":

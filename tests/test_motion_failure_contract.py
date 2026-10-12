@@ -184,3 +184,30 @@ def test_sdk_transport_error_is_latched_but_stop_remains_retryable(executor, mon
         assert physical.ok() is False  # new owner required; no implicit recovery
     finally:
         physical.close()
+
+
+def test_unavailable_uart_status_is_rate_limited_even_with_bus_echo(executor, monkeypatch):
+    instance, clock = executor
+    published = []
+    snapshots = []
+
+    class Publisher:
+        def publish(self, topic, payload, **kwargs):
+            published.append((topic, payload))
+
+    instance.publisher = Publisher()
+    instance.status_writer = snapshots.append
+    instance.adapter.error = "uart_initialization_failed:TimeoutError:sensor_read_timeout"
+    monkeypatch.setattr(instance.adapter, "ok", lambda: False)
+    before = list(instance.adapter.calls)
+    # An echoed state can wake recv immediately. Neither tick nor sensor
+    # polling may bypass the existing one-second status cadence on this path.
+    for _ in range(200):
+        clock.now += 0.02
+        instance.tick(0.02)
+        instance.poll_sensors()
+    states = [payload for topic, payload in published if topic == "motion.state"]
+    assert 3 <= len(states) <= 4
+    assert len(snapshots) == len(states)
+    assert all(not row["ready"] and row["state"] == "DISARMED" for row in states)
+    assert instance.adapter.calls == before
