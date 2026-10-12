@@ -38,14 +38,14 @@ export class Devices {
     document.getElementById('preview-url-form')?.addEventListener('submit', event => {
       event.preventDefault(); this.lastFrame = null; this.fetchFrame();
     });
-    this.poller = poll(() => this.load(), { interval: 10000, onError: showError,
+    this.poller = poll(() => this.load(), { profile: 'inventory', onError: showError,
       onVisibility: hidden => { if (hidden) { this.preview = false; this.renderPreview(); } } });
-    this.telemetryPoller = poll(() => this.loadTelemetry(), { interval: 1000,
+    this.telemetryPoller = poll(() => this.loadTelemetry(), { profile: 'telemetry',
       onError: error => { this.telemetryUnavailable = true; this.renderTelemetry(); showError(error); } });
     this.previewPoller = poll(async () => {
       if (!this.preview) return;
       this.meta = (await request('/vision/snap-info?light=1')).data; this.renderPreview();
-    }, { interval: 2000, onError: error => { this.meta = null; this.renderPreview(); showError(error); } });
+    }, { profile: 'vision', onError: error => { this.meta = null; this.renderPreview(); showError(error); } });
   }
   async fetchFrame() {
     try { this.meta = (await request('/vision/snap-info?light=1')).data; this.renderPreview(); this.frame(true); }

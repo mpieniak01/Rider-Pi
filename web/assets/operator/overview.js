@@ -18,11 +18,16 @@ export class Overview {
     this.state = null; this.health = null; this.system = null; this.catalog = null;
     this.snap = null; this.obstacle = null; this.metrics = null;
     this.poller = poll(async () => {
-      const results = await Promise.allSettled(['/healthz', '/sysinfo', '/api/logic/catalog']
+      const results = await Promise.allSettled(['/healthz', '/api/logic/catalog']
         .map(path => request(path)));
-      [this.health, this.system, this.catalog] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
+      [this.health, this.catalog] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
       this.render();
-    }, { interval: 2000 });
+    }, { profile: 'services' });
+    this.systemPoller = poll(async () => {
+      try { this.system = (await request('/sysinfo')).data; }
+      catch { this.system = null; }
+      this.renderSystem();
+    }, { profile: 'system' });
     // One small telemetry read per second avoids expiring healthy 1 Hz samples
     // between refreshes. Filesystem/image metadata remains on its slower poll.
     this.telemetryPoller = poll(async () => {
@@ -31,17 +36,17 @@ export class Overview {
       this.renderTelemetry();
       window.dashboardFooter?.update({ state: this.state });
       if (this.state) window.dispatchEvent(new CustomEvent('dashboard:update', { detail: this.state }));
-    }, { interval: 1000 });
+    }, { profile: 'telemetry' });
     this.visionPoller = poll(async () => {
       const results = await Promise.allSettled([request('/vision/snap-info?light=1'), request('/vision/obstacle')]);
       [this.snap, this.obstacle] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
       this.renderVision();
-    }, { interval: 2000 });
+    }, { profile: 'vision' });
     poll(async () => {
       try { this.metrics = (await request('/api/app-metrics')).data; }
       catch { this.metrics = null; }
       this.renderMetrics();
-    }, { interval: 10000 });
+    }, { profile: 'metrics' });
     this.expiry = setInterval(() => { if (!document.hidden) this.render(); }, 1000);
     window.addEventListener('dashboard:langchange', () => this.render());
     window.addEventListener('pagehide', () => clearInterval(this.expiry));
@@ -67,7 +72,11 @@ export class Overview {
     text('ci_os', si?.os_release || si?.platform || '—');
     text('d_temp', finite(value('temp_c')) ? `${fmt(value('temp_c'))} °C` : '—');
     text('system-age', `${age(si)}${usable ? '' : ` · ${unknown()}`}`);
-    this.drawHistory(usable ? si.hist_cpu : [], usable ? si.hist_mem : []);
+    this.drawHistory(usable ? si.hist_cpu : [], usable ? si.hist_mem : [],
+      usable ? si.hist_cpu_peak : [], usable ? si.hist_ts : []);
+    const cpu = document.getElementById('ci_cpu');
+    if (cpu) cpu.title = usable && finite(si.cpu_peak_pct)
+      ? tr('Szczyt w ostatniej sekundzie: ', 'Peak in the last second: ') + fmt(si.cpu_peak_pct) + '%' : '';
   }
   renderTelemetry() {
     const xgo = this.state?.devices?.xgo;
@@ -171,16 +180,21 @@ export class Overview {
     for (const value of [0, 50, 100]) ctx.fillText(String(value), box.x - 5, box.y + box.height * (1 - value / 100) + 3);
     return { ctx, ...box };
   }
-  drawHistory(cpu = [], mem = []) {
+  drawHistory(cpu = [], mem = [], peaks = [], times = []) {
     const axis = this.axes('chart'); if (!axis) return;
     const { ctx, x, y, width, height } = axis;
-    for (const [values, color] of [[cpu, '#6db3ff'], [mem, '#ffd36d']]) {
+    const stamps = Array.isArray(times) ? times.slice(-60) : [], newest = stamps[stamps.length - 1];
+    for (const [values, color] of [[peaks, '#a17fff'], [cpu, '#6db3ff'], [mem, '#ffd36d']]) {
       if (!Array.isArray(values) || values.length < 2) continue;
       const samples = values.slice(-60); let pen = false;
       ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5;
       samples.forEach((value, i) => {
         if (!finite(value)) { pen = false; return; }
-        const px = x + width * i / (samples.length - 1), py = y + height * (1 - Math.max(0, Math.min(100, value)) / 100);
+        const stamp = stamps[i];
+        if (finite(newest) && finite(stamp) && newest - stamp > 60) { pen = false; return; }
+        if (i > 0 && finite(stamp) && finite(stamps[i - 1]) && stamp - stamps[i - 1] > 2) pen = false;
+        const position = finite(newest) && finite(stamp) ? Math.max(0, 1 - (newest - stamp) / 60) : i / (samples.length - 1);
+        const px = x + width * position, py = y + height * (1 - Math.max(0, Math.min(100, value)) / 100);
         if (pen) ctx.lineTo(px, py); else ctx.moveTo(px, py); pen = true;
       }); ctx.stroke();
     }

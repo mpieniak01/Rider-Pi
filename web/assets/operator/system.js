@@ -24,7 +24,7 @@ export class System {
       this.system = system.status === 'fulfilled' ? system.value.data : null;
       this.render();
       if (!this.catalog || !this.services) throw new Error(tr('Część danych systemu niedostępna', 'Some system data unavailable'));
-    }, { interval: 5000, onError: showError });
+    }, { profile: 'services', onError: showError });
   }
   rememberDetails(target) {
     for (const node of target?.querySelectorAll?.('details[data-system-detail]') || []) {

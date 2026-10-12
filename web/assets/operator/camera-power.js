@@ -17,7 +17,7 @@ export class CameraPower {
     });
     this.start?.addEventListener('click', () => this.change(true));
     this.stop?.addEventListener('click', () => this.change(false));
-    this.poller = poll(() => this.load(), { interval: 5000, onError: error => {
+    this.poller = poll(() => this.load(), { profile: 'services', onError: error => {
       this.catalog = null; this.render(); showError(error);
     } });
     this.expiry = setInterval(() => this.render(), 1000);
@@ -25,8 +25,8 @@ export class CameraPower {
     window.addEventListener('pagehide', () => { this.poller.stop(); clearInterval(this.expiry); });
     this.render();
   }
-  async load() {
-    this.catalog = (await request('/api/logic/catalog')).data; this.render();
+  async load(force = false) {
+    this.catalog = (await request('/api/logic/catalog', { force })).data; this.render();
   }
   task() { return this.catalog?.features?.find(task => task.name === this.taskName); }
   known() {
@@ -38,7 +38,7 @@ export class CameraPower {
     this.busy = true; this.render();
     try {
       // Recheck the task immediately before an explicit start/stop.
-      await this.load();
+      await this.load(true);
       const task = this.task();
       if (!this.known() || (enabled ? task.requested === true || !taskCanStart(task, this.catalog, null) : task.requested !== true)) {
         throw new Error(tr('Nie można zmienić kamery przy obecnym stanie zadania.', 'Camera task cannot be changed in its current state.'));
@@ -51,7 +51,7 @@ export class CameraPower {
       text('operator-message', enabled
         ? tr('Kamera uruchomiona. Podgląd czeka na świeżą klatkę.', 'Camera started. Preview is waiting for a fresh frame.')
         : tr('Zadanie kamery zakończone. Inne aktywne zadania mogą nadal korzystać z kamery.', 'Camera task ended. Other active tasks may still use the camera.'));
-      await this.load();
+      await this.load(true);
     } catch (error) { this.catalog = null; showError(error); }
     finally { this.busy = false; this.render(); this.poller.refresh(); }
   }

@@ -6,7 +6,7 @@ export class Tasks {
     this.safety = safety; this.target = document.getElementById(target); this.filter = filter;
     this.catalog = null; this.busy = new Set(); this.options = new Map(); this.results = new Map();
     this.poller = poll(async () => { this.catalog = (await request('/api/logic/catalog')).data; this.render(); },
-      { interval: 5000, onError: error => { this.catalog = null; this.render(); showError(error); } });
+      { profile: 'services', onError: error => { this.catalog = null; this.render(); showError(error); } });
   }
   choice(task) {
     const schema = task.option_schema;
