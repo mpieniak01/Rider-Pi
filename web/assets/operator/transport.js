@@ -1,6 +1,22 @@
 import { API_ACCEPT, decodeResponse, errorMessage, responseFamily } from './contract.js';
 import { setServerClock } from './model.js';
-const reads = new Map();
+const reads = new Map(), cachedReads = new Map();
+let readGeneration = 0;
+// Presentation only: motion renewal, watchdog and safety polling are separate.
+const intervalLimits = { telemetry: 1000, system: 2000, services: 5000, inventory: 10000, vision: 2000, metrics: 10000 };
+const panelIntervals = { ...intervalLimits };
+const phases = { telemetry: 0, services: 250, system: 500, vision: 750, inventory: 250, metrics: 500 };
+function rememberSampling(data) {
+  const incoming = data?.sampling?.panel_intervals_ms;
+  if (!incoming) return;
+  for (const [name, fallback] of Object.entries(intervalLimits)) {
+    const value = incoming[name];
+    if (Number.isFinite(value) && value >= 1000 && value <= fallback) panelIntervals[name] = value;
+  }
+}
+export function invalidateReads() {
+  readGeneration++; cachedReads.clear(); reads.clear();
+}
 let contractProof = null;
 function rememberContract(decoded, response, receivedAt) {
   const { data, meta } = decoded;
@@ -16,17 +32,26 @@ function rememberContract(decoded, response, receivedAt) {
 // Complete contract negotiation before creating a 500 ms command envelope.
 export async function prepareMutation() {
   const age = Date.now() / 1000 - (contractProof?.receivedAt ?? 0);
-  if (!contractProof || age < 0 || age > 5) await request('/api/logic/catalog');
+  if (!contractProof || age < 0 || age > 5) await request('/api/logic/catalog', { force: true });
   if (!contractProof) throw Object.assign(new Error('Unsupported Rider contract; read only'), { status: 409 });
 }
 export function request(path, options = {}) {
-  const method = options.method || 'GET';
+  const method = options.method || 'GET', generation = readGeneration;
+  const cacheable = method === 'GET' && path === '/api/logic/catalog';
+  const previous = cachedReads.get(path), age = Date.now() - (previous?.at ?? 0);
+  if (cacheable && !options.force && previous && age >= 0 && age < 1000)
+    return Promise.resolve(previous.value);
   if (method === 'GET' && reads.has(path)) return reads.get(path);
+  if (method !== 'GET') invalidateReads();
   const flight = performRequest(path, options);
   if (method === 'GET') {
     reads.set(path, flight);
-    flight.then(() => reads.delete(path), () => reads.delete(path));
-  }
+    const clear = () => { if (reads.get(path) === flight) reads.delete(path); };
+    flight.then(value => {
+      clear();
+      if (cacheable && generation === readGeneration) cachedReads.set(path, { at: Date.now(), value });
+    }, () => { clear(); if (generation === readGeneration) cachedReads.delete(path); });
+  } else flight.then(invalidateReads, invalidateReads);
   return flight;
 }
 async function performRequest(path, { method = 'GET', body, timeout = 6000, beforeSend = () => {} } = {}) {
@@ -55,17 +80,24 @@ async function performRequest(path, { method = 'GET', body, timeout = 6000, befo
     }
     const receivedAt = Date.now() / 1000;
     if (path === '/api/logic/catalog') rememberContract(decoded, response, receivedAt);
+    if (path === '/sysinfo' && response.ok) rememberSampling(data);
     if (meta) setServerClock(meta.server_time, sentAt, receivedAt);
     if (!response.ok) throw Object.assign(new Error(errorMessage(payload.error || data?.error || data?.detail || data?.result?.error, `HTTP ${response.status}`)), { data, meta, operation, status: response.status });
     return { ...decoded, status: response.status, sent_at: sentAt, received_at: receivedAt };
   } finally { clearTimeout(timer); }
 }
 // One flight per poller, bounded timeout, bounded backoff, hidden tabs sleep.
-export function poll(load, { interval = 2000, onError = () => {}, onVisibility = () => {} } = {}) {
+export function poll(load, { interval = 2000, profile = null, onError = () => {}, onVisibility = () => {} } = {}) {
   let timer, busy = false, stopped = false, failures = 0;
   const schedule = () => {
     clearTimeout(timer);
-    if (!stopped && !document.hidden) timer = setTimeout(run, Math.min(30000, interval * 2 ** failures));
+    if (!stopped && !document.hidden) {
+      const period = Math.min(30000, (panelIntervals[profile] || interval) * 2 ** failures);
+      // Stable profile beats let widgets share reads; groups spread expensive work.
+      const delay = failures || !profile ? period
+        : period - ((Date.now() - (phases[profile] || 0)) % period + period) % period;
+      timer = setTimeout(run, delay);
+    }
   };
   async function run() {
     if (busy || stopped || document.hidden) return;

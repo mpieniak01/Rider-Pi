@@ -10,7 +10,7 @@
 .operator-shell .c-btn:disabled { opacity: .45; cursor: not-allowed; }
 .operator-shell input, .operator-shell select, .operator-shell textarea { font: inherit; color: inherit; background: var(--bg, #141b23); border: 1px solid var(--border, #58616d); border-radius: .4rem; padding: .5rem; max-width: 100%; }
 .operator-shell textarea { display: block; width: 100%; box-sizing: border-box; min-height: 5rem; }
-.operator-shell input[type=checkbox] { width: 1.1rem; height: 1.1rem; }
+.operator-shell input[type="checkbox"] { width: 1.1rem; height: 1.1rem; }
 .operator-shell label { display: block; margin: .5rem 0; }
 .operator-option select { display: block; width: 100%; }
 :root .operator-shell .c-btn.operator-stop { background: #b42132; color: white; border: 2px solid #ed6273; min-height: 44px; padding: .5rem 1.25rem; font-weight: 700; }
@@ -54,11 +54,11 @@
 .motion-direction { display: flex; gap: .55rem; align-items: center; align-self: center; }
 .motion-direction-arrow { font-size: 1.6rem; color: var(--accent, #83c6eb); line-height: 1; }
 .operator-shell .motion-setting-field { display: grid; gap: .35rem; margin: 0; min-width: 0; font-size: .9rem; }
-.operator-shell .motion-setting-field input[type=number] { width: 6rem; min-height: 2.5rem; box-sizing: border-box; font-variant-numeric: tabular-nums; }
-.motion-setting-field[data-field=speed] { grid-template-columns: minmax(0, 1fr) 3.7rem; align-items: center; }
-.motion-setting-field[data-field=speed] > span { grid-column: 1 / -1; }
-.operator-shell .motion-setting-field input[type=range] { width: 100%; min-width: 0; box-sizing: border-box; padding: 0; min-height: 2.5rem; }
-.motion-setting-field output { text-align: right; font-variant-numeric: tabular-nums; }
+.operator-shell .motion-setting-field input[type="number"] { width: 6rem; min-height: 2.5rem; box-sizing: border-box; font-variant-numeric: tabular-nums; }
+.motion-setting-field[data-field="speed"] { grid-template-columns: minmax(0, 1fr) 11rem; align-items: center; }
+.motion-setting-field[data-field="speed"] > span { grid-column: 1 / -1; }
+.operator-shell .motion-setting-field input[type="range"] { width: 100%; min-width: 0; box-sizing: border-box; padding: 0; min-height: 2.5rem; }
+.motion-setting-field output { font-size: .8rem; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .motion-setting-hint { grid-column: 2 / -1; font-size: .8rem; }
 .page-control .motion-setting-row { grid-template-columns: 5rem minmax(8rem, 1fr) 6rem; }
 .motion-smoothing { display: flex; flex-wrap: wrap; gap: .8rem; margin: 1rem 0; }
@@ -70,29 +70,27 @@
 @media (max-width: 850px) {
   .page-calibration .motion-setting-row { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; }
   .page-calibration .motion-direction { grid-column: 1 / -1; }
-  .page-calibration .motion-setting-field[data-field=speed] { grid-column: 1 / -1; }
+  .page-calibration .motion-setting-field[data-field="speed"] { grid-column: 1 / -1; }
   .page-calibration .motion-setting-hint { grid-column: 1 / -1; }
 }
 @media (max-width: 480px) {
   .page-calibration .motion-setting-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .page-control .motion-setting-row { grid-template-columns: 4rem minmax(0, 1fr); }
-  .page-control .motion-setting-field[data-field=number] { grid-column: 2; }
+  .page-control .motion-setting-field[data-field="number"] { grid-column: 2; }
   .page-control .motion-setting-hint { grid-column: 1 / -1; }
   .motion-profiles .operator-row { gap: .5rem; }
 }
 
 /* Percentages and milliseconds are UI units; canonical settings stay on Pi. */
-.motion-setting-field[data-field=speed] { grid-template-columns: minmax(0, 1fr) 11rem; }
-.motion-setting-field output { font-size: .8rem; white-space: nowrap; }
 .motion-field-error { white-space: normal; font-size: .75rem; max-width: 18rem; grid-column: 1 / -1; }
-.operator-shell input[aria-invalid=true] { border: 2px solid #ef6072; }
+.operator-shell input[aria-invalid="true"] { border: 2px solid #ef6072; }
 .page-calibration .motion-smoothing-group legend { font-size: .85rem; }
 @media (max-width: 480px) {
-  .motion-setting-field[data-field=speed] { grid-template-columns: minmax(0, 1fr) 10rem; }
+  .motion-setting-field[data-field="speed"] { grid-template-columns: minmax(0, 1fr) 10rem; }
 }
 
 [data-direction].is-held { outline: 2px solid #73c8ff; background: #24516c; }
 
 .motion-curve-setting { max-width: 17rem; margin: .65rem 0; }
 
-.posture-row{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;margin:.6rem 0}.posture-row input[type=range]{flex:1;min-width:140px;max-width:420px}.posture-row output{min-width:3ch;font-variant-numeric:tabular-nums}.posture-row select{width:auto;max-width:100%}
+.posture-row{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;margin:.6rem 0}.posture-row input[type="range"]{flex:1;min-width:140px;max-width:420px}.posture-row output{min-width:3ch;font-variant-numeric:tabular-nums}.posture-row select{width:auto;max-width:100%}

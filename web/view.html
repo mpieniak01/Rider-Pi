@@ -22,7 +22,7 @@
     </div>
   </header>
   <div class="c-hint text-legend">
-    <span data-i18n="dash.hint_prefix">Auto-refresh co ≈ 2 s.</span>
+    <span data-i18n="dash.hint_prefix">Dane odświeżane automatycznie.</span>
     <span data-i18n="dash.hint_endpoints">Endpointy:</span>
     <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a>, <a href="/vision/snap-info">/vision/snap-info</a>
   </div>
@@ -60,10 +60,11 @@
     </div>
 
     <div class="c-card">
-      <h3 data-pl="Historia CPU / RAM — ostatnie 60 próbek" data-en="CPU / RAM history — last 60 samples">Historia CPU / RAM — ostatnie 60 próbek</h3>
+      <h3 data-pl="Historia CPU / RAM — 60 s" data-en="CPU / RAM history — 60 s">Historia CPU / RAM — 60 s</h3>
       <canvas id="chart" width="300" height="140"></canvas>
       <div class="c-legend">
         <span><i class="c-legend__dot cpu"></i><span data-i18n="dash.history.cpu">cpu%</span></span>
+        <span><i class="c-legend__dot" style="background:#a17fff"></i><span data-pl="CPU szczyt" data-en="CPU peak">CPU szczyt</span></span>
         <span><i class="c-legend__dot mem"></i><span data-i18n="dash.history.mem">mem%</span></span>
       </div>
     </div>

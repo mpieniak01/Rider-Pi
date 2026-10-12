@@ -26,6 +26,10 @@ def state() -> Response:
     camera_at = source_time(compat.LAST_CAMERA.get("ts"))
     camera_age = now - camera_at if camera_at is not None else None
 
+    from services.core.camera_state import snapshot as camera_snapshot
+
+    camera_activity = camera_snapshot(heartbeat=compat.LAST_CAMERA)
+    now = time.time()
     xgo = xgo_snapshot(now=now)
     has_telemetry = xgo["present"]
     tracking_mode = compat.LAST_TRACKING_MODE
@@ -54,6 +58,7 @@ def state() -> Response:
             }
         },
         "camera": {
+            "activity": camera_activity,
             "vision_enabled": compat.LAST_CAMERA.get("vision_enabled"),
             "has_last_frame": frame["exists"],
             "last_frame_ts": int(raw_ts) if raw_ts else None,

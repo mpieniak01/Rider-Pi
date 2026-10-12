@@ -95,7 +95,7 @@ export const I18N = {
   // ===== MINI DASHBOARD =====
   dash: {
     page_title:     { pl: "Rider-Pi — mini dashboard", en: "Rider-Pi — mini dashboard" },
-    hint_prefix:    { pl: "Auto-refresh co ≈ 2 s.",   en: "Auto-refresh every ≈ 2 s." },
+    hint_prefix:    { pl: "Dane odświeżane automatycznie.",   en: "Data refreshes automatically." },
     hint_endpoints: { pl: "Endpointy:",                en: "Endpoints:" },
 
     system: {

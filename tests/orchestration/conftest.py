@@ -34,5 +34,10 @@ def deny_external_io(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "common.bus", _bus)
     monkeypatch.setattr(common, "bus", _bus, raising=False)
     from services.api_core import features_api
+    from services.core import lcd_state
+
+    monkeypatch.setattr(
+        lcd_state, "backlight_status", lambda: {"on": None, "power_known": False, "error": "mock_unavailable"}
+    )
 
     monkeypatch.setattr(features_api.feature_manager, "_state_path", tmp_path / "api-state.json")

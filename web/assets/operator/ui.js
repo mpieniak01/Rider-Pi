@@ -13,6 +13,9 @@ export function button(label, action, disabled = false, className = 'c-btn c-btn
   node.addEventListener('click', action); return node;
 }
 export function pill(label, tone = 'warn') { return el('span', `c-pill is-${tone}`, label); }
+export function powerLabel(value) {
+  return value === true ? 'ON' : value === false ? 'OFF' : tr('Nieznany', 'Unknown');
+}
 export function statusLabel(value) {
   const labels = { ready: ['Gotowe', 'Ready'], starting: ['Uruchamianie', 'Starting'], stopping: ['Kończenie', 'Stopping'],
     stopped: ['Zakończone', 'Stopped'], failed: ['Błąd', 'Failed'], partial: ['Niepełne', 'Partial'],

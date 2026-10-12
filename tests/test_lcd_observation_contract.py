@@ -9,6 +9,9 @@ from services.api_core import compat, compat_health, devices
 
 @pytest.fixture
 def clock(monkeypatch):
+    from services.core import lcd_state
+
+    monkeypatch.setattr(lcd_state, "backlight_status", lambda: {})
     value = [100.0]
     monkeypatch.setattr(devices.time, "time", lambda: value[0])
     monkeypatch.setattr(

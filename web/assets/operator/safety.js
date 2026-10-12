@@ -77,7 +77,10 @@ export class SafetyPanel {
     if (!safetyKnown(this.state, this.now()) || !this.clockFresh()) throw new Error(tr('Brak świeżego kontraktu bezpieczeństwa v1 i potwierdzonego zegara', 'No fresh safety contract v1 and confirmed clock'));
     if (!['arm', 'clear_estop'].includes(action) && (!this.can(owner, action) || (action === 'move' && params.yaw && !this.can(owner, 'turn')))) throw new Error(tr('Napęd zablokowany: stan, właściciel lub możliwości', 'Actuator blocked: state, owner or capability'));
     if (action === 'arm' && this.state.state !== 'DISARMED' || action === 'clear_estop' && this.state.state !== 'ESTOP') throw new Error(tr('Stan zmienił się — sprawdź ponownie zgodę', 'State changed — review permission again'));
-    return { ...params, action, source: 'manual', execution_context: 'panel', generation: this.state.generation, seq: ++this.seq,
+    return this.buildEnvelope(action, params, this.state.generation);
+  }
+  buildEnvelope(action, params, generation) {
+    return { ...params, action, source: 'manual', execution_context: 'panel', generation, seq: ++this.seq,
       request_id: globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       ts: this.commandTime(), ttl_ms: 500 };
   }
@@ -132,19 +135,21 @@ export class SafetyPanel {
   }
   async sendIntent(intent, valid) {
     const revision=this.controls?.state?.revision;
-    const generation=this.state?.generation;
+    const generation=this.state?.generation, initialSeq=this.seq;
     const permittedAtStart=this.can('manual',['left','right'].includes(intent.direction)?'turn':'move');
-    const neutralCommand=intent.mode==='release' && permittedAtStart
-      ?this.envelope('move',{...this.controls.pulse(intent.direction),mode:'release'}):null;
+    const neutralAllowed=intent.mode==='release' && permittedAtStart;
     await prepareMutation();
     const check=()=>{
       if(!valid() || (this.state && generation!==this.state.generation) || revision!==this.controls?.state?.revision
-        || (!(neutralCommand && !this.state && Date.now()/1000-this.clockObserved<=3) && !this.can('manual',['left','right'].includes(intent.direction)?'turn':'move')))
+        || (!(neutralAllowed && !this.state && Date.now()/1000-this.clockObserved<=3) && !this.can('manual',['left','right'].includes(intent.direction)?'turn':'move')))
         throw new Error('manual_intent_cancelled_or_stale');
     };
     check();
     const params={...this.controls.pulse(intent.direction),mode:intent.mode};
-    const command=neutralCommand || this.envelope('move',params);
+    if(neutralAllowed && !this.state)this.seq=Math.max(this.seq,initialSeq);
+    // New release intent: create its envelope only after negotiation and validation.
+    const command=neutralAllowed && !this.state
+      ?this.buildEnvelope('move',params,generation):this.envelope('move',params);
     const result=await request('/api/control',{method:'POST',body:command,timeout:500,beforeSend:check});
     if(result.data.safety)this.update(result.data.safety);
     if(result.data.ack?.status==='rejected')throw new Error(result.data.ack.reason||'motion_rejected');

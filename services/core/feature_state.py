@@ -229,6 +229,7 @@ class FeatureStateMixin:
 
     def catalog(self) -> dict:
         from services.core.camera_state import snapshot
+        from services.core.lcd_state import backlight_status
 
         return {
             **catalog_payload(),
@@ -238,7 +239,8 @@ class FeatureStateMixin:
             "features": self.describe_features(),
             "resource_consumers": self.resource_consumers(),
             "resource_states": {
-                "camera": snapshot(consumers=self.resource_consumers().get("camera", []), status_fn=self._status)
+                "camera": snapshot(consumers=self.resource_consumers().get("camera", []), status_fn=self._status),
+                "lcd": backlight_status(),
             },
         }
 

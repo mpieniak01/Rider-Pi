@@ -18,6 +18,7 @@ from common.service_catalog import (
     task_resources,
     unit_availability,
 )
+from services.core.observation_policy import configure_systemd_observation
 from services.core.service_permissions import permissions
 
 from . import resource_diag
@@ -25,6 +26,9 @@ from . import resource_diag
 ALLOWED_UNITS = UNIT_ALIASES
 ALLOWED_ACTIONS = ("start", "stop", "restart", "enable", "disable")
 MUTEX_GROUPS = [{"camera-capture@raw.service", "camera-capture@edge.service", "camera-capture@ssd.service"}]
+
+
+configure_systemd_observation()
 
 
 def _json(payload: Any, status: int = 200) -> Response:
@@ -82,9 +86,11 @@ def _run_step(unit: str, action: str) -> dict:
 def resource_status(name: str) -> Response:
     if not _known_resource(name):
         return _json({"error": "unknown resource", "name": name}, 404)
+    from services.core.resource_observation import snapshot as observe_resource
+
     physical = name in resource_diag.available_resources()
     data = (
-        resource_diag.inspect(name)
+        observe_resource(name)
         if physical
         else {
             "resource": name,
@@ -101,6 +107,10 @@ def resource_status(name: str) -> Response:
         from services.core.camera_state import snapshot
 
         data["activity"] = snapshot(owners=data, consumers=_manager().resource_consumers().get(name, []))
+    if name == "lcd":
+        from services.core.lcd_state import backlight_status
+
+        data["activity"] = backlight_status()
     return _json(
         {
             **data,
@@ -126,6 +136,9 @@ def resource_release(name: str, pids: list[int] | None = None) -> Response:
         force=payload.get("force") is True,
         operator_consent=payload.get("operator_consent") is True,
     )
+    from services.core.resource_observation import invalidate
+
+    invalidate(name)
     return _json(
         data, 200 if data.get("released") else 202 if data.get("pending") else 503 if data.get("signal_sent") else 409
     )

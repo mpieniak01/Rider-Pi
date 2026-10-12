@@ -1,6 +1,6 @@
 import { request, poll } from './transport.js';
 import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown, nowSeconds } from './model.js';
-import { el, text, tr, statusLabel } from './ui.js';
+import { el, text, tr, statusLabel, powerLabel } from './ui.js';
 import { telemetryChannel } from './devices.js?v=extended-telemetry-1';
 import { telemetrySummary, orientationSummary } from './overview-model.js';
 
@@ -18,11 +18,16 @@ export class Overview {
     this.state = null; this.health = null; this.system = null; this.catalog = null;
     this.snap = null; this.obstacle = null; this.metrics = null;
     this.poller = poll(async () => {
-      const results = await Promise.allSettled(['/healthz', '/sysinfo', '/api/logic/catalog']
+      const results = await Promise.allSettled(['/healthz', '/api/logic/catalog']
         .map(path => request(path)));
-      [this.health, this.system, this.catalog] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
+      [this.health, this.catalog] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
       this.render();
-    }, { interval: 2000 });
+    }, { profile: 'services' });
+    this.systemPoller = poll(async () => {
+      try { this.system = (await request('/sysinfo')).data; }
+      catch { this.system = null; }
+      this.renderSystem();
+    }, { profile: 'system' });
     // One small telemetry read per second avoids expiring healthy 1 Hz samples
     // between refreshes. Filesystem/image metadata remains on its slower poll.
     this.telemetryPoller = poll(async () => {
@@ -31,20 +36,30 @@ export class Overview {
       this.renderTelemetry();
       window.dashboardFooter?.update({ state: this.state });
       if (this.state) window.dispatchEvent(new CustomEvent('dashboard:update', { detail: this.state }));
-    }, { interval: 1000 });
-    this.visionPoller = poll(async () => {
-      const results = await Promise.allSettled([request('/vision/snap-info?light=1'), request('/vision/obstacle')]);
-      [this.snap, this.obstacle] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
-      this.renderVision();
-    }, { interval: 2000 });
+    }, { profile: 'telemetry' });
+    this.visionIdleLoaded = false;
+    this.visionPoller = poll(() => this.loadVision(), { profile: 'vision' });
     poll(async () => {
       try { this.metrics = (await request('/api/app-metrics')).data; }
       catch { this.metrics = null; }
       this.renderMetrics();
-    }, { interval: 10000 });
+    }, { profile: 'metrics' });
     this.expiry = setInterval(() => { if (!document.hidden) this.render(); }, 1000);
     window.addEventListener('dashboard:langchange', () => this.render());
     window.addEventListener('pagehide', () => clearInterval(this.expiry));
+  }
+  async loadVision() {
+    const activity = this.state?.camera?.activity || this.catalog?.resource_states?.camera;
+    const on = activity?.on === true && !activity.error && activity.stale !== true && activity.offline !== true;
+    if (!on && this.visionIdleLoaded) return;
+    this.visionIdleLoaded = !on;
+    const results = await Promise.allSettled([
+      request('/vision/snap-info?light=1'),
+      ...(on ? [request('/vision/obstacle')] : [])
+    ]);
+    this.snap = results[0].status === 'fulfilled' ? results[0].value.data : null;
+    this.obstacle = results[1]?.status === 'fulfilled' ? results[1].value.data : null;
+    this.renderVision();
   }
   render() {
     this.renderSystem(); this.renderTelemetry(); this.renderHealth(); this.renderVision(); this.renderMetrics();
@@ -67,7 +82,11 @@ export class Overview {
     text('ci_os', si?.os_release || si?.platform || '—');
     text('d_temp', finite(value('temp_c')) ? `${fmt(value('temp_c'))} °C` : '—');
     text('system-age', `${age(si)}${usable ? '' : ` · ${unknown()}`}`);
-    this.drawHistory(usable ? si.hist_cpu : [], usable ? si.hist_mem : []);
+    this.drawHistory(usable ? si.hist_cpu : [], usable ? si.hist_mem : [],
+      usable ? si.hist_cpu_peak : [], usable ? si.hist_ts : []);
+    const cpu = document.getElementById('ci_cpu');
+    if (cpu) cpu.title = usable && finite(si.cpu_peak_pct)
+      ? tr('Szczyt w ostatniej sekundzie: ', 'Peak in the last second: ') + fmt(si.cpu_peak_pct) + '%' : '';
   }
   renderTelemetry() {
     const xgo = this.state?.devices?.xgo;
@@ -96,10 +115,14 @@ export class Overview {
       || row?.stale === true || row?.simulated === true || Boolean(row?.error));
     const lcdConfirmed = !lcdFailure && lcd?.power_known === true && typeof lcd.on === 'boolean'
       && typeof lcd.source === 'string' && Boolean(lcd.source.trim()) && lcd.power_source === lcd.source
-      && lcd.confirmation === 'control_write_accepted' && lcdAge !== null && lcd.power_observed_at <= lcdNow;
+      && ['control_write_accepted', 'gpio_level_observed'].includes(lcd.confirmation) && lcdAge !== null && lcd.power_observed_at <= lcdNow;
     // LCD reports accepted control events, not periodic physical measurements.
-    text('d_lcd', lcdConfirmed ? `${lcd.on ? 'ON' : 'OFF'} · ${tr('ostatnie potwierdzenie', 'last confirmation')} ${lcdAge.toFixed(1)} s`
-      : tr('Stan nieznany', 'State unknown'));
+    text('d_lcd', powerLabel(lcdConfirmed ? lcd.on : null));
+    const lcdNode = document.getElementById('d_lcd');
+    if (lcdNode) lcdNode.title = lcdConfirmed
+      ? (lcd.confirmation === 'gpio_level_observed' ? tr('Odczyt podświetlenia LCD', 'LCD backlight reading')
+        : tr('Ostatnie potwierdzone polecenie LCD', 'Last confirmed LCD command'))
+      : tr('Nie można odczytać stanu LCD', 'LCD state unavailable');
   }
   renderHealth() {
     const h = this.health;
@@ -113,15 +136,15 @@ export class Overview {
     text('overview-connection', h ? tr('API odpowiada', 'API responding') : tr('API niedostępne', 'API unavailable'));
   }
   renderVision() {
-    const camera = { ...this.health?.devices?.camera, ...this.state?.devices?.camera, ...this.state?.camera };
+    const camera = this.health?.devices?.camera || this.state?.camera?.activity || this.state?.devices?.camera || this.state?.camera || {};
     const capture = camera?.on === true && !camera.error && camera.offline !== true && camera.stale !== true;
     const frameReady = cameraFrame(this.snap, 'raw').fresh;
     const active = capture || (camera?.vision_enabled === true && frameReady);
     const off = !active && (camera?.vision_enabled === false || camera?.on === false);
-    const cameraText = active ? tr('Włączona', 'Enabled') : off ? tr('Wyłączona — na żądanie', 'Off — on demand') : tr('Stan nieznany', 'State unknown');
+    const cameraText = powerLabel(active ? true : off ? false : null);
     const cameraDetails = [cameraText, camera?.mode, Array.isArray(camera?.res) ? camera.res.join('×') : null,
       finite(camera?.fps) ? `${fmt(camera.fps)} fps` : null].filter(Boolean);
-    text('d_cam', cameraDetails.join(' · ')); text('camBadge', active ? 'ON' : off ? 'OFF' : '—');
+    text('d_cam', cameraDetails.join(' · ')); text('camBadge', powerLabel(active ? true : off ? false : null));
     document.getElementById('camBadge')?.classList.toggle('on', active);
     for (const [kind, endpoint] of [['raw', '/vision/cam'], ['proc', '/vision/edge'], ['obst', '/snapshots/obst_annot.jpg'], ['tracker', '/vision/tracker']]) {
       const frame = cameraFrame(this.snap, kind);
@@ -167,16 +190,22 @@ export class Overview {
     for (const value of [0, 50, 100]) ctx.fillText(String(value), box.x - 5, box.y + box.height * (1 - value / 100) + 3);
     return { ctx, ...box };
   }
-  drawHistory(cpu = [], mem = []) {
+  drawHistory(cpu = [], mem = [], peaks = [], times = []) {
     const axis = this.axes('chart'); if (!axis) return;
     const { ctx, x, y, width, height } = axis;
-    for (const [values, color] of [[cpu, '#6db3ff'], [mem, '#ffd36d']]) {
+    const stamps = Array.isArray(times) ? times.slice(-60) : [], newest = stamps[stamps.length - 1];
+    for (const [values, color] of [[peaks, '#a17fff'], [cpu, '#6db3ff'], [mem, '#ffd36d']]) {
       if (!Array.isArray(values) || values.length < 2) continue;
       const samples = values.slice(-60); let pen = false;
       ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5;
       samples.forEach((value, i) => {
         if (!finite(value)) { pen = false; return; }
-        const px = x + width * i / (samples.length - 1), py = y + height * (1 - Math.max(0, Math.min(100, value)) / 100);
+        const stamp = stamps[i];
+        if (finite(newest) && !finite(stamp)) { pen = false; return; }
+        if (finite(newest) && finite(stamp) && newest - stamp > 60) { pen = false; return; }
+        if (i > 0 && finite(stamp) && finite(stamps[i - 1]) && stamp - stamps[i - 1] > 2) pen = false;
+        const position = finite(newest) && finite(stamp) ? Math.max(0, 1 - (newest - stamp) / 60) : i / (samples.length - 1);
+        const px = x + width * position, py = y + height * (1 - Math.max(0, Math.min(100, value)) / 100);
         if (pen) ctx.lineTo(px, py); else ctx.moveTo(px, py); pen = true;
       }); ctx.stroke();
     }

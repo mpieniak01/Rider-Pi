@@ -224,6 +224,10 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         except Exception as exc:
             result = {"ok": False, "unit": unit, "action": action, "error": str(exc)}
         systemd_ctrl.invalidate_snapshot()
+        from services.core.resource_observation import invalidate
+
+        for resource in UNIT_CATALOG.get(unit, {}).get("resources", []):
+            invalidate(resource)
         from services.core.lcd_cleanup import finish_lcd_stop
 
         return finish_lcd_stop(unit, action, result)

@@ -22,31 +22,30 @@
 .calibration-advanced > summary, .calibration-tuning summary { cursor: pointer; margin-bottom: 1rem; }
 @media (max-width: 800px) { .calibration-primary { grid-template-columns: minmax(0, 1fr); } }
 
-.page-calibration .control-primary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+.page-calibration .control-primary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-bottom: .75rem; }
 .page-calibration .control-primary > .c-card { min-width: 0; box-sizing: border-box; }
 @media (max-width: 800px) { .page-calibration .control-primary { grid-template-columns: minmax(0, 1fr); } }
 
 /* Keep profiles, trial buttons and tuning together without a camera panel. */
-.page-calibration .page-header { margin-bottom: .25rem; }
 .page-calibration .page-title { margin: .25rem 0; }
-.page-calibration #manual-settings-status { margin: .25rem 0 .65rem; }
+
 .page-calibration #operator-message:empty,
 .page-calibration #manual-settings-result:empty { display: none; }
-.page-calibration .control-primary { margin-bottom: .75rem; }
 .page-calibration .control-primary .c-card { padding: .75rem 1rem; }
 .page-calibration .control-primary p { margin: .5rem 0; font-size: .85rem; }
-.page-calibration .motion-profiles .operator-row { margin: .4rem 0; gap: .5rem; }
+.page-calibration .motion-profiles .operator-row { margin: .5rem 0; gap: .5rem; }
 .page-calibration .motion-profiles label { margin: 0; }
 .page-calibration .motion-profiles .operator-row:first-of-type { flex-wrap: nowrap; }
+
 .page-calibration .motion-profiles select,
-.page-calibration .motion-profiles input { width: 25ch; }
-.page-calibration .motion-profiles .operator-row:last-of-type label { flex-basis: 100%; }
+.page-calibration .motion-profiles input { width: 100%; }
+.page-calibration .motion-profiles .operator-row:last-of-type label { flex-basis: 100%; grid-column: 1 / -1; }
 .page-calibration .operator-drive { margin: .5rem auto; gap: .35rem; max-width: 300px; }
 .page-calibration .operator-drive button { min-height: 40px; }
 .page-calibration .calibration-settings { padding: .75rem 1rem; }
 .page-calibration .calibration-settings > p { margin: .4rem 0; font-size: .85rem; }
 .page-calibration .motion-setting-row { padding: .35rem 0; gap: .2rem .8rem; }
-.page-calibration .motion-setting-field input[type=range] { min-height: 2rem; }
+.page-calibration .motion-setting-field input[type="range"] { min-height: 2rem; }
 .page-calibration .motion-smoothing { margin: .5rem 0; }
 .page-calibration .motion-smoothing-group { padding: .25rem .65rem .5rem; }
 @media (max-width: 480px) {
@@ -56,11 +55,7 @@
 
 .page-calibration .c-card h2 { margin: .2rem 0 .5rem; }
 .page-calibration .c-btn:not(#global-motion-toggle) { padding: .5rem .75rem; min-height: 40px; }
-.page-calibration .motion-profiles .operator-row label { display: grid; gap: .2rem; }
 .page-calibration .motion-profiles .operator-row:last-of-type { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
-.page-calibration .motion-profiles .operator-row:last-of-type label { grid-column: 1 / -1; }
-.page-calibration .motion-profiles input,
-.page-calibration .motion-profiles select { width: 100%; }
 .page-calibration .motion-profiles .operator-row:first-of-type label { flex: 1; min-width: 0; }
 .page-calibration .motion-setting-hint { margin: 0; line-height: 1.2; }
 @media (min-width: 851px) {
@@ -69,7 +64,7 @@
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
-  .page-calibration .motion-setting-row:not(:first-child) .motion-setting-field[data-field=speed] > span { grid-column: auto; }
+  .page-calibration .motion-setting-row:not(:first-child) .motion-setting-field[data-field="speed"] > span { grid-column: auto; }
 }
 @media (max-width: 480px) {
   .page-calibration .motion-profiles .operator-row:last-of-type { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -79,7 +74,6 @@
 .page-calibration .c-card { display: block; }
 .page-calibration .motion-profiles .operator-row label { display: flex; align-items: center; gap: .5rem; }
 .page-calibration .motion-profiles .operator-row label > span { min-width: 3rem; }
-.page-calibration .motion-profiles .operator-row { margin: .5rem 0; }
 .page-calibration .motion-profiles #motion-profile-status { margin: .35rem 0; }
 .page-calibration .motion-profiles > .operator-muted { margin-bottom: 0; }
 .page-calibration .calibration-save-row { display: flex; align-items: end; gap: 1rem; flex-wrap: wrap; }
@@ -96,7 +90,7 @@
 .page-calibration .profile-heading h2 { margin: 0; }
 .page-calibration .profile-heading #motion-profile-status { flex: 1; margin: 0; font-size: .8rem; }
 @media (min-width: 851px) {
-  .page-calibration .motion-setting-field input[type=number] { min-height: 36px; padding: .35rem .5rem; }
+  .page-calibration .motion-setting-field input[type="number"] { min-height: 36px; padding: .35rem .5rem; }
   .page-calibration .c-btn:not(#global-motion-toggle) { min-height: 36px; }
 }
 
@@ -108,11 +102,12 @@
   .page-calibration .motion-smoothing-group .motion-setting-field { display: flex; align-items: center; gap: .5rem; }
   .page-calibration .motion-smoothing-group { flex-direction: column; gap: .3rem; }
   .page-calibration .motion-smoothing-group .motion-setting-field > span { width: 5.6rem; font-size: .8rem; }
-  .page-calibration .motion-smoothing-group input[type=number] { width: 4.5rem; }
+  .page-calibration .motion-smoothing-group input[type="number"] { width: 4.5rem; }
 }
 
 @media (min-width: 851px) {
   .page-calibration .motion-setting-row { padding: 0; }
+
   .page-calibration .smoothing-help {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;

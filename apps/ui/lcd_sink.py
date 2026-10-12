@@ -97,6 +97,12 @@ class LcdSink:
             self._spi_address = None
             self.release()
             raise
+        from services.core.lcd_state import invalidate
+
+        invalidate()
+        from services.core.resource_observation import invalidate as invalidate_owner
+
+        invalidate_owner("lcd")
         self.power_off = power_off
         self.report = report
         self._last_probe = self.clock()
@@ -165,6 +171,9 @@ class LcdSink:
                 errors.append(error)
         self._lease.close()
         self._released = True
+        from services.core.resource_observation import invalidate
+
+        invalidate("lcd")
         if errors:
             self._release_error = RuntimeError("lcd_handle_close_failed")
             raise self._release_error from errors[0]

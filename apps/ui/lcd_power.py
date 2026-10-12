@@ -72,6 +72,13 @@ def _off_locked(*, probe=None, runner=None):
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"ok": False, "on": None, "power_known": False, "error": "lcd_off_unconfirmed:" + type(exc).__name__}
     accepted = result.returncode == 0
+    if accepted:
+        from services.core.lcd_state import invalidate
+
+        invalidate()
+        from services.core.resource_observation import invalidate as invalidate_owner
+
+        invalidate_owner("lcd")
     return {
         "ok": accepted,
         "on": False if accepted else None,

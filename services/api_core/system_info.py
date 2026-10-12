@@ -10,6 +10,8 @@ import time
 
 from flask import Response
 
+from .system_sampling import SystemSampler
+
 
 def _cpu_pct_sample() -> tuple[float, float]:
     """Read CPU idle and total time from /proc/stat."""
@@ -19,34 +21,17 @@ def _cpu_pct_sample() -> tuple[float, float]:
         if not line.startswith("cpu "):
             return 0.0, 0.0
         parts = [float(x) for x in line.split()[1:]]
-        idle = parts[3]
-        total = sum(parts)
+        idle = parts[3] + (parts[4] if len(parts) > 4 else 0.0)
+        # guest and guest_nice are already included in user/nice.
+        total = sum(parts[:8])
         return idle, total
     except Exception:
         return 0.0, 0.0
 
 
-_prev = {"idle": None, "total": None}
-
-
-def cpu_percent() -> float:
-    """Estimate CPU usage percentage."""
-    idle, total = _cpu_pct_sample()
-    if not idle and not total:
-        return 0.0
-    if _prev["idle"] is None:
-        _prev["idle"], _prev["total"] = idle, total
-        time.sleep(0.03)
-        idle2, total2 = _cpu_pct_sample()
-        _prev["idle"], _prev["total"] = idle2, total2
-        return 0.0
-    diff_idle = idle - _prev["idle"]
-    diff_total = total - _prev["total"]
-    _prev["idle"], _prev["total"] = idle, total
-    if diff_total <= 0:
-        return 0.0
-    usage = (1.0 - (diff_idle / diff_total)) * 100.0
-    return max(0.0, min(100.0, usage))
+def cpu_percent() -> float | None:
+    """Return the latest shared one-second CPU sample."""
+    return _sampler.snapshot()["cpu_pct"]
 
 
 def load_avg() -> tuple[float, float, float]:
@@ -95,7 +80,7 @@ def temp_c() -> float:
     except Exception:
         pass
     try:
-        out = subprocess.check_output(["vcgencmd", "measure_temp"]).decode()
+        out = subprocess.check_output(["vcgencmd", "measure_temp"], timeout=1).decode()
         v = out.strip().split("=")[-1].replace("'C", "").replace("C", "").replace("'", "")
         return float(v)
     except Exception:
@@ -118,44 +103,34 @@ def _os_info() -> dict[str, str | None]:
     return {"pretty": pretty, "kernel": platform.release()}
 
 
-_last_hist_t = 0.0
+_slow_metrics = {}
+
+
+def _collect_system(slow: bool) -> dict:
+    if slow:
+        _slow_metrics.update(disk=disk_info("/"), os=_os_info())
+    la1, la5, la15 = load_avg()
+    mi = mem_info()
+    return {
+        "load": {"1": round(la1, 2), "5": round(la5, 2), "15": round(la15, 2)},
+        "mem": {**mi, "pct": round(mi["pct"], 1)},
+        "disk": {**_slow_metrics["disk"], "pct": round(_slow_metrics["disk"]["pct"], 1)},
+        "temp_c": round(temp_c(), 1),
+        "os": dict(_slow_metrics["os"]),
+    }
+
+
+_sampler = SystemSampler(_cpu_pct_sample, _collect_system)
 
 
 def get_sysinfo(HIST_CPU, HIST_MEM) -> dict[str, object]:
-    """Collect system metrics and append to history deques."""
-    global _last_hist_t
-    ci = cpu_percent()
-    la1, la5, la15 = load_avg()
-    mi = mem_info()
-    di = disk_info("/")
-    tc = temp_c()
-    now = time.time()
-    if now - _last_hist_t >= 1.0:
-        HIST_CPU.append(round(ci, 1))
-        HIST_MEM.append(round(mi.get("pct", 0.0), 1))
-        _last_hist_t = now
-    si = {
-        "ts": now,
-        "cpu_pct": round(ci, 1),
-        "load": {"1": round(la1, 2), "5": round(la5, 2), "15": round(la15, 2)},
-        "mem": {
-            "total": mi["total"],
-            "available": mi["available"],
-            "used": mi["used"],
-            "pct": round(mi["pct"], 1),
-        },
-        "disk": {
-            "total": di["total"],
-            "used": di["used"],
-            "free": di["free"],
-            "pct": round(di["pct"], 1),
-        },
-        "temp_c": round(tc, 1),
-        "hist_cpu": list(HIST_CPU),
-        "hist_mem": list(HIST_MEM),
-        "os": _os_info(),
-    }
-    # bateria z LAST_XGO – uzupełnia compat.healthz/state, ale sysinfo może też ją podać:
+    """Read one coherent snapshot, also preserving legacy history deques."""
+    with _sampler.lock:
+        si = _sampler.snapshot()
+        HIST_CPU.clear()
+        HIST_CPU.extend(si["hist_cpu"])
+        HIST_MEM.clear()
+        HIST_MEM.extend(si["hist_mem"])
     try:
         from . import compat
 
@@ -185,6 +160,10 @@ def sysinfo() -> Response:
         "temp_c": si["temp_c"],
         "hist_cpu": si["hist_cpu"],
         "hist_mem": si["hist_mem"],
+        "hist_ts": si["hist_ts"],
+        "hist_cpu_peak": si["hist_cpu_peak"],
+        "cpu_peak_pct": si["cpu_peak_pct"],
+        "sampling": si["sampling"],
         "os_release": (si["os"].get("pretty") or "—") + " · " + (si["os"].get("kernel") or "—"),
         "ts": si["ts"],
     }
@@ -213,7 +192,8 @@ def metrics() -> Response:
     def m(name, val) -> None:
         lines.append(f"{name} {val}")
 
-    m("rider_cpu_pct", si["cpu_pct"])
+    if si["cpu_pct"] is not None:
+        m("rider_cpu_pct", si["cpu_pct"])
     m("rider_mem_pct", si["mem"]["pct"])
     m("rider_disk_pct", si["disk"]["pct"])
     m("rider_temp_c", si["temp_c"])

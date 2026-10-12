@@ -26,7 +26,7 @@ def lcd_snapshot(C, *, now):
         and state.get("power_source") == source
         and power_at == at
     )
-    return {
+    result = {
         "on": state["on"] if known else None,
         "power_known": bool(known),
         "source": source if reported else None,
@@ -62,6 +62,13 @@ def lcd_snapshot(C, *, now):
             )
         },
     }
+    from services.core.lcd_state import backlight_status
+
+    live = backlight_status()
+    result.update(live)
+    if live.get("power_known"):
+        result["observed_age_s"] = round(max(0, C.time.time() - live["observed_at"]), 3)
+    return result
 
 
 def healthz(C):
@@ -73,6 +80,7 @@ def healthz(C):
 
     camera = camera_snapshot(heartbeat=C.LAST_CAMERA, now=now)
 
+    now = C.time.time()
     from .devices import xgo_snapshot
 
     xgo = xgo_snapshot(now=now)
