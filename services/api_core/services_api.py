@@ -18,6 +18,7 @@ from common.service_catalog import (
     task_resources,
     unit_availability,
 )
+from services.core.observation_policy import configure_systemd_observation
 from services.core.service_permissions import permissions
 
 from . import resource_diag
@@ -25,6 +26,9 @@ from . import resource_diag
 ALLOWED_UNITS = UNIT_ALIASES
 ALLOWED_ACTIONS = ("start", "stop", "restart", "enable", "disable")
 MUTEX_GROUPS = [{"camera-capture@raw.service", "camera-capture@edge.service", "camera-capture@ssd.service"}]
+
+
+configure_systemd_observation()
 
 
 def _json(payload: Any, status: int = 200) -> Response:

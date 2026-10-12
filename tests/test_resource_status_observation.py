@@ -156,3 +156,12 @@ def test_idle_resource_observations_are_shared_without_renewing_source_time(free
     tick[0] = ttl
     resource_observation.snapshot("camera", probe=probe, clock=lambda: tick[0])
     assert len(calls) == 2
+
+
+def test_api_policy_configures_the_existing_single_systemd_cache(monkeypatch):
+    from common import systemd_snapshot
+    from services.core.observation_policy import configure_systemd_observation
+
+    monkeypatch.setattr(systemd_snapshot, "TTL_SECONDS", 0.75)
+    configure_systemd_observation()
+    assert systemd_snapshot.TTL_SECONDS == 2

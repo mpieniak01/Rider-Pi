@@ -30,3 +30,9 @@ Multiple API processes each have their own sampler/cache.
 Stable free resources and failed owner probes now share their observations for
 5 seconds (busy resources: 3 seconds). Resource recovery remains a fresh direct
 inspection; its result invalidates the presentation cache.
+
+
+The API configures the existing common systemd observer for a 2-second cache,
+without adding another service-state cache. Actions retain explicit invalidation.
+Overview requests historical frame metadata once while idle; it does not poll
+the absent obstacle producer and resumes vision reads after observed camera ON.

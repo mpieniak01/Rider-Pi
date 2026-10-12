@@ -112,3 +112,21 @@ test('history uses real timestamps, preserves peaks and leaves gaps after inacti
   assert.equal(paths[1][0][1], 30);
   assert.equal(paths[1][2][1], 60);
 });
+
+test('overview reads idle metadata once, skips absent detector and resumes after ON', async () => {
+  const src = (await readFile(new URL('overview.js', assets), 'utf8'))
+    .replace(/^import .*;$/gm, '').replace('export class Overview', 'globalThis.Overview = class Overview');
+  const calls = [];
+  const context = vm.createContext({ request: async path => { calls.push(path); return { data: {} }; } });
+  vm.runInContext(src, context);
+  const view = { state: { camera: { activity: { on: false } } }, visionIdleLoaded: false, renderVision() {} };
+  const load = () => context.Overview.prototype.loadVision.call(view);
+  await load(); await load();
+  assert.deepEqual(calls, ['/vision/snap-info?light=1']);
+  view.state.camera.activity.on = true;
+  await load();
+  assert.deepEqual(calls.slice(-2), ['/vision/snap-info?light=1', '/vision/obstacle']);
+  view.state.camera.activity.on = false;
+  await load(); const count = calls.length; await load();
+  assert.equal(calls.length, count); assert.equal(view.obstacle, null);
+});

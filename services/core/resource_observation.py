@@ -6,6 +6,8 @@ import threading
 import time
 from copy import deepcopy
 
+from services.core.observation_policy import RESOURCE_ACTIVE_TTL_S, RESOURCE_IDLE_TTL_S
+
 _CACHE = {}
 _LOCK = threading.Lock()
 
@@ -21,7 +23,11 @@ def snapshot(name, *, probe=None, clock=time.monotonic):
     probe = inspect if probe is None else probe
     with _LOCK:
         previous = _CACHE.get(name)
-        ttl = 5 if previous and (previous[2].get("free") is True or previous[2].get("error")) else 3
+        ttl = (
+            RESOURCE_IDLE_TTL_S
+            if previous and (previous[2].get("free") is True or previous[2].get("error"))
+            else RESOURCE_ACTIVE_TTL_S
+        )
         if previous and previous[0] is probe and 0 <= clock() - previous[1] < ttl:
             return deepcopy(previous[2])
         try:

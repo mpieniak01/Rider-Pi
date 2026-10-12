@@ -29,3 +29,9 @@ dotychczasowych pól. Przy wielu procesach API każdy ma własny sampler/cache.
 Potwierdzone wolne zasoby i błędy odczytu właścicieli współdzielą obserwację przez
 5 sekund (zasoby zajęte: 3 sekundy). Odzyskiwanie zasobu nadal wymaga bezpośredniej,
 aktualnej diagnostyki; wynik operacji unieważnia cache prezentacji.
+
+
+API ustawia okres istniejącego wspólnego obserwatora systemd na 2 sekundy,
+bez tworzenia drugiego cache usług. Akcje zachowują jawne unieważnianie.
+Przegląd jednorazowo pobiera metadane archiwalnych klatek podczas bezczynności;
+nie odpytuje nieaktywnego detektora. Po potwierdzonym ON wznawia odczyty wizji.

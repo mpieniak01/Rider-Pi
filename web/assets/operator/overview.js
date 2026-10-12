@@ -37,11 +37,8 @@ export class Overview {
       window.dashboardFooter?.update({ state: this.state });
       if (this.state) window.dispatchEvent(new CustomEvent('dashboard:update', { detail: this.state }));
     }, { profile: 'telemetry' });
-    this.visionPoller = poll(async () => {
-      const results = await Promise.allSettled([request('/vision/snap-info?light=1'), request('/vision/obstacle')]);
-      [this.snap, this.obstacle] = results.map(result => result.status === 'fulfilled' ? result.value.data : null);
-      this.renderVision();
-    }, { profile: 'vision' });
+    this.visionIdleLoaded = false;
+    this.visionPoller = poll(() => this.loadVision(), { profile: 'vision' });
     poll(async () => {
       try { this.metrics = (await request('/api/app-metrics')).data; }
       catch { this.metrics = null; }
@@ -50,6 +47,19 @@ export class Overview {
     this.expiry = setInterval(() => { if (!document.hidden) this.render(); }, 1000);
     window.addEventListener('dashboard:langchange', () => this.render());
     window.addEventListener('pagehide', () => clearInterval(this.expiry));
+  }
+  async loadVision() {
+    const activity = this.state?.camera?.activity || this.catalog?.resource_states?.camera;
+    const on = activity?.on === true && !activity.error && activity.stale !== true && activity.offline !== true;
+    if (!on && this.visionIdleLoaded) return;
+    this.visionIdleLoaded = !on;
+    const results = await Promise.allSettled([
+      request('/vision/snap-info?light=1'),
+      ...(on ? [request('/vision/obstacle')] : [])
+    ]);
+    this.snap = results[0].status === 'fulfilled' ? results[0].value.data : null;
+    this.obstacle = results[1]?.status === 'fulfilled' ? results[1].value.data : null;
+    this.renderVision();
   }
   render() {
     this.renderSystem(); this.renderTelemetry(); this.renderHealth(); this.renderVision(); this.renderMetrics();
