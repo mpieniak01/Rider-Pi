@@ -41,6 +41,8 @@ def result_for(rule, body, code, submitted):
     elif success and isinstance(result.get("status"), dict) and result["status"].get("stale") is not True:
         observed = result["status"]
         action = command.get("action")
+        if rule == "/api/resource/<name>" and (request.view_args or {}).get("name") == "lcd":
+            action = {"on": "start", "off": "stop"}.get(action, action)
         active = observed.get("active_state", observed.get("active"))
         enabled = observed.get("unit_file_state", observed.get("enabled"))
         confirmed = (
@@ -54,6 +56,17 @@ def result_for(rule, body, code, submitted):
             and enabled == "disabled"
         )
         state, ack_kind = ("executed" if confirmed else "pending"), "systemd_observed"
+    elif (
+        success
+        and rule == "/api/resource/<name>"
+        and (request.view_args or {}).get("name") == "lcd"
+        and command.get("action") == "on"
+        and result.get("idempotent") is True
+        and isinstance(result.get("face"), dict)
+        and result["face"].get("running") is True
+        and result["face"].get("sink") == "lcd"
+    ):
+        state, confirmed, ack_kind = "executed", True, "application_state_observed"
     elif success and result.get("released") is True:
         state, confirmed, ack_kind = "executed", True, "resource_observed"
     elif (
