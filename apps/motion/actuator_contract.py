@@ -2,6 +2,7 @@
 
 from apps.motion import manual_settings
 from apps.safety.gate import MAX_DURATION_S, finite_number
+from common.actuator_parameters import valid_height
 
 SUB_TOPICS = [
     "calibration.activate",
@@ -50,7 +51,7 @@ def validate_actuator(command: dict) -> dict:
         values = {"enabled": command["enabled"]}
     elif action == "height":
         height = command.get("height")
-        if isinstance(height, bool) or not isinstance(height, int) or not 75 <= height <= 115:
+        if not valid_height(height):
             raise ValueError("height_integer_75_115_required")
         values = {"height": height}
     elif action == "action":

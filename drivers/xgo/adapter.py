@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from apps.safety.gate import MotionGate, finite_number
+from common.actuator_parameters import posture_parameters, valid_height
 from common.motion_mapping import LINEAR_LEVELS, MAPPING_ID, TURN_LEVELS, linear_sdk_value, native_command_byte
 from drivers.xgo.protocol import bound_serial, read_response
 from drivers.xgo.sniffer import install as install_sniffer
@@ -375,7 +376,7 @@ class XgoAdapter:
         return self._call("rider_balance_roll", int(on))
 
     def set_height(self, h: int) -> bool:
-        if not self._allowed() or isinstance(h, bool) or not isinstance(h, int) or not 75 <= h <= 115:
+        if not self._allowed() or not valid_height(h):
             return False
         if not self.capabilities()["height"]["available"]:
             return False
@@ -468,6 +469,8 @@ class XgoAdapter:
                 else "motion",
                 "physical_completion": "unverified",
             }
+        for name, parameter in posture_parameters().items():
+            result[name]["parameter"] = parameter
         return result
 
     def output_status(self) -> dict:
