@@ -52,7 +52,7 @@ class SystemSampler:
                         self.total_delta += dt
                         self.peak = max(self.peak, max(0.0, min(100.0, 100 * (1 - di / dt))))
                 self.previous = (idle, total)
-            if self.summary_at is not None and now - self.summary_at < SUMMARY_INTERVAL_S:
+            if self.summary_at is not None and now - self.summary_at < SUMMARY_INTERVAL_S - 0.001:
                 return
             slow = self.disk_at is None or now - self.disk_at >= DISK_INTERVAL_S
             row = self.collect(slow)
@@ -72,7 +72,12 @@ class SystemSampler:
             )
             self.latest = row
             self.history.append((row["ts"], row["cpu_pct"], row["mem"]["pct"], row["cpu_peak_pct"]))
-            self.summary_at = now
+            # Keep the one-second phase even when a timer wakes slightly early/late.
+            self.summary_at = (
+                self.summary_at + SUMMARY_INTERVAL_S
+                if self.summary_at is not None and now - self.summary_at < 2 * SUMMARY_INTERVAL_S
+                else now
+            )
             self.idle_delta = self.total_delta = self.peak = 0.0
 
     def _run(self):

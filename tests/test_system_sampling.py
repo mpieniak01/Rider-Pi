@@ -119,3 +119,14 @@ def test_same_cpu_sample_is_used_by_legacy_endpoints(monkeypatch):
     assert payload["cpu_peak_pct"] == payload["hist_cpu_peak"][-1] == 80
     assert payload["sampling"]["panel_intervals_ms"]["services"] == 5000
     assert "rider_cpu_pct 80.0" in metrics
+
+
+def test_summary_phase_does_not_drift_by_a_quarter_second():
+    sampler, clock, counters, _ = fixture()
+    sampler.sample()
+    for instant in (0.25, 0.5, 0.75, 1.0001, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0):
+        clock[0] = instant
+        counters[0] += 10
+        counters[1] += 25
+        sampler.sample()
+    assert [row[0] for row in sampler.history] == [1000, 1001.0001, 1002, 1003]
