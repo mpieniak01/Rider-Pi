@@ -272,9 +272,9 @@ def test_wifi_link_state_is_separate_from_failed_boot_helper(panel, status, labe
         "wifi": {
             "interface": "wlan0",
             "status": status,
-            "addresses": ["192.168.1.14"],
+            "addresses": ["192.0.2.14"],
             "default_route": True,
-            "gateway": "192.168.1.1",
+            "gateway": "192.0.2.1",
             "manager": "dhcpcd",
             "autostart": True,
         }
@@ -287,7 +287,7 @@ def test_wifi_link_state_is_separate_from_failed_boot_helper(panel, status, labe
     page.goto("http://rider-pi.test/system/")
     page.wait_for_selector(".wifi-card")
     assert page.locator(".wifi-card .status-pill").inner_text() == label.upper()
-    assert "192.168.1.14" in page.locator(".wifi-card").inner_text()
+    assert "192.0.2.14" in page.locator(".wifi-card").inner_text()
     assert "dhcpcd / Włączony" in page.locator(".wifi-card").inner_text()
     assert page.locator(".service-node .status-pill").inner_text() == "BŁĘDY"
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

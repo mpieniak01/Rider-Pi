@@ -6,6 +6,7 @@ from __future__ import annotations
 # Preview + MobileNet-SSD (Caffe) — zapis RAW/PROC do /home/pi/robot/snapshots (atomowo)
 # + ramki na LCD, + heartbeat, + publikacja vision.person (tylko przy realnym trafieniu)
 import os
+import sys
 import time
 
 import cv2
@@ -89,19 +90,12 @@ def apply_rotation(frame, rot, flip_h, flip_v):
 
 
 def _lcd_init():
-    if DISABLE_LCD:
-        return None
-    try:
-        from xgoscreen.LCD_2inch import LCD_2inch
+    from apps.camera.lcd_preview import open_preview
 
-        lcd = LCD_2inch()
-        lcd.rotation = 0
-        return lcd
-    except Exception:
-        return None
+    return open_preview(disabled=DISABLE_LCD, no_draw=NO_DRAW)
 
 
-_LCD = _lcd_init()
+_LCD = None
 
 
 def lcd_show_bgr(img_bgr):
@@ -111,7 +105,7 @@ def lcd_show_bgr(img_bgr):
         from PIL import Image
 
         img = cv2.resize(img_bgr, (320, 240), interpolation=cv2.INTER_LINEAR)
-        _LCD.ShowImage(Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)))
+        _LCD.present(Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)))
     except Exception:
         pass
 
@@ -248,146 +242,157 @@ def main():
     CLW = parse_classes_env()
 
     read, _ = open_camera((320, 240))
-    net = load_ssd()
+    try:
+        global _LCD
+        _LCD = _lcd_init()
+        net = load_ssd()
 
-    fps_ema, prev_t = None, time.time()
-    frame_id, t0, frames = 0, time.time(), 0
+        fps_ema, prev_t = None, time.time()
+        frame_id, t0, frames = 0, time.time(), 0
 
-    # --- poprawione, jednoznaczne logowanie startu (bez "wywoływania" stringa)
-    start_msg = (
-        f"[ssd] start | SNAP_DIR={SNAP_DIR} | "
-        f"ROT={ROT} FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "
-        f"CLASSES={'ALL' if not CLW else ','.join(sorted(CLW))} "
-        f"EVERY={EVERY}"
-    )
-    print(start_msg, flush=True)
+        # --- poprawione, jednoznaczne logowanie startu (bez "wywoływania" stringa)
+        start_msg = (
+            f"[ssd] start | SNAP_DIR={SNAP_DIR} | "
+            f"ROT={ROT} FLIP_H={FLIP_H} FLIP_V={FLIP_V} | "
+            f"CLASSES={'ALL' if not CLW else ','.join(sorted(CLW))} "
+            f"EVERY={EVERY}"
+        )
+        print(start_msg, flush=True)
 
-    HB.tick(None, 0.0, presenting=not NO_DRAW)
-    last_snap_log = time.time()
+        HB.tick(None, 0.0, presenting=not NO_DRAW)
+        last_snap_log = time.time()
 
-    while True:
-        ok, frame = read()
-        if not ok:
-            time.sleep(0.01)
-            continue
+        while True:
+            ok, frame = read()
+            if not ok:
+                time.sleep(0.01)
+                continue
 
-        frame = apply_rotation(frame, ROT, FLIP_H, FLIP_V)
+            frame = apply_rotation(frame, ROT, FLIP_H, FLIP_V)
 
-        now = time.time()
-        dt = max(1e-6, now - prev_t)
-        inst = 1.0 / dt
-        fps_ema = inst if fps_ema is None else 0.9 * fps_ema + 0.1 * inst
-        prev_t = now
+            now = time.time()
+            dt = max(1e-6, now - prev_t)
+            inst = 1.0 / dt
+            fps_ema = inst if fps_ema is None else 0.9 * fps_ema + 0.1 * inst
+            prev_t = now
 
-        out = frame.copy()
-        detections: list[tuple[str, float, tuple[int, int, int, int]]] = []
-        fresh_detections: list[tuple[str, float, tuple[int, int, int, int]]] = []
+            out = frame.copy()
+            detections: list[tuple[str, float, tuple[int, int, int, int]]] = []
+            fresh_detections: list[tuple[str, float, tuple[int, int, int, int]]] = []
 
-        # Inference co N-tą klatkę
-        if frame_id % max(1, EVERY) == 0:
-            blob = cv2.dnn.blobFromImage(
-                cv2.resize(frame, (300, 300)),
-                0.007843,
-                (300, 300),
-                127.5,
-                swapRB=True,
-                crop=False,
-            )
-            net.setInput(blob)
-            det = net.forward()
-            h, w = frame.shape[:2]
-            for i in range(det.shape[2]):
-                conf = float(det[0, 0, i, 2])
-                if conf < SCORE:
-                    continue
-                cls_id = int(det[0, 0, i, 1])
-                x1 = int(det[0, 0, i, 3] * w)
-                y1 = int(det[0, 0, i, 4] * h)
-                x2 = int(det[0, 0, i, 5] * w)
-                y2 = int(det[0, 0, i, 6] * h)
-                x1 = max(0, min(x1, w - 1))
-                y1 = max(0, min(y1, h - 1))
-                x2 = max(0, min(x2, w - 1))
-                y2 = max(0, min(y2, h - 1))
-                if x2 <= x1 or y2 <= y1:
-                    continue
-                name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
-                if CLW and (name.lower() not in CLW):
-                    continue
-                tup = (name, conf, (x1, y1, x2, y2))
-                fresh_detections.append(tup)
-
-        # Rysowanie z LATCH (ciągły obrys dla oka)
-        detections = latch_dets(fresh_detections)
-
-        for name, conf, (x1, y1, x2, y2) in detections:
-            if not NO_DRAW:
-                cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 255), 2)
-                cv2.putText(
-                    out,
-                    f"{name}:{conf:.2f}",
-                    (x1, max(0, y1 - 5)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 255),
-                    1,
-                    cv2.LINE_AA,
+            # Inference co N-tą klatkę
+            if frame_id % max(1, EVERY) == 0:
+                blob = cv2.dnn.blobFromImage(
+                    cv2.resize(frame, (300, 300)),
+                    0.007843,
+                    (300, 300),
+                    127.5,
+                    swapRB=True,
+                    crop=False,
                 )
+                net.setInput(blob)
+                det = net.forward()
+                h, w = frame.shape[:2]
+                for i in range(det.shape[2]):
+                    conf = float(det[0, 0, i, 2])
+                    if conf < SCORE:
+                        continue
+                    cls_id = int(det[0, 0, i, 1])
+                    x1 = int(det[0, 0, i, 3] * w)
+                    y1 = int(det[0, 0, i, 4] * h)
+                    x2 = int(det[0, 0, i, 5] * w)
+                    y2 = int(det[0, 0, i, 6] * h)
+                    x1 = max(0, min(x1, w - 1))
+                    y1 = max(0, min(y1, h - 1))
+                    x2 = max(0, min(x2, w - 1))
+                    y2 = max(0, min(y2, h - 1))
+                    if x2 <= x1 or y2 <= y1:
+                        continue
+                    name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
+                    if CLW and (name.lower() not in CLW):
+                        continue
+                    tup = (name, conf, (x1, y1, x2, y2))
+                    fresh_detections.append(tup)
 
-        # Publikacja tylko dla realnych trafień z tej klatki (nie latched)
-        for name, conf, (x1, y1, x2, y2) in fresh_detections:
-            if name.lower() == "person":
-                try:
-                    PUB.publish(
-                        "vision.person",
-                        {
-                            "present": True,
-                            "score": float(conf),
-                            "bbox": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                        },
-                        add_ts=True,
+            # Rysowanie z LATCH (ciągły obrys dla oka)
+            detections = latch_dets(fresh_detections)
+
+            for name, conf, (x1, y1, x2, y2) in detections:
+                if not NO_DRAW:
+                    cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 255), 2)
+                    cv2.putText(
+                        out,
+                        f"{name}:{conf:.2f}",
+                        (x1, max(0, y1 - 5)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 255),
+                        1,
+                        cv2.LINE_AA,
                     )
+
+            # Publikacja tylko dla realnych trafień z tej klatki (nie latched)
+            for name, conf, (x1, y1, x2, y2) in fresh_detections:
+                if name.lower() == "person":
+                    try:
+                        PUB.publish(
+                            "vision.person",
+                            {
+                                "present": True,
+                                "score": float(conf),
+                                "bbox": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                            },
+                            add_ts=True,
+                        )
+                    except Exception:
+                        pass
+
+            # --- snapshoty (atomowo, z fallbackiem formatu) z throttlingiem do WWW ---
+            if should_snap_now():
+                save_raw_and_proc(frame, out)
+                try:
+                    SNAP.cam(frame)
+                    SNAP.proc(out)
+                    SNAP.lcd_from_frame(out)
+                    SNAP.lcd_from_fb()
                 except Exception:
                     pass
 
-        # --- snapshoty (atomowo, z fallbackiem formatu) z throttlingiem do WWW ---
-        if should_snap_now():
-            save_raw_and_proc(frame, out)
-            try:
-                SNAP.cam(frame)
-                SNAP.proc(out)
-                SNAP.lcd_from_frame(out)
-                SNAP.lcd_from_fb()
-            except Exception:
-                pass
+            # co ~10 s lekki log diagnostyczny
+            if now - last_snap_log > 10:
+                try:
+                    for base in ("proc", "raw"):
+                        for ext in (".jpg", ".png", ".bmp"):
+                            p = os.path.join(SNAP_DIR, f"{base}{ext}")
+                            if os.path.exists(p):
+                                s = os.path.getsize(p)
+                                print(
+                                    f"[snap] {base}{ext} size={s}B @ {time.strftime('%H:%M:%S')}",
+                                    flush=True,
+                                )
+                                break
+                except Exception:
+                    pass
+                last_snap_log = now
 
-        # co ~10 s lekki log diagnostyczny
-        if now - last_snap_log > 10:
-            try:
-                for base in ("proc", "raw"):
-                    for ext in (".jpg", ".png", ".bmp"):
-                        p = os.path.join(SNAP_DIR, f"{base}{ext}")
-                        if os.path.exists(p):
-                            s = os.path.getsize(p)
-                            print(
-                                f"[snap] {base}{ext} size={s}B @ {time.strftime('%H:%M:%S')}",
-                                flush=True,
-                            )
-                            break
-            except Exception:
-                pass
-            last_snap_log = now
+            # LCD
+            lcd_show_bgr(out)
+            HB.tick(out, fps_ema, presenting=not NO_DRAW)
 
-        # LCD
-        lcd_show_bgr(out)
-        HB.tick(out, fps_ema, presenting=not NO_DRAW)
+            frame_id += 1
+            frames += 1
+            if frames % 60 == 0:
+                dt_all = time.time() - t0
+                fps = frames / dt_all if dt_all > 0 else 0.0
+                print(f"[ssd] fps={fps:.1f} (every={EVERY}, score>={SCORE})", flush=True)
 
-        frame_id += 1
-        frames += 1
-        if frames % 60 == 0:
-            dt_all = time.time() - t0
-            fps = frames / dt_all if dt_all > 0 else 0.0
-            print(f"[ssd] fps={fps:.1f} (every={EVERY}, score>={SCORE})", flush=True)
+    finally:
+        try:
+            read.close()
+        finally:
+            from apps.camera.lcd_shutdown import close_preview_lcd
+
+            close_preview_lcd(sys.modules.get(__name__))
 
 
 if __name__ == "__main__":

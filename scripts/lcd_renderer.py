@@ -45,36 +45,20 @@ def existing_splash():
 
 
 class LCDRenderer:
-    def __init__(self, *, driver_factory=None) -> None:
+    def __init__(self, *, driver_factory=None, owner_probe=None) -> None:
         # Existing driver path; imports/initialization occur only after owner
         # inventory permits this renderer, never at module import/idle polling.
-        if driver_factory is None:
-            from drivers.lcd.driver_ili9xx import FaceConfig, LCDRenderer as Driver
+        from apps.ui.lcd_sink import LcdSink
 
-            def driver_factory():
-                return Driver(FaceConfig(lcd_bl_pin=0))
-
-        self.lcd = driver_factory()
+        self._owner = LcdSink(factory=driver_factory, probe=owner_probe)
+        self.lcd = self._owner.driver
         self.splash = existing_splash()
-        self.rotate = self.splash.ROTATE
+        self.rotate = self._owner.rotate
         self.frame_observation = None
         self.frame_path = Path(os.getenv("LCD_RUNTIME_FRAME", "/run/rider-motion/splash_device_info.png"))
 
     def close(self):
-        # Do not call driver.cleanup(): it also writes shared GPIO. The power
-        # operation is separate and needs a new no-external-owner inventory.
-        device = getattr(self.lcd, "device", None)
-        spi = getattr(device, "SPI", None)
-        if spi is not None and callable(getattr(spi, "close", None)):
-            spi.close()
-        # The legacy driver may also own a module-local raw SPI descriptor.
-        # Close only that descriptor; its cleanup() would toggle shared GPIO.
-        driver_module = sys.modules.get(type(self.lcd).__module__)
-        raw_state = getattr(driver_module, "_RAWSPI", None)
-        raw_spi = raw_state.get("spi") if isinstance(raw_state, dict) else None
-        if raw_spi is not None and raw_spi is not spi and callable(getattr(raw_spi, "close", None)):
-            raw_spi.close()
-            raw_state.update(spi=None, inited=False)
+        self._owner.release()
 
     @property
     def power_known(self):
@@ -94,7 +78,7 @@ class LCDRenderer:
         if img.size != target:
             img = img.resize(target, Image.BICUBIC)
         try:
-            self.lcd.ShowImage(img)
+            self._owner.present_device(img)
         except Exception as exc:
             print(f"[lcd_renderer] present failed: {exc}", flush=True)
             raise

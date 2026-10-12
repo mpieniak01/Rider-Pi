@@ -39,9 +39,9 @@ except (ImportError, ModuleNotFoundError):
 OUT_IMG = os.path.join(DATA_DIR, "splash_device_info.png")
 WIDTH = int(os.getenv("SPLASH_W", "480"))
 HEIGHT = int(os.getenv("SPLASH_H", "320"))
-ROTATE = int(
-    os.getenv("SPLASH_ROTATE", os.getenv("PREVIEW_ROT", str(_SPLASH_ROTATE_DEFAULT))) or _SPLASH_ROTATE_DEFAULT
-)
+from drivers.lcd.board import lcd_board  # noqa: E402 - repository path is bootstrapped above
+
+ROTATE = lcd_board().rotate
 SECS = float(os.getenv("SPLASH_SECONDS", "8"))
 USE = os.getenv("SPLASH_USE", "auto")  # xgo|pygame|auto
 CLEAR = int(os.getenv("SPLASH_CLEAR", "1"))
@@ -66,8 +66,6 @@ KEY_W = int(os.getenv("SPLASH_KEY_W", "150"))
 REFRESH_EVERY = float(os.getenv("SPLASH_REFRESH_EVERY", "0.5"))
 
 # Sterowanie podświetleniem
-XGO_BL_GPIO = int(os.getenv("XGO_BL_GPIO", "-1"))
-RASPI_GPIO_BIN = "raspi-gpio"
 
 LOG = os.path.join(DATA_DIR, "splash_trace.log")
 
@@ -374,21 +372,6 @@ def maybe_rotate(im: Image.Image) -> Image.Image:
     return im
 
 
-# ---------------- HW: podświetlenie (opcjonalnie) ----------------
-def _bl_set(low: bool) -> None:
-    if XGO_BL_GPIO < 0:
-        return
-    try:
-        subprocess.check_call(
-            [RASPI_GPIO_BIN, "set", str(XGO_BL_GPIO), "op", "dl" if low else "dh"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        _log(f"BL GPIO{XGO_BL_GPIO}: {'LOW' if low else 'HIGH'}")
-    except Exception as e:
-        _log(f"BL ctrl fail: {e}")
-
-
 # ---------------- PRE-SLIDE (LOGO) WYŚWIETLANIE ----------------
 def _load_logo_for_target(target_size: tuple[int, int]) -> Image.Image | None:
     """Ładuje logo, rotuje i dopasowuje (letterbox) do docelowego rozmiaru."""
@@ -418,59 +401,58 @@ def have_xgo() -> bool:
 
 
 def show_live_xgo():
-    import xgoscreen.LCD_2inch as LCD_2inch
+    from apps.ui.lcd_sink import LcdSink
 
-    _bl_set(low=True)
-
-    disp = LCD_2inch.LCD_2inch()
-    disp.Init()
-    disp.clear()
+    sink = LcdSink()
+    disp = getattr(sink.driver, "device", sink.driver)
 
     w = int(getattr(disp, "W", getattr(disp, "width", 240)))
     h = int(getattr(disp, "H", getattr(disp, "height", 320)))
     target_size = (w, h)
 
-    # PRE-SLIDE: logo
-    logo_img = _load_logo_for_target(target_size)
-    if logo_img is not None:
-        try:
-            disp.ShowImage(logo_img)
-            _log(f"logo shown (xgo): {SPLASH_LOGO} for {SPLASH_LOGO_SECONDS:.1f}s")
-            print(f"[splash] logo shown: {SPLASH_LOGO} ({SPLASH_LOGO_SECONDS:.1f}s)")
-            time.sleep(SPLASH_LOGO_SECONDS)
-        except Exception as e:
-            _log(f"logo show failed (xgo): {e}")
+    try:
+        # PRE-SLIDE: logo
+        logo_img = _load_logo_for_target(target_size)
+        if logo_img is not None:
+            try:
+                sink.present_device(logo_img)
+                _log(f"logo shown (xgo): {SPLASH_LOGO} for {SPLASH_LOGO_SECONDS:.1f}s")
+                print(f"[splash] logo shown: {SPLASH_LOGO} ({SPLASH_LOGO_SECONDS:.1f}s)")
+                time.sleep(SPLASH_LOGO_SECONDS)
+            except Exception as e:
+                _log(f"logo show failed (xgo): {e}")
 
-    # tło
-    disp.ShowImage(Image.new("RGB", target_size, (0, 0, 0)))
+        # tło
+        sink.present_device(Image.new("RGB", target_size, (0, 0, 0)))
 
-    t0 = time.time()
-    last_payload = None
-    first_frame = True
+        t0 = time.time()
+        last_payload = None
+        first_frame = True
 
-    while True:
-        info = gather_info()
-        if info != last_payload:
-            img = draw_splash_with(info, WIDTH, HEIGHT)
-            img = maybe_rotate(img)
-            if img.size != target_size:
-                img = img.resize(target_size, Image.BICUBIC)
-            disp.ShowImage(img)
-            last_payload = info
-            if first_frame:
-                _bl_set(low=False)
-                first_frame = False
-                if SPLASH_EARLY_EXIT == 1:
-                    break
+        while True:
+            info = gather_info()
+            if info != last_payload:
+                img = draw_splash_with(info, WIDTH, HEIGHT)
+                img = maybe_rotate(img)
+                if img.size != target_size:
+                    img = img.resize(target_size, Image.BICUBIC)
+                sink.present_device(img)
+                last_payload = info
+                if first_frame:
+                    first_frame = False
+                    if SPLASH_EARLY_EXIT == 1:
+                        break
 
-        if time.time() - t0 >= SECS:
-            break
-        time.sleep(REFRESH_EVERY)
+            if time.time() - t0 >= SECS:
+                break
+            time.sleep(REFRESH_EVERY)
 
-    if CLEAR == 1:
-        disp.ShowImage(Image.new("RGB", target_size, (0, 0, 0)))
-    _log("xgo live display OK")
-    return True
+        if CLEAR == 1:
+            sink.present_device(Image.new("RGB", target_size, (0, 0, 0)))
+        _log("xgo live display OK")
+        return True
+    finally:
+        sink.release()
 
 
 def have_pygame() -> bool:

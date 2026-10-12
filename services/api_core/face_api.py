@@ -197,26 +197,9 @@ def render_face(payload: dict[str, Any]) -> dict[str, Any]:
                 return {"ok": False, "error": f"save-error: {e}"}
 
         elif b in {"lcd", "raw"}:
-            # Jednorazowy push na LCD — użyj narzędzia newface_lcd_direct jeśli dostępne.
-            # Parametry pomocnicze (opcjonalne)
-            spi_hz = payload.get("spi_hz", _env_int("FACE_LCD_SPI_HZ"))
-            bl_pin = int(payload.get("bl_pin", _env_int("FACE_LCD_BL_PIN", 13)))
-            force = payload.get("force")  # np. "rgb565_3", "pil", "raw", itp.
+            from services.api_core.face_runtime_api import play
 
-            try:
-                # PIL klatka (bez wstępnego obracania — zrobi to LCDDirect)
-                img = _one_frame_pil(ex, size)
-
-                # Importujemy local tool do LCD:
-                from tools import newface_lcd_direct as nfd  # type: ignore
-
-                lcd = nfd.LCDDirect(rotate=rot, size=size, spi_hz=spi_hz, bl_pin=bl_pin, force=force)
-                used = lcd.push(img)
-                # sprzątanie, jeśli sterownik ma metody kończące — robione wewnątrz toola
-                return {"ok": True, "used": used}
-            except Exception as e:
-                # Na hostach bez LCD/drivera zwracamy 503 (przechwytywane wyżej)
-                return {"ok": False, "error": f"lcd-error: {e}", "status": 503}
+            return play({"expr": ex, "sink": "lcd", "duration_s": payload.get("duration_s", 1)})
 
         else:
             return {"ok": False, "error": f"unknown backend: {b or 'none'}"}
@@ -254,3 +237,26 @@ def draw_face(payload_or_expr=None, backend="png", out=None, **kwargs) -> tuple[
     res = render_face(payload)
     status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
     return res, status
+
+
+def png_response(payload):
+    """Serve an in-memory HTTP preview without creating a file or LCD owner."""
+    from flask import Response, jsonify, request
+
+    if not isinstance(payload, dict):
+        return jsonify(ok=False, error="invalid_face_preview"), 400
+    if _norm_backend(payload) != "png" or payload.get("out") or "image/png" not in request.headers.get("Accept", ""):
+        return None
+    try:
+        size = int(payload.get("size", 240))
+        if not 16 <= size <= 1024:
+            raise ValueError("invalid_face_size")
+        rot = int(payload.get("rotate", payload.get("rotation", _env_int("FACE_LCD_ROTATE", 0))))
+        if rot not in ROT_ALLOWED:
+            raise ValueError("invalid_face_rotation")
+        png = _rotate_png_bytes(_render_png_bytes(_norm_expr(payload.get("expr")), size), rot)
+        return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
+    except (ValueError, TypeError, OverflowError):
+        return jsonify(ok=False, error="invalid_face_preview"), 400
+    except RuntimeError:
+        return jsonify(ok=False, error="face_renderer_unavailable"), 503

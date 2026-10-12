@@ -64,11 +64,14 @@ def test_systemctl_fallback_cannot_bypass_guard(monkeypatch, tmp_path, safety):
     monkeypatch.setattr(systemd_ctrl, "SERVICE_CTL", tmp_path / "missing")
     monkeypatch.setattr(service_action_guard, "_intent", lambda unit: {})
     result = systemd_ctrl.run_unit_action("rider-tracking-controller.service", "start")
-    assert result.method == "denied" and not result.ok
+    assert result.method == "unavailable" and not result.ok
 
 
-def test_passive_systemctl_fallback_remains_functional(monkeypatch, tmp_path):
-    monkeypatch.setattr(systemd_ctrl, "SERVICE_CTL", tmp_path / "missing")
+def test_passive_service_uses_installed_shared_backend(monkeypatch, tmp_path):
+    backend = tmp_path / "backend"
+    backend.write_text("")
+    backend.chmod(0o755)
+    monkeypatch.setattr(systemd_ctrl, "SERVICE_CTL", backend)
     calls = []
     monkeypatch.setattr(
         systemd_ctrl.subprocess,
@@ -76,4 +79,4 @@ def test_passive_systemctl_fallback_remains_functional(monkeypatch, tmp_path):
         lambda command, **kwargs: calls.append(command) or SimpleNamespace(returncode=0, stdout="", stderr=""),
     )
     assert systemd_ctrl.run_unit_action("camera-capture@raw.service", "start").ok
-    assert calls == [["sudo", "-n", "systemctl", "start", "camera-capture@raw.service"]]
+    assert calls == [["sudo", "-n", str(backend), "camera-capture@raw.service", "start"]]

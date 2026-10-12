@@ -73,7 +73,7 @@ def test_reports_submitted_frame_and_accepted_power_off():
 def test_vendor_shared_spi_reopens_only_after_free_ownership(monkeypatch):
     import os
 
-    from apps.ui.face import lcd_sink
+    from apps.ui import lcd_sink
 
     monkeypatch.setattr(lcd_sink, "_CLOSED_SPI", None)
     state = {"free": True, "holders": []}
@@ -94,3 +94,48 @@ def test_vendor_shared_spi_reopens_only_after_free_ownership(monkeypatch):
     second = LcdSink(probe=lambda: state, factory=factory, power_off=lambda: None)
     assert calls == ["close", ("open", (0, 0))]
     second.close()
+
+
+def test_file_lease_prevents_second_renderer_even_with_free_inventory(tmp_path, monkeypatch):
+    monkeypatch.setenv("RIDER_LCD_OWNER_LOCK", str(tmp_path / "lcd.lock"))
+    driver = SimpleNamespace(ShowImage=lambda image: None)
+    first = LcdSink(probe=lambda: {"free": True, "holders": []}, factory=lambda: driver, power_off=lambda: {"ok": True})
+    try:
+        with pytest.raises(LcdUnavailable):
+            LcdSink(probe=lambda: {"free": True, "holders": []}, factory=lambda: pytest.fail("second LCD opened"))
+    finally:
+        first.close()
+    second = LcdSink(
+        probe=lambda: {"free": True, "holders": []}, factory=lambda: driver, power_off=lambda: {"ok": True}
+    )
+    second.close()
+
+
+def test_failed_factory_releases_file_lease(tmp_path, monkeypatch):
+    monkeypatch.setenv("RIDER_LCD_OWNER_LOCK", str(tmp_path / "lcd.lock"))
+    with pytest.raises(RuntimeError, match="failed"):
+        LcdSink(
+            probe=lambda: {"free": True, "holders": []}, factory=lambda: (_ for _ in ()).throw(RuntimeError("failed"))
+        )
+    sink = LcdSink(
+        probe=lambda: {"free": True, "holders": []}, factory=lambda: SimpleNamespace(), power_off=lambda: {"ok": True}
+    )
+    sink.close()
+
+
+def test_failed_handle_release_never_claims_power_off(tmp_path, monkeypatch):
+    monkeypatch.setenv("RIDER_LCD_OWNER_LOCK", str(tmp_path / "lcd.lock"))
+    power = []
+
+    def fail():
+        raise OSError("close failed")
+
+    sink = LcdSink(
+        probe=lambda: {"free": True, "holders": []},
+        factory=lambda: SimpleNamespace(device=SimpleNamespace(SPI=SimpleNamespace(close=fail))),
+        power_off=lambda: power.append("off") or {"ok": True},
+    )
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match="lcd_handle_close_failed"):
+            sink.close()
+    assert not power

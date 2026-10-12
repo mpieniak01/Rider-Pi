@@ -15,10 +15,10 @@ from services import provider_registry as registry
 LOG = logging.getLogger("provider_watchdog")
 
 # Default PC base URL (fallback)
-DEFAULT_PC_BASE_URL = "http://192.168.1.179:8000"
+DEFAULT_PC_BASE_URL = registry.DEFAULT_PC_BASE_URL
 
 # Environment configuration
-PC_BASE_URL = os.getenv("PROVIDER_PC_BASE_URL", "http://192.168.1.179:8000")
+PC_BASE_URL = DEFAULT_PC_BASE_URL
 PC_CAP_PATH = os.getenv("PROVIDER_PC_CAP_PATH", "/providers/capabilities")
 CHECK_INTERVAL = float(os.getenv("PROVIDER_WATCHDOG_INTERVAL", "5.0"))
 FAIL_THRESHOLD = int(os.getenv("PROVIDER_WATCHDOG_FAIL_THRESHOLD", "3"))

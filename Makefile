@@ -101,10 +101,10 @@ help:
 	@echo "═══ Hardware Control — LCD ═══"
 	@echo "  make lcd-on           # włącz LCD (wake + DISP_ON)"
 	@echo "  make lcd-off          # wyłącz LCD (black + SLEEP, + próba BL)"
-	@echo "  make lcd-reset        # panel reset (RST) + ON)"
-	@echo "  make lcd-black        # wyczyść ekran do czerni (presenter)"
-	@echo "  make lcd-on-hard      # twarde ON (piny + SPI), z fallbackiem BL"
-	@echo "  make lcd-off-hard     # twarde OFF (piny + SPI), z wymuszeniem BL"
+	@echo "  make lcd-reset        # alias ponownego ekranu startowego"
+	@echo "  make lcd-black        # alias wyłączenia LCD"
+	@echo "  make lcd-on-hard      # alias wspólnej obsługi LCD"
+	@echo "  make lcd-off-hard     # alias wspólnego wygaszenia LCD"
 	@echo ""
 	@echo "═══ Hardware Control — LED ═══"
 	@echo "  make led-on           # włącz LED"
@@ -211,39 +211,29 @@ logs-clean:
 safemode:
 	@$(PY) $(ROOT)/scripts/sys_emergency-stop.py on
 
-# zabij wszystko co może rysować na LCD
+# Stop the owned face runtime; never kill API or unrelated processes.
 face-kill:
-	-@pkill -f 'newface|lcd_presenter|api_server|face_api|preview_lcd|xgoscreen' || true
+	@$(PY) $(ROOT)/scripts/resource_ctl.py face stop $(CONTROL_MODE)
 
-# tryb „na pewniaka”: vendor kill + stop-all + off
+# Display shutdown does not stop unrelated robot goals.
 lcd-off-safe:
-	@$(MAKE) vendor-kill
-	@$(MAKE) stop-all
 	@$(MAKE) lcd-off
 
 # ───────────────────────────────────────────────
 # OPS HELPERS
 .PHONY: lcd-on lcd-off lcd-reset lcd-black vendor-kill vendir-kill
 lcd-on:
-	@echo "== Włączam LCD (wyjście ze snu) =="
-	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/scripts/sys_lcd-control.py on || true
+	@$(PY) $(ROOT)/scripts/resource_ctl.py lcd on $(CONTROL_MODE)
 
-# U CIEBIE: brak sterowalnego BL → najlepszy efekt to 'black' + 'sleep'.
-# Próba wymuszenia BL przez GPIO zostaje (nie przeszkadza).
+# LCD aliases share board wiring, owner checks and guarded power control.
 lcd-off:
-	@echo "== Wyłączam LCD (black + sleep) =="
-	@$(PY) $(ROOT)/scripts/dev_lcd-clear.py
-	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/scripts/sys_lcd-control.py off || true
-	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; \
-	if [ "$$AH" = "1" ]; then sudo raspi-gpio set $$BL op dl; else sudo raspi-gpio set $$BL op dh; fi; \
-	echo "BL pin=$$BL (wygaszony)"; raspi-gpio get $$BL
+	@$(PY) $(ROOT)/scripts/resource_ctl.py lcd off $(CONTROL_MODE)
 
 lcd-reset:
-	@echo "== RESET panelu LCD =="
-	@FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) $(SUDO) $(PY) $(ROOT)/scripts/sys_lcd-control.py reset || true
+	@$(PY) $(ROOT)/scripts/resource_ctl.py lcd on $(CONTROL_MODE)
 
 lcd-black:
-	@$(PY) $(ROOT)/scripts/dev_lcd-clear.py
+	@$(PY) $(ROOT)/scripts/resource_ctl.py lcd off $(CONTROL_MODE)
 
 vendor-kill:
 	@echo "== Ubijam procesy dostawcy kamery/LCD =="
@@ -259,8 +249,7 @@ vendir-kill:
 # TOOLS / DIAG
 .PHONY: preview-run bus-spy
 preview-run:
-	@echo "Podgląd (Ctrl+C aby zakończyć)..."
-	$(PY) -u apps/camera/preview_lcd.py
+	@$(PY) $(ROOT)/scripts/robot_ctl.py start s2_camera_preview --seconds $${SECS:-120} $(CONTROL_MODE)
 
 bus-spy:
 	$(PY) scripts/diag_bus-spy.py
@@ -269,77 +258,61 @@ bus-spy:
 # CAM PREVIEW (systemd on-demand)
 .PHONY: preview-on preview-off preview-status
 preview-on:
-	@$(SUDO) systemctl start camera-capture@raw.service
+	@$(PY) $(ROOT)/scripts/robot_ctl.py start s2_camera_preview $(CONTROL_MODE)
 
 preview-off:
-	@$(SUDO) systemctl stop camera-capture@raw.service || true
+	@$(PY) $(ROOT)/scripts/robot_ctl.py stop s2_camera_preview $(CONTROL_MODE)
 
 preview-status:
-	@systemctl --no-pager --full status camera-capture@raw.service | sed -n '1,25p' || true
+	@$(PY) $(ROOT)/scripts/robot_ctl.py status s2_camera_preview $(CONTROL_MODE)
 
 # ───────────────────────────────────────────────
 # VISION CONTROL
 .PHONY: vision-on vision-off vision-burst vision-status
 vision-on:
-	@echo "== Vision ON =="
-	@$(ROOT)/scripts/sys_vision-control.sh on
+	@$(PY) $(ROOT)/scripts/robot_ctl.py start s7_obstacle_module $(CONTROL_MODE)
 
 vision-off:
-	@echo "== Vision OFF =="
-	@$(ROOT)/scripts/sys_vision-control.sh off
+	@$(PY) $(ROOT)/scripts/robot_ctl.py stop s7_obstacle_module $(CONTROL_MODE)
 
 vision-burst:
-	@echo "== Vision BURST ($(or $(SECONDS),120)s) =="
-	@$(ROOT)/scripts/sys_vision-control.sh burst $(or $(SECONDS),120)
+	@$(PY) $(ROOT)/scripts/robot_ctl.py start s7_obstacle_module $(CONTROL_MODE) --seconds $(or $(SECONDS),120)
 
 vision-status:
-	@$(ROOT)/scripts/sys_vision-control.sh status
+	@$(PY) $(ROOT)/scripts/robot_ctl.py status s7_obstacle_module $(CONTROL_MODE)
 
 # ───────────────────────────────────────────────
 # LED CONTROL
 .PHONY: led-on led-off led-blink led-status led-auto
 led-on:
-	@echo "== LED ON =="
-	@$(PY) $(ROOT)/scripts/sys_led-control.py on
+	@$(PY) $(ROOT)/scripts/sys_led-control.py on $(CONTROL_MODE)
 
 led-off:
-	@echo "== LED OFF =="
-	@$(PY) $(ROOT)/scripts/sys_led-control.py off
+	@$(PY) $(ROOT)/scripts/sys_led-control.py off $(CONTROL_MODE)
 
 # Użycie: make led-blink HZ=2  (albo ON=200 OFF=200)
 led-blink:
-	@echo "== LED BLINK =="
-	@if [ -n "$(HZ)" ]; then \
-		$(PY) $(ROOT)/scripts/sys_led-control.py blink --hz $(HZ); \
-	else \
-		$(PY) $(ROOT)/scripts/sys_led-control.py blink --on-ms $${ON:-200} --off-ms $${OFF:-200}; \
-	fi
+	@$(PY) $(ROOT)/scripts/sys_led-control.py blink --hz $(or $(HZ),2) $(if $(ON),--on-ms $(ON),) $(if $(OFF),--off-ms $(OFF),) $(CONTROL_MODE)
 
 led-status:
-	@$(PY) $(ROOT)/scripts/sys_led-control.py status
+	@$(PY) $(ROOT)/scripts/sys_led-control.py status $(CONTROL_MODE)
 
 led-auto:
-	@echo "== LED AUTO =="
-	@$(PY) $(ROOT)/scripts/sys_led-control.py auto
+	@$(PY) $(ROOT)/scripts/sys_led-control.py auto $(CONTROL_MODE)
 
 # ───────────────────────────────────────────────
 # FACE (helpers)
 .PHONY: face-direct face-api-png face-api-lcd face-testcard face-bench
-# make face-direct EXPR=happy FPS=20 SECS=5 FORCE=rgb565_3
+# make face-direct EXPR=happy SECS=5 CONTROL_MODE=--direct
 face-direct:
-	@echo "== Face direct (scripts/dev_face-lcd-direct.py) =="
-	@FACE_LCD_ROTATE=$(FACE_LCD_ROTATE) FACE_LCD_SPI_HZ=$(FACE_LCD_SPI_HZ) \
-	$(SUDO) -E $(PY) $(ROOT)/scripts/dev_face-lcd-direct.py \
-		--expr $${EXPR:-neutral} --rotate $(FACE_LCD_ROTATE) --spi-hz $(FACE_LCD_SPI_HZ) \
-		--fps $${FPS:-20} $${FORCE:+--force $${FORCE}} $${SECS:+--secs $${SECS}} --stats
+	@$(PY) $(ROOT)/scripts/resource_ctl.py face play $(CONTROL_MODE) --payload '{"expr":"$(or $(EXPR),happy)","sink":"lcd","duration_s":$(or $(SECS),5)}'
 
 face-api-png:
 	@echo "== Face API → PNG (/tmp/face_api.png) =="
 	@ROT=$(FACE_LCD_ROTATE) $(PY) -c 'import os; from services.api_core import face_api; print(face_api.render(backend="png", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.environ.get("ROT","270")), out="/tmp/face_api.png"))'
 
 face-api-lcd:
-	@echo "== Face API → LCD (jedna klatka) =="
-	@ROT=$(FACE_LCD_ROTATE) HZ=$(FACE_LCD_SPI_HZ) $(PY) -c 'import os; from services.api_core import face_api; print(face_api.render(backend="lcd", expr=os.getenv("EXPR","happy"), size=int(os.getenv("SIZE","240")), rotate=int(os.environ.get("ROT","270")), spi_hz=int(os.environ.get("HZ","32000000"))))'
+	@$(PY) $(ROOT)/scripts/resource_ctl.py face play $(CONTROL_MODE) --payload '{"expr":"$(or $(EXPR),happy)","sink":"lcd","duration_s":$(or $(SECS),5)}'
 
 face-testcard:
 	@echo "== LCD testcard (kolorowe pasy) =="
@@ -470,21 +443,13 @@ voice-smoke:
 	@echo "✓ Smoke tests passed"
 
 # ───────────────────────────────────────────────
-# LCD HARD (zachowany wariant z poprawnym $$)
+# LCD compatibility aliases
 .PHONY: lcd-on-hard lcd-off-hard
 lcd-on-hard:
-	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; DC=$${FACE_LCD_DC_PIN:-25}; RST=$${FACE_LCD_RST_PIN:-27}; DEV=$${FACE_LCD_SPI_DEV:-/dev/spidev0.0}; HZ=$${FACE_LCD_SPI_HZ:-$(FACE_LCD_SPI_HZ)}; \
-	echo "[lcd-on-hard] BL=$$BL AH=$$AH DC=$$DC RST=$$RST SPI=$$DEV HZ=$$HZ"; \
-	$(SUDO) -E $(PY) $(ROOT)/scripts/sys_lcd-control.py on --bl $$BL --bl-ah $$AH --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ; \
-	if [ "$$AH" = "1" ]; then sudo raspi-gpio set $$BL op dh; else sudo raspi-gpio set $$BL op dl; fi; \
-	echo "BL pin=$$BL"; raspi-gpio get $$BL
+	@$(PY) $(ROOT)/scripts/resource_ctl.py lcd on $(CONTROL_MODE)
 
 lcd-off-hard:
-	@BL=$${FACE_LCD_BL_PIN:-13}; AH=$${FACE_LCD_BL_ACTIVE_HIGH:-1}; DC=$${FACE_LCD_DC_PIN:-25}; RST=$${FACE_LCD_RST_PIN:-27}; DEV=$${FACE_LCD_SPI_DEV:-/dev/spidev0.0}; HZ=$${FACE_LCD_SPI_HZ:-$(FACE_LCD_SPI_HZ)}; \
-	echo "[lcd-off-hard] BL=$$BL AH=$$AH DC=$$DC RST=$$RST SPI=$$DEV HZ=$$HZ"; \
-	$(SUDO) -E $(PY) $(ROOT)/scripts/sys_lcd-control.py off --bl $$BL --bl-ah $$AH --dc $$DC --rst $$RST --spi $$DEV --hz $$HZ; \
-	if [ "$$AH" = "1" ]; then sudo raspi-gpio set $$BL op dl; else sudo raspi-gpio set $$BL op dh; fi; \
-	echo "BL pin=$$BL"; raspi-gpio get $$BL
+	@$(PY) $(ROOT)/scripts/resource_ctl.py lcd off $(CONTROL_MODE)
 
 # ───────────────────────────────────────────────
 # TESTS & BENCH
@@ -571,3 +536,12 @@ pi-rollback:
 pi-release:
 	@test -n "$(PI_COMMIT)" || { echo "Podaj PI_COMMIT: pełny hash main po merge PR."; exit 1; }
 	$(PY) scripts/dev_pi-deploy.py release --commit "$(PI_COMMIT)" $(PI_DEPLOY_ARGS)
+
+# Public controls: CONTROL_MODE=--direct for local operation while API is stopped.
+.PHONY: goal-on goal-off goals
+goal-on:
+	@$(PY) $(ROOT)/scripts/robot_ctl.py start $(GOAL) $(CONTROL_MODE)
+goal-off:
+	@$(PY) $(ROOT)/scripts/robot_ctl.py stop $(GOAL) $(CONTROL_MODE)
+goals:
+	@$(PY) $(ROOT)/scripts/robot_ctl.py status $(CONTROL_MODE)

@@ -90,3 +90,64 @@ def test_resource_stop_endpoint(monkeypatch: pytest.MonkeyPatch, client: Any, re
     assert resp.status_code == (200 if released else 202)
     assert resp.get_json()['released'] is released
     assert called == ["rider-voice.service:stop"]
+
+
+@pytest.mark.parametrize("action,active", [("on", "active"), ("off", "inactive")])
+def test_lcd_resource_operation_observed(action, active):
+    from services.api_core.operation_result import result_for
+
+    with api_server.app.test_request_context("/api/resource/lcd", method="POST"):
+        from flask import request
+
+        request.view_args = {"name": "lcd"}
+        operation = result_for(
+            "/api/resource/<name>", {"ok": True, "status": {"active": active}}, 200, {"action": action}
+        )
+    assert operation["action"] == action
+    assert operation["status"] == "executed"
+    assert operation["confirmed"] is True
+    assert operation["ack_kind"] == "systemd_observed"
+
+
+@pytest.mark.parametrize("running,sink,confirmed", [(True, "lcd", True), (False, "lcd", False), (True, "png", False)])
+def test_lcd_already_on_requires_observed_lcd_runtime(running, sink, confirmed):
+    from services.api_core.operation_result import result_for
+
+    with api_server.app.test_request_context("/api/resource/lcd", method="POST"):
+        from flask import request
+
+        request.view_args = {"name": "lcd"}
+        operation = result_for(
+            "/api/resource/<name>",
+            {"ok": True, "idempotent": True, "face": {"running": running, "sink": sink}},
+            200,
+            {"action": "on"},
+        )
+    assert operation["confirmed"] is confirmed
+    assert operation["status"] == ("executed" if confirmed else "unknown")
+
+
+@pytest.mark.parametrize("action,service_action,active", [("on", "restart", "active"), ("off", "stop", "inactive")])
+def test_lcd_canonical_http_confirmed(monkeypatch, client, action, service_action, active):
+    from services.api_core import face_anim, hardware_api
+
+    calls = []
+
+    def run(unit, verb):
+        calls.append((unit, verb))
+        return {"ok": True, "unit": unit, "status": {"active": active}}
+
+    monkeypatch.setattr(hardware_api, "manager", lambda: SimpleNamespace(transaction=nullcontext, service_action=run))
+    monkeypatch.setattr(face_anim, "get_state", lambda: {"state": {"running": False}})
+    monkeypatch.setattr(face_anim, "stop", lambda: {"state": {"running": False, "playing": False}})
+    response = client.post(
+        "/api/resource/lcd",
+        json={"action": action},
+        headers={"Accept": "application/vnd.rider.api+json;version=1"},
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["ok"] is True
+    assert body["operation"]["status"] == "executed"
+    assert body["operation"]["action"] == action
+    assert calls == [("lcd-renderer.service", service_action)]

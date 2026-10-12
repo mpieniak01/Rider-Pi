@@ -515,7 +515,11 @@ def draw_face_route():
             return voice_proxy._corsify(make_response("", 204))  # noqa: F821
     except Exception:
         pass
-    body, code = face_api.draw_face(request.get_json(silent=True) or {})
+    payload = request.get_json(silent=True) or {}
+    preview = face_api.png_response(payload)
+    if preview is not None:
+        return preview
+    body, code = face_api.draw_face(payload)
     try:
         return voice_proxy._corsify(jsonify(body)), code  # noqa: F821
     except Exception:

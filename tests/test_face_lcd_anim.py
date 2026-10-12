@@ -65,3 +65,27 @@ def test_render_and_legacy(client):
     else:
         data2 = r2.get_json()
         assert isinstance(data2, dict)
+
+
+@pytest.mark.parametrize("path", ["/face/render", "/api/draw/face", "/draw/face"])
+def test_png_preview_uses_memory_without_file_or_hardware(client, monkeypatch, path):
+    from services.api_core import face_api
+
+    monkeypatch.setattr(face_api, "_render_png_bytes", lambda expr, size: b"PNG fixture")
+    response = client.post(path, json={"expr": "happy", "rotate": 0}, headers={"Accept": "image/png"})
+    assert response.status_code == 200
+    assert response.mimetype == "image/png"
+    assert response.data == b"PNG fixture"
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.parametrize("value", [0, -1, 1000000, "bad"])
+def test_png_preview_rejects_unbounded_size(client, value):
+    response = client.post("/face/render", json={"size": value}, headers={"Accept": "image/png"})
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize("path", ["/face/render", "/api/draw/face", "/draw/face"])
+def test_preview_rejects_non_object_payload(client, path):
+    response = client.post(path, json=["invalid"], headers={"Accept": "image/png"})
+    assert response.status_code == 400

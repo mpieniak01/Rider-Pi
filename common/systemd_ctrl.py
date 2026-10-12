@@ -11,7 +11,7 @@ from common import systemd_snapshot
 from common.service_catalog import UNIT_CATALOG
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-SERVICE_CTL = BASE_DIR / "scripts" / "sys_control.sh"
+SERVICE_CTL = BASE_DIR / "scripts" / "service-systemd-backend.sh"
 SYSTEMD_DIR = BASE_DIR / "systemd"
 _DESC_CACHE: dict[str, str] = {}
 
@@ -59,32 +59,6 @@ def _service_description_from_file(unit: str) -> str | None:
     return None
 
 
-def _svc_show(unit: str) -> dict[str, str]:
-    """systemctl show → dict z polami stanu (bez wyjątków)."""
-    try:
-        out = subprocess.check_output(
-            [
-                "systemctl",
-                "show",
-                unit,
-                "--no-page",
-                "--property=ActiveState,SubState,UnitFileState,LoadState,Description",
-            ],
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=3.0,
-        )
-    except Exception as e:
-        return {"error": str(e), "unit": unit}
-    kv: dict[str, str] = {}
-    for line in out.splitlines():
-        if "=" in line:
-            k, v = line.split("=", 1)
-            kv[k.strip()] = v.strip()
-    kv["unit"] = unit
-    return kv
-
-
 def status(unit: str) -> dict[str, str]:
     """Zwróć status unitu systemd w spójnym formacie."""
     kv = systemd_snapshot.snapshot((unit,))[unit]
@@ -116,37 +90,9 @@ def is_active(unit: str) -> bool:
     return kv.get("active") == "active" and not kv.get("error")
 
 
-def _run_via_systemctl(unit: str, action: str, timeout: float) -> ActionResult:
-    from common.service_action_guard import check
-
-    try:
-        admission = check(unit, action)
-    except (ImportError, OSError, ValueError) as exc:
-        admission = {"ok": False, "error": str(exc)}
-    if admission.get("ok") is not True:
-        return ActionResult(unit, action, "denied", False, 3, "", str(admission.get("error")))
-    proc = subprocess.run(
-        ["sudo", "-n", "systemctl", action, unit],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    invalidate_snapshot()
-    return ActionResult(
-        unit=unit,
-        action=action,
-        method="systemctl",
-        ok=proc.returncode == 0,
-        rc=proc.returncode,
-        stdout=(proc.stdout or "")[-4000:],
-        stderr=(proc.stderr or "")[-4000:],
-    )
-
-
 def run_unit_action(unit: str, action: str, *, timeout: float = 25.0) -> ActionResult:
     """
-    Uruchom akcję na unicie (preferując scripts/sys_control.sh, z fallbackiem na systemctl).
+    Uruchom akcję przez wspólny prywatny backend systemd.
     Dla stop/disable brakującego unitu zwraca wynik 'skipped'.
     """
     if unit not in UNIT_CATALOG or action not in {"start", "stop", "restart", "enable", "disable"}:
@@ -184,7 +130,7 @@ def run_unit_action(unit: str, action: str, *, timeout: float = 25.0) -> ActionR
             stderr=(proc.stderr or "")[-4000:],
         )
 
-    return _run_via_systemctl(unit, action, timeout=timeout)
+    return ActionResult(unit, action, "unavailable", False, 3, "", "service_backend_unavailable")
 
 
 __all__ = [

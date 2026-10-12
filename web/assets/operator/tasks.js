@@ -41,7 +41,7 @@ export class Tasks {
       const { data, status } = await request(`/api/logic/feature/${encodeURIComponent(task.name)}`, { method: 'POST', body, timeout: 20000 });
       // Service activation is not an actuator completion acknowledgement.
       this.results.set(task.name, { status: status === 202 || data.pending ? 'pending' : data.ok === true ? 'observed' : 'rejected', data });
-      text('operator-message', tr('Odpowiedź zadania odebrana. Fizyczne zakończenie ruchu wymaga obserwacji operatora.', 'Task response received. Physical motion completion requires operator observation.'));
+      text('operator-message', task.can_move ? tr('Odpowiedź celu odebrana. Ruch wymaga obserwacji operatora.', 'Goal response received. Motion requires operator observation.') : tr('Odpowiedź celu odebrana. Usługi wspólne pozostają dla pozostałych celów.', 'Goal response received. Shared services remain for other goals.'));
     } catch (error) { this.results.set(task.name, { status: error.status ? 'rejected' : 'unknown', data: error.data, error: error.message }); showError(error); }
     finally { this.busy.delete(task.name); this.render(); this.poller.refresh(); this.safety.poller.refresh(); }
   }
@@ -63,8 +63,13 @@ export class Tasks {
       if (task.start_available === false) card.append(el('p', 'operator-error', task.start_unavailable_reason || 'task_start_unavailable'));
       const choice = this.choice(task); if (choice) card.append(choice);
       const actions = el('div', 'operator-row');
-      actions.append(button(tr('Uruchom zadanie', 'Start task'), () => this.change(task, true).catch(showError), !valid || task.requested === true || !taskCanStart(task, this.catalog, this.safety.state) || (task.can_move && !this.safety.can(task.motion_owner)) || this.busy.has(task.name)),
-        button(tr('Zakończ zadanie', 'End task'), () => this.change(task, false).catch(showError), !valid || !task.requested || this.busy.has(task.name)));
+      const requested = task.requested === true;
+      const toggle = button(requested ? tr('Zakończ cel', 'End goal') : tr('Uruchom cel', 'Start goal'),
+        () => this.change(task, !requested).catch(showError),
+        !valid || this.busy.has(task.name) || (!requested && (!taskCanStart(task, this.catalog, this.safety.state)
+          || (task.can_move && !this.safety.can(task.motion_owner)))));
+      toggle.setAttribute('aria-pressed', String(requested));
+      toggle.dataset.goal = task.name; actions.append(toggle);
       card.append(actions);
       const result = this.results.get(task.name);
       if (result) card.append(pill(`${tr('Żądanie', 'Request')}: ${statusLabel(result.status)}`), rawDetails(result));

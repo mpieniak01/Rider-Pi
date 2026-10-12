@@ -97,6 +97,10 @@ def resource_status(name: str) -> Response:
             "error": None,
         }
     )
+    if name == "camera":
+        from services.core.camera_state import snapshot
+
+        data["activity"] = snapshot(owners=data, consumers=_manager().resource_consumers().get(name, []))
     return _json(
         {
             **data,

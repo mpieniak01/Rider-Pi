@@ -104,7 +104,7 @@ def test_renderer_frame_headless_preview_idle_and_headless_preserve_actual_state
         "source": "camera-preview",
         "observed_at": 101,
     }
-    assert current["configured_rot"] == 0 and current["configured_rot_source"] == "api_env.PREVIEW_ROT"
+    assert current["configured_rot"] == 270 and current["configured_rot_source"] == "drivers.lcd.board"
     assert current["observed_age_s"] == 1
     assert compat.LAST_CAMERA["ts"] == 101 and compat.LAST_CAMERA["mode"] == "preview"
 
@@ -132,7 +132,7 @@ def test_renderer_frame_headless_preview_idle_and_headless_preserve_actual_state
     assert current["frame"]["observed_at"] == 100 and current["battery"]["observed_at"] == 99
     assert current["frame_observed_at"] == 100 and current["frame_source"] == "lcd-renderer"
     assert current["preview_config"]["observed_at"] == 103
-    assert current["configured_rot"] == 0
+    assert current["configured_rot"] == 270
 
 
 @pytest.mark.parametrize(
@@ -205,7 +205,7 @@ def test_cached_bool_without_source_and_control_proof_is_unknown(clock):
     compat.LAST_CAMERA["lcd"].update(on=False, power_known=True, rot=0)
     current = health_lcd()
     assert current["on"] is None and current["power_known"] is False
-    assert current["rot"] is None and current["configured_rot"] == 0
+    assert current["rot"] is None and current["configured_rot"] == 270
 
 
 def test_accepted_power_report_without_geometry_does_not_promote_env_defaults(clock):
@@ -218,4 +218,4 @@ def test_accepted_power_report_without_geometry_does_not_promote_env_defaults(cl
     )
     current = health_lcd()
     assert current["on"] is False and current["rot"] is None and current["no_draw"] is None
-    assert current["configured_rot"] == 0 and current["configured_no_draw"] is False
+    assert current["configured_rot"] == 270 and current["configured_no_draw"] is False

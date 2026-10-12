@@ -11,12 +11,20 @@ def api_resource(name: str):
     if request.method == "OPTIONS":
         return make_response("", 204)
     if request.method == "GET":
+        if name == "led":
+            from .hardware_api import led_status
+
+            return jsonify(led_status(request.args.get("name")))
         return services_api.resource_status(name)
 
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify({"ok": False, "error": "JSON object required"}), 400
     action = str(payload.get("action") or "").strip().lower()
+    if name in {"lcd", "led"} and action in {"on", "off", "blink", "auto"}:
+        from .hardware_api import device_action
+
+        return device_action(name, payload)
 
     if action == "release":
         pids_raw = payload.get("pids")

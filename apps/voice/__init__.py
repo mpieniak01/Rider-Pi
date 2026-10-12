@@ -1,24 +1,25 @@
-# apps/voice/__init__.py
-from .audio import ALSAError  # re-eksport z podsystemu audio
-from .errors import (  # PR-3: domain-specific errors
-    BackpressureExceeded,
-    BadAudioFormat,
-    VoiceError,
-    WsClosed,
-)
-from .session_prefs import (
-    SessionPreferences,
-    build_session_preferences,
-)  # PR-3: session config
-from .stream_chunks import AudioChunkProcessor  # noqa: F401
+"""Public voice exports load only when used, never for goal/LED metadata."""
 
-__all__ = [
-    "ALSAError",
-    "AudioChunkProcessor",
-    "VoiceError",
-    "WsClosed",
-    "BadAudioFormat",
-    "BackpressureExceeded",
-    "SessionPreferences",
-    "build_session_preferences",
-]
+from __future__ import annotations
+
+from importlib import import_module
+
+_EXPORTS = {
+    "ALSAError": "audio",
+    "AudioChunkProcessor": "stream_chunks",
+    "VoiceError": "errors",
+    "WsClosed": "errors",
+    "BadAudioFormat": "errors",
+    "BackpressureExceeded": "errors",
+    "SessionPreferences": "session_prefs",
+    "build_session_preferences": "session_prefs",
+}
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name):
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    value = getattr(import_module("." + _EXPORTS[name], __name__), name)
+    globals()[name] = value
+    return value

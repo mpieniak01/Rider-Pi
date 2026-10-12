@@ -39,10 +39,10 @@
   - UART `/dev/ttyAMA0` – intended single owner for movement and reads.
     Check ownership before starting a component; see [motion architecture](docs/apps/motion.md).
     Do not open a second adapter on an occupied UART.
-  - LCD ILI9xx – via `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), no direct SPI-write elsewhere.
+  - LCD ILI9xx – shared owner `apps/ui/lcd_sink.py` and `drivers/lcd/driver_ili9xx.py` backend (RAW/ShowImage).
   - LCD mounting is sideways on this robot. Preserve its orientation and the Face
-    compensation `FACE_LCD_ROTATE=270`. Splash selects `SPLASH_ROTATE`, then `PREVIEW_ROT`
-    if unset, then Face config `splash_lcd_rotate` (default 270).
+    compensation `FACE_LCD_ROTATE=270`. Splash and Face use `drivers/lcd/board.py`: `FACE_LCD_ROTATE`, then
+    `SPLASH_ROTATE`, default 270. `PREVIEW_ROT` affects camera images only.
 
 ---
 

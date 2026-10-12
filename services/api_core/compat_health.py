@@ -11,6 +11,8 @@ from common.observations import source_time
 
 def lcd_snapshot(C, *, now):
     """Reported LCD I/O and preview settings have different owners and clocks."""
+    from drivers.lcd.board import lcd_board
+
     state = C.LAST_CAMERA.get("lcd", {})
     at = source_time(state.get("observed_at"))
     source = state.get("source")
@@ -44,8 +46,8 @@ def lcd_snapshot(C, *, now):
         "battery": state.get("battery") if reported else None,
         "configured_on": (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW),
         "configured_no_draw": C.ENV_NO_DRAW,
-        "configured_rot": C.ENV_ROT,
-        "configured_rot_source": "api_env.PREVIEW_ROT",
+        "configured_rot": lcd_board().rotate,
+        "configured_rot_source": "drivers.lcd.board",
         "preview_config": state.get("preview_config"),
         **{
             key: state.get(key)
@@ -67,9 +69,9 @@ def healthz(C):
     last_msg_age = (now - C.LAST_MSG_TS) if C.LAST_MSG_TS else None
     last_hb_age = (now - C.LAST_HEARTBEAT_TS) if C.LAST_HEARTBEAT_TS else None
 
-    cam_ts = C.LAST_CAMERA.get("ts")
-    cam_age = (now - cam_ts) if cam_ts else None
-    camera_on = cam_age is not None and 0 <= cam_age <= 5.0
+    from services.core.camera_state import snapshot as camera_snapshot
+
+    camera = camera_snapshot(heartbeat=C.LAST_CAMERA, now=now)
 
     from .devices import xgo_snapshot
 
@@ -81,12 +83,7 @@ def healthz(C):
     xgo_on = True if any(row["ready"] for row in channels.values()) else None
 
     devices = {
-        "camera": {
-            "on": camera_on,
-            "age_s": (round(cam_age, 3) if cam_age is not None else None),
-            "mode": C.LAST_CAMERA.get("mode"),
-            "fps": C.LAST_CAMERA.get("fps"),
-        },
+        "camera": camera,
         "lcd": lcd_snapshot(C, now=now),
         "xgo": {**xgo, "on": xgo_on, "age_s": round(xgo_age, 3) if xgo_age is not None else None},
     }
@@ -249,6 +246,8 @@ def api_metrics_alias(C):
 
 
 def api_devices(C):
+    from services.core.camera_state import snapshot as camera_snapshot
+
     now = C.time.time()
     bus = {
         "broker": "unknown",
@@ -257,7 +256,7 @@ def api_devices(C):
     lf_exists = C.os.path.isfile(C.RAW_PATH)
     lf_mtime = int(C.os.stat(C.RAW_PATH).st_mtime) if lf_exists else None
     vision = {
-        "running": (C.LAST_CAMERA.get("ts") is not None),
+        "running": camera_snapshot(heartbeat=C.LAST_CAMERA, now=now)["service_running"],
         "last_frame": {
             "exists": bool(lf_exists),
             "mtime": lf_mtime,

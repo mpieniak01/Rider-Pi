@@ -218,6 +218,9 @@ class FeatureStateMixin:
         if not self._lock.acquire(blocking=False):
             return json.loads(json.dumps(self._snapshot_rows))
         try:
+            from services.core.goal_journal import restore
+
+            restore(self)
             rows = [self._describe(name) for name in self.registry]
             self._snapshot_rows = rows
             return rows
@@ -225,6 +228,8 @@ class FeatureStateMixin:
             self._lock.release()
 
     def catalog(self) -> dict:
+        from services.core.camera_state import snapshot
+
         return {
             **catalog_payload(),
             "api_envelope_versions": [1],
@@ -232,6 +237,9 @@ class FeatureStateMixin:
             "observed_at": time.time(),
             "features": self.describe_features(),
             "resource_consumers": self.resource_consumers(),
+            "resource_states": {
+                "camera": snapshot(consumers=self.resource_consumers().get("camera", []), status_fn=self._status)
+            },
         }
 
     def state_snapshot(self) -> dict:
@@ -269,6 +277,9 @@ class FeatureStateMixin:
 
     def _persist_state(self) -> bool:
         data = self.state_snapshot()
+        from services.core.goal_journal import journal
+
+        data["ownership_journal"] = journal(self)
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
             temporary = self._state_path.with_suffix(".tmp")

@@ -39,10 +39,10 @@
   - UART `/dev/ttyAMA0` – docelowo jeden właściciel ruchu i odczytów.
     Sprawdź posiadacza przed uruchomieniem komponentu; obecne ścieżki opisuje
     [architektura ruchu](apps/motion.md). Nie uruchamiaj drugiego adaptera na zajętym UART.
-  - LCD ILI9xx – przez `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), bez bezpośrednich SPI-write w innych miejscach.
+  - LCD ILI9xx – wspólny właściciel `apps/ui/lcd_sink.py` i backend `drivers/lcd/driver_ili9xx.py` (RAW/ShowImage).
   - Ekran w tym robocie jest zamontowany bokiem. Zachowaj jego orientację oraz
-    kompensację buźki `FACE_LCD_ROTATE=270`. Splash wybiera `SPLASH_ROTATE`, przy jego braku
-    `PREVIEW_ROT`, potem `splash_lcd_rotate` z konfiguracji buźki (domyślnie 270).
+    kompensację buźki `FACE_LCD_ROTATE=270`. Splash i buźka używają `drivers/lcd/board.py`: `FACE_LCD_ROTATE`, przy jego braku
+    `SPLASH_ROTATE`, domyślnie 270. `PREVIEW_ROT` dotyczy wyłącznie obrazu kamery.
 
 ---
 

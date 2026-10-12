@@ -103,6 +103,14 @@ class FrameDistributor:
                 print(f"[frame-distributor] image decode error for {path}: {exc}", file=sys.stderr)
         return data, meta
 
+    def close(self) -> None:
+        self.running = False
+        try:
+            if self.sub is not None:
+                self.sub.close()
+        finally:
+            self.pub.close(linger=0)
+
     def loop(self) -> None:
         print(f"[frame-distributor] bind={FRAME_STREAM_BIND} topic={FRAME_STREAM_TOPIC.decode()}", flush=True)
         while self.running:
@@ -144,7 +152,10 @@ class FrameDistributor:
 
 def main() -> int:
     dist = FrameDistributor()
-    dist.loop()
+    try:
+        dist.loop()
+    finally:
+        dist.close()
     return 0
 
 

@@ -73,6 +73,11 @@ export class CameraPower {
     if (known && task.start_available === false) label += ' · ' + (task.start_unavailable_reason || tr('Uruchomienie niedostępne', 'Start unavailable'));
     const others = known ? this.catalog.features.filter(row => row.name !== this.taskName && row.requested === true && row.resources?.includes('camera')) : [];
     if (others.length) label += ' · ' + tr('Z kamery korzystają też: ', 'Camera also used by: ') + others.map(row => tr(row.title || row.name, row.title_en || row.name)).join(', ');
+    const activity = this.catalog?.resource_states?.camera;
+    if (known && activity?.service_running === true && task.requested !== true)
+      label += ' · ' + tr('Proces kamery nadal działa', 'Camera process still running');
+    if (known && activity?.service_running === true && activity.data_fresh !== true)
+      label += ' · ' + tr('Brak świeżych klatek', 'No fresh frames');
     for (const id of this.statusIds) text(id, this.busy ? tr('Zmiana stanu kamery…', 'Changing camera state…') : label);
   }
 }

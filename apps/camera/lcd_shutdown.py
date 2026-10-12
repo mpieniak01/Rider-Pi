@@ -18,6 +18,8 @@ def close_preview_lcd(module, *, power_off=None):
     setattr(module, name, None)
     if hasattr(module, "LCD_ok"):
         module.LCD_ok = False
+    if callable(getattr(display, "close", None)):
+        return display.close()
     try:
         spi = getattr(display, "SPI", None)
         if spi is not None:

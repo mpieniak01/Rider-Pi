@@ -37,6 +37,7 @@ import services.api_core.control_api as control_api
 import services.api_core.control_proxy as control_proxy
 import services.api_core.dashboard as dashboard
 import services.api_core.face_anim as face_anim
+import services.api_core.face_runtime_api as face_runtime_api
 import services.api_core.face_studio as face_studio
 import services.api_core.features_api as features_api
 import services.api_core.google_home_api as google_home_api
@@ -94,8 +95,13 @@ def face_ping():
 @app.route("/face/render", methods=["POST"])
 def face_render():
     payload = request.get_json(force=True, silent=True) or {}
+    from services.api_core.face_api import png_response
+
+    preview = png_response(payload)
+    if preview is not None:
+        return preview
     res = face_render_shim(payload)
-    status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
+    status = res.get("status", 400 if not res.get("ok") else 200)
     return jsonify(res), status
 
 
@@ -104,7 +110,7 @@ def face_play():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     payload = request.get_json(silent=True) or {}
-    res = face_anim.play(payload)
+    res = face_runtime_api.play(payload)
     return _corsify(jsonify(res)), res.get("status", 200)
 
 
@@ -113,8 +119,8 @@ def face_stop():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     payload = request.get_json(silent=True) or {}
-    res = face_anim.stop(payload)
-    return _corsify(jsonify(res)), 200
+    res = face_runtime_api.stop(payload)
+    return _corsify(jsonify(res)), res.get("status", 200)
 
 
 @app.route("/face/state", methods=["GET"])
@@ -132,8 +138,11 @@ def api_draw_face_legacy():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     payload = request.get_json(force=True, silent=True) or {}
-    from services.api_core.face_api import draw_face  # zwraca (body, status)
+    from services.api_core.face_api import draw_face, png_response
 
+    preview = png_response(payload)
+    if preview is not None:
+        return preview
     body, status = draw_face(payload)
     return _corsify(jsonify(body)), status
 

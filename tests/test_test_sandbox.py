@@ -24,7 +24,7 @@ def test_serial_device_open_is_forbidden():
         os.open("/dev/ttyAMA0", os.O_RDWR)
 
 
-@pytest.mark.parametrize("address", [("192.168.1.14", 8080), ("127.0.0.1", 5555)])
+@pytest.mark.parametrize("address", [("192.0.2.14", 8080), ("127.0.0.1", 5555)])
 def test_production_network_and_bus_ports_are_forbidden(address):
     with socket.socket() as client, pytest.raises(IsolationError):
         client.connect(address)
@@ -47,7 +47,7 @@ def test_unapproved_subprocess_cannot_bypass_isolation(argv):
 
 def test_child_python_is_bootstrapped_before_user_code():
     result = subprocess.run(
-        [sys.executable, "-c", "import socket; socket.socket().connect(('192.168.1.14', 8080))"],
+        [sys.executable, "-c", "import socket; socket.socket().connect(('192.0.2.14', 8080))"],
         capture_output=True,
         text=True,
         timeout=5,

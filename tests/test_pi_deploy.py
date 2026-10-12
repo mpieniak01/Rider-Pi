@@ -360,3 +360,43 @@ def test_motion_preview_stops_before_checkout_and_restarts(repos, monkeypatch):
     assert next(head for args, head in calls if "stop" in args) == repos.base
     assert next(head for args, head in calls if "start" in args) == commit
     assert json.loads(record.read_text())["restart_motion"] is True
+
+
+def test_resource_scope_is_narrow_and_keeps_private_files_denied():
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    allowed = ["drivers/lcd/board.py", "drivers/led.py", "scripts/sys_control.sh", "scripts/led-backend.py"]
+    with pytest.raises(RuntimeError):
+        module["check_paths"](allowed)
+    module["check_paths"](allowed, resource_scope=True)
+    for path in [
+        "drivers/xgo/adapter.py",
+        "systemd/rider-api.service",
+        "scripts/systemd-sync.sh",
+        ".env",
+        "data/state.json",
+    ]:
+        with pytest.raises(RuntimeError):
+            module["check_paths"]([path], resource_scope=True)
+
+
+def test_resource_preview_and_rollback_close_old_owners_and_preserve_motion(repos, monkeypatch):
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    globals_map = module["preview"].__globals__
+    calls = []
+    monkeypatch.setitem(globals_map, "check_api_active", lambda: calls.append("api-active"))
+    monkeypatch.setitem(globals_map, "restart_api", lambda: calls.append("api-start"))
+    monkeypatch.setitem(globals_map, "resource_preflight", lambda: calls.append("owners") or True)
+    monkeypatch.setitem(globals_map, "pause_resources", lambda: calls.append("api-lcd-stop"))
+    monkeypatch.setitem(globals_map, "resume_display", lambda active: calls.append(("lcd-start", active)))
+    commit, bundle = repos.candidate("drivers/lcd/board.py", "BOARD = 0\n")
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(bundle)))
+    record = repos.device / ".git/rider-preview.json"
+    module["preview"](
+        repos.device, record, {"base": repos.base, "commit": commit, "restart_api": True, "resource_scope": True}
+    )
+    assert calls == ["api-active", "owners", "api-lcd-stop", "api-start", ("lcd-start", True)]
+    assert json.loads(record.read_text())["resource_scope"] is True
+    calls.clear()
+    module["rollback"](repos.device, record)
+    assert calls == ["owners", "api-lcd-stop", "api-start", ("lcd-start", True)]
+    repos.assert_base()

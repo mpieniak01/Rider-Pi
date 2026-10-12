@@ -1,39 +1,11 @@
 #!/usr/bin/env bash
-# Rider-Pi Vision Control Script
-# Zarządzanie usługą vision: on/off/burst/status
-
+# Public vision goal; service membership is owned by the API catalog.
 set -euo pipefail
-
-SERVICE="rider-vision.service"
-
-cmd="${1:-}"
-
-case "$cmd" in
-  on)
-    echo "[vision] starting $SERVICE"
-    sudo systemctl unmask "$SERVICE" || true
-    sudo systemctl start "$SERVICE"
-    ;;
-  off)
-    echo "[vision] stopping $SERVICE"
-    sudo systemctl stop "$SERVICE" || true
-    ;;
-  burst)
-    secs="${2:-120}"
-    echo "[vision] burst mode: running $SERVICE for ${secs}s"
-    sudo systemctl unmask "$SERVICE" || true
-    sudo systemctl restart "$SERVICE"
-    (
-      sleep "$secs"
-      echo "[vision] burst finished → stopping $SERVICE"
-      sudo systemctl stop "$SERVICE"
-    ) >/dev/null 2>&1 &
-    ;;
-  status)
-    systemctl --no-pager -l status "$SERVICE"
-    ;;
-  *)
-    echo "Usage: $0 {on|off|burst [secs]|status}"
-    exit 2
-    ;;
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+case "${1:-}" in
+ on) exec "${RIDER_PYTHON:-python3}" "$SCRIPT_DIR/robot_ctl.py" start s7_obstacle_module --options '{"provider":"local"}' "${@:2}";;
+ off) exec "${RIDER_PYTHON:-python3}" "$SCRIPT_DIR/robot_ctl.py" stop s7_obstacle_module "${@:2}";;
+ burst) exec "${RIDER_PYTHON:-python3}" "$SCRIPT_DIR/robot_ctl.py" start s7_obstacle_module --options '{"provider":"local"}' --seconds "${2:-120}" "${@:3}";;
+ status) exec "${RIDER_PYTHON:-python3}" "$SCRIPT_DIR/robot_ctl.py" status "${@:2}";;
+ *) echo "Usage: $0 {on|off|burst [seconds]|status}" >&2; exit 2;;
 esac

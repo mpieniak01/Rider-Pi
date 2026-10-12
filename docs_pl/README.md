@@ -43,3 +43,5 @@ sprawdzeń konkretnego urządzenia pozostają w ignorowanych katalogach lokalnyc
 
 Wersja polska jest punktem wyjścia; aktualizujemy też instrukcje EN.
 Lokalne plany i raporty utrzymujemy tylko w `docs_pl/_to_do/` i `docs_pl/_done/`.
+
+- [Wspólna obsługa zasobów i celów](ARCHITEKTURA_ZASOBOW.md)

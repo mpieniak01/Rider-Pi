@@ -136,20 +136,17 @@ def hb_publish(fps: float, lcd_active: bool):
 # ── LCD (opcjonalnie; jeśli wyłączone, jedziemy headless)
 LCD_ok = False
 disp = None
-if not ENV_DISABLE_LCD:
-    try:
-        import xgoscreen.LCD_2inch as LCD_2inch
 
-        disp = LCD_2inch.LCD_2inch()
-        try:
-            disp.Init()
-        except Exception:
-            pass
-        disp.clear()
-        LCD_ok = True
-    except Exception as e:
-        print("[preview] LCD niedostępny lub biblioteka brakująca:", e, file=sys.stderr)
-        LCD_ok = False
+
+def _lcd_init():
+    global disp, LCD_ok
+    from apps.camera.lcd_preview import open_preview
+
+    try:
+        disp = open_preview(disabled=ENV_DISABLE_LCD, no_draw=ENV_NO_DRAW)
+        LCD_ok = disp is not None
+    except RuntimeError as error:
+        print("[preview] LCD unavailable:", error, file=sys.stderr)
 
 
 def rotate_bgr(img_bgr, rot_deg: int):
@@ -401,44 +398,53 @@ def draw_overlay(img, detections):
 
 
 def main():
-    # Kamera
+    # Camera and optional LCD open only for the running capture session.
     read, _ = open_camera((320, 240))
 
-    # Detektor init
-    det_kind = DETECTOR
-    det = None
-    ssd_filter = parse_ssd_classes_env()
+    try:
+        _lcd_init()
+        # Detektor init
+        det_kind = DETECTOR
+        det = None
+        ssd_filter = parse_ssd_classes_env()
 
-    if det_kind == "ssd":
-        try:
-            det = ssd_load()
-            print(f"[det] SSD READY | classes={'ALL' if not ssd_filter else ','.join(sorted(ssd_filter))}")
-        except Exception as e:
-            print(f"[det] SSD init FAILED: {e} → DETECTOR=none", flush=True)
-            det_kind = "none"
-    elif det_kind == "tflite":
-        if not os.path.isfile(TFLITE_MODEL):
-            print(
-                f"[det] TFLite model not found: {TFLITE_MODEL} → DETECTOR=none",
-                flush=True,
-            )
-            det_kind = "none"
-        else:
+        if det_kind == "ssd":
             try:
-                det = TFLiteEffDet(TFLITE_MODEL)
-                print(f"[det] TFLite READY | model={TFLITE_MODEL}", flush=True)
+                det = ssd_load()
+                print(f"[det] SSD READY | classes={'ALL' if not ssd_filter else ','.join(sorted(ssd_filter))}")
             except Exception as e:
-                print(f"[det] TFLite init FAILED: {e} → DETECTOR=none", flush=True)
+                print(f"[det] SSD init FAILED: {e} → DETECTOR=none", flush=True)
                 det_kind = "none"
-    elif det_kind == "haar":
-        pass  # zainicjalizujemy niżej w pętli (lekki)
+        elif det_kind == "tflite":
+            if not os.path.isfile(TFLITE_MODEL):
+                print(
+                    f"[det] TFLite model not found: {TFLITE_MODEL} → DETECTOR=none",
+                    flush=True,
+                )
+                det_kind = "none"
+            else:
+                try:
+                    det = TFLiteEffDet(TFLITE_MODEL)
+                    print(f"[det] TFLite READY | model={TFLITE_MODEL}", flush=True)
+                except Exception as e:
+                    print(f"[det] TFLite init FAILED: {e} → DETECTOR=none", flush=True)
+                    det_kind = "none"
+        elif det_kind == "haar":
+            pass  # zainicjalizujemy niżej w pętli (lekki)
 
-    print(
-        f"[preview] Start. LCD={'ON' if (LCD_ok and not ENV_NO_DRAW) else 'OFF (headless)'}; "
-        f"ROT={ROT}°; SAVE_LAST_EVERY={SAVE_LAST_EVERY}; DETECTOR={det_kind}; PUB={PUB_kind}; "
-        f"LAST_BASE={LAST_BASE} (auto ext); SNAP_DIR={SNAP_DIR}",
-        flush=True,
-    )
+        print(
+            f"[preview] Start. LCD={'ON' if (LCD_ok and not ENV_NO_DRAW) else 'OFF (headless)'}; "
+            f"ROT={ROT}°; SAVE_LAST_EVERY={SAVE_LAST_EVERY}; DETECTOR={det_kind}; PUB={PUB_kind}; "
+            f"LAST_BASE={LAST_BASE} (auto ext); SNAP_DIR={SNAP_DIR}",
+            flush=True,
+        )
+
+    except BaseException:
+        read.close()
+        from apps.camera.lcd_shutdown import close_preview_lcd
+
+        close_preview_lcd(sys.modules.get(__name__))
+        raise
 
     frames = 0
     t0 = time.time()
@@ -539,7 +545,7 @@ def main():
             # Wyświetlenie na LCD
             if LCD_ok and not ENV_NO_DRAW:
                 try:
-                    disp.ShowImage(bgr_to_pil(out))
+                    disp.present(bgr_to_pil(out))
                 except Exception:
                     pass
 
@@ -555,7 +561,10 @@ def main():
     finally:
         from apps.camera.lcd_shutdown import close_preview_lcd
 
-        close_preview_lcd(sys.modules.get(__name__))
+        try:
+            read.close()
+        finally:
+            close_preview_lcd(sys.modules.get(__name__))
 
     return 0
 

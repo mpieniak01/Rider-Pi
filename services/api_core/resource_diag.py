@@ -27,7 +27,6 @@ class ProcessInfo:
 
 ALSA_PREFLIGHT = os.path.join(BASE_DIR, "config", "alsa", "preflight.sh")
 CAMERA_FREE = os.path.join(BASE_DIR, "scripts", "sys_camera-free.sh")
-LCD_CONTROL = os.path.join(BASE_DIR, "scripts", "sys_lcd-control.py")
 
 
 def _default_capture_dev() -> str:
