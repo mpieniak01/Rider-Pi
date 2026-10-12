@@ -36,3 +36,7 @@ The API configures the existing common systemd observer for a 2-second cache,
 without adding another service-state cache. Actions retain explicit invalidation.
 Overview requests historical frame metadata once while idle; it does not poll
 the absent obstacle producer and resumes vision reads after observed camera ON.
+
+CPU is unknown (`null`) until a valid counter delta exists, including after the
+sampler resumes from idle. Other system measurements remain available. Unknown
+CPU is not appended to history and is omitted from Prometheus metrics.

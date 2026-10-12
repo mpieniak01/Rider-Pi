@@ -201,6 +201,7 @@ export class Overview {
       samples.forEach((value, i) => {
         if (!finite(value)) { pen = false; return; }
         const stamp = stamps[i];
+        if (finite(newest) && !finite(stamp)) { pen = false; return; }
         if (finite(newest) && finite(stamp) && newest - stamp > 60) { pen = false; return; }
         if (i > 0 && finite(stamp) && finite(stamps[i - 1]) && stamp - stamps[i - 1] > 2) pen = false;
         const position = finite(newest) && finite(stamp) ? Math.max(0, 1 - (newest - stamp) / 60) : i / (samples.length - 1);

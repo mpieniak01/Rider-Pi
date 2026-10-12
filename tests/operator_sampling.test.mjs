@@ -130,3 +130,14 @@ test('overview reads idle metadata once, skips absent detector and resumes after
   await load(); const count = calls.length; await load();
   assert.equal(calls.length, count); assert.equal(view.obstacle, null);
 });
+
+test('a missing timestamp breaks timed history instead of falling back to index',async()=>{
+  const src=(await readFile(new URL('overview.js',assets),'utf8'))
+    .replace(/^import .*;$/gm,'').replace('export class Overview','globalThis.Overview = class Overview');
+  const context=vm.createContext({});vm.runInContext(src,context);
+  const marks=[];
+  const ctx={beginPath(){},moveTo(x,y){marks.push('move');},lineTo(x,y){marks.push('line');},stroke(){}};
+  context.Overview.prototype.drawHistory.call({axes:()=>({ctx,x:0,y:0,width:60,height:100})},
+    [10,20,30],[],[],[1000,null,1006]);
+  assert.deepEqual(marks,['move','move']);
+});

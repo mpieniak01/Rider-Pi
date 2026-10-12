@@ -35,3 +35,7 @@ API ustawia okres istniejącego wspólnego obserwatora systemd na 2 sekundy,
 bez tworzenia drugiego cache usług. Akcje zachowują jawne unieważnianie.
 Przegląd jednorazowo pobiera metadane archiwalnych klatek podczas bezczynności;
 nie odpytuje nieaktywnego detektora. Po potwierdzonym ON wznawia odczyty wizji.
+
+CPU pozostaje nieznane (`null`) do uzyskania poprawnej delty liczników, także po
+wznowieniu próbkowania. Pozostałe pomiary są dostępne. Brak pomiaru CPU nie
+dodaje zera do historii ani metryk Prometheus.

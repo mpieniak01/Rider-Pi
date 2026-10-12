@@ -4,139 +4,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import vm from 'node:vm';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 
-const assets = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../web/assets/operator');
-const model = await import(`data:text/javascript;base64,${Buffer.from(await readFile(path.join(assets, 'model.js'))).toString('base64')}`);
-const instant = Date.now() / 1000;
-const capability = { available: true, stop_verified: true };
-const armed = (now = Date.now() / 1000) => ({ contract_version: 1, state: 'ARMED', generation: 'fixture-generation', owner: 'manual',
-  ready: true, hardware_ready: true, can_move: true, read_only: false, observed_at: now, lease_remaining_s: 10, last_seq: 4,
-  capabilities: { move: capability, turn: capability, height: { available: false, stop_verified: false, verification: 'manual_characterization_required' } } });
-const disarmed = (now = Date.now() / 1000) => ({ ...armed(now), state: 'DISARMED', owner: null, can_move: false, read_only: true });
-
-test('movement requires version, fresh observation, state, owner, lease and stop capability', () => {
-  const state = armed(instant);
-  assert.equal(model.authorized(state, 'manual', 'move', instant), true);
-  for (const patch of [{ contract_version: 0 }, { observed_at: instant - 4 }, { observed_at: instant + .2 }, { observed_at: null },
-    { state: 'DISARMED' }, { ready: false }, { hardware_ready: false }, { can_move: false }, { read_only: true },
-    { owner: 'navigation' }, { lease_remaining_s: 0 }, { lease_remaining_s: 31 }, { lease_remaining_s: Infinity }, { generation: '' },
-    { capabilities: { move: { available: true, stop_verified: false } } }]) {
-    assert.equal(model.authorized({ ...state, ...patch }, 'manual', 'move', instant), false, JSON.stringify(patch));
-  }
-  assert.equal(model.authorized(state, 'manual', 'height', instant), false);
-});
-test('DISARMED read_only is a valid known contract for explicit preparation', () => {
-  assert.equal(model.safetyKnown(disarmed(instant), instant), true);
-  assert.equal(model.authorized(disarmed(instant), 'manual', 'move', instant), false);
-});
-test('zero is a measurement; null and stale frame timestamps remain unknown', () => {
-  assert.equal(model.displayValue(0, '%'), '0%');
-  assert.equal(model.displayValue(null), '—');
-  assert.equal(model.cameraFrame({ raw: { exists: true, mtime: instant - 20 } }, 'raw', instant).fresh, false);
-  assert.equal(model.cameraFrame({ raw: { exists: true, mtime: null } }, 'raw', instant).age, null);
-  for (const flags of [{ offline: true }, { stale: true }, { error: 'camera unavailable' }]) {
-    assert.equal(model.cameraFrame({ ...flags, raw: { exists: true, mtime: instant } }, 'raw', instant).fresh, false);
-  }
-  assert.equal(model.cameraFrame({ raw: { exists: true, stale: true, mtime: instant } }, 'raw', instant).fresh, false);
-});
-test('old catalog and moving owner mismatch cannot start a task', () => {
-  const task = { installed: true, observed_at: instant, state: 'stopped', can_move: true, motion_owner: 'navigation' };
-  const catalog = { contract_version: 2, catalog_version: 2, observed_at: instant, features: [task], units: [] };
-  assert.equal(model.taskCanStart(task, catalog, armed(instant), instant), false);
-  assert.equal(model.taskCanStart(task, { ...catalog, contract_version: 1 }, { ...armed(instant), owner: 'navigation' }, instant), false);
-  assert.equal(model.taskCanStart(task, catalog, { ...armed(instant), owner: 'navigation' }, instant), true);
-  for (const can_move of [undefined, null]) assert.equal(model.taskCanStart({ ...task, can_move }, catalog, armed(instant), instant), false);
-  assert.equal(model.taskCanStart({ ...task, can_move: false }, { ...catalog, offline: true }, armed(instant), instant), false);
-});
-test('ACK matches action, source, sequence, request and send time; accepted is not execution', () => {
-  const command = { request_id: 'fixture', action: 'move', source: 'manual', seq: 5, generation: 'fixture-generation' };
-  const ack = { ...command, observed_at: instant, status: 'executed' };
-  assert.equal(model.matchingAck(ack, command, instant), true);
-  for (const patch of [{ observed_at: instant - .1 }, { status: 'accepted' }, { action: 'stop' }, { seq: 4 }, { source: 'navigation' }, { command_generation: 'another-generation' }]) {
-    assert.equal(model.matchingAck({ ...ack, ...patch }, command, instant), false);
-  }
-});
-test('confirmed HTTP ACK uses backend identity confirmation; STOP null sequence is equivalent to absent', () => {
-  const command = { request_id: 'stop-fixture', action: 'stop', source: 'manual' };
-  const ack = { ...command, seq: null, observed_at: instant - 1, status: 'executed' };
-  assert.equal(model.matchingAck(ack, command, instant), false);
-  assert.equal(model.matchingAck(ack, command, instant, true), true);
-  assert.equal(model.matchingAck({ ...ack, request_id: 'another-request' }, command, instant, true), false);
-});
-test('server clock bounds tolerate skew without future commands or understating observation age', () => {
-  const wall = Date.now() / 1000;
-  assert.equal(model.setServerClock(wall + 20, wall - .3, wall), true);
-  assert.ok(model.commandSeconds() <= wall + 20.1);
-  assert.ok(model.nowSeconds() >= wall + 20.3);
-  assert.equal(model.setServerClock(wall + 20, wall - .51, wall), false);
-  assert.equal(model.setServerClock(null, wall, wall), false);
-  model.setServerClock(Date.now() / 1000, Date.now() / 1000, Date.now() / 1000);
-});
-test('map world coordinates use mapper additive origin and preserve zero', () => {
-  assert.deepEqual(model.gridPoint({ origin_x: 5, origin_y: 3, resolution_m: .1 }, { x: 0, y: 0 }), [50, 30]);
-  assert.equal(model.gridPoint({ origin_x: null, origin_y: 3, resolution_m: .1 }, [0, 0]), null);
-  assert.equal(model.gridPoint({ origin_x: 1e308, origin_y: 0, resolution_m: .1 }, [1e308, 0]), null);
-});
-
-class Element {
-  setAttribute(key, value) { this[key] = value; }
-  constructor(id = '') { this.id = id; this.listeners = {}; this.value = ''; this.checked = false; this.disabled = false; this.dataset = {}; this.children = []; this.nodeType = 1; this.classList = { toggle() {}, add() {} }; }
-  addEventListener(name, action) { this.listeners[name] = action; }
-  append(...values) { this.children.push(...values); }
-  replaceChildren(...values) { this.children = values; }
-  closest(selector) { return this.editing && selector.includes('input') ? this : null; }
-}
-function canonicalReply(contractId, contractVersion, data, now = Date.now() / 1000) {
-  return { meta: { envelope_version: 1, contract_id: contractId, contract_version: contractVersion,
-    host: 'pi', source: 'pi', observed_at: now, generated_at: now, server_time: now,
-    stale: false, offline: false, partial: false }, ok: true, data, error: null, operation: null };
-}
-function catalogReply(features = [], now = Date.now() / 1000) {
-  return canonicalReply('rider.catalog', 2, { contract_version: 2, catalog_version: 2,
-    api_envelope_versions: [1], observed_at: now, features, units: [] }, now);
-}
-async function fixture(initial = disarmed(), { page = 'control', safetyCard = null, clock = null, legacySafety = false, canonicalMime = 'application/vnd.rider.api+json;version=1', interactive = true, catalogDelay = 0 } = {}) {
-  const elements = new Map(['global-motion-toggle', 'arm', 'clear-estop', 'disarm', 'estop', 'operator-plan', 'operator-consent', 'control-owner', 'lease',
-    'duration', 'speed', 'yaw-speed', 'request-history', 'safety-state', 'safety-owner', 'safety-reason', 'safety-lease', 'operator-message'].map(id => [id, new Element(id)]));
-  elements.get('global-motion-toggle').classList = { toggle() {} };
-  elements.get('control-owner').value = 'manual'; elements.get('lease').value = '10'; elements.get('duration').value = '.1';
-  elements.get('speed').value = '.1'; elements.get('yaw-speed').value = '.18';
-  const listeners = {}, timers = new Map(), calls = [];
-  let timerId = 0, current = initial; const replies = new Map();
-  const document = { hidden: false, documentElement: { lang: 'pl' }, body: { dataset: { page } },
-    getElementById: id => elements.get(id), querySelector: selector => selector === '.operator-safety' ? safetyCard : null, querySelectorAll: () => [], createElement: () => new Element(),
-    addEventListener: (name, action) => { listeners[name] = action; }, removeEventListener() {} };
-  const context = vm.createContext({ document, window: { addEventListener() {} }, console,
-    Date: clock ? class extends Date { static now() { return clock.now * 1000; } } : Date, Math, Number, String, Boolean, JSON, Map, Set, Error, AbortController,
-    setTimeout: callback => { timers.set(++timerId, callback); return timerId; }, clearTimeout: id => timers.delete(id),
-    setInterval: callback => { timers.set(++timerId, callback); return timerId; }, clearInterval: id => timers.delete(id),
-    fetch: async (url, options) => {
-      calls.push({ url, ...options, body: options.body ? JSON.parse(options.body) : undefined });
-      if (url === '/api/logic/catalog' && clock) clock.now += catalogDelay;
-      const now = clock ? clock.now : Date.now() / 1000;
-      const state = { safety: current, server_time: now };
-      const reply = replies.has(url) ? replies.get(url) : options.method === 'POST' ? { pending: true, confirmed: false }
-        : url === '/api/logic/catalog' ? catalogReply([], now)
-          : url === '/api/control/state' && !legacySafety ? canonicalReply('rider.safety', 1, state, now) : state;
-      return { ok: true, status: options.method === 'POST' ? 202 : 200,
-        headers: { get: name => name.toLowerCase() === 'content-type'
-          ? reply.meta ? canonicalMime : 'application/json' : null },
-        json: async () => reply };
-    } });
-  const modules = new Map();
-  async function load(name) {
-    if (modules.has(name)) return modules.get(name);
-    const source = await readFile(path.join(assets, name), 'utf8');
-    const module = new vm.SourceTextModule(source, { context, identifier: name }); modules.set(name, module);
-    await module.link(specifier => load(path.basename(specifier).split("?")[0]));
-    return module;
-  }
-  const module = await load('safety.js'); await module.evaluate();
-  const panel = new module.namespace.SafetyPanel(() => {}, { interactive });
-  await new Promise(resolve => setImmediate(resolve));
-  return { panel, elements, calls, listeners, document, timers, setReply(url, data) { replies.set(url, data); }, async load(name) { const module = await load(name); await module.evaluate(); return module.namespace; }, setState(value) { current = value; panel.update(value); } };
-}
+import {assets,model,instant,capability,armed,disarmed,Element,fixture,canonicalReply,catalogReply} from './helpers/operator-fixture.mjs';
 
 test('opening control issues GET only and displays the global disarmed button', async () => {
   const f = await fixture();
@@ -680,4 +549,24 @@ test('operator arming survives thirty seconds and focus suspension without auto 
   f.setState({ ...armed(), execution_context: 'panel', arming_mode: 'operator', lease_remaining_s: null });
   assert.equal(f.panel.can('manual'), true);
   assert.equal(f.elements.get('global-motion-toggle').textContent, 'Robot uzbrojony');
+});
+
+test('release creates its fresh envelope after slow catalogue negotiation',async()=>{
+  const clock={now:1000};
+  const f=await fixture(armed(1000),{clock,catalogDelay:.7});
+  f.panel.controls={state:{revision:17},ready:()=>true,pulse:direction=>({direction,device_settings:true,settings_revision:17})};
+  await f.panel.sendIntent({direction:'forward',mode:'release'},()=>true);
+  const write=f.calls.find(call=>call.method==='POST').body;
+  assert.equal(write.ts,clock.now);
+  assert.equal(write.mode,'release');assert.equal(write.ttl_ms,500);assert.equal(write.seq,5);
+});
+test('release can neutralize a held gesture after a lost state without renewing old commands',async()=>{
+  const clock={now:1000};let f;
+  f=await fixture(armed(1000),{clock,catalogDelay:.7,
+    beforeFetch:async url=>{if(url==='/api/logic/catalog')f.setState(null);}});
+  f.panel.controls={state:{revision:17},ready:()=>true,pulse:direction=>({direction,device_settings:true,settings_revision:17})};
+  await f.panel.sendIntent({direction:'forward',mode:'release'},()=>true);
+  const write=f.calls.find(call=>call.method==='POST').body;
+  assert.equal(write.ts,clock.now);assert.equal(write.generation,'fixture-generation');
+  assert.equal(write.mode,'release');assert.equal(write.ttl_ms,500);assert.equal(write.seq,5);
 });

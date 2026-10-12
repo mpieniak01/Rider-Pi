@@ -47,6 +47,8 @@ def test_weighted_one_second_average_retains_short_peak():
 def test_http_readers_share_one_sample_and_do_not_advance_counters(monkeypatch):
     sampler, clock, counters, calls = fixture()
     sampler.sample()
+    for _ in range(4):
+        advance(sampler, clock, counters, 0)
     sampler.thread = object()  # Pure reader exercise; no background thread.
     monkeypatch.setattr(system_info, "_sampler", sampler)
     cpu, mem = deque(maxlen=60), deque(maxlen=60)
@@ -56,7 +58,7 @@ def test_http_readers_share_one_sample_and_do_not_advance_counters(monkeypatch):
         assert row["cpu_peak_pct"] == row["hist_cpu_peak"][-1]
         assert row["ts"] == row["hist_ts"][-1]
         row["hist_cpu"].append(99)  # Readers cannot corrupt the internal history.
-    assert calls == [True]
+    assert calls == [True, False]
     assert len(cpu) == len(mem) == 1
     advance(sampler, clock, counters, 60)
     assert system_info.cpu_percent() == 0  # No one-second sample yet.
@@ -78,7 +80,7 @@ def test_counter_reset_never_invents_a_peak():
     counters[:] = [0, 1]
     clock[0] = 1
     sampler.sample()
-    assert sampler.latest["cpu_pct"] == sampler.latest["cpu_peak_pct"] == 0
+    assert sampler.latest["cpu_pct"] == sampler.latest["cpu_peak_pct"] is None
 
 
 def test_idle_sampler_stops_and_does_not_backfill_history(monkeypatch):
@@ -90,10 +92,11 @@ def test_idle_sampler_stops_and_does_not_backfill_history(monkeypatch):
     monkeypatch.setattr("services.api_core.system_sampling.time.sleep", lambda seconds: None)
     sampler._run()
     assert sampler.thread is sampler.previous is sampler.summary_at is None
-    assert len(sampler.history) == 1
+    assert len(sampler.history) == 0
     sampler.sample()
     assert sampler.latest["ts"] == 1031
-    assert len(sampler.history) == 2
+    assert len(sampler.history) == 0
+    assert sampler.latest["cpu_pct"] is None
 
 
 def test_proc_cpu_excludes_iowait_and_duplicate_guest(monkeypatch):
@@ -129,4 +132,30 @@ def test_summary_phase_does_not_drift_by_a_quarter_second():
         counters[0] += 10
         counters[1] += 25
         sampler.sample()
-    assert [row[0] for row in sampler.history] == [1000, 1001.0001, 1002, 1003]
+    assert [row[0] for row in sampler.history] == [1001.0001, 1002, 1003]
+
+
+def test_first_snapshot_has_other_metrics_but_no_cpu_or_prometheus_sample(monkeypatch):
+    from flask import Flask
+
+    sampler, _, _, calls = fixture()
+    sampler.sample()
+    sampler.thread = object()
+    monkeypatch.setattr(system_info, "_sampler", sampler)
+    with Flask(__name__).app_context():
+        row = system_info.sysinfo().get_json()
+        metrics = system_info.metrics().get_data(as_text=True)
+    assert row["cpu_pct"] is row["cpu_peak_pct"] is None
+    assert row["mem_pct"] == 25 and row["disk_pct"] == 10 and row["temp_c"] == 40
+    assert row["hist_cpu"] == row["hist_ts"] == []
+    assert calls == [True]
+    assert "rider_cpu_pct" not in metrics and "rider_mem_pct 25" in metrics
+
+
+def test_missing_cpu_delta_does_not_publish_zero_or_history():
+    sampler, clock, _, _ = fixture()
+    sampler.sample()
+    clock[0] = 1
+    sampler.sample()
+    assert sampler.latest["cpu_pct"] is sampler.latest["cpu_peak_pct"] is None
+    assert not sampler.history

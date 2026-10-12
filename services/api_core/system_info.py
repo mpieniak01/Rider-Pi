@@ -29,7 +29,7 @@ def _cpu_pct_sample() -> tuple[float, float]:
         return 0.0, 0.0
 
 
-def cpu_percent() -> float:
+def cpu_percent() -> float | None:
     """Return the latest shared one-second CPU sample."""
     return _sampler.snapshot()["cpu_pct"]
 
@@ -192,7 +192,8 @@ def metrics() -> Response:
     def m(name, val) -> None:
         lines.append(f"{name} {val}")
 
-    m("rider_cpu_pct", si["cpu_pct"])
+    if si["cpu_pct"] is not None:
+        m("rider_cpu_pct", si["cpu_pct"])
     m("rider_mem_pct", si["mem"]["pct"])
     m("rider_disk_pct", si["disk"]["pct"])
     m("rider_temp_c", si["temp_c"])
