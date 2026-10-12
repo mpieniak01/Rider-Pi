@@ -34,7 +34,9 @@ def run_goal(domain: str, cfg: dict | None = None, *, once: bool = False, select
         )
         for signum in (signal.SIGINT, signal.SIGTERM):
             previous[signum] = signal.getsignal(signum)
-            signal.signal(signum, lambda *_: runner.stop())
+            # A signal can interrupt HTTP while its non-reentrant lock is held.
+            # Leave cancellation/handle closure to the runner's finally path.
+            signal.signal(signum, lambda *_: runner.stop_event.set())
         return runner.run(once=once)
     finally:
         if runner is not None:

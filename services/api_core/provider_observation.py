@@ -99,11 +99,24 @@ def snapshot(*, worker=None, unit=None, now=None) -> dict:
         domains = {}
         for domain in registry.DOMAINS:
             sample = compute["domains"].get("vision" if domain == "vision" else "voice", {})
-            fresh = sample.get("stale") is False
-            tasks = sample.get("capabilities", {})
+            sample_state = sample.get("state")
+            fresh = (
+                sample.get("stale") is False
+                and isinstance(sample_state, str)
+                and sample_state not in {"off", "unavailable", "unknown"}
+            )
+            capabilities = sample.get("capabilities")
+            tasks = capabilities.get("tasks", {}) if isinstance(capabilities, dict) else {}
             tasks = tasks if isinstance(tasks, dict) else {}
+            response_task = sample.get("response_task", "text.respond")
+            if not isinstance(response_task, str) or response_task not in {"text.respond", "conversation.respond"}:
+                response_task = "text.respond"
             required = (
-                ("vision.describe",) if domain == "vision" else ("audio.transcribe", "text.respond", "audio.synthesize")
+                ("vision.describe",)
+                if domain == "vision"
+                else ("text.respond",)
+                if domain == "text"
+                else ("audio.transcribe", response_task, "audio.synthesize")
             )
             ready = fresh and all(
                 isinstance(tasks.get(task), dict) and tasks[task].get("ready") is True for task in required

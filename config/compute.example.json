@@ -5,7 +5,7 @@
   "selected_executor": null,
   "executors": {
     "venom": {
-      "url": "http://venom-host:8000",
+      "url": "https://venom-host:8443",
       "token_env": "RIDER_COMPUTE_TOKEN",
       "tasks": ["text.respond", "audio.transcribe", "audio.synthesize", "vision.describe", "conversation.respond"]
     }

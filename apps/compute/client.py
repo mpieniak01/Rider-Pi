@@ -14,7 +14,8 @@ import uuid
 import wave
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
+
+from common.compute_url import validate_compute_url
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 TASK_TYPES = {
@@ -72,23 +73,10 @@ class HTTPTransport:
 
     def __init__(self, base_url: str) -> None:
         try:
-            parsed = urlsplit(base_url)
-            port = parsed.port
-        except (ValueError, TypeError):
-            raise ComputeError('invalid_compute_url') from None
-        if (
-            parsed.scheme not in {'http', 'https'}
-            or not parsed.hostname
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.query
-            or parsed.fragment
-            or parsed.path.rstrip('/') not in {'', '/api/v1/rider/compute'}
-            or port is not None
-            and not 1 <= port <= 65535
-        ):
-            raise ComputeError('invalid_compute_url')
-        self.host, self.port, self.secure = parsed.hostname, port, parsed.scheme == 'https'
+            parsed = validate_compute_url(base_url, allow_api_path=True)
+        except ValueError as exc:
+            raise ComputeError(str(exc), 400) from None
+        self.host, self.port, self.secure = parsed.hostname, parsed.port, parsed.scheme == 'https'
         self.connection = None
         self.lock = threading.Lock()
         self.closed = False
@@ -259,8 +247,10 @@ class ComputeClient:
         started = self._clock()
         if task == 'conversation.respond' and self.client_id != 'voice':
             raise ComputeError('conversation_voice_only', 403)
-        if not isinstance(metadata, dict) or params is not None and not isinstance(params, dict):
-            raise ComputeError('invalid_compute_metadata')
+        if not isinstance(metadata, dict):
+            raise ComputeError('invalid_compute_metadata', 400)
+        if params is not None and not isinstance(params, dict):
+            raise ComputeError('invalid_compute_params', 400)
         if task not in TASK_TYPES or content_type not in TASK_TYPES[task]:
             raise ComputeError('unsupported_compute_task_or_type')
         if not isinstance(data, bytes) or not data or len(data) > MAX_BYTES:
@@ -306,12 +296,13 @@ class ComputeClient:
         if sum(job.observation is None for job in self._jobs.values()) >= 5:
             raise ComputeError('compute_client_saturated', 429)
         params = dict(params or {})
-        if params.get('language', 'pl') not in {'pl', 'en', 'de'} or set(params) - {'language', 'prompt'}:
-            raise ComputeError('invalid_compute_params')
+        language = params.get('language', 'pl')
+        if not isinstance(language, str) or language not in {'pl', 'en', 'de'} or set(params) - {'language', 'prompt'}:
+            raise ComputeError('invalid_compute_params', 400)
         if 'prompt' in params and (task != 'vision.describe' or not isinstance(params['prompt'], str)):
-            raise ComputeError('invalid_compute_params')
+            raise ComputeError('invalid_compute_params', 400)
         if len(params.get('prompt', '')) > 512:
-            raise ComputeError('invalid_compute_params')
+            raise ComputeError('invalid_compute_params', 400)
         lease = self._session()
         remaining = int(ttl - (self._clock() - started) * 1000)
         age = max(0, round((self._wall_clock() - captured) * 1000))

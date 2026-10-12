@@ -256,3 +256,141 @@ def test_invalid_compute_configuration_is_not_a_legacy_provider_status(monkeypat
     assert result["partial"] is True
     assert all(not row["ready"] and row["effective"] == "unavailable" for row in result["domains"].values())
     assert all(row["error"] == "compute_configuration_unavailable" for row in result["domains"].values())
+
+
+@pytest.mark.parametrize("url", ["http://venom-host:8000", "http://10.0.0.1", "http://[2001:db8::1]", None, []])
+def test_private_configuration_rejects_plain_http_network_endpoint(url):
+    with pytest.raises(ValueError, match="compute_configuration_invalid"):
+        compute_config.configure(url, "fixture")
+    assert not compute_config.config_path().exists()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://fixture.invalid:8443",
+        "http://localhost:8000",
+        "http://[::1]:8000",
+        "https://fixture.invalid:8443/api/v1/rider/compute",
+        "http://127.0.0.1:18800/api/v1/rider/compute",
+    ],
+)
+def test_private_configuration_accepts_https_or_loopback_only(url):
+    result = compute_config.configure(url, "fixture")
+    compute_config.select("venom", result["revision"])
+    assert compute_config.selected_executor()["url"] == url
+
+
+def test_insecure_existing_file_is_refused_on_read_and_not_silently_upgraded():
+    configured()
+    path = compute_config.config_path()
+    data = json.loads(path.read_text())
+    data["executors"]["venom"]["url"] = "http://venom-host:8000"
+    path.write_text(json.dumps(data))
+    original = path.read_bytes()
+    with pytest.raises(ValueError, match="compute_configuration_invalid"):
+        compute_config.selected_executor()
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "conversation_available,conversation_selected,response_ready",
+    [(False, True, True), (True, False, True), (True, True, True), (True, True, False)],
+)
+def test_provider_reads_runner_envelope_and_actual_r2_r3_response_task(
+    monkeypatch, conversation_available, conversation_selected, response_ready
+):
+    from services.api_core import provider_observation
+    from tests.test_compute_runners import voice_runner
+
+    selected_config = configured()
+    selected = compute_config.selected_executor()
+    if not conversation_selected:
+        selected["tasks"] = [task for task in selected["tasks"] if task != "conversation.respond"]
+    runner, client, _, statuses, _ = voice_runner(selected=selected)
+    client.tasks["conversation.respond"] = {"available": conversation_available, "ready": response_ready}
+    for row in client.tasks.values():
+        row["ready"] = True
+    response_task = "conversation.respond" if conversation_available and conversation_selected else "text.respond"
+    client.tasks[response_task]["ready"] = response_ready
+    if response_task == "conversation.respond":
+        client.tasks["text.respond"]["ready"] = False  # A cold R2 model does not block the R3 pipeline.
+
+    def record(observation):
+        statuses.append(observation)
+        compute_config.record_status("voice", observation, revision=selected_config["revision"])
+
+    def no_legacy_probe(*_):
+        pytest.fail("selected compute must not poll legacy services")
+
+    runner.on_status = record
+    monkeypatch.setattr(provider_observation.registry, "get_state_snapshot", lambda: {})
+    monkeypatch.setattr(provider_observation.registry, "get_health_snapshot", lambda: {})
+    monkeypatch.setattr(provider_observation.task_runtime, "read_status", no_legacy_probe)
+    monkeypatch.setattr(provider_observation.systemd_ctrl, "status", no_legacy_probe)
+    try:
+        runner._start({"audio.transcribe", "text.respond", "audio.synthesize"})
+        assert statuses[-1]["response_task"] == response_task
+        assert "tasks" in statuses[-1]["capabilities"]
+        result = provider_observation.snapshot()
+        voice = result["domains"]["voice"]
+        assert voice["ready"] is response_ready and voice["initialized"] is True
+        assert voice["effective"] == ("venom" if response_ready else "unavailable")
+        assert result["domains"]["text"]["ready"] is client.tasks["text.respond"]["ready"]
+        runner.status("off")
+        assert provider_observation.snapshot()["domains"]["voice"]["ready"] is False
+    finally:
+        runner.close()
+
+
+@pytest.mark.parametrize("ready", [True, False])
+def test_provider_reads_vision_runner_capabilities_tasks(monkeypatch, ready):
+    from services.api_core import provider_observation
+    from tests.test_compute_runners import vision_runner
+
+    configured()
+    selected = compute_config.selected_executor()
+    runner, client, _, _, _ = vision_runner([], selected=selected)
+    client.tasks["vision.describe"]["ready"] = ready
+    runner.on_status = lambda row: compute_config.record_status("vision", row, revision=selected["revision"])
+    monkeypatch.setattr(provider_observation.registry, "get_state_snapshot", lambda: {})
+    monkeypatch.setattr(provider_observation.registry, "get_health_snapshot", lambda: {})
+    try:
+        runner._start({"vision.describe"})
+        result = provider_observation.snapshot()
+        assert result["domains"]["vision"]["ready"] is ready
+        assert result["domains"]["vision"]["initialized"] is True
+        assert result["domains"]["voice"]["ready"] is False
+    finally:
+        runner.close()
+
+
+@pytest.mark.parametrize("language", [{}, []])
+def test_transcription_api_returns_400_for_container_language_without_network(monkeypatch, language):
+    from apps.compute.client import ComputeClient
+    from tests.test_compute_client import Transport, wav
+
+    configured()
+    transport = Transport()
+
+    def execute(task, payload, mime, params):
+        return compute_operations.execute(
+            task,
+            payload,
+            mime,
+            params,
+            client_factory=lambda *args, **kwargs: ComputeClient(*args, transport=transport, **kwargs),
+        )
+
+    monkeypatch.setattr(compute_api, "execute", execute)
+    with app().test_client() as http:
+        response = http.post(
+            "/tasks/audio.transcribe",
+            data=wav(),
+            content_type="audio/wav",
+            headers={"X-Rider-Params": json.dumps({"language": language})},
+        )
+    assert response.status_code == 400 and response.json["error"] == "invalid_compute_params"
+    assert not transport.calls and transport.closed
+    assert compute_operations._panel_lock.acquire(blocking=False)
+    compute_operations._panel_lock.release()

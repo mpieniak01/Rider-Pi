@@ -364,6 +364,21 @@ class VoiceRunner(GoalRunner):
         self.wait_frames = max(1, int(service.get('no_speech_timeout_ms', 3000) / self.capture_cfg.frame_ms))
         self.language = cfg.get('lang', 'pl')
 
+    def response_task(self) -> str:
+        conversation = (self.capability_snapshot or {}).get('tasks', {}).get('conversation.respond', {})
+        return (
+            'conversation.respond'
+            if (
+                'conversation.respond' in self.selection.get('tasks', [])
+                and isinstance(conversation, dict)
+                and conversation.get('available') is True
+            )
+            else 'text.respond'
+        )
+
+    def status(self, state: str, **data) -> None:
+        super().status(state, **{**data, 'response_task': self.response_task()})
+
     def _speaker_state(self):
         try:
             return self.playback_observer.snapshot()
@@ -474,12 +489,7 @@ class VoiceRunner(GoalRunner):
         if not text.strip():
             self.status('waiting_for_input', silence=True)
             return transcript
-        conversation = (self.capability_snapshot or {}).get('tasks', {}).get('conversation.respond', {})
-        response_task = (
-            'conversation.respond'
-            if ('conversation.respond' in self.selection.get('tasks', []) and conversation.get('available') is True)
-            else 'text.respond'
-        )
+        response_task = self.response_task()
         _, response = infer(response_task, text.encode('utf-8'), 'text/plain; charset=utf-8')
         if response_task == 'conversation.respond' and response['data'].get('speech_played') is True:
             return response

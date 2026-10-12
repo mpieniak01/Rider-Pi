@@ -22,8 +22,19 @@ adresami urządzeń. API nie przyjmuje dowolnego URL od przeglądarki.
 Konfiguracja i awaryjny CLI korzystają z tej samej domeny:
 
 ```sh
-python3 -m services.compute_config --url http://venom-host:8000 --device-id robot
+python3 -m services.compute_config --url https://venom-host:8443 --device-id robot
 ```
+
+Token wymaga HTTPS z weryfikowanym certyfikatem albo lokalnego endpointu
+`http://localhost:<port>`, `http://127.0.0.1:<port>` lub `http://[::1]:<port>`
+prowadzącego przez tunel SSH. HTTP po sieci lokalnej jest odrzucane także przez
+klienta transportu. TLS/tunel na urządzeniu pozostaje do przygotowania przed
+odbiorem sprzętowym; ta zmiana nie konfiguruje go automatycznie.
+
+URL może wskazywać bazę hosta albo dokładny `/api/v1/rider/compute`. Dla
+dwukierunkowego tunelu uruchamianego z Venoma przykładowy URL na Pi to
+`http://127.0.0.1:18800/api/v1/rider/compute`; port prowadzi przez SSH do
+`127.0.0.1:8800` Venoma. Host korzysta z Pi przez własny `127.0.0.1:18080`.
 
 Polecenie zapisuje adres, ale nie aktywuje celu. Wybór wykonawcy:
 `GET /api/compute/config`, `POST /api/compute/config` z
@@ -71,6 +82,10 @@ Panel modułu pokazuje wykonawcę, model, stan instalacji/konfiguracji/gotowośc
 kolejkę, wiek wejścia i czas inferencji. Pierwszy job może załadować zimny model;
 czas inferencji obejmuje ładowanie. Nie wyświetlamy fikcyjnego osobnego pomiaru
 czasu ładowania. Język TTS musi odpowiadać wybranemu głosowi Pipera.
+
+Gotowość pochodzi z `capabilities.tasks`, a nie z samej dostępności wykonawcy.
+Snapshot głosu zapisuje faktycznie wybrane `response_task`: `text.respond`
+dla R2 albo opcjonalne `conversation.respond` dla R3. Zakończony cel ma stan OFF.
 
 Compute v1 ma tożsamość urządzenia/bootu, osobne sesje głosu/wizji, korelację
 wejścia/wyniku, TTL do 60 s i ograniczoną kolejkę. Stare wyniki, restart,

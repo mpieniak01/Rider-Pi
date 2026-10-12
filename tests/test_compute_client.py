@@ -259,6 +259,10 @@ def test_job_buffer_is_bounded(client_fixture):
 @pytest.mark.parametrize(
     'url',
     [
+        None,
+        [],
+        {},
+        '',
         'ftp://localhost',
         'http://user:pass@localhost',
         'http://localhost/x',
@@ -350,3 +354,53 @@ def test_conversation_task_is_only_for_voice_client(client_fixture):
     client.client_id = 'voice'
     job = submit(client, task='conversation.respond')
     assert client.result(job)['task'] == 'conversation.respond'
+
+
+@pytest.mark.parametrize('language', [{}, [], ['pl'], None, True, 1, 'fr'])
+def test_invalid_transcription_language_is_typed_400_before_transport(client_fixture, language):
+    client, transport, _ = client_fixture
+    with pytest.raises(ComputeError, match='invalid_compute_params') as raised:
+        client.submit(
+            'audio.transcribe',
+            wav(),
+            'audio/wav',
+            {'captured_at': 999, 'sequence': 1, 'input_id': 'sample', 'stream_id': 'voice'},
+            params={'language': language},
+        )
+    assert raised.value.status == 400 and not transport.calls
+
+
+@pytest.mark.parametrize('params', [[], 'pl', True, 3])
+def test_non_object_params_is_typed_400_before_transport(client_fixture, params):
+    client, transport, _ = client_fixture
+    with pytest.raises(ComputeError, match='invalid_compute_params') as raised:
+        client.submit(
+            'audio.transcribe',
+            wav(),
+            'audio/wav',
+            {'captured_at': 999, 'sequence': 1, 'input_id': 'sample', 'stream_id': 'voice'},
+            params=params,
+        )
+    assert raised.value.status == 400 and not transport.calls
+
+
+@pytest.mark.parametrize('url', ['http://venom-host:8000', 'http://10.0.0.1:8000', 'http://[2001:db8::1]'])
+def test_private_client_rejects_nonloopback_http_before_sending_token(url):
+    with pytest.raises(ComputeError, match='compute_https_or_loopback_required') as raised:
+        ComputeClient(url, 'test', 'fixture-only-token', 'boot')
+    assert raised.value.status == 400 and 'fixture-only-token' not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    'url,secure',
+    [
+        ('https://fixture.invalid:8443', True),
+        ('http://localhost:8000', False),
+        ('http://127.0.0.2:8000', False),
+        ('http://[::1]:8000', False),
+    ],
+)
+def test_https_and_loopback_transport_are_idle_and_allowed(url, secure):
+    transport = HTTPTransport(url)
+    assert transport.secure is secure and transport.connection is None
+    transport.close()

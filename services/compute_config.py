@@ -12,7 +12,8 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import urlsplit
+
+from common.compute_url import validate_compute_url
 
 TASKS = ("text.respond", "audio.transcribe", "audio.synthesize", "vision.describe", "conversation.respond")
 ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -64,22 +65,12 @@ def _validate(data):
     for name, row in data["executors"].items():
         if not isinstance(name, str) or not ID.fullmatch(name) or not isinstance(row, dict):
             raise ValueError("compute_configuration_invalid")
-        parsed = urlsplit(row.get("url", ""))
         try:
-            port = parsed.port
+            validate_compute_url(row.get("url", ""), allow_api_path=True)
         except ValueError as exc:
             raise ValueError("compute_configuration_invalid") from exc
         if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.hostname
-            or parsed.username
-            or parsed.password
-            or parsed.query
-            or parsed.fragment
-            or parsed.path not in {"", "/"}
-            or port is not None
-            and not 1 <= port <= 65535
-            or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", row.get("token_env", ""))
+            not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", row.get("token_env", ""))
             or not isinstance(row.get("tasks"), list)
             or not row["tasks"]
             or set(row["tasks"]) - set(TASKS)
@@ -188,6 +179,8 @@ def _selection_lock():
 
 def configure(url, device_id, executor_id="venom", token_env="RIDER_COMPUTE_TOKEN"):
     """Emergency CLI shares this domain; credentials remain in the service env."""
+    if not isinstance(url, str):
+        raise ValueError("compute_configuration_invalid")
     with _selection_lock(), _lock(config_path()):
         _require_idle_goals()
         data = _read()
@@ -219,6 +212,7 @@ def record_status(domain, observation, *, revision):
         "metrics",
         "data",
         "capabilities",
+        "response_task",
         "executor_id",
         "executor_session",
         "client_id",

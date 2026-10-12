@@ -488,8 +488,9 @@ def test_conversation_task_requires_selected_allowlist_and_actual_capability(ena
     client.tasks['conversation.respond'] = {'available': enabled}
     try:
         runner._start({'audio.transcribe', 'text.respond', 'audio.synthesize'})
-        runner.process(wav_bytes(b'\0\0' * 320, 16000), 999)
         expected = 'conversation.respond' if enabled and allowed else 'text.respond'
+        assert runner.response_task() == expected
+        runner.process(wav_bytes(b'\0\0' * 320, 16000), 999)
         assert client.requests[1][0] == expected
         assert client.requests[-1][0] == 'audio.synthesize' and playback
     finally:
@@ -518,3 +519,49 @@ def test_conversation_already_spoken_reply_is_not_synthesised_or_played_again():
         assert not playback
     finally:
         runner.close()
+
+
+@pytest.mark.parametrize('domain', ['voice', 'vision'])
+def test_goal_signal_marks_stop_then_finally_closes_outside_http_lock(monkeypatch, domain):
+    from apps.compute import __main__ as cli
+    from common import bus
+
+    callbacks, restored, events = {}, [], []
+    lock = threading.Lock()
+    publisher = Publisher()
+    previous = {signum: object() for signum in (cli.signal.SIGINT, cli.signal.SIGTERM)}
+
+    class Runner:
+        def __init__(self, *_, **__):
+            self.stop_event = threading.Event()
+
+        def run(self, **_):
+            with lock:
+                callbacks[cli.signal.SIGTERM](cli.signal.SIGTERM, None)
+                assert self.stop_event.is_set()
+                assert not events  # No close/cancel in the signal handler.
+            return 17
+
+        def stop(self):
+            pytest.fail('signal called synchronous runner.stop')
+
+        def close(self):
+            assert lock.acquire(blocking=False), 'close re-entered the held HTTP lock'
+            lock.release()
+            events.append('finally-close')
+            publisher.close()
+
+    def register(signum, handler):
+        if handler is previous[signum]:
+            restored.append(signum)
+        else:
+            callbacks[signum] = handler
+
+    monkeypatch.setattr(bus, 'BusPub', lambda: publisher)
+    monkeypatch.setattr(cli, 'VoiceRunner', Runner)
+    monkeypatch.setattr(cli, 'VisionRunner', Runner)
+    monkeypatch.setattr(cli.signal, 'getsignal', lambda signum: previous[signum])
+    monkeypatch.setattr(cli.signal, 'signal', register)
+    assert cli.run_goal(domain, selection=selection()) == 17
+    assert events == ['finally-close'] and publisher.closed
+    assert restored == [cli.signal.SIGINT, cli.signal.SIGTERM]
