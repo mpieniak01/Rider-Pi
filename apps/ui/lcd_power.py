@@ -15,6 +15,16 @@ from apps.ui.status_panel import ownership_permits
 
 
 def off_if_free(*, probe=None, runner=None):
+    from drivers.lcd.lease import LCDLease
+
+    try:
+        with LCDLease():
+            return _off_locked(probe=probe, runner=runner)
+    except RuntimeError:
+        return {"ok": False, "on": None, "power_known": False, "error": "lcd_owned_or_unknown"}
+
+
+def _off_locked(*, probe=None, runner=None):
     if probe is None:
         from services.api_core.resource_diag import inspect
 
@@ -27,16 +37,33 @@ def off_if_free(*, probe=None, runner=None):
     # This helper itself owns no descriptors. Any owner blocks its OFF command.
     if not ownership_permits(snapshot) or snapshot.get("free") is not True:
         return {"ok": False, "on": None, "power_known": False, "error": "lcd_owned_or_unknown"}
-    controller = Path(__file__).resolve().parents[2] / "scripts" / "sys_lcd-control.py"
+    controller = Path(__file__).resolve().parents[2] / "scripts" / "lcd-power-backend.py"
     # Match the existing renderer's backlight configuration, never change pins.
     # Installed xgoscreen LCD_2inch backend uses BCM0. Generic ST7789/face
     # backends have different defaults and must not override the XGO board.
-    pin = os.getenv("FACE_LCD_BL_PIN", "0")
-    reset = os.getenv("FACE_LCD_RST_PIN", "27")
+    from drivers.lcd.board import lcd_board
+
+    board = lcd_board()
+    pin, reset = str(board.bl), str(board.rst)
     prefix = [] if os.geteuid() == 0 else ["sudo", "-n"]
     try:
         result = runner(
-            [*prefix, sys.executable, str(controller), "off", "--bl", pin, "--rst", reset],
+            [
+                *prefix,
+                sys.executable,
+                str(controller),
+                "off",
+                "--bl",
+                pin,
+                "--rst",
+                reset,
+                "--dc",
+                str(board.dc),
+                "--spi",
+                board.spi,
+                "--hz",
+                str(board.hz),
+            ],
             timeout=3,
             capture_output=True,
             text=True,

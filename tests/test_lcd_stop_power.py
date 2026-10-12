@@ -3,7 +3,7 @@
 from services.core.lcd_cleanup import finish_lcd_stop
 
 
-def test_camera_stop_calls_full_off_after_runner_and_preserves_other_owner():
+def test_headless_camera_stop_never_changes_lcd_power():
     calls = []
     result = finish_lcd_stop(
         "camera-capture@raw.service",
@@ -11,9 +11,9 @@ def test_camera_stop_calls_full_off_after_runner_and_preserves_other_owner():
         {"ok": True},
         power_off=lambda: calls.append("off") or {"ok": False, "error": "lcd_owned_or_unknown"},
     )
-    assert calls == ["off"]
+    assert calls == []
     assert result["ok"] is True
-    assert result["lcd_power"]["error"] == "lcd_owned_or_unknown"
+    assert "lcd_power" not in result
 
 
 def test_stopping_inactive_renderer_still_switches_panel_off():

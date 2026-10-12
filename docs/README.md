@@ -43,3 +43,5 @@ results from individual devices remain in ignored local operational directories.
 
 Polish is the starting point; keep English contracts and guides current.
 Local plans and reports exist only in `docs_pl/_to_do/` and `docs_pl/_done/`.
+
+- [Shared resources and robot goals](RESOURCE_ARCHITECTURE.md)

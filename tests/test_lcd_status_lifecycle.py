@@ -166,7 +166,7 @@ def test_renderer_reuses_exact_existing_ip_battery_pixels_and_rotation(tmp_path,
     driver = SimpleNamespace(
         device=SimpleNamespace(W=320, H=240), _bl_pin=0, ShowImage=lambda im: submitted.append(im.copy())
     )
-    renderer = LCDRenderer(driver_factory=lambda: driver)
+    renderer = LCDRenderer(driver_factory=lambda: driver, owner_probe=lambda: {"free": True, "holders": []})
     info = {
         "Host": "rider",
         "Date": "2026-10-12 00:00:00",
@@ -187,6 +187,7 @@ def test_renderer_reuses_exact_existing_ip_battery_pixels_and_rotation(tmp_path,
     assert renderer.frame_observation["battery_text"] == "100%" and renderer.frame_observation["ip"] == "10.0.0.1"
     assert renderer.rotate == 270 and renderer.power_known
     assert renderer.frame_observation["physical_validity"] == "unverified"
+    renderer.close()
 
 
 def test_late_existing_splash_uses_one_supplied_sample_without_wait_or_cache(monkeypatch):
@@ -261,7 +262,9 @@ def test_power_off_uses_installed_xgo_gpio_zero_without_reset(monkeypatch):
     result = off_if_free(probe=lambda: {"free": True, "holders": []}, runner=run)
     command, options = commands[0]
     assert command[:2] == ["sudo", "-n"]
-    assert command[-5:] == ["off", "--bl", "0", "--rst", "27"]
+    assert command[command.index("--bl") + 1] == "0"
+    assert command[command.index("--rst") + 1] == "27"
+    assert command[command.index("--dc") + 1] == "25"
     assert options["timeout"] == 3 and options["check"] is False
     assert result["on"] is False and result["physical_validity"] == "unverified"
     assert result["confirmation"] == "control_write_accepted"

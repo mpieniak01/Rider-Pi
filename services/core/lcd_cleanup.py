@@ -4,17 +4,7 @@ from __future__ import annotations
 
 
 def finish_lcd_stop(unit, action, result, *, power_off=None):
-    if (
-        action != "stop"
-        or not result.get("ok")
-        or unit
-        not in {
-            "lcd-renderer.service",
-            "camera-capture@raw.service",
-            "camera-capture@edge.service",
-            "camera-capture@ssd.service",
-        }
-    ):
+    if action != "stop" or not result.get("ok") or unit != "lcd-renderer.service":
         return result
     if power_off is None:
         from apps.ui.lcd_power import off_if_free

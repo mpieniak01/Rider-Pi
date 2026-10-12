@@ -197,26 +197,9 @@ def render_face(payload: dict[str, Any]) -> dict[str, Any]:
                 return {"ok": False, "error": f"save-error: {e}"}
 
         elif b in {"lcd", "raw"}:
-            # Jednorazowy push na LCD — użyj narzędzia newface_lcd_direct jeśli dostępne.
-            # Parametry pomocnicze (opcjonalne)
-            spi_hz = payload.get("spi_hz", _env_int("FACE_LCD_SPI_HZ"))
-            bl_pin = int(payload.get("bl_pin", _env_int("FACE_LCD_BL_PIN", 13)))
-            force = payload.get("force")  # np. "rgb565_3", "pil", "raw", itp.
+            from services.api_core.face_runtime_api import play
 
-            try:
-                # PIL klatka (bez wstępnego obracania — zrobi to LCDDirect)
-                img = _one_frame_pil(ex, size)
-
-                # Importujemy local tool do LCD:
-                from tools import newface_lcd_direct as nfd  # type: ignore
-
-                lcd = nfd.LCDDirect(rotate=rot, size=size, spi_hz=spi_hz, bl_pin=bl_pin, force=force)
-                used = lcd.push(img)
-                # sprzątanie, jeśli sterownik ma metody kończące — robione wewnątrz toola
-                return {"ok": True, "used": used}
-            except Exception as e:
-                # Na hostach bez LCD/drivera zwracamy 503 (przechwytywane wyżej)
-                return {"ok": False, "error": f"lcd-error: {e}", "status": 503}
+            return play({"expr": ex, "sink": "lcd", "duration_s": payload.get("duration_s", 1)})
 
         else:
             return {"ok": False, "error": f"unknown backend: {b or 'none'}"}

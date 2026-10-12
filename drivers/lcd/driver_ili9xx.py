@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from time import time as _time
 from typing import Any
 
+from drivers.lcd.board import LCDBoard, lcd_board
+
 # --- zależności opcjonalne ---
 try:
     import xgoscreen
@@ -31,7 +33,7 @@ class FaceConfig:
     lcd_do_init: bool = True
     lcd_rotate: int = 0
     lcd_spi_hz: int | None = None
-    lcd_bl_pin: int = 13
+    lcd_bl_pin: int = LCDBoard.bl
 
 
 # --- skan xgoscreen: wybór klasy z RAW (preferowane) albo ShowImage ---
@@ -159,7 +161,7 @@ class LCDRenderer:
         if spi is not None:
             print(f"[face] LCD: spi.hz={getattr(spi, 'max_speed_hz', hz)}  spi.mode={getattr(spi, 'mode', '-')}")
 
-        # Backlight (BCM13 HIGH)
+        # Backlight uses the common board configuration
         self._bl_pin = None
         try:
             import RPi.GPIO as GPIO
@@ -558,11 +560,12 @@ try:
 except Exception:
     _GPIO = None
 
-_DEF_SPI = os.getenv("FACE_LCD_SPI_DEV", "/dev/spidev0.0")
-_DEF_HZ = int(os.getenv("FACE_LCD_SPI_HZ", "48000000") or 0) or 32000000
+_BOARD = lcd_board()
+_DEF_SPI = _BOARD.spi
+_DEF_HZ = _BOARD.hz
 _DEF_MODE = int(os.getenv("FACE_SPI_MODE", "0") or 0)
-_DEF_DC = int(os.getenv("FACE_LCD_DC_PIN", "25") or 25)
-_DEF_RST = int(os.getenv("FACE_LCD_RST_PIN", "27") or 27)
+_DEF_DC = _BOARD.dc
+_DEF_RST = _BOARD.rst
 
 _RAWSPI = {"spi": None, "inited": False}
 

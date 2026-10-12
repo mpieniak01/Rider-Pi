@@ -191,8 +191,12 @@ class _Animator:
                     STATE["error"] = "face_close_failed:" + str(error)
             finally:
                 with _STATE_LOCK:
-                    controller.close()
-                    STATE.update(playing=False, running=False)
+                    try:
+                        controller.close()
+                    except Exception as error:
+                        STATE["error"] = "face_close_failed:" + str(error)
+                    finally:
+                        STATE.update(playing=False, running=False)
 
     def command(self, body):
         with _STATE_LOCK:
@@ -223,7 +227,7 @@ class _Animator:
 _anim = _Animator()
 
 
-def play(payload):
+def play(payload, *, prepare_lcd=None):
     try:
         if not isinstance(payload, dict):
             raise ValueError("invalid_payload")
@@ -255,13 +259,20 @@ def play(payload):
                 raise ValueError("gesture_not_active")
             with _STATE_LOCK:
                 STATE["sink"] = sink
-            target = _make_sink()
+            try:
+                if sink == "lcd" and prepare_lcd is not None:
+                    prepare_lcd()
+                target = _make_sink()
+            except BaseException:
+                controller.close()
+                raise
             _anim.controller, _anim._sink = controller, target
             _anim._requested_fps, _anim.activity = fps, time.monotonic()
             with _STATE_LOCK:
                 STATE.update(
                     playing=True,
                     error=None,
+                    lcd_power=None,
                     expr=expr,
                     fps=min(fps, descriptors()["fps"][settings["power_mode"]]),
                     _last_payload={**payload, "duration_s": duration},
@@ -290,7 +301,14 @@ def stop(_payload=None):
         if not _anim._thr or not _anim._thr.is_alive():
             with _STATE_LOCK:
                 STATE.update(playing=False, running=False)
-        return get_state()
+        result = get_state()
+        if _anim._thr and _anim._thr.is_alive():
+            result.update(ok=False, error="face_stopping", status=409)
+        elif (result["state"].get("error") or "").startswith("face_close_failed:"):
+            result.update(ok=False, error="face_close_failed", status=503)
+        elif (result["state"].get("lcd_power") or {}).get("ok") is False:
+            result.update(ok=False, error="lcd_off_unconfirmed", status=503)
+        return result
 
 
 def get_state():

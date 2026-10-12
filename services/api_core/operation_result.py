@@ -56,6 +56,12 @@ def result_for(rule, body, code, submitted):
         state, ack_kind = ("executed" if confirmed else "pending"), "systemd_observed"
     elif success and result.get("released") is True:
         state, confirmed, ack_kind = "executed", True, "resource_observed"
+    elif (
+        success
+        and contract_for(rule).name == "rider.resources"
+        and result.get("confirmation") == "control_write_accepted"
+    ):
+        state, confirmed, ack_kind = "executed", True, "control_write_accepted"
     elif success and contract_for(rule).name in {"rider.face", "rider.chat", "rider.voice", "rider.home"}:
         state, confirmed, ack_kind = "executed", True, "application_result"
     domain_target = {
@@ -76,5 +82,7 @@ def result_for(rule, body, code, submitted):
         "ack_kind": ack_kind,
         "ack": ack,
         "actuation": ack.get("actuation") is True if ack else result.get("actuation") is True,
-        "physical_completion": (ack or result).get("physical_completion", "not_applicable"),
+        "physical_completion": (ack or result).get(
+            "physical_completion", "unverified" if ack_kind == "control_write_accepted" else "not_applicable"
+        ),
     }

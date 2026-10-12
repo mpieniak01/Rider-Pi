@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import signal
-import sys
 import time
 
 import cv2
@@ -52,164 +51,60 @@ def save_jpeg(path, bgr, quality=85):
     return len(enc)
 
 
-# --- Backend A: Picamera2/libcamera ---
-have_p2 = False
-picam = None
-try:
-    from picamera2 import Picamera2
+def main():
+    from apps.camera.utils import open_camera
 
-    picam = Picamera2()
-    cfg = picam.create_preview_configuration(main={"size": (FRAME_W, FRAME_H), "format": "RGB888"})
-    picam.configure(cfg)
-    picam.start()
-    have_p2 = True
-except Exception:
-    picam = None
-    have_p2 = False
+    running = True
 
-# --- Backend B: OpenCV V4L2 ---
-cap = None
+    def stop(*_):
+        nonlocal running
+        running = False
 
-
-def open_v4l2():
-    c = cv2.VideoCapture(0, cv2.CAP_V4L2)
-    c.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_W)
-    c.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_H)
-    c.set(cv2.CAP_PROP_FPS, 15)
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    for sig in previous:
+        signal.signal(sig, stop)
+    read = None
+    period = SNAP_EVERY_MS / 1000.0
+    next_t = last_ok = time.monotonic()
     try:
-        c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    except Exception:
-        pass
-    # NIE wymuszamy MJPG (często brak wsparcia dla kamer CSI)
-    return c
-
-
-if not have_p2:
-    cap = open_v4l2()
-    if not cap.isOpened():
-        print("[edge] ERROR: cannot open camera(0) via V4L2", flush=True)
-        sys.exit(1)
-
-print(
-    f"[edge] start | backend={'Picamera2' if have_p2 else 'V4L2'} | SNAP_DIR={SNAP_DIR} "
-    f"| W×H={FRAME_W}x{FRAME_H} | EDGE={EDGE_LOW}/{EDGE_HIGH} | EVERY={SNAP_EVERY_MS}ms "
-    f"| ROT={PREVIEW_ROT} | FLIP_H={PREVIEW_FLIP_H}",
-    flush=True,
-)
-
-running = True
-
-
-def _stop(*_):
-    global running
-    running = False
-
-
-signal.signal(signal.SIGINT, _stop)
-signal.signal(signal.SIGTERM, _stop)
-
-period = SNAP_EVERY_MS / 1000.0
-next_t = time.time()
-last_ok = time.time()
-
-
-def get_frame():
-    # Zwraca BGR lub None
-    global picam, cap, have_p2
-    if have_p2 and picam is not None:
-        try:
-            rgb = picam.capture_array()  # RGB
-            if rgb is None:
-                return None
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        except Exception:
-            return None
-    else:
-        if cap is None:
-            return None
-        ok, frame = cap.read()
-        if not ok:
-            return None
-        return frame
-
-
-reopen_deadline = 2.0  # s bez klatek -> reopen
-while running:
-    frame = get_frame()
-    now = time.time()
-
-    if frame is None:
-        if (now - last_ok) >= reopen_deadline:
-            # reopen obu backendów w bezpieczny sposób
-            if have_p2 and picam is not None:
-                try:
-                    picam.stop()
-                except Exception:
-                    pass
-                try:
-                    picam.start()
-                except Exception:
-                    # spróbuj całkowitego reinit
-                    try:
-                        from picamera2 import Picamera2
-
-                        picam = Picamera2()
-                        cfg = picam.create_preview_configuration(main={"size": (FRAME_W, FRAME_H), "format": "RGB888"})
-                        picam.configure(cfg)
-                        picam.start()
-                    except Exception:
-                        pass
+        read, _ = open_camera((FRAME_W, FRAME_H))
+        print(f"[edge] start | SNAP_DIR={SNAP_DIR} | W×H={FRAME_W}x{FRAME_H}", flush=True)
+        while running:
+            try:
+                ok, frame = read()
+            except Exception:
+                ok, frame = False, None
+            now = time.monotonic()
+            if not ok or frame is None:
+                if now - last_ok >= 2:
+                    read.close()
+                    read = None
+                    read, _ = open_camera((FRAME_W, FRAME_H))
+                    last_ok = now
+                time.sleep(0.02)
+                continue
+            last_ok = now
+            raw = rot_flip(frame)
+            save_jpeg(RAW, raw)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 1.0), EDGE_LOW, EDGE_HIGH)
+            save_jpeg(PROC, rot_flip(cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)))
+            save_jpeg(LAST, raw, quality=80)
+            next_t += period
+            delay = next_t - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
             else:
-                try:
-                    if cap is not None:
-                        cap.release()
-                except Exception:
-                    pass
-                time.sleep(0.2)
-                cap = open_v4l2()
-            print("[edge] warn: no frame ~2s, reopening camera", flush=True)
-            last_ok = now  # zapobiegaj spamowi
-        time.sleep(0.02)
-        continue
+                next_t = time.monotonic()
+    finally:
+        try:
+            if read is not None:
+                read.close()
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+    return 0
 
-    last_ok = now
 
-    # RAW
-    raw_bgr = rot_flip(frame)
-    raw_len = save_jpeg(RAW, raw_bgr)
-
-    # PROC (Canny)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 1.0)
-    edges = cv2.Canny(blur, EDGE_LOW, EDGE_HIGH)
-    edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-    edges_bgr = rot_flip(edges_bgr)
-    proc_len = save_jpeg(PROC, edges_bgr)
-
-    # dla dashboardu
-    _ = save_jpeg(LAST, raw_bgr, quality=80)
-
-    print(
-        f"[snap] raw.jpg={raw_len}B proc.jpg={proc_len}B @ {time.strftime('%H:%M:%S')}",
-        flush=True,
-    )
-
-    next_t += period
-    delay = next_t - time.time()
-    if delay > 0:
-        time.sleep(delay)
-    else:
-        next_t = time.time()
-
-# cleanup
-try:
-    if have_p2 and picam is not None:
-        picam.stop()
-except Exception:
-    pass
-try:
-    if cap is not None:
-        cap.release()
-except Exception:
-    pass
-print("[edge] stop", flush=True)
+if __name__ == "__main__":
+    raise SystemExit(main())

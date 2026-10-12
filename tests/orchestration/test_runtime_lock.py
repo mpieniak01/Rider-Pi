@@ -37,7 +37,10 @@ def test_nested_task_and_recovery_transaction_reuses_lock(tmp_path):
 
 def test_systemd_mutation_invalidates_snapshot_after_completion(monkeypatch, tmp_path):
     events = []
-    monkeypatch.setattr(systemd_ctrl, "SERVICE_CTL", tmp_path / "absent")
+    backend = tmp_path / "backend"
+    backend.write_text("")
+    backend.chmod(0o755)
+    monkeypatch.setattr(systemd_ctrl, "SERVICE_CTL", backend)
     monkeypatch.setattr(systemd_ctrl, "invalidate_snapshot", lambda: events.append("invalidate"))
     monkeypatch.setattr(
         systemd_ctrl.subprocess,

@@ -38,7 +38,7 @@ MODE_ALIASES = {
 MODE_MAP: dict[str, ModeConfig] = {
     "raw": ModeConfig("apps.camera.preview_lcd", "main"),
     "ssd": ModeConfig("apps.camera.preview_lcd_ssd", "main"),
-    "edge": ModeConfig("apps.vision.edge_preview", None),  # brak main(), uruchamiamy top-level
+    "edge": ModeConfig("apps.vision.edge_preview", "main"),
 }
 
 
@@ -68,6 +68,7 @@ def main() -> int:
         print(f"[capture] Unsupported CAPTURE_MODE={mode!r}. Allowed: {', '.join(sorted(MODE_MAP))}", file=sys.stderr)
         return 2
 
+    os.environ.setdefault("DISABLE_LCD", "1")
     print(f"[capture] starting mode={mode} ({cfg.module})", flush=True)
     previous_term = signal.getsignal(signal.SIGTERM)
 

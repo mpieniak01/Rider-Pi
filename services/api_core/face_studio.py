@@ -139,23 +139,24 @@ def runtime():
 
 
 def runtime_play():
-    from services.api_core import face_anim
+    from services.api_core import face_runtime_api
 
-    result = face_anim.play(request.get_json(silent=True) or {})
+    result = face_runtime_api.play(request.get_json(silent=True) or {})
     return jsonify(result), result.get("status", 200)
 
 
 def runtime_stop():
-    from services.api_core import face_anim
+    from services.api_core import face_runtime_api
 
-    return jsonify(face_anim.stop())
+    result = face_runtime_api.stop()
+    return jsonify(result), result.get("status", 200)
 
 
 def runtime_event():
-    from services.api_core import face_anim
+    from services.api_core import face_runtime_api
 
     try:
-        return jsonify(face_anim.command(request.get_json(silent=True)))
+        return jsonify(face_runtime_api.command(request.get_json(silent=True)))
     except (ValueError, TypeError, KeyError, OSError) as error:
         return jsonify(ok=False, error=str(error), actuation=False), 409
 

@@ -30,19 +30,12 @@ frame_counter = 0
 
 # --- LCD init ---
 def _lcd_init():
-    if DISABLE_LCD:
-        return None
-    try:
-        from xgoscreen.LCD_2inch import LCD_2inch
+    from apps.camera.lcd_preview import open_preview
 
-        lcd = LCD_2inch()
-        lcd.rotation = 0
-        return lcd
-    except Exception:
-        return None
+    return open_preview(disabled=DISABLE_LCD, no_draw=NO_DRAW)
 
 
-_LCD = _lcd_init()
+_LCD = None
 
 
 def lcd_show_bgr(img_bgr: np.ndarray):
@@ -50,7 +43,7 @@ def lcd_show_bgr(img_bgr: np.ndarray):
         return
     img = cv2.resize(img_bgr, (320, 240), interpolation=cv2.INTER_LINEAR)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    _LCD.ShowImage(Image.fromarray(img_rgb))
+    _LCD.present(Image.fromarray(img_rgb))
 
 
 # --- Camera ---
@@ -70,6 +63,8 @@ def main():
         pass
 
     try:
+        global _LCD
+        _LCD = _lcd_init()
         while True:
             ok, frame = read()
             if not ok:
@@ -98,29 +93,14 @@ def main():
             if frame_counter % 60 == 0:
                 print(f"[takeover] fps={fps_ema:.1f}", flush=True)
     finally:
-        # Graceful cleanup of camera resources
         try:
-            # Stop camera (OpenCV or Picamera2)
-            if hasattr(read, "__self__"):
-                cam = read.__self__
-                if hasattr(cam, "release"):
-                    cam.release()
-                elif hasattr(cam, "stop"):
-                    cam.stop()
-                elif hasattr(cam, "close"):
-                    cam.close()
-        except Exception as e:
-            print(f"[cleanup] camera: {e}", flush=True)
+            read.close()
+        finally:
+            import sys
 
-        # Cleanup LCD
-        try:
-            if _LCD is not None:
-                if hasattr(_LCD, "cleanup"):
-                    _LCD.cleanup()
-                elif hasattr(_LCD, "close"):
-                    _LCD.close()
-        except Exception as e:
-            print(f"[cleanup] lcd: {e}", flush=True)
+            from apps.camera.lcd_shutdown import close_preview_lcd
+
+            close_preview_lcd(sys.modules.get(__name__))
 
 
 if __name__ == "__main__":

@@ -135,7 +135,7 @@ class FeatureAdminMixin:
                         "http_status": 409,
                     }
             if result.get("ok"):
-                if action == "start":
+                if action in {"start", "restart"}:
                     self._admin_units.add(unit)
                 elif action == "stop":
                     self._admin_units.discard(unit)

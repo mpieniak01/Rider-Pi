@@ -103,6 +103,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._lock = threading.RLock()
         self._transaction_depth = 0
         self._requested: dict[str, dict] = {"s0_core": {}} if "s0_core" in self.registry else {}
+        self._restored = False
         self._states: dict[str, str] = {}
         self._pending: dict[str, dict] = {}
         self._snapshot_rows: list[dict] = []
@@ -193,7 +194,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     consumers = [*consumers, name]
             if unit in PROTECTED_UNITS:
                 consumers = [*consumers, "base"]
-            elif self._running(unit) and unit not in self._managed_units:
+            elif self._running(unit) and unit not in self._managed_units and unit not in self._admin_units:
                 consumers = [*consumers, "external"]
             self._snapshot_unit_consumers[unit] = sorted(set(consumers))
             return list(self._snapshot_unit_consumers[unit])
@@ -208,6 +209,9 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 yield
             else:
                 with runtime_lock.exclusive(self._state_path.with_suffix(".lock")):
+                    from services.core.goal_journal import restore
+
+                    restore(self)
                     self._transaction_depth += 1
                     try:
                         yield
@@ -462,6 +466,16 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
 
     def _stop(self, canonical: str) -> dict:
         if canonical not in self._requested:
+            feature = self.registry[canonical]
+            external = [unit for unit in task_units(feature, {}) if unit not in PROTECTED_UNITS and self._running(unit)]
+            if external:
+                return {
+                    "ok": False,
+                    "error": "external_services_running",
+                    "services": external,
+                    "steps": [],
+                    "events": [],
+                }
             return {"ok": True, "idempotent": True, "steps": [], "events": []}
         feature = self.registry[canonical]
         options = self._requested[canonical]
@@ -517,6 +531,9 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             raise ValueError("enabled must be boolean and options an object")
         try:
             with self.transaction():
+                from services.core.goal_journal import restore
+
+                restore(self)
                 canonical = self._resolve_name(name)
                 if enabled and self.registry[canonical].option_kind == "tracking":
                     task_units(self.registry[canonical], options or {})
