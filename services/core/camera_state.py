@@ -10,7 +10,12 @@ from common.service_catalog import CAMERA_CAPTURE_UNITS
 from common.systemd_ctrl import status
 
 
-def snapshot(*, heartbeat=None, owners=None, consumers=(), status_fn=status, now=None):
+def snapshot(*, heartbeat=None, owners=None, consumers=(), status_fn=None, now=None):
+    status_fn = status if status_fn is None else status_fn
+    if owners is None:
+        from services.core.resource_observation import snapshot as observe_resource
+
+        owners = observe_resource("camera")
     now = time.time() if now is None else now
     if heartbeat is None:
         module = sys.modules.get("services.api_core.compat")
@@ -41,5 +46,7 @@ def snapshot(*, heartbeat=None, owners=None, consumers=(), status_fn=status, now
         "fps": heartbeat.get("fps") if data_fresh else None,
         "mode": heartbeat.get("mode"),
         "services": rows,
+        "status_basis": "process_and_ownership",
+        "error": (owners.get("error") or "camera_status_unavailable") if on is None else None,
         "physical_validity": "unverified",
     }

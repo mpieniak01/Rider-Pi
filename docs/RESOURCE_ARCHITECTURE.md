@@ -129,3 +129,16 @@ The flag does not restart the motion executor.
 LED AUTO uses the device-tree default or the first observed trigger before manual
 control in the current Linux boot. It never guesses. A recent final frame after
 STOP does not establish that capture is still running.
+
+
+## Device status
+
+Camera and LCD use ON / OFF labels. Unknown means observation unavailable,
+read failure or API transport failure. Missing fresh frames never means OFF.
+Health, state, catalog and camera resource endpoints use the shared process
+and ownership projection. LCD only reads the existing backlight GPIO output:
+confirmation=gpio_level_observed, status_basis=backlight_gpio. No pin setup or
+SPI command is issued. This works after API restart; it is not a current
+measurement or proof of matrix operation. Renderer/frame reports remain
+diagnostic evidence. Reads are cached up to 3 s and invalidated after control.
+The cache never authorizes motion or hardware acquisition.

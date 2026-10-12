@@ -135,3 +135,17 @@ Wykonawca ruchu nie jest restartowany przez tę flagę.
 LED AUTO korzysta z domyślnego triggera device tree lub pierwszego rzeczywiście
 odczytanego triggera przed ręcznym sterowaniem w bieżącym starcie Linux.
 Nie zgaduje wartości. Ostatnia świeża klatka po STOP nie potwierdza działającej kamery.
+
+
+## Statusy urządzeń
+
+Kamera i LCD prezentują ON / OFF. Nieznany oznacza brak dostępnej obserwacji,
+błąd jej odczytu lub brak połączenia z API. Brak świeżej klatki nie oznacza OFF.
+Kamera wymaga obserwacji usług i zajęcia zasobu; /healthz, /state, katalog i
+/api/resource/camera używają wspólnej projekcji. LCD czyta wyłącznie istniejący
+poziom wyjścia GPIO podświetlenia: confirmation=gpio_level_observed,
+status_basis=backlight_gpio. Nie konfiguruje pinu ani nie wysyła poleceń SPI.
+Odczyt działa po restarcie API; nie jest pomiarem prądu ani potwierdzeniem
+pracy matrycy. Ostatnie potwierdzenia renderera/klatek pozostają diagnostyką.
+Obserwacje buforowane maksymalnie 3 s, unieważniane po sterowaniu zasobem.
+Cache nie jest używany do zezwalania na ruch ani przejęcia sprzętu.

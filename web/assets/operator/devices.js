@@ -2,7 +2,7 @@ import { CameraPower } from './camera-power.js?v=camera-preview-1';
 import { cameraFrame, fresh, displayValue, ageOf, nowSeconds } from './model.js';
 import { observationChannel } from './observations.js?v=extended-telemetry-1';
 import { request, poll } from './transport.js';
-import { el, freshPill, pill, kv, tr, ageStamp, text, showError, rawDetails } from './ui.js';
+import { el, freshPill, pill, kv, tr, ageStamp, text, showError, rawDetails, powerLabel } from './ui.js';
 export function telemetryChannel(xgo, name, unavailable = false) {
   return observationChannel(xgo, name, { unavailable, now: nowSeconds() });
 }
@@ -61,7 +61,13 @@ export class Devices {
       const name = ['camera', 'mic', 'speaker', 'lcd', 'uart'][index];
       const data = result.status === 'fulfilled' ? result.value.data : { state: 'unknown', error: result.reason.message, observed_at: null };
       const card = el('article', 'c-card'); const good = fresh(data, 10) && data.state !== 'unknown' && data.state !== 'unavailable' && !data.error;
-      card.append(el('h3', '', name.toUpperCase()), freshPill(data, good ? data.state : 'unknown', good ? data.state === 'free' ? 'ok' : 'warn' : 'err'),
+      card.append(el('h3', '', name.toUpperCase()));
+      if (name === 'camera' || name === 'lcd') {
+        const activity = data.activity;
+        const on = activity?.error || !fresh(data, 10) ? null : activity?.on;
+        card.append(pill(powerLabel(on), on === true ? 'ok' : on === false ? 'warn' : 'err'));
+      }
+      card.append(freshPill(data, good ? data.state : 'unknown', good ? data.state === 'free' ? 'ok' : 'warn' : 'err'),
         kv([[tr('Źródło', 'Source'), data.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(data, 10)],
           [tr('Konsumenci zadań', 'Task consumers'), (data.consumers || []).join(', ') || '—'],
           [tr('Właściciele procesów', 'Process owners'), (data.holders || []).map(row => `${row.service || row.cmd || row.command || '?'} (PID ${row.pid})`).join(', ') || (good && data.state === 'free' ? tr('brak', 'none') : tr('nieznani', 'unknown'))]]));

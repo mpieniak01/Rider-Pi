@@ -43,7 +43,9 @@ def test_start_and_failed_stop_never_change_lcd_power():
 def test_accepted_stop_updates_shared_lcd_observation(monkeypatch):
     from services.api_core import compat as C
     from services.api_core.compat_health import lcd_snapshot
+    from services.core import lcd_state
 
+    monkeypatch.setattr(lcd_state, "backlight_status", lambda: {})
     monkeypatch.setattr(C, "LAST_CAMERA", {"lcd": {}})
     accepted = {
         "ok": True,

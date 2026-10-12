@@ -1,6 +1,6 @@
 import { request, poll } from './transport.js';
 import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown, nowSeconds } from './model.js';
-import { el, text, tr, statusLabel } from './ui.js';
+import { el, text, tr, statusLabel, powerLabel } from './ui.js';
 import { telemetryChannel } from './devices.js?v=extended-telemetry-1';
 import { telemetrySummary, orientationSummary } from './overview-model.js';
 
@@ -96,10 +96,14 @@ export class Overview {
       || row?.stale === true || row?.simulated === true || Boolean(row?.error));
     const lcdConfirmed = !lcdFailure && lcd?.power_known === true && typeof lcd.on === 'boolean'
       && typeof lcd.source === 'string' && Boolean(lcd.source.trim()) && lcd.power_source === lcd.source
-      && lcd.confirmation === 'control_write_accepted' && lcdAge !== null && lcd.power_observed_at <= lcdNow;
+      && ['control_write_accepted', 'gpio_level_observed'].includes(lcd.confirmation) && lcdAge !== null && lcd.power_observed_at <= lcdNow;
     // LCD reports accepted control events, not periodic physical measurements.
-    text('d_lcd', lcdConfirmed ? `${lcd.on ? 'ON' : 'OFF'} · ${tr('ostatnie potwierdzenie', 'last confirmation')} ${lcdAge.toFixed(1)} s`
-      : tr('Stan nieznany', 'State unknown'));
+    text('d_lcd', powerLabel(lcdConfirmed ? lcd.on : null));
+    const lcdNode = document.getElementById('d_lcd');
+    if (lcdNode) lcdNode.title = lcdConfirmed
+      ? (lcd.confirmation === 'gpio_level_observed' ? tr('Odczyt podświetlenia LCD', 'LCD backlight reading')
+        : tr('Ostatnie potwierdzone polecenie LCD', 'Last confirmed LCD command'))
+      : tr('Nie można odczytać stanu LCD', 'LCD state unavailable');
   }
   renderHealth() {
     const h = this.health;
@@ -113,15 +117,15 @@ export class Overview {
     text('overview-connection', h ? tr('API odpowiada', 'API responding') : tr('API niedostępne', 'API unavailable'));
   }
   renderVision() {
-    const camera = { ...this.health?.devices?.camera, ...this.state?.devices?.camera, ...this.state?.camera };
+    const camera = this.health?.devices?.camera || this.state?.camera?.activity || this.state?.devices?.camera || this.state?.camera || {};
     const capture = camera?.on === true && !camera.error && camera.offline !== true && camera.stale !== true;
     const frameReady = cameraFrame(this.snap, 'raw').fresh;
     const active = capture || (camera?.vision_enabled === true && frameReady);
     const off = !active && (camera?.vision_enabled === false || camera?.on === false);
-    const cameraText = active ? tr('Włączona', 'Enabled') : off ? tr('Wyłączona — na żądanie', 'Off — on demand') : tr('Stan nieznany', 'State unknown');
+    const cameraText = powerLabel(active ? true : off ? false : null);
     const cameraDetails = [cameraText, camera?.mode, Array.isArray(camera?.res) ? camera.res.join('×') : null,
       finite(camera?.fps) ? `${fmt(camera.fps)} fps` : null].filter(Boolean);
-    text('d_cam', cameraDetails.join(' · ')); text('camBadge', active ? 'ON' : off ? 'OFF' : '—');
+    text('d_cam', cameraDetails.join(' · ')); text('camBadge', powerLabel(active ? true : off ? false : null));
     document.getElementById('camBadge')?.classList.toggle('on', active);
     for (const [kind, endpoint] of [['raw', '/vision/cam'], ['proc', '/vision/edge'], ['obst', '/snapshots/obst_annot.jpg'], ['tracker', '/vision/tracker']]) {
       const frame = cameraFrame(this.snap, kind);

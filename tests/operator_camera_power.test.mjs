@@ -16,6 +16,7 @@ function fixture(patch = {}, { stale = false, rejected = false, others = [], con
   const context = vm.createContext({ ...model,
     document: { getElementById: id => buttons.get(id) }, window: { addEventListener() {} },
     setInterval: () => 1, clearInterval() {},
+    powerLabel: value => value === true ? 'ON' : value === false ? 'OFF' : 'Nieznany',
     tr: pl => pl, text: (id, value) => messages.set(id, value), showError: error => errors.push(error),
     poll: () => ({ refresh() {}, stop() {} }),
     request: async (path, options = {}) => {
