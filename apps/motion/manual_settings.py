@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from apps.motion.dynamics import RampLimits, finite
+from common.actuator_parameters import posture_parameters
 
 FIELDS = {"linear_speed", "turn_speed", "pulse_duration", "speed_limit", "linear_rate", "turn_rate"}
 SMOOTHING = {"linear_deceleration", "turn_deceleration", "reversal_pause", "ramp_mode"}
@@ -99,6 +100,7 @@ def parameter_schema():
     cap = limits()
     return {
         "version": 1,
+        "actuator_fields": posture_parameters(),
         "ramp_modes": [
             {"value": 0, "id": "linear", "label_pl": "Liniowy", "label_en": "Linear"},
             {"value": 1, "id": "smooth_s", "label_pl": "Łagodny S", "label_en": "Smooth S"},

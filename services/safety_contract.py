@@ -7,6 +7,7 @@ import time
 import uuid
 from typing import Any
 
+from common.actuator_parameters import HEIGHT_MAX, HEIGHT_MIN
 from common.bus import TOPIC_MOTION_COMMAND, BusPub
 
 TOPIC_COMMAND = TOPIC_MOTION_COMMAND
@@ -121,7 +122,7 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
                 command["yaw"] = _number(payload.get("yaw", 0), "yaw", -1, 1)
                 command["duration"] = _number(payload.get("duration", 0.1), "duration", 0.01, SAFE_MAX_DURATION)
         elif action == "height":
-            height = _number(payload.get("height"), "height", 75, 115)
+            height = _number(payload.get("height"), "height", HEIGHT_MIN, HEIGHT_MAX)
             if int(height) != height:
                 raise ValueError("height must be integer")
             command["height"] = int(height)
