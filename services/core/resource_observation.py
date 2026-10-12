@@ -1,4 +1,4 @@
-"""Briefly cached read-only ownership, shared by all status projections."""
+"""Shared ownership reads; stable free resources need less frequent process scans."""
 
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ def snapshot(name, *, probe=None, clock=time.monotonic):
     probe = inspect if probe is None else probe
     with _LOCK:
         previous = _CACHE.get(name)
-        if previous and previous[0] is probe and 0 <= clock() - previous[1] < 3:
+        ttl = 5 if previous and (previous[2].get("free") is True or previous[2].get("error")) else 3
+        if previous and previous[0] is probe and 0 <= clock() - previous[1] < ttl:
             return deepcopy(previous[2])
         try:
             result = probe(name)

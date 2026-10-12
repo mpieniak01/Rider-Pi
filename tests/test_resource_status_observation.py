@@ -137,3 +137,22 @@ def test_camera_endpoints_share_off_even_without_any_heartbeat(monkeypatch, tmp_
     resource = client.get("/api/resource/camera").get_json()["activity"]
     assert all(row["on"] is False for row in (health, state, catalog, resource))
     assert all(row["data_fresh"] is False for row in (health, state, catalog, resource))
+
+
+@pytest.mark.parametrize("free,error,ttl", [(True, None, 5), (False, None, 3), (None, "unavailable", 5)])
+def test_idle_resource_observations_are_shared_without_renewing_source_time(free, error, ttl):
+    tick, calls = [0], []
+
+    def probe(name):
+        calls.append(name)
+        return {"free": free, "error": error, "observed_at": 100, "holders": []}
+
+    resource_observation.invalidate("camera")
+    first = resource_observation.snapshot("camera", probe=probe, clock=lambda: tick[0])
+    tick[0] = ttl - 0.01
+    second = resource_observation.snapshot("camera", probe=probe, clock=lambda: tick[0])
+    assert first == second and first["observed_at"] == 100
+    assert len(calls) == 1
+    tick[0] = ttl
+    resource_observation.snapshot("camera", probe=probe, clock=lambda: tick[0])
+    assert len(calls) == 2

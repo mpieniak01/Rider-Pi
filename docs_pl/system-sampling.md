@@ -24,3 +24,8 @@ Czasy sterowania ruchem, odpytywania bramy bezpieczeństwa, podtrzymania kierunk
 i synchronizacji kalibracji pozostają dotychczasowe. Wskazówki prezentacji nie
 sterują aktuatorami ani watchdogiem. Rider-PC i inni klienci nadal mogą używać
 dotychczasowych pól. Przy wielu procesach API każdy ma własny sampler/cache.
+
+
+Potwierdzone wolne zasoby i błędy odczytu właścicieli współdzielą obserwację przez
+5 sekund (zasoby zajęte: 3 sekundy). Odzyskiwanie zasobu nadal wymaga bezpośredniej,
+aktualnej diagnostyki; wynik operacji unieważnia cache prezentacji.

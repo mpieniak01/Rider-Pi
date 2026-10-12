@@ -132,6 +132,9 @@ def resource_release(name: str, pids: list[int] | None = None) -> Response:
         force=payload.get("force") is True,
         operator_consent=payload.get("operator_consent") is True,
     )
+    from services.core.resource_observation import invalidate
+
+    invalidate(name)
     return _json(
         data, 200 if data.get("released") else 202 if data.get("pending") else 503 if data.get("signal_sent") else 409
     )

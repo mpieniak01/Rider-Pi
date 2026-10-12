@@ -25,3 +25,8 @@ Motion, safety-state polling, hold renewal and calibration synchronization retai
 their existing timing. Presentation hints never set actuator timing or watchdog
 limits. Rider-PC and other clients remain compatible with existing fields.
 Multiple API processes each have their own sampler/cache.
+
+
+Stable free resources and failed owner probes now share their observations for
+5 seconds (busy resources: 3 seconds). Resource recovery remains a fresh direct
+inspection; its result invalidates the presentation cache.
