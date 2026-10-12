@@ -95,6 +95,11 @@ def face_ping():
 @app.route("/face/render", methods=["POST"])
 def face_render():
     payload = request.get_json(force=True, silent=True) or {}
+    from services.api_core.face_api import png_response
+
+    preview = png_response(payload)
+    if preview is not None:
+        return preview
     res = face_render_shim(payload)
     status = res.get("status", 400 if not res.get("ok") else 200)
     return jsonify(res), status
@@ -133,8 +138,11 @@ def api_draw_face_legacy():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     payload = request.get_json(force=True, silent=True) or {}
-    from services.api_core.face_api import draw_face  # zwraca (body, status)
+    from services.api_core.face_api import draw_face, png_response
 
+    preview = png_response(payload)
+    if preview is not None:
+        return preview
     body, status = draw_face(payload)
     return _corsify(jsonify(body)), status
 

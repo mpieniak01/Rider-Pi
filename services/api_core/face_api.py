@@ -237,3 +237,26 @@ def draw_face(payload_or_expr=None, backend="png", out=None, **kwargs) -> tuple[
     res = render_face(payload)
     status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
     return res, status
+
+
+def png_response(payload):
+    """Serve an in-memory HTTP preview without creating a file or LCD owner."""
+    from flask import Response, jsonify, request
+
+    if not isinstance(payload, dict):
+        return jsonify(ok=False, error="invalid_face_preview"), 400
+    if _norm_backend(payload) != "png" or payload.get("out") or "image/png" not in request.headers.get("Accept", ""):
+        return None
+    try:
+        size = int(payload.get("size", 240))
+        if not 16 <= size <= 1024:
+            raise ValueError("invalid_face_size")
+        rot = int(payload.get("rotate", payload.get("rotation", _env_int("FACE_LCD_ROTATE", 0))))
+        if rot not in ROT_ALLOWED:
+            raise ValueError("invalid_face_rotation")
+        png = _rotate_png_bytes(_render_png_bytes(_norm_expr(payload.get("expr")), size), rot)
+        return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
+    except (ValueError, TypeError, OverflowError):
+        return jsonify(ok=False, error="invalid_face_preview"), 400
+    except RuntimeError:
+        return jsonify(ok=False, error="face_renderer_unavailable"), 503
