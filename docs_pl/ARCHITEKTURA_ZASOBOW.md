@@ -120,3 +120,14 @@ do dowolnych poleceń. Nie wykonuj przy tym zbiorczej synchronizacji systemd.
 Przed publikacją: pełna regresja WSL, następnie podgląd na Pi i potwierdzenie
 kamery, istniejącego ekranu startowego, orientacji oraz wygaszenia. Próby ruchu
 pozostają osobne. Samo przejście testów z atrapami nie potwierdza zachowania sprzętu.
+
+## Podgląd tego zakresu
+
+```bash
+python3 scripts/dev_pi-deploy.py preview --resource-scope --restart-api
+```
+
+Flaga dopuszcza wyłącznie ustaloną listę backendów LCD/LED i aliasów. Kamera musi
+być nieaktywna. Narzędzie zamyka stare procesy API/LCD przed zmianą kodu,
+przywraca poprzednio aktywny ekran i zapisuje tę samą procedurę dla rollbacku.
+Wykonawca ruchu nie jest restartowany przez tę flagę.

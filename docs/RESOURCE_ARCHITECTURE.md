@@ -114,3 +114,14 @@ commands. Do not perform broad systemd synchronization during this update.
 Before publication run full WSL regression, then verify the Pi preview: camera
 lifecycle, existing startup screen, orientation and idle-off. Movement tests
 remain separate. Fake hardware checks cannot establish physical behavior.
+
+## Previewing this scope
+
+```bash
+python3 scripts/dev_pi-deploy.py preview --resource-scope --restart-api
+```
+
+The flag allows only a fixed list of LCD/LED backends and aliases. Capture
+must be inactive. The tool closes old API/LCD processes before checkout,
+restores the previously active display and records this lifecycle for rollback.
+The flag does not restart the motion executor.

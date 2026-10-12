@@ -19,6 +19,28 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent.parent if "__file__" in globals() else Path.cwd()
 
+# Explicit resource update scope; never a blanket driver/systemd bypass.
+RESOURCE_PATHS = frozenset(
+    {
+        "drivers/lcd/board.py",
+        "drivers/lcd/lease.py",
+        "drivers/lcd/driver_ili9xx.py",
+        "drivers/led.py",
+        "scripts/sys_control.sh",
+        "scripts/sys_camera-kill.sh",
+        "scripts/sys_camera-preview.sh",
+        "scripts/sys_kill-cam.sh",
+        "scripts/sys_lcd-control.py",
+        "scripts/sys_led-control.py",
+        "scripts/sys_vision-control.sh",
+        "scripts/sys_splash-info.py",
+        "scripts/service-systemd-backend.sh",
+        "scripts/lcd-power-backend.py",
+        "scripts/led-backend.py",
+    }
+)
+PRIVATE_BACKENDS = {"scripts/service-systemd-backend.sh", "scripts/lcd-power-backend.py", "scripts/led-backend.py"}
+
 
 def run(args, cwd=None, check=True):
     """Run a bounded command and report its captured failure output."""
@@ -45,7 +67,7 @@ def changed_paths(repo, base, target):
     return [p for p in output.split("\0") if p]
 
 
-def check_paths(paths, restart_motion=False):
+def check_paths(paths, restart_motion=False, resource_scope=False):
     """Reject private data and changes requiring a separate deployment scope."""
     for path in paths:
         parts = PurePosixPath(path).parts
@@ -60,9 +82,11 @@ def check_paths(paths, restart_motion=False):
             or (name.startswith(".env") and not name.endswith(".example"))
         )
         critical = path.startswith(("systemd/", "drivers/", "scripts/sys_", "requirements"))
-        critical = critical or path in {"scripts/systemd-sync.sh", "pyproject.toml"}
+        critical = critical or path in {"scripts/systemd-sync.sh", "pyproject.toml"} or path in PRIVATE_BACKENDS
         if path in {"drivers/xgo/adapter.py", "drivers/xgo/sniffer.py"} and restart_motion:
             critical = False  # Explicit motion deployment scope, never a general driver bypass.
+        if resource_scope and path in RESOURCE_PATHS:
+            critical = False
         if private or critical:
             raise RuntimeError(f"Separate deployment scope required for protected path: {path}")
 
@@ -89,13 +113,13 @@ def check_python(repo, target, paths):
             ast.parse(source, filename=path)
 
 
-def check_history(repo, base, target, restart_motion=False):
+def check_history(repo, base, target, restart_motion=False, resource_scope=False):
     """Validate every bundled commit, including files later removed."""
     for commit in git(repo, "rev-list", f"{base}..{target}").splitlines():
         paths = run(
             ["git", "diff-tree", "-m", "--no-commit-id", "--name-only", "-r", "-z", commit], cwd=repo
         ).stdout.split("\0")
-        check_paths([path for path in paths if path], restart_motion)
+        check_paths([path for path in paths if path], restart_motion, resource_scope)
 
 
 def read_record(path):
@@ -142,6 +166,26 @@ def status(repo, record_path):
     }
 
 
+def resource_preflight():
+    """Require idle capture before replacing resource-owner implementations."""
+    for mode in ("raw", "edge", "ssd"):
+        if run(["systemctl", "is-active", f"camera-capture@{mode}.service"], check=False).returncode == 0:
+            raise RuntimeError("End the active camera goal before the resource update.")
+    return run(["systemctl", "is-active", "lcd-renderer.service"], check=False).returncode == 0
+
+
+def pause_resources():
+    """Close old display/API handles before checking out new controller code."""
+    run(["sudo", "-n", "systemctl", "stop", "lcd-renderer.service"])
+    run(["sudo", "-n", "systemctl", "stop", "rider-api.service"])
+
+
+def resume_display(active):
+    """Restore only the display service observed before the update."""
+    if active:
+        run(["sudo", "-n", "systemctl", "start", "lcd-renderer.service"])
+
+
 def preview(repo, record_path, request):
     """Check a Git bundle and activate a reversible preview commit."""
     check_clean(repo)
@@ -182,21 +226,27 @@ def preview(repo, record_path, request):
         raise RuntimeError("Bundle HEAD does not match the requested commit.")
     git(repo, "merge-base", "--is-ancestor", base, target)
     git(repo, "merge-base", "--is-ancestor", transfer_base, target)
-    check_history(repo, transfer_base, target, request.get("restart_motion", False))
+    check_history(
+        repo, transfer_base, target, request.get("restart_motion", False), request.get("resource_scope", False)
+    )
     paths = changed_paths(repo, transfer_base, target)
-    check_paths(paths, request.get("restart_motion", False))
+    check_paths(paths, request.get("restart_motion", False), request.get("resource_scope", False))
     check_local_files(repo, paths)
     check_python(repo, target, paths)
     preview_branch = f"rider-preview/{target[:12]}"
     existing = run(["git", "rev-parse", "--verify", f"refs/heads/{preview_branch}"], cwd=repo, check=False)
     if not existing.returncode and existing.stdout.strip() != target:
         raise RuntimeError("Preview branch already exists at a different commit; preserve it first.")
+    resource_scope = request.get("resource_scope") is True
+    display_active = resource_preflight() if resource_scope else False
     record = {
         "base": base,
         "branch": "main",
         "commit": target,
         "preview_branch": preview_branch,
         "restart_api": restart_on_rollback,
+        "resource_scope": resource_scope or bool(previous and previous.get("resource_scope")),
+        "display_active": display_active if resource_scope else bool(previous and previous.get("display_active")),
         "restart_motion": request.get("restart_motion", False) or bool(previous and previous.get("restart_motion")),
     }
     if request.get("restart_motion"):
@@ -204,6 +254,8 @@ def preview(repo, record_path, request):
         run(["sudo", "-n", "systemctl", "stop", "motion-executor.service"])
     try:
         write_record(record_path, record)
+        if resource_scope:
+            pause_resources()
         if existing.returncode:
             git(repo, "switch", "-c", preview_branch, target)
         else:
@@ -215,12 +267,17 @@ def preview(repo, record_path, request):
             record_path.unlink()
         if request.get("restart_motion") and git(repo, "rev-parse", "HEAD") == current:
             run(["sudo", "-n", "systemctl", "start", "motion-executor.service"])
+        if resource_scope:
+            restart_api()
+            resume_display(display_active)
         raise
     if request.get("restart_motion"):
         run(["sudo", "-n", "systemctl", "start", "motion-executor.service"])
         run(["systemctl", "is-active", "motion-executor.service"])
     if restart_required:
         restart_api()
+    if resource_scope:
+        resume_display(display_active)
     return {"action": "preview", "files": paths, **status(repo, record_path)}
 
 
@@ -235,6 +292,9 @@ def rollback(repo, record_path):
         raise RuntimeError("Saved main changed; preserve it before rollback.")
     if record.get("restart_motion") and current == record["commit"] and branch == record["preview_branch"]:
         run(["sudo", "-n", "systemctl", "stop", "motion-executor.service"])
+    if record.get("resource_scope"):
+        resource_preflight()
+        pause_resources()
     if current == record["commit"] and branch == record["preview_branch"]:
         git(repo, "switch", record["branch"])
     elif current != record["base"] or branch != record["branch"]:
@@ -244,6 +304,8 @@ def rollback(repo, record_path):
         run(["systemctl", "is-active", "motion-executor.service"])
     if record["restart_api"]:
         restart_api()
+    if record.get("resource_scope"):
+        resume_display(record.get("display_active"))
     record_path.unlink()
     return {"action": "rollback", **status(repo, record_path)}
 
@@ -269,7 +331,7 @@ def release(repo, record_path, request):
     base = previous["base"] if previous else current
     git(repo, "merge-base", "--is-ancestor", base, target)
     paths = changed_paths(repo, base, target)
-    check_paths(paths, request.get("restart_motion", False))
+    check_paths(paths, request.get("restart_motion", False), request.get("resource_scope", False))
     check_local_files(repo, paths)
     check_python(repo, target, paths)
     if previous and git(repo, "rev-parse", f"{current}^{{tree}}") != git(repo, "rev-parse", f"{target}^{{tree}}"):
@@ -281,6 +343,9 @@ def release(repo, record_path, request):
     if request.get("restart_motion"):
         run(["systemctl", "is-active", "motion-executor.service"])
         run(["sudo", "-n", "systemctl", "stop", "motion-executor.service"])
+    display_active = resource_preflight() if request.get("resource_scope") else False
+    if request.get("resource_scope"):
+        pause_resources()
     if previous:
         git(repo, "switch", "main")
     git(repo, "merge", "--ff-only", "origin/main")
@@ -291,6 +356,8 @@ def release(repo, record_path, request):
         run(["systemctl", "is-active", "motion-executor.service"])
     if request["restart_api"]:
         restart_api()
+    if request.get("resource_scope"):
+        resume_display(display_active)
     return {"action": "release", "previous": base, "files": paths, **status(repo, record_path)}
 
 
@@ -379,6 +446,11 @@ def main():
         command.add_argument("--device-repo", default="/home/pi/robot")
         command.add_argument("--restart-api", action="store_true")
         command.add_argument(
+            "--resource-scope",
+            action="store_true",
+            help="Update the fixed LCD/LED/service backend scope; pause API/display, never motion",
+        )
+        command.add_argument(
             "--restart-motion",
             action="store_true",
             help="Stop executor before checkout, restart disarmed; allow the XGO adapter and optional UART tap",
@@ -392,7 +464,8 @@ def main():
     request = {
         "action": args.action,
         "repo": args.device_repo,
-        "restart_api": args.restart_api,
+        "restart_api": args.restart_api or args.resource_scope,
+        "resource_scope": args.resource_scope,
         "restart_motion": args.restart_motion,
     }
     bundle_bytes = b""
@@ -406,7 +479,7 @@ def main():
         # Check all history for private files before SSH. The exact motion adapter
         # may already be in the recorded preview; its deployment scope is checked
         # again against the actual transfer base below and on the device.
-        check_history(ROOT, request["base"], request["commit"], True)
+        check_history(ROOT, request["base"], request["commit"], True, args.resource_scope)
         device = ssh(args.env_file.resolve(), {"action": "status", "repo": args.device_repo}, b"")
         if device["dirty"]:
             raise RuntimeError("Device checkout has local changes; preserve them before preview.")
@@ -422,8 +495,10 @@ def main():
             raise RuntimeError("First preview requires clean device main at the local base commit.")
         request["transfer_base"] = device["commit"]
         git(ROOT, "merge-base", "--is-ancestor", request["transfer_base"], request["commit"])
-        check_history(ROOT, request["transfer_base"], request["commit"], args.restart_motion)
-        check_paths(changed_paths(ROOT, request["transfer_base"], request["commit"]), args.restart_motion)
+        check_history(ROOT, request["transfer_base"], request["commit"], args.restart_motion, args.resource_scope)
+        check_paths(
+            changed_paths(ROOT, request["transfer_base"], request["commit"]), args.restart_motion, args.resource_scope
+        )
         if request["transfer_base"] != request["commit"]:
             with tempfile.TemporaryDirectory(prefix="rider-bundle-") as directory:
                 bundle_path = Path(directory) / "preview.bundle"
