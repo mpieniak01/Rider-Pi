@@ -96,6 +96,16 @@ def _loop() -> None:
     last_health_status: str | None = None
 
     while not _stop_event.wait(CHECK_INTERVAL):
+        # No requests or persistence churn for an unselected legacy executor.
+        # Venom clients observe their own selected peer, independent of PC.
+        from services import compute_config
+
+        try:
+            remote = compute_config.snapshot().get("selected_executor") is not None
+        except (ValueError, OSError):
+            remote = True
+        if remote or not any(registry.get_domain_state(domain).get("mode") == "pc" for domain in registry.DOMAINS):
+            continue
         if HEARTBEAT_ONLY:
             consecutive_failures = _heartbeat_only_cycle(consecutive_failures)
             continue

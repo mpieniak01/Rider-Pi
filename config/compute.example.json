@@ -1,0 +1,13 @@
+{
+  "protocol_version": 1,
+  "revision": 1,
+  "device_id": "robot",
+  "selected_executor": null,
+  "executors": {
+    "venom": {
+      "url": "https://venom-host:8443",
+      "token_env": "RIDER_COMPUTE_TOKEN",
+      "tasks": ["text.respond", "audio.transcribe", "audio.synthesize", "vision.describe", "conversation.respond"]
+    }
+  }
+}

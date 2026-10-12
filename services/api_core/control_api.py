@@ -30,7 +30,7 @@ def _payload():
     return data
 
 
-def _submit(overrides=None):
+def _submit(overrides=None, *, allow_agent_stop=False):
     if request.method == "OPTIONS":
         return Response("", 204)
     try:
@@ -43,7 +43,7 @@ def _submit(overrides=None):
             return response, code
     except ValueError as exc:
         return _response({"ok": False, "error": str(exc)}, 400)
-    body, code = submit_control(data)
+    body, code = submit_control(data, allow_agent_stop=True) if allow_agent_stop else submit_control(data)
     C.motion_queue_append(
         {
             "source": data.get("source", "manual"),
@@ -64,7 +64,7 @@ def api_move():
 
 
 def api_stop():
-    return _submit({"action": "stop"})
+    return _submit({"action": "stop"}, allow_agent_stop=True)
 
 
 def api_preset():

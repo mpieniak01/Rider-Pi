@@ -26,7 +26,9 @@ def exclusive(path: Path, timeout_s: float = 2.0):
                 if time.monotonic() >= deadline:
                     raise TimeoutError("orchestration lock busy") from None
                 time.sleep(0.02)
-        yield
+        # Existing callers ignore the value. Resource owners may record state
+        # through this same locked descriptor without opening a second owner.
+        yield fd
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)

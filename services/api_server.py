@@ -46,6 +46,7 @@ import services.api_core.http_contract as http_contract
 import services.api_core.models_api as models_api
 import services.api_core.navigator_api as navigator_api
 import services.api_core.provider_api as provider_api
+import services.api_core.rider_routes as rider_routes
 import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
 import services.api_core.system_info as system_info
@@ -63,6 +64,7 @@ from services.api_core.service_logs import service_logs
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
 
 http_contract.install(app)
+rider_routes.register_control_audio(app)
 face_studio.register(app)
 
 # ── Metryki API helper ───────────────────────────────────────────────────────
@@ -130,6 +132,7 @@ def face_state():
 
 
 app.add_url_rule("/api/resource/<name>", view_func=api_resource, methods=["GET", "POST", "OPTIONS"])
+rider_routes.register_compute(app)
 
 
 # ── FACE: legacy ─────────────────────────────────────────────────────────────
@@ -590,6 +593,7 @@ def main():
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
     finally:
         face_anim.stop()
+        rider_routes.close(app)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=restart
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/home/pi/robot
+EnvironmentFile=-/etc/default/rider-compute
 ExecStart=/usr/bin/python3 -u -m apps.motion.executor
 Restart=always
 RestartSec=1

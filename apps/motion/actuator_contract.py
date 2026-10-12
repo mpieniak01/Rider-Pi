@@ -38,8 +38,7 @@ def validate_actuator(command: dict) -> dict:
         panel_pulse = (
             command.get("device_settings") is True
             and command.get("direction") in manual_settings.DIRECTIONS
-            and command.get("execution_context") == "panel"
-            and command.get("source") == "manual"
+            and (command.get("execution_context"), command.get("source")) in {('panel', 'manual'), ('agent', 'agent')}
         )
         duration_limit = manual_settings.MAX_PANEL_DURATION_S if panel_pulse else MAX_DURATION_S
         if abs(vx) > 1 or abs(yaw) > 1 or not 0 < duration <= duration_limit:

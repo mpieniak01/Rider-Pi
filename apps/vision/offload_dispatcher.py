@@ -359,6 +359,13 @@ class EnhancedObstacleBridge:
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    from apps.compute.__main__ import run_goal
+    from services.compute_config import selected_executor
+
+    selected = selected_executor()
+    if selected is not None:
+        return run_goal('vision', selection=selected)
+
     dispatcher = VisionOffloadDispatcher()
     bridge = EnhancedObstacleBridge()
     dispatcher.start()

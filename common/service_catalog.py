@@ -9,6 +9,8 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Sequence
 
+from .compute_catalog import EN as COMPUTE_EN, compute_availability, compute_features
+
 CONTRACT_VERSION = 2
 HOST = "pi"
 BOOT_UNITS = ("rider-minimal.target", "rider-boot-splash.service", "lcd-renderer.service", "wifi-unblock.service")
@@ -30,9 +32,11 @@ class FeatureDefinition:
     option_kind: str | None = None
     title_en: str | None = None
     description_en: str | None = None
+    compute_tasks: Sequence[str] = ()
 
 
 _EN = {
+    **COMPUTE_EN,
     "s0_core": ("Base / observation", "API and telemetry, without actuator permission."),
     "s1_manual": ("Manual control", "Requires separate operator arming."),
     "s2_camera_preview": ("Camera preview", "Passive camera feed."),
@@ -95,6 +99,7 @@ def _feature(
 
 
 DEFAULT_REGISTRY = {
+    **compute_features(_feature, CAMERA_UNITS),
     "s0_core": _feature(
         "s0_core", "S0", "Baza / odczyt", "API i telemetria, bez zgody na napędy.", "rider-core.target", BASE_UNITS
     ),
@@ -321,9 +326,9 @@ _ROWS = (
         "rider-vision-offload.service",
         "vision-offload",
         "vision",
-        "Offload PC",
+        "Offload obrazu",
         "on-demand",
-        ("camera", "frame_feed"),
+        ("frame_feed",),
         False,
     ),
     ("rider-voice.service", "voice", "voice", "Pełna rozmowa CLI", "on-demand", ("mic", "speaker"), False),
@@ -555,6 +560,9 @@ def unit_availability(unit: str) -> dict:
 
 
 def task_availability(feature: FeatureDefinition, options: dict | None = None) -> dict:
+    available = compute_availability(feature.compute_tasks)
+    if available is not None:
+        return available
     for unit in task_units(feature, options):
         available = unit_availability(unit)
         if not available["start_available"]:

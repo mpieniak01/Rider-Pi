@@ -17,6 +17,7 @@ Environment=PIPER_MODEL_DIR=/home/pi/robot/models/piper
 Environment=VOSK_MODEL_DIR=/home/pi/robot/models/vosk/vosk-model-small-pl-0.22
 Environment=ASR_BACKEND=vosk
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/default/rider-compute
 
 # CLI wymaga --config (inaczej "Config path is required")
 ExecStart=/usr/bin/python3 -m apps.voice.cli --config ${VOICE_FILE_CFG} listen

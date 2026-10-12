@@ -204,6 +204,13 @@ def _run_pc_offload(cfg: dict[str, Any], args) -> int:
 
 
 def run_listen(cfg: dict[str, Any], args) -> int:
+    from apps.compute.__main__ import run_goal
+    from services.compute_config import selected_executor
+
+    selected = selected_executor()
+    if selected is not None:
+        return run_goal('voice', cfg, selection=selected)
+
     # Log AI mode status at startup
     log_voice_mode_status()
 
@@ -230,6 +237,13 @@ def run_listen(cfg: dict[str, Any], args) -> int:
 
 
 def run_once(cfg: dict[str, Any], args) -> int:
+    from apps.compute.__main__ import run_goal
+    from services.compute_config import selected_executor
+
+    selected = selected_executor()
+    if selected is not None:
+        return run_goal('voice', cfg, once=True, selection=selected)
+
     if _wants_stream(cfg, args):
         print("[voice.svc_core] INFO: Using streaming mode (realtime WebSocket)")
         try:
