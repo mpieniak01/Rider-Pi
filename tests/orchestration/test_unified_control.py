@@ -101,8 +101,9 @@ def test_direct_service_uses_same_manager(tmp_path, monkeypatch):
     [
         (False, False, None, None),
         (False, False, True, False),
+        (False, True, True, False),
         (True, False, True, True),
-        (False, True, None, True),
+        (False, True, None, None),
     ],
 )
 def test_camera_activity_never_conflates_frame_and_process(active, fresh, free, expected):

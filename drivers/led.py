@@ -13,7 +13,7 @@ def root():
 
 
 def select(name=None):
-    entries = {p.name: p for p in root().glob("*") if p.is_dir()}
+    entries = {p.name: p for p in root().glob("*") if p.is_dir() and (p / "brightness").is_file()}
     chosen = name or os.getenv("LED_NAME")
     if chosen:
         if not isinstance(chosen, str) or not re.fullmatch(r"[\w:.-]{1,128}", chosen) or chosen in {".", ".."}:
@@ -67,9 +67,13 @@ def apply(body):
     elif action == "auto":
         # Choose only an existing kernel default; never guess a hardware trigger.
         trigger = path / "device/of_node/linux,default-trigger"
-        if not trigger.exists():
+        value = trigger.read_bytes().rstrip(b"\0").decode() if trigger.exists() else body.get("default_trigger")
+        available = {
+            (v[1:-1] if v.startswith("[") and v.endswith("]") else v) for v in (path / "trigger").read_text().split()
+        }
+        if not isinstance(value, str) or value not in available:
             raise ValueError("led_default_trigger_unavailable")
-        (path / "trigger").write_text(trigger.read_bytes().rstrip(b"\0").decode())
+        (path / "trigger").write_text(value)
     else:
         (path / "trigger").write_text("none")
         (path / "brightness").write_text(str(maximum if action == "on" else 0))

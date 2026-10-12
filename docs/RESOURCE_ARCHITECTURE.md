@@ -125,3 +125,7 @@ The flag allows only a fixed list of LCD/LED backends and aliases. Capture
 must be inactive. The tool closes old API/LCD processes before checkout,
 restores the previously active display and records this lifecycle for rollback.
 The flag does not restart the motion executor.
+
+LED AUTO uses the device-tree default or the first observed trigger before manual
+control in the current Linux boot. It never guesses. A recent final frame after
+STOP does not establish that capture is still running.

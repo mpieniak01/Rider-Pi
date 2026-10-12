@@ -28,7 +28,7 @@ def snapshot(*, heartbeat=None, owners=None, consumers=(), status_fn=status, now
         owners is not None and owners.get("free") is False and not owners.get("error") and bool(owners.get("holders"))
     )
     released = owners is not None and owners.get("free") is True and not owners.get("error")
-    on = True if data_fresh or running or occupied else False if known and released else None
+    on = True if running or occupied else False if known and released else None
     return {
         "on": on,
         "source": "camera/systemd+heartbeat",

@@ -11,6 +11,8 @@ from common.observations import source_time
 
 def lcd_snapshot(C, *, now):
     """Reported LCD I/O and preview settings have different owners and clocks."""
+    from drivers.lcd.board import lcd_board
+
     state = C.LAST_CAMERA.get("lcd", {})
     at = source_time(state.get("observed_at"))
     source = state.get("source")
@@ -44,8 +46,8 @@ def lcd_snapshot(C, *, now):
         "battery": state.get("battery") if reported else None,
         "configured_on": (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW),
         "configured_no_draw": C.ENV_NO_DRAW,
-        "configured_rot": C.ENV_ROT,
-        "configured_rot_source": "api_env.PREVIEW_ROT",
+        "configured_rot": lcd_board().rotate,
+        "configured_rot_source": "drivers.lcd.board",
         "preview_config": state.get("preview_config"),
         **{
             key: state.get(key)

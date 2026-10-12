@@ -89,3 +89,14 @@ def test_file_face_preview_does_not_touch_systemd(monkeypatch):
     monkeypatch.setattr(face_runtime_api, "_manager", lambda: pytest.fail("hardware manager accessed"))
     monkeypatch.setattr(face_anim, "play", lambda body: {"ok": True, "echo": body})
     assert face_runtime_api.play({"sink": "file"})["ok"]
+
+
+def test_led_auto_restores_observed_trigger_when_device_tree_is_unavailable(led_fixture):
+    directory, calls = led_fixture
+    client = LocalAPIClient()
+    client.request("/api/resource/led", "POST", {"action": "off"})
+    # A real sysfs trigger read retains the list of available choices.
+    (directory / "trigger").write_text("[none] mmc0 timer")
+    client.request("/api/resource/led", "POST", {"action": "auto"})
+    assert (directory / "trigger").read_text() == "mmc0"
+    assert calls[-1]["default_trigger"] == "mmc0"

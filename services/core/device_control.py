@@ -24,15 +24,30 @@ def _led_sessions():
         return path, {}
 
 
-def _save_led_generation(name):
+def _led_defaults():
+    from services.core.goal_journal import boot_id
+
+    path, _ = _led_sessions()
+    try:
+        data = json.loads(path.read_text())
+        values = data.get("defaults", {}) if data.get("boot_id") == boot_id() else {}
+        return values if isinstance(values, dict) else {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def _save_led_generation(name, previous_trigger=None):
     from services.core.goal_journal import boot_id
 
     path, sessions = _led_sessions()
+    defaults = _led_defaults()
+    if isinstance(previous_trigger, str) and previous_trigger:
+        defaults.setdefault(name, previous_trigger)
     generation = uuid.uuid4().hex
     sessions[name] = generation
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"boot_id": boot_id(), "sessions": sessions}))
+    temporary.write_text(json.dumps({"boot_id": boot_id(), "sessions": sessions, "defaults": defaults}))
     temporary.replace(path)
     return generation
 
@@ -41,13 +56,13 @@ def led_status(name=None):
     from drivers.led import root, snapshot
 
     data = snapshot(name)
-    data["available_leds"] = sorted(p.name for p in root().glob("*") if p.is_dir())
+    data["available_leds"] = sorted(p.name for p in root().glob("*") if p.is_dir() and (p / "brightness").is_file())
     data["generation"] = _led_sessions()[1].get(data.get("name"))
     return data
 
 
 def led_action(body):
-    from drivers.led import select
+    from drivers.led import select, snapshot
 
     try:
         path = select(body.get("name"))
@@ -56,11 +71,17 @@ def led_action(body):
     expected = body.get("if_generation")
     if expected is not None and expected != _led_sessions()[1].get(path.name):
         return {"ok": False, "error": "led_session_changed"}, 409
+    previous_trigger = snapshot(path.name).get("trigger")
     command = Path(__file__).resolve().parents[2] / "scripts/led-backend.py"
     prefix = [] if os.geteuid() == 0 else ["sudo", "-n"]
     try:
         result = subprocess.run(
-            [*prefix, sys.executable, str(command), json.dumps({**body, "name": path.name})],
+            [
+                *prefix,
+                sys.executable,
+                str(command),
+                json.dumps({**body, "name": path.name, "default_trigger": _led_defaults().get(path.name)}),
+            ],
             capture_output=True,
             text=True,
             timeout=3,
@@ -74,7 +95,7 @@ def led_action(body):
     if result.returncode or data.get("ok") is not True:
         return {"ok": False, "error": data.get("error", "led_action_unconfirmed")}, 503
     try:
-        data["generation"] = _save_led_generation(path.name)
+        data["generation"] = _save_led_generation(path.name, previous_trigger)
     except OSError as error:
         return {**data, "ok": False, "error": "led_journal_unavailable", "detail": str(error)}, 503
     data["name"] = path.name

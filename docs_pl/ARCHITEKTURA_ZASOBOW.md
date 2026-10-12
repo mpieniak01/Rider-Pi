@@ -131,3 +131,7 @@ Flaga dopuszcza wyłącznie ustaloną listę backendów LCD/LED i aliasów. Kame
 być nieaktywna. Narzędzie zamyka stare procesy API/LCD przed zmianą kodu,
 przywraca poprzednio aktywny ekran i zapisuje tę samą procedurę dla rollbacku.
 Wykonawca ruchu nie jest restartowany przez tę flagę.
+
+LED AUTO korzysta z domyślnego triggera device tree lub pierwszego rzeczywiście
+odczytanego triggera przed ręcznym sterowaniem w bieżącym starcie Linux.
+Nie zgaduje wartości. Ostatnia świeża klatka po STOP nie potwierdza działającej kamery.
