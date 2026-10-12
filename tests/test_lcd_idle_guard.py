@@ -124,9 +124,13 @@ def test_recovered_ownership_does_not_infer_power_from_configuration(monkeypatch
 
 
 @pytest.mark.parametrize("on", [False, True])
-def test_explicit_renderer_power_report_recovers_unknown_state(monkeypatch, on):
+def test_explicit_renderer_report_is_preserved_when_gpio_is_unavailable(monkeypatch, on):
     from services.api_core import devices
+    from services.core import lcd_state
 
+    monkeypatch.setattr(
+        lcd_state, "backlight_status", lambda: {"on": None, "power_known": False, "error": "lcd_gpio_unavailable"}
+    )
     guard = _reload_guard(monkeypatch)
     monkeypatch.setattr(guard.C, "LAST_CAMERA", {"lcd": _base_lcd_state()})
     monkeypatch.setattr(devices.time, "time", lambda: 123.0)
@@ -142,7 +146,11 @@ def test_explicit_renderer_power_report_recovers_unknown_state(monkeypatch, on):
     )
     with guard.C.app.test_request_context():
         status = guard.C.healthz().get_json()["devices"]["lcd"]
-    assert status["on"] is on and status["power_known"]
+    # A renderer acceptance is retained, but cannot override a failed live read.
+    assert status["on"] is None and status["power_known"] is False
+    assert status["error"] == "lcd_gpio_unavailable"
+    assert guard.C.LAST_CAMERA["lcd"]["on"] is on
+    assert guard.C.LAST_CAMERA["lcd"]["power_known"] is True
     assert guard.C.LAST_CAMERA["lcd"]["power_observed_at"] == 123.0
 
 
