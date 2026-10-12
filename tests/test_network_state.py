@@ -31,8 +31,8 @@ def wifi(tmp_path, monkeypatch):
     monkeypatch.setattr(network_state, 'NET_ROOT', root)
     monkeypatch.setattr(network_state, 'RFKILL_ROOT', radio.parent)
     data = {
-        'addresses': [{'addr_info': [{'family': 'inet', 'scope': 'global', 'local': '192.168.1.14'}]}],
-        'routes': [{'dst': 'default', 'dev': 'wlan0', 'gateway': '192.168.1.1'}],
+        'addresses': [{'addr_info': [{'family': 'inet', 'scope': 'global', 'local': '192.0.2.14'}]}],
+        'routes': [{'dst': 'default', 'dev': 'wlan0', 'gateway': '192.0.2.1'}],
         'manager': 'enabled',
     }
 
@@ -48,8 +48,8 @@ def wifi(tmp_path, monkeypatch):
 def test_associated_link_with_ipv4_is_connected(wifi):
     state = network_state.get_wifi_state()
     assert state['status'] == 'connected'
-    assert state['addresses'] == ['192.168.1.14']
-    assert state['gateway'] == '192.168.1.1' and state['default_route'] is True
+    assert state['addresses'] == ['192.0.2.14']
+    assert state['gateway'] == '192.0.2.1' and state['default_route'] is True
     assert state['autostart'] is True
 
 
@@ -81,9 +81,9 @@ def test_lan_connection_without_default_route_still_is_connected(wifi):
 
 def test_device_filtered_routes_on_bullseye_omit_the_dev_field(wifi):
     _, _, data = wifi
-    data['routes'] = [{'dst': 'default', 'gateway': '192.168.1.1', 'protocol': 'dhcp', 'metric': 303}]
+    data['routes'] = [{'dst': 'default', 'gateway': '192.0.2.1', 'protocol': 'dhcp', 'metric': 303}]
     state = network_state.get_wifi_state()
-    assert state['default_route'] is True and state['gateway'] == '192.168.1.1'
+    assert state['default_route'] is True and state['gateway'] == '192.0.2.1'
 
 
 @pytest.mark.parametrize('failure', [FileNotFoundError(), subprocess.TimeoutExpired('ip', 1), ValueError('bad JSON')])

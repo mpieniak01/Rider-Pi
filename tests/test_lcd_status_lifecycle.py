@@ -142,9 +142,9 @@ def test_battery_and_heartbeat_changes_do_not_keep_light_on():
 
 def test_existing_ip_battery_frames_do_not_postpone_off_or_wake_idle():
     panel, clock, sinks, off, _, _ = lifecycle()
-    panel.step({}, {"ready": True, "value": 0}, "Device Info", [], frame={"IP": "10.0.0.1", "Battery": "0%"})
+    panel.step({}, {"ready": True, "value": 0}, "Device Info", [], frame={"IP": "192.0.2.1", "Battery": "0%"})
     clock.now = 9
-    panel.step({}, {"ready": True, "value": 1}, "Device Info", [], frame={"IP": "10.0.0.2", "Battery": "100%"})
+    panel.step({}, {"ready": True, "value": 1}, "Device Info", [], frame={"IP": "192.0.2.2", "Battery": "100%"})
     assert len(sinks[0].frames) == 2
     clock.now = 10
     assert panel.step({}, {"ready": True, "value": 1}, "Device Info", [], frame={"Date": "changed"}) == "idle_off"
@@ -174,7 +174,7 @@ def test_renderer_reuses_exact_existing_ip_battery_pixels_and_rotation(tmp_path,
         "Kernel": "test",
         "Temp CPU": "40.0°C",
         "Battery": "100%",
-        "IP": "10.0.0.1",
+        "IP": "192.0.2.1",
     }
     renderer.display("unused legacy status", ["Stan 0"], frame=info)
     expected = splash.maybe_rotate(splash.draw_splash_with(info, splash.WIDTH, splash.HEIGHT)).resize(
@@ -184,7 +184,7 @@ def test_renderer_reuses_exact_existing_ip_battery_pixels_and_rotation(tmp_path,
     with Image.open(frame_path) as artifact:
         assert artifact.tobytes() == submitted[0].tobytes()
     assert renderer.frame_observation["layout"] == "existing_device_info"
-    assert renderer.frame_observation["battery_text"] == "100%" and renderer.frame_observation["ip"] == "10.0.0.1"
+    assert renderer.frame_observation["battery_text"] == "100%" and renderer.frame_observation["ip"] == "192.0.2.1"
     assert renderer.rotate == 270 and renderer.power_known
     assert renderer.frame_observation["physical_validity"] == "unverified"
     renderer.close()
@@ -196,7 +196,7 @@ def test_late_existing_splash_uses_one_supplied_sample_without_wait_or_cache(mon
     splash = existing_splash()
     assert splash.WAIT_BATT == 0 and splash.WAIT_IP == 0
     monkeypatch.setattr(splash, "pick_battery_nonblocking", lambda: pytest.fail("must reuse the assessed sample"))
-    monkeypatch.setattr(splash, "pick_ip_nonblocking", lambda: "10.0.0.1")
+    monkeypatch.setattr(splash, "pick_ip_nonblocking", lambda: "192.0.2.1")
     assert splash.gather_info(battery={"ready": True, "value": 0})["Battery"] == "0%"
     assert splash.gather_info(battery={"ready": False, "value": 1})["Battery"] == "—"
 

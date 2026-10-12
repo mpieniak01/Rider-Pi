@@ -153,7 +153,7 @@ sudo systemctl start rider-splash.service
 ║         Rider-Pi v0.6                  ║
 ╠════════════════════════════════════════╣
 ║ Hostname: rider-pi-01                  ║
-║ IP (wlan0): 192.168.1.100              ║
+║ IP (wlan0): 192.0.2.100              ║
 ║ Uptime: 2 days, 5:30                   ║
 ║                                        ║
 ║ Services:                              ║
