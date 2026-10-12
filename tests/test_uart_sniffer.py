@@ -137,3 +137,48 @@ def test_frame_decoder_chunking_checksum_and_gap():
     bad = bytearray(frame)
     bad[-3] = 0
     assert any(r.get("event") == "invalid_frame" for r in cli.decode([{"direction": "rx", "hex": bad.hex()}]))
+
+
+@pytest.mark.parametrize("value", [None, "0", "", "false", "true", "invalid"])
+def test_disabled_install_keeps_native_transport_without_capture(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("RIDER_UART_SNIFFER_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("RIDER_UART_SNIFFER_ENABLED", value)
+
+    def forbidden_capture():
+        raise AssertionError("Disabled sniffer must not create a worker, socket or queue")
+
+    monkeypatch.setattr(sniffer, "Capture", forbidden_capture)
+    native = FakeSerial()
+    assert sniffer.install(native) is native
+    assert native.write(b"abc") == 2
+    assert native.read(2) == b"ab"
+    assert not native.closed
+
+
+def test_enabled_install_preserves_attach_and_detach(monkeypatch, capture):
+    monkeypatch.setenv("RIDER_UART_SNIFFER_ENABLED", "1")
+    monkeypatch.setattr(sniffer, "Capture", lambda: capture)
+    native = FakeSerial()
+    tap = sniffer.install(native)
+    assert isinstance(tap, sniffer.SerialTap)
+    assert tap._capture is capture
+    assert not capture.active
+    assert cli.control(capture.status()["pid"], "attach")["active"]
+    assert tap.write(b"abc") == 2
+    assert not cli.control(capture.status()["pid"], "detach")["active"]
+    tap.close()
+    assert native.closed
+
+
+def test_enabled_install_failure_keeps_native_transport(monkeypatch):
+    monkeypatch.setenv("RIDER_UART_SNIFFER_ENABLED", "1")
+
+    def broken_capture():
+        raise OSError("socket unavailable")
+
+    monkeypatch.setattr(sniffer, "Capture", broken_capture)
+    native = FakeSerial()
+    assert sniffer.install(native) is native
+    assert not native.closed

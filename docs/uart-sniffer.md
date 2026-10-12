@@ -1,8 +1,23 @@
 # Optional UART sniffer
 
 The tap observes the existing UART owner. It never opens a second port, reads
-extra registers, changes arming, or sends robot commands. Recording is disabled
-by default. Attach/detach controls must run as the same operating-system user.
+extra registers, changes arming, or sends robot commands. The whole sniffer is
+disabled by default: `RIDER_UART_SNIFFER_ENABLED=0`. Disabled installation returns
+the original serial object without a wrapper, queue, socket or observer thread.
+Attach/detach controls must run as the same operating-system user.
+
+## Startup switch
+
+Set `RIDER_UART_SNIFFER_ENABLED=1` in the UART owner's environment to enable
+attachment; only the exact value `1` enables it. The adapter reads the switch
+at construction. Changing it requires restarting its owner; account for the
+robot's state and the operator's disarming decision before restarting.
+For systemd, configure the environment of `motion-executor.service`;
+exporting it in the client terminal does not modify a running service.
+
+With `0` or an unset variable there is no sniffer socket and `list` does not
+show that owner. Offline decoding and analysis remain available.
+With `1`, recording remains off until an explicit `attach`.
 
 ~~~sh
 python3 scripts/uart_sniffer.py list
@@ -66,7 +81,7 @@ Only in an operator-approved actuator session, release the existing UART owner
 and run the vendor application using its original working directory/interpreter:
 
 ~~~sh
-python3 /home/pi/robot/scripts/uart_sniffer_vendor.py --operator-session /home/pi/RaspberryPi-CM4-main/app/app_TwoCar.py
+RIDER_UART_SNIFFER_ENABLED=1 python3 /home/pi/robot/scripts/uart_sniffer_vendor.py --operator-session /home/pi/RaspberryPi-CM4-main/app/app_TwoCar.py
 ~~~
 
 This executes vendor code, which may reset posture or move the robot. It is
@@ -74,9 +89,12 @@ not protected by Rider-Pi's motion gate. Never run it in CI/unit tests.
 Use list/attach/status/detach from another terminal. Calls before attach
 are not captured. The launcher does not modify vendor files or global packages.
 
-One background thread serves recording and its local socket. Capture failure
-must not alter serial results. Detach needs no restart; offline analyzer updates
-need no executor restart. Changing tap installation requires restarting its owner.
+When enabled, one background thread serves recording and its local socket.
+Capture failure must not alter serial results. Detach stops recording without
+restarting, leaving the enabled wrapper and worker available for another attach.
+Set `RIDER_UART_SNIFFER_ENABLED=0` for subsequent owner starts to disable the
+whole sniffer without removing code. Offline analyzer updates need no owner
+restart; changing the installation switch requires restarting its owner.
 
 External XGO export example / Przykład zewnętrznego eksportu XGO:
 

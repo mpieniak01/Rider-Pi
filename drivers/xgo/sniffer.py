@@ -246,7 +246,9 @@ class SerialTap:
 
 
 def install(serial):
-    """Install disabled tap; failure leaves the original transport intact."""
+    """Opt-in tap; disabled mode preserves the native transport with no worker."""
+    if os.getenv("RIDER_UART_SNIFFER_ENABLED", "0") != "1":
+        return serial
     try:
         return SerialTap(serial, Capture())
     except Exception:
