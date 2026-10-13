@@ -175,6 +175,8 @@ class NavigationRunner:
         source = None
         try:
             source = self.source_factory()
+            self.started = self.clock()
+            self._status(None)
             watchdog.start()
             while not self.closed.is_set():
                 if navigation_config.snapshot() != self.saved_policy or selected_executor() != self.selection:
@@ -183,7 +185,8 @@ class NavigationRunner:
                     self._authority()
                 frame = source.recv(50)
                 if not frame or (self.last_frame is not None and frame["captured_at"] <= self.last_frame[1]):
-                    if self.clock() - self.started > self.policy["decision_budget_ms"] / 1000:
+                    limit = 5.0 if self.last_frame is None else self.policy["decision_budget_ms"] / 1000
+                    if self.clock() - self.started > limit:
                         raise ComputeError("navigation_camera_unavailable")
                     continue
                 self.last_frame = (frame["input_id"], frame["captured_at"])
