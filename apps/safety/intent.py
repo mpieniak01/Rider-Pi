@@ -12,7 +12,9 @@ from pathlib import Path
 
 from apps.safety.state import atomic_write
 
-PRODUCERS = frozenset({"rider-navigator.service", "rider-tracking-controller.service"})
+PRODUCERS = frozenset(
+    {"rider-navigator.service", "rider-tracking-controller.service", "rider-venom-navigation.service"}
+)
 _PRODUCER_INSTANCE = uuid.uuid4().hex
 
 

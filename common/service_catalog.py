@@ -319,6 +319,15 @@ _ROWS = (
         ("control",),
         True,
     ),
+    (
+        "rider-venom-navigation.service",
+        "venom_navigation",
+        "motion",
+        "Venom bounded navigation",
+        "on-demand",
+        ("control",),
+        True,
+    ),
     ("rider-navigator.service", "navigator", "motion", "Nawigator", "on-demand", ("control",), True),
     ("rider-mapper.service", "mapper", "vision", "Mapa", "on-demand", (), False),
     ("rider-odometry.service", "odometry", "vision", "Odometria", "on-demand", (), False),
@@ -377,7 +386,8 @@ for _unit, _meta in UNIT_CATALOG.items():
         "follow_me"
         if _unit in {"rider-tracking-controller.service", "rider-followme.target"}
         else "navigation"
-        if _unit in {"rider-navigator.service", "rider-recon.target", "rider-navigate.target"}
+        if _unit
+        in {"rider-navigator.service", "rider-recon.target", "rider-navigate.target", "rider-venom-navigation.service"}
         else "manual"
         if _meta["can_move"]
         else None

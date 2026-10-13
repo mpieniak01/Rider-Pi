@@ -164,7 +164,14 @@ def _require_idle_goals():
             raise ValueError("invalid")
     except (ValueError, OSError) as exc:
         raise ValueError("compute_goal_state_unavailable") from exc
-    if set(requested) & {"s5_voice", "s7_obstacle_module", "s10_ai_providers", "s12_venom_vision", "s13_venom_voice"}:
+    if set(requested) & {
+        "s5_voice",
+        "s7_obstacle_module",
+        "s10_ai_providers",
+        "s12_venom_vision",
+        "s13_venom_voice",
+        "s14_venom_navigation",
+    }:
         raise ValueError("compute_stop_goals_first")
 
 
