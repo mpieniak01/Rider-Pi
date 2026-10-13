@@ -281,3 +281,48 @@ def test_navigation_status_invalid_file_is_stale(monkeypatch, tmp_path, payload)
     with Flask(__name__).app_context():
         response, code = status_handler()
     assert code == 200 and response.json["stale"] is True
+
+
+def test_observation_allows_slow_first_and_subsequent_frames(isolated):
+    clock = [0.0]
+    seen = []
+
+    class Source:
+        count = 0
+
+        def recv(self, _):
+            self.count += 1
+            clock[0] += 0.4
+            if self.count in {1, 3}:
+                return None
+            if self.count > 4:
+                runner.closed.set()
+                return None
+            return {
+                "input_id": "raw:time:bytes",
+                "captured_at": time.time(),
+                "data": b"fixture",
+                "content_type": "image/jpeg",
+            }
+
+        def close(self):
+            pass
+
+    def request(meta, *_):
+        seen.append(meta)
+        return {"state": "unknown", "action": "stop", "reason": "fixture"}
+
+    runner = module.NavigationRunner(source_factory=Source, request=request, clock=lambda: clock[0], observe_only=True)
+    assert runner.run() == 0
+    assert len(seen) == 2
+    assert all(len(row["frame_id"]) == 64 and ":" not in row["frame_id"] for row in seen)
+    assert not isolated[-1]
+
+
+def test_old_executor_cannot_authorize_remote_drive(isolated):
+    isolated[2].pop("remote_decision_deadline_supported")
+    runner = module.NavigationRunner(request=lambda *_: {})
+    with pytest.raises(module.ComputeError) as error:
+        runner._authority()
+    assert error.value.code == "navigation_executor_update_required"
+    assert not isolated[-1]
