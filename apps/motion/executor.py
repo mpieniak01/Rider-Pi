@@ -7,8 +7,6 @@ names may carry the *same* authenticated envelope; bare legacy motion is refused
 from __future__ import annotations
 
 import logging
-import signal
-import time
 import uuid
 
 from apps.motion import manual_settings
@@ -567,51 +565,9 @@ class MotionExecutor:
 
 
 def main() -> int:
-    from common import bus
+    from apps.motion.executor_runtime import run
 
-    executor = None
-    sub = pub = None
-    stopping = False
-
-    def stop_signal(_signum, _frame):
-        nonlocal stopping
-        stopping = True
-        if executor is not None:
-            executor.gate.disarm("process_signal")
-            executor.controller.stop()
-
-    for signum in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(signum, stop_signal)
-    try:
-        sub, pub = bus.BusSub(SUB_TOPICS), bus.BusPub()
-        executor = MotionExecutor(publisher=pub)
-        previous = time.monotonic()
-        while not stopping:
-            topic, payload = sub.recv(timeout_ms=20)
-            messages = []
-            if topic in COMMAND_TOPICS:
-                messages.append((topic, payload))
-            # Drain a bounded burst before executing a goal. Any STOP wins this
-            # burst and invalidates earlier or later queued generation tokens.
-            for _ in range(63):
-                topic, payload = sub.recv(timeout_ms=0)
-                if topic is None:
-                    break
-                if topic in COMMAND_TOPICS:
-                    messages.append((topic, payload))
-            executor.process_batch(messages)
-            now = time.monotonic()
-            executor.tick(now - previous)
-            previous = now
-            executor.poll_sensors()
-        return 0
-    finally:
-        if executor is not None:
-            executor.close()
-        if sub is not None:
-            sub.close()
-        if pub is not None:
-            pub.close()
+    return run(MotionExecutor, SUB_TOPICS, COMMAND_TOPICS)
 
 
 if __name__ == "__main__":
