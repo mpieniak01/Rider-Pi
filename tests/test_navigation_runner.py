@@ -20,6 +20,7 @@ def isolated(monkeypatch, tmp_path):
         "tasks": [],
     }
     safety = {
+        "remote_decision_deadline_supported": True,
         "can_move": True,
         "owner": "navigation",
         "generation": "gen",

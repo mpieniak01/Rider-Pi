@@ -175,6 +175,7 @@ class MotionExecutor:
             },
             manual_settings=self.controls,
             deadline=self.controller.deadline,
+            remote_decision_deadline_supported=True,
             contract_id="rider.safety",
             observed_at=self.gate.wall_clock(),
             ts=self.gate.wall_clock(),

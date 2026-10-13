@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import signal
 import threading
@@ -52,6 +53,8 @@ class NavigationRunner:
         safety = read_status()
         if self.policy["mode"] == "observe":
             return False
+        if safety.get("remote_decision_deadline_supported") is not True:
+            raise ComputeError("navigation_executor_update_required")
         intent = read_service_intent(UNIT, safety.get("generation"))
         if (
             safety.get("can_move") is not True
@@ -179,7 +182,7 @@ class NavigationRunner:
                 if self.policy["mode"] == "drive":
                     self._authority()
                 frame = source.recv(50)
-                if not frame or (frame["input_id"], frame["captured_at"]) == self.last_frame:
+                if not frame or (self.last_frame is not None and frame["captured_at"] <= self.last_frame[1]):
                     if self.clock() - self.started > self.policy["decision_budget_ms"] / 1000:
                         raise ComputeError("navigation_camera_unavailable")
                     continue
@@ -190,10 +193,11 @@ class NavigationRunner:
                     raise ComputeError("navigation_frame_expired")
                 captured = self.clock() - age / 1000
                 self.sequence += 1
+                frame_id = hashlib.sha256(str(self.last_frame).encode()).hexdigest()
                 meta = {
                     "protocol_version": 1,
                     "run_id": self.run_id,
-                    "frame_id": frame["input_id"],
+                    "frame_id": frame_id,
                     "sequence": self.sequence,
                     "config_revision": self.policy["revision"],
                     "age_ms": float(age),
@@ -203,7 +207,7 @@ class NavigationRunner:
                 decision = self.request(meta, frame["data"], frame["content_type"])
                 self.last_result = decision
                 if self.policy["mode"] == "drive":
-                    self.lease.accept(decision, frame["input_id"], self.sequence, captured)
+                    self.lease.accept(decision, frame_id, self.sequence, captured)
                 self._status(decision)
                 if self.lease.latched:
                     self.closed.set()

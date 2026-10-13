@@ -564,6 +564,11 @@ def catalog_payload() -> dict:
 def unit_availability(unit: str) -> dict:
     """Implementation availability, separate from installation and ARM permission."""
     meta = UNIT_CATALOG.get(unit, {})
+    if unit in {"rider-venom-navigation.service", "rider-venom-navigation.target"}:
+        from apps.safety.state import read_status
+
+        if read_status().get("remote_decision_deadline_supported") is not True:
+            return {"start_available": False, "start_unavailable_reason": "navigation_executor_update_required"}
     members = {member for rows in meta.get("task_members", {}).values() for member in rows}
     unavailable = unit == "rider-navigator.service" or "rider-navigator.service" in members
     return {

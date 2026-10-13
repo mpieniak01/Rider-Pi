@@ -39,6 +39,16 @@ RESOURCE_PATHS = frozenset(
         "scripts/led-backend.py",
     }
 )
+VISION_LOOP_PATHS = frozenset(
+    "systemd/" + unit
+    for unit in (
+        "rider-venom-navigation.service",
+        "rider-venom-navigation.target",
+        "rider-venom-perception.service",
+        "rider-venom-perception.target",
+    )
+)
+
 PRIVATE_BACKENDS = {"scripts/service-systemd-backend.sh", "scripts/lcd-power-backend.py", "scripts/led-backend.py"}
 
 
@@ -67,7 +77,7 @@ def changed_paths(repo, base, target):
     return [p for p in output.split("\0") if p]
 
 
-def check_paths(paths, restart_motion=False, resource_scope=False):
+def check_paths(paths, restart_motion=False, resource_scope=False, vision_loop_scope=False):
     """Reject private data and changes requiring a separate deployment scope."""
     for path in paths:
         parts = PurePosixPath(path).parts
@@ -86,6 +96,8 @@ def check_paths(paths, restart_motion=False, resource_scope=False):
         if path in {"drivers/xgo/adapter.py", "drivers/xgo/sniffer.py"} and restart_motion:
             critical = False  # Explicit motion deployment scope, never a general driver bypass.
         if resource_scope and path in RESOURCE_PATHS:
+            critical = False
+        if vision_loop_scope and path in VISION_LOOP_PATHS:
             critical = False
         if private or critical:
             raise RuntimeError(f"Separate deployment scope required for protected path: {path}")
@@ -113,13 +125,13 @@ def check_python(repo, target, paths):
             ast.parse(source, filename=path)
 
 
-def check_history(repo, base, target, restart_motion=False, resource_scope=False):
+def check_history(repo, base, target, restart_motion=False, resource_scope=False, vision_loop_scope=False):
     """Validate every bundled commit, including files later removed."""
     for commit in git(repo, "rev-list", f"{base}..{target}").splitlines():
         paths = run(
             ["git", "diff-tree", "-m", "--no-commit-id", "--name-only", "-r", "-z", commit], cwd=repo
         ).stdout.split("\0")
-        check_paths([path for path in paths if path], restart_motion, resource_scope)
+        check_paths([path for path in paths if path], restart_motion, resource_scope, vision_loop_scope)
 
 
 def read_record(path):
@@ -227,10 +239,20 @@ def preview(repo, record_path, request):
     git(repo, "merge-base", "--is-ancestor", base, target)
     git(repo, "merge-base", "--is-ancestor", transfer_base, target)
     check_history(
-        repo, transfer_base, target, request.get("restart_motion", False), request.get("resource_scope", False)
+        repo,
+        transfer_base,
+        target,
+        request.get("restart_motion", False),
+        request.get("resource_scope", False),
+        request.get("vision_loop_scope", False),
     )
     paths = changed_paths(repo, transfer_base, target)
-    check_paths(paths, request.get("restart_motion", False), request.get("resource_scope", False))
+    check_paths(
+        paths,
+        request.get("restart_motion", False),
+        request.get("resource_scope", False),
+        request.get("vision_loop_scope", False),
+    )
     check_local_files(repo, paths)
     check_python(repo, target, paths)
     preview_branch = f"rider-preview/{target[:12]}"
@@ -331,7 +353,12 @@ def release(repo, record_path, request):
     base = previous["base"] if previous else current
     git(repo, "merge-base", "--is-ancestor", base, target)
     paths = changed_paths(repo, base, target)
-    check_paths(paths, request.get("restart_motion", False), request.get("resource_scope", False))
+    check_paths(
+        paths,
+        request.get("restart_motion", False),
+        request.get("resource_scope", False),
+        request.get("vision_loop_scope", False),
+    )
     check_local_files(repo, paths)
     check_python(repo, target, paths)
     if previous and git(repo, "rev-parse", f"{current}^{{tree}}") != git(repo, "rev-parse", f"{target}^{{tree}}"):
@@ -446,6 +473,11 @@ def main():
         command.add_argument("--device-repo", default="/home/pi/robot")
         command.add_argument("--restart-api", action="store_true")
         command.add_argument(
+            "--vision-loop-scope",
+            action="store_true",
+            help="Allow only the four declared opt-in vision-loop unit files; does not enable them",
+        )
+        command.add_argument(
             "--resource-scope",
             action="store_true",
             help="Update the fixed LCD/LED/service backend scope; pause API/display, never motion",
@@ -466,6 +498,7 @@ def main():
         "repo": args.device_repo,
         "restart_api": args.restart_api or args.resource_scope,
         "resource_scope": args.resource_scope,
+        "vision_loop_scope": args.vision_loop_scope,
         "restart_motion": args.restart_motion,
     }
     bundle_bytes = b""
@@ -479,7 +512,7 @@ def main():
         # Check all history for private files before SSH. The exact motion adapter
         # may already be in the recorded preview; its deployment scope is checked
         # again against the actual transfer base below and on the device.
-        check_history(ROOT, request["base"], request["commit"], True, args.resource_scope)
+        check_history(ROOT, request["base"], request["commit"], True, args.resource_scope, args.vision_loop_scope)
         device = ssh(args.env_file.resolve(), {"action": "status", "repo": args.device_repo}, b"")
         if device["dirty"]:
             raise RuntimeError("Device checkout has local changes; preserve them before preview.")
@@ -495,9 +528,19 @@ def main():
             raise RuntimeError("First preview requires clean device main at the local base commit.")
         request["transfer_base"] = device["commit"]
         git(ROOT, "merge-base", "--is-ancestor", request["transfer_base"], request["commit"])
-        check_history(ROOT, request["transfer_base"], request["commit"], args.restart_motion, args.resource_scope)
+        check_history(
+            ROOT,
+            request["transfer_base"],
+            request["commit"],
+            args.restart_motion,
+            args.resource_scope,
+            args.vision_loop_scope,
+        )
         check_paths(
-            changed_paths(ROOT, request["transfer_base"], request["commit"]), args.restart_motion, args.resource_scope
+            changed_paths(ROOT, request["transfer_base"], request["commit"]),
+            args.restart_motion,
+            args.resource_scope,
+            args.vision_loop_scope,
         )
         if request["transfer_base"] != request["commit"]:
             with tempfile.TemporaryDirectory(prefix="rider-bundle-") as directory:
