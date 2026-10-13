@@ -120,3 +120,15 @@ def test_persisted_policy_is_revisioned_and_default_observe(tmp_path, monkeypatc
     assert snapshot() == result
     with pytest.raises(ValueError):
         configure({"revision": 0, "values": {"speed": 0.1}})
+
+
+def test_bus_delay_cannot_extend_decision_duration():
+    from apps.motion.actuator_contract import decision_duration
+
+    command = {"source": "navigation", "execution_context": "panel", "decision_deadline_monotonic": 10.15}
+    assert decision_duration(command, 0.15, 10.1) == pytest.approx(0.05)
+    with pytest.raises(ValueError, match="expired"):
+        decision_duration(command, 0.15, 10.16)
+    with pytest.raises(ValueError, match="source"):
+        decision_duration({**command, "source": "manual"}, 0.15, 10.1)
+    assert decision_duration({}, 0.15, 10.1) == 0.15

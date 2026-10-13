@@ -64,3 +64,17 @@ def validate_actuator(command: dict) -> dict:
             raise ValueError("unsupported_action")
         values = {"name": name}
     return values
+
+
+def decision_duration(command: dict, duration: float, now: float) -> float:
+    """Remote decisions expire across local BUS/ACK delays, on the same Pi clock."""
+    deadline = command.get("decision_deadline_monotonic")
+    if deadline is None:
+        return duration
+    deadline = finite_number(deadline, "decision_deadline_invalid")
+    if command.get("source") != "navigation" or command.get("execution_context") != "panel":
+        raise ValueError("decision_deadline_source_invalid")
+    remaining = deadline - now
+    if not 0.01 <= remaining <= 0.5:
+        raise ValueError("decision_deadline_expired")
+    return min(duration, remaining)

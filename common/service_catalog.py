@@ -293,6 +293,7 @@ def tracking_mode_for(feature: FeatureDefinition, options: dict | None = None) -
 
 # (unit, id/alias, group, label, lifecycle, resources, can_move)
 _ROWS = (
+    ("rider-venom-perception.service", "venom_perception", "vision", "Venom floor observation", "on-demand", (), False),
     ("rider-api.service", "api", "core", "API", "startup", (), False),
     ("rider-broker.service", "broker", "core", "BUS", "startup", (), False),
     ("rider-web-bridge.service", "web-bridge", "core", "Web bridge", "startup", (), False),
@@ -387,7 +388,13 @@ for _unit, _meta in UNIT_CATALOG.items():
         if _unit in {"rider-tracking-controller.service", "rider-followme.target"}
         else "navigation"
         if _unit
-        in {"rider-navigator.service", "rider-recon.target", "rider-navigate.target", "rider-venom-navigation.service"}
+        in {
+            "rider-navigator.service",
+            "rider-recon.target",
+            "rider-navigate.target",
+            "rider-venom-navigation.service",
+            "rider-venom-navigation.target",
+        }
         else "manual"
         if _meta["can_move"]
         else None

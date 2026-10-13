@@ -38,7 +38,11 @@ def validate(data):
         or data["revision"] < 0
     ):
         raise ValueError("navigation_configuration_invalid")
-    if data["mode"] not in {"observe", "drive"} or type(data["verified"]) is not bool:
+    if (
+        not isinstance(data["mode"], str)
+        or data["mode"] not in {"observe", "drive"}
+        or type(data["verified"]) is not bool
+    ):
         raise ValueError("navigation_configuration_invalid")
     speed = data["speed"]
     if (
@@ -95,6 +99,21 @@ def configure(body):
         if body["revision"] != old["revision"]:
             raise ValueError("navigation_configuration_conflict")
         _require_idle_goals()
-        data = validate({**old, **body["values"], "revision": old["revision"] + 1})
+        state_path = Path(os.getenv("FEATURE_STATE_PATH", "/run/rider-motion/feature_state.json"))
+        if state_path.exists():
+            requested = json.loads(state_path.read_text()).get("requested", [])
+            if set(requested) & {"s14_venom_navigation", "s15_venom_perception"}:
+                raise ValueError("navigation_stop_goals_first")
+        proposed = {**old, **body["values"], "revision": old["revision"] + 1}
+        changed = any(
+            proposed[k] != old[k] for k in ("speed", "corridor", "model_sha256", "decision_budget_ms", "max_motion_ms")
+        )
+        if (
+            old["verified"]
+            and changed
+            and (proposed["calibration_id"] == old["calibration_id"] or body["values"].get("verified") is not True)
+        ):
+            proposed.update(verified=False, mode="observe")
+        data = validate(proposed)
         _write(path(), data)
     return data

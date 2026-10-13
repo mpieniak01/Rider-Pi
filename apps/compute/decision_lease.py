@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 
@@ -23,11 +24,14 @@ class DecisionLease:
             self._halt(reason)
 
     def _halt(self, reason):
+        if self.latched:
+            self.stop()
+            return
         self.latched = True
         self.reason = reason
         self.deadline = None
-        self.stop()
         self.moving = False
+        self.stop()
 
     def tick(self):
         with self.lock:
@@ -54,6 +58,9 @@ class DecisionLease:
             if (
                 not isinstance(decision, dict)
                 or any(decision.get(k) != v for k, v in identity.items())
+                or any(type(decision.get(k)) is not int for k in ("protocol_version", "sequence", "config_revision"))
+                or not math.isfinite(captured_monotonic)
+                or now < captured_monotonic
                 or type(sequence) is not int
                 or sequence <= self.last_seq
                 or remaining <= 0

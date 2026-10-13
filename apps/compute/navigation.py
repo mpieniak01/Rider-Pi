@@ -20,13 +20,20 @@ from services.safety_contract import read_status
 UNIT = "rider-venom-navigation.service"
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args, **_kwargs):
+        raise ComputeError("navigation_redirect_denied")
+
+
 class NavigationRunner:
-    def __init__(self, *, source_factory=FrameSource, request=None, clock=time.monotonic):
+    def __init__(self, *, source_factory=FrameSource, request=None, clock=time.monotonic, observe_only=False):
         self.source_factory = source_factory
         self.request = request or self._request
         self.clock = clock
         self.closed = threading.Event()
-        self.policy = navigation_config.snapshot()
+        self.saved_policy = navigation_config.snapshot()
+        self.policy = {**self.saved_policy, "mode": "observe"} if observe_only else self.saved_policy
+        self.last_result = None
         self.selection = selected_executor()
         if not self.selection:
             raise ComputeError("compute_executor_not_selected")
@@ -35,6 +42,8 @@ class NavigationRunner:
         self.motion_sequence = -1
         self.intent = None
         self.generation = None
+        self.settings_revision = None
+        self.calibration_digest = None
         self.last_frame = None
         self.lease = DecisionLease(self.policy, self.run_id, self.drive, self.stop, clock)
         self.started = clock()
@@ -53,6 +62,16 @@ class NavigationRunner:
             raise ComputeError("navigation_authority_lost")
         if self.intent and self.intent["request_id"] != intent["request_id"]:
             raise ComputeError("navigation_intent_changed")
+        settings = safety.get("manual_settings") or {}
+        revision = settings.get("revision")
+        if type(revision) is not int or intent.get("settings_revision") != revision:
+            raise ComputeError("navigation_settings_stale")
+        digest = (safety.get("calibration") or {}).get("profile_digest")
+        if self.settings_revision is not None and (
+            revision != self.settings_revision or digest != self.calibration_digest
+        ):
+            raise ComputeError("navigation_calibration_changed")
+        self.settings_revision, self.calibration_digest = revision, digest
         self.intent = intent
         self.generation = safety["generation"]
         self.motion_sequence = max(self.motion_sequence, safety.get("last_seq", -1), intent["seq"])
@@ -75,6 +94,8 @@ class NavigationRunner:
                 "request_id": self.run_id + "-" + str(self.motion_sequence),
                 "ts": time.time(),
                 "ttl_ms": 100,
+                "settings_revision": self.settings_revision,
+                "decision_deadline_monotonic": self.lease.deadline,
                 "vx": speed,
                 "yaw": 0.0,
                 "duration": duration,
@@ -109,11 +130,34 @@ class NavigationRunner:
                 "X-Rider-Vision": json.dumps(meta),
             },
         )
-        with urllib.request.urlopen(req, timeout=self.policy["decision_budget_ms"] / 1000) as response:
+        with urllib.request.build_opener(NoRedirect()).open(
+            req, timeout=self.policy["decision_budget_ms"] / 1000
+        ) as response:
             body = response.read(16385)
             if len(body) > 16384:
                 raise ComputeError("navigation_response_bounds")
             return json.loads(body)
+
+    def _status(self, decision):
+        import os
+        from pathlib import Path
+
+        from services.compute_config import _write
+
+        target = Path(os.getenv("RIDER_NAVIGATION_STATUS", "/run/rider-motion/navigation_loop.json"))
+        _write(
+            target,
+            {
+                "observed_at": time.time(),
+                "mode": self.policy["mode"],
+                "run_id": self.run_id,
+                "config_revision": self.policy["revision"],
+                "decision": decision,
+                "latched": self.lease.latched,
+                "running": not self.closed.is_set(),
+                "stop_reason": self.lease.reason,
+            },
+        )
 
     def watch(self):
         while not self.closed.wait(0.02):
@@ -130,7 +174,7 @@ class NavigationRunner:
             source = self.source_factory()
             watchdog.start()
             while not self.closed.is_set():
-                if navigation_config.snapshot() != self.policy or selected_executor() != self.selection:
+                if navigation_config.snapshot() != self.saved_policy or selected_executor() != self.selection:
                     raise ComputeError("navigation_configuration_changed")
                 if self.policy["mode"] == "drive":
                     self._authority()
@@ -157,19 +201,26 @@ class NavigationRunner:
                     **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
                 }
                 decision = self.request(meta, frame["data"], frame["content_type"])
-                self.lease.accept(decision, frame["input_id"], self.sequence, captured)
+                self.last_result = decision
+                if self.policy["mode"] == "drive":
+                    self.lease.accept(decision, frame["input_id"], self.sequence, captured)
+                self._status(decision)
                 if self.lease.latched:
                     self.closed.set()
                 self.closed.wait(0.01)
             return 0
-        except Exception:
-            self.lease.halt("navigation_transport_or_input_failed")
+        except Exception as exc:
+            self.lease.halt(exc.code if isinstance(exc, ComputeError) else "navigation_transport_or_input_failed")
             return 2
         finally:
             self.closed.set()
+            self.lease.halt("navigation_stopped")
+            try:
+                self._status(self.last_result)
+            except OSError:
+                pass
             if source:
                 source.close()
-            self.lease.halt("navigation_stopped")
             if watchdog.is_alive():
                 watchdog.join(1)
             if self.intent:
@@ -184,7 +235,11 @@ class NavigationRunner:
 
 
 def main():
-    runner = NavigationRunner()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--observe", action="store_true")
+    runner = NavigationRunner(observe_only=parser.parse_args().observe)
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: runner.closed.set())
     return runner.run()

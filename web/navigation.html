@@ -23,6 +23,28 @@
 <p id="nav-reason">navigation_traversal_unverified · passive_plan_request_unavailable</p><p id="nav-goal">HOME — unknown</p><p id="nav-request">—</p><ol id="nav-request-history"></ol><p id="nav-status">unknown</p><p id="nav-event">—</p></section></div>
 <section class="c-card"><h2 data-pl="Mapa i pozycja" data-en="Map and pose">Mapa i pozycja</h2><p id="map-age">unknown</p><p id="pose-age">unknown</p><p id="path-age">unknown</p><p data-pl="Zielonkawy punkt = robot; czerwone = przeszkody; szare = wolne; ciemne = nieznane; niebieskie = plan; żółte = cel. Stare dane są przygaszone." data-en="Cyan point = robot; red = obstacle; grey = free; dark = unknown; blue = plan; amber = target. Stale data is dimmed.">Zielonkawy punkt = robot; czerwone = przeszkody; szare = wolne; ciemne = nieznane; niebieskie = plan; żółte = cel. Stare dane są przygaszone.</p><canvas id="map-canvas" class="operator-map" aria-label="Navigation map"></canvas></section>
 <h2 data-pl="Zadania mapowania i nawigacji" data-en="Mapping and navigation tasks">Zadania mapowania i nawigacji</h2><p id="catalog-status">unknown</p><div id="task-list" class="operator-grid"></div>
+<section class="c-card"><h2 data-pl="Wizja i ruch przez Venom" data-en="Vision and movement via Venom">Wizja i ruch przez Venom</h2>
+<p data-pl="Obserwacja nie porusza robotem. Jazda wymaga odbioru strefy zatrzymania, osobnego ARM navigation i świeżych decyzji. Brak odpowiedzi zatrzymuje Pi." data-en="Observation does not move the robot. Driving requires an accepted stopping zone, separate navigation ARM and fresh decisions. Missing responses stop Pi.">Obserwacja nie porusza robotem. Jazda wymaga odbioru strefy zatrzymania, osobnego ARM navigation i świeżych decyzji. Brak odpowiedzi zatrzymuje Pi.</p>
+<button id="remote-load" type="button" class="c-btn" data-pl="Odczytaj ustawienia Pi" data-en="Read Pi settings">Odczytaj ustawienia Pi</button>
+<div class="operator-grid">
+<label>Tryb / Mode <select id="remote-mode"><option value="observe">Obserwacja / Observe</option><option value="drive">Jazda / Drive</option></select></label>
+<label>Prędkość SDK / SDK speed <input id="remote-speed" type="number" min="0.01" max="0.15" step="0.01"></label>
+<label>Budżet decyzji / Decision budget (ms) <input id="remote-decision_budget_ms" type="number" min="100" max="500" step="10"></label>
+<label>Impuls / Pulse (ms) <input id="remote-max_motion_ms" type="number" min="50" max="200" step="10"></label>
+<label>Strefa / Corridor x0,y0,x1,y1 <input id="remote-corridor"></label>
+<label>Kalibracja / Calibration ID <input id="remote-calibration_id" maxlength="64"></label>
+<label>Model SHA-256 <input id="remote-model_sha256" maxlength="64"></label>
+<label><input id="remote-verified" type="checkbox">Odebrano strefę i hamowanie / Stopping zone and braking accepted</label>
+</div>
+<button id="remote-save" type="button" class="c-btn" data-pl="Zapisz konfigurację" data-en="Save configuration">Zapisz konfigurację</button>
+<label>Plan próby / Trial plan <input id="remote-plan" maxlength="512"></label>
+<div class="operator-row">
+<button id="remote-arm" type="button" class="c-btn">ARM navigation · 10 s</button>
+<button id="remote-observe" type="button" class="c-btn" data-pl="Start obserwacji" data-en="Start observation">Start obserwacji</button>
+<button id="remote-drive" type="button" class="c-btn" data-pl="Start jazdy" data-en="Start driving">Start jazdy</button>
+<button id="remote-stop" type="button" class="c-btn" data-pl="STOP pętli" data-en="STOP loop">STOP pętli</button>
+</div><p id="remote-state">unknown</p></section>
+
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
 <script type="module" src="/web/assets/operator/app.js?v=motion-curves-14"></script>

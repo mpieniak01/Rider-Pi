@@ -171,6 +171,7 @@ def _require_idle_goals():
         "s12_venom_vision",
         "s13_venom_voice",
         "s14_venom_navigation",
+        "s15_venom_perception",
     }:
         raise ValueError("compute_stop_goals_first")
 

@@ -10,7 +10,12 @@ import logging
 import uuid
 
 from apps.motion import manual_settings
-from apps.motion.actuator_contract import COMMAND_TOPICS, SUB_TOPICS, validate_actuator  # public re-exports
+from apps.motion.actuator_contract import (
+    COMMAND_TOPICS,
+    SUB_TOPICS,
+    decision_duration,
+    validate_actuator,
+)  # public re-exports
 from apps.motion.calibration_runtime import CalibrationRuntime
 from apps.motion.dynamics import RampLimits
 from apps.motion.main import MotionController, _make_adapter
@@ -444,6 +449,10 @@ class MotionExecutor:
                 if previous is not None:
                     self._ack(previous, 'rejected', 'manual_takeover', cancelled_by=command.get('request_id'))
         if action in {"move", "turn"}:
+            try:
+                values["duration"] = decision_duration(command, values["duration"], self.gate.clock())
+            except ValueError as exc:
+                return self._ack(command, "rejected", str(exc))
             if not self.controller.drive(
                 values["vx"],
                 values["yaw"],
