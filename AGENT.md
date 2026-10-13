@@ -23,13 +23,13 @@
 - uruchamiać długowiecznych demonów poza `systemd`,
 - wysyłać telemetrii/eksfiltracji.
 
-### 1.1) Rozbijanie dużych plików (>600 linii)
+### 1.1) Wielkość plików Python
 
 - Wydziel spójne warstwy (np. transport, state, chunks, orkiestracja).
 - MOVE-ONLY: przenoś całe klasy/funkcje, nie twórz szkieletów.
 - Zapewnij re-eksporty, aby publiczne importy działały jak wcześniej.
 - Po każdym kroku uruchom ruff i pytest.
-- **Limit wielkości pliku:** ≤ 600 linii (miękkie; przy przekroczeniu – rozbij na moduły).
+- **Wielkość plików Python:** do 600 linii bez uwag; 601–800 linii to ostrzeżenie do oceny spójności; powyżej 800 linii bramka blokuje zmianę. Podział wynika z odpowiedzialności kodu, a nie samego przekroczenia 600 linii.
 
 ---
 

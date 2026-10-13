@@ -1,85 +1,69 @@
 #!/usr/bin/env python3
-"""Check that Python files don't exceed the line limit (600 lines by default).
-
-- Local runs: SKIP (exit 0), chyba że wymusisz ENFORCE_FILE_LENGTH=1.
-- CI runs   : ENFORCED (gdy CI=1/true).
-
-Known exceptions (do rozbicia później):
-  - apps/voice/stream/svc_streaming.py (tracked)
-"""
+"""Shared Python file-size policy for local hooks and CI: warn >600, fail >800."""
 
 from __future__ import annotations
 
+import argparse
 import os
-import sys
+import subprocess
 from pathlib import Path
 
-MAX_LINES_DEFAULT = 600
-
-# Jedyny sensowny wyjątek na dziś:
-# Wartość jest "górką" – nie zawracamy głowy regresją lokalnie.
-KNOWN_EXCEPTIONS = {
-    "apps/voice/stream/svc_streaming.py": 9999,  # tymczasowo bez limitu, egzekwujemy w CI polityką/PR review
-}
+SOFT_LIMIT = 600
+HARD_LIMIT = 800
 
 
-def check_file_length(file_path: Path, max_lines: int) -> tuple[bool, int]:
-    with file_path.open(encoding="utf-8") as f:
-        line_count = sum(1 for _ in f)
-    return (line_count <= max_lines), line_count
+def changed_files(root: Path, base: str, head: str) -> list[Path]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", base, head, "--", "*.py"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    return [root / os.fsdecode(name) for name in result.stdout.split(b"\0") if name]
 
 
-def is_test_file(file_path: Path) -> bool:
-    name = file_path.name
-    return name.startswith("test_") or name.endswith("_test.py")
-
-
-def main() -> int:
-    # 1) Lokalnie: skip, chyba że ENFORCE_FILE_LENGTH=1
-    ci = os.getenv("CI", "").lower() in {"1", "true", "yes"}
-    enforce_local = os.getenv("ENFORCE_FILE_LENGTH", "") == "1"
-    if not ci and not enforce_local:
-        print("⏭  Skipping file-length check locally. (Set ENFORCE_FILE_LENGTH=1 or run in CI to enforce.)")
-        return 0
-
-    repo_root = Path(__file__).resolve().parent.parent
-    voice_dir = repo_root / "apps" / "voice"
-    if not voice_dir.exists():
-        print(f"Error: {voice_dir} does not exist", file=sys.stderr)
-        return 1
-
-    py_files = [p for p in voice_dir.rglob("*.py") if not is_test_file(p)]
-    failures = []
-    regressions = []
-
-    for file_path in sorted(py_files):
-        rel_path = str(file_path.relative_to(repo_root))
-        allowed = KNOWN_EXCEPTIONS.get(rel_path)
-        if allowed is not None:
-            ok, count = check_file_length(file_path, allowed)
-            if not ok:
-                regressions.append((rel_path, count, allowed))
+def check_files(paths: list[Path], *, root: Path, annotations: bool = False) -> int:
+    failed = False
+    for path in sorted(set(paths)):
+        try:
+            name = str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
+            with path.open(encoding="utf-8") as source:
+                count = sum(1 for _ in source)
+        except (OSError, UnicodeError) as exc:
+            print(f"ERROR: cannot inspect {path}: {exc}")
+            failed = True
             continue
+        level = "error" if count > HARD_LIMIT else "warning" if count > SOFT_LIMIT else None
+        if level is None:
+            continue
+        message = f"{count} lines; advisory limit {SOFT_LIMIT}, hard limit {HARD_LIMIT}."
+        if annotations:
+            # Escape GitHub workflow commands, including unusual tracked filenames.
+            name = name.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            name = name.replace(":", "%3A").replace(",", "%2C")
+            print(f"::{level} file={name},line=1::{message}")
+        else:
+            print(f"{level.upper()}: {name}: {message}")
+        failed = failed or level == "error"
+    if not failed:
+        print(f"PASS: file-size policy (warning >{SOFT_LIMIT}, failure >{HARD_LIMIT}).")
+    return int(failed)
 
-        ok, count = check_file_length(file_path, MAX_LINES_DEFAULT)
-        if not ok:
-            failures.append((rel_path, count))
 
-    if regressions:
-        for rel_path, count, allowed in regressions:
-            print(f"⚠️  {rel_path}: {count} lines (regression: was {allowed}, limit {MAX_LINES_DEFAULT})")
-        print("\nKnown exception(s) have regressed. Please reduce size or update exceptions (prefer splitting).")
-        return 2
-
-    if failures:
-        for rel_path, count in failures:
-            print(f"❌ {rel_path}: {count} lines (exceeds {MAX_LINES_DEFAULT})")
-        print(f"\n{len(failures)} file(s) exceed the {MAX_LINES_DEFAULT} line limit. Consider splitting modules.")
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("paths", nargs="*", help="Python files supplied by the local hook")
+    parser.add_argument("--base", default="origin/main", help="Diff base for CI/manual runs")
+    parser.add_argument("--head", default="HEAD", help="Diff head for CI/manual runs")
+    args = parser.parse_args(argv)
+    root = Path(__file__).resolve().parent.parent
+    try:
+        paths = [root / path for path in args.paths] if args.paths else changed_files(root, args.base, args.head)
+    except subprocess.CalledProcessError as exc:
+        print(f"ERROR: cannot determine changed Python files: {exc.stderr.decode(errors='replace').strip()}")
         return 1
-
-    print(f"✅ All files within limits (checked {len(py_files)} files)")
-    return 0
+    return check_files(paths, root=root, annotations=os.getenv("GITHUB_ACTIONS") == "true")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
