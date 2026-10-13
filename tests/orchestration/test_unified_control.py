@@ -125,3 +125,35 @@ def test_stop_external_goal_never_falsely_claims_stopped(tmp_path):
     result = manager.set_feature("s2_camera_preview", False)
     assert result["error"] == "external_services_running"
     assert not world.actions
+
+
+def test_stop_unrequested_processor_preserves_camera_owned_by_other_goal(tmp_path):
+    world, manager, _ = observed_world(tmp_path)
+    assert manager.set_feature("s2_camera_preview", True)["ok"]
+    world.actions.clear()
+    assert manager.set_feature("s7_obstacle_module", False)["ok"]
+    assert "camera-capture@raw.service" in world.active
+    assert not world.actions
+
+
+def test_local_processor_is_independent_of_remote_executor(tmp_path, monkeypatch):
+    from common.service_catalog import DEFAULT_REGISTRY, task_availability
+    from services import compute_config
+
+    monkeypatch.setattr(compute_config, "snapshot", lambda: {"selected_executor": "venom"})
+    world, manager, _ = observed_world(tmp_path)
+    assert manager.set_feature("s2_camera_preview", True)["ok"]
+    assert task_availability(DEFAULT_REGISTRY["s7_obstacle_module"], {"provider": "local"})["start_available"]
+    assert manager.set_feature("s7_obstacle_module", True, options={"provider": "local"})["ok"]
+    assert "rider-vision.service" in world.active and "rider-obstacle.service" in world.active
+    assert "rider-vision-offload.service" not in world.active
+    world.actions.clear()
+    assert manager.set_feature("s7_obstacle_module", False)["ok"]
+    assert "camera-capture@raw.service" in world.active
+    assert not any(action == ("camera-capture@raw.service", "stop") for action in world.actions)
+    assert not any(action[0] == "control" for action in world.actions)
+    assert (
+        manager.set_feature("s7_obstacle_module", True, options={"provider": "pc"})["error"]
+        == "compute_use_remote_goal"
+    )
+    assert manager.set_feature("s5_voice", True)["error"] == "compute_use_remote_goal"

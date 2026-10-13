@@ -33,7 +33,22 @@ def compute_features(feature, camera_units):
     }
 
 
-def compute_availability(tasks):
+def compute_availability(tasks, *, legacy_goal=None, options=None):
+    # Explicit local perception remains available alongside remote compute.
+    # Legacy voice/provider/offload goals still use the selected remote routes.
+    legacy = legacy_goal in {"s5_voice", "s10_ai_providers"} or (
+        legacy_goal == "s7_obstacle_module" and (options or {}).get("provider", "local") != "local"
+    )
+    if legacy:
+        from services import compute_config
+
+        try:
+            selected = compute_config.snapshot()["selected_executor"]
+        except (ValueError, OSError):
+            return {"start_available": False, "start_unavailable_reason": "compute_configuration_unavailable"}
+        if selected is not None:
+            return {"start_available": False, "start_unavailable_reason": "compute_use_remote_goal"}
+
     if tasks:
         from services import compute_config
 

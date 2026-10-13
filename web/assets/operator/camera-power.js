@@ -70,16 +70,19 @@ export class CameraPower {
       : task.requested === true ? task.ready === true ? tr('Kamera: ON', 'Camera: ON') : tr('Kamera uruchamiana — oczekiwanie na gotowość', 'Camera starting — waiting for readiness')
       : tr('Podgląd: OFF', 'Preview: OFF');
     const activity = this.catalog?.resource_states?.camera;
-    if (known && activity) label = tr('Kamera: ', 'Camera: ') + powerLabel(
+    if (known && activity && this.taskName === CAMERA_TASK) label = tr('Kamera: ', 'Camera: ') + powerLabel(
       !activity.error && activity.stale !== true && activity.offline !== true ? activity.on : null)
       + (task.requested === true && task.ready !== true ? ' · ' + tr('Uruchamianie', 'Starting') : '');
+    if (known && this.taskName !== CAMERA_TASK)
+      label = tr('Przetwarzanie: ', 'Processing: ') + powerLabel(task.requested === true)
+        + (task.requested === true && task.ready !== true ? ' · ' + tr('Uruchamianie', 'Starting') : '');
     if (known && task.error) label = tr('Błąd kamery: ', 'Camera error: ') + task.error;
     if (known && task.start_available === false) label += ' · ' + (task.start_unavailable_reason || tr('Uruchomienie niedostępne', 'Start unavailable'));
     const others = known ? this.catalog.features.filter(row => row.name !== this.taskName && row.requested === true && row.resources?.includes('camera')) : [];
     if (others.length) label += ' · ' + tr('Z kamery korzystają też: ', 'Camera also used by: ') + others.map(row => tr(row.title || row.name, row.title_en || row.name)).join(', ');
-    if (known && activity?.service_running === true && task.requested !== true)
+    if (known && activity?.service_running === true && task.requested !== true && this.taskName === CAMERA_TASK)
       label += ' · ' + tr('Proces kamery nadal działa', 'Camera process still running');
-    if (known && activity?.service_running === true && activity.data_fresh !== true)
+    if (known && activity?.service_running === true && activity.data_fresh !== true && this.taskName === CAMERA_TASK)
       label += ' · ' + tr('Brak świeżych klatek', 'No fresh frames');
     for (const id of this.statusIds) text(id, this.busy ? tr('Zmiana stanu kamery…', 'Changing camera state…') : label);
   }
