@@ -14,7 +14,7 @@ HARD_LIMIT = 800
 
 def changed_files(root: Path, base: str, head: str) -> list[Path]:
     result = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", base, head, "--", "*.py"],
+        ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", base, head, "--", "*.py"],
         cwd=root,
         check=True,
         capture_output=True,
@@ -27,6 +27,10 @@ def check_files(paths: list[Path], *, root: Path, annotations: bool = False) -> 
     for path in sorted(set(paths)):
         try:
             name = str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
+            if path.is_symlink():
+                raise OSError("refusing to inspect symbolic links")
+            if not path.is_file():
+                raise OSError("not a regular file")
             with path.open(encoding="utf-8") as source:
                 count = sum(1 for _ in source)
         except (OSError, UnicodeError) as exc:

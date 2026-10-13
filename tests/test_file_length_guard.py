@@ -46,9 +46,20 @@ def test_missing_file_fails_instead_of_silently_skipping(tmp_path, capsys):
     assert "cannot inspect" in capsys.readouterr().out
 
 
+def test_symlink_is_rejected_without_reading_its_target(tmp_path, capsys):
+    target = tmp_path / "target.py"
+    target.write_text("# harmless target\n")
+    link = tmp_path / "linked.py"
+    link.symlink_to(target)
+    assert guard.check_files([link], root=tmp_path) == 1
+    output = capsys.readouterr().out
+    assert "cannot inspect" in output
+    assert "symbolic links" in output
+
+
 def test_changed_files_use_null_delimiters_and_exclude_deletions(tmp_path, monkeypatch):
     def run(args, **kwargs):
-        assert args == ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", "base", "head", "--", "*.py"]
+        assert args == ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", "base", "head", "--", "*.py"]
         assert kwargs["cwd"] == tmp_path and kwargs["check"]
         return SimpleNamespace(stdout=b"tests/test one.py\0apps/module.py\0")
 
