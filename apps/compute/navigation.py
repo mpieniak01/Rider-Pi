@@ -185,7 +185,11 @@ class NavigationRunner:
                     self._authority()
                 frame = source.recv(50)
                 if not frame or (self.last_frame is not None and frame["captured_at"] <= self.last_frame[1]):
-                    limit = 5.0 if self.last_frame is None else self.policy["decision_budget_ms"] / 1000
+                    limit = (
+                        5.0
+                        if self.last_frame is None or self.policy["mode"] == "observe"
+                        else self.policy["decision_budget_ms"] / 1000
+                    )
                     if self.clock() - self.started > limit:
                         raise ComputeError("navigation_camera_unavailable")
                     continue
