@@ -61,6 +61,7 @@ class MotionExecutor:
         self.controls_checked_at = 0.0
         self.shutdown = False
         self.intent_source = None
+        self.execution_inhibit = None
         self.actuators = {
             "balance": {"enabled": None, "ts": None, "physical_completion": "unverified"},
             "height": {"value": None, "ts": None, "physical_completion": "unverified"},
@@ -154,6 +155,21 @@ class MotionExecutor:
         ready = hardware_ready and quality["ready"] and self.controller.limits.valid
         state = self.gate.snapshot()
         state.update(
+            authorization={
+                "authority": "motion-executor",
+                "state": state["state"],
+                "generation": state["generation"],
+                "instance_id": self.instance_id,
+                "owner": state["owner"],
+                "execution_context": state["execution_context"],
+                "arming_mode": state["arming_mode"],
+                "confirmed": True,
+            },
+            execution={
+                "ready": ready,
+                "inhibit": self.error or quality["error"],
+                "motion_not_before": self.gate.motion_not_before,
+            },
             manual_settings=self.controls,
             deadline=self.controller.deadline,
             contract_id="rider.safety",
@@ -194,7 +210,7 @@ class MotionExecutor:
         return state
 
     def capabilities(self):
-        ready = self._hardware_ready() and self.samples.quality()["ready"] and self.controller.limits.valid
+        ready = self._hardware_ready() and self.controller.limits.valid
         method = getattr(self.adapter, "capabilities", None)
         if callable(method):
             result = method()
@@ -363,7 +379,7 @@ class MotionExecutor:
                 manual_settings.validate_command(self.controls, values, mode=mode)
         except ValueError as exc:
             if is_actuator and self.controller.deadline and not agent:
-                self.gate.disarm("invalid_motion_intent")
+                self.gate.cancel_motion("invalid_motion_intent")
                 self.controller.stop()
                 previous, self.pending = self.pending, None
                 if previous is not None:
@@ -372,13 +388,14 @@ class MotionExecutor:
         authorized, reason = self.gate.authorize(command)
         if not authorized:
             # Delayed renewals never undo a newer manual intent or release.
-            obsolete = mode in {"hold", "release"} and reason in {
+            obsolete = reason in {
                 "stale_sequence",
                 "stale_generation",
                 "expired_command",
+                "motion_intent_cancelled",
             }
             if is_actuator and self.controller.deadline and not obsolete and not agent:
-                self.gate.disarm("invalid_motion_intent")
+                self.gate.cancel_motion("invalid_motion_intent")
                 self.controller.stop()
                 previous, self.pending = self.pending, None
                 if previous is not None:
@@ -403,12 +420,10 @@ class MotionExecutor:
             if not self._hardware_ready():
                 self.gate.disarm("hardware_unavailable")
                 return self._ack(command, "rejected", "hardware_unavailable")
-            quality = self.samples.quality()
-            if not quality["ready"] or not self.controller.limits.valid:
-                reason = quality["error"] or "invalid_motion_limits"
-                self.gate.disarm(reason)
+            if not self.controller.limits.valid:
+                self.gate.disarm("invalid_motion_limits")
                 self.controller.stop()
-                return self._ack(command, "rejected", reason)
+                return self._ack(command, "rejected", "invalid_motion_limits")
             return self._ack(command, "executed", "armed_no_actuation")
         if action in ACTUATORS:
             if not self._hardware_ready():
@@ -417,8 +432,7 @@ class MotionExecutor:
             quality = self.samples.quality()
             if not quality["ready"] or not self.controller.limits.valid:
                 reason = quality["error"] or "invalid_motion_limits"
-                self.gate.disarm(reason)
-                self.controller.stop()
+                self._inhibit_motion(reason)
                 return self._ack(command, "rejected", reason)
             capability = self.capabilities().get("balance" if action == "stabilization" else action, {})
             if not capability.get("available") or (
@@ -470,6 +484,15 @@ class MotionExecutor:
         self.controller.stop()
         return self._ack(command, "rejected", "actuator_failed")
 
+    def _inhibit_motion(self, reason):
+        if self.execution_inhibit != reason:
+            self.execution_inhibit = reason
+            self.gate.cancel_motion(reason)
+            previous, self.pending = self.pending, None
+            self.controller.stop()
+            if previous is not None:
+                self._ack(previous, "rejected", reason)
+
     def tick(self, dt):
         if not self.controller.deadline:
             self.refresh_controls()
@@ -478,7 +501,9 @@ class MotionExecutor:
         self.gate.poll()
         quality = self.samples.quality()
         if self.gate.state == "ARMED" and not quality["ready"]:
-            self.gate.disarm(quality["error"])
+            self._inhibit_motion(quality["error"])
+        elif quality["ready"]:
+            self.execution_inhibit = None
         if generation != self.gate.generation:
             pending, self.pending = self.pending, None
             self.controller.stop()

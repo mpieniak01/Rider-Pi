@@ -137,47 +137,10 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     return command
 
 
-def _permission(command: dict[str, Any], status: dict[str, Any]) -> str | None:
-    if command["action"] not in ACTUATORS:
-        return None
-    if status.get("contract_version") != 1 or status.get("state") != "ARMED":
-        return "motion_not_armed"
-    if status.get("ready") is not True or status.get("can_move") is not True:
-        return "motion_not_ready"
-    agent = is_agent(command)
-    if agent and not (
-        status.get('owner') == 'manual'
-        and status.get('execution_context') == 'panel'
-        and status.get('arming_mode') == 'operator'
-    ):
-        return 'agent_operator_arm_required'
-    if status.get("generation") != command["generation"] or (not agent and status.get("owner") != command["source"]):
-        return "stale_generation_or_wrong_owner"
-    if agent:
-        if command.get('agent_epoch') != status.get('agent_epoch'):
-            return 'agent_epoch_stale'
-        if command.get('seq', -1) <= status.get('agent_last_seq', -1):
-            return 'stale_sequence'
-        if status.get('agent_manual_active') or status.get('manual_agent_grace_remaining_s', 0) > 0:
-            return 'agent_manual_priority'
-    settings = status.get("manual_settings") or {}
-    if type(command.get("settings_revision")) is not int or command["settings_revision"] != settings.get("revision"):
-        return "manual_settings_stale"
-    capability = (status.get("capabilities") or {}).get(command["action"], {})
-    if capability.get("available") is not True or (
-        command["action"] not in {"height", "balance"} and capability.get("stop_verified") is not True
-    ):
-        return "actuator_unavailable_or_uncharacterized"
-    return None
-
-
 def publish_command(payload: dict[str, Any], timeout_s: float = 0.35) -> dict[str, Any]:
     """Wyślij żądanie; sukces wykonawcy musi pochodzić z dopasowanego ACK."""
     command = command_envelope(payload)
     status = read_status()
-    refusal = _permission(command, status)
-    if refusal:
-        return {"ok": False, "confirmed": False, "error": refusal, "safety": status}
     dispatched_at = time.time()
     try:
         with BusPub(warmup_ms=50) as publisher:
