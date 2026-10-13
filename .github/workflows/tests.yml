@@ -46,7 +46,7 @@ jobs:
                                 -c config/agent/constraints.txt
 
       - name: Run operator panel fixtures (isolated JavaScript)
-        run: node --experimental-vm-modules --test tests/operator_panel.test.mjs tests/operator_panel_shared_review.test.mjs tests/operator_calibration.test.mjs tests/legacy_catalog.test.mjs
+        run: node --experimental-vm-modules --test tests/operator_panel.test.mjs tests/operator_panel_shared_review.test.mjs tests/operator_calibration.test.mjs tests/legacy_catalog.test.mjs tests/operator_remote_navigation.test.mjs
 
       - name: Start API (background on :8080)
         env:
@@ -77,6 +77,8 @@ jobs:
           BASE_URL: "http://127.0.0.1:8080"
         run: |
           pytest -q tests/test_pi_deploy.py
+          pytest -q tests/test_decision_lease.py tests/test_navigation_runner.py \
+                    tests/test_compute_config.py tests/test_compute_runners.py
           pytest -q tests/test_motion_safety_contract.py tests/test_uart_ownership.py \
                     tests/test_control_safety_http.py tests/test_test_sandbox.py \
                     tests/test_task_producer_safety.py tests/test_motion_failure_contract.py \
