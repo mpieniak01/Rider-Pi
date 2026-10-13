@@ -577,7 +577,7 @@ def unit_availability(unit: str) -> dict:
 
 
 def task_availability(feature: FeatureDefinition, options: dict | None = None) -> dict:
-    available = compute_availability(feature.compute_tasks)
+    available = compute_availability(feature.compute_tasks, legacy_goal=feature.name, options=options)
     if available is not None:
         return available
     for unit in task_units(feature, options):

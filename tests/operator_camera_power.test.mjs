@@ -6,11 +6,11 @@ import test from 'node:test';
 const assets = new URL('../web/assets/operator/', import.meta.url);
 const model = await import('data:text/javascript;base64,' + Buffer.from(await readFile(new URL('model.js', assets))).toString('base64'));
 const source = (await readFile(new URL('camera-power.js', assets), 'utf8')).replace(/^import .*;$/gm, '').replace('export class CameraPower', 'globalThis.CameraPower = class CameraPower');
-function fixture(patch = {}, { stale = false, rejected = false, others = [], control = {} } = {}) {
+function fixture(patch = {}, { stale = false, rejected = false, others = [], control = {}, activity = null } = {}) {
   const now = Date.now() / 1000;
   const task = { name: 's2_camera_preview', can_move: false, installed: true, observed_at: now,
     state: 'stopped', requested: false, ready: false, ...patch };
-  const catalog = { contract_version: 2, catalog_version: 2, observed_at: stale ? now - 30 : now, features: [task, ...others], units: [] };
+  const catalog = { contract_version: 2, catalog_version: 2, observed_at: stale ? now - 30 : now, features: [task, ...others], units: [], resource_states: {camera: activity} };
   const calls = [], errors = [], messages = new Map(), buttons = new Map(['camera-start', 'camera-stop', 'camera-toggle', 'camera-proc-toggle', 'camera-obst-toggle', 'camera-tracker-toggle'].map(id => [id, { disabled: true, listeners: {}, addEventListener(name, callback) { this.listeners[name] = callback; }, setAttribute(name, value) { this[name] = value; } }]));
   let started = 0, stopped = 0;
   const context = vm.createContext({ ...model,
@@ -105,4 +105,12 @@ test('tracker toggle selects only passive tracking and explicit face mode', asyn
   assert.equal(post.path, '/api/logic/feature/s6_tracker_module'); assert.equal(post.body.options.mode, 'face');
   const moving = fixture({ name: 's3_follow_me_face', can_move: true }, { control: { taskName: 's3_follow_me_face' } });
   await moving.power.change(true); assert.equal(moving.calls.filter(row => row.method === 'POST').length, 0);
+});
+
+test('processor OFF is not reported as ON because shared camera is running', async () => {
+  const f = fixture({name:'s7_obstacle_module'}, {activity:{on:true,service_running:true,data_fresh:true},
+    control:{taskName:'s7_obstacle_module',toggleIds:['camera-proc-toggle'],statusIds:['camera-proc-state'],label:''}});
+  await f.power.load();
+  assert.equal(f.buttons.get('camera-proc-toggle').textContent,'OFF');
+  assert.match(f.messages.get('camera-proc-state'),/Przetwarzanie: OFF/);
 });
