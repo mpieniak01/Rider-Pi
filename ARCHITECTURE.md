@@ -466,3 +466,20 @@ Otherwise → file mode.
 - `config/face.toml` — facial expression tuning.
 - `scripts/dev_face-lcd-direct.py` — renderer/LCD demo and diagnostics.
 - `tests/` — tests (including pupils, blink, look, clamp).
+
+## Remote vision decision loop
+
+The opt-in `s15_venom_perception` goal starts observation via
+`rider-venom-perception.service`; `s14_venom_navigation` starts
+`rider-venom-navigation.service` under the existing navigation owner authority.
+Both consume the shared camera frame source. They do not load a local detector
+or a second camera. The new targets isolate their lifecycle from shared AI services.
+
+Device-owned `/api/navigation/config` persists policy with optimistic revisions;
+`/api/navigation/status` reports fresh loop state. Venom proxies these same endpoints
+and runs floor segmentation at `/api/v1/rider/compute/vision/decision`.
+A time-bounded GO decision is revalidated locally and by the motion executor.
+Expired feedback, stale camera input or lost authority latches STOP; reconnection
+does not resume movement. Units are started on demand, with no boot enablement
+or automatic restart. See [COMPUTE_VENOM](docs_pl/COMPUTE_VENOM.md) for provisioning
+and the physical acceptance requirements.

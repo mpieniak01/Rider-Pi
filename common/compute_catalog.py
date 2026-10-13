@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 EN = {
+    "s15_venom_perception": ("Venom floor observation", "Remote segmentation without movement or arming."),
+    "s14_venom_navigation": (
+        "Venom bounded navigation",
+        "Remote floor perception and expiring movement; explicit navigation ARM required.",
+    ),
     "s12_venom_vision": ("Venom scene description", "Observe the camera scene; no obstacle or motion clearance."),
     "s13_venom_voice": ("Venom conversation", "Microphone, Venom STT/text/TTS and Pi playback; no motion tools."),
 }
@@ -10,6 +15,26 @@ EN = {
 
 def compute_features(feature, camera_units):
     return {
+        "s15_venom_perception": feature(
+            "s15_venom_perception",
+            "S15",
+            "Obserwacja podłogi Venom",
+            "Zdalna segmentacja bez ruchu i bez uzbrojenia.",
+            "rider-venom-perception.target",
+            (*camera_units, "rider-venom-perception.service"),
+            ("camera", "frame_feed"),
+        ),
+        "s14_venom_navigation": feature(
+            "s14_venom_navigation",
+            "S14",
+            "Pętla ruchu Venom",
+            "Zdalna percepcja; utrata świeżej decyzji zatrzymuje ruch. Osobne uzbrojenie navigation.",
+            "rider-venom-navigation.target",
+            (*camera_units, "rider-venom-navigation.service"),
+            ("camera", "frame_feed", "control"),
+            can_move=True,
+            control_owner="navigation",
+        ),
         "s12_venom_vision": feature(
             "s12_venom_vision",
             "S12",

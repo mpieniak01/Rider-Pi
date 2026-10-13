@@ -1,0 +1,18 @@
+[Unit]
+Description=Rider remote floor decisions and local motion timeout
+After=network-online.target rider-broker.service motion-executor.service frame-distributor.service
+Requires=rider-broker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/robot
+Environment=PYTHONPATH=/home/pi/robot
+EnvironmentFile=-/etc/default/rider
+EnvironmentFile=-/etc/default/rider-compute
+ExecStart=/usr/bin/python3 -m apps.compute.navigation
+Restart=no
+TimeoutStopSec=2
+KillSignal=SIGINT

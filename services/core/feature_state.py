@@ -18,7 +18,7 @@ from common.service_catalog import (
     tracking_mode_for,
 )
 
-MOVING_PRODUCERS = {"rider-tracking-controller.service", "rider-navigator.service"}
+MOVING_PRODUCERS = {"rider-tracking-controller.service", "rider-navigator.service", "rider-venom-navigation.service"}
 
 
 class FeatureStateMixin:
@@ -40,7 +40,7 @@ class FeatureStateMixin:
                 and status.get("request_id") == intent.get("request_id")
                 and bool(intent.get("request_id"))
             )
-            if unit == "rider-navigator.service":
+            if unit in {"rider-navigator.service", "rider-venom-navigation.service"}:
                 valid = (
                     valid
                     and status.get("data_ready") is True
