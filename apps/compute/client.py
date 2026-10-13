@@ -69,15 +69,17 @@ def validate_wav(data: bytes) -> int:
 
 
 class HTTPTransport:
-    """One keepalive connection; every request happens exactly once."""
+    """Short-idle keepalive connection; every request happens exactly once."""
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, *, clock=time.monotonic) -> None:
         try:
             parsed = validate_compute_url(base_url, allow_api_path=True)
         except ValueError as exc:
             raise ComputeError(str(exc), 400) from None
         self.host, self.port, self.secure = parsed.hostname, parsed.port, parsed.scheme == 'https'
         self.connection = None
+        self._clock = clock
+        self._last_response_at = None
         self.lock = threading.Lock()
         self.closed = False
 
@@ -85,6 +87,13 @@ class HTTPTransport:
         with self.lock:
             if self.closed:
                 raise ComputeError('compute_client_closed')
+            if (
+                self.connection is not None
+                and self._last_response_at is not None
+                and self._clock() - self._last_response_at >= 2.0
+            ):
+                self.connection.close()
+                self.connection = None
             if self.connection is None:
                 cls = http.client.HTTPSConnection if self.secure else http.client.HTTPConnection
                 self.connection = cls(self.host, self.port, timeout=timeout)
@@ -98,6 +107,7 @@ class HTTPTransport:
                 data = response.read(MAX_BYTES + 1)
                 if len(data) > MAX_BYTES:
                     raise ComputeError('compute_response_too_large')
+                self._last_response_at = self._clock()
                 return response.status, dict(response.getheaders()), data
             except (OSError, http.client.HTTPException):
                 connection.close()

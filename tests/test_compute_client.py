@@ -1,5 +1,6 @@
 """Compute wire checks use scripted transport and an isolated loopback server."""
 
+import http.client
 import io
 import json
 import threading
@@ -389,6 +390,108 @@ def test_http_uses_one_request_no_redirect_following():
         server.shutdown()
         server.server_close()
         thread.join(timeout=1)
+
+
+def test_http_replaces_server_closed_idle_connection_before_post(monkeypatch):
+    clock = Clock()
+    received, attempts = [], []
+    closed = threading.Event()
+    original = http.client.HTTPConnection.request
+
+    def record_attempt(connection, method, path, *args, **kwargs):
+        attempts.append((method, path))
+        return original(connection, method, path, *args, **kwargs)
+
+    monkeypatch.setattr(http.client.HTTPConnection, 'request', record_attempt)
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def respond(self):
+            received.append((self.command, self.path))
+            if self.command == 'POST':
+                self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', '2')
+            self.end_headers()
+            self.wfile.write(b'{}')
+            # Like an idle timeout: close without a Connection: close header.
+            self.close_connection = True
+
+        do_GET = do_POST = respond
+
+        def log_message(self, *_):
+            pass
+
+    class Server(ThreadingHTTPServer):
+        def shutdown_request(self, connection):
+            super().shutdown_request(connection)
+            closed.set()
+
+    server = Server(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    transport = HTTPTransport(f'http://127.0.0.1:{server.server_port}', clock=clock)
+    try:
+        assert transport.request('GET', '/capabilities', {}, b'', 1)[0] == 200
+        assert closed.wait(timeout=1)
+        previous = transport.connection
+        assert previous.sock is not None  # Peer closed; the client still retains the socket.
+        clock.sleep(5.1)  # Capture delay, no real sleep.
+        assert transport.request('POST', '/sessions', {}, b'{}', 1)[0] == 200
+        assert transport.connection is not previous
+        expected = [('GET', '/api/v1/rider/compute/capabilities'), ('POST', '/api/v1/rider/compute/sessions')]
+        assert attempts == expected and received == expected
+    finally:
+        transport.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=1)
+
+
+def test_http_short_polling_reuses_connection_and_idle_starts_after_response(monkeypatch):
+    clock = Clock()
+    connections = []
+
+    class Response:
+        status = 200
+
+        def read(self, _limit):
+            clock.sleep(1.0)
+            return b'{}'
+
+        def getheaders(self):
+            return [('Content-Type', 'application/json')]
+
+    class Connection:
+        sock = None
+
+        def __init__(self, *_args, **_kwargs):
+            self.closed = False
+            connections.append(self)
+
+        def request(self, *_args, **_kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(http.client, 'HTTPConnection', Connection)
+    transport = HTTPTransport('http://127.0.0.1', clock=clock)
+    try:
+        transport.request('GET', '/capabilities', {}, b'', 2)
+        clock.sleep(1.5)
+        transport.request('POST', '/sessions', {}, b'{}', 2)
+        assert len(connections) == 1 and not connections[0].closed
+        clock.sleep(2.0)
+        transport.request('GET', '/capabilities', {}, b'', 2)
+        assert len(connections) == 2 and connections[0].closed
+    finally:
+        transport.close()
 
 
 def test_invalid_audio_does_not_load_any_engine():
