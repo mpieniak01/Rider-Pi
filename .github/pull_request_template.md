@@ -8,7 +8,7 @@ Krótko: co PR przenosi/porządkuje (MOVE-FIRST), bez zmiany zachowań.
 - [ ] Publiczne importy/API kompatybilne (re-eksporty zapewnione).
 - [ ] `ruff check --fix && ruff format` zielone (≤120 znaków/linia).
 - [ ] `pytest` zielony (dla audio: `ALSA_SKIP_LSOF=1 pytest -q -k voice`).
-- [ ] Żaden plik nie przekracza **600 linii** albo został rozbity w tym PR.
+- [ ] Zmienione pliki Python mają maksymalnie **800 linii**; ostrzeżenia **601–800** oceniono pod kątem spójności odpowiedzialności.
 
 ## Uwagi techniczne (opcjonalnie)
 Co przeniesiono i gdzie, ewentualne decyzje projektowe.

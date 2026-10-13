@@ -69,15 +69,17 @@ def validate_wav(data: bytes) -> int:
 
 
 class HTTPTransport:
-    """One keepalive connection; every request happens exactly once."""
+    """Short-idle keepalive connection; every request happens exactly once."""
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, *, clock=time.monotonic) -> None:
         try:
             parsed = validate_compute_url(base_url, allow_api_path=True)
         except ValueError as exc:
             raise ComputeError(str(exc), 400) from None
         self.host, self.port, self.secure = parsed.hostname, parsed.port, parsed.scheme == 'https'
         self.connection = None
+        self._clock = clock
+        self._last_response_at = None
         self.lock = threading.Lock()
         self.closed = False
 
@@ -85,6 +87,13 @@ class HTTPTransport:
         with self.lock:
             if self.closed:
                 raise ComputeError('compute_client_closed')
+            if (
+                self.connection is not None
+                and self._last_response_at is not None
+                and self._clock() - self._last_response_at >= 2.0
+            ):
+                self.connection.close()
+                self.connection = None
             if self.connection is None:
                 cls = http.client.HTTPSConnection if self.secure else http.client.HTTPConnection
                 self.connection = cls(self.host, self.port, timeout=timeout)
@@ -98,6 +107,7 @@ class HTTPTransport:
                 data = response.read(MAX_BYTES + 1)
                 if len(data) > MAX_BYTES:
                     raise ComputeError('compute_response_too_large')
+                self._last_response_at = self._clock()
                 return response.status, dict(response.getheaders()), data
             except (OSError, http.client.HTTPException):
                 connection.close()
@@ -153,11 +163,17 @@ class ComputeClient:
         self._delivered: dict[str, int] = {}
         self._closed = False
 
-    def _request(self, method: str, path: str, body: bytes = b'', headers=None, timeout: float = 2.0):
+    def _request(self, method: str, path: str, body: bytes = b'', headers=None, timeout: float = 2.0, *, task=None):
         if self._closed:
             raise ComputeError('compute_client_closed')
+        # Voice admission prepares checked ASR before returning the job receipt.
+        limit = (
+            15.0
+            if self.client_id == 'voice' and method == 'POST' and path == '/jobs' and task == 'audio.transcribe'
+            else 2.0
+        )
         status, response_headers, data = self._transport.request(
-            method, path, {**self._headers, **(headers or {})}, body, max(0.01, min(timeout, 2.0))
+            method, path, {**self._headers, **(headers or {})}, body, max(0.01, min(timeout, limit))
         )
         if len(data) > MAX_BYTES:
             raise ComputeError('compute_response_too_large')
@@ -172,8 +188,10 @@ class ComputeClient:
             pass
         raise ComputeError(code, status)
 
-    def _json(self, method: str, path: str, body: bytes = b'', headers=None, timeout: float = 2.0) -> dict:
-        response_headers, data = self._request(method, path, body, headers, timeout)
+    def _json(
+        self, method: str, path: str, body: bytes = b'', headers=None, timeout: float = 2.0, *, task=None
+    ) -> dict:
+        response_headers, data = self._request(method, path, body, headers, timeout, task=task)
         mime = next((v for k, v in response_headers.items() if k.lower() == 'content-type'), '')
         if mime.split(';')[0].strip().lower() != 'application/json':
             raise ComputeError('invalid_compute_response_type')
@@ -334,7 +352,17 @@ class ComputeClient:
         self._jobs[job_id] = pending
         self._submitted[stream] = sequence
         try:
-            observation = self._json('POST', '/jobs', data, {'Content-Type': content_type, 'X-Rider-Job': encoded})
+            request_timeout = pending.deadline - self._clock()
+            if request_timeout < 0.01:
+                raise ComputeError('compute_deadline_expired', 408)
+            observation = self._json(
+                'POST',
+                '/jobs',
+                data,
+                {'Content-Type': content_type, 'X-Rider-Job': encoded},
+                timeout=request_timeout,
+                task=task,
+            )
             self._validate(pending, observation)
         except Exception:
             with contextlib.suppress(ComputeError):

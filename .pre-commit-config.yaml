@@ -15,11 +15,10 @@ repos:
   - repo: local
     hooks:
       - id: check-file-length
-        name: Check file length (apps/voice/*) [CI-only]
+        name: Python file size (600 warning / 800 hard limit)
         entry: python3 scripts/dev_check-file-length.py
         language: system
-        pass_filenames: false
-        always_run: true
+        types: [python]
         stages:
           - pre-push
           - manual

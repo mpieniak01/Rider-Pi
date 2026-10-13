@@ -1,11 +1,11 @@
 import { HeldMotion } from './held-motion.js?v=motion-descriptors-9';
-import { ageOf, authorized, safetyKnown, editingTarget, matchingAck, setServerClock } from './model.js';
+import { ageOf, authorized, operatorAuthorized, safetyKnown, editingTarget, matchingAck, setServerClock } from './model.js';
 import { request, poll, prepareMutation } from './transport.js';
 import { text, tr, statusLabel, showError } from './ui.js';
 export class SafetyPanel {
   constructor(onChange = () => {}, { interactive = true } = {}) {
     this.interactive = interactive; this.upperOffset = 0; this.lowerOffset = 0;
-    this.lastArmed = false; this.state = null; this.onChange = onChange; this.seq = -1; this.generation = null;
+    this.lastArmed = false; this.lastConfirmed = null; this.observationFailed = false; this.state = null; this.onChange = onChange; this.seq = -1; this.generation = null;
     this.history = []; this.pending = new Map(); this.mutating = false;
     this.revokedGenerations = new Set();
     this.clockReady = false; this.clockObserved = 0;
@@ -25,12 +25,15 @@ export class SafetyPanel {
     document.getElementById('global-motion-toggle')?.addEventListener('click', () => this.toggleMotion().catch(showError));
     this.poller = poll(async () => {
       const response = await request('/api/control/state');
-      this.clockReady = response.canonical === true && response.meta?.contract_id === 'rider.safety' && response.meta.contract_version === 1 && setServerClock(response.data.server_time, response.sent_at, response.received_at);
-      if (this.clockReady) { this.upperOffset = response.data.server_time - response.sent_at; this.lowerOffset = response.data.server_time - response.received_at; }
-      if (this.clockReady) this.clockObserved = Date.now() / 1000;
+      const clockReady = response.canonical === true && response.meta?.contract_id === 'rider.safety' && response.meta.contract_version === 1 && setServerClock(response.data.server_time, response.sent_at, response.received_at);
+      if (clockReady) {
+        this.clockReady = true; this.upperOffset = response.data.server_time - response.sent_at;
+        this.lowerOffset = response.data.server_time - response.received_at; this.clockObserved = Date.now() / 1000;
+      }
+      this.observationFailed = false;
       this.update(response.data.safety);
     },
-      { interval: 1000, onError: error => { this.suspend(); showError(error); } });
+      { interval: 1000, onError: error => { this.observationFailed = true; this.held.stop(); this.render(); showError(error); } });
     this.expiry = setInterval(() => this.render(), 250);
     if (this.interactive) {
       document.querySelectorAll('[data-stop]').forEach(node => node.addEventListener('click', () => this.stop()));
@@ -60,9 +63,13 @@ export class SafetyPanel {
     while (this.revokedGenerations.size > 16) this.revokedGenerations.delete(this.revokedGenerations.values().next().value);
   }
   update(state) {
-    if (state) this.lastArmed = state.state === 'ARMED';
-    this.state = state;
-    if (this.generation !== state?.generation) { this.generation = state?.generation; this.seq = -1; }
+    if (Number.isFinite(state?.observed_at) && Number.isFinite(this.lastConfirmed?.observed_at) && state.observed_at < this.lastConfirmed.observed_at) return;
+    this.observationFailed = !state || state.state === 'UNKNOWN' || state.stale === true;
+    if (state?.contract_version === 1 && ['ARMED','DISARMED','ESTOP'].includes(state.state) && state.generation) {
+      this.lastConfirmed = state; this.lastArmed = state.state === 'ARMED';
+    }
+    this.state = state?.state === 'UNKNOWN' || !state ? this.lastConfirmed : state;
+    if (this.generation !== this.state?.generation) { this.generation = this.state?.generation; this.seq = -1; }
     this.seq = Math.max(this.seq, Number.isInteger(state?.last_seq) ? state.last_seq : -1);
     for (const ack of [...(state?.recent_acks || []), state?.last_ack].filter(Boolean)) this.ack(ack);
     this.render();
@@ -70,11 +77,21 @@ export class SafetyPanel {
   controlsActive() { return this.interactive && (document.body.dataset.page !== 'system' || document.getElementById('admin-mode')?.checked === true); }
   now() { return Date.now() / 1000 + this.upperOffset; }
   commandTime() { return Date.now() / 1000 + this.lowerOffset; }
-  async prepare() { await prepareMutation(); await this.poller.refresh(); }
+  async prepare(action) {
+    const operator = this.state?.arming_mode === 'operator' && !['arm','clear_estop'].includes(action);
+    await prepareMutation({ control: operator });
+    if (!operator) await this.poller.refresh();
+  }
   clockFresh() { const age = Date.now() / 1000 - this.clockObserved; return this.clockReady && age >= 0 && age <= 3; }
-  can(owner = 'manual', action = 'move') { return (!this.controls || this.controls.ready()) && this.state?.execution_context !== 'test' && this.controlsActive() && this.clockFresh() && !this.revokedGenerations.has(this.state?.generation) && authorized(this.state, owner, action, this.now()); }
+  can(owner = 'manual', action = 'move') {
+    const settingsReady = !this.controls || (this.controls.commandReady?.() ?? this.controls.ready());
+    return settingsReady && this.state?.execution_context !== 'test' && this.controlsActive()
+      && !this.revokedGenerations.has(this.state?.generation)
+      && (this.clockReady && operatorAuthorized(this.state, owner, action) || this.clockFresh() && authorized(this.state, owner, action, this.now()));
+  }
   envelope(action, params = {}, owner = 'manual') {
-    if (!safetyKnown(this.state, this.now()) || !this.clockFresh()) throw new Error(tr('Brak świeżego kontraktu bezpieczeństwa v1 i potwierdzonego zegara', 'No fresh safety contract v1 and confirmed clock'));
+    const permissionAction = ['arm','clear_estop'].includes(action);
+    if (!this.clockReady || (!permissionAction && !operatorAuthorized(this.state, owner, action) && (!safetyKnown(this.state, this.now()) || !this.clockFresh()))) throw new Error(tr('Brak świeżego kontraktu bezpieczeństwa v1 i potwierdzonego zegara', 'No fresh safety contract v1 and confirmed clock'));
     if (!['arm', 'clear_estop'].includes(action) && (!this.can(owner, action) || (action === 'move' && params.yaw && !this.can(owner, 'turn')))) throw new Error(tr('Napęd zablokowany: stan, właściciel lub możliwości', 'Actuator blocked: state, owner or capability'));
     if (action === 'arm' && this.state.state !== 'DISARMED' || action === 'clear_estop' && this.state.state !== 'ESTOP') throw new Error(tr('Stan zmienił się — sprawdź ponownie zgodę', 'State changed — review permission again'));
     return this.buildEnvelope(action, params, this.state.generation);
@@ -99,9 +116,9 @@ export class SafetyPanel {
     if (!exempt) {
       this.mutating = true; this.render();
       try {
-        await this.prepare();
+        await this.prepare(action);
         if (action === 'move' && this.controls) {
-          await this.controls.refresh();
+          if (this.state?.arming_mode !== 'operator') await this.controls.refresh();
           const revision = params.settings_revision;
           if (this.controls.state.revision !== revision) throw new Error(tr('Ustawienia zmieniły się — sprawdź wartości i kliknij ponownie.', 'Settings changed — review values and click again.'));
           params = this.controls.pulse(params.direction);
@@ -138,7 +155,7 @@ export class SafetyPanel {
     const generation=this.state?.generation, initialSeq=this.seq;
     const permittedAtStart=this.can('manual',['left','right'].includes(intent.direction)?'turn':'move');
     const neutralAllowed=intent.mode==='release' && permittedAtStart;
-    await prepareMutation();
+    await prepareMutation({ control: true });
     const check=()=>{
       if(!valid() || (this.state && generation!==this.state.generation) || revision!==this.controls?.state?.revision
         || (!(neutralAllowed && !this.state && Date.now()/1000-this.clockObserved<=3) && !this.can('manual',['left','right'].includes(intent.direction)?'turn':'move')))
@@ -169,8 +186,7 @@ export class SafetyPanel {
     if (this.toggling) return;
     // Disarming/STOP never needs a fresh clock or an authorization envelope.
     if (this.state?.state === 'ARMED' || (!this.state && this.lastArmed)) { await this.send('stop'); return; }
-    if (!safetyKnown(this.state, this.now()) || !this.clockFresh()
-      || this.state.ready !== true || this.state.hardware_ready !== true) return;
+    if (!this.clockReady || !['DISARMED','ESTOP'].includes(this.state?.state) || !this.state?.generation) return;
     const epoch = this.toggleEpoch;
     this.toggling = true; this.render();
     const consent = { operator_consent: true, operator_plan: tr(
@@ -190,17 +206,16 @@ export class SafetyPanel {
   }
   renderGlobalToggle() {
     const node = document.getElementById('global-motion-toggle'); if (!node) return;
-    const known = safetyKnown(this.state, this.now()) && this.clockFresh();
-    const armed = known && this.state.state === 'ARMED' && this.state.can_move === true
-      && ((this.state.arming_mode === 'operator' && this.state.execution_context === 'panel' && this.state.owner === 'manual')
-        || this.state.lease_remaining_s > ageOf(this.state, this.now()))
-      && !this.revokedGenerations.has(this.state.generation);
-    const unknownArmed = !this.state && this.lastArmed;
-    node.textContent = unknownArmed ? tr('Stan niepotwierdzony — rozbrój', 'State unconfirmed — disarm') : armed ? tr('Robot uzbrojony', 'Robot armed') : tr('Robot rozbrojony', 'Robot disarmed');
-    node.classList.toggle('is-armed', armed); node.classList.toggle('is-disarmed', !armed);
+    const known = this.state?.contract_version === 1 && ['ARMED','DISARMED','ESTOP'].includes(this.state.state);
+    const armed = known && this.state.state === 'ARMED';
+    const unknownArmed = !known && this.lastArmed;
+    const unconfirmed = this.observationFailed || !safetyKnown(this.state, this.now());
+    node.textContent = !known ? tr('Stan uzbrojenia nieznany', 'Arming state unknown')
+      : tr(armed ? 'Robot uzbrojony' : 'Robot rozbrojony', armed ? 'Robot armed' : 'Robot disarmed')
+        + (unconfirmed ? tr(' · ostatni stan', ' · last known state') : '');
+    node.classList.toggle('is-armed', armed); node.classList.toggle('is-disarmed', known && !armed);
     node.setAttribute('aria-pressed', String(armed));
-    node.disabled = !unknownArmed && this.state?.state !== 'ARMED' && (this.toggling || this.mutating || (!armed && (!known
-      || this.state.ready !== true || this.state.hardware_ready !== true)));
+    node.disabled = !armed && (this.toggling || this.mutating || !known || !this.clockReady);
     node.title = (armed || unknownArmed) ? tr('Kliknij, aby zatrzymać i rozbroić. Uzbrojenie trwa do decyzji operatora.',
       'Click to stop and disarm. Arming remains until the operator disarms.') : tr(
       'Kliknięcie zezwala na sterowanie z panelu. Przygotuj przestrzeń i kabel.',
@@ -209,10 +224,9 @@ export class SafetyPanel {
   stop() { this.send('stop').catch(showError); }
   suspend() {
     this.held.end(undefined,true);
-    // Operator permission survives focus changes and read failures; fresh data
-    // still gates every new command. Hardware faults are handled by the executor.
+    // Focus loss cancels the gesture, not the executor's operator permission.
     if (this.state?.arming_mode === 'operator' && this.state?.execution_context === 'panel') {
-      this.state = null; this.render(); return;
+      this.render(); return;
     }
     if (this.controlsActive() && this.state?.state === 'ARMED') {
       this.revoke();
@@ -247,11 +261,11 @@ export class SafetyPanel {
     this.renderGlobalToggle();
     if (!this.interactive) { this.onChange(this.state); return; }
     const known = safetyKnown(this.state, this.now());
-    text('safety-state', known ? this.state.state : 'UNKNOWN');
+    text('safety-state', this.state?.state || 'UNKNOWN');
     text('safety-ready', known && this.state.ready === true && this.state.hardware_ready === true ? tr('gotowy wykonawca', 'executor ready') : tr('niepotwierdzona / brak', 'unconfirmed / unavailable'));
     text('safety-age', `${ageOf(this.state, this.now())?.toFixed(1) ?? '—'} s`);
     text('safety-owner', known ? this.state.owner || '—' : '—');
-    text('safety-reason', this.revokedGenerations.has(this.state?.generation) ? tr('Zgoda lokalnie unieważniona; wymagane STOP i nowe uzbrojenie', 'Permission locally revoked; STOP and new arming required') : !this.clockFresh() ? tr('Zegar serwera niepotwierdzony lub wolne połączenie — tylko odczyt', 'Server clock unconfirmed or slow connection — read only') : known ? this.state.error || this.state.reason || '—' : tr('Brak świeżych danych / stary kontrakt: tylko odczyt', 'Missing fresh data / old contract: read only'));
+    text('safety-reason', this.revokedGenerations.has(this.state?.generation) ? tr('Zgoda lokalnie unieważniona; wymagane STOP i nowe uzbrojenie', 'Permission locally revoked; STOP and new arming required') : this.observationFailed || !known ? tr('Odczyt nieaktualny — pokazano ostatni stan wykonawcy', 'Observation unavailable — showing last executor state') : known ? this.state.error || this.state.reason || '—' : tr('Brak świeżych danych / stary kontrakt: tylko odczyt', 'Missing fresh data / old contract: read only'));
     text('safety-lease', known && typeof this.state.lease_remaining_s === 'number' ? `${Math.max(0, this.state.lease_remaining_s - Math.max(0, this.now() - this.state.observed_at)).toFixed(1)} s` : '—');
     document.querySelectorAll('[data-direction]').forEach(node => { node.disabled = !this.can('manual', ['left', 'right'].includes(node.dataset.direction) ? 'turn' : 'move'); });
     this.onChange(this.state);

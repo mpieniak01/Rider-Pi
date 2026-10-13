@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import time
@@ -46,6 +47,7 @@ class MotionGate:
         self.execution_context = None
         self.generation = uuid.uuid4().hex
         self.last_seq = -1
+        self.motion_not_before = None
         self.lease_deadline = 0.0
         self.arming_mode = "timed"
         self.reason = "startup_disarmed"
@@ -58,6 +60,9 @@ class MotionGate:
         self.poll()
 
     def _invalidate(self, state: str, reason: str) -> None:
+        logging.getLogger("motion.permission").info(
+            "permission %s -> %s reason=%s generation=%s", self.state, state, reason, self.generation
+        )
         self.state = state
         self.reason = reason
         self.owner = None
@@ -74,6 +79,13 @@ class MotionGate:
         self.agent_last_seq = -1
         self.agent_intents = []
         self.manual_grace_until = self.clock() + MANUAL_AGENT_GRACE_S if manual else 0.0
+
+    def cancel_motion(self, reason: str) -> None:
+        """Drop old intents without revoking an operator-controlled session."""
+        self.motion_not_before = self.wall_clock()
+        self.invalidate_agent()
+        if self.arming_mode != "operator":
+            self.disarm(reason)
 
     def disarm(self, reason: str = "operator_stop") -> None:
         self._invalidate("ESTOP" if self.state == "ESTOP" else "DISARMED", reason)
@@ -137,6 +149,8 @@ class MotionGate:
             return True, "estop_latched"
         try:
             self._validate_envelope(command)
+            if action in ACTUATORS and self.motion_not_before is not None and command["ts"] <= self.motion_not_before:
+                raise ValueError("motion_intent_cancelled")
             context = command.get("execution_context", "panel")
             if not isinstance(context, str) or context not in {"panel", "test", "agent"}:
                 raise ValueError("unknown_execution_context")
@@ -190,8 +204,6 @@ class MotionGate:
                 owner = command.get("owner", command.get("source"))
                 if not isinstance(owner, str) or owner not in OWNERS:
                     raise ValueError("unknown_owner")
-                if self.state == "ARMED":
-                    raise ValueError("already_armed_disarm_first")
                 mode = command.get("arming_mode", "timed")
                 if not isinstance(mode, str) or mode not in {"timed", "operator"}:
                     raise ValueError("invalid_arming_mode")
@@ -200,6 +212,15 @@ class MotionGate:
                 lease = 0.0 if mode == "operator" else finite_number(command.get("lease_s", 15.0), "invalid_lease")
                 if mode == "timed" and not 0 < lease <= MAX_LEASE_S:
                     raise ValueError("invalid_lease")
+                if self.state == "ARMED":
+                    if (self.owner, self.execution_context, self.arming_mode) != (owner, context, mode):
+                        raise ValueError("already_armed_disarm_first")
+                    self.last_seq = command["seq"]
+                    return True, "already_armed"
+                logging.getLogger("motion.permission").info(
+                    "permission %s -> ARMED reason=operator_consent generation=%s", self.state, self.generation
+                )
+                self.motion_not_before = None
                 self.state = "ARMED"
                 self.owner = owner
                 self.execution_context = context

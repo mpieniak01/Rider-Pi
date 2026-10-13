@@ -21,6 +21,16 @@ def result_for(rule, body, code, submitted):
         or task is not None
         and task.get("state") in {"starting", "stopping", "requested"}
     )
+    # Compute protocols expose persistence or a terminal job state instead of legacy ok.
+    compute_success = (
+        code < 400
+        and not pending
+        and body.get("ok") is not False
+        and result.get("ok") is not False
+        and not body.get("error")
+        and not result.get("error")
+        and contract_for(rule).name == "rider.compute"
+    )
     state = (
         "rejected" if code >= 400 else "pending" if pending else "rejected" if result.get("ok") is False else "unknown"
     )
@@ -32,8 +42,10 @@ def result_for(rule, body, code, submitted):
         confirmed = success and result.get("confirmed") is True
         state = "executed" if confirmed else state
         ack_kind = "sdk_accepted" if ack.get("actuation") is True else "command_accepted"
-    elif success and result.get("persisted") is True:
+    elif result.get("persisted") is True and (success or compute_success and rule == "/api/compute/config"):
         state, confirmed, ack_kind = "executed", True, "configuration_persisted"
+    elif compute_success and rule == "/api/compute/tasks/<task>" and result.get("state") == "succeeded":
+        state, confirmed, ack_kind = "executed", True, "computation_completed"
     elif success and task is not None:
         ack_kind = "task_ready" if task.get("ready") is True else "task_accepted"
         confirmed = not pending

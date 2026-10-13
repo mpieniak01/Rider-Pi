@@ -1,10 +1,10 @@
-# Voice Module Quality Guards - Usage Guide
+# Rider-Pi Quality Guards - Usage Guide
 
 ## Overview
 
-Two quality guard tools prevent regression of the voice module refactoring:
+Two guards check Python file size across Rider-Pi and deprecated voice imports:
 
-1. **`scripts/dev_check-file-length.py`** - Enforces 600-line limit
+1. **`scripts/dev_check-file-length.py`** - Shared 600-line warning / 800-line hard limit
 2. **`scripts/dev_check-legacy-imports.py`** - Blocks removed/deprecated imports
 
 ## Running Manually
@@ -22,20 +22,18 @@ python3 scripts/dev_check-file-length.py && python3 scripts/dev_check-legacy-imp
 
 ## Pre-commit Integration
 
-The guards run automatically on every commit via pre-commit hooks.
+Lint runs on commit; file length and legacy imports run on pre-push/manual stages.
 
-### Install pre-commit (if not already installed)
+### Local environment
 
-```bash
-pip install pre-commit
-pre-commit install
-```
+Use the repository's configured pre-commit installation and WSL virtualenv.
+These checks require no robot runtime packages or global package installation.
 
 ### Run manually on all files
 
 ```bash
-pre-commit run check-file-length --all-files
-pre-commit run check-legacy-imports --all-files
+python -m pre_commit run check-file-length --hook-stage pre-push --from-ref origin/main --to-ref HEAD
+python -m pre_commit run check-legacy-imports --hook-stage pre-push --from-ref origin/main --to-ref HEAD
 ```
 
 ### Skip guards (emergency only)
@@ -48,38 +46,37 @@ git commit --no-verify -m "..."
 
 ## File Length Guard
 
-### What it checks
-- All Python files in `apps/voice/` (excluding test files)
-- Maximum 600 lines per file
+The same `scripts/dev_check-file-length.py` policy runs in the local pre-push
+hook and GitHub Quality Guard. It counts physical lines, including comments
+and blank lines, in changed Python files, including tests and scripts.
 
-### Known Exceptions (pre-existing)
-- `apps/voice/stream/svc_streaming.py` (27 lines)
-- `apps/voice/svc_file.py` (758 lines, consolidated from service_impl in PR#1, updated in PR#3)
+| Lines | Result |
+| --- | --- |
+| 0–600 | Pass |
+| 601–800 | Warning; inspect cohesion, no mandatory split |
+| More than 800 | Error; gate fails |
 
-These files are tracked from incomplete PR-2. The guard:
-- ✅ Allows them to exist
-- ❌ Blocks them from growing larger (regression detection)
-- ❌ Blocks NEW files from exceeding 600 lines
+Only changed files are checked; untouched historical files do not block an
+unrelated PR. There are no unlimited file exceptions. The old `allow-oversize`
+label does not bypass this hard limit.
 
-### Exit Codes
-- `0` - Pass (all files ≤600 or in known exceptions)
-- `1` - Fail (new file exceeds 600)
-- `2` - Regression (known exception grew larger)
-
-### Adding a Known Exception
-
-If justified (rare cases), edit `scripts/dev_check-file-length.py`:
-
-```python
-KNOWN_EXCEPTIONS = {
-    x9,
-    "apps/voice/svc_file.py": 758,
-    # Add new exception only if absolutely necessary:
-    # "apps/voice/some_file.py": 650,  # Reason: ...
-}
+```bash
+# Branch changes relative to main
+python3 scripts/dev_check-file-length.py
+# Explicit CI revisions
+python3 scripts/dev_check-file-length.py --base BASE_SHA --head HEAD_SHA
+# Explicit files (also supplied by the pre-push hook)
+python3 scripts/dev_check-file-length.py apps/motion/executor.py
+# Run the local gate for a branch
+python -m pre_commit run check-file-length --hook-stage pre-push --from-ref origin/main --to-ref HEAD
 ```
 
-**Justification required** in commit message for adding exceptions.
+Exit code 0 means pass, including advisory warnings. Exit code 1 means a file
+exceeds 800 lines or the input/diff cannot be read. `SOFT_LIMIT` and `HARD_LIMIT`
+in the shared script are the sole threshold definitions. The hook enforces
+this policy locally without an opt-in environment variable. CI emits GitHub
+warning/error annotations. Split cohesive responsibilities when necessary;
+file length is a maintenance signal, not a CPU or memory measurement.
 
 ## Legacy Imports Guard
 
@@ -126,7 +123,7 @@ See [docs/modules/voice.md](apps/voice.md#deprecated--legacy-files) for full mig
 3. Update imports to use refactored modules
 4. Re-run the guard to verify fix
 
-### Guard fails with "file exceeds 600 lines"
+### Guard fails with "file exceeds 800 lines"
 
 1. Split the file into smaller, focused modules
 2. Follow the pattern from PR-2 (handlers, playout, etc.)
@@ -142,10 +139,9 @@ If a guard reports a false positive:
 
 ## CI Integration
 
-The guards run in CI via pre-commit hooks. PRs will fail if:
-- New files exceed 600 lines
+Quality Guard invokes the shared size checker with the PR base/head revisions. The legacy-import hook remains separate. PRs fail if:
+- Changed Python files exceed 800 lines
 - Legacy imports are detected
-- Known exceptions regress (grow larger)
 
 ## Questions?
 

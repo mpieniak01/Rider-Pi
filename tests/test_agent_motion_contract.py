@@ -218,6 +218,7 @@ def http_client(operator, monkeypatch):
     agent_control_api.register(app)
     app.add_url_rule('/api/control', 'control', control_api.api_control, methods=['POST'])
     app.add_url_rule('/api/stop', 'stop', control_api.api_stop, methods=['POST'])
+    app.add_url_rule('/api/safety', 'safety', control_api.api_safety, methods=['GET', 'POST'])
     return app.test_client(), instance, published
 
 
@@ -261,3 +262,42 @@ def test_agent_state_and_stop_use_existing_safety_contract(http_client):
     stop = client.post('/api/stop', json={'source': 'agent', 'execution_context': 'agent'}, headers=accept)
     assert stop.status_code == 200 and stop.json['meta']['contract_id'] == 'rider.safety'
     assert published[-1]['source'] == 'agent' and instance.gate.state == 'DISARMED'
+
+
+@pytest.mark.parametrize('action', ['stop', 'disarm'])
+@pytest.mark.parametrize('armed', [False, True])
+@pytest.mark.parametrize('configured', [False, True])
+def test_agent_public_safety_stop_works_without_actuator_authorization(
+    http_client, monkeypatch, action, armed, configured
+):
+    client, instance, published = http_client
+    if not configured:
+        monkeypatch.delenv('RIDER_AGENT_TOKEN')
+    if not armed:
+        instance.apply({'action': 'disarm'})
+    before = len(instance.adapter.calls)
+    result = client.post(
+        '/api/safety',
+        json={'action': action, 'source': 'agent', 'execution_context': 'agent'},
+        headers={'Accept': 'application/vnd.rider.api+json;version=1'},
+    )
+    assert result.status_code == 200 and result.json['ok']
+    assert result.json['operation']['confirmed'] is True
+    assert result.json['operation']['actuation'] is False
+    assert instance.gate.state == 'DISARMED'
+    assert published[-1]['source'] == published[-1]['execution_context'] == 'agent'
+    assert published[-1]['action'] == action
+    assert all(call[0] == 'stop' for call in instance.adapter.calls[before:])
+
+
+@pytest.mark.parametrize('action', ['move', 'arm', 'height', 'balance'])
+def test_public_safety_exception_does_not_allow_agent_actuators(http_client, action):
+    client, instance, published = http_client
+    before = list(instance.adapter.calls)
+    result = client.post(
+        '/api/control',
+        json=command(instance, action, source='agent', execution_context='agent', height=95, enabled=True),
+    )
+    assert result.status_code == 400 and result.json['error'] == 'agent_private_endpoint_required'
+    assert not published and instance.adapter.calls == before
+    assert instance.gate.state == 'ARMED'

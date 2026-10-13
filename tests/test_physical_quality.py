@@ -177,7 +177,7 @@ def test_invalid_current_goal_stops_existing_motion(executor):
     assert instance.controller.stopped
 
 
-@pytest.mark.parametrize("fields", [{"vx": float("nan")}, {"ts": 999}])
+@pytest.mark.parametrize("fields", [{"vx": float("nan")}])
 def test_invalid_new_intent_closes_previous_pending_ack(executor, fields):
     instance, _ = executor
     arm(instance)

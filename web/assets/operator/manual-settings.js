@@ -26,7 +26,7 @@ export class ManualSettings {
     }
     document.getElementById('manual-settings-save')?.addEventListener('click',()=>this.save().catch(error=>this.reportError(error)));
     this.poller=poll(()=>this.refresh(),{interval:1000,onError:error=>{
-      this.state=null;this.paint();this.safety.render();this.reportError(error);
+      this.paint();this.safety.render();this.reportError(error);
     }});
     window.addEventListener('pagehide',()=>this.poller.stop());
     window.addEventListener('dashboard:langchange',()=>this.paint());
@@ -46,11 +46,12 @@ export class ManualSettings {
       turn_deceleration:['Zmniejszanie siły','Magnitude decrease']};
     return tr(...names[key])+' ('+(this.descriptor(key)?.display_unit || '—')+')';
   }
+  commandReady(){return !this.busy && !this.dirty() && settingsValid(this.state,this.state?.observed_at) && !this.validation().length;}
   ready(){return !this.busy && !this.dirty() && settingsValid(this.state,nowSeconds()) && !this.validation().length;}
   editable(){return settingsValid(this.state,nowSeconds()) && ['DISARMED','ARMED'].includes(this.safety.state?.state)
     && !this.busy;}
   pulse(direction){
-    if(!this.ready())throw new Error('manual_settings_unconfirmed');
+    if(!this.commandReady())throw new Error('manual_settings_unconfirmed');
     return settingsPulse(this.state,direction);
   }
   edit(callback){
@@ -134,7 +135,7 @@ export class ManualSettings {
       }
       this.paint();this.safety.render();return this.state;
     }catch(error){
-      this.state=null;this.paint();this.safety.render();throw error;
+      this.paint();this.safety.render();throw error;
     }
   }
   effective(){

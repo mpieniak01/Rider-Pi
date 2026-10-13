@@ -8,7 +8,7 @@ from flask import Flask
 from apps.compute.client import ComputeError
 from common.service_catalog import DEFAULT_REGISTRY, task_units
 from services import compute_config, compute_operations
-from services.api_core import compute_api
+from services.api_core import compute_api, http_contract, rider_routes
 from services.core.features import FeatureManager, NullPublisher
 
 
@@ -27,6 +27,8 @@ def configured():
 
 def app():
     app = Flask(__name__)
+    http_contract.install(app, after_request=True)
+    rider_routes.register_compute(app)
     app.add_url_rule("/config", view_func=compute_api.config_handler, methods=["GET", "POST", "OPTIONS"])
     app.add_url_rule("/status", view_func=compute_api.status_handler)
     app.add_url_rule("/tasks/<task>", view_func=compute_api.task_handler, methods=["POST"])
@@ -162,6 +164,159 @@ def test_config_api_and_cli_have_same_revision_and_no_secret():
         result = client.post("/config", json={"executor_id": None, "revision": selected["revision"]})
         assert result.status_code == 200 and result.json["selected_executor"] is None
         assert "fixture-only" not in result.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("executor_id", [None, "venom"])
+def test_config_envelope_confirms_the_actual_persisted_selection(executor_id):
+    selected = configured()
+    headers = {"Accept": http_contract.MEDIA_TYPE + ";version=1"}
+    with app().test_client() as client:
+        response = client.post(
+            "/api/compute/config", json={"executor_id": executor_id, "revision": selected["revision"]}, headers=headers
+        )
+        row = response.get_json()
+        assert response.status_code == 200
+        assert row["ok"] and row["error"] is None
+        assert row["data"] == compute_config.snapshot()
+        assert row["data"]["selected_executor"] == executor_id
+        assert row["data"]["persisted"] is True
+        assert row["meta"]["contract_id"] == "rider.compute"
+        assert row["operation"]["status"] == "executed"
+        assert row["operation"]["confirmed"] is True
+        assert row["operation"]["ack_kind"] == "configuration_persisted"
+        assert row["operation"]["actuation"] is False
+        observed = client.get("/api/compute/config", headers=headers).get_json()
+        assert observed["data"] == row["data"] and observed["operation"] is None
+        assert "fixture-only" not in response.get_data(as_text=True)
+
+
+def test_config_envelope_preserves_conflict_and_persistence_failure(monkeypatch):
+    selected = configured()
+    headers = {"Accept": http_contract.MEDIA_TYPE + ";version=1"}
+    with app().test_client() as client:
+        response = client.post("/api/compute/config", json={"executor_id": None, "revision": 0}, headers=headers)
+        assert response.status_code == 409
+        assert response.get_json()["error"]["code"] == "compute_configuration_conflict"
+        assert not response.get_json()["operation"]["confirmed"]
+
+        def disk_failure(*_args):
+            raise OSError("fixture disk failure")
+
+        monkeypatch.setattr(compute_config, "_write", disk_failure)
+        response = client.post(
+            "/api/compute/config", json={"executor_id": None, "revision": selected["revision"]}, headers=headers
+        )
+        assert response.status_code == 503
+        assert response.get_json()["error"]["code"] == "compute_persistence_failed"
+        assert not response.get_json()["operation"]["confirmed"]
+        assert compute_config.snapshot() == selected
+
+
+@pytest.mark.parametrize("data,status", [({"persisted": False}, 502), ({"persisted": True, "ok": False}, 200)])
+def test_config_envelope_requires_real_successful_persistence(monkeypatch, data, status):
+    monkeypatch.setattr(compute_config, "select", lambda *_args: data)
+    with app().test_client() as client:
+        response = client.post(
+            "/api/compute/config",
+            json={"executor_id": None, "revision": 0},
+            headers={"Accept": http_contract.MEDIA_TYPE + ";version=1"},
+        )
+        assert response.status_code == status
+        row = response.get_json()
+        assert not row["ok"] and not row["operation"]["confirmed"]
+
+
+def test_task_envelope_confirms_a_completed_job_without_changing_legacy_data(monkeypatch):
+    configured()
+    calls = []
+    result = {"protocol_version": 1, "job_id": "fixture_job", "state": "succeeded", "data": {"text": "reply"}}
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def submit(self, *_args, **_kwargs):
+            return "fixture_job"
+
+        def result(self, *_args, **_kwargs):
+            return result
+
+        def close(self):
+            calls.append("closed")
+
+    monkeypatch.setattr(
+        compute_api,
+        "execute",
+        lambda task, data, content_type, params: compute_operations.execute(
+            task, data, content_type, params, client_factory=Client
+        ),
+    )
+    with app().test_client() as client:
+        legacy = client.post("/api/compute/tasks/text.respond", data=b"hello", content_type="text/plain")
+        assert legacy.status_code == 200 and legacy.get_json() == result
+        response = client.post(
+            "/api/compute/tasks/text.respond",
+            data=b"hello",
+            content_type="text/plain",
+            headers={"Accept": http_contract.MEDIA_TYPE + ";version=1"},
+        )
+        row = response.get_json()
+        assert response.status_code == 200 and row["ok"]
+        assert row["data"] == result and row["error"] is None
+        assert row["operation"]["status"] == "executed"
+        assert row["operation"]["confirmed"] is True
+        assert row["operation"]["ack_kind"] == "computation_completed"
+        assert row["operation"]["target"] == "text.respond"
+        assert row["operation"]["actuation"] is False
+        assert calls == ["closed", "closed"]
+
+
+@pytest.mark.parametrize("status", [400, 409, 429, 503])
+def test_task_envelope_preserves_compute_error_status_and_code(monkeypatch, status):
+    def failed(*_args):
+        raise ComputeError("fixture_compute_error", status)
+
+    monkeypatch.setattr(compute_api, "execute", failed)
+    with app().test_client() as client:
+        response = client.post(
+            "/api/compute/tasks/text.respond",
+            data=b"hello",
+            content_type="text/plain",
+            headers={"Accept": http_contract.MEDIA_TYPE + ";version=1"},
+        )
+        row = response.get_json()
+        assert response.status_code == status
+        assert row["error"]["code"] == "fixture_compute_error"
+        assert not row["ok"] and not row["operation"]["confirmed"]
+
+
+@pytest.mark.parametrize("state", ["running", "failed", "unknown"])
+def test_task_envelope_does_not_confirm_unfinished_or_unproven_jobs(monkeypatch, state):
+    monkeypatch.setattr(compute_api, "execute", lambda *_args: ({"state": state}, None))
+    with app().test_client() as client:
+        response = client.post(
+            "/api/compute/tasks/text.respond",
+            data=b"hello",
+            content_type="text/plain",
+            headers={"Accept": http_contract.MEDIA_TYPE + ";version=1"},
+        )
+        row = response.get_json()
+        assert response.status_code == 502
+        assert not row["ok"] and not row["operation"]["confirmed"]
+
+
+def test_negotiated_compute_wav_stays_binary_and_never_plays_audio(monkeypatch):
+    output = b"RIFFfixture"
+    monkeypatch.setattr(compute_api, "execute", lambda *_args: ({"state": "succeeded"}, output))
+    with app().test_client() as client:
+        response = client.post(
+            "/api/compute/tasks/audio.synthesize",
+            data=b"hello",
+            content_type="text/plain",
+            headers={"Accept": http_contract.MEDIA_TYPE + ";version=1"},
+        )
+        assert response.status_code == 200 and response.mimetype == "audio/wav"
+        assert response.data == output and not response.is_json
 
 
 def test_panel_task_and_chat_share_client_close_no_capture_or_play(monkeypatch):

@@ -52,9 +52,8 @@ def read_status(max_age_s: float = 3.0) -> dict:
             raise ValueError("unsupported contract")
         observed = float(state["observed_at"])
         age = time.time() - observed
-        if not math.isfinite(observed) or age < -0.1 or age > max_age_s:
-            unknown.update(observed_at=observed, error="executor_stale")
-            return unknown
+        if not math.isfinite(observed) or age < -0.1:
+            raise ValueError("invalid observation time")
         if state.get("state") not in {"DISARMED", "ARMED", "ESTOP"}:
             raise ValueError("unknown executor state")
         result = dict(state)
@@ -80,8 +79,14 @@ def read_status(max_age_s: float = 3.0) -> dict:
             result["reason"] = "consent_expired_since_snapshot"
         result["read_only"] = not result["can_move"]
         context = state.get("execution_context", "panel")
-        result["panel_motion_enabled"] = result["can_move"] and context == "panel"
-        result["test_motion_enabled"] = result["can_move"] and context == "test"
+        result["panel_motion_enabled"] = state.get("state") == "ARMED" and context == "panel"
+        result["test_motion_enabled"] = state.get("state") == "ARMED" and context == "test"
+        if age > max_age_s:
+            result.update(stale=True, ready=False, can_move=False, read_only=True, error="executor_stale")
+        authorization = dict(state.get("authorization") or {})
+        if authorization:
+            authorization["confirmed"] = age <= max_age_s
+            result["authorization"] = authorization
         return result
     except (OSError, ValueError, KeyError, TypeError, OverflowError):
         return unknown

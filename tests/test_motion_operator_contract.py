@@ -216,3 +216,85 @@ def test_http_operator_arm_envelope_reaches_executor_without_injected_lease(exec
     assert "lease_s" not in normalized
     assert instance.apply(normalized)["status"] == "executed"
     assert instance.gate.arming_mode == "operator"
+
+
+def operator_arm(instance):
+    return instance.apply(
+        command(
+            instance,
+            "arm",
+            owner="manual",
+            operator_consent=True,
+            operator_plan="Isolated operator session",
+            execution_context="panel",
+            arming_mode="operator",
+        )
+    )
+
+
+def test_sensor_gap_stops_goal_but_preserves_operator_authorization(executor):
+    instance, clock = executor
+    assert operator_arm(instance)["status"] == "executed"
+    generation = instance.gate.generation
+    old = command(instance, request_id="old")
+    instance.apply(old)
+    instance.tick(0.02)
+    clock.now += 0.01
+    instance.samples.observe("yaw", None)
+    instance.tick(0.02)
+    state = instance.snapshot()
+    assert state["state"] == "ARMED" and state["generation"] == generation
+    assert state["authorization"]["authority"] == "motion-executor"
+    assert state["panel_motion_enabled"] and not state["test_motion_enabled"]
+    assert not state["execution"]["ready"] and state["execution"]["inhibit"]
+    assert instance.controller.stopped and not instance.controller.deadline
+    assert state["capabilities"]["move"]["available"]
+    clock.now += 0.01
+    instance.poll_sensors()
+    assert instance.apply(old)["status"] == "rejected"
+    assert instance.controller.stopped
+    assert instance.apply(command(instance, request_id="new"))["status"] == "accepted"
+
+
+def test_stale_projection_preserves_permission_without_claiming_freshness(executor, monkeypatch):
+    instance, clock = executor
+    operator_arm(instance)
+    write_status(instance.snapshot())
+    monkeypatch.setattr("apps.safety.state.time.time", lambda: clock.now + 4)
+    state = read_status()
+    assert state["state"] == "ARMED" and state["panel_motion_enabled"]
+    assert state["stale"] and not state["can_move"]
+    assert not state["authorization"]["confirmed"]
+    assert state["observed_at"] == clock.now
+
+
+def test_delayed_pulse_does_not_disarm_or_cancel_a_newer_goal(executor):
+    instance, clock = executor
+    operator_arm(instance)
+    instance.apply(command(instance, request_id="current"))
+    generation = instance.gate.generation
+    rejected = instance.apply(command(instance, request_id="delayed", ts=clock.now - 1))
+    assert rejected["reason"] == "expired_command"
+    assert instance.pending["request_id"] == "current"
+    assert instance.gate.state == "ARMED" and instance.gate.generation == generation
+
+
+def test_operator_arm_is_idempotent_and_does_not_actuate(executor):
+    instance, _ = executor
+    operator_arm(instance)
+    before = list(instance.adapter.calls)
+    generation = instance.gate.generation
+    assert operator_arm(instance)["status"] == "executed"
+    assert instance.gate.generation == generation and instance.adapter.calls == before
+
+
+def test_restart_never_restores_operator_permission(executor):
+    instance, clock = executor
+    operator_arm(instance)
+    replacement = MotionExecutor(
+        gate=MotionGate(clock=clock, wall_clock=clock, blocked=lambda: False),
+        adapter=FakeAdapter(),
+        status_writer=lambda _: None,
+    )
+    assert replacement.gate.state == "DISARMED"
+    assert replacement.gate.generation != instance.gate.generation

@@ -103,10 +103,12 @@ def test_stop_does_not_need_arm_or_metadata(monkeypatch):
     assert result["physical_completion"] == "unverified"
 
 
-def test_disarmed_refusal_happens_before_bus(monkeypatch):
-    monkeypatch.setattr(safety, "read_status", lambda: {"state": "DISARMED", "contract_version": 1})
-    monkeypatch.setattr(safety, "BusPub", lambda **kwargs: pytest.fail("BUS must not open"))
-    assert safety.publish_command(envelope())["error"] == "motion_not_armed"
+def test_gateway_forwards_valid_intent_even_without_current_observation(monkeypatch):
+    observation = {"state": "UNKNOWN", "contract_version": 1, "stale": True}
+    sent = _fake_publisher(monkeypatch, observation)
+    result = safety.publish_command(envelope(), timeout_s=0)
+    assert sent and sent[0]["generation"] == "g"
+    assert result["pending"]  # Only the executor can confirm permission and actuation.
 
 
 def test_old_successful_ack_cannot_confirm_new_stop(monkeypatch):

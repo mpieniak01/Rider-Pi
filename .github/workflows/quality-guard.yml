@@ -10,7 +10,6 @@ jobs:
 
     # ✅ domyślne wartości; później podmieniamy przez $GITHUB_ENV
     env:
-      ALLOW_OVERSIZE: '0'
       ALLOW_DELETE: '0'
       NOSTUB_STRICT: '0'
       RUN_SCENARIO_SUITE: '0'
@@ -48,31 +47,18 @@ jobs:
           set -euo pipefail
           labels="$(jq -r '.pull_request.labels[].name // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
           echo "labels: ${labels:-<none>}"
-          case "$labels" in *"allow-oversize"*) echo "ALLOW_OVERSIZE=1" >>"$GITHUB_ENV";; esac
           case "$labels" in *"allow-delete"*)  echo "ALLOW_DELETE=1"  >>"$GITHUB_ENV";; esac
           case "$labels" in *"nostub-strict"*) echo "NOSTUB_STRICT=1" >>"$GITHUB_ENV";; esac
           case "$labels" in *"scenario-suite"*) echo "RUN_SCENARIO_SUITE=1" >>"$GITHUB_ENV";; esac
 
-      # ---- 600 linii / plik (aktywny gdy ALLOW_OVERSIZE=0) ----
-      - name: Enforce max 600 lines per changed Python file
-        if: ${{ env.ALLOW_OVERSIZE == '0' }}
+      # Shared local/CI policy: warning >600; hard failure >800.
+      - name: Python file size (600 warning / 800 hard limit)
         shell: bash
         run: |
           set -euo pipefail
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          CHANGED="$(git diff --name-only --diff-filter=ACMR "$base" "$head" -- '*.py' || true)"
-          [ -z "$CHANGED" ] && exit 0
-          MAX=600; FAIL=0
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            LINES="$(wc -l < "$f")"
-            if [ "$LINES" -gt "$MAX" ]; then
-              echo "::error file=$f,line=1::File has $LINES lines (max $MAX). Split it."
-              FAIL=1
-            fi
-          done <<< "$CHANGED"
-          exit $FAIL
+          python3 scripts/dev_check-file-length.py \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"
 
       # ---- NO-STUB (aktywny gdy ALLOW_DELETE=0) ----
       - name: NO-STUB (warn-only by default)

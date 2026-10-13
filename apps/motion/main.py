@@ -233,7 +233,10 @@ class MotionController:
         if not self.deadline:
             return False
         if not self.limits.valid or not finite(dt) or not 0 < dt <= self.limits.max_dt_s:
-            self.gate.disarm("control_timing_invalid" if self.limits.valid else "invalid_motion_limits")
+            if self.limits.valid:
+                self.gate.cancel_motion("control_timing_invalid")
+            else:
+                self.gate.disarm("invalid_motion_limits")
             self.stop()
             return False
         remaining = max(0.0, self.deadline - self.gate.clock())

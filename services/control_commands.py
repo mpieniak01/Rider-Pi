@@ -9,10 +9,10 @@ from common.motion_commands import normalize_control  # public re-export
 from services.safety_contract import publish_command
 
 
-def submit_control(data: dict[str, Any], *, allow_agent=False, allow_agent_stop=False) -> tuple[dict[str, Any], int]:
+def submit_control(data: dict[str, Any], *, allow_agent=False) -> tuple[dict[str, Any], int]:
     try:
         normalized = normalize_control(data)
-        if is_agent(normalized) and not (allow_agent or allow_agent_stop and normalized.get('action') == 'stop'):
+        if is_agent(normalized) and not (allow_agent or normalized.get('action') in {'stop', 'disarm'}):
             raise ValueError('agent_private_endpoint_required')
         result = publish_command(normalized)
     except (TypeError, ValueError, OverflowError) as exc:

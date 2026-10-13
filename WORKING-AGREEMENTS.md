@@ -26,7 +26,7 @@
 - run long-lived daemons outside `systemd`,
 - send telemetry/exfiltration.
 
-**File size limit:** ≤ 600 lines (soft; if exceeded – split into modules).
+**Python file size:** up to 600 lines passes silently; 601–800 produces an advisory warning; more than 800 fails the gate. Split by cohesive responsibilities, not solely to satisfy the advisory threshold.
 
 ---
 

@@ -1,5 +1,6 @@
 """Compute wire checks use scripted transport and an isolated loopback server."""
 
+import http.client
 import io
 import json
 import threading
@@ -86,6 +87,93 @@ class Transport:
 
     def close(self):
         self.closed = True
+
+
+class PreparationTransport(Transport):
+    def __init__(self, clock, *, delay=4.0, session_delay=0.0):
+        super().__init__()
+        self.clock, self.delay, self.session_delay = clock, delay, session_delay
+
+    def request(self, method, path, headers, body, timeout):
+        if path in {'/capabilities', '/sessions'}:
+            self.clock.sleep(self.session_delay)
+        if method == 'POST' and path == '/jobs':
+            if self.delay > timeout:
+                self.calls.append((method, path, headers, body, timeout))
+                self.clock.sleep(timeout)
+                raise ComputeError('compute_transport_unavailable')
+            self.clock.sleep(self.delay)
+        return super().request(method, path, headers, body, timeout)
+
+
+def test_voice_asr_submit_allows_bounded_preparation_without_renewing_ttl():
+    clock = Clock()
+    transport = PreparationTransport(clock, session_delay=1.0)
+    with ComputeClient(
+        'http://fixture.invalid',
+        'test',
+        'test-token',
+        'boot1',
+        client_id='voice',
+        transport=transport,
+        clock=clock,
+        wall_clock=clock,
+        sleeper=clock.sleep,
+    ) as client:
+        job = submit(client, task='audio.transcribe')
+        posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
+        assert len(posted) == 1 and posted[0][4] == 15.0
+        assert json.loads(posted[0][2]['X-Rider-Job'])['ttl_ms'] == 28000
+        assert client._jobs[job].deadline == 1030.0
+        assert client.result(job)['state'] == 'succeeded'
+        assert all(call[4] <= 2 for call in transport.calls if call[:2] != ('POST', '/jobs'))
+
+
+def test_voice_asr_preparation_cannot_exceed_remaining_ttl_or_retry():
+    clock = Clock()
+    transport = PreparationTransport(clock, session_delay=1.0)
+    with ComputeClient(
+        'http://fixture.invalid',
+        'test',
+        'test-token',
+        'boot1',
+        client_id='voice',
+        transport=transport,
+        clock=clock,
+        wall_clock=clock,
+        sleeper=clock.sleep,
+    ) as client:
+        with pytest.raises(ComputeError, match='compute_transport_unavailable'):
+            submit(client, task='audio.transcribe', ttl_ms=5000)
+        posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
+        assert len(posted) == 1 and posted[0][4] == 3.0
+        assert json.loads(posted[0][2]['X-Rider-Job'])['ttl_ms'] == 3000
+        assert clock() == 1005.0
+        assert len([call for call in transport.calls if call[0] == 'DELETE']) == 1
+        assert not client._jobs
+
+
+@pytest.mark.parametrize(
+    'client_id,task', [('panel', 'audio.transcribe'), ('voice', 'text.respond'), ('voice', 'audio.synthesize')]
+)
+def test_other_compute_submissions_keep_the_short_timeout(client_id, task):
+    clock = Clock()
+    transport = PreparationTransport(clock, delay=3.0)
+    with ComputeClient(
+        'http://fixture.invalid',
+        'test',
+        'test-token',
+        'boot1',
+        client_id=client_id,
+        transport=transport,
+        clock=clock,
+        wall_clock=clock,
+        sleeper=clock.sleep,
+    ) as client:
+        with pytest.raises(ComputeError, match='compute_transport_unavailable'):
+            submit(client, task=task)
+        posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
+        assert len(posted) == 1 and posted[0][4] == 2.0
 
 
 @pytest.fixture
@@ -302,6 +390,108 @@ def test_http_uses_one_request_no_redirect_following():
         server.shutdown()
         server.server_close()
         thread.join(timeout=1)
+
+
+def test_http_replaces_server_closed_idle_connection_before_post(monkeypatch):
+    clock = Clock()
+    received, attempts = [], []
+    closed = threading.Event()
+    original = http.client.HTTPConnection.request
+
+    def record_attempt(connection, method, path, *args, **kwargs):
+        attempts.append((method, path))
+        return original(connection, method, path, *args, **kwargs)
+
+    monkeypatch.setattr(http.client.HTTPConnection, 'request', record_attempt)
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def respond(self):
+            received.append((self.command, self.path))
+            if self.command == 'POST':
+                self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', '2')
+            self.end_headers()
+            self.wfile.write(b'{}')
+            # Like an idle timeout: close without a Connection: close header.
+            self.close_connection = True
+
+        do_GET = do_POST = respond
+
+        def log_message(self, *_):
+            pass
+
+    class Server(ThreadingHTTPServer):
+        def shutdown_request(self, connection):
+            super().shutdown_request(connection)
+            closed.set()
+
+    server = Server(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    transport = HTTPTransport(f'http://127.0.0.1:{server.server_port}', clock=clock)
+    try:
+        assert transport.request('GET', '/capabilities', {}, b'', 1)[0] == 200
+        assert closed.wait(timeout=1)
+        previous = transport.connection
+        assert previous.sock is not None  # Peer closed; the client still retains the socket.
+        clock.sleep(5.1)  # Capture delay, no real sleep.
+        assert transport.request('POST', '/sessions', {}, b'{}', 1)[0] == 200
+        assert transport.connection is not previous
+        expected = [('GET', '/api/v1/rider/compute/capabilities'), ('POST', '/api/v1/rider/compute/sessions')]
+        assert attempts == expected and received == expected
+    finally:
+        transport.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=1)
+
+
+def test_http_short_polling_reuses_connection_and_idle_starts_after_response(monkeypatch):
+    clock = Clock()
+    connections = []
+
+    class Response:
+        status = 200
+
+        def read(self, _limit):
+            clock.sleep(1.0)
+            return b'{}'
+
+        def getheaders(self):
+            return [('Content-Type', 'application/json')]
+
+    class Connection:
+        sock = None
+
+        def __init__(self, *_args, **_kwargs):
+            self.closed = False
+            connections.append(self)
+
+        def request(self, *_args, **_kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(http.client, 'HTTPConnection', Connection)
+    transport = HTTPTransport('http://127.0.0.1', clock=clock)
+    try:
+        transport.request('GET', '/capabilities', {}, b'', 2)
+        clock.sleep(1.5)
+        transport.request('POST', '/sessions', {}, b'{}', 2)
+        assert len(connections) == 1 and not connections[0].closed
+        clock.sleep(2.0)
+        transport.request('GET', '/capabilities', {}, b'', 2)
+        assert len(connections) == 2 and connections[0].closed
+    finally:
+        transport.close()
 
 
 def test_invalid_audio_does_not_load_any_engine():

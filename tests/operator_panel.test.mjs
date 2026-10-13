@@ -97,10 +97,11 @@ test('explicit STOP immediately removes authority before a response, with no imp
   await assert.rejects(f.panel.send('move', { vx: .1, yaw: 0, duration: .1 }));
   assert.equal(f.calls.filter(call => call.method === 'POST').length, 1);
 });
-test('hardware fault prevents ARM although the state is known DISARMED', async () => {
+test('ARM is an explicit request even when execution availability is unconfirmed', async () => {
   const f = await fixture({ ...disarmed(), hardware_ready: false });
-  assert.equal(f.elements.get('global-motion-toggle').disabled, true); await f.panel.toggleMotion();
-  assert.equal(f.calls.filter(call => call.method === 'POST').length, 0);
+  assert.equal(f.elements.get('global-motion-toggle').disabled, false); await f.panel.toggleMotion();
+  assert.equal(f.calls.filter(call => call.method === 'POST').length, 1);
+  assert.equal(f.panel.state.state, 'DISARMED', 'HTTP acceptance is not executor permission');
 });
 
 test('out of range, blank and nonfinite pulse values never produce an HTTP mutation', async () => {
@@ -569,4 +570,27 @@ test('release can neutralize a held gesture after a lost state without renewing 
   const write=f.calls.find(call=>call.method==='POST').body;
   assert.equal(write.ts,clock.now);assert.equal(write.generation,'fixture-generation');
   assert.equal(write.mode,'release');assert.equal(write.ttl_ms,500);assert.equal(write.seq,5);
+});
+
+
+test('operator ARM remains visible and directions available after observation expiry', async () => {
+  const state = { ...armed(), arming_mode: 'operator', execution_context: 'panel', lease_remaining_s: null };
+  const f = await fixture(state);
+  f.panel.clockObserved -= 10;
+  f.setState({ ...state, stale: true, ready: false, can_move: false, observed_at: state.observed_at - 10 });
+  assert.equal(f.panel.can(), true);
+  assert.match(f.elements.get('global-motion-toggle').textContent, /^Robot uzbrojony/);
+  assert.doesNotMatch(f.elements.get('global-motion-toggle').textContent, /rozbrojony/);
+  await f.panel.send('move', { vx: .1, yaw: 0, duration: .1 });
+  assert.equal(f.calls.filter(call => call.method === 'POST').at(-1).body.action, 'move');
+});
+
+test('missing observation retains permission, explicit disarm replaces it', async () => {
+  const f = await fixture({ ...armed(), arming_mode: 'operator', execution_context: 'panel' });
+  f.panel.update({ state: 'UNKNOWN', stale: true });
+  assert.equal(f.panel.can(), true);
+  assert.match(f.elements.get('global-motion-toggle').textContent, /^Robot uzbrojony/);
+  f.panel.update(disarmed());
+  assert.equal(f.panel.can(), false);
+  assert.equal(f.elements.get('global-motion-toggle').textContent, 'Robot rozbrojony');
 });
