@@ -160,3 +160,28 @@ Execute preset movement.
 - [Navigator API](navigator.md) - Autonomous navigation
 - [common/bus.py](../../common/bus.py) - Bus topic definitions
 - [Motion Module](../apps/motion.md) - Motion system documentation
+
+## Executor-owned permission and observation freshness
+
+The sole `motion-executor` UART owner is the authority for ARM, DISARMED and ESTOP.
+`authorization` describes its permission, owner, execution context, generation and
+instance; `execution` describes local readiness and an inhibition reason.
+Telemetry freshness, HTTP failures and client connectivity never imply DISARMED.
+A stale snapshot retains the last reported permission and original timestamp,
+marks `authorization.confirmed=false` and `stale=true`, and cannot claim execution readiness.
+Without any valid snapshot, permission is unknown, never implicitly disarmed.
+
+For operator panel sessions, missing sensors or a control timing interruption
+stop the current goal without revoking permission. Cancellation invalidates
+commands created before that boundary; recovery never replays the old target.
+New operator intents are still validated by the executor against permission,
+generation, sequence, timestamp/TTL, settings revision and actuator capability.
+API and emergency CLI share the same transport and never authorize from a cached GET.
+Explicit STOP/disarm, ESTOP, real actuator failures and executor shutdown retain
+their existing disarming policy. Startup always starts disarmed.
+Test context still requires independent explicit test operator consent.
+
+Manual clients keep the last reported permission visible with an observation
+warning. They do not disable direction controls merely because a GET is slow;
+they forward fresh bounded intents and display the robot's ACK or refusal.
+Permission changes are recorded once in the `motion.permission` log.

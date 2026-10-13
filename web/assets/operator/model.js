@@ -105,6 +105,15 @@ export function safetyKnown(safety, now = nowSeconds()) {
     && ['DISARMED', 'ARMED', 'ESTOP'].includes(safety.state)
     && typeof safety.generation === 'string' && Boolean(safety.generation);
 }
+// Permission is an executor decision, not an expiring telemetry sample.
+export function operatorAuthorized(safety, owner = 'manual', action = 'move') {
+  const capability = safety?.capabilities?.[action];
+  return safety?.contract_version === 1 && safety.state === 'ARMED'
+    && safety.arming_mode === 'operator' && safety.execution_context === 'panel'
+    && safety.owner === owner && owner === 'manual'
+    && typeof safety.generation === 'string' && Boolean(safety.generation)
+    && capability?.available === true && (['height', 'balance'].includes(action) || capability.stop_verified === true);
+}
 export function authorized(safety, owner, action = 'move', now = nowSeconds()) {
   const capability = safety?.capabilities?.[action];
   const age = ageOf(safety, now);

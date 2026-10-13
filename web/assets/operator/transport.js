@@ -30,7 +30,8 @@ function rememberContract(decoded, response, receivedAt) {
   contractProof = valid ? { receivedAt } : null;
 }
 // Complete contract negotiation before creating a 500 ms command envelope.
-export async function prepareMutation() {
+export async function prepareMutation({ control = false } = {}) {
+  if (control && contractProof) return;
   const age = Date.now() / 1000 - (contractProof?.receivedAt ?? 0);
   if (!contractProof || age < 0 || age > 5) await request('/api/logic/catalog', { force: true });
   if (!contractProof) throw Object.assign(new Error('Unsupported Rider contract; read only'), { status: 409 });
@@ -58,7 +59,7 @@ async function performRequest(path, { method = 'GET', body, timeout = 6000, befo
   const stop = path === '/api/control' && body?.action === 'stop'
     || path === '/api/safety' && ['disarm', 'estop'].includes(body?.action);
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !stop) {
-    await prepareMutation();
+    await prepareMutation({ control: path === '/api/control' || path === '/api/safety' });
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
