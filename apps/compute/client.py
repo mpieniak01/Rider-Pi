@@ -153,11 +153,17 @@ class ComputeClient:
         self._delivered: dict[str, int] = {}
         self._closed = False
 
-    def _request(self, method: str, path: str, body: bytes = b'', headers=None, timeout: float = 2.0):
+    def _request(self, method: str, path: str, body: bytes = b'', headers=None, timeout: float = 2.0, *, task=None):
         if self._closed:
             raise ComputeError('compute_client_closed')
+        # Voice admission prepares checked ASR before returning the job receipt.
+        limit = (
+            15.0
+            if self.client_id == 'voice' and method == 'POST' and path == '/jobs' and task == 'audio.transcribe'
+            else 2.0
+        )
         status, response_headers, data = self._transport.request(
-            method, path, {**self._headers, **(headers or {})}, body, max(0.01, min(timeout, 2.0))
+            method, path, {**self._headers, **(headers or {})}, body, max(0.01, min(timeout, limit))
         )
         if len(data) > MAX_BYTES:
             raise ComputeError('compute_response_too_large')
@@ -172,8 +178,10 @@ class ComputeClient:
             pass
         raise ComputeError(code, status)
 
-    def _json(self, method: str, path: str, body: bytes = b'', headers=None, timeout: float = 2.0) -> dict:
-        response_headers, data = self._request(method, path, body, headers, timeout)
+    def _json(
+        self, method: str, path: str, body: bytes = b'', headers=None, timeout: float = 2.0, *, task=None
+    ) -> dict:
+        response_headers, data = self._request(method, path, body, headers, timeout, task=task)
         mime = next((v for k, v in response_headers.items() if k.lower() == 'content-type'), '')
         if mime.split(';')[0].strip().lower() != 'application/json':
             raise ComputeError('invalid_compute_response_type')
@@ -334,7 +342,17 @@ class ComputeClient:
         self._jobs[job_id] = pending
         self._submitted[stream] = sequence
         try:
-            observation = self._json('POST', '/jobs', data, {'Content-Type': content_type, 'X-Rider-Job': encoded})
+            request_timeout = pending.deadline - self._clock()
+            if request_timeout < 0.01:
+                raise ComputeError('compute_deadline_expired', 408)
+            observation = self._json(
+                'POST',
+                '/jobs',
+                data,
+                {'Content-Type': content_type, 'X-Rider-Job': encoded},
+                timeout=request_timeout,
+                task=task,
+            )
             self._validate(pending, observation)
         except Exception:
             with contextlib.suppress(ComputeError):

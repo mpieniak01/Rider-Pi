@@ -88,6 +88,93 @@ class Transport:
         self.closed = True
 
 
+class PreparationTransport(Transport):
+    def __init__(self, clock, *, delay=4.0, session_delay=0.0):
+        super().__init__()
+        self.clock, self.delay, self.session_delay = clock, delay, session_delay
+
+    def request(self, method, path, headers, body, timeout):
+        if path in {'/capabilities', '/sessions'}:
+            self.clock.sleep(self.session_delay)
+        if method == 'POST' and path == '/jobs':
+            if self.delay > timeout:
+                self.calls.append((method, path, headers, body, timeout))
+                self.clock.sleep(timeout)
+                raise ComputeError('compute_transport_unavailable')
+            self.clock.sleep(self.delay)
+        return super().request(method, path, headers, body, timeout)
+
+
+def test_voice_asr_submit_allows_bounded_preparation_without_renewing_ttl():
+    clock = Clock()
+    transport = PreparationTransport(clock, session_delay=1.0)
+    with ComputeClient(
+        'http://fixture.invalid',
+        'test',
+        'test-token',
+        'boot1',
+        client_id='voice',
+        transport=transport,
+        clock=clock,
+        wall_clock=clock,
+        sleeper=clock.sleep,
+    ) as client:
+        job = submit(client, task='audio.transcribe')
+        posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
+        assert len(posted) == 1 and posted[0][4] == 15.0
+        assert json.loads(posted[0][2]['X-Rider-Job'])['ttl_ms'] == 28000
+        assert client._jobs[job].deadline == 1030.0
+        assert client.result(job)['state'] == 'succeeded'
+        assert all(call[4] <= 2 for call in transport.calls if call[:2] != ('POST', '/jobs'))
+
+
+def test_voice_asr_preparation_cannot_exceed_remaining_ttl_or_retry():
+    clock = Clock()
+    transport = PreparationTransport(clock, session_delay=1.0)
+    with ComputeClient(
+        'http://fixture.invalid',
+        'test',
+        'test-token',
+        'boot1',
+        client_id='voice',
+        transport=transport,
+        clock=clock,
+        wall_clock=clock,
+        sleeper=clock.sleep,
+    ) as client:
+        with pytest.raises(ComputeError, match='compute_transport_unavailable'):
+            submit(client, task='audio.transcribe', ttl_ms=5000)
+        posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
+        assert len(posted) == 1 and posted[0][4] == 3.0
+        assert json.loads(posted[0][2]['X-Rider-Job'])['ttl_ms'] == 3000
+        assert clock() == 1005.0
+        assert len([call for call in transport.calls if call[0] == 'DELETE']) == 1
+        assert not client._jobs
+
+
+@pytest.mark.parametrize(
+    'client_id,task', [('panel', 'audio.transcribe'), ('voice', 'text.respond'), ('voice', 'audio.synthesize')]
+)
+def test_other_compute_submissions_keep_the_short_timeout(client_id, task):
+    clock = Clock()
+    transport = PreparationTransport(clock, delay=3.0)
+    with ComputeClient(
+        'http://fixture.invalid',
+        'test',
+        'test-token',
+        'boot1',
+        client_id=client_id,
+        transport=transport,
+        clock=clock,
+        wall_clock=clock,
+        sleeper=clock.sleep,
+    ) as client:
+        with pytest.raises(ComputeError, match='compute_transport_unavailable'):
+            submit(client, task=task)
+        posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
+        assert len(posted) == 1 and posted[0][4] == 2.0
+
+
 @pytest.fixture
 def client_fixture():
     clock = Clock()
