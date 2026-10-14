@@ -133,3 +133,72 @@ def test_manual_brake_cancels_pulse_and_preserves_operator_arm(executor):
     advance(instance, clock, 0.2)
     assert instance.controller.stopped
     assert instance.gate.state == "ARMED" and instance.gate.generation == generation
+
+
+def navigation_arm(instance):
+    return instance.apply(
+        command(
+            instance,
+            "arm",
+            source="navigation",
+            owner="navigation",
+            execution_context="panel",
+            operator_consent=True,
+            operator_plan="Isolated navigation test",
+            lease_s=10.0,
+        )
+    )
+
+
+def navigation_pulse(instance, clock):
+    return command(
+        instance,
+        source="navigation",
+        execution_context="panel",
+        duration=0.15,
+        decision_deadline_monotonic=clock.now + 0.2,
+    )
+
+
+def test_navigation_pulse_end_stops_output_but_fresh_go_renews(executor):
+    instance, clock = executor
+    assert navigation_arm(instance)["status"] == "executed"
+    generation = instance.gate.generation
+    for _ in range(5):
+        assert instance.apply(navigation_pulse(instance, clock))["status"] == "accepted"
+        advance(instance, clock, 0.16)
+        assert instance.controller.stopped
+        assert instance.gate.state == "ARMED"
+        assert instance.gate.generation == generation
+    advance(instance, clock, 0.06)
+    assert instance.gate.state == "DISARMED"
+    assert instance.gate.reason == "decision_timeout"
+    assert instance.controller.stopped
+
+
+@pytest.mark.parametrize("tick_before_reply", [False, True])
+def test_navigation_expired_go_cannot_restart_after_pulse(executor, tick_before_reply):
+    instance, clock = executor
+    navigation_arm(instance)
+    assert instance.apply(navigation_pulse(instance, clock))["status"] == "accepted"
+    advance(instance, clock, 0.16)
+    late = navigation_pulse(instance, clock)
+    clock.now += 0.06
+    late.update(ts=clock.now, decision_deadline_monotonic=clock.now + 0.2)
+    if tick_before_reply:
+        instance.tick(0.02)
+    assert instance.apply(late)["status"] == "rejected"
+    assert instance.gate.state == "DISARMED"
+    assert instance.controller.stopped
+
+
+def test_navigation_stop_between_pulses_revokes_fresh_permit(executor):
+    instance, clock = executor
+    navigation_arm(instance)
+    assert instance.apply(navigation_pulse(instance, clock))["status"] == "accepted"
+    advance(instance, clock, 0.16)
+    queued = navigation_pulse(instance, clock)
+    instance.apply({"action": "stop", "source": "navigation"})
+    assert instance.controller.remote_decision_deadline is None
+    assert instance.apply(queued)["status"] == "rejected"
+    assert instance.controller.stopped

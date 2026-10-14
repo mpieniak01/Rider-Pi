@@ -367,6 +367,7 @@ class MotionExecutor:
                     return self._ack(command, "rejected", str(exc))
 
         is_actuator = isinstance(action, str) and action in ACTUATORS
+        self.controller.expire_remote_decision()
         if (
             isinstance(action, str)
             and action not in {"stop", "disarm", "estop"}
@@ -460,6 +461,7 @@ class MotionExecutor:
                 values["duration"],
                 panel_pulse=command.get("device_settings") is True,
                 mode=mode,
+                remote_decision_deadline=command.get("decision_deadline_monotonic"),
             ):
                 return self._ack(command, "rejected", "motion_disarmed")
             previous, self.pending = self.pending, None
