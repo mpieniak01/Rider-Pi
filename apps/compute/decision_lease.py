@@ -92,11 +92,14 @@ class DecisionLease:
             ):
                 self._halt("decision_not_authorized")
                 return False
-            duration = min(remaining, valid / 1000, self.config["max_motion_ms"] / 1000)
+            permit = min(remaining, valid / 1000)
+            duration = min(permit, self.config["max_motion_ms"] / 1000)
             if duration < 0.05:
                 self._halt("decision_budget_exhausted")
                 return False
-            self.deadline = now + duration
+            # Pulse length is enforced by the executor. The lease tracks freshness,
+            # so a fresh reply after a completed pulse can renew the same run.
+            self.deadline = now + permit
             self.moving = True
             try:
                 self.drive(self.config["speed"], duration)

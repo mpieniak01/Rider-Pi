@@ -132,3 +132,29 @@ def test_bus_delay_cannot_extend_decision_duration():
     with pytest.raises(ValueError, match="source"):
         decision_duration({**command, "source": "manual"}, 0.15, 10.1)
     assert decision_duration({}, 0.15, 10.1) == 0.15
+
+
+def test_fresh_reply_after_pulse_end_keeps_the_valid_navigation_run():
+    lease, now, calls = make()
+    assert lease.accept(decision(valid_for_ms=200), "f1", 1, 0)
+    assert calls[-1][2] == pytest.approx(0.15)
+    assert lease.deadline == pytest.approx(0.2)
+    now[0] = 0.16
+    assert lease.tick()
+    assert lease.accept(decision(2, valid_for_ms=200), "f2", 2, now[0])
+    assert calls[-1][2] <= 0.15
+    assert lease.deadline == pytest.approx(0.36)
+    now[0] = 0.361
+    assert not lease.tick()
+    assert calls[-1] == ("stop",)
+    assert not lease.accept(decision(3, valid_for_ms=200), "f3", 3, now[0])
+
+
+def test_lease_freshness_never_extends_the_captured_frame_budget():
+    lease, now, calls = make()
+    now[0] = 0.24
+    assert lease.accept(decision(valid_for_ms=200), "f1", 1, 0)
+    assert calls[-1][2] == pytest.approx(0.06)
+    assert lease.deadline == pytest.approx(0.3)
+    now[0] = 0.301
+    assert not lease.tick()
