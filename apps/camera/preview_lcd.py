@@ -25,7 +25,7 @@ ENV:
   SSD_CLASSES="*" lub lista (np. "person,chair")
   PREVIEW_ROT=0|90|180|270
   SAVE_LAST_EVERY=10
-  SAVE_RAW_EVERY=2
+  SAVE_RAW_EVERY=1
   DISABLE_LCD=0|1
   NO_DRAW=0|1
   BUS_PUB_PORT=5555
@@ -52,7 +52,7 @@ HUMAN_EN = int(os.getenv("VISION_HUMAN", "0"))
 FACE_EVERY = max(1, int(os.getenv("VISION_FACE_EVERY", "5")))
 ROT = int(os.getenv("PREVIEW_ROT", "0") or 0)  # 0/90/180/270
 SAVE_LAST_EVERY = max(1, int(os.getenv("SAVE_LAST_EVERY", "10")))
-SAVE_RAW_EVERY = max(1, int(os.getenv("SAVE_RAW_EVERY", "2")))
+SAVE_RAW_EVERY = max(1, int(os.getenv("SAVE_RAW_EVERY", "1")))
 ENV_DISABLE_LCD = os.getenv("DISABLE_LCD", "0").strip() == "1"
 ENV_NO_DRAW = os.getenv("NO_DRAW", "0").strip() == "1"
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))

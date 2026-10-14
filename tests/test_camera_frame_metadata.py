@@ -151,7 +151,8 @@ def test_preview_keeps_read_completion_time_before_encoding(monkeypatch):
     assert closed == [True]
 
 
-def test_raw_feed_is_faster_than_ui_snapshots_and_keeps_capture_identity(monkeypatch):
+@pytest.mark.parametrize("raw_every, expected", [(1, 18), (2, 9)])
+def test_raw_feed_is_faster_than_ui_snapshots_and_keeps_capture_identity(monkeypatch, raw_every, expected):
     import numpy as np
 
     from apps.camera import preview_lcd
@@ -179,16 +180,16 @@ def test_raw_feed_is_faster_than_ui_snapshots_and_keeps_capture_identity(monkeyp
     monkeypatch.setattr(preview_lcd, "LCD_ok", False)
     monkeypatch.setattr(preview_lcd, "ENV_NO_DRAW", True)
     monkeypatch.setattr(preview_lcd, "SAVE_LAST_EVERY", 10)
-    monkeypatch.setattr(preview_lcd, "SAVE_RAW_EVERY", 2)
+    monkeypatch.setattr(preview_lcd, "SAVE_RAW_EVERY", raw_every)
     monkeypatch.setattr(preview_lcd, "time", SimpleNamespace(time=lambda: now[0], sleep=lambda _: None))
     monkeypatch.setattr(preview_lcd, "save_last_frame", lambda _, **kw: last.append(kw))
     monkeypatch.setattr(preview_lcd, "save_raw_snapshot", lambda _, **kw: raw.append(kw))
     monkeypatch.setattr(preview_lcd, "hb_publish", lambda **_: None)
     assert preview_lcd.main() == 0
-    assert len(raw) == 9 and len(last) == 2
-    assert raw[0] == last[0] and raw[5] == last[1]
+    assert len(raw) == expected and len(last) == 2
+    assert raw[0] == last[0] and raw[10 // raw_every] == last[1]
     assert max(b["captured_at"] - a["captured_at"] for a, b in zip(raw, raw[1:])) < 0.15
-    assert len({row["frame_id"] for row in raw}) == 9
+    assert len({row["frame_id"] for row in raw}) == expected
     assert closed == [True]
 
 

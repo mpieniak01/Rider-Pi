@@ -23,7 +23,7 @@ from common import bus
 
 FRAME_STREAM_TOPIC = os.getenv("FRAME_STREAM_TOPIC", "camera.frame.raw").encode("utf-8")
 FRAME_STREAM_BIND = os.getenv("FRAME_STREAM_BIND", "tcp://127.0.0.1:5562")
-FRAME_POLL_INTERVAL = float(os.getenv("FRAME_POLL_INTERVAL", "0.05"))  # sekundy
+FRAME_POLL_INTERVAL = float(os.getenv("FRAME_POLL_INTERVAL", "0.01"))  # sekundy
 DEFAULT_FRAME_PATH = os.getenv("FRAME_DEFAULT_PATH", "/home/pi/robot/data/last_frame.jpg")
 HEARTBEAT_TOPIC = os.getenv("FRAME_HEARTBEAT_TOPIC", "camera.heartbeat")
 
