@@ -252,7 +252,6 @@ def save_last_frame(frame_bgr, *, captured_at=None, frame_id=None):
         out_path = LAST_BASE.with_suffix(_SELECTED_EXT)
         if data is not None and _atomic_write_bytes(out_path, data):
             write_metadata(out_path, captured_at=captured_at, frame_id=frame_id, shape=img.shape)
-            _raw_frame_used_path = str(out_path)
             _last_frame_used_path = str(out_path)
             # loguj rzadziej, by nie spamować
             print(f"[preview] last_frame updated: {out_path}", flush=True)
@@ -288,6 +287,7 @@ def save_raw_snapshot(frame_bgr, *, captured_at=None, frame_id=None):
         out_path = Path(SNAP_DIR) / f"raw{_SELECTED_EXT}"
         if data is not None and _atomic_write_bytes(out_path, data):
             write_metadata(out_path, captured_at=captured_at, frame_id=frame_id, shape=img.shape)
+            _raw_frame_used_path = str(out_path)
             # dla kompatybilności UI: jeśli nie .jpg, zrób symlink raw.jpg → raw.<ext>
             if _SELECTED_EXT != ".jpg":
                 try:

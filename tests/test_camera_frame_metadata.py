@@ -224,3 +224,22 @@ def test_capture_heartbeat_exposes_both_paths_without_relabeling_preview(monkeyp
     assert rows[0]["last_frame_path"] == "/fixture/last.jpg"
     assert rows[0]["raw_frame_path"] == "/fixture/raw.jpg"
     assert rows[0]["mode"] == "preview"
+
+
+def test_real_raw_save_is_advertised_with_its_matching_capture_metadata(monkeypatch, tmp_path):
+    import numpy as np
+
+    from apps.camera import preview_lcd
+
+    rows = []
+    monkeypatch.setattr(preview_lcd, "SNAP_DIR", str(tmp_path))
+    monkeypatch.setattr(preview_lcd, "_SELECTED_EXT", ".jpg")
+    monkeypatch.setattr(preview_lcd, "ROT", 0)
+    monkeypatch.setattr(preview_lcd, "_raw_frame_used_path", None)
+    monkeypatch.setattr(preview_lcd, "_last_frame_used_path", "/fixture/last.jpg")
+    monkeypatch.setattr(preview_lcd, "publish", lambda topic, payload, **kw: rows.append(payload))
+    preview_lcd.save_raw_snapshot(np.zeros((64, 64, 3), dtype=np.uint8), captured_at=1000, frame_id="capture-new")
+    preview_lcd.hb_publish(fps=15, lcd_active=False)
+    assert rows[0]["raw_frame_path"] == str(tmp_path / "raw.jpg")
+    assert frame_metadata.read_frame(tmp_path / "raw.jpg")[1]["frame_id"] == "capture-new"
+    assert rows[0]["last_frame_path"] == "/fixture/last.jpg"
