@@ -486,3 +486,57 @@ def test_drive_startup_stale_frames_never_reset_five_second_grace(isolated):
     )
     assert runner.run() == 2 and runner.lease.latched
     assert all(command["action"] != "move" for command in isolated[-1])
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        TimeoutError(),
+        module.urllib.error.URLError(ConnectionRefusedError()),
+        module.urllib.error.HTTPError("http://fixture", 429, "busy", {}, None),
+        module.urllib.error.HTTPError("http://fixture", 503, "unavailable", {}, None),
+    ],
+)
+def test_observation_recovers_transport_with_stop_and_no_actuation(isolated, error):
+    _, _, safety, _, commands = isolated
+    safety.update(can_move=False, owner=None)
+    states = []
+
+    class Source:
+        count = 0
+
+        def recv(self, _):
+            self.count += 1
+            return {
+                "input_id": str(self.count),
+                "captured_at": time.time(),
+                "content_type": "image/jpeg",
+                "data": b"fixture",
+            }
+
+        def close(self):
+            pass
+
+    def request(meta, *_):
+        if meta["sequence"] == 1:
+            raise error
+        runner.closed.set()
+        return {"state": "clear", "action": "stop", "vision_action": "go", "clear_count": 3}
+
+    runner = module.NavigationRunner(source_factory=Source, request=request, observe_only=True)
+    runner._status = lambda result: states.append(result)
+    assert runner.run() == 0
+    retry = [row for row in states if row and row.get("reason") == "vision_observation_transport_retry"]
+    assert retry and retry[0]["action"] == retry[0]["vision_action"] == "stop"
+    assert retry[0]["clear_count"] == retry[0]["valid_for_ms"] == 0
+    assert runner.sequence == 2 and runner.last_result["vision_action"] == "go"
+    assert commands == []
+
+
+@pytest.mark.parametrize("code", [400, 401, 403, 422])
+def test_observation_does_not_retry_auth_or_contract_rejection(isolated, code):
+    runner = module.NavigationRunner(observe_only=True)
+    error = module.urllib.error.HTTPError("http://fixture", code, "rejected", {}, None)
+    assert runner._retry_observation(error) is False
+    runner.policy["mode"] = "drive"
+    assert runner._retry_observation(TimeoutError()) is False

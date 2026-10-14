@@ -8,6 +8,7 @@ import logging
 import signal
 import threading
 import time
+import urllib.error
 import urllib.request
 import uuid
 
@@ -147,6 +148,13 @@ class NavigationRunner:
                 raise ComputeError("navigation_response_bounds")
             return json.loads(body)
 
+    def _retry_observation(self, exc):
+        if self.policy["mode"] != "observe":
+            return False
+        if isinstance(exc, urllib.error.HTTPError):
+            return exc.code in {408, 429, 500, 502, 503, 504}
+        return isinstance(exc, (TimeoutError, urllib.error.URLError, ConnectionError))
+
     def _status(self, decision):
         import os
         from pathlib import Path
@@ -225,7 +233,29 @@ class NavigationRunner:
                     **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
                 }
                 request_started = self.clock()
-                decision = self.request(meta, frame["data"], frame["content_type"])
+                try:
+                    decision = self.request(meta, frame["data"], frame["content_type"])
+                except (TimeoutError, urllib.error.URLError, ConnectionError) as exc:
+                    if not self._retry_observation(exc):
+                        raise
+                    self.last_result = {
+                        "state": "unknown",
+                        "action": "stop",
+                        "vision_action": "stop",
+                        "reason": "vision_observation_transport_retry",
+                        "motion_reason": "vision_observation_transport_retry",
+                        "clear_count": 0,
+                        "valid_for_ms": 0,
+                        **{
+                            k: meta[k]
+                            for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")
+                        },
+                    }
+                    self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
+                    self.response_age_ms = round((self.clock() - captured) * 1000, 2)
+                    self._status(self.last_result)
+                    self.closed.wait(0.2)
+                    continue
                 self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
                 self.response_age_ms = round((self.clock() - captured) * 1000, 2)
                 self.last_result = decision
