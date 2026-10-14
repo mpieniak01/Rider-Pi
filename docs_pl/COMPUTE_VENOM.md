@@ -126,3 +126,13 @@ nie są bieżącym pomiarem. Jednostki Restart=no; nie dodawać ich do boot/mini
 
 Automatyczne testy używają wyłącznie atrap. Wdrożenie i próby ruchu są osobnym
 odbiorem operatora; ten kod nie potwierdza fizycznego hamowania.
+
+
+### Obserwacja i opóźnienia transportu
+
+Obserwacja bez ruchu ma ograniczony do 1 s timeout odczytu HTTP, aby zwykły
+jitter Wi-Fi nie kończył usługi. Nagłówek klatki nadal zawiera skonfigurowany
+budżet decyzji; czas transportu nie daje żadnej zgody na ruch. Nieaktualne
+klatki są pomijane tylko w obserwacji, a brak użytecznej klatki przez 5 s
+kończy próbę. Jazda zachowuje swój krótki timeout, odrzucenie pierwszej
+nieaktualnej klatki i termin pozwolenia egzekwowany przez Pi.

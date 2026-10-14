@@ -326,3 +326,94 @@ def test_old_executor_cannot_authorize_remote_drive(isolated):
         runner._authority()
     assert error.value.code == "navigation_executor_update_required"
     assert not isolated[-1]
+
+
+@pytest.mark.parametrize("observe,expected_timeout", [(True, 1.0), (False, DEFAULT["decision_budget_ms"] / 1000)])
+def test_observation_transport_grace_does_not_extend_drive_deadline(isolated, monkeypatch, observe, expected_timeout):
+    import json
+
+    runner = module.NavigationRunner(observe_only=observe)
+    calls = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def read(self, _):
+            return b'{"action":"stop"}'
+
+    def open_request(request, *, timeout):
+        calls.append((timeout, json.loads(request.get_header("X-rider-vision"))))
+        return Response()
+
+    monkeypatch.setattr(module.urllib.request, "build_opener", lambda *_: SimpleNamespace(open=open_request))
+    metadata = {"deadline_ms": runner.policy["decision_budget_ms"], "mode": runner.policy["mode"]}
+    assert runner._request(metadata, b"fixture", "image/jpeg") == {"action": "stop"}
+    assert calls == [(expected_timeout, metadata)]
+    assert not isolated[-1]
+
+
+@pytest.mark.parametrize("observe", [True, False])
+def test_expired_input_is_skipped_only_for_non_actuating_observation(isolated, observe):
+    frames = [time.time() - 0.5, time.time()]
+    requested = []
+
+    class Source:
+        def recv(self, _):
+            if not frames:
+                runner.closed.set()
+                return None
+            captured = frames.pop(0)
+            return {
+                "input_id": str(captured),
+                "captured_at": captured,
+                "data": b"fixture",
+                "content_type": "image/jpeg",
+            }
+
+        def close(self):
+            pass
+
+    def request(metadata, *_):
+        requested.append(metadata)
+        runner.closed.set()
+        return {"action": "stop", "state": "unknown"}
+
+    runner = module.NavigationRunner(source_factory=Source, request=request, observe_only=observe)
+    result = runner.run()
+    if observe:
+        assert result == 0 and len(requested) == 1
+        assert not isolated[-1]
+    else:
+        assert result == 2 and not requested
+        assert runner.lease.reason == "navigation_frame_expired"
+
+
+def test_observation_expired_frames_do_not_reset_camera_grace(isolated):
+    clock = [0.0]
+
+    class Source:
+        def recv(self, _):
+            clock[0] += 1.0
+            return {
+                "input_id": str(clock[0]),
+                "captured_at": time.time() - 1,
+                "data": b"fixture",
+                "content_type": "image/jpeg",
+            }
+
+        def close(self):
+            pass
+
+    runner = module.NavigationRunner(
+        source_factory=Source,
+        request=lambda *_: pytest.fail("expired input submitted"),
+        observe_only=True,
+        clock=lambda: clock[0],
+    )
+    assert runner.run() == 2
+    assert runner.lease.reason == "navigation_frame_expired"
+    assert not isolated[-1]

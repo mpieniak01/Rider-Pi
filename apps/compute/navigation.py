@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import signal
 import threading
 import time
@@ -133,9 +134,11 @@ class NavigationRunner:
                 "X-Rider-Vision": json.dumps(meta),
             },
         )
-        with urllib.request.build_opener(NoRedirect()).open(
-            req, timeout=self.policy["decision_budget_ms"] / 1000
-        ) as response:
+        timeout = self.policy["decision_budget_ms"] / 1000
+        if self.policy["mode"] == "observe":
+            # Observation cannot actuate; Wi-Fi jitter must not become a drive permit.
+            timeout = max(1.0, timeout)
+        with urllib.request.build_opener(NoRedirect()).open(req, timeout=timeout) as response:
             body = response.read(16385)
             if len(body) > 16384:
                 raise ComputeError("navigation_response_bounds")
@@ -194,10 +197,12 @@ class NavigationRunner:
                         raise ComputeError("navigation_camera_unavailable")
                     continue
                 self.last_frame = (frame["input_id"], frame["captured_at"])
-                self.started = self.clock()
                 age = (time.time() - frame["captured_at"]) * 1000
                 if not 0 <= age < self.policy["decision_budget_ms"]:
+                    if self.policy["mode"] == "observe" and self.clock() - self.started <= 5.0:
+                        continue
                     raise ComputeError("navigation_frame_expired")
+                self.started = self.clock()
                 captured = self.clock() - age / 1000
                 self.sequence += 1
                 frame_id = hashlib.sha256(str(self.last_frame).encode()).hexdigest()
@@ -221,6 +226,12 @@ class NavigationRunner:
                 self.closed.wait(0.01)
             return 0
         except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "[vision] navigation failed type=%s reason_type=%s code=%s",
+                type(exc).__name__,
+                type(getattr(exc, "reason", None)).__name__,
+                getattr(exc, "code", None),
+            )
             self.lease.halt(exc.code if isinstance(exc, ComputeError) else "navigation_transport_or_input_failed")
             return 2
         finally:
