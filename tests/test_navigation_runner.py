@@ -357,7 +357,7 @@ def test_observation_transport_grace_does_not_extend_drive_deadline(isolated, mo
 
 
 @pytest.mark.parametrize("observe", [True, False])
-def test_expired_input_is_skipped_only_for_non_actuating_observation(isolated, observe):
+def test_startup_skips_old_capture_before_first_fresh_frame_without_motion(isolated, observe):
     frames = [time.time() - 0.5, time.time()]
     requested = []
 
@@ -380,16 +380,20 @@ def test_expired_input_is_skipped_only_for_non_actuating_observation(isolated, o
     def request(metadata, *_):
         requested.append(metadata)
         runner.closed.set()
-        return {"action": "stop", "state": "unknown"}
+        return {
+            **{k: metadata[k] for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
+            "action": "stop",
+            "state": "clear",
+            "clear_count": 1,
+            "valid_for_ms": 150,
+        }
 
     runner = module.NavigationRunner(source_factory=Source, request=request, observe_only=observe)
-    result = runner.run()
+    assert runner.run() == 0
+    assert len(requested) == 1
+    assert all(command["action"] != "move" for command in isolated[-1])
     if observe:
-        assert result == 0 and len(requested) == 1
         assert not isolated[-1]
-    else:
-        assert result == 2 and not requested
-        assert runner.lease.reason == "navigation_frame_expired"
 
 
 def test_observation_expired_frames_do_not_reset_camera_grace(isolated):
@@ -417,3 +421,68 @@ def test_observation_expired_frames_do_not_reset_camera_grace(isolated):
     assert runner.run() == 2
     assert runner.lease.reason == "navigation_frame_expired"
     assert not isolated[-1]
+
+
+def test_drive_expired_frame_after_first_fresh_frame_still_latches_stop(isolated, monkeypatch):
+    clock = [1000.0]
+    requested = []
+    monkeypatch.setattr(module.time, "time", lambda: clock[0])
+
+    class Source:
+        count = 0
+
+        def recv(self, _):
+            self.count += 1
+            if self.count == 1:
+                captured = clock[0]
+            else:
+                clock[0] += 1.0
+                captured = clock[0] - 0.8
+            return {
+                "input_id": str(self.count),
+                "captured_at": captured,
+                "data": b"fixture",
+                "content_type": "image/jpeg",
+            }
+
+        def close(self):
+            pass
+
+    def request(meta, *_):
+        requested.append(meta)
+        return {
+            **{k: meta[k] for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
+            "action": "stop",
+            "state": "clear",
+            "clear_count": 1,
+            "valid_for_ms": 150,
+        }
+
+    runner = module.NavigationRunner(source_factory=Source, request=request, clock=lambda: clock[0])
+    assert runner.run() == 2
+    assert len(requested) == 1 and runner.lease.latched
+    assert runner.lease.reason == "navigation_frame_expired"
+    assert all(command["action"] != "move" for command in isolated[-1])
+
+
+def test_drive_startup_stale_frames_never_reset_five_second_grace(isolated):
+    clock = [0.0]
+
+    class Source:
+        def recv(self, _):
+            clock[0] += 1.0
+            return {
+                "input_id": str(clock[0]),
+                "captured_at": time.time() - 1.0,
+                "data": b"fixture",
+                "content_type": "image/jpeg",
+            }
+
+        def close(self):
+            pass
+
+    runner = module.NavigationRunner(
+        source_factory=Source, request=lambda *_: pytest.fail("stale input must not be sent"), clock=lambda: clock[0]
+    )
+    assert runner.run() == 2 and runner.lease.latched
+    assert all(command["action"] != "move" for command in isolated[-1])

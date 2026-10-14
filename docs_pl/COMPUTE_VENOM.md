@@ -136,3 +136,8 @@ budżet decyzji; czas transportu nie daje żadnej zgody na ruch. Nieaktualne
 klatki są pomijane tylko w obserwacji, a brak użytecznej klatki przez 5 s
 kończy próbę. Jazda zachowuje swój krótki timeout, odrzucenie pierwszej
 nieaktualnej klatki i termin pozwolenia egzekwowany przez Pi.
+
+
+### Pierwsza klatka przy starcie próby
+
+Po przełączeniu z podglądu na jazdę kamera może zwrócić zapis z poprzedniego uruchomienia. Runner czeka maksymalnie 5 s na pierwszą świeżą klatkę, bez wysyłania ruchu i bez resetowania tej karencji przez stare klatki. Po przyjęciu pierwszej świeżej klatki tryb jazdy zachowuje ścisły budżet decyzji; utrata świeżości lub odpowiedzi zatrzymuje i zatrzaskuje próbę. Karencja startu nie wydłuża impulsu ani terminu zgody na ruch.

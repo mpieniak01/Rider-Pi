@@ -36,6 +36,8 @@ class NavigationRunner:
         self.saved_policy = navigation_config.snapshot()
         self.policy = {**self.saved_policy, "mode": "observe"} if observe_only else self.saved_policy
         self.last_result = None
+        self.request_roundtrip_ms = None
+        self.response_age_ms = None
         self.selection = selected_executor()
         if not self.selection:
             raise ComputeError("compute_executor_not_selected")
@@ -47,6 +49,7 @@ class NavigationRunner:
         self.settings_revision = None
         self.calibration_digest = None
         self.last_frame = None
+        self.fresh_frame_seen = False
         self.lease = DecisionLease(self.policy, self.run_id, self.drive, self.stop, clock)
         self.started = clock()
 
@@ -159,6 +162,8 @@ class NavigationRunner:
                 "run_id": self.run_id,
                 "config_revision": self.policy["revision"],
                 "decision": decision,
+                "request_roundtrip_ms": self.request_roundtrip_ms,
+                "response_age_ms": self.response_age_ms,
                 "latched": self.lease.latched,
                 "running": not self.closed.is_set(),
                 "stop_reason": self.lease.reason,
@@ -190,7 +195,7 @@ class NavigationRunner:
                 if not frame or (self.last_frame is not None and frame["captured_at"] <= self.last_frame[1]):
                     limit = (
                         5.0
-                        if self.last_frame is None or self.policy["mode"] == "observe"
+                        if not self.fresh_frame_seen or self.policy["mode"] == "observe"
                         else self.policy["decision_budget_ms"] / 1000
                     )
                     if self.clock() - self.started > limit:
@@ -199,9 +204,12 @@ class NavigationRunner:
                 self.last_frame = (frame["input_id"], frame["captured_at"])
                 age = (time.time() - frame["captured_at"]) * 1000
                 if not 0 <= age < self.policy["decision_budget_ms"]:
-                    if self.policy["mode"] == "observe" and self.clock() - self.started <= 5.0:
+                    if (
+                        self.policy["mode"] == "observe" or not self.fresh_frame_seen
+                    ) and self.clock() - self.started <= 5.0:
                         continue
                     raise ComputeError("navigation_frame_expired")
+                self.fresh_frame_seen = True
                 self.started = self.clock()
                 captured = self.clock() - age / 1000
                 self.sequence += 1
@@ -216,7 +224,10 @@ class NavigationRunner:
                     "deadline_ms": self.policy["decision_budget_ms"],
                     **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
                 }
+                request_started = self.clock()
                 decision = self.request(meta, frame["data"], frame["content_type"])
+                self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
+                self.response_age_ms = round((self.clock() - captured) * 1000, 2)
                 self.last_result = decision
                 if self.policy["mode"] == "drive":
                     self.lease.accept(decision, frame_id, self.sequence, captured)
