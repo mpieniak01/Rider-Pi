@@ -492,6 +492,7 @@ def test_drive_startup_stale_frames_never_reset_five_second_grace(isolated):
     "error",
     [
         TimeoutError(),
+        module.socket.timeout(),
         module.urllib.error.URLError(ConnectionRefusedError()),
         module.urllib.error.HTTPError("http://fixture", 429, "busy", {}, None),
         module.urllib.error.HTTPError("http://fixture", 503, "unavailable", {}, None),
@@ -540,6 +541,7 @@ def test_observation_does_not_retry_auth_or_contract_rejection(isolated, code):
     assert runner._retry_observation(error) is False
     runner.policy["mode"] = "drive"
     assert runner._retry_observation(TimeoutError()) is False
+    assert runner._retry_observation(module.socket.timeout()) is False
 
 
 def test_perception_policy_old_file_migration_and_strict_validation(monkeypatch, tmp_path):

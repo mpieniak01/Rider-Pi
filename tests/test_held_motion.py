@@ -121,3 +121,15 @@ def test_obsolete_renewal_does_not_cancel_newer_direction(executor):
     advance(instance, clock, 0.1)
     assert instance.controller.o_lx < 0
     assert instance.gate.state == "ARMED"
+
+
+def test_manual_brake_cancels_pulse_and_preserves_operator_arm(executor):
+    instance, clock = executor
+    operator_arm(instance)
+    generation = instance.gate.generation
+    assert instance.apply(intent(instance, "pulse"))["status"] == "accepted"
+    advance(instance, clock, 0.1)
+    assert instance.apply(intent(instance, "release"))["status"] == "accepted"
+    advance(instance, clock, 0.2)
+    assert instance.controller.stopped
+    assert instance.gate.state == "ARMED" and instance.gate.generation == generation

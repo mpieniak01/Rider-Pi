@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import signal
+import socket
 import threading
 import time
 import urllib.error
@@ -153,7 +154,7 @@ class NavigationRunner:
             return False
         if isinstance(exc, urllib.error.HTTPError):
             return exc.code in {408, 429, 500, 502, 503, 504}
-        return isinstance(exc, (TimeoutError, urllib.error.URLError, ConnectionError))
+        return isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
 
     def _status(self, decision):
         import os
@@ -236,7 +237,7 @@ class NavigationRunner:
                 request_started = self.clock()
                 try:
                     decision = self.request(meta, frame["data"], frame["content_type"])
-                except (TimeoutError, urllib.error.URLError, ConnectionError) as exc:
+                except (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError) as exc:
                     if not self._retry_observation(exc):
                         raise
                     self.last_result = {
