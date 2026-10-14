@@ -82,8 +82,6 @@ def validate(data):
         value = perception[key]
         if type(value) not in (float, int) or not math.isfinite(value) or not low <= value <= high:
             raise ValueError("navigation_perception_invalid")
-    if data["mode"] == "drive" and perception["engine"] == "depth_plane":
-        raise ValueError("navigation_depth_observation_only")
     return data
 
 

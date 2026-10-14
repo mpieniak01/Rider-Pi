@@ -567,7 +567,8 @@ def test_perception_policy_old_file_migration_and_strict_validation(monkeypatch,
             navigation_config.validate({**migrated, "perception": {**migrated["perception"], **patch}})
     depth = {**migrated, "perception": {**migrated["perception"], "engine": "depth_plane"}}
     assert navigation_config.validate(depth)["mode"] == "observe"
-    with pytest.raises(ValueError, match="depth_observation_only"):
-        navigation_config.validate(
-            {**depth, "mode": "drive", "verified": True, "calibration_id": "fixture", "model_sha256": "a" * 64}
-        )
+    accepted = {**depth, "mode": "drive", "verified": True, "calibration_id": "fixture", "model_sha256": "a" * 64}
+    assert navigation_config.validate(accepted)["mode"] == "drive"
+    for patch in ({"verified": False}, {"calibration_id": ""}, {"model_sha256": ""}):
+        with pytest.raises(ValueError, match="validation_required"):
+            navigation_config.validate({**accepted, **patch})
