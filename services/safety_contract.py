@@ -137,14 +137,17 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     return command
 
 
-def publish_command(payload: dict[str, Any], timeout_s: float = 0.35) -> dict[str, Any]:
+def publish_command(payload: dict[str, Any], timeout_s: float = 0.35, *, publisher=None) -> dict[str, Any]:
     """Wyślij żądanie; sukces wykonawcy musi pochodzić z dopasowanego ACK."""
     command = command_envelope(payload)
     status = read_status()
     dispatched_at = time.time()
     try:
-        with BusPub(warmup_ms=50) as publisher:
+        if publisher is not None:
             publisher.publish(TOPIC_COMMAND, command)
+            return _await_ack(command, dispatched_at, timeout_s)
+        with BusPub(warmup_ms=50) as transient:
+            transient.publish(TOPIC_COMMAND, command)
             return _await_ack(command, dispatched_at, timeout_s)
     except Exception as exc:
         return {"ok": False, "confirmed": False, "error": f"bus_unavailable: {exc}", "safety": status}

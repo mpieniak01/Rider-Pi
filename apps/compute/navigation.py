@@ -17,6 +17,7 @@ from apps.compute.client import ComputeError
 from apps.compute.decision_lease import DecisionLease
 from apps.compute.runners import FrameSource, selected_executor
 from apps.safety.intent import read_service_intent, write_intent_status
+from common.bus import BusPub
 from services import navigation_config
 from services.control_commands import submit_control
 from services.safety_contract import read_status
@@ -30,8 +31,19 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class NavigationRunner:
-    def __init__(self, *, source_factory=FrameSource, request=None, clock=time.monotonic, observe_only=False):
+    def __init__(
+        self,
+        *,
+        source_factory=FrameSource,
+        request=None,
+        clock=time.monotonic,
+        observe_only=False,
+        publisher_factory=None,
+    ):
         self.source_factory = source_factory
+        self.publisher_factory = publisher_factory or (lambda: BusPub(warmup_ms=50))
+        self.motion_publisher = None
+        self.pending_motion_acks = {}
         self.request = request or self._request
         self.clock = clock
         self.closed = threading.Event()
@@ -62,6 +74,26 @@ class NavigationRunner:
             return False
         if safety.get("remote_decision_deadline_supported") is not True:
             raise ComputeError("navigation_executor_update_required")
+        for ack in [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]:
+            if (
+                isinstance(ack.get("request_id"), str)
+                and ack["request_id"].startswith(self.run_id + "-")
+                and ack.get("status") == "rejected"
+            ):
+                self.motion_failure = {
+                    "http_status": 409,
+                    "reason": ack.get("error") or ack.get("reason") or "executor_rejected",
+                    "gate_reason": safety.get("reason"),
+                }
+                raise ComputeError("navigation_motion_rejected")
+        acknowledgements = [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]
+        for request_id, deadline in list(self.pending_motion_acks.items()):
+            ack = next((row for row in acknowledgements if row.get("request_id") == request_id), None)
+            if ack and ack.get("status") == "executed" and ack.get("accepted") is True:
+                del self.pending_motion_acks[request_id]
+            elif self.clock() >= deadline:
+                self.motion_failure = {"http_status": 504, "reason": "navigation_motion_ack_timeout"}
+                raise ComputeError("navigation_motion_ack_timeout")
         intent = read_service_intent(UNIT, safety.get("generation"))
         if (
             safety.get("can_move") is not True
@@ -109,13 +141,19 @@ class NavigationRunner:
                 "vx": speed,
                 "yaw": 0.0,
                 "duration": duration,
-            }
+            },
+            **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
+        if code == 202 and result.get("pending"):
+            self.pending_motion_acks[self.run_id + "-" + str(self.motion_sequence)] = self.clock() + 0.1
         if not (code == 200 and result.get("ok") or code == 202 and result.get("pending")):
             error = result.get("error") or (result.get("ack") or {}).get("reason")
             if not isinstance(error, str) or not error.replace("_", "").isalnum() or len(error) > 128:
                 error = "executor_rejected"
             self.motion_failure = {"http_status": code, "reason": error}
+            gate_reason = (result.get("safety") or {}).get("reason")
+            if isinstance(gate_reason, str):
+                self.motion_failure["gate_reason"] = gate_reason
             logging.getLogger(__name__).warning("[vision] motion rejected status=%s reason=%s", code, error)
             raise ComputeError("navigation_motion_rejected")
 
@@ -199,6 +237,8 @@ class NavigationRunner:
         source = None
         try:
             source = self.source_factory()
+            if self.policy["mode"] == "drive":
+                self.motion_publisher = self.publisher_factory()
             self.started = self.clock()
             self._status(None)
             watchdog.start()
@@ -295,6 +335,9 @@ class NavigationRunner:
                 source.close()
             if watchdog.is_alive():
                 watchdog.join(1)
+            if self.motion_publisher is not None:
+                self.motion_publisher.close()
+                self.motion_publisher = None
             if self.intent:
                 write_intent_status(
                     UNIT,

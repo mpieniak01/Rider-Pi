@@ -37,10 +37,15 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "write_intent_status", lambda *a, **kw: True)
     monkeypatch.setenv("RIDER_NAVIGATION_STATUS", str(tmp_path / "status.json"))
 
-    def submit(data):
+    def submit(data, **_kwargs):
         commands.append(data)
         return {"ok": True}, 200
 
+    class Publisher:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(module, "BusPub", lambda **_kwargs: Publisher())
     monkeypatch.setattr(module, "submit_control", submit)
     return policy, selection, safety, intent, commands
 
@@ -582,7 +587,7 @@ def test_rejected_motion_keeps_executor_reason_in_final_status(isolated, monkeyp
     monkeypatch.setattr(
         module,
         "submit_control",
-        lambda data: ({"ok": False, "error": "stale_generation"}, 409)
+        lambda data, **_kwargs: ({"ok": False, "error": "stale_generation"}, 409)
         if data["action"] == "move"
         else ({"ok": True}, 200),
     )
@@ -606,3 +611,86 @@ def test_motion_rejection_never_logs_arbitrary_transport_body(isolated, monkeypa
     with pytest.raises(module.ComputeError):
         runner.drive(0.1, 0.1)
     assert runner.motion_failure == {"http_status": 503, "reason": "executor_rejected"}
+
+
+def test_navigation_reuses_one_publisher_and_does_not_block_on_ack(isolated, monkeypatch):
+    _, _, _, _, commands = isolated
+    created, submitted = [], []
+
+    class Publisher:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    def factory():
+        publisher = Publisher()
+        created.append(publisher)
+        return publisher
+
+    def submit(data, **kwargs):
+        commands.append(data)
+        if data["action"] == "move":
+            submitted.append(kwargs)
+        return {"ok": True}, 200
+
+    class Source:
+        seq = 0
+
+        def recv(self, _):
+            self.seq += 1
+            return {
+                "input_id": str(self.seq),
+                "captured_at": time.time(),
+                "content_type": "image/jpeg",
+                "data": b"fixture",
+            }
+
+        def close(self):
+            pass
+
+    def remote(meta, *_):
+        if meta["sequence"] == 6:
+            raise TimeoutError()
+        return {
+            **{k: meta[k] for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
+            "action": "go",
+            "state": "clear",
+            "clear_count": 3,
+            "valid_for_ms": 200,
+            "model_sha256": "a" * 64,
+        }
+
+    monkeypatch.setattr(module, "submit_control", submit)
+    runner = module.NavigationRunner(source_factory=Source, request=remote, publisher_factory=factory)
+    assert runner.run() == 2
+    assert len(created) == 1 and created[0].closed
+    assert len(submitted) == 5
+    assert all(row == {"publisher": created[0], "timeout_s": 0.0} for row in submitted)
+
+
+@pytest.mark.parametrize("outcome", ["executed", "rejected", "missing"])
+def test_pending_motion_ack_is_checked_without_extending_the_decision(isolated, monkeypatch, outcome):
+    now = [10.0]
+    _, _, safety, _, _ = isolated
+    runner = module.NavigationRunner(clock=lambda: now[0])
+    runner.motion_publisher = object()
+    monkeypatch.setattr(module, "submit_control", lambda *a, **kw: ({"pending": True}, 202))
+    runner.lease.deadline = 10.2
+    runner.drive(0.1, 0.15)
+    request_id = next(iter(runner.pending_motion_acks))
+    if outcome != "missing":
+        safety["last_ack"] = {
+            "request_id": request_id,
+            "status": outcome,
+            "accepted": outcome == "executed",
+            "error": "decision_deadline_expired",
+        }
+    now[0] = 10.101
+    if outcome == "executed":
+        assert runner._authority()
+        assert not runner.pending_motion_acks
+    else:
+        with pytest.raises(module.ComputeError):
+            runner._authority()
+    assert runner.lease.deadline == 10.2
