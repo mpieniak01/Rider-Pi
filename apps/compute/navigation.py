@@ -43,9 +43,11 @@ class NavigationRunner:
         self.source_factory = source_factory
         self.publisher_factory = publisher_factory or (lambda: BusPub(warmup_ms=50))
         self.motion_publisher = None
+        self.motion_started = False
         self.pending_motion_acks = {}
         self.request = request or self._request
         self.clock = clock
+        self.startup_deadline = clock() + 5.0
         self.closed = threading.Event()
         self.saved_policy = navigation_config.snapshot()
         self.policy = {**self.saved_policy, "mode": "observe"} if observe_only else self.saved_policy
@@ -144,6 +146,8 @@ class NavigationRunner:
             },
             **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
+        if (code == 200 and result.get("ok")) or (code == 202 and result.get("pending")):
+            self.motion_started = True
         if code == 202 and result.get("pending"):
             self.pending_motion_acks[self.run_id + "-" + str(self.motion_sequence)] = self.clock() + 0.1
         if not (code == 200 and result.get("ok") or code == 202 and result.get("pending")):
@@ -193,8 +197,27 @@ class NavigationRunner:
                 raise ComputeError("navigation_response_bounds")
             return json.loads(body)
 
+    def _startup_retry(self):
+        return self.policy["mode"] == "drive" and not self.motion_started and self.clock() < self.startup_deadline
+
+    def _startup_reply_expired(self, decision, meta, captured):
+        if not self._startup_retry() or not isinstance(decision, dict):
+            return False
+        identity = ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")
+        if any(decision.get(key) != meta[key] for key in identity):
+            return False
+        if any(type(decision.get(key)) is not int for key in ("protocol_version", "sequence", "config_revision")):
+            return False
+        if type(decision.get("valid_for_ms")) is not int or not 0 <= decision["valid_for_ms"] <= 200:
+            return False
+        if decision.get("state") not in {"clear", "unknown"}:
+            return False
+        remaining = self.policy["decision_budget_ms"] / 1000 - (self.clock() - captured)
+        valid = decision.get("valid_for_ms")
+        return remaining < 0.05 or type(valid) is int and valid < 50
+
     def _retry_observation(self, exc):
-        if self.policy["mode"] != "observe":
+        if self.policy["mode"] != "observe" and not self._startup_retry():
             return False
         if isinstance(exc, urllib.error.HTTPError):
             return exc.code in {408, 429, 500, 502, 503, 504}
@@ -240,6 +263,7 @@ class NavigationRunner:
             if self.policy["mode"] == "drive":
                 self.motion_publisher = self.publisher_factory()
             self.started = self.clock()
+            self.startup_deadline = self.started + 5.0
             self._status(None)
             watchdog.start()
             while not self.closed.is_set():
@@ -261,7 +285,7 @@ class NavigationRunner:
                 age = (time.time() - frame["captured_at"]) * 1000
                 if not 0 <= age < self.policy["decision_budget_ms"]:
                     if (
-                        self.policy["mode"] == "observe" or not self.fresh_frame_seen
+                        self.policy["mode"] == "observe" or self._startup_retry() or not self.fresh_frame_seen
                     ) and self.clock() - self.started <= 5.0:
                         continue
                     raise ComputeError("navigation_frame_expired")
@@ -309,6 +333,18 @@ class NavigationRunner:
                 self.response_age_ms = round((self.clock() - captured) * 1000, 2)
                 self.last_result = decision
                 if self.policy["mode"] == "drive":
+                    if self._startup_reply_expired(decision, meta, captured):
+                        self.last_result = {
+                            **decision,
+                            "state": "unknown",
+                            "action": "stop",
+                            "vision_action": "stop",
+                            "reason": "navigation_startup_waiting_fresh_frame",
+                            "motion_reason": "navigation_startup_waiting_fresh_frame",
+                            "valid_for_ms": 0,
+                        }
+                        self._status(self.last_result)
+                        continue
                     self.lease.accept(decision, frame_id, self.sequence, captured)
                 self._status(decision)
                 if self.lease.latched:

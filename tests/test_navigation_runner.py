@@ -545,6 +545,8 @@ def test_observation_does_not_retry_auth_or_contract_rejection(isolated, code):
     error = module.urllib.error.HTTPError("http://fixture", code, "rejected", {}, None)
     assert runner._retry_observation(error) is False
     runner.policy["mode"] = "drive"
+    assert runner._retry_observation(error) is False
+    runner.motion_started = True
     assert runner._retry_observation(TimeoutError()) is False
     assert runner._retry_observation(module.socket.timeout()) is False
 
@@ -694,3 +696,64 @@ def test_pending_motion_ack_is_checked_without_extending_the_decision(isolated, 
         with pytest.raises(module.ComputeError):
             runner._authority()
     assert runner.lease.deadline == 10.2
+
+
+def test_expired_first_reply_is_dropped_before_motion_and_next_fresh_go_can_start(isolated, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(module.time, "time", lambda: clock[0])
+    requested = []
+
+    class Source:
+        count = 0
+
+        def recv(self, _):
+            self.count += 1
+            if self.count > 2:
+                runner.closed.set()
+                return None
+            return {
+                "input_id": str(self.count),
+                "captured_at": clock[0],
+                "content_type": "image/jpeg",
+                "data": b"fixture",
+            }
+
+        def close(self):
+            pass
+
+    def remote(meta, *_):
+        requested.append(meta)
+        if meta["sequence"] == 1:
+            clock[0] += 0.332
+        return {
+            **{k: meta[k] for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
+            "action": "go",
+            "state": "clear",
+            "clear_count": 3,
+            "valid_for_ms": 200,
+            "model_sha256": "a" * 64,
+        }
+
+    runner = module.NavigationRunner(source_factory=Source, request=remote, clock=lambda: clock[0])
+    assert runner.run() == 0
+    assert len(requested) == 2
+    moves = [row for row in isolated[-1] if row["action"] == "move"]
+    assert len(moves) == 1
+    assert runner.motion_started
+
+
+def test_startup_retry_never_extends_decision_or_restarts_motion(isolated):
+    now = [10.0]
+    runner = module.NavigationRunner(clock=lambda: now[0])
+    meta = {"protocol_version": 1, "run_id": runner.run_id, "frame_id": "f", "sequence": 1, "config_revision": 0}
+    reply = {**meta, "state": "clear", "valid_for_ms": 0}
+    assert runner._startup_reply_expired(reply, meta, now[0])
+    assert not runner._startup_reply_expired({**reply, "run_id": "old"}, meta, now[0])
+    assert not runner._startup_reply_expired({**reply, "state": "obstacle"}, meta, now[0])
+    runner.motion_started = True
+    assert not runner._startup_reply_expired(reply, meta, now[0])
+    assert not runner._retry_observation(TimeoutError())
+    runner.motion_started = False
+    now[0] = 15.1
+    assert not runner._startup_reply_expired(reply, meta, now[0])
+    assert not runner._retry_observation(TimeoutError())
