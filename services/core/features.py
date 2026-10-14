@@ -290,7 +290,18 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             or not isinstance(control.get("request_id"), str)
             or not control["request_id"]
         ):
-            return {"ok": False, "error": "stale_or_invalid_operator_intent", "safety": safety}
+            age_ms = (time.time() - ts) * 1000 if type(ts) in (int, float) and math.isfinite(ts) else None
+            return {
+                "ok": False,
+                "error": "stale_or_invalid_operator_intent",
+                "safety": safety,
+                "intent_diagnostic": {
+                    "age_ms": age_ms,
+                    "ttl_ms": ttl if type(ttl) in (int, float) and math.isfinite(ttl) else None,
+                    "generation_matches": generation == safety.get("generation"),
+                    "source_valid": source in {"manual", "follow_me", "navigation"},
+                },
+            }
         key = (generation, source)
         if consume:
             if seq <= self._intent_sequences.get(key, -1):
