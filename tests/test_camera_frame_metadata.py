@@ -190,3 +190,37 @@ def test_raw_feed_is_faster_than_ui_snapshots_and_keeps_capture_identity(monkeyp
     assert max(b["captured_at"] - a["captured_at"] for a, b in zip(raw, raw[1:])) < 0.15
     assert len({row["frame_id"] for row in raw}) == 9
     assert closed == [True]
+
+
+@pytest.mark.parametrize("raw_path", [None, "", "/fixture/raw.jpg"])
+def test_raw_topic_uses_actual_raw_export_and_legacy_heartbeat_falls_back(monkeypatch, raw_path):
+    messages = iter(
+        [
+            (
+                frame_distributor.HEARTBEAT_TOPIC,
+                {"mode": "preview", "last_frame_path": "/fixture/last.jpg", "raw_frame_path": raw_path},
+            ),
+            (None, None),
+        ]
+    )
+    dist = object.__new__(frame_distributor.FrameDistributor)
+    dist.sub = SimpleNamespace(recv=lambda **_: next(messages))
+    dist.frame_path = "old"
+    dist.frame_mode = "old"
+    monkeypatch.setattr(frame_distributor, "FRAME_STREAM_TOPIC", b"camera.frame.raw")
+    dist._drain_heartbeat()
+    assert dist.frame_path == (raw_path or "/fixture/last.jpg")
+    assert dist.frame_mode == ("raw" if raw_path else "preview")
+
+
+def test_capture_heartbeat_exposes_both_paths_without_relabeling_preview(monkeypatch):
+    from apps.camera import preview_lcd
+
+    rows = []
+    monkeypatch.setattr(preview_lcd, "_last_frame_used_path", "/fixture/last.jpg")
+    monkeypatch.setattr(preview_lcd, "_raw_frame_used_path", "/fixture/raw.jpg")
+    monkeypatch.setattr(preview_lcd, "publish", lambda topic, payload, **kw: rows.append(payload))
+    preview_lcd.hb_publish(fps=15, lcd_active=False)
+    assert rows[0]["last_frame_path"] == "/fixture/last.jpg"
+    assert rows[0]["raw_frame_path"] == "/fixture/raw.jpg"
+    assert rows[0]["mode"] == "preview"

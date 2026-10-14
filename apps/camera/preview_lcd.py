@@ -124,6 +124,7 @@ def publish(topic: str, payload: dict, add_ts: bool = False):
 
 # ── Heartbeat helper (podamy realną ścieżkę last_frame)
 _last_frame_used_path: str | None = None
+_raw_frame_used_path: str | None = None
 
 
 def hb_publish(fps: float, lcd_active: bool):
@@ -134,6 +135,8 @@ def hb_publish(fps: float, lcd_active: bool):
     }
     if _last_frame_used_path:
         payload["last_frame_path"] = _last_frame_used_path
+    if _raw_frame_used_path:
+        payload["raw_frame_path"] = _raw_frame_used_path
     publish("camera.heartbeat", payload, add_ts=True)
 
 
@@ -249,6 +252,7 @@ def save_last_frame(frame_bgr, *, captured_at=None, frame_id=None):
         out_path = LAST_BASE.with_suffix(_SELECTED_EXT)
         if data is not None and _atomic_write_bytes(out_path, data):
             write_metadata(out_path, captured_at=captured_at, frame_id=frame_id, shape=img.shape)
+            _raw_frame_used_path = str(out_path)
             _last_frame_used_path = str(out_path)
             # loguj rzadziej, by nie spamować
             print(f"[preview] last_frame updated: {out_path}", flush=True)
@@ -260,7 +264,7 @@ def save_last_frame(frame_bgr, *, captured_at=None, frame_id=None):
 
 def save_raw_snapshot(frame_bgr, *, captured_at=None, frame_id=None):
     """Dodatkowy zapis RAW do snapshots/raw.(ext) — bez nowych pętli, używa tego samego rozszerzenia."""
-    global _SELECTED_EXT
+    global _SELECTED_EXT, _raw_frame_used_path
     try:
         img = rotate_bgr(frame_bgr, ROT)
         if _SELECTED_EXT is None:

@@ -64,10 +64,12 @@ class FrameDistributor:
                 break
             if topic != HEARTBEAT_TOPIC or not payload:
                 continue
-            path = payload.get("last_frame_path")
+            raw = payload.get("raw_frame_path")
+            use_raw = FRAME_STREAM_TOPIC == b"camera.frame.raw" and isinstance(raw, str) and bool(raw)
+            path = raw if use_raw else payload.get("last_frame_path")
             if isinstance(path, str) and path:
                 self.frame_path = path
-            mode = payload.get("mode")
+            mode = "raw" if use_raw else payload.get("mode")
             if isinstance(mode, str) and mode:
                 self.frame_mode = mode
 
