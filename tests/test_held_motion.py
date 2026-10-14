@@ -202,3 +202,52 @@ def test_navigation_stop_between_pulses_revokes_fresh_permit(executor):
     assert instance.controller.remote_decision_deadline is None
     assert instance.apply(queued)["status"] == "rejected"
     assert instance.controller.stopped
+
+
+def test_remote_decision_lease_and_real_executor_complete_multiple_pulses(executor):
+    from apps.compute.decision_lease import DecisionLease
+    from services.navigation_config import DEFAULT
+
+    instance, clock = executor
+    navigation_arm(instance)
+    generation = instance.gate.generation
+    policy = {**DEFAULT, "mode": "drive", "verified": True, "model_sha256": "a" * 64}
+    acknowledgements = []
+
+    def drive(speed, duration):
+        payload = navigation_pulse(instance, clock)
+        payload.update(vx=speed, duration=duration, decision_deadline_monotonic=lease.deadline)
+        ack = instance.apply(payload)
+        acknowledgements.append(ack)
+        assert ack["status"] == "accepted"
+
+    lease = DecisionLease(
+        policy,
+        "integration-run",
+        drive,
+        lambda: instance.apply({"action": "stop", "source": "navigation"}),
+        clock,
+    )
+    for seq in range(1, 9):
+        reply = {
+            "protocol_version": 1,
+            "run_id": "integration-run",
+            "frame_id": f"f{seq}",
+            "sequence": seq,
+            "config_revision": policy["revision"],
+            "action": "go",
+            "state": "clear",
+            "clear_count": 3,
+            "valid_for_ms": 200,
+            "model_sha256": policy["model_sha256"],
+        }
+        assert lease.accept(reply, f"f{seq}", seq, clock.now)
+        advance(instance, clock, 0.16)
+        assert lease.tick()
+        assert instance.controller.stopped
+        assert instance.gate.generation == generation
+    assert len(acknowledgements) == 8
+    reply.update(sequence=9, frame_id="f9", action="stop", state="obstacle", reason="obstacle")
+    assert not lease.accept(reply, "f9", 9, clock.now)
+    assert lease.latched and instance.controller.stopped
+    assert instance.gate.state == "DISARMED"

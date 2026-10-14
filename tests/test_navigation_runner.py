@@ -572,3 +572,37 @@ def test_perception_policy_old_file_migration_and_strict_validation(monkeypatch,
     for patch in ({"verified": False}, {"calibration_id": ""}, {"model_sha256": ""}):
         with pytest.raises(ValueError, match="validation_required"):
             navigation_config.validate({**accepted, **patch})
+
+
+def test_rejected_motion_keeps_executor_reason_in_final_status(isolated, monkeypatch, tmp_path):
+    import json
+
+    runner = module.NavigationRunner()
+    runner._authority()
+    monkeypatch.setattr(
+        module,
+        "submit_control",
+        lambda data: ({"ok": False, "error": "stale_generation"}, 409)
+        if data["action"] == "move"
+        else ({"ok": True}, 200),
+    )
+    with pytest.raises(module.ComputeError):
+        runner.drive(0.1, 0.1)
+    runner.lease.halt("motion_submission_failed")
+    runner.closed.set()
+    runner._status(None)
+    status = json.loads((tmp_path / "status.json").read_text())
+    assert status["motion_failure"] == {"http_status": 409, "reason": "stale_generation"}
+    assert status["running"] is False
+
+
+def test_motion_rejection_never_logs_arbitrary_transport_body(isolated, monkeypatch):
+    runner = module.NavigationRunner()
+    monkeypatch.setattr(
+        module,
+        "submit_control",
+        lambda _: ({"ok": False, "error": "private transport description: credential"}, 503),
+    )
+    with pytest.raises(module.ComputeError):
+        runner.drive(0.1, 0.1)
+    assert runner.motion_failure == {"http_status": 503, "reason": "executor_rejected"}

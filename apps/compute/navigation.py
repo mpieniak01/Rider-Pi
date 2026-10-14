@@ -38,6 +38,7 @@ class NavigationRunner:
         self.saved_policy = navigation_config.snapshot()
         self.policy = {**self.saved_policy, "mode": "observe"} if observe_only else self.saved_policy
         self.last_result = None
+        self.motion_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
         self.selection = selected_executor()
@@ -111,6 +112,11 @@ class NavigationRunner:
             }
         )
         if not (code == 200 and result.get("ok") or code == 202 and result.get("pending")):
+            error = result.get("error") or (result.get("ack") or {}).get("reason")
+            if not isinstance(error, str) or not error.replace("_", "").isalnum() or len(error) > 128:
+                error = "executor_rejected"
+            self.motion_failure = {"http_status": code, "reason": error}
+            logging.getLogger(__name__).warning("[vision] motion rejected status=%s reason=%s", code, error)
             raise ComputeError("navigation_motion_rejected")
 
     def stop(self):
@@ -176,6 +182,7 @@ class NavigationRunner:
                 "latched": self.lease.latched,
                 "running": not self.closed.is_set(),
                 "stop_reason": self.lease.reason,
+                "motion_failure": self.motion_failure,
             },
         )
 
