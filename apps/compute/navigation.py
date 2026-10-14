@@ -232,6 +232,7 @@ class NavigationRunner:
                     "deadline_ms": self.policy["decision_budget_ms"],
                     **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
                 }
+                meta["perception"] = self.policy["perception"]
                 request_started = self.clock()
                 try:
                     decision = self.request(meta, frame["data"], frame["content_type"])

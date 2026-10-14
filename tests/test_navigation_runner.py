@@ -540,3 +540,32 @@ def test_observation_does_not_retry_auth_or_contract_rejection(isolated, code):
     assert runner._retry_observation(error) is False
     runner.policy["mode"] = "drive"
     assert runner._retry_observation(TimeoutError()) is False
+
+
+def test_perception_policy_old_file_migration_and_strict_validation(monkeypatch, tmp_path):
+    import json
+
+    from services import navigation_config
+
+    target = tmp_path / "navigation.json"
+    old = {key: value for key, value in DEFAULT.items() if key != "perception"}
+    target.write_text(json.dumps(old))
+    monkeypatch.setenv("RIDER_NAVIGATION_CONFIG", str(target))
+    migrated = navigation_config.snapshot()
+    assert migrated["perception"]["engine"] == "segformer"
+    assert json.loads(target.read_text()) == old
+    for patch in (
+        {"engine": []},
+        {"engine": "unknown"},
+        {"residual_limit": float("nan")},
+        {"outlier_limit": 0.5},
+        {"slope_min": True},
+    ):
+        with pytest.raises(ValueError):
+            navigation_config.validate({**migrated, "perception": {**migrated["perception"], **patch}})
+    depth = {**migrated, "perception": {**migrated["perception"], "engine": "depth_plane"}}
+    assert navigation_config.validate(depth)["mode"] == "observe"
+    with pytest.raises(ValueError, match="depth_observation_only"):
+        navigation_config.validate(
+            {**depth, "mode": "drive", "verified": True, "calibration_id": "fixture", "model_sha256": "a" * 64}
+        )

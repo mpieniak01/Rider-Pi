@@ -18,6 +18,7 @@ DEFAULT = {
     "decision_budget_ms": 300,
     "max_motion_ms": 150,
     "corridor": [0.35, 0.65, 0.65, 0.95],
+    "perception": {"engine": "segformer", "residual_limit": 0.06, "outlier_limit": 0.005, "slope_min": 2.0},
     "verified": False,
     "calibration_id": "",
     "model_sha256": "",
@@ -72,6 +73,17 @@ def validate(data):
         raise ValueError("navigation_model_invalid")
     if data["mode"] == "drive" and (not data["verified"] or not data["calibration_id"] or not data["model_sha256"]):
         raise ValueError("navigation_validation_required")
+    perception = data["perception"]
+    if not isinstance(perception, dict) or set(perception) != set(DEFAULT["perception"]):
+        raise ValueError("navigation_perception_invalid")
+    if not isinstance(perception["engine"], str) or perception["engine"] not in {"segformer", "depth_plane"}:
+        raise ValueError("navigation_perception_invalid")
+    for key, low, high in (("residual_limit", 0.01, 0.15), ("outlier_limit", 0.0, 0.02), ("slope_min", 1.0, 4.0)):
+        value = perception[key]
+        if type(value) not in (float, int) or not math.isfinite(value) or not low <= value <= high:
+            raise ValueError("navigation_perception_invalid")
+    if data["mode"] == "drive" and perception["engine"] == "depth_plane":
+        raise ValueError("navigation_depth_observation_only")
     return data
 
 
@@ -81,7 +93,10 @@ def snapshot():
         return json.loads(json.dumps(DEFAULT))
     if p.stat().st_size > 4096:
         raise ValueError("navigation_configuration_invalid")
-    return validate(json.loads(p.read_text()))
+    data = json.loads(p.read_text())
+    if isinstance(data, dict) and "perception" not in data:
+        data["perception"] = dict(DEFAULT["perception"])
+    return validate(data)
 
 
 def configure(body):
@@ -106,7 +121,8 @@ def configure(body):
                 raise ValueError("navigation_stop_goals_first")
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
         changed = any(
-            proposed[k] != old[k] for k in ("speed", "corridor", "model_sha256", "decision_budget_ms", "max_motion_ms")
+            proposed[k] != old[k]
+            for k in ("speed", "corridor", "model_sha256", "decision_budget_ms", "max_motion_ms", "perception")
         )
         if (
             old["verified"]
