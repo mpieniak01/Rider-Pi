@@ -332,6 +332,14 @@ def _atomic(row):
 
 
 def read(*, blocking=True):
+    # Canonical snapshots are replaced atomically. UI polling must not contend
+    # with executor admission; only initialization/migration needs a writer lock.
+    target = path()
+    if target.exists():
+        original = _decode(target)
+        row = _canonical(original)
+        if row == original:
+            return row
     with locked(blocking=blocking):
         target = path()
         if target.exists():
