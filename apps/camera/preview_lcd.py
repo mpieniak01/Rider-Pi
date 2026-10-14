@@ -25,6 +25,7 @@ ENV:
   SSD_CLASSES="*" lub lista (np. "person,chair")
   PREVIEW_ROT=0|90|180|270
   SAVE_LAST_EVERY=10
+  SAVE_RAW_EVERY=2
   DISABLE_LCD=0|1
   NO_DRAW=0|1
   BUS_PUB_PORT=5555
@@ -51,6 +52,7 @@ HUMAN_EN = int(os.getenv("VISION_HUMAN", "0"))
 FACE_EVERY = max(1, int(os.getenv("VISION_FACE_EVERY", "5")))
 ROT = int(os.getenv("PREVIEW_ROT", "0") or 0)  # 0/90/180/270
 SAVE_LAST_EVERY = max(1, int(os.getenv("SAVE_LAST_EVERY", "10")))
+SAVE_RAW_EVERY = max(1, int(os.getenv("SAVE_RAW_EVERY", "2")))
 ENV_DISABLE_LCD = os.getenv("DISABLE_LCD", "0").strip() == "1"
 ENV_NO_DRAW = os.getenv("NO_DRAW", "0").strip() == "1"
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
@@ -438,7 +440,8 @@ def main():
 
         print(
             f"[preview] Start. LCD={'ON' if (LCD_ok and not ENV_NO_DRAW) else 'OFF (headless)'}; "
-            f"ROT={ROT}°; SAVE_LAST_EVERY={SAVE_LAST_EVERY}; DETECTOR={det_kind}; PUB={PUB_kind}; "
+            f"ROT={ROT}°; SAVE_LAST_EVERY={SAVE_LAST_EVERY}; SAVE_RAW_EVERY={SAVE_RAW_EVERY}; "
+            f"DETECTOR={det_kind}; PUB={PUB_kind}; "
             f"LAST_BASE={LAST_BASE} (auto ext); SNAP_DIR={SNAP_DIR}",
             flush=True,
         )
@@ -543,10 +546,11 @@ def main():
                     1,
                 )
 
-            # Zapis last_frame + RAW snapshot — pierwsza klatka od razu, potem co SAVE_LAST_EVERY
+            # RAW feeds remote decisions; it must not inherit the slower UI cadence.
+            frame_id = f'{capture_session}-{frames}'
             if frames == 0 or (frames % SAVE_LAST_EVERY == 0):
-                frame_id = f'{capture_session}-{frames}'
                 save_last_frame(frame, captured_at=captured_at, frame_id=frame_id)
+            if frames == 0 or (frames % SAVE_RAW_EVERY == 0):
                 save_raw_snapshot(frame, captured_at=captured_at, frame_id=frame_id)
 
             # Wyświetlenie na LCD

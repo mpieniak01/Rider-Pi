@@ -149,3 +149,44 @@ def test_preview_keeps_read_completion_time_before_encoding(monkeypatch):
     assert captured[0]['captured_at'] == 1000
     assert captured[0]['frame_id'].endswith('-0')
     assert closed == [True]
+
+
+def test_raw_feed_is_faster_than_ui_snapshots_and_keeps_capture_identity(monkeypatch):
+    import numpy as np
+
+    from apps.camera import preview_lcd
+
+    now = [1000.0]
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    raw, last, closed = [], [], []
+
+    class Reader:
+        count = 0
+
+        def __call__(self):
+            if self.count >= 18:
+                raise KeyboardInterrupt()
+            self.count += 1
+            now[0] += 1 / 15
+            return True, frame
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(preview_lcd, "open_camera", lambda *_: (Reader(), "fixture"))
+    monkeypatch.setattr(preview_lcd, "_lcd_init", lambda: None)
+    monkeypatch.setattr(preview_lcd, "DETECTOR", "none")
+    monkeypatch.setattr(preview_lcd, "LCD_ok", False)
+    monkeypatch.setattr(preview_lcd, "ENV_NO_DRAW", True)
+    monkeypatch.setattr(preview_lcd, "SAVE_LAST_EVERY", 10)
+    monkeypatch.setattr(preview_lcd, "SAVE_RAW_EVERY", 2)
+    monkeypatch.setattr(preview_lcd, "time", SimpleNamespace(time=lambda: now[0], sleep=lambda _: None))
+    monkeypatch.setattr(preview_lcd, "save_last_frame", lambda _, **kw: last.append(kw))
+    monkeypatch.setattr(preview_lcd, "save_raw_snapshot", lambda _, **kw: raw.append(kw))
+    monkeypatch.setattr(preview_lcd, "hb_publish", lambda **_: None)
+    assert preview_lcd.main() == 0
+    assert len(raw) == 9 and len(last) == 2
+    assert raw[0] == last[0] and raw[5] == last[1]
+    assert max(b["captured_at"] - a["captured_at"] for a, b in zip(raw, raw[1:])) < 0.15
+    assert len({row["frame_id"] for row in raw}) == 9
+    assert closed == [True]
