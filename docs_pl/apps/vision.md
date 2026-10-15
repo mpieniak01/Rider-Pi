@@ -367,7 +367,7 @@ Jeśli własny proces wystartował i zakończył się w czasie obsługi HTTP, zw
 jego rzeczywisty wynik. Wyłączenie już zakończonego celu zwraca potwierdzony opis
 celu, co zapobiega wtórnemu 502 kontraktu HTTP.
 
-Regresje zawierają liczbowy zapis produkcyjnej próby z2026-10-15 o12:45,
+Regresje zawierają liczbowy zapis produkcyjnej próby z 2026-10-15 o 12:45,
 niezależne zerowanie impulsu, awarię sieci, opóźnione HTTP i odrzucenie obcego runa.
 Odbiór fizyczny pozostaje osobnym etapem.
 

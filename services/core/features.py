@@ -140,7 +140,9 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             from services.core.feature_observation import read_units
 
             units = tuple(sorted(set(self._operation_units) | {unit}))
-            timeout = self._operation_remaining() if self._operation_remaining else 4.0
+            # Observation must remain meaningful after a start crosses the
+            # preparation boundary. The operation guard owns that deadline.
+            timeout = max(0.5, self._operation_remaining()) if self._operation_remaining else 4.0
             cache.update(read_units(units, timeout=timeout))
             return dict(cache[unit])
         value = self.status_fn(unit) if self.status_fn else systemd_ctrl.status(unit)
@@ -265,7 +267,10 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             if self._operation_guard is not None and action == "start":
                 self._operation_guard()
             if self._operation_remaining is not None and self.runner is systemd_ctrl.run_unit_action:
-                result = _as_dict(self.runner(unit, action, timeout=max(0.01, self._operation_remaining())))
+                # A completed start can report after its producer began in
+                # budget. Do not kill systemctl before guard() checks that proof.
+                minimum = 3.0 if action == "start" else 0.01
+                result = _as_dict(self.runner(unit, action, timeout=max(minimum, self._operation_remaining())))
             else:
                 result = _as_dict(self.runner(unit, action))
             if self._operation_guard is not None and action == "start":

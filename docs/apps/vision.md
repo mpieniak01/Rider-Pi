@@ -280,7 +280,7 @@ reported as that actual run outcome, not as never started. Idempotent task stop
 returns observed task evidence so the negotiated HTTP contract does not create a
 spurious 502 for a completed cancellation.
 
-Tests include the numerical sequence recorded on Pi on 2026-10-15 at12:45,
+Tests include the numerical sequence recorded on Pi on 2026-10-15 at 12:45,
 independent executor pulse expiry, network failure, late HTTP acknowledgement and
 foreign run rejection. Physical acceptance remains separate.
 

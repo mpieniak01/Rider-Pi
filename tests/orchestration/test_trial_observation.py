@@ -397,3 +397,78 @@ def test_repeated_trial_stop_backend_does_not_revoke_already_disarmed_generation
     second = world.trial.start(world.body(request_id="second-operator-click"))
     assert second["ok"]
     assert len([command for command in world.commands if command["action"] == "arm"]) == 2
+
+
+@pytest.mark.parametrize("late_birth", [False, True])
+def test_near_deadline_start_has_meaningful_action_and_observation_timeouts(world, monkeypatch, late_birth):
+    import subprocess
+
+    from common import systemd_ctrl
+    from services.navigation_trial import TrialError
+
+    manager = world.manager
+    manager.status_fn = None
+    original_run, original_status = world.run, world.status
+    saved, timeouts = {}, []
+
+    def observe(units, *, timeout):
+        if "rider-venom-navigation.service" in world.active:
+            # A real status read can exceed the few ms left in preparation.
+            if timeout < 0.15:
+                return {unit: {**world.unit_status(unit), "active": "unknown", "error": "timeout"} for unit in units}
+            world.elapsed += 0.15
+            saved["sampled_monotonic"] = world.elapsed
+        return {unit: world.unit_status(unit) for unit in units}
+
+    def run(unit, action, *, timeout):
+        timeouts.append((unit, action, timeout))
+        if unit == "rider-venom-navigation.target" and action == "start":
+            world.elapsed = 4.9
+        result = original_run(unit, action)
+        if unit == "rider-venom-navigation.service" and action == "start":
+            saved.update(original_status())
+            saved["run_started_monotonic"] = world.elapsed + (0.2 if late_birth else 0)
+            if timeout < 0.25:
+                world.elapsed += timeout
+                saved["sampled_monotonic"] = world.elapsed
+                raise subprocess.TimeoutExpired("systemctl start", timeout)
+            world.elapsed += 0.25
+            saved["sampled_monotonic"] = world.elapsed
+        return result
+
+    monkeypatch.setattr(feature_observation, "read_units", observe)
+    monkeypatch.setattr(systemd_ctrl, "run_unit_action", run)
+    manager.runner = run
+    world.trial.status = lambda: dict(saved)
+    if late_birth:
+        with pytest.raises(TrialError, match="navigation_trial_prepare_timeout"):
+            world.trial.start(world.body())
+        assert world.gate.state == "DISARMED"
+    else:
+        result = world.trial.start(world.body())
+        assert result["ok"] and result["status"]["running"]
+        assert world.elapsed > 5.0
+        assert not any(command["action"] == "stop" for command in world.commands)
+        assert ("rider-venom-navigation.service", "stop") not in world.actions
+    start = next(row for row in timeouts if row[:2] == ("rider-venom-navigation.service", "start"))
+    assert start[2] == 3.0
+
+
+def test_short_observation_budget_does_not_manufacture_an_unknown_running_service(world, monkeypatch):
+    unit = "rider-venom-navigation.service"
+    world.active.add(unit)
+    manager = world.manager
+    manager.status_fn = None
+    manager._operation_units = (unit,)
+    manager._operation_status_cache = {}
+    manager._operation_remaining = lambda: 0.001
+    observed = []
+
+    def read(units, *, timeout):
+        observed.append(timeout)
+        assert timeout >= 0.15
+        return {name: world.unit_status(name) for name in units}
+
+    monkeypatch.setattr(feature_observation, "read_units", read)
+    assert manager._running(unit)
+    assert observed == [0.5]
