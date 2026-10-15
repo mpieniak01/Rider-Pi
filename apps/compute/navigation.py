@@ -72,7 +72,7 @@ class NavigationRunner:
         self.calibration_digest = None
         self.last_frame = None
         self.fresh_frame_seen = False
-        self.lease = DecisionLease(self.policy, self.run_id, self.drive, self.stop, clock)
+        self.lease = DecisionLease(self.policy, self.run_id, self.drive, self.stop, clock, pause=self.pause)
         self.started = clock()
 
     def _authority(self):
@@ -125,7 +125,11 @@ class NavigationRunner:
         self.generation = safety["generation"]
         self.motion_sequence = max(self.motion_sequence, safety.get("last_seq", -1), intent["seq"])
         if not write_intent_status(
-            UNIT, intent, active=self.lease.moving, data_ready=self.lease.moving, navigation_ready=self.lease.moving
+            UNIT,
+            intent,
+            active=True,
+            data_ready=self.lease.deadline is not None,
+            navigation_ready=self.lease.deadline is not None,
         ):
             raise ComputeError("navigation_producer_claim_failed")
         return True
@@ -152,7 +156,7 @@ class NavigationRunner:
             **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
         if (code == 200 and result.get("ok")) or (code == 202 and result.get("pending")):
-            self.motion_started = True
+            self.motion_started = self.motion_started or speed != 0
         if code == 202 and result.get("pending"):
             self.pending_motion_acks[self.run_id + "-" + str(self.motion_sequence)] = self.clock() + 0.1
         if not (code == 200 and result.get("ok") or code == 202 and result.get("pending")):
@@ -166,6 +170,9 @@ class NavigationRunner:
             logging.getLogger(__name__).warning("[vision] motion rejected status=%s reason=%s", code, error)
             raise ComputeError("navigation_motion_rejected")
 
+    def pause(self, duration):
+        self.drive(0.0, duration)
+
     def stop(self):
         if self.policy["mode"] != "drive":
             return
@@ -173,7 +180,13 @@ class NavigationRunner:
         if safety.get("owner") != "navigation" or safety.get("generation") != self.generation:
             return
         _, code = submit_control(
-            {"action": "stop", "source": "navigation", "owner": "navigation", "request_id": self.run_id + "-stop"}
+            {
+                "action": "stop",
+                "source": "navigation",
+                "owner": "navigation",
+                "request_id": self.run_id + "-stop",
+                "expected_generation": self.generation,
+            }
         )
         if code not in {200, 202}:
             self.closed.set()
@@ -239,11 +252,22 @@ class NavigationRunner:
             "observed_at": time.time(),
             "mode": self.policy["mode"],
             "run_id": self.run_id,
+            "generation": self.generation,
+            "operator_request_id": (self.intent or {}).get("request_id"),
             "config_revision": self.policy["revision"],
             "decision": decision,
             "request_roundtrip_ms": self.request_roundtrip_ms,
             "response_age_ms": self.response_age_ms,
             "latched": self.lease.latched,
+            "paused": self.policy["mode"] == "drive"
+            and not self.lease.latched
+            and not self.lease.moving
+            and self.lease.deadline is not None,
+            "permit_remaining_ms": max(0, round((self.lease.deadline - self.clock()) * 1000, 2))
+            if self.lease.deadline is not None
+            else 0,
+            "sampled_monotonic": self.clock(),
+            "visual_pause_supported": True,
             "running": not self.closed.is_set(),
             "stop_reason": self.lease.reason,
             "motion_failure": self.motion_failure,

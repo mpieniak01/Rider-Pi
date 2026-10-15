@@ -8,10 +8,11 @@ import time
 
 
 class DecisionLease:
-    def __init__(self, config, run_id, drive, stop, clock=time.monotonic):
+    def __init__(self, config, run_id, drive, stop, clock=time.monotonic, *, pause=None):
         self.config = dict(config)
         self.run_id = run_id
         self.drive, self.stop, self.clock = drive, stop, clock
+        self.pause = pause
         self.lock = threading.Lock()
         self.last_seq = -1
         self.deadline = None
@@ -35,7 +36,7 @@ class DecisionLease:
 
     def tick(self):
         with self.lock:
-            if self.moving and self.deadline is not None and self.clock() >= self.deadline:
+            if self.deadline is not None and self.clock() >= self.deadline:
                 self._halt("decision_timeout")
             return not self.latched
 
@@ -44,7 +45,7 @@ class DecisionLease:
             if self.latched:
                 return False
             now = self.clock()
-            if self.moving and self.deadline is not None and now >= self.deadline:
+            if self.deadline is not None and now >= self.deadline:
                 self._halt("decision_timeout")
                 return False
             identity = {
@@ -77,10 +78,37 @@ class DecisionLease:
             self.last_seq = sequence
             self.reason = str(decision.get("reason", "unknown"))[:128]
             if decision["action"] == "stop":
-                if self.moving:
+                if self.pause is None:
+                    # Older callers without scoped zero output retain terminal STOP.
+                    if self.moving or decision.get("state") != "clear":
+                        self._halt(self.reason)
+                    return False
+                if decision.get("state") not in {"clear", "obstacle", "unknown"}:
+                    self._halt("decision_invalid_state")
+                    return False
+                if decision.get("state") == "unknown" and self.reason not in {
+                    "vision_image_quality",
+                    "vision_low_confidence",
+                    "vision_floor_uncertainty",
+                    "depth_ground_orientation",
+                }:
                     self._halt(self.reason)
-                elif decision.get("state") != "clear":
-                    self._halt(self.reason)
+                    return False
+                permit = min(remaining, valid / 1000)
+                duration = min(permit, self.config["max_motion_ms"] / 1000)
+                if duration < 0.05:
+                    self._halt("decision_budget_exhausted")
+                    return False
+                # A fresh visual STOP renews only a zero goal in the original ARM.
+                # The watchdog also expires paused runs; old GO cannot revive them.
+                self.deadline = now + permit
+                self.moving = False
+                self.reason = str(decision.get("motion_reason", self.reason))[:128]
+                try:
+                    self.pause(duration)
+                except Exception:
+                    self._halt("motion_submission_failed")
+                    raise
                 return False
             if (
                 decision.get("state") != "clear"
