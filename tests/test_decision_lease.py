@@ -299,3 +299,88 @@ def test_explicit_stop_and_transport_fault_are_terminal_during_zero_wait(reason)
     lease.halt(reason)
     assert not lease.accept(decision(2), "f2", 2, now[0])
     assert output.revoked and len(output.commands) == 1
+
+
+def test_recorded_151611_short_go_sends_only_zero_then_accepts_a_new_fresh_frame():
+    import json
+    from pathlib import Path
+
+    trace = json.loads((Path(__file__).parent / "fixtures/navigation/production_151611_timing.json").read_text())
+    lease, now, output = feedback_loop()
+    prior, short = trace["prior"], trace["short"]
+    assert lease.accept(
+        decision(prior["sequence"], valid_for_ms=prior["valid_for_ms"]),
+        "f49",
+        prior["sequence"],
+        -prior["response_age_ms"] / 1000,
+    )
+    old_motion_end = output.until
+    old_feedback = lease.feedback_deadline
+    now[0] = short["elapsed_since_prior_accept_ms"] / 1000
+    assert now[0] < old_feedback and output.speed == 0
+    assert not lease.accept(
+        decision(short["sequence"], valid_for_ms=short["valid_for_ms"]),
+        "f50",
+        short["sequence"],
+        now[0] - short["response_age_ms"] / 1000,
+    )
+    assert not lease.latched and not output.revoked
+    assert lease.reason == "awaiting_fresh_decision" and not lease.moving
+    assert output.commands[-1][0] == 0 and output.speed == 0
+    assert output.commands[0][2] == old_motion_end
+    # Replay ends at the historical failure. This next fresh frame tests recovery.
+    now[0] = 0.35
+    assert lease.accept(decision(51), "f51", 51, now[0] - 0.09)
+    assert output.speed == DEFAULT["speed"]
+    assert all(duration <= 0.15 for _, duration, _ in output.commands)
+
+
+def test_short_reply_zero_window_still_expires_without_further_feedback():
+    lease, now, output = feedback_loop()
+    now[0] = 0.296
+    assert not lease.accept(decision(), "f1", 1, 0)
+    assert output.speed == 0 and not lease.latched
+    deadline = lease.feedback_deadline
+    now[0] = deadline
+    assert not lease.tick() and output.revoked
+    assert not lease.accept(decision(2), "f2", 2, now[0])
+    assert all(speed == 0 for speed, _, _ in output.commands)
+
+
+@pytest.mark.parametrize("change", [{"run_id": "wrong"}, {"model_sha256": "b" * 64}, {"valid_for_ms": 0}])
+def test_short_reply_does_not_bypass_identity_model_or_validity(change):
+    lease, now, output = feedback_loop()
+    now[0] = 0.296
+    assert not lease.accept(decision(**change), "f1", 1, 0)
+    assert lease.latched and output.revoked and output.commands == []
+
+
+def test_expired_reply_is_terminal_even_with_zero_wait_support():
+    lease, now, output = feedback_loop()
+    now[0] = 0.301
+    assert not lease.accept(decision(), "f1", 1, 0)
+    assert lease.latched and output.revoked and output.commands == []
+
+
+def test_legacy_short_permit_still_stops_terminally():
+    lease, now, calls = make()
+    now[0] = 0.296
+    assert not lease.accept(decision(), "f1", 1, 0)
+    assert lease.latched and calls == [("stop",)]
+
+
+def test_short_reply_cannot_recover_after_feedback_has_expired():
+    lease, now, output = feedback_loop()
+    assert lease.accept(decision(), "f1", 1, 0)
+    now[0] = 0.301
+    assert not lease.accept(decision(2), "f2", 2, now[0] - 0.296)
+    assert lease.reason == "decision_timeout" and output.revoked
+
+
+def test_zero_submission_failure_remains_terminal():
+    lease, now, output = feedback_loop()
+    lease.pause = lambda _: (_ for _ in ()).throw(RuntimeError("bus unavailable"))
+    now[0] = 0.296
+    with pytest.raises(RuntimeError, match="bus unavailable"):
+        lease.accept(decision(), "f1", 1, 0)
+    assert lease.latched and output.revoked and lease.reason == "motion_submission_failed"

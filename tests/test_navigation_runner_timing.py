@@ -278,3 +278,68 @@ def test_actual_timed_consent_expiry_is_completion_but_operator_stop_is_not(
     assert runner.run() == exit_code
     assert runner.lease.reason == terminal
     assert runner.motion_failure is None
+
+
+def test_short_permit_reports_zero_and_continues_only_on_next_fresh_frame(isolated, monkeypatch):
+    now = [1000.0]
+    _, _, _, _, commands = isolated
+    rows = []
+    monkeypatch.setattr(module.time, "time", lambda: now[0])
+    monkeypatch.setattr(module.threading, "Thread", NoWatchdogThread)
+    from services import compute_config
+
+    original_write = compute_config._write
+
+    def write(target, row):
+        original_write(target, row)
+        if target.name == "status.json":
+            rows.append(json.loads(json.dumps(row)))
+
+    monkeypatch.setattr(compute_config, "_write", write)
+
+    class Source:
+        count = 0
+
+        def recv(self, _timeout):
+            self.count += 1
+            if self.count > 3:
+                runner.closed.set()
+                return None
+            if self.count == 2:
+                now[0] += 0.019914143
+            age = {1: 0.02414, 2: 0.04411, 3: 0.020}[self.count]
+            return {
+                "input_id": str(self.count),
+                "captured_at": now[0] - age,
+                "content_type": "image/jpeg",
+                "data": b"recorded-timing",
+            }
+
+        def close(self):
+            pass
+
+    def remote(meta, *_):
+        seq = meta["sequence"]
+        now[0] += {1: 0.06275, 2: 0.25189, 3: 0.060}[seq]
+        return {
+            **{key: meta[key] for key in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
+            "action": "go",
+            "vision_action": "go",
+            "state": "clear",
+            "clear_count": 50,
+            "reason": "depth_plane_candidate",
+            "valid_for_ms": 181 if seq == 2 else 200,
+            "model_sha256": "a" * 64,
+        }
+
+    runner = module.NavigationRunner(source_factory=Source, request=remote, clock=lambda: now[0])
+    assert runner.run() == 0
+    moves = [row for row in commands if row["action"] == "move"]
+    assert [row["vx"] for row in moves] == [0.1, 0.0, 0.1]
+    paused = next(row for row in rows if (row["decision"] or {}).get("sequence") == 2)
+    assert paused["paused"] and not paused["latched"]
+    assert paused["decision"]["vision_action"] == "go"
+    assert paused["decision"]["action"] == "stop"
+    assert paused["stop_reason"] == "awaiting_fresh_decision"
+    assert len({row["generation"] for row in moves}) == 1
+    assert all(row["duration"] <= 0.15 for row in moves)

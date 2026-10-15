@@ -472,6 +472,11 @@ class NavigationRunner:
                         self._status(self.last_result)
                         continue
                     self._timed("decision_apply_ms", self.lease.accept, decision, frame_id, self.sequence, captured)
+                    if not self.lease.latched and self.lease.reason == "awaiting_fresh_decision":
+                        # Keep the image verdict, but report the actual ZERO sent
+                        # to Pi while waiting for a usable fresh motion permit.
+                        decision = {**decision, "action": "stop", "motion_reason": self.lease.reason}
+                        self.last_result = decision
                 self._status(decision)
                 if self.lease.latched:
                     self.closed.set()

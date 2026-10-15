@@ -47,6 +47,26 @@ class DecisionLease:
         self.reason = "awaiting_fresh_decision"
         return True
 
+    def _defer_short_permit(self, now):
+        if not self.feedback_wait:
+            self._halt("decision_budget_exhausted")
+            return False
+        # A validated, still-fresh reply proves live feedback but cannot grant
+        # a useful motor pulse. Submit ZERO, never stretch its old GO permit.
+        # This zero-only window uses the existing feedback budget and original
+        # executor ARM; it cannot rearm or revive an expired generation.
+        duration = min(self.config["max_motion_ms"] / 1000, 0.15)
+        self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
+        self.deadline = now + duration
+        self.moving = False
+        self.reason = "awaiting_fresh_decision"
+        try:
+            self.pause(duration)
+        except Exception:
+            self._halt("motion_submission_failed")
+            raise
+        return False
+
     def tick(self):
         with self.lock:
             now = self.clock()
@@ -116,8 +136,7 @@ class DecisionLease:
                 permit = min(remaining, valid / 1000)
                 duration = min(permit, self.config["max_motion_ms"] / 1000)
                 if duration < 0.05:
-                    self._halt("decision_budget_exhausted")
-                    return False
+                    return self._defer_short_permit(now)
                 # A fresh visual STOP renews only a zero goal in the original ARM.
                 # The watchdog also expires paused runs; old GO cannot revive them.
                 if self.feedback_wait:
@@ -144,8 +163,7 @@ class DecisionLease:
             permit = min(remaining, valid / 1000)
             duration = min(permit, self.config["max_motion_ms"] / 1000)
             if duration < 0.05:
-                self._halt("decision_budget_exhausted")
-                return False
+                return self._defer_short_permit(now)
             # Pulse length is enforced by the executor. The lease tracks freshness,
             # so a fresh reply after a completed pulse can renew the same run.
             if self.feedback_wait:

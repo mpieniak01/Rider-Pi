@@ -253,3 +253,34 @@ def test_exact_preserved_1332_stop_to_go_boundary(executor, feedback_contract):
         assert instance.controller.o_lx > 0
         assert instance.gate.generation == generation
         assert instance.gate.lease_deadline == arm_deadline
+
+
+def test_recorded_151611_short_go_zeros_real_executor_without_rearming(executor):
+    import json
+    from pathlib import Path
+
+    trace = json.loads((Path(__file__).parent / "fixtures/navigation/production_151611_timing.json").read_text())
+    instance, clock = executor
+    lease, config, acks, generation = trial(instance, clock)
+    arm_deadline = instance.gate.lease_deadline
+    prior, short = trace["prior"], trace["short"]
+    row = reply(config, prior["sequence"])
+    assert lease.accept(row, row["frame_id"], prior["sequence"], clock.now - prior["response_age_ms"] / 1000)
+    advance(instance, clock, short["elapsed_since_prior_accept_ms"] / 1000)
+    assert instance.controller.stopped
+    row = reply(config, short["sequence"])
+    row["valid_for_ms"] = short["valid_for_ms"]
+    assert not lease.accept(row, row["frame_id"], short["sequence"], clock.now - short["response_age_ms"] / 1000)
+    assert acks[-1]["reason"] == "sdk_zero_accepted"
+    assert instance.controller.stopped and not lease.latched
+    assert instance.gate.generation == generation
+    assert instance.gate.lease_deadline == arm_deadline
+    advance(instance, clock, 0.08)
+    assert accept(lease, config, clock, 51)
+    advance(instance, clock, 0.02)
+    assert instance.controller.o_lx > 0
+    assert instance.gate.generation == generation
+    assert instance.gate.lease_deadline == arm_deadline
+    advance(instance, clock, 0.31)
+    assert instance.gate.state == "DISARMED" and instance.controller.stopped
+    assert not lease.tick()

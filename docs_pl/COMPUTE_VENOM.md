@@ -180,3 +180,24 @@ samej sesji. Brak decyzji rozbraja wykonawcę niezależnie od procesu producenta
 Bez nowego pola obowiązuje dotychczasowe rozbrojenie po ważności obrazu.
 Nowy kontrakt wymaga `remote_decision_feedback_supported`; podgląd wdrożenia
 musi zaktualizować także proces wykonawcy, przy rozbrojonym robocie.
+
+
+### Świeża decyzja ze zbyt krótkim czasem na impuls
+
+Jeżeli poprawnie skorelowana decyzja nadal mieści się w budżecie obrazu,
+ale pozostaje mniej niż 50 ms na impuls, pętla z kontraktem feedback wysyła
+wyłącznie ZERO i oczekuje na następną świeżą decyzję. Nie wydłuża starego GO.
+Panel zachowuje wynik oceny obrazu, ale raportuje rzeczywiste wykonanie STOP
+z powodem awaiting_fresh_decision.
+
+Zerowy cel korzysta z dotychczasowego budżetu feedback i tej samej generacji
+oraz pierwotnego terminu ARM. Nie wykonuje ponownego uzbrojenia. Brak dalszego
+feedback nadal kończy próbę przez STOP; przeterminowany obraz, obca tożsamość,
+niepoprawny model i nieudane wysłanie ZERO pozostają błędami terminalnymi.
+Legacy bez kontraktu feedback zachowuje poprzednie zatrzaśnięcie STOP.
+
+Regresja używa liczbowego zapisu próby zakończonej o 15:16:11: obraz miał
+296 ms przy budżecie 300 ms. Poprzedni kod kończył próbę pomimo GO; nowy
+nie nadaje tej klatce żadnego niezerowego wyjścia. Scenariusz kolejnego
+świeżego GO w teście sprawdza możliwość kontynuacji, a nie odtwarza
+niezarejestrowanego fizycznego przejazdu.
