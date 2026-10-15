@@ -311,3 +311,19 @@ def test_failed_navigation_target_never_starts_movement_producer(world):
         world.trial.start(world.body())
     assert ("rider-venom-navigation.service", "start") not in world.actions
     assert world.gate.state == "DISARMED"
+
+
+def test_real_service_preparation_can_take_seven_seconds_without_extending_arm(world):
+    def costs(unit, action):
+        if action == "start" and unit == "camera-capture@raw.service":
+            world.elapsed += 3.0
+        if action == "start" and unit == "rider-venom-navigation.target":
+            world.elapsed += 2.0
+        if action == "start" and unit == "rider-venom-navigation.service":
+            world.elapsed += 2.0
+
+    world.hook = costs
+    result = world.trial.start(world.body())
+    assert result["ok"] and world.elapsed == 7.0
+    arms = [row for row in world.commands if row["action"] == "arm"]
+    assert len(arms) == 1 and arms[0]["lease_s"] == 10.0

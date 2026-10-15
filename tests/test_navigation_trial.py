@@ -233,7 +233,7 @@ def test_global_stop_during_prepare_cancels_without_later_arm(world):
 
 
 def test_prepare_budget_is_not_extended_by_slow_camera(world):
-    world.hook = lambda *_: setattr(world, "elapsed", 6.0)
+    world.hook = lambda *_: setattr(world, "elapsed", 16.0)
     with pytest.raises(TrialError, match="navigation_trial_prepare_timeout"):
         world.trial.start(world.body())
     assert not world.commands
@@ -583,7 +583,7 @@ def test_preparation_status_is_visible_even_without_a_producer_file(world, monke
 
     target = world.manager._state_path.with_name("navigation_loop.json")
     monkeypatch.setenv("RIDER_NAVIGATION_STATUS", str(target))
-    world.hook = lambda *_: setattr(world, "elapsed", 6.0)
+    world.hook = lambda *_: setattr(world, "elapsed", 16.0)
     with pytest.raises(TrialError):
         world.trial.start(world.body())
     app = Flask(__name__)

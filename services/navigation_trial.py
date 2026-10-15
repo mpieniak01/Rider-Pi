@@ -20,6 +20,9 @@ from services import navigation_config
 from services.control_commands import submit_control
 from services.safety_contract import read_status
 
+PREPARATION_BUDGET_S = 15.0
+ARMED_START_BUDGET_S = 5.0
+
 FIELDS = {
     "request_id",
     "generation",
@@ -188,7 +191,7 @@ class NavigationTrial:
             "state": None,
             "revision": body["config_revision"],
             "settings_revision": body["settings_revision"],
-            "deadline": accepted_at + 5.0,
+            "deadline": accepted_at + PREPARATION_BUDGET_S,
             "armed": False,
             "sequence": None,
             "phase": "acquiring_lock",
@@ -389,6 +392,9 @@ class NavigationTrial:
                     self._accepted(stop_old(safety.get("owner")))
                 safety = guard()
                 progress("arm_ack")
+                # Service shutdown/camera preparation need no driving permission.
+                # Once ARM is requested, keep the shorter final-start bound.
+                context["deadline"] = min(context["deadline"], self.clock() + ARMED_START_BUDGET_S)
                 context["armed"] = True
                 context["arm_generation"] = context["generation"]
                 arm, code = self.submit(

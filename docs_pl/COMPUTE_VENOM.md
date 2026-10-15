@@ -155,7 +155,7 @@ zachowują aktualne domeny, a obserwacje niezwiązanych celów swój pierwotny c
 Zwykły odczyt katalogu poza przygotowaniem nadal odświeża wszystkie cele.
 
 Status przygotowania zawiera `phase_timings_ms` oraz identyfikator żądania.
-Pozwala odróżnić przekroczenie budżetu przygotowania (5 s) od późniejszego
+Pozwala odróżnić przekroczenie budżetu przygotowania usług (15 s) lub końcowego startu po ARM (5 s) od późniejszego
 zatrzymania już uruchomionej próby. Zapis ostatniej próby może dotyczyć innego
 żądania i nie potwierdza uruchomienia bieżącego testu.
 
@@ -163,7 +163,7 @@ zatrzymania już uruchomionej próby. Zapis ostatniej próby może dotyczyć inn
 ### Jeden start i dwa terminy wykonawcy
 Polecenie próby jest sprawdzane pod kątem świeżości przy przyjęciu przez Pi.
 Czas spędzony później na serializacji i odtworzeniu journalu należy już do
-ograniczonego przygotowania (5 s). Po uzyskaniu blokady Pi porównuje generację,
+ograniczonego przygotowania usług (15 s; po żądaniu ARM maksymalnie 5 s do startu producenta). Po uzyskaniu blokady Pi porównuje generację,
 właściciela, stan i numer ostatniego polecenia z odczytem przy przyjęciu;
 nowa interakcja operatora anuluje wcześniejsze przygotowanie.
 
