@@ -502,6 +502,7 @@ def test_drive_startup_stale_frames_never_reset_five_second_grace(isolated):
         module.urllib.error.HTTPError("http://fixture", 429, "busy", {}, None),
         module.urllib.error.HTTPError("http://fixture", 503, "unavailable", {}, None),
     ],
+    ids=["timeout", "socket-timeout", "connection-refused", "http-429", "http-503"],
 )
 def test_observation_recovers_transport_with_stop_and_no_actuation(isolated, error):
     _, _, safety, _, commands = isolated
