@@ -55,6 +55,10 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     action = str(payload.get("action") or "").lower()
     if action not in ACTUATORS | {"arm", "disarm", "estop", "clear_estop", "stop"}:
         raise ValueError("unknown action")
+    if action in {"stop", "disarm"} and "expected_generation" in payload:
+        expected = payload["expected_generation"]
+        if not isinstance(expected, str) or not expected or len(expected) > 128:
+            raise ValueError("stale_stop_generation")
     command = dict(payload)
     command.update(
         action=action,
@@ -198,9 +202,14 @@ def _await_ack(command: dict, dispatched_at: float, timeout_s: float) -> dict:
         time.sleep(0.01)
 
 
-def request_stop(owner: str | None = None, timeout_s: float = 0.75) -> dict[str, Any]:
+def request_stop(
+    owner: str | None = None, timeout_s: float = 0.75, *, expected_generation: str | None = None
+) -> dict[str, Any]:
     """Zakończenie zadania wymaga ACK STOP i obserwowanego rozbrojenia."""
-    result = publish_command({"action": "stop", "source": owner or "manual"}, timeout_s=timeout_s)
+    command = {"action": "stop", "source": owner or "manual"}
+    if expected_generation is not None:
+        command["expected_generation"] = expected_generation
+    result = publish_command(command, timeout_s=timeout_s)
     status = result["safety"]
     result["ok"] = bool(result.get("ok") and result.get("confirmed") and status.get("state") in {"DISARMED", "ESTOP"})
     if not result["ok"] and not result.get("error"):

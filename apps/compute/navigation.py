@@ -60,6 +60,10 @@ class NavigationRunner:
         self.motion_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
+        self.run_started_monotonic = None
+        self.cycle_started = clock()
+        self.cycle_timings_ms = {}
+        self.previous_status_write_ms = None
         self.selection = selected_executor()
         if not self.selection:
             raise ComputeError("compute_executor_not_selected")
@@ -72,15 +76,36 @@ class NavigationRunner:
         self.calibration_digest = None
         self.last_frame = None
         self.fresh_frame_seen = False
-        self.lease = DecisionLease(self.policy, self.run_id, self.drive, self.stop, clock)
+        self.lease = DecisionLease(
+            self.policy,
+            self.run_id,
+            self.drive,
+            self.stop,
+            clock,
+            pause=self.pause,
+            feedback_wait=self.policy["mode"] == "drive",
+        )
         self.started = clock()
 
+    def _timed(self, phase, callback, *args, **kwargs):
+        started = self.clock()
+        try:
+            return callback(*args, **kwargs)
+        finally:
+            self.cycle_timings_ms[phase] = round((self.clock() - started) * 1000, 2)
+
     def _authority(self):
-        safety = read_status()
+        safety = self._timed("safety_read_ms", read_status)
         if self.policy["mode"] == "observe":
             return False
-        if safety.get("remote_decision_deadline_supported") is not True:
+        if (
+            safety.get("remote_decision_deadline_supported") is not True
+            or safety.get("remote_decision_feedback_supported") is not True
+            or safety.get("scoped_stop_generation_supported") is not True
+        ):
             raise ComputeError("navigation_executor_update_required")
+        if self._consent_completed(safety):
+            raise ComputeError("navigation_trial_completed")
         for ack in [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]:
             if (
                 isinstance(ack.get("request_id"), str)
@@ -101,7 +126,7 @@ class NavigationRunner:
             elif self.clock() >= deadline:
                 self.motion_failure = {"http_status": 504, "reason": "navigation_motion_ack_timeout"}
                 raise ComputeError("navigation_motion_ack_timeout")
-        intent = read_service_intent(UNIT, safety.get("generation"))
+        intent = self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
         if (
             safety.get("can_move") is not True
             or safety.get("owner") != "navigation"
@@ -124,16 +149,27 @@ class NavigationRunner:
         self.intent = intent
         self.generation = safety["generation"]
         self.motion_sequence = max(self.motion_sequence, safety.get("last_seq", -1), intent["seq"])
-        if not write_intent_status(
-            UNIT, intent, active=self.lease.moving, data_ready=self.lease.moving, navigation_ready=self.lease.moving
+        if not self._timed(
+            "producer_claim_ms",
+            write_intent_status,
+            UNIT,
+            intent,
+            active=True,
+            data_ready=self.lease.deadline is not None,
+            navigation_ready=self.lease.deadline is not None,
         ):
             raise ComputeError("navigation_producer_claim_failed")
         return True
 
     def drive(self, speed, duration):
-        self._authority()
+        self._timed("authority_ms", self._authority)
+        if self.lease.deadline is not None and self.clock() >= self.lease.deadline:
+            self.motion_failure = {"http_status": 409, "reason": "navigation_decision_expired_before_submit"}
+            raise ComputeError("navigation_decision_expired_before_submit")
         self.motion_sequence += 1
-        result, code = submit_control(
+        result, code = self._timed(
+            "submit_ms",
+            submit_control,
             {
                 "action": "move",
                 "source": "navigation",
@@ -145,6 +181,7 @@ class NavigationRunner:
                 "ttl_ms": 100,
                 "settings_revision": self.settings_revision,
                 "decision_deadline_monotonic": self.lease.deadline,
+                "decision_feedback_deadline_monotonic": self.lease.feedback_deadline,
                 "vx": speed,
                 "yaw": 0.0,
                 "duration": duration,
@@ -152,10 +189,12 @@ class NavigationRunner:
             **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
         if (code == 200 and result.get("ok")) or (code == 202 and result.get("pending")):
-            self.motion_started = True
+            self.motion_started = self.motion_started or speed != 0
         if code == 202 and result.get("pending"):
             self.pending_motion_acks[self.run_id + "-" + str(self.motion_sequence)] = self.clock() + 0.1
         if not (code == 200 and result.get("ok") or code == 202 and result.get("pending")):
+            if self._consent_completed(result.get("safety") or {}):
+                raise ComputeError("navigation_trial_completed")
             error = result.get("error") or (result.get("ack") or {}).get("reason")
             if not isinstance(error, str) or not error.replace("_", "").isalnum() or len(error) > 128:
                 error = "executor_rejected"
@@ -166,6 +205,16 @@ class NavigationRunner:
             logging.getLogger(__name__).warning("[vision] motion rejected status=%s reason=%s", code, error)
             raise ComputeError("navigation_motion_rejected")
 
+    def _consent_completed(self, safety):
+        return (
+            self.generation is not None
+            and safety.get("state") == "DISARMED"
+            and safety.get("reason") == "consent_expired"
+        )
+
+    def pause(self, duration):
+        self.drive(0.0, duration)
+
     def stop(self):
         if self.policy["mode"] != "drive":
             return
@@ -173,7 +222,13 @@ class NavigationRunner:
         if safety.get("owner") != "navigation" or safety.get("generation") != self.generation:
             return
         _, code = submit_control(
-            {"action": "stop", "source": "navigation", "owner": "navigation", "request_id": self.run_id + "-stop"}
+            {
+                "action": "stop",
+                "source": "navigation",
+                "owner": "navigation",
+                "request_id": self.run_id + "-stop",
+                "expected_generation": self.generation,
+            }
         )
         if code not in {200, 202}:
             self.closed.set()
@@ -239,16 +294,39 @@ class NavigationRunner:
             "observed_at": time.time(),
             "mode": self.policy["mode"],
             "run_id": self.run_id,
+            "generation": self.generation,
+            "operator_request_id": (self.intent or {}).get("request_id"),
             "config_revision": self.policy["revision"],
             "decision": decision,
             "request_roundtrip_ms": self.request_roundtrip_ms,
             "response_age_ms": self.response_age_ms,
             "latched": self.lease.latched,
+            "paused": self.policy["mode"] == "drive"
+            and not self.lease.latched
+            and not self.lease.moving
+            and (self.lease.deadline is not None or self.lease.feedback_deadline is not None),
+            "feedback_remaining_ms": max(0, round((self.lease.feedback_deadline - self.clock()) * 1000, 2))
+            if self.lease.feedback_deadline is not None
+            else 0,
+            "permit_remaining_ms": max(0, round((self.lease.deadline - self.clock()) * 1000, 2))
+            if self.lease.deadline is not None
+            else 0,
+            "sampled_monotonic": self.clock(),
+            "run_started_monotonic": self.run_started_monotonic,
+            "cycle_timings_ms": dict(self.cycle_timings_ms),
+            "cycle_elapsed_ms": round((self.clock() - self.cycle_started) * 1000, 2),
+            "previous_status_write_ms": self.previous_status_write_ms,
+            "visual_pause_supported": True,
             "running": not self.closed.is_set(),
             "stop_reason": self.lease.reason,
             "motion_failure": self.motion_failure,
         }
-        _write(target, row)
+        status_started = self.clock()
+        try:
+            _write(target, row)
+        finally:
+            # This row is already serialized; report its cost in the next sample.
+            self.previous_status_write_ms = round((self.clock() - status_started) * 1000, 2)
         if self.policy["mode"] == "drive":
             self.decision_trace.append(dict(row))
             if self.closed.is_set():
@@ -301,16 +379,23 @@ class NavigationRunner:
             source = self.source_factory()
             if self.policy["mode"] == "drive":
                 self.motion_publisher = self.publisher_factory()
-            self.started = self.clock()
+            self.run_started_monotonic = self.clock()
+            self.started = self.run_started_monotonic
             self.startup_deadline = self.started + 5.0
+            if self.policy["mode"] == "drive":
+                self._timed("authority_ms", self._authority)
             self._status(None)
             watchdog.start()
             while not self.closed.is_set():
+                self.cycle_started = self.clock()
+                self.cycle_timings_ms = {}
+                configuration_started = self.clock()
                 if navigation_config.snapshot() != self.saved_policy or selected_executor() != self.selection:
                     raise ComputeError("navigation_configuration_changed")
-                if self.policy["mode"] == "drive":
-                    self._authority()
-                frame = source.recv(50)
+                self.cycle_timings_ms["configuration_ms"] = round((self.clock() - configuration_started) * 1000, 2)
+                # Recheck authority immediately before every zero/nonzero submission.
+                # A second preflight here only delays the next capture and decision.
+                frame = self._timed("frame_wait_ms", source.recv, 50)
                 if not frame or (self.last_frame is not None and frame["captured_at"] <= self.last_frame[1]):
                     limit = (
                         5.0
@@ -386,13 +471,26 @@ class NavigationRunner:
                         }
                         self._status(self.last_result)
                         continue
-                    self.lease.accept(decision, frame_id, self.sequence, captured)
+                    self._timed("decision_apply_ms", self.lease.accept, decision, frame_id, self.sequence, captured)
+                    if not self.lease.latched and self.lease.reason == "awaiting_fresh_decision":
+                        # Keep the image verdict, but report the actual ZERO sent
+                        # to Pi while waiting for a usable fresh motion permit.
+                        decision = {**decision, "action": "stop", "motion_reason": self.lease.reason}
+                        self.last_result = decision
                 self._status(decision)
                 if self.lease.latched:
                     self.closed.set()
-                self.closed.wait(0.01)
+                if self.policy["mode"] == "observe":
+                    self.closed.wait(0.01)
             return 0
         except Exception as exc:
+            if isinstance(exc, ComputeError) and exc.code == "navigation_trial_completed":
+                self.closed.set()
+                self.motion_failure = None
+                with self.lease.lock:
+                    self.lease.reason = "trial_completed"
+                self.lease.halt("trial_completed")
+                return 0
             logging.getLogger(__name__).warning(
                 "[vision] navigation failed type=%s reason_type=%s code=%s",
                 type(exc).__name__,

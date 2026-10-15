@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source": "Sanitized timing metadata from the recorded Pi trial ending at 15:16:11 on 2026-10-15.",
+  "decision_budget_ms": 300,
+  "max_motion_ms": 150,
+  "prior": {"sequence": 49, "response_age_ms": 86.89, "valid_for_ms": 200, "apply_ms": 15.03},
+  "short": {"sequence": 50, "elapsed_since_prior_accept_ms": 271.804143, "response_age_ms": 296.0, "valid_for_ms": 181, "roundtrip_ms": 251.89, "inference_ms": 74.28},
+  "notes": [
+    "Relative arrival is reconstructed from sampled_monotonic minus decision_apply_ms; rounding is approximate.",
+    "The historical run ended here. A subsequent fresh reply in tests is a hypothetical recovery, not a recorded physical result.",
+    "No images, device identifiers, run identifiers, generation identifiers or absolute timestamps."
+  ]
+}

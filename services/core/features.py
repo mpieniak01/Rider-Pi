@@ -102,6 +102,11 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         )
         self._lock = threading.RLock()
         self._transaction_depth = 0
+        self._operation_guard = None
+        self._operation_remaining = None
+        self._operation_stop = None
+        self._operation_status_cache: dict[str, dict] | None = None
+        self._operation_units: tuple[str, ...] = ()
         self._requested: dict[str, dict] = {"s0_core": {}} if "s0_core" in self.registry else {}
         self._restored = False
         self._states: dict[str, str] = {}
@@ -128,9 +133,21 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         raise ValueError(f"unknown feature: {requested}")
 
     def _status(self, unit: str) -> dict:
+        cache = self._operation_status_cache
+        if cache is not None and unit in cache:
+            return dict(cache[unit])
+        if cache is not None and self.status_fn is None and self._operation_units:
+            from services.core.feature_observation import read_units
+
+            units = tuple(sorted(set(self._operation_units) | {unit}))
+            # Observation must remain meaningful after a start crosses the
+            # preparation boundary. The operation guard owns that deadline.
+            timeout = max(0.5, self._operation_remaining()) if self._operation_remaining else 4.0
+            cache.update(read_units(units, timeout=timeout))
+            return dict(cache[unit])
         value = self.status_fn(unit) if self.status_fn else systemd_ctrl.status(unit)
         if isinstance(value, bool):
-            return {
+            row = {
                 "unit": unit,
                 "installed": True,
                 "load": "loaded",
@@ -139,7 +156,11 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 "enabled": "disabled",
                 "source": "fixture",
             }
-        return dict(value)
+        else:
+            row = dict(value)
+        if cache is not None:
+            cache[unit] = row
+        return dict(row)
 
     def _running(self, unit: str) -> bool:
         row = self._status(unit)
@@ -218,11 +239,49 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     finally:
                         self._transaction_depth -= 1
 
+    @contextmanager
+    def operation(self, *, guard, remaining, stop, observation_units=()):
+        """Bound one explicit preparation using existing task serialization."""
+        with self.transaction():
+            if self._operation_guard is not None:
+                raise ValueError("navigation_trial_busy")
+            units = set(observation_units) | self._managed_units | self._admin_units
+            for name, options in self._requested.items():
+                units.update(task_units(self.registry[name], options))
+            self._operation_guard, self._operation_remaining, self._operation_stop = guard, remaining, stop
+            self._operation_units = tuple(sorted(units))
+            self._operation_status_cache = {}
+            try:
+                yield
+            finally:
+                self._operation_guard = self._operation_remaining = self._operation_stop = None
+                self._operation_status_cache = None
+                self._operation_units = ()
+
+    def _stop_permission(self, owner):
+        callback = self._operation_stop or self.safety_stop
+        return callback(owner)
+
     def _run(self, unit: str, action: str) -> dict:
         try:
-            result = _as_dict(self.runner(unit, action))
+            if self._operation_guard is not None and action == "start":
+                self._operation_guard()
+            if self._operation_remaining is not None and self.runner is systemd_ctrl.run_unit_action:
+                # A completed start can report after its producer began in
+                # budget. Do not kill systemctl before guard() checks that proof.
+                minimum = 3.0 if action == "start" else 0.01
+                result = _as_dict(self.runner(unit, action, timeout=max(minimum, self._operation_remaining())))
+            else:
+                result = _as_dict(self.runner(unit, action))
+            if self._operation_guard is not None and action == "start":
+                self._operation_guard()
         except Exception as exc:
             result = {"ok": False, "unit": unit, "action": action, "error": str(exc)}
+        finally:
+            # A unit action can change dependencies or partially succeed before
+            # failing. Never reuse pre-action observations of any member.
+            if self._operation_status_cache is not None:
+                self._operation_status_cache.clear()
         systemd_ctrl.invalidate_snapshot()
         from services.core.resource_observation import invalidate
 
@@ -339,7 +398,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
     def _rollback(self, feature: FeatureDefinition, started: list[str]) -> list[dict]:
         results: list[dict] = []
         if feature.can_move and started:
-            stop = self.safety_stop(feature.control_owner)
+            stop = self._stop_permission(feature.control_owner)
             results.append({"action": "revoke_control", **stop})
             if not stop.get("ok") or not stop.get("confirmed"):
                 return results
@@ -405,7 +464,6 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._pending[canonical] = dict(options)
         if feature.can_move:
             self._intents[canonical] = dict(control)
-        self._snapshot_rows = self.describe_features()
         persisted = self._persist_state()
         if (feature.can_move or "rider-voice-web.service" in units) and not persisted:
             self._states[canonical] = "failed"
@@ -414,7 +472,15 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         started: list[str] = []
         steps: list[dict] = []
         events: list[dict] = []
-        for unit in units:
+        # Navigation targets are empty bookkeeping units. Start them before
+        # the producer: a slow/failed target start must never roll back a
+        # producer which is already executing a fresh operator trial.
+        start_units = units
+        if canonical in {"s14_venom_navigation", "s15_venom_perception"}:
+            start_units = tuple(unit for unit in units if unit.endswith(".target")) + tuple(
+                unit for unit in units if not unit.endswith(".target")
+            )
+        for unit in start_units:
             if feature.can_move and UNIT_CATALOG.get(unit, {}).get("can_move"):
                 denied = self._permission(feature)
                 if self.safety_status().get("generation") != control.get("generation"):
@@ -488,6 +554,15 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 for unit in task_units(feature, {})
                 if unit not in PROTECTED_UNITS and self._running(unit) and not consumers.get(unit)
             ]
+            if external and canonical in {"s14_venom_navigation", "s15_venom_perception"}:
+                from services.core.feature_cleanup import orphan_targets
+
+                targets = orphan_targets(self, feature, external)
+                if targets:
+                    steps = [self._run(unit, "stop") for unit in targets]
+                    if any(not row.get("ok") for row in steps) or any(self._running(unit) for unit in targets):
+                        return {"ok": False, "error": "stop_failed", "steps": steps}
+                    return {"ok": True, "steps": steps, "events": [], "task": self._describe(canonical)}
             if external:
                 return {
                     "ok": False,
@@ -496,15 +571,14 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     "steps": [],
                     "events": [],
                 }
-            return {"ok": True, "idempotent": True, "steps": [], "events": []}
+            return {"ok": True, "idempotent": True, "steps": [], "events": [], "task": self._describe(canonical)}
         feature = self.registry[canonical]
         options = self._requested[canonical]
         self._states[canonical] = "stopping"
-        self._snapshot_rows = self.describe_features()
         self._persist_state()
         steps: list[dict] = []
         if feature.can_move:
-            revoked = self.safety_stop(feature.control_owner)
+            revoked = self._stop_permission(feature.control_owner)
             steps.append({"action": "revoke_control", **revoked})
             if not revoked.get("ok") or not revoked.get("confirmed"):
                 self._states[canonical] = "partial"
@@ -565,6 +639,10 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     self._pending.pop(canonical, None)
                     if canonical not in self._requested:
                         self._intents.pop(canonical, None)
+                if self._operation_guard is not None:
+                    self._snapshot_rows = [row for row in self._snapshot_rows if row["name"] != canonical] + [
+                        self._describe(canonical)
+                    ]
                 self._persist_state()
                 return {
                     "contract_version": CONTRACT_VERSION,

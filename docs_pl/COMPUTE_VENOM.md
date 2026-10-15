@@ -141,3 +141,73 @@ nieaktualnej klatki i termin pozwolenia egzekwowany przez Pi.
 ### Pierwsza klatka przy starcie próby
 
 Po przełączeniu z podglądu na jazdę kamera może zwrócić zapis z poprzedniego uruchomienia. Runner czeka maksymalnie 5 s na pierwszą świeżą klatkę, bez wysyłania ruchu i bez resetowania tej karencji przez stare klatki. Po przyjęciu pierwszej świeżej klatki tryb jazdy zachowuje ścisły budżet decyzji; utrata świeżości lub odpowiedzi zatrzymuje i zatrzaskuje próbę. Karencja startu nie wydłuża impulsu ani terminu zgody na ruch.
+
+
+### Koszt przygotowania próby jazdy
+Podczas jednej transakcji przygotowania Pi odczytuje stan członków nawigacji,
+alternatywnych kamer i istniejących konsumentów w ograniczonym zapytaniu systemd.
+Po każdej zmianie usługi odczyt jest unieważniany. Safety i generacja sterowania
+są nadal sprawdzane na świeżo, osobno od obserwacji usług.
+
+Przed startem producenta zapisywany jest aktualny journal uprawnień i konsumentów.
+Zapis nie odświeża całego katalogu nieaktywnych celów. Istniejące cele głosowe
+zachowują aktualne domeny, a obserwacje niezwiązanych celów swój pierwotny czas.
+Zwykły odczyt katalogu poza przygotowaniem nadal odświeża wszystkie cele.
+
+Status przygotowania zawiera `phase_timings_ms` oraz identyfikator żądania.
+Pozwala odróżnić przekroczenie budżetu przygotowania usług (15 s) lub końcowego startu po ARM (5 s) od późniejszego
+zatrzymania już uruchomionej próby. Zapis ostatniej próby może dotyczyć innego
+żądania i nie potwierdza uruchomienia bieżącego testu.
+
+
+### Jeden start i dwa terminy wykonawcy
+Polecenie próby jest sprawdzane pod kątem świeżości przy przyjęciu przez Pi.
+Czas spędzony później na serializacji i odtworzeniu journalu należy już do
+ograniczonego przygotowania usług (15 s; po żądaniu ARM maksymalnie 5 s do startu producenta). Po uzyskaniu blokady Pi porównuje generację,
+właściciela, stan i numer ostatniego polecenia z odczytem przy przyjęciu;
+nowa interakcja operatora anuluje wcześniejsze przygotowanie.
+
+Przy nawigacji panelowej producent przekazuje dwa terminy na zegarze Pi:
+- `decision_deadline_monotonic`: po nim stary obraz nigdy nie podtrzymuje ruchu;
+- `decision_feedback_deadline_monotonic`: ogranicza oczekiwanie przy zerowych
+  silnikach na kolejną decyzję. Jest to oryginalny termin producenta, nie nowy
+  budżet liczony od odbioru przez BUS; maksymalnie 500 ms.
+
+Koniec impulsu lub ważności obrazu zeruje silniki. Nowa świeża decyzja przed
+terminem informacji zwrotnej może rozpocząć kolejny ograniczony impuls w tej
+samej sesji. Brak decyzji rozbraja wykonawcę niezależnie od procesu producenta.
+Żaden z tych terminów nie odnawia pierwotnego ARM (maksymalnie 10 s próby).
+Bez nowego pola obowiązuje dotychczasowe rozbrojenie po ważności obrazu.
+Nowy kontrakt wymaga `remote_decision_feedback_supported`; podgląd wdrożenia
+musi zaktualizować także proces wykonawcy, przy rozbrojonym robocie.
+
+
+### Świeża decyzja ze zbyt krótkim czasem na impuls
+
+Jeżeli poprawnie skorelowana decyzja nadal mieści się w budżecie obrazu,
+ale pozostaje mniej niż 50 ms na impuls, pętla z kontraktem feedback wysyła
+wyłącznie ZERO i oczekuje na następną świeżą decyzję. Nie wydłuża starego GO.
+Panel zachowuje wynik oceny obrazu, ale raportuje rzeczywiste wykonanie STOP
+z powodem awaiting_fresh_decision.
+
+Zerowy cel korzysta z dotychczasowego budżetu feedback i tej samej generacji
+oraz pierwotnego terminu ARM. Nie wykonuje ponownego uzbrojenia. Brak dalszego
+feedback nadal kończy próbę przez STOP; przeterminowany obraz, obca tożsamość,
+niepoprawny model i nieudane wysłanie ZERO pozostają błędami terminalnymi.
+Legacy bez kontraktu feedback zachowuje poprzednie zatrzaśnięcie STOP.
+
+Regresja używa liczbowego zapisu próby zakończonej o 15:16:11: obraz miał
+296 ms przy budżecie 300 ms. Poprzedni kod kończył próbę pomimo GO; nowy
+nie nadaje tej klatce żadnego niezerowego wyjścia. Scenariusz kolejnego
+świeżego GO w teście sprawdza możliwość kontynuacji, a nie odtwarza
+niezarejestrowanego fizycznego przejazdu.
+
+
+### Odbiór operatora — 2026-10-15
+
+Operator potwierdził stabilność procesu w bieżącej skalibrowanej scenie
+na rzeczywistym Rider-Pi po poprawce krótkiego permitu. Zakres można wydać
+dla tej sceny i obecnych ograniczonych parametrów. Historyczna awaria
+z 15:16:11 pozostaje fixture regresji, a nie opisem aktualnego odbioru.
+Zmiana sceny, oświetlenia lub montażu kamery wymaga ponownej oceny warunków.
+Nie potwierdzamy metrycznej drogi hamowania ani uniwersalnej jakości percepcji.

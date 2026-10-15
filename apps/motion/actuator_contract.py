@@ -78,3 +78,22 @@ def decision_duration(command: dict, duration: float, now: float) -> float:
     if not 0.01 <= remaining <= 0.5:
         raise ValueError("decision_deadline_expired")
     return min(duration, remaining)
+
+
+def decision_feedback_deadline(command: dict, now: float, *, timed_navigation: bool):
+    deadline = command.get("decision_feedback_deadline_monotonic")
+    if deadline is None:
+        return None
+    deadline = finite_number(deadline, "decision_feedback_deadline_invalid")
+    decision = command.get("decision_deadline_monotonic")
+    if (
+        not timed_navigation
+        or command.get("source") != "navigation"
+        or command.get("execution_context") != "panel"
+        or decision is None
+    ):
+        raise ValueError("decision_feedback_source_invalid")
+    decision = finite_number(decision, "decision_deadline_invalid")
+    if deadline < decision or not 0 < deadline - now <= 0.5:
+        raise ValueError("decision_feedback_deadline_expired")
+    return deadline

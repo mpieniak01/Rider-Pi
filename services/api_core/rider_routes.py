@@ -10,6 +10,12 @@ def register_control_audio(app):
 
 def register_compute(app):
     app.add_url_rule(
+        "/api/navigation/trial",
+        endpoint="navigation_trial_start",
+        view_func=navigation_api.trial_handler,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/api/navigation/status",
         endpoint="navigation_loop_status",
         view_func=navigation_api.status_handler,

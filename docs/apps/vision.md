@@ -225,3 +225,74 @@ Currently no automated tests for vision components (integration testing only).
 - `docs/modules/mapper.md` - Occupancy grid mapping (Stage 3)
 - `apps/vision/obstacle_roi.py` - Obstacle detection implementation
 - `apps/vision/depth_bridge.py` - Depth estimation bridge
+
+
+## Supervised GO/STOP loop
+
+POST /api/navigation/trial admits one explicit operator request: request_id, generation, Pi-clock ts/ttl_ms (up to 500 ms), config_revision, settings_revision, operator_consent=true, operator_plan, source=manual and execution_context=panel. Pi serializes service preparation through FeatureManager (up to 15 s, including at most 5 s for final startup after ARM), retains its existing configuration, grants one navigation ARM for at most 10 s and confirms the new run. A replayed request_id cannot ARM again.
+
+Fresh obstacle or image uncertainty sends an immediate zero goal within that original trial. Three new CLEAR observations may resume small forward pulses without rearming or extending 10 s. Expired decisions, communication loss, contract/executor failure, operator STOP, manual takeover and ARM expiry are terminal. Existing thresholds and motion limits are unchanged.
+
+The live executor must advertise scoped_stop_generation_supported=true and remote_decision_deadline_supported=true. Optional expected_generation in STOP/disarm is checked atomically before revocation; old cleanup cannot stop a new owner. Global STOP without this field remains unconditional. Updating code requires the current executor process, not only a panel restart.
+
+
+### Close STOP band for slow starts
+
+New configurations default to `corridor=[0.35,0.80,0.65,0.95]`: the closest 15% of image height with the previous path width. Saved configurations are not automatically migrated. Venom offers Near / Farther (15% / 30%), writing only the existing Pi-owned `corridor` field.
+
+Selecting Near never increases speed or pulse duration and caps the selection at 0.1 SDK and 150 ms. Ramps, deadlines, the 10-second trial limit and STOP remain unchanged. Changing the corridor invalidates the old acceptance and leaves observe mode; saving alone never arms or starts driving. Inspect fresh analysis and use the existing acceptance button for the current zone.
+
+The white frame is the STOP zone. Venom geometry retains broader ground-fitting support (at least 30% of image height), shown with a dashed blue outline. Do not fit the plane exclusively to the smaller zone: a broad flat obstacle could become the fitted ground. These are image coordinates, not calibrated centimetres or stopping-distance measurements.
+
+
+### Warm observation-to-trial handoff
+
+The trial first reserves the existing passive camera consumer, then releases the
+previous observation/drive producer. Shared camera capture and frame distribution
+are not restarted in a warm handoff. A failed preparation keeps the passive
+reservation; it never restores driving or ARM. Other operator STOP/takeover remains
+authoritative.
+
+The navigation status includes preparation request_id, phase, state, elapsed_ms
+and freshness, even when no producer file exists. Timeout errors include the
+failed phase. Unit observations are reused only inside the preparation transaction
+and invalidated after unit actions; motion authority is always read fresh.
+Service preparation is bounded by 15 s, with at most 5 s for final startup after ARM within that budget. Motion and decision limits are unchanged.
+
+
+### Production timing: a motor permit is not a trial lifetime
+
+A recorded Pi trial reached two GO decisions but expired the previous short motor
+permit while the next fresh reply was in flight. The runner now distinguishes the
+executor-enforced pulse/decision deadline from feedback liveness. At permit expiry
+the motor output is already zero under the executor's bounded command; the old GO
+cannot be reused. The active trial may wait at zero until the last valid reply plus
+the existing decision_budget_ms. Only a new valid frame/revision/sequence can
+issue another bounded pulse. No ARM renewal or higher motion/deadline limit is
+introduced. Missing feedback at that limit, stale/invalid replies, explicit STOP,
+transport errors and authority changes terminate the trial.
+
+Status exposes separate permit_remaining_ms and feedback_remaining_ms. The API
+reports waiting_feedback and a STOP reply when the motor permit has expired.
+Internal process-start monotonic timestamps are checked on Pi, not compared with
+browser clocks. A matching run that started/stopped during HTTP bookkeeping is
+reported as that actual run outcome, not as never started. Idempotent task stop
+returns observed task evidence so the negotiated HTTP contract does not create a
+spurious 502 for a completed cancellation.
+
+Tests include the numerical sequence recorded on Pi on 2026-10-15 at 12:45,
+independent executor pulse expiry, network failure, late HTTP acknowledgement and
+foreign run rejection. Physical acceptance remains separate.
+
+
+### Accepted operating scene
+
+On 2026-10-15 the operator confirmed a stable forward GO/STOP process in the
+currently calibrated physical floor scene. This is acceptance of that scene and
+the saved low-speed setup, not a metric distance or general scene guarantee.
+
+A valid decision with less than 50 ms remaining for a pulse submits only ZERO
+and waits within the existing feedback budget. A new fresh GO may resume the
+same original ARM, without renewing its deadline or increasing speed/duration.
+Missing feedback, expired images, invalid identities and executor errors still
+terminate the trial. Venom reports image verdict and actual execution separately.

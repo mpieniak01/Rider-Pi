@@ -315,3 +315,71 @@ export USE_CORAL=1
 
 **Ostatnia aktualizacja:** 2025-01  
 **Status:** ⚠️ Część parametrów wymaga weryfikacji
+
+
+## Nadzorowana pętla GO/STOP
+
+POST /api/navigation/trial przyjmuje jedno jawne polecenie operatora: request_id, generation, ts i ttl_ms (czas Pi, do 500 ms), config_revision, settings_revision, operator_consent=true, operator_plan, source=manual i execution_context=panel. Pi szereguje przygotowanie usług przez FeatureManager (do 15 s, w tym maksymalnie 5 s na końcowy start po ARM), zachowuje istniejącą konfigurację, wykonuje jeden ARM navigation do 10 s i potwierdza nowy run. Powtórzenie request_id nie powoduje nowego ARM.
+
+Świeża przeszkoda lub niepewny obraz zeruje silniki w ramach aktualnej próby. Trzy kolejne CLEAR mogą wznowić małe impulsy, bez ponownego uzbrojenia i bez wydłużania 10 s. Utrata świeżości/komunikacji, awaria kontraktu/wykonawcy, STOP operatora, ręczne przejęcie i koniec ARM kończą próbę. Obecne progi, prędkość, impulsy i rampy pozostają bez zmian.
+
+Wykonawca musi raportować scoped_stop_generation_supported=true i remote_decision_deadline_supported=true. Opcjonalne expected_generation w STOP/disarm jest sprawdzane atomowo przed odebraniem uprawnienia; stare sprzątanie nie zatrzymuje nowego właściciela. Globalny STOP bez tego pola pozostaje bezwarunkowy. Po aktualizacji kodu wymagana jest aktualna instancja wykonawcy; sam restart panelu nie wystarczy.
+
+
+### Bliski pas STOP przy wolnym starcie
+
+Nowa konfiguracja domyślnie używa `corridor=[0.35,0.80,0.65,0.95]`: bliższe 15% wysokości obrazu, z tą samą szerokością toru co dawniej. Zapisane konfiguracje nie są automatycznie migrowane. Venom udostępnia wybór Bliska / Dalsza (15% / 30%) zapisujący wyłącznie istniejące pole `corridor` na Pi.
+
+Wybór Bliska nie podnosi prędkości ani czasu impulsu; ogranicza ustawienia do maks. 0,1 SDK i 150 ms. Nie zmienia ramp, deadline, limitu próby 10 s ani działania STOP. Zmiana strefy unieważnia dotychczasowy odbiór i pozostawia tryb observe; sam zapis nie uzbraja i nie uruchamia jazdy. Bieżącą strefę weryfikuje się na świeżym obrazie i zapisuje istniejącym przyciskiem odbioru.
+
+Biała ramka jest strefą STOP. Geometria na Venom zachowuje szerszy kontekst dopasowania podłoża (minimum 30% wysokości obrazu), oznaczony niebieską przerywaną ramką. Nie należy dopasowywać płaszczyzny wyłącznie do mniejszej strefy: duża płaska przeszkoda może wtedy stać się wzorcem podłoża. Obszary są współrzędnymi obrazu, nie skalibrowanym pomiarem centymetrów ani drogi hamowania.
+
+
+### Przejście z obserwacji do testu bez restartu kamery
+
+Próba najpierw rezerwuje istniejący pasywny cel kamery, potem zwalnia poprzedni
+proces obserwacji/jazdy. Kamera i dystrybutor klatek zachowują procesy przy ciepłym
+przejściu. Błąd przygotowania pozostawia rezerwację podglądu; nie przywraca jazdy
+ani ARM. Nowszy STOP lub przejęcie operatora pozostają nadrzędne.
+
+Status nawigacji zawiera request_id, etap, stan, elapsed_ms i świeżość przygotowania
+także bez pliku producenta obrazu. Timeout wskazuje etap awarii. Odczyty jednostek
+są współdzielone tylko w transakcji przygotowania i unieważniane po operacjach
+usług; uprawnienia ruchu są zawsze odczytywane na świeżo. Przygotowanie usług ma limit 15 s, w tym maksymalnie 5 s na końcowy start
+po ARM. Limity ruchu i decyzji pozostają bez zmian.
+
+
+### Czas produkcyjny: permit napędu a czas próby
+
+Zapis próby Pi wykazał GO i wygaśnięcie krótkiego permitu w trakcie odbierania
+następnej świeżej odpowiedzi. Runner rozdziela teraz termin impulsu/komendy,
+egzekwowany przez wykonawcę, od żywotności odbioru. Po końcu permitu napęd już
+zeruje wyjście; stare GO nie upoważnia do dalszej jazdy. Ta sama próba może czekać
+w postoju do ostatniej poprawnej odpowiedzi plus istniejący decision_budget_ms.
+Dopiero nowa poprawna klatka/rewizja/sekwencja dopuszcza kolejny ograniczony impuls.
+Nie odnawia to ARM i nie podnosi limitów ruchu ani terminów. Brak odpowiedzi w tym
+limicie, stare/błędne dane, STOP, błąd transportu lub utrata uprawnień kończą próbę.
+
+Status rozdziela permit_remaining_ms i feedback_remaining_ms. API pokazuje
+waiting_feedback oraz odpowiedź STOP po końcu permitu napędu. Monotoniczny czas
+startu procesu jest sprawdzany lokalnie na Pi, bez porównywania z zegarem karty.
+Jeśli własny proces wystartował i zakończył się w czasie obsługi HTTP, zwracany jest
+jego rzeczywisty wynik. Wyłączenie już zakończonego celu zwraca potwierdzony opis
+celu, co zapobiega wtórnemu 502 kontraktu HTTP.
+
+Regresje zawierają liczbowy zapis produkcyjnej próby z 2026-10-15 o 12:45,
+niezależne zerowanie impulsu, awarię sieci, opóźnione HTTP i odrzucenie obcego runa.
+Odbiór fizyczny pozostaje osobnym etapem.
+
+
+### Odbiór bieżącej sceny
+
+Dnia 2026-10-15 operator potwierdził stabilną pracę pętli GO/STOP w aktualnie
+skalibrowanej scenie na fizycznym Rider-Pi. Odbiór dotyczy tej sceny i zapisanych
+parametrów wolnej jazdy; nie jest pomiarem odległości ani gwarancją dla innych scen.
+
+Poprawna decyzja z czasem krótszym niż 50 ms na impuls daje tylko ZERO i oczekiwanie
+w istniejącym budżecie feedback. Nowa świeża decyzja GO może wznowić tę samą zgodę
+ARM, bez odnowienia jej terminu i zwiększania prędkości lub impulsu. Brak feedback,
+stary obraz, obca tożsamość i błąd wykonawcy nadal kończą próbę. Panel rozdziela
+ocenę obrazu od faktycznego polecenia wykonawczego.

@@ -151,3 +151,6 @@ evn.ssh.local
 # Private configuration directory
 config/local/*
 !config/local/.gitignore
+
+# Local plans and private diagnostic captures
+docs_dev/

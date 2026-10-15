@@ -244,11 +244,25 @@ class FeatureStateMixin:
             },
         }
 
+    def _persistence_rows(self) -> list[dict]:
+        if self._operation_guard is None:
+            return self.describe_features()
+        # Ownership/intent is a control journal, not a full UI refresh. Keep
+        # unrelated observations at their original age; refresh requested goals
+        # and goals just stopped. Voice domain consumers still see current rows.
+        rows = {row["name"]: row for row in self._snapshot_rows}
+        changed = set(self._requested) | set(self._pending)
+        changed.update(name for name, row in rows.items() if row.get("requested"))
+        for name in changed:
+            rows[name] = self._describe(name)
+        self._snapshot_rows = list(rows.values())
+        return self._snapshot_rows
+
     def state_snapshot(self) -> dict:
         if not self._lock.acquire(blocking=False):
             return json.loads(json.dumps(self._last_snapshot))
         try:
-            rows = self.describe_features()
+            rows = self._persistence_rows()
             self._last_snapshot = {
                 "contract_version": CONTRACT_VERSION,
                 "host": "pi",

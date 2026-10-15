@@ -140,6 +140,7 @@ class MotionController:
         self.last_cmd_ts = 0.0
         self.deadline = 0.0
         self.remote_decision_deadline = None
+        self.remote_feedback_deadline = None
         self.stopped = True
         self.t_lx = self.t_az = self.o_lx = self.o_az = 0.0
         self.reversing = False
@@ -154,6 +155,7 @@ class MotionController:
         self.reverse_until = None
         self.deadline = self.last_cmd_ts = 0.0
         self.remote_decision_deadline = None
+        self.remote_feedback_deadline = None
         self.stopped = True
         return self.robot.stop()
 
@@ -168,6 +170,7 @@ class MotionController:
         panel_pulse=False,
         mode="pulse",
         remote_decision_deadline=None,
+        remote_feedback_deadline=None,
     ):
         if not self.limits.valid or not self.gate.can_actuate():
             self.stop()
@@ -220,6 +223,7 @@ class MotionController:
         if mode == "pulse":
             self.curve_braking = [False, False]
         self.remote_decision_deadline = remote_decision_deadline
+        self.remote_feedback_deadline = remote_feedback_deadline
         self.last_cmd_ts = self.gate.clock()
         self.deadline = self.last_cmd_ts + (duration if panel_pulse else min(duration, self.limits.watchdog_s))
         return True
@@ -231,6 +235,7 @@ class MotionController:
     def expire_goal(self):
         # A bounded panel pulse ends movement, not the operator session.
         remote = self.remote_decision_deadline
+        feedback = self.remote_feedback_deadline
         fresh_navigation = (
             remote is not None
             and self.gate.owner == "navigation"
@@ -244,11 +249,30 @@ class MotionController:
         elif fresh_navigation:
             # Zero output between pulses; retain only the original decision TTL.
             self.remote_decision_deadline = remote
+            self.remote_feedback_deadline = feedback
 
     def expire_remote_decision(self):
-        if self.remote_decision_deadline is not None and self.gate.clock() >= self.remote_decision_deadline:
+        now = self.gate.clock()
+        feedback = self.remote_feedback_deadline
+        if feedback is not None and now >= feedback:
             self.gate.disarm("decision_timeout")
             self.stop()
+            return True
+        if self.remote_decision_deadline is not None and now >= self.remote_decision_deadline:
+            waiting = (
+                feedback is not None
+                and self.gate.owner == "navigation"
+                and self.gate.execution_context == "panel"
+                and self.gate.arming_mode == "timed"
+            )
+            if not waiting:
+                self.gate.disarm("decision_timeout")
+            if self.stop() is False:
+                self.gate.disarm("actuator_failed")
+            elif waiting:
+                # Expired GO never moves motors. Retain only the independently
+                # bounded feedback watchdog and the original operator ARM.
+                self.remote_feedback_deadline = feedback
             return True
         return False
 

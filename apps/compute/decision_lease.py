@@ -1,4 +1,4 @@
-"""Local monotonic permit; stale decisions cannot revive a stopped run."""
+"""Bounded motor permits; fresh replies never revive a terminally stopped run."""
 
 from __future__ import annotations
 
@@ -8,10 +8,13 @@ import time
 
 
 class DecisionLease:
-    def __init__(self, config, run_id, drive, stop, clock=time.monotonic):
+    def __init__(self, config, run_id, drive, stop, clock=time.monotonic, *, pause=None, feedback_wait=False):
         self.config = dict(config)
         self.run_id = run_id
         self.drive, self.stop, self.clock = drive, stop, clock
+        self.pause = pause
+        self.feedback_wait = feedback_wait and pause is not None
+        self.feedback_deadline = None
         self.lock = threading.Lock()
         self.last_seq = -1
         self.deadline = None
@@ -30,12 +33,46 @@ class DecisionLease:
         self.latched = True
         self.reason = reason
         self.deadline = None
+        self.feedback_deadline = None
         self.moving = False
         self.stop()
 
+    def _wait_for_feedback(self, now):
+        if not self.feedback_wait or self.feedback_deadline is None or now >= self.feedback_deadline:
+            return False
+        # The executor already zeros the bounded command at its deadline/pulse
+        # end. Clearing this permit never emits or renews a motion command.
+        self.deadline = None
+        self.moving = False
+        self.reason = "awaiting_fresh_decision"
+        return True
+
+    def _defer_short_permit(self, now):
+        if not self.feedback_wait:
+            self._halt("decision_budget_exhausted")
+            return False
+        # A validated, still-fresh reply proves live feedback but cannot grant
+        # a useful motor pulse. Submit ZERO, never stretch its old GO permit.
+        # This zero-only window uses the existing feedback budget and original
+        # executor ARM; it cannot rearm or revive an expired generation.
+        duration = min(self.config["max_motion_ms"] / 1000, 0.15)
+        self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
+        self.deadline = now + duration
+        self.moving = False
+        self.reason = "awaiting_fresh_decision"
+        try:
+            self.pause(duration)
+        except Exception:
+            self._halt("motion_submission_failed")
+            raise
+        return False
+
     def tick(self):
         with self.lock:
-            if self.moving and self.deadline is not None and self.clock() >= self.deadline:
+            now = self.clock()
+            if self.feedback_deadline is not None and now >= self.feedback_deadline:
+                self._halt("decision_timeout")
+            elif self.deadline is not None and now >= self.deadline and not self._wait_for_feedback(now):
                 self._halt("decision_timeout")
             return not self.latched
 
@@ -44,7 +81,10 @@ class DecisionLease:
             if self.latched:
                 return False
             now = self.clock()
-            if self.moving and self.deadline is not None and now >= self.deadline:
+            if self.feedback_deadline is not None and now >= self.feedback_deadline:
+                self._halt("decision_timeout")
+                return False
+            if self.deadline is not None and now >= self.deadline and not self._wait_for_feedback(now):
                 self._halt("decision_timeout")
                 return False
             identity = {
@@ -77,10 +117,38 @@ class DecisionLease:
             self.last_seq = sequence
             self.reason = str(decision.get("reason", "unknown"))[:128]
             if decision["action"] == "stop":
-                if self.moving:
+                if self.pause is None:
+                    # Older callers without scoped zero output retain terminal STOP.
+                    if self.moving or decision.get("state") != "clear":
+                        self._halt(self.reason)
+                    return False
+                if decision.get("state") not in {"clear", "obstacle", "unknown"}:
+                    self._halt("decision_invalid_state")
+                    return False
+                if decision.get("state") == "unknown" and self.reason not in {
+                    "vision_image_quality",
+                    "vision_low_confidence",
+                    "vision_floor_uncertainty",
+                    "depth_ground_orientation",
+                }:
                     self._halt(self.reason)
-                elif decision.get("state") != "clear":
-                    self._halt(self.reason)
+                    return False
+                permit = min(remaining, valid / 1000)
+                duration = min(permit, self.config["max_motion_ms"] / 1000)
+                if duration < 0.05:
+                    return self._defer_short_permit(now)
+                # A fresh visual STOP renews only a zero goal in the original ARM.
+                # The watchdog also expires paused runs; old GO cannot revive them.
+                if self.feedback_wait:
+                    self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
+                self.deadline = now + permit
+                self.moving = False
+                self.reason = str(decision.get("motion_reason", self.reason))[:128]
+                try:
+                    self.pause(duration)
+                except Exception:
+                    self._halt("motion_submission_failed")
+                    raise
                 return False
             if (
                 decision.get("state") != "clear"
@@ -95,10 +163,11 @@ class DecisionLease:
             permit = min(remaining, valid / 1000)
             duration = min(permit, self.config["max_motion_ms"] / 1000)
             if duration < 0.05:
-                self._halt("decision_budget_exhausted")
-                return False
+                return self._defer_short_permit(now)
             # Pulse length is enforced by the executor. The lease tracks freshness,
             # so a fresh reply after a completed pulse can renew the same run.
+            if self.feedback_wait:
+                self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
             self.deadline = now + permit
             self.moving = True
             try:

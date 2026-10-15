@@ -21,6 +21,8 @@ def isolated(monkeypatch, tmp_path):
     }
     safety = {
         "remote_decision_deadline_supported": True,
+        "remote_decision_feedback_supported": True,
+        "scoped_stop_generation_supported": True,
         "can_move": True,
         "owner": "navigation",
         "generation": "gen",
@@ -97,7 +99,7 @@ def test_capture_decision_motion_then_transport_loss_stops(isolated):
     runner = module.NavigationRunner(source_factory=lambda: source, request=remote)
     assert runner.run() == 2
     assert source.closed
-    assert len([x for x in commands if x["action"] == "move"]) == 1
+    assert len([x for x in commands if x["action"] == "move" and x["vx"] != 0]) == 1
     assert commands[-1]["action"] == "stop"
     assert runner.lease.latched
 
@@ -396,7 +398,7 @@ def test_startup_skips_old_capture_before_first_fresh_frame_without_motion(isola
     runner = module.NavigationRunner(source_factory=Source, request=request, observe_only=observe)
     assert runner.run() == 0
     assert len(requested) == 1
-    assert all(command["action"] != "move" for command in isolated[-1])
+    assert all(command["action"] != "move" or command["vx"] == 0 for command in isolated[-1])
     if observe:
         assert not isolated[-1]
 
@@ -467,7 +469,7 @@ def test_drive_expired_frame_after_first_fresh_frame_still_latches_stop(isolated
     assert runner.run() == 2
     assert len(requested) == 1 and runner.lease.latched
     assert runner.lease.reason == "navigation_frame_expired"
-    assert all(command["action"] != "move" for command in isolated[-1])
+    assert all(command["action"] != "move" or command["vx"] == 0 for command in isolated[-1])
 
 
 def test_drive_startup_stale_frames_never_reset_five_second_grace(isolated):
@@ -490,7 +492,7 @@ def test_drive_startup_stale_frames_never_reset_five_second_grace(isolated):
         source_factory=Source, request=lambda *_: pytest.fail("stale input must not be sent"), clock=lambda: clock[0]
     )
     assert runner.run() == 2 and runner.lease.latched
-    assert all(command["action"] != "move" for command in isolated[-1])
+    assert all(command["action"] != "move" or command["vx"] == 0 for command in isolated[-1])
 
 
 @pytest.mark.parametrize(
