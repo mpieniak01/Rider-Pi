@@ -354,6 +354,7 @@ def test_post_turn_capture_gate_rejects_forward_from_old_orientation(isolated, m
         "sweep_verified": True,
         "protocol_version": maneuver_protocol,
     }
+    policy["avoidance"]["geometry"] = {**policy["avoidance"]["geometry"], "mode": "image"}
     now = [1000.0]
     phases = []
     monkeypatch.setattr(module.time, "time", lambda: now[0])

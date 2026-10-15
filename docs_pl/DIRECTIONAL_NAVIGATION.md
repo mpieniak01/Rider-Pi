@@ -1,75 +1,75 @@
-# Opcjonalne skręty w pętli wizji Venom
+# Kontrakt nawigacji kierunkowej
 
-Pi pozostaje jedynym właścicielem polityki i wykonania ruchu. Ta funkcja dodaje
-opcjonalny kontrakt wizji v2; domyślnie omijanie jest wyłączone. Stare pliki
-konfiguracji są odczytywane z nowymi polami wyłączonymi. Jazda prosto v1 pozostaje
-dostępna; stare odpowiedzi nie mogą uruchomić nowych akcji skrętu.
+Powiązany moduł Venom udostępnia edycję ROI obrazu i czułości oraz opcjonalne,
+ograniczone korekty kierunku. Pi przechowuje wspólną rewizyjną politykę i pozostaje
+jedynym wykonawcą silników. Zapis nie uruchamia ruchu ani ARM. Omijanie jest
+domyślnie wyłączone, a dotychczasowa jazda prosto v1 pozostaje dostępna.
 
-## Polityka i zgodność starego protokołu v2
+## Wersje akcji i przyjęcie ruchu
 
-Istniejący plik navigation_config.json zawiera pole avoidance:
-enabled, sweep_verified, mirrored (bool), turn_speed (SDK 0,01–0,1; domyślnie
-0,05), turn_ms (50–150; domyślnie 100), max_turn_pulses (1–5; domyślnie 3).
-Nie ma drugiego pliku ustawień ruchu po stronie Venom. Zmiana parametrów
-unieważnia poprzedni odbiór kalibracji. Włączenie wymaga depth_plane oraz
-dotychczasowych niskich limitów próby. Tryb drive wymaga sweep_verified:
-potwierdzenia stron kamery, obrysu skrętu i hamowania na danym montażu.
+V2 zachowuje STOP i następnie turn_left/right wyłącznie yaw. Jawne v3 używa
+steer_left/right: wspólne niskie vx i ograniczone yaw w jednym poleceniu.
+Stare włączone polityki bez wersji manewru zostają v2. Polityki bez geometrii
+migrują do image, bez cichego włączenia nowej projekcji. V3 image zachowuje
+aproksymację masek; istniejąca instalacja wybiera ground jawnie.
 
-Venom musi reklamować supported_protocol_versions zawierające 2. Pi wysyła
-protocol_version=2 wyłącznie dla włączonego omijania, wraz z avoidance oraz
-motion_phase=ready/turn_settling. Odpowiedź zachowuje run/frame/sequence/revision,
-model i TTL. Akcje to go, stop, turn_left, turn_right. Nieznana wersja, błędna
-tożsamość lub niepełne dowody wolnej strony kończą próbę postojem.
+Każda niezerowa odpowiedź musi pasować do run, frame, sequence, revision, modelu
+i budżetu capture. Korekta wymaga trzech wolnych obserwacji strony, wolnego toru
+i najbliższej strefy; Pi niezależnie sprawdza dowody. Klatka sprzed lub podczas
+korekty nie autoryzuje następnego ruchu. Host trzyma stronę do potwierdzenia
+wolnego toru prosto na nowych klatkach.
 
-## Sekwencja
+Pozostają pierwotne 10 s ARM/próby, watchdog i limity impulsu:
+jazda <=0,1 SDK / 150 ms, yaw 0,01–0,1 SDK / 50–150 ms.
+Nie ma automatycznego ARM ani przedłużania. Końcowy avoidance_no_progress
+nie może wznowić się przez późniejsze GO.
 
-Po wykryciu przeszkody Pi najpierw wysyła ZERO. Venom wymaga trzech kolejnych
-potwierdzeń wolnej strony. Pi sprawdza odbiór strefy, model, tryb, kompletność
-sektora, brak uskoku i pozostały limit skrętów. Dopiero wtedy wywołuje istniejący
-wykonawca z vx=0 i yaw dodatnim dla left, ujemnym dla right. Rzeczywiste znaki
-kierunku wymagają sprawdzenia na robocie; czas SDK nie wyznacza kąta obrotu.
+## Polityka projekcji podłoża
 
-Po skręcie Pi wymaga klatki przechwyconej po końcu lokalnego pozwolenia
-i 100 ms stabilizacji. Samo późne otrzymanie odpowiedzi nie wystarcza. W tym czasie
-wolno podtrzymywać jedynie ZERO. Nowa ocena trzech klatek przednich może wznowić
-krótkie impulsy do przodu w nowym kierunku.
+avoidance.geometry zawiera mode (ground/image), znormalizowane fx/fy/cx/cy kamery,
+radius_ratio, lookahead_ratio i max_heading_deg. Nowe ustawienia pozostawiają
+omijanie wyłączone i fx/fy/radius_ratio puste. Walidacja sprawdza skończone zakresy;
+jazda z włączonym ground v3 wymaga uzupełnienia kalibracji. Wykonawca odrzuca
+niezerowe odpowiedzi bez konfiguracji projekcji, właściwego rodzaju geometrii,
+poprawnej normalnej/wysokości odniesienia oraz dostatecznego wsparcia podłoża.
 
-Wszystkie postoje i skręty mieszczą się w oryginalnej próbie do 10 s.
-Nie przedłużają ARM, watchdogów ani limitów jazdy 0,1 SDK / 150 ms.
-Globalny STOP, utrata decyzji, błąd wykonawcy i przejęcie ręczne są końcowe.
-Nie ma automatycznego wznowienia ani powrotu do pierwotnego kursu.
+fx/fy to ogniskowe podzielone przez rozmiar dostarczonego obrazu; cx/cy to jego
+znormalizowany punkt główny po faktycznym resize/crop/obrocie. Projekcja pinhole
+wymaga scharakteryzowania/skorygowania dystorsji. radius_ratio to zachowawczy
+promień opisany na robocie podzielony przez minimalną dopuszczoną fizyczną wysokość
+kamery. Promień obejmuje wszystkie części względem rzutu kamery na podłoże
+w dopuszczonych pozach i margines. lookahead_ratio używa jednostek bieżącej
+wnioskowanej wysokości nad podłożem; nie deklaruje pomiaru centymetrów.
 
-## Odbiór
+Host odpornie dopasowuje podłoże z pojedynczej inferencji głębi, rzutuje kapsuły
+obrysu w 49 kierunkach i wyznacza ciągłe wolne prześwity. Oprócz próbek promieni
+sprawdza obserwowane cienkie przeszkody i uskoki. Podgląd pokazuje rzut torów;
+niepełna widoczność daje UNKNOWN. Ground korzysta z tych parametrów zamiast ROI.
 
-Funkcja eksperymentalna: testy programowe nie potwierdzają wolnego obrysu,
-kierunku ani zaobserwowanego ruchu fizycznego. Kamera przednia nie pokazuje
-całego boku i tyłu. Przed przyjęciem omijania wymagane są oznaczone sekwencje
-lewa/prawa/obie strony, cienkie przeszkody, uskoki i klatki po skręcie oraz
-ręczny odbiór obu kierunków. Automatyczne testy nie kontaktują silników.
+Poza kamery wynika z bieżącego podłoża, nie z pomiaru IMU/wysokości. Duża zmiana
+referencji kasuje stabilność, ale nigdy budżet korekt. Świeża porównywalna klatka
+po korekcie mierzy przyrost względnego prześwitu. Stagnację regulują
+max_stalled_corrections (1–5, domyślnie 2) i progress_min_delta (0–0,3, domyślnie
+0,03); niezależny max_turn_pulses to 1–5, domyślnie 3. ZERO przy niepewnej
+projekcji mieści się wyłącznie w pierwotnej ważnej sesji. Brak łączności i STOP
+operatora/globalny kończą sesję.
 
-Powiązana implementacja panelu i analizy znajduje się w venom-module-rider.
-Wersje obu repozytoriów trzeba wdrażać zgodnie z kontraktem v2.
+Pełna siatka kierunków pozostaje w opcjonalnej diagnostyce hosta. Wybrane tory,
+referencja i liczniki mieszczą się w istniejącym limicie odpowiedzi/nagłówka.
+Kierunek wybiera stronę ograniczonej korekty, nie metryczny yaw ani certyfikowany
+tor dynamiczny. Łączny vx/yaw, obrys i hamowanie wymagają odbioru fizycznego.
 
+## Testy i dalszy odbiór danych
 
-## V3 — korekty podczas jazdy
+Testy używają rzeczywistego kodu lease/runner z rejestrem wyjść zamiast sprzętu.
+Sprawdzają błędne dowody geometrii, brak kalibracji, migrację, impulsy/TTL,
+końcowy STOP i kontrakt między repozytoriami. Gałąź zawiera też poprawkę mobilnego
+widoku sterowania i kamery.
 
-Nowe włączenie omijania używa avoidance.protocol_version=3. Akcje steer_left
-i steer_right oznaczają wspólne polecenie niskiego vx i ograniczonego yaw;
-nie zmieniają znaczenia dawnych turn_left/right v2. Stary zapis omijania
-bez jawnej wersji jest migrowany do v2. Wybór v3 unieważnia poprzedni odbiór;
-Venom musi reklamować zgodność z tym protokołem.
-
-Pi wymaga kompletnej oceny docelowej strony, łączącego toru paths.left/right
-i najbliższej strefy paths.guard. Oba dowody muszą być CLEAR dla tej samej
-bieżącej decyzji; sam wolny bok nie wystarcza. Maski są przybliżeniem obrazu,
-nie metrycznym pomiarem obrysu. Nie zwiększono progów, prędkości ani watchdogów.
-
-Po impulsie korekty nowe niezerowe polecenie wymaga capture po jego zakończeniu.
-Nie trzeba najpierw wykonać osobnego postoju jak w v2. Brak poprawy po limicie
-korekt kończy próbę przez terminalny avoidance_no_progress. Potwierdzona wolna
-droga w trzech nowych obserwacjach pozwala wyprostować tor.
-
-Implementacja wymaga odbioru fizycznego łącznego vx/yaw i danych dla zmian
-wysokości/pochylenia. Słabe próbki pudełka nadal powodują UNKNOWN/STOP;
-nie wymuszono na nich skrętu. Odporna estymacja podłoża i kompensacja pozy
-pozostają do dalszych prac na lepszym zbiorze.
+Następny PR zbiera kalibrację kamery/obrysu i oznaczone sekwencje niezależnego
+odbioru: podłoga, lewa/prawa/centralna/obie przeszkody, cienkie obiekty, uskoki,
+słabe światło, różne wysokości/pitch/roll oraz nowe klatki po korekcie. Należy
+zweryfikować znak yaw, obrys, faktyczny ruch i hamowanie oraz ocenić błędne
+GO/STOP, migotanie, pomyłki stron i opóźnienia. Słabe historyczne pudełko pozostaje
+próbką negatywną, bez wymuszania progów ani twierdzenia o fizycznie wolnym torze.
+Ograniczeniami pozostają błędy głębi monokularnej i niewidoczne boki/tył.

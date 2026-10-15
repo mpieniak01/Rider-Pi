@@ -13,6 +13,7 @@ def setup():
     config.update(mode="drive", verified=True, calibration_id="accepted", model_sha256="a" * 64)
     config["perception"]["engine"] = "depth_plane"
     config["avoidance"].update(enabled=True, sweep_verified=True, protocol_version=2)
+    config["avoidance"]["geometry"]["mode"] = "image"
     calls = []
     now = [0.0]
     lease = DecisionLease(
@@ -180,3 +181,129 @@ def test_saved_legacy_avoidance_does_not_silently_become_a_curve(monkeypatch, tm
     loaded = navigation_config.snapshot()
     assert loaded["avoidance"]["protocol_version"] == 2
     assert loaded["avoidance"]["enabled"] is True
+
+
+def ground_setup():
+    config, lease, now, calls = setup()
+    config["avoidance"].update(
+        protocol_version=3, geometry={**DEFAULT["avoidance"]["geometry"], "fx": 0.5, "fy": 0.5, "radius_ratio": 0.35}
+    )
+    lease.steer = lambda *x: calls.append(("steer", *x))
+    return config, lease, now, calls
+
+
+def ground_reply(seq, **changes):
+    return reply(
+        seq,
+        protocol_version=3,
+        action="go",
+        state="clear",
+        clear_count=3,
+        geometry="ground_capsule",
+        ground_support=0.8,
+        ground_reference={"normal": [0, 0.6, 0.8], "height": 1},
+        **changes,
+    )
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"geometry": "image"},
+        {"ground_reference": {}},
+        {"ground_support": float("nan")},
+        {"ground_support": 0.2},
+        {"ground_support": 2.0},
+        {"ground_reference": {"normal": [0, -0.6, 0.8], "height": 1}},
+        {"ground_reference": {"normal": [0, 0, 2], "height": 1}},
+        {"ground_reference": {"normal": [0, True, 0], "height": 1}},
+        {"ground_reference": {"normal": [0, 0.6, 0.8], "height": float("inf")}},
+    ],
+)
+def test_ground_evidence_invalid_never_reaches_motor(patch):
+    _, lease, _, calls = ground_setup()
+    row = ground_reply(1)
+    row.update(patch)
+    assert not lease.accept(row, "f1", 1, 0)
+    assert lease.reason == "navigation_ground_evidence_invalid"
+    assert calls == [("stop",)]
+
+
+def test_ground_valid_go_uses_same_small_pulse_and_expired_go_cannot_resume():
+    _, lease, now, calls = ground_setup()
+    assert lease.accept(ground_reply(1), "f1", 1, 0)
+    assert calls == [("go", 0.1, 0.15)]
+    now[0] = 0.3
+    assert not lease.tick()
+    assert not lease.accept(ground_reply(2), "f2", 2, 0.3)
+
+
+def test_ground_steer_validates_projection_without_new_arm_or_larger_pulse():
+    _, lease, _, calls = ground_setup()
+    row = ground_reply(1)
+    row.update(
+        action="steer_left",
+        state="obstacle",
+        paths={
+            "left": {"state": "clear", "coverage_complete": True},
+            "guard": {"state": "clear", "coverage_complete": True},
+        },
+    )
+    assert lease.accept(row, "f1", 1, 0)
+    assert calls == [("steer", "left", 0.1)]
+
+
+def test_ground_go_cannot_claim_calibration_missing_in_device_policy():
+    config, lease, _, calls = ground_setup()
+    config["avoidance"]["geometry"]["fx"] = None
+    assert not lease.accept(ground_reply(1), "f1", 1, 0)
+    assert calls == [("stop",)]
+    with pytest.raises(ValueError, match="navigation_geometry_calibration_required"):
+        validate(config)
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("fx", False),
+        ("fy", float("nan")),
+        ("radius_ratio", 0),
+        ("lookahead_ratio", 9),
+        ("max_heading_deg", 71),
+        ("cx", 1.1),
+    ],
+)
+def test_ground_configuration_bounds(key, value):
+    config, _, _, _ = ground_setup()
+    config["avoidance"]["geometry"][key] = value
+    with pytest.raises(ValueError, match="navigation_geometry_invalid"):
+        validate(config)
+
+
+def test_legacy_geometry_migration_is_explicit_and_does_not_mutate_defaults(monkeypatch, tmp_path):
+    import json
+
+    from services import navigation_config
+
+    original = deepcopy(DEFAULT)
+    config, _, _, _ = setup()
+    for key in ["geometry", "max_stalled_corrections", "progress_min_delta"]:
+        config["avoidance"].pop(key)
+    file = tmp_path / "navigation.json"
+    file.write_text(json.dumps(config))
+    monkeypatch.setenv("RIDER_NAVIGATION_CONFIG", str(file))
+    loaded = navigation_config.snapshot()
+    assert loaded["avoidance"]["geometry"]["mode"] == "image"
+    assert loaded["avoidance"]["max_stalled_corrections"] == 2
+    loaded["avoidance"]["geometry"]["fx"] = 0.8
+    assert DEFAULT == original
+
+
+def test_first_run_has_uncalibrated_ground_option_but_avoidance_off(monkeypatch, tmp_path):
+    from services import navigation_config
+
+    monkeypatch.setenv("RIDER_NAVIGATION_CONFIG", str(tmp_path / "missing.json"))
+    config = navigation_config.snapshot()
+    assert config["avoidance"]["enabled"] is False
+    assert config["avoidance"]["geometry"]["mode"] == "ground"
+    assert config["avoidance"]["geometry"]["fx"] is None

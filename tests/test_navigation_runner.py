@@ -365,7 +365,7 @@ def test_observation_transport_grace_does_not_extend_drive_deadline(isolated, mo
 
 @pytest.mark.parametrize("observe", [True, False])
 def test_startup_skips_old_capture_before_first_fresh_frame_without_motion(isolated, observe):
-    frames = [time.time() - 0.5, time.time()]
+    frames = [lambda: time.time() - 0.5, time.time]
     requested = []
 
     class Source:
@@ -373,7 +373,7 @@ def test_startup_skips_old_capture_before_first_fresh_frame_without_motion(isola
             if not frames:
                 runner.closed.set()
                 return None
-            captured = frames.pop(0)
+            captured = frames.pop(0)()
             return {
                 "input_id": str(captured),
                 "captured_at": captured,

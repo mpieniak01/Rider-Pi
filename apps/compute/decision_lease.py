@@ -137,6 +137,14 @@ class DecisionLease:
             if decision.get("action") not in actions:
                 self._halt("decision_invalid_action")
                 return False
+            if (
+                identity["protocol_version"] == 3
+                and self.config["avoidance"].get("geometry", {}).get("mode") == "ground"
+                and decision["action"] != "stop"
+                and not self._ground_evidence(decision)
+            ):
+                self._halt("navigation_ground_evidence_invalid")
+                return False
             self.last_seq = sequence
             self.reason = str(decision.get("reason", "unknown"))[:128]
             if decision["action"] in {"turn_left", "turn_right", "steer_left", "steer_right"}:
@@ -158,6 +166,9 @@ class DecisionLease:
                     "vision_low_confidence",
                     "vision_floor_uncertainty",
                     "depth_ground_orientation",
+                    "ground_reference_uncertain",
+                    "geometry_calibration_missing",
+                    "ground_projection_incomplete",
                 }:
                     self._halt(self.reason)
                     return False
@@ -260,3 +271,30 @@ class DecisionLease:
             self._halt("motion_submission_failed")
             raise
         return True
+
+    def _ground_evidence(self, decision):
+        geometry = self.config["avoidance"].get("geometry", {})
+        if any(
+            type(geometry.get(key)) not in (int, float) or not math.isfinite(geometry[key]) or geometry[key] <= 0
+            for key in ("fx", "fy", "radius_ratio")
+        ):
+            return False
+        reference = decision.get("ground_reference")
+        if not isinstance(reference, dict) or decision.get("geometry") != "ground_capsule":
+            return False
+        normal = reference.get("normal")
+        height = reference.get("height")
+        support = decision.get("ground_support")
+        return (
+            isinstance(normal, list)
+            and len(normal) == 3
+            and all(type(x) in (int, float) and math.isfinite(x) for x in normal)
+            and normal[1] >= 0.2
+            and 0.9 <= sum(x * x for x in normal) <= 1.1
+            and type(height) in (int, float)
+            and math.isfinite(height)
+            and height > 0
+            and type(support) in (int, float)
+            and math.isfinite(support)
+            and 0.3 <= support <= 1
+        )

@@ -1,60 +1,77 @@
-# Optional turns in the Venom vision loop
+# Directional navigation contract
 
-Pi remains authoritative for policy and actuation. Avoidance is disabled by
-default. Existing saved navigation policies migrate to disabled avoidance;
-forward-only protocol v1 remains available and cannot execute turn actions.
+The paired Venom module provides editable image ROI and sensitivity plus optional
+bounded steering. Pi owns the existing revisioned navigation policy and remains
+the sole motor executor. Saving settings never starts motion or arms the robot.
+Avoidance is disabled by default; v1 forward-only behavior stays available.
 
-The existing navigation_config.json adds avoidance: enabled, sweep_verified,
-mirrored (booleans), turn_speed (0.01–0.1 SDK, default 0.05), turn_ms (50–150,
-default 100), max_turn_pulses (1–5 per trial, default 3). Configuration changes
-invalidate the previous calibration receipt. Enabled avoidance requires
-depth_plane and existing low-speed limits; drive also requires verified camera
-sides, swept-body clearance and stopping on the actual mounting.
+## Versioned actions and admission
 
-The matching Venom module advertises supported_protocol_versions including 2.
-Pi uses frame protocol_version=2 only when avoidance is enabled, adding avoidance
-and motion_phase (ready/turn_settling). Replies retain run/frame/sequence/revision,
-model and TTL and allow go, stop, turn_left or turn_right. Unknown contracts,
-stale identity, malformed evidence or invalid permits stop the trial.
+Protocol v2 keeps STOP then yaw-only turn_left/turn_right. Explicit protocol v3
+uses steer_left/steer_right: existing low vx and bounded yaw in one submission.
+Old enabled policies lacking a maneuver version migrate to v2. Policies without
+geometry migrate to image mode rather than silently gaining a new projection.
+V3 image mode remains the legacy mask approximation; ground mode is opt-in for
+an existing installation.
 
-The sequence is ZERO before obstacle, three consecutive clear side assessments,
-bounded yaw-only turn, fresh capture after the local permit plus 100 ms settling,
-then three new front CLEAR assessments before forward movement. Pi independently
-requires a preceding zero submission, accepted policy/model, complete clear
-selected-sector evidence, no recess and remaining turn budget. Existing motion
-submission uses vx=0 and positive yaw for left, negative yaw for right.
-Hardware mounting must verify actual yaw signs; pulse duration is not an angle.
+Every nonzero reply must match run, frame, sequence, revision, model and current
+capture budget. A correction requires three clear side samples, a clear selected
+path and near guard; Pi independently validates the evidence. Captures from
+before/during a correction cannot authorize subsequent motion. The host holds
+the chosen side until fresh front clearance straightens the trajectory.
 
-Waiting and turns consume the original total 10-second trial and do not extend
-ARM, watchdogs or the 0.1 SDK / 150 ms forward limits. Only ZERO is allowed while
-waiting for a post-turn image. Global STOP, communication loss, executor errors
-and manual takeover remain terminal. There is no automatic rearming or return
-to the original heading.
+Original 10-second ARM/trial, feedback watchdog and pulse limits remain:
+forward <=0.1 SDK / 150 ms, yaw 0.01–0.1 SDK / 50–150 ms.
+No implicit re-ARM or extension is introduced. Terminal avoidance_no_progress
+cannot resume on a later GO.
 
-This experimental feature still requires labelled left/right/both-side, thin
-obstacle, recess and post-turn sequences plus operator-observed hardware
-acceptance in both directions. Frontal camera coverage does not prove side/rear
-clearance. Automated tests record mock callbacks and never contact motors.
-Deploy matching protocol-v2 implementations in Pi and venom-module-rider.
+## Ground projection policy
 
+avoidance.geometry contains mode (ground/image), normalized camera fx/fy/cx/cy,
+radius_ratio, lookahead_ratio and max_heading_deg. New defaults keep avoidance
+off and leave fx/fy/radius_ratio empty. The policy validates finite ranges;
+drive mode with enabled v3 ground geometry requires these calibration values.
+The lease also rejects nonzero replies with missing configured projection,
+incorrect geometry type, invalid ground normal/height or insufficient support.
 
-## V3 forward corrections
+fx/fy are focal lengths divided by delivered image dimensions; cx/cy are its
+normalized principal point after actual resize/crop/rotation. The pinhole path
+needs characterized/corrected lens distortion. radius_ratio is the conservative
+circumscribed body radius divided by the minimum accepted physical camera height.
+The radius must include all body points relative to the camera ground projection
+across accepted poses, plus margin. lookahead_ratio uses current inferred ground
+height units; these values do not claim centimetre measurements.
 
-Newly enabled avoidance explicitly selects avoidance.protocol_version=3 and
-steer_left/steer_right. Pi submits low vx and bounded yaw in one existing motion
-command. Legacy turn_left/right retain yaw-only semantics; saved policies without
-an explicit maneuver version migrate to v2. Switching versions invalidates the
-calibration scope and requires matching Venom support.
+The host fits robust ground from each single depth inference, projects inflated
+capsules over 49 headings and extracts contiguous free gaps. It checks observed
+thin obstacle points and recesses in addition to sampled rays. The preview shows
+projected paths; incomplete FOV coverage is UNKNOWN. Ground mode uses these
+settings instead of an image ROI for its path.
 
-A v3 correction requires complete clear selected-sector, connecting-path and
-near-guard evidence in the same current decision. These image-space masks are
-approximations, not a measured metric footprint. No thresholds, forward limits or
-watchdogs are relaxed. New nonzero commands require capture after the correction
-pulse. No separate prior stop is required for v3. Three fresh front CLEAR frames
-straighten motion; exhausted corrections without a clear path terminally stop
-the trial with avoidance_no_progress, without rearming.
+Camera pose comes from the current ground plane, not measured IMU/height.
+Large reference changes reset stability, never the correction budget. A fresh
+comparable observation measures normalized clearance gain after correction.
+max_stalled_corrections (1–5, default 2) and progress_min_delta (0–0.3, default
+0.03) control stagnation; max_turn_pulses (1–5, default 3) is an independent cap.
+Only the original valid session can wait at ZERO for uncertain projection;
+communication loss and operator/global STOP remain terminal.
 
-Combined vx/yaw behavior and changing camera pose still need physical acceptance.
-Weak recorded box frames continue to yield UNKNOWN/STOP; no forced turn or
-threshold tuning was performed. Robust ground reference and camera-pose
-compensation remain follow-ups requiring better recorded scenes.
+Full heading candidates stay in optional host diagnostics, not the Pi response.
+The selected paths, reference and counters fit the existing body/header bounds.
+A direction selects a bounded correction side, not a calibrated metric yaw or
+certified trajectory; physical combined-command sweep/braking remains to accept.
+
+## Tests and outstanding data acceptance
+
+Automated tests exercise actual lease and runner code using recorded callbacks,
+never hardware. They cover malformed ground evidence, missing calibration,
+legacy migration, pulse/TTL limits, terminal STOP and cross-repository replay.
+The mobile control-camera layout fix is included in this branch.
+
+The next data PR records calibrated camera/body geometry and timestamped held-out
+sequences for floor, left/right/central/both obstacles, thin objects, recesses,
+low light, varying height/pitch/roll and fresh post-correction frames. Verify
+actual yaw sign, footprint, motion and braking; score false GO/STOP, flicker,
+side errors and latency. Weak historical box recordings are negative examples,
+not proof that a physical passage is free. No thresholds are relaxed to force
+their result. Monocular depth and unseen lateral/rear space remain limitations.
