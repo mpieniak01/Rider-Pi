@@ -333,3 +333,17 @@ Nowa konfiguracja domyślnie używa `corridor=[0.35,0.80,0.65,0.95]`: bliższe 1
 Wybór Bliska nie podnosi prędkości ani czasu impulsu; ogranicza ustawienia do maks. 0,1 SDK i 150 ms. Nie zmienia ramp, deadline, limitu próby 10 s ani działania STOP. Zmiana strefy unieważnia dotychczasowy odbiór i pozostawia tryb observe; sam zapis nie uzbraja i nie uruchamia jazdy. Bieżącą strefę weryfikuje się na świeżym obrazie i zapisuje istniejącym przyciskiem odbioru.
 
 Biała ramka jest strefą STOP. Geometria na Venom zachowuje szerszy kontekst dopasowania podłoża (minimum 30% wysokości obrazu), oznaczony niebieską przerywaną ramką. Nie należy dopasowywać płaszczyzny wyłącznie do mniejszej strefy: duża płaska przeszkoda może wtedy stać się wzorcem podłoża. Obszary są współrzędnymi obrazu, nie skalibrowanym pomiarem centymetrów ani drogi hamowania.
+
+
+### Przejście z obserwacji do testu bez restartu kamery
+
+Próba najpierw rezerwuje istniejący pasywny cel kamery, potem zwalnia poprzedni
+proces obserwacji/jazdy. Kamera i dystrybutor klatek zachowują procesy przy ciepłym
+przejściu. Błąd przygotowania pozostawia rezerwację podglądu; nie przywraca jazdy
+ani ARM. Nowszy STOP lub przejęcie operatora pozostają nadrzędne.
+
+Status nawigacji zawiera request_id, etap, stan, elapsed_ms i świeżość przygotowania
+także bez pliku producenta obrazu. Timeout wskazuje etap awarii. Odczyty jednostek
+są współdzielone tylko w transakcji przygotowania i unieważniane po operacjach
+usług; uprawnienia ruchu są zawsze odczytywane na świeżo. Budżet 5 s oraz limity
+ruchu i decyzji pozostają bez zmian.

@@ -77,6 +77,22 @@ def navigation_status():
         return {}
 
 
+def preparation_status(path, *, now=None):
+    """Shared operation progress, independent of the last producer status."""
+    now = time.time() if now is None else now
+    try:
+        target = Path(path)
+        if target.stat().st_size > 16384:
+            return None
+        row = json.loads(target.read_text())
+        age = now - row["observed_at"]
+        if not isinstance(row, dict) or not math.isfinite(age) or age < 0:
+            return None
+        return {**row, "fresh": age <= (6.0 if row.get("state") == "preparing" else 60.0)}
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def public_status(row, *, sampled_now=None, fresh=True):
     """Convert Pi-local samples to durations; never export a monotonic epoch."""
     result = dict(row)
@@ -154,13 +170,38 @@ class NavigationTrial:
             "deadline": self.clock() + 5.0,
             "armed": False,
             "sequence": None,
+            "phase": "acquiring_lock",
+            "started": self.clock(),
         }
         local_id = "trial-" + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
         start_id = local_id + "-start"
 
+        progress_path = self.manager._state_path.with_name("navigation_trial_prepare.json")
+
+        def progress(phase, state="preparing", error=None):
+            context["phase"] = phase
+            row = {
+                "request_id": body["request_id"],
+                "phase": phase,
+                "state": state,
+                "elapsed_ms": round((self.clock() - context["started"]) * 1000, 2),
+                "observed_at": self.wall(),
+                "error": error,
+            }
+            try:
+                atomic_write(progress_path, row)
+            except OSError:
+                # Progress is diagnostic; admission and motion journals are separate.
+                pass
+            return row
+
         def guard():
             if self.clock() >= context["deadline"]:
-                raise TrialError("navigation_trial_prepare_timeout", 504)
+                raise TrialError(
+                    "navigation_trial_prepare_timeout",
+                    504,
+                    details={"preparation": progress(context["phase"], "failed", "navigation_trial_prepare_timeout")},
+                )
             safety = self.safety()
             if (
                 safety.get("generation") != context["generation"]
@@ -227,6 +268,7 @@ class NavigationTrial:
             try:
                 # Freshness is checked again after acquiring task serialization.
                 validate_request(body, self.wall())
+                progress("admission")
                 safety = self.safety()
                 if (
                     safety.get("generation") != body["generation"]
@@ -246,21 +288,29 @@ class NavigationTrial:
                 if not policy.get("verified") or not policy.get("calibration_id") or not policy.get("model_sha256"):
                     raise TrialError("navigation_validation_required")
                 self._reserve(body)
+                # Reserve the passive consumer before releasing the old producer.
+                # Otherwise S15's last-owner cleanup stops the shared camera/feed.
+                progress("camera_reservation")
+                guard()
+                result = self.manager.set_feature("s2_camera_preview", True)
+                guard()
+                self._accepted(result)
+                progress("stop_old_producer")
                 for name in ("s14_venom_navigation", "s15_venom_perception"):
                     guard()
                     result = self.manager.set_feature(name, False)
                     guard()
                     self._accepted(result)
+                progress("configure")
                 guard()
-                result = self.manager.set_feature("s2_camera_preview", True)
-                guard()
-                self._accepted(result)
                 config = self.configure({"revision": context["revision"], "values": {"mode": "drive"}})
                 context["revision"] = config["revision"]
+                progress("authority_handoff")
                 safety = guard()
                 if safety["state"] == "ARMED":
                     self._accepted(stop_old(safety.get("owner")))
                 safety = guard()
+                progress("arm_ack")
                 context["armed"] = True
                 context["arm_generation"] = context["generation"]
                 arm, code = self.submit(
@@ -299,9 +349,11 @@ class NavigationTrial:
                     "operator_plan": body["operator_plan"],
                     "execution_context": "panel",
                 }
+                progress("start_navigation")
                 result = self.manager.set_feature("s14_venom_navigation", True, control=control)
                 guard()
                 self._accepted(result)
+                progress("first_status")
                 while True:
                     authority = guard()
                     row = self.status()
@@ -321,8 +373,10 @@ class NavigationTrial:
                                 "navigation_trial_stopped",
                                 details={"status": public_status(row, sampled_now=self.clock())},
                             )
+                        preparation = progress("ready", "completed")
                         return {
                             "ok": True,
+                            "preparation": preparation,
                             "request_id": body["request_id"],
                             "config": config,
                             "status": public_status(row, sampled_now=self.clock()),
@@ -330,6 +384,11 @@ class NavigationTrial:
                         }
                     self.sleep(min(0.02, max(0.0, context["deadline"] - self.clock())))
             except Exception as exc:
+                # Keep the passive reservation on failure, without restoring a
+                # producer, ARM or drive after a newer operator STOP/takeover.
+                diagnostic = progress(
+                    context["phase"], "failed", getattr(exc, "code", "navigation_trial_prepare_failed")
+                )
                 if context["armed"]:
                     # Each cleanup attempt is independent: a broken service
                     # backend must not skip cancellation of a queued ARM.
@@ -349,6 +408,7 @@ class NavigationTrial:
                     except Exception:
                         pass
                 if isinstance(exc, TrialError):
+                    exc.details = {**(exc.details or {}), "preparation": diagnostic}
                     raise
                 known = {
                     "compute_stop_goals_first",
@@ -360,7 +420,7 @@ class NavigationTrial:
                 if isinstance(exc, ValueError) and str(exc) in known:
                     raise TrialError(str(exc)) from exc
                 # Library/backend exception text can contain private inputs.
-                raise TrialError("navigation_trial_prepare_failed", 503) from exc
+                raise TrialError("navigation_trial_prepare_failed", 503, details={"preparation": diagnostic}) from exc
 
     @staticmethod
     def _accepted(result):

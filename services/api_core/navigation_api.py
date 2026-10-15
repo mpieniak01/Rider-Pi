@@ -30,6 +30,9 @@ def status_handler():
     from pathlib import Path
 
     target = Path(os.getenv("RIDER_NAVIGATION_STATUS", "/run/rider-motion/navigation_loop.json"))
+    from services.navigation_trial import preparation_status
+
+    preparation = preparation_status(target.with_name("navigation_trial_prepare.json"))
     last_trial = None
     try:
         trial_path = target.with_name("navigation_trial.json")
@@ -62,10 +65,18 @@ def status_handler():
         from services.navigation_trial import public_status
 
         row = public_status(row, fresh=fresh)
-        return jsonify({**row, "stale": not fresh, "age_s": age, "last_trial": last_trial}), 200
+        return jsonify(
+            {**row, "stale": not fresh, "age_s": age, "last_trial": last_trial, "preparation": preparation}
+        ), 200
     except (OSError, ValueError, TypeError):
         return jsonify(
-            {"running": False, "stale": True, "reason": "navigation_status_unavailable", "last_trial": last_trial}
+            {
+                "running": False,
+                "stale": True,
+                "reason": "navigation_status_unavailable",
+                "last_trial": last_trial,
+                "preparation": preparation,
+            }
         ), 200
 
 

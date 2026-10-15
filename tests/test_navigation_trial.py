@@ -457,7 +457,9 @@ def test_unexpected_error_after_arm_revokes_own_permission_without_exposing_text
     with pytest.raises(TrialError, match="navigation_trial_prepare_failed") as caught:
         world.trial.start(world.body())
     assert str(caught.value) == "navigation_trial_prepare_failed"
-    assert caught.value.status == 503 and caught.value.details is None
+    assert caught.value.status == 503
+    assert caught.value.details["preparation"]["phase"] == "first_status"
+    assert "private backend" not in json.dumps(caught.value.details)
     assert world.gate.state == "DISARMED"
     assert any(row["action"] == "stop" and row.get("expected_generation") for row in world.commands)
 
@@ -517,3 +519,121 @@ def test_new_manual_command_during_preparation_cancels_old_trial_without_rearmin
         world.trial.start(world.body())
     assert world.gate.owner == "manual" and world.gate.state == "ARMED"
     assert not any(row.get("owner") == "navigation" for row in world.commands)
+
+
+@pytest.mark.parametrize("status_cost", [0.005, 0.025, 0.05])
+def test_warm_observation_to_trial_keeps_camera_and_feed_with_service_latency(world, status_cost):
+    assert world.manager.set_feature("s15_venom_perception", True)["ok"]
+    assert world.arm_manual()[0]["ok"]
+    original = world.manager.status_fn
+    calls = []
+
+    def slow_status(unit):
+        calls.append(unit)
+        world.elapsed += status_cost
+        return original(unit)
+
+    world.manager.status_fn = slow_status
+    world.actions.clear()
+    world.commands.clear()
+    result = world.trial.start(world.body())
+    assert result["ok"]
+    assert world.elapsed < 5.0
+    assert len(calls) < 80
+    assert not any(unit in {"camera-capture@raw.service", "frame-distributor.service"} for unit, _ in world.actions)
+    assert len([c for c in world.commands if c["action"] == "arm"]) == 1
+    assert result["preparation"]["state"] == "completed"
+    assert result["preparation"]["phase"] == "ready"
+
+
+def test_failed_producer_handoff_keeps_passive_camera_without_new_arm(world):
+    assert world.manager.set_feature("s15_venom_perception", True)["ok"]
+    assert world.arm_manual()[0]["ok"]
+    world.failure = ("rider-venom-perception.service", "stop")
+    world.actions.clear()
+    world.commands.clear()
+    with pytest.raises(TrialError) as caught:
+        world.trial.start(world.body())
+    assert not any(c["action"] == "arm" for c in world.commands)
+    assert world.gate.owner == "manual"
+    assert "s2_camera_preview" in world.manager._requested
+    assert not any(unit in {"camera-capture@raw.service", "frame-distributor.service"} for unit, _ in world.actions)
+    progress = caught.value.details["preparation"]
+    assert progress["phase"] == "stop_old_producer"
+    assert progress["state"] == "failed"
+    saved = json.loads(world.manager._state_path.with_name("navigation_trial_prepare.json").read_text())
+    assert saved["request_id"] == "operator-click" and saved["state"] == "failed"
+
+
+def test_delayed_first_status_reports_phase_and_revokes_only_trial_authority(world):
+    world.trial.status = lambda: {}
+    with pytest.raises(TrialError, match="navigation_trial_prepare_timeout") as caught:
+        world.trial.start(world.body())
+    assert caught.value.details["preparation"]["phase"] == "first_status"
+    assert world.gate.state == "DISARMED"
+    assert "s2_camera_preview" in world.manager._requested
+    assert "s14_venom_navigation" not in world.manager._requested
+
+
+def test_preparation_status_is_visible_even_without_a_producer_file(world, monkeypatch):
+    from flask import Flask
+
+    from services.api_core.navigation_api import status_handler
+
+    target = world.manager._state_path.with_name("navigation_loop.json")
+    monkeypatch.setenv("RIDER_NAVIGATION_STATUS", str(target))
+    world.hook = lambda *_: setattr(world, "elapsed", 6.0)
+    with pytest.raises(TrialError):
+        world.trial.start(world.body())
+    app = Flask(__name__)
+    with app.test_request_context():
+        response, code = status_handler()
+    assert code == 200
+    data = response.get_json()
+    assert data["stale"] is True
+    assert data["preparation"]["state"] == "failed"
+    assert data["preparation"]["phase"] == "camera_reservation"
+    assert data["preparation"]["fresh"] is True
+
+
+@pytest.mark.parametrize("payload", [{}, [], {"observed_at": float("nan")}, {"observed_at": "invalid"}])
+def test_invalid_preparation_snapshot_does_not_break_status(world, payload):
+    from services.navigation_trial import preparation_status
+
+    target = world.manager._state_path.with_name("navigation_trial_prepare.json")
+    target.write_text(json.dumps(payload))
+    assert preparation_status(target) is None
+
+
+def test_panel_trial_http_runs_real_orchestration_without_restarting_warm_camera(world, monkeypatch):
+    from flask import Flask
+
+    from services.api_core import features_api, navigation_api
+
+    assert world.manager.set_feature("s15_venom_perception", True)["ok"]
+    assert world.arm_manual()[0]["ok"]
+    world.actions.clear()
+    world.commands.clear()
+    original_status = world.status
+    samples = []
+
+    def delayed_status():
+        samples.append(True)
+        return {} if len(samples) < 3 else original_status()
+
+    world.trial.status = delayed_status
+    monkeypatch.setattr(features_api, "feature_manager", world.manager)
+    app = Flask(__name__)
+    app.extensions["rider_navigation_trial"] = world.trial
+    app.add_url_rule("/api/navigation/trial", view_func=navigation_api.trial_handler, methods=["POST"])
+    with app.test_client() as client:
+        response = client.post("/api/navigation/trial", json=world.body())
+    data = response.get_json()
+    assert response.status_code == 200, data
+    assert data["status"]["operator_request_id"].endswith("-start")
+    assert data["authority"]["owner"] == "navigation"
+    assert data["preparation"]["state"] == "completed"
+    assert len(samples) == 3
+    assert len([c for c in world.commands if c["action"] == "arm"]) == 1
+    assert not any(unit in {"camera-capture@raw.service", "frame-distributor.service"} for unit, _ in world.actions)
+    assert not any(c["action"] == "move" for c in world.commands)

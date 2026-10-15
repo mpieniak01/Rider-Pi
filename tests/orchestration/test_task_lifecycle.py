@@ -332,3 +332,108 @@ def test_baseline_active_processes_do_not_mask_unknown_executor(tmp_path):
     row = next(row for row in manager.describe_features() if row["name"] == "s0_core")
     assert row["running"] and not row["ready"] and row["state"] == "partial"
     assert row["error"] == "baseline_executor_unavailable"
+
+
+def test_operation_reuses_unit_observations_but_not_safety_or_generation(tmp_path):
+    world = World()
+    manager = world.manager(tmp_path)
+    status_calls = []
+    safety_calls = []
+    elapsed = [0.0]
+
+    def status(unit):
+        status_calls.append(unit)
+        elapsed[0] += 0.025
+        return world.status(unit)
+
+    def safety():
+        safety_calls.append(world.safety["generation"])
+        return dict(world.safety)
+
+    manager.status_fn, manager.safety_status = status, safety
+    unit = "motion-executor.service"
+    manager._status(unit)
+    manager._status(unit)
+    assert len(status_calls) == 2  # Unchanged behavior outside an operation.
+    with manager.operation(guard=lambda: None, remaining=lambda: 5.0, stop=world.stop):
+        first = manager._status(unit)
+        first["active"] = "tampered"
+        for _ in range(20):
+            assert manager._status(unit)["active"] == "active"
+        assert len(status_calls) == 3
+        assert elapsed[0] == pytest.approx(0.075)
+        feature = DEFAULT_REGISTRY["s3_follow_me_face"]
+        assert manager._permission(feature) is None
+        world.safety.update(owner=None, generation="new-operator-generation")
+        assert manager._permission(feature)["error"] == "operator_motion_permission_required"
+        denied = manager._intent_permission(
+            {
+                "source": "manual",
+                "generation": "operator-generation",
+                "seq": 1,
+                "ts": time.time(),
+                "ttl_ms": 500,
+                "request_id": "obsolete",
+            }
+        )
+        assert denied["error"] == "stale_or_invalid_operator_intent"
+        assert len(safety_calls) == 3
+    assert manager._operation_status_cache is None
+    world.active.discard(unit)
+    assert manager._status(unit)["active"] == "inactive"
+    manager._status(unit)
+    assert len(status_calls) == 5
+
+
+@pytest.mark.parametrize("action", ["start", "stop"])
+@pytest.mark.parametrize("failure", [None, "result", "exception"])
+def test_every_operation_action_invalidates_all_unit_statuses_even_on_failure(tmp_path, action, failure):
+    world = World()
+    manager = world.manager(tmp_path)
+    unit, dependency = "rider-tracker.service", "camera-capture@raw.service"
+    if action == "stop":
+        world.active.update((unit, dependency))
+    calls = []
+
+    def observed(name):
+        calls.append(name)
+        return world.status(name)
+
+    def run(name, requested):
+        # A target can affect other members, even before an error is returned.
+        for changed in (name, dependency):
+            if requested == "start":
+                world.active.add(changed)
+            else:
+                world.active.discard(changed)
+        if failure == "exception":
+            raise RuntimeError("partial fixture failure")
+        return {"ok": failure is None, "unit": name, "action": requested}
+
+    manager.status_fn, manager.runner = observed, run
+    with manager.operation(guard=lambda: None, remaining=lambda: 5.0, stop=world.stop):
+        before = "active" if action == "stop" else "inactive"
+        assert manager._status(unit)["active"] == before
+        assert manager._status(dependency)["active"] == before
+        assert len(calls) == 2
+        result = manager._run(unit, action)
+        assert result["ok"] is (failure is None)
+        after = "active" if action == "start" else "inactive"
+        assert manager._status(unit)["active"] == after
+        assert manager._status(dependency)["active"] == after
+        assert len(calls) == 4
+        manager._status(dependency)
+        assert len(calls) == 4
+
+
+def test_exception_leaving_operation_discards_observation_cache(tmp_path):
+    world = World()
+    manager = world.manager(tmp_path)
+    unit = "rider-tracker.service"
+    with pytest.raises(RuntimeError, match="cancel operation"):
+        with manager.operation(guard=lambda: None, remaining=lambda: 5.0, stop=world.stop):
+            assert manager._status(unit)["active"] == "inactive"
+            raise RuntimeError("cancel operation")
+    world.active.add(unit)
+    assert manager._operation_status_cache is None
+    assert manager._status(unit)["active"] == "active"

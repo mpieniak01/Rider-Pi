@@ -243,3 +243,18 @@ New configurations default to `corridor=[0.35,0.80,0.65,0.95]`: the closest 15% 
 Selecting Near never increases speed or pulse duration and caps the selection at 0.1 SDK and 150 ms. Ramps, deadlines, the 10-second trial limit and STOP remain unchanged. Changing the corridor invalidates the old acceptance and leaves observe mode; saving alone never arms or starts driving. Inspect fresh analysis and use the existing acceptance button for the current zone.
 
 The white frame is the STOP zone. Venom geometry retains broader ground-fitting support (at least 30% of image height), shown with a dashed blue outline. Do not fit the plane exclusively to the smaller zone: a broad flat obstacle could become the fitted ground. These are image coordinates, not calibrated centimetres or stopping-distance measurements.
+
+
+### Warm observation-to-trial handoff
+
+The trial first reserves the existing passive camera consumer, then releases the
+previous observation/drive producer. Shared camera capture and frame distribution
+are not restarted in a warm handoff. A failed preparation keeps the passive
+reservation; it never restores driving or ARM. Other operator STOP/takeover remains
+authoritative.
+
+The navigation status includes preparation request_id, phase, state, elapsed_ms
+and freshness, even when no producer file exists. Timeout errors include the
+failed phase. Unit observations are reused only inside the preparation transaction
+and invalidated after unit actions; motion authority is always read fresh.
+The five-second preparation budget and all motion/decision limits are unchanged.

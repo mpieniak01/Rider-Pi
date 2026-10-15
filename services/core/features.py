@@ -105,6 +105,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._operation_guard = None
         self._operation_remaining = None
         self._operation_stop = None
+        self._operation_status_cache: dict[str, dict] | None = None
         self._requested: dict[str, dict] = {"s0_core": {}} if "s0_core" in self.registry else {}
         self._restored = False
         self._states: dict[str, str] = {}
@@ -131,9 +132,12 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         raise ValueError(f"unknown feature: {requested}")
 
     def _status(self, unit: str) -> dict:
+        cache = self._operation_status_cache
+        if cache is not None and unit in cache:
+            return dict(cache[unit])
         value = self.status_fn(unit) if self.status_fn else systemd_ctrl.status(unit)
         if isinstance(value, bool):
-            return {
+            row = {
                 "unit": unit,
                 "installed": True,
                 "load": "loaded",
@@ -142,7 +146,11 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 "enabled": "disabled",
                 "source": "fixture",
             }
-        return dict(value)
+        else:
+            row = dict(value)
+        if cache is not None:
+            cache[unit] = row
+        return dict(row)
 
     def _running(self, unit: str) -> bool:
         row = self._status(unit)
@@ -228,10 +236,12 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             if self._operation_guard is not None:
                 raise ValueError("navigation_trial_busy")
             self._operation_guard, self._operation_remaining, self._operation_stop = guard, remaining, stop
+            self._operation_status_cache = {}
             try:
                 yield
             finally:
                 self._operation_guard = self._operation_remaining = self._operation_stop = None
+                self._operation_status_cache = None
 
     def _stop_permission(self, owner):
         callback = self._operation_stop or self.safety_stop
@@ -249,6 +259,11 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 self._operation_guard()
         except Exception as exc:
             result = {"ok": False, "unit": unit, "action": action, "error": str(exc)}
+        finally:
+            # A unit action can change dependencies or partially succeed before
+            # failing. Never reuse pre-action observations of any member.
+            if self._operation_status_cache is not None:
+                self._operation_status_cache.clear()
         systemd_ctrl.invalidate_snapshot()
         from services.core.resource_observation import invalidate
 
