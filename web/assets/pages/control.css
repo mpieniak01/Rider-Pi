@@ -195,4 +195,16 @@
 .page-control .control-primary input[type="range"] { width: min(70%, 300px); }
 .page-control .control-primary output { display: inline-block; min-width: 3ch; }
 .page-control .control-preparation { margin-bottom: 1rem; }
-@media (max-width: 800px) { .page-control .control-primary { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 800px) {
+  .page-control .control-primary { grid-template-columns: minmax(0, 1fr); }
+  .page-control .control-primary .cam-card { height: auto; min-height: 0; }
+  .page-control .control-primary .media-frame {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 0;
+    aspect-ratio: 4 / 3;
+    max-height: min(75vw, 22rem);
+  }
+  .page-control .control-primary .cam[hidden] { display: none; }
+  .page-control .control-primary .cam { max-height: 100%; }
+}
