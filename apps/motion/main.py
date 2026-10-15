@@ -139,6 +139,7 @@ class MotionController:
         self.limits = limits or DYNAMICS
         self.last_cmd_ts = 0.0
         self.deadline = 0.0
+        self.remote_decision_deadline = None
         self.stopped = True
         self.t_lx = self.t_az = self.o_lx = self.o_az = 0.0
         self.reversing = False
@@ -152,12 +153,22 @@ class MotionController:
         self.reversing = False
         self.reverse_until = None
         self.deadline = self.last_cmd_ts = 0.0
+        self.remote_decision_deadline = None
         self.stopped = True
         return self.robot.stop()
 
     stop = _stop_immediate
 
-    def drive(self, lx: float, az: float, duration: float = MAX_DURATION_S, *, panel_pulse=False, mode="pulse"):
+    def drive(
+        self,
+        lx: float,
+        az: float,
+        duration: float = MAX_DURATION_S,
+        *,
+        panel_pulse=False,
+        mode="pulse",
+        remote_decision_deadline=None,
+    ):
         if not self.limits.valid or not self.gate.can_actuate():
             self.stop()
             return False
@@ -208,6 +219,7 @@ class MotionController:
                 return False
         if mode == "pulse":
             self.curve_braking = [False, False]
+        self.remote_decision_deadline = remote_decision_deadline
         self.last_cmd_ts = self.gate.clock()
         self.deadline = self.last_cmd_ts + (duration if panel_pulse else min(duration, self.limits.watchdog_s))
         return True
@@ -218,12 +230,31 @@ class MotionController:
 
     def expire_goal(self):
         # A bounded panel pulse ends movement, not the operator session.
-        if self.gate.arming_mode != "operator":
+        remote = self.remote_decision_deadline
+        fresh_navigation = (
+            remote is not None
+            and self.gate.owner == "navigation"
+            and self.gate.execution_context == "panel"
+            and self.gate.clock() < remote
+        )
+        if self.gate.arming_mode != "operator" and not fresh_navigation:
             self.gate.disarm("motion_goal_timeout")
         if self.stop() is False:
             self.gate.disarm("actuator_failed")
+        elif fresh_navigation:
+            # Zero output between pulses; retain only the original decision TTL.
+            self.remote_decision_deadline = remote
+
+    def expire_remote_decision(self):
+        if self.remote_decision_deadline is not None and self.gate.clock() >= self.remote_decision_deadline:
+            self.gate.disarm("decision_timeout")
+            self.stop()
+            return True
+        return False
 
     def tick(self, dt: float):
+        if self.expire_remote_decision():
+            return False
         if not self.gate.can_actuate() or (self.deadline and self.gate.clock() >= self.deadline):
             if self.deadline and self.gate.clock() >= self.deadline:
                 self.expire_goal()

@@ -219,3 +219,11 @@ def test_profile_change_racing_published_idle_does_not_change_active_ramp(execut
     instance.refresh_controls(force=True)
     assert instance.controller.limits.linear_rate == 2
     assert instance.gate.state == "ARMED"
+
+
+def test_canonical_read_does_not_take_actuator_admission_lock(executor, monkeypatch):
+    instance, _ = executor
+    expected = settings.read()
+    monkeypatch.setattr(settings, "locked", lambda **_: pytest.fail("polling must not lock admission"))
+    assert settings.read(blocking=False) == expected
+    assert instance.controls["revision"] == expected["revision"]

@@ -97,3 +97,47 @@ Wdrożenie zestawu Pi/moduł/core i odbiór rzeczywistej kamery/mikrofonu/głoś
 wykonuj razem po dostępności urządzenia. Sprawdzenie modeli w WSL na sztucznym
 obrazie/WAV potwierdza transport i inferencję, nie jakość percepcji robota ani
 reakcję napędów. Dane i logi odbioru przechowuj wyłącznie w lokalnym backlogu.
+
+
+## Pętla wizja → decyzja → ruch (S14 / S15)
+
+Konfiguracja na Pi: data/navigation_config.json, API GET/POST /api/navigation/config.
+POST zawiera revision i values; zapis nie uruchamia usług. Panel /navigation i moduł
+Rider w Venomie korzystają z tej samej konfiguracji.
+
+S15 uruchamia jedynie kamerę, transport i segmentację podłogi na Venomie.
+Nie wymaga ARM, nie publikuje ruchu ani STOP i nie ładuje lokalnych detektorów.
+S14 wymaga mode=drive, odebranej strefy zatrzymania, identyfikatora kalibracji
+oraz hash modelu. Osobny operator ARM owner=navigation z krótką timed lease
+i Start celu tworzą jedną intencję. Brak automatycznego uzbrojenia/wznowienia.
+
+Venom ma osobny model ONNX SegFormer, niezależny od LLM. To nie jest pomiar
+odległości ani gwarancja wykrycia przezroczystych przeszkód lub krawędzi stopni.
+Przed jazdą trzeba fizycznie odebrać strefę zatrzymania dla montażu kamery,
+podłoża, oświetlenia, szybkości i modelu. Zmiana parametrów unieważnia dotychczasowy
+odbiór, chyba że operator zapisze nowy identyfikator odbioru.
+
+Pi podtrzymuje tylko krótkie impulsy. Lokalny monotoniczny watchdog i deadline
+wykonawcy zatrzymują ruch bez odpowiedzi Venoma. Spóźnione/stare wyniki,
+zmiana konfiguracji/uzbrojenia, ciemny obraz, awaria modelu lub brak klatek
+kończą próbę. Heartbeat nie daje pozwolenia na jazdę.
+Obserwuj /run/rider-motion/navigation_loop.json oraz stan celu; stare wyniki
+nie są bieżącym pomiarem. Jednostki Restart=no; nie dodawać ich do boot/minimal.
+
+Automatyczne testy używają wyłącznie atrap. Wdrożenie i próby ruchu są osobnym
+odbiorem operatora; ten kod nie potwierdza fizycznego hamowania.
+
+
+### Obserwacja i opóźnienia transportu
+
+Obserwacja bez ruchu ma ograniczony do 1 s timeout odczytu HTTP, aby zwykły
+jitter Wi-Fi nie kończył usługi. Nagłówek klatki nadal zawiera skonfigurowany
+budżet decyzji; czas transportu nie daje żadnej zgody na ruch. Nieaktualne
+klatki są pomijane tylko w obserwacji, a brak użytecznej klatki przez 5 s
+kończy próbę. Jazda zachowuje swój krótki timeout, odrzucenie pierwszej
+nieaktualnej klatki i termin pozwolenia egzekwowany przez Pi.
+
+
+### Pierwsza klatka przy starcie próby
+
+Po przełączeniu z podglądu na jazdę kamera może zwrócić zapis z poprzedniego uruchomienia. Runner czeka maksymalnie 5 s na pierwszą świeżą klatkę, bez wysyłania ruchu i bez resetowania tej karencji przez stare klatki. Po przyjęciu pierwszej świeżej klatki tryb jazdy zachowuje ścisły budżet decyzji; utrata świeżości lub odpowiedzi zatrzymuje i zatrzaskuje próbę. Karencja startu nie wydłuża impulsu ani terminu zgody na ruch.

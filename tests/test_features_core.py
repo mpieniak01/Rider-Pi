@@ -177,3 +177,27 @@ def test_state_snapshot_tracks_active_features() -> None:
     mgr.set_feature("face_tracking", False)
     state2 = mgr.state_snapshot()
     assert "s3_follow_me_face" not in state2["active"]
+
+
+def test_intent_rejection_reports_age_without_extending_ttl(monkeypatch):
+    from services.core import features
+
+    manager = make_manager(FakeRunner(), NullPublisher(), owner="navigation")
+    monkeypatch.setattr(features.time, "time", lambda: 10.0)
+    body = {
+        "source": "navigation",
+        "generation": "fake-generation",
+        "seq": 1,
+        "ts": 9.3,
+        "ttl_ms": 500,
+        "request_id": "expired",
+    }
+    result = manager._intent_permission(body)
+    assert result["error"] == "stale_or_invalid_operator_intent"
+    assert round(result["intent_diagnostic"]["age_ms"]) == 700
+    assert result["intent_diagnostic"]["ttl_ms"] == 500
+    assert result["intent_diagnostic"]["generation_matches"] is True
+    assert not manager._intent_sequences
+    assert manager._intent_permission({**body, "ts": 10.0}, consume=False) is None
+    wrong = manager._intent_permission({**body, "ts": 10.0, "generation": "old"})
+    assert wrong["intent_diagnostic"]["generation_matches"] is False

@@ -400,3 +400,20 @@ def test_resource_preview_and_rollback_close_old_owners_and_preserve_motion(repo
     module["rollback"](repos.device, record)
     assert calls == ["owners", "api-lcd-stop", "api-start", ("lcd-start", True)]
     repos.assert_base()
+
+
+def test_opt_in_vision_scope_only_allows_declared_units():
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "scoped_deploy", Path(__file__).parents[1] / "scripts/dev_pi-deploy.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    paths = sorted(module.VISION_LOOP_PATHS)
+    module.check_paths(paths, vision_loop_scope=True)
+    with pytest.raises(RuntimeError):
+        module.check_paths(paths)
+    with pytest.raises(RuntimeError):
+        module.check_paths(["systemd/motion-executor.service"], vision_loop_scope=True)

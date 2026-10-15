@@ -14,6 +14,7 @@ class Contract:
 
 _GROUPS = {
     "rider.audio": (1, ('/api/voice/playback', '/api/voice/playback/cancel')),
+    "rider.navigation_loop": (1, ("/api/navigation/config", "/api/navigation/status")),
     "rider.compute": (1, ("/api/compute/config", "/api/compute/status", "/api/compute/tasks/<task>")),
     "rider.catalog": (2, ("/api/logic/catalog",)),
     "rider.tasks": (2, ("/api/logic/features", "/api/logic/state", "/api/logic/summary", "/api/logic/feature/<name>")),

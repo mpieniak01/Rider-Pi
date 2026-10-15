@@ -23,7 +23,7 @@ from common import bus
 
 FRAME_STREAM_TOPIC = os.getenv("FRAME_STREAM_TOPIC", "camera.frame.raw").encode("utf-8")
 FRAME_STREAM_BIND = os.getenv("FRAME_STREAM_BIND", "tcp://127.0.0.1:5562")
-FRAME_POLL_INTERVAL = float(os.getenv("FRAME_POLL_INTERVAL", "0.05"))  # sekundy
+FRAME_POLL_INTERVAL = float(os.getenv("FRAME_POLL_INTERVAL", "0.01"))  # sekundy
 DEFAULT_FRAME_PATH = os.getenv("FRAME_DEFAULT_PATH", "/home/pi/robot/data/last_frame.jpg")
 HEARTBEAT_TOPIC = os.getenv("FRAME_HEARTBEAT_TOPIC", "camera.heartbeat")
 
@@ -64,10 +64,12 @@ class FrameDistributor:
                 break
             if topic != HEARTBEAT_TOPIC or not payload:
                 continue
-            path = payload.get("last_frame_path")
+            raw = payload.get("raw_frame_path")
+            use_raw = FRAME_STREAM_TOPIC == b"camera.frame.raw" and isinstance(raw, str) and bool(raw)
+            path = raw if use_raw else payload.get("last_frame_path")
             if isinstance(path, str) and path:
                 self.frame_path = path
-            mode = payload.get("mode")
+            mode = "raw" if use_raw else payload.get("mode")
             if isinstance(mode, str) and mode:
                 self.frame_mode = mode
 
