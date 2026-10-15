@@ -106,6 +106,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._operation_remaining = None
         self._operation_stop = None
         self._operation_status_cache: dict[str, dict] | None = None
+        self._operation_units: tuple[str, ...] = ()
         self._requested: dict[str, dict] = {"s0_core": {}} if "s0_core" in self.registry else {}
         self._restored = False
         self._states: dict[str, str] = {}
@@ -134,6 +135,13 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
     def _status(self, unit: str) -> dict:
         cache = self._operation_status_cache
         if cache is not None and unit in cache:
+            return dict(cache[unit])
+        if cache is not None and self.status_fn is None and self._operation_units:
+            from services.core.feature_observation import read_units
+
+            units = tuple(sorted(set(self._operation_units) | {unit}))
+            timeout = self._operation_remaining() if self._operation_remaining else 4.0
+            cache.update(read_units(units, timeout=timeout))
             return dict(cache[unit])
         value = self.status_fn(unit) if self.status_fn else systemd_ctrl.status(unit)
         if isinstance(value, bool):
@@ -230,18 +238,23 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                         self._transaction_depth -= 1
 
     @contextmanager
-    def operation(self, *, guard, remaining, stop):
+    def operation(self, *, guard, remaining, stop, observation_units=()):
         """Bound one explicit preparation using existing task serialization."""
         with self.transaction():
             if self._operation_guard is not None:
                 raise ValueError("navigation_trial_busy")
+            units = set(observation_units) | self._managed_units | self._admin_units
+            for name, options in self._requested.items():
+                units.update(task_units(self.registry[name], options))
             self._operation_guard, self._operation_remaining, self._operation_stop = guard, remaining, stop
+            self._operation_units = tuple(sorted(units))
             self._operation_status_cache = {}
             try:
                 yield
             finally:
                 self._operation_guard = self._operation_remaining = self._operation_stop = None
                 self._operation_status_cache = None
+                self._operation_units = ()
 
     def _stop_permission(self, owner):
         callback = self._operation_stop or self.safety_stop
@@ -446,7 +459,6 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._pending[canonical] = dict(options)
         if feature.can_move:
             self._intents[canonical] = dict(control)
-        self._snapshot_rows = self.describe_features()
         persisted = self._persist_state()
         if (feature.can_move or "rider-voice-web.service" in units) and not persisted:
             self._states[canonical] = "failed"
@@ -541,7 +553,6 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         feature = self.registry[canonical]
         options = self._requested[canonical]
         self._states[canonical] = "stopping"
-        self._snapshot_rows = self.describe_features()
         self._persist_state()
         steps: list[dict] = []
         if feature.can_move:

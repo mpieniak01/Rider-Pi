@@ -141,3 +141,20 @@ nieaktualnej klatki i termin pozwolenia egzekwowany przez Pi.
 ### Pierwsza klatka przy starcie próby
 
 Po przełączeniu z podglądu na jazdę kamera może zwrócić zapis z poprzedniego uruchomienia. Runner czeka maksymalnie 5 s na pierwszą świeżą klatkę, bez wysyłania ruchu i bez resetowania tej karencji przez stare klatki. Po przyjęciu pierwszej świeżej klatki tryb jazdy zachowuje ścisły budżet decyzji; utrata świeżości lub odpowiedzi zatrzymuje i zatrzaskuje próbę. Karencja startu nie wydłuża impulsu ani terminu zgody na ruch.
+
+
+### Koszt przygotowania próby jazdy
+Podczas jednej transakcji przygotowania Pi odczytuje stan członków nawigacji,
+alternatywnych kamer i istniejących konsumentów w ograniczonym zapytaniu systemd.
+Po każdej zmianie usługi odczyt jest unieważniany. Safety i generacja sterowania
+są nadal sprawdzane na świeżo, osobno od obserwacji usług.
+
+Przed startem producenta zapisywany jest aktualny journal uprawnień i konsumentów.
+Zapis nie odświeża całego katalogu nieaktywnych celów. Istniejące cele głosowe
+zachowują aktualne domeny, a obserwacje niezwiązanych celów swój pierwotny czas.
+Zwykły odczyt katalogu poza przygotowaniem nadal odświeża wszystkie cele.
+
+Status przygotowania zawiera `phase_timings_ms` oraz identyfikator żądania.
+Pozwala odróżnić przekroczenie budżetu przygotowania (5 s) od późniejszego
+zatrzymania już uruchomionej próby. Zapis ostatniej próby może dotyczyć innego
+żądania i nie potwierdza uruchomienia bieżącego testu.

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from apps.motion import manual_settings
 from apps.safety.state import atomic_write
+from common.service_catalog import CAMERA_CAPTURE_UNITS, task_units
 from services import navigation_config
 from services.control_commands import submit_control
 from services.safety_contract import read_status
@@ -191,6 +192,8 @@ class NavigationTrial:
             "phase": "acquiring_lock",
             "producer_not_before": None,
             "started": self.clock(),
+            "phase_started": self.clock(),
+            "phase_timings_ms": {},
         }
         local_id = "trial-" + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
         start_id = local_id + "-start"
@@ -198,12 +201,18 @@ class NavigationTrial:
         progress_path = self.manager._state_path.with_name("navigation_trial_prepare.json")
 
         def progress(phase, state="preparing", error=None):
-            context["phase"] = phase
+            now = self.clock()
+            previous = context["phase"]
+            elapsed = (now - context["phase_started"]) * 1000
+            timings = dict(context["phase_timings_ms"])
+            timings[previous] = round(timings.get(previous, 0.0) + elapsed, 2)
+            context.update(phase=phase, phase_started=now, phase_timings_ms=timings)
             row = {
                 "request_id": body["request_id"],
                 "phase": phase,
                 "state": state,
-                "elapsed_ms": round((self.clock() - context["started"]) * 1000, 2),
+                "elapsed_ms": round((now - context["started"]) * 1000, 2),
+                "phase_timings_ms": timings,
                 "observed_at": self.wall(),
                 "error": error,
             }
@@ -318,6 +327,14 @@ class NavigationTrial:
             guard=guard,
             remaining=lambda: max(0.0, context["deadline"] - self.clock()),
             stop=stop_old,
+            observation_units=tuple(
+                set(CAMERA_CAPTURE_UNITS).union(
+                    *(
+                        task_units(self.manager.registry[name], {})
+                        for name in ("s2_camera_preview", "s14_venom_navigation", "s15_venom_perception")
+                    )
+                )
+            ),
         ):
             try:
                 # Freshness is checked again after acquiring task serialization.
