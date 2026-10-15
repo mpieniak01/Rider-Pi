@@ -32,3 +32,30 @@ def orphan_targets(manager, feature, external):
         ):
             return ()
     return tuple(external)
+
+
+def inactive_navigation_target(unit):
+    """Privileged backend repeats proof before a non-actuating target stop."""
+    producer = {
+        "rider-venom-navigation.target": "rider-venom-navigation.service",
+        "rider-venom-perception.target": "rider-venom-perception.service",
+    }.get(unit)
+    if producer is None:
+        return False
+    from services.core.feature_observation import read_units
+
+    rows = read_units((unit, producer), timeout=1.0)
+    target, process = rows[unit], rows[producer]
+    return (
+        target.get("load") == "loaded"
+        and not target.get("error")
+        and not target.get("stale")
+        and target.get("pid") == 0
+        and target.get("wants") == []
+        and target.get("requires") == []
+        and process.get("load") == "loaded"
+        and not process.get("error")
+        and not process.get("stale")
+        and process.get("active") in {"inactive", "failed"}
+        and process.get("pid") == 0
+    )

@@ -36,6 +36,13 @@ def check(unit: str, action: str) -> dict:
     from services.safety_contract import read_status, request_stop
 
     if action == "stop":
+        from services.core.feature_cleanup import inactive_navigation_target
+
+        if inactive_navigation_target(unit):
+            # This target has no process/dependencies; its producer has exited.
+            # Stopping it is bookkeeping, not a second global motion STOP that
+            # would invalidate the newly admitted operator generation.
+            return {"ok": True, "effects": ["empty_navigation_target_stop"]}
         result = request_stop()
         return {**result, "ok": bool(result.get("ok") and result.get("confirmed"))}
     safety = read_status()

@@ -251,3 +251,32 @@ def test_target_with_unknown_ownership_or_dependencies_is_not_adopted(world, cha
         world.trial.start(world.body())
     assert not any(action == "stop" for _, action in world.actions)
     assert not world.commands
+
+
+def test_privileged_empty_target_cleanup_does_not_revoke_generation(monkeypatch):
+    from common import service_action_guard
+    from services import safety_contract
+    from services.core import feature_cleanup
+
+    monkeypatch.setattr(feature_cleanup, "inactive_navigation_target", lambda unit: True)
+
+    def forbidden():
+        pytest.fail("Empty target cleanup must not submit another global STOP")
+
+    monkeypatch.setattr(safety_contract, "request_stop", forbidden)
+    result = service_action_guard.check("rider-venom-navigation.target", "stop")
+    assert result["ok"] and result["effects"] == ["empty_navigation_target_stop"]
+
+
+@pytest.mark.parametrize("running", [False, True])
+def test_privileged_cleanup_repeats_process_and_dependency_observation(monkeypatch, running):
+    from services.core import feature_cleanup, feature_observation
+
+    def read(units, **kwargs):
+        return {
+            units[0]: {"load": "loaded", "pid": 0, "wants": [], "requires": []},
+            units[1]: {"load": "loaded", "pid": 42 if running else 0, "active": "active" if running else "failed"},
+        }
+
+    monkeypatch.setattr(feature_observation, "read_units", read)
+    assert feature_cleanup.inactive_navigation_target("rider-venom-navigation.target") is (not running)
