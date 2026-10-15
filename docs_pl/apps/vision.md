@@ -319,7 +319,7 @@ export USE_CORAL=1
 
 ## Nadzorowana pętla GO/STOP
 
-POST /api/navigation/trial przyjmuje jedno jawne polecenie operatora: request_id, generation, ts i ttl_ms (czas Pi, do 500 ms), config_revision, settings_revision, operator_consent=true, operator_plan, source=manual i execution_context=panel. Pi szereguje przygotowanie przez FeatureManager (do 5 s), zachowuje istniejącą konfigurację, wykonuje jeden ARM navigation do 10 s i potwierdza nowy run. Powtórzenie request_id nie powoduje nowego ARM.
+POST /api/navigation/trial przyjmuje jedno jawne polecenie operatora: request_id, generation, ts i ttl_ms (czas Pi, do 500 ms), config_revision, settings_revision, operator_consent=true, operator_plan, source=manual i execution_context=panel. Pi szereguje przygotowanie usług przez FeatureManager (do 15 s, w tym maksymalnie 5 s na końcowy start po ARM), zachowuje istniejącą konfigurację, wykonuje jeden ARM navigation do 10 s i potwierdza nowy run. Powtórzenie request_id nie powoduje nowego ARM.
 
 Świeża przeszkoda lub niepewny obraz zeruje silniki w ramach aktualnej próby. Trzy kolejne CLEAR mogą wznowić małe impulsy, bez ponownego uzbrojenia i bez wydłużania 10 s. Utrata świeżości/komunikacji, awaria kontraktu/wykonawcy, STOP operatora, ręczne przejęcie i koniec ARM kończą próbę. Obecne progi, prędkość, impulsy i rampy pozostają bez zmian.
 
@@ -345,8 +345,8 @@ ani ARM. Nowszy STOP lub przejęcie operatora pozostają nadrzędne.
 Status nawigacji zawiera request_id, etap, stan, elapsed_ms i świeżość przygotowania
 także bez pliku producenta obrazu. Timeout wskazuje etap awarii. Odczyty jednostek
 są współdzielone tylko w transakcji przygotowania i unieważniane po operacjach
-usług; uprawnienia ruchu są zawsze odczytywane na świeżo. Budżet 5 s oraz limity
-ruchu i decyzji pozostają bez zmian.
+usług; uprawnienia ruchu są zawsze odczytywane na świeżo. Przygotowanie usług ma limit 15 s, w tym maksymalnie 5 s na końcowy start
+po ARM. Limity ruchu i decyzji pozostają bez zmian.
 
 
 ### Czas produkcyjny: permit napędu a czas próby

@@ -229,7 +229,7 @@ Currently no automated tests for vision components (integration testing only).
 
 ## Supervised GO/STOP loop
 
-POST /api/navigation/trial admits one explicit operator request: request_id, generation, Pi-clock ts/ttl_ms (up to 500 ms), config_revision, settings_revision, operator_consent=true, operator_plan, source=manual and execution_context=panel. Pi serializes preparation through FeatureManager (up to 5 s), retains its existing configuration, grants one navigation ARM for at most 10 s and confirms the new run. A replayed request_id cannot ARM again.
+POST /api/navigation/trial admits one explicit operator request: request_id, generation, Pi-clock ts/ttl_ms (up to 500 ms), config_revision, settings_revision, operator_consent=true, operator_plan, source=manual and execution_context=panel. Pi serializes service preparation through FeatureManager (up to 15 s, including at most 5 s for final startup after ARM), retains its existing configuration, grants one navigation ARM for at most 10 s and confirms the new run. A replayed request_id cannot ARM again.
 
 Fresh obstacle or image uncertainty sends an immediate zero goal within that original trial. Three new CLEAR observations may resume small forward pulses without rearming or extending 10 s. Expired decisions, communication loss, contract/executor failure, operator STOP, manual takeover and ARM expiry are terminal. Existing thresholds and motion limits are unchanged.
 
