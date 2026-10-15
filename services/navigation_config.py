@@ -17,7 +17,7 @@ DEFAULT = {
     "speed": 0.1,
     "decision_budget_ms": 300,
     "max_motion_ms": 150,
-    "corridor": [0.35, 0.65, 0.65, 0.95],
+    "corridor": [0.35, 0.80, 0.65, 0.95],
     "perception": {"engine": "segformer", "residual_limit": 0.06, "outlier_limit": 0.005, "slope_min": 2.0},
     "verified": False,
     "calibration_id": "",

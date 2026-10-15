@@ -158,3 +158,39 @@ def test_lease_freshness_never_extends_the_captured_frame_budget():
     assert lease.deadline == pytest.approx(0.3)
     now[0] = 0.301
     assert not lease.tick()
+
+
+def test_new_policy_uses_near_zone_without_increasing_motion(tmp_path, monkeypatch):
+    monkeypatch.setenv("RIDER_NAVIGATION_CONFIG", str(tmp_path / "policy.json"))
+    policy = snapshot()
+    assert policy["corridor"] == [0.35, 0.80, 0.65, 0.95]
+    assert policy["speed"] == 0.1
+    assert policy["max_motion_ms"] == 150
+    assert policy["mode"] == "observe"
+    assert policy["verified"] is False
+
+
+def test_zone_change_invalidates_only_receipt_not_motion_limits(tmp_path, monkeypatch):
+    import json
+
+    target = tmp_path / "policy.json"
+    monkeypatch.setenv("RIDER_NAVIGATION_CONFIG", str(target))
+    monkeypatch.setenv("FEATURE_STATE_PATH", str(tmp_path / "features.json"))
+    original = {
+        **DEFAULT,
+        "revision": 7,
+        "mode": "drive",
+        "verified": True,
+        "calibration_id": "original",
+        "model_sha256": "a" * 64,
+        "corridor": [0.35, 0.65, 0.65, 0.95],
+    }
+    target.write_text(json.dumps(original))
+    # Existing saved zones are not silently rewritten by a default change.
+    assert snapshot() == original
+    saved = configure({"revision": 7, "values": {"corridor": [0.35, 0.80, 0.65, 0.95]}})
+    assert saved["revision"] == 8
+    assert saved["verified"] is False
+    assert saved["mode"] == "observe"
+    for key in ("speed", "max_motion_ms", "decision_budget_ms"):
+        assert saved[key] == original[key]

@@ -324,3 +324,12 @@ POST /api/navigation/trial przyjmuje jedno jawne polecenie operatora: request_id
 Świeża przeszkoda lub niepewny obraz zeruje silniki w ramach aktualnej próby. Trzy kolejne CLEAR mogą wznowić małe impulsy, bez ponownego uzbrojenia i bez wydłużania 10 s. Utrata świeżości/komunikacji, awaria kontraktu/wykonawcy, STOP operatora, ręczne przejęcie i koniec ARM kończą próbę. Obecne progi, prędkość, impulsy i rampy pozostają bez zmian.
 
 Wykonawca musi raportować scoped_stop_generation_supported=true i remote_decision_deadline_supported=true. Opcjonalne expected_generation w STOP/disarm jest sprawdzane atomowo przed odebraniem uprawnienia; stare sprzątanie nie zatrzymuje nowego właściciela. Globalny STOP bez tego pola pozostaje bezwarunkowy. Po aktualizacji kodu wymagana jest aktualna instancja wykonawcy; sam restart panelu nie wystarczy.
+
+
+### Bliski pas STOP przy wolnym starcie
+
+Nowa konfiguracja domyślnie używa `corridor=[0.35,0.80,0.65,0.95]`: bliższe 15% wysokości obrazu, z tą samą szerokością toru co dawniej. Zapisane konfiguracje nie są automatycznie migrowane. Venom udostępnia wybór Bliska / Dalsza (15% / 30%) zapisujący wyłącznie istniejące pole `corridor` na Pi.
+
+Wybór Bliska nie podnosi prędkości ani czasu impulsu; ogranicza ustawienia do maks. 0,1 SDK i 150 ms. Nie zmienia ramp, deadline, limitu próby 10 s ani działania STOP. Zmiana strefy unieważnia dotychczasowy odbiór i pozostawia tryb observe; sam zapis nie uzbraja i nie uruchamia jazdy. Bieżącą strefę weryfikuje się na świeżym obrazie i zapisuje istniejącym przyciskiem odbioru.
+
+Biała ramka jest strefą STOP. Geometria na Venom zachowuje szerszy kontekst dopasowania podłoża (minimum 30% wysokości obrazu), oznaczony niebieską przerywaną ramką. Nie należy dopasowywać płaszczyzny wyłącznie do mniejszej strefy: duża płaska przeszkoda może wtedy stać się wzorcem podłoża. Obszary są współrzędnymi obrazu, nie skalibrowanym pomiarem centymetrów ani drogi hamowania.

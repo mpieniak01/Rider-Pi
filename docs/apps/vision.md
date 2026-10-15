@@ -234,3 +234,12 @@ POST /api/navigation/trial admits one explicit operator request: request_id, gen
 Fresh obstacle or image uncertainty sends an immediate zero goal within that original trial. Three new CLEAR observations may resume small forward pulses without rearming or extending 10 s. Expired decisions, communication loss, contract/executor failure, operator STOP, manual takeover and ARM expiry are terminal. Existing thresholds and motion limits are unchanged.
 
 The live executor must advertise scoped_stop_generation_supported=true and remote_decision_deadline_supported=true. Optional expected_generation in STOP/disarm is checked atomically before revocation; old cleanup cannot stop a new owner. Global STOP without this field remains unconditional. Updating code requires the current executor process, not only a panel restart.
+
+
+### Close STOP band for slow starts
+
+New configurations default to `corridor=[0.35,0.80,0.65,0.95]`: the closest 15% of image height with the previous path width. Saved configurations are not automatically migrated. Venom offers Near / Farther (15% / 30%), writing only the existing Pi-owned `corridor` field.
+
+Selecting Near never increases speed or pulse duration and caps the selection at 0.1 SDK and 150 ms. Ramps, deadlines, the 10-second trial limit and STOP remain unchanged. Changing the corridor invalidates the old acceptance and leaves observe mode; saving alone never arms or starts driving. Inspect fresh analysis and use the existing acceptance button for the current zone.
+
+The white frame is the STOP zone. Venom geometry retains broader ground-fitting support (at least 30% of image height), shown with a dashed blue outline. Do not fit the plane exclusively to the smaller zone: a broad flat obstacle could become the fitted ground. These are image coordinates, not calibrated centimetres or stopping-distance measurements.
