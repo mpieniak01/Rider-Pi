@@ -537,7 +537,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     "steps": [],
                     "events": [],
                 }
-            return {"ok": True, "idempotent": True, "steps": [], "events": []}
+            return {"ok": True, "idempotent": True, "steps": [], "events": [], "task": self._describe(canonical)}
         feature = self.registry[canonical]
         options = self._requested[canonical]
         self._states[canonical] = "stopping"

@@ -194,3 +194,108 @@ def test_zone_change_invalidates_only_receipt_not_motion_limits(tmp_path, monkey
     assert saved["mode"] == "observe"
     for key in ("speed", "max_motion_ms", "decision_budget_ms"):
         assert saved[key] == original[key]
+
+
+class BoundedExecutor:
+    """Independent hardware deadline/pulse enforcement, not a retained speed."""
+
+    def __init__(self, now):
+        self.now = now
+        self.until = 0.0
+        self.commands = []
+        self.revoked = False
+        self.lease = None
+
+    @property
+    def speed(self):
+        return self.commands[-1][0] if self.commands and self.now[0] < self.until else 0.0
+
+    def drive(self, speed, duration):
+        assert not self.revoked
+        self.until = min(self.now[0] + duration, self.lease.deadline)
+        self.commands.append((speed, duration, self.until))
+
+    def stop(self):
+        self.until = self.now[0]
+        self.revoked = True
+
+
+def feedback_loop():
+    now = [0.0]
+    output = BoundedExecutor(now)
+    config = {**DEFAULT, "mode": "drive", "verified": True, "model_sha256": "a" * 64}
+    lease = DecisionLease(
+        config,
+        "run",
+        output.drive,
+        output.stop,
+        lambda: now[0],
+        pause=lambda duration: output.drive(0, duration),
+        feedback_wait=True,
+    )
+    output.lease = lease
+    return lease, now, output
+
+
+def test_recorded_production_go_gap_stops_motor_but_accepts_next_fresh_reply():
+    import json
+    from pathlib import Path
+
+    trace = json.loads((Path(__file__).parent / "fixtures/navigation/production_1245_timing.json").read_text())
+    go = [r for r in trace["rows"] if r["action"] == "go"]
+    first, following = go[0], go[1]
+    permit_ms = min(300 - first["response_age_ms"], first["valid_for_ms"])
+    callback_ms = permit_ms - first["permit_remaining_ms"]
+    admitted = first["sampled_monotonic"] - callback_ms / 1000
+    gap = following["sampled_monotonic"] - admitted
+    lease, now, output = feedback_loop()
+    assert lease.accept(decision(4, valid_for_ms=first["valid_for_ms"]), "f4", 4, -first["response_age_ms"] / 1000)
+    assert output.speed == DEFAULT["speed"]
+    old_deadline = lease.deadline
+    now[0] = old_deadline + 0.00001
+    assert lease.tick()
+    assert output.speed == 0
+    assert not output.revoked and lease.deadline is None and not lease.moving
+    assert lease.reason == "awaiting_fresh_decision"
+    now[0] = gap
+    assert lease.accept(
+        decision(5, valid_for_ms=following["valid_for_ms"]), "f5", 5, gap - following["response_age_ms"] / 1000
+    )
+    assert len(output.commands) == 2 and not output.revoked
+    assert output.speed == DEFAULT["speed"]
+    assert output.commands[0][2] == old_deadline
+    assert all(duration <= 0.150 for _, duration, _ in output.commands)
+
+
+def test_lost_feedback_zeros_at_original_permit_and_is_terminal_at_existing_budget():
+    lease, now, output = feedback_loop()
+    assert lease.accept(decision(valid_for_ms=100), "f1", 1, 0)
+    now[0] = 0.101
+    assert output.speed == 0
+    assert lease.tick() and not lease.moving
+    assert lease.feedback_deadline == 0.3
+    now[0] = 0.3
+    assert not lease.tick() and output.revoked
+    assert not lease.accept(decision(2), "f2", 2, now[0])
+    assert len(output.commands) == 1
+
+
+@pytest.mark.parametrize("change", [{"run_id": "foreign"}, {"valid_for_ms": 0}, {"frame_id": "foreign"}])
+def test_bad_reply_in_zero_gap_cannot_resume(change):
+    lease, now, output = feedback_loop()
+    assert lease.accept(decision(valid_for_ms=50), "f1", 1, 0)
+    now[0] = 0.06
+    assert lease.tick() and output.speed == 0
+    assert not lease.accept(decision(2, **change), "f2", 2, now[0])
+    assert output.revoked and len(output.commands) == 1
+
+
+@pytest.mark.parametrize("reason", ["operator_stop", "navigation_transport_or_input_failed"])
+def test_explicit_stop_and_transport_fault_are_terminal_during_zero_wait(reason):
+    lease, now, output = feedback_loop()
+    assert lease.accept(decision(valid_for_ms=50), "f1", 1, 0)
+    now[0] = 0.06
+    lease.tick()
+    lease.halt(reason)
+    assert not lease.accept(decision(2), "f2", 2, now[0])
+    assert output.revoked and len(output.commands) == 1

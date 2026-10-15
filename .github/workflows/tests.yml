@@ -77,7 +77,7 @@ jobs:
           BASE_URL: "http://127.0.0.1:8080"
         run: |
           pytest -q tests/test_pi_deploy.py
-          pytest -q tests/test_decision_lease.py tests/test_navigation_runner.py tests/test_navigation_history.py tests/test_navigation_trial_cycle.py tests/test_navigation_trial.py \
+          pytest -q tests/test_decision_lease.py tests/test_navigation_runner.py tests/test_navigation_runner_timing.py tests/test_navigation_history.py tests/test_navigation_trial_cycle.py tests/test_navigation_trial.py \
                     tests/test_compute_config.py tests/test_compute_runners.py
           pytest -q tests/test_motion_safety_contract.py tests/test_uart_ownership.py \
                     tests/test_control_safety_http.py tests/test_test_sandbox.py \

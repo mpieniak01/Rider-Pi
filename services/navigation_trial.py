@@ -109,6 +109,23 @@ def public_status(row, *, sampled_now=None, fresh=True):
         if elapsed_ms is not None and type(remaining) in (int, float) and math.isfinite(remaining)
         else 0.0
     )
+    feedback = result.get("feedback_remaining_ms")
+    result["feedback_remaining_ms"] = (
+        max(0.0, round(feedback - elapsed_ms, 2))
+        if elapsed_ms is not None and type(feedback) in (int, float) and math.isfinite(feedback)
+        else 0.0
+    )
+    result["waiting_feedback"] = (
+        result.get("mode") == "drive"
+        and result.get("running") is True
+        and result.get("latched") is not True
+        and result["permit_remaining_ms"] == 0
+        and result["feedback_remaining_ms"] > 0
+    )
+    if result["waiting_feedback"]:
+        result["paused"] = True
+        if isinstance(result.get("decision"), dict):
+            result["decision"] = {**result["decision"], "action": "stop", "motion_reason": "awaiting_fresh_decision"}
     response_age = result.get("response_age_ms")
     result["decision_age_ms"] = (
         round(response_age + elapsed_ms, 2)
@@ -171,6 +188,7 @@ class NavigationTrial:
             "armed": False,
             "sequence": None,
             "phase": "acquiring_lock",
+            "producer_not_before": None,
             "started": self.clock(),
         }
         local_id = "trial-" + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
@@ -195,8 +213,43 @@ class NavigationTrial:
                 pass
             return row
 
+        def matching_run():
+            if context["producer_not_before"] is None:
+                return None
+            row = self.status()
+            observed = row.get("observed_at")
+            if (
+                row.get("mode") == "drive"
+                and row.get("config_revision") == context["revision"]
+                and row.get("generation") == context.get("arm_generation")
+                and row.get("operator_request_id") == start_id
+                and isinstance(row.get("run_id"), str)
+                and row["run_id"]
+                and type(observed) in (int, float)
+                and math.isfinite(observed)
+                and context["producer_not_before"] <= observed <= self.wall() + 0.1
+            ):
+                return row
+            return None
+
+        def started_in_budget(row):
+            if not row or row.get("running") is not True or row.get("latched") is True:
+                return False
+            birth = row.get("run_started_monotonic")
+            sampled = row.get("sampled_monotonic")
+            return (
+                type(birth) in (int, float)
+                and math.isfinite(birth)
+                and context["started"] <= birth < context["deadline"]
+                and type(sampled) in (int, float)
+                and math.isfinite(sampled)
+                and 0 <= self.clock() - sampled <= 1.0
+            )
+
         def guard():
-            if self.clock() >= context["deadline"]:
+            if self.clock() >= context["deadline"] and not (
+                context["phase"] in {"start_navigation", "first_status"} and started_in_budget(matching_run())
+            ):
                 raise TrialError(
                     "navigation_trial_prepare_timeout",
                     504,
@@ -337,6 +390,7 @@ class NavigationTrial:
                 if safety.get("can_move") is not True:
                     raise TrialError("operator_motion_permission_required")
                 started = self.wall()
+                context["producer_not_before"] = started
                 control = {
                     "request_id": start_id,
                     "settings_revision": context["settings_revision"],
@@ -351,6 +405,12 @@ class NavigationTrial:
                 }
                 progress("start_navigation")
                 result = self.manager.set_feature("s14_venom_navigation", True, control=control)
+                actual = matching_run()
+                if actual and actual.get("running") is False:
+                    raise TrialError(
+                        "navigation_trial_stopped",
+                        details={"started": True, "status": public_status(actual, fresh=False)},
+                    )
                 guard()
                 self._accepted(result)
                 progress("first_status")
@@ -383,11 +443,24 @@ class NavigationTrial:
                             "authority": authority,
                         }
                     self.sleep(min(0.02, max(0.0, context["deadline"] - self.clock())))
-            except Exception as exc:
+            except Exception as caught:
+                error = caught
+                # A producer may already have run and stopped while systemd/start
+                # bookkeeping was blocking. Its matching outcome is authoritative.
+                if context["producer_not_before"] is not None:
+                    try:
+                        actual = matching_run()
+                    except Exception:
+                        actual = None
+                    if actual and actual.get("running") is False:
+                        error = TrialError(
+                            "navigation_trial_stopped",
+                            details={"started": True, "status": public_status(actual, fresh=False)},
+                        )
                 # Keep the passive reservation on failure, without restoring a
                 # producer, ARM or drive after a newer operator STOP/takeover.
                 diagnostic = progress(
-                    context["phase"], "failed", getattr(exc, "code", "navigation_trial_prepare_failed")
+                    context["phase"], "failed", getattr(error, "code", "navigation_trial_prepare_failed")
                 )
                 if context["armed"]:
                     # Each cleanup attempt is independent: a broken service
@@ -407,9 +480,9 @@ class NavigationTrial:
                             stop_old("navigation")
                     except Exception:
                         pass
-                if isinstance(exc, TrialError):
-                    exc.details = {**(exc.details or {}), "preparation": diagnostic}
-                    raise
+                if isinstance(error, TrialError):
+                    error.details = {**(error.details or {}), "preparation": diagnostic}
+                    raise error from None
                 known = {
                     "compute_stop_goals_first",
                     "navigation_stop_goals_first",
@@ -417,10 +490,10 @@ class NavigationTrial:
                     "navigation_validation_required",
                     "navigation_goal_state_unavailable",
                 }
-                if isinstance(exc, ValueError) and str(exc) in known:
-                    raise TrialError(str(exc)) from exc
+                if isinstance(error, ValueError) and str(error) in known:
+                    raise TrialError(str(error)) from error
                 # Library/backend exception text can contain private inputs.
-                raise TrialError("navigation_trial_prepare_failed", 503, details={"preparation": diagnostic}) from exc
+                raise TrialError("navigation_trial_prepare_failed", 503, details={"preparation": diagnostic}) from error
 
     @staticmethod
     def _accepted(result):

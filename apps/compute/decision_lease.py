@@ -1,4 +1,4 @@
-"""Local monotonic permit; stale decisions cannot revive a stopped run."""
+"""Bounded motor permits; fresh replies never revive a terminally stopped run."""
 
 from __future__ import annotations
 
@@ -8,11 +8,13 @@ import time
 
 
 class DecisionLease:
-    def __init__(self, config, run_id, drive, stop, clock=time.monotonic, *, pause=None):
+    def __init__(self, config, run_id, drive, stop, clock=time.monotonic, *, pause=None, feedback_wait=False):
         self.config = dict(config)
         self.run_id = run_id
         self.drive, self.stop, self.clock = drive, stop, clock
         self.pause = pause
+        self.feedback_wait = feedback_wait and pause is not None
+        self.feedback_deadline = None
         self.lock = threading.Lock()
         self.last_seq = -1
         self.deadline = None
@@ -31,12 +33,26 @@ class DecisionLease:
         self.latched = True
         self.reason = reason
         self.deadline = None
+        self.feedback_deadline = None
         self.moving = False
         self.stop()
 
+    def _wait_for_feedback(self, now):
+        if not self.feedback_wait or self.feedback_deadline is None or now >= self.feedback_deadline:
+            return False
+        # The executor already zeros the bounded command at its deadline/pulse
+        # end. Clearing this permit never emits or renews a motion command.
+        self.deadline = None
+        self.moving = False
+        self.reason = "awaiting_fresh_decision"
+        return True
+
     def tick(self):
         with self.lock:
-            if self.deadline is not None and self.clock() >= self.deadline:
+            now = self.clock()
+            if self.feedback_deadline is not None and now >= self.feedback_deadline:
+                self._halt("decision_timeout")
+            elif self.deadline is not None and now >= self.deadline and not self._wait_for_feedback(now):
                 self._halt("decision_timeout")
             return not self.latched
 
@@ -45,7 +61,10 @@ class DecisionLease:
             if self.latched:
                 return False
             now = self.clock()
-            if self.deadline is not None and now >= self.deadline:
+            if self.feedback_deadline is not None and now >= self.feedback_deadline:
+                self._halt("decision_timeout")
+                return False
+            if self.deadline is not None and now >= self.deadline and not self._wait_for_feedback(now):
                 self._halt("decision_timeout")
                 return False
             identity = {
@@ -101,6 +120,8 @@ class DecisionLease:
                     return False
                 # A fresh visual STOP renews only a zero goal in the original ARM.
                 # The watchdog also expires paused runs; old GO cannot revive them.
+                if self.feedback_wait:
+                    self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
                 self.deadline = now + permit
                 self.moving = False
                 self.reason = str(decision.get("motion_reason", self.reason))[:128]
@@ -127,6 +148,8 @@ class DecisionLease:
                 return False
             # Pulse length is enforced by the executor. The lease tracks freshness,
             # so a fresh reply after a completed pulse can renew the same run.
+            if self.feedback_wait:
+                self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
             self.deadline = now + permit
             self.moving = True
             try:

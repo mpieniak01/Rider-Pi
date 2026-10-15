@@ -60,6 +60,10 @@ class NavigationRunner:
         self.motion_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
+        self.run_started_monotonic = None
+        self.cycle_started = clock()
+        self.cycle_timings_ms = {}
+        self.previous_status_write_ms = None
         self.selection = selected_executor()
         if not self.selection:
             raise ComputeError("compute_executor_not_selected")
@@ -72,11 +76,26 @@ class NavigationRunner:
         self.calibration_digest = None
         self.last_frame = None
         self.fresh_frame_seen = False
-        self.lease = DecisionLease(self.policy, self.run_id, self.drive, self.stop, clock, pause=self.pause)
+        self.lease = DecisionLease(
+            self.policy,
+            self.run_id,
+            self.drive,
+            self.stop,
+            clock,
+            pause=self.pause,
+            feedback_wait=self.policy["mode"] == "drive",
+        )
         self.started = clock()
 
+    def _timed(self, phase, callback, *args, **kwargs):
+        started = self.clock()
+        try:
+            return callback(*args, **kwargs)
+        finally:
+            self.cycle_timings_ms[phase] = round((self.clock() - started) * 1000, 2)
+
     def _authority(self):
-        safety = read_status()
+        safety = self._timed("safety_read_ms", read_status)
         if self.policy["mode"] == "observe":
             return False
         if (
@@ -104,7 +123,7 @@ class NavigationRunner:
             elif self.clock() >= deadline:
                 self.motion_failure = {"http_status": 504, "reason": "navigation_motion_ack_timeout"}
                 raise ComputeError("navigation_motion_ack_timeout")
-        intent = read_service_intent(UNIT, safety.get("generation"))
+        intent = self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
         if (
             safety.get("can_move") is not True
             or safety.get("owner") != "navigation"
@@ -127,7 +146,9 @@ class NavigationRunner:
         self.intent = intent
         self.generation = safety["generation"]
         self.motion_sequence = max(self.motion_sequence, safety.get("last_seq", -1), intent["seq"])
-        if not write_intent_status(
+        if not self._timed(
+            "producer_claim_ms",
+            write_intent_status,
             UNIT,
             intent,
             active=True,
@@ -138,9 +159,14 @@ class NavigationRunner:
         return True
 
     def drive(self, speed, duration):
-        self._authority()
+        self._timed("authority_ms", self._authority)
+        if self.lease.deadline is not None and self.clock() >= self.lease.deadline:
+            self.motion_failure = {"http_status": 409, "reason": "navigation_decision_expired_before_submit"}
+            raise ComputeError("navigation_decision_expired_before_submit")
         self.motion_sequence += 1
-        result, code = submit_control(
+        result, code = self._timed(
+            "submit_ms",
+            submit_control,
             {
                 "action": "move",
                 "source": "navigation",
@@ -265,17 +291,29 @@ class NavigationRunner:
             "paused": self.policy["mode"] == "drive"
             and not self.lease.latched
             and not self.lease.moving
-            and self.lease.deadline is not None,
+            and (self.lease.deadline is not None or self.lease.feedback_deadline is not None),
+            "feedback_remaining_ms": max(0, round((self.lease.feedback_deadline - self.clock()) * 1000, 2))
+            if self.lease.feedback_deadline is not None
+            else 0,
             "permit_remaining_ms": max(0, round((self.lease.deadline - self.clock()) * 1000, 2))
             if self.lease.deadline is not None
             else 0,
             "sampled_monotonic": self.clock(),
+            "run_started_monotonic": self.run_started_monotonic,
+            "cycle_timings_ms": dict(self.cycle_timings_ms),
+            "cycle_elapsed_ms": round((self.clock() - self.cycle_started) * 1000, 2),
+            "previous_status_write_ms": self.previous_status_write_ms,
             "visual_pause_supported": True,
             "running": not self.closed.is_set(),
             "stop_reason": self.lease.reason,
             "motion_failure": self.motion_failure,
         }
-        _write(target, row)
+        status_started = self.clock()
+        try:
+            _write(target, row)
+        finally:
+            # This row is already serialized; report its cost in the next sample.
+            self.previous_status_write_ms = round((self.clock() - status_started) * 1000, 2)
         if self.policy["mode"] == "drive":
             self.decision_trace.append(dict(row))
             if self.closed.is_set():
@@ -328,16 +366,23 @@ class NavigationRunner:
             source = self.source_factory()
             if self.policy["mode"] == "drive":
                 self.motion_publisher = self.publisher_factory()
-            self.started = self.clock()
+            self.run_started_monotonic = self.clock()
+            self.started = self.run_started_monotonic
             self.startup_deadline = self.started + 5.0
+            if self.policy["mode"] == "drive":
+                self._timed("authority_ms", self._authority)
             self._status(None)
             watchdog.start()
             while not self.closed.is_set():
+                self.cycle_started = self.clock()
+                self.cycle_timings_ms = {}
+                configuration_started = self.clock()
                 if navigation_config.snapshot() != self.saved_policy or selected_executor() != self.selection:
                     raise ComputeError("navigation_configuration_changed")
-                if self.policy["mode"] == "drive":
-                    self._authority()
-                frame = source.recv(50)
+                self.cycle_timings_ms["configuration_ms"] = round((self.clock() - configuration_started) * 1000, 2)
+                # Recheck authority immediately before every zero/nonzero submission.
+                # A second preflight here only delays the next capture and decision.
+                frame = self._timed("frame_wait_ms", source.recv, 50)
                 if not frame or (self.last_frame is not None and frame["captured_at"] <= self.last_frame[1]):
                     limit = (
                         5.0
@@ -413,11 +458,12 @@ class NavigationRunner:
                         }
                         self._status(self.last_result)
                         continue
-                    self.lease.accept(decision, frame_id, self.sequence, captured)
+                    self._timed("decision_apply_ms", self.lease.accept, decision, frame_id, self.sequence, captured)
                 self._status(decision)
                 if self.lease.latched:
                     self.closed.set()
-                self.closed.wait(0.01)
+                if self.policy["mode"] == "observe":
+                    self.closed.wait(0.01)
             return 0
         except Exception as exc:
             logging.getLogger(__name__).warning(

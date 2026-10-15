@@ -458,7 +458,7 @@ def test_unexpected_error_after_arm_revokes_own_permission_without_exposing_text
         world.trial.start(world.body())
     assert str(caught.value) == "navigation_trial_prepare_failed"
     assert caught.value.status == 503
-    assert caught.value.details["preparation"]["phase"] == "first_status"
+    assert caught.value.details["preparation"]["phase"] == "start_navigation"
     assert "private backend" not in json.dumps(caught.value.details)
     assert world.gate.state == "DISARMED"
     assert any(row["action"] == "stop" and row.get("expected_generation") for row in world.commands)
@@ -637,3 +637,134 @@ def test_panel_trial_http_runs_real_orchestration_without_restarting_warm_camera
     assert len([c for c in world.commands if c["action"] == "arm"]) == 1
     assert not any(unit in {"camera-capture@raw.service", "frame-distributor.service"} for unit, _ in world.actions)
     assert not any(c["action"] == "move" for c in world.commands)
+
+
+def test_production_trial_that_ended_during_start_is_not_reported_as_never_started(world):
+    # Real case: own run reached GO and decision_timeout before start HTTP
+    # returned at 5835ms. The timing packet, not an ideal ready response, drives
+    # the late-return hook. No hardware/backend subprocess is used.
+    from pathlib import Path
+
+    packet = json.loads((Path(__file__).parent / "fixtures/navigation/production_1245_timing.json").read_text())
+    final = packet["rows"][-1]
+    saved = {}
+    original = world.status
+
+    def delayed_start(unit, action):
+        if unit == "rider-venom-navigation.target" and action == "start":
+            saved.update(original())
+            saved.update(running=False, latched=True, stop_reason=final["stop_reason"])
+            world.elapsed = packet["prepare_elapsed_ms"] / 1000
+
+    world.hook = delayed_start
+    world.trial.status = lambda: dict(saved)
+    with pytest.raises(TrialError, match="navigation_trial_stopped") as caught:
+        world.trial.start(world.body())
+    assert caught.value.details["started"] is True
+    assert caught.value.details["status"]["stop_reason"] == "decision_timeout"
+    assert caught.value.details["status"]["operator_request_id"].endswith("-start")
+    assert caught.value.details["preparation"]["error"] == "navigation_trial_stopped"
+    assert world.gate.state == "DISARMED"
+
+
+def test_slow_http_bookkeeping_cannot_cancel_a_fresh_run_started_within_budget(world):
+    saved = {}
+    original = world.status
+
+    def slow_after_process_start(unit, action):
+        if unit == "rider-venom-navigation.target" and action == "start":
+            world.elapsed = 5.83528
+            saved.update(original())
+            saved.update(run_started_monotonic=2.0, sampled_monotonic=world.elapsed)
+
+    world.hook = slow_after_process_start
+    world.trial.status = lambda: dict(saved)
+    result = world.trial.start(world.body())
+    assert result["ok"] and result["status"]["running"]
+    assert result["preparation"]["elapsed_ms"] > 5000
+    assert len([c for c in world.commands if c["action"] == "arm"]) == 1
+    assert not any(c["action"] == "stop" for c in world.commands)
+
+
+def test_run_started_after_prepare_deadline_is_not_accepted(world):
+    saved = {}
+    original = world.status
+
+    def too_late(unit, action):
+        if unit == "rider-venom-navigation.target" and action == "start":
+            world.elapsed = 5.83528
+            saved.update(original())
+            saved.update(run_started_monotonic=5.5, sampled_monotonic=world.elapsed)
+
+    world.hook = too_late
+    world.trial.status = lambda: dict(saved)
+    with pytest.raises(TrialError, match="navigation_trial_prepare_timeout"):
+        world.trial.start(world.body())
+    assert world.gate.state == "DISARMED"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("operator_request_id", "another-operator-start"),
+        ("generation", "another-generation"),
+        ("config_revision", -1),
+    ],
+)
+def test_late_unrelated_producer_outcome_does_not_replace_prepare_failure(world, field, value):
+    saved = {}
+    original = world.status
+
+    def unrelated(unit, action):
+        if unit == "rider-venom-navigation.target" and action == "start":
+            saved.update(original())
+            saved.update(running=False, latched=True, stop_reason="decision_timeout")
+            saved[field] = value
+            world.elapsed = 5.83528
+
+    world.hook = unrelated
+    world.trial.status = lambda: dict(saved)
+    with pytest.raises(TrialError, match="navigation_trial_prepare_timeout") as caught:
+        world.trial.start(world.body())
+    assert not caught.value.details.get("started")
+
+
+def test_idempotent_stop_uses_observed_task_result_in_negotiated_contract(world, monkeypatch):
+    from flask import Flask
+
+    from services.api_core import features_api, http_contract
+
+    monkeypatch.setattr(features_api, "feature_manager", world.manager)
+    app = Flask(__name__)
+    http_contract.install(app, after_request=True)
+    app.add_url_rule("/api/logic/feature/<name>", view_func=features_api.feature_handler, methods=["POST"])
+    with app.test_client() as client:
+        response = client.post(
+            "/api/logic/feature/s14_venom_navigation",
+            json={"enabled": False},
+            headers={"Accept": "application/vnd.rider.api+json;version=1"},
+        )
+    assert response.status_code == 200, response.get_json()
+    data = response.get_json()
+    assert data["operation"]["status"] == "executed"
+    assert data["operation"]["actuation"] is False
+    assert not world.commands
+
+
+def test_public_status_does_not_present_expired_go_as_an_active_motor_permit():
+    source = {
+        "sampled_monotonic": 10.0,
+        "mode": "drive",
+        "running": True,
+        "latched": False,
+        "permit_remaining_ms": 80,
+        "feedback_remaining_ms": 240,
+        "decision": {"action": "go", "vision_action": "go"},
+    }
+    row = public_status(source, sampled_now=10.1)
+    assert row["permit_remaining_ms"] == 0
+    assert row["feedback_remaining_ms"] == 140
+    assert row["waiting_feedback"] and row["paused"]
+    assert row["decision"]["action"] == "stop"
+    assert row["decision"]["vision_action"] == "go"
+    assert source["decision"]["action"] == "go"
