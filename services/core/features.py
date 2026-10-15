@@ -467,7 +467,15 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         started: list[str] = []
         steps: list[dict] = []
         events: list[dict] = []
-        for unit in units:
+        # Navigation targets are empty bookkeeping units. Start them before
+        # the producer: a slow/failed target start must never roll back a
+        # producer which is already executing a fresh operator trial.
+        start_units = units
+        if canonical in {"s14_venom_navigation", "s15_venom_perception"}:
+            start_units = tuple(unit for unit in units if unit.endswith(".target")) + tuple(
+                unit for unit in units if not unit.endswith(".target")
+            )
+        for unit in start_units:
             if feature.can_move and UNIT_CATALOG.get(unit, {}).get("can_move"):
                 denied = self._permission(feature)
                 if self.safety_status().get("generation") != control.get("generation"):

@@ -280,3 +280,34 @@ def test_privileged_cleanup_repeats_process_and_dependency_observation(monkeypat
 
     monkeypatch.setattr(feature_observation, "read_units", read)
     assert feature_cleanup.inactive_navigation_target("rider-venom-navigation.target") is (not running)
+
+
+def test_navigation_bookkeeping_finishes_before_producer_can_move(world):
+    observed = []
+
+    def startup(unit, action):
+        if action == "start" and unit == "rider-venom-navigation.target":
+            assert "rider-venom-navigation.service" not in world.active
+            world.elapsed += 2.0
+            observed.append("target")
+        elif action == "start" and unit == "rider-venom-navigation.service":
+            assert observed == ["target"]
+            world.elapsed += 0.5
+            observed.append("producer")
+
+    world.hook = startup
+    result = world.trial.start(world.body())
+    assert result["ok"]
+    assert observed == ["target", "producer"]
+    assert world.actions[-1] == ("rider-venom-navigation.service", "start")
+    assert not any(command["action"] == "stop" for command in world.commands)
+
+
+def test_failed_navigation_target_never_starts_movement_producer(world):
+    from services.navigation_trial import TrialError
+
+    world.failure = ("rider-venom-navigation.target", "start")
+    with pytest.raises(TrialError):
+        world.trial.start(world.body())
+    assert ("rider-venom-navigation.service", "start") not in world.actions
+    assert world.gate.state == "DISARMED"
