@@ -345,9 +345,15 @@ def test_short_permit_reports_zero_and_continues_only_on_next_fresh_frame(isolat
     assert all(row["duration"] <= 0.15 for row in moves)
 
 
-def test_post_turn_capture_gate_rejects_forward_from_old_orientation(isolated, monkeypatch):
+@pytest.mark.parametrize("maneuver_protocol", [2, 3])
+def test_post_turn_capture_gate_rejects_forward_from_old_orientation(isolated, monkeypatch, maneuver_protocol):
     policy, _, _, _, commands = isolated
-    policy["avoidance"] = {**policy["avoidance"], "enabled": True, "sweep_verified": True}
+    policy["avoidance"] = {
+        **policy["avoidance"],
+        "enabled": True,
+        "sweep_verified": True,
+        "protocol_version": maneuver_protocol,
+    }
     now = [1000.0]
     phases = []
     monkeypatch.setattr(module.time, "time", lambda: now[0])
@@ -373,11 +379,15 @@ def test_post_turn_capture_gate_rejects_forward_from_old_orientation(isolated, m
             pass
 
     def remote(meta, *_):
-        assert meta["protocol_version"] == 2
+        assert meta["protocol_version"] == maneuver_protocol
         phases.append(meta["motion_phase"])
         return {
             **{key: meta[key] for key in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
-            "action": "stop" if meta["sequence"] == 1 else "turn_left" if meta["sequence"] == 2 else "go",
+            "action": "stop"
+            if meta["sequence"] == 1
+            else ("turn_left" if maneuver_protocol == 2 else "steer_left")
+            if meta["sequence"] == 2
+            else "go",
             "state": "obstacle" if meta["sequence"] < 3 else "clear",
             "reason": "depth_ground_deviation",
             "clear_count": 3,
@@ -386,14 +396,21 @@ def test_post_turn_capture_gate_rejects_forward_from_old_orientation(isolated, m
             "farther_outlier_pixels": 0,
             "maneuver_clear_count": 3,
             "sectors": {"left": {"state": "clear", "coverage_complete": True}},
+            "paths": {
+                "left": {"state": "clear", "coverage_complete": True},
+                "guard": {"state": "clear", "coverage_complete": True},
+            },
         }
 
     runner = module.NavigationRunner(source_factory=Source, request=remote, clock=lambda: now[0])
     runner.run()
     turns = [row for row in commands if row.get("yaw", 0)]
-    forwards = [row for row in commands if row.get("vx", 0)]
+    forwards = [row for row in commands if row.get("vx", 0) and not row.get("yaw", 0)]
     assert len(turns) == 1
-    assert len(forwards) == 1
-    assert phases[2:7] == ["turn_settling"] * 5
+    assert len(forwards) == (1 if maneuver_protocol == 2 else 5)
+    if maneuver_protocol == 2:
+        assert phases[2:7] == ["turn_settling"] * 5
+    else:
+        assert phases[2:4] == ["steer_wait"] * 2
     assert phases[-1] == "ready"
     assert commands[-1]["action"] == "stop"

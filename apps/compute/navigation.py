@@ -86,6 +86,7 @@ class NavigationRunner:
             pause=self.pause,
             feedback_wait=self.policy["mode"] == "drive",
             turn=self.turn,
+            steer=self.steer,
         )
         self.started = clock()
 
@@ -215,6 +216,20 @@ class NavigationRunner:
         # Actuation cannot outlive the Pi-local permit. Require a capture after
         # that bound and settling, not merely a reply received after the turn.
         self.turn_capture_after = self.lease.deadline + 0.1
+
+    def steer(self, side, duration):
+        settings = self.policy["avoidance"]
+        if (
+            side not in {"left", "right"}
+            or not settings["enabled"]
+            or not settings["sweep_verified"]
+            or settings["protocol_version"] != 3
+        ):
+            raise ComputeError("navigation_avoidance_not_accepted")
+        self.drive(self.policy["speed"], duration, yaw=settings["turn_speed"] * (1 if side == "left" else -1))
+        # Re-evaluate after this bounded correction; never reuse a capture
+        # from before/during it to issue another correction or forward goal.
+        self.turn_capture_after = self.clock() + duration
 
     def _consent_completed(self, safety):
         return (
@@ -444,9 +459,13 @@ class NavigationRunner:
                 meta["perception"] = self.policy["perception"]
                 if self.policy.get("avoidance", {}).get("enabled"):
                     meta.update(
-                        protocol_version=2,
+                        protocol_version=self.policy["avoidance"].get("protocol_version", 2),
                         avoidance=self.policy["avoidance"],
-                        motion_phase="turn_settling"
+                        motion_phase=(
+                            "steer_wait"
+                            if self.policy["avoidance"].get("protocol_version", 2) == 3
+                            else "turn_settling"
+                        )
                         if self.turn_capture_after is not None and captured <= self.turn_capture_after
                         else "ready",
                     )

@@ -9,12 +9,23 @@ import time
 
 class DecisionLease:
     def __init__(
-        self, config, run_id, drive, stop, clock=time.monotonic, *, pause=None, feedback_wait=False, turn=None
+        self,
+        config,
+        run_id,
+        drive,
+        stop,
+        clock=time.monotonic,
+        *,
+        pause=None,
+        feedback_wait=False,
+        turn=None,
+        steer=None,
     ):
         self.config = dict(config)
         self.run_id = run_id
         self.drive, self.stop, self.clock = drive, stop, clock
         self.turn = turn
+        self.steer = steer
         self.turn_count = 0
         self.paused_for_obstacle = False
         self.pause = pause
@@ -93,7 +104,9 @@ class DecisionLease:
                 self._halt("decision_timeout")
                 return False
             identity = {
-                "protocol_version": 2 if self.config.get("avoidance", {}).get("enabled") else 1,
+                "protocol_version": self.config.get("avoidance", {}).get("protocol_version", 2)
+                if self.config.get("avoidance", {}).get("enabled")
+                else 1,
                 "run_id": self.run_id,
                 "frame_id": frame_id,
                 "sequence": sequence,
@@ -119,14 +132,19 @@ class DecisionLease:
             actions = {"go", "stop"}
             if identity["protocol_version"] == 2:
                 actions |= {"turn_left", "turn_right"}
+            if identity["protocol_version"] == 3:
+                actions |= {"steer_left", "steer_right"}
             if decision.get("action") not in actions:
                 self._halt("decision_invalid_action")
                 return False
             self.last_seq = sequence
             self.reason = str(decision.get("reason", "unknown"))[:128]
-            if decision["action"] in {"turn_left", "turn_right"}:
+            if decision["action"] in {"turn_left", "turn_right", "steer_left", "steer_right"}:
                 return self._accept_turn(decision, now, remaining)
             if decision["action"] == "stop":
+                if identity["protocol_version"] == 3 and decision.get("terminal_stop") is True:
+                    self._halt(str(decision.get("motion_reason", "avoidance_no_progress")))
+                    return False
                 if self.pause is None:
                     # Older callers without scoped zero output retain terminal STOP.
                     if self.moving or decision.get("state") != "clear":
@@ -191,16 +209,18 @@ class DecisionLease:
 
     def _accept_turn(self, decision, now, remaining):
         settings = self.config["avoidance"]
-        side = decision["action"].removeprefix("turn_")
+        curved = decision["action"].startswith("steer_")
+        callback = self.steer if curved else self.turn
+        side = decision["action"].split("_", 1)[1]
         sectors = decision.get("sectors")
         sector = sectors.get(side) if isinstance(sectors, dict) else None
         if not isinstance(sector, dict):
             self._halt("avoidance_invalid_sector")
             return False
         if (
-            self.turn is None
+            callback is None
             or not settings["sweep_verified"]
-            or not self.paused_for_obstacle
+            or (not curved and not self.paused_for_obstacle)
             or self.config["mode"] != "drive"
             or not self.config["verified"]
             or decision.get("model_sha256") != self.config["model_sha256"]
@@ -214,6 +234,16 @@ class DecisionLease:
         ):
             self._halt("avoidance_not_authorized")
             return False
+        if curved:
+            paths = decision.get("paths")
+            path = paths.get(side) if isinstance(paths, dict) else None
+            guard = paths.get("guard") if isinstance(paths, dict) else None
+            if any(
+                not isinstance(row, dict) or row.get("state") != "clear" or row.get("coverage_complete") is not True
+                for row in (path, guard)
+            ):
+                self._halt("avoidance_path_not_clear")
+                return False
         permit = min(remaining, decision["valid_for_ms"] / 1000)
         duration = min(permit, self.config["max_motion_ms"] / 1000, settings["turn_ms"] / 1000)
         if duration < 0.05:
@@ -225,7 +255,7 @@ class DecisionLease:
         self.turn_count += 1
         self.paused_for_obstacle = False
         try:
-            self.turn(side, duration)
+            callback(side, duration)
         except Exception:
             self._halt("motion_submission_failed")
             raise

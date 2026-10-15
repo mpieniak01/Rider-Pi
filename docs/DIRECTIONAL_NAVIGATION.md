@@ -36,3 +36,25 @@ obstacle, recess and post-turn sequences plus operator-observed hardware
 acceptance in both directions. Frontal camera coverage does not prove side/rear
 clearance. Automated tests record mock callbacks and never contact motors.
 Deploy matching protocol-v2 implementations in Pi and venom-module-rider.
+
+
+## V3 forward corrections
+
+Newly enabled avoidance explicitly selects avoidance.protocol_version=3 and
+steer_left/steer_right. Pi submits low vx and bounded yaw in one existing motion
+command. Legacy turn_left/right retain yaw-only semantics; saved policies without
+an explicit maneuver version migrate to v2. Switching versions invalidates the
+calibration scope and requires matching Venom support.
+
+A v3 correction requires complete clear selected-sector, connecting-path and
+near-guard evidence in the same current decision. These image-space masks are
+approximations, not a measured metric footprint. No thresholds, forward limits or
+watchdogs are relaxed. New nonzero commands require capture after the correction
+pulse. No separate prior stop is required for v3. Three fresh front CLEAR frames
+straighten motion; exhausted corrections without a clear path terminally stop
+the trial with avoidance_no_progress, without rearming.
+
+Combined vx/yaw behavior and changing camera pose still need physical acceptance.
+Weak recorded box frames continue to yield UNKNOWN/STOP; no forced turn or
+threshold tuning was performed. Robust ground reference and camera-pose
+compensation remain follow-ups requiring better recorded scenes.

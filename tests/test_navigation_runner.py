@@ -776,3 +776,15 @@ def test_turn_uses_yaw_only_and_marks_capture_settling(isolated):
     runner.turn("right", 0.1)
     assert commands[-1]["vx"] == 0.0
     assert commands[-1]["yaw"] == -0.05
+
+
+def test_v3_steer_submits_bounded_forward_and_yaw_together(isolated):
+    policy, _, _, _, commands = isolated
+    policy["avoidance"] = {**policy["avoidance"], "protocol_version": 3, "enabled": True, "sweep_verified": True}
+    runner = module.NavigationRunner()
+    runner.lease.deadline = runner.clock() + 0.15
+    runner.steer("right", 0.1)
+    assert commands[-1]["vx"] == policy["speed"]
+    assert commands[-1]["yaw"] == -policy["avoidance"]["turn_speed"]
+    assert commands[-1]["duration"] == 0.1
+    assert runner.turn_capture_after > runner.clock()

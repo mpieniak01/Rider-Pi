@@ -5,7 +5,7 @@ opcjonalny kontrakt wizji v2; domyślnie omijanie jest wyłączone. Stare pliki
 konfiguracji są odczytywane z nowymi polami wyłączonymi. Jazda prosto v1 pozostaje
 dostępna; stare odpowiedzi nie mogą uruchomić nowych akcji skrętu.
 
-## Polityka i zgodność
+## Polityka i zgodność starego protokołu v2
 
 Istniejący plik navigation_config.json zawiera pole avoidance:
 enabled, sweep_verified, mirrored (bool), turn_speed (SDK 0,01–0,1; domyślnie
@@ -49,3 +49,27 @@ ręczny odbiór obu kierunków. Automatyczne testy nie kontaktują silników.
 
 Powiązana implementacja panelu i analizy znajduje się w venom-module-rider.
 Wersje obu repozytoriów trzeba wdrażać zgodnie z kontraktem v2.
+
+
+## V3 — korekty podczas jazdy
+
+Nowe włączenie omijania używa avoidance.protocol_version=3. Akcje steer_left
+i steer_right oznaczają wspólne polecenie niskiego vx i ograniczonego yaw;
+nie zmieniają znaczenia dawnych turn_left/right v2. Stary zapis omijania
+bez jawnej wersji jest migrowany do v2. Wybór v3 unieważnia poprzedni odbiór;
+Venom musi reklamować zgodność z tym protokołem.
+
+Pi wymaga kompletnej oceny docelowej strony, łączącego toru paths.left/right
+i najbliższej strefy paths.guard. Oba dowody muszą być CLEAR dla tej samej
+bieżącej decyzji; sam wolny bok nie wystarcza. Maski są przybliżeniem obrazu,
+nie metrycznym pomiarem obrysu. Nie zwiększono progów, prędkości ani watchdogów.
+
+Po impulsie korekty nowe niezerowe polecenie wymaga capture po jego zakończeniu.
+Nie trzeba najpierw wykonać osobnego postoju jak w v2. Brak poprawy po limicie
+korekt kończy próbę przez terminalny avoidance_no_progress. Potwierdzona wolna
+droga w trzech nowych obserwacjach pozwala wyprostować tor.
+
+Implementacja wymaga odbioru fizycznego łącznego vx/yaw i danych dla zmian
+wysokości/pochylenia. Słabe próbki pudełka nadal powodują UNKNOWN/STOP;
+nie wymuszono na nich skrętu. Odporna estymacja podłoża i kompensacja pozy
+pozostają do dalszych prac na lepszym zbiorze.

@@ -12,7 +12,7 @@ def setup():
     config = deepcopy(DEFAULT)
     config.update(mode="drive", verified=True, calibration_id="accepted", model_sha256="a" * 64)
     config["perception"]["engine"] = "depth_plane"
-    config["avoidance"].update(enabled=True, sweep_verified=True)
+    config["avoidance"].update(enabled=True, sweep_verified=True, protocol_version=2)
     calls = []
     now = [0.0]
     lease = DecisionLease(
@@ -119,3 +119,64 @@ def test_pulse_and_total_turn_budget_enforced_by_pi():
     assert not lease.accept(reply(8), "f8", 8, now[0])
     assert len([c for c in calls if c[0] == "turn"]) == 3
     assert all(c[2] <= 0.15 for c in calls if c[0] == "turn")
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_v3_curve_needs_no_prior_stop_but_requires_clear_path(side):
+    config, lease, _, calls = setup()
+    config["avoidance"]["protocol_version"] = 3
+    lease.config = config
+    lease.steer = lambda *x: calls.append(("steer", *x))
+    row = reply(
+        1,
+        protocol_version=3,
+        action="steer_" + side,
+        sectors={side: {"state": "clear", "coverage_complete": True}},
+        paths={
+            side: {"state": "clear", "coverage_complete": True},
+            "guard": {"state": "clear", "coverage_complete": True},
+        },
+    )
+    assert lease.accept(row, "f1", 1, 0)
+    assert calls[-1] == ("steer", side, 0.1)
+
+
+@pytest.mark.parametrize("bad", [None, [], {}, {"right": {"state": "clear", "coverage_complete": True}}])
+def test_v3_rejects_missing_or_forged_path_evidence(bad):
+    config, lease, _, calls = setup()
+    config["avoidance"]["protocol_version"] = 3
+    lease.config = config
+    lease.steer = lambda *x: calls.append(("steer", *x))
+    assert not lease.accept(reply(1, protocol_version=3, action="steer_left", paths=bad), "f1", 1, 0)
+    assert not any(row[0] == "steer" for row in calls)
+    assert lease.reason == "avoidance_path_not_clear"
+
+
+def test_v3_terminal_no_progress_cannot_resume_on_later_go():
+    config, lease, _, calls = setup()
+    config["avoidance"]["protocol_version"] = 3
+    lease.config = config
+    assert not lease.accept(
+        reply(1, protocol_version=3, action="stop", terminal_stop=True, motion_reason="avoidance_no_progress"),
+        "f1",
+        1,
+        0,
+    )
+    assert lease.latched and lease.reason == "avoidance_no_progress"
+    assert not lease.accept(reply(2, protocol_version=3, action="go", state="clear", clear_count=3), "f2", 2, 0)
+    assert not any(row[0] in {"go", "turn"} for row in calls)
+
+
+def test_saved_legacy_avoidance_does_not_silently_become_a_curve(monkeypatch, tmp_path):
+    import json
+
+    from services import navigation_config
+
+    config, _, _, _ = setup()
+    config["avoidance"].pop("protocol_version")
+    file = tmp_path / "navigation.json"
+    file.write_text(json.dumps(config))
+    monkeypatch.setenv("RIDER_NAVIGATION_CONFIG", str(file))
+    loaded = navigation_config.snapshot()
+    assert loaded["avoidance"]["protocol_version"] == 2
+    assert loaded["avoidance"]["enabled"] is True

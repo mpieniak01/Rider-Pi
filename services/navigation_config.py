@@ -20,6 +20,7 @@ DEFAULT = {
     "corridor": [0.35, 0.80, 0.65, 0.95],
     "perception": {"engine": "segformer", "residual_limit": 0.06, "outlier_limit": 0.005, "slope_min": 2.0},
     "avoidance": {
+        "protocol_version": 3,
         "enabled": False,
         "sweep_verified": False,
         "mirrored": False,
@@ -93,6 +94,8 @@ def validate(data):
     avoidance = data["avoidance"]
     if not isinstance(avoidance, dict) or set(avoidance) != set(DEFAULT["avoidance"]):
         raise ValueError("navigation_avoidance_invalid")
+    if type(avoidance["protocol_version"]) is not int or avoidance["protocol_version"] not in (2, 3):
+        raise ValueError("navigation_avoidance_invalid")
     for key in ("enabled", "sweep_verified", "mirrored"):
         if type(avoidance[key]) is not bool:
             raise ValueError("navigation_avoidance_invalid")
@@ -125,6 +128,12 @@ def snapshot():
         data["perception"] = dict(DEFAULT["perception"])
     if isinstance(data, dict) and "avoidance" not in data:
         data["avoidance"] = dict(DEFAULT["avoidance"])
+    if (
+        isinstance(data, dict)
+        and isinstance(data.get("avoidance"), dict)
+        and "protocol_version" not in data["avoidance"]
+    ):
+        data["avoidance"]["protocol_version"] = 2
     return validate(data)
 
 
