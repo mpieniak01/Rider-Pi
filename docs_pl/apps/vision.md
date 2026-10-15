@@ -370,3 +370,16 @@ celu, co zapobiega wtórnemu 502 kontraktu HTTP.
 Regresje zawierają liczbowy zapis produkcyjnej próby z2026-10-15 o12:45,
 niezależne zerowanie impulsu, awarię sieci, opóźnione HTTP i odrzucenie obcego runa.
 Odbiór fizyczny pozostaje osobnym etapem.
+
+
+### Odbiór bieżącej sceny
+
+Dnia 2026-10-15 operator potwierdził stabilną pracę pętli GO/STOP w aktualnie
+skalibrowanej scenie na fizycznym Rider-Pi. Odbiór dotyczy tej sceny i zapisanych
+parametrów wolnej jazdy; nie jest pomiarem odległości ani gwarancją dla innych scen.
+
+Poprawna decyzja z czasem krótszym niż 50 ms na impuls daje tylko ZERO i oczekiwanie
+w istniejącym budżecie feedback. Nowa świeża decyzja GO może wznowić tę samą zgodę
+ARM, bez odnowienia jej terminu i zwiększania prędkości lub impulsu. Brak feedback,
+stary obraz, obca tożsamość i błąd wykonawcy nadal kończą próbę. Panel rozdziela
+ocenę obrazu od faktycznego polecenia wykonawczego.

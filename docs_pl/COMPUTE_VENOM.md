@@ -201,3 +201,13 @@ Regresja używa liczbowego zapisu próby zakończonej o 15:16:11: obraz miał
 nie nadaje tej klatce żadnego niezerowego wyjścia. Scenariusz kolejnego
 świeżego GO w teście sprawdza możliwość kontynuacji, a nie odtwarza
 niezarejestrowanego fizycznego przejazdu.
+
+
+### Odbiór operatora — 2026-10-15
+
+Operator potwierdził stabilność procesu w bieżącej skalibrowanej scenie
+na rzeczywistym Rider-Pi po poprawce krótkiego permitu. Zakres można wydać
+dla tej sceny i obecnych ograniczonych parametrów. Historyczna awaria
+z 15:16:11 pozostaje fixture regresji, a nie opisem aktualnego odbioru.
+Zmiana sceny, oświetlenia lub montażu kamery wymaga ponownej oceny warunków.
+Nie potwierdzamy metrycznej drogi hamowania ani uniwersalnej jakości percepcji.

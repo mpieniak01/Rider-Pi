@@ -257,7 +257,7 @@ The navigation status includes preparation request_id, phase, state, elapsed_ms
 and freshness, even when no producer file exists. Timeout errors include the
 failed phase. Unit observations are reused only inside the preparation transaction
 and invalidated after unit actions; motion authority is always read fresh.
-The five-second preparation budget and all motion/decision limits are unchanged.
+Service preparation is bounded by 15 s, with at most 5 s for final startup after ARM within that budget. Motion and decision limits are unchanged.
 
 
 ### Production timing: a motor permit is not a trial lifetime
@@ -283,3 +283,16 @@ spurious 502 for a completed cancellation.
 Tests include the numerical sequence recorded on Pi on 2026-10-15 at12:45,
 independent executor pulse expiry, network failure, late HTTP acknowledgement and
 foreign run rejection. Physical acceptance remains separate.
+
+
+### Accepted operating scene
+
+On 2026-10-15 the operator confirmed a stable forward GO/STOP process in the
+currently calibrated physical floor scene. This is acceptance of that scene and
+the saved low-speed setup, not a metric distance or general scene guarantee.
+
+A valid decision with less than 50 ms remaining for a pulse submits only ZERO
+and waits within the existing feedback budget. A new fresh GO may resume the
+same original ARM, without renewing its deadline or increasing speed/duration.
+Missing feedback, expired images, invalid identities and executor errors still
+terminate the trial. Venom reports image verdict and actual execution separately.
