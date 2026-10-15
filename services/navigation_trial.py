@@ -97,6 +97,7 @@ def public_status(row, *, sampled_now=None, fresh=True):
     """Convert Pi-local samples to durations; never export a monotonic epoch."""
     result = dict(row)
     sampled = result.pop("sampled_monotonic", None)
+    result.pop("run_started_monotonic", None)
     elapsed_ms = None
     sampled_now = time.monotonic() if sampled_now is None else sampled_now
     if fresh and type(sampled) in (int, float) and math.isfinite(sampled):

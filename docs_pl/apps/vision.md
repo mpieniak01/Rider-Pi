@@ -347,3 +347,26 @@ także bez pliku producenta obrazu. Timeout wskazuje etap awarii. Odczyty jednos
 są współdzielone tylko w transakcji przygotowania i unieważniane po operacjach
 usług; uprawnienia ruchu są zawsze odczytywane na świeżo. Budżet 5 s oraz limity
 ruchu i decyzji pozostają bez zmian.
+
+
+### Czas produkcyjny: permit napędu a czas próby
+
+Zapis próby Pi wykazał GO i wygaśnięcie krótkiego permitu w trakcie odbierania
+następnej świeżej odpowiedzi. Runner rozdziela teraz termin impulsu/komendy,
+egzekwowany przez wykonawcę, od żywotności odbioru. Po końcu permitu napęd już
+zeruje wyjście; stare GO nie upoważnia do dalszej jazdy. Ta sama próba może czekać
+w postoju do ostatniej poprawnej odpowiedzi plus istniejący decision_budget_ms.
+Dopiero nowa poprawna klatka/rewizja/sekwencja dopuszcza kolejny ograniczony impuls.
+Nie odnawia to ARM i nie podnosi limitów ruchu ani terminów. Brak odpowiedzi w tym
+limicie, stare/błędne dane, STOP, błąd transportu lub utrata uprawnień kończą próbę.
+
+Status rozdziela permit_remaining_ms i feedback_remaining_ms. API pokazuje
+waiting_feedback oraz odpowiedź STOP po końcu permitu napędu. Monotoniczny czas
+startu procesu jest sprawdzany lokalnie na Pi, bez porównywania z zegarem karty.
+Jeśli własny proces wystartował i zakończył się w czasie obsługi HTTP, zwracany jest
+jego rzeczywisty wynik. Wyłączenie już zakończonego celu zwraca potwierdzony opis
+celu, co zapobiega wtórnemu 502 kontraktu HTTP.
+
+Regresje zawierają liczbowy zapis produkcyjnej próby z2026-10-15 o12:45,
+niezależne zerowanie impulsu, awarię sieci, opóźnione HTTP i odrzucenie obcego runa.
+Odbiór fizyczny pozostaje osobnym etapem.

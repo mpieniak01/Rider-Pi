@@ -754,6 +754,7 @@ def test_idempotent_stop_uses_observed_task_result_in_negotiated_contract(world,
 def test_public_status_does_not_present_expired_go_as_an_active_motor_permit():
     source = {
         "sampled_monotonic": 10.0,
+        "run_started_monotonic": 9.0,
         "mode": "drive",
         "running": True,
         "latched": False,
@@ -768,3 +769,4 @@ def test_public_status_does_not_present_expired_go_as_an_active_motor_permit():
     assert row["decision"]["action"] == "stop"
     assert row["decision"]["vision_action"] == "go"
     assert source["decision"]["action"] == "go"
+    assert "run_started_monotonic" not in row

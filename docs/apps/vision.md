@@ -258,3 +258,28 @@ and freshness, even when no producer file exists. Timeout errors include the
 failed phase. Unit observations are reused only inside the preparation transaction
 and invalidated after unit actions; motion authority is always read fresh.
 The five-second preparation budget and all motion/decision limits are unchanged.
+
+
+### Production timing: a motor permit is not a trial lifetime
+
+A recorded Pi trial reached two GO decisions but expired the previous short motor
+permit while the next fresh reply was in flight. The runner now distinguishes the
+executor-enforced pulse/decision deadline from feedback liveness. At permit expiry
+the motor output is already zero under the executor's bounded command; the old GO
+cannot be reused. The active trial may wait at zero until the last valid reply plus
+the existing decision_budget_ms. Only a new valid frame/revision/sequence can
+issue another bounded pulse. No ARM renewal or higher motion/deadline limit is
+introduced. Missing feedback at that limit, stale/invalid replies, explicit STOP,
+transport errors and authority changes terminate the trial.
+
+Status exposes separate permit_remaining_ms and feedback_remaining_ms. The API
+reports waiting_feedback and a STOP reply when the motor permit has expired.
+Internal process-start monotonic timestamps are checked on Pi, not compared with
+browser clocks. A matching run that started/stopped during HTTP bookkeeping is
+reported as that actual run outcome, not as never started. Idempotent task stop
+returns observed task evidence so the negotiated HTTP contract does not create a
+spurious 502 for a completed cancellation.
+
+Tests include the numerical sequence recorded on Pi on 2026-10-15 at12:45,
+independent executor pulse expiry, network failure, late HTTP acknowledgement and
+foreign run rejection. Physical acceptance remains separate.
