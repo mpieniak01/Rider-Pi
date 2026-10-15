@@ -225,3 +225,12 @@ Currently no automated tests for vision components (integration testing only).
 - `docs/modules/mapper.md` - Occupancy grid mapping (Stage 3)
 - `apps/vision/obstacle_roi.py` - Obstacle detection implementation
 - `apps/vision/depth_bridge.py` - Depth estimation bridge
+
+
+## Supervised GO/STOP loop
+
+POST /api/navigation/trial admits one explicit operator request: request_id, generation, Pi-clock ts/ttl_ms (up to 500 ms), config_revision, settings_revision, operator_consent=true, operator_plan, source=manual and execution_context=panel. Pi serializes preparation through FeatureManager (up to 5 s), retains its existing configuration, grants one navigation ARM for at most 10 s and confirms the new run. A replayed request_id cannot ARM again.
+
+Fresh obstacle or image uncertainty sends an immediate zero goal within that original trial. Three new CLEAR observations may resume small forward pulses without rearming or extending 10 s. Expired decisions, communication loss, contract/executor failure, operator STOP, manual takeover and ARM expiry are terminal. Existing thresholds and motion limits are unchanged.
+
+The live executor must advertise scoped_stop_generation_supported=true and remote_decision_deadline_supported=true. Optional expected_generation in STOP/disarm is checked atomically before revocation; old cleanup cannot stop a new owner. Global STOP without this field remains unconditional. Updating code requires the current executor process, not only a panel restart.

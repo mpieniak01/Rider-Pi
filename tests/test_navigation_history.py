@@ -41,7 +41,7 @@ def test_terminal_drive_records_frames_and_observation_preserves_shared_outcome(
     row = response.get_json()
     assert status == 200 and row["mode"] == "observe"
     assert row["decision"]["state"] == "clear"
-    assert row["last_trial"] == trial
+    assert row["last_trial"] == {key: value for key, value in trial.items() if key != "sampled_monotonic"}
     assert not isolated[-1]  # Presentation and recorder never submit a command.
 
 

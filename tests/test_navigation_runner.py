@@ -21,6 +21,7 @@ def isolated(monkeypatch, tmp_path):
     }
     safety = {
         "remote_decision_deadline_supported": True,
+        "scoped_stop_generation_supported": True,
         "can_move": True,
         "owner": "navigation",
         "generation": "gen",

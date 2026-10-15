@@ -79,7 +79,10 @@ class NavigationRunner:
         safety = read_status()
         if self.policy["mode"] == "observe":
             return False
-        if safety.get("remote_decision_deadline_supported") is not True:
+        if (
+            safety.get("remote_decision_deadline_supported") is not True
+            or safety.get("scoped_stop_generation_supported") is not True
+        ):
             raise ComputeError("navigation_executor_update_required")
         for ack in [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]:
             if (

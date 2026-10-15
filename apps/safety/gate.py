@@ -142,6 +142,12 @@ class MotionGate:
         if not isinstance(action, str):
             return False, "unknown_action"
         if action in {"stop", "disarm"}:
+            if "expected_generation" in command and (
+                not isinstance(command["expected_generation"], str)
+                or not command["expected_generation"]
+                or command["expected_generation"] != self.generation
+            ):
+                return False, "stale_stop_generation"
             self.disarm(str(command.get("reason") or "operator_stop"))
             return True, "stopped"
         if action == "estop":

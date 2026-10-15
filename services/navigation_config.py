@@ -98,6 +98,12 @@ def snapshot():
 
 
 def configure(body):
+    with _selection_lock():
+        return configure_locked(body)
+
+
+def configure_locked(body):
+    """Caller already holds the shared feature selection transaction."""
     if (
         not isinstance(body, dict)
         or set(body) != {"revision", "values"}
@@ -107,14 +113,24 @@ def configure(body):
         raise ValueError("navigation_configuration_invalid")
     if set(body["values"]) - (set(DEFAULT) - {"protocol_version", "revision"}):
         raise ValueError("navigation_configuration_invalid")
-    with _selection_lock(), _lock(path()):
+    with _lock(path()):
         old = snapshot()
         if body["revision"] != old["revision"]:
             raise ValueError("navigation_configuration_conflict")
-        _require_idle_goals()
+        # Mode switches do not change compute selection or model parameters.
+        # Unrelated voice/compute consumers can continue using their own policy.
+        if set(body["values"]) != {"mode"}:
+            _require_idle_goals()
         state_path = Path(os.getenv("FEATURE_STATE_PATH", "/run/rider-motion/feature_state.json"))
         if state_path.exists():
-            requested = json.loads(state_path.read_text()).get("requested", [])
+            try:
+                if state_path.stat().st_size > 256 * 1024:
+                    raise ValueError("oversized")
+                requested = json.loads(state_path.read_text()).get("requested", [])
+                if not isinstance(requested, list) or any(not isinstance(name, str) for name in requested):
+                    raise ValueError("invalid")
+            except (ValueError, OSError, AttributeError) as exc:
+                raise ValueError("navigation_goal_state_unavailable") from exc
             if set(requested) & {"s14_venom_navigation", "s15_venom_perception"}:
                 raise ValueError("navigation_stop_goals_first")
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}

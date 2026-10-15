@@ -102,6 +102,9 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         )
         self._lock = threading.RLock()
         self._transaction_depth = 0
+        self._operation_guard = None
+        self._operation_remaining = None
+        self._operation_stop = None
         self._requested: dict[str, dict] = {"s0_core": {}} if "s0_core" in self.registry else {}
         self._restored = False
         self._states: dict[str, str] = {}
@@ -218,9 +221,32 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     finally:
                         self._transaction_depth -= 1
 
+    @contextmanager
+    def operation(self, *, guard, remaining, stop):
+        """Bound one explicit preparation using existing task serialization."""
+        with self.transaction():
+            if self._operation_guard is not None:
+                raise ValueError("navigation_trial_busy")
+            self._operation_guard, self._operation_remaining, self._operation_stop = guard, remaining, stop
+            try:
+                yield
+            finally:
+                self._operation_guard = self._operation_remaining = self._operation_stop = None
+
+    def _stop_permission(self, owner):
+        callback = self._operation_stop or self.safety_stop
+        return callback(owner)
+
     def _run(self, unit: str, action: str) -> dict:
         try:
-            result = _as_dict(self.runner(unit, action))
+            if self._operation_guard is not None and action == "start":
+                self._operation_guard()
+            if self._operation_remaining is not None and self.runner is systemd_ctrl.run_unit_action:
+                result = _as_dict(self.runner(unit, action, timeout=max(0.01, self._operation_remaining())))
+            else:
+                result = _as_dict(self.runner(unit, action))
+            if self._operation_guard is not None and action == "start":
+                self._operation_guard()
         except Exception as exc:
             result = {"ok": False, "unit": unit, "action": action, "error": str(exc)}
         systemd_ctrl.invalidate_snapshot()
@@ -339,7 +365,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
     def _rollback(self, feature: FeatureDefinition, started: list[str]) -> list[dict]:
         results: list[dict] = []
         if feature.can_move and started:
-            stop = self.safety_stop(feature.control_owner)
+            stop = self._stop_permission(feature.control_owner)
             results.append({"action": "revoke_control", **stop})
             if not stop.get("ok") or not stop.get("confirmed"):
                 return results
@@ -504,7 +530,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._persist_state()
         steps: list[dict] = []
         if feature.can_move:
-            revoked = self.safety_stop(feature.control_owner)
+            revoked = self._stop_permission(feature.control_owner)
             steps.append({"action": "revoke_control", **revoked})
             if not revoked.get("ok") or not revoked.get("confirmed"):
                 self._states[canonical] = "partial"

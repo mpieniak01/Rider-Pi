@@ -315,3 +315,12 @@ export USE_CORAL=1
 
 **Ostatnia aktualizacja:** 2025-01  
 **Status:** ⚠️ Część parametrów wymaga weryfikacji
+
+
+## Nadzorowana pętla GO/STOP
+
+POST /api/navigation/trial przyjmuje jedno jawne polecenie operatora: request_id, generation, ts i ttl_ms (czas Pi, do 500 ms), config_revision, settings_revision, operator_consent=true, operator_plan, source=manual i execution_context=panel. Pi szereguje przygotowanie przez FeatureManager (do 5 s), zachowuje istniejącą konfigurację, wykonuje jeden ARM navigation do 10 s i potwierdza nowy run. Powtórzenie request_id nie powoduje nowego ARM.
+
+Świeża przeszkoda lub niepewny obraz zeruje silniki w ramach aktualnej próby. Trzy kolejne CLEAR mogą wznowić małe impulsy, bez ponownego uzbrojenia i bez wydłużania 10 s. Utrata świeżości/komunikacji, awaria kontraktu/wykonawcy, STOP operatora, ręczne przejęcie i koniec ARM kończą próbę. Obecne progi, prędkość, impulsy i rampy pozostają bez zmian.
+
+Wykonawca musi raportować scoped_stop_generation_supported=true i remote_decision_deadline_supported=true. Opcjonalne expected_generation w STOP/disarm jest sprawdzane atomowo przed odebraniem uprawnienia; stare sprzątanie nie zatrzymuje nowego właściciela. Globalny STOP bez tego pola pozostaje bezwarunkowy. Po aktualizacji kodu wymagana jest aktualna instancja wykonawcy; sam restart panelu nie wystarczy.
