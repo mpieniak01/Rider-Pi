@@ -489,3 +489,31 @@ def test_old_executor_is_rejected_before_preparation_or_arm(world, capability):
     with pytest.raises(TrialError, match="navigation_executor_update_required"):
         world.trial.start(world.body())
     assert not world.actions and not world.commands
+
+
+def test_new_manual_command_during_preparation_cancels_old_trial_without_rearming(world):
+    assert world.arm_manual()[0]["ok"]
+
+    def newer_intent(unit, action):
+        if unit.startswith("camera-capture") and action == "start":
+            command = command_envelope(
+                {
+                    "action": "move",
+                    "source": "manual",
+                    "generation": world.gate.generation,
+                    "execution_context": "panel",
+                    "request_id": "newer-arrow",
+                    "seq": world.gate.last_seq + 1,
+                    "ts": time.time(),
+                    "ttl_ms": 500,
+                    "vx": 0.1,
+                    "duration": 0.1,
+                }
+            )
+            assert world.gate.authorize(command)[0]
+
+    world.hook = newer_intent
+    with pytest.raises(TrialError, match="navigation_trial_cancelled"):
+        world.trial.start(world.body())
+    assert world.gate.owner == "manual" and world.gate.state == "ARMED"
+    assert not any(row.get("owner") == "navigation" for row in world.commands)

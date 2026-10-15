@@ -153,6 +153,7 @@ class NavigationTrial:
             "settings_revision": body["settings_revision"],
             "deadline": self.clock() + 5.0,
             "armed": False,
+            "sequence": None,
         }
         local_id = "trial-" + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
         start_id = local_id + "-start"
@@ -167,6 +168,8 @@ class NavigationTrial:
                 or safety.get("state") != context["state"]
                 or safety.get("stale") is True
                 or safety.get("ready") is not True
+                or context["sequence"] is not None
+                and safety.get("last_seq") != context["sequence"]
             ):
                 raise TrialError("navigation_trial_cancelled")
             if (
@@ -213,7 +216,7 @@ class NavigationTrial:
                 or current.get("owner") is not None
             ):
                 raise TrialError("navigation_trial_cancelled")
-            context.update(generation=next_generation, owner=None, state="DISARMED")
+            context.update(generation=next_generation, owner=None, state="DISARMED", sequence=current.get("last_seq"))
             return result
 
         with self.manager.operation(
@@ -237,7 +240,7 @@ class NavigationTrial:
                     or safety.get("scoped_stop_generation_supported") is not True
                 ):
                     raise TrialError("navigation_executor_update_required")
-                context.update(owner=safety.get("owner"), state=safety["state"])
+                context.update(owner=safety.get("owner"), state=safety["state"], sequence=safety.get("last_seq"))
                 guard()
                 policy = self.policy()
                 if not policy.get("verified") or not policy.get("calibration_id") or not policy.get("model_sha256"):
@@ -279,7 +282,7 @@ class NavigationTrial:
                 )
                 if code != 200 or not arm.get("ok") or not arm.get("confirmed"):
                     raise TrialError(arm.get("error") or "navigation_trial_arm_unconfirmed")
-                context.update(owner="navigation", state="ARMED")
+                context.update(owner="navigation", state="ARMED", sequence=None)
                 safety = guard()
                 if safety.get("can_move") is not True:
                     raise TrialError("operator_motion_permission_required")
