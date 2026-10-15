@@ -327,3 +327,73 @@ def test_real_service_preparation_can_take_seven_seconds_without_extending_arm(w
     assert result["ok"] and world.elapsed == 7.0
     arms = [row for row in world.commands if row["action"] == "arm"]
     assert len(arms) == 1 and arms[0]["lease_s"] == 10.0
+
+
+def test_negotiated_successful_trial_is_confirmed_not_pending(world, monkeypatch):
+    from flask import Flask
+
+    from services.api_core import features_api, http_contract, navigation_api
+
+    monkeypatch.setattr(features_api, "feature_manager", world.manager)
+    app = Flask(__name__)
+    http_contract.install(app, after_request=True)
+    app.extensions["rider_navigation_trial"] = world.trial
+    app.add_url_rule("/api/navigation/trial", view_func=navigation_api.trial_handler, methods=["POST"])
+    result = app.test_client().post(
+        "/api/navigation/trial",
+        json=world.body(),
+        headers={"Accept": "application/vnd.rider.api+json;version=1"},
+    )
+    assert result.status_code == 200
+    body = result.get_json()
+    assert body["ok"] is True
+    assert body["operation"]["status"] == "executed"
+    assert body["operation"]["confirmed"] is True
+    assert body["operation"]["actuation"] is False
+    assert body["data"]["status"]["running"] is True
+
+
+@pytest.mark.parametrize(
+    "reason,expected", [("consent_expired", "trial_completed"), ("stopped", "motion_submission_failed")]
+)
+def test_preserved_terminal_distinguishes_timed_completion_from_operator_stop(reason, expected):
+    from services.navigation_trial import public_status
+
+    actual = public_status(
+        {
+            "mode": "drive",
+            "running": False,
+            "stop_reason": "motion_submission_failed",
+            "motion_failure": {"reason": "stale_generation", "gate_reason": reason},
+        },
+        fresh=False,
+    )
+    assert actual["stop_reason"] == expected
+
+
+def test_repeated_trial_stop_backend_does_not_revoke_already_disarmed_generation(world, monkeypatch):
+    from common import service_action_guard
+    from services import safety_contract
+
+    monkeypatch.setattr(safety_contract, "read_status", world.safety)
+    monkeypatch.setattr(service_action_guard, "unit_availability", lambda *_: {"start_available": True})
+
+    def global_stop():
+        return world.submit({"action": "stop", "source": "manual"})[0]
+
+    monkeypatch.setattr(safety_contract, "request_stop", global_stop)
+    first = world.trial.start(world.body())
+    assert first["ok"]
+    world.gate.disarm("consent_expired")
+    world.active.discard("rider-venom-navigation.service")
+    run = world.manager.runner
+
+    def backend(unit, action):
+        if action == "stop" and unit.startswith("rider-venom-navigation"):
+            assert service_action_guard.check(unit, action)["ok"]
+        return run(unit, action)
+
+    world.manager.runner = backend
+    second = world.trial.start(world.body(request_id="second-operator-click"))
+    assert second["ok"]
+    assert len([command for command in world.commands if command["action"] == "arm"]) == 2

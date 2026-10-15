@@ -104,6 +104,8 @@ class NavigationRunner:
             or safety.get("scoped_stop_generation_supported") is not True
         ):
             raise ComputeError("navigation_executor_update_required")
+        if self._consent_completed(safety):
+            raise ComputeError("navigation_trial_completed")
         for ack in [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]:
             if (
                 isinstance(ack.get("request_id"), str)
@@ -191,6 +193,8 @@ class NavigationRunner:
         if code == 202 and result.get("pending"):
             self.pending_motion_acks[self.run_id + "-" + str(self.motion_sequence)] = self.clock() + 0.1
         if not (code == 200 and result.get("ok") or code == 202 and result.get("pending")):
+            if self._consent_completed(result.get("safety") or {}):
+                raise ComputeError("navigation_trial_completed")
             error = result.get("error") or (result.get("ack") or {}).get("reason")
             if not isinstance(error, str) or not error.replace("_", "").isalnum() or len(error) > 128:
                 error = "executor_rejected"
@@ -200,6 +204,13 @@ class NavigationRunner:
                 self.motion_failure["gate_reason"] = gate_reason
             logging.getLogger(__name__).warning("[vision] motion rejected status=%s reason=%s", code, error)
             raise ComputeError("navigation_motion_rejected")
+
+    def _consent_completed(self, safety):
+        return (
+            self.generation is not None
+            and safety.get("state") == "DISARMED"
+            and safety.get("reason") == "consent_expired"
+        )
 
     def pause(self, duration):
         self.drive(0.0, duration)
@@ -468,6 +479,13 @@ class NavigationRunner:
                     self.closed.wait(0.01)
             return 0
         except Exception as exc:
+            if isinstance(exc, ComputeError) and exc.code == "navigation_trial_completed":
+                self.closed.set()
+                self.motion_failure = None
+                with self.lease.lock:
+                    self.lease.reason = "trial_completed"
+                self.lease.halt("trial_completed")
+                return 0
             logging.getLogger(__name__).warning(
                 "[vision] navigation failed type=%s reason_type=%s code=%s",
                 type(exc).__name__,

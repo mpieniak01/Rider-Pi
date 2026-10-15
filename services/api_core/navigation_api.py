@@ -48,7 +48,9 @@ def status_handler():
                 and 0 <= time.time() - trial["observed_at"]
             ):
                 trial.pop("sampled_monotonic", None)
-                last_trial = trial
+                from services.navigation_trial import public_status
+
+                last_trial = public_status(trial, fresh=False)
     except (OSError, ValueError, TypeError):
         pass
     try:
@@ -91,7 +93,23 @@ def trial_handler():
         starter = NavigationTrial(feature_manager)
         current_app.extensions[key] = starter
     try:
-        return jsonify(starter.start(request.get_json(silent=True))), 200
+        result = starter.start(request.get_json(silent=True))
+        from .http_contract import operation
+
+        operation(
+            {
+                "request_id": result["request_id"],
+                "action": "start",
+                "target": "s14_venom_navigation",
+                "status": "executed",
+                "confirmed": True,
+                "ack_kind": "navigation_running",
+                "ack": None,
+                "actuation": False,
+                "physical_completion": "unverified",
+            }
+        )
+        return jsonify(result), 200
     except TrialError as exc:
         return jsonify({"ok": False, "error": exc.code, "details": exc.details}), exc.status
     except (OSError, ValueError):

@@ -38,6 +38,20 @@ def check(unit: str, action: str) -> dict:
     if action == "stop":
         from services.core.feature_cleanup import inactive_navigation_target
 
+        if unit in {
+            "rider-venom-navigation.service",
+            "rider-venom-navigation.target",
+            "rider-venom-perception.service",
+            "rider-venom-perception.target",
+        }:
+            observed = read_status()
+            if (
+                observed.get("state") == "DISARMED"
+                and observed.get("owner") is None
+                and observed.get("ready") is True
+                and observed.get("stale") is False
+            ):
+                return {"ok": True, "effects": ["already_disarmed_navigation_stop"]}
         if inactive_navigation_target(unit):
             # This target has no process/dependencies; its producer has exited.
             # Stopping it is bookkeeping, not a second global motion STOP that

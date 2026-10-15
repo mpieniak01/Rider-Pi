@@ -254,3 +254,27 @@ def test_authority_cost_cannot_publish_a_move_after_its_original_deadline(isolat
     assert not runner.lease.moving and runner.lease.deadline is None
     assert not any(row["action"] == "move" for row in commands)
     assert commands[-1]["action"] == "stop"
+
+
+@pytest.mark.parametrize(
+    "reason,exit_code,terminal",
+    [
+        ("consent_expired", 0, "trial_completed"),
+        ("stopped", 2, "navigation_authority_lost"),
+    ],
+)
+def test_actual_timed_consent_expiry_is_completion_but_operator_stop_is_not(
+    isolated, monkeypatch, reason, exit_code, terminal
+):
+    _, _, safety, _, _ = isolated
+
+    class Source:
+        def close(self):
+            pass
+
+    runner = module.NavigationRunner(source_factory=Source)
+    runner.generation = "accepted-original-arm"
+    safety.update(state="DISARMED", reason=reason, can_move=False, owner=None)
+    assert runner.run() == exit_code
+    assert runner.lease.reason == terminal
+    assert runner.motion_failure is None

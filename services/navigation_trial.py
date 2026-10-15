@@ -100,6 +100,15 @@ def preparation_status(path, *, now=None):
 def public_status(row, *, sampled_now=None, fresh=True):
     """Convert Pi-local samples to durations; never export a monotonic epoch."""
     result = dict(row)
+    failure = result.get("motion_failure") or {}
+    if (
+        result.get("mode") == "drive"
+        and result.get("running") is False
+        and result.get("stop_reason") == "motion_submission_failed"
+        and failure.get("reason") == "stale_generation"
+        and failure.get("gate_reason") == "consent_expired"
+    ):
+        result.update(stop_reason="trial_completed", motion_failure=None)
     sampled = result.pop("sampled_monotonic", None)
     result.pop("run_started_monotonic", None)
     elapsed_ms = None
