@@ -403,6 +403,7 @@ class MotionExecutor:
                 "expired_command",
                 "motion_intent_cancelled",
                 "panel_owner_mismatch",
+                "invalid_panel_id",
             }
             if is_actuator and self.controller.deadline and not obsolete and not agent:
                 self.gate.cancel_motion("invalid_motion_intent")

@@ -108,3 +108,15 @@ def test_panel_renews_for_30_seconds_and_loss_of_renewals_stops_outputs(executor
     assert instance.controller.stopped
     assert instance.apply(move_panel(instance, "panel-a", "release"))["status"] == "accepted"
     assert instance.gate.panel_id == "panel-a"
+
+
+@pytest.mark.parametrize("invalid", ["", " ", "x" * 129, True])
+def test_malformed_panel_identity_does_not_brake_current_holder(executor, invalid):
+    instance, _ = executor
+    arm_panel(instance, "panel-a")
+    instance.apply(move_panel(instance, "panel-a"))
+    deadline = instance.controller.deadline
+    calls = list(instance.adapter.calls)
+    assert instance.apply(move_panel(instance, invalid))["reason"] == "invalid_panel_id"
+    assert instance.controller.deadline == deadline
+    assert instance.adapter.calls == calls
