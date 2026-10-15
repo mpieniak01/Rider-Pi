@@ -343,3 +343,57 @@ def test_short_permit_reports_zero_and_continues_only_on_next_fresh_frame(isolat
     assert paused["stop_reason"] == "awaiting_fresh_decision"
     assert len({row["generation"] for row in moves}) == 1
     assert all(row["duration"] <= 0.15 for row in moves)
+
+
+def test_post_turn_capture_gate_rejects_forward_from_old_orientation(isolated, monkeypatch):
+    policy, _, _, _, commands = isolated
+    policy["avoidance"] = {**policy["avoidance"], "enabled": True, "sweep_verified": True}
+    now = [1000.0]
+    phases = []
+    monkeypatch.setattr(module.time, "time", lambda: now[0])
+    monkeypatch.setattr(module.threading, "Thread", NoWatchdogThread)
+
+    class Source:
+        count = 0
+
+        def recv(self, _timeout):
+            self.count += 1
+            if self.count > 9:
+                runner.closed.set()
+                return None
+            now[0] = 1000.0 + self.count * 0.05
+            return {
+                "input_id": str(self.count),
+                "captured_at": now[0],
+                "content_type": "image/jpeg",
+                "data": b"recorded-frame",
+            }
+
+        def close(self):
+            pass
+
+    def remote(meta, *_):
+        assert meta["protocol_version"] == 2
+        phases.append(meta["motion_phase"])
+        return {
+            **{key: meta[key] for key in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
+            "action": "stop" if meta["sequence"] == 1 else "turn_left" if meta["sequence"] == 2 else "go",
+            "state": "obstacle" if meta["sequence"] < 3 else "clear",
+            "reason": "depth_ground_deviation",
+            "clear_count": 3,
+            "valid_for_ms": 200,
+            "model_sha256": "a" * 64,
+            "farther_outlier_pixels": 0,
+            "maneuver_clear_count": 3,
+            "sectors": {"left": {"state": "clear", "coverage_complete": True}},
+        }
+
+    runner = module.NavigationRunner(source_factory=Source, request=remote, clock=lambda: now[0])
+    runner.run()
+    turns = [row for row in commands if row.get("yaw", 0)]
+    forwards = [row for row in commands if row.get("vx", 0)]
+    assert len(turns) == 1
+    assert len(forwards) == 1
+    assert phases[2:7] == ["turn_settling"] * 5
+    assert phases[-1] == "ready"
+    assert commands[-1]["action"] == "stop"

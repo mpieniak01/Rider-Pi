@@ -19,6 +19,14 @@ DEFAULT = {
     "max_motion_ms": 150,
     "corridor": [0.35, 0.80, 0.65, 0.95],
     "perception": {"engine": "segformer", "residual_limit": 0.06, "outlier_limit": 0.005, "slope_min": 2.0},
+    "avoidance": {
+        "enabled": False,
+        "sweep_verified": False,
+        "mirrored": False,
+        "turn_speed": 0.05,
+        "turn_ms": 100,
+        "max_turn_pulses": 3,
+    },
     "verified": False,
     "calibration_id": "",
     "model_sha256": "",
@@ -82,6 +90,27 @@ def validate(data):
         value = perception[key]
         if type(value) not in (float, int) or not math.isfinite(value) or not low <= value <= high:
             raise ValueError("navigation_perception_invalid")
+    avoidance = data["avoidance"]
+    if not isinstance(avoidance, dict) or set(avoidance) != set(DEFAULT["avoidance"]):
+        raise ValueError("navigation_avoidance_invalid")
+    for key in ("enabled", "sweep_verified", "mirrored"):
+        if type(avoidance[key]) is not bool:
+            raise ValueError("navigation_avoidance_invalid")
+    if (
+        type(avoidance["turn_speed"]) not in (float, int)
+        or not math.isfinite(avoidance["turn_speed"])
+        or not 0.01 <= avoidance["turn_speed"] <= 0.1
+    ):
+        raise ValueError("navigation_avoidance_invalid")
+    for key, low, high in (("turn_ms", 50, 150), ("max_turn_pulses", 1, 5)):
+        if type(avoidance[key]) is not int or not low <= avoidance[key] <= high:
+            raise ValueError("navigation_avoidance_invalid")
+    if avoidance["enabled"] and (
+        perception["engine"] != "depth_plane" or data["speed"] > 0.1 or data["max_motion_ms"] > 150
+    ):
+        raise ValueError("navigation_avoidance_limits")
+    if avoidance["enabled"] and data["mode"] == "drive" and not avoidance["sweep_verified"]:
+        raise ValueError("navigation_avoidance_not_accepted")
     return data
 
 
@@ -94,6 +123,8 @@ def snapshot():
     data = json.loads(p.read_text())
     if isinstance(data, dict) and "perception" not in data:
         data["perception"] = dict(DEFAULT["perception"])
+    if isinstance(data, dict) and "avoidance" not in data:
+        data["avoidance"] = dict(DEFAULT["avoidance"])
     return validate(data)
 
 
@@ -136,7 +167,15 @@ def configure_locked(body):
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
         changed = any(
             proposed[k] != old[k]
-            for k in ("speed", "corridor", "model_sha256", "decision_budget_ms", "max_motion_ms", "perception")
+            for k in (
+                "speed",
+                "corridor",
+                "model_sha256",
+                "decision_budget_ms",
+                "max_motion_ms",
+                "perception",
+                "avoidance",
+            )
         )
         if (
             old["verified"]

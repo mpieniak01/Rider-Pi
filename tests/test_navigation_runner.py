@@ -760,3 +760,19 @@ def test_startup_retry_never_extends_decision_or_restarts_motion(isolated):
     now[0] = 15.1
     assert not runner._startup_reply_expired(reply, meta, now[0])
     assert not runner._retry_observation(TimeoutError())
+
+
+def test_turn_uses_yaw_only_and_marks_capture_settling(isolated):
+    policy, _, _, _, commands = isolated
+    policy["avoidance"] = {**policy["avoidance"], "enabled": True, "sweep_verified": True}
+    runner = module.NavigationRunner()
+    runner.lease.deadline = runner.clock() + 0.15
+    runner.turn("left", 0.1)
+    command = commands[-1]
+    assert command["vx"] == 0.0
+    assert command["yaw"] == 0.05
+    assert command["duration"] == 0.1
+    assert runner.turn_capture_after == runner.lease.deadline + 0.1
+    runner.turn("right", 0.1)
+    assert commands[-1]["vx"] == 0.0
+    assert commands[-1]["yaw"] == -0.05
