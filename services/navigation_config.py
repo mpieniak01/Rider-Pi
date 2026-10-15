@@ -19,6 +19,27 @@ DEFAULT = {
     "max_motion_ms": 150,
     "corridor": [0.35, 0.80, 0.65, 0.95],
     "perception": {"engine": "segformer", "residual_limit": 0.06, "outlier_limit": 0.005, "slope_min": 2.0},
+    "avoidance": {
+        "protocol_version": 3,
+        "enabled": False,
+        "sweep_verified": False,
+        "mirrored": False,
+        "turn_speed": 0.05,
+        "turn_ms": 100,
+        "max_turn_pulses": 3,
+        "max_stalled_corrections": 2,
+        "progress_min_delta": 0.03,
+        "geometry": {
+            "mode": "ground",
+            "fx": None,
+            "fy": None,
+            "cx": 0.5,
+            "cy": 0.5,
+            "radius_ratio": None,
+            "lookahead_ratio": 2.0,
+            "max_heading_deg": 45.0,
+        },
+    },
     "verified": False,
     "calibration_id": "",
     "model_sha256": "",
@@ -82,6 +103,61 @@ def validate(data):
         value = perception[key]
         if type(value) not in (float, int) or not math.isfinite(value) or not low <= value <= high:
             raise ValueError("navigation_perception_invalid")
+    avoidance = data["avoidance"]
+    if not isinstance(avoidance, dict) or set(avoidance) != set(DEFAULT["avoidance"]):
+        raise ValueError("navigation_avoidance_invalid")
+    if type(avoidance["protocol_version"]) is not int or avoidance["protocol_version"] not in (2, 3):
+        raise ValueError("navigation_avoidance_invalid")
+    for key in ("enabled", "sweep_verified", "mirrored"):
+        if type(avoidance[key]) is not bool:
+            raise ValueError("navigation_avoidance_invalid")
+    if (
+        type(avoidance["turn_speed"]) not in (float, int)
+        or not math.isfinite(avoidance["turn_speed"])
+        or not 0.01 <= avoidance["turn_speed"] <= 0.1
+    ):
+        raise ValueError("navigation_avoidance_invalid")
+    for key, low, high in (("turn_ms", 50, 150), ("max_turn_pulses", 1, 5)):
+        if type(avoidance[key]) is not int or not low <= avoidance[key] <= high:
+            raise ValueError("navigation_avoidance_invalid")
+    if type(avoidance["max_stalled_corrections"]) is not int or not 1 <= avoidance["max_stalled_corrections"] <= 5:
+        raise ValueError("navigation_avoidance_invalid")
+    delta = avoidance["progress_min_delta"]
+    if type(delta) not in (int, float) or not math.isfinite(delta) or not 0 <= delta <= 0.3:
+        raise ValueError("navigation_avoidance_invalid")
+    geometry = avoidance["geometry"]
+    if not isinstance(geometry, dict) or set(geometry) != set(DEFAULT["avoidance"]["geometry"]):
+        raise ValueError("navigation_geometry_invalid")
+    if geometry["mode"] not in ("ground", "image"):
+        raise ValueError("navigation_geometry_invalid")
+    for key, low, high in (
+        ("fx", 0.1, 5.0),
+        ("fy", 0.1, 5.0),
+        ("cx", 0.0, 1.0),
+        ("cy", 0.0, 1.0),
+        ("radius_ratio", 0.05, 5.0),
+        ("lookahead_ratio", 0.25, 8.0),
+        ("max_heading_deg", 5.0, 70.0),
+    ):
+        value = geometry[key]
+        if value is None and key in {"fx", "fy", "radius_ratio"}:
+            continue
+        if type(value) not in (int, float) or not math.isfinite(value) or not low <= value <= high:
+            raise ValueError("navigation_geometry_invalid")
+    if (
+        avoidance["enabled"]
+        and avoidance["protocol_version"] == 3
+        and geometry["mode"] == "ground"
+        and data["mode"] == "drive"
+        and any(geometry[key] is None for key in ("fx", "fy", "radius_ratio"))
+    ):
+        raise ValueError("navigation_geometry_calibration_required")
+    if avoidance["enabled"] and (
+        perception["engine"] != "depth_plane" or data["speed"] > 0.1 or data["max_motion_ms"] > 150
+    ):
+        raise ValueError("navigation_avoidance_limits")
+    if avoidance["enabled"] and data["mode"] == "drive" and not avoidance["sweep_verified"]:
+        raise ValueError("navigation_avoidance_not_accepted")
     return data
 
 
@@ -94,6 +170,20 @@ def snapshot():
     data = json.loads(p.read_text())
     if isinstance(data, dict) and "perception" not in data:
         data["perception"] = dict(DEFAULT["perception"])
+    if isinstance(data, dict) and "avoidance" not in data:
+        data["avoidance"] = json.loads(json.dumps(DEFAULT["avoidance"]))
+    if (
+        isinstance(data, dict)
+        and isinstance(data.get("avoidance"), dict)
+        and "protocol_version" not in data["avoidance"]
+    ):
+        data["avoidance"]["protocol_version"] = 2
+    if isinstance(data, dict) and isinstance(data.get("avoidance"), dict):
+        avoidance = data["avoidance"]
+        avoidance.setdefault("max_stalled_corrections", 2)
+        avoidance.setdefault("progress_min_delta", 0.03)
+        if "geometry" not in avoidance:
+            avoidance["geometry"] = {**DEFAULT["avoidance"]["geometry"], "mode": "image"}
     return validate(data)
 
 
@@ -136,7 +226,15 @@ def configure_locked(body):
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
         changed = any(
             proposed[k] != old[k]
-            for k in ("speed", "corridor", "model_sha256", "decision_budget_ms", "max_motion_ms", "perception")
+            for k in (
+                "speed",
+                "corridor",
+                "model_sha256",
+                "decision_budget_ms",
+                "max_motion_ms",
+                "perception",
+                "avoidance",
+            )
         )
         if (
             old["verified"]

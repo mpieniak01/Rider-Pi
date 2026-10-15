@@ -47,6 +47,7 @@ class NavigationRunner:
         self.publisher_factory = publisher_factory or (lambda: BusPub(warmup_ms=50))
         self.motion_publisher = None
         self.motion_started = False
+        self.turn_capture_after = None
         self.pending_motion_acks = {}
         self.request = request or self._request
         self.clock = clock
@@ -84,6 +85,8 @@ class NavigationRunner:
             clock,
             pause=self.pause,
             feedback_wait=self.policy["mode"] == "drive",
+            turn=self.turn,
+            steer=self.steer,
         )
         self.started = clock()
 
@@ -161,7 +164,7 @@ class NavigationRunner:
             raise ComputeError("navigation_producer_claim_failed")
         return True
 
-    def drive(self, speed, duration):
+    def drive(self, speed, duration, *, yaw=0.0):
         self._timed("authority_ms", self._authority)
         if self.lease.deadline is not None and self.clock() >= self.lease.deadline:
             self.motion_failure = {"http_status": 409, "reason": "navigation_decision_expired_before_submit"}
@@ -183,13 +186,13 @@ class NavigationRunner:
                 "decision_deadline_monotonic": self.lease.deadline,
                 "decision_feedback_deadline_monotonic": self.lease.feedback_deadline,
                 "vx": speed,
-                "yaw": 0.0,
+                "yaw": yaw,
                 "duration": duration,
             },
             **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
         if (code == 200 and result.get("ok")) or (code == 202 and result.get("pending")):
-            self.motion_started = self.motion_started or speed != 0
+            self.motion_started = self.motion_started or speed != 0 or yaw != 0
         if code == 202 and result.get("pending"):
             self.pending_motion_acks[self.run_id + "-" + str(self.motion_sequence)] = self.clock() + 0.1
         if not (code == 200 and result.get("ok") or code == 202 and result.get("pending")):
@@ -204,6 +207,31 @@ class NavigationRunner:
                 self.motion_failure["gate_reason"] = gate_reason
             logging.getLogger(__name__).warning("[vision] motion rejected status=%s reason=%s", code, error)
             raise ComputeError("navigation_motion_rejected")
+
+    def turn(self, side, duration):
+        settings = self.policy["avoidance"]
+        if side not in {"left", "right"} or not settings["enabled"] or not settings["sweep_verified"]:
+            raise ComputeError("navigation_avoidance_not_accepted")
+        self.drive(0.0, duration, yaw=settings["turn_speed"] * (1 if side == "left" else -1))
+        # Actuation cannot outlive the Pi-local permit. Require a capture after
+        # that bound and settling, not merely a reply received after the turn.
+        self.turn_capture_after = self.lease.deadline + 0.1
+
+    def steer(self, side, duration):
+        settings = self.policy["avoidance"]
+        if (
+            side not in {"left", "right"}
+            or not settings["enabled"]
+            or not settings["sweep_verified"]
+            or settings["protocol_version"] != 3
+        ):
+            raise ComputeError("navigation_avoidance_not_accepted")
+        self.drive(self.policy["speed"], duration, yaw=settings["turn_speed"] * (1 if side == "left" else -1))
+        # Re-evaluate after this bounded correction; never reuse a capture
+        # from before/during it to issue another correction or forward goal.
+        # Submission may return pending before the executor applies the pulse.
+        # Its output is bounded by the lease; capture after that bound and settling.
+        self.turn_capture_after = self.lease.deadline + 0.1
 
     def _consent_completed(self, safety):
         return (
@@ -431,6 +459,18 @@ class NavigationRunner:
                     **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
                 }
                 meta["perception"] = self.policy["perception"]
+                if self.policy.get("avoidance", {}).get("enabled"):
+                    meta.update(
+                        protocol_version=self.policy["avoidance"].get("protocol_version", 2),
+                        avoidance=self.policy["avoidance"],
+                        motion_phase=(
+                            "steer_wait"
+                            if self.policy["avoidance"].get("protocol_version", 2) == 3
+                            else "turn_settling"
+                        )
+                        if self.turn_capture_after is not None and captured <= self.turn_capture_after
+                        else "ready",
+                    )
                 request_started = self.clock()
                 try:
                     decision = self.request(meta, frame["data"], frame["content_type"])
@@ -471,6 +511,19 @@ class NavigationRunner:
                         }
                         self._status(self.last_result)
                         continue
+                    if (
+                        self.turn_capture_after is not None
+                        and captured <= self.turn_capture_after
+                        and decision.get("action") != "stop"
+                    ):
+                        # A stale orientation can never issue forward or a second turn.
+                        decision = {
+                            **decision,
+                            "action": "stop",
+                            "state": "clear",
+                            "motion_reason": "avoidance_turn_settling",
+                        }
+                        self.last_result = decision
                     self._timed("decision_apply_ms", self.lease.accept, decision, frame_id, self.sequence, captured)
                     if not self.lease.latched and self.lease.reason == "awaiting_fresh_decision":
                         # Keep the image verdict, but report the actual ZERO sent

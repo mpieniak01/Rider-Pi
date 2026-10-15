@@ -211,3 +211,6 @@ dla tej sceny i obecnych ograniczonych parametrów. Historyczna awaria
 z 15:16:11 pozostaje fixture regresji, a nie opisem aktualnego odbioru.
 Zmiana sceny, oświetlenia lub montażu kamery wymaga ponownej oceny warunków.
 Nie potwierdzamy metrycznej drogi hamowania ani uniwersalnej jakości percepcji.
+
+
+[Directional vision / Nawigacja kierunkowa](DIRECTIONAL_NAVIGATION.md)

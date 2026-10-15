@@ -8,10 +8,26 @@ import time
 
 
 class DecisionLease:
-    def __init__(self, config, run_id, drive, stop, clock=time.monotonic, *, pause=None, feedback_wait=False):
+    def __init__(
+        self,
+        config,
+        run_id,
+        drive,
+        stop,
+        clock=time.monotonic,
+        *,
+        pause=None,
+        feedback_wait=False,
+        turn=None,
+        steer=None,
+    ):
         self.config = dict(config)
         self.run_id = run_id
         self.drive, self.stop, self.clock = drive, stop, clock
+        self.turn = turn
+        self.steer = steer
+        self.turn_count = 0
+        self.paused_for_obstacle = False
         self.pause = pause
         self.feedback_wait = feedback_wait and pause is not None
         self.feedback_deadline = None
@@ -88,7 +104,9 @@ class DecisionLease:
                 self._halt("decision_timeout")
                 return False
             identity = {
-                "protocol_version": 1,
+                "protocol_version": self.config.get("avoidance", {}).get("protocol_version", 2)
+                if self.config.get("avoidance", {}).get("enabled")
+                else 1,
                 "run_id": self.run_id,
                 "frame_id": frame_id,
                 "sequence": sequence,
@@ -111,12 +129,30 @@ class DecisionLease:
             if type(valid) is not int or not 0 < valid <= 200:
                 self._halt("decision_invalid_or_expired")
                 return False
-            if decision.get("action") not in {"go", "stop"}:
+            actions = {"go", "stop"}
+            if identity["protocol_version"] == 2:
+                actions |= {"turn_left", "turn_right"}
+            if identity["protocol_version"] == 3:
+                actions |= {"steer_left", "steer_right"}
+            if decision.get("action") not in actions:
                 self._halt("decision_invalid_action")
+                return False
+            if (
+                identity["protocol_version"] == 3
+                and self.config["avoidance"].get("geometry", {}).get("mode") == "ground"
+                and decision["action"] != "stop"
+                and not self._ground_evidence(decision)
+            ):
+                self._halt("navigation_ground_evidence_invalid")
                 return False
             self.last_seq = sequence
             self.reason = str(decision.get("reason", "unknown"))[:128]
+            if decision["action"] in {"turn_left", "turn_right", "steer_left", "steer_right"}:
+                return self._accept_turn(decision, now, remaining)
             if decision["action"] == "stop":
+                if identity["protocol_version"] == 3 and decision.get("terminal_stop") is True:
+                    self._halt(str(decision.get("motion_reason", "avoidance_no_progress")))
+                    return False
                 if self.pause is None:
                     # Older callers without scoped zero output retain terminal STOP.
                     if self.moving or decision.get("state") != "clear":
@@ -130,6 +166,9 @@ class DecisionLease:
                     "vision_low_confidence",
                     "vision_floor_uncertainty",
                     "depth_ground_orientation",
+                    "ground_reference_uncertain",
+                    "geometry_calibration_missing",
+                    "ground_projection_incomplete",
                 }:
                     self._halt(self.reason)
                     return False
@@ -146,6 +185,7 @@ class DecisionLease:
                 self.reason = str(decision.get("motion_reason", self.reason))[:128]
                 try:
                     self.pause(duration)
+                    self.paused_for_obstacle = decision.get("state") == "obstacle"
                 except Exception:
                     self._halt("motion_submission_failed")
                     raise
@@ -170,9 +210,91 @@ class DecisionLease:
                 self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
             self.deadline = now + permit
             self.moving = True
+            self.paused_for_obstacle = False
             try:
                 self.drive(self.config["speed"], duration)
             except Exception:
                 self._halt("motion_submission_failed")
                 raise
             return True
+
+    def _accept_turn(self, decision, now, remaining):
+        settings = self.config["avoidance"]
+        curved = decision["action"].startswith("steer_")
+        callback = self.steer if curved else self.turn
+        side = decision["action"].split("_", 1)[1]
+        sectors = decision.get("sectors")
+        sector = sectors.get(side) if isinstance(sectors, dict) else None
+        if not isinstance(sector, dict):
+            self._halt("avoidance_invalid_sector")
+            return False
+        if (
+            callback is None
+            or not settings["sweep_verified"]
+            or (not curved and not self.paused_for_obstacle)
+            or self.config["mode"] != "drive"
+            or not self.config["verified"]
+            or decision.get("model_sha256") != self.config["model_sha256"]
+            or decision.get("state") != "obstacle"
+            or decision.get("farther_outlier_pixels", 0) != 0
+            or sector.get("state") != "clear"
+            or sector.get("coverage_complete") is not True
+            or type(decision.get("maneuver_clear_count")) is not int
+            or decision["maneuver_clear_count"] < 3
+            or self.turn_count >= settings["max_turn_pulses"]
+        ):
+            self._halt("avoidance_not_authorized")
+            return False
+        if curved:
+            paths = decision.get("paths")
+            path = paths.get(side) if isinstance(paths, dict) else None
+            guard = paths.get("guard") if isinstance(paths, dict) else None
+            if any(
+                not isinstance(row, dict) or row.get("state") != "clear" or row.get("coverage_complete") is not True
+                for row in (path, guard)
+            ):
+                self._halt("avoidance_path_not_clear")
+                return False
+        permit = min(remaining, decision["valid_for_ms"] / 1000)
+        duration = min(permit, self.config["max_motion_ms"] / 1000, settings["turn_ms"] / 1000)
+        if duration < 0.05:
+            return self._defer_short_permit(now)
+        if self.feedback_wait:
+            self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
+        self.deadline = now + permit
+        self.moving = True
+        self.turn_count += 1
+        self.paused_for_obstacle = False
+        try:
+            callback(side, duration)
+        except Exception:
+            self._halt("motion_submission_failed")
+            raise
+        return True
+
+    def _ground_evidence(self, decision):
+        geometry = self.config["avoidance"].get("geometry", {})
+        if any(
+            type(geometry.get(key)) not in (int, float) or not math.isfinite(geometry[key]) or geometry[key] <= 0
+            for key in ("fx", "fy", "radius_ratio")
+        ):
+            return False
+        reference = decision.get("ground_reference")
+        if not isinstance(reference, dict) or decision.get("geometry") != "ground_capsule":
+            return False
+        normal = reference.get("normal")
+        height = reference.get("height")
+        support = decision.get("ground_support")
+        return (
+            isinstance(normal, list)
+            and len(normal) == 3
+            and all(type(x) in (int, float) and math.isfinite(x) for x in normal)
+            and normal[1] >= 0.2
+            and 0.9 <= sum(x * x for x in normal) <= 1.1
+            and type(height) in (int, float)
+            and math.isfinite(height)
+            and height > 0
+            and type(support) in (int, float)
+            and math.isfinite(support)
+            and 0.3 <= support <= 1
+        )
