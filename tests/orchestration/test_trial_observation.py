@@ -124,3 +124,17 @@ def test_failed_start_clears_pending_intent_and_requested_projection(world):
     assert not row["requested"]
     assert "rider-venom-navigation.service" not in saved["service_intents"]
     assert "s14_venom_navigation" not in saved["requested"]
+
+
+def test_dependency_failure_updates_the_affected_stopped_row(world):
+    world.manager._snapshot_rows = [world.manager._describe("s15_venom_perception")]
+    world.manager.dependency_check = lambda *_: ["missing_profile_module"]
+    with world.manager.operation(guard=lambda: None, remaining=lambda: 5, stop=lambda _: {}):
+        result = world.manager.set_feature("s15_venom_perception", True)
+    assert result["error"] == "runtime_dependencies_missing"
+    saved = json.loads(world.manager._state_path.read_text())
+    row = next(row for row in saved["features"] if row["name"] == "s15_venom_perception")
+    assert not row["requested"]
+    assert row["state"] == "failed"
+    assert row["error"] == "runtime_dependencies_missing"
+    assert not world.actions

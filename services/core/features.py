@@ -617,6 +617,10 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     self._pending.pop(canonical, None)
                     if canonical not in self._requested:
                         self._intents.pop(canonical, None)
+                if self._operation_guard is not None:
+                    self._snapshot_rows = [row for row in self._snapshot_rows if row["name"] != canonical] + [
+                        self._describe(canonical)
+                    ]
                 self._persist_state()
                 return {
                     "contract_version": CONTRACT_VERSION,
