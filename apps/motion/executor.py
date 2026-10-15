@@ -322,6 +322,9 @@ class MotionExecutor:
             # path rather than escaping the executor loop.
             command = {**payload, "action": "move", "duration": None}
         action = command.get("action")
+        panel_error = self.gate.panel_rejection(command)
+        if panel_error:
+            return self._ack(command, "rejected", panel_error)
         agent = is_agent(command)
         if agent and action not in {'stop', 'disarm', 'estop'}:
             try:
