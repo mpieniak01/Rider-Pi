@@ -87,3 +87,24 @@ def test_invalid_panel_identity_never_creates_authority(executor, invalid):
     instance, _ = executor
     assert arm_panel(instance, invalid)["reason"] == "invalid_panel_id"
     assert instance.gate.state == "DISARMED"
+
+
+def test_panel_renews_for_30_seconds_and_loss_of_renewals_stops_outputs(executor):
+    from test_held_motion import advance
+
+    instance, clock = executor
+    arm_panel(instance, "panel-a")
+    for _ in range(200):
+        assert instance.apply(move_panel(instance, "panel-a"))["status"] == "accepted"
+        advance(instance, clock, 0.16)
+        assert instance.controller.o_lx > 0
+    last = clock.now
+    while not instance.controller.stopped and clock.now - last < 1:
+        advance(instance, clock, 0.02)
+    assert clock.now - last <= 0.6
+    assert instance.controller.t_lx == 0 and instance.controller.o_lx == 0
+    assert instance.gate.state == "ARMED"
+    advance(instance, clock, 1)
+    assert instance.controller.stopped
+    assert instance.apply(move_panel(instance, "panel-a", "release"))["status"] == "accepted"
+    assert instance.gate.panel_id == "panel-a"
