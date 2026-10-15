@@ -180,19 +180,21 @@ class NavigationTrial:
 
     def start(self, payload):
         body = validate_request(payload, self.wall())
+        accepted_at = self.clock()
+        arrival = self.safety()
         context = {
             "generation": body["generation"],
             "owner": None,
             "state": None,
             "revision": body["config_revision"],
             "settings_revision": body["settings_revision"],
-            "deadline": self.clock() + 5.0,
+            "deadline": accepted_at + 5.0,
             "armed": False,
             "sequence": None,
             "phase": "acquiring_lock",
             "producer_not_before": None,
-            "started": self.clock(),
-            "phase_started": self.clock(),
+            "started": accepted_at,
+            "phase_started": accepted_at,
             "phase_timings_ms": {},
         }
         local_id = "trial-" + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
@@ -337,12 +339,16 @@ class NavigationTrial:
             ),
         ):
             try:
-                # Freshness is checked again after acquiring task serialization.
-                validate_request(body, self.wall())
+                # Accepted at arrival. Serialization/restore must not age the
+                # original click out of its ingress TTL. The original generation,
+                # settings and bounded preparation are rechecked below.
                 progress("admission")
                 safety = self.safety()
                 if (
                     safety.get("generation") != body["generation"]
+                    or any(safety.get(key) != arrival.get(key) for key in ("generation", "owner", "state", "last_seq"))
+                    or arrival.get("ready") is not True
+                    or arrival.get("stale") is True
                     or safety.get("ready") is not True
                     or safety.get("stale") is True
                     or safety.get("state") not in {"ARMED", "DISARMED"}
@@ -350,6 +356,7 @@ class NavigationTrial:
                     raise TrialError("navigation_trial_authority_changed")
                 if (
                     safety.get("remote_decision_deadline_supported") is not True
+                    or safety.get("remote_decision_feedback_supported") is not True
                     or safety.get("scoped_stop_generation_supported") is not True
                 ):
                     raise TrialError("navigation_executor_update_required")

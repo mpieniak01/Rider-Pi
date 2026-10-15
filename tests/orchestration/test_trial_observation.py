@@ -138,3 +138,68 @@ def test_dependency_failure_updates_the_affected_stopped_row(world):
     assert row["state"] == "failed"
     assert row["error"] == "runtime_dependencies_missing"
     assert not world.actions
+
+
+@pytest.mark.parametrize("delay", [0.50343, 1.0])
+def test_click_accepted_before_internal_restore_does_not_expire(world, monkeypatch, delay):
+    import time
+    from contextlib import contextmanager
+
+    base = time.time()
+
+    def wall():
+        return base + world.elapsed
+
+    monkeypatch.setattr(time, "time", wall)
+    world.trial.wall = wall
+    world.gate.wall_clock = wall
+    operation = world.manager.operation
+
+    @contextmanager
+    def restore_delay(**kwargs):
+        with operation(**kwargs):
+            world.elapsed += delay
+            yield
+
+    world.manager.operation = restore_delay
+    result = world.trial.start(world.body())
+    assert result["ok"]
+    assert len([row for row in world.commands if row["action"] == "arm"]) == 1
+
+
+def test_new_manual_command_while_click_waits_cancels_preparation(world):
+    from contextlib import contextmanager
+
+    from services.navigation_trial import TrialError
+
+    world.arm_manual()
+    operation = world.manager.operation
+
+    @contextmanager
+    def intervening_manual(**kwargs):
+        with operation(**kwargs):
+            world.gate.last_seq += 1
+            yield
+
+    world.manager.operation = intervening_manual
+    before = len(world.commands)
+    with pytest.raises(TrialError, match="navigation_trial_authority_changed"):
+        world.trial.start(world.body())
+    assert len(world.commands) == before
+    assert not world.actions
+
+
+def test_old_executor_cannot_arm_feedback_wait_trial(world):
+    from services.navigation_trial import TrialError
+
+    safety = world.trial.safety
+
+    def old_executor():
+        row = safety()
+        row.pop("remote_decision_feedback_supported")
+        return row
+
+    world.trial.safety = old_executor
+    with pytest.raises(TrialError, match="navigation_executor_update_required"):
+        world.trial.start(world.body())
+    assert not world.commands and not world.actions

@@ -100,6 +100,7 @@ class NavigationRunner:
             return False
         if (
             safety.get("remote_decision_deadline_supported") is not True
+            or safety.get("remote_decision_feedback_supported") is not True
             or safety.get("scoped_stop_generation_supported") is not True
         ):
             raise ComputeError("navigation_executor_update_required")
@@ -178,6 +179,7 @@ class NavigationRunner:
                 "ttl_ms": 100,
                 "settings_revision": self.settings_revision,
                 "decision_deadline_monotonic": self.lease.deadline,
+                "decision_feedback_deadline_monotonic": self.lease.feedback_deadline,
                 "vx": speed,
                 "yaw": 0.0,
                 "duration": duration,

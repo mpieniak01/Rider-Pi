@@ -14,6 +14,7 @@ from apps.motion.actuator_contract import (
     COMMAND_TOPICS,
     SUB_TOPICS,
     decision_duration,
+    decision_feedback_deadline,
     validate_actuator,
 )  # public re-exports
 from apps.motion.calibration_runtime import CalibrationRuntime
@@ -176,6 +177,7 @@ class MotionExecutor:
             manual_settings=self.controls,
             deadline=self.controller.deadline,
             remote_decision_deadline_supported=True,
+            remote_decision_feedback_supported=True,
             scoped_stop_generation_supported=True,
             contract_id="rider.safety",
             observed_at=self.gate.wall_clock(),
@@ -453,7 +455,15 @@ class MotionExecutor:
                     self._ack(previous, 'rejected', 'manual_takeover', cancelled_by=command.get('request_id'))
         if action in {"move", "turn"}:
             try:
-                values["duration"] = decision_duration(command, values["duration"], self.gate.clock())
+                now = self.gate.clock()
+                values["duration"] = decision_duration(command, values["duration"], now)
+                feedback = decision_feedback_deadline(
+                    command,
+                    now,
+                    timed_navigation=self.gate.owner == "navigation"
+                    and self.gate.execution_context == "panel"
+                    and self.gate.arming_mode == "timed",
+                )
             except ValueError as exc:
                 return self._ack(command, "rejected", str(exc))
             if not self.controller.drive(
@@ -463,6 +473,7 @@ class MotionExecutor:
                 panel_pulse=command.get("device_settings") is True,
                 mode=mode,
                 remote_decision_deadline=command.get("decision_deadline_monotonic"),
+                remote_feedback_deadline=feedback,
             ):
                 return self._ack(command, "rejected", "motion_disarmed")
             previous, self.pending = self.pending, None

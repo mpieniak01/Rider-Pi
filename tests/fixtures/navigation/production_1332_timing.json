@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "source": "Sanitized numeric metadata from the preserved 2026-10-15 13:32 Pi navigation trial manifest.",
+  "decision_budget_ms": 300,
+  "max_motion_ms": 150,
+  "notes": [
+    "A sampled row follows a nonblocking BUS submission; it is not an executor acknowledgement.",
+    "Remaining durations are rounded to 0.01 ms and sampled_monotonic is read separately; reconstructed deadlines are approximate.",
+    "The final authority phase failed before a seq4 submission; its cycle has no submit_ms.",
+    "No images, absolute wall timestamps, device identifiers, run identifiers or generation identifiers are included."
+  ],
+  "decisions": [
+    {
+      "sequence": 1,
+      "sampled_monotonic": 17680.971718806,
+      "permit_remaining_ms": 129.78,
+      "feedback_remaining_ms": 283.84,
+      "source_age_ms": 153.97,
+      "valid_for_ms": 175,
+      "action": "stop",
+      "request_roundtrip_ms": 94.76,
+      "inference_ms": 65.31,
+      "cycle_timings_ms": {
+        "configuration_ms": 2.56,
+        "frame_wait_ms": 1.5,
+        "safety_read_ms": 1.73,
+        "intent_read_ms": 7.04,
+        "producer_claim_ms": 1.54,
+        "authority_ms": 10.57,
+        "submit_ms": 5.15,
+        "decision_apply_ms": 16.01
+      },
+      "cycle_elapsed_ms": 115.42,
+      "previous_status_write_ms": 1.35,
+      "running": true,
+      "latched": false,
+      "stop_reason": "clear_frames_pending"
+    },
+    {
+      "sequence": 2,
+      "sampled_monotonic": 17681.093447667,
+      "permit_remaining_ms": 132.94,
+      "feedback_remaining_ms": 283.63,
+      "source_age_ms": 150.61,
+      "valid_for_ms": 174,
+      "action": "stop",
+      "request_roundtrip_ms": 99.26,
+      "inference_ms": 74.07,
+      "cycle_timings_ms": {
+        "configuration_ms": 3.4,
+        "frame_wait_ms": 0.77,
+        "safety_read_ms": 1.81,
+        "intent_read_ms": 6.68,
+        "producer_claim_ms": 1.69,
+        "authority_ms": 10.48,
+        "submit_ms": 5.43,
+        "decision_apply_ms": 16.18
+      },
+      "cycle_elapsed_ms": 120.08,
+      "previous_status_write_ms": 1.57,
+      "running": true,
+      "latched": false,
+      "stop_reason": "clear_frames_pending"
+    },
+    {
+      "sequence": 3,
+      "sampled_monotonic": 17681.227779565,
+      "permit_remaining_ms": 125.37,
+      "feedback_remaining_ms": 276.88,
+      "source_age_ms": 151.37,
+      "valid_for_ms": 194,
+      "action": "go",
+      "request_roundtrip_ms": 105.98,
+      "inference_ms": 59.81,
+      "cycle_timings_ms": {
+        "configuration_ms": 2.81,
+        "frame_wait_ms": 0.66,
+        "safety_read_ms": 2.52,
+        "intent_read_ms": 9.52,
+        "producer_claim_ms": 2.48,
+        "authority_ms": 14.98,
+        "submit_ms": 7.45,
+        "decision_apply_ms": 22.8
+      },
+      "cycle_elapsed_ms": 132.9,
+      "previous_status_write_ms": 1.36,
+      "running": true,
+      "latched": false,
+      "stop_reason": "depth_plane_candidate"
+    },
+    {
+      "sequence": 4,
+      "sampled_monotonic": 17681.323298285,
+      "permit_remaining_ms": 0,
+      "feedback_remaining_ms": 0,
+      "source_age_ms": 137.33,
+      "valid_for_ms": 184,
+      "action": "go",
+      "request_roundtrip_ms": 80.27,
+      "inference_ms": 58.37,
+      "cycle_timings_ms": {
+        "configuration_ms": 2.4,
+        "frame_wait_ms": 1.1,
+        "safety_read_ms": 1.61,
+        "authority_ms": 1.68,
+        "decision_apply_ms": 3.28
+      },
+      "cycle_elapsed_ms": 91.73,
+      "previous_status_write_ms": 3.65,
+      "running": false,
+      "latched": true,
+      "stop_reason": "motion_submission_failed"
+    }
+  ],
+  "terminal": {
+    "running": false,
+    "latched": true,
+    "stop_reason": "motion_submission_failed",
+    "motion_failure": {
+      "http_status": 409,
+      "reason": "stale_generation",
+      "gate_reason": "decision_timeout"
+    }
+  },
+  "derived": {
+    "seq2_permit_deadline_monotonic": 17681.226387667,
+    "seq2_feedback_deadline_monotonic": 17681.377077667,
+    "seq2_to_seq3_sample_gap_ms": 134.331898,
+    "seq3_sample_after_seq2_permit_ms": 1.391898,
+    "seq3_permit_deadline_monotonic": 17681.353149565,
+    "seq3_feedback_deadline_monotonic": 17681.504659565,
+    "seq3_to_seq4_sample_gap_ms": 95.51872
+  }
+}

@@ -158,3 +158,25 @@ Status przygotowania zawiera `phase_timings_ms` oraz identyfikator żądania.
 Pozwala odróżnić przekroczenie budżetu przygotowania (5 s) od późniejszego
 zatrzymania już uruchomionej próby. Zapis ostatniej próby może dotyczyć innego
 żądania i nie potwierdza uruchomienia bieżącego testu.
+
+
+### Jeden start i dwa terminy wykonawcy
+Polecenie próby jest sprawdzane pod kątem świeżości przy przyjęciu przez Pi.
+Czas spędzony później na serializacji i odtworzeniu journalu należy już do
+ograniczonego przygotowania (5 s). Po uzyskaniu blokady Pi porównuje generację,
+właściciela, stan i numer ostatniego polecenia z odczytem przy przyjęciu;
+nowa interakcja operatora anuluje wcześniejsze przygotowanie.
+
+Przy nawigacji panelowej producent przekazuje dwa terminy na zegarze Pi:
+- `decision_deadline_monotonic`: po nim stary obraz nigdy nie podtrzymuje ruchu;
+- `decision_feedback_deadline_monotonic`: ogranicza oczekiwanie przy zerowych
+  silnikach na kolejną decyzję. Jest to oryginalny termin producenta, nie nowy
+  budżet liczony od odbioru przez BUS; maksymalnie 500 ms.
+
+Koniec impulsu lub ważności obrazu zeruje silniki. Nowa świeża decyzja przed
+terminem informacji zwrotnej może rozpocząć kolejny ograniczony impuls w tej
+samej sesji. Brak decyzji rozbraja wykonawcę niezależnie od procesu producenta.
+Żaden z tych terminów nie odnawia pierwotnego ARM (maksymalnie 10 s próby).
+Bez nowego pola obowiązuje dotychczasowe rozbrojenie po ważności obrazu.
+Nowy kontrakt wymaga `remote_decision_feedback_supported`; podgląd wdrożenia
+musi zaktualizować także proces wykonawcy, przy rozbrojonym robocie.

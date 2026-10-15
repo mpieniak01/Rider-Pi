@@ -60,6 +60,7 @@ class World:
             "can_move": self.gate.can_actuate(),
             "hardware_ready": True,
             "remote_decision_deadline_supported": True,
+            "remote_decision_feedback_supported": True,
             "scoped_stop_generation_supported": True,
             "manual_settings": {"revision": 3},
             "capabilities": {name: {"available": True, "stop_verified": True} for name in ("move", "turn")},
