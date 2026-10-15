@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import logging
 import signal
@@ -12,6 +13,8 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import zipfile
+from collections import deque
 
 from apps.compute.client import ComputeError
 from apps.compute.decision_lease import DecisionLease
@@ -52,6 +55,8 @@ class NavigationRunner:
         self.saved_policy = navigation_config.snapshot()
         self.policy = {**self.saved_policy, "mode": "observe"} if observe_only else self.saved_policy
         self.last_result = None
+        self.decision_trace = deque(maxlen=12)
+        self.frame_trace = deque(maxlen=4)
         self.motion_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
@@ -230,22 +235,56 @@ class NavigationRunner:
         from services.compute_config import _write
 
         target = Path(os.getenv("RIDER_NAVIGATION_STATUS", "/run/rider-motion/navigation_loop.json"))
-        _write(
-            target,
-            {
-                "observed_at": time.time(),
-                "mode": self.policy["mode"],
-                "run_id": self.run_id,
-                "config_revision": self.policy["revision"],
-                "decision": decision,
-                "request_roundtrip_ms": self.request_roundtrip_ms,
-                "response_age_ms": self.response_age_ms,
-                "latched": self.lease.latched,
-                "running": not self.closed.is_set(),
-                "stop_reason": self.lease.reason,
-                "motion_failure": self.motion_failure,
-            },
-        )
+        row = {
+            "observed_at": time.time(),
+            "mode": self.policy["mode"],
+            "run_id": self.run_id,
+            "config_revision": self.policy["revision"],
+            "decision": decision,
+            "request_roundtrip_ms": self.request_roundtrip_ms,
+            "response_age_ms": self.response_age_ms,
+            "latched": self.lease.latched,
+            "running": not self.closed.is_set(),
+            "stop_reason": self.lease.reason,
+            "motion_failure": self.motion_failure,
+        }
+        _write(target, row)
+        if self.policy["mode"] == "drive":
+            self.decision_trace.append(dict(row))
+            if self.closed.is_set():
+                # Persist only after the drive has stopped; observation never
+                # replaces its outcome or writes to the drive recorder.
+                archive = io.BytesIO()
+                with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
+                    frames = []
+                    for index, frame in enumerate(self.frame_trace):
+                        name = f"frame-{index}.jpg"
+                        bundle.writestr(zipfile.ZipInfo(name), frame["data"])
+                        frames.append(
+                            {
+                                "file": name,
+                                "captured_at": frame["captured_at"],
+                                "input_id": frame["input_id"],
+                                "sha256": hashlib.sha256(frame["data"]).hexdigest(),
+                            }
+                        )
+                    bundle.writestr(
+                        zipfile.ZipInfo("manifest.json"),
+                        json.dumps(
+                            {
+                                "outcome": row,
+                                "decisions": list(self.decision_trace),
+                                "frames": frames,
+                            }
+                        ),
+                    )
+                temporary = target.with_name(".navigation-trial-" + self.run_id + ".tmp")
+                try:
+                    temporary.write_bytes(archive.getvalue())
+                    temporary.replace(target.with_name("navigation_trial.zip"))
+                    _write(target.with_name("navigation_trial.json"), row)
+                finally:
+                    temporary.unlink(missing_ok=True)
 
     def watch(self):
         while not self.closed.wait(0.02):
@@ -282,6 +321,8 @@ class NavigationRunner:
                         raise ComputeError("navigation_camera_unavailable")
                     continue
                 self.last_frame = (frame["input_id"], frame["captured_at"])
+                if self.policy["mode"] == "drive" and len(frame["data"]) <= 512 * 1024:
+                    self.frame_trace.append(frame)
                 age = (time.time() - frame["captured_at"]) * 1000
                 if not 0 <= age < self.policy["decision_budget_ms"]:
                     if (
