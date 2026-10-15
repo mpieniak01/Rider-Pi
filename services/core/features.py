@@ -541,6 +541,15 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 for unit in task_units(feature, {})
                 if unit not in PROTECTED_UNITS and self._running(unit) and not consumers.get(unit)
             ]
+            if external and canonical in {"s14_venom_navigation", "s15_venom_perception"}:
+                from services.core.feature_cleanup import orphan_targets
+
+                targets = orphan_targets(self, feature, external)
+                if targets:
+                    steps = [self._run(unit, "stop") for unit in targets]
+                    if any(not row.get("ok") for row in steps) or any(self._running(unit) for unit in targets):
+                        return {"ok": False, "error": "stop_failed", "steps": steps}
+                    return {"ok": True, "steps": steps, "events": [], "task": self._describe(canonical)}
             if external:
                 return {
                     "ok": False,

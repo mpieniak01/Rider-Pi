@@ -203,3 +203,51 @@ def test_old_executor_cannot_arm_feedback_wait_trial(world):
     with pytest.raises(TrialError, match="navigation_executor_update_required"):
         world.trial.start(world.body())
     assert not world.commands and not world.actions
+
+
+def orphan_world(world):
+    world.manager.set_feature("s2_camera_preview", True)
+    world.active.add("rider-venom-navigation.target")
+    original = world.unit_status
+
+    def status(unit):
+        row = original(unit)
+        return {**row, "pid": 0, "wants": [], "requires": []}
+
+    world.manager.status_fn = status
+    world.actions.clear()
+
+
+def test_production_failed_producer_leaves_empty_target_and_next_click_recovers(world):
+    orphan_world(world)
+    result = world.trial.start(world.body())
+    assert result["ok"]
+    assert ("rider-venom-navigation.target", "stop") in world.actions
+    assert not any(unit.startswith("camera-") and action == "stop" for unit, action in world.actions)
+    assert len([command for command in world.commands if command["action"] == "arm"]) == 1
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"wants": ["rider-venom-navigation.service"]},
+        {"requires": ["external.service"]},
+        {"stale": True},
+        {"pid": 42},
+    ],
+)
+def test_target_with_unknown_ownership_or_dependencies_is_not_adopted(world, change):
+    from services.navigation_trial import TrialError
+
+    orphan_world(world)
+    original = world.manager.status_fn
+
+    def status(unit):
+        row = original(unit)
+        return {**row, **change} if unit == "rider-venom-navigation.target" else row
+
+    world.manager.status_fn = status
+    with pytest.raises(TrialError, match="external_services_running"):
+        world.trial.start(world.body())
+    assert not any(action == "stop" for _, action in world.actions)
+    assert not world.commands
