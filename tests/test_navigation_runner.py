@@ -787,4 +787,4 @@ def test_v3_steer_submits_bounded_forward_and_yaw_together(isolated):
     assert commands[-1]["vx"] == policy["speed"]
     assert commands[-1]["yaw"] == -policy["avoidance"]["turn_speed"]
     assert commands[-1]["duration"] == 0.1
-    assert runner.turn_capture_after > runner.clock()
+    assert runner.turn_capture_after == runner.lease.deadline + 0.1

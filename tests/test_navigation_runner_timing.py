@@ -408,10 +408,31 @@ def test_post_turn_capture_gate_rejects_forward_from_old_orientation(isolated, m
     turns = [row for row in commands if row.get("yaw", 0)]
     forwards = [row for row in commands if row.get("vx", 0) and not row.get("yaw", 0)]
     assert len(turns) == 1
-    assert len(forwards) == (1 if maneuver_protocol == 2 else 5)
+    assert len(forwards) == 1
     if maneuver_protocol == 2:
         assert phases[2:7] == ["turn_settling"] * 5
     else:
-        assert phases[2:4] == ["steer_wait"] * 2
+        assert phases[2:7] == ["steer_wait"] * 5
     assert phases[-1] == "ready"
     assert commands[-1]["action"] == "stop"
+
+
+def test_pending_steer_capture_waits_for_lease_not_submission_duration(isolated, monkeypatch):
+    policy, _, _, _, commands = isolated
+    policy["avoidance"] = {**policy["avoidance"], "protocol_version": 3, "enabled": True, "sweep_verified": True}
+    runner = module.NavigationRunner()
+    runner.motion_publisher = object()
+    runner.lease.deadline = runner.clock() + 0.2
+    deadline = runner.lease.deadline
+
+    def pending(body, **kwargs):
+        assert kwargs["timeout_s"] == 0.0
+        commands.append(body)
+        return {"pending": True}, 202
+
+    monkeypatch.setattr(module, "submit_control", pending)
+    runner.steer("left", 0.05)
+    assert runner.pending_motion_acks
+    assert commands[-1]["decision_deadline_monotonic"] == deadline
+    assert runner.turn_capture_after == deadline + 0.1
+    assert runner.lease.deadline == deadline

@@ -229,7 +229,9 @@ class NavigationRunner:
         self.drive(self.policy["speed"], duration, yaw=settings["turn_speed"] * (1 if side == "left" else -1))
         # Re-evaluate after this bounded correction; never reuse a capture
         # from before/during it to issue another correction or forward goal.
-        self.turn_capture_after = self.clock() + duration
+        # Submission may return pending before the executor applies the pulse.
+        # Its output is bounded by the lease; capture after that bound and settling.
+        self.turn_capture_after = self.lease.deadline + 0.1
 
     def _consent_completed(self, safety):
         return (
