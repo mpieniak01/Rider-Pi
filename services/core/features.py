@@ -343,15 +343,6 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
 
     def _start(self, canonical: str, options: dict, control: dict | None = None) -> dict:
         feature = self.registry[canonical]
-        if canonical in {"s5_voice", "s7_obstacle_module", "s10_ai_providers"}:
-            from services import compute_config
-
-            try:
-                remote = compute_config.snapshot()["selected_executor"]
-            except (ValueError, OSError):
-                return {"ok": False, "error": "compute_configuration_unavailable"}
-            if remote is not None:
-                return {"ok": False, "error": "compute_use_remote_goal"}
         units = task_units(feature, options)
         available = task_availability(feature, options)
         if not available["start_available"]:
@@ -480,7 +471,12 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
     def _stop(self, canonical: str) -> dict:
         if canonical not in self._requested:
             feature = self.registry[canonical]
-            external = [unit for unit in task_units(feature, {}) if unit not in PROTECTED_UNITS and self._running(unit)]
+            consumers = self._consumers(exclude=canonical)
+            external = [
+                unit
+                for unit in task_units(feature, {})
+                if unit not in PROTECTED_UNITS and self._running(unit) and not consumers.get(unit)
+            ]
             if external:
                 return {
                     "ok": False,

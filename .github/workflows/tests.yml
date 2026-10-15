@@ -46,7 +46,7 @@ jobs:
                                 -c config/agent/constraints.txt
 
       - name: Run operator panel fixtures (isolated JavaScript)
-        run: node --experimental-vm-modules --test tests/operator_panel.test.mjs tests/operator_panel_shared_review.test.mjs tests/operator_calibration.test.mjs tests/legacy_catalog.test.mjs
+        run: node --experimental-vm-modules --test tests/operator_panel.test.mjs tests/operator_panel_shared_review.test.mjs tests/operator_calibration.test.mjs tests/legacy_catalog.test.mjs tests/operator_camera_power.test.mjs
 
       - name: Start API (background on :8080)
         env:
