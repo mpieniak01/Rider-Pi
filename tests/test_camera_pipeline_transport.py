@@ -86,7 +86,10 @@ def selection():
     return {"url": "http://127.0.0.1:9999", "device_id": "fixture-pi", "token": "fixture-private"}
 
 
-def test_prepare_waits_for_real_ingest_without_motion_or_model_calls():
+def test_prepare_waits_for_real_ingest_without_motion_or_model_calls(monkeypatch):
+    from apps.camera import pipeline_ipc
+
+    monkeypatch.setattr(pipeline_ipc, "read_frame", lambda **_: (b"", source()))
     calls = []
     responses = [
         {"stream": {"ready": False}},
@@ -106,7 +109,10 @@ def test_prepare_waits_for_real_ingest_without_motion_or_model_calls():
     assert all(call[0].get_method() == "GET" for call in calls)
 
 
-def test_prepare_timeout_does_not_synthesize_a_clear_verdict():
+def test_prepare_timeout_does_not_synthesize_a_clear_verdict(monkeypatch):
+    from apps.camera import pipeline_ipc
+
+    monkeypatch.setattr(pipeline_ipc, "read_frame", lambda **_: (b"", source()))
     clock = [0.0]
     opener = SimpleNamespace(open=lambda *_args, **_kw: Response({"stream": {"ready": False}}))
     with pytest.raises(navigation.ComputeError, match="navigation_stream_prepare_timeout"):

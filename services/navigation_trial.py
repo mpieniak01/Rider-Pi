@@ -399,7 +399,10 @@ class NavigationTrial:
 
                 progress("stream_prepare")
                 guard()
-                prepare_stream(timeout_s=min(2.0, max(0.01, context["deadline"] - self.clock())))
+                prepare_stream(
+                    timeout_s=min(2.0, max(0.01, context["deadline"] - self.clock())),
+                    max_age_ms=config.get("decision_budget_ms", 300),
+                )
                 guard()
                 progress("authority_handoff")
                 safety = guard()

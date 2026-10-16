@@ -316,11 +316,9 @@ class NavigationRunner:
             return False
         if isinstance(exc, urllib.error.HTTPError):
             if exc.code == 409:
-                try:
-                    detail = json.loads(exc.read(4097)).get("detail", {})
-                    return isinstance(detail, dict) and detail.get("code") == "stream_frame_unavailable"
-                except (ValueError, TypeError, AttributeError):
-                    return False
+                from apps.compute.stream_prepare import http_error_code
+
+                return http_error_code(exc) == "stream_frame_unavailable"
             return exc.code in {408, 429, 500, 502, 503, 504}
         return isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
 
@@ -419,7 +417,7 @@ class NavigationRunner:
         try:
             from apps.compute.stream_prepare import prepare_stream
 
-            prepared = prepare_stream(selection=self.selection)
+            prepared = prepare_stream(selection=self.selection, max_age_ms=self.policy["decision_budget_ms"])
             source = (
                 self.source_factory(
                     require_bytes=False,
@@ -577,13 +575,21 @@ class NavigationRunner:
                     self.lease.reason = "trial_completed"
                 self.lease.halt("trial_completed")
                 return 0
+            failure = exc
+            if isinstance(exc, urllib.error.HTTPError):
+                from apps.compute.stream_prepare import http_error_code
+
+                failure = ComputeError("navigation_" + http_error_code(exc), exc.code)
             logging.getLogger(__name__).warning(
-                "[vision] navigation failed type=%s reason_type=%s code=%s",
+                "[vision] navigation failed type=%s reason_type=%s code=%s http_status=%s",
                 type(exc).__name__,
                 type(getattr(exc, "reason", None)).__name__,
-                getattr(exc, "code", None),
+                getattr(failure, "code", None),
+                getattr(failure, "status", None),
             )
-            self.lease.halt(exc.code if isinstance(exc, ComputeError) else "navigation_transport_or_input_failed")
+            self.lease.halt(
+                failure.code if isinstance(failure, ComputeError) else "navigation_transport_or_input_failed"
+            )
             return 2
         finally:
             self.closed.set()
