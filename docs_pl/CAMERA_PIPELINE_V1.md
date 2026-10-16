@@ -1,0 +1,93 @@
+# Tor kamery v1 — Rider-Pi i Venom
+
+Pi przechowuje profil i jego rewizję oraz zarządza kamerą. Venom wykonuje zdalną
+inferencję. Ten sam profil jest widoczny w obu panelach; przeglądarka nie zapisuje
+drugiej konfiguracji. Pełny protokół opisuje [wersja angielska](../docs/CAMERA_PIPELINE_V1.md),
+a schemat i syntetyczne przykłady są w config/contracts/camera_pipeline_v1.*.
+
+## Obsługa
+
+W panelu /view lub /control, a także w kamerze panelu Rider w Venom, wybierz:
+
+- Analiza obrazu: lokalnie na Pi albo w Venom.
+- Lokalnie: dostępny silnik Canny, SSD lub TFLite. Lista wynika z bibliotek i modeli
+  faktycznie zainstalowanych na Pi. Nie pobiera ich ani nie ładuje przy odczycie.
+- W Venom: klatki JPEG albo natywny MJPEG.
+- Kamera ON/OFF: jawny start lub zatrzymanie kamery. Wejście na stronę jest odczytem.
+
+Nieaktywny wybór transportu/silnika pozostaje zapamiętany do następnego przełączenia.
+Zmiana profilu zatrzymuje stary tor, potwierdza zwolnienie kamery i zapisuje nową
+rewizję. Przy aktywnym podglądzie wraca jedynie pasywna kamera S2. Nie wznawia jazdy,
+analizy S14/S15 ani uzbrojenia. Konflikt z innym właścicielem jest pokazywany operatorowi.
+Stary producent bez zapisanego profilu jest oznaczony compatibility_mode=legacy;
+jawne configure/start przeprowadza go na nowy tor.
+
+Analiza lokalna nie jest automatyczną zgodą na jazdę. Zachowane są trzy znaczenia
+STOP: zero silników, zakończenie pętli z kamerą, globalny STOP/rozbrojenie.
+Sterowanie ręczne pozostaje niezależne od modelu AI.
+
+## Przepływ obrazu
+
+Jeden proces posiada kamerę. Lokalne filtry pracują na jego surowym buforze RAM.
+MJPEG korzysta z enkodera kamery i ograniczonego IPC w /run/rider-camera.
+Nie zapisuje cyklicznych JPEG na karcie SD i nie uruchamia starego dystrybutora.
+Obraz PROC jest kodowany dopiero dla jawnego odbiorcy. Tracker korzysta z tego
+samego źródła i odrzuca stare lub powtórzone dane zamiast czytać dawny plik.
+
+Venom utrzymuje wspólny odbiornik dla podglądu i analizy. Żądanie decyzji natywnego
+toru podaje referencję istniejącej klatki; nie wysyła drugi raz JPEG.
+Obrót zgodny z ruchem wskazówek zegara, a następnie odbicia, są przenoszone jako
+image_transform i stosowane raz przed analizą/wyświetleniem. Pi nie koduje JPEG
+ponownie tylko dla obrotu. Lokalne filtry i oba panele zachowują ten sam układ stron.
+
+Przeglądarka używa odczytu MJPEG albo okresowych klatek, a nie obu jednocześnie.
+Wolny odbiorca pomija klatki pośrednie. Każda klatka ma sesję, sekwencję, epokę
+transportu, rewizję profilu, hash oryginalnych bajtów i czas przechwycenia.
+
+Wiek pochodzi z monotonicznego zegara Pi. Venom i panel dodają własny czas od
+odbioru; żaden host nie odejmuje zegara drugiej maszyny. Cache, reconnect, zapis
+pliku lub odrysowanie zielonej maski nie odnawiają wieku. Zatrzymany obraz pozostaje
+jawnie stary. Limit podglądu jest odrębny od niezmienionego limitu decyzji ruchu.
+
+Przygotowanie odbiornika Venom odbywa się przed przekazaniem sterowania istniejącej
+próbie. Pi sprawdza zgodność sesji/epoki/rewizji oraz pełny czas od przechwycenia do
+powrotu odpowiedzi. Brak łączności nie włącza lokalnego zastępstwa ani starego GO.
+
+## API i trwałość
+
+| Miejsce | Interfejs |
+| --- | --- |
+| Pi | GET/POST /api/resource/camera/pipeline |
+| Pi | GET /api/resource/camera/stream.mjpg |
+| Pi | GET /api/resource/camera/frame?view=raw lub proc |
+| Venom | GET/POST /api/v1/rider/camera/pipeline |
+| Venom | GET /api/v1/rider/camera/stream/raw lub venom |
+| Venom | POST /api/v1/rider/compute/vision/decision-reference |
+| Przygotowanie | GET /api/v1/rider/compute/vision/status?stream=true |
+
+Zmiana zawiera contract_version=1, request_id, expected_revision i action.
+Configure wymaga całego profilu; start/stop zabrania pola profile. Powtórzone
+identyczne żądanie jest idempotentne; konflikt rewizji lub aktywności daje 409.
+Niepoprawny format daje 400, niedostępny runtime 503.
+
+Profil: data/camera_pipeline.json, zmiana ścieżki RIDER_CAMERA_PIPELINE_CONFIG.
+Stan i IPC: /run/rider-camera, zmiana RIDER_CAMERA_PIPELINE_RUNTIME.
+Brak pliku zachowuje zgodny domyślny venom/snapshots/canny i niczego nie uruchamia.
+Starszy Pi jest rozpoznawany jako unsupported, bez udawania nowego kontraktu.
+
+Nowe API korzysta z obecnej granicy zaufania zasobów/kamery. Token wykonawcy ruchu
+nie trafia do adresów mediów. Proxy Venom zachowuje sesję urządzenia, a endpointy
+decyzji dotychczasowe uwierzytelnienie compute.
+
+## Wdrożenie i odbiór
+
+Podgląd: make pi-preview PI_DEPLOY_ARGS='--restart-api --vision-loop-scope'.
+Zakres vision-loop-scope dopuszcza tylko wymienione unity wizji i jednostkę kamery
+z katalogiem RuntimeDirectory; nie włącza autonomii. Po zmianie jednostki wykonaj
+daemon-reload i sprawdź jej faktyczny FragmentPath. Nie używaj zbiorczego
+systemd-sync ani restartu wykonawcy ruchu do aktualizacji kamery.
+
+Testy automatyczne używają fixture i IPC bez sprzętu. Odbiór kamery na Pi jest
+osobnym sprawdzeniem bez ARM i ruchu. Zielony overlay, ACK enkodera i test mocka
+nie są dowodem fizycznej jazdy. Poprzednia rewizja pozostaje dostępna przez
+make pi-rollback; po powrocie trzeba też przeładować zmienioną jednostkę.

@@ -7,9 +7,10 @@ const CAMERA_TASK = 's2_camera_preview';
 export class CameraPower {
   constructor({ onStarted = () => {}, onStopped = () => {}, taskName = CAMERA_TASK, options = {},
     toggleIds = ['camera-toggle'], statusIds = ['camera-power-state'], label = 'Kamera',
-    startId = 'camera-start', stopId = 'camera-stop' } = {}) {
+    startId = 'camera-start', stopId = 'camera-stop', pipelineProcessing = false } = {}) {
+    this.pipelineProcessing = pipelineProcessing;
     this.taskName = taskName; this.options = options; this.statusIds = statusIds; this.label = label;
-    this.catalog = null; this.busy = false; this.onStarted = onStarted; this.onStopped = onStopped;
+    this.catalog = null; this.pipeline = undefined; this.busy = false; this.onStarted = onStarted; this.onStopped = onStopped;
     this.start = document.getElementById(startId); this.stop = document.getElementById(stopId);
     this.toggles = toggleIds.map(id => document.getElementById(id)).filter(Boolean);
     for (const toggle of this.toggles) toggle.addEventListener('click', () => {
@@ -26,9 +27,30 @@ export class CameraPower {
     this.render();
   }
   async load(force = false) {
-    this.catalog = (await request('/api/logic/catalog', { force })).data; this.render();
+    this.catalog = (await request('/api/logic/catalog', { force })).data;
+    if ([CAMERA_TASK, 's7_obstacle_module'].includes(this.taskName)) {
+      try {
+        const value = (await request('/api/resource/camera/pipeline', { force })).data;
+        this.pipeline = value?.contract_id === 'rider.camera_pipeline' && value.contract_version === 1 ? value : undefined;
+      } catch (error) {
+        if (error.status !== 404 && error.data?.meta?.contract_id !== 'rider.resources') throw error;
+        this.pipeline = undefined;
+      }
+    }
+    this.render();
   }
-  task() { return this.catalog?.features?.find(task => task.name === this.taskName); }
+  task() {
+    const task = this.catalog?.features?.find(task => task.name === this.taskName);
+    if (!task || !this.pipeline || this.taskName === 's7_obstacle_module' && !this.pipelineProcessing) return task;
+    const running = ['active', 'waiting_frame', 'starting'].includes(this.pipeline.state);
+    const requested = running && (this.taskName === CAMERA_TASK || this.pipeline.profile.analysis_location === 'local');
+    return { ...task, requested, ready: requested && this.pipeline.state === 'active' };
+  }
+  canStart(task) {
+    if (!this.pipeline) return taskCanStart(task, this.catalog, null);
+    return !['starting', 'stopping', 'waiting_frame'].includes(this.pipeline.state)
+      && (this.taskName !== 's7_obstacle_module' || this.pipeline.capabilities.analysis_locations.includes('local'));
+  }
   known() {
     const task = this.task();
     return catalogKnown(this.catalog) && task?.can_move === false && fresh(task, 10);
@@ -40,13 +62,32 @@ export class CameraPower {
       // Recheck the task immediately before an explicit start/stop.
       await this.load(true);
       const task = this.task();
-      if (!this.known() || (enabled ? task.requested === true || !taskCanStart(task, this.catalog, null) : task.requested !== true)) {
+      if (!this.known() || (enabled ? task.requested === true || !this.canStart(task) : task.requested !== true)) {
         throw new Error(tr('Nie można zmienić kamery przy obecnym stanie zadania.', 'Camera task cannot be changed in its current state.'));
       }
-      const result = await request(`/api/logic/feature/${this.taskName}`, {
-        method: 'POST', body: { enabled, options: this.options }, timeout: 20000
-      });
-      if (result.data?.ok !== true) throw new Error(result.data?.result?.error || result.data?.error || 'camera_request_failed');
+      if (this.pipeline) {
+        let current = this.pipeline;
+        if (enabled && this.taskName === 's7_obstacle_module' && current.profile.analysis_location !== 'local') {
+          current = (await request('/api/resource/camera/pipeline', { method: 'POST', timeout: 20000, body: {
+            contract_version: 1, request_id: (globalThis.crypto?.randomUUID?.() || 'camera-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)), expected_revision: current.revision, action: 'configure',
+            profile: { ...current.profile, analysis_location: 'local', local_engine: 'canny' },
+          } })).data;
+        }
+        const taskOnly = this.taskName === 's7_obstacle_module' && !this.pipelineProcessing;
+        const result = taskOnly ? await request('/api/logic/feature/' + this.taskName, {
+          method: 'POST', body: { enabled, options: this.options }, timeout: 20000,
+        }) : await request('/api/resource/camera/pipeline', { method: 'POST', timeout: 20000, body: {
+          contract_version: 1, request_id: (globalThis.crypto?.randomUUID?.() || 'camera-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)), expected_revision: current.revision,
+          action: enabled ? 'start' : 'stop',
+        } });
+        if (result.data?.ok !== true) throw new Error(result.data?.error || 'camera_request_failed');
+        this.pipeline = taskOnly ? current : result.data;
+      } else {
+        const result = await request('/api/logic/feature/' + this.taskName, {
+          method: 'POST', body: { enabled, options: this.options }, timeout: 20000
+        });
+        if (result.data?.ok !== true) throw new Error(result.data?.result?.error || result.data?.error || 'camera_request_failed');
+      }
       if (enabled) this.onStarted(); else this.onStopped();
       text('operator-message', enabled
         ? tr('Kamera uruchomiona. Podgląd czeka na świeżą klatkę.', 'Camera started. Preview is waiting for a fresh frame.')
@@ -57,11 +98,11 @@ export class CameraPower {
   }
   render() {
     const task = this.task(), known = this.known();
-    if (this.start) this.start.disabled = this.busy || !known || task.requested === true || !taskCanStart(task, this.catalog, null);
+    if (this.start) this.start.disabled = this.busy || !known || task.requested === true || !this.canStart(task);
     if (this.stop) this.stop.disabled = this.busy || !known || task.requested !== true;
     for (const toggle of this.toggles) {
       const enabled = known && task.requested === true;
-      toggle.disabled = this.busy || !known || (!enabled && !taskCanStart(task, this.catalog, null));
+      toggle.disabled = this.busy || !known || (!enabled && !this.canStart(task));
       toggle.setAttribute('aria-pressed', String(enabled));
       toggle.textContent = `${this.label ? this.label + ': ' : ''}${powerLabel(known ? enabled : null)}`;
       toggle.title = enabled ? tr('Wyłącz kamerę', 'Turn camera off') : tr('Włącz kamerę', 'Turn camera on');

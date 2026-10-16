@@ -2,7 +2,7 @@
 export const API_ACCEPT = 'application/vnd.rider.api+json;version=1';
 const versions = Object.fromEntries(['safety', 'telemetry', 'system', 'health', 'resources', 'frames', 'obstacle',
   'navigation', 'odometry', 'calibration', 'providers', 'models', 'voice', 'chat', 'face', 'google_feed', 'home',
-  'api_metrics', 'version', 'network', 'mcp', 'project', 'knowledge', 'assistant', 'http'].map(name => ['rider.' + name, 1]));
+  'camera_pipeline', 'api_metrics', 'version', 'network', 'mcp', 'project', 'knowledge', 'assistant', 'http'].map(name => ['rider.' + name, 1]));
 Object.assign(versions, { 'rider.catalog': 2, 'rider.tasks': 2, 'rider.services': 2, 'rider.service_graph': 2 });
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 export function errorMessage(error, fallback = 'Request failed') {
@@ -10,6 +10,7 @@ export function errorMessage(error, fallback = 'Request failed') {
 }
 export function responseFamily(path) {
   const clean = String(path).split('?')[0];
+  if (['/api/resource/camera/pipeline', '/api/resource/camera/frame', '/api/resource/camera/stream.mjpg'].includes(clean)) return 'rider.camera_pipeline';
   for (const [prefixes, name] of [
     [['/api/control', '/api/safety', '/api/motion', '/api/flags', '/api/stop', '/api/cmd'], 'safety'],
     [['/api/calibration'], 'calibration'], [['/api/odometry'], 'odometry'], [['/api/navigator'], 'navigation'],

@@ -147,6 +147,7 @@ export class Overview {
     text('d_cam', cameraDetails.join(' · ')); text('camBadge', powerLabel(active ? true : off ? false : null));
     document.getElementById('camBadge')?.classList.toggle('on', active);
     for (const [kind, endpoint] of [['raw', '/vision/cam'], ['proc', '/vision/edge'], ['obst', '/snapshots/obst_annot.jpg'], ['tracker', '/vision/tracker']]) {
+      if (['raw', 'proc'].includes(kind) && this.pipeline !== undefined) continue;
       const frame = cameraFrame(this.snap, kind);
       const name = kind === 'raw' ? 'cam' : kind;
       const node = document.getElementById(`img_${name}`);

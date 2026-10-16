@@ -46,6 +46,7 @@ VISION_LOOP_PATHS = frozenset(
         "rider-venom-navigation.target",
         "rider-venom-perception.service",
         "rider-venom-perception.target",
+        "camera-capture@.service",
     )
 )
 
@@ -475,7 +476,7 @@ def main():
         command.add_argument(
             "--vision-loop-scope",
             action="store_true",
-            help="Allow only the four declared opt-in vision-loop unit files; does not enable them",
+            help="Allow only the declared vision-loop units and camera RAM directory unit; does not enable them",
         )
         command.add_argument(
             "--resource-scope",

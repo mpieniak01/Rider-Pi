@@ -1,3 +1,4 @@
+import { CameraPipelineControls, PipelinePreview } from './camera-pipeline.js';
 import { request, poll } from './transport.js';
 import { cameraFrame } from './model.js';
 import { text, tr } from './ui.js';
@@ -14,20 +15,25 @@ export class ControlCamera {
       const update = () => text(id + '-value', Number(input.value).toFixed(2));
       input?.addEventListener('input', update); if (input) update();
     }
+    this.pipeline = undefined;
+    this.native = new PipelinePreview(this.image, { empty: this.empty, status: document.getElementById('control-camera-status') });
+    new CameraPipelineControls(this.image.closest('.cam-card'), profile => {
+      this.pipeline = profile?.compatibility_mode === 'legacy' ? undefined : profile; this.native.update(this.pipeline, this.kind, this.auto);
+    });
     this.image.addEventListener('load', () => {
       this.loaded = this.pending; this.pending = null; this.busy = false;
       this.failed = false; clearTimeout(this.timeout); this.render();
     });
     this.image.addEventListener('error', () => this.fail());
     document.getElementById('control-camera-toggle').addEventListener('click', () => {
-      this.auto = !this.auto; this.render(); if (this.auto) this.poller.refresh();
+      this.auto = !this.auto; this.native.update(this.pipeline, this.kind, this.auto); this.render(); if (this.auto) this.poller.refresh();
     });
     document.querySelectorAll('[data-camera-kind]').forEach(button => button.addEventListener('click', () => {
-      this.kind = button.dataset.cameraKind; this.cancel(); this.loaded = null;
+      this.kind = button.dataset.cameraKind; this.cancel(); this.loaded = null; this.native.update(this.pipeline, this.kind, this.auto);
       this.lastKey = null; this.render(); this.poller.refresh();
     }));
     this.poller = poll(async () => {
-      if (!this.auto) return;
+      if (!this.auto || this.pipeline !== undefined) return;
       try { this.meta = (await request('/vision/snap-info?light=1')).data; }
       catch { this.meta = null; }
       this.render(); this.frame();
@@ -45,6 +51,11 @@ export class ControlCamera {
   }
   render() {
     this.image.alt = tr('Podgląd kamery robota', 'Robot camera preview');
+    if (this.pipeline !== undefined) {
+      text('control-camera-toggle', this.auto ? tr('⟳ Auto: włączone', '⟳ Auto: on') : tr('⟳ Auto: wyłączone', '⟳ Auto: off'));
+      document.querySelectorAll('[data-camera-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.cameraKind === this.kind)));
+      return;
+    }
     const frame = cameraFrame(this.meta, this.kind);
     const loaded = cameraFrame({ shown: { exists: !!this.loaded, observed_at: this.loaded?.ts } }, 'shown');
     const current = frame.fresh && loaded.fresh && this.loaded?.kind === this.kind;
@@ -57,7 +68,7 @@ export class ControlCamera {
     document.querySelectorAll('[data-camera-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.cameraKind === this.kind)));
   }
   frame() {
-    if (!this.auto || this.busy || document.hidden) return;
+    if (!this.auto || this.busy || document.hidden || this.pipeline !== undefined) return;
     const frame = cameraFrame(this.meta, this.kind);
     if (!frame.fresh) return;
     const key = this.kind + ':' + frame.ts;

@@ -417,3 +417,12 @@ def test_opt_in_vision_scope_only_allows_declared_units():
         module.check_paths(paths)
     with pytest.raises(RuntimeError):
         module.check_paths(["systemd/motion-executor.service"], vision_loop_scope=True)
+
+
+def test_camera_ram_unit_is_in_explicit_vision_scope_only():
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    with pytest.raises(RuntimeError, match="Separate deployment scope"):
+        module["check_paths"](["systemd/camera-capture@.service"])
+    module["check_paths"](["systemd/camera-capture@.service"], vision_loop_scope=True)
+    with pytest.raises(RuntimeError, match="Separate deployment scope"):
+        module["check_paths"](["systemd/motion-executor.service"], vision_loop_scope=True)
