@@ -178,3 +178,5 @@ a failed read and shows the read error and measurement age. Its window advances
 through the last 60 seconds on Pi's timeline, including during an outage. Old
 points expire and gaps remain visible; the panel does not stretch sample indices,
 insert zero measurements or refresh the age of a stopped series.
+
+Camera session and frame identifiers contain only ASCII letters, digits, underscores and hyphens (1–160 characters), with no CR/LF. The shared stopped-status example lists the effective-stage names emitted by Pi.

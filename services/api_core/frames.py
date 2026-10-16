@@ -69,7 +69,7 @@ def describe(stream: str, *, path=None, now=None, archive=False, stat_result=Non
     now = time.time() if now is None else now
     from services.camera_pipeline_store import enabled
 
-    use_ram = enabled() and not archive and stream in {"raw", "proc", "ssd"}
+    use_ram = enabled() and path is None and not archive and stream in {"raw", "proc", "ssd"}
     selected = (
         Path(path)
         if path is not None

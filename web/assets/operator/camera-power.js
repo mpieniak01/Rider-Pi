@@ -72,6 +72,7 @@ export class CameraPower {
             contract_version: 1, request_id: (globalThis.crypto?.randomUUID?.() || 'camera-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)), expected_revision: current.revision, action: 'configure',
             profile: { ...current.profile, analysis_location: 'local', local_engine: 'canny' },
           } })).data;
+          if (current?.ok !== true) throw new Error(current?.error || 'camera_request_failed');
         }
         const taskOnly = this.taskName === 's7_obstacle_module' && !this.pipelineProcessing;
         const result = taskOnly ? await request('/api/logic/feature/' + this.taskName, {

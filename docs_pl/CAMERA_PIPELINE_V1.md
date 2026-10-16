@@ -150,3 +150,5 @@ odczytu i pokazuje błąd oraz wiek pomiaru. Okno przesuwa się przez ostatnie 6
 na osi czasu Pi, także podczas awarii. Stare punkty wygasają, a przerwy pozostają
 widoczne; panel nie rozciąga indeksów próbek, nie wpisuje pomiarów zerowych ani nie
 odmładza zatrzymanej serii.
+
+Identyfikatory sesji kamery i klatki zawierają tylko litery ASCII, cyfry, podkreślenia i łączniki (1–160 znaków), bez CR/LF. Wspólny przykład zatrzymanego statusu zawiera rzeczywiste nazwy etapów emitowanych przez Pi.

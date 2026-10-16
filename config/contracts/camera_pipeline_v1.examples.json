@@ -75,10 +75,16 @@
     "consumers": [],
     "effective_stages": {
       "capture": false,
-      "local_inference": false,
-      "legacy_writer": false,
-      "file_distributor": false,
-      "mjpeg_encoder": false
+      "local_analysis": false,
+      "snapshot_write": false,
+      "frame_distributor": false,
+      "ram_delivery": false,
+      "hardware_mjpeg": false,
+      "tracker_local_analysis": false,
+      "tracker_snapshot_write": false,
+      "legacy_obstacle_analysis": false,
+      "legacy_obstacle_snapshot_write": false,
+      "remote_transport": false
     },
     "latest_frame": null,
     "error": null
