@@ -120,3 +120,9 @@ i jest odrzucana; następna ocena wymaga nowego źródła. Jazda zachowuje STOP.
 ## Zgodność orientacji RAW
 
 Brak lub pusta wartość PREVIEW_ROT oznacza 0°, tak jak w dotychczasowym RAW. Jawne ustawienia obrotu i odbić pozostają zachowane. Kompensacja montażu LCD jest oddzielnym ustawieniem i nie wyznacza orientacji obrazu kamery. Snapshot koduje obraz po transformacji; MJPEG przenosi transformację do odbiorcy, który stosuje ją dokładnie raz.
+
+## Czas decyzji referencyjnej a granica podglądu
+
+Dla uwierzytelnionego żądania Pi czas do decyzji wynika z wieku zgłoszonego na zegarze Pi i czasu obsługi na Venom. Uwzględniany jest również minimalny wiek części: zapisany wiek w chwili wysłania i czas w buforze hosta. Górna granica z kotwicy statusu zawiera niepewność całego RTT i pozostaje granicą podglądu/cache; nie jest dokładnym wiekiem do sterowania. Pi nadal egzekwuje pierwotny deadline 300 ms od captured_monotonic_ns, także tuż przed wysłaniem polecenia silnikom. Host GO nie odnawia tej granicy.
+
+Opcjonalne source_timing_ms pokazuje pi_reported_age, host_before_inference, observed_age, upper_age i deadline_age. Dane służą diagnostyce i nie udzielają zgody na ruch.

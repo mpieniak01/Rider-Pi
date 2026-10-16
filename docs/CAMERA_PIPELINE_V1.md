@@ -63,8 +63,7 @@ Pi preserves the existing RAW orientation default: an unset or empty PREVIEW_ROT
 means 0 degrees. Explicit PREVIEW_ROT and flip settings are retained. The LCD
 mounting compensation is separate and does not choose the camera orientation.
 
-No software JPEG
-re-encode is required on Pi solely to rotate a native stream.
+No software JPEG re-encode is required on Pi solely to rotate a native stream.
 
 Pi computes frame_age_ms at send using its capture monotonic clock. Picamera2
 snapshots and hardware MJPEG use sensor capture time. An OpenCV-only reader uses
@@ -110,6 +109,21 @@ identify the camera capture. They need not be equal. Preview correlates all six
 source reference fields with the image headers, while preserving request/run
 fields for Pi's response checks. A lost Venom link never activates a local
 fallback or reuses an old permission.
+
+For an authenticated Pi decision-reference request, the decision age is the
+maximum of Pi-reported relative capture age plus host time since admission, and
+the part's original send age plus its residence on the host. The status-anchor
+upper bound includes HTTP roundtrip uncertainty; it remains the preview/cache
+bound and must not be used as an exact motion deadline. This distinction never
+renews a source: a buffered part or a Pi-reported age already at the deadline is
+rejected, as are mismatched identities. Pi independently checks its original
+captured_monotonic_ns deadline at response admission and immediately before motor
+submission; a host GO cannot extend the 300 ms capture budget.
+
+Reference replies include source_timing_ms: pi_reported_age,
+host_before_inference, observed_age, upper_age and deadline_age. These diagnostics
+expose timing uncertainty separately from the decision budget; they grant no
+motion permission.
 
 ## Paired rollout
 
