@@ -63,6 +63,12 @@ def _run_mode(cfg: ModeConfig) -> int:
 
 def main() -> int:
     mode = _normalize_mode(os.getenv("CAPTURE_MODE"))
+    from services.camera_pipeline_store import enabled
+
+    if mode == "raw" and enabled():
+        from apps.camera.pipeline_runtime import main as run_pipeline
+
+        return run_pipeline()
     cfg = MODE_MAP.get(mode)
     if not cfg:
         print(f"[capture] Unsupported CAPTURE_MODE={mode!r}. Allowed: {', '.join(sorted(MODE_MAP))}", file=sys.stderr)

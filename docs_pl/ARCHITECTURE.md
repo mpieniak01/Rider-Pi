@@ -54,6 +54,19 @@ uzasadnia globalnego obrotu ekranu ani grafiki startowej.
 
 ### 3) Wizja / Kamera
 
+#### Właściciel kamery i transport przez RAM
+
+Istniejąca camera-capture@raw.service pozostaje jednym właścicielem kamery i
+zachowuje blokadę flock. Po jawnym wyborze profilu uruchamia wspólnego producenta;
+lokalne Canny/SSD/TFLite analizują jego surową tablicę przed JPEG. Natywny MJPEG do
+Venom korzysta z kodera sprzętowego, bez zapisów dawnych obrazów i pollingu
+frame-distributor. Usługa utrzymuje /run/rider-camera (0700) z ograniczonym gniazdem
+Unix ostatniej klatki. API tylko odczytuje gniazdo i nigdy nie otwiera kamery.
+Nie dodajemy portu TCP ani niezależnego konsumenta uruchamianego samoczynnie.
+Brak pliku profilu zachowuje dawny rozruch snapshotów.
+Zobacz [kontrakt komunikacyjny](CAMERA_PIPELINE_V1.md).
+
+
 - **Vision/Camera** — moduły w `apps/camera/*` i `apps/vision/*`.
   - Źródło obrazu (libcamera), detektory (HOG/SSD/TFLite).
   - Wyniki zapisują do `snapshots/` / `data/` (ostatnia klatka, surowe ujęcia) i publikują eventy (np. `vision.person`, `vision.obstacle`).

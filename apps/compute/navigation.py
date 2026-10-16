@@ -265,8 +265,12 @@ class NavigationRunner:
         base = self.selection["url"].rstrip("/")
         if not base.endswith("/api/v1/rider/compute"):
             base += "/api/v1/rider/compute"
+        reference = payload if isinstance(payload, dict) else None
+        if reference is not None:
+            payload = json.dumps({"frame": meta, "source": reference}).encode()
+            mime = "application/json"
         req = urllib.request.Request(
-            base + "/vision/decision",
+            base + ("/vision/decision-reference" if reference is not None else "/vision/decision"),
             data=payload,
             headers={
                 "Content-Type": mime,
@@ -283,7 +287,10 @@ class NavigationRunner:
             body = response.read(16385)
             if len(body) > 16384:
                 raise ComputeError("navigation_response_bounds")
-            return json.loads(body)
+            decision = json.loads(body)
+            if reference is not None and decision.get("source") != reference:
+                raise ComputeError("navigation_reference_mismatch")
+            return decision
 
     def _startup_retry(self):
         return self.policy["mode"] == "drive" and not self.motion_started and self.clock() < self.startup_deadline
@@ -308,6 +315,12 @@ class NavigationRunner:
         if self.policy["mode"] != "observe" and not self._startup_retry():
             return False
         if isinstance(exc, urllib.error.HTTPError):
+            if exc.code == 409:
+                try:
+                    detail = json.loads(exc.read(4097)).get("detail", {})
+                    return isinstance(detail, dict) and detail.get("code") == "stream_frame_unavailable"
+                except (ValueError, TypeError, AttributeError):
+                    return False
             return exc.code in {408, 429, 500, 502, 503, 504}
         return isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
 
@@ -404,7 +417,18 @@ class NavigationRunner:
         watchdog = threading.Thread(target=self.watch, daemon=True)
         source = None
         try:
-            source = self.source_factory()
+            from apps.compute.stream_prepare import prepare_stream
+
+            prepared = prepare_stream(selection=self.selection)
+            source = (
+                self.source_factory(
+                    require_bytes=False,
+                    initial_source=(prepared or {}).get("latest_source"),
+                    max_age_ms=self.policy["decision_budget_ms"],
+                )
+                if self.source_factory is FrameSource
+                else self.source_factory()
+            )
             if self.policy["mode"] == "drive":
                 self.motion_publisher = self.publisher_factory()
             self.run_started_monotonic = self.clock()
@@ -434,9 +458,18 @@ class NavigationRunner:
                         raise ComputeError("navigation_camera_unavailable")
                     continue
                 self.last_frame = (frame["input_id"], frame["captured_at"])
-                if self.policy["mode"] == "drive" and len(frame["data"]) <= 512 * 1024:
+                if (
+                    self.policy["mode"] == "drive"
+                    and isinstance(frame["data"], bytes)
+                    and len(frame["data"]) <= 512 * 1024
+                ):
                     self.frame_trace.append(frame)
-                age = (time.time() - frame["captured_at"]) * 1000
+                source_mono = frame.get("captured_monotonic_ns")
+                age = (
+                    (self.clock() - source_mono / 1_000_000_000) * 1000
+                    if type(source_mono) is int
+                    else (time.time() - frame["captured_at"]) * 1000
+                )
                 if not 0 <= age < self.policy["decision_budget_ms"]:
                     if (
                         self.policy["mode"] == "observe" or self._startup_retry() or not self.fresh_frame_seen

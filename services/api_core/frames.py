@@ -33,9 +33,49 @@ def resolve(stream: str) -> Path:
     return next((path for path in candidates if path.is_file()), default)
 
 
+def _ram_description(stream, selected, now):
+    from apps.camera.pipeline_ipc import read_frame
+
+    try:
+        item = read_frame(metadata_only=True, view="raw" if stream == "raw" else "proc")
+    except (OSError, ValueError, KeyError, TypeError):
+        item = None
+    metadata = item[1] if item is not None else None
+    age = metadata["frame_age_ms"] / 1000 if metadata else None
+    return {
+        "stream": stream,
+        "url": STREAMS[stream][2],
+        "path": str(selected),
+        "exists": metadata is not None,
+        "frame_id": metadata["frame_id"] if metadata else None,
+        "observed_at": now - age if age is not None else None,
+        "capture_at": now - age if age is not None else None,
+        "file_observed_at": None,
+        "source": "camera_pipeline_ram",
+        "provenance": "capture",
+        "stale": age is None or age > MAX_AGE_S,
+        "error": "frame_unavailable" if metadata is None else "frame_stale" if age > MAX_AGE_S else None,
+        "placeholder": False,
+        "max_age_s": MAX_AGE_S,
+        "archive": False,
+        "mtime": None,
+        "size": None,
+        "age_s": age,
+    }
+
+
 def describe(stream: str, *, path=None, now=None, archive=False, stat_result=None) -> dict:
     now = time.time() if now is None else now
-    selected = Path(path) if path is not None else resolve(stream)
+    from services.camera_pipeline_store import enabled
+
+    use_ram = enabled() and not archive and stream in {"raw", "proc", "ssd"}
+    selected = (
+        Path(path)
+        if path is not None
+        else (Path(C.SNAP_DIR) / (STREAMS[stream][1] + ".jpg") if use_ram else resolve(stream))
+    )
+    if use_ram:
+        return _ram_description(stream, selected, now)
     at = None
     size = None
     error = None
@@ -97,6 +137,18 @@ def headers(response, row):
 
 
 def response(stream: str, *, path=None, archive=None):
+    from services.camera_pipeline_store import enabled
+
+    if (
+        enabled()
+        and path is None
+        and archive is None
+        and request.args.get("archive") != "1"
+        and stream in {"raw", "proc", "ssd"}
+    ):
+        from services.api_core.camera_pipeline_api import frame
+
+        return frame(view="raw" if stream == "raw" else "proc")
     archive = request.args.get("archive") == "1" if archive is None else archive
     selected = Path(path) if path is not None else resolve(stream)
     descriptor = None
