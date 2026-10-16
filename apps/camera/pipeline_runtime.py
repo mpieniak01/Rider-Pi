@@ -13,17 +13,15 @@ from pathlib import Path
 from apps.camera.pipeline_ipc import FrameServer, LatestFrames
 from apps.camera.pipeline_local import LocalProcessor, canonical, image_transform
 from services.camera_pipeline_store import native, runtime_path, snapshot
+from services.compute_config import _write
 
 IDENTITY = {"rotation": 0, "flip_h": False, "flip_v": False}
 
 
 def write_status(row):
-    root = runtime_path()
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / "status.json"
-    temporary = root / "status.json.tmp"
-    temporary.write_text(json.dumps(dict(row, observed_monotonic_ns=time.monotonic_ns()), allow_nan=False))
-    os.replace(temporary, target)
+    # Native encoder callbacks and the main heartbeat can publish concurrently.
+    # The shared atomic writer gives each update its own bounded temporary file.
+    _write(runtime_path() / "status.json", dict(row, observed_monotonic_ns=time.monotonic_ns()))
 
 
 class CameraProducer:
