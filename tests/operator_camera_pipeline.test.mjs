@@ -53,6 +53,7 @@ test('Pi preview refuses old epochs and applies clockwise rotation before flips 
   const image={hidden:false,after(){},dataset:{},removeAttribute(){}}, label={}, empty={};
   const preview=new context.PipelinePreview(image,{status:label,empty});
   preview.profile={revision:fixture.source.pipeline_revision,transport_epoch:fixture.source.transport_epoch,camera_session:fixture.source.camera_session};
+  preview.anchor={latest:fixture.source,receivedAt:10,roundTripMs:0};
   const part={bytes:jpeg,headers:new Headers({'X-Rider-Source':JSON.stringify({...fixture.source,frame_age_ms:20,image_transform:{rotation:90,flip_h:true,flip_v:false}})}),receivedAt:10};
   await preview.display(part,new AbortController().signal,()=>true);
   assert.equal(canvas.width,240);assert.equal(canvas.height,320);

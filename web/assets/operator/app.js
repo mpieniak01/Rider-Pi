@@ -50,7 +50,7 @@ if (page === 'view') {
     const rawImage = document.getElementById('img_cam'), procImage = document.getElementById('img_proc');
     overview.pipelineRaw = rawImage ? new PipelinePreview(rawImage, { status: document.getElementById('leg_cam_txt') }) : null;
     overview.pipelineProc = procImage ? new PipelinePreview(procImage, { status: document.getElementById('leg_proc_txt'), kind: 'proc' }) : null;
-    if (rawImage) new CameraPipelineControls(rawImage.closest('.c-card'), profile => {
+    if (rawImage) new CameraPipelineControls(rawImage.closest('.c-card').querySelector('.c-thumb'), profile => {
       overview.pipeline = profile?.compatibility_mode === 'legacy' ? undefined : profile;
       overview.pipelineRaw?.update(profile);
       overview.pipelineProc?.update(profile, 'proc', profile?.profile.analysis_location === 'local');

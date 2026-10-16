@@ -17,7 +17,7 @@ export class ControlCamera {
     }
     this.pipeline = undefined;
     this.native = new PipelinePreview(this.image, { empty: this.empty, status: document.getElementById('control-camera-status') });
-    new CameraPipelineControls(this.image.closest('.cam-card'), profile => {
+    new CameraPipelineControls(this.image.closest('.cam-card').querySelector('.cam-actions'), profile => {
       this.pipeline = profile?.compatibility_mode === 'legacy' ? undefined : profile; this.native.update(this.pipeline, this.kind, this.auto);
     });
     this.image.addEventListener('load', () => {
