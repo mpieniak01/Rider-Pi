@@ -126,3 +126,25 @@ Brak lub pusta wartość PREVIEW_ROT oznacza 0°, tak jak w dotychczasowym RAW. 
 Dla uwierzytelnionego żądania Pi czas do decyzji wynika z wieku zgłoszonego na zegarze Pi i czasu obsługi na Venom. Uwzględniany jest również minimalny wiek części: zapisany wiek w chwili wysłania i czas w buforze hosta. Górna granica z kotwicy statusu zawiera niepewność całego RTT i pozostaje granicą podglądu/cache; nie jest dokładnym wiekiem do sterowania. Pi nadal egzekwuje pierwotny deadline 300 ms od captured_monotonic_ns, także tuż przed wysłaniem polecenia silnikom. Host GO nie odnawia tej granicy.
 
 Opcjonalne source_timing_ms pokazuje pi_reported_age, host_before_inference, observed_age, upper_age i deadline_age. Dane służą diagnostyce i nie udzielają zgody na ruch.
+
+## Podgląd operatora i historia pomiarów
+
+W przetworzonym podglądzie Venom L (turkusowy), C (biała granica STOP) i R
+(fioletowy) oznaczają strefy użyte w analizie widocznej klatki. W trybie obrazu
+odpowiadają rzeczywistej strefie i sąsiednim obszarom, a nie trzem równym częściom
+całego obrazu. Tryb geometrii podłoża pokazuje rzuty torów. Niepełna lub niedostępna
+geometria ma ocenę niepewną. Pomarańczowa przerywana ramka edytora jest niezapisanym
+szkicem; jej przesunięcie nie zmienia ocen przypisanych wcześniej do obrazu.
+
+Widoczny JPEG, oceny L/C/R i metadane źródła pozostają jedną parą, aż następny obraz
+zostanie załadowany w widocznym elemencie. Odbiór następnej klatki nie zeruje na
+chwilę kart ocen. Ta sama zasada dotyczy klatek i natywnego MJPEG. Poprzedni obraz
+zachowuje pierwotny termin ważności: błąd odczytu lub wygaśnięcie nadal pokazuje
+alert nieświeżego podglądu i niepewne oceny. Oznaczenia podglądu nie udzielają zgody
+na ruch. Pasek operatora z ARM i globalnym STOP pozostaje widoczny przy przewijaniu.
+
+Przegląd Pi zachowuje historię CPU/RAM z oryginalnymi znacznikami czasu po błędzie
+odczytu i pokazuje błąd oraz wiek pomiaru. Okno przesuwa się przez ostatnie 60 sekund
+na osi czasu Pi, także podczas awarii. Stare punkty wygasają, a przerwy pozostają
+widoczne; panel nie rozciąga indeksów próbek, nie wpisuje pomiarów zerowych ani nie
+odmładza zatrzymanej serii.

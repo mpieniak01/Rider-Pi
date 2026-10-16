@@ -153,3 +153,26 @@ control.
 
 Contract examples are synthetic protocol fixtures, not physical acceptance data.
 An encoder ACK, green overlay or passing mock test is not proof of physical motion.
+
+## Operator preview and measurement history
+
+In Venom's processed view, L (cyan), C (white STOP boundary) and R (violet)
+identify the regions used by that displayed analysis. Image-space regions use the
+actual configured corridor and its adjacent side regions, not thirds of the whole
+image. Ground mode shows projected paths. Incomplete or unavailable geometry is
+marked uncertain. The orange dashed editor is an unsaved draft; moving it does not
+relabel the analysis already attached to an image.
+
+The visible JPEG, L/C/R assessments and capture metadata remain paired until the
+next image has loaded in the visible image element. Receiving a new candidate
+does not temporarily clear the cards. Snapshot and native MJPEG previews use the
+same presentation rule. The displayed frame retains its original freshness
+deadline: failed reads and expiry still show the stale-preview notice and uncertain
+assessments. Preview labels do not grant motion permission. The operator ARM and
+global STOP toolbar remains visible while scrolling.
+
+The Pi overview retains CPU/RAM history with original measurement timestamps after
+a failed read and shows the read error and measurement age. Its window advances
+through the last 60 seconds on Pi's timeline, including during an outage. Old
+points expire and gaps remain visible; the panel does not stretch sample indices,
+insert zero measurements or refresh the age of a stopped series.
