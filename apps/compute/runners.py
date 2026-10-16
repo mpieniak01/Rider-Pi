@@ -42,7 +42,17 @@ _PROCESS_SESSION = uuid.uuid4().hex
 class FrameSource:
     """Subscribe to the existing camera owner; never open a V4L2 device."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, require_bytes=True, initial_source=None, max_age_ms=300) -> None:
+        self.require_bytes = require_bytes
+        self.initial_source = initial_source
+        self.max_age_ms = max_age_ms
+        from services.camera_pipeline_store import enabled, native
+
+        self.native = enabled() and native()
+        self.previous_frame = None
+        if self.native:
+            self.client = None
+            return
         from common.frame_stream import FrameStreamClient
 
         self.client = FrameStreamClient(
@@ -54,6 +64,50 @@ class FrameSource:
         )
 
     def recv(self, timeout_ms: int) -> dict | None:
+        if getattr(self, "native", False):
+            from apps.camera.pipeline_ipc import read_frame
+
+            try:
+                item = read_frame(
+                    after=self.previous_frame, timeout_ms=timeout_ms, metadata_only=not self.require_bytes
+                )
+            except (OSError, ValueError):
+                return None
+            if item is None:
+                return None
+            encoded, metadata = item
+            initial, self.initial_source = self.initial_source, None
+            if isinstance(initial, dict) and not self.require_bytes:
+                keys = ("camera_session", "transport_epoch", "pipeline_revision")
+                stamp = initial.get("captured_monotonic_ns")
+                if (
+                    all(initial.get(key) == metadata[key] for key in keys)
+                    and type(stamp) is int
+                    and 0 <= (time.monotonic_ns() - stamp) / 1_000_000 < self.max_age_ms
+                    and type(initial.get("sequence")) is int
+                    and 0 < initial["sequence"] <= metadata["sequence"]
+                    and initial.get("frame_id") == metadata["camera_session"] + "-" + str(initial["sequence"])
+                    and isinstance(initial.get("sha256"), str)
+                    and len(initial["sha256"]) == 64
+                ):
+                    metadata = initial
+            self.previous_frame = metadata["frame_id"]
+            age_s = (time.monotonic_ns() - metadata["captured_monotonic_ns"]) / 1_000_000_000
+            if not 0 <= age_s < 3:
+                return None
+            reference = {
+                key: metadata[key]
+                for key in ("camera_session", "sequence", "transport_epoch", "pipeline_revision", "frame_id", "sha256")
+            }
+            return {
+                "data": encoded if self.require_bytes else reference,
+                "source": metadata,
+                "captured_at": time.time() - age_s,
+                "captured_monotonic_ns": metadata["captured_monotonic_ns"],
+                "input_id": metadata["frame_id"],
+                "content_type": "image/jpeg" if self.require_bytes else "application/json",
+                "timestamp_source": "capture",
+            }
         data = self.client.recv(timeout_ms)
         if not isinstance(data, bytes) or not data:
             return None
@@ -84,7 +138,8 @@ class FrameSource:
         }
 
     def close(self) -> None:
-        self.client.close()
+        if self.client is not None:
+            self.client.close()
 
 
 class GoalRunner:

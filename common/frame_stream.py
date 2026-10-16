@@ -28,6 +28,15 @@ class FrameStreamClient:
         max_pending: int = 2,
         encoded: bool = False,
     ) -> None:
+        self._pipeline_client = None
+        if not encoded and addr == "tcp://127.0.0.1:5562" and topic == "camera.frame.raw":
+            from services.camera_pipeline_store import enabled
+
+            if enabled():
+                from apps.camera.pipeline_frames import PipelineFrameClient
+
+                self._pipeline_client = PipelineFrameClient(return_last=return_last, copy_frame=copy_frame)
+                return
         if zmq is None:
             raise RuntimeError("pyzmq unavailable")
         if latest and (type(max_pending) is not int or not 1 <= max_pending <= 16):
@@ -60,6 +69,9 @@ class FrameStreamClient:
         self._poller.register(self._sock, zmq.POLLIN)
 
     def close(self) -> None:
+        if getattr(self, "_pipeline_client", None) is not None:
+            self._pipeline_client.close()
+            return
         try:
             self._poller.unregister(self._sock)
         except Exception:
@@ -111,6 +123,8 @@ class FrameStreamClient:
     def recv(self, timeout_ms: int) -> np.ndarray | None:
         """Receive next frame from the stream, optionally returning cached frame on timeouts."""
 
+        if getattr(self, "_pipeline_client", None) is not None:
+            return self._pipeline_client.recv(timeout_ms)
         try:
             events = dict(self._poller.poll(timeout_ms))
         except Exception:
@@ -158,10 +172,14 @@ class FrameStreamClient:
 
     @property
     def metadata(self) -> dict:
+        if getattr(self, "_pipeline_client", None) is not None:
+            return self._pipeline_client.metadata
         return dict(self._last_metadata)
 
     @property
     def last_frame(self) -> np.ndarray | None:
+        if getattr(self, "_pipeline_client", None) is not None:
+            return self._pipeline_client.last_frame
         if self._last_frame is None:
             return None
         return self._copy(self._last_frame)

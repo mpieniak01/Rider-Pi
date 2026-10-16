@@ -521,6 +521,10 @@ def task_units(feature: FeatureDefinition, options: dict | None = None) -> tuple
         members = tools[tool]
     if not members and feature.ensure_cam and not kind:
         members = CAMERA_UNITS
+    from services.camera_pipeline_store import enabled
+
+    if CAMERA_UNITS[0] in members and enabled():
+        members = tuple(unit for unit in members if unit != "frame-distributor.service")
     return tuple(dict.fromkeys((*BASE_UNITS, *members, *feature.services)))
 
 
@@ -564,6 +568,11 @@ def catalog_payload() -> dict:
 def unit_availability(unit: str) -> dict:
     """Implementation availability, separate from installation and ARM permission."""
     meta = UNIT_CATALOG.get(unit, {})
+    if unit in {"rider-obstacle.service", "rider-obstacle.target"}:
+        from services.camera_pipeline_store import enabled, snapshot
+
+        if enabled() and snapshot()["profile"]["analysis_location"] != "local":
+            return {"start_available": False, "start_unavailable_reason": "camera_pipeline_profile_conflict"}
     if unit in {"rider-venom-navigation.service", "rider-venom-navigation.target"}:
         from apps.safety.state import read_status
 
@@ -582,6 +591,22 @@ def unit_availability(unit: str) -> dict:
 
 
 def task_availability(feature: FeatureDefinition, options: dict | None = None) -> dict:
+    from services.camera_pipeline_store import enabled, snapshot
+
+    if (
+        enabled()
+        and snapshot()["profile"]["analysis_location"] == "local"
+        and feature.name in {"s14_venom_navigation", "s15_venom_perception", "s12_venom_vision"}
+    ):
+        return {"start_available": False, "start_unavailable_reason": "camera_pipeline_local_analysis_selected"}
+    if (
+        enabled()
+        and feature.name == "s7_obstacle_module"
+        and (
+            snapshot()["profile"]["analysis_location"] != "local" or (options or {}).get("provider", "local") != "local"
+        )
+    ):
+        return {"start_available": False, "start_unavailable_reason": "camera_pipeline_profile_conflict"}
     available = compute_availability(feature.compute_tasks, legacy_goal=feature.name, options=options)
     if available is not None:
         return available

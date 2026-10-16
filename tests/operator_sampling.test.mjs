@@ -104,9 +104,9 @@ test('history uses real timestamps, preserves peaks and leaves gaps after inacti
   vm.runInContext(src, context);
   const paths = []; let current;
   const ctx = { beginPath() { current = []; paths.push(current); }, moveTo(x, y) { current.push(['move', x, y]); },
-    lineTo(x, y) { current.push(['line', x, y]); }, stroke() {} };
+    lineTo(x, y) { current.push(['line', x, y]); }, stroke() {}, fillText() {} };
   context.Overview.prototype.drawHistory.call({ axes: () => ({ ctx, x: 0, y: 0, width: 60, height: 100 }) },
-    [10, 20, 30], [40, 40, 40], [80, 90, 95], [1000, 1001, 1030]);
+    [10, 20, 30], [40, 40, 40], [80, 90, 95], [1000, 1001, 1030], 1030);
   assert.ok(Math.abs(paths[0][0][2] - 20) < 1e-9); // Peak 80%, not the one-second average.
   assert.deepEqual(Array.from(paths[1], point => point[0]), ['move', 'line', 'move']);
   assert.equal(paths[1][0][1], 30);
@@ -136,8 +136,87 @@ test('a missing timestamp breaks timed history instead of falling back to index'
     .replace(/^import .*;$/gm,'').replace('export class Overview','globalThis.Overview = class Overview');
   const context=vm.createContext({});vm.runInContext(src,context);
   const marks=[];
-  const ctx={beginPath(){},moveTo(x,y){marks.push('move');},lineTo(x,y){marks.push('line');},stroke(){}};
+  const ctx={beginPath(){},moveTo(x,y){marks.push('move');},lineTo(x,y){marks.push('line');},stroke(){},fillText(){}};
   context.Overview.prototype.drawHistory.call({axes:()=>({ctx,x:0,y:0,width:60,height:100})},
-    [10,20,30],[],[],[1000,null,1006]);
+    [10,20,30],[],[],[1000,null,1006],1006);
   assert.deepEqual(marks,['move','move']);
+});
+
+
+async function overviewFixture() {
+  const source = (await readFile(new URL('overview.js', assets), 'utf8'))
+    .replace(/^import .*;$/gm, '').replace('export class Overview', 'globalThis.Overview = class Overview');
+  const polls = [], labels = {}, paths = [];
+  let clock = 1030, fail = false;
+  const sample = { ts: 1030, hist_ts: [1000, 1001, 1030], hist_cpu: [10, 20, 30],
+    hist_mem: [40, 40, 40], hist_cpu_peak: [80, 90, 95] };
+  const ctx = { beginPath() { paths.push([]); }, moveTo(x, y) { paths.at(-1).push(['move', x, y]); },
+    lineTo(x, y) { paths.at(-1).push(['line', x, y]); }, stroke() {}, fillText() {} };
+  const context = vm.createContext({
+    poll: load => { polls.push(load); return {}; },
+    request: async () => { if (fail) throw new Error('connection lost'); return { data: sample }; },
+    setInterval: () => 1, clearInterval() {}, window: { addEventListener() {} },
+    document: { getElementById: () => null }, location: { hostname: 'fixture.invalid' },
+    nowSeconds: () => clock, presentationReady: row => Boolean(row && clock - row.ts <= 10),
+    ageOf: row => row ? Math.max(0, clock - row.ts) : null,
+    tr: pl => pl, text: (id, value) => { labels[id] = value; }
+  });
+  vm.runInContext(source, context);
+  const overview = new context.Overview({});
+  overview.axes = () => ({ ctx, x: 0, y: 0, width: 60, height: 100 });
+  return { overview, polls, labels, paths, sample, clock: value => { clock = value; }, fail: value => { fail = value; } };
+}
+
+test('a failed real poll retains timestamps and history while displaying the read failure', async () => {
+  const f = await overviewFixture();
+  await f.polls[1]();
+  assert.equal(f.overview.system, f.sample);
+  f.fail(true); f.clock(1032);
+  await f.polls[1]();
+  assert.equal(f.overview.system, f.sample);
+  assert.equal(f.overview.systemError, true);
+  assert.match(f.labels['system-age'], /błąd odczytu/);
+  assert.match(f.labels['history-status'], /Błąd odczytu — zachowana historia/);
+  assert.deepEqual(f.sample.hist_ts, [1000, 1001, 1030]);
+  assert.equal(f.paths.at(-2).at(-1)[1], 58); // Last CPU point now two seconds behind the right edge.
+  f.fail(false); f.clock(1033);
+  await f.polls[1]();
+  assert.equal(f.overview.systemError, false);
+  assert.doesNotMatch(f.labels['history-status'], /Błąd/);
+});
+
+test('history moves with time and fully expires during an outage without erasing the stored response', async () => {
+  const f = await overviewFixture();
+  f.overview.system = f.sample;
+  f.clock(1035); f.overview.renderSystem();
+  assert.equal(f.paths.at(-2).at(-1)[1], 55);
+  f.clock(1091); f.overview.renderSystem();
+  assert.equal(f.paths.at(-2).length, 0);
+  assert.equal(f.sample.hist_ts.length, 3);
+  assert.match(f.labels['history-status'], /Brak świeżych pomiarów/);
+});
+
+test('a long idle interval cannot render old samples or stretch a short new series over sixty seconds', async () => {
+  const f = await overviewFixture();
+  const history = f.overview.drawHistory([40, 30, 20], [20, 20, 20], [50, 40, 30], [600, 1029, 1030], 1030);
+  assert.equal(history.count, 2);
+  assert.equal(history.span, 1);
+  assert.deepEqual(f.paths[1].map(point => point[1]), [59, 60]);
+});
+
+test('current series reports real gaps, whereas a warm-up reports its short coverage', async () => {
+  const f = await overviewFixture();
+  f.overview.system = f.sample;
+  f.overview.renderSystem();
+  assert.match(f.labels['history-status'], /przerwa w pomiarach/);
+  f.sample.hist_ts = [1029, 1030]; f.sample.hist_cpu = [0, 25]; f.sample.hist_mem = [0, 20];
+  f.overview.renderSystem();
+  assert.match(f.labels['history-status'], /Zbieranie historii: 2 próbek · 1 s/);
+});
+
+test('untimed, future and out-of-window samples never masquerade as current history', async () => {
+  const f = await overviewFixture();
+  const history = f.overview.drawHistory([10, 20, 30, 40, 50], [], [], [900, null, 1029, 1030, 1040], 1030);
+  assert.equal(history.count, 2);
+  assert.deepEqual(f.paths[0].map(point => point[0]), ['move', 'line']);
 });

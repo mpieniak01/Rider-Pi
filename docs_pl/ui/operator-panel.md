@@ -178,3 +178,12 @@ Ekran System udostępnia sterowanie usługami od razu, gdy świeże uprawnienia 
 Karta kamery RAW na stronie głównej (/view) ma jeden przycisk Kamera ON/OFF. Steruje zadaniem podglądu kamery po kliknięciu operatora. Wejście na stronę nie włącza kamery; inni konsumenci kamery są pokazani obok stanu.
 
 Małe przyciski ON/OFF przy RAW, PROC, OBST i TRACKER sterują zadaniami pasywnymi. PROC i OBST korzystają ze wspólnego lokalnego procesu wykrywania przeszkód i przełączają się razem. TRACKER wybiera pasywną detekcję twarzy bez kontrolera ruchu. Zadania współdzielą kamerę RAW i dystrybutor klatek: wyłączenie jednego zachowuje je dla pozostałych konsumentów.
+
+## Ciągłość historii CPU / RAM
+
+Wykres obejmuje ostatnie 60 sekund według czasu Pi. Błąd pojedynczego odczytu
+nie kasuje zebranych pomiarów ani nie odmładza ich znaczników czasu. Punkty
+przesuwają się i wygasają również przy utracie połączenia; opis pokazuje błąd,
+liczbę próbek, zakres czasu i rzeczywiste przerwy. Kolektor usypia po 30 s bez
+odczytów. Po powrocie do panelu historia zbiera się ponownie bez dopisywania
+sztucznych wartości za okres przerwy.

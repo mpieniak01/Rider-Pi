@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import mimetypes
 import os
@@ -33,9 +34,49 @@ def resolve(stream: str) -> Path:
     return next((path for path in candidates if path.is_file()), default)
 
 
+def _ram_description(stream, selected, now):
+    from apps.camera.pipeline_ipc import read_frame
+
+    try:
+        item = read_frame(metadata_only=True, view="raw" if stream == "raw" else "proc")
+    except (OSError, ValueError, KeyError, TypeError):
+        item = None
+    metadata = item[1] if item is not None else None
+    age = metadata["frame_age_ms"] / 1000 if metadata else None
+    return {
+        "stream": stream,
+        "url": STREAMS[stream][2],
+        "path": str(selected),
+        "exists": metadata is not None,
+        "frame_id": metadata["frame_id"] if metadata else None,
+        "observed_at": now - age if age is not None else None,
+        "capture_at": now - age if age is not None else None,
+        "file_observed_at": None,
+        "source": "camera_pipeline_ram",
+        "provenance": "capture",
+        "stale": age is None or age > MAX_AGE_S,
+        "error": "frame_unavailable" if metadata is None else "frame_stale" if age > MAX_AGE_S else None,
+        "placeholder": False,
+        "max_age_s": MAX_AGE_S,
+        "archive": False,
+        "mtime": None,
+        "size": None,
+        "age_s": age,
+    }
+
+
 def describe(stream: str, *, path=None, now=None, archive=False, stat_result=None) -> dict:
     now = time.time() if now is None else now
-    selected = Path(path) if path is not None else resolve(stream)
+    from services.camera_pipeline_store import enabled
+
+    use_ram = enabled() and path is None and not archive and stream in {"raw", "proc", "ssd"}
+    selected = (
+        Path(path)
+        if path is not None
+        else (Path(C.SNAP_DIR) / (STREAMS[stream][1] + ".jpg") if use_ram else resolve(stream))
+    )
+    if use_ram:
+        return _ram_description(stream, selected, now)
     at = None
     size = None
     error = None
@@ -96,7 +137,59 @@ def headers(response, row):
     return response
 
 
+def _ram_response(stream):
+    from services.api_core.camera_pipeline_api import frame
+
+    result = make_response(frame(view="raw" if stream == "raw" else "proc"))
+    encoded = result.headers.pop("X-Rider-Source", None)
+    source = json.loads(encoded) if encoded else None
+    age = None
+    if source is not None:
+        # The descriptor and the body come from the same RAM read. A second
+        # metadata lookup could label this JPEG with the next frame instead.
+        measured = (time.monotonic_ns() - source["captured_monotonic_ns"]) / 1_000_000
+        reported = source["frame_age_ms"]
+        if math.isfinite(measured) and math.isfinite(reported) and measured >= 0 and reported >= 0:
+            age = max(measured, reported)
+            source = dict(source, frame_age_ms=age)
+    stale = age is None or age > MAX_AGE_S * 1000
+    row = {
+        "source": "pi-camera",
+        "stream": stream,
+        "stale": stale,
+        "placeholder": False,
+        "frame_id": source.get("frame_id") if source else None,
+    }
+    result = headers(result, row)
+    if source is not None:
+        result.headers["X-Rider-Source-Json"] = json.dumps(source, separators=(",", ":"))
+        for key, header in (
+            ("sequence", "Sequence"),
+            ("camera_session", "Camera-Session"),
+            ("transport_epoch", "Transport-Epoch"),
+            ("pipeline_revision", "Pipeline-Revision"),
+            ("captured_monotonic_ns", "Captured-Monotonic-Ns"),
+        ):
+            result.headers["X-Rider-" + header] = str(source[key])
+        if age is not None:
+            result.headers["X-Rider-Frame-Age-Ms"] = str(age)
+            result.headers["X-Rider-Frame-Age-Source"] = "capture"
+            result.headers["X-Rider-Observed-At"] = str(time.time() - age / 1000)
+        result.headers["X-Rider-Provenance"] = "capture"
+    return result
+
+
 def response(stream: str, *, path=None, archive=None):
+    from services.camera_pipeline_store import enabled
+
+    if (
+        enabled()
+        and path is None
+        and archive is None
+        and request.args.get("archive") != "1"
+        and stream in {"raw", "proc", "ssd"}
+    ):
+        return _ram_response(stream)
     archive = request.args.get("archive") == "1" if archive is None else archive
     selected = Path(path) if path is not None else resolve(stream)
     descriptor = None

@@ -11,6 +11,9 @@ User=pi
 Group=pi
 SupplementaryGroups=video input
 WorkingDirectory=/home/pi/robot
+RuntimeDirectory=rider-camera
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
 
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONNOUSERSITE=1

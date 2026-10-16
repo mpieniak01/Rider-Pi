@@ -1,8 +1,9 @@
+import { CameraPipelineControls, PipelinePreview } from './camera-pipeline.js';
 import { RemoteNavigation } from "./remote-navigation.js";
 import { CameraPower } from './camera-power.js?v=overview-vision-2';
 import { Posture } from './posture.js?v=posture-1';
 import { ManualSettings } from './manual-settings.js?v=motion-curves-14';
-import { ControlCamera } from './control-camera.js?v=control-restored-1';
+import { ControlCamera } from './control-camera.js?v=camera-pipeline-1';
 import { initI18n } from '/web/assets/i18n.js';
 import { SafetyPanel } from './safety.js?v=motion-descriptors-9';
 import { Tasks } from './tasks.js?v=compact-calibration-4b';
@@ -11,7 +12,7 @@ import { System } from './system.js?v=system-controls-1';
 import { Navigation } from './navigation.js';
 import { Calibration } from './calibration.js?v=compact-calibration-4b';
 import { Chat } from './chat.js?v=compact-calibration-4b';
-import { Overview } from './overview.js?v=extended-telemetry-1';
+import { Overview } from './overview.js?v=history-3';
 import { events } from './transport.js';
 import { fresh, catalogKnown, safetyKnown, nowSeconds } from './model.js';
 import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';
@@ -45,17 +46,31 @@ if (page === 'navigation') { new RemoteNavigation(safety); tasks = new Tasks(saf
 if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); }
 if (page === 'view') {
   overview = new Overview(safety);
+    overview.pipeline = undefined;
+    const rawImage = document.getElementById('img_cam'), procImage = document.getElementById('img_proc');
+    overview.pipelineRaw = rawImage ? new PipelinePreview(rawImage, { status: document.getElementById('leg_cam_txt') }) : null;
+    overview.pipelineProc = procImage ? new PipelinePreview(procImage, { status: document.getElementById('leg_proc_txt'), kind: 'proc' }) : null;
+    if (rawImage) new CameraPipelineControls(rawImage.closest('.c-card').querySelector('.c-thumb'), profile => {
+      overview.pipeline = profile?.compatibility_mode === 'legacy' ? undefined : profile;
+      overview.pipelineRaw?.update(profile);
+      overview.pipelineProc?.update(profile, 'proc', profile?.profile.analysis_location === 'local');
+    });
+
+
   const refreshVision = () => { overview.snap = null; overview.renderVision(); overview.poller.refresh(); overview.visionPoller.refresh(); };
   const raw = new CameraPower({ onStarted: refreshVision, onStopped: refreshVision, label: '' });
   const processed = new CameraPower({ taskName: 's7_obstacle_module', options: { provider: 'local' },
-    toggleIds: ['camera-proc-toggle', 'camera-obst-toggle'], statusIds: ['camera-proc-state', 'camera-obst-state'],
+    pipelineProcessing: true, toggleIds: ['camera-proc-toggle'], statusIds: ['camera-proc-state'],
     startId: null, stopId: null, label: '', onStarted: refreshVision, onStopped: refreshVision });
+  const obstacle = new CameraPower({ taskName: 's7_obstacle_module', options: { provider: 'local' },
+    toggleIds: ['camera-obst-toggle'], statusIds: ['camera-obst-state'], startId: null, stopId: null,
+    label: '', onStarted: refreshVision, onStopped: refreshVision });
   const tracker = new CameraPower({ taskName: 's6_tracker_module', options: { mode: 'face' },
     toggleIds: ['camera-tracker-toggle'], statusIds: ['camera-tracker-state'], startId: null, stopId: null,
     label: '', onStarted: refreshVision, onStopped: refreshVision });
-  for (const control of [raw, processed, tracker]) {
+  for (const control of [raw, processed, obstacle, tracker]) {
     const started = control.onStarted, stopped = control.onStopped;
-    const refreshControls = () => { for (const other of [raw, processed, tracker]) if (other !== control) other.poller.refresh(); };
+    const refreshControls = () => { for (const other of [raw, processed, obstacle, tracker]) if (other !== control) other.poller.refresh(); };
     control.onStarted = () => { started(); refreshControls(); };
     control.onStopped = () => { stopped(); refreshControls(); };
   }

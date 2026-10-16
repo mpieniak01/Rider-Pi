@@ -395,6 +395,15 @@ class NavigationTrial:
                 guard()
                 config = self.configure({"revision": context["revision"], "values": {"mode": "drive"}})
                 context["revision"] = config["revision"]
+                from apps.compute.stream_prepare import prepare_stream
+
+                progress("stream_prepare")
+                guard()
+                prepare_stream(
+                    timeout_s=min(2.0, max(0.01, context["deadline"] - self.clock())),
+                    max_age_ms=config.get("decision_budget_ms", 300),
+                )
+                guard()
                 progress("authority_handoff")
                 safety = guard()
                 if safety["state"] == "ARMED":

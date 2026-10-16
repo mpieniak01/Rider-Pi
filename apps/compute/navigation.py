@@ -265,8 +265,12 @@ class NavigationRunner:
         base = self.selection["url"].rstrip("/")
         if not base.endswith("/api/v1/rider/compute"):
             base += "/api/v1/rider/compute"
+        reference = payload if isinstance(payload, dict) else None
+        if reference is not None:
+            payload = json.dumps({"frame": meta, "source": reference}).encode()
+            mime = "application/json"
         req = urllib.request.Request(
-            base + "/vision/decision",
+            base + ("/vision/decision-reference" if reference is not None else "/vision/decision"),
             data=payload,
             headers={
                 "Content-Type": mime,
@@ -283,7 +287,10 @@ class NavigationRunner:
             body = response.read(16385)
             if len(body) > 16384:
                 raise ComputeError("navigation_response_bounds")
-            return json.loads(body)
+            decision = json.loads(body)
+            if reference is not None and decision.get("source") != reference:
+                raise ComputeError("navigation_reference_mismatch")
+            return decision
 
     def _startup_retry(self):
         return self.policy["mode"] == "drive" and not self.motion_started and self.clock() < self.startup_deadline
@@ -308,6 +315,13 @@ class NavigationRunner:
         if self.policy["mode"] != "observe" and not self._startup_retry():
             return False
         if isinstance(exc, urllib.error.HTTPError):
+            if exc.code == 409:
+                from apps.compute.stream_prepare import http_error_code
+
+                code = http_error_code(exc)
+                return code == "stream_frame_unavailable" or (
+                    self.policy["mode"] == "observe" and code == "vision_frame_expired"
+                )
             return exc.code in {408, 429, 500, 502, 503, 504}
         return isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
 
@@ -404,7 +418,18 @@ class NavigationRunner:
         watchdog = threading.Thread(target=self.watch, daemon=True)
         source = None
         try:
-            source = self.source_factory()
+            from apps.compute.stream_prepare import prepare_stream
+
+            prepared = prepare_stream(selection=self.selection, max_age_ms=self.policy["decision_budget_ms"])
+            source = (
+                self.source_factory(
+                    require_bytes=False,
+                    initial_source=(prepared or {}).get("latest_source"),
+                    max_age_ms=self.policy["decision_budget_ms"],
+                )
+                if self.source_factory is FrameSource
+                else self.source_factory()
+            )
             if self.policy["mode"] == "drive":
                 self.motion_publisher = self.publisher_factory()
             self.run_started_monotonic = self.clock()
@@ -434,9 +459,18 @@ class NavigationRunner:
                         raise ComputeError("navigation_camera_unavailable")
                     continue
                 self.last_frame = (frame["input_id"], frame["captured_at"])
-                if self.policy["mode"] == "drive" and len(frame["data"]) <= 512 * 1024:
+                if (
+                    self.policy["mode"] == "drive"
+                    and isinstance(frame["data"], bytes)
+                    and len(frame["data"]) <= 512 * 1024
+                ):
                     self.frame_trace.append(frame)
-                age = (time.time() - frame["captured_at"]) * 1000
+                source_mono = frame.get("captured_monotonic_ns")
+                age = (
+                    (self.clock() - source_mono / 1_000_000_000) * 1000
+                    if type(source_mono) is int
+                    else (time.time() - frame["captured_at"]) * 1000
+                )
                 if not 0 <= age < self.policy["decision_budget_ms"]:
                     if (
                         self.policy["mode"] == "observe" or self._startup_retry() or not self.fresh_frame_seen
@@ -477,12 +511,22 @@ class NavigationRunner:
                 except (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError) as exc:
                     if not self._retry_observation(exc):
                         raise
+                    detail = {}
+                    if isinstance(exc, urllib.error.HTTPError):
+                        from apps.compute.stream_prepare import http_error_code
+
+                        detail = {"http_status": exc.code, "transport_error": http_error_code(exc)}
+                    reason = detail.get("transport_error")
+                    if reason is None or reason.startswith("http_"):
+                        reason = "vision_observation_transport_retry"
                     self.last_result = {
                         "state": "unknown",
                         "action": "stop",
                         "vision_action": "stop",
-                        "reason": "vision_observation_transport_retry",
-                        "motion_reason": "vision_observation_transport_retry",
+                        "reason": reason,
+                        "motion_reason": reason,
+                        **detail,
+                        **({"source": dict(frame["data"])} if isinstance(frame["data"], dict) else {}),
                         "clear_count": 0,
                         "valid_for_ms": 0,
                         **{
@@ -544,13 +588,21 @@ class NavigationRunner:
                     self.lease.reason = "trial_completed"
                 self.lease.halt("trial_completed")
                 return 0
+            failure = exc
+            if isinstance(exc, urllib.error.HTTPError):
+                from apps.compute.stream_prepare import http_error_code
+
+                failure = ComputeError("navigation_" + http_error_code(exc), exc.code)
             logging.getLogger(__name__).warning(
-                "[vision] navigation failed type=%s reason_type=%s code=%s",
+                "[vision] navigation failed type=%s reason_type=%s code=%s http_status=%s",
                 type(exc).__name__,
                 type(getattr(exc, "reason", None)).__name__,
-                getattr(exc, "code", None),
+                getattr(failure, "code", None),
+                getattr(failure, "status", None),
             )
-            self.lease.halt(exc.code if isinstance(exc, ComputeError) else "navigation_transport_or_input_failed")
+            self.lease.halt(
+                failure.code if isinstance(failure, ComputeError) else "navigation_transport_or_input_failed"
+            )
             return 2
         finally:
             self.closed.set()

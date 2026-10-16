@@ -1,0 +1,158 @@
+{
+  "fixture_kind": "synthetic-wire-examples-not-camera-captures",
+  "contract_id": "rider.camera_pipeline",
+  "contract_version": 1,
+  "profiles": [
+    {
+      "analysis_location": "venom",
+      "local_engine": "canny",
+      "remote_transport": "snapshots"
+    },
+    {
+      "analysis_location": "local",
+      "local_engine": "canny",
+      "remote_transport": "snapshots"
+    },
+    {
+      "analysis_location": "venom",
+      "local_engine": "canny",
+      "remote_transport": "mjpeg"
+    }
+  ],
+  "configure": {
+    "contract_version": 1,
+    "request_id": "fixture-configure-1",
+    "expected_revision": 1,
+    "action": "configure",
+    "profile": {
+      "analysis_location": "venom",
+      "local_engine": "canny",
+      "remote_transport": "mjpeg"
+    }
+  },
+  "start": {
+    "contract_version": 1,
+    "request_id": "fixture-start-1",
+    "expected_revision": 2,
+    "action": "start"
+  },
+  "stop": {
+    "contract_version": 1,
+    "request_id": "fixture-stop-1",
+    "expected_revision": 2,
+    "action": "stop"
+  },
+  "stopped_status": {
+    "contract_id": "rider.camera_pipeline",
+    "contract_version": 1,
+    "ok": true,
+    "revision": 1,
+    "profile": {
+      "analysis_location": "venom",
+      "local_engine": "canny",
+      "remote_transport": "snapshots"
+    },
+    "active_profile": null,
+    "state": "stopped",
+    "operation_id": null,
+    "transport_epoch": 0,
+    "camera_session": null,
+    "capabilities": {
+      "analysis_locations": [
+        "local",
+        "venom"
+      ],
+      "local_engines": [
+        "canny"
+      ],
+      "remote_transports": [
+        "snapshots",
+        "mjpeg"
+      ],
+      "stream_drive_supported": false,
+      "local_drive_supported": false
+    },
+    "consumers": [],
+    "effective_stages": {
+      "capture": false,
+      "local_analysis": false,
+      "snapshot_write": false,
+      "frame_distributor": false,
+      "ram_delivery": false,
+      "hardware_mjpeg": false,
+      "tracker_local_analysis": false,
+      "tracker_snapshot_write": false,
+      "legacy_obstacle_analysis": false,
+      "legacy_obstacle_snapshot_write": false,
+      "remote_transport": false
+    },
+    "latest_frame": null,
+    "error": null
+  },
+  "source": {
+    "contract_version": 1,
+    "camera_session": "synthetic-camera-session",
+    "sequence": 1,
+    "transport_epoch": 2,
+    "pipeline_revision": 2,
+    "frame_id": "synthetic-camera-session-1",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "frame_age_ms": 12.5,
+    "captured_monotonic_ns": 1000000000,
+    "encoded_width": 320,
+    "encoded_height": 240,
+    "image_transform": {
+      "rotation": 270,
+      "flip_h": false,
+      "flip_v": false
+    }
+  },
+  "reference_source": {
+    "camera_session": "synthetic-camera-session",
+    "sequence": 1,
+    "transport_epoch": 2,
+    "pipeline_revision": 2,
+    "frame_id": "synthetic-camera-session-1",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "invalid_cases": [
+    {
+      "kind": "configure_missing_profile",
+      "request": {
+        "contract_version": 1,
+        "request_id": "bad-1",
+        "expected_revision": 1,
+        "action": "configure"
+      }
+    },
+    {
+      "kind": "invalid_location",
+      "profile": {
+        "analysis_location": "pc",
+        "local_engine": "canny",
+        "remote_transport": "mjpeg"
+      }
+    },
+    {
+      "kind": "zero_sequence",
+      "source": {
+        "contract_version": 1,
+        "camera_session": "synthetic-camera-session",
+        "sequence": 0,
+        "transport_epoch": 2,
+        "pipeline_revision": 2,
+        "frame_id": "synthetic-camera-session-1",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "frame_age_ms": 12.5,
+        "captured_monotonic_ns": 1000000000,
+        "encoded_width": 320,
+        "encoded_height": 240,
+        "image_transform": {
+          "rotation": 270,
+          "flip_h": false,
+          "flip_v": false
+        }
+      }
+    }
+  ]
+}

@@ -6,7 +6,7 @@ import test from 'node:test';
 const assets = new URL('../web/assets/operator/', import.meta.url);
 const model = await import('data:text/javascript;base64,' + Buffer.from(await readFile(new URL('model.js', assets))).toString('base64'));
 const source = (await readFile(new URL('camera-power.js', assets), 'utf8')).replace(/^import .*;$/gm, '').replace('export class CameraPower', 'globalThis.CameraPower = class CameraPower');
-function fixture(patch = {}, { stale = false, rejected = false, others = [], control = {}, activity = null } = {}) {
+function fixture(patch = {}, { stale = false, rejected = false, others = [], control = {}, activity = null, pipeline = null, configureRejected = false } = {}) {
   const now = Date.now() / 1000;
   const task = { name: 's2_camera_preview', can_move: false, installed: true, observed_at: now,
     state: 'stopped', requested: false, ready: false, ...patch };
@@ -21,6 +21,18 @@ function fixture(patch = {}, { stale = false, rejected = false, others = [], con
     poll: () => ({ refresh() {}, stop() {} }),
     request: async (path, options = {}) => {
       calls.push({ path, ...options });
+      if (path === '/api/resource/camera/pipeline' && pipeline) {
+        if (options.method === 'POST') {
+          if (options.body.action === 'configure') {
+            if (configureRejected) return {data:{ok:false,error:'camera_pipeline_revision_conflict'}};
+            pipeline.profile = options.body.profile; pipeline.revision++;
+          }
+          if (options.body.action === 'start') pipeline.state = 'active';
+          if (options.body.action === 'stop') pipeline.state = 'stopped';
+        }
+        return {data:pipeline};
+      }
+
       if (options.method === 'POST') {
         if (rejected) throw new Error('resource_conflict');
         task.requested = options.body.enabled; task.ready = task.requested;
@@ -113,4 +125,45 @@ test('processor OFF is not reported as ON because shared camera is running', asy
   await f.power.load();
   assert.equal(f.buttons.get('camera-proc-toggle').textContent,'OFF');
   assert.match(f.messages.get('camera-proc-state'),/Przetwarzanie: OFF/);
+});
+
+const pipelineFixture = JSON.parse(await readFile(new URL('../config/contracts/camera_pipeline_v1.examples.json',import.meta.url),'utf8')).stopped_status;
+test('HTTP LAN with no randomUUID: PROC switches the shared profile and only starts passive S2', async () => {
+  const pipeline=structuredClone(pipelineFixture);
+  const f=fixture({name:'s7_obstacle_module'}, {pipeline,
+    control:{taskName:'s7_obstacle_module',pipelineProcessing:true,toggleIds:['camera-proc-toggle'],statusIds:['camera-proc-state']}});
+  await f.power.load();await f.power.change(true);
+  assert.equal(f.errors.length,0);
+  const posts=f.calls.filter(row=>row.method==='POST');
+  assert.deepEqual(posts.map(row=>row.path),['/api/resource/camera/pipeline','/api/resource/camera/pipeline']);
+  assert.equal(posts[0].body.action,'configure');assert.equal(posts[0].body.profile.analysis_location,'local');
+  assert.equal(posts[1].body.action,'start');
+  assert.ok(posts.every(row=>/^[A-Za-z0-9_-]{1,128}$/.test(row.body.request_id)));
+});
+test('OBST starts its real task after local selection and OFF preserves the shared producer', async () => {
+  const pipeline=structuredClone(pipelineFixture);
+  const f=fixture({name:'s7_obstacle_module'}, {pipeline,
+    control:{taskName:'s7_obstacle_module',toggleIds:['camera-obst-toggle'],statusIds:['camera-obst-state'],options:{provider:'local'}}});
+  await f.power.load();await f.power.change(true);await f.power.change(false);
+  assert.equal(f.errors.length,0);
+  const posts=f.calls.filter(row=>row.method==='POST');
+  assert.deepEqual(posts.map(row=>row.path),['/api/resource/camera/pipeline','/api/logic/feature/s7_obstacle_module','/api/logic/feature/s7_obstacle_module']);
+  assert.deepEqual(posts.slice(1).map(row=>row.body.enabled),[true,false]);
+  assert.ok(posts.every(row=>row.body.action!=='stop'));
+});
+
+
+test('rejected local configuration starts neither shared preview nor OBST task', async () => {
+  for (const pipelineProcessing of [true, false]) {
+    const pipeline=structuredClone(pipelineFixture);
+    const f=fixture({name:'s7_obstacle_module'}, {pipeline,configureRejected:true,
+      control:{taskName:'s7_obstacle_module',pipelineProcessing}});
+    await f.power.change(true);
+    const posts=f.calls.filter(row=>row.method==='POST');
+    assert.equal(posts.length,1);
+    assert.equal(posts[0].body.action,'configure');
+    assert.deepEqual(f.count(),{started:0,stopped:0});
+    assert.equal(f.errors[0].message,'camera_pipeline_revision_conflict');
+    assert.equal(pipeline.profile.analysis_location,'venom');
+  }
 });

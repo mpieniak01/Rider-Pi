@@ -58,6 +58,18 @@ apply a global display or boot rotation when changing one screen.
 
 ### 3) Vision / Camera
 
+#### Camera pipeline ownership and RAM transport
+
+The existing camera-capture@raw.service remains the only capture owner and keeps
+its camera flock. After an explicit pipeline selection it runs the shared producer;
+local Canny/SSD/TFLite process its raw array before JPEG. Native Venom MJPEG uses
+the hardware encoder without legacy image writes or frame-distributor polling.
+The service owns /run/rider-camera (mode 0700), with a bounded Unix latest-frame
+socket; the HTTP API reads this socket and never opens a camera. No new TCP port
+or autonomous consumer service is added. Existing snapshot startup remains the
+default when the profile file is absent. See [the wire contract](docs/CAMERA_PIPELINE_V1.md).
+
+
 - **Vision/Camera** — modules in `apps/camera/*` and `apps/vision/*`.
   - Image source (libcamera), detectors (HOG/SSD/TFLite).
   - Results saved to `snapshots/` / `data/` (last frame, raw captures) and publish events (e.g., `vision.person`, `vision.obstacle`).

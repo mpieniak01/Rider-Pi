@@ -1,0 +1,466 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rider.camera_pipeline.v1",
+  "title": "Rider camera pipeline wire contract v1",
+  "type": "object",
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "properties": {
+        "analysis_location": {
+          "enum": [
+            "local",
+            "venom"
+          ]
+        },
+        "local_engine": {
+          "enum": [
+            "canny",
+            "ssd",
+            "tflite"
+          ]
+        },
+        "remote_transport": {
+          "enum": [
+            "snapshots",
+            "mjpeg"
+          ]
+        }
+      },
+      "required": [
+        "analysis_location",
+        "local_engine",
+        "remote_transport"
+      ],
+      "additionalProperties": false
+    },
+    "image_transform": {
+      "type": "object",
+      "properties": {
+        "rotation": {
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ]
+        },
+        "flip_h": {
+          "type": "boolean"
+        },
+        "flip_v": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "rotation",
+        "flip_h",
+        "flip_v"
+      ],
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": 1
+        },
+        "camera_session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "transport_epoch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pipeline_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "frame_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "frame_age_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "captured_monotonic_ns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "encoded_width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "encoded_height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "image_transform": {
+          "$ref": "#/$defs/image_transform"
+        }
+      },
+      "required": [
+        "contract_version",
+        "camera_session",
+        "sequence",
+        "transport_epoch",
+        "pipeline_revision",
+        "frame_id",
+        "sha256",
+        "frame_age_ms",
+        "captured_monotonic_ns",
+        "encoded_width",
+        "encoded_height",
+        "image_transform"
+      ],
+      "additionalProperties": false
+    },
+    "reference_source": {
+      "type": "object",
+      "properties": {
+        "camera_session": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "transport_epoch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pipeline_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "frame_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "not": {
+            "pattern": "[\\r\\n]"
+          }
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "camera_session",
+        "sequence",
+        "transport_epoch",
+        "pipeline_revision",
+        "frame_id",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "analysis_locations": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "local",
+              "venom"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "local_engines": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "canny",
+              "ssd",
+              "tflite"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "remote_transports": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "snapshots",
+              "mjpeg"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "stream_drive_supported": {
+          "type": "boolean"
+        },
+        "local_drive_supported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "analysis_locations",
+        "local_engines",
+        "remote_transports",
+        "stream_drive_supported",
+        "local_drive_supported"
+      ],
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "object",
+      "properties": {
+        "contract_id": {
+          "const": "rider.camera_pipeline"
+        },
+        "contract_version": {
+          "const": 1
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "profile": {
+          "$ref": "#/$defs/profile"
+        },
+        "active_profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/profile"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "stopped",
+            "stopping",
+            "starting",
+            "waiting_frame",
+            "active",
+            "failed"
+          ]
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "transport_epoch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "camera_session": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "not": {
+                "pattern": "[\\r\\n]"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "consumers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "uniqueItems": true
+        },
+        "effective_stages": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "latest_frame": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "contract_id",
+        "contract_version",
+        "ok",
+        "revision",
+        "profile",
+        "active_profile",
+        "state",
+        "operation_id",
+        "transport_epoch",
+        "camera_session",
+        "capabilities",
+        "consumers",
+        "effective_stages",
+        "latest_frame",
+        "error"
+      ],
+      "additionalProperties": true
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "action": {
+          "enum": [
+            "configure",
+            "start",
+            "stop"
+          ]
+        },
+        "profile": {
+          "$ref": "#/$defs/profile"
+        }
+      },
+      "required": [
+        "contract_version",
+        "request_id",
+        "expected_revision",
+        "action"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "configure"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "profile"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "profile"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "reference": {
+      "type": "object",
+      "properties": {
+        "frame": {
+          "type": "object",
+          "required": [
+            "protocol_version",
+            "run_id",
+            "frame_id",
+            "sequence",
+            "config_revision",
+            "age_ms",
+            "deadline_ms",
+            "mode",
+            "corridor",
+            "perception"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/reference_source"
+        }
+      },
+      "required": [
+        "frame",
+        "source"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "x-endpoints": {
+    "pi_status": "/api/resource/camera/pipeline",
+    "pi_stream": "/api/resource/camera/stream.mjpg",
+    "pi_frame": "/api/resource/camera/frame",
+    "module_status": "/api/v1/rider/camera/pipeline",
+    "module_stream": "/api/v1/rider/camera/stream/{raw|venom}",
+    "compute_reference": "/api/v1/rider/compute/vision/decision-reference",
+    "compute_prepare": "/api/v1/rider/compute/vision/status?stream=true"
+  },
+  "$ref": "#/$defs/status"
+}

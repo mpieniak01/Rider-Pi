@@ -13,6 +13,14 @@ class Contract:
 
 
 _GROUPS = {
+    "rider.camera_pipeline": (
+        1,
+        (
+            "/api/resource/camera/pipeline",
+            "/api/resource/camera/frame",
+            "/api/resource/camera/stream.mjpg",
+        ),
+    ),
     "rider.audio": (1, ('/api/voice/playback', '/api/voice/playback/cancel')),
     "rider.navigation_loop": (1, ("/api/navigation/config", "/api/navigation/status", "/api/navigation/trial")),
     "rider.compute": (1, ("/api/compute/config", "/api/compute/status", "/api/compute/tasks/<task>")),

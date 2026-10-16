@@ -1,6 +1,6 @@
 """Registration and audio cleanup for the optional Venom integration endpoints."""
 
-from . import agent_control_api, compute_api, navigation_api, playback_api
+from . import agent_control_api, camera_pipeline_api, compute_api, navigation_api, playback_api
 
 
 def register_control_audio(app):
@@ -9,6 +9,7 @@ def register_control_audio(app):
 
 
 def register_compute(app):
+    camera_pipeline_api.register(app)
     app.add_url_rule(
         "/api/navigation/trial",
         endpoint="navigation_trial_start",

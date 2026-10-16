@@ -262,8 +262,14 @@ def tracking_loop() -> None:
     fps_frame_count = 0
     fps_value = 0.0
 
+    from apps.vision.tracking_source import TrackingSourceGuard
+    from services.camera_pipeline_store import enabled as pipeline_enabled
+
+    shared_pipeline, source_guard = pipeline_enabled(), TrackingSourceGuard()
     frame_stream = (
-        FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True) if TRACKER_USE_FRAME_STREAM else None
+        FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True)
+        if TRACKER_USE_FRAME_STREAM or shared_pipeline
+        else None
     )
 
     while True:
@@ -283,6 +289,10 @@ def tracking_loop() -> None:
             frame = None
             if frame_stream is not None:
                 frame = frame_stream.recv(int(frame_interval * 1000))
+            source_metadata = frame_stream.metadata if frame_stream is not None else {}
+            if shared_pipeline and (frame is None or not source_guard.admit(source_metadata)):
+                time.sleep(0.02)
+                continue
             if frame is None:
                 frame = cv2.imread(LAST_FRAME_PATH)
                 if frame is None:
@@ -352,6 +362,8 @@ def tracking_loop() -> None:
             else:
                 print(f"[tracker] Unknown mode '{mode}'", flush=True)
 
+            if shared_pipeline and not source_guard.fresh(source_metadata):
+                continue
             annotated_frame = frame.copy()
 
             # FPS overlay
@@ -417,11 +429,19 @@ def tracking_loop() -> None:
             )
 
             if offset_x is not None and can_publish and (not pc_mode or pc_fallback):
+                observed_at = source_guard.source_time(source_metadata) if shared_pipeline else now
+                if observed_at is None:
+                    continue
                 payload = {
                     "offset_x": round(offset_x, 3),
                     "mode": mode.lower(),
-                    "ts": now,
+                    "ts": observed_at,
                     "source": "pc-fallback" if pc_mode else "local",
+                    **(
+                        {"frame_id": source_metadata["frame_id"], "camera_session": source_metadata["camera_session"]}
+                        if shared_pipeline
+                        else {}
+                    ),
                 }
                 pub("vision.tracking.offset", payload)
                 pub(
@@ -429,8 +449,16 @@ def tracking_loop() -> None:
                     {
                         "mode": mode.lower(),
                         "target": {"x": payload["offset_x"], "y": 0.0},
-                        "ts": now,
+                        "ts": observed_at,
                         "source": payload["source"],
+                        **(
+                            {
+                                "frame_id": source_metadata["frame_id"],
+                                "camera_session": source_metadata["camera_session"],
+                            }
+                            if shared_pipeline
+                            else {}
+                        ),
                     },
                 )
                 last_pub_ts = now
@@ -461,6 +489,8 @@ def tracking_loop() -> None:
             time.sleep(0.1)
 
     try:
+        if frame_stream is not None:
+            frame_stream.close()
         if hasattr(face_detector, "close"):
             face_detector.close()
         if hasattr(hand_detector, "close"):

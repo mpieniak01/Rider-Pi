@@ -46,6 +46,7 @@ VISION_LOOP_PATHS = frozenset(
         "rider-venom-navigation.target",
         "rider-venom-perception.service",
         "rider-venom-perception.target",
+        "camera-capture@.service",
     )
 )
 
@@ -202,7 +203,10 @@ def preview(repo, record_path, request):
     """Check a Git bundle and activate a reversible preview commit."""
     check_clean(repo)
     previous = read_record(record_path)
-    restart_required = request["restart_api"] or bool(previous and previous["restart_api"])
+    static_only = request.get("static_only") is True
+    if static_only and any(request.get(key) for key in ("restart_api", "restart_motion", "resource_scope")):
+        raise RuntimeError("Static-only preview cannot request runtime restarts or resource updates.")
+    restart_required = not static_only and (request["restart_api"] or bool(previous and previous["restart_api"]))
     restart_on_rollback = restart_required or bool(previous and previous["restart_api"])
     if restart_required:
         check_api_active()
@@ -247,6 +251,11 @@ def preview(repo, record_path, request):
         request.get("vision_loop_scope", False),
     )
     paths = changed_paths(repo, transfer_base, target)
+    if static_only and any(
+        not path.startswith(("web/", "docs/", "docs_pl/", "tests/")) and path != "scripts/dev_pi-deploy.py"
+        for path in paths
+    ):
+        raise RuntimeError("Static-only preview contains runtime files; use the regular deployment path.")
     check_paths(
         paths,
         request.get("restart_motion", False),
@@ -475,7 +484,7 @@ def main():
         command.add_argument(
             "--vision-loop-scope",
             action="store_true",
-            help="Allow only the four declared opt-in vision-loop unit files; does not enable them",
+            help="Allow only the declared vision-loop units and camera RAM directory unit; does not enable them",
         )
         command.add_argument(
             "--resource-scope",
@@ -489,6 +498,11 @@ def main():
         )
         if action == "preview":
             command.add_argument("--base", default="origin/main")
+            command.add_argument(
+                "--static-only",
+                action="store_true",
+                help="Update only web/docs/tests/deploy helper, without API restart; retain rollback restart intent",
+            )
         if action == "release":
             command.add_argument("--commit", required=True, help="Full SHA of merged main")
     args = parser.parse_args()
@@ -500,6 +514,7 @@ def main():
         "resource_scope": args.resource_scope,
         "vision_loop_scope": args.vision_loop_scope,
         "restart_motion": args.restart_motion,
+        "static_only": getattr(args, "static_only", False),
     }
     bundle_bytes = b""
     if args.action == "preview":

@@ -1,5 +1,6 @@
 """Deterministic replay of serial Pi costs; never open a real camera or BUS."""
 
+import io
 import json
 
 import pytest
@@ -436,3 +437,126 @@ def test_pending_steer_capture_waits_for_lease_not_submission_duration(isolated,
     assert commands[-1]["decision_deadline_monotonic"] == deadline
     assert runner.turn_capture_after == deadline + 0.1
     assert runner.lease.deadline == deadline
+
+
+@pytest.mark.parametrize(
+    "response_age_ms,changed_source,expected_moves",
+    [
+        (247.29, None, 2),
+        (300.0, None, 1),
+        (300.01, None, 1),
+        (247.29, "transport_epoch", 1),
+        (247.29, "sha256", 1),
+    ],
+)
+def test_native_reference_recorded_delay_retains_original_capture_deadline(
+    isolated, monkeypatch, response_age_ms, changed_source, expected_moves
+):
+    # Real native trial: 46.88 ms before POST + 200.41 ms RTT = 247.29 ms.
+    # The corrected host reply is usable, but Pi still permits only 52.71 ms.
+    from apps.compute import stream_prepare
+
+    _, _, _, _, commands = isolated
+    now_ns = [1_000_000_000]
+    captures, requests = [], []
+    monkeypatch.setattr(module.time, "time", lambda: now_ns[0] / 1_000_000_000)
+    monkeypatch.setattr(module.threading, "Thread", NoWatchdogThread)
+    # Transport preparation is tested separately; this replay opens no socket.
+    monkeypatch.setattr(stream_prepare, "prepare_stream", lambda **_kwargs: None)
+
+    class Source:
+        count = 0
+
+        def recv(self, _timeout):
+            self.count += 1
+            if self.count > 2:
+                runner.closed.set()
+                return None
+            age_ns = 63_420_000 if self.count == 1 else 46_880_000
+            captured_ns = now_ns[0] - age_ns
+            captures.append(captured_ns)
+            sequence = 78 if self.count == 1 else 80
+            source = {
+                "camera_session": "recorded-native-session",
+                "sequence": sequence,
+                "transport_epoch": 39,
+                "pipeline_revision": 28,
+                "frame_id": f"recorded-native-session-{sequence}",
+                "sha256": ("b" if self.count == 1 else "c") * 64,
+            }
+            return {
+                "input_id": source["frame_id"],
+                "captured_at": captured_ns / 1_000_000_000,
+                "captured_monotonic_ns": captured_ns,
+                "content_type": "application/json",
+                "data": source,
+            }
+
+        def close(self):
+            pass
+
+    class Opener:
+        def open(self, req, *, timeout):
+            assert req.full_url.endswith("/vision/decision-reference")
+            assert req.get_method() == "POST"
+            assert timeout == pytest.approx(0.3)
+            payload = json.loads(req.data)
+            meta, source = payload["frame"], payload["source"]
+            assert meta["frame_id"] != source["frame_id"]
+            assert meta["sequence"] != source["sequence"]
+            assert meta["deadline_ms"] == 300
+            if meta["sequence"] == 1:
+                # The preceding real GO had age 142.56 ms and a 121 ms permit.
+                now_ns[0] += 79_140_000
+            else:
+                assert meta["age_ms"] == pytest.approx(46.88)
+                now_ns[0] = captures[-1] + round(response_age_ms * 1_000_000)
+            requests.append(payload)
+            echoed_source = dict(source)
+            if meta["sequence"] == 2 and changed_source:
+                echoed_source[changed_source] = 40 if changed_source == "transport_epoch" else "d" * 64
+            return io.BytesIO(
+                json.dumps(
+                    {
+                        **{
+                            key: meta[key]
+                            for key in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")
+                        },
+                        "source": echoed_source,
+                        "action": "go",
+                        "state": "clear",
+                        "reason": "depth_plane_candidate",
+                        "clear_count": 4,
+                        "valid_for_ms": 121 if meta["sequence"] == 1 else 200,
+                        "model_sha256": "a" * 64,
+                    }
+                ).encode()
+            )
+
+    monkeypatch.setattr(module.urllib.request, "build_opener", lambda *_args: Opener())
+    runner = module.NavigationRunner(source_factory=Source, clock=lambda: now_ns[0] / 1_000_000_000)
+    assert runner.run() == (2 if changed_source else 0)
+    assert len(requests) == 2
+    moves = [row for row in commands if row["action"] == "move" and row["vx"] > 0]
+    assert len(moves) == expected_moves
+    assert commands[-1]["action"] == "stop"
+    assert not any(row["action"] == "arm" for row in commands)
+    assert moves[0]["duration"] == pytest.approx(0.121)
+    if changed_source:
+        assert runner.lease.reason == "navigation_reference_mismatch"
+        return
+    decision = next(row for row in runner.decision_trace if (row["decision"] or {}).get("sequence") == 2)
+    assert decision["response_age_ms"] == pytest.approx(response_age_ms)
+    if response_age_ms < 300:
+        assert decision["request_roundtrip_ms"] == pytest.approx(200.41)
+        assert decision["decision"]["valid_for_ms"] == 200
+        assert not decision["latched"] and not decision["paused"]
+        assert decision["permit_remaining_ms"] == pytest.approx(52.71)
+        move = moves[-1]
+        assert move["duration"] == pytest.approx(0.05271)
+        assert move["decision_deadline_monotonic"] == pytest.approx(captures[-1] / 1_000_000_000 + 0.3)
+        assert move["ts"] + move["duration"] == pytest.approx(move["decision_deadline_monotonic"])
+    else:
+        # Even a matching, positive host permit cannot renew an expired capture.
+        assert decision["latched"] and decision["permit_remaining_ms"] == 0
+        assert runner.lease.reason == "decision_invalid_or_expired"

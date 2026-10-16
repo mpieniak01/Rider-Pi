@@ -105,14 +105,14 @@ def snap_info() -> Response:
         value = {
             "exists": row["exists"],
             "path": row["path"],
-            "source": "filesystem",
-            "provenance": "file_mtime",
+            "source": row["source"],
+            "provenance": row["provenance"],
             "stale": row["stale"],
             "error": row["error"],
         }
         if row["exists"]:
             digest = None
-            if request.args.get("light") != "1":
+            if request.args.get("light") != "1" and row["source"] == "filesystem":
                 try:
                     with open(row["path"], "rb") as stream:
                         digest = hashlib.md5(stream.read()).hexdigest()
