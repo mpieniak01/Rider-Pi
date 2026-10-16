@@ -91,3 +91,22 @@ Testy automatyczne używają fixture i IPC bez sprzętu. Odbiór kamery na Pi je
 osobnym sprawdzeniem bez ARM i ruchu. Zielony overlay, ACK enkodera i test mocka
 nie są dowodem fizycznej jazdy. Poprzednia rewizja pozostaje dostępna przez
 make pi-rollback; po powrocie trzeba też przeładować zmienioną jednostkę.
+
+## Wydanie i powrót do klatek
+
+Zmiany tworzą parę: Rider-Pi #280 oraz venom-module-rider #18. Rdzeń Venom korzysta
+z obecnego interfejsu modułów i nie wymaga zmiany kodu. Domyślne ustawienia nowej
+instalacji nadal używają klatek i DA2; MJPEG jest opcją wymagającą osobnego odbioru.
+Brak plików modeli SSD/TFLite jest pokazywany w capabilities, bez podstawiania
+innego silnika.
+
+Przygotowanie MJPEG najpierw czeka na świeżą klatkę RAM bieżącej sesji i rewizji,
+a następnie sprawdza gotowość odbiorcy Venom. Zimny producent zwraca ready=false;
+rzeczywista awaria pozostaje błędem. Odbiór odpowiedzi nie odnawia wieku źródła.
+Do wycofania transportu zatrzymaj pętlę i kamerę, wybierz Venom + Klatki w jednym
+z paneli i uruchom obserwację. Sam zapis profilu nigdy nie wznawia jazdy.
+
+Picamera2 używa czasu przechwycenia sensora. Backend OpenCV zgłasza ograniczenie:
+czas początku odczytu nie dowodzi wieku obrazu w buforze sterownika. Klient
+wiąże źródło z odczytem stanu Pi i dolicza cały czas zapytania; nie odejmuje
+zegarów różnych urządzeń.

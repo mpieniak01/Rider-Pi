@@ -60,9 +60,15 @@ horizontal/vertical flips. It is applied once before inference and display. Lega
 snapshots already in display orientation declare zero rotation. No software JPEG
 re-encode is required on Pi solely to rotate a native stream.
 
-Pi computes frame_age_ms at send using its capture monotonic clock. Venom adds only
+Pi computes frame_age_ms at send using its capture monotonic clock. Picamera2
+snapshots and hardware MJPEG use sensor capture time. An OpenCV-only reader uses
+the beginning of its blocking read and explicitly reports unknown driver-buffer
+age in status; this does not claim a measured sensor exposure timestamp. Venom adds only
 elapsed time measured on its own clock; it never subtracts clocks from different
-hosts. Receipt, file mtime, reconnect, overlay rendering and cache hits do not renew
+hosts. A Pi-status capture/age anchor and the full request round trip provide a
+conservative age bound for queued transport, both on Venom and in the browser.
+Missing or mismatched anchors cannot be presented as fresh native input.
+Receipt, file mtime, reconnect, overlay rendering and cache hits do not renew
 source freshness. Missing/stale source, changed epoch/session or timeout yields
 unknown/STOP under the existing policy. Display freshness and motion deadline are
 separate: this change does not extend the Pi motion lease or 300 ms deadline.
@@ -77,8 +83,11 @@ headers. Processed parts carry X-Rider-Analysis-Json tied to that same source.
 A browser uses streaming OR snapshot polling for a selected preview, cancels the
 old reader on changes and keeps the original age on decode, freeze or disconnect.
 
-Before a native observation/trial, Pi calls
-`/compute/vision/status?stream=true` to prepare ingest without motion or inference.
+Before a native observation/trial, Pi waits for the current session's first fresh
+RAM source within a bounded preparation operation, then calls
+`/compute/vision/status?stream=true` to prepare ingest without motion or inference. A cold producer reports ready=false; an actual
+failed producer remains an error. Preparation forces a current profile read, so a
+previous session cannot satisfy the handshake.
 The returned stream.ready/latest_source identifies a source already available on
 Venom. Pi checks its own session/epoch/revision and original capture age. Preparation
 happens before any existing trial authority handoff.
@@ -91,6 +100,21 @@ shared for the exact source and model/policy input, while every run still evalua
 its own sequence, clear count and permission gates. Pi verifies returned evidence
 and final capture-to-response age before actuation. A lost Venom link never
 activates a local fallback or reuses an old permission.
+
+## Paired rollout
+
+The implementation is delivered together in [Rider-Pi #280](https://github.com/mpieniak01/Rider-Pi/pull/280)
+and [Venom Rider module #18](https://github.com/mpieniak01/venom-module-rider/pull/18).
+Venom core uses its existing optional-module interface; no core code change is required.
+Update the Pi runtime and module as a pair, then verify source identity and passive
+observation before operator motion acceptance. Snapshots and DA2 remain the default
+for a previously unconfigured installation. Native MJPEG is an opt-in transport;
+short tests and lower CPU alone do not establish equivalent obstacle accuracy.
+
+For a transport rollback, stop the loop and camera, select Venom + snapshots in
+either panel, and start passive observation. This preserves the existing model and
+motion limits. Configuration never restores a previous autonomous drive. Missing
+SSD/TFLite assets remain unavailable capabilities rather than an installed fallback.
 
 ## Compatibility and access
 
