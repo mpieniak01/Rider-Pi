@@ -98,8 +98,12 @@ transport_epoch, pipeline_revision, frame_id, sha256). Venom resolves the exact
 bounded, short-lived source; no JPEG is uploaded again. A model result may be
 shared for the exact source and model/policy input, while every run still evaluates
 its own sequence, clear count and permission gates. Pi verifies returned evidence
-and final capture-to-response age before actuation. A lost Venom link never
-activates a local fallback or reuses an old permission.
+and final capture-to-response age before actuation. The VisionFrame frame_id and
+sequence identify the request and its run; source.frame_id and source.sequence
+identify the camera capture. They need not be equal. Preview correlates all six
+source reference fields with the image headers, while preserving request/run
+fields for Pi's response checks. A lost Venom link never activates a local
+fallback or reuses an old permission.
 
 ## Paired rollout
 

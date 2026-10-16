@@ -110,3 +110,9 @@ Picamera2 używa czasu przechwycenia sensora. Backend OpenCV zgłasza ograniczen
 czas początku odczytu nie dowodzi wieku obrazu w buforze sterownika. Klient
 wiąże źródło z odczytem stanu Pi i dolicza cały czas zapytania; nie odejmuje
 zegarów różnych urządzeń.
+
+Identyfikatory żądania pętli (VisionFrame.frame_id/sequence) nie są identyfikatorami
+sensora. Źródło kamery ma własne source.frame_id/sequence i sześciopolową referencję.
+Podgląd porównuje wszystkie pola referencji z obrazem; odpowiedź do Pi zachowuje
+licznik i identyfikator żądania. Spóźniona klatka w obserwacji daje UNKNOWN/STOP
+i jest odrzucana; następna ocena wymaga nowego źródła. Jazda zachowuje STOP.
