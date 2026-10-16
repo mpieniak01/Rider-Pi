@@ -17,12 +17,17 @@ from services.camera_pipeline_store import native, snapshot
 
 def http_error_code(error):
     """Only stable domain identifiers enter logs; never URLs, tokens or raw bodies."""
-    cached = getattr(error, "rider_domain_code", None)
+    fields = vars(error)
+    cached = fields.get("rider_domain_code")
     if cached is not None:
         return cached
     code = "http_" + str(error.code)
+    stream = fields.get("fp")
+    if stream is None:
+        fields["rider_domain_code"] = code
+        return code
     try:
-        body = error.read(4097)
+        body = stream.read(4097)
         payload = json.loads(body) if len(body) <= 4096 else {}
         detail = payload.get("detail", payload.get("error", {})) if isinstance(payload, dict) else {}
         candidate = detail.get("code") if isinstance(detail, dict) else detail
@@ -32,8 +37,8 @@ def http_error_code(error):
         pass
     finally:
         with contextlib.suppress(OSError):
-            error.close()
-    error.rider_domain_code = code
+            stream.close()
+    fields["rider_domain_code"] = code
     return code
 
 
