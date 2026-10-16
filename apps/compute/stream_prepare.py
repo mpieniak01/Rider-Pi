@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -96,14 +97,31 @@ def prepare_stream(
                 "Authorization": "Bearer " + selection["token"],
             },
         )
+        remaining = deadline - clock()
+        if remaining <= 0:
+            break
         try:
-            with opener.open(req, timeout=min(0.5, max(0.01, deadline - clock()))) as response:
+            with opener.open(req, timeout=remaining) as response:
+                # Header/connection time belongs to this same preparation budget.
+                remaining = deadline - clock()
+                if remaining <= 0:
+                    raise ComputeError("navigation_stream_prepare_timeout", 504)
+                raw = getattr(getattr(response, "fp", None), "raw", None)
+                connection = getattr(raw, "_sock", None)
+                if connection is not None:
+                    connection.settimeout(remaining)
                 body = response.read(16385)
                 if len(body) > 16384:
                     raise ComputeError("navigation_stream_status_bounds")
                 status = json.loads(body)
         except urllib.error.HTTPError as exc:
             raise ComputeError("navigation_stream_prepare_" + http_error_code(exc), exc.code) from None
+        except (TimeoutError, socket.timeout):
+            raise ComputeError("navigation_stream_prepare_timeout", 504) from None
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+                raise ComputeError("navigation_stream_prepare_timeout", 504) from None
+            raise
         if clock() >= deadline:
             break
         if snapshot() != config:
@@ -119,4 +137,4 @@ def prepare_stream(
                 if type(captured) is int and 0 <= (time.monotonic_ns() - captured) / 1_000_000 < max_age_ms:
                     return stream
         sleep(min(0.05, max(0, deadline - clock())))
-    raise ComputeError("navigation_stream_prepare_timeout")
+    raise ComputeError("navigation_stream_prepare_timeout", 504)

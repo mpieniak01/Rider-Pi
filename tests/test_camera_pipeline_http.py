@@ -170,3 +170,35 @@ def test_full_app_legacy_json_keeps_domain_response_and_never_arms(client):
     assert response.status_code == 200 and response.get_json()["ok"] is True
     assert "meta" not in response.get_json() and response.get_json()["state"] == "starting"
     assert all("motion" not in unit and "navigation" not in unit for unit, _ in calls)
+
+
+def test_full_app_pipeline_get_is_available_while_real_feature_start_holds_transaction(client, monkeypatch):
+    import threading
+
+    test_client, manager, _ = client
+    starting, continue_start, finished = threading.Event(), threading.Event(), threading.Event()
+    original, results = manager.runner, []
+
+    def delayed(unit, action):
+        if unit == "camera-capture@raw.service" and action == "start":
+            starting.set()
+            assert continue_start.wait(2)
+        return original(unit, action)
+
+    def start():
+        with app.test_client() as other:
+            results.append(post(other, command("start", "concurrent-start")))
+        finished.set()
+
+    monkeypatch.setattr(manager, "runner", delayed)
+    thread = threading.Thread(target=start)
+    thread.start()
+    try:
+        assert starting.wait(1)
+        response = test_client.get(PATH, headers=ACCEPT)
+        assert response.status_code == 200 and response.get_json()["meta"]["contract_id"] == "rider.camera_pipeline"
+        assert not finished.is_set()
+    finally:
+        continue_start.set()
+        thread.join(3)
+    assert finished.is_set() and results[0].status_code == 200
