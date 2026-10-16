@@ -78,14 +78,16 @@ class CameraPipeline:
     def status(self, *, operation_id=None, error=None):
         config, runtime = store.snapshot(), _runtime()
         profile, state = config["profile"], runtime.get("state", "stopped")
+        legacy = not store.enabled()
         active = state == "active"
-        use_native = store.native(profile)
+        use_native = store.native(profile) and not legacy
         consumers = list(self.manager.resource_consumers().get("camera", []))
-        if not store.enabled():
-            # Compatibility mode remains observed through the existing source.
+        if legacy:
+            # Observe the legacy unit directly; RAM status does not exist yet.
             row = self.manager._status(self.manager.PREVIEW_UNIT)
-            if row.get("active") == "active":
-                state = "waiting_frame"
+            active = row.get("active") == "active" and not row.get("error") and row.get("stale") is not True
+            state = "active" if active else "failed" if row.get("error") or row.get("active") == "failed" else "stopped"
+            runtime = {"active_profile": dict(profile) if active else None}
         latest = runtime.get("latest_frame")
         if latest is not None:
             latest = dict(
@@ -98,7 +100,8 @@ class CameraPipeline:
             "capture": active,
             "local_analysis": active and profile["analysis_location"] == "local",
             "snapshot_write": active and not use_native,
-            "frame_distributor": False if store.enabled() else active,
+            "frame_distributor": legacy and self.manager._running("frame-distributor.service"),
+            "ram_delivery": active and not legacy,
             "hardware_mjpeg": active and use_native,
             "tracker_local_analysis": active and tracker_active,
             "tracker_snapshot_write": active and tracker_active,
@@ -113,6 +116,7 @@ class CameraPipeline:
             **config,
             "active_profile": runtime.get("active_profile") if state != "stopped" else None,
             "state": state,
+            "compatibility_mode": "legacy" if legacy else None,
             "operation_id": operation_id,
             "transport_epoch": runtime.get("transport_epoch", 0),
             "camera_session": runtime.get("camera_session"),
@@ -195,10 +199,20 @@ class CameraPipeline:
                 if action == "configure":
                     profile = data["profile"]
                     self._available(profile)
-                    if profile != config["profile"]:
+                    changed = profile != config["profile"]
+                    if changed or not store.enabled():
+                        resume_preview = bool(
+                            set(self.manager.resource_consumers().get("camera", [])) & set(CAMERA_GOALS)
+                        )
                         self._stop()
-                        config = {**config, "revision": config["revision"] + 1, "profile": dict(profile)}
+                        config = {**config, "revision": config["revision"] + int(changed), "profile": dict(profile)}
                         store.write(config)
+                        # Only preserve camera demand. Never recreate analysis, a
+                        # navigation intention, motion authority or an ARM lease.
+                        if resume_preview:
+                            result = self.manager.set_feature("s2_camera_preview", True)
+                            if not result.get("ok"):
+                                raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
                 elif action == "start":
                     self._available(config["profile"])
                     self._idle()

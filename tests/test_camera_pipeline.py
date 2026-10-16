@@ -172,7 +172,10 @@ def test_navigation_uses_existing_stop_before_switch():
     body = command("configure", profile=dict(store.DEFAULT_PROFILE, remote_transport="mjpeg"))
     _, code = instance.execute(body)
     assert code == 200
-    assert manager.calls == [("s14_venom_navigation", False), ("s2_camera_preview", False)]
+    assert manager.calls == [("s14_venom_navigation", False), ("s2_camera_preview", False), ("s2_camera_preview", True)]
+    assert not any(
+        enabled and name in {"s14_venom_navigation", "s15_venom_perception"} for name, enabled in manager.calls
+    )
     assert not manager.safety["moving"]
 
 
@@ -281,3 +284,66 @@ def test_media_failure_has_no_file_fallback_or_camera_start(monkeypatch):
     assert client.get("/api/resource/camera/frame").status_code == 503
     assert client.get("/api/resource/camera/stream.mjpg").status_code == 503
     assert client.get("/api/resource/camera/frame?view=bad").status_code == 400
+
+
+def test_legacy_camera_status_is_active_and_read_only_without_pretending_ram():
+    manager = Manager()
+    manager.consumers = ["s2_camera_preview"]
+    manager.units.update({manager.PREVIEW_UNIT, "frame-distributor.service"})
+    response = pipeline(manager).status()
+    assert response["state"] == "active" and response["compatibility_mode"] == "legacy"
+    assert response["active_profile"] == store.DEFAULT_PROFILE
+    assert response["latest_frame"] is None and response["camera_session"] is None
+    assert response["effective_stages"]["capture"]
+    assert response["effective_stages"]["snapshot_write"]
+    assert response["effective_stages"]["frame_distributor"]
+    assert not response["effective_stages"]["ram_delivery"]
+    assert not response["effective_stages"]["hardware_mjpeg"]
+    assert manager.calls == [] and not store.config_path().exists()
+
+
+@pytest.mark.parametrize("goal", ["s2_camera_preview", "s15_venom_perception", "s14_venom_navigation"])
+def test_configure_keeps_only_passive_camera_after_release_with_new_producer(goal):
+    manager = Manager()
+    manager.consumers = [goal]
+    manager.units.update({manager.PREVIEW_UNIT, "frame-distributor.service"})
+    profile = dict(store.DEFAULT_PROFILE, remote_transport="mjpeg")
+    original = manager.set_feature
+    transitions = []
+
+    def set_feature(name, enabled):
+        if enabled:
+            # The profile changes only after old units have released the source.
+            assert name == "s2_camera_preview" and manager.units == set()
+            assert store.snapshot()["profile"] == profile
+        else:
+            assert not store.config_path().exists()
+        result = original(name, enabled)
+        transitions.append((name, enabled))
+        if enabled:
+            producer = pipeline_runtime.CameraProducer(store.snapshot())
+            producer.encoded(b"\xff\xd8\xffsource", time.monotonic_ns(), (320, 240))
+            pipeline_runtime.write_status(producer.status)
+        return result
+
+    manager.set_feature = set_feature
+    response, code = pipeline(manager).execute(command("configure", profile=profile))
+    assert code == 200 and response["state"] == "active"
+    assert response["active_profile"] == profile and response["compatibility_mode"] is None
+    assert response["effective_stages"]["hardware_mjpeg"]
+    assert not response["effective_stages"]["frame_distributor"]
+    assert transitions == [(goal, False), ("s2_camera_preview", True)]
+    assert manager.consumers == ["s2_camera_preview"]
+    assert not any(
+        enabled and name in {"s14_venom_navigation", "s15_venom_perception"} for name, enabled in transitions
+    )
+
+
+def test_explicit_same_profile_configure_upgrades_legacy_without_inventing_revision():
+    manager = Manager()
+    manager.consumers = ["s2_camera_preview"]
+    manager.units.update({manager.PREVIEW_UNIT, "frame-distributor.service"})
+    response, code = pipeline(manager).execute(command("configure", profile=dict(store.DEFAULT_PROFILE)))
+    assert code == 200 and response["revision"] == 1
+    assert store.enabled() and store.snapshot()["profile"] == store.DEFAULT_PROFILE
+    assert manager.calls == [("s2_camera_preview", False), ("s2_camera_preview", True)]
