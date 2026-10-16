@@ -318,7 +318,10 @@ class NavigationRunner:
             if exc.code == 409:
                 from apps.compute.stream_prepare import http_error_code
 
-                return http_error_code(exc) == "stream_frame_unavailable"
+                code = http_error_code(exc)
+                return code == "stream_frame_unavailable" or (
+                    self.policy["mode"] == "observe" and code == "vision_frame_expired"
+                )
             return exc.code in {408, 429, 500, 502, 503, 504}
         return isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
 
@@ -508,12 +511,22 @@ class NavigationRunner:
                 except (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError) as exc:
                     if not self._retry_observation(exc):
                         raise
+                    detail = {}
+                    if isinstance(exc, urllib.error.HTTPError):
+                        from apps.compute.stream_prepare import http_error_code
+
+                        detail = {"http_status": exc.code, "transport_error": http_error_code(exc)}
+                    reason = detail.get("transport_error")
+                    if reason is None or reason.startswith("http_"):
+                        reason = "vision_observation_transport_retry"
                     self.last_result = {
                         "state": "unknown",
                         "action": "stop",
                         "vision_action": "stop",
-                        "reason": "vision_observation_transport_retry",
-                        "motion_reason": "vision_observation_transport_retry",
+                        "reason": reason,
+                        "motion_reason": reason,
+                        **detail,
+                        **({"source": dict(frame["data"])} if isinstance(frame["data"], dict) else {}),
                         "clear_count": 0,
                         "valid_for_ms": 0,
                         **{
