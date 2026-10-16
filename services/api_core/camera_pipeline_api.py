@@ -30,6 +30,41 @@ def pipeline():
             response, code = _pipeline().execute(request.get_json(silent=True))
     except (OSError, ValueError):
         response, code = {"ok": False, "error": "camera_pipeline_unavailable"}, 503
+    if request.method == "POST":
+        from services.api_core.http_contract import operation
+
+        command = request.get_json(silent=True)
+        command = command if isinstance(command, dict) else {}
+        action = command.get("action")
+        confirmed = (
+            code < 400
+            and response.get("ok") is True
+            and not response.get("error")
+            and response.get("operation_id") == command.get("request_id")
+            and isinstance(command.get("request_id"), str)
+            and action in {"configure", "start", "stop"}
+        )
+        # This acknowledges the completed domain transaction, not first-frame
+        # readiness or motor actuation. Capture can still be starting afterward.
+        operation(
+            {
+                "request_id": response.get("operation_id", command.get("request_id")),
+                "action": action,
+                "target": "camera",
+                "status": "executed" if confirmed else "rejected" if code >= 400 else "unknown",
+                "confirmed": confirmed,
+                "ack_kind": {
+                    "configure": "configuration_persisted",
+                    "start": "camera_goal_accepted",
+                    "stop": "camera_source_released",
+                }.get(action)
+                if confirmed
+                else None,
+                "ack": None,
+                "actuation": False,
+                "physical_completion": "not_applicable",
+            }
+        )
     result = jsonify(response)
     result.headers["Cache-Control"] = "no-store"
     return result, code
