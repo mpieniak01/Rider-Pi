@@ -56,6 +56,8 @@ def feature_handler(name: str):
                     "operator_intent_replay",
                     "operator_generation_changed",
                     "resource_conflict",
+                    "camera_pipeline_profile_conflict",
+                    "camera_pipeline_local_analysis_selected",
                     "stop_before_reconfigure",
                     "stop_unconfirmed",
                     "navigation_traversal_unverified",

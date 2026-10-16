@@ -88,7 +88,11 @@ class _Handler(socketserver.StreamRequestHandler):
                 after=after, timeout_ms=timeout, view=view, metadata_only=request.get("metadata_only", False)
             )
             data, metadata = item if item is not None else (b"", None)
-            header = json.dumps({"source": metadata, "length": len(data)}, allow_nan=False, separators=(",", ":"))
+            header = json.dumps(
+                {"source": metadata, "length": len(data), "closed": self.server.frames.closed},
+                allow_nan=False,
+                separators=(",", ":"),
+            )
             self.wfile.write(header.encode() + b"\n")
             if data:
                 self.wfile.write(data)
@@ -149,6 +153,8 @@ def read_frame(*, after=None, timeout_ms=0, view="raw", metadata_only=False):
             length = header.get("length")
             if type(length) is not int or not 0 <= length <= MAX_FRAME_BYTES:
                 raise ValueError("camera_pipeline_ipc_frame_size")
+            if header.get("closed") is True:
+                raise OSError("camera_pipeline_source_closed")
             metadata = header.get("source")
             if metadata is None:
                 return None

@@ -220,7 +220,8 @@ def test_ipc_latest_only_and_stop_invalidates_cache():
         assert pipeline_ipc.read_frame(after="fixture-2", timeout_ms=1) is None
         assert pipeline_ipc.read_frame(metadata_only=True)[0] == b""
         frames.close()
-        assert pipeline_ipc.read_frame() is None
+        with pytest.raises(OSError, match="source_closed"):
+            pipeline_ipc.read_frame()
     finally:
         server.close()
     assert not (store.runtime_path() / "latest.sock").exists()

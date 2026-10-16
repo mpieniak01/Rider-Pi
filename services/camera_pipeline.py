@@ -23,7 +23,7 @@ class PipelineError(Exception):
 
 def _module(name):
     try:
-        return importlib.util.find_spec(name) is not None
+        return importlib.util.find_spec(name.split(".", 1)[0]) is not None
     except (ImportError, ValueError):
         return False
 
@@ -91,12 +91,19 @@ class CameraPipeline:
             latest = dict(
                 latest, frame_age_ms=max(0, (time.monotonic_ns() - latest["captured_monotonic_ns"]) / 1_000_000)
             )
+        tracker_active = any(
+            name in {"s6_tracker_module", "s3_follow_me_face", "s3_follow_me_hand"} for name in consumers
+        )
         stages = {
             "capture": active,
             "local_analysis": active and profile["analysis_location"] == "local",
             "snapshot_write": active and not use_native,
             "frame_distributor": False if store.enabled() else active,
             "hardware_mjpeg": active and use_native,
+            "tracker_local_analysis": active and tracker_active,
+            "tracker_snapshot_write": active and tracker_active,
+            "legacy_obstacle_analysis": active and "s7_obstacle_module" in consumers,
+            "legacy_obstacle_snapshot_write": active and "s7_obstacle_module" in consumers,
             "remote_transport": active and profile["analysis_location"] == "venom",
         }
         return {
