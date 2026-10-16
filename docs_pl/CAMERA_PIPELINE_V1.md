@@ -136,11 +136,13 @@ całego obrazu. Tryb geometrii podłoża pokazuje rzuty torów. Niepełna lub ni
 geometria ma ocenę niepewną. Pomarańczowa przerywana ramka edytora jest niezapisanym
 szkicem; jej przesunięcie nie zmienia ocen przypisanych wcześniej do obrazu.
 
-Widoczny JPEG, oceny L/C/R i metadane źródła pozostają jedną parą, aż następny obraz
-zostanie załadowany w widocznym elemencie. Odbiór następnej klatki nie zeruje na
-chwilę kart ocen. Ta sama zasada dotyczy klatek i natywnego MJPEG. Poprzedni obraz
-zachowuje pierwotny termin ważności: błąd odczytu lub wygaśnięcie nadal pokazuje
-alert nieświeżego podglądu i niepewne oceny. Oznaczenia podglądu nie udzielają zgody
+Widoczny JPEG i metadane źródła pozostają parą do załadowania następnego obrazu.
+Tekstowe karty pokazują najnowszą zdekodowaną ocenę L/C/R co sekundę, aby ułatwić
+odczyt; mogą więc chwilowo pozostawać za obrazem na żywo. Próbka zachowuje własną
+identyfikację klatki. Obraz i faktyczna decyzja ruchu zachowują normalną częstotliwość.
+Nieprawidłowe dane źródła albo zmiana kamery, modelu lub polityki od razu unieważniają
+poprzednią próbkę. Zasada dotyczy klatek i MJPEG. Obraz zachowuje pierwotny termin
+ważności, a alert nieświeżych danych pozostaje widoczny. Karty nie udzielają zgody
 na ruch. Pasek operatora z ARM i globalnym STOP pozostaje widoczny przy przewijaniu.
 
 Przegląd Pi zachowuje historię CPU/RAM z oryginalnymi znacznikami czasu po błędzie

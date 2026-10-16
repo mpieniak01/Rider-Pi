@@ -163,13 +163,15 @@ image. Ground mode shows projected paths. Incomplete or unavailable geometry is
 marked uncertain. The orange dashed editor is an unsaved draft; moving it does not
 relabel the analysis already attached to an image.
 
-The visible JPEG, L/C/R assessments and capture metadata remain paired until the
-next image has loaded in the visible image element. Receiving a new candidate
-does not temporarily clear the cards. Snapshot and native MJPEG previews use the
-same presentation rule. The displayed frame retains its original freshness
-deadline: failed reads and expiry still show the stale-preview notice and uncertain
-assessments. Preview labels do not grant motion permission. The operator ARM and
-global STOP toolbar remains visible while scrolling.
+The visible JPEG and its capture metadata remain paired until the next image has
+loaded. Text cards sample the latest decoded L/C/R assessment once per second for
+readability, so they can briefly lag the live image. Each sample retains its capture
+identity. The image and authoritative motion decision keep their normal cadence.
+Invalid source data or a changed camera, model or policy immediately invalidate the
+previous sample. Snapshot and native MJPEG use the same presentation rule. The
+image keeps its original freshness deadline and stale-input alerts remain visible.
+Preview labels do not grant motion permission. The operator ARM and global STOP
+toolbar remains visible while scrolling.
 
 The Pi overview retains CPU/RAM history with original measurement timestamps after
 a failed read and shows the read error and measurement age. Its window advances
