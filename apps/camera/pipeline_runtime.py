@@ -57,6 +57,8 @@ class CameraProducer:
             "transport_epoch": self.epoch,
             "pid": os.getpid(),
             "error": None,
+            "capture_timestamp_source": "sensor" if native(config["profile"]) else None,
+            "capture_timestamp_limitation": None,
         }
         self.last_status_at = 0
         write_status(self.status)
@@ -208,10 +210,15 @@ def main():
             from apps.camera.utils import open_camera
 
             camera, _ = open_camera((320, 240))
+            producer.status.update(
+                capture_timestamp_source=camera.timestamp_source,
+                capture_timestamp_limitation="driver_buffer_age_unknown"
+                if camera.timestamp_source == "read_started"
+                else None,
+            )
             while not stop.is_set():
                 started = time.monotonic()
-                ok, frame = camera()
-                captured = time.monotonic_ns()
+                ok, frame, captured = camera.capture()
                 if not ok or frame is None:
                     raise RuntimeError("camera_pipeline_capture_failed")
                 producer.array(frame, captured)

@@ -21,14 +21,26 @@ class CameraReleaseError(RuntimeError):
 
 
 class CameraReader:
-    def __init__(self, camera, read, *, picamera=False):
+    def __init__(self, camera, read, *, picamera=False, read_timed=None):
         self.camera, self.read_frame, self.picamera = camera, read, picamera
+        self.read_timed = read_timed
+        self.timestamp_source = "sensor" if read_timed is not None else "read_started"
         self.closed = False
 
     def __call__(self):
+        return self.capture()[:2]
+
+    def capture(self):
+        """Return the original capture time; a blocking read must not renew age."""
         if self.closed:
             raise RuntimeError("camera_closed")
-        return self.read_frame()
+        if self.read_timed is not None:
+            return self.read_timed()
+        # OpenCV does not expose a trustworthy capture timestamp. This excludes
+        # read latency from freshness but cannot account for older driver buffers.
+        started = time.monotonic_ns()
+        ok, frame = self.read_frame()
+        return ok, frame, started
 
     def close(self):
         if self.closed:
@@ -61,16 +73,29 @@ def _validate_picamera_capture(fn: Callable[[], Any], attempts: int = 3, delay: 
     raise RuntimeError(f"Picamera2 capture failed: {last_err or 'no frame'}")
 
 
+def _picamera_capture(camera):
+    completed = camera.capture_request()
+    try:
+        captured = completed.get_metadata().get("SensorTimestamp")
+        if type(captured) is not int or not 0 < captured <= time.monotonic_ns():
+            raise RuntimeError("camera_pipeline_sensor_clock_invalid")
+        # Conversion copies out of the request-owned buffer before release.
+        frame = cv2.cvtColor(completed.make_array("main"), cv2.COLOR_RGB2BGR)
+        return True, frame, captured
+    finally:
+        completed.release()
+
+
 def _picamera_reader(size):
     from picamera2 import Picamera2
 
     camera = Picamera2()
-    owner = CameraReader(camera, lambda: (True, cv2.cvtColor(camera.capture_array(), cv2.COLOR_RGB2BGR)), picamera=True)
+    owner = CameraReader(camera, None, picamera=True, read_timed=lambda: _picamera_capture(camera))
     try:
         config = camera.create_preview_configuration(main={"size": size, "format": "RGB888"})
         camera.configure(config)
         camera.start()
-        _validate_picamera_capture(camera.capture_array)
+        _validate_picamera_capture(lambda: owner.capture()[1])
         return owner
     except BaseException:
         try:

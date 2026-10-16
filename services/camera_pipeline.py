@@ -124,6 +124,8 @@ class CameraPipeline:
             "consumers": consumers,
             "effective_stages": stages,
             "latest_frame": latest,
+            "capture_timestamp_source": runtime.get("capture_timestamp_source"),
+            "capture_timestamp_limitation": runtime.get("capture_timestamp_limitation"),
             "error": error or runtime.get("error"),
         }
 

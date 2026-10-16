@@ -217,7 +217,9 @@ def test_runtime_failure_stays_failed_and_releases_camera(monkeypatch):
     monkeypatch.setattr(zmq, "Context", SimpleNamespace(instance=lambda: SimpleNamespace(socket=lambda *_: publisher)))
 
     class BrokenCamera:
-        def __call__(self):
+        timestamp_source = "read_started"
+
+        def capture(self):
             raise RuntimeError("fixture_capture_failed")
 
         def close(self):
