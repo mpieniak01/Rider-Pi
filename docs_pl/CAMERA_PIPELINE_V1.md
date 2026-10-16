@@ -116,3 +116,7 @@ sensora. Źródło kamery ma własne source.frame_id/sequence i sześciopolową 
 Podgląd porównuje wszystkie pola referencji z obrazem; odpowiedź do Pi zachowuje
 licznik i identyfikator żądania. Spóźniona klatka w obserwacji daje UNKNOWN/STOP
 i jest odrzucana; następna ocena wymaga nowego źródła. Jazda zachowuje STOP.
+
+## Zgodność orientacji RAW
+
+Brak lub pusta wartość PREVIEW_ROT oznacza 0°, tak jak w dotychczasowym RAW. Jawne ustawienia obrotu i odbić pozostają zachowane. Kompensacja montażu LCD jest oddzielnym ustawieniem i nie wyznacza orientacji obrazu kamery. Snapshot koduje obraz po transformacji; MJPEG przenosi transformację do odbiorcy, który stosuje ją dokładnie raz.

@@ -12,8 +12,9 @@ VOC_CLASSES = (
 
 
 def image_transform():
+    """Preserve the existing RAW default when PREVIEW_ROT is absent or empty."""
     return {
-        "rotation": int(os.getenv("PREVIEW_ROT", "270")),
+        "rotation": int(os.getenv("PREVIEW_ROT", "0") or 0),
         "flip_h": os.getenv("PREVIEW_FLIP_H", "0").lower() in {"1", "true", "yes"},
         "flip_v": os.getenv("PREVIEW_FLIP_V", "0").lower() in {"1", "true", "yes"},
     }

@@ -57,7 +57,13 @@ followed by a dash and sequence. SHA256 identifies the original encoded bytes.
 
 Image_transform specifies the clockwise rotation still to apply on Venom, then
 horizontal/vertical flips. It is applied once before inference and display. Legacy
-snapshots already in display orientation declare zero rotation. No software JPEG
+snapshots already in display orientation declare zero rotation.
+
+Pi preserves the existing RAW orientation default: an unset or empty PREVIEW_ROT
+means 0 degrees. Explicit PREVIEW_ROT and flip settings are retained. The LCD
+mounting compensation is separate and does not choose the camera orientation.
+
+No software JPEG
 re-encode is required on Pi solely to rotate a native stream.
 
 Pi computes frame_age_ms at send using its capture monotonic clock. Picamera2
