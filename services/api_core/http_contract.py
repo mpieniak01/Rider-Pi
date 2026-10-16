@@ -100,7 +100,9 @@ def enhance(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type,Accept"
     response.headers["Access-Control-Expose-Headers"] = (
         "X-Rider-Contract,X-Rider-Observed-At,X-Rider-File-Observed-At,X-Rider-Source,"
-        "X-Rider-Frame-Id,X-Rider-Stream,X-Rider-Stale,X-Rider-Placeholder,Last-Modified"
+        "X-Rider-Frame-Id,X-Rider-Stream,X-Rider-Stale,X-Rider-Placeholder,Last-Modified,"
+        "X-Rider-Source-Json,X-Rider-Frame-Age-Ms,X-Rider-Frame-Age-Source,X-Rider-Sequence,"
+        "X-Rider-Camera-Session,X-Rider-Transport-Epoch,X-Rider-Pipeline-Revision,X-Rider-Captured-Monotonic-Ns"
     )
     if request.path.startswith("/web/assets/operator/") and request.path.endswith(".js"):
         response.headers["Cache-Control"] = "no-cache"
