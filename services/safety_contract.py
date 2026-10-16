@@ -87,6 +87,10 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             command["lease_s"] = _number(payload.get("lease_s", 10), "lease_s", 0.1, 30)
         command["owner"] = payload.get("owner", "manual")
+    if action in ACTUATORS | {"arm"} and "panel_id" in payload:
+        panel = payload["panel_id"]
+        if not isinstance(panel, str) or not panel.strip() or len(panel) > 128:
+            raise ValueError("invalid_panel_id")
     if action in ACTUATORS | {"arm", "clear_estop"}:
         generation = payload.get("generation")
         seq = payload.get("seq")

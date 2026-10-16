@@ -45,6 +45,7 @@ class MotionGate:
         self.state = "DISARMED"
         self.owner = None
         self.execution_context = None
+        self.panel_id = None
         self.generation = uuid.uuid4().hex
         self.last_seq = -1
         self.motion_not_before = None
@@ -67,6 +68,7 @@ class MotionGate:
         self.reason = reason
         self.owner = None
         self.execution_context = None
+        self.panel_id = None
         self.plan = None
         self.lease_deadline = 0.0
         self.arming_mode = "timed"
@@ -135,6 +137,18 @@ class MotionGate:
         if not 0 < ttl <= MAX_TTL_MS or age_ms < -100.0 or age_ms > ttl:
             raise ValueError("expired_command")
 
+    def panel_rejection(self, command):
+        """Side-effect-free precheck before actuator values can cancel motion."""
+        action = command.get("action")
+        if not isinstance(action, str) or action not in ACTUATORS or command.get("source") != "manual":
+            return None
+        panel = command.get("panel_id")
+        if "panel_id" in command and (not isinstance(panel, str) or not panel.strip() or len(panel) > 128):
+            return "invalid_panel_id"
+        if self.panel_id is not None and panel != self.panel_id:
+            return "stale_generation" if command.get("generation") != self.generation else "panel_owner_mismatch"
+        return None
+
     def authorize(self, command: dict) -> tuple[bool, str]:
         """Validate without hardware. STOP has no generation/freshness prerequisite."""
         self.poll()
@@ -154,7 +168,18 @@ class MotionGate:
             self.latch_estop()
             return True, "estop_latched"
         try:
+            if action in ACTUATORS | {"arm"}:
+                panel = command.get("panel_id")
+                if "panel_id" in command and (not isinstance(panel, str) or not panel.strip() or len(panel) > 128):
+                    raise ValueError("invalid_panel_id")
             self._validate_envelope(command)
+            if (
+                action in ACTUATORS
+                and self.panel_id is not None
+                and command.get("source") == "manual"
+                and command.get("panel_id") != self.panel_id
+            ):
+                raise ValueError("panel_owner_mismatch")
             if action in ACTUATORS and self.motion_not_before is not None and command["ts"] <= self.motion_not_before:
                 raise ValueError("motion_intent_cancelled")
             context = command.get("execution_context", "panel")
@@ -221,6 +246,9 @@ class MotionGate:
                 if self.state == "ARMED":
                     if (self.owner, self.execution_context, self.arming_mode) != (owner, context, mode):
                         raise ValueError("already_armed_disarm_first")
+                    requested_panel = command.get("panel_id") if owner == "manual" and mode == "operator" else None
+                    if self.panel_id != requested_panel:
+                        raise ValueError("panel_owner_mismatch")
                     self.last_seq = command["seq"]
                     return True, "already_armed"
                 logging.getLogger("motion.permission").info(
@@ -229,6 +257,7 @@ class MotionGate:
                 self.motion_not_before = None
                 self.state = "ARMED"
                 self.owner = owner
+                self.panel_id = command.get("panel_id") if owner == "manual" and mode == "operator" else None
                 self.execution_context = context
                 self.plan = plan.strip()
                 self.reason = "operator_consent"
@@ -258,6 +287,7 @@ class MotionGate:
             "contract_version": 1,
             "state": self.state,
             "owner": self.owner,
+            "panel_control": {"version": 1, "holder": self.panel_id},
             "execution_context": self.execution_context,
             "panel_motion_enabled": self.state == "ARMED" and self.execution_context == "panel",
             "test_motion_enabled": self.state == "ARMED" and self.execution_context == "test",

@@ -275,6 +275,7 @@ class MotionExecutor:
             "source": command.get("source"),
             "execution_context": command.get("execution_context"),
             "channel": command.get("channel"),
+            "panel_id": command.get("panel_id"),
             "intent_id": command.get("intent_id"),
             "agent_epoch": command.get("agent_epoch"),
             "seq": command.get("seq"),
@@ -321,6 +322,9 @@ class MotionExecutor:
             # path rather than escaping the executor loop.
             command = {**payload, "action": "move", "duration": None}
         action = command.get("action")
+        panel_error = self.gate.panel_rejection(command)
+        if panel_error:
+            return self._ack(command, "rejected", panel_error)
         agent = is_agent(command)
         if agent and action not in {'stop', 'disarm', 'estop'}:
             try:
@@ -401,6 +405,8 @@ class MotionExecutor:
                 "stale_generation",
                 "expired_command",
                 "motion_intent_cancelled",
+                "panel_owner_mismatch",
+                "invalid_panel_id",
             }
             if is_actuator and self.controller.deadline and not obsolete and not agent:
                 self.gate.cancel_motion("invalid_motion_intent")
