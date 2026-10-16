@@ -426,3 +426,59 @@ def test_camera_ram_unit_is_in_explicit_vision_scope_only():
     module["check_paths"](["systemd/camera-capture@.service"], vision_loop_scope=True)
     with pytest.raises(RuntimeError, match="Separate deployment scope"):
         module["check_paths"](["systemd/motion-executor.service"], vision_loop_scope=True)
+
+
+def test_static_preview_keeps_api_running_and_retains_rollback_restart(repos, monkeypatch):
+    """Exercise a real second checkout without touching the running API or losing rollback intent."""
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    globals_map = module["preview"].__globals__
+    calls = []
+    monkeypatch.setitem(globals_map, "check_api_active", lambda: calls.append("active"))
+    monkeypatch.setitem(globals_map, "restart_api", lambda: calls.append("restart"))
+    first, bundle = repos.candidate()
+    record_path = repos.device / ".git/rider-preview.json"
+    request = {"base": repos.base, "commit": first, "restart_api": True}
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(bundle)))
+    module["preview"](repos.device, record_path, request)
+    calls.clear()
+    second, bundle = repos.candidate(content="fixed live chart\n")
+    request.update(commit=second, transfer_base=first, restart_api=False, static_only=True)
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(bundle)))
+    result = module["preview"](repos.device, record_path, request)
+    assert calls == []
+    assert result["commit"] == second
+    assert result["preview"]["restart_api"] is True
+    module["rollback"](repos.device, record_path)
+    assert calls == ["restart"]
+    repos.assert_base()
+
+
+@pytest.mark.parametrize("path", ["services/example.py", "apps/example.py", "config/example.toml"])
+def test_static_preview_rejects_runtime_files_before_checkout(repos, monkeypatch, path):
+    """A no-restart update must not leave changed API or producer code unloaded."""
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    calls = []
+    monkeypatch.setitem(module["preview"].__globals__, "restart_api", lambda: calls.append("restart"))
+    commit, bundle = repos.candidate(path, "# runtime change\n")
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(bundle)))
+    with pytest.raises(RuntimeError, match="contains runtime files"):
+        module["preview"](
+            repos.device,
+            repos.device / ".git/rider-preview.json",
+            {"base": repos.base, "commit": commit, "restart_api": False, "static_only": True},
+        )
+    assert calls == []
+    repos.assert_base()
+
+
+@pytest.mark.parametrize("flag", ["restart_api", "restart_motion", "resource_scope"])
+def test_static_preview_rejects_restart_flags(repos, flag):
+    """Static-only requests cannot stop services or invoke the motion executor."""
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    with pytest.raises(RuntimeError, match="cannot request runtime"):
+        module["preview"](
+            repos.device,
+            repos.device / ".git/rider-preview.json",
+            {"base": repos.base, "commit": repos.base, "restart_api": False, "static_only": True, flag: True},
+        )
+    repos.assert_base()

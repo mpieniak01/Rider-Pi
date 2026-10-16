@@ -168,3 +168,11 @@ Zakres obejmujący drivers/xgo/adapter.py wdrażaj komendą preview z flagami
 chronionych sterowników. Wykonawca jest zatrzymywany przed zmianą kodu i wraca
 rozbrojony; potem restart API. Bez restartu robota, automatycznego ARM, prób
 ruchu i publikacji GH. Rollback pamięta restart wykonawcy. Nastawy poza checkoutem.
+
+### Aktualizacja samego panelu bez restartu
+
+`make pi-preview PI_DEPLOY_ARGS=--static-only` stosuj, gdy przyrost od obecnego
+podglądu zmienia wyłącznie `web/`, dokumentację, testy lub sam helper wdrożenia.
+Tryb odrzuca pliki runtime oraz flagi restartu API, ruchu i zasobów. Zachowuje
+wcześniejszą informację o restarcie potrzebnym przy rollbacku. Dzięki temu
+poprawka wykresu nie przerywa działającej kamery ani kolektora pomiarów.

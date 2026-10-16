@@ -30,7 +30,14 @@ changes preserve these functions.
 `/sysinfo` provides flat CPU, 1/5/15 minute load, memory, disk, temperature
 and history fields. API fields named MB/GB mean MiB/GiB. History contains
 at most 60 samples, not a guaranteed 60 seconds. Missing chart values form
-gaps; zero remains a measurement.
+gaps; zero remains a measurement. The chart covers the last 60 seconds of
+server-aligned time, not 60 seconds ending at the last received sample.
+A failed read keeps the known history and its original timestamps, displays
+the read error, and ages the points out of the window. It does not reset the
+graph or make old measurements fresh. The caption reports the actual sample
+count, covered interval and gaps. The demand-driven sampler sleeps after
+30 seconds without readers, so reopening the panel can require rebuilding
+history; no readings are fabricated for that interval.
 
 `/state.devices.xgo` supplies IMU and battery observations; `on` is not
 required. Source ages and flags determine usability. Channels in

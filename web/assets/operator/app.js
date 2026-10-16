@@ -12,7 +12,7 @@ import { System } from './system.js?v=system-controls-1';
 import { Navigation } from './navigation.js';
 import { Calibration } from './calibration.js?v=compact-calibration-4b';
 import { Chat } from './chat.js?v=compact-calibration-4b';
-import { Overview } from './overview.js?v=camera-pipeline-1';
+import { Overview } from './overview.js?v=history-3';
 import { events } from './transport.js';
 import { fresh, catalogKnown, safetyKnown, nowSeconds } from './model.js';
 import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';

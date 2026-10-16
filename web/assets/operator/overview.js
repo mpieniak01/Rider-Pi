@@ -15,7 +15,7 @@ const BLANK = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" view
 export class Overview {
   constructor(safety) {
     this.safety = safety;
-    this.state = null; this.health = null; this.system = null; this.catalog = null;
+    this.state = null; this.health = null; this.system = null; this.systemError = false; this.catalog = null;
     this.snap = null; this.obstacle = null; this.metrics = null;
     this.poller = poll(async () => {
       const results = await Promise.allSettled(['/healthz', '/api/logic/catalog']
@@ -24,8 +24,8 @@ export class Overview {
       this.render();
     }, { profile: 'services' });
     this.systemPoller = poll(async () => {
-      try { this.system = (await request('/sysinfo')).data; }
-      catch { this.system = null; }
+      try { this.system = (await request('/sysinfo')).data; this.systemError = false; }
+      catch { this.systemError = true; }
       this.renderSystem();
     }, { profile: 'system' });
     // One small telemetry read per second avoids expiring healthy 1 Hz samples
@@ -81,9 +81,19 @@ export class Overview {
       ? `${fmt(value('disk_used_gb'))} / ${fmt(value('disk_total_gb'))} GiB (${fmt(value('disk_pct'))}%)` : '—');
     text('ci_os', si?.os_release || si?.platform || '—');
     text('d_temp', finite(value('temp_c')) ? `${fmt(value('temp_c'))} °C` : '—');
-    text('system-age', `${age(si)}${usable ? '' : ` · ${unknown()}`}`);
-    this.drawHistory(usable ? si.hist_cpu : [], usable ? si.hist_mem : [],
-      usable ? si.hist_cpu_peak : [], usable ? si.hist_ts : []);
+    text('system-age', `${age(si)}${this.systemError ? ` · ${tr('błąd odczytu', 'read failed')}` : usable ? '' : ` · ${unknown()}`}`);
+    // An HTTP failure is not a deletion of measurements already collected.
+    // Keep their original timestamps and let the fixed time window expire them.
+    const history = this.drawHistory(si?.hist_cpu, si?.hist_mem, si?.hist_cpu_peak, si?.hist_ts);
+    if (history) {
+      const summary = `${history.count} ${tr('próbek', 'samples')} · ${Math.round(history.span)} s / 60 s`;
+      text('history-status', this.systemError
+        ? `${tr('Błąd odczytu — zachowana historia', 'Read failed — retained history')} · ${summary}`
+        : !usable ? tr('Brak świeżych pomiarów — historia wygasa zgodnie z czasem.', 'No fresh readings — history expires with time.')
+        : history.count < 2 ? tr('Zbieranie historii. Kolektor działa, gdy panel jest widoczny.', 'Collecting history. The sampler runs while the panel is visible.')
+        : history.gaps ? `${summary} · ${tr('przerwa w pomiarach', 'gap in measurements')}`
+        : `${history.count < 55 ? tr('Zbieranie historii: ', 'Collecting history: ') : ''}${summary}`);
+    }
     const cpu = document.getElementById('ci_cpu');
     if (cpu) cpu.title = usable && finite(si.cpu_peak_pct)
       ? tr('Szczyt w ostatniej sekundzie: ', 'Peak in the last second: ') + fmt(si.cpu_peak_pct) + '%' : '';
@@ -191,25 +201,30 @@ export class Overview {
     for (const value of [0, 50, 100]) ctx.fillText(String(value), box.x - 5, box.y + box.height * (1 - value / 100) + 3);
     return { ctx, ...box };
   }
-  drawHistory(cpu = [], mem = [], peaks = [], times = []) {
-    const axis = this.axes('chart'); if (!axis) return;
+  drawHistory(cpu = [], mem = [], peaks = [], times = [], now = nowSeconds()) {
+    const axis = this.axes('chart'); if (!axis) return null;
     const { ctx, x, y, width, height } = axis;
-    const stamps = Array.isArray(times) ? times.slice(-60) : [], newest = stamps[stamps.length - 1];
+    const stamps = Array.isArray(times) ? times.slice(-60) : [];
+    const inWindow = stamp => finite(stamp) && finite(now) && stamp >= now - 60 && stamp <= now + .1;
+    const visible = stamps.filter(inWindow);
     for (const [values, color] of [[peaks, '#a17fff'], [cpu, '#6db3ff'], [mem, '#ffd36d']]) {
-      if (!Array.isArray(values) || values.length < 2) continue;
+      if (!Array.isArray(values) || !values.length) continue;
       const samples = values.slice(-60); let pen = false;
       ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5;
       samples.forEach((value, i) => {
-        if (!finite(value)) { pen = false; return; }
-        const stamp = stamps[i];
-        if (finite(newest) && !finite(stamp)) { pen = false; return; }
-        if (finite(newest) && finite(stamp) && newest - stamp > 60) { pen = false; return; }
-        if (i > 0 && finite(stamp) && finite(stamps[i - 1]) && stamp - stamps[i - 1] > 2) pen = false;
-        const position = finite(newest) && finite(stamp) ? Math.max(0, 1 - (newest - stamp) / 60) : i / (samples.length - 1);
+        const stamp = stamps[i], previous = stamps[i - 1];
+        if (!finite(value) || !inWindow(stamp)) { pen = false; return; }
+        if (i > 0 && (!finite(previous) || stamp <= previous || stamp - previous > 2)) pen = false;
+        const position = Math.max(0, Math.min(1, 1 - (now - stamp) / 60));
         const px = x + width * position, py = y + height * (1 - Math.max(0, Math.min(100, value)) / 100);
         if (pen) ctx.lineTo(px, py); else ctx.moveTo(px, py); pen = true;
       }); ctx.stroke();
     }
+    ctx.fillStyle = '#90a4b0'; ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left'; ctx.fillText('−60 s', x, y + height + 13);
+    ctx.textAlign = 'right'; ctx.fillText('0 s', x + width, y + height + 13);
+    return { count: visible.length, span: visible.length ? visible[visible.length - 1] - visible[0] : 0,
+      gaps: visible.some((stamp, i) => i > 0 && stamp - visible[i - 1] > 2) };
   }
   drawBins(bins, edge) {
     const axis = this.axes('binsCanvas'); if (!axis) return;
