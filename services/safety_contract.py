@@ -7,6 +7,7 @@ import time
 import uuid
 from typing import Any
 
+from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS
 from common.actuator_parameters import HEIGHT_MAX, HEIGHT_MIN
 from common.agent_control import is_agent, verify_command
 from common.bus import TOPIC_MOTION_COMMAND, BusPub
@@ -53,7 +54,7 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("JSON object expected")
     action = str(payload.get("action") or "").lower()
-    if action not in ACTUATORS | {"arm", "disarm", "estop", "clear_estop", "stop"}:
+    if action not in ACTUATORS | {"arm", "disarm", "estop", "clear_estop", "stop"} | OPERATOR_ACTIONS:
         raise ValueError("unknown action")
     if action in {"stop", "disarm"} and "expected_generation" in payload:
         expected = payload["expected_generation"]
@@ -87,11 +88,11 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             command["lease_s"] = _number(payload.get("lease_s", 10), "lease_s", 0.1, 30)
         command["owner"] = payload.get("owner", "manual")
-    if action in ACTUATORS | {"arm"} and "panel_id" in payload:
+    if action in ACTUATORS | {"arm"} | OPERATOR_ACTIONS and "panel_id" in payload:
         panel = payload["panel_id"]
         if not isinstance(panel, str) or not panel.strip() or len(panel) > 128:
             raise ValueError("invalid_panel_id")
-    if action in ACTUATORS | {"arm", "clear_estop"}:
+    if action in ACTUATORS | {"arm", "clear_estop"} | OPERATOR_ACTIONS:
         generation = payload.get("generation")
         seq = payload.get("seq")
         if not isinstance(generation, str) or not generation:

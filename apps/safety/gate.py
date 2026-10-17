@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Callable
 
 from apps.safety import estop
+from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS, OperatorControl
 from common.agent_control import MANUAL_AGENT_GRACE_S, verify_command
 
 OWNERS = frozenset({"manual", "follow_me", "navigation"})
@@ -58,6 +59,7 @@ class MotionGate:
         self.agent_last_seq = -1
         self.agent_intents = []
         self.manual_grace_until = 0.0
+        self.operator_control = OperatorControl(self)
         self.poll()
 
     def _invalidate(self, state: str, reason: str) -> None:
@@ -75,6 +77,7 @@ class MotionGate:
         self.generation = uuid.uuid4().hex
         self.last_seq = -1
         self.invalidate_agent()
+        self.operator_control.reset(reason)
 
     def invalidate_agent(self, *, manual=False) -> None:
         self.agent_epoch = uuid.uuid4().hex
@@ -123,10 +126,13 @@ class MotionGate:
             raise ValueError("request_id_required")
         if not isinstance(command.get("source"), str) or command["source"] not in OWNERS | {'agent'}:
             raise ValueError("unknown_source")
-        if command.get("generation") != self.generation:
+        priority_sequence = self.operator_control.priority_sequence(command)
+        if command.get("generation") != self.generation and priority_sequence is None:
             raise ValueError("stale_generation")
         seq = command.get("seq")
         last_seq = self.agent_last_seq if command.get('source') == 'agent' else self.last_seq
+        if priority_sequence is not None:
+            last_seq = priority_sequence
         if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq < 2**63 or seq <= last_seq:
             raise ValueError("stale_sequence")
         sent = finite_number(command.get("ts"), "timestamp_required")
@@ -168,7 +174,7 @@ class MotionGate:
             self.latch_estop()
             return True, "estop_latched"
         try:
-            if action in ACTUATORS | {"arm"}:
+            if action in ACTUATORS | {"arm"} | OPERATOR_ACTIONS:
                 panel = command.get("panel_id")
                 if "panel_id" in command and (not isinstance(panel, str) or not panel.strip() or len(panel) > 128):
                     raise ValueError("invalid_panel_id")
@@ -206,6 +212,9 @@ class MotionGate:
                 self.agent_intents.append(command['intent_id'])
                 del self.agent_intents[:-32]
                 return True, 'authorized'
+            if action in OPERATOR_ACTIONS:
+                self.operator_control.transfer(command)
+                return True, self.operator_control.reason
             if action == "clear_estop":
                 if command.get("operator_consent") is not True:
                     raise ValueError("operator_consent_required")
@@ -235,6 +244,7 @@ class MotionGate:
                 owner = command.get("owner", command.get("source"))
                 if not isinstance(owner, str) or owner not in OWNERS:
                     raise ValueError("unknown_owner")
+                self.operator_control.validate_arm(command, owner, context)
                 mode = command.get("arming_mode", "timed")
                 if not isinstance(mode, str) or mode not in {"timed", "operator"}:
                     raise ValueError("invalid_arming_mode")
@@ -246,7 +256,11 @@ class MotionGate:
                 if self.state == "ARMED":
                     if (self.owner, self.execution_context, self.arming_mode) != (owner, context, mode):
                         raise ValueError("already_armed_disarm_first")
-                    requested_panel = command.get("panel_id") if owner == "manual" and mode == "operator" else None
+                    requested_panel = (
+                        command.get("panel_id")
+                        if (owner == "manual" and mode == "operator" or command.get("operator_control_version") == 1)
+                        else None
+                    )
                     if self.panel_id != requested_panel:
                         raise ValueError("panel_owner_mismatch")
                     self.last_seq = command["seq"]
@@ -257,7 +271,11 @@ class MotionGate:
                 self.motion_not_before = None
                 self.state = "ARMED"
                 self.owner = owner
-                self.panel_id = command.get("panel_id") if owner == "manual" and mode == "operator" else None
+                self.panel_id = (
+                    command.get("panel_id")
+                    if (owner == "manual" and mode == "operator" or command.get("operator_control_version") == 1)
+                    else None
+                )
                 self.execution_context = context
                 self.plan = plan.strip()
                 self.reason = "operator_consent"
@@ -265,6 +283,7 @@ class MotionGate:
                 self.lease_deadline = self.clock() + lease
                 self.last_seq = command["seq"]
                 self.invalidate_agent(manual=owner == 'manual')
+                self.operator_control.arm(command)
                 return True, "armed"
             if action not in ACTUATORS:
                 raise ValueError("unknown_action")
@@ -272,8 +291,13 @@ class MotionGate:
                 raise ValueError("motion_disarmed" if self.state != "ESTOP" else "estop_latched")
             if context != self.execution_context:
                 raise ValueError("execution_context_mismatch")
+            if command.get("intervene") is True:
+                if action not in {"move", "turn"}:
+                    raise ValueError("operator_intervention_move_only")
+                self.operator_control.transfer(command)
             if command.get("source") != self.owner:
                 raise ValueError("owner_mismatch")
+            self.operator_control.validate_navigation(command)
             self.last_seq = command["seq"]
             if command.get('source') == 'manual':
                 self.invalidate_agent(manual=True)
@@ -288,6 +312,7 @@ class MotionGate:
             "state": self.state,
             "owner": self.owner,
             "panel_control": {"version": 1, "holder": self.panel_id},
+            "operator_control": self.operator_control.snapshot(),
             "execution_context": self.execution_context,
             "panel_motion_enabled": self.state == "ARMED" and self.execution_context == "panel",
             "test_motion_enabled": self.state == "ARMED" and self.execution_context == "test",

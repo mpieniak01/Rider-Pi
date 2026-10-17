@@ -20,8 +20,10 @@ from apps.motion.actuator_contract import (
 from apps.motion.calibration_runtime import CalibrationRuntime
 from apps.motion.dynamics import RampLimits
 from apps.motion.main import MotionController, _make_adapter
+from apps.motion.operator_requests import OperatorRequests
 from apps.motion.sensor_quality import SensorSamples
 from apps.safety.gate import ACTUATORS, MotionGate
+from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS
 from apps.safety.state import write_status
 from common.agent_control import is_agent, verify_command
 from common.motion_commands import canonical_command  # public re-export
@@ -39,6 +41,7 @@ class MotionExecutor:
         self.controller.limits = self.calibration.limits
         self.publisher = publisher
         self.status_writer = status_writer
+        self.operator_requests = OperatorRequests()
         self.last_ack = None
         self.recent_acks = []
         self.pending = None
@@ -289,6 +292,7 @@ class MotionExecutor:
             "error": reason if status == "rejected" else None,
             **details,
         }
+        self.operator_requests.observe(command, self.last_ack)
         if status in {"executed", "rejected"}:
             self.recent_acks.append(dict(self.last_ack))
             del self.recent_acks[:-16]
@@ -302,6 +306,25 @@ class MotionExecutor:
             action = canonical_command(topic, payload).get("action")
         except (ValueError, TypeError, OverflowError):
             action = None
+        if (
+            isinstance(payload, dict)
+            and isinstance(payload.get("request_id"), str)
+            and (action in OPERATOR_ACTIONS or action in {"move", "turn"} and payload.get("intervene") is True)
+        ):
+            previous = self.operator_requests.begin(payload)
+            if previous is not None:
+                if previous.get("conflict"):
+                    return self._ack(payload, "rejected", "operator_request_conflict", operator_replay=True)
+                ack = previous.get("ack")
+                if ack:
+                    return self._ack(
+                        payload,
+                        ack["status"],
+                        ack["reason"],
+                        operator_replay=True,
+                        original_generation=ack["generation"],
+                        generation=ack["generation"],
+                    )
         if action in {"stop", "disarm", "estop"}:
             return self._apply(payload, topic=topic)
         try:
@@ -341,16 +364,16 @@ class MotionExecutor:
                 command.get("device_settings") is True
                 and command.get("source") == "manual"
                 and command.get("execution_context") == "panel"
-                and self.gate.arming_mode == "operator"
+                and (self.gate.arming_mode == "operator" or self.gate.operator_control.enabled)
                 and self.gate.execution_context == "panel"
-                and self.gate.owner == "manual"
+                and (self.gate.owner == "manual" or command.get("intervene") is True)
             ):
                 return self._ack(command, "rejected", "hold_operator_panel_only")
-        if action in {"arm", "move", "turn", "height", "balance", "stabilization", "action"}:
+        if action in {"arm", "move", "turn", "height", "balance", "stabilization", "action"} | OPERATOR_ACTIONS:
             if not self.controller.limits.valid:
                 self._hardware_fault("invalid_motion_limits")
             self.refresh_controls(force=True)
-        if action in {"move", "turn", "height", "balance", "stabilization", "action"}:
+        if action in {"move", "turn", "height", "balance", "stabilization", "action"} | OPERATOR_ACTIONS:
             if self.controls_pending_revision is not None:
                 return self._ack(command, "rejected", "manual_settings_requires_idle")
             if (
@@ -397,6 +420,7 @@ class MotionExecutor:
                 if previous is not None:
                     self._ack(previous, "rejected", "invalid_motion_intent", cancelled_by=command.get("request_id"))
             return self._ack(command, "rejected", str(exc))
+        previous_generation = self.gate.generation
         authorized, reason = self.gate.authorize(command)
         if not authorized:
             # Delayed renewals never undo a newer manual intent or release.
@@ -407,6 +431,9 @@ class MotionExecutor:
                 "motion_intent_cancelled",
                 "panel_owner_mismatch",
                 "invalid_panel_id",
+                "operator_control_not_available",
+                "operator_panel_required",
+                "navigation_operation_stale",
             }
             if is_actuator and self.controller.deadline and not obsolete and not agent:
                 self.gate.cancel_motion("invalid_motion_intent")
@@ -415,6 +442,21 @@ class MotionExecutor:
                 if previous is not None:
                     self._ack(previous, "rejected", "invalid_motion_intent", cancelled_by=command.get("request_id"))
             return self._ack(command, "rejected", reason)
+        if (
+            authorized
+            and previous_generation != self.gate.generation
+            and action not in {"stop", "disarm", "estop", "clear_estop"}
+        ):
+            previous, self.pending = self.pending, None
+            self.intent_source = None
+            stopped = self.controller.stop()
+            if previous is not None:
+                self._ack(previous, "rejected", "operator_intervention", cancelled_by=command.get("request_id"))
+            if not stopped:
+                self.gate.disarm("hardware_stop_unconfirmed")
+                return self._ack(command, "rejected", "hardware_stop_unconfirmed")
+        if action in OPERATOR_ACTIONS:
+            return self._ack(command, "executed", reason, hardware_stop_sent=True)
         if action in {"stop", "disarm", "estop", "clear_estop"}:
             self.intent_source = None
             pending, self.pending = self.pending, None
@@ -482,6 +524,8 @@ class MotionExecutor:
                 remote_feedback_deadline=feedback,
             ):
                 return self._ack(command, "rejected", "motion_disarmed")
+            if values["vx"] != 0 or values["yaw"] != 0:
+                self.gate.operator_control.activated(command)
             previous, self.pending = self.pending, None
             self.intent_source = command.get('source')
             if previous is not None:

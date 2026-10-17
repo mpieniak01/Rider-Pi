@@ -50,6 +50,7 @@ def write_intent_status(
     data_ready=None,
     navigation_ready=None,
     data_error=None,
+    operator_control_version=None,
 ) -> bool:
     if unit not in PRODUCERS:
         return False
@@ -67,6 +68,8 @@ def write_intent_status(
     for key, value in (("data_ready", data_ready), ("navigation_ready", navigation_ready)):
         if type(value) is bool:
             status[key] = value
+    if operator_control_version == 1:
+        status["operator_control_version"] = 1
     if data_error is not None:
         status["data_error"] = str(data_error)[:256]
     try:

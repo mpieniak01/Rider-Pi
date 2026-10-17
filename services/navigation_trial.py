@@ -44,8 +44,16 @@ class TrialError(ValueError):
 
 
 def validate_request(body, now):
-    if not isinstance(body, dict) or set(body) != FIELDS:
+    if not isinstance(body, dict) or set(body) - {"panel_id", "operator_control_version"} != FIELDS:
         raise TrialError("navigation_trial_invalid", 400)
+    if ("panel_id" in body or "operator_control_version" in body) and (
+        body.get("operator_control_version") != 1
+        or type(body.get("operator_control_version")) is not int
+        or not isinstance(body.get("panel_id"), str)
+        or not body["panel_id"].strip()
+        or len(body["panel_id"]) > 128
+    ):
+        raise TrialError("operator_control_invalid", 400)
     for key in ("request_id", "generation"):
         if not isinstance(body[key], str) or not 1 <= len(body[key]) <= 128:
             raise TrialError("navigation_trial_invalid", 400)
@@ -430,6 +438,11 @@ class NavigationTrial:
                         "execution_context": "panel",
                         "arming_mode": "timed",
                         "lease_s": 10.0,
+                        **(
+                            {"panel_id": body["panel_id"], "operator_control_version": 1}
+                            if body.get("operator_control_version") == 1
+                            else {}
+                        ),
                     }
                 )
                 if code != 200 or not arm.get("ok") or not arm.get("confirmed"):

@@ -475,3 +475,11 @@ W przeciwnym razie → tryb plikowy (file).
 - `scripts/dev_face-lcd-direct.py` — demo i diagnostyka renderera/LCD.
 - `tests/` — testy (m.in. źrenice, blink, look, clamp).
 
+
+## Ciepła sesja nawigacji i priorytet operatora
+
+Opt-in v1 zachowuje istniejący worker S14 jako jednego producenta percepcji.
+Pauza, ręczna korekta i wznowienie zmieniają uprawnienie w motion-executor,
+bez start/stop usług. S15 zachowuje legacy observe; cold start zwalnia go przed S14.
+Kamera ma osobny jawny cykl OFF/ON. Porty i właściciel UART pozostają dotychczasowe.
+Zobacz [kontrakt operatora v1](OPERATOR_CONTROL_V1.md).
