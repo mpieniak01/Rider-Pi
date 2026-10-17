@@ -203,12 +203,7 @@ class CameraPipeline:
             self._release_orphan()
         # Never steal a camera opened outside this domain. A positive stop ACK
         # is insufficient: both the service and producer must have stopped.
-        for unit in (
-            "camera-capture@raw.service",
-            "camera-capture@edge.service",
-            "camera-capture@ssd.service",
-            "frame-distributor.service",
-        ):
+        for unit in (*CAPTURE_UNITS, "frame-distributor.service"):
             if self.manager._running(unit):
                 raise PipelineError("camera_pipeline_camera_not_released")
         safety = self.manager.safety_status()
