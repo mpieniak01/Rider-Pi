@@ -112,6 +112,20 @@ class FeatureStateMixin:
         if feature.can_move and requested:
             permitted = permitted and intent.get("generation") == self.safety_status().get("generation")
         accepted, producers = self._producer_readiness(feature, units, options) if requested else (True, [])
+        # An admitted warm S14 remains a perception consumer while its motor
+        # authority is paused/expired. Readiness is not a new motion permission.
+        if (
+            name == "s14_venom_navigation"
+            and requested
+            and accepted
+            and any(
+                row.get("unit") == "rider-venom-navigation.service"
+                and row.get("operator_control_version") == 1
+                and row.get("matches_task") is True
+                for row in producers
+            )
+        ):
+            permitted = True
         navigation = next((row for row in producers if row.get("unit") == "rider-navigator.service"), {})
         producer_error = navigation.get("data_error") or navigation.get("error")
         if (

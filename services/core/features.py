@@ -66,6 +66,12 @@ def _safety_stop(owner: str | None) -> dict:
         return {"ok": False, "confirmed": False, "error": str(exc)}
 
 
+def _safety_scoped_stop(owner, expected_generation):
+    from services.safety_contract import request_stop
+
+    return request_stop(owner=owner, expected_generation=expected_generation)
+
+
 class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
     """Reference-count shared units; only stop processes started by this manager.
 
@@ -88,6 +94,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         safety_stop: Callable[[str | None], dict] | None = None,
         dependency_check: Callable[[tuple[str, ...], dict], list[str]] | None = None,
         producer_status: Callable[[str], dict] | None = None,
+        safety_scoped_stop: Callable[[str | None, str], dict] | None = None,
     ) -> None:
         self.registry = registry if registry is not None else DEFAULT_REGISTRY
         self.runner = runner or systemd_ctrl.run_unit_action
@@ -96,12 +103,14 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self.aliases = DEFAULT_ALIASES if aliases is None else aliases
         self.safety_status = safety_status or _safety_status
         self.safety_stop = safety_stop or _safety_stop
+        self.safety_scoped_stop = safety_scoped_stop or _safety_scoped_stop
         self.dependency_check = dependency_check or runtime_dependencies.missing
         self.producer_status = producer_status or (
             lambda unit: task_runtime.read_status(unit, root=self._state_path.parent)
         )
         self._lock = threading.RLock()
         self._transaction_depth = 0
+        self._operation_thread = None
         self._operation_guard = None
         self._operation_remaining = None
         self._operation_stop = None
@@ -248,12 +257,14 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             units = set(observation_units) | self._managed_units | self._admin_units
             for name, options in self._requested.items():
                 units.update(task_units(self.registry[name], options))
+            self._operation_thread = threading.get_ident()
             self._operation_guard, self._operation_remaining, self._operation_stop = guard, remaining, stop
             self._operation_units = tuple(sorted(units))
             self._operation_status_cache = {}
             try:
                 yield
             finally:
+                self._operation_thread = None
                 self._operation_guard = self._operation_remaining = self._operation_stop = None
                 self._operation_status_cache = None
                 self._operation_units = ()
@@ -545,7 +556,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._errors.pop(canonical, None)
         return {"ok": True, "steps": steps, "events": events, "task": self._describe(canonical)}
 
-    def _stop(self, canonical: str) -> dict:
+    def _stop(self, canonical: str, stop_permission=None) -> dict:
         if canonical not in self._requested:
             feature = self.registry[canonical]
             consumers = self._consumers(exclude=canonical)
@@ -578,7 +589,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         self._persist_state()
         steps: list[dict] = []
         if feature.can_move:
-            revoked = self._stop_permission(feature.control_owner)
+            revoked = (stop_permission or self._stop_permission)(feature.control_owner)
             steps.append({"action": "revoke_control", **revoked})
             if not revoked.get("ok") or not revoked.get("confirmed"):
                 self._states[canonical] = "partial"
@@ -620,9 +631,21 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 return {"ok": False, "error": "tracking_mode_failed", "steps": steps, "detail": str(exc)}
         return {"ok": True, "steps": steps, "events": events, "task": self._describe(canonical)}
 
-    def set_feature(self, name: str, enabled: bool, options: dict | None = None, control: dict | None = None) -> dict:
+    def set_feature(
+        self,
+        name: str,
+        enabled: bool,
+        options: dict | None = None,
+        control: dict | None = None,
+        *,
+        stop_permission=None,
+    ) -> dict:
         if not isinstance(enabled, bool) or (options is not None and not isinstance(options, dict)):
             raise ValueError("enabled must be boolean and options an object")
+        from services.core.operator_cleanup import stop_override
+
+        if stop_permission is None and self._operation_thread != threading.get_ident():
+            stop_permission = stop_override(self, self._resolve_name(name), enabled)
         try:
             with self.transaction():
                 from services.core.goal_journal import restore
@@ -634,7 +657,11 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     if tracking_mode_for(self.registry[canonical], options) == "none":
                         enabled = False
                 try:
-                    result = self._start(canonical, options or {}, control) if enabled else self._stop(canonical)
+                    result = (
+                        self._start(canonical, options or {}, control)
+                        if enabled
+                        else self._stop(canonical, stop_permission)
+                    )
                 finally:
                     self._pending.pop(canonical, None)
                     if canonical not in self._requested:

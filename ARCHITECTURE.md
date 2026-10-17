@@ -495,3 +495,11 @@ Expired feedback, stale camera input or lost authority latches STOP; reconnectio
 does not resume movement. Units are started on demand, with no boot enablement
 or automatic restart. See [COMPUTE_VENOM](docs_pl/COMPUTE_VENOM.md) for provisioning
 and the physical acceptance requirements.
+
+## Warm navigation session and operator priority
+
+V1 opt-in retains the existing S14 worker as the single perception producer.
+Pause, manual correction and resume transfer executor authority without service
+start/stop. S15 retains legacy observation; cold start releases it before S14.
+Camera OFF/ON has a separate explicit lifecycle. Ports and UART ownership stay unchanged.
+See [operator contract v1](docs/OPERATOR_CONTROL_V1.md).

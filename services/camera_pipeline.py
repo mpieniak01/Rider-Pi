@@ -11,6 +11,7 @@ from pathlib import Path
 from common import runtime_lock
 from services import camera_pipeline_store as store
 from services.compute_config import _write
+from services.safety_contract import request_stop
 
 CAMERA_GOALS = ("s14_venom_navigation", "s15_venom_perception", "s12_venom_vision", "s2_camera_preview")
 
@@ -72,8 +73,9 @@ def _runtime():
 
 
 class CameraPipeline:
-    def __init__(self, manager, *, capability_fn=capabilities, sleeper=time.sleep):
+    def __init__(self, manager, *, capability_fn=capabilities, sleeper=time.sleep, stopper=request_stop):
         self.manager, self.capability_fn, self.sleep = manager, capability_fn, sleeper
+        self.stopper = stopper
 
     def status(self, *, operation_id=None, error=None):
         config, runtime = store.snapshot(), _runtime()
@@ -139,14 +141,21 @@ class CameraPipeline:
         if safety.get("error") or safety.get("stale") is True:
             raise PipelineError("camera_pipeline_motion_status_unavailable", 503)
 
-    def _stop(self):
+    def _stop(self, *, preempted=False):
         self._idle()
         consumers = self.manager.resource_consumers().get("camera", [])
         if set(consumers) - set(CAMERA_GOALS):
             raise PipelineError("camera_pipeline_foreign_consumer")
         for goal in CAMERA_GOALS:
             if goal in consumers:
-                result = self.manager.set_feature(goal, False)
+                if preempted and goal == "s14_venom_navigation":
+                    result = self.manager.set_feature(
+                        goal,
+                        False,
+                        stop_permission=lambda _owner: {"ok": True, "confirmed": True, "permission_revoked": True},
+                    )
+                else:
+                    result = self.manager.set_feature(goal, False)
                 if not result.get("ok"):
                     raise PipelineError(result.get("error") or "camera_pipeline_stop_failed", 503)
         # Never steal a camera opened outside this domain.
@@ -175,12 +184,56 @@ class CameraPipeline:
             raise PipelineError("camera_pipeline_transport_unavailable", 503)
 
     def execute(self, data):
+        # Serialize identical OFF retries before priority cancellation, without
+        # waiting for the service lifecycle lock first.
+        if isinstance(data, dict) and data.get("action") == "stop":
+            admission = store.config_path().with_name("camera_pipeline_stop_admission.lock")
+            with runtime_lock.exclusive(admission):
+                return self._execute(data)
+        return self._execute(data)
+
+    def _execute(self, data):
         try:
             store.validate_request(data)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}, 400
         request_id = data["request_id"]
+        preempted = False
         journal = store.config_path().with_name("camera_pipeline_requests.json")
+        if data["action"] == "stop":
+            # Read-only admission before priority cancellation. A replayed old OFF
+            # or stale config must never stop a newer control session.
+            try:
+                prior = json.loads(journal.read_text()) if journal.exists() and journal.stat().st_size <= 131072 else []
+                old = next((row for row in prior if row["request"]["request_id"] == request_id), None)
+                if old is not None:
+                    if old["request"] != data:
+                        return self.status(operation_id=request_id, error="camera_pipeline_request_conflict"), 409
+                    return old["response"], old["status"]
+            except (OSError, ValueError, KeyError, TypeError):
+                return {"ok": False, "error": "camera_pipeline_journal_unavailable"}, 503
+            if data["expected_revision"] != store.snapshot()["revision"]:
+                return {
+                    **self.status(operation_id=request_id, error="camera_pipeline_revision_conflict"),
+                    "current_revision": store.snapshot()["revision"],
+                }, 409
+        if data["action"] == "stop":
+            safety = self.manager.safety_status()
+            control = safety.get("operator_control") or {}
+            if safety.get("owner") != "navigation" and (
+                safety.get("moving") or any(value != 0 for value in (safety.get("output") or {}).values())
+            ):
+                return self.status(operation_id=request_id, error="camera_pipeline_motion_busy"), 409
+            if control.get("version") == 1 and (control.get("state") != "idle" or safety.get("state") == "DISARMED"):
+                # Preempt outside the service transaction: an old cold prepare
+                # holding that lock must lose its generation before a late ARM.
+                generation = safety.get("generation")
+                if not isinstance(generation, str) or not generation:
+                    return {"ok": False, "error": "camera_pipeline_motion_status_unavailable"}, 503
+                result = self.stopper(owner="manual", expected_generation=generation)
+                if not result.get("ok") or not result.get("confirmed"):
+                    return {"ok": False, "error": result.get("error") or "camera_pipeline_stop_unconfirmed"}, 409
+                preempted = True
         with self.manager.transaction(), runtime_lock.exclusive(journal.with_suffix(".lock")):
             entries = []
             try:
@@ -225,7 +278,7 @@ class CameraPipeline:
                     if not result.get("ok"):
                         raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
                 else:
-                    self._stop()
+                    self._stop(preempted=preempted)
                 response, status = self.status(operation_id=request_id), 200
             except PipelineError as exc:
                 response, status = self.status(operation_id=request_id, error=exc.code), exc.status
