@@ -302,9 +302,11 @@ def test_missing_profile_preserves_legacy_units():
 def test_stale_missing_reference_retry_is_bounded_to_initial_or_observe_phase():
     import io
     import urllib.error
+    from types import SimpleNamespace
 
     runner = navigation.NavigationRunner.__new__(navigation.NavigationRunner)
     runner.policy = {"mode": "drive"}
+    runner.operator_lifecycle = SimpleNamespace(enabled=False)
     runner.motion_started, runner.startup_deadline, runner.clock = False, 5.0, lambda: 0.0
 
     def error(code):

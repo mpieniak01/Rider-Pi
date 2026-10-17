@@ -62,7 +62,12 @@ def client(monkeypatch, tmp_path):
 
     manager = FeatureManager(
         runner=runner,
-        status_fn=lambda unit: {"unit": unit, "load": "loaded", "active": "active" if unit in units else "inactive"},
+        status_fn=lambda unit: {
+            "unit": unit,
+            "load": "loaded",
+            "active": "active" if unit in units else "inactive",
+            "pid": os.getpid() if unit in units else 0,
+        },
         state_path=tmp_path / "goals.json",
         publisher=NullPublisher(),
         dependency_check=lambda *_: [],
@@ -202,3 +207,31 @@ def test_full_app_pipeline_get_is_available_while_real_feature_start_holds_trans
         continue_start.set()
         thread.join(3)
     assert finished.is_set() and results[0].status_code == 200
+
+
+def test_full_app_off_reconciles_source_that_survived_lost_goal_ownership(client, monkeypatch, tmp_path):
+    from services import camera_pipeline as domain
+
+    test_client, manager, calls = client
+    store.write({"contract_version": 1, "revision": 1, "profile": dict(store.DEFAULT_PROFILE)})
+    # The API has no restored goal, while the producer is still running.
+    manager.runner("camera-capture@raw.service", "start")
+    assert manager.resource_consumers().get("camera", []) == []
+    group = tmp_path / "proc" / str(os.getpid()) / "cgroup"
+    group.parent.mkdir(parents=True)
+    group.write_text("0::/system.slice/camera-capture@raw.service\n")
+    monkeypatch.setattr(domain, "PROC_ROOT", tmp_path / "proc")
+    # Producer source identity, written by the actual runtime in production.
+    import json
+
+    path = store.runtime_path() / "status.json"
+    row = json.loads(path.read_text())
+    row["camera_session"] = "surviving-source"
+    path.write_text(json.dumps(row))
+    body = command("stop", "orphan-off")
+    stopped = receipt(post(test_client, body), "stop", "orphan-off", "camera_source_released")
+    assert stopped["state"] == "stopped" and stopped["consumers"] == []
+    assert calls == [("camera-capture@raw.service", "start"), ("camera-capture@raw.service", "stop")]
+    before = list(calls)
+    receipt(post(test_client, body), "stop", "orphan-off", "camera_source_released")
+    assert calls == before
