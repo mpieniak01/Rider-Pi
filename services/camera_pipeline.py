@@ -13,6 +13,9 @@ from services import camera_pipeline_store as store
 from services.compute_config import _write
 from services.safety_contract import request_stop
 
+PROC_ROOT = Path("/proc")
+CAPTURE_UNITS = ("camera-capture@raw.service", "camera-capture@edge.service", "camera-capture@ssd.service")
+
 CAMERA_GOALS = ("s14_venom_navigation", "s15_venom_perception", "s12_venom_vision", "s2_camera_preview")
 
 
@@ -141,7 +144,45 @@ class CameraPipeline:
         if safety.get("error") or safety.get("stale") is True:
             raise PipelineError("camera_pipeline_motion_status_unavailable", 503)
 
-    def _stop(self, *, preempted=False):
+    def _release_orphan(self):
+        """Explicit OFF may recover our producer after API goal ownership is lost."""
+        if not store.enabled() or self.manager.resource_consumers().get("camera", []):
+            return
+        runtime, config = _runtime(), store.snapshot()
+        if (
+            runtime.get("state") not in {"active", "waiting_frame", "starting"}
+            or runtime.get("pipeline_revision") != config["revision"]
+            or runtime.get("active_profile") != config["profile"]
+            or not isinstance(runtime.get("camera_session"), str)
+            or not runtime["camera_session"]
+        ):
+            return
+        # The producer is a child of systemd's flock MainPID. Match its exact
+        # cgroup unit, not a process name, command substring or stale goal journal.
+        try:
+            groups = (PROC_ROOT / str(runtime["pid"]) / "cgroup").read_text().splitlines()
+        except OSError:
+            return
+        memberships = {part for line in groups for part in line.split(":", 2)[-1].split("/")}
+        running = [unit for unit in CAPTURE_UNITS if self.manager._running(unit)]
+        if len(running) != 1 or running[0] not in memberships:
+            return
+        unit = running[0]
+        observed = self.manager._status(unit)
+        if (
+            observed.get("load") != "loaded"
+            or observed.get("active") != "active"
+            or type(observed.get("pid")) is not int
+            or observed["pid"] <= 0
+            or observed.get("error")
+            or observed.get("stale") is True
+        ):
+            return
+        result = self.manager.service_action(unit, "stop")
+        if not result.get("ok"):
+            raise PipelineError(result.get("error") or "camera_pipeline_stop_failed", 503)
+
+    def _stop(self, *, preempted=False, release_orphan=False):
         self._idle()
         consumers = self.manager.resource_consumers().get("camera", [])
         if set(consumers) - set(CAMERA_GOALS):
@@ -158,7 +199,10 @@ class CameraPipeline:
                     result = self.manager.set_feature(goal, False)
                 if not result.get("ok"):
                     raise PipelineError(result.get("error") or "camera_pipeline_stop_failed", 503)
-        # Never steal a camera opened outside this domain.
+        if release_orphan:
+            self._release_orphan()
+        # Never steal a camera opened outside this domain. A positive stop ACK
+        # is insufficient: both the service and producer must have stopped.
         for unit in (
             "camera-capture@raw.service",
             "camera-capture@edge.service",
@@ -208,7 +252,10 @@ class CameraPipeline:
                 old = next((row for row in prior if row["request"]["request_id"] == request_id), None)
                 if old is not None:
                     if old["request"] != data:
-                        return self.status(operation_id=request_id, error="camera_pipeline_request_conflict"), 409
+                        return {
+                            **self.status(operation_id=request_id, error="camera_pipeline_request_conflict"),
+                            "current_revision": store.snapshot()["revision"],
+                        }, 409
                     return old["response"], old["status"]
             except (OSError, ValueError, KeyError, TypeError):
                 return {"ok": False, "error": "camera_pipeline_journal_unavailable"}, 503
@@ -278,7 +325,7 @@ class CameraPipeline:
                     if not result.get("ok"):
                         raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
                 else:
-                    self._stop(preempted=preempted)
+                    self._stop(preempted=preempted, release_orphan=True)
                 response, status = self.status(operation_id=request_id), 200
             except PipelineError as exc:
                 response, status = self.status(operation_id=request_id, error=exc.code), exc.status
