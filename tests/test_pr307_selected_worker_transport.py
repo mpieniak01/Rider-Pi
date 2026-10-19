@@ -6,6 +6,7 @@ import json
 import sys
 import urllib.request
 import urllib.response
+from email.message import Message
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -117,8 +118,10 @@ def _fake_http_transport(monkeypatch, code=200):
 
     class FakeHTTPHandler(urllib.request.HTTPHandler):
         def http_open(self, req):
-            calls.append((req.full_url, req.host, req.has_proxy(), json.loads(req.data)))
-            headers = {"Content-Type": "application/json"}
+            payload = json.loads(req.data) if req.data else None
+            calls.append((req.full_url, req.host, req.has_proxy(), payload))
+            headers = Message()
+            headers["Content-Type"] = "application/json"
             if code != 200:
                 headers["Location"] = "http://203.0.113.7/redirected"
             response = urllib.response.addinfourl(
@@ -156,12 +159,16 @@ def test_selected_worker_bypasses_proxy_environment_and_sends_only_to_loopback(m
 def test_selected_worker_redirect_cannot_send_prompt_to_another_host(code, monkeypatch, selected_profile):
     monkeypatch.delenv("CHAT_REMOTE_URL", raising=False)
     calls = _fake_http_transport(monkeypatch, code)
+    redirect = Mock(wraps=chat_glue._RejectWorkerRedirects().redirect_request)
+    monkeypatch.setattr(chat_glue._RejectWorkerRedirects, "redirect_request", redirect)
     ok, detail, source = chat_glue._remote_reply("private prompt")
     assert ok is False
     assert str(code) in detail
     assert source == "unavailable"
     assert len(calls) == 1
     assert calls[0][0] == LOCAL_ENDPOINT
+    redirect.assert_called_once()
+    assert redirect.call_args.args[-1] == "http://203.0.113.7/redirected"
 
 
 def test_internal_transport_revalidates_before_creating_opener(monkeypatch):
