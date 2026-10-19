@@ -43,57 +43,74 @@ export class MjpegParser {
         }
         return parts;
     }
+    readBoundary() {
+        if (this.buffer.length >= 2 && this.buffer[0] === 13 && this.buffer[1] === 10)
+            this.buffer = this.buffer.subarray(2);
+        if (this.buffer.length < this.marker.length + 2)
+            return false;
+        if (at(this.buffer, this.marker) !== 0)
+            throw new Error("stream_part_boundary");
+        const tail = this.marker.length;
+        if (this.buffer[tail] === 45 && this.buffer[tail + 1] === 45) {
+            this.ended = true;
+            this.ending(this.buffer.subarray(tail + 2));
+            this.buffer = new Uint8Array();
+            return false;
+        }
+        if (this.buffer[tail] !== 13 || this.buffer[tail + 1] !== 10)
+            throw new Error("stream_part_boundary");
+        return true;
+    }
+    readHeaders() {
+        const tail = this.marker.length;
+        const end = at(this.buffer, encoder.encode("\r\n\r\n"), tail + 2);
+        if (end < 0) {
+            if (this.buffer.length > MAX_HEADERS)
+                throw new Error("stream_headers_limit");
+            return null;
+        }
+        if (end > MAX_HEADERS)
+            throw new Error("stream_headers_limit");
+        const headers = new Headers();
+        for (const line of decoder.decode(this.buffer.subarray(tail + 2, end)).split("\r\n")) {
+            const colon = line.indexOf(":");
+            if (colon < 1)
+                throw new Error("stream_header");
+            const name = line.slice(0, colon).trim(), value = line.slice(colon + 1).trim();
+            if (headers.has(name))
+                throw new Error("stream_duplicate_header");
+            headers.set(name, value);
+        }
+        return { headers, start: end + 4, length: this.imageLength(headers) };
+    }
+    imageLength(headers) {
+        const rawLength = headers.get("content-length") ?? "";
+        if (!/^[1-9][0-9]{0,7}$/.test(rawLength))
+            throw new Error("stream_content_length");
+        const length = Number(rawLength);
+        if (length > MAX_IMAGE)
+            throw new Error("stream_image_limit");
+        if (headers.get("content-type")?.toLowerCase() !== "image/jpeg")
+            throw new Error("stream_image_type");
+        return length;
+    }
+    readImage(start, length) {
+        if (this.buffer[start + length] !== 13 || this.buffer[start + length + 1] !== 10)
+            throw new Error("stream_image_length");
+        const bytes = this.buffer.slice(start, start + length);
+        if (bytes[0] !== 255 || bytes[1] !== 216 || bytes[bytes.length - 2] !== 255 || bytes[bytes.length - 1] !== 217)
+            throw new Error("stream_jpeg");
+        return bytes;
+    }
     parse(parts) {
         while (!this.ended) {
-            if (this.buffer.length >= 2 && this.buffer[0] === 13 && this.buffer[1] === 10)
-                this.buffer = this.buffer.subarray(2);
-            if (this.buffer.length < this.marker.length + 2)
+            if (!this.readBoundary())
                 return;
-            if (at(this.buffer, this.marker) !== 0)
-                throw new Error("stream_part_boundary");
-            const tail = this.marker.length;
-            if (this.buffer[tail] === 45 && this.buffer[tail + 1] === 45) {
-                this.ended = true;
-                this.ending(this.buffer.subarray(tail + 2));
-                this.buffer = new Uint8Array();
+            const part = this.readHeaders();
+            if (!part || this.buffer.length < part.start + part.length + 2)
                 return;
-            }
-            if (this.buffer[tail] !== 13 || this.buffer[tail + 1] !== 10)
-                throw new Error("stream_part_boundary");
-            const end = at(this.buffer, encoder.encode("\r\n\r\n"), tail + 2);
-            if (end < 0) {
-                if (this.buffer.length > MAX_HEADERS)
-                    throw new Error("stream_headers_limit");
-                return;
-            }
-            if (end > MAX_HEADERS)
-                throw new Error("stream_headers_limit");
-            const headers = new Headers();
-            for (const line of decoder.decode(this.buffer.subarray(tail + 2, end)).split("\r\n")) {
-                const colon = line.indexOf(":");
-                if (colon < 1)
-                    throw new Error("stream_header");
-                const name = line.slice(0, colon).trim(), value = line.slice(colon + 1).trim();
-                if (headers.has(name))
-                    throw new Error("stream_duplicate_header");
-                headers.set(name, value);
-            }
-            const rawLength = headers.get("content-length") ?? "";
-            if (!/^[1-9][0-9]{0,7}$/.test(rawLength))
-                throw new Error("stream_content_length");
-            const length = Number(rawLength);
-            if (length > MAX_IMAGE)
-                throw new Error("stream_image_limit");
-            if (headers.get("content-type")?.toLowerCase() !== "image/jpeg")
-                throw new Error("stream_image_type");
-            const start = end + 4;
-            if (this.buffer.length < start + length + 2)
-                return;
-            if (this.buffer[start + length] !== 13 || this.buffer[start + length + 1] !== 10)
-                throw new Error("stream_image_length");
-            const bytes = this.buffer.slice(start, start + length);
-            if (bytes[0] !== 255 || bytes[1] !== 216 || bytes[bytes.length - 2] !== 255 || bytes[bytes.length - 1] !== 217)
-                throw new Error("stream_jpeg");
+            const { headers, start, length } = part;
+            const bytes = this.readImage(start, length);
             parts.push({ headers, bytes, receivedAt: performance.now() });
             this.buffer = this.buffer.subarray(start + length + 2);
         }

@@ -172,19 +172,31 @@ export class PipelinePreview {
         + ' · ' + source.sequence + ' · ' + Math.round(ageMs + performance.now() - receivedAt) + ' ms';
     } finally { URL.revokeObjectURL(url); }
   }
+  async drainFrames(queue) {
+    if (queue.busy()) return;
+    queue.setBusy(true);
+    try {
+      while (queue.hasFrame() && queue.current()) {
+        await this.display(queue.take(), queue.signal, queue.current);
+      }
+    } catch { if (queue.current()) this.stale(); }
+    finally { queue.setBusy(false); }
+  }
+  canReadPreview(profile) {
+    return profile && this.enabled && !document.hidden && ['active', 'waiting_frame'].includes(profile.state)
+      && (this.kind !== 'proc' || profile.profile.analysis_location === 'local');
+  }
   async run() {
     const p = this.profile;
-    if (!p || !this.enabled || document.hidden || !['active', 'waiting_frame'].includes(p.state)
-      || this.kind === 'proc' && p.profile.analysis_location !== 'local') return;
+    if (!this.canReadPreview(p)) return;
     const epoch = ++this.epoch, abort = new AbortController(); this.abort = abort;
     const current = () => epoch === this.epoch && !abort.signal.aborted && !document.hidden;
     const native = this.kind === 'raw' && p.profile.analysis_location === 'venom' && p.profile.remote_transport === 'mjpeg';
     let gap, latest = null, busy = false;
-    const pump = async () => {
-      if (busy) return; busy = true;
-      try { while (latest && current()) { const part = latest; latest = null; await this.display(part, abort.signal, current); } }
-      catch { if (current()) this.stale(); } finally { busy = false; }
-    };
+    const pump = () => this.drainFrames({
+      current, signal: abort.signal, take: () => { const part = latest; latest = null; return part; },
+      hasFrame: () => Boolean(latest), busy: () => busy, setBusy: value => { busy = value; },
+    });
     try {
       gap = setTimeout(() => abort.abort(), 5000);
       const response = await fetch(native ? '/api/resource/camera/stream.mjpg' : '/api/resource/camera/frame?view=' + this.kind, { cache: 'no-store', signal: abort.signal });
