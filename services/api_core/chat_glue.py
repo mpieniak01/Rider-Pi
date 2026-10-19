@@ -55,7 +55,7 @@ def _store_list(limit: int | None = None, newest_first: bool = False) -> list[di
 
 
 # ── AGENT: lokalny → zdalny → echo ───────────────────────────────────────────
-def _try_local_agent(prompt: str) -> tuple[bool, str]:
+def _try_local_agent(_prompt: str) -> tuple[bool, str]:
     """
     Lokalny agent został przeniesiony do apps/voice/web.py jako /api/chat endpoint.
     Użyj CHAT_REMOTE_URL=http://127.0.0.1:8092/api/chat aby połączyć się z lokalnym LLM.

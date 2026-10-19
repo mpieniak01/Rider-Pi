@@ -6,7 +6,7 @@ from services.api_core import google_home_api
 from services.api_core.google_home_api import build_auth_url_preview
 
 
-def home_auth_url(corsify, logger):
+def home_auth_url(corsify, _logger):
     if request.method == "OPTIONS":
         return corsify(make_response("", 204))
     preview = build_auth_url_preview()
