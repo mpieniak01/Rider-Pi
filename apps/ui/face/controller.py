@@ -104,7 +104,7 @@ class FaceController:
             return
         duration = max(0.05, min(1.0, float(os.getenv("FACE_TRANS_STEP_S", "0.35"))))
         values = self._mood_values(target)
-        crossing = via_neutral and {self.anim.state.expr, target} == {"happy", "sad"}
+        crossing = via_neutral and (self.anim.state.expr, target) in (("happy", "sad"), ("sad", "happy"))
         spec, target_after = (
             self._neutral_mood_spec(values, duration, dwell_s)
             if crossing

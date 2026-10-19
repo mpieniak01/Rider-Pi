@@ -20,6 +20,7 @@ from apps.navigator.quality import NavigationQuality
 from apps.ui.face.controller import FaceController
 from apps.ui.face.model import FaceState
 from apps.ui.face.renderer import FaceRenderer
+from apps.ui.face.schema import MOODS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -421,3 +422,25 @@ def test_aa2x_resampling_supports_legacy_pillow_namespace(modern_namespace):
     image_api.alpha_composite.assert_called_once_with(background, filtered)
     composed.convert.assert_called_once_with("RGB")
     canvas._image.paste.assert_called_once_with(final)
+
+
+@pytest.mark.parametrize("current", sorted(MOODS))
+@pytest.mark.parametrize("target", sorted(MOODS))
+@pytest.mark.parametrize("via_neutral", [False, True])
+def test_neutral_crossing_matches_both_opposite_directions_only(monkeypatch, current, target, via_neutral):
+    monkeypatch.setenv("FACE_TRANS_STEP_S", "0.35")
+    now = SimpleNamespace(value=0.0)
+    face = FaceController(style="friendly", idle=False, clock=lambda: now.value)
+    face.anim.state.expr = current
+    face.anim.state.mouth.shape = current if current in {"happy", "neutral", "sad"} else "neutral"
+    opposite = {"happy": "sad", "sad": "happy"}
+    expected_crossing = via_neutral and opposite.get(current) == target
+    face.set_mood(target, via_neutral=via_neutral, dwell_s=0)
+    assert (face._mood_pending is not None) == expected_crossing
+    assert face.anim.state.expr == ("neutral" if expected_crossing else target)
+    now.value = 0.525
+    face._tick()
+    assert face.is_mood_idle() == (not expected_crossing)
+    now.value = 0.7
+    assert face._tick().expr == target
+    assert face.is_mood_idle()
