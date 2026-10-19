@@ -81,7 +81,9 @@ def test_invalid_recognized_observation_expires_healthy_geometry(monkeypatch):
     assert cache.observe("robot.pose", {"x": 0, "y": 0, "theta": 0, "ts": ts})
     assert not cache.observe("robot.pose", {"observed_at": None, "ts": ts, "error": "lost"})
     row = cache.snapshot()["pose"]
-    assert row["stale"] is True and row["observed_at"] is None and row["error"] == "lost"
+    assert row["stale"] is True
+    assert row["observed_at"] is None
+    assert row["error"] == "lost"
     assert "x" not in row
     assert not cache.observe("robot.pose", None)
     assert cache.snapshot()["pose"]["data_ready"] is False
@@ -93,7 +95,9 @@ def test_older_explicit_failure_expires_health_and_preserves_original_time(monke
     assert cache.observe("robot.pose", {"x": 0, "y": 0, "theta": 0, "observed_at": ts})
     assert not cache.observe("robot.pose", {"observed_at": ts - 1, "error": "sensor unavailable"})
     row = cache.snapshot()["pose"]
-    assert row["observed_at"] == ts - 1 and row["stale"] is True and row["error"] == "sensor unavailable"
+    assert row["observed_at"] == ts - 1
+    assert row["stale"] is True
+    assert row["error"] == "sensor unavailable"
     assert "x" not in row
 
 
@@ -173,7 +177,8 @@ def test_corrupt_or_failed_passive_plan_expires_cached_geometry(monkeypatch, cha
     plan = plan_fixture(monkeypatch)
     cache.observe_plan(plan)
     result = cache.observe_plan({**plan, **change})
-    assert result["planned_path"] == [] and result["plan_observed_at"] is None
+    assert result["planned_path"] == []
+    assert result["plan_observed_at"] is None
     assert cache.snapshot()["path"]["stale"] is True
     assert "path" not in cache.snapshot()["path"]
 
@@ -184,7 +189,8 @@ def test_passive_plan_frame_change_hides_old_overlay_and_empty_plan_clears_it(mo
     frame = {"calibration_id": "measured", "reference_id": "new", "home": {**plan["plan_home"], "reference_id": "new"}}
     cache.observe("robot.pose", {**frame, "x": 0, "y": 0, "theta": 0, "observed_at": 1000})
     row = cache.snapshot()["path"]
-    assert row["stale"] is True and row["error"] == "plan_frame_mismatch"
+    assert row["stale"] is True
+    assert row["error"] == "plan_frame_mismatch"
     cache.observe_plan({**plan, "planned_path": [], "plan_observed_at": None})
     assert "path" not in cache.snapshot()["path"]
 
@@ -218,7 +224,8 @@ def test_same_frame_source_failure_cannot_present_a_current_plan(monkeypatch, so
     assert cache.snapshot()["path"]["planning_ready"] is True
     cache._rows[source].update(change)
     path = cache.snapshot()["path"]
-    assert path["stale"] is True and path["planning_ready"] is False
+    assert path["stale"] is True
+    assert path["planning_ready"] is False
     assert path["error"] == "plan_sources_unavailable"
 
 

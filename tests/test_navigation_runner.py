@@ -2,60 +2,18 @@ import time
 from types import SimpleNamespace
 
 import pytest
+from navigation_runner_fixtures import isolated as isolated
 
 from apps.compute import navigation as module
 from common.service_catalog import DEFAULT_REGISTRY, UNIT_CATALOG
 from services.navigation_config import DEFAULT
 
 
-@pytest.fixture
-def isolated(monkeypatch, tmp_path):
-    policy = {**DEFAULT, "mode": "drive", "verified": True, "calibration_id": "trial", "model_sha256": "a" * 64}
-    selection = {
-        "id": "venom",
-        "revision": 1,
-        "device_id": "pi",
-        "token": "fixture-token",
-        "url": "http://127.0.0.1:8800",
-        "tasks": [],
-    }
-    safety = {
-        "remote_decision_deadline_supported": True,
-        "remote_decision_feedback_supported": True,
-        "scoped_stop_generation_supported": True,
-        "can_move": True,
-        "owner": "navigation",
-        "generation": "gen",
-        "last_seq": 0,
-        "manual_settings": {"revision": 3},
-        "calibration": {"profile_digest": "accepted"},
-    }
-    intent = {"generation": "gen", "request_id": "intent", "seq": 1, "settings_revision": 3}
-    commands = []
-    monkeypatch.setattr(module.navigation_config, "snapshot", lambda: dict(policy))
-    monkeypatch.setattr(module, "selected_executor", lambda: dict(selection))
-    monkeypatch.setattr(module, "read_status", lambda: dict(safety))
-    monkeypatch.setattr(module, "read_service_intent", lambda *_: dict(intent))
-    monkeypatch.setattr(module, "write_intent_status", lambda *a, **kw: True)
-    monkeypatch.setenv("RIDER_NAVIGATION_STATUS", str(tmp_path / "status.json"))
-
-    def submit(data, **_kwargs):
-        commands.append(data)
-        return {"ok": True}, 200
-
-    class Publisher:
-        def close(self):
-            pass
-
-    monkeypatch.setattr(module, "BusPub", lambda **_kwargs: Publisher())
-    monkeypatch.setattr(module, "submit_control", submit)
-    return policy, selection, safety, intent, commands
-
-
 def test_catalog_no_local_detector_and_separate_owner():
     drive = DEFAULT_REGISTRY["s14_venom_navigation"]
     observe = DEFAULT_REGISTRY["s15_venom_perception"]
-    assert drive.can_move and drive.control_owner == "navigation"
+    assert drive.can_move
+    assert drive.control_owner == "navigation"
     assert not observe.can_move
     assert "rider-vision.service" not in drive.members
     assert "rider-obstacle.service" not in drive.members
@@ -149,8 +107,9 @@ def test_failed_claim_and_motion_rejection_stop(isolated, monkeypatch):
 
 
 def test_redirects_cannot_forward_device_token():
+    redirect_handler = module.NoRedirect()
     with pytest.raises(module.ComputeError):
-        module.NoRedirect().redirect_request(None, None, None, None, None, None)
+        redirect_handler.redirect_request(None, None, None, None, None, None)
 
 
 def test_missing_executor_fails_before_camera(monkeypatch):
@@ -253,7 +212,8 @@ def test_navigation_configuration_api_errors(monkeypatch, code, expected):
     monkeypatch.setattr(navigation_api.navigation_config, "configure", fail)
     with app.test_request_context("/api/navigation/config", method="POST", json={}):
         response, status = navigation_api.config_handler()
-    assert status == expected and response.json["error"] == code
+    assert status == expected
+    assert response.json["error"] == code
 
 
 def test_navigation_configuration_api_read_and_persistence_failure(monkeypatch):
@@ -265,7 +225,8 @@ def test_navigation_configuration_api_read_and_persistence_failure(monkeypatch):
     monkeypatch.setattr(navigation_api.navigation_config, "snapshot", lambda: dict(DEFAULT))
     with app.test_request_context("/api/navigation/config", method="GET"):
         response, status = navigation_api.config_handler()
-    assert status == 200 and response.json["mode"] == "observe"
+    assert status == 200
+    assert response.json["mode"] == "observe"
 
     def fail(_):
         raise OSError("fixture")
@@ -273,7 +234,8 @@ def test_navigation_configuration_api_read_and_persistence_failure(monkeypatch):
     monkeypatch.setattr(navigation_api.navigation_config, "configure", fail)
     with app.test_request_context("/api/navigation/config", method="POST", json={}):
         response, status = navigation_api.config_handler()
-    assert status == 503 and response.json["error"] == "navigation_persistence_failed"
+    assert status == 503
+    assert response.json["error"] == "navigation_persistence_failed"
 
 
 @pytest.mark.parametrize("payload", ['[]', '{"observed_at": NaN}', "x" * 16385])
@@ -287,7 +249,8 @@ def test_navigation_status_invalid_file_is_stale(monkeypatch, tmp_path, payload)
     monkeypatch.setenv("RIDER_NAVIGATION_STATUS", str(target))
     with Flask(__name__).app_context():
         response, code = status_handler()
-    assert code == 200 and response.json["stale"] is True
+    assert code == 200
+    assert response.json["stale"] is True
 
 
 def test_observation_allows_slow_first_and_subsequent_frames(isolated):
@@ -467,7 +430,8 @@ def test_drive_expired_frame_after_first_fresh_frame_still_latches_stop(isolated
 
     runner = module.NavigationRunner(source_factory=Source, request=request, clock=lambda: clock[0])
     assert runner.run() == 2
-    assert len(requested) == 1 and runner.lease.latched
+    assert len(requested) == 1
+    assert runner.lease.latched
     assert runner.lease.reason == "navigation_frame_expired"
     assert all(command["action"] != "move" or command["vx"] == 0 for command in isolated[-1])
 
@@ -491,7 +455,8 @@ def test_drive_startup_stale_frames_never_reset_five_second_grace(isolated):
     runner = module.NavigationRunner(
         source_factory=Source, request=lambda *_: pytest.fail("stale input must not be sent"), clock=lambda: clock[0]
     )
-    assert runner.run() == 2 and runner.lease.latched
+    assert runner.run() == 2
+    assert runner.lease.latched
     assert all(command["action"] != "move" or command["vx"] == 0 for command in isolated[-1])
 
 
@@ -536,9 +501,11 @@ def test_observation_recovers_transport_with_stop_and_no_actuation(isolated, err
     runner._status = lambda result: states.append(result)
     assert runner.run() == 0
     retry = [row for row in states if row and row.get("reason") == "vision_observation_transport_retry"]
-    assert retry and retry[0]["action"] == retry[0]["vision_action"] == "stop"
+    assert retry
+    assert retry[0]["action"] == retry[0]["vision_action"] == "stop"
     assert retry[0]["clear_count"] == retry[0]["valid_for_ms"] == 0
-    assert runner.sequence == 2 and runner.last_result["vision_action"] == "go"
+    assert runner.sequence == 2
+    assert runner.last_result["vision_action"] == "go"
     assert commands == []
 
 
@@ -669,7 +636,8 @@ def test_navigation_reuses_one_publisher_and_does_not_block_on_ack(isolated, mon
     monkeypatch.setattr(module, "submit_control", submit)
     runner = module.NavigationRunner(source_factory=Source, request=remote, publisher_factory=factory)
     assert runner.run() == 2
-    assert len(created) == 1 and created[0].closed
+    assert len(created) == 1
+    assert created[0].closed
     assert len(submitted) == 5
     assert all(row == {"publisher": created[0], "timeout_s": 0.0} for row in submitted)
 
