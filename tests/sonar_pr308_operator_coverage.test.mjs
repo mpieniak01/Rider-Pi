@@ -263,8 +263,13 @@ test('optional TTS discovery failure retains text chat and missing/moving domain
   assert.match(f.node('chat-status').textContent, /text chat requires its prepared domain/);
   assert.equal(chat.busy, false);
   await assert.rejects(chat.prepareDomain('provider', 'text'), /Domain unavailable/);
-  tasks.catalog.features.push({name: 'moving', option_kind: 'provider', can_move: true});
+  const domain = {name: 'provider', option_kind: 'provider', can_move: true,
+    option_schema: {choices: [{value: 'text'}]}, requested: true, options: {domain: 'text'},
+    ready: true, observed_at: 1000};
+  tasks.catalog.features.push(domain);
   await assert.rejects(chat.prepareDomain('provider', 'text'), /Domain unavailable/);
+  domain.can_move = false;
+  await chat.prepareDomain('provider', 'text');
   assert.equal(tasks.options.size, 0);
   assert.deepEqual(f.calls.map(call => call.path), ['/api/voice/providers']);
 });
