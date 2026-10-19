@@ -44,17 +44,16 @@ def _validate_process_status(value, observed):
     if value.get("last_ack") is not None and not isinstance(value["last_ack"], dict):
         raise ValueError("invalid_ack_status")
     home = value.get("home")
-    if home is not None:
-        if (
-            not isinstance(home, dict)
-            or not value["reference_verified"]
-            or home.get("operator_confirmed") is not True
-            or home.get("reference_id") != reference
-            or home.get("calibration_id") != pose.get("calibration_id")
-            or not all(finite_number(home.get(key)) for key in ("x", "y"))
-            or home != pose.get("home")
-        ):
-            raise ValueError("invalid_home_status")
+    if home is not None and (
+        not isinstance(home, dict)
+        or not value["reference_verified"]
+        or home.get("operator_confirmed") is not True
+        or home.get("reference_id") != reference
+        or home.get("calibration_id") != pose.get("calibration_id")
+        or not all(finite_number(home.get(key)) for key in ("x", "y"))
+        or home != pose.get("home")
+    ):
+        raise ValueError("invalid_home_status")
     if pose["navigation_ready"] and confirmed_home(pose) is None:
         raise ValueError("invalid_navigation_home")
 

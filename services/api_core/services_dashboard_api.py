@@ -17,7 +17,8 @@ bp = Blueprint("services_dashboard", __name__, url_prefix="/api/services")
 
 
 def _parse_systemctl(output: str) -> dict[str, str]:
-    return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+    pairs = (line.partition("=") for line in output.splitlines())
+    return {key: value for key, separator, value in pairs if separator}
 
 
 def _status_from_active(active: str) -> str:

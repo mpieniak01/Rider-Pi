@@ -36,7 +36,8 @@ class PlaybackManager:
     def _remember(self, playback_id, result):
         self.recent[playback_id] = (self.clock() + 60, result)
         self.recent.move_to_end(playback_id)
-        for key in list(self.recent):
+        # Expiry removes entries, so iterate over a stable native mapping snapshot.
+        for key in self.recent.copy():
             if self.recent[key][0] <= self.clock():
                 del self.recent[key]
         while len(self.recent) > 64:
@@ -126,7 +127,12 @@ class PlaybackManager:
         try:
             timer.start()
             result = self._run_playback(data, playback_id, rate, event, deadline)
-            return result, 200 if result['ok'] else 503 if result['state'] == 'failed' else 409
+            status = 409
+            if result["ok"]:
+                status = 200
+            elif result["state"] == "failed":
+                status = 503
+            return result, status
         except Exception:
             result = self._result(playback_id, 'failed', error='playback_unavailable')
             return result, 503

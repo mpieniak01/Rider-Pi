@@ -292,11 +292,16 @@ def _play_error(error):
     with _STATE_LOCK:
         if not STATE["playing"]:
             STATE["error"] = code
+    status = 400
+    if unavailable:
+        status = 503
+    elif "lcd_" in code:
+        status = 409
     return {
         "ok": False,
         "error": code,
         "detail": str(error),
-        "status": 503 if unavailable else 409 if "lcd_" in code else 400,
+        "status": status,
     }
 
 

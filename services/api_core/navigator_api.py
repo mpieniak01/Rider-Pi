@@ -69,7 +69,12 @@ def api_navigator_stop():
         return _response({}, 204)
     result = request_stop(owner="navigation")
     C.bus_pub(TOPIC_NAVIGATOR_CONTROL, {"action": "stop", "ts": time.time()})
-    return _response(result, 200 if result["ok"] else 202 if result.get("pending") else 503)
+    status = 503
+    if result["ok"]:
+        status = 200
+    elif result.get("pending"):
+        status = 202
+    return _response(result, status)
 
 
 def api_navigator_config():

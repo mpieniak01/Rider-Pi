@@ -8,7 +8,7 @@ import math
 import threading
 from collections import OrderedDict
 
-from flask import Response, jsonify, request
+from flask import Response, jsonify, make_response, request
 
 from apps.ui.face.animator import Animator
 from apps.ui.face.catalog import CATALOG, LOCK, descriptors, get_settings, save_settings, settings_revision
@@ -107,15 +107,15 @@ def _preview(body):
 def frame():
     try:
         if request.content_length and request.content_length > 65536:
-            return jsonify(ok=False, error="gesture_too_large"), 413
+            return make_response(jsonify(ok=False, error="gesture_too_large"), 413)
         body = request.get_json(silent=True)
         validate(body)
         png = _preview(body)
         if png is None:
-            return jsonify(ok=False, error="preview_busy"), 429, {"Retry-After": "1"}
+            return make_response(jsonify(ok=False, error="preview_busy"), 429, {"Retry-After": "1"})
         return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError, OSError):
-        return jsonify(ok=False, error="invalid_frame", actuation=False), 400
+        return make_response(jsonify(ok=False, error="invalid_frame", actuation=False), 400)
 
 
 def runtime():

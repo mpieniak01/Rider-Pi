@@ -123,14 +123,14 @@ def _collect_system(slow: bool) -> dict:
 _sampler = SystemSampler(_cpu_pct_sample, _collect_system)
 
 
-def get_sysinfo(HIST_CPU, HIST_MEM) -> dict[str, object]:
+def get_sysinfo(hist_cpu, hist_mem) -> dict[str, object]:
     """Read one coherent snapshot, also preserving legacy history deques."""
     with _sampler.lock:
         si = _sampler.snapshot()
-        HIST_CPU.clear()
-        HIST_CPU.extend(si["hist_cpu"])
-        HIST_MEM.clear()
-        HIST_MEM.extend(si["hist_mem"])
+        hist_cpu.clear()
+        hist_cpu.extend(si["hist_cpu"])
+        hist_mem.clear()
+        hist_mem.extend(si["hist_mem"])
     try:
         from . import compat
 

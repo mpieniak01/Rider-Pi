@@ -21,7 +21,7 @@ _thread: threading.Thread | None = None
 _stop_evt = threading.Event()
 _last_busy_ts = time.time()
 _last_action_ts = 0.0
-_power_state: bool | None = None  # True=on, False=auto-off, None=unknown
+_power_state: bool | None = None  # Last known power: on, automatically off, or unknown.
 
 
 def _apply_lcd_snapshot(lcd, snapshot):

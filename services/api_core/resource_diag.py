@@ -257,6 +257,13 @@ def inspect(resource: str) -> dict[str, Any]:
     except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
         error = str(exc)
 
+    state = "free"
+    if error:
+        state = "unknown"
+    elif not paths:
+        state = "unavailable"
+    elif holders:
+        state = "busy"
     return {
         "resource": resource,
         "label": spec["label"],
@@ -265,7 +272,7 @@ def inspect(resource: str) -> dict[str, Any]:
         "paths": paths,
         "observed_at": None if error else time.time(),
         "source": "lsof",
-        "state": "unknown" if error else "unavailable" if not paths else "busy" if holders else "free",
+        "state": state,
         "free": None if error or not paths else not holders,
         "error": error,
     }

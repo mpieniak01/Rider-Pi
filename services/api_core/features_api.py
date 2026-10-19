@@ -45,28 +45,23 @@ def feature_handler(name: str):
     try:
         result = feature_manager.set_feature(name, enabled, options=options, control=payload)
         ok = bool(result.get("ok", False))
-        return _corsify(jsonify({"ok": ok, "feature": name, "enabled": enabled, "result": result})), (
-            200
-            if ok
-            else (
-                409
-                if result.get("error")
-                in {
-                    "operator_motion_permission_required",
-                    "actuator_capability_unavailable",
-                    "stale_or_invalid_operator_intent",
-                    "operator_intent_replay",
-                    "operator_generation_changed",
-                    "resource_conflict",
-                    "camera_pipeline_profile_conflict",
-                    "camera_pipeline_local_analysis_selected",
-                    "stop_before_reconfigure",
-                    "stop_unconfirmed",
-                    "navigation_traversal_unverified",
-                }
-                else 503
-            )
-        )
+        status = 200
+        if not ok:
+            conflicts = {
+                "operator_motion_permission_required",
+                "actuator_capability_unavailable",
+                "stale_or_invalid_operator_intent",
+                "operator_intent_replay",
+                "operator_generation_changed",
+                "resource_conflict",
+                "camera_pipeline_profile_conflict",
+                "camera_pipeline_local_analysis_selected",
+                "stop_before_reconfigure",
+                "stop_unconfirmed",
+                "navigation_traversal_unverified",
+            }
+            status = 409 if result.get("error") in conflicts else 503
+        return _corsify(jsonify({"ok": ok, "feature": name, "enabled": enabled, "result": result})), status
     except ValueError as exc:
         unknown = str(exc).startswith("unknown feature")
         return _corsify(
