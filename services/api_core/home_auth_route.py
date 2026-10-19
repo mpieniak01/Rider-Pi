@@ -10,8 +10,9 @@ def home_auth_url(corsify, logger):
     """Build the read-only OAuth URL preview without starting authentication.
 
     logger is intentionally unused here, but remains an accepted keyword in
-    the injected route-handler interface shared with home_auth. Unlike the
-    authentication action, a URL preview performs no logged side effects.
+    the injected route-handler interface shared with home_auth. The preview
+    helper uses its own module logger, including logging the generated URL;
+    it does not start the authentication flow or the local callback server.
     """
     if request.method == "OPTIONS":
         return corsify(make_response("", 204))
