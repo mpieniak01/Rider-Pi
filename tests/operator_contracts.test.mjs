@@ -1,3 +1,4 @@
+import {loadSource} from './helpers/source-module.mjs';
 // Golden projections only: no network, SDK, service action or physical motion.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -5,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const load = async name => import('data:text/javascript;base64,' + Buffer.from(await readFile(path.join(root, 'web/assets/operator', name))).toString('base64'));
+const load = name => loadSource(path.join(root,'web/assets/operator',name));
 const { decodeResponse, errorMessage, API_ACCEPT, responseFamily } = await load('contract.js');
 const { observationChannel } = await load('observations.js');
 const { cameraFrame } = await load('model.js');

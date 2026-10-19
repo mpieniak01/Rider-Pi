@@ -1,11 +1,13 @@
+import {loadSource} from './source-module.mjs';
 // In-memory browser fixtures only: no sockets, SDK or hardware.
+import { webcrypto } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const assets = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/assets/operator');
-const model = await import(`data:text/javascript;base64,${Buffer.from(await readFile(path.join(assets, 'model.js'))).toString('base64')}`);
+const model = await loadSource(path.join(assets, 'model.js'));
 const instant = Date.now() / 1000;
 const capability = { available: true, stop_verified: true };
 const armed = (now = Date.now() / 1000) => ({ contract_version: 1, state: 'ARMED', generation: 'fixture-generation', owner: 'manual',
@@ -41,7 +43,7 @@ async function fixture(initial = disarmed(), { page = 'control', safetyCard = nu
   const document = { hidden: false, documentElement: { lang: 'pl' }, body: { dataset: { page } },
     getElementById: id => elements.get(id), querySelector: selector => selector === '.operator-safety' ? safetyCard : null, querySelectorAll: () => [], createElement: () => new Element(),
     addEventListener: (name, action) => { listeners[name] = action; }, removeEventListener() {} };
-  const context = vm.createContext({ document, window: { addEventListener() {} }, console,
+  const context = vm.createContext({ document, window: { addEventListener() {} }, console, crypto: webcrypto,
     Date: clock ? class extends Date { static now() { return clock.now * 1000; } } : Date, Math, Number, String, Boolean, JSON, Map, Set, Error, AbortController,
     setTimeout: callback => { timers.set(++timerId, callback); return timerId; }, clearTimeout: id => timers.delete(id),
     setInterval: callback => { timers.set(++timerId, callback); return timerId; }, clearInterval: id => timers.delete(id),
@@ -63,7 +65,7 @@ async function fixture(initial = disarmed(), { page = 'control', safetyCard = nu
   async function load(name) {
     if (modules.has(name)) return modules.get(name);
     const source = await readFile(path.join(assets, name), 'utf8');
-    const module = new vm.SourceTextModule(source, { context, identifier: name }); modules.set(name, module);
+    const module = new vm.SourceTextModule(source, { context, identifier: pathToFileURL(path.join(assets, name)).href }); modules.set(name, module);
     await module.link(specifier => load(path.basename(specifier).split("?")[0]));
     return module;
   }

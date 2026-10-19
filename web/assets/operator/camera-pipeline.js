@@ -1,3 +1,4 @@
+import { requestId } from './request-id.js';
 import { request, poll } from './transport.js';
 import { tr, showError } from './ui.js';
 import { readMjpeg } from './mjpeg.js';
@@ -61,13 +62,13 @@ export class CameraPipelineControls {
     this.busy = true; this.error = ''; this.readEpoch++; this.onState(null); this.render();
     try {
       const response = await request(ENDPOINT, { method: 'POST', timeout: 20000, body: {
-        contract_version: 1, request_id: (globalThis.crypto?.randomUUID?.() || 'camera-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)), expected_revision: this.status.revision,
+        contract_version: 1, request_id: requestId('camera'), expected_revision: this.status.revision,
         action, ...(action === 'configure' ? { profile } : {}),
       } });
       if (!validPipeline(response.data)) throw new Error('camera_pipeline_invalid_status');
       this.status = response.data; this.onState(this.status);
     } catch (error) { this.error = error.message; showError(error); }
-    finally { this.readEpoch++; this.busy = false; this.render(); this.poller.refresh(); }
+    finally { this.readEpoch++; this.busy = false; this.render(); void this.poller.refresh(); }
   }
   options(name, choices, selected, supported) {
     const select = this.node.querySelector('.' + name);
@@ -113,7 +114,7 @@ export class PipelinePreview {
     this.expiry = setInterval(() => {
       if (this.shown && performance.now() - this.shown.receivedAt + this.shown.ageMs > 1000) this.stale();
     }, 250);
-    document.addEventListener('visibilitychange', () => { this.close(); if (!document.hidden) this.run(); });
+    document.addEventListener('visibilitychange', () => { this.close(); if (!document.hidden) void this.run(); });
     window.addEventListener('pagehide', () => { this.close(); clearInterval(this.expiry); });
   }
   update(profile, kind = this.kind, enabled = true) {
@@ -125,7 +126,7 @@ export class PipelinePreview {
     this.identity = key; this.close();
     if (profile !== undefined) this.image.dataset.pipelineManaged = 'true';
     else { delete this.image.dataset.pipelineManaged; this.canvas.style.display = 'none'; return; }
-    this.image.hidden = true; this.image.removeAttribute('src'); this.run();
+    this.image.hidden = true; this.image.removeAttribute('src'); void this.run();
   }
   close() { this.epoch++; clearTimeout(this.retry); this.abort?.abort(); this.stale(); }
   stale() {
@@ -201,7 +202,7 @@ export class PipelinePreview {
       clearTimeout(gap); latest = null; abort.abort();
       if (epoch === this.epoch && !document.hidden) {
         if (native) this.stale();
-        this.retry = setTimeout(() => this.run(), native ? 1000 : 500);
+        this.retry = setTimeout(() => { void this.run(); }, native ? 1000 : 500);
       }
     }
   }

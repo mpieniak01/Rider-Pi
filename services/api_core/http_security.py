@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
+import socket
 from urllib.parse import urlsplit
 
 from flask import jsonify, request
@@ -45,11 +47,36 @@ def _origin(value):
         return None
 
 
+def trusted_host():
+    """Host is request input; never use an arbitrary DNS name as CSRF authority."""
+    # Parse raw authority before Werkzeug normalizes it (invalid ports/brackets may raise).
+    authority = request.headers.get("Host")
+    target = (
+        _origin(f"{request.scheme}://{authority}") if authority is not None else _origin(request.host_url.rstrip("/"))
+    )
+    if target is None:
+        return False
+    host = target[1]
+    try:
+        address = ipaddress.ip_address(host)
+        if address.is_private or address.is_loopback or address.is_link_local:
+            return True
+    except ValueError:
+        # A name is trusted only from local/operator configuration, never DNS lookup of Host.
+        pass
+    hostname = socket.gethostname().lower()
+    names = {"localhost", hostname, hostname + ".local"}
+    names.update(value.strip().lower() for value in os.getenv("RIDER_TRUSTED_HOSTS", "").split(",") if value.strip())
+    origins = (_origin(value.strip()) for value in os.getenv("RIDER_ALLOWED_ORIGINS", "").split(","))
+    names.update(origin[1] for origin in origins if origin is not None)
+    return host in names
+
+
 def allowed_origin():
     origin = _origin(request.headers.get("Origin"))
     if origin is None:
         return False
-    allowed = {_origin(request.host_url.rstrip("/"))}
+    allowed = {_origin(request.host_url.rstrip("/"))} if trusted_host() else set()
     allowed.update(_origin(value.strip()) for value in os.getenv("RIDER_ALLOWED_ORIGINS", "").split(","))
     return origin in allowed
 
@@ -64,7 +91,7 @@ def apply_cors(response):
         ):
             response.headers.remove(name)
     if allowed:
-        response.headers["Access-Control-Allow-Origin"] = request.headers["Origin"]
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin")
         response.headers["Access-Control-Allow-Methods"] = _METHODS
         response.headers["Access-Control-Allow-Headers"] = _HEADERS
     return response
@@ -80,6 +107,8 @@ def install(app):
 
     @app.before_request
     def protect_browser_boundary():
+        if not trusted_host():
+            return jsonify(ok=False, error="host_not_allowed"), 400
         if "Origin" in request.headers and not allowed_origin():
             return jsonify(ok=False, error="origin_not_allowed"), 403
         if request.method not in _UNSAFE:

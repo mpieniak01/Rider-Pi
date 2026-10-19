@@ -1,0 +1,87 @@
+name: Sonar quality gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sonar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: .
+      RIDER_PI_CI: '1'
+      RIDER_PI_MOCK_HW: '1'
+      RIDER_TEST_ISOLATED: '1'
+      MOTION_ENABLE: '0'
+      ESTOP_GPIO: '-1'
+      BUS_PUB_ADDR: 'inproc://rider-sonar-publish'
+      BUS_SUB_ADDR: 'inproc://rider-sonar-subscribe'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.9'
+          cache: pip
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.18.0'
+      - name: Install isolated software-test dependencies
+        run: |
+          python -m pip install --only-binary=:all: pip==25.3
+          python -m pip install --only-binary=:all: -r config/agent/requirements-wsl.txt -c config/agent/constraints.txt
+      - name: Python regression coverage including scripts
+        run: |
+          mkdir -p docs_pl/_done/ci-sonar
+          pytest tests -m "not hardware and not physical_motion and not network"             --cov=apps --cov=services --cov=common --cov=drivers --cov=scripts             --cov-report= --junitxml=docs_pl/_done/ci-sonar/pytest.xml
+      - name: Isolated JavaScript regression coverage
+        run: |
+          node --experimental-vm-modules --experimental-test-coverage --test             --test-reporter=spec --test-reporter-destination=stdout             --test-reporter=lcov --test-reporter-destination=docs_pl/_done/ci-sonar/node.lcov tests/*.test.mjs
+      - name: Normalize measured source paths
+        run: |
+          python tests/quality_reports.py --python-data .coverage             --javascript docs_pl/_done/ci-sonar/node.lcov --output docs_pl/_done/ci-sonar
+      - name: Analyze exact revision and enforce Sonar gate
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SCAN_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BRANCH: ${{ github.head_ref }}
+          PR_BASE: ${{ github.base_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SONAR_TOKEN" || { echo 'SONAR_TOKEN is required; fork PRs require a trusted manual scan.'; exit 1; }
+          test "$(git rev-parse HEAD)" = "$SCAN_SHA"
+          args=(
+            '-Dsonar.projectKey=mpieniak01_Rider-Pi' '-Dsonar.organization=mpieniak01'
+            '-Dsonar.sources=.' '-Dsonar.tests=tests' '-Dsonar.test.inclusions=tests/**'
+            '-Dsonar.python.version=3.9' '-Dsonar.working.directory=/tmp/rider-ci-scanner'
+            '-Dsonar.python.coverage.reportPaths=docs_pl/_done/ci-sonar/coverage.xml'
+            '-Dsonar.javascript.lcov.reportPaths=docs_pl/_done/ci-sonar/lcov.info'
+            "-Dsonar.scm.revision=$SCAN_SHA" '-Dsonar.qualitygate.wait=true'
+          )
+          if [ -n "$PR_NUMBER" ]; then
+            args+=("-Dsonar.pullrequest.key=$PR_NUMBER" "-Dsonar.pullrequest.branch=$PR_BRANCH" "-Dsonar.pullrequest.base=$PR_BASE")
+          else
+            test "$GITHUB_REF" = 'refs/heads/main' || { echo 'Use a PR to analyze a feature branch.'; exit 1; }
+            args+=('-Dsonar.branch.name=main')
+          fi
+          docker run --rm --network=host --user "$(id -u):$(id -g)"             --env SONAR_TOKEN --env SONAR_HOST_URL=https://sonarcloud.io --env SONAR_USER_HOME=/tmp/rider-ci-sonar-home --env SCANNER_WORKDIR_PATH=/tmp/rider-ci-scanner             --volume "$PWD:/usr/src:ro" --workdir /usr/src             sonarsource/sonar-scanner-cli@sha256:a3f4215076706c95a17a68c19322ee916e40a3acd081a8c1a1e839e0194afa57 "${args[@]}"
+      - name: Keep reproducible coverage reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sonar-coverage-${{ github.event.pull_request.head.sha || github.sha }}
+          path: docs_pl/_done/ci-sonar/
+          if-no-files-found: error

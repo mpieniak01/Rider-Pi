@@ -16,35 +16,29 @@ SYSTEMD_SERVICES = $(filter-out rider-splash.service rider-wifi-unblock.service,
 
 # Provider wyboru backendu głosowego:
 # - openai (domyślnie)
-# - google (Gemini)
 # - local  (voice-web na :8092, config/voice_local_file.toml)
-PROVIDER ?= openai  # allowed: openai, google, local
+# Google/Gemini SDK jest wyłączone; wybór google/gemini zwraca błąd.
+PROVIDER ?= openai  # allowed: openai, local
 
 # VOICE (serwer www + CLI; opcjonalne VOICE_ARGS, np. ' --lang pl ')
 VOICE_BIND ?= 127.0.0.1:8092
 
 # Dziedziczenie kluczy z ~/.bash_profile do komend voice-* (+ opcjonalne wygaszenie szumu logów gRPC)
 ENV_FROM_BASH = OPENAI_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf %s "$$OPENAI_API_KEY"')" \
-                GOOGLE_API_KEY="$$(bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf %s "$$GOOGLE_API_KEY"')" \
                 GRPC_VERBOSITY=ERROR GLOG_minloglevel=3 PYTHONWARNINGS="ignore:Field name .*Operation"
 
 # Wybór pliku konfiguracyjnego dla trybu FILE zależnie od PROVIDER
-ifeq ($(PROVIDER),google)
-VOICE_FILE_CFG := ./config/voice_gemini_file.toml
-else ifeq ($(PROVIDER),local)
+ifeq ($(PROVIDER),local)
 VOICE_FILE_CFG := ./config/voice.toml
 else
 VOICE_FILE_CFG := ./config/voice_openai_file.toml
 endif
 
 # Wybór pliku konfiguracyjnego dla STREAMING:
-# Domyślnie OpenAI; jeśli PROVIDER=google i istnieje config/voice_gemini_streaming.toml — użyj go.
 # Dla PROVIDER=local nie ma natywnego realtime WS — użyj wariantów file-based.
 VOICE_STREAM_CFG := ./config/voice_openai_streaming.toml
-ifeq ($(PROVIDER),google)
-ifneq ("$(wildcard ./config/voice_gemini_streaming.toml)","")
-VOICE_STREAM_CFG := ./config/voice_gemini_streaming.toml
-endif
+ifneq ($(filter google gemini,$(PROVIDER)),)
+$(error Google/Gemini SDK integration is disabled; use PROVIDER=local or PROVIDER=openai)
 endif
 
 # ───────────────────────────────────────────────
@@ -71,16 +65,16 @@ help:
 	@echo "  make logs-clean       # wyczyść logi journalctl dla rider-*"
 	@echo ""
 	@echo "═══ Voice (File-based) ═══"
-	@echo "  make voice-file-listen [PROVIDER=openai|google|local]   # nasłuch ciągły (listen)"
-	@echo "  make voice-file-ptt    [PROVIDER=openai|google|local]   # push-to-talk (ptt)"
-	@echo "  make voice-file-once   [PROVIDER=openai|google|local]   # pojedyncza interakcja (once)"
+	@echo "  make voice-file-listen [PROVIDER=openai|local]   # nasłuch ciągły (listen)"
+	@echo "  make voice-file-ptt    [PROVIDER=openai|local]   # push-to-talk (ptt)"
+	@echo "  make voice-file-once   [PROVIDER=openai|local]   # pojedyncza interakcja (once)"
 	@echo "  make voice-asr-file FILE=path.wav                       # rozpoznaj mowę z pliku"
 	@echo "  make voice-tts TEXT='Hello'                             # synteza + odtworzenie"
 	@echo "  make voice-web                                           # uruchom serwer web UI (bind: $(VOICE_BIND))"
 	@echo ""
 	@echo "═══ Voice (Streaming WebSocket) ═══"
-	@echo "  make voice-stream-once   [PROVIDER=openai|google]* # pojedyncza interakcja (realtime WS)"
-	@echo "  make voice-stream-listen [PROVIDER=openai|google]* # nasłuch ciągły (realtime WS)"
+	@echo "  make voice-stream-once   [PROVIDER=openai] # pojedyncza interakcja (realtime WS)"
+	@echo "  make voice-stream-listen [PROVIDER=openai] # nasłuch ciągły (realtime WS)"
 	@echo "      * Uwaga: PROVIDER=local nie obsługuje realtime WS — użyj wariantów file-based."
 	@echo "  make voice-kill       # zabij procesy głosowe/audio"
 	@echo "  make voice-diag       # diagnostyka systemu"
@@ -128,9 +122,8 @@ help:
 	@echo ""
 	@echo "═══ Configuration ═══"
 	@echo "  make config-init      # inicjalizuj pliki konfiguracyjne z szablonów"
-	@echo "  make config-edit-stream [PROVIDER=openai|google]*   # edytuj streaming cfg"
-	@echo "  make config-edit-file   [PROVIDER=openai|google|local] # edytuj file cfg"
-	@echo "      * Google streaming edytowany, jeśli istnieje config/voice_gemini_streaming.toml"
+	@echo "  make config-edit-stream [PROVIDER=openai]   # edytuj streaming cfg"
+	@echo "  make config-edit-file   [PROVIDER=openai|local] # edytuj file cfg"
 	@echo ""
 	@echo "═══ Diagnostics & Utilities ═══"
 	@echo "  make pi-preview       # podgląd lokalnego commitu na Pi przed GitHubem"
@@ -339,11 +332,7 @@ config-init:
 
 config-edit-stream:
 	@echo "== Editing voice streaming config (PROVIDER=$(PROVIDER)) =="
-	@if [ "$(PROVIDER)" = "google" ] && [ -f "$(ROOT)/config/voice_gemini_streaming.toml" ]; then \
-		$${EDITOR:-nano} "$(ROOT)/config/voice_gemini_streaming.toml"; \
-	else \
-		$${EDITOR:-nano} "$(ROOT)/config/voice_openai_streaming.toml"; \
-	fi
+	@$${EDITOR:-nano} $(VOICE_STREAM_CFG)
 
 config-edit-file:
 	@echo "== Editing voice file config (PROVIDER=$(PROVIDER)) =="

@@ -7,6 +7,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -18,6 +19,7 @@ import urllib.request
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent.parent if "__file__" in globals() else Path.cwd()
+DEVELOPMENT_REQUIREMENTS = "requirements-dev.txt"
 
 # Explicit resource update scope; never a blanket driver/systemd bypass.
 RESOURCE_PATHS = frozenset(
@@ -93,6 +95,8 @@ def check_paths(paths, restart_motion=False, resource_scope=False, vision_loop_s
             or (name.startswith(".env") and not name.endswith(".example"))
         )
         critical = path.startswith(("systemd/", "drivers/", "scripts/sys_", "requirements"))
+        if path == DEVELOPMENT_REQUIREMENTS:
+            critical = False  # Content is validated separately; no package installation occurs.
         critical = critical or path in {"scripts/systemd-sync.sh", "pyproject.toml"} or path in PRIVATE_BACKENDS
         if path in {"drivers/xgo/adapter.py", "drivers/xgo/sniffer.py"} and restart_motion:
             critical = False  # Explicit motion deployment scope, never a general driver bypass.
@@ -126,6 +130,23 @@ def check_python(repo, target, paths):
             ast.parse(source, filename=path)
 
 
+def check_development_removals(repo, base, target):
+    """Allow only removals from the optional dev list; retain runtime/option guards."""
+    if not all(re.fullmatch(r"[0-9a-f]{40}\^?", ref) for ref in (base, target)):
+        raise RuntimeError("Development dependency validation requires resolved commits.")
+    diff = git(repo, "diff", "--no-ext-diff", "--unified=0", base, target, "--", DEVELOPMENT_REQUIREMENTS)
+    for line in diff.splitlines():
+        if line.startswith(("+++ ", "--- ")) or not line.startswith(("+", "-")):
+            continue
+        value = line[1:].strip()
+        if not value or value.startswith("#"):
+            continue
+        if line.startswith("+") or value.startswith("-"):
+            raise RuntimeError(
+                "Development dependency additions or option changes require a separate environment plan."
+            )
+
+
 def check_history(repo, base, target, restart_motion=False, resource_scope=False, vision_loop_scope=False):
     """Validate every bundled commit, including files later removed."""
     for commit in git(repo, "rev-list", f"{base}..{target}").splitlines():
@@ -133,6 +154,8 @@ def check_history(repo, base, target, restart_motion=False, resource_scope=False
             ["git", "diff-tree", "-m", "--no-commit-id", "--name-only", "-r", "-z", commit], cwd=repo
         ).stdout.split("\0")
         check_paths([path for path in paths if path], restart_motion, resource_scope, vision_loop_scope)
+        if DEVELOPMENT_REQUIREMENTS in paths:
+            check_development_removals(repo, commit + "^", commit)
 
 
 def read_record(path):
@@ -362,6 +385,8 @@ def release(repo, record_path, request):
     base = previous["base"] if previous else current
     git(repo, "merge-base", "--is-ancestor", base, target)
     paths = changed_paths(repo, base, target)
+    if DEVELOPMENT_REQUIREMENTS in paths:
+        check_development_removals(repo, base, target)
     check_paths(
         paths,
         request.get("restart_motion", False),
@@ -436,7 +461,12 @@ def ssh(env_file, request, bundle):
         raise RuntimeError("SSH_HOST and SSH_USER are required in the local env file.")
     host, user, port = destination
     port = port or "22"
-    if host.startswith("-") or user.startswith("-") or not port.isdigit():
+    if (
+        not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.:-]*", host)
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", user)
+        or not port.isdigit()
+        or not 1 <= int(port) <= 65535
+    ):
         raise RuntimeError("Invalid SSH destination.")
     source = Path(__file__).read_text()
     command = shlex.join(["python3", "-c", source, "_remote", json.dumps(request)])
@@ -519,7 +549,7 @@ def main():
     bundle_bytes = b""
     if args.action == "preview":
         check_clean(ROOT)
-        request["base"] = git(ROOT, "rev-parse", f"{args.base}^{{commit}}")
+        request["base"] = git(ROOT, "rev-parse", "--verify", "--end-of-options", f"{args.base}^{{commit}}")
         request["commit"] = git(ROOT, "rev-parse", "HEAD")
         if request["commit"] == request["base"]:
             raise RuntimeError("Commit your local change on a feature branch before previewing it.")

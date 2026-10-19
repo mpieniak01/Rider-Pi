@@ -1,3 +1,4 @@
+import {loadSource} from './helpers/source-module.mjs';
 // Pure contracts and in-memory DOM/REST only. No socket, BUS, SDK or robot exists.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -6,9 +7,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const observationUrl = 'data:text/javascript;base64,' + Buffer.from(await readFile(path.join(root, 'web/assets/operator/observations.js'))).toString('base64');
-const modelSource = (await readFile(path.join(root, 'web/assets/operator/calibration-model.js'), 'utf8')).replace('./observations.js', observationUrl);
-const model = await import('data:text/javascript;base64,' + Buffer.from(modelSource).toString('base64'));
+const model=await loadSource(new URL('../web/assets/operator/calibration-model.js',import.meta.url));
 const now = 1000, digest = 'a'.repeat(64), generation = 'fixture-generation';
 const safe = () => ({ contract_version: 1, state: 'DISARMED', generation, observed_at: now,
   ready: true, hardware_ready: true, last_seq: 4 });
@@ -162,8 +161,8 @@ async function fixture() {
     },
     poll: load => { load(); return { refresh: load, stop() {} }; } });
   const source = (await readFile(path.join(root, 'web/assets/operator/calibration.js'), 'utf8'))
-    .replace(/^import[\s\S]*?;\n/gm, '').replace('export class Calibration', 'globalThis.Calibration = class Calibration');
-  vm.runInContext(source, ctx);
+    .replace(/^import[\s\S]*?;\n/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class Calibration', '       class Calibration') + ';globalThis.Calibration=Calibration;';
+  vm.runInContext(source, ctx, {filename:new URL('../web/assets/operator/calibration.js',import.meta.url).href});
   const safety = { prepare: async () => {}, now: () => moment, commandTime: () => moment, state: safe(), seq: 4, update(state) { this.state = state; }, clockFresh: () => true, can: () => true,
     send: async (action, body) => { moves.push({ action, body }); return { pending: true }; } };
   const panel = new ctx.globalThis.Calibration(safety);

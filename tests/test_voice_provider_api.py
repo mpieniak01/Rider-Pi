@@ -95,24 +95,12 @@ def test_tts_proxy_preserves_backend(monkeypatch: pytest.MonkeyPatch, client: An
     assert captured["payload"]["backend"] == "openai"
 
 
-def test_google_voice_normalized(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
-    monkeypatch.setattr(
-        voice_local_proxy,
-        "_PROVIDER_DEFS",
-        [
-            {
-                "id": "google",
-                "label": "Google Gemini",
-                "backend": "google",
-                "voice": "pl_PL-gosia-medium",
-                "model": None,
-                "description": "",
-                "service": None,
-            }
-        ],
-        raising=False,
-    )
-    resp = client.get("/api/voice/providers")
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["providers"][0]["voice"] == "Kore"
+@pytest.mark.parametrize("backend", ["google", "gemini"])
+def test_disabled_provider_is_rejected_before_proxy_io(monkeypatch, client, backend):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Disabled provider must not be forwarded")
+
+    monkeypatch.setattr(voice_local_proxy.urllib.request, "urlopen", forbidden)
+    response = client.post("/api/voice/tts", json={"text": "fixture", "backend": backend})
+    assert response.status_code == 400
+    assert "SDK integration is disabled" in response.get_json()["error"]

@@ -13,8 +13,18 @@ HARD_LIMIT = 800
 
 
 def changed_files(root: Path, base: str, head: str) -> list[Path]:
+    commits = []
+    for ref in (base, head):
+        if not ref or ref.startswith("-"):
+            raise ValueError("invalid_git_reference")
+        resolved = subprocess.check_output(
+            ["git", "rev-parse", "--verify", "--end-of-options", ref + "^{commit}"], cwd=root, text=True
+        ).strip()
+        if len(resolved) != 40 or any(char not in "0123456789abcdef" for char in resolved):
+            raise ValueError("invalid_git_commit")
+        commits.append(resolved)
     result = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", base, head, "--", "*.py"],
+        ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", *commits, "--", "*.py"],
         cwd=root,
         check=True,
         capture_output=True,
@@ -63,8 +73,9 @@ def main(argv=None) -> int:
     root = Path(__file__).resolve().parent.parent
     try:
         paths = [root / path for path in args.paths] if args.paths else changed_files(root, args.base, args.head)
-    except subprocess.CalledProcessError as exc:
-        print(f"ERROR: cannot determine changed Python files: {exc.stderr.decode(errors='replace').strip()}")
+    except (subprocess.CalledProcessError, ValueError) as exc:
+        detail = (getattr(exc, "stderr", b"") or b"").decode(errors="replace").strip() or str(exc)
+        print(f"ERROR: cannot determine changed Python files: {detail}")
         return 1
     return check_files(paths, root=root, annotations=os.getenv("GITHUB_ACTIONS") == "true")
 

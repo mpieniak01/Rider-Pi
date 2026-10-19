@@ -45,7 +45,7 @@ function fixture() {
   const context={document,window:{addEventListener:(event,fn)=>events[event]=fn},fetch,Option:function(text,value){this.text=text;this.value=value;},
     setTimeout:(fn,ms)=>{jobs.set(++id,{fn,ms});return id;},clearTimeout:key=>jobs.delete(key),URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},
     Blob,AbortController,performance:{now:()=>1000},confirm:()=>true,console};
-  vm.runInNewContext(source,context);
+  vm.runInNewContext(source,context,{filename:new URL('../web/assets/face-studio.js',import.meta.url).href});
   return {get,document,events,jobs,calls,async ready(){await flush();},
     async frame(){const row=[...jobs].find(([,v])=>v.ms===0);assert.ok(row);jobs.delete(row[0]);row[1].fn();await flush();},
     hold(){hold=true;},finish(){pending?.(response({}));},external(value){settings={...settings,...value};revision='external';}};

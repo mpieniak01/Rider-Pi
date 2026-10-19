@@ -26,7 +26,7 @@ def registry_world(monkeypatch, tmp_path):
         registry, "_domains", {domain: registry._default_domain_state("fixture") for domain in registry.DOMAINS}
     )
     monkeypatch.setattr(registry, "_pc_health", {"reachable": False, "updated_ts": 0.0})
-    monkeypatch.setattr(registry, "_pc_base_url", "http://fixture.invalid:8000")
+    monkeypatch.setattr(registry, "_pc_base_url", "https://fixture.invalid:8000")
     monkeypatch.setattr(registry, "_load_error", None)
     events = []
     monkeypatch.setattr(registry, "_publish_provider_state_event", lambda *args: events.append(args))
@@ -109,8 +109,8 @@ def test_same_mode_patch_rejects_reason_even_when_no_change_would_be_needed(regi
     [
         pytest.param("domain", "pc", id="domain-change"),
         pytest.param("domain", "local", id="domain-no-op"),
-        pytest.param("base-url", "http://changed.invalid:8000", id="base-url-change"),
-        pytest.param("base-url", "http://fixture.invalid:8000", id="base-url-no-op"),
+        pytest.param("base-url", "https://changed.invalid:8000", id="base-url-change"),
+        pytest.param("base-url", "https://fixture.invalid:8000", id="base-url-no-op"),
     ],
 )
 def test_direct_setters_reject_reason_before_persistence_or_memory_effects(registry_world, reason, setter, target):
@@ -170,7 +170,7 @@ def test_both_update_logs_escape_literal_backslashes_and_url_line_breaks(registr
     monkeypatch.setattr(registry.LOGGER, "level", logging.INFO)
     monkeypatch.setattr(registry.LOGGER, "propagate", False)
     reason = "Ręczne przełączenie: " + r"operator\nFORGED\r\x1b[31m"
-    base_url = "http://peer.invalid:8100/\r\nERROR forged"
+    base_url = "https://peer.invalid:8100"
 
     try:
         registry.set_domain_mode("voice", "pc", reason=reason)

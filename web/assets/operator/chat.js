@@ -34,7 +34,7 @@ export class Chat {
     if (!taskCanStart(task, this.tasks.catalog, this.tasks.safety.state)) throw new Error(tr('Domena nie jest gotowa', 'Domain not ready'));
     this.tasks.options.set(task.name, { domain });
     const result = await request(`/api/logic/feature/${encodeURIComponent(task.name)}`, { method: 'POST', body: { enabled: true, options: { domain } }, timeout: 20000 });
-    this.tasks.poller.refresh();
+    void this.tasks.poller.refresh();
     const observed = result.data.result?.task;
     if (result.status === 202 || result.data.ok !== true || observed?.name !== task.name || observed.ready !== true || observed.can_move !== false || observed.options?.domain !== domain || !fresh(observed, 10)) throw new Error(observed?.error || tr('Przygotowanie domeny oczekuje; ponów wysłanie po potwierdzeniu.', 'Domain preparation pending; send again after confirmation.'));
   }

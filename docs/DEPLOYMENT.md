@@ -169,3 +169,11 @@ with --restart-api --restart-motion. This scope permits only that adapter among
 protected drivers. Stop executor before checkout, restart disarmed, then restart
 API. No reboot, automatic ARM, movement trial or GH publication. Rollback remembers
 the executor restart. Settings remain outside checkout.
+
+## Development dependency removals
+
+The deployment helper permits package removals and comment changes in
+`requirements-dev.txt`, with content validation for each preview commit and the
+release diff. It does not install or uninstall packages. New dependencies, version
+changes and removed pip options/constraints still require a separate environment
+plan; runtime requirements remain protected.

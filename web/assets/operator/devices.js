@@ -16,7 +16,7 @@ export class Devices {
         this.preview = true; this.lastFrame = null;
         const kind = document.getElementById('preview-kind'); if (kind) kind.value = 'raw';
         const url = document.getElementById('preview-url'); if (url) url.value = '';
-        this.renderPreview(); this.previewPoller.refresh();
+        this.renderPreview(); void this.previewPoller.refresh();
       },
       onStopped: () => {
         this.preview = false; this.meta = null; this.lastFrame = null; this.displayed = null; this.pendingImage = null;

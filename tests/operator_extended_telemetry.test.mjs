@@ -1,8 +1,8 @@
+import {loadSource} from './helpers/source-module.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-const source=await readFile(new URL('../web/assets/operator/observations.js',import.meta.url),'utf8');
-const {observationChannel}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {observationChannel}=await loadSource(new URL('../web/assets/operator/observations.js',import.meta.url));
 const channel=(name,value,unit)=>observationChannel({
  contract_id:'rider.telemetry',contract_version:1,
  sensor_quality:{sensors:{[name]:{value,unit,observed_at:100,ready:true}}}

@@ -1,10 +1,10 @@
+import {loadSource} from './helpers/source-module.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const root=new URL('../web/assets/operator/',import.meta.url);
-const source=await readFile(new URL('manual-settings-model.js',root),'utf8');
-const model=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const model=await loadSource(new URL('manual-settings-model.js',root));
 const values={linear_speed:.2,turn_speed:.35,pulse_duration:.25,speed_limit:.6,linear_rate:3,turn_rate:4,
   linear_deceleration:3,turn_deceleration:4,reversal_pause:0};
 const limits={...values,linear_speed:.6,turn_speed:.6,linear_deceleration:100,turn_deceleration:100,reversal_pause:.25};
@@ -22,7 +22,7 @@ test('panel sends direction and revision only; Pi maps commands',()=>{
   assert.equal(model.settingsValid({...row(),contract_version:1},1000),false);
 });
 async function screen(shared,{postError=null,nodes={},elFactory=()=>({})}={}){
-  const raw=(await readFile(new URL('manual-settings.js',root),'utf8')).replace(/^import .*;$/gm,'').replace('export class','class');
+  const raw=(await readFile(new URL('manual-settings.js',root),'utf8')).replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class','       class');
   let posts=0;
   const context=vm.createContext({document:{getElementById:id=>nodes[id]||null},window:{addEventListener(){}},
     nowSeconds:()=>1000,settingsValid:model.settingsValid,settingsPulse:model.settingsPulse,
@@ -40,7 +40,7 @@ async function screen(shared,{postError=null,nodes={},elFactory=()=>({})}={}){
       }
       return {canonical:true,data:structuredClone(shared.current)};
     }});
-  const Class=vm.runInContext(raw+';ManualSettings',context);
+  const Class=vm.runInContext(raw+';ManualSettings',context,{filename:new URL('manual-settings.js',root).href});
   const panel=new Class({state:{state:'ARMED'},clockFresh:()=>true,render(){}});
   await panel.refresh();
   return {panel,posts:()=>posts};

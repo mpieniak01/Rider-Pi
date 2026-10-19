@@ -9,7 +9,7 @@ voice_<provider>_<mode>.toml
 ```
 
 Gdzie:
-- **`<provider>`** — dostawca usług AI: `openai`, `gemini`, `local`
+- **`<provider>`** — dostawca usług AI: `openai`, `local`
 - **`<mode>`** — tryb komunikacji: `file` (REST API), `streaming` (WebSocket)
 
 **Dostępne pliki:**
@@ -19,8 +19,6 @@ Gdzie:
 | `voice_openai_file.toml` | OpenAI | REST | Tryb plikowy (PTT, batch) |
 | `voice_openai_streaming.toml` | OpenAI | WebSocket | Tryb strumieniowy (realtime) |
 | `voice_openai_streaming_fallback.toml` | OpenAI | WebSocket | Streaming z fallbackiem |
-| `voice_gemini_file.toml` | Google Gemini | REST | Tryb plikowy z Gemini |
-| `voice_gemini_example.toml` | Google Gemini | - | Przykładowa konfiguracja |
 | `voice.toml` | Local (Piper/Vosk) | REST | Lokalny TTS/ASR przez HTTP (port 8092) — używany przez `make PROVIDER=local` |
 | `voice_local_file.toml` | Local (Piper/Vosk) | REST | Alternatywna konfiguracja lokalna |
 
@@ -35,14 +33,14 @@ make voice-file-ptt PROVIDER=local
 # Lub bezpośrednio z voice_local_file.toml
 python -m apps.voice.cli --config ./config/voice_local_file.toml ptt
 
-# Google Gemini w trybie plikowym
-python -m apps.voice.cli --config ./config/voice_gemini_file.toml ptt
 
 # OpenAI w trybie strumieniowym
 make voice-stream-listen
 ```
 
 ---
+
+Integracja Google/Gemini SDK jest obecnie wyłączona; stare ustawienia backendu zwracają jawny błąd.
 
 ## Pliki konfiguracyjne
 
@@ -153,9 +151,9 @@ aplay -l
 
 | Klucz | Typ | Wartości | Domyślna | Opis |
 |-------|-----|----------|----------|------|
-| `backend` | str | openai, google, local, echo | `openai` | Wybór dostawcy czatu |
+| `backend` | str | openai, local, echo | `openai` | Wybór dostawcy czatu |
 | `transport` | str | rest, realtime | `rest` | Transport chat |
-| `model` | str | — | — | Identyfikator modelu (np. `gpt-4o-mini` lub `gemini-pro`) |
+| `model` | str | — | — | Identyfikator modelu (np. `gpt-4o-mini`) |
 | `system_prompt` | str | — | — | Prompt systemowy definiujący zachowanie asystenta |
 | `max_history` | int | ≥0 | `4` | Maksymalna liczba par user/assistant w historii |
 | `max_tokens` | int | ≥1 lub None | `None` | Limit tokenów w odpowiedzi (opcjonalny) |
@@ -168,23 +166,11 @@ aplay -l
 
 **Backendy:**
 - **`openai`** — OpenAI Chat Completions API (wymaga `OPENAI_API_KEY`)
-- **`google`** — Google Gemini API (wymaga `GOOGLE_API_KEY`)
 - **`local`** — Lokalny LLM przez llama.cpp (wymaga instalacji llama.cpp i modelu GGUF)
 - **`echo`** — Testowy backend odbijający wiadomości (bez AI)
 
 **Zmienne środowiskowe:**
 - `OPENAI_API_KEY` — klucz API dla backendu OpenAI
-- `GOOGLE_API_KEY` — klucz API dla backendu Google Gemini
-
-**Przykład konfiguracji (Google Gemini):**
-
-```toml
-[chat]
-backend = "google"
-model = "gemini-pro"
-system_prompt = "Jesteś asystentem głosowym. Odpowiadaj krótko po polsku."
-max_history = 4
-```
 
 **Przykład konfiguracji (Local LLM):**
 

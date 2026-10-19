@@ -26,11 +26,11 @@ export class ControlCamera {
     });
     this.image.addEventListener('error', () => this.fail());
     document.getElementById('control-camera-toggle').addEventListener('click', () => {
-      this.auto = !this.auto; this.native.update(this.pipeline, this.kind, this.auto); this.render(); if (this.auto) this.poller.refresh();
+      this.auto = !this.auto; this.native.update(this.pipeline, this.kind, this.auto); this.render(); if (this.auto) void this.poller.refresh();
     });
     document.querySelectorAll('[data-camera-kind]').forEach(button => button.addEventListener('click', () => {
       this.kind = button.dataset.cameraKind; this.cancel(); this.loaded = null; this.native.update(this.pipeline, this.kind, this.auto);
-      this.lastKey = null; this.render(); this.poller.refresh();
+      this.lastKey = null; this.render(); void this.poller.refresh();
     }));
     this.poller = poll(async () => {
       if (!this.auto || this.pipeline !== undefined) return;

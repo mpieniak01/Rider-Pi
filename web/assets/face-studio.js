@@ -205,12 +205,12 @@
   $('reload-settings').onclick=async()=>{try{const result=await api('runtime');applySettings(result.settings);settingsRevision=result.settings_revision;settingsDirty=false;if(selected)$('active-gesture').checked=settings.active_gestures.includes(selected.id);updateSettingsStatus();if(spec){at=Math.min(at,duration());$('scrub').max=Math.round(duration()*1000);}invalidate();}catch(error){status(error.message);}};
   $('lcd-play').onclick=async()=>{try{
     await api('runtime/play','POST',{sink:'lcd',gesture_id:selected.id,expr:spec.expr});status('Uruchomiono buźkę na LCD.','Face started on LCD.');
-    if(pollTimer)clearTimeout(pollTimer);poll();
+    if(pollTimer)clearTimeout(pollTimer);void poll();
   }catch(error){status(error.message);}};
-  $('lcd-stop').onclick=async()=>{try{await api('runtime/stop','POST',{});status('Buźka wyłączona.','Face stopped.');invalidate();if(pollTimer)clearTimeout(pollTimer);poll();}catch(error){status(error.message);}};
+  $('lcd-stop').onclick=async()=>{try{await api('runtime/stop','POST',{});status('Buźka wyłączona.','Face stopped.');invalidate();if(pollTimer)clearTimeout(pollTimer);void poll();}catch(error){status(error.message);}};
   document.addEventListener('visibilitychange',()=>{
     playing=false;if(timer!==null)clearTimeout(timer);timer=null;if(pollTimer!==null)clearTimeout(pollTimer);pollTimer=null;if(frameAbort)frameAbort.abort();
-    if(!document.hidden){wake();poll();}
+    if(!document.hidden){wake();void poll();}
   });
   window.addEventListener('beforeunload',event=>{if(dirty||settingsDirty){event.preventDefault();event.returnValue='';}});
   window.addEventListener('dashboard:langchange',()=>{

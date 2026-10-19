@@ -19,9 +19,10 @@ Klienci CLI i połączenia między serwerami bez `Origin` pozostają obsługiwan
 Żądanie zmieniające stan z `Sec-Fetch-Site: cross-site` lub `same-site`, lecz
 bez `Origin`, jest odrzucane. Nie wystawiaj API do niezaufanej sieci: ta granica
 ogranicza żądania przeglądarkowe, nie uwierzytelnia klienta. Autoryzacja bearer
-agentów i odtwarzania audio nadal działa niezależnie. Porównanie z hostem
-żądania nie zastępuje ochrony przed DNS rebinding ani konfiguracji zaufanych
-hostów/proxy. Za proxy TLS dodaj publiczny origin HTTPS do listy; aplikacja
+agentów i odtwarzania audio nadal działa niezależnie. Nazwa hosta wyznacza
+granicę same-origin dopiero po zaufaniu lokalnym lub operatora. Zgodna para
+Host/Origin z niezaufaną nazwą jest odrzucana (ochrona przed DNS rebinding).
+Za proxy TLS dodaj publiczny origin HTTPS do listy; aplikacja
 nie ufa automatycznie `X-Forwarded-Host`.
 
 Niepuste `POST`, `PUT`, `PATCH` i `DELETE` wymagają JSON (`application/json`
@@ -119,3 +120,26 @@ Błąd utrwalenia stanu nadal blokuje start producenta ruchu bez zapisanej gener
 Błąd dziennika LED pozostaje wynikiem niepotwierdzonym, a błąd pamięci poleceń
 nie przerywa obsługi polecenia i jest logowany. Równoległe zapisy publikują
 kompletne pliki niezależnie; nie dodaje to transakcji ani łączenia aktualizacji.
+
+## Zaufanie Host, dostawców i narzędzi CLI
+
+Prywatne adresy liczbowe, loopback i nazwa urządzenia (także `.local`) nadal
+obsługują panel. Inne nazwy proxy wymagają `RIDER_TRUSTED_HOSTS` lub hosta
+z `RIDER_ALLOWED_ORIGINS`. Dowolna zgodna para Host/Origin nie nadaje sobie
+uprawnień; odrzucenie hosta zwraca `host_not_allowed`.
+Zdalne adresy dostawców wymagają HTTPS. HTTP pozostaje dla loopback i tuneli SSH.
+Odrzucane są dane logowania w URL, znaki sterujące i niejednoznaczne adresy.
+Istniejące zdalne adresy HTTP należy przenieść na HTTPS lub szyfrowany tunel
+z końcem loopback przed użyciem.
+
+Eksport wyników compute/UART z CLI pozostaje w katalogu uruchomienia, sprawdza
+ścieżkę po rozwiązaniu dowiązań i nie nadpisuje istniejącego wyniku. Uruchamiaj
+polecenie z właściwego katalogu danych. Diagnostyka HTTP korzysta z list
+`RIDER_DIAGNOSTIC_HOSTS` (domyślnie loopback) i `RIDER_DIAGNOSTIC_PORTS`
+(8080,8081,443), bez przekierowań i automatycznych proxy. Host urządzenia w LAN
+należy jawnie wskazać w konfiguracji operatora.
+
+Blokada LCD wymaga zwykłego pliku z jednym dowiązaniem, bez zapisu dla innych
+użytkowników, otwieranego względem sprawdzonych katalogów. Root przy rozruchu
+i usługa pi mogą współdzielić istniejącą blokadę otwieraną tylko do odczytu.
+Własność wynika z deskryptora i stałego inode; plik nie zawiera poświadczeń.

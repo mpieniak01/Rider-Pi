@@ -20,7 +20,7 @@ def off_if_free(*, probe=None, runner=None):
     try:
         with LCDLease():
             return _off_locked(probe=probe, runner=runner)
-    except RuntimeError:
+    except (OSError, RuntimeError, KeyError):
         return {"ok": False, "on": None, "power_known": False, "error": "lcd_owned_or_unknown"}
 
 

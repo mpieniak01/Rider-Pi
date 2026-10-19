@@ -116,7 +116,7 @@ def snap_info() -> Response:
             if request.args.get("light") != "1" and row["source"] == "filesystem":
                 try:
                     with open(row["path"], "rb") as stream:
-                        digest = hashlib.md5(stream.read()).hexdigest()
+                        digest = hashlib.md5(stream.read(), usedforsecurity=False).hexdigest()
                 except OSError:
                     value.update(stale=True, error="frame_unavailable")
             value.update(mtime=row["mtime"], size=row["size"], md5=digest, age_s=row["age_s"])

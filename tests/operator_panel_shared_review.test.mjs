@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import vm from 'node:vm';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const assets = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../web/assets/operator');
 class Element {
@@ -52,7 +52,7 @@ async function fixture() {
   const modules = new Map();
   function load(name) {
     if (!modules.has(name)) modules.set(name, readFile(path.join(assets, name), 'utf8').then(source =>
-      new vm.SourceTextModule(source, { context, identifier: name })));
+      new vm.SourceTextModule(source, { context, identifier: pathToFileURL(path.join(assets, name)).href })));
     return modules.get(name);
   }
   return { document, elements, calls, replies, advance: seconds => { clock += seconds; },

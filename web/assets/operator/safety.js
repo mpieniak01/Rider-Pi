@@ -1,3 +1,4 @@
+import { requestId } from './request-id.js';
 import { HeldMotion } from './held-motion.js?v=motion-descriptors-9';
 import { ageOf, authorized, operatorAuthorized, safetyKnown, editingTarget, matchingAck, setServerClock } from './model.js';
 import { request, poll, prepareMutation } from './transport.js';
@@ -98,7 +99,7 @@ export class SafetyPanel {
   }
   buildEnvelope(action, params, generation) {
     return { ...params, action, source: 'manual', execution_context: 'panel', generation, seq: ++this.seq,
-      request_id: globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      request_id: requestId('web'),
       ts: this.commandTime(), ttl_ms: 500 };
   }
   async send(action, params = {}, endpoint = '/api/control', owner = 'manual') {
@@ -128,7 +129,7 @@ export class SafetyPanel {
     }
     let command;
     try {
-      command = exempt ? { action, source: owner, request_id: `web-${Date.now()}-${Math.random().toString(16).slice(2)}` } : this.envelope(action, params, owner);
+      command = exempt ? { action, source: owner, request_id: requestId('web') } : this.envelope(action, params, owner);
     } catch (error) { if (!exempt) this.mutating = false; this.render(); throw error; }
     if (exempt) { this.held.stop(); this.toggleEpoch++; this.revoke(); this.render(); }
     const submittedAt = this.commandTime();
@@ -148,7 +149,7 @@ export class SafetyPanel {
     } catch (error) {
       entry.status = error.status ? 'rejected' : 'unknown'; entry.reason = error.message;
       this.pending.delete(command.request_id); throw error;
-    } finally { if (!exempt) this.mutating = false; this.renderHistory(); this.poller.refresh(); }
+    } finally { if (!exempt) { this.mutating = false; } this.renderHistory(); void this.poller.refresh(); }
   }
   async sendIntent(intent, valid) {
     const revision=this.controls?.state?.revision;

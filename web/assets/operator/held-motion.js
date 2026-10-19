@@ -41,7 +41,7 @@ export class HeldMotion {
   valid(intent) { return intent.epoch===this.epoch && (intent.mode!=='hold' || this.gesture?.holding===true); }
   offer(intent) {
     this.pending=intent;
-    if(!this.flight)this.flush();
+    if(!this.flight)void this.flush();
   }
   async flush() {
     const intent=this.pending;if(!intent)return;
@@ -52,7 +52,7 @@ export class HeldMotion {
       if(this.valid(intent)){this.stop();this.error(error);}
     } finally {
       this.flight=false;
-      if(this.pending)this.flush();
+      if(this.pending)void this.flush();
       else if(this.valid(intent) && intent.mode==='hold') {
         this.renew=this.timer(()=>{
           if(this.valid(intent))this.offer(intent);

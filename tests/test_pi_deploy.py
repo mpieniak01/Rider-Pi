@@ -68,7 +68,13 @@ class Repositories:
             "restart_api": False,
         }
         result = subprocess.run(
-            [sys.executable, "-c", SCRIPT.read_text(), "_remote", json.dumps(request)],
+            [
+                sys.executable,
+                "-c",
+                "exec(compile(" + repr(SCRIPT.read_text()) + ", " + repr(str(SCRIPT)) + ", 'exec'))",
+                "_remote",
+                json.dumps(request),
+            ],
             input=bundle,
             capture_output=True,
         )
@@ -481,4 +487,41 @@ def test_static_preview_rejects_restart_flags(repos, flag):
             repos.device / ".git/rider-preview.json",
             {"base": repos.base, "commit": repos.base, "restart_api": False, "static_only": True, flag: True},
         )
+    repos.assert_base()
+
+
+@pytest.mark.parametrize(
+    "before,after,allowed",
+    [
+        ("pytest==8.4.2\ngoogle-genai>=1.0.0\n", "pytest==8.4.2\n", True),
+        ("pytest==8.4.2\n", "pytest==8.4.2\nnew-sdk==1.0\n", False),
+        ("pytest==8.4.2\n", "pytest==9.0.0\n", False),
+        ("-c constraints.txt\npytest==8.4.2\n", "pytest==8.4.2\n", False),
+        ("--require-hashes\npytest==8.4.2\n", "pytest==8.4.2\n", False),
+    ],
+)
+def test_release_development_removal_validates_content_before_changing_device(repos, before, after, allowed):
+    base, _ = repos.candidate("requirements-dev.txt", before)
+    repos.command(repos.source, "push", "origin", "HEAD:main")
+    repos.command(repos.device, "fetch", str(repos.origin), "main")
+    repos.command(repos.device, "merge", "--ff-only", "FETCH_HEAD")
+    repos.base = base
+    target, _ = repos.candidate("requirements-dev.txt", after)
+    repos.command(repos.source, "push", "origin", "HEAD:main")
+    if allowed:
+        result = repos.deploy("release", target)
+        assert result["commit"] == target
+        assert (repos.device / "requirements-dev.txt").read_text() == after
+    else:
+        error = repos.deploy("release", target, check=False)
+        assert "separate environment plan" in error
+        assert repos.command(repos.device, "rev-parse", "HEAD") == base
+        assert (repos.device / "requirements-dev.txt").read_text() == before
+
+
+def test_preview_rejects_added_development_dependencies_even_when_later_removed(repos):
+    repos.candidate("requirements-dev.txt", "new-sdk==1.0\n")
+    target, bundle = repos.candidate("requirements-dev.txt", "# removed later\n")
+    error = repos.deploy("preview", target, bundle, check=False)
+    assert "separate environment plan" in error
     repos.assert_base()

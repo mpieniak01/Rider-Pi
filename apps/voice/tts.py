@@ -5,7 +5,6 @@ import audioop
 import base64
 import io
 import os
-import re
 import time
 import wave
 from dataclasses import dataclass
@@ -15,6 +14,17 @@ import requests
 from . import voice_logging as voice_logging
 from .audio.playback import PlaybackConfig, PlaybackError, play_bytes, start_stream
 from .common import ensure_openai_key
+from .tts_audio import (
+    _append_tail as _append_tail,
+    _decode_mp3_to_wav as _decode_mp3_to_wav,
+    _fade_in_out as _fade_in_out,
+    _is_wav as _is_wav,
+    _maybe_gain as _maybe_gain,
+    _normalize_16bit as _normalize_16bit,
+    _read_wav as _read_wav,
+    _resample_to as _resample_to,
+    _wrap_wav as _wrap_wav,
+)
 
 
 class TTSError(RuntimeError):
@@ -23,9 +33,9 @@ class TTSError(RuntimeError):
 
 @dataclass
 class TTSConfig:
-    backend: str = "openai"  # "openai" | "google" | "local"
-    voice: str | None = None  # np. "alloy" / "Kore" / "pl_m"
-    model: str | None = None  # np. "gpt-4o-mini-tts" / "gemini-2.5-flash-preview-tts"
+    backend: str = "openai"  # "openai" | "local"
+    voice: str | None = None  # np. "alloy" / "pl_m"
+    model: str | None = None  # np. "gpt-4o-mini-tts"
     format: str = "wav"  # "wav" | "mp3" (i tak sprowadzimy do WAV w synth)
     timeout: float | None = None  # [s] – timeout per-request (stream/synth)
     piper_model: str | None = None  # rezerwa; bez użycia tutaj
@@ -46,280 +56,6 @@ class TTSStreamResult:
     sample_rate: int = 0
     streamed: bool = False
     backend: str | None = None
-
-
-# ───── helpers ────────────────────────────────────────────────────────────────
-
-
-def _is_wav(b: bytes) -> bool:
-    return len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE"
-
-
-def _wrap_wav(pcm: bytes, sr: int, ch: int, sw: int = 2) -> bytes:
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(ch)
-        wf.setsampwidth(sw)
-        wf.setframerate(int(sr))
-        wf.writeframes(pcm)
-    return buf.getvalue()
-
-
-def _read_wav(b: bytes) -> tuple[bytes, int, int, int]:
-    with wave.open(io.BytesIO(b), "rb") as wf:
-        ch = wf.getnchannels()
-        sw = wf.getsampwidth()
-        sr = wf.getframerate()
-        pcm = wf.readframes(wf.getnframes())
-    return pcm, sr, ch, sw
-
-
-def _inline_audio_bytes(blob: bytes | str | None, logger: voice_logging.VoiceLogger) -> bytes:
-    """
-    Gemini SDK czasem zwraca inline_data.data jako base64 zakodowane w ASCII bytes.
-    Ta funkcja próbuje zdekodować base64 (validate=True), a w razie niepowodzenia
-    zwraca surowe bajty.
-    """
-    if blob is None:
-        return b""
-    if isinstance(blob, str):
-        raw = blob.encode("ascii", errors="ignore")
-    else:
-        raw = bytes(blob)
-    try:
-        decoded = base64.b64decode(raw, validate=True)
-        if decoded:
-            return decoded
-    except Exception as exc:  # pragma: no cover - diagnostyka
-        logger.event("tts.gemini.b64decode_failed", error=str(exc))
-    return raw
-
-
-def _is_linear16_mime(mime: str) -> bool:
-    """
-    Gemini zwraca inline_data zwykle jako audio/L16;codec=pcm;rate=24000 (big-endian).
-    Detekcja formatu pozwala skonwertować do little-endian zanim złożymy WAV.
-    """
-    if not mime:
-        return False
-    if "wav" in mime or "mpeg" in mime or "mp3" in mime:
-        return False
-    keywords = (
-        "audio/l16",
-        "audio/pcm",
-        "codec=pcm",
-        "codec=linear16",
-        "linear16",
-    )
-    return any(token in mime for token in keywords)
-
-
-def _avg_abs_sample(pcm: bytes, sample_width: int = 2, max_samples: int = 2000) -> float:
-    if not pcm or sample_width <= 0:
-        return float("inf")
-    n = min(len(pcm) // sample_width, max_samples)
-    if n == 0:
-        return float("inf")
-    mv = memoryview(pcm)
-    step = sample_width
-    total = 0
-    for i in range(n):
-        chunk = mv[i * step : i * step + step]
-        val = int.from_bytes(chunk, "little", signed=True)
-        total += abs(val)
-    return total / n
-
-
-def _normalize_linear16_endianness(pcm: bytes, mime: str, logger: voice_logging.VoiceLogger) -> bytes:
-    """
-    Gemini dokumentacja pokazuje, że inline_data to audio/L16 (24 kHz, mono).
-    W praktyce większość odpowiedzi jest już little-endian. Jeśli jednak dostaniemy big-endian,
-    wykrywamy to heurystycznie na podstawie średniej amplitudy przy obu interpretacjach.
-    """
-    if not pcm or not _is_linear16_mime(mime):
-        return pcm
-    try:
-        swapped = audioop.byteswap(pcm, 2)
-    except Exception as exc:  # pragma: no cover - diagnostyka
-        logger.event("tts.gemini.byteswap_failed", error=str(exc))
-        return pcm
-
-    orig_score = _avg_abs_sample(pcm)
-    swapped_score = _avg_abs_sample(swapped)
-
-    # Jeśli wersja po byteswapie ma wyraźnie mniejszą energię, traktujemy ją jako właściwą.
-    if swapped_score < orig_score * 0.5:
-        logger.event(
-            "tts.gemini.byteswap_applied",
-            orig_score=round(orig_score, 2),
-            swapped_score=round(swapped_score, 2),
-        )
-        return swapped
-    return pcm
-
-
-def _fade_in_out(pcm: bytes, sr: int, ch: int, ms_in: int = 5, ms_out: int = 40) -> bytes:
-    """Delikatny fade-in/out, by uniknąć „pyknięć”. Operuje na 16-bit mono/stereo."""
-    if not pcm or ch not in (1, 2) or len(pcm) < 4:
-        return pcm
-    n_samples_per_channel = len(pcm) // (2 * ch)
-    if n_samples_per_channel == 0:
-        return pcm
-    import array
-
-    a = array.array("h")
-    a.frombytes(pcm)
-    # fade-in
-    n_in = min(n_samples_per_channel, int(sr * ms_in / 1000))
-    for i in range(n_in):
-        scale = (i + 1) / max(1, n_in)
-        if ch == 1:
-            a[i] = int(a[i] * scale)
-        else:
-            a[2 * i] = int(a[2 * i] * scale)
-            a[2 * i + 1] = int(a[2 * i + 1] * scale)
-    # fade-out
-    n_out = min(n_samples_per_channel, int(sr * ms_out / 1000))
-    for j in range(n_out):
-        scale = (n_out - j) / max(1, n_out)
-        idx_in_channel = n_samples_per_channel - 1 - j
-        if ch == 1:
-            a[idx_in_channel] = int(a[idx_in_channel] * scale)
-        else:
-            a[2 * idx_in_channel] = int(a[2 * idx_in_channel] * scale)
-            a[2 * idx_in_channel + 1] = int(a[2 * idx_in_channel + 1] * scale)
-    return a.tobytes()
-
-
-def _normalize_16bit(pcm: bytes, target_peak: int = 30000, extra_gain: float = 1.0) -> bytes:
-    """
-    Prosta normalizacja: skaluje tak, by pik był ~target_peak,
-    potem stosuje VOICE_GAIN (extra_gain). Zabezpiecza przed clippingiem.
-    """
-    if not pcm:
-        return pcm
-    import array
-
-    a = array.array("h")
-    a.frombytes(pcm)
-    peak = max((abs(x) for x in a), default=1)
-    gain = min(10.0, (target_peak / max(1, peak)) * float(extra_gain))
-    if abs(gain - 1.0) < 1e-3:
-        return pcm
-    for i, v in enumerate(a):
-        a[i] = int(max(-32768, min(32767, v * gain)))
-    return a.tobytes()
-
-
-def _decode_mp3_to_wav(audio_bytes: bytes, logger: voice_logging.VoiceLogger) -> bytes | None:
-    """
-    Spróbuj zdekodować MP3 → WAV narzędziami systemowymi (ffmpeg/mpg123).
-    Zwraca WAV lub None (gdy brak narzędzi albo dekoder zawiedzie).
-    """
-    import shutil
-    import subprocess
-
-    if shutil.which("ffmpeg"):
-        try:
-            p = subprocess.run(
-                [
-                    "ffmpeg",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-i",
-                    "pipe:0",
-                    "-f",
-                    "wav",
-                    "pipe:1",
-                ],
-                input=audio_bytes,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                check=True,
-            )
-            if _is_wav(p.stdout):
-                return p.stdout
-        except Exception as e:
-            logger.event("tts.decode.ffmpeg_failed", extra={"data": str(e)})
-    if shutil.which("mpg123"):
-        try:
-            p = subprocess.run(
-                ["mpg123", "-q", "-w", "-", "-"],
-                input=audio_bytes,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                check=True,
-            )
-            if _is_wav(p.stdout):
-                return p.stdout
-        except Exception as e:
-            logger.event("tts.decode.mpg123_failed", extra={"data": str(e)})
-    return None
-
-
-def _resample_to(pcm: bytes, in_sr: int, in_ch: int, target_sr: int, target_ch: int) -> tuple[bytes, int, int]:
-    """
-    Resample PCM using audioop. Zwraca (pcm_bytes, new_sr, new_ch).
-    Wymaga 16-bit (sw=2).
-    """
-    if in_sr == target_sr and in_ch == target_ch:
-        return pcm, in_sr, in_ch
-
-    pcm_out = pcm
-    sr_out, ch_out = in_sr, in_ch
-
-    # Krok 1: Resample kanałów
-    try:
-        if target_ch == 2 and in_ch == 1:
-            pcm_out = audioop.tostereo(pcm_out, 2, 1, 1)
-            ch_out = 2
-        elif target_ch == 1 and in_ch == 2:
-            pcm_out = audioop.tomono(pcm_out, 2, 0.5, 0.5)
-            ch_out = 1
-    except audioop.error:
-        # Błąd konwersji kanałów, kontynuuj z oryginałem
-        pcm_out = pcm
-        ch_out = in_ch
-
-    # Krok 2: Resample częstotliwości
-    try:
-        if sr_out != target_sr:
-            pcm_out, _ = audioop.ratecv(pcm_out, 2, ch_out, sr_out, target_sr, None)
-            sr_out = target_sr
-    except audioop.error as e:
-        # Jeśli konwersja się nie uda, zwróć to co mamy (zmienione kanały, stara stopa)
-        if "not supported" in str(e):
-            return pcm_out, sr_out, ch_out
-        raise e
-
-    return pcm_out, sr_out, ch_out
-
-
-# === START NOWE FUNKCJE (skopiowane z web.py) ===
-def _append_tail(pcm: bytes, sr: int, ch: int, ms: int) -> bytes:
-    """Dodaje ciszę na końcu strumienia PCM."""
-    frames = int(sr * ms / 1000) * ch
-    if frames > 0:
-        pcm += b"\x00\x00" * frames  # Zakładamy 16-bit (2 bajty)
-    return pcm
-
-
-def _maybe_gain(pcm: bytes, gain: float) -> bytes:
-    """Stosuje wzmocnienie (gain) do PCM."""
-    if gain == 1.0:
-        return pcm
-    g = max(0.1, min(gain, 3.0))
-    try:
-        return audioop.mul(pcm, 2, g)  # Zakładamy 16-bit (2 bajty)
-    except audioop.error:
-        return pcm  # Zwróć oryginał, jeśli audioop zawiedzie
-
-
-# === KONIEC NOWYCH FUNKCJI ===
-
-
-# ───── public API ─────────────────────────────────────────────────────────────
 
 
 def speak(
@@ -347,7 +83,7 @@ def speak(
 
     backend = (config.backend or "openai").lower()
 
-    # Streaming obsługujemy tylko dla OpenAI; dla Google/local pomijamy ścieżkę stream
+    # Streaming obsługujemy tylko dla OpenAI; dla local pomijamy ścieżkę stream
     stream_fmt = "mp3"
     should_start_stream = accumulate and backend == "openai"
 
@@ -487,8 +223,8 @@ def synthesize(
 
     if backend == "openai":
         return _tts_openai(text, config, logger)
-    if backend == "google":
-        return _tts_gemini(text, config, logger)
+    if backend.strip() in {"google", "gemini"}:
+        raise TTSError("Google/Gemini SDK integration is disabled; select a supported TTS backend")
     if backend == "local":
         return _tts_local(text, config, logger)
 
@@ -657,122 +393,6 @@ def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger)
     raise TTSError(f"OpenAI TTS request failed: {last_err or 'unknown error'}")
 
 
-def _tts_gemini(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
-    """
-    Google Gemini Text-to-Speech using native audio generation.
-    Zwraca ZAWSZE WAV (audio_bytes, sample_rate, channels, "wav").
-    Zwraca natywny format Google (24kHz, 1ch) bez wymuszania resamplingu.
-    """
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise TTSError("GOOGLE_API_KEY not configured")
-
-    model_name = config.model or "gemini-2.5-flash-preview-tts"
-    voice_name = config.voice or "Kore"  # Default voice
-
-    logger.event("tts.gemini.request", model=model_name, voice=voice_name)
-
-    try:
-        from google import genai
-        from google.genai import types
-    except Exception as exc:  # pragma: no cover - opcjonalna zależność
-        raise TTSError(f"Google GenAI SDK unavailable: {exc}") from exc
-
-    try:
-        client = genai.Client(api_key=api_key)
-
-        response = client.models.generate_content(
-            model=model_name,
-            contents=text,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
-                    )
-                ),
-            ),
-        )
-
-        cand = (getattr(response, "candidates", None) or [None])[0]
-        content = getattr(cand, "content", None)
-        parts = getattr(content, "parts", None) or []
-        inline = None
-        for p in parts:
-            idata = getattr(p, "inline_data", None)
-            if idata is not None and getattr(idata, "data", None):
-                inline = idata
-                break
-        if inline is None:
-            pf = getattr(response, "prompt_feedback", None)
-            raise TTSError(f"No audio data in Gemini response (parts empty). prompt_feedback={pf!r}")
-
-        raw = _inline_audio_bytes(getattr(inline, "data", None), logger)
-
-        raw_mime = getattr(inline, "mime_type", None) or getattr(inline, "mimeType", None)
-        mime_type = str(raw_mime or "")
-        mime_type_low = mime_type.lower()
-
-        wav_bytes: bytes | None = None
-        if _is_wav(raw) or "wav" in mime_type_low:
-            wav_bytes = raw
-        elif (
-            "mp3" in mime_type_low
-            or "mpeg" in mime_type_low
-            or raw[:3] == b"ID3"
-            or (len(raw) > 2 and raw[0] == 0xFF and (raw[1] & 0xE0) == 0xE0)
-        ):
-            wav_bytes = _decode_mp3_to_wav(raw, logger)
-        elif any(k in mime_type_low for k in ("ogg", "opus", "webm")):
-            wav_bytes = _decode_mp3_to_wav(raw, logger)
-
-        if wav_bytes:
-            try:
-                pcm, sr, ch, sw = _read_wav(wav_bytes)
-            except Exception as exc:
-                raise TTSError(f"Gemini audio parse failed: {exc}") from exc
-        else:
-            # Domyślne parametry 24 kHz mono — spróbuj wyciągnąć z mime_type
-            sr = 24000
-            ch = 1
-            sw = 2
-            match = re.search(r"rate=(\d+)", mime_type_low)
-            if match:
-                try:
-                    sr = int(match.group(1))
-                except Exception:
-                    sr = 24000
-            if "stereo" in mime_type_low or "channels=2" in mime_type_low:
-                ch = 2
-            pcm = _normalize_linear16_endianness(raw, mime_type_low, logger)
-
-        TARGET_SR = 48000
-        TARGET_CH = 2
-        if sw == 2:
-            try:
-                pcm, sr, ch = _resample_to(pcm, sr, ch, TARGET_SR, TARGET_CH)
-                sw = 2
-            except Exception as e:
-                logger.event("tts.gemini.resample_failed", error=str(e))
-
-        extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
-        if sw == 2:
-            pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
-            pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
-            pcm = _append_tail(pcm, sr, ch, 300)
-            pcm = _maybe_gain(pcm, extra_gain)
-        wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
-
-        logger.event("tts.gemini.ok", bytes=len(wav_bytes), sample_rate=sr, channels=ch)
-        return wav_bytes, sr, ch, "wav"
-
-    except Exception as exc:
-        logger.event("tts.gemini.error", error=str(exc))
-        if isinstance(exc, TTSError):
-            raise
-        raise TTSError(f"Gemini TTS failed: {exc}") from exc
-
-
 def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
     """
     Lokalny backend HTTP:
@@ -888,7 +508,7 @@ def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) 
         except Exception:
             pass
 
-    # === START FIX: Resampling + Tail + Gain (jak w OpenAI i Google) ===
+    # === START FIX: Resampling + Tail + Gain (jak w OpenAI) ===
     # Wymuszamy 48kHz / 2 kanały (Stereo) - tak jak w pozostałych backendach
     TARGET_SR = 48000
     TARGET_CH = 2
@@ -1036,8 +656,6 @@ def _piper_synthesize_wav(
     sentence_silence=0.6,
 ) -> bytes:
     """Zwraca bajty pliku WAV (mono, 16-bit) z PiperVoice."""
-    import io
-    import wave
 
     sr = getattr(getattr(voice, "config", None), "sample_rate", None) or 22050
     buf = io.BytesIO()
@@ -1106,9 +724,6 @@ def _piper_synthesize_wav(
     noise_w=0.8,
     sentence_silence=0.6,
 ):
-    import io
-    import wave
-
     sr = getattr(getattr(voice, "config", None), "sample_rate", None) or 22050
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:

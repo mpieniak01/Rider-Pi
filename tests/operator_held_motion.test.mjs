@@ -1,8 +1,8 @@
+import {loadSource} from './helpers/source-module.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-const source=await readFile(new URL('../web/assets/operator/held-motion.js',import.meta.url),'utf8');
-const {HeldMotion}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {HeldMotion}=await loadSource(new URL('../web/assets/operator/held-motion.js',import.meta.url));
 function fixture(send) {
   const jobs=new Map(), calls=[],errors=[];let id=0,now=0;
   const held=new HeldMotion({send:send||(async(i,valid)=>{if(valid())calls.push({...i});}),
