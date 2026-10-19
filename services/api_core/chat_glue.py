@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.request
 from collections import deque
 from typing import Any
 
@@ -62,51 +63,77 @@ def _try_local_agent(prompt: str) -> tuple[bool, str]:
     return False, ""
 
 
+def _reply_candidates(payload):
+    candidates = [payload.get(key) for key in ("reply", "text", "content")]
+    message = payload.get("message")
+    candidates.append(message.get("content") if isinstance(message, dict) else message)
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        message = choices[0].get("message")
+        candidates.append(message.get("content") if isinstance(message, dict) else None)
+    return candidates
+
+
+def _payload_reply(payload):
+    if not isinstance(payload, dict) or ("ok" in payload and payload["ok"] is not True) or payload.get("error"):
+        return False, "remote_backend_error", "unavailable"
+    source = payload.get("source") or payload.get("backend") or "remote"
+    if (
+        not isinstance(source, str)
+        or source.strip().lower() in {"echo", "mock", "demo", "stub", "fallback", "simulated"}
+        or any(payload.get(flag) is True for flag in ("demo", "mock", "simulated"))
+    ):
+        return False, "remote_demo_or_echo", "unavailable"
+    candidates = _reply_candidates(payload)
+    text = next((item.strip() for item in candidates if isinstance(item, str) and item.strip()), None)
+    if text is None:
+        return False, "remote_empty_reply", "unavailable"
+    return True, text, source.strip()
+
+
+class _RejectWorkerRedirects(urllib.request.HTTPRedirectHandler):
+    """A selected local worker cannot redirect the request to another transport."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def _open_selected_worker(req, *, timeout):
+    from .text_profile import _is_loopback_worker_endpoint
+
+    if not _is_loopback_worker_endpoint(req.full_url):
+        raise ValueError("invalid_selected_worker_endpoint")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _RejectWorkerRedirects())
+    return opener.open(req, timeout=timeout)
+
+
 def _remote_reply(prompt: str) -> tuple[bool, str, str]:
     """Use explicit or selected backend; preserve truthful result provenance."""
     url = os.getenv("CHAT_REMOTE_URL", "").strip()
-    if not url:
+    selected_worker = not url
+    if selected_worker:
         from .text_profile import selected_endpoint
 
         url = selected_endpoint()
     if not url:
         return False, "ai_backend_unavailable", "unavailable"
     try:
-        import urllib.request
-
         req = urllib.request.Request(
             url,
             data=json.dumps({"text": prompt, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:  # nosec - configured backend URL
+        open_request = _open_selected_worker if selected_worker else urllib.request.urlopen
+        with open_request(req, timeout=20) as resp:
             if resp.status >= 400:
                 return False, f"remote_http_{resp.status}", "unavailable"
             raw = resp.read(1048577)
             if len(raw) > 1048576:
                 return False, "remote_reply_too_large", "unavailable"
             payload = json.loads(raw.decode("utf-8") or "{}")
-            if not isinstance(payload, dict) or ("ok" in payload and payload["ok"] is not True) or payload.get("error"):
-                return False, "remote_backend_error", "unavailable"
-            source = payload.get("source") or payload.get("backend") or "remote"
-            if (
-                not isinstance(source, str)
-                or source.strip().lower() in {"echo", "mock", "demo", "stub", "fallback", "simulated"}
-                or any(payload.get(flag) is True for flag in ("demo", "mock", "simulated"))
-            ):
-                return False, "remote_demo_or_echo", "unavailable"
-            candidates = [payload.get(key) for key in ("reply", "text", "content")]
-            message = payload.get("message")
-            candidates.append(message.get("content") if isinstance(message, dict) else message)
-            choices = payload.get("choices")
-            if isinstance(choices, list) and choices and isinstance(choices[0], dict):
-                message = choices[0].get("message")
-                candidates.append(message.get("content") if isinstance(message, dict) else None)
-            text = next((item.strip() for item in candidates if isinstance(item, str) and item.strip()), None)
-            if text is None:
-                return False, "remote_empty_reply", "unavailable"
-            return True, text, source.strip()
+            return _payload_reply(payload)
+
     except Exception as exc:  # noqa: BLE001
         return False, f"remote_error: {exc}", "unavailable"
 

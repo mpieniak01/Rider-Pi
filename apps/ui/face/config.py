@@ -141,6 +141,22 @@ def _import_face_section(out: dict[str, Any], f: dict[str, Any]) -> None:
         _copy_num(idle, out, "jitter", "idle_jitter")
         _copy_bool(idle, out, "enable", "idle_enable")
 
+    _import_gestures(out, f)
+    _import_mouth(out, f)
+
+    # [face.transitions]
+    trans = f.get("transitions")
+    if isinstance(trans, dict):
+        _copy_num(trans, out, "step_s", "trans_step_s")
+        _copy_num(trans, out, "dwell_s", "trans_dwell_s")
+
+    # [face.debug]
+    dbg = f.get("debug")
+    if isinstance(dbg, dict):
+        _copy_bool(dbg, out, "mouth", "debug_mouth")
+
+
+def _import_gestures(out, f):
     # [face.gesture.blink]
     gest = f.get("gesture")
     if isinstance(gest, dict):
@@ -153,6 +169,8 @@ def _import_face_section(out: dict[str, Any], f: dict[str, Any]) -> None:
             _copy_num(look, out, "t", "gesture_look_t")
             _copy_num(look, out, "amp", "gesture_look_amp")
 
+
+def _import_mouth(out, f):
     # [face.mouth.small_th_k]
     mouth = f.get("mouth")
     if isinstance(mouth, dict):
@@ -185,17 +203,6 @@ def _import_face_section(out: dict[str, Any], f: dict[str, Any]) -> None:
             _copy_num(arch, out, "happy", "mouth_happy_arch_k")
             _copy_num(arch, out, "neutral", "mouth_neutral_arch_k")
             _copy_num(arch, out, "sad", "mouth_sad_arch_k")
-
-    # [face.transitions]
-    trans = f.get("transitions")
-    if isinstance(trans, dict):
-        _copy_num(trans, out, "step_s", "trans_step_s")
-        _copy_num(trans, out, "dwell_s", "trans_dwell_s")
-
-    # [face.debug]
-    dbg = f.get("debug")
-    if isinstance(dbg, dict):
-        _copy_bool(dbg, out, "mouth", "debug_mouth")
 
 
 def _copy_num(src: dict[str, Any], dst: dict[str, Any], key: str, out_key: str) -> None:

@@ -11,6 +11,92 @@ const frameAge = seconds => !finite(seconds) ? '—' : seconds >= 86400 ? `${Mat
 const unknown = () => tr('brak / stary pomiar', 'missing / stale reading');
 const BLANK = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"%3E%3Crect width="640" height="360" fill="%2306090d"/%3E%3C/svg%3E';
 
+function historyStatus(history,usable,failed) {
+  const summary = history.count + ' ' + tr('próbek', 'samples') + ' · ' + Math.round(history.span) + ' s / 60 s';
+  if (failed) return tr('Błąd odczytu — zachowana historia', 'Read failed — retained history') + ' · ' + summary;
+  if (!usable) return tr('Brak świeżych pomiarów — historia wygasa zgodnie z czasem.', 'No fresh readings — history expires with time.');
+  if (history.count < 2) return tr('Zbieranie historii. Kolektor działa, gdy panel jest widoczny.', 'Collecting history. The sampler runs while the panel is visible.');
+  if (history.gaps) return summary + ' · ' + tr('przerwa w pomiarach', 'gap in measurements');
+  return (history.count < 55 ? tr('Zbieranie historii: ', 'Collecting history: ') : '') + summary;
+}
+function capacitySummary(used,total,percent,unit) {
+  return finite(total) && finite(used) ? fmt(used) + ' / ' + fmt(total) + ' ' + unit + ' (' + fmt(percent) + '%)' : '—';
+}
+function workStatus(work) {
+  if (!work.ready) return unknown();
+  if (work.value === 1) return tr('Normalny', 'Normal');
+  return work.value === 0 ? tr('Przewrócony', 'Fallen') : unknown();
+}
+function frameLabel(frame) {
+  if (!frame.exists) return tr('brak klatki', 'no frame');
+  return frame.fresh ? frameAge(frame.age) : tr('stara klatka', 'old frame') + ' · ' + frameAge(frame.age);
+}
+
+function renderLcd(overview) {
+  const lcdParent = overview.state?.devices?.lcd ? overview.state : overview.health;
+  const lcd = lcdParent?.devices?.lcd;
+  const lcdNow = nowSeconds();
+  const lcdAge = ageOf({ observed_at: lcd?.power_observed_at }, lcdNow);
+  const lcdFailure = [lcdParent, lcdParent?.meta, lcd].some(row => row?.offline === true
+    || row?.stale === true || row?.simulated === true || Boolean(row?.error));
+  const lcdConfirmed = !lcdFailure && lcd?.power_known === true && typeof lcd.on === 'boolean'
+    && typeof lcd.source === 'string' && Boolean(lcd.source.trim()) && lcd.power_source === lcd.source
+    && ['control_write_accepted', 'gpio_level_observed'].includes(lcd.confirmation) && lcdAge !== null && lcd.power_observed_at <= lcdNow;
+  // LCD reports accepted control events, not periodic physical measurements.
+  text('d_lcd', powerLabel(lcdConfirmed ? lcd.on : null));
+  const lcdNode = document.getElementById('d_lcd');
+  if (lcdNode) lcdNode.title = lcdConfirmed
+    ? (lcd.confirmation === 'gpio_level_observed' ? tr('Odczyt podświetlenia LCD', 'LCD backlight reading')
+      : tr('Ostatnie potwierdzone polecenie LCD', 'Last confirmed LCD command'))
+    : tr('Nie można odczytać stanu LCD', 'LCD state unavailable');
+}
+function renderCameraPower(overview) {
+  const camera = overview.health?.devices?.camera || overview.state?.camera?.activity || overview.state?.devices?.camera || overview.state?.camera || {};
+  const capture = camera?.on === true && !camera.error && camera.offline !== true && camera.stale !== true;
+  const frameReady = cameraFrame(overview.snap, 'raw').fresh;
+  const active = capture || (camera?.vision_enabled === true && frameReady);
+  const off = !active && (camera?.vision_enabled === false || camera?.on === false);
+  const cameraText = powerLabel(active ? true : off ? false : null);
+  const cameraDetails = [cameraText, camera?.mode, Array.isArray(camera?.res) ? camera.res.join('×') : null,
+    finite(camera?.fps) ? `${fmt(camera.fps)} fps` : null].filter(Boolean);
+  text('d_cam', cameraDetails.join(' · ')); text('camBadge', powerLabel(active ? true : off ? false : null));
+  document.getElementById('camBadge')?.classList.toggle('on', active);
+  return active;
+}
+function renderVisionFrame(overview,kind,endpoint,active) {
+  const frame = cameraFrame(overview.snap, kind);
+  const name = kind === 'raw' ? 'cam' : kind;
+  const node = document.getElementById(`img_${name}`);
+  const freshFrame = active && frame.fresh;
+  // A frame artifact does not prove that its particular producer is on.
+  const label = frameLabel(frame);
+  text(`age_${kind}`, label);
+  text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${label}${frame.time_basis === 'file_mtime' ? tr(' · wiek pliku; przechwycenie niepotwierdzone', ' · file age; capture unconfirmed') : ''}`);
+  if (!node) return;
+  if (!freshFrame || document.hidden) {
+    node.dataset.frame = '';
+    if (node.getAttribute('src') !== BLANK) node.src = BLANK;
+    return;
+  }
+  const tag = String(frame.ts);
+  if (node.dataset.frame !== tag) {
+    node.dataset.frame = tag;
+    node.onerror = () => { if (node.dataset.frame === tag) { node.onerror = null; node.src = BLANK; text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${tr('błąd odczytu obrazu', 'image read failed')}`); } };
+    node.src = `${endpoint}?v=${encodeURIComponent(tag)}`;
+  }
+}
+function renderObstacle(overview) {
+  const o = overview.obstacle;
+  const valid = presentationReady(o, 3) && typeof o?.present === 'boolean';
+  text('obs_present', valid ? String(o.present) : unknown());
+  text('obs_conf', valid ? fmt(o.confidence, 3) : '—');
+  text('obs_edge', valid ? fmt(o.edge_ratio ?? o.edge_pct, 3) : '—');
+  text('obstacle-age', age(o));
+  const diag = valid ? o.diag : null;
+  text('binsLegendTxt', `LOW/HIGH: ${fmt(diag?.t_low, 2)} / ${fmt(diag?.t_high, 2)} · edge_pct: ${valid ? fmt(diag?.edge_ratio_raw ?? diag?.edge_pct_raw ?? o.edge_ratio ?? o.edge_pct, 3) : '—'}`);
+  overview.drawBins(diag?.bins, valid ? diag?.edge_ratio_raw ?? diag?.edge_pct_raw ?? o.edge_ratio ?? o.edge_pct : null);
+}
+
 // Measurements remain read-only. The separate CameraPower control handles explicit camera clicks.
 export class Overview {
   constructor(safety) {
@@ -75,25 +161,15 @@ export class Overview {
     text('ci_host', si?.host || si?.hostname || location.hostname);
     text('ci_cpu', finite(value('cpu_pct')) ? `${fmt(value('cpu_pct'))}%` : '—');
     text('ci_load', ['load1', 'load5', 'load15'].map(key => fmt(value(key), 2)).join(' / '));
-    text('ci_mem', finite(value('mem_total_mb')) && finite(value('mem_used_mb'))
-      ? `${fmt(value('mem_used_mb'))} / ${fmt(value('mem_total_mb'))} MiB (${fmt(value('mem_pct'))}%)` : '—');
-    text('ci_disk', finite(value('disk_total_gb')) && finite(value('disk_used_gb'))
-      ? `${fmt(value('disk_used_gb'))} / ${fmt(value('disk_total_gb'))} GiB (${fmt(value('disk_pct'))}%)` : '—');
+    text('ci_mem', capacitySummary(value('mem_used_mb'),value('mem_total_mb'),value('mem_pct'),'MiB'));
+    text('ci_disk', capacitySummary(value('disk_used_gb'),value('disk_total_gb'),value('disk_pct'),'GiB'));
     text('ci_os', si?.os_release || si?.platform || '—');
     text('d_temp', finite(value('temp_c')) ? `${fmt(value('temp_c'))} °C` : '—');
     text('system-age', `${age(si)}${this.systemError ? ` · ${tr('błąd odczytu', 'read failed')}` : usable ? '' : ` · ${unknown()}`}`);
     // An HTTP failure is not a deletion of measurements already collected.
     // Keep their original timestamps and let the fixed time window expire them.
     const history = this.drawHistory(si?.hist_cpu, si?.hist_mem, si?.hist_cpu_peak, si?.hist_ts);
-    if (history) {
-      const summary = `${history.count} ${tr('próbek', 'samples')} · ${Math.round(history.span)} s / 60 s`;
-      text('history-status', this.systemError
-        ? `${tr('Błąd odczytu — zachowana historia', 'Read failed — retained history')} · ${summary}`
-        : !usable ? tr('Brak świeżych pomiarów — historia wygasa zgodnie z czasem.', 'No fresh readings — history expires with time.')
-        : history.count < 2 ? tr('Zbieranie historii. Kolektor działa, gdy panel jest widoczny.', 'Collecting history. The sampler runs while the panel is visible.')
-        : history.gaps ? `${summary} · ${tr('przerwa w pomiarach', 'gap in measurements')}`
-        : `${history.count < 55 ? tr('Zbieranie historii: ', 'Collecting history: ') : ''}${summary}`);
-    }
+    if (history) text('history-status',historyStatus(history,usable,this.systemError));
     const cpu = document.getElementById('ci_cpu');
     if (cpu) cpu.title = usable && finite(si.cpu_peak_pct)
       ? tr('Szczyt w ostatniej sekundzie: ', 'Peak in the last second: ') + fmt(si.cpu_peak_pct) + '%' : '';
@@ -109,7 +185,7 @@ export class Overview {
     text('d_xgo_imu', imuReady ? tr('Świeży odczyt', 'Fresh reading') : values.some(finite) ? tr('Częściowy odczyt', 'Partial reading') : unknown());
     text('d_xgo_pose', orientationSummary(samples));
     const work = telemetryChannel(xgo, 'work_status', unavailable);
-    text('d_xgo_work', work.ready ? (work.value === 1 ? tr('Normalny', 'Normal') : work.value === 0 ? tr('Przewrócony', 'Fallen') : unknown()) : unknown());
+    text('d_xgo_work', workStatus(work));
     const accel = ['accel_x', 'accel_y', 'accel_z'].map(key => telemetryChannel(xgo, key, unavailable));
     text('d_xgo_accel', accel.every(row => row.ready) ? accel.map(row => fmt(row.value, 2)).join(' / ') : unknown());
     text('d_xgo_batt', finite(battery) ? `${fmt(battery, 0)}%` : unknown());
@@ -117,22 +193,7 @@ export class Overview {
     text('xgo-age', group.complete ? `${fmt(group.age)} s` : tr('Częściowa / niedostępna', 'Partial / unavailable'));
     text('imu-yaw-raw', samples.yaw.ready ? `${fmt(samples.yaw.value, 2)} sdk_raw · ${age(samples.yaw)}` : unknown());
     text('ci_fw', xgo?.fw || this.health?.devices?.xgo?.fw || '—');
-    const lcdParent = this.state?.devices?.lcd ? this.state : this.health;
-    const lcd = lcdParent?.devices?.lcd;
-    const lcdNow = nowSeconds();
-    const lcdAge = ageOf({ observed_at: lcd?.power_observed_at }, lcdNow);
-    const lcdFailure = [lcdParent, lcdParent?.meta, lcd].some(row => row?.offline === true
-      || row?.stale === true || row?.simulated === true || Boolean(row?.error));
-    const lcdConfirmed = !lcdFailure && lcd?.power_known === true && typeof lcd.on === 'boolean'
-      && typeof lcd.source === 'string' && Boolean(lcd.source.trim()) && lcd.power_source === lcd.source
-      && ['control_write_accepted', 'gpio_level_observed'].includes(lcd.confirmation) && lcdAge !== null && lcd.power_observed_at <= lcdNow;
-    // LCD reports accepted control events, not periodic physical measurements.
-    text('d_lcd', powerLabel(lcdConfirmed ? lcd.on : null));
-    const lcdNode = document.getElementById('d_lcd');
-    if (lcdNode) lcdNode.title = lcdConfirmed
-      ? (lcd.confirmation === 'gpio_level_observed' ? tr('Odczyt podświetlenia LCD', 'LCD backlight reading')
-        : tr('Ostatnie potwierdzone polecenie LCD', 'Last confirmed LCD command'))
-      : tr('Nie można odczytać stanu LCD', 'LCD state unavailable');
+    renderLcd(this);
   }
   renderHealth() {
     const h = this.health;
@@ -146,44 +207,12 @@ export class Overview {
     text('overview-connection', h ? tr('API odpowiada', 'API responding') : tr('API niedostępne', 'API unavailable'));
   }
   renderVision() {
-    const camera = this.health?.devices?.camera || this.state?.camera?.activity || this.state?.devices?.camera || this.state?.camera || {};
-    const capture = camera?.on === true && !camera.error && camera.offline !== true && camera.stale !== true;
-    const frameReady = cameraFrame(this.snap, 'raw').fresh;
-    const active = capture || (camera?.vision_enabled === true && frameReady);
-    const off = !active && (camera?.vision_enabled === false || camera?.on === false);
-    const cameraText = powerLabel(active ? true : off ? false : null);
-    const cameraDetails = [cameraText, camera?.mode, Array.isArray(camera?.res) ? camera.res.join('×') : null,
-      finite(camera?.fps) ? `${fmt(camera.fps)} fps` : null].filter(Boolean);
-    text('d_cam', cameraDetails.join(' · ')); text('camBadge', powerLabel(active ? true : off ? false : null));
-    document.getElementById('camBadge')?.classList.toggle('on', active);
+    const active=renderCameraPower(this);
     for (const [kind, endpoint] of [['raw', '/vision/cam'], ['proc', '/vision/edge'], ['obst', '/snapshots/obst_annot.jpg'], ['tracker', '/vision/tracker']]) {
       if (['raw', 'proc'].includes(kind) && this.pipeline !== undefined) continue;
-      const frame = cameraFrame(this.snap, kind);
-      const name = kind === 'raw' ? 'cam' : kind;
-      const node = document.getElementById(`img_${name}`);
-      const freshFrame = active && frame.fresh;
-      // A frame artifact does not prove that its particular producer is on.
-      const label = !frame.exists ? tr('brak klatki', 'no frame') : frame.fresh ? frameAge(frame.age) : `${tr('stara klatka', 'old frame')} · ${frameAge(frame.age)}`;
-      text(`age_${kind}`, label);
-      text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${label}${frame.time_basis === 'file_mtime' ? tr(' · wiek pliku; przechwycenie niepotwierdzone', ' · file age; capture unconfirmed') : ''}`);
-      if (!node) continue;
-      if (!freshFrame || document.hidden) { node.dataset.frame = ''; if (node.getAttribute('src') !== BLANK) node.src = BLANK; continue; }
-      const tag = String(frame.ts);
-      if (node.dataset.frame !== tag) {
-        node.dataset.frame = tag;
-        node.onerror = () => { if (node.dataset.frame === tag) { node.onerror = null; node.src = BLANK; text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${tr('błąd odczytu obrazu', 'image read failed')}`); } };
-        node.src = `${endpoint}?v=${encodeURIComponent(tag)}`;
-      }
+      renderVisionFrame(this,kind,endpoint,active);
     }
-    const o = this.obstacle;
-    const valid = presentationReady(o, 3) && typeof o?.present === 'boolean';
-    text('obs_present', valid ? String(o.present) : unknown());
-    text('obs_conf', valid ? fmt(o.confidence, 3) : '—');
-    text('obs_edge', valid ? fmt(o.edge_ratio ?? o.edge_pct, 3) : '—');
-    text('obstacle-age', age(o));
-    const diag = valid ? o.diag : null;
-    text('binsLegendTxt', `LOW/HIGH: ${fmt(diag?.t_low, 2)} / ${fmt(diag?.t_high, 2)} · edge_pct: ${valid ? fmt(diag?.edge_ratio_raw ?? diag?.edge_pct_raw ?? o.edge_ratio ?? o.edge_pct, 3) : '—'}`);
-    this.drawBins(diag?.bins, valid ? diag?.edge_ratio_raw ?? diag?.edge_pct_raw ?? o.edge_ratio ?? o.edge_pct : null);
+    renderObstacle(this);
   }
   renderMetrics() {
     for (const key of ['control', 'navigator', 'voice', 'google_home', 'chat', 'face']) {

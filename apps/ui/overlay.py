@@ -31,6 +31,36 @@ def make_sub():
     return s, poll
 
 
+def _receive_overlay(topic, payload, state, draw_enabled):
+    if topic == CTRL_T:
+        msg = json.loads(payload.decode("utf-8"))
+        return bool(msg.get("draw", True))
+    elif topic == MOTION_T:
+        state["motion"] = json.loads(payload.decode("utf-8"))
+    elif topic == VISION_T:
+        state["vision"] = json.loads(payload.decode("utf-8"))
+    return draw_enabled
+
+
+def _draw_overlay(screen, font, state):
+    screen.fill((0, 0, 0))
+    lines = []
+    m = display_motion(state.get("motion", {}))
+    v = state.get("vision", {})
+    lines.append(f"SAFETY: {m['state']} can_move={m['can_move']}")
+    out = m.get("output", {})
+    lines.append(f"OUT normalized: lx={number_label(out.get('lx'))} az={number_label(out.get('az'))}")
+    lines.append("Physical motion/stop: unverified")
+    lines.append(f"VISION: moving={v.get('moving')} human={v.get('human', False)} motion={v.get('motion', 0):.1f}")
+
+    y = 20
+    for s in lines:
+        img = font.render(s, False, (200, 200, 200))
+        screen.blit(img, (20, y))
+        y += 28
+    pygame.display.flip()
+
+
 def main():
     pygame.display.init()
     pygame.font.init()
@@ -51,33 +81,10 @@ def main():
         socks = dict(poll.poll(timeout=0))
         if sub in socks and socks[sub] == zmq.POLLIN:
             topic, payload = sub.recv_multipart()
-            if topic == CTRL_T:
-                msg = json.loads(payload.decode("utf-8"))
-                draw_enabled = bool(msg.get("draw", True))
-            elif topic == MOTION_T:
-                state["motion"] = json.loads(payload.decode("utf-8"))
-            elif topic == VISION_T:
-                state["vision"] = json.loads(payload.decode("utf-8"))
+            draw_enabled = _receive_overlay(topic, payload, state, draw_enabled)
 
         if draw_enabled:
-            screen.fill((0, 0, 0))
-            lines = []
-            m = display_motion(state.get("motion", {}))
-            v = state.get("vision", {})
-            lines.append(f"SAFETY: {m['state']} can_move={m['can_move']}")
-            out = m.get("output", {})
-            lines.append(f"OUT normalized: lx={number_label(out.get('lx'))} az={number_label(out.get('az'))}")
-            lines.append("Physical motion/stop: unverified")
-            lines.append(
-                f"VISION: moving={v.get('moving')} human={v.get('human', False)} motion={v.get('motion', 0):.1f}"
-            )
-
-            y = 20
-            for s in lines:
-                img = font.render(s, False, (200, 200, 200))
-                screen.blit(img, (20, y))
-                y += 28
-            pygame.display.flip()
+            _draw_overlay(screen, font, state)
             clock.tick(FPS)
         else:
             time.sleep(0.05)

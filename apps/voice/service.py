@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+_VOICE_INIT = "voice.init"
+
 """
 apps.voice service API
 
@@ -40,14 +42,14 @@ def _maybe_load_env_from_bash_profile() -> None:
             ensure_env_from_bash_profile as _ensure_env_from_bash_profile,
         )
     except Exception:  # pragma: no cover
-        _log_info("voice.init", "env.loader.missing", {"src": "env_loader"})
+        _log_info(_VOICE_INIT, "env.loader.missing", {"src": "env_loader"})
         return
 
     try:
         _ensure_env_from_bash_profile()
-        _log_info("voice.init", "env.loader.ok", {"src": "~/.bash_profile"})
+        _log_info(_VOICE_INIT, "env.loader.ok", {"src": "~/.bash_profile"})
     except Exception:  # pragma: no cover
-        _log_warn("voice.init", "env.loader.failed", {"src": "~/.bash_profile"})
+        _log_warn(_VOICE_INIT, "env.loader.failed", {"src": "~/.bash_profile"})
 
 
 _maybe_load_env_from_bash_profile()
@@ -69,7 +71,7 @@ def _report_env_state() -> None:
         "HTTPS_PROXY",
     ]
     data = {k: {"present": bool(os.getenv(k)), "len": _mask_len(os.getenv(k))} for k in keys}
-    _log_info("voice.init", "env.state", data)
+    _log_info(_VOICE_INIT, "env.state", data)
 
     if not os.getenv("OPENAI_API_KEY"):
         _log_warn(

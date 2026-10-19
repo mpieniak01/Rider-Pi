@@ -124,6 +124,59 @@ def sub_recv() -> tuple[str, dict[str, Any]]:
         return "", {}
 
 
+def _apply_tracking_control(topic, data):
+    global FOLLOW_MODE, LAST_FRAME_PATH
+    # Kamera – serce systemu: aktualizujemy ścieżkę do klatki
+    if topic == "camera.heartbeat":
+        lfp = data.get("last_frame_path")
+        if isinstance(lfp, str) and lfp:
+            LAST_FRAME_PATH = lfp
+        # można też kiedyś wykorzystać fps, lcd, itp.
+        # print(f"[tracker] heartbeat last_frame_path={LAST_FRAME_PATH}", flush=True)
+        return
+
+    if topic == "tracking.mode:set":
+        # Nowe API sterowania trackingiem (alias dla tracking.mode)
+        print(f"[tracker] tracking.mode:set data={data}", flush=True)
+
+    # Interesują nas tylko tematy związane z trackingiem
+    if "tracking" not in topic:
+        return
+
+    # Debug: pokaż wszystkie potencjalne sterowania
+    if "mode" in data or "enabled" in data:
+        print(f"[tracker] tracking control topic='{topic}' data={data}", flush=True)
+
+    _set_tracking_mode(data)
+
+
+def _set_tracking_mode(data):
+    global FOLLOW_MODE
+    mode_raw = str(data.get("mode", "none"))
+    enabled = bool(data.get("enabled", True))
+
+    mode_norm = mode_raw.strip().lower()
+
+    with FOLLOW_MODE_LOCK:
+        if not enabled or mode_norm in ("none", "off", "disable", "disabled", ""):
+            FOLLOW_MODE = "NONE"
+            print(
+                f"[tracker] mode → NONE (enabled={enabled}, raw='{mode_raw}')",
+                flush=True,
+            )
+        elif mode_norm in ("face", "hand"):
+            FOLLOW_MODE = mode_norm.upper()
+            print(
+                f"[tracker] mode → {FOLLOW_MODE} (enabled={enabled})",
+                flush=True,
+            )
+        else:
+            print(
+                f"[tracker] invalid tracking mode '{mode_raw}' (enabled={enabled}) in data={data}",
+                flush=True,
+            )
+
+
 def control_loop() -> None:
     """Listen for tracking mode control messages and camera heartbeats."""
     global FOLLOW_MODE, LAST_FRAME_PATH
@@ -135,50 +188,7 @@ def control_loop() -> None:
             if not topic and not data:
                 continue
 
-            # Kamera – serce systemu: aktualizujemy ścieżkę do klatki
-            if topic == "camera.heartbeat":
-                lfp = data.get("last_frame_path")
-                if isinstance(lfp, str) and lfp:
-                    LAST_FRAME_PATH = lfp
-                # można też kiedyś wykorzystać fps, lcd, itp.
-                # print(f"[tracker] heartbeat last_frame_path={LAST_FRAME_PATH}", flush=True)
-                continue
-
-            if topic == "tracking.mode:set":
-                # Nowe API sterowania trackingiem (alias dla tracking.mode)
-                print(f"[tracker] tracking.mode:set data={data}", flush=True)
-
-            # Interesują nas tylko tematy związane z trackingiem
-            if "tracking" not in topic:
-                continue
-
-            # Debug: pokaż wszystkie potencjalne sterowania
-            if "mode" in data or "enabled" in data:
-                print(f"[tracker] tracking control topic='{topic}' data={data}", flush=True)
-
-            mode_raw = str(data.get("mode", "none"))
-            enabled = bool(data.get("enabled", True))
-
-            mode_norm = mode_raw.strip().lower()
-
-            with FOLLOW_MODE_LOCK:
-                if not enabled or mode_norm in ("none", "off", "disable", "disabled", ""):
-                    FOLLOW_MODE = "NONE"
-                    print(
-                        f"[tracker] mode → NONE (enabled={enabled}, raw='{mode_raw}')",
-                        flush=True,
-                    )
-                elif mode_norm in ("face", "hand"):
-                    FOLLOW_MODE = mode_norm.upper()
-                    print(
-                        f"[tracker] mode → {FOLLOW_MODE} (enabled={enabled})",
-                        flush=True,
-                    )
-                else:
-                    print(
-                        f"[tracker] invalid tracking mode '{mode_raw}' (enabled={enabled}) in data={data}",
-                        flush=True,
-                    )
+            _apply_tracking_control(topic, data)
 
         except KeyboardInterrupt:
             break
@@ -238,6 +248,273 @@ def save_tracker_frame(frame_bgr: Any) -> bool:
         return False
 
 
+def _announce_tracking_provider(pc_mode, tracker_active):
+    if pc_mode and not tracker_active:
+        print("[tracker] vision provider switched to PC (local fallback enabled)", flush=True)
+    if not pc_mode and tracker_active is False:
+        print("[tracker] vision provider local -> resuming tracker", flush=True)
+    tracker_active = True  # włączony zawsze; w trybie PC będziemy ewentualnie publikować zależnie od fallbacku
+
+    return tracker_active
+
+
+def _tracking_frame(frame_stream, shared_pipeline, source_guard, frame_interval, t0):
+    # Wczytujemy ostatnią klatkę ze streamu lub fallbacku
+    frame = None
+    if frame_stream is not None:
+        frame = frame_stream.recv(int(frame_interval * 1000))
+    source_metadata = frame_stream.metadata if frame_stream is not None else {}
+    if shared_pipeline and (frame is None or not source_guard.admit(source_metadata)):
+        time.sleep(0.02)
+        return None
+    if frame is None:
+        frame = cv2.imread(LAST_FRAME_PATH)
+        if frame is None:
+            print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
+            time.sleep(0.05)
+            return None
+        try:
+            frame_age = max(0.0, t0 - os.path.getmtime(LAST_FRAME_PATH))
+            if frame_age > 1.0 and int(t0) % 5 == 0:
+                print(f"[tracker] warning: last_frame age={frame_age:.2f}s path={LAST_FRAME_PATH}", flush=True)
+        except Exception:
+            frame_age = None
+    else:
+        frame_age = None
+
+    return frame, source_metadata
+
+
+def _save_idle_tracking_frame(frame, pc_mode):
+    overlay = frame.copy()
+    text = PC_OVERLAY if pc_mode else IDLE_OVERLAY
+    cv2.putText(
+        overlay,
+        text,
+        (12, 28),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    save_tracker_frame(overlay)
+    time.sleep(0.25 if pc_mode else 0.1)
+
+
+def _detect_tracking(frame, mode, pc_mode, face_detector, hand_detector):
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    offset_x = None
+    detections = None
+
+    if mode == "FACE" and not pc_mode:
+        results = face_detector.process(rgb_frame)
+        if results.detections:
+            offset_x = calculate_offset_x(results.detections)
+            detections = results.detections
+            print(
+                f"[tracker] DETECTION FACE count={len(results.detections)} offset_x={offset_x}",
+                flush=True,
+            )
+        else:
+            print("[tracker] DETECTION FACE none", flush=True)
+    elif mode == "HAND":
+        results = hand_detector.process(rgb_frame)
+        if results.multi_hand_landmarks:
+            offset_x = calculate_offset_x(results.multi_hand_landmarks)
+            detections = results.multi_hand_landmarks
+            print(
+                f"[tracker] DETECTION HAND count={len(results.multi_hand_landmarks)} offset_x={offset_x}",
+                flush=True,
+            )
+        else:
+            print("[tracker] DETECTION HAND none", flush=True)
+    else:
+        print(f"[tracker] Unknown mode '{mode}'", flush=True)
+
+    return offset_x, detections
+
+
+def _draw_tracking_marker(annotated_frame, detections, w, h):
+    # Detection marker
+    if detections is not None and len(detections) > 0:
+        det = detections[0]
+        center_x, center_y = None, None
+
+        if hasattr(det, "location_data") and det.location_data.HasField("relative_bounding_box"):
+            bbox = det.location_data.relative_bounding_box
+            center_x = int((bbox.xmin + bbox.width / 2.0) * w)
+            center_y = int((bbox.ymin + bbox.height / 2.0) * h)
+            radius = int(max(bbox.width, bbox.height) * w / 2.0)
+        elif hasattr(det, "landmark") and len(det.landmark) > 0:
+            center_x = int(det.landmark[0].x * w)
+            center_y = int(det.landmark[0].y * h)
+            radius = 40
+        else:
+            radius = 40
+
+        if center_x is not None and center_y is not None:
+            cv2.circle(annotated_frame, (center_x, center_y), radius, (0, 255, 255), 2)
+            cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 255, 255), -1)
+
+
+def _save_annotated_tracking(frame, detections, fps_value, mode, pc_mode):
+    h, w = frame.shape[:2]
+    annotated_frame = frame.copy()
+
+    # FPS overlay
+    fps_text = f"FPS: {fps_value:.1f}"
+    cv2.putText(
+        annotated_frame,
+        fps_text,
+        (10, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 255, 0),
+        2,
+        cv2.LINE_AA,
+    )
+
+    _draw_tracking_marker(annotated_frame, detections, w, h)
+
+    overlay_text = None
+    if pc_mode:
+        overlay_text = PC_OVERLAY
+    elif mode == "NONE":
+        overlay_text = IDLE_OVERLAY
+    else:
+        overlay_text = MODE_OVERLAY.format(mode=mode.title())
+    if overlay_text:
+        cv2.putText(
+            annotated_frame,
+            overlay_text,
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+    # Zapisujemy ramkę trackera zawsze przy aktywnym trybie/preview
+    save_tracker_frame(annotated_frame)
+
+
+def _publish_tracking_offset(offset_x, mode, pc_mode, now, shared_pipeline, source_guard, source_metadata):
+    observed_at = source_guard.source_time(source_metadata) if shared_pipeline else now
+    if observed_at is None:
+        return False
+    payload = {
+        "offset_x": round(offset_x, 3),
+        "mode": mode.lower(),
+        "ts": observed_at,
+        "source": "pc-fallback" if pc_mode else "local",
+        **(
+            {"frame_id": source_metadata["frame_id"], "camera_session": source_metadata["camera_session"]}
+            if shared_pipeline
+            else {}
+        ),
+    }
+    pub("vision.tracking.offset", payload)
+    pub(
+        "tracking.pose",
+        {
+            "mode": mode.lower(),
+            "target": {"x": payload["offset_x"], "y": 0.0},
+            "ts": observed_at,
+            "source": payload["source"],
+            **(
+                {
+                    "frame_id": source_metadata["frame_id"],
+                    "camera_session": source_metadata["camera_session"],
+                }
+                if shared_pipeline
+                else {}
+            ),
+        },
+    )
+    return True
+
+
+def _tracking_publish_diagnostic(offset_x, can_publish, pc_mode, pc_fallback):
+    if offset_x is None:
+        print("[tracker] no offset to publish", flush=True)
+    elif not can_publish:
+        print(f"[tracker] publish skipped (interval) offset_x={offset_x}", flush=True)
+    elif pc_mode and not pc_fallback:
+        print(
+            "[tracker] PC mode: waiting for provider; local publish disabled (set TRACKING_PUBLISH_IN_PC=1)",
+            flush=True,
+        )
+
+
+def _maybe_publish_tracking(
+    offset_x,
+    mode,
+    pc_mode,
+    now,
+    last_pub_ts,
+    last_real_pub_ts,
+    frame_interval,
+    shared_pipeline,
+    source_guard,
+    source_metadata,
+):
+    can_publish = (now - last_pub_ts) >= frame_interval
+    pc_fallback = pc_mode and PUBLISH_IN_PC and (PC_FALLBACK_SEC <= 0 or (now - last_real_pub_ts) >= PC_FALLBACK_SEC)
+
+    if offset_x is not None and can_publish and (not pc_mode or pc_fallback):
+        if not _publish_tracking_offset(offset_x, mode, pc_mode, now, shared_pipeline, source_guard, source_metadata):
+            return last_pub_ts, last_real_pub_ts, True
+        last_pub_ts = now
+        last_real_pub_ts = now
+        if pc_mode and pc_fallback:
+            print("[tracker] PC mode fallback -> published local offset", flush=True)
+    else:
+        _tracking_publish_diagnostic(offset_x, can_publish, pc_mode, pc_fallback)
+    return last_pub_ts, last_real_pub_ts, False
+
+
+def _wait_tracking_interval(t0, frame_interval):
+    elapsed = time.time() - t0
+    sleep_time = max(0.0, frame_interval - elapsed)
+    if sleep_time > 0:
+        time.sleep(sleep_time)
+
+
+def _update_tracking_fps(fps_frame_count, fps_start_time, fps_value, t0):
+    fps_frame_count += 1
+    if t0 - fps_start_time >= 1.0:
+        fps_value = fps_frame_count / (t0 - fps_start_time)
+        fps_start_time = t0
+        fps_frame_count = 0
+
+    return fps_frame_count, fps_start_time, fps_value
+
+
+def _close_tracking_detectors(frame_stream, face_detector, hand_detector):
+    try:
+        if frame_stream is not None:
+            frame_stream.close()
+        if hasattr(face_detector, "close"):
+            face_detector.close()
+        if hasattr(hand_detector, "close"):
+            hand_detector.close()
+    except Exception as e:
+        print(f"[tracker] detector cleanup warning: {e}", flush=True)
+
+
+def _open_tracking_stream(shared_pipeline):
+    frame_stream = (
+        FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True)
+        if TRACKER_USE_FRAME_STREAM or shared_pipeline
+        else None
+    )
+
+    return frame_stream
+
+
 def tracking_loop() -> None:
     """Main tracking loop using MediaPipe on frames from last_frame.jpg."""
     global LAST_FRAME_PATH
@@ -270,221 +547,53 @@ def tracking_loop() -> None:
     from services.camera_pipeline_store import enabled as pipeline_enabled
 
     shared_pipeline, source_guard = pipeline_enabled(), TrackingSourceGuard()
-    frame_stream = (
-        FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True)
-        if TRACKER_USE_FRAME_STREAM or shared_pipeline
-        else None
-    )
+    frame_stream = _open_tracking_stream(shared_pipeline)
 
     while True:
         try:
             pc_mode = not should_run_local_detectors()
-            if pc_mode and not tracker_active:
-                print("[tracker] vision provider switched to PC (local fallback enabled)", flush=True)
-            if not pc_mode and tracker_active is False:
-                print("[tracker] vision provider local -> resuming tracker", flush=True)
-            tracker_active = True  # włączony zawsze; w trybie PC będziemy ewentualnie publikować zależnie od fallbacku
+            tracker_active = _announce_tracking_provider(pc_mode, tracker_active)
 
             t0 = time.time()
             with FOLLOW_MODE_LOCK:
                 mode = FOLLOW_MODE
 
-            # Wczytujemy ostatnią klatkę ze streamu lub fallbacku
-            frame = None
-            if frame_stream is not None:
-                frame = frame_stream.recv(int(frame_interval * 1000))
-            source_metadata = frame_stream.metadata if frame_stream is not None else {}
-            if shared_pipeline and (frame is None or not source_guard.admit(source_metadata)):
-                time.sleep(0.02)
+            sample = _tracking_frame(frame_stream, shared_pipeline, source_guard, frame_interval, t0)
+            if sample is None:
                 continue
-            if frame is None:
-                frame = cv2.imread(LAST_FRAME_PATH)
-                if frame is None:
-                    print(f"[tracker] cannot read frame from {LAST_FRAME_PATH}", flush=True)
-                    time.sleep(0.05)
-                    continue
-                try:
-                    frame_age = max(0.0, t0 - os.path.getmtime(LAST_FRAME_PATH))
-                    if frame_age > 1.0 and int(t0) % 5 == 0:
-                        print(f"[tracker] warning: last_frame age={frame_age:.2f}s path={LAST_FRAME_PATH}", flush=True)
-                except Exception:
-                    frame_age = None
-            else:
-                frame_age = None
+            frame, source_metadata = sample
 
             if mode == "NONE":
-                overlay = frame.copy()
-                text = PC_OVERLAY if pc_mode else IDLE_OVERLAY
-                cv2.putText(
-                    overlay,
-                    text,
-                    (12, 28),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 255, 255),
-                    2,
-                    cv2.LINE_AA,
-                )
-                save_tracker_frame(overlay)
-                time.sleep(0.25 if pc_mode else 0.1)
+                _save_idle_tracking_frame(frame, pc_mode)
                 continue
 
-            fps_frame_count += 1
-            if t0 - fps_start_time >= 1.0:
-                fps_value = fps_frame_count / (t0 - fps_start_time)
-                fps_start_time = t0
-                fps_frame_count = 0
+            fps_frame_count, fps_start_time, fps_value = _update_tracking_fps(
+                fps_frame_count, fps_start_time, fps_value, t0
+            )
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w = rgb_frame.shape[:2]
-
-            offset_x = None
-            detections = None
-
-            if mode == "FACE" and not pc_mode:
-                results = face_detector.process(rgb_frame)
-                if results.detections:
-                    offset_x = calculate_offset_x(results.detections)
-                    detections = results.detections
-                    print(
-                        f"[tracker] DETECTION FACE count={len(results.detections)} offset_x={offset_x}",
-                        flush=True,
-                    )
-                else:
-                    print("[tracker] DETECTION FACE none", flush=True)
-            elif mode == "HAND":
-                results = hand_detector.process(rgb_frame)
-                if results.multi_hand_landmarks:
-                    offset_x = calculate_offset_x(results.multi_hand_landmarks)
-                    detections = results.multi_hand_landmarks
-                    print(
-                        f"[tracker] DETECTION HAND count={len(results.multi_hand_landmarks)} offset_x={offset_x}",
-                        flush=True,
-                    )
-                else:
-                    print("[tracker] DETECTION HAND none", flush=True)
-            else:
-                print(f"[tracker] Unknown mode '{mode}'", flush=True)
+            offset_x, detections = _detect_tracking(frame, mode, pc_mode, face_detector, hand_detector)
 
             if shared_pipeline and not source_guard.fresh(source_metadata):
                 continue
-            annotated_frame = frame.copy()
-
-            # FPS overlay
-            fps_text = f"FPS: {fps_value:.1f}"
-            cv2.putText(
-                annotated_frame,
-                fps_text,
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2,
-                cv2.LINE_AA,
-            )
-
-            # Detection marker
-            if detections is not None and len(detections) > 0:
-                det = detections[0]
-                center_x, center_y = None, None
-
-                if hasattr(det, "location_data") and det.location_data.HasField("relative_bounding_box"):
-                    bbox = det.location_data.relative_bounding_box
-                    center_x = int((bbox.xmin + bbox.width / 2.0) * w)
-                    center_y = int((bbox.ymin + bbox.height / 2.0) * h)
-                    radius = int(max(bbox.width, bbox.height) * w / 2.0)
-                elif hasattr(det, "landmark") and len(det.landmark) > 0:
-                    center_x = int(det.landmark[0].x * w)
-                    center_y = int(det.landmark[0].y * h)
-                    radius = 40
-                else:
-                    radius = 40
-
-                if center_x is not None and center_y is not None:
-                    cv2.circle(annotated_frame, (center_x, center_y), radius, (0, 255, 255), 2)
-                    cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 255, 255), -1)
-
-            overlay_text = None
-            if pc_mode:
-                overlay_text = PC_OVERLAY
-            elif mode == "NONE":
-                overlay_text = IDLE_OVERLAY
-            else:
-                overlay_text = MODE_OVERLAY.format(mode=mode.title())
-            if overlay_text:
-                cv2.putText(
-                    annotated_frame,
-                    overlay_text,
-                    (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (255, 255, 255),
-                    2,
-                    cv2.LINE_AA,
-                )
-
-            # Zapisujemy ramkę trackera zawsze przy aktywnym trybie/preview
-            save_tracker_frame(annotated_frame)
+            _save_annotated_tracking(frame, detections, fps_value, mode, pc_mode)
 
             now = time.time()
-            can_publish = (now - last_pub_ts) >= frame_interval
-            pc_fallback = (
-                pc_mode and PUBLISH_IN_PC and (PC_FALLBACK_SEC <= 0 or (now - last_real_pub_ts) >= PC_FALLBACK_SEC)
+            last_pub_ts, last_real_pub_ts, skip = _maybe_publish_tracking(
+                offset_x,
+                mode,
+                pc_mode,
+                now,
+                last_pub_ts,
+                last_real_pub_ts,
+                frame_interval,
+                shared_pipeline,
+                source_guard,
+                source_metadata,
             )
+            if skip:
+                continue
 
-            if offset_x is not None and can_publish and (not pc_mode or pc_fallback):
-                observed_at = source_guard.source_time(source_metadata) if shared_pipeline else now
-                if observed_at is None:
-                    continue
-                payload = {
-                    "offset_x": round(offset_x, 3),
-                    "mode": mode.lower(),
-                    "ts": observed_at,
-                    "source": "pc-fallback" if pc_mode else "local",
-                    **(
-                        {"frame_id": source_metadata["frame_id"], "camera_session": source_metadata["camera_session"]}
-                        if shared_pipeline
-                        else {}
-                    ),
-                }
-                pub("vision.tracking.offset", payload)
-                pub(
-                    "tracking.pose",
-                    {
-                        "mode": mode.lower(),
-                        "target": {"x": payload["offset_x"], "y": 0.0},
-                        "ts": observed_at,
-                        "source": payload["source"],
-                        **(
-                            {
-                                "frame_id": source_metadata["frame_id"],
-                                "camera_session": source_metadata["camera_session"],
-                            }
-                            if shared_pipeline
-                            else {}
-                        ),
-                    },
-                )
-                last_pub_ts = now
-                last_real_pub_ts = now
-                if pc_mode and pc_fallback:
-                    print("[tracker] PC mode fallback -> published local offset", flush=True)
-            else:
-                if offset_x is None:
-                    print("[tracker] no offset to publish", flush=True)
-                elif not can_publish:
-                    print(f"[tracker] publish skipped (interval) offset_x={offset_x}", flush=True)
-                elif pc_mode and not pc_fallback:
-                    print(
-                        "[tracker] PC mode: waiting for provider; local publish disabled "
-                        "(set TRACKING_PUBLISH_IN_PC=1)",
-                        flush=True,
-                    )
-
-            elapsed = time.time() - t0
-            sleep_time = max(0.0, frame_interval - elapsed)
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+            _wait_tracking_interval(t0, frame_interval)
 
         except KeyboardInterrupt:
             break
@@ -492,15 +601,7 @@ def tracking_loop() -> None:
             print(f"[tracker] tracking_loop err: {e}", flush=True)
             time.sleep(0.1)
 
-    try:
-        if frame_stream is not None:
-            frame_stream.close()
-        if hasattr(face_detector, "close"):
-            face_detector.close()
-        if hasattr(hand_detector, "close"):
-            hand_detector.close()
-    except Exception as e:
-        print(f"[tracker] detector cleanup warning: {e}", flush=True)
+    _close_tracking_detectors(frame_stream, face_detector, hand_detector)
 
 
 if __name__ == "__main__":

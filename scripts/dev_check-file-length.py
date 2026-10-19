@@ -32,17 +32,33 @@ def changed_files(root: Path, base: str, head: str) -> list[Path]:
     return [root / os.fsdecode(name) for name in result.stdout.split(b"\0") if name]
 
 
+def _inspect_file(path, root):
+    name = str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
+    if path.is_symlink():
+        raise OSError("refusing to inspect symbolic links")
+    if not path.is_file():
+        raise OSError("not a regular file")
+    with path.open(encoding="utf-8") as source:
+        count = sum(1 for _ in source)
+    return name, count
+
+
+def _report_limit(name, count, level, annotations):
+    message = f"{count} lines; advisory limit {SOFT_LIMIT}, hard limit {HARD_LIMIT}."
+    if annotations:
+        # Escape GitHub workflow commands, including unusual tracked filenames.
+        name = name.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        name = name.replace(":", "%3A").replace(",", "%2C")
+        print(f"::{level} file={name},line=1::{message}")
+    else:
+        print(f"{level.upper()}: {name}: {message}")
+
+
 def check_files(paths: list[Path], *, root: Path, annotations: bool = False) -> int:
     failed = False
     for path in sorted(set(paths)):
         try:
-            name = str(path.relative_to(root)) if path.is_relative_to(root) else str(path)
-            if path.is_symlink():
-                raise OSError("refusing to inspect symbolic links")
-            if not path.is_file():
-                raise OSError("not a regular file")
-            with path.open(encoding="utf-8") as source:
-                count = sum(1 for _ in source)
+            name, count = _inspect_file(path, root)
         except (OSError, UnicodeError) as exc:
             print(f"ERROR: cannot inspect {path}: {exc}")
             failed = True
@@ -50,14 +66,7 @@ def check_files(paths: list[Path], *, root: Path, annotations: bool = False) -> 
         level = "error" if count > HARD_LIMIT else "warning" if count > SOFT_LIMIT else None
         if level is None:
             continue
-        message = f"{count} lines; advisory limit {SOFT_LIMIT}, hard limit {HARD_LIMIT}."
-        if annotations:
-            # Escape GitHub workflow commands, including unusual tracked filenames.
-            name = name.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-            name = name.replace(":", "%3A").replace(",", "%2C")
-            print(f"::{level} file={name},line=1::{message}")
-        else:
-            print(f"{level.upper()}: {name}: {message}")
+        _report_limit(name, count, level, annotations)
         failed = failed or level == "error"
     if not failed:
         print(f"PASS: file-size policy (warning >{SOFT_LIMIT}, failure >{HARD_LIMIT}).")

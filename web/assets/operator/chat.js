@@ -9,7 +9,6 @@ export class Chat {
       if (Array.isArray(stored)) for (const item of stored.slice(-80)) if (typeof item.text === 'string') this.message(['you', 'operator'].includes(item.role) ? 'operator' : 'assistant', item.text, false);
     } catch { /* Missing storage does not grant any task permission. */ }
     document.getElementById('chat-form')?.addEventListener('submit', event => { event.preventDefault(); void this.send(); });
-    void this.loadProviders();
   }
   async loadProviders() {
     try {

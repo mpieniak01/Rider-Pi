@@ -42,6 +42,61 @@ def ensure_mono_16k(audio_data: bytes, capture_cfg: CaptureConfig) -> bytes:
         return audio_data
 
 
+def _extend_initial_frames(pre_buf, frames_iter, pre_frames_needed):
+    # If we collected little (eg slow start), collect up to 0.6s more
+    if len(pre_buf) < pre_frames_needed // 4:
+        t0 = time.time()
+        while len(pre_buf) < pre_frames_needed and (time.time() - t0) < 0.6:
+            try:
+                pre_buf.append(next(frames_iter))
+            except StopIteration:
+                break
+
+
+def _collect_initial_audio(capture, capture_cfg, vad, max_len_ms, pre_speech_wait_ms):
+    frames_iter = capture.frames()
+
+    # Pre-roll: require at least pre_speech_wait_ms before allowing VAD to end
+    pre_frames_needed = max(1, int(math.ceil(pre_speech_wait_ms / capture_cfg.frame_ms)))
+    pre_buf: list[bytes] = []
+    for _ in range(pre_frames_needed):
+        try:
+            pre_buf.append(next(frames_iter))
+        except StopIteration:
+            break
+
+    _extend_initial_frames(pre_buf, frames_iter, pre_frames_needed)
+
+    return collect(_chain_preroll_frames(pre_buf, frames_iter), vad, max_len_ms)
+
+
+def _chain_preroll_frames(pre_buf, frames_iter):
+    for frame in pre_buf:
+        if frame:
+            yield frame
+    yield from frames_iter
+
+
+def _retry_short_capture(audio, capture_cfg, vad, max_len_ms, mic_open_delay_ms, logger):
+    try:
+        with AudioCapture(capture_cfg, logger) as capture:
+            if mic_open_delay_ms > 0:
+                time.sleep(mic_open_delay_ms / 1000.0)
+            t0 = time.time()
+            chunks: list[bytes] = []
+            for f in capture.frames():
+                chunks.append(f)
+                if (time.time() - t0) >= 0.8:
+                    break
+            audio2 = collect(iter(chunks), vad, max_len_ms)
+            if audio2 and len(audio2) > len(audio):
+                audio = audio2
+    except Exception as exc:
+        logger.event("service.capture.retry_error", error=str(exc))
+
+    return audio
+
+
 def capture_once(
     capture_cfg: CaptureConfig,
     vad: WebRtcActivity,
@@ -61,34 +116,7 @@ def capture_once(
             if mic_open_delay_ms > 0:
                 time.sleep(mic_open_delay_ms / 1000.0)
 
-            frames_iter = capture.frames()
-
-            # Pre-roll: require at least pre_speech_wait_ms before allowing VAD to end
-            pre_frames_needed = max(1, int(math.ceil(pre_speech_wait_ms / capture_cfg.frame_ms)))
-            pre_buf: list[bytes] = []
-            for _ in range(pre_frames_needed):
-                try:
-                    pre_buf.append(next(frames_iter))
-                except StopIteration:
-                    break
-
-            # If we collected little (eg slow start), collect up to 0.6s more
-            if len(pre_buf) < pre_frames_needed // 4:
-                t0 = time.time()
-                while len(pre_buf) < pre_frames_needed and (time.time() - t0) < 0.6:
-                    try:
-                        pre_buf.append(next(frames_iter))
-                    except StopIteration:
-                        break
-
-            def _chained():
-                for f in pre_buf:
-                    if f:
-                        yield f
-                for f in frames_iter:
-                    yield f
-
-            audio = collect(_chained(), vad, max_len_ms)
+            audio = _collect_initial_audio(capture, capture_cfg, vad, max_len_ms, pre_speech_wait_ms)
 
     except CaptureError as exc:
         logger.event("service.capture.error", error=str(exc))
@@ -109,21 +137,7 @@ def capture_once(
     # Too short -> short retry (~0.8s) and try again on collected buffer
     if len(audio) < expected_min:
         logger.event("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
-        try:
-            with AudioCapture(capture_cfg, logger) as capture:
-                if mic_open_delay_ms > 0:
-                    time.sleep(mic_open_delay_ms / 1000.0)
-                t0 = time.time()
-                chunks: list[bytes] = []
-                for f in capture.frames():
-                    chunks.append(f)
-                    if (time.time() - t0) >= 0.8:
-                        break
-                audio2 = collect(iter(chunks), vad, max_len_ms)
-                if audio2 and len(audio2) > len(audio):
-                    audio = audio2
-        except Exception as exc:
-            logger.event("service.capture.retry_error", error=str(exc))
+        audio = _retry_short_capture(audio, capture_cfg, vad, max_len_ms, mic_open_delay_ms, logger)
 
         if len(audio) < expected_min:
             logger.event(
@@ -212,6 +226,10 @@ def capture_with_arecord(
     min_ms = max(200, min_capture_ms)
     expected_min = int(sample_rate * (min_ms / 1000.0)) * 2 * channels
 
+    return _select_arecord_audio(trimmed, raw_s16, expected_min, logger)
+
+
+def _select_arecord_audio(trimmed, raw_s16, expected_min, logger):
     if trimmed:
         if len(trimmed) >= expected_min:
             logger.event(

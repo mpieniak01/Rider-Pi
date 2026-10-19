@@ -49,18 +49,22 @@ def authenticate(authorization: str) -> None:
         raise ValueError('agent_auth_required')
 
 
-def validate_body(body: dict) -> None:
-    if not isinstance(body, dict) or set(body) != BODY_FIELDS:
-        raise ValueError('agent_payload_fields')
-    for field in ('generation', 'agent_epoch', 'request_id', 'intent_id'):
-        if not isinstance(body[field], str) or not IDENTIFIER.fullmatch(body[field]):
-            raise ValueError('agent_identifier_invalid')
+def _validate_sequence_fields(body):
     if type(body['seq']) is not int or not 0 <= body['seq'] < 2**63:
         raise ValueError('agent_sequence_invalid')
     if type(body['ttl_ms']) is not int or not 1 <= body['ttl_ms'] <= 500:
         raise ValueError('agent_ttl_invalid')
     if type(body['settings_revision']) is not int or body['settings_revision'] < 0:
         raise ValueError('agent_settings_revision_invalid')
+
+
+def validate_body(body: dict) -> None:
+    if not isinstance(body, dict) or set(body) != BODY_FIELDS:
+        raise ValueError('agent_payload_fields')
+    for field in ('generation', 'agent_epoch', 'request_id', 'intent_id'):
+        if not isinstance(body[field], str) or not IDENTIFIER.fullmatch(body[field]):
+            raise ValueError('agent_identifier_invalid')
+    _validate_sequence_fields(body)
     try:
         valid_time = type(body['ts']) in (int, float) and math.isfinite(body['ts']) and body['ts'] >= 0
     except OverflowError:

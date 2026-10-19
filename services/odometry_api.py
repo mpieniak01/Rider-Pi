@@ -15,6 +15,50 @@ _publisher = None
 wall_clock = time.time
 
 
+def _validate_process_status(value, observed):
+    started = value.get("started_at")
+    pose = value.get("pose")
+    if (
+        type(value.get("contract_version")) is not int
+        or value["contract_version"] != 1
+        or not isinstance(value.get("instance_id"), str)
+        or not value["instance_id"]
+        or not finite_number(started)
+        or not 0 < started <= observed
+        or type(value.get("reference_verified")) is not bool
+        or value.get("actuation") is not False
+        or not isinstance(pose, dict)
+        or not all(finite_number(pose.get(key)) for key in ("x", "y", "theta"))
+        or type(pose.get("data_ready")) is not bool
+        or type(pose.get("navigation_ready")) is not bool
+    ):
+        raise ValueError("invalid_process_status")
+    reference = value.get("reference_id")
+    if (
+        value["reference_verified"]
+        and (not isinstance(reference, str) or not reference)
+        or not value["reference_verified"]
+        and reference is not None
+    ):
+        raise ValueError("invalid_reference_status")
+    if value.get("last_ack") is not None and not isinstance(value["last_ack"], dict):
+        raise ValueError("invalid_ack_status")
+    home = value.get("home")
+    if home is not None:
+        if (
+            not isinstance(home, dict)
+            or not value["reference_verified"]
+            or home.get("operator_confirmed") is not True
+            or home.get("reference_id") != reference
+            or home.get("calibration_id") != pose.get("calibration_id")
+            or not all(finite_number(home.get(key)) for key in ("x", "y"))
+            or home != pose.get("home")
+        ):
+            raise ValueError("invalid_home_status")
+    if pose["navigation_ready"] and confirmed_home(pose) is None:
+        raise ValueError("invalid_navigation_home")
+
+
 def snapshot():
     path, _ = reference_paths()
     try:
@@ -24,47 +68,7 @@ def snapshot():
         observed = value.get("observed_at") if isinstance(value, dict) else None
         if not finite_number(observed) or not 0 <= wall_clock() - observed <= 3.0:
             raise ValueError("status_stale")
-        started = value.get("started_at")
-        pose = value.get("pose")
-        if (
-            type(value.get("contract_version")) is not int
-            or value["contract_version"] != 1
-            or not isinstance(value.get("instance_id"), str)
-            or not value["instance_id"]
-            or not finite_number(started)
-            or not 0 < started <= observed
-            or type(value.get("reference_verified")) is not bool
-            or value.get("actuation") is not False
-            or not isinstance(pose, dict)
-            or not all(finite_number(pose.get(key)) for key in ("x", "y", "theta"))
-            or type(pose.get("data_ready")) is not bool
-            or type(pose.get("navigation_ready")) is not bool
-        ):
-            raise ValueError("invalid_process_status")
-        reference = value.get("reference_id")
-        if (
-            value["reference_verified"]
-            and (not isinstance(reference, str) or not reference)
-            or not value["reference_verified"]
-            and reference is not None
-        ):
-            raise ValueError("invalid_reference_status")
-        if value.get("last_ack") is not None and not isinstance(value["last_ack"], dict):
-            raise ValueError("invalid_ack_status")
-        home = value.get("home")
-        if home is not None:
-            if (
-                not isinstance(home, dict)
-                or not value["reference_verified"]
-                or home.get("operator_confirmed") is not True
-                or home.get("reference_id") != reference
-                or home.get("calibration_id") != pose.get("calibration_id")
-                or not all(finite_number(home.get(key)) for key in ("x", "y"))
-                or home != pose.get("home")
-            ):
-                raise ValueError("invalid_home_status")
-        if pose["navigation_ready"] and confirmed_home(pose) is None:
-            raise ValueError("invalid_navigation_home")
+        _validate_process_status(value, observed)
         return value
     except (OSError, ValueError, TypeError):
         return {

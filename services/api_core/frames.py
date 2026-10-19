@@ -65,18 +65,16 @@ def _ram_description(stream, selected, now):
     }
 
 
-def describe(stream: str, *, path=None, now=None, archive=False, stat_result=None) -> dict:
-    now = time.time() if now is None else now
-    from services.camera_pipeline_store import enabled
-
-    use_ram = enabled() and path is None and not archive and stream in {"raw", "proc", "ssd"}
+def _selected_path(stream, path, use_ram):
     selected = (
         Path(path)
         if path is not None
         else (Path(C.SNAP_DIR) / (STREAMS[stream][1] + ".jpg") if use_ram else resolve(stream))
     )
-    if use_ram:
-        return _ram_description(stream, selected, now)
+    return selected
+
+
+def _file_observation(selected, now, stat_result):
     at = None
     size = None
     error = None
@@ -99,6 +97,18 @@ def describe(stream: str, *, path=None, now=None, archive=False, stat_result=Non
         error = "frame_clock_future"
     elif exists and stale:
         error = "frame_stale"
+    return at, size, exists, age, stale, error
+
+
+def describe(stream: str, *, path=None, now=None, archive=False, stat_result=None) -> dict:
+    now = time.time() if now is None else now
+    from services.camera_pipeline_store import enabled
+
+    use_ram = enabled() and path is None and not archive and stream in {"raw", "proc", "ssd"}
+    selected = _selected_path(stream, path, use_ram)
+    if use_ram:
+        return _ram_description(stream, selected, now)
+    at, size, exists, age, stale, error = _file_observation(selected, now, stat_result)
     return {
         "stream": stream,
         "url": STREAMS[stream][2],

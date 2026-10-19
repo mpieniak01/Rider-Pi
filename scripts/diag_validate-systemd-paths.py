@@ -19,6 +19,15 @@ def get_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _executable_path(token):
+    return (
+        '/' in token
+        and not token.startswith(('http://', 'https://'))
+        and not re.match(r'^\d*[<>]', token)
+        and token not in ('/usr/bin/env', '/usr/bin/flock', '/bin/bash', '/bin/sh', '/usr/bin/make')
+    )
+
+
 def parse_exec_line(line: str) -> list[str]:
     """
     Parse an Exec* line and extract executable paths.
@@ -61,94 +70,44 @@ def parse_exec_line(line: str) -> list[str]:
                 skip_next = True
             continue
 
-        # Check if it's a path
-        if '/' in token:
-            # Skip URLs
-            if token.startswith('http://') or token.startswith('https://'):
-                continue
-            # Skip redirections
-            if re.match(r'^\d*[<>]', token):
-                continue
-            # Skip common wrappers
-            if token in (
-                '/usr/bin/env',
-                '/usr/bin/flock',
-                '/bin/bash',
-                '/bin/sh',
-                '/usr/bin/make',
-            ):
-                continue
-
+        if _executable_path(token):
             paths.append(token)
             break  # Usually only need first real path
 
     return paths
 
 
+def _path_errors(path_str, service_path, repo_root):
+    if '$' in path_str or '%' in path_str:
+        return []
+    path = Path(path_str)
+    if path.is_absolute():
+        if path_str.startswith(('/usr/bin/', '/bin/', '/usr/sbin/', '/sbin/')):
+            return []  # System binaries are provided by the target image.
+        if path_str.startswith('/home/pi/robot/'):
+            check_path = repo_root / path_str.replace('/home/pi/robot/', '')
+            if not check_path.exists():
+                return [f"  ✗ {service_path.name}: Path does not exist: {path_str}\n    Expected at: {check_path}"]
+        if path_str.startswith('/workspaces/'):
+            return [f"  ✗ {service_path.name}: Uses /workspaces path (should be /home/pi/robot): {path_str}"]
+    else:
+        check_path = repo_root / path_str
+        if not check_path.exists():
+            return [f"  ✗ {service_path.name}: Relative path does not exist: {path_str}\n    Expected at: {check_path}"]
+    return []
+
+
 def validate_service_file(service_path: Path, repo_root: Path) -> tuple[bool, list[str]]:
-    """
-    Validate a single service file.
-
-    Returns:
-        (all_valid, error_messages)
-    """
-    errors = []
-
+    """Validate referenced repository paths without executing service commands."""
     try:
         with open(service_path) as f:
             content = f.read()
     except Exception as e:
         return False, [f"Failed to read {service_path}: {e}"]
-
-    # Find all Exec* directives
-    exec_lines = re.findall(r'^Exec\w+=.*$', content, re.MULTILINE)
-
-    for line in exec_lines:
-        paths = parse_exec_line(line)
-
-        for path_str in paths:
-            # Skip if it's a variable reference
-            if '$' in path_str or '%' in path_str:
-                continue
-
-            # Convert to Path
-            path = Path(path_str)
-
-            # Check if it's an absolute system path
-            if path.is_absolute():
-                # System binaries - check common locations
-                if path_str.startswith(('/usr/bin/', '/bin/', '/usr/sbin/', '/sbin/')):
-                    # These are system binaries, we trust they exist on target system
-                    continue
-
-                # Check if it's a path within /home/pi/robot
-                if path_str.startswith('/home/pi/robot/'):
-                    # Convert to relative path for checking in repo
-                    rel_path = path_str.replace('/home/pi/robot/', '')
-                    check_path = repo_root / rel_path
-
-                    if not check_path.exists():
-                        errors.append(
-                            f"  ✗ {service_path.name}: Path does not exist: {path_str}\n    Expected at: {check_path}"
-                        )
-                        continue
-
-                # Check if it's /workspaces path (incorrect)
-                if path_str.startswith('/workspaces/'):
-                    errors.append(
-                        f"  ✗ {service_path.name}: Uses /workspaces path (should be /home/pi/robot): {path_str}"
-                    )
-                    continue
-            else:
-                # Relative path - check against working directory
-                # Should be relative to /home/pi/robot
-                check_path = repo_root / path_str
-                if not check_path.exists():
-                    errors.append(
-                        f"  ✗ {service_path.name}: Relative path does not exist: {path_str}\n"
-                        f"    Expected at: {check_path}"
-                    )
-
+    errors = []
+    for line in re.findall(r'^Exec\w+=.*$', content, re.MULTILINE):
+        for path_str in parse_exec_line(line):
+            errors.extend(_path_errors(path_str, service_path, repo_root))
     return len(errors) == 0, errors
 
 

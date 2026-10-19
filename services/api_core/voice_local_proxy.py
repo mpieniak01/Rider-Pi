@@ -17,6 +17,8 @@ from .http_security import apply_cors
 # Ustawienia
 # ──────────────────────────────────────────────────────────────────────────────
 
+JSON_CONTENT_TYPE = "application/json"
+WAV_CONTENT_TYPE = "audio/wav"
 VOICE_WEB_BASE = os.getenv("VOICE_WEB_BASE", "http://127.0.0.1:8092").rstrip("/")
 HTTP_TIMEOUT = float(os.getenv("VOICE_HTTP_TIMEOUT", "45"))
 PROVIDER_TEST_TEXT = "To jest test TTS Rider-Pi."
@@ -124,8 +126,8 @@ def _probe_provider(entry: dict[str, Any]) -> dict[str, Any]:
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(f"{VOICE_WEB_BASE}/api/tts?b64=1", data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "application/json")
+    req.add_header("Content-Type", JSON_CONTENT_TYPE)
+    req.add_header("Accept", JSON_CONTENT_TYPE)
 
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
@@ -164,7 +166,7 @@ def _probe_provider(entry: dict[str, Any]) -> dict[str, Any]:
             "detail": body.decode("utf-8", errors="ignore")[:400],
             "latency_ms": latency_ms,
         }
-    if "application/json" not in ctype:
+    if JSON_CONTENT_TYPE not in ctype:
         return {
             "id": entry["id"],
             "state": "error",
@@ -274,6 +276,57 @@ def providers_test_handler():
 # Stabilizujemy format: zawsze prosimy backend o JSON { audio_b64 }.
 # Proxy dekoduje i oddaje 'audio/wav' (200) lub 502 z czytelnym błędem JSON.
 # ──────────────────────────────────────────────────────────────────────────────
+def _wav_response(wav):
+    response = Response(wav, status=200, mimetype=WAV_CONTENT_TYPE)
+    response.headers["Content-Disposition"] = "inline; filename=tts.wav"
+    response.headers["X-Voice-Proxy"] = "local"
+    return _cors(response)
+
+
+def _json_tts_response(body):
+    try:
+        obj = json.loads(body.decode("utf-8", errors="ignore"))
+    except Exception:
+        return _cors(jsonify({"ok": False, "error": "invalid json from voice-web"})), 502
+
+    if not obj or obj.get("status") != "ok" or "audio_b64" not in obj:
+        # zwracamy błąd backendu dla łatwej diagnostyki
+        return _cors(jsonify({"ok": False, "error": "tts failed", "backend": obj})), 502
+
+    try:
+        wav = base64.b64decode(obj["audio_b64"])
+    except Exception as e:
+        return _cors(jsonify({"ok": False, "error": f"b64 decode failed: {e}"})), 502
+
+    return _wav_response(wav)
+
+
+def _tts_response(body, ctype):
+    if JSON_CONTENT_TYPE in ctype:
+        return _json_tts_response(body)
+    if WAV_CONTENT_TYPE in ctype or "audio/x-wav" in ctype:
+        return _wav_response(body)
+    return _cors(jsonify({"ok": False, "error": f"unexpected content-type from voice-web: {ctype}"})), 502
+
+
+def _tts_payload(payload):
+    # Przekaż ewentualne nadpisania (voice/model/format/backend)
+    passthrough = {}
+    for k in ("backend", "provider", "format", "voice", "model"):
+        if k in payload:
+            passthrough[k] = payload[k]
+    # Tekst musi być; walidacja minimalna
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return None, "missing text"
+    backend = str(payload.get("backend") or payload.get("provider") or "").strip().lower()
+    if backend in {"google", "gemini"}:
+        return None, "Google/Gemini SDK integration is disabled"
+    passthrough["text"] = text
+
+    return passthrough, None
+
+
 def tts_local_handler():
     if request.method == "OPTIONS":
         return _preflight()
@@ -285,19 +338,9 @@ def tts_local_handler():
         except Exception:
             payload = {}
 
-        # Przekaż ewentualne nadpisania (voice/model/format/backend)
-        passthrough = {}
-        for k in ("backend", "provider", "format", "voice", "model"):
-            if k in payload:
-                passthrough[k] = payload[k]
-        # Tekst musi być; walidacja minimalna
-        text = (payload.get("text") or "").strip()
-        if not text:
-            return _cors(jsonify({"ok": False, "error": "missing text"})), 400
-        backend = str(payload.get("backend") or payload.get("provider") or "").strip().lower()
-        if backend in {"google", "gemini"}:
-            return _cors(jsonify({"ok": False, "error": "Google/Gemini SDK integration is disabled"})), 400
-        passthrough["text"] = text
+        passthrough, error = _tts_payload(payload)
+        if error is not None:
+            return _cors(jsonify({"ok": False, "error": error})), 400
 
         data = json.dumps(passthrough).encode("utf-8")
 
@@ -309,50 +352,14 @@ def tts_local_handler():
             url = f"{url}&{extra_qs}"
 
         req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Content-Type", "application/json")
-        req.add_header("Accept", "application/json")
+        req.add_header("Content-Type", JSON_CONTENT_TYPE)
+        req.add_header("Accept", JSON_CONTENT_TYPE)
 
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
             body = resp.read()
             ctype = (resp.headers.get("Content-Type") or "").lower()
 
-        # 3) JSON → dekodujemy do WAV
-        if "application/json" in ctype:
-            try:
-                obj = json.loads(body.decode("utf-8", errors="ignore"))
-            except Exception:
-                return _cors(jsonify({"ok": False, "error": "invalid json from voice-web"})), 502
-
-            if not obj or obj.get("status") != "ok" or "audio_b64" not in obj:
-                # zwracamy błąd backendu dla łatwej diagnostyki
-                return _cors(jsonify({"ok": False, "error": "tts failed", "backend": obj})), 502
-
-            try:
-                wav = base64.b64decode(obj["audio_b64"])
-            except Exception as e:
-                return _cors(jsonify({"ok": False, "error": f"b64 decode failed: {e}"})), 502
-
-            r2 = Response(wav, status=200, mimetype="audio/wav")
-            r2.headers["Content-Disposition"] = "inline; filename=tts.wav"
-            r2.headers["X-Voice-Proxy"] = "local"
-            return _cors(r2)
-
-        # 4) Fallback – gdyby backend jednak zwrócił bezpośrednio WAV
-        if "audio/wav" in ctype or "audio/x-wav" in ctype:
-            r3 = Response(body, status=200, mimetype="audio/wav")
-            r3.headers["Content-Disposition"] = "inline; filename=tts.wav"
-            r3.headers["X-Voice-Proxy"] = "local"
-            return _cors(r3)
-
-        # 5) Inny typ → błąd
-        return _cors(
-            jsonify(
-                {
-                    "ok": False,
-                    "error": f"unexpected content-type from voice-web: {ctype}",
-                }
-            )
-        ), 502
+        return _tts_response(body, ctype)
 
     except urllib.error.HTTPError as e:
         try:
@@ -383,7 +390,7 @@ def asr_local_handler():
 
     try:
         ctype = (request.headers.get("Content-Type") or "").lower()
-        if "audio/wav" not in ctype and "audio/x-wav" not in ctype:
+        if WAV_CONTENT_TYPE not in ctype and "audio/x-wav" not in ctype:
             return _cors(jsonify({"ok": False, "error": "expect audio/wav content-type"})), 400
 
         data = request.get_data(cache=False, as_text=False)
@@ -396,8 +403,8 @@ def asr_local_handler():
             url = f"{url}?{extra_qs}"
 
         req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Content-Type", "audio/wav")
-        req.add_header("Accept", "application/json")
+        req.add_header("Content-Type", WAV_CONTENT_TYPE)
+        req.add_header("Accept", JSON_CONTENT_TYPE)
 
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
             body = resp.read()
@@ -417,7 +424,7 @@ def asr_local_handler():
                 )
             ), 502
 
-        if "application/json" not in ctype_out:
+        if JSON_CONTENT_TYPE not in ctype_out:
             return _cors(jsonify({"ok": False, "error": f"unexpected content-type: {ctype_out}"})), 502
 
         # prześlij JSON 1:1 (walidacja minimalna)

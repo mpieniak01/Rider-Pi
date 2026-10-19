@@ -15,6 +15,8 @@ from typing import Any
 
 from . import voice_logging as voice_logging
 
+_HOTWORD_TRIGGER = "hotword.trigger"
+
 # termios/tty są tylko na POSIX; na innych platformach fallback bez raw-mode
 try:  # pragma: no cover
     import termios  # type: ignore
@@ -153,6 +155,25 @@ class HotwordDetector:
 
     # ────────────────────────────────────────── PTT (push-to-talk)
 
+    def _wait_passive_ptt(self, timeout):
+        start = time.time()
+        self.logger.debug("hotword.ptt.passive_mode")
+        # Spróbuj jednak wykryć '\n' jeśli środowisko dostarcza stdin (np. pipe)
+        while not self._stop.is_set():
+            if timeout is not None and (time.time() - start) > timeout:
+                return False
+            r, _, _ = select.select([sys.stdin], [], [], 0.1) if sys.stdin else ([], [], [])
+            if r:
+                try:
+                    data = sys.stdin.readline()
+                    if data is not None:
+                        self.logger.event(_HOTWORD_TRIGGER, engine="ptt-passive")
+                        return True
+                except Exception:
+                    pass
+            time.sleep(0.05)
+        return False
+
     def wait_ptt(
         self,
         *,
@@ -169,23 +190,7 @@ class HotwordDetector:
         """
         # Jeśli stdin nie jest TTY (np. systemd) → pasywny timer bez auto-triggera
         if not sys.stdin or not sys.stdin.isatty() or not _HAS_TERMIOS:
-            start = time.time()
-            self.logger.debug("hotword.ptt.passive_mode")
-            # Spróbuj jednak wykryć '\n' jeśli środowisko dostarcza stdin (np. pipe)
-            while not self._stop.is_set():
-                if timeout is not None and (time.time() - start) > timeout:
-                    return False
-                r, _, _ = select.select([sys.stdin], [], [], 0.1) if sys.stdin else ([], [], [])
-                if r:
-                    try:
-                        data = sys.stdin.readline()
-                        if data is not None:
-                            self.logger.event("hotword.trigger", engine="ptt-passive")
-                            return True
-                    except Exception:
-                        pass
-                time.sleep(0.05)
-            return False
+            return self._wait_passive_ptt(timeout)
 
         fd = sys.stdin.fileno()
 
@@ -215,7 +220,7 @@ class HotwordDetector:
                     time.sleep(0.12)
                     with contextlib.suppress(Exception):
                         termios.tcflush(fd, termios.TCIFLUSH)
-                    self.logger.event("hotword.trigger", engine="ptt")
+                    self.logger.event(_HOTWORD_TRIGGER, engine="ptt")
                     return True
                 # inne znaki ignorujemy
         finally:
@@ -263,7 +268,7 @@ class HotwordDetector:
                 features = extractor.signalToMel(data, self.config.auto_gain)
                 prediction = detector.runDetection(features)
                 if prediction == keyword_id:
-                    self.logger.event("hotword.trigger", engine="nyumaya")
+                    self.logger.event(_HOTWORD_TRIGGER, engine="nyumaya")
                     return True
             except Exception as exc:  # pragma: no cover
                 self.logger.event("hotword.nyumaya.process_error", error=str(exc))
@@ -271,6 +276,15 @@ class HotwordDetector:
         return False
 
     # ────────────────────────────────────────── Backend: Porcupine
+
+    def _fill_porcupine_frame(self, pending, need_bytes, read):
+        # dobuduj brakujące bajty do pełnej ramki
+        while len(pending) < need_bytes and not self._stop.is_set():
+            chunk = read(need_bytes - len(pending))
+            if not chunk:
+                time.sleep(0.01)
+                break
+            pending.extend(chunk)
 
     def _wait_porcupine(self, capture: Any, timeout: float | None, start: float) -> bool:
         porcupine = self._porcupine
@@ -285,13 +299,7 @@ class HotwordDetector:
             if timeout and time.time() - start > timeout:
                 return False
 
-            # dobuduj brakujące bajty do pełnej ramki
-            while len(pending) < need_bytes and not self._stop.is_set():
-                chunk = read(need_bytes - len(pending))
-                if not chunk:
-                    time.sleep(0.01)
-                    break
-                pending.extend(chunk)
+            self._fill_porcupine_frame(pending, need_bytes, read)
 
             if len(pending) < need_bytes:
                 continue
@@ -304,7 +312,7 @@ class HotwordDetector:
             try:
                 result = porcupine.process(pcm)  # type: ignore[union-attr]
                 if result >= 0:
-                    self.logger.event("hotword.trigger", engine="porcupine")
+                    self.logger.event(_HOTWORD_TRIGGER, engine="porcupine")
                     return True
             except Exception as exc:  # pragma: no cover
                 self.logger.event("hotword.porcupine.process_error", error=str(exc))

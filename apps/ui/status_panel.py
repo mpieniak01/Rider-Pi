@@ -103,37 +103,19 @@ class StatusPanelLifecycle:
             self.sink.close()  # owned descriptors only; never GPIO/power here
             self.sink = None
 
-    def step(self, state, battery, title, lines, warn=False, *, frame=None):
-        now = self.clock()
-        key = task_fingerprint(state)
-        if self.fingerprint is not None and key != self.fingerprint:
-            self.last_activity = now
-            self.off_confirmed = False
-        self.fingerprint = key
-        # One late first battery frame is useful after executor starts, but it
-        # does not reset idle and cannot revive an already sleeping display.
-        fresh_first = not self.initial_battery_shown and battery.get("ready") is True
-        if fresh_first and now - self.started < self.idle_s:
-            self.last_screen = None
-        if self.off_confirmed and now - self.last_activity >= self.idle_s:
-            # No ownership scan or GPIO command on ordinary idle polls.
-            return "idle_off"
-        snapshot = self.owner_probe()
-        if not ownership_permits(snapshot):
-            self._release()
-            return "ownership_unknown_or_external"
-        if now - self.last_activity >= self.idle_s:
-            self._release()
-            if not self.off_confirmed and ownership_permits(self.owner_probe()):
-                self.off_confirmed = self.power_off() is True
-                self.report(
-                    on=False if self.off_confirmed else None,
-                    reason="status_idle",
-                    power_known=self.off_confirmed,
-                    rot=self.rotate,
-                )
-            return "idle_off" if self.off_confirmed else "idle_off_unconfirmed"
-        screen = (title, tuple(lines) + (battery_text(battery),), bool(warn), frame)
+    def _idle_off(self):
+        self._release()
+        if not self.off_confirmed and ownership_permits(self.owner_probe()):
+            self.off_confirmed = self.power_off() is True
+            self.report(
+                on=False if self.off_confirmed else None,
+                reason="status_idle",
+                power_known=self.off_confirmed,
+                rot=self.rotate,
+            )
+        return "idle_off" if self.off_confirmed else "idle_off_unconfirmed"
+
+    def _present_screen(self, screen, battery, frame):
         if self.sink is None:
             self.sink = self.sink_factory()
             self.rotate = getattr(self.sink, "rotate", None)
@@ -154,6 +136,30 @@ class StatusPanelLifecycle:
                 frame=getattr(self.sink, "frame_observation", None),
                 battery={key: battery.get(key) for key in ("value", "unit", "source", "observed_at", "ready")},
             )
+
+    def step(self, state, battery, title, lines, warn=False, *, frame=None):
+        now = self.clock()
+        key = task_fingerprint(state)
+        if self.fingerprint is not None and key != self.fingerprint:
+            self.last_activity = now
+            self.off_confirmed = False
+        self.fingerprint = key
+        # One late first battery frame is useful after executor starts, but it
+        # does not reset idle and cannot revive an already sleeping display.
+        fresh_first = not self.initial_battery_shown and battery.get("ready") is True
+        if fresh_first and now - self.started < self.idle_s:
+            self.last_screen = None
+        if self.off_confirmed and now - self.last_activity >= self.idle_s:
+            # No ownership scan or GPIO command on ordinary idle polls.
+            return "idle_off"
+        snapshot = self.owner_probe()
+        if not ownership_permits(snapshot):
+            self._release()
+            return "ownership_unknown_or_external"
+        if now - self.last_activity >= self.idle_s:
+            return self._idle_off()
+        screen = (title, tuple(lines) + (battery_text(battery),), bool(warn), frame)
+        self._present_screen(screen, battery, frame)
         self.initial_battery_shown |= battery.get("ready") is True
         return "presenting"
 

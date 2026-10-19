@@ -53,6 +53,28 @@ def _resolve_mouth(model) -> tuple[str, float]:
     return shape, openv
 
 
+def _model_eye_offsets(model):
+    eyes_dx = 0.0
+    eyes_dy = 0.0
+    try:
+        eyes = getattr(model, "eyes", None)
+        if eyes is not None:
+            eyes_dx = float(getattr(eyes, "dx", 0.0) or 0.0)
+            eyes_dy = float(getattr(eyes, "dy", 0.0) or 0.0)
+    except Exception:
+        pass
+
+    return eyes_dx, eyes_dy
+
+
+def _model_blink_multiplier(model):
+    return model.blink_mul() if hasattr(model, "blink_mul") else 1.0
+
+
+def _model_speaking(model):
+    return getattr(model, "assist_speaking", False) or getattr(model, "state", "") == "speak"
+
+
 def draw_face(canvas, cfg, model, guide=True, quality="fast"):
     """
     Rysuje buźkę na podanym obiekcie ImageDraw.
@@ -87,18 +109,10 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
         )
 
     # Oczy (białko)
-    blink_mul = model.blink_mul() if hasattr(model, "blink_mul") else 1.0
+    blink_mul = _model_blink_multiplier(model)
 
     # ruchem całego oka (białka) steruje look + pokrętła follow
-    eyes_dx = 0.0
-    eyes_dy = 0.0
-    try:
-        eyes = getattr(model, "eyes", None)
-        if eyes is not None:
-            eyes_dx = float(getattr(eyes, "dx", 0.0) or 0.0)
-            eyes_dy = float(getattr(eyes, "dy", 0.0) or 0.0)
-    except Exception:
-        pass
+    eyes_dx, eyes_dy = _model_eye_offsets(model)
 
     eyes_follow_kx = float(os.getenv("FACE_EYES_FOLLOW_KX", str(_cfg(cfg, "eyes_follow_kx", 0.18))))
     eyes_follow_ky = float(os.getenv("FACE_EYES_FOLLOW_KY", str(_cfg(cfg, "eyes_follow_ky", 0.30))))
@@ -194,73 +208,26 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
     brow_tilt = _clampf(float(getattr(brows, "tilt", 0.0)), -1.0, 1.0)
     brow_off_y -= int(brow_lift * S * 0.07)
 
-    def draw_brow(ex: int, k: float):
-        x0 = ex - brow_w // 2 + brow_off_x
-        y0 = brow_y - brow_h + brow_off_y
-        x1 = ex + brow_w // 2 + brow_off_x
-        y1 = brow_y + brow_h + brow_off_y
-        start, end = (20, 160) if k < 0 else (200, 340)
-        if brow_tilt:
-            points = []
-            direction = 1 if ex < cx else -1
-            for angle in range(start, end + 1, 5):
-                rad = math.radians(angle)
-                x = (x0 + x1) / 2 + (x1 - x0) / 2 * math.cos(rad)
-                y = (y0 + y1) / 2 + (y1 - y0) / 2 * math.sin(rad)
-                y += (x - (x0 + x1) / 2) * brow_tilt * direction * 0.6
-                points.append((x, y))
-            canvas.line(points, fill=(255, 255, 255), width=stroke)
-            return
-        canvas.arc(
-            [(x0, y0), (x1, y1)],
-            start=start,
-            end=end,
-            fill=(255, 255, 255),
-            width=stroke,
-        )
+    from functools import partial
+
+    draw_brow = partial(
+        _draw_brow,
+        canvas,
+        cx=cx,
+        brow_w=brow_w,
+        brow_y=brow_y,
+        brow_h=brow_h,
+        brow_off_x=brow_off_x,
+        brow_off_y=brow_off_y,
+        brow_tilt=brow_tilt,
+        stroke=stroke,
+    )
 
     draw_brow(cx - eye_dx, base_k)
     draw_brow(cx + eye_dx, base_k)
 
     # Usta — „wstążka”
-    def _draw_ribbon_mouth(
-        cx_i: int,
-        y: int,
-        w: int,
-        h_base: int,
-        lift_k: float,
-        arch_k: float,
-        taper_k: float,
-        samples: int,
-        fill=(0, 0, 0),
-    ) -> None:
-        half = w / 2.0
-        S_local = S
-        lift_px = float(S_local) * lift_k
-        arch_px = float(S_local) * arch_k
-        taper_k = _clampf(float(taper_k), 0.0, 1.0)
-        samples = max(16, int(samples))
-
-        top = []
-        bot = []
-        p_taper = 1.6
-        p_lift = 1.8
-        p_arch = 2.0
-
-        for i in range(samples + 1):
-            x = -half + (w * i / samples)
-            t = abs(x) / half  # 0 środek; 1 końce
-
-            thickness = h_base * (1.0 - taper_k * (t**p_taper))
-            lift = -lift_px * (t**p_lift)
-            arch = arch_px * (1.0 - (t**p_arch))
-
-            y_mid = y + lift + arch
-            top.append((cx_i + x, y_mid - thickness / 2.0))
-            bot.append((cx_i + x, y_mid + thickness / 2.0))
-
-        poly = top + bot[::-1]
-        canvas.polygon(poly, fill=fill)
+    _draw_ribbon_mouth = partial(_ribbon_mouth, canvas, S)
 
     mshape, mopen = _resolve_mouth(model)
 
@@ -284,7 +251,7 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
     arch_n = float(os.getenv("FACE_MOUTH_NEUTRAL_ARCH_K", "0.000"))
     arch_s = float(os.getenv("FACE_MOUTH_SAD_ARCH_K", "-0.030"))
 
-    if getattr(model, "assist_speaking", False) or getattr(model, "state", "") == "speak":
+    if _model_speaking(model):
         amp_m = math.sin(getattr(model, "speak_phase", 0.0)) + math.sin(getattr(model, "speak_phase", 0.0) * 1.7) * 0.6
         base_h = max(6, int(S * 0.04))
         extra_h = int(max(mopen * (S * 0.06), amp_m * (S * 0.03)))
@@ -348,3 +315,70 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
                 ],
                 fill=(0, 0, 0),
             )
+
+
+def _draw_brow(canvas, ex: int, k: float, *, cx, brow_w, brow_y, brow_h, brow_off_x, brow_off_y, brow_tilt, stroke):
+    x0 = ex - brow_w // 2 + brow_off_x
+    y0 = brow_y - brow_h + brow_off_y
+    x1 = ex + brow_w // 2 + brow_off_x
+    y1 = brow_y + brow_h + brow_off_y
+    start, end = (20, 160) if k < 0 else (200, 340)
+    if brow_tilt:
+        points = []
+        direction = 1 if ex < cx else -1
+        for angle in range(start, end + 1, 5):
+            rad = math.radians(angle)
+            x = (x0 + x1) / 2 + (x1 - x0) / 2 * math.cos(rad)
+            y = (y0 + y1) / 2 + (y1 - y0) / 2 * math.sin(rad)
+            y += (x - (x0 + x1) / 2) * brow_tilt * direction * 0.6
+            points.append((x, y))
+        canvas.line(points, fill=(255, 255, 255), width=stroke)
+        return
+    canvas.arc(
+        [(x0, y0), (x1, y1)],
+        start=start,
+        end=end,
+        fill=(255, 255, 255),
+        width=stroke,
+    )
+
+
+def _ribbon_mouth(
+    canvas,
+    scale,
+    cx_i: int,
+    y: int,
+    w: int,
+    h_base: int,
+    lift_k: float,
+    arch_k: float,
+    taper_k: float,
+    samples: int,
+    fill=(0, 0, 0),
+) -> None:
+    half = w / 2.0
+    lift_px = float(scale) * lift_k
+    arch_px = float(scale) * arch_k
+    taper_k = _clampf(float(taper_k), 0.0, 1.0)
+    samples = max(16, int(samples))
+
+    top = []
+    bot = []
+    p_taper = 1.6
+    p_lift = 1.8
+    p_arch = 2.0
+
+    for i in range(samples + 1):
+        x = -half + (w * i / samples)
+        t = abs(x) / half  # 0 środek; 1 końce
+
+        thickness = h_base * (1.0 - taper_k * (t**p_taper))
+        lift = -lift_px * (t**p_lift)
+        arch = arch_px * (1.0 - (t**p_arch))
+
+        y_mid = y + lift + arch
+        top.append((cx_i + x, y_mid - thickness / 2.0))
+        bot.append((cx_i + x, y_mid + thickness / 2.0))
+
+    poly = top + bot[::-1]
+    canvas.polygon(poly, fill=fill)

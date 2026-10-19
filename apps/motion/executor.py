@@ -13,25 +13,26 @@ from apps.motion import manual_settings
 from apps.motion.actuator_contract import (
     COMMAND_TOPICS,
     SUB_TOPICS,
-    decision_duration,
-    decision_feedback_deadline,
-    validate_actuator,
+    decision_duration as decision_duration,
+    decision_feedback_deadline as decision_feedback_deadline,
+    validate_actuator as validate_actuator,
 )  # public re-exports
 from apps.motion.calibration_runtime import CalibrationRuntime
 from apps.motion.dynamics import RampLimits
+from apps.motion.executor_admission import ExecutorAdmission
 from apps.motion.main import MotionController, _make_adapter
 from apps.motion.operator_requests import OperatorRequests
 from apps.motion.sensor_quality import SensorSamples
 from apps.safety.gate import ACTUATORS, MotionGate
 from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS
 from apps.safety.state import write_status
-from common.agent_control import is_agent, verify_command
+from common.agent_control import is_agent, verify_command as verify_command
 from common.motion_commands import canonical_command  # public re-export
 
 LOG = logging.getLogger("motion.executor")
 
 
-class MotionExecutor:
+class MotionExecutor(ExecutorAdmission):
     def __init__(self, *, gate=None, adapter=None, publisher=None, status_writer=write_status):
         self.gate = gate or MotionGate()
         self.instance_id = uuid.uuid4().hex
@@ -300,12 +301,7 @@ class MotionExecutor:
         self.publish_status(force=True)
         return dict(self.last_ack)
 
-    def apply(self, payload, *, topic="motion.command"):
-        # STOP must never wait for filesystem locks, profile reads or revisions.
-        try:
-            action = canonical_command(topic, payload).get("action")
-        except (ValueError, TypeError, OverflowError):
-            action = None
+    def _begin_operator_request(self, payload, action):
         if (
             isinstance(payload, dict)
             and isinstance(payload.get("request_id"), str)
@@ -313,18 +309,33 @@ class MotionExecutor:
         ):
             previous = self.operator_requests.begin(payload)
             if previous is not None:
-                if previous.get("conflict"):
-                    return self._ack(payload, "rejected", "operator_request_conflict", operator_replay=True)
-                ack = previous.get("ack")
-                if ack:
-                    return self._ack(
-                        payload,
-                        ack["status"],
-                        ack["reason"],
-                        operator_replay=True,
-                        original_generation=ack["generation"],
-                        generation=ack["generation"],
-                    )
+                return self._operator_replay(payload, previous)
+        return None
+
+    def _operator_replay(self, payload, previous):
+        if previous.get("conflict"):
+            return self._ack(payload, "rejected", "operator_request_conflict", operator_replay=True)
+        ack = previous.get("ack")
+        if ack:
+            return self._ack(
+                payload,
+                ack["status"],
+                ack["reason"],
+                operator_replay=True,
+                original_generation=ack["generation"],
+                generation=ack["generation"],
+            )
+        return None
+
+    def apply(self, payload, *, topic="motion.command"):
+        # STOP must never wait for filesystem locks, profile reads or revisions.
+        try:
+            action = canonical_command(topic, payload).get("action")
+        except (ValueError, TypeError, OverflowError):
+            action = None
+        replay = self._begin_operator_request(payload, action)
+        if replay is not None:
+            return replay
         if action in {"stop", "disarm", "estop"}:
             return self._apply(payload, topic=topic)
         try:
@@ -341,220 +352,29 @@ class MotionExecutor:
         try:
             command = canonical_command(topic, payload)
         except (TypeError, ValueError, OverflowError):
-            # Invalid alias frames use the ordinary validation/cancellation
-            # path rather than escaping the executor loop.
+            # Invalid aliases still use validation/cancellation, never escape dispatch.
             command = {**payload, "action": "move", "duration": None}
         action = command.get("action")
         panel_error = self.gate.panel_rejection(command)
         if panel_error:
             return self._ack(command, "rejected", panel_error)
         agent = is_agent(command)
-        if agent and action not in {'stop', 'disarm', 'estop'}:
-            try:
-                verify_command(command)
-                if self.intent_source == 'manual' and self.controller.deadline > self.gate.clock():
-                    raise ValueError('agent_manual_priority')
-            except ValueError as exc:
-                return self._ack(command, 'rejected', str(exc))
         mode = command.get("mode", "pulse")
-        if action in {"move", "turn"}:
-            if not isinstance(mode, str) or mode not in {"pulse", "hold", "release"}:
-                return self._ack(command, "rejected", "unsupported_motion_mode")
-            if mode != "pulse" and not (
-                command.get("device_settings") is True
-                and command.get("source") == "manual"
-                and command.get("execution_context") == "panel"
-                and (self.gate.arming_mode == "operator" or self.gate.operator_control.enabled)
-                and self.gate.execution_context == "panel"
-                and (self.gate.owner == "manual" or command.get("intervene") is True)
-            ):
-                return self._ack(command, "rejected", "hold_operator_panel_only")
-        if action in {"arm", "move", "turn", "height", "balance", "stabilization", "action"} | OPERATOR_ACTIONS:
-            if not self.controller.limits.valid:
-                self._hardware_fault("invalid_motion_limits")
-            self.refresh_controls(force=True)
-        if action in {"move", "turn", "height", "balance", "stabilization", "action"} | OPERATOR_ACTIONS:
-            if self.controls_pending_revision is not None:
-                return self._ack(command, "rejected", "manual_settings_requires_idle")
-            if (
-                self.controls is None
-                or type(command.get("settings_revision")) is not int
-                or command["settings_revision"] != self.controls["revision"]
-            ):
-                return self._ack(command, "rejected", "manual_settings_stale")
-            if action in {"move", "turn"} and "direction" in command:
-                try:
-                    expected = manual_settings.pulse(self.controls, command["direction"])
-                    if command.get("device_settings") is True:
-                        command.update(expected)
-                        if mode in {"hold", "release"}:
-                            command["duration"] = manual_settings.HOLD_TIMEOUT_S
-                        if mode == "release":
-                            command.update(vx=0.0, yaw=0.0)
-                    elif any(command.get(key) != value for key, value in expected.items()):
-                        return self._ack(command, "rejected", "manual_settings_mismatch")
-                except ValueError as exc:
-                    return self._ack(command, "rejected", str(exc))
-
+        rejection = self._check_agent(command, action, agent)
+        if rejection is not None:
+            return rejection
+        rejection = self._prepare_command(command, action, mode)
+        if rejection is not None:
+            return rejection
         is_actuator = isinstance(action, str) and action in ACTUATORS
-        self.controller.expire_remote_decision()
-        if (
-            isinstance(action, str)
-            and action not in {"stop", "disarm", "estop"}
-            and self.controller.deadline
-            and self.gate.clock() >= self.controller.deadline
-        ):
-            self.controller.expire_goal()
-            if self.pending is not None:
-                previous, self.pending = self.pending, None
-                self._ack(previous, "rejected", "motion_goal_timeout")
-        try:
-            values = validate_actuator(command)
-            if action in {"move", "turn"}:
-                manual_settings.validate_command(self.controls, values, mode=mode)
-        except ValueError as exc:
-            if is_actuator and self.controller.deadline and not agent:
-                self.gate.cancel_motion("invalid_motion_intent")
-                self.controller.stop()
-                previous, self.pending = self.pending, None
-                if previous is not None:
-                    self._ack(previous, "rejected", "invalid_motion_intent", cancelled_by=command.get("request_id"))
-            return self._ack(command, "rejected", str(exc))
-        previous_generation = self.gate.generation
-        authorized, reason = self.gate.authorize(command)
-        if not authorized:
-            # Delayed renewals never undo a newer manual intent or release.
-            obsolete = reason in {
-                "stale_sequence",
-                "stale_generation",
-                "expired_command",
-                "motion_intent_cancelled",
-                "panel_owner_mismatch",
-                "invalid_panel_id",
-                "operator_control_not_available",
-                "operator_panel_required",
-                "navigation_operation_stale",
-            }
-            if is_actuator and self.controller.deadline and not obsolete and not agent:
-                self.gate.cancel_motion("invalid_motion_intent")
-                self.controller.stop()
-                previous, self.pending = self.pending, None
-                if previous is not None:
-                    self._ack(previous, "rejected", "invalid_motion_intent", cancelled_by=command.get("request_id"))
-            return self._ack(command, "rejected", reason)
-        if (
-            authorized
-            and previous_generation != self.gate.generation
-            and action not in {"stop", "disarm", "estop", "clear_estop"}
-        ):
-            previous, self.pending = self.pending, None
-            self.intent_source = None
-            stopped = self.controller.stop()
-            if previous is not None:
-                self._ack(previous, "rejected", "operator_intervention", cancelled_by=command.get("request_id"))
-            if not stopped:
-                self.gate.disarm("hardware_stop_unconfirmed")
-                return self._ack(command, "rejected", "hardware_stop_unconfirmed")
-        if action in OPERATOR_ACTIONS:
-            return self._ack(command, "executed", reason, hardware_stop_sent=True)
-        if action in {"stop", "disarm", "estop", "clear_estop"}:
-            self.intent_source = None
-            pending, self.pending = self.pending, None
-            stopped = self.controller.stop()
-            if pending is not None:
-                self._ack(pending, "rejected", f"cancelled_by_{action}", cancelled_by=command.get("request_id"))
-            # Ostatni ACK pozostaje ACK zatrzymania, wcześniejszy cel ma osobny
-            # terminalny wpis w ledgerze zamiast wiecznego pending.
-            return self._ack(
-                command,
-                "executed" if stopped else "rejected",
-                reason if stopped else "hardware_stop_unconfirmed",
-                gate_reason=reason,
-                hardware_stop_sent=stopped,
-            )
-        if action == "arm":
-            if not self._hardware_ready():
-                self.gate.disarm("hardware_unavailable")
-                return self._ack(command, "rejected", "hardware_unavailable")
-            if not self.controller.limits.valid:
-                self.gate.disarm("invalid_motion_limits")
-                self.controller.stop()
-                return self._ack(command, "rejected", "invalid_motion_limits")
-            return self._ack(command, "executed", "armed_no_actuation")
-        if action in ACTUATORS:
-            if not self._hardware_ready():
-                self.controller.stop()
-                return self._ack(command, "rejected", "hardware_unavailable")
-            quality = self.samples.quality()
-            if not quality["ready"] or not self.controller.limits.valid:
-                reason = quality["error"] or "invalid_motion_limits"
-                self._inhibit_motion(reason)
-                return self._ack(command, "rejected", reason)
-            capability = self.capabilities().get("balance" if action == "stabilization" else action, {})
-            if not capability.get("available") or (
-                action not in {"height", "balance", "stabilization"} and not capability.get("stop_verified")
-            ):
-                return self._ack(command, "rejected", "manual_characterization_required")
-            if command.get('source') == 'manual' and self.intent_source == 'agent' and action not in {'move', 'turn'}:
-                previous, self.pending = self.pending, None
-                self.controller.stop()
-                self.intent_source = None
-                if previous is not None:
-                    self._ack(previous, 'rejected', 'manual_takeover', cancelled_by=command.get('request_id'))
-        if action in {"move", "turn"}:
-            try:
-                now = self.gate.clock()
-                values["duration"] = decision_duration(command, values["duration"], now)
-                feedback = decision_feedback_deadline(
-                    command,
-                    now,
-                    timed_navigation=self.gate.owner == "navigation"
-                    and self.gate.execution_context == "panel"
-                    and self.gate.arming_mode == "timed",
-                )
-            except ValueError as exc:
-                return self._ack(command, "rejected", str(exc))
-            if not self.controller.drive(
-                values["vx"],
-                values["yaw"],
-                values["duration"],
-                panel_pulse=command.get("device_settings") is True,
-                mode=mode,
-                remote_decision_deadline=command.get("decision_deadline_monotonic"),
-                remote_feedback_deadline=feedback,
-            ):
-                return self._ack(command, "rejected", "motion_disarmed")
-            if values["vx"] != 0 or values["yaw"] != 0:
-                self.gate.operator_control.activated(command)
-            previous, self.pending = self.pending, None
-            self.intent_source = command.get('source')
-            if previous is not None:
-                self._ack(previous, "rejected", "goal_superseded", superseded_by=command.get("request_id"))
-            if values["vx"] == 0 and values["yaw"] == 0 and mode != "release":
-                self.output_observed_at = self.gate.wall_clock()
-                self.publish_output(force=True)
-                return self._ack(command, "executed", "sdk_zero_accepted")
-            self.pending = command
-            return self._ack(command, "accepted", "goal_accepted")
-        method, argument = {
-            "balance": ("enable_balance", values.get("enabled")),
-            "stabilization": ("enable_balance", values.get("enabled")),
-            "height": ("set_height", values.get("height")),
-            "action": ("action", values.get("name")),
-        }[action]
-        if getattr(self.adapter, method)(argument):
-            if action in {"balance", "height"}:
-                key = "enabled" if action == "balance" else "value"
-                self.actuators[action] = {
-                    key: command.get(key if action == "balance" else "height"),
-                    "ts": self.gate.wall_clock(),
-                    "physical_completion": "unverified",
-                }
-            return self._ack(command, "executed", "sdk_accepted")
-        self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
-        self.gate.disarm("actuator_failed")
-        self.controller.stop()
-        return self._ack(command, "rejected", "actuator_failed")
+        self._expire_previous_goal(action)
+        values, rejection = self._validated_intent(command, action, mode, is_actuator, agent)
+        if rejection is not None:
+            return rejection
+        reason, rejection = self._authorize_intent(command, action, is_actuator, agent)
+        if rejection is not None:
+            return rejection
+        return self._execute_authorized(command, action, values, mode, reason)
 
     def _inhibit_motion(self, reason):
         if self.execution_inhibit != reason:
@@ -564,6 +384,24 @@ class MotionExecutor:
             self.controller.stop()
             if previous is not None:
                 self._ack(previous, "rejected", reason)
+
+    def _tick_controller(self, dt):
+        try:
+            executed = self.controller.tick(dt)
+        except Exception as exc:
+            self._hardware_fault(f"actuator_transport_failed:{type(exc).__name__}")
+            self.controller.stop()
+            executed = False
+        return executed
+
+    def _complete_pending(self, executed):
+        if self.pending is not None and executed:
+            pending, self.pending = self.pending, None
+            self._ack(pending, "executed", "sdk_accepted")
+        elif self.pending is not None and not self.controller.deadline:
+            pending, self.pending = self.pending, None
+            reason = self.gate.reason if self.gate.state != "ARMED" else "goal_expired_before_execution"
+            self._ack(pending, "rejected", reason)
 
     def tick(self, dt):
         if not self.controller.deadline:
@@ -582,25 +420,14 @@ class MotionExecutor:
             if pending is not None:
                 self._ack(pending, "rejected", self.gate.reason)
             self.publish_status(force=True)
-        try:
-            executed = self.controller.tick(dt)
-        except Exception as exc:
-            self._hardware_fault(f"actuator_transport_failed:{type(exc).__name__}")
-            self.controller.stop()
-            executed = False
+        executed = self._tick_controller(dt)
         if self.gate.reason == "actuator_failed":
             self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
         if executed:
             self.output_observed_at = self.gate.wall_clock()
             self.output_command_generation = self.gate.generation
             self.publish_output()
-        if self.pending is not None and executed:
-            pending, self.pending = self.pending, None
-            self._ack(pending, "executed", "sdk_accepted")
-        elif self.pending is not None and not self.controller.deadline:
-            pending, self.pending = self.pending, None
-            reason = self.gate.reason if self.gate.state != "ARMED" else "goal_expired_before_execution"
-            self._ack(pending, "rejected", reason)
+        self._complete_pending(executed)
         self.publish_status()
 
     def process_batch(self, messages):

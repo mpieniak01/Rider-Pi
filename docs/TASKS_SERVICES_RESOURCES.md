@@ -162,6 +162,8 @@ overrides, and does not source a login shell for unrelated credentials.
 
 The text profile starts only the existing HTTP worker with its chat domain. It requires a configured executable local backend and its model; the shipped `stub` is explicitly unavailable. It does not import ASR/TTS or claim microphone/speaker resources. `/api/chat/send` resolves this selected worker from its fresh matching PID/heartbeat when no explicit `CHAT_REMOTE_URL` is configured. Echo is a legacy fallback and never evidence of AI readiness.
 
+The selected-worker endpoint is a same-host HTTP route. The producer and consumer require a literal loopback address, an explicit valid port and the fixed `/api/chat` path; wildcard listener binds map to loopback. Invalid binds publish an unavailable chat capability with `chat_worker_endpoint_requires_loopback_bind` and do not advertise an endpoint. The internal client bypasses environment proxies and rejects redirects. An explicit `CHAT_REMOTE_URL` keeps its separate configured-backend transport.
+
 ASR/TTS readiness requires actual successful construction and caching of only the selected model (`model_loaded: true`), rather than an import and path check. A corrupt model produces `*_model_load_failed`; no audio device is opened by this validation.
 
 `runtime_modules` describes required imports per catalog unit. Preflight checks

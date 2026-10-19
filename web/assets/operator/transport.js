@@ -55,6 +55,16 @@ export function request(path, options = {}) {
   } else flight.then(invalidateReads, invalidateReads);
   return flight;
 }
+function validateResponseMime(decoded,response,path) {
+    if (decoded.canonical) {
+      const mime = (response.headers?.get?.('content-type') || '').toLowerCase();
+      if (mime.split(';')[0].trim() !== 'application/vnd.rider.api+json'
+        || !/;\s*version\s*=\s*(?:1|"1")\s*(?:;|$)/.test(mime)) {
+        if (path === '/api/logic/catalog') contractProof = null;
+        throw Object.assign(new Error('Unsupported Rider response Content-Type; read only'), { status: 502 });
+      }
+    }
+}
 async function performRequest(path, { method = 'GET', body, timeout = 6000, beforeSend = () => {} } = {}) {
   const stop = path === '/api/control' && body?.action === 'stop'
     || path === '/api/safety' && ['disarm', 'estop'].includes(body?.action);
@@ -71,14 +81,7 @@ async function performRequest(path, { method = 'GET', body, timeout = 6000, befo
       body: body === undefined ? undefined : JSON.stringify(body) });
     const payload = await response.json();
     const decoded = decodeResponse(payload, response.status, responseFamily(path)), { data, meta, operation } = decoded;
-    if (decoded.canonical) {
-      const mime = (response.headers?.get?.('content-type') || '').toLowerCase();
-      if (mime.split(';')[0].trim() !== 'application/vnd.rider.api+json'
-        || !/;\s*version\s*=\s*(?:1|"1")\s*(?:;|$)/.test(mime)) {
-        if (path === '/api/logic/catalog') contractProof = null;
-        throw Object.assign(new Error('Unsupported Rider response Content-Type; read only'), { status: 502 });
-      }
-    }
+    validateResponseMime(decoded,response,path);
     const receivedAt = Date.now() / 1000;
     if (path === '/api/logic/catalog') rememberContract(decoded, response, receivedAt);
     if (path === '/sysinfo' && response.ok) rememberSampling(data);

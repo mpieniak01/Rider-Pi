@@ -69,8 +69,4 @@ black = b"\x00\x00" * (W * H)
 for i in range(0, len(black), 2048):
     d.spi_writebyte(black[i : i + 2048])
 
-print(
-    print(
-        f"... SPI={SPIHZ or getattr(spi, 'max_speed_hz', '-')} mode={getattr(spi, 'mode', '-')}",
-    )
-)
+print(f"... SPI={SPIHZ or getattr(spi, 'max_speed_hz', '-')} mode={getattr(spi, 'mode', '-')}")

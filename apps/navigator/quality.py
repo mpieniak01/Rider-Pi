@@ -33,17 +33,29 @@ class NavigationQuality:
         self.plan_frame = None
         self.plan_home = None
 
-    def navigation_quality(self, *, returning=None):
-        returning = self.state == NavigatorState.RETURNING_HOME if returning is None else returning
-        obstacle = sample_status(self.obstacle_sample, max_age_s=OBSTACLE_MAX_AGE_S, now=self.wall_clock())
-        pose = pose_status(self.pose_sample, max_age_s=POSE_MAX_AGE_S, now=self.wall_clock())
-        mapping = sample_status(self.map_sample, max_age_s=MAP_MAX_AGE_S, now=self.wall_clock())
+    def _observation_error(self, obstacle):
         error = self._obstacle_error or obstacle["error"]
         if obstacle["ready"]:
             if self.obstacle_sample.get("present") is True:
                 error = "obstacle_present"
             elif self._intent_start_ts is not None and obstacle["observed_at"] < self._intent_start_ts:
                 error = "observation_before_intent"
+        return error
+
+    def _range_error(self):
+        ranges = self.map_sample.get("range_quality")
+        range_status = sample_status(ranges, max_age_s=OBSTACLE_MAX_AGE_S, now=self.wall_clock())
+        if (
+            not range_status["ready"]
+            or not isinstance(ranges, dict)
+            or ranges.get("ready") is not True
+            or not isinstance(self.map_sample.get("range_calibration_id"), str)
+            or not self.map_sample["range_calibration_id"]
+        ):
+            return range_status["error"] or "verified_range_required"
+        return None
+
+    def _geometry_error(self, pose, mapping):
         geometry_error = pose["error"] or mapping["error"]
         home = confirmed_home(self.pose_sample)
         if not geometry_error and home is None:
@@ -59,16 +71,16 @@ class NavigationQuality:
         ):
             geometry_error = "map_stopping_horizon_unverified"
         if not geometry_error:
-            ranges = self.map_sample.get("range_quality")
-            range_status = sample_status(ranges, max_age_s=OBSTACLE_MAX_AGE_S, now=self.wall_clock())
-            if (
-                not range_status["ready"]
-                or not isinstance(ranges, dict)
-                or ranges.get("ready") is not True
-                or not isinstance(self.map_sample.get("range_calibration_id"), str)
-                or not self.map_sample["range_calibration_id"]
-            ):
-                geometry_error = range_status["error"] or "verified_range_required"
+            geometry_error = self._range_error()
+        return geometry_error
+
+    def navigation_quality(self, *, returning=None):
+        returning = self.state == NavigatorState.RETURNING_HOME if returning is None else returning
+        obstacle = sample_status(self.obstacle_sample, max_age_s=OBSTACLE_MAX_AGE_S, now=self.wall_clock())
+        pose = pose_status(self.pose_sample, max_age_s=POSE_MAX_AGE_S, now=self.wall_clock())
+        mapping = sample_status(self.map_sample, max_age_s=MAP_MAX_AGE_S, now=self.wall_clock())
+        error = self._observation_error(obstacle)
+        geometry_error = self._geometry_error(pose, mapping)
         if returning and self.waiting_for_map:
             geometry_error = geometry_error or "map_pending"
         # Neither ROI clearance nor point A* establishes a swept corridor and

@@ -15,6 +15,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.api_client import APIClient, APIError
 
 
+def _blink_delays(args, body):
+    if args.action == "blink":
+        if not math.isfinite(args.hz) or not 0 < args.hz <= 500:
+            raise ValueError("invalid_led_frequency")
+        delay = round(500 / args.hz)
+        body.update(
+            on_ms=delay if args.on_ms is None else args.on_ms,
+            off_ms=delay if args.off_ms is None else args.off_ms,
+        )
+
+
+def _wait_for_blink_stop(client, path, result):
+    generation = result["data"]["generation"]
+    name = result["data"]["name"]
+    finished = Event()
+    previous = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGTERM, lambda *_: finished.set())
+    try:
+        print(json.dumps(result, ensure_ascii=False), flush=True)
+        finished.wait()
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        result = client.request(path, "POST", {"action": "off", "name": name, "if_generation": generation})
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["on", "off", "auto", "status", "list", "blink"])
@@ -41,27 +67,10 @@ def main(argv=None):
                 path += "?" + urlencode({"name": args.led})
             result = client.request(path)
         else:
-            if args.action == "blink":
-                if not math.isfinite(args.hz) or not 0 < args.hz <= 500:
-                    raise ValueError("invalid_led_frequency")
-                delay = round(500 / args.hz)
-                body.update(
-                    on_ms=delay if args.on_ms is None else args.on_ms,
-                    off_ms=delay if args.off_ms is None else args.off_ms,
-                )
+            _blink_delays(args, body)
             result = client.request(path, "POST", body)
             if args.action == "blink":
-                generation = result["data"]["generation"]
-                name = result["data"]["name"]
-                finished = Event()
-                previous = signal.getsignal(signal.SIGTERM)
-                signal.signal(signal.SIGTERM, lambda *_: finished.set())
-                try:
-                    print(json.dumps(result, ensure_ascii=False), flush=True)
-                    finished.wait()
-                finally:
-                    signal.signal(signal.SIGTERM, previous)
-                    result = client.request(path, "POST", {"action": "off", "name": name, "if_generation": generation})
+                result = _wait_for_blink_stop(client, path, result)
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result.get("ok") else 1
     except (APIError, ValueError, OSError) as error:

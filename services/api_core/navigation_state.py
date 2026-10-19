@@ -99,6 +99,67 @@ def _invalidate(name: str, topic: str, data: object, ts: float | None = None) ->
     return False
 
 
+def _map_cells(grid, width, height):
+    if not isinstance(grid, list) or len(grid) > MAX_CELLS:
+        return None
+    if grid and isinstance(grid[0], list):
+        if len(grid) != height or any(not isinstance(line, list) or len(line) != width for line in grid):
+            return None
+        cells = [value for line in grid for value in line]
+    else:
+        cells = grid
+    if len(cells) != width * height or any(not _finite(value) for value in cells):
+        return None
+    return list(cells)
+
+
+def _map_valid(row):
+    width, height = row.get("width_cells"), row.get("height_cells")
+    if (
+        isinstance(width, bool)
+        or isinstance(height, bool)
+        or not isinstance(width, int)
+        or not isinstance(height, int)
+        or width <= 0
+        or height <= 0
+        or width * height > MAX_CELLS
+    ):
+        return False
+    cells = _map_cells(row.get("grid"), width, height)
+    if cells is None:
+        return False
+    row["grid"] = cells
+    for field in ("resolution_m", "origin_x", "origin_y"):
+        if field in row and not _finite(row[field]):
+            return False
+    if "resolution_m" in row and row["resolution_m"] <= 0:
+        return False
+    return True
+
+
+def _path_valid(row):
+    path = row.get("path", [])
+    if not isinstance(path, list) or len(path) > MAX_PATH:
+        return False
+    points = [_point(point) for point in path]
+    if any(point is None for point in points):
+        return False
+    row["path"] = points
+    if row.get("target") is not None:
+        row["target"] = _point(row["target"])
+        if row["target"] is None:
+            return False
+    return True
+
+
+def _observation_valid(name, row):
+    if name == "map":
+        return _map_valid(row)
+    if name == "path":
+        return _path_valid(row)
+    return all(_finite(row.get(key)) for key in ("x", "y", "theta"))
+
+
 def observe(topic: str, data: object) -> bool:
     """Retain original producer time and only bounded JSON presentation data."""
     name = TOPICS.get(topic)
@@ -110,48 +171,8 @@ def observe(topic: str, data: object) -> bool:
     if not _finite(ts) or ts <= 0 or ts > time.time() + 0.1:
         return _invalidate(name, topic, data)
     row = dict(data, observed_at=ts)
-    if name == "map":
-        width, height = row.get("width_cells"), row.get("height_cells")
-        if (
-            isinstance(width, bool)
-            or isinstance(height, bool)
-            or not isinstance(width, int)
-            or not isinstance(height, int)
-            or width <= 0
-            or height <= 0
-            or width * height > MAX_CELLS
-        ):
-            return _invalidate(name, topic, data, ts)
-        grid = row.get("grid")
-        if not isinstance(grid, list) or len(grid) > MAX_CELLS:
-            return _invalidate(name, topic, data, ts)
-        if grid and isinstance(grid[0], list):
-            if len(grid) != height or any(not isinstance(line, list) or len(line) != width for line in grid):
-                return _invalidate(name, topic, data, ts)
-            cells = [value for line in grid for value in line]
-        else:
-            cells = grid
-        if len(cells) != width * height or any(not _finite(value) for value in cells):
-            return _invalidate(name, topic, data, ts)
-        row["grid"] = list(cells)
-        for field in ("resolution_m", "origin_x", "origin_y"):
-            if field in row and not _finite(row[field]):
-                return _invalidate(name, topic, data, ts)
-        if "resolution_m" in row and row["resolution_m"] <= 0:
-            return _invalidate(name, topic, data, ts)
-    elif name == "path":
-        path = row.get("path", [])
-        if not isinstance(path, list) or len(path) > MAX_PATH:
-            return _invalidate(name, topic, data, ts)
-        points = [_point(point) for point in path]
-        if any(point is None for point in points):
-            return _invalidate(name, topic, data, ts)
-        row["path"] = points
-        if row.get("target") is not None:
-            row["target"] = _point(row["target"])
-            if row["target"] is None:
-                return _invalidate(name, topic, data, ts)
-    elif any(not _finite(row.get(key)) for key in ("x", "y", "theta")):
+    valid = _observation_valid(name, row)
+    if not valid:
         return _invalidate(name, topic, data, ts)
     # Copy only the bounded fields consumed by the browser.
     allowed = {
@@ -164,10 +185,7 @@ def observe(topic: str, data: object) -> bool:
     return _store(name, bounded)
 
 
-def snapshot() -> dict:
-    with _lock:
-        rows = copy.deepcopy(_rows)
-    now = time.time()
+def _expire_rows(rows, now):
     for name, row in rows.items():
         if row is not None:
             observed = row.get("observed_at")
@@ -181,7 +199,29 @@ def snapshot() -> dict:
                 or age < -0.1
                 or age > (10 if name == "map" else 3)
             )
-    path = rows["path"]
+
+
+def _plan_source_available(name, source, now):
+    return not (
+        not sample_status(source, max_age_s=3 if name == "map" else 0.5, now=now)["ready"]
+        or source.get("data_ready") is not True
+        or source.get("data_error")
+        or "quality" in source
+        and source["quality"] is None
+        or isinstance(source.get("quality"), str)
+        and source["quality"].lower() in {"unknown", "unavailable", "invalid", "error", "failed"}
+        or source.get("planning_ready" if name == "map" else "navigation_ready") is not True
+        or name == "pose"
+        and not pose_status(source, max_age_s=0.5, now=now)["ready"]
+        or name == "map"
+        and (
+            not all(_finite(source.get(key)) for key in ("resolution_m", "origin_x", "origin_y"))
+            or source["resolution_m"] <= 0
+        )
+    )
+
+
+def _check_plan_sources(path, rows, now):
     if path and path.get("planning_only") is True:
         for name, source in (("map", rows["map"]), ("pose", rows["pose"])):
             if (
@@ -190,24 +230,16 @@ def snapshot() -> dict:
                 or confirmed_home(source) != confirmed_home(path)
             ):
                 path.update(stale=True, planning_ready=False, error="plan_frame_mismatch")
-            elif (
-                not sample_status(source, max_age_s=3 if name == "map" else 0.5, now=now)["ready"]
-                or source.get("data_ready") is not True
-                or source.get("data_error")
-                or "quality" in source
-                and source["quality"] is None
-                or isinstance(source.get("quality"), str)
-                and source["quality"].lower() in {"unknown", "unavailable", "invalid", "error", "failed"}
-                or source.get("planning_ready" if name == "map" else "navigation_ready") is not True
-                or name == "pose"
-                and not pose_status(source, max_age_s=0.5, now=now)["ready"]
-                or name == "map"
-                and (
-                    not all(_finite(source.get(key)) for key in ("resolution_m", "origin_x", "origin_y"))
-                    or source["resolution_m"] <= 0
-                )
-            ):
+            elif not _plan_source_available(name, source, now):
                 path.update(stale=True, planning_ready=False, error="plan_sources_unavailable")
+
+
+def snapshot() -> dict:
+    with _lock:
+        rows = copy.deepcopy(_rows)
+    now = time.time()
+    _expire_rows(rows, now)
+    _check_plan_sources(rows["path"], rows, now)
     return rows
 
 

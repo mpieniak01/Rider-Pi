@@ -623,3 +623,10 @@ używa `await service.close()`. Odczyt pustej kolejki audio jest przenoszony do
 executora, aby nie blokował pętli. Transport zamyka posiadany socket również po
 ustawieniu `connected=false`, np. po błędzie odbioru lub heartbeat. Te zachowania
 mają testy programowe na atrapach, bez mikrofonu, głośnika, providera i robota.
+
+## Sprzątanie przy błędzie uruchomienia audio
+
+Strumień TTS otwarty przed przejściem stanu PTT jest zamykany również wtedy,
+gdy callback tego przejścia zgłosi wyjątek. Błąd zamknięcia nie zastępuje
+pierwotnej diagnostyki startu. Koniec przechwytywania i anulowanie zachowują
+znaczniki końca kolejki; oczekujące stare TTS są usuwane przy barge-in.

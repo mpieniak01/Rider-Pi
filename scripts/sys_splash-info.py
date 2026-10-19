@@ -208,55 +208,66 @@ def pick_battery_nonblocking() -> str:
         time.sleep(0.1)
 
 
+def _ipv4_from_route():
+    out = subprocess.check_output(
+        ["ip", "-4", "route", "get", "1.1.1.1"],
+        text=True,
+        stderr=subprocess.DEVNULL,
+    )
+    m = re.search(r"\bsrc (\d+\.\d+\.\d+\.\d+)\b", out or "")
+    if m and m.group(1) != "127.0.0.1":
+        _log(f"IP via route: {m.group(1)}")
+        return m.group(1)
+    return None
+
+
+def _ipv4_from_hostname():
+    toks = (
+        subprocess.check_output(
+            ["hostname", "-I"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        .strip()
+        .split()
+    )
+    for t in toks:
+        if re.match(r"^\d+\.\d+\.\d+\.\d+$", t) and not t.startswith("127."):
+            _log(f"IP via hostname -I: {t}")
+            return t
+    return None
+
+
+def _ipv4_from_brief():
+    out = subprocess.check_output(
+        ["ip", "-4", "-brief", "addr"],
+        text=True,
+        stderr=subprocess.DEVNULL,
+    )
+    for ln in out.splitlines():
+        parts = ln.split()
+        if not parts or parts[0] == "lo":
+            continue
+        for col in parts[2:]:
+            if "/" in col and not col.startswith("127."):
+                ip = col.split("/")[0]
+                _log(f"IP via brief addr: {ip} @ {parts[0]}")
+                return ip
+    return None
+
+
 def _get_ipv4() -> str | None:
-    try:
-        out = subprocess.check_output(
-            ["ip", "-4", "route", "get", "1.1.1.1"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-        m = re.search(r"\bsrc (\d+\.\d+\.\d+\.\d+)\b", out or "")
-        if m and m.group(1) != "127.0.0.1":
-            _log(f"IP via route: {m.group(1)}")
-            return m.group(1)
-    except Exception as e:
-        _log(f"route-get fail: {e}")
-
-    try:
-        toks = (
-            subprocess.check_output(
-                ["hostname", "-I"],
-                text=True,
-                stderr=subprocess.DEVNULL,
-            )
-            .strip()
-            .split()
-        )
-        for t in toks:
-            if re.match(r"^\d+\.\d+\.\d+\.\d+$", t) and not t.startswith("127."):
-                _log(f"IP via hostname -I: {t}")
-                return t
-    except Exception as e:
-        _log(f"hostname -I fail: {e}")
-
-    try:
-        out = subprocess.check_output(
-            ["ip", "-4", "-brief", "addr"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-        for ln in out.splitlines():
-            parts = ln.split()
-            if not parts or parts[0] == "lo":
-                continue
-            for col in parts[2:]:
-                if "/" in col and not col.startswith("127."):
-                    ip = col.split("/")[0]
-                    _log(f"IP via brief addr: {ip} @ {parts[0]}")
-                    return ip
-    except Exception as e:
-        _log(f"ip -brief fail: {e}")
-
+    for resolve, label in (
+        (_ipv4_from_route, "route-get fail:"),
+        (_ipv4_from_hostname, "hostname -I fail:"),
+        (_ipv4_from_brief, "ip -brief fail:"),
+    ):
+        try:
+            address = resolve()
+            if address is not None:
+                return address
+        except Exception as exc:
+            _log(f"{label} {exc}")
     return None
 
 
@@ -400,6 +411,27 @@ def have_xgo() -> bool:
         return False
 
 
+def _show_xgo_logo(sink, target_size):
+    # PRE-SLIDE: logo
+    logo_img = _load_logo_for_target(target_size)
+    if logo_img is not None:
+        try:
+            sink.present_device(logo_img)
+            _log(f"logo shown (xgo): {SPLASH_LOGO} for {SPLASH_LOGO_SECONDS:.1f}s")
+            print(f"[splash] logo shown: {SPLASH_LOGO} ({SPLASH_LOGO_SECONDS:.1f}s)")
+            time.sleep(SPLASH_LOGO_SECONDS)
+        except Exception as e:
+            _log(f"logo show failed (xgo): {e}")
+
+
+def _present_xgo_info(sink, info, target_size):
+    img = draw_splash_with(info, WIDTH, HEIGHT)
+    img = maybe_rotate(img)
+    if img.size != target_size:
+        img = img.resize(target_size, Image.BICUBIC)
+    sink.present_device(img)
+
+
 def show_live_xgo():
     from apps.ui.lcd_sink import LcdSink
 
@@ -411,16 +443,7 @@ def show_live_xgo():
     target_size = (w, h)
 
     try:
-        # PRE-SLIDE: logo
-        logo_img = _load_logo_for_target(target_size)
-        if logo_img is not None:
-            try:
-                sink.present_device(logo_img)
-                _log(f"logo shown (xgo): {SPLASH_LOGO} for {SPLASH_LOGO_SECONDS:.1f}s")
-                print(f"[splash] logo shown: {SPLASH_LOGO} ({SPLASH_LOGO_SECONDS:.1f}s)")
-                time.sleep(SPLASH_LOGO_SECONDS)
-            except Exception as e:
-                _log(f"logo show failed (xgo): {e}")
+        _show_xgo_logo(sink, target_size)
 
         # tło
         sink.present_device(Image.new("RGB", target_size, (0, 0, 0)))
@@ -432,11 +455,7 @@ def show_live_xgo():
         while True:
             info = gather_info()
             if info != last_payload:
-                img = draw_splash_with(info, WIDTH, HEIGHT)
-                img = maybe_rotate(img)
-                if img.size != target_size:
-                    img = img.resize(target_size, Image.BICUBIC)
-                sink.present_device(img)
+                _present_xgo_info(sink, info, target_size)
                 last_payload = info
                 if first_frame:
                     first_frame = False
@@ -464,6 +483,21 @@ def have_pygame() -> bool:
         return False
 
 
+def _show_pygame_logo(pygame, screen, target_size):
+    # PRE-SLIDE: logo
+    logo_img = _load_logo_for_target(target_size)
+    if logo_img is not None:
+        try:
+            surf = pygame.image.fromstring(logo_img.tobytes(), logo_img.size, logo_img.mode)
+            screen.blit(surf, (0, 0))
+            pygame.display.update()
+            _log(f"logo shown (pygame): {SPLASH_LOGO} for {SPLASH_LOGO_SECONDS:.1f}s")
+            print(f"[splash] logo shown: {SPLASH_LOGO} ({SPLASH_LOGO_SECONDS:.1f}s)")
+            time.sleep(SPLASH_LOGO_SECONDS)
+        except Exception as e:
+            _log(f"logo show failed (pygame): {e}")
+
+
 def show_live_pygame():
     import pygame
 
@@ -477,18 +511,7 @@ def show_live_pygame():
     screen.fill((0, 0, 0))
     pygame.display.update()
 
-    # PRE-SLIDE: logo
-    logo_img = _load_logo_for_target(target_size)
-    if logo_img is not None:
-        try:
-            surf = pygame.image.fromstring(logo_img.tobytes(), logo_img.size, logo_img.mode)
-            screen.blit(surf, (0, 0))
-            pygame.display.update()
-            _log(f"logo shown (pygame): {SPLASH_LOGO} for {SPLASH_LOGO_SECONDS:.1f}s")
-            print(f"[splash] logo shown: {SPLASH_LOGO} ({SPLASH_LOGO_SECONDS:.1f}s)")
-            time.sleep(SPLASH_LOGO_SECONDS)
-        except Exception as e:
-            _log(f"logo show failed (pygame): {e}")
+    _show_pygame_logo(pygame, screen, target_size)
 
     t0 = time.time()
     last_payload = None

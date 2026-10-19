@@ -182,6 +182,14 @@ def _unique(seq):
     return out
 
 
+def _aplay_format_args(fmt, sample_rate, channels):
+    if fmt == "pcm16":
+        return ["-f", "S16_LE", "-r", "16000", "-c", "1"]
+    if fmt == "wav" and sample_rate and channels:
+        return ["-f", "S16_LE", "-r", str(sample_rate), "-c", str(channels)]
+    return []
+
+
 def _iter_aplay_commands(
     cfg: PlaybackConfig,
     *,
@@ -201,7 +209,6 @@ def _iter_aplay_commands(
         return []
 
     # Parametry dla surowego PCM (np. 'ding' 16k/mono)
-    params_pcm16 = ["-f", "S16_LE", "-r", "16000", "-c", "1"]
 
     # zbuduj kandydatów urządzeń
     preferred = []
@@ -220,29 +227,7 @@ def _iter_aplay_commands(
         if dev:
             base += ["-D", dev]
 
-        # dobierz parametry
-        if fmt == "pcm16":
-            commands.append(base + params_pcm16)
-        elif fmt == "wav":
-            if sample_rate and channels:
-                # Mamy precyzyjne info z TTS! Użyjmy go.
-                # Zakładamy S16_LE, co jest prawdą dla wszystkich backendów TTS.
-                params_dynamic = [
-                    "-f",
-                    "S16_LE",
-                    "-r",
-                    str(sample_rate),
-                    "-c",
-                    str(channels),
-                ]
-                commands.append(base + params_dynamic)
-            else:
-                # Fallback: brak info, niech aplay próbuje czytać header
-                # UWAGA: Czytanie headera ze strumienia może być zawodne
-                commands.append(base[:])
-        else:
-            # Inne formaty (np. mp3) lub stary fallback
-            commands.append(base[:])
+        commands.append(base + _aplay_format_args(fmt, sample_rate, channels))
 
     return commands
 
@@ -415,6 +400,19 @@ def start_stream(
         raise
 
 
+def _cancel_playback_on_stop(stream, stop_event, completed):
+    while not completed.wait(0.05):
+        if stop_event.is_set():
+            with contextlib.suppress(Exception):
+                stream.process.terminate()
+            try:
+                stream.process.wait(timeout=0.2)
+            except Exception:
+                with contextlib.suppress(Exception):
+                    stream.process.kill()
+            break
+
+
 def play_bytes(
     audio_data: bytes,
     fmt: str,
@@ -447,20 +445,11 @@ def play_bytes(
     completed = threading.Event()
     watcher = None
     if stop_event is not None:
-
-        def cancel_playback():
-            while not completed.wait(0.05):
-                if stop_event.is_set():
-                    with contextlib.suppress(Exception):
-                        stream.process.terminate()
-                    try:
-                        stream.process.wait(timeout=0.2)
-                    except Exception:
-                        with contextlib.suppress(Exception):
-                            stream.process.kill()
-                    break
-
-        watcher = threading.Thread(target=cancel_playback, name="playback-goal-stop", daemon=True)
+        watcher = threading.Thread(
+            target=lambda: _cancel_playback_on_stop(stream, stop_event, completed),
+            name="playback-goal-stop",
+            daemon=True,
+        )
         watcher.start()
 
     try:

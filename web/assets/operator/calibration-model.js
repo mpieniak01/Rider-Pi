@@ -32,18 +32,9 @@ export function measuredTable(rows, maxStep) {
   }
   return table;
 }
-export function profileError(profile) {
-  if (!object(profile) || profile.schema_version !== 1 || typeof profile.name !== 'string'
-    || !profile.name.trim() || profile.name.length > 80) return 'profile_name_required';
-  if (!object(profile.provenance) || !['draft', 'historical', 'manual'].includes(profile.provenance.kind)
-    || typeof profile.provenance.notes !== 'string' || profile.provenance.notes.length > 4096) return 'invalid_provenance';
-  if (!object(profile.motion) || !['speed_limit', 'linear_rate', 'turn_rate'].every(key => finite(profile.motion[key])
-    && profile.motion[key] > 0 && profile.motion[key] <= (key === 'speed_limit' ? 1 : 100))) return 'invalid_motion_dynamics';
-  if (profile.interaction !== undefined && !interactionValid(profile.interaction)) return 'invalid_interaction_settings';
-  if (!object(profile.odometry) || profile.odometry.schema_version !== 1
-    || typeof profile.odometry.manual_verified !== 'boolean') return 'invalid_odometry_record';
+function measurementTablesError(odometry) {
   for (const [name, maxStep] of [['linear_m_s', 127], ['turn_rad_s', 180]]) {
-    const table = profile.odometry[name];
+    const table = odometry[name];
     if (!object(table) || Object.keys(table).length > 2 * maxStep) return 'invalid_measurement_table';
     for (const [key, value] of Object.entries(table)) {
       const step = Number(key);
@@ -51,20 +42,39 @@ export function profileError(profile) {
         || !finite(value) || value * step <= 0) return 'invalid_signed_measurement';
     }
   }
+  return null;
+}
+function manualEvidenceError(profile) {
+  const odom = profile.odometry, conditions = odom.conditions;
+  if (profile.provenance.kind !== 'manual' || !profile.provenance.notes.trim()
+    || typeof odom.measurement_id !== 'string' || !odom.measurement_id.trim()
+    || ![-1, 1].includes(odom.imu_yaw_sign)
+    || !object(conditions) || !['firmware', 'surface', 'load', 'battery', 'operator', 'date']
+      .every(key => typeof conditions[key] === 'string' && conditions[key].trim())
+    || !Object.keys(odom.linear_m_s).length || !Object.keys(odom.turn_rad_s).length
+    || !profile.measurements.some(row => row.measurement_id === odom.measurement_id
+      && typeof row.notes === 'string' && row.notes.trim())) return 'manual_measurement_evidence_required';
+  return null;
+}
+function motionDynamicsValid(motion) {
+  return object(motion) && ['speed_limit', 'linear_rate', 'turn_rate'].every(key => finite(motion[key])
+    && motion[key] > 0 && motion[key] <= (key === 'speed_limit' ? 1 : 100));
+}
+export function profileError(profile) {
+  if (!object(profile) || profile.schema_version !== 1 || typeof profile.name !== 'string'
+    || !profile.name.trim() || profile.name.length > 80) return 'profile_name_required';
+  if (!object(profile.provenance) || !['draft', 'historical', 'manual'].includes(profile.provenance.kind)
+    || typeof profile.provenance.notes !== 'string' || profile.provenance.notes.length > 4096) return 'invalid_provenance';
+  if (!motionDynamicsValid(profile.motion)) return 'invalid_motion_dynamics';
+  if (profile.interaction !== undefined && !interactionValid(profile.interaction)) return 'invalid_interaction_settings';
+  if (!object(profile.odometry) || profile.odometry.schema_version !== 1
+    || typeof profile.odometry.manual_verified !== 'boolean') return 'invalid_odometry_record';
+  const tableError = measurementTablesError(profile.odometry);
+  if (tableError) return tableError;
   if (!object(profile.odometry.observations) || !object(profile.odometry.conditions)) return 'invalid_observations_or_conditions';
   if (!Array.isArray(profile.measurements) || profile.measurements.length > 128
     || profile.measurements.some(row => !object(row))) return 'invalid_trial_records';
-  if (profile.odometry.manual_verified) {
-    const odom = profile.odometry, conditions = odom.conditions;
-    if (profile.provenance.kind !== 'manual' || !profile.provenance.notes.trim()
-      || typeof odom.measurement_id !== 'string' || !odom.measurement_id.trim()
-      || ![-1, 1].includes(odom.imu_yaw_sign)
-      || !object(conditions) || !['firmware', 'surface', 'load', 'battery', 'operator', 'date']
-        .every(key => typeof conditions[key] === 'string' && conditions[key].trim())
-      || !Object.keys(odom.linear_m_s).length || !Object.keys(odom.turn_rad_s).length
-      || !profile.measurements.some(row => row.measurement_id === odom.measurement_id
-        && typeof row.notes === 'string' && row.notes.trim())) return 'manual_measurement_evidence_required';
-  }
+  if (profile.odometry.manual_verified) return manualEvidenceError(profile);
   return null;
 }
 export function importedProfile(source) {

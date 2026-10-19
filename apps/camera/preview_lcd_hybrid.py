@@ -147,6 +147,105 @@ def load_haar():
     return clf if not clf.empty() else None
 
 
+def _update_hybrid_tracker(out, tracker, track_bbox, track_ok):
+    # tracker
+    if tracker is not None:
+        track_ok, box = tracker.update(out)
+        if track_ok:
+            x, y, tw, th = (int(v) for v in box)
+            track_bbox = (x, y, tw, th)
+            if not NO_DRAW:
+                cv2.rectangle(out, (x, y), (x + tw, y + th), (255, 200, 0), 2)
+            pub(
+                "vision.person",
+                {"present": True, "score": 0.75, "bbox": [x, y, tw, th]},
+                add_ts=True,
+            )
+        else:
+            tracker = None
+            track_bbox = None
+
+    return tracker, track_bbox, track_ok
+
+
+def _hybrid_best_detection(out, net, score_threshold):
+    h, w = out.shape[:2]
+    blob = cv2.dnn.blobFromImage(
+        cv2.resize(out, (300, 300)),
+        0.007843,
+        (300, 300),
+        127.5,
+        swapRB=True,
+        crop=False,
+    )
+    net.setInput(blob)
+    det = net.forward()
+    best = None
+    for i in range(det.shape[2]):
+        conf = float(det[0, 0, i, 2])
+        if conf < score_threshold:
+            continue
+        cls_id = int(det[0, 0, i, 1])
+        if cls_id != PERSON_ID:
+            continue
+        x1 = int(det[0, 0, i, 3] * w)
+        y1 = int(det[0, 0, i, 4] * h)
+        x2 = int(det[0, 0, i, 5] * w)
+        y2 = int(det[0, 0, i, 6] * h)
+        if best is None or conf > best[0]:
+            best = (conf, (x1, y1, x2, y2))
+
+    return best
+
+
+def _apply_hybrid_detection(out, best, tracker, track_bbox):
+    if best is not None:
+        conf, (bx1, by1, bx2, by2) = best
+        if not NO_DRAW:
+            cv2.rectangle(out, (bx1, by1), (bx2, by2), (0, 255, 255), 2)
+        pub(
+            "vision.person",
+            {
+                "present": True,
+                "score": float(conf),
+                "bbox": [bx1, by1, bx2 - bx1, by2 - by1],
+            },
+            add_ts=True,
+        )
+        tracker = create_tracker()
+        tracker.init(out, (bx1, by1, bx2 - bx1, by2 - by1))
+        track_bbox = (bx1, by1, bx2 - bx1, by2 - by1)
+
+    return tracker, track_bbox
+
+
+def _hybrid_haar_roi(out, haar, track_bbox):
+    h, w = out.shape[:2]
+    # HAAR w ROI
+    if haar is not None and track_bbox is not None:
+        x, y, tw, th = track_bbox
+        x0, y0, x1, y1 = max(0, x), max(0, y), min(w, x + tw), min(h, y + th)
+        roi = out[y0:y1, x0:x1]
+        if roi.size > 0:
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
+            if not NO_DRAW:
+                for fx, fy, fw, fh in faces:
+                    cv2.rectangle(
+                        out,
+                        (x0 + fx, y0 + fy),
+                        (x0 + fx + fw, y0 + fy + fh),
+                        (0, 255, 0),
+                        2,
+                    )
+            if len(faces) > 0:
+                pub(
+                    "vision.face",
+                    {"present": True, "score": 0.85, "count": len(faces)},
+                    add_ts=True,
+                )
+
+
 def main():
     SCORE = float(os.getenv("SSD_SCORE", "0.55"))
     EVERY = int(os.getenv("SSD_EVERY", "3"))
@@ -177,7 +276,6 @@ def main():
         frame = apply_rotation(frame, ROT, FLIP_H, FLIP_V)
 
         out = frame.copy()
-        h, w = out.shape[:2]
 
         # FPS EMA
         now = time.time()
@@ -186,90 +284,14 @@ def main():
         fps_ema = inst if fps_ema is None else (0.9 * fps_ema + 0.1 * inst)
         prev_t = now
 
-        # tracker
-        if tracker is not None:
-            track_ok, box = tracker.update(out)
-            if track_ok:
-                x, y, tw, th = (int(v) for v in box)
-                track_bbox = (x, y, tw, th)
-                if not NO_DRAW:
-                    cv2.rectangle(out, (x, y), (x + tw, y + th), (255, 200, 0), 2)
-                pub(
-                    "vision.person",
-                    {"present": True, "score": 0.75, "bbox": [x, y, tw, th]},
-                    add_ts=True,
-                )
-            else:
-                tracker = None
-                track_bbox = None
+        tracker, track_bbox, track_ok = _update_hybrid_tracker(out, tracker, track_bbox, track_ok)
 
         # SSD co N klatek
         if fid % max(1, EVERY) == 0:
-            blob = cv2.dnn.blobFromImage(
-                cv2.resize(out, (300, 300)),
-                0.007843,
-                (300, 300),
-                127.5,
-                swapRB=True,
-                crop=False,
-            )
-            net.setInput(blob)
-            det = net.forward()
-            best = None
-            for i in range(det.shape[2]):
-                conf = float(det[0, 0, i, 2])
-                if conf < SCORE:
-                    continue
-                cls_id = int(det[0, 0, i, 1])
-                if cls_id != PERSON_ID:
-                    continue
-                x1 = int(det[0, 0, i, 3] * w)
-                y1 = int(det[0, 0, i, 4] * h)
-                x2 = int(det[0, 0, i, 5] * w)
-                y2 = int(det[0, 0, i, 6] * h)
-                if best is None or conf > best[0]:
-                    best = (conf, (x1, y1, x2, y2))
+            best = _hybrid_best_detection(out, net, SCORE)
+            tracker, track_bbox = _apply_hybrid_detection(out, best, tracker, track_bbox)
 
-            if best is not None:
-                conf, (bx1, by1, bx2, by2) = best
-                if not NO_DRAW:
-                    cv2.rectangle(out, (bx1, by1), (bx2, by2), (0, 255, 255), 2)
-                pub(
-                    "vision.person",
-                    {
-                        "present": True,
-                        "score": float(conf),
-                        "bbox": [bx1, by1, bx2 - bx1, by2 - by1],
-                    },
-                    add_ts=True,
-                )
-                tracker = create_tracker()
-                tracker.init(out, (bx1, by1, bx2 - bx1, by2 - by1))
-                track_bbox = (bx1, by1, bx2 - bx1, by2 - by1)
-
-        # HAAR w ROI
-        if haar is not None and track_bbox is not None:
-            x, y, tw, th = track_bbox
-            x0, y0, x1, y1 = max(0, x), max(0, y), min(w, x + tw), min(h, y + th)
-            roi = out[y0:y1, x0:x1]
-            if roi.size > 0:
-                gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                faces = haar.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
-                if not NO_DRAW:
-                    for fx, fy, fw, fh in faces:
-                        cv2.rectangle(
-                            out,
-                            (x0 + fx, y0 + fy),
-                            (x0 + fx + fw, y0 + fy + fh),
-                            (0, 255, 0),
-                            2,
-                        )
-                if len(faces) > 0:
-                    pub(
-                        "vision.face",
-                        {"present": True, "score": 0.85, "count": len(faces)},
-                        add_ts=True,
-                    )
+        _hybrid_haar_roi(out, haar, track_bbox)
 
         # --- SNAPSHOTS ---
         SNAP.cam(frame)  # RAW po ROT/FLIP

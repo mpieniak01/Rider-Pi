@@ -51,12 +51,7 @@ class ReferenceControl:
         self.publish_status(force=True)
         return self.last_ack
 
-    def apply(self, payload):
-        row = payload if isinstance(payload, dict) else {}
-        state = self.safety_reader()
-        error = validate_reference(row, state, now=self.clock(), started_at=self.started_at)
-        if error:
-            return self._ack(row, error=error)
+    def _profile_reference_rejection(self, row, state):
         digest = row.get("profile_digest")
         if digest is not None or self.estimator.calibration_digest is not None:
             binding = self.estimator.calibration_state()
@@ -75,6 +70,9 @@ class ReferenceControl:
                 or not 0 <= self.clock() - observed <= 3.0
             ):
                 return self._ack(row, error="reference_profile_unconfirmed")
+        return None
+
+    def _consume_reference_sequence(self, row):
         _, sequence_path = reference_paths()
         try:
             sequence_path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +99,20 @@ class ReferenceControl:
                 )
         except (OSError, ValueError, TypeError):
             return self._ack(row, error="reference_journal_unavailable")
+        return None
+
+    def apply(self, payload):
+        row = payload if isinstance(payload, dict) else {}
+        state = self.safety_reader()
+        error = validate_reference(row, state, now=self.clock(), started_at=self.started_at)
+        if error:
+            return self._ack(row, error=error)
+        rejection = self._profile_reference_rejection(row, state)
+        if rejection is not None:
+            return rejection
+        rejection = self._consume_reference_sequence(row)
+        if rejection is not None:
+            return rejection
         if not self.estimator.set_reference(
             reference_id=row["request_id"],
             operator_consent=True,
@@ -148,6 +160,57 @@ class ReferenceControl:
             pass
 
 
+def _reference_profile_error(row, state, now):
+    config = state.get("calibration")
+    current_digest = config.get("profile_digest") if isinstance(config, dict) else None
+    requested_digest = row.get("profile_digest")
+    if current_digest is not None or requested_digest is not None:
+        if (
+            not isinstance(requested_digest, str)
+            or len(requested_digest) != 64
+            or any(char not in "0123456789abcdef" for char in requested_digest)
+            or requested_digest != current_digest
+            or config.get("error")
+            or config.get("instance_id") != state.get("instance_id")
+            or not finite_number(config.get("observed_at"))
+            or not 0 <= now - config["observed_at"] <= 3.0
+        ):
+            return "reference_profile_mismatch"
+    return None
+
+
+def _reference_metadata_error(row, now, started_at):
+    if row.get("source") != "manual" or type(row.get("seq")) is not int or row["seq"] < 0:
+        return "reference_metadata_required"
+    if not isinstance(row.get("request_id"), str) or not 0 < len(row["request_id"]) <= 128:
+        return "request_id_required"
+    ts, ttl = row.get("ts"), row.get("ttl_ms")
+    if not finite_number(ts) or not finite_number(ttl) or not 0 < ttl <= 500 or not 0 <= now - ts <= ttl / 1000:
+        return "reference_expired"
+    if started_at is not None and ts < started_at:
+        return "reference_before_process_start"
+    if (
+        row.get("operator_consent") is not True
+        or not isinstance(row.get("operator_plan"), str)
+        or not row["operator_plan"].strip()
+    ):
+        return "reference_operator_plan_required"
+    return None
+
+
+def _reference_coordinate_error(row):
+    if not all(finite_number(row.get(key)) for key in ("x", "y", "theta")):
+        return "reference_coordinates_required"
+    confirmed = row.get("home_operator_confirmed", False)
+    if (
+        type(confirmed) is not bool
+        or (confirmed and not all(finite_number(row.get(key)) for key in ("home_x", "home_y")))
+        or (not confirmed and (row.get("home_x") is not None or row.get("home_y") is not None))
+    ):
+        return "explicit_home_coordinates_required"
+    return None
+
+
 def validate_reference(row, state, *, now, started_at=None):
     if not isinstance(row, dict) or not isinstance(state, dict):
         return "invalid_reference"
@@ -164,43 +227,10 @@ def validate_reference(row, state, *, now, started_at=None):
         return "safety_stale"
     if row.get("generation") != state.get("generation") or not isinstance(row.get("generation"), str):
         return "stale_generation"
-    config = state.get("calibration")
-    current_digest = config.get("profile_digest") if isinstance(config, dict) else None
-    requested_digest = row.get("profile_digest")
-    if current_digest is not None or requested_digest is not None:
-        if (
-            not isinstance(requested_digest, str)
-            or len(requested_digest) != 64
-            or any(char not in "0123456789abcdef" for char in requested_digest)
-            or requested_digest != current_digest
-            or config.get("error")
-            or config.get("instance_id") != state.get("instance_id")
-            or not finite_number(config.get("observed_at"))
-            or not 0 <= now - config["observed_at"] <= 3.0
-        ):
-            return "reference_profile_mismatch"
-    if row.get("source") != "manual" or type(row.get("seq")) is not int or row["seq"] < 0:
-        return "reference_metadata_required"
-    if not isinstance(row.get("request_id"), str) or not 0 < len(row["request_id"]) <= 128:
-        return "request_id_required"
-    ts, ttl = row.get("ts"), row.get("ttl_ms")
-    if not finite_number(ts) or not finite_number(ttl) or not 0 < ttl <= 500 or not 0 <= now - ts <= ttl / 1000:
-        return "reference_expired"
-    if started_at is not None and ts < started_at:
-        return "reference_before_process_start"
-    if (
-        row.get("operator_consent") is not True
-        or not isinstance(row.get("operator_plan"), str)
-        or not row["operator_plan"].strip()
-    ):
-        return "reference_operator_plan_required"
-    if not all(finite_number(row.get(key)) for key in ("x", "y", "theta")):
-        return "reference_coordinates_required"
-    confirmed = row.get("home_operator_confirmed", False)
-    if (
-        type(confirmed) is not bool
-        or (confirmed and not all(finite_number(row.get(key)) for key in ("home_x", "home_y")))
-        or (not confirmed and (row.get("home_x") is not None or row.get("home_y") is not None))
-    ):
-        return "explicit_home_coordinates_required"
-    return None
+    error = _reference_profile_error(row, state, now)
+    if error:
+        return error
+    error = _reference_metadata_error(row, now, started_at)
+    if error:
+        return error
+    return _reference_coordinate_error(row)

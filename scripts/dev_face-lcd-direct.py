@@ -126,6 +126,18 @@ def import_face_renderers_from_file_first():
     )
 
 
+def _select_direct_lcd_class(m):
+    cls = getattr(m, "LCDRenderer", None)
+    if cls is None:
+        for n, o in vars(m).items():
+            if inspect.isclass(o) and ("LCD" in n or "St77" in n or "Renderer" in n):
+                cls = o
+                break
+    if cls is None:
+        raise RuntimeError("Brak klasy sterownika LCD.")
+    return cls
+
+
 class LCDDirect:
     def __init__(
         self,
@@ -178,17 +190,7 @@ class LCDDirect:
                 return (w, h)
         return None
 
-    def _init_lcd(self):
-        m = import_face_renderers_from_file_first()
-        print(f"[LCD] driver module: {getattr(m, '__file__', '?')}", flush=True)
-        cls = getattr(m, "LCDRenderer", None)
-        if cls is None:
-            for n, o in vars(m).items():
-                if inspect.isclass(o) and ("LCD" in n or "St77" in n or "Renderer" in n):
-                    cls = o
-                    break
-        if cls is None:
-            raise RuntimeError("Brak klasy sterownika LCD.")
+    def _construct_lcd(self, m, cls):
         try:
             need_cfg = list(inspect.signature(cls.__init__).parameters.keys())[1] == "cfg"
         except Exception:
@@ -197,10 +199,10 @@ class LCDDirect:
             cfg = self._build_cfg(m)
             if cfg is None:
                 raise RuntimeError("Wymagany cfg")
-            self._lcd = cls(cfg)
+            return cls(cfg)
         else:
             try:
-                self._lcd = cls(
+                return cls(
                     lcd_do_init=True,
                     lcd_rotate=self.rotate,
                     lcd_spi_hz=self.spi_hz,
@@ -208,20 +210,11 @@ class LCDDirect:
                 )
             except TypeError:
                 try:
-                    self._lcd = cls(self.rotate)
+                    return cls(self.rotate)
                 except Exception:
-                    self._lcd = cls()
-        begin = getattr(self._lcd, "begin", None)
-        if callable(begin):
-            try:
-                begin()
-            except Exception:
-                pass
-        if self.spi_hz and hasattr(self._lcd, "set_spi_speed"):
-            try:
-                self._lcd.set_spi_speed(self.spi_hz)
-            except Exception:
-                pass
+                    return cls()
+
+    def _update_display_size(self):
         wh = self._size_from(self._lcd)
         if not wh:
             for n in (
@@ -241,6 +234,24 @@ class LCDDirect:
                         break
         if wh:
             self._disp_wh = wh
+
+    def _init_lcd(self):
+        m = import_face_renderers_from_file_first()
+        print(f"[LCD] driver module: {getattr(m, '__file__', '?')}", flush=True)
+        cls = _select_direct_lcd_class(m)
+        self._lcd = self._construct_lcd(m, cls)
+        begin = getattr(self._lcd, "begin", None)
+        if callable(begin):
+            try:
+                begin()
+            except Exception:
+                pass
+        if self.spi_hz and hasattr(self._lcd, "set_spi_speed"):
+            try:
+                self._lcd.set_spi_speed(self.spi_hz)
+            except Exception:
+                pass
+        self._update_display_size()
         print(
             f"[LCD] init ok: rotate={self.rotate} spi_hz={self.spi_hz} bl_pin={self.bl_pin}",
             flush=True,
@@ -306,10 +317,32 @@ class LCDDirect:
         )
         return False
 
+    def _probe_push_variants(self, target, name, fn, img, png_bytes, rgb_bytes, tried):
+        w, h = img.size
+        variants = [
+            ("pil", (img,), {}),
+            ("pil_kw", (), {"image": img}),
+            ("png", (png_bytes,), {}),
+            ("png_kw", (), {"png": png_bytes}),
+            ("png_kw2", (), {"frame_png": png_bytes}),
+            ("rgb565", (rgb_bytes,), {}),
+            ("rgb565_kw", (), {"data": rgb_bytes}),
+            ("rgb565_kw2", (), {"buf": rgb_bytes}),
+            ("rgb565_3", (w, h, rgb_bytes), {}),
+        ]
+        for tag, a, kw in variants:
+            try:
+                fn(*a, **kw)
+                self._push = (target, name, tag)
+                return f"{type(target).__name__}.{name}[{tag}]"
+            except Exception:
+                tried.append(f"{type(target).__name__}.{name}:{tag}")
+                continue
+        return None
+
     def _scan_bind(self, img: Image.Image) -> str | None:
         PNG = to_png_bytes(img)
         RGB = to_rgb565_bytes(img)
-        w, h = img.size
         tried = []
         for target in self._targets():
             for name in dir(target):
@@ -318,25 +351,9 @@ class LCDDirect:
                 fn = getattr(target, name, None)
                 if not callable(fn):
                     continue
-                variants = [
-                    ("pil", (img,), {}),
-                    ("pil_kw", (), {"image": img}),
-                    ("png", (PNG,), {}),
-                    ("png_kw", (), {"png": PNG}),
-                    ("png_kw2", (), {"frame_png": PNG}),
-                    ("rgb565", (RGB,), {}),
-                    ("rgb565_kw", (), {"data": RGB}),
-                    ("rgb565_kw2", (), {"buf": RGB}),
-                    ("rgb565_3", (w, h, RGB), {}),
-                ]
-                for tag, a, kw in variants:
-                    try:
-                        fn(*a, **kw)
-                        self._push = (target, name, tag)
-                        return f"{type(target).__name__}.{name}[{tag}]"
-                    except Exception:
-                        tried.append(f"{type(target).__name__}.{name}:{tag}")
-                        continue
+                used = self._probe_push_variants(target, name, fn, img, PNG, RGB, tried)
+                if used:
+                    return used
         print(
             "[LCD] tried:",
             ", ".join(tried[:16]),
@@ -345,24 +362,9 @@ class LCDDirect:
         )
         return None
 
-    def push(self, pil_img: Image.Image) -> str:
-        img = self._prep(pil_img)
-
-        if self._push is None:
-            if not self._force_bind(img):
-                used = self._scan_bind(img)
-                if not used:
-                    raise RuntimeError("Nie znalazłem metody pushowania.")
-                print("LCD(direct): using", used, flush=True)
-
-        target, name, tag = self._push
-
+    def _auto_prefer_pil(self, img, target, name, tag):
         if (self.force is None) and tag.startswith("rgb565"):
-            try:
-                probe_img = img if img.size == (240, 320) else img.resize((240, 320))
-            except Exception:
-                probe_img = img
-            enc_ms = _bench_rgb565_encoder(probe_img)
+            enc_ms = _direct_encoder_ms(img)
             if enc_ms > 30.0:
                 for cand in (
                     "ShowImage",
@@ -382,28 +384,23 @@ class LCDDirect:
                         )
                         break
 
-        fn = getattr(target, name)
-        if tag.startswith("pil"):
-            fn(img)
-        elif tag.startswith("png"):
-            PNG = to_png_bytes(img)
-            if tag == "png":
-                fn(PNG)
-            elif tag == "png_kw":
-                fn(png=PNG)
-            else:
-                fn(frame_png=PNG)
-        else:
-            RGB = to_rgb565_bytes(img)
-            w, h = img.size
-            if tag == "rgb565":
-                fn(RGB)
-            elif tag == "rgb565_kw":
-                fn(data=RGB)
-            elif tag == "rgb565_kw2":
-                fn(buf=RGB)
-            else:
-                fn(w, h, RGB)
+        return name, tag
+
+    def push(self, pil_img: Image.Image) -> str:
+        img = self._prep(pil_img)
+
+        if self._push is None:
+            if not self._force_bind(img):
+                used = self._scan_bind(img)
+                if not used:
+                    raise RuntimeError("Nie znalazłem metody pushowania.")
+                print("LCD(direct): using", used, flush=True)
+
+        target, name, tag = self._push
+
+        name, tag = self._auto_prefer_pil(img, target, name, tag)
+
+        _dispatch_direct_frame(getattr(target, name), tag, img)
         return f"{type(target).__name__}.{name}[{tag}]"
 
 
@@ -424,6 +421,153 @@ def _safe_mood_interval(user_interval: float | None) -> float:
     if user_interval <= 0.0:
         return max(step + dwell, 0.12)
     return user_interval
+
+
+def _direct_encoder_ms(img):
+    try:
+        probe_img = img if img.size == (240, 320) else img.resize((240, 320))
+    except Exception:
+        probe_img = img
+    enc_ms = _bench_rgb565_encoder(probe_img)
+    return enc_ms
+
+
+def _dispatch_direct_frame(fn, tag, img):
+    if tag.startswith("pil"):
+        fn(img)
+    elif tag.startswith("png"):
+        PNG = to_png_bytes(img)
+        if tag == "png":
+            fn(PNG)
+        elif tag == "png_kw":
+            fn(png=PNG)
+        else:
+            fn(frame_png=PNG)
+    else:
+        RGB = to_rgb565_bytes(img)
+        w, h = img.size
+        if tag == "rgb565":
+            fn(RGB)
+        elif tag == "rgb565_kw":
+            fn(data=RGB)
+        elif tag == "rgb565_kw2":
+            fn(buf=RGB)
+        else:
+            fn(w, h, RGB)
+
+
+def _advance_direct_mood(fc, args, mood_seq, mood_interval, next_mood_ts, now):
+    if now >= next_mood_ts and mood_seq:
+        if fc.is_mood_idle():
+            mood = mood_seq[0]
+            mood_seq.rotate(-1)
+            print(f"[mood] next → {mood}", flush=True)
+            fc.set_mood(mood, via_neutral=args.mood_via_neutral, dwell_s=args.mood_dwell)
+            return now + mood_interval
+        return now + 0.05
+    return next_mood_ts
+
+
+def _direct_controller_frame(fc):
+    try:
+        return fc.frame_image().convert("RGB")
+    except Exception:
+        return Image.open(BytesIO(fc.frame())).convert("RGB")
+
+
+def _direct_frame_stats(args, now, last_stats, t0, n, kind):
+    if args.stats and (now - last_stats) >= 1.0:
+        dt = now - t0
+        print(f"[stats] frames={n} fps~{(n / dt if dt > 0 else 0):.1f} via {kind}", flush=True)
+        return now
+    return last_stats
+
+
+def _run_pil_frames(fc, args, mood_seq, mood_interval, next_mood_ts):
+    n = 0
+    t0 = time.time()
+    last_stats = t0
+    try:
+        while True:
+            now = time.time()
+            if args.secs is not None and (now - t0) >= args.secs:
+                print("[PIL] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
+                break
+
+            next_mood_ts = _advance_direct_mood(fc, args, mood_seq, mood_interval, next_mood_ts, now)
+
+            img = _direct_controller_frame(fc)
+            _ = to_png_bytes(img)
+            n += 1
+            last_stats = _direct_frame_stats(args, now, last_stats, t0, n, "PIL")
+            time.sleep(1.0 / max(1, args.fps))
+    except KeyboardInterrupt:
+        print("PIL loop finished.")
+    finally:
+        t1 = time.time()
+        dt = t1 - t0
+        if n > 0:
+            print(
+                f"[PIL] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n / dt:.2f}",
+                flush=True,
+            )
+        else:
+            print("[PIL] Brak wygenerowanych klatek.", flush=True)
+        if hasattr(fc, "close"):
+            try:
+                fc.close()
+            except Exception:
+                pass
+
+
+def _close_direct_devices(lcd, fc):
+    for obj in (getattr(lcd, "_lcd", None), fc):
+        for name in ("close", "cleanup", "end", "sleep", "off"):
+            fn = getattr(obj, name, None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:
+                    pass
+
+
+def _run_lcd_frames(fc, lcd, args, mood_seq, mood_interval, next_mood_ts):
+    n = 0
+    t0 = time.time()
+    last_stats = t0
+    last_used = None
+    try:
+        while True:
+            now = time.time()
+            if args.secs is not None and (now - t0) >= args.secs:
+                print("[LCD] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
+                break
+
+            next_mood_ts = _advance_direct_mood(fc, args, mood_seq, mood_interval, next_mood_ts, now)
+
+            img = _direct_controller_frame(fc)
+
+            used = lcd.push(img)
+            if used != last_used:
+                print(f"[LCD] bound → {used}", flush=True)
+                last_used = used
+
+            n += 1
+            last_stats = _direct_frame_stats(args, now, last_stats, t0, n, "LCD")
+            time.sleep(1.0 / max(1, args.fps))
+    except KeyboardInterrupt:
+        print("LCD loop finished.")
+    finally:
+        t1 = time.time()
+        dt = t1 - t0
+        if n > 0:
+            print(
+                f"[LCD] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n / dt:.2f}",
+                flush=True,
+            )
+        else:
+            print("[LCD] Brak wygenerowanych klatek.", flush=True)
+        _close_direct_devices(lcd, fc)
 
 
 def main():
@@ -522,64 +666,7 @@ def main():
 
     # PIL-only ścieżka
     if force and force.lower() == "pil":
-        n = 0
-        t0 = time.time()
-        last_stats = t0
-        try:
-            while True:
-                now = time.time()
-                if args.secs is not None and (now - t0) >= args.secs:
-                    print("[PIL] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
-                    break
-
-                # Sekwencja nastrojów: podawaj tylko gdy idle
-                if now >= next_mood_ts and mood_seq:
-                    if fc.is_mood_idle():
-                        m = mood_seq[0]
-                        mood_seq.rotate(-1)
-                        print(f"[mood] next → {m}", flush=True)
-                        fc.set_mood(
-                            m,
-                            via_neutral=args.mood_via_neutral,
-                            dwell_s=args.mood_dwell,
-                        )
-                        next_mood_ts = now + mood_interval
-                    else:
-                        # Odłóż do następnej próby
-                        next_mood_ts = now + 0.05
-
-                try:
-                    img = fc.frame_image().convert("RGB")
-                except Exception:
-                    frame = fc.frame()
-                    img = Image.open(BytesIO(frame)).convert("RGB")
-                _ = to_png_bytes(img)
-                n += 1
-                if args.stats and (now - last_stats) >= 1.0:
-                    dt = now - t0
-                    print(
-                        f"[stats] frames={n} fps~{(n / dt if dt > 0 else 0):.1f} via PIL",
-                        flush=True,
-                    )
-                    last_stats = now
-                time.sleep(1.0 / max(1, args.fps))
-        except KeyboardInterrupt:
-            print("PIL loop finished.")
-        finally:
-            t1 = time.time()
-            dt = t1 - t0
-            if n > 0:
-                print(
-                    f"[PIL] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n / dt:.2f}",
-                    flush=True,
-                )
-            else:
-                print("[PIL] Brak wygenerowanych klatek.", flush=True)
-            if hasattr(fc, "close"):
-                try:
-                    fc.close()
-                except Exception:
-                    pass
+        _run_pil_frames(fc, args, mood_seq, mood_interval, next_mood_ts)
         return
 
     # LCD path
@@ -590,69 +677,7 @@ def main():
         bl_pin=args.bl_pin,
         force=force,
     )
-    n = 0
-    t0 = time.time()
-    last_stats = t0
-    last_used = None
-    try:
-        while True:
-            now = time.time()
-            if args.secs is not None and (now - t0) >= args.secs:
-                print("[LCD] Osiągnięto limit czasu --secs, kończę pętlę.", flush=True)
-                break
-
-            # Sekwencja nastrojów: podawaj tylko gdy idle
-            if now >= next_mood_ts and mood_seq:
-                if fc.is_mood_idle():
-                    m = mood_seq[0]
-                    mood_seq.rotate(-1)
-                    print(f"[mood] next → {m}", flush=True)
-                    fc.set_mood(m, via_neutral=args.mood_via_neutral, dwell_s=args.mood_dwell)
-                    next_mood_ts = now + mood_interval
-                else:
-                    # zajęty — spróbuj za chwilę
-                    next_mood_ts = now + 0.05
-
-            try:
-                img = fc.frame_image().convert("RGB")
-            except Exception:
-                frame = fc.frame()
-                img = Image.open(BytesIO(frame)).convert("RGB")
-
-            used = lcd.push(img)
-            if used != last_used:
-                print(f"[LCD] bound → {used}", flush=True)
-                last_used = used
-
-            n += 1
-            if args.stats and (now - last_stats) >= 1.0:
-                dt = now - t0
-                print(
-                    f"[stats] frames={n} fps~{(n / dt if dt > 0 else 0):.1f} via LCD",
-                    flush=True,
-                )
-                last_stats = now
-            time.sleep(1.0 / max(1, args.fps))
-    except KeyboardInterrupt:
-        print("LCD loop finished.")
-    finally:
-        t1 = time.time()
-        dt = t1 - t0
-        if n > 0:
-            print(
-                f"[LCD] Statystyki: klatek={n}, czas={dt:.2f}s, FPS={n / dt:.2f}",
-                flush=True,
-            )
-        else:
-            print("[LCD] Brak wygenerowanych klatek.", flush=True)
-        for obj in (getattr(lcd, "_lcd", None), fc):
-            for name in ("close", "cleanup", "end", "sleep", "off"):
-                fn = getattr(obj, name, None)
-                if callable(fn):
-                    try:
-                        fn()
-                    except Exception:
-                        pass
+    _run_lcd_frames(fc, lcd, args, mood_seq, mood_interval, next_mood_ts)
 
 
 if __name__ == "__main__":

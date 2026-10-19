@@ -13,7 +13,35 @@ from .compute_catalog import EN as COMPUTE_EN, compute_availability, compute_fea
 
 CONTRACT_VERSION = 2
 HOST = "pi"
-BOOT_UNITS = ("rider-minimal.target", "rider-boot-splash.service", "lcd-renderer.service", "wifi-unblock.service")
+
+# Stable systemd identities shared by catalog definitions and runtime projections.
+SERVICE_CAMERA_CAPTURE_EDGE = "camera-capture@edge.service"
+SERVICE_CAMERA_CAPTURE_RAW = "camera-capture@raw.service"
+SERVICE_CAMERA_CAPTURE_SSD = "camera-capture@ssd.service"
+SERVICE_FRAME_DISTRIBUTOR = "frame-distributor.service"
+SERVICE_LCD_RENDERER = "lcd-renderer.service"
+SERVICE_MOTION_EXECUTOR = "motion-executor.service"
+SERVICE_RIDER_API = "rider-api.service"
+SERVICE_RIDER_BOOT_SPLASH = "rider-boot-splash.service"
+SERVICE_RIDER_BROKER = "rider-broker.service"
+TARGET_RIDER_CORE = "rider-core.target"
+TARGET_RIDER_FOLLOWME = "rider-followme.target"
+SERVICE_RIDER_MAPPER = "rider-mapper.service"
+TARGET_RIDER_MINIMAL = "rider-minimal.target"
+SERVICE_RIDER_NAVIGATOR = "rider-navigator.service"
+SERVICE_RIDER_OBSTACLE = "rider-obstacle.service"
+SERVICE_RIDER_ODOMETRY = "rider-odometry.service"
+SERVICE_RIDER_TRACKER = "rider-tracker.service"
+SERVICE_RIDER_TRACKING_CONTROLLER = "rider-tracking-controller.service"
+SERVICE_RIDER_VENOM_NAVIGATION = "rider-venom-navigation.service"
+SERVICE_RIDER_VISION_OFFLOAD = "rider-vision-offload.service"
+SERVICE_RIDER_VISION = "rider-vision.service"
+SERVICE_RIDER_VOICE_WEB = "rider-voice-web.service"
+SERVICE_RIDER_VOICE = "rider-voice.service"
+SERVICE_RIDER_WEB_BRIDGE = "rider-web-bridge.service"
+SERVICE_SENSOR_READER = "sensor-reader.service"
+SERVICE_WIFI_UNBLOCK = "wifi-unblock.service"
+BOOT_UNITS = (TARGET_RIDER_MINIMAL, SERVICE_RIDER_BOOT_SPLASH, SERVICE_LCD_RENDERER, SERVICE_WIFI_UNBLOCK)
 
 
 @dataclass(frozen=True)
@@ -57,19 +85,19 @@ _EN = {
 
 
 BASE_UNITS = (
-    "rider-broker.service",
-    "rider-api.service",
-    "motion-executor.service",
-    "sensor-reader.service",
-    "rider-web-bridge.service",
+    SERVICE_RIDER_BROKER,
+    SERVICE_RIDER_API,
+    SERVICE_MOTION_EXECUTOR,
+    SERVICE_SENSOR_READER,
+    SERVICE_RIDER_WEB_BRIDGE,
 )
-CAMERA_UNITS = ("camera-capture@raw.service", "frame-distributor.service")
+CAMERA_UNITS = (SERVICE_CAMERA_CAPTURE_RAW, SERVICE_FRAME_DISTRIBUTOR)
 MAP_UNITS = (
     *CAMERA_UNITS,
-    "rider-vision.service",
-    "rider-obstacle.service",
-    "rider-odometry.service",
-    "rider-mapper.service",
+    SERVICE_RIDER_VISION,
+    SERVICE_RIDER_OBSTACLE,
+    SERVICE_RIDER_ODOMETRY,
+    SERVICE_RIDER_MAPPER,
 )
 
 
@@ -101,14 +129,14 @@ def _feature(
 DEFAULT_REGISTRY = {
     **compute_features(_feature, CAMERA_UNITS),
     "s0_core": _feature(
-        "s0_core", "S0", "Baza / odczyt", "API i telemetria, bez zgody na napędy.", "rider-core.target", BASE_UNITS
+        "s0_core", "S0", "Baza / odczyt", "API i telemetria, bez zgody na napędy.", TARGET_RIDER_CORE, BASE_UNITS
     ),
     "s1_manual": _feature(
         "s1_manual",
         "S1",
         "Sterowanie ręczne",
         "Wymaga osobnego uzbrojenia operatora.",
-        "rider-core.target",
+        TARGET_RIDER_CORE,
         BASE_UNITS,
         ("control",),
         can_move=True,
@@ -119,7 +147,7 @@ DEFAULT_REGISTRY = {
         "S2",
         "Podgląd kamery",
         "Pasywny obraz z kamery.",
-        "rider-core.target",
+        TARGET_RIDER_CORE,
         CAMERA_UNITS,
         ("camera", "frame_feed"),
     ),
@@ -128,8 +156,8 @@ DEFAULT_REGISTRY = {
         "S3",
         "Follow Me — twarz",
         "Śledzenie z napędami.",
-        "rider-followme.target",
-        (*CAMERA_UNITS, "rider-tracker.service", "rider-tracking-controller.service"),
+        TARGET_RIDER_FOLLOWME,
+        (*CAMERA_UNITS, SERVICE_RIDER_TRACKER, SERVICE_RIDER_TRACKING_CONTROLLER),
         ("camera", "frame_feed", "control"),
         tracking_mode="face",
         can_move=True,
@@ -140,8 +168,8 @@ DEFAULT_REGISTRY = {
         "S3",
         "Follow Me — dłoń",
         "Śledzenie z napędami.",
-        "rider-followme.target",
-        (*CAMERA_UNITS, "rider-tracker.service", "rider-tracking-controller.service"),
+        TARGET_RIDER_FOLLOWME,
+        (*CAMERA_UNITS, SERVICE_RIDER_TRACKER, SERVICE_RIDER_TRACKING_CONTROLLER),
         ("camera", "frame_feed", "control"),
         tracking_mode="hand",
         can_move=True,
@@ -153,7 +181,7 @@ DEFAULT_REGISTRY = {
         "Rekonesans",
         "Nawigacja i mapowanie z napędami.",
         "rider-recon.target",
-        (*MAP_UNITS, "rider-navigator.service"),
+        (*MAP_UNITS, SERVICE_RIDER_NAVIGATOR),
         ("camera", "frame_feed", "control"),
         can_move=True,
         control_owner="navigation",
@@ -173,7 +201,7 @@ DEFAULT_REGISTRY = {
         "Tracker pasywny",
         "Obserwacja bez kontrolera ruchu.",
         "rider-tracker.target",
-        (*CAMERA_UNITS, "rider-tracker.service"),
+        (*CAMERA_UNITS, SERVICE_RIDER_TRACKER),
         ("camera", "frame_feed"),
         option_kind="tracking",
     ),
@@ -201,7 +229,7 @@ DEFAULT_REGISTRY = {
         "Pasywna nawigacja",
         "Odczyt istniejącego planu; ruch i osobne żądanie planowania w DISARMED są niedostępne.",
         "rider-navigate.target",
-        (*MAP_UNITS, "rider-navigator.service"),
+        (*MAP_UNITS, SERVICE_RIDER_NAVIGATOR),
         ("camera", "frame_feed", "control"),
         can_move=True,
         control_owner="navigation",
@@ -294,25 +322,25 @@ def tracking_mode_for(feature: FeatureDefinition, options: dict | None = None) -
 # (unit, id/alias, group, label, lifecycle, resources, can_move)
 _ROWS = (
     ("rider-venom-perception.service", "venom_perception", "vision", "Venom floor observation", "on-demand", (), False),
-    ("rider-api.service", "api", "core", "API", "startup", (), False),
-    ("rider-broker.service", "broker", "core", "BUS", "startup", (), False),
-    ("rider-web-bridge.service", "web-bridge", "core", "Web bridge", "startup", (), False),
-    ("motion-executor.service", "motion-executor", "motion", "Executor / UART", "startup", ("uart",), True),
-    ("sensor-reader.service", "sensor-reader", "motion", "Telemetria BUS", "startup", (), False),
-    ("lcd-renderer.service", "lcd-renderer", "core", "LCD", "startup", ("lcd",), False),
-    ("rider-boot-splash.service", "boot-splash", "core", "Boot splash", "startup", ("lcd",), False),
-    ("wifi-unblock.service", "wifi-unblock", "core", "Wi-Fi radio", "startup", (), False),
-    ("rider-minimal.target", "minimal-target", "core", "Minimal boot", "startup", (), False),
-    ("rider-core.target", "core-target", "core", "Core", "startup", (), False),
-    ("camera-capture@raw.service", "camera-capture-raw", "vision", "Kamera RAW", "on-demand", ("camera",), False),
-    ("camera-capture@edge.service", "camera-capture-edge", "vision", "Kamera EDGE", "dev", ("camera",), False),
-    ("camera-capture@ssd.service", "camera-capture-ssd", "vision", "Kamera SSD", "dev", ("camera",), False),
-    ("frame-distributor.service", "frame-distributor", "vision", "Feed", "on-demand", ("frame_feed",), False),
-    ("rider-vision.service", "vision", "vision", "Vision", "on-demand", (), False),
-    ("rider-obstacle.service", "obstacle", "vision", "Przeszkody", "on-demand", (), False),
-    ("rider-tracker.service", "tracker", "vision", "Tracker pasywny", "on-demand", (), False),
+    (SERVICE_RIDER_API, "api", "core", "API", "startup", (), False),
+    (SERVICE_RIDER_BROKER, "broker", "core", "BUS", "startup", (), False),
+    (SERVICE_RIDER_WEB_BRIDGE, "web-bridge", "core", "Web bridge", "startup", (), False),
+    (SERVICE_MOTION_EXECUTOR, "motion-executor", "motion", "Executor / UART", "startup", ("uart",), True),
+    (SERVICE_SENSOR_READER, "sensor-reader", "motion", "Telemetria BUS", "startup", (), False),
+    (SERVICE_LCD_RENDERER, "lcd-renderer", "core", "LCD", "startup", ("lcd",), False),
+    (SERVICE_RIDER_BOOT_SPLASH, "boot-splash", "core", "Boot splash", "startup", ("lcd",), False),
+    (SERVICE_WIFI_UNBLOCK, "wifi-unblock", "core", "Wi-Fi radio", "startup", (), False),
+    (TARGET_RIDER_MINIMAL, "minimal-target", "core", "Minimal boot", "startup", (), False),
+    (TARGET_RIDER_CORE, "core-target", "core", "Core", "startup", (), False),
+    (SERVICE_CAMERA_CAPTURE_RAW, "camera-capture-raw", "vision", "Kamera RAW", "on-demand", ("camera",), False),
+    (SERVICE_CAMERA_CAPTURE_EDGE, "camera-capture-edge", "vision", "Kamera EDGE", "dev", ("camera",), False),
+    (SERVICE_CAMERA_CAPTURE_SSD, "camera-capture-ssd", "vision", "Kamera SSD", "dev", ("camera",), False),
+    (SERVICE_FRAME_DISTRIBUTOR, "frame-distributor", "vision", "Feed", "on-demand", ("frame_feed",), False),
+    (SERVICE_RIDER_VISION, "vision", "vision", "Vision", "on-demand", (), False),
+    (SERVICE_RIDER_OBSTACLE, "obstacle", "vision", "Przeszkody", "on-demand", (), False),
+    (SERVICE_RIDER_TRACKER, "tracker", "vision", "Tracker pasywny", "on-demand", (), False),
     (
-        "rider-tracking-controller.service",
+        SERVICE_RIDER_TRACKING_CONTROLLER,
         "tracking-controller",
         "motion",
         "Follow controller",
@@ -321,7 +349,7 @@ _ROWS = (
         True,
     ),
     (
-        "rider-venom-navigation.service",
+        SERVICE_RIDER_VENOM_NAVIGATION,
         "venom_navigation",
         "motion",
         "Venom bounded navigation",
@@ -329,11 +357,11 @@ _ROWS = (
         ("control",),
         True,
     ),
-    ("rider-navigator.service", "navigator", "motion", "Nawigator", "on-demand", ("control",), True),
-    ("rider-mapper.service", "mapper", "vision", "Mapa", "on-demand", (), False),
-    ("rider-odometry.service", "odometry", "vision", "Odometria", "on-demand", (), False),
+    (SERVICE_RIDER_NAVIGATOR, "navigator", "motion", "Nawigator", "on-demand", ("control",), True),
+    (SERVICE_RIDER_MAPPER, "mapper", "vision", "Mapa", "on-demand", (), False),
+    (SERVICE_RIDER_ODOMETRY, "odometry", "vision", "Odometria", "on-demand", (), False),
     (
-        "rider-vision-offload.service",
+        SERVICE_RIDER_VISION_OFFLOAD,
         "vision-offload",
         "vision",
         "Offload obrazu",
@@ -341,8 +369,8 @@ _ROWS = (
         ("frame_feed",),
         False,
     ),
-    ("rider-voice.service", "voice", "voice", "Pełna rozmowa CLI", "on-demand", ("mic", "speaker"), False),
-    ("rider-voice-web.service", "voice-web", "voice", "Worker wybranej domeny ASR/TTS/chat", "on-demand", (), False),
+    (SERVICE_RIDER_VOICE, "voice", "voice", "Pełna rozmowa CLI", "on-demand", ("mic", "speaker"), False),
+    (SERVICE_RIDER_VOICE_WEB, "voice-web", "voice", "Worker wybranej domeny ASR/TTS/chat", "on-demand", (), False),
     ("rider-google-bridge.service", "google-bridge", "cloud", "Google bridge", "on-demand", (), False),
     ("rider-choreographer.service", "choreographer", "motion", "Gesty", "on-demand", ("control",), True),
     ("jupyter.service", "jupyter", "dev", "Jupyter ręczny", "manual", (), False),
@@ -385,14 +413,14 @@ for _task in DEFAULT_REGISTRY.values():
 for _unit, _meta in UNIT_CATALOG.items():
     _meta["motion_owner"] = (
         "follow_me"
-        if _unit in {"rider-tracking-controller.service", "rider-followme.target"}
+        if _unit in {SERVICE_RIDER_TRACKING_CONTROLLER, TARGET_RIDER_FOLLOWME}
         else "navigation"
         if _unit
         in {
-            "rider-navigator.service",
+            SERVICE_RIDER_NAVIGATOR,
             "rider-recon.target",
             "rider-navigate.target",
-            "rider-venom-navigation.service",
+            SERVICE_RIDER_VENOM_NAVIGATION,
             "rider-venom-navigation.target",
         }
         else "manual"
@@ -401,62 +429,62 @@ for _unit, _meta in UNIT_CATALOG.items():
     )
 
 _RUNTIME_MODULES = {
-    "rider-api.service": ("flask", "PIL", "requests", "zmq"),
-    "rider-broker.service": ("zmq",),
-    "motion-executor.service": ("zmq", "serial"),
-    "sensor-reader.service": ("zmq",),
-    "rider-web-bridge.service": ("flask", "zmq"),
-    "lcd-renderer.service": ("PIL",),
-    "rider-boot-splash.service": ("PIL",),
-    "camera-capture@raw.service": ("cv2", "numpy", "PIL", "zmq"),
-    "camera-capture@edge.service": ("cv2", "numpy"),
-    "camera-capture@ssd.service": ("cv2", "numpy", "PIL"),
-    "frame-distributor.service": ("cv2", "numpy", "zmq"),
-    "rider-tracker.service": ("cv2", "mediapipe", "zmq"),
-    "rider-tracking-controller.service": ("zmq",),
-    "rider-navigator.service": ("numpy", "zmq"),
-    "rider-mapper.service": ("numpy", "zmq"),
-    "rider-odometry.service": ("zmq",),
-    "rider-vision.service": ("zmq",),
-    "rider-obstacle.service": ("cv2", "numpy", "zmq"),
-    "rider-vision-offload.service": ("cv2", "numpy", "zmq"),
-    "rider-voice.service": ("requests",),
-    "rider-voice-web.service": ("flask",),
+    SERVICE_RIDER_API: ("flask", "PIL", "requests", "zmq"),
+    SERVICE_RIDER_BROKER: ("zmq",),
+    SERVICE_MOTION_EXECUTOR: ("zmq", "serial"),
+    SERVICE_SENSOR_READER: ("zmq",),
+    SERVICE_RIDER_WEB_BRIDGE: ("flask", "zmq"),
+    SERVICE_LCD_RENDERER: ("PIL",),
+    SERVICE_RIDER_BOOT_SPLASH: ("PIL",),
+    SERVICE_CAMERA_CAPTURE_RAW: ("cv2", "numpy", "PIL", "zmq"),
+    SERVICE_CAMERA_CAPTURE_EDGE: ("cv2", "numpy"),
+    SERVICE_CAMERA_CAPTURE_SSD: ("cv2", "numpy", "PIL"),
+    SERVICE_FRAME_DISTRIBUTOR: ("cv2", "numpy", "zmq"),
+    SERVICE_RIDER_TRACKER: ("cv2", "mediapipe", "zmq"),
+    SERVICE_RIDER_TRACKING_CONTROLLER: ("zmq",),
+    SERVICE_RIDER_NAVIGATOR: ("numpy", "zmq"),
+    SERVICE_RIDER_MAPPER: ("numpy", "zmq"),
+    SERVICE_RIDER_ODOMETRY: ("zmq",),
+    SERVICE_RIDER_VISION: ("zmq",),
+    SERVICE_RIDER_OBSTACLE: ("cv2", "numpy", "zmq"),
+    SERVICE_RIDER_VISION_OFFLOAD: ("cv2", "numpy", "zmq"),
+    SERVICE_RIDER_VOICE: ("requests",),
+    SERVICE_RIDER_VOICE_WEB: ("flask",),
 }
 for _unit, _meta in UNIT_CATALOG.items():
     _meta["runtime_modules"] = list(_RUNTIME_MODULES.get(_unit, ()))
-    if sys.version_info < (3, 11) and _unit in {"rider-voice.service", "rider-voice-web.service"}:
+    if sys.version_info < (3, 11) and _unit in {SERVICE_RIDER_VOICE, SERVICE_RIDER_VOICE_WEB}:
         _meta["runtime_modules"].append("tomli")
 
 # Python 3.9 is the device baseline. Catalog identifiers are stable HTTP identities.
 UNIT_ALIASES = {meta["id"]: unit for unit, meta in UNIT_CATALOG.items()}
 UNIT_ALIASES.update(
     {
-        "web": "rider-web-bridge.service",
-        "xgo": "motion-executor.service",
-        "motion": "motion-executor.service",
-        "motion-preview": "motion-executor.service",
-        "sensors": "sensor-reader.service",
-        "imu": "sensor-reader.service",
+        "web": SERVICE_RIDER_WEB_BRIDGE,
+        "xgo": SERVICE_MOTION_EXECUTOR,
+        "motion": SERVICE_MOTION_EXECUTOR,
+        "motion-preview": SERVICE_MOTION_EXECUTOR,
+        "sensors": SERVICE_SENSOR_READER,
+        "imu": SERVICE_SENSOR_READER,
         "cam": CAMERA_UNITS[0],
         "camera": CAMERA_UNITS[0],
         "last": CAMERA_UNITS[0],
         "lastframe": CAMERA_UNITS[0],
-        "edge": "camera-capture@edge.service",
-        "ssd": "camera-capture@ssd.service",
-        "offload": "rider-vision-offload.service",
-        "pc-offload": "rider-vision-offload.service",
+        "edge": SERVICE_CAMERA_CAPTURE_EDGE,
+        "ssd": SERVICE_CAMERA_CAPTURE_SSD,
+        "offload": SERVICE_RIDER_VISION_OFFLOAD,
+        "pc-offload": SERVICE_RIDER_VISION_OFFLOAD,
     }
 )
-CAMERA_CAPTURE_UNITS = frozenset((CAMERA_UNITS[0], "camera-capture@edge.service", "camera-capture@ssd.service"))
+CAMERA_CAPTURE_UNITS = frozenset((CAMERA_UNITS[0], SERVICE_CAMERA_CAPTURE_EDGE, SERVICE_CAMERA_CAPTURE_SSD))
 PROTECTED_UNITS = frozenset(
     (
         *BASE_UNITS,
-        "rider-core.target",
-        "rider-minimal.target",
-        "wifi-unblock.service",
-        "rider-boot-splash.service",
-        "lcd-renderer.service",
+        TARGET_RIDER_CORE,
+        TARGET_RIDER_MINIMAL,
+        SERVICE_WIFI_UNBLOCK,
+        SERVICE_RIDER_BOOT_SPLASH,
+        SERVICE_LCD_RENDERER,
     )
 )
 
@@ -468,63 +496,72 @@ def task_domain(feature: FeatureDefinition, options: dict | None = None) -> str 
     return (options or {}).get("domain", option_schema(feature)["default"])
 
 
+def _vision_task_members(options):
+    provider = options.get("provider", "local")
+    if provider not in {"local", "pc"}:
+        raise ValueError("provider must be local or pc")
+    analysis = (
+        (SERVICE_RIDER_VISION, SERVICE_RIDER_OBSTACLE) if provider == "local" else (SERVICE_RIDER_VISION_OFFLOAD,)
+    )
+    return (*CAMERA_UNITS, *analysis)
+
+
+def _domain_task_members(feature, options):
+    domain = task_domain(feature, options)
+    domains = {
+        "voice": (SERVICE_RIDER_VOICE_WEB, SERVICE_RIDER_VOICE),
+        "asr": (SERVICE_RIDER_VOICE_WEB,),
+        "tts": (SERVICE_RIDER_VOICE_WEB,),
+        "text": (SERVICE_RIDER_VOICE_WEB,),
+        "vision": (*CAMERA_UNITS, SERVICE_RIDER_VISION_OFFLOAD),
+        "google": ("rider-google-bridge.service",),
+    }
+    if domain not in domains or (feature.option_kind == "voice" and domain not in {"voice", "asr", "tts"}):
+        raise ValueError("unsupported domain")
+    return domains[domain]
+
+
+def _tool_task_members(options):
+    tool = options.get("tool", "edge")
+    tools = {"edge": (SERVICE_CAMERA_CAPTURE_EDGE,), "ssd": (SERVICE_CAMERA_CAPTURE_SSD,), "raw": CAMERA_UNITS}
+    if tool not in tools:
+        raise ValueError("tool must be edge, ssd or raw; Jupyter is manual")
+    return tools[tool]
+
+
+def _selected_task_members(feature, options, members):
+    if feature.option_kind == "vision":
+        return _vision_task_members(options)
+    if feature.option_kind in {"voice", "provider"}:
+        return _domain_task_members(feature, options)
+    if feature.option_kind == "tool":
+        return _tool_task_members(options)
+    return members
+
+
 def task_units(feature: FeatureDefinition, options: dict | None = None) -> tuple[str, ...]:
     """Resolve one minimal domain/tool. Invalid choices never fall back silently."""
     options = options or {}
     members = tuple(feature.members)
     kind = feature.option_kind
-    allowed_keys = (
-        {"provider"}
-        if kind == "vision"
-        else {"domain"}
-        if kind in {"voice", "provider"}
-        else {"tool"}
-        if kind == "tool"
-        else {"mode"}
-        if kind == "tracking"
-        else set()
-    )
-    if set(options) - allowed_keys:
+    allowed_keys = {
+        "vision": {"provider"},
+        "voice": {"domain"},
+        "provider": {"domain"},
+        "tool": {"tool"},
+        "tracking": {"mode"},
+    }
+    if set(options) - allowed_keys.get(kind, set()):
         raise ValueError("unsupported task option")
     if kind == "tracking":
         tracking_mode_for(feature, options)
-    if kind == "vision":
-        provider = options.get("provider", "local")
-        if provider not in {"local", "pc"}:
-            raise ValueError("provider must be local or pc")
-        members = (
-            *CAMERA_UNITS,
-            *(
-                ("rider-vision.service", "rider-obstacle.service")
-                if provider == "local"
-                else ("rider-vision-offload.service",)
-            ),
-        )
-    elif kind in {"voice", "provider"}:
-        domain = task_domain(feature, options)
-        domains = {
-            "voice": ("rider-voice-web.service", "rider-voice.service"),
-            "asr": ("rider-voice-web.service",),
-            "tts": ("rider-voice-web.service",),
-            "text": ("rider-voice-web.service",),
-            "vision": (*CAMERA_UNITS, "rider-vision-offload.service"),
-            "google": ("rider-google-bridge.service",),
-        }
-        if domain not in domains or (kind == "voice" and domain not in {"voice", "asr", "tts"}):
-            raise ValueError("unsupported domain")
-        members = domains[domain]
-    elif kind == "tool":
-        tool = options.get("tool", "edge")
-        tools = {"edge": ("camera-capture@edge.service",), "ssd": ("camera-capture@ssd.service",), "raw": CAMERA_UNITS}
-        if tool not in tools:
-            raise ValueError("tool must be edge, ssd or raw; Jupyter is manual")
-        members = tools[tool]
+    members = _selected_task_members(feature, options, members)
     if not members and feature.ensure_cam and not kind:
         members = CAMERA_UNITS
     from services.camera_pipeline_store import enabled
 
     if CAMERA_UNITS[0] in members and enabled():
-        members = tuple(unit for unit in members if unit != "frame-distributor.service")
+        members = tuple(unit for unit in members if unit != SERVICE_FRAME_DISTRIBUTOR)
     return tuple(dict.fromkeys((*BASE_UNITS, *members, *feature.services)))
 
 
@@ -568,18 +605,18 @@ def catalog_payload() -> dict:
 def unit_availability(unit: str) -> dict:
     """Implementation availability, separate from installation and ARM permission."""
     meta = UNIT_CATALOG.get(unit, {})
-    if unit in {"rider-obstacle.service", "rider-obstacle.target"}:
+    if unit in {SERVICE_RIDER_OBSTACLE, "rider-obstacle.target"}:
         from services.camera_pipeline_store import enabled, snapshot
 
         if enabled() and snapshot()["profile"]["analysis_location"] != "local":
             return {"start_available": False, "start_unavailable_reason": "camera_pipeline_profile_conflict"}
-    if unit in {"rider-venom-navigation.service", "rider-venom-navigation.target"}:
+    if unit in {SERVICE_RIDER_VENOM_NAVIGATION, "rider-venom-navigation.target"}:
         from apps.safety.state import read_status
 
         if read_status().get("remote_decision_deadline_supported") is not True:
             return {"start_available": False, "start_unavailable_reason": "navigation_executor_update_required"}
     members = {member for rows in meta.get("task_members", {}).values() for member in rows}
-    unavailable = unit == "rider-navigator.service" or "rider-navigator.service" in members
+    unavailable = unit == SERVICE_RIDER_NAVIGATOR or SERVICE_RIDER_NAVIGATOR in members
     return {
         "start_available": bool(meta) and not unavailable,
         "start_unavailable_reason": "navigation_traversal_unverified"

@@ -89,7 +89,7 @@ def test_selected_text_glue_sends_real_chat_payload_without_echo(monkeypatch):
         calls.append((request.full_url, json.loads(request.data)))
         return FakeResponse()
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(chat_glue, "_open_selected_worker", fake_open)
     assert chat_glue._try_remote_api("operator prompt") == (True, "model reply")
     assert calls == [
         (

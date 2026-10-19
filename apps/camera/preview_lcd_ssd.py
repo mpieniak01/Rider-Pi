@@ -169,16 +169,16 @@ def _try_encode(ext: str, img, params) -> bytes | None:
 
 
 def _select_ext(img_raw, img_proc) -> str:
-    if SNAP_EXT_FORCED in (".jpg", ".jpeg", ".png", ".bmp"):
+    if SNAP_EXT_FORCED in (".jpg", _JPEG_EXTENSION, ".png", ".bmp"):
         table = {
             ".jpg": [int(cv2.IMWRITE_JPEG_QUALITY), 85],
-            ".jpeg": [int(cv2.IMWRITE_JPEG_QUALITY), 85],
+            _JPEG_EXTENSION: [int(cv2.IMWRITE_JPEG_QUALITY), 85],
             ".png": [int(cv2.IMWRITE_PNG_COMPRESSION), 3],
             ".bmp": [],
         }
-        p = table[".jpg"] if SNAP_EXT_FORCED == ".jpeg" else table[SNAP_EXT_FORCED]
+        p = table[".jpg"] if SNAP_EXT_FORCED == _JPEG_EXTENSION else table[SNAP_EXT_FORCED]
         if _try_encode(SNAP_EXT_FORCED, img_raw, p) and _try_encode(SNAP_EXT_FORCED, img_proc, p):
-            return ".jpg" if SNAP_EXT_FORCED == ".jpeg" else SNAP_EXT_FORCED
+            return ".jpg" if SNAP_EXT_FORCED == _JPEG_EXTENSION else SNAP_EXT_FORCED
     for ext, params in [
         (".jpg", [int(cv2.IMWRITE_JPEG_QUALITY), 85]),
         (".png", [int(cv2.IMWRITE_PNG_COMPRESSION), 3]),
@@ -235,6 +235,129 @@ def save_raw_and_proc(raw_img, proc_img):
             _atomic_write_bytes(os.path.join(SNAP_DIR, f"{name}{ext}"), data)
 
 
+_JPEG_EXTENSION = ".jpeg"
+
+
+def _ssd_fresh_detections(frame, net, score_threshold, classes):
+    fresh_detections = []
+    blob = cv2.dnn.blobFromImage(
+        cv2.resize(frame, (300, 300)),
+        0.007843,
+        (300, 300),
+        127.5,
+        swapRB=True,
+        crop=False,
+    )
+    net.setInput(blob)
+    det = net.forward()
+    h, w = frame.shape[:2]
+    for i in range(det.shape[2]):
+        conf = float(det[0, 0, i, 2])
+        if conf < score_threshold:
+            continue
+        cls_id = int(det[0, 0, i, 1])
+        x1 = int(det[0, 0, i, 3] * w)
+        y1 = int(det[0, 0, i, 4] * h)
+        x2 = int(det[0, 0, i, 5] * w)
+        y2 = int(det[0, 0, i, 6] * h)
+        x1 = max(0, min(x1, w - 1))
+        y1 = max(0, min(y1, h - 1))
+        x2 = max(0, min(x2, w - 1))
+        y2 = max(0, min(y2, h - 1))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
+        if classes and (name.lower() not in classes):
+            continue
+        tup = (name, conf, (x1, y1, x2, y2))
+        fresh_detections.append(tup)
+
+    return fresh_detections
+
+
+def _draw_ssd_detections(out, detections):
+    for name, conf, (x1, y1, x2, y2) in detections:
+        if not NO_DRAW:
+            cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 255), 2)
+            cv2.putText(
+                out,
+                f"{name}:{conf:.2f}",
+                (x1, max(0, y1 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
+
+
+def _publish_ssd_detections(fresh_detections):
+    for name, conf, (x1, y1, x2, y2) in fresh_detections:
+        if name.lower() == "person":
+            try:
+                PUB.publish(
+                    "vision.person",
+                    {
+                        "present": True,
+                        "score": float(conf),
+                        "bbox": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
+                    },
+                    add_ts=True,
+                )
+            except Exception:
+                pass
+
+
+def _ssd_preview_frame(frame, net, frame_id, every, score, classes):
+    out = frame.copy()
+    fresh = _ssd_fresh_detections(frame, net, score, classes) if frame_id % max(1, every) == 0 else []
+    detections = latch_dets(fresh)
+    _draw_ssd_detections(out, detections)
+    _publish_ssd_detections(fresh)
+    return out, fresh
+
+
+def _save_ssd_snapshots(frame, out):
+    # --- snapshoty (atomowo, z fallbackiem formatu) z throttlingiem do WWW ---
+    if should_snap_now():
+        save_raw_and_proc(frame, out)
+        try:
+            SNAP.cam(frame)
+            SNAP.proc(out)
+            SNAP.lcd_from_frame(out)
+            SNAP.lcd_from_fb()
+        except Exception:
+            pass
+
+
+def _log_ssd_snapshot_sizes(now, last_snap_log):
+    # co ~10 s lekki log diagnostyczny
+    if now - last_snap_log > 10:
+        try:
+            for base in ("proc", "raw"):
+                for ext in (".jpg", ".png", ".bmp"):
+                    p = os.path.join(SNAP_DIR, f"{base}{ext}")
+                    if os.path.exists(p):
+                        s = os.path.getsize(p)
+                        print(
+                            f"[snap] {base}{ext} size={s}B @ {time.strftime('%H:%M:%S')}",
+                            flush=True,
+                        )
+                        break
+        except Exception:
+            pass
+        last_snap_log = now
+
+    return last_snap_log
+
+
+def _log_ssd_frame_rate(frames, t0, every, score_threshold):
+    if frames % 60 == 0:
+        dt_all = time.time() - t0
+        fps = frames / dt_all if dt_all > 0 else 0.0
+        print(f"[ssd] fps={fps:.1f} (every={every}, score>={score_threshold})", flush=True)
+
+
 def main():
     SCORE = float(os.getenv("SSD_SCORE", "0.55"))
     # WSPARCIE dla obu nazw: najpierw EVERY, potem SSD_EVERY (domyślnie 1 = co klatkę)
@@ -276,104 +399,11 @@ def main():
             fps_ema = inst if fps_ema is None else 0.9 * fps_ema + 0.1 * inst
             prev_t = now
 
-            out = frame.copy()
-            detections: list[tuple[str, float, tuple[int, int, int, int]]] = []
-            fresh_detections: list[tuple[str, float, tuple[int, int, int, int]]] = []
+            out, _ = _ssd_preview_frame(frame, net, frame_id, EVERY, SCORE, CLW)
 
-            # Inference co N-tą klatkę
-            if frame_id % max(1, EVERY) == 0:
-                blob = cv2.dnn.blobFromImage(
-                    cv2.resize(frame, (300, 300)),
-                    0.007843,
-                    (300, 300),
-                    127.5,
-                    swapRB=True,
-                    crop=False,
-                )
-                net.setInput(blob)
-                det = net.forward()
-                h, w = frame.shape[:2]
-                for i in range(det.shape[2]):
-                    conf = float(det[0, 0, i, 2])
-                    if conf < SCORE:
-                        continue
-                    cls_id = int(det[0, 0, i, 1])
-                    x1 = int(det[0, 0, i, 3] * w)
-                    y1 = int(det[0, 0, i, 4] * h)
-                    x2 = int(det[0, 0, i, 5] * w)
-                    y2 = int(det[0, 0, i, 6] * h)
-                    x1 = max(0, min(x1, w - 1))
-                    y1 = max(0, min(y1, h - 1))
-                    x2 = max(0, min(x2, w - 1))
-                    y2 = max(0, min(y2, h - 1))
-                    if x2 <= x1 or y2 <= y1:
-                        continue
-                    name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
-                    if CLW and (name.lower() not in CLW):
-                        continue
-                    tup = (name, conf, (x1, y1, x2, y2))
-                    fresh_detections.append(tup)
+            _save_ssd_snapshots(frame, out)
 
-            # Rysowanie z LATCH (ciągły obrys dla oka)
-            detections = latch_dets(fresh_detections)
-
-            for name, conf, (x1, y1, x2, y2) in detections:
-                if not NO_DRAW:
-                    cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 255), 2)
-                    cv2.putText(
-                        out,
-                        f"{name}:{conf:.2f}",
-                        (x1, max(0, y1 - 5)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 255),
-                        1,
-                        cv2.LINE_AA,
-                    )
-
-            # Publikacja tylko dla realnych trafień z tej klatki (nie latched)
-            for name, conf, (x1, y1, x2, y2) in fresh_detections:
-                if name.lower() == "person":
-                    try:
-                        PUB.publish(
-                            "vision.person",
-                            {
-                                "present": True,
-                                "score": float(conf),
-                                "bbox": [int(x1), int(y1), int(x2 - x1), int(y2 - y1)],
-                            },
-                            add_ts=True,
-                        )
-                    except Exception:
-                        pass
-
-            # --- snapshoty (atomowo, z fallbackiem formatu) z throttlingiem do WWW ---
-            if should_snap_now():
-                save_raw_and_proc(frame, out)
-                try:
-                    SNAP.cam(frame)
-                    SNAP.proc(out)
-                    SNAP.lcd_from_frame(out)
-                    SNAP.lcd_from_fb()
-                except Exception:
-                    pass
-
-            # co ~10 s lekki log diagnostyczny
-            if now - last_snap_log > 10:
-                try:
-                    for base in ("proc", "raw"):
-                        for ext in (".jpg", ".png", ".bmp"):
-                            p = os.path.join(SNAP_DIR, f"{base}{ext}")
-                            if os.path.exists(p):
-                                s = os.path.getsize(p)
-                                print(
-                                    f"[snap] {base}{ext} size={s}B @ {time.strftime('%H:%M:%S')}",
-                                    flush=True,
-                                )
-                                break
-                except Exception:
-                    pass
-                last_snap_log = now
+            last_snap_log = _log_ssd_snapshot_sizes(now, last_snap_log)
 
             # LCD
             lcd_show_bgr(out)
@@ -381,10 +411,7 @@ def main():
 
             frame_id += 1
             frames += 1
-            if frames % 60 == 0:
-                dt_all = time.time() - t0
-                fps = frames / dt_all if dt_all > 0 else 0.0
-                print(f"[ssd] fps={fps:.1f} (every={EVERY}, score>={SCORE})", flush=True)
+            _log_ssd_frame_rate(frames, t0, EVERY, SCORE)
 
     finally:
         try:

@@ -48,30 +48,33 @@ class SensorSamples:
             "error": None if valid else "invalid_or_missing_measurement",
         }
 
+    def _sensor_quality(self, name, now, wall):
+        row = self.rows.get(name, {})
+        ts, mono = row.get("observed_at"), row.get("monotonic_at")
+        mono_age = now - mono if finite(mono) else None
+        wall_age = wall - ts if finite(ts) else None
+        age = max(mono_age, wall_age) if finite(mono_age) and finite(wall_age) else None
+        fresh = age is not None and 0 <= age <= MAX_SENSOR_AGE_S and mono_age >= 0 and wall_age >= 0
+        ready = fresh and row.get("value") is not None and not row.get("error")
+        return {
+            "value": row.get("value") if ready else None,
+            "observed_at": ts,
+            "age_s": max(0.0, age) if finite(age) else None,
+            "ready": bool(ready),
+            "error": None if ready else row.get("error") or "measurement_stale_or_missing",
+            "unit": UNITS[name],
+            "source": "motion-executor",
+            "instance_id": self.instance_id,
+            "simulated": self.simulated,
+            "max_age_s": MAX_SENSOR_AGE_S,
+            "physical_validity": "unverified",
+        }
+
     def quality(self):
         now, wall = self.clock(), self.wall_clock()
         rows = {}
         for name in REQUIRED + tuple(n for n in OPTIONAL_SENSORS if n in self.rows):
-            row = self.rows.get(name, {})
-            ts, mono = row.get("observed_at"), row.get("monotonic_at")
-            mono_age = now - mono if finite(mono) else None
-            wall_age = wall - ts if finite(ts) else None
-            age = max(mono_age, wall_age) if finite(mono_age) and finite(wall_age) else None
-            fresh = age is not None and 0 <= age <= MAX_SENSOR_AGE_S and mono_age >= 0 and wall_age >= 0
-            ready = fresh and row.get("value") is not None and not row.get("error")
-            rows[name] = {
-                "value": row.get("value") if ready else None,
-                "observed_at": ts,
-                "age_s": max(0.0, age) if finite(age) else None,
-                "ready": bool(ready),
-                "error": None if ready else row.get("error") or "measurement_stale_or_missing",
-                "unit": UNITS[name],
-                "source": "motion-executor",
-                "instance_id": self.instance_id,
-                "simulated": self.simulated,
-                "max_age_s": MAX_SENSOR_AGE_S,
-                "physical_validity": "unverified",
-            }
+            rows[name] = self._sensor_quality(name, now, wall)
         missing = [name for name in REQUIRED if not rows[name]["ready"]]
         times = [rows[name]["observed_at"] for name in REQUIRED if finite(rows[name]["observed_at"])]
         return {

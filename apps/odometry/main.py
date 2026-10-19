@@ -75,14 +75,8 @@ class OdometryEstimator:
             }
         )
 
-    def _executor_quality(self, *, allow_transition=False):
-        row = self.executor_state
-        status = sample_status(row, max_age_s=EXECUTOR_MAX_AGE_S, now=self.wall_clock())
-        if not status["ready"]:
-            return status
-        age = self.clock() - self.executor_state_received_at
-        if not 0 <= age <= EXECUTOR_MAX_AGE_S:
-            return dict(status, ready=False, error="executor_arrival_stale")
+    @staticmethod
+    def _executor_shape_valid(row):
         if (
             type(row.get("contract_version")) is not int
             or row["contract_version"] != 1
@@ -94,13 +88,25 @@ class OdometryEstimator:
             or type(row.get("moving")) is not bool
             or row.get("data_error")
         ):
-            return dict(status, ready=False, error="executor_stationary_unconfirmed")
+            return False
         for name in ("target", "output"):
             values = row.get(name)
             if not isinstance(values, dict) or any(
                 not finite_number(values.get(key)) or abs(values[key]) > 1 for key in ("lx", "az")
             ):
-                return dict(status, ready=False, error="executor_stationary_unconfirmed")
+                return False
+        return True
+
+    def _executor_quality(self, *, allow_transition=False):
+        row = self.executor_state
+        status = sample_status(row, max_age_s=EXECUTOR_MAX_AGE_S, now=self.wall_clock())
+        if not status["ready"]:
+            return status
+        age = self.clock() - self.executor_state_received_at
+        if not 0 <= age <= EXECUTOR_MAX_AGE_S:
+            return dict(status, ready=False, error="executor_arrival_stale")
+        if not self._executor_shape_valid(row):
+            return dict(status, ready=False, error="executor_stationary_unconfirmed")
         output = self.output
         reported = row.get("sdk_output")
         if (
@@ -163,16 +169,30 @@ class OdometryEstimator:
             return dict(status, pending=True)
         return dict(status, ready=False, error="executor_stationary_unconfirmed")
 
-    def update_executor_state(self, payload):
-        if self.profile_binding is not None:
-            self.profile_binding.observe(payload)
-        # State is liveness, never another SDK write or mechanical stop proof.
-        previous = self.executor_state.get("observed_at") if self.executor_state else None
+    def _check_state_continuity(self):
         if self._idle_confirmed and not self._output_quality(for_continuity=True)["ready"]:
             if self.reference_verified or self._has_moved:
                 self.continuity_error = self.continuity_error or "executor_state_gap"
             self._idle_confirmed = False
             self._pending_output_since = None
+
+    def _pending_executor_state(self, status, current):
+        if status["ready"] and current["ready"] and current.get("pending"):
+            if not self._idle_confirmed:
+                return None
+            if self._pending_output_since is None:
+                self._pending_output_since = self.clock()
+            if 0 <= self.clock() - self._pending_output_since <= OUTPUT_MAX_AGE_S:
+                return None
+            current = dict(current, ready=False, error="sdk_output_transition_timeout")
+        return current
+
+    def update_executor_state(self, payload):
+        if self.profile_binding is not None:
+            self.profile_binding.observe(payload)
+        # State is liveness, never another SDK write or mechanical stop proof.
+        previous = self.executor_state.get("observed_at") if self.executor_state else None
+        self._check_state_continuity()
         status = sample_status(payload, max_age_s=EXECUTOR_MAX_AGE_S, now=self.wall_clock(), previous_ts=previous)
         instance = payload.get("instance_id") if isinstance(payload, dict) else None
         if (
@@ -189,14 +209,12 @@ class OdometryEstimator:
         self.executor_state = dict(payload) if isinstance(payload, dict) else None
         self.executor_state_received_at = self.clock()
         current = self._executor_quality(allow_transition=True)
-        if status["ready"] and current["ready"] and current.get("pending"):
-            if not self._idle_confirmed:
-                return False
-            if self._pending_output_since is None:
-                self._pending_output_since = self.clock()
-            if 0 <= self.clock() - self._pending_output_since <= OUTPUT_MAX_AGE_S:
-                return False
-            current = dict(current, ready=False, error="sdk_output_transition_timeout")
+        current = self._pending_executor_state(status, current)
+        if current is None:
+            return False
+        return self._accept_executor_state(status, current)
+
+    def _accept_executor_state(self, status, current):
         if not status["ready"] or not current["ready"]:
             if self._idle_confirmed and (self.reference_verified or self._has_moved):
                 self.continuity_error = self.continuity_error or status["error"] or current["error"]
@@ -217,25 +235,47 @@ class OdometryEstimator:
         self._idle_confirmed = self._idle_confirmed or fresh
         return self._idle_confirmed
 
+    def _pending_output_quality(self, for_continuity):
+        current = self._executor_quality(allow_transition=True)
+        if current["ready"] and current.get("pending"):
+            if 0 <= self.clock() - self._pending_output_since <= OUTPUT_MAX_AGE_S:
+                return current if for_continuity else dict(current, ready=False, error="sdk_output_pending")
+            return dict(current, ready=False, error="sdk_output_transition_timeout")
+        return dict(current, ready=False, error=current["error"] or "sdk_output_transition_unobserved")
+
+    def _held_output_quality(self, status):
+        current = self._executor_quality()
+        # Only age expires for a held STOP; future/failed source times deny.
+        if current["ready"] and status["age_s"] is not None and self.wall_clock() >= status["observed_at"]:
+            return current
+        return dict(status, ready=False, error=current["error"] or status["error"])
+
     def _output_quality(self, *, for_continuity=False):
         status = sample_status(self.output, max_age_s=OUTPUT_MAX_AGE_S, now=self.wall_clock())
         arrival = None if self.output_received_at is None else self.clock() - self.output_received_at
         if self._pending_output_since is not None:
-            current = self._executor_quality(allow_transition=True)
-            if current["ready"] and current.get("pending"):
-                if 0 <= self.clock() - self._pending_output_since <= OUTPUT_MAX_AGE_S:
-                    return current if for_continuity else dict(current, ready=False, error="sdk_output_pending")
-                return dict(current, ready=False, error="sdk_output_transition_timeout")
-            return dict(current, ready=False, error=current["error"] or "sdk_output_transition_unobserved")
+            return self._pending_output_quality(for_continuity)
         if status["ready"] and arrival is not None and 0 <= arrival <= OUTPUT_MAX_AGE_S:
             return status
         if self._idle_confirmed and arrival is not None and arrival >= 0:
-            current = self._executor_quality()
-            # Only age expires for a held STOP; future/failed source times deny.
-            if current["ready"] and status["age_s"] is not None and self.wall_clock() >= status["observed_at"]:
-                return current
-            return dict(status, ready=False, error=current["error"] or status["error"])
+            return self._held_output_quality(status)
         return dict(status, ready=False, error=status["error"] or "source_arrival_stale")
+
+    def _reference_output_ready(self):
+        if self.calibration_digest is not None and self.output is None:
+            return False
+        if self.calibration_state()["error"]:
+            return False
+        if self.last_lx != 0 or self.last_az != 0:
+            return False
+        if self.output is not None and self.output.get("stopped") is not True:
+            return False
+        if self.output is not None:
+            if not self._output_quality()["ready"]:
+                return False
+        if self.executor_state is not None and not self._executor_quality()["ready"]:
+            return False
+        return True
 
     def set_reference(
         self,
@@ -252,18 +292,7 @@ class OdometryEstimator:
         """In-process reference after a manual position check; never restored."""
         if operator_consent is not True or not isinstance(reference_id, str) or not reference_id.strip():
             return False
-        if self.calibration_digest is not None and self.output is None:
-            return False
-        if self.calibration_state()["error"]:
-            return False
-        if self.last_lx != 0 or self.last_az != 0:
-            return False
-        if self.output is not None and self.output.get("stopped") is not True:
-            return False
-        if self.output is not None:
-            if not self._output_quality()["ready"]:
-                return False
-        if self.executor_state is not None and not self._executor_quality()["ready"]:
+        if not self._reference_output_ready():
             return False
         if not all(finite_number(value) for value in (x, y, theta)):
             return False
@@ -297,10 +326,7 @@ class OdometryEstimator:
         # proof that SDK executed a write, and cannot update physical odometry.
         return False
 
-    def update_output(self, payload):
-        old = self._output_quality(for_continuity=True)
-        previous = self.output.get("observed_at") if self.output else None
-        status = sample_status(payload, max_age_s=OUTPUT_MAX_AGE_S, now=self.wall_clock(), previous_ts=previous)
+    def _valid_output(self, payload, status):
         valid = status["ready"] and payload.get("accepted") is True and payload.get("source") == "motion-executor"
         valid = valid and isinstance(payload.get("generation"), str) and bool(payload["generation"])
         valid = valid and isinstance(payload.get("instance_id"), str) and bool(payload["instance_id"])
@@ -311,21 +337,9 @@ class OdometryEstimator:
             or status["ready"]
             and status["observed_at"] > self.calibration_applied_at
         )
-        if not valid:
-            self.last_lx = self.last_az = 0.0
-            self.output = None
-            self._idle_confirmed = False
-            self._pending_output_since = None
-            if self._has_moved or self.reference_verified:
-                self.continuity_error = status["error"] or "sdk_output_unconfirmed"
-            return False
-        if payload["stopped"] and (payload["linear_step"] != 0 or payload["turn_step"] != 0):
-            self.output = None
-            self._idle_confirmed = False
-            self._pending_output_since = None
-            self.last_lx = self.last_az = 0.0
-            self.continuity_error = "inconsistent_sdk_stop"
-            return False
+        return valid
+
+    def _check_output_replacement(self, payload, old):
         if self._executor_instance is not None and payload["instance_id"] != self._executor_instance:
             self.reference_verified = False
             self.reference_id = None
@@ -341,6 +355,28 @@ class OdometryEstimator:
                 self.continuity_error = "motion_generation_changed_without_stop"
             elif (self._has_moved or self.reference_verified) and not old["ready"]:
                 self.continuity_error = "output_gap_before_replacement"
+
+    def update_output(self, payload):
+        old = self._output_quality(for_continuity=True)
+        previous = self.output.get("observed_at") if self.output else None
+        status = sample_status(payload, max_age_s=OUTPUT_MAX_AGE_S, now=self.wall_clock(), previous_ts=previous)
+        valid = self._valid_output(payload, status)
+        if not valid:
+            self.last_lx = self.last_az = 0.0
+            self.output = None
+            self._idle_confirmed = False
+            self._pending_output_since = None
+            if self._has_moved or self.reference_verified:
+                self.continuity_error = status["error"] or "sdk_output_unconfirmed"
+            return False
+        if payload["stopped"] and (payload["linear_step"] != 0 or payload["turn_step"] != 0):
+            self.output = None
+            self._idle_confirmed = False
+            self._pending_output_since = None
+            self.last_lx = self.last_az = 0.0
+            self.continuity_error = "inconsistent_sdk_stop"
+            return False
+        self._check_output_replacement(payload, old)
         self.output = dict(payload)
         self._idle_confirmed = False
         self._pending_output_since = None
@@ -363,11 +399,14 @@ class OdometryEstimator:
             self._idle_confirmed = True
         return True
 
-    def update_imu(self, yaw, *, observed_at=None, payload=None):
+    def _check_imu_continuity(self):
         if self.imu is not None and (self._has_moved or self._pending_output_since is not None):
             old = sample_status(self.imu, max_age_s=IMU_MAX_AGE_S, now=self.wall_clock())
             if not old["ready"] or not 0 <= self.clock() - self.imu_received_at <= IMU_MAX_AGE_S:
                 self.continuity_error = self.continuity_error or "imu_gap_before_replacement"
+
+    def update_imu(self, yaw, *, observed_at=None, payload=None):
+        self._check_imu_continuity()
         row = dict(payload or {}, yaw=yaw, observed_at=observed_at)
         status = sample_status(row, max_age_s=IMU_MAX_AGE_S, now=self.wall_clock(), previous_ts=self.last_imu_ts)
         if (
@@ -392,9 +431,7 @@ class OdometryEstimator:
         self.imu_available = True
         return True
 
-    def quality(self):
-        output = self._output_quality()
-        imu = sample_status(self.imu, max_age_s=IMU_MAX_AGE_S, now=self.wall_clock())
+    def _quality_error(self, output, imu):
         error = self.profile_binding.error if self.profile_binding is not None else None
         error = error or self.calibration_error or self.continuity_error
         if not error and not self.reference_verified:
@@ -406,6 +443,12 @@ class OdometryEstimator:
             if received is None or not 0 <= self.clock() - received <= budget:
                 if error is None or error == "sdk_output_pending":
                     error = "source_arrival_stale"
+        return error
+
+    def quality(self):
+        output = self._output_quality()
+        imu = sample_status(self.imu, max_age_s=IMU_MAX_AGE_S, now=self.wall_clock())
+        error = self._quality_error(output, imu)
         observed = min(output["observed_at"], imu["observed_at"]) if output["ready"] and imu["ready"] else None
         return {
             "data_ready": error is None,
@@ -511,27 +554,33 @@ class Odometry:
         self.last_publish_ts = time.monotonic()
         self.reference.publish_status()
 
+    def _receive_updates(self):
+        topic, row = self._recv_safe(self.sub_motion, 10)
+        if topic == "motion.output" and row:
+            self._handle_motion_command(row)
+        topic, row = self._recv_safe(self.sub_state, 0)
+        if topic == "motion.state" and row:
+            self.estimator.update_executor_state(row)
+        topic, row = self._recv_safe(self.sub_imu, 10)
+        if topic == TOPIC_IMU_DATA and row:
+            self._handle_imu_data(row)
+        topic, row = self._recv_safe(self.sub_reference, 0)
+        if topic == "odometry.reference" and row:
+            self.reference.apply(row)
+
+    def _update_and_publish(self):
+        now = time.monotonic()
+        if now - self.last_update_ts >= self.update_period:
+            self.estimator.update_pose(now - self.last_update_ts)
+            self.last_update_ts = now
+        if now - self.last_publish_ts >= self.publish_period:
+            self._publish_pose()
+
     def run(self):
         try:
             while True:
-                topic, row = self._recv_safe(self.sub_motion, 10)
-                if topic == "motion.output" and row:
-                    self._handle_motion_command(row)
-                topic, row = self._recv_safe(self.sub_state, 0)
-                if topic == "motion.state" and row:
-                    self.estimator.update_executor_state(row)
-                topic, row = self._recv_safe(self.sub_imu, 10)
-                if topic == TOPIC_IMU_DATA and row:
-                    self._handle_imu_data(row)
-                topic, row = self._recv_safe(self.sub_reference, 0)
-                if topic == "odometry.reference" and row:
-                    self.reference.apply(row)
-                now = time.monotonic()
-                if now - self.last_update_ts >= self.update_period:
-                    self.estimator.update_pose(now - self.last_update_ts)
-                    self.last_update_ts = now
-                if now - self.last_publish_ts >= self.publish_period:
-                    self._publish_pose()
+                self._receive_updates()
+                self._update_and_publish()
                 time.sleep(0.01)
         finally:
             self.sub_motion.close()

@@ -7,6 +7,8 @@ from flask import Response, send_file
 
 from . import compat as C
 
+HTML_CONTENT_TYPE = "text/html"
+
 
 def track_ok(group: str) -> None:
     """
@@ -49,14 +51,14 @@ def dashboard():
         return Response(
             "<h1>Rider-Pi API</h1><p>Brak web/view.html – użyj <a href='/state'>/state</a>, "
             "<a href='/sysinfo'>/sysinfo</a>, <a href='/healthz'>/healthz</a>.</p>",
-            mimetype="text/html",
+            mimetype=HTML_CONTENT_TYPE,
         ), 200
     return send_file(C.VIEW_HTML)
 
 
 def control_page():
     if not os.path.isfile(C.CONTROL_HTML):
-        return Response("<h1>control.html missing</h1>", mimetype="text/html"), 404
+        return Response("<h1>control.html missing</h1>", mimetype=HTML_CONTENT_TYPE), 404
     return send_file(C.CONTROL_HTML)
 
 
@@ -64,5 +66,5 @@ def devices_page():
     """Read-only page load: never acquires or starts a physical device."""
     path = os.path.join(os.path.dirname(C.VIEW_HTML), "devices.html")
     if not os.path.isfile(path):
-        return Response("<h1>devices.html missing</h1>", mimetype="text/html"), 404
+        return Response("<h1>devices.html missing</h1>", mimetype=HTML_CONTENT_TYPE), 404
     return send_file(path)

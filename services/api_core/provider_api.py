@@ -60,6 +60,51 @@ def providers_pc_heartbeat_handler() -> tuple[Response, int]:
     return _corsify(jsonify({"ok": True, "persisted": True, "base_url": normalized})), 200
 
 
+def _patch_provider_domain(domain, requested_domain):
+    payload = request.get_json(force=True, silent=True) or {}
+    if not isinstance(payload, dict) or not isinstance(payload.get("target"), str):
+        return _corsify(jsonify({"ok": False, "error": "target must be 'local' or 'pc'"})), 400
+    target = payload["target"].strip().lower()
+    reason = payload.get("reason", "manual")
+
+    if target not in ("local", "pc"):
+        return _corsify(jsonify({"error": "target must be 'local' or 'pc'"})), 400
+
+    try:
+        state, changed = registry.set_domain_mode(domain, target, reason=reason)
+    except ValueError as exc:
+        return _corsify(jsonify({"error": str(exc)})), 400
+    except OSError:
+        return _corsify(
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "provider_persistence_failed",
+                    "persisted": False,
+                    "domain": domain,
+                    "changed": False,
+                }
+            )
+        ), 503
+
+    return (
+        _corsify(
+            jsonify(
+                {
+                    "ok": True,
+                    "persisted": True,
+                    "affected_domains": [domain],
+                    "requested_domain": requested_domain,
+                    "domain": domain,
+                    "state": state,
+                    "changed": changed,
+                }
+            )
+        ),
+        200,
+    )
+
+
 def provider_domain_handler(domain: str) -> tuple[Response, int]:
     requested_domain = (domain or "").lower()
     domain = {"asr": "voice", "tts": "voice"}.get(requested_domain, requested_domain)
@@ -84,47 +129,6 @@ def provider_domain_handler(domain: str) -> tuple[Response, int]:
         ), 200
 
     if request.method == "PATCH":
-        payload = request.get_json(force=True, silent=True) or {}
-        if not isinstance(payload, dict) or not isinstance(payload.get("target"), str):
-            return _corsify(jsonify({"ok": False, "error": "target must be 'local' or 'pc'"})), 400
-        target = payload["target"].strip().lower()
-        reason = payload.get("reason", "manual")
-
-        if target not in ("local", "pc"):
-            return _corsify(jsonify({"error": "target must be 'local' or 'pc'"})), 400
-
-        try:
-            state, changed = registry.set_domain_mode(domain, target, reason=reason)
-        except ValueError as exc:
-            return _corsify(jsonify({"error": str(exc)})), 400
-        except OSError:
-            return _corsify(
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": "provider_persistence_failed",
-                        "persisted": False,
-                        "domain": domain,
-                        "changed": False,
-                    }
-                )
-            ), 503
-
-        return (
-            _corsify(
-                jsonify(
-                    {
-                        "ok": True,
-                        "persisted": True,
-                        "affected_domains": [domain],
-                        "requested_domain": requested_domain,
-                        "domain": domain,
-                        "state": state,
-                        "changed": changed,
-                    }
-                )
-            ),
-            200,
-        )
+        return _patch_provider_domain(domain, requested_domain)
 
     return _corsify(jsonify({"error": "Method not allowed"})), 405

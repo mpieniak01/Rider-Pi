@@ -26,6 +26,22 @@ if TYPE_CHECKING:
     from .state import PTTEvent, PTTStateMachine
 
 
+_AUTH_LOADED = "auth.loaded"
+_SESSION_UPDATE = "session.update"
+_UI_STATE = "ui.state"
+
+
+def _stdin_has_enter():
+    import select
+    import sys
+
+    ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+    if ready:
+        line = sys.stdin.readline()
+        return bool(line and line.strip() == "")
+    return False
+
+
 class StreamHandlersMixin:
     """Mixin providing message/event handling for StreamingVoiceService."""
 
@@ -117,7 +133,7 @@ class StreamHandlersMixin:
             if not api_key:
                 self.logger.event("auth_missing_key", env_var=env_key)
                 raise RuntimeError(f"Missing environment variable: {env_key}")
-            self.logger.event("auth.loaded", src="env", var=env_key, length=len(api_key))
+            self.logger.event(_AUTH_LOADED, src="env", var=env_key, length=len(api_key))
             return api_key
 
         if auth.startswith("file:"):
@@ -130,7 +146,7 @@ class StreamHandlersMixin:
                 raise RuntimeError(f"API key file not found: {path}") from exc
             if not key:
                 raise RuntimeError(f"API key file empty: {path}")
-            self.logger.event("auth.loaded", src="file", length=len(key))
+            self.logger.event(_AUTH_LOADED, src="file", length=len(key))
             return key
 
         if auth.startswith("bashenv:"):
@@ -145,7 +161,7 @@ class StreamHandlersMixin:
 
         fallback = (os.environ.get("OPENAI_API_KEY", "") or "").strip()
         if fallback:
-            self.logger.event("auth.loaded", src="env", var="OPENAI_API_KEY", length=len(fallback))
+            self.logger.event(_AUTH_LOADED, src="env", var="OPENAI_API_KEY", length=len(fallback))
             return fallback
 
         raise RuntimeError("Missing OpenAI API key. Configure stream.auth or set OPENAI_API_KEY.")
@@ -194,7 +210,7 @@ class StreamHandlersMixin:
         )
 
         self._session_prefs = prefs
-        init_message = {"type": "session.update", "session": prefs_dict}
+        init_message = {"type": _SESSION_UPDATE, "session": prefs_dict}
 
         await self.transport.send(json.dumps(init_message))
         self.logger.event(
@@ -237,7 +253,7 @@ class StreamHandlersMixin:
             "Jesteś asystentem głosowym Rider-Pi. Odpowiadaj po polsku, zwięźle.",
         )
         self._session_prefs = prefs
-        return {"type": "session.update", "session": prefs_dict}
+        return {"type": _SESSION_UPDATE, "session": prefs_dict}
 
     # ──────────────────────────────────────────────────────────────────────────
     # UI publishing
@@ -249,7 +265,7 @@ class StreamHandlersMixin:
         self._last_ui_state = state
         if self.ui_publisher:
             try:
-                self.ui_publisher.publish("ui.state", {"state": state, "ts": time.time()})
+                self.ui_publisher.publish(_UI_STATE, {"state": state, "ts": time.time()})
             except Exception as e:
                 self.logger.event("ui_state_pub_error", error=str(e))
 
@@ -294,84 +310,80 @@ class StreamHandlersMixin:
                 break
 
     async def _handle_message(self, message: str) -> None:
-        """Handle incoming WebSocket message."""
-        from .state import PTTEvent
-
+        """Handle incoming WebSocket message, isolating malformed event failures."""
         try:
             data = json.loads(message)
             msg_type = self._normalize_type(data.get("type", ""))
+            await self._dispatch_message(data, msg_type)
+        except Exception as exc:
+            self.logger.event("message_parse_error", error=str(exc), sample=message[:200])
 
-            # ── AUDIO OUT (PCM16) ────────────────────────────────────────────
-            if msg_type in ("response.output_audio.delta", "response.audio.delta"):
-                audio_b64 = data.get("delta", "")
-                if audio_b64:
-                    try:
-                        audio_data = base64.b64decode(audio_b64)
-                    except Exception as e:
-                        self.logger.event("audio.delta.b64_error", error=str(e))
-                        audio_data = b""
-                    if audio_data:
-                        try:
-                            self._bw_rx_total += len(audio_data)
-                        except Exception:
-                            pass
-                        self.tts_player_queue.put(audio_data)
+    def _handle_audio_delta(self, data):
+        audio_b64 = data.get("delta", "")
+        if not audio_b64:
+            return
+        try:
+            audio_data = base64.b64decode(audio_b64)
+        except Exception as exc:
+            self.logger.event("audio.delta.b64_error", error=str(exc))
+            return
+        if audio_data:
+            try:
+                self._bw_rx_total += len(audio_data)
+            except Exception:
+                pass
+            self.tts_player_queue.put(audio_data)
 
-            elif msg_type in ("response.output_audio.completed", "response.audio.done"):
-                self.tts_player_queue.put(None)
-                self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
+    def _handle_final_transcript(self, data):
+        transcript = data.get("transcript", "")
+        if transcript and transcript.strip():
+            self.logger.event("asr.transcript.final", text=transcript)
+            self._session_tasks.create(self._handle_transcript(transcript.strip()), name="voice-transcript")
 
-            # ── TEXT OUT ─────────────────────────────────────────────────────
-            elif msg_type in ("response.output_text.delta", "response.text.delta"):
-                text = data.get("delta", "")
-                if text:
-                    self._publish_partial(text)
+    def _handle_unknown_message(self, data, msg_type):
+        try:
+            preview = json.dumps(data)[:160]
+        except Exception:
+            preview = str(data)[:160]
+        self.logger.event("ws.rx.unknown_type", t=msg_type or "<none>", sample=preview)
 
-            elif msg_type == "response.created":
-                self.logger.event("response.created")
-                self.ptt_state.transition(PTTEvent.SERVER_RESPONSE)
+    async def _dispatch_message(self, data, msg_type):
+        from .state import PTTEvent
 
-            elif msg_type == "session.updated":
-                self.logger.event("session.updated")
-
-            # ── VAD ──────────────────────────────────────────────────────────
-            elif msg_type == "input_audio_buffer.speech_started":
-                self.logger.event("speech.started")
-                self.ptt_state.transition(PTTEvent.VOICE_START)
-
-            elif msg_type == "input_audio_buffer.speech_stopped":
-                self.logger.event("speech.stopped")
-                self.ptt_state.transition(PTTEvent.VOICE_END)
+        transitions = {
+            "response.created": (PTTEvent.SERVER_RESPONSE, "response.created"),
+            "input_audio_buffer.speech_started": (PTTEvent.VOICE_START, "speech.started"),
+            "input_audio_buffer.speech_stopped": (PTTEvent.VOICE_END, "speech.stopped"),
+        }
+        if msg_type in transitions:
+            event, log_name = transitions[msg_type]
+            self.logger.event(log_name)
+            self.ptt_state.transition(event)
+            if event == PTTEvent.VOICE_END:
                 await self._commit_audio_buffer()
-
-            # ── ASR (serwerowa transkrypcja) ─────────────────────────────────
-            elif msg_type == "conversation.item.input_audio_transcription.completed":
-                transcript = data.get("transcript", "")
-                if transcript and transcript.strip():
-                    self.logger.event("asr.transcript.final", text=transcript)
-                    self._session_tasks.create(self._handle_transcript(transcript.strip()), name="voice-transcript")
-
-            # ── RESPONSE END ─────────────────────────────────────────────────
-            elif msg_type == "response.completed":
-                self._completed = True
-                self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
-
-            # ── ERROR ────────────────────────────────────────────────────────
-            elif msg_type == "error":
-                error_msg = data.get("error", {}).get("message", "Unknown error")
-                self.logger.event("ws.protocol_error", error=error_msg)
-                self._publish_error("ws_protocol", error_msg)
-                self.ptt_state.transition(PTTEvent.ERROR)
-
-            else:
-                try:
-                    preview = json.dumps(data)[:160]
-                except Exception:
-                    preview = str(data)[:160]
-                self.logger.event("ws.rx.unknown_type", t=msg_type or "<none>", sample=preview)
-
-        except Exception as e:
-            self.logger.event("message_parse_error", error=str(e), sample=message[:200])
+        elif msg_type in ("response.output_audio.delta", "response.audio.delta"):
+            self._handle_audio_delta(data)
+        elif msg_type in ("response.output_audio.completed", "response.audio.done"):
+            self.tts_player_queue.put(None)
+            self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
+        elif msg_type in ("response.output_text.delta", "response.text.delta"):
+            text = data.get("delta", "")
+            if text:
+                self._publish_partial(text)
+        elif msg_type == "session.updated":
+            self.logger.event("session.updated")
+        elif msg_type == "conversation.item.input_audio_transcription.completed":
+            self._handle_final_transcript(data)
+        elif msg_type == "response.completed":
+            self._completed = True
+            self.ptt_state.transition(PTTEvent.TTS_COMPLETE)
+        elif msg_type == "error":
+            error_msg = data.get("error", {}).get("message", "Unknown error")
+            self.logger.event("ws.protocol_error", error=error_msg)
+            self._publish_error("ws_protocol", error_msg)
+            self.ptt_state.transition(PTTEvent.ERROR)
+        else:
+            self._handle_unknown_message(data, msg_type)
 
     async def _handle_transcript(self, transcript: str) -> None:
         """ASR→CHAT→TTS local pipeline as a fallback/augmentation."""
@@ -406,6 +418,24 @@ class StreamHandlersMixin:
     # ──────────────────────────────────────────────────────────────────────────
     # Keyboard PTT
 
+    async def _toggle_keyboard_ptt(self, active):
+        from .state import PTTEvent
+
+        if active:
+            self.logger.event("ptt.keyboard.commit")
+            self.ptt_state.transition(PTTEvent.COMMIT_AUDIO)
+            await self._commit_audio_buffer()
+            self._publish_ui_state("processing")
+            return False
+        self.logger.event("ptt.keyboard.start_recording")
+        self.ptt_state.transition(PTTEvent.START)
+        if self.config.get("service", {}).get("beep", False):
+            await self._play_ding_async()
+        await asyncio.sleep(0.1)
+        self.ptt_state.transition(PTTEvent.DING_COMPLETE)
+        self._publish_ui_state("recording")
+        return True
+
     async def _keyboard_ptt_loop(self) -> None:
         """Handle keyboard PTT (ENTER key) in a non-blocking async loop.
 
@@ -413,49 +443,18 @@ class StreamHandlersMixin:
         - First press: START event → ARMING → (after optional ding) → RECORDING
         - Second press: COMMIT_AUDIO event (ends recording and sends for processing)
         """
-        import select
-        import sys
-
-        from .state import PTTEvent
-
         self.logger.event("ptt.keyboard.start")
         ptt_active = False
 
         try:
             loop = asyncio.get_running_loop()
 
-            def _check_stdin():
-                rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-                if rlist:
-                    line = sys.stdin.readline()
-                    if line and line.strip() == "":
-                        return True
-                return False
-
             while not self.stop_event.is_set():
                 try:
-                    has_input = await loop.run_in_executor(None, _check_stdin)
+                    has_input = await loop.run_in_executor(None, _stdin_has_enter)
 
                     if has_input:
-                        if not ptt_active:
-                            self.logger.event("ptt.keyboard.start_recording")
-                            self.ptt_state.transition(PTTEvent.START)
-
-                            service_cfg = self.config.get("service", {})
-                            if service_cfg.get("beep", False):
-                                await self._play_ding_async()
-
-                            await asyncio.sleep(0.1)
-
-                            self.ptt_state.transition(PTTEvent.DING_COMPLETE)
-                            self._publish_ui_state("recording")
-                            ptt_active = True
-                        else:
-                            self.logger.event("ptt.keyboard.commit")
-                            self.ptt_state.transition(PTTEvent.COMMIT_AUDIO)
-                            await self._commit_audio_buffer()
-                            self._publish_ui_state("processing")
-                            ptt_active = False
+                        ptt_active = await self._toggle_keyboard_ptt(ptt_active)
                     else:
                         await asyncio.sleep(0.1)
 
@@ -506,7 +505,7 @@ class StreamHandlersMixin:
                 "channels": 1,
             },
         }
-        msg = json.dumps({"type": "session.update", "session": session})
+        msg = json.dumps({"type": _SESSION_UPDATE, "session": session})
 
         # transport ma pierwszeństwo; obsłuż awaitable
         if getattr(self, "transport", None):
@@ -528,51 +527,39 @@ class StreamHandlersMixin:
                     await res
             return
 
-    async def _handle_ws_message(self, message: str) -> None:
-        """Minimalna obsługa typów wymaganych przez testy UI; reszta idzie do _handle_message."""
-        import inspect as _inspect
+    async def _fallback_ws_message(self, message):
+        import inspect
 
-        # Spróbuj sparsować JSON
+        fallback = getattr(self, "_handle_message", None)
+        if fallback:
+            if inspect.iscoroutinefunction(fallback):
+                await fallback(message)
+            else:
+                fallback(message)
+
+    def _publish_compat_message(self, topic, payload):
+        publisher = getattr(self, "ui_publisher", None)
+        if publisher:
+            try:
+                publisher.publish(topic, payload)
+            except Exception:
+                pass
+        elif topic == _UI_STATE:
+            self._publish_ui_state(payload["state"])
+        else:
+            self._publish_partial(str(payload["text"]))
+
+    async def _handle_ws_message(self, message: str) -> None:
+        """Publish historical UI payloads and delegate other message types."""
         try:
             data = json.loads(message)
         except Exception:
-            fb = getattr(self, "_handle_message", None)
-            if fb:
-                if _inspect.iscoroutinefunction(fb):
-                    await fb(message)
-                else:
-                    fb(message)
+            await self._fallback_ws_message(message)
             return
-
-        t = data.get("type")
-        pub = getattr(self, "ui_publisher", None)
-
-        if t == "input_audio_buffer.speech_started":
-            # Test oczekuje 'hearing'
-            if pub:
-                try:
-                    pub.publish("ui.state", {"state": "hearing"})
-                except Exception:
-                    pass
-            else:
-                self._publish_ui_state("hearing")
-            return
-
-        if t == "conversation.item.input_audio_transcription.delta":
-            if pub:
-                try:
-                    pub.publish("ui.partial", {"text": data.get("delta", "")})
-                except Exception:
-                    pass
-            else:
-                self._publish_partial(str(data.get("delta", "")))
-            return
-
-        # Fallback – zachowaj resztę logiki
-        fb = getattr(self, "_handle_message", None)
-        if fb:
-            if _inspect.iscoroutinefunction(fb):
-                await fb(message)
-            else:
-                fb(message)
-        return
+        msg_type = data.get("type")
+        if msg_type == "input_audio_buffer.speech_started":
+            self._publish_compat_message(_UI_STATE, {"state": "hearing"})
+        elif msg_type == "conversation.item.input_audio_transcription.delta":
+            self._publish_compat_message("ui.partial", {"text": data.get("delta", "")})
+        else:
+            await self._fallback_ws_message(message)

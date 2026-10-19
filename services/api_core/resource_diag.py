@@ -74,10 +74,35 @@ def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
     if len(paths) == 1 and proc.returncode == 1 and proc.stdout.strip():
         raise RuntimeError("single-device lsof returned inconsistent ownership data")
 
+    return _parse_lsof(proc.stdout)
+
+
+def _lsof_owner_pid(value):
+    try:
+        pid = int(value)
+    except ValueError:
+        raise RuntimeError("lsof returned malformed owner PID") from None
+    if pid <= 1:
+        raise RuntimeError("lsof returned invalid owner PID")
+    return pid
+
+
+def _lsof_detail(current, field, value, current_paths):
+    if field == "c":
+        current.command = value
+    elif field == "L":
+        current.user = value
+    elif field == "n":
+        if not value.strip():
+            raise RuntimeError("lsof returned empty owner path")
+        current_paths.append(value)
+
+
+def _parse_lsof(output):
     entries: list[ProcessInfo] = []
     current: ProcessInfo | None = None
     current_paths: list[str] = []
-    for token in proc.stdout.split("\0"):
+    for token in output.split("\0"):
         token = token.lstrip("\n")
         if not token:
             continue
@@ -87,26 +112,15 @@ def _run_lsof(paths: list[str]) -> list[ProcessInfo]:
             if current is not None:
                 entries.append(ProcessInfo(current.pid, current.command, current.user, current_paths))
             current_paths = []
-            try:
-                pid = int(value)
-            except ValueError:
-                raise RuntimeError("lsof returned malformed owner PID") from None
-            if pid <= 1:
-                raise RuntimeError("lsof returned invalid owner PID")
+            pid = _lsof_owner_pid(value)
             current = ProcessInfo(pid=pid, command="", user="", paths=[])
         elif current is None:
             continue
-        elif field == "c":
-            current.command = value
-        elif field == "L":
-            current.user = value
-        elif field == "n":
-            if not value.strip():
-                raise RuntimeError("lsof returned empty owner path")
-            current_paths.append(value)
+        else:
+            _lsof_detail(current, field, value, current_paths)
     if current is not None:
         entries.append(ProcessInfo(current.pid, current.command, current.user, current_paths))
-    if proc.stdout.strip() and (not entries or any(not entry.paths for entry in entries)):
+    if output.strip() and (not entries or any(not entry.paths for entry in entries)):
         raise RuntimeError("lsof ownership data is incomplete")
     return entries
 
@@ -219,6 +233,16 @@ def available_resources() -> list[str]:
     return sorted(RESOURCE_SPECS.keys())
 
 
+def _matching_holders(processes, matcher):
+    holders = []
+    for proc in processes:
+        for path in proc.paths:
+            if matcher.fullmatch(path):
+                holders.append(_holder_dict(proc, path))
+                break
+    return holders
+
+
 def inspect(resource: str) -> dict[str, Any]:
     if resource not in RESOURCE_SPECS:
         raise KeyError(f"unknown resource '{resource}'")
@@ -229,12 +253,7 @@ def inspect(resource: str) -> dict[str, Any]:
     error: str | None = None
     try:
         processes = _run_lsof(paths)
-        matcher: re.Pattern[str] = spec["matcher"]
-        for proc in processes:
-            for path in proc.paths:
-                if matcher.fullmatch(path):
-                    holders.append(_holder_dict(proc, path))
-                    break
+        holders = _matching_holders(processes, spec["matcher"])
     except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
         error = str(exc)
 
@@ -286,10 +305,7 @@ def release(
         return {"ok": False, "error": "orchestration_lock_unavailable", "detail": str(exc)}
 
 
-def _release_locked(resource, limit_pids, force, operator_consent, feature_manager, protected_units) -> dict:
-    observed = inspect(resource)
-    pids = sorted(set(limit_pids or []))
-    consumers = feature_manager.resource_consumers().get(resource, [])
+def _recorded_consumers(feature_manager, resource, consumers):
     # A separate maintenance CLI must also respect the API's recorded consumers.
     try:
         state = json.loads(feature_manager._state_path.read_text(encoding="utf-8"))
@@ -300,7 +316,23 @@ def _release_locked(resource, limit_pids, force, operator_consent, feature_manag
     except FileNotFoundError:
         pass
     except (OSError, ValueError, AttributeError, TypeError):
-        return {"ok": False, "error": "task_ownership_unknown", "resource": resource}
+        return None, {"ok": False, "error": "task_ownership_unknown", "resource": resource}
+    return consumers, None
+
+
+def _released_state(released, after):
+    if released:
+        return "released"
+    return "unknown" if after.get("error") else "pending"
+
+
+def _release_locked(resource, limit_pids, force, operator_consent, feature_manager, protected_units) -> dict:
+    observed = inspect(resource)
+    pids = sorted(set(limit_pids or []))
+    consumers = feature_manager.resource_consumers().get(resource, [])
+    consumers, ownership_error = _recorded_consumers(feature_manager, resource, consumers)
+    if ownership_error is not None:
+        return ownership_error
     plan = {
         "resource": resource,
         "owners": observed["holders"],
@@ -332,7 +364,7 @@ def _release_locked(resource, limit_pids, force, operator_consent, feature_manag
         "signal_sent": True,
         "released": released,
         "pending": not released and not after.get("error"),
-        "state": "released" if released else "unknown" if after.get("error") else "pending",
+        "state": _released_state(released, after),
         "after": after,
         "error": after.get("error"),
     }

@@ -31,6 +31,9 @@ MUTEX_GROUPS = [{"camera-capture@raw.service", "camera-capture@edge.service", "c
 configure_systemd_observation()
 
 
+UNKNOWN_RESOURCE_ERROR = "unknown resource"
+
+
 def _json(payload: Any, status: int = 200) -> Response:
     return Response(json.dumps(payload, ensure_ascii=False), mimetype="application/json", status=status)
 
@@ -85,7 +88,7 @@ def _run_step(unit: str, action: str) -> dict:
 
 def resource_status(name: str) -> Response:
     if not _known_resource(name):
-        return _json({"error": "unknown resource", "name": name}, 404)
+        return _json({"error": UNKNOWN_RESOURCE_ERROR, "name": name}, 404)
     from services.core.resource_observation import snapshot as observe_resource
 
     physical = name in resource_diag.available_resources()
@@ -126,7 +129,7 @@ def resource_status(name: str) -> Response:
 
 def resource_release(name: str, pids: list[int] | None = None) -> Response:
     if not _known_resource(name):
-        return _json({"error": "unknown resource", "name": name}, 404)
+        return _json({"error": UNKNOWN_RESOURCE_ERROR, "name": name}, 404)
     if name not in resource_diag.available_resources():
         return _json({"ok": False, "error": "resource_diagnostic_unavailable", "name": name}, 409)
     payload = request.get_json(silent=True) or {}
@@ -146,9 +149,19 @@ def resource_release(name: str, pids: list[int] | None = None) -> Response:
 
 def resource_stop(name: str, units: list[str] | None = None) -> Response:
     if not _known_resource(name):
-        return _json({"error": "unknown resource", "name": name}, 404)
+        return _json({"error": UNKNOWN_RESOURCE_ERROR, "name": name}, 404)
     with _manager().transaction():
         return _resource_stop_locked(name, units)
+
+
+def _stop_resource_services(allowed):
+    results = []
+    for unit in allowed:
+        result = _manager().service_action(unit, "stop")
+        results.append(result)
+        if not result.get("ok"):
+            break
+    return results
 
 
 def _resource_stop_locked(name: str, units: list[str] | None) -> Response:
@@ -169,12 +182,7 @@ def _resource_stop_locked(name: str, units: list[str] | None) -> Response:
     allowed = [unit for unit in services if unit in UNIT_CATALOG and name in UNIT_CATALOG[unit]["resources"]]
     if not allowed or len(allowed) != len(services):
         return _json({"ok": False, "error": "no_stoppable_services", "services": services}, 409)
-    results = []
-    for unit in allowed:
-        result = _manager().service_action(unit, "stop")
-        results.append(result)
-        if not result.get("ok"):
-            break
+    results = _stop_resource_services(allowed)
     ok = len(results) == len(allowed) and all(row.get("ok") for row in results)
     after = resource_diag.inspect(name)
     released = ok and after.get("free") is True and not after.get("error")

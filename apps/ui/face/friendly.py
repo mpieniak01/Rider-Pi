@@ -22,14 +22,9 @@ def draw_friendly(canvas, state, style, skin="none"):
     ink = SKINS[skin]["ink"] or palette["eye"]
     size = min(canvas.im.size)
     cx, cy = size / 2, size * 0.46
-    eyes, brows, mouth = state.eyes, state.brows, state.mouth
+    eyes, brows = state.eyes, state.brows
     blink = max(0.0, min(1.0, eyes.blink))
     dx, dy = eyes.gaze()
-    curve = mouth.curve
-    if curve is None:
-        shape = state.expr if mouth.shape == "auto" else mouth.shape
-        curve = {"happy": 0.75, "sad": -0.65}.get(shape, 0.15)
-    open_level = mouth.open_clamped()
     eye_w = size * (0.29 if style == "friendly" else 0.27)
     eye_h = size * (0.32 if style == "friendly" else 0.25)
     eye_h *= max(0.04, 1 - blink)
@@ -71,6 +66,16 @@ def draw_friendly(canvas, state, style, skin="none"):
                 (ex - size * 0.039, cheek_y - size * 0.016, ex + size * 0.039, cheek_y + size * 0.016),
                 fill=palette["accent"],
             )
+    _draw_mouth(canvas, state, size, cx, palette, ink, stroke)
+
+
+def _draw_mouth(canvas, state, size, cx, palette, ink, stroke):
+    mouth = state.mouth
+    curve = mouth.curve
+    if curve is None:
+        shape = state.expr if mouth.shape == "auto" else mouth.shape
+        curve = {"happy": 0.75, "sad": -0.65}.get(shape, 0.15)
+    open_level = mouth.open_clamped()
     my, mw = size * 0.73, size * 0.29
     if open_level > 0.03:
         height = size * (0.02 + open_level * 0.12)

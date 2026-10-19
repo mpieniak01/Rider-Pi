@@ -25,6 +25,8 @@ import time
 
 from drivers.xgo import XgoAdapter
 
+LEGACY_MOTION_RETIRED = "legacy direct motion retired; use operator consent API"
+
 
 def _env_float(name: str, default: float) -> float:
     try:
@@ -74,16 +76,16 @@ class RiderMotion:
         request_stop()
 
     def forward(self) -> None:
-        raise PermissionError("legacy direct motion retired; use operator consent API")
+        raise PermissionError(LEGACY_MOTION_RETIRED)
 
     def backward(self) -> None:
-        raise PermissionError("legacy direct motion retired; use operator consent API")
+        raise PermissionError(LEGACY_MOTION_RETIRED)
 
     def left(self) -> None:
-        raise PermissionError("legacy direct motion retired; use operator consent API")
+        raise PermissionError(LEGACY_MOTION_RETIRED)
 
     def right(self) -> None:
-        raise PermissionError("legacy direct motion retired; use operator consent API")
+        raise PermissionError(LEGACY_MOTION_RETIRED)
 
 
 # Szybki tryb demo z CLI: python3 -m apps.motion.rider_control

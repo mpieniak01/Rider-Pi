@@ -65,6 +65,60 @@ def _fresh_local_source(config, max_age_ms):
         return None
 
 
+def _read_stream_status(opener, req, remaining, deadline, clock):
+    try:
+        with opener.open(req, timeout=remaining) as response:
+            # Header/connection time belongs to this same preparation budget.
+            remaining = deadline - clock()
+            if remaining <= 0:
+                raise ComputeError("navigation_stream_prepare_timeout", 504)
+            raw = getattr(getattr(response, "fp", None), "raw", None)
+            connection = getattr(raw, "_sock", None)
+            if connection is not None:
+                connection.settimeout(remaining)
+            body = response.read(16385)
+            if len(body) > 16384:
+                raise ComputeError("navigation_stream_status_bounds")
+            status = json.loads(body)
+    except urllib.error.HTTPError as exc:
+        raise ComputeError("navigation_stream_prepare_" + http_error_code(exc), exc.code) from None
+    except (TimeoutError, socket.timeout):
+        raise ComputeError("navigation_stream_prepare_timeout", 504) from None
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+            raise ComputeError("navigation_stream_prepare_timeout", 504) from None
+        raise
+    return status
+
+
+def _ready_stream(status, local_source, max_age_ms):
+    if isinstance(status, dict) and isinstance(status.get("stream"), dict):
+        stream = status["stream"]
+        if stream.get("ready") is True:
+            source = stream.get("latest_source")
+            keys = ("camera_session", "transport_epoch", "pipeline_revision")
+            if not isinstance(source, dict) or any(source.get(key) != local_source[key] for key in keys):
+                raise ComputeError("navigation_stream_source_mismatch", 409)
+            captured = source.get("captured_monotonic_ns")
+            if type(captured) is int and 0 <= (time.monotonic_ns() - captured) / 1_000_000 < max_age_ms:
+                return stream
+    return None
+
+
+def _stream_setup(selection, opener):
+    selection = selection or selected_executor()
+    if not selection:
+        raise ComputeError("compute_executor_not_selected")
+    if opener is None:
+        from apps.compute.navigation import NoRedirect
+
+        opener = urllib.request.build_opener(NoRedirect())
+    base = selection["url"].rstrip("/")
+    if not base.endswith("/api/v1/rider/compute"):
+        base += "/api/v1/rider/compute"
+    return selection, opener, base
+
+
 def prepare_stream(
     *,
     selection=None,
@@ -77,16 +131,7 @@ def prepare_stream(
     if not native():
         return None
     config = snapshot()
-    selection = selection or selected_executor()
-    if not selection:
-        raise ComputeError("compute_executor_not_selected")
-    if opener is None:
-        from apps.compute.navigation import NoRedirect
-
-        opener = urllib.request.build_opener(NoRedirect())
-    base = selection["url"].rstrip("/")
-    if not base.endswith("/api/v1/rider/compute"):
-        base += "/api/v1/rider/compute"
+    selection, opener, base = _stream_setup(selection, opener)
     deadline = clock() + timeout_s
     while clock() < deadline:
         if snapshot() != config:
@@ -105,41 +150,13 @@ def prepare_stream(
         remaining = deadline - clock()
         if remaining <= 0:
             break
-        try:
-            with opener.open(req, timeout=remaining) as response:
-                # Header/connection time belongs to this same preparation budget.
-                remaining = deadline - clock()
-                if remaining <= 0:
-                    raise ComputeError("navigation_stream_prepare_timeout", 504)
-                raw = getattr(getattr(response, "fp", None), "raw", None)
-                connection = getattr(raw, "_sock", None)
-                if connection is not None:
-                    connection.settimeout(remaining)
-                body = response.read(16385)
-                if len(body) > 16384:
-                    raise ComputeError("navigation_stream_status_bounds")
-                status = json.loads(body)
-        except urllib.error.HTTPError as exc:
-            raise ComputeError("navigation_stream_prepare_" + http_error_code(exc), exc.code) from None
-        except (TimeoutError, socket.timeout):
-            raise ComputeError("navigation_stream_prepare_timeout", 504) from None
-        except urllib.error.URLError as exc:
-            if isinstance(exc.reason, (TimeoutError, socket.timeout)):
-                raise ComputeError("navigation_stream_prepare_timeout", 504) from None
-            raise
+        status = _read_stream_status(opener, req, remaining, deadline, clock)
         if clock() >= deadline:
             break
         if snapshot() != config:
             raise ComputeError("navigation_configuration_changed", 409)
-        if isinstance(status, dict) and isinstance(status.get("stream"), dict):
-            stream = status["stream"]
-            if stream.get("ready") is True:
-                source = stream.get("latest_source")
-                keys = ("camera_session", "transport_epoch", "pipeline_revision")
-                if not isinstance(source, dict) or any(source.get(key) != local_source[key] for key in keys):
-                    raise ComputeError("navigation_stream_source_mismatch", 409)
-                captured = source.get("captured_monotonic_ns")
-                if type(captured) is int and 0 <= (time.monotonic_ns() - captured) / 1_000_000 < max_age_ms:
-                    return stream
+        stream = _ready_stream(status, local_source, max_age_ms)
+        if stream is not None:
+            return stream
         sleep(min(0.05, max(0, deadline - clock())))
     raise ComputeError("navigation_stream_prepare_timeout", 504)

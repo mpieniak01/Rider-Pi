@@ -12,6 +12,8 @@ common/nlu_shared.py — wspólne funkcje NLU:
 """
 
 
+FORWARD_PHRASE = "do przodu"
+DRIVE_FORWARD_PHRASE = "jedz do przodu"
 ACCENT_MAP = str.maketrans("ąćęłńóśźż", "acelnoszz")
 
 
@@ -27,18 +29,18 @@ def norm(txt: str) -> str:
         "jezdz": "jedz",
         "jedzd": "jedz",
         # przód: różne warianty
-        "idz do przodu": "do przodu",
+        "idz do przodu": FORWARD_PHRASE,
         "naprzud": "naprzod",
-        "do przod": "do przodu",
-        "do przedu": "do przodu",
+        "do przod": FORWARD_PHRASE,
+        "do przedu": FORWARD_PHRASE,
         "przedu": "przodu",
-        "jedz do przod": "jedz do przodu",
-        "jedz do przedu": "jedz do przodu",
-        # NOWE: "na przód" → potraktuj jak "do przodu"
-        "na przod": "do przodu",
-        "na przodu": "do przodu",
-        "jedz na przod": "jedz do przodu",
-        "jedz na przodu": "jedz do przodu",
+        "jedz do przod": DRIVE_FORWARD_PHRASE,
+        "jedz do przedu": DRIVE_FORWARD_PHRASE,
+        # NOWE: "na przód" → potraktuj jak FORWARD_PHRASE
+        "na przod": FORWARD_PHRASE,
+        "na przodu": FORWARD_PHRASE,
+        "jedz na przod": DRIVE_FORWARD_PHRASE,
+        "jedz na przodu": DRIVE_FORWARD_PHRASE,
     }
     for a, b in replacements.items():
         t = t.replace(a, b)

@@ -160,35 +160,44 @@ class DisplayCtl:
             if self._bl_set_safe(XGO_BRIGHT, try_gpio_init=True):
                 log(f"xgo: UNDIM -> {XGO_BRIGHT}%")
 
+    def _set_xgo_power(self, on):
+        if self._set_bl:
+            ok = self._bl_set_safe(XGO_BRIGHT if on else 0, try_gpio_init=True)
+            log(f"xgo: POWER -> {'ON' if on else 'OFF'} ({XGO_BRIGHT if on else 0}%)")
+            return ok
+        else:
+            if not on and Image and self._xgo_size:
+                try:
+                    from PIL import Image as _I
+
+                    img = _I.new("RGB", self._xgo_size, (0, 0, 0))
+                    self._xgo_lcd.ShowImage(img)
+                    log("xgo: POWER OFF -> czarna klatka")
+                    return True
+                except Exception as e:
+                    log(f"xgo: black OFF err: {e}")
+        return False
+
+    def _set_fb_power(self, on):
+        try:
+            with open("/sys/class/graphics/fb0/blank", "w") as f:
+                f.write("0" if on else "1")
+            return True
+        except Exception as e:
+            log(f"fb: POWER err: {e}")
+        return False
+
     def set_power(self, on: bool):
         state = 1 if on else 0
         if self._power == state:
             return
         ok = False
         if self.mode == "xgo" and self._xgo_lcd is not None:
-            if self._set_bl:
-                ok = self._bl_set_safe(XGO_BRIGHT if on else 0, try_gpio_init=True)
-                log(f"xgo: POWER -> {'ON' if on else 'OFF'} ({XGO_BRIGHT if on else 0}%)")
-            else:
-                if not on and Image and self._xgo_size:
-                    try:
-                        from PIL import Image as _I
-
-                        img = _I.new("RGB", self._xgo_size, (0, 0, 0))
-                        self._xgo_lcd.ShowImage(img)
-                        ok = True
-                        log("xgo: POWER OFF -> czarna klatka")
-                    except Exception as e:
-                        log(f"xgo: black OFF err: {e}")
+            ok = self._set_xgo_power(on)
         elif self.mode == "vcgencmd":
             ok = self._run(["/usr/bin/vcgencmd", "display_power", str(state)])
         elif self.mode == "fb":
-            try:
-                with open("/sys/class/graphics/fb0/blank", "w") as f:
-                    f.write("0" if on else "1")
-                ok = True
-            except Exception as e:
-                log(f"fb: POWER err: {e}")
+            ok = self._set_fb_power(on)
         if ok:
             self._power = state
 
@@ -233,65 +242,85 @@ def audio_hook(evt: str):
         pass
 
 
+class _DrawControl:
+    def __init__(self, pub):
+        self.pub, self.enabled = pub, True
+
+    def set(self, en):
+        if en == self.enabled:
+            return
+        self.enabled = en
+        self.pub.send_multipart([CTRL_T, json.dumps({"draw": bool(en)}).encode("utf-8")])
+        log(f"ui.control -> draw={en}")
+
+
+class _IdleDisplay:
+    def __init__(self, display, last_activity):
+        self.display, self.last_activity = display, last_activity
+        self.dimmed = self.powered_off = False
+
+    def update(self, now):
+        idle = now - self.last_activity
+        if idle > OFF_SEC and not self.powered_off:
+            self.display.set_power(False)
+            self.powered_off = True
+            self.dimmed = True
+            audio_hook("off")
+            log("OFF")
+        elif idle > DIM_SEC and not self.dimmed:
+            if not self.display.dim():
+                audio_hook("dim")
+            self.dimmed = True
+            log("DIM")
+        elif idle <= DIM_SEC and (self.dimmed or self.powered_off):
+            self.display.ensure_on()
+            self.dimmed = False
+            self.powered_off = False
+            audio_hook("on")
+            log("ON")
+
+
+class _DisplayActivity:
+    def __init__(self, policy):
+        self.policy = policy
+        self.motion = {}
+        self.vision_moving = False
+        self.vision_human = False
+
+    def observe(self, topic, data):
+        if topic == MOTION_T:
+            self.motion = data
+            if display_motion(self.motion)["moving"] is True:
+                self.policy.last_activity = time.time()
+        elif topic == VISION_T:
+            self.vision_moving = bool(data.get("moving", False))
+            self.vision_human = bool(data.get("human", False))
+            if self.vision_moving or self.vision_human:
+                self.policy.last_activity = time.time()
+
+
 def main():
     log(f"start: mode={DIM_MODE} dim={DIM_SEC}s off={OFF_SEC}s chat={CHAT_MODE}")
     disp = DisplayCtl(DIM_MODE)
     pub = make_pub()
     sub, poll = make_sub()
-    draw_enabled = True
-    last_activity = time.time()
-    dimmed = False
-    powered_off = False
-
-    def set_draw(en: bool):
-        nonlocal draw_enabled
-        if en == draw_enabled:
-            return
-        draw_enabled = en
-        pub.send_multipart([CTRL_T, json.dumps({"draw": bool(en)}).encode("utf-8")])
-        log(f"ui.control -> draw={en}")
+    policy = _IdleDisplay(disp, time.time())
+    set_draw = _DrawControl(pub).set
 
     disp.ensure_on()
     set_draw(True)
-    motion = {}
-    vision_moving = False
-    vision_human = False
+    activity = _DisplayActivity(policy)
     while True:
         socks = dict(poll.poll(timeout=200))
         if sub in socks and socks[sub] == zmq.POLLIN:
             topic, payload = sub.recv_multipart()
             data = json.loads(payload.decode("utf-8"))
-            if topic == MOTION_T:
-                motion = data
-                if display_motion(motion)["moving"] is True:
-                    last_activity = time.time()
-            elif topic == VISION_T:
-                vision_moving = bool(data.get("moving", False))
-                vision_human = bool(data.get("human", False))
-                if vision_moving or vision_human:
-                    last_activity = time.time()
-        if display_motion(motion)["moving"] is True:
+            activity.observe(topic, data)
+        if display_motion(activity.motion)["moving"] is True:
             set_draw(False)
         else:
-            set_draw((CHAT_MODE == 1) and (vision_human or vision_moving))
-        idle = time.time() - last_activity
-        if idle > OFF_SEC and not powered_off:
-            disp.set_power(False)
-            powered_off = True
-            dimmed = True
-            audio_hook("off")
-            log("OFF")
-        elif idle > DIM_SEC and not dimmed:
-            if not disp.dim():
-                audio_hook("dim")
-            dimmed = True
-            log("DIM")
-        elif idle <= DIM_SEC and (dimmed or powered_off):
-            disp.ensure_on()
-            dimmed = False
-            powered_off = False
-            audio_hook("on")
-            log("ON")
+            set_draw((CHAT_MODE == 1) and (activity.vision_human or activity.vision_moving))
+        policy.update(time.time())
 
 
 if __name__ == "__main__":

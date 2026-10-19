@@ -18,6 +18,7 @@ from pathlib import Path
 from .client import ComputeClient, ComputeError, validate_wav
 
 LOG = logging.getLogger('compute')
+CONVERSATION_TASK = 'conversation.respond'
 
 
 def selected_executor():
@@ -63,51 +64,56 @@ class FrameSource:
             encoded=True,
         )
 
+    def _initial_metadata(self, metadata):
+        initial, self.initial_source = self.initial_source, None
+        if isinstance(initial, dict) and not self.require_bytes:
+            keys = ("camera_session", "transport_epoch", "pipeline_revision")
+            stamp = initial.get("captured_monotonic_ns")
+            if (
+                all(initial.get(key) == metadata[key] for key in keys)
+                and type(stamp) is int
+                and 0 <= (time.monotonic_ns() - stamp) / 1_000_000 < self.max_age_ms
+                and type(initial.get("sequence")) is int
+                and 0 < initial["sequence"] <= metadata["sequence"]
+                and initial.get("frame_id") == metadata["camera_session"] + "-" + str(initial["sequence"])
+                and isinstance(initial.get("sha256"), str)
+                and len(initial["sha256"]) == 64
+            ):
+                metadata = initial
+        return metadata
+
+    def _recv_native(self, timeout_ms):
+        from apps.camera.pipeline_ipc import read_frame
+
+        try:
+            item = read_frame(after=self.previous_frame, timeout_ms=timeout_ms, metadata_only=not self.require_bytes)
+        except (OSError, ValueError):
+            return None
+        if item is None:
+            return None
+        encoded, metadata = item
+        metadata = self._initial_metadata(metadata)
+        self.previous_frame = metadata["frame_id"]
+        age_s = (time.monotonic_ns() - metadata["captured_monotonic_ns"]) / 1_000_000_000
+        if not 0 <= age_s < 3:
+            return None
+        reference = {
+            key: metadata[key]
+            for key in ("camera_session", "sequence", "transport_epoch", "pipeline_revision", "frame_id", "sha256")
+        }
+        return {
+            "data": encoded if self.require_bytes else reference,
+            "source": metadata,
+            "captured_at": time.time() - age_s,
+            "captured_monotonic_ns": metadata["captured_monotonic_ns"],
+            "input_id": metadata["frame_id"],
+            "content_type": "image/jpeg" if self.require_bytes else "application/json",
+            "timestamp_source": "capture",
+        }
+
     def recv(self, timeout_ms: int) -> dict | None:
         if getattr(self, "native", False):
-            from apps.camera.pipeline_ipc import read_frame
-
-            try:
-                item = read_frame(
-                    after=self.previous_frame, timeout_ms=timeout_ms, metadata_only=not self.require_bytes
-                )
-            except (OSError, ValueError):
-                return None
-            if item is None:
-                return None
-            encoded, metadata = item
-            initial, self.initial_source = self.initial_source, None
-            if isinstance(initial, dict) and not self.require_bytes:
-                keys = ("camera_session", "transport_epoch", "pipeline_revision")
-                stamp = initial.get("captured_monotonic_ns")
-                if (
-                    all(initial.get(key) == metadata[key] for key in keys)
-                    and type(stamp) is int
-                    and 0 <= (time.monotonic_ns() - stamp) / 1_000_000 < self.max_age_ms
-                    and type(initial.get("sequence")) is int
-                    and 0 < initial["sequence"] <= metadata["sequence"]
-                    and initial.get("frame_id") == metadata["camera_session"] + "-" + str(initial["sequence"])
-                    and isinstance(initial.get("sha256"), str)
-                    and len(initial["sha256"]) == 64
-                ):
-                    metadata = initial
-            self.previous_frame = metadata["frame_id"]
-            age_s = (time.monotonic_ns() - metadata["captured_monotonic_ns"]) / 1_000_000_000
-            if not 0 <= age_s < 3:
-                return None
-            reference = {
-                key: metadata[key]
-                for key in ("camera_session", "sequence", "transport_epoch", "pipeline_revision", "frame_id", "sha256")
-            }
-            return {
-                "data": encoded if self.require_bytes else reference,
-                "source": metadata,
-                "captured_at": time.time() - age_s,
-                "captured_monotonic_ns": metadata["captured_monotonic_ns"],
-                "input_id": metadata["frame_id"],
-                "content_type": "image/jpeg" if self.require_bytes else "application/json",
-                "timestamp_source": "capture",
-            }
+            return self._recv_native(timeout_ms)
         data = self.client.recv(timeout_ms)
         if not isinstance(data, bytes) or not data:
             return None
@@ -420,11 +426,11 @@ class VoiceRunner(GoalRunner):
         self.language = cfg.get('lang', 'pl')
 
     def response_task(self) -> str:
-        conversation = (self.capability_snapshot or {}).get('tasks', {}).get('conversation.respond', {})
+        conversation = (self.capability_snapshot or {}).get('tasks', {}).get(CONVERSATION_TASK, {})
         return (
-            'conversation.respond'
+            CONVERSATION_TASK
             if (
-                'conversation.respond' in self.selection.get('tasks', [])
+                CONVERSATION_TASK in self.selection.get('tasks', [])
                 and isinstance(conversation, dict)
                 and conversation.get('available') is True
             )
@@ -448,6 +454,44 @@ class VoiceRunner(GoalRunner):
         super().close()
         self.playback_observer.close()
 
+    def _accumulate_utterance(self, state, pre, frame, voiced):
+        if state["started"] is None:
+            state["waited"] += 1
+            pre.append(frame)
+            if not voiced:
+                if state["waited"] >= self.wait_frames:
+                    return "empty"
+                return "continue"
+            state["started"] = self.wall_clock() - len(pre) * self.capture_cfg.frame_duration_s
+            state["chunks"].extend(pre)
+        else:
+            state["chunks"].append(frame)
+        state["silent"] = 0 if voiced else state["silent"] + 1
+        if state["silent"] >= self.tail_frames or len(state["chunks"]) >= self.max_frames:
+            return "done"
+        return "continue"
+
+    def _collect_utterance(self, capture, generation):
+        pre = deque(maxlen=max(1, int(200 / self.capture_cfg.frame_ms)))
+        state = {"chunks": [], "started": None, "silent": 0, "waited": 0}
+        for frame in capture.frames():
+            self._current()
+            if self._speaker_overlapped(generation):
+                self.status('playback_suppressed', error='voice_playback_overlap')
+                return None
+            self._heartbeat('listening')
+            if not isinstance(frame, bytes) or len(frame) != self.capture_cfg.frame_bytes:
+                raise ComputeError('invalid_compute_capture_frame')
+            samples = list(struct.iter_unpack('<h', frame))
+            energy = math.sqrt(sum(sample[0] ** 2 for sample in samples) / len(samples))
+            voiced = energy >= self.gate
+            outcome = self._accumulate_utterance(state, pre, frame, voiced)
+            if outcome == "empty":
+                return None
+            if outcome == "done":
+                break
+        return state["chunks"], state["started"]
+
     def utterance(self) -> tuple[bytes, float] | None:
         self._current()
         self._health()
@@ -457,38 +501,15 @@ class VoiceRunner(GoalRunner):
             return None
         capture_owner = self.capture_factory(self.capture_cfg)
         self.capture = capture_owner
-        pre = deque(maxlen=max(1, int(200 / self.capture_cfg.frame_ms)))
-        chunks, started, silent, waited = [], None, 0, 0
         try:
             with capture_owner as capture:
                 if self._speaker_overlapped(speaker.generation):
                     self.status('playback_suppressed', error='voice_playback_overlap')
                     return None
-                for frame in capture.frames():
-                    self._current()
-                    if self._speaker_overlapped(speaker.generation):
-                        self.status('playback_suppressed', error='voice_playback_overlap')
-                        return None
-                    self._heartbeat('listening')
-                    if not isinstance(frame, bytes) or len(frame) != self.capture_cfg.frame_bytes:
-                        raise ComputeError('invalid_compute_capture_frame')
-                    samples = list(struct.iter_unpack('<h', frame))
-                    energy = math.sqrt(sum(sample[0] ** 2 for sample in samples) / len(samples))
-                    voiced = energy >= self.gate
-                    if started is None:
-                        waited += 1
-                        pre.append(frame)
-                        if not voiced:
-                            if waited >= self.wait_frames:
-                                return None
-                            continue
-                        started = self.wall_clock() - len(pre) * self.capture_cfg.frame_duration_s
-                        chunks.extend(pre)
-                    else:
-                        chunks.append(frame)
-                    silent = 0 if voiced else silent + 1
-                    if silent >= self.tail_frames or len(chunks) >= self.max_frames:
-                        break
+                collected = self._collect_utterance(capture, speaker.generation)
+                if collected is None:
+                    return None
+                chunks, started = collected
         finally:
             capture_owner.close()
             self.capture = None

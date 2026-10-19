@@ -152,62 +152,30 @@ class PTTStateMachine:
         if event == PTTEvent.CANCEL:
             return PTTState.IDLE
 
-        # State-specific transitions
-        if current == PTTState.IDLE:
-            if event == PTTEvent.START:
-                return PTTState.ARMING
-
-        elif current == PTTState.ARMING:
-            if event == PTTEvent.DING_COMPLETE:
-                return PTTState.RECORDING
-            if event == PTTEvent.TIMEOUT:
-                return PTTState.IDLE
-
-        elif current == PTTState.RECORDING:
-            if event == PTTEvent.VOICE_END:
-                return PTTState.COMMIT
-            if event == PTTEvent.COMMIT_AUDIO:
-                return PTTState.COMMIT
-            if event == PTTEvent.TIMEOUT:
-                return PTTState.COMMIT
-
-        elif current == PTTState.COMMIT:
-            if event == PTTEvent.SERVER_RESPONSE:
-                return PTTState.WAIT_REPLY  # Expecting more responses
-            if event == PTTEvent.TTS_START:
-                return PTTState.SPEAKING
-            if event == PTTEvent.TIMEOUT:
-                return PTTState.IDLE
-
-        elif current == PTTState.WAIT_REPLY:
-            if event == PTTEvent.SERVER_RESPONSE:
-                return PTTState.WAIT_REPLY  # Still waiting
-            if event == PTTEvent.TTS_START:
-                return PTTState.SPEAKING
-            if event == PTTEvent.TIMEOUT:
-                return PTTState.IDLE
-
-        elif current == PTTState.SPEAKING:
-            if event == PTTEvent.TTS_COMPLETE:
-                return PTTState.CLOSING
-            # Allow interruption during speaking
-            if event == PTTEvent.START:
-                return PTTState.ARMING
-
-        elif current == PTTState.CLOSING:
-            # Always return to idle after closing
+        if current == PTTState.CLOSING:
             return PTTState.IDLE
-
-        elif current == PTTState.ERROR:
-            # Can recover from error
-            if event == PTTEvent.START:
-                return PTTState.ARMING
-            # Auto-recovery after timeout
-            if event == PTTEvent.TIMEOUT:
-                return PTTState.IDLE
-
-        # No valid transition - stay in current state
-        return current
+        transitions = {
+            PTTState.IDLE: {PTTEvent.START: PTTState.ARMING},
+            PTTState.ARMING: {PTTEvent.DING_COMPLETE: PTTState.RECORDING, PTTEvent.TIMEOUT: PTTState.IDLE},
+            PTTState.RECORDING: {
+                PTTEvent.VOICE_END: PTTState.COMMIT,
+                PTTEvent.COMMIT_AUDIO: PTTState.COMMIT,
+                PTTEvent.TIMEOUT: PTTState.COMMIT,
+            },
+            PTTState.COMMIT: {
+                PTTEvent.SERVER_RESPONSE: PTTState.WAIT_REPLY,
+                PTTEvent.TTS_START: PTTState.SPEAKING,
+                PTTEvent.TIMEOUT: PTTState.IDLE,
+            },
+            PTTState.WAIT_REPLY: {
+                PTTEvent.SERVER_RESPONSE: PTTState.WAIT_REPLY,
+                PTTEvent.TTS_START: PTTState.SPEAKING,
+                PTTEvent.TIMEOUT: PTTState.IDLE,
+            },
+            PTTState.SPEAKING: {PTTEvent.TTS_COMPLETE: PTTState.CLOSING, PTTEvent.START: PTTState.ARMING},
+            PTTState.ERROR: {PTTEvent.START: PTTState.ARMING, PTTEvent.TIMEOUT: PTTState.IDLE},
+        }
+        return transitions.get(current, {}).get(event, current)
 
     def reset(self) -> None:
         """Reset state machine to IDLE."""

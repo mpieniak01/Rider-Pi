@@ -21,15 +21,21 @@ export class Posture {
   catch(error){showError(error);}
   finally{this.busy=false;this.render();}
  }
- render(){
+ renderLanguage(){
   const language=document.documentElement.lang;
   if(this.language!==language){
    this.language=language;
    this.root.querySelectorAll('[data-pl]').forEach(node=>{node.textContent=tr(node.dataset.pl,node.dataset.en);});
   }
-  const state=this.safety.state,height=state?.actuators?.height?.value,balance=state?.actuators?.balance?.enabled;
+ }
+ renderValues(height,balance){
   if(!this.dirty.has('height') && document.activeElement!==this.height && Number.isInteger(height)){this.height.value=height;this.root.querySelector('output').textContent=String(height);}
   if(!this.dirty.has('balance') && document.activeElement!==this.balance)this.balance.value=typeof balance==='boolean'?(balance?'1':'0'):'';
+ }
+ render(){
+  this.renderLanguage();
+  const state=this.safety.state,height=state?.actuators?.height?.value,balance=state?.actuators?.balance?.enabled;
+  this.renderValues(height,balance);
   for(const action of ['height','balance','action']){
    const allowed=!this.busy && this.safety.can('manual',action);
    this.root.querySelector('#posture-'+action+'-send').disabled=!allowed;

@@ -116,6 +116,66 @@ def atomic_write(path, img, quality_jpg=85, compression_png=3):
         return False
 
 
+_PROC_FRAME_NAME = "proc.jpg"
+
+
+def _draw_ssd_frame(frame, out, net, score_threshold, classes):
+    blob = cv2.dnn.blobFromImage(
+        cv2.resize(frame, (300, 300)),
+        0.007843,
+        (300, 300),
+        127.5,
+        swapRB=True,
+        crop=False,
+    )
+    net.setInput(blob)
+    det = net.forward()
+    h, w = frame.shape[:2]
+    for i in range(det.shape[2]):
+        conf = float(det[0, 0, i, 2])
+        cls_id = int(det[0, 0, i, 1])
+        if conf < score_threshold:
+            continue
+        name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
+        if classes and (name.lower() not in classes):
+            continue
+        x1 = int(det[0, 0, i, 3] * w)
+        y1 = int(det[0, 0, i, 4] * h)
+        x2 = int(det[0, 0, i, 5] * w)
+        y2 = int(det[0, 0, i, 6] * h)
+        x1 = max(0, min(x1, w - 1))
+        y1 = max(0, min(y1, h - 1))
+        x2 = max(0, min(x2, w - 1))
+        y2 = max(0, min(y2, h - 1))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        if not NO_DRAW:
+            cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 255), 2)
+            cv2.putText(
+                out,
+                f"{name}:{conf:.2f}",
+                (x1, max(0, y1 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
+
+
+def _log_writer_snapshot(frames, ok_raw, ok_proc):
+    if frames % 30 == 0:
+        s = (
+            os.path.getsize(os.path.join(SNAP_DIR, _PROC_FRAME_NAME))
+            if os.path.exists(os.path.join(SNAP_DIR, _PROC_FRAME_NAME))
+            else -1
+        )
+        print(
+            f"[snap] proc.jpg size={s}B  ok_raw={ok_raw} ok_proc={ok_proc}",
+            flush=True,
+        )
+
+
 def main():
     SCORE = float(os.getenv("SSD_SCORE", "0.45"))
     EVERY = int(os.getenv("SSD_EVERY", "1"))
@@ -138,61 +198,12 @@ def main():
         out = frame.copy()
 
         if net is not None and frames % max(1, EVERY) == 0:
-            blob = cv2.dnn.blobFromImage(
-                cv2.resize(frame, (300, 300)),
-                0.007843,
-                (300, 300),
-                127.5,
-                swapRB=True,
-                crop=False,
-            )
-            net.setInput(blob)
-            det = net.forward()
-            h, w = frame.shape[:2]
-            for i in range(det.shape[2]):
-                conf = float(det[0, 0, i, 2])
-                cls_id = int(det[0, 0, i, 1])
-                if conf < SCORE:
-                    continue
-                name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
-                if CLW and (name.lower() not in CLW):
-                    continue
-                x1 = int(det[0, 0, i, 3] * w)
-                y1 = int(det[0, 0, i, 4] * h)
-                x2 = int(det[0, 0, i, 5] * w)
-                y2 = int(det[0, 0, i, 6] * h)
-                x1 = max(0, min(x1, w - 1))
-                y1 = max(0, min(y1, h - 1))
-                x2 = max(0, min(x2, w - 1))
-                y2 = max(0, min(y2, h - 1))
-                if x2 <= x1 or y2 <= y1:
-                    continue
-                if not NO_DRAW:
-                    cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 255), 2)
-                    cv2.putText(
-                        out,
-                        f"{name}:{conf:.2f}",
-                        (x1, max(0, y1 - 5)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 255),
-                        1,
-                        cv2.LINE_AA,
-                    )
+            _draw_ssd_frame(frame, out, net, SCORE, CLW)
 
         ok_raw = atomic_write(os.path.join(SNAP_DIR, "raw.jpg"), frame, 85, 3)
-        ok_proc = atomic_write(os.path.join(SNAP_DIR, "proc.jpg"), out, 85, 3)
+        ok_proc = atomic_write(os.path.join(SNAP_DIR, _PROC_FRAME_NAME), out, 85, 3)
 
-        if frames % 30 == 0:
-            s = (
-                os.path.getsize(os.path.join(SNAP_DIR, "proc.jpg"))
-                if os.path.exists(os.path.join(SNAP_DIR, "proc.jpg"))
-                else -1
-            )
-            print(
-                f"[snap] proc.jpg size={s}B  ok_raw={ok_raw} ok_proc={ok_proc}",
-                flush=True,
-            )
+        _log_writer_snapshot(frames, ok_raw, ok_proc)
 
         lcd_show_bgr(out)
         frames += 1

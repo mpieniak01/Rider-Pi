@@ -53,6 +53,27 @@ def context(snapshot):
     }
 
 
+def _validate_attempt(args):
+    if not args.plan.strip() or len(args.plan) > 512:
+        raise ValueError("Specific plan of at most 512 characters required.")
+    if not all(math.isfinite(v) for v in (args.vx, args.yaw, args.duration)):
+        raise ValueError("Finite values required.")
+    if not -1 <= args.vx <= 1 or not -1 <= args.yaw <= 1 or not 0.01 <= args.duration <= 0.25:
+        raise ValueError("Speed [-1,1], duration 0.01..0.25 seconds required.")
+    if args.action == "height" and (args.height is None or not 75 <= args.height <= 115):
+        raise ValueError("Explicit height 75..115 required.")
+    if args.action == "balance" and args.enabled is None:
+        raise ValueError("Explicit balance setting required.")
+    if args.action == "action" and args.action_id is None:
+        raise ValueError("Explicit action-id required.")
+
+
+def _require_capability(snapshot, action):
+    capability = snapshot.get("capabilities", {}).get(action, {})
+    if not capability.get("available") or (action != "height" and not capability.get("stop_verified")):
+        raise RuntimeError("Unavailable or uncharacterized capability: " + json.dumps(capability))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default="http://127.0.0.1:8080")
@@ -67,24 +88,11 @@ def main():
     args = parser.parse_args()
     try:
         require_operator()
-        if not args.plan.strip() or len(args.plan) > 512:
-            raise ValueError("Specific plan of at most 512 characters required.")
-        if not all(math.isfinite(v) for v in (args.vx, args.yaw, args.duration)):
-            raise ValueError("Finite values required.")
-        if not -1 <= args.vx <= 1 or not -1 <= args.yaw <= 1 or not 0.01 <= args.duration <= 0.25:
-            raise ValueError("Speed [-1,1], duration 0.01..0.25 seconds required.")
-        if args.action == "height" and (args.height is None or not 75 <= args.height <= 115):
-            raise ValueError("Explicit height 75..115 required.")
-        if args.action == "balance" and args.enabled is None:
-            raise ValueError("Explicit balance setting required.")
-        if args.action == "action" and args.action_id is None:
-            raise ValueError("Explicit action-id required.")
+        _validate_attempt(args)
         snapshot = request_json(args.api, "/api/control/state")["safety"]
         if snapshot.get("state") != "DISARMED":
             raise RuntimeError("DISARMED required; never clear ESTOP automatically.")
-        capability = snapshot.get("capabilities", {}).get(args.action, {})
-        if not capability.get("available") or (args.action != "height" and not capability.get("stop_verified")):
-            raise RuntimeError("Unavailable or uncharacterized capability: " + json.dumps(capability))
+        _require_capability(snapshot, args.action)
         token = uuid.uuid4().hex[:8]
         command = {
             "action": args.action,

@@ -54,6 +54,41 @@ def requested_domains(path: Path | None = None) -> set[str]:
         return set()
 
 
+def _chat_availability_failures():
+    provider = os.getenv("VOICE_WEB_LLM_PROVIDER", "local")
+    if provider != "local":
+        return ["chat_backend_disabled"]
+    else:
+        try:
+            from apps.voice import config
+
+            chat = config.load(os.getenv("VOICE_DOMAIN_CONFIG") or None).get("chat", {})
+        except (ImportError, OSError, ValueError):
+            chat = {}
+        command = os.getenv("VOICE_LLM_MAIN_PATH", chat.get("llm_main_path", "llama.cpp/main"))
+        model = Path(
+            os.getenv(
+                "VOICE_LLM_MODEL_PATH",
+                chat.get("llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf"),
+            )
+        )
+        if (
+            chat.get("backend") != "local"
+            or not re.fullmatch(r"[a-zA-Z0-9/_.-]+", command)
+            or not os.access(shutil.which(command) or command, os.X_OK)
+            or not model.is_file()
+        ):
+            return ["chat_backend_unavailable"]
+    return []
+
+
+def _module_available(find_spec, module):
+    try:
+        return find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def availability(domains: set[str], *, find_spec=importlib.util.find_spec) -> dict:
     missing = []
     required = []
@@ -78,37 +113,11 @@ def availability(domains: set[str], *, find_spec=importlib.util.find_spec) -> di
         if not model.is_file() or not Path(str(model) + ".json").is_file():
             missing.append("tts_model_unavailable")
     for module in required:
-        try:
-            present = find_spec(module) is not None
-        except (ImportError, ValueError):
-            present = False
+        present = _module_available(find_spec, module)
         if not present:
             missing.append(module)
     if "chat" in domains:
-        provider = os.getenv("VOICE_WEB_LLM_PROVIDER", "local")
-        if provider != "local":
-            missing.append("chat_backend_disabled")
-        else:
-            try:
-                from apps.voice import config
-
-                chat = config.load(os.getenv("VOICE_DOMAIN_CONFIG") or None).get("chat", {})
-            except (ImportError, OSError, ValueError):
-                chat = {}
-            command = os.getenv("VOICE_LLM_MAIN_PATH", chat.get("llm_main_path", "llama.cpp/main"))
-            model = Path(
-                os.getenv(
-                    "VOICE_LLM_MODEL_PATH",
-                    chat.get("llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf"),
-                )
-            )
-            if (
-                chat.get("backend") != "local"
-                or not re.fullmatch(r"[a-zA-Z0-9/_.-]+", command)
-                or not os.access(shutil.which(command) or command, os.X_OK)
-                or not model.is_file()
-            ):
-                missing.append("chat_backend_unavailable")
+        missing.extend(_chat_availability_failures())
     capabilities = {
         domain: {
             "ready": not any(

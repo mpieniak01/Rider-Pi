@@ -23,6 +23,7 @@ PUB = None
 SUB_BTN = None
 SUB_MS = None
 
+SYSTEM_MODE_TOPIC = "system.mode"
 HOME_ITEMS = ["Dema", "Autonomia", "Teleop", "Ustawienia", "Logi"]
 LOW_BATTERY_LIMIT = 0.15
 
@@ -76,17 +77,17 @@ def on_ok():
                 return
             pub_stop()
             pub(
-                "system.mode",
+                SYSTEM_MODE_TOPIC,
                 {"mode": "demos", "demo": "trajectory", "ts": time.time()},
             )
         elif item == "Autonomia":
             if low_batt_blocked():
                 return
             pub_stop()
-            pub("system.mode", {"mode": "autonomy", "ts": time.time()})
+            pub(SYSTEM_MODE_TOPIC, {"mode": "autonomy", "ts": time.time()})
         elif item == "Teleop":
             pub_stop()
-            pub("system.mode", {"mode": "teleop", "ts": time.time()})
+            pub(SYSTEM_MODE_TOPIC, {"mode": "teleop", "ts": time.time()})
         elif item == "Ustawienia":
             # placeholder – na razie nic nie robi
             pass
@@ -114,6 +115,20 @@ def log(msg):
     print(time.strftime("[%H:%M:%S]"), msg, flush=True)
 
 
+def _button_event(p):
+    btn = (p.get("id") or "").upper()
+    ev = (p.get("event") or "").lower()
+    if ev == "down":
+        if btn == "LEFT":
+            on_left()
+        elif btn == "RIGHT":
+            on_right()
+        elif btn == "OK":
+            on_ok()
+        elif btn == "BACK":
+            on_back()
+
+
 def main():
     global SUB_BTN, SUB_MS
     SUB_BTN, SUB_MS = BusSub("ui.button"), BusSub("motion.state")
@@ -125,17 +140,7 @@ def main():
             # buttons
             t, p = SUB_BTN.recv(timeout_ms=50)
             if t:
-                btn = (p.get("id") or "").upper()
-                ev = (p.get("event") or "").lower()
-                if ev == "down":
-                    if btn == "LEFT":
-                        on_left()
-                    elif btn == "RIGHT":
-                        on_right()
-                    elif btn == "OK":
-                        on_ok()
-                    elif btn == "BACK":
-                        on_back()
+                _button_event(p)
             # battery
             t2, p2 = SUB_MS.recv(timeout_ms=0)
             if t2 and isinstance(p2, dict):

@@ -20,6 +20,10 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent.parent if "__file__" in globals() else Path.cwd()
 DEVELOPMENT_REQUIREMENTS = "requirements-dev.txt"
+API_SERVICE = "rider-api.service"
+DISPLAY_SERVICE = "lcd-renderer.service"
+MOTION_SERVICE = "motion-executor.service"
+REMOTE_MAIN = "origin/main"
 
 # Explicit resource update scope; never a blanket driver/systemd bypass.
 RESOURCE_PATHS = frozenset(
@@ -80,30 +84,39 @@ def changed_paths(repo, base, target):
     return [p for p in output.split("\0") if p]
 
 
+def _private_path(path):
+    parts = PurePosixPath(path).parts
+    name = parts[-1]
+    return (
+        "_to_do" in parts
+        or "_done" in parts
+        or path.startswith("config/local/")
+        or path == "config/local"
+        or path.startswith(("logs/", "data/", "snapshots/", ".pids/", "models/"))
+        or name == "evn.ssh.local"
+        or (name.startswith(".env") and not name.endswith(".example"))
+    )
+
+
+def _critical_path(path, restart_motion, resource_scope, vision_loop_scope):
+    critical = path.startswith(("systemd/", "drivers/", "scripts/sys_", "requirements"))
+    if path == DEVELOPMENT_REQUIREMENTS:
+        critical = False  # Content is validated separately; no package installation occurs.
+    critical = critical or path in {"scripts/systemd-sync.sh", "pyproject.toml"} or path in PRIVATE_BACKENDS
+    if path in {"drivers/xgo/adapter.py", "drivers/xgo/sniffer.py"} and restart_motion:
+        critical = False  # Explicit motion deployment scope, never a general driver bypass.
+    if resource_scope and path in RESOURCE_PATHS:
+        critical = False
+    if vision_loop_scope and path in VISION_LOOP_PATHS:
+        critical = False
+    return critical
+
+
 def check_paths(paths, restart_motion=False, resource_scope=False, vision_loop_scope=False):
     """Reject private data and changes requiring a separate deployment scope."""
     for path in paths:
-        parts = PurePosixPath(path).parts
-        name = parts[-1]
-        private = (
-            "_to_do" in parts
-            or "_done" in parts
-            or path.startswith("config/local/")
-            or path == "config/local"
-            or path.startswith(("logs/", "data/", "snapshots/", ".pids/", "models/"))
-            or name == "evn.ssh.local"
-            or (name.startswith(".env") and not name.endswith(".example"))
-        )
-        critical = path.startswith(("systemd/", "drivers/", "scripts/sys_", "requirements"))
-        if path == DEVELOPMENT_REQUIREMENTS:
-            critical = False  # Content is validated separately; no package installation occurs.
-        critical = critical or path in {"scripts/systemd-sync.sh", "pyproject.toml"} or path in PRIVATE_BACKENDS
-        if path in {"drivers/xgo/adapter.py", "drivers/xgo/sniffer.py"} and restart_motion:
-            critical = False  # Explicit motion deployment scope, never a general driver bypass.
-        if resource_scope and path in RESOURCE_PATHS:
-            critical = False
-        if vision_loop_scope and path in VISION_LOOP_PATHS:
-            critical = False
+        private = _private_path(path)
+        critical = _critical_path(path, restart_motion, resource_scope, vision_loop_scope)
         if private or critical:
             raise RuntimeError(f"Separate deployment scope required for protected path: {path}")
 
@@ -174,7 +187,7 @@ def write_record(path, data):
 
 def restart_api():
     """Restart only the API service and wait for its HTTP health endpoint."""
-    run(["sudo", "-n", "systemctl", "restart", "rider-api.service"])
+    run(["sudo", "-n", "systemctl", "restart", API_SERVICE])
     for _ in range(20):
         try:
             with urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=1) as response:
@@ -187,7 +200,7 @@ def restart_api():
 
 def check_api_active():
     """Require an already active API before a deployment restarts it."""
-    result = run(["systemctl", "is-active", "rider-api.service"], check=False)
+    result = run(["systemctl", "is-active", API_SERVICE], check=False)
     if result.returncode:
         raise RuntimeError("API is not active; restarting an inactive service requires its own scope.")
 
@@ -207,55 +220,43 @@ def resource_preflight():
     for mode in ("raw", "edge", "ssd"):
         if run(["systemctl", "is-active", f"camera-capture@{mode}.service"], check=False).returncode == 0:
             raise RuntimeError("End the active camera goal before the resource update.")
-    return run(["systemctl", "is-active", "lcd-renderer.service"], check=False).returncode == 0
+    return run(["systemctl", "is-active", DISPLAY_SERVICE], check=False).returncode == 0
 
 
 def pause_resources():
     """Close old display/API handles before checking out new controller code."""
-    run(["sudo", "-n", "systemctl", "stop", "lcd-renderer.service"])
-    run(["sudo", "-n", "systemctl", "stop", "rider-api.service"])
+    run(["sudo", "-n", "systemctl", "stop", DISPLAY_SERVICE])
+    run(["sudo", "-n", "systemctl", "stop", API_SERVICE])
 
 
 def resume_display(active):
     """Restore only the display service observed before the update."""
     if active:
-        run(["sudo", "-n", "systemctl", "start", "lcd-renderer.service"])
+        run(["sudo", "-n", "systemctl", "start", DISPLAY_SERVICE])
 
 
-def preview(repo, record_path, request):
-    """Check a Git bundle and activate a reversible preview commit."""
-    check_clean(repo)
-    previous = read_record(record_path)
-    static_only = request.get("static_only") is True
-    if static_only and any(request.get(key) for key in ("restart_api", "restart_motion", "resource_scope")):
-        raise RuntimeError("Static-only preview cannot request runtime restarts or resource updates.")
-    restart_required = not static_only and (request["restart_api"] or bool(previous and previous["restart_api"]))
-    restart_on_rollback = restart_required or bool(previous and previous["restart_api"])
-    if restart_required:
-        check_api_active()
-    base, target = request["base"], request["commit"]
-    current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
+def _check_preview_origin(previous, base, current, branch):
     if previous:
         if previous["base"] != base or current != previous["commit"] or branch != previous["preview_branch"]:
             raise RuntimeError("Active preview does not match its record; inspect status first.")
     elif current != base or branch != "main":
         raise RuntimeError("First preview requires clean main at the local base commit.")
 
-    transfer_base = request.get("transfer_base", current)
-    if current != transfer_base:
-        raise RuntimeError("Device revision changed since preflight; run preview again.")
-    if current == target and "transfer_base" in request:
-        if request.get("restart_motion"):
-            if previous:
-                write_record(record_path, dict(previous, restart_motion=True))
-            run(["sudo", "-n", "systemctl", "restart", "motion-executor.service"])
-            run(["systemctl", "is-active", "motion-executor.service"])
-        if restart_required:
-            if previous:
-                write_record(record_path, dict(previous, restart_api=True))
-            restart_api()
-        return {"action": "preview", "files": [], "unchanged": True, **status(repo, record_path)}
 
+def _unchanged_preview(repo, record_path, request, previous, restart_required):
+    if request.get("restart_motion"):
+        if previous:
+            write_record(record_path, dict(previous, restart_motion=True))
+        run(["sudo", "-n", "systemctl", "restart", MOTION_SERVICE])
+        run(["systemctl", "is-active", MOTION_SERVICE])
+    if restart_required:
+        if previous:
+            write_record(record_path, dict(previous, restart_api=True))
+        restart_api()
+    return {"action": "preview", "files": [], "unchanged": True, **status(repo, record_path)}
+
+
+def _preview_files(repo, record_path, request, base, transfer_base, target, static_only):
     with tempfile.NamedTemporaryFile(dir=record_path.parent, suffix=".bundle") as bundle:
         shutil.copyfileobj(sys.stdin.buffer, bundle)
         bundle.flush()
@@ -287,13 +288,23 @@ def preview(repo, record_path, request):
     )
     check_local_files(repo, paths)
     check_python(repo, target, paths)
-    preview_branch = f"rider-preview/{target[:12]}"
-    existing = run(["git", "rev-parse", "--verify", f"refs/heads/{preview_branch}"], cwd=repo, check=False)
-    if not existing.returncode and existing.stdout.strip() != target:
-        raise RuntimeError("Preview branch already exists at a different commit; preserve it first.")
-    resource_scope = request.get("resource_scope") is True
-    display_active = resource_preflight() if resource_scope else False
-    record = {
+    return paths
+
+
+def _preview_restarts(request, previous, static_only):
+    if static_only and any(request.get(key) for key in ("restart_api", "restart_motion", "resource_scope")):
+        raise RuntimeError("Static-only preview cannot request runtime restarts or resource updates.")
+    restart_required = not static_only and (request["restart_api"] or bool(previous and previous["restart_api"]))
+    restart_on_rollback = restart_required or bool(previous and previous["restart_api"])
+    if restart_required:
+        check_api_active()
+    return restart_required, restart_on_rollback
+
+
+def _preview_record(
+    request, previous, base, target, preview_branch, restart_on_rollback, resource_scope, display_active
+):
+    return {
         "base": base,
         "branch": "main",
         "commit": target,
@@ -303,9 +314,36 @@ def preview(repo, record_path, request):
         "display_active": display_active if resource_scope else bool(previous and previous.get("display_active")),
         "restart_motion": request.get("restart_motion", False) or bool(previous and previous.get("restart_motion")),
     }
+
+
+def _restore_preview_failure(repo, record_path, request, previous, current, resource_scope, display_active):
+    if previous:
+        write_record(record_path, previous)
+    elif record_path.exists():
+        record_path.unlink()
+    if request.get("restart_motion") and git(repo, "rev-parse", "HEAD") == current:
+        run(["sudo", "-n", "systemctl", "start", MOTION_SERVICE])
+    if resource_scope:
+        restart_api()
+        resume_display(display_active)
+
+
+def _switch_preview_checkout(
+    repo,
+    record_path,
+    request,
+    previous,
+    current,
+    target,
+    preview_branch,
+    existing,
+    record,
+    resource_scope,
+    display_active,
+):
     if request.get("restart_motion"):
-        run(["systemctl", "is-active", "motion-executor.service"])
-        run(["sudo", "-n", "systemctl", "stop", "motion-executor.service"])
+        run(["systemctl", "is-active", MOTION_SERVICE])
+        run(["sudo", "-n", "systemctl", "stop", MOTION_SERVICE])
     try:
         write_record(record_path, record)
         if resource_scope:
@@ -315,19 +353,52 @@ def preview(repo, record_path, request):
         else:
             git(repo, "switch", preview_branch)
     except RuntimeError:
-        if previous:
-            write_record(record_path, previous)
-        elif record_path.exists():
-            record_path.unlink()
-        if request.get("restart_motion") and git(repo, "rev-parse", "HEAD") == current:
-            run(["sudo", "-n", "systemctl", "start", "motion-executor.service"])
-        if resource_scope:
-            restart_api()
-            resume_display(display_active)
+        _restore_preview_failure(repo, record_path, request, previous, current, resource_scope, display_active)
         raise
+
+
+def preview(repo, record_path, request):
+    """Check a Git bundle and activate a reversible preview commit."""
+    check_clean(repo)
+    previous = read_record(record_path)
+    static_only = request.get("static_only") is True
+    restart_required, restart_on_rollback = _preview_restarts(request, previous, static_only)
+    base, target = request["base"], request["commit"]
+    current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
+    _check_preview_origin(previous, base, current, branch)
+
+    transfer_base = request.get("transfer_base", current)
+    if current != transfer_base:
+        raise RuntimeError("Device revision changed since preflight; run preview again.")
+    if current == target and "transfer_base" in request:
+        return _unchanged_preview(repo, record_path, request, previous, restart_required)
+
+    paths = _preview_files(repo, record_path, request, base, transfer_base, target, static_only)
+    preview_branch = f"rider-preview/{target[:12]}"
+    existing = run(["git", "rev-parse", "--verify", f"refs/heads/{preview_branch}"], cwd=repo, check=False)
+    if not existing.returncode and existing.stdout.strip() != target:
+        raise RuntimeError("Preview branch already exists at a different commit; preserve it first.")
+    resource_scope = request.get("resource_scope") is True
+    display_active = resource_preflight() if resource_scope else False
+    record = _preview_record(
+        request, previous, base, target, preview_branch, restart_on_rollback, resource_scope, display_active
+    )
+    _switch_preview_checkout(
+        repo,
+        record_path,
+        request,
+        previous,
+        current,
+        target,
+        preview_branch,
+        existing,
+        record,
+        resource_scope,
+        display_active,
+    )
     if request.get("restart_motion"):
-        run(["sudo", "-n", "systemctl", "start", "motion-executor.service"])
-        run(["systemctl", "is-active", "motion-executor.service"])
+        run(["sudo", "-n", "systemctl", "start", MOTION_SERVICE])
+        run(["systemctl", "is-active", MOTION_SERVICE])
     if restart_required:
         restart_api()
     if resource_scope:
@@ -345,7 +416,7 @@ def rollback(repo, record_path):
     if git(repo, "rev-parse", record["branch"]) != record["base"]:
         raise RuntimeError("Saved main changed; preserve it before rollback.")
     if record.get("restart_motion") and current == record["commit"] and branch == record["preview_branch"]:
-        run(["sudo", "-n", "systemctl", "stop", "motion-executor.service"])
+        run(["sudo", "-n", "systemctl", "stop", MOTION_SERVICE])
     if record.get("resource_scope"):
         resource_preflight()
         pause_resources()
@@ -354,8 +425,8 @@ def rollback(repo, record_path):
     elif current != record["base"] or branch != record["branch"]:
         raise RuntimeError("Device checkout no longer matches the preview record.")
     if record.get("restart_motion"):
-        run(["sudo", "-n", "systemctl", "start", "motion-executor.service"])
-        run(["systemctl", "is-active", "motion-executor.service"])
+        run(["sudo", "-n", "systemctl", "start", MOTION_SERVICE])
+        run(["systemctl", "is-active", MOTION_SERVICE])
     if record["restart_api"]:
         restart_api()
     if record.get("resource_scope"):
@@ -364,11 +435,7 @@ def rollback(repo, record_path):
     return {"action": "rollback", **status(repo, record_path)}
 
 
-def release(repo, record_path, request):
-    """Fast-forward to expected GitHub main after checking preview contents."""
-    check_clean(repo)
-    previous = read_record(record_path)
-    current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
+def _release_files(repo, request, previous, current, branch):
     if previous:
         if current != previous["commit"] or branch != previous["preview_branch"]:
             raise RuntimeError("Device checkout no longer matches the preview record.")
@@ -379,7 +446,7 @@ def release(repo, record_path, request):
     if request["restart_api"]:
         check_api_active()
     git(repo, "fetch", "origin", "main")
-    target = git(repo, "rev-parse", "origin/main")
+    target = git(repo, "rev-parse", REMOTE_MAIN)
     if target != request["commit"]:
         raise RuntimeError("GitHub main differs from the expected merged commit.")
     base = previous["base"] if previous else current
@@ -397,24 +464,33 @@ def release(repo, record_path, request):
     check_python(repo, target, paths)
     if previous and git(repo, "rev-parse", f"{current}^{{tree}}") != git(repo, "rev-parse", f"{target}^{{tree}}"):
         raise RuntimeError("Reviewed main differs from the tested preview; preview the new content first.")
+    return base, target, paths
+
+
+def release(repo, record_path, request):
+    """Fast-forward to expected GitHub main after checking preview contents."""
+    check_clean(repo)
+    previous = read_record(record_path)
+    current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
+    base, target, paths = _release_files(repo, request, previous, current, branch)
     release_record = record_path.with_name("rider-last-release.json")
     last_release = read_record(release_record)
     if base != target or not last_release or last_release["commit"] != target:
         write_record(release_record, {"previous": base, "commit": target})
     if request.get("restart_motion"):
-        run(["systemctl", "is-active", "motion-executor.service"])
-        run(["sudo", "-n", "systemctl", "stop", "motion-executor.service"])
+        run(["systemctl", "is-active", MOTION_SERVICE])
+        run(["sudo", "-n", "systemctl", "stop", MOTION_SERVICE])
     display_active = resource_preflight() if request.get("resource_scope") else False
     if request.get("resource_scope"):
         pause_resources()
     if previous:
         git(repo, "switch", "main")
-    git(repo, "merge", "--ff-only", "origin/main")
+    git(repo, "merge", "--ff-only", REMOTE_MAIN)
     if previous:
         record_path.unlink()
     if request.get("restart_motion"):
-        run(["sudo", "-n", "systemctl", "start", "motion-executor.service"])
-        run(["systemctl", "is-active", "motion-executor.service"])
+        run(["sudo", "-n", "systemctl", "start", MOTION_SERVICE])
+        run(["systemctl", "is-active", MOTION_SERVICE])
     if request["restart_api"]:
         restart_api()
     if request.get("resource_scope"):
@@ -499,11 +575,7 @@ def ssh(env_file, request, bundle):
         return json.loads(result.stdout)
 
 
-def main():
-    """Build a local deployment request or handle the transmitted device request."""
-    if len(sys.argv) > 1 and sys.argv[1] == "_remote":
-        print(json.dumps(remote(json.loads(sys.argv[2]))))
-        return
+def _parser():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
     for action in ("preview", "status", "rollback", "release"):
@@ -527,7 +599,7 @@ def main():
             help="Stop executor before checkout, restart disarmed; allow the XGO adapter and optional UART tap",
         )
         if action == "preview":
-            command.add_argument("--base", default="origin/main")
+            command.add_argument("--base", default=REMOTE_MAIN)
             command.add_argument(
                 "--static-only",
                 action="store_true",
@@ -535,6 +607,64 @@ def main():
             )
         if action == "release":
             command.add_argument("--commit", required=True, help="Full SHA of merged main")
+    return parser
+
+
+def _local_preview(args, request):
+    bundle_bytes = b""
+    check_clean(ROOT)
+    request["base"] = git(ROOT, "rev-parse", "--verify", "--end-of-options", f"{args.base}^{{commit}}")
+    request["commit"] = git(ROOT, "rev-parse", "HEAD")
+    if request["commit"] == request["base"]:
+        raise RuntimeError("Commit your local change on a feature branch before previewing it.")
+    git(ROOT, "merge-base", "--is-ancestor", request["base"], request["commit"])
+    # Check all history for private files before SSH. The exact motion adapter
+    # may already be in the recorded preview; its deployment scope is checked
+    # again against the actual transfer base below and on the device.
+    check_history(ROOT, request["base"], request["commit"], True, args.resource_scope, args.vision_loop_scope)
+    device = ssh(args.env_file.resolve(), {"action": "status", "repo": args.device_repo}, b"")
+    if device["dirty"]:
+        raise RuntimeError("Device checkout has local changes; preserve them before preview.")
+    previous = device["preview"]
+    if previous:
+        if (
+            previous["base"] != request["base"]
+            or device["commit"] != previous["commit"]
+            or device["branch"] != previous["preview_branch"]
+        ):
+            raise RuntimeError("Active preview differs from the local base or recorded device state.")
+    elif device["commit"] != request["base"] or device["branch"] != "main":
+        raise RuntimeError("First preview requires clean device main at the local base commit.")
+    request["transfer_base"] = device["commit"]
+    git(ROOT, "merge-base", "--is-ancestor", request["transfer_base"], request["commit"])
+    check_history(
+        ROOT,
+        request["transfer_base"],
+        request["commit"],
+        args.restart_motion,
+        args.resource_scope,
+        args.vision_loop_scope,
+    )
+    check_paths(
+        changed_paths(ROOT, request["transfer_base"], request["commit"]),
+        args.restart_motion,
+        args.resource_scope,
+        args.vision_loop_scope,
+    )
+    if request["transfer_base"] != request["commit"]:
+        with tempfile.TemporaryDirectory(prefix="rider-bundle-") as directory:
+            bundle_path = Path(directory) / "preview.bundle"
+            git(ROOT, "bundle", "create", str(bundle_path), f"{request['transfer_base']}..HEAD")
+            bundle_bytes = bundle_path.read_bytes()
+    return bundle_bytes
+
+
+def main():
+    """Build a local deployment request or handle the transmitted device request."""
+    if len(sys.argv) > 1 and sys.argv[1] == "_remote":
+        print(json.dumps(remote(json.loads(sys.argv[2]))))
+        return
+    parser = _parser()
     args = parser.parse_args()
     started = time.monotonic()
     request = {
@@ -548,50 +678,7 @@ def main():
     }
     bundle_bytes = b""
     if args.action == "preview":
-        check_clean(ROOT)
-        request["base"] = git(ROOT, "rev-parse", "--verify", "--end-of-options", f"{args.base}^{{commit}}")
-        request["commit"] = git(ROOT, "rev-parse", "HEAD")
-        if request["commit"] == request["base"]:
-            raise RuntimeError("Commit your local change on a feature branch before previewing it.")
-        git(ROOT, "merge-base", "--is-ancestor", request["base"], request["commit"])
-        # Check all history for private files before SSH. The exact motion adapter
-        # may already be in the recorded preview; its deployment scope is checked
-        # again against the actual transfer base below and on the device.
-        check_history(ROOT, request["base"], request["commit"], True, args.resource_scope, args.vision_loop_scope)
-        device = ssh(args.env_file.resolve(), {"action": "status", "repo": args.device_repo}, b"")
-        if device["dirty"]:
-            raise RuntimeError("Device checkout has local changes; preserve them before preview.")
-        previous = device["preview"]
-        if previous:
-            if (
-                previous["base"] != request["base"]
-                or device["commit"] != previous["commit"]
-                or device["branch"] != previous["preview_branch"]
-            ):
-                raise RuntimeError("Active preview differs from the local base or recorded device state.")
-        elif device["commit"] != request["base"] or device["branch"] != "main":
-            raise RuntimeError("First preview requires clean device main at the local base commit.")
-        request["transfer_base"] = device["commit"]
-        git(ROOT, "merge-base", "--is-ancestor", request["transfer_base"], request["commit"])
-        check_history(
-            ROOT,
-            request["transfer_base"],
-            request["commit"],
-            args.restart_motion,
-            args.resource_scope,
-            args.vision_loop_scope,
-        )
-        check_paths(
-            changed_paths(ROOT, request["transfer_base"], request["commit"]),
-            args.restart_motion,
-            args.resource_scope,
-            args.vision_loop_scope,
-        )
-        if request["transfer_base"] != request["commit"]:
-            with tempfile.TemporaryDirectory(prefix="rider-bundle-") as directory:
-                bundle_path = Path(directory) / "preview.bundle"
-                git(ROOT, "bundle", "create", str(bundle_path), f"{request['transfer_base']}..HEAD")
-                bundle_bytes = bundle_path.read_bytes()
+        bundle_bytes = _local_preview(args, request)
     elif args.action == "release":
         if len(args.commit) != 40 or any(c not in "0123456789abcdef" for c in args.commit):
             raise RuntimeError("Release requires a full 40-character merged commit SHA.")

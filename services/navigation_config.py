@@ -50,22 +50,7 @@ def path():
     return Path(os.getenv("RIDER_NAVIGATION_CONFIG", "data/navigation_config.json"))
 
 
-def validate(data):
-    if not isinstance(data, dict) or set(data) != set(DEFAULT):
-        raise ValueError("navigation_configuration_invalid")
-    if (
-        type(data["protocol_version"]) is not int
-        or data["protocol_version"] != 1
-        or type(data["revision"]) is not int
-        or data["revision"] < 0
-    ):
-        raise ValueError("navigation_configuration_invalid")
-    if (
-        not isinstance(data["mode"], str)
-        or data["mode"] not in {"observe", "drive"}
-        or type(data["verified"]) is not bool
-    ):
-        raise ValueError("navigation_configuration_invalid")
+def _validate_command_policy(data):
     speed = data["speed"]
     if (
         isinstance(speed, bool)
@@ -88,13 +73,9 @@ def validate(data):
     x0, y0, x1, y1 = roi
     if not 0 <= x0 < x1 <= 1 or not 0 <= y0 < y1 <= 1:
         raise ValueError("navigation_corridor_invalid")
-    if not isinstance(data["calibration_id"], str) or not re.fullmatch(r"[a-zA-Z0-9_-]{0,64}", data["calibration_id"]):
-        raise ValueError("navigation_calibration_invalid")
-    if not isinstance(data["model_sha256"], str) or not re.fullmatch(r"(?:[a-f0-9]{64})?", data["model_sha256"]):
-        raise ValueError("navigation_model_invalid")
-    if data["mode"] == "drive" and (not data["verified"] or not data["calibration_id"] or not data["model_sha256"]):
-        raise ValueError("navigation_validation_required")
-    perception = data["perception"]
+
+
+def _validated_perception(perception):
     if not isinstance(perception, dict) or set(perception) != set(DEFAULT["perception"]):
         raise ValueError("navigation_perception_invalid")
     if not isinstance(perception["engine"], str) or perception["engine"] not in {"segformer", "depth_plane"}:
@@ -103,7 +84,18 @@ def validate(data):
         value = perception[key]
         if type(value) not in (float, int) or not math.isfinite(value) or not low <= value <= high:
             raise ValueError("navigation_perception_invalid")
-    avoidance = data["avoidance"]
+    return perception
+
+
+def _validate_correction_limits(avoidance):
+    if type(avoidance["max_stalled_corrections"]) is not int or not 1 <= avoidance["max_stalled_corrections"] <= 5:
+        raise ValueError("navigation_avoidance_invalid")
+    delta = avoidance["progress_min_delta"]
+    if type(delta) not in (int, float) or not math.isfinite(delta) or not 0 <= delta <= 0.3:
+        raise ValueError("navigation_avoidance_invalid")
+
+
+def _validated_avoidance(avoidance):
     if not isinstance(avoidance, dict) or set(avoidance) != set(DEFAULT["avoidance"]):
         raise ValueError("navigation_avoidance_invalid")
     if type(avoidance["protocol_version"]) is not int or avoidance["protocol_version"] not in (2, 3):
@@ -120,12 +112,11 @@ def validate(data):
     for key, low, high in (("turn_ms", 50, 150), ("max_turn_pulses", 1, 5)):
         if type(avoidance[key]) is not int or not low <= avoidance[key] <= high:
             raise ValueError("navigation_avoidance_invalid")
-    if type(avoidance["max_stalled_corrections"]) is not int or not 1 <= avoidance["max_stalled_corrections"] <= 5:
-        raise ValueError("navigation_avoidance_invalid")
-    delta = avoidance["progress_min_delta"]
-    if type(delta) not in (int, float) or not math.isfinite(delta) or not 0 <= delta <= 0.3:
-        raise ValueError("navigation_avoidance_invalid")
-    geometry = avoidance["geometry"]
+    _validate_correction_limits(avoidance)
+    return avoidance
+
+
+def _validated_geometry(geometry):
     if not isinstance(geometry, dict) or set(geometry) != set(DEFAULT["avoidance"]["geometry"]):
         raise ValueError("navigation_geometry_invalid")
     if geometry["mode"] not in ("ground", "image"):
@@ -144,6 +135,10 @@ def validate(data):
             continue
         if type(value) not in (int, float) or not math.isfinite(value) or not low <= value <= high:
             raise ValueError("navigation_geometry_invalid")
+    return geometry
+
+
+def _validate_avoidance_authority(data, perception, avoidance, geometry):
     if (
         avoidance["enabled"]
         and avoidance["protocol_version"] == 3
@@ -158,6 +153,35 @@ def validate(data):
         raise ValueError("navigation_avoidance_limits")
     if avoidance["enabled"] and data["mode"] == "drive" and not avoidance["sweep_verified"]:
         raise ValueError("navigation_avoidance_not_accepted")
+
+
+def validate(data):
+    if not isinstance(data, dict) or set(data) != set(DEFAULT):
+        raise ValueError("navigation_configuration_invalid")
+    if (
+        type(data["protocol_version"]) is not int
+        or data["protocol_version"] != 1
+        or type(data["revision"]) is not int
+        or data["revision"] < 0
+    ):
+        raise ValueError("navigation_configuration_invalid")
+    if (
+        not isinstance(data["mode"], str)
+        or data["mode"] not in {"observe", "drive"}
+        or type(data["verified"]) is not bool
+    ):
+        raise ValueError("navigation_configuration_invalid")
+    _validate_command_policy(data)
+    if not isinstance(data["calibration_id"], str) or not re.fullmatch(r"[a-zA-Z0-9_-]{0,64}", data["calibration_id"]):
+        raise ValueError("navigation_calibration_invalid")
+    if not isinstance(data["model_sha256"], str) or not re.fullmatch(r"(?:[a-f0-9]{64})?", data["model_sha256"]):
+        raise ValueError("navigation_model_invalid")
+    if data["mode"] == "drive" and (not data["verified"] or not data["calibration_id"] or not data["model_sha256"]):
+        raise ValueError("navigation_validation_required")
+    perception = _validated_perception(data["perception"])
+    avoidance = _validated_avoidance(data["avoidance"])
+    geometry = _validated_geometry(avoidance["geometry"])
+    _validate_avoidance_authority(data, perception, avoidance, geometry)
     return data
 
 
@@ -192,6 +216,21 @@ def configure(body):
         return configure_locked(body)
 
 
+def _require_navigation_goals_stopped():
+    state_path = Path(os.getenv("FEATURE_STATE_PATH", "/run/rider-motion/feature_state.json"))
+    if state_path.exists():
+        try:
+            if state_path.stat().st_size > 256 * 1024:
+                raise ValueError("oversized")
+            requested = json.loads(state_path.read_text()).get("requested", [])
+            if not isinstance(requested, list) or any(not isinstance(name, str) for name in requested):
+                raise ValueError("invalid")
+        except (ValueError, OSError, AttributeError) as exc:
+            raise ValueError("navigation_goal_state_unavailable") from exc
+        if set(requested) & {"s14_venom_navigation", "s15_venom_perception"}:
+            raise ValueError("navigation_stop_goals_first")
+
+
 def configure_locked(body):
     """Caller already holds the shared feature selection transaction."""
     if (
@@ -211,18 +250,7 @@ def configure_locked(body):
         # Unrelated voice/compute consumers can continue using their own policy.
         if set(body["values"]) != {"mode"}:
             _require_idle_goals()
-        state_path = Path(os.getenv("FEATURE_STATE_PATH", "/run/rider-motion/feature_state.json"))
-        if state_path.exists():
-            try:
-                if state_path.stat().st_size > 256 * 1024:
-                    raise ValueError("oversized")
-                requested = json.loads(state_path.read_text()).get("requested", [])
-                if not isinstance(requested, list) or any(not isinstance(name, str) for name in requested):
-                    raise ValueError("invalid")
-            except (ValueError, OSError, AttributeError) as exc:
-                raise ValueError("navigation_goal_state_unavailable") from exc
-            if set(requested) & {"s14_venom_navigation", "s15_venom_perception"}:
-                raise ValueError("navigation_stop_goals_first")
+        _require_navigation_goals_stopped()
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
         changed = any(
             proposed[k] != old[k]

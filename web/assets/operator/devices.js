@@ -6,6 +6,31 @@ import { el, freshPill, pill, kv, tr, ageStamp, text, showError, rawDetails, pow
 export function telemetryChannel(xgo, name, unavailable = false) {
   return observationChannel(xgo, name, { unavailable, now: nowSeconds() });
 }
+function resourcePower(card,data) {
+  const activity = data.activity;
+  const on = activity?.error || !fresh(data, 10) ? null : activity?.on;
+  card.append(pill(powerLabel(on), on === true ? 'ok' : on === false ? 'warn' : 'err'));
+}
+function resourceBadge(data,good) {
+  let status = 'err';
+  if (good) status = data.state === 'free' ? 'ok' : 'warn';
+  return freshPill(data, good ? data.state : 'unknown', status);
+}
+function resourceDetails(data,good) {
+  return kv([[tr('Źródło', 'Source'), data.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(data, 10)],
+          [tr('Konsumenci zadań', 'Task consumers'), (data.consumers || []).join(', ') || '—'],
+          [tr('Właściciele procesów', 'Process owners'), (data.holders || []).map(row => `${row.service || row.cmd || row.command || '?'} (PID ${row.pid})`).join(', ') || (good && data.state === 'free' ? tr('brak', 'none') : tr('nieznani', 'unknown'))]]);
+}
+function resourceCard(name,data) {
+  const card = el('article', 'c-card'); const good = fresh(data, 10) && data.state !== 'unknown' && data.state !== 'unavailable' && !data.error;
+  card.append(el('h3', '', name.toUpperCase()));
+  if (name === 'camera' || name === 'lcd')resourcePower(card,data);
+  card.append(resourceBadge(data,good),resourceDetails(data,good));
+  if (name === 'lcd') card.append(el('p', 'operator-muted', tr('Ekran zamontowany bokiem. Kompensacja 270°; nie zmieniaj orientacji w panelu.', 'Display mounted sideways. Compensation 270°; preserve orientation.')));
+  if (name === 'uart') card.append(el('p', 'operator-muted', tr('Jeden właściciel UART: wykonawca ruchu. Telemetria przez BUS.', 'One UART owner: motion executor. Telemetry through BUS.')));
+  if (data.error) card.append(el('p', 'operator-error', data.error));
+  card.append(rawDetails(data)); return card;
+}
 export class Devices {
   constructor() {
     this.imageBusy = false; this.preview = false; this.meta = null; this.lastFrame = null; this.displayed = null; this.pendingImage = null;
@@ -60,21 +85,7 @@ export class Devices {
     const rows = resources.map((result, index) => {
       const name = ['camera', 'mic', 'speaker', 'lcd', 'uart'][index];
       const data = result.status === 'fulfilled' ? result.value.data : { state: 'unknown', error: result.reason.message, observed_at: null };
-      const card = el('article', 'c-card'); const good = fresh(data, 10) && data.state !== 'unknown' && data.state !== 'unavailable' && !data.error;
-      card.append(el('h3', '', name.toUpperCase()));
-      if (name === 'camera' || name === 'lcd') {
-        const activity = data.activity;
-        const on = activity?.error || !fresh(data, 10) ? null : activity?.on;
-        card.append(pill(powerLabel(on), on === true ? 'ok' : on === false ? 'warn' : 'err'));
-      }
-      card.append(freshPill(data, good ? data.state : 'unknown', good ? data.state === 'free' ? 'ok' : 'warn' : 'err'),
-        kv([[tr('Źródło', 'Source'), data.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(data, 10)],
-          [tr('Konsumenci zadań', 'Task consumers'), (data.consumers || []).join(', ') || '—'],
-          [tr('Właściciele procesów', 'Process owners'), (data.holders || []).map(row => `${row.service || row.cmd || row.command || '?'} (PID ${row.pid})`).join(', ') || (good && data.state === 'free' ? tr('brak', 'none') : tr('nieznani', 'unknown'))]]));
-      if (name === 'lcd') card.append(el('p', 'operator-muted', tr('Ekran zamontowany bokiem. Kompensacja 270°; nie zmieniaj orientacji w panelu.', 'Display mounted sideways. Compensation 270°; preserve orientation.')));
-      if (name === 'uart') card.append(el('p', 'operator-muted', tr('Jeden właściciel UART: wykonawca ruchu. Telemetria przez BUS.', 'One UART owner: motion executor. Telemetry through BUS.')));
-      if (data.error) card.append(el('p', 'operator-error', data.error));
-      card.append(rawDetails(data)); return card;
+      return resourceCard(name,data);
     });
     this.resourceRows = rows;
     if (document.getElementById('telemetry-list')) target?.replaceChildren(...rows);

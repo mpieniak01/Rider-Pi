@@ -17,7 +17,7 @@ import queue
 import threading
 import time
 from dataclasses import dataclass, fields
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .. import voice_logging
@@ -34,6 +34,32 @@ from .playout import StreamPlayoutMixin
 from .state import PTTEvent, PTTStateMachine
 from .task_lifecycle import SessionTasks
 from .transport import ReconnectingTransport
+
+
+def _ptt_enabled_from_config(config):
+    hotword_cfg = dict(config.get("hotword") or {})
+    ptt_cfg = config.get("ptt") or {}
+    service_cfg = config.get("service") or {}
+    turn_cfg = service_cfg.get("turn") or config.get("turn") or {}
+
+    service_hotword_engine = str(service_cfg.get("hotword_engine", "")).strip().lower()
+    service_hotword_enabled = service_cfg.get("hotword_enabled")
+    commit_on_key = bool(turn_cfg.get("commit_on_key", False))
+
+    hotword_engine = str(hotword_cfg.get("engine", "")).strip().lower()
+    if not hotword_engine:
+        if service_hotword_engine:
+            hotword_engine = service_hotword_engine
+        elif service_hotword_enabled is False:
+            hotword_engine = ""
+        else:
+            hotword_engine = "ptt"
+
+    enabled = hotword_engine == "ptt" or bool(ptt_cfg.get("enabled", False)) or commit_on_key
+    if service_hotword_enabled is False:
+        enabled = False
+
+    return enabled
 
 
 def _ensure_event_loop() -> None:
@@ -136,7 +162,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         payload = {
             "type": err_type,
             "message": str(message),
-            "ts": datetime.utcnow().isoformat() + "Z",
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         pub = getattr(self, "ui_publisher", None)
         if pub and hasattr(pub, "publish"):
@@ -254,28 +280,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
             device=playback_in.get("device"),
         )
 
-        # PTT configuration (compatible with old svc_stream.py logic)
-        hotword_cfg = dict(self.config.get("hotword") or {})
-        ptt_cfg = self.config.get("ptt") or {}
-        service_cfg = self.config.get("service") or {}
-        turn_cfg = service_cfg.get("turn") or self.config.get("turn") or {}
-
-        service_hotword_engine = str(service_cfg.get("hotword_engine", "")).strip().lower()
-        service_hotword_enabled = service_cfg.get("hotword_enabled")
-        commit_on_key = bool(turn_cfg.get("commit_on_key", False))
-
-        hotword_engine = str(hotword_cfg.get("engine", "")).strip().lower()
-        if not hotword_engine:
-            if service_hotword_engine:
-                hotword_engine = service_hotword_engine
-            elif service_hotword_enabled is False:
-                hotword_engine = ""
-            else:
-                hotword_engine = "ptt"
-
-        self.ptt_enabled: bool = hotword_engine == "ptt" or bool(ptt_cfg.get("enabled", False)) or commit_on_key
-        if service_hotword_enabled is False:
-            self.ptt_enabled = False
+        self.ptt_enabled = _ptt_enabled_from_config(self.config)
 
         self._any_audio_since_commit: bool = False
 
@@ -485,6 +490,21 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
     # ──────────────────────────────────────────────────────────────────────────
     # Workers
 
+    async def _commit_audio_on_timer(self, now, silence_s, hard_cap_s):
+        if not self._any_audio_since_commit:
+            return
+        try:
+            if (now - self._last_audio_ts) >= silence_s:
+                self.logger.event("audio.commit.timer_silence", idle_ms=int((now - self._last_audio_ts) * 1000))
+            elif (now - self._last_commit_ts) >= hard_cap_s:
+                self.logger.event("audio.commit.timer_maxturn", elapsed_ms=int((now - self._last_commit_ts) * 1000))
+            else:
+                return
+            await self._commit_audio_buffer()
+            self._last_commit_ts = time.time()
+        except Exception:
+            pass
+
     async def _audio_sender_loop(self) -> None:
         """Send captured audio frames to the realtime API."""
         self.logger.event("audio.sender.start")
@@ -494,27 +514,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
             while not self.stop_event.is_set():
                 now = time.time()
 
-                if self._any_audio_since_commit:
-                    if (now - self._last_audio_ts) >= silence_s:
-                        try:
-                            self.logger.event(
-                                "audio.commit.timer_silence",
-                                idle_ms=int((now - self._last_audio_ts) * 1000),
-                            )
-                            await self._commit_audio_buffer()
-                            self._last_commit_ts = time.time()
-                        except Exception:
-                            pass
-                    elif (now - self._last_commit_ts) >= hard_cap_s:
-                        try:
-                            self.logger.event(
-                                "audio.commit.timer_maxturn",
-                                elapsed_ms=int((now - self._last_commit_ts) * 1000),
-                            )
-                            await self._commit_audio_buffer()
-                            self._last_commit_ts = time.time()
-                        except Exception:
-                            pass
+                await self._commit_audio_on_timer(now, silence_s, hard_cap_s)
 
                 try:
                     chunk = await asyncio.to_thread(self.audio_queue.get, timeout=0.1)
@@ -535,6 +535,17 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
             self.logger.event("audio.sender.error", error=str(e))
         finally:
             self.logger.event("audio.sender.stop")
+
+    def _audio_input_channels(self, chunk):
+        channels_cfg = getattr(getattr(self, "capture_cfg", None), "channels", None)
+        if channels_cfg is None:
+            try:
+                channels_cfg = int(self.config.get("capture", {}).get("channels", 1))  # type: ignore[attr-defined]
+            except Exception:
+                channels_cfg = 1
+
+        guessed_is_stereo = len(chunk) >= 4 and len(chunk) % 4 == 0
+        return 2 if (channels_cfg == 2 or (channels_cfg != 1 and guessed_is_stereo)) else 1
 
     async def _send_audio_chunk(self, chunk: bytes) -> None:
         """Wyślij kawałek audio; gdy wejście jest stereo, downmix do mono i zaloguj metryki."""
@@ -557,15 +568,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
                 }
             )
 
-        channels_cfg = getattr(getattr(self, "capture_cfg", None), "channels", None)
-        if channels_cfg is None:
-            try:
-                channels_cfg = int(self.config.get("capture", {}).get("channels", 1))  # type: ignore[attr-defined]
-            except Exception:
-                channels_cfg = 1
-
-        guessed_is_stereo = len(chunk) >= 4 and len(chunk) % 4 == 0
-        ch_in = 2 if (channels_cfg == 2 or (channels_cfg != 1 and guessed_is_stereo)) else 1
+        ch_in = self._audio_input_channels(chunk)
 
         if ch_in == 2:
             pcm_out = _downmix_to_mono_local(chunk)

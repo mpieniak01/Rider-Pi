@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from common.observations import source_time
 
+JSON_CONTENT_TYPE = "application/json"
+
 
 def lcd_snapshot(C, *, now):
     """Reported LCD I/O and preview settings have different owners and clocks."""
@@ -34,16 +36,21 @@ def lcd_snapshot(C, *, now):
         "observed_age_s": round(now - at, 3) if reported else None,
         "power_source": state.get("power_source") if known else None,
         "power_observed_at": power_at if known else None,
-        "confirmation": state.get("confirmation") if reported else None,
-        "physical_validity": state.get("physical_validity") if reported else None,
-        "reason": state.get("reason") if reported else None,
-        "rot": state.get("rot") if reported else None,
-        "no_draw": state.get("no_draw") if reported else None,
+        **{
+            key: state.get(key) if reported else None
+            for key in (
+                "confirmation",
+                "physical_validity",
+                "reason",
+                "rot",
+                "no_draw",
+                "frame",
+                "frame_source",
+                "frame_observed_at",
+                "battery",
+            )
+        },
         "presenting": state.get("presenting"),
-        "frame": state.get("frame") if reported else None,
-        "frame_source": state.get("frame_source") if reported else None,
-        "frame_observed_at": state.get("frame_observed_at") if reported else None,
-        "battery": state.get("battery") if reported else None,
         "configured_on": (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW),
         "configured_no_draw": C.ENV_NO_DRAW,
         "configured_rot": lcd_board().rotate,
@@ -116,7 +123,7 @@ def healthz(C):
             "age_s": (round(now - C.LAST_STATE["ts"], 3) if C.LAST_STATE.get("ts") else None),
         },
     }
-    return C.Response(C.json.dumps(payload), mimetype="application/json")
+    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
 def health_alias(C):
@@ -128,7 +135,7 @@ def livez(C):
     up_s = C.time.time() - C.START_TS
     return C.Response(
         C.json.dumps({"alive": True, "uptime_s": round(up_s, 3)}),
-        mimetype="application/json",
+        mimetype=JSON_CONTENT_TYPE,
     )
 
 
@@ -167,21 +174,21 @@ def api_version(C):
         "ts": int(C.time.time()),
         "git": info,
     }
-    return C.Response(C.json.dumps(payload), mimetype="application/json")
+    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
 def api_bus_health(C):
     from .bus_health import snapshot
 
     payload = snapshot(C)
-    return C.Response(C.json.dumps(payload), mimetype="application/json")
+    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
 def readyz(C):
     from .bus_health import snapshot
 
     payload = snapshot(C)
-    return C.Response(C.json.dumps(payload), mimetype="application/json", status=200 if payload["ready"] else 503)
+    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE, status=200 if payload["ready"] else 503)
 
 
 def api_status(C):
@@ -203,7 +210,7 @@ def api_status(C):
         },
         "devices": {"summary": {"flags": flags}},
     }
-    return C.Response(C.json.dumps(payload), mimetype="application/json")
+    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
 def api_metrics_alias(C):
@@ -250,7 +257,7 @@ def api_metrics_alias(C):
     }
 
     payload = {"cpu": cpu, "mem": mem, "load": load, "uptime": uptime}
-    return C.Response(C.json.dumps(payload), mimetype="application/json")
+    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
 def api_devices(C):
@@ -278,7 +285,7 @@ def api_devices(C):
     }
     flags = C._read_flags()
     out = {"bus": bus, "vision": vision, "xgo": xgo, "flags": flags}
-    return C.Response(C.json.dumps(out), mimetype="application/json")
+    return C.Response(C.json.dumps(out), mimetype=JSON_CONTENT_TYPE)
 
 
 def api_last_frame(C):
@@ -287,32 +294,32 @@ def api_last_frame(C):
     # dla zgodności ścieżkę raportujemy tak, jak w dawnym API (data/last_frame.jpg),
     # ale realny plik to snapshots/raw.jpg — aplikacje i tak korzystały z /camera/last.
     payload = {"exists": bool(exists), "mtime": mtime, "path": "data/last_frame.jpg"}
-    return C.Response(C.json.dumps(payload), mimetype="application/json")
+    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
+
+
+def _event_rows(context, cursor_factory):
+    cursor = cursor_factory()
+    idle = 0
+    while True:
+        try:
+            context.time.sleep(1.0)
+            rows = cursor.drain(list(context.EVENTS))
+            for ev in rows:
+                yield f'data: {context.json.dumps(ev)}\n\n'
+            idle = 0 if rows else idle + 1
+            if idle >= 10:
+                yield ': keepalive\n\n'
+                idle = 0
+        except GeneratorExit:
+            break
+        except Exception:
+            context.time.sleep(0.5)
 
 
 def events(C):
     from .event_stream import EventCursor
 
-    @C.stream_with_context
-    def gen():
-        cursor = EventCursor()
-        idle = 0
-        while True:
-            try:
-                C.time.sleep(1.0)
-                rows = cursor.drain(list(C.EVENTS))
-                for ev in rows:
-                    yield f'data: {C.json.dumps(ev)}\n\n'
-                idle = 0 if rows else idle + 1
-                if idle >= 10:
-                    yield ': keepalive\n\n'
-                    idle = 0
-            except GeneratorExit:
-                break
-            except Exception:
-                C.time.sleep(0.5)
-
-    response = C.Response(gen(), mimetype='text/event-stream')
+    response = C.Response(C.stream_with_context(_event_rows(C, EventCursor)), mimetype='text/event-stream')
     response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Accel-Buffering'] = 'no'
     return response

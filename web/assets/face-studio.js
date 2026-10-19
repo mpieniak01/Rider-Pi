@@ -123,25 +123,41 @@
     if(imageURL)URL.revokeObjectURL(imageURL);
     $('png').disabled=false;frameBlob=blob;imageURL=URL.createObjectURL(blob);$('studio-image').src=imageURL;
   }
+  function requestFrame(live,time) {
+    return fetch('/api/face-studio/'+(live?'runtime/frame':'frame'),{
+        method:live?'GET':'POST',signal:frameAbort.signal,
+        headers:live?{}:{'Content-Type':'application/json'},
+        body:live?undefined:JSON.stringify({...spec,...tuning(),simulate_speech:$('speech-preview').checked,at:time})
+      });
+  }
+  function acceptFrame(blob,live,time,key) {
+    setImage(blob);rendered=key;retries=0;if(renderError){renderError=false;status(dirty?'Niezapisany gest.':'Gest wczytany.',dirty?'Unsaved gesture.':'Gesture loaded.');}
+    $('image-caption').textContent=live?tr('Obraz aktywnego wykonawcy buźki.','Image from the active face worker.'):$('speech-preview').checked?tr('Podgląd · symulacja mówienia','Preview · simulated speech'):tr('Podgląd gestu · bez LCD','Gesture preview · without LCD');
+    if(!live){$('scrub').value=Math.round(time*1000);$('time').textContent=Math.round(time*1000)+' ms';}
+  }
+  function renderFailure(error) {
+    if(error.name==='AbortError')return false;
+    playing=false;renderError=true;const retry=++retries<=3;
+    status(error.message==='Failed to fetch'?tr('Brak połączenia. Ponawiam odczyt obrazu.','Connection lost. Retrying the image.'):error.message);
+    return retry;
+  }
+  function finishRender(retry,stamp) {
+    busy=false;frameAbort=null;
+    if(!document.hidden){if(retry)timer=setTimeout(wake,1000);else if(stamp!==revision)wake();}
+  }
   async function render() {
     if(busy||!spec||!valid||document.hidden)return;
     const live=$('source').value==='live',stamp=revision,time=at,key=live?'live':stamp+':'+time;
     if(!live&&rendered===key)return;
     busy=true;frameAbort=new AbortController();let retry=false;
     try{
-      const response=await fetch('/api/face-studio/'+(live?'runtime/frame':'frame'),{
-        method:live?'GET':'POST',signal:frameAbort.signal,
-        headers:live?{}:{'Content-Type':'application/json'},
-        body:live?undefined:JSON.stringify({...spec,...tuning(),simulate_speech:$('speech-preview').checked,at:time})
-      });
+      const response=await requestFrame(live,time);
       if(response.status===429){retry=true;return;}
       if(live&&response.status===404){clearImage();$('image-caption').textContent=tr('Buźka nie jest uruchomiona.','The face is not running.');return;}
       if(!response.ok)throw Error(tr('Nie udało się odczytać obrazu. Sprawdź czas i tempo.','Could not read the image. Check time and tempo.'));
       const blob=await response.blob();if(stamp!==revision||document.hidden)return;
-      setImage(blob);rendered=key;retries=0;if(renderError){renderError=false;status(dirty?'Niezapisany gest.':'Gest wczytany.',dirty?'Unsaved gesture.':'Gesture loaded.');}
-      $('image-caption').textContent=live?tr('Obraz aktywnego wykonawcy buźki.','Image from the active face worker.'):$('speech-preview').checked?tr('Podgląd · symulacja mówienia','Preview · simulated speech'):tr('Podgląd gestu · bez LCD','Gesture preview · without LCD');
-      if(!live){$('scrub').value=Math.round(time*1000);$('time').textContent=Math.round(time*1000)+' ms';}
-    }catch(error){if(error.name!=='AbortError'){playing=false;renderError=true;retry=++retries<=3;status(error.message==='Failed to fetch'?tr('Brak połączenia. Ponawiam odczyt obrazu.','Connection lost. Retrying the image.'):error.message);}}finally{busy=false;frameAbort=null;if(!document.hidden){if(retry)timer=setTimeout(wake,1000);else if(stamp!==revision)wake();}}
+      acceptFrame(blob,live,time,key);
+    }catch(error){retry=renderFailure(error);}finally{finishRender(retry,stamp);}
   }
   function wake() {
     if(timer!==null){clearTimeout(timer);timer=null;}

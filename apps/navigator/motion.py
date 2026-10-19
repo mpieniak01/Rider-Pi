@@ -8,6 +8,7 @@ from apps.navigator.state import NavigatorState
 from apps.safety.intent import read_service_intent, write_intent_status
 from common.data_quality import finite_number
 
+NAVIGATOR_UNIT = "rider-navigator.service"
 CMD_DURATION = float(os.getenv("NAVIGATOR_CMD_DURATION", "0.3"))
 
 
@@ -35,6 +36,38 @@ class MotionProducer:
         self._motion_started = getattr(self, "_motion_started", False)
         return True
 
+    def _report_passive_intent(self):
+        if self._intent and self.clock() - self._intent_status_at >= 0.5:
+            write_intent_status(
+                NAVIGATOR_UNIT,
+                self._intent,
+                active=False,
+                data_ready=self.navigation_quality()["data_ready"],
+                navigation_ready=False,
+                data_error=self.navigation_quality()["data_error"],
+            )
+            self._intent_status_at = self.clock()
+
+    def _claim_task_intent(self, intent, state, identity):
+        self._intent = intent
+        self._motion_generation = intent["generation"]
+        self._control_seq = intent["seq"]
+        self._motion_seq = max(intent["seq"], state.get("last_seq", -1))
+        self._request_id = intent["request_id"]
+        self._request_generation = intent["generation"]
+        self._intent_start_ts = intent["ts"]
+        self._data_blocked = False
+        self._motion_started = getattr(self, "_motion_started", False)
+        # Claim before any command. An earlier process cannot replay this task.
+        if not write_intent_status(NAVIGATOR_UNIT, intent, active=False):
+            self._send_motion_stop()
+            self.active = False
+            self.state = NavigatorState.STOPPED
+            return False
+        self._consumed_intent = identity
+        self.start()
+        return True
+
     def _consume_task_intent(self):
         """Accept a journaled explicit task once, only in its current consent lease."""
         from apps.safety.state import read_status
@@ -43,19 +76,10 @@ class MotionProducer:
             # Canonical STOP revoked motion consent, while this bounded map
             # response is a read-only plan. Do not turn lease loss into a race
             # that discards the response or ever reacquire actuator authority.
-            if self._intent and self.clock() - self._intent_status_at >= 0.5:
-                write_intent_status(
-                    "rider-navigator.service",
-                    self._intent,
-                    active=False,
-                    data_ready=self.navigation_quality()["data_ready"],
-                    navigation_ready=False,
-                    data_error=self.navigation_quality()["data_error"],
-                )
-                self._intent_status_at = self.clock()
+            self._report_passive_intent()
             return
         state = read_status()
-        intent = read_service_intent("rider-navigator.service", state.get("generation"))
+        intent = read_service_intent(NAVIGATOR_UNIT, state.get("generation"))
         if state.get("can_move") is not True or state.get("owner") != "navigation" or not intent:
             if self.active or self.state == NavigatorState.RETURNING_HOME:
                 self.active = False
@@ -64,29 +88,14 @@ class MotionProducer:
             return
         identity = (intent["generation"], intent["request_id"])
         if identity != self._consumed_intent:
-            self._intent = intent
-            self._motion_generation = intent["generation"]
-            self._control_seq = intent["seq"]
-            self._motion_seq = max(intent["seq"], state.get("last_seq", -1))
-            self._request_id = intent["request_id"]
-            self._request_generation = intent["generation"]
-            self._intent_start_ts = intent["ts"]
-            self._data_blocked = False
-            self._motion_started = getattr(self, "_motion_started", False)
-            # Claim before any command. An earlier process cannot replay this task.
-            if not write_intent_status("rider-navigator.service", intent, active=False):
-                self._send_motion_stop()
-                self.active = False
-                self.state = NavigatorState.STOPPED
+            if not self._claim_task_intent(intent, state, identity):
                 return
-            self._consumed_intent = identity
-            self.start()
         if self.clock() - self._intent_status_at >= 0.5:
             executing = (self.active and self.state in {NavigatorState.EXPLORING, NavigatorState.AVOIDING}) or (
                 self.state == NavigatorState.RETURNING_HOME
             )
             if not write_intent_status(
-                "rider-navigator.service",
+                NAVIGATOR_UNIT,
                 intent,
                 active=executing,
                 **{

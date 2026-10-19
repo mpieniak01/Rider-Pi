@@ -45,58 +45,42 @@ ACTIONS = {
 }
 
 
-def meaning(frame, firmware=None):
-    direction, mode = frame["direction"], frame["mode"]
-    address = frame["address"]
-    payload = bytes.fromhex(frame["payload_hex"])
-    result = {"register": REGISTERS.get(address, "unknown"), "physical_completion": "unverified"}
-    if direction == "tx" and mode == 0x02:
-        return {
-            **result,
-            "kind": "read_request",
-            "requested_bytes": payload[0] if len(payload) == 1 else None,
-            "valid": len(payload) == 1 and 0 < payload[0] <= 50,
-        }
-    if direction == "rx":
-        result["kind"] = "read_response" if mode == 0x12 else "unknown_receive"
-        if mode != 0x12:
-            return result
-        result["value"] = None
-        if address == 0x07:
-            try:
-                result.update(value=payload.decode("ascii").strip("\x00"), unit="text")
-            except UnicodeDecodeError:
-                result["decode_error"] = "invalid_firmware_text"
-        elif firmware == "R-1.1.6":
-            try:
-                if address == 0x65:
-                    result.update(
-                        value=decode_imu_packet(payload),
-                        units={"acceleration": "m/s^2", "angles": "degrees"},
-                        includes_gravity=True,
-                    )
-                elif address in {0x62, 0x63, 0x64} and len(payload) == 4:
-                    value = struct.unpack("<f", payload)[0]
-                    if not math.isfinite(value):
-                        raise ValueError("nonfinite_angle")
-                    result.update(value=value, unit="degrees")
-                elif address in {0x66, 0x67, 0x68} and len(payload) == 2:
-                    result.update(value=struct.unpack(">h", payload)[0], unit="integer_angle")
-                elif address == 0x01 and len(payload) == 1 and payload[0] <= 100:
-                    result.update(value=payload[0], unit="percent")
-                elif address == 0x02 and len(payload) == 1 and payload[0] in {0, 1}:
-                    result.update(value=payload[0], unit="code", label="normal" if payload[0] else "fallen")
-            except (ValueError, struct.error) as exc:
-                result["decode_error"] = str(exc)
-        else:
-            result["decode_status"] = "firmware_format_unconfirmed"
-        return result
-    if direction != "tx" or mode != 0x01:
-        return {**result, "kind": "unknown"}
-    result.update(kind="write_command", acknowledgement="not_observed_by_this_frame")
-    if len(payload) != 1:
-        return {**result, "decode_status": "payload_format_unconfirmed"}
-    value = payload[0]
+def _decode_known_firmware(result, address, payload):
+    try:
+        if address == 0x65:
+            result.update(
+                value=decode_imu_packet(payload),
+                units={"acceleration": "m/s^2", "angles": "degrees"},
+                includes_gravity=True,
+            )
+        elif address in {0x62, 0x63, 0x64} and len(payload) == 4:
+            value = struct.unpack("<f", payload)[0]
+            if not math.isfinite(value):
+                raise ValueError("nonfinite_angle")
+            result.update(value=value, unit="degrees")
+        elif address in {0x66, 0x67, 0x68} and len(payload) == 2:
+            result.update(value=struct.unpack(">h", payload)[0], unit="integer_angle")
+        elif address == 0x01 and len(payload) == 1 and payload[0] <= 100:
+            result.update(value=payload[0], unit="percent")
+        elif address == 0x02 and len(payload) == 1 and payload[0] in {0, 1}:
+            result.update(value=payload[0], unit="code", label="normal" if payload[0] else "fallen")
+    except (ValueError, struct.error) as exc:
+        result["decode_error"] = str(exc)
+
+
+def _decode_read_response(result, address, payload, firmware):
+    if address == 0x07:
+        try:
+            result.update(value=payload.decode("ascii").strip("\x00"), unit="text")
+        except UnicodeDecodeError:
+            result["decode_error"] = "invalid_firmware_text"
+    elif firmware == "R-1.1.6":
+        _decode_known_firmware(result, address, payload)
+    else:
+        result["decode_status"] = "firmware_format_unconfirmed"
+
+
+def _decode_write_command(result, address, value):
     result.update(value=value, unit="command_byte")
     if address in {0x30, 0x31, 0x32}:
         result.update(neutral=value == 128, signed_byte_offset=value - 128, physical_velocity="unmeasured")
@@ -124,3 +108,30 @@ def meaning(frame, firmware=None):
             interpretation="installed_sdk_mapping_not_feedback",
         )
     return result
+
+
+def meaning(frame, firmware=None):
+    direction, mode = frame["direction"], frame["mode"]
+    address = frame["address"]
+    payload = bytes.fromhex(frame["payload_hex"])
+    result = {"register": REGISTERS.get(address, "unknown"), "physical_completion": "unverified"}
+    if direction == "tx" and mode == 0x02:
+        return {
+            **result,
+            "kind": "read_request",
+            "requested_bytes": payload[0] if len(payload) == 1 else None,
+            "valid": len(payload) == 1 and 0 < payload[0] <= 50,
+        }
+    if direction == "rx":
+        result["kind"] = "read_response" if mode == 0x12 else "unknown_receive"
+        if mode != 0x12:
+            return result
+        result["value"] = None
+        _decode_read_response(result, address, payload, firmware)
+        return result
+    if direction != "tx" or mode != 0x01:
+        return {**result, "kind": "unknown"}
+    result.update(kind="write_command", acknowledgement="not_observed_by_this_frame")
+    if len(payload) != 1:
+        return {**result, "decode_status": "payload_format_unconfirmed"}
+    return _decode_write_command(result, address, payload[0])

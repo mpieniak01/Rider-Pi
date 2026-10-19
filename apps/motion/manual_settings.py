@@ -169,20 +169,27 @@ def defaults():
     }
 
 
+def _validate_value(key, value, cap):
+    if key == "ramp_mode":
+        if type(value) is not int or value not in (0, 1, 2):
+            raise ValueError("manual_settings_ramp_mode")
+        return
+    if key in {"linear_speed", "turn_speed", "reversal_pause"}:
+        minimum = 0
+    elif key == "pulse_duration":
+        minimum = 0.01
+    else:
+        minimum = 0.001
+    if not finite(value) or not minimum <= value <= cap[key]:
+        raise ValueError("manual_settings_" + key)
+
+
 def validate(values):
     if not isinstance(values, dict) or set(values) != FIELDS | SMOOTHING:
         raise ValueError("manual_settings_fields")
     cap = limits()
     for key, value in values.items():
-        if key == "ramp_mode":
-            if type(value) is not int or value not in (0, 1, 2):
-                raise ValueError("manual_settings_ramp_mode")
-            continue
-        minimum = (
-            0 if key in {"linear_speed", "turn_speed", "reversal_pause"} else 0.01 if key == "pulse_duration" else 0.001
-        )
-        if not finite(value) or not minimum <= value <= cap[key]:
-            raise ValueError("manual_settings_" + key)
+        _validate_value(key, value, cap)
     if max(values["linear_speed"], values["turn_speed"]) > values["speed_limit"]:
         raise ValueError("manual_settings_speed_limit")
     return dict(values)
@@ -201,28 +208,29 @@ def direction_defaults(values):
     }
 
 
+def _validate_direction(name, row, values):
+    if not isinstance(row, dict) or set(row) != {"minimum", "maximum", "step", "speed", "duration"}:
+        raise ValueError("manual_settings_direction_fields")
+    if not all(finite(value) for value in row.values()):
+        raise ValueError("manual_settings_direction_number")
+    if not 0 <= row["minimum"] <= row["maximum"] <= values["speed_limit"]:
+        raise ValueError("manual_settings_direction_range")
+    if not 0 < row["step"] <= 1 or not 0.01 <= row["duration"] <= MAX_PANEL_DURATION_S:
+        raise ValueError("manual_settings_direction_step_or_duration")
+    if row["speed"] != 0 and not row["minimum"] <= row["speed"] <= row["maximum"] or row["speed"] < 0:
+        raise ValueError("manual_settings_direction_speed")
+    rate = values["linear_rate" if name in DIRECTIONS[:2] else "turn_rate"]
+    deceleration = values["linear_deceleration" if name in DIRECTIONS[:2] else "turn_deceleration"]
+    peak = row["duration"] / (1 / rate + 1 / deceleration)
+    if row["minimum"] > peak:
+        raise ValueError("manual_settings_pulse_too_short_for_minimum")
+    return dict(row)
+
+
 def validate_directions(directions, values):
     if not isinstance(directions, dict) or set(directions) != set(DIRECTIONS):
         raise ValueError("manual_settings_directions")
-    result = {}
-    for name, row in directions.items():
-        if not isinstance(row, dict) or set(row) != {"minimum", "maximum", "step", "speed", "duration"}:
-            raise ValueError("manual_settings_direction_fields")
-        if not all(finite(value) for value in row.values()):
-            raise ValueError("manual_settings_direction_number")
-        if not 0 <= row["minimum"] <= row["maximum"] <= values["speed_limit"]:
-            raise ValueError("manual_settings_direction_range")
-        if not 0 < row["step"] <= 1 or not 0.01 <= row["duration"] <= MAX_PANEL_DURATION_S:
-            raise ValueError("manual_settings_direction_step_or_duration")
-        if row["speed"] != 0 and not row["minimum"] <= row["speed"] <= row["maximum"] or row["speed"] < 0:
-            raise ValueError("manual_settings_direction_speed")
-        rate = values["linear_rate" if name in DIRECTIONS[:2] else "turn_rate"]
-        deceleration = values["linear_deceleration" if name in DIRECTIONS[:2] else "turn_deceleration"]
-        peak = row["duration"] / (1 / rate + 1 / deceleration)
-        if row["minimum"] > peak:
-            raise ValueError("manual_settings_pulse_too_short_for_minimum")
-        result[name] = dict(row)
-    return result
+    return {name: _validate_direction(name, row, values) for name, row in directions.items()}
 
 
 def _decode(target):
@@ -242,15 +250,7 @@ def _decode(target):
     return json.loads(raw, object_pairs_hook=pairs)
 
 
-def _canonical(row):
-    if not isinstance(row, dict) or type(row.get("revision")) is not int or row["revision"] < 0:
-        raise ValueError("manual_settings_revision")
-    if set(row) - {"schema_version", "revision", "values", "directions", "profiles", "active_profile"}:
-        raise ValueError("manual_settings_fields")
-    if type(row.get("schema_version", 1)) is not int or row.get("schema_version", 1) not in (1, 2):
-        raise ValueError("manual_settings_schema")
-    if row.get("schema_version") == 2 and "directions" not in row:
-        raise ValueError("manual_settings_directions_required")
+def _canonical_values(row):
     values = row.get("values")
     if row.get("schema_version", 1) == 1:
         if not isinstance(values, dict) or set(values) != FIELDS:
@@ -268,15 +268,10 @@ def _canonical(row):
         raise ValueError("manual_settings_fields")
     values = dict(values, ramp_mode=values.get("ramp_mode", 0))
     values = validate(values)
-    directions = validate_directions(row.get("directions", direction_defaults(values)), values)
-    # Explicit aliases for older readers, derived from the authoritative rows.
-    values.update(
-        linear_speed=directions["forward"]["speed"],
-        turn_speed=directions["right"]["speed"],
-        pulse_duration=max(item["duration"] for item in directions.values()),
-    )
-    profiles = row.get("profiles", {})
-    active = row.get("active_profile")
+    return values
+
+
+def _canonical_profiles(profiles):
     if not isinstance(profiles, dict) or len(profiles) > 16:
         raise ValueError("manual_profiles_limit")
     saved = {}
@@ -290,6 +285,28 @@ def _canonical(row):
             {"schema_version": 2, "revision": 0, "values": profile["values"], "directions": profile["directions"]}
         )
         saved[key] = {"name": name, "values": canonical["values"], "directions": canonical["directions"]}
+    return saved
+
+
+def _canonical(row):
+    if not isinstance(row, dict) or type(row.get("revision")) is not int or row["revision"] < 0:
+        raise ValueError("manual_settings_revision")
+    if set(row) - {"schema_version", "revision", "values", "directions", "profiles", "active_profile"}:
+        raise ValueError("manual_settings_fields")
+    if type(row.get("schema_version", 1)) is not int or row.get("schema_version", 1) not in (1, 2):
+        raise ValueError("manual_settings_schema")
+    if row.get("schema_version") == 2 and "directions" not in row:
+        raise ValueError("manual_settings_directions_required")
+    values = _canonical_values(row)
+    directions = validate_directions(row.get("directions", direction_defaults(values)), values)
+    # Explicit aliases for older readers, derived from the authoritative rows.
+    values.update(
+        linear_speed=directions["forward"]["speed"],
+        turn_speed=directions["right"]["speed"],
+        pulse_duration=max(item["duration"] for item in directions.values()),
+    )
+    active = row.get("active_profile")
+    saved = _canonical_profiles(row.get("profiles", {}))
     if active is not None and (not isinstance(active, str) or active not in saved):
         raise ValueError("manual_profile_active")
     return {
@@ -441,11 +458,7 @@ def validate_command(row, values, *, mode="pulse"):
             raise ValueError("manual_settings_duration")
 
 
-def _updated(current, patch, directions):
-    if not isinstance(patch, dict) or set(patch) - FIELDS - SMOOTHING or not patch and not directions:
-        raise ValueError("manual_settings_fields")
-    values = validate(dict(current["values"], **patch))
-    rows = {name: dict(row) for name, row in current["directions"].items()}
+def _edit_directions(rows, patch, directions, values):
     # Compatibility edits intentionally update both directions of that axis.
     for name, row in rows.items():
         key = "linear_speed" if name in DIRECTIONS[:2] else "turn_speed"
@@ -453,6 +466,10 @@ def _updated(current, patch, directions):
             row["speed"] = values[key]
         if "pulse_duration" in patch:
             row["duration"] = values["pulse_duration"]
+    _edit_direction_rows(rows, directions)
+
+
+def _edit_direction_rows(rows, directions):
     if directions is not None:
         if not isinstance(directions, dict) or set(directions) - set(DIRECTIONS):
             raise ValueError("manual_settings_directions")
@@ -460,6 +477,14 @@ def _updated(current, patch, directions):
             if not isinstance(edits, dict):
                 raise ValueError("manual_settings_direction_fields")
             rows[name].update(edits)
+
+
+def _updated(current, patch, directions):
+    if not isinstance(patch, dict) or set(patch) - FIELDS - SMOOTHING or not patch and not directions:
+        raise ValueError("manual_settings_fields")
+    values = validate(dict(current["values"], **patch))
+    rows = {name: dict(row) for name, row in current["directions"].items()}
+    _edit_directions(rows, patch, directions, values)
     if any(not all(finite(value) for value in row.values()) for row in rows.values()):
         raise ValueError("manual_settings_direction_number")
     # The global command limit is a derived compatibility alias, not a second
@@ -477,6 +502,51 @@ def _updated(current, patch, directions):
     return row
 
 
+def _profile_request(current, operation, patch, directions):
+    if not isinstance(operation, dict) or set(operation) - {"action", "id", "name"}:
+        raise ValueError("manual_profile_operation")
+    action, key = operation.get("action"), operation.get("id")
+    if action not in {"create", "save", "apply", "rename", "delete"}:
+        raise ValueError("manual_profile_operation")
+    if action != "create" and (not isinstance(key, str) or key not in current["profiles"]):
+        raise ValueError("manual_profile_not_found")
+    if not isinstance(patch, dict):
+        raise ValueError("manual_settings_fields")
+    if action not in {"create", "save"} and (patch or directions):
+        raise ValueError("manual_profile_unsaved")
+    return action, key
+
+
+def _apply_profile(current, operation, patch, directions, action, key):
+    row = _updated(current, patch, directions) if patch or directions else _canonical(current)
+    if action == "create":
+        if len(row["profiles"]) >= 16:
+            raise ValueError("manual_profiles_limit")
+        key = uuid.uuid4().hex
+    if action in {"create", "save"}:
+        name = profile_name(operation.get("name", row["profiles"].get(key, {}).get("name")))
+        row["profiles"][key] = {
+            "name": name,
+            "values": dict(row["values"]),
+            "directions": {k: dict(v) for k, v in row["directions"].items()},
+        }
+        row["active_profile"] = key
+    elif action == "apply":
+        saved = row["profiles"][key]
+        row["values"], row["directions"] = (
+            dict(saved["values"]),
+            {k: dict(v) for k, v in saved["directions"].items()},
+        )
+        row["active_profile"] = key
+    elif action == "rename":
+        row["profiles"][key]["name"] = profile_name(operation.get("name"))
+    else:
+        del row["profiles"][key]
+        if row["active_profile"] == key:
+            row["active_profile"] = None
+    return row
+
+
 def manage_profile(operation, revision, *, patch=None, directions=None, validate_state=None):
     """One atomic device transaction for preset selection and its settings."""
     with locked():
@@ -485,44 +555,9 @@ def manage_profile(operation, revision, *, patch=None, directions=None, validate
             raise ValueError("manual_settings_conflict")
         if validate_state is not None:
             validate_state()
-        if not isinstance(operation, dict) or set(operation) - {"action", "id", "name"}:
-            raise ValueError("manual_profile_operation")
-        action, key = operation.get("action"), operation.get("id")
-        if action not in {"create", "save", "apply", "rename", "delete"}:
-            raise ValueError("manual_profile_operation")
-        if action != "create" and (not isinstance(key, str) or key not in current["profiles"]):
-            raise ValueError("manual_profile_not_found")
         patch = {} if patch is None else patch
-        if not isinstance(patch, dict):
-            raise ValueError("manual_settings_fields")
-        if action not in {"create", "save"} and (patch or directions):
-            raise ValueError("manual_profile_unsaved")
-        row = _updated(current, patch, directions) if patch or directions else _canonical(current)
-        if action == "create":
-            if len(row["profiles"]) >= 16:
-                raise ValueError("manual_profiles_limit")
-            key = uuid.uuid4().hex
-        if action in {"create", "save"}:
-            name = profile_name(operation.get("name", row["profiles"].get(key, {}).get("name")))
-            row["profiles"][key] = {
-                "name": name,
-                "values": dict(row["values"]),
-                "directions": {k: dict(v) for k, v in row["directions"].items()},
-            }
-            row["active_profile"] = key
-        elif action == "apply":
-            saved = row["profiles"][key]
-            row["values"], row["directions"] = (
-                dict(saved["values"]),
-                {k: dict(v) for k, v in saved["directions"].items()},
-            )
-            row["active_profile"] = key
-        elif action == "rename":
-            row["profiles"][key]["name"] = profile_name(operation.get("name"))
-        else:
-            del row["profiles"][key]
-            if row["active_profile"] == key:
-                row["active_profile"] = None
+        action, key = _profile_request(current, operation, patch, directions)
+        row = _apply_profile(current, operation, patch, directions, action, key)
         row = _canonical(row)
         if row != current:
             row["revision"] += 1

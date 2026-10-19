@@ -77,6 +77,37 @@ class WebSocketTransport:
         self._stop_heartbeat = False
         self._close_lock = None
 
+    async def _connect_websocket(self, endpoint):
+        if self._use_async:
+            # --- websockets (async) ---
+            headers = []
+            if self.auth_header:
+                headers.append(("Authorization", self.auth_header))
+            headers.append(("OpenAI-Beta", "realtime=v1"))
+
+            self.websocket = await _ws_async.connect(  # type: ignore[attr-defined]
+                endpoint,
+                extra_headers=headers,
+                ping_interval=self.ping_interval_s,
+                ping_timeout=10,
+            )
+            self.logger.event("ws.library", name="websockets")
+        else:
+            # --- websocket-client (sync) ---
+            hdr_list: list[str] = []
+            if self.auth_header:
+                hdr_list.append(f"Authorization: {self.auth_header}")
+            hdr_list.append("OpenAI-Beta: realtime=v1")
+
+            # create_connection is blocking → run in thread
+            self.websocket = await asyncio.to_thread(
+                _ws_sync.create_connection,  # type: ignore[attr-defined]
+                endpoint,
+                header=hdr_list,  # ⚠️ POPRAWKA: header=..., NIE extra_headers
+                timeout=10,
+            )
+            self.logger.event("ws.library", name="websocket-client")
+
     async def connect(self, *, max_retries: int = 3) -> bool:
         """Connect to WebSocket endpoint."""
         for attempt in range(max_retries + 1):
@@ -94,35 +125,7 @@ class WebSocketTransport:
                     attempt=attempt + 1,
                 )
 
-                if self._use_async:
-                    # --- websockets (async) ---
-                    headers = []
-                    if self.auth_header:
-                        headers.append(("Authorization", self.auth_header))
-                    headers.append(("OpenAI-Beta", "realtime=v1"))
-
-                    self.websocket = await _ws_async.connect(  # type: ignore[attr-defined]
-                        effective_endpoint,
-                        extra_headers=headers,
-                        ping_interval=self.ping_interval_s,
-                        ping_timeout=10,
-                    )
-                    self.logger.event("ws.library", name="websockets")
-                else:
-                    # --- websocket-client (sync) ---
-                    hdr_list: list[str] = []
-                    if self.auth_header:
-                        hdr_list.append(f"Authorization: {self.auth_header}")
-                    hdr_list.append("OpenAI-Beta: realtime=v1")
-
-                    # create_connection is blocking → run in thread
-                    self.websocket = await asyncio.to_thread(
-                        _ws_sync.create_connection,  # type: ignore[attr-defined]
-                        effective_endpoint,
-                        header=hdr_list,  # ⚠️ POPRAWKA: header=..., NIE extra_headers
-                        timeout=10,
-                    )
-                    self.logger.event("ws.library", name="websocket-client")
+                await self._connect_websocket(effective_endpoint)
 
                 self.connected = True
                 self.retry_count = 0
@@ -237,6 +240,19 @@ class WebSocketTransport:
         """Keep shutdown diagnostics consistent across cancellation boundaries."""
         self.logger.event("ws.close_error", error=str(error))
 
+    async def _heartbeat_connection_alive(self):
+        if not self._use_async and self.websocket:
+            try:
+                await asyncio.to_thread(self.websocket.ping)
+            except Exception:
+                self.connected = False
+                self.logger.event("ws.heartbeat.ping_failed")
+                return False
+        if self._use_async and self.websocket and self.websocket.closed:
+            self.logger.event("ws.heartbeat.connection_closed")
+            return False
+        return True
+
     async def _heartbeat_loop(self) -> None:
         """Heartbeat loop to keep connection alive."""
         while not self._stop_heartbeat and self.connected:
@@ -246,18 +262,7 @@ class WebSocketTransport:
                 if self._stop_heartbeat or not self.connected:
                     break
 
-                # For async websockets, ping is handled by library (ping_interval).
-                # For websocket-client, send manual ping.
-                if (not self._use_async) and self.websocket:
-                    try:
-                        await asyncio.to_thread(self.websocket.ping)
-                    except Exception:
-                        self.connected = False
-                        self.logger.event("ws.heartbeat.ping_failed")
-                        break
-
-                if self._use_async and self.websocket and self.websocket.closed:
-                    self.logger.event("ws.heartbeat.connection_closed")
+                if not await self._heartbeat_connection_alive():
                     self.connected = False
                     break
 

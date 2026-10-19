@@ -228,3 +228,16 @@ RIDER_SIMULATOR=1 python3 apps/navigator/main.py
 - [Mapper](mapper.md) — SLAM mapping
 - [Vision](vision.md) — Obstacle detection
 - [Web UI](../ui/control.md) — Control interface
+
+## Preparation and execution cycle
+
+`NavigationTrial.start` validates the original request and captures its arrival
+state. `navigation_trial_preparation.TrialPreparation` owns the preparation
+transaction: camera reservation, stopping the previous producer, configuration,
+authority handoff and checking the first fresh status. Each stage retains the
+same generation, revision and deadline checks; failure cleanup never restores
+motion after a newer STOP.
+
+`apps.compute.navigation_cycle.NavigationCycle` separates one frame → provider
+request → decision qualification → status cycle. It remains part of the existing
+loop, without a new thread, service or actuator owner.

@@ -19,13 +19,41 @@ from common.service_catalog import (
     tracking_mode_for,
 )
 
-MOVING_PRODUCERS = {"rider-tracking-controller.service", "rider-navigator.service", "rider-venom-navigation.service"}
+VENOM_NAVIGATION_UNIT = "rider-venom-navigation.service"
+NAVIGATOR_UNIT = "rider-navigator.service"
+VOICE_UNIT = "rider-voice-web.service"
+MOVING_PRODUCERS = {"rider-tracking-controller.service", NAVIGATOR_UNIT, VENOM_NAVIGATION_UNIT}
 
 
 class FeatureStateMixin:
     @staticmethod
     def _requires_producer(feature, units) -> bool:
-        return bool(set(units) & MOVING_PRODUCERS or "rider-voice-web.service" in units)
+        return bool(set(units) & MOVING_PRODUCERS or VOICE_UNIT in units)
+
+    def _voice_producer_readiness(self, feature, options):
+        status = self.producer_status(VOICE_UNIT)
+        domains = expand(task_domain(feature, options))
+        capabilities = status.get("capabilities", {})
+        observed_domains = status.get("domains")
+        valid = (
+            status.get("stale") is not True
+            and isinstance(observed_domains, list)
+            and all(isinstance(domain, str) for domain in observed_domains)
+            and domains <= set(observed_domains)
+            and isinstance(capabilities, dict)
+            and all(
+                isinstance(capabilities.get(domain), dict)
+                and capabilities[domain].get("ready") is True
+                and (domain == "chat" or capabilities[domain].get("model_loaded") is True)
+                for domain in domains
+            )
+        )
+        observed_unit = self._status(VOICE_UNIT)
+        if "pid" in observed_unit:
+            observed_pid = observed_unit["pid"]
+            valid = valid and isinstance(observed_pid, int) and not isinstance(observed_pid, bool)
+            valid = valid and observed_pid > 0 and status.get("pid") == observed_pid
+        return status, valid
 
     def _producer_readiness(self, feature, units, options) -> tuple[bool, list[dict]]:
         statuses = []
@@ -41,7 +69,7 @@ class FeatureStateMixin:
                 and status.get("request_id") == intent.get("request_id")
                 and bool(intent.get("request_id"))
             )
-            if unit in {"rider-navigator.service", "rider-venom-navigation.service"}:
+            if unit in {NAVIGATOR_UNIT, VENOM_NAVIGATION_UNIT}:
                 valid = (
                     valid
                     and status.get("data_ready") is True
@@ -57,39 +85,13 @@ class FeatureStateMixin:
                 valid = valid and observed_pid > 0 and status.get("pid") == observed_pid
             accepted = accepted and valid
             statuses.append({**status, "unit": unit, "matches_task": valid})
-        if "rider-voice-web.service" in units:
-            status = self.producer_status("rider-voice-web.service")
-            domains = expand(task_domain(feature, options))
-            capabilities = status.get("capabilities", {})
-            observed_domains = status.get("domains")
-            valid = (
-                status.get("stale") is not True
-                and isinstance(observed_domains, list)
-                and all(isinstance(domain, str) for domain in observed_domains)
-                and domains <= set(observed_domains)
-                and isinstance(capabilities, dict)
-                and all(
-                    isinstance(capabilities.get(domain), dict)
-                    and capabilities[domain].get("ready") is True
-                    and (domain == "chat" or capabilities[domain].get("model_loaded") is True)
-                    for domain in domains
-                )
-            )
-            observed_unit = self._status("rider-voice-web.service")
-            if "pid" in observed_unit:
-                observed_pid = observed_unit["pid"]
-                valid = valid and isinstance(observed_pid, int) and not isinstance(observed_pid, bool)
-                valid = valid and observed_pid > 0 and status.get("pid") == observed_pid
+        if VOICE_UNIT in units:
+            status, valid = self._voice_producer_readiness(feature, options)
             accepted = accepted and valid
             statuses.append({**status, "matches_task": valid})
         return accepted, statuses
 
-    def _describe(self, name: str) -> dict:
-        feature = self.registry[name]
-        requested = name in self._requested or name in self._pending
-        options = self._requested.get(name, self._pending.get(name, {}))
-        units = task_units(feature, options)
-        available = task_availability(feature, options)
+    def _described_services(self, units):
         services = []
         for unit in units:
             row = self._status(unit)
@@ -103,31 +105,10 @@ class FeatureStateMixin:
                     "can_move": UNIT_CATALOG.get(unit, {}).get("can_move", False),
                 }
             )
-        installed = all(row["installed"] for row in services)
-        running = installed and all(row["active"] for row in services)
-        permitted = self._permission(feature) is None
-        baseline_safety = self.safety_status() if name == "s0_core" else None
-        if baseline_safety is not None:
-            permitted = baseline_safety.get("ready") is True and baseline_safety.get("stale") is not True
-        intent = self._intents.get(name, {})
-        if feature.can_move and requested:
-            permitted = permitted and intent.get("generation") == self.safety_status().get("generation")
-        accepted, producers = self._producer_readiness(feature, units, options) if requested else (True, [])
-        # An admitted warm S14 remains a perception consumer while its motor
-        # authority is paused/expired. Readiness is not a new motion permission.
-        if (
-            name == "s14_venom_navigation"
-            and requested
-            and accepted
-            and any(
-                row.get("unit") == "rider-venom-navigation.service"
-                and row.get("operator_control_version") == 1
-                and row.get("matches_task") is True
-                for row in producers
-            )
-        ):
-            permitted = True
-        navigation = next((row for row in producers if row.get("unit") == "rider-navigator.service"), {})
+        return services
+
+    @staticmethod
+    def _navigation_producer_error(navigation, intent):
         producer_error = navigation.get("data_error") or navigation.get("error")
         if (
             navigation.get("stale") is True
@@ -140,6 +121,9 @@ class FeatureStateMixin:
             producer_error = None
         else:
             producer_error = producer_error[:512]
+        return producer_error
+
+    def _described_state(self, name, requested, running, permitted, accepted, producer_error, producers):
         state = self._states.get(name, "stopped")
         if requested and state == "starting" and running and permitted and accepted:
             state = "ready"
@@ -156,6 +140,9 @@ class FeatureStateMixin:
             state = "partial"
         elif requested and state not in {"starting", "stopping", "failed", "partial"}:
             state = "ready" if running and permitted and accepted else "partial"
+        return state
+
+    def _described_error(self, name, installed, requested, producer_error, permitted, baseline_safety, accepted):
         error = self._errors.get(name)
         if not installed:
             error = "members_unavailable"
@@ -169,6 +156,62 @@ class FeatureStateMixin:
             )
         elif requested and not accepted:
             error = "producer_acceptance_unavailable"
+        return error
+
+    def _feature_permissions(self, feature, available, installed):
+        return {
+            "start": {
+                "allowed": available["start_available"] and installed and self._permission(feature) is None,
+                "reason": available["start_unavailable_reason"]
+                if not available["start_available"]
+                else "unit_unavailable"
+                if not installed
+                else None
+                if self._permission(feature) is None
+                else "operator_motion_permission_required",
+            },
+            "stop": {"allowed": True, "reason": None},
+        }
+
+    def _described_permission(self, name, feature, requested):
+        permitted = self._permission(feature) is None
+        baseline_safety = self.safety_status() if name == "s0_core" else None
+        if baseline_safety is not None:
+            permitted = baseline_safety.get("ready") is True and baseline_safety.get("stale") is not True
+        intent = self._intents.get(name, {})
+        if feature.can_move and requested:
+            permitted = permitted and intent.get("generation") == self.safety_status().get("generation")
+        return permitted, baseline_safety, intent
+
+    def _describe(self, name: str) -> dict:
+        feature = self.registry[name]
+        requested = name in self._requested or name in self._pending
+        options = self._requested.get(name, self._pending.get(name, {}))
+        units = task_units(feature, options)
+        available = task_availability(feature, options)
+        services = self._described_services(units)
+        installed = all(row["installed"] for row in services)
+        running = installed and all(row["active"] for row in services)
+        permitted, baseline_safety, intent = self._described_permission(name, feature, requested)
+        accepted, producers = self._producer_readiness(feature, units, options) if requested else (True, [])
+        # An admitted warm S14 remains a perception consumer while its motor
+        # authority is paused/expired. Readiness is not a new motion permission.
+        if (
+            name == "s14_venom_navigation"
+            and requested
+            and accepted
+            and any(
+                row.get("unit") == VENOM_NAVIGATION_UNIT
+                and row.get("operator_control_version") == 1
+                and row.get("matches_task") is True
+                for row in producers
+            )
+        ):
+            permitted = True
+        navigation = next((row for row in producers if row.get("unit") == NAVIGATOR_UNIT), {})
+        producer_error = self._navigation_producer_error(navigation, intent)
+        state = self._described_state(name, requested, running, permitted, accepted, producer_error, producers)
+        error = self._described_error(name, installed, requested, producer_error, permitted, baseline_safety, accepted)
         return {
             "name": name,
             "scenario": feature.scenario,
@@ -201,21 +244,9 @@ class FeatureStateMixin:
             "members": list(units),
             "required_actuators": ["move", "turn"] if feature.can_move else [],
             "actions": ["start", "stop"],
-            "permissions": {
-                "start": {
-                    "allowed": available["start_available"] and installed and self._permission(feature) is None,
-                    "reason": available["start_unavailable_reason"]
-                    if not available["start_available"]
-                    else "unit_unavailable"
-                    if not installed
-                    else None
-                    if self._permission(feature) is None
-                    else "operator_motion_permission_required",
-                },
-                "stop": {"allowed": True, "reason": None},
-            },
+            "permissions": self._feature_permissions(feature, available, installed),
             **available,
-            "planning_request_available": False if "rider-navigator.service" in units else None,
+            "planning_request_available": False if NAVIGATOR_UNIT in units else None,
             "resources": list(task_resources(feature, options)),
             "services": services,
             "error": error,

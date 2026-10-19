@@ -200,6 +200,24 @@ class BusPub:
         self.close()
 
 
+def _decode_payload(payload_b):
+    payload: dict | None = None
+    if isinstance(payload_b, (bytes, bytearray)):
+        try:
+            payload = json.loads(payload_b.decode("utf-8", errors="ignore"))
+        except Exception:
+            payload = None
+    elif isinstance(payload_b, str):
+        try:
+            payload = json.loads(payload_b)
+        except Exception:
+            payload = None
+    elif isinstance(payload_b, dict):
+        payload = payload_b
+
+    return payload
+
+
 class BusSub:
     """
     Subscriber: łączy się do XPUB brokera i nasłuchuje na wybranych tematach.
@@ -252,20 +270,7 @@ class BusSub:
         except Exception:
             topic = ""
 
-        # decode payload -> dict (JSON) lub None
-        payload: dict | None = None
-        if isinstance(payload_b, (bytes, bytearray)):
-            try:
-                payload = json.loads(payload_b.decode("utf-8", errors="ignore"))
-            except Exception:
-                payload = None
-        elif isinstance(payload_b, str):
-            try:
-                payload = json.loads(payload_b)
-            except Exception:
-                payload = None
-        elif isinstance(payload_b, dict):
-            payload = payload_b
+        payload = _decode_payload(payload_b)
 
         return topic, payload
 

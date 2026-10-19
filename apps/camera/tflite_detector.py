@@ -8,6 +8,41 @@ import cv2
 import numpy as np
 
 
+def _detection_outputs(outs):
+    boxes = None
+    classes = None
+    scores = None
+    count = None
+    for a in outs:
+        shp = tuple(a.shape)
+        if len(shp) == 3 and shp[2] == 4:
+            boxes = a
+        elif len(shp) == 2 and shp[1] in (10, 25, 100):
+            pass
+        elif len(shp) == 2 and shp[1] == 1:
+            count = a
+    classes, scores = _class_score_outputs(outs)
+    return boxes, classes, scores, count
+
+
+def _preferred_scores(current, candidate):
+    if current is None:
+        return candidate
+    return candidate if candidate.mean() > current.mean() else current
+
+
+def _class_score_outputs(outs):
+    classes, scores = None, None
+    for a in outs:
+        if a.dtype in (np.float32, np.float16) and len(a.shape) == 2 and a.shape[1] in (10, 25, 100):
+            scores = _preferred_scores(scores, a)
+        if a.dtype in (np.float32, np.int32, np.int64) and len(a.shape) == 2 and a.shape[1] in (10, 25, 100):
+            if classes is None:
+                classes = a
+
+    return classes, scores
+
+
 class TFLiteEffDet:
     def __init__(self, path: str):
         try:
@@ -29,32 +64,8 @@ class TFLiteEffDet:
         self.interp.set_tensor(self.input_details[0]["index"], inp)
         self.interp.invoke()
 
-        def get(idx):
-            return self.interp.get_tensor(self.output_details[idx]["index"])
-
-        outs = [get(i) for i in range(len(self.output_details))]
-
-        boxes = None
-        classes = None
-        scores = None
-        count = None
-        for a in outs:
-            shp = tuple(a.shape)
-            if len(shp) == 3 and shp[2] == 4:
-                boxes = a
-            elif len(shp) == 2 and shp[1] in (10, 25, 100):
-                pass
-            elif len(shp) == 2 and shp[1] == 1:
-                count = a
-        for a in outs:
-            if a.dtype in (np.float32, np.float16) and len(a.shape) == 2 and a.shape[1] in (10, 25, 100):
-                if scores is None:
-                    scores = a
-                else:
-                    scores = a if a.mean() > scores.mean() else scores
-            if a.dtype in (np.float32, np.int32, np.int64) and len(a.shape) == 2 and a.shape[1] in (10, 25, 100):
-                if classes is None:
-                    classes = a
+        outs = [self.interp.get_tensor(detail["index"]) for detail in self.output_details]
+        boxes, classes, scores, count = _detection_outputs(outs)
 
         if boxes is None or scores is None or classes is None:
             return []

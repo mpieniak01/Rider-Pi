@@ -80,6 +80,17 @@ def main_gpio():
         pass
 
 
+def _read_sim_key(stream, select_ready):
+    ch = stream.read(1)
+    # obsługa sekwencji ESC dla strzałek
+    if ch == "\x1b" and select_ready([stream], [], [], 0.001)[0]:
+        ch += stream.read(1)
+        if select_ready([stream], [], [], 0.001)[0]:
+            ch += stream.read(1)
+
+    return ch
+
+
 def main_sim():
     import select
     import termios
@@ -119,12 +130,7 @@ def main_sim():
         }
         while True:
             if select.select([sys.stdin], [], [], 0.05)[0]:
-                ch = sys.stdin.read(1)
-                # obsługa sekwencji ESC dla strzałek
-                if ch == "\x1b" and select.select([sys.stdin], [], [], 0.001)[0]:
-                    ch += sys.stdin.read(1)
-                    if select.select([sys.stdin], [], [], 0.001)[0]:
-                        ch += sys.stdin.read(1)
+                ch = _read_sim_key(sys.stdin, select.select)
 
                 # priorytet: long (WIELKIE)
                 btn = keymap_long.get(ch)

@@ -31,19 +31,26 @@ export function responseFamily(path) {
   }
   return null;
 }
+function metadataValid(meta, status, expectedFamily) {
+  return object(meta) && meta.envelope_version === 1 && typeof meta.contract_id === 'string'
+    && Object.hasOwn(versions, meta.contract_id) && Number.isInteger(meta.contract_version)
+    && meta.contract_version === versions[meta.contract_id]
+    && (!expectedFamily || meta.contract_id === expectedFamily || status >= 400 && meta.contract_id === 'rider.http');
+}
 export function decodeResponse(payload, status = 200, expectedFamily = null) {
   if (!object(payload)) return { data: payload, meta: null, operation: null, canonical: false };
   if (!Object.hasOwn(payload, 'meta')) {
     return { data: { ...payload, contract_compatibility: 'legacy_read_only' }, meta: null, operation: null, canonical: false };
   }
   const meta = payload.meta;
-  if (!object(meta) || meta.envelope_version !== 1 || typeof meta.contract_id !== 'string'
-    || !Object.hasOwn(versions, meta.contract_id) || !Number.isInteger(meta.contract_version)
-    || meta.contract_version !== versions[meta.contract_id]
-    || expectedFamily && meta.contract_id !== expectedFamily && !(status >= 400 && meta.contract_id === 'rider.http')
+  if (!metadataValid(meta, status, expectedFamily)
     || !Object.hasOwn(payload, 'data') || typeof payload.ok !== 'boolean') {
     throw Object.assign(new Error('Unsupported or invalid Rider response contract'), { status, data: payload });
   }
+  const data = responseData(payload,meta);
+  return { data, meta, operation: payload.operation ?? null, canonical: true };
+}
+function responseData(payload,meta) {
   // Keep the full source metadata available to renderers and diagnostics. The
   // payload remains in one place; command bodies are never passed through here.
   const data = object(payload.data) ? { ...payload.data, meta,
@@ -53,5 +60,5 @@ export function decodeResponse(payload, status = 200, expectedFamily = null) {
     for (const key of ['offline', 'stale']) if (meta[key] === true) data[key] = true;
     if (payload.error !== null && payload.error !== undefined) data.error = payload.error;
   }
-  return { data, meta, operation: payload.operation ?? null, canonical: true };
+  return data;
 }

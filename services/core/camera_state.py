@@ -10,6 +10,31 @@ from common.service_catalog import CAMERA_CAPTURE_UNITS
 from common.systemd_ctrl import status
 
 
+def _process_state(rows):
+    known = all(
+        row.get("active") in {"active", "inactive", "failed"} and not row.get("stale") and not row.get("error")
+        for row in rows
+    )
+    running = any(row.get("active") == "active" and not row.get("stale") and not row.get("error") for row in rows)
+    return known, running
+
+
+def _camera_on(owners, known, running):
+    occupied = (
+        owners is not None and owners.get("free") is False and not owners.get("error") and bool(owners.get("holders"))
+    )
+    released = owners is not None and owners.get("free") is True and not owners.get("error")
+    if running or occupied:
+        return True
+    return False if known and released else None
+
+
+def _service_running(running, known):
+    if running:
+        return True
+    return False if known else None
+
+
 def snapshot(*, heartbeat=None, owners=None, consumers=(), status_fn=None, now=None):
     status_fn = status if status_fn is None else status_fn
     if owners is None:
@@ -24,22 +49,14 @@ def snapshot(*, heartbeat=None, owners=None, consumers=(), status_fn=None, now=N
     age = now - at if type(at) in (int, float) else None
     data_fresh = age is not None and 0 <= age <= 5
     rows = [status_fn(unit) for unit in sorted(CAMERA_CAPTURE_UNITS)]
-    known = all(
-        row.get("active") in {"active", "inactive", "failed"} and not row.get("stale") and not row.get("error")
-        for row in rows
-    )
-    running = any(row.get("active") == "active" and not row.get("stale") and not row.get("error") for row in rows)
-    occupied = (
-        owners is not None and owners.get("free") is False and not owners.get("error") and bool(owners.get("holders"))
-    )
-    released = owners is not None and owners.get("free") is True and not owners.get("error")
-    on = True if running or occupied else False if known and released else None
+    known, running = _process_state(rows)
+    on = _camera_on(owners, known, running)
     return {
         "on": on,
         "source": "camera/systemd+heartbeat",
         "observed_at": now,
         "consumers": list(consumers),
-        "service_running": True if running else False if known else None,
+        "service_running": _service_running(running, known),
         "data_fresh": data_fresh,
         "frame_observed_at": at if age is not None else None,
         "age_s": round(age, 3) if age is not None else None,

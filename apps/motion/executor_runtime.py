@@ -4,6 +4,22 @@ import signal
 import time
 
 
+def _receive_burst(sub, command_topics):
+    topic, payload = sub.recv(timeout_ms=20)
+    messages = []
+    if topic in command_topics:
+        messages.append((topic, payload))
+    # Drain a bounded burst before executing a goal. Any STOP wins this
+    # burst and invalidates earlier or later queued generation tokens.
+    for _ in range(63):
+        topic, payload = sub.recv(timeout_ms=0)
+        if topic is None:
+            break
+        if topic in command_topics:
+            messages.append((topic, payload))
+    return messages
+
+
 def run(executor_factory, sub_topics, command_topics) -> int:
     from common import bus
 
@@ -25,18 +41,7 @@ def run(executor_factory, sub_topics, command_topics) -> int:
         executor = executor_factory(publisher=pub)
         previous = time.monotonic()
         while not stopping:
-            topic, payload = sub.recv(timeout_ms=20)
-            messages = []
-            if topic in command_topics:
-                messages.append((topic, payload))
-            # Drain a bounded burst before executing a goal. Any STOP wins this
-            # burst and invalidates earlier or later queued generation tokens.
-            for _ in range(63):
-                topic, payload = sub.recv(timeout_ms=0)
-                if topic is None:
-                    break
-                if topic in command_topics:
-                    messages.append((topic, payload))
+            messages = _receive_burst(sub, command_topics)
             executor.process_batch(messages)
             now = time.monotonic()
             executor.tick(now - previous)

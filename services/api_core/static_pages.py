@@ -4,6 +4,7 @@ import os
 
 from flask import Response, abort, make_response, send_from_directory
 
+HTML_CONTENT_TYPE = "text/html; charset=utf-8"
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_WEB_DIR = os.path.abspath(os.getenv("WEB_DIR") or os.path.join(os.path.dirname(BASE_DIR), "web"))
 
@@ -41,7 +42,7 @@ def serve_chat():
     with open(chat_path, "rb") as f:
         data = f.read()
     resp = make_response(data, 200)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    resp.headers["Content-Type"] = HTML_CONTENT_TYPE
     return _no_cache(resp)
 
 
@@ -54,7 +55,7 @@ def serve_navigation():
     with open(nav_path, "rb") as f:
         data = f.read()
     resp = make_response(data, 200)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    resp.headers["Content-Type"] = HTML_CONTENT_TYPE
     return _no_cache(resp)
 
 
@@ -66,5 +67,5 @@ def serve_google_home():
     with open(gh_path, "rb") as f:
         data = f.read()
     resp = make_response(data, 200)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    resp.headers["Content-Type"] = HTML_CONTENT_TYPE
     return _no_cache(resp)

@@ -14,15 +14,25 @@ sys.path[:0] = ["/home/pi/robot", "/home/pi/robot/apps"]
 xs = importlib.import_module("xgoscreen")
 
 
-def find_dev():
-    # 1) szukaj klasy z ShowImage tuż pod xgoscreen
-    for name in dir(xs):
-        obj = getattr(xs, name)
-        if hasattr(obj, "ShowImage") and callable(obj.ShowImage):
+def _find_showimage_device(module, *, named_lcd):
+    for name in dir(module):
+        candidate = getattr(module, name)
+        if named_lcd:
+            valid = getattr(candidate, "__name__", "").lower().find("lcd") >= 0 and hasattr(candidate, "ShowImage")
+        else:
+            valid = hasattr(candidate, "ShowImage") and callable(candidate.ShowImage)
+        if valid:
             try:
-                return obj()
+                return True, candidate()
             except Exception:
                 pass
+    return False, None
+
+
+def find_dev():
+    found, device = _find_showimage_device(xs, named_lcd=False)
+    if found:
+        return device
     # 2) szukaj w podmodułach
     import importlib
     import pkgutil
@@ -32,13 +42,9 @@ def find_dev():
             m = importlib.import_module(modname)
         except Exception:
             continue
-        for name in dir(m):
-            c = getattr(m, name)
-            if getattr(c, "__name__", "").lower().find("lcd") >= 0 and hasattr(c, "ShowImage"):
-                try:
-                    return c()
-                except Exception:
-                    pass
+        found, device = _find_showimage_device(m, named_lcd=True)
+        if found:
+            return device
     return None
 
 

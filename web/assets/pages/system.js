@@ -1,4 +1,4 @@
-import { initI18n, t } from '/web/assets/i18n.js';
+import { initI18n, t } from '../i18n.js';
 
 initI18n(localStorage.getItem('lang') || 'pl');
 const graphEl = document.getElementById('system-graph');

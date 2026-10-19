@@ -12,12 +12,20 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from apps.odometry.calibration import calibration_status
+from apps.motion.calibration_schema import (
+    MAX_BYTES as MAX_BYTES,
+    MAX_MEASUREMENTS as MAX_MEASUREMENTS,
+    _bounded as _bounded,
+    _encode as _encode,
+    _fields as _fields,
+    _text as _text,
+    validate_profile as validate_profile,
+)
+from apps.odometry.calibration import calibration_status as calibration_status
 from common.data_quality import finite_number
 
-MAX_BYTES = 65536
 MAX_REVISIONS = 64
-MAX_MEASUREMENTS = 128
+ACTIVE_PROFILE_FILENAME = "active.json"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -27,157 +35,6 @@ def storage_dir():
     value = Path(override) if override else default
     if not value.is_absolute():
         raise ValueError("calibration_directory_must_be_absolute")
-    return value
-
-
-def _text(value, name, *, limit=4096, required=False):
-    if not isinstance(value, str) or len(value) > limit or "\x00" in value or required and not value.strip():
-        raise ValueError(name)
-    return value
-
-
-def _bounded(value, depth=0):
-    if depth > 8:
-        raise ValueError("profile_too_deep")
-    if value is None or type(value) is bool:
-        return value
-    if isinstance(value, str):
-        return _text(value, "profile_string_invalid")
-    if type(value) in (int, float):
-        if not finite_number(value):
-            raise ValueError("profile_number_invalid")
-        return value
-    if isinstance(value, list) and len(value) <= MAX_MEASUREMENTS:
-        return [_bounded(item, depth + 1) for item in value]
-    if isinstance(value, dict) and len(value) <= MAX_MEASUREMENTS:
-        return {
-            _text(key, "profile_key_invalid", limit=128, required=True): _bounded(item, depth + 1)
-            for key, item in value.items()
-        }
-    raise ValueError("profile_value_invalid")
-
-
-def _encode(value):
-    raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-    if len(raw) > MAX_BYTES:
-        raise ValueError("profile_oversized")
-    return raw
-
-
-def _fields(value, expected, code):
-    if not isinstance(value, dict) or set(value) != set(expected):
-        raise ValueError(code)
-
-
-def validate_profile(profile):
-    """Return canonical content. Historical/draft records cannot assert verification."""
-    value = _bounded(profile)
-    required = {"schema_version", "name", "provenance", "motion", "odometry", "measurements"}
-    if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"interaction"}:
-        raise ValueError("profile_schema")
-    if "interaction" in value:
-        interaction = value["interaction"]
-        _fields(interaction, ("linear_speed", "turn_speed", "pulse_duration"), "profile_interaction_fields")
-        for field in ("linear_speed", "turn_speed", "pulse_duration"):
-            number = interaction[field]
-            upper = 0.25 if field == "pulse_duration" else 1.0
-            lower = 0.01 if field == "pulse_duration" else 0.0
-            if not finite_number(number) or not lower <= number <= upper:
-                raise ValueError("profile_interaction_" + field)
-    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
-        raise ValueError("profile_schema_version")
-    value["name"] = _text(value["name"], "profile_name", limit=80, required=True).strip()
-    provenance = value["provenance"]
-    _fields(provenance, ("kind", "notes"), "profile_provenance")
-    if provenance["kind"] not in ("draft", "historical", "manual"):
-        raise ValueError("profile_provenance_kind")
-    _text(provenance["notes"], "profile_provenance_notes")
-    motion = value["motion"]
-    _fields(motion, ("speed_limit", "linear_rate", "turn_rate"), "profile_motion_fields")
-    for field, ceiling in (("speed_limit", 1), ("linear_rate", 100), ("turn_rate", 100)):
-        if not finite_number(motion[field]) or not 0 < motion[field] <= ceiling:
-            raise ValueError("profile_motion_" + field)
-        motion[field] = float(motion[field])
-    record = value["odometry"]
-    _fields(
-        record,
-        (
-            "schema_version",
-            "manual_verified",
-            "measurement_id",
-            "conditions",
-            "imu_yaw_sign",
-            "linear_m_s",
-            "turn_rad_s",
-            "observations",
-        ),
-        "profile_odometry_fields",
-    )
-    if type(record["schema_version"]) is not int or record["schema_version"] != 1:
-        raise ValueError("profile_odometry_schema")
-    if type(record["manual_verified"]) is not bool:
-        raise ValueError("profile_odometry_verification")
-    if provenance["kind"] != "manual":
-        record["manual_verified"] = False
-    _text(record["measurement_id"], "profile_measurement_id", limit=128)
-    conditions = record["conditions"]
-    if not isinstance(conditions, dict) or not {"firmware", "surface", "load", "battery"} <= set(conditions):
-        raise ValueError("profile_conditions")
-    for item in conditions.values():
-        _text(item, "profile_condition", limit=1024)
-    if record["imu_yaw_sign"] is not None and (
-        type(record["imu_yaw_sign"]) is not int or record["imu_yaw_sign"] not in (-1, 1)
-    ):
-        raise ValueError("profile_imu_yaw_sign")
-    for field, ceiling in (("linear_m_s", 127), ("turn_rad_s", 180)):
-        table = record[field]
-        if not isinstance(table, dict) or len(table) > 2 * ceiling:
-            raise ValueError("profile_sdk_table")
-        for key, item in table.items():
-            try:
-                step = int(key)
-            except (TypeError, ValueError):
-                raise ValueError("profile_sdk_step") from None
-            minimum = 1
-            if str(step) != key or not minimum <= abs(step) <= ceiling:
-                raise ValueError("profile_sdk_step")
-            if not finite_number(item) or item * step <= 0:
-                raise ValueError("profile_sdk_rate")
-    if not isinstance(record["observations"], dict):
-        raise ValueError("profile_observations")
-    if not isinstance(value["measurements"], list) or any(not isinstance(row, dict) for row in value["measurements"]):
-        raise ValueError("profile_measurements")
-    for row in value["measurements"]:
-        for field in ("duration_s", "distance_m", "angle_rad"):
-            number = row.get(field)
-            if number is not None and (not finite_number(number) or field == "duration_s" and number <= 0):
-                raise ValueError("profile_measurement_" + field)
-        if "phase" in row and row["phase"] not in ("acceleration", "steady", "deceleration", "complete", "unknown"):
-            raise ValueError("profile_measurement_phase")
-        for field in ("status", "outcome"):
-            if field in row and row[field] not in ("passed", "failed", "aborted", "unknown"):
-                raise ValueError("profile_measurement_outcome")
-        if row.get("sdk_step") is not None:
-            step = row["sdk_step"]
-            minimum, maximum = (1, 180) if row.get("kind") == "turn" else (1, 127)
-            if type(step) is not int or not minimum <= abs(step) <= maximum:
-                raise ValueError("profile_measurement_sdk_step")
-    if record["manual_verified"]:
-        error = calibration_status(record, require_mapping=False)
-        if error:
-            raise ValueError(error)
-        if not conditions.get("operator", "").strip() or not conditions.get("date", "").strip():
-            raise ValueError("profile_operator_and_date_required")
-        if not provenance["notes"].strip() or not value["measurements"]:
-            raise ValueError("profile_manual_evidence_required")
-        if not any(
-            row.get("measurement_id") == record["measurement_id"]
-            and isinstance(row.get("notes"), str)
-            and row["notes"].strip()
-            for row in value["measurements"]
-        ):
-            raise ValueError("profile_matching_measurement_required")
-    _encode(value)
     return value
 
 
@@ -339,7 +196,7 @@ def save_profile(profile):
 
 
 def read_active(*, include_pending=False):
-    path = storage_dir() / "active.json"
+    path = storage_dir() / ACTIVE_PROFILE_FILENAME
     if not path.exists():
         return None
     value = _read(path)
@@ -398,7 +255,7 @@ def write_active(digest, *, request_id=None, command_generation=None, seq=None, 
             raise ValueError("active_sequence_invalid")
         value.update(request_id=request_id, command_generation=command_generation, seq=seq)
     with _lock() as root:
-        _atomic(root / "active.json", value)
+        _atomic(root / ACTIVE_PROFILE_FILENAME, value)
     return value
 
 
@@ -427,15 +284,29 @@ def commit_active(digest, *, request_id, command_generation, seq):
         ):
             raise ValueError("active_profile_transaction_mismatch")
         value = dict(pending, activation_state="applied")
-        _atomic(root / "active.json", value)
+        _atomic(root / ACTIVE_PROFILE_FILENAME, value)
     return value
 
 
-def validate_activate(row, state, *, now=None):
-    """Shared non-actuating intent validation, repeated by the sole executor."""
-    now = time.time() if now is None else now
-    if not isinstance(row, dict) or not isinstance(state, dict) or not finite_number(now):
+def _activation_metadata_error(row, state):
+    if (
+        not isinstance(row.get("generation"), str)
+        or not row["generation"]
+        or len(row["generation"]) > 128
+        or row["generation"] != state.get("generation")
+    ):
+        return "stale_generation"
+    if row.get("source") != "manual" or type(row.get("seq")) is not int or not 0 <= row["seq"] < 2**63:
         return "activation_metadata_required"
+    previous = state.get("last_seq")
+    if type(previous) is not int or previous < -1 or row["seq"] <= previous:
+        return "activation_sequence_replayed"
+    if not isinstance(row.get("request_id"), str) or not row["request_id"].strip() or len(row["request_id"]) > 128:
+        return "request_id_required"
+    return None
+
+
+def _activation_state_error(state, now):
     if (
         type(state.get("contract_version")) is not int
         or state["contract_version"] != 1
@@ -453,20 +324,20 @@ def validate_activate(row, state, *, now=None):
             not finite_number(output.get(key)) or output[key] != 0 for key in ("lx", "az")
         ):
             return "activation_requires_zero_output"
-    if (
-        not isinstance(row.get("generation"), str)
-        or not row["generation"]
-        or len(row["generation"]) > 128
-        or row["generation"] != state.get("generation")
-    ):
-        return "stale_generation"
-    if row.get("source") != "manual" or type(row.get("seq")) is not int or not 0 <= row["seq"] < 2**63:
+    return None
+
+
+def validate_activate(row, state, *, now=None):
+    """Shared non-actuating intent validation, repeated by the sole executor."""
+    now = time.time() if now is None else now
+    if not isinstance(row, dict) or not isinstance(state, dict) or not finite_number(now):
         return "activation_metadata_required"
-    previous = state.get("last_seq")
-    if type(previous) is not int or previous < -1 or row["seq"] <= previous:
-        return "activation_sequence_replayed"
-    if not isinstance(row.get("request_id"), str) or not row["request_id"].strip() or len(row["request_id"]) > 128:
-        return "request_id_required"
+    error = _activation_state_error(state, now)
+    if error:
+        return error
+    error = _activation_metadata_error(row, state)
+    if error:
+        return error
     ts, ttl = row.get("ts"), row.get("ttl_ms")
     if not finite_number(ts) or not finite_number(ttl) or not 0 < ttl <= 500 or not 0 <= now - ts <= ttl / 1000:
         return "activation_expired"

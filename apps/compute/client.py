@@ -18,12 +18,18 @@ from typing import Any
 from common.compute_url import validate_compute_url
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+CONVERSATION_TASK = 'conversation.respond'
+TRANSCRIBE_TASK = 'audio.transcribe'
+SYNTHESIZE_TASK = 'audio.synthesize'
+VISION_TASK = 'vision.describe'
+TEXT_CONTENT_TYPE = 'text/plain; charset=utf-8'
+JOBS_PREFIX = '/jobs/'
 TASK_TYPES = {
-    'conversation.respond': {'text/plain; charset=utf-8'},
-    'text.respond': {'text/plain; charset=utf-8'},
-    'audio.transcribe': {'audio/wav'},
-    'audio.synthesize': {'text/plain; charset=utf-8'},
-    'vision.describe': {'image/jpeg', 'image/png'},
+    CONVERSATION_TASK: {TEXT_CONTENT_TYPE},
+    'text.respond': {TEXT_CONTENT_TYPE},
+    TRANSCRIBE_TASK: {'audio/wav'},
+    SYNTHESIZE_TASK: {TEXT_CONTENT_TYPE},
+    VISION_TASK: {'image/jpeg', 'image/png'},
 }
 TERMINAL = {'succeeded', 'failed', 'cancelled', 'expired', 'superseded'}
 MAX_BYTES = 2 * 1024 * 1024
@@ -169,7 +175,7 @@ class ComputeClient:
         # Voice admission prepares checked ASR before returning the job receipt.
         limit = (
             15.0
-            if self.client_id == 'voice' and method == 'POST' and path == '/jobs' and task == 'audio.transcribe'
+            if self.client_id == 'voice' and method == 'POST' and path == '/jobs' and task == TRANSCRIBE_TASK
             else 2.0
         )
         status, response_headers, data = self._transport.request(
@@ -261,9 +267,8 @@ class ComputeClient:
             self._lease = lease
         return self._lease
 
-    def submit(self, task: str, data: bytes, content_type: str, metadata: dict, params=None) -> str:
-        started = self._clock()
-        if task == 'conversation.respond' and self.client_id != 'voice':
+    def _validate_submission_input(self, task, data, content_type, metadata, params):
+        if task == CONVERSATION_TASK and self.client_id != 'voice':
             raise ComputeError('conversation_voice_only', 403)
         if not isinstance(metadata, dict):
             raise ComputeError('invalid_compute_metadata', 400)
@@ -273,15 +278,17 @@ class ComputeClient:
             raise ComputeError('unsupported_compute_task_or_type')
         if not isinstance(data, bytes) or not data or len(data) > MAX_BYTES:
             raise ComputeError('compute_input_too_large_or_empty', 413)
-        if task in {'text.respond', 'conversation.respond', 'audio.synthesize'}:
+        if task in {'text.respond', CONVERSATION_TASK, SYNTHESIZE_TASK}:
             if len(data) > 4096:
                 raise ComputeError('compute_text_too_large', 413)
             try:
                 data.decode('utf-8')
             except UnicodeDecodeError:
                 raise ComputeError('invalid_compute_text') from None
-        elif task == 'audio.transcribe':
+        elif task == TRANSCRIBE_TASK:
             validate_wav(data)
+
+    def _submission_metadata(self, metadata):
         captured = metadata.get('captured_at')
         timestamp_source = metadata.get('timestamp_source', 'unknown')
         sequence = metadata.get('sequence')
@@ -300,12 +307,9 @@ class ComputeClient:
         age = (self._wall_clock() - captured) * 1000
         if not -1000 <= age <= 60000:
             raise ComputeError('compute_source_expired', 409)
-        stream = _identifier(metadata.get('stream_id'))
-        if stream not in self._submitted and len(self._submitted) >= 64:
-            raise ComputeError('compute_stream_limit', 429)
-        input_id = _identifier(metadata.get('input_id'))
-        if sequence <= self._submitted.get(stream, -1):
-            raise ComputeError('stale_compute_sequence', 409)
+        return captured, timestamp_source, sequence, ttl
+
+    def _admit_job_capacity(self):
         if len(self._jobs) >= 32:
             for job_id, pending in list(self._jobs.items()):
                 if pending.observation and pending.observation.get('state') in TERMINAL:
@@ -313,14 +317,31 @@ class ComputeClient:
                     break
         if sum(job.observation is None for job in self._jobs.values()) >= 5:
             raise ComputeError('compute_client_saturated', 429)
+
+    @staticmethod
+    def _submission_params(task, params):
         params = dict(params or {})
         language = params.get('language', 'pl')
         if not isinstance(language, str) or language not in {'pl', 'en', 'de'} or set(params) - {'language', 'prompt'}:
             raise ComputeError('invalid_compute_params', 400)
-        if 'prompt' in params and (task != 'vision.describe' or not isinstance(params['prompt'], str)):
+        if 'prompt' in params and (task != VISION_TASK or not isinstance(params['prompt'], str)):
             raise ComputeError('invalid_compute_params', 400)
         if len(params.get('prompt', '')) > 512:
             raise ComputeError('invalid_compute_params', 400)
+        return params
+
+    def submit(self, task: str, data: bytes, content_type: str, metadata: dict, params=None) -> str:
+        started = self._clock()
+        self._validate_submission_input(task, data, content_type, metadata, params)
+        captured, timestamp_source, sequence, ttl = self._submission_metadata(metadata)
+        stream = _identifier(metadata.get('stream_id'))
+        if stream not in self._submitted and len(self._submitted) >= 64:
+            raise ComputeError('compute_stream_limit', 429)
+        input_id = _identifier(metadata.get('input_id'))
+        if sequence <= self._submitted.get(stream, -1):
+            raise ComputeError('stale_compute_sequence', 409)
+        self._admit_job_capacity()
+        params = self._submission_params(task, params)
         lease = self._session()
         remaining = int(ttl - (self._clock() - started) * 1000)
         age = max(0, round((self._wall_clock() - captured) * 1000))
@@ -403,6 +424,25 @@ class ComputeClient:
         if self._clock() >= pending.deadline:
             raise ComputeError('compute_deadline_expired', 408)
 
+    def _deliver_result(self, pending, observation, state):
+        pending.observation = observation
+        if state != 'succeeded':
+            raise ComputeError('compute_job_' + state)
+        stream, sequence = pending.header['stream_id'], pending.header['sequence']
+        if sequence < self._delivered.get(stream, -1) or (
+            pending.header['task'] == VISION_TASK and sequence < self._submitted[stream]
+        ):
+            raise ComputeError('superseded_compute_result', 409)
+        self._delivered[stream] = sequence
+        return observation
+
+    def _wait_result_poll(self, deadline, stop_event):
+        delay = min(0.1, max(0, deadline - self._clock()))
+        if stop_event is not None:
+            stop_event.wait(delay)
+        else:
+            self._sleep(delay)
+
     def result(self, job_id: str, timeout: float = 30.0, stop_event=None, on_poll=None) -> dict:
         pending = self._jobs.get(_identifier(job_id))
         if pending is None:
@@ -414,40 +454,27 @@ class ComputeClient:
             if self._closed or (stop_event is not None and stop_event.is_set()):
                 raise ComputeError('compute_cancelled')
             observation = pending.observation or self._json(
-                'GET', '/jobs/' + job_id, timeout=max(0.01, deadline - self._clock())
+                'GET', JOBS_PREFIX + job_id, timeout=max(0.01, deadline - self._clock())
             )
             self._validate(pending, observation)
             if on_poll is not None:
                 on_poll(observation)
             state = observation['state']
             if state in TERMINAL:
-                pending.observation = observation
-                if state != 'succeeded':
-                    raise ComputeError('compute_job_' + state)
-                stream, sequence = pending.header['stream_id'], pending.header['sequence']
-                if sequence < self._delivered.get(stream, -1) or (
-                    pending.header['task'] == 'vision.describe' and sequence < self._submitted[stream]
-                ):
-                    raise ComputeError('superseded_compute_result', 409)
-                self._delivered[stream] = sequence
-                return observation
-            delay = min(0.1, max(0, deadline - self._clock()))
-            if stop_event is not None:
-                stop_event.wait(delay)
-            else:
-                self._sleep(delay)
+                return self._deliver_result(pending, observation, state)
+            self._wait_result_poll(deadline, stop_event)
         with contextlib.suppress(ComputeError):
             self.cancel(job_id)
         raise ComputeError('compute_deadline_expired', 408)
 
     def output(self, job_id: str) -> bytes:
         pending = self._jobs.get(_identifier(job_id))
-        if pending is None or pending.header['task'] != 'audio.synthesize':
+        if pending is None or pending.header['task'] != SYNTHESIZE_TASK:
             raise ComputeError('compute_output_unavailable')
         observation = self.result(job_id)
         if observation.get('output_available') is not True:
             raise ComputeError('compute_output_unavailable')
-        headers, data = self._request('GET', '/jobs/' + job_id + '/output')
+        headers, data = self._request('GET', JOBS_PREFIX + job_id + '/output')
         mime = next((v for k, v in headers.items() if k.lower() == 'content-type'), '')
         if mime.split(';')[0].lower() != 'audio/wav':
             raise ComputeError('invalid_compute_output_type')
@@ -459,7 +486,7 @@ class ComputeClient:
         job_id = _identifier(job_id)
         if job_id in self._jobs:
             try:
-                self._request('DELETE', '/jobs/' + job_id)
+                self._request('DELETE', JOBS_PREFIX + job_id)
             finally:
                 self._jobs.pop(job_id, None)
 

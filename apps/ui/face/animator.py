@@ -70,32 +70,38 @@ class Animator:
         tracks = copy.deepcopy(spec.get("tracks", {}))
         initial = spec.get("initial", {})
         for path in set(tracks) | set(initial):
-            if path not in PATHS:
-                raise ValueError("invalid_animation_channel")
-            previous = self._channels.get(path)
-            if previous and previous.priority > prio:
-                continue
-            if mode == "replace" and path in initial:
-                self._set(path, float(initial[path]))
-            current = self.value(path)
-            segments = tracks.get(path, [])
-            if not segments and path in initial:
-                if mode == "replace":
-                    segments = [{"t0": 0, "t1": duration, "v0": current, "v1": current, "ease": "lin"}]
-                else:
-                    segments = [
-                        {
-                            "t0": 0,
-                            "t1": duration,
-                            "v0": current,
-                            "v1": float(initial[path]),
-                            "ease": "in_out",
-                        }
-                    ]
-            elif segments and mode == "blend" and segments[0]["t0"] == 0:
-                segments[0]["v0"] = current
-            if segments:
-                self._channels[path] = _Channel(segments, now, now + duration, prio, owner, current)
+            self._start_channel(path, tracks, initial, duration, mode, now, prio, owner)
+
+    def _start_channel(self, path, tracks, initial, duration, mode, now, prio, owner):
+        if path not in PATHS:
+            raise ValueError("invalid_animation_channel")
+        previous = self._channels.get(path)
+        if previous and previous.priority > prio:
+            return
+        if mode == "replace" and path in initial:
+            self._set(path, float(initial[path]))
+        current = self.value(path)
+        segments = self._channel_segments(path, current, tracks.get(path, []), initial, duration, mode)
+        if segments:
+            self._channels[path] = _Channel(segments, now, now + duration, prio, owner, current)
+
+    def _channel_segments(self, path, current, segments, initial, duration, mode):
+        if not segments and path in initial:
+            if mode == "replace":
+                segments = [{"t0": 0, "t1": duration, "v0": current, "v1": current, "ease": "lin"}]
+            else:
+                segments = [
+                    {
+                        "t0": 0,
+                        "t1": duration,
+                        "v0": current,
+                        "v1": float(initial[path]),
+                        "ease": "in_out",
+                    }
+                ]
+        elif segments and mode == "blend" and segments[0]["t0"] == 0:
+            segments[0]["v0"] = current
+        return segments
 
     def cancel(self, owner=None):
         self._channels = {

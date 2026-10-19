@@ -166,6 +166,48 @@ class CameraProducer:
             write_metadata(target, captured_at=at, frame_id=metadata["frame_id"], shape=raw.shape)
 
 
+def _run_native_capture(config, stop, producer):
+    started = time.monotonic_ns()
+    while not stop.wait(0.5):
+        last = (producer.status.get("latest_frame") or {}).get("captured_monotonic_ns", started)
+        if time.monotonic_ns() - last > 3_000_000_000:
+            raise RuntimeError("camera_pipeline_capture_stalled")
+        if snapshot() != config:
+            raise RuntimeError("camera_pipeline_configuration_changed")
+        producer.heartbeat()
+        write_status(producer.status)
+
+
+def _run_array_capture(camera, config, stop, producer):
+    producer.status.update(
+        capture_timestamp_source=camera.timestamp_source,
+        capture_timestamp_limitation="driver_buffer_age_unknown" if camera.timestamp_source == "read_started" else None,
+    )
+    while not stop.is_set():
+        started = time.monotonic()
+        ok, frame, captured = camera.capture()
+        if not ok or frame is None:
+            raise RuntimeError("camera_pipeline_capture_failed")
+        producer.array(frame, captured)
+        producer.heartbeat()
+        if snapshot() != config:
+            raise RuntimeError("camera_pipeline_configuration_changed")
+        stop.wait(max(0, 1 / 16 - (time.monotonic() - started)))
+
+
+def _release_capture_delivery(frames, server, publisher, observation_publisher, released, producer, failed):
+    if server is not None:
+        server.close()
+    else:
+        frames.close()
+    if publisher is not None:
+        publisher.close(linger=0)
+    if observation_publisher is not None:
+        observation_publisher.close()
+    if released and producer is not None and not failed:
+        write_status({**producer.status, "state": "stopped", "active_profile": None, "latest_frame": None})
+
+
 def main():
     config, stop = snapshot(), threading.Event()
     frames, camera, server, publisher = LatestFrames(), None, None, None
@@ -195,35 +237,12 @@ def main():
             from apps.camera.pipeline_native import NativeCamera
 
             camera = NativeCamera(producer.encoded)
-            started = time.monotonic_ns()
-            while not stop.wait(0.5):
-                last = (producer.status.get("latest_frame") or {}).get("captured_monotonic_ns", started)
-                if time.monotonic_ns() - last > 3_000_000_000:
-                    raise RuntimeError("camera_pipeline_capture_stalled")
-                if snapshot() != config:
-                    raise RuntimeError("camera_pipeline_configuration_changed")
-                producer.heartbeat()
-                write_status(producer.status)
+            _run_native_capture(config, stop, producer)
         else:
             from apps.camera.utils import open_camera
 
             camera, _ = open_camera((320, 240))
-            producer.status.update(
-                capture_timestamp_source=camera.timestamp_source,
-                capture_timestamp_limitation="driver_buffer_age_unknown"
-                if camera.timestamp_source == "read_started"
-                else None,
-            )
-            while not stop.is_set():
-                started = time.monotonic()
-                ok, frame, captured = camera.capture()
-                if not ok or frame is None:
-                    raise RuntimeError("camera_pipeline_capture_failed")
-                producer.array(frame, captured)
-                producer.heartbeat()
-                if snapshot() != config:
-                    raise RuntimeError("camera_pipeline_configuration_changed")
-                stop.wait(max(0, 1 / 16 - (time.monotonic() - started)))
+            _run_array_capture(camera, config, stop, producer)
         return 0
     except Exception as exc:
         failed = True
@@ -245,15 +264,6 @@ def main():
                 camera.close()
             released = True
         finally:
-            if server is not None:
-                server.close()
-            else:
-                frames.close()
-            if publisher is not None:
-                publisher.close(linger=0)
-            if observation_publisher is not None:
-                observation_publisher.close()
-            if released and producer is not None and not failed:
-                write_status({**producer.status, "state": "stopped", "active_profile": None, "latest_frame": None})
+            _release_capture_delivery(frames, server, publisher, observation_publisher, released, producer, failed)
             for sig, handler in previous.items():
                 signal.signal(sig, handler)

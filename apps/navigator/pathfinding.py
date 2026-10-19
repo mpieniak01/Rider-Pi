@@ -191,6 +191,39 @@ def simplify_path(path: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return simplified
 
 
+def _neighbor_traversable(grid, current, nx, ny, width, height, allow_unknown):
+    if not is_traversable(grid, nx, ny, width, height, allow_unknown):
+        return False
+    if (
+        nx != current.x
+        and ny != current.y
+        and (
+            not is_traversable(grid, nx, current.y, width, height, allow_unknown)
+            or not is_traversable(grid, current.x, ny, width, height, allow_unknown)
+        )
+    ):
+        return False
+    return True
+
+
+def _expand_neighbors(grid, current, goal_x, goal_y, width, height, allow_unknown, closed_set, g_scores, open_set):
+    # Explore neighbors
+    for nx, ny, cost in get_neighbors(current.x, current.y):
+        if not _neighbor_traversable(grid, current, nx, ny, width, height, allow_unknown):
+            continue
+        if (nx, ny) in closed_set:
+            continue
+
+        tentative_g = current.g + cost
+
+        # If we found a better path to this neighbor
+        if (nx, ny) not in g_scores or tentative_g < g_scores[(nx, ny)]:
+            g_scores[(nx, ny)] = tentative_g
+            h = heuristic(nx, ny, goal_x, goal_y)
+            neighbor_node = Node(nx, ny, tentative_g, h, current)
+            heapq.heappush(open_set, neighbor_node)
+
+
 def find_path_grid(
     grid,
     start_x: int,
@@ -244,31 +277,7 @@ def find_path_grid(
 
         closed_set.add((current.x, current.y))
 
-        # Explore neighbors
-        for nx, ny, cost in get_neighbors(current.x, current.y):
-            if not is_traversable(grid, nx, ny, width, height, allow_unknown):
-                continue
-            if (
-                nx != current.x
-                and ny != current.y
-                and (
-                    not is_traversable(grid, nx, current.y, width, height, allow_unknown)
-                    or not is_traversable(grid, current.x, ny, width, height, allow_unknown)
-                )
-            ):
-                continue
-
-            if (nx, ny) in closed_set:
-                continue
-
-            tentative_g = current.g + cost
-
-            # If we found a better path to this neighbor
-            if (nx, ny) not in g_scores or tentative_g < g_scores[(nx, ny)]:
-                g_scores[(nx, ny)] = tentative_g
-                h = heuristic(nx, ny, goal_x, goal_y)
-                neighbor_node = Node(nx, ny, tentative_g, h, current)
-                heapq.heappush(open_set, neighbor_node)
+        _expand_neighbors(grid, current, goal_x, goal_y, width, height, allow_unknown, closed_set, g_scores, open_set)
 
     # No path found
     return None

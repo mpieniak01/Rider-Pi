@@ -338,6 +338,9 @@ class Mapper:
         self.grid.observation_time = min(quality["observed_at"], pose["observed_at"])
         self.data_error = None
 
+        self._mark_obstacles(obstacles, radius)
+
+    def _mark_obstacles(self, obstacles, radius):
         # Transform each obstacle from robot local coordinates to global map coordinates
         valid_obstacles = 0
         for obs in obstacles:
@@ -446,6 +449,25 @@ class Mapper:
         self.pub.publish(TOPIC_SLAM_MAP_STATE, payload, add_ts=False)
         self.last_map_state_ts = now
 
+    def _receive_ready(self, socks):
+        # Check for robot pose updates
+        if self.sub_pose.sock in socks:
+            topic, payload = self.sub_pose.recv(timeout_ms=0)
+            if topic and payload and topic == TOPIC_ROBOT_POSE:
+                self._handle_robot_pose(payload)
+
+        # Check for obstacle data
+        if self.sub_obstacles.sock in socks:
+            topic, payload = self.sub_obstacles.recv(timeout_ms=0)
+            if topic and payload and topic == TOPIC_VISION_OBSTACLE_DATA:
+                self._handle_obstacle_data(payload)
+
+        # Check for map requests
+        if self.sub_map_request.sock in socks:
+            topic, payload = self.sub_map_request.recv(timeout_ms=0)
+            if topic and payload and topic == TOPIC_NAVIGATOR_MAP_REQUEST:
+                self._handle_map_request(payload)
+
     def run(self):
         """Main mapper loop"""
         LOG.info("Mapper main loop started")
@@ -464,23 +486,7 @@ class Mapper:
                 # Poll for messages with 10ms timeout
                 socks = dict(poller.poll(timeout=10))
 
-                # Check for robot pose updates
-                if self.sub_pose.sock in socks:
-                    topic, payload = self.sub_pose.recv(timeout_ms=0)
-                    if topic and payload and topic == TOPIC_ROBOT_POSE:
-                        self._handle_robot_pose(payload)
-
-                # Check for obstacle data
-                if self.sub_obstacles.sock in socks:
-                    topic, payload = self.sub_obstacles.recv(timeout_ms=0)
-                    if topic and payload and topic == TOPIC_VISION_OBSTACLE_DATA:
-                        self._handle_obstacle_data(payload)
-
-                # Check for map requests
-                if self.sub_map_request.sock in socks:
-                    topic, payload = self.sub_map_request.recv(timeout_ms=0)
-                    if topic and payload and topic == TOPIC_NAVIGATOR_MAP_REQUEST:
-                        self._handle_map_request(payload)
+                self._receive_ready(socks)
 
                 # Print statistics periodically
                 now = self.wall_clock()

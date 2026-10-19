@@ -57,26 +57,27 @@ def _pick_lcd_class(fr, prefer=None):
     return getattr(fr, "LCDRenderer", None) or (_list_lcd_classes(fr)[0])
 
 
-def _build_lcd(fr, drv_rotate, prefer=None):
-    cls = _pick_lcd_class(fr, prefer)
-    spi_hz = int(os.getenv("FACE_LCD_SPI_HZ", "0") or 0)
-    bl_pin = int(os.getenv("FACE_LCD_BL_PIN", "13"))
-    FC = _maybe_faceconfig(fr)
-    if FC:
+def _clean_face_config(config_class, drv_rotate, spi_hz, bl_pin):
+    try:
+        cfg = config_class()
+    except TypeError:
+        cfg = object.__new__(config_class)
+        for n, v in {
+            "lcd_do_init": True,
+            "lcd_rotate": drv_rotate,
+            "lcd_spi_hz": spi_hz,
+            "lcd_bl_pin": bl_pin,
+        }.items():
+            if any(f.name == n for f in dataclasses.fields(config_class)):
+                setattr(cfg, n, v)
+    return cfg
+
+
+def _construct_clean_lcd(cls, config_class, drv_rotate, spi_hz, bl_pin):
+    if config_class:
         try:
-            try:
-                cfg = FC()
-            except TypeError:
-                cfg = object.__new__(FC)
-                for n, v in {
-                    "lcd_do_init": True,
-                    "lcd_rotate": drv_rotate,
-                    "lcd_spi_hz": spi_hz,
-                    "lcd_bl_pin": bl_pin,
-                }.items():
-                    if any(f.name == n for f in dataclasses.fields(FC)):
-                        setattr(cfg, n, v)
-                inst = cls(cfg)
+            cfg = _clean_face_config(config_class, drv_rotate, spi_hz, bl_pin)
+            inst = cls(cfg)
         except Exception:
             inst = None
     else:
@@ -94,6 +95,14 @@ def _build_lcd(fr, drv_rotate, prefer=None):
                 inst = cls(drv_rotate)
             except Exception:
                 inst = cls()
+    return inst
+
+
+def _build_lcd(fr, drv_rotate, prefer=None):
+    cls = _pick_lcd_class(fr, prefer)
+    spi_hz = int(os.getenv("FACE_LCD_SPI_HZ", "0") or 0)
+    bl_pin = int(os.getenv("FACE_LCD_BL_PIN", "13"))
+    inst = _construct_clean_lcd(cls, _maybe_faceconfig(fr), drv_rotate, spi_hz, bl_pin)
     dev = getattr(inst, "device", inst)
     try:
         if hasattr(dev, "SPI") and spi_hz:
@@ -183,6 +192,78 @@ def _to_rgb565(img, bgr=False, byteswap=False):
     return data
 
 
+def _clean_frame_source(args):
+    if args.img:
+        from PIL import Image
+
+        if os.path.exists(args.img):
+            im0 = Image.open(args.img).convert("RGB")
+
+            get_frame = im0.copy
+        else:
+            print("[clean] --img nie istnieje, używam planszy testowej")
+            get_frame = _try_face_frame(args.expr, args.size)
+    else:
+        get_frame = _try_face_frame(args.expr, args.size)
+
+    return get_frame
+
+
+def _clean_presenter(inst, dev):
+    # Czy mamy natywne ShowImage?
+    show_fn = None
+    for obj in (inst, dev):
+        for name in ("ShowImage", "show_image", "display", "blit", "put", "present"):
+            fn = getattr(obj, name, None)
+            if callable(fn):
+                show_fn = (obj, fn)
+                break
+        if show_fn:
+            break
+
+    return show_fn
+
+
+def _prepare_clean_frame(img, rotate, width, height):
+    # soft-rotacja
+    if rotate:
+        from PIL import Image
+
+        rot_map = {
+            90: Image.ROTATE_90,
+            180: Image.ROTATE_180,
+            270: Image.ROTATE_270,
+        }
+        op = rot_map.get(rotate)
+        img = img.transpose(op) if op else img.rotate(rotate, expand=True)
+
+    if img.size != (width, height):
+        from PIL import Image
+
+        img = img.resize((width, height), Image.BILINEAR)
+
+    return img
+
+
+def _write_clean_raw(dev, img, bgr, bsw, width, height):
+    payload = _to_rgb565(img, bgr=bgr, byteswap=bsw)
+    dev.SetWindows(0, 0, width - 1, height - 1)
+    dev.command(0x2C)
+    chunk = int(os.getenv("FACE_SPI_CHUNK", "4096") or 4096)
+    for off in range(0, len(payload), chunk):
+        dev.spi_writebyte(payload[off : off + chunk])
+
+
+def _push_clean_frame(dev, show_fn, has_raw, force_raw, img, bgr, bsw, width, height):
+    if force_raw or show_fn is None:
+        if not has_raw:
+            raise RuntimeError("Brak ShowImage i RAW prymitywów w klasie LCD")
+        _write_clean_raw(dev, img, bgr, bsw, width, height)
+    else:
+        _, fn = show_fn
+        fn(img)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Prosty renderer LCD (apps/* only).")
     ap.add_argument("--list", action="store_true")
@@ -206,31 +287,8 @@ def main():
     inst, dev, W, H = _build_lcd(fr, drv_rotate, args.lcd_class)
     print(f"[clean] lcd_class={inst.__class__.__name__} drv_rotate={drv_rotate} disp={W}x{H}")
 
-    # źródło klatek
-    if args.img:
-        from PIL import Image
-
-        if os.path.exists(args.img):
-            im0 = Image.open(args.img).convert("RGB")
-
-            def get_frame():
-                return im0.copy()
-        else:
-            print("[clean] --img nie istnieje, używam planszy testowej")
-            get_frame = _try_face_frame(args.expr, args.size)
-    else:
-        get_frame = _try_face_frame(args.expr, args.size)
-
-    # Czy mamy natywne ShowImage?
-    show_fn = None
-    for obj in (inst, dev):
-        for name in ("ShowImage", "show_image", "display", "blit", "put", "present"):
-            fn = getattr(obj, name, None)
-            if callable(fn):
-                show_fn = (obj, fn)
-                break
-        if show_fn:
-            break
+    get_frame = _clean_frame_source(args)
+    show_fn = _clean_presenter(inst, dev)
 
     use_raw_env = bool(int(os.getenv("FACE_FORCE_RAW", "0") or 0))
     has_raw = all(hasattr(dev, m) for m in ("SetWindows", "command", "spi_writebyte"))
@@ -246,44 +304,8 @@ def main():
                 break
             img = get_frame()
 
-            # soft-rotacja
-            if args.rotate:
-                from PIL import Image
-
-                rot_map = {
-                    90: Image.ROTATE_90,
-                    180: Image.ROTATE_180,
-                    270: Image.ROTATE_270,
-                }
-                op = rot_map.get(args.rotate)
-                img = img.transpose(op) if op else img.rotate(args.rotate, expand=True)
-
-            if img.size != (W, H):
-                from PIL import Image
-
-                img = img.resize((W, H), Image.BILINEAR)
-
-            if force_raw:
-                payload = _to_rgb565(img, bgr=bgr, byteswap=bsw)
-                dev.SetWindows(0, 0, W - 1, H - 1)
-                dev.command(0x2C)
-                chunk = int(os.getenv("FACE_SPI_CHUNK", "4096") or 4096)
-                for off in range(0, len(payload), chunk):
-                    dev.spi_writebyte(payload[off : off + chunk])
-            else:
-                if show_fn is None:
-                    # awaryjnie RAW, jeśli się da
-                    if not has_raw:
-                        raise RuntimeError("Brak ShowImage i RAW prymitywów w klasie LCD")
-                    payload = _to_rgb565(img, bgr=bgr, byteswap=bsw)
-                    dev.SetWindows(0, 0, W - 1, H - 1)
-                    dev.command(0x2C)
-                    chunk = int(os.getenv("FACE_SPI_CHUNK", "4096") or 4096)
-                    for off in range(0, len(payload), chunk):
-                        dev.spi_writebyte(payload[off : off + chunk])
-                else:
-                    _, fn = show_fn
-                    fn(img)
+            img = _prepare_clean_frame(img, args.rotate, W, H)
+            _push_clean_frame(dev, show_fn, has_raw, force_raw, img, bgr, bsw, W, H)
 
             n += 1
             time.sleep(max(0.0, 1.0 / max(1, args.fps)))
