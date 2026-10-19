@@ -128,7 +128,9 @@ async def test_socket_close_failure_is_reported_without_stale_state():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("blocked_step", ["close", "wait_closed"])
 @pytest.mark.parametrize("close_error", [False, True])
-async def test_socket_shutdown_finishes_before_cancelled_parent_releases_reference(blocked_step, close_error):
+async def test_socket_shutdown_finishes_before_cancelled_parent_releases_reference(
+    blocked_step, close_error, monkeypatch
+):
     """Repeated caller cancellation cannot detach an unfinished socket shutdown."""
     transport = transport_fixture()
     socket = transport.websocket
@@ -144,14 +146,26 @@ async def test_socket_shutdown_finishes_before_cancelled_parent_releases_referen
             raise RuntimeError("close handshake failed")
 
     getattr(socket, blocked_step).side_effect = close_step
-    cancellation_args = []
+    cancellation_errors = []
+    shield_errors = []
+    real_shield = asyncio.shield
+
+    async def observe_shield(awaitable):
+        """Observe the real cancellation instance without replacing shield behavior."""
+        try:
+            return await real_shield(awaitable)
+        except asyncio.CancelledError as error:
+            shield_errors.append(error)
+            raise
+
+    monkeypatch.setattr(asyncio, "shield", observe_shield)
 
     async def observe_close():
         """Capture our coroutine's error before Python 3.9 Task drops its message."""
         try:
             await transport.close()
         except asyncio.CancelledError as error:
-            cancellation_args.append(error.args)
+            cancellation_errors.append(error)
             raise
 
     parent = asyncio.create_task(observe_close())
@@ -165,7 +179,10 @@ async def test_socket_shutdown_finishes_before_cancelled_parent_releases_referen
     release.set()
     with pytest.raises(asyncio.CancelledError):
         await parent
-    assert cancellation_args == [("shutdown-cancel-1",)]
+    assert len(cancellation_errors) == 1
+    assert len(shield_errors) == 2
+    assert cancellation_errors[0] is shield_errors[-1]
+    assert cancellation_errors[0].args == ("shutdown-cancel-1",)
     assert finished.is_set()
     socket.close.assert_awaited_once_with(code=1000)
     if blocked_step == "wait_closed" or not close_error:
