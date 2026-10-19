@@ -99,6 +99,21 @@ def _merge(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
     return base
 
 
+def _parse_pair_value(value):
+    if not isinstance(value, str):
+        return value
+    if value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    try:
+        if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+            return int(value)
+        if any(char in value for char in ".eE"):
+            return float(value)
+    except Exception:
+        return value
+    return value
+
+
 def _pairs_to_dict(pairs: list[str]) -> dict[str, Any]:
     """
     Zamienia listę par key=val na zagnieżdżony dict z obsługą kropki:
@@ -112,21 +127,7 @@ def _pairs_to_dict(pairs: list[str]) -> dict[str, Any]:
             key, val = token, "true"
         else:
             key, val = token.split("=", 1)
-        # proste rzutowania
-        v: Any = val
-        if isinstance(val, str) and val.lower() in ("true", "false"):
-            v = val.lower() == "true"
-        else:
-            try:
-                if isinstance(val, str) and val.isdigit():
-                    v = int(val)
-                else:
-                    if isinstance(val, str) and val.startswith("-") and val[1:].isdigit():
-                        v = int(val)
-                    else:
-                        v = float(val) if isinstance(val, str) and any(c in val for c in ".eE") else val
-            except Exception:
-                v = val
+        v = _parse_pair_value(val)
         # zagnieżdżanie po kropkach
         cur = out
         parts = key.split(".")
@@ -134,6 +135,30 @@ def _pairs_to_dict(pairs: list[str]) -> dict[str, Any]:
             cur = cur.setdefault(p, {})
         cur[parts[-1]] = v
     return out
+
+
+def _hotword_overrides(args):
+    hotword = getattr(args, "hotword", None)
+    overrides = {}
+    if hotword:
+        values = {"enabled": hotword != "off"}
+        if hotword == "ptt":
+            values["engine"] = "ptt"
+        overrides["hotword"] = values
+    if getattr(args, "ptt", False):
+        overrides = _merge(overrides, {"hotword": {"enabled": True, "engine": "ptt"}})
+    return overrides
+
+
+def _save_audio_values(tokens):
+    values = {}
+    for token in tokens:
+        if token in ("on", "off"):
+            values["save_audio"] = token == "on"
+        elif "=" in token:
+            key, value = token.split("=", 1)
+            values[key.replace("-", "_")] = value
+    return values
 
 
 def _build_overrides(args) -> dict[str, Any]:
@@ -144,12 +169,10 @@ def _build_overrides(args) -> dict[str, Any]:
     - --mode ustawia transporty (STRICT)
     """
     overrides: dict[str, Any] = {}
-    if getattr(args, "asr", None):
-        overrides = _merge(overrides, voice_config.override_from_pairs("asr", args.asr))
-    if getattr(args, "chat", None):
-        overrides = _merge(overrides, voice_config.override_from_pairs("chat", args.chat))
-    if getattr(args, "tts", None):
-        overrides = _merge(overrides, voice_config.override_from_pairs("tts", args.tts))
+    for section in ("asr", "chat", "tts"):
+        pairs = getattr(args, section, None)
+        if pairs:
+            overrides = _merge(overrides, voice_config.override_from_pairs(section, pairs))
 
     # NEW: --mode → ustaw transporty spójnie (STRICT)
     mode = getattr(args, "mode", None)
@@ -177,31 +200,17 @@ def _build_overrides(args) -> dict[str, Any]:
         vad_dict = _pairs_to_dict(args.vad)
         overrides = _merge(overrides, {"asr": {"vad": vad_dict}})
 
-    if getattr(args, "playback", None):
-        overrides = _merge(overrides, voice_config.override_from_pairs("playback", args.playback))
-    if getattr(args, "capture", None):
-        overrides = _merge(overrides, voice_config.override_from_pairs("capture", args.capture))
-
-    # service (legacy, nadal wspieramy)
-    if getattr(args, "service", None):
-        overrides = _merge(overrides, voice_config.override_from_pairs("service", args.service))
+    for section in ("playback", "capture", "service"):
+        pairs = getattr(args, section, None)
+        if pairs:
+            overrides = _merge(overrides, voice_config.override_from_pairs(section, pairs))
 
     # NEW: --turn -> service.turn
     if getattr(args, "turn", None):
         turn_dict = _pairs_to_dict(args.turn)
         overrides = _merge(overrides, {"service": {"turn": turn_dict}})
 
-    # hotword / ptt
-    hotword = getattr(args, "hotword", None)
-    if hotword:
-        if hotword == "off":
-            overrides = _merge(overrides, {"hotword": {"enabled": False}})
-        elif hotword == "ptt":
-            overrides = _merge(overrides, {"hotword": {"enabled": True, "engine": "ptt"}})
-        else:
-            overrides = _merge(overrides, {"hotword": {"enabled": True}})
-    if getattr(args, "ptt", False):
-        overrides = _merge(overrides, {"hotword": {"enabled": True, "engine": "ptt"}})
+    overrides = _merge(overrides, _hotword_overrides(args))
 
     # ding
     ding = getattr(args, "ding", None)
@@ -211,14 +220,7 @@ def _build_overrides(args) -> dict[str, Any]:
     # save-audio
     save_audio = getattr(args, "save_audio", None)
     if save_audio:
-        values: dict[str, Any] = {}
-        for token in save_audio:
-            if token in ("on", "off"):
-                values["save_audio"] = token == "on"
-            elif "=" in token:
-                key, val = token.split("=", 1)
-                values[key.replace("-", "_")] = val
-        overrides = _merge(overrides, {"service": values})
+        overrides = _merge(overrides, {"service": _save_audio_values(save_audio)})
 
     # log level
     level = getattr(args, "log_level", None)
@@ -275,6 +277,17 @@ def _wrap_wav(pcm: bytes, sample_rate: int, channels: int, sampwidth: int = 2) -
     return buf.getvalue()
 
 
+def _decode_audio_payload(payload):
+    if isinstance(payload, str):
+        return base64.b64decode(payload)
+    if isinstance(payload, dict):
+        for key in ("b64", "base64", "data"):
+            value = payload.get(key)
+            if isinstance(value, str):
+                return base64.b64decode(value)
+    return None
+
+
 def _decode_json_audio(b: bytes):
     """
     Jeśli b wygląda na JSON → spróbuj wyciągnąć bajty audio.
@@ -293,24 +306,8 @@ def _decode_json_audio(b: bytes):
                 break
         if payload is None:
             return None
-        raw: bytes | None = None
-        if isinstance(payload, str):
-            try:
-                raw = base64.b64decode(payload)
-            except Exception:
-                return None
-        elif isinstance(payload, dict):
-            for k in ("b64", "base64", "data"):
-                v = payload.get(k)
-                if isinstance(v, str):
-                    try:
-                        raw = base64.b64decode(v)
-                        break
-                    except Exception:
-                        return None
-            if raw is None:
-                return None
-        else:
+        raw = _decode_audio_payload(payload)
+        if raw is None:
             return None
         sr = obj.get("sr") or obj.get("sample_rate")
         ch = obj.get("ch") or obj.get("channels")
@@ -470,10 +467,8 @@ def cmd_ptt(args) -> None:
 
 
 def cmd_once(args) -> None:
-    """Execute once command (delegated to cli_commands module)."""
-    from .cli_commands import cmd_once as _cmd_once
-
-    _cmd_once(args)
+    """Execute once using the local configuration wrapper for patchable callers."""
+    return _cmd_once_patched(args)
 
 
 def cmd_asr(args) -> None:
@@ -565,11 +560,5 @@ def _cmd_once_patched(args):
     # Call through module attribute so test patch on apps.voice.svc_core.run_once is effective
     return _svc_core.run_once(cfg, service)
 
-
-# Jeśli w module już jest cmd_once, PRZEBINDUJ na naszą wersję (bez redefinicji -> brak F811).
-if 'cmd_once' in globals():
-    cmd_once = _cmd_once_patched  # type: ignore
-else:
-    cmd_once = _cmd_once_patched  # type: ignore
 
 # --- end shim ---

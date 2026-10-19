@@ -112,6 +112,13 @@ class SpeechTask:
 # VoiceService class
 
 
+class _NullCapture:
+    """Legacy hotword adapter exposing an empty, inert frame iterator."""
+
+    def frames(self) -> Iterable[bytes]:
+        return iter(())
+
+
 class VoiceService(FileCaptureMixin, BusIntegrationMixin):
     def __init__(self, config: dict[str, Any], ui_publisher: Any | None = None) -> None:
         _assert_file_mode(config)
@@ -409,37 +416,7 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
         except Exception:
             pass
 
-        waiting_without_capture = self._hotword_engine == "ptt" or (not self._hotword_enabled)
-
-        if waiting_without_capture:
-            if not self._wait_hotword_without_capture():
-                self._publish_ui_state("idle")
-                raise RuntimeError("Hotword/PTT timeout")
-            if speak and self._should_ding():
-                play_ding(self._play_cfg, self.logger)
-                self._last_ding_ts = time.time()
-                # po ding wycisz wejście
-                self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
-                if self._beep_delay_ms > 0:
-                    time.sleep(self._beep_delay_ms / 1000.0)
-            audio = self._record_with_vad()
-        else:
-            with AudioCapture(self._capture_cfg, self.logger) as capture:
-                if not self._hotword.wait(capture):
-                    self._publish_ui_state("idle")
-                    raise RuntimeError("Hotword timeout")
-                if speak and self._should_ding():
-                    play_ding(self._play_cfg, self.logger)
-                    self._last_ding_ts = time.time()
-                    self._mute_until_ts = max(
-                        self._mute_until_ts,
-                        time.time() + (self._beep_pause_ms / 1000.0),
-                    )
-                    if self._beep_delay_ms > 0:
-                        time.sleep(self._beep_delay_ms / 1000.0)
-                if self._mic_open_delay_ms > 0:
-                    time.sleep(self._mic_open_delay_ms / 1000.0)
-                audio = collect(capture.frames(), self._vad, self._max_len)
+        audio = self._capture_cycle_audio(speak=speak)
 
         # „cisza po beep” → przerwij bez kosztu
         if not audio:
@@ -459,6 +436,31 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
     # ─────────────────────────────────────────────
     # Pomocnicze
 
+    def _play_cycle_ding(self, *, speak: bool) -> None:
+        if not speak or not self._should_ding():
+            return
+        play_ding(self._play_cfg, self.logger)
+        self._last_ding_ts = time.time()
+        self._mute_until_ts = max(self._mute_until_ts, time.time() + (self._beep_pause_ms / 1000.0))
+        if self._beep_delay_ms > 0:
+            time.sleep(self._beep_delay_ms / 1000.0)
+
+    def _capture_cycle_audio(self, *, speak: bool) -> bytes:
+        if self._hotword_engine == "ptt" or not self._hotword_enabled:
+            if not self._wait_hotword_without_capture():
+                self._publish_ui_state("idle")
+                raise RuntimeError("Hotword/PTT timeout")
+            self._play_cycle_ding(speak=speak)
+            return self._record_with_vad()
+        with AudioCapture(self._capture_cfg, self.logger) as capture:
+            if not self._hotword.wait(capture):
+                self._publish_ui_state("idle")
+                raise RuntimeError("Hotword timeout")
+            self._play_cycle_ding(speak=speak)
+            if self._mic_open_delay_ms > 0:
+                time.sleep(self._mic_open_delay_ms / 1000.0)
+            return collect(capture.frames(), self._vad, self._max_len)
+
     def _should_ding(self) -> bool:
         # Service-level beep
         if not self._beep_enabled:
@@ -475,31 +477,16 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
         return ok
 
     def _wait_hotword_without_capture(self) -> bool:
-        """PTT/keyboard: czekaj na wyzwolenie bez otwartego mikrofonu."""
+        """PTT/keyboard: wait without opening the microphone, including legacy detectors."""
         if self._hotword_engine == "ptt":
             try:
                 return bool(self._hotword.wait_ptt(timeout=60.0))  # type: ignore[attr-defined]
             except AttributeError:
-                try:
-                    return bool(self._hotword.wait(None))
-                except TypeError:
-
-                    class _NullCap:
-                        def frames(self) -> Iterable[bytes]:  # pragma: no cover
-                            if False:
-                                yield b""
-
-                    return bool(self._hotword.wait(_NullCap()))
+                pass
         try:
             return bool(self._hotword.wait(None))
         except TypeError:
-
-            class _NullCap:
-                def frames(self) -> Iterable[bytes]:  # pragma: no cover
-                    if False:
-                        yield b""
-
-            return bool(self._hotword.wait(_NullCap()))
+            return bool(self._hotword.wait(_NullCapture()))
 
     def _frame_has_voice(self, frame: bytes, thr: int) -> bool:
         """Prosty wskaźnik energii (RMS) do wstępnego wykrywania ciszy."""
@@ -564,26 +551,7 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
         reply = reply_override if reply_override is not None else self._handle_intent(intent)
         reply_text = reply.strip()
 
-        speech_task_enqueued = False
-        speech_result: TTSStreamResult | None = None
-
-        if speak and tts_override:
-            audio_bytes, audio_format, sample_rate = self._decode_tts_override(tts_override)
-            if audio_bytes:
-                ok = play_bytes(audio_bytes, audio_format, self._play_cfg, self.logger, sample_rate=sample_rate)
-                speech_result = TTSStreamResult(
-                    ok=ok,
-                    audio=audio_bytes,
-                    audio_format=audio_format,
-                    sample_rate=sample_rate,
-                    streamed=False,
-                    backend="pc",
-                )
-                speech_task_enqueued = True
-
-        if speak and reply_text and not speech_task_enqueued:
-            speech_task_enqueued = True
-            speech_result = self._request_speech(reply_text, source="chat", accumulate=False)
+        speech_task_enqueued, speech_result = self._transcript_speech(reply_text, speak, tts_override)
 
         start_ts = start_ts or time.time()
         total_latency = time.time() - start_ts
@@ -596,6 +564,44 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
         if not speech_task_enqueued:
             self._publish_ui_state("idle")
 
+        self._finish_ptt_turn()
+
+        return VoiceResult(
+            transcript=transcript,
+            intent=intent,
+            reply=reply,
+            latency_s=total_latency,
+            audio=audio_bytes,
+            audio_format=audio_format,
+            sample_rate=sample_rate,
+        )
+
+    def _transcript_speech(self, reply_text, speak, tts_override):
+        if not speak:
+            return False, None
+        if tts_override:
+            result = self._play_tts_override(tts_override)
+            if result is not None:
+                return True, result
+        if reply_text:
+            return True, self._request_speech(reply_text, source="chat", accumulate=False)
+        return False, None
+
+    def _play_tts_override(self, payload):
+        audio_bytes, audio_format, sample_rate = self._decode_tts_override(payload)
+        if not audio_bytes:
+            return None
+        ok = play_bytes(audio_bytes, audio_format, self._play_cfg, self.logger, sample_rate=sample_rate)
+        return TTSStreamResult(
+            ok=ok,
+            audio=audio_bytes,
+            audio_format=audio_format,
+            sample_rate=sample_rate,
+            streamed=False,
+            backend="pc",
+        )
+
+    def _finish_ptt_turn(self):
         if self._hotword_engine == "ptt":
             if self._post_tts_mute_ms > 0:
                 time.sleep(self._post_tts_mute_ms / 1000.0)
@@ -607,16 +613,6 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
                 termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
             except Exception:
                 pass
-
-        return VoiceResult(
-            transcript=transcript,
-            intent=intent,
-            reply=reply,
-            latency_s=total_latency,
-            audio=audio_bytes,
-            audio_format=audio_format,
-            sample_rate=sample_rate,
-        )
 
     def handle_external_transcript(
         self,

@@ -7,7 +7,7 @@ import io
 import os
 import time
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import requests
 
@@ -25,6 +25,12 @@ from .tts_audio import (
     _resample_to as _resample_to,
     _wrap_wav as _wrap_wav,
 )
+
+_LOGGER_NAME = "voice.tts"
+_REST_DISABLED = "TTS REST disabled when transport=realtime"
+_JSON_CONTENT_TYPE = "application/json"
+_PIPER_MODEL = "pl_PL-gosia-medium.onnx"
+_AUDIO_ACCEPT = "audio/wav, audio/*;q=0.9, application/json;q=0.5"
 
 
 class TTSError(RuntimeError):
@@ -68,7 +74,7 @@ def speak(
 ) -> TTSStreamResult:
     """Wygeneruj mowę i odtwórz ją; w STRICT mode NIE używa REST, gdy transport=realtime."""
 
-    logger = logger or voice_logging.get_logger("voice.tts")
+    logger = logger or voice_logging.get_logger(_LOGGER_NAME)
     text = text.strip()
     if not text:
         return TTSStreamResult(ok=False, streamed=False)
@@ -77,9 +83,9 @@ def speak(
     if (config.transport or "").lower() == "realtime":
         logger.event(
             "tts.strict.realtime_block",
-            extra={"data": {"msg": "TTS REST disabled when transport=realtime"}},
+            extra={"data": {"msg": _REST_DISABLED}},
         )
-        raise TTSError("TTS REST disabled when transport=realtime")
+        raise TTSError(_REST_DISABLED)
 
     backend = (config.backend or "openai").lower()
 
@@ -97,71 +103,9 @@ def speak(
         stream = None
 
     if stream:
-        start_ts = time.time()
-        first_chunk_at: float | None = None
-        ok_stream = True
-        mp3_bytes: bytes | None = None
-        try:
-            for chunk in _openai_stream_chunks(text, config, stream_fmt, api_key=api_key):
-                stream.write(chunk)
-                if first_chunk_at is None:
-                    first_chunk_at = time.time()
-                    logger.event(
-                        "tts.stream.ttfb",
-                        backend=stream.backend,
-                        latency=first_chunk_at - start_ts,
-                    )
-        except TTSError as exc:
-            logger.event("tts.stream.backend_error", backend=stream.backend, error=str(exc))
-            ok_stream = False
-        except PlaybackError as exc:
-            logger.event("tts.stream.player_write_failed", backend=stream.backend, error=str(exc))
-            ok_stream = False
-        except Exception as exc:  # pragma: no cover - system-level failure
-            logger.event("tts.stream.error", backend=stream.backend, error=str(exc))
-            ok_stream = False
-        finally:
-            try:
-                player_ok, mp3_bytes, stderr = stream.close()
-            except Exception as exc:  # pragma: no cover - system-level failure
-                logger.event("tts.stream.close_error", backend=stream.backend, error=str(exc))
-                player_ok, mp3_bytes, stderr = False, None, None
-            ok_stream = ok_stream and player_ok
-            if not player_ok and stderr:
-                logger.event("tts.stream.player_stderr", backend=stream.backend, stderr=stderr)
-
-        if ok_stream:
-            total = time.time() - start_ts
-            payload = {"backend": stream.backend, "duration": total}
-            if first_chunk_at is not None:
-                payload["ttfb"] = first_chunk_at - start_ts
-            logger.event("tts.stream.success", **payload)
-
-            audio_bytes: bytes | None = None
-            audio_format = stream_fmt
-            sample_rate = 0
-            if accumulate and mp3_bytes:
-                wav_bytes = _decode_mp3_to_wav(mp3_bytes, logger)
-                if wav_bytes:
-                    audio_bytes = wav_bytes
-                    try:
-                        _, sr, _, _ = _read_wav(wav_bytes)
-                    except Exception:
-                        sr = 0
-                    audio_format = "wav"
-                    sample_rate = sr
-                else:
-                    audio_bytes = mp3_bytes
-            return TTSStreamResult(
-                ok=True,
-                audio=audio_bytes,
-                audio_format=audio_format,
-                sample_rate=sample_rate,
-                streamed=True,
-                backend=stream.backend,
-            )
-
-        logger.event("tts.stream.failed", backend=stream.backend)
+        result = _play_openai_stream(text, config, stream_fmt, api_key, stream, logger, accumulate)
+        if result is not None:
+            return result
     else:
         logger.debug("tts.stream.unavailable")
 
@@ -180,6 +124,67 @@ def speak(
 
     audio_data = audio_bytes if accumulate else None
     return TTSStreamResult(True, audio_data, audio_fmt, sample_rate, streamed=False)
+
+
+def _write_openai_stream(text, config, fmt, api_key, stream, logger, start_ts):
+    first_chunk_at = None
+    try:
+        for chunk in _openai_stream_chunks(text, config, fmt, api_key=api_key):
+            stream.write(chunk)
+            if first_chunk_at is None:
+                first_chunk_at = time.time()
+                logger.event("tts.stream.ttfb", backend=stream.backend, latency=first_chunk_at - start_ts)
+    except TTSError as exc:
+        logger.event("tts.stream.backend_error", backend=stream.backend, error=str(exc))
+        return False, first_chunk_at
+    except PlaybackError as exc:
+        logger.event("tts.stream.player_write_failed", backend=stream.backend, error=str(exc))
+        return False, first_chunk_at
+    except Exception as exc:  # pragma: no cover - system-level failure
+        logger.event("tts.stream.error", backend=stream.backend, error=str(exc))
+        return False, first_chunk_at
+    return True, first_chunk_at
+
+
+def _close_openai_stream(stream, logger):
+    try:
+        player_ok, mp3_bytes, stderr = stream.close()
+    except Exception as exc:  # pragma: no cover - system-level failure
+        logger.event("tts.stream.close_error", backend=stream.backend, error=str(exc))
+        return False, None
+    if not player_ok and stderr:
+        logger.event("tts.stream.player_stderr", backend=stream.backend, stderr=stderr)
+    return player_ok, mp3_bytes
+
+
+def _accumulated_stream_audio(mp3_bytes, fmt, logger, accumulate):
+    if not accumulate or not mp3_bytes:
+        return None, fmt, 0
+    wav_bytes = _decode_mp3_to_wav(mp3_bytes, logger)
+    if not wav_bytes:
+        return mp3_bytes, fmt, 0
+    try:
+        _, sample_rate, _, _ = _read_wav(wav_bytes)
+    except Exception:
+        sample_rate = 0
+    return wav_bytes, "wav", sample_rate
+
+
+def _play_openai_stream(text, config, fmt, api_key, stream, logger, accumulate):
+    start_ts = time.time()
+    try:
+        ok, first_chunk_at = _write_openai_stream(text, config, fmt, api_key, stream, logger, start_ts)
+    finally:
+        player_ok, mp3_bytes = _close_openai_stream(stream, logger)
+    if not (ok and player_ok):
+        logger.event("tts.stream.failed", backend=stream.backend)
+        return None
+    payload = {"backend": stream.backend, "duration": time.time() - start_ts}
+    if first_chunk_at is not None:
+        payload["ttfb"] = first_chunk_at - start_ts
+    logger.event("tts.stream.success", **payload)
+    audio, audio_format, sample_rate = _accumulated_stream_audio(mp3_bytes, fmt, logger, accumulate)
+    return TTSStreamResult(True, audio, audio_format, sample_rate, streamed=True, backend=stream.backend)
 
 
 def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str, *, api_key: str):
@@ -211,13 +216,13 @@ def synthesize(
     Pełna synteza (REST), zwraca (audio_bytes, sample_rate, channels, audio_format).
     STRICT: zabronione, gdy transport=realtime.
     """
-    logger = logger or voice_logging.get_logger("voice.tts")
+    logger = logger or voice_logging.get_logger(_LOGGER_NAME)
     if (config.transport or "").lower() == "realtime":
         logger.event(
             "tts.strict.realtime_block",
-            extra={"data": {"msg": "TTS REST disabled when transport=realtime"}},
+            extra={"data": {"msg": _REST_DISABLED}},
         )
-        raise TTSError("TTS REST disabled when transport=realtime")
+        raise TTSError(_REST_DISABLED)
 
     backend = (config.backend or "openai").lower()
 
@@ -231,306 +236,193 @@ def synthesize(
     raise TTSError(f"Unsupported TTS backend: {backend}")
 
 
-def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
-    """
-    OpenAI Text-to-Speech (v1/audio/speech).
-    Zwraca ZAWSZE WAV (audio_bytes, sample_rate, channels, "wav"), niezależnie od proszonego formatu.
-    VOICE_GAIN (env) działa przez normalizację 16-bit + fade-in/out.
-    """
-    api_key = ensure_openai_key(logger)
-    if not api_key:
-        raise TTSError("OPENAI_API_KEY not configured")
-
-    url = "https://api.openai.com/v1/audio/speech"
-    model = config.model or "gpt-4o-mini-tts"
-    voice = config.voice or "alloy"
-    requested_fmt = (config.format or "wav").lower()
-
-    payload = {"model": model, "voice": voice, "input": text, "format": requested_fmt}
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        # spróbujmy wymóc audio zamiast JSON-ów
-        "Accept": "audio/wav, audio/*;q=0.9, application/json;q=0.5",
-    }
-
-    last_err = None
-    for attempt in range(3):
-        try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=(config.timeout or 40))
-            ctype = (resp.headers.get("Content-Type") or "").lower()
-            body = resp.content
-
-            if resp.status_code >= 400:
-                logger.event(
-                    "tts.openai.http_error",
-                    extra={
-                        "data": {
-                            "attempt": attempt,
-                            "status": resp.status_code,
-                            "text": resp.text[:400],
-                        }
-                    },
-                )
-                last_err = TTSError(f"OpenAI TTS error: {resp.status_code} {resp.text[:200]}")
-                time.sleep(0.6 * (attempt + 1))
-                continue
-
-            # 1) audio/wav — idealnie
-            if ctype.startswith("audio/wav") or _is_wav(body):
-                wav_bytes = body
-
-            # 2) audio/mpeg — dekoduj do WAV
-            elif (
-                "audio/mpeg" in ctype
-                or body[:3] == b"ID3"
-                or (len(body) > 2 and body[0] == 0xFF and (body[1] & 0xE0) == 0xE0)
-            ):
-                w = _decode_mp3_to_wav(body, logger)
-                if not w:
-                    last_err = TTSError("MP3 decode failed (no ffmpeg/mpg123?)")
-                    time.sleep(0.6 * (attempt + 1))
-                    continue
-                wav_bytes = w
-
-            # 3) application/json — możliwe audio w base64
-            elif "application/json" in ctype:
-                try:
-                    j = resp.json()
-                except Exception:
-                    last_err = TTSError("JSON parse failed")
-                    time.sleep(0.6 * (attempt + 1))
-                    continue
-                b64 = None
-                for k in ("audio", "audio_b64", "bytes", "data", "b64"):
-                    v = j.get(k)
-                    if isinstance(v, str):
-                        b64 = v
-                        break
-                    if isinstance(v, dict):
-                        for kk in ("b64", "base64", "data"):
-                            if isinstance(v.get(kk), str):
-                                b64 = v[kk]
-                                break
-                        if b64:
-                            break
-                if not b64:
-                    last_err = TTSError("No audio in JSON response")
-                    time.sleep(0.6 * (attempt + 1))
-                    continue
-                raw = base64.b64decode(b64)
-                if _is_wav(raw):
-                    wav_bytes = raw
-                else:
-                    w = _decode_mp3_to_wav(raw, logger)
-                    if not w:
-                        last_err = TTSError("Base64 audio not WAV/MP3 or decode failed")
-                        time.sleep(0.6 * (attempt + 1))
-                        continue
-                    wav_bytes = w
-
-            else:
-                # nieznany content-type — spróbuj jako WAV, potem jako MP3
-                if _is_wav(body):
-                    wav_bytes = body
-                else:
-                    w = _decode_mp3_to_wav(body, logger)
-                    if not w:
-                        last_err = TTSError(f"Unknown audio type (ctype={ctype or 'n/a'})")
-                        time.sleep(0.6 * (attempt + 1))
-                        continue
-                    wav_bytes = w
-
-            # mamy WAV — normalizacja 16-bit + fade
-            try:
-                pcm, sr, ch, sw = _read_wav(wav_bytes)
-            except Exception:
-                last_err = TTSError("Returned WAV unreadable")
-                time.sleep(0.6 * (attempt + 1))
-                continue
-
-            # 🔧 konwersja do 16-bit, jeżeli potrzeba
-            if sw != 2:
-                try:
-                    pcm = audioop.lin2lin(pcm, sw, 2)
-                    sw = 2
-                except Exception:
-                    pass
-
-            # === START FIX: Resampling + Tail ===
-            # Wymuszamy 48kHz / 2 kanały (Stereo) - tak jak robi to działający `local`
-            TARGET_SR = 48000
-            TARGET_CH = 2
-
-            if sw == 2:  # Resampling działa tylko na 16-bit
-                try:
-                    pcm, sr, ch = _resample_to(pcm, sr, ch, TARGET_SR, TARGET_CH)
-                    sw = 2  # _resample_to zachowuje 16-bit
-                except Exception as e:
-                    logger.event("tts.openai.resample_failed", error=str(e))
-                    # Kontynuuj z oryginalnym audio, jeśli resampling zawiedzie
-            # === END FIX ===
-
-            extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
-            if sw == 2:
-                pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
-                pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
-                pcm = _append_tail(pcm, sr, ch, 300)
-                pcm = _maybe_gain(pcm, extra_gain)
-            wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
-
-            return wav_bytes, sr, ch, "wav"
-
-        except requests.RequestException as e:
-            logger.event(
-                "tts.openai.net_retry",
-                extra={"data": {"attempt": attempt, "error": str(e)}},
-            )
-            last_err = e
-            time.sleep(0.6 * (attempt + 1))
-
-    # jeśli tu dotarliśmy — nie udało się
-    raise TTSError(f"OpenAI TTS request failed: {last_err or 'unknown error'}")
+def _nested_base64(value):
+    for key in ("b64", "base64", "data"):
+        if isinstance(value.get(key), str):
+            return value[key]
+    return None
 
 
-def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
-    """
-    Lokalny backend HTTP:
-      POST {base_url}{endpoint}
-      Headers: Accept: audio/wav (domyślnie) lub wg config.accept
-      JSON body: {"text": "...", "voice": "pl_m"} (model/format opcjonalnie)
-      Response: audio/wav (preferowane) lub audio/mpeg albo JSON z base64
-    """
-    base_url = (config.base_url or "").rstrip("/")
-    endpoint = config.endpoint or "/api/tts"
-    url = f"{base_url}{endpoint}"
-    timeout = config.timeout or 15.0
-    accept = config.accept or "audio/wav, audio/*;q=0.9, application/json;q=0.5"
+def _response_base64(payload):
+    for key in ("audio", "audio_b64", "bytes", "data", "b64"):
+        value = payload.get(key)
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            encoded = _nested_base64(value)
+            if encoded:
+                return encoded
+    return None
 
-    payload = {"text": text, "voice": (config.voice or "pl_m")}
-    if config.model:
-        payload["model"] = config.model
-    if config.format:
-        payload["format"] = config.format
 
-    headers = {"Accept": accept, "Content-Type": "application/json"}
-
-    logger.event("tts.local.request", url=url, accept=accept, voice=payload["voice"])
+def _json_response_audio(response, prefix=""):
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        payload = response.json()
     except Exception as exc:
-        logger.event("tts.local.error", error=str(exc))
-        raise TTSError(f"LOCAL TTS: request failed: {exc}") from exc
+        raise TTSError(f"{prefix}JSON parse failed") from exc
+    encoded = _response_base64(payload)
+    if not encoded:
+        message = "no audio in JSON response" if prefix else "No audio in JSON response"
+        raise TTSError(f"{prefix}{message}")
+    return base64.b64decode(encoded)
 
-    ctype = (resp.headers.get("Content-Type") or "").lower()
-    body = resp.content or b""
 
-    if resp.status_code >= 400:
-        snippet = (resp.text or "")[:200]
-        logger.event("tts.local.http_error", status=resp.status_code, body=snippet)
-        raise TTSError(f"LOCAL TTS HTTP {resp.status_code}: {snippet}")
+def _looks_like_mp3(body, content_type):
+    return (
+        "audio/mpeg" in content_type
+        or body[:3] == b"ID3"
+        or (len(body) > 2 and body[0] == 0xFF and (body[1] & 0xE0) == 0xE0)
+    )
 
-    # 1) audio/wav — najlepszy przypadek
-    if ctype.startswith("audio/wav") or _is_wav(body):
-        wav_bytes = body
-        try:
-            pcm, sr, ch, sw = _read_wav(wav_bytes)
-        except Exception as e:
-            raise TTSError("LOCAL TTS: returned WAV unreadable") from e
 
-    # 2) audio/mpeg — konwersja do WAV
-    elif (
-        "audio/mpeg" in ctype or body[:3] == b"ID3" or (len(body) > 2 and body[0] == 0xFF and (body[1] & 0xE0) == 0xE0)
-    ):
-        w = _decode_mp3_to_wav(body, logger)
-        if not w:
-            raise TTSError("LOCAL TTS: MP3 decode failed (no ffmpeg/mpg123?)")
-        wav_bytes = w
-        pcm, sr, ch, sw = _read_wav(wav_bytes)
-
-    # 3) application/json — spróbuj base64
-    elif "application/json" in ctype:
-        try:
-            j = resp.json()
-        except Exception as e:
-            raise TTSError("LOCAL TTS: JSON parse failed") from e
-        b64 = None
-        for k in ("audio", "audio_b64", "bytes", "data", "b64"):
-            v = j.get(k)
-            if isinstance(v, str):
-                b64 = v
-                break
-            if isinstance(v, dict):
-                for kk in ("b64", "base64", "data"):
-                    if isinstance(v.get(kk), str):
-                        b64 = v[kk]
-                        break
-                if b64:
-                    break
-        if not b64:
-            raise TTSError("LOCAL TTS: no audio in JSON response")
-        raw = base64.b64decode(b64)
-        if _is_wav(raw):
-            wav_bytes = raw
-            pcm, sr, ch, sw = _read_wav(raw)
-        else:
-            w = _decode_mp3_to_wav(raw, logger)
-            if not w:
-                # dopuszczamy czysty PCM 16-bit mono 16 kHz
-                pcm = raw
-                sr, ch, sw = 16000, 1, 2
-                wav_bytes = _wrap_wav(pcm, sr, ch, sw)
-            else:
-                wav_bytes = w
-                pcm, sr, ch, sw = _read_wav(wav_bytes)
-
-    else:
-        # nieznany content-type — spróbuj jako WAV, potem MP3, na końcu załóż PCM
+def _decode_openai_response(response, logger):
+    content_type = (response.headers.get("Content-Type") or "").lower()
+    body = response.content
+    if content_type.startswith("audio/wav") or _is_wav(body):
+        return body
+    if _looks_like_mp3(body, content_type):
+        message = "MP3 decode failed (no ffmpeg/mpg123?)"
+    elif _JSON_CONTENT_TYPE in content_type:
+        body = _json_response_audio(response)
         if _is_wav(body):
-            wav_bytes = body
-            pcm, sr, ch, sw = _read_wav(wav_bytes)
-        else:
-            w = _decode_mp3_to_wav(body, logger)
-            if w:
-                wav_bytes = w
-                pcm, sr, ch, sw = _read_wav(wav_bytes)
-            else:
-                # ostatnia próba: czysty PCM
-                pcm, sr, ch, sw = body, 16000, 1, 2
-                wav_bytes = _wrap_wav(pcm, sr, ch, sw)
+            return body
+        message = "Base64 audio not WAV/MP3 or decode failed"
+    else:
+        message = f"Unknown audio type (ctype={content_type or 'n/a'})"
+    wav_bytes = _decode_mp3_to_wav(body, logger)
+    if not wav_bytes:
+        raise TTSError(message)
+    return wav_bytes
 
-    # Konwersja do 16-bit jeśli potrzeba
-    extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
+
+def _prepare_tts_pcm(pcm, sr, ch, sw, logger, backend):
     if sw != 2:
         try:
             pcm = audioop.lin2lin(pcm, sw, 2)
             sw = 2
         except Exception:
             pass
-
-    # === START FIX: Resampling + Tail + Gain (jak w OpenAI) ===
-    # Wymuszamy 48kHz / 2 kanały (Stereo) - tak jak w pozostałych backendach
-    TARGET_SR = 48000
-    TARGET_CH = 2
-
-    if sw == 2:  # Resampling działa tylko na 16-bit
+    if sw == 2:
         try:
-            pcm, sr, ch = _resample_to(pcm, sr, ch, TARGET_SR, TARGET_CH)
-            sw = 2  # _resample_to zachowuje 16-bit
-        except Exception as e:
-            logger.event("tts.local.resample_failed", error=str(e))
-            # Kontynuuj z oryginalnym audio, jeśli resampling zawiedzie
-    # === END FIX ===
+            pcm, sr, ch = _resample_to(pcm, sr, ch, 48000, 2)
+        except Exception as exc:
+            logger.event(f"tts.{backend}.resample_failed", error=str(exc))
+    return pcm, sr, ch, sw
 
-    # Normalizacja i fade (jak w innych backendach)
+
+def _finish_tts_wav(pcm, sr, ch, sw, extra_gain, *, apply_gain=False):
     if sw == 2:
         pcm = _normalize_16bit(pcm, target_peak=30000, extra_gain=extra_gain)
         pcm = _fade_in_out(pcm, sr, ch, ms_in=5, ms_out=60)
-        pcm = _append_tail(pcm, sr, ch, 300)  # <--- POPRAWKA: Dodanie ciszy
-    wav_bytes = _wrap_wav(pcm, sr, ch, 2 if sw == 2 else sw)
+        pcm = _append_tail(pcm, sr, ch, 300)
+        if apply_gain:
+            pcm = _maybe_gain(pcm, extra_gain)
+    return _wrap_wav(pcm, sr, ch, sw), sr, ch, "wav"
 
-    logger.event("tts.local.ok", bytes=len(wav_bytes), sample_rate=sr, channels=ch)
-    return wav_bytes, sr, ch, "wav"
+
+def _openai_response_wav(response, logger):
+    wav_bytes = _decode_openai_response(response, logger)
+    try:
+        pcm, sr, ch, sw = _read_wav(wav_bytes)
+    except Exception as exc:
+        raise TTSError("Returned WAV unreadable") from exc
+    pcm, sr, ch, sw = _prepare_tts_pcm(pcm, sr, ch, sw, logger, "openai")
+    extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
+    return _finish_tts_wav(pcm, sr, ch, sw, extra_gain, apply_gain=True)
+
+
+def _tts_openai(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
+    """Request OpenAI speech and normalize successful responses to WAV, retrying three times."""
+    api_key = ensure_openai_key(logger)
+    if not api_key:
+        raise TTSError("OPENAI_API_KEY not configured")
+    payload = {
+        "model": config.model or "gpt-4o-mini-tts",
+        "voice": config.voice or "alloy",
+        "input": text,
+        "format": (config.format or "wav").lower(),
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": _JSON_CONTENT_TYPE,
+        "Accept": _AUDIO_ACCEPT,
+    }
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                "https://api.openai.com/v1/audio/speech", json=payload, headers=headers, timeout=config.timeout or 40
+            )
+            if resp.status_code >= 400:
+                logger.event(
+                    "tts.openai.http_error",
+                    extra={"data": {"attempt": attempt, "status": resp.status_code, "text": resp.text[:400]}},
+                )
+                raise TTSError(f"OpenAI TTS error: {resp.status_code} {resp.text[:200]}")
+            return _openai_response_wav(resp, logger)
+        except TTSError as exc:
+            last_err = exc
+        except requests.RequestException as exc:
+            logger.event("tts.openai.net_retry", extra={"data": {"attempt": attempt, "error": str(exc)}})
+            last_err = exc
+        time.sleep(0.6 * (attempt + 1))
+    raise TTSError(f"OpenAI TTS request failed: {last_err or 'unknown error'}")
+
+
+def _local_response_pcm(response, logger):
+    content_type = (response.headers.get("Content-Type") or "").lower()
+    body = response.content or b""
+    if content_type.startswith("audio/wav") or _is_wav(body):
+        try:
+            return _read_wav(body)
+        except Exception as exc:
+            raise TTSError("LOCAL TTS: returned WAV unreadable") from exc
+    if _looks_like_mp3(body, content_type):
+        wav_bytes = _decode_mp3_to_wav(body, logger)
+        if not wav_bytes:
+            raise TTSError("LOCAL TTS: MP3 decode failed (no ffmpeg/mpg123?)")
+        return _read_wav(wav_bytes)
+    if _JSON_CONTENT_TYPE in content_type:
+        body = _json_response_audio(response, "LOCAL TTS: ")
+        if _is_wav(body):
+            return _read_wav(body)
+    wav_bytes = _decode_mp3_to_wav(body, logger)
+    if wav_bytes:
+        return _read_wav(wav_bytes)
+    # Local servers may return raw 16-bit mono PCM at 16 kHz.
+    return body, 16000, 1, 2
+
+
+def _tts_local(text: str, config: TTSConfig, logger: voice_logging.VoiceLogger) -> tuple[bytes, int, int, str]:
+    """Synthesize over local HTTP, retaining WAV, MP3, JSON/base64 and raw PCM support."""
+    url = f"{(config.base_url or '').rstrip('/')}{config.endpoint or '/api/tts'}"
+    accept = config.accept or _AUDIO_ACCEPT
+    payload = {"text": text, "voice": config.voice or "pl_m"}
+    if config.model:
+        payload["model"] = config.model
+    if config.format:
+        payload["format"] = config.format
+    logger.event("tts.local.request", url=url, accept=accept, voice=payload["voice"])
+    try:
+        resp = requests.post(
+            url,
+            json=payload,
+            headers={"Accept": accept, "Content-Type": _JSON_CONTENT_TYPE},
+            timeout=config.timeout or 15.0,
+        )
+    except Exception as exc:
+        logger.event("tts.local.error", error=str(exc))
+        raise TTSError(f"LOCAL TTS: request failed: {exc}") from exc
+    if resp.status_code >= 400:
+        snippet = (resp.text or "")[:200]
+        logger.event("tts.local.http_error", status=resp.status_code, body=snippet)
+        raise TTSError(f"LOCAL TTS HTTP {resp.status_code}: {snippet}")
+    pcm, sr, ch, sw = _local_response_pcm(resp, logger)
+    extra_gain = float(os.environ.get("VOICE_GAIN", "1.0"))
+    pcm, sr, ch, sw = _prepare_tts_pcm(pcm, sr, ch, sw, logger, "local")
+    result = _finish_tts_wav(pcm, sr, ch, sw, extra_gain)
+    logger.event("tts.local.ok", bytes=len(result[0]), sample_rate=sr, channels=ch)
+    return result
 
 
 async def speak_stream(
@@ -546,7 +438,7 @@ async def speak_stream(
     a następnie wysyła całe zdanie do syntezy i odtwarzania.
     Używane w trybie transport=realtime.
     """
-    logger = logger or voice_logging.get_logger("voice.tts")
+    logger = logger or voice_logging.get_logger(_LOGGER_NAME)
 
     # Streaming jest obecnie wspierany tylko dla OpenAI — więc tu używamy ensure_openai_key
     api_key = ensure_openai_key(logger)
@@ -563,19 +455,7 @@ async def speak_stream(
 
     # Tworzymy kopię konfiguracji z wyłączonym blokowaniem realtime
     # ponieważ speak_stream jest dedykowane dla trybu realtime
-    config_override = TTSConfig(
-        backend=config.backend,
-        voice=config.voice,
-        model=config.model,
-        format=config.format,
-        timeout=config.timeout,
-        piper_model=config.piper_model,
-        piper_config=config.piper_config,
-        transport="file",  # Override to bypass blocking
-        base_url=config.base_url,
-        endpoint=config.endpoint,
-        accept=config.accept,
-    )
+    config_override = replace(config, transport="file")
 
     try:
         async for chunk in text_generator:
@@ -584,60 +464,14 @@ async def speak_stream(
 
             buffer += chunk
 
-            # Szukamy ostatniego znaku końca zdania
-            last_ending_idx = -1
-            for i in range(len(buffer) - 1, -1, -1):
-                if buffer[i] in sentence_endings:
-                    last_ending_idx = i
-                    break
+            sentence, buffer = _take_stream_sentence(buffer, sentence_endings)
+            if sentence:
+                logger.event("tts.stream_async.sentence", chars=len(sentence))
+                await _speak_async_sentence(sentence, config_override, playback, logger, "sentence_error")
 
-            if last_ending_idx >= 0 and last_ending_idx >= 10:  # minimum 10 znaków
-                sentence = buffer[: last_ending_idx + 1].strip()
-                buffer = buffer[last_ending_idx + 1 :]
-
-                if sentence:
-                    logger.event("tts.stream_async.sentence", chars=len(sentence))
-                    try:
-                        import asyncio
-
-                        loop = asyncio.get_event_loop()
-
-                        def _make_tts_func(text: str):
-                            def _sync_tts():
-                                return speak(
-                                    text,
-                                    config_override,
-                                    playback,
-                                    logger,
-                                    accumulate=False,
-                                )
-
-                            return _sync_tts
-
-                        await loop.run_in_executor(None, _make_tts_func(sentence))
-
-                    except Exception as exc:
-                        logger.event("tts.stream_async.sentence_error", error=str(exc))
-                        # Kontynuuj mimo błędu
-
-        # Jeśli został tekst w buforze, wypowiedz go
         if buffer.strip():
             logger.event("tts.stream_async.final_buffer", chars=len(buffer))
-            try:
-                import asyncio
-
-                loop = asyncio.get_event_loop()
-                final_text = buffer.strip()
-
-                def _make_tts_func(text: str):
-                    def _sync_tts():
-                        return speak(text, config_override, playback, logger, accumulate=False)
-
-                    return _sync_tts
-
-                await loop.run_in_executor(None, _make_tts_func(final_text))
-            except Exception as exc:
-                logger.event("tts.stream_async.final_error", error=str(exc))
+            await _speak_async_sentence(buffer.strip(), config_override, playback, logger, "final_error")
 
         logger.event("tts.stream_async.complete")
         return TTSStreamResult(ok=True, streamed=True)
@@ -645,6 +479,26 @@ async def speak_stream(
     except Exception as exc:
         logger.event("tts.stream_async.error", error=str(exc))
         return TTSStreamResult(ok=False, streamed=False)
+
+
+def _take_stream_sentence(buffer, sentence_endings):
+    for index in range(len(buffer) - 1, -1, -1):
+        if buffer[index] in sentence_endings:
+            if index >= 10:
+                return buffer[: index + 1].strip(), buffer[index + 1 :]
+            break
+    return "", buffer
+
+
+async def _speak_async_sentence(text, config, playback, logger, error_event):
+    import asyncio
+    from functools import partial
+
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, partial(speak, text, config, playback, logger, accumulate=False))
+    except Exception as exc:
+        logger.event(f"tts.stream_async.{error_event}", error=str(exc))
 
 
 def _piper_synthesize_wav(
@@ -680,11 +534,11 @@ def _piper_model_paths(voice_id: str, model_dir: str):
     import os
 
     MAP = {
-        "pl_m": "pl_PL-gosia-medium.onnx",
-        "pl_f": "pl_PL-gosia-medium.onnx",
-        "pl": "pl_PL-gosia-medium.onnx",
+        "pl_m": _PIPER_MODEL,
+        "pl_f": _PIPER_MODEL,
+        "pl": _PIPER_MODEL,
     }
-    base = MAP.get(voice_id, "pl_PL-gosia-medium.onnx")
+    base = MAP.get(voice_id, _PIPER_MODEL)
     model = os.path.join(model_dir, base)
     cfg = model + ".json"
     return model, cfg
