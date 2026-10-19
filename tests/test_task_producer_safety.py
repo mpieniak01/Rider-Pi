@@ -45,8 +45,11 @@ def test_current_intent_accepts_fresh_target_with_original_generation():
     assert command["seq"] > 3 and command["duration"] <= 0.25
 
 
-@pytest.mark.parametrize("observed", [None, float("nan"), float("inf"), 1, time.time() + 100])
+@pytest.mark.parametrize("observed", [None, float("nan"), float("inf"), 1, "future"])
 def test_invalid_or_old_observation_is_never_restamped(observed):
+    # Collection can precede this test by more than 100 seconds in the full suite.
+    if observed == "future":
+        observed = time.time() + 100
     ctrl, sent, _ = controller(authorization=intent())
     ctrl.on_tracking_offset(0.5, "face", observed_at=observed)
     assert sent == []
