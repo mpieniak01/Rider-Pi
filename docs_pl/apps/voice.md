@@ -610,7 +610,13 @@ z [mechanizmów asyncio dostępnych w Pythonie 3.9](https://docs.python.org/3.9/
 bez wymagania nowszego `TaskGroup`.
 
 Zamykanie socketu kończy sekwencję `close()` i `wait_closed()` przed zwolnieniem
-referencji, także po anulowaniu wywołującego; dopiero potem propaguje anulowanie.
+referencji, także po anulowaniu wywołującego; dopiero potem propaguje anulowanie. Zachowuje
+oryginalny wyjątek i komunikat anulowania; równoczesny błąd socketu jest odczytany
+i raportowany przed zwolnieniem referencji.
+Test komunikatu sprawdza granicę naszej korutyny: `Task` w Pythonie 3.9 może
+utworzyć nowy `CancelledError` bez komunikatu przy oczekiwaniu na zadanie.
+[Implementacja asyncio 3.9](https://github.com/python/cpython/blob/3.9/Lib/asyncio/tasks.py)
+pozostaje częścią kontraktu wspieranego runtime’u.
 
 Listener oczekuje asynchronicznego sprzątania na własnej pętli; klient async
 używa `await service.close()`. Odczyt pustej kolejki audio jest przenoszony do

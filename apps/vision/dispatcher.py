@@ -88,9 +88,13 @@ def sub_recv() -> tuple[str, dict[str, Any]]:
 
 
 def pub(topic: str, payload: dict[str, Any]) -> None:
+    """Publish best-effort, diagnosing missing initialization in every Python mode."""
+    publisher = PUB
+    if publisher is None:
+        print("[dispatcher] pub err: publisher not initialized", flush=True)
+        return
     try:
-        assert PUB is not None
-        PUB.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
+        publisher.send_string(f"{topic} {json.dumps(payload, ensure_ascii=False)}")
     except Exception as e:
         print(f"[dispatcher] pub err: {e}", flush=True)
 

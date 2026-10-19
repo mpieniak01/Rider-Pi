@@ -189,7 +189,7 @@ class WebSocketTransport:
                         await self._close_socket(self.websocket)
                         self.logger.event("ws.closed", session_id=self.session_id)
                 except Exception as error:
-                    self.logger.event("ws.close_error", error=str(error))
+                    self._report_close_error(error)
                 finally:
                     self.websocket = None
                     self.connected = False
@@ -198,31 +198,44 @@ class WebSocketTransport:
     async def _close_socket(self, websocket) -> None:
         """Complete the owned socket's shutdown before propagating cancellation."""
 
-        async def close_and_wait():
-            """Keep both async close steps, or the sync close thread, together."""
-            if self._use_async:
-                await websocket.close(code=1000)
-                await websocket.wait_closed()
-            else:
-                await asyncio.to_thread(websocket.close, status=1000)
-
-        close_task = asyncio.create_task(close_and_wait(), name="voice-socket-close")
-        cancelled = False
+        close_task = asyncio.create_task(self._close_and_wait(websocket), name="voice-socket-close")
+        cancellation = None
         while True:
             try:
                 await asyncio.shield(close_task)
                 break
-            except asyncio.CancelledError:
-                cancelled = True
-                if close_task.cancelled():
-                    break
-            except Exception as error:
-                if not cancelled:
+            except asyncio.CancelledError as error:
+                cancellation = error
+                if close_task.done():
+                    self._report_completed_close_error(close_task)
                     raise
-                self.logger.event("ws.close_error", error=str(error))
+            except Exception as error:
+                if cancellation is None:
+                    raise
+                self._report_close_error(error)
                 break
-        if cancelled:
-            raise asyncio.CancelledError
+        if cancellation is not None:
+            raise cancellation
+
+    async def _close_and_wait(self, websocket) -> None:
+        """Keep both async close steps, or the sync close thread, together."""
+        if self._use_async:
+            await websocket.close(code=1000)
+            await websocket.wait_closed()
+        else:
+            await asyncio.to_thread(websocket.close, status=1000)
+
+    def _report_completed_close_error(self, close_task) -> None:
+        """Retrieve a terminal socket error racing caller cancellation."""
+        if close_task.cancelled():
+            return
+        error = close_task.exception()
+        if error is not None:
+            self._report_close_error(error)
+
+    def _report_close_error(self, error) -> None:
+        """Keep shutdown diagnostics consistent across cancellation boundaries."""
+        self.logger.event("ws.close_error", error=str(error))
 
     async def _heartbeat_loop(self) -> None:
         """Heartbeat loop to keep connection alive."""

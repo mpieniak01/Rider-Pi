@@ -81,10 +81,14 @@ def zmq_sub(topics: list[str]) -> zmq.Socket:
 
 
 def pub(topic: str, payload: dict[str, Any]) -> None:
+    """Publish best-effort, diagnosing missing initialization in every Python mode."""
+    publisher = PUB
+    if publisher is None:
+        print("[tracker] pub err: publisher not initialized", flush=True)
+        return
     try:
-        assert PUB is not None
         message = f"{topic} {json.dumps(payload, ensure_ascii=False)}"
-        PUB.send_string(message)
+        publisher.send_string(message)
         print(f"[tracker] pub → {topic} {payload}", flush=True)
     except Exception as e:
         print(f"[tracker] pub err: {e}", flush=True)
