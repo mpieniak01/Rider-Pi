@@ -6,8 +6,9 @@ import base64
 import queue
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 from common.bus import (
     TOPIC_VOICE_ASR_REQUEST,
