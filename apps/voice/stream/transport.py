@@ -207,22 +207,26 @@ class WebSocketTransport:
                 await asyncio.to_thread(websocket.close, status=1000)
 
         close_task = asyncio.create_task(close_and_wait(), name="voice-socket-close")
-        cancelled = False
+        cancellation = None
         while True:
             try:
                 await asyncio.shield(close_task)
                 break
-            except asyncio.CancelledError:
-                cancelled = True
-                if close_task.cancelled():
-                    break
+            except asyncio.CancelledError as error:
+                cancellation = error
+                if close_task.done():
+                    if not close_task.cancelled():
+                        close_error = close_task.exception()
+                        if close_error is not None:
+                            self.logger.event("ws.close_error", error=str(close_error))
+                    raise
             except Exception as error:
-                if not cancelled:
+                if cancellation is None:
                     raise
                 self.logger.event("ws.close_error", error=str(error))
                 break
-        if cancelled:
-            raise asyncio.CancelledError
+        if cancellation is not None:
+            raise cancellation
 
     async def _heartbeat_loop(self) -> None:
         """Heartbeat loop to keep connection alive."""

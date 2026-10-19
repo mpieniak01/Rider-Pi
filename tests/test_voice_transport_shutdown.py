@@ -146,15 +146,16 @@ async def test_socket_shutdown_finishes_before_cancelled_parent_releases_referen
     getattr(socket, blocked_step).side_effect = close_step
     parent = asyncio.create_task(transport.close())
     await asyncio.wait_for(entered.wait(), timeout=1)
-    for _ in range(2):
-        parent.cancel()
+    for attempt in range(2):
+        parent.cancel("shutdown-cancel-" + str(attempt))
         await asyncio.sleep(0)
         assert not parent.done()
         assert transport.websocket is socket
         assert not finished.is_set()
     release.set()
-    with pytest.raises(asyncio.CancelledError):
+    with pytest.raises(asyncio.CancelledError) as caught:
         await parent
+    assert caught.value.args == ("shutdown-cancel-1",)
     assert finished.is_set()
     socket.close.assert_awaited_once_with(code=1000)
     if blocked_step == "wait_closed" or not close_error:
@@ -211,3 +212,22 @@ async def test_sync_socket_thread_finishes_before_cancelled_close_releases_refer
     assert finished.is_set()
     assert transport.websocket is None
     socket.close.assert_called_once_with(status=1000)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_close_retrieves_a_simultaneous_socket_error():
+    """A close error racing caller cancellation is retrieved before dropping ownership."""
+    transport = transport_fixture()
+    parent = None
+
+    async def fail_while_cancelling(**_kwargs):
+        parent.cancel("shutdown race")
+        raise RuntimeError("simultaneous close error")
+
+    transport.websocket.close.side_effect = fail_while_cancelling
+    parent = asyncio.create_task(transport.close())
+    with pytest.raises(asyncio.CancelledError) as caught:
+        await parent
+    assert caught.value.args == ("shutdown race",)
+    transport.logger.event.assert_any_call("ws.close_error", error="simultaneous close error")
+    assert transport.websocket is None

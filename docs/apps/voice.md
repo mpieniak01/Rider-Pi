@@ -604,7 +604,9 @@ propagate `CancelledError`. This uses [Python 3.9 asyncio mechanisms](https://do
 without requiring the newer `TaskGroup`.
 
 Socket shutdown completes `close()` and `wait_closed()` before releasing the
-reference, even when its caller is cancelled; cancellation propagates afterwards.
+reference, even when its caller is cancelled; cancellation propagates afterwards. The
+original cancellation instance and message are preserved; a simultaneous socket
+error is retrieved and reported before releasing the reference.
 
 The listener awaits cleanup on its own event loop; async clients use
 `await service.close()`. Empty audio-queue reads run in an executor so the event

@@ -610,7 +610,9 @@ z [mechanizmów asyncio dostępnych w Pythonie 3.9](https://docs.python.org/3.9/
 bez wymagania nowszego `TaskGroup`.
 
 Zamykanie socketu kończy sekwencję `close()` i `wait_closed()` przed zwolnieniem
-referencji, także po anulowaniu wywołującego; dopiero potem propaguje anulowanie.
+referencji, także po anulowaniu wywołującego; dopiero potem propaguje anulowanie. Zachowuje
+oryginalny wyjątek i komunikat anulowania; równoczesny błąd socketu jest odczytany
+i raportowany przed zwolnieniem referencji.
 
 Listener oczekuje asynchronicznego sprzątania na własnej pętli; klient async
 używa `await service.close()`. Odczyt pustej kolejki audio jest przenoszony do
