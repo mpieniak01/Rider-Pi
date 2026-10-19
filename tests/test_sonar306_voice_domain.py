@@ -63,7 +63,8 @@ def test_profile_confirmation_requires_fresh_loaded_worker(monkeypatch, stale, l
     monkeypatch.setattr(domain_worker, "availability", lambda domains: {"ready": True, "domains": sorted(domains)})
     observed = {"stale": stale, "capabilities": {"asr": {"ready": True, "model_loaded": loaded}}}
     result = domain_worker._observed_profile({"asr"}, lambda: observed)
-    assert result["ready"] is ready and result["worker"] is observed
+    assert result['ready'] is ready
+    assert result['worker'] is observed
 
 
 @pytest.mark.parametrize("missing_domain", [True, False])
@@ -91,7 +92,8 @@ def test_validator_retains_error_order_and_clears_previous_failures():
         "hotword.engine",
     ]
     loader._validate({"capture": {"channels": 1, "sample_rate": 16000}})
-    assert not loader.validation_errors and not loader.unknown_keys
+    assert not loader.validation_errors
+    assert not loader.unknown_keys
 
 
 @pytest.mark.parametrize("tail", [0, 2, 10])
@@ -103,7 +105,8 @@ def test_secret_masking_retains_direct_nested_and_env_handling(monkeypatch, tail
     expected = "*" * max(0, 6 - tail) + suffix
     assert masked["token"] == masked["stream"]["auth"] == expected
     assert masked["stream"]["source"] == "env:" + expected
-    assert data["token"] == "abcdef" and masked["plain"] == 3
+    assert data['token'] == 'abcdef'
+    assert masked['plain'] == 3
 
 
 def test_command_override_replacement_order_and_conservative_numeric_values():

@@ -246,7 +246,8 @@ def test_navigation_ack_rejection_precedes_timeout_and_intent_claim(navigation_m
     with pytest.raises(navigation.ComputeError, match="navigation_motion_rejected"):
         runner._authority()
     assert claims == submissions == []
-    assert runner.generation is None and runner.intent is None
+    assert runner.generation is None
+    assert runner.intent is None
     assert runner.motion_failure["reason"] == "stale_generation"
 
 
@@ -260,7 +261,8 @@ def test_navigation_pending_ack_acceptance_then_settings_loss_does_not_adopt(nav
         runner._authority()
     assert runner.pending_motion_acks == {}
     assert claims == submissions == []
-    assert runner.generation is None and runner.motion_sequence == -1
+    assert runner.generation is None
+    assert runner.motion_sequence == -1
 
 
 def test_navigation_expired_decision_rejects_before_sequence_or_submit(navigation_memory):
@@ -284,8 +286,10 @@ def test_navigation_pending_submission_keeps_exact_envelope(navigation_memory, m
     runner.motion_publisher = object()
     runner.drive(0.12, 0.08, yaw=-0.2)
     payload, kwargs = submissions[0]
-    assert payload["seq"] == 3 and payload["generation"] == "g"
-    assert payload["vx"] == 0.12 and payload["yaw"] == -0.2
+    assert payload['seq'] == 3
+    assert payload['generation'] == 'g'
+    assert payload['vx'] == 0.12
+    assert payload['yaw'] == -0.2
     assert payload["decision_deadline_monotonic"] == clock() + 0.1
     assert kwargs == {"publisher": runner.motion_publisher, "timeout_s": 0.0}
     assert runner.pending_motion_acks == {payload["request_id"]: clock() + 0.1}
@@ -308,7 +312,8 @@ def test_navigation_generation_change_during_inference_prevents_decision_apply(n
     monkeypatch.setattr(runner, "_authority", authority)
     accepted, _ = runner._apply_decision({"action": "go", "state": "clear"}, {"frame_id": "f"}, clock())
     assert not accepted
-    assert statuses == [None] and submissions == []
+    assert statuses == [None]
+    assert submissions == []
 
 
 def test_navigation_run_closes_fake_resources_after_startup_rejection(navigation_memory, monkeypatch):
@@ -325,4 +330,5 @@ def test_navigation_run_closes_fake_resources_after_startup_rejection(navigation
     monkeypatch.setattr(runner, "_status", lambda _: events.append("status"))
     assert runner.run() == 2
     assert events == ["status", "source_closed", "publisher_closed"]
-    assert runner.closed.is_set() and runner.motion_publisher is None
+    assert runner.closed.is_set()
+    assert runner.motion_publisher is None

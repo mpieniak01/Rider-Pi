@@ -58,7 +58,8 @@ def test_output_replacement_invalid_sample_precedes_instance_change(estimator):
     assert instance.reference_id == "fake-origin"
     assert instance.continuity_error == "sdk_output_unconfirmed"
     assert instance.output is None
-    assert not instance._idle_confirmed and instance._pending_output_since is None
+    assert not instance._idle_confirmed
+    assert instance._pending_output_since is None
 
 
 def test_reference_rejection_is_atomic_for_coordinates_and_continuity(estimator):
@@ -182,6 +183,8 @@ def test_pending_calibration_rejection_precedes_timeout_and_readiness(monkeypatc
     monkeypatch.setattr(calibration_api, "_confirmation", lambda *_: "confirmed")
     monkeypatch.setattr(calibration_api, "_pending", pending)
     result = calibration_api.snapshot()
-    assert result["status"] == "partial" and result["error"] == "specific_rejection"
-    assert result["model_ready"] is False and result["actuation"] is False
+    assert result['status'] == 'partial'
+    assert result['error'] == 'specific_rejection'
+    assert result['model_ready'] is False
+    assert result['actuation'] is False
     assert pending["ts"] == 900

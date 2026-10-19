@@ -33,8 +33,10 @@ def test_mapper_rejection_precedence_keeps_cells_and_timestamps(mapper, edits, e
     before = instance.grid.grid.copy(), instance.grid.observed.copy(), instance.last_range_ts
     instance._handle_obstacle_data(ranges(clock, **edits))
     assert instance.data_error == error
-    assert (instance.grid.grid == before[0]).all() and (instance.grid.observed == before[1]).all()
-    assert instance.last_range_ts == before[2] and instance.obstacles_processed == 0
+    assert (instance.grid.grid == before[0]).all()
+    assert (instance.grid.observed == before[1]).all()
+    assert instance.last_range_ts == before[2]
+    assert instance.obstacles_processed == 0
 
 
 def test_mapper_valid_range_marks_ray_before_obstacle(mapper, monkeypatch):
@@ -46,7 +48,8 @@ def test_mapper_valid_range_marks_ray_before_obstacle(mapper, monkeypatch):
     assert [e[0] for e in events] == ["ray", "obstacle"]
     assert events[0][1] == (0, 0, 1.0, 0.0)
     assert events[1][2] == {"inflation_radius": 0.1}
-    assert instance.grid.observation_time == clock.now and instance.obstacles_processed == 1
+    assert instance.grid.observation_time == clock.now
+    assert instance.obstacles_processed == 1
 
 
 @pytest.mark.parametrize(
@@ -85,8 +88,10 @@ def test_navigator_failed_intent_claim_never_starts(navigator, monkeypatch):
     monkeypatch.setattr(motion, "write_intent_status", lambda *a, **kw: False)
     monkeypatch.setattr(nav, "start", lambda: pytest.fail("unclaimed intent started"))
     nav._consume_task_intent()
-    assert nav.state == NavigatorState.STOPPED and nav.active is False
-    assert nav._consumed_intent is None and not commands(sent, "move")
+    assert nav.state == NavigatorState.STOPPED
+    assert nav.active is False
+    assert nav._consumed_intent is None
+    assert not commands(sent, 'move')
 
 
 def test_navigator_config_validation_is_atomic_and_requires_disarmed(navigator, monkeypatch):
@@ -107,7 +112,9 @@ def test_navigator_invalid_pose_clears_plan_without_adopting_new_frame(navigator
     nav.current_path = [(0, 0), (1, 1)]
     nav.state = NavigatorState.RETURNING_HOME
     nav._handle_robot_pose({"x": False, "observed_at": 999})
-    assert nav.current_path == [] and nav.current_pose is None and nav.pose_sample is None
+    assert nav.current_path == []
+    assert nav.current_pose is None
+    assert nav.pose_sample is None
     assert nav.state == NavigatorState.PATH_BLOCKED
     assert not commands(sent, "move")
 
@@ -122,7 +129,8 @@ def test_navigator_quality_precedence_remains_passive(navigator):
     nav._data_blocked = False
     nav.obstacle_sample = clear(clock)
     assert nav.navigation_quality()["data_error"] == "map_stopping_horizon_unverified"
-    assert not nav.navigation_quality()["navigation_ready"] and not commands(sent, "move")
+    assert not nav.navigation_quality()['navigation_ready']
+    assert not commands(sent, 'move')
 
 
 @pytest.mark.parametrize(
@@ -173,7 +181,8 @@ def test_trial_source_reservation_precedes_old_producer_stop_and_arm(world, monk
     monkeypatch.setattr(stream_prepare, "prepare_stream", lambda **kw: events.append(("stream", kw)))
     assert world.trial.start(world.body())["ok"]
     assert events[:3] == [("s2_camera_preview", True), ("s14_venom_navigation", False), ("s15_venom_perception", False)]
-    assert events[3][0] == "stream" and events[4] == ("s14_venom_navigation", True)
+    assert events[3][0] == 'stream'
+    assert events[4] == ('s14_venom_navigation', True)
     assert not any(c["action"] == "move" for c in world.commands)
 
 
@@ -216,11 +225,14 @@ def test_public_status_expiry_preserves_input_and_hides_monotonic():
     before = copy.deepcopy(row)
     result = public_status(row, sampled_now=10.1)
     assert row == before
-    assert result["permit_remaining_ms"] == 0 and result["feedback_remaining_ms"] == 50
-    assert result["waiting_feedback"] and result["paused"]
+    assert result['permit_remaining_ms'] == 0
+    assert result['feedback_remaining_ms'] == 50
+    assert result['waiting_feedback']
+    assert result['paused']
     assert result["decision"]["action"] == "stop"
     assert result["decision_age_ms"] == 120
-    assert "sampled_monotonic" not in result and "run_started_monotonic" not in result
+    assert 'sampled_monotonic' not in result
+    assert 'run_started_monotonic' not in result
 
 
 def test_choreographer_topic_collection_preserves_wildcard_and_idle_fallback():

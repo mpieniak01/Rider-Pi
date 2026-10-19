@@ -159,7 +159,8 @@ def test_capture_barge_in_drains_output_and_always_signals_end(monkeypatch):
     monkeypatch.setattr(svc_audio, "capture_continuous", capture)
     worker._capture_worker(32)
     assert list(worker.audio_queue.queue) == [b"first", b"second", None]
-    assert worker.tts_player_queue.empty() and not worker.barge_in_event.is_set()
+    assert worker.tts_player_queue.empty()
+    assert not worker.barge_in_event.is_set()
     capture.assert_called_once_with({"backend": "fake"}, 32)
 
 
@@ -176,7 +177,8 @@ async def test_transport_library_headers_are_retained_without_network(monkeypatc
     monkeypatch.setattr(transport_module, "_ws_sync", SimpleNamespace(create_connection=sync_connect))
     monkeypatch.delenv("OPENAI_REALTIME_ENDPOINT", raising=False)
     assert await instance.connect(max_retries=0)
-    assert instance.connected and instance.websocket is socket
+    assert instance.connected
+    assert instance.websocket is socket
     if async_library:
         headers = async_connect.call_args.kwargs["extra_headers"]
         assert headers == [("Authorization", "Bearer fake"), ("OpenAI-Beta", "realtime=v1")]
@@ -204,7 +206,8 @@ def test_error_timestamp_retains_utc_z_format():
     timestamp = service.ui_publisher.publish.call_args.args[1]["ts"]
     from datetime import datetime, timezone
 
-    assert timestamp.endswith("Z") and "+00:00" not in timestamp
+    assert timestamp.endswith('Z')
+    assert '+00:00' not in timestamp
     parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     assert parsed.tzinfo == timezone.utc
 

@@ -130,7 +130,9 @@ def test_stream_failure_closes_player_and_falls_back(monkeypatch, logger, failur
     play = Mock()
     monkeypatch.setattr(tts, "play_bytes", play)
     result = tts.speak(" hello ", tts.TTSConfig(), object(), logger, accumulate=True)
-    assert result.ok and result.audio == b"fallback" and not result.streamed
+    assert result.ok
+    assert result.audio == b'fallback'
+    assert not result.streamed
     stream.close.assert_called_once()
     synth.assert_called_once_with("hello", tts.TTSConfig(), logger)
     play.assert_called_once()
@@ -145,7 +147,9 @@ def test_successful_stream_accumulates_audio_without_second_playback(monkeypatch
     monkeypatch.setattr(tts, "_decode_mp3_to_wav", lambda *_a: wav_bytes if decoded else None)
     monkeypatch.setattr(tts, "synthesize", Mock(side_effect=AssertionError("no fallback")))
     result = tts.speak("hello", tts.TTSConfig(), object(), logger, accumulate=True)
-    assert result.ok and result.streamed and result.backend == "fake"
+    assert result.ok
+    assert result.streamed
+    assert result.backend == 'fake'
     assert (result.audio, result.audio_format, result.sample_rate) == (
         (wav_bytes, "wav", 16000) if decoded else (b"mp3", "mp3", 0)
     )
@@ -158,7 +162,8 @@ def test_async_sentences_keep_minimum_boundary_and_continue_after_failure(monkey
     monkeypatch.setattr(tts, "ensure_openai_key", lambda _logger: "fake-test-key")
 
     def fake_speak(text, config, *_args, **kwargs):
-        assert config.transport == "file" and config.base_url == cfg.base_url
+        assert config.transport == 'file'
+        assert config.base_url == cfg.base_url
         assert kwargs == {"accumulate": False}
         spoken.append(text)
         if len(spoken) == 1:
@@ -171,7 +176,8 @@ def test_async_sentences_keep_minimum_boundary_and_continue_after_failure(monkey
             yield text
 
     result = asyncio.run(tts.speak_stream(chunks(), cfg, object(), logger))
-    assert result.ok and result.streamed
+    assert result.ok
+    assert result.streamed
     assert spoken == ["Hi. Longer sentence!", "final"]
     assert cfg.transport == "realtime"
     logger.event.assert_any_call("tts.stream_async.sentence_error", error="sentence failed")

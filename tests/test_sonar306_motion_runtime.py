@@ -48,7 +48,9 @@ def test_executor_burst_bounds_and_passive_filtering():
 
     result = executor_runtime._receive_burst(SimpleNamespace(recv=recv), {"motion.command"})
     assert events == [20] + [0] * 63
-    assert len(result) == 63 and result[1][1]["action"] == "stop" and len(rows) == 9
+    assert len(result) == 63
+    assert result[1][1]['action'] == 'stop'
+    assert len(rows) == 9
 
 
 def test_dual_sensor_clocks_deny_rollback_without_fabricating_measurement():
@@ -80,7 +82,8 @@ def test_named_telemetry_reads_one_packet_with_original_measurement_time(executo
         raising=False,
     )
     telemetry_poll.poll(instance)
-    assert events == ["imu_packet"] and instance.sensor_index == 1
+    assert events == ['imu_packet']
+    assert instance.sensor_index == 1
     assert instance.samples.rows["roll"]["observed_at"] == clock()
     assert instance.samples.rows["accel_x"]["value"] is None
     telemetry_poll.poll(instance)
@@ -92,7 +95,9 @@ def test_tracking_config_applies_known_fields_then_environment(monkeypatch):
     monkeypatch.setenv("TRACKING_KP", "0.3")
     monkeypatch.setenv("TRACKING_CMD_PRIO", "7")
     result = config.load_config("/fake/config.toml")
-    assert result.kp == 0.3 and result.cmd_prio == 7 and not hasattr(result, "unknown")
+    assert result.kp == 0.3
+    assert result.cmd_prio == 7
+    assert not hasattr(result, 'unknown')
     monkeypatch.setenv("TRACKING_KP", "invalid")
     with pytest.raises(ValueError):
         config.load_config("/fake/config.toml")
@@ -131,7 +136,8 @@ def test_historical_verification_is_cleared_before_manual_evidence_checks(profil
     value["measurements"] = []
     before = copy.deepcopy(value)
     result = calibration_profiles.validate_profile(value)
-    assert result["odometry"]["manual_verified"] is False and value == before
+    assert result['odometry']['manual_verified'] is False
+    assert value == before
 
 
 def test_activation_zero_proof_precedes_envelope_and_does_not_consume_sequence():
@@ -174,9 +180,11 @@ def test_agent_sequence_errors_precede_bad_timestamp_or_direction():
 def test_decision_validation_precedence_never_calls_drive(edits, error, consumed):
     lease, _, calls = make()
     assert not lease.accept(decision(**edits), "f1", 1, 0)
-    assert lease.reason == error and calls == [("stop",)]
+    assert lease.reason == error
+    assert calls == [('stop',)]
     assert lease.last_seq == (1 if consumed else -1)
-    assert lease.deadline is None and lease.moving is False
+    assert lease.deadline is None
+    assert lease.moving is False
 
 
 def test_decision_callback_failure_latches_and_clears_permit():
@@ -188,6 +196,9 @@ def test_decision_callback_failure_latches_and_clears_permit():
     lease.drive = fail
     with pytest.raises(OSError, match="fake submit failure"):
         lease.accept(decision(), "f1", 1, 0)
-    assert lease.reason == "motion_submission_failed" and lease.latched
-    assert lease.deadline is None and lease.feedback_deadline is None and not lease.moving
+    assert lease.reason == 'motion_submission_failed'
+    assert lease.latched
+    assert lease.deadline is None
+    assert lease.feedback_deadline is None
+    assert not lease.moving
     assert calls == [("stop",)]
