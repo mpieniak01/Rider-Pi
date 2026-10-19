@@ -75,4 +75,19 @@ ls -l /tmp/face_legacy.png
 ## Notes
 
 - Imports without side-effects (no import triggers LCD)
-- PNG fallback always works
+- PNG fallback writes a file when the destination directory satisfies the security checks.
+
+## Secure preview and offline tool files
+
+The LCD mock (including the `apps.ui.face.driver.mock` compatibility import)
+keeps `/tmp/face_last.png`, `.rgb565` and `.meta.json`. The simulator keeps
+`/tmp/lcd_sim_<number>.*`, while the PNG backend and face fallback honor
+`FACE_OUTFILE`. These writes and the weather tool PNG use atomic publication
+with mode `0600`. An existing output symlink is never opened; linked directory
+components and untrusted directories are rejected. An encoder failure preserves
+the previous complete file. Preview readers should run as the writing user.
+
+`dev_face-cli.py --stats` reads only owned regular files without symbolic or
+hard links or group/public write access. JSON metadata is limited to 64 KiB;
+unsafe or invalid artifacts produce a diagnostic message. File names and the
+configured LCD orientation remain compatible.

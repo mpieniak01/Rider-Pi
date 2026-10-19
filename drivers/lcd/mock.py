@@ -5,6 +5,8 @@ from datetime import datetime
 
 from PIL import Image
 
+from common.secure_files import atomic_write
+
 
 class MockFaceDriver:
     def __init__(self, cfg):
@@ -12,12 +14,11 @@ class MockFaceDriver:
         self.out_base = "/tmp/face_last"
 
     def push_png(self, img: Image.Image):
-        img.save(f"{self.out_base}.png")
+        atomic_write(f"{self.out_base}.png", lambda stream: img.save(stream, "PNG"))
         self._write_meta({"mode": "png", "size": img.size})
 
     def push_rgb565(self, buf: bytes, w: int, h: int):
-        with open(f"{self.out_base}.rgb565", "wb") as f:
-            f.write(buf)
+        atomic_write(f"{self.out_base}.rgb565", lambda stream: stream.write(buf))
         # Dla testów: zapis PNG z bufora RGB565 (wizualizacja)
         try:
             import numpy as np
@@ -27,10 +28,8 @@ class MockFaceDriver:
             g = ((arr >> 5) & 0x3F) << 2
             b = (arr & 0x1F) << 3
             rgb = np.stack([r, g, b], axis=-1).astype("uint8")
-            from PIL import Image
-
             img = Image.fromarray(rgb, "RGB")
-            img.save(f"{self.out_base}.png")
+            atomic_write(f"{self.out_base}.png", lambda stream: img.save(stream, "PNG"))
         except Exception:
             # Nie blokuj testu jeśli numpy/PIL nie działa
             pass
@@ -42,5 +41,5 @@ class MockFaceDriver:
             "panel": self.cfg.as_dict() if hasattr(self.cfg, "as_dict") else {},
         }
         meta.update(extra)
-        with open(f"{self.out_base}.meta.json", "w") as f:
-            json.dump(meta, f, indent=2)
+        data = json.dumps(meta, indent=2).encode("utf-8")
+        atomic_write(f"{self.out_base}.meta.json", lambda stream: stream.write(data))

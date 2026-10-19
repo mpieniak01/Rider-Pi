@@ -1,4 +1,4 @@
-"""Directory-anchored writes for trusted runtime paths on Linux."""
+"""Directory-anchored file access for trusted runtime paths on Linux."""
 
 from __future__ import annotations
 
@@ -78,3 +78,32 @@ def atomic_write(path, writer, *, private=False, replace=True):
                 os.unlink(temporary, dir_fd=descriptor)
             except FileNotFoundError:
                 pass
+
+
+@contextmanager
+def readonly_file(path):
+    """Read one owned regular artifact through a pinned fd, never a link or FIFO."""
+    path = Path(path)
+    with directory(path.parent) as descriptor:
+        handle = os.open(
+            path.name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+            dir_fd=descriptor,
+        )
+        try:
+            info = os.fstat(handle)
+            entry = os.stat(path.name, dir_fd=descriptor, follow_symlinks=False)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.geteuid()
+                or info.st_nlink != 1
+                or info.st_mode & 0o022
+                or (info.st_dev, info.st_ino) != (entry.st_dev, entry.st_ino)
+            ):
+                raise PermissionError("unsafe_runtime_artifact")
+            stream = os.fdopen(handle, "rb")
+        except BaseException:
+            os.close(handle)
+            raise
+        with stream:
+            yield stream
