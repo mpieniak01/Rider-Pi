@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import builtins
 import copy
 from dataclasses import asdict
 from pathlib import Path
@@ -382,3 +383,41 @@ def test_first_crossing_uses_visible_expression_not_last_requested_mood(monkeypa
     face.set_mood("sad", dwell_s=0)
     assert face.anim.state.expr == "neutral"
     assert face._mood_pending == (0.35, "sad")
+
+
+@pytest.mark.parametrize("modern_namespace", [False, True])
+def test_aa2x_resampling_supports_legacy_pillow_namespace(modern_namespace):
+    background, filtered, final = object(), object(), object()
+    composed = SimpleNamespace(convert=Mock(return_value=final))
+    overlay = SimpleNamespace(resize=Mock(return_value=filtered))
+    image_api = SimpleNamespace(new=Mock(return_value=overlay), LANCZOS=1, alpha_composite=Mock(return_value=composed))
+    if modern_namespace:
+        image_api.Resampling = SimpleNamespace(LANCZOS=2)
+    canvas = SimpleNamespace(
+        _image=SimpleNamespace(size=(20, 30), mode="RGB", convert=Mock(return_value=background), paste=Mock())
+    )
+    overlay_canvas = object()
+    draw_api = SimpleNamespace(Draw=Mock(return_value=overlay_canvas))
+    fast = Mock()
+
+    def import_pillow(name, *args, **kwargs):
+        return (
+            SimpleNamespace(Image=image_api, ImageDraw=draw_api)
+            if name == "PIL"
+            else builtins.__import__(name, *args, **kwargs)
+        )
+
+    scope = script_definitions(
+        "apps/draw/face_primitives.py",
+        {"_draw_face_antialiased"},
+        __builtins__={**vars(builtins), "__import__": import_pillow},
+        _draw_face_fast=fast,
+    )
+    model = object()
+    scope["_draw_face_antialiased"](canvas, {}, model, False)
+    image_api.new.assert_called_once_with("RGBA", (40, 60))
+    fast.assert_called_once_with(overlay_canvas, {}, model, False, pixel_scale=2)
+    overlay.resize.assert_called_once_with((20, 30), 2 if modern_namespace else 1)
+    image_api.alpha_composite.assert_called_once_with(background, filtered)
+    composed.convert.assert_called_once_with("RGB")
+    canvas._image.paste.assert_called_once_with(final)

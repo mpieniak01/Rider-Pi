@@ -104,7 +104,7 @@ def _draw_face_antialiased(canvas, cfg, model, guide):
     width, height = image.size
     overlay = Image.new("RGBA", (width * 2, height * 2))
     _draw_face_fast(ImageDraw.Draw(overlay), cfg, model, guide, pixel_scale=2)
-    overlay = overlay.resize(image.size, Image.Resampling.LANCZOS)
+    overlay = overlay.resize(image.size, getattr(Image, "Resampling", Image).LANCZOS)
     composed = Image.alpha_composite(image.convert("RGBA"), overlay)
     image.paste(composed.convert(image.mode))
 
