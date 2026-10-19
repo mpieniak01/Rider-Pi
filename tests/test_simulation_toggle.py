@@ -3,28 +3,22 @@
 Test simulation mode toggle functionality.
 """
 
-import os
-import sys
 import unittest
+
+import pytest
 
 
 class TestSimulationToggle(unittest.TestCase):
     """Test driver factory functions with simulation toggle."""
 
     def setUp(self):
-        """Save original environment state."""
-        self.original_env = os.environ.get("RIDER_SIMULATOR")
-
-    def tearDown(self):
-        """Restore original environment state."""
-        if self.original_env is None:
-            os.environ.pop("RIDER_SIMULATOR", None)
-        else:
-            os.environ["RIDER_SIMULATOR"] = self.original_env
+        """Restore environment modifications even when a test fails."""
+        self.monkeypatch = pytest.MonkeyPatch()
+        self.addCleanup(self.monkeypatch.undo)
 
     def test_xgo_physical_mode(self):
         """Test XGO driver returns physical implementation by default."""
-        os.environ.pop("RIDER_SIMULATOR", None)
+        self.monkeypatch.delenv("RIDER_SIMULATOR", raising=False)
 
         from drivers.xgo import get_robot_driver
 
@@ -35,14 +29,8 @@ class TestSimulationToggle(unittest.TestCase):
 
     def test_xgo_simulation_mode(self):
         """Test XGO driver returns simulated implementation when RIDER_SIMULATOR=1."""
-        os.environ["RIDER_SIMULATOR"] = "1"
+        self.monkeypatch.setenv("RIDER_SIMULATOR", "1")
 
-        # Need to reimport to pick up env change
-        import importlib
-
-        import drivers.xgo
-
-        importlib.reload(drivers.xgo)
         from drivers.xgo import get_robot_driver
 
         driver = get_robot_driver()
@@ -87,14 +75,8 @@ class TestSimulationToggle(unittest.TestCase):
 
     def test_lcd_simulation_mode(self):
         """Test LCD driver returns simulated implementation when RIDER_SIMULATOR=1."""
-        os.environ["RIDER_SIMULATOR"] = "1"
+        self.monkeypatch.setenv("RIDER_SIMULATOR", "1")
 
-        # Need to reimport to pick up env change
-        import importlib
-
-        import drivers.lcd
-
-        importlib.reload(drivers.lcd)
         from drivers.lcd import get_lcd_driver
 
         driver = get_lcd_driver()

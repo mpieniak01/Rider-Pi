@@ -43,12 +43,17 @@ def headers(**changes):
 def test_auth_and_raw_wav_reuse_shared_player_without_synthesis(client):
     http, _, calls = client
     denied = http.post('/api/voice/playback', data=audio(), headers={**headers(), 'Authorization': ''})
-    assert denied.status_code == 401 and calls == []
+    assert denied.status_code == 401
+    assert calls == []
     result = http.post('/api/voice/playback', data=audio(), headers=headers())
-    assert result.status_code == 200 and result.json['meta']['contract_id'] == 'rider.audio'
-    assert result.json['data']['state'] == 'played' and result.json['data']['released'] is True
-    assert calls[0][0][0] == audio() and calls[0][0][1] == 'wav'
-    assert calls[0][1]['sample_rate'] == 16000 and calls[0][1]['channels'] == 1
+    assert result.status_code == 200
+    assert result.json['meta']['contract_id'] == 'rider.audio'
+    assert result.json['data']['state'] == 'played'
+    assert result.json['data']['released'] is True
+    assert calls[0][0][0] == audio()
+    assert calls[0][0][1] == 'wav'
+    assert calls[0][1]['sample_rate'] == 16000
+    assert calls[0][1]['channels'] == 1
     assert isinstance(calls[0][1]['stop_event'], threading.Event)
     assert 'unit-only-agent-token' not in str(result.json)
 
@@ -67,7 +72,8 @@ def test_auth_and_raw_wav_reuse_shared_player_without_synthesis(client):
 def test_invalid_metadata_never_opens_player(client, key, value, status):
     http, _, calls = client
     result = http.post('/api/voice/playback', data=audio(), headers=headers(**{key: value}))
-    assert result.status_code == status and not calls
+    assert result.status_code == status
+    assert not calls
 
 
 @pytest.mark.parametrize('data', [b'not-wav', wav_bytes(b'\0\0' * 16000 * 16, 16000), b'x' * (2 * 1024 * 1024 + 1)])
@@ -81,7 +87,8 @@ def test_duplicate_success_does_not_replay_sound(client):
     http, _, calls = client
     assert http.post('/api/voice/playback', data=audio(), headers=headers()).status_code == 200
     response = http.post('/api/voice/playback', data=audio(), headers=headers())
-    assert response.status_code == 200 and response.json['data']['idempotent'] is True
+    assert response.status_code == 200
+    assert response.json['data']['idempotent'] is True
     assert len(calls) == 1
 
 
@@ -92,7 +99,8 @@ def test_cancel_before_upload_blocks_late_player_start(client):
         json={'playback_id': 'playback-1'},
         headers={'Authorization': 'Bearer unit-only-agent-token'},
     )
-    assert cancelled.status_code == 200 and cancelled.json['released'] is True
+    assert cancelled.status_code == 200
+    assert cancelled.json['released'] is True
     assert http.post('/api/voice/playback', data=audio(), headers=headers()).status_code == 409
     assert not calls
 
@@ -114,7 +122,9 @@ def test_expired_input_never_starts_player():
     calls = []
     manager = PlaybackManager(player=lambda *a, **k: calls.append(True), clock=lambda: 10, config=object())
     result, code = manager.execute(audio(), 'expired', 9)
-    assert code == 409 and result['state'] == 'expired' and not calls
+    assert code == 409
+    assert result['state'] == 'expired'
+    assert not calls
     manager.close()
 
 
@@ -133,10 +143,12 @@ def test_single_active_cancel_releases_and_other_cancellation_does_not_stop_it()
     assert started.wait(1)
     assert manager.execute(audio(), 'other', time.monotonic() + 5)[1] == 429
     unrelated = manager.cancel('other')
-    assert unrelated['released'] is True and manager.active[0] == 'active'
+    assert unrelated['released'] is True
+    assert manager.active[0] == 'active'
     cancelled = manager.cancel('active')
     thread.join(timeout=1)
-    assert cancelled['released'] is True and manager.active is None
+    assert cancelled['released'] is True
+    assert manager.active is None
     assert received[0][0]['state'] == 'cancelled'
     assert manager.close()
 
@@ -165,8 +177,10 @@ def test_deadline_interrupts_active_player():
 
     manager = PlaybackManager(player=player, config=object())
     result, code = manager.execute(audio(), 'short', time.monotonic() + 0.02)
-    assert code == 409 and result['state'] == 'expired'
-    assert manager.active is None and manager.close()
+    assert code == 409
+    assert result['state'] == 'expired'
+    assert manager.active is None
+    assert manager.close()
 
 
 def test_common_stream_lock_covers_voice_cli_and_api(monkeypatch, tmp_path):
@@ -189,7 +203,9 @@ def test_common_stream_lock_covers_voice_cli_and_api(monkeypatch, tmp_path):
     assert playback.start_stream('wav', playback.PlaybackConfig(), logger) is None
     assert len(processes) == 1
     first.close()
-    assert processes[0].stdin.closed and processes[0].stdout.closed and processes[0].stderr.closed
+    assert processes[0].stdin.closed
+    assert processes[0].stdout.closed
+    assert processes[0].stderr.closed
     second = playback.start_stream('wav', playback.PlaybackConfig(), logger)
     assert second is not None
     second.close()

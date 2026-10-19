@@ -41,6 +41,8 @@ def test_close_releases_player_pipes_and_bounds_kill_wait(monkeypatch, timed_out
     success, output, error = stream.close(timeout=0.1)
     assert success is (not timed_out)
     assert (output, error) == (b"output", "error")
-    assert process.stdin.closed and process.stdout.closed and process.stderr.closed
+    assert process.stdin.closed
+    assert process.stdout.closed
+    assert process.stderr.closed
     assert process.waits == ([0.1, 1.0] if timed_out else [0.1])
     assert stream._closer_stop.is_set()

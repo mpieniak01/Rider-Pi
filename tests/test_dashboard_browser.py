@@ -54,7 +54,7 @@ def browser():
         instance.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def panel(browser):
     context = browser.new_context(viewport={"width": 1365, "height": 900}, locale="pl-PL")
     state = {

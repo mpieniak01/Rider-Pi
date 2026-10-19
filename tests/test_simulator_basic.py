@@ -8,13 +8,12 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pygame
 import pytest
+from simulator_fixtures import headless_pygame as headless_pygame
 
 
-def test_world_initialization():
+def test_world_initialization(headless_pygame):
     """Test that World class can be initialized."""
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
     from sim.world import World
 
     world = World()
@@ -25,9 +24,8 @@ def test_world_initialization():
     world.quit()
 
 
-def test_map_loading_simple():
+def test_map_loading_simple(headless_pygame):
     """Test loading a simple map file."""
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
     from sim.world import World
 
     world = World(map_file="sim/maps/simple.txt")
@@ -39,9 +37,8 @@ def test_map_loading_simple():
     world.quit()
 
 
-def test_map_loading_map01():
+def test_map_loading_map01(headless_pygame):
     """Test loading map01.txt file."""
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
     from sim.world import World
 
     world = World(map_file="sim/maps/map01.txt")
@@ -53,9 +50,8 @@ def test_map_loading_map01():
     world.quit()
 
 
-def test_map_parsing():
+def test_map_parsing(headless_pygame):
     """Test that map characters are parsed correctly."""
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
     from sim.world import World
 
     # Create a temporary map file
@@ -81,9 +77,8 @@ XXXXX
         os.unlink(map_file)
 
 
-def test_rendering():
+def test_rendering(headless_pygame):
     """Test that rendering works without errors."""
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
     from sim.world import World
 
     world = World(map_file="sim/maps/simple.txt")
@@ -92,9 +87,8 @@ def test_rendering():
     world.quit()
 
 
-def test_panel_division():
+def test_panel_division(headless_pygame):
     """Test that window is divided into panels correctly."""
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
     from sim.world import World
 
     world = World()
@@ -106,9 +100,8 @@ def test_panel_division():
     world.quit()
 
 
-def test_grid_to_screen_conversion():
+def test_grid_to_screen_conversion(headless_pygame):
     """Test coordinate conversion from grid to screen."""
-    os.environ["SDL_VIDEODRIVER"] = "dummy"
     from sim.world import World
 
     world = World(map_file="sim/maps/simple.txt")

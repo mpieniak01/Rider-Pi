@@ -26,7 +26,7 @@ class DummyResp:
         return None
 
 
-@pytest.fixture()
+@pytest.fixture
 def client() -> Iterator[Any]:
     with api_server.app.test_client() as test_client:
         yield test_client

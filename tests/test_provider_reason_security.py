@@ -117,11 +117,14 @@ def test_direct_setters_reject_reason_before_persistence_or_memory_effects(regis
     before = registry.get_state_snapshot()
     contents = registry_world.path.read_bytes()
 
+    if setter == "domain":
+        set_provider = registry.set_domain_mode
+        arguments = ("voice", target)
+    else:
+        set_provider = registry.set_pc_base_url
+        arguments = (target,)
     with pytest.raises(ValueError, match="^invalid_provider_reason$"):
-        if setter == "domain":
-            registry.set_domain_mode("voice", target, reason=reason)
-        else:
-            registry.set_pc_base_url(target, reason=reason)
+        set_provider(*arguments, reason=reason)
 
     assert_no_effects(registry_world, before, contents)
 
