@@ -29,6 +29,8 @@ from common.service_catalog import (
 from services.core.feature_admin import FeatureAdminMixin
 from services.core.feature_state import FeatureStateMixin
 
+TRACKING_MODE_TOPIC = "tracking.mode:set"
+
 
 class NullPublisher:
     """Explicit in-memory transport, for isolated tests only."""
@@ -186,6 +188,25 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             consumers.setdefault(unit, []).append(f"admin:{unit}")
         return consumers
 
+    @staticmethod
+    def _voice_admin_resources(domain):
+        if domain == "text":
+            return ()
+        if domain == "asr":
+            return ("mic",)
+        if domain == "tts":
+            return ("speaker",)
+        return ("mic", "speaker")
+
+    def _add_admin_resources(self, consumers):
+        for unit in self._admin_units:
+            for resource in UNIT_CATALOG[unit]["resources"]:
+                consumers.setdefault(resource, []).append(f"admin:{unit}")
+            if unit == "rider-voice-web.service":
+                domain = self._service_domains.get(unit)
+                for resource in self._voice_admin_resources(domain):
+                    consumers.setdefault(resource, []).append(f"admin:{unit}")
+
     def resource_consumers(self) -> dict[str, list[str]]:
         if not self._lock.acquire(blocking=False):
             return {resource: list(names) for resource, names in self._snapshot_resource_consumers.items()}
@@ -194,21 +215,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             for name, options in {**self._requested, **self._pending}.items():
                 for resource in task_resources(self.registry[name], options):
                     consumers.setdefault(resource, []).append(name)
-            for unit in self._admin_units:
-                for resource in UNIT_CATALOG[unit]["resources"]:
-                    consumers.setdefault(resource, []).append(f"admin:{unit}")
-                if unit == "rider-voice-web.service":
-                    domain = self._service_domains.get(unit)
-                    for resource in (
-                        ()
-                        if domain == "text"
-                        else ("mic",)
-                        if domain == "asr"
-                        else ("speaker",)
-                        if domain == "tts"
-                        else ("mic", "speaker")
-                    ):
-                        consumers.setdefault(resource, []).append(f"admin:{unit}")
+            self._add_admin_resources(consumers)
             self._snapshot_resource_consumers = consumers
             return {resource: list(names) for resource, names in consumers.items()}
         finally:
@@ -307,7 +314,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             from common import bus
 
             self.publisher = bus.BusPub()
-        self.publisher.publish("tracking.mode:set", {"mode": mode}, add_ts=True)
+        self.publisher.publish(TRACKING_MODE_TOPIC, {"mode": mode}, add_ts=True)
 
     def _permission(self, feature: FeatureDefinition) -> dict | None:
         if not feature.can_move:
@@ -422,12 +429,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 self._managed_units.discard(unit)
         return results
 
-    def _start(self, canonical: str, options: dict, control: dict | None = None) -> dict:
-        feature = self.registry[canonical]
-        units = task_units(feature, options)
-        available = task_availability(feature, options)
-        if not available["start_available"]:
-            return {"ok": False, "error": available["start_unavailable_reason"], **available}
+    def _start_admission(self, canonical, options, control, feature, units):
         denied = self._permission(feature)
         if denied:
             return denied
@@ -454,6 +456,9 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 "events": [],
                 "error": row["error"],
             }
+        return None
+
+    def _start_dependencies(self, canonical, options, feature, units):
         missing = [unit for unit in units if self._status(unit).get("load", "loaded") != "loaded"]
         uncertain = [unit for unit in units if self._status(unit).get("error")]
         if missing or uncertain:
@@ -470,6 +475,106 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             self._states[canonical] = "failed"
             self._errors[canonical] = "runtime_dependencies_missing"
             return {"ok": False, "error": "runtime_dependencies_missing", "missing": dependencies}
+        return None
+
+    def _failed_start_member(self, canonical, options, feature, unit, result, started, steps, events):
+        if result.get("ok") or self._running(unit):
+            started.append(unit)
+            self._managed_units.add(unit)
+        rollback = self._rollback(feature, started)
+        partial = any(not item.get("ok") for item in rollback)
+        self._states[canonical] = "partial" if partial else "failed"
+        self._errors[canonical] = "start_failed"
+        if partial:
+            self._requested[canonical] = dict(options)
+        return {
+            "ok": False,
+            "error": "start_failed",
+            "steps": steps,
+            "rollback": rollback,
+            "state": self._states[canonical],
+            "events": events,
+        }
+
+    def _start_member_permission(self, canonical, options, control, feature, unit, started, steps):
+        if feature.can_move and UNIT_CATALOG.get(unit, {}).get("can_move"):
+            denied = self._permission(feature)
+            if self.safety_status().get("generation") != control.get("generation"):
+                denied = {"ok": False, "error": "operator_generation_changed"}
+            if denied:
+                rollback = self._rollback(feature, started)
+                self._states[canonical] = "partial" if any(not row.get("ok") for row in rollback) else "failed"
+                self._errors[canonical] = denied["error"]
+                if self._states[canonical] == "partial":
+                    self._requested[canonical] = dict(options)
+                return {**denied, "steps": steps, "rollback": rollback, "state": self._states[canonical]}
+        return None
+
+    def _start_members(self, canonical, options, control, feature, units, started, steps, events):
+        # Navigation targets are empty bookkeeping units. Start them before
+        # the producer: a slow/failed target start must never roll back a
+        # producer which is already executing a fresh operator trial.
+        start_units = units
+        if canonical in {"s14_venom_navigation", "s15_venom_perception"}:
+            start_units = tuple(unit for unit in units if unit.endswith(".target")) + tuple(
+                unit for unit in units if not unit.endswith(".target")
+            )
+        for unit in start_units:
+            rejection = self._start_member_permission(canonical, options, control, feature, unit, started, steps)
+            if rejection is not None:
+                return rejection
+            if self._running(unit):
+                continue
+            result = self._run(unit, "start")
+            steps.append(result)
+            if not result.get("ok") or not self._running(unit):
+                return self._failed_start_member(canonical, options, feature, unit, result, started, steps, events)
+            started.append(unit)
+            self._managed_units.add(unit)
+        return None
+
+    def _finish_start(self, canonical, options, control, feature, started, steps, events):
+        denied = self._permission(feature)
+        # Freshness was checked upon acceptance; startup can exceed its TTL.
+        # The generation itself must still be exactly the accepted one.
+        if feature.can_move and self.safety_status().get("generation") != control.get("generation"):
+            denied = {"ok": False, "error": "operator_generation_changed"}
+        if denied:
+            rollback = self._rollback(feature, started)
+            self._states[canonical] = "partial" if any(not row.get("ok") for row in rollback) else "failed"
+            if self._states[canonical] == "partial":
+                self._requested[canonical] = dict(options)
+            self._errors[canonical] = denied["error"]
+            return {**denied, "steps": steps, "rollback": rollback, "state": self._states[canonical]}
+        return self._start_tracking_mode(canonical, options, feature, started, steps, events)
+
+    def _start_tracking_mode(self, canonical, options, feature, started, steps, events):
+        mode = tracking_mode_for(feature, options)
+        if mode:
+            try:
+                self._publish_tracking_mode(mode)
+                events.append({"topic": TRACKING_MODE_TOPIC, "mode": mode})
+            except Exception as exc:
+                rollback = self._rollback(feature, started)
+                self._states[canonical] = "partial" if any(not row.get("ok") for row in rollback) else "failed"
+                self._errors[canonical] = str(exc)
+                if self._states[canonical] == "partial":
+                    self._requested[canonical] = dict(options)
+                return {"ok": False, "error": "tracking_mode_failed", "steps": steps, "rollback": rollback}
+        return None
+
+    def _start(self, canonical: str, options: dict, control: dict | None = None) -> dict:
+        feature = self.registry[canonical]
+        units = task_units(feature, options)
+        available = task_availability(feature, options)
+        if not available["start_available"]:
+            return {"ok": False, "error": available["start_unavailable_reason"], **available}
+        rejection = self._start_admission(canonical, options, control, feature, units)
+        if rejection is not None:
+            return rejection
+        rejection = self._start_dependencies(canonical, options, feature, units)
+        if rejection is not None:
+            return rejection
         self._states[canonical] = "starting"
         self._started_at[canonical] = time.monotonic()
         self._pending[canonical] = dict(options)
@@ -483,118 +588,45 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
         started: list[str] = []
         steps: list[dict] = []
         events: list[dict] = []
-        # Navigation targets are empty bookkeeping units. Start them before
-        # the producer: a slow/failed target start must never roll back a
-        # producer which is already executing a fresh operator trial.
-        start_units = units
-        if canonical in {"s14_venom_navigation", "s15_venom_perception"}:
-            start_units = tuple(unit for unit in units if unit.endswith(".target")) + tuple(
-                unit for unit in units if not unit.endswith(".target")
-            )
-        for unit in start_units:
-            if feature.can_move and UNIT_CATALOG.get(unit, {}).get("can_move"):
-                denied = self._permission(feature)
-                if self.safety_status().get("generation") != control.get("generation"):
-                    denied = {"ok": False, "error": "operator_generation_changed"}
-                if denied:
-                    rollback = self._rollback(feature, started)
-                    self._states[canonical] = "partial" if any(not row.get("ok") for row in rollback) else "failed"
-                    self._errors[canonical] = denied["error"]
-                    if self._states[canonical] == "partial":
-                        self._requested[canonical] = dict(options)
-                    return {**denied, "steps": steps, "rollback": rollback, "state": self._states[canonical]}
-            if self._running(unit):
-                continue
-            result = self._run(unit, "start")
-            steps.append(result)
-            if not result.get("ok") or not self._running(unit):
-                if result.get("ok") or self._running(unit):
-                    started.append(unit)
-                    self._managed_units.add(unit)
-                rollback = self._rollback(feature, started)
-                partial = any(not item.get("ok") for item in rollback)
-                self._states[canonical] = "partial" if partial else "failed"
-                self._errors[canonical] = "start_failed"
-                if partial:
-                    self._requested[canonical] = dict(options)
-                return {
-                    "ok": False,
-                    "error": "start_failed",
-                    "steps": steps,
-                    "rollback": rollback,
-                    "state": self._states[canonical],
-                    "events": events,
-                }
-            started.append(unit)
-            self._managed_units.add(unit)
-        denied = self._permission(feature)
-        # Freshness was checked upon acceptance; startup can exceed its TTL.
-        # The generation itself must still be exactly the accepted one.
-        if feature.can_move and self.safety_status().get("generation") != control.get("generation"):
-            denied = {"ok": False, "error": "operator_generation_changed"}
-        if denied:
-            rollback = self._rollback(feature, started)
-            self._states[canonical] = "partial" if any(not row.get("ok") for row in rollback) else "failed"
-            if self._states[canonical] == "partial":
-                self._requested[canonical] = dict(options)
-            self._errors[canonical] = denied["error"]
-            return {**denied, "steps": steps, "rollback": rollback, "state": self._states[canonical]}
-        mode = tracking_mode_for(feature, options)
-        if mode:
-            try:
-                self._publish_tracking_mode(mode)
-                events.append({"topic": "tracking.mode:set", "mode": mode})
-            except Exception as exc:
-                rollback = self._rollback(feature, started)
-                self._states[canonical] = "partial" if any(not row.get("ok") for row in rollback) else "failed"
-                self._errors[canonical] = str(exc)
-                if self._states[canonical] == "partial":
-                    self._requested[canonical] = dict(options)
-                return {"ok": False, "error": "tracking_mode_failed", "steps": steps, "rollback": rollback}
+        rejection = self._start_members(canonical, options, control, feature, units, started, steps, events)
+        if rejection is not None:
+            return rejection
+        rejection = self._finish_start(canonical, options, control, feature, started, steps, events)
+        if rejection is not None:
+            return rejection
         self._requested[canonical] = dict(options)
         self._states[canonical] = "starting" if self._requires_producer(feature, units) else "ready"
         self._errors.pop(canonical, None)
         return {"ok": True, "steps": steps, "events": events, "task": self._describe(canonical)}
 
-    def _stop(self, canonical: str, stop_permission=None) -> dict:
-        if canonical not in self._requested:
-            feature = self.registry[canonical]
-            consumers = self._consumers(exclude=canonical)
-            external = [
-                unit
-                for unit in task_units(feature, {})
-                if unit not in PROTECTED_UNITS and self._running(unit) and not consumers.get(unit)
-            ]
-            if external and canonical in {"s14_venom_navigation", "s15_venom_perception"}:
-                from services.core.feature_cleanup import orphan_targets
-
-                targets = orphan_targets(self, feature, external)
-                if targets:
-                    steps = [self._run(unit, "stop") for unit in targets]
-                    if any(not row.get("ok") for row in steps) or any(self._running(unit) for unit in targets):
-                        return {"ok": False, "error": "stop_failed", "steps": steps}
-                    return {"ok": True, "steps": steps, "events": [], "task": self._describe(canonical)}
-            if external:
-                return {
-                    "ok": False,
-                    "error": "external_services_running",
-                    "services": external,
-                    "steps": [],
-                    "events": [],
-                }
-            return {"ok": True, "idempotent": True, "steps": [], "events": [], "task": self._describe(canonical)}
+    def _stop_unrequested(self, canonical):
         feature = self.registry[canonical]
-        options = self._requested[canonical]
-        self._states[canonical] = "stopping"
-        self._persist_state()
-        steps: list[dict] = []
-        if feature.can_move:
-            revoked = (stop_permission or self._stop_permission)(feature.control_owner)
-            steps.append({"action": "revoke_control", **revoked})
-            if not revoked.get("ok") or not revoked.get("confirmed"):
-                self._states[canonical] = "partial"
-                self._errors[canonical] = "stop_unconfirmed"
-                return {"ok": False, "error": "stop_unconfirmed", "steps": steps}
+        consumers = self._consumers(exclude=canonical)
+        external = [
+            unit
+            for unit in task_units(feature, {})
+            if unit not in PROTECTED_UNITS and self._running(unit) and not consumers.get(unit)
+        ]
+        if external and canonical in {"s14_venom_navigation", "s15_venom_perception"}:
+            from services.core.feature_cleanup import orphan_targets
+
+            targets = orphan_targets(self, feature, external)
+            if targets:
+                steps = [self._run(unit, "stop") for unit in targets]
+                if any(not row.get("ok") for row in steps) or any(self._running(unit) for unit in targets):
+                    return {"ok": False, "error": "stop_failed", "steps": steps}
+                return {"ok": True, "steps": steps, "events": [], "task": self._describe(canonical)}
+        if external:
+            return {
+                "ok": False,
+                "error": "external_services_running",
+                "services": external,
+                "steps": [],
+                "events": [],
+            }
+        return {"ok": True, "idempotent": True, "steps": [], "events": [], "task": self._describe(canonical)}
+
+    def _stop_members(self, canonical, feature, options, steps):
         remaining = self._consumers(exclude=canonical)
         failed: list[str] = []
         for unit in reversed(task_units(feature, options)):
@@ -606,14 +638,9 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                 self._managed_units.discard(unit)
             else:
                 failed.append(unit)
-        if failed:
-            self._states[canonical] = "partial"
-            self._errors[canonical] = "stop_failed"
-            return {"ok": False, "error": "stop_failed", "failed": failed, "steps": steps}
-        self._requested.pop(canonical, None)
-        self._intents.pop(canonical, None)
-        self._states[canonical] = "stopped"
-        self._errors.pop(canonical, None)
+        return failed
+
+    def _stop_tracking_mode(self, feature, options, steps):
         events = []
         if tracking_mode_for(feature, options):
             remaining_mode = next(
@@ -626,10 +653,50 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             )
             try:
                 self._publish_tracking_mode(remaining_mode)
-                events.append({"topic": "tracking.mode:set", "mode": remaining_mode})
+                events.append({"topic": TRACKING_MODE_TOPIC, "mode": remaining_mode})
             except Exception as exc:
-                return {"ok": False, "error": "tracking_mode_failed", "steps": steps, "detail": str(exc)}
+                return events, {"ok": False, "error": "tracking_mode_failed", "steps": steps, "detail": str(exc)}
+        return events, None
+
+    def _stop(self, canonical: str, stop_permission=None) -> dict:
+        if canonical not in self._requested:
+            return self._stop_unrequested(canonical)
+        feature = self.registry[canonical]
+        options = self._requested[canonical]
+        self._states[canonical] = "stopping"
+        self._persist_state()
+        steps: list[dict] = []
+        if feature.can_move:
+            revoked = (stop_permission or self._stop_permission)(feature.control_owner)
+            steps.append({"action": "revoke_control", **revoked})
+            if not revoked.get("ok") or not revoked.get("confirmed"):
+                self._states[canonical] = "partial"
+                self._errors[canonical] = "stop_unconfirmed"
+                return {"ok": False, "error": "stop_unconfirmed", "steps": steps}
+        failed = self._stop_members(canonical, feature, options, steps)
+        if failed:
+            self._states[canonical] = "partial"
+            self._errors[canonical] = "stop_failed"
+            return {"ok": False, "error": "stop_failed", "failed": failed, "steps": steps}
+        self._requested.pop(canonical, None)
+        self._intents.pop(canonical, None)
+        self._states[canonical] = "stopped"
+        self._errors.pop(canonical, None)
+        events, rejection = self._stop_tracking_mode(feature, options, steps)
+        if rejection is not None:
+            return rejection
         return {"ok": True, "steps": steps, "events": events, "task": self._describe(canonical)}
+
+    def _apply_feature_change(self, canonical, enabled, options, control, stop_permission):
+        try:
+            result = (
+                self._start(canonical, options or {}, control) if enabled else self._stop(canonical, stop_permission)
+            )
+        finally:
+            self._pending.pop(canonical, None)
+            if canonical not in self._requested:
+                self._intents.pop(canonical, None)
+        return result
 
     def set_feature(
         self,
@@ -656,16 +723,7 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
                     task_units(self.registry[canonical], options or {})
                     if tracking_mode_for(self.registry[canonical], options) == "none":
                         enabled = False
-                try:
-                    result = (
-                        self._start(canonical, options or {}, control)
-                        if enabled
-                        else self._stop(canonical, stop_permission)
-                    )
-                finally:
-                    self._pending.pop(canonical, None)
-                    if canonical not in self._requested:
-                        self._intents.pop(canonical, None)
+                result = self._apply_feature_change(canonical, enabled, options, control, stop_permission)
                 if self._operation_guard is not None:
                     self._snapshot_rows = [row for row in self._snapshot_rows if row["name"] != canonical] + [
                         self._describe(canonical)

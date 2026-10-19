@@ -44,6 +44,42 @@ def journal(manager):
     }
 
 
+def _identity_matches(manager, saved, unit):
+    expected = saved.get(unit)
+    return isinstance(expected, dict) and expected == identity(manager._status(unit))
+
+
+def _restore_passive_goals(manager, data, saved):
+    goals = data.get("goals", {})
+    if not isinstance(goals, dict):
+        return None
+    restored_units = set()
+    for name, options in goals.items():
+        feature = manager.registry.get(name)
+        if feature is None or feature.can_move or not isinstance(options, dict):
+            continue
+        try:
+            units = set(task_units(feature, options)) - PROTECTED_UNITS
+        except (ValueError, TypeError):
+            continue
+        if units and all(_identity_matches(manager, saved, unit) for unit in units):
+            manager._requested[name] = dict(options)
+            restored_units.update(units)
+    return restored_units
+
+
+def _restore_admin_units(manager, admin, saved):
+    if isinstance(admin, list):
+        for unit in admin:
+            if (
+                isinstance(unit, str)
+                and unit in UNIT_CATALOG
+                and not UNIT_CATALOG[unit]["can_move"]
+                and _identity_matches(manager, saved, unit)
+            ):
+                manager._admin_units.add(unit)
+
+
 def restore(manager):
     if manager._restored:
         return
@@ -65,32 +101,13 @@ def restore(manager):
     if not isinstance(saved, dict):
         return
 
-    def matches(unit):
-        expected = saved.get(unit)
-        return isinstance(expected, dict) and expected == identity(manager._status(unit))
-
-    goals = data.get("goals", {})
-    if not isinstance(goals, dict):
+    restored_units = _restore_passive_goals(manager, data, saved)
+    if restored_units is None:
         return
-    restored_units = set()
-    for name, options in goals.items():
-        feature = manager.registry.get(name)
-        if feature is None or feature.can_move or not isinstance(options, dict):
-            continue
-        try:
-            units = set(task_units(feature, options)) - PROTECTED_UNITS
-        except (ValueError, TypeError):
-            continue
-        if units and all(matches(unit) for unit in units):
-            manager._requested[name] = dict(options)
-            restored_units.update(units)
     managed, admin = data.get("managed", []), data.get("admin", [])
     if isinstance(managed, list):
         manager._managed_units.update(unit for unit in managed if isinstance(unit, str) and unit in restored_units)
-    if isinstance(admin, list):
-        for unit in admin:
-            if isinstance(unit, str) and unit in UNIT_CATALOG and not UNIT_CATALOG[unit]["can_move"] and matches(unit):
-                manager._admin_units.add(unit)
+    _restore_admin_units(manager, admin, saved)
     domains = data.get("domains", {})
     if isinstance(domains, dict):
         manager._service_domains.update(

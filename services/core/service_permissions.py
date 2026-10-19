@@ -3,6 +3,27 @@
 from common.service_catalog import UNIT_CATALOG, unit_availability
 
 
+def _action_reason(unit, action, row, installed, consumers, available, meta, moving_allowed):
+    reason = None
+    if row.get("stale") is True or row.get("error"):
+        reason = "unit_observation_unavailable"
+    elif not installed:
+        reason = "unit_unavailable"
+    elif unit == "rider-api.service" and action in {"stop", "restart", "disable"}:
+        reason = "forbidden_on_api"
+    elif consumers and action in {"stop", "restart", "disable"}:
+        reason = "resource_in_use"
+    elif action in {"start", "restart", "enable"} and not available["start_available"]:
+        reason = available["start_unavailable_reason"]
+    elif action == "enable" and meta["lifecycle"] != "startup":
+        reason = "on_demand_autostart_forbidden"
+    elif action == "restart" and meta["can_move"]:
+        reason = "operator_motion_permission_required"
+    elif action == "start" and meta["can_move"] and unit != "motion-executor.service" and not moving_allowed:
+        reason = "operator_motion_permission_required"
+    return reason
+
+
 def permissions(unit, row, manager):
     meta = UNIT_CATALOG[unit]
     available = unit_availability(unit)
@@ -29,22 +50,6 @@ def permissions(unit, row, manager):
     )
     result = {}
     for action in ("start", "stop", "restart", "enable", "disable"):
-        reason = None
-        if row.get("stale") is True or row.get("error"):
-            reason = "unit_observation_unavailable"
-        elif not installed:
-            reason = "unit_unavailable"
-        elif unit == "rider-api.service" and action in {"stop", "restart", "disable"}:
-            reason = "forbidden_on_api"
-        elif consumers and action in {"stop", "restart", "disable"}:
-            reason = "resource_in_use"
-        elif action in {"start", "restart", "enable"} and not available["start_available"]:
-            reason = available["start_unavailable_reason"]
-        elif action == "enable" and meta["lifecycle"] != "startup":
-            reason = "on_demand_autostart_forbidden"
-        elif action == "restart" and meta["can_move"]:
-            reason = "operator_motion_permission_required"
-        elif action == "start" and meta["can_move"] and unit != "motion-executor.service" and not moving_allowed:
-            reason = "operator_motion_permission_required"
+        reason = _action_reason(unit, action, row, installed, consumers, available, meta, moving_allowed)
         result[action] = {"allowed": reason is None, "reason": reason}
     return result
