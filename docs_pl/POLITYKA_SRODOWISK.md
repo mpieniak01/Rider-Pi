@@ -53,6 +53,7 @@ błędem. `TEST_PY=/ścieżka/.venv/bin/python` pozwala wskazać inne istniejąc
 środowisko Rider-Pi, a `TEST_ARGS='-q tests/wybrany_test.py'` zawęża sprawdzenie.
 
 Z worktree użyj bezwzględnej ścieżki do tego samego interpretera i Ruff.
+Cel Ruff jest jawnie ustawiony na `py39`, zgodnie z runtime urządzenia i CI.
 Nowszy Python WSL nie dowodzi zgodności z Pythonem 3.9. CI sprawdza wersję
 docelową; wydanie utrwala wybrane wersje. Plik constraints musi zawierać
 wyłącznie składnię pip i komentarze, nigdy instrukcje dla asystenta.
