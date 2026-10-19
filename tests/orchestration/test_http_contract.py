@@ -27,9 +27,12 @@ def test_read_only_contract_is_truthful_and_never_opens_bus(monkeypatch, tmp_pat
     for path in ["/api/logic/features", "/api/logic/summary", "/api/logic/catalog", "/svc"]:
         response = client.get(path)
         data = response.get_json()
-        assert response.status_code == 200 and data["contract_version"] == 2
-        assert data["host"] == "pi" and data["observed_at"]
-    assert world.actions == [] and manager.publisher.sent == []
+        assert response.status_code == 200
+        assert data["contract_version"] == 2
+        assert data["host"] == "pi"
+        assert data["observed_at"]
+    assert world.actions == []
+    assert manager.publisher.sent == []
 
 
 def test_invalid_bool_or_options_cannot_enable_task(monkeypatch, tmp_path):
@@ -56,7 +59,8 @@ def test_dependency_failure_never_becomes_http_success(monkeypatch, tmp_path):
     client, world, _ = app_and_world(monkeypatch, tmp_path)
     world.fail.add(("rider-tracker.service", "start"))
     response = client.post("/api/logic/feature/s6_tracker_module", json={"enabled": True})
-    assert response.status_code == 503 and response.get_json()["ok"] is False
+    assert response.status_code == 503
+    assert response.get_json()["ok"] is False
 
 
 def test_operator_stop_cannot_steal_camera_and_optional_enable_denied(monkeypatch, tmp_path):
@@ -84,4 +88,5 @@ def test_application_registers_catalog_v2(monkeypatch, tmp_path):
     assert response.get_json()["contract_version"] == 2
     assert response.get_json()["units"]
     assert client.options("/api/logic/catalog").status_code == 204
-    assert world.actions == [] and manager.publisher.sent == []
+    assert world.actions == []
+    assert manager.publisher.sent == []

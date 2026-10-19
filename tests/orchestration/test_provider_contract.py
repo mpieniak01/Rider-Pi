@@ -35,7 +35,8 @@ def test_named_domain_persists_without_global_or_other_domain_change(registry_wo
     path, events = registry_world
     monkeypatch.setattr(ai_mode, "_current_mode", "local")
     state, changed = registry.set_domain_mode("vision", "pc")
-    assert changed and state["mode"] == "pc"
+    assert changed
+    assert state["mode"] == "pc"
     assert ai_mode.get_mode() == "local"
     assert registry.get_domain_state("voice")["mode"] == "local"
     assert registry.get_domain_state("text")["mode"] == "local"
@@ -55,10 +56,12 @@ def test_failed_persistence_restores_memory_and_does_not_publish(registry_world,
     monkeypatch.setattr(registry, "_save_state", failed)
     with pytest.raises(OSError):
         registry.set_domain_mode("voice", "pc")
-    assert registry._domains == previous and not events
+    assert registry._domains == previous
+    assert not events
     with pytest.raises(OSError):
         registry.set_all_domain_modes("pc")
-    assert registry._domains == previous and not events
+    assert registry._domains == previous
+    assert not events
 
 
 def test_global_is_explicit_atomic_and_invalid_file_does_not_enable_local(registry_world):
@@ -111,7 +114,9 @@ def test_provider_ready_requires_actual_matching_backend_not_peer_http(registry_
     }
     unit = {"pid": 321, "active": "active"}
     rows = provider_observation.snapshot(worker=worker, unit=unit)["domains"]
-    assert rows["text"]["ready"] and not rows["voice"]["ready"] and not rows["vision"]["ready"]
+    assert rows["text"]["ready"]
+    assert not rows["voice"]["ready"]
+    assert not rows["vision"]["ready"]
     assert rows["voice"]["backend_state"]["capabilities"]["asr"]["ready"]
     assert not provider_observation.snapshot(worker=worker, unit={"pid": 999, "active": "active"})["domains"]["text"][
         "ready"
@@ -124,7 +129,8 @@ def test_patch_truthful_success_and_persistence_failure_http(registry_world, mon
     app.add_url_rule("/api/providers/<domain>", view_func=provider_api.provider_domain_handler, methods=["PATCH"])
     client = app.test_client()
     response = client.patch("/api/providers/asr", json={"target": "pc"})
-    assert response.get_json()["ok"] and response.get_json()["affected_domains"] == ["voice"]
+    assert response.get_json()["ok"]
+    assert response.get_json()["affected_domains"] == ["voice"]
     assert registry.get_domain_state("text")["mode"] == "local"
     response = client.patch(
         "/api/providers/text", json={"target": "pc"}, headers={"Accept": "application/vnd.rider.api+json;version=1"}
@@ -136,7 +142,8 @@ def test_patch_truthful_success_and_persistence_failure_http(registry_world, mon
 
     monkeypatch.setattr(registry, "_save_state", failed)
     response = client.patch("/api/providers/vision", json={"target": "pc"})
-    assert response.status_code == 503 and response.get_json()["persisted"] is False
+    assert response.status_code == 503
+    assert response.get_json()["persisted"] is False
     assert registry.get_domain_state("vision")["mode"] == "local"
 
 
@@ -173,7 +180,8 @@ def test_named_patch_repairs_only_its_domain_and_survives_reload(registry_world)
     response = app.test_client().patch(
         "/api/providers/vision", json={"target": "pc"}, headers={"Accept": "application/vnd.rider.api+json;version=1"}
     )
-    assert response.status_code == 200 and response.get_json()["operation"]["confirmed"]
+    assert response.status_code == 200
+    assert response.get_json()["operation"]["confirmed"]
     registry._load_state()
     assert registry.get_domain_state("vision")["mode"] == "pc"
     assert provider_state.get_domain_mode("vision") == "pc"

@@ -57,9 +57,11 @@ def test_matching_navigation_error_survives_stop_revocation(tmp_path):
     producer.update(active=False, navigation_ready=False, data_error="navigation_traversal_unverified")
     world.safety.update(can_move=False, owner=None, generation="after-stop")
     row = task(manager)
-    assert not row["ready"] and row["state"] == "partial"
+    assert not row["ready"]
+    assert row["state"] == "partial"
     assert row["error"] == row["data_error"] == "navigation_traversal_unverified"
-    assert row["start_available"] is False and row["planning_request_available"] is False
+    assert row["start_available"] is False
+    assert row["planning_request_available"] is False
 
 
 @pytest.mark.parametrize("change", [{"stale": True}, {"generation": "old"}, {"request_id": "other"}])
@@ -68,7 +70,8 @@ def test_unmatched_or_stale_producer_cannot_supply_current_error(tmp_path, chang
     producer.update(navigation_ready=False, data_error="old-camera-failure", **change)
     row = task(manager)
     assert row["error"] == "producer_acceptance_unavailable"
-    assert row["data_error"] is None and not row["ready"]
+    assert row["data_error"] is None
+    assert not row["ready"]
 
 
 def test_tracking_keeps_its_own_acceptance_contract(tmp_path):
@@ -83,6 +86,7 @@ def test_explicit_failure_denies_readiness_even_when_both_quality_flags_claim_tr
     _, manager, producer = setup(tmp_path)
     producer.update(change)
     row = task(manager)
-    assert not row["ready"] and row["state"] != "ready"
+    assert not row["ready"]
+    assert row["state"] != "ready"
     if "offline" not in change:
         assert row["error"] == next(iter(change.values()))

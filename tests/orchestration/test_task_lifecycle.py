@@ -119,7 +119,8 @@ def test_passive_tracker_never_starts_controller_or_publishes_motion(tmp_path):
     assert "rider-tracking-controller.service" not in world.active
     assert manager.publisher.sent == [("tracking.mode:set", {"mode": "face"})]
     row = next(row for row in manager.describe_features() if row["name"] == "s6_tracker_module")
-    assert row["ready"] and row["can_move"] is False
+    assert row["ready"]
+    assert row["can_move"] is False
 
 
 @pytest.mark.parametrize("owner", [None, "manual", "navigation"])
@@ -164,7 +165,8 @@ def test_members_not_target_determine_availability(tmp_path, failure):
     assert result["ok"] is False
     assert world.actions == []
     row = next(row for row in manager.describe_features() if row["name"] == "s6_tracker_module")
-    assert row["installed"] is False and row["ready"] is False
+    assert row["installed"] is False
+    assert row["ready"] is False
 
 
 def test_partial_start_rolls_back_only_new_unshared_services(tmp_path):
@@ -232,7 +234,9 @@ def test_restart_does_not_restore_requested_motion(tmp_path):
     assert manager.set_feature("face_tracking", True)["ok"]
     replacement = world.manager(tmp_path)
     row = next(row for row in replacement.describe_features() if row["name"] == "s3_follow_me_face")
-    assert row["running"] is True and row["requested"] is False and row["ready"] is False
+    assert row["running"] is True
+    assert row["requested"] is False
+    assert row["ready"] is False
 
 
 def test_s0_and_s1_distinguish_permission_not_process(tmp_path):
@@ -240,14 +244,16 @@ def test_s0_and_s1_distinguish_permission_not_process(tmp_path):
     world.safety = {"ready": True, "can_move": False, "state": "DISARMED"}
     rows = {row["name"]: row for row in world.manager(tmp_path).describe_features()}
     assert rows["s0_core"]["ready"] is True
-    assert rows["s1_manual"]["running"] is True and rows["s1_manual"]["ready"] is False
+    assert rows["s1_manual"]["running"] is True
+    assert rows["s1_manual"]["ready"] is False
 
 
 def test_catalog_alternative_profiles_are_minimal():
     obstacle = DEFAULT_REGISTRY["s7_obstacle_module"]
     assert "rider-vision-offload.service" not in task_units(obstacle)
     remote = task_units(obstacle, {"provider": "pc"})
-    assert "rider-vision-offload.service" in remote and "rider-vision.service" not in remote
+    assert "rider-vision-offload.service" in remote
+    assert "rider-vision.service" not in remote
     assert "rider-obstacle.service" not in remote
     voice = DEFAULT_REGISTRY["s5_voice"]
     assert "rider-voice-web.service" in task_units(voice, {"domain": "asr"})
@@ -316,7 +322,9 @@ def test_get_can_observe_starting_during_slow_fake_action(tmp_path):
         future = pool.submit(manager.set_feature, "s6_tracker_module", True)
         assert entered.wait(2)
         row = next(row for row in manager.describe_features() if row["name"] == "s6_tracker_module")
-        assert row["requested"] and row["state"] == "starting" and not row["ready"]
+        assert row["requested"]
+        assert row["state"] == "starting"
+        assert not row["ready"]
         catalog_row = next(row for row in manager.catalog()["features"] if row["name"] == "s6_tracker_module")
         assert catalog_row["state"] == "starting"
         state_row = next(row for row in manager.state_snapshot()["features"] if row["name"] == "s6_tracker_module")
@@ -330,7 +338,9 @@ def test_baseline_active_processes_do_not_mask_unknown_executor(tmp_path):
     world.safety = {"state": "UNKNOWN", "ready": False, "can_move": False, "stale": True}
     manager = world.manager(tmp_path)
     row = next(row for row in manager.describe_features() if row["name"] == "s0_core")
-    assert row["running"] and not row["ready"] and row["state"] == "partial"
+    assert row["running"]
+    assert not row["ready"]
+    assert row["state"] == "partial"
     assert row["error"] == "baseline_executor_unavailable"
 
 
@@ -430,6 +440,7 @@ def test_exception_leaving_operation_discards_observation_cache(tmp_path):
     world = World()
     manager = world.manager(tmp_path)
     unit = "rider-tracker.service"
+    # Catch outside operation so cancellation exercises its error-exit cleanup.
     with pytest.raises(RuntimeError, match="cancel operation"):
         with manager.operation(guard=lambda: None, remaining=lambda: 5.0, stop=world.stop):
             assert manager._status(unit)["active"] == "inactive"

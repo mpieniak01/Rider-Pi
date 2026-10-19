@@ -95,7 +95,8 @@ def test_local_tts_guard_accepts_normalized_alias_without_rewriting_payload(monk
     monkeypatch.setattr(domain_worker, "availability", healthy)
     client = domain_worker.create_app(web, profile_status=lambda: {"stale": False, **healthy({"tts"})}).test_client()
     response = client.post("/api/tts", json=payload)
-    assert response.status_code == 200 and response.get_json()["payload"] == payload
+    assert response.status_code == 200
+    assert response.get_json()["payload"] == payload
 
 
 @pytest.mark.parametrize(
@@ -133,7 +134,8 @@ def test_default_s10_preflight_and_readiness_require_only_chat(monkeypatch, tmp_
     manager.dependency_check = runtime_dependencies.missing
     manager.producer_status = lambda unit: {"stale": False, **healthy({"chat"})}
     result = manager.set_feature("s10_ai_providers", True)
-    assert result["ok"] and result["task"]["ready"]
+    assert result["ok"]
+    assert result["task"]["ready"]
     assert not {"piper", "vosk"} & set(probed)
     assert result["task"]["producer_statuses"][0]["domains"] == ["chat"]
     probed.clear()
@@ -159,4 +161,5 @@ def test_task_explicit_domain_reaches_preflight_unchanged(tmp_path):
     options, calls = {"domain": "asr"}, []
     manager.dependency_check = lambda units, opts: calls.append(opts) or []
     assert manager.set_feature("s10_ai_providers", True, options=options)["ok"]
-    assert calls == [options] and options == {"domain": "asr"}
+    assert calls == [options]
+    assert options == {"domain": "asr"}

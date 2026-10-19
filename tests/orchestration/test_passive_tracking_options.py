@@ -14,7 +14,8 @@ def test_passive_hand_has_no_motion_owner_intent_or_controller(tmp_path):
     world.safety = {"ready": False, "can_move": False, "owner": None}
     manager = world.manager(tmp_path)
     result = manager.set_feature("s6_tracker_module", True, options={"mode": "hand"})
-    assert result["ok"] and result["task"]["tracking_mode"] == "hand"
+    assert result["ok"]
+    assert result["task"]["tracking_mode"] == "hand"
     assert "rider-tracking-controller.service" not in world.active
     assert manager.publisher.sent == [("tracking.mode:set", {"mode": "hand"})]
     assert manager._service_intents() == {}
@@ -31,8 +32,10 @@ def test_conflicting_passive_mode_never_changes_requested_followme(tmp_path):
     before_actions, before_messages = list(world.actions), list(manager.publisher.sent)
     before_intents = manager._service_intents()
     result = manager.set_feature("s6_tracker_module", True, options={"mode": "hand"})
-    assert result["error"] == "resource_conflict" and result["blocked_by"] == ["s3_follow_me_face"]
-    assert world.actions == before_actions and manager.publisher.sent == before_messages
+    assert result["error"] == "resource_conflict"
+    assert result["blocked_by"] == ["s3_follow_me_face"]
+    assert world.actions == before_actions
+    assert manager.publisher.sent == before_messages
     assert manager._service_intents() == before_intents
 
 
@@ -43,9 +46,11 @@ def test_none_ends_only_passive_consumer_and_keeps_shared_followme_mode(tmp_path
     assert manager.set_feature("face_tracking", True)["ok"]
     world.actions.clear()
     result = manager.set_feature("s6_tracker_module", True, options={"mode": "none"})
-    assert result["ok"] and result["task"]["requested"] is False
+    assert result["ok"]
+    assert result["task"]["requested"] is False
     assert "s3_follow_me_face" in manager._requested
-    assert "rider-tracker.service" in world.active and "rider-tracking-controller.service" in world.active
+    assert "rider-tracker.service" in world.active
+    assert "rider-tracking-controller.service" in world.active
     assert world.actions == [("rider-tracker.target", "stop")]
     assert manager.publisher.sent[-1] == ("tracking.mode:set", {"mode": "face"})
 
@@ -70,10 +75,12 @@ def test_legacy_wrapper_uses_real_orchestrator_and_preserves_public_contract(tmp
     app.register_blueprint(vision_api.bp)
     client = app.test_client()
     assert client.get("/vision/tracking/mode").get_json()["mode"] == "none"
-    assert world.actions == [] and manager.publisher.sent == []
+    assert world.actions == []
+    assert manager.publisher.sent == []
     response = client.post("/vision/tracking/mode", json={"mode": "HAND", "enabled": True})
     assert response.status_code == 200
-    assert response.get_json()["mode"] == "hand" and response.get_json()["enabled"] is True
+    assert response.get_json()["mode"] == "hand"
+    assert response.get_json()["enabled"] is True
     assert manager.publisher.sent[-1] == ("tracking.mode:set", {"mode": "hand"})
     assert client.post("/vision/tracking/mode", json={"mode": "hand", "enabled": False}).get_json()["mode"] == "none"
     assert manager.publisher.sent[-1] == ("tracking.mode:set", {"mode": "none"})
@@ -90,5 +97,6 @@ def test_legacy_wrapper_reports_conflict_without_publish(tmp_path, monkeypatch):
     app = Flask(__name__)
     app.register_blueprint(vision_api.bp)
     response = app.test_client().post("/vision/tracking/mode", json={"mode": "hand"})
-    assert response.status_code == 409 and response.get_json()["blocked_by"] == ["s3_follow_me_face"]
+    assert response.status_code == 409
+    assert response.get_json()["blocked_by"] == ["s3_follow_me_face"]
     assert manager.publisher.sent == before
