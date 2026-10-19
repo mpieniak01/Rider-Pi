@@ -29,7 +29,9 @@ def _cfg(cfg, name: str, default):
 
 
 def _clampf(x: float, lo: float, hi: float) -> float:
-    return hi if x > hi else lo if x < lo else x
+    if x > hi:
+        return hi
+    return lo if x < lo else x
 
 
 def _resolve_mouth(model) -> tuple[str, float]:
@@ -156,19 +158,19 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
     phase = 0.35
     drift_scale = 1.0 if blink_mul >= 0.6 else (blink_mul / 0.6)
 
-    driftL_x = int(math.sin(t * drift_freq) * amp_px * drift_scale)
-    driftR_x = int(math.sin(t * drift_freq + phase) * amp_px * drift_scale)
+    drift_l_x = int(math.sin(t * drift_freq) * amp_px * drift_scale)
+    drift_r_x = int(math.sin(t * drift_freq + phase) * amp_px * drift_scale)
     v_amp_px = amp_px * 0.5
-    driftL_y = int(math.cos(t * (drift_freq * 0.8)) * v_amp_px * drift_scale)
-    driftR_y = int(math.cos(t * (drift_freq * 0.8) + phase) * v_amp_px * drift_scale)
+    drift_l_y = int(math.cos(t * (drift_freq * 0.8)) * v_amp_px * drift_scale)
+    drift_r_y = int(math.cos(t * (drift_freq * 0.8) + phase) * v_amp_px * drift_scale)
 
     bias = int(S * 0.017)
     base_dx = int(eyes_dx * eye_w * 0.30)  # przesunięcie źrenicy wzgl. oka
     base_dy = int(eyes_dy * eye_h * 0.45)
-    offL_x = +bias + base_dx + driftL_x
-    offR_x = -bias + base_dx + driftR_x
-    offL_y = base_dy + driftL_y
-    offR_y = base_dy + driftR_y
+    off_l_x = +bias + base_dx + drift_l_x
+    off_r_x = -bias + base_dx + drift_r_x
+    off_l_y = base_dy + drift_l_y
+    off_r_y = base_dy + drift_r_y
 
     clamp_ratio = float(os.getenv("FACE_PUPIL_CLAMP_RATIO", "0.78"))
     max_x = int(eye_w * 0.5 - eye_w * (1.0 - clamp_ratio) * 0.5)
@@ -180,11 +182,11 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
             max(-max_y, min(max_y, off_y)),
         )
 
-    offL_x, offL_y = _clamp_off(offL_x, offL_y)
-    offR_x, offR_y = _clamp_off(offR_x, offR_y)
+    off_l_x, off_l_y = _clamp_off(off_l_x, off_l_y)
+    off_r_x, off_r_y = _clamp_off(off_r_x, off_r_y)
 
-    canvas.ellipse(pupil_rect(left_eye_rect, offL_x, offL_y), fill=(0, 0, 0))
-    canvas.ellipse(pupil_rect(right_eye_rect, offR_x, offR_y), fill=(0, 0, 0))
+    canvas.ellipse(pupil_rect(left_eye_rect, off_l_x, off_l_y), fill=(0, 0, 0))
+    canvas.ellipse(pupil_rect(right_eye_rect, off_r_x, off_r_y), fill=(0, 0, 0))
 
     # Brwi – łuki „arc”; podążanie za okiem można wyciszyć
     brow_y = cy - int(S * _cfg(cfg, "brow_y_k", 0.21))

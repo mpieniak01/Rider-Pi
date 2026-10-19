@@ -58,16 +58,16 @@ def _lcd_init():
     if DISABLE_LCD:
         return None
     try:
-        from xgoscreen.LCD_2inch import LCD_2inch
+        from xgoscreen.LCD_2inch import LCD_2inch as lcd_class
     except Exception:
         try:
             import xgoscreen.LCD_2inch as lcd_mod
 
-            LCD_2inch = lcd_mod.LCD_2inch
+            lcd_class = lcd_mod.LCD_2inch
         except Exception:
             return None
     try:
-        lcd = LCD_2inch()
+        lcd = lcd_class()
         lcd.rotation = 0  # obraz już obrócony w OpenCV
         return lcd
     except Exception:
@@ -252,7 +252,7 @@ def main():
     HAAR_IN_ROI = os.getenv("HYBRID_HAAR", "1") == "1"
     LOG_EVERY = int(os.getenv("LOG_EVERY", "20"))
 
-    read, size = open_camera((320, 240))
+    read, _ = open_camera((320, 240))
     net = load_ssd()
 
     tracker = None

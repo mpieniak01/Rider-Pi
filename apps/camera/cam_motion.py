@@ -54,7 +54,7 @@ FPS = _float("FPS", 15.0)
 LORES_W = _int("LORES_W", 320)
 LORES_H = _int("LORES_H", 240)
 MOTION_THR = _float("MOTION_THR", 8.0)
-HUMAN_EN = _int("VISION_HUMAN", 0)  # 1=on, 0=off
+HUMAN_EN = _int("VISION_HUMAN", 0)  # Human detection is enabled only by an explicit nonzero setting.
 FACE_EVERY = _int("VISION_FACE_EVERY", 5)
 ZMQ_PUB_EP = os.getenv("ZMQ_PUB", "")
 
