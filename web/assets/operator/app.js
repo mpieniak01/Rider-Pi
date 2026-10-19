@@ -14,9 +14,16 @@ import { Calibration } from './calibration.js?v=compact-calibration-4b';
 import { Chat } from './chat.js?v=compact-calibration-4b';
 import { Overview } from './overview.js?v=history-3';
 import { events } from './transport.js';
-import { fresh, catalogKnown, safetyKnown, nowSeconds } from './model.js';
-import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';
+import { fresh, catalogKnown, safetyKnown } from './model.js';
+import { el, text, tr, localizeStatic, refreshAges } from './ui.js';
 
+function capabilityLabel(action, cap) {
+  if (cap?.available === true && (['height', 'balance'].includes(action) || cap?.stop_verified === true))
+    return tr('dostępne po uzbrojeniu', 'available after arming');
+  if (cap?.verification === 'manual_characterization_required')
+    return tr('blokada — wymagana ręczna charakterystyka i przerwanie ruchu', 'blocked — manual characterization and interruption required');
+  return tr('niedostępne / niepotwierdzone', 'unavailable / unverified');
+}
 initI18n(localStorage.getItem('lang') || 'pl'); localizeStatic();
 setInterval(refreshAges, 1000);
 const page = document.body.dataset.page;
@@ -96,7 +103,7 @@ function renderCapabilities(state) {
   target.dataset.key = key;
   target.replaceChildren(...['move', 'turn', 'balance', 'height', 'action'].map(action => {
     const cap = known ? state?.capabilities?.[action] : null; const row = el('li');
-    row.textContent = `${action}: ${cap?.available === true && (['height', 'balance'].includes(action) || cap?.stop_verified === true) ? tr('dostępne po uzbrojeniu', 'available after arming') : cap?.verification === 'manual_characterization_required' ? tr('blokada — wymagana ręczna charakterystyka i przerwanie ruchu', 'blocked — manual characterization and interruption required') : tr('niedostępne / niepotwierdzone', 'unavailable / unverified')}`;
+    row.textContent = action + ': ' + capabilityLabel(action, cap);
     return row;
   }));
   }

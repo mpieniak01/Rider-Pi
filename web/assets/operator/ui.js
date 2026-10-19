@@ -1,9 +1,9 @@
 import { ageOf, displayValue } from './model.js';
 const language = () => document.documentElement.lang.startsWith('en') ? 'en' : 'pl';
 export function tr(pl, en = pl) { return language() === 'en' ? en : pl; }
-export function el(tag, className = '', text) {
+export function el(tag, className, text) {
   const node = document.createElement(tag);
-  node.className = className;
+  node.className = className === undefined ? '' : className;
   if (text !== undefined) node.textContent = displayValue(text);
   return node;
 }
@@ -14,7 +14,9 @@ export function button(label, action, disabled = false, className = 'c-btn c-btn
 }
 export function pill(label, tone = 'warn') { return el('span', `c-pill is-${tone}`, label); }
 export function powerLabel(value) {
-  return value === true ? 'ON' : value === false ? 'OFF' : tr('Nieznany', 'Unknown');
+  if (value === true) return 'ON';
+  if (value === false) return 'OFF';
+  return tr('Nieznany', 'Unknown');
 }
 export function statusLabel(value) {
   const labels = { ready: ['Gotowe', 'Ready'], starting: ['Uruchamianie', 'Starting'], stopping: ['Kończenie', 'Stopping'],
@@ -40,7 +42,8 @@ export function kv(values) {
   const node = el('dl', 'operator-kv');
   for (const [name, value] of values) {
     const cell = el('dd');
-    value?.nodeType === 1 ? cell.append(value) : cell.textContent = displayValue(value);
+    if (value?.nodeType === 1) cell.append(value);
+    else cell.textContent = displayValue(value);
     node.append(el('dt', '', name), cell);
   }
   return node;
@@ -59,7 +62,11 @@ export function ageStamp(row, maxAge = 3) {
 export function refreshAges() {
   document.querySelectorAll('.operator-age').forEach(node => {
     const age = ageOf({ observed_at: Number(node.dataset.observedAt) });
-    node.textContent = age === null ? tr('wiek nieznany', 'age unknown') : `${age.toFixed(1)} s${age > Number(node.dataset.maxAge) ? ' · stale' : ''}`;
+    if (age === null) node.textContent = tr('wiek nieznany', 'age unknown');
+    else {
+      const suffix = age > Number(node.dataset.maxAge) ? ' · stale' : '';
+      node.textContent = age.toFixed(1) + ' s' + suffix;
+    }
     node.classList.toggle('operator-error', age === null || age > Number(node.dataset.maxAge));
   });
   document.querySelectorAll('[data-status-max-age]').forEach(node => {

@@ -2,11 +2,19 @@ import { serviceActionBlock } from './service-actions.js';
 import { catalogKnown, fresh, displayValue } from './model.js';
 import { request, poll } from './transport.js';
 import { el, kv, freshPill, button, details, tr, ageLabel, ageStamp, text, showError, rawDetails } from './ui.js';
+function serviceTone(row,current) {
+  if(current && (row.active_state ?? row.active)==='active')return 'ok';
+  return row.error || (row.active_state ?? row.active)==='failed'?'err':'warn';
+}
+function serviceResultLabel(result) {
+  if(result.status===202 || result.data.pending)return 'pending';
+  return result.data.ok?tr('odpowiedź usługi odebrana','service response received'):'rejected';
+}
 function serviceSummary(row,valid) {
   const card = el('article', 'c-card');
   const identity = `${row.host || 'pi'}:${row.unit}`;
   const current = valid && fresh(row, 10) && (row.load_state ?? row.load) === 'loaded' && !row.error;
-  card.append(el('h3', '', row.label || row.unit), freshPill(row, current ? row.active_state || row.active || 'unknown' : 'unknown', current && (row.active_state ?? row.active) === 'active' ? 'ok' : row.error || (row.active_state ?? row.active) === 'failed' ? 'err' : 'warn'),
+  card.append(el('h3', '', row.label || row.unit), freshPill(row, current ? row.active_state || row.active || 'unknown' : 'unknown', serviceTone(row,current)),
     kv([[tr('Jednostka', 'Unit'), row.unit], [tr('Źródło', 'Source'), row.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(row, 10)],
       [tr('Konsumenci', 'Consumers'), (row.consumers || []).join(', ')], [tr('Zależności', 'Dependencies'), (row.dependencies || []).join(', ')],
       [tr('Powód / błąd', 'Reason / error'), row.error || row.reason || row.sub_state || row.sub], [tr('Autostart', 'Autostart'), (row.unit_file_state ?? row.enabled)]]));
@@ -126,7 +134,7 @@ export class System {
     this.busy.add(row.unit); this.results.set(row.unit, 'pending'); this.render();
     try {
       const result = await request(`/svc/${encodeURIComponent(row.unit)}`, { method: 'POST', body, timeout: 20000 });
-      this.results.set(row.unit, result.status === 202 || result.data.pending ? 'pending' : result.data.ok ? tr('odpowiedź usługi odebrana', 'service response received') : 'rejected');
+      this.results.set(row.unit, serviceResultLabel(result));
       text('operator-message', JSON.stringify(result.data));
     } catch (error) { this.results.set(row.unit, error.status ? `rejected: ${error.message}` : 'unknown'); showError(error); }
     finally { this.busy.delete(row.unit); this.render(); void this.poller.refresh(); void this.safety.poller.refresh(); }
@@ -139,7 +147,11 @@ export class System {
     text('system-contract', valid ? `v2 · ${ageLabel(this.services)}` : tr('Niepełne / stare dane — tylko odczyt', 'Incomplete / old data — read only'));
     const rows = Array.isArray(this.services?.services) ? this.services.services : [];
     const groups = new Map();
-    for (const row of rows) { const group = row.lifecycle || 'unknown'; if (!groups.has(group)) groups.set(group, []); groups.get(group).push(row); }
+    for (const row of rows) {
+      const group = row.lifecycle || 'unknown';
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group).push(row);
+    }
     target.replaceChildren(...[...groups].map(([group,entries])=>serviceGroup(this,group,entries,valid)));
     this.renderRescue();
     renderSystemDetails(this);

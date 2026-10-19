@@ -9,6 +9,11 @@ const arrows={forward:'↑',backward:'↓',left:'←',right:'→'};
 const displayNumber = value => Number((value).toFixed(6));
 const labels = {forward:['Przód','Forward'],backward:['Tył','Backward'],left:['Lewo','Left'],right:['Prawo','Right']};
 
+function rampModeLabel(mode){
+  if(mode===2)return tr('Najszybsza zmiana na początku, następnie coraz wolniej.','Fastest change at the beginning, then progressively slower.');
+  if(mode===1)return tr('Łagodny początek i koniec zmiany.','Smooth beginning and end of the change.');
+  return tr('Stałe tempo zmiany.','Constant rate of change.');
+}
 export class ManualSettings {
   constructor(safety) {
     this.safety=safety;this.state=null;this.pending={};this.directionEdits={};
@@ -67,7 +72,7 @@ export class ManualSettings {
     if(node.type==='range'){const output=el('output');output.id=id+'-value';label.append(output);}
     node.addEventListener('input',()=>this.edit(()=>{
       const key=id.replace(/^setting-(forward|backward|left|right)-/,'').replace(/^setting-/,'');
-      let value=node.value.trim()==='' ? NaN : Number(node.value)/this.factor(key);
+      let value=node.value.trim()==='' ? Number.NaN : Number(node.value)/this.factor(key);
       if(node.type==='range' && Number.isFinite(value)){
         const direction=id.split('-')[1], item=this.effective().directions[direction];
         if(value!==0 && item.step>0 && item.step<=item.maximum-item.minimum){
@@ -285,9 +290,12 @@ export class ManualSettings {
   }
   paintProfileStatus(profiles){
     const active=profiles[this.state?.active_profile];
-    text('motion-profile-status',active?tr('Aktywny: ','Active: ')+active.name
-      +(this.state.profile_modified?tr(' · zmienione nastawy, profil nieaktualizowany',' · modified settings, preset not updated'):'')
-      :tr('Własne nastawy — bez wybranego profilu','Custom settings — no active profile'));
+    let label=tr('Własne nastawy — bez wybranego profilu','Custom settings — no active profile');
+    if(active){
+      const modified=this.state.profile_modified?tr(' · zmienione nastawy, profil nieaktualizowany',' · modified settings, preset not updated'):'';
+      label=tr('Aktywny: ','Active: ')+active.name+modified;
+    }
+    text('motion-profile-status',label);
   }
   paintProfiles(known,editable){
     const select=document.getElementById('motion-profile-select');if(!select)return;
@@ -314,9 +322,7 @@ export class ManualSettings {
       }
       modeSelect.disabled=!editable || !options.length;
       modeSelect.value=effective?.values.ramp_mode??0;
-      modeSelect.title=Number(modeSelect.value)===2
-        ?tr('Najszybsza zmiana na początku, następnie coraz wolniej.','Fastest change at the beginning, then progressively slower.')
-        :Number(modeSelect.value)===1?tr('Łagodny początek i koniec zmiany.','Smooth beginning and end of the change.'):tr('Stałe tempo zmiany.','Constant rate of change.');
+      modeSelect.title=rampModeLabel(Number(modeSelect.value));
     }
   }
   paintUnits(known){
@@ -405,10 +411,12 @@ export class ManualSettings {
     }
   }
   paintStatus(known){
-    text('manual-settings-status',known
-      ?tr('Ustawienia robota · rewizja ','Robot settings · revision ')+this.state.revision
-        +(this.dirty()?tr(' · niezapisane zmiany',' · unsaved changes'):'')
-      :tr('Brak potwierdzonych ustawień robota','Robot settings unconfirmed'));
+    let label=tr('Brak potwierdzonych ustawień robota','Robot settings unconfirmed');
+    if(known){
+      const modified=this.dirty()?tr(' · niezapisane zmiany',' · unsaved changes'):'';
+      label=tr('Ustawienia robota · rewizja ','Robot settings · revision ')+this.state.revision+modified;
+    }
+    text('manual-settings-status',label);
   }
   paint(){
     const known=settingsValid(this.state,nowSeconds()), editable=this.editable();

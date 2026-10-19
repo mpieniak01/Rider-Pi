@@ -5,6 +5,15 @@ function taskRequestStatus(status,data) {
   if(status === 202 || data.pending)return 'pending';
   return data.ok === true ? 'observed' : 'rejected';
 }
+function taskTone(task,valid) {
+  if(valid && task.ready===true && !task.stale)return 'ok';
+  return task.error?'err':'warn';
+}
+function taskMotionLabel(canMove) {
+  if(canMove===true)return tr('TAK — osobna zgoda','YES — separate consent');
+  if(canMove===false)return tr('bez napędów','no actuators');
+  return tr('nieznany — start zablokowany','unknown — start blocked');
+}
 export class Tasks {
   constructor(safety, target = 'task-list', filter = () => true) {
     this.safety = safety; this.target = document.getElementById(target); this.filter = filter;
@@ -64,9 +73,9 @@ export class Tasks {
     this.target.replaceChildren(...this.catalog.features.filter(this.filter).map(task => {
       const card = el('article', 'c-card operator-task');
       const header = el('div', 'operator-row');
-      header.append(el('h3', '', tr(task.title || task.name, task.title_en || task.name)), freshPill(task, valid ? task.state || 'unknown' : 'unknown', valid && task.ready === true && !task.stale ? 'ok' : task.error ? 'err' : 'warn'));
+      header.append(el('h3', '', tr(task.title || task.name, task.title_en || task.name)), freshPill(task, valid ? task.state || 'unknown' : 'unknown', taskTone(task,valid)));
       card.append(header, el('p', '', tr(task.description || '', task.description_en || '')),
-        kv([[tr('Ruch', 'Motion'), task.can_move === true ? tr('TAK — osobna zgoda', 'YES — separate consent') : task.can_move === false ? tr('bez napędów', 'no actuators') : tr('nieznany — start zablokowany', 'unknown — start blocked')],
+        kv([[tr('Ruch', 'Motion'), taskMotionLabel(task.can_move)],
           [tr('Właściciel sterowania', 'Control owner'), task.motion_owner], [tr('Źródło', 'Source'), task.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(task, 10)],
           [tr('Zasoby', 'Resources'), (task.resources || []).join(', ')]]));
       if (task.error) card.append(el('p', 'operator-error', task.error));

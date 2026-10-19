@@ -15,7 +15,10 @@ export class Chat {
       this.providers = (await request('/api/voice/providers')).data.providers || [];
       const select = document.getElementById('chat-provider');
       select.replaceChildren(...this.providers.map(provider => { const option = el('option', '', `${provider.label || provider.id} · ${provider.status?.state || 'unknown'}`); option.value = provider.id; return option; }));
-    } catch (error) { text('chat-status', tr('Lista TTS niedostępna; chat tekstowy pozostaje dostępny po przygotowaniu domeny.', 'TTS catalog unavailable; text chat requires its prepared domain.')); }
+    } catch {
+      // Provider discovery is optional: keep text chat usable and show its degraded state.
+      text('chat-status', tr('Lista TTS niedostępna; chat tekstowy pozostaje dostępny po przygotowaniu domeny.', 'TTS catalog unavailable; text chat requires its prepared domain.'));
+    }
   }
   message(role, value, save = true) {
     const row = el('article', `operator-chat-message is-${role}`);
@@ -27,7 +30,7 @@ export class Chat {
   async prepareDomain(kind, domain) {
     if (!catalogKnown(this.tasks.catalog)) throw new Error(tr('Brak aktualnego katalogu domen', 'No current domain catalog'));
     const task = this.tasks.catalog.features.find(row => row.option_kind === kind);
-    if (!task || task.can_move !== false || !task.option_schema?.choices?.some(choice => choice.value === domain)) throw new Error(tr('Domena niedostępna', 'Domain unavailable'));
+    if (task?.can_move !== false || !task.option_schema?.choices?.some(choice => choice.value === domain)) throw new Error(tr('Domena niedostępna', 'Domain unavailable'));
     if (task.requested && task.options?.domain !== domain) throw new Error(tr('Zakończ poprzednią domenę przed zmianą profilu.', 'End the previous domain before changing its profile.'));
     if (task.ready === true && task.can_move === false && fresh(task, 10) && task.options?.domain === domain) return;
     if (!taskCanStart(task, this.tasks.catalog, this.tasks.safety.state)) throw new Error(tr('Domena nie jest gotowa', 'Domain not ready'));

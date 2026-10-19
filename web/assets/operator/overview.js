@@ -7,7 +7,12 @@ import { telemetrySummary, orientationSummary } from './overview-model.js';
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const fmt = (value, digits = 1) => finite(value) ? value.toFixed(digits) : '—';
 const age = row => ageOf(row) === null ? '—' : `${ageOf(row).toFixed(1)} s`;
-const frameAge = seconds => !finite(seconds) ? '—' : seconds >= 86400 ? `${Math.floor(seconds / 86400)} ${tr('dni', 'days')}` : seconds >= 3600 ? `${fmt(seconds / 3600)} h` : `${fmt(seconds)} s`;
+function frameAge(seconds) {
+  if(!finite(seconds))return '—';
+  if(seconds>=86400)return Math.floor(seconds/86400)+' '+tr('dni','days');
+  if(seconds>=3600)return fmt(seconds/3600)+' h';
+  return fmt(seconds)+' s';
+}
 const unknown = () => tr('brak / stary pomiar', 'missing / stale reading');
 const BLANK = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"%3E%3Crect width="640" height="360" fill="%2306090d"/%3E%3C/svg%3E';
 
@@ -32,6 +37,23 @@ function frameLabel(frame) {
   return frame.fresh ? frameAge(frame.age) : tr('stara klatka', 'old frame') + ' · ' + frameAge(frame.age);
 }
 
+function lcdTitle(lcd,confirmed) {
+  if(!confirmed)return tr('Nie można odczytać stanu LCD','LCD state unavailable');
+  return lcd.confirmation==='gpio_level_observed'?tr('Odczyt podświetlenia LCD','LCD backlight reading'):tr('Ostatnie potwierdzone polecenie LCD','Last confirmed LCD command');
+}
+function cameraPower(active,off) {
+  if(active)return true;
+  if(off)return false;
+  return null;
+}
+function healthStatus(health) {
+  if(!health)return tr('Brak połączenia z API','API unavailable');
+  return health.status || (health.ok===true?'OK':tr('Stan nieznany','State unknown'));
+}
+function healthTone(health) {
+  if(health?.status==='ok' || health?.ok===true)return 'ok';
+  return health?'bad':'muted';
+}
 function renderLcd(overview) {
   const lcdParent = overview.state?.devices?.lcd ? overview.state : overview.health;
   const lcd = lcdParent?.devices?.lcd;
@@ -45,10 +67,7 @@ function renderLcd(overview) {
   // LCD reports accepted control events, not periodic physical measurements.
   text('d_lcd', powerLabel(lcdConfirmed ? lcd.on : null));
   const lcdNode = document.getElementById('d_lcd');
-  if (lcdNode) lcdNode.title = lcdConfirmed
-    ? (lcd.confirmation === 'gpio_level_observed' ? tr('Odczyt podświetlenia LCD', 'LCD backlight reading')
-      : tr('Ostatnie potwierdzone polecenie LCD', 'Last confirmed LCD command'))
-    : tr('Nie można odczytać stanu LCD', 'LCD state unavailable');
+  if (lcdNode) lcdNode.title = lcdTitle(lcd,lcdConfirmed);
 }
 function renderCameraPower(overview) {
   const camera = overview.health?.devices?.camera || overview.state?.camera?.activity || overview.state?.devices?.camera || overview.state?.camera || {};
@@ -56,10 +75,10 @@ function renderCameraPower(overview) {
   const frameReady = cameraFrame(overview.snap, 'raw').fresh;
   const active = capture || (camera?.vision_enabled === true && frameReady);
   const off = !active && (camera?.vision_enabled === false || camera?.on === false);
-  const cameraText = powerLabel(active ? true : off ? false : null);
+  const cameraText = powerLabel(cameraPower(active,off));
   const cameraDetails = [cameraText, camera?.mode, Array.isArray(camera?.res) ? camera.res.join('×') : null,
     finite(camera?.fps) ? `${fmt(camera.fps)} fps` : null].filter(Boolean);
-  text('d_cam', cameraDetails.join(' · ')); text('camBadge', powerLabel(active ? true : off ? false : null));
+  text('d_cam', cameraDetails.join(' · ')); text('camBadge', powerLabel(cameraPower(active,off)));
   document.getElementById('camBadge')?.classList.toggle('on', active);
   return active;
 }
@@ -151,8 +170,10 @@ export class Overview {
     this.renderSystem(); this.renderTelemetry(); this.renderHealth(); this.renderVision(); this.renderMetrics();
     window.dashboardFooter?.update({ state: this.state, snapInfo: this.snap });
     const target = document.getElementById('overview-tasks');
-    if (target) target.replaceChildren(...(Array.isArray(this.catalog?.features) ? this.catalog.features : []).filter(task => task.requested).map(task =>
-      el('li', '', `${tr(task.title || task.name, task.title_en || task.name)} · ${catalogKnown(this.catalog) && fresh(task, 10) ? statusLabel(task.state) : unknown()}${task.error ? ` · ${task.error}` : ''}`)));
+    if (target) target.replaceChildren(...(Array.isArray(this.catalog?.features) ? this.catalog.features : []).filter(task => task.requested).map(task => {
+      const error=task.error?' · '+task.error:'';
+      return el('li', '', `${tr(task.title || task.name, task.title_en || task.name)} · ${catalogKnown(this.catalog) && fresh(task, 10) ? statusLabel(task.state) : unknown()}${error}`);
+    }));
     text('overview-task-status', catalogKnown(this.catalog) ? tr('Stan z katalogu v2', 'State from catalog v2') : unknown());
   }
   renderSystem() {
@@ -165,7 +186,10 @@ export class Overview {
     text('ci_disk', capacitySummary(value('disk_used_gb'),value('disk_total_gb'),value('disk_pct'),'GiB'));
     text('ci_os', si?.os_release || si?.platform || '—');
     text('d_temp', finite(value('temp_c')) ? `${fmt(value('temp_c'))} °C` : '—');
-    text('system-age', `${age(si)}${this.systemError ? ` · ${tr('błąd odczytu', 'read failed')}` : usable ? '' : ` · ${unknown()}`}`);
+    let suffix='';
+    if(this.systemError)suffix=' · '+tr('błąd odczytu','read failed');
+    else if(!usable)suffix=' · '+unknown();
+    text('system-age',age(si)+suffix);
     // An HTTP failure is not a deletion of measurements already collected.
     // Keep their original timestamps and let the fixed time window expire them.
     const history = this.drawHistory(si?.hist_cpu, si?.hist_mem, si?.hist_cpu_peak, si?.hist_ts);
@@ -182,7 +206,10 @@ export class Overview {
     const values = ['roll', 'pitch', 'yaw'].map(key => samples[key].value);
     const battery = samples.battery.value;
     const imuReady = ['roll', 'pitch', 'yaw'].every(key => samples[key].ready);
-    text('d_xgo_imu', imuReady ? tr('Świeży odczyt', 'Fresh reading') : values.some(finite) ? tr('Częściowy odczyt', 'Partial reading') : unknown());
+    let imuLabel=unknown();
+    if(imuReady)imuLabel=tr('Świeży odczyt','Fresh reading');
+    else if(values.some(finite))imuLabel=tr('Częściowy odczyt','Partial reading');
+    text('d_xgo_imu',imuLabel);
     text('d_xgo_pose', orientationSummary(samples));
     const work = telemetryChannel(xgo, 'work_status', unavailable);
     text('d_xgo_work', workStatus(work));
@@ -197,9 +224,9 @@ export class Overview {
   }
   renderHealth() {
     const h = this.health;
-    text('h_status', !h ? tr('Brak połączenia z API', 'API unavailable') : h.status || (h.ok === true ? 'OK' : tr('Stan nieznany', 'State unknown')));
+    text('h_status',healthStatus(h));
     const healthNode = document.getElementById('h_status');
-    if (healthNode) healthNode.className = h?.status === 'ok' || h?.ok === true ? 'ok' : h ? 'bad' : 'muted';
+    if (healthNode) healthNode.className = healthTone(h);
     text('h_uptime', finite(h?.uptime_s ?? h?.uptime) ? `${fmt(h.uptime_s ?? h.uptime, 0)} s` : '—');
     text('h_msg', finite(h?.bus?.last_msg_age_s) ? `${fmt(h.bus.last_msg_age_s)} s` : '—');
     text('h_hb', finite(h?.bus?.last_heartbeat_age_s) ? `${fmt(h.bus.last_heartbeat_age_s)} s` : '—');
@@ -246,19 +273,23 @@ export class Overview {
         if (i > 0 && (!finite(previous) || stamp <= previous || stamp - previous > 2)) pen = false;
         const position = Math.max(0, Math.min(1, 1 - (now - stamp) / 60));
         const px = x + width * position, py = y + height * (1 - Math.max(0, Math.min(100, value)) / 100);
-        if (pen) ctx.lineTo(px, py); else ctx.moveTo(px, py); pen = true;
+        if (pen) ctx.lineTo(px, py);
+        else ctx.moveTo(px, py);
+        pen = true;
       }); ctx.stroke();
     }
     ctx.fillStyle = '#90a4b0'; ctx.font = '10px sans-serif';
     ctx.textAlign = 'left'; ctx.fillText('−60 s', x, y + height + 13);
     ctx.textAlign = 'right'; ctx.fillText('0 s', x + width, y + height + 13);
-    return { count: visible.length, span: visible.length ? visible[visible.length - 1] - visible[0] : 0,
+    return { count: visible.length, span: visible.length ? visible.at(-1) - visible[0] : 0,
       gaps: visible.some((stamp, i) => i > 0 && stamp - visible[i - 1] > 2) };
   }
   drawBins(bins, edge) {
     const axis = this.axes('binsCanvas'); if (!axis) return;
     const { ctx, x, y, width, height } = axis;
-    const samples = Array.isArray(bins) && bins.length ? bins.slice(0, 256) : finite(edge) ? [edge] : [];
+    let samples=[];
+    if(Array.isArray(bins) && bins.length)samples=bins.slice(0,256);
+    else if(finite(edge))samples=[edge];
     ctx.fillStyle = '#6db3ff';
     samples.forEach((value, i) => { if (finite(value)) { const h = height * Math.max(0, Math.min(1, value)); ctx.fillRect(x + width * i / samples.length, y + height - h, Math.max(1, width / samples.length - 2), h); } });
   }

@@ -5,9 +5,15 @@ import { text, tr } from './ui.js';
 
 // Only GET snapshots; mounting this panel never starts a camera or an actuator.
 export class ControlCamera {
+  kind = 'raw';
+  auto = true;
+  meta = null;
+  busy = false;
+  loaded = null;
+  pending = null;
+  lastKey = null;
+  failed = false;
   constructor() {
-    this.kind = 'raw'; this.auto = true; this.meta = null; this.busy = false;
-    this.loaded = null; this.pending = null; this.lastKey = null; this.failed = false;
     this.image = document.getElementById('control-camera-image');
     this.empty = document.getElementById('control-camera-empty');
     for (const id of ['speed', 'yaw-speed']) {
@@ -61,8 +67,10 @@ export class ControlCamera {
     const current = frame.fresh && loaded.fresh && this.loaded?.kind === this.kind;
     this.image.hidden = !current; this.empty.hidden = current;
     text('control-camera-toggle', this.auto ? tr('⟳ Auto: włączone', '⟳ Auto: on') : tr('⟳ Auto: wyłączone', '⟳ Auto: off'));
-    text('control-camera-status', this.kind.toUpperCase() + ' · ' +
-      (current ? tr('bieżąca klatka', 'current frame') : this.failed ? tr('błąd odczytu klatki', 'frame load failed') : tr('brak / stary obraz', 'missing / stale image')) +
+    let stateLabel = tr('brak / stary obraz', 'missing / stale image');
+    if (current) stateLabel = tr('bieżąca klatka', 'current frame');
+    else if (this.failed) stateLabel = tr('błąd odczytu klatki', 'frame load failed');
+    text('control-camera-status', this.kind.toUpperCase() + ' · ' + stateLabel +
       ' · ' + (loaded.age === null ? '—' : loaded.age.toFixed(1) + ' s') +
       (frame.timeBasis === 'file' ? tr(' · wiek pliku; czas przechwycenia niepotwierdzony', ' · file age; capture time unverified') : ''));
     document.querySelectorAll('[data-camera-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.cameraKind === this.kind)));

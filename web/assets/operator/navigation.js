@@ -72,7 +72,7 @@ export class Navigation {
   }
   async config() {
     if (!safetyKnown(this.safety.state) || this.safety.state.state !== 'DISARMED' || this.busy) return;
-    const numbers = ['nav-speed', 'nav-turn'].map(id => { const value = document.getElementById(id).value.trim(); return value ? Number(value) : NaN; });
+    const numbers = ['nav-speed', 'nav-turn'].map(id => { const value = document.getElementById(id).value.trim(); return value ? Number(value) : Number.NaN; });
     if (numbers.some(value => !Number.isFinite(value) || value < 0 || value > 1)) return showError(new Error(tr('Prędkości muszą być liczbami w zakresie 0–1.', 'Speeds must be numbers in range 0–1.')));
     this.busy = true; this.render();
     try {
@@ -127,7 +127,10 @@ export class Navigation {
     const config = document.getElementById('nav-config'); if (config) config.disabled = !safetyKnown(this.safety.state) || this.safety.state.state !== 'DISARMED' || this.busy;
   }
   renderAges(planReady) {
-    text('map-age', `${tr('Mapa', 'Map')}: ${ageOf(this.map)?.toFixed(1) ?? '—'} s · ${this.map?.quality ?? 'unknown'}${planningPresentationReady(this.map, 3) ? tr(' · tylko planowanie', ' · planning only') : presentationReady(this.map, 10) ? '' : ' · unavailable / stale'}`);
+    let mapState=' · unavailable / stale';
+    if(planningPresentationReady(this.map,3))mapState=tr(' · tylko planowanie',' · planning only');
+    else if(presentationReady(this.map,10))mapState='';
+    text('map-age', `${tr('Mapa', 'Map')}: ${ageOf(this.map)?.toFixed(1) ?? '—'} s · ${this.map?.quality ?? 'unknown'}${mapState}`);
     text('pose-age', `${tr('Pozycja', 'Pose')}: ${ageOf(this.pose)?.toFixed(1) ?? '—'} s · ${this.pose?.quality ?? 'unknown'}${presentationReady(this.pose, .5) ? '' : ' · unavailable / stale'}`);
     text('path-age', `${tr('Pasywny plan punktowy', 'Passive point plan')}: ${ageOf(this.path)?.toFixed(1) ?? '—'} s${planReady ? '' : ' · unavailable / stale'} · ${tr('fizycznie niezweryfikowany', 'physically unverified')}`);
     if (this.path?.path_truncated === true) text('path-age', `${document.getElementById('path-age')?.textContent || ''} · ${tr('fragment', 'prefix')}: ${this.path.path.length}/${this.path.path_length}`);
@@ -135,9 +138,12 @@ export class Navigation {
   }
   renderGoal(planReady) {
     const target = this.path?.target;
-    text('nav-goal', target && sameNavigationFrame(this.pose, this.path) && sameNavigationFrame(this.map, this.path)
-      ? `HOME: (${target[0]}, ${target[1]}) · ${this.path.reference_id} · ${planReady ? tr('plan tylko do odczytu', 'read-only plan') : tr('stary plan', 'stale plan')}`
-      : tr('HOME / cel niepotwierdzony w bieżącej ramie', 'HOME / target unconfirmed in current frame'));
+    let label=tr('HOME / cel niepotwierdzony w bieżącej ramie','HOME / target unconfirmed in current frame');
+    if(target && sameNavigationFrame(this.pose,this.path) && sameNavigationFrame(this.map,this.path)){
+      const status=planReady?tr('plan tylko do odczytu','read-only plan'):tr('stary plan','stale plan');
+      label=`HOME: (${target[0]}, ${target[1]}) · ${this.path.reference_id} · ${status}`;
+    }
+    text('nav-goal',label);
   }
   renderHistory() {
     for (const entry of this.history) if (entry.status === 'pending' && nowSeconds() - entry.ts > 8) entry.status = 'unknown';

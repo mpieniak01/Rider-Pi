@@ -19,8 +19,11 @@ export function validPipeline(value) {
     && typeof value.capabilities === 'object' && typeof value.state === 'string';
 }
 export class CameraPipelineControls {
+  status = null;
+  busy = false;
+  readEpoch = 0;
   constructor(target, onState = () => {}) {
-    this.status = null; this.busy = false; this.onState = onState; this.readEpoch = 0;
+    this.onState = onState;
     this.node = document.createElement('section'); this.node.className = 'camera-pipeline-controls';
     this.node.innerHTML = '<h3></h3><div class="operator-row"><label><span class="location-label"></span><select class="location"></select></label>'
       + '<label class="engine-field"><span class="engine-label"></span><select class="engine"></select></label>'
