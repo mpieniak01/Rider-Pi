@@ -54,8 +54,10 @@ def test_tts_response_types_still_produce_stereo_wav(monkeypatch, logger, wav_by
     cfg = tts.TTSConfig(backend=backend, base_url="http://fake.invalid/", timeout=3)
     audio, rate, channels, fmt = tts.synthesize("hello", cfg, logger)
     pcm, wav_rate, wav_channels, width = tts._read_wav(audio)
-    assert (rate, channels, fmt) == (48000, 2, "wav")
-    assert (wav_rate, wav_channels, width) == (48000, 2, 2)
+    actual_audio_metadata = (rate, channels, fmt)
+    actual_wav_metadata = (wav_rate, wav_channels, width)
+    assert actual_audio_metadata == (48000, 2, "wav")
+    assert actual_wav_metadata == (48000, 2, 2)
     assert pcm.endswith(b"\x00" * (48000 * 2 * 2 * 300 // 1000))
     assert post.call_args.kwargs["timeout"] == 3
     if backend == "local":
@@ -151,8 +153,9 @@ def test_successful_stream_accumulates_audio_without_second_playback(monkeypatch
     assert result.ok
     assert result.streamed
     assert result.backend == 'fake'
+    actual_audio = (result.audio, result.audio_format, result.sample_rate)
     expected_audio = (wav_bytes, "wav", 16000) if decoded else (b"mp3", "mp3", 0)
-    assert (result.audio, result.audio_format, result.sample_rate) == expected_audio
+    assert actual_audio == expected_audio
     assert stream.write.call_args_list == [call(b"one"), call(b"two")]
 
 
@@ -296,7 +299,8 @@ def test_transcript_override_precedes_chat_speech_even_if_player_returns_false(
     assert result.reply == " answer "
     assert service._request_speech.call_count == expected_requests
     if speak and override:
-        assert (result.audio, result.audio_format, result.sample_rate) == (b"pc-audio", "mp3", 22050)
+        actual_audio = (result.audio, result.audio_format, result.sample_rate)
+        assert actual_audio == (b"pc-audio", "mp3", 22050)
     if not speak:
         service._publish_ui_state.assert_called_once_with("idle")
 
