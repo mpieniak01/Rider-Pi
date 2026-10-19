@@ -22,6 +22,19 @@ def load_calibration(path=None):
         return {}
 
 
+def _measurement_table_status(table):
+    if not isinstance(table, dict) or not table:
+        return "sdk_step_measurements_required"
+    for key, value in table.items():
+        try:
+            step = int(key)
+        except (ValueError, TypeError):
+            return "invalid_sdk_step_measurement"
+        if str(step) != key or step == 0 or not finite_number(value) or value * step <= 0:
+            return "invalid_sdk_step_measurement"
+    return None
+
+
 def calibration_status(record, *, require_mapping=True):
     if (
         not isinstance(record, dict)
@@ -42,16 +55,9 @@ def calibration_status(record, *, require_mapping=True):
     if record.get("imu_yaw_sign") not in (-1, 1) or type(record.get("imu_yaw_sign")) is bool:
         return "imu_yaw_direction_unverified"
     for name in ("linear_m_s", "turn_rad_s"):
-        table = record.get(name)
-        if not isinstance(table, dict) or not table:
-            return "sdk_step_measurements_required"
-        for key, value in table.items():
-            try:
-                step = int(key)
-            except (ValueError, TypeError):
-                return "invalid_sdk_step_measurement"
-            if str(step) != key or step == 0 or not finite_number(value) or value * step <= 0:
-                return "invalid_sdk_step_measurement"
+        error = _measurement_table_status(record.get(name))
+        if error:
+            return error
     return None
 
 
@@ -105,11 +111,7 @@ class CalibrationBinding:
         self.applied_generation = None
         self.observed_at = None
 
-    def observe(self, payload):
-        from apps.motion.calibration_profiles import read_profile
-
-        row = payload if isinstance(payload, dict) else {}
-        config = row.get("calibration")
+    def _legacy_configuration(self, config):
         if (
             self.source == "legacy_file"
             and self.profile_digest is None
@@ -120,10 +122,10 @@ class CalibrationBinding:
                 and not config.get("error")
             )
         ):
-            return
-        digest = config.get("profile_digest") if isinstance(config, dict) else None
-        # A different/failed configuration immediately destroys the old frame,
-        # even while ARMED. Loading itself waits for a DISARMED observation.
+            return True
+        return False
+
+    def _profile_observation_valid(self, row, config, digest):
         valid = sample_status(
             {key: row.get(key) for key in ("observed_at", "offline", "stale")},
             max_age_s=3.0,
@@ -140,24 +142,11 @@ class CalibrationBinding:
         valid = valid and config.get("instance_id") == row.get("instance_id")
         valid = valid and isinstance(digest, str) and len(digest) == 64
         valid = valid and config.get("source") in {"profile", "saved_profile"}
-        if not valid:
-            self._invalidate("motion_profile_unconfirmed", digest)
-            return
-        self._last_state_observed_at = row["observed_at"]
-        transaction = (
-            digest,
-            row["instance_id"],
-            config.get("activation_request_id"),
-            config.get("command_generation"),
-            config.get("seq"),
-            config.get("applied_generation"),
-        )
-        if self._confirmation == transaction:
-            # Later ARM/STOP is not a new calibration operation. Never restore
-            # a reference here, and never reinterpret an old revision.
-            self.observed_at = config["observed_at"]
-            return
-        if (
+        return valid
+
+    @staticmethod
+    def _idle_disarmed(row):
+        return not (
             row.get("state") != "DISARMED"
             or row.get("moving") is not False
             or any(
@@ -165,12 +154,12 @@ class CalibrationBinding:
                 or any(not finite_number(row[name].get(key)) or row[name][key] != 0 for key in ("lx", "az"))
                 for name in ("target", "output")
             )
-        ):
-            self._invalidate("calibration_requires_idle_disarmed", digest)
-            return
-        live = config["source"] == "profile"
+        )
+
+    @staticmethod
+    def _activation_confirmed(row, config, digest):
         ack = config.get("applied_ack")
-        if live and (
+        return not (
             not isinstance(ack, dict)
             or ack.get("status") != "executed"
             or ack.get("accepted") is not True
@@ -193,7 +182,41 @@ class CalibrationBinding:
             or ack.get("seq") != config["seq"]
             or not finite_number(ack.get("observed_at"))
             or not ack["observed_at"] <= config["observed_at"] <= row["observed_at"]
-        ):
+        )
+
+    def observe(self, payload):
+        from apps.motion.calibration_profiles import read_profile
+
+        row = payload if isinstance(payload, dict) else {}
+        config = row.get("calibration")
+        if self._legacy_configuration(config):
+            return
+        digest = config.get("profile_digest") if isinstance(config, dict) else None
+        # A different/failed configuration immediately destroys the old frame,
+        # even while ARMED. Loading itself waits for a DISARMED observation.
+        valid = self._profile_observation_valid(row, config, digest)
+        if not valid:
+            self._invalidate("motion_profile_unconfirmed", digest)
+            return
+        self._last_state_observed_at = row["observed_at"]
+        transaction = (
+            digest,
+            row["instance_id"],
+            config.get("activation_request_id"),
+            config.get("command_generation"),
+            config.get("seq"),
+            config.get("applied_generation"),
+        )
+        if self._confirmation == transaction:
+            # Later ARM/STOP is not a new calibration operation. Never restore
+            # a reference here, and never reinterpret an old revision.
+            self.observed_at = config["observed_at"]
+            return
+        if not self._idle_disarmed(row):
+            self._invalidate("calibration_requires_idle_disarmed", digest)
+            return
+        live = config["source"] == "profile"
+        if live and not self._activation_confirmed(row, config, digest):
             self._invalidate("calibration_activation_unconfirmed", digest)
             return
         try:

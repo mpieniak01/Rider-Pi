@@ -25,34 +25,7 @@ _calibration = profiles._calibration
 _confirmation = profiles.profile_confirmation
 
 
-def snapshot():
-    now = wall_clock()
-    motion, odometry = read_status(), odometry_snapshot()
-    oc = _calibration(odometry)
-    result = {
-        "contract_id": "rider.calibration",
-        "contract_version": 1,
-        "schema_version": 1,
-        "server_time": now,
-        "motion": motion,
-        "odometry": odometry,
-        "active": None,
-        "requested": None,
-        "status": "unknown",
-        "error": None,
-        "confirmation": "unconfirmed",
-        "stale": not (_fresh(motion, now) and _fresh(odometry, now)),
-        "model_ready": False,
-        "calibration_error": oc.get("odometry_error"),
-        "actuation": False,
-        "physical_completion": "unverified",
-    }
-    try:
-        active = profiles.read_active(include_pending=True)
-    except (ValueError, OSError):
-        result["error"] = "active_profile_unavailable"
-        return result
-    result["active"] = active
+def _project_active(result, active, motion, odometry, oc, now):
     if active is None:
         result["status"] = "unknown" if not _fresh(motion, now) else "unconfigured"
     else:
@@ -67,9 +40,9 @@ def snapshot():
         result["model_ready"] = bool(
             result["status"] == "applied" and oc.get("model_ready") is True and not result["calibration_error"]
         )
-    with _lock:
-        pending = dict(_pending) if _pending else None
-    result["requested"] = pending
+
+
+def _project_pending(result, pending, active, motion, now):
     if pending and not (active and active.get("request_id") == pending["request_id"] and result["status"] == "applied"):
         ack = _calibration(motion).get("last_ack")
         rejected = (
@@ -98,6 +71,41 @@ def snapshot():
             result.update(
                 status="partial", error="activation_confirmation_timeout", confirmation="unconfirmed", model_ready=False
             )
+
+
+def snapshot():
+    now = wall_clock()
+    motion, odometry = read_status(), odometry_snapshot()
+    oc = _calibration(odometry)
+    result = {
+        "contract_id": "rider.calibration",
+        "contract_version": 1,
+        "schema_version": 1,
+        "server_time": now,
+        "motion": motion,
+        "odometry": odometry,
+        "active": None,
+        "requested": None,
+        "status": "unknown",
+        "error": None,
+        "confirmation": "unconfirmed",
+        "stale": not (_fresh(motion, now) and _fresh(odometry, now)),
+        "model_ready": False,
+        "calibration_error": oc.get("odometry_error"),
+        "actuation": False,
+        "physical_completion": "unverified",
+    }
+    try:
+        active = profiles.read_active(include_pending=True)
+    except (ValueError, OSError):
+        result["error"] = "active_profile_unavailable"
+        return result
+    result["active"] = active
+    _project_active(result, active, motion, odometry, oc, now)
+    with _lock:
+        pending = dict(_pending) if _pending else None
+    result["requested"] = pending
+    _project_pending(result, pending, active, motion, now)
     return result
 
 
@@ -233,21 +241,22 @@ def activate():
         return _error("activation_transport_or_storage_failed", 503)
 
 
+def _validate_controls_idle():
+    motion = read_status()
+    if not profiles._fresh(motion, wall_clock()):
+        raise ValueError("motion_status_unavailable")
+    if (
+        motion.get("state") not in {"DISARMED", "ARMED"}
+        or motion.get("moving") is not False
+        or motion.get("deadline", 0)
+        or any((motion.get("output") or {}).values())
+        or any((motion.get("target") or {}).values())
+    ):
+        raise ValueError("manual_settings_requires_idle")
+
+
 def controls():
     from apps.motion import manual_settings
-
-    def idle():
-        motion = read_status()
-        if not profiles._fresh(motion, wall_clock()):
-            raise ValueError("motion_status_unavailable")
-        if (
-            motion.get("state") not in {"DISARMED", "ARMED"}
-            or motion.get("moving") is not False
-            or motion.get("deadline", 0)
-            or any((motion.get("output") or {}).values())
-            or any((motion.get("target") or {}).values())
-        ):
-            raise ValueError("manual_settings_requires_idle")
 
     try:
         if request.method == "POST":
@@ -260,11 +269,14 @@ def controls():
                     row["revision"],
                     patch=row["values"],
                     directions=row.get("directions"),
-                    validate_state=idle,
+                    validate_state=_validate_controls_idle,
                 )
             else:
                 manual_settings.update(
-                    row["values"], row["revision"], directions=row.get("directions"), validate_state=idle
+                    row["values"],
+                    row["revision"],
+                    directions=row.get("directions"),
+                    validate_state=_validate_controls_idle,
                 )
         return jsonify(dict(manual_settings.snapshot(), ok=True, persisted=request.method == "POST"))
     except ValueError as exc:
