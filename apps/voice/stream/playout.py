@@ -115,11 +115,13 @@ class StreamPlayoutMixin:
         from ..audio.playback import start_stream
         from .state import PTTEvent
 
+        stream = None
         try:
             stream = start_stream("pcm16", self._playback_cfg, self.logger)
             self.ptt_state.transition(PTTEvent.TTS_START)
             return stream
         except Exception as exc:
+            self._close_tts_stream(stream)
             self.logger.event("tts.stream.start_error", error=str(exc))
             return None
 
