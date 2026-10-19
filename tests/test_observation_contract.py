@@ -29,9 +29,12 @@ def test_sole_owner_raw_bus_and_http_use_same_original_observation():
     rest = legacy_xgo(canonical)
     assert canonical_telemetry_payload({"devices": {"xgo": rest}})["devices"]["xgo"] == canonical
     rows = canonical["sensor_quality"]["sensors"]
-    assert rows["battery"]["value"] == 1 and rows["battery"]["unit"] == "ratio"
-    assert rest["battery_pct"] == 100 and rest["battery_unit"] == "percent"
-    assert rows["yaw"]["value"] == -1842358.5 and rows["yaw"]["unit"] == "sdk_raw"
+    assert rows["battery"]["value"] == 1
+    assert rows["battery"]["unit"] == "ratio"
+    assert rest["battery_pct"] == 100
+    assert rest["battery_unit"] == "percent"
+    assert rows["yaw"]["value"] == -1842358.5
+    assert rows["yaw"]["unit"] == "sdk_raw"
     assert rows["yaw"]["physical_validity"] == "unverified"
     assert rest["yaw_raw"] == rows["yaw"]["value"]
     assert rest["yaw_derivation"]["display_only"] is True
@@ -39,11 +42,15 @@ def test_sole_owner_raw_bus_and_http_use_same_original_observation():
     display = canonical["derived"]["yaw_display"]
     assert display["value"] == rest["yaw"]
     assert display["unit"] == "legacy_wrapped_degrees"
-    assert display["display_only"] is True and display["derivation"] == "legacy_wrap_180"
+    assert display["display_only"] is True
+    assert display["derivation"] == "legacy_wrap_180"
     assert display["observed_at"] == rows["yaw"]["observed_at"] == 100
-    assert display["source"] == rows["yaw"]["source"] and display["ready"]
+    assert display["source"] == rows["yaw"]["source"]
+    assert display["ready"]
     old_display = refresh_observation(canonical, now=104)["derived"]["yaw_display"]
-    assert old_display["value"] == 121.5 and old_display["observed_at"] == 100 and not old_display["ready"]
+    assert old_display["value"] == 121.5
+    assert old_display["observed_at"] == 100
+    assert not old_display["ready"]
     assert imu["sensor_quality"]["sensors"]["roll"]["value"] == 0
     assert "battery" not in imu["sensor_quality"]["sensors"]
 
@@ -76,8 +83,10 @@ def test_per_channel_null_error_zero_and_independent_partial_battery(monkeypatch
     raw["error"] = "sensor_quality:yaw"
     canonical = normalize_xgo_observation("motion.sensor.raw", raw, now=100)
     rows = canonical["sensor_quality"]["sensors"]
-    assert rows["battery"]["ready"] and rows["roll"]["value"] == 0
-    assert not rows["yaw"]["ready"] and rows["yaw"]["value"] is None
+    assert rows["battery"]["ready"]
+    assert rows["roll"]["value"] == 0
+    assert not rows["yaw"]["ready"]
+    assert rows["yaw"]["value"] is None
     assert not canonical["sensor_quality"]["ready"]
     assert canonical["error"] is None
     assert not canonical["stale"]
@@ -85,8 +94,10 @@ def test_per_channel_null_error_zero_and_independent_partial_battery(monkeypatch
     monkeypatch.setattr(devices, "normalize_xgo_observation", lambda topic, data: canonical)
     devices.observe_xgo("devices.xgo", raw)
     before = devices.xgo_snapshot(now=100)
-    assert before["battery_pct"] == 100 and before["roll"] == 0
-    assert not before["imu_ok"] and before["battery_ok"]
+    assert before["battery_pct"] == 100
+    assert before["roll"] == 0
+    assert not before["imu_ok"]
+    assert before["battery_ok"]
     assert devices.xgo_snapshot(now=104)["battery_ok"] is False
     assert devices.xgo_snapshot(now=104)["battery_observed_at"] == 100
 
@@ -99,7 +110,8 @@ def test_new_imu_metadata_cannot_refresh_cached_battery(monkeypatch):
         "imu.data", {"roll": 0, "pitch": 0, "yaw": 0, "observed_at": at + 1, "sensor_observed_at": {"battery": at + 1}}
     )
     row = devices.xgo_snapshot(now=at + 1)
-    assert row["battery_observed_at"] == at and row["battery_pct"] == 50
+    assert row["battery_observed_at"] == at
+    assert row["battery_pct"] == 50
 
 
 def test_parent_transport_failure_and_original_age_survive_repeated_projection():
@@ -118,13 +130,16 @@ def test_parent_transport_failure_and_original_age_survive_repeated_projection()
 def test_battery_only_is_healthy_channel_but_partial_aggregate():
     row = normalize_xgo_observation("devices.xgo", {"battery_pct": 1, "observed_at": 100}, now=100)
     assert row["sensor_quality"]["sensors"]["battery"]["ready"]
-    assert row["partial"] and not row["sensor_quality"]["ready"]
+    assert row["partial"]
+    assert not row["sensor_quality"]["ready"]
 
 
 def test_simulated_channel_is_diagnostic_value_not_physical_ready():
     row = normalize_xgo_observation("devices.xgo", {"battery_pct": 1, "observed_at": 100, "simulated": True}, now=100)
     battery = row["sensor_quality"]["sensors"]["battery"]
-    assert battery["value"] == 1 and battery["simulated"] and not battery["ready"]
+    assert battery["value"] == 1
+    assert battery["simulated"]
+    assert not battery["ready"]
     assert row["partial"]
 
 
@@ -147,7 +162,8 @@ def test_declared_unknown_contract_is_not_interpreted_as_legacy(version):
         {"contract_id": "rider.telemetry", "contract_version": version, "battery_pct": 1, "observed_at": 100},
         now=100,
     )
-    assert row["error"] == "unsupported_telemetry_contract" and row["partial"]
+    assert row["error"] == "unsupported_telemetry_contract"
+    assert row["partial"]
     assert not row["sensor_quality"]["sensors"]
 
 
@@ -156,7 +172,9 @@ def test_canonical_sample_requires_explicit_unit_even_with_legacy_fallback():
     raw["sensor_quality"]["sensors"]["battery"].pop("unit")
     raw["battery_unit"] = "ratio"
     row = normalize_xgo_observation("motion.sensor.raw", raw, now=100)["sensor_quality"]["sensors"]["battery"]
-    assert row["value"] is None and not row["ready"] and row["error"] == "measurement_unit_unknown"
+    assert row["value"] is None
+    assert not row["ready"]
+    assert row["error"] == "measurement_unit_unknown"
 
 
 def test_idle_vision_cannot_mark_battery_observation_transport_stale(monkeypatch):
@@ -167,7 +185,10 @@ def test_idle_vision_cannot_mark_battery_observation_transport_stale(monkeypatch
     now = time.time()
     devices.observe_xgo("devices.xgo", {"battery_pct": 1, "observed_at": now})
     body = state_api.state().get_json()
-    assert body["vision"]["state"]["stale"] and body["vision"]["state"]["error"] == "vision_not_started"
-    assert not body.get("stale") and not body.get("offline") and not body.get("error")
+    assert body["vision"]["state"]["stale"]
+    assert body["vision"]["state"]["error"] == "vision_not_started"
+    assert not body.get("stale")
+    assert not body.get("offline")
+    assert not body.get("error")
     assert body["devices"]["xgo"]["observation"]["sensor_quality"]["sensors"]["battery"]["ready"]
     assert body["partial"]

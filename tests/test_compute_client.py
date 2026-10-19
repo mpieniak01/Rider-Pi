@@ -122,7 +122,8 @@ def test_voice_asr_submit_allows_bounded_preparation_without_renewing_ttl():
     ) as client:
         job = submit(client, task='audio.transcribe')
         posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
-        assert len(posted) == 1 and posted[0][4] == 15.0
+        assert len(posted) == 1
+        assert posted[0][4] == 15.0
         assert json.loads(posted[0][2]['X-Rider-Job'])['ttl_ms'] == 28000
         assert client._jobs[job].deadline == 1030.0
         assert client.result(job)['state'] == 'succeeded'
@@ -146,7 +147,8 @@ def test_voice_asr_preparation_cannot_exceed_remaining_ttl_or_retry():
         with pytest.raises(ComputeError, match='compute_transport_unavailable'):
             submit(client, task='audio.transcribe', ttl_ms=5000)
         posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
-        assert len(posted) == 1 and posted[0][4] == 3.0
+        assert len(posted) == 1
+        assert posted[0][4] == 3.0
         assert json.loads(posted[0][2]['X-Rider-Job'])['ttl_ms'] == 3000
         assert clock() == 1005.0
         assert len([call for call in transport.calls if call[0] == 'DELETE']) == 1
@@ -173,7 +175,8 @@ def test_other_compute_submissions_keep_the_short_timeout(client_id, task):
         with pytest.raises(ComputeError, match='compute_transport_unavailable'):
             submit(client, task=task)
         posted = [call for call in transport.calls if call[:2] == ('POST', '/jobs')]
-        assert len(posted) == 1 and posted[0][4] == 2.0
+        assert len(posted) == 1
+        assert posted[0][4] == 2.0
 
 
 @pytest.fixture
@@ -223,7 +226,8 @@ def test_constructor_is_idle_and_auth_header_is_private(client_fixture):
     assert 'test-token' not in repr(client)
     assert client.identity['session_id'] == 'session1'
     assert client.identity['client_id'] == 'vision'
-    assert 'token' not in client.identity and 'url' not in client.identity
+    assert 'token' not in client.identity
+    assert 'url' not in client.identity
 
 
 def test_binary_payload_preserves_source_identity(client_fixture):
@@ -442,7 +446,8 @@ def test_http_replaces_server_closed_idle_connection_before_post(monkeypatch):
         assert transport.request('POST', '/sessions', {}, b'{}', 1)[0] == 200
         assert transport.connection is not previous
         expected = [('GET', '/api/v1/rider/compute/capabilities'), ('POST', '/api/v1/rider/compute/sessions')]
-        assert attempts == expected and received == expected
+        assert attempts == expected
+        assert received == expected
     finally:
         transport.close()
         server.shutdown()
@@ -486,10 +491,12 @@ def test_http_short_polling_reuses_connection_and_idle_starts_after_response(mon
         transport.request('GET', '/capabilities', {}, b'', 2)
         clock.sleep(1.5)
         transport.request('POST', '/sessions', {}, b'{}', 2)
-        assert len(connections) == 1 and not connections[0].closed
+        assert len(connections) == 1
+        assert not connections[0].closed
         clock.sleep(2.0)
         transport.request('GET', '/capabilities', {}, b'', 2)
-        assert len(connections) == 2 and connections[0].closed
+        assert len(connections) == 2
+        assert connections[0].closed
     finally:
         transport.close()
 
@@ -532,7 +539,8 @@ def test_error_codes_preserve_saturation_without_exposing_body(client_fixture):
     )
     with pytest.raises(ComputeError) as raised:
         client.capabilities()
-    assert raised.value.status == 429 and raised.value.code == 'compute_saturated'
+    assert raised.value.status == 429
+    assert raised.value.code == 'compute_saturated'
     assert 'private' not in str(raised.value)
 
 
@@ -549,36 +557,41 @@ def test_conversation_task_is_only_for_voice_client(client_fixture):
 @pytest.mark.parametrize('language', [{}, [], ['pl'], None, True, 1, 'fr'])
 def test_invalid_transcription_language_is_typed_400_before_transport(client_fixture, language):
     client, transport, _ = client_fixture
+    audio = wav()
     with pytest.raises(ComputeError, match='invalid_compute_params') as raised:
         client.submit(
             'audio.transcribe',
-            wav(),
+            audio,
             'audio/wav',
             {'captured_at': 999, 'sequence': 1, 'input_id': 'sample', 'stream_id': 'voice'},
             params={'language': language},
         )
-    assert raised.value.status == 400 and not transport.calls
+    assert raised.value.status == 400
+    assert not transport.calls
 
 
 @pytest.mark.parametrize('params', [[], 'pl', True, 3])
 def test_non_object_params_is_typed_400_before_transport(client_fixture, params):
     client, transport, _ = client_fixture
+    audio = wav()
     with pytest.raises(ComputeError, match='invalid_compute_params') as raised:
         client.submit(
             'audio.transcribe',
-            wav(),
+            audio,
             'audio/wav',
             {'captured_at': 999, 'sequence': 1, 'input_id': 'sample', 'stream_id': 'voice'},
             params=params,
         )
-    assert raised.value.status == 400 and not transport.calls
+    assert raised.value.status == 400
+    assert not transport.calls
 
 
 @pytest.mark.parametrize('url', ['http://venom-host:8000', 'http://10.0.0.1:8000', 'http://[2001:db8::1]'])
 def test_private_client_rejects_nonloopback_http_before_sending_token(url):
     with pytest.raises(ComputeError, match='compute_https_or_loopback_required') as raised:
         ComputeClient(url, 'test', 'fixture-only-token', 'boot')
-    assert raised.value.status == 400 and 'fixture-only-token' not in str(raised.value)
+    assert raised.value.status == 400
+    assert 'fixture-only-token' not in str(raised.value)
 
 
 @pytest.mark.parametrize(
@@ -592,5 +605,6 @@ def test_private_client_rejects_nonloopback_http_before_sending_token(url):
 )
 def test_https_and_loopback_transport_are_idle_and_allowed(url, secure):
     transport = HTTPTransport(url)
-    assert transport.secure is secure and transport.connection is None
+    assert transport.secure is secure
+    assert transport.connection is None
     transport.close()

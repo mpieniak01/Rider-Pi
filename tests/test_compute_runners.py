@@ -111,7 +111,9 @@ def test_vision_uses_source_time_and_only_scene_topic():
     assert client.requests[0][3]['captured_at'] == 999
     assert client.requests[0][3]['input_id'] == 'camera-12'
     assert [topic for topic, _ in publisher.messages] == ['vision.scene']
-    assert source.closed and client.closed and publisher.closed
+    assert source.closed
+    assert client.closed
+    assert publisher.closed
 
 
 @pytest.mark.parametrize('timestamp', [None, True, float('nan'), 0, 1001])
@@ -140,7 +142,8 @@ def test_vision_off_does_not_connect_or_read_source():
     runner, client, source, _, _ = vision_runner([])
     runner.stop()
     assert runner.run(once=True) == 0
-    assert not client.requests and not source.closed
+    assert not client.requests
+    assert not source.closed
 
 
 def test_vision_duplicate_frame_not_resubmitted():
@@ -233,7 +236,8 @@ def test_voice_full_remote_chain_no_robot_command_and_shared_capture_time():
         assert playback[0][1]['stop_event'] is runner.stop_event
     finally:
         runner.close()
-    assert client.closed and publisher.closed
+    assert client.closed
+    assert publisher.closed
 
 
 def test_transcription_silence_is_healthy_and_no_fallback_or_reply():
@@ -241,7 +245,8 @@ def test_transcription_silence_is_healthy_and_no_fallback_or_reply():
     try:
         runner._start({'audio.transcribe', 'text.respond', 'audio.synthesize'})
         runner.process(wav_bytes(b'\0\0' * 320, 16000), 999)
-        assert len(client.requests) == 1 and not playback
+        assert len(client.requests) == 1
+        assert not playback
         assert any(status.get('silence') is True for status in statuses)
     finally:
         runner.close()
@@ -253,9 +258,12 @@ def test_selection_change_between_stages_prevents_text_and_playback():
     client.result_hook = lambda _: selected.update(revision=2)
     try:
         runner._start({'audio.transcribe', 'text.respond', 'audio.synthesize'})
+        audio = wav_bytes(b'\0\0' * 320, 16000)
         with pytest.raises(ComputeError, match='compute_selection_changed'):
-            runner.process(wav_bytes(b'\0\0' * 320, 16000), 999)
-        assert len(client.requests) == 1 and not playback and not publisher.messages
+            runner.process(audio, 999)
+        assert len(client.requests) == 1
+        assert not playback
+        assert not publisher.messages
     finally:
         runner.close()
 
@@ -273,7 +281,9 @@ def test_utterance_capture_closes_before_inference_and_retains_read_boundary_tim
 
     client.submit = submit
     assert runner.run(once=True) == 0
-    assert capture.closed and capture.entered and playback
+    assert capture.closed
+    assert capture.entered
+    assert playback
     assert client.requests[0][3]['captured_at'] == pytest.approx(999.96)
 
 
@@ -281,7 +291,9 @@ def test_idle_silence_does_not_submit_inference():
     capture = Capture([b'\0\0' * 320] * 10)
     runner, client, _, _, playback = voice_runner(capture=capture)
     assert runner.run(once=True) == 0
-    assert capture.closed and not client.requests and not playback
+    assert capture.closed
+    assert not client.requests
+    assert not playback
 
 
 def test_voice_model_unavailable_does_not_start_capture():
@@ -289,7 +301,8 @@ def test_voice_model_unavailable_does_not_start_capture():
     runner, client, _, _, _ = voice_runner(capture=capture)
     client.tasks['audio.transcribe']['available'] = False
     assert runner.run(once=True) == 2
-    assert not capture.entered and client.closed
+    assert not capture.entered
+    assert client.closed
 
 
 def test_stop_closes_active_capture():
@@ -334,7 +347,8 @@ def test_playback_stop_cancels_existing_player_handle(monkeypatch):
     monkeypatch.setattr(module, 'start_stream', lambda *a, **k: stream)
     logger = SimpleNamespace(event=lambda *a, **k: None)
     assert module.play_bytes(b'audio', 'wav', module.PlaybackConfig(), logger, stop_event=stop) is False
-    assert terminated.is_set() and stream.closed
+    assert terminated.is_set()
+    assert stream.closed
 
 
 def test_already_stopped_playback_does_not_open_player(monkeypatch):
@@ -452,7 +466,8 @@ def test_frame_source_uses_actual_capture_time_without_receipt_time(monkeypatch)
     monkeypatch.setattr(frame_stream, 'FrameStreamClient', lambda *a, **k: stream)
     source = FrameSource()
     frame = source.recv(1)
-    assert frame['captured_at'] == 990 and frame['timestamp_source'] == 'capture'
+    assert frame['captured_at'] == 990
+    assert frame['timestamp_source'] == 'capture'
     stream.metadata = {'ts': 1000, 'id': 5}
     assert source.recv(1) is None
     source.close()
@@ -492,7 +507,8 @@ def test_conversation_task_requires_selected_allowlist_and_actual_capability(ena
         assert runner.response_task() == expected
         runner.process(wav_bytes(b'\0\0' * 320, 16000), 999)
         assert client.requests[1][0] == expected
-        assert client.requests[-1][0] == 'audio.synthesize' and playback
+        assert client.requests[-1][0] == 'audio.synthesize'
+        assert playback
     finally:
         runner.close()
 
@@ -563,5 +579,6 @@ def test_goal_signal_marks_stop_then_finally_closes_outside_http_lock(monkeypatc
     monkeypatch.setattr(cli.signal, 'getsignal', lambda signum: previous[signum])
     monkeypatch.setattr(cli.signal, 'signal', register)
     assert cli.run_goal(domain, selection=selection()) == 17
-    assert events == ['finally-close'] and publisher.closed
+    assert events == ['finally-close']
+    assert publisher.closed
     assert restored == [cli.signal.SIGINT, cli.signal.SIGTERM]

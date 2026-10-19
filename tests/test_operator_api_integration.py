@@ -57,9 +57,12 @@ def test_state_and_navigation_status_preserve_producer_time_and_identity(client,
     assert state["navigation"]["pose"]["observed_at"] == observed
     assert state["navigation"]["pose"]["stale"] is True
     status = client.get("/api/navigator/status").get_json()
-    assert status["request_id"] == "fixture-request" and status["generation"] == "fixture-generation"
-    assert status["observed_at"] == observed and status["stale"] is True
-    assert status["navigation_ready"] is False and status["data_error"] == "uncalibrated"
+    assert status["request_id"] == "fixture-request"
+    assert status["generation"] == "fixture-generation"
+    assert status["observed_at"] == observed
+    assert status["stale"] is True
+    assert status["navigation_ready"] is False
+    assert status["data_error"] == "uncalibrated"
     assert status["navigation"]["pose"]["x"] == 0
 
 
@@ -69,11 +72,14 @@ def test_legacy_sensor_subtopics_preserve_zero_null_and_original_time(monkeypatc
     monkeypatch.setattr(compat, "LAST_XGO", cache)
     observed = time.time() - 20
     assert devices.observe_xgo(topic, {"value": 0, "observed_at": observed})
-    assert cache["roll"] == 0 and cache["ts"] == observed
+    assert cache["roll"] == 0
+    assert cache["ts"] == observed
     assert devices.observe_xgo(topic, {"value": None, "observed_at": observed})
     assert cache["roll"] is None
     assert devices.observe_xgo(topic, 0)
-    assert cache["roll"] == 0 and cache["observed_at"] is None and cache["stale"] is True
+    assert cache["roll"] == 0
+    assert cache["observed_at"] is None
+    assert cache["stale"] is True
 
 
 def test_missing_or_invalid_time_does_not_confirm_old_navigation(monkeypatch):
@@ -91,7 +97,9 @@ def test_state_sensor_projection_does_not_hide_explicit_unknown(client, flags):
         "devices.xgo", {"roll": 0, "battery_pct": 0, "observed_at": observed, "source": "fixture", **flags}
     )
     row = client.get("/state").get_json()["devices"]["xgo"]
-    assert row["roll"] == 0 and row["observed_at"] == observed and row["source"] == "fixture"
+    assert row["roll"] == 0
+    assert row["observed_at"] == observed
+    assert row["source"] == "fixture"
     assert row["stale"] is True
     assert row["battery_pct"] == 0
 
@@ -115,9 +123,13 @@ def test_real_compat_publisher_accepts_navigation_keyword_without_restamping(cli
     monkeypatch.setattr(compat, "_get_bus_pub", lambda: Publisher())
     monkeypatch.setattr(navigator_api, "authorize_request", lambda body: (dict(body), {"state": "ARMED"}))
     response = client.post("/api/navigator/start", json=envelope)
-    assert response.status_code == 202 and response.get_json()["confirmed"] is False
-    assert len(calls) == 1 and calls[0][0] == "navigator.control" and calls[0][2] is False
-    assert calls[0][1]["ts"] == observed and calls[0][1]["request_id"] == "fixture"
+    assert response.status_code == 202
+    assert response.get_json()["confirmed"] is False
+    assert len(calls) == 1
+    assert calls[0][0] == "navigator.control"
+    assert calls[0][2] is False
+    assert calls[0][1]["ts"] == observed
+    assert calls[0][1]["request_id"] == "fixture"
     with pytest.raises(ValueError, match="timestamps"):
         compat.bus_pub("fixture", {}, add_ts=True)
 
@@ -151,9 +163,11 @@ def test_passive_plan_is_bounded_readonly_and_does_not_enable_navigation(client,
     )
     monkeypatch.setattr(navigator_api, "read_status", lambda: {"state": "DISARMED"})
     status = client.get("/api/navigator/status").get_json()
-    assert status["planning_request_available"] is False and status["navigation_actuation_available"] is False
+    assert status["planning_request_available"] is False
+    assert status["navigation_actuation_available"] is False
     assert status["planning_unavailable_reason"] == "passive_plan_request_unavailable"
-    assert status["goal_pose"] == [1, 0] and status["plan_observed_at"] == observed
+    assert status["goal_pose"] == [1, 0]
+    assert status["plan_observed_at"] == observed
     assert status["navigation"]["path"]["observed_at"] == observed
     assert status["navigation"]["path"]["physical_completion"] == "unverified"
     assert status["navigation_ready"] is False
