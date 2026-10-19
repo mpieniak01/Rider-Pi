@@ -201,6 +201,46 @@ class Navigator(MotionProducer, PathControl, NavigationQuality, StatePublisher):
         # Note: In a production system, this would be managed by a state machine
         # with proper timing. For now, we rely on the motion system's impulse duration.
 
+    def _configure_navigation(self, cmd):
+        from apps.safety.state import read_status
+
+        config = cmd.get("config", {})
+        if read_status().get("state") != "DISARMED" or not isinstance(config, dict):
+            return
+        try:
+            speeds = {key: float(config[key]) for key in ("fwd_speed", "turn_speed") if key in config}
+            if any(isinstance(config[k], bool) or not math.isfinite(v) or not 0 <= v <= 1 for k, v in speeds.items()):
+                return
+            if "strategy" in config and config["strategy"] not in {"STOP", "AVOID"}:
+                return
+        except (ValueError, TypeError, OverflowError):
+            return
+        self._apply_configuration(config)
+
+    def _apply_configuration(self, config):
+        changed = False
+
+        if "strategy" in config:
+            try:
+                strategy = Strategy[config["strategy"].upper()]
+                self.set_strategy(strategy)
+                changed = True
+            except KeyError:
+                LOG.warning("Invalid strategy in config: %s", config["strategy"])
+
+        if "fwd_speed" in config:
+            self.fwd_speed = float(config["fwd_speed"])
+            LOG.info("Forward speed set to: %s", self.fwd_speed)
+            changed = True
+
+        if "turn_speed" in config:
+            self.turn_speed = float(config["turn_speed"])
+            LOG.info("Turn speed set to: %s", self.turn_speed)
+            changed = True
+
+        if changed:
+            self.state_changed = True
+
     def _handle_control_command(self, cmd: dict):
         """Handle control commands from API"""
         if not isinstance(cmd, dict) or not isinstance(cmd.get("action"), str):
@@ -224,43 +264,7 @@ class Navigator(MotionProducer, PathControl, NavigationQuality, StatePublisher):
             self.stop()
 
         elif action == "config":
-            from apps.safety.state import read_status
-
-            config = cmd.get("config", {})
-            if read_status().get("state") != "DISARMED" or not isinstance(config, dict):
-                return
-            try:
-                speeds = {key: float(config[key]) for key in ("fwd_speed", "turn_speed") if key in config}
-                if any(
-                    isinstance(config[k], bool) or not math.isfinite(v) or not 0 <= v <= 1 for k, v in speeds.items()
-                ):
-                    return
-                if "strategy" in config and config["strategy"] not in {"STOP", "AVOID"}:
-                    return
-            except (ValueError, TypeError, OverflowError):
-                return
-            changed = False
-
-            if "strategy" in config:
-                try:
-                    strategy = Strategy[config["strategy"].upper()]
-                    self.set_strategy(strategy)
-                    changed = True
-                except KeyError:
-                    LOG.warning("Invalid strategy in config: %s", config["strategy"])
-
-            if "fwd_speed" in config:
-                self.fwd_speed = float(config["fwd_speed"])
-                LOG.info("Forward speed set to: %s", self.fwd_speed)
-                changed = True
-
-            if "turn_speed" in config:
-                self.turn_speed = float(config["turn_speed"])
-                LOG.info("Turn speed set to: %s", self.turn_speed)
-                changed = True
-
-            if changed:
-                self.state_changed = True
+            self._configure_navigation(cmd)
 
         else:
             LOG.warning("Unknown control action: %s", action)
@@ -301,6 +305,44 @@ class Navigator(MotionProducer, PathControl, NavigationQuality, StatePublisher):
             else:
                 LOG.info("Navigator AI Mode: local - Using local obstacle detection")
 
+    def _receive_obstacles(self):
+        # Receive obstacle events - check both local and enhanced sources
+        if self.use_pc_enhanced and self.sub_obstacle_enhanced:
+            # In pc_offload mode, prioritize enhanced obstacle data
+            topic, payload = self.sub_obstacle_enhanced.recv(timeout_ms=10)
+            if topic and payload and topic == TOPIC_VISION_OBSTACLE_ENHANCED:
+                self._handle_obstacle_sample(payload)
+        else:
+            topic, payload = self.sub_obstacle.recv(timeout_ms=10)
+            if topic and payload and topic == TOPIC_VISION_OBSTACLE:
+                self._handle_obstacle_sample(payload)
+
+    def _receive_navigation_events(self):
+        # Receive control commands from API
+        topic, payload = self.sub_control.recv(timeout_ms=10)
+        if topic and payload and topic == TOPIC_NAVIGATOR_CONTROL:
+            self._handle_control_command(payload)
+
+        # Receive AI mode change events
+        topic, payload = self.sub_ai_mode.recv(timeout_ms=10)
+        if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+            self._handle_ai_mode_change(payload)
+
+        # Receive return to home commands
+        topic, payload = self.sub_return_home.recv(timeout_ms=10)
+        if topic and payload and topic == TOPIC_NAVIGATOR_RETURN_HOME_START:
+            self._handle_return_home_start(payload)
+
+        # Receive map data from mapper
+        topic, payload = self.sub_map_data.recv(timeout_ms=10)
+        if topic and payload and topic == TOPIC_MAPPER_MAP_DATA:
+            self._handle_map_data(payload)
+
+        # Receive robot pose updates
+        topic, payload = self.sub_robot_pose.recv(timeout_ms=10)
+        if topic and payload and topic == TOPIC_ROBOT_POSE:
+            self._handle_robot_pose(payload)
+
     def run(self):
         """Main navigation loop"""
         LOG.info("Navigator main loop started")
@@ -318,41 +360,8 @@ class Navigator(MotionProducer, PathControl, NavigationQuality, StatePublisher):
         try:
             while True:
                 self._consume_task_intent()
-                # Receive obstacle events - check both local and enhanced sources
-                if self.use_pc_enhanced and self.sub_obstacle_enhanced:
-                    # In pc_offload mode, prioritize enhanced obstacle data
-                    topic, payload = self.sub_obstacle_enhanced.recv(timeout_ms=10)
-                    if topic and payload and topic == TOPIC_VISION_OBSTACLE_ENHANCED:
-                        self._handle_obstacle_sample(payload)
-                else:
-                    topic, payload = self.sub_obstacle.recv(timeout_ms=10)
-                    if topic and payload and topic == TOPIC_VISION_OBSTACLE:
-                        self._handle_obstacle_sample(payload)
-
-                # Receive control commands from API
-                topic, payload = self.sub_control.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_NAVIGATOR_CONTROL:
-                    self._handle_control_command(payload)
-
-                # Receive AI mode change events
-                topic, payload = self.sub_ai_mode.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
-                    self._handle_ai_mode_change(payload)
-
-                # Receive return to home commands
-                topic, payload = self.sub_return_home.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_NAVIGATOR_RETURN_HOME_START:
-                    self._handle_return_home_start(payload)
-
-                # Receive map data from mapper
-                topic, payload = self.sub_map_data.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_MAPPER_MAP_DATA:
-                    self._handle_map_data(payload)
-
-                # Receive robot pose updates
-                topic, payload = self.sub_robot_pose.recv(timeout_ms=10)
-                if topic and payload and topic == TOPIC_ROBOT_POSE:
-                    self._handle_robot_pose(payload)
+                self._receive_obstacles()
+                self._receive_navigation_events()
 
                 self._quality_tick()
 

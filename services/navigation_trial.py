@@ -6,7 +6,6 @@ and every service change uses the shared FeatureManager transaction.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -15,7 +14,7 @@ from pathlib import Path
 
 from apps.motion import manual_settings
 from apps.safety.state import atomic_write
-from common.service_catalog import CAMERA_CAPTURE_UNITS, task_units
+from common.service_catalog import CAMERA_CAPTURE_UNITS as CAMERA_CAPTURE_UNITS, task_units as task_units
 from services import navigation_config
 from services.control_commands import submit_control
 from services.safety_contract import read_status
@@ -43,9 +42,7 @@ class TrialError(ValueError):
         self.code, self.status, self.details = code, status, details
 
 
-def validate_request(body, now):
-    if not isinstance(body, dict) or set(body) - {"panel_id", "operator_control_version"} != FIELDS:
-        raise TrialError("navigation_trial_invalid", 400)
+def _validate_operator_control(body):
     if ("panel_id" in body or "operator_control_version" in body) and (
         body.get("operator_control_version") != 1
         or type(body.get("operator_control_version")) is not int
@@ -54,6 +51,12 @@ def validate_request(body, now):
         or len(body["panel_id"]) > 128
     ):
         raise TrialError("operator_control_invalid", 400)
+
+
+def validate_request(body, now):
+    if not isinstance(body, dict) or set(body) - {"panel_id", "operator_control_version"} != FIELDS:
+        raise TrialError("navigation_trial_invalid", 400)
+    _validate_operator_control(body)
     for key in ("request_id", "generation"):
         if not isinstance(body[key], str) or not 1 <= len(body[key]) <= 128:
             raise TrialError("navigation_trial_invalid", 400)
@@ -105,6 +108,15 @@ def preparation_status(path, *, now=None):
         return None
 
 
+def _sample_elapsed(sampled, sampled_now, fresh):
+    elapsed_ms = None
+    if fresh and type(sampled) in (int, float) and math.isfinite(sampled):
+        delta = sampled_now - sampled
+        if math.isfinite(delta) and delta >= 0:
+            elapsed_ms = delta * 1000
+    return elapsed_ms
+
+
 def public_status(row, *, sampled_now=None, fresh=True):
     """Convert Pi-local samples to durations; never export a monotonic epoch."""
     result = dict(row)
@@ -119,12 +131,8 @@ def public_status(row, *, sampled_now=None, fresh=True):
         result.update(stop_reason="trial_completed", motion_failure=None)
     sampled = result.pop("sampled_monotonic", None)
     result.pop("run_started_monotonic", None)
-    elapsed_ms = None
     sampled_now = time.monotonic() if sampled_now is None else sampled_now
-    if fresh and type(sampled) in (int, float) and math.isfinite(sampled):
-        delta = sampled_now - sampled
-        if math.isfinite(delta) and delta >= 0:
-            elapsed_ms = delta * 1000
+    elapsed_ms = _sample_elapsed(sampled, sampled_now, fresh)
     remaining = result.get("permit_remaining_ms")
     result["permit_remaining_ms"] = (
         max(0.0, round(remaining - elapsed_ms, 2))
@@ -199,363 +207,12 @@ class NavigationTrial:
             raise TrialError("navigation_trial_journal_unavailable", 503) from exc
 
     def start(self, payload):
+        from services.navigation_trial_preparation import TrialPreparation
+
         body = validate_request(payload, self.wall())
         accepted_at = self.clock()
         arrival = self.safety()
-        context = {
-            "generation": body["generation"],
-            "owner": None,
-            "state": None,
-            "revision": body["config_revision"],
-            "settings_revision": body["settings_revision"],
-            "deadline": accepted_at + PREPARATION_BUDGET_S,
-            "armed": False,
-            "sequence": None,
-            "phase": "acquiring_lock",
-            "producer_not_before": None,
-            "started": accepted_at,
-            "phase_started": accepted_at,
-            "phase_timings_ms": {},
-        }
-        local_id = "trial-" + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
-        start_id = local_id + "-start"
-
-        progress_path = self.manager._state_path.with_name("navigation_trial_prepare.json")
-
-        def progress(phase, state="preparing", error=None):
-            now = self.clock()
-            previous = context["phase"]
-            elapsed = (now - context["phase_started"]) * 1000
-            timings = dict(context["phase_timings_ms"])
-            timings[previous] = round(timings.get(previous, 0.0) + elapsed, 2)
-            context.update(phase=phase, phase_started=now, phase_timings_ms=timings)
-            row = {
-                "request_id": body["request_id"],
-                "phase": phase,
-                "state": state,
-                "elapsed_ms": round((now - context["started"]) * 1000, 2),
-                "phase_timings_ms": timings,
-                "observed_at": self.wall(),
-                "error": error,
-            }
-            try:
-                atomic_write(progress_path, row)
-            except OSError:
-                # Progress is diagnostic; admission and motion journals are separate.
-                pass
-            return row
-
-        def matching_run():
-            if context["producer_not_before"] is None:
-                return None
-            row = self.status()
-            observed = row.get("observed_at")
-            if (
-                row.get("mode") == "drive"
-                and row.get("config_revision") == context["revision"]
-                and row.get("generation") == context.get("arm_generation")
-                and row.get("operator_request_id") == start_id
-                and isinstance(row.get("run_id"), str)
-                and row["run_id"]
-                and type(observed) in (int, float)
-                and math.isfinite(observed)
-                and context["producer_not_before"] <= observed <= self.wall() + 0.1
-            ):
-                return row
-            return None
-
-        def started_in_budget(row):
-            if not row or row.get("running") is not True or row.get("latched") is True:
-                return False
-            birth = row.get("run_started_monotonic")
-            sampled = row.get("sampled_monotonic")
-            return (
-                type(birth) in (int, float)
-                and math.isfinite(birth)
-                and context["started"] <= birth < context["deadline"]
-                and type(sampled) in (int, float)
-                and math.isfinite(sampled)
-                and 0 <= self.clock() - sampled <= 1.0
-            )
-
-        def guard():
-            if self.clock() >= context["deadline"] and not (
-                context["phase"] in {"start_navigation", "first_status"} and started_in_budget(matching_run())
-            ):
-                raise TrialError(
-                    "navigation_trial_prepare_timeout",
-                    504,
-                    details={"preparation": progress(context["phase"], "failed", "navigation_trial_prepare_timeout")},
-                )
-            safety = self.safety()
-            if (
-                safety.get("generation") != context["generation"]
-                or safety.get("owner") != context["owner"]
-                or safety.get("state") != context["state"]
-                or safety.get("stale") is True
-                or safety.get("ready") is not True
-                or context["sequence"] is not None
-                and safety.get("last_seq") != context["sequence"]
-            ):
-                raise TrialError("navigation_trial_cancelled")
-            if (
-                self.settings().get("revision") != context["settings_revision"]
-                or (safety.get("manual_settings") or {}).get("revision") != context["settings_revision"]
-            ):
-                raise TrialError("manual_settings_stale")
-            if self.policy().get("revision") != context["revision"]:
-                raise TrialError("navigation_configuration_conflict")
-            return safety
-
-        def stop_old(owner):
-            safety = self.safety()
-            if safety.get("generation") != context["generation"]:
-                # Only a fresh executor generation confirms revocation. Missing
-                # telemetry cannot be mistaken for a successful scoped STOP.
-                if (
-                    isinstance(safety.get("generation"), str)
-                    and safety["generation"]
-                    and safety.get("state") in {"ARMED", "DISARMED", "ESTOP"}
-                    and safety.get("stale") is not True
-                ):
-                    return {"ok": True, "confirmed": True, "superseded": True, "permission_revoked": True}
-                return {"ok": False, "confirmed": False, "error": "navigation_trial_authority_unknown"}
-            result, code = self.submit(
-                {
-                    "action": "stop",
-                    "source": owner or "manual",
-                    "request_id": local_id + "-stop",
-                    "expected_generation": context["generation"],
-                }
-            )
-            if code != 200 or not result.get("ok") or not result.get("confirmed"):
-                return {**result, "ok": False}
-            # Only this STOP's matching ACK may advance our expected generation.
-            ack = result.get("ack") or {}
-            next_generation = ack.get("generation")
-            current = self.safety()
-            if (
-                not isinstance(next_generation, str)
-                or not next_generation
-                or current.get("generation") != next_generation
-                or current.get("state") != "DISARMED"
-                or current.get("owner") is not None
-            ):
-                raise TrialError("navigation_trial_cancelled")
-            context.update(generation=next_generation, owner=None, state="DISARMED", sequence=current.get("last_seq"))
-            return result
-
-        with self.manager.operation(
-            guard=guard,
-            remaining=lambda: max(0.0, context["deadline"] - self.clock()),
-            stop=stop_old,
-            observation_units=tuple(
-                set(CAMERA_CAPTURE_UNITS).union(
-                    *(
-                        task_units(self.manager.registry[name], {})
-                        for name in ("s2_camera_preview", "s14_venom_navigation", "s15_venom_perception")
-                    )
-                )
-            ),
-        ):
-            try:
-                # Accepted at arrival. Serialization/restore must not age the
-                # original click out of its ingress TTL. The original generation,
-                # settings and bounded preparation are rechecked below.
-                progress("admission")
-                safety = self.safety()
-                if (
-                    safety.get("generation") != body["generation"]
-                    or any(safety.get(key) != arrival.get(key) for key in ("generation", "owner", "state", "last_seq"))
-                    or arrival.get("ready") is not True
-                    or arrival.get("stale") is True
-                    or safety.get("ready") is not True
-                    or safety.get("stale") is True
-                    or safety.get("state") not in {"ARMED", "DISARMED"}
-                ):
-                    raise TrialError("navigation_trial_authority_changed")
-                if (
-                    safety.get("remote_decision_deadline_supported") is not True
-                    or safety.get("remote_decision_feedback_supported") is not True
-                    or safety.get("scoped_stop_generation_supported") is not True
-                ):
-                    raise TrialError("navigation_executor_update_required")
-                context.update(owner=safety.get("owner"), state=safety["state"], sequence=safety.get("last_seq"))
-                guard()
-                policy = self.policy()
-                if not policy.get("verified") or not policy.get("calibration_id") or not policy.get("model_sha256"):
-                    raise TrialError("navigation_validation_required")
-                self._reserve(body)
-                # Reserve the passive consumer before releasing the old producer.
-                # Otherwise S15's last-owner cleanup stops the shared camera/feed.
-                progress("camera_reservation")
-                guard()
-                result = self.manager.set_feature("s2_camera_preview", True)
-                guard()
-                self._accepted(result)
-                progress("stop_old_producer")
-                for name in ("s14_venom_navigation", "s15_venom_perception"):
-                    guard()
-                    result = self.manager.set_feature(name, False)
-                    guard()
-                    self._accepted(result)
-                progress("configure")
-                guard()
-                config = self.configure({"revision": context["revision"], "values": {"mode": "drive"}})
-                context["revision"] = config["revision"]
-                from apps.compute.stream_prepare import prepare_stream
-
-                progress("stream_prepare")
-                guard()
-                prepare_stream(
-                    timeout_s=min(2.0, max(0.01, context["deadline"] - self.clock())),
-                    max_age_ms=config.get("decision_budget_ms", 300),
-                )
-                guard()
-                progress("authority_handoff")
-                safety = guard()
-                if safety["state"] == "ARMED":
-                    self._accepted(stop_old(safety.get("owner")))
-                safety = guard()
-                progress("arm_ack")
-                # Service shutdown/camera preparation need no driving permission.
-                # Once ARM is requested, keep the shorter final-start bound.
-                context["deadline"] = min(context["deadline"], self.clock() + ARMED_START_BUDGET_S)
-                context["armed"] = True
-                context["arm_generation"] = context["generation"]
-                arm, code = self.submit(
-                    {
-                        "action": "arm",
-                        "source": "manual",
-                        "owner": "navigation",
-                        "request_id": local_id + "-arm",
-                        "generation": context["generation"],
-                        "seq": self._next_sequence(safety),
-                        "ts": self.wall(),
-                        "ttl_ms": 500,
-                        "operator_consent": True,
-                        "operator_plan": body["operator_plan"],
-                        "execution_context": "panel",
-                        "arming_mode": "timed",
-                        "lease_s": 10.0,
-                        **(
-                            {"panel_id": body["panel_id"], "operator_control_version": 1}
-                            if body.get("operator_control_version") == 1
-                            else {}
-                        ),
-                    }
-                )
-                if code != 200 or not arm.get("ok") or not arm.get("confirmed"):
-                    raise TrialError(arm.get("error") or "navigation_trial_arm_unconfirmed")
-                context.update(owner="navigation", state="ARMED", sequence=None)
-                safety = guard()
-                if safety.get("can_move") is not True:
-                    raise TrialError("operator_motion_permission_required")
-                started = self.wall()
-                context["producer_not_before"] = started
-                control = {
-                    "request_id": start_id,
-                    "settings_revision": context["settings_revision"],
-                    "source": "navigation",
-                    "generation": context["generation"],
-                    "seq": self._next_sequence(safety),
-                    "ts": self.wall(),
-                    "ttl_ms": 500,
-                    "operator_consent": True,
-                    "operator_plan": body["operator_plan"],
-                    "execution_context": "panel",
-                }
-                progress("start_navigation")
-                result = self.manager.set_feature("s14_venom_navigation", True, control=control)
-                actual = matching_run()
-                if actual and actual.get("running") is False:
-                    raise TrialError(
-                        "navigation_trial_stopped",
-                        details={"started": True, "status": public_status(actual, fresh=False)},
-                    )
-                guard()
-                self._accepted(result)
-                progress("first_status")
-                while True:
-                    authority = guard()
-                    row = self.status()
-                    if (
-                        row.get("mode") == "drive"
-                        and row.get("config_revision") == config["revision"]
-                        and row.get("generation") == context["generation"]
-                        and row.get("operator_request_id") == start_id
-                        and isinstance(row.get("run_id"), str)
-                        and row["run_id"]
-                        and type(row.get("observed_at")) in (int, float)
-                        and math.isfinite(row["observed_at"])
-                        and max(started, self.wall() - 1.0) <= row["observed_at"] <= self.wall() + 0.1
-                    ):
-                        if row.get("running") is not True:
-                            raise TrialError(
-                                "navigation_trial_stopped",
-                                details={"status": public_status(row, sampled_now=self.clock())},
-                            )
-                        preparation = progress("ready", "completed")
-                        return {
-                            "ok": True,
-                            "preparation": preparation,
-                            "request_id": body["request_id"],
-                            "config": config,
-                            "status": public_status(row, sampled_now=self.clock()),
-                            "authority": authority,
-                        }
-                    self.sleep(min(0.02, max(0.0, context["deadline"] - self.clock())))
-            except Exception as caught:
-                error = caught
-                # A producer may already have run and stopped while systemd/start
-                # bookkeeping was blocking. Its matching outcome is authoritative.
-                if context["producer_not_before"] is not None:
-                    try:
-                        actual = matching_run()
-                    except Exception:
-                        actual = None
-                    if actual and actual.get("running") is False:
-                        error = TrialError(
-                            "navigation_trial_stopped",
-                            details={"started": True, "status": public_status(actual, fresh=False)},
-                        )
-                # Keep the passive reservation on failure, without restoring a
-                # producer, ARM or drive after a newer operator STOP/takeover.
-                diagnostic = progress(
-                    context["phase"], "failed", getattr(error, "code", "navigation_trial_prepare_failed")
-                )
-                if context["armed"]:
-                    # Each cleanup attempt is independent: a broken service
-                    # backend must not skip cancellation of a queued ARM.
-                    try:
-                        self.manager.set_feature("s14_venom_navigation", False)
-                    except Exception:
-                        pass
-                    try:
-                        current = self.safety()
-                        if current.get("generation") == context.get("arm_generation") and current.get("owner") in {
-                            None,
-                            "navigation",
-                        }:
-                            # Invalidate a delayed ARM too, even if its ACK has
-                            # not arrived and the sampled executor is disarmed.
-                            stop_old("navigation")
-                    except Exception:
-                        pass
-                if isinstance(error, TrialError):
-                    error.details = {**(error.details or {}), "preparation": diagnostic}
-                    raise error from None
-                known = {
-                    "compute_stop_goals_first",
-                    "navigation_stop_goals_first",
-                    "navigation_configuration_conflict",
-                    "navigation_validation_required",
-                    "navigation_goal_state_unavailable",
-                }
-                if isinstance(error, ValueError) and str(error) in known:
-                    raise TrialError(str(error)) from error
-                # Library/backend exception text can contain private inputs.
-                raise TrialError("navigation_trial_prepare_failed", 503, details={"preparation": diagnostic}) from error
+        return TrialPreparation(self, body, arrival, accepted_at).run()
 
     @staticmethod
     def _accepted(result):

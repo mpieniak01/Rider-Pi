@@ -153,6 +153,26 @@ def process_event(topic: str, payload: dict, mappings: list, pub: BusPub):
             execute_action(pub, action)
 
 
+def _subscription_topics(mappings):
+    # Collect all topics to subscribe to
+    topics_to_subscribe = set()
+    for mapping in mappings:
+        trigger_topic = mapping.get("trigger", {}).get("topic", "")
+        if trigger_topic:
+            # For wildcard topics, subscribe to the prefix
+            if trigger_topic.endswith(".*"):
+                topics_to_subscribe.add(trigger_topic[:-2])
+            else:
+                topics_to_subscribe.add(trigger_topic)
+
+    if not topics_to_subscribe:
+        LOG.warning("No topics to subscribe to. Check configuration.")
+        # Still run but will be idle
+        topics_to_subscribe.add("events")  # Subscribe to base events topic
+
+    return topics_to_subscribe
+
+
 def main():
     """Main choreographer service loop."""
     # Load configuration
@@ -171,21 +191,7 @@ def main():
     mappings = config.get("mappings", [])
     LOG.info(f"Loaded {len(mappings)} choreography mapping(s)")
 
-    # Collect all topics to subscribe to
-    topics_to_subscribe = set()
-    for mapping in mappings:
-        trigger_topic = mapping.get("trigger", {}).get("topic", "")
-        if trigger_topic:
-            # For wildcard topics, subscribe to the prefix
-            if trigger_topic.endswith(".*"):
-                topics_to_subscribe.add(trigger_topic[:-2])
-            else:
-                topics_to_subscribe.add(trigger_topic)
-
-    if not topics_to_subscribe:
-        LOG.warning("No topics to subscribe to. Check configuration.")
-        # Still run but will be idle
-        topics_to_subscribe.add("events")  # Subscribe to base events topic
+    topics_to_subscribe = _subscription_topics(mappings)
 
     LOG.info(f"Subscribing to topics: {', '.join(sorted(topics_to_subscribe))}")
 

@@ -12,6 +12,17 @@ LOG = logging.getLogger("navigator")
 MAX_MAP_CELLS = 65536
 
 
+def _checked_cells(grid, width, height):
+    if not isinstance(grid, list) or len(grid) != height:
+        raise ValueError("map_grid_invalid")
+    for row in grid:
+        if not isinstance(row, list) or len(row) != width:
+            raise ValueError("map_grid_invalid")
+        if any(type(cell) is not int or cell not in (127, 0, 255) for cell in row):
+            raise ValueError("map_cell_invalid")
+    return grid
+
+
 def checked_grid(payload):
     """Bound CPU/memory and reject malformed/uncalibrated map geometry."""
     if not isinstance(payload, dict) or payload.get("planning_ready") is not True:
@@ -32,14 +43,7 @@ def checked_grid(payload):
     geometry = {key: payload.get(key) for key in ("resolution_m", "origin_x", "origin_y")}
     if not all(finite_number(value) for value in geometry.values()) or geometry["resolution_m"] <= 0:
         raise ValueError("map_geometry_invalid")
-    grid = payload.get("grid")
-    if not isinstance(grid, list) or len(grid) != height:
-        raise ValueError("map_grid_invalid")
-    for row in grid:
-        if not isinstance(row, list) or len(row) != width:
-            raise ValueError("map_grid_invalid")
-        if any(type(cell) is not int or cell not in (127, 0, 255) for cell in row):
-            raise ValueError("map_cell_invalid")
+    grid = _checked_cells(payload.get("grid"), width, height)
     return dict(geometry, grid=grid, width_cells=width, height_cells=height)
 
 
@@ -80,6 +84,16 @@ class PathControl:
         self.state_changed = True
         self._request_navigation_map(force=True)
 
+    def _return_path(self, payload, grid):
+        if self.state == NavigatorState.RETURNING_HOME:
+            if confirmed_home(payload) != self.goal_pose:
+                raise ValueError("return_home_changed")
+            path = pathfinding.find_path(grid, self.current_pose[:2], self.goal_pose, allow_unknown=False)
+            if not path:
+                raise ValueError("no_verified_path")
+            return path
+        return None
+
     def _handle_map_data(self, payload):
         if not (self.active or self.state == NavigatorState.RETURNING_HOME):
             return
@@ -102,12 +116,7 @@ class PathControl:
                 raise ValueError("map_pose_frame_mismatch")
             if confirmed_home(payload) != confirmed_home(self.pose_sample):
                 raise ValueError("map_home_mismatch")
-            if self.state == NavigatorState.RETURNING_HOME:
-                if confirmed_home(payload) != self.goal_pose:
-                    raise ValueError("return_home_changed")
-                path = pathfinding.find_path(grid, self.current_pose[:2], self.goal_pose, allow_unknown=False)
-                if not path:
-                    raise ValueError("no_verified_path")
+            path = self._return_path(payload, grid)
         except (ValueError, TypeError, OverflowError, IndexError) as exc:
             self._quality_failure(str(exc), stop=True)
             return
@@ -132,17 +141,21 @@ class PathControl:
         else:
             self._quality_tick()
 
+    def _invalid_pose(self, status):
+        self.pose_sample = None
+        self.current_pose = None
+        if self.current_path:
+            self._clear_plan()
+            self.state_changed = True
+        if self.state == NavigatorState.RETURNING_HOME:
+            self._quality_failure(status["error"], stop=True)
+        return
+
     def _handle_robot_pose(self, payload):
         previous = self.pose_sample.get("observed_at") if self.pose_sample else None
         status = pose_status(payload, max_age_s=POSE_MAX_AGE_S, now=self.wall_clock(), previous_ts=previous)
         if not status["ready"]:
-            self.pose_sample = None
-            self.current_pose = None
-            if self.current_path:
-                self._clear_plan()
-                self.state_changed = True
-            if self.state == NavigatorState.RETURNING_HOME:
-                self._quality_failure(status["error"], stop=True)
+            self._invalid_pose(status)
             return
         identity = frame_identity(payload)
         if self.current_path and (self.plan_frame != identity or confirmed_home(payload) != self.goal_pose):
