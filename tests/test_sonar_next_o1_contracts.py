@@ -145,7 +145,7 @@ def test_direct_push_keeps_force_scan_short_circuit(bound, forced, scan, expecte
         _auto_prefer_pil=lambda _image, _target, name, tag: (name, tag),
     )
 
-    def force(_image):
+    def force():
         calls.append("force")
         if forced:
             sink._push = binding

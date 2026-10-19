@@ -321,8 +321,13 @@ class OdometryEstimator:
         return True
 
     def update_motion_command(self, lx, az):
-        # Retained import/interface for legacy callers: requested values are not
-        # proof that SDK executed a write, and cannot update physical odometry.
+        """Reject legacy command-only odometry updates.
+
+        ``lx`` and ``az`` are intentionally unused public keyword parameters,
+        retained for callers of the former command-integrating API (including
+        tests/test_odometry.py). Requested axes are not proof of an executed
+        SDK write; only validated executor observations may update odometry.
+        """
         return False
 
     def _valid_output(self, payload, status):

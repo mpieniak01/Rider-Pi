@@ -157,7 +157,7 @@ class NavigationQuality:
         """Compatibility hook still requires the original observation time."""
         self._handle_obstacle_sample({"present": present, "confidence": confidence, "observed_at": observed_at})
 
-    def _motion_data_permitted(self, lx, az):
+    def _motion_data_permitted(self):
         # No point-map metadata flag may enable autonomous SDK writes in PR06.
         self._quality_failure(self.navigation_quality()["data_error"] or "navigation_traversal_unverified", stop=True)
         return False

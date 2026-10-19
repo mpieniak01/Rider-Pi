@@ -84,8 +84,32 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
     :param cfg: FaceConfig lub dict z parametrami geometrii
     :param model: obiekt stanu (FaceState lub podobny)
     :param guide: czy rysować overlay
-    :param quality: 'fast' lub 'aa2x'
+    :param quality: 'fast' (default) or opt-in 'aa2x' supersampling.
+
+    aa2x draws only the face overlay at twice each dimension, then downsamples
+    and composites it over the existing image. It uses four times the drawing
+    pixels plus a resize/composite; the default fast path stays unchanged.
+    Other legacy quality values retain the fast fallback.
     """
+    if quality == "aa2x":
+        _draw_face_antialiased(canvas, cfg, model, guide)
+        return
+    _draw_face_fast(canvas, cfg, model, guide)
+
+
+def _draw_face_antialiased(canvas, cfg, model, guide):
+    from PIL import Image, ImageDraw
+
+    image = canvas._image
+    width, height = image.size
+    overlay = Image.new("RGBA", (width * 2, height * 2))
+    _draw_face_fast(ImageDraw.Draw(overlay), cfg, model, guide, pixel_scale=2)
+    overlay = overlay.resize(image.size, Image.Resampling.LANCZOS)
+    composed = Image.alpha_composite(image.convert("RGBA"), overlay)
+    image.paste(composed.convert(image.mode))
+
+
+def _draw_face_fast(canvas, cfg, model, guide, *, pixel_scale=1):
     # Parametry geometryczne
     W, H = canvas.im.size
     cx, cy = W // 2, H // 2
@@ -107,7 +131,7 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
         canvas.ellipse(
             [(cx - rx, cy - ry), (cx + rx, cy + ry)],
             outline=(220, 235, 255),
-            width=2,
+            width=2 * pixel_scale,
         )
 
     # Oczy (białko)
@@ -142,7 +166,7 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
         x1, y1, x2, y2 = rect
         ex, ey = (x1 + x2) // 2, (y1 + y2) // 2
         pw = int(eye_w * 0.18)
-        ph = int(eye_h * 0.6 * blink_mul + 2)
+        ph = int(eye_h * 0.6 * blink_mul + 2 * pixel_scale)
         return (
             ex - pw // 2 + off_x,
             ey - ph // 2 + off_y,
@@ -192,7 +216,7 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
     brow_y = cy - int(S * _cfg(cfg, "brow_y_k", 0.21))
     brow_w = int(S * 0.19)
     brow_h = int(S * _cfg(cfg, "brow_h_k", 0.09))
-    stroke = max(6, int(S * 0.03))
+    stroke = max(6 * pixel_scale, int(S * 0.03))
     base_k = {
         "idle": 0.06,
         "wake": 0.10,
@@ -255,7 +279,7 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
 
     if _model_speaking(model):
         amp_m = math.sin(getattr(model, "speak_phase", 0.0)) + math.sin(getattr(model, "speak_phase", 0.0) * 1.7) * 0.6
-        base_h = max(6, int(S * 0.04))
+        base_h = max(6 * pixel_scale, int(S * 0.04))
         extra_h = int(max(mopen * (S * 0.06), amp_m * (S * 0.03)))
         height = base_h + extra_h
         width = int(mouth_w * (1.0 + 0.06 * max(0.0, amp_m)))
@@ -275,7 +299,7 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
                     cx,
                     y_draw,
                     int(mouth_w * 1.00),
-                    max(1, th),
+                    max(pixel_scale, th),
                     lift_h,
                     arch_h,
                     taper_k,
@@ -288,7 +312,7 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
                     cx,
                     y_draw,
                     int(mouth_w * 1.00),
-                    max(1, th),
+                    max(pixel_scale, th),
                     lift_s,
                     arch_s,
                     taper_k,
@@ -301,7 +325,7 @@ def draw_face(canvas, cfg, model, guide=True, quality="fast"):
                     cx,
                     y_draw,
                     int(mouth_w * 1.00),
-                    max(1, th),
+                    max(pixel_scale, th),
                     lift_n,
                     arch_n,
                     taper_k,

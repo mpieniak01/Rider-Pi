@@ -147,7 +147,7 @@ class NavigationRunner(NavigationCycle):
 
     def _check_pending_acks(self, safety):
         acknowledgements = [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]
-        for request_id, deadline in list(self.pending_motion_acks.items()):
+        for request_id, deadline in self.pending_motion_acks.copy().items():
             ack = next((row for row in acknowledgements if row.get("request_id") == request_id), None)
             if ack and ack.get("status") == "executed" and ack.get("accepted") is True:
                 del self.pending_motion_acks[request_id]
