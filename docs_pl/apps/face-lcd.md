@@ -236,3 +236,14 @@ sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
     --expr neutral --fps 20 --rotate 270 --spi-hz 32000000 \
     --secs 8 --stats
 ```
+
+## Warstwy sterownika i błędy transportu
+
+`drivers.lcd.driver_ili9xx` pozostaje publicznym modułem i miejscem końcowych
+wiązań transportu RAW. `ili9xx_device` zawiera konfigurację, wybór urządzenia
+i klasę renderera; publiczne importy oraz nadpisania fasady pozostają zgodne.
+Kolejne historyczne definicje tego samego zapisu SPI zastąpiono końcową wersją,
+z zachowaniem kolejności okno → komenda RAMWR → dane i dotychczasowych chunków.
+Wariant z samym deskryptorem pliku sprawdza zapis pojedynczego bajtu komendy;
+niepełny zapis nie jest potwierdzeniem sukcesu. Parametry SPI i orientacja
+wyświetlacza nie wynikają z tego podziału i pozostają ustawieniami urządzenia.

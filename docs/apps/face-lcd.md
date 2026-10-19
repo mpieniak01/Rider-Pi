@@ -236,3 +236,14 @@ sudo -E env -u FACE_MOUTH_SHAPE -u FACE_MOUTH_OPEN \
     --expr neutral --fps 20 --rotate 270 --spi-hz 32000000 \
     --secs 8 --stats
 ```
+
+## Driver layers and transport failures
+
+`drivers.lcd.driver_ili9xx` remains the public module and owns the final RAW
+transport bindings. `ili9xx_device` contains configuration, device discovery
+and the renderer class; public imports and facade overrides remain compatible.
+Successive historical SPI writer definitions are replaced by their final
+implementation, preserving window → RAMWR command → data ordering and chunk
+sizes. The file-descriptor-only fallback checks the single command-byte write;
+an incomplete write is not success. This split retains existing SPI parameters
+and device display orientation.

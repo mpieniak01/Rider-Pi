@@ -618,3 +618,10 @@ loop stays responsive. Transport closes its owned socket even after
 `connected=false`, for example after receive or heartbeat failure. Software
 regressions fake all devices and transports; they use no microphone, speaker,
 provider connection or robot.
+
+## Audio startup failure cleanup
+
+A TTS stream opened before a PTT state transition is also closed if that
+transition's callback raises. A close failure does not replace the original
+startup diagnostic. Capture termination and cancellation retain queue end
+markers; barge-in discards pending old TTS audio.
