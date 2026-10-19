@@ -101,6 +101,9 @@ class PlaybackObserver:
             data = os.pread(self.fd, _MAX_RECORD + 1, 0)
         finally:
             fcntl.flock(self.fd, fcntl.LOCK_UN)
+        return self._state_from_record(data)
+
+    def _state_from_record(self, data):
         if not data:
             return PlaybackState()  # Existing empty lock, before first playback.
         if len(data) > _MAX_RECORD:

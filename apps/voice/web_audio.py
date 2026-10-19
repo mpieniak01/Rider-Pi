@@ -235,6 +235,18 @@ def _resample_to(C, pcm: bytes, in_sr: int, in_ch: int, target_sr: int, target_c
     return out
 
 
+def _normalize_wav_params(C, params, target_sr, target_ch, fade_in_ms, fade_out_ms, tail_ms, gain):
+    pcm, in_sr, in_ch, in_sw = params
+    if in_sw == 2 and (in_sr != target_sr or in_ch != target_ch):
+        pcm = C._resample_to(pcm, in_sr, in_ch, target_sr, target_ch)
+        in_sr, in_ch = target_sr, target_ch
+    elif in_sw == 2:
+        pcm = C._apply_fade(pcm, in_sr, in_ch, 2, fade_in_ms, fade_out_ms)
+        pcm = C._append_tail(pcm, in_sr, in_ch, tail_ms)
+        pcm = C._maybe_gain(pcm, gain)
+    return C._wrap_wav(pcm, in_sr, in_ch, in_sw)
+
+
 def _ensure_wav_bytes(C, audio: bytes, sample_rate: int | None, fmt: str | None) -> bytes | None:
     """
     Upewnij się, że zwrócimy poprawny WAV @ VOICE_RATE/VOICE_CHANNELS.
@@ -248,36 +260,16 @@ def _ensure_wav_bytes(C, audio: bytes, sample_rate: int | None, fmt: str | None)
     tail_ms = int(C.os.environ.get("VOICE_TAIL_MS", "300"))
     gain = float(C.os.environ.get("VOICE_GAIN", "1.0"))
 
-    # 1) WAV
     got = C._read_wav_params(audio)
     if got:
-        pcm, in_sr, in_ch, in_sw = got
-        if in_sw == 2 and (in_sr != target_sr or in_ch != target_ch):
-            pcm = C._resample_to(pcm, in_sr, in_ch, target_sr, target_ch)
-            in_sr, in_ch = target_sr, target_ch
-        else:
-            if in_sw == 2:
-                pcm = C._apply_fade(pcm, in_sr, in_ch, 2, fade_in_ms, fade_out_ms)
-                pcm = C._append_tail(pcm, in_sr, in_ch, tail_ms)
-                pcm = C._maybe_gain(pcm, gain)
-        return C._wrap_wav(pcm, in_sr, in_ch, 2 if in_sw == 2 else in_sw)
+        return _normalize_wav_params(C, got, target_sr, target_ch, fade_in_ms, fade_out_ms, tail_ms, gain)
 
-    # 2) MP3/OGG
     if C._is_mp3(audio) or C._is_ogg(audio) or (fmt or "").lower() in ("mp3", "mpeg", "audio/mpeg", "ogg"):
         wav = C._decode_with_tool_to_wav(audio)
         if wav and C._is_wav(wav):
-            got2 = C._read_wav_params(wav)
-            if got2:
-                pcm, in_sr, in_ch, in_sw = got2
-                if in_sw == 2 and (in_sr != target_sr or in_ch != target_ch):
-                    pcm = C._resample_to(pcm, in_sr, in_ch, target_sr, target_ch)
-                    in_sr, in_ch = target_sr, target_ch
-                else:
-                    if in_sw == 2:
-                        pcm = C._apply_fade(pcm, in_sr, in_ch, 2, fade_in_ms, fade_out_ms)
-                        pcm = C._append_tail(pcm, in_sr, in_ch, tail_ms)
-                        pcm = C._maybe_gain(pcm, gain)
-                return C._wrap_wav(pcm, in_sr, in_ch, 2 if in_sw == 2 else in_sw)
+            got = C._read_wav_params(wav)
+            if got:
+                return _normalize_wav_params(C, got, target_sr, target_ch, fade_in_ms, fade_out_ms, tail_ms, gain)
         return None
 
     # 3) RAW PCM16 mono
@@ -289,125 +281,55 @@ def _ensure_wav_bytes(C, audio: bytes, sample_rate: int | None, fmt: str | None)
         return None
 
 
-def _piper_synthesize_wav_bytes(C, voice, text: str, model_path: str | None = None) -> tuple[bytes, int | None]:
-    """
-    Zwraca (wav_bytes, sample_rate|None). Obsługuje:
-    - synthesize_wav_bytes(text) -> bytes lub (bytes, sr)
-    - *to_file metody: synthesize_wav/synthesize_to_wav/save_wav/synthesize_to_file
-    - synthesize(..., wav_file=...) (kwargs lub pozycyjnie)
-    - tts()/synthesize() zwracające PCM → pakowanie do WAV
-    - Fallback: CLI `piper` → WAV na stdout (wymaga zainstalowanego binarnego piper)
-    """
-    # 0) gotowe WAV bytes
-    if hasattr(voice, "synthesize_wav_bytes"):
-        out = voice.synthesize_wav_bytes(text)  # type: ignore[attr-defined]
-        if isinstance(out, tuple):
-            wav_bytes, sr = out
-        else:
-            wav_bytes, sr = out, None
-        return wav_bytes, sr
+def _remove_piper_temp(C, path):
+    try:
+        C.os.remove(path)
+    except Exception:
+        pass
 
-    # 1) metody zapisujące do pliku
-    file_methods = [
-        "synthesize_wav",
-        "synthesize_to_wav",
-        "save_wav",
-        "synthesize_to_file",
-    ]
-    for m in file_methods:
-        if hasattr(voice, m):
-            fn = getattr(voice, m)
-            with C.tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp_path = tmp.name
-            try:
-                try:
-                    fn(text, tmp_path)  # (text, wav_file)
-                except TypeError:
-                    try:
-                        fn(wav_file=tmp_path, text=text)  # kwargs
-                    except TypeError:
-                        fn(text=text, wav_file=tmp_path)
-                with open(tmp_path, "rb") as f:
-                    wav_bytes = f.read()
-                try:
-                    C.os.remove(tmp_path)
-                except Exception:
-                    pass
-                if C._is_wav(wav_bytes):
-                    got = C._read_wav_params(wav_bytes)
-                    return wav_bytes, (got[1] if got else None)
-            except Exception:
-                try:
-                    C.os.remove(tmp_path)
-                except Exception:
-                    pass
-                continue
 
-    # 2) synthesize(..., wav_file=...) — częsty wariant w starszych buildach
-    if hasattr(voice, "synthesize"):
-        with C.tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = tmp.name
+def _piper_file_method(C, fn, text):
+    with C.tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
         try:
-            try:
-                voice.synthesize(text, tmp_path)  # (text, wav_file)
-            except TypeError:
-                try:
-                    voice.synthesize(wav_file=tmp_path, text=text)  # kwargs
-                except TypeError:
-                    voice.synthesize(text=text, wav_file=tmp_path)
-            with open(tmp_path, "rb") as f:
-                wav_bytes = f.read()
-            try:
-                C.os.remove(tmp_path)
-            except Exception:
-                pass
-            if C._is_wav(wav_bytes):
-                got = C._read_wav_params(wav_bytes)
-                return wav_bytes, (got[1] if got else None)
-        except Exception:
-            try:
-                C.os.remove(tmp_path)
-            except Exception:
-                pass
-            # przejdź do PCM/CLI
-
-    # 3) fallback: synthesize()/tts() → PCM
-    pcm, sr = None, None
-    if hasattr(voice, "synthesize"):
-        try:
-            pcm, sr = voice.synthesize(text)  # type: ignore[attr-defined]
+            fn(text, tmp_path)
         except TypeError:
-            pass
-    if pcm is None and hasattr(voice, "tts"):
-        pcm, sr = voice.tts(text)  # type: ignore[attr-defined]
+            try:
+                fn(wav_file=tmp_path, text=text)
+            except TypeError:
+                fn(text=text, wav_file=tmp_path)
+        with open(tmp_path, "rb") as handle:
+            wav_bytes = handle.read()
+        _remove_piper_temp(C, tmp_path)
+        if C._is_wav(wav_bytes):
+            got = C._read_wav_params(wav_bytes)
+            return wav_bytes, (got[1] if got else None)
+    except Exception:
+        _remove_piper_temp(C, tmp_path)
+    return None
 
-    if pcm is not None:
-        if hasattr(pcm, "dtype"):
-            import numpy as _np
 
-            if str(pcm.dtype) != "int16":
-                pcm = (_np.clip(pcm, -1.0, 1.0) * 32767.0).astype("int16")
-            pcm_bytes = pcm.tobytes()
-        elif isinstance(pcm, bytes):
-            pcm_bytes = pcm
-        else:
-            import numpy as _np
+def _piper_pcm_bytes(pcm):
+    if hasattr(pcm, "dtype"):
+        import numpy as _np
 
-            arr = _np.array(list(pcm), dtype="float32")
-            arr = (_np.clip(arr, -1.0, 1.0) * 32767.0).astype("int16")
-            pcm_bytes = arr.tobytes()
+        if str(pcm.dtype) != "int16":
+            pcm = (_np.clip(pcm, -1.0, 1.0) * 32767.0).astype("int16")
+        pcm_bytes = pcm.tobytes()
+    elif isinstance(pcm, bytes):
+        pcm_bytes = pcm
+    else:
+        import numpy as _np
 
-        target_sr = int(C.os.environ.get("VOICE_RATE", "48000"))
-        target_ch = int(C.os.environ.get("VOICE_CHANNELS", "2"))
-        ch = 1
-        wav_bytes = C._wrap_wav(
-            C._resample_to(pcm_bytes, int(sr or 22050), ch, target_sr, target_ch),
-            target_sr,
-            target_ch,
-            2,
-        )
-        return wav_bytes, target_sr
+        arr = _np.array(list(pcm), dtype="float32")
+        arr = (_np.clip(arr, -1.0, 1.0) * 32767.0).astype("int16")
+        pcm_bytes = arr.tobytes()
 
+    return pcm_bytes
+
+
+def _piper_cli_audio(C, text, model_path):
     # 4) OSTATECZNY fallback: CLI `piper` (jeśli dostępny)
     if C.shutil.which("piper") and (model_path or C.os.getenv("PIPER_MODEL") or C.os.getenv("PIPER_VOICE")):
         mp = model_path or C.os.getenv("PIPER_MODEL")
@@ -434,6 +356,96 @@ def _piper_synthesize_wav_bytes(C, voice, text: str, model_path: str | None = No
     raise RuntimeError("Piper synth failed: no supported method")
 
 
+def _piper_pcm_audio(C, voice, text):
+    # 3) fallback: synthesize()/tts() → PCM
+    pcm, sr = None, None
+    if hasattr(voice, "synthesize"):
+        try:
+            pcm, sr = voice.synthesize(text)  # type: ignore[attr-defined]
+        except TypeError:
+            pass
+    if pcm is None and hasattr(voice, "tts"):
+        pcm, sr = voice.tts(text)  # type: ignore[attr-defined]
+
+    if pcm is not None:
+        pcm_bytes = _piper_pcm_bytes(pcm)
+
+        target_sr = int(C.os.environ.get("VOICE_RATE", "48000"))
+        target_ch = int(C.os.environ.get("VOICE_CHANNELS", "2"))
+        ch = 1
+        wav_bytes = C._wrap_wav(
+            C._resample_to(pcm_bytes, int(sr or 22050), ch, target_sr, target_ch),
+            target_sr,
+            target_ch,
+            2,
+        )
+        return wav_bytes, target_sr
+
+    return None
+
+
+def _piper_synthesize_wav_bytes(C, voice, text: str, model_path: str | None = None) -> tuple[bytes, int | None]:
+    """
+    Zwraca (wav_bytes, sample_rate|None). Obsługuje:
+    - synthesize_wav_bytes(text) -> bytes lub (bytes, sr)
+    - *to_file metody: synthesize_wav/synthesize_to_wav/save_wav/synthesize_to_file
+    - synthesize(..., wav_file=...) (kwargs lub pozycyjnie)
+    - tts()/synthesize() zwracające PCM → pakowanie do WAV
+    - Fallback: CLI `piper` → WAV na stdout (wymaga zainstalowanego binarnego piper)
+    """
+    # 0) gotowe WAV bytes
+    if hasattr(voice, "synthesize_wav_bytes"):
+        out = voice.synthesize_wav_bytes(text)  # type: ignore[attr-defined]
+        if isinstance(out, tuple):
+            wav_bytes, sr = out
+        else:
+            wav_bytes, sr = out, None
+        return wav_bytes, sr
+
+    for method in ("synthesize_wav", "synthesize_to_wav", "save_wav", "synthesize_to_file", "synthesize"):
+        if hasattr(voice, method):
+            result = _piper_file_method(C, getattr(voice, method), text)
+            if result is not None:
+                return result
+
+    result = _piper_pcm_audio(C, voice, text)
+    if result is not None:
+        return result
+
+    return _piper_cli_audio(C, text, model_path)
+
+
+def _asr_request_audio(C):
+    audio_bytes: bytes | None = None
+    ctype = (C.request.headers.get("Content-Type") or "").lower()
+
+    if "multipart" in ctype and C.request.files:
+        f = C.request.files.get("file")
+        if f:
+            audio_bytes = f.read()
+    if audio_bytes is None:
+        audio_bytes = C.request.get_data(cache=False, as_text=False) or None
+
+    return audio_bytes, ctype
+
+
+def _asr_input_wav(C, audio_bytes, ctype):
+    wav = None
+    if C._is_wav(audio_bytes):
+        wav = audio_bytes
+    else:
+        if C._is_mp3(audio_bytes) or C._is_ogg(audio_bytes) or "mpeg" in ctype or "ogg" in ctype:
+            wav = C._decode_with_tool_to_wav(audio_bytes)
+        if wav is None and "application/octet-stream" in ctype:
+            try:
+                pcm = audio_bytes
+                wav = C._wrap_wav(pcm, 16000, 1, 2)
+            except Exception:
+                wav = None
+
+    return wav
+
+
 def api_asr(C):
     """
     POST audio (preferowane Content-Type: audio/wav) lub multipart 'file'.
@@ -443,31 +455,12 @@ def api_asr(C):
         if not C._load_vosk_backend():
             return C.jsonify({"ok": False, "error": "vosk module not available"}), 500
 
-        audio_bytes: bytes | None = None
-        ctype = (C.request.headers.get("Content-Type") or "").lower()
-
-        if "multipart" in ctype and C.request.files:
-            f = C.request.files.get("file")
-            if f:
-                audio_bytes = f.read()
-        if audio_bytes is None:
-            audio_bytes = C.request.get_data(cache=False, as_text=False) or None
+        audio_bytes, ctype = _asr_request_audio(C)
 
         if not audio_bytes:
             return C.jsonify({"ok": False, "error": "no audio data"}), 400
 
-        wav = None
-        if C._is_wav(audio_bytes):
-            wav = audio_bytes
-        else:
-            if C._is_mp3(audio_bytes) or C._is_ogg(audio_bytes) or "mpeg" in ctype or "ogg" in ctype:
-                wav = C._decode_with_tool_to_wav(audio_bytes)
-            if wav is None and "application/octet-stream" in ctype:
-                try:
-                    pcm = audio_bytes
-                    wav = C._wrap_wav(pcm, 16000, 1, 2)
-                except Exception:
-                    wav = None
+        wav = _asr_input_wav(C, audio_bytes, ctype)
 
         if not wav or not C._is_wav(wav):
             return C.jsonify({"ok": False, "error": "unsupported or invalid audio"}), 400

@@ -18,6 +18,8 @@ from typing import Any
 from .. import voice_logging
 from ..common import ensure_event_logger
 
+_WM8960_DEVICE = "hw:wm8960soundcard,0"
+
 logger = ensure_event_logger(voice_logging.get_logger(__name__))
 
 __all__ = [
@@ -34,8 +36,8 @@ def probe_devices() -> dict[str, Any]:
         "cards": [],
         "devices": [],
         "aliases": {
-            "wm8960_in": "hw:wm8960soundcard,0",
-            "wm8960_out": "hw:wm8960soundcard,0",
+            "wm8960_in": _WM8960_DEVICE,
+            "wm8960_out": _WM8960_DEVICE,
         },
     }
 
@@ -70,11 +72,35 @@ def resolved_alsa(name: str | None) -> str | None:
         return None
 
     aliases = {
-        "wm8960_in": "hw:wm8960soundcard,0",
-        "wm8960_out": "hw:wm8960soundcard,0",
-        "wm8960soundcard": "hw:wm8960soundcard,0",
+        "wm8960_in": _WM8960_DEVICE,
+        "wm8960_out": _WM8960_DEVICE,
+        "wm8960soundcard": _WM8960_DEVICE,
     }
     return aliases.get(name, name)
+
+
+def _terminate_alsa_process(pid, command):
+    try:
+        subprocess.run(["kill", "-TERM", pid], timeout=2)
+        time.sleep(0.2)
+        check = subprocess.run(["kill", "-0", pid], capture_output=True, timeout=1)
+        if check.returncode == 0:
+            subprocess.run(["kill", "-KILL", pid], timeout=2)
+        logger.event("alsa.process_killed", pid=pid, command=command)
+        return True
+    except Exception as exc:
+        logger.event("alsa.kill_error", pid=pid, error=str(exc))
+        return False
+
+
+def _voice_processes_from_lsof(output):
+    for line in output.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        command, pid = parts[:2]
+        if any(name in command.lower() for name in ("arecord", "aplay", "apps.voice.cli")):
+            yield pid, command
 
 
 def _kill_processes_using_device(device_pattern: str) -> int:
@@ -88,23 +114,10 @@ def _kill_processes_using_device(device_pattern: str) -> int:
     try:
         proc = subprocess.run(["lsof", "/dev/snd/*"], capture_output=True, text=True, timeout=2)
         if proc.returncode == 0:
-            lines = proc.stdout.splitlines()[1:]  # Skip header
-            for line in lines:
-                parts = line.split()
-                if len(parts) >= 2:
-                    pid = parts[1]
-                    command = parts[0]
-                    if any(cmd in command.lower() for cmd in ["arecord", "aplay", "apps.voice.cli"]):
-                        try:
-                            subprocess.run(["kill", "-TERM", pid], timeout=2)
-                            time.sleep(0.2)
-                            check = subprocess.run(["kill", "-0", pid], capture_output=True, timeout=1)
-                            if check.returncode == 0:
-                                subprocess.run(["kill", "-KILL", pid], timeout=2)
-                            killed += 1
-                            logger.event("alsa.process_killed", pid=pid, command=command)
-                        except Exception as e:
-                            logger.event("alsa.kill_error", pid=pid, error=str(e))
+            for pid, command in _voice_processes_from_lsof(proc.stdout):
+                if _terminate_alsa_process(pid, command):
+                    killed += 1
+
     except Exception as e:
         logger.event("alsa.lsof_error", error=str(e))
 
@@ -171,6 +184,12 @@ def _raise_alsa_error(msg: str) -> None:
     raise ALSAError(msg)  # type: ignore[misc]
 
 
+def _check_alsa_access(result, capture, playback):
+    for mode, device in (("capture", capture), ("playback", playback)):
+        if device:
+            result[f"{mode}_free"] = _test_device_access(device, mode)
+
+
 def ensure_free(
     capture_dev: str | None = None,
     playback_dev: str | None = None,
@@ -195,10 +214,7 @@ def ensure_free(
         force=force,
     )
 
-    if capture_resolved:
-        result["capture_free"] = _test_device_access(capture_resolved, "capture")
-    if playback_resolved:
-        result["playback_free"] = _test_device_access(playback_resolved, "playback")
+    _check_alsa_access(result, capture_resolved, playback_resolved)
 
     devices_blocked = not result["capture_free"] or not result["playback_free"]
 
@@ -209,10 +225,7 @@ def ensure_free(
         if result["processes_killed"] > 0:
             time.sleep(0.2)
 
-        if capture_resolved:
-            result["capture_free"] = _test_device_access(capture_resolved, "capture")
-        if playback_resolved:
-            result["playback_free"] = _test_device_access(playback_resolved, "playback")
+        _check_alsa_access(result, capture_resolved, playback_resolved)
 
     if capture_resolved and not result["capture_free"]:
         result["errors"].append(f"Capture device {capture_resolved} is not accessible")

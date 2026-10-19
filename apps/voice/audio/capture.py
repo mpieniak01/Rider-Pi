@@ -304,46 +304,7 @@ class AudioCapture:
                 backoff_s = min(backoff_max, backoff_s * 2.0)
                 continue
 
-            buf = bytearray()
-            last_data_ts = time.time()
-
-            while not self._stop.is_set():
-                # ile nam brakuje do pełnej ramki?
-                need = fb - len(buf)
-                try:
-                    chunk = stdout.read(need)
-                except Exception as exc:
-                    self.logger.event("capture.read.error", error=str(exc))
-                    break
-
-                if not chunk:
-                    # może proces padł?
-                    if proc.poll() is not None:
-                        # spróbuj zebrać stderr
-                        err_txt = None
-                        if proc.stderr:
-                            with contextlib.suppress(Exception):
-                                err_txt = proc.stderr.read().decode("utf-8", "ignore").strip()
-                        self.logger.event(
-                            "capture.proc.exit",
-                            returncode=proc.returncode,
-                            stderr=err_txt,
-                        )
-                        break
-                    # brak danych chwilowo – nie blokuj CPU
-                    time.sleep(0.003)
-                    # ostrzegaj o dłuższej ciszy bez bajtów (diagnostyka)
-                    if (time.time() - last_data_ts) > 2.0:
-                        self.logger.warning("capture.silence.timeout")
-                        last_data_ts = time.time()
-                    continue
-
-                last_data_ts = time.time()
-                buf.extend(chunk)
-                if len(buf) >= fb:
-                    out = bytes(buf[:fb])
-                    del buf[:fb]
-                    yield out
+            yield from self._read_process_frames(proc, stdout, fb)
 
             # wyszliśmy z pętli czytania – spróbuj restartu jeśli nie jest zatrzymane
             if self._stop.is_set():
@@ -352,3 +313,43 @@ class AudioCapture:
             backoff_s = min(backoff_max, backoff_s * 2.0)
 
         return
+
+    def _log_process_exit(self, proc):
+        err_txt = None
+        if proc.stderr:
+            with contextlib.suppress(Exception):
+                err_txt = proc.stderr.read().decode("utf-8", "ignore").strip()
+        self.logger.event("capture.proc.exit", returncode=proc.returncode, stderr=err_txt)
+
+    def _read_process_frames(self, proc, stdout, fb):
+        buf = bytearray()
+        last_data_ts = time.time()
+
+        while not self._stop.is_set():
+            # ile nam brakuje do pełnej ramki?
+            need = fb - len(buf)
+            try:
+                chunk = stdout.read(need)
+            except Exception as exc:
+                self.logger.event("capture.read.error", error=str(exc))
+                break
+
+            if not chunk:
+                # może proces padł?
+                if proc.poll() is not None:
+                    self._log_process_exit(proc)
+                    break
+                # brak danych chwilowo – nie blokuj CPU
+                time.sleep(0.003)
+                # ostrzegaj o dłuższej ciszy bez bajtów (diagnostyka)
+                if (time.time() - last_data_ts) > 2.0:
+                    self.logger.warning("capture.silence.timeout")
+                    last_data_ts = time.time()
+                continue
+
+            last_data_ts = time.time()
+            buf.extend(chunk)
+            if len(buf) >= fb:
+                out = bytes(buf[:fb])
+                del buf[:fb]
+                yield out
