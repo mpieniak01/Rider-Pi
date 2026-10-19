@@ -249,9 +249,9 @@ Serwer domyślnie startuje na porcie 5000 (konfigurowalny przez zmienną `STATUS
 
 ### CORS
 
-- Wszystkie endpointy `/api/home/*` obsługują CORS
-- Dozwolone wszystkie originy (`Access-Control-Allow-Origin: *`)
-- W środowisku produkcyjnym rozważ ograniczenie originów
+- Endpointy `/api/home/*` korzystają ze [wspólnej granicy HTTP](api-specs/security.md).
+- Żądania przeglądarkowe są dozwolone z originu API; dodatkowe originy trzeba jawnie wymienić w `RIDER_ALLOWED_ORIGINS` jako listę rozdzielaną przecinkami.
+- Obcy lub niepoprawny `Origin` zwraca HTTP 403, również dla preflight. Wildcard `*` nie jest obsługiwany.
 
 ## Rozwiązywanie problemów
 
