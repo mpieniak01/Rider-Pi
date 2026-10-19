@@ -1,4 +1,4 @@
-# Granica HTTP i eksport PNG
+# Bezpieczeństwo HTTP i plików runtime
 
 Wspólna ochrona działa przed handlerami głównego API, aplikacji kompatybilności,
 bridge ruchu i obu workerów voice. Nie uruchamia usług ani nie zmienia zgody
@@ -64,3 +64,37 @@ drukowalnym tekstem o długości do 256 znaków. Znaki sterujące, nowe linie or
 wartości innych typów kończą się HTTP 400 `invalid_provider_reason` przed
 zapisem stanu i publikacją BUS. Brak pola oznacza `manual`; jawna pusta wartość
 nie jest domyślnym powodem. Logger dodatkowo używa reprezentacji cytowanej.
+
+## Pliki runtime i blokady właściciela
+
+Zapis migawki przez starszy `FileSink` animacji używa losowego pliku `0600`
+i atomowej podmiany, tak jak eksport PNG. Nie otwiera już przewidywalnego
+`face_latest.tmp`. Wszystkie elementy ścieżki katalogu są otwierane bez
+podążania za symlinkami i sprawdzane pod kątem właściciela oraz praw zapisu.
+Nazwa wyniku i ustawienia `FACE_LATEST_PATH` / `FACE_LEGACY_PATH` pozostają
+obsługiwane; odbiorca pliku musi mieć uprawnienia do odczytu `0600`.
+
+Blokady PID i właściciela UART zachowują dotychczasowe ścieżki, lecz akceptują
+wyłącznie zwykły plik należący do użytkownika procesu, z jednym dowiązaniem,
+bez praw zapisu grupy i innych użytkowników. Symlinki, hardlinki i pliki obcego
+właściciela są odrzucane przed zapisem PID lub uruchomieniem SDK. Prawidłowy
+istniejący plik jest ograniczany do `0600`; PID jest aktualizowany dopiero po
+uzyskaniu blokady. Inwentaryzacja UART i brama bezpieczeństwa nadal obowiązują.
+
+Plik blokady pozostaje po zamknięciu procesu, aby następny właściciel użył tego
+samego inode. Samo istnienie pliku ani zapisany PID nie potwierdzają aktywnego
+właściciela. Nie usuwaj ani nie podmieniaj pliku blokady, gdy którykolwiek
+korzystający z niego proces działa. Zakończenie procesu zwalnia blokadę systemową.
+
+## Opcjonalne nagrania voice
+
+`save_audio` pozostaje domyślnie wyłączone. Po jego włączeniu katalog nagrań
+musi należeć do użytkownika usługi i mieć prawa `0700`; nowe katalogi są tworzone
+z tymi prawami. Istniejący katalog dostępny grupie lub innym użytkownikom jest
+odrzucany. Operator powinien wcześniej przygotować dedykowany prywatny katalog;
+usługa nie zmienia automatycznie praw skonfigurowanego katalogu ani starych nagrań.
+
+WAV otrzymuje losową nazwę, prawa `0600` i jest publikowany dopiero po zakończeniu
+zapisu. Kolizja nazwy nie nadpisuje poprzedniego nagrania. Prawa plików i katalogu
+nie zależą od liberalnego `umask` procesu. Przechwytywanie audio i jego format
+pozostają bez zmian.

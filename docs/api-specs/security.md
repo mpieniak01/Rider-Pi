@@ -1,4 +1,4 @@
-# HTTP boundary and PNG exports
+# HTTP and runtime file security
 
 The shared guard runs before handlers in the main API, compatibility app,
 motion bridge and both voice workers. It does not start services or change
@@ -65,3 +65,38 @@ of at most 256 characters. Control characters, newlines and non-string values
 return HTTP 400 `invalid_provider_reason` before persistence or BUS publication.
 A missing field defaults to `manual`; an explicit empty value does not.
 Logging additionally uses a quoted representation.
+
+## Runtime files and owner locks
+
+The legacy animation `FileSink` writes snapshots through a random `0600` file
+and atomic replacement, as PNG exports do. It no longer opens a predictable
+`face_latest.tmp`. Every directory component is opened without following
+symlinks and checked for ownership and write permissions. Output names and
+`FACE_LATEST_PATH` / `FACE_LEGACY_PATH` remain supported; file consumers need
+permission to read the `0600` output.
+
+PID and UART-owner locks keep their existing paths but accept only regular files
+owned by the process user, with a single link and no group/other write access.
+Symlinks, hardlinks and foreign-owned files are rejected before PID writes or
+SDK construction. Valid existing files are restricted to `0600`; the PID is
+updated only after acquiring the lock. UART inventory and the safety gate
+remain enforced.
+
+Lock files remain after process shutdown so that the next owner uses the same
+inode. File existence or a recorded PID alone does not prove active ownership.
+Do not remove or replace a lock file while any process using it is running.
+Process termination releases the operating-system lock.
+
+## Optional voice recordings
+
+`save_audio` remains disabled by default. When enabled, the recording directory
+must belong to the service user and have `0700` permissions; new directories
+are created with those permissions. Existing directories accessible to a group
+or other users are rejected. Operators should prepare a dedicated private
+directory first; the service does not automatically change permissions on the
+configured directory or old recordings.
+
+WAV files receive random names and `0600` permissions and are published only
+after writing completes. A filename collision never overwrites a previous
+recording. File and directory permissions remain private under a permissive
+process `umask`. Audio capture behavior and format remain unchanged.

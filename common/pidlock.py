@@ -5,30 +5,30 @@ import fcntl
 import os
 import sys
 
+from common.runtime_lock import open_owned
+
 
 def single_instance(lock_path="/tmp/rider-motion.lock"):
-    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    """Keep one stable inode for all owners, including after process shutdown."""
+    fd = None
     try:
+        fd = open_owned(lock_path)
         fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.ftruncate(fd, 0)
         os.write(fd, str(os.getpid()).encode())
-    except OSError:
-        print(f"[PIDLOCK] another instance running (lock: {lock_path})", file=sys.stderr)
-        sys.exit(1)
+    except OSError as error:
+        if fd is not None:
+            os.close(fd)
+        print(f"[PIDLOCK] another instance running or unsafe lock: {lock_path}", file=sys.stderr)
+        raise SystemExit(1) from error
 
-    # Register cleanup handler to remove lock file on normal exit
-    # Note: atexit handlers won't run on SIGKILL (kill -9), so lock file will remain in that case
     def _cleanup():
         try:
             os.close(fd)
-        except Exception:
-            # Ignore errors when closing fd during cleanup; process is exiting anyway.
-            pass
-        try:
-            if os.path.exists(lock_path):
-                os.unlink(lock_path)
-        except Exception:
-            # Ignore errors during lock file removal; process is exiting and lock will be overwritten next run.
+        except OSError:
+            # A caller may already have closed the returned descriptor.
             pass
 
+    # Never unlink: another process can already hold this same inode.
     atexit.register(_cleanup)
-    return fd  # nie zamykaj; trzyma lock do końca procesu
+    return fd
