@@ -204,7 +204,11 @@ Po zatrzymaniu usługi przechwytywania kamery orkiestrator wykonuje pełne LCD O
 
 ## Zamykanie procesu capture
 
-SIGTERM i jawny `SystemExit` przechodzą przez `finally`: zwalniany jest podgląd
-LCD i przywracany poprzedni handler sygnału. `SystemExit` zachowuje swój kod
-lub komunikat; komunikat błędu nie jest zamieniany na sukces. Zwykły błąd
-uruchomienia nadal daje kod 1. Ta obsługa nie wysyła poleceń ruchu.
+Na ścieżkach `_run_mode` SIGTERM i jawny `SystemExit` przechodzą przez
+`finally` w `capture_service`: zwalniany jest podgląd LCD i przywracany
+poprzedni handler SIGTERM. Włączony pipeline `raw` korzysta natomiast z
+`pipeline_runtime.main()`, który instaluje własne handlery sygnałów i w swoim
+`finally` zamyka kamerę oraz zasoby transportu; nie używa podglądu LCD.
+`SystemExit` zachowuje swój kod lub komunikat; komunikat błędu nie jest
+zamieniany na sukces. Zwykły błąd uruchomienia nadal daje kod 1.
+Ta obsługa nie wysyła poleceń ruchu.

@@ -205,7 +205,11 @@ After a camera capture unit stops, orchestration performs a full LCD OFF (panel 
 
 ## Capture process shutdown
 
-SIGTERM and explicit `SystemExit` unwind through `finally`, releasing the LCD
-preview and restoring the previous signal handler. `SystemExit` retains its
-code or message; an error message is never converted to successful exit.
-An ordinary startup failure still returns 1. Shutdown sends no motion commands.
+On `_run_mode` paths, SIGTERM and explicit `SystemExit` unwind through
+`capture_service`'s `finally`, releasing the LCD preview and restoring the
+previous SIGTERM handler. The enabled `raw` pipeline instead uses
+`pipeline_runtime.main()`, which installs its own signal handlers and closes
+camera and transport resources in its own `finally`; it does not use an LCD
+preview. `SystemExit` retains its code or message; an error message is never
+converted to successful exit. An ordinary startup failure still exits with status 1.
+Shutdown sends no motion commands.
