@@ -21,6 +21,8 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from common.secure_files import atomic_write
+
 try:
     from PIL import Image, ImageDraw, ImageFont
 except Exception:
@@ -375,7 +377,7 @@ def _self_tests() -> int:
 
     # 5) Zapis PNG w trybie offline
     out = "/tmp/weather.png"
-    img.convert("RGB").save(out, "PNG")
+    atomic_write(out, lambda stream: img.convert("RGB").save(stream, "PNG"))
 
     return 0
 
@@ -419,7 +421,7 @@ def main() -> int:
     if args.dry_run:
         out = "weather.png"
         try:
-            img.convert("RGB").save(out, "PNG")
+            atomic_write(out, lambda stream: img.convert("RGB").save(stream, "PNG"))
             _print(f"[weather] Zapisano {out}")
             return 0
         except Exception as e:
@@ -432,7 +434,7 @@ def main() -> int:
         _eprint(f"[weather] Błąd wyświetlania na LCD: {e}")
         out = "/tmp/weather.png"
         try:
-            img.convert("RGB").save(out, "PNG")
+            atomic_write(out, lambda stream: img.convert("RGB").save(stream, "PNG"))
             _print(f"[weather] (awaryjnie) zapisano {out}")
         except Exception:
             pass

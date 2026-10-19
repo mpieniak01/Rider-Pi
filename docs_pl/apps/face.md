@@ -73,4 +73,21 @@ ls -l /tmp/face_legacy.png
 
 ## Uwagi
 - Importy bez side-effectów (żaden import nie wywołuje LCD)
-- Fallback PNG działa zawsze
+- Fallback PNG zapisuje plik, gdy katalog docelowy spełnia wymagania bezpieczeństwa.
+
+## Bezpieczne pliki podglądu i narzędzi offline
+
+Mock LCD (także import kompatybilności `apps.ui.face.driver.mock`) zachowuje
+pliki `/tmp/face_last.png`, `.rgb565` i `.meta.json`. Symulator zachowuje
+`/tmp/lcd_sim_<numer>.*`, a backend PNG i fallback buźki respektują `FACE_OUTFILE`.
+Te zapisy oraz PNG narzędzia pogodowego używają atomowej publikacji plików
+z prawami `0600`. Dowiązanie w miejscu pliku wynikowego nie jest otwierane;
+dowiązania w katalogach oraz niezaufane katalogi są odrzucane. Błąd kodera
+pozostawia poprzedni kompletny plik. Czytniki podglądu powinny działać jako ten
+sam użytkownik co proces zapisujący.
+
+`dev_face-cli.py --stats` odczytuje artefakty wybranego sterownika mock,
+wyłącznie własne zwykłe pliki, bez dowiązań
+symbolicznych i twardych ani zapisu grupowego/publicznego. Metadane JSON mają
+limit 64 KiB; niebezpieczny lub niepoprawny artefakt daje komunikat diagnostyczny.
+Nazwy plików i orientacja LCD pozostają zgodne z konfiguracją.

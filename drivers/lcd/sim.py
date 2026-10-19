@@ -12,6 +12,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from common.secure_files import atomic_write
+
 LOG = logging.getLogger("drivers.lcd.sim")
 
 
@@ -36,7 +38,6 @@ class SimulatedLCDDriver:
         self.frame_count = 0
 
         if save_frames:
-            self.out_base.parent.mkdir(parents=True, exist_ok=True)
             LOG.info(f"[SIM] LCD frames will be saved to {self.out_base}_*.png")
         else:
             LOG.info("[SIM] LCD driver initialized (frames not saved)")
@@ -55,7 +56,7 @@ class SimulatedLCDDriver:
         if self.save_frames:
             try:
                 path = f"{self.out_base}_{self.frame_count:04d}.png"
-                img.save(path)
+                atomic_write(path, lambda stream: img.save(stream, "PNG"))
                 self._write_meta({"mode": "png", "size": list(size), "frame": self.frame_count})
             except Exception as e:
                 LOG.warning(f"[SIM] Failed to save frame: {e}")
@@ -76,8 +77,7 @@ class SimulatedLCDDriver:
             try:
                 # Save raw RGB565 data
                 path = f"{self.out_base}_{self.frame_count:04d}.rgb565"
-                with open(path, "wb") as f:
-                    f.write(buf)
+                atomic_write(path, lambda stream: stream.write(buf))
 
                 # Try to convert to PNG for visualization
                 try:
@@ -91,7 +91,7 @@ class SimulatedLCDDriver:
                     rgb = np.stack([r, g, b], axis=-1).astype("uint8")
                     img = Image.fromarray(rgb, "RGB")
                     png_path = f"{self.out_base}_{self.frame_count:04d}.png"
-                    img.save(png_path)
+                    atomic_write(png_path, lambda stream: img.save(stream, "PNG"))
                 except ImportError:
                     # numpy/PIL not available, skip PNG conversion
                     pass
@@ -116,8 +116,8 @@ class SimulatedLCDDriver:
             }
             meta.update(extra)
             path = f"{self.out_base}_{self.frame_count:04d}.meta.json"
-            with open(path, "w") as f:
-                json.dump(meta, f, indent=2)
+            data = json.dumps(meta, indent=2).encode("utf-8")
+            atomic_write(path, lambda stream: stream.write(data))
         except Exception as e:
             LOG.debug(f"[SIM] Failed to write metadata: {e}")
 

@@ -8,6 +8,7 @@ import sys
 from PIL import Image, ImageDraw
 
 from apps.ui.face.face_io import apply_rotate, fit_strategy, to_rgb565
+from common.secure_files import readonly_file
 from drivers.lcd import PanelCfg, make_driver
 
 """
@@ -93,15 +94,26 @@ def main():
         print(f"Nieznany tryb --force: {args.force}", file=sys.stderr)
         sys.exit(1)
 
-    if args.stats:
-        base = "/tmp/face_last"
-        for ext in [".png", ".rgb565", ".meta.json"]:
-            p = base + ext
-            if os.path.exists(p):
-                print(f"{p}: {os.path.getsize(p)} B")
-        if os.path.exists(base + ".meta.json"):
-            with open(base + ".meta.json") as f:
-                print(json.dumps(json.load(f), indent=2))
+    if args.stats and hasattr(driver, "out_base"):
+        print_mock_stats(str(driver.out_base))
+
+
+def print_mock_stats(base):
+    """Inspect only owned mock artifacts; metadata reads are bounded to 64 KiB."""
+    for ext in [".png", ".rgb565", ".meta.json"]:
+        path = base + ext
+        try:
+            with readonly_file(path) as stream:
+                print(f"{path}: {os.fstat(stream.fileno()).st_size} B")
+                if ext == ".meta.json":
+                    data = stream.read(65537)
+                    if len(data) > 65536:
+                        raise ValueError("mock_metadata_too_large")
+                    print(json.dumps(json.loads(data), indent=2))
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as error:
+            print(f"[face] Cannot inspect {path}: {error}", file=sys.stderr)
 
 
 if __name__ == "__main__":

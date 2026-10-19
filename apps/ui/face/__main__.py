@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 
 from apps.ui.face.controller import FaceController  # type: ignore
 from apps.ui.face.face_io import to_rgb565
+from common.secure_files import atomic_write
 
 
 # --- RIDER_APPS_PATH support ---
@@ -195,8 +196,7 @@ def main():
         # 5) wysyłka: face_api (jeśli żądany) -> fb -> plik
         sink = ""
         if backend == "png":
-            with open(outfile, "wb") as f:
-                canvas.save(f, "PNG")
+            atomic_write(outfile, lambda stream, image=canvas: image.save(stream, "PNG"))
             sink = f"file:{outfile}"
         else:
             if use_api and push_via_face_api(fc.renderer.render_png_bytes(fc.anim.state), outfile):
@@ -206,8 +206,7 @@ def main():
                 if write_framebuffer(rgb, fbdev):
                     sink = f"fb:{fbdev}"
                 else:
-                    with open(outfile, "wb") as f:
-                        canvas.save(f, "PNG")
+                    atomic_write(outfile, lambda stream, image=canvas: image.save(stream, "PNG"))
                     sink = f"file:{outfile}"
 
         if sink != last_sink:
