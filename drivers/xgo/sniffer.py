@@ -139,29 +139,35 @@ class Capture:
             raise ValueError("unknown_action")
         return self.status()
 
+    def _respond_control(self):
+        data, address = self.control.recvfrom(4096)
+        try:
+            response = self._command(json.loads(data))
+        except Exception as exc:
+            response = {"command_error": str(exc)}
+        try:
+            self.control.sendto(json.dumps(response).encode(), address)
+        except OSError:
+            pass
+
+    def _drain_capture_events(self):
+        for _ in range(128):
+            try:
+                item = self.events.get_nowait()
+            except queue.Empty:
+                break
+            if self.active and item["session"] == self.session:
+                self._line(item)
+
     def _run(self):
         while not self.closed:
             try:
                 readable, _, _ = select.select([self.control], [], [], 0.05 if self.active else 1.0)
                 if readable:
-                    data, address = self.control.recvfrom(4096)
-                    try:
-                        response = self._command(json.loads(data))
-                    except Exception as exc:
-                        response = {"command_error": str(exc)}
-                    try:
-                        self.control.sendto(json.dumps(response).encode(), address)
-                    except OSError:
-                        pass
+                    self._respond_control()
                 if self.active and time.monotonic() >= self.deadline:
                     self._stop("time_limit")
-                for _ in range(128):
-                    try:
-                        item = self.events.get_nowait()
-                    except queue.Empty:
-                        break
-                    if self.active and item["session"] == self.session:
-                        self._line(item)
+                self._drain_capture_events()
             except Exception as exc:
                 self.error = type(exc).__name__
                 try:

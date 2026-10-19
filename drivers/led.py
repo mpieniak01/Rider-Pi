@@ -50,6 +50,18 @@ def snapshot(name=None):
         return {"resource": "led", "state": "unavailable", "observed_at": None, "source": "sysfs", "error": str(exc)}
 
 
+def _restore_default_trigger(path, body):
+    # Choose only an existing kernel default; never guess a hardware trigger.
+    trigger = path / "device/of_node/linux,default-trigger"
+    value = trigger.read_bytes().rstrip(b"\0").decode() if trigger.exists() else body.get("default_trigger")
+    available = {
+        (v[1:-1] if v.startswith("[") and v.endswith("]") else v) for v in (path / "trigger").read_text().split()
+    }
+    if not isinstance(value, str) or value not in available:
+        raise ValueError("led_default_trigger_unavailable")
+    (path / "trigger").write_text(value)
+
+
 def apply(body):
     action = body.get("action")
     if action not in {"on", "off", "auto", "blink"}:
@@ -65,15 +77,7 @@ def apply(body):
         (path / "delay_off").write_text(str(off))
         (path / "brightness").write_text(str(maximum))
     elif action == "auto":
-        # Choose only an existing kernel default; never guess a hardware trigger.
-        trigger = path / "device/of_node/linux,default-trigger"
-        value = trigger.read_bytes().rstrip(b"\0").decode() if trigger.exists() else body.get("default_trigger")
-        available = {
-            (v[1:-1] if v.startswith("[") and v.endswith("]") else v) for v in (path / "trigger").read_text().split()
-        }
-        if not isinstance(value, str) or value not in available:
-            raise ValueError("led_default_trigger_unavailable")
-        (path / "trigger").write_text(value)
+        _restore_default_trigger(path, body)
     else:
         (path / "trigger").write_text("none")
         (path / "brightness").write_text(str(maximum if action == "on" else 0))

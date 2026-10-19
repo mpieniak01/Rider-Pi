@@ -26,6 +26,27 @@ XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")
 MOTION_ENABLE = False  # compatibility only; ENV never grants a lease
 
 
+def _inspect_process_uart(process, target, owners, unreadable):
+    try:
+        descriptors = list((process / "fd").iterdir())
+    except FileNotFoundError:
+        return  # process exited during this passive snapshot
+    except OSError:
+        unreadable.append(process.name)
+        return
+    for descriptor in descriptors:
+        try:
+            destination = os.readlink(descriptor)
+            if str(Path(destination).resolve()) == target:
+                owners.append(int(process.name))
+                break
+        except FileNotFoundError:
+            continue
+        except OSError:
+            unreadable.append(process.name)
+            break
+
+
 def uart_inventory(port: str, *, proc_root: str | Path | None = None) -> dict:
     """Inspect open descriptors without touching the device or sending signals.
 
@@ -47,25 +68,46 @@ def uart_inventory(port: str, *, proc_root: str | Path | None = None) -> dict:
     for process in processes:
         if not process.name.isdigit():
             continue
-        try:
-            descriptors = list((process / "fd").iterdir())
-        except FileNotFoundError:
-            continue  # process exited during this passive snapshot
-        except OSError:
-            unreadable.append(process.name)
-            continue
-        for descriptor in descriptors:
-            try:
-                destination = os.readlink(descriptor)
-                if str(Path(destination).resolve()) == target:
-                    owners.append(int(process.name))
-                    break
-            except FileNotFoundError:
-                continue
-            except OSError:
-                unreadable.append(process.name)
-                break
+        _inspect_process_uart(process, target, owners, unreadable)
     return {"known": not unreadable, "owners": sorted(set(owners)), "unreadable": sorted(set(unreadable))}
+
+
+def _prepare_guarded_serial(dog):
+    serial = getattr(dog, "ser", None)
+    dog.ser = serial = install_sniffer(serial)
+    bound_serial(serial, 0.03)
+    waiting = getattr(serial, "inWaiting", None)
+    if callable(waiting):
+
+        def yielding_wait():
+            available = waiting()
+            if not available:
+                time.sleep(0.001)
+            return available
+
+        # SDK __unpack busy-spins on this method; yield only on the
+        # owned serial object instead of adding a polling daemon.
+        serial.inWaiting = yielding_wait
+
+
+def _send_guarded(dog, key, index, length, orders, gate, sender):
+    stopping_keys = {"VX", "VY", "VYAW", "MarkTime"}
+    if dog._initializing:
+        return None
+    if dog._stopping:
+        # Jawny STOP może wysłać tylko zera napędu; nie odpytuje bramy
+        # ani trwałego zatrzasku. Błąd statusu nie może opóźnić STOP.
+        if key not in stopping_keys:
+            raise PermissionError("unsupported_stop_write")
+        if orders is not None and key in {"VX", "VY", "VYAW"}:
+            orders[key][1] = 128
+        return sender(dog, key, index=index, len=length)
+    if not gate.can_actuate():
+        raise PermissionError("motion_gate_disarmed")
+    native = getattr(dog, "_command_native", None)
+    if orders is not None and native is not None and native[0] == key:
+        orders[key][1] = native_command_byte(native[1], native[2])
+    return sender(dog, key, index=index, len=length)
 
 
 def guarded_sdk_class(base, gate: MotionGate):
@@ -93,21 +135,7 @@ def guarded_sdk_class(base, gate: MotionGate):
             try:
                 super().__init__(*args, **kwargs)
                 self._initializing = False
-                serial = getattr(self, "ser", None)
-                self.ser = serial = install_sniffer(serial)
-                bound_serial(serial, 0.03)
-                waiting = getattr(serial, "inWaiting", None)
-                if callable(waiting):
-
-                    def yielding_wait():
-                        available = waiting()
-                        if not available:
-                            time.sleep(0.001)
-                        return available
-
-                    # SDK __unpack busy-spins on this method; yield only on the
-                    # owned serial object instead of adding a polling daemon.
-                    serial.inWaiting = yielding_wait
+                _prepare_guarded_serial(self)
             except Exception:
                 serial = getattr(self, "ser", None)
                 if serial is not None:
@@ -121,23 +149,7 @@ def guarded_sdk_class(base, gate: MotionGate):
             return None
 
         def _XGO__send(self, key, index=1, len=1):
-            stopping_keys = {"VX", "VY", "VYAW", "MarkTime"}
-            if self._initializing:
-                return None
-            if self._stopping:
-                # Jawny STOP może wysłać tylko zera napędu; nie odpytuje bramy
-                # ani trwałego zatrzasku. Błąd statusu nie może opóźnić STOP.
-                if key not in stopping_keys:
-                    raise PermissionError("unsupported_stop_write")
-                if orders is not None and key in {"VX", "VY", "VYAW"}:
-                    orders[key][1] = 128
-                return send(self, key, index=index, len=len)
-            if not gate.can_actuate():
-                raise PermissionError("motion_gate_disarmed")
-            native = getattr(self, "_command_native", None)
-            if orders is not None and native is not None and native[0] == key:
-                orders[key][1] = native_command_byte(native[1], native[2])
-            return send(self, key, index=index, len=len)
+            return _send_guarded(self, key, index, len, orders, gate, send)
 
         def _XGO__read(self, addr, read_len=1):
             if type(addr) is not int or not 0 <= addr <= 255 or type(read_len) is not int or not 0 < read_len <= 50:
@@ -175,6 +187,24 @@ def guarded_sdk_class(base, gate: MotionGate):
 
 
 class XgoAdapter:
+    def _owner_sdk_base(self, sdk_factory, uart_probe, port):
+        # Injection exists only for an explicit fake SDK; production uses
+        # the exact privileged read-only inventory, never an ENV free flag.
+        probe = uart_probe if sdk_factory is not None and uart_probe is not None else uart_inventory
+        self.uart_inventory = probe(port)
+        if self.uart_inventory.get("owners"):
+            raise RuntimeError("uart_owned_by_existing_process")
+        if self.uart_inventory.get("known") is not True:
+            raise RuntimeError("uart_inventory_unreadable")
+        if sdk_factory is None:
+            module = importlib.import_module("xgolib")
+            if getattr(module, "__version__", None) != "1.4.2":
+                raise RuntimeError("unsupported_sdk_version")
+            base = module.XGO
+        else:
+            base = sdk_factory
+        return base
+
     def __init__(
         self,
         port: str = XGO_PORT,
@@ -204,21 +234,7 @@ class XgoAdapter:
             path = Path(lock_path or f"/tmp/rider-motion-uart-{Path(port).name}.lock")
             self._lock_fd = open_owned(path)
             fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            # Injection exists only for an explicit fake SDK; production uses
-            # the exact privileged read-only inventory, never an ENV free flag.
-            probe = uart_probe if sdk_factory is not None and uart_probe is not None else uart_inventory
-            self.uart_inventory = probe(port)
-            if self.uart_inventory.get("owners"):
-                raise RuntimeError("uart_owned_by_existing_process")
-            if self.uart_inventory.get("known") is not True:
-                raise RuntimeError("uart_inventory_unreadable")
-            if sdk_factory is None:
-                module = importlib.import_module("xgolib")
-                if getattr(module, "__version__", None) != "1.4.2":
-                    raise RuntimeError("unsupported_sdk_version")
-                base = module.XGO
-            else:
-                base = sdk_factory
+            base = self._owner_sdk_base(sdk_factory, uart_probe, port)
             sdk = guarded_sdk_class(base, gate)
             self._dog = sdk(port=port, version=version)
             self.error = None
