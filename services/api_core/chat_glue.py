@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.request
 from collections import deque
 from typing import Any
 
@@ -90,25 +91,41 @@ def _payload_reply(payload):
     return True, text, source.strip()
 
 
+class _RejectWorkerRedirects(urllib.request.HTTPRedirectHandler):
+    """A selected local worker cannot redirect the request to another transport."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def _open_selected_worker(req, *, timeout):
+    from .text_profile import _is_loopback_worker_endpoint
+
+    if not _is_loopback_worker_endpoint(req.full_url):
+        raise ValueError("invalid_selected_worker_endpoint")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _RejectWorkerRedirects())
+    return opener.open(req, timeout=timeout)
+
+
 def _remote_reply(prompt: str) -> tuple[bool, str, str]:
     """Use explicit or selected backend; preserve truthful result provenance."""
     url = os.getenv("CHAT_REMOTE_URL", "").strip()
-    if not url:
+    selected_worker = not url
+    if selected_worker:
         from .text_profile import selected_endpoint
 
         url = selected_endpoint()
     if not url:
         return False, "ai_backend_unavailable", "unavailable"
     try:
-        import urllib.request
-
         req = urllib.request.Request(
             url,
             data=json.dumps({"text": prompt, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:  # nosec - configured backend URL
+        open_request = _open_selected_worker if selected_worker else urllib.request.urlopen
+        with open_request(req, timeout=20) as resp:
             if resp.status >= 400:
                 return False, f"remote_http_{resp.status}", "unavailable"
             raw = resp.read(1048577)

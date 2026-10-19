@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import sys
@@ -14,11 +15,35 @@ from apps.voice.profile_state import write_status
 from common.task_runtime import read_status
 from services.api_core.http_security import install as install_http_security
 
+_CHAT_ENDPOINT_INVALID = "chat_worker_endpoint_requires_loopback_bind"
+
 
 def _chat_endpoint():
+    """Advertise only the same-host worker, never an operator-supplied remote URL."""
     host, port = worker_bind()
-    host = "127.0.0.1" if host in {"0.0.0.0", "localhost"} else "::1" if host in {"::", "[::]"} else host
-    return f"http://{'[' + host + ']' if ':' in host else host}:{port}/api/chat"
+    if host in {"0.0.0.0", "localhost"}:
+        host = "127.0.0.1"
+    elif host in {"::", "[::]"}:
+        host = "::1"
+    try:
+        address = ipaddress.ip_address(host.strip("[]"))
+    except ValueError as exc:
+        raise ValueError(_CHAT_ENDPOINT_INVALID) from exc
+    if not address.is_loopback or "%" in host or type(port) is not int or not 1 <= port <= 65535:
+        raise ValueError(_CHAT_ENDPOINT_INVALID)
+    authority = f"[{address}]" if address.version == 6 else str(address)
+    return f"http://{authority}:{port}/api/chat"
+
+
+def _add_chat_endpoint(status, domains):
+    if "chat" not in domains:
+        return
+    try:
+        status["chat_endpoint"] = _chat_endpoint()
+    except ValueError:
+        status["capabilities"]["chat"]["ready"] = False
+        status["missing"].append(_CHAT_ENDPOINT_INVALID)
+        status["ready"] = False
 
 
 def _load_profile_model(legacy, status, domain, importer, model_loader):
@@ -38,8 +63,7 @@ def _load_profile_model(legacy, status, domain, importer, model_loader):
 
 def update_profile(legacy, domains: set[str]) -> dict:
     status = availability(domains)
-    if "chat" in domains:
-        status["chat_endpoint"] = _chat_endpoint()
+    _add_chat_endpoint(status, domains)
     for domain, importer, model_loader in (
         ("asr", "_load_vosk_backend", "_get_local_vosk_model"),
         ("tts", "_load_piper_backend", "_get_local_piper_voice"),
@@ -146,7 +170,9 @@ def observe_profiles(legacy, stop) -> None:
 
 
 def main() -> int:
-    status = availability(requested_domains())
+    domains = requested_domains()
+    status = availability(domains)
+    _add_chat_endpoint(status, domains)
     if not status["ready"]:
         print(json.dumps({"ok": False, "error": "voice_profile_unavailable", **status}), file=sys.stderr)
         return 3
@@ -156,7 +182,9 @@ def main() -> int:
     os.environ.setdefault("VOICE_WEB_LOAD_PROFILE", "0")
     from apps.voice import web
 
-    if not update_profile(web, requested_domains())["ready"]:
+    profile = update_profile(web, requested_domains())
+    if not profile["ready"]:
+        print(json.dumps({"ok": False, "error": "voice_profile_unavailable", **profile}), file=sys.stderr)
         return 3
     stop = threading.Event()
 

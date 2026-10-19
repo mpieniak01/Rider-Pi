@@ -75,7 +75,8 @@ async def test_runner_uses_a_different_loop_and_returns_coroutine_result():
         ("localhost", "127.0.0.1"),
         ("::", "[::1]"),
         ("[::]", "[::1]"),
-        ("example.invalid", "example.invalid"),
+        ("127.0.0.2", "127.0.0.2"),
+        ("::1", "[::1]"),
     ],
 )
 def test_profile_chat_endpoint_preserves_loopback_ipv4_ipv6(monkeypatch, host, expected):
