@@ -160,18 +160,12 @@ def test_audio_capture_subprocess_cleanup():
 
 def test_lcd_renderer_cleanup():
     """Test LCD renderer cleanup method exists and is callable."""
-    # We can't fully test LCD without actual hardware, but we can verify
-    # the cleanup method exists and handles missing dependencies gracefully
-    try:
-        from drivers.lcd.driver_ili9xx import LCDRenderer
+    # The module handles optional SDKs itself; importing or asserting the public
+    # cleanup contract must fail normally on an actual regression. No device is created.
+    from drivers.lcd.driver_ili9xx import LCDRenderer
 
-        # Verify cleanup method exists
-        assert hasattr(LCDRenderer, "cleanup")
-        assert callable(LCDRenderer.cleanup)
-    except Exception as e:
-        # If we can't import due to missing xgoscreen, that's okay for this test
-        # We've verified the code structure in our manual review
-        assert "xgoscreen" in str(e) or "PIL" in str(e)
+    assert hasattr(LCDRenderer, "cleanup")
+    assert callable(LCDRenderer.cleanup)
 
 
 def test_camera_signal_handler_setup():

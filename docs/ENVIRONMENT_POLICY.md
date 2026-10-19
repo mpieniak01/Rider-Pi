@@ -79,3 +79,24 @@ Do not remove existing packages merely because they are outside the core.
 Permission to install WSL packages, use a camera or deploy does not arm motion.
 See [physical safety](apps/safety.md) and the two code paths in
 [deployment](DEPLOYMENT.md).
+
+## Trustworthy checks and simulator reports
+
+Assertions and construction of the tested object must not sit inside a handler
+that converts arbitrary exceptions into `pytest.skip`. Required contract modules
+must import successfully; optional hardware SDKs use explicit fakes. The tracking
+controller contract test injects a fake BUS and never runs the motion executor.
+
+`tests/acceptance_criteria.py` and `tests/verify_sim1_acceptance.py` execute checks
+only through `main()` or their script entry points. The shared runner in
+`tests/acceptance_report.py` records every criterion: exit status `0` means all
+passed, `1` at least one failed, and `2` no criteria were configured. Assertions
+remain failures while later criteria continue. Simulator windows close on failed
+checks too, and the SDL driver setting is restored. Run reports only in the
+software environment with an isolated BUS; regression tests fake the world,
+camera and robot.
+
+An empty systemd smoke selection produces a named skipped case without service
+operations. Do not add robot services to obtain a passing test. Status `4`
+(unknown unit) does not satisfy the known-service check. Start/stop and
+daemon-reload are marked as hardware operations and excluded from automatic pytest.
