@@ -6,13 +6,14 @@ from flask import Response, jsonify, make_response, request
 
 from services import provider_registry as registry, provider_watchdog
 
+from .http_security import apply_cors
 from .provider_observation import snapshot as observed_snapshot
 
 provider_watchdog.ensure_started()
 
 
 def _corsify(resp: Response) -> Response:
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    apply_cors(resp)
     resp.headers["Access-Control-Allow-Methods"] = "GET, PATCH, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return resp
@@ -87,7 +88,7 @@ def provider_domain_handler(domain: str) -> tuple[Response, int]:
         if not isinstance(payload, dict) or not isinstance(payload.get("target"), str):
             return _corsify(jsonify({"ok": False, "error": "target must be 'local' or 'pc'"})), 400
         target = payload["target"].strip().lower()
-        reason = payload.get("reason") or "manual"
+        reason = payload.get("reason", "manual")
 
         if target not in ("local", "pc"):
             return _corsify(jsonify({"error": "target must be 'local' or 'pc'"})), 400

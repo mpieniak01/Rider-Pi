@@ -479,7 +479,7 @@ class Odometry:
         try:
             value = json.loads(payload) if isinstance(payload, (bytes, bytearray, str)) else None
             return value if isinstance(value, dict) else None
-        except (ValueError, TypeError, UnicodeDecodeError):
+        except (ValueError, TypeError):
             return None
 
     @staticmethod

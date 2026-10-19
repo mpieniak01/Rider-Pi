@@ -19,12 +19,18 @@ from typing import Any
 from flask import Flask, Response, g, jsonify, request
 
 from apps.voice import web_audio
+from services.api_core.http_security import install as install_http_security
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Instancja aplikacji + polyfill dla Flask < 2.0
 # ───────────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
+install_http_security(app)
+
+WEB_INIT_EVENT = "web.init"
+WAV_MIMETYPE = "audio/wav"
+TTS_CONTENT_DISPOSITION = "inline; filename=tts.wav"
 
 if not hasattr(app, "get"):
 
@@ -86,13 +92,13 @@ except Exception:  # pragma: no cover
 
 def _maybe_load_env_from_bash_profile() -> None:
     if _ensure_env_from_bash_profile is None:
-        _log_warning("web.init", src="env_loader", detail="missing env_loader module")
+        _log_warning(WEB_INIT_EVENT, src="env_loader", detail="missing env_loader module")
         return
     try:
         _ensure_env_from_bash_profile()
-        _log_info("web.init", src="~/.bash_profile", status="env loaded")
+        _log_info(WEB_INIT_EVENT, src="~/.bash_profile", status="env loaded")
     except Exception as exc:  # pragma: no cover
-        _log_warning("web.init", src="~/.bash_profile", error=str(exc))
+        _log_warning(WEB_INIT_EVENT, src="~/.bash_profile", error=str(exc))
 
 
 if os.getenv("VOICE_WEB_LOAD_PROFILE", "1") == "1":
@@ -274,7 +280,7 @@ def api_tts_test():
     wav = _wrap_wav(pcm, sr, ch, 2)
     return Response(
         wav,
-        mimetype="audio/wav",
+        mimetype=WAV_MIMETYPE,
         headers={"Content-Disposition": "inline; filename=test.wav"},
     )
 
@@ -319,8 +325,8 @@ def api_tts():
                 return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
             return Response(
                 wav,
-                mimetype="audio/wav",
-                headers={"Content-Disposition": "inline; filename=tts.wav"},
+                mimetype=WAV_MIMETYPE,
+                headers={"Content-Disposition": TTS_CONTENT_DISPOSITION},
             )
 
         # 2) Pozostałe kanały – OpenAI/Gemini
@@ -358,12 +364,12 @@ def api_tts():
                 return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
             return Response(
                 wav,
-                mimetype="audio/wav",
-                headers={"Content-Disposition": "inline; filename=tts.wav"},
+                mimetype=WAV_MIMETYPE,
+                headers={"Content-Disposition": TTS_CONTENT_DISPOSITION},
             )
 
         # W przeciwnym razie – chmurowy synth
-        audio, sr, channels, fmt = synthesize(text, TTSConfig(**cfg["tts"]))
+        audio, sr, _channels, fmt = synthesize(text, TTSConfig(**cfg["tts"]))
         wav = _ensure_wav_bytes(audio, sr, fmt)
         if not wav or not _is_wav(wav):
             return jsonify({"status": "error", "error": "synthesis produced no WAV"}), 500
@@ -374,8 +380,8 @@ def api_tts():
 
         return Response(
             wav,
-            mimetype="audio/wav",
-            headers={"Content-Disposition": "inline; filename=tts.wav"},
+            mimetype=WAV_MIMETYPE,
+            headers={"Content-Disposition": TTS_CONTENT_DISPOSITION},
         )
 
     except Exception as e:
@@ -557,7 +563,7 @@ def main():
 
         cfg_dict = voice_config.load("voice_web.toml")
         bind_addr = cfg_dict.get("server", {}).get("bind", "127.0.0.1:8092")
-    except (ImportError, ModuleNotFoundError):
+    except ImportError:
         # Fallback to default
         bind_addr = "127.0.0.1:8092"
 

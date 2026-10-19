@@ -36,6 +36,8 @@ import services.api_core.face_api as face_api
 from services.api_core import compat_health
 from services.api_core.services_dashboard_api import bp as services_dashboard_bp
 
+from .http_security import apply_cors, install as install_http_security
+
 # ── Konfiguracja ───────────────────────────────────────────────────────────────
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
@@ -61,7 +63,7 @@ try:
     RAW_PATH = _camera_cfg.raw_path
     PROC_PATH = _camera_cfg.proc_path
     SSD_PATH = _camera_cfg.ssd_path
-except (ImportError, ModuleNotFoundError):
+except ImportError:
     # Fallback to legacy ENV-based paths if config module unavailable
     SNAP_DIR = os.path.abspath(os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots"))
     RAW_PATH = os.getenv("RAW_PATH") or os.path.join(SNAP_DIR, "raw.jpg")
@@ -74,6 +76,9 @@ SYSTEM_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "system.html"))
 
 # ── Aplikacja Flask ───────────────────────────────────────────────────────────
 app = Flask(__name__)
+
+
+install_http_security(app)
 
 # Flask < 2.0 shim
 if not hasattr(app, "get"):
@@ -489,7 +494,7 @@ def _api_control_proxy_impl():
 
 # Przeregistruj trasę: usuń wszystkie stare /api/control i dodaj jedną POST/OPTIONS
 try:
-    to_remove = [r for r in list(app.url_map.iter_rules()) if r.rule == "/api/control"]
+    to_remove = [r for r in app.url_map.iter_rules() if r.rule == "/api/control"]
     for r in to_remove:
         try:
             app.url_map._rules.remove(r)
@@ -525,7 +530,7 @@ def draw_face_route():
     except Exception:
         # fallback gdyby voice_proxy nie miał _corsify
         resp = jsonify(body)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
+        apply_cors(resp)
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
         return resp, code

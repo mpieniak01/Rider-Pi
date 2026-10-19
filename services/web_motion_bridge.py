@@ -8,6 +8,7 @@ import os
 from flask import Flask, jsonify, request
 
 from services.api_core.http_contract import install
+from services.api_core.http_security import apply_cors
 from services.control_commands import submit_control
 from services.safety_contract import read_status
 
@@ -17,7 +18,7 @@ install(app, after_request=True)
 
 @app.after_request
 def _add_cors(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    apply_cors(response)
     response.headers["Access-Control-Allow-Headers"] = "Content-Type,Accept"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response

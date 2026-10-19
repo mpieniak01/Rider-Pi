@@ -161,11 +161,10 @@ def test_legacy_draw_face_ok():
     assert os.path.getsize(out) > 1000
 
 
-def test_global_cors_header_present():
+def test_same_origin_cors_header_present():
     c = _client()
-    rv = c.get("/face/ping")
-    # after_request w api_server powinien dodać nagłówki
-    assert rv.headers.get("Access-Control-Allow-Origin") == "*"
+    rv = c.get("/face/ping", headers={"Origin": "http://localhost"})
+    assert rv.headers.get("Access-Control-Allow-Origin") == "http://localhost"
     assert "GET" in rv.headers.get("Access-Control-Allow-Methods", "")
 
 

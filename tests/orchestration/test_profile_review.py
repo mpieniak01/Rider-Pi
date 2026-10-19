@@ -75,8 +75,12 @@ def test_local_tts_guard_rejects_cloud_defaults_aliases_and_invalid_payload(
     monkeypatch.setattr(domain_worker, "availability", healthy)
     client = domain_worker.create_app(web, profile_status=lambda: {"stale": False, **healthy({"tts"})}).test_client()
     response = client.post("/api/tts", data=json.dumps(payload), content_type=content_type)
-    assert response.status_code == 400
-    assert response.get_json()["error"] in {"invalid_tts_payload", "selected_profile_is_local_tts"}
+    if content_type == "text/plain":
+        assert response.status_code == 415
+        assert response.get_json()["error"] == "unsupported_content_type"
+    else:
+        assert response.status_code == 400
+        assert response.get_json()["error"] in {"invalid_tts_payload", "selected_profile_is_local_tts"}
 
 
 @pytest.mark.parametrize("field", ["backend", "provider", "tts"])
@@ -90,7 +94,7 @@ def test_local_tts_guard_accepts_normalized_alias_without_rewriting_payload(monk
     monkeypatch.setattr(domain_worker, "requested_domains", lambda: {"tts"})
     monkeypatch.setattr(domain_worker, "availability", healthy)
     client = domain_worker.create_app(web, profile_status=lambda: {"stale": False, **healthy({"tts"})}).test_client()
-    response = client.post("/api/tts", data=json.dumps(payload), content_type="text/plain")
+    response = client.post("/api/tts", json=payload)
     assert response.status_code == 200 and response.get_json()["payload"] == payload
 
 

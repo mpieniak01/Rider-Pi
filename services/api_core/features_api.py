@@ -8,6 +8,8 @@ from flask import Response, jsonify, make_response, request
 from apps.app_logic_core import FeatureManager
 from common.service_catalog import CONTRACT_VERSION
 
+from .http_security import apply_cors
+
 feature_manager: FeatureManager = FeatureManager()
 
 
@@ -18,7 +20,7 @@ def set_feature_manager(manager: FeatureManager) -> None:
 
 
 def _corsify(resp: Response) -> Response:
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    apply_cors(resp)
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return resp

@@ -90,7 +90,7 @@ class ChatSession:
         if max_pairs > 0 and len(self._history) > max_pairs * 2:
             self._history = self._history[-max_pairs * 2 :]
 
-    def _build_messages_openai(self, user_text: str) -> list[dict[str, str]]:
+    def _build_role_messages(self, user_text: str) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = [{"role": "system", "content": self.config.system_prompt}]
         max_pairs = self._history_pairs_limit()
         if max_pairs > 0:
@@ -98,6 +98,8 @@ class ChatSession:
                 messages.append({"role": item.role, "content": item.content})
         messages.append({"role": "user", "content": user_text})
         return messages
+
+    _build_messages_openai = _build_role_messages
 
     def _build_history_gemini(self) -> list[dict[str, list[str]]]:
         history: list[dict[str, list[str]]] = []
@@ -108,14 +110,7 @@ class ChatSession:
                 history.append({"role": role, "parts": [item.content]})
         return history
 
-    def _build_messages_local(self, user_text: str) -> list[dict[str, str]]:
-        messages: list[dict[str, str]] = [{"role": "system", "content": self.config.system_prompt}]
-        max_pairs = self._history_pairs_limit()
-        if max_pairs > 0:
-            for item in self._history[-max_pairs * 2 :]:
-                messages.append({"role": item.role, "content": item.content})
-        messages.append({"role": "user", "content": user_text})
-        return messages
+    _build_messages_local = _build_role_messages
 
     def ask(self, text: str) -> tuple[str, list[Message]]:
         backend = (self.config.backend or "echo").lower()

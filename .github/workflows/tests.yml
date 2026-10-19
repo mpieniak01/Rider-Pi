@@ -48,6 +48,12 @@ jobs:
       - name: Run operator panel fixtures (isolated JavaScript)
         run: node --experimental-vm-modules --test tests/operator_panel.test.mjs tests/operator_panel_shared_review.test.mjs tests/operator_calibration.test.mjs tests/legacy_catalog.test.mjs tests/operator_camera_power.test.mjs tests/operator_remote_navigation.test.mjs
 
+      - name: Run security and worker regression fixtures
+        run: |
+          pytest -q tests/test_http_security.py tests/test_face_export_security.py \
+                    tests/test_provider_reason_security.py tests/test_google_puller_lifecycle.py \
+                    tests/test_chat_message_history.py tests/test_camera_lcd_shutdown.py
+
       - name: Start API (background on :8080)
         env:
           STATUS_API_PORT: "8080"

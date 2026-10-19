@@ -249,9 +249,9 @@ Serwer domyślnie startuje na porcie 5000 (konfigurowalny przez zmienną `STATUS
 
 ### CORS
 
-- Wszystkie endpointy `/api/home/*` obsługują CORS
-- Dozwolone wszystkie originy (`Access-Control-Allow-Origin: *`)
-- W środowisku produkcyjnym rozważ ograniczenie originów
+- The `/api/home/*` endpoints use the [shared HTTP boundary](api-specs/security.md).
+- Browser requests are allowed from the API's own origin; additional origins must be listed explicitly in the comma-separated `RIDER_ALLOWED_ORIGINS` setting.
+- A foreign or malformed `Origin` returns HTTP 403, including preflight. The wildcard `*` is unsupported.
 
 ## Rozwiązywanie problemów
 
@@ -550,3 +550,11 @@ Wysyłanie urządzenia do bazy ładującej.
 ## Licencja
 
 Zgodnie z główną licencją projektu Rider-Pi.
+
+## Puller lifecycle
+
+`apps.google_bridge.puller.main()` runs the worker loop and returns no value
+after shutdown is requested. A disabled integration remains idle until signaled.
+Individual polling failures remain visible in status and snapshots and retain
+the existing retry behavior; they are not command acknowledgments. Exception
+logs now include tracebacks. Unhandled startup errors still fail the process.

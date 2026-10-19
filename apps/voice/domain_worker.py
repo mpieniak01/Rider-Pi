@@ -12,6 +12,7 @@ from flask import Flask, g, jsonify, request
 from apps.voice.domain_profiles import availability, requested_domains, worker_bind
 from apps.voice.profile_state import write_status
 from common.task_runtime import read_status
+from services.api_core.http_security import install as install_http_security
 
 
 def update_profile(legacy, domains: set[str]) -> dict:
@@ -52,6 +53,7 @@ def create_app(legacy=None, profile_status=None) -> Flask:
         os.environ.setdefault("VOICE_WEB_LOAD_PROFILE", "0")
         from apps.voice import web as legacy
     app = Flask(__name__)
+    install_http_security(app)
     profile_status = profile_status or (lambda: read_status("rider-voice-web.service"))
 
     def observed_profile(domains):

@@ -249,9 +249,9 @@ Serwer domyślnie startuje na porcie 5000 (konfigurowalny przez zmienną `STATUS
 
 ### CORS
 
-- Wszystkie endpointy `/api/home/*` obsługują CORS
-- Dozwolone wszystkie originy (`Access-Control-Allow-Origin: *`)
-- W środowisku produkcyjnym rozważ ograniczenie originów
+- Endpointy `/api/home/*` korzystają ze [wspólnej granicy HTTP](api-specs/security.md).
+- Żądania przeglądarkowe są dozwolone z originu API; dodatkowe originy trzeba jawnie wymienić w `RIDER_ALLOWED_ORIGINS` jako listę rozdzielaną przecinkami.
+- Obcy lub niepoprawny `Origin` zwraca HTTP 403, również dla preflight. Wildcard `*` nie jest obsługiwany.
 
 ## Rozwiązywanie problemów
 
@@ -550,3 +550,12 @@ Wysyłanie urządzenia do bazy ładującej.
 ## Licencja
 
 Zgodnie z główną licencją projektu Rider-Pi.
+
+## Cykl życia pullera
+
+`apps.google_bridge.puller.main()` prowadzi pętlę workera i kończy się bez
+wartości zwrotnej po żądaniu zamknięcia. Przy wyłączonej integracji worker
+pozostaje bezczynny do sygnału. Niepowodzenia pojedynczego odpytywania są
+widoczne w statusie i snapshotach oraz podlegają dotychczasowym ponowieniom;
+nie stanowią potwierdzenia wykonania komendy. Logi obsługi wyjątków zawierają
+teraz także traceback. Nieobsłużony błąd startu nadal przerywa proces błędem.

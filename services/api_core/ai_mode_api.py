@@ -12,10 +12,12 @@ from flask import Response, jsonify, make_response, request
 from common import ai_mode
 from services import provider_registry as registry
 
+from .http_security import apply_cors
+
 
 def _corsify(resp: Response) -> Response:
     """Add CORS headers to response."""
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    apply_cors(resp)
     resp.headers["Access-Control-Allow-Methods"] = "GET, PUT, POST, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return resp

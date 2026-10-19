@@ -18,6 +18,7 @@ from common import bus
 # Używamy stałych ścieżek z compat (RAW_PATH/PROC_PATH/SNAP_DIR, opcjonalnie DATA_DIR)
 from services.api_core import compat as C, frames
 from services.api_core.http_contract import canonical_data, negotiated
+from services.api_core.http_security import apply_cors
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("vision_api", __name__)
@@ -178,7 +179,7 @@ def set_tracking_mode() -> Response:
     """
     if request.method == "OPTIONS":
         resp = make_response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
+        apply_cors(resp)
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
@@ -245,7 +246,7 @@ def legacy_follow_face() -> Response:
     """Legacy endpoint usunięty – użyj /api/logic/feature/<name>."""
     if request.method == "OPTIONS":
         resp = make_response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
+        apply_cors(resp)
         resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
@@ -257,7 +258,7 @@ def legacy_follow_hand() -> Response:
     """Legacy endpoint usunięty – użyj /api/logic/feature/<name>."""
     if request.method == "OPTIONS":
         resp = make_response("", 204)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
+        apply_cors(resp)
         resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return resp

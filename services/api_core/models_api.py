@@ -8,6 +8,8 @@ from typing import Any
 
 from flask import Response, jsonify, make_response, request
 
+from .http_security import apply_cors
+
 MODEL_EXTENSIONS: tuple[str, ...] = (".pt", ".onnx", ".tflite", ".gguf", ".bin")
 CATEGORY_PATTERNS: dict[str, tuple[str, ...]] = {
     "vision": ("yolo", "detection", "vision", "mediapipe"),
@@ -19,7 +21,7 @@ MODELS_DIR = Path(os.getenv("RIDER_PI_MODELS_DIR", "data/models"))
 
 
 def _corsify(resp: Response) -> Response:
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    apply_cors(resp)
     resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return resp

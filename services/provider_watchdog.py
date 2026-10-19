@@ -130,7 +130,7 @@ def _loop() -> None:
             _restore_domains()
             consecutive_failures = 0
 
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        except (urllib.error.URLError, TimeoutError) as exc:
             consecutive_failures += 1
 
             registry.update_pc_health(

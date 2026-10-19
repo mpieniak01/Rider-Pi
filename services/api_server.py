@@ -59,6 +59,7 @@ from services.api_core.api_metrics import _update_api_metrics
 from services.api_core.chat_routes import register_chat_endpoints
 from services.api_core.face_api import render_face as face_render_shim
 from services.api_core.home_auth_route import home_auth as home_auth_flow, home_auth_url as home_auth_request
+from services.api_core.http_security import apply_cors
 from services.api_core.resource_api import api_resource
 from services.api_core.service_logs import service_logs
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
@@ -73,7 +74,7 @@ face_studio.register(app)
 # ── CORS global + metryki ────────────────────────────────────────────────────
 @app.after_request
 def _cors_all(resp: Response) -> Response:
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    apply_cors(resp)
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS,HEAD"
 
@@ -373,6 +374,7 @@ _add_rule(
 DATA_DIR = Path(os.getenv("DATA_DIR", Path.home() / "robot" / "data"))
 GOOGLE_DATA_DIR = DATA_DIR / "google"
 LAST_COMMAND_FILE = GOOGLE_DATA_DIR / "last_command.json"
+NOT_AUTHENTICATED = "Not authenticated"
 
 
 def _save_command_cache(device_id: str, command: str, params: dict[str, Any], result: dict[str, Any]) -> None:
@@ -424,13 +426,13 @@ def home_devices():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     if not google_home_api.is_authenticated():
-        return _corsify(jsonify({"ok": False, "error": "Not authenticated"})), 401
+        return _corsify(jsonify({"ok": False, "error": NOT_AUTHENTICATED})), 401
     result = _auto_refresh_token_and_retry(google_home_api.get_devices)
     if result.get("ok"):
         return _corsify(jsonify({"ok": True, "devices": result.get("devices", [])})), 200
     app.logger.error("Failed to get devices: %s", result.get("error", "Unknown error"))
     status_code = 401 if result.get("status_code") == 401 else 500
-    error_msg = "Not authenticated" if status_code == 401 else "Failed to retrieve devices"
+    error_msg = NOT_AUTHENTICATED if status_code == 401 else "Failed to retrieve devices"
     return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 
@@ -439,7 +441,7 @@ def home_command():
     if request.method == "OPTIONS":
         return _corsify(make_response("", 204))
     if not google_home_api.is_authenticated():
-        return _corsify(jsonify({"ok": False, "error": "Not authenticated"})), 401
+        return _corsify(jsonify({"ok": False, "error": NOT_AUTHENTICATED})), 401
     payload = request.get_json(silent=True) or {}
     device_id = payload.get("deviceId")
     command = payload.get("command")
@@ -452,7 +454,7 @@ def home_command():
         return _corsify(jsonify({"ok": True, "result": result.get("result", {})})), 200
     app.logger.error("Failed to send command: %s", result.get("error", "Unknown error"))
     status_code = 401 if result.get("status_code") == 401 else 500
-    error_msg = "Not authenticated" if status_code == 401 else "Command failed"
+    error_msg = NOT_AUTHENTICATED if status_code == 401 else "Command failed"
     return _corsify(jsonify({"ok": False, "error": error_msg})), status_code
 
 

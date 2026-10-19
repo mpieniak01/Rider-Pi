@@ -211,7 +211,7 @@ def _read(path):
         raise ValueError("profile_oversized")
     try:
         return json.loads(raw, object_pairs_hook=_pairs, parse_constant=_reject_constant)
-    except (UnicodeError, ValueError, RecursionError):
+    except (ValueError, RecursionError):
         raise ValueError("calibration_json_invalid") from None
 
 

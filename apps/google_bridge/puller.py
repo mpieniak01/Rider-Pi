@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import logging
 import signal
-import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -73,7 +72,7 @@ def write_status(state: str, timestamp: float, errors_24h: int = 0, requests_24h
         STATUS_FILE.write_text(json.dumps(status, indent=2))
         logger.debug(f"Status updated: {state}")
     except Exception as e:
-        logger.error(f"Failed to write status: {e}")
+        logger.exception("Failed to write status: %s", e)
 
 
 def write_snapshot(data: dict[str, Any] | None = None, error: str | None = None) -> None:
@@ -94,7 +93,7 @@ def write_snapshot(data: dict[str, Any] | None = None, error: str | None = None)
         LAST_FILE.write_text(json.dumps(snapshot, indent=2))
         logger.debug("Snapshot updated")
     except Exception as e:
-        logger.error(f"Failed to write snapshot: {e}")
+        logger.exception("Failed to write snapshot: %s", e)
 
 
 def pseudocall_google() -> dict[str, Any]:
@@ -126,12 +125,18 @@ def poll_google() -> tuple[bool, dict[str, Any] | None, str | None]:
         data = pseudocall_google()
         return True, data, None
     except Exception as e:
-        logger.error(f"Google poll failed: {e}")
+        logger.exception("Google poll failed: %s", e)
         return False, None, str(e)
 
 
-def main() -> int:
-    """Main worker loop."""
+def _wait_until_shutdown() -> None:
+    """Keep a disabled worker alive until its signal handler requests shutdown."""
+    while not _shutdown:
+        time.sleep(1)
+
+
+def main() -> None:
+    """Run the worker until shutdown; poll failures are reported and retried."""
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -145,10 +150,8 @@ def main() -> int:
     if not GOOGLE_ENABLED:
         logger.info("Google Bridge is disabled (GOOGLE_ENABLED=0)")
         write_status("off", time.time())
-        # Stay alive but idle
-        while not _shutdown:
-            time.sleep(1)
-        return 0
+        _wait_until_shutdown()
+        return
 
     # Counters for metrics
     errors_24h = 0
@@ -190,7 +193,7 @@ def main() -> int:
                 time.sleep(1)
 
         except Exception as e:
-            logger.error(f"Unexpected error in main loop: {e}")
+            logger.exception("Unexpected error in main loop: %s", e)
             errors_24h += 1
             write_status("error", time.time(), errors_24h, requests_24h)
             write_snapshot(error=str(e))
@@ -198,8 +201,7 @@ def main() -> int:
             time.sleep(5)
 
     logger.info("Google Bridge Puller stopped")
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
