@@ -11,6 +11,7 @@ def run_criteria(title, criteria):
     print("\n" + "=" * 70)
     print(title)
     print("=" * 70 + "\n")
+    criteria = tuple(criteria)
     if not criteria:
         print("ERROR: no acceptance criteria configured")
         return 2

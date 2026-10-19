@@ -163,11 +163,13 @@ def test_world_constructor_failure_restores_environment(report_modules, monkeypa
     assert os.environ["SDL_VIDEODRIVER"] == "operator-display"
 
 
-def test_empty_criteria_are_configuration_failure(report_modules, capsys):
+@pytest.mark.parametrize("as_iterator", [False, True])
+def test_empty_criteria_are_configuration_failure(report_modules, capsys, as_iterator):
     """Zero exercised criteria must never produce a successful report."""
     import acceptance_report
 
-    assert acceptance_report.run_criteria("empty", []) == 2
+    criteria = iter(()) if as_iterator else []
+    assert acceptance_report.run_criteria("empty", criteria) == 2
     assert "no acceptance criteria" in capsys.readouterr().out
 
 
