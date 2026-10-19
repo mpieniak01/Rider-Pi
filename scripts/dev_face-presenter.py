@@ -11,29 +11,34 @@ import time
 from PIL import Image, ImageDraw
 
 
-def find_presenter():
-    xs = importlib.import_module("xgoscreen")
-    # 1) bezpośrednio pod xgoscreen
-    for name in dir(xs):
-        obj = getattr(xs, name)
-        if hasattr(obj, "ShowImage"):
+def _presenter_in(module):
+    """Try every exported presenter factory without suppressing process cancellation."""
+    for name in dir(module):
+        factory = getattr(module, name)
+        if hasattr(factory, "ShowImage"):
             try:
-                return obj()
+                return True, factory()
             except Exception:
                 pass
-    # 2) w podmodułach
-    for _, modname, _ in pkgutil.walk_packages(xs.__path__, xs.__name__ + "."):
+    return False, None
+
+
+def _presenter_modules(package):
+    yield package
+    for _, name, _ in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
         try:
-            m = importlib.import_module(modname)
+            module = importlib.import_module(name)
         except Exception:
             continue
-        for name in dir(m):
-            c = getattr(m, name)
-            if hasattr(c, "ShowImage"):
-                try:
-                    return c()
-                except Exception:
-                    pass
+        yield module
+
+
+def find_presenter():
+    package = importlib.import_module("xgoscreen")
+    for module in _presenter_modules(package):
+        found, presenter = _presenter_in(module)
+        if found:
+            return presenter
     raise RuntimeError("Nie znalazłem klasy z ShowImage w xgoscreen.*")
 
 
@@ -78,19 +83,7 @@ def get_face_frame(expr: str, size):
         return make_testcard(*size)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--expr", default="neutral")
-    ap.add_argument("--rotate", type=int, default=270, choices=(0, 90, 180, 270))
-    ap.add_argument("--fps", type=int, default=20)
-    ap.add_argument("--secs", type=float, default=10)
-    args = ap.parse_args()
-
-    # środowisko (Hz/tryb) – jak u Ciebie działało najlepiej
-    hz = int(os.getenv("FACE_LCD_SPI_HZ", "0") or 0)
-    mode = int(os.getenv("FACE_SPI_MODE", "0") or 0)
-
-    dev = find_presenter()
+def _configure_presenter(dev, hz, mode):
     for name in ("begin", "Begin", "Init", "init"):
         fn = getattr(dev, name, None)
         if callable(fn):
@@ -109,6 +102,22 @@ def main():
         except Exception:
             pass
 
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--expr", default="neutral")
+    ap.add_argument("--rotate", type=int, default=270, choices=(0, 90, 180, 270))
+    ap.add_argument("--fps", type=int, default=20)
+    ap.add_argument("--secs", type=float, default=10)
+    args = ap.parse_args()
+
+    # środowisko (Hz/tryb) – jak u Ciebie działało najlepiej
+    hz = int(os.getenv("FACE_LCD_SPI_HZ", "0") or 0)
+    mode = int(os.getenv("FACE_SPI_MODE", "0") or 0)
+
+    dev = find_presenter()
+    _configure_presenter(dev, hz, mode)
+
     W, H = get_size(dev)
     period = 1.0 / max(1, args.fps)
     t0 = time.time()
@@ -125,10 +134,8 @@ def main():
             time.sleep(dt)
 
     print(
-        print(
-            f"fps~{frames / max(0.001, (time.time() - t0)):.2f} W={W} H={H} ",
-            f"hz={hz} mode={mode}",
-        )
+        f"fps~{frames / max(0.001, (time.time() - t0)):.2f} W={W} H={H} ",
+        f"hz={hz} mode={mode}",
     )
 
 
