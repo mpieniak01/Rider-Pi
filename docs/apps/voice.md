@@ -607,6 +607,10 @@ Socket shutdown completes `close()` and `wait_closed()` before releasing the
 reference, even when its caller is cancelled; cancellation propagates afterwards. The
 original cancellation instance and message are preserved; a simultaneous socket
 error is retrieved and reported before releasing the reference.
+Message assertions inspect our coroutine boundary: Python 3.9 `Task` may create
+a new `CancelledError` without its message when a caller awaits the task.
+The [asyncio 3.9 implementation](https://github.com/python/cpython/blob/3.9/Lib/asyncio/tasks.py)
+remains part of the supported runtime contract.
 
 The listener awaits cleanup on its own event loop; async clients use
 `await service.close()`. Empty audio-queue reads run in an executor so the event
