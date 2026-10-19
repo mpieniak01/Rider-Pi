@@ -69,8 +69,8 @@ class LCDRenderer:
     def display(self, title: str, lines: list[str], warn: bool = False, *, frame=None) -> None:
         """Present the existing Device Info composition through the common sink API.
 
-        ``title``, ``lines`` and ``warn`` are intentionally unused compatibility
-        parameters: StatusPanelLifecycle._present_screen supplies them to every
+        The title and lines arguments and the warn flag are intentionally unused
+        compatibility inputs: StatusPanelLifecycle._present_screen supplies them to every
         sink. This sink preserves the boot Device Info layout from ``frame`` or
         gather_info(), rather than replacing it with task-summary text. The
         lifecycle still uses those summary values to detect screen changes.
