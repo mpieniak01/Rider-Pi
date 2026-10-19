@@ -188,15 +188,15 @@ def _try_encode(ext: str, img, params) -> bytes | None:
 
 def _select_working_ext(img) -> str:
     # jeśli wymuszone przez ENV i działa – użyj
-    if FORCED_EXT in (".jpg", ".jpeg", ".png", ".bmp"):
+    if FORCED_EXT in (".jpg", _JPEG_EXTENSION, ".png", ".bmp"):
         test = {
             ".jpg": [int(cv2.IMWRITE_JPEG_QUALITY), 80],
-            ".jpeg": [int(cv2.IMWRITE_JPEG_QUALITY), 80],
+            _JPEG_EXTENSION: [int(cv2.IMWRITE_JPEG_QUALITY), 80],
             ".png": [int(cv2.IMWRITE_PNG_COMPRESSION), 3],
             ".bmp": [],
         }
         if _try_encode(FORCED_EXT, img, test[FORCED_EXT]) is not None:
-            return FORCED_EXT if FORCED_EXT != ".jpeg" else ".jpg"
+            return FORCED_EXT if FORCED_EXT != _JPEG_EXTENSION else ".jpg"
     # kolejność preferencji
     for ext, params in [
         (".jpg", [int(cv2.IMWRITE_JPEG_QUALITY), 80]),
@@ -407,40 +407,151 @@ def draw_overlay(img, detections):
         )
 
 
+_JPEG_EXTENSION = ".jpeg"
+
+
+def _init_preview_detector():
+    # Detektor init
+    det_kind = DETECTOR
+    det = None
+    ssd_filter = parse_ssd_classes_env()
+
+    if det_kind == "ssd":
+        try:
+            det = ssd_load()
+            print(f"[det] SSD READY | classes={'ALL' if not ssd_filter else ','.join(sorted(ssd_filter))}")
+        except Exception as e:
+            print(f"[det] SSD init FAILED: {e} → DETECTOR=none", flush=True)
+            det_kind = "none"
+    elif det_kind == "tflite":
+        if not os.path.isfile(TFLITE_MODEL):
+            print(
+                f"[det] TFLite model not found: {TFLITE_MODEL} → DETECTOR=none",
+                flush=True,
+            )
+            det_kind = "none"
+        else:
+            try:
+                det = TFLiteEffDet(TFLITE_MODEL)
+                print(f"[det] TFLite READY | model={TFLITE_MODEL}", flush=True)
+            except Exception as e:
+                print(f"[det] TFLite init FAILED: {e} → DETECTOR=none", flush=True)
+                det_kind = "none"
+    elif det_kind == "haar":
+        pass  # zainicjalizujemy niżej w pętli (lekki)
+
+    return det_kind, det, ssd_filter
+
+
+def _preview_haar_detections(frame, frames, face_cascade):
+    detections = []
+    if face_cascade is None:
+        try:
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        except Exception:
+            face_cascade = None
+    if face_cascade is not None and (frames % FACE_EVERY == 0):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=3, minSize=(40, 40))
+        for x, y, w, h in faces:
+            detections.append(("person", 0.90, (x, y, x + w, y + h)))
+
+    return detections, face_cascade
+
+
+def _preview_ssd_detections(frame, det, ssd_filter):
+    detections = []
+    blob = cv2.dnn.blobFromImage(
+        cv2.resize(frame, (300, 300)),
+        0.007843,
+        (300, 300),
+        127.5,
+        swapRB=True,
+        crop=False,
+    )
+    det.setInput(blob)
+    raw = det.forward()
+    h, w = frame.shape[:2]
+    for i in range(raw.shape[2]):
+        conf = float(raw[0, 0, i, 2])
+        if conf < VISION_MIN_SCORE:
+            continue
+        cls_id = int(raw[0, 0, i, 1])
+        x1 = int(raw[0, 0, i, 3] * w)
+        y1 = int(raw[0, 0, i, 4] * h)
+        x2 = int(raw[0, 0, i, 5] * w)
+        y2 = int(raw[0, 0, i, 6] * h)
+        x1 = max(0, min(x1, w - 1))
+        y1 = max(0, min(y1, h - 1))
+        x2 = max(0, min(x2, w - 1))
+        y2 = max(0, min(y2, h - 1))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        name = CLASSES_SSD[cls_id] if 0 <= cls_id < len(CLASSES_SSD) else str(cls_id)
+        lname = name.lower()
+        if ssd_filter and (lname not in ssd_filter):
+            continue
+        detections.append((name, conf, (x1, y1, x2, y2)))
+
+    return detections
+
+
+def _preview_frame_detections(frame, frames, det_kind, det, ssd_filter, face_cascade):
+    if det_kind == "haar":
+        return _preview_haar_detections(frame, frames, face_cascade)
+    if det_kind == "ssd" and frames % VISION_EVERY == 0:
+        return _preview_ssd_detections(frame, det, ssd_filter), face_cascade
+    if det_kind == "tflite" and frames % VISION_EVERY == 0:
+        try:
+            return det.infer(frame, VISION_MIN_SCORE), face_cascade
+        except Exception:
+            pass
+    return [], face_cascade
+
+
+def _preview_overlay(frame, detections, frames, fps):
+    out = frame.copy()
+    if detections and (LCD_ok and not ENV_NO_DRAW):
+        draw_overlay(out, detections)
+    if LCD_ok and not ENV_NO_DRAW and (frames % 10 == 0):
+        cv2.putText(
+            out,
+            f"{fps:.1f} fps",
+            (5, 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 0, 0),
+            1,
+        )
+
+    return out
+
+
+def _present_preview(out):
+    # Wyświetlenie na LCD
+    if LCD_ok and not ENV_NO_DRAW:
+        try:
+            disp.present(bgr_to_pil(out))
+        except Exception:
+            pass
+
+
+def _save_preview_feeds(frame, frames, captured_at, capture_session):
+    # RAW feeds remote decisions; it must not inherit the slower UI cadence.
+    frame_id = f'{capture_session}-{frames}'
+    if frames == 0 or (frames % SAVE_LAST_EVERY == 0):
+        save_last_frame(frame, captured_at=captured_at, frame_id=frame_id)
+    if frames == 0 or (frames % SAVE_RAW_EVERY == 0):
+        save_raw_snapshot(frame, captured_at=captured_at, frame_id=frame_id)
+
+
 def main():
     # Camera and optional LCD open only for the running capture session.
     read, _ = open_camera((320, 240))
 
     try:
         _lcd_init()
-        # Detektor init
-        det_kind = DETECTOR
-        det = None
-        ssd_filter = parse_ssd_classes_env()
-
-        if det_kind == "ssd":
-            try:
-                det = ssd_load()
-                print(f"[det] SSD READY | classes={'ALL' if not ssd_filter else ','.join(sorted(ssd_filter))}")
-            except Exception as e:
-                print(f"[det] SSD init FAILED: {e} → DETECTOR=none", flush=True)
-                det_kind = "none"
-        elif det_kind == "tflite":
-            if not os.path.isfile(TFLITE_MODEL):
-                print(
-                    f"[det] TFLite model not found: {TFLITE_MODEL} → DETECTOR=none",
-                    flush=True,
-                )
-                det_kind = "none"
-            else:
-                try:
-                    det = TFLiteEffDet(TFLITE_MODEL)
-                    print(f"[det] TFLite READY | model={TFLITE_MODEL}", flush=True)
-                except Exception as e:
-                    print(f"[det] TFLite init FAILED: {e} → DETECTOR=none", flush=True)
-                    det_kind = "none"
-        elif det_kind == "haar":
-            pass  # zainicjalizujemy niżej w pętli (lekki)
+        det_kind, det, ssd_filter = _init_preview_detector()
 
         print(
             f"[preview] Start. LCD={'ON' if (LCD_ok and not ENV_NO_DRAW) else 'OFF (headless)'}; "
@@ -471,63 +582,7 @@ def main():
                 time.sleep(0.02)
                 continue
 
-            # Detekcja (opcjonalnie)
-            detections: list[tuple[str, float, tuple[int, int, int, int]]] = []
-
-            if det_kind == "haar":
-                if face_cascade is None:
-                    try:
-                        face_cascade = cv2.CascadeClassifier(
-                            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-                        )
-                    except Exception:
-                        face_cascade = None
-                if face_cascade is not None and (frames % FACE_EVERY == 0):
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=3, minSize=(40, 40))
-                    for x, y, w, h in faces:
-                        detections.append(("person", 0.90, (x, y, x + w, y + h)))
-
-            elif det_kind == "ssd":
-                if frames % VISION_EVERY == 0:
-                    blob = cv2.dnn.blobFromImage(
-                        cv2.resize(frame, (300, 300)),
-                        0.007843,
-                        (300, 300),
-                        127.5,
-                        swapRB=True,
-                        crop=False,
-                    )
-                    det.setInput(blob)
-                    raw = det.forward()
-                    h, w = frame.shape[:2]
-                    for i in range(raw.shape[2]):
-                        conf = float(raw[0, 0, i, 2])
-                        if conf < VISION_MIN_SCORE:
-                            continue
-                        cls_id = int(raw[0, 0, i, 1])
-                        x1 = int(raw[0, 0, i, 3] * w)
-                        y1 = int(raw[0, 0, i, 4] * h)
-                        x2 = int(raw[0, 0, i, 5] * w)
-                        y2 = int(raw[0, 0, i, 6] * h)
-                        x1 = max(0, min(x1, w - 1))
-                        y1 = max(0, min(y1, h - 1))
-                        x2 = max(0, min(x2, w - 1))
-                        y2 = max(0, min(y2, h - 1))
-                        if x2 <= x1 or y2 <= y1:
-                            continue
-                        name = CLASSES_SSD[cls_id] if 0 <= cls_id < len(CLASSES_SSD) else str(cls_id)
-                        lname = name.lower()
-                        if ssd_filter and (lname not in ssd_filter):
-                            continue
-                        detections.append((name, conf, (x1, y1, x2, y2)))
-
-            elif det_kind == "tflite":
-                if frames % VISION_EVERY == 0:
-                    try:
-                        detections = det.infer(frame, VISION_MIN_SCORE)  # type: ignore
-                    except Exception:
-                        detections = []
+            detections, face_cascade = _preview_frame_detections(frame, frames, det_kind, det, ssd_filter, face_cascade)
 
             # Overlay i publikacja
             if detections:
@@ -536,33 +591,11 @@ def main():
             # FPS + overlay co 10 klatek (overlay tylko jeśli rysujemy)
             elapsed = max(1e-6, (time.time() - t0))
             fps = (frames + 1) / elapsed
-            out = frame.copy()
-            if detections and (LCD_ok and not ENV_NO_DRAW):
-                draw_overlay(out, detections)
-            if LCD_ok and not ENV_NO_DRAW and (frames % 10 == 0):
-                cv2.putText(
-                    out,
-                    f"{fps:.1f} fps",
-                    (5, 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 0, 0),
-                    1,
-                )
+            out = _preview_overlay(frame, detections, frames, fps)
 
-            # RAW feeds remote decisions; it must not inherit the slower UI cadence.
-            frame_id = f'{capture_session}-{frames}'
-            if frames == 0 or (frames % SAVE_LAST_EVERY == 0):
-                save_last_frame(frame, captured_at=captured_at, frame_id=frame_id)
-            if frames == 0 or (frames % SAVE_RAW_EVERY == 0):
-                save_raw_snapshot(frame, captured_at=captured_at, frame_id=frame_id)
+            _save_preview_feeds(frame, frames, captured_at, capture_session)
 
-            # Wyświetlenie na LCD
-            if LCD_ok and not ENV_NO_DRAW:
-                try:
-                    disp.present(bgr_to_pil(out))
-                except Exception:
-                    pass
+            _present_preview(out)
 
             # Heartbeat co ~1s
             if (time.time() - t_hb_last) >= 1.0:

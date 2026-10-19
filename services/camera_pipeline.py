@@ -19,6 +19,10 @@ CAPTURE_UNITS = ("camera-capture@raw.service", "camera-capture@edge.service", "c
 CAMERA_GOALS = ("s14_venom_navigation", "s15_venom_perception", "s12_venom_vision", "s2_camera_preview")
 
 
+def _motion_active(safety):
+    return safety.get("moving") or any(value != 0 for value in (safety.get("output") or {}).values())
+
+
 class PipelineError(Exception):
     def __init__(self, code, status=409):
         super().__init__(code)
@@ -80,28 +84,16 @@ class CameraPipeline:
         self.manager, self.capability_fn, self.sleep = manager, capability_fn, sleeper
         self.stopper = stopper
 
-    def status(self, *, operation_id=None, error=None):
-        config, runtime = store.snapshot(), _runtime()
-        profile, state = config["profile"], runtime.get("state", "stopped")
-        legacy = not store.enabled()
-        active = state == "active"
-        use_native = store.native(profile) and not legacy
-        consumers = list(self.manager.resource_consumers().get("camera", []))
-        if legacy:
-            # Observe the legacy unit directly; RAM status does not exist yet.
-            row = self.manager._status(self.manager.PREVIEW_UNIT)
-            active = row.get("active") == "active" and not row.get("error") and row.get("stale") is not True
-            state = "active" if active else "failed" if row.get("error") or row.get("active") == "failed" else "stopped"
-            runtime = {"active_profile": dict(profile) if active else None}
-        latest = runtime.get("latest_frame")
-        if latest is not None:
-            latest = dict(
-                latest, frame_age_ms=max(0, (time.monotonic_ns() - latest["captured_monotonic_ns"]) / 1_000_000)
-            )
-        tracker_active = any(
-            name in {"s6_tracker_module", "s3_follow_me_face", "s3_follow_me_hand"} for name in consumers
-        )
-        stages = {
+    def _legacy_status(self, profile):
+        # Observe the legacy unit directly; RAM status does not exist yet.
+        row = self.manager._status(self.manager.PREVIEW_UNIT)
+        active = row.get("active") == "active" and not row.get("error") and row.get("stale") is not True
+        state = "active" if active else "failed" if row.get("error") or row.get("active") == "failed" else "stopped"
+        runtime = {"active_profile": dict(profile) if active else None}
+        return active, state, runtime
+
+    def _effective_stages(self, active, profile, use_native, legacy, tracker_active, consumers):
+        return {
             "capture": active,
             "local_analysis": active and profile["analysis_location"] == "local",
             "snapshot_write": active and not use_native,
@@ -114,6 +106,25 @@ class CameraPipeline:
             "legacy_obstacle_snapshot_write": active and "s7_obstacle_module" in consumers,
             "remote_transport": active and profile["analysis_location"] == "venom",
         }
+
+    def status(self, *, operation_id=None, error=None):
+        config, runtime = store.snapshot(), _runtime()
+        profile, state = config["profile"], runtime.get("state", "stopped")
+        legacy = not store.enabled()
+        active = state == "active"
+        use_native = store.native(profile) and not legacy
+        consumers = list(self.manager.resource_consumers().get("camera", []))
+        if legacy:
+            active, state, runtime = self._legacy_status(profile)
+        latest = runtime.get("latest_frame")
+        if latest is not None:
+            latest = dict(
+                latest, frame_age_ms=max(0, (time.monotonic_ns() - latest["captured_monotonic_ns"]) / 1_000_000)
+            )
+        tracker_active = any(
+            name in {"s6_tracker_module", "s3_follow_me_face", "s3_follow_me_hand"} for name in consumers
+        )
+        stages = self._effective_stages(active, profile, use_native, legacy, tracker_active, consumers)
         return {
             "contract_id": "rider.camera_pipeline",
             "contract_version": 1,
@@ -182,6 +193,18 @@ class CameraPipeline:
         if not result.get("ok"):
             raise PipelineError(result.get("error") or "camera_pipeline_stop_failed", 503)
 
+    def _stop_camera_goal(self, goal, preempted):
+        if preempted and goal == "s14_venom_navigation":
+            result = self.manager.set_feature(
+                goal,
+                False,
+                stop_permission=lambda _owner: {"ok": True, "confirmed": True, "permission_revoked": True},
+            )
+        else:
+            result = self.manager.set_feature(goal, False)
+        if not result.get("ok"):
+            raise PipelineError(result.get("error") or "camera_pipeline_stop_failed", 503)
+
     def _stop(self, *, preempted=False, release_orphan=False):
         self._idle()
         consumers = self.manager.resource_consumers().get("camera", [])
@@ -189,16 +212,7 @@ class CameraPipeline:
             raise PipelineError("camera_pipeline_foreign_consumer")
         for goal in CAMERA_GOALS:
             if goal in consumers:
-                if preempted and goal == "s14_venom_navigation":
-                    result = self.manager.set_feature(
-                        goal,
-                        False,
-                        stop_permission=lambda _owner: {"ok": True, "confirmed": True, "permission_revoked": True},
-                    )
-                else:
-                    result = self.manager.set_feature(goal, False)
-                if not result.get("ok"):
-                    raise PipelineError(result.get("error") or "camera_pipeline_stop_failed", 503)
+                self._stop_camera_goal(goal, preempted)
         if release_orphan:
             self._release_orphan()
         # Never steal a camera opened outside this domain. A positive stop ACK
@@ -231,6 +245,37 @@ class CameraPipeline:
                 return self._execute(data)
         return self._execute(data)
 
+    def _configure_pipeline(self, profile, config):
+        self._available(profile)
+        changed = profile != config["profile"]
+        if changed or not store.enabled():
+            resume_preview = bool(set(self.manager.resource_consumers().get("camera", [])) & set(CAMERA_GOALS))
+            self._stop()
+            config = {**config, "revision": config["revision"] + int(changed), "profile": dict(profile)}
+            store.write(config)
+            # Only preserve camera demand. Never recreate analysis, a
+            # navigation intention, motion authority or an ARM lease.
+            if resume_preview:
+                result = self.manager.set_feature("s2_camera_preview", True)
+                if not result.get("ok"):
+                    raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
+
+    def _apply_pipeline_action(self, data, config, preempted):
+        action = data["action"]
+        if action == "configure":
+            self._configure_pipeline(data["profile"], config)
+        elif action == "start":
+            self._available(config["profile"])
+            self._idle()
+            if not store.enabled():
+                self._stop()
+                store.write(config)
+            result = self.manager.set_feature("s2_camera_preview", True)
+            if not result.get("ok"):
+                raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
+        else:
+            self._stop(preempted=preempted, release_orphan=True)
+
     def _execute(self, data):
         try:
             store.validate_request(data)
@@ -240,98 +285,82 @@ class CameraPipeline:
         preempted = False
         journal = store.config_path().with_name("camera_pipeline_requests.json")
         if data["action"] == "stop":
-            # Read-only admission before priority cancellation. A replayed old OFF
-            # or stale config must never stop a newer control session.
-            try:
-                prior = json.loads(journal.read_text()) if journal.exists() and journal.stat().st_size <= 131072 else []
-                old = next((row for row in prior if row["request"]["request_id"] == request_id), None)
-                if old is not None:
-                    if old["request"] != data:
-                        return {
-                            **self.status(operation_id=request_id, error="camera_pipeline_request_conflict"),
-                            "current_revision": store.snapshot()["revision"],
-                        }, 409
-                    return old["response"], old["status"]
-            except (OSError, ValueError, KeyError, TypeError):
-                return {"ok": False, "error": "camera_pipeline_journal_unavailable"}, 503
-            if data["expected_revision"] != store.snapshot()["revision"]:
-                return {
-                    **self.status(operation_id=request_id, error="camera_pipeline_revision_conflict"),
-                    "current_revision": store.snapshot()["revision"],
-                }, 409
+            response = self._admit_stop(data, journal)
+            if response is not None:
+                return response
         if data["action"] == "stop":
-            safety = self.manager.safety_status()
-            control = safety.get("operator_control") or {}
-            if safety.get("owner") != "navigation" and (
-                safety.get("moving") or any(value != 0 for value in (safety.get("output") or {}).values())
-            ):
-                return self.status(operation_id=request_id, error="camera_pipeline_motion_busy"), 409
-            if control.get("version") == 1 and (control.get("state") != "idle" or safety.get("state") == "DISARMED"):
-                # Preempt outside the service transaction: an old cold prepare
-                # holding that lock must lose its generation before a late ARM.
-                generation = safety.get("generation")
-                if not isinstance(generation, str) or not generation:
-                    return {"ok": False, "error": "camera_pipeline_motion_status_unavailable"}, 503
-                result = self.stopper(owner="manual", expected_generation=generation)
-                if not result.get("ok") or not result.get("confirmed"):
-                    return {"ok": False, "error": result.get("error") or "camera_pipeline_stop_unconfirmed"}, 409
-                preempted = True
+            preempted, response = self._preempt_stop(data)
+            if response is not None:
+                return response
         with self.manager.transaction(), runtime_lock.exclusive(journal.with_suffix(".lock")):
-            entries = []
-            try:
-                entries = (
-                    json.loads(journal.read_text()) if journal.exists() and journal.stat().st_size <= 131072 else []
-                )
-                if not isinstance(entries, list):
-                    entries = []
-                old = next((entry for entry in entries if entry["request"]["request_id"] == request_id), None)
-                if old is not None:
-                    if old["request"] != data:
-                        raise PipelineError("camera_pipeline_request_conflict")
-                    return old["response"], old["status"]
-                config = store.snapshot()
-                if data["expected_revision"] != config["revision"]:
-                    raise PipelineError("camera_pipeline_revision_conflict")
-                action = data["action"]
-                if action == "configure":
-                    profile = data["profile"]
-                    self._available(profile)
-                    changed = profile != config["profile"]
-                    if changed or not store.enabled():
-                        resume_preview = bool(
-                            set(self.manager.resource_consumers().get("camera", [])) & set(CAMERA_GOALS)
-                        )
-                        self._stop()
-                        config = {**config, "revision": config["revision"] + int(changed), "profile": dict(profile)}
-                        store.write(config)
-                        # Only preserve camera demand. Never recreate analysis, a
-                        # navigation intention, motion authority or an ARM lease.
-                        if resume_preview:
-                            result = self.manager.set_feature("s2_camera_preview", True)
-                            if not result.get("ok"):
-                                raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
-                elif action == "start":
-                    self._available(config["profile"])
-                    self._idle()
-                    if not store.enabled():
-                        self._stop()
-                        store.write(config)
-                    result = self.manager.set_feature("s2_camera_preview", True)
-                    if not result.get("ok"):
-                        raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
-                else:
-                    self._stop(preempted=preempted, release_orphan=True)
-                response, status = self.status(operation_id=request_id), 200
-            except PipelineError as exc:
-                response, status = self.status(operation_id=request_id, error=exc.code), exc.status
-                if status == 409:
-                    response["current_revision"] = store.snapshot()["revision"]
-            except (OSError, ValueError, KeyError, TypeError):
-                response, status = {"ok": False, "error": "camera_pipeline_persistence_failed"}, 503
-            entries = [entry for entry in entries if entry["request"]["request_id"] != request_id][-31:]
-            entries.append({"request": data, "response": response, "status": status})
-            try:
-                _write(journal, entries)
-            except OSError:
-                return {"ok": False, "error": "camera_pipeline_journal_unavailable"}, 503
-            return response, status
+            return self._execute_locked(data, journal, request_id, preempted)
+
+    def _admit_stop(self, data, journal):
+        request_id = data["request_id"]
+        # Read-only admission before priority cancellation. A replayed old OFF
+        # or stale config must never stop a newer control session.
+        try:
+            prior = json.loads(journal.read_text()) if journal.exists() and journal.stat().st_size <= 131072 else []
+            old = next((row for row in prior if row["request"]["request_id"] == request_id), None)
+            if old is not None:
+                if old["request"] != data:
+                    return {
+                        **self.status(operation_id=request_id, error="camera_pipeline_request_conflict"),
+                        "current_revision": store.snapshot()["revision"],
+                    }, 409
+                return old["response"], old["status"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return {"ok": False, "error": "camera_pipeline_journal_unavailable"}, 503
+        if data["expected_revision"] != store.snapshot()["revision"]:
+            return {
+                **self.status(operation_id=request_id, error="camera_pipeline_revision_conflict"),
+                "current_revision": store.snapshot()["revision"],
+            }, 409
+        return None
+
+    def _preempt_stop(self, data):
+        safety = self.manager.safety_status()
+        control = safety.get("operator_control") or {}
+        if safety.get("owner") != "navigation" and (_motion_active(safety)):
+            return False, (self.status(operation_id=data["request_id"], error="camera_pipeline_motion_busy"), 409)
+        if control.get("version") == 1 and (control.get("state") != "idle" or safety.get("state") == "DISARMED"):
+            # Preempt outside the service transaction: an old cold prepare
+            # holding that lock must lose its generation before a late ARM.
+            generation = safety.get("generation")
+            if not isinstance(generation, str) or not generation:
+                return False, ({"ok": False, "error": "camera_pipeline_motion_status_unavailable"}, 503)
+            result = self.stopper(owner="manual", expected_generation=generation)
+            if not result.get("ok") or not result.get("confirmed"):
+                return False, ({"ok": False, "error": result.get("error") or "camera_pipeline_stop_unconfirmed"}, 409)
+            return True, None
+        return False, None
+
+    def _execute_locked(self, data, journal, request_id, preempted):
+        entries = []
+        try:
+            entries = json.loads(journal.read_text()) if journal.exists() and journal.stat().st_size <= 131072 else []
+            if not isinstance(entries, list):
+                entries = []
+            old = next((entry for entry in entries if entry["request"]["request_id"] == request_id), None)
+            if old is not None:
+                if old["request"] != data:
+                    raise PipelineError("camera_pipeline_request_conflict")
+                return old["response"], old["status"]
+            config = store.snapshot()
+            if data["expected_revision"] != config["revision"]:
+                raise PipelineError("camera_pipeline_revision_conflict")
+            self._apply_pipeline_action(data, config, preempted)
+            response, status = self.status(operation_id=request_id), 200
+        except PipelineError as exc:
+            response, status = self.status(operation_id=request_id, error=exc.code), exc.status
+            if status == 409:
+                response["current_revision"] = store.snapshot()["revision"]
+        except (OSError, ValueError, KeyError, TypeError):
+            response, status = {"ok": False, "error": "camera_pipeline_persistence_failed"}, 503
+        entries = [entry for entry in entries if entry["request"]["request_id"] != request_id][-31:]
+        entries.append({"request": data, "response": response, "status": status})
+        try:
+            _write(journal, entries)
+        except OSError:
+            return {"ok": False, "error": "camera_pipeline_journal_unavailable"}, 503
+        return response, status

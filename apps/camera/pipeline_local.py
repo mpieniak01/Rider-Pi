@@ -78,27 +78,7 @@ class LocalProcessor:
         if self.engine == "tflite":
             detections = self.detector.infer(frame, self.threshold)
         else:
-            blob = cv.dnn.blobFromImage(
-                cv.resize(frame, (300, 300)), 0.007843, (300, 300), 127.5, swapRB=True, crop=False
-            )
-            self.detector.setInput(blob)
-            result = self.detector.forward()
-            height, width = frame.shape[:2]
-            wanted = self.classes
-            allow_all = bool(wanted & {"*", "all"}) or not (wanted - {""})
-            for index in range(result.shape[2]):
-                confidence = float(result[0, 0, index, 2])
-                category = int(result[0, 0, index, 1])
-                name = VOC_CLASSES[category] if 0 <= category < len(VOC_CLASSES) else str(category)
-                if confidence < self.threshold or not allow_all and name not in wanted:
-                    continue
-                coords = result[0, 0, index, 3:7]
-                x0, y0, x1, y1 = (
-                    max(0, min(int(value * limit), limit - 1))
-                    for value, limit in zip(coords, (width, height, width, height))
-                )
-                if x1 > x0 and y1 > y0:
-                    detections.append((name, confidence, (x0, y0, x1, y1)))
+            detections = self._ssd_detections(frame)
         output = frame.copy()
         for name, score, (x0, y0, x1, y1) in detections:
             cv.rectangle(output, (x0, y0), (x1, y1), (0, 255, 255), 2)
@@ -106,3 +86,26 @@ class LocalProcessor:
                 output, f"{name}:{score:.2f}", (x0, max(0, y0 - 5)), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1
             )
         return output, detections
+
+    def _ssd_detections(self, frame):
+        cv, detections = self.cv, []
+        blob = cv.dnn.blobFromImage(cv.resize(frame, (300, 300)), 0.007843, (300, 300), 127.5, swapRB=True, crop=False)
+        self.detector.setInput(blob)
+        result = self.detector.forward()
+        height, width = frame.shape[:2]
+        wanted = self.classes
+        allow_all = bool(wanted & {"*", "all"}) or not (wanted - {""})
+        for index in range(result.shape[2]):
+            confidence = float(result[0, 0, index, 2])
+            category = int(result[0, 0, index, 1])
+            name = VOC_CLASSES[category] if 0 <= category < len(VOC_CLASSES) else str(category)
+            if confidence < self.threshold or not allow_all and name not in wanted:
+                continue
+            coords = result[0, 0, index, 3:7]
+            x0, y0, x1, y1 = (
+                max(0, min(int(value * limit), limit - 1))
+                for value, limit in zip(coords, (width, height, width, height))
+            )
+            if x1 > x0 and y1 > y0:
+                detections.append((name, confidence, (x0, y0, x1, y1)))
+        return detections

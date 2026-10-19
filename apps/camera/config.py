@@ -85,6 +85,17 @@ class CameraConfig:
     frame_h: int = 480
 
 
+def _apply_toml_values(cfg, section_data):
+    # Load from TOML
+    for key, value in section_data.items():
+        if hasattr(cfg, key):
+            try:
+                setattr(cfg, key, value)
+            except (TypeError, ValueError, AttributeError):
+                # Skip values that can't be set (wrong type, etc.)
+                pass
+
+
 def load_config(path: str | Path | None = None) -> CameraConfig:
     """Load camera configuration from TOML file with ENV overrides.
 
@@ -106,14 +117,7 @@ def load_config(path: str | Path | None = None) -> CameraConfig:
 
     cfg = CameraConfig()
 
-    # Load from TOML
-    for key, value in section_data.items():
-        if hasattr(cfg, key):
-            try:
-                setattr(cfg, key, value)
-            except (TypeError, ValueError, AttributeError):
-                # Skip values that can't be set (wrong type, etc.)
-                pass
+    _apply_toml_values(cfg, section_data)
 
     # Apply ENV overrides (ENV > TOML > defaults)
     # Legacy ENV names have priority for backwards compatibility
