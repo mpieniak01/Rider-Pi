@@ -52,14 +52,7 @@ class PlaybackManager:
             **data,
         }
 
-    def execute(self, data: bytes, playback_id: str, deadline: float):
-        identifier(playback_id)
-        if type(deadline) not in (int, float) or not math.isfinite(deadline):
-            raise ValueError('playback_deadline_invalid')
-        if not isinstance(data, bytes) or not 0 < len(data) <= 2 * 1024 * 1024:
-            raise ComputeError('playback_input_size', 413)
-        rate = validate_wav(data)
-        event = threading.Event()
+    def _reserve(self, playback_id, event, deadline):
         with self.lock:
             cached = self.recent.get(playback_id)
             if cached is not None and cached[0] > self.clock():
@@ -74,41 +67,65 @@ class PlaybackManager:
             self.active = (playback_id, event)
             self.done.clear()
 
+        return None
+
+    def _expire(self, event, timer_done, deadline):
+        if not timer_done.wait(max(0, deadline - self.clock())):
+            event.set()
+
+    def _invoke_player(self, data, rate, event, deadline):
+        from apps.voice.audio.playback import PlaybackConfig, play_bytes
+
+        cfg = self.config
+        if cfg is None:
+            from apps.voice.config import load
+
+            cfg = PlaybackConfig(**dict(load().get('playback') or {}))
+        player = self.player or play_bytes
+        played = False
+        if not event.is_set() and self.clock() < deadline:
+            played = player(data, 'wav', cfg, sample_rate=rate, channels=1, stop_event=event)
+        return played
+
+    def _run_playback(self, data, playback_id, rate, event, deadline):
+        if event.is_set() or self.clock() >= deadline:
+            result = self._result(playback_id, 'expired', error='playback_expired')
+        else:
+            played = self._invoke_player(data, rate, event, deadline)
+            if event.is_set():
+                state = 'expired' if self.clock() >= deadline else 'cancelled'
+                result = self._result(playback_id, state, error='playback_' + state)
+            else:
+                result = self._result(
+                    playback_id,
+                    'played' if played else 'failed',
+                    error=None if played else 'playback_unavailable',
+                    sample_rate=rate,
+                    released=True,
+                )
+        return result
+
+    def execute(self, data: bytes, playback_id: str, deadline: float):
+        identifier(playback_id)
+        if type(deadline) not in (int, float) or not math.isfinite(deadline):
+            raise ValueError('playback_deadline_invalid')
+        if not isinstance(data, bytes) or not 0 < len(data) <= 2 * 1024 * 1024:
+            raise ComputeError('playback_input_size', 413)
+        rate = validate_wav(data)
+        event = threading.Event()
+        cached = self._reserve(playback_id, event, deadline)
+        if cached is not None:
+            return cached
+
         timer_done = threading.Event()
 
-        def expire():
-            if not timer_done.wait(max(0, deadline - self.clock())):
-                event.set()
-
-        timer = threading.Thread(target=expire, name='playback-deadline', daemon=True)
+        timer = threading.Thread(
+            target=self._expire, args=(event, timer_done, deadline), name='playback-deadline', daemon=True
+        )
         result = self._result(playback_id, 'failed', error='playback_unavailable')
         try:
             timer.start()
-            if event.is_set() or self.clock() >= deadline:
-                result = self._result(playback_id, 'expired', error='playback_expired')
-            else:
-                from apps.voice.audio.playback import PlaybackConfig, play_bytes
-
-                cfg = self.config
-                if cfg is None:
-                    from apps.voice.config import load
-
-                    cfg = PlaybackConfig(**dict(load().get('playback') or {}))
-                player = self.player or play_bytes
-                played = False
-                if not event.is_set() and self.clock() < deadline:
-                    played = player(data, 'wav', cfg, sample_rate=rate, channels=1, stop_event=event)
-                if event.is_set():
-                    state = 'expired' if self.clock() >= deadline else 'cancelled'
-                    result = self._result(playback_id, state, error='playback_' + state)
-                else:
-                    result = self._result(
-                        playback_id,
-                        'played' if played else 'failed',
-                        error=None if played else 'playback_unavailable',
-                        sample_rate=rate,
-                        released=True,
-                    )
+            result = self._run_playback(data, playback_id, rate, event, deadline)
             return result, 200 if result['ok'] else 503 if result['state'] == 'failed' else 409
         except Exception:
             result = self._result(playback_id, 'failed', error='playback_unavailable')

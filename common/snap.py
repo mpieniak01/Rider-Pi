@@ -114,6 +114,33 @@ class Snapper:
         except Exception:
             return False
 
+    def _framebuffer_bgr(self, data, w, h, bpp):
+        # Konwersja: RGB565 -> BGR
+        if bpp == 16:
+            arr = np.frombuffer(data, dtype=np.uint16).reshape((h, w))
+            # rozpakowanie RGB565
+            r = ((arr >> 11) & 0x1F).astype(np.uint8)
+            g = ((arr >> 5) & 0x3F).astype(np.uint8)
+            b = (arr & 0x1F).astype(np.uint8)
+            r = (r * 255 // 31).astype(np.uint8)
+            g = (g * 255 // 63).astype(np.uint8)
+            b = (b * 255 // 31).astype(np.uint8)
+            rgb = np.dstack([r, g, b])
+            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        elif bpp == 24 or bpp == 32:
+            # Przy 32bpp często jest ARGB8888 – zignorujemy A.
+            arr = np.frombuffer(data, dtype=np.uint8).reshape((h, w, bpp // 8))
+            if arr.shape[2] >= 3:
+                # zakładamy kolejność BGRA/ARGB – spróbujmy wydobyć BGR heurystycznie
+                # Weź 3 najmłodsze kanały jako BGR
+                bgr = arr[:, :, :3].copy()
+            else:
+                return None
+        else:
+            return None
+
+        return bgr
+
     def lcd_from_fb(self) -> bool:
         """
         Zrzut 1:1 z framebuffer’a (np. /dev/fb1) do lcd_fb.jpg.
@@ -144,28 +171,8 @@ class Snapper:
                 if len(data) < frame_len:
                     return False
 
-            # Konwersja: RGB565 -> BGR
-            if bpp == 16:
-                arr = np.frombuffer(data, dtype=np.uint16).reshape((h, w))
-                # rozpakowanie RGB565
-                r = ((arr >> 11) & 0x1F).astype(np.uint8)
-                g = ((arr >> 5) & 0x3F).astype(np.uint8)
-                b = (arr & 0x1F).astype(np.uint8)
-                r = (r * 255 // 31).astype(np.uint8)
-                g = (g * 255 // 63).astype(np.uint8)
-                b = (b * 255 // 31).astype(np.uint8)
-                rgb = np.dstack([r, g, b])
-                bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            elif bpp == 24 or bpp == 32:
-                # Przy 32bpp często jest ARGB8888 – zignorujemy A.
-                arr = np.frombuffer(data, dtype=np.uint8).reshape((h, w, bpp // 8))
-                if arr.shape[2] >= 3:
-                    # zakładamy kolejność BGRA/ARGB – spróbujmy wydobyć BGR heurystycznie
-                    # Weź 3 najmłodsze kanały jako BGR
-                    bgr = arr[:, :, :3].copy()
-                else:
-                    return False
-            else:
+            bgr = self._framebuffer_bgr(data, w, h, bpp)
+            if bgr is None:
                 return False
 
             return self._save("lcd_fb", bgr)

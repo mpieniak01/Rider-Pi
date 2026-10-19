@@ -38,6 +38,17 @@ class FaceRenderer:
             values.append(getattr(state, "render_time", None))
         return tuple(values)
 
+    def _prepare_background(self):
+        background_key = (self.style, self.skin)
+        if self._background_style != background_key:
+            color = PALETTES[self.style]["background"] if self.style != "legacy" else (30, 58, 138)
+            background_size = self.size * 2 if self.skin == "professional" else self.size
+            self._background = Image.new("RGB", (background_size, background_size), color)
+            draw_character(ImageDraw.Draw(self._background), self.skin)
+            if background_size != self.size:
+                self._background = self._background.resize((self.size, self.size), Image.Resampling.LANCZOS)
+            self._background_style = background_key
+
     def render_image(self, state=None, face_state=None):
         state = state if state is not None else face_state
         if self.style not in STYLES:
@@ -47,15 +58,7 @@ class FaceRenderer:
         key = self._state_key(state)
         self.last_changed = key != self._key or self._image is None
         if self.last_changed:
-            background_key = (self.style, self.skin)
-            if self._background_style != background_key:
-                color = PALETTES[self.style]["background"] if self.style != "legacy" else (30, 58, 138)
-                background_size = self.size * 2 if self.skin == "professional" else self.size
-                self._background = Image.new("RGB", (background_size, background_size), color)
-                draw_character(ImageDraw.Draw(self._background), self.skin)
-                if background_size != self.size:
-                    self._background = self._background.resize((self.size, self.size), Image.Resampling.LANCZOS)
-                self._background_style = background_key
+            self._prepare_background()
             img = self._background.copy()
             canvas = ImageDraw.Draw(img)
             if self.skin == "professional":
