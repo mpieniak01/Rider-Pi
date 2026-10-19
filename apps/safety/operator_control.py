@@ -74,7 +74,8 @@ class OperatorControl:
             return self.origin_sequence
         return None
 
-    def transfer(self, command):
+    def _validate_transfer(self, command):
+        """Validate panel ownership and remaining consent before changing navigation authority."""
         gate = self.gate
         if not self.enabled:
             raise ValueError("operator_control_not_available")
@@ -91,6 +92,11 @@ class OperatorControl:
             raise ValueError("navigation_timed_consent_required")
         if resume and self.state in {"qualifying", "active"}:
             raise ValueError("navigation_already_active")
+        return resume
+
+    def transfer(self, command):
+        resume = self._validate_transfer(command)
+        gate = self.gate
         # The single executor serializes this change with its output. Preserve
         # consent exactly; timed leases cannot become operator leases here.
         self.origin_generation = gate.generation if resume else None

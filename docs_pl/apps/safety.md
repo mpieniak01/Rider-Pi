@@ -57,3 +57,33 @@ SIGTERM uruchamia cleanup. SIGKILL, utrata UART lub zasilania Pi nie mają dowod
 fizycznego zatrzymania. Firmware może zachować ostatni cel; lease procesu Pi nie
 jest niezależnym zabezpieczeniem sprzętu. Ręczna charakterystyka jest konieczna.
 Zobacz [architekturę](motion.md). Zachowuj LCD 270°, boot, Wi-Fi i SSH.
+
+
+## Walidacja poleceń i dowodów wykonania
+
+API i brama wykonawcy walidują polecenie etapami: tożsamość panelu,
+generacja/sekwencja i świeżość, kontekst wykonania, zgoda oraz parametry
+aktuatora. Niepoprawne typy JSON i liczby przekraczające zakres konwersji
+są odmową walidacji, bez zużywania sekwencji lub zmiany zgody. Timestamp
+polecenia na BUS jest liczbą JSON, a nie tekstem. STOP i E-Stop zachowują
+swój priorytet; jawny `expected_generation` nadal ogranicza konkretny STOP.
+Ponowne ARM w tej samej sesji nie przedłuża dzierżawy zgody.
+
+Snapshot wymaga całkowitego `contract_version` i liczbowego, skończonego
+`observed_at`; wartości logiczne nie zastępują liczb. Niepoprawny limit
+wieku obserwacji zwraca UNKNOWN. Przeterminowany snapshot może nadal
+pokazywać historyczną zgodę operatora, ale `can_move` i potwierdzenie
+świeżej autoryzacji pozostają wyłączone.
+
+Dopasowany ACK musi dotyczyć tego samego request/action/source, generacji
+oraz sekwencji o właściwym typie. Jego czas obserwacji musi być skończony
+i nie wcześniejszy niż wysłanie polecenia. Sprzeczne pary status/accepted
+nie potwierdzają wykonania; uszkodzony wpis historii nie zasłania późniejszego
+poprawnego ACK. Brak wiarygodnego dowodu pozostaje wynikiem oczekującym.
+Warstwa HTTP zachowuje kolejność dowodów: częściowe wykonanie, ACK,
+utrwalona konfiguracja/obliczenie, zadanie, obserwacja zasobu i wynik aplikacji.
+HTTP 200 ani samo przyjęcie zadania nie tworzą potwierdzenia fizycznego.
+
+Ochrona CORS przegląda kopię nazw nagłówków przed usuwaniem starych grantów,
+aby mutowanie kolekcji nie pomijało sąsiednich wpisów. Kontrole Host/Origin,
+obsługa jawnych uploadów i limity zgody pozostają aktywne.

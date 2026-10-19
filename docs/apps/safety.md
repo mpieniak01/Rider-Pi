@@ -57,3 +57,32 @@ SIGTERM runs cleanup. Physical STOP after SIGKILL, UART loss or Pi power loss is
 unverified. Firmware may retain its last target; a Pi process lease is not an
 independent hardware safeguard. Manual characterization is required.
 See [motion](motion.md). Preserve LCD rotation 270, boot, Wi-Fi and SSH.
+
+
+## Command validation and execution evidence
+
+The API and executor gate validate commands in ordered stages: panel identity,
+generation/sequence and freshness, execution context, consent and actuator
+parameters. Invalid JSON types and numbers overflowing conversion produce a
+validation rejection without consuming a sequence or changing consent. BUS
+command timestamps are JSON numbers, not strings. STOP and E-Stop retain
+priority; an explicit `expected_generation` still binds a particular STOP.
+Idempotent ARM within the same session does not extend its consent lease.
+
+Snapshots require an integer `contract_version` and a finite numeric
+`observed_at`; booleans cannot stand in for numbers. Invalid freshness limits
+return UNKNOWN. A stale snapshot may retain historical operator permission,
+while `can_move` and fresh authorization confirmation remain disabled.
+
+A matching ACK must identify the same request/action/source, generation and
+typed sequence. Its observation time must be finite and no earlier than the
+send time. Contradictory status/accepted pairs do not confirm execution; a bad
+history entry cannot hide later valid evidence. Missing trustworthy evidence
+remains pending. HTTP projection preserves source precedence: partial results,
+ACK, persisted configuration/completed computation, task, observed resource,
+then application result. HTTP 200 or task acceptance alone never invents
+physical completion.
+
+CORS protection snapshots header names before removing legacy grants so that
+mutating the collection cannot skip adjacent entries. Host/Origin checks,
+explicit upload handling and consent limits remain active.

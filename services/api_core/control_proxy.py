@@ -24,6 +24,8 @@ MOTION_BRIDGE_URL = os.getenv("MOTION_BRIDGE_URL") or os.getenv("WEB_BRIDGE_URL"
 HTTP_TIMEOUT_S = float(os.getenv("WEB_BRIDGE_TIMEOUT", "0.8"))
 SAFE_MAX_T = float(os.getenv("SAFE_MAX_DURATION", "0.5"))  # s, miękki limit pojedynczego ruchu
 
+JSON_MEDIA_TYPE = "application/json"
+
 AllowedDir = Literal["forward", "backward", "left", "right"]
 
 
@@ -58,10 +60,10 @@ def _proxy_get(path: str, qs_dict: dict[str, Any] | None = None) -> tuple[dict[s
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
         raw = resp.read()
         code = resp.status
-        ctype = resp.headers.get("Content-Type", "application/json") or "application/json"
+        ctype = resp.headers.get("Content-Type", JSON_MEDIA_TYPE) or JSON_MEDIA_TYPE
     body = (
         _decode_json(raw)
-        if ctype.startswith("application/json")
+        if ctype.startswith(JSON_MEDIA_TYPE)
         else {
             "ok": False,
             "error": "bad content-type from web bridge",
@@ -79,19 +81,19 @@ def _proxy_post_json(path: str, payload: dict[str, Any]) -> tuple[dict[str, Any]
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": JSON_MEDIA_TYPE},
     )
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
             raw = resp.read()
             code = resp.status
-            ctype = resp.headers.get("Content-Type", "application/json") or "application/json"
+            ctype = resp.headers.get("Content-Type", JSON_MEDIA_TYPE) or JSON_MEDIA_TYPE
     except Exception as e:  # network errors / bridge down
         return {"ok": False, "error": f"bridge unavailable: {e}"}, 502
 
     body = (
         _decode_json(raw)
-        if ctype.startswith("application/json")
+        if ctype.startswith(JSON_MEDIA_TYPE)
         else {
             "ok": False,
             "error": "bad content-type from web bridge",
