@@ -36,16 +36,89 @@ def control(pid, action, seconds=60):
             client.close()
 
 
+def _flush_pending(buffers, starts):
+    for name, pending in buffers.items():
+        if pending:
+            yield {"event": "partial_frame", "direction": name, "hex": pending.hex()}
+            pending.clear()
+        starts[name] = None
+
+
+def _align_pending(pending, direction):
+    offset = pending.find(bytes([0x55, 0x00]))
+    if offset < 0:
+        yield {"event": "unframed", "direction": direction, "hex": pending.hex()}
+        pending[:] = pending[-1:] if pending[-1:] == b"U" else b""
+        return False
+    if offset:
+        yield {"event": "unframed", "direction": direction, "hex": pending[:offset].hex()}
+        del pending[:offset]
+    return True
+
+
+def _decoded_frame(frame, direction, row, first_time, firmware):
+    address = frame[4]
+    decoded = {
+        "event": "frame",
+        "direction": direction,
+        "time_ns": row.get("time_ns"),
+        "first_time_ns": first_time,
+        "timestamp": "host_serial_chunks_not_wire",
+        "mode": frame[3],
+        "address": address,
+        "name": REGISTERS.get(address, "unknown"),
+        "payload_hex": frame[5:-3].hex(),
+        "hex": frame.hex(),
+        "checksum_valid": True,
+    }
+    if firmware is not None:
+        decoded["semantic"] = meaning(decoded, firmware)
+    return decoded
+
+
+def _decode_pending(pending, direction, row, starts, firmware):
+    while len(pending) >= 3:
+        if not (yield from _align_pending(pending, direction)):
+            break
+        if len(pending) < 3:
+            break
+        size = pending[2]
+        if not 9 <= size <= 255:
+            yield {"event": "invalid_length", "direction": direction, "length": size}
+            del pending[0]
+            continue
+        if len(pending) < size:
+            break
+        frame = bytes(pending[:size])
+        valid = frame[-2:] == bytes([0, 170]) and frame[-3] == 255 - sum(frame[2:-3]) % 256
+        if not valid:
+            yield {"event": "invalid_frame", "direction": direction, "hex": frame.hex()}
+            del pending[0]
+            continue
+        del pending[:size]
+        decoded = _decoded_frame(frame, direction, row, starts[direction], firmware)
+        yield decoded
+        starts[direction] = row.get("time_ns") if pending else None
+
+
+def _extend_capture(pending, starts, direction, row):
+    if not pending:
+        starts[direction] = row.get("time_ns")
+    try:
+        pending.extend(bytes.fromhex(row.get("hex", "")))
+    except (ValueError, TypeError):
+        pending.clear()
+        starts[direction] = None
+        return False
+    return True
+
+
 def decode(rows, *, firmware=None):
     starts = {"tx": None, "rx": None}
     buffers = {"tx": bytearray(), "rx": bytearray()}
     for row in rows:
         if row.get("event") in {"start", "end"}:
-            for name, pending in buffers.items():
-                if pending:
-                    yield {"event": "partial_frame", "direction": name, "hex": pending.hex()}
-                    pending.clear()
-                starts[name] = None
+            yield from _flush_pending(buffers, starts)
             yield row
             continue
         direction = row.get("direction")
@@ -58,58 +131,10 @@ def decode(rows, *, firmware=None):
             yield row
             continue
         pending = buffers[direction]
-        if not pending:
-            starts[direction] = row.get("time_ns")
-        try:
-            pending.extend(bytes.fromhex(row.get("hex", "")))
-        except (ValueError, TypeError):
-            pending.clear()
-            starts[direction] = None
+        if not _extend_capture(pending, starts, direction, row):
             yield {"event": "invalid_capture_hex", "direction": direction, "time_ns": row.get("time_ns")}
             continue
-        while len(pending) >= 3:
-            offset = pending.find(bytes([0x55, 0x00]))
-            if offset < 0:
-                yield {"event": "unframed", "direction": direction, "hex": pending.hex()}
-                pending[:] = pending[-1:] if pending[-1:] == b"U" else b""
-                break
-            if offset:
-                yield {"event": "unframed", "direction": direction, "hex": pending[:offset].hex()}
-                del pending[:offset]
-            if len(pending) < 3:
-                break
-            size = pending[2]
-            if not 9 <= size <= 255:
-                yield {"event": "invalid_length", "direction": direction, "length": size}
-                del pending[0]
-                continue
-            if len(pending) < size:
-                break
-            frame = bytes(pending[:size])
-            valid = frame[-2:] == bytes([0, 170]) and frame[-3] == 255 - sum(frame[2:-3]) % 256
-            if not valid:
-                yield {"event": "invalid_frame", "direction": direction, "hex": frame.hex()}
-                del pending[0]
-                continue
-            del pending[:size]
-            address = frame[4]
-            decoded = {
-                "event": "frame",
-                "direction": direction,
-                "time_ns": row.get("time_ns"),
-                "first_time_ns": starts[direction],
-                "timestamp": "host_serial_chunks_not_wire",
-                "mode": frame[3],
-                "address": address,
-                "name": REGISTERS.get(address, "unknown"),
-                "payload_hex": frame[5:-3].hex(),
-                "hex": frame.hex(),
-                "checksum_valid": True,
-            }
-            if firmware is not None:
-                decoded["semantic"] = meaning(decoded, firmware)
-            yield decoded
-            starts[direction] = row.get("time_ns") if pending else None
+        yield from _decode_pending(pending, direction, row, starts, firmware)
         if row.get("truncated"):
             pending.clear()
             yield {"event": "gap", "direction": direction, "cause": "capture_truncated"}
@@ -118,7 +143,7 @@ def decode(rows, *, firmware=None):
             yield {"event": "partial_frame", "direction": direction, "hex": pending.hex()}
 
 
-def main():
+def _arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="action", required=True)
     subs.add_parser("list")
@@ -138,24 +163,32 @@ def main():
             cmd.add_argument(
                 "--source", choices=("serial_calls", "wire_export", "controller_bus_export"), default="serial_calls"
             )
-    args = parser.parse_args()
-    if args.action in {"decode", "analyze"}:
-        with args.file.open() as stream:
-            events = decode((json.loads(line) for line in stream if line.strip()), firmware=args.firmware)
-            if args.action == "decode":
-                for row in events:
-                    print(json.dumps(row))
+    return parser.parse_args()
+
+
+def _offline_capture(args):
+    with args.file.open() as stream:
+        events = decode((json.loads(line) for line in stream if line.strip()), firmware=args.firmware)
+        if args.action == "decode":
+            for row in events:
+                print(json.dumps(row))
+        else:
+            report = analyze(
+                events, firmware=args.firmware, response_timeout_ms=args.response_timeout_ms, source=args.source
+            )
+            content = json.dumps(report, indent=2)
+            if args.output:
+                write_output(args.output, (content + "\n").encode("utf-8"))
             else:
-                report = analyze(
-                    events, firmware=args.firmware, response_timeout_ms=args.response_timeout_ms, source=args.source
-                )
-                content = json.dumps(report, indent=2)
-                if args.output:
-                    write_output(args.output, (content + "\n").encode("utf-8"))
-                else:
-                    print(content)
-                if args.markdown:
-                    write_output(args.markdown, markdown(report).encode("utf-8"))
+                print(content)
+            if args.markdown:
+                write_output(args.markdown, markdown(report).encode("utf-8"))
+
+
+def main():
+    args = _arguments()
+    if args.action in {"decode", "analyze"}:
+        _offline_capture(args)
     elif args.action == "list":
         print(
             json.dumps(

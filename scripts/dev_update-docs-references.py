@@ -168,6 +168,24 @@ def mark_deprecated_service(line: str, context_before: list[str]) -> tuple[str, 
     return line, updated
 
 
+def _replace_reference(line, old_ref, new_ref, filepath, number):
+    regex = old_ref.startswith(r'python3') or '\\' in old_ref
+    pattern = re.compile(old_ref) if regex else None
+    matched = pattern.search(line) if regex else old_ref in line
+    if not matched:
+        return line, False
+    if not verify_new_path_exists(new_ref):
+        kind = "Target" if regex else "File"
+        print(
+            f"WARNING: {filepath.relative_to(REPO_ROOT)} line {number}: "
+            f"{kind} {new_ref} not found, skipping update",
+            file=sys.stderr,
+        )
+        return line, False
+    updated = pattern.sub(new_ref, line) if regex else line.replace(old_ref, new_ref)
+    return updated, updated != line
+
+
 def update_file_references(content: str, mappings: dict[str, str], filepath: Path) -> tuple[str, list[str]]:
     """
     Update file and command references in markdown content.
@@ -192,38 +210,10 @@ def update_file_references(content: str, mappings: dict[str, str], filepath: Pat
 
         # Try to update references
         for old_ref, new_ref in mappings.items():
-            # Check if this is a regex pattern (command mapping)
-            if old_ref.startswith(r'python3') or '\\' in old_ref:
-                # It's a regex pattern
-                pattern = re.compile(old_ref)
-                if pattern.search(line):
-                    # Verify new path exists
-                    if verify_new_path_exists(new_ref):
-                        new_line = pattern.sub(new_ref, line)
-                        if new_line != line:
-                            changes.append(f"Line {i + 1}: {old_ref} → {new_ref}")
-                            line = new_line
-                    else:
-                        print(
-                            f"WARNING: {filepath.relative_to(REPO_ROOT)} line {i + 1}: "
-                            f"Target {new_ref} not found, skipping update",
-                            file=sys.stderr,
-                        )
-            else:
-                # Simple string replacement for file paths
-                if old_ref in line:
-                    # Verify new path exists
-                    if verify_new_path_exists(new_ref):
-                        new_line = line.replace(old_ref, new_ref)
-                        if new_line != line:
-                            changes.append(f"Line {i + 1}: {old_ref} → {new_ref}")
-                            line = new_line
-                    else:
-                        print(
-                            f"WARNING: {filepath.relative_to(REPO_ROOT)} line {i + 1}: "
-                            f"File {new_ref} not found, skipping update",
-                            file=sys.stderr,
-                        )
+            updated, changed = _replace_reference(line, old_ref, new_ref, filepath, i + 1)
+            if changed:
+                changes.append(f"Line {i + 1}: {old_ref} → {new_ref}")
+                line = updated
 
         updated_lines.append(line)
 
@@ -269,6 +259,40 @@ def scan_and_update_docs(mappings: dict[str, str], dry_run: bool = False) -> dic
     return all_changes
 
 
+def _verify_mappings(mappings):
+    print("\nVerifying new paths exist...")
+    missing = []
+    for old, new in sorted(mappings.items()):
+        if not verify_new_path_exists(new):
+            missing.append((old, new))
+
+    if missing:
+        print(f"\n❌ Found {len(missing)} mappings where target doesn't exist:")
+        for old, new in missing:
+            print(f"  {old} → {new}")
+        return 1
+    else:
+        print("✓ All target paths verified!")
+        return 0
+
+
+def _report_updates(all_changes, dry_run):
+    # Summary
+    print("\n" + "=" * 60)
+    if all_changes:
+        print(f"{'Would update' if dry_run else 'Updated'} {len(all_changes)} file(s):\n")
+        total_changes = 0
+        for filepath, changes in sorted(all_changes.items()):
+            print(f"\n{filepath}:")
+            for change in changes:
+                print(f"  {change}")
+            total_changes += len(changes)
+
+        print(f"\nTotal changes: {total_changes}")
+    else:
+        print("No changes needed - all documentation is up to date!")
+
+
 def main():
     """Main entry point."""
     import argparse
@@ -291,39 +315,13 @@ def main():
     print(f"Total mappings: {len(mappings)}")
 
     if args.verify_only:
-        print("\nVerifying new paths exist...")
-        missing = []
-        for old, new in sorted(mappings.items()):
-            if not verify_new_path_exists(new):
-                missing.append((old, new))
-
-        if missing:
-            print(f"\n❌ Found {len(missing)} mappings where target doesn't exist:")
-            for old, new in missing:
-                print(f"  {old} → {new}")
-            return 1
-        else:
-            print("✓ All target paths verified!")
-            return 0
+        return _verify_mappings(mappings)
 
     # Scan and update
     print(f"\nScanning markdown files... (dry_run={args.dry_run})")
     all_changes = scan_and_update_docs(mappings, dry_run=args.dry_run)
 
-    # Summary
-    print("\n" + "=" * 60)
-    if all_changes:
-        print(f"{'Would update' if args.dry_run else 'Updated'} {len(all_changes)} file(s):\n")
-        total_changes = 0
-        for filepath, changes in sorted(all_changes.items()):
-            print(f"\n{filepath}:")
-            for change in changes:
-                print(f"  {change}")
-            total_changes += len(changes)
-
-        print(f"\nTotal changes: {total_changes}")
-    else:
-        print("No changes needed - all documentation is up to date!")
+    _report_updates(all_changes, args.dry_run)
 
     return 0
 

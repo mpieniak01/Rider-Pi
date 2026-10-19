@@ -259,6 +259,49 @@ def check_file_for_audio_imports(file_path: Path) -> list[tuple[int, str]]:
     return audio_imports
 
 
+def _inspect_imports(file_path, repo_root):
+    failures, warnings = [], []
+    # Check for hard-blocked legacy imports
+    violations = check_file_for_legacy_imports(file_path)
+    if violations:
+        rel_path = file_path.relative_to(repo_root)
+        for line_num, line_text, reason in violations:
+            failures.append((rel_path, line_num, line_text, reason))
+
+    # Check for audio/* imports (warning only, unless it's in audio/ itself)
+    if "audio" not in file_path.parts:
+        audio_imports = check_file_for_audio_imports(file_path)
+        if audio_imports:
+            rel_path = file_path.relative_to(repo_root)
+            for line_num, line_text in audio_imports:
+                warnings.append((rel_path, line_num, line_text))
+
+    return failures, warnings
+
+
+def _report_audio_warnings(warnings):
+    print("⚠️  Deprecated imports found (audio/* directory):")
+    print()
+    for rel_path, line_num, line_text in warnings:
+        print(f"  {rel_path}:{line_num}")
+        print(f"    {line_text}")
+        print(f"    → {AUDIO_IMPORT_MSG}")
+        print()
+
+
+def _report_import_failures(failures):
+    print("❌ Legacy imports detected:")
+    print()
+    for rel_path, line_num, line_text, reason in failures:
+        print(f"  {rel_path}:{line_num}")
+        print(f"    {line_text}")
+        print(f"    → {reason}")
+        print()
+
+    print(f"{len(failures)} legacy import(s) found.")
+    print("\nPlease update imports to use the refactored modules.")
+
+
 def main():
     """Main entry point."""
     repo_root = Path(__file__).parent.parent
@@ -281,43 +324,14 @@ def main():
     warnings = []
 
     for file_path in sorted(python_files):
-        # Check for hard-blocked legacy imports
-        violations = check_file_for_legacy_imports(file_path)
-        if violations:
-            rel_path = file_path.relative_to(repo_root)
-            for line_num, line_text, reason in violations:
-                failures.append((rel_path, line_num, line_text, reason))
+        file_failures, file_warnings = _inspect_imports(file_path, repo_root)
+        failures.extend(file_failures)
+        warnings.extend(file_warnings)
 
-        # Check for audio/* imports (warning only, unless it's in audio/ itself)
-        if "audio" not in file_path.parts:
-            audio_imports = check_file_for_audio_imports(file_path)
-            if audio_imports:
-                rel_path = file_path.relative_to(repo_root)
-                for line_num, line_text in audio_imports:
-                    warnings.append((rel_path, line_num, line_text))
-
-    # Report warnings for audio/* imports
     if warnings:
-        print("⚠️  Deprecated imports found (audio/* directory):")
-        print()
-        for rel_path, line_num, line_text in warnings:
-            print(f"  {rel_path}:{line_num}")
-            print(f"    {line_text}")
-            print(f"    → {AUDIO_IMPORT_MSG}")
-            print()
-
-    # Report failures for blocked legacy imports
+        _report_audio_warnings(warnings)
     if failures:
-        print("❌ Legacy imports detected:")
-        print()
-        for rel_path, line_num, line_text, reason in failures:
-            print(f"  {rel_path}:{line_num}")
-            print(f"    {line_text}")
-            print(f"    → {reason}")
-            print()
-
-        print(f"{len(failures)} legacy import(s) found.")
-        print("\nPlease update imports to use the refactored modules.")
+        _report_import_failures(failures)
         return 1
 
     if warnings:

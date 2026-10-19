@@ -80,15 +80,7 @@ def be16(x):
     return bytes([(x >> 8) & 0xFF, x & 0xFF])
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--madctl", default="0x68", help="MADCTL (orientacja) np. 0x68/0x60")
-    ap.add_argument("--colmod", default="0x55", help="COLMOD (0x55 = RGB565)")
-    ap.add_argument("--invert", choices=["on", "off"], default="off")
-    ap.add_argument("--spi-hz", type=int, default=int(os.getenv("FACE_LCD_SPI_HZ", "0") or 0))
-    ap.add_argument("--bars", action="store_true", help="Po resecie narysuj 4 pasy (R,G,B,White)")
-    args = ap.parse_args()
-
+def _configure_import_paths():
     # ścieżki robocze
     ROOT = pathlib.Path(__file__).resolve().parents[1]
     sys.path[:0] = [str(ROOT)]
@@ -99,6 +91,8 @@ def main():
             if cand.exists():
                 sys.path.insert(0, str(cand))
 
+
+def _initialize_device(args):
     Dev = pick_device_class()
     try:
         dev = Dev()
@@ -121,6 +115,47 @@ def main():
                 break
             except Exception:
                 pass
+
+    return dev
+
+
+def _fill565(dev, color565, width, height):
+    cmd(dev, 0x2C)
+    line = color565 * width
+    for _ in range(height):
+        chunk_write(dev, line)
+
+
+def _show_bars(dev):
+    # 4 poziome pasy: RED, GREEN, BLUE, WHITE
+    w = getattr(dev, "width", 240) if isinstance(getattr(dev, "width", None), int) else 240
+    h = getattr(dev, "height", 320) if isinstance(getattr(dev, "height", None), int) else 320
+
+    colors = [
+        (0xF800, "RED"),
+        (0x07E0, "GREEN"),
+        (0x001F, "BLUE"),
+        (0xFFFF, "WHITE"),
+    ]
+    for val, name in colors:
+        print("bar:", name)
+        hi, lo = (val >> 8) & 0xFF, val & 0xFF
+        _fill565(dev, bytes([hi, lo]), w, h)
+        time.sleep(0.4)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--madctl", default="0x68", help="MADCTL (orientacja) np. 0x68/0x60")
+    ap.add_argument("--colmod", default="0x55", help="COLMOD (0x55 = RGB565)")
+    ap.add_argument("--invert", choices=["on", "off"], default="off")
+    ap.add_argument("--spi-hz", type=int, default=int(os.getenv("FACE_LCD_SPI_HZ", "0") or 0))
+    ap.add_argument("--bars", action="store_true", help="Po resecie narysuj 4 pasy (R,G,B,White)")
+    args = ap.parse_args()
+
+    _configure_import_paths()
+
+    dev = _initialize_device(args)
 
     # --- ST7789 „safe init” 240x320 ---
     # OFF, SLEEP IN, SWRESET
@@ -173,24 +208,4 @@ def main():
     )
 
     if args.bars:
-        # 4 poziome pasy: RED, GREEN, BLUE, WHITE
-        w = getattr(dev, "width", 240) if isinstance(getattr(dev, "width", None), int) else 240
-        h = getattr(dev, "height", 320) if isinstance(getattr(dev, "height", None), int) else 320
-
-        def fill565(color565):
-            cmd(dev, 0x2C)  # Memory Write
-            line = color565 * (w)  # jedna linia
-            for _ in range(h):
-                chunk_write(dev, line)
-
-        colors = [
-            (0xF800, "RED"),
-            (0x07E0, "GREEN"),
-            (0x001F, "BLUE"),
-            (0xFFFF, "WHITE"),
-        ]
-        for val, name in colors:
-            print("bar:", name)
-            hi, lo = (val >> 8) & 0xFF, val & 0xFF
-            fill565(bytes([hi, lo]))
-            time.sleep(0.4)
+        _show_bars(dev)

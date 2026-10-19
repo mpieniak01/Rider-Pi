@@ -67,6 +67,42 @@ def verify_makefile_target(target: str) -> bool:
     return bool(re.search(pattern, content, re.MULTILINE))
 
 
+def _legacy_warnings(filepath, legacy_refs):
+    warnings = []
+    # Check legacy references (should not exist in active docs)
+    if legacy_refs:
+        # Skip migration summary - it documents legacy paths
+        if 'SCRIPTS_MIGRATION_SUMMARY.md' not in str(filepath):
+            for ref in set(legacy_refs):
+                warnings.append(f"Legacy reference found: {ref}")
+
+    return warnings
+
+
+def _file_errors(filepath, file_refs):
+    errors = []
+    # Verify file references exist
+    for ref in set(file_refs):
+        if not verify_file_exists(ref, filepath):
+            # Skip if it's in a comment or migration doc context
+            if 'SCRIPTS_MIGRATION' not in str(filepath):
+                errors.append(f"File not found: {ref}")
+
+    return errors
+
+
+def _target_warnings(make_targets):
+    warnings = []
+    # Verify Makefile targets exist
+    for target in set(make_targets):
+        if not verify_makefile_target(target):
+            # Some common false positives
+            if target not in ['install', 'build', 'run', 'example']:
+                warnings.append(f"Makefile target not found: make {target}")
+
+    return warnings
+
+
 def scan_markdown_file(filepath: Path) -> tuple[list[str], list[str]]:
     """
     Scan a markdown file for references.
@@ -86,27 +122,9 @@ def scan_markdown_file(filepath: Path) -> tuple[list[str], list[str]]:
     file_refs, legacy_refs = extract_file_references(content)
     make_targets = extract_makefile_targets(content)
 
-    # Check legacy references (should not exist in active docs)
-    if legacy_refs:
-        # Skip migration summary - it documents legacy paths
-        if 'SCRIPTS_MIGRATION_SUMMARY.md' not in str(filepath):
-            for ref in set(legacy_refs):
-                warnings.append(f"Legacy reference found: {ref}")
-
-    # Verify file references exist
-    for ref in set(file_refs):
-        if not verify_file_exists(ref, filepath):
-            # Skip if it's in a comment or migration doc context
-            if 'SCRIPTS_MIGRATION' not in str(filepath):
-                errors.append(f"File not found: {ref}")
-
-    # Verify Makefile targets exist
-    for target in set(make_targets):
-        if not verify_makefile_target(target):
-            # Some common false positives
-            if target not in ['install', 'build', 'run', 'example']:
-                warnings.append(f"Makefile target not found: make {target}")
-
+    warnings.extend(_legacy_warnings(filepath, legacy_refs))
+    errors.extend(_file_errors(filepath, file_refs))
+    warnings.extend(_target_warnings(make_targets))
     return errors, warnings
 
 
