@@ -215,7 +215,8 @@ def test_real_api_guard_covers_legacy_force_json_and_binary_output(monkeypatch, 
     assert client.post("/face/render", json={}, headers={"Origin": "https://untrusted.example"}).status_code == 403
     assert not output.exists()
     response = client.post("/face/render", json={}, headers={"Origin": "http://localhost"})
-    assert response.status_code == 200 and response.mimetype == "image/png"
+    assert response.status_code == 200
+    assert response.mimetype == "image/png"
     assert response.data == b"PNG fixture"
     assert response.headers["Access-Control-Allow-Origin"] == "http://localhost"
 
@@ -228,7 +229,8 @@ def test_bridge_stop_remains_reachable_from_cli_but_foreign_page_is_blocked(monk
     monkeypatch.setattr(web_motion_bridge, "submit_control", lambda body: (sent.append(body) or {"ok": True}, 202))
     client = web_motion_bridge.app.test_client()
     response = client.post("/api/stop", json={}, headers={"Origin": "https://untrusted.example"})
-    assert response.status_code == 403 and sent == []
+    assert response.status_code == 403
+    assert sent == []
     response = client.post("/api/stop", json={"request_id": "cli-stop"})
     assert response.status_code == 202
     assert sent == [{"request_id": "cli-stop", "action": "stop"}]

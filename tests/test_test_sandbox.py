@@ -52,7 +52,8 @@ def test_child_python_is_bootstrapped_before_user_code():
         text=True,
         timeout=5,
     )
-    assert result.returncode != 0 and "IsolationError" in result.stderr
+    assert result.returncode != 0
+    assert "IsolationError" in result.stderr
 
 
 def test_child_python_cannot_disable_bootstrap():
@@ -72,8 +73,9 @@ def test_gpio_and_flags_are_detached_from_device():
 
 @pytest.mark.parametrize("verb", ["add", "commit", "reset", "clean", "branch", "config"])
 def test_git_cannot_mutate_checkout(verb):
+    cwd = os.getcwd()
     with pytest.raises(IsolationError):
-        subprocess.run(["git", verb], cwd=os.getcwd(), check=False)
+        subprocess.run(["git", verb], cwd=cwd, check=False)
 
 
 def test_isolated_server_can_bind_ephemeral_loopback():

@@ -59,7 +59,6 @@ def _silence_voice_ai_mode_monitor():
     logger.addHandler(logging.NullHandler())
     logger.propagate = False
     logger.setLevel(logging.ERROR)
-    yield
 
 
 @pytest.fixture(scope="session", autouse=True)

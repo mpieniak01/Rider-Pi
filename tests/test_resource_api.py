@@ -10,7 +10,7 @@ from services import api_server
 from services.api_core import resource_diag, services_api
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(monkeypatch) -> Any:
     monkeypatch.setattr(
         services_api, "_manager", lambda: SimpleNamespace(resource_consumers=lambda: {}, transaction=nullcontext)

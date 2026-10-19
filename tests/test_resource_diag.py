@@ -61,7 +61,9 @@ def test_release_audio_terminates_only_confirmed_owner(monkeypatch: pytest.Monke
 
     res = resource_diag.release("mic", limit_pids=[42, 43], force=True, operator_consent=True)
     assert res["ok"] is False
-    assert res['signal_sent'] is True and res['pending'] is True and res['released'] is False
+    assert res['signal_sent'] is True
+    assert res['pending'] is True
+    assert res['released'] is False
     cmd = executed["cmd"]
     assert cmd == ["sudo", "-n", "kill", "-TERM", "--", "42", "43"]
 
@@ -82,7 +84,9 @@ def test_release_camera_never_touches_lcd_or_spi(monkeypatch: pytest.MonkeyPatch
 
     res = resource_diag.release("camera", limit_pids=[77], force=True, operator_consent=True)
     assert res["ok"] is False
-    assert res['signal_sent'] is True and res['pending'] is True and res['released'] is False
+    assert res['signal_sent'] is True
+    assert res['pending'] is True
+    assert res['released'] is False
     cmd = executed["cmd"]
     assert cmd == ["sudo", "-n", "kill", "-TERM", "--", "77"]
 
@@ -96,7 +100,8 @@ def test_lsof_partial_multi_path_result_reports_observed_busy_owner(monkeypatch)
         lambda *args, **kwargs: SimpleNamespace(stdout="p123\0cpython\0Lpi\0n/dev/video0\0\n", stderr="", returncode=1),
     )
     result = resource_diag.inspect("camera")
-    assert result["state"] == "busy" and result["free"] is False
+    assert result["state"] == "busy"
+    assert result["free"] is False
     assert result["holders"][0]["pid"] == 123
 
 
@@ -110,7 +115,9 @@ def test_lsof_partial_incomplete_output_stays_unknown(monkeypatch, output):
         resource_diag.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(stdout=output, stderr="", returncode=1)
     )
     result = resource_diag.inspect("camera")
-    assert result["state"] == "unknown" and result["free"] is None and result["error"]
+    assert result["state"] == "unknown"
+    assert result["free"] is None
+    assert result["error"]
 
 
 def test_lsof_single_uart_rc1_with_output_remains_unknown(monkeypatch):
@@ -121,4 +128,5 @@ def test_lsof_single_uart_rc1_with_output_remains_unknown(monkeypatch):
         lambda *args, **kwargs: SimpleNamespace(stdout="p123\0n/dev/ttyAMA0\0", stderr="", returncode=1),
     )
     result = resource_diag.inspect("uart")
-    assert result["state"] == "unknown" and result["free"] is None
+    assert result["state"] == "unknown"
+    assert result["free"] is None

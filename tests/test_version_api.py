@@ -11,7 +11,7 @@ from services.api_core import version_api
 COMMIT = "a1b2c3d" + "0" * 33
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(version_api, "_cache", None)
     monkeypatch.setattr(version_api, "_cache_until", 0)

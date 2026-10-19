@@ -33,8 +33,9 @@ def test_client_uses_canonical_media_and_preserves_body():
 
 @pytest.mark.parametrize("mime", ["application/json", "application/vnd.rider.api+json;version=2"])
 def test_client_rejects_different_contract(mime):
+    client = APIClient(opener=lambda *args, **kw: Response({"meta": {"envelope_version": 1}}, mime))
     with pytest.raises(APIError, match="unsupported_rider_api_contract"):
-        APIClient(opener=lambda *args, **kw: Response({"meta": {"envelope_version": 1}}, mime)).request("/state")
+        client.request("/state")
 
 
 @pytest.mark.parametrize("url", ["file:///tmp/api", "http://user:password@localhost", "http://localhost?token=1"])
@@ -46,5 +47,6 @@ def test_bad_url_never_opens_network(url):
 def test_response_size_is_bounded():
     value = Response({})
     value.read = lambda length: b" " * length
+    client = APIClient(opener=lambda *a, **kw: value)
     with pytest.raises(APIError, match="rider_api_response_oversized"):
-        APIClient(opener=lambda *a, **kw: value).request("/state")
+        client.request("/state")

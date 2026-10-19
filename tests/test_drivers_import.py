@@ -42,7 +42,7 @@ class TestDriverImports(unittest.TestCase):
         """Test LCD driver factory function."""
         from drivers.lcd import make_driver
 
-        self.assertIsNotNone(make_driver)
+        self.assertTrue(callable(make_driver))
 
     def test_lcd_driver_factory_backward_compat(self):
         """Test backward compatibility for driver factory."""

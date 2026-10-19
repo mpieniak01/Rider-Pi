@@ -146,10 +146,13 @@ def test_first_snapshot_has_other_metrics_but_no_cpu_or_prometheus_sample(monkey
         row = system_info.sysinfo().get_json()
         metrics = system_info.metrics().get_data(as_text=True)
     assert row["cpu_pct"] is row["cpu_peak_pct"] is None
-    assert row["mem_pct"] == 25 and row["disk_pct"] == 10 and row["temp_c"] == 40
+    assert row["mem_pct"] == 25
+    assert row["disk_pct"] == 10
+    assert row["temp_c"] == 40
     assert row["hist_cpu"] == row["hist_ts"] == []
     assert calls == [True]
-    assert "rider_cpu_pct" not in metrics and "rider_mem_pct 25" in metrics
+    assert "rider_cpu_pct" not in metrics
+    assert "rider_mem_pct 25" in metrics
 
 
 def test_missing_cpu_delta_does_not_publish_zero_or_history():

@@ -22,16 +22,19 @@ def test_actual_lock_owner_and_short_playback_generation(clock):
     assert observer.snapshot() == ownership.PlaybackState()
     with ownership.own_playback():
         assert observer.snapshot().active
+        contender = ownership.own_playback()
         with pytest.raises(TimeoutError):
-            with ownership.own_playback():
-                pytest.fail('second speaker admitted')
+            with contender:
+                pass
     first = observer.snapshot()
-    assert not first.active and first.generation
+    assert not first.active
+    assert first.generation
     assert first.quiet_until == pytest.approx(10.35)
     with ownership.own_playback():
         pass  # Starts and ends entirely between observer polls.
     second = observer.snapshot()
-    assert second.generation != first.generation and not second.active
+    assert second.generation != first.generation
+    assert not second.active
     assert set(json.loads(observer.path.read_text())) == {'v', 'boot_id', 'generation', 'ended_at'}
     assert observer.fd is not None
     observer.close()
@@ -110,10 +113,13 @@ def test_failed_player_start_releases_shared_owner_and_records_completion(clock,
     monkeypatch.setattr(playback, '_start_playback_process', start)
     logger = SimpleNamespace(event=lambda *a, **k: None)
     if raises:
+        config = playback.PlaybackConfig()
         with pytest.raises(RuntimeError, match='fake player unavailable'):
-            playback.start_stream('wav', playback.PlaybackConfig(), logger)
+            playback.start_stream('wav', config, logger)
     else:
         assert playback.start_stream('wav', playback.PlaybackConfig(), logger) is None
     state = observer.snapshot()
-    assert not state.active and state.generation and state.quiet_until == pytest.approx(10.35)
+    assert not state.active
+    assert state.generation
+    assert state.quiet_until == pytest.approx(10.35)
     observer.close()

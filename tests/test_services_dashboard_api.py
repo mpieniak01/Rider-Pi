@@ -12,7 +12,7 @@ from services.api_core import features_api, services_dashboard_api
 from services.api_core.service_meta import SERVICE_META
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     monkeypatch.setattr(services_dashboard_api, "get_wifi_state", lambda: {"status": "connected"})
     monkeypatch.setattr(features_api, "feature_manager", SimpleNamespace(unit_consumers=lambda _: []))
@@ -61,7 +61,8 @@ def test_services_graph_returns_nodes_and_edges(monkeypatch: pytest.MonkeyPatch,
     assert resp.status_code == 200
     payload = resp.get_json()
     assert payload is not None
-    assert "nodes" in payload and "edges" in payload
+    assert "nodes" in payload
+    assert "edges" in payload
     nodes = payload["nodes"]
     assert len(nodes) == len(SERVICE_META)
 
@@ -80,6 +81,7 @@ def test_services_graph_returns_nodes_and_edges(monkeypatch: pytest.MonkeyPatch,
         and edge["to"] == SERVICE_META["rider-broker.service"]["id"]
         for edge in edges
     )
-    assert len(calls) == 1 and payload["contract_version"] == 2
+    assert len(calls) == 1
+    assert payload["contract_version"] == 2
     assert payload["generated_at"] is not None
     assert payload["network"]["wifi"]["status"] == "connected"

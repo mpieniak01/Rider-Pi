@@ -102,7 +102,8 @@ def test_config_init_skips_existing_files(tmp_path):
     # Check output messages
     assert "already exists, skipping" in result.stdout
     assert "Files created: 0" in result.stdout
-    assert "Files skipped" in result.stdout and "1" in result.stdout
+    assert "Files skipped" in result.stdout
+    assert "1" in result.stdout
 
 
 def test_config_init_handles_empty_directory(tmp_path):

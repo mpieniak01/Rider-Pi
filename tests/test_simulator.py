@@ -11,16 +11,15 @@ import sys
 import tempfile
 
 import pytest
+from simulator_fixtures import headless_pygame as headless_pygame, robot_factory as robot_factory
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sim.robot import SimulatedRobot
 
-
-def test_robot_initialization():
+def test_robot_initialization(robot_factory):
     """Test that robot initializes with correct state."""
-    robot = SimulatedRobot(x=5.0, y=10.0, angle=math.pi / 4)
+    robot = robot_factory(x=5.0, y=10.0, angle=math.pi / 4)
 
     assert robot.x == 5.0
     assert robot.y == 10.0
@@ -29,9 +28,9 @@ def test_robot_initialization():
     assert robot.angular_vel == 0.0
 
 
-def test_robot_update():
+def test_robot_update(robot_factory):
     """Test robot physics update."""
-    robot = SimulatedRobot(x=0.0, y=0.0, angle=0.0)
+    robot = robot_factory(x=0.0, y=0.0, angle=0.0)
 
     # Set velocities
     robot.linear_vel = 1.0  # 1 m/s
@@ -45,9 +44,9 @@ def test_robot_update():
     assert robot.angle != 0.0
 
 
-def test_robot_command_handling():
+def test_robot_command_handling(robot_factory):
     """Test robot processes commands correctly."""
-    robot = SimulatedRobot()
+    robot = robot_factory()
 
     # Drive command
     cmd = {"type": "drive", "lx": 0.5, "az": 0.3}
@@ -64,9 +63,9 @@ def test_robot_command_handling():
     assert robot.angular_vel == 0.0
 
 
-def test_robot_get_state():
+def test_robot_get_state(robot_factory):
     """Test that robot returns correct state dictionary."""
-    robot = SimulatedRobot(x=1.0, y=2.0, angle=0.5)
+    robot = robot_factory(x=1.0, y=2.0, angle=0.5)
     state = robot.get_state()
 
     assert isinstance(state, dict)
@@ -77,7 +76,7 @@ def test_robot_get_state():
     assert "angular_vel" in state
 
 
-def test_map_loading():
+def test_map_loading(headless_pygame):
     """Test map file loading."""
     from sim.world import World
 
@@ -93,9 +92,6 @@ XXXXX
         map_file = f.name
 
     try:
-        # Set headless mode for pygame
-        os.environ["SDL_VIDEODRIVER"] = "dummy"
-
         world = World(map_file=map_file)
 
         # Check map was loaded

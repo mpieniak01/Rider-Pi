@@ -134,7 +134,8 @@ def test_disable_face_tracking_stops_services_and_preview() -> None:
 
     assert result["ok"] is True
     assert runner.actions == [("rider-followme.target", "stop")]
-    assert runner.state["camera-capture@raw.service"] and runner.state["frame-distributor.service"]
+    assert runner.state["camera-capture@raw.service"]
+    assert runner.state["frame-distributor.service"]
     # Tracking mode is reset to none
     assert publisher.sent[-1][1]["mode"] == "none"
 
@@ -145,9 +146,13 @@ def test_recon_unavailable_denied_before_preview_or_journal() -> None:
     mgr = make_manager(runner, publisher, owner="navigation")
 
     enable = mgr.set_feature("recon", True)
-    assert enable["ok"] is False and enable["error"] == "navigation_traversal_unverified"
-    assert not runner.actions and not publisher.sent
-    assert not mgr._intents and not mgr._pending and "s4_recon" not in mgr._requested
+    assert enable["ok"] is False
+    assert enable["error"] == "navigation_traversal_unverified"
+    assert not runner.actions
+    assert not publisher.sent
+    assert not mgr._intents
+    assert not mgr._pending
+    assert "s4_recon" not in mgr._requested
 
 
 def test_describe_features_reports_metadata_and_status() -> None:

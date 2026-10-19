@@ -62,7 +62,8 @@ def test_settings_api_never_publishes_movement(store, monkeypatch):
     client = app.test_client()
     assert client.get("/api/calibration/controls").json["revision"] == 0
     row = client.post("/api/calibration/controls", json={"revision": 0, "values": {"turn_speed": 0.4}})
-    assert row.status_code == 200 and row.json["actuation"] is False
+    assert row.status_code == 200
+    assert row.json["actuation"] is False
     assert (
         client.post("/api/calibration/controls", json={"revision": 0, "values": {"turn_speed": 0.5}}).status_code == 409
     )

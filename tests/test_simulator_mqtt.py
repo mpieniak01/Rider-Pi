@@ -25,7 +25,8 @@ def test_mqtt_integration(monkeypatch):
         while robot.linear_vel == 0 and time.monotonic() < deadline:
             robot.recv_commands()
             time.sleep(0.005)
-        assert robot.linear_vel > 0 and robot.angular_vel == 0
+        assert robot.linear_vel > 0
+        assert robot.angular_vel == 0
         before = robot.x
         robot.update(1.0)
         assert robot.x > before
@@ -34,7 +35,8 @@ def test_mqtt_integration(monkeypatch):
         while robot.linear_vel != 0 and time.monotonic() < deadline:
             robot.recv_commands()
             time.sleep(0.005)
-        assert robot.linear_vel == 0 and robot.angular_vel == 0
+        assert robot.linear_vel == 0
+        assert robot.angular_vel == 0
     finally:
         robot._sub.close(linger=0)
         pub.close(linger=0)
