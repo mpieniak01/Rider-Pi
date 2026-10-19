@@ -213,29 +213,17 @@ def _resolve_relative_paths(d: dict[str, Any], base: Path) -> dict[str, Any]:
     """Zamienia ścieżki względne na absolutne względem katalogu pliku TOML."""
     out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in d.items()}
 
-    # save_audio.dir
-    sa = out.get("save_audio")
-    if isinstance(sa, dict) and isinstance(sa.get("dir"), str):
-        p = Path(sa["dir"])
-        if not p.is_absolute():
-            out["save_audio"]["dir"] = str((base / p).resolve())
-
-    # service.recordings_dir
-    svc = out.get("service")
-    if isinstance(svc, dict) and isinstance(svc.get("recordings_dir"), str):
-        p = Path(svc["recordings_dir"])
-        if not p.is_absolute():
-            out["service"]["recordings_dir"] = str((base / p).resolve())
-
-    # files.input_wav/output_wav
-    files = out.get("files")
-    if isinstance(files, dict):
-        for key in ("input_wav", "output_wav"):
-            v = files.get(key)
-            if isinstance(v, str):
-                pv = Path(v)
-                if not pv.is_absolute():
-                    out["files"][key] = str((base / pv).resolve())
+    for section, key in (
+        ("save_audio", "dir"),
+        ("service", "recordings_dir"),
+        ("files", "input_wav"),
+        ("files", "output_wav"),
+    ):
+        values = out.get(section)
+        if isinstance(values, dict) and isinstance(values.get(key), str):
+            path = Path(values[key])
+            if not path.is_absolute():
+                values[key] = str((base / path).resolve())
 
     return out
 
@@ -278,28 +266,23 @@ def _mask_secrets(d: dict[str, Any], *, keep_tail: int = 4) -> dict[str, Any]:
       - surowe pola znane: 'api_key', 'auth', 'token', 'secret', 'password' → maskuj,
       - ciągi przypominające klucze (np. 'sk-...') → maskuj.
     """
-    secret_keys = {"api_key", "auth", "token", "secret", "password"}
-
-    out: dict[str, Any] = {}
-    for k, v in d.items():
-        if k.lower() in secret_keys and isinstance(v, str):
-            # Top-level znany sekret
-            tail = v[-keep_tail:] if keep_tail > 0 else ""
-            out[k] = f"{'*' * max(0, len(v) - keep_tail)}{tail}"
-        elif isinstance(v, dict):
-            # Zagnieżdżone dict – maskuj rekurencyjnie, ale również klucze sekretów
-            nested: dict[str, Any] = {}
-            for kk, vv in v.items():
-                if kk.lower() in secret_keys and isinstance(vv, str):
-                    tail = vv[-keep_tail:] if keep_tail > 0 else ""
-                    nested[kk] = f"{'*' * max(0, len(vv) - keep_tail)}{tail}"
-                else:
-                    nested[kk] = _mask_core_value(vv, keep_tail=keep_tail)
-            out[k] = nested
+    out = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            out[key] = {
+                nested_key: _mask_named_value(nested_key, nested_value, keep_tail)
+                for nested_key, nested_value in value.items()
+            }
         else:
-            out[k] = _mask_core_value(v, keep_tail=keep_tail)
-
+            out[key] = _mask_named_value(key, value, keep_tail)
     return out
+
+
+def _mask_named_value(key, value, keep_tail):
+    if key.lower() in {"api_key", "auth", "token", "secret", "password"} and isinstance(value, str):
+        tail = value[-keep_tail:] if keep_tail > 0 else ""
+        return f"{'*' * max(0, len(value) - keep_tail)}{tail}"
+    return _mask_core_value(value, keep_tail=keep_tail)
 
 
 def mask_secrets(d: dict[str, Any], *, keep_tail: int = 4) -> dict[str, Any]:
@@ -402,21 +385,15 @@ class ConfigLoader:
     def _warn_or_err_unknown(self, section: str, key: str) -> None:
         self.unknown_keys.append((section, key))
 
-    def _validate(self, data: dict[str, Any]) -> None:
-        self.unknown_keys.clear()
-        self.validation_errors.clear()
+    def _mark_unknown_key(self, section, key, allow_unknown):
+        if not allow_unknown:
+            self._warn_or_err_unknown(section, key)
 
-        # pozwól wyłączyć błąd dla nieznanych kluczy
-        allow_unknown = bool(isinstance(data.get("compat"), dict) and data["compat"].get("allow_unknown_keys") is True)
-
-        def _mark_unknown(section: str, key: str) -> None:
-            if not allow_unknown:
-                self._warn_or_err_unknown(section, key)
-
+    def _validate_keys(self, data, allow_unknown):
         # --- sekcje nieznane (wg efektywnego schematu) ---
         for section in data.keys():
             if section not in self._effective_schema:
-                _mark_unknown(section, "<section>")
+                self._mark_unknown_key(section, "<section>", allow_unknown)
 
         # --- weryfikacja kluczy w znanych sekcjach ---
         for section, allowed in self._effective_schema.items():
@@ -428,9 +405,9 @@ class ConfigLoader:
                 continue
             for key in sec_data.keys():
                 if key not in allowed:
-                    _mark_unknown(section, key)
+                    self._mark_unknown_key(section, key, allow_unknown)
 
-        # --- Reguły wartości ---
+    def _validate_capture(self, data):
         cap = data.get("capture", {}) if isinstance(data.get("capture"), dict) else {}
         if "channels" in cap and cap["channels"] not in (1, 2):
             self.validation_errors.append("Field 'capture.channels' must be one of [1, 2]")
@@ -447,6 +424,7 @@ class ConfigLoader:
         if "sample_format" in cap and not isinstance(cap["sample_format"], str):
             self.validation_errors.append("Field 'capture.sample_format' must be a string (e.g., 'S16_LE')")
 
+    def _validate_playback(self, data):
         pb = data.get("playback", {}) if isinstance(data.get("playback"), dict) else {}
         if "volume" in pb:
             vol = pb["volume"]
@@ -457,6 +435,7 @@ class ConfigLoader:
             elif vol < 0:
                 self.validation_errors.append("Field 'playback.volume' must be >= 0")
 
+    def _validate_backends(self, data):
         # Backend: dozwolone wartości (jeśli mamy reguły dla danej sekcji)
         for section, allowed_backends in ALLOWED_BACKENDS_PER_SECTION.items():
             sec = data.get(section, {})
@@ -467,6 +446,7 @@ class ConfigLoader:
                         f"Field '{section}.backend' must be one of {sorted(allowed_backends)}"
                     )
 
+    def _validate_hotword(self, data):
         hot = data.get("hotword", {}) if isinstance(data.get("hotword"), dict) else {}
         engine = hot.get("engine")
         if engine is not None and engine not in ALLOWED_HOTWORD_ENGINES:
@@ -474,16 +454,30 @@ class ConfigLoader:
                 f"Field 'hotword.engine' must be one of {sorted(ALLOWED_HOTWORD_ENGINES)}, got '{engine}'"
             )
 
+    def _validate_required(self, data):
         # Wymagane pola z wstrzykniętego schema (jeśli podano)
-        if self._req_sections:
-            for section, fields in self._req_sections.items():
-                if not fields:
-                    continue
-                sec_data = data.get(section, {})
-                for field_name, meta in fields.items():
-                    if meta.required:
-                        if not isinstance(sec_data, dict) or field_name not in sec_data:
-                            self.validation_errors.append(f"Missing required field '{section}.{field_name}'")
+        for section, fields in self._req_sections.items():
+            if not fields:
+                continue
+            sec_data = data.get(section, {})
+            for field_name, meta in fields.items():
+                if meta.required:
+                    if not isinstance(sec_data, dict) or field_name not in sec_data:
+                        self.validation_errors.append(f"Missing required field '{section}.{field_name}'")
+
+    def _validate(self, data: dict[str, Any]) -> None:
+        self.unknown_keys.clear()
+        self.validation_errors.clear()
+
+        # pozwól wyłączyć błąd dla nieznanych kluczy
+        allow_unknown = bool(isinstance(data.get("compat"), dict) and data["compat"].get("allow_unknown_keys") is True)
+
+        self._validate_keys(data, allow_unknown)
+        self._validate_capture(data)
+        self._validate_playback(data)
+        self._validate_backends(data)
+        self._validate_hotword(data)
+        self._validate_required(data)
 
         # fail-fast gdy są błędy
         if not self.lenient and (self.unknown_keys or self.validation_errors):

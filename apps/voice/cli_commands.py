@@ -23,6 +23,8 @@ from .asr import ASRConfig, transcribe
 from .audio.playback import PlaybackConfig, play_bytes
 from .tts import TTSConfig, synthesize
 
+_DISABLED_PAIR = "enabled=false"
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the main argument parser for voice CLI."""
@@ -121,7 +123,7 @@ def cmd_listen(args) -> None:
     """Execute listen command (continuous mode)."""
     # If hotword=ptt and no --vad provided, disable local VAD
     if getattr(args, "hotword", None) == "ptt" and not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
+        args.vad = [_DISABLED_PAIR]
 
     config, _ = _configure(args)
     from .svc_core import run_listen
@@ -134,7 +136,7 @@ def cmd_ptt(args) -> None:
     # Force PTT mode and disable local VAD if not specified
     args.hotword = "ptt"
     if not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
+        args.vad = [_DISABLED_PAIR]
 
     config, _ = _configure(args)
     from .svc_core import run_listen
@@ -146,7 +148,7 @@ def cmd_once(args) -> None:
     """Execute once command (single cycle)."""
     # If PTT mode and no --vad provided, disable local VAD
     if getattr(args, "hotword", None) == "ptt" and not getattr(args, "vad", None):
-        args.vad = ["enabled=false"]
+        args.vad = [_DISABLED_PAIR]
 
     config, _ = _configure(args)
     from .svc_core import run_once
@@ -196,15 +198,15 @@ def cmd_tts(args) -> None:
         sys.stdout.buffer.write(wav_bytes)
 
 
-def cmd_diag(args) -> None:
-    """Execute diagnostics command."""
-    overrides = _build_overrides(args)
-    config = voice_config.load(getattr(args, "config", None), overrides=overrides)
-    voice_logging.configure(config.get("logging", {}).get("level"))
+def _print_alsa_devices(output):
+    if output:
+        print("ALSA devices:")
+        for line in output.splitlines():
+            if "card" in line.lower() or "device" in line.lower():
+                print(f"  {line}")
 
-    capture_backend = config.get("capture", {}).get("backend", "alsa")
-    print("Capture backend:", capture_backend)
 
+def _print_capture_diagnostics(capture_backend):
     if capture_backend == "alsa" and shutil.which("arecord"):
         print("arecord available: YES")
         try:
@@ -214,15 +216,23 @@ def cmd_diag(args) -> None:
                 text=True,
                 timeout=5,
             )
-            if result.stdout:
-                print("ALSA devices:")
-                for line in result.stdout.splitlines():
-                    if "card" in line.lower() or "device" in line.lower():
-                        print(f"  {line}")
+            _print_alsa_devices(result.stdout)
         except Exception as e:
             print(f"Error listing ALSA devices: {e}")
     else:
         print("arecord available: NO")
+
+
+def cmd_diag(args) -> None:
+    """Execute diagnostics command."""
+    overrides = _build_overrides(args)
+    config = voice_config.load(getattr(args, "config", None), overrides=overrides)
+    voice_logging.configure(config.get("logging", {}).get("level"))
+
+    capture_backend = config.get("capture", {}).get("backend", "alsa")
+    print("Capture backend:", capture_backend)
+
+    _print_capture_diagnostics(capture_backend)
 
     # Check mode detection
     from .svc_core import _wants_stream
@@ -283,15 +293,52 @@ def _configure(args) -> tuple[dict[str, Any], Any]:
     return config, None
 
 
-def _build_overrides(args) -> dict[str, Any]:
-    """Build configuration overrides from CLI arguments."""
-    overrides: dict[str, Any] = {}
+def _command_pair_value(value):
+    if value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    if value.isdigit():
+        return int(value)
+    if "." in value and value.replace(".", "").isdigit():
+        return float(value)
+    return value
 
+
+def _command_section_overrides(values):
+    overrides = {}
+    for value in values:
+        if "=" in value:
+            key, val = value.split("=", 1)
+            overrides[key] = _command_pair_value(val)
+    return overrides
+
+
+def _apply_command_special_overrides(args, overrides):
+    # Handle special arguments
+    if getattr(args, "hotword", None):
+        overrides.setdefault("service", {})
+        if args.hotword == "ptt":
+            overrides["service"]["hotword_engine"] = "ptt"
+        elif args.hotword == "off":
+            overrides["service"]["hotword_enabled"] = False
+        elif args.hotword == "on":
+            overrides["service"]["hotword_enabled"] = True
+
+    if getattr(args, "ding", None):
+        overrides.setdefault("playback", {}).setdefault("ding", {})
+        overrides["playback"]["ding"]["enabled"] = args.ding == "on"
+
+    if getattr(args, "lang", None):
+        overrides.setdefault("asr", {})
+        overrides["asr"]["language"] = args.lang
+
+
+def _command_mode_overrides(args):
+    result = {}
     # Handle mode override
     if getattr(args, "mode", None):
         mode = args.mode
         if mode == "stream":
-            overrides.update(
+            result.update(
                 {
                     "asr": {"transport": "realtime"},
                     "chat": {"transport": "realtime"},
@@ -299,13 +346,22 @@ def _build_overrides(args) -> dict[str, Any]:
                 }
             )
         elif mode == "file":
-            overrides.update(
+            result.update(
                 {
                     "asr": {"transport": "file"},
                     "chat": {"transport": "file"},
                     "tts": {"transport": "file"},
                 }
             )
+
+    return result
+
+
+def _build_overrides(args) -> dict[str, Any]:
+    """Build configuration overrides from CLI arguments."""
+    overrides: dict[str, Any] = {}
+
+    overrides.update(_command_mode_overrides(args))
 
     # Handle other argument mappings
     for section in [
@@ -321,43 +377,11 @@ def _build_overrides(args) -> dict[str, Any]:
         if hasattr(args, section) and getattr(args, section) is not None:
             values = getattr(args, section)
             if values:
-                section_overrides = {}
-                for value in values:
-                    if "=" in value:
-                        key, val = value.split("=", 1)
-                        # Try to parse as appropriate type
-                        if val.lower() in ("true", "false"):
-                            val = val.lower() == "true"
-                        elif val.isdigit():
-                            val = int(val)
-                        elif "." in val and val.replace(".", "").isdigit():
-                            val = float(val)
-                        section_overrides[key] = val
+                section_overrides = _command_section_overrides(values)
                 if section_overrides:
                     overrides[section] = section_overrides
 
-    # Handle special arguments
-    if getattr(args, "hotword", None):
-        if "service" not in overrides:
-            overrides["service"] = {}
-        if args.hotword == "ptt":
-            overrides["service"]["hotword_engine"] = "ptt"
-        elif args.hotword == "off":
-            overrides["service"]["hotword_enabled"] = False
-        elif args.hotword == "on":
-            overrides["service"]["hotword_enabled"] = True
-
-    if getattr(args, "ding", None):
-        if "playback" not in overrides:
-            overrides["playback"] = {}
-        if "ding" not in overrides["playback"]:
-            overrides["playback"]["ding"] = {}
-        overrides["playback"]["ding"]["enabled"] = args.ding == "on"
-
-    if getattr(args, "lang", None):
-        if "asr" not in overrides:
-            overrides["asr"] = {}
-        overrides["asr"]["language"] = args.lang
+    _apply_command_special_overrides(args, overrides)
 
     return overrides
 

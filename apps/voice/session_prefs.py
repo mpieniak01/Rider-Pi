@@ -67,6 +67,13 @@ class SessionPreferences:
     tool_choice: str | dict[str, Any] | None = None
 
 
+def _optional_number(value, cast):
+    try:
+        return cast(value) if value is not None else None
+    except (ValueError, TypeError):
+        return None
+
+
 def build_session_preferences(
     config: dict[str, Any],
     stream_cfg: Any = None,
@@ -123,23 +130,8 @@ def build_session_preferences(
     )
     max_turn_ms = int(_get(stream_cfg, "max_turn_ms", cfg_stream.get("max_turn_ms", 6000)))
 
-    # Temperature (from chat config)
-    temperature = None
-    try:
-        temp_val = cfg_chat.get("temperature")
-        if temp_val is not None:
-            temperature = float(temp_val)
-    except (ValueError, TypeError):
-        pass
-
-    # Max tokens (from chat config)
-    max_tokens = None
-    try:
-        mt_val = cfg_chat.get("max_tokens")
-        if mt_val is not None:
-            max_tokens = int(mt_val)
-    except (ValueError, TypeError):
-        pass
+    temperature = _optional_number(cfg_chat.get("temperature"), float)
+    max_tokens = _optional_number(cfg_chat.get("max_tokens"), int)
 
     # Tools (function calling)
     tools = cfg_chat.get("tools")

@@ -56,6 +56,23 @@ def _clean_markdown(text: str) -> str:
 # === KONIEC POPRAWKI ===
 
 
+def _local_response_text(data):
+    text_out = ((data.get("text") or "") or ((data.get("message") or {}).get("content") or "")).strip()
+
+    if not text_out:
+        raise ChatError("LOCAL CHAT: empty response")
+
+    return text_out
+
+
+def _stream_chunk_content(chunk):
+    if chunk.choices and len(chunk.choices) > 0:
+        delta = chunk.choices[0].delta
+        if delta and hasattr(delta, "content") and delta.content:
+            return delta.content
+    return None
+
+
 class ChatSession:
     def __init__(
         self,
@@ -271,10 +288,7 @@ class ChatSession:
         except Exception as e:
             raise ChatError("LOCAL CHAT: invalid JSON") from e
 
-        text_out = ((data.get("text") or "") or ((data.get("message") or {}).get("content") or "")).strip()
-
-        if not text_out:
-            raise ChatError("LOCAL CHAT: empty response")
+        text_out = _local_response_text(data)
 
         # === POCZĄTEK POPRAWKI: Czyszczenie odpowiedzi ===
         cleaned_text_out = _clean_markdown(text_out)
@@ -330,14 +344,9 @@ class ChatSession:
 
             # Iteruj przez fragmenty odpowiedzi
             async for chunk in stream:
-                if chunk.choices and len(chunk.choices) > 0:
-                    delta = chunk.choices[0].delta
-                    if delta and hasattr(delta, "content") and delta.content:
-                        # === POCZĄTEK POPRAWKI: Czyszczenie strumienia ===
-                        # Czyścimy na bieżąco, ale to może być ryzykowne
-                        # Lepsza strategia: czyścić całą odpowiedź na końcu
-                        yield delta.content
-                        # === KONIEC POPRAWKI ===
+                content = _stream_chunk_content(chunk)
+                if content:
+                    yield content
 
             self._evt("chat.stream.ok")
         except Exception as exc:

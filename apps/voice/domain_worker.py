@@ -15,30 +15,38 @@ from common.task_runtime import read_status
 from services.api_core.http_security import install as install_http_security
 
 
+def _chat_endpoint():
+    host, port = worker_bind()
+    host = "127.0.0.1" if host in {"0.0.0.0", "localhost"} else "::1" if host in {"::", "[::]"} else host
+    return f"http://{'[' + host + ']' if ':' in host else host}:{port}/api/chat"
+
+
+def _load_profile_model(legacy, status, domain, importer, model_loader):
+    capability = status["capabilities"][domain]
+    capability["model_loaded"] = False
+    if capability["ready"]:
+        try:
+            if not getattr(legacy, importer)():
+                raise ImportError("selected backend unavailable")
+            if getattr(legacy, model_loader)() is None:
+                raise RuntimeError("selected model unavailable")
+            capability["model_loaded"] = True
+        except Exception as exc:
+            status["missing"].append(f"{domain}_model_load_failed:{type(exc).__name__}")
+            capability["ready"] = False
+
+
 def update_profile(legacy, domains: set[str]) -> dict:
     status = availability(domains)
     if "chat" in domains:
-        host, port = worker_bind()
-        host = "127.0.0.1" if host in {"0.0.0.0", "localhost"} else "::1" if host in {"::", "[::]"} else host
-        status["chat_endpoint"] = f"http://{'[' + host + ']' if ':' in host else host}:{port}/api/chat"
+        status["chat_endpoint"] = _chat_endpoint()
     for domain, importer, model_loader in (
         ("asr", "_load_vosk_backend", "_get_local_vosk_model"),
         ("tts", "_load_piper_backend", "_get_local_piper_voice"),
     ):
         if domain not in domains:
             continue
-        capability = status["capabilities"][domain]
-        capability["model_loaded"] = False
-        if capability["ready"]:
-            try:
-                if not getattr(legacy, importer)():
-                    raise ImportError("selected backend unavailable")
-                if getattr(legacy, model_loader)() is None:
-                    raise RuntimeError("selected model unavailable")
-                capability["model_loaded"] = True
-            except Exception as exc:
-                status["missing"].append(f"{domain}_model_load_failed:{type(exc).__name__}")
-                capability["ready"] = False
+        _load_profile_model(legacy, status, domain, importer, model_loader)
     if "asr" not in domains:
         legacy._local_vosk_model = None
     if "tts" not in domains:
@@ -46,6 +54,54 @@ def update_profile(legacy, domains: set[str]) -> dict:
     status["ready"] = bool(domains) and not status["missing"]
     write_status(status)
     return status
+
+
+def _observed_profile(domains, profile_status):
+    status = availability(domains)
+    observed = profile_status()
+    capabilities = observed.get("capabilities", {})
+    confirmed = (
+        observed.get("stale") is not True
+        and isinstance(capabilities, dict)
+        and all(
+            isinstance(capabilities.get(domain), dict)
+            and capabilities[domain].get("ready") is True
+            and (domain == "chat" or capabilities[domain].get("model_loaded") is True)
+            for domain in domains
+        )
+    )
+    return {**status, "ready": status["ready"] and confirmed, "worker": observed}
+
+
+def _admit_tts_payload(legacy):
+    # The legacy handler accepts JSON independently of Content-Type.
+    # Resolve exactly its configured default before admitting text.
+    payload = request.get_json(force=True, silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "invalid_tts_payload"}), 400
+    legacy._load_config()
+    configured = getattr(getattr(getattr(g, "config", None), "tts", None), "backend", "")
+    backend = payload.get("backend") or payload.get("provider") or payload.get("tts") or configured
+    if not isinstance(backend, str) or backend.strip().lower() not in {"local", "piper"}:
+        return jsonify({"ok": False, "error": "selected_profile_is_local_tts"}), 400
+
+
+def _admit_domain(legacy, observed_profile):
+    if request.path == "/healthz":
+        return None
+    domain = "asr" if request.path == "/api/asr" else "chat" if request.path == "/api/chat" else "tts"
+    domains = requested_domains()
+    if domain not in domains:
+        return jsonify({"ok": False, "error": "voice_domain_inactive", "domain": domain}), 503
+    if domain == "tts" and request.method == "POST":
+        rejected = _admit_tts_payload(legacy)
+        if rejected is not None:
+            return rejected
+    status = observed_profile({domain})
+    if not status["ready"]:
+        return jsonify({"ok": False, "error": "voice_backend_unavailable", **status}), 503
+    legacy._load_config()
+    return None
 
 
 def create_app(legacy=None, profile_status=None) -> Flask:
@@ -59,45 +115,11 @@ def create_app(legacy=None, profile_status=None) -> Flask:
     profile_status = profile_status or (lambda: read_status("rider-voice-web.service"))
 
     def observed_profile(domains):
-        status = availability(domains)
-        observed = profile_status()
-        capabilities = observed.get("capabilities", {})
-        confirmed = (
-            observed.get("stale") is not True
-            and isinstance(capabilities, dict)
-            and all(
-                isinstance(capabilities.get(domain), dict)
-                and capabilities[domain].get("ready") is True
-                and (domain == "chat" or capabilities[domain].get("model_loaded") is True)
-                for domain in domains
-            )
-        )
-        return {**status, "ready": status["ready"] and confirmed, "worker": observed}
+        return _observed_profile(domains, profile_status)
 
     @app.before_request
     def admit_domain():
-        if request.path == "/healthz":
-            return None
-        domain = "asr" if request.path == "/api/asr" else "chat" if request.path == "/api/chat" else "tts"
-        domains = requested_domains()
-        if domain not in domains:
-            return jsonify({"ok": False, "error": "voice_domain_inactive", "domain": domain}), 503
-        if domain == "tts" and request.method == "POST":
-            # The legacy handler accepts JSON independently of Content-Type.
-            # Resolve exactly its configured default before admitting text.
-            payload = request.get_json(force=True, silent=True)
-            if not isinstance(payload, dict):
-                return jsonify({"ok": False, "error": "invalid_tts_payload"}), 400
-            legacy._load_config()
-            configured = getattr(getattr(getattr(g, "config", None), "tts", None), "backend", "")
-            backend = payload.get("backend") or payload.get("provider") or payload.get("tts") or configured
-            if not isinstance(backend, str) or backend.strip().lower() not in {"local", "piper"}:
-                return jsonify({"ok": False, "error": "selected_profile_is_local_tts"}), 400
-        status = observed_profile({domain})
-        if not status["ready"]:
-            return jsonify({"ok": False, "error": "voice_backend_unavailable", **status}), 503
-        legacy._load_config()
-        return None
+        return _admit_domain(legacy, observed_profile)
 
     @app.route("/healthz", methods=["GET"])
     def health():

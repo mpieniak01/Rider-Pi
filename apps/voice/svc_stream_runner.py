@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from .stream.svc_streaming import StreamingVoiceService
@@ -17,21 +17,8 @@ from .stream.svc_streaming import StreamingVoiceService
 
 def _run_coro_in_thread(coro) -> Any:
     """Run coroutine in separate thread with its own event loop (no collision with @pytest.mark.asyncio)."""
-    result_box: dict[str, Any] = {}
-    error_box: dict[str, BaseException] = {}
-
-    def _target():
-        try:
-            result_box["r"] = asyncio.run(coro)
-        except BaseException as e:  # noqa: BLE001
-            error_box["e"] = e
-
-    t = threading.Thread(target=_target, name="svc-stream-runner", daemon=True)
-    t.start()
-    t.join()
-    if "e" in error_box:
-        raise error_box["e"]
-    return result_box.get("r")
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="svc-stream-runner") as executor:
+        return executor.submit(asyncio.run, coro).result()
 
 
 def run_once_stream(cfg: dict[str, Any], args) -> int:

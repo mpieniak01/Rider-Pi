@@ -285,6 +285,40 @@ def api_tts_test():
     )
 
 
+def _tts_audio_response(wav):
+    if request.args.get("b64") == "1":
+        b64 = base64.b64encode(wav).decode("ascii")
+        return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
+    return Response(wav, mimetype=WAV_MIMETYPE, headers={"Content-Disposition": TTS_CONTENT_DISPOSITION})
+
+
+def _local_piper_response(text, voice_name=None, *, payload_voice=False):
+    if not _load_piper_backend():
+        return jsonify({"status": "error", "error": "piper module not available"}), 500
+    try:
+        model_path = _resolve_piper_model_path(voice_name) if payload_voice else _resolve_piper_model_path()
+        voice = _get_local_piper_voice(model_path)
+        wav_bytes, sr = _piper_synthesize_wav_bytes(voice, text, model_path)
+        wav = _ensure_wav_bytes(wav_bytes, sr, "wav")
+    except Exception as exc:
+        return jsonify({"status": "error", "error": f"local piper failed: {exc}"}), 500
+    if not wav or not _is_wav(wav):
+        return jsonify({"status": "error", "error": "piper produced no WAV"}), 500
+    return _tts_audio_response(wav)
+
+
+def _tts_config_from_payload(payload):
+    from . import config as voice_config
+
+    pairs = []
+    for key in ("backend", "provider", "format", "voice", "model"):
+        if key in payload:
+            target = "backend" if key in ("backend", "provider") else key
+            pairs.append(f"{target}={payload[key]}")
+    overrides = {"tts": voice_config.override_from_pairs("tts", pairs)["tts"]} if pairs else {}
+    return voice_config.load(None, overrides=overrides)
+
+
 @app.post("/api/tts")
 def api_tts():
     """
@@ -306,70 +340,16 @@ def api_tts():
         if backend in {"google", "gemini"}:
             return jsonify({"status": "error", "error": "Google/Gemini SDK integration is disabled"}), 400
 
-        # 1) Kanał lokalny (Piper)
         if backend in ("local", "piper"):
-            if not _load_piper_backend():
-                return jsonify({"status": "error", "error": "piper module not available"}), 500
-            try:
-                voice_name = payload.get("voice")
-                model_path = _resolve_piper_model_path(voice_name if isinstance(voice_name, str) else None)
-                voice = _get_local_piper_voice(model_path)
+            voice_name = payload.get("voice")
+            return _local_piper_response(text, voice_name if isinstance(voice_name, str) else None, payload_voice=True)
 
-                wav_bytes, sr = _piper_synthesize_wav_bytes(voice, text, model_path)
-                wav = _ensure_wav_bytes(wav_bytes, sr, "wav")
-            except Exception as e:
-                return jsonify({"status": "error", "error": f"local piper failed: {e}"}), 500
-
-            if not wav or not _is_wav(wav):
-                return jsonify({"status": "error", "error": "piper produced no WAV"}), 500
-
-            if request.args.get("b64") == "1":
-                b64 = base64.b64encode(wav).decode("ascii")
-                return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
-            return Response(
-                wav,
-                mimetype=WAV_MIMETYPE,
-                headers={"Content-Disposition": TTS_CONTENT_DISPOSITION},
-            )
-
-        # 2) Pozostałe kanały – OpenAI
-        from . import config as voice_config
         from .tts import TTSConfig, synthesize
 
-        overrides = {}
-        tts_pairs = []
-        for k in ("backend", "provider", "format", "voice", "model"):
-            if k in payload:
-                key = "backend" if k in ("backend", "provider") else k
-                tts_pairs.append(f"{key}={payload[k]}")
-        if tts_pairs:
-            overrides = {"tts": voice_config.override_from_pairs("tts", tts_pairs)["tts"]}
-
-        cfg = voice_config.load(None, overrides=overrides)
-
+        cfg = _tts_config_from_payload(payload)
         cfg_backend = str(cfg.get("tts", {}).get("backend", "")).lower()
         if cfg_backend in ("local", "piper"):
-            if not _load_piper_backend():
-                return jsonify({"status": "error", "error": "piper module not available"}), 500
-            try:
-                model_path = _resolve_piper_model_path()
-                voice = _get_local_piper_voice(model_path)
-                wav_bytes, sr = _piper_synthesize_wav_bytes(voice, text, model_path)
-                wav = _ensure_wav_bytes(wav_bytes, sr, "wav")
-            except Exception as e:
-                return jsonify({"status": "error", "error": f"local piper failed: {e}"}), 500
-
-            if not wav or not _is_wav(wav):
-                return jsonify({"status": "error", "error": "piper produced no WAV"}), 500
-
-            if request.args.get("b64") == "1":
-                b64 = base64.b64encode(wav).decode("ascii")
-                return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
-            return Response(
-                wav,
-                mimetype=WAV_MIMETYPE,
-                headers={"Content-Disposition": TTS_CONTENT_DISPOSITION},
-            )
+            return _local_piper_response(text)
 
         # W przeciwnym razie – chmurowy synth
         audio, sr, _channels, fmt = synthesize(text, TTSConfig(**cfg["tts"]))
@@ -377,15 +357,7 @@ def api_tts():
         if not wav or not _is_wav(wav):
             return jsonify({"status": "error", "error": "synthesis produced no WAV"}), 500
 
-        if request.args.get("b64") == "1":
-            b64 = base64.b64encode(wav).decode("ascii")
-            return jsonify({"status": "ok", "fmt": "wav", "audio_b64": b64})
-
-        return Response(
-            wav,
-            mimetype=WAV_MIMETYPE,
-            headers={"Content-Disposition": TTS_CONTENT_DISPOSITION},
-        )
+        return _tts_audio_response(wav)
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
@@ -425,6 +397,72 @@ def _build_llama_prompt(cfg: Any, messages: list[dict[str, str]]) -> str:
     return "\n".join(prompt_parts)
 
 
+def _llama_config_paths(chat_cfg):
+    # Sprawdzenie, czy binarka i model istnieją
+    llm_main_path = os.getenv("VOICE_LLM_MAIN_PATH", getattr(chat_cfg, "llm_main_path", "llama.cpp/main"))
+    llm_model_path = os.getenv(
+        "VOICE_LLM_MODEL_PATH",
+        getattr(chat_cfg, "llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf"),
+    )
+    llm_extra_args = getattr(
+        chat_cfg,
+        "llm_extra_args",
+        "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7",
+    )
+
+    # Walidacja bezpieczeństwa: używamy podejścia whitelist - tylko dozwolone znaki w ścieżkach
+    # Dozwolone: a-z, A-Z, 0-9, /, _, ., -
+    if not re.match(r"^[a-zA-Z0-9/_.-]+$", llm_main_path) or not re.match(r"^[a-zA-Z0-9/_.-]+$", llm_model_path):
+        _log_error("web.chat.local.invalid_path", path="contains invalid characters")
+        return None, None, None, (jsonify({"ok": False, "error": "Nieprawidłowa ścieżka w konfiguracji."}), 500)
+
+    llm_main_path = shutil.which(llm_main_path) or llm_main_path
+
+    if not os.path.exists(llm_main_path):
+        return None, None, None, (jsonify({"ok": False, "error": "Nie znaleziono binarki llama.cpp"}), 500)
+    if not os.path.exists(llm_model_path):
+        return None, None, None, (jsonify({"ok": False, "error": "Nie znaleziono modelu LLM"}), 500)
+
+    return llm_main_path, llm_model_path, llm_extra_args, None
+
+
+def _run_llama_local(prompt, llm_main_path, llm_model_path, extra_args, timeout_sec):
+    with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as prompt_file:
+        prompt_file.write(prompt)
+        prompt_file.flush()
+        prompt_file_path = prompt_file.name
+
+    # Zakładamy, że llama.cpp obsługuje flagę -f <plik> do wczytania promptu z pliku
+    cmd = [
+        llm_main_path,
+        "-m",
+        llm_model_path,
+        "-f",
+        prompt_file_path,
+    ] + extra_args
+
+    _log_info("web.chat.local.exec", cmd_len=len(cmd))
+
+    # Wywołanie subprocessu - używamy listy args (nie shell=True) dla bezpieczeństwa
+    # To jest bezpieczne przed command injection oraz argument injection, bo prompt nie jest już argumentem
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout_sec,
+        )
+    finally:
+        try:
+            os.remove(prompt_file_path)
+        except Exception:
+            pass
+
+    return proc
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat_local():
     """
@@ -439,30 +477,9 @@ def api_chat_local():
         # Pobierz timeout wcześnie, aby był dostępny w exception handlerach
         timeout_sec = getattr(chat_cfg, "timeout", 20.0)
 
-        # Sprawdzenie, czy binarka i model istnieją
-        llm_main_path = os.getenv("VOICE_LLM_MAIN_PATH", getattr(chat_cfg, "llm_main_path", "llama.cpp/main"))
-        llm_model_path = os.getenv(
-            "VOICE_LLM_MODEL_PATH",
-            getattr(chat_cfg, "llm_model_path", "models/llm/phi-3-mini-3.8b-instruct.Q4_K_M.gguf"),
-        )
-        llm_extra_args = getattr(
-            chat_cfg,
-            "llm_extra_args",
-            "-t 4 -n 256 --ctx-size 1024 --simple-io --temp 0.7",
-        )
-
-        # Walidacja bezpieczeństwa: używamy podejścia whitelist - tylko dozwolone znaki w ścieżkach
-        # Dozwolone: a-z, A-Z, 0-9, /, _, ., -
-        if not re.match(r"^[a-zA-Z0-9/_.-]+$", llm_main_path) or not re.match(r"^[a-zA-Z0-9/_.-]+$", llm_model_path):
-            _log_error("web.chat.local.invalid_path", path="contains invalid characters")
-            return jsonify({"ok": False, "error": "Nieprawidłowa ścieżka w konfiguracji."}), 500
-
-        llm_main_path = shutil.which(llm_main_path) or llm_main_path
-
-        if not os.path.exists(llm_main_path):
-            return jsonify({"ok": False, "error": "Nie znaleziono binarki llama.cpp"}), 500
-        if not os.path.exists(llm_model_path):
-            return jsonify({"ok": False, "error": "Nie znaleziono modelu LLM"}), 500
+        llm_main_path, llm_model_path, llm_extra_args, error = _llama_config_paths(chat_cfg)
+        if error is not None:
+            return error
 
         payload = request.get_json(force=True, silent=True) or {}
         messages = payload.get("messages") or []
@@ -488,39 +505,7 @@ def api_chat_local():
         if len(prompt) > MAX_PROMPT_LEN:
             return jsonify({"ok": False, "error": f"Prompt za długi (max {MAX_PROMPT_LEN} znaków)"}), 400
 
-        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as prompt_file:
-            prompt_file.write(prompt)
-            prompt_file.flush()
-            prompt_file_path = prompt_file.name
-
-        # Zakładamy, że llama.cpp obsługuje flagę -f <plik> do wczytania promptu z pliku
-        cmd = [
-            llm_main_path,
-            "-m",
-            llm_model_path,
-            "-f",
-            prompt_file_path,
-        ] + extra_args
-
-        _log_info("web.chat.local.exec", cmd_len=len(cmd))
-
-        # Wywołanie subprocessu - używamy listy args (nie shell=True) dla bezpieczeństwa
-        # To jest bezpieczne przed command injection oraz argument injection, bo prompt nie jest już argumentem
-        timeout_sec = getattr(chat_cfg, "timeout", 20.0)
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=timeout_sec,
-            )
-        finally:
-            try:
-                os.remove(prompt_file_path)
-            except Exception:
-                pass
+        proc = _run_llama_local(prompt, llm_main_path, llm_model_path, extra_args, timeout_sec)
 
         if proc.returncode != 0:
             _log_error("web.chat.local.fail", code=proc.returncode, stderr_len=len(proc.stderr))
