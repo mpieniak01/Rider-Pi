@@ -617,7 +617,8 @@ select option {
 
 .log-entry {
   padding: 2px 0;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 
 .log-timestamp {
@@ -836,3 +837,17 @@ select option {
   margin: 0 2px;
   color: var(--color-fg-secondary);
 }
+
+/* Status outputs retain the paragraph geometry of the live messages they replace. */
+output:where([aria-live]) {
+  display: block;
+  margin: 0 0 var(--space-md);
+  line-height: var(--line-height-normal);
+}
+
+/* Camera messages remain blocks beside the inline numeric control outputs. */
+.page-control .control-primary output[aria-live] { display: block; min-width: auto; }
+
+/* Calibration keeps the paragraph spacing used by its existing page layout. */
+.page-calibration .control-primary output[aria-live] { margin: .5rem 0; font-size: .85rem; }
+.page-calibration .calibration-settings > output[aria-live] { margin: .4rem 0; font-size: .85rem; }
