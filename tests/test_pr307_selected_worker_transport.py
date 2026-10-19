@@ -155,8 +155,16 @@ def test_selected_worker_bypasses_proxy_environment_and_sends_only_to_loopback(m
     getproxies.assert_not_called()
 
 
-@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
-def test_selected_worker_redirect_cannot_send_prompt_to_another_host(code, monkeypatch, selected_profile):
+@pytest.mark.parametrize(
+    "code,legacy_dispatch", [(301, False), (302, False), (303, False), (307, False), (308, False), (308, True)]
+)
+def test_selected_worker_redirect_cannot_send_prompt_to_another_host(
+    code, legacy_dispatch, monkeypatch, selected_profile
+):
+    # Python 3.9 has no native 308 handler and fails closed before redirect_request.
+    # Exercise that dispatch path on newer interpreters as well.
+    if legacy_dispatch:
+        monkeypatch.delattr(urllib.request.HTTPRedirectHandler, "http_error_308", raising=False)
     monkeypatch.delenv("CHAT_REMOTE_URL", raising=False)
     calls = _fake_http_transport(monkeypatch, code)
     redirect = Mock(wraps=chat_glue._RejectWorkerRedirects().redirect_request)
@@ -167,8 +175,11 @@ def test_selected_worker_redirect_cannot_send_prompt_to_another_host(code, monke
     assert source == "unavailable"
     assert len(calls) == 1
     assert calls[0][0] == LOCAL_ENDPOINT
-    redirect.assert_called_once()
-    assert redirect.call_args.args[-1] == "http://203.0.113.7/redirected"
+    if callable(getattr(urllib.request.HTTPRedirectHandler, f"http_error_{code}", None)):
+        redirect.assert_called_once()
+        assert redirect.call_args.args[-1] == "http://203.0.113.7/redirected"
+    else:
+        redirect.assert_not_called()
 
 
 def test_internal_transport_revalidates_before_creating_opener(monkeypatch):
