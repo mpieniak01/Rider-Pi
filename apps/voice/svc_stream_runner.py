@@ -22,7 +22,11 @@ def _run_coro_in_thread(coro) -> Any:
 
 
 def run_once_stream(cfg: dict[str, Any], args) -> int:
-    """Run streaming once mode (CLI/test entry point)."""
+    """Run streaming once mode (CLI/test entry point).
+
+    args is the unused CLI dispatch slot shared with svc_core runners; this
+    runner uses cfg. Retain the args keyword for programmatic callers.
+    """
     service = StreamingVoiceService(cfg)
     try:
         # once() may be sync (calls asyncio.run internally) or async (test DummyService)
@@ -45,7 +49,11 @@ def run_once_stream(cfg: dict[str, Any], args) -> int:
 
 
 def run_listen_stream(cfg: dict[str, Any], args) -> int:
-    """Start streaming in 'listen' mode (CLI/test entry point)."""
+    """Start streaming in 'listen' mode (CLI/test entry point).
+
+    args is the unused CLI dispatch slot shared with svc_core runners; this
+    runner uses cfg. Retain the args keyword for programmatic callers.
+    """
     service = StreamingVoiceService(cfg)
     try:
         # listen() may be sync or async – handle both

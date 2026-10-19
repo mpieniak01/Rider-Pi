@@ -270,9 +270,11 @@ def _frames_from_pcm(data: bytes, frame_size: int) -> Iterator[bytes]:
 
 
 def playback_tts(cfg: dict[str, Any], audio_bytes: bytes) -> None:
-    """Play TTS result; respects volume and post_tts_mute_ms.
+    """Retain the legacy playback_tts(cfg=..., audio_bytes=...) no-op.
 
-    Placeholder – odtwarzanie TTS jest obsługiwane przez warstwę „speech worker”.
+    cfg and audio_bytes are intentionally unused: the speech worker owns
+    playback and its mute window. This compatibility entry must not play
+    the supplied audio a second time.
     """
     return None
 

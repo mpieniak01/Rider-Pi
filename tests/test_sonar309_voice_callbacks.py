@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 from flask import Flask
 
+from apps.voice import svc_file
+from apps.voice.stream import svc_streaming
 from services.api_core import chat_glue, home_auth_route
 from services.core.features import NullPublisher
 
@@ -97,3 +99,44 @@ def test_null_publisher_accepts_named_transport_option_and_records_a_payload_sna
 
     assert result is None
     assert publisher.sent == [("tracking.mode:set", {"mode": "fixture", "ts": 123})]
+
+
+@pytest.mark.parametrize("text", ["", "   "])
+def test_file_speech_queue_rejects_blank_text_before_enqueueing(text):
+    service = object.__new__(svc_file.VoiceService)
+    service._speech_queue = Mock()
+
+    result = service._request_speech(text, source="chat")
+
+    assert result is None
+    service._speech_queue.put.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["once", "listen"])
+async def test_public_stream_coroutine_stops_before_session_on_sync_transport_configuration_failure(monkeypatch, mode):
+    service = object.__new__(svc_streaming.StreamingVoiceService)
+    service.logger = Mock()
+    service._get_auth_header = Mock(side_effect=RuntimeError("fixture auth unavailable"))
+    service._publish_ui_state = Mock()
+    service._send_session_init = AsyncMock()
+    service._run_with_reconnect = AsyncMock()
+    service._cleanup = AsyncMock()
+    construct = Mock()
+    monkeypatch.setattr(svc_streaming, "ReconnectingTransport", construct)
+
+    result = await getattr(service, mode)()
+
+    assert result is None
+    assert service.logger.event.call_args_list == [
+        call(f"stream.{mode}.start"),
+        call("transport.init.error", error="fixture auth unavailable"),
+    ]
+    construct.assert_not_called()
+    service._send_session_init.assert_not_awaited()
+    service._run_with_reconnect.assert_not_awaited()
+    service._cleanup.assert_not_awaited()
+    if mode == "listen":
+        service._publish_ui_state.assert_called_once_with("idle")
+    else:
+        service._publish_ui_state.assert_not_called()

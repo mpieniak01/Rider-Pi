@@ -311,7 +311,7 @@ def test_invalid_override_falls_back_to_reply_and_empty_reply_returns_idle(servi
     service._process_transcript(
         transcript, speak=True, intent_override=intent, reply_override="reply", tts_override={"audio": "a"}
     )
-    service._request_speech.assert_called_once_with("reply", source="chat", accumulate=False)
+    service._request_speech.assert_called_once_with("reply", source="chat")
     service._publish_ui_state.assert_not_called()
     service._process_transcript(transcript, speak=True, intent_override=intent, reply_override="   ")
     service._publish_ui_state.assert_called_once_with("idle")
