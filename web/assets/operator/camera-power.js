@@ -1,3 +1,4 @@
+import { requestId } from './request-id.js';
 import { catalogKnown, taskCanStart, fresh } from './model.js';
 import { request, poll } from './transport.js';
 import { text, tr, showError, powerLabel } from './ui.js';
@@ -69,7 +70,7 @@ export class CameraPower {
         let current = this.pipeline;
         if (enabled && this.taskName === 's7_obstacle_module' && current.profile.analysis_location !== 'local') {
           current = (await request('/api/resource/camera/pipeline', { method: 'POST', timeout: 20000, body: {
-            contract_version: 1, request_id: (globalThis.crypto?.randomUUID?.() || 'camera-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)), expected_revision: current.revision, action: 'configure',
+            contract_version: 1, request_id: requestId('camera'), expected_revision: current.revision, action: 'configure',
             profile: { ...current.profile, analysis_location: 'local', local_engine: 'canny' },
           } })).data;
           if (current?.ok !== true) throw new Error(current?.error || 'camera_request_failed');
@@ -78,7 +79,7 @@ export class CameraPower {
         const result = taskOnly ? await request('/api/logic/feature/' + this.taskName, {
           method: 'POST', body: { enabled, options: this.options }, timeout: 20000,
         }) : await request('/api/resource/camera/pipeline', { method: 'POST', timeout: 20000, body: {
-          contract_version: 1, request_id: (globalThis.crypto?.randomUUID?.() || 'camera-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)), expected_revision: current.revision,
+          contract_version: 1, request_id: requestId('camera'), expected_revision: current.revision,
           action: enabled ? 'start' : 'stop',
         } });
         if (result.data?.ok !== true) throw new Error(result.data?.error || 'camera_request_failed');
@@ -95,7 +96,7 @@ export class CameraPower {
         : tr('Zadanie kamery zakończone. Inne aktywne zadania mogą nadal korzystać z kamery.', 'Camera task ended. Other active tasks may still use the camera.'));
       await this.load(true);
     } catch (error) { this.catalog = null; showError(error); }
-    finally { this.busy = false; this.render(); this.poller.refresh(); }
+    finally { this.busy = false; this.render(); void this.poller.refresh(); }
   }
   render() {
     const task = this.task(), known = this.known();

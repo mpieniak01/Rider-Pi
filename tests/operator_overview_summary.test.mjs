@@ -1,11 +1,9 @@
+import {loadSource} from './helpers/source-module.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const root=new URL('../web/assets/operator/',import.meta.url);
-const modelSource=await readFile(new URL('model.js',root),'utf8');
-const modelUrl='data:text/javascript;base64,'+Buffer.from(modelSource).toString('base64');
-const source=(await readFile(new URL('overview-model.js',root),'utf8')).replace("'./model.js'",JSON.stringify(modelUrl));
-const {telemetrySummary,orientationSummary}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {telemetrySummary,orientationSummary}=await loadSource(new URL('overview-model.js',root));
 const samples = () => Object.fromEntries(['roll','pitch','yaw','battery'].map((name, i) => [name, {ready:true, observed_at:100-i/10,value:i}]));
 test('group age uses oldest measurement, not HTTP publication', () => {
   assert.ok(Math.abs(telemetrySummary(samples(),101).age-1.3)<1e-9);

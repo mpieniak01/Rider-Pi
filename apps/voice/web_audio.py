@@ -6,6 +6,8 @@ Public web helpers remain wrappers, preserving existing mocks and callers.
 
 from __future__ import annotations
 
+import math
+
 
 def _load_piper_backend(C) -> bool:
     if not C._PIPER_OK:
@@ -209,7 +211,7 @@ def _append_tail(C, pcm: bytes, sr: int, ch: int, ms: int) -> bytes:
 
 
 def _maybe_gain(C, pcm: bytes, gain: float) -> bytes:
-    if gain == 1.0:
+    if math.isclose(gain, 1.0, rel_tol=0.0, abs_tol=1e-9):
         return pcm
     g = max(0.1, min(gain, 3.0))
     return C.audioop.mul(pcm, 2, g)

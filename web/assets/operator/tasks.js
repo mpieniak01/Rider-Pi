@@ -43,7 +43,7 @@ export class Tasks {
       this.results.set(task.name, { status: status === 202 || data.pending ? 'pending' : data.ok === true ? 'observed' : 'rejected', data });
       text('operator-message', task.can_move ? tr('Odpowiedź celu odebrana. Ruch wymaga obserwacji operatora.', 'Goal response received. Motion requires operator observation.') : tr('Odpowiedź celu odebrana. Usługi wspólne pozostają dla pozostałych celów.', 'Goal response received. Shared services remain for other goals.'));
     } catch (error) { this.results.set(task.name, { status: error.status ? 'rejected' : 'unknown', data: error.data, error: error.message }); showError(error); }
-    finally { this.busy.delete(task.name); this.render(); this.poller.refresh(); this.safety.poller.refresh(); }
+    finally { this.busy.delete(task.name); this.render(); void this.poller.refresh(); void this.safety.poller.refresh(); }
   }
   render() {
     if (!this.target) return;

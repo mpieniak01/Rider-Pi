@@ -10,6 +10,8 @@ import time
 import uuid
 from pathlib import Path
 
+from services.core.cli_files import write_output
+
 from .client import ComputeClient, ComputeError
 from .runners import VisionRunner, VoiceRunner, device_session, selected_executor
 
@@ -99,7 +101,7 @@ def main(argv=None) -> int:
                     if args.output is None:
                         raise ComputeError('compute_output_path_required')
                     output = client.output(job_id)
-                    args.output.write_bytes(output)
+                    write_output(args.output, output)
             print(json.dumps(result, ensure_ascii=False, allow_nan=False))
         return 0
     except (ComputeError, ValueError, OSError) as exc:

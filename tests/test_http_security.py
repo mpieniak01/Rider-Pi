@@ -274,3 +274,29 @@ def test_terminated_wsgi_input_cannot_hide_non_json_body(world, body, expected):
     )
     assert response.status_code == expected
     assert len(effects) == (1 if expected == 200 else 0)
+
+
+@pytest.mark.parametrize("host", ["attacker.example", "localhost.attacker.example", "192.168.1.14.attacker.example"])
+def test_matching_origin_and_untrusted_host_cannot_rebind_browser_authority(world, host):
+    client, effects = world
+    response = client.post("/mutate", json={"action": "fixture"}, headers={"Host": host, "Origin": "http://" + host})
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "host_not_allowed"
+    assert effects == []
+    assert_no_cors_grant(response)
+
+
+@pytest.mark.parametrize("host", ["192.168.1.14:8080", "127.0.0.1:8080", "[::1]:8080"])
+def test_numeric_lan_and_loopback_hosts_keep_same_origin_access(world, host):
+    client, effects = world
+    response = client.post("/mutate", json={}, headers={"Host": host, "Origin": "http://" + host})
+    assert response.status_code == 200
+    assert len(effects) == 1
+
+
+def test_operator_can_explicitly_trust_a_reverse_proxy_hostname(world, monkeypatch):
+    client, effects = world
+    monkeypatch.setenv("RIDER_TRUSTED_HOSTS", "rider.example")
+    response = client.post("/mutate", json={}, headers={"Host": "rider.example", "Origin": "http://rider.example"})
+    assert response.status_code == 200
+    assert len(effects) == 1

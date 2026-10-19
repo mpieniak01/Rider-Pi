@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import math
@@ -11,6 +12,7 @@ import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from common.provider_state import normalize_domain_state
 
@@ -332,13 +334,26 @@ def get_health_snapshot() -> dict[str, Any]:
 
 def get_pc_base_url() -> str:
     with _state_lock:
-        return _pc_base_url or DEFAULT_PC_BASE_URL
+        return _peer_url(_pc_base_url or DEFAULT_PC_BASE_URL)
 
 
 def _peer_url(base_url: str) -> str:
-    """Add the legacy default scheme once, without changing explicit transports."""
-    value = base_url.strip()
-    return value if value.startswith(("http://", "https://")) else "http://" + value
+    """Remote providers require TLS; HTTP remains local to an encrypted tunnel/worker."""
+    if not isinstance(base_url, str) or not base_url or any(char.isspace() or ord(char) < 32 for char in base_url):
+        raise ValueError("invalid_peer_url")
+    parsed = urlsplit(base_url if "://" in base_url else "//" + base_url)
+    if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or "\\" in base_url:
+        raise ValueError("invalid_peer_url")
+    try:
+        loopback = parsed.hostname == "localhost" or ipaddress.ip_address(parsed.hostname).is_loopback
+    except ValueError:
+        loopback = False
+    scheme = parsed.scheme or ("http" if loopback else "https")
+    if scheme not in {"http", "https"} or scheme == "http" and not loopback:
+        raise ValueError("remote_provider_requires_https")
+    if parsed.port is not None and not 1 <= parsed.port <= 65535:
+        raise ValueError("invalid_peer_port")
+    return urlunsplit((scheme, parsed.netloc, parsed.path, "", ""))
 
 
 def set_pc_base_url(base_url: str, *, reason: str = "manual") -> str:

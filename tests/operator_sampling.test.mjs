@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 const assets = new URL('../web/assets/operator/', import.meta.url);
-const source = (await readFile(new URL('transport.js', assets), 'utf8')).replace(/^import .*;$/gm, '');
+const source = (await readFile(new URL('transport.js', assets), 'utf8')).replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' '));
 async function fixture() {
   let clock = 1000;
   const calls = [], timers = new Map(), listeners = {};
@@ -24,7 +24,7 @@ async function fixture() {
       return { status: 200, ok: true, json: async () => data };
     }
   });
-  const module = new vm.SourceTextModule(source, { context });
+  const module = new vm.SourceTextModule(source, { context, identifier:new URL('transport.js',assets).href });
   await module.link(() => {}); await module.evaluate();
   return { api: module.namespace, calls, timers, document, listeners,
     clock: value => { clock = value; }, respond: value => { responder = value; } };
@@ -99,9 +99,9 @@ test('server timing hints affect presentation only; hidden pages sleep', async (
 
 test('history uses real timestamps, preserves peaks and leaves gaps after inactivity', async () => {
   const src = (await readFile(new URL('overview.js', assets), 'utf8'))
-    .replace(/^import .*;$/gm, '').replace('export class Overview', 'globalThis.Overview = class Overview');
+    .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class Overview', '       class Overview') + ';globalThis.Overview=Overview;';
   const context = vm.createContext({});
-  vm.runInContext(src, context);
+  vm.runInContext(src, context, {filename:new URL('overview.js',assets).href});
   const paths = []; let current;
   const ctx = { beginPath() { current = []; paths.push(current); }, moveTo(x, y) { current.push(['move', x, y]); },
     lineTo(x, y) { current.push(['line', x, y]); }, stroke() {}, fillText() {} };
@@ -115,10 +115,10 @@ test('history uses real timestamps, preserves peaks and leaves gaps after inacti
 
 test('overview reads idle metadata once, skips absent detector and resumes after ON', async () => {
   const src = (await readFile(new URL('overview.js', assets), 'utf8'))
-    .replace(/^import .*;$/gm, '').replace('export class Overview', 'globalThis.Overview = class Overview');
+    .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class Overview', '       class Overview') + ';globalThis.Overview=Overview;';
   const calls = [];
   const context = vm.createContext({ request: async path => { calls.push(path); return { data: {} }; } });
-  vm.runInContext(src, context);
+  vm.runInContext(src, context, {filename:new URL('overview.js',assets).href});
   const view = { state: { camera: { activity: { on: false } } }, visionIdleLoaded: false, renderVision() {} };
   const load = () => context.Overview.prototype.loadVision.call(view);
   await load(); await load();
@@ -133,8 +133,8 @@ test('overview reads idle metadata once, skips absent detector and resumes after
 
 test('a missing timestamp breaks timed history instead of falling back to index',async()=>{
   const src=(await readFile(new URL('overview.js',assets),'utf8'))
-    .replace(/^import .*;$/gm,'').replace('export class Overview','globalThis.Overview = class Overview');
-  const context=vm.createContext({});vm.runInContext(src,context);
+    .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class Overview', '       class Overview') + ';globalThis.Overview=Overview;';
+  const context=vm.createContext({});vm.runInContext(src,context,{filename:new URL('overview.js',assets).href});
   const marks=[];
   const ctx={beginPath(){},moveTo(x,y){marks.push('move');},lineTo(x,y){marks.push('line');},stroke(){},fillText(){}};
   context.Overview.prototype.drawHistory.call({axes:()=>({ctx,x:0,y:0,width:60,height:100})},
@@ -145,7 +145,7 @@ test('a missing timestamp breaks timed history instead of falling back to index'
 
 async function overviewFixture() {
   const source = (await readFile(new URL('overview.js', assets), 'utf8'))
-    .replace(/^import .*;$/gm, '').replace('export class Overview', 'globalThis.Overview = class Overview');
+    .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class Overview', '       class Overview') + ';globalThis.Overview=Overview;';
   const polls = [], labels = {}, paths = [];
   let clock = 1030, fail = false;
   const sample = { ts: 1030, hist_ts: [1000, 1001, 1030], hist_cpu: [10, 20, 30],
@@ -161,7 +161,7 @@ async function overviewFixture() {
     ageOf: row => row ? Math.max(0, clock - row.ts) : null,
     tr: pl => pl, text: (id, value) => { labels[id] = value; }
   });
-  vm.runInContext(source, context);
+  vm.runInContext(source, context, {filename:new URL('overview.js',assets).href});
   const overview = new context.Overview({});
   overview.axes = () => ({ ctx, x: 0, y: 0, width: 60, height: 100 });
   return { overview, polls, labels, paths, sample, clock: value => { clock = value; }, fail: value => { fail = value; } };

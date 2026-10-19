@@ -7,6 +7,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -436,7 +437,12 @@ def ssh(env_file, request, bundle):
         raise RuntimeError("SSH_HOST and SSH_USER are required in the local env file.")
     host, user, port = destination
     port = port or "22"
-    if host.startswith("-") or user.startswith("-") or not port.isdigit():
+    if (
+        not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.:-]*", host)
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", user)
+        or not port.isdigit()
+        or not 1 <= int(port) <= 65535
+    ):
         raise RuntimeError("Invalid SSH destination.")
     source = Path(__file__).read_text()
     command = shlex.join(["python3", "-c", source, "_remote", json.dumps(request)])
@@ -519,7 +525,7 @@ def main():
     bundle_bytes = b""
     if args.action == "preview":
         check_clean(ROOT)
-        request["base"] = git(ROOT, "rev-parse", f"{args.base}^{{commit}}")
+        request["base"] = git(ROOT, "rev-parse", "--verify", "--end-of-options", f"{args.base}^{{commit}}")
         request["commit"] = git(ROOT, "rev-parse", "HEAD")
         if request["commit"] == request["base"]:
             raise RuntimeError("Commit your local change on a feature branch before previewing it.")

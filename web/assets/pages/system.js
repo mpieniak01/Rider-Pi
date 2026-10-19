@@ -178,5 +178,5 @@ async function loadGraph() {
 
 window.addEventListener('dashboard:langchange', () => render(true));
 render();
-loadGraph();
+void loadGraph();
 setInterval(loadGraph, 5000);

@@ -24,6 +24,13 @@ def controller_class(reference):
         from apps.ui.face.controller import FaceController
 
         return FaceController, None
+    if reference.startswith("-"):
+        raise ValueError("invalid_baseline_reference")
+    reference = subprocess.check_output(
+        ["git", "rev-parse", "--verify", "--end-of-options", reference + "^{commit}"], cwd=ROOT, text=True
+    ).strip()
+    if len(reference) != 40 or any(char not in "0123456789abcdef" for char in reference):
+        raise ValueError("invalid_baseline_commit")
     temporary = tempfile.TemporaryDirectory(prefix="rider-face-baseline-")
     folder = Path(temporary.name)
     files = subprocess.check_output(

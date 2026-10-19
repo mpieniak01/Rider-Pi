@@ -51,7 +51,9 @@ def update_profile(legacy, domains: set[str]) -> dict:
 def create_app(legacy=None, profile_status=None) -> Flask:
     if legacy is None:
         os.environ.setdefault("VOICE_WEB_LOAD_PROFILE", "0")
-        from apps.voice import web as legacy
+        from apps.voice import web
+
+        legacy = web
     app = Flask(__name__)
     install_http_security(app)
     profile_status = profile_status or (lambda: read_status("rider-voice-web.service"))

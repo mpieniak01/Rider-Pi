@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from drivers.xgo.sniffer import runtime_directory
 from drivers.xgo.sniffer_analysis import analyze, markdown
 from drivers.xgo.sniffer_semantics import REGISTERS, meaning
+from services.core.cli_files import write_output
 
 
 def control(pid, action, seconds=60):
@@ -150,11 +151,11 @@ def main():
                 )
                 content = json.dumps(report, indent=2)
                 if args.output:
-                    args.output.write_text(content + "\n")
+                    write_output(args.output, (content + "\n").encode("utf-8"))
                 else:
                     print(content)
                 if args.markdown:
-                    args.markdown.write_text(markdown(report))
+                    write_output(args.markdown, markdown(report).encode("utf-8"))
     elif args.action == "list":
         print(
             json.dumps(

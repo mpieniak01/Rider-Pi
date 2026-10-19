@@ -110,10 +110,10 @@ export function poll(load, { interval = 2000, profile = null, onError = () => {}
   function visibility() {
     clearTimeout(timer);
     onVisibility(document.hidden);
-    if (!document.hidden) run();
+    if (!document.hidden) void run();
   }
   document.addEventListener('visibilitychange', visibility);
-  run();
+  void run();
   return { refresh: run, stop() { stopped = true; clearTimeout(timer); document.removeEventListener('visibilitychange', visibility); } };
 }
 export function events(onEvent, onError = () => {}) {

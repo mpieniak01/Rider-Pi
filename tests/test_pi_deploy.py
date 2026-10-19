@@ -68,7 +68,13 @@ class Repositories:
             "restart_api": False,
         }
         result = subprocess.run(
-            [sys.executable, "-c", SCRIPT.read_text(), "_remote", json.dumps(request)],
+            [
+                sys.executable,
+                "-c",
+                "exec(compile(" + repr(SCRIPT.read_text()) + ", " + repr(str(SCRIPT)) + ", 'exec'))",
+                "_remote",
+                json.dumps(request),
+            ],
             input=bundle,
             capture_output=True,
         )

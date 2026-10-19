@@ -1,9 +1,9 @@
+import {loadSource} from './helpers/source-module.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const source = await readFile(new URL('../web/assets/legacy-catalog.js', import.meta.url), 'utf8');
-const { blockLegacyButton, legacyBlocked, legacyResourceState } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {blockLegacyButton,legacyBlocked,legacyResourceState}=await loadSource(new URL('../web/assets/legacy-catalog.js',import.meta.url));
 
 test('unavailable and unknown resources are not busy', () => {
   assert.equal(legacyResourceState({ state: 'unavailable', free: null }).state, 'unavailable');

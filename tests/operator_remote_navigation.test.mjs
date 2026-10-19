@@ -3,7 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const raw=(await readFile(new URL('../web/assets/operator/remote-navigation.js',import.meta.url),'utf8'))
-  .replace(/^import .*;$/gm,'').replace('export class','class');
+  .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class','       class');
 function fixture({mode='observe',fail=false}={}) {
  const calls=[],nodes={}, policy={revision:4,mode,speed:.1,decision_budget_ms:300,max_motion_ms:150,
   calibration_id:'trial',model_sha256:'a'.repeat(64),corridor:[.35,.65,.65,.95],verified:true};
@@ -14,7 +14,7 @@ function fixture({mode='observe',fail=false}={}) {
   if(fail&&options.method==='POST')throw new Error('conflict');
   return {data:path.endsWith('status')?{stale:true}:structuredClone(policy)};
  }});
- const Class=vm.runInContext(raw+';RemoteNavigation',context);
+ const Class=vm.runInContext(raw+';RemoteNavigation',context,{filename:new URL('../web/assets/operator/remote-navigation.js',import.meta.url).href});
  const safety={state:{manual_settings:{revision:8}},prepare:async()=>calls.push({prepare:true}),
   envelope:()=>({generation:'g',seq:3,source:'navigation',ts:100,ttl_ms:500,request_id:'fresh'}),
   send:async(...args)=>calls.push({send:args}),stop:async()=>calls.push({stop:true})};

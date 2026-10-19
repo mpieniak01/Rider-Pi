@@ -9,7 +9,7 @@ export class Posture {
   this.balance.onchange=()=>this.dirty.add('balance');
   this.height.onchange=()=>this.send('height',{height:Number(this.height.value)});
   this.root.querySelector('#posture-height-send').onclick=()=>this.send('height',{height:Number(this.height.value)});
-  this.root.querySelector('#posture-balance-send').onclick=()=>{if(this.balance.value!=='')this.send('balance',{enabled:this.balance.value==='1'});};
+  this.root.querySelector('#posture-balance-send').onclick=()=>{if(this.balance.value!=='')void this.send('balance',{enabled:this.balance.value==='1'});};
   this.root.querySelector('#posture-action-send').onclick=()=>this.send('action',{action_id:Number(this.root.querySelector('#posture-action').value)});
   window.addEventListener('dashboard:langchange',()=>this.render());
   this.render();

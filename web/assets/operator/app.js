@@ -20,6 +20,8 @@ import { el, text, tr, localizeStatic, refreshAges, showError } from './ui.js';
 initI18n(localStorage.getItem('lang') || 'pl'); localizeStatic();
 setInterval(refreshAges, 1000);
 const page = document.body.dataset.page;
+const mounted = [];
+window.addEventListener('pagehide', () => { for (const panel of mounted) panel.poller?.stop(); }, { once: true });
 const motionPage = ['control', 'calibration', 'system'].includes(page);
 const motionToggle = el('button', 'c-btn operator-motion-toggle is-disarmed');
 motionToggle.id = 'global-motion-toggle'; motionToggle.type = 'button';
@@ -36,13 +38,13 @@ const safety = new SafetyPanel(state => {
 }, { interactive: motionPage });
 if (['control', 'calibration'].includes(page)) safety.controls = new ManualSettings(safety);
 if (['control', 'calibration'].includes(page)) posture = new Posture(safety);
-if (page === 'control') new ControlCamera();
+if (page === 'control') mounted.push(new ControlCamera());
 
 if (page === 'control') tasks = new Tasks(safety);
 if (page === 'calibration') calibration = new Calibration(safety);
-if (page === 'devices') new Devices(safety);
+if (page === 'devices') mounted.push(new Devices(safety));
 if (page === 'system') system = new System(safety);
-if (page === 'navigation') { new RemoteNavigation(safety); tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
+if (page === 'navigation') { mounted.push(new RemoteNavigation(safety)); tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
 if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); }
 if (page === 'view') {
   overview = new Overview(safety);

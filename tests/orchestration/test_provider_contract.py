@@ -148,7 +148,7 @@ def test_peer_address_and_heartbeat_are_one_transaction(registry_world, monkeypa
 
     monkeypatch.setattr(registry, "_save_state", failed)
     with pytest.raises(OSError):
-        registry.record_pc_heartbeat("http://new-peer.invalid:8000", {})
+        registry.record_pc_heartbeat("https://new-peer.invalid:8000", {})
     assert registry.get_state_snapshot()["pc_base_url"] == previous["pc_base_url"]
     assert registry.get_state_snapshot()["pc_health"] == previous["pc_health"]
 

@@ -171,7 +171,7 @@ test('chat viewing reads providers; explicit send requests only text domain and 
 });
 
 test('poll never overlaps and waits while the page is hidden', async () => {
-  const source = (await readFile(path.join(assets, 'transport.js'), 'utf8')).replace(/^import .*;$/gm, '');
+  const source = (await readFile(path.join(assets, 'transport.js'), 'utf8')).replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' '));
   let resolve, loads = 0; const timers = new Map(); const document = { hidden: false, addEventListener() {}, removeEventListener() {} };
   const context = vm.createContext({ document, Date, AbortController, setTimeout: action => { timers.set(timers.size + 1, action); return timers.size; }, clearTimeout: id => timers.delete(id) });
   const module = new vm.SourceTextModule(source, { context }); await module.link(() => {}); await module.evaluate();

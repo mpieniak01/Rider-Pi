@@ -54,7 +54,7 @@ export class System {
       this.results.set(row.unit, result.status === 202 || result.data.pending ? 'pending' : result.data.ok ? tr('odpowiedź usługi odebrana', 'service response received') : 'rejected');
       text('operator-message', JSON.stringify(result.data));
     } catch (error) { this.results.set(row.unit, error.status ? `rejected: ${error.message}` : 'unknown'); showError(error); }
-    finally { this.busy.delete(row.unit); this.render(); this.poller.refresh(); this.safety.poller.refresh(); }
+    finally { this.busy.delete(row.unit); this.render(); void this.poller.refresh(); void this.safety.poller.refresh(); }
   }
   render() {
     const target = document.getElementById('service-list'); if (!target) return;

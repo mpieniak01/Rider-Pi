@@ -18,8 +18,8 @@ CLI and server clients without `Origin` remain supported. Mutations carrying
 `Sec-Fetch-Site: cross-site` or `same-site` without `Origin` are rejected.
 Keep the API off untrusted networks: this boundary restricts browser requests;
 it does not authenticate clients. Agent and playback bearer authorization
-remain separate. Comparing against the request host does not replace DNS
-rebinding protection or trusted host/proxy configuration. Behind a TLS proxy,
+remain separate. Host names require local/operator trust before they can define the same-origin
+boundary. Arbitrary matching Host/Origin pairs are rejected to prevent DNS rebinding. Behind a TLS proxy,
 explicitly add the public HTTPS origin; the app does not automatically trust
 `X-Forwarded-Host`.
 
@@ -122,3 +122,26 @@ without its accepted generation. LED persistence failures remain unconfirmed
 journal errors; command-cache failures remain nonfatal warnings. Concurrent
 writers publish complete files independently; this does not add transaction or
 merge semantics for simultaneous state updates.
+
+## Host, provider and CLI boundaries
+
+Private numeric addresses, loopback and the device hostname (including `.local`)
+remain usable for the local panel. Additional proxy names require explicit
+`RIDER_TRUSTED_HOSTS` or a host from `RIDER_ALLOWED_ORIGINS`. The request Host
+never creates its own trust entry. Rejected hosts return `host_not_allowed`.
+Remote provider URLs require HTTPS; loopback HTTP remains available for local
+workers and SSH tunnels. Credentials, control characters and ambiguous URLs are
+rejected. Migrate stored non-loopback HTTP addresses to HTTPS or an encrypted
+loopback tunnel before using them.
+
+Agent-invoked compute/UART export tools confine output to the invocation directory,
+resolve links before checking containment and never overwrite an existing result.
+Run them from the intended data directory. Diagnostic HTTP targets and ports use
+`RIDER_DIAGNOSTIC_HOSTS` (default loopback names/addresses) and
+`RIDER_DIAGNOSTIC_PORTS` (8080,8081,443); redirects and implicit proxies are disabled.
+Prepare any LAN device host explicitly in operator configuration.
+
+LCD ownership accepts only a regular, single-link, non-publicly-writable lock,
+opened through checked directory descriptors. Root boot and the pi service can
+share the existing readonly lock; descriptors and the stable inode remain the
+ownership mechanism. The lock contains no credentials.

@@ -1,11 +1,14 @@
+import {loadSource} from './helpers/source-module.mjs';
+import { webcrypto } from 'node:crypto';
 // No robot connections: task transport and timers are isolated fixtures.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import test from 'node:test';
+const requestId = prefix => prefix + '-' + webcrypto.randomUUID();
 const assets = new URL('../web/assets/operator/', import.meta.url);
-const model = await import('data:text/javascript;base64,' + Buffer.from(await readFile(new URL('model.js', assets))).toString('base64'));
-const source = (await readFile(new URL('camera-power.js', assets), 'utf8')).replace(/^import .*;$/gm, '').replace('export class CameraPower', 'globalThis.CameraPower = class CameraPower');
+const model=await loadSource(new URL('model.js',assets));
+const source = (await readFile(new URL('camera-power.js', assets), 'utf8')).replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class CameraPower', '       class CameraPower') + ';globalThis.CameraPower=CameraPower;';
 function fixture(patch = {}, { stale = false, rejected = false, others = [], control = {}, activity = null, pipeline = null, configureRejected = false } = {}) {
   const now = Date.now() / 1000;
   const task = { name: 's2_camera_preview', can_move: false, installed: true, observed_at: now,
@@ -13,7 +16,7 @@ function fixture(patch = {}, { stale = false, rejected = false, others = [], con
   const catalog = { contract_version: 2, catalog_version: 2, observed_at: stale ? now - 30 : now, features: [task, ...others], units: [], resource_states: {camera: activity} };
   const calls = [], errors = [], messages = new Map(), buttons = new Map(['camera-start', 'camera-stop', 'camera-toggle', 'camera-proc-toggle', 'camera-obst-toggle', 'camera-tracker-toggle'].map(id => [id, { disabled: true, listeners: {}, addEventListener(name, callback) { this.listeners[name] = callback; }, setAttribute(name, value) { this[name] = value; } }]));
   let started = 0, stopped = 0;
-  const context = vm.createContext({ ...model,
+  const context = vm.createContext({ requestId, ...model,
     document: { getElementById: id => buttons.get(id) }, window: { addEventListener() {} },
     setInterval: () => 1, clearInterval() {},
     powerLabel: value => value === true ? 'ON' : value === false ? 'OFF' : 'Nieznany',

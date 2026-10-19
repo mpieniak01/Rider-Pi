@@ -59,10 +59,16 @@ def test_symlink_is_rejected_without_reading_its_target(tmp_path, capsys):
 
 def test_changed_files_use_null_delimiters_and_exclude_deletions(tmp_path, monkeypatch):
     def run(args, **kwargs):
-        assert args == ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", "base", "head", "--", "*.py"]
+        assert args == ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", "a" * 40, "b" * 40, "--", "*.py"]
         assert kwargs["cwd"] == tmp_path and kwargs["check"]
         return SimpleNamespace(stdout=b"tests/test one.py\0apps/module.py\0")
 
+    def resolve(args, **kwargs):
+        assert args[:4] == ["git", "rev-parse", "--verify", "--end-of-options"]
+        assert kwargs["cwd"] == tmp_path
+        return ("a" * 40 if args[4] == "base^{commit}" else "b" * 40) + "\n"
+
+    monkeypatch.setattr(guard.subprocess, "check_output", resolve)
     monkeypatch.setattr(guard.subprocess, "run", run)
     assert guard.changed_files(tmp_path, "base", "head") == [
         tmp_path / "tests/test one.py",

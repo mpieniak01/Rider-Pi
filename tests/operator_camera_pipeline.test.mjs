@@ -1,10 +1,13 @@
+import {loadSource} from './helpers/source-module.mjs';
+import { webcrypto } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import test from 'node:test';
 const root = new URL('../', import.meta.url);
+const requestId = prefix => prefix + '-' + webcrypto.randomUUID();
 const assets = new URL('web/assets/operator/', root);
-const moduleOf = async file => import('data:text/javascript;base64,' + Buffer.from(await readFile(new URL(file, assets))).toString('base64'));
+const moduleOf = file => loadSource(new URL(file,assets));
 const {MjpegParser, readMjpeg} = await moduleOf('mjpeg.js');
 const {decodeResponse, responseFamily} = await moduleOf('contract.js');
 const fixture = JSON.parse(await readFile(new URL('config/contracts/camera_pipeline_v1.examples.json', root)));
@@ -37,19 +40,19 @@ test('bad framing and pending reads cannot leak a partial or stale JPEG', async 
   assert.equal(cancelled,true);assert.equal(frames,0);
 });
 const previewSource=(await readFile(new URL('camera-pipeline.js',assets),'utf8'))
-  .replace(/^import .*;$/gm,'').replace('export function validPipeline','function validPipeline')
-  .replace('export class CameraPipelineControls','class CameraPipelineControls')
-  .replace('export class PipelinePreview','globalThis.PipelinePreview=class PipelinePreview');
+  .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export function validPipeline','       function validPipeline')
+  .replace('export class CameraPipelineControls','       class CameraPipelineControls')
+  .replace('export class PipelinePreview', '       class PipelinePreview') + ';globalThis.PipelinePreview=PipelinePreview;';
 test('Pi preview refuses old epochs and applies clockwise rotation before flips without camera or model calls', async () => {
   const calls=[], urls=[];
   const canvas={style:{},setAttribute(){},getContext(){return {translate(...x){calls.push(['translate',...x]);},scale(...x){calls.push(['scale',...x]);},rotate(...x){calls.push(['rotate',...x]);},drawImage(){calls.push(['draw']);}};}};
-  const context=vm.createContext({
+  const context=vm.createContext({ requestId,
     document:{createElement(){return canvas;},addEventListener(){},hidden:false},
     window:{addEventListener(){}},setInterval(){},clearInterval(){},setTimeout(){},clearTimeout(){},
     tr:pl=>pl,performance:{now:()=>10},Blob,URL:{createObjectURL(){return 'blob:fixture';},revokeObjectURL(url){urls.push(url);}},
     Image:class{width=320;height=240;async decode(){}},console,
   });
-  vm.runInContext(previewSource,context);
+  vm.runInContext(previewSource,context,{filename:new URL('camera-pipeline.js',assets).href});
   const image={hidden:false,after(){},dataset:{},removeAttribute(){}}, label={}, empty={};
   const preview=new context.PipelinePreview(image,{status:label,empty});
   preview.profile={revision:fixture.source.pipeline_revision,transport_epoch:fixture.source.transport_epoch,camera_session:fixture.source.camera_session};
@@ -65,9 +68,9 @@ test('Pi preview refuses old epochs and applies clockwise rotation before flips 
 });
 
 test('legacy observation stays on its compatible preview until explicit upgrade', () => {
-  const context = vm.createContext({document:{createElement(){return {style:{},setAttribute(){}};},addEventListener(){}},
+  const context = vm.createContext({ requestId,document:{createElement(){return {style:{},setAttribute(){}};},addEventListener(){}},
     window:{addEventListener(){}},setInterval(){},clearInterval(){},setTimeout(){},clearTimeout(){},tr:pl=>pl});
-  vm.runInContext(previewSource,context);
+  vm.runInContext(previewSource,context,{filename:new URL('camera-pipeline.js',assets).href});
   const image={dataset:{},after(){}};
   const preview=new context.PipelinePreview(image);
   preview.update({...fixture.stopped_status,state:'active',compatibility_mode:'legacy'});
@@ -78,10 +81,10 @@ test('legacy observation stays on its compatible preview until explicit upgrade'
 test('late GET cannot replace the profile confirmed by POST; busy polls are skipped', async () => {
   let completeRead, calls=0;const observed=[];
   const next={...fixture.stopped_status,revision:2,profile:{...fixture.stopped_status.profile,remote_transport:'mjpeg'}};
-  const context=vm.createContext({request:async (path,options={})=>{
+  const context=vm.createContext({ requestId,request:async (path,options={})=>{
     calls++;return options.method==='POST'?{data:next}:new Promise(resolve=>completeRead=resolve);
   },showError(error){throw error;},console});
-  vm.runInContext(previewSource+';globalThis.Controls=CameraPipelineControls;',context);
+  vm.runInContext(previewSource+';globalThis.Controls=CameraPipelineControls;',context,{filename:new URL('camera-pipeline.js',assets).href});
   const controls=Object.create(context.Controls.prototype);
   Object.assign(controls,{status:fixture.stopped_status,busy:false,readEpoch:0,onState:value=>observed.push(value),render(){},poller:{refresh(){}}});
   const old=controls.load();
@@ -94,10 +97,10 @@ test('late GET cannot replace the profile confirmed by POST; busy polls are skip
 test('delayed network frame is expired by the Pi monotonic anchor before rendering', async () => {
   let drawn=0;
   const canvas={style:{},setAttribute(){},getContext(){drawn++;throw new Error('must not render stale network frame');}};
-  const context=vm.createContext({document:{createElement(){return canvas;},addEventListener(){}},
+  const context=vm.createContext({ requestId,document:{createElement(){return canvas;},addEventListener(){}},
     window:{addEventListener(){}},setInterval(){},clearInterval(){},setTimeout(){},clearTimeout(){},
     tr:pl=>pl,performance:{now:()=>2000}});
-  vm.runInContext(previewSource,context);
+  vm.runInContext(previewSource,context,{filename:new URL('camera-pipeline.js',assets).href});
   const preview=new context.PipelinePreview({after(){},dataset:{}});
   preview.profile={revision:fixture.source.pipeline_revision,transport_epoch:fixture.source.transport_epoch,camera_session:fixture.source.camera_session};
   preview.anchor={latest:{...fixture.source,frame_age_ms:1200},receivedAt:1990,roundTripMs:20};
