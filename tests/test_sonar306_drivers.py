@@ -3,6 +3,7 @@
 import builtins
 import copy
 import importlib.util
+import io
 import queue
 import sys
 from pathlib import Path
@@ -26,8 +27,7 @@ def _load_module(monkeypatch, name, path):
     return module
 
 
-@pytest.fixture
-def lcd(monkeypatch):
+def _inert_lcd(monkeypatch):
     gpio = ModuleType("RPi.GPIO")
     gpio.BCM, gpio.OUT, gpio.LOW, gpio.HIGH = (11, 1, 0, 1)
     gpio.calls = []
@@ -43,13 +43,51 @@ def lcd(monkeypatch):
     spidev.SpiDev = unexpected_device
     for name, module in (("RPi", rpi), ("RPi.GPIO", gpio), ("spidev", spidev), ("xgoscreen", ModuleType("xgoscreen"))):
         monkeypatch.setitem(sys.modules, name, module)
-    # The facade's existing print-filter installation must not escape this fixture.
-    monkeypatch.setattr(builtins, "print", builtins.print)
-    monkeypatch.setattr(builtins, "_rider_print_orig", builtins.print, raising=False)
+    # Own only a new guard. An installed filter's delegate is already the original
+    # print; replacing it with the current (wrapped) print would create a cycle.
+    if not hasattr(builtins, "_rider_print_orig"):
+        monkeypatch.setattr(builtins, "_rider_print_orig", builtins.print, raising=False)
     _load_module(monkeypatch, "drivers.lcd.ili9xx_device", "drivers/lcd/ili9xx_device.py")
     module = _load_module(monkeypatch, "drivers.lcd.driver_ili9xx", "drivers/lcd/driver_ili9xx.py")
     module.test_gpio = gpio
     return module
+
+
+@pytest.fixture
+def lcd(monkeypatch):
+    return _inert_lcd(monkeypatch)
+
+
+@pytest.mark.parametrize("prior_import", [False, True])
+def test_lcd_fixture_preserves_print_delegate_across_imports_and_restoration(monkeypatch, prior_import):
+    with monkeypatch.context() as process:
+        _inert_lcd(process)
+        original_print = builtins._rider_print_orig
+        process.setattr(builtins, "print", original_print)
+        process.delattr(builtins, "_rider_print_orig")
+        if prior_import:
+            previous = _load_module(process, "drivers.lcd.driver_ili9xx", "drivers/lcd/driver_ili9xx.py")
+            assert builtins.print is previous._rider_print
+            assert builtins._rider_print_orig is original_print
+        previous_print = builtins.print
+        with monkeypatch.context() as fixture:
+            _inert_lcd(fixture)
+            _load_module(fixture, "drivers.lcd.driver_ili9xx", "drivers/lcd/driver_ili9xx.py")
+            assert builtins.print is previous_print
+            assert builtins._rider_print_orig is original_print
+            output = io.StringIO()
+            builtins.print("fixture print", file=output)
+            assert output.getvalue() == "fixture print\n"
+        assert builtins.print is previous_print
+        assert hasattr(builtins, "_rider_print_orig") is prior_import
+        output = io.StringIO()
+        builtins.print("restored print", file=output)
+        assert output.getvalue() == "restored print\n"
+        if prior_import:
+            assert builtins._rider_print_orig is original_print
+            output = io.StringIO()
+            builtins.print("[face] path=RAW", file=output)
+            assert output.getvalue() == ""
 
 
 def _environment(monkeypatch, lcd, values):
