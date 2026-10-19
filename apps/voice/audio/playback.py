@@ -311,14 +311,7 @@ def _start_playback_process(
                 _iter_ffplay_commands,
                 lambda: _iter_sox_play_commands(fmt),
             ]
-        elif backend == "alsa":
-            generators = [
-                lambda: _iter_aplay_commands(config, fmt=fmt, sample_rate=sample_rate, channels=channels),
-                lambda: _iter_paplay_commands(config),
-                _iter_ffplay_commands,
-                lambda: _iter_sox_play_commands(fmt),
-            ]
-        else:  # auto → preferuj ALSA najpierw (Twoje środowisko tak działa)
+        else:  # ALSA and auto both prefer ALSA before the remaining fallbacks.
             generators = [
                 lambda: _iter_aplay_commands(config, fmt=fmt, sample_rate=sample_rate, channels=channels),
                 lambda: _iter_paplay_commands(config),

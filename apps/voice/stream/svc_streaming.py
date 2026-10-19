@@ -313,7 +313,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         self._loop: asyncio.AbstractEventLoop | None = None
 
     # ──────────────────────────────────────────────────────────────────────────
-    # Transport & session
+    # Konfiguracja transportu i sesji
 
     async def _initialize_transport(self) -> bool:
         """Initialize WebSocket transport."""

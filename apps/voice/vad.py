@@ -33,7 +33,7 @@ def rms_dbfs(frame: bytes) -> float:
     energy = sum(s * s for s in samples) / float(len(samples))
     if energy <= 0:
         return -100.0
-    # dBFS(RMS) = 10*log10(energy / 32768^2)
+    # Express RMS energy in decibels relative to signed 16-bit full scale.
     return 10.0 * math.log10(energy / float(32768 * 32768))
 
 

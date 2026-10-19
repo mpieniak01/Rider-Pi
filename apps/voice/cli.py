@@ -86,7 +86,7 @@ def _filter_transport_field(config_dict: dict[str, Any]) -> dict[str, Any]:
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# helpers (merge, overrides)
+# Scalanie konfiguracji i nadpisywanie ustawień
 # ───────────────────────────────────────────────────────────────────────────────
 
 
@@ -347,7 +347,7 @@ def _apply_gain_wav(wav_bytes: bytes, gain: float) -> bytes:
     return _wrap_wav(pcm, sr, ch, 2)
 
 
-def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
+def _ensure_wav_bytes(audio: bytes, sample_rate: int) -> bytes:
     """
     Normalizuj wejście do prawidłowego WAV 48 kHz stereo.
     Obsługa: JSON->b64, już-WAV, RAW PCM16 mono (fallback).
@@ -358,13 +358,11 @@ def _ensure_wav_bytes(audio: bytes, sample_rate: int, fmt: str) -> bytes:
     # 0) JSON?
     m = _decode_json_audio(audio)
     if m:
-        audio, sr_json, ch_json, fmt_json = m
+        audio, sr_json, ch_json, _fmt_json = m
         if sr_json:
             sample_rate = int(sr_json)
         if ch_json:
             target_ch = int(ch_json)
-        if fmt_json:
-            pass
 
     # 1) jeśli to WAV
     got_wav = _read_wav_params(audio)
@@ -428,7 +426,9 @@ def _choose_player_command() -> list[str] | None:
 def _silence_logging_for_stdout() -> None:
     """Przekieruj wszystkie logi na stderr i wyłącz gadatliwość."""
     for lg in (pylog.getLogger(), pylog.root):
-        for h in list(lg.handlers):
+        # Flush a snapshot: a handler may unregister itself during flush().
+        handlers = lg.handlers.copy()
+        for h in handlers:
             try:
                 h.flush()
             except Exception:

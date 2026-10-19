@@ -9,84 +9,84 @@ from __future__ import annotations
 import math
 
 
-def _load_piper_backend(C) -> bool:
-    if not C._PIPER_OK:
+def _load_piper_backend(context) -> bool:
+    if not context._PIPER_OK:
         try:
             from apps.voice.piper_compat import PiperVoice as voice_class
 
-            C.PiperVoice = voice_class
-            C._PIPER_OK = True
+            context.PiperVoice = voice_class
+            context._PIPER_OK = True
         except (ImportError, OSError):
             return False
     return True
 
 
-def _load_vosk_backend(C) -> bool:
-    if not C._VOSK_OK:
+def _load_vosk_backend(context) -> bool:
+    if not context._VOSK_OK:
         try:
             from vosk import KaldiRecognizer as recognizer_class, Model as model_class
 
-            C.KaldiRecognizer, C.Model = recognizer_class, model_class
-            C._VOSK_OK = True
+            context.KaldiRecognizer, context.Model = recognizer_class, model_class
+            context._VOSK_OK = True
         except (ImportError, OSError):
             return False
     return True
 
 
-def _resolve_piper_model_path(C, payload_voice: str | None = None) -> str:
+def _resolve_piper_model_path(context, payload_voice: str | None = None) -> str:
     """Zwraca pełną ścieżkę do modelu Piper."""
     # 1) jawnie przez PIPER_MODEL
-    if C.PIPER_MODEL:
-        return C.PIPER_MODEL
+    if context.PIPER_MODEL:
+        return context.PIPER_MODEL
     # 2) voice z payloadu (nazwa pliku) + DIR
     if payload_voice:
-        return f"{C.PIPER_MODEL_DIR}/{payload_voice}"
+        return f"{context.PIPER_MODEL_DIR}/{payload_voice}"
     # 3) ENV voice + DIR
-    if C.PIPER_VOICE:
-        return f"{C.PIPER_MODEL_DIR}/{C.PIPER_VOICE}"
+    if context.PIPER_VOICE:
+        return f"{context.PIPER_MODEL_DIR}/{context.PIPER_VOICE}"
     # 4) fallback
-    return f"{C.PIPER_MODEL_DIR}/pl_PL-mls-medium.onnx"
+    return f"{context.PIPER_MODEL_DIR}/pl_PL-mls-medium.onnx"
 
 
-def _get_local_piper_voice(C, model_path: str | None = None):
+def _get_local_piper_voice(context, model_path: str | None = None):
     """
     Zwraca PiperVoice (singleton) lub podnosi RuntimeError, gdy brak modułu/modelu.
     Używa PiperVoice.load(model_path).
     """
-    if not C._load_piper_backend():
+    if not context._load_piper_backend():
         raise RuntimeError("piper module not available (apps.voice.piper_compat.PiperVoice)")
 
-    if C._local_piper_voice is None:
-        model = model_path or C._resolve_piper_model_path()
-        if not C.os.path.isfile(model):
+    if context._local_piper_voice is None:
+        model = model_path or context._resolve_piper_model_path()
+        if not context.os.path.isfile(model):
             raise RuntimeError(f"Piper model not found: {model}")
-        C._local_piper_voice = C.PiperVoice.load(model)
-    return C._local_piper_voice
+        context._local_piper_voice = context.PiperVoice.load(model)
+    return context._local_piper_voice
 
 
-def _get_local_vosk_model(C):
+def _get_local_vosk_model(context):
     """Zwraca vosk.Model (singleton) lub podnosi RuntimeError, gdy brak modułu/modelu."""
-    if not C._load_vosk_backend():
+    if not context._load_vosk_backend():
         raise RuntimeError("vosk module not available (pip install vosk)")
 
-    if C._local_vosk_model is None:
-        if not C.os.path.isdir(C.VOSK_MODEL):
-            raise RuntimeError(f"Vosk model not found dir: {C.VOSK_MODEL}")
-        C._local_vosk_model = C.Model(C.VOSK_MODEL)
-    return C._local_vosk_model
+    if context._local_vosk_model is None:
+        if not context.os.path.isdir(context.VOSK_MODEL):
+            raise RuntimeError(f"Vosk model not found dir: {context.VOSK_MODEL}")
+        context._local_vosk_model = context.Model(context.VOSK_MODEL)
+    return context._local_vosk_model
 
 
-def _is_wav(C, b: bytes) -> bool:
+def _is_wav(_context, b: bytes) -> bool:
     return len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WAVE"
 
 
-def _read_wav_params(C, b: bytes):
+def _read_wav_params(context, b: bytes):
     """Jeśli b to WAV → (pcm, sr, ch, sw). Inaczej None."""
     try:
-        if not C._is_wav(b):
+        if not context._is_wav(b):
             return None
-        bio = C.io.BytesIO(b)
-        with C.wave.open(bio, "rb") as wf:
+        bio = context.io.BytesIO(b)
+        with context.wave.open(bio, "rb") as wf:
             ch = wf.getnchannels()
             sw = wf.getsampwidth()
             sr = wf.getframerate()
@@ -96,9 +96,9 @@ def _read_wav_params(C, b: bytes):
         return None
 
 
-def _wrap_wav(C, pcm: bytes, sr: int, ch: int, sw: int = 2) -> bytes:
-    buf = C.io.BytesIO()
-    with C.wave.open(buf, "wb") as wf:
+def _wrap_wav(context, pcm: bytes, sr: int, ch: int, sw: int = 2) -> bytes:
+    buf = context.io.BytesIO()
+    with context.wave.open(buf, "wb") as wf:
         wf.setnchannels(ch)
         wf.setsampwidth(sw)
         wf.setframerate(int(sr))
@@ -106,35 +106,35 @@ def _wrap_wav(C, pcm: bytes, sr: int, ch: int, sw: int = 2) -> bytes:
     return buf.getvalue()
 
 
-def _is_mp3(C, b: bytes) -> bool:
+def _is_mp3(_context, b: bytes) -> bool:
     return len(b) >= 3 and (b[:3] == b"ID3" or (b[0] == 0xFF and (b[1] & 0xE0) == 0xE0))
 
 
-def _is_ogg(C, b: bytes) -> bool:
+def _is_ogg(_context, b: bytes) -> bool:
     return b.startswith(b"OggS")
 
 
-def _decode_with_tool_to_wav(C, audio: bytes) -> bytes | None:
+def _decode_with_tool_to_wav(context, audio: bytes) -> bytes | None:
     """
     Dekoduj MP3/OGG do WAV narzędziem systemowym (mpg123 lub ffmpeg).
     Zwraca bajty WAV lub None.
     """
-    if C.shutil.which("mpg123"):
+    if context.shutil.which("mpg123"):
         try:
-            p = C.subprocess.run(
+            p = context.subprocess.run(
                 ["mpg123", "-q", "-w", "-", "-"],
                 input=audio,
-                stdout=C.subprocess.PIPE,
-                stderr=C.subprocess.DEVNULL,
+                stdout=context.subprocess.PIPE,
+                stderr=context.subprocess.DEVNULL,
                 check=True,
             )
-            if C._is_wav(p.stdout):
+            if context._is_wav(p.stdout):
                 return p.stdout
         except Exception:
             pass
-    if C.shutil.which("ffmpeg"):
+    if context.shutil.which("ffmpeg"):
         try:
-            p = C.subprocess.run(
+            p = context.subprocess.run(
                 [
                     "ffmpeg",
                     "-hide_banner",
@@ -147,11 +147,11 @@ def _decode_with_tool_to_wav(C, audio: bytes) -> bytes | None:
                     "pipe:1",
                 ],
                 input=audio,
-                stdout=C.subprocess.PIPE,
-                stderr=C.subprocess.DEVNULL,
+                stdout=context.subprocess.PIPE,
+                stderr=context.subprocess.DEVNULL,
                 check=True,
             )
-            if C._is_wav(p.stdout):
+            if context._is_wav(p.stdout):
                 return p.stdout
         except Exception:
             pass
@@ -159,7 +159,7 @@ def _decode_with_tool_to_wav(C, audio: bytes) -> bytes | None:
 
 
 def _apply_fade(
-    C,
+    context,
     pcm: bytes,
     sr: int,
     ch: int,
@@ -184,8 +184,8 @@ def _apply_fade(
     for i in range(fi):
         gain = i / fi if fi else 1.0
         for c in range(ch):
-            s = C.struct.unpack_from("<h", pcm, (i * ch + c) * 2)[0]
-            C.struct.pack_into("<h", out, (i * ch + c) * 2, int(s * gain))
+            s = context.struct.unpack_from("<h", pcm, (i * ch + c) * 2)[0]
+            context.struct.pack_into("<h", out, (i * ch + c) * 2, int(s * gain))
 
     # środek bez zmian
     start_mid = fi
@@ -197,41 +197,41 @@ def _apply_fade(
     for i in range(n - fo, n):
         gain = (n - i) / fo if fo else 1.0
         for c in range(ch):
-            s = C.struct.unpack_from("<h", pcm, (i * ch + c) * 2)[0]
-            C.struct.pack_into("<h", out, (i * ch + c) * 2, int(s * gain))
+            s = context.struct.unpack_from("<h", pcm, (i * ch + c) * 2)[0]
+            context.struct.pack_into("<h", out, (i * ch + c) * 2, int(s * gain))
 
     return bytes(out)
 
 
-def _append_tail(C, pcm: bytes, sr: int, ch: int, ms: int) -> bytes:
+def _append_tail(_context, pcm: bytes, sr: int, ch: int, ms: int) -> bytes:
     frames = int(sr * ms / 1000) * ch
     if frames > 0:
         pcm += b"\x00\x00" * frames
     return pcm
 
 
-def _maybe_gain(C, pcm: bytes, gain: float) -> bytes:
+def _maybe_gain(context, pcm: bytes, gain: float) -> bytes:
     if math.isclose(gain, 1.0, rel_tol=0.0, abs_tol=1e-9):
         return pcm
     g = max(0.1, min(gain, 3.0))
-    return C.audioop.mul(pcm, 2, g)
+    return context.audioop.mul(pcm, 2, g)
 
 
-def _resample_to(C, pcm: bytes, in_sr: int, in_ch: int, target_sr: int, target_ch: int) -> bytes:
-    out, _ = C.audioop.ratecv(pcm, 2, in_ch, in_sr, target_sr, None)
+def _resample_to(context, pcm: bytes, in_sr: int, in_ch: int, target_sr: int, target_ch: int) -> bytes:
+    out, _ = context.audioop.ratecv(pcm, 2, in_ch, in_sr, target_sr, None)
     if target_ch == 2 and in_ch == 1:
-        out = C.audioop.tostereo(out, 2, 1, 1)
+        out = context.audioop.tostereo(out, 2, 1, 1)
     elif target_ch == 1 and in_ch == 2:
-        out = C.audioop.tomono(out, 2, 0.5, 0.5)
+        out = context.audioop.tomono(out, 2, 0.5, 0.5)
 
-    fade_in_ms = int(C.os.environ.get("VOICE_FADE_IN_MS", "15"))
-    fade_out_ms = int(C.os.environ.get("VOICE_FADE_OUT_MS", "20"))
-    tail_ms = int(C.os.environ.get("VOICE_TAIL_MS", "300"))
-    gain = float(C.os.environ.get("VOICE_GAIN", "1.0"))
+    fade_in_ms = int(context.os.environ.get("VOICE_FADE_IN_MS", "15"))
+    fade_out_ms = int(context.os.environ.get("VOICE_FADE_OUT_MS", "20"))
+    tail_ms = int(context.os.environ.get("VOICE_TAIL_MS", "300"))
+    gain = float(context.os.environ.get("VOICE_GAIN", "1.0"))
 
-    out = C._apply_fade(out, target_sr, target_ch, 2, fade_in_ms, fade_out_ms)
-    out = C._append_tail(out, target_sr, target_ch, tail_ms)
-    out = C._maybe_gain(out, gain)
+    out = context._apply_fade(out, target_sr, target_ch, 2, fade_in_ms, fade_out_ms)
+    out = context._append_tail(out, target_sr, target_ch, tail_ms)
+    out = context._maybe_gain(out, gain)
     return out
 
 
@@ -247,36 +247,36 @@ def _normalize_wav_params(context, params, target_sr, target_ch, fade_in_ms, fad
     return context._wrap_wav(pcm, in_sr, in_ch, in_sw)
 
 
-def _ensure_wav_bytes(C, audio: bytes, sample_rate: int | None, fmt: str | None) -> bytes | None:
+def _ensure_wav_bytes(context, audio: bytes, sample_rate: int | None, fmt: str | None) -> bytes | None:
     """
     Upewnij się, że zwrócimy poprawny WAV @ VOICE_RATE/VOICE_CHANNELS.
     - przyjmujemy: WAV, MP3/OGG, lub (awaryjnie) RAW PCM16 mono @ sample_rate
     """
-    target_sr = int(C.os.environ.get("VOICE_RATE", "48000"))
-    target_ch = int(C.os.environ.get("VOICE_CHANNELS", "2"))
+    target_sr = int(context.os.environ.get("VOICE_RATE", "48000"))
+    target_ch = int(context.os.environ.get("VOICE_CHANNELS", "2"))
 
-    fade_in_ms = int(C.os.environ.get("VOICE_FADE_IN_MS", "15"))
-    fade_out_ms = int(C.os.environ.get("VOICE_FADE_OUT_MS", "20"))
-    tail_ms = int(C.os.environ.get("VOICE_TAIL_MS", "300"))
-    gain = float(C.os.environ.get("VOICE_GAIN", "1.0"))
+    fade_in_ms = int(context.os.environ.get("VOICE_FADE_IN_MS", "15"))
+    fade_out_ms = int(context.os.environ.get("VOICE_FADE_OUT_MS", "20"))
+    tail_ms = int(context.os.environ.get("VOICE_TAIL_MS", "300"))
+    gain = float(context.os.environ.get("VOICE_GAIN", "1.0"))
 
-    got = C._read_wav_params(audio)
+    got = context._read_wav_params(audio)
     if got:
-        return _normalize_wav_params(C, got, target_sr, target_ch, fade_in_ms, fade_out_ms, tail_ms, gain)
+        return _normalize_wav_params(context, got, target_sr, target_ch, fade_in_ms, fade_out_ms, tail_ms, gain)
 
-    if C._is_mp3(audio) or C._is_ogg(audio) or (fmt or "").lower() in ("mp3", "mpeg", "audio/mpeg", "ogg"):
-        wav = C._decode_with_tool_to_wav(audio)
-        if wav and C._is_wav(wav):
-            got = C._read_wav_params(wav)
+    if context._is_mp3(audio) or context._is_ogg(audio) or (fmt or "").lower() in ("mp3", "mpeg", "audio/mpeg", "ogg"):
+        wav = context._decode_with_tool_to_wav(audio)
+        if wav and context._is_wav(wav):
+            got = context._read_wav_params(wav)
             if got:
-                return _normalize_wav_params(C, got, target_sr, target_ch, fade_in_ms, fade_out_ms, tail_ms, gain)
+                return _normalize_wav_params(context, got, target_sr, target_ch, fade_in_ms, fade_out_ms, tail_ms, gain)
         return None
 
     # 3) RAW PCM16 mono
     try:
         sr = int(sample_rate or 24000)
-        pcm = C._resample_to(audio, sr, 1, target_sr, target_ch)
-        return C._wrap_wav(pcm, target_sr, target_ch, 2)
+        pcm = context._resample_to(audio, sr, 1, target_sr, target_ch)
+        return context._wrap_wav(pcm, target_sr, target_ch, 2)
     except Exception:
         return None
 
@@ -386,7 +386,7 @@ def _piper_pcm_audio(context, voice, text):
     return None
 
 
-def _piper_synthesize_wav_bytes(C, voice, text: str, model_path: str | None = None) -> tuple[bytes, int | None]:
+def _piper_synthesize_wav_bytes(context, voice, text: str, model_path: str | None = None) -> tuple[bytes, int | None]:
     """
     Zwraca (wav_bytes, sample_rate|None). Obsługuje:
     - synthesize_wav_bytes(text) -> bytes lub (bytes, sr)
@@ -406,15 +406,15 @@ def _piper_synthesize_wav_bytes(C, voice, text: str, model_path: str | None = No
 
     for method in ("synthesize_wav", "synthesize_to_wav", "save_wav", "synthesize_to_file", "synthesize"):
         if hasattr(voice, method):
-            result = _piper_file_method(C, getattr(voice, method), text)
+            result = _piper_file_method(context, getattr(voice, method), text)
             if result is not None:
                 return result
 
-    result = _piper_pcm_audio(C, voice, text)
+    result = _piper_pcm_audio(context, voice, text)
     if result is not None:
         return result
 
-    return _piper_cli_audio(C, text, model_path)
+    return _piper_cli_audio(context, text, model_path)
 
 
 def _asr_request_audio(context):
@@ -448,39 +448,39 @@ def _asr_input_wav(context, audio_bytes, ctype):
     return wav
 
 
-def api_asr(C):
+def api_asr(context):
     """
     POST audio (preferowane Content-Type: audio/wav) lub multipart 'file'.
     Zwraca JSON: { ok: true, text: "..." }
     """
     try:
-        if not C._load_vosk_backend():
-            return C.jsonify({"ok": False, "error": "vosk module not available"}), 500
+        if not context._load_vosk_backend():
+            return context.jsonify({"ok": False, "error": "vosk module not available"}), 500
 
-        audio_bytes, ctype = _asr_request_audio(C)
+        audio_bytes, ctype = _asr_request_audio(context)
 
         if not audio_bytes:
-            return C.jsonify({"ok": False, "error": "no audio data"}), 400
+            return context.jsonify({"ok": False, "error": "no audio data"}), 400
 
-        wav = _asr_input_wav(C, audio_bytes, ctype)
+        wav = _asr_input_wav(context, audio_bytes, ctype)
 
-        if not wav or not C._is_wav(wav):
-            return C.jsonify({"ok": False, "error": "unsupported or invalid audio"}), 400
+        if not wav or not context._is_wav(wav):
+            return context.jsonify({"ok": False, "error": "unsupported or invalid audio"}), 400
 
-        got = C._read_wav_params(wav)
+        got = context._read_wav_params(wav)
         if not got:
-            return C.jsonify({"ok": False, "error": "invalid wav"}), 400
+            return context.jsonify({"ok": False, "error": "invalid wav"}), 400
         pcm, in_sr, in_ch, in_sw = got
         if in_sw != 2:
-            return C.jsonify({"ok": False, "error": "expected 16-bit PCM"}), 400
+            return context.jsonify({"ok": False, "error": "expected 16-bit PCM"}), 400
 
         target_sr = 16000
         target_ch = 1
         if in_sr != target_sr or in_ch != target_ch:
-            pcm = C._resample_to(pcm, in_sr, in_ch, target_sr, target_ch)
+            pcm = context._resample_to(pcm, in_sr, in_ch, target_sr, target_ch)
 
-        model = C._get_local_vosk_model()
-        rec = C.KaldiRecognizer(model, target_sr)
+        model = context._get_local_vosk_model()
+        rec = context.KaldiRecognizer(model, target_sr)
         rec.AcceptWaveform(pcm)
         import json as _json
 
@@ -489,7 +489,7 @@ def api_asr(C):
         except Exception:
             data = {"text": ""}
 
-        return C.jsonify({"ok": True, "text": (data.get("text") or "").strip()}), 200
+        return context.jsonify({"ok": True, "text": (data.get("text") or "").strip()}), 200
 
     except Exception as e:
-        return C.jsonify({"ok": False, "error": str(e)}), 500
+        return context.jsonify({"ok": False, "error": str(e)}), 500

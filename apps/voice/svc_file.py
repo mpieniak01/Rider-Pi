@@ -132,7 +132,9 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
         # Bus (pozwól testom wstrzyknąć fałszywego publishra)
         from .svc_bus import BusPub, BusSub
 
-        self._bus_pub = ui_publisher if ui_publisher is not None else (BusPub() if BusPub else None)
+        self._bus_pub = ui_publisher
+        if self._bus_pub is None and BusPub:
+            self._bus_pub = BusPub()
         self._bus_sub = BusSub("tts.speak") if BusSub else None
 
         # Start AI mode monitoring thread

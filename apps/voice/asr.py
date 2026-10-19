@@ -101,7 +101,6 @@ def transcribe(
             audio,
             sample_rate,
             config,
-            logger,
             language=_norm_language(config),
         )
 
@@ -137,7 +136,6 @@ def _openai_transcribe(
     audio: bytes,
     sample_rate: int,
     config: ASRConfig,
-    logger: voice_logging.VoiceLogger,
     *,
     language: str | None,
 ) -> Transcript:

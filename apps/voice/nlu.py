@@ -13,7 +13,7 @@ from .common import ensure_event_logger  # ⬅️ shim do .event(...)
 
 COMMAND_PATTERNS = {
     "stop": re.compile(r"\b(stop|stój|zatrzymaj)\b", re.IGNORECASE),
-    "forward": re.compile(r"\b(go\s+forward|naprz(ó|o)d|forward)\b", re.IGNORECASE),
+    "forward": re.compile(r"\b(go\s+forward|naprz([óo])d|forward)\b", re.IGNORECASE),
     "back": re.compile(r"\b(go\s+back|wstecz|cofnij)\b", re.IGNORECASE),
     "left": re.compile(r"\b(turn\s+left|w\s+lewo)\b", re.IGNORECASE),
     "right": re.compile(r"\b(turn\s+right|w\s+prawo)\b", re.IGNORECASE),
