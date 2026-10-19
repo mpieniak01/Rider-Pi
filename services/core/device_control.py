@@ -9,6 +9,8 @@ import sys
 import uuid
 from pathlib import Path
 
+from common.secure_files import atomic_write
+
 
 def _led_sessions():
     path = Path(os.getenv("RIDER_LED_STATE_PATH", "/run/rider-motion/led_state.json"))
@@ -45,10 +47,8 @@ def _save_led_generation(name, previous_trigger=None):
         defaults.setdefault(name, previous_trigger)
     generation = uuid.uuid4().hex
     sessions[name] = generation
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"boot_id": boot_id(), "sessions": sessions, "defaults": defaults}))
-    temporary.replace(path)
+    data = json.dumps({"boot_id": boot_id(), "sessions": sessions, "defaults": defaults}).encode("utf-8")
+    atomic_write(path, lambda stream: stream.write(data))
     return generation
 
 

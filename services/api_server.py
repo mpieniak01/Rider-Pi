@@ -16,6 +16,8 @@ from flask import (
     request,
 )
 
+from common.secure_files import atomic_write
+
 # --- preferuj istniejący app/konfigurację z compat ---
 try:
     import services.api_core.compat as compat
@@ -380,7 +382,6 @@ NOT_AUTHENTICATED = "Not authenticated"
 def _save_command_cache(device_id: str, command: str, params: dict[str, Any], result: dict[str, Any]) -> None:
     """Save command response to cache file."""
     try:
-        GOOGLE_DATA_DIR.mkdir(parents=True, exist_ok=True)
         cache_data = {
             "timestamp": time.time(),
             "device_id": device_id,
@@ -390,7 +391,8 @@ def _save_command_cache(device_id: str, command: str, params: dict[str, Any], re
             "response": result.get("result"),
             "error": result.get("error"),
         }
-        LAST_COMMAND_FILE.write_text(json.dumps(cache_data, indent=2))
+        payload = json.dumps(cache_data, indent=2).encode("utf-8")
+        atomic_write(LAST_COMMAND_FILE, lambda stream: stream.write(payload))
     except Exception as e:
         app.logger.warning(f"Failed to save command cache to {LAST_COMMAND_FILE}: {e}")
 

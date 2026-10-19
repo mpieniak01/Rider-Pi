@@ -48,7 +48,7 @@ The directory is operator configuration, never request-supplied configuration.
 Writes use an open directory descriptor, a random temporary filename,
 `O_EXCL`, `O_NOFOLLOW` and atomic replacement. Output permissions are `0600`;
 replacing a symlink or hardlink never modifies its linked target. The directory
-must belong to the process user or root, must not be a symlink, and must not
+must belong to the process user or root, must have no symlink in any directory component, and must not
 be writable by others without the sticky bit. Prefer an operator-owned private
 directory for new configurations. Access failures return HTTP 503
 `face_export_unavailable`. Existing PNG entries in this scope may be replaced.
@@ -100,3 +100,25 @@ WAV files receive random names and `0600` permissions and are published only
 after writing completes. A filename collision never overwrites a previous
 recording. File and directory permissions remain private under a permissive
 process `umask`. Audio capture behavior and format remain unchanged.
+
+## Persistent state and command cache
+
+LED generations (`RIDER_LED_STATE_PATH`), feature state (`FEATURE_STATE_PATH`)
+and the last Google command (`DATA_DIR/google/last_command.json`) use the same
+anchored atomic writer. Each directory component is checked without following
+symlinks; a random exclusive temporary file is published only after writing
+finishes. Existing target symlinks and hardlinks are replaced without modifying
+their linked files. Failed writes preserve the previous published contents.
+
+New files are private (`0600`) and newly created directories use `0700`.
+Existing trusted directories retain their permissions, including the shared
+`/run/rider-motion` directory (`0750`). Readers must run as the writing service
+user or root. Prepare paths as that service user; do not use symlinked directories.
+JSON values, including text containing `../`, remain data and never choose the
+output path. The configured paths remain operator settings.
+
+Feature persistence still returns failure before a movement producer can start
+without its accepted generation. LED persistence failures remain unconfirmed
+journal errors; command-cache failures remain nonfatal warnings. Concurrent
+writers publish complete files independently; this does not add transaction or
+merge semantics for simultaneous state updates.
