@@ -29,9 +29,9 @@ window.addEventListener('dashboard:langchange', event => {
   if (next) syncLangMeta(next);
 });
 
-function node(tag, className = '', value) {
+function node(tag, className, value) {
   const result = document.createElement(tag);
-  result.className = className;
+  result.className = className === undefined ? '' : className;
   if (value !== undefined) result.textContent = String(value);
   return result;
 }
@@ -296,5 +296,9 @@ if (new URLSearchParams(location.search).get('auth') === 'success') {
   window.history.replaceState({}, '', location.pathname);
   showStatus(t('home.auth_success'), 'ok');
 }
-// Startup stays non-blocking; all network failures have a visible error path.
-checkAuth().catch(error => showStatus(t('home.error_check_auth', {msg: error.message}), 'err'));
+// Handlers are registered before auth readiness; device loading stays independent.
+try {
+  await checkAuth();
+} catch (error) {
+  showStatus(t('home.error_check_auth', {msg: error.message}), 'err');
+}
