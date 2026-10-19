@@ -88,3 +88,12 @@ Polecenia chronione zawierają settings_revision; strzałki wysyłają kierunek
 i device_settings=true. Uzbrojenie operatora trwa między impulsami. Koniec
 impulsu zatrzymuje bez rozbrojenia; błędy i STOP nadal unieważniają sesję.
 Zgoda testowa pozostaje oddzielna.
+
+## Warstwy walidacji w kodzie
+
+`executor_admission` wydziela uporzadkowane etapy dopuszczenia i wykonania
+z `MotionExecutor`: kontrole zrodla i ustawien, walidacje aktuatora,
+autoryzacje bramy oraz obsluge STOP i celu. Dzialaja synchronicznie pod ta
+sama blokada wykonawcy; nie tworza drugiego wlasciciela UART.
+`calibration_schema` zawiera czysta walidacje profilu, a `calibration_profiles`
+zachowuje publiczne importy oraz operacje zapisu i aktywacji.

@@ -87,3 +87,12 @@ Every protected motion command includes settings_revision; panel arrows send
 direction plus device_settings=true. Operator arming persists between bounded
 pulses. Normal pulse expiry stops without disarming; faults and STOP still revoke
 the session. Test consent stays separate.
+
+## Validation layers in code
+
+`executor_admission` separates the ordered admission and execution stages
+from `MotionExecutor`: source/settings checks, actuator validation, gate
+authorization and STOP/goal handling. They run synchronously under the same
+executor lock and do not create another UART owner. `calibration_schema`
+contains pure profile validation; `calibration_profiles` retains its public
+imports and persistence/activation operations.

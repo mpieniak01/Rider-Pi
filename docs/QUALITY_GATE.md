@@ -72,3 +72,21 @@ exclusion, baseline reset or reduced threshold is used to achieve a green gate.
 Code fixes and individually justified issue dispositions must be reported
 separately. Compare issue IDs after a fresh main scan: a finding that moves to
 a helper is still a finding. Hardware and motion tests are never run by CI.
+
+## Larger backlog releases
+
+Before dividing work, retain the existing main analysis ID, revision and
+selected issue IDs. Assign packets by module responsibility with one owner
+per file. Run the entire maintained suite on the integrated release branch,
+even when each packet already passed its focused checks. Preserve the
+device's Python 3.9 compatibility.
+
+When splitting a complex function, check every new helper as well. Retain
+validation order, STOP priority, validity windows, locks, exception propagation
+and resource cleanup. Boundary tests should exercise refusals and failures as
+well as success. For shared catalogues, compare result ordering and deduplication.
+
+Local complexity estimates and passing tests are supporting evidence. CI
+provides the Sonar result for the published SHA. After merging, separately
+verify the main analysis and closed/remaining issue IDs; PR statistics alone
+do not establish that the global backlog has been removed.

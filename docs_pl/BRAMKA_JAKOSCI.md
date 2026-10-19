@@ -61,3 +61,22 @@ wykluczamy plików produkcyjnych dla uzyskania zielonego wyniku.
 Naprawy kodu i indywidualne klasyfikacje zgłoszeń należy rozliczać osobno.
 Po świeżym skanie main porównuj identyfikatory; przeniesienie wskazania do
 funkcji pomocniczej nie oznacza jego naprawy. CI nigdy nie wykonuje ruchu robota.
+
+## Wiekszy zakres napraw zaleglosci
+
+Przed podzialem prac zapisz SHA i identyfikator istniejacej analizy main oraz
+identyfikatory wybranych zgloszen. Rozdziel pakiety wedlug odpowiedzialnosci
+modulow, z jednym wlascicielem kazdego pliku. Zintegrowana galaz wydania musi
+przejsc testy calego utrzymywanego katalogu, rowniez gdy osobne pakiety
+przeszly juz testy lokalne. Zachowaj zgodnosc z Pythonem 3.9 urzadzenia.
+
+Przy podziale zlozonej funkcji sprawdz wszystkie nowe funkcje pomocnicze.
+Zachowaj kolejnosc walidacji, pierwszenstwo STOP, okresy waznosci, blokady,
+propagacje wyjatkow i sprzatanie zasobow. Testy graniczne powinny obejmowac
+odmowy i awarie, nie tylko sciezke sukcesu. Dla wspoldzielonych katalogow
+porownaj tez kolejnosc oraz deduplikacje wynikow.
+
+Lokalna ocena zlozonosci i zaliczone testy sa dowodem pomocniczym. Wynik
+Sonara dla opublikowanego SHA dostarcza CI. Po scaleniu sprawdz osobno analize
+main i identyfikatory zamknietych oraz pozostalych zgloszen; same statystyki
+PR nie potwierdzaja usuniecia globalnych zaleglosci.
