@@ -68,7 +68,8 @@ def test_html_controls_present():
         content = (project_root / "web" / page).read_text()
         assert 'id="posture-controls"' in content
     script = (project_root / "web/assets/operator/posture.js").read_text()
-    assert 'id="posture-height"' in script and 'id="posture-balance"' in script
+    assert 'id="posture-height"' in script
+    assert 'id="posture-balance"' in script
     assert "this.send('height'" in script
     assert "this.send('balance'" in script
     transport = (project_root / "web/assets/operator/safety.js").read_text()

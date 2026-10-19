@@ -243,11 +243,15 @@ def test_sensor_gap_stops_goal_but_preserves_operator_authorization(executor):
     instance.samples.observe("yaw", None)
     instance.tick(0.02)
     state = instance.snapshot()
-    assert state["state"] == "ARMED" and state["generation"] == generation
+    assert state["state"] == "ARMED"
+    assert state["generation"] == generation
     assert state["authorization"]["authority"] == "motion-executor"
-    assert state["panel_motion_enabled"] and not state["test_motion_enabled"]
-    assert not state["execution"]["ready"] and state["execution"]["inhibit"]
-    assert instance.controller.stopped and not instance.controller.deadline
+    assert state["panel_motion_enabled"]
+    assert not state["test_motion_enabled"]
+    assert not state["execution"]["ready"]
+    assert state["execution"]["inhibit"]
+    assert instance.controller.stopped
+    assert not instance.controller.deadline
     assert state["capabilities"]["move"]["available"]
     clock.now += 0.01
     instance.poll_sensors()
@@ -262,8 +266,10 @@ def test_stale_projection_preserves_permission_without_claiming_freshness(execut
     write_status(instance.snapshot())
     monkeypatch.setattr("apps.safety.state.time.time", lambda: clock.now + 4)
     state = read_status()
-    assert state["state"] == "ARMED" and state["panel_motion_enabled"]
-    assert state["stale"] and not state["can_move"]
+    assert state["state"] == "ARMED"
+    assert state["panel_motion_enabled"]
+    assert state["stale"]
+    assert not state["can_move"]
     assert not state["authorization"]["confirmed"]
     assert state["observed_at"] == clock.now
 
@@ -276,7 +282,8 @@ def test_delayed_pulse_does_not_disarm_or_cancel_a_newer_goal(executor):
     rejected = instance.apply(command(instance, request_id="delayed", ts=clock.now - 1))
     assert rejected["reason"] == "expired_command"
     assert instance.pending["request_id"] == "current"
-    assert instance.gate.state == "ARMED" and instance.gate.generation == generation
+    assert instance.gate.state == "ARMED"
+    assert instance.gate.generation == generation
 
 
 def test_operator_arm_is_idempotent_and_does_not_actuate(executor):
@@ -285,7 +292,8 @@ def test_operator_arm_is_idempotent_and_does_not_actuate(executor):
     before = list(instance.adapter.calls)
     generation = instance.gate.generation
     assert operator_arm(instance)["status"] == "executed"
-    assert instance.gate.generation == generation and instance.adapter.calls == before
+    assert instance.gate.generation == generation
+    assert instance.adapter.calls == before
 
 
 def test_restart_never_restores_operator_permission(executor):

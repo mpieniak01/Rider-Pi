@@ -66,7 +66,8 @@ def test_release_reversal_bounded_and_no_automatic_disarm(executor, mode):
     advance(instance, clock, 0.02)
     assert 0 <= instance.controller.o_lx <= before
     advance(instance, clock, 0.5)
-    assert instance.controller.o_lx == 0 and instance.gate.state == "ARMED"
+    assert instance.controller.o_lx == 0
+    assert instance.gate.state == "ARMED"
     for _ in range(6):
         instance.apply(intent(instance, direction="backward"))
         advance(instance, clock, 0.16)

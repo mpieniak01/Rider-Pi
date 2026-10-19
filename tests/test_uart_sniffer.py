@@ -110,8 +110,9 @@ def test_invalid_control_and_reconnect(capture):
         capture._command({"action": "attach", "seconds": 301})
     assert not capture.active
     cli.control(capture.status()["pid"], "attach")
+    pid = capture.status()["pid"]
     with pytest.raises(RuntimeError, match="already_attached"):
-        cli.control(capture.status()["pid"], "attach")
+        cli.control(pid, "attach")
     cli.control(capture.status()["pid"], "detach")
     first = capture.output
     cli.control(capture.status()["pid"], "attach")

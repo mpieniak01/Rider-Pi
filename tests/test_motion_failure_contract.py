@@ -18,11 +18,13 @@ def test_superseded_goal_gets_terminal_ack_before_replacement(executor):
     second = command(instance, request_id="second", vx=-0.2)
     assert instance.apply(second)["status"] == "accepted"
     old_ack = next(ack for ack in instance.recent_acks if ack["request_id"] == "first")
-    assert old_ack["status"] == "rejected" and old_ack["reason"] == "goal_superseded"
+    assert old_ack["status"] == "rejected"
+    assert old_ack["reason"] == "goal_superseded"
     assert old_ack["superseded_by"] == "second"
     assert instance.last_ack["request_id"] == "second"
     instance.tick(0.02)
-    assert instance.last_ack["request_id"] == "second" and instance.last_ack["status"] == "executed"
+    assert instance.last_ack["request_id"] == "second"
+    assert instance.last_ack["status"] == "executed"
     assert instance.adapter.calls[-1][0] == "move"
     assert instance.adapter.calls[-1][1] < 0
 
@@ -34,7 +36,8 @@ def test_stop_actions_keep_cancelled_pending_terminal_ack(executor, action):
     instance.apply(command(instance, request_id="pending-goal"))
     stop_ack = instance.apply({"action": action, "request_id": "stop-request"})
     cancelled = next(ack for ack in instance.recent_acks if ack["request_id"] == "pending-goal")
-    assert cancelled["status"] == "rejected" and cancelled["reason"] == f"cancelled_by_{action}"
+    assert cancelled["status"] == "rejected"
+    assert cancelled["reason"] == f"cancelled_by_{action}"
     assert cancelled["cancelled_by"] == "stop-request"
     assert instance.pending is None
     assert instance.last_ack == stop_ack
@@ -48,7 +51,8 @@ def test_direct_bus_ttl_uses_same_half_second_limit(executor, ttl):
     arm(instance)
     before = list(instance.adapter.calls)
     ack = instance.apply(command(instance, ttl_ms=ttl))
-    assert ack["status"] == "rejected" and ack["reason"] == "expired_command"
+    assert ack["status"] == "rejected"
+    assert ack["reason"] == "expired_command"
     instance.tick(0.02)
     assert instance.adapter.calls == before
 
@@ -67,7 +71,8 @@ def test_unconfirmed_stop_latches_not_ready_and_cannot_rearm(executor, monkeypat
 
     monkeypatch.setattr(instance.adapter, "stop", failed_stop)
     ack = instance.apply({"action": "stop", "request_id": "unconfirmed-stop"})
-    assert ack["status"] == "rejected" and ack["hardware_stop_sent"] is False
+    assert ack["status"] == "rejected"
+    assert ack["hardware_stop_sent"] is False
     assert ack["reason"] == "hardware_stop_unconfirmed"
     assert instance.snapshot()["ready"] is False
     assert instance.snapshot()["hardware_ready"] is False

@@ -52,8 +52,10 @@ def test_signed_agent_impulse_uses_shared_calibration_and_preserves_operator_arm
     generation = instance.gate.generation
     request = signed_command(body(instance))
     result = instance.apply(request)
-    assert result['status'] == 'accepted' and result['source'] == 'agent'
-    assert result['execution_context'] == 'agent' and result['channel'] == 'chat'
+    assert result['status'] == 'accepted'
+    assert result['source'] == 'agent'
+    assert result['execution_context'] == 'agent'
+    assert result['channel'] == 'chat'
     from apps.motion.manual_settings import pulse
 
     expected = pulse(instance.controls, 'forward')
@@ -62,7 +64,8 @@ def test_signed_agent_impulse_uses_shared_calibration_and_preserves_operator_arm
     instance.tick(0.02)
     clock.now += expected['duration'] + 0.01
     instance.tick(0.02)
-    assert instance.gate.state == 'ARMED' and instance.gate.generation == generation
+    assert instance.gate.state == 'ARMED'
+    assert instance.gate.generation == generation
     assert instance.snapshot()['panel_motion_enabled'] is True
     assert instance.snapshot()['test_motion_enabled'] is False
 
@@ -97,7 +100,8 @@ def test_agent_signature_or_boolean_forgery_never_changes_manual_intent(operator
     result = instance.apply({**agent, **change})
     assert result['status'] == 'rejected'
     assert instance.adapter.calls == before
-    assert instance.gate.generation == generation and instance.gate.state == 'ARMED'
+    assert instance.gate.generation == generation
+    assert instance.gate.state == 'ARMED'
 
 
 def test_manual_takeover_revokes_agent_epoch_and_late_agent_cannot_stop_manual(operator):
@@ -111,7 +115,8 @@ def test_manual_takeover_revokes_agent_epoch_and_late_agent_cannot_stop_manual(o
     before = list(instance.adapter.calls)
     assert instance.apply(late)['status'] == 'rejected'
     assert instance.adapter.calls == before
-    assert instance.pending['source'] == 'manual' and instance.gate.state == 'ARMED'
+    assert instance.pending['source'] == 'manual'
+    assert instance.gate.state == 'ARMED'
 
 
 @pytest.mark.parametrize('first_agent', [False, True])
@@ -136,8 +141,10 @@ def test_stop_wins_agent_batch_and_invalidates_generation(operator):
             ('motion.command', command(instance)),
         ]
     )
-    assert instance.gate.state == 'DISARMED' and instance.gate.generation != generation
-    assert instance.pending is None and instance.last_ack['action'] == 'stop'
+    assert instance.gate.state == 'DISARMED'
+    assert instance.gate.generation != generation
+    assert instance.pending is None
+    assert instance.last_ack['action'] == 'stop'
 
 
 @pytest.mark.parametrize(
@@ -154,7 +161,8 @@ def test_bad_agent_message_never_disarms_or_stops_manual(operator, override):
     instance.apply(command(instance))
     before = list(instance.adapter.calls)
     assert instance.apply(agent)['status'] == 'rejected'
-    assert instance.gate.state == 'ARMED' and instance.adapter.calls == before
+    assert instance.gate.state == 'ARMED'
+    assert instance.adapter.calls == before
 
 
 def test_agent_has_no_arm_or_test_permission(operator):
@@ -226,7 +234,8 @@ def test_private_api_auth_fixed_source_and_negotiated_contract(http_client):
     client, instance, published = http_client
     headers = {'Authorization': 'Bearer unit-only-agent-token', 'Accept': 'application/vnd.rider.api+json;version=1'}
     denied = client.post('/api/control/agent/pulse', json=body(instance))
-    assert denied.status_code == 401 and not published
+    assert denied.status_code == 401
+    assert not published
     result = client.post('/api/control/agent/pulse', json=body(instance), headers=headers)
     assert result.status_code == 200
     assert result.json['meta']['contract_id'] == 'rider.safety'
@@ -239,7 +248,8 @@ def test_private_api_auth_fixed_source_and_negotiated_contract(http_client):
 def test_public_api_cannot_claim_agent_even_with_valid_signature(http_client):
     client, instance, published = http_client
     result = client.post('/api/control', json=signed_command(body(instance)))
-    assert result.status_code == 400 and not published
+    assert result.status_code == 400
+    assert not published
     assert result.json['error'] == 'agent_private_endpoint_required'
 
 
@@ -251,7 +261,8 @@ def test_private_api_rejects_extra_consent_flags_and_actor_override(http_client)
             json={**body(instance), **extra},
             headers={'Authorization': 'Bearer unit-only-agent-token'},
         )
-        assert result.status_code == 400 and not published
+        assert result.status_code == 400
+        assert not published
 
 
 def test_agent_state_and_stop_use_existing_safety_contract(http_client):
@@ -260,8 +271,10 @@ def test_agent_state_and_stop_use_existing_safety_contract(http_client):
     state = client.get('/api/control/agent/state', headers=accept)
     assert state.json['data']['safety']['agent_epoch'] == instance.gate.agent_epoch
     stop = client.post('/api/stop', json={'source': 'agent', 'execution_context': 'agent'}, headers=accept)
-    assert stop.status_code == 200 and stop.json['meta']['contract_id'] == 'rider.safety'
-    assert published[-1]['source'] == 'agent' and instance.gate.state == 'DISARMED'
+    assert stop.status_code == 200
+    assert stop.json['meta']['contract_id'] == 'rider.safety'
+    assert published[-1]['source'] == 'agent'
+    assert instance.gate.state == 'DISARMED'
 
 
 @pytest.mark.parametrize('action', ['stop', 'disarm'])
@@ -281,7 +294,8 @@ def test_agent_public_safety_stop_works_without_actuator_authorization(
         json={'action': action, 'source': 'agent', 'execution_context': 'agent'},
         headers={'Accept': 'application/vnd.rider.api+json;version=1'},
     )
-    assert result.status_code == 200 and result.json['ok']
+    assert result.status_code == 200
+    assert result.json['ok']
     assert result.json['operation']['confirmed'] is True
     assert result.json['operation']['actuation'] is False
     assert instance.gate.state == 'DISARMED'
@@ -298,6 +312,8 @@ def test_public_safety_exception_does_not_allow_agent_actuators(http_client, act
         '/api/control',
         json=command(instance, action, source='agent', execution_context='agent', height=95, enabled=True),
     )
-    assert result.status_code == 400 and result.json['error'] == 'agent_private_endpoint_required'
-    assert not published and instance.adapter.calls == before
+    assert result.status_code == 400
+    assert result.json['error'] == 'agent_private_endpoint_required'
+    assert not published
+    assert instance.adapter.calls == before
     assert instance.gate.state == 'ARMED'

@@ -32,7 +32,8 @@ def test_legacy_http_bus_and_retired_shim_are_same_pure_aliases(direction, axis,
     assert http == canonical_command("motion.cmd", original) == translate(original)
     assert http[axis] == expected
     assert all(http[key] == value for key, value in envelope().items())
-    assert original["cmd"] == "drive" and "action" not in original
+    assert original["cmd"] == "drive"
+    assert "action" not in original
 
 
 def test_missing_legacy_metadata_is_never_manufactured():
@@ -78,18 +79,25 @@ def test_post_stop_stays_explicit_and_requires_no_arm(monkeypatch):
     sent = []
     monkeypatch.setattr(web_motion_bridge, "submit_control", lambda row: (sent.append(row) or {"pending": True}, 202))
     response = web_motion_bridge.app.test_client().post("/api/stop", json={"request_id": "explicit"})
-    assert response.status_code == 202 and sent == [{"action": "stop", "request_id": "explicit"}]
+    assert response.status_code == 202
+    assert sent == [{"action": "stop", "request_id": "explicit"}]
 
 
 def test_nlu_only_proposes_motion_and_never_renews_input_time():
     from apps.nlu.main import proposal
 
     topic, row = proposal({"observed_at": None, "ts": 999}, {"type": "drive", "dir": "forward", "v": 0.2})
-    assert topic == "motion.intent" and not row["actuation"] and not row["executable"]
-    assert row["observed_at"] is None and "generation" not in row
+    assert topic == "motion.intent"
+    assert not row["actuation"]
+    assert not row["executable"]
+    assert row["observed_at"] is None
+    assert "generation" not in row
     topic, row = proposal({"observed_at": 100}, {"type": "stop"})
-    assert topic == "motion.command" and row["action"] == "stop" and row["ts"] == 100
-    assert row["request_id"] and "generation" not in row
+    assert topic == "motion.command"
+    assert row["action"] == "stop"
+    assert row["ts"] == 100
+    assert row["request_id"]
+    assert "generation" not in row
 
 
 def test_choreographer_cannot_create_authority_but_face_still_works():
@@ -103,7 +111,8 @@ def test_choreographer_cannot_create_authority_but_face_still_works():
 
     for topic in ["motion.command", "motion", "cmd.balance", "odometry.reference", "calibration.activate"]:
         execute_action(Publisher(), {"topic": topic, "payload": {"action": "arm"}})
-        assert sent[-1][0] == "motion.intent" and not sent[-1][1]["executable"]
+        assert sent[-1][0] == "motion.intent"
+        assert not sent[-1][1]["executable"]
         assert sent[-1][2] == {"add_ts": False}
     execute_action(Publisher(), {"topic": "command.face.expression", "payload": {"expression": "happy"}})
     assert sent[-1][0] == "command.face.expression"

@@ -38,7 +38,8 @@ def test_update_rename_delete_preserves_current_settings(executor):
     assert saved["profiles"][key]["name"] == "Biurko"
     assert saved["profiles"][key]["directions"]["forward"]["speed"] == 0.3
     deleted = settings.manage_profile({"action": "delete", "id": key}, saved["revision"])
-    assert deleted["active_profile"] is None and deleted["profiles"] == {}
+    assert deleted["active_profile"] is None
+    assert deleted["profiles"] == {}
     assert deleted["directions"] == saved["directions"]
 
 
@@ -84,7 +85,8 @@ def test_api_profile_creation_armed_idle_never_actuates(executor, monkeypatch):
     assert response.status_code == 200
     assert response.json["profiles"][response.json["active_profile"]]["name"] == "Biurko"
     assert instance.adapter.calls == before
-    assert instance.gate.state == "ARMED" and instance.gate.generation == generation
+    assert instance.gate.state == "ARMED"
+    assert instance.gate.generation == generation
 
 
 def test_profiles_cannot_exceed_full_command_range(executor):

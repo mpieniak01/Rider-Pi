@@ -41,8 +41,10 @@ def test_current_intent_accepts_fresh_target_with_original_generation():
     ctrl, sent, _ = controller(authorization=intent())
     ctrl.on_tracking_offset(0.5, "face", observed_at=time.time())
     command = sent[0][0][1]
-    assert command["generation"] == "current" and command["source"] == "follow_me"
-    assert command["seq"] > 3 and command["duration"] <= 0.25
+    assert command["generation"] == "current"
+    assert command["source"] == "follow_me"
+    assert command["seq"] > 3
+    assert command["duration"] <= 0.25
 
 
 @pytest.mark.parametrize("observed", [None, float("nan"), float("inf"), 1, "future"])
@@ -73,7 +75,9 @@ def test_waiting_for_target_acknowledges_intent_without_actuation():
     records = []
     ctrl, sent, _ = controller(authorization=intent(), writer=lambda *args, **kw: records.append((args, kw)) or True)
     ctrl.watchdog_tick()
-    assert len(records) == 1 and records[0][1]["active"] is True and sent == []
+    assert len(records) == 1
+    assert records[0][1]["active"] is True
+    assert sent == []
 
 
 def test_intent_reader_refuses_previous_generation(tmp_path, monkeypatch):
@@ -88,8 +92,10 @@ def test_producer_status_has_distinct_atomic_file(tmp_path, monkeypatch):
     monkeypatch.setenv("FEATURE_STATE_PATH", str(tmp_path / "feature_state.json"))
     assert write_intent_status("rider-navigator.service", intent(), active=True)
     row = json.loads((tmp_path / "rider-navigator.service.json").read_text())
-    assert row["accepted"] is True and row["active"] is True
-    assert row["generation"] == "current" and row["observed_at"] <= time.time()
+    assert row["accepted"] is True
+    assert row["active"] is True
+    assert row["generation"] == "current"
+    assert row["observed_at"] <= time.time()
     assert not write_intent_status("../../outside", intent(), active=True)
 
 
@@ -102,7 +108,8 @@ def test_producer_restart_cannot_replay_claimed_task(tmp_path, monkeypatch):
     task["request_id"] = "new-explicit-task"
     assert write_intent_status("rider-navigator.service", task, active=True)
     row = json.loads((tmp_path / "rider-navigator.service.json").read_text())
-    assert row["instance_id"] == "restarted-process" and isinstance(row["pid"], int)
+    assert row["instance_id"] == "restarted-process"
+    assert isinstance(row["pid"], int)
 
 
 @pytest.mark.parametrize(
@@ -132,7 +139,8 @@ def test_bad_snapshot_cannot_grant_motion(tmp_path, monkeypatch, field, value):
     }
     path.write_text(json.dumps(state))
     result = snapshots.read_status()
-    assert result["can_move"] is False and result["read_only"] is True
+    assert result["can_move"] is False
+    assert result["read_only"] is True
 
 
 @pytest.mark.parametrize(
@@ -163,7 +171,8 @@ def navigator(monkeypatch, *, authorization=None, owner="navigation"):
 def test_navigator_requires_task_intent_before_start(monkeypatch):
     nav, sent, _ = navigator(monkeypatch)
     nav._consume_task_intent()
-    assert not nav.active and sent == []
+    assert not nav.active
+    assert sent == []
 
 
 def test_navigator_consumes_intent_once_and_stops_on_lost_lease(monkeypatch):
@@ -176,7 +185,8 @@ def test_navigator_consumes_intent_once_and_stops_on_lost_lease(monkeypatch):
     assert not nav.navigation_quality()["navigation_ready"]
     state["can_move"] = False
     nav._consume_task_intent()
-    assert not nav.active and sent[-1][1]["action"] == "stop"
+    assert not nav.active
+    assert sent[-1][1]["action"] == "stop"
 
 
 def test_navigator_status_failure_cannot_publish_move(monkeypatch):
@@ -212,10 +222,12 @@ def test_navigator_bad_config_has_no_partial_effect(monkeypatch, bad):
     state["state"] = "DISARMED"
     old = (nav.strategy, nav.fwd_speed, nav.turn_speed)
     nav._handle_control_command({"action": "config", "config": {"strategy": "AVOID", "fwd_speed": bad}})
-    assert (nav.strategy, nav.fwd_speed, nav.turn_speed) == old and sent == []
+    assert (nav.strategy, nav.fwd_speed, nav.turn_speed) == old
+    assert sent == []
 
 
 def test_navigator_config_is_denied_while_armed(monkeypatch):
     nav, sent, _ = navigator(monkeypatch)
     nav._handle_control_command({"action": "config", "config": {"strategy": "AVOID"}})
-    assert nav.strategy == navigation.Strategy.STOP and sent == []
+    assert nav.strategy == navigation.Strategy.STOP
+    assert sent == []

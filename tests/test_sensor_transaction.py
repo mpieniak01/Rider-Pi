@@ -50,7 +50,8 @@ def parse(data, *, address=10, length=4):
 def test_exact_axis_response_is_accepted_with_backwards_wall_clock():
     value, serial, clock = parse(frame())
     assert value["payload"] == b"\0\0\0\0"
-    assert clock.wall < 1000 and serial.timeout == serial.write_timeout == 0.03
+    assert clock.wall < 1000
+    assert serial.timeout == serial.write_timeout == 0.03
 
 
 @pytest.mark.parametrize("data", [frame(address=11), frame(payload=b"\x50"), frame(payload=b"123456")])
@@ -67,7 +68,8 @@ def test_corrupt_complete_response_is_unknown(data):
 
 def test_battery_length_is_one_payload_byte():
     value, _, _ = parse(frame(address=20, payload=b"\0"), address=20, length=1)
-    assert value["payload"] == b"\0" and value["length"] == 9
+    assert value["payload"] == b"\0"
+    assert value["length"] == 9
 
 
 def test_no_response_times_out_monotonically_while_wall_clock_moves_backwards():
@@ -110,8 +112,9 @@ def test_unbounded_timeout_property_is_refused():
         def timeout(self, value):
             pass
 
+    unsupported = Unsupported()
     with pytest.raises(RuntimeError, match="unbounded"):
-        bound_serial(Unsupported(), 0.03)
+        bound_serial(unsupported, 0.03)
 
 
 def test_sdk_hook_resets_partial_parser_and_cannot_reuse_transaction(monkeypatch):

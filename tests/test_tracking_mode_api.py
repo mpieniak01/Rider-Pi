@@ -86,10 +86,12 @@ def test_ui_calls_correct_endpoint():
     task = DEFAULT_REGISTRY["s6_tracker_module"]
     assert task.can_move is False
     schema = option_schema(task)
-    assert schema["field"] == "mode" and schema["end_value"] == "none"
+    assert schema["field"] == "mode"
+    assert schema["end_value"] == "none"
     assert {choice["value"] for choice in schema["choices"]} == {"face", "hand", "none"}
     content = Path("web/assets/operator/tasks.js").read_text()
-    assert "task.option_schema" in content and "options" in content
+    assert "task.option_schema" in content
+    assert "options" in content
     assert "/api/logic/feature/" in content
 
 

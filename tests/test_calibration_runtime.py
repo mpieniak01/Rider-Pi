@@ -59,11 +59,14 @@ def test_odometry_activation_preserves_device_motion_settings(executor):
     before = list(instance.adapter.calls)
     generation = instance.gate.generation
     ack = activate(instance)
-    assert ack["status"] == "executed" and ack["actuation"] is False
+    assert ack["status"] == "executed"
+    assert ack["actuation"] is False
     assert ack["physical_completion"] == "unverified"
     assert instance.adapter.calls == before
-    assert instance.gate.state == "DISARMED" and instance.gate.generation != generation
-    assert ack["generation"] == instance.gate.generation and ack["command_generation"] == generation
+    assert instance.gate.state == "DISARMED"
+    assert instance.gate.generation != generation
+    assert ack["generation"] == instance.gate.generation
+    assert ack["command_generation"] == generation
     assert instance.controller.limits.speed_limit == instance.controls["values"]["speed_limit"]
     assert instance.controller.limits.watchdog_s == 0.5
     assert profiles.read_active()["activated_at"] == clock.now
@@ -167,8 +170,10 @@ def test_bad_archival_odometry_profile_does_not_override_motion_settings(executo
     (profiles.storage_dir() / "revisions" / (digest + ".json")).write_text("{}")
     instance.calibration = CalibrationRuntime(instance.controller.limits)
     before = list(instance.adapter.calls)
-    assert instance.snapshot()["ready"] and arm(instance)["accepted"]
-    assert instance.gate.state == "ARMED" and instance.adapter.calls == before
+    assert instance.snapshot()["ready"]
+    assert arm(instance)["accepted"]
+    assert instance.gate.state == "ARMED"
+    assert instance.adapter.calls == before
 
 
 def test_estop_during_persistence_leaves_partial_and_inhibited(executor, monkeypatch):
@@ -187,7 +192,8 @@ def test_estop_during_persistence_leaves_partial_and_inhibited(executor, monkeyp
     with pytest.raises(ValueError, match="active_profile_pending"):
         profiles.read_active()
     assert profiles.read_active(include_pending=True)["profile_digest"] == ack["profile_digest"]
-    assert instance.calibration.profile_digest is None and not instance.snapshot()["can_move"]
+    assert instance.calibration.profile_digest is None
+    assert not instance.snapshot()["can_move"]
     assert instance.adapter.calls == before
 
 
@@ -211,8 +217,10 @@ def test_startup_load_does_not_restore_old_consent_or_ack(executor):
     estimator.update_executor_state(restored.snapshot())
     state = estimator.calibration_state()
     assert state["profile_digest"] == restored.calibration.profile_digest
-    assert state["error"] is None and state["source"] == "saved_profile"
-    assert state["activation_request_id"] is None and state["command_generation"] is None
+    assert state["error"] is None
+    assert state["source"] == "saved_profile"
+    assert state["activation_request_id"] is None
+    assert state["command_generation"] is None
 
 
 def test_live_profile_reset_and_reference_need_fresh_direct_sdk_zero(executor):
@@ -225,8 +233,11 @@ def test_live_profile_reset_and_reference_need_fresh_direct_sdk_zero(executor):
     )
     activate(instance, digest)
     estimator.update_executor_state(instance.snapshot())
-    assert estimator.calibration_digest == digest and not estimator.reference_verified
-    assert estimator.home is None and estimator.imu is None and estimator.output is None
+    assert estimator.calibration_digest == digest
+    assert not estimator.reference_verified
+    assert estimator.home is None
+    assert estimator.imu is None
+    assert estimator.output is None
     assert estimator.continuity_error is None
     assert not estimator.set_reference(reference_id="new", operator_consent=True)
     assert not estimator.update_output(instance.sdk_output())  # old startup zero
@@ -255,7 +266,9 @@ def test_profile_digest_changes_frame_even_reused_measurement_label(executor):
     activate(instance, second)
     estimator.update_executor_state(instance.snapshot())
     assert estimator.get_pose()["calibration_id"] == second
-    assert not estimator.reference_verified and estimator.reference_id is None and estimator.home is None
+    assert not estimator.reference_verified
+    assert estimator.reference_id is None
+    assert estimator.home is None
 
 
 @pytest.mark.parametrize("failure", ["armed", "future", "wrong_instance", "missing", "bad_ack", "corrupt"])
@@ -280,7 +293,8 @@ def test_odom_rejects_unconfirmed_or_unavailable_revision(executor, failure):
         (profiles.storage_dir() / "revisions" / (digest + ".json")).write_text("{}")
     estimator.update_executor_state(state)
     assert estimator.calibration_state()["error"]
-    assert not estimator.reference_verified and not estimator.get_pose()["data_ready"]
+    assert not estimator.reference_verified
+    assert not estimator.get_pose()["data_ready"]
 
 
 def test_reference_status_reports_exact_profile_digest(executor, monkeypatch, tmp_path):
@@ -303,7 +317,8 @@ def test_rejected_attempt_preserves_successful_transaction(executor):
     good = activate(instance)
     bad = activate(instance, "f" * 64)
     assert bad["status"] == "rejected"
-    assert instance.calibration.last_ack == bad and instance.calibration.applied_ack == good
+    assert instance.calibration.last_ack == bad
+    assert instance.calibration.applied_ack == good
     estimator = estimate(clock)
     estimator.update_executor_state(instance.snapshot())
     assert estimator.calibration_state()["error"] is None
@@ -315,7 +330,8 @@ def test_configuration_confirmation_separate_from_sensor_failure(executor):
     activate(instance)
     instance.samples.rows.clear()
     state = instance.snapshot()
-    assert state["error"] and not state["ready"]
+    assert state["error"]
+    assert not state["ready"]
     estimator = estimate(clock)
     estimator.update_executor_state(state)
     assert estimator.calibration_state()["error"] is None
@@ -362,7 +378,8 @@ def test_out_of_order_state_never_reloads_old_profile(executor):
     assert estimator.calibration_digest == second
     estimator.update_executor_state(old)
     assert estimator.calibration_state()["error"] == "motion_profile_unconfirmed"
-    assert estimator.calibration == {} and not estimator.get_pose()["data_ready"]
+    assert estimator.calibration == {}
+    assert not estimator.get_pose()["data_ready"]
     estimator.update_executor_state(instance.snapshot())
     assert estimator.calibration_digest == second
 
@@ -397,8 +414,10 @@ def test_disk_failure_no_false_applied_or_sdk(executor, monkeypatch):
     monkeypatch.setattr(profiles, "write_active", failed)
     before = list(instance.adapter.calls)
     ack = activate(instance)
-    assert ack["status"] == "rejected" and instance.calibration.applied_ack is None
-    assert instance.calibration.profile_digest is None and profiles.read_active() is None
+    assert ack["status"] == "rejected"
+    assert instance.calibration.applied_ack is None
+    assert instance.calibration.profile_digest is None
+    assert profiles.read_active() is None
     assert instance.adapter.calls == before
 
 
@@ -449,9 +468,11 @@ def test_actual_runtime_reference_api_pipeline(executor, monkeypatch, tmp_path, 
     status = calibration_api.snapshot()
     assert status["status"] == "applied", status
     assert status["confirmation"] == ("loaded_from_saved" if mode == "saved" else "executed")
-    assert not status["model_ready"] and status["physical_completion"] == "unverified"
+    assert not status["model_ready"]
+    assert status["physical_completion"] == "unverified"
     if mode == "sensor_error":
-        assert status["motion"]["error"] and not status["motion"]["ready"]
+        assert status["motion"]["error"]
+        assert not status["motion"]["ready"]
     clock.now += 4
     assert calibration_api.snapshot()["status"] == "partial"
 
@@ -495,10 +516,14 @@ def test_reference_bound_to_exact_confirmed_runtime_profile(executor, monkeypatc
         estimator.profile_binding.observed_at -= 4
     ack = reference.apply(row)
     if case == "valid":
-        assert ack["status"] == "executed" and ack["profile_digest"] == digest
-        assert estimator.reference_id == row["request_id"] and estimator.x == 5
+        assert ack["status"] == "executed"
+        assert ack["profile_digest"] == digest
+        assert estimator.reference_id == row["request_id"]
+        assert estimator.x == 5
     else:
-        assert ack["status"] == "rejected" and ack["actuation"] is False
+        assert ack["status"] == "rejected"
+        assert ack["actuation"] is False
+        # Actual reference state is on the left; before is the expected snapshot.
         assert (estimator.reference_verified, estimator.reference_id, estimator.home) == before
 
 
@@ -551,5 +576,6 @@ def test_same_hash_reapply_requires_current_consumer_transaction(executor, monke
         theta=0,
     )
     ack = reference.apply(row)
-    assert ack["status"] == "executed" and ack["profile_digest"] == digest
+    assert ack["status"] == "executed"
+    assert ack["profile_digest"] == digest
     assert estimator.reference_id == row["request_id"]
