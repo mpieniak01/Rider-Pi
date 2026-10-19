@@ -82,7 +82,9 @@ def test_json_contract_and_private_permissions(persistence):
         assert data["device_id"] == "../payload-is-data"
         assert data["command"] == "fixture-command"
         assert data["params"] == {"text": "../payload-is-data"}
-        assert data["ok"] is True and data["response"] == "../payload-is-data" and data["error"] is None
+        assert data["ok"] is True
+        assert data["response"] == "../payload-is-data"
+        assert data["error"] is None
         assert isinstance(data["timestamp"], float)
     persistence.warning.assert_not_called()
     assert_private(persistence)
