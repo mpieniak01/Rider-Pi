@@ -15,6 +15,7 @@ from common.service_catalog import BOOT_UNITS, UNIT_CATALOG
 
 ROOT = Path(__file__).resolve().parents[1]
 DESTINATION = Path("/etc/systemd/system")
+MANIFEST_FILENAME = "manifest.json"
 
 
 def sources(root: Path = ROOT) -> dict[str, Path]:
@@ -44,6 +45,46 @@ def _systemctl(*args: str) -> None:
     subprocess.run(["systemctl", *args], check=True, timeout=20)
 
 
+def _save_manifest(backup, manifest):
+    (backup / MANIFEST_FILENAME).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def _backup_units(rows, backup):
+    for row in rows:
+        target = Path(row["installed_path"])
+        if target.exists() or target.is_symlink():
+            shutil.copy2(target, backup / row["unit"], follow_symlinks=False)
+
+
+def _link_units(rows, backup, manifest):
+    for row in rows:
+        target = Path(row["installed_path"])
+        if row["operation"] != "keep":
+            temporary = target.with_name(target.name + ".rider-new")
+            temporary.symlink_to(row["source"])
+            temporary.replace(target)
+            manifest["units"].append(row)
+            _save_manifest(backup, manifest)
+
+
+def _consolidate_boot(rows, backup, manifest):
+    baseline = set(BOOT_UNITS)
+    for unit in sorted(UNIT_CATALOG):
+        proc = subprocess.run(["systemctl", "is-enabled", unit], capture_output=True, text=True, check=False, timeout=4)
+        previous = proc.stdout.strip()
+        desired = "enable" if unit in baseline else "disable"
+        if (desired == "enable" and previous == "enabled") or (desired == "disable" and previous != "enabled"):
+            continue
+        manifest["boot_changes"].append({"unit": unit, "previous": previous, "action": desired})
+        _save_manifest(backup, manifest)
+        _systemctl("--no-reload", desired, unit)
+    # disable may remove a linked unit file; restore canonical availability.
+    for row in rows:
+        target = Path(row["installed_path"])
+        if not target.exists() and not target.is_symlink():
+            target.symlink_to(row["source"])
+
+
 def apply(rows: list[dict], *, destination: Path = DESTINATION, consolidate_boot: bool = False) -> Path:
     if destination.resolve() != DESTINATION or os.geteuid() != 0:
         raise ValueError("apply requires root and /etc/systemd/system")
@@ -52,40 +93,13 @@ def apply(rows: list[dict], *, destination: Path = DESTINATION, consolidate_boot
     backup = destination / ("_rider_catalog_" + str(time.time_ns()))
     backup.mkdir(mode=0o700)
     manifest = {"units": [], "boot_changes": []}
-    for row in rows:
-        target = Path(row["installed_path"])
-        if target.exists() or target.is_symlink():
-            shutil.copy2(target, backup / row["unit"], follow_symlinks=False)
-    (backup / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    for row in rows:
-        target = Path(row["installed_path"])
-        if row["operation"] != "keep":
-            temporary = target.with_name(target.name + ".rider-new")
-            temporary.symlink_to(row["source"])
-            temporary.replace(target)
-            manifest["units"].append(row)
-            (backup / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    _backup_units(rows, backup)
+    _save_manifest(backup, manifest)
+    _link_units(rows, backup, manifest)
     # Boot policy is a separate explicit migration. Never --now/start/restart.
     if consolidate_boot:
-        baseline = set(BOOT_UNITS)
-        for unit in sorted(UNIT_CATALOG):
-            proc = subprocess.run(
-                ["systemctl", "is-enabled", unit], capture_output=True, text=True, check=False, timeout=4
-            )
-            previous = proc.stdout.strip()
-            desired = "enable" if unit in baseline else "disable"
-            if (desired == "enable" and previous == "enabled") or (desired == "disable" and previous != "enabled"):
-                continue
-            change = {"unit": unit, "previous": previous, "action": desired}
-            manifest["boot_changes"].append(change)
-            (backup / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-            _systemctl("--no-reload", desired, unit)
-        # disable may remove a linked unit file; restore canonical availability.
-        for row in rows:
-            target = Path(row["installed_path"])
-            if not target.exists() and not target.is_symlink():
-                target.symlink_to(row["source"])
-    (backup / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        _consolidate_boot(rows, backup, manifest)
+    _save_manifest(backup, manifest)
     _systemctl("daemon-reload")
     return backup
 
@@ -94,7 +108,7 @@ def rollback(backup: Path) -> None:
     resolved = backup.resolve()
     if os.geteuid() != 0 or resolved.parent != DESTINATION or not resolved.name.startswith("_rider_catalog_"):
         raise ValueError("rollback requires root and a catalog backup in /etc/systemd/system")
-    manifest = json.loads((resolved / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((resolved / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     for row in manifest["units"]:
         target = DESTINATION / row["unit"]
         if not target.is_symlink() or os.readlink(target) != row["source"]:
