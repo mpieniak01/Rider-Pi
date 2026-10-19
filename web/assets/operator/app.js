@@ -4,7 +4,7 @@ import { CameraPower } from './camera-power.js?v=overview-vision-2';
 import { Posture } from './posture.js?v=posture-1';
 import { ManualSettings } from './manual-settings.js?v=motion-curves-14';
 import { ControlCamera } from './control-camera.js?v=camera-pipeline-1';
-import { initI18n } from '/web/assets/i18n.js';
+import { initI18n } from '../i18n.js';
 import { SafetyPanel } from './safety.js?v=motion-descriptors-9';
 import { Tasks } from './tasks.js?v=compact-calibration-4b';
 import { Devices } from './devices.js?v=camera-preview-1';
@@ -45,7 +45,7 @@ if (page === 'calibration') calibration = new Calibration(safety);
 if (page === 'devices') mounted.push(new Devices(safety));
 if (page === 'system') system = new System(safety);
 if (page === 'navigation') { mounted.push(new RemoteNavigation(safety)); tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
-if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); }
+if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); void chat.loadProviders(); }
 if (page === 'view') {
   overview = new Overview(safety);
     overview.pipeline = undefined;

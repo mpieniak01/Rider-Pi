@@ -102,19 +102,23 @@ export class SafetyPanel {
       request_id: requestId('web'),
       ts: this.commandTime(), ttl_ms: 500 };
   }
-  async send(action, params = {}, endpoint = '/api/control', owner = 'manual') {
+  commandParams(action,params) {
     if (action === 'move' && this.controls) params = this.controls.pulse(params.direction);
     if (['turn', 'height', 'balance', 'stabilization', 'action'].includes(action) && this.controls) params.settings_revision = this.controls.state?.revision;
-    const exempt = ['stop', 'disarm', 'estop'].includes(action);
-    if (action === 'arm' && params.arming_mode !== 'operator' && (!Number.isFinite(params.lease_s) || params.lease_s <= 0 || params.lease_s > 30))
-      throw new Error('invalid_lease');
+    return params;
+  }
+  validatePulse(action,params) {
     if (['move', 'turn'].includes(action) && params.device_settings !== true && (![params.vx, params.yaw, params.duration].every(Number.isFinite)
       || Math.abs(params.vx) > 1 || Math.abs(params.yaw) > 1 || params.duration < .01 || params.duration > .25)) throw new Error(tr('Nieprawidłowy impuls: wartości -1–1, czas 0.01–0.25 s', 'Invalid pulse: values -1–1, duration 0.01–0.25 s'));
+  }
+  validateCommand(action,params) {
+    if (action === 'arm' && params.arming_mode !== 'operator' && (!Number.isFinite(params.lease_s) || params.lease_s <= 0 || params.lease_s > 30))
+      throw new Error('invalid_lease');
+    this.validatePulse(action,params);
     if (action === 'height' && (!Number.isInteger(params.height) || params.height < 75 || params.height > 115)) throw new Error(tr('Wysokość musi być liczbą całkowitą 75–115', 'Height must be an integer 75–115'));
     if (action === 'action' && (!Number.isInteger(params.action_id) || params.action_id < 1 || params.action_id > 255)) throw new Error(tr('ID akcji musi być liczbą całkowitą 1–255', 'Action ID must be an integer 1–255'));
-    if (this.mutating && !exempt) throw new Error(tr('Poczekaj na odpowiedź poprzedniego żądania', 'Wait for the previous request'));
-    if (!this.controlsActive() && !['arm', 'clear_estop', 'stop', 'disarm', 'estop'].includes(action)) throw new Error('Motion controls are unavailable on this view');
-    if (!exempt) {
+  }
+  async prepareSend(action,params) {
       this.mutating = true; this.render();
       try {
         await this.prepare(action);
@@ -126,11 +130,16 @@ export class SafetyPanel {
         }
       }
       catch (error) { this.mutating = false; this.render(); throw error; }
-    }
+    return params;
+  }
+  commandForSend(action,params,owner,exempt) {
     let command;
     try {
       command = exempt ? { action, source: owner, request_id: requestId('web') } : this.envelope(action, params, owner);
     } catch (error) { if (!exempt) this.mutating = false; this.render(); throw error; }
+    return command;
+  }
+  recordCommand(command,exempt) {
     if (exempt) { this.held.stop(); this.toggleEpoch++; this.revoke(); this.render(); }
     const submittedAt = this.commandTime();
     const entry = { command, submittedAt, status: 'sending' };
@@ -140,11 +149,25 @@ export class SafetyPanel {
     }
     if (!exempt) this.mutating = true;
     this.renderHistory();
+    return entry;
+  }
+  observeCommandResult(entry,result) {
+    entry.status = result.status === 202 || result.data.pending ? 'pending' : 'awaiting_ack';
+    if (result.data.safety) this.update(result.data.safety);
+    if (result.data.ack) this.ack(result.data.ack, result.status === 200 && result.data.confirmed === true && result.data.pending !== true);
+  }
+  async send(action, params = {}, endpoint = '/api/control', owner = 'manual') {
+    params=this.commandParams(action,params);
+    const exempt = ['stop', 'disarm', 'estop'].includes(action);
+    this.validateCommand(action,params);
+    if (this.mutating && !exempt) throw new Error(tr('Poczekaj na odpowiedź poprzedniego żądania', 'Wait for the previous request'));
+    if (!this.controlsActive() && !['arm', 'clear_estop', 'stop', 'disarm', 'estop'].includes(action)) throw new Error('Motion controls are unavailable on this view');
+    if (!exempt) params=await this.prepareSend(action,params);
+    const command=this.commandForSend(action,params,owner,exempt);
+    const entry=this.recordCommand(command,exempt);
     try {
       const result = await request(endpoint, { method: 'POST', body: command });
-      entry.status = result.status === 202 || result.data.pending ? 'pending' : 'awaiting_ack';
-      if (result.data.safety) this.update(result.data.safety);
-      if (result.data.ack) this.ack(result.data.ack, result.status === 200 && result.data.confirmed === true && result.data.pending !== true);
+      this.observeCommandResult(entry,result);
       return result.data;
     } catch (error) {
       entry.status = error.status ? 'rejected' : 'unknown'; entry.reason = error.message;

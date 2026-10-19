@@ -1,4 +1,4 @@
-import { initI18n, applyDom, t } from '/web/assets/i18n.js';
+import { initI18n, applyDom, t } from './i18n.js';
 
 if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
 

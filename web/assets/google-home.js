@@ -1,0 +1,464 @@
+import { initI18n, applyDom, t } from './i18n.js';
+
+  // --- Inicjalizacja języka
+  const urlLang = new URLSearchParams(location.search).get('lang');
+  const saved = localStorage.getItem('lang');
+  const browser = (navigator.language || '').slice(0,2).toLowerCase();
+  const pick = (v)=> v && v.toLowerCase().startsWith('en') ? 'en' : (v && v.toLowerCase().startsWith('pl') ? 'pl' : null);
+  const lang = pick(urlLang) || pick(saved) || pick(browser) || 'pl';
+  if (urlLang) localStorage.setItem('lang', lang);
+  await initI18n(lang);
+  applyDom();
+  function syncLangMeta(code){
+    document.documentElement.setAttribute('lang', code);
+    document.title = t('home.page_title');
+  }
+  syncLangMeta(lang);
+  window.addEventListener('dashboard:langchange', (ev) => {
+    const next = ev?.detail?.lang;
+    if(next) syncLangMeta(next);
+  });
+
+  // --- Helper functions
+  const qs = (s)=>document.querySelector(s);
+  
+  // Device control constants
+  const DEFAULT_COLOR_TEMP_K = 3000;
+  const DEFAULT_RGB_COLOR = 0xFFFFFF;
+  const DEFAULT_TEMPERATURE_C = 20;
+  const TEMP_INCREMENT_C = 0.5;
+  
+  function showStatus(msg, type='ok'){
+    const statusMsg = qs('#statusMsg');
+    statusMsg.textContent = msg;
+    statusMsg.className = `c-status-msg ${type}`;
+    statusMsg.classList.remove('hidden');
+    setTimeout(()=> statusMsg.classList.add('hidden'), 5000);
+  }
+
+  async function httpGet(url){
+    const r = await fetch(url, {cache:'no-store'});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  }
+
+  async function httpPost(url, body){
+    const r = await fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)
+    });
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  }
+
+  // --- Check auth status
+  async function checkAuth(){
+    try{
+      const result = await httpGet('/api/home/status');
+      const isAuth = result.authenticated;
+      
+      const authBadge = qs('#authBadge');
+      const authSection = qs('#authSection');
+      const devicesSection = qs('#devicesSection');
+      
+      if(isAuth){
+        authBadge.textContent = t('home.auth_ok');
+        authBadge.className = 'c-pill ok';
+        authSection.classList.add('hidden');
+        devicesSection.classList.remove('hidden');
+        loadDevices();
+      } else {
+        authBadge.textContent = t('home.auth_required');
+        authBadge.className = 'c-pill warn';
+        authSection.classList.remove('hidden');
+        devicesSection.classList.add('hidden');
+      }
+    }catch(e){
+      const authBadge = qs('#authBadge');
+      authBadge.textContent = t('home.auth_error');
+      authBadge.className = 'c-pill err';
+      showStatus(t('home.error_check_auth', {msg: e.message}), 'err');
+    }
+  }
+
+  // --- Load devices
+  async function loadDevices(){
+    const devicesList = qs('#devicesList');
+    devicesList.innerHTML = `<div class="muted"><span class="spinner"></span> ${t('meta.loading')}</div>`;
+    
+    try{
+      const result = await httpGet('/api/home/devices');
+      
+      if(!result.ok){
+        throw new Error(result.error || 'Failed to load devices');
+      }
+      
+      const devices = result.devices || [];
+      
+      if(devices.length === 0){
+        devicesList.innerHTML = `<div class="note" data-i18n="home.no_devices">${t('home.no_devices')}</div>`;
+        return;
+      }
+      
+      devicesList.innerHTML = '';
+      devices.forEach(device => renderDevice(device));
+      
+    }catch(e){
+      devicesList.innerHTML = `<div class="err">${t('home.error_load_devices', {msg: e.message})}</div>`;
+    }
+  }
+
+  function colorControls(device,colorTrait){
+    let html = '';
+      
+      // Color temperature
+      if(colorTrait.temperatureK !== undefined){
+        const currentTemp = colorTrait.temperatureK || DEFAULT_COLOR_TEMP_K;
+        html += `
+          <div class="control-row">
+            <label class="control-label">
+              <span>${t('home.color_temperature')}:</span>
+              <input type="range" min="2000" max="6500" value="${currentTemp}" 
+                     data-action="color-temp" data-device="${escapeHtml(device.name)}" />
+              <span class="color-temp-value">${currentTemp}K</span>
+            </label>
+          </div>
+        `;
+      }
+      
+      // Color spectrum (RGB)
+      if(colorTrait.spectrumRgb !== undefined){
+        const rgbValue = colorTrait.spectrumRgb || DEFAULT_RGB_COLOR;
+        const hexColor = '#' + rgbValue.toString(16).padStart(6, '0');
+        html += `
+          <div class="control-row">
+            <label class="control-label">
+              <span>${t('home.color')}:</span>
+              <input type="color" value="${hexColor}" 
+                     data-action="color-rgb" data-device="${escapeHtml(device.name)}" />
+            </label>
+          </div>
+        `;
+      }
+    return html;
+  }
+
+  function temperatureControls(device,tempTrait){
+    let html = '';
+      const currentSetpoint = tempTrait.thermostatTemperatureSetpoint || DEFAULT_TEMPERATURE_C;
+      const currentAmbient = tempTrait.thermostatTemperatureAmbient;
+      
+      html += `
+        <div class="control-row">
+          <label class="control-label">
+            <span>${t('home.temperature_setpoint')}:</span>
+            <button class="c-btn-sm" data-action="temp-down" data-device="${escapeHtml(device.name)}">−</button>
+            <span class="temp-value">${currentSetpoint}°C</span>
+            <button class="c-btn-sm" data-action="temp-up" data-device="${escapeHtml(device.name)}">+</button>
+          </label>
+        </div>
+      `;
+      
+      if(currentAmbient !== undefined){
+        html += `
+          <div class="control-row">
+            <span class="muted">${t('home.temperature_ambient')}: ${currentAmbient}°C</span>
+          </div>
+        `;
+      }
+      
+      // Thermostat mode
+      const availableModes = tempTrait.availableThermostatModes || [];
+      const currentMode = tempTrait.thermostatMode || 'off';
+      if(availableModes.length > 0){
+        html += `
+          <div class="control-row">
+            <label class="control-label">
+              <span>${t('home.thermostat_mode')}:</span>
+              <select data-action="thermostat-mode" data-device="${escapeHtml(device.name)}">
+        `;
+        availableModes.forEach(mode => {
+          const selected = mode === currentMode ? 'selected' : '';
+          html += `<option value="${mode}" ${selected}>${t('home.mode_' + mode)}</option>`;
+        });
+        html += `
+              </select>
+            </label>
+          </div>
+        `;
+      }
+    return html;
+  }
+
+  function startStopControls(device,startStopTrait){
+    let html='';
+      const isRunning = startStopTrait.isRunning || false;
+      const isPaused = startStopTrait.isPaused || false;
+      
+      html += `
+        <div class="control-row">
+          <button class="c-btn-sm" data-action="start" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_start')}
+          </button>
+          <button class="c-btn-sm" data-action="stop" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_stop')}
+          </button>
+          <button class="c-btn-sm" data-action="pause" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_pause')}
+          </button>
+          <span class="muted">(${isRunning ? (isPaused ? 'PAUSED' : 'RUNNING') : 'STOPPED'})</span>
+        </div>
+      `;
+    return html;
+  }
+
+  // --- Render a device
+  function renderDevice(device){
+    const devicesList = qs('#devicesList');
+    
+    const name = (device.name || 'Unknown Device').split('/').pop() || 'Unknown Device';
+    const type = device.type || 'Unknown';
+    const traits = device.traits || {};
+    
+    const card = document.createElement('div');
+    card.className = 'device-card c-card';
+    
+    let html = `
+      <div class="device-name">${escapeHtml(name)}</div>
+      <div class="device-type">${escapeHtml(type)}</div>
+      <div class="device-controls">
+    `;
+    
+    // OnOff trait
+    if(traits['sdm.devices.traits.OnOff']){
+      const currentState = traits['sdm.devices.traits.OnOff'].on ? 'ON' : 'OFF';
+      html += `
+        <div class="control-row">
+          <button class="c-btn-sm" data-action="on" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_on')}
+          </button>
+          <button class="c-btn-sm" data-action="off" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_off')}
+          </button>
+          <span class="muted">(${currentState})</span>
+        </div>
+      `;
+    }
+    
+    // Brightness trait
+    if(traits['sdm.devices.traits.Brightness']){
+      const currentBrightness = traits['sdm.devices.traits.Brightness'].brightness || 0;
+      html += `
+        <div class="control-row">
+          <label class="control-label">
+            <span>${t('home.brightness')}:</span>
+            <input type="range" min="0" max="100" value="${currentBrightness}" 
+                   data-action="brightness" data-device="${escapeHtml(device.name)}" />
+            <span class="brightness-value">${currentBrightness}%</span>
+          </label>
+        </div>
+      `;
+    }
+    
+    if(traits['sdm.devices.traits.ColorSetting'])html += colorControls(device,traits['sdm.devices.traits.ColorSetting']);
+
+    if(traits['sdm.devices.traits.TemperatureSetting'])html += temperatureControls(device,traits['sdm.devices.traits.TemperatureSetting']);
+
+    if(traits['sdm.devices.traits.StartStop'])html += startStopControls(device,traits['sdm.devices.traits.StartStop']);
+
+    // Dock trait
+    if(traits['sdm.devices.traits.Dock']){
+      html += `
+        <div class="control-row">
+          <button class="c-btn-sm" data-action="dock" data-device="${escapeHtml(device.name)}">
+            ${t('home.btn_dock')}
+          </button>
+        </div>
+      `;
+    }
+    
+    html += `</div>`;
+    card.innerHTML = html;
+    
+    // Add event listeners
+    card.querySelectorAll('[data-action="on"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.OnOff', {on: true}));
+    });
+    
+    card.querySelectorAll('[data-action="off"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.OnOff', {on: false}));
+    });
+    
+    card.querySelectorAll('[data-action="brightness"]').forEach(slider => {
+      slider.addEventListener('change', (e)=> {
+        const brightness = parseInt(e.target.value);
+        sendCommand(device.name, 'action.devices.commands.BrightnessAbsolute', {brightness});
+      });
+      
+      slider.addEventListener('input', (e)=> {
+        const valueSpan = slider.parentElement.querySelector('.brightness-value');
+        if(valueSpan) valueSpan.textContent = e.target.value + '%';
+      });
+    });
+    
+    // Color temperature
+    card.querySelectorAll('[data-action="color-temp"]').forEach(slider => {
+      slider.addEventListener('change', (e)=> {
+        const temperatureK = parseInt(e.target.value);
+        sendCommand(device.name, 'action.devices.commands.ColorAbsolute', {color: {temperatureK}});
+      });
+      
+      slider.addEventListener('input', (e)=> {
+        const valueSpan = slider.parentElement.querySelector('.color-temp-value');
+        if(valueSpan) valueSpan.textContent = e.target.value + 'K';
+      });
+    });
+    
+    // Color RGB
+    card.querySelectorAll('[data-action="color-rgb"]').forEach(picker => {
+      picker.addEventListener('change', (e)=> {
+        const hex = e.target.value.substring(1); // Remove #
+        const spectrumRgb = parseInt(hex, 16);
+        sendCommand(device.name, 'action.devices.commands.ColorAbsolute', {color: {spectrumRgb}});
+      });
+    });
+    
+    // Temperature controls
+    card.querySelectorAll('[data-action="temp-up"]').forEach(btn => {
+      btn.addEventListener('click', ()=> {
+        const valueSpan = btn.parentElement.querySelector('.temp-value');
+        if(valueSpan){
+          const currentTemp = parseFloat(valueSpan.textContent) || DEFAULT_TEMPERATURE_C;
+          const newTemp = currentTemp + TEMP_INCREMENT_C;
+          sendCommand(device.name, 'action.devices.commands.ThermostatTemperatureSetpoint', {thermostatTemperatureSetpoint: newTemp});
+        }
+      });
+    });
+    
+    card.querySelectorAll('[data-action="temp-down"]').forEach(btn => {
+      btn.addEventListener('click', ()=> {
+        const valueSpan = btn.parentElement.querySelector('.temp-value');
+        if(valueSpan){
+          const currentTemp = parseFloat(valueSpan.textContent) || DEFAULT_TEMPERATURE_C;
+          const newTemp = currentTemp - TEMP_INCREMENT_C;
+          sendCommand(device.name, 'action.devices.commands.ThermostatTemperatureSetpoint', {thermostatTemperatureSetpoint: newTemp});
+        }
+      });
+    });
+    
+    // Thermostat mode
+    card.querySelectorAll('[data-action="thermostat-mode"]').forEach(select => {
+      select.addEventListener('change', (e)=> {
+        const thermostatMode = e.target.value;
+        sendCommand(device.name, 'action.devices.commands.ThermostatSetMode', {thermostatMode});
+      });
+    });
+    
+    // Start/Stop/Pause
+    card.querySelectorAll('[data-action="start"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.StartStop', {start: true}));
+    });
+    
+    card.querySelectorAll('[data-action="stop"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.StartStop', {start: false}));
+    });
+    
+    card.querySelectorAll('[data-action="pause"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.PauseUnpause', {pause: true}));
+    });
+    
+    // Dock
+    card.querySelectorAll('[data-action="dock"]').forEach(btn => {
+      btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.Dock', {}));
+    });
+    
+    devicesList.appendChild(card);
+  }
+
+  // --- Send command to device
+  async function sendCommand(deviceId, command, params){
+    try{
+      showStatus(t('home.sending_command'), 'ok');
+      
+      const result = await httpPost('/api/home/command', {
+        deviceId,
+        command,
+        params
+      });
+      
+      if(!result.ok){
+        throw new Error(result.error || 'Command failed');
+      }
+      
+      showStatus(t('home.command_success'), 'ok');
+      
+      // Refresh devices after a short delay
+      setTimeout(()=> loadDevices(), 1500);
+      
+    }catch(e){
+      showStatus(t('home.error_send_command', {msg: e.message}), 'err');
+    }
+  }
+
+  // --- Utility
+  function escapeHtml(text){
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  async function handleAuth(button){
+    if(!button) return;
+    const originalText = button.textContent;
+    try {
+      button.disabled = true;
+      button.textContent = `${t('meta.loading')}...`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+      const response = await fetch('/api/home/auth', {
+        method: 'POST',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const result = await response.json().catch(() => ({}));
+
+      if (response.ok && result.ok) {
+        showStatus(t('home.auth_success'), 'ok');
+        await checkAuth();
+      } else {
+        throw new Error(result.error || 'Authentication failed');
+      }
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        showStatus(t('home.error_timeout'), 'err');
+      } else {
+        showStatus(t('home.error_auth', {msg: e.message}), 'err');
+      }
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+
+  document.querySelectorAll('[data-auth-trigger]').forEach(btn => {
+    btn.addEventListener('click', ()=> handleAuth(btn));
+  });
+
+  qs('#btnRefresh').addEventListener('click', ()=> loadDevices());
+
+  // --- Check for auth success callback
+  const authParam = new URLSearchParams(location.search).get('auth');
+  if(authParam === 'success'){
+    // Remove query param from URL
+    window.history.replaceState({}, '', location.pathname);
+    showStatus(t('home.auth_success'), 'ok');
+  }
+
+  // --- Initialize
+  checkAuth();

@@ -1,6 +1,10 @@
 import { catalogKnown, taskCanStart, nowSeconds } from './model.js';
 import { request, poll } from './transport.js';
 import { el, pill, freshPill, statusLabel, button, kv, tr, ageLabel, ageStamp, text, showError, rawDetails } from './ui.js';
+function taskRequestStatus(status,data) {
+  if(status === 202 || data.pending)return 'pending';
+  return data.ok === true ? 'observed' : 'rejected';
+}
 export class Tasks {
   constructor(safety, target = 'task-list', filter = () => true) {
     this.safety = safety; this.target = document.getElementById(target); this.filter = filter;
@@ -21,6 +25,15 @@ export class Tasks {
     select.addEventListener('change', () => this.options.set(task.name, { [schema.field]: select.value }));
     label.append(select); return label;
   }
+  async attachMotionEnvelope(task,body) {
+    // Metadata is generated exactly once at the operator's click.
+    this.busy.add(task.name);
+    try {
+      await this.safety.prepare();
+      const envelope = this.safety.envelope('move', {}, task.motion_owner);
+      for (const key of ['generation', 'seq', 'source', 'ts', 'ttl_ms', 'request_id']) body[key] = envelope[key];
+    } catch (error) { this.busy.delete(task.name); this.render(); throw error; }
+  }
   async change(task, enabled) {
     if (this.busy.has(task.name)) return;
     if (!catalogKnown(this.catalog) || (enabled && !taskCanStart(task, this.catalog, this.safety.state))) return;
@@ -28,19 +41,13 @@ export class Tasks {
     if (enabled && task.option_schema?.end_value === options[task.option_schema.field]) enabled = false;
     const body = { enabled, options };
     if (enabled && task.can_move) {
-      // Metadata is generated exactly once at the operator's click.
-      this.busy.add(task.name);
-      try {
-        await this.safety.prepare();
-        const envelope = this.safety.envelope('move', {}, task.motion_owner);
-        for (const key of ['generation', 'seq', 'source', 'ts', 'ttl_ms', 'request_id']) body[key] = envelope[key];
-      } catch (error) { this.busy.delete(task.name); this.render(); throw error; }
+      await this.attachMotionEnvelope(task,body);
     }
     this.busy.add(task.name); this.results.set(task.name, { status: 'pending', submitted_at: nowSeconds() }); this.render();
     try {
       const { data, status } = await request(`/api/logic/feature/${encodeURIComponent(task.name)}`, { method: 'POST', body, timeout: 20000 });
       // Service activation is not an actuator completion acknowledgement.
-      this.results.set(task.name, { status: status === 202 || data.pending ? 'pending' : data.ok === true ? 'observed' : 'rejected', data });
+      this.results.set(task.name, { status: taskRequestStatus(status,data), data });
       text('operator-message', task.can_move ? tr('Odpowiedź celu odebrana. Ruch wymaga obserwacji operatora.', 'Goal response received. Motion requires operator observation.') : tr('Odpowiedź celu odebrana. Usługi wspólne pozostają dla pozostałych celów.', 'Goal response received. Shared services remain for other goals.'));
     } catch (error) { this.results.set(task.name, { status: error.status ? 'rejected' : 'unknown', data: error.data, error: error.message }); showError(error); }
     finally { this.busy.delete(task.name); this.render(); void this.poller.refresh(); void this.safety.poller.refresh(); }

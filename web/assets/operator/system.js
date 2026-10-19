@@ -2,6 +2,76 @@ import { serviceActionBlock } from './service-actions.js';
 import { catalogKnown, fresh, displayValue } from './model.js';
 import { request, poll } from './transport.js';
 import { el, kv, freshPill, button, details, tr, ageLabel, ageStamp, text, showError, rawDetails } from './ui.js';
+function serviceSummary(row,valid) {
+  const card = el('article', 'c-card');
+  const identity = `${row.host || 'pi'}:${row.unit}`;
+  const current = valid && fresh(row, 10) && (row.load_state ?? row.load) === 'loaded' && !row.error;
+  card.append(el('h3', '', row.label || row.unit), freshPill(row, current ? row.active_state || row.active || 'unknown' : 'unknown', current && (row.active_state ?? row.active) === 'active' ? 'ok' : row.error || (row.active_state ?? row.active) === 'failed' ? 'err' : 'warn'),
+    kv([[tr('Jednostka', 'Unit'), row.unit], [tr('Źródło', 'Source'), row.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(row, 10)],
+      [tr('Konsumenci', 'Consumers'), (row.consumers || []).join(', ')], [tr('Zależności', 'Dependencies'), (row.dependencies || []).join(', ')],
+      [tr('Powód / błąd', 'Reason / error'), row.error || row.reason || row.sub_state || row.sub], [tr('Autostart', 'Autostart'), (row.unit_file_state ?? row.enabled)]]));
+  return {card,identity};
+}
+function appendServiceActions(panel,card,row) {
+  const actions = el('div', 'operator-row');
+  for (const action of ['start', 'stop', 'restart']) {
+    const reason = serviceActionBlock(row, action, panel);
+    const label = { start: tr('Uruchom', 'Start'), stop: tr('Zatrzymaj', 'Stop'), restart: tr('Uruchom ponownie', 'Restart') }[action];
+    const control = button(label, () => panel.action(row, action).catch(showError), Boolean(reason));
+    if (reason) control.title = panel.blockLabel(reason);
+    actions.append(control);
+  }
+  card.append(actions);
+  const reasons = [...new Set(['start', 'stop', 'restart'].map(action => serviceActionBlock(row, action, panel)).filter(Boolean))];
+  if (reasons.length) card.append(el('p', 'operator-muted', reasons.map(reason => panel.blockLabel(reason)).join(' · ')));
+}
+function appendAutostart(panel,card,row,identity) {
+  const autostart = el('div', 'operator-row');
+  autostart.append(el('span', '', tr('Osobna zmiana autostartu:', 'Separate autostart change:')));
+  for (const action of ['enable', 'disable']) {
+    const reason = serviceActionBlock(row, action, panel);
+    const control = button(action === 'enable' ? tr('Włącz autostart', 'Enable autostart') : tr('Wyłącz autostart', 'Disable autostart'), () => panel.action(row, action).catch(showError), Boolean(reason));
+    if (reason) control.title = panel.blockLabel(reason);
+    autostart.append(control);
+    if (reason) autostart.append(el('span', 'operator-muted', panel.blockLabel(reason)));
+  }
+  card.append(panel.keepDetails(`autostart:${identity}`, details(tr('Autostart', 'Autostart'), autostart)));
+}
+function appendServiceLogs(panel,card,row,identity) {
+  const logs = panel.logResults.get(row.unit);
+  if (logs) {
+    const body = el('div'); body.append(kv([[tr('Źródło', 'Source'), logs.source], [tr('Wiek odczytu', 'Observation age'), ageStamp(logs, 60)]]), el('pre', 'operator-json', logs.error || (logs.lines || []).join('\n') || tr('Brak wpisów', 'No entries')));
+    if (logs.truncated) body.append(el('p', '', tr('Odczyt ograniczony do 64 KiB / 50 linii', 'Read limited to 64 KiB / 50 lines')));
+    card.append(panel.keepDetails(`logs:${identity}`, details(tr('Logi na życzenie', 'Logs on demand'), body), true));
+  }
+}
+function serviceCard(panel,row,valid) {
+    const {card,identity}=serviceSummary(row,valid);
+    appendServiceActions(panel,card,row);appendAutostart(panel,card,row,identity);
+        if (panel.results.has(row.unit)) card.append(el('p', 'operator-muted', panel.results.get(row.unit)));
+        card.append(button(tr('Odczytaj ostatnie logi', 'Read recent logs'), () => panel.logs(row), !valid || panel.logBusy.has(row.unit)));
+        appendServiceLogs(panel,card,row,identity);
+        card.append(panel.keepDetails(`source:${identity}`, rawDetails(row))); return card;
+}
+function serviceGroup(panel,group,entries,valid) {
+  const section = el('section'); const groupName = { base: tr('Usługi bazowe', 'Base services'), startup: tr('Uruchamiane przy starcie', 'Startup services'), 'on-demand': tr('Uruchamiane na żądanie', 'On demand services'), on_demand: tr('Uruchamiane na żądanie', 'On demand services'), dev: tr('Narzędzia deweloperskie', 'Development tools') }[group] || group; section.append(el('h2', '', groupName));
+  const grid = el('div', 'operator-grid');
+  for (const row of entries) {
+    grid.append(serviceCard(panel,row,valid));
+  }
+  section.append(grid); return section;
+}
+
+function renderSystemDetails(panel) {
+  document.getElementById('system-details-data')?.replaceChildren(kv([
+    ['CPU', displayValue(panel.system?.cpu_pct, '%')], ['RAM', displayValue(panel.system?.mem_pct ?? panel.system?.mem?.pct, '%')],
+    [tr('Dysk', 'Disk'), displayValue(panel.system?.disk_pct, '%')], [tr('Temperatura', 'Temperature'), displayValue(panel.system?.temp_c, ' °C')],
+    [tr('Wiek pomiarów', 'Measurement age'), ageStamp(panel.system, 10)], ['Git', panel.version?.available ? `${panel.version.branch || '—'} · ${panel.version.commit || '—'}${panel.version.dirty ? ' · dirty' : ''}` : 'unknown']
+  ]), panel.keepDetails('source:system', rawDetails({ system: panel.system, graph: panel.graph, version: panel.version })));
+  const wifi = panel.graph?.network?.wifi;
+  text('network-status', wifi ? `${wifi.status || 'unknown'} · ${(wifi.addresses || []).join(', ')} · ${wifi.interface || 'wlan0'}` : 'unknown');
+}
+
 export class System {
   constructor(safety) {
     this.safety = safety; this.catalog = null; this.services = null; this.resources = new Map();
@@ -65,58 +135,9 @@ export class System {
     const rows = Array.isArray(this.services?.services) ? this.services.services : [];
     const groups = new Map();
     for (const row of rows) { const group = row.lifecycle || 'unknown'; if (!groups.has(group)) groups.set(group, []); groups.get(group).push(row); }
-    target.replaceChildren(...[...groups].map(([group, entries]) => {
-      const section = el('section'); const groupName = { base: tr('Usługi bazowe', 'Base services'), startup: tr('Uruchamiane przy starcie', 'Startup services'), 'on-demand': tr('Uruchamiane na żądanie', 'On demand services'), on_demand: tr('Uruchamiane na żądanie', 'On demand services'), dev: tr('Narzędzia deweloperskie', 'Development tools') }[group] || group; section.append(el('h2', '', groupName));
-      const grid = el('div', 'operator-grid');
-      for (const row of entries) {
-        const card = el('article', 'c-card');
-        const identity = `${row.host || 'pi'}:${row.unit}`;
-        const current = valid && fresh(row, 10) && (row.load_state ?? row.load) === 'loaded' && !row.error;
-        card.append(el('h3', '', row.label || row.unit), freshPill(row, current ? row.active_state || row.active || 'unknown' : 'unknown', current && (row.active_state ?? row.active) === 'active' ? 'ok' : row.error || (row.active_state ?? row.active) === 'failed' ? 'err' : 'warn'),
-          kv([[tr('Jednostka', 'Unit'), row.unit], [tr('Źródło', 'Source'), row.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(row, 10)],
-            [tr('Konsumenci', 'Consumers'), (row.consumers || []).join(', ')], [tr('Zależności', 'Dependencies'), (row.dependencies || []).join(', ')],
-            [tr('Powód / błąd', 'Reason / error'), row.error || row.reason || row.sub_state || row.sub], [tr('Autostart', 'Autostart'), (row.unit_file_state ?? row.enabled)]]));
-        const actions = el('div', 'operator-row');
-        for (const action of ['start', 'stop', 'restart']) {
-          const reason = serviceActionBlock(row, action, this);
-          const label = { start: tr('Uruchom', 'Start'), stop: tr('Zatrzymaj', 'Stop'), restart: tr('Uruchom ponownie', 'Restart') }[action];
-          const control = button(label, () => this.action(row, action).catch(showError), Boolean(reason));
-          if (reason) control.title = this.blockLabel(reason);
-          actions.append(control);
-        }
-        card.append(actions);
-        const reasons = [...new Set(['start', 'stop', 'restart'].map(action => serviceActionBlock(row, action, this)).filter(Boolean))];
-        if (reasons.length) card.append(el('p', 'operator-muted', reasons.map(reason => this.blockLabel(reason)).join(' · ')));
-        const autostart = el('div', 'operator-row');
-        autostart.append(el('span', '', tr('Osobna zmiana autostartu:', 'Separate autostart change:')));
-        for (const action of ['enable', 'disable']) {
-          const reason = serviceActionBlock(row, action, this);
-          const control = button(action === 'enable' ? tr('Włącz autostart', 'Enable autostart') : tr('Wyłącz autostart', 'Disable autostart'), () => this.action(row, action).catch(showError), Boolean(reason));
-          if (reason) control.title = this.blockLabel(reason);
-          autostart.append(control);
-          if (reason) autostart.append(el('span', 'operator-muted', this.blockLabel(reason)));
-        }
-        card.append(this.keepDetails(`autostart:${identity}`, details(tr('Autostart', 'Autostart'), autostart)));
-        if (this.results.has(row.unit)) card.append(el('p', 'operator-muted', this.results.get(row.unit)));
-        card.append(button(tr('Odczytaj ostatnie logi', 'Read recent logs'), () => this.logs(row), !valid || this.logBusy.has(row.unit)));
-        const logs = this.logResults.get(row.unit);
-        if (logs) {
-          const body = el('div'); body.append(kv([[tr('Źródło', 'Source'), logs.source], [tr('Wiek odczytu', 'Observation age'), ageStamp(logs, 60)]]), el('pre', 'operator-json', logs.error || (logs.lines || []).join('\n') || tr('Brak wpisów', 'No entries')));
-          if (logs.truncated) body.append(el('p', '', tr('Odczyt ograniczony do 64 KiB / 50 linii', 'Read limited to 64 KiB / 50 lines')));
-          card.append(this.keepDetails(`logs:${identity}`, details(tr('Logi na życzenie', 'Logs on demand'), body), true));
-        }
-        card.append(this.keepDetails(`source:${identity}`, rawDetails(row))); grid.append(card);
-      }
-      section.append(grid); return section;
-    }));
+    target.replaceChildren(...[...groups].map(([group,entries])=>serviceGroup(this,group,entries,valid)));
     this.renderRescue();
-    document.getElementById('system-details-data')?.replaceChildren(kv([
-      ['CPU', displayValue(this.system?.cpu_pct, '%')], ['RAM', displayValue(this.system?.mem_pct ?? this.system?.mem?.pct, '%')],
-      [tr('Dysk', 'Disk'), displayValue(this.system?.disk_pct, '%')], [tr('Temperatura', 'Temperature'), displayValue(this.system?.temp_c, ' °C')],
-      [tr('Wiek pomiarów', 'Measurement age'), ageStamp(this.system, 10)], ['Git', this.version?.available ? `${this.version.branch || '—'} · ${this.version.commit || '—'}${this.version.dirty ? ' · dirty' : ''}` : 'unknown']
-    ]), this.keepDetails('source:system', rawDetails({ system: this.system, graph: this.graph, version: this.version })));
-    const wifi = this.graph?.network?.wifi;
-    text('network-status', wifi ? `${wifi.status || 'unknown'} · ${(wifi.addresses || []).join(', ')} · ${wifi.interface || 'wlan0'}` : 'unknown');
+    renderSystemDetails(this);
   }
   blockLabel(reason) {
     const labels = {
