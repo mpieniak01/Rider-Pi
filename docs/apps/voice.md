@@ -589,3 +589,23 @@ Automatyczne sprawdzanie w pre-commit i CI (`scripts/dev_check-legacy-imports.py
 - **Blokuje** importy usuniętych plików (exit code 1)
 - **Ostrzega** o importach `audio/*` (exit code 0, soft warning)
 
+
+## Streaming task lifetime
+
+Each session retains strong references to audio, receive, PTT keyboard, transcript,
+RX watchdog and deferred idle-transition tasks. Completed tasks release their
+references; unexpected failures are retrieved and logged. Shutdown stops admitting
+new work, cancels children and awaits termination. Concurrent cleanup is serialized.
+
+Expected child cancellation does not abort sibling cleanup. Cancellation of the
+caller remains cancellation rather than successful completion; transport close
+attempts and local worker cleanup run in `finally`. Audio, PTT and heartbeat loops
+propagate `CancelledError`. This uses [Python 3.9 asyncio mechanisms](https://docs.python.org/3.9/library/asyncio-task.html),
+without requiring the newer `TaskGroup`.
+
+The listener awaits cleanup on its own event loop; async clients use
+`await service.close()`. Empty audio-queue reads run in an executor so the event
+loop stays responsive. Transport closes its owned socket even after
+`connected=false`, for example after receive or heartbeat failure. Software
+regressions fake all devices and transports; they use no microphone, speaker,
+provider connection or robot.

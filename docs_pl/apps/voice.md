@@ -593,3 +593,24 @@ Automatyczne sprawdzanie w pre-commit i CI (`scripts/dev_check-legacy-imports.py
 - **Ostrzega** o importach `audio/*` (exit code 0, soft warning)
 
 
+
+## Cykl życia zadań strumieniowania
+
+Sesja utrzymuje silne referencje do zadań audio, odbioru, klawiatury PTT,
+transkrypcji, watchdog RX i opóźnionego przejścia do idle. Zakończone zadania
+zwalniają referencje; nieoczekiwane błędy są odbierane i logowane. Sprzątanie
+zamyka przyjmowanie nowych zadań, anuluje dzieci i oczekuje ich zakończenia.
+Równoległe sprzątanie jest serializowane.
+
+Oczekiwane anulowanie dziecka nie przerywa sprzątania rodzeństwa. Anulowanie
+operacji nadrzędnej pozostaje anulowaniem i nie zamienia się w sukces; próba
+zamknięcia transportu oraz sprzątanie lokalnych workerów odbywają się w `finally`.
+Pętle audio, PTT i heartbeat propagują `CancelledError`. Rozwiązanie korzysta
+z [mechanizmów asyncio dostępnych w Pythonie 3.9](https://docs.python.org/3.9/library/asyncio-task.html),
+bez wymagania nowszego `TaskGroup`.
+
+Listener oczekuje asynchronicznego sprzątania na własnej pętli; klient async
+używa `await service.close()`. Odczyt pustej kolejki audio jest przenoszony do
+executora, aby nie blokował pętli. Transport zamyka posiadany socket również po
+ustawieniu `connected=false`, np. po błędzie odbioru lub heartbeat. Te zachowania
+mają testy programowe na atrapach, bez mikrofonu, głośnika, providera i robota.

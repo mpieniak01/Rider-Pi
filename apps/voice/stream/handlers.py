@@ -48,6 +48,7 @@ class StreamHandlersMixin:
     _completed: bool
     _session_prefs: Any | None
     _loop: asyncio.AbstractEventLoop | None
+    _session_tasks: Any
     _last_rx_ts: float
     _bw_rx_total: int
     session_id: str
@@ -88,9 +89,13 @@ class StreamHandlersMixin:
     def _on_closing(self) -> None:
         """Handle CLOSING state - immediately transition to IDLE for next interaction."""
         self._publish_ui_state("idle")
-        # Use asyncio to schedule the transition to IDLE
         if self._loop:
-            asyncio.run_coroutine_threadsafe(self._transition_to_idle(), self._loop)
+            self._loop.call_soon_threadsafe(self._schedule_idle_transition)
+
+    def _schedule_idle_transition(self) -> None:
+        """Keep PTT callback work in the session, rejecting callbacks after close."""
+        if not self._session_tasks.closing:
+            self._session_tasks.create(self._transition_to_idle(), name="voice-idle")
 
     def _on_commit_complete(self, event: PTTEvent) -> None:
         self._publish_ui_state("processing")
@@ -344,7 +349,7 @@ class StreamHandlersMixin:
                 transcript = data.get("transcript", "")
                 if transcript and transcript.strip():
                     self.logger.event("asr.transcript.final", text=transcript)
-                    asyncio.create_task(self._handle_transcript(transcript.strip()))
+                    self._session_tasks.create(self._handle_transcript(transcript.strip()), name="voice-transcript")
 
             # ── RESPONSE END ─────────────────────────────────────────────────
             elif msg_type == "response.completed":
@@ -460,6 +465,7 @@ class StreamHandlersMixin:
 
         except asyncio.CancelledError:
             self.logger.event("ptt.keyboard.cancelled")
+            raise
         except Exception as e:
             self.logger.event("ptt.keyboard.loop_error", error=str(e))
         finally:
