@@ -171,8 +171,9 @@ async def test_socket_internal_cancellation_propagates_without_retry_loop():
     transport = transport_fixture()
     socket = transport.websocket
     socket.close.side_effect = asyncio.CancelledError
+    bounded_close = asyncio.wait_for(transport.close(), timeout=1)
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(transport.close(), timeout=1)
+        await bounded_close
     assert transport.websocket is None
     socket.wait_closed.assert_not_awaited()
 
