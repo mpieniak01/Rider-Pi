@@ -89,6 +89,69 @@ def _fallback_to_local(reason: str) -> None:
             LOG.warning("Watchdog fallback failed for %s: %s", domain, exc)
 
 
+def _legacy_peer_selected():
+    # No requests or persistence churn for an unselected legacy executor.
+    # Venom clients observe their own selected peer, independent of PC.
+    from services import compute_config
+
+    try:
+        remote = compute_config.snapshot().get("selected_executor") is not None
+    except (ValueError, OSError):
+        remote = True
+    if remote or not any(registry.get_domain_state(domain).get("mode") == "pc" for domain in registry.DOMAINS):
+        return False
+    return True
+
+
+def _capability_failure(exc, consecutive_failures, last_health_status, *, unexpected):
+    consecutive_failures += 1
+    status = "error" if unexpected else "offline"
+    registry.update_pc_health(
+        reachable=False,
+        status=status,
+        latency_ms=None,
+        reason=str(exc)[:120],
+        refresh=False,
+    )
+    if last_health_status != status:
+        if unexpected:
+            LOG.error("Provider watchdog unexpected error: %s", exc)
+        else:
+            LOG.warning("Provider watchdog failure (%d/%d): %s", consecutive_failures, FAIL_THRESHOLD, exc)
+        last_health_status = status
+    if consecutive_failures >= FAIL_THRESHOLD:
+        _fallback_to_local("pc_error" if unexpected else "pc_unreachable")
+    return consecutive_failures, last_health_status
+
+
+def _capability_cycle(consecutive_failures, last_health_status):
+    try:
+        base_url = registry.get_pc_base_url()
+        if not base_url:
+            base_url = DEFAULT_PC_BASE_URL
+
+        data, latency_ms = _fetch_pc_capabilities(base_url)
+
+        registry.update_pc_health(
+            reachable=True,
+            status="online",
+            latency_ms=latency_ms,
+            reason=data.get("version") if isinstance(data, dict) else "ok",
+            capabilities=data,
+            observed_at=None,
+            received_at=time.time(),
+        )
+        last_health_status = "online"
+        _restore_domains()
+        consecutive_failures = 0
+
+    except (urllib.error.URLError, TimeoutError) as exc:
+        return _capability_failure(exc, consecutive_failures, last_health_status, unexpected=False)
+    except Exception as exc:  # noqa: BLE001
+        return _capability_failure(exc, consecutive_failures, last_health_status, unexpected=True)
+    return consecutive_failures, last_health_status
+
+
 def _loop() -> None:
     LOG.info("Provider watchdog started (interval=%ss)", CHECK_INTERVAL)
     consecutive_failures = 0
@@ -96,80 +159,13 @@ def _loop() -> None:
     last_health_status: str | None = None
 
     while not _stop_event.wait(CHECK_INTERVAL):
-        # No requests or persistence churn for an unselected legacy executor.
-        # Venom clients observe their own selected peer, independent of PC.
-        from services import compute_config
-
-        try:
-            remote = compute_config.snapshot().get("selected_executor") is not None
-        except (ValueError, OSError):
-            remote = True
-        if remote or not any(registry.get_domain_state(domain).get("mode") == "pc" for domain in registry.DOMAINS):
+        if not _legacy_peer_selected():
             continue
         if HEARTBEAT_ONLY:
             consecutive_failures = _heartbeat_only_cycle(consecutive_failures)
             continue
 
-        try:
-            base_url = registry.get_pc_base_url()
-            if not base_url:
-                base_url = DEFAULT_PC_BASE_URL
-
-            data, latency_ms = _fetch_pc_capabilities(base_url)
-
-            registry.update_pc_health(
-                reachable=True,
-                status="online",
-                latency_ms=latency_ms,
-                reason=data.get("version") if isinstance(data, dict) else "ok",
-                capabilities=data,
-                observed_at=None,
-                received_at=time.time(),
-            )
-            last_health_status = "online"
-            _restore_domains()
-            consecutive_failures = 0
-
-        except (urllib.error.URLError, TimeoutError) as exc:
-            consecutive_failures += 1
-
-            registry.update_pc_health(
-                reachable=False,
-                status="offline",
-                latency_ms=None,
-                reason=str(exc)[:120],
-                refresh=False,
-            )
-
-            if last_health_status != "offline":
-                LOG.warning(
-                    "Provider watchdog failure (%d/%d): %s",
-                    consecutive_failures,
-                    FAIL_THRESHOLD,
-                    exc,
-                )
-                last_health_status = "offline"
-
-            if consecutive_failures >= FAIL_THRESHOLD:
-                _fallback_to_local("pc_unreachable")
-
-        except Exception as exc:  # noqa: BLE001
-            consecutive_failures += 1
-
-            registry.update_pc_health(
-                reachable=False,
-                status="error",
-                latency_ms=None,
-                reason=str(exc)[:120],
-                refresh=False,
-            )
-
-            if last_health_status != "error":
-                LOG.error("Provider watchdog unexpected error: %s", exc)
-                last_health_status = "error"
-
-            if consecutive_failures >= FAIL_THRESHOLD:
-                _fallback_to_local("pc_error")
+        consecutive_failures, last_health_status = _capability_cycle(consecutive_failures, last_health_status)
 
     LOG.info("Provider watchdog stopped")
 
