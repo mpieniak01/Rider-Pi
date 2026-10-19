@@ -345,7 +345,7 @@ def _draw_brow(canvas, ex: int, k: float, *, cx, brow_w, brow_y, brow_h, brow_of
 
 def _ribbon_mouth(
     canvas,
-    S,
+    scale,
     cx_i: int,
     y: int,
     w: int,
@@ -357,9 +357,8 @@ def _ribbon_mouth(
     fill=(0, 0, 0),
 ) -> None:
     half = w / 2.0
-    S_local = S
-    lift_px = float(S_local) * lift_k
-    arch_px = float(S_local) * arch_k
+    lift_px = float(scale) * lift_k
+    arch_px = float(scale) * arch_k
     taper_k = _clampf(float(taper_k), 0.0, 1.0)
     samples = max(16, int(samples))
 

@@ -74,6 +74,7 @@ def test_failed_preview_restores_record_before_services_and_preserves_original_f
     monkeypatch.setitem(namespace, "pause_resources", lambda: events.append("pause"))
     monkeypatch.setitem(namespace, "restart_api", lambda: events.append("api"))
     monkeypatch.setitem(namespace, "resume_display", lambda active: events.append(("display", active)))
+    failed_result = SimpleNamespace(returncode=1)
     with pytest.raises(RuntimeError) as caught:
         function(
             tmp_path,
@@ -83,7 +84,7 @@ def test_failed_preview_restores_record_before_services_and_preserves_original_f
             "old",
             "new",
             "preview",
-            SimpleNamespace(returncode=1),
+            failed_result,
             {"commit": "new"},
             True,
             False,

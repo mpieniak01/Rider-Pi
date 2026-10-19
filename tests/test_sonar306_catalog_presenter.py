@@ -113,8 +113,9 @@ def test_presenter_preserves_successful_none_factory_without_falling_through(pre
 def test_presenter_does_not_swallow_keyboard_interrupt(presenter):
     factory = Mock(side_effect=KeyboardInterrupt())
     factory.ShowImage = Mock()
+    package = SimpleNamespace(device=factory)
     with pytest.raises(KeyboardInterrupt):
-        presenter._presenter_in(SimpleNamespace(device=factory))
+        presenter._presenter_in(package)
 
 
 def test_presenter_initialization_keeps_all_backend_hooks(presenter):

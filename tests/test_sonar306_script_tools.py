@@ -171,8 +171,9 @@ def test_manual_validation_keeps_existing_plan_range_and_explicit_intent_rules(p
         "action_id": None,
     }
     values.update(patch)
+    attempt = SimpleNamespace(**values)
     with pytest.raises(ValueError):
-        probe._validate_attempt(SimpleNamespace(**values))
+        probe._validate_attempt(attempt)
 
 
 def test_panel_initialization_tries_only_until_one_fake_begin_succeeds(monkeypatch):

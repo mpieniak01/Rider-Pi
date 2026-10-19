@@ -151,13 +151,12 @@ for _suffix in (
     "follow/hand",
 ):
     for _prefix in ("/vision/", "/api/vision/"):
-        _family = (
-            "rider.obstacle"
-            if _suffix == "obstacle"
-            else TASKS_CONTRACT
-            if _suffix in {"tracking/mode", "follow/face", "follow/hand"}
-            else "rider.frames"
-        )
+        if _suffix == "obstacle":
+            _family = "rider.obstacle"
+        elif _suffix in {"tracking/mode", "follow/face", "follow/hand"}:
+            _family = TASKS_CONTRACT
+        else:
+            _family = "rider.frames"
         CONTRACTS[_prefix + _suffix] = Contract(_family, 2 if _family == TASKS_CONTRACT else 1)
 
 

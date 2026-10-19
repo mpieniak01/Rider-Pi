@@ -435,7 +435,7 @@ def rollback(repo, record_path):
     return {"action": "rollback", **status(repo, record_path)}
 
 
-def _release_files(repo, record_path, request, previous, current, branch):
+def _release_files(repo, request, previous, current, branch):
     if previous:
         if current != previous["commit"] or branch != previous["preview_branch"]:
             raise RuntimeError("Device checkout no longer matches the preview record.")
@@ -472,7 +472,7 @@ def release(repo, record_path, request):
     check_clean(repo)
     previous = read_record(record_path)
     current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
-    base, target, paths = _release_files(repo, record_path, request, previous, current, branch)
+    base, target, paths = _release_files(repo, request, previous, current, branch)
     release_record = record_path.with_name("rider-last-release.json")
     last_release = read_record(release_record)
     if base != target or not last_release or last_release["commit"] != target:

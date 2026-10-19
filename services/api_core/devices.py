@@ -294,7 +294,6 @@ def _observe_vision_state(payload):
                 C.LAST_STATE[key] = data[key]
     except Exception:
         pass
-    return
 
 
 def _observe_tracking_mode(payload):
@@ -311,7 +310,6 @@ def _observe_tracking_mode(payload):
     C.LAST_TRACKING_MODE["ts"] = (
         _source_time(data.get("observed_at", data.get("ts"))) if isinstance(data, dict) else None
     )
-    return
 
 
 def _observe_tracking_offset(payload):
@@ -329,7 +327,6 @@ def _observe_tracking_offset(payload):
         if "mode" in data and data.get("mode") is not None:
             C.LAST_TRACKING_OFFSET["mode"] = data.get("mode")
         C.LAST_TRACKING_OFFSET["ts"] = _source_time(data.get("observed_at", data.get("ts")))
-    return
 
 
 def _observe_bus_message(topic, payload):
@@ -373,7 +370,6 @@ def _observe_bus_message(topic, payload):
         return
     if topic == "navigator.state":
         observe_navigator(_json_or_raw(payload))
-        return
 
 
 def bus_sub_loop():

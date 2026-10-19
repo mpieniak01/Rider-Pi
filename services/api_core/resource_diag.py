@@ -321,7 +321,9 @@ def _recorded_consumers(feature_manager, resource, consumers):
 
 
 def _released_state(released, after):
-    return "released" if released else "unknown" if after.get("error") else "pending"
+    if released:
+        return "released"
+    return "unknown" if after.get("error") else "pending"
 
 
 def _release_locked(resource, limit_pids, force, operator_consent, feature_manager, protected_units) -> dict:

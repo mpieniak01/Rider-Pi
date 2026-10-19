@@ -24,11 +24,15 @@ def _camera_on(owners, known, running):
         owners is not None and owners.get("free") is False and not owners.get("error") and bool(owners.get("holders"))
     )
     released = owners is not None and owners.get("free") is True and not owners.get("error")
-    return True if running or occupied else False if known and released else None
+    if running or occupied:
+        return True
+    return False if known and released else None
 
 
 def _service_running(running, known):
-    return True if running else False if known else None
+    if running:
+        return True
+    return False if known else None
 
 
 def snapshot(*, heartbeat=None, owners=None, consumers=(), status_fn=None, now=None):

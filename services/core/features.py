@@ -191,12 +191,12 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
     @staticmethod
     def _voice_admin_resources(domain):
         if domain == "text":
-            return ()
+            return []
         if domain == "asr":
-            return ("mic",)
+            return ["mic"]
         if domain == "tts":
-            return ("speaker",)
-        return ("mic", "speaker")
+            return ["speaker"]
+        return ["mic", "speaker"]
 
     def _add_admin_resources(self, consumers):
         for unit in self._admin_units:
