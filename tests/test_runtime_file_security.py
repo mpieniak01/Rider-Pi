@@ -43,8 +43,9 @@ def test_failed_snapshot_keeps_old_image_and_removes_only_its_temporary(tmp_path
         raise RuntimeError("encoder failed")
 
     sink = FileSink(output)
+    image = SimpleNamespace(save=fail)
     with pytest.raises(RuntimeError, match="encoder failed"):
-        sink.present(SimpleNamespace(save=fail))
+        sink.present(image)
     assert output.read_bytes() == b"old"
     assert not list(tmp_path.glob(".rider-write-*"))
     assert not sink._written
@@ -58,8 +59,10 @@ def test_snapshot_refuses_symlink_directory_components(tmp_path, parent_link):
     link = tmp_path / "alias"
     link.symlink_to(real, target_is_directory=True)
     output = link / "nested" / "face.png" if parent_link else link / "face.png"
+    sink = FileSink(output)
+    image = Image.new("RGB", (16, 16))
     with pytest.raises(OSError):
-        FileSink(output).present(Image.new("RGB", (16, 16)))
+        sink.present(image)
     assert not list(real.rglob("*.png"))
 
 
@@ -67,8 +70,10 @@ def test_snapshot_refuses_non_sticky_public_directory(tmp_path):
     directory = tmp_path / "public"
     directory.mkdir(mode=0o777)
     directory.chmod(0o777)
+    sink = FileSink(directory / "face.png")
+    image = Image.new("RGB", (16, 16))
     with pytest.raises(PermissionError, match="unsafe_runtime_directory"):
-        FileSink(directory / "face.png").present(Image.new("RGB", (16, 16)))
+        sink.present(image)
     assert not list(directory.iterdir())
 
 
@@ -220,8 +225,9 @@ def test_existing_public_recording_directory_is_refused_without_chmod(tmp_path):
     directory.chmod(0o755)
     old = directory / "old.wav"
     old.write_bytes(b"keep old recording")
+    service = recording_service(directory)
     with pytest.raises(PermissionError, match="private_runtime_directory_required"):
-        FileCaptureMixin._save_pcm(recording_service(directory), b"\x00\x00")
+        FileCaptureMixin._save_pcm(service, b"\x00\x00")
     assert old.read_bytes() == b"keep old recording"
     assert stat.S_IMODE(directory.stat().st_mode) == 0o755
     assert list(directory.iterdir()) == [old]

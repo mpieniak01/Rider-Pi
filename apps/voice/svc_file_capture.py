@@ -7,6 +7,7 @@ import secrets
 import subprocess
 import time
 import wave
+from itertools import chain
 
 from common.secure_files import atomic_write
 
@@ -22,96 +23,78 @@ class FileCaptureMixin:
 
         audio = b""
         try:
-            with AudioCapture(self._capture_cfg, self.logger) as capture:
-                if self._mic_open_delay_ms > 0:
-                    time.sleep(self._mic_open_delay_ms / 1000.0)
-
-                frames_iter = capture.frames()
-
-                # okno „no-cost”
-                voiced = False
-                start_wait = time.time()
-                pre_buf: list[bytes] = []
-                max_wait_s = max(0, self._no_speech_timeout_ms) / 1000.0
-                while (time.time() - start_wait) < max_wait_s:
-                    try:
-                        f = next(frames_iter)
-                    except StopIteration:
-                        break
-                    pre_buf.append(f)
-                    if self._frame_has_voice(f, self._silence_rms_gate):
-                        voiced = True
-                        break
-                if not voiced:
-                    self.logger.event("service.nospeech.timeout", ms=self._no_speech_timeout_ms)
-                    return b""
-
-                # pre-roll
-                need_frames = max(
-                    1,
-                    int(math.ceil(self._pre_speech_wait_ms / self._capture_cfg.frame_ms)),
-                )
-                while len(pre_buf) < need_frames:
-                    try:
-                        pre_buf.append(next(frames_iter))
-                    except StopIteration:
-                        break
-
-                def _chained():
-                    for f in pre_buf:
-                        if f:
-                            yield f
-                    for f in frames_iter:
-                        yield f
-
-                audio = collect(_chained(), self._vad, self._max_len)
-
+            audio = self._initial_vad_audio()
         except CaptureError as exc:
             self.logger.event("service.capture.error", error=str(exc))
         except Exception as exc:
             self.logger.event("service.capture.unexpected", error=str(exc))
-
-        # Minimalna długość
-        min_ms = max(200, self._min_capture_ms)
-        bytes_per_sample = 2  # 16-bit
-        channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
-        expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
-
+        if audio is None:
+            return b""
         if not audio:
             self.logger.event("service.capture.empty_retry_arecord")
             return self._record_with_arecord()
 
+        expected_min = self._minimum_capture_bytes()
+        if len(audio) >= expected_min:
+            return audio
+        self.logger.event("service.capture.retry_short_clip", bytes=len(audio), threshold=expected_min)
+        audio2 = self._retry_vad_audio()
+        if audio2 and len(audio2) > len(audio):
+            audio = audio2
         if len(audio) < expected_min:
-            self.logger.event(
-                "service.capture.retry_short_clip",
-                bytes=len(audio),
-                threshold=expected_min,
-            )
-            try:
-                with AudioCapture(self._capture_cfg, self.logger) as capture:
-                    if self._mic_open_delay_ms > 0:
-                        time.sleep(self._mic_open_delay_ms / 1000.0)
-                    t0 = time.time()
-                    chunks: list[bytes] = []
-                    for f in capture.frames():
-                        chunks.append(f)
-                        if (time.time() - t0) >= 0.8:
-                            break
-                    audio2 = collect(iter(chunks), self._vad, self._max_len)
-                    if audio2 and len(audio2) > len(audio):
-                        audio = audio2
-            except Exception as exc:
-                self.logger.event("service.capture.retry_error", error=str(exc))
-
-            if len(audio) < expected_min:
-                self.logger.event(
-                    "service.capture.fast_fail.too_short",
-                    bytes=len(audio),
-                    threshold=expected_min,
-                )
-                return b""
-
+            self.logger.event("service.capture.fast_fail.too_short", bytes=len(audio), threshold=expected_min)
+            return b""
         return audio
+
+    def _initial_vad_audio(self) -> bytes | None:
+        with AudioCapture(self._capture_cfg, self.logger) as capture:
+            if self._mic_open_delay_ms > 0:
+                time.sleep(self._mic_open_delay_ms / 1000.0)
+            frames_iter = capture.frames()
+            voiced = False
+            start_wait = time.time()
+            pre_buf: list[bytes] = []
+            max_wait_s = max(0, self._no_speech_timeout_ms) / 1000.0
+            while (time.time() - start_wait) < max_wait_s:
+                try:
+                    frame = next(frames_iter)
+                except StopIteration:
+                    break
+                pre_buf.append(frame)
+                if self._frame_has_voice(frame, self._silence_rms_gate):
+                    voiced = True
+                    break
+            if not voiced:
+                self.logger.event("service.nospeech.timeout", ms=self._no_speech_timeout_ms)
+                return None
+            need_frames = max(1, int(math.ceil(self._pre_speech_wait_ms / self._capture_cfg.frame_ms)))
+            while len(pre_buf) < need_frames:
+                try:
+                    pre_buf.append(next(frames_iter))
+                except StopIteration:
+                    break
+            return collect(chain(filter(None, pre_buf), frames_iter), self._vad, self._max_len)
+
+    def _retry_vad_audio(self) -> bytes:
+        try:
+            with AudioCapture(self._capture_cfg, self.logger) as capture:
+                if self._mic_open_delay_ms > 0:
+                    time.sleep(self._mic_open_delay_ms / 1000.0)
+                t0 = time.time()
+                chunks: list[bytes] = []
+                for frame in capture.frames():
+                    chunks.append(frame)
+                    if (time.time() - t0) >= 0.8:
+                        break
+                return collect(iter(chunks), self._vad, self._max_len)
+        except Exception as exc:
+            self.logger.event("service.capture.retry_error", error=str(exc))
+            return b""
+
+    def _minimum_capture_bytes(self) -> int:
+        min_ms = max(200, self._min_capture_ms)
+        channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
+        return int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * 2 * channels
 
     def _record_with_arecord(self) -> bytes:
         cfg = self._capture_cfg
@@ -166,10 +149,7 @@ class FileCaptureMixin:
         frames = self._frames_from_pcm(raw, self._safe_frame_bytes())
         trimmed = collect(frames, self._vad, self._max_len)
 
-        min_ms = max(200, self._min_capture_ms)
-        bytes_per_sample = 2
-        channels = max(1, int(getattr(self._capture_cfg, "channels", 1)))
-        expected_min = int(self._capture_cfg.sample_rate * (min_ms / 1000.0)) * bytes_per_sample * channels
+        expected_min = self._minimum_capture_bytes()
 
         if trimmed:
             if len(trimmed) >= expected_min:
