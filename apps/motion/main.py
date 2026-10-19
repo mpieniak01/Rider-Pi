@@ -48,7 +48,7 @@ class _SimAdapter:
     def enable_balance(self, enabled):
         """Accept the adapter call without hardware effects.
 
-        ``enabled`` is intentionally unused: MotionExecutor shares this callable
+        enabled is intentionally unused: MotionExecutor shares this callable
         interface between simulated and physical adapters. A simulation accepts
         the call without claiming a physical balance state or motion authority.
         """
@@ -57,7 +57,7 @@ class _SimAdapter:
     def set_height(self, height):
         """Accept the adapter call without fabricating a physical measurement.
 
-        ``height`` is intentionally unused: MotionExecutor uses the same public
+        height is intentionally unused: MotionExecutor uses the same public
         keyword contract for both adapters; this no-I/O implementation cannot
         observe or change a robot's height.
         """
@@ -66,7 +66,7 @@ class _SimAdapter:
     def action(self, name):
         """Reject every named action in the simulator.
 
-        ``name`` is intentionally unused: MotionExecutor shares this keyword
+        name is intentionally unused: MotionExecutor shares this keyword
         contract with the physical adapter, but no scripted action is simulated.
         """
         return False

@@ -323,7 +323,7 @@ class OdometryEstimator:
     def update_motion_command(self, lx, az):
         """Reject legacy command-only odometry updates.
 
-        ``lx`` and ``az`` are intentionally unused public keyword parameters,
+        lx and az are intentionally unused public keyword parameters,
         retained for callers of the former command-integrating API (including
         tests/test_odometry.py). Requested axes are not proof of an executed
         SDK write; only validated executor observations may update odometry.
