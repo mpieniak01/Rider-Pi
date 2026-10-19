@@ -64,6 +64,19 @@ class TTSStreamResult:
     backend: str | None = None
 
 
+def _assert_rest_enabled(config, logger):
+    if (config.transport or "").lower() == "realtime":
+        logger.event(
+            "tts.strict.realtime_block",
+            extra={"data": {"msg": _REST_DISABLED}},
+        )
+        raise TTSError(_REST_DISABLED)
+
+
+def _tts_backend(config):
+    return (config.backend or "openai").lower()
+
+
 def speak(
     text: str,
     config: TTSConfig,
@@ -80,14 +93,9 @@ def speak(
         return TTSStreamResult(ok=False, streamed=False)
 
     # STRICT: zabroń REST (zarówno streaming HTTP, jak i synth) w trybie realtime
-    if (config.transport or "").lower() == "realtime":
-        logger.event(
-            "tts.strict.realtime_block",
-            extra={"data": {"msg": _REST_DISABLED}},
-        )
-        raise TTSError(_REST_DISABLED)
+    _assert_rest_enabled(config, logger)
 
-    backend = (config.backend or "openai").lower()
+    backend = _tts_backend(config)
 
     # Streaming obsługujemy tylko dla OpenAI; dla local pomijamy ścieżkę stream
     stream_fmt = "mp3"
@@ -217,14 +225,9 @@ def synthesize(
     STRICT: zabronione, gdy transport=realtime.
     """
     logger = logger or voice_logging.get_logger(_LOGGER_NAME)
-    if (config.transport or "").lower() == "realtime":
-        logger.event(
-            "tts.strict.realtime_block",
-            extra={"data": {"msg": _REST_DISABLED}},
-        )
-        raise TTSError(_REST_DISABLED)
+    _assert_rest_enabled(config, logger)
 
-    backend = (config.backend or "openai").lower()
+    backend = _tts_backend(config)
 
     if backend == "openai":
         return _tts_openai(text, config, logger)
