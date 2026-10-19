@@ -164,18 +164,17 @@ def _reference_profile_error(row, state, now):
     config = state.get("calibration")
     current_digest = config.get("profile_digest") if isinstance(config, dict) else None
     requested_digest = row.get("profile_digest")
-    if current_digest is not None or requested_digest is not None:
-        if (
-            not isinstance(requested_digest, str)
-            or len(requested_digest) != 64
-            or any(char not in "0123456789abcdef" for char in requested_digest)
-            or requested_digest != current_digest
-            or config.get("error")
-            or config.get("instance_id") != state.get("instance_id")
-            or not finite_number(config.get("observed_at"))
-            or not 0 <= now - config["observed_at"] <= 3.0
-        ):
-            return "reference_profile_mismatch"
+    if (current_digest is not None or requested_digest is not None) and (
+        not isinstance(requested_digest, str)
+        or len(requested_digest) != 64
+        or any(char not in "0123456789abcdef" for char in requested_digest)
+        or requested_digest != current_digest
+        or config.get("error")
+        or config.get("instance_id") != state.get("instance_id")
+        or not finite_number(config.get("observed_at"))
+        or not 0 <= now - config["observed_at"] <= 3.0
+    ):
+        return "reference_profile_mismatch"
     return None
 
 

@@ -89,7 +89,9 @@ def norm(txt: str) -> str:
 
 _re_sec = re.compile(r"(?:na|przez)\s*(\d+(?:[.,]\d+)?)\s*(?:s|sek|sekundy|sekund|sek\.)\b")
 _re_pct = re.compile(r"(\d{1,3})\s*%")
-_re_spd = re.compile(r"(?:na|do)?\s*(0(?:[.,]\d+)?|1(?:[.,]0+)?)\b")  # 0..1
+# Only the numeric capture is consumed. Optional prefixes/whitespace would retry
+# the same suffix at every whitespace position during an unanchored search.
+_re_spd = re.compile(r"(0(?:[.,]\d+)?|1(?:[.,]0+)?)\b")  # 0..1
 
 
 def extract_duration_s(txt_norm: str):

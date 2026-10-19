@@ -127,13 +127,12 @@ class OperatorLifecycle:
         return {**decision, "action": "stop", "motion_reason": "awaiting_fresh_qualification"}
 
     def status(self):
-        return (
-            {
-                "operator_control_version": 1,
-                "qualification_count": self.qualification.count if self.qualification else 0,
-                "operation_id": self.operation,
-                "operator_pause_reason": self.pause_reason,
-            }
-            if self.enabled
-            else {}
-        )
+        if not self.enabled:
+            return {}
+        count = self.qualification.count if self.qualification else 0
+        return {
+            "operator_control_version": 1,
+            "qualification_count": count,
+            "operation_id": self.operation,
+            "operator_pause_reason": self.pause_reason,
+        }

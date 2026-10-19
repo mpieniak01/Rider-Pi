@@ -6,8 +6,8 @@ Importing this module performs no systemd, BUS or hardware I/O.
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from typing import Sequence
 
 from .compute_catalog import EN as COMPUTE_EN, compute_availability, compute_features
 
@@ -411,22 +411,18 @@ for _task in DEFAULT_REGISTRY.values():
         }
 
 for _unit, _meta in UNIT_CATALOG.items():
-    _meta["motion_owner"] = (
-        "follow_me"
-        if _unit in {SERVICE_RIDER_TRACKING_CONTROLLER, TARGET_RIDER_FOLLOWME}
-        else "navigation"
-        if _unit
-        in {
-            SERVICE_RIDER_NAVIGATOR,
-            "rider-recon.target",
-            "rider-navigate.target",
-            SERVICE_RIDER_VENOM_NAVIGATION,
-            "rider-venom-navigation.target",
-        }
-        else "manual"
-        if _meta["can_move"]
-        else None
-    )
+    if _unit in {SERVICE_RIDER_TRACKING_CONTROLLER, TARGET_RIDER_FOLLOWME}:
+        _meta["motion_owner"] = "follow_me"
+    elif _unit in {
+        SERVICE_RIDER_NAVIGATOR,
+        "rider-recon.target",
+        "rider-navigate.target",
+        SERVICE_RIDER_VENOM_NAVIGATION,
+        "rider-venom-navigation.target",
+    }:
+        _meta["motion_owner"] = "navigation"
+    else:
+        _meta["motion_owner"] = "manual" if _meta["can_move"] else None
 
 _RUNTIME_MODULES = {
     SERVICE_RIDER_API: ("flask", "PIL", "requests", "zmq"),
@@ -617,13 +613,13 @@ def unit_availability(unit: str) -> dict:
             return {"start_available": False, "start_unavailable_reason": "navigation_executor_update_required"}
     members = {member for rows in meta.get("task_members", {}).values() for member in rows}
     unavailable = unit == SERVICE_RIDER_NAVIGATOR or SERVICE_RIDER_NAVIGATOR in members
+    if unavailable:
+        reason = "navigation_traversal_unverified"
+    else:
+        reason = None if meta else "unit_or_action_not_catalogued"
     return {
         "start_available": bool(meta) and not unavailable,
-        "start_unavailable_reason": "navigation_traversal_unverified"
-        if unavailable
-        else None
-        if meta
-        else "unit_or_action_not_catalogued",
+        "start_unavailable_reason": reason,
     }
 
 
