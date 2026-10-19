@@ -18,6 +18,7 @@ from collections import deque
 
 from apps.compute.client import ComputeError
 from apps.compute.decision_lease import DecisionLease
+from apps.compute.navigation_cycle import NavigationCycle
 from apps.compute.operator_lifecycle import OperatorLifecycle
 from apps.compute.runners import FrameSource, selected_executor
 from apps.safety.intent import read_service_intent, write_intent_status
@@ -34,7 +35,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ComputeError("navigation_redirect_denied")
 
 
-class NavigationRunner:
+class NavigationRunner(NavigationCycle):
     def __init__(
         self,
         *,
@@ -99,41 +100,7 @@ class NavigationRunner:
         finally:
             self.cycle_timings_ms[phase] = round((self.clock() - started) * 1000, 2)
 
-    def _authority(self):
-        safety = self._timed("safety_read_ms", read_status)
-        if self.operator_lifecycle.enabled:
-            return self.operator_lifecycle.sync(safety)
-        if self.policy["mode"] == "observe":
-            return False
-        if (
-            safety.get("remote_decision_deadline_supported") is not True
-            or safety.get("remote_decision_feedback_supported") is not True
-            or safety.get("scoped_stop_generation_supported") is not True
-        ):
-            raise ComputeError("navigation_executor_update_required")
-        if self._consent_completed(safety):
-            raise ComputeError("navigation_trial_completed")
-        for ack in [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]:
-            if (
-                isinstance(ack.get("request_id"), str)
-                and ack["request_id"].startswith(self.run_id + "-")
-                and ack.get("status") == "rejected"
-            ):
-                self.motion_failure = {
-                    "http_status": 409,
-                    "reason": ack.get("error") or ack.get("reason") or "executor_rejected",
-                    "gate_reason": safety.get("reason"),
-                }
-                raise ComputeError("navigation_motion_rejected")
-        acknowledgements = [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]
-        for request_id, deadline in list(self.pending_motion_acks.items()):
-            ack = next((row for row in acknowledgements if row.get("request_id") == request_id), None)
-            if ack and ack.get("status") == "executed" and ack.get("accepted") is True:
-                del self.pending_motion_acks[request_id]
-            elif self.clock() >= deadline:
-                self.motion_failure = {"http_status": 504, "reason": "navigation_motion_ack_timeout"}
-                raise ComputeError("navigation_motion_ack_timeout")
-        intent = self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
+    def _check_navigation_intent(self, safety, intent):
         if (
             safety.get("can_move") is not True
             or safety.get("owner") != "navigation"
@@ -152,6 +119,53 @@ class NavigationRunner:
             revision != self.settings_revision or digest != self.calibration_digest
         ):
             raise ComputeError("navigation_calibration_changed")
+        return revision, digest
+
+    def _check_executor_support(self, safety):
+        if (
+            safety.get("remote_decision_deadline_supported") is not True
+            or safety.get("remote_decision_feedback_supported") is not True
+            or safety.get("scoped_stop_generation_supported") is not True
+        ):
+            raise ComputeError("navigation_executor_update_required")
+        if self._consent_completed(safety):
+            raise ComputeError("navigation_trial_completed")
+
+    def _check_rejected_acks(self, safety):
+        for ack in [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]:
+            if (
+                isinstance(ack.get("request_id"), str)
+                and ack["request_id"].startswith(self.run_id + "-")
+                and ack.get("status") == "rejected"
+            ):
+                self.motion_failure = {
+                    "http_status": 409,
+                    "reason": ack.get("error") or ack.get("reason") or "executor_rejected",
+                    "gate_reason": safety.get("reason"),
+                }
+                raise ComputeError("navigation_motion_rejected")
+
+    def _check_pending_acks(self, safety):
+        acknowledgements = [safety.get("last_ack") or {}, *(safety.get("recent_acks") or [])]
+        for request_id, deadline in list(self.pending_motion_acks.items()):
+            ack = next((row for row in acknowledgements if row.get("request_id") == request_id), None)
+            if ack and ack.get("status") == "executed" and ack.get("accepted") is True:
+                del self.pending_motion_acks[request_id]
+            elif self.clock() >= deadline:
+                self.motion_failure = {"http_status": 504, "reason": "navigation_motion_ack_timeout"}
+                raise ComputeError("navigation_motion_ack_timeout")
+
+    def _authority(self):
+        safety = self._timed("safety_read_ms", read_status)
+        if self.operator_lifecycle.enabled:
+            return self.operator_lifecycle.sync(safety)
+        if self.policy["mode"] == "observe":
+            return False
+        self._check_executor_support(safety)
+        self._check_rejected_acks(safety)
+        self._check_pending_acks(safety)
+        intent = self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
+        revision, digest = self._check_navigation_intent(safety, intent)
         self.settings_revision, self.calibration_digest = revision, digest
         self.intent = intent
         self.operator_lifecycle.admit(safety, intent)
@@ -202,22 +216,29 @@ class NavigationRunner:
             },
             **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
-        if (code == 200 and result.get("ok")) or (code == 202 and result.get("pending")):
+        if not self._record_motion_submission(speed, yaw, result, code):
+            self._motion_rejected(result, code)
+
+    def _record_motion_submission(self, speed, yaw, result, code):
+        accepted = (code == 200 and result.get("ok")) or (code == 202 and result.get("pending"))
+        if accepted:
             self.motion_started = self.motion_started or speed != 0 or yaw != 0
         if code == 202 and result.get("pending"):
             self.pending_motion_acks[self.run_id + "-" + str(self.motion_sequence)] = self.clock() + 0.1
-        if not (code == 200 and result.get("ok") or code == 202 and result.get("pending")):
-            if self._consent_completed(result.get("safety") or {}):
-                raise ComputeError("navigation_trial_completed")
-            error = result.get("error") or (result.get("ack") or {}).get("reason")
-            if not isinstance(error, str) or not error.replace("_", "").isalnum() or len(error) > 128:
-                error = "executor_rejected"
-            self.motion_failure = {"http_status": code, "reason": error}
-            gate_reason = (result.get("safety") or {}).get("reason")
-            if isinstance(gate_reason, str):
-                self.motion_failure["gate_reason"] = gate_reason
-            logging.getLogger(__name__).warning("[vision] motion rejected status=%s reason=%s", code, error)
-            raise ComputeError("navigation_motion_rejected")
+        return accepted
+
+    def _motion_rejected(self, result, code):
+        if self._consent_completed(result.get("safety") or {}):
+            raise ComputeError("navigation_trial_completed")
+        error = result.get("error") or (result.get("ack") or {}).get("reason")
+        if not isinstance(error, str) or not error.replace("_", "").isalnum() or len(error) > 128:
+            error = "executor_rejected"
+        self.motion_failure = {"http_status": code, "reason": error}
+        gate_reason = (result.get("safety") or {}).get("reason")
+        if isinstance(gate_reason, str):
+            self.motion_failure["gate_reason"] = gate_reason
+        logging.getLogger(__name__).warning("[vision] motion rejected status=%s reason=%s", code, error)
+        raise ComputeError("navigation_motion_rejected")
 
     def turn(self, side, duration, *, expected_run_id=None):
         settings = self.policy["avoidance"]
@@ -444,242 +465,107 @@ class NavigationRunner:
             except Exception:
                 self.closed.set()
 
+    def _start_cycle(self):
+        self.cycle_started = self.clock()
+        self.cycle_timings_ms = {}
+        configuration_started = self.clock()
+        if navigation_config.snapshot() != self.saved_policy or selected_executor() != self.selection:
+            raise ComputeError("navigation_configuration_changed")
+        self.cycle_timings_ms["configuration_ms"] = round((self.clock() - configuration_started) * 1000, 2)
+        if self.operator_lifecycle.enabled:
+            self._timed("authority_ms", self._authority)
+            if self.operator_lifecycle.authorized and not self.motion_started and self.clock() >= self.startup_deadline:
+                self.lease.halt("navigation_qualification_timeout")
+                self._authority()
+        # Recheck authority immediately before every zero/nonzero submission.
+        # A second preflight here only delays the next capture and decision.
+
+    def _start_run(self):
+        from apps.compute.stream_prepare import prepare_stream
+
+        prepared = prepare_stream(selection=self.selection, max_age_ms=self.policy["decision_budget_ms"])
+        source = (
+            self.source_factory(
+                require_bytes=False,
+                initial_source=(prepared or {}).get("latest_source"),
+                max_age_ms=self.policy["decision_budget_ms"],
+            )
+            if self.source_factory is FrameSource
+            else self.source_factory()
+        )
+        return source
+
+    def _start_watch(self):
+        if self.policy["mode"] == "drive":
+            self.motion_publisher = self.publisher_factory()
+        self.run_started_monotonic = self.clock()
+        self.started = self.run_started_monotonic
+        self.startup_deadline = self.started + 5.0
+        if self.policy["mode"] == "drive":
+            self._timed("authority_ms", self._authority)
+        self._status(None)
+
+    def _run_failure(self, exc):
+        if isinstance(exc, ComputeError) and exc.code == "navigation_trial_completed":
+            self.closed.set()
+            self.motion_failure = None
+            with self.lease.lock:
+                self.lease.reason = "trial_completed"
+            self.lease.halt("trial_completed")
+            return 0
+        failure = exc
+        if isinstance(exc, urllib.error.HTTPError):
+            from apps.compute.stream_prepare import http_error_code
+
+            failure = ComputeError("navigation_" + http_error_code(exc), exc.code)
+        logging.getLogger(__name__).warning(
+            "[vision] navigation failed type=%s reason_type=%s code=%s http_status=%s",
+            type(exc).__name__,
+            type(getattr(exc, "reason", None)).__name__,
+            getattr(failure, "code", None),
+            getattr(failure, "status", None),
+        )
+        self.lease.halt(failure.code if isinstance(failure, ComputeError) else "navigation_transport_or_input_failed")
+        return 2
+
+    def _finish_run(self, source, watchdog):
+        self.closed.set()
+        self.lease.halt("navigation_stopped")
+        try:
+            self._status(self.last_result)
+        except OSError:
+            pass
+        if source:
+            source.close()
+        if watchdog.is_alive():
+            watchdog.join(1)
+        if self.motion_publisher is not None:
+            self.motion_publisher.close()
+            self.motion_publisher = None
+        if self.intent:
+            write_intent_status(
+                UNIT,
+                self.intent,
+                active=False,
+                data_ready=False,
+                navigation_ready=False,
+                data_error=self.lease.reason,
+            )
+
     def run(self):
         watchdog = threading.Thread(target=self.watch, daemon=True)
         source = None
         try:
-            from apps.compute.stream_prepare import prepare_stream
-
-            prepared = prepare_stream(selection=self.selection, max_age_ms=self.policy["decision_budget_ms"])
-            source = (
-                self.source_factory(
-                    require_bytes=False,
-                    initial_source=(prepared or {}).get("latest_source"),
-                    max_age_ms=self.policy["decision_budget_ms"],
-                )
-                if self.source_factory is FrameSource
-                else self.source_factory()
-            )
-            if self.policy["mode"] == "drive":
-                self.motion_publisher = self.publisher_factory()
-            self.run_started_monotonic = self.clock()
-            self.started = self.run_started_monotonic
-            self.startup_deadline = self.started + 5.0
-            if self.policy["mode"] == "drive":
-                self._timed("authority_ms", self._authority)
-            self._status(None)
+            source = self._start_run()
+            self._start_watch()
             watchdog.start()
             while not self.closed.is_set():
-                self.cycle_started = self.clock()
-                self.cycle_timings_ms = {}
-                configuration_started = self.clock()
-                if navigation_config.snapshot() != self.saved_policy or selected_executor() != self.selection:
-                    raise ComputeError("navigation_configuration_changed")
-                self.cycle_timings_ms["configuration_ms"] = round((self.clock() - configuration_started) * 1000, 2)
-                if self.operator_lifecycle.enabled:
-                    self._timed("authority_ms", self._authority)
-                    if (
-                        self.operator_lifecycle.authorized
-                        and not self.motion_started
-                        and self.clock() >= self.startup_deadline
-                    ):
-                        self.lease.halt("navigation_qualification_timeout")
-                        self._authority()
-                # Recheck authority immediately before every zero/nonzero submission.
-                # A second preflight here only delays the next capture and decision.
-                frame = self._timed("frame_wait_ms", source.recv, 50)
-                if not frame or (self.last_frame is not None and frame["captured_at"] <= self.last_frame[1]):
-                    limit = (
-                        5.0
-                        if not self.fresh_frame_seen or self.policy["mode"] == "observe"
-                        else self.policy["decision_budget_ms"] / 1000
-                    )
-                    if self.clock() - self.started > limit:
-                        raise ComputeError("navigation_camera_unavailable")
-                    continue
-                self.last_frame = (frame["input_id"], frame["captured_at"])
-                if (
-                    self.policy["mode"] == "drive"
-                    and isinstance(frame["data"], bytes)
-                    and len(frame["data"]) <= 512 * 1024
-                ):
-                    self.frame_trace.append(frame)
-                source_mono = frame.get("captured_monotonic_ns")
-                age = (
-                    (self.clock() - source_mono / 1_000_000_000) * 1000
-                    if type(source_mono) is int
-                    else (time.time() - frame["captured_at"]) * 1000
-                )
-                if not 0 <= age < self.policy["decision_budget_ms"]:
-                    if (
-                        self.policy["mode"] == "observe" or self._startup_retry() or not self.fresh_frame_seen
-                    ) and self.clock() - self.started <= 5.0:
-                        continue
-                    raise ComputeError("navigation_frame_expired")
-                self.fresh_frame_seen = True
-                self.started = self.clock()
-                captured = self.clock() - age / 1000
-                self.sequence += 1
-                frame_id = hashlib.sha256(str(self.last_frame).encode()).hexdigest()
-                meta = {
-                    "protocol_version": 1,
-                    "run_id": self.run_id,
-                    "frame_id": frame_id,
-                    "sequence": self.sequence,
-                    "config_revision": self.policy["revision"],
-                    "age_ms": float(age),
-                    "deadline_ms": self.policy["decision_budget_ms"],
-                    **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
-                }
-                meta["perception"] = self.policy["perception"]
-                if self.policy.get("avoidance", {}).get("enabled"):
-                    meta.update(
-                        protocol_version=self.policy["avoidance"].get("protocol_version", 2),
-                        avoidance=self.policy["avoidance"],
-                        motion_phase=(
-                            "steer_wait"
-                            if self.policy["avoidance"].get("protocol_version", 2) == 3
-                            else "turn_settling"
-                        )
-                        if self.turn_capture_after is not None and captured <= self.turn_capture_after
-                        else "ready",
-                    )
-                request_started = self.clock()
-                try:
-                    decision = self.request(meta, frame["data"], frame["content_type"])
-                except (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError) as exc:
-                    if not self._retry_observation(exc):
-                        raise
-                    detail = {}
-                    if isinstance(exc, urllib.error.HTTPError):
-                        from apps.compute.stream_prepare import http_error_code
-
-                        detail = {"http_status": exc.code, "transport_error": http_error_code(exc)}
-                    reason = detail.get("transport_error")
-                    if reason is None or reason.startswith("http_"):
-                        reason = "vision_observation_transport_retry"
-                    self.last_result = {
-                        "state": "unknown",
-                        "action": "stop",
-                        "vision_action": "stop",
-                        "reason": reason,
-                        "motion_reason": reason,
-                        **detail,
-                        **({"source": dict(frame["data"])} if isinstance(frame["data"], dict) else {}),
-                        "clear_count": 0,
-                        "valid_for_ms": 0,
-                        **{
-                            k: meta[k]
-                            for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")
-                        },
-                    }
-                    self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
-                    self.response_age_ms = round((self.clock() - captured) * 1000, 2)
-                    self._status(self.last_result)
-                    self.closed.wait(0.2)
-                    continue
-                self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
-                self.response_age_ms = round((self.clock() - captured) * 1000, 2)
-                self.last_result = decision
-                if self.policy["mode"] == "drive":
-                    if self._startup_reply_expired(decision, meta, captured):
-                        self.last_result = {
-                            **decision,
-                            "state": "unknown",
-                            "action": "stop",
-                            "vision_action": "stop",
-                            "reason": "navigation_startup_waiting_fresh_frame",
-                            "motion_reason": "navigation_startup_waiting_fresh_frame",
-                            "valid_for_ms": 0,
-                        }
-                        self._status(self.last_result)
-                        continue
-                    if (
-                        self.turn_capture_after is not None
-                        and captured <= self.turn_capture_after
-                        and decision.get("action") != "stop"
-                    ):
-                        # A stale orientation can never issue forward or a second turn.
-                        decision = {
-                            **decision,
-                            "action": "stop",
-                            "state": "clear",
-                            "motion_reason": "avoidance_turn_settling",
-                        }
-                        self.last_result = decision
-                    if self.operator_lifecycle.enabled:
-                        # Generation can change while remote inference is in flight.
-                        generation = self.generation
-                        if not self._authority() or generation != self.generation:
-                            self._status(None)
-                            continue
-                        decision = self.operator_lifecycle.evidence(decision, frame_id, self.sequence, captured)
-                        self.last_result = decision
-                        if self.operator_lifecycle.qualification.count < 3:
-                            self._status(decision)
-                            continue
-                    self._timed("decision_apply_ms", self.lease.accept, decision, frame_id, self.sequence, captured)
-                    if not self.lease.latched and self.lease.reason == "awaiting_fresh_decision":
-                        # Keep the image verdict, but report the actual ZERO sent
-                        # to Pi while waiting for a usable fresh motion permit.
-                        decision = {**decision, "action": "stop", "motion_reason": self.lease.reason}
-                        self.last_result = decision
-                self._status(decision)
-                if self.lease.latched:
-                    if self.operator_lifecycle.enabled:
-                        self._authority()
-                    else:
-                        self.closed.set()
-                if self.policy["mode"] == "observe":
-                    self.closed.wait(0.01)
+                self._run_cycle(source)
             return 0
         except Exception as exc:
-            if isinstance(exc, ComputeError) and exc.code == "navigation_trial_completed":
-                self.closed.set()
-                self.motion_failure = None
-                with self.lease.lock:
-                    self.lease.reason = "trial_completed"
-                self.lease.halt("trial_completed")
-                return 0
-            failure = exc
-            if isinstance(exc, urllib.error.HTTPError):
-                from apps.compute.stream_prepare import http_error_code
-
-                failure = ComputeError("navigation_" + http_error_code(exc), exc.code)
-            logging.getLogger(__name__).warning(
-                "[vision] navigation failed type=%s reason_type=%s code=%s http_status=%s",
-                type(exc).__name__,
-                type(getattr(exc, "reason", None)).__name__,
-                getattr(failure, "code", None),
-                getattr(failure, "status", None),
-            )
-            self.lease.halt(
-                failure.code if isinstance(failure, ComputeError) else "navigation_transport_or_input_failed"
-            )
-            return 2
+            return self._run_failure(exc)
         finally:
-            self.closed.set()
-            self.lease.halt("navigation_stopped")
-            try:
-                self._status(self.last_result)
-            except OSError:
-                pass
-            if source:
-                source.close()
-            if watchdog.is_alive():
-                watchdog.join(1)
-            if self.motion_publisher is not None:
-                self.motion_publisher.close()
-                self.motion_publisher = None
-            if self.intent:
-                write_intent_status(
-                    UNIT,
-                    self.intent,
-                    active=False,
-                    data_ready=False,
-                    navigation_ready=False,
-                    data_error=self.lease.reason,
-                )
+            self._finish_run(source, watchdog)
 
 
 def main():
