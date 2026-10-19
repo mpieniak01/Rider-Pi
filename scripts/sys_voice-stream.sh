@@ -105,7 +105,7 @@ async def main() -> None:
     service._ws_module = websockets
 
     # 1) Transport WS
-    if not await service._initialize_transport():
+    if not service._initialize_transport():
         raise SystemExit("Failed to initialize realtime transport")
 
     try:

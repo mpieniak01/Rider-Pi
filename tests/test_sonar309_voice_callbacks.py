@@ -27,7 +27,7 @@ def test_auth_url_callback_keeps_positional_injected_logger_and_preflight(monkey
 
     monkeypatch.setattr(home_auth_route, "build_auth_url_preview", preview)
     with app.test_request_context("/api/home/auth/url", method=method):
-        response = app.make_response(home_auth_route.home_auth_url(corsify, logger))
+        response = app.make_response(home_auth_route.home_auth_url(corsify=corsify, logger=logger))
 
     assert response.headers["X-Fixture-Cors"] == "applied"
     assert len(cors_calls) == 1

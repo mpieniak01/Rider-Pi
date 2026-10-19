@@ -6,7 +6,13 @@ from services.api_core import google_home_api
 from services.api_core.google_home_api import build_auth_url_preview
 
 
-def home_auth_url(corsify, _logger):
+def home_auth_url(corsify, logger):
+    """Build the read-only OAuth URL preview without starting authentication.
+
+    logger is intentionally unused here, but remains an accepted keyword in
+    the injected route-handler interface shared with home_auth. Unlike the
+    authentication action, a URL preview performs no logged side effects.
+    """
     if request.method == "OPTIONS":
         return corsify(make_response("", 204))
     preview = build_auth_url_preview()
