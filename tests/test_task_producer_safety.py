@@ -220,9 +220,10 @@ def test_stopped_navigator_does_not_report_active_task(monkeypatch):
 def test_navigator_bad_config_has_no_partial_effect(monkeypatch, bad):
     nav, sent, state = navigator(monkeypatch)
     state["state"] = "DISARMED"
-    old = (nav.strategy, nav.fwd_speed, nav.turn_speed)
+    expected_navigation_state = (nav.strategy, nav.fwd_speed, nav.turn_speed)
     nav._handle_control_command({"action": "config", "config": {"strategy": "AVOID", "fwd_speed": bad}})
-    assert (nav.strategy, nav.fwd_speed, nav.turn_speed) == old
+    actual_navigation_state = (nav.strategy, nav.fwd_speed, nav.turn_speed)
+    assert actual_navigation_state == expected_navigation_state
     assert sent == []
 
 

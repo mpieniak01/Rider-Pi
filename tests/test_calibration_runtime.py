@@ -494,7 +494,7 @@ def test_reference_bound_to_exact_confirmed_runtime_profile(executor, monkeypatc
     estimator.update_imu(0, observed_at=clock.now)
     estimator.reference_verified, estimator.reference_id = True, "previous-reference"
     estimator.home = {"x": 2, "y": 3}
-    before = (estimator.reference_verified, estimator.reference_id, dict(estimator.home))
+    expected_reference_state = (estimator.reference_verified, estimator.reference_id, dict(estimator.home))
     monkeypatch.setenv("ODOMETRY_STATE_DIR", str(tmp_path / "reference"))
     publisher = type("Publisher", (), {"publish": lambda *_args, **_kw: None})()
     reference = ReferenceControl(estimator, publisher, clock=clock, safety_reader=instance.snapshot)
@@ -523,8 +523,8 @@ def test_reference_bound_to_exact_confirmed_runtime_profile(executor, monkeypatc
     else:
         assert ack["status"] == "rejected"
         assert ack["actuation"] is False
-        # Actual reference state is on the left; before is the expected snapshot.
-        assert (estimator.reference_verified, estimator.reference_id, estimator.home) == before
+        actual_reference_state = (estimator.reference_verified, estimator.reference_id, estimator.home)
+        assert actual_reference_state == expected_reference_state
 
 
 def test_same_hash_reapply_requires_current_consumer_transaction(executor, monkeypatch, tmp_path):

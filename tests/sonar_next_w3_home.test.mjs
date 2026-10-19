@@ -1,5 +1,5 @@
 // The actual home module runs with inert DOM, fetch promises and recorded timers.
-import test from 'node:test';
+import test, {before} from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
@@ -7,9 +7,12 @@ import {readFile} from 'node:fs/promises';
 const file = new URL('../web/home.html', import.meta.url);
 const html = await readFile(file, 'utf8');
 const inline = /<script type="module">([\s\S]*?)<\/script>/.exec(html);
-assert.ok(inline);
-const prefix = html.slice(0, inline.index + inline[0].indexOf(inline[1]));
-const source = '\n'.repeat(prefix.split('\n').length - 1) + inline[1];
+let source;
+before(() => {
+  assert.ok(inline);
+  const prefix = html.slice(0, inline.index + inline[0].indexOf(inline[1]));
+  source = '\n'.repeat(prefix.split('\n').length - 1) + inline[1];
+});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture() {
