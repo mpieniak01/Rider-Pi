@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from apps.camera.utils import CameraReader
 from apps.vision.ai_mode_adapter import log_vision_mode_status, should_run_local_detectors
 from common.bus import (
     TOPIC_PROVIDER_VISION_STATE,
@@ -29,10 +30,12 @@ MAX_FPS = float(os.getenv("HOG_MAX_FPS", "4.0"))  # ~4 fps dla CPU/baterii
 
 
 def open_camera(size=(W, H)):
+    owner = None
     try:
         from picamera2 import Picamera2
 
         picam2 = Picamera2()
+        owner = CameraReader(picam2, None, picamera=True)
         cfg = picam2.create_preview_configuration(main={"size": size, "format": "RGB888"})
         picam2.configure(cfg)
         picam2.start()
@@ -41,8 +44,11 @@ def open_camera(size=(W, H)):
             arr = picam2.capture_array()
             return True, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
-        return read, size
+        owner.read_frame = read
+        return owner, size
     except Exception:
+        if owner is not None:
+            owner.close()
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
@@ -50,7 +56,7 @@ def open_camera(size=(W, H)):
         def read():
             return cap.read()
 
-        return read, size
+        return CameraReader(cap, read), size
 
 
 def save_jpeg_bgr(path: str, bgr: np.ndarray):
