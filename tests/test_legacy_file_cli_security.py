@@ -92,9 +92,10 @@ def test_readonly_artifact_rejects_foreign_owner(tmp_path, monkeypatch):
         return os.stat_result(values)
 
     monkeypatch.setattr(secure_files.os, "fstat", foreign)
+    reader = secure_files.readonly_file(path)
     with pytest.raises(PermissionError, match="unsafe_runtime_artifact"):
-        with secure_files.readonly_file(path):
-            pytest.fail("foreign file must not be read")
+        with reader:
+            pass
 
 
 def test_readonly_artifact_rejects_entry_swap_before_validation(tmp_path, monkeypatch):
@@ -110,9 +111,10 @@ def test_readonly_artifact_rejects_entry_swap_before_validation(tmp_path, monkey
         return original(name, *args, **kwargs)
 
     monkeypatch.setattr(secure_files.os, "stat", swap)
+    reader = secure_files.readonly_file(path)
     with pytest.raises(PermissionError, match="unsafe_runtime_artifact"):
-        with secure_files.readonly_file(path):
-            pytest.fail("replaced entry must not be read")
+        with reader:
+            pass
 
 
 def test_readonly_fdopen_failure_closes_descriptor(tmp_path, monkeypatch):
@@ -125,9 +127,10 @@ def test_readonly_fdopen_failure_closes_descriptor(tmp_path, monkeypatch):
         raise OSError("fdopen failed")
 
     monkeypatch.setattr(secure_files.os, "fdopen", fail)
+    reader = secure_files.readonly_file(path)
     with pytest.raises(OSError, match="fdopen failed"):
-        with secure_files.readonly_file(path):
-            pytest.fail("fdopen must fail")
+        with reader:
+            pass
     with pytest.raises(OSError) as error:
         os.fstat(opened[0])
     assert error.value.errno == errno.EBADF
@@ -211,3 +214,17 @@ def test_weather_offline_selftest_writes_atomic_png(tmp_path, monkeypatch):
     assert victim.read_bytes() == b"keep"
     with Image.open(output) as image:
         assert image.size == (240, 320)
+
+
+def test_cli_stats_uses_the_selected_driver_prefix(cli, tmp_path, monkeypatch, capsys):
+    from drivers.lcd.mock import MockFaceDriver
+
+    driver = MockFaceDriver(None)
+    driver.out_base = tmp_path / "selected-preview"
+    monkeypatch.setattr(cli, "make_driver", lambda kind, cfg: driver)
+    monkeypatch.setattr(cli.sys, "argv", ["dev_face-cli.py", "--force", "png", "--stats", "--backend", "mock"])
+    cli.main()
+    captured = capsys.readouterr()
+    assert str(driver.out_base) + ".png:" in captured.out
+    assert '"mode": "png"' in captured.out
+    assert captured.err == ""

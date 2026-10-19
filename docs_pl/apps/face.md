@@ -86,7 +86,8 @@ dowiązania w katalogach oraz niezaufane katalogi są odrzucane. Błąd kodera
 pozostawia poprzedni kompletny plik. Czytniki podglądu powinny działać jako ten
 sam użytkownik co proces zapisujący.
 
-`dev_face-cli.py --stats` odczytuje wyłącznie własne zwykłe pliki, bez dowiązań
+`dev_face-cli.py --stats` odczytuje artefakty wybranego sterownika mock,
+wyłącznie własne zwykłe pliki, bez dowiązań
 symbolicznych i twardych ani zapisu grupowego/publicznego. Metadane JSON mają
 limit 64 KiB; niebezpieczny lub niepoprawny artefakt daje komunikat diagnostyczny.
 Nazwy plików i orientacja LCD pozostają zgodne z konfiguracją.

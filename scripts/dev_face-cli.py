@@ -94,11 +94,11 @@ def main():
         print(f"Nieznany tryb --force: {args.force}", file=sys.stderr)
         sys.exit(1)
 
-    if args.stats:
-        print_mock_stats()
+    if args.stats and hasattr(driver, "out_base"):
+        print_mock_stats(str(driver.out_base))
 
 
-def print_mock_stats(base="/tmp/face_last"):
+def print_mock_stats(base):
     """Inspect only owned mock artifacts; metadata reads are bounded to 64 KiB."""
     for ext in [".png", ".rgb565", ".meta.json"]:
         path = base + ext
