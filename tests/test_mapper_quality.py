@@ -77,12 +77,15 @@ def test_map_request_preserves_original_time_and_cells_expire(mapper):
     instance._handle_obstacle_data(ranges(clock))
     instance._handle_map_request({"request_id": "first"})
     first = sent[-1][1]
-    assert first["observed_at"] == 1000 and first["request_id"] == "first"
-    assert first["planning_ready"] and not first["navigation_ready"]
+    assert first["observed_at"] == 1000
+    assert first["request_id"] == "first"
+    assert first["planning_ready"]
+    assert not first["navigation_ready"]
     clock.now += 4
     instance._handle_map_request({"request_id": "second"})
     second = sent[-1][1]
-    assert second["observed_at"] is None and not second["navigation_ready"]
+    assert second["observed_at"] is None
+    assert not second["navigation_ready"]
     assert all(cell == CELL_UNKNOWN for row in second["grid"] for cell in row)
 
 
@@ -108,10 +111,12 @@ def test_new_coordinate_frame_clears_previous_cells_and_range(mapper, field):
     replacement = dict(instance.pose_sample, **{field: "new-frame"})
     replacement["home"] = dict(replacement["home"], **{field: "new-frame"})
     instance._handle_robot_pose(replacement)
-    assert not instance.quality()["navigation_ready"] and instance.range_sample is None
+    assert not instance.quality()["navigation_ready"]
+    assert instance.range_sample is None
     assert all(cell == CELL_UNKNOWN for row in instance.grid.snapshot(clock.now) for cell in row)
     instance._handle_obstacle_data(ranges(clock))
-    assert instance.quality()["planning_ready"] and instance.quality()[field] == "new-frame"
+    assert instance.quality()["planning_ready"]
+    assert instance.quality()[field] == "new-frame"
 
 
 def test_new_calibration_discards_cells_before_manual_reference(mapper):
@@ -129,9 +134,11 @@ def test_new_calibration_discards_cells_before_manual_reference(mapper):
             "error": "current_manual_reference_required",
         }
     )
-    assert instance.frame is None and instance.range_sample is None
+    assert instance.frame is None
+    assert instance.range_sample is None
     assert instance.grid.observation_time is None
-    assert instance.robot_x is None and instance.robot_theta is None
+    assert instance.robot_x is None
+    assert instance.robot_theta is None
     assert not instance.quality()["planning_ready"]
     assert all(cell == CELL_UNKNOWN for row in instance.grid.snapshot(clock.now) for cell in row)
 

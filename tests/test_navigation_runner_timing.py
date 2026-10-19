@@ -252,7 +252,8 @@ def test_authority_cost_cannot_publish_a_move_after_its_original_deadline(isolat
     assert failure.value.code == "navigation_decision_expired_before_submit"
     assert runner.motion_failure["reason"] == "navigation_decision_expired_before_submit"
     assert runner.lease.latched
-    assert not runner.lease.moving and runner.lease.deadline is None
+    assert not runner.lease.moving
+    assert runner.lease.deadline is None
     assert not any(row["action"] == "move" for row in commands)
     assert commands[-1]["action"] == "stop"
 
@@ -338,7 +339,8 @@ def test_short_permit_reports_zero_and_continues_only_on_next_fresh_frame(isolat
     moves = [row for row in commands if row["action"] == "move"]
     assert [row["vx"] for row in moves] == [0.1, 0.0, 0.1]
     paused = next(row for row in rows if (row["decision"] or {}).get("sequence") == 2)
-    assert paused["paused"] and not paused["latched"]
+    assert paused["paused"]
+    assert not paused["latched"]
     assert paused["decision"]["vision_action"] == "go"
     assert paused["decision"]["action"] == "stop"
     assert paused["stop_reason"] == "awaiting_fresh_decision"
@@ -550,7 +552,8 @@ def test_native_reference_recorded_delay_retains_original_capture_deadline(
     if response_age_ms < 300:
         assert decision["request_roundtrip_ms"] == pytest.approx(200.41)
         assert decision["decision"]["valid_for_ms"] == 200
-        assert not decision["latched"] and not decision["paused"]
+        assert not decision["latched"]
+        assert not decision["paused"]
         assert decision["permit_remaining_ms"] == pytest.approx(52.71)
         move = moves[-1]
         assert move["duration"] == pytest.approx(0.05271)
@@ -558,5 +561,6 @@ def test_native_reference_recorded_delay_retains_original_capture_deadline(
         assert move["ts"] + move["duration"] == pytest.approx(move["decision_deadline_monotonic"])
     else:
         # Even a matching, positive host permit cannot renew an expired capture.
-        assert decision["latched"] and decision["permit_remaining_ms"] == 0
+        assert decision["latched"]
+        assert decision["permit_remaining_ms"] == 0
         assert runner.lease.reason == "decision_invalid_or_expired"

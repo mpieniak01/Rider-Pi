@@ -74,7 +74,8 @@ def test_visual_stop_and_fresh_clear_resume_without_rearming(executor):
     assert instance.controller.o_lx > 0
     assert not accept(lease, config, clock, 2, state="obstacle", count=0)
     assert instance.controller.o_lx == instance.controller.o_az == 0
-    assert not lease.latched and not lease.moving
+    assert not lease.latched
+    assert not lease.moving
     for seq, count in [(3, 1), (4, 2), (5, 3)]:
         advance(instance, clock, 0.08)
         assert lease.tick()
@@ -84,7 +85,8 @@ def test_visual_stop_and_fresh_clear_resume_without_rearming(executor):
     advance(instance, clock, 0.08)
     assert instance.controller.o_lx > 0
     lease.halt("operator_stop")
-    assert instance.controller.stopped and instance.gate.state == "DISARMED"
+    assert instance.controller.stopped
+    assert instance.gate.state == "DISARMED"
     assert not accept(lease, config, clock, 6)
     assert any(row["reason"] == "sdk_zero_accepted" for row in acks)
 
@@ -97,14 +99,16 @@ def test_uncertain_image_pauses_and_keeps_original_trial(executor, reason):
     advance(instance, clock, 0.06)
     assert not accept(lease, config, clock, 2, state="unknown", count=0, reason=reason)
     assert instance.controller.o_lx == 0
-    assert not lease.latched and instance.gate.generation == generation
+    assert not lease.latched
+    assert instance.gate.generation == generation
 
 
 def test_inference_failure_is_terminal_even_before_first_motion(executor):
     instance, clock = executor
     lease, config, _, _ = trial(instance, clock)
     assert not accept(lease, config, clock, 1, state="unknown", count=0, reason="vision_inference_unavailable")
-    assert lease.latched and instance.gate.state == "DISARMED"
+    assert lease.latched
+    assert instance.gate.state == "DISARMED"
     assert not accept(lease, config, clock, 2)
 
 
@@ -117,7 +121,8 @@ def test_paused_link_loss_expires_without_fresh_go(executor):
     assert lease.tick()
     advance(instance, clock, 0.10)
     assert not lease.tick()
-    assert lease.latched and instance.gate.state == "DISARMED"
+    assert lease.latched
+    assert instance.gate.state == "DISARMED"
     assert instance.controller.o_lx == 0
     assert not accept(lease, config, clock, 2)
 
@@ -138,12 +143,14 @@ def test_full_ten_seconds_clear_produces_small_motor_outputs_and_then_stops(exec
             due = step + rng.randint(4, 6)
         advance(instance, clock, 0.02)
         assert lease.tick()
-        assert not lease.latched and instance.gate.generation == generation
+        assert not lease.latched
+        assert instance.gate.generation == generation
         assert 0 <= instance.controller.o_lx <= 0.1
     assert clock.now - starts == pytest.approx(10.0)
     assert any(call[0] == "move" and call[1] > 0 for call in instance.adapter.calls)
     advance(instance, clock, 0.04)
-    assert instance.gate.state == "DISARMED" and instance.controller.stopped
+    assert instance.gate.state == "DISARMED"
+    assert instance.controller.stopped
     assert instance.controller.o_lx == 0
 
 
@@ -168,8 +175,10 @@ def test_production_reply_gap_crosses_motor_permit_without_revoking_arm(executor
     assert lease.accept(first, first["frame_id"], 1, clock.now - 0.137)
     advance(instance, clock, 0.10)
     assert instance.controller.stopped
-    assert instance.gate.state == "ARMED" and instance.gate.generation == generation
-    assert lease.tick() and not lease.moving
+    assert instance.gate.state == "ARMED"
+    assert instance.gate.generation == generation
+    assert lease.tick()
+    assert not lease.moving
     assert accept(lease, config, clock, 2)
     advance(instance, clock, 0.02)
     assert instance.controller.o_lx > 0
@@ -186,7 +195,8 @@ def test_feedback_expiry_independently_disarms_and_late_fresh_reply_cannot_reviv
     pulse.update(decision_feedback_deadline_monotonic=clock.now + 0.3)
     assert instance.apply(pulse)["status"] == "accepted"
     advance(instance, clock, 0.22)
-    assert instance.controller.stopped and instance.gate.state == "ARMED"
+    assert instance.controller.stopped
+    assert instance.gate.state == "ARMED"
     late = navigation_pulse(instance, clock)
     late.update(decision_feedback_deadline_monotonic=clock.now + 0.3)
     clock.now += 0.10
@@ -272,7 +282,8 @@ def test_recorded_151611_short_go_zeros_real_executor_without_rearming(executor)
     row["valid_for_ms"] = short["valid_for_ms"]
     assert not lease.accept(row, row["frame_id"], short["sequence"], clock.now - short["response_age_ms"] / 1000)
     assert acks[-1]["reason"] == "sdk_zero_accepted"
-    assert instance.controller.stopped and not lease.latched
+    assert instance.controller.stopped
+    assert not lease.latched
     assert instance.gate.generation == generation
     assert instance.gate.lease_deadline == arm_deadline
     advance(instance, clock, 0.08)
@@ -282,5 +293,6 @@ def test_recorded_151611_short_go_zeros_real_executor_without_rearming(executor)
     assert instance.gate.generation == generation
     assert instance.gate.lease_deadline == arm_deadline
     advance(instance, clock, 0.31)
-    assert instance.gate.state == "DISARMED" and instance.controller.stopped
+    assert instance.gate.state == "DISARMED"
+    assert instance.controller.stopped
     assert not lease.tick()

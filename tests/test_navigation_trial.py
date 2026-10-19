@@ -1,152 +1,14 @@
 """One-start preparation with real temporary orchestration locks and fake I/O."""
 
-import copy
 import json
 import time
 
 import pytest
+from navigation_trial_world import World
 
-from apps.safety.gate import MotionGate
-from common.service_catalog import DEFAULT_REGISTRY
 from services import navigation_config
-from services.core.features import FeatureManager, NullPublisher
-from services.navigation_trial import NavigationTrial, TrialError, public_status
+from services.navigation_trial import TrialError, public_status
 from services.safety_contract import command_envelope
-
-
-class World:
-    def __init__(self, tmp_path):
-        self.gate = MotionGate(blocked=lambda: False)
-        self.active, self.actions, self.commands = set(), [], []
-        self.hook = None
-        self.elapsed = 0.0
-        self.failure = None
-        self.config_path = tmp_path / "navigation.json"
-        policy = copy.deepcopy(navigation_config.DEFAULT)
-        policy.update(verified=True, calibration_id="accepted", model_sha256="a" * 64)
-        self.config_path.write_text(json.dumps(policy))
-        self.manager = FeatureManager(
-            registry={
-                key: DEFAULT_REGISTRY[key]
-                for key in ("s2_camera_preview", "s14_venom_navigation", "s15_venom_perception")
-            },
-            runner=self.run,
-            status_fn=self.unit_status,
-            publisher=NullPublisher(),
-            safety_status=self.safety,
-            safety_stop=lambda _: pytest.fail("A trial must never use global cleanup STOP"),
-            dependency_check=lambda *_: [],
-            producer_status=lambda _: {},
-            state_path=tmp_path / "features.json",
-        )
-        self.trial = NavigationTrial(
-            self.manager,
-            safety=self.safety,
-            submit=self.submit,
-            settings=lambda: {"revision": 3},
-            status=self.status,
-            clock=lambda: self.elapsed,
-            sleep=self.sleep,
-        )
-
-    def sleep(self, seconds):
-        self.elapsed += seconds
-
-    def safety(self):
-        return {
-            **self.gate.snapshot(),
-            "ready": True,
-            "stale": False,
-            "can_move": self.gate.can_actuate(),
-            "hardware_ready": True,
-            "remote_decision_deadline_supported": True,
-            "remote_decision_feedback_supported": True,
-            "scoped_stop_generation_supported": True,
-            "manual_settings": {"revision": 3},
-            "capabilities": {name: {"available": True, "stop_verified": True} for name in ("move", "turn")},
-        }
-
-    def submit(self, payload):
-        self.commands.append(dict(payload))
-        command = command_envelope(payload)
-        accepted, reason = self.gate.authorize(command)
-        return {
-            "ok": accepted,
-            "confirmed": accepted,
-            "error": None if accepted else reason,
-            "ack": {"generation": self.gate.generation, "request_id": command["request_id"]},
-            "safety": self.safety(),
-        }, 200 if accepted else 409
-
-    def unit_status(self, unit):
-        return {
-            "unit": unit,
-            "load": "loaded",
-            "active": "active" if unit in self.active else "inactive",
-            "sub": "running" if unit in self.active else "dead",
-        }
-
-    def run(self, unit, action):
-        self.actions.append((unit, action))
-        if self.hook:
-            self.hook(unit, action)
-        if self.failure == (unit, action):
-            return {"ok": False, "error": "fixture_start_failure"}
-        if action == "start":
-            self.active.add(unit)
-        else:
-            self.active.discard(unit)
-        return {"ok": True, "unit": unit, "action": action}
-
-    def status(self):
-        intent = self.manager._intents.get("s14_venom_navigation", {})
-        if not intent:
-            return {}
-        return {
-            "run_id": "new-run",
-            "mode": "drive",
-            "running": True,
-            "observed_at": time.time(),
-            "config_revision": navigation_config.snapshot()["revision"],
-            "generation": self.gate.generation,
-            "operator_request_id": intent["request_id"],
-            "sampled_monotonic": self.elapsed,
-            "permit_remaining_ms": 150,
-            "response_age_ms": 40,
-        }
-
-    def body(self, **changes):
-        return {
-            "request_id": "operator-click",
-            "generation": self.gate.generation,
-            "ts": time.time(),
-            "ttl_ms": 500,
-            "config_revision": navigation_config.snapshot()["revision"],
-            "settings_revision": 3,
-            "operator_consent": True,
-            "operator_plan": "Forward, current low speed, up to 10 seconds.",
-            "source": "manual",
-            "execution_context": "panel",
-            **changes,
-        }
-
-    def arm_manual(self):
-        return self.submit(
-            {
-                "action": "arm",
-                "source": "manual",
-                "owner": "manual",
-                "request_id": "new-manual",
-                "generation": self.gate.generation,
-                "seq": 0,
-                "ts": time.time(),
-                "ttl_ms": 500,
-                "operator_consent": True,
-                "operator_plan": "Manual operator takeover",
-                "execution_context": "panel",
-                "arming_mode": "operator",
-            }
-        )
 
 
 @pytest.fixture
@@ -167,8 +29,10 @@ def world(tmp_path, monkeypatch):
 def test_single_request_starts_with_one_arm_and_real_temp_flock(world):
     before = navigation_config.snapshot()
     result = world.trial.start(world.body())
-    assert result["ok"] and result["status"]["run_id"] == "new-run"
-    assert result["config"]["mode"] == "drive" and result["config"]["revision"] == before["revision"] + 1
+    assert result["ok"]
+    assert result["status"]["run_id"] == "new-run"
+    assert result["config"]["mode"] == "drive"
+    assert result["config"]["revision"] == before["revision"] + 1
     assert result["config"]["speed"] == before["speed"]
     assert result["config"]["max_motion_ms"] == before["max_motion_ms"]
     assert result["authority"]["owner"] == "navigation"
@@ -197,8 +61,9 @@ def test_replayed_request_does_not_arm_twice(world):
     body = world.body()
     world.trial.start(body)
     # Reproduce exact identifier with otherwise current explicit envelope.
+    trial_body = world.body(request_id=body["request_id"])
     with pytest.raises(TrialError, match="navigation_trial_replay"):
-        world.trial.start(world.body(request_id=body["request_id"]))
+        world.trial.start(trial_body)
     assert len([row for row in world.commands if row["action"] == "arm"]) == 1
 
 
@@ -215,9 +80,11 @@ def test_replayed_request_does_not_arm_twice(world):
     ],
 )
 def test_invalid_admission_never_starts_services_or_arm(world, change, code):
+    trial_body = world.body(**change)
     with pytest.raises(TrialError, match=code):
-        world.trial.start(world.body(**change))
-    assert not world.actions and not world.commands
+        world.trial.start(trial_body)
+    assert not world.actions
+    assert not world.commands
 
 
 def test_global_stop_during_prepare_cancels_without_later_arm(world):
@@ -226,16 +93,18 @@ def test_global_stop_during_prepare_cancels_without_later_arm(world):
             world.gate.authorize({"action": "stop"})
 
     world.hook = stop_during_camera
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_cancelled"):
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert not any(row["action"] == "arm" for row in world.commands)
     assert world.gate.state == "DISARMED"
 
 
 def test_prepare_budget_is_not_extended_by_slow_camera(world):
     world.hook = lambda *_: setattr(world, "elapsed", 16.0)
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_prepare_timeout"):
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert not world.commands
 
 
@@ -246,25 +115,29 @@ def test_rollback_after_new_manual_generation_does_not_stop_new_owner(world):
             assert world.arm_manual()[0]["ok"]
 
     world.hook = takeover
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_cancelled"):
-        world.trial.start(world.body())
-    assert world.gate.owner == "manual" and world.gate.state == "ARMED"
+        world.trial.start(trial_body)
+    assert world.gate.owner == "manual"
+    assert world.gate.state == "ARMED"
     assert not any(row["action"] == "stop" for row in world.commands)
     assert len([row for row in world.commands if row["action"] == "arm" and row["owner"] == "navigation"]) == 1
 
 
 def test_failed_start_after_own_arm_revokes_only_own_generation(world):
     world.failure = ("rider-venom-navigation.service", "start")
+    trial_body = world.body()
     with pytest.raises(TrialError, match="start_failed"):
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert world.gate.state == "DISARMED"
     assert any(row["action"] == "stop" and row.get("expected_generation") for row in world.commands)
 
 
 def test_run_confirmation_rejects_previous_run_and_stops_own_arm(world):
     world.trial.status = lambda: {"running": True, "run_id": "previous"}
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_prepare_timeout"):
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert world.gate.state == "DISARMED"
 
 
@@ -275,8 +148,10 @@ def test_atomic_scoped_stop_cannot_revoke_new_manual_owner(world, action):
     assert world.arm_manual()[0]["ok"]
     generation = world.gate.generation
     accepted, reason = world.gate.authorize({"action": action, "expected_generation": previous})
-    assert not accepted and reason == "stale_stop_generation"
-    assert world.gate.generation == generation and world.gate.owner == "manual"
+    assert not accepted
+    assert reason == "stale_stop_generation"
+    assert world.gate.generation == generation
+    assert world.gate.owner == "manual"
     assert world.gate.authorize({"action": action})[0]
     assert world.gate.state == "DISARMED"
 
@@ -307,7 +182,8 @@ def test_trial_http_route_uses_same_domain_and_contract(world, monkeypatch):
     app.extensions["rider_navigation_trial"] = world.trial
     rider_routes.register_compute(app)
     response = app.test_client().post("/api/navigation/trial", json=world.body())
-    assert response.status_code == 200 and response.json["ok"]
+    assert response.status_code == 200
+    assert response.json["ok"]
     assert response.json["status"]["run_id"] == "new-run"
     assert contract_for("/api/navigation/trial").name == "rider.navigation_loop"
 
@@ -368,7 +244,8 @@ def test_mode_switch_preserves_unrelated_voice_compute_consumer(world):
     world.manager._state_path.write_text(json.dumps({"requested": ["s13_venom_voice"]}))
     old = navigation_config.snapshot()
     switched = navigation_config.configure({"revision": old["revision"], "values": {"mode": "drive"}})
-    assert switched["mode"] == "drive" and switched["speed"] == old["speed"]
+    assert switched["mode"] == "drive"
+    assert switched["speed"] == old["speed"]
     with pytest.raises(ValueError, match="compute_stop_goals_first"):
         navigation_config.configure({"revision": switched["revision"], "values": {"speed": 0.11}})
 
@@ -383,7 +260,8 @@ def test_mode_switch_still_requires_its_navigation_consumers_to_stop(world, goal
 def test_trial_replaces_running_observation_without_extra_arm(world):
     assert world.manager.set_feature("s15_venom_perception", True)["ok"]
     result = world.trial.start(world.body())
-    assert result["ok"] and "s15_venom_perception" not in world.manager._requested
+    assert result["ok"]
+    assert "s15_venom_perception" not in world.manager._requested
     assert "s14_venom_navigation" in world.manager._requested
     assert len([row for row in world.commands if row["action"] == "arm"]) == 1
 
@@ -421,7 +299,8 @@ def test_trial_replaces_old_navigation_with_scoped_stop_and_one_new_arm(world):
     )["ok"]
     before = len(world.commands)
     result = world.trial.start(world.body(config_revision=config["revision"]))
-    assert result["ok"] and result["authority"]["generation"] != old_generation
+    assert result["ok"]
+    assert result["authority"]["generation"] != old_generation
     commands = world.commands[before:]
     assert len([row for row in commands if row["action"] == "arm"]) == 1
     assert commands[0]["action"] == "stop"
@@ -440,12 +319,15 @@ def test_unconfirmed_queued_arm_is_cancelled_before_it_can_execute(world):
 
     world.trial.submit = pending_arm
     before = world.gate.generation
+    trial_body = world.body()
     with pytest.raises(TrialError, match="executor_ack_pending"):
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert len(queued) == 1
-    assert world.gate.generation != before and world.gate.state == "DISARMED"
+    assert world.gate.generation != before
+    assert world.gate.state == "DISARMED"
     accepted, reason = world.gate.authorize(queued[0])
-    assert not accepted and reason == "stale_generation"
+    assert not accepted
+    assert reason == "stale_generation"
     assert not any(unit == "rider-venom-navigation.service" for unit, _ in world.actions)
 
 
@@ -455,8 +337,9 @@ def test_unexpected_error_after_arm_revokes_own_permission_without_exposing_text
         raise error_type("private backend details must not reach the operator")
 
     world.trial.status = failed_status
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_prepare_failed") as caught:
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert str(caught.value) == "navigation_trial_prepare_failed"
     assert caught.value.status == 503
     assert caught.value.details["preparation"]["phase"] == "start_navigation"
@@ -473,9 +356,11 @@ def test_unexpected_error_after_new_manual_arm_cannot_revoke_new_operator(world,
         raise error_type("private backend details must not reach the operator")
 
     world.trial.status = takeover_then_fail
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_prepare_failed"):
-        world.trial.start(world.body())
-    assert world.gate.state == "ARMED" and world.gate.owner == "manual"
+        world.trial.start(trial_body)
+    assert world.gate.state == "ARMED"
+    assert world.gate.owner == "manual"
     assert not any(row["action"] == "stop" for row in world.commands)
 
 
@@ -489,9 +374,11 @@ def test_old_executor_is_rejected_before_preparation_or_arm(world, capability):
         return row
 
     world.trial.safety = legacy
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_executor_update_required"):
-        world.trial.start(world.body())
-    assert not world.actions and not world.commands
+        world.trial.start(trial_body)
+    assert not world.actions
+    assert not world.commands
 
 
 def test_new_manual_command_during_preparation_cancels_old_trial_without_rearming(world):
@@ -516,9 +403,11 @@ def test_new_manual_command_during_preparation_cancels_old_trial_without_rearmin
             assert world.gate.authorize(command)[0]
 
     world.hook = newer_intent
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_cancelled"):
-        world.trial.start(world.body())
-    assert world.gate.owner == "manual" and world.gate.state == "ARMED"
+        world.trial.start(trial_body)
+    assert world.gate.owner == "manual"
+    assert world.gate.state == "ARMED"
     assert not any(row.get("owner") == "navigation" for row in world.commands)
 
 
@@ -553,8 +442,9 @@ def test_failed_producer_handoff_keeps_passive_camera_without_new_arm(world):
     world.failure = ("rider-venom-perception.service", "stop")
     world.actions.clear()
     world.commands.clear()
+    trial_body = world.body()
     with pytest.raises(TrialError) as caught:
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert not any(c["action"] == "arm" for c in world.commands)
     assert world.gate.owner == "manual"
     assert "s2_camera_preview" in world.manager._requested
@@ -563,13 +453,15 @@ def test_failed_producer_handoff_keeps_passive_camera_without_new_arm(world):
     assert progress["phase"] == "stop_old_producer"
     assert progress["state"] == "failed"
     saved = json.loads(world.manager._state_path.with_name("navigation_trial_prepare.json").read_text())
-    assert saved["request_id"] == "operator-click" and saved["state"] == "failed"
+    assert saved["request_id"] == "operator-click"
+    assert saved["state"] == "failed"
 
 
 def test_delayed_first_status_reports_phase_and_revokes_only_trial_authority(world):
     world.trial.status = lambda: {}
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_prepare_timeout") as caught:
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert caught.value.details["preparation"]["phase"] == "first_status"
     assert world.gate.state == "DISARMED"
     assert "s2_camera_preview" in world.manager._requested
@@ -584,8 +476,9 @@ def test_preparation_status_is_visible_even_without_a_producer_file(world, monke
     target = world.manager._state_path.with_name("navigation_loop.json")
     monkeypatch.setenv("RIDER_NAVIGATION_STATUS", str(target))
     world.hook = lambda *_: setattr(world, "elapsed", 16.0)
+    trial_body = world.body()
     with pytest.raises(TrialError):
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     app = Flask(__name__)
     with app.test_request_context():
         response, code = status_handler()
@@ -659,8 +552,9 @@ def test_production_trial_that_ended_during_start_is_not_reported_as_never_start
 
     world.hook = delayed_start
     world.trial.status = lambda: dict(saved)
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_stopped") as caught:
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert caught.value.details["started"] is True
     assert caught.value.details["status"]["stop_reason"] == "decision_timeout"
     assert caught.value.details["status"]["operator_request_id"].endswith("-start")
@@ -681,7 +575,8 @@ def test_slow_http_bookkeeping_cannot_cancel_a_fresh_run_started_within_budget(w
     world.hook = slow_after_process_start
     world.trial.status = lambda: dict(saved)
     result = world.trial.start(world.body())
-    assert result["ok"] and result["status"]["running"]
+    assert result["ok"]
+    assert result["status"]["running"]
     assert result["preparation"]["elapsed_ms"] > 5000
     assert len([c for c in world.commands if c["action"] == "arm"]) == 1
     assert not any(c["action"] == "stop" for c in world.commands)
@@ -699,8 +594,9 @@ def test_run_started_after_prepare_deadline_is_not_accepted(world):
 
     world.hook = too_late
     world.trial.status = lambda: dict(saved)
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_prepare_timeout"):
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert world.gate.state == "DISARMED"
 
 
@@ -725,8 +621,9 @@ def test_late_unrelated_producer_outcome_does_not_replace_prepare_failure(world,
 
     world.hook = unrelated
     world.trial.status = lambda: dict(saved)
+    trial_body = world.body()
     with pytest.raises(TrialError, match="navigation_trial_prepare_timeout") as caught:
-        world.trial.start(world.body())
+        world.trial.start(trial_body)
     assert not caught.value.details.get("started")
 
 
@@ -766,7 +663,8 @@ def test_public_status_does_not_present_expired_go_as_an_active_motor_permit():
     row = public_status(source, sampled_now=10.1)
     assert row["permit_remaining_ms"] == 0
     assert row["feedback_remaining_ms"] == 140
-    assert row["waiting_feedback"] and row["paused"]
+    assert row["waiting_feedback"]
+    assert row["paused"]
     assert row["decision"]["action"] == "stop"
     assert row["decision"]["vision_action"] == "go"
     assert source["decision"]["action"] == "go"

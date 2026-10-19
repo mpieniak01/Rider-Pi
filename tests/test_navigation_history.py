@@ -24,7 +24,8 @@ def test_terminal_drive_records_frames_and_observation_preserves_shared_outcome(
     runner.closed.set()
     runner._status(decision)
     trial = json.loads((tmp_path / "navigation_trial.json").read_text())
-    assert trial["run_id"] == runner.run_id and trial["running"] is False
+    assert trial["run_id"] == runner.run_id
+    assert trial["running"] is False
     with zipfile.ZipFile(io.BytesIO((tmp_path / "navigation_trial.zip").read_bytes())) as bundle:
         manifest = json.loads(bundle.read("manifest.json"))
         frame = manifest["frames"][0]
@@ -39,7 +40,8 @@ def test_terminal_drive_records_frames_and_observation_preserves_shared_outcome(
     with app.test_request_context():
         response, status = navigation_api.status_handler()
     row = response.get_json()
-    assert status == 200 and row["mode"] == "observe"
+    assert status == 200
+    assert row["mode"] == "observe"
     assert row["decision"]["state"] == "clear"
     expected = {key: value for key, value in trial.items() if key not in {"sampled_monotonic", "run_started_monotonic"}}
     assert all(row["last_trial"][key] == value for key, value in expected.items())

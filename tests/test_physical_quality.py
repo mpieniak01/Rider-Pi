@@ -48,12 +48,15 @@ def test_zero_pause_is_immediate_and_acknowledged_without_revoking_lease(executo
     generation = instance.gate.generation
     clock.now += 0.01
     ack = instance.apply(command(instance, vx=0, yaw=0))
-    assert ack["status"] == "executed" and ack["reason"] == "sdk_zero_accepted"
+    assert ack["status"] == "executed"
+    assert ack["reason"] == "sdk_zero_accepted"
     assert instance.adapter.calls[-1] == ("move", 0, 0)
-    assert instance.gate.state == "ARMED" and instance.gate.generation == generation
+    assert instance.gate.state == "ARMED"
+    assert instance.gate.generation == generation
     clock.now += 0.3
     instance.tick(0.02)
-    assert instance.gate.state == "DISARMED" and instance.gate.generation != generation
+    assert instance.gate.state == "DISARMED"
+    assert instance.gate.generation != generation
 
 
 @pytest.mark.parametrize(
@@ -85,7 +88,8 @@ def test_battery_unknown_or_out_of_range_is_not_zero(value):
     samples = SensorSamples(lambda: 100, lambda: 100)
     samples.observe("battery", value)
     row = samples.quality()["sensors"]["battery"]
-    assert row["value"] is None and not row["ready"]
+    assert row["value"] is None
+    assert not row["ready"]
 
 
 def test_source_time_and_monotonic_time_are_independently_checked():
@@ -107,13 +111,16 @@ def test_source_time_and_monotonic_time_are_independently_checked():
 def test_projection_never_rejuvenates_stale_missing_source_time():
     row = {"ts": 100, "imu": {"roll": 0, "pitch": 0, "yaw": 0}, "battery": 0}
     imu, device = project_sensor_payload(row, now=100)
-    assert not imu["imu_ok"] and device["battery_pct"] is None
+    assert not imu["imu_ok"]
+    assert device["battery_pct"] is None
     row["sensor_observed_at"] = {key: 99 for key in ("roll", "pitch", "yaw", "battery")}
     imu, device = project_sensor_payload(row, now=100)
-    assert imu["observed_at"] == 99 and device["battery_pct"] == 0
+    assert imu["observed_at"] == 99
+    assert device["battery_pct"] == 0
     row["ts"] = 200
     imu, device = project_sensor_payload(row, now=200)
-    assert not imu["imu_ok"] and device["battery_pct"] is None
+    assert not imu["imu_ok"]
+    assert device["battery_pct"] is None
 
 
 @pytest.mark.parametrize(
@@ -151,7 +158,8 @@ def test_sdk_output_ledger_only_reports_actual_write_time(executor):
     output = instance.sdk_output()
     clock.now += 0.1
     assert instance.sdk_output()["observed_at"] == output["observed_at"]
-    assert output["linear_step"] == 1 and output["physical_completion"] == "unverified"
+    assert output["linear_step"] == 1
+    assert output["physical_completion"] == "unverified"
 
 
 def test_replacement_goal_after_deadline_cannot_hide_timeout(executor):
@@ -162,7 +170,8 @@ def test_replacement_goal_after_deadline_cannot_hide_timeout(executor):
     generation = instance.gate.generation
     clock.now += 0.11
     ack = instance.apply(command(instance))
-    assert ack["status"] == "rejected" and instance.gate.state == "DISARMED"
+    assert ack["status"] == "rejected"
+    assert instance.gate.state == "DISARMED"
     assert instance.gate.generation != generation
     assert instance.adapter.calls[-1] == ("stop",)
 
@@ -173,7 +182,8 @@ def test_invalid_current_goal_stops_existing_motion(executor):
     instance.apply(command(instance))
     instance.tick(0.02)
     ack = instance.apply(command(instance, vx=float("nan")))
-    assert ack["status"] == "rejected" and instance.gate.state == "DISARMED"
+    assert ack["status"] == "rejected"
+    assert instance.gate.state == "DISARMED"
     assert instance.controller.stopped
 
 
@@ -184,5 +194,6 @@ def test_invalid_new_intent_closes_previous_pending_ack(executor, fields):
     instance.apply(command(instance, request_id="first"))
     instance.apply(command(instance, request_id="invalid", **fields))
     terminal = [row for row in instance.recent_acks if row["request_id"] == "first"]
-    assert terminal[-1]["status"] == "rejected" and terminal[-1]["cancelled_by"] == "invalid"
+    assert terminal[-1]["status"] == "rejected"
+    assert terminal[-1]["cancelled_by"] == "invalid"
     assert instance.pending is None
