@@ -38,7 +38,11 @@
   function highlightActive(links, preferred){
     if (!links.length) return;
 
-    const normalize = (path) => (path.replace(/\/+$/, '') || '/');
+    const normalize = (path) => {
+      let end = path.length;
+      while (end > 0 && path[end - 1] === '/') end--;
+      return path.slice(0, end) || '/';
+    };
     let active = null;
 
     if (preferred){
@@ -66,7 +70,7 @@
     const buttons = Array.from(container.querySelectorAll('button[data-lang]'));
     if (!buttons.length) return;
 
-    const normalize = (lang) => (lang && lang.toLowerCase().startsWith('en')) ? 'en' : 'pl';
+    const normalize = (lang) => (lang || '').toLowerCase().startsWith('en') ? 'en' : 'pl';
     const stored = normalize(localStorage.getItem('lang') || document.documentElement.getAttribute('lang') || navigator.language);
 
     updateButtons(stored);
@@ -91,13 +95,7 @@
     }
 
     function emitLang(lang){
-      if (typeof CustomEvent === 'function') {
-        window.dispatchEvent(new CustomEvent('dashboard:langchange', { detail: { lang } }));
-      } else if (document && typeof document.createEvent === 'function') {
-        const evt = document.createEvent('CustomEvent');
-        evt.initCustomEvent('dashboard:langchange', false, false, { lang });
-        window.dispatchEvent(evt);
-      }
+      window.dispatchEvent(new CustomEvent('dashboard:langchange', { detail: { lang } }));
     }
 
     function applyLanguage(lang){

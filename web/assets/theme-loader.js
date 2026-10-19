@@ -1,13 +1,13 @@
 (function () {
   const STORAGE_KEY = 'dashboard_theme';
-  const THEMES = ['classic', 'classic-plus', 'v2', 'v3'];
+  const THEMES = new Set(['classic', 'classic-plus', 'v2', 'v3']);
   const DEFAULT_THEME = 'classic';
   let domReady = false;
 
   function normalizeTheme(value) {
     if (typeof value !== 'string') return DEFAULT_THEME;
     const clean = value.toLowerCase();
-    return THEMES.includes(clean) ? clean : DEFAULT_THEME;
+    return THEMES.has(clean) ? clean : DEFAULT_THEME;
   }
 
   function syncThemeLinks(theme) {
@@ -35,7 +35,7 @@
 
   function applyTheme(theme, { persist = true } = {}) {
     const normalized = normalizeTheme(theme);
-    document.documentElement.setAttribute('data-dashboard-theme', normalized);
+    document.documentElement.dataset.dashboardTheme = normalized;
     syncThemeLinks(normalized);
     if (persist) {
       try {
@@ -60,7 +60,7 @@
   init();
 
   window.dashboardTheme = {
-    get: () => document.documentElement.getAttribute('data-dashboard-theme') || DEFAULT_THEME,
+    get: () => document.documentElement.dataset.dashboardTheme || DEFAULT_THEME,
     set: (theme) => applyTheme(theme),
     options: [
       { value: 'classic', label: 'Klasyczny' },
