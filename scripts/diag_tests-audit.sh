@@ -26,33 +26,40 @@ echo "path,is_pytest,imports_apps,imports__apps,uses_legacy_endpoints,exec_sheba
 
 # proste detektory
 detect_pytest() {
+  local path="$1"
   # test_* albo class Test*, lub 'pytest'
-  grep -E -q '(^|\s)(def\s+test_|class\s+Test|pytest\.)' "$1" 2>/dev/null
+  grep -E -q '(^|\s)(def\s+test_|class\s+Test|pytest\.)' "$path" 2>/dev/null
 }
 
 detect_imports_apps() {
-  grep -E -q 'from\s+apps\.|import\s+apps(\W|$)' "$1" 2>/dev/null
+  local path="$1"
+  grep -E -q 'from\s+apps\.|import\s+apps(\W|$)' "$path" 2>/dev/null
 }
 
 detect_imports__apps() {
-  grep -E -q 'from\s+_apps\.|import\s+_apps(\W|$)' "$1" 2>/dev/null
+  local path="$1"
+  grep -E -q 'from\s+_apps\.|import\s+_apps(\W|$)' "$path" 2>/dev/null
 }
 
 detect_legacy_endpoints() {
+  local path="$1"
   # stary kontrakt ruchu wg notatek: GET /api/move|/api/stop oraz stare ścieżki
-  grep -E -q '/api/(move|stop)\b|/face_lcd|/st77|/lcd_presenter' "$1" 2>/dev/null
+  grep -E -q '/api/(move|stop)\b|/face_lcd|/st77|/lcd_presenter' "$path" 2>/dev/null
 }
 
 has_shebang_exec() {
-  head -1 "$1" 2>/dev/null | grep -q '^#!/'
+  local path="$1"
+  head -1 "$path" 2>/dev/null | grep -q '^#!/'
 }
 
 syntax_ok() {
-  python3 -m pyflakes "$1" >/dev/null 2>&1 || python3 -m py_compile "$1" >/dev/null 2>&1
+  local path="$1"
+  python3 -m pyflakes "$path" >/dev/null 2>&1 || python3 -m py_compile "$path" >/dev/null 2>&1
 }
 
 import_ok() {
-  python3 "$PY_AUDITOR" "$1" >/dev/null 2>&1
+  local path="$1"
+  python3 "$PY_AUDITOR" "$path" >/dev/null 2>&1
 }
 
 # upewnij się, że helper istnieje

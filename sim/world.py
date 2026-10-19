@@ -134,7 +134,7 @@ class World:
             self._build_wall_segments()
 
         except Exception as e:
-            LOG.error("Failed to load map %s: %s", filename, e)
+            LOG.exception("Failed to load map %s: %s", filename, e)
             sys.exit(1)
 
     def _build_wall_segments(self):

@@ -16,14 +16,12 @@
 set -euo pipefail
 
 # ── Klucz OpenAI z ~/.bash_profile (bezpiecznie) ──────────────────────────────
-if [[ -f "$HOME/.bash_profile" ]]; then
-  # Załaduj zmienne (w tym OPENAI_API_KEY) jeśli brak w środowisku
-  if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-    OPENAI_API_KEY="$(
-      bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf "%s" "$OPENAI_API_KEY"'
-    )"
-    export OPENAI_API_KEY
-  fi
+# Załaduj zmienne (w tym OPENAI_API_KEY) jeśli brak w środowisku
+if [[ -f "$HOME/.bash_profile" && -z "${OPENAI_API_KEY:-}" ]]; then
+  OPENAI_API_KEY="$(
+    bash -lc 'source ~/.bash_profile >/dev/null 2>&1; printf "%s" "$OPENAI_API_KEY"'
+  )"
+  export OPENAI_API_KEY
 fi
 
 # ── Locale/IO (żeby logi nie krzaczyły polskich znaków) ───────────────────────

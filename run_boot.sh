@@ -48,7 +48,10 @@ BROKER="${ROOT}/services/broker.py"
 PUB="${ROOT}/scripts/dev_bus-pub.py"
 
 log(){ printf "[%(%H:%M:%S)T] %s\n" -1 "$*"; }
-have(){ command -v "$1" >/dev/null 2>&1; }
+have(){
+  local name="$1"
+  command -v "$name" >/dev/null 2>&1
+}
 
 stop_all(){
   log "STOP: zatrzymuję face/broker"

@@ -51,8 +51,9 @@ def _wait_direct_face(client, result):
     signal.signal(signal.SIGTERM, lambda *_: finished.set())
     try:
         print(json.dumps(result, ensure_ascii=False), flush=True)
-        while face_anim.get_state()["state"]["playing"] and not finished.wait(0.25):
-            pass
+        while face_anim.get_state()["state"]["playing"]:
+            if finished.wait(0.25):
+                break
     finally:
         signal.signal(signal.SIGTERM, previous)
         result = client.request("/api/face-studio/runtime/stop", "POST", {})

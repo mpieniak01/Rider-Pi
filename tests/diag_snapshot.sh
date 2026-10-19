@@ -9,7 +9,7 @@ OUT="$OUTDIR/diag_$STAMP.txt"
 INTERACTIVE=0
 [[ -t 1 && -z "${TMUX:-}" ]] && INTERACTIVE=1
 
-err(){ code=$?; echo -e "\n[ERROR] Kod $code w linii ${BASH_LINENO[0]}." | tee -a "$OUT"; }
+err(){ code=$?; echo -e "\n[ERROR] Kod $code w linii ${BASH_LINENO[0]}." | tee -a "$OUT" >&2; }
 trap err ERR
 finish(){
   echo -e "\nOK. Zapisano: $OUT"
@@ -69,7 +69,7 @@ for url in \
   "http://127.0.0.1:8080/api/status" \
 ; do
   echo -n "$url -> " | tee -a "$OUT"
-  (curl -fsS --max-time 2 "$url" | tr -d '\n' | cut -c1-200 || echo "ERROR") | tee -a "$OUT"
+  (curl -fsS --max-time 2 "$url" | tr -d '\n' | cut -c1-200 || { echo "ERROR" | tee -a "$OUT" >&2; }) | tee -a "$OUT"
   echo | tee -a "$OUT"
 done
 

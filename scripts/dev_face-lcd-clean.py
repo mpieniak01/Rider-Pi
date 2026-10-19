@@ -139,8 +139,8 @@ def _try_face_frame(expr, size):
         # testcard
         from PIL import Image, ImageDraw
 
-        def _mk(W=240, H=320):
-            img = Image.new("RGB", (W, H), (0, 0, 64))
+        def _mk(width=240, height=320):
+            img = Image.new("RGB", (width, height), (0, 0, 64))
             drw = ImageDraw.Draw(img)
             cols = [
                 (255, 0, 0),
@@ -151,12 +151,12 @@ def _try_face_frame(expr, size):
                 (0, 255, 255),
                 (255, 255, 255),
             ]
-            bw = W // len(cols)
+            bw = width // len(cols)
             for i, c in enumerate(cols):
-                drw.rectangle([i * bw, 0, (i + 1) * bw - 1, H // 2], fill=c)
-            drw.rectangle([0, 0, W - 1, H - 1], outline=(255, 255, 255))
-            drw.line([(0, H // 2), (W - 1, H // 2)], fill=(255, 255, 255))
-            drw.line([(W // 2, 0), (W // 2, H - 1)], fill=(255, 255, 255))
+                drw.rectangle([i * bw, 0, (i + 1) * bw - 1, height // 2], fill=c)
+            drw.rectangle([0, 0, width - 1, height - 1], outline=(255, 255, 255))
+            drw.line([(0, height // 2), (width - 1, height // 2)], fill=(255, 255, 255))
+            drw.line([(width // 2, 0), (width // 2, height - 1)], fill=(255, 255, 255))
             return img
 
         return lambda: _mk(size, int(size * 4 / 3))

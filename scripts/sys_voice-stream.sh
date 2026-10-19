@@ -9,7 +9,7 @@ REPO_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
 cd "${REPO_ROOT}"
 
 # --- source ~/.bash_profile (klucze i poświadczenia pobieramy STĄD) ----------
-if [ -f "$HOME/.bash_profile" ]; then
+if [[ -f "$HOME/.bash_profile" ]]; then
   # shellcheck disable=SC1090
   . "$HOME/.bash_profile"
 fi
@@ -22,7 +22,7 @@ DEFAULT_CONFIG="${REPO_ROOT}/config/voice_streaming.toml"
 DEFAULT_ALSA="${REPO_ROOT}/config/alsa/asoundrc.wm8960"
 
 : "${VOICE_CONFIG:=${DEFAULT_CONFIG}}"
-if [ -z "${ALSA_CONFIG_PATH:-}" ] && [ -f "${DEFAULT_ALSA}" ]; then
+if [[ -z "${ALSA_CONFIG_PATH:-}" && -f "${DEFAULT_ALSA}" ]]; then
   ALSA_CONFIG_PATH="${DEFAULT_ALSA}"
 fi
 
@@ -32,7 +32,7 @@ fi
 : "${VOICE_WS_DUMP:=1}"
 
 # Wymagane: klucz po sourcowaniu profilu
-if [ -z "${OPENAI_API_KEY:-}" ]; then
+if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   echo "[voice.ops] ERROR: OPENAI_API_KEY is not set (missing in ~/.bash_profile?)." >&2
   echo "           Add to ~/.bash_profile, e.g.: export OPENAI_API_KEY='sk-...'" >&2
   exit 2
@@ -47,7 +47,7 @@ export PYTHONPATH="${REPO_ROOT}:${PYTHONPATH:-}"
 
 # --- info ---------------------------------------------------------------------
 echo "[voice.ops] Using VOICE_CONFIG=${VOICE_CONFIG}"
-[ -n "${ALSA_CONFIG_PATH:-}" ] && echo "[voice.ops] ALSA_CONFIG_PATH=${ALSA_CONFIG_PATH}" || \
+[[ -n "${ALSA_CONFIG_PATH:-}" ]] && echo "[voice.ops] ALSA_CONFIG_PATH=${ALSA_CONFIG_PATH}" || \
   echo "[voice.ops] ALSA_CONFIG_PATH is not set (Pulse/HDMI may be used by system)."
 echo "[voice.ops] OPENAI_REALTIME_ENDPOINT=${OPENAI_REALTIME_ENDPOINT}"
 echo "[voice.ops] PYTHONUNBUFFERED=${PYTHONUNBUFFERED} VOICE_WS_LOG=${VOICE_WS_LOG} VOICE_WS_DUMP=${VOICE_WS_DUMP}"
@@ -59,7 +59,7 @@ if command -v sudo >/dev/null 2>&1; then
   KILL_CMD="sudo fuser"
 fi
 for dev in /dev/snd/pcmC0D0p /dev/snd/pcmC0D0c; do
-  if [ -e "${dev}" ]; then
+  if [[ -e "${dev}" ]]; then
     ${KILL_CMD} -k "${dev}" 2>/dev/null || true
   fi
 done
@@ -136,7 +136,7 @@ asyncio.run(main())
 PY
 
 STATUS=$?
-if [ ${STATUS} -eq 0 ]; then
+if [[ ${STATUS} -eq 0 ]]; then
   echo "[voice.ops] Realtime chat demo finished successfully."
 else
   echo "[voice.ops] Realtime chat demo failed with status ${STATUS}." >&2
