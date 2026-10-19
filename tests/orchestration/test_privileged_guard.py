@@ -64,7 +64,8 @@ def test_systemctl_fallback_cannot_bypass_guard(monkeypatch, tmp_path, safety):
     monkeypatch.setattr(systemd_ctrl, "SERVICE_CTL", tmp_path / "missing")
     monkeypatch.setattr(service_action_guard, "_intent", lambda unit: {})
     result = systemd_ctrl.run_unit_action("rider-tracking-controller.service", "start")
-    assert result.method == "unavailable" and not result.ok
+    assert result.method == "unavailable"
+    assert not result.ok
 
 
 def test_passive_service_uses_installed_shared_backend(monkeypatch, tmp_path):

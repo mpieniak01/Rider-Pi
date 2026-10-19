@@ -112,7 +112,7 @@ def _base_config() -> dict:
     return copy.deepcopy(_BASE_CONFIG)
 
 
-@pytest.fixture()
+@pytest.fixture
 def service_impl_mod():
     import importlib
 
@@ -183,7 +183,9 @@ def test_cycle_emits_idle_when_reply_empty(monkeypatch: pytest.MonkeyPatch, serv
     states = _state_sequence(publisher)
     states = states[1:] if (states and states[0] == "idle") else states
     assert states == ["hearing", "thinking", "idle"]
-    assert result.audio is None and result.audio_format == "" and result.sample_rate == 0
+    assert result.audio is None
+    assert result.audio_format == ""
+    assert result.sample_rate == 0
 
 
 def test_cycle_idle_after_short_recording(monkeypatch: pytest.MonkeyPatch, service_impl_mod) -> None:

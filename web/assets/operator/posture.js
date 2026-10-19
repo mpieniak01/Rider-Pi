@@ -1,4 +1,12 @@
 import { tr, showError } from './ui.js';
+function balanceValue(balance) {
+ if(typeof balance!=='boolean')return '';
+ return balance?'1':'0';
+}
+function balanceLabel(balance) {
+ if(typeof balance!=='boolean')return '—';
+ return balance?tr('włączony','on'):tr('wyłączony','off');
+}
 export class Posture {
  constructor(safety) {
   this.dirty = new Set();
@@ -30,7 +38,7 @@ export class Posture {
  }
  renderValues(height,balance){
   if(!this.dirty.has('height') && document.activeElement!==this.height && Number.isInteger(height)){this.height.value=height;this.root.querySelector('output').textContent=String(height);}
-  if(!this.dirty.has('balance') && document.activeElement!==this.balance)this.balance.value=typeof balance==='boolean'?(balance?'1':'0'):'';
+  if(!this.dirty.has('balance') && document.activeElement!==this.balance)this.balance.value=balanceValue(balance);
  }
  render(){
   this.renderLanguage();
@@ -41,7 +49,7 @@ export class Posture {
    this.root.querySelector('#posture-'+action+'-send').disabled=!allowed;
    this.root.querySelector('#posture-'+action).disabled=!allowed;
   }
-  this.root.querySelector('#posture-state').textContent=tr('Ostatnie polecenie: wysokość ','Last command: height ')+(height??'—')+tr(' · balans ',' · balance ')+(typeof balance==='boolean'?(balance?tr('włączony','on'):tr('wyłączony','off')):'—')+tr('. Suwak wysyła po puszczeniu. Nastawy, nie pomiary.','. The slider sends on release. Settings, not measurements.');
+  this.root.querySelector('#posture-state').textContent=tr('Ostatnie polecenie: wysokość ','Last command: height ')+(height??'—')+tr(' · balans ',' · balance ')+balanceLabel(balance)+tr('. Suwak wysyła po puszczeniu. Nastawy, nie pomiary.','. The slider sends on release. Settings, not measurements.');
   this.root.querySelector('#posture-action-status').textContent=state?.capabilities?.action?.available?tr('Figury zmieniają postawę robota.','Figures change the robot posture.'):tr('Figury dostępne w SDK; wykonanie zablokowane do potwierdzenia możliwości ich przerwania.','Figures are available in the SDK; execution is blocked until interruption is verified.');
  }
 }

@@ -17,7 +17,7 @@ while true; do
     -H 'Content-Type: audio/wav' --data-binary @/tmp/in.wav | jq -r '.text')
   echo "[ASR] >> $TXT"
 
-  [ -z "$TXT" ] || [ "$TXT" = "null" ] && continue
+  [[ -z "$TXT" || "$TXT" = "null" ]] && continue
 
   # normalizacja
   L=$(echo "$TXT" | tr '[:upper:]' '[:lower:]')

@@ -30,16 +30,19 @@ def client(monkeypatch):
 def test_face_application_results_keep_alias_evidence(client, path):
     response = client.post(path, json={}, headers=VENDOR)
     body = response.get_json()
-    assert response.status_code == 200 and body["ok"]
+    assert response.status_code == 200
+    assert body["ok"]
     assert body["operation"]["ack_kind"] == "application_result"
-    assert body["operation"]["confirmed"] is True and body["operation"]["actuation"] is False
+    assert body["operation"]["confirmed"] is True
+    assert body["operation"]["actuation"] is False
 
 
 @pytest.mark.parametrize("path", ["/api/chat", "/api/chat/send"])
 def test_actual_chat_alias_response_is_an_application_result(client, path):
     response = client.post(path, json={"text": "fixture"}, headers=VENDOR)
     body = response.get_json()
-    assert response.status_code == 200 and body["ok"]
+    assert response.status_code == 200
+    assert body["ok"]
     assert body["data"]["reply"] == "real fixture response"
     assert body["operation"]["ack_kind"] == "application_result"
 
@@ -47,7 +50,8 @@ def test_actual_chat_alias_response_is_an_application_result(client, path):
 @pytest.mark.parametrize("path,payload", [("/api/voice/say", {"text": "fixture"}), ("/api/voice/capture?sec=1", {})])
 def test_voice_backend_result_is_preserved(client, path, payload):
     response = client.post(path, json=payload, headers=VENDOR)
-    assert response.status_code == 200 and response.get_json()["operation"]["confirmed"] is True
+    assert response.status_code == 200
+    assert response.get_json()["operation"]["confirmed"] is True
 
 
 @pytest.mark.parametrize(
@@ -55,12 +59,14 @@ def test_voice_backend_result_is_preserved(client, path, payload):
 )
 def test_home_domain_result_is_preserved(client, path, payload):
     response = client.post(path, json=payload, headers=VENDOR)
-    assert response.status_code == 200 and response.get_json()["operation"]["ack_kind"] == "application_result"
+    assert response.status_code == 200
+    assert response.get_json()["operation"]["ack_kind"] == "application_result"
 
 
 def test_chat_backend_failure_is_not_an_application_success(client, monkeypatch):
     monkeypatch.setattr(chat_glue, "_remote_reply", lambda text: (False, "fixture_backend_unavailable", "unavailable"))
     response = client.post("/api/chat", json={"text": "fixture"}, headers=VENDOR)
-    assert response.status_code == 503 and response.get_json()["ok"] is False
+    assert response.status_code == 503
+    assert response.get_json()["ok"] is False
     assert response.get_json()["operation"]["confirmed"] is False
     assert response.get_json()["operation"]["status"] == "rejected"

@@ -3,6 +3,22 @@ import { HeldMotion } from './held-motion.js?v=motion-descriptors-9';
 import { ageOf, authorized, operatorAuthorized, safetyKnown, editingTarget, matchingAck, setServerClock } from './model.js';
 import { request, poll, prepareMutation } from './transport.js';
 import { text, tr, statusLabel, showError } from './ui.js';
+function intentLabel(mode) {
+  if(mode==='release')return tr('Wyhamowanie; robot pozostaje uzbrojony.','Decelerating; robot remains armed.');
+  if(mode==='hold')return tr('Przytrzymanie — jazda ciągła.','Held — continuous command.');
+  return tr('Wysłano impuls.','Pulse sent.');
+}
+function armingLabel(known,armed,unconfirmed) {
+  if(!known)return tr('Stan uzbrojenia nieznany','Arming state unknown');
+  const state=armed?tr('Robot uzbrojony','Robot armed'):tr('Robot rozbrojony','Robot disarmed');
+  const suffix=unconfirmed?tr(' · ostatni stan',' · last known state'):'';
+  return state+suffix;
+}
+function permissionReason(panel,known) {
+  if(panel.revokedGenerations.has(panel.state?.generation))return tr('Zgoda lokalnie unieważniona; wymagane STOP i nowe uzbrojenie','Permission locally revoked; STOP and new arming required');
+  if(panel.observationFailed || !known)return tr('Odczyt nieaktualny — pokazano ostatni stan wykonawcy','Observation unavailable — showing last executor state');
+  return panel.state.error || panel.state.reason || '—';
+}
 export class SafetyPanel {
   constructor(onChange = () => {}, { interactive = true } = {}) {
     this.interactive = interactive; this.upperOffset = 0; this.lowerOffset = 0;
@@ -133,7 +149,11 @@ export class SafetyPanel {
     let command;
     try {
       command = exempt ? { action, source: owner, request_id: requestId('web') } : this.envelope(action, params, owner);
-    } catch (error) { if (!exempt) this.mutating = false; this.render(); throw error; }
+    } catch (error) {
+      if (!exempt) this.mutating = false;
+      this.render();
+      throw error;
+    }
     return command;
   }
   recordCommand(command,exempt) {
@@ -199,10 +219,7 @@ export class SafetyPanel {
     const result=await request('/api/control',{method:'POST',body:command,timeout:500,beforeSend:check});
     if(result.data.safety)this.update(result.data.safety);
     if(result.data.ack?.status==='rejected')throw new Error(result.data.ack.reason||'motion_rejected');
-    text('operator-message',intent.mode==='release'
-      ?tr('Wyhamowanie; robot pozostaje uzbrojony.','Decelerating; robot remains armed.')
-      :intent.mode==='hold'?tr('Przytrzymanie — jazda ciągła.','Held — continuous command.')
-      :tr('Wysłano impuls.','Pulse sent.'));
+    text('operator-message',intentLabel(intent.mode));
     return result.data;
   }
   ack(ack, confirmedHttp = false) {
@@ -239,9 +256,7 @@ export class SafetyPanel {
     const armed = known && this.state.state === 'ARMED';
     const unknownArmed = !known && this.lastArmed;
     const unconfirmed = this.observationFailed || !safetyKnown(this.state, this.now());
-    node.textContent = !known ? tr('Stan uzbrojenia nieznany', 'Arming state unknown')
-      : tr(armed ? 'Robot uzbrojony' : 'Robot rozbrojony', armed ? 'Robot armed' : 'Robot disarmed')
-        + (unconfirmed ? tr(' · ostatni stan', ' · last known state') : '');
+    node.textContent = armingLabel(known,armed,unconfirmed);
     node.classList.toggle('is-armed', armed); node.classList.toggle('is-disarmed', known && !armed);
     node.setAttribute('aria-pressed', String(armed));
     node.disabled = !armed && (this.toggling || this.mutating || !known || !this.clockReady);
@@ -267,11 +282,11 @@ export class SafetyPanel {
     if (this.controls) { this.send('move', { direction }).catch(showError); return; }
     if (!this.can('manual', direction === 'left' || direction === 'right' ? 'turn' : 'move')) return;
     const speedText = document.getElementById('speed')?.value, yawText = document.getElementById('yaw-speed')?.value, durationText = document.getElementById('duration')?.value;
-    const speed = speedText?.trim() ? Number(speedText) : NaN;
-    const yaw = yawText?.trim() ? Number(yawText) : NaN;
+    const speed = speedText?.trim() ? Number(speedText) : Number.NaN;
+    const yaw = yawText?.trim() ? Number(yawText) : Number.NaN;
     const values = { forward: [speed, 0], backward: [-speed, 0], left: [0, -yaw], right: [0, yaw] }[direction];
     if (!values) return;
-    this.send('move', { vx: values[0], yaw: values[1], duration: durationText?.trim() ? Number(durationText) : NaN }).catch(showError);
+    this.send('move', { vx: values[0], yaw: values[1], duration: durationText?.trim() ? Number(durationText) : Number.NaN }).catch(showError);
   }
   key(event) {
     if (!this.controlsActive()) return;
@@ -294,7 +309,7 @@ export class SafetyPanel {
     text('safety-ready', known && this.state.ready === true && this.state.hardware_ready === true ? tr('gotowy wykonawca', 'executor ready') : tr('niepotwierdzona / brak', 'unconfirmed / unavailable'));
     text('safety-age', `${ageOf(this.state, this.now())?.toFixed(1) ?? '—'} s`);
     text('safety-owner', known ? this.state.owner || '—' : '—');
-    text('safety-reason', this.revokedGenerations.has(this.state?.generation) ? tr('Zgoda lokalnie unieważniona; wymagane STOP i nowe uzbrojenie', 'Permission locally revoked; STOP and new arming required') : this.observationFailed || !known ? tr('Odczyt nieaktualny — pokazano ostatni stan wykonawcy', 'Observation unavailable — showing last executor state') : known ? this.state.error || this.state.reason || '—' : tr('Brak świeżych danych / stary kontrakt: tylko odczyt', 'Missing fresh data / old contract: read only'));
+    text('safety-reason', permissionReason(this,known));
     text('safety-lease', known && typeof this.state.lease_remaining_s === 'number' ? `${Math.max(0, this.state.lease_remaining_s - Math.max(0, this.now() - this.state.observed_at)).toFixed(1)} s` : '—');
     document.querySelectorAll('[data-direction]').forEach(node => { node.disabled = !this.can('manual', ['left', 'right'].includes(node.dataset.direction) ? 'turn' : 'move'); });
     this.onChange(this.state);
@@ -303,7 +318,9 @@ export class SafetyPanel {
     const node = document.getElementById('request-history'); if (!node) return;
     node.replaceChildren(...this.history.map(entry => {
       const row = document.createElement('li');
-      row.textContent = `${new Date(entry.submittedAt * 1000).toLocaleTimeString()} · ${entry.command.action} · ${statusLabel(entry.status)}${entry.reason ? ` · ${entry.reason}` : ''}${entry.ack?.status === 'executed' ? ` · ${tr('fizyczne zakończenie niepotwierdzone', 'physical completion unverified')}` : ''}`;
+      const reason=entry.reason?' · '+entry.reason:'';
+      const completion=entry.ack?.status==='executed'?' · '+tr('fizyczne zakończenie niepotwierdzone','physical completion unverified'):'';
+      row.textContent = `${new Date(entry.submittedAt * 1000).toLocaleTimeString()} · ${entry.command.action} · ${statusLabel(entry.status)}${reason}${completion}`;
       return row;
     }));
   }

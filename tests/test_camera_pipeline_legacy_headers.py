@@ -63,7 +63,8 @@ def source(monkeypatch, tmp_path, request):
 def test_legacy_image_alias_keeps_freshness_identity_sensor_clock_and_epoch(source, route, view, stream):
     client, producer, images, captured = source
     response = client.get(route, headers={"Accept": "application/vnd.rider.api+json;version=1"})
-    assert response.status_code == 200 and response.mimetype == "image/jpeg"
+    assert response.status_code == 200
+    assert response.mimetype == "image/jpeg"
     assert response.data == images[view]
     assert response.headers["X-Rider-Source"] == "pi-camera"
     assert response.headers["X-Rider-Contract"] == "rider.frames;version=1"
@@ -82,7 +83,8 @@ def test_legacy_image_alias_keeps_freshness_identity_sensor_clock_and_epoch(sour
     assert "X-Rider-File-Observed-At" not in response.headers
     descriptor = json.loads(response.headers["X-Rider-Source-Json"])
     assert descriptor["captured_monotonic_ns"] == captured
-    assert descriptor["pipeline_revision"] == 4 and descriptor["transport_epoch"] == producer.epoch
+    assert descriptor["pipeline_revision"] == 4
+    assert descriptor["transport_epoch"] == producer.epoch
     assert descriptor["frame_id"] == response.headers["X-Rider-Frame-Id"]
     assert descriptor["frame_age_ms"] == age
     assert descriptor["sha256"] == hashlib.sha256(response.data).hexdigest()
@@ -93,7 +95,8 @@ def test_legacy_image_alias_keeps_freshness_identity_sensor_clock_and_epoch(sour
 def test_new_ram_endpoint_keeps_json_source_descriptor_with_original_epoch(source):
     client, producer, images, captured = source
     response = client.get("/api/resource/camera/frame")
-    assert response.status_code == 200 and response.data == images["raw"]
+    assert response.status_code == 200
+    assert response.data == images["raw"]
     descriptor = json.loads(response.headers["X-Rider-Source"])
     assert descriptor["camera_session"] == producer.session
     assert descriptor["captured_monotonic_ns"] == captured
@@ -105,7 +108,8 @@ def test_legacy_ram_unavailable_is_stale_and_cannot_fall_back_to_old_file(source
     client, producer, _, _ = source
     producer.frames.close()
     response = client.get("/vision/cam")
-    assert response.status_code == 503 and response.is_json
+    assert response.status_code == 503
+    assert response.is_json
     assert response.headers["X-Rider-Stale"] == "true"
     assert response.headers["X-Rider-Source"] == "pi-camera"
     assert "X-Rider-Frame-Id" not in response.headers

@@ -85,7 +85,7 @@ export class MjpegParser {
     }
     imageLength(headers) {
         const rawLength = headers.get("content-length") ?? "";
-        if (!/^[1-9][0-9]{0,7}$/.test(rawLength))
+        if (!/^[1-9]\d{0,7}$/.test(rawLength))
             throw new Error("stream_content_length");
         const length = Number(rawLength);
         if (length > MAX_IMAGE)
@@ -98,7 +98,7 @@ export class MjpegParser {
         if (this.buffer[start + length] !== 13 || this.buffer[start + length + 1] !== 10)
             throw new Error("stream_image_length");
         const bytes = this.buffer.slice(start, start + length);
-        if (bytes[0] !== 255 || bytes[1] !== 216 || bytes[bytes.length - 2] !== 255 || bytes[bytes.length - 1] !== 217)
+        if (bytes[0] !== 255 || bytes[1] !== 216 || bytes.at(-2) !== 255 || bytes.at(-1) !== 217)
             throw new Error("stream_jpeg");
         return bytes;
     }

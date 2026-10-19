@@ -53,7 +53,8 @@ def test_old_s14_cleanup_preserves_manual_authority(world):
     manual = world.gate.generation
     before = list(world.commands)
     assert world.manager.set_feature("s14_venom_navigation", False)["ok"]
-    assert world.gate.state == "ARMED" and world.gate.owner == "manual"
+    assert world.gate.state == "ARMED"
+    assert world.gate.owner == "manual"
     assert world.gate.generation == manual
     assert world.commands == before
 
@@ -76,5 +77,6 @@ def test_camera_preemption_then_manual_arm_same_generation_is_preserved(world):
     _, status = pipeline.execute(camera_command("stop"))
     assert status == 200
     assert len(stops) == 1
-    assert world.gate.state == "ARMED" and world.gate.owner == "manual"
+    assert world.gate.state == "ARMED"
+    assert world.gate.owner == "manual"
     assert sum(row["action"] == "stop" for row in world.commands) == 1

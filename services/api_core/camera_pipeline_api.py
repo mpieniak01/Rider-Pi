@@ -34,12 +34,17 @@ def _acknowledge_pipeline_operation(response, code, operation):
     )
     # This acknowledges the completed domain transaction, not first-frame
     # readiness or motor actuation. Capture can still be starting afterward.
+    status = "unknown"
+    if confirmed:
+        status = "executed"
+    elif code >= 400:
+        status = "rejected"
     operation(
         {
             "request_id": response.get("operation_id", command.get("request_id")),
             "action": action,
             "target": "camera",
-            "status": "executed" if confirmed else "rejected" if code >= 400 else "unknown",
+            "status": status,
             "confirmed": confirmed,
             "ack_kind": {
                 "configure": "configuration_persisted",

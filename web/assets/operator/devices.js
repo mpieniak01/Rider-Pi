@@ -9,7 +9,10 @@ export function telemetryChannel(xgo, name, unavailable = false) {
 function resourcePower(card,data) {
   const activity = data.activity;
   const on = activity?.error || !fresh(data, 10) ? null : activity?.on;
-  card.append(pill(powerLabel(on), on === true ? 'ok' : on === false ? 'warn' : 'err'));
+  let tone = 'err';
+  if (on === true) tone = 'ok';
+  else if (on === false) tone = 'warn';
+  card.append(pill(powerLabel(on), tone));
 }
 function resourceBadge(data,good) {
   let status = 'err';
@@ -31,10 +34,27 @@ function resourceCard(name,data) {
   if (data.error) card.append(el('p', 'operator-error', data.error));
   card.append(rawDetails(data)); return card;
 }
+function imuLabel(readyAxes) {
+  if (readyAxes === 3) return tr('IMU: świeży transport', 'IMU: fresh transport');
+  if (readyAxes) return tr('IMU: częściowy odczyt', 'IMU: partial reading');
+  return tr('IMU: brak / stare dane', 'IMU: missing / stale data');
+}
+function readingValue(row) {
+  if (row.ready) return row.value;
+  if (typeof row.raw_value !== 'number' || !Number.isFinite(row.raw_value)) return null;
+  return row.raw_unit === 'ratio' ? row.raw_value * 100 : row.raw_value;
+}
 export class Devices {
+  imageBusy = false;
+  preview = false;
+  meta = null;
+  lastFrame = null;
+  displayed = null;
+  pendingImage = null;
+  xgo = null;
+  telemetryUnavailable = true;
+  resourceRows = [];
   constructor() {
-    this.imageBusy = false; this.preview = false; this.meta = null; this.lastFrame = null; this.displayed = null; this.pendingImage = null;
-    this.xgo = null; this.telemetryUnavailable = true; this.resourceRows = [];
     this.image = document.getElementById('camera-image');
     this.cameraPower = new CameraPower({
       onStarted: () => {
@@ -112,13 +132,11 @@ export class Devices {
     const axes = ['roll', 'pitch', 'yaw'].map(name => samples[name]);
     const readyAxes = axes.filter(row => row.ready).length;
     const imuAt = axes.every(row => typeof row.observed_at === 'number') ? Math.min(...axes.map(row => row.observed_at)) : null;
-    const label = readyAxes === 3 ? tr('IMU: świeży transport', 'IMU: fresh transport')
-      : readyAxes ? tr('IMU: częściowy odczyt', 'IMU: partial reading') : tr('IMU: brak / stare dane', 'IMU: missing / stale data');
+    const label = imuLabel(readyAxes);
     const telemetry = el('article', 'c-card');
     telemetry.append(el('h3', '', tr('Bateria i IMU', 'Battery and IMU')),
       pill(label, readyAxes === 3 ? 'ok' : 'warn'));
-    const reading = (row, unit) => `${displayValue(row.ready ? row.value : typeof row.raw_value === 'number' && Number.isFinite(row.raw_value)
-      ? row.raw_unit === 'ratio' ? row.raw_value * 100 : row.raw_value : null, unit)} · ${row.ready ? tr('świeży odczyt', 'fresh reading')
+    const reading = (row, unit) => `${displayValue(readingValue(row), unit)} · ${row.ready ? tr('świeży odczyt', 'fresh reading')
       : tr('niepotwierdzony / stary', 'unconfirmed / stale')}`;
     telemetry.append(kv([
       [tr('Firmware (zapamiętane)', 'Firmware (cached)'), displayValue(xgo?.fw)],
@@ -139,7 +157,8 @@ export class Devices {
     text('camera-preview-state', this.preview ? tr('Podgląd włączony w tej karcie', 'Preview enabled in this tab') : tr('Podgląd wyłączony w tej karcie', 'Preview disabled in this tab'));
     const kind = document.getElementById('preview-kind')?.value || 'raw';
     const frame = cameraFrame(this.meta, kind);
-    text('camera-age', `${kind.toUpperCase()} · ${frame.time_basis === 'file_mtime' ? tr('wiek pliku', 'file age') : tr('wiek obserwacji', 'observation age')} ${frame.age === null ? tr('nieznany', 'unknown') : `${frame.age.toFixed(1)} s`} · ${frame.fresh ? tr('aktualny obraz', 'current image') : tr('brak / stary obraz', 'missing / stale image')}${frame.time_basis === 'file_mtime' ? tr(' · czas przechwycenia niepotwierdzony', ' · capture time unconfirmed') : ''}`);
+    const frameAge = frame.age === null ? tr('nieznany', 'unknown') : frame.age.toFixed(1) + ' s';
+    text('camera-age', `${kind.toUpperCase()} · ${frame.time_basis === 'file_mtime' ? tr('wiek pliku', 'file age') : tr('wiek obserwacji', 'observation age')} ${frameAge} · ${frame.fresh ? tr('aktualny obraz', 'current image') : tr('brak / stary obraz', 'missing / stale image')}${frame.time_basis === 'file_mtime' ? tr(' · czas przechwycenia niepotwierdzony', ' · capture time unconfirmed') : ''}`);
     const displayed = cameraFrame({ ...this.meta, shown: { exists: this.displayed !== null, observed_at: this.displayed?.ts } }, 'shown');
     text('camera-display-age', `${tr('Wyświetlana klatka', 'Displayed frame')}: ${this.displayed?.kind?.toUpperCase() || '—'} · ${displayed.age?.toFixed(1) ?? '—'} s${displayed.fresh ? '' : ' · unknown / stale'}`);
     this.image?.classList.toggle('operator-stale-frame', !displayed.fresh);

@@ -218,7 +218,9 @@ def set_tracking_mode() -> Response:
 
         result = feature_manager.set_feature("s6_tracker_module", mode != "none", options={"mode": mode})
         ok = result.get("ok") is True
-        status = 200 if ok else 409 if result.get("error") in {"resource_conflict", "stop_before_reconfigure"} else 503
+        status = 200
+        if not ok:
+            status = 409 if result.get("error") in {"resource_conflict", "stop_before_reconfigure"} else 503
         return _json_nocache(
             {
                 "ok": ok,

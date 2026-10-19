@@ -46,15 +46,18 @@ def test_all_actuators_and_arm_require_generation(action):
     ],
 )
 def test_malformed_values_never_publish(key, value):
+    body = envelope(**{key: value})
     with pytest.raises((ValueError, TypeError)):
-        safety.command_envelope(envelope(**{key: value}))
+        safety.command_envelope(body)
 
 
 def test_arm_needs_plan_and_does_not_stamp_a_delayed_request():
+    missing_plan = envelope("arm", operator_consent=True)
     with pytest.raises(ValueError, match="operator_plan"):
-        safety.command_envelope(envelope("arm", operator_consent=True))
+        safety.command_envelope(missing_plan)
+    expired = envelope("arm", operator_consent=True, operator_plan="plan", ts=time.time() - 1)
     with pytest.raises(ValueError, match="expired"):
-        safety.command_envelope(envelope("arm", operator_consent=True, operator_plan="plan", ts=time.time() - 1))
+        safety.command_envelope(expired)
 
 
 @pytest.mark.parametrize(
@@ -99,7 +102,9 @@ def test_stop_does_not_need_arm_or_metadata(monkeypatch):
     observed = {"state": "DISARMED", "contract_version": 1}
     sent = _fake_publisher(monkeypatch, observed)
     result = safety.request_stop()
-    assert result["ok"] and result["confirmed"] and sent[0]["action"] == "stop"
+    assert result["ok"]
+    assert result["confirmed"]
+    assert sent[0]["action"] == "stop"
     assert result["physical_completion"] == "unverified"
 
 
@@ -107,7 +112,8 @@ def test_gateway_forwards_valid_intent_even_without_current_observation(monkeypa
     observation = {"state": "UNKNOWN", "contract_version": 1, "stale": True}
     sent = _fake_publisher(monkeypatch, observation)
     result = safety.publish_command(envelope(), timeout_s=0)
-    assert sent and sent[0]["generation"] == "g"
+    assert sent
+    assert sent[0]["generation"] == "g"
     assert result["pending"]  # Only the executor can confirm permission and actuation.
 
 
@@ -141,7 +147,9 @@ def test_old_successful_ack_cannot_confirm_new_stop(monkeypatch):
     monkeypatch.setattr(safety, "BusPub", NoAck)
     monkeypatch.setattr(safety, "read_status", lambda: observation)
     result = safety.publish_command({"action": "stop", "request_id": "reuse"}, timeout_s=0)
-    assert result["pending"] and not result["confirmed"] and not result["ok"]
+    assert result["pending"]
+    assert not result["confirmed"]
+    assert not result["ok"]
 
 
 def test_goal_accepted_ack_is_still_pending(monkeypatch):
@@ -184,7 +192,9 @@ def test_unavailable_telemetry_clears_old_data_and_accepts_zero(monkeypatch):
         {"roll": 0, "pitch": 0, "yaw": 0, "battery_pct": None, "observed_at": 123, "ts": 456, "stale": True}
     )
     assert observed["roll"] == observed["pitch"] == observed["yaw"] == 0
-    assert observed["battery"] is None and observed["ts"] == 123 and observed["stale"]
+    assert observed["battery"] is None
+    assert observed["ts"] == 123
+    assert observed["stale"]
 
 
 def test_manual_probe_rejects_automation_before_http():

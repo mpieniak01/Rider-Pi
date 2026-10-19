@@ -53,6 +53,7 @@ Use `TEST_PY=/path/.venv/bin/python` for another existing Rider-Pi environment
 and `TEST_ARGS='-q tests/selected_test.py'` for a focused check.
 
 From a worktree, use absolute paths to that same interpreter and Ruff.
+Ruff explicitly targets `py39`, matching the device runtime and CI.
 A newer WSL Python does not establish Python 3.9 compatibility; CI checks the
 target version. Releases record chosen versions. Constraint files contain
 only pip syntax and comments, never assistant instructions.

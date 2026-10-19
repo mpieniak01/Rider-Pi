@@ -45,7 +45,8 @@ def setup(tmp_path):
 def test_stale_or_missing_intent_cannot_start_moving_task(tmp_path, change):
     world, manager, intent = setup(tmp_path)
     result = manager.set_feature("face_tracking", True, control={**intent, **change})
-    assert result["error"] == "stale_or_invalid_operator_intent" and world.actions == []
+    assert result["error"] == "stale_or_invalid_operator_intent"
+    assert world.actions == []
 
 
 def test_missing_envelope_refused_even_with_matching_owner(tmp_path):
@@ -73,7 +74,8 @@ def test_rearm_during_start_cannot_change_original_generation(tmp_path):
 
     manager.runner = changed_generation
     result = manager.set_feature("face_tracking", True, control=intent)
-    assert result["error"] == "operator_generation_changed" and not result["ok"]
+    assert result["error"] == "operator_generation_changed"
+    assert not result["ok"]
     assert "rider-tracking-controller.service" not in world.active
 
 
@@ -89,7 +91,8 @@ def test_pending_task_carries_request_id_and_accepted_generation(tmp_path):
 
     manager.runner = inspect_pending
     result = manager.set_feature("face_tracking", True, control=intent)
-    assert result["ok"] and result["request_id"] == "operator-click"
+    assert result["ok"]
+    assert result["request_id"] == "operator-click"
     assert set(observed) == {("operator-click", "operator-generation")}
 
 
@@ -124,7 +127,8 @@ def test_unit_intent_is_published_before_controller_start(tmp_path):
         if unit == "rider-tracking-controller.service" and action == "start":
             data = json.loads(manager._state_path.read_text())
             row = data["service_intents"][unit]
-            assert row["generation"] == "operator-generation" and row["request_id"] == "operator-click"
+            assert row["generation"] == "operator-generation"
+            assert row["request_id"] == "operator-click"
             assert row["task"] == "s3_follow_me_face"
         return original(unit, action)
 
@@ -137,7 +141,8 @@ def test_same_owner_rearm_does_not_make_old_task_ready(tmp_path):
     assert manager.set_feature("face_tracking", True, control=intent)["ok"]
     world.safety["generation"] = "different-plan"
     task = next(row for row in manager.describe_features() if row["name"] == "s3_follow_me_face")
-    assert task["ready"] is False and task["state"] == "partial"
+    assert task["ready"] is False
+    assert task["state"] == "partial"
 
 
 def test_administration_requires_written_journal(tmp_path):
@@ -154,7 +159,8 @@ def test_failed_admin_start_does_not_keep_replayable_intent(tmp_path):
     world, manager, intent = setup(tmp_path)
     world.fail.add(("rider-tracking-controller.service", "start"))
     result = manager.service_action("rider-tracking-controller.service", "start", control=intent)
-    assert not result["ok"] and manager.state_snapshot()["service_intents"] == {}
+    assert not result["ok"]
+    assert manager.state_snapshot()["service_intents"] == {}
 
 
 def test_admin_start_rearm_rolls_back_after_confirmed_stop(tmp_path):

@@ -41,7 +41,8 @@
 
 .page-chat #provider-hint {
   display: block;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Chat messages */
@@ -51,7 +52,8 @@
   border-radius: var(--radius-lg);
   line-height: var(--line-height-normal);
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 
 .page-chat .msg.you {

@@ -110,7 +110,8 @@ class Animator:
 
     def tick(self):
         now = self._clock()
-        for path, channel in list(self._channels.items()):
+        # Completing channels are removed below; preserve a stable iteration snapshot.
+        for path, channel in self._channels.copy().items():
             elapsed = max(0, now - channel.started)
             value = channel.initial
             for segment in channel.segments:

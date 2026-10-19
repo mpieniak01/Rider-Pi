@@ -15,9 +15,9 @@
 <body data-page="calibration" class="page page-calibration">
 <header class="layout-header" data-dashboard-menu-target></header>
 <main class="layout-main operator-shell">
-<header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Kalibracja" data-en="Rider-Pi — Calibration">Rider-Pi — Kalibracja</h1><p id="manual-settings-status" role="status">Synchronizacja ustawień</p></header>
-<p id="operator-message" role="status"></p>
-<div class="panel-row control-primary"><section class="c-card motion-profiles"><div class="profile-heading"><h2 data-pl="Profil ruchu" data-en="Motion profile">Profil ruchu</h2><p id="motion-profile-status" role="status"></p></div>
+<header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Kalibracja" data-en="Rider-Pi — Calibration">Rider-Pi — Kalibracja</h1><output id="manual-settings-status" aria-live="polite" aria-atomic="true">Synchronizacja ustawień</output></header>
+<output id="operator-message" aria-live="polite" aria-atomic="true"></output>
+<div class="panel-row control-primary"><section class="c-card motion-profiles"><div class="profile-heading"><h2 data-pl="Profil ruchu" data-en="Motion profile">Profil ruchu</h2><output id="motion-profile-status" aria-live="polite" aria-atomic="true"></output></div>
 <div class="operator-row"><label><span data-pl="Profil" data-en="Profile">Profil</span><select id="motion-profile-select"><option value="">Bieżące nastawy</option></select></label>
 <button id="motion-profile-apply" class="c-btn" type="button" disabled data-pl="Zastosuj" data-en="Apply">Zastosuj</button></div>
 <div class="operator-row"><label><span data-pl="Nazwa" data-en="Name">Nazwa</span><input id="motion-profile-name" maxlength="60" placeholder="np. Delikatnie — biurko"></label>
@@ -37,7 +37,7 @@
 
 <div class="calibration-save-row"><div id="manual-smoothing-settings" class="motion-smoothing"></div>
 <button id="manual-settings-save" class="c-btn" type="button" disabled data-pl="Zapisz ustawienia na robocie" data-en="Save settings on robot">Zapisz ustawienia na robocie</button></div>
-<p id="manual-settings-result" role="status"></p>
+<output id="manual-settings-result" aria-live="polite" aria-atomic="true"></output>
 
 </section>
 <details class="c-card"><summary data-pl="Diagnostyka wykonawcy" data-en="Executor diagnostics">Diagnostyka wykonawcy</summary><pre id="calibration-output"></pre><ol id="request-history"></ol><p id="last-event" class="operator-muted"></p></details>

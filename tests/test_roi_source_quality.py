@@ -36,7 +36,9 @@ def test_explicit_stream_failure_survives_roi_and_file_fallback(monkeypatch, tmp
     monkeypatch.setattr(roi.time, "sleep", lambda _: setattr(roi, "_STOP", True))
     assert roi.main() == 0
     row = next(row for topic, row in published if topic == "vision.obstacle")
-    assert not row["data_ready"] and row["stale"] and row["error"]
+    assert not row["data_ready"]
+    assert row["stale"]
+    assert row["error"]
     assert row["observed_at"] == 1000
     # A later restart/file-only consumer sees a deliberately invalidated source.
     assert proc.stat().st_mtime == 0
@@ -57,8 +59,10 @@ def test_unknown_stream_age_is_null_in_strict_json(monkeypatch, tmp_path, metada
     stream = SimpleNamespace(metadata=metadata, recv=lambda _: frame)
     _run_strict_roi_loop(monkeypatch, tmp_path, stream)
     row = json.loads((tmp_path / "obstacle.json").read_text())
-    assert row["age_s"] is None and row["observed_at"] is None
-    assert row["data_ready"] is False and row["stale"] is True
+    assert row["age_s"] is None
+    assert row["observed_at"] is None
+    assert row["data_ready"] is False
+    assert row["stale"] is True
     assert row["error"] == metadata.get("error", "invalid_source_time")
 
 
@@ -66,7 +70,9 @@ def test_missing_processed_frame_age_is_null_in_strict_json(monkeypatch, tmp_pat
     monkeypatch.setattr(roi, "load_gray", lambda _: None)
     _run_strict_roi_loop(monkeypatch, tmp_path, None)
     row = json.loads((tmp_path / "obstacle.json").read_text())
-    assert row["age_s"] is None and row["data_ready"] is False and row["stale"] is True
+    assert row["age_s"] is None
+    assert row["data_ready"] is False
+    assert row["stale"] is True
     assert row["error"] == "proc_not_found"
 
 
@@ -74,8 +80,11 @@ def test_known_stream_age_remains_finite_in_strict_json(monkeypatch, tmp_path):
     stream = SimpleNamespace(metadata={"observed_at": 999.75}, recv=lambda _: np.zeros((10, 10, 3), dtype=np.uint8))
     _run_strict_roi_loop(monkeypatch, tmp_path, stream)
     row = json.loads((tmp_path / "obstacle.json").read_text())
-    assert row["age_s"] == 0.25 and row["observed_at"] == 999.75
-    assert row["data_ready"] is True and row["stale"] is False and row["error"] is None
+    assert row["age_s"] == 0.25
+    assert row["observed_at"] == 999.75
+    assert row["data_ready"] is True
+    assert row["stale"] is False
+    assert row["error"] is None
 
 
 def _run_strict_roi_loop(monkeypatch, tmp_path, stream):

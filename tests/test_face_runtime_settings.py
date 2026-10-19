@@ -88,13 +88,13 @@ def test_worker_caps_fps_and_stops_without_extra_frames(client):
     assert client.get("/api/face-studio/runtime/frame").status_code == 404
 
 
-def test_battery_idle_expiry_and_single_worker(client):
+def test_battery_idle_expiry_and_single_worker(client, monkeypatch):
     face_anim.play({"sink": "null"})
     wait_for(lambda: face_anim.STATE["running"])
     first = face_anim._anim._thr
     face_anim.play({"sink": "null"})
     assert not first.is_alive()
-    face_anim._anim.activity = time.monotonic() - 46
+    monkeypatch.setattr(face_anim._anim, "activity", time.monotonic() - 46)
     wait_for(lambda: not face_anim.STATE["running"])
     assert not face_anim.STATE["playing"]
 

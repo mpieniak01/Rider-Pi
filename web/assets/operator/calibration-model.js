@@ -92,7 +92,9 @@ export function parseImportedProfile(source) {
 }
 export function trialAverage(row) {
   if (!object(row) || !finite(row.duration_s) || row.duration_s <= 0) return null;
-  const value = row.kind === 'linear' ? row.distance_m : row.kind === 'turn' ? row.angle_rad : null;
+  let value = null;
+  if (row.kind === 'linear') value = row.distance_m;
+  else if (row.kind === 'turn') value = row.angle_rad;
   return finite(value) ? value / row.duration_s : null;
 }
 export function activationAllowed(state, safety, clockFresh, now) {
@@ -103,6 +105,11 @@ export function activationAllowed(state, safety, clockFresh, now) {
     && state.motion.generation === safety.generation && state.motion.moving === false
     && ['target', 'output'].every(name => object(state.motion[name])
       && ['lx', 'az'].every(key => finite(state.motion[name][key]) && state.motion[name][key] === 0));
+}
+function activationStatus(applied, state, now) {
+  if (applied) return 'applied';
+  if (state?.stale === true || !freshCalibration(state?.motion, now)) return 'unknown';
+  return state?.status === 'partial' ? 'partial' : 'pending';
 }
 export function activationView(state, expectedDigest = null, now = Date.now() / 1000) {
   const active = state?.active, wanted = expectedDigest || state?.requested?.profile_digest || active?.profile_digest;
@@ -128,7 +135,7 @@ export function activationView(state, expectedDigest = null, now = Date.now() / 
     && ack.instance_id === state.motion.instance_id && motion.instance_id === state.motion.instance_id
     && finite(ack.observed_at) && finite(active.activated_at) && active.activated_at <= ack.observed_at && ack.observed_at <= now;
   const applied = Boolean(current && same && active?.activation_state === 'applied' && state.status === 'applied' && (boot || executed));
-  return { applied, status: applied ? 'applied' : state?.stale === true || !freshCalibration(state?.motion, now) ? 'unknown' : state?.status === 'partial' ? 'partial' : 'pending',
+  return { applied, status: activationStatus(applied, state, now),
     digest: wanted || null, confirmation: applied ? state.confirmation : 'unconfirmed',
     recordVerified: applied && odom?.record_verified === true,
     modelReady: applied && state.model_ready === true && odom?.model_ready === true,
@@ -190,11 +197,14 @@ export function sdkOutputObservation(motion, now) {
     && row.instance_id === motion.instance_id && row.generation === motion.generation
     && row.stale !== true && row.offline !== true && !row.error && !row.data_error && age !== null);
   const ready = trusted && age <= .25;
-  return { ready, status: ready ? 'observed' : trusted ? 'stale' : 'unknown', age_s: age,
+  let status = 'unknown', error = row?.error || 'sdk_output_unconfirmed';
+  if (trusted) { status = 'stale'; error = 'sdk_output_stale'; }
+  if (ready) { status = 'observed'; error = null; }
+  return { ready, status, age_s: age,
     linear_step: trusted ? row.linear_step : null, turn_step: trusted ? row.turn_step : null,
     accepted: row?.accepted === true, source: row?.source ?? null, observed_at: row?.observed_at ?? null,
     instance_id: row?.instance_id ?? null, generation: row?.generation ?? null,
-    error: ready ? null : trusted ? 'sdk_output_stale' : row?.error || 'sdk_output_unconfirmed',
+    error,
     physical_completion: 'unverified' };
 }
 export function sensorObservations(motion, now) {

@@ -526,14 +526,14 @@ export function t(key, params) {
 }
 export function applyDom(root = document) {
   root.querySelectorAll('[data-i18n]').forEach(el => {
-    const key = el.getAttribute('data-i18n');
+    const key = el.dataset.i18n;
     let params = {};
-    const raw = el.getAttribute('data-i18n-params');
+    const raw = el.dataset.i18nParams;
     if (raw) { try { params = JSON.parse(raw); } catch {} }
     el.textContent = t(key, params);
   });
   root.querySelectorAll('[data-i18n-attr]').forEach(el => {
-    const spec = el.getAttribute('data-i18n-attr');
+    const spec = el.dataset.i18nAttr;
     spec.split(',').forEach(pair => {
       const [attr, key] = pair.split(':').map(s => s.trim());
       if (attr && key) el.setAttribute(attr, t(key));
@@ -545,13 +545,7 @@ export function getLang() {
 }
 function emitLangChange(lang){
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
-  if (typeof CustomEvent === 'function') {
-    window.dispatchEvent(new CustomEvent('dashboard:langchange', { detail: { lang } }));
-  } else if (typeof document !== 'undefined' && typeof document.createEvent === 'function') {
-    const evt = document.createEvent('CustomEvent');
-    evt.initCustomEvent('dashboard:langchange', false, false, { lang });
-    window.dispatchEvent(evt);
-  }
+  window.dispatchEvent(new CustomEvent('dashboard:langchange', { detail: { lang } }));
 }
 export function setLang(lang) {
   CURRENT_LANG = (lang === 'en') ? 'en' : 'pl';

@@ -86,21 +86,26 @@ def test_external_authenticated_playback_interrupts_and_drops_whole_input_then_a
     client.result_hook = lambda task: delegated.append(task) if task == 'conversation.respond' else None
     try:
         assert runner.utterance() is None
-        assert interrupted.closed and runner.capture is None
-        assert not client.requests and not publisher.messages and not delegated
+        assert interrupted.closed
+        assert runner.capture is None
+        assert not client.requests
+        assert not publisher.messages
+        assert not delegated
         assert any(status['state'] == 'playback_suppressed' for status in statuses)
         runner.capture_factory = lambda _: pytest.fail('capture opened during playback/drain')
         assert runner.utterance() is None  # Busy playback never opens capture.
         assert manager.cancel('external-speak')['released']
         thread.join(timeout=1)
-        assert not thread.is_alive() and released.is_set()
+        assert not thread.is_alive()
+        assert released.is_set()
         assert results[0].status_code == 409
         assert runner.utterance() is None  # Acoustic drain also keeps it closed.
         clock[0] += ownership.PLAYBACK_DRAIN_S + 0.01
         fresh = Capture([NEXT_INPUT, SILENT, SILENT])
         runner.capture_factory = lambda _: fresh
         utterance = runner.utterance()
-        assert utterance is not None and fresh.closed
+        assert utterance is not None
+        assert fresh.closed
         with wave.open(io.BytesIO(utterance[0]), 'rb') as reader:
             assert reader.readframes(reader.getnframes()) == NEXT_INPUT + SILENT + SILENT
         assert utterance[1] == pytest.approx(999.98)  # New source boundary, not refreshed old audio.
@@ -128,7 +133,9 @@ def test_off_closes_observer_and_never_reopens_capture(clock):
     assert runner.utterance() is not None
     assert runner.playback_observer.fd is not None
     runner.stop()
-    assert runner.playback_observer.fd is None and capture.closed and client.closed
+    assert runner.playback_observer.fd is None
+    assert capture.closed
+    assert client.closed
     runner.capture_factory = lambda _: pytest.fail('capture reopened after OFF')
     with pytest.raises(ComputeError, match='compute_cancelled'):
         runner.utterance()
@@ -164,7 +171,9 @@ def test_short_playback_between_polls_or_capture_boundaries_is_not_missed(clock,
     runner, client, publisher, _ = runner_for(clock, capture)
     try:
         assert runner.utterance() is None
-        assert capture.closed and not client.requests and not publisher.messages
+        assert capture.closed
+        assert not client.requests
+        assert not publisher.messages
     finally:
         runner.close()
 
@@ -181,7 +190,9 @@ def test_ownership_read_error_closes_capture_and_prevents_inference(clock):
     try:
         with pytest.raises(ComputeError, match='compute_playback_state_unavailable'):
             runner.utterance()
-        assert capture.closed and runner.capture is None
-        assert not client.requests and not publisher.messages
+        assert capture.closed
+        assert runner.capture is None
+        assert not client.requests
+        assert not publisher.messages
     finally:
         runner.close()

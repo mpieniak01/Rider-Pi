@@ -37,11 +37,14 @@ def test_resolver_identity_same_file_for_metadata_and_all_raw_aliases(client):
     ).get_json()
     row = metadata["data"]["raw"]
     assert row["path"] == str(root / "configured.jpg")
-    assert row["observed_at"] is None and row["capture_at"] is None
-    assert row["file_observed_at"] > 0 and row["provenance"] == "file_mtime"
+    assert row["observed_at"] is None
+    assert row["capture_at"] is None
+    assert row["file_observed_at"] > 0
+    assert row["provenance"] == "file_mtime"
     for alias in ("/camera/raw", "/camera/last", "/vision/cam"):
         image = http.get(alias)
-        assert image.status_code == 200 and image.data == b"configured JPEG"
+        assert image.status_code == 200
+        assert image.data == b"configured JPEG"
         assert image.headers["X-Rider-Frame-Id"] == row["frame_id"]
         assert "X-Rider-Observed-At" not in image.headers
         assert image.headers["X-Rider-File-Observed-At"] == str(row["file_observed_at"])
@@ -52,8 +55,10 @@ def test_legacy_metadata_retains_hash_and_light_semantics_without_null_observati
     (root / "configured.jpg").write_bytes(b"fixture")
     full = http.get("/vision/snap-info").get_json()["raw"]
     light = http.get("/vision/snap-info?light=1").get_json()["raw"]
-    assert full["md5"] and light["md5"] is None
-    assert "observed_at" not in full and full["mtime"] > 0
+    assert full["md5"]
+    assert light["md5"] is None
+    assert "observed_at" not in full
+    assert full["mtime"] > 0
 
 
 @pytest.mark.parametrize("delta,error", [(-10, "frame_stale"), (10, "frame_clock_future")])
@@ -65,9 +70,11 @@ def test_current_preview_rejects_bad_time_archive_is_explicit(client, delta, err
     os.utime(file, (at, at))
     for route in ("/camera/raw", "/camera/last", "/vision/cam"):
         result = http.get(route)
-        assert result.status_code == 404 and result.get_json()["error"] == error
+        assert result.status_code == 404
+        assert result.get_json()["error"] == error
     result = http.get("/camera/raw?archive=1")
-    assert result.status_code == 200 and result.headers["X-Rider-Stale"] == "true"
+    assert result.status_code == 200
+    assert result.headers["X-Rider-Stale"] == "true"
 
 
 def test_streams_do_not_substitute_ssd_for_obst_and_placeholder_has_no_time(client):

@@ -114,8 +114,10 @@ def test_current_reference_without_home_keeps_data_separate_from_navigation(esti
     instance, clock = estimator
     instance.update_output(output(clock, linear_step=0, stopped=True))
     assert instance.set_reference(reference_id="position-only", operator_consent=True)
-    assert instance.quality()["data_ready"] and not instance.quality()["navigation_ready"]
-    assert instance.home is None and instance.quality()["navigation_error"] == "current_confirmed_home_required"
+    assert instance.quality()["data_ready"]
+    assert not instance.quality()["navigation_ready"]
+    assert instance.home is None
+    assert instance.quality()["navigation_error"] == "current_confirmed_home_required"
 
 
 def test_heading_and_negative_sdk_step(estimator):
@@ -216,7 +218,8 @@ def test_new_executor_instance_invalidates_reference(estimator):
     instance, clock = estimator
     instance.update_output(output(clock, linear_step=0, stopped=True))
     instance.update_output(output(clock, linear_step=0, stopped=True, instance_id="replacement"))
-    assert not instance.reference_verified and instance.reference_id is None
+    assert not instance.reference_verified
+    assert instance.reference_id is None
     assert instance.get_pose()["error"] == "executor_instance_changed"
 
 
@@ -262,4 +265,5 @@ def test_bus_projection_uses_output_topic_and_preserves_source(monkeypatch):
 @pytest.mark.parametrize("message", [[b"motion.output", b'{"accepted":true}'], ("motion.output", {"accepted": True})])
 def test_recv_shapes(message):
     topic, row = Odometry._recv_safe(SimpleNamespace(recv=lambda **kw: message), 0)
-    assert topic == "motion.output" and row == {"accepted": True}
+    assert topic == "motion.output"
+    assert row == {"accepted": True}

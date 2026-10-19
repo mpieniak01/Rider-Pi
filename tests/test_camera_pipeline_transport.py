@@ -56,12 +56,14 @@ def test_navigation_metadata_and_explicit_s12_bytes_share_one_ram_producer(monke
     monkeypatch.setattr(pipeline_ipc, "read_frame", read)
     nav_source, scene_source = runners.FrameSource(require_bytes=False), runners.FrameSource()
     nav_frame, scene_frame = nav_source.recv(50), scene_source.recv(50)
-    assert isinstance(nav_frame["data"], dict) and nav_frame["content_type"] == "application/json"
+    assert isinstance(nav_frame["data"], dict)
+    assert nav_frame["content_type"] == "application/json"
     assert nav_frame["data"] == {
         k: metadata[k]
         for k in ("camera_session", "sequence", "transport_epoch", "pipeline_revision", "frame_id", "sha256")
     }
-    assert scene_frame["data"] == b"jpeg" and scene_frame["content_type"] == "image/jpeg"
+    assert scene_frame["data"] == b"jpeg"
+    assert scene_frame["content_type"] == "image/jpeg"
     assert [row["metadata_only"] for row in calls] == [True, False]
     assert nav_frame["captured_monotonic_ns"] == metadata["captured_monotonic_ns"]
     nav_source.close()
@@ -115,9 +117,10 @@ def test_prepare_timeout_does_not_synthesize_a_clear_verdict(monkeypatch):
     monkeypatch.setattr(pipeline_ipc, "read_frame", lambda **_: (b"", source()))
     clock = [0.0]
     opener = SimpleNamespace(open=lambda *_args, **_kw: Response({"stream": {"ready": False}}))
+    selected = selection()
     with pytest.raises(navigation.ComputeError, match="navigation_stream_prepare_timeout"):
         stream_prepare.prepare_stream(
-            selection=selection(),
+            selection=selected,
             opener=opener,
             timeout_s=0.1,
             clock=lambda: clock[0],
@@ -164,7 +167,8 @@ def test_snapshot_request_preserves_binary_endpoint(monkeypatch):
         lambda *_: SimpleNamespace(open=lambda req, **kw: calls.append(req) or Response({"action": "stop"})),
     )
     runner._request({"frame_id": "fixture"}, b"jpeg", "image/jpeg")
-    assert calls[0].data == b"jpeg" and calls[0].full_url.endswith("/vision/decision")
+    assert calls[0].data == b"jpeg"
+    assert calls[0].full_url.endswith("/vision/decision")
 
 
 def test_hardware_adapter_has_one_yuv_capture_and_closes_idempotently(monkeypatch):
@@ -237,8 +241,10 @@ def test_runtime_failure_stays_failed_and_releases_camera(monkeypatch):
     monkeypatch.setattr(utils, "open_camera", lambda _: (BrokenCamera(), (320, 240)))
     assert pipeline_runtime.main() == 1
     status = json.loads((store.runtime_path() / "status.json").read_text())
-    assert status["state"] == "failed" and status["error"] == "fixture_capture_failed"
-    assert calls == ["closed"] and not (store.runtime_path() / "latest.sock").exists()
+    assert status["state"] == "failed"
+    assert status["error"] == "fixture_capture_failed"
+    assert calls == ["closed"]
+    assert not (store.runtime_path() / "latest.sock").exists()
 
 
 def test_local_preview_is_encoded_only_on_explicit_proc_demand(monkeypatch):
@@ -281,7 +287,8 @@ def test_new_profile_disables_legacy_distributor_and_local_rejects_remote_goals(
     from common.service_catalog import DEFAULT_REGISTRY, task_availability, task_units
 
     units = task_units(DEFAULT_REGISTRY["s2_camera_preview"])
-    assert "camera-capture@raw.service" in units and "frame-distributor.service" not in units
+    assert "camera-capture@raw.service" in units
+    assert "frame-distributor.service" not in units
     store.write(
         {"contract_version": 1, "revision": 2, "profile": dict(store.DEFAULT_PROFILE, analysis_location="local")}
     )
@@ -296,7 +303,8 @@ def test_missing_profile_preserves_legacy_units():
 
     store.config_path().unlink()
     units = task_units(DEFAULT_REGISTRY["s2_camera_preview"])
-    assert "camera-capture@raw.service" in units and "frame-distributor.service" in units
+    assert "camera-capture@raw.service" in units
+    assert "frame-distributor.service" in units
 
 
 def test_stale_missing_reference_retry_is_bounded_to_initial_or_observe_phase():
@@ -337,6 +345,8 @@ def test_ram_legacy_description_never_stats_abandoned_raw_file(monkeypatch):
     monkeypatch.setattr(pipeline_ipc, "read_frame", lambda **_: (b"", metadata))
     monkeypatch.setattr(frames, "resolve", lambda *_: pytest.fail("legacy file resolution"))
     row = frames.describe("raw", now=1000.0)
-    assert row["source"] == "camera_pipeline_ram" and row["provenance"] == "capture"
-    assert row["observed_at"] == 999.98 and not row["stale"]
+    assert row["source"] == "camera_pipeline_ram"
+    assert row["provenance"] == "capture"
+    assert row["observed_at"] == 999.98
+    assert not row["stale"]
     assert row["file_observed_at"] is None

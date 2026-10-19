@@ -60,8 +60,9 @@ def test_led_actions_and_cleanup_generation_shared_across_clients(led_fixture):
     assert second["data"]["generation"] != generation
     from common.api_client import APIError
 
+    client = LocalAPIClient()
     with pytest.raises(APIError, match="led_session_changed"):
-        LocalAPIClient().request("/api/resource/led", "POST", {"action": "off", "if_generation": generation})
+        client.request("/api/resource/led", "POST", {"action": "off", "if_generation": generation})
     assert len(calls) == 2
     LocalAPIClient().request("/api/resource/led", "POST", {"action": "off"})
     assert (directory / "trigger").read_text() == "none"

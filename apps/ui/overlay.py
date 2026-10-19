@@ -49,9 +49,13 @@ def _draw_overlay(screen, font, state):
     v = state.get("vision", {})
     lines.append(f"SAFETY: {m['state']} can_move={m['can_move']}")
     out = m.get("output", {})
-    lines.append(f"OUT normalized: lx={number_label(out.get('lx'))} az={number_label(out.get('az'))}")
-    lines.append("Physical motion/stop: unverified")
-    lines.append(f"VISION: moving={v.get('moving')} human={v.get('human', False)} motion={v.get('motion', 0):.1f}")
+    lines.extend(
+        [
+            f"OUT normalized: lx={number_label(out.get('lx'))} az={number_label(out.get('az'))}",
+            "Physical motion/stop: unverified",
+            f"VISION: moving={v.get('moving')} human={v.get('human', False)} motion={v.get('motion', 0):.1f}",
+        ]
+    )
 
     y = 20
     for s in lines:

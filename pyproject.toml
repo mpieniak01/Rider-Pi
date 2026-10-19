@@ -1,5 +1,6 @@
 [tool.ruff]
 required-version = "0.6.9"
+target-version = "py39"
 line-length = 120
 extend-exclude = [
   "_apps/",

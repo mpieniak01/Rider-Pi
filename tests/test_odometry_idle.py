@@ -22,13 +22,16 @@ def test_accepted_stop_remains_idle_model_with_live_executor_and_imu(estimator):
         assert instance.update_imu(0, observed_at=clock.now)
         assert instance.update_pose(0.1)
         pose = instance.get_pose()
-        assert pose["data_ready"] and pose["navigation_ready"]
+        assert pose["data_ready"]
+        assert pose["navigation_ready"]
         assert pose["observed_at"] == clock.now
         assert pose["last_sdk_output_observed_at"] == stopped_at
         assert pose["physical_completion"] == "unverified"
         assert pose["stationary_model_basis"] == "accepted_sdk_zero_and_executor_heartbeat"
-    assert instance.output["observed_at"] == stopped_at and instance.x == position
-    assert instance._has_moved and instance.continuity_error is None
+    assert instance.output["observed_at"] == stopped_at
+    assert instance.x == position
+    assert instance._has_moved
+    assert instance.continuity_error is None
 
 
 def test_new_move_after_continuous_idle_is_not_an_output_history_gap(estimator):
@@ -183,7 +186,9 @@ def test_restart_heartbeat_invalidates_reference_even_without_new_sdk_output(est
     accept_stop(instance, clock)
     clock.now += 1
     assert not instance.update_executor_state(executor_state(instance, clock, instance_id="new-process"))
-    assert not instance.reference_verified and instance.reference_id is None and instance.home is None
+    assert not instance.reference_verified
+    assert instance.reference_id is None
+    assert instance.home is None
     assert instance.continuity_error == "executor_instance_changed"
 
 
@@ -229,8 +234,10 @@ def test_real_executor_deadline_publishes_matching_stop_heartbeat_without_anothe
     motion.tick(0.02)
     consume()
     instance.update_imu(0, observed_at=clock.now)
-    assert instance.update_pose(0.1) and instance.continuity_error is None
-    assert instance.output["observed_at"] == stopped_at and motion.output_observed_at == stopped_at
+    assert instance.update_pose(0.1)
+    assert instance.continuity_error is None
+    assert instance.output["observed_at"] == stopped_at
+    assert motion.output_observed_at == stopped_at
     assert motion.adapter.calls == calls  # Heartbeat does not write more SDK zero commands.
     assert instance.quality()["physical_completion"] == "unverified"
     for _ in range(4):
@@ -245,7 +252,8 @@ def test_real_executor_deadline_publishes_matching_stop_heartbeat_without_anothe
     clock.now += 0.02
     motion.tick(0.02)
     consume()
-    assert instance.update_pose(0.1) and instance.continuity_error is None
+    assert instance.update_pose(0.1)
+    assert instance.continuity_error is None
 
 
 def test_executor_heartbeat_does_not_extend_nonzero_output(estimator):
@@ -295,7 +303,8 @@ def test_legal_move_after_idle_handles_independent_subscription_order(estimator,
         assert instance.update_output(output(clock))
     instance.update_imu(0, observed_at=clock.now)
     assert instance.update_pose(0.1)
-    assert instance.continuity_error is None and instance.reference_verified
+    assert instance.continuity_error is None
+    assert instance.reference_verified
 
 
 def test_pending_target_never_creates_stop_hold_without_prior_witness(estimator):
@@ -333,7 +342,8 @@ def test_pending_state_after_heartbeat_history_gap_cannot_hide_gap(estimator):
     accept_stop(instance, clock)
     clock.now += 3.01
     instance.update_executor_state(pending_state(instance, clock))
-    assert not instance._idle_confirmed and instance.continuity_error == "executor_state_gap"
+    assert not instance._idle_confirmed
+    assert instance.continuity_error == "executor_state_gap"
     instance.update_output(output(clock))
     instance.update_imu(0, observed_at=clock.now)
     assert not instance.update_pose(0.1)
@@ -364,7 +374,8 @@ def test_pending_output_never_masks_imu_history_gap(estimator, inspect_before_re
         assert not instance.update_pose(0.1)
     instance.update_output(output(clock))
     instance.update_imu(0, observed_at=clock.now)
-    assert not instance.update_pose(0.1) and instance.continuity_error
+    assert not instance.update_pose(0.1)
+    assert instance.continuity_error
 
 
 @pytest.mark.parametrize("owner", [None, [], {}, "unknown"])
@@ -374,4 +385,5 @@ def test_pending_transition_requires_known_owner_without_schema_exception(estima
     row = pending_state(instance, clock)
     row["owner"] = owner
     assert not instance.update_executor_state(row)
-    assert instance.continuity_error and not instance.quality()["data_ready"]
+    assert instance.continuity_error
+    assert not instance.quality()["data_ready"]

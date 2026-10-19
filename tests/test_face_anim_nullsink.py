@@ -57,7 +57,8 @@ def _clean_anim(monkeypatch):
 def test_out_legacy_constant_exists():
     """Sanity: stała OUT_LEGACY musi istnieć (testy z niej korzystają)."""
     assert hasattr(fa, "OUT_LEGACY"), "OUT_LEGACY missing in face_anim.py"
-    assert isinstance(fa.OUT_LEGACY, str) and len(fa.OUT_LEGACY) > 0
+    assert isinstance(fa.OUT_LEGACY, str)
+    assert len(fa.OUT_LEGACY) > 0
 
 
 def test_null_sink_mirrors_latest_png(monkeypatch):

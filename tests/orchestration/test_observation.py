@@ -26,7 +26,8 @@ def test_systemd_batch_cache_and_invalidate(monkeypatch):
     systemd_snapshot.invalidate()
     first = systemd_snapshot.snapshot()
     second = systemd_snapshot.snapshot()
-    assert len(calls) == 1 and set(first) == set(second) == set(UNIT_CATALOG)
+    assert len(calls) == 1
+    assert set(first) == set(second) == set(UNIT_CATALOG)
     assert len(calls[0]) > len(UNIT_CATALOG)
     systemd_snapshot.invalidate()
     systemd_snapshot.snapshot()
@@ -39,7 +40,8 @@ def test_missing_unit_is_not_installed_despite_inactive(monkeypatch):
         systemd_snapshot.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=output, stderr="", returncode=1)
     )
     row = systemd_snapshot.snapshot(("rider-tracker.target",), force=True)["rider-tracker.target"]
-    assert row["installed"] is False and row["load"] == "not-found"
+    assert row["installed"] is False
+    assert row["load"] == "not-found"
 
 
 def test_failed_read_retains_age_but_is_stale_unknown(monkeypatch):
@@ -51,7 +53,9 @@ def test_failed_read_retains_age_but_is_stale_unknown(monkeypatch):
 
     monkeypatch.setattr(systemd_snapshot.subprocess, "run", failed)
     row = systemd_snapshot.snapshot(("rider-api.service",), force=True)["rider-api.service"]
-    assert row["observed_at"] == 1.0 and row["stale"] and not row["installed"]
+    assert row["observed_at"] == 1.0
+    assert row["stale"]
+    assert not row["installed"]
     assert row["error"] == "manager unavailable"
 
 
@@ -66,7 +70,8 @@ def test_unknown_or_absent_resource_is_never_free(monkeypatch, paths, error, exp
 
     monkeypatch.setattr(resource_diag, "_run_lsof", observe)
     row = resource_diag.inspect("camera")
-    assert row["state"] == expected and row["free"] is None
+    assert row["state"] == expected
+    assert row["free"] is None
 
 
 def test_camera_never_includes_spi_and_uart_has_exact_owner(monkeypatch):
@@ -106,8 +111,10 @@ def test_forced_release_requires_current_owners_and_exact_consent(monkeypatch):
     assert not resource_diag.release("camera", limit_pids=[999], force=True, operator_consent=True)["ok"]
     assert calls == []
     result = resource_diag.release("camera", limit_pids=[123], force=True, operator_consent=True)
-    assert result['signal_sent'] is True and result['pending'] is True
-    assert result['ok'] is False and result['released'] is False
+    assert result['signal_sent'] is True
+    assert result['pending'] is True
+    assert result['ok'] is False
+    assert result['released'] is False
     assert calls == [["sudo", "-n", "kill", "-TERM", "--", "123"]]
 
 
@@ -165,7 +172,8 @@ def test_reconcile_apply_and_rollback_are_reversible_without_process_actions(mon
     assert (backup / "rider-api.service").read_text() == "previous unit"
     assert calls == [("daemon-reload",)]
     module.rollback(backup)
-    assert old.read_text() == "previous unit" and not old.is_symlink()
+    assert old.read_text() == "previous unit"
+    assert not old.is_symlink()
     assert not (tmp_path / "rider-tracker.target").exists()
     assert calls == [("daemon-reload",), ("daemon-reload",)]
 

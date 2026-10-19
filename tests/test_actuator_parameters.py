@@ -14,7 +14,8 @@ def test_descriptors_share_device_bounds_and_do_not_claim_millimeters():
     height = descriptors["height"]
     assert (height["minimum"], height["maximum"]) == (HEIGHT_MIN, HEIGHT_MAX)
     assert height["unit"] == "sdk_height_command"
-    assert height["display_factor"] == 1 and height["step"] == 1
+    assert height["display_factor"] == 1
+    assert height["step"] == 1
     assert "physical_measurement" in height["meaning"]
     assert "full_balance_shutdown" in descriptors["balance"]["meaning"]
     assert manual_settings.parameter_schema()["actuator_fields"] == descriptors

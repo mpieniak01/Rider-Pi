@@ -21,7 +21,8 @@ def extract_migrations_from_summary() -> dict[str, str]:
         content = f.read()
 
     # Extract table rows like: | ops/file.py | scripts/new_file.py |
-    table_pattern = r'\|\s*([^\|]+?)\s*\|\s*([^\|]+?)\s*\|'
+    # Each cell stops at its delimiter; strip only after a complete row match.
+    table_pattern = r'\|([^|]+)\|([^|]+)\|'
 
     for match in re.finditer(table_pattern, content):
         old_path = match.group(1).strip()

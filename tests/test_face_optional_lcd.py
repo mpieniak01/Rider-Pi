@@ -42,8 +42,9 @@ def test_ownership_change_yields_before_next_write():
     sink = LcdSink(probe=lambda: state, factory=lambda: driver, power_off=lambda: None, clock=lambda: clock[0])
     clock[0] = 2
     state.update(free=False, holders=[{"pid": 777}])
+    frame = Image.new("RGB", (240, 240))
     with pytest.raises(LcdUnavailable):
-        sink.present(Image.new("RGB", (240, 240)))
+        sink.present(frame)
     assert not frames
     sink.close()
 

@@ -11,7 +11,7 @@ TXT=$(curl -s -X POST 'http://127.0.0.1:8092/api/asr' \
 
 echo "[ASR] >> $TXT"
 
-if [ -n "$TXT" ] && [ "$TXT" != "null" ]; then
+if [[ -n "$TXT" && "$TXT" != "null" ]]; then
   echo "[TTS] Odpowiadam…"
   curl -s -X POST 'http://127.0.0.1:8092/api/tts' \
     -H 'Content-Type: application/json' \

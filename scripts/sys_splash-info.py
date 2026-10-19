@@ -31,7 +31,7 @@ try:
     _face_cfg = load_face_config()
     _SPLASH_LOGO_DEFAULT = _face_cfg.vendor_splash_logo_path
     _SPLASH_ROTATE_DEFAULT = _face_cfg.splash_lcd_rotate
-except (ImportError, ModuleNotFoundError):
+except ImportError:
     # Fallback to hardcoded defaults if config unavailable
     _SPLASH_LOGO_DEFAULT = os.path.join(DATA_DIR, "splash_logo.png")
     _SPLASH_ROTATE_DEFAULT = 270
@@ -120,7 +120,8 @@ def wrap_lines(
     max_w: int,
 ) -> list[str]:
     if "(" in text and "\n" not in text:
-        text = re.sub(r"\s*\(", "\n(", text, count=1)
+        opening = text.index("(")
+        text = text[:opening].rstrip() + "\n" + text[opening:]
     lines: list[str] = []
     for chunk in text.split("\n"):
         words = chunk.split()
@@ -140,7 +141,19 @@ def wrap_lines(
 
 
 def _strip_parens(text: str) -> str:
-    cleaned = re.sub(r"\s*\([^)]*\)", "", text)
+    parts = []
+    cursor = 0
+    while True:
+        opening = text.find("(", cursor)
+        if opening < 0:
+            break
+        closing = text.find(")", opening + 1)
+        if closing < 0:
+            break
+        parts.append(text[cursor:opening].rstrip())
+        cursor = closing + 1
+    parts.append(text[cursor:])
+    cleaned = "".join(parts)
     return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
@@ -302,13 +315,12 @@ def _ip_label(ip_value: str) -> str:
 def gather_info(*, battery=None):
     # A late renderer supplies the exact already-assessed executor sample.
     # Standalone boot splash retains its bounded source wait and old layout.
-    batt = (
-        f"{battery['value'] * 100:.0f}"
-        if isinstance(battery, dict) and battery.get("ready") is True and battery.get("value") is not None
-        else "—"
-        if battery is not None
-        else pick_battery_nonblocking()
-    )
+    if isinstance(battery, dict) and battery.get("ready") is True and battery.get("value") is not None:
+        batt = f"{battery['value'] * 100:.0f}"
+    elif battery is not None:
+        batt = "—"
+    else:
+        batt = pick_battery_nonblocking()
     batt_str = f"{batt}%" if batt.isdigit() else batt
     ip_raw = pick_ip_nonblocking()
     ip_str = _ip_label(ip_raw)

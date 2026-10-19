@@ -123,7 +123,8 @@ def test_get_save_and_import_never_publish_or_activate(world):
     assert world.client.get("/api/calibration/state").json["status"] == "unconfigured"
     assert world.client.get("/api/calibration/profiles").json["profiles"] == []
     response = world.client.post("/api/calibration/profiles", json={"profile": world.profile})
-    assert response.status_code == 201 and response.json["created"]
+    assert response.status_code == 201
+    assert response.json["created"]
     digest = response.json["digest"]
     assert world.client.get("/api/calibration/profiles/" + digest).json["profile"] == response.json["profile"]
     assert world.client.post("/api/calibration/profiles", json={"profile": world.profile}).status_code == 200
@@ -133,19 +134,24 @@ def test_get_save_and_import_never_publish_or_activate(world):
     response = world.client.post("/api/calibration/profiles", json={"profile": imported, "imported": True})
     assert response.json["profile"]["provenance"]["kind"] == "historical"
     assert response.json["profile"]["odometry"]["manual_verified"] is False
-    assert store.read_active() is None and not world.sent
+    assert store.read_active() is None
+    assert not world.sent
 
 
 def test_activate_preserves_caller_envelope_and_202_is_not_confirmation(world):
     digest = store.save_profile(world.profile)["digest"]
     row = command(world, digest)
     response = world.client.post("/api/calibration/activate", json=row)
-    assert response.status_code == 202 and response.json["pending"] and response.json["accepted"] is False
+    assert response.status_code == 202
+    assert response.json["pending"]
+    assert response.json["accepted"] is False
     assert world.sent == [dict(row, action="activate_calibration")]
     assert store.read_active() is None
     snapshot = world.client.get("/api/calibration/state").json
-    assert snapshot["status"] == "pending" and snapshot["confirmation"] == "unconfirmed"
-    assert snapshot["model_ready"] is False and snapshot["actuation"] is False
+    assert snapshot["status"] == "pending"
+    assert snapshot["confirmation"] == "unconfirmed"
+    assert snapshot["model_ready"] is False
+    assert snapshot["actuation"] is False
 
 
 @pytest.mark.parametrize(
@@ -168,7 +174,9 @@ def test_activate_preserves_caller_envelope_and_202_is_not_confirmation(world):
 def test_invalid_activation_never_publishes(world, changes):
     digest = store.save_profile(world.profile)["digest"]
     response = world.client.post("/api/calibration/activate", json=command(world, digest, **changes))
-    assert response.status_code == 409 and response.json["accepted"] is False and not world.sent
+    assert response.status_code == 409
+    assert response.json["accepted"] is False
+    assert not world.sent
 
 
 @pytest.mark.parametrize(
@@ -188,7 +196,8 @@ def test_nonidle_or_stale_or_replayed_runtime_blocks_configuration(world, change
     digest = store.save_profile(world.profile)["digest"]
     world.motion.update(changes)
     assert world.client.post("/api/calibration/activate", json=command(world, digest)).status_code == 409
-    assert not world.sent and store.read_active() is None
+    assert not world.sent
+    assert store.read_active() is None
 
 
 def test_unavailable_odometry_and_transport_are_explicit_no_service_start(world):
@@ -209,9 +218,13 @@ def test_unavailable_odometry_and_transport_are_explicit_no_service_start(world)
 def test_applied_configuration_does_not_claim_calibrated_physics(world):
     pointer = applied(world)
     state = world.client.get("/api/calibration/state").json
-    assert state["active"] == pointer and state["status"] == "applied" and state["confirmation"] == "executed"
-    assert state["model_ready"] is False and state["calibration_error"] == "manual_calibration_required"
-    assert state["motion"]["ready"] is False and state["physical_completion"] == "unverified"
+    assert state["active"] == pointer
+    assert state["status"] == "applied"
+    assert state["confirmation"] == "executed"
+    assert state["model_ready"] is False
+    assert state["calibration_error"] == "manual_calibration_required"
+    assert state["motion"]["ready"] is False
+    assert state["physical_completion"] == "unverified"
 
 
 @pytest.mark.parametrize(
@@ -267,7 +280,8 @@ def test_saved_configuration_recovery_is_not_a_new_execution(world):
         value.update(source="saved_profile", activation_request_id=None, applied_generation=None)
     world.motion["calibration"].update(applied_ack=None, last_ack=None)
     state = world.client.get("/api/calibration/state").json
-    assert state["status"] == "applied" and state["confirmation"] == "loaded_from_saved"
+    assert state["status"] == "applied"
+    assert state["confirmation"] == "loaded_from_saved"
     world.odometry["calibration"]["motion_instance_id"] = "old-process"
     assert world.client.get("/api/calibration/state").json["status"] == "partial"
 
@@ -290,7 +304,9 @@ def test_pending_timeout_and_rejected_attempt_are_partial(world):
 @pytest.mark.parametrize("raw", ['{"profile":{},"profile":{}}', '{"profile":{"number":NaN}}', '[]'])
 def test_malformed_or_duplicate_or_nonfinite_request_is_rejected(world, raw):
     response = world.client.post("/api/calibration/profiles", data=raw, content_type="application/json")
-    assert response.status_code == 400 and not world.sent and store.read_active() is None
+    assert response.status_code == 400
+    assert not world.sent
+    assert store.read_active() is None
 
 
 def test_busy_store_and_route_registration(world):
@@ -299,7 +315,8 @@ def test_busy_store_and_route_registration(world):
 
     world.monkeypatch.setattr(store.fcntl, "flock", busy)
     response = world.client.post("/api/calibration/profiles", json={"profile": world.profile})
-    assert response.status_code == 409 and response.json["error"] == "calibration_busy"
+    assert response.status_code == 409
+    assert response.json["error"] == "calibration_busy"
     from services.api_server import app
 
     expected = {
@@ -332,7 +349,8 @@ def test_reference_http_carries_expected_profile_without_mutation(world):
     pointer = applied(world)
     row = reference_http(world)
     response = world.client.post("/api/odometry/reference", json=row)
-    assert response.status_code == 202 and response.json["profile_digest"] == pointer["profile_digest"]
+    assert response.status_code == 202
+    assert response.json["profile_digest"] == pointer["profile_digest"]
     assert world.sent == [("odometry.reference", row, {"add_ts": False})]
     assert store.read_active() == pointer
 
@@ -354,7 +372,8 @@ def test_reference_http_denies_old_or_unconfirmed_odometry_before_bus(world, fie
     row = reference_http(world)
     world.odometry["calibration"][field] = value
     response = world.client.post("/api/odometry/reference", json=row)
-    assert response.status_code == 409 and response.json["error"] == "reference_profile_unconfirmed"
+    assert response.status_code == 409
+    assert response.json["error"] == "reference_profile_unconfirmed"
     assert not world.sent
 
 
@@ -372,7 +391,9 @@ def test_reference_http_requires_active_digest_and_rechecks_generation(world):
 
     world.monkeypatch.setattr(odometry_api, "read_status", changed_state)
     response = world.client.post("/api/odometry/reference", json=row)
-    assert response.status_code == 409 and response.json["error"] == "stale_generation" and not world.sent
+    assert response.status_code == 409
+    assert response.json["error"] == "stale_generation"
+    assert not world.sent
 
 
 def test_reference_http_preserves_explicit_legacy_file_contract(world):
@@ -393,10 +414,12 @@ def test_pending_pointer_is_partial_despite_matching_fresh_runtime(world):
         activation_state="pending",
     )
     response = world.client.get("/api/calibration/state")
-    assert response.json["status"] == "partial" and response.json["error"] == "active_profile_pending"
+    assert response.json["status"] == "partial"
+    assert response.json["error"] == "active_profile_pending"
     assert response.json["active"]["activation_state"] == "pending"
     assert response.json["active"]["profile_digest"] == pointer["profile_digest"]
-    assert response.json["confirmation"] == "unconfirmed" and response.json["model_ready"] is False
+    assert response.json["confirmation"] == "unconfirmed"
+    assert response.json["model_ready"] is False
     assert response.json["motion"]["calibration"]["profile_digest"] == pointer["profile_digest"]
 
 
@@ -415,7 +438,8 @@ def test_pending_saved_profile_never_becomes_applied_or_reference(world):
         activation_state="pending",
     )
     state = world.client.get("/api/calibration/state").json
-    assert state["status"] == "partial" and state["confirmation"] == "unconfirmed"
+    assert state["status"] == "partial"
+    assert state["confirmation"] == "unconfirmed"
     assert world.client.post("/api/odometry/reference", json=row).status_code == 409
     assert not world.sent
 
@@ -425,5 +449,6 @@ def test_unmarked_pointer_is_unknown_even_with_live_hashes(world):
     pointer.pop("activation_state")
     (store.storage_dir() / "active.json").write_text(json.dumps(pointer))
     state = world.client.get("/api/calibration/state").json
-    assert state["status"] == "unknown" and state["error"] == "active_profile_unavailable"
+    assert state["status"] == "unknown"
+    assert state["error"] == "active_profile_unavailable"
     assert state["confirmation"] == "unconfirmed"

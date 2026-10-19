@@ -16,13 +16,13 @@ def _age(value, now):
         return None
 
 
-def snapshot(C, *, now=None, safety=None) -> dict:
+def snapshot(context, *, now=None, safety=None) -> dict:
     now = time.time() if now is None else now
-    msg_at = getattr(C, "LAST_MSG_TS", None)
-    hb_at = getattr(C, "LAST_HEARTBEAT_TS", None)
+    msg_at = getattr(context, "LAST_MSG_TS", None)
+    hb_at = getattr(context, "LAST_HEARTBEAT_TS", None)
     msg_age = _age(msg_at, now)
     hb_age = _age(hb_at, now)
-    available = getattr(C, "_ZMQ_OK", False) is True
+    available = getattr(context, "_ZMQ_OK", False) is True
     connected = available and msg_age is not None and msg_age <= 30
     if safety is None:
         from services.safety_contract import read_status
@@ -74,5 +74,5 @@ def snapshot(C, *, now=None, safety=None) -> dict:
         "zmq": {"available": available},
         "last_msg_age_s": msg_age,
         "last_heartbeat_age_s": hb_age,
-        "ports": {"pub": getattr(C, "BUS_PUB_PORT", None), "sub": getattr(C, "BUS_SUB_PORT", None)},
+        "ports": {"pub": getattr(context, "BUS_PUB_PORT", None), "sub": getattr(context, "BUS_SUB_PORT", None)},
     }

@@ -16,7 +16,9 @@ def test_unavailable_task_denied_before_intent_persistence_or_effect(tmp_path, t
     manager = world.manager(tmp_path)
     result = manager.set_feature(task, True)
     assert result["error"] == "navigation_traversal_unverified"
-    assert not world.actions and not manager._intents and not manager._pending
+    assert not world.actions
+    assert not manager._intents
+    assert not manager._pending
     assert task not in manager._requested
     assert task_availability(DEFAULT_REGISTRY[task])["start_available"] is False
 
@@ -45,8 +47,10 @@ def test_starting_base_executor_does_not_require_arm_or_write_moving_intent(tmp_
 def test_bus_no_data_or_bad_time_is_not_ready(available, at):
     namespace = SimpleNamespace(_ZMQ_OK=available, LAST_MSG_TS=at, LAST_HEARTBEAT_TS=None)
     result = snapshot(namespace, now=1000, safety={"observed_at": 1000, "instance_id": "fixture"})
-    assert not result["ready"] and not result["bus"]["connected"]
-    assert result["api"]["live"] and result["observed_at"] is None
+    assert not result["ready"]
+    assert not result["bus"]["connected"]
+    assert result["api"]["live"]
+    assert result["observed_at"] is None
 
 
 def test_executor_live_does_not_mean_physical_motion_ready():
@@ -56,6 +60,7 @@ def test_executor_live_does_not_mean_physical_motion_ready():
         now=1000,
         safety={"observed_at": 1000, "instance_id": "fixture", "ready": False, "can_move": False, "state": "ESTOP"},
     )
-    assert result["ready"] and result["components"]["executor"]["live"]
+    assert result["ready"]
+    assert result["components"]["executor"]["live"]
     assert result["bus"]["transport"]["received_at"] == 999
     assert result["bus"]["observed_at"] is None

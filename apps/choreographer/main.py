@@ -112,7 +112,7 @@ def execute_action(pub: BusPub, action: dict):
         pub.publish(topic, payload, add_ts=True)
         LOG.debug(f"Published to {topic}: {payload}")
     except Exception as e:
-        LOG.error(f"Failed to publish to {topic}: {e}")
+        LOG.exception("Failed to publish to %s: %s", topic, e)
 
 
 def process_event(topic: str, payload: dict, mappings: list, pub: BusPub):
@@ -181,7 +181,7 @@ def main():
     try:
         config = load_choreography_config(CONFIG_PATH)
     except Exception as e:
-        LOG.error(f"Failed to load configuration: {e}")
+        LOG.exception("Failed to load configuration: %s", e)
         sys.exit(1)
 
     if not validate_config(config):
@@ -222,7 +222,7 @@ def main():
             try:
                 process_event(topic, payload, mappings, pub)
             except Exception as e:
-                LOG.error(f"Error processing event from {topic}: {e}")
+                LOG.exception("Error processing event from %s: %s", topic, e)
 
     except KeyboardInterrupt:
         pass

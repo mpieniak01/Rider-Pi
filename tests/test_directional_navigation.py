@@ -163,7 +163,8 @@ def test_v3_terminal_no_progress_cannot_resume_on_later_go():
         1,
         0,
     )
-    assert lease.latched and lease.reason == "avoidance_no_progress"
+    assert lease.latched
+    assert lease.reason == "avoidance_no_progress"
     assert not lease.accept(reply(2, protocol_version=3, action="go", state="clear", clear_count=3), "f2", 2, 0)
     assert not any(row[0] in {"go", "turn"} for row in calls)
 

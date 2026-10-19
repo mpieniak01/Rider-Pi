@@ -46,7 +46,8 @@ def test_off_invalidates_before_services_and_old_replay_never_stops_new_arm():
 
     pipeline = CameraPipeline(manager, capability_fn=lambda: CAPS, stopper=stop)
     body, status = pipeline.execute(command("stop"))
-    assert status == 200 and body["state"] == "stopped"
+    assert status == 200
+    assert body["state"] == "stopped"
     assert stops == [{"owner": "manual", "expected_generation": "running"}]
     assert manager.calls[0] == ("s14_venom_navigation", False)
     manager.safety.update(
@@ -71,7 +72,8 @@ def test_stale_revision_and_foreign_stop_failure_do_not_run_lifecycle():
     assert pipeline.execute(command("stop", revision=999))[1] == 409
     assert stops == []
     result, status = pipeline.execute(command("stop"))
-    assert status == 409 and result["error"] == "stale_stop_generation"
+    assert status == 409
+    assert result["error"] == "stale_stop_generation"
     assert manager.calls == []
 
 
@@ -105,7 +107,8 @@ def test_camera_off_does_not_stop_manual_motion_as_a_side_effect():
         stopper=lambda **kwargs: stops.append(kwargs) or {"ok": True, "confirmed": True},
     )
     body, status = pipeline.execute(command("stop"))
-    assert status == 409 and body["error"] == "camera_pipeline_motion_busy"
+    assert status == 409
+    assert body["error"] == "camera_pipeline_motion_busy"
     assert stops == []
     assert manager.calls == []
     assert manager.safety["moving"] is True

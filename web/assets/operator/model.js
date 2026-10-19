@@ -151,10 +151,15 @@ export function displayValue(value, suffix = '') {
   if (value && typeof value === 'object') return `${value.message || value.code || JSON.stringify(value)}${suffix}`;
   return value === null || value === undefined ? '—' : `${value}${suffix}`;
 }
+function frameTimestamp(row, fileTime) {
+  if (fileTime) return row.file_observed_at;
+  if (row && Object.hasOwn(row, 'observed_at')) return row.observed_at;
+  return row?.mtime;
+}
 export function cameraFrame(meta, kind, now = nowSeconds()) {
   const row = meta?.[kind];
   const fileTime = row?.provenance === 'file_mtime' && row?.observed_at == null;
-  const ts = fileTime ? row.file_observed_at : row && Object.hasOwn(row, 'observed_at') ? row.observed_at : row?.mtime;
+  const ts = frameTimestamp(row, fileTime);
   const age = ageOf({ observed_at: ts }, now);
   return { exists: row?.exists === true, ts, age, time_basis: fileTime ? 'file_mtime' : 'observation',
     capture_at: row?.capture_at ?? null,

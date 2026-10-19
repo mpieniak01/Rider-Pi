@@ -82,7 +82,7 @@ class BusIntegrationMixin:
             return
         while not self.stop_event.is_set():
             try:
-                topic, payload = sub.recv(timeout_ms=200)
+                _, payload = sub.recv(timeout_ms=200)
             except Exception as exc:
                 if self.stop_event.is_set():
                     break

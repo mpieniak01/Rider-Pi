@@ -28,7 +28,7 @@ export function displayFactor(row, key) {
 }
 // All screens use the same device-provided display units and factors.
 export function displayValue(row, key, value) {
-  return Number.isFinite(value) ? Number((value * displayFactor(row,key)).toPrecision(15)) : NaN;
+  return Number.isFinite(value) ? Number((value * displayFactor(row,key)).toPrecision(15)) : Number.NaN;
 }
 export function formatParameter(row, key, value, lang='pl') {
   if(!Number.isFinite(value) || !parameter(row,key))return '—';

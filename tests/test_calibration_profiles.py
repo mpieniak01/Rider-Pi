@@ -43,7 +43,8 @@ def verified(profile):
 
 
 def test_read_empty_store_does_not_create_directory_or_activate(profile):
-    assert store.list_profiles() == [] and store.read_active() is None
+    assert store.list_profiles() == []
+    assert store.read_active() is None
     assert not store.storage_dir().exists()
 
 
@@ -51,7 +52,9 @@ def test_canonical_immutable_revisions_and_save_is_not_activation(profile):
     first = store.save_profile(profile)
     reordered = dict(reversed(list(profile.items())))
     second = store.save_profile(reordered)
-    assert first["digest"] == second["digest"] and first["created"] and not second["created"]
+    assert first["digest"] == second["digest"]
+    assert first["created"]
+    assert not second["created"]
     assert store.read_profile(first["digest"]) == first["profile"]
     assert store.read_active() is None
     changed = dict(profile, name="Another revision")
@@ -162,7 +165,8 @@ def test_executor_pointer_metadata_and_current_time(profile):
     digest = store.save_profile(profile)["digest"]
     pointer = store.write_active(digest, request_id="fake-apply", command_generation="fake-gen", seq=3, now=1000)
     assert pointer == store.read_active()
-    assert pointer["activated_at"] == 1000 and pointer["request_id"] == "fake-apply"
+    assert pointer["activated_at"] == 1000
+    assert pointer["request_id"] == "fake-apply"
     with pytest.raises(ValueError):
         store.write_active(digest, request_id="incomplete")
 
@@ -177,7 +181,8 @@ def test_staged_pointer_is_inspectable_but_never_boot_loadable(profile):
         store.read_active()
     assert store.profile_confirmation(pending, {}, {}, 1000) == "unconfirmed"
     applied = store.commit_active(digest, request_id="r", command_generation="g", seq=1)
-    assert applied["activation_state"] == "applied" and applied["activated_at"] == 1000
+    assert applied["activation_state"] == "applied"
+    assert applied["activated_at"] == 1000
     assert store.read_active() == applied
 
 
@@ -222,7 +227,8 @@ def test_successful_commit_has_no_fallible_temporary_cleanup(profile, monkeypatc
 
     monkeypatch.setattr(store.os, "unlink", forbidden_cleanup)
     pointer = store.commit_active(digest, request_id="r", command_generation="g", seq=1)
-    assert pointer["activation_state"] == "applied" and store.read_active() == pointer
+    assert pointer["activation_state"] == "applied"
+    assert store.read_active() == pointer
 
 
 def test_unmarked_pointer_cannot_recover_precheck_rejected_profile(profile):
@@ -242,7 +248,8 @@ def test_catalog_verification_comes_from_hashed_revision_not_editable_index(prof
     rows[0].update(manual_verified=True, provenance={"kind": "manual"})
     path.write_text(json.dumps(rows))
     listed = store.list_profiles()[0]
-    assert listed["manual_verified"] is False and listed["provenance"]["kind"] == "draft"
+    assert listed["manual_verified"] is False
+    assert listed["provenance"]["kind"] == "draft"
 
 
 def test_busy_lock_fails_without_waiting(profile, monkeypatch):

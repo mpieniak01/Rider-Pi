@@ -11,7 +11,7 @@
 <header class="layout-header" data-dashboard-menu-target></header>
 <main class="layout-main">
 <h1 data-pl="Rider-Pi — Studio buźki" data-en="Rider-Pi — Face studio">Rider-Pi — Studio buźki</h1>
-<p id="studio-status" role="status" aria-live="polite"></p>
+<output id="studio-status" aria-live="polite" aria-atomic="true"></output>
 <div class="studio-grid">
 <section class="c-card studio-preview">
 <h2 data-pl="Buźka" data-en="Face">Buźka</h2>
@@ -56,7 +56,7 @@
 <label><input id="active-gesture" type="checkbox"><span data-pl="Ten gest w zestawie robota" data-en="Include this gesture in the robot set">Ten gest w zestawie robota</span></label>
 <p id="settings-status" class="studio-hint"></p>
 <div class="studio-buttons"><button id="reload-settings" type="button" data-pl="Wczytaj ustawienia" data-en="Reload settings">Wczytaj ustawienia</button><button id="apply" type="button" data-pl="Zapisz ustawienia" data-en="Save settings">Zapisz ustawienia</button><button id="lcd-play" type="button" data-pl="▶ Pokaż na LCD" data-en="▶ Show on LCD">▶ Pokaż na LCD</button><button id="lcd-stop" type="button" data-pl="■ Wyłącz buźkę" data-en="■ Stop face">■ Wyłącz buźkę</button></div>
-<p id="runtime-status" role="status" class="studio-hint"></p>
+<output id="runtime-status" class="studio-hint" aria-live="polite" aria-atomic="true"></output>
 </section>
 </div>
 </div>

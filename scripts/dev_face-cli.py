@@ -83,11 +83,7 @@ def main():
     img = fit_strategy(img, fit, PANEL_SIZE)
     img = apply_rotate(img, rotate)
 
-    if args.force == _RAW_RGB565_MODE:
-        buf = to_rgb565(img)
-        driver.push_rgb565(buf, *PANEL_SIZE)
-    elif args.force == "push_frame:rgb565_3":
-        # Fallback: identycznie jak raw, ale można dodać inne ścieżki
+    if args.force == _RAW_RGB565_MODE or args.force == "push_frame:rgb565_3":
         buf = to_rgb565(img)
         driver.push_rgb565(buf, *PANEL_SIZE)
     elif args.force == "png":

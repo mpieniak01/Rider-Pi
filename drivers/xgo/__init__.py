@@ -7,11 +7,15 @@ Hardware driver for XGO robot platform.
 from __future__ import annotations
 
 import os
+from typing import Union
 
 from .adapter import XgoAdapter
+from .sim import SimulatedXgoAdapter
+
+RobotDriver = Union[XgoAdapter, SimulatedXgoAdapter]
 
 
-def get_robot_driver() -> XgoAdapter:
+def get_robot_driver() -> RobotDriver:
     """
     Factory function to get the appropriate robot driver.
 

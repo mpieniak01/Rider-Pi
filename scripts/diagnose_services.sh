@@ -9,6 +9,7 @@ set -euo pipefail
 API_BASE="${1:-http://127.0.0.1:8080}"
 CURL="curl -sS"             # bez -f -> nie zrywa potoku; błędy pokażemy czytelnie
 JQ_BIN="${JQ_BIN:-jq}"
+readonly ACCEPT_HEADER='Accept: application/json'
 
 NAMES_ORDER=(broker web motion cam edge ssd obstacle api)  # api NA KOŃCU i TYLKO STATUS!
 
@@ -16,7 +17,10 @@ NAMES_ORDER=(broker web motion cam edge ssd obstacle api)  # api NA KOŃCU i TYL
 if [[ -t 1 ]]; then C_OK=$'\e[32m'; C_ERR=$'\e[31m'; C_WARN=$'\e[33m'; C_DIM=$'\e[2m'; C_OFF=$'\e[0m';
 else C_OK=""; C_ERR=""; C_WARN=""; C_DIM=""; C_OFF=""; fi
 
-need() { command -v "$1" >/dev/null 2>&1 || { echo "${C_ERR}Brak: $1${C_OFF}"; exit 1; }; }
+need() {
+  local name="$1"
+  command -v "$name" >/dev/null 2>&1 || { echo "${C_ERR}Brak: $name${C_OFF}"; exit 1; }
+}
 need curl; need "${JQ_BIN}"
 
 echo "${C_DIM}API:${C_OFF} ${API_BASE}"
@@ -25,7 +29,7 @@ echo "${C_DIM}API:${C_OFF} ${API_BASE}"
 wait_api() {
   local tries="${1:-10}"
   for ((i=1;i<=tries;i++)); do
-    if ${CURL} -H 'Accept: application/json' "${API_BASE}/healthz" >/dev/null 2>&1; then
+    if ${CURL} -H "$ACCEPT_HEADER" "${API_BASE}/healthz" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.5
@@ -35,7 +39,7 @@ wait_api() {
 
 have_status_route=""   # wykryjemy, czy istnieje GET /svc/<name>
 detect_status_route() {
-  if ${CURL} -H 'Accept: application/json' "${API_BASE}/svc/cam" | grep -q '{'; then
+  if ${CURL} -H "$ACCEPT_HEADER" "${API_BASE}/svc/cam" | grep -q '{'; then
     have_status_route="yes"
   else
     have_status_route="no"
@@ -44,7 +48,7 @@ detect_status_route() {
 
 svc_list_json=""  # cache listy do fallbacku
 load_svc_list() {
-  svc_list_json="$(${CURL} -H 'Accept: application/json' "${API_BASE}/svc" 2>/dev/null || echo '')"
+  svc_list_json="$(${CURL} -H "$ACCEPT_HEADER" "${API_BASE}/svc" 2>/dev/null || echo '')"
 }
 
 status_via_list() {
@@ -60,9 +64,9 @@ status_via_list() {
 }
 
 svc_status() {
-  local name="$1" out rc=0
+  local name="$1" out
   if [[ "$have_status_route" == "yes" ]]; then
-    out="$(${CURL} -H 'Accept: application/json' "${API_BASE}/svc/${name}" 2>/dev/null || true)"
+    out="$(${CURL} -H "$ACCEPT_HEADER" "${API_BASE}/svc/${name}" 2>/dev/null || true)"
     [[ -n "$out" && "$out" != *"METHOD NOT ALLOWED"* ]] && { echo "$out"; return 0; }
   fi
   # fallback z listy
@@ -73,7 +77,7 @@ svc_status() {
 svc_action() {
   local name="$1" action="$2"
   ${CURL} -X POST "${API_BASE}/svc/${name}" \
-    -H 'Content-Type: application/json' -H 'Accept: application/json' \
+    -H 'Content-Type: application/json' -H "$ACCEPT_HEADER" \
     --data "{\"action\":\"${action}\"}"
 }
 

@@ -76,11 +76,14 @@ def test_renderer_frame_headless_preview_idle_and_headless_preserve_actual_state
     report = renderer()
     devices.observe_lcd(report)
     initial = health_lcd()
-    assert initial["rot"] == 270 and initial["on"] is True and initial["power_known"] is True
+    assert initial["rot"] == 270
+    assert initial["on"] is True
+    assert initial["power_known"] is True
     assert initial["source"] == initial["power_source"] == "lcd-renderer"
     assert initial["observed_at"] == initial["power_observed_at"] == 100
     assert initial["frame"] == report["lcd"]["frame"]
-    assert initial["frame_source"] == "lcd-renderer" and initial["frame_observed_at"] == 100
+    assert initial["frame_source"] == "lcd-renderer"
+    assert initial["frame_observed_at"] == 100
     assert initial["battery"] == report["lcd"]["battery"]
     assert initial["confirmation"] == "control_write_accepted"
     assert initial["physical_validity"] == "unverified"
@@ -107,9 +110,11 @@ def test_renderer_frame_headless_preview_idle_and_headless_preserve_actual_state
         "source": "camera-preview",
         "observed_at": 101,
     }
-    assert current["configured_rot"] == 270 and current["configured_rot_source"] == "drivers.lcd.board"
+    assert current["configured_rot"] == 270
+    assert current["configured_rot_source"] == "drivers.lcd.board"
     assert current["observed_age_s"] == 1
-    assert compat.LAST_CAMERA["ts"] == 101 and compat.LAST_CAMERA["mode"] == "preview"
+    assert compat.LAST_CAMERA["ts"] == 101
+    assert compat.LAST_CAMERA["mode"] == "preview"
 
     clock[0] = 102
     devices.observe_lcd(
@@ -129,11 +134,16 @@ def test_renderer_frame_headless_preview_idle_and_headless_preserve_actual_state
     clock[0] = 103
     devices.observe_camera_heartbeat(headless(103))
     current = health_lcd()
-    assert current["rot"] == 270 and current["on"] is False and current["power_known"] is True
-    assert current["presenting"] is False and current["reason"] == "status_idle"
+    assert current["rot"] == 270
+    assert current["on"] is False
+    assert current["power_known"] is True
+    assert current["presenting"] is False
+    assert current["reason"] == "status_idle"
     assert current["observed_at"] == current["power_observed_at"] == 102
-    assert current["frame"]["observed_at"] == 100 and current["battery"]["observed_at"] == 99
-    assert current["frame_observed_at"] == 100 and current["frame_source"] == "lcd-renderer"
+    assert current["frame"]["observed_at"] == 100
+    assert current["battery"]["observed_at"] == 99
+    assert current["frame_observed_at"] == 100
+    assert current["frame_source"] == "lcd-renderer"
     assert current["preview_config"]["observed_at"] == 103
     assert current["configured_rot"] == 270
 
@@ -164,7 +174,9 @@ def test_invalid_or_unknown_renderer_source_does_not_replace_accepted_report(clo
 def test_unproved_legacy_report_cannot_confirm_off_or_orientation(clock, lcd):
     devices.observe_lcd({"source": "lcd-renderer", "observed_at": 100, "lcd": lcd})
     current = health_lcd()
-    assert current["on"] is None and current["power_known"] is False and current["rot"] is None
+    assert current["on"] is None
+    assert current["power_known"] is False
+    assert current["rot"] is None
 
 
 @pytest.mark.parametrize("on", [True, False])
@@ -173,9 +185,12 @@ def test_explicit_unconfirmed_gpio_keeps_accepted_frame_but_power_unknown(clock,
     report["lcd"].update(on=on, power_known=False)
     devices.observe_lcd(report)
     current = health_lcd()
-    assert current["on"] is None and current["power_known"] is False
-    assert current["power_source"] is None and current["power_observed_at"] is None
-    assert current["rot"] == 270 and current["frame"] == report["lcd"]["frame"]
+    assert current["on"] is None
+    assert current["power_known"] is False
+    assert current["power_source"] is None
+    assert current["power_observed_at"] is None
+    assert current["rot"] == 270
+    assert current["frame"] == report["lcd"]["frame"]
     assert current["presenting"] is True
 
 
@@ -183,7 +198,8 @@ def test_frame_acceptance_alone_is_not_gpio_confirmation(clock):
     report = renderer()
     report["lcd"]["confirmation"] = "frame_write_accepted"
     devices.observe_lcd(report)
-    assert health_lcd()["on"] is None and health_lcd()["power_known"] is False
+    assert health_lcd()["on"] is None
+    assert health_lcd()["power_known"] is False
     assert health_lcd()["rot"] == 270
 
 
@@ -192,7 +208,8 @@ def test_out_of_order_idle_cannot_replace_current_renderer_frame(clock):
     report = renderer(99)
     report["lcd"].update(on=False, reason="status_idle")
     devices.observe_lcd(report)
-    assert health_lcd()["on"] is True and health_lcd()["observed_at"] == 100
+    assert health_lcd()["on"] is True
+    assert health_lcd()["observed_at"] == 100
 
 
 def test_unknown_preview_time_is_not_refreshed_from_receipt(clock):
@@ -201,14 +218,17 @@ def test_unknown_preview_time_is_not_refreshed_from_receipt(clock):
     devices.observe_camera_heartbeat(report)
     assert compat.LAST_CAMERA["lcd"]["preview_config"]["observed_at"] is None
     assert compat.LAST_CAMERA["ts"] is None
-    assert health_lcd()["on"] is None and health_lcd()["rot"] is None
+    assert health_lcd()["on"] is None
+    assert health_lcd()["rot"] is None
 
 
 def test_cached_bool_without_source_and_control_proof_is_unknown(clock):
     compat.LAST_CAMERA["lcd"].update(on=False, power_known=True, rot=0)
     current = health_lcd()
-    assert current["on"] is None and current["power_known"] is False
-    assert current["rot"] is None and current["configured_rot"] == 270
+    assert current["on"] is None
+    assert current["power_known"] is False
+    assert current["rot"] is None
+    assert current["configured_rot"] == 270
 
 
 def test_accepted_power_report_without_geometry_does_not_promote_env_defaults(clock):
@@ -220,5 +240,8 @@ def test_accepted_power_report_without_geometry_does_not_promote_env_defaults(cl
         }
     )
     current = health_lcd()
-    assert current["on"] is False and current["rot"] is None and current["no_draw"] is None
-    assert current["configured_rot"] == 270 and current["configured_no_draw"] is False
+    assert current["on"] is False
+    assert current["rot"] is None
+    assert current["no_draw"] is None
+    assert current["configured_rot"] == 270
+    assert current["configured_no_draw"] is False

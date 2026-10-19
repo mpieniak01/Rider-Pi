@@ -9,7 +9,7 @@ import pytest
 from services.api_core import network_state
 
 
-@pytest.fixture()
+@pytest.fixture
 def wifi(tmp_path, monkeypatch):
     root = tmp_path / 'net'
     net = root / 'wlan0'
@@ -49,7 +49,8 @@ def test_associated_link_with_ipv4_is_connected(wifi):
     state = network_state.get_wifi_state()
     assert state['status'] == 'connected'
     assert state['addresses'] == ['192.0.2.14']
-    assert state['gateway'] == '192.0.2.1' and state['default_route'] is True
+    assert state['gateway'] == '192.0.2.1'
+    assert state['default_route'] is True
     assert state['autostart'] is True
 
 
@@ -76,14 +77,16 @@ def test_lan_connection_without_default_route_still_is_connected(wifi):
     _, _, data = wifi
     data['routes'] = []
     state = network_state.get_wifi_state()
-    assert state['status'] == 'connected' and state['default_route'] is False
+    assert state['status'] == 'connected'
+    assert state['default_route'] is False
 
 
 def test_device_filtered_routes_on_bullseye_omit_the_dev_field(wifi):
     _, _, data = wifi
     data['routes'] = [{'dst': 'default', 'gateway': '192.0.2.1', 'protocol': 'dhcp', 'metric': 303}]
     state = network_state.get_wifi_state()
-    assert state['default_route'] is True and state['gateway'] == '192.0.2.1'
+    assert state['default_route'] is True
+    assert state['gateway'] == '192.0.2.1'
 
 
 @pytest.mark.parametrize('failure', [FileNotFoundError(), subprocess.TimeoutExpired('ip', 1), ValueError('bad JSON')])
@@ -136,7 +139,8 @@ def test_runtime_only_enablement_does_not_claim_boot_autostart(wifi):
 def test_read_only_commands_have_a_bounded_timeout(monkeypatch):
     def check(command, **kwargs):
         assert command == ['/usr/bin/ip', '-j', 'address', 'show', 'dev', 'wlan0']
-        assert kwargs['timeout'] == 1.0 and kwargs['stderr'] == subprocess.DEVNULL
+        assert kwargs['timeout'] == 1.0
+        assert kwargs['stderr'] == subprocess.DEVNULL
         return '[]'
 
     monkeypatch.setattr(network_state.subprocess, 'check_output', check)

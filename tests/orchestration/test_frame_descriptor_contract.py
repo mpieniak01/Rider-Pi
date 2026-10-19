@@ -108,8 +108,10 @@ def test_stale_and_future_require_explicit_archive(frame_client, at, error):
     path.write_bytes(b"historical JPEG")
     os.utime(path, (at, at))
     current = client.get("/raw")
-    assert current.status_code == 404 and current.get_json()["error"] == error
+    assert current.status_code == 404
+    assert current.get_json()["error"] == error
     archived = client.get("/raw?archive=1")
-    assert archived.status_code == 200 and archived.data == b"historical JPEG"
+    assert archived.status_code == 200
+    assert archived.data == b"historical JPEG"
     assert archived.headers["X-Rider-Stale"] == "true"
     archived.close()

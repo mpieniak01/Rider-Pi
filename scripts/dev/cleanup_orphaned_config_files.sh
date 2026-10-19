@@ -34,7 +34,7 @@ FILES_TO_REMOVE=(
 echo ""
 echo "Usuwanie osieroconych plików:"
 for f in "${FILES_TO_REMOVE[@]}"; do
-  if [ -f "$f" ]; then
+  if [[ -f "$f" ]]; then
     echo "  Usuwanie: $f"
     rm -f "$f"
   else

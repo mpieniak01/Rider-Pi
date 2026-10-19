@@ -170,7 +170,7 @@ def _to_bgr(img_gray: np.ndarray) -> np.ndarray:
 
 def bins_edge_pcts(edge_gray: np.ndarray, sl: slice, bins: int) -> list[float]:
     roi = edge_gray[sl, :]
-    h, w = roi.shape[:2]
+    _, w = roi.shape[:2]
     bins = max(1, int(bins))
     bin_w = max(1, w // bins)
     out: list[float] = []
@@ -195,7 +195,7 @@ def draw_overlay(
 ) -> None:
     try:
         vis = _to_bgr(base_gray)
-        h, w = vis.shape[:2]
+        _, w = vis.shape[:2]
         y0, y1 = sl.start, sl.stop
 
         color = (0, 200, 0) if not present else (0, 0, 220)

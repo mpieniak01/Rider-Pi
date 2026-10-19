@@ -39,7 +39,8 @@ def test_malformed_lsof_is_unknown_not_free(monkeypatch, rc, output):
         lambda *args, **kwargs: SimpleNamespace(returncode=rc, stdout=output, stderr=""),
     )
     observed = resource_diag.inspect("camera")
-    assert observed["state"] == "unknown" and observed["free"] is None
+    assert observed["state"] == "unknown"
+    assert observed["free"] is None
 
 
 def test_maintenance_cli_respects_recorded_api_task_consumer(monkeypatch, tmp_path):

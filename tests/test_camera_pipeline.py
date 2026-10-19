@@ -90,9 +90,12 @@ def pipeline(manager=None):
 def test_default_read_is_passive_and_does_not_create_profile():
     manager = Manager()
     result = pipeline(manager).status()
-    assert result["revision"] == 1 and result["profile"] == store.DEFAULT_PROFILE
-    assert result["state"] == "stopped" and result["active_profile"] is None
-    assert manager.calls == [] and not store.config_path().exists()
+    assert result["revision"] == 1
+    assert result["profile"] == store.DEFAULT_PROFILE
+    assert result["state"] == "stopped"
+    assert result["active_profile"] is None
+    assert manager.calls == []
+    assert not store.config_path().exists()
     assert not result["capabilities"]["local_drive_supported"]
 
 
@@ -101,15 +104,19 @@ def test_profile_revision_request_replay_and_start_stop():
     profile = dict(store.DEFAULT_PROFILE, remote_transport="mjpeg")
     configure = command("configure", profile=profile)
     result, code = instance.execute(configure)
-    assert code == 200 and result["revision"] == 2
+    assert code == 200
+    assert result["revision"] == 2
     assert instance.execute(configure) == (result, code)
     assert store.snapshot()["profile"] == profile
     same, code = instance.execute(command("configure", request_id="unchanged", revision=2, profile=profile))
-    assert code == 200 and same["revision"] == 2
+    assert code == 200
+    assert same["revision"] == 2
     _, code = instance.execute(command("start", request_id="start", revision=2))
-    assert code == 200 and instance.manager.calls[-1] == ("s2_camera_preview", True)
+    assert code == 200
+    assert instance.manager.calls[-1] == ("s2_camera_preview", True)
     _, code = instance.execute(command("stop", request_id="stop", revision=2))
-    assert code == 200 and instance.manager.calls[-1] == ("s2_camera_preview", False)
+    assert code == 200
+    assert instance.manager.calls[-1] == ("s2_camera_preview", False)
 
 
 def test_stale_revision_and_reused_request_id_never_mutate():
@@ -118,9 +125,11 @@ def test_stale_revision_and_reused_request_id_never_mutate():
     result, _ = instance.execute(body)
     conflicting = command("stop", request_id=body["request_id"], revision=2)
     response, code = instance.execute(conflicting)
-    assert code == 409 and response["error"] == "camera_pipeline_request_conflict"
+    assert code == 409
+    assert response["error"] == "camera_pipeline_request_conflict"
     response, code = instance.execute(command("stop", request_id="stale", revision=1))
-    assert code == 409 and response["current_revision"] == result["revision"]
+    assert code == 409
+    assert response["current_revision"] == result["revision"]
 
 
 @pytest.mark.parametrize(
@@ -138,7 +147,8 @@ def test_invalid_requests_do_not_start_any_service(change):
     instance = pipeline()
     body = dict(command("start"), **change)
     _, code = instance.execute(body)
-    assert code == 400 and instance.manager.calls == []
+    assert code == 400
+    assert instance.manager.calls == []
 
 
 def test_start_profile_and_missing_engine_are_explicit_errors():
@@ -148,7 +158,8 @@ def test_start_profile_and_missing_engine_are_explicit_errors():
     response, code = instance.execute(
         command("configure", profile=dict(store.DEFAULT_PROFILE, analysis_location="local"))
     )
-    assert code == 503 and response["error"] == "camera_pipeline_local_engine_unavailable"
+    assert code == 503
+    assert response["error"] == "camera_pipeline_local_engine_unavailable"
 
 
 def test_manual_movement_and_foreign_consumers_cannot_be_stolen():
@@ -184,7 +195,8 @@ def test_unmanaged_camera_blocks_start_and_profile_change():
     manager.units.add(manager.PREVIEW_UNIT)
     instance = pipeline(manager)
     result, code = instance.execute(command("start"))
-    assert code == 409 and result["error"] == "camera_pipeline_camera_not_released"
+    assert code == 409
+    assert result["error"] == "camera_pipeline_camera_not_released"
     assert not store.config_path().exists()
 
 
@@ -219,7 +231,8 @@ def test_ipc_latest_only_and_stop_invalidates_cache():
                 },
             )
         data, metadata = pipeline_ipc.read_frame()
-        assert data == b"jpeg\x02" and metadata["frame_id"] == "fixture-2"
+        assert data == b"jpeg\x02"
+        assert metadata["frame_id"] == "fixture-2"
         assert pipeline_ipc.read_frame(after="fixture-2", timeout_ms=1) is None
         assert pipeline_ipc.read_frame(metadata_only=True)[0] == b""
         frames.close()
@@ -234,7 +247,8 @@ def test_native_restart_changes_session_and_epoch():
     config = {"revision": 1, "profile": dict(store.DEFAULT_PROFILE, remote_transport="mjpeg")}
     first = pipeline_runtime.CameraProducer(config)
     second = pipeline_runtime.CameraProducer(config)
-    assert second.session != first.session and second.epoch == first.epoch + 1
+    assert second.session != first.session
+    assert second.epoch == first.epoch + 1
 
 
 def test_local_canny_is_raw_stage_and_never_returns_motion_permission():
@@ -242,8 +256,10 @@ def test_local_canny_is_raw_stage_and_never_returns_motion_permission():
     image[:, 30:] = 255
     before = image.copy()
     processed, detections = pipeline_local.LocalProcessor("canny").process(image)
-    assert np.count_nonzero(processed) > 0 and detections == []
-    assert np.array_equal(before, image) and processed.shape == image.shape
+    assert np.count_nonzero(processed) > 0
+    assert detections == []
+    assert np.array_equal(before, image)
+    assert processed.shape == image.shape
 
 
 def test_canonical_rotation_and_flips_match_legacy():
@@ -267,12 +283,15 @@ def test_media_endpoints_are_passive_and_use_same_source_header(monkeypatch):
     camera_pipeline_api.register(app)
     client = app.test_client()
     response = client.get("/api/resource/camera/frame")
-    assert response.data == data and json.loads(response.headers["X-Rider-Source"]) == metadata
+    assert response.data == data
+    assert json.loads(response.headers["X-Rider-Source"]) == metadata
     assert response.headers["Cache-Control"] == "no-store"
     response = client.get("/api/resource/camera/stream.mjpg", buffered=False)
     part = next(response.response)
     response.close()
-    assert data in part and b"X-Rider-Source:" in part and b"Content-Length:" in part
+    assert data in part
+    assert b"X-Rider-Source:" in part
+    assert b"Content-Length:" in part
     assert calls == [{"view": "raw", "timeout_ms": 0}, {"view": "raw", "timeout_ms": 250}]
 
 
@@ -291,15 +310,18 @@ def test_legacy_camera_status_is_active_and_read_only_without_pretending_ram():
     manager.consumers = ["s2_camera_preview"]
     manager.units.update({manager.PREVIEW_UNIT, "frame-distributor.service"})
     response = pipeline(manager).status()
-    assert response["state"] == "active" and response["compatibility_mode"] == "legacy"
+    assert response["state"] == "active"
+    assert response["compatibility_mode"] == "legacy"
     assert response["active_profile"] == store.DEFAULT_PROFILE
-    assert response["latest_frame"] is None and response["camera_session"] is None
+    assert response["latest_frame"] is None
+    assert response["camera_session"] is None
     assert response["effective_stages"]["capture"]
     assert response["effective_stages"]["snapshot_write"]
     assert response["effective_stages"]["frame_distributor"]
     assert not response["effective_stages"]["ram_delivery"]
     assert not response["effective_stages"]["hardware_mjpeg"]
-    assert manager.calls == [] and not store.config_path().exists()
+    assert manager.calls == []
+    assert not store.config_path().exists()
 
 
 @pytest.mark.parametrize("goal", ["s2_camera_preview", "s15_venom_perception", "s14_venom_navigation"])
@@ -314,7 +336,8 @@ def test_configure_keeps_only_passive_camera_after_release_with_new_producer(goa
     def set_feature(name, enabled):
         if enabled:
             # The profile changes only after old units have released the source.
-            assert name == "s2_camera_preview" and manager.units == set()
+            assert name == "s2_camera_preview"
+            assert manager.units == set()
             assert store.snapshot()["profile"] == profile
         else:
             assert not store.config_path().exists()
@@ -328,8 +351,10 @@ def test_configure_keeps_only_passive_camera_after_release_with_new_producer(goa
 
     manager.set_feature = set_feature
     response, code = pipeline(manager).execute(command("configure", profile=profile))
-    assert code == 200 and response["state"] == "active"
-    assert response["active_profile"] == profile and response["compatibility_mode"] is None
+    assert code == 200
+    assert response["state"] == "active"
+    assert response["active_profile"] == profile
+    assert response["compatibility_mode"] is None
     assert response["effective_stages"]["hardware_mjpeg"]
     assert not response["effective_stages"]["frame_distributor"]
     assert transitions == [(goal, False), ("s2_camera_preview", True)]
@@ -344,6 +369,8 @@ def test_explicit_same_profile_configure_upgrades_legacy_without_inventing_revis
     manager.consumers = ["s2_camera_preview"]
     manager.units.update({manager.PREVIEW_UNIT, "frame-distributor.service"})
     response, code = pipeline(manager).execute(command("configure", profile=dict(store.DEFAULT_PROFILE)))
-    assert code == 200 and response["revision"] == 1
-    assert store.enabled() and store.snapshot()["profile"] == store.DEFAULT_PROFILE
+    assert code == 200
+    assert response["revision"] == 1
+    assert store.enabled()
+    assert store.snapshot()["profile"] == store.DEFAULT_PROFILE
     assert manager.calls == [("s2_camera_preview", False), ("s2_camera_preview", True)]

@@ -45,7 +45,8 @@ def test_runtime_closes_fake_executor_and_bus_after_signal(monkeypatch):
     monkeypatch.setattr(bus, "BusSub", Sub)
     monkeypatch.setattr(bus, "BusPub", Pub)
     assert executor_runtime.run(factory, ["motion.command"], {"motion.command"}) == 0
-    assert "process_signal" in calls and "stopped" in calls
+    assert "process_signal" in calls
+    assert "stopped" in calls
     assert ("tick", 0.02) in calls
     assert calls[-3:] == ["executor_closed", "sub_closed", "pub_closed"]
 

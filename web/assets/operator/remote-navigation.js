@@ -1,5 +1,10 @@
 import { request } from './transport.js';
 import { tr, showError, text } from './ui.js';
+function loopStatus(status) {
+  if (status.stale) return tr('Stan pętli nieznany lub nieaktualny.','Loop state unknown or stale.');
+  const running = status.running ? tr('aktywna','running') : tr('zatrzymana','stopped');
+  return running + ' · ' + (status.decision?.state || 'unknown') + ' · ' + (status.stop_reason || '');
+}
 export class RemoteNavigation {
   constructor(safety) {
     this.safety=safety; this.policy=null; this.pending=false;
@@ -18,8 +23,7 @@ export class RemoteNavigation {
     document.getElementById('remote-corridor').value=this.policy.corridor.join(',');
     document.getElementById('remote-verified').checked=this.policy.verified===true;
     const status=(await request('/api/navigation/status')).data;
-    text('remote-state',status.stale?tr('Stan pętli nieznany lub nieaktualny.','Loop state unknown or stale.'):
-      `${status.running?tr('aktywna','running'):tr('zatrzymana','stopped')} · ${status.decision?.state||'unknown'} · ${status.stop_reason||''}`);
+    text('remote-state', loopStatus(status));
   }
   async save() {
     if(!this.policy)return;
@@ -54,8 +58,8 @@ export class RemoteNavigation {
   }
   async stop() {
     await this.safety.stop();
-    for(const name of ['s14_venom_navigation','s15_venom_perception'])
-      await request('/api/logic/feature/'+name,{method:'POST',body:{enabled:false}});
+    await request('/api/logic/feature/s14_venom_navigation',{method:'POST',body:{enabled:false}});
+    await request('/api/logic/feature/s15_venom_perception',{method:'POST',body:{enabled:false}});
     text('remote-state',tr('Pętla zatrzymana. Ponowny start wymaga nowej intencji.','Loop stopped. Restart requires a new intent.'));
   }
 }

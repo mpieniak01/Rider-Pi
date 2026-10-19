@@ -270,9 +270,8 @@ class OdometryEstimator:
             return False
         if self.output is not None and self.output.get("stopped") is not True:
             return False
-        if self.output is not None:
-            if not self._output_quality()["ready"]:
-                return False
+        if self.output is not None and not self._output_quality()["ready"]:
+            return False
         if self.executor_state is not None and not self._executor_quality()["ready"]:
             return False
         return True
@@ -527,13 +526,9 @@ class Odometry:
 
     @staticmethod
     def _normalize_topic(topic):
-        return (
-            topic.decode(errors="ignore")
-            if isinstance(topic, (bytes, bytearray))
-            else topic
-            if isinstance(topic, str)
-            else ""
-        )
+        if isinstance(topic, (bytes, bytearray)):
+            return topic.decode(errors="ignore")
+        return topic if isinstance(topic, str) else ""
 
     @staticmethod
     def _recv_safe(sub, timeout_ms):

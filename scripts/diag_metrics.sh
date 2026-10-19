@@ -19,7 +19,7 @@ gap=$(journalctl -u "$SERVICE" --since "$since" -o cat | grep -c 'reason\": \"mi
 autos=$(journalctl -u "$SERVICE" --since "$since" -o cat | grep -c 'auto_stop')
   acts=$((fwd + bwd + tl + tr + left + right))
   pct=0
-  if [ "$rx" -gt 0 ]; then pct=$(( 100 * acts / rx )); fi
+  if [[ "$rx" -gt 0 ]]; then pct=$(( 100 * acts / rx )); fi
   echo "=== Window: since $since ==="
   printf "WEB  : moves=%d stops=%d\n" "$web_moves" "$web_stops"
   printf "BRG  : rx_cmd.move=%d  actions=%d (fwd=%d bwd=%d tl=%d tr=%d left=%d right=%d)\n" "$rx" "$acts" "$fwd" "$bwd" "$tl" "$tr" "$left" "$right"

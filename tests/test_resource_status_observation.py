@@ -151,7 +151,8 @@ def test_idle_resource_observations_are_shared_without_renewing_source_time(free
     first = resource_observation.snapshot("camera", probe=probe, clock=lambda: tick[0])
     tick[0] = ttl - 0.01
     second = resource_observation.snapshot("camera", probe=probe, clock=lambda: tick[0])
-    assert first == second and first["observed_at"] == 100
+    assert first == second
+    assert first["observed_at"] == 100
     assert len(calls) == 1
     tick[0] = ttl
     resource_observation.snapshot("camera", probe=probe, clock=lambda: tick[0])

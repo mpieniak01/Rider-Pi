@@ -6,7 +6,9 @@ const versions = Object.fromEntries(['safety', 'telemetry', 'system', 'health', 
 Object.assign(versions, { 'rider.catalog': 2, 'rider.tasks': 2, 'rider.services': 2, 'rider.service_graph': 2 });
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 export function errorMessage(error, fallback = 'Request failed') {
-  return typeof error === 'string' ? error : object(error) ? error.message || error.code || fallback : fallback;
+  if (typeof error === 'string') return error;
+  if (object(error)) return error.message || error.code || fallback;
+  return fallback;
 }
 export function responseFamily(path) {
   const clean = String(path).split('?')[0];

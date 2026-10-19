@@ -53,7 +53,10 @@ def test_pupil_drift_changes_bbox(tmp_path, monkeypatch):
     l2, r2 = _pupil_centers(img2)
 
     # oczekujemy jakiejś zmiany pozycji (drift)
-    assert l1 and l2 and r1 and r2, "Źrenice muszą być wykrywalne"
+    assert l1, "Źrenice muszą być wykrywalne"
+    assert l2, "Źrenice muszą być wykrywalne"
+    assert r1, "Źrenice muszą być wykrywalne"
+    assert r2, "Źrenice muszą być wykrywalne"
     l_dx = abs(l2[0] - l1[0]) + abs(l2[1] - l1[1])
     r_dx = abs(r2[0] - r1[0]) + abs(r2[1] - r1[1])
     assert l_dx > 0.5 or r_dx > 0.5, f"Drift powinien poruszyć źrenice (l={l_dx:.2f}, r={r_dx:.2f})"

@@ -43,8 +43,11 @@ def test_picamera_request_keeps_sensor_timestamp_after_delayed_read_and_releases
     monkeypatch.setattr(utils.time, "monotonic_ns", lambda: now[0])
     reader = utils.CameraReader(Camera(), None, picamera=True, read_timed=lambda: utils._picamera_capture(Camera()))
     ok, frame, stamp = reader.capture()
-    assert ok and frame.tolist() == [[[30, 20, 10]]]
-    assert stamp == captured and reader.timestamp_source == "sensor" and released == [True]
+    assert ok
+    assert frame.tolist() == [[[30, 20, 10]]]
+    assert stamp == captured
+    assert reader.timestamp_source == "sensor"
+    assert released == [True]
     producer = pipeline_runtime.CameraProducer(store.snapshot(), clock=lambda: now[0])
     producer.array(frame, stamp)
     assert producer.frames.get()[1]["frame_age_ms"] == 700
@@ -61,8 +64,9 @@ def test_picamera_invalid_timestamp_releases_request_without_renewing_it(monkeyp
         make_array=lambda *_: pytest.fail("invalid source was decoded"),
         release=lambda: released.append(True),
     )
+    camera = SimpleNamespace(capture_request=lambda: request)
     with pytest.raises(RuntimeError, match="sensor_clock_invalid"):
-        utils._picamera_capture(SimpleNamespace(capture_request=lambda: request))
+        utils._picamera_capture(camera)
     assert released == [True]
 
 
@@ -73,8 +77,9 @@ def test_picamera_conversion_failure_still_releases_request():
         make_array=lambda *_: (_ for _ in ()).throw(RuntimeError("buffer failed")),
         release=lambda: released.append(True),
     )
+    camera = SimpleNamespace(capture_request=lambda: request)
     with pytest.raises(RuntimeError, match="buffer failed"):
-        utils._picamera_capture(SimpleNamespace(capture_request=lambda: request))
+        utils._picamera_capture(camera)
     assert released == [True]
 
 
@@ -89,7 +94,9 @@ def test_opencv_read_start_is_conservative_and_legacy_callable_stays_compatible(
     monkeypatch.setattr(utils.time, "monotonic_ns", lambda: now[0])
     reader = utils.CameraReader(SimpleNamespace(release=lambda: None), read)
     ok, actual, captured = reader.capture()
-    assert ok and actual is frame and captured == 5_000_000_000
+    assert ok
+    assert actual is frame
+    assert captured == 5_000_000_000
     assert reader.timestamp_source == "read_started"
     producer = pipeline_runtime.CameraProducer(store.snapshot(), clock=lambda: now[0])
     producer.array(frame, captured)
@@ -125,12 +132,14 @@ def test_snapshot_loop_uses_timed_capture_and_reports_driver_buffer_limitation(m
     reader.capture = lambda: (True, np.zeros((20, 30, 3), dtype=np.uint8), captured)
     monkeypatch.setattr(utils, "open_camera", lambda *_: (reader, (320, 240)))
     assert pipeline_runtime.main() == 0
-    assert len(delivered) == 1 and delivered[0]["captured_monotonic_ns"] == captured
+    assert len(delivered) == 1
+    assert delivered[0]["captured_monotonic_ns"] == captured
     assert delivered[0]["captured_at"] < time.time() - 0.5
     status = json.loads((store.runtime_path() / "status.json").read_text())
     assert status["capture_timestamp_source"] == "read_started"
     assert status["capture_timestamp_limitation"] == "driver_buffer_age_unknown"
-    assert status["state"] == "stopped" and reader.closed
+    assert status["state"] == "stopped"
+    assert reader.closed
 
 
 def test_picamera_initial_validation_also_releases_completed_requests(monkeypatch):
@@ -151,7 +160,9 @@ def test_picamera_initial_validation_also_releases_completed_requests(monkeypatc
     )
     monkeypatch.setitem(sys.modules, "picamera2", SimpleNamespace(Picamera2=lambda: camera))
     owner = utils._picamera_reader((30, 20))
-    assert released == ["request"] and owner.timestamp_source == "sensor"
-    assert owner()[0] is True and released == ["request", "request"]
+    assert released == ["request"]
+    assert owner.timestamp_source == "sensor"
+    assert owner()[0] is True
+    assert released == ["request", "request"]
     owner.close()
     assert released[-2:] == ["stop", "close"]

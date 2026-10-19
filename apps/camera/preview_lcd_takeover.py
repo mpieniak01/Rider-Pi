@@ -53,7 +53,7 @@ def lcd_show_bgr(img_bgr: np.ndarray):
 # --- Main ---
 def main():
     global frame_counter
-    read, size = open_camera((320, 240))
+    read, _ = open_camera((320, 240))
     prev_t = time.time()
     fps_ema = None
 

@@ -78,6 +78,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, ValueError, KeyError, urllib.error.HTTPError) as exc:
+    except (OSError, ValueError, KeyError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from None

@@ -119,7 +119,8 @@ def test_latest_uses_latest_valid_candidate_with_bounded_drain(monkeypatch):
     client, sock = create(monkeypatch, queue, encoded=True, latest=True, max_pending=2)
     assert client.recv(0) is not None
     assert client.metadata['id'] == 16
-    assert sock.reads == 17 and len(sock.queue) == 3
+    assert sock.reads == 17
+    assert len(sock.queue) == 3
     assert (3, 2) in sock.options
     client.close()
 
@@ -168,7 +169,8 @@ def test_decoded_latest_decodes_once_and_bad_decode_keeps_metadata(monkeypatch):
     )
     client, sock = create(monkeypatch, [message(1), message(2)], latest=True, return_last=True)
     assert client.recv(0) is frame
-    assert len(calls) == 1 and client.metadata['id'] == 2
+    assert len(calls) == 1
+    assert client.metadata['id'] == 2
     monkeypatch.setattr(frame_stream.cv2, 'imdecode', lambda *a: None)
     sock.queue.append(message(3))
     assert client.recv(0) is frame
@@ -180,5 +182,6 @@ def test_oversized_decoded_payload_is_rejected_before_decoder(monkeypatch):
     monkeypatch.setattr(frame_stream, 'np', SimpleNamespace(frombuffer=lambda **_: pytest.fail('array decoded')))
     monkeypatch.setattr(frame_stream, 'cv2', SimpleNamespace(imdecode=lambda **_: pytest.fail('image decoded')))
     client, _ = create(monkeypatch, [message(data=b'x' * (2 * 1024 * 1024 + 1))])
-    assert client.recv(0) is None and client.metadata == {}
+    assert client.recv(0) is None
+    assert client.metadata == {}
     client.close()

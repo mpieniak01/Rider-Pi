@@ -43,6 +43,11 @@ def _ram_description(stream, selected, now):
         item = None
     metadata = item[1] if item is not None else None
     age = metadata["frame_age_ms"] / 1000 if metadata else None
+    error = None
+    if metadata is None:
+        error = "frame_unavailable"
+    elif age > MAX_AGE_S:
+        error = "frame_stale"
     return {
         "stream": stream,
         "url": STREAMS[stream][2],
@@ -55,7 +60,7 @@ def _ram_description(stream, selected, now):
         "source": "camera_pipeline_ram",
         "provenance": "capture",
         "stale": age is None or age > MAX_AGE_S,
-        "error": "frame_unavailable" if metadata is None else "frame_stale" if age > MAX_AGE_S else None,
+        "error": error,
         "placeholder": False,
         "max_age_s": MAX_AGE_S,
         "archive": False,
@@ -66,12 +71,11 @@ def _ram_description(stream, selected, now):
 
 
 def _selected_path(stream, path, use_ram):
-    selected = (
-        Path(path)
-        if path is not None
-        else (Path(C.SNAP_DIR) / (STREAMS[stream][1] + ".jpg") if use_ram else resolve(stream))
-    )
-    return selected
+    if path is not None:
+        return Path(path)
+    if use_ram:
+        return Path(C.SNAP_DIR) / (STREAMS[stream][1] + ".jpg")
+    return resolve(stream)
 
 
 def _file_observation(selected, now, stat_result):

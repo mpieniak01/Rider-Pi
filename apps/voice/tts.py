@@ -134,10 +134,10 @@ def speak(
     return TTSStreamResult(True, audio_data, audio_fmt, sample_rate, streamed=False)
 
 
-def _write_openai_stream(text, config, fmt, api_key, stream, logger, start_ts):
+def _write_openai_stream(text, config, api_key, stream, logger, start_ts):
     first_chunk_at = None
     try:
-        for chunk in _openai_stream_chunks(text, config, fmt, api_key=api_key):
+        for chunk in _openai_stream_chunks(text, config, api_key=api_key):
             stream.write(chunk)
             if first_chunk_at is None:
                 first_chunk_at = time.time()
@@ -181,7 +181,7 @@ def _accumulated_stream_audio(mp3_bytes, fmt, logger, accumulate):
 def _play_openai_stream(text, config, fmt, api_key, stream, logger, accumulate):
     start_ts = time.time()
     try:
-        ok, first_chunk_at = _write_openai_stream(text, config, fmt, api_key, stream, logger, start_ts)
+        ok, first_chunk_at = _write_openai_stream(text, config, api_key, stream, logger, start_ts)
     finally:
         player_ok, mp3_bytes = _close_openai_stream(stream, logger)
     if not (ok and player_ok):
@@ -195,7 +195,7 @@ def _play_openai_stream(text, config, fmt, api_key, stream, logger, accumulate):
     return TTSStreamResult(True, audio, audio_format, sample_rate, streamed=True, backend=stream.backend)
 
 
-def _openai_stream_chunks(text: str, config: TTSConfig, fmt: str, *, api_key: str):
+def _openai_stream_chunks(text: str, config: TTSConfig, *, api_key: str):
     from openai import OpenAI
 
     client = OpenAI(api_key=api_key)

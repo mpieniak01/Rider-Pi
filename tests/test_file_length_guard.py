@@ -24,7 +24,8 @@ def test_threshold_boundaries(tmp_path, capsys, lines, exit_code, label):
     if label:
         assert f"{label}: sample.py: {lines} lines" in output
     else:
-        assert "WARNING:" not in output and "ERROR:" not in output
+        assert "WARNING:" not in output
+        assert "ERROR:" not in output
 
 
 def test_warning_uses_github_annotation_and_still_passes(tmp_path, capsys):
@@ -60,7 +61,8 @@ def test_symlink_is_rejected_without_reading_its_target(tmp_path, capsys):
 def test_changed_files_use_null_delimiters_and_exclude_deletions(tmp_path, monkeypatch):
     def run(args, **kwargs):
         assert args == ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", "a" * 40, "b" * 40, "--", "*.py"]
-        assert kwargs["cwd"] == tmp_path and kwargs["check"]
+        assert kwargs["cwd"] == tmp_path
+        assert kwargs["check"]
         return SimpleNamespace(stdout=b"tests/test one.py\0apps/module.py\0")
 
     def resolve(args, **kwargs):

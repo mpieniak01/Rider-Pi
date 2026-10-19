@@ -70,8 +70,11 @@ def test_pupil_stays_inside_eye_with_extreme_look_and_blink(monkeypatch):
     assert img is not None
     (lx0, ly0, lx1, ly1), (rx0, ry0, rx1, ry1) = _eye_rects(img)
     lc, rc = _pupil_centers(img)
-    assert lc and rc
+    assert lc
+    assert rc
 
     # Źrenice pozostają w granicach prostokąta oka (przybliżenie owal/clamp)
-    assert lx0 <= lc[0] <= lx1 and ly0 <= lc[1] <= ly1, "Lewy pupil powinien pozostać w obrębie oka"
-    assert rx0 <= rc[0] <= rx1 and ry0 <= rc[1] <= ry1, "Prawy pupil powinien pozostać w obrębie oka"
+    assert lx0 <= lc[0] <= lx1, "Lewy pupil powinien pozostać w obrębie oka"
+    assert ly0 <= lc[1] <= ly1, "Lewy pupil powinien pozostać w obrębie oka"
+    assert rx0 <= rc[0] <= rx1, "Prawy pupil powinien pozostać w obrębie oka"
+    assert ry0 <= rc[1] <= ry1, "Prawy pupil powinien pozostać w obrębie oka"

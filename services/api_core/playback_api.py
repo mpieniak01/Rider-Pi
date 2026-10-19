@@ -50,9 +50,12 @@ def cancel():
         return jsonify(result), 202 if result.get('pending') else 200
     except ValueError as exc:
         error = str(exc)
-        return jsonify({'ok': False, 'error': error}), (
-            503 if error == 'agent_control_unconfigured' else 401 if error == 'agent_auth_required' else 400
-        )
+        status = 400
+        if error == "agent_control_unconfigured":
+            status = 503
+        elif error == "agent_auth_required":
+            status = 401
+        return jsonify({"ok": False, "error": error}), status
 
 
 def register(app, *, manager=None):

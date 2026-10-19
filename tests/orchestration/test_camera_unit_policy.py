@@ -31,7 +31,8 @@ def test_capture_stop_targets_flock_and_its_child_with_sigterm():
         "-m",
         "apps.camera.capture_service",
     ]
-    assert "ExecStop" not in service and "ExecStopPost" not in service
+    assert "ExecStop" not in service
+    assert "ExecStopPost" not in service
 
 
 @pytest.mark.parametrize(

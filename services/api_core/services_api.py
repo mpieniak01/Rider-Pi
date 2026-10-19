@@ -142,9 +142,14 @@ def resource_release(name: str, pids: list[int] | None = None) -> Response:
     from services.core.resource_observation import invalidate
 
     invalidate(name)
-    return _json(
-        data, 200 if data.get("released") else 202 if data.get("pending") else 503 if data.get("signal_sent") else 409
-    )
+    status = 409
+    if data.get("released"):
+        status = 200
+    elif data.get("pending"):
+        status = 202
+    elif data.get("signal_sent"):
+        status = 503
+    return _json(data, status)
 
 
 def resource_stop(name: str, units: list[str] | None = None) -> Response:
@@ -186,6 +191,11 @@ def _resource_stop_locked(name: str, units: list[str] | None) -> Response:
     ok = len(results) == len(allowed) and all(row.get("ok") for row in results)
     after = resource_diag.inspect(name)
     released = ok and after.get("free") is True and not after.get("error")
+    status = 409
+    if released:
+        status = 200
+    elif ok:
+        status = 202
     return _json(
         {
             "ok": released,
@@ -195,7 +205,7 @@ def _resource_stop_locked(name: str, units: list[str] | None) -> Response:
             "pending": ok and not released,
             "error": after.get("error"),
         },
-        200 if released else 202 if ok else 409,
+        status,
     )
 
 

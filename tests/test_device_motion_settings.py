@@ -79,7 +79,8 @@ def test_normal_expiry_decelerates_but_keeps_operator_arming(executor):
     peak = max(outputs)
     assert peak > 0
     assert any(0 < value < peak for value in outputs[outputs.index(peak) + 1 :])
-    assert instance.controller.stopped and instance.gate.state == "ARMED"
+    assert instance.controller.stopped
+    assert instance.gate.state == "ARMED"
 
 
 def test_corrupt_store_does_not_fall_back_to_defaults(executor):
@@ -114,7 +115,8 @@ def test_legacy_effective_speeds_are_migrated_once(executor):
     }
     settings.path().write_text(json.dumps(row))
     migrated = settings.read()
-    assert migrated["schema_version"] == 2 and migrated["revision"] == 8
+    assert migrated["schema_version"] == 2
+    assert migrated["revision"] == 8
     assert migrated["directions"]["forward"]["speed"] == 0.6
     assert migrated["directions"]["left"]["speed"] == 0.6
     assert settings.read() == migrated
@@ -152,7 +154,8 @@ def test_armed_idle_api_save_preserves_arming_and_next_pulse_uses_new_values(exe
         "/controls", json={"revision": revision, "values": {}, "directions": {"forward": {"speed": 0.3}}}
     )
     assert response.status_code == 200
-    assert instance.gate.state == "ARMED" and instance.gate.generation == generation
+    assert instance.gate.state == "ARMED"
+    assert instance.gate.generation == generation
     payload = command(instance, device_settings=True, direction="forward", settings_revision=response.json["revision"])
     for key in ("vx", "yaw", "duration"):
         payload.pop(key)

@@ -64,14 +64,18 @@ def request_row(world, **fields):
 
 
 def test_get_never_publishes_and_post_is_pending_until_domain_ack(world):
-    assert world.client.get("/state").status_code == 200 and not world.sent
+    assert world.client.get("/state").status_code == 200
+    assert not world.sent
     row = request_row(world)
     response = world.client.post("/reference", json=row)
-    assert response.status_code == 202 and response.json["status"] == "pending"
-    assert "accepted" not in response.json and not world.estimator.reference_verified
+    assert response.status_code == 202
+    assert response.json["status"] == "pending"
+    assert "accepted" not in response.json
+    assert not world.estimator.reference_verified
     assert world.sent == [("odometry.reference", row)]
     ack = world.control.apply(row)
-    assert ack["status"] == "executed" and ack["actuation"] is False
+    assert ack["status"] == "executed"
+    assert ack["actuation"] is False
     assert ack["physical_completion"] == "unverified"
     assert world.client.get("/state").json["reference_id"] == "operator-origin"
 
@@ -179,14 +183,17 @@ def test_publisher_constructor_failure_returns_explicit_unavailable(world, monke
 
     monkeypatch.setattr(odometry_api, "BusPub", unavailable)
     response = world.client.post("/reference", json=request_row(world))
-    assert response.status_code == 503 and response.json["error"] == "reference_transport_failed"
+    assert response.status_code == 503
+    assert response.json["error"] == "reference_transport_failed"
 
 
 def test_reference_without_home_cannot_restore_previous_home(world):
     with_home = request_row(world, home_operator_confirmed=True, home_x=4, home_y=5)
     assert world.control.apply(with_home)["status"] == "executed"
     projected = world.client.get("/state").json
-    assert projected["home"]["x"] == 4 and projected["home"]["reference_id"] == "operator-origin"
+    assert projected["home"]["x"] == 4
+    assert projected["home"]["reference_id"] == "operator-origin"
     assert not projected["pose"]["navigation_ready"]
     assert world.control.apply(request_row(world, seq=2, request_id="current-point-only"))["status"] == "executed"
-    assert world.estimator.home is None and world.client.get("/state").json["home"] is None
+    assert world.estimator.home is None
+    assert world.client.get("/state").json["home"] is None

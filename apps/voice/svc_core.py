@@ -30,7 +30,7 @@ except ImportError:
     provider_registry = None  # type: ignore
 
 
-def _wants_stream(cfg: dict[str, Any], args) -> bool:
+def _wants_stream(cfg: dict[str, Any], _args) -> bool:
     """
     Zwraca True, jeśli użytkownik realnie żąda trybu streamingowego
     *i* mamy minimalnie wymaganą konfigurację (klucz + endpoint).
@@ -182,7 +182,7 @@ def _play_pc_chunks(service, bridge):
             print(f"[voice.svc_core] ERROR playing TTS chunk: {exc}", flush=True)
 
 
-def _run_pc_offload(cfg: dict[str, Any], args) -> int:
+def _run_pc_offload(cfg: dict[str, Any]) -> int:
     print("[voice.svc_core] Provider mode = PC. Starting offload bridge…", flush=True)
     cap_cfg = CaptureConfig(**dict(cfg.get("capture") or {}))
     bridge = VoiceOffloadBridge()
@@ -232,7 +232,7 @@ def run_listen(cfg: dict[str, Any], args) -> int:
 
     # Check if we should offload to PC
     if should_offload_to_pc():
-        return _run_pc_offload(cfg, args)
+        return _run_pc_offload(cfg)
 
     # Local mode - proceed with normal operation
     print("[voice.svc_core] AI Mode: local - using local ASR/TTS/NLU engines", flush=True)

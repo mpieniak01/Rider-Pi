@@ -54,7 +54,8 @@ def test_explicit_off_releases_proven_pipeline_without_requested_goals(orphan):
     body = command("stop")
     result, status = instance.execute(body)
     assert status == 200, result
-    assert result["state"] == "stopped" and result["consumers"] == []
+    assert result["state"] == "stopped"
+    assert result["consumers"] == []
     assert manager.calls == [(manager.PREVIEW_UNIT, "stop")]
     assert instance.execute(body) == (result, status)
     assert manager.calls == [(manager.PREVIEW_UNIT, "stop")]
@@ -88,14 +89,17 @@ def test_orphan_proof_failure_does_not_stop_any_unit(orphan, failure):
     path.write_text(json.dumps(row))
     response, code = instance.execute(command("stop"))
     assert code == 409, response
-    assert manager.calls == [] and manager.PREVIEW_UNIT in manager.units
+    assert manager.calls == []
+    assert manager.PREVIEW_UNIT in manager.units
 
 
 def test_profile_change_cannot_adopt_or_stop_orphan(orphan):
     instance, manager, _ = orphan
     response, code = instance.execute(command("configure", profile=dict(store.DEFAULT_PROFILE, local_engine="ssd")))
-    assert code == 409 and response["error"] == "camera_pipeline_camera_not_released"
-    assert manager.calls == [] and store.snapshot()["profile"] == store.DEFAULT_PROFILE
+    assert code == 409
+    assert response["error"] == "camera_pipeline_camera_not_released"
+    assert manager.calls == []
+    assert store.snapshot()["profile"] == store.DEFAULT_PROFILE
 
 
 @pytest.mark.parametrize("ack", [False, True])
@@ -103,7 +107,8 @@ def test_stop_error_or_positive_ack_without_release_is_not_success(orphan, ack):
     instance, manager, _ = orphan
     manager.service_action = lambda *_: {"ok": ack, "error": None if ack else "backend_failed"}
     response, code = instance.execute(command("stop"))
-    assert code in {409, 503} and response["ok"] is False
+    assert code in {409, 503}
+    assert response["ok"] is False
     assert manager.PREVIEW_UNIT in manager.units
 
 
@@ -111,7 +116,8 @@ def test_manual_motion_still_blocks_orphan_release(orphan):
     instance, manager, _ = orphan
     manager.safety.update(moving=True, output={"lx": 0.1})
     response, code = instance.execute(command("stop"))
-    assert code == 409 and response["error"] == "camera_pipeline_motion_busy"
+    assert code == 409
+    assert response["error"] == "camera_pipeline_motion_busy"
     assert manager.calls == []
 
 
@@ -141,7 +147,8 @@ def test_invalid_service_identity_is_not_released(orphan, status):
     original = manager._status
     manager._status = lambda unit: {**original(unit), **status}
     response, code = instance.execute(command("stop"))
-    assert code == 409 and not response["ok"]
+    assert code == 409
+    assert not response["ok"]
     assert manager.calls == []
 
 
@@ -161,11 +168,13 @@ def test_live_producer_after_service_stop_is_not_acknowledged_as_released(orphan
 
     manager.service_action = stop
     response, code = instance.execute(command("stop"))
-    assert code == 409 and response["error"] == "camera_pipeline_camera_not_released"
+    assert code == 409
+    assert response["error"] == "camera_pipeline_camera_not_released"
 
 
 def test_stale_revision_does_not_release_proven_orphan(orphan):
     instance, manager, _ = orphan
     response, code = instance.execute(command("stop", revision=2))
-    assert code == 409 and response["error"] == "camera_pipeline_revision_conflict"
+    assert code == 409
+    assert response["error"] == "camera_pipeline_revision_conflict"
     assert manager.calls == []

@@ -47,8 +47,10 @@ def test_release_decelerates_without_revoking_permission(executor):
     advance(instance, clock, 0.02)
     assert 0 <= instance.controller.o_lx < before
     advance(instance, clock, 0.1)
-    assert instance.controller.stopped and instance.controller.deadline == 0
-    assert instance.gate.state == "ARMED" and instance.gate.generation == generation
+    assert instance.controller.stopped
+    assert instance.controller.deadline == 0
+    assert instance.gate.state == "ARMED"
+    assert instance.gate.generation == generation
 
 
 def test_reversal_replaces_goal_through_zero(executor):
@@ -132,7 +134,8 @@ def test_manual_brake_cancels_pulse_and_preserves_operator_arm(executor):
     assert instance.apply(intent(instance, "release"))["status"] == "accepted"
     advance(instance, clock, 0.2)
     assert instance.controller.stopped
-    assert instance.gate.state == "ARMED" and instance.gate.generation == generation
+    assert instance.gate.state == "ARMED"
+    assert instance.gate.generation == generation
 
 
 def navigation_arm(instance):
@@ -249,5 +252,6 @@ def test_remote_decision_lease_and_real_executor_complete_multiple_pulses(execut
     assert len(acknowledgements) == 8
     reply.update(sequence=9, frame_id="f9", action="stop", state="obstacle", reason="obstacle")
     assert not lease.accept(reply, "f9", 9, clock.now)
-    assert lease.latched and instance.controller.stopped
+    assert lease.latched
+    assert instance.controller.stopped
     assert instance.gate.state == "DISARMED"

@@ -21,8 +21,14 @@ http_code() {
   fi
 }
 
-req_get()   { ${CURL} -X GET    "${BASE_URL}$1"; }
-req_post()  { ${CURL} -X POST   -H "Content-Type: application/json" -d "$2" "${BASE_URL}$1"; }
+req_get() {
+  local path="$1"
+  ${CURL} -X GET "${BASE_URL}${path}"
+}
+req_post() {
+  local path="$1" payload="$2"
+  ${CURL} -X POST -H "Content-Type: application/json" -d "$payload" "${BASE_URL}${path}"
+}
 
 supports_post_move() {
   # Wyślij minimalny, bardzo krótki ruch (deadman i tak zabezpieczy)

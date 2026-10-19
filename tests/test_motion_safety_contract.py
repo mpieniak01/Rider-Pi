@@ -382,7 +382,8 @@ def test_estop_persistence_failure_never_prevents_stop(executor, monkeypatch, op
             lambda *args, **kwargs: (_ for _ in ()).throw(OSError("isolated_disk_failure")),
         )
         ack = instance.apply({"action": "estop", "request_id": "estop-request"})
-        assert ack["status"] == "executed" and ack["hardware_stop_sent"] is True
+        assert ack["status"] == "executed"
+        assert ack["hardware_stop_sent"] is True
         assert instance.gate.state == "ESTOP"
         assert instance.snapshot()["persistence_error"].startswith("estop_persistence_failed")
         assert instance.adapter.calls[before:] == [("stop",)]

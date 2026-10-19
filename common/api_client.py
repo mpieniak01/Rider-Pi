@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -44,7 +44,7 @@ class APIClient:
             response = self.open(request, timeout=30)
         except HTTPError as exc:
             response = exc
-        except (URLError, OSError) as exc:
+        except OSError as exc:
             raise APIError("rider_api_unavailable") from exc
         with response:
             try:
@@ -52,7 +52,7 @@ class APIClient:
                 if len(raw) > 2 * 1024 * 1024:
                     raise APIError("rider_api_response_oversized")
                 payload = json.loads(raw)
-            except (ValueError, UnicodeError) as exc:
+            except ValueError as exc:
                 raise APIError("invalid_rider_api_response") from exc
             code = response.status
             mime = response.headers.get("Content-Type", "").lower()

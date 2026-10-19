@@ -28,6 +28,10 @@ def plan(root: Path = ROOT, destination: Path = DESTINATION) -> list[dict]:
     for unit, source in sources(root).items():
         target = destination / unit
         same = target.is_symlink() and target.resolve() == source.resolve()
+        if target.is_symlink():
+            previous = os.readlink(target)
+        else:
+            previous = "file" if target.exists() else None
         rows.append(
             {
                 "unit": unit,
@@ -35,7 +39,7 @@ def plan(root: Path = ROOT, destination: Path = DESTINATION) -> list[dict]:
                 "installed_path": str(target),
                 "source_exists": source.is_file(),
                 "operation": "keep" if same else "link",
-                "previous": os.readlink(target) if target.is_symlink() else "file" if target.exists() else None,
+                "previous": previous,
             }
         )
     return rows

@@ -27,7 +27,7 @@
     <a href="/healthz">/healthz</a>, <a href="/state">/state</a>, <a href="/sysinfo">/sysinfo</a>, <a href="/vision/snap-info">/vision/snap-info</a>
   </div>
 
-<p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
+<output id="operator-message" class="operator-message" aria-live="polite" aria-atomic="true"></output>
   <!-- RZĄD 1 -->
   <div class="l-grid l-grid--4 view-row view-row--1">
   <div class="c-card">
@@ -62,7 +62,7 @@
     <div class="c-card">
       <h3 data-pl="Historia CPU / RAM — 60 s" data-en="CPU / RAM history — 60 s">Historia CPU / RAM — 60 s</h3>
       <canvas id="chart" width="300" height="140" aria-describedby="history-status"></canvas>
-      <p id="history-status" class="c-hint" role="status">Odczytywanie historii…</p>
+      <output id="history-status" class="c-hint" aria-live="polite" aria-atomic="true">Odczytywanie historii…</output>
       <div class="c-legend">
         <span><i class="c-legend__dot cpu"></i><span data-i18n="dash.history.cpu">cpu%</span></span>
         <span><i class="c-legend__dot" style="background:#a17fff"></i><span data-pl="CPU szczyt" data-en="CPU peak">CPU szczyt</span></span>
@@ -76,7 +76,7 @@
         <span id="camBadge" class="cam-badge">…</span>
         <button id="camera-toggle" type="button" class="c-btn c-btn-sm view-camera-toggle" aria-pressed="false" disabled>OFF</button>
       </h3>
-      <p id="camera-power-state" class="c-hint" role="status">Odczytywanie stanu kamery…</p>
+      <output id="camera-power-state" class="c-hint" aria-live="polite" aria-atomic="true">Odczytywanie stanu kamery…</output>
       <div class="c-thumb">
         <img id="img_cam" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="kamera" decoding="async" loading="lazy">
       </div>
@@ -118,7 +118,7 @@
 
     <div class="c-card">
       <h3 class="cam-card-title"><span>Kamera — PROC</span><button id="camera-proc-toggle" type="button" class="c-btn c-btn-sm view-camera-toggle" aria-pressed="false" disabled>OFF</button></h3>
-      <p id="camera-proc-state" class="c-hint" role="status">Odczytywanie stanu…</p>
+      <output id="camera-proc-state" class="c-hint" aria-live="polite" aria-atomic="true">Odczytywanie stanu…</output>
       <div class="c-thumb">
         <img id="img_proc" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="processed camera" decoding="async" loading="lazy">
       </div>
@@ -165,7 +165,7 @@
 
     <div class="c-card">
       <h3 class="cam-card-title"><span>Kamera — OBST</span><button id="camera-obst-toggle" type="button" class="c-btn c-btn-sm view-camera-toggle" aria-pressed="false" disabled>OFF</button></h3>
-      <p id="camera-obst-state" class="c-hint" role="status">Odczytywanie stanu…</p>
+      <output id="camera-obst-state" class="c-hint" aria-live="polite" aria-atomic="true">Odczytywanie stanu…</output>
       <div class="c-thumb">
         <img id="img_obst" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="obstacle annotated" decoding="async" loading="lazy">
       </div>
@@ -195,7 +195,7 @@
 
     <div class="c-card">
       <h3 class="cam-card-title"><span>Kamera — TRACKER</span><button id="camera-tracker-toggle" type="button" class="c-btn c-btn-sm view-camera-toggle" aria-pressed="false" disabled>OFF</button></h3>
-      <p id="camera-tracker-state" class="c-hint" role="status">Odczytywanie stanu…</p>
+      <output id="camera-tracker-state" class="c-hint" aria-live="polite" aria-atomic="true">Odczytywanie stanu…</output>
       <div class="c-thumb">
         <img id="img_tracker" class="cam-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%2306090d'/%3E%3C/svg%3E" alt="tracker with FPS and detection" decoding="async" loading="lazy">
       </div>

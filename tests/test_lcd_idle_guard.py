@@ -102,10 +102,13 @@ def test_unknown_ownership_cannot_fabricate_power_or_release(monkeypatch, snapsh
     monkeypatch.setattr(guard.resource_diag, "release", lambda _: pytest.fail("automatic release forbidden"))
     guard._poll_once(now=100.0)
     lcd = guard.C.LAST_CAMERA["lcd"]
-    assert lcd["on"] is None and lcd["presenting"] is None and lcd["power_known"] is False
+    assert lcd["on"] is None
+    assert lcd["presenting"] is None
+    assert lcd["power_known"] is False
     with guard.C.app.test_request_context():
         status = guard.C.healthz().get_json()["devices"]["lcd"]
-    assert status["on"] is None and status["power_known"] is False
+    assert status["on"] is None
+    assert status["power_known"] is False
 
 
 @pytest.mark.parametrize("free", [True, False])
@@ -117,10 +120,14 @@ def test_recovered_ownership_does_not_infer_power_from_configuration(monkeypatch
     guard._update_lcd_state(snapshot={"free": None, "state": "unknown", "error": "temporary"})
     guard._update_lcd_state(snapshot={"free": free, "state": "free" if free else "busy"})
     lcd = guard.C.LAST_CAMERA["lcd"]
-    assert lcd["presenting"] is (not free) and lcd["on"] is None and lcd["power_known"] is False
+    assert lcd["presenting"] is (not free)
+    assert lcd["on"] is None
+    assert lcd["power_known"] is False
     with guard.C.app.test_request_context():
         status = guard.C.healthz().get_json()["devices"]["lcd"]
-    assert status["on"] is None and not status["power_known"] and status["configured_on"]
+    assert status["on"] is None
+    assert not status["power_known"]
+    assert status["configured_on"]
 
 
 @pytest.mark.parametrize("on", [False, True])
@@ -147,7 +154,8 @@ def test_explicit_renderer_report_is_preserved_when_gpio_is_unavailable(monkeypa
     with guard.C.app.test_request_context():
         status = guard.C.healthz().get_json()["devices"]["lcd"]
     # A renderer acceptance is retained, but cannot override a failed live read.
-    assert status["on"] is None and status["power_known"] is False
+    assert status["on"] is None
+    assert status["power_known"] is False
     assert status["error"] == "lcd_gpio_unavailable"
     assert guard.C.LAST_CAMERA["lcd"]["on"] is on
     assert guard.C.LAST_CAMERA["lcd"]["power_known"] is True
@@ -161,4 +169,5 @@ def test_initial_lcd_unknown_has_no_env_power_fallback(monkeypatch):
     monkeypatch.setattr(guard.C, "ENV_NO_DRAW", False)
     with guard.C.app.test_request_context():
         status = guard.C.healthz().get_json()["devices"]["lcd"]
-    assert status["on"] is None and status["power_known"] is False
+    assert status["on"] is None
+    assert status["power_known"] is False

@@ -24,7 +24,8 @@ def test_explicit_stale_file_is_not_relabelled_fresh(file_with_active_ram):
     image = file_with_active_ram
     os.utime(image, (1, 1))
     row = frames.describe("raw", path=image, stat_result=image.stat())
-    assert row["source"] == "filesystem" and row["stale"] is True
+    assert row["source"] == "filesystem"
+    assert row["stale"] is True
     with Flask(__name__).test_request_context("/camera/raw"):
         result = frames.response("raw", path=image)
         assert result.status_code == 404

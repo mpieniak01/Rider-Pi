@@ -147,7 +147,11 @@ def _normalize_detection_list(data):
             "mode": data.get("mode") or "det",
         }
     lbl = (str(best.get("label") or best.get("class") or "")).lower()
-    kind = "person" if "person" in lbl else ("face" if "face" in lbl else "det")
+    kind = "det"
+    if "person" in lbl:
+        kind = "person"
+    elif "face" in lbl:
+        kind = "face"
     score = _as_float(best.get("score", best.get("confidence", 0.0)), 0.0)
     return {
         "kind": kind,
@@ -167,11 +171,22 @@ def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
     if topic == "vision.detections":
         return _normalize_detection_list(data)
 
-    kind = "face" if "face" in topic else ("person" if "person" in topic else "det")
+    kind = "det"
+    if "face" in topic:
+        kind = "face"
+    elif "person" in topic:
+        kind = "person"
     score = _as_float(data.get("score", data.get("confidence", 1.0)), 1.0)
     present = bool(data.get("present", True))
     bbox = data.get("bbox")
-    mode = data.get("mode") or ("haar" if kind == "face" else ("ssd" if kind == "person" else "det"))
+    mode = data.get("mode")
+    if not mode:
+        if kind == "face":
+            mode = "haar"
+        elif kind == "person":
+            mode = "ssd"
+        else:
+            mode = "det"
     return {
         "kind": kind,
         "present": present,

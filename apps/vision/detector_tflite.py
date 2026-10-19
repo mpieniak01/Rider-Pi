@@ -80,9 +80,13 @@ def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
     {"kind": "face"/"person", "present": bool, "score": float, "bbox": [x,y,w,h] or None}
     Zakładamy, że detektory wysyłają przynajmniej score; gdy brak, używamy domyślnych.
     """
-    kind = "face" if "face" in topic else ("person" if "person" in topic else "det")
+    kind = "det"
+    if "face" in topic:
+        kind = "face"
+    elif "person" in topic:
+        kind = "person"
     score = float(data.get("score", data.get("confidence", 1.0)))
-    present = bool(data.get("present", True))  # brak = pozytyw
+    present = bool(data.get("present", True))  # A missing presence flag represents a positive observation.
     bbox = data.get("bbox")
     return {"kind": kind, "present": present, "score": score, "bbox": bbox}
 

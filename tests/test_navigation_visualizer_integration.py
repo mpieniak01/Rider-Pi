@@ -11,14 +11,20 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 class TestNavigationVisualizerIntegration(unittest.TestCase):
     """Test conditional loading of navigation visualizer."""
 
+    def setUp(self):
+        self.monkeypatch = pytest.MonkeyPatch()
+        self.addCleanup(self.monkeypatch.undo)
+
     def test_visualizer_disabled_by_default(self):
         """Test that visualizer is disabled when env var is not set."""
         # Remove the env var if it exists
-        os.environ.pop("RIDER_NAV_VISUALIZER_ENABLED", None)
+        self.monkeypatch.delenv("RIDER_NAV_VISUALIZER_ENABLED", raising=False)
 
         # Mock app with logger
         mock_app = MagicMock()
@@ -38,7 +44,7 @@ class TestNavigationVisualizerIntegration(unittest.TestCase):
 
     def test_visualizer_disabled_when_false(self):
         """Test that visualizer is disabled when env var is 'false'."""
-        os.environ["RIDER_NAV_VISUALIZER_ENABLED"] = "false"
+        self.monkeypatch.setenv("RIDER_NAV_VISUALIZER_ENABLED", "false")
 
         mock_app = MagicMock()
         mock_logger = MagicMock()
@@ -55,7 +61,7 @@ class TestNavigationVisualizerIntegration(unittest.TestCase):
 
     def test_visualizer_enabled_when_true(self):
         """Test that visualizer loads when env var is 'true'."""
-        os.environ["RIDER_NAV_VISUALIZER_ENABLED"] = "true"
+        self.monkeypatch.setenv("RIDER_NAV_VISUALIZER_ENABLED", "true")
 
         mock_app = MagicMock()
         mock_logger = MagicMock()
@@ -104,7 +110,7 @@ class TestNavigationVisualizerIntegration(unittest.TestCase):
 
         for value, expected_enabled in test_cases:
             with self.subTest(value=value):
-                os.environ["RIDER_NAV_VISUALIZER_ENABLED"] = value
+                self.monkeypatch.setenv("RIDER_NAV_VISUALIZER_ENABLED", value)
                 result = os.getenv("RIDER_NAV_VISUALIZER_ENABLED", "false").lower() == "true"
                 self.assertEqual(
                     result,

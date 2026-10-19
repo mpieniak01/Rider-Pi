@@ -32,7 +32,8 @@ def test_negotiated_404_and_unknown_version_do_not_reach_real_handlers():
     with app.test_client() as client:
         headers = {"Accept": "application/vnd.rider.api+json;version=1"}
         response = client.get("/api/not-a-route", headers=headers)
-        assert response.status_code == 404 and response.get_json()["error"]["code"] == "not_found"
+        assert response.status_code == 404
+        assert response.get_json()["error"]["code"] == "not_found"
         response = client.post(
             "/api/safety", json={"action": "arm"}, headers={"Accept": "application/vnd.rider.api+json;version=99"}
         )

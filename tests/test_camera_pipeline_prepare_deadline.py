@@ -55,8 +55,10 @@ def test_legal_slow_http_warmup_can_use_remaining_two_second_budget(environment)
         started = time.monotonic()
         stream = stream_prepare.prepare_stream(selection=dict(selection, url=url))
         elapsed = time.monotonic() - started
-        assert stream["ready"] is True and stream["latest_source"]["camera_session"] == producer.session
-        assert 0.6 < elapsed < 2.0 and len(calls) == 1
+        assert stream["ready"] is True
+        assert stream["latest_source"]["camera_session"] == producer.session
+        assert 0.6 < elapsed < 2.0
+        assert len(calls) == 1
 
 
 def test_preparation_timeout_is_specific_and_does_not_retry_http(environment):
@@ -66,8 +68,10 @@ def test_preparation_timeout_is_specific_and_does_not_retry_http(environment):
         started = time.monotonic()
         with pytest.raises(navigation.ComputeError) as failure:
             stream_prepare.prepare_stream(selection=dict(selection, url=url), timeout_s=0.15)
-        assert failure.value.code == "navigation_stream_prepare_timeout" and failure.value.status == 504
-        assert time.monotonic() - started < 0.4 and len(calls) == 1
+        assert failure.value.code == "navigation_stream_prepare_timeout"
+        assert failure.value.status == 504
+        assert time.monotonic() - started < 0.4
+        assert len(calls) == 1
 
 
 def test_response_body_receives_only_budget_remaining_after_headers(environment):
@@ -77,4 +81,5 @@ def test_response_body_receives_only_budget_remaining_after_headers(environment)
         started = time.monotonic()
         with pytest.raises(navigation.ComputeError, match="navigation_stream_prepare_timeout"):
             stream_prepare.prepare_stream(selection=dict(selection, url=url), timeout_s=0.7)
-        assert 0.6 < time.monotonic() - started < 0.95 and len(calls) == 1
+        assert 0.6 < time.monotonic() - started < 0.95
+        assert len(calls) == 1

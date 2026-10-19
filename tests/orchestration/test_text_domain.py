@@ -16,7 +16,8 @@ from services.api_core import chat_glue, text_profile
 
 def test_text_has_only_http_worker_and_no_audio_resources():
     units = task_units(DEFAULT_REGISTRY["s10_ai_providers"], {"domain": "text"})
-    assert "rider-voice-web.service" in units and "rider-voice.service" not in units
+    assert "rider-voice-web.service" in units
+    assert "rider-voice.service" not in units
     assert not {"mic", "speaker"} & set(task_resources(DEFAULT_REGISTRY["s10_ai_providers"], {"domain": "text"}))
     assert domain_profiles.expand("text") == {"chat"}
 
@@ -25,14 +26,17 @@ def test_missing_backend_heartbeat_cannot_make_text_task_ready(tmp_path):
     manager = World().manager(tmp_path)
     manager.producer_status = lambda _: {"stale": True, "ready": False, "missing": ["chat_backend_disabled"]}
     result = manager.set_feature("s10_ai_providers", True, options={"domain": "text"})
-    assert result["ok"] and result["task"]["state"] == "starting" and not result["task"]["ready"]
+    assert result["ok"]
+    assert result["task"]["state"] == "starting"
+    assert not result["task"]["ready"]
     assert result["task"]["producer_statuses"]
 
 
 def test_default_text_backend_is_explicitly_unavailable(monkeypatch):
     monkeypatch.setenv("VOICE_WEB_LLM_PROVIDER", "stub")
     status = domain_profiles.availability({"chat"}, find_spec=lambda _: pytest.fail("text imported audio backend"))
-    assert status["ready"] is False and status["missing"] == ["chat_backend_disabled"]
+    assert status["ready"] is False
+    assert status["missing"] == ["chat_backend_disabled"]
 
 
 def test_chat_only_worker_imports_no_audio_model(monkeypatch):
@@ -41,8 +45,10 @@ def test_chat_only_worker_imports_no_audio_model(monkeypatch):
     monkeypatch.setattr(domain_worker, "worker_bind", lambda: ("127.0.0.1", 8092))
     monkeypatch.setattr(domain_worker, "write_status", lambda _: None)
     status = domain_worker.update_profile(legacy, {"chat"})
-    assert status["ready"] and status["chat_endpoint"] == "http://127.0.0.1:8092/api/chat"
-    assert legacy._local_vosk_model is None and legacy._local_piper_voice is None
+    assert status["ready"]
+    assert status["chat_endpoint"] == "http://127.0.0.1:8092/api/chat"
+    assert legacy._local_vosk_model is None
+    assert legacy._local_piper_voice is None
 
 
 def test_text_routing_requires_fresh_matching_worker(monkeypatch):

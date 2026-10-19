@@ -79,12 +79,14 @@ def test_http_and_direct_transport_execute_same_handlers(tmp_path, monkeypatch):
     install(app, after_request=True)
     direct = LocalAPIClient()
     response = direct.request("/api/logic/feature/s2_camera_preview", "POST", {"enabled": True})
-    assert response["ok"] and response["meta"]["contract_id"] == "rider.tasks"
+    assert response["ok"]
+    assert response["meta"]["contract_id"] == "rider.tasks"
     # HTTP sees the same ownership established by the local handler.
     response = app.test_client().post(
         "/api/logic/feature/s2_camera_preview", json={"enabled": False}, headers={"Accept": ACCEPT}
     )
-    assert response.status_code == 200 and response.json["ok"]
+    assert response.status_code == 200
+    assert response.json["ok"]
     assert not manager.resource_consumers().get("camera")
 
 
@@ -145,7 +147,8 @@ def test_local_processor_is_independent_of_remote_executor(tmp_path, monkeypatch
     assert manager.set_feature("s2_camera_preview", True)["ok"]
     assert task_availability(DEFAULT_REGISTRY["s7_obstacle_module"], {"provider": "local"})["start_available"]
     assert manager.set_feature("s7_obstacle_module", True, options={"provider": "local"})["ok"]
-    assert "rider-vision.service" in world.active and "rider-obstacle.service" in world.active
+    assert "rider-vision.service" in world.active
+    assert "rider-obstacle.service" in world.active
     assert "rider-vision-offload.service" not in world.active
     world.actions.clear()
     assert manager.set_feature("s7_obstacle_module", False)["ok"]

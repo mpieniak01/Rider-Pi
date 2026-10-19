@@ -63,7 +63,11 @@ def check_files(paths: list[Path], *, root: Path, annotations: bool = False) -> 
             print(f"ERROR: cannot inspect {path}: {exc}")
             failed = True
             continue
-        level = "error" if count > HARD_LIMIT else "warning" if count > SOFT_LIMIT else None
+        level = None
+        if count > HARD_LIMIT:
+            level = "error"
+        elif count > SOFT_LIMIT:
+            level = "warning"
         if level is None:
             continue
         _report_limit(name, count, level, annotations)

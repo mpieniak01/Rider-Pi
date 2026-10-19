@@ -60,7 +60,8 @@ def test_status_zero_battery_and_unknown_never_fabricate():
     }
     assert battery_observation(status, now=101)["ready"] is True
     old = battery_observation(status, now=103)
-    assert old["ready"] is False and old["observed_at"] == 100
+    assert old["ready"] is False
+    assert old["observed_at"] == 100
     good["observed_at"] = None
     assert not battery_observation(status, now=100)["ready"]
     good["observed_at"] = 100
@@ -114,13 +115,16 @@ def test_lcd_summary_accepts_unknown_journal_rows_without_hardware(features):
     from scripts.lcd_renderer import summarize_state
 
     title, lines, _ = summarize_state({"active": ["voice"], "features": features, "ts": "unknown"})
-    assert title == "Zadania (ostatni zapis)" and lines
+    assert title == "Zadania (ostatni zapis)"
+    assert lines
 
 
 def test_frame_without_gpio_confirmation_keeps_power_unknown():
     panel, _, _, _, reports, _ = lifecycle()
     panel.step({}, {"ready": False}, "", [])
-    assert reports[-1]["on"] is None and not reports[-1]["power_known"] and reports[-1]["presenting"]
+    assert reports[-1]["on"] is None
+    assert not reports[-1]["power_known"]
+    assert reports[-1]["presenting"]
 
 
 def test_battery_and_heartbeat_changes_do_not_keep_light_on():
@@ -132,10 +136,12 @@ def test_battery_and_heartbeat_changes_do_not_keep_light_on():
     assert len(sinks[0].frames) == 2  # late first real source is displayed
     clock.now = 10
     assert panel.step({**state, "ts": 3}, {"ready": True, "value": 0.9}, "Stan 0", []) == "idle_off"
-    assert off == [True] and sinks[0].closed
+    assert off == [True]
+    assert sinks[0].closed
     clock.now = 50
     panel.step(state, {"ready": True, "value": 0.8}, "Stan 0", [])
-    assert off == [True] and len(sinks) == 1
+    assert off == [True]
+    assert len(sinks) == 1
     assert reports[-1]["on"] is False
     assert reports[-1]["rot"] == 270
 
@@ -150,7 +156,8 @@ def test_existing_ip_battery_frames_do_not_postpone_off_or_wake_idle():
     assert panel.step({}, {"ready": True, "value": 1}, "Device Info", [], frame={"Date": "changed"}) == "idle_off"
     clock.now = 100
     assert panel.step({}, {"ready": True, "value": 1}, "Device Info", [], frame={"IP": "changed"}) == "idle_off"
-    assert len(sinks) == 1 and off == [True]
+    assert len(sinks) == 1
+    assert off == [True]
 
 
 def test_renderer_reuses_exact_existing_ip_battery_pixels_and_rotation(tmp_path, monkeypatch):
@@ -184,8 +191,10 @@ def test_renderer_reuses_exact_existing_ip_battery_pixels_and_rotation(tmp_path,
     with Image.open(frame_path) as artifact:
         assert artifact.tobytes() == submitted[0].tobytes()
     assert renderer.frame_observation["layout"] == "existing_device_info"
-    assert renderer.frame_observation["battery_text"] == "100%" and renderer.frame_observation["ip"] == "192.0.2.1"
-    assert renderer.rotate == 270 and renderer.power_known
+    assert renderer.frame_observation["battery_text"] == "100%"
+    assert renderer.frame_observation["ip"] == "192.0.2.1"
+    assert renderer.rotate == 270
+    assert renderer.power_known
     assert renderer.frame_observation["physical_validity"] == "unverified"
     renderer.close()
 
@@ -194,7 +203,8 @@ def test_late_existing_splash_uses_one_supplied_sample_without_wait_or_cache(mon
     from scripts.lcd_renderer import existing_splash
 
     splash = existing_splash()
-    assert splash.WAIT_BATT == 0 and splash.WAIT_IP == 0
+    assert splash.WAIT_BATT == 0
+    assert splash.WAIT_IP == 0
     monkeypatch.setattr(splash, "pick_battery_nonblocking", lambda: pytest.fail("must reuse the assessed sample"))
     monkeypatch.setattr(splash, "pick_ip_nonblocking", lambda: "192.0.2.1")
     assert splash.gather_info(battery={"ready": True, "value": 0})["Battery"] == "0%"
@@ -207,8 +217,10 @@ def test_existing_splash_renderer_unit_waits_for_early_boot_and_executor_without
     unit = (Path(__file__).resolve().parents[1] / "systemd/lcd-renderer.service").read_text()
     assert "After=network-online.target rider-boot-splash.service motion-executor.service" in unit
     assert "Wants=network-online.target\n" in unit
-    assert "Environment=SPLASH_ROTATE=270" in unit and "Environment=LCD_IDLE_OFF_AFTER_S=45" in unit
-    assert "Wants=motion-executor" not in unit and "ExecStartPre" not in unit
+    assert "Environment=SPLASH_ROTATE=270" in unit
+    assert "Environment=LCD_IDLE_OFF_AFTER_S=45" in unit
+    assert "Wants=motion-executor" not in unit
+    assert "ExecStartPre" not in unit
 
 
 def test_meaningful_task_change_wakes_but_cannot_take_another_owner():
@@ -223,8 +235,11 @@ def test_meaningful_task_change_wakes_but_cannot_take_another_owner():
     ownership.update(free=False, holders=[{"pid": 9999999}])
     task["features"][0]["state"] = "ready"
     assert panel.step(task, {"ready": False}, "Zadania", []) == "ownership_unknown_or_external"
-    assert sinks[-1].closed and len(sinks) == 2 and off == [True]
-    assert panel.close() is False and off == [True]
+    assert sinks[-1].closed
+    assert len(sinks) == 2
+    assert off == [True]
+    assert panel.close() is False
+    assert off == [True]
 
 
 @pytest.mark.parametrize(
@@ -265,8 +280,10 @@ def test_power_off_uses_installed_xgo_gpio_zero_without_reset(monkeypatch):
     assert command[command.index("--bl") + 1] == "0"
     assert command[command.index("--rst") + 1] == "27"
     assert command[command.index("--dc") + 1] == "25"
-    assert options["timeout"] == 3 and options["check"] is False
-    assert result["on"] is False and result["physical_validity"] == "unverified"
+    assert options["timeout"] == 3
+    assert options["check"] is False
+    assert result["on"] is False
+    assert result["physical_validity"] == "unverified"
     assert result["confirmation"] == "control_write_accepted"
 
 
@@ -274,7 +291,9 @@ def test_failed_power_off_never_claims_physical_off():
     result = off_if_free(
         probe=lambda: {"free": True, "holders": []}, runner=lambda *args, **kwargs: SimpleNamespace(returncode=1)
     )
-    assert not result["ok"] and result["on"] is None and not result["power_known"]
+    assert not result["ok"]
+    assert result["on"] is None
+    assert not result["power_known"]
 
 
 def test_legacy_stopped_and_old_v1_never_look_like_current_motion():
@@ -283,7 +302,10 @@ def test_legacy_stopped_and_old_v1_never_look_like_current_motion():
     assert display_motion({"stopped": True, "output": {"lx": 0, "az": 0}}, now=100)["state"] == "UNKNOWN"
     row = {"contract_version": 1, "state": "ESTOP", "observed_at": 100, "moving": False, "output": {"lx": 0, "az": 0}}
     current = display_motion(row, now=101)
-    assert current["moving"] is False and current["output"]["lx"] == 0
-    assert current["physical_completion"] == "unverified" and not current["can_move"]
+    assert current["moving"] is False
+    assert current["output"]["lx"] == 0
+    assert current["physical_completion"] == "unverified"
+    assert not current["can_move"]
     assert display_motion(row, now=104)["moving"] is None
-    assert number_label(None) == "—" and number_label(0) == "0.00"
+    assert number_label(None) == "—"
+    assert number_label(0) == "0.00"

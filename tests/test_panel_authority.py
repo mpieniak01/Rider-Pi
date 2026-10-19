@@ -102,7 +102,8 @@ def test_panel_renews_for_30_seconds_and_loss_of_renewals_stops_outputs(executor
     while not instance.controller.stopped and clock.now - last < 1:
         advance(instance, clock, 0.02)
     assert clock.now - last <= 0.6
-    assert instance.controller.t_lx == 0 and instance.controller.o_lx == 0
+    assert instance.controller.t_lx == 0
+    assert instance.controller.o_lx == 0
     assert instance.gate.state == "ARMED"
     advance(instance, clock, 1)
     assert instance.controller.stopped
@@ -132,7 +133,8 @@ def test_invalid_foreign_actuator_values_do_not_brake_holder(executor, panel):
     if panel is None:
         malformed.pop("panel_id")
     assert instance.apply(malformed)["reason"] == "panel_owner_mismatch"
-    assert instance.controller.deadline == deadline and instance.adapter.calls == calls
+    assert instance.controller.deadline == deadline
+    assert instance.adapter.calls == calls
     malformed["panel_id"] = "panel-a"
     assert instance.apply(malformed)["status"] == "rejected"
     assert instance.controller.stopped
