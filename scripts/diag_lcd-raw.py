@@ -120,8 +120,8 @@ def _configure_diag_device(dev):
 
 def main():
     # załaduj urządzenie
-    Dev = pick_device_class()
-    dev = Dev()
+    device_class = pick_device_class()
+    dev = device_class()
     _configure_diag_device(dev)
 
     # pełny soft reset/konfiguracja

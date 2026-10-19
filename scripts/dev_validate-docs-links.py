@@ -11,16 +11,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 
 
-def extract_file_references(content: str) -> list[str]:
-    """Extract file path references from markdown content."""
+def extract_file_references(content: str) -> tuple[list[str], list[str]]:
+    """Return current file references and legacy ops/tools references."""
     references = []
 
     # Pattern 1: scripts/xxx.py or scripts/xxx.sh
-    script_pattern = r'scripts/[\w\-_]+\.(?:py|sh)'
+    script_pattern = r'scripts/[\w-]+\.(?:py|sh)'
     references.extend(re.findall(script_pattern, content))
 
     # Pattern 2: ops/xxx or tools/xxx (should not exist anymore)
-    legacy_pattern = r'(?:ops|tools)/[\w\-_]+\.(?:py|sh)'
+    legacy_pattern = r'(?:ops|tools)/[\w-]+\.(?:py|sh)'
     legacy_refs = re.findall(legacy_pattern, content)
 
     # Pattern 3: Markdown links [text](path)

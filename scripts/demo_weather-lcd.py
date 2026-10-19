@@ -216,7 +216,7 @@ def render_card(data: dict[str, Any], place_label: str) -> Image.Image:
 
     draw_label(draw, (x, y), place_label, FONT_MED)
     ts = now.strftime("%d %b, %H:%M")
-    ts_w, ts_h = _measure(draw, ts, FONT_SMALL)
+    ts_w, _ = _measure(draw, ts, FONT_SMALL)
     draw_label(draw, (W - MARGIN - ts_w, y + 4), ts, FONT_SMALL)
     y += 40
 

@@ -93,11 +93,11 @@ def _configure_import_paths():
 
 
 def _initialize_device(args):
-    Dev = pick_device_class()
+    device_class = pick_device_class()
     try:
-        dev = Dev()
+        dev = device_class()
     except TypeError:
-        dev = Dev
+        dev = device_class
 
     # ustaw SPI hz, jeśli jest
     try:

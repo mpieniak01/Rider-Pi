@@ -389,12 +389,11 @@ class LCDDirect:
     def push(self, pil_img: Image.Image) -> str:
         img = self._prep(pil_img)
 
-        if self._push is None:
-            if not self._force_bind(img):
-                used = self._scan_bind(img)
-                if not used:
-                    raise RuntimeError("Nie znalazłem metody pushowania.")
-                print("LCD(direct): using", used, flush=True)
+        if self._push is None and not self._force_bind(img):
+            used = self._scan_bind(img)
+            if not used:
+                raise RuntimeError("Nie znalazłem metody pushowania.")
+            print("LCD(direct): using", used, flush=True)
 
         target, name, tag = self._push
 

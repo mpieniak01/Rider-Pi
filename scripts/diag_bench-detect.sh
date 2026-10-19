@@ -13,7 +13,8 @@ MIN_HYB="${BENCH_MIN_FPS_HYB:-3}"
 log() { echo "[bench] $*" >&2; }
 
 num_ge() {  # num_ge VAL MIN -> exit 0 gdy VAL>=MIN
-  python3 - "$1" "$2" <<'PY'
+  local value="$1" minimum="$2"
+  python3 - "$value" "$minimum" <<'PY'
 import sys
 f=float(sys.argv[1]); m=float(sys.argv[2])
 sys.exit(0 if f+1e-6>=m else 1)
@@ -31,7 +32,7 @@ run_and_parse_fps() {
   local fps
   fps="$(printf "%s\n" "$out" | grep -Eo 'fps=[0-9]+(\.[0-9]+)?' | tail -n1 | cut -d= -f2 || true)"
   fps="$(printf "%s" "${fps:-}" | tr -d '[:space:]')"
-  if [ -z "$fps" ]; then
+  if [[ -z "$fps" ]]; then
     log "$name: no fps found"
     return 2
   fi
