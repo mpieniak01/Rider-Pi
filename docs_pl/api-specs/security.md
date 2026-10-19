@@ -98,3 +98,24 @@ WAV otrzymuje losową nazwę, prawa `0600` i jest publikowany dopiero po zakońc
 zapisu. Kolizja nazwy nie nadpisuje poprzedniego nagrania. Prawa plików i katalogu
 nie zależą od liberalnego `umask` procesu. Przechwytywanie audio i jego format
 pozostają bez zmian.
+
+## Trwały stan i pamięć poleceń
+
+Generacje LED (`RIDER_LED_STATE_PATH`), stan funkcji (`FEATURE_STATE_PATH`)
+i ostatnie polecenie Google (`DATA_DIR/google/last_command.json`) korzystają
+ze wspólnego zapisu atomowego. Eksport PNG również sprawdza każdy element
+ścieżki katalogu bez podążania za dowiązaniami. Losowy plik tymczasowy powstaje
+wyłącznie przez utworzenie nowego pliku; publikacja następuje po ukończeniu
+zapisu. Zastąpienie dowiązania docelowego nie zmienia powiązanego pliku.
+Błąd zapisu zachowuje poprzednią opublikowaną zawartość.
+
+Nowe pliki mają uprawnienia `0600`, a nowe katalogi `0700`. Istniejące zaufane
+katalogi zachowują uprawnienia, w tym `/run/rider-motion` (`0750`). Odczyt wymaga
+użytkownika zapisującej usługi lub roota. Przygotuj ścieżki jako użytkownik usługi,
+bez dowiązań w katalogach. Wartości JSON, także tekst zawierający `../`, pozostają
+danymi i nie wyznaczają nazwy pliku; ścieżki konfiguruje operator.
+
+Błąd utrwalenia stanu nadal blokuje start producenta ruchu bez zapisanej generacji.
+Błąd dziennika LED pozostaje wynikiem niepotwierdzonym, a błąd pamięci poleceń
+nie przerywa obsługi polecenia i jest logowany. Równoległe zapisy publikują
+kompletne pliki niezależnie; nie dodaje to transakcji ani łączenia aktualizacji.

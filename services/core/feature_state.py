@@ -6,6 +6,7 @@ import json
 import time
 
 from apps.voice.domain_profiles import expand
+from common.secure_files import atomic_write
 from common.service_catalog import (
     CONTRACT_VERSION,
     UNIT_CATALOG,
@@ -311,10 +312,8 @@ class FeatureStateMixin:
 
         data["ownership_journal"] = journal(self)
         try:
-            self._state_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self._state_path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-            temporary.replace(self._state_path)
+            payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            atomic_write(self._state_path, lambda stream: stream.write(payload))
             return True
         except OSError:
             # A movement producer must bind the accepted generation before start.

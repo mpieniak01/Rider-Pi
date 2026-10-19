@@ -8,7 +8,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from services.api_core import face_api, face_exports
+from common import secure_files
+from services.api_core import face_api
 from services.api_server import app
 
 PNG = b"\x89PNG\r\n\x1a\nmock-preview"
@@ -216,7 +217,7 @@ def test_untrusted_directory_owner_is_unavailable(client, route, export_dir, ren
         values[4] = os.geteuid() + 1
         return os.stat_result(values)
 
-    monkeypatch.setattr(face_exports.os, "fstat", untrusted_owner)
+    monkeypatch.setattr(secure_files.os, "fstat", untrusted_owner)
 
     response = client.post(route, json={"out": "face.png"})
 
@@ -233,7 +234,7 @@ def test_failed_replace_preserves_existing_export_and_cleans_temporary_file(
     def fail_replace(*args, **kwargs):
         raise OSError("simulated replace failure")
 
-    monkeypatch.setattr(face_exports.os, "replace", fail_replace)
+    monkeypatch.setattr(secure_files.os, "replace", fail_replace)
 
     response = client.post(route, json={"out": "face.png"})
 
@@ -278,7 +279,7 @@ def test_directory_swap_during_replace_cannot_redirect_export(client, route, exp
         export_dir.symlink_to(outside, target_is_directory=True)
         return real_replace(*args, **kwargs)
 
-    monkeypatch.setattr(face_exports.os, "replace", swap_then_replace)
+    monkeypatch.setattr(secure_files.os, "replace", swap_then_replace)
 
     response = client.post(route, json={"out": "face.png"})
 
@@ -302,12 +303,23 @@ def test_explicit_invalid_output_does_not_become_preview(client, route, export_d
 
 def test_temporary_name_collision_does_not_remove_existing_entry(client, export_dir, renderer, monkeypatch):
     token = "a" * 32
-    collision = export_dir / (".rider-face-" + token + ".tmp")
+    collision = export_dir / (".rider-write-" + token + ".tmp")
     collision.write_bytes(b"existing entry must survive")
-    monkeypatch.setattr(face_exports.secrets, "token_hex", lambda length: token)
+    monkeypatch.setattr(secure_files.secrets, "token_hex", lambda length: token)
 
     response = client.post("/face/render", json={"out": "face.png"})
 
     assert_error(response, 503, "face_export_unavailable")
     assert collision.read_bytes() == b"existing entry must survive"
     assert list(export_dir.iterdir()) == [collision]
+
+
+def test_intermediate_symlink_is_unavailable(client, route, export_dir, renderer, monkeypatch):
+    link = export_dir.parent / "alias"
+    link.symlink_to(export_dir.parent, target_is_directory=True)
+    monkeypatch.setenv("FACE_RENDER_DIR", str(link / export_dir.name))
+
+    response = client.post(route, json={"out": "face.png"})
+
+    assert_error(response, 503, "face_export_unavailable")
+    assert list(export_dir.iterdir()) == []
