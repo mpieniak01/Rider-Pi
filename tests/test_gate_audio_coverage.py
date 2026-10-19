@@ -146,5 +146,6 @@ def test_pcm_synthesizer_variants_are_wrapped_as_wav(context, pcm):
 
 
 def test_missing_synthesizer_is_an_explicit_failure(context):
+    voice = SimpleNamespace()
     with pytest.raises(RuntimeError, match="no supported method"):
-        audio._piper_synthesize_wav_bytes(context, SimpleNamespace(), "fixture")
+        audio._piper_synthesize_wav_bytes(context, voice, "fixture")

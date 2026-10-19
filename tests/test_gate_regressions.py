@@ -228,3 +228,45 @@ def test_ssh_payload_keeps_device_path_as_one_quoted_json_argument(tmp_path, mon
     assert arguments[-2] == "_remote"
     assert json.loads(arguments[-1]) == request
     assert not (tmp_path / "must-not-exist").exists()
+
+
+def test_diagnostic_rejects_unapproved_cli_target_before_building_a_network_opener(monkeypatch):
+    import sys
+
+    diagnostic = load("scripts/diag_motion-status.py")
+    monkeypatch.setattr(sys, "argv", ["diag_motion-status.py", "http://attacker.example:8080"])
+    monkeypatch.setattr(
+        diagnostic.urllib.request, "build_opener", lambda *args: pytest.fail("Invalid target reached network setup")
+    )
+    with pytest.raises(ValueError, match="diagnostic_target_not_allowed"):
+        diagnostic.main()
+
+
+def test_real_urllib_redirect_dispatch_cannot_follow_an_unapproved_location():
+    import io
+    import urllib.request
+    from email.message import Message
+    from unittest.mock import Mock
+
+    diagnostic = load("scripts/diag_motion-status.py")
+    opener = urllib.request.build_opener(diagnostic.NoRedirect())
+    opener.open = Mock(side_effect=AssertionError("Redirect reached a second request"))
+    request = urllib.request.Request("http://127.0.0.1:8080/healthz")
+    headers = Message()
+    headers["Location"] = "http://attacker.example/private"
+    response = io.BytesIO(b"")
+    with pytest.raises(ValueError, match="diagnostic_redirect_not_allowed"):
+        opener.error("http", request, response, 302, "Found", headers)
+    opener.open.assert_not_called()
+
+
+def test_git_reference_shell_syntax_is_only_data_and_never_executes(tmp_path):
+    import subprocess
+
+    guard = load("scripts/dev_check-file-length.py")
+    root = Path(__file__).resolve().parents[1]
+    sentinel = tmp_path / "unexpected"
+    reference = "HEAD; touch " + str(sentinel)
+    with pytest.raises(subprocess.CalledProcessError):
+        guard.changed_files(root, "HEAD", reference)
+    assert not sentinel.exists()

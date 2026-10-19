@@ -31,7 +31,8 @@ def test_fades_preserve_length_and_center_signal(channels):
     values = struct.unpack("<" + "h" * (len(faded) // 2), faded)
     assert len(faded) == len(pcm)
     assert values[50 * channels] == 1000
-    assert values[0] < 1000 and values[-1] == 0
+    assert values[0] < 1000
+    assert values[-1] == 0
     assert audio._fade_in_out(b"", 1000, channels) == b""
     assert audio._fade_in_out(pcm, 1000, 3) == pcm
 

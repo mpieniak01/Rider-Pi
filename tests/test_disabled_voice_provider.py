@@ -12,10 +12,12 @@ from apps.voice.tts import TTSConfig, TTSError, synthesize
 
 @pytest.mark.parametrize("backend", ["google", "gemini"])
 def test_removed_voice_backend_is_rejected_without_changing_chat_history(backend):
+    asr_config = ASRConfig(backend=backend)
+    tts_config = TTSConfig(backend=backend)
     with pytest.raises(ASRError, match="SDK integration is disabled"):
-        transcribe(b"\0\0", 16000, ASRConfig(backend=backend))
+        transcribe(b"\0\0", 16000, asr_config)
     with pytest.raises(TTSError, match="SDK integration is disabled"):
-        synthesize("fixture", TTSConfig(backend=backend))
+        synthesize("fixture", tts_config)
     session = ChatSession(ChatConfig(backend=backend, model="", system_prompt=""))
     with pytest.raises(ChatError, match="SDK integration is disabled"):
         session.ask("fixture")
@@ -29,7 +31,7 @@ def test_removed_voice_backend_is_rejected_without_changing_chat_history(backend
 @pytest.mark.parametrize("backend", ["google", "gemini"])
 async def test_removed_streaming_backend_has_no_history_side_effect(backend):
     session = ChatSession(ChatConfig(backend=backend, model="", system_prompt="", transport="realtime"))
+    stream = session.ask_stream("fixture")
     with pytest.raises(ChatError, match="SDK integration is disabled"):
-        async for _ in session.ask_stream("fixture"):
-            pytest.fail("Disabled provider emitted output")
+        await stream.__anext__()
     assert session._history == []

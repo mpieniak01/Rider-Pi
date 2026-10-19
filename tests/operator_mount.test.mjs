@@ -32,12 +32,14 @@ async function mount(page){
  }
  const module=new vm.SourceTextModule(source,{context,identifier:file.href});
  await module.link(name=>exports.get(name));await module.evaluate();
- return {instances,hide:()=>listeners.get('pagehide').forEach(fn=>fn()),receive};
+ return {instances,hide:(persisted=false)=>listeners.get('pagehide').forEach(fn=>fn({persisted})),receive};
 }
 for(const [page,component] of [['control','ControlCamera'],['devices','Devices'],['navigation','RemoteNavigation']]){
  test(page+' retains the mounted controller and closes its poller on pagehide',async()=>{
   const f=await mount(page);const panel=f.instances.find(row=>row.kind===component);
-  assert.ok(panel);assert.equal(panel.stopped,undefined);f.hide();assert.equal(panel.stopped,true);
+  assert.ok(panel);assert.equal(panel.stopped,undefined);
+  f.hide(true);assert.equal(panel.stopped,undefined,'browser cache restoration must retain live poller');
+  f.hide();assert.equal(panel.stopped,true);
   const safety=f.instances.find(row=>row.kind==='SafetyPanel');assert.equal(safety.args[1].interactive,page==='control');
  });
 }

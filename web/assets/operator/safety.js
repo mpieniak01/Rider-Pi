@@ -149,7 +149,7 @@ export class SafetyPanel {
     } catch (error) {
       entry.status = error.status ? 'rejected' : 'unknown'; entry.reason = error.message;
       this.pending.delete(command.request_id); throw error;
-    } finally { if (!exempt) this.mutating = false; this.renderHistory(); void this.poller.refresh(); }
+    } finally { if (!exempt) { this.mutating = false; } this.renderHistory(); void this.poller.refresh(); }
   }
   async sendIntent(intent, valid) {
     const revision=this.controls?.state?.revision;

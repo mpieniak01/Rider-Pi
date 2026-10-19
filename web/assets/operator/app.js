@@ -21,7 +21,7 @@ initI18n(localStorage.getItem('lang') || 'pl'); localizeStatic();
 setInterval(refreshAges, 1000);
 const page = document.body.dataset.page;
 const mounted = [];
-window.addEventListener('pagehide', () => { for (const panel of mounted) panel.poller?.stop(); }, { once: true });
+window.addEventListener('pagehide', event => { if (!event.persisted) for (const panel of mounted) panel.poller?.stop(); });
 const motionPage = ['control', 'calibration', 'system'].includes(page);
 const motionToggle = el('button', 'c-btn operator-motion-toggle is-disarmed');
 motionToggle.id = 'global-motion-toggle'; motionToggle.type = 'button';
