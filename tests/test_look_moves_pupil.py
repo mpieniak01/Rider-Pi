@@ -62,7 +62,8 @@ def test_look_gesture_shifts_pupils_right_or_left(monkeypatch):
     # Pozycja startowa
     img0 = fc.frame_image()
     l0, r0 = _pupil_centers(img0)
-    assert l0 and r0
+    assert l0
+    assert r0
     base_lx, base_rx = l0[0], r0[0]
 
     def run_look(amp: float) -> tuple[float, float]:

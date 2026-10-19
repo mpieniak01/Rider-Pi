@@ -35,8 +35,8 @@ def test_file_sink_anim(client, monkeypatch):
 
 
 @pytest.mark.skipif(True, reason="Brak LCD w CI")
-def test_lcd_sink_no_hw(client):
-    os.environ["FACE_SINK"] = "lcd"
+def test_lcd_sink_no_hw(client, monkeypatch):
+    monkeypatch.setenv("FACE_SINK", "lcd")
     client.post("/face/stop", json={})
     r = client.post("/face/play", json={"expr": "happy", "fps": 10, "sink": "lcd"})
     assert r.status_code == 503
@@ -52,7 +52,8 @@ def test_render_and_legacy(client):
     assert r.status_code == 200
     ct = r.headers.get("Content-Type", "")
     if ct.startswith("image/png"):
-        assert r.data and len(r.data) > 0
+        assert r.data
+        assert len(r.data) > 0
     else:
         data = r.get_json()
         assert isinstance(data, dict)
@@ -61,7 +62,8 @@ def test_render_and_legacy(client):
     assert r2.status_code == 200
     ct2 = r2.headers.get("Content-Type", "")
     if ct2.startswith("image/png"):
-        assert r2.data and len(r2.data) > 0
+        assert r2.data
+        assert len(r2.data) > 0
     else:
         data2 = r2.get_json()
         assert isinstance(data2, dict)
