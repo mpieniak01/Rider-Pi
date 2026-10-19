@@ -33,10 +33,10 @@ export class Devices {
       this.poller.stop(); this.telemetryPoller.stop(); this.previewPoller.stop();
     });
     document.getElementById('preview-toggle')?.addEventListener('click', () => { this.preview = !this.preview; this.renderPreview(); });
-    document.getElementById('preview-refresh')?.addEventListener('click', () => this.fetchFrame());
+    document.getElementById('preview-refresh')?.addEventListener('click', () => { void this.fetchFrame(); });
     document.getElementById('preview-kind')?.addEventListener('change', () => { this.lastFrame = null; this.frame(); });
     document.getElementById('preview-url-form')?.addEventListener('submit', event => {
-      event.preventDefault(); this.lastFrame = null; this.fetchFrame();
+      event.preventDefault(); this.lastFrame = null; void this.fetchFrame();
     });
     this.poller = poll(() => this.load(), { profile: 'inventory', onError: showError,
       onVisibility: hidden => { if (hidden) { this.preview = false; this.renderPreview(); } } });
