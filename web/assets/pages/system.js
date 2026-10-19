@@ -38,15 +38,19 @@ function groupLabel(group) {
 function renderStatus() {
   const time = lastSuccess ? lastSuccess.toLocaleTimeString(document.documentElement.lang) : null;
   statusEl.classList.toggle('is-stale', lastError);
-  statusEl.textContent = lastError
-    ? t(lastSuccess ? 'system_ui.stale' : 'system_ui.error', { time })
-    : time ? t('system_ui.updated', { time }) : t('system_ui.loading');
+  if (lastError) {
+    const key = lastSuccess ? 'system_ui.stale' : 'system_ui.error';
+    statusEl.textContent = t(key, { time });
+  } else {
+    statusEl.textContent = time ? t('system_ui.updated', { time }) : t('system_ui.loading');
+  }
 }
 
 function renderSummary(nodes) {
   summaryEl.replaceChildren(...statuses.map(status => {
     const count = nodes.filter(node => statusOf(node) === status).length;
-    return element('span', `status-pill ${pillClasses[status]}`, `${t(`system_ui.${status}`)}: ${count}`);
+    const label = t(`system_ui.${status}`);
+    return element('span', `status-pill ${pillClasses[status]}`, `${label}: ${count}`);
   }));
 }
 
@@ -95,11 +99,17 @@ function renderGraph(nodes) {
   graphEl.replaceChildren(...sections);
 }
 
+function booleanLabel(value, enabled, disabled) {
+  if (value === true) return enabled;
+  if (value === false) return disabled;
+  return 'unknown';
+}
+
 function renderNetwork(wifi = {}) {
   if (!wifi || typeof wifi !== 'object') wifi = {};
   const status = ['connected', 'disconnected', 'blocked', 'no_address', 'missing'].includes(wifi.status)
     ? wifi.status : 'unknown';
-  const tone = status === 'connected' ? 'is-ok' : status === 'blocked' ? 'is-err' : 'is-warn';
+  const tone = { connected: 'is-ok', blocked: 'is-err' }[status] || 'is-warn';
   const heading = element('h2', 'section-title', t('system_ui.network'));
   const card = element('article', 'c-card wifi-card');
   const header = element('div', 'service-node__head');
@@ -107,11 +117,14 @@ function renderNetwork(wifi = {}) {
     element('span', `status-pill ${tone}`, t(`system_ui.wifi_${status}`)));
   card.append(header);
   const addresses = Array.isArray(wifi.addresses) ? wifi.addresses.join(', ') : '';
-  const boot = wifi.autostart === true ? 'enabled' : wifi.autostart === false ? 'disabled' : 'unknown';
-  const route = wifi.default_route === true ? 'yes' : wifi.default_route === false ? 'no' : 'unknown';
+  const boot = booleanLabel(wifi.autostart, 'enabled', 'disabled');
+  const route = booleanLabel(wifi.default_route, 'yes', 'no');
+  const routeLabel = t(`system_ui.${route}`);
+  const gateway = wifi.gateway ? ` (${wifi.gateway})` : '';
+  const bootLabel = t(`system_ui.${boot}`);
   card.append(element('p', 'desc', `${t('system_ui.wifi_addresses')}: ${addresses || '—'}`),
-    element('p', 'desc', `${t('system_ui.wifi_route')}: ${t(`system_ui.${route}`)}${wifi.gateway ? ` (${wifi.gateway})` : ''}`),
-    element('p', 'desc', `${t('system_ui.wifi_autostart')}: ${wifi.manager || 'dhcpcd'} / ${t(`system_ui.${boot}`)}`),
+    element('p', 'desc', `${t('system_ui.wifi_route')}: ${routeLabel}${gateway}`),
+    element('p', 'desc', `${t('system_ui.wifi_autostart')}: ${wifi.manager || 'dhcpcd'} / ${bootLabel}`),
     element('p', 'desc', t('system_ui.wifi_scope')));
   networkEl.replaceChildren(heading, card);
 }
@@ -178,5 +191,6 @@ async function loadGraph() {
 
 window.addEventListener('dashboard:langchange', () => render(true));
 render();
+// Keep initial fetching nonblocking; arm the periodic poll without awaiting network.
 void loadGraph();
 setInterval(loadGraph, 5000);

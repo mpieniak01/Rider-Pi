@@ -118,11 +118,19 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
       .finally(() => clearTimeout(timeout));
   }
 
+  function versionBranch(data, commit) {
+    if (!commit) return t('footer.unavailable');
+    return data.branch === 'HEAD' ? t('footer.detached') : data.branch || '—';
+  }
+
+  function versionTitle(data, commit) {
+    if (!commit) return t('footer.unavailable');
+    return data.message ? t('footer.last_commit', { message: data.message }) : t('footer.copy');
+  }
+
   function renderVersion(ctx, data) {
     const commit = data?.available && /^[0-9a-f]{7,40}$/.test(data.commit || '') ? data.commit : '';
-    if (ctx.branchEl) ctx.branchEl.textContent = commit
-      ? data.branch === 'HEAD' ? t('footer.detached') : data.branch || '—'
-      : t('footer.unavailable');
+    if (ctx.branchEl) ctx.branchEl.textContent = versionBranch(data, commit);
     if (ctx.dirtyEl) {
       ctx.dirtyEl.hidden = !commit || !data.dirty;
       ctx.dirtyEl.textContent = t('footer.dirty');
@@ -131,9 +139,7 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
     if (!button) return;
     button.textContent = commit ? `#${commit}` : '—';
     button.disabled = !commit;
-    button.title = commit
-      ? data.message ? t('footer.last_commit', { message: data.message }) : t('footer.copy')
-      : t('footer.unavailable');
+    button.title = versionTitle(data, commit);
     button.onclick = commit ? () => copyCommit(button, commit) : null;
   }
 
@@ -188,7 +194,7 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
   function setupThemeSwitcher(contexts) {
     const selects = contexts
       .map((ctx) => ctx.themeSelect)
-      .filter((el) => el);
+      .filter(Boolean);
     if (!selects.length) {
       return;
     }
@@ -205,7 +211,7 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
     };
 
     const currentTheme =
-      themeApi?.get?.() || document.documentElement.getAttribute('data-dashboard-theme') || 'classic';
+      themeApi?.get?.() || document.documentElement.dataset.dashboardTheme || 'classic';
     selects.forEach((select) => {
       select.value = normalize(currentTheme);
       select.addEventListener('change', () => {
@@ -213,7 +219,7 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
         if (themeApi?.set) {
           themeApi.set(chosen);
         } else {
-          document.documentElement.setAttribute('data-dashboard-theme', chosen);
+          document.documentElement.dataset.dashboardTheme = chosen;
         }
         syncSelects(chosen, select);
       });
@@ -240,15 +246,15 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
 
     const update = (partial = {}) => {
       let changed = false;
-      if (Object.prototype.hasOwnProperty.call(partial, 'state')) {
+      if (Object.hasOwn(partial, 'state')) {
         footerState.state = partial.state || null;
         changed = true;
       }
-      if (Object.prototype.hasOwnProperty.call(partial, 'snapInfo')) {
+      if (Object.hasOwn(partial, 'snapInfo')) {
         footerState.snapInfo = partial.snapInfo || null;
         changed = true;
       }
-      if (Object.prototype.hasOwnProperty.call(partial, 'cameraResource')) {
+      if (Object.hasOwn(partial, 'cameraResource')) {
         footerState.cameraResource = partial.cameraResource || null;
         changed = true;
       }
@@ -276,7 +282,9 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
     const known = sourceAge !== null && sourceAge >= 0 && sourceAge <= 3 && !state?.error && state?.stale !== true && state?.offline !== true && typeof state?.present === 'boolean';
     const present = known && state.present;
     ctx.presencePill.className = 'c-pill ' + (present ? 'ok' : 'off');
-    ctx.presenceState.textContent = known ? present ? 'ACTIVE' : 'IDLE' : '—';
+    let presenceText = '—';
+    if (known) presenceText = present ? 'ACTIVE' : 'IDLE';
+    ctx.presenceState.textContent = presenceText;
     const modeValue = known ? state?.mode || '—' : '—';
     ctx.modeEl.textContent = `${ctx.modeLabel}: ${modeValue}`;
     const confValue = known && state?.confidence != null ? Number(state.confidence).toFixed(3) : '—';
@@ -312,7 +320,7 @@ if (!window.i18n) initI18n(localStorage.getItem('lang') || 'pl');
   }
 
   function isCameraOnline(state) {
-    if (!state || !state.camera) {
+    if (!state?.camera) {
       return false;
     }
     if (state.camera.vision_enabled === false) {
