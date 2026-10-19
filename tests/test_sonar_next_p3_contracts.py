@@ -7,7 +7,7 @@ import inspect
 import math
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Union, get_args, get_type_hints
+from typing import get_args, get_type_hints
 
 import numpy as np
 import pytest
@@ -242,8 +242,9 @@ def test_animation_tick_completes_multiple_channels_without_skipping_live_channe
     assert animator.owners == {'brows.lift': 'fake'}
 
 
-def test_robot_factory_union_annotation_and_lazy_selection_use_only_fake_adapters():
+def test_robot_factory_annotation_resolves_before_constructing_either_adapter():
     calls = []
+    mode = ['0']
 
     class Physical:
         def __init__(self):
@@ -254,31 +255,30 @@ def test_robot_factory_union_annotation_and_lazy_selection_use_only_fake_adapter
             calls.append('simulated')
 
     def importer(name, globals=None, locals=None, fromlist=(), level=0):
-        assert name == 'sim'
-        assert level == 1
-        calls.append('import-sim')
-        return SimpleNamespace(SimulatedXgoAdapter=Simulated)
+        if level == 1 and name == 'adapter':
+            return SimpleNamespace(XgoAdapter=Physical)
+        if level == 1 and name == 'sim':
+            return SimpleNamespace(SimulatedXgoAdapter=Simulated)
+        if level == 0 and name == 'os':
+            return SimpleNamespace(getenv=lambda name, default: mode[0])
+        return builtins.__import__(name, globals, locals, fromlist, level)
 
     path = ROOT / 'drivers/xgo/__init__.py'
-    source = ast.parse(path.read_text())
-    alias = next(
-        n
-        for n in source.body
-        if isinstance(n, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == 'RobotDriver' for target in n.targets)
-    )
-    scope = {'Union': Union, 'XgoAdapter': Physical}
-    exec(compile(ast.Module(body=[alias], type_ignores=[]), str(path), 'exec'), scope)
-    scope.update(os=SimpleNamespace(getenv=lambda name, default: '0'), __builtins__=imported_by(importer))
-    scope = definitions('drivers/xgo/__init__.py', {'get_robot_driver'}, **scope)
+    scope = {
+        '__name__': 'factory_type_fixture',
+        '__package__': 'drivers.xgo',
+        '__builtins__': {**vars(builtins), '__import__': importer},
+    }
+    exec(compile(path.read_text(), str(path), 'exec'), scope)
     factory = scope['get_robot_driver']
+    hints = get_type_hints(factory)
+    assert set(get_args(hints['return'])) == {Physical, Simulated}
+    assert not calls
     assert isinstance(factory(), Physical)
     assert calls == ['physical']
-    scope['os'] = SimpleNamespace(getenv=lambda name, default: '1')
+    mode[0] = '1'
     assert isinstance(factory(), Simulated)
-    assert calls == ['physical', 'import-sim', 'simulated']
-    hints = get_type_hints(factory, globalns={**scope, 'SimulatedXgoAdapter': Simulated})
-    assert set(get_args(hints['return'])) == {Physical, Simulated}
+    assert calls == ['physical', 'simulated']
 
 
 def test_adapter_capability_kinds_do_not_probe_unavailable_sdk():
