@@ -91,9 +91,9 @@ Zgoda testowa pozostaje oddzielna.
 
 ## Warstwy walidacji w kodzie
 
-`executor_admission` wydziela uporzadkowane etapy dopuszczenia i wykonania
-z `MotionExecutor`: kontrole zrodla i ustawien, walidacje aktuatora,
-autoryzacje bramy oraz obsluge STOP i celu. Dzialaja synchronicznie pod ta
-sama blokada wykonawcy; nie tworza drugiego wlasciciela UART.
-`calibration_schema` zawiera czysta walidacje profilu, a `calibration_profiles`
+`executor_admission` wydziela uporządkowane etapy dopuszczenia i wykonania
+z `MotionExecutor`: kontrole źródła i ustawień, walidację aktuatora,
+autoryzację bramy oraz obsługę STOP i celu. Działają synchronicznie pod tą
+samą blokadą wykonawcy; nie tworzą drugiego właściciela UART.
+`calibration_schema` zawiera czystą walidację profilu, a `calibration_profiles`
 zachowuje publiczne importy oraz operacje zapisu i aktywacji.

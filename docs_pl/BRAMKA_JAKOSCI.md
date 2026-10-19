@@ -62,21 +62,21 @@ Naprawy kodu i indywidualne klasyfikacje zgłoszeń należy rozliczać osobno.
 Po świeżym skanie main porównuj identyfikatory; przeniesienie wskazania do
 funkcji pomocniczej nie oznacza jego naprawy. CI nigdy nie wykonuje ruchu robota.
 
-## Wiekszy zakres napraw zaleglosci
+## Większy zakres napraw zaległości
 
-Przed podzialem prac zapisz SHA i identyfikator istniejacej analizy main oraz
-identyfikatory wybranych zgloszen. Rozdziel pakiety wedlug odpowiedzialnosci
-modulow, z jednym wlascicielem kazdego pliku. Zintegrowana galaz wydania musi
-przejsc testy calego utrzymywanego katalogu, rowniez gdy osobne pakiety
-przeszly juz testy lokalne. Zachowaj zgodnosc z Pythonem 3.9 urzadzenia.
+Przed podziałem prac zapisz SHA i identyfikator istniejącej analizy main oraz
+identyfikatory wybranych zgłoszeń. Rozdziel pakiety według odpowiedzialności
+modułów, z jednym właścicielem każdego pliku. Zintegrowana gałąź wydania musi
+przejść testy całego utrzymywanego katalogu, również gdy osobne pakiety
+przeszły już testy lokalne. Zachowaj zgodność z Pythonem 3.9 urządzenia.
 
-Przy podziale zlozonej funkcji sprawdz wszystkie nowe funkcje pomocnicze.
-Zachowaj kolejnosc walidacji, pierwszenstwo STOP, okresy waznosci, blokady,
-propagacje wyjatkow i sprzatanie zasobow. Testy graniczne powinny obejmowac
-odmowy i awarie, nie tylko sciezke sukcesu. Dla wspoldzielonych katalogow
-porownaj tez kolejnosc oraz deduplikacje wynikow.
+Przy podziale złożonej funkcji sprawdź wszystkie nowe funkcje pomocnicze.
+Zachowaj kolejność walidacji, pierwszeństwo STOP, okresy ważności, blokady,
+propagację wyjątków i sprzątanie zasobów. Testy graniczne powinny obejmować
+odmowy i awarie, nie tylko ścieżkę sukcesu. Dla współdzielonych katalogów
+porównaj też kolejność oraz deduplikację wyników.
 
-Lokalna ocena zlozonosci i zaliczone testy sa dowodem pomocniczym. Wynik
-Sonara dla opublikowanego SHA dostarcza CI. Po scaleniu sprawdz osobno analize
-main i identyfikatory zamknietych oraz pozostalych zgloszen; same statystyki
-PR nie potwierdzaja usuniecia globalnych zaleglosci.
+Lokalna ocena złożoności i zaliczone testy są dowodem pomocniczym. Wynik
+Sonara dla opublikowanego SHA dostarcza CI. Po scaleniu sprawdź osobno analizę
+main i identyfikatory zamkniętych oraz pozostałych zgłoszeń; same statystyki
+PR nie potwierdzają usunięcia globalnych zaległości.

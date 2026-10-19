@@ -542,3 +542,16 @@ If an obstacle is detected while returning home:
 - [Epic Issue](https://github.com/mpieniak01/Rider-Pi/issues/XXX) - Full Rekonesans roadmap
 - [Vision Module](vision.md) - Obstacle detection system
 - [Motion Module](../../apps/motion/main.py) - Motion control system
+
+## Przygotowanie i cykl wykonania
+
+`NavigationTrial.start` waliduje oryginalne żądanie i zapamiętuje stan z chwili
+przyjęcia. `navigation_trial_preparation.TrialPreparation` prowadzi transakcję
+przygotowania: rezerwację kamery, zatrzymanie poprzedniego producenta,
+konfigurację, przekazanie zgody oraz sprawdzenie pierwszego świeżego statusu.
+Każdy etap zachowuje tę samą kontrolę generacji, rewizji i deadline; sprzątanie
+po awarii nie odtwarza ruchu po nowszym STOP.
+
+`apps.compute.navigation_cycle.NavigationCycle` wydziela pojedynczy cykl
+klatka → żądanie providera → kwalifikacja decyzji → status. Jest częścią
+istniejącej pętli, bez nowego wątku, usługi ani właściciela aktuatorów.

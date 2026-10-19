@@ -306,3 +306,11 @@ and waits within the existing feedback budget. A new fresh GO may resume the
 same original ARM, without renewing its deadline or increasing speed/duration.
 Missing feedback, expired images, invalid identities and executor errors still
 terminate the trial. Venom reports image verdict and actual execution separately.
+
+## Passive HOG detector
+
+With a local provider, each successfully captured frame goes through detection,
+preview output and heartbeat, followed by the FPS limit. These stages belong
+inside the capture loop. Failed reads and PC provider mode skip analysis;
+termination closes the camera and mode subscription. The detector publishes
+presence observations and never arms or starts motion itself.

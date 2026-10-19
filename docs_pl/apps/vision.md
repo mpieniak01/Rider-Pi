@@ -393,3 +393,11 @@ w istniejącym budżecie feedback. Nowa świeża decyzja GO może wznowić tę s
 ARM, bez odnowienia jej terminu i zwiększania prędkości lub impulsu. Brak feedback,
 stary obraz, obca tożsamość i błąd wykonawcy nadal kończą próbę. Panel rozdziela
 ocenę obrazu od faktycznego polecenia wykonawczego.
+
+## Pasywny detektor HOG
+
+Przy lokalnym providerze każda poprawnie odczytana klatka przechodzi przez
+wykrywanie, zapis podglądu i heartbeat, a następnie ograniczenie FPS. Te etapy
+należą do wnętrza pętli przechwytywania. Błędny odczyt lub provider PC pomija
+analizę; zakończenie zamyka kamerę i subskrypcję zmiany trybu. Detektor publikuje
+obserwację obecności i sam nie uzbraja ani nie uruchamia ruchu.
