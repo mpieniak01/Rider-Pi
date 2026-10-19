@@ -177,32 +177,7 @@ def _apply_env_overrides(cfg: Any, prefix: str) -> None:
             pass
 
 
-def load_config(path: str | Path | None = None) -> VisionConfig:
-    """Load vision configuration from TOML file with ENV overrides.
-
-    Args:
-        path: Optional path to config file. If None, uses discovery.
-
-    Returns:
-        VisionConfig object with loaded configuration.
-    """
-    if path is None:
-        path = _discover_path()
-    else:
-        path = Path(path)
-
-    data = _read_toml(path)
-
-    # Load each section
-    edge_preview = _load_section(data, "edge_preview", EdgePreviewConfig)
-    obstacle = _load_section(data, "obstacle", ObstacleConfig)
-    ssd_preview = _load_section(data, "ssd_preview", SSDPreviewConfig)
-
-    # Apply ENV overrides (ENV > TOML > defaults)
-    _apply_env_overrides(edge_preview, "EDGE")
-    _apply_env_overrides(obstacle, "OBST")
-    _apply_env_overrides(ssd_preview, "SSD")
-
+def _legacy_edge_overrides(edge_preview):
     # Also check for legacy ENV names used in original code
     # EdgePreview legacy mappings
     snap_dir_env = os.getenv("SNAP_DIR")
@@ -241,6 +216,8 @@ def load_config(path: str | Path | None = None) -> VisionConfig:
     if last_frame_env:
         edge_preview.last_frame = last_frame_env
 
+
+def _legacy_obstacle_overrides(obstacle):
     # Obstacle legacy mappings
     proc_path_env = os.getenv("PROC_PATH")
     if proc_path_env:
@@ -282,6 +259,10 @@ def load_config(path: str | Path | None = None) -> VisionConfig:
     if lapl_var_min_env:
         obstacle.lapl_var_min = float(lapl_var_min_env)
 
+    _legacy_obstacle_output_overrides(obstacle)
+
+
+def _legacy_obstacle_output_overrides(obstacle):
     conf_gain_env = os.getenv("CONF_GAIN")
     if conf_gain_env:
         obstacle.conf_gain = float(conf_gain_env)
@@ -322,12 +303,17 @@ def load_config(path: str | Path | None = None) -> VisionConfig:
     if edge_pix_min_env:
         obstacle.edge_pix_min = int(edge_pix_min_env)
 
+
+def _legacy_ssd_overrides(ssd_preview):
     # SSD preview legacy mappings
     # Note: SNAP_DIR is shared between edge_preview and ssd_preview
     # SSD_SNAP_DIR takes priority, otherwise falls back to SNAP_DIR
     ssd_snap_dir_env = os.getenv("SSD_SNAP_DIR") or os.getenv("SNAP_DIR")
     if ssd_snap_dir_env:
         ssd_preview.snap_dir = ssd_snap_dir_env
+
+    preview_rot_env = os.getenv("PREVIEW_ROT")
+    preview_flip_h_env = os.getenv("PREVIEW_FLIP_H")
 
     # PREVIEW_ROT is shared across modules
     if preview_rot_env:
@@ -375,6 +361,37 @@ def load_config(path: str | Path | None = None) -> VisionConfig:
         ssd_preview.ssd_every = int(every_env)
     elif ssd_every_env:
         ssd_preview.ssd_every = int(ssd_every_env)
+
+
+def load_config(path: str | Path | None = None) -> VisionConfig:
+    """Load vision configuration from TOML file with ENV overrides.
+
+    Args:
+        path: Optional path to config file. If None, uses discovery.
+
+    Returns:
+        VisionConfig object with loaded configuration.
+    """
+    if path is None:
+        path = _discover_path()
+    else:
+        path = Path(path)
+
+    data = _read_toml(path)
+
+    # Load each section
+    edge_preview = _load_section(data, "edge_preview", EdgePreviewConfig)
+    obstacle = _load_section(data, "obstacle", ObstacleConfig)
+    ssd_preview = _load_section(data, "ssd_preview", SSDPreviewConfig)
+
+    # Apply ENV overrides (ENV > TOML > defaults)
+    _apply_env_overrides(edge_preview, "EDGE")
+    _apply_env_overrides(obstacle, "OBST")
+    _apply_env_overrides(ssd_preview, "SSD")
+
+    _legacy_edge_overrides(edge_preview)
+    _legacy_obstacle_overrides(obstacle)
+    _legacy_ssd_overrides(ssd_preview)
 
     return VisionConfig(
         edge_preview=edge_preview,

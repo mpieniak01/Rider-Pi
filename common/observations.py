@@ -54,13 +54,7 @@ def _transport_error(payload):
     return None if isinstance(error, str) and error.startswith("sensor_quality:") else error
 
 
-def measurement(name, value, observed_at, *, quality=None, source="unknown", now=None, unit=None, error=None):
-    """Retain raw/source time; assessed_at dates only this age/quality assessment."""
-    now = time.time() if now is None else now
-    quality = quality if isinstance(quality, dict) else {}
-    at = source_time(observed_at)
-    age = now - at if at is not None and finite(now) else None
-    unit = UNITS[name] if unit is None else unit
+def _measurement_value(name, value, unit, error):
     valid = (
         finite(value)
         and (name != "battery" or 0 <= value <= 1)
@@ -72,6 +66,10 @@ def measurement(name, value, observed_at, *, quality=None, source="unknown", now
     if not valid:
         value = None
         error = error or "invalid_or_missing_measurement"
+    return value, valid, error
+
+
+def _measurement_quality_error(error, quality, age):
     error = error or quality.get("error")
     if quality.get("offline") is True:
         error = error or "measurement_offline"
@@ -81,6 +79,18 @@ def measurement(name, value, observed_at, *, quality=None, source="unknown", now
         error = error or "measurement_not_ready"
     if not finite(age) or not 0 <= age <= MAX_AGE_S:
         error = error or "measurement_stale_or_missing"
+    return error
+
+
+def measurement(name, value, observed_at, *, quality=None, source="unknown", now=None, unit=None, error=None):
+    """Retain raw/source time; assessed_at dates only this age/quality assessment."""
+    now = time.time() if now is None else now
+    quality = quality if isinstance(quality, dict) else {}
+    at = source_time(observed_at)
+    age = now - at if at is not None and finite(now) else None
+    unit = UNITS[name] if unit is None else unit
+    value, valid, error = _measurement_value(name, value, unit, error)
+    error = _measurement_quality_error(error, quality, age)
     ready = valid and not error
     result = {
         "value": value,
@@ -109,12 +119,15 @@ def _battery(value, unit):
     return value if unit == "ratio" else None
 
 
-def normalize_xgo_observation(topic, payload, *, now=None):
-    """Named legacy formats are accepted; ambiguous units never use heuristics."""
+def _supported_telemetry_topic(topic):
     if topic not in {"imu.data", "motion.sensor.raw", "motion.bridge.battery_pct"} and not any(
         topic == prefix or topic.startswith(prefix + ".") for prefix in PREFIXES
     ):
-        return None
+        return False
+    return True
+
+
+def _telemetry_payload(topic, payload):
     data = dict(payload) if isinstance(payload, dict) else {}
     for prefix in PREFIXES + ("motion.bridge",):
         if topic.startswith(prefix + "."):
@@ -124,6 +137,57 @@ def normalize_xgo_observation(topic, payload, *, now=None):
             break
     if isinstance(data.get("observation"), dict):
         data = data["observation"]
+    return data
+
+
+def _sensor_present_value(name, row, data, imu, canonical):
+    key = "battery_pct" if name == "battery" and "battery" not in data else name
+    present = name in data or key in data or name in imu or (canonical and "value" in row)
+    value = row.get("value") if canonical and "value" in row else data.get(key, imu.get(name))
+    return present, value
+
+
+def _sensor_value_unit(name, value, row, data, topic, canonical):
+    units = data.get("units")
+    units = units if isinstance(units, dict) else {}
+    unit = row.get("unit", "unknown") if canonical else row.get("unit", data.get(name + "_unit", units.get(name)))
+    if unit is None:
+        # These topic schemas, rather than numeric magnitudes, identify units.
+        unit = "percent" if name == "battery" and topic.startswith(("motion.bridge.", "xgo")) else UNITS[name]
+    if name == "battery":
+        value = _battery(value, unit)
+        unit = "ratio" if unit in {"percent", "ratio"} else unit
+    return value, unit
+
+
+def _sensor_time(name, row, data, times, topic):
+    time_key = "battery_observed_at" if name == "battery" else "imu_observed_at"
+    for values, key in ((row, "observed_at"), (times, name), (data, time_key), (data, "observed_at")):
+        if key in values:
+            return values[key]
+    return None if topic == "motion.sensor.raw" else data.get("ts")
+
+
+def _sensor_flags(name, row, data):
+    flags = dict(row)
+    # Aggregate IMU failure does not invalidate an explicitly healthy axis.
+    if not row:
+        flags.update(stale=data.get("stale") is True)
+        if data.get("battery_ok" if name == "battery" else "imu_ok") is False:
+            flags["ready"] = False
+    if data.get("offline") is True:
+        flags["offline"] = True
+    for identity in ("instance_id", "generation", "simulated"):
+        if identity in data or identity in row:
+            flags[identity] = row.get(identity, data.get(identity))
+    return flags
+
+
+def normalize_xgo_observation(topic, payload, *, now=None):
+    """Named legacy formats are accepted; ambiguous units never use heuristics."""
+    if not _supported_telemetry_topic(topic):
+        return None
+    data = _telemetry_payload(topic, payload)
     canonical = (
         data.get("contract_id") == CONTRACT_ID
         and type(data.get("contract_version")) is int
@@ -140,45 +204,12 @@ def normalize_xgo_observation(topic, payload, *, now=None):
     for name in ALL_SENSORS:
         row = rows.get(name)
         row = row if isinstance(row, dict) else {}
-        key = "battery_pct" if name == "battery" and "battery" not in data else name
-        present = name in data or key in data or name in imu or (canonical and "value" in row)
+        present, value = _sensor_present_value(name, row, data, imu, canonical)
         if not present:
             continue
-        value = row.get("value") if canonical and "value" in row else data.get(key, imu.get(name))
-        units = data.get("units")
-        units = units if isinstance(units, dict) else {}
-        unit = row.get("unit", "unknown") if canonical else row.get("unit", data.get(name + "_unit", units.get(name)))
-        if unit is None:
-            # These topic schemas, rather than numeric magnitudes, identify units.
-            unit = "percent" if name == "battery" and topic.startswith(("motion.bridge.", "xgo")) else UNITS[name]
-        if name == "battery":
-            value = _battery(value, unit)
-            unit = "ratio" if unit in {"percent", "ratio"} else unit
-        time_key = "battery_observed_at" if name == "battery" else "imu_observed_at"
-        at = (
-            row["observed_at"]
-            if "observed_at" in row
-            else times[name]
-            if name in times
-            else data[time_key]
-            if time_key in data
-            else data["observed_at"]
-            if "observed_at" in data
-            else None
-            if topic == "motion.sensor.raw"
-            else data.get("ts")
-        )
-        flags = dict(row)
-        # Aggregate IMU failure does not invalidate an explicitly healthy axis.
-        if not row:
-            flags.update(stale=data.get("stale") is True)
-            if data.get("battery_ok" if name == "battery" else "imu_ok") is False:
-                flags["ready"] = False
-        if data.get("offline") is True:
-            flags["offline"] = True
-        for identity in ("instance_id", "generation", "simulated"):
-            if identity in data or identity in row:
-                flags[identity] = row.get(identity, data.get(identity))
+        value, unit = _sensor_value_unit(name, value, row, data, topic, canonical)
+        at = _sensor_time(name, row, data, times, topic)
+        flags = _sensor_flags(name, row, data)
         normalized[name] = measurement(
             name, value, at, quality=flags, source=source, now=now, unit=unit, error=_transport_error(data)
         )

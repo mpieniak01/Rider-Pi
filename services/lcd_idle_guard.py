@@ -24,6 +24,18 @@ _last_action_ts = 0.0
 _power_state: bool | None = None  # True=on, False=auto-off, None=unknown
 
 
+def _apply_lcd_snapshot(lcd, snapshot):
+    known = not snapshot.get("error") and isinstance(snapshot.get("free"), bool)
+    lcd["presenting"] = not snapshot["free"] if known else None
+    lcd["holders"] = snapshot.get("holders") or []
+    lcd["checked_at"] = snapshot.get("checked_at")
+    lcd["ownership_state"] = snapshot.get("state", "unknown" if not known else "free" if snapshot["free"] else "busy")
+    lcd["ownership_error"] = snapshot.get("error")
+    if not known:
+        lcd["on"] = None
+        lcd["power_known"] = False
+
+
 def _update_lcd_state(
     *, on: bool | None = None, snapshot: dict[str, Any] | None = None, auto_off_ts: float | None = None
 ) -> None:
@@ -34,17 +46,7 @@ def _update_lcd_state(
         return
 
     if snapshot is not None:
-        known = not snapshot.get("error") and isinstance(snapshot.get("free"), bool)
-        lcd["presenting"] = not snapshot["free"] if known else None
-        lcd["holders"] = snapshot.get("holders") or []
-        lcd["checked_at"] = snapshot.get("checked_at")
-        lcd["ownership_state"] = snapshot.get(
-            "state", "unknown" if not known else "free" if snapshot["free"] else "busy"
-        )
-        lcd["ownership_error"] = snapshot.get("error")
-        if not known:
-            lcd["on"] = None
-            lcd["power_known"] = False
+        _apply_lcd_snapshot(lcd, snapshot)
 
     if on is not None:
         lcd["on"] = bool(on)

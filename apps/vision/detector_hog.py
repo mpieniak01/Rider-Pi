@@ -59,6 +59,136 @@ def save_jpeg_bgr(path: str, bgr: np.ndarray):
     os.replace(tmp, path)
 
 
+def _activate_hog_camera(read, hog):
+    if read is None:
+        os.makedirs(SNAP_DIR, exist_ok=True)
+        read, _ = open_camera()
+        hog = cv2.HOGDescriptor()
+        hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+    return read, hog
+
+
+def _poll_hog_mode(sub_ai_mode, detector_active, read, hog):
+    # Check for AI/provider mode changes
+    if not sub_ai_mode:
+        return detector_active, read, hog, False
+    try:
+        topic, payload = sub_ai_mode.recv(timeout_ms=10)
+        if not (topic and payload):
+            return detector_active, read, hog, False
+        if topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+            new_mode = payload.get("mode", "")
+            old_active = detector_active
+            detector_active = new_mode in ("local", "local_offload", "local_mode")
+            print(f"[hog] AI mode change detected: {new_mode}", flush=True)
+        elif topic == TOPIC_PROVIDER_VISION_STATE:
+            new_mode = payload.get("mode", "")
+            old_active = detector_active
+            detector_active = new_mode != "pc"
+            print(f"[hog] Provider vision state: {new_mode}", flush=True)
+        else:
+            return detector_active, read, hog, True
+        if old_active != detector_active:
+            if detector_active:
+                print("[hog] Vision provider: local - resuming local HOG detector", flush=True)
+                read, hog = _activate_hog_camera(read, hog)
+            else:
+                print("[hog] Vision provider: pc - pausing local HOG detector", flush=True)
+    except Exception as e:
+        # Ignore errors during AI mode change handling, but log for debugging
+        print(f"[hog] Exception in AI mode change handler: {e}", flush=True)
+
+    return detector_active, read, hog, False
+
+
+def _process_hog_frame(hog, frame, t0, last, ema):
+    # skala 1.05…1.1, minNeighbors=4–6; 320x240 i tak ogranicza koszt
+    rects, weights = hog.detectMultiScale(frame, winStride=(8, 8), padding=(8, 8), scale=1.05)
+    out = frame.copy()
+    max_score = 0.0
+    for (x, y, w, h), s in zip(rects, weights):
+        max_score = max(max_score, float(s))
+        cv2.rectangle(out, (x, y), (x + w, y + h), (0, 255, 255), 2)
+        # opcjonalna etykieta
+        cv2.putText(
+            out,
+            f"{s:.2f}",
+            (x, y - 4),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (0, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+
+    # publikuj presence dla “person”
+    present = len(rects) > 0
+    if present:
+        PUB.publish(
+            "vision.person",
+            {
+                "present": True,
+                "score": float(max_score),
+                "count": int(len(rects)),
+                "bbox": [
+                    int(rects[0][0]),
+                    int(rects[0][1]),
+                    int(rects[0][2]),
+                    int(rects[0][3]),
+                ],
+                "mode": "hog",
+            },
+            add_ts=True,
+        )
+
+    # zapisz PROC do podglądu na dashboardzie
+    try:
+        save_jpeg_bgr(PROC_FN, out)
+    except Exception as e:
+        print("[hog] save error:", e, flush=True)
+
+    # heartbeat (fps)
+    now = time.time()
+    dt = max(1e-6, now - last)
+    inst = 1.0 / dt
+    ema = inst if ema is None else (0.9 * ema + 0.1 * inst)
+    last = now
+    HB.tick(out, ema, presenting=False)
+
+    # throtlling dla CPU/baterii
+    min_dt = 1.0 / MAX_FPS
+    spent = time.time() - t0
+    if spent < min_dt:
+        time.sleep(min_dt - spent)
+    return last, ema
+
+
+def _initial_hog_capture(detector_active):
+    # Only initialize camera and HOG when in local mode initially
+    read = None
+    hog = None
+    if detector_active:
+        os.makedirs(SNAP_DIR, exist_ok=True)
+        read, _ = open_camera()
+        hog = cv2.HOGDescriptor()
+        hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+
+    return read, hog
+
+
+def _close_hog_resources(read, sub_ai_mode):
+    try:
+        if read is not None and hasattr(read, "close"):
+            read.close()
+    finally:
+        # Cleanup
+        if sub_ai_mode:
+            try:
+                sub_ai_mode.close()
+            except Exception:
+                pass
+
+
 def main():
     # Log AI mode status at startup
     log_vision_mode_status()
@@ -77,14 +207,7 @@ def main():
     else:
         print("[hog] AI Mode: local - running local HOG detector", flush=True)
 
-    # Only initialize camera and HOG when in local mode initially
-    read = None
-    hog = None
-    if detector_active:
-        os.makedirs(SNAP_DIR, exist_ok=True)
-        read, _ = open_camera()
-        hog = cv2.HOGDescriptor()
-        hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+    read, hog = _initial_hog_capture(detector_active)
 
     last = time.time()
     ema = None
@@ -93,36 +216,9 @@ def main():
 
     try:
         while True:
-            # Check for AI/provider mode changes
-            if sub_ai_mode:
-                try:
-                    topic, payload = sub_ai_mode.recv(timeout_ms=10)
-                    if topic and payload:
-                        if topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
-                            new_mode = payload.get("mode", "")
-                            old_active = detector_active
-                            detector_active = new_mode in ("local", "local_offload", "local_mode")
-                            print(f"[hog] AI mode change detected: {new_mode}", flush=True)
-                        elif topic == TOPIC_PROVIDER_VISION_STATE:
-                            new_mode = payload.get("mode", "")
-                            old_active = detector_active
-                            detector_active = new_mode != "pc"
-                            print(f"[hog] Provider vision state: {new_mode}", flush=True)
-                        else:
-                            continue
-                        if old_active != detector_active:
-                            if detector_active:
-                                print("[hog] Vision provider: local - resuming local HOG detector", flush=True)
-                                if read is None:
-                                    os.makedirs(SNAP_DIR, exist_ok=True)
-                                    read, _ = open_camera()
-                                    hog = cv2.HOGDescriptor()
-                                    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-                            else:
-                                print("[hog] Vision provider: pc - pausing local HOG detector", flush=True)
-                except Exception as e:
-                    # Ignore errors during AI mode change handling, but log for debugging
-                    print(f"[hog] Exception in AI mode change handler: {e}", flush=True)
+            detector_active, read, hog, skip = _poll_hog_mode(sub_ai_mode, detector_active, read, hog)
+            if skip:
+                continue
 
             # If detector is not active (pc_offload mode), sleep and continue
             if not detector_active:
@@ -140,71 +236,9 @@ def main():
                 time.sleep(0.01)
                 continue
 
-        # skala 1.05…1.1, minNeighbors=4–6; 320x240 i tak ogranicza koszt
-        rects, weights = hog.detectMultiScale(frame, winStride=(8, 8), padding=(8, 8), scale=1.05)
-        out = frame.copy()
-        max_score = 0.0
-        for (x, y, w, h), s in zip(rects, weights, strict=False):
-            max_score = max(max_score, float(s))
-            cv2.rectangle(out, (x, y), (x + w, y + h), (0, 255, 255), 2)
-            # opcjonalna etykieta
-            cv2.putText(
-                out,
-                f"{s:.2f}",
-                (x, y - 4),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                (0, 255, 255),
-                1,
-                cv2.LINE_AA,
-            )
-
-        # publikuj presence dla “person”
-        present = len(rects) > 0
-        if present:
-            PUB.publish(
-                "vision.person",
-                {
-                    "present": True,
-                    "score": float(max_score),
-                    "count": int(len(rects)),
-                    "bbox": [
-                        int(rects[0][0]),
-                        int(rects[0][1]),
-                        int(rects[0][2]),
-                        int(rects[0][3]),
-                    ],
-                    "mode": "hog",
-                },
-                add_ts=True,
-            )
-
-        # zapisz PROC do podglądu na dashboardzie
-        try:
-            save_jpeg_bgr(PROC_FN, out)
-        except Exception as e:
-            print("[hog] save error:", e, flush=True)
-
-        # heartbeat (fps)
-        now = time.time()
-        dt = max(1e-6, now - last)
-        inst = 1.0 / dt
-        ema = inst if ema is None else (0.9 * ema + 0.1 * inst)
-        last = now
-        HB.tick(out, ema, presenting=False)
-
-        # throtlling dla CPU/baterii
-        min_dt = 1.0 / MAX_FPS
-        spent = time.time() - t0
-        if spent < min_dt:
-            time.sleep(min_dt - spent)
+            last, ema = _process_hog_frame(hog, frame, t0, last, ema)
     finally:
-        # Cleanup
-        if sub_ai_mode:
-            try:
-                sub_ai_mode.close()
-            except Exception:
-                pass
+        _close_hog_resources(read, sub_ai_mode)
 
 
 if __name__ == "__main__":

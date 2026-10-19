@@ -135,6 +135,29 @@ def _best_detection(items: list[dict[str, Any]]) -> dict[str, Any] | None:
     return scored[0][2]
 
 
+def _normalize_detection_list(data):
+    items = data.get("items") or data.get("detections") or data.get("objects") or []
+    best = _best_detection(items)
+    if not best:
+        return {
+            "kind": "det",
+            "present": False,
+            "score": 0.0,
+            "bbox": None,
+            "mode": data.get("mode") or "det",
+        }
+    lbl = (str(best.get("label") or best.get("class") or "")).lower()
+    kind = "person" if "person" in lbl else ("face" if "face" in lbl else "det")
+    score = _as_float(best.get("score", best.get("confidence", 0.0)), 0.0)
+    return {
+        "kind": kind,
+        "present": score >= MIN_SCORE,
+        "score": score,
+        "bbox": best.get("bbox"),
+        "mode": data.get("mode") or "ssd",
+    }
+
+
 def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
     """
     Sprowadzamy HAAR/SSD/hybrid do:
@@ -142,26 +165,7 @@ def normalize_event(topic: str, data: dict[str, Any]) -> dict[str, Any] | None:
     Obsługuje też vision.detections z listą obiektów.
     """
     if topic == "vision.detections":
-        items = data.get("items") or data.get("detections") or data.get("objects") or []
-        best = _best_detection(items)
-        if not best:
-            return {
-                "kind": "det",
-                "present": False,
-                "score": 0.0,
-                "bbox": None,
-                "mode": data.get("mode") or "det",
-            }
-        lbl = (str(best.get("label") or best.get("class") or "")).lower()
-        kind = "person" if "person" in lbl else ("face" if "face" in lbl else "det")
-        score = _as_float(best.get("score", best.get("confidence", 0.0)), 0.0)
-        return {
-            "kind": kind,
-            "present": score >= MIN_SCORE,
-            "score": score,
-            "bbox": best.get("bbox"),
-            "mode": data.get("mode") or "ssd",
-        }
+        return _normalize_detection_list(data)
 
     kind = "face" if "face" in topic else ("person" if "person" in topic else "det")
     score = _as_float(data.get("score", data.get("confidence", 1.0)), 1.0)

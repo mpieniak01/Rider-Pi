@@ -47,7 +47,7 @@ def pub(topic: str, payload: dict[str, Any]):
 
 
 def sub_recv():
-    topic, payload = SUB.recv_multipart() if False else SUB.recv_string().split(" ", 1)
+    topic, payload = SUB.recv_string().split(" ", 1)
     try:
         data = json.loads(payload)
     except Exception:

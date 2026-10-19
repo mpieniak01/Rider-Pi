@@ -202,6 +202,30 @@ class VisionOffloadDispatcher:
             return None
         return self._frame_stream.recv(FRAME_STREAM_TIMEOUT_MS)
 
+    def _select_offload_frame(self):
+        frame = None
+
+        if self._frame_stream:
+            frame = self._capture_from_stream()
+        if self._prefer_file:
+            frame = self._read_frame_from_file()
+        if frame is None and (self._use_camera or self.fallback_camera):
+            frame = self._capture_from_camera()
+        return frame
+
+    def _save_offload_snapshots(self, frame_bytes, frame):
+        if frame_bytes:
+            try:
+                LAST_FRAME_PATH.write_bytes(frame_bytes)
+            except Exception as exc:
+                LOG.warning("Vision offload: cannot write last frame: %s", exc)
+            try:
+                RAW_PATH.write_bytes(frame_bytes)
+            except Exception as exc:
+                LOG.warning("Vision offload: cannot write raw snapshot: %s", exc)
+            if self.write_proc:
+                self._write_proc_snapshot(frame)
+
     def _loop(self) -> None:
         if not self._pub:
             LOG.error("Vision offload dispatcher missing publisher")
@@ -214,15 +238,7 @@ class VisionOffloadDispatcher:
                     provider_state_sub.recv(timeout_ms=500)
                     time.sleep(0.5)
                     continue
-                frame_bytes: bytes | None = None
-                frame = None
-
-                if self._frame_stream:
-                    frame = self._capture_from_stream()
-                if self._prefer_file:
-                    frame = self._read_frame_from_file()
-                if frame is None and (self._use_camera or self.fallback_camera):
-                    frame = self._capture_from_camera()
+                frame = self._select_offload_frame()
                 if frame is None:
                     time.sleep(interval)
                     continue
@@ -234,17 +250,7 @@ class VisionOffloadDispatcher:
                     continue
                 frame_bytes = jpeg.tobytes()
 
-                if frame_bytes:
-                    try:
-                        LAST_FRAME_PATH.write_bytes(frame_bytes)
-                    except Exception as exc:
-                        LOG.warning("Vision offload: cannot write last frame: %s", exc)
-                    try:
-                        RAW_PATH.write_bytes(frame_bytes)
-                    except Exception as exc:
-                        LOG.warning("Vision offload: cannot write raw snapshot: %s", exc)
-                    if self.write_proc:
-                        self._write_proc_snapshot(frame)
+                self._save_offload_snapshots(frame_bytes, frame)
 
                 payload = {
                     "ts": time.time(),

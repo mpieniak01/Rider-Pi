@@ -120,6 +120,31 @@ class FrameStreamClient:
         observed = metadata.get("captured_at", metadata.get("observed_at", metadata.get("mtime")))
         return parts[2], dict(metadata, observed_at=observed if finite_number(observed) else None)
 
+    def _latest_candidate(self, candidate):
+        if getattr(self, '_latest', False):
+            # Drain encoded messages first; decode just the latest useful frame.
+            for _ in range(16):
+                try:
+                    parts = self._sock.recv_multipart(zmq.NOBLOCK)
+                except zmq.Again:
+                    break
+                # Malformed later messages cannot replace a valid candidate.
+                latest = self._candidate(parts)
+                if latest is not None:
+                    candidate = latest
+        return candidate
+
+    def _decode_candidate(self, data):
+        if getattr(self, '_encoded', False):
+            frame = data
+        else:
+            try:
+                arr = np.frombuffer(data, dtype=np.uint8)
+                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            except Exception:
+                frame = None
+        return frame
+
     def recv(self, timeout_ms: int) -> np.ndarray | None:
         """Receive next frame from the stream, optionally returning cached frame on timeouts."""
 
@@ -136,28 +161,11 @@ class FrameStreamClient:
         except zmq.Again:
             return self._fallback()
         candidate = self._candidate(parts)
-        if getattr(self, '_latest', False):
-            # Drain encoded messages first; decode just the latest useful frame.
-            for _ in range(16):
-                try:
-                    parts = self._sock.recv_multipart(zmq.NOBLOCK)
-                except zmq.Again:
-                    break
-                # Malformed later messages cannot replace a valid candidate.
-                latest = self._candidate(parts)
-                if latest is not None:
-                    candidate = latest
+        candidate = self._latest_candidate(candidate)
         if candidate is None:
             return self._fallback()
         data, metadata = candidate
-        if getattr(self, '_encoded', False):
-            frame = data
-        else:
-            try:
-                arr = np.frombuffer(data, dtype=np.uint8)
-                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            except Exception:
-                frame = None
+        frame = self._decode_candidate(data)
         if frame is None:
             return self._fallback()
 

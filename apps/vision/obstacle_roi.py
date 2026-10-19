@@ -290,6 +290,299 @@ def _sigint(_a, _b):
     print("[obst] stop", flush=True)
 
 
+def _poll_obstacle_mode(sub_ai_mode, detector_active, edge_hist, edge_times, last_present):
+    # Check for AI mode/provider changes
+    if not sub_ai_mode:
+        return detector_active, last_present, False
+    try:
+        topic, payload = sub_ai_mode.recv(timeout_ms=10)
+        if not (topic and payload):
+            return detector_active, last_present, False
+        if topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
+            new_mode = payload.get("mode", "")
+            old_active = detector_active
+            detector_active = new_mode in ("local", "local_offload", "local_mode")
+            print(f"[obst] AI mode event: {new_mode}", flush=True)
+        elif topic == TOPIC_PROVIDER_VISION_STATE:
+            new_mode = payload.get("mode", "")
+            old_active = detector_active
+            detector_active = new_mode != "pc"
+            print(f"[obst] Provider vision state: {new_mode}", flush=True)
+        else:
+            return detector_active, last_present, True
+        if old_active != detector_active:
+            if detector_active:
+                print("[obst] Vision provider: local - resuming detector", flush=True)
+                edge_hist.clear()
+                edge_times.clear()
+                last_present = False
+            else:
+                print("[obst] Vision provider: pc - pausing local detector", flush=True)
+    except Exception as e:
+        # Ignore transient errors in AI mode subscription, but log for diagnosis
+        print(f"[obst] Exception in AI mode subscription: {e}", file=sys.stderr, flush=True)
+
+    return detector_active, last_present, False
+
+
+def _write_paused_obstacle():
+    copy_raw_snapshot("PC offload")
+    payload = {
+        "type": "obstacle",
+        "present": False,
+        "confidence": 0.0,
+        "edge_pct": 0.0,
+        "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
+        "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
+        "ts": now_s(),
+        "age_s": 0.0,
+        "stale": False,
+        "observed_at": None,
+        "data_ready": False,
+        "error": "local_detector_paused",
+        "source": "pc_offload",
+    }
+    atomic_write_json(OBSTACLE_JSON, payload)
+
+
+def _save_stream_obstacle_image(img_proc, frame_quality, proc_mtime):
+    if PROC_PATH:
+        try:
+            if frame_quality["ready"]:
+                cv2.imwrite(PROC_PATH, img_proc, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                os.utime(PROC_PATH, (proc_mtime, proc_mtime))
+            elif Path(PROC_PATH).exists():
+                # A derived file cannot erase an explicit capture fault
+                # after stream/process restart and file fallback.
+                os.utime(PROC_PATH, (0, 0))
+        except Exception as e:
+            print(f"[obst] WARNING: Could not save processed image to {PROC_PATH}: {e}", flush=True)
+
+
+def _publish_missing_obstacle(proc_age_s, frame_stream):
+    payload = {
+        "type": "obstacle",
+        "present": False,
+        "confidence": 0.0,
+        "edge_pct": 0.0,
+        "edge_nz": 0,
+        "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
+        "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
+        "ts": now_s(),
+        "age_s": round(proc_age_s, 3) if finite_number(proc_age_s) else None,
+        "stale": proc_age_s > SNAP_MAX_AGE_S,
+        "error": "proc_not_found" if frame_stream is None else "stream_no_frame",
+        "observed_at": None,
+        "data_ready": False,
+    }
+    atomic_write_json(OBSTACLE_JSON, payload)
+    publish("vision.obstacle", payload)
+    publish(
+        "obstacle.map",
+        {
+            "present": False,
+            "confidence": 0.0,
+            "edge_pct": 0.0,
+            "ts": payload["ts"],
+            "source": "obstacle_roi",
+            "error": payload.get("error", "missing_frame"),
+            "observed_at": None,
+            "data_ready": False,
+        },
+    )
+    time.sleep(0.25)
+
+
+def _receive_obstacle_frame(frame_stream):
+    global _LAST_STREAM_FRAME
+    img_proc = None
+    img_raw_gray = None
+    proc_age_s = float("inf")
+    proc_mtime = None
+    source_payload = {}
+
+    frame_bgr = None
+    if frame_stream is not None:
+        frame_bgr = frame_stream.recv(FRAME_STREAM_TIMEOUT_MS)
+        if frame_bgr is not None:
+            source_payload = frame_stream.metadata
+            frame_quality = sample_status(source_payload, max_age_s=SNAP_MAX_AGE_S)
+            proc_mtime = frame_quality["observed_at"]
+            proc_age_s = frame_quality["age_s"] if frame_quality["age_s"] is not None else float("inf")
+            _LAST_STREAM_FRAME = frame_bgr.copy()
+            img_raw_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(img_raw_gray, (5, 5), 1.0)
+            img_proc = cv2.Canny(blur, STREAM_CANNY_LOW, STREAM_CANNY_HIGH)
+            _save_stream_obstacle_image(img_proc, frame_quality, proc_mtime)
+
+    if img_proc is None:
+        proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)
+        source_payload = {"observed_at": proc_mtime}
+        img_proc = load_gray(PROC_PATH)
+        if img_proc is None:
+            _publish_missing_obstacle(proc_age_s, frame_stream)
+            return None
+        img_raw_gray = load_gray(RAW_PATH)
+
+    return img_proc, img_raw_gray, proc_mtime, proc_age_s, source_payload
+
+
+def _update_obstacle_history(source_payload, proc_mtime, edge_pct_raw, edge_hist, edge_times):
+    source_quality = sample_status(source_payload, max_age_s=SNAP_MAX_AGE_S)
+    if not source_quality["ready"] or (edge_times and proc_mtime < edge_times[-1]):
+        edge_hist.clear()
+        edge_times.clear()
+    if source_quality["ready"] and (not edge_times or proc_mtime > edge_times[-1]):
+        edge_hist.append(float(edge_pct_raw))
+        edge_times.append(proc_mtime)
+
+
+def _obstacle_presence_confidence(edge_pct, dark, blurry, last_present):
+    if dark or blurry:
+        present = True
+    else:
+        if edge_pct <= EDGE_T_LOW:
+            present = True
+        elif edge_pct >= EDGE_T_HIGH:
+            present = False
+        else:
+            present = last_present
+
+    if present:
+        base = 0.0
+        if EDGE_T_LOW > 0:
+            base = clamp((EDGE_T_LOW - edge_pct) / EDGE_T_LOW, 0.0, 1.0)
+        occl = 1.0 if (dark or blurry) else 0.0
+        conf = clamp(CONF_GAIN * base + 0.5 * occl, 0.0, 1.0)
+    else:
+        denom = max(1e-6, 1.0 - EDGE_T_HIGH)
+        base = clamp((edge_pct - EDGE_T_HIGH) / denom, 0.0, 1.0)
+        conf = clamp(CONF_GAIN * base, 0.0, 1.0)
+
+    return present, conf
+
+
+def _annotate_obstacle(img_proc, sl, present, conf, edge_pct):
+    if OBST_ANN:
+        try:
+            bins = bins_edge_pcts(img_proc, sl, OBST_BINS) if OBST_BINS > 0 else None
+        except Exception:
+            bins = None
+        draw_overlay(
+            base_gray=img_proc,  # annot na PROC
+            sl=sl,
+            present=present,
+            confidence=float(conf),
+            edge_pct=float(edge_pct),
+            bins_pcts=bins,
+            ann_path=OBST_ANN_PATH,
+        )
+
+
+def _process_obstacle_frame(sample, edge_hist, edge_times, last_present):
+    img_proc, img_raw_gray, proc_mtime, proc_age_s, source_payload = sample
+    h, w = img_proc.shape[:2]
+    sl = roi_slice(h, ROI_Y0, ROI_H)
+    y0, y1 = sl.start, sl.stop
+
+    edge_nz, roi_px, edge_pct_raw = edge_stats(img_proc, sl)
+    _update_obstacle_history(source_payload, proc_mtime, edge_pct_raw, edge_hist, edge_times)
+    edge_pct = median_of(edge_hist)
+
+    if img_raw_gray is None:
+        img_raw_gray = img_proc
+    mean_luma, lap_var = luma_and_focus(img_raw_gray, sl)
+
+    dark = mean_luma < DARK_LUMA
+    blurry = lap_var < LAPL_VAR_MIN
+
+    present, conf = _obstacle_presence_confidence(edge_pct, dark, blurry, last_present)
+    last_present = present
+
+    _annotate_obstacle(img_proc, sl, present, conf, edge_pct)
+
+    observed_at = min(edge_times) if edge_times else proc_mtime
+    frame_quality = sample_status(dict(source_payload, observed_at=observed_at), max_age_s=SNAP_MAX_AGE_S)
+    payload = {
+        "type": "obstacle",
+        "present": bool(present),
+        "confidence": round(float(conf), 3),
+        "edge_pct": round(float(edge_pct), 4),
+        "edge_nz": int(edge_nz),
+        "roi": {"y0": int(y0), "y1": int(y1), "w": int(w), "h": int(h)},
+        "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
+        "ts": now_s(),
+        "age_s": round(proc_age_s, 3) if finite_number(proc_age_s) else None,
+        "stale": not frame_quality["ready"],
+        "observed_at": observed_at,
+        "data_ready": frame_quality["ready"],
+        "error": source_payload["error"]
+        if isinstance(source_payload.get("error"), str) and source_payload["error"].strip()
+        else frame_quality["error"],
+        "diag": {
+            "edge_pct_raw": round(float(edge_pct_raw), 4),
+            "roi_px": int(roi_px),
+            "mean_luma": round(float(mean_luma), 3),
+            "lap_var": round(float(lap_var), 1),
+            "dark": bool(dark),
+            "blurry": bool(blurry),
+            "t_low": EDGE_T_LOW,
+            "t_high": EDGE_T_HIGH,
+            "conf_gain": CONF_GAIN,
+            "edge_area_pct_legacy": EDGE_AREA_PCT,
+            "edge_pix_min_legacy": EDGE_PIX_MIN,
+            "proc_mtime": proc_mtime,
+        },
+    }
+
+    atomic_write_json(OBSTACLE_JSON, payload)
+    publish("vision.obstacle", payload)
+    publish(
+        "obstacle.map",
+        {
+            "present": bool(present),
+            "confidence": round(float(conf), 3),
+            "edge_pct": round(float(edge_pct), 4),
+            "ts": payload["ts"],
+            "source": "obstacle_roi",
+            "roi": payload["roi_norm"],
+            "observed_at": payload["observed_at"],
+            "data_ready": payload["data_ready"],
+            "stale": payload["stale"],
+            "error": payload["error"],
+        },
+    )
+
+    print(
+        (
+            f"[obst] snap present={payload['present']} conf={payload['confidence']:.2f} "
+            f"pct={payload['edge_pct']:.3f}/{payload['diag']['edge_pct_raw']:.3f} "
+            f"luma={payload['diag']['mean_luma']:.2f} lapv={payload['diag']['lap_var']:.1f} "
+            f"dark={payload['diag']['dark']} blur={payload['diag']['blurry']} "
+            f"roi=({y0}:{y1}/{h})"
+        ),
+        flush=True,
+    )
+
+    return last_present
+
+
+def _open_obstacle_frame_stream():
+    frame_stream: FrameStreamClient | None = None
+    if USE_FRAME_STREAM:
+        try:
+            frame_stream = FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True, copy_frame=True)
+            print(
+                f"[obst] frame stream subscribed: {FRAME_STREAM_ADDR} topic={FRAME_STREAM_TOPIC}",
+                flush=True,
+            )
+        except Exception as exc:
+            frame_stream = None
+            print(f"[obst] WARN: frame stream disabled ({exc})", flush=True)
+
+    return frame_stream
+
+
 def main() -> int:
     global _LAST_STREAM_FRAME
     signal.signal(signal.SIGINT, _sigint)
@@ -325,260 +618,24 @@ def main() -> int:
         flush=True,
     )
 
-    frame_stream: FrameStreamClient | None = None
-    if USE_FRAME_STREAM:
-        try:
-            frame_stream = FrameStreamClient(FRAME_STREAM_ADDR, FRAME_STREAM_TOPIC, return_last=True, copy_frame=True)
-            print(
-                f"[obst] frame stream subscribed: {FRAME_STREAM_ADDR} topic={FRAME_STREAM_TOPIC}",
-                flush=True,
-            )
-        except Exception as exc:
-            frame_stream = None
-            print(f"[obst] WARN: frame stream disabled ({exc})", flush=True)
+    frame_stream = _open_obstacle_frame_stream()
 
     while not _STOP:
-        # Check for AI mode/provider changes
-        if sub_ai_mode:
-            try:
-                topic, payload = sub_ai_mode.recv(timeout_ms=10)
-                if topic and payload:
-                    if topic == TOPIC_SYSTEM_AI_MODE_CHANGED:
-                        new_mode = payload.get("mode", "")
-                        old_active = detector_active
-                        detector_active = new_mode in ("local", "local_offload", "local_mode")
-                        print(f"[obst] AI mode event: {new_mode}", flush=True)
-                    elif topic == TOPIC_PROVIDER_VISION_STATE:
-                        new_mode = payload.get("mode", "")
-                        old_active = detector_active
-                        detector_active = new_mode != "pc"
-                        print(f"[obst] Provider vision state: {new_mode}", flush=True)
-                    else:
-                        continue
-                    if old_active != detector_active:
-                        if detector_active:
-                            print("[obst] Vision provider: local - resuming detector", flush=True)
-                            edge_hist.clear()
-                            edge_times.clear()
-                            last_present = False
-                        else:
-                            print("[obst] Vision provider: pc - pausing local detector", flush=True)
-            except Exception as e:
-                # Ignore transient errors in AI mode subscription, but log for diagnosis
-                print(f"[obst] Exception in AI mode subscription: {e}", file=sys.stderr, flush=True)
+        detector_active, last_present, skip = _poll_obstacle_mode(
+            sub_ai_mode, detector_active, edge_hist, edge_times, last_present
+        )
+        if skip:
+            continue
 
         # If detector is not active (pc_offload mode), sleep and continue
         if not detector_active:
-            copy_raw_snapshot("PC offload")
-            payload = {
-                "type": "obstacle",
-                "present": False,
-                "confidence": 0.0,
-                "edge_pct": 0.0,
-                "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
-                "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
-                "ts": now_s(),
-                "age_s": 0.0,
-                "stale": False,
-                "observed_at": None,
-                "data_ready": False,
-                "error": "local_detector_paused",
-                "source": "pc_offload",
-            }
-            atomic_write_json(OBSTACLE_JSON, payload)
+            _write_paused_obstacle()
             time.sleep(0.5)
             continue
-        img_proc = None
-        img_raw_gray = None
-        proc_age_s = float("inf")
-        proc_mtime = None
-        source_payload = {}
-
-        frame_bgr = None
-        if frame_stream is not None:
-            frame_bgr = frame_stream.recv(FRAME_STREAM_TIMEOUT_MS)
-            if frame_bgr is not None:
-                source_payload = frame_stream.metadata
-                frame_quality = sample_status(source_payload, max_age_s=SNAP_MAX_AGE_S)
-                proc_mtime = frame_quality["observed_at"]
-                proc_age_s = frame_quality["age_s"] if frame_quality["age_s"] is not None else float("inf")
-                _LAST_STREAM_FRAME = frame_bgr.copy()
-                img_raw_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                blur = cv2.GaussianBlur(img_raw_gray, (5, 5), 1.0)
-                img_proc = cv2.Canny(blur, STREAM_CANNY_LOW, STREAM_CANNY_HIGH)
-                if PROC_PATH:
-                    try:
-                        if frame_quality["ready"]:
-                            cv2.imwrite(PROC_PATH, img_proc, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-                            os.utime(PROC_PATH, (proc_mtime, proc_mtime))
-                        elif Path(PROC_PATH).exists():
-                            # A derived file cannot erase an explicit capture fault
-                            # after stream/process restart and file fallback.
-                            os.utime(PROC_PATH, (0, 0))
-                    except Exception as e:
-                        print(f"[obst] WARNING: Could not save processed image to {PROC_PATH}: {e}", flush=True)
-
-        if img_proc is None:
-            proc_mtime, proc_age_s = file_mtime_age(PROC_PATH)
-            source_payload = {"observed_at": proc_mtime}
-            img_proc = load_gray(PROC_PATH)
-            if img_proc is None:
-                payload = {
-                    "type": "obstacle",
-                    "present": False,
-                    "confidence": 0.0,
-                    "edge_pct": 0.0,
-                    "edge_nz": 0,
-                    "roi": {"y0": 0, "y1": 0, "w": 0, "h": 0},
-                    "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
-                    "ts": now_s(),
-                    "age_s": round(proc_age_s, 3) if finite_number(proc_age_s) else None,
-                    "stale": proc_age_s > SNAP_MAX_AGE_S,
-                    "error": "proc_not_found" if frame_stream is None else "stream_no_frame",
-                    "observed_at": None,
-                    "data_ready": False,
-                }
-                atomic_write_json(OBSTACLE_JSON, payload)
-                publish("vision.obstacle", payload)
-                publish(
-                    "obstacle.map",
-                    {
-                        "present": False,
-                        "confidence": 0.0,
-                        "edge_pct": 0.0,
-                        "ts": payload["ts"],
-                        "source": "obstacle_roi",
-                        "error": payload.get("error", "missing_frame"),
-                        "observed_at": None,
-                        "data_ready": False,
-                    },
-                )
-                time.sleep(0.25)
-                continue
-            img_raw_gray = load_gray(RAW_PATH)
-
-        h, w = img_proc.shape[:2]
-        sl = roi_slice(h, ROI_Y0, ROI_H)
-        y0, y1 = sl.start, sl.stop
-
-        edge_nz, roi_px, edge_pct_raw = edge_stats(img_proc, sl)
-        source_quality = sample_status(source_payload, max_age_s=SNAP_MAX_AGE_S)
-        if not source_quality["ready"] or (edge_times and proc_mtime < edge_times[-1]):
-            edge_hist.clear()
-            edge_times.clear()
-        if source_quality["ready"] and (not edge_times or proc_mtime > edge_times[-1]):
-            edge_hist.append(float(edge_pct_raw))
-            edge_times.append(proc_mtime)
-        edge_pct = median_of(edge_hist)
-
-        if img_raw_gray is None:
-            img_raw_gray = img_proc
-        mean_luma, lap_var = luma_and_focus(img_raw_gray, sl)
-
-        dark = mean_luma < DARK_LUMA
-        blurry = lap_var < LAPL_VAR_MIN
-
-        if dark or blurry:
-            present = True
-        else:
-            if edge_pct <= EDGE_T_LOW:
-                present = True
-            elif edge_pct >= EDGE_T_HIGH:
-                present = False
-            else:
-                present = last_present
-
-        if present:
-            base = 0.0
-            if EDGE_T_LOW > 0:
-                base = clamp((EDGE_T_LOW - edge_pct) / EDGE_T_LOW, 0.0, 1.0)
-            occl = 1.0 if (dark or blurry) else 0.0
-            conf = clamp(CONF_GAIN * base + 0.5 * occl, 0.0, 1.0)
-        else:
-            denom = max(1e-6, 1.0 - EDGE_T_HIGH)
-            base = clamp((edge_pct - EDGE_T_HIGH) / denom, 0.0, 1.0)
-            conf = clamp(CONF_GAIN * base, 0.0, 1.0)
-
-        last_present = present
-
-        if OBST_ANN:
-            try:
-                bins = bins_edge_pcts(img_proc, sl, OBST_BINS) if OBST_BINS > 0 else None
-            except Exception:
-                bins = None
-            draw_overlay(
-                base_gray=img_proc,  # annot na PROC
-                sl=sl,
-                present=present,
-                confidence=float(conf),
-                edge_pct=float(edge_pct),
-                bins_pcts=bins,
-                ann_path=OBST_ANN_PATH,
-            )
-
-        observed_at = min(edge_times) if edge_times else proc_mtime
-        frame_quality = sample_status(dict(source_payload, observed_at=observed_at), max_age_s=SNAP_MAX_AGE_S)
-        payload = {
-            "type": "obstacle",
-            "present": bool(present),
-            "confidence": round(float(conf), 3),
-            "edge_pct": round(float(edge_pct), 4),
-            "edge_nz": int(edge_nz),
-            "roi": {"y0": int(y0), "y1": int(y1), "w": int(w), "h": int(h)},
-            "roi_norm": {"y0": ROI_Y0, "h": ROI_H},
-            "ts": now_s(),
-            "age_s": round(proc_age_s, 3) if finite_number(proc_age_s) else None,
-            "stale": not frame_quality["ready"],
-            "observed_at": observed_at,
-            "data_ready": frame_quality["ready"],
-            "error": source_payload["error"]
-            if isinstance(source_payload.get("error"), str) and source_payload["error"].strip()
-            else frame_quality["error"],
-            "diag": {
-                "edge_pct_raw": round(float(edge_pct_raw), 4),
-                "roi_px": int(roi_px),
-                "mean_luma": round(float(mean_luma), 3),
-                "lap_var": round(float(lap_var), 1),
-                "dark": bool(dark),
-                "blurry": bool(blurry),
-                "t_low": EDGE_T_LOW,
-                "t_high": EDGE_T_HIGH,
-                "conf_gain": CONF_GAIN,
-                "edge_area_pct_legacy": EDGE_AREA_PCT,
-                "edge_pix_min_legacy": EDGE_PIX_MIN,
-                "proc_mtime": proc_mtime,
-            },
-        }
-
-        atomic_write_json(OBSTACLE_JSON, payload)
-        publish("vision.obstacle", payload)
-        publish(
-            "obstacle.map",
-            {
-                "present": bool(present),
-                "confidence": round(float(conf), 3),
-                "edge_pct": round(float(edge_pct), 4),
-                "ts": payload["ts"],
-                "source": "obstacle_roi",
-                "roi": payload["roi_norm"],
-                "observed_at": payload["observed_at"],
-                "data_ready": payload["data_ready"],
-                "stale": payload["stale"],
-                "error": payload["error"],
-            },
-        )
-
-        print(
-            (
-                f"[obst] snap present={payload['present']} conf={payload['confidence']:.2f} "
-                f"pct={payload['edge_pct']:.3f}/{payload['diag']['edge_pct_raw']:.3f} "
-                f"luma={payload['diag']['mean_luma']:.2f} lapv={payload['diag']['lap_var']:.1f} "
-                f"dark={payload['diag']['dark']} blur={payload['diag']['blurry']} "
-                f"roi=({y0}:{y1}/{h})"
-            ),
-            flush=True,
-        )
-
+        sample = _receive_obstacle_frame(frame_stream)
+        if sample is None:
+            continue
+        last_present = _process_obstacle_frame(sample, edge_hist, edge_times, last_present)
         time.sleep(0.1)
 
     # Cleanup
