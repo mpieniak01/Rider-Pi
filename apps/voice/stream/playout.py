@@ -42,12 +42,9 @@ class StreamPlayoutMixin:
 
     def _start_audio_capture(self) -> None:
         """Start audio capture thread (generator → queue)."""
-        from ..svc_audio import capture_continuous
-
         if self._capture_thread and self._capture_thread.is_alive():
             return
 
-        cap_cfg = self._capture_cfg_dict
         sr = int(self._capture_cfg.sample_rate)
         chunk_ms = int(self.stream_cfg.chunk_ms)
         chunk_size = int(self._capture_cfg.bytes_for_ms(chunk_ms))
@@ -60,30 +57,37 @@ class StreamPlayoutMixin:
             channels=int(self._capture_cfg.channels),
         )
 
-        def capture_target():
-            try:
-                for chunk in capture_continuous(cap_cfg, chunk_size):
-                    if self.stop_event.is_set():
-                        break
-                    # barge-in: wyczyść TTS, jeśli aktywny
-                    if self.barge_in_event.is_set():
-                        while not self.tts_player_queue.empty():
-                            try:
-                                _ = self.tts_player_queue.get_nowait()
-                            except queue.Empty:
-                                break
-                        self.barge_in_event.clear()
-                    self.audio_queue.put(chunk)
-            except Exception as e:
-                self.logger.event("capture_thread_error", error=str(e))
-            finally:
-                try:
-                    self.audio_queue.put_nowait(None)
-                except Exception:
-                    pass
-
-        self._capture_thread = threading.Thread(target=capture_target, name="stream-capture", daemon=True)
+        self._capture_thread = threading.Thread(
+            target=lambda: self._capture_worker(chunk_size), name="stream-capture", daemon=True
+        )
         self._capture_thread.start()
+
+    def _drain_tts_queue(self):
+        while not self.tts_player_queue.empty():
+            try:
+                self.tts_player_queue.get_nowait()
+            except queue.Empty:
+                break
+
+    def _capture_worker(self, chunk_size):
+        from ..svc_audio import capture_continuous
+
+        try:
+            for chunk in capture_continuous(self._capture_cfg_dict, chunk_size):
+                if self.stop_event.is_set():
+                    break
+                # barge-in: wyczyść TTS, jeśli aktywny
+                if self.barge_in_event.is_set():
+                    self._drain_tts_queue()
+                    self.barge_in_event.clear()
+                self.audio_queue.put(chunk)
+        except Exception as e:
+            self.logger.event("capture_thread_error", error=str(e))
+        finally:
+            try:
+                self.audio_queue.put_nowait(None)
+            except Exception:
+                pass
 
     # ──────────────────────────────────────────────────────────────────────────
     # TTS playback worker
@@ -93,56 +97,62 @@ class StreamPlayoutMixin:
         if self._tts_player_thread and self._tts_player_thread.is_alive():
             return
 
-        def player_target():
-            # Używamy audio.playback.start_stream; PlaybackConfig mamy w self._playback_cfg
-            from ..audio.playback import start_stream  # type: ignore
-            from .state import PTTEvent
-
-            stream = None
-            try:
-                while not self.stop_event.is_set():
-                    try:
-                        chunk = self.tts_player_queue.get(timeout=1.0)
-                    except queue.Empty:
-                        continue
-
-                    if chunk is None:
-                        if stream:
-                            try:
-                                stream.close()
-                            except Exception as e:
-                                self.logger.event("tts.stream.close_error", error=str(e))
-                            stream = None
-                        continue
-
-                    if stream is None:
-                        try:
-                            # Oczekujemy PCM16; session.update ustawia output_audio_format=pcm16/16k/mono.
-                            stream = start_stream("pcm16", self._playback_cfg, self.logger)
-                            self.ptt_state.transition(PTTEvent.TTS_START)
-                        except Exception as e:
-                            self.logger.event("tts.stream.start_error", error=str(e))
-                            stream = None
-
-                    if stream:
-                        try:
-                            stream.write(chunk)
-                        except Exception as e:
-                            self.logger.event("tts.stream.write_error", error=str(e))
-                            try:
-                                stream.close()
-                            except Exception:
-                                pass
-                            stream = None
-            except Exception as e:
-                self.logger.event("tts_player_thread_error", error=str(e))
-            finally:
-                if stream:
-                    with contextlib.suppress(Exception):
-                        stream.close()
-
-        self._tts_player_thread = threading.Thread(target=player_target, name="stream-tts-player", daemon=True)
+        self._tts_player_thread = threading.Thread(
+            target=self._tts_player_worker, name="stream-tts-player", daemon=True
+        )
         self._tts_player_thread.start()
+
+    def _close_tts_stream(self, stream, *, log_error=False):
+        if not stream:
+            return
+        try:
+            stream.close()
+        except Exception as exc:
+            if log_error:
+                self.logger.event("tts.stream.close_error", error=str(exc))
+
+    def _start_tts_stream(self):
+        from ..audio.playback import start_stream
+        from .state import PTTEvent
+
+        try:
+            stream = start_stream("pcm16", self._playback_cfg, self.logger)
+            self.ptt_state.transition(PTTEvent.TTS_START)
+            return stream
+        except Exception as exc:
+            self.logger.event("tts.stream.start_error", error=str(exc))
+            return None
+
+    def _write_tts_chunk(self, stream, chunk):
+        if chunk is None:
+            self._close_tts_stream(stream, log_error=True)
+            return None
+        if stream is None:
+            stream = self._start_tts_stream()
+        if stream:
+            try:
+                stream.write(chunk)
+            except Exception as exc:
+                self.logger.event("tts.stream.write_error", error=str(exc))
+                self._close_tts_stream(stream)
+                return None
+        return stream
+
+    def _tts_player_worker(self):
+        stream = None
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    chunk = self.tts_player_queue.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+                stream = self._write_tts_chunk(stream, chunk)
+        except Exception as exc:
+            self.logger.event("tts_player_thread_error", error=str(exc))
+        finally:
+            if stream:
+                with contextlib.suppress(Exception):
+                    stream.close()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Cleanup
