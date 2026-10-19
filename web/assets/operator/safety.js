@@ -118,9 +118,8 @@ export class SafetyPanel {
     if (action === 'height' && (!Number.isInteger(params.height) || params.height < 75 || params.height > 115)) throw new Error(tr('Wysokość musi być liczbą całkowitą 75–115', 'Height must be an integer 75–115'));
     if (action === 'action' && (!Number.isInteger(params.action_id) || params.action_id < 1 || params.action_id > 255)) throw new Error(tr('ID akcji musi być liczbą całkowitą 1–255', 'Action ID must be an integer 1–255'));
   }
-  async prepareSend(action) {
-    await this.prepare(action);
-    if (action === 'move' && this.controls && this.state?.arming_mode !== 'operator') await this.controls.refresh();
+  needsSettingsRefresh(action) {
+    return action === 'move' && this.controls && this.state?.arming_mode !== 'operator';
   }
   confirmSendSettings(action,params) {
     if (action === 'move' && this.controls) {
@@ -163,7 +162,8 @@ export class SafetyPanel {
     if (!exempt) {
       this.mutating = true; this.render();
       try {
-        await this.prepareSend(action);
+        await this.prepare(action);
+        if (this.needsSettingsRefresh(action)) await this.controls.refresh();
         // Keep revision confirmation, envelope creation and dispatch in this continuation.
         params=this.confirmSendSettings(action,params);
       } catch (error) { this.mutating = false; this.render(); throw error; }

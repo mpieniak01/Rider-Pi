@@ -46,7 +46,7 @@ async function fixture(file,{globals={},replacements={}}={}) {
   const loaded=await load(new URL(file,assets));
   await loaded.link((specifier,parent)=>load(new URL(specifier,parent.identifier)));
   await loaded.evaluate();
-  return {namespace:loaded.namespace,requests,node,nodes,timers};
+  return {namespace:loaded.namespace,requests,node,nodes,timers,context};
 }
 function safetyOf(f) {
   const panel=Object.create(f.namespace.SafetyPanel.prototype);
@@ -246,4 +246,24 @@ test('final safety settings check, envelope and dispatch precede queued STOP epo
   await panel.send('move',{direction:'forward'});
   assert.deepEqual(events,['settings-confirmed','envelope','dispatch','queued-stop-epoch']);
   assert.equal(panel.toggleEpoch,1);
+});
+
+
+test('safety dispatch keeps the original prepare completion continuation before queued STOP',async()=>{
+  const events=[];
+  const f=await fixture('safety.js',{replacements:{'transport.js':{
+    request:async()=>{events.push('dispatch');return {status:202,data:{pending:true}};},
+    poll:()=>({refresh(){}}),prepareMutation:async()=>{},
+  }}});
+  const panel=safetyOf(f);
+  f.context.stopFixture=()=>{panel.toggleEpoch++;events.push('queued-stop-epoch');};
+  // Same-realm fixture Promise avoids introducing cross-realm await assimilation.
+  panel.prepare=vm.runInContext("() => { const ready=Promise.resolve(); ready.then(()=>Promise.resolve().then(()=>stopFixture())); return ready; }",f.context);
+  panel.envelope=(action,params)=>{
+    assert.equal(panel.toggleEpoch,0);
+    events.push('envelope');
+    return {...params,action,request_id:'fixture'};
+  };
+  await panel.send('height',{height:90});
+  assert.deepEqual(events,['envelope','dispatch','queued-stop-epoch']);
 });
