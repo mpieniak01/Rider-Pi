@@ -188,7 +188,7 @@ class ComputeClient:
         code = 'compute_http_error'
         try:
             candidate = json.loads(data)['detail']['code']
-            if isinstance(candidate, str) and re.fullmatch('[a-zA-Z0-9_]{1,100}', candidate):
+            if isinstance(candidate, str) and re.fullmatch(r'\w{1,100}', candidate, re.ASCII):
                 code = candidate
         except (ValueError, TypeError, KeyError):
             pass
@@ -311,7 +311,7 @@ class ComputeClient:
 
     def _admit_job_capacity(self):
         if len(self._jobs) >= 32:
-            for job_id, pending in list(self._jobs.items()):
+            for job_id, pending in self._jobs.items():
                 if pending.observation and pending.observation.get('state') in TERMINAL:
                     self._jobs.pop(job_id)
                     break

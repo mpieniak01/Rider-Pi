@@ -86,9 +86,9 @@ class DecisionLease:
     def tick(self):
         with self.lock:
             now = self.clock()
-            if self.feedback_deadline is not None and now >= self.feedback_deadline:
-                self._halt("decision_timeout")
-            elif self.deadline is not None and now >= self.deadline and not self._wait_for_feedback(now):
+            if (self.feedback_deadline is not None and now >= self.feedback_deadline) or (
+                self.deadline is not None and now >= self.deadline and not self._wait_for_feedback(now)
+            ):
                 self._halt("decision_timeout")
             return not self.latched
 

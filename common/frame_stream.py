@@ -103,7 +103,7 @@ class FrameStreamClient:
             return None
         try:
             metadata = json.loads(parts[1])
-        except (ValueError, TypeError, UnicodeDecodeError):
+        except (ValueError, TypeError):
             return None
         if not isinstance(metadata, dict):
             return None

@@ -249,19 +249,18 @@ def observation(
     partial = any(name not in rows or rows[name].get("ready") is not True for name in SENSORS)
     ready = not partial and not offline and not error
     yaw = rows.get("yaw")
-    yaw_display = (
-        {
+    yaw_display = None
+    if yaw is not None:
+        display_value = round((yaw["value"] + 180) % 360 - 180, 2) if finite(yaw.get("value")) else None
+        yaw_display = {
             **yaw,
-            "value": round((yaw["value"] + 180) % 360 - 180, 2) if finite(yaw.get("value")) else None,
+            "value": display_value,
             "unit": "legacy_wrapped_degrees",
             "display_only": True,
             "derivation": "legacy_wrap_180",
             "physical_validity": "unverified",
             "physical_validation": "unverified",
         }
-        if yaw is not None
-        else None
-    )
     return {
         "contract_id": CONTRACT_ID,
         "contract_version": CONTRACT_VERSION,
