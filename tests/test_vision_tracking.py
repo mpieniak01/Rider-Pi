@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 from types import ModuleType
+from unittest.mock import Mock
 
 import pytest
 
@@ -38,83 +39,71 @@ def test_vision_api_endpoints_exist():
 
 def test_tracker_imports(detector_sdk):
     """Verify tracker module can be imported."""
-    try:
-        import apps.vision.tracker_mediapipe as tracker
+    import apps.vision.tracker_mediapipe as tracker
 
-        assert hasattr(tracker, "tracking_loop")
-        assert hasattr(tracker, "control_loop")
-        assert callable(tracker.tracking_loop)
-        assert callable(tracker.control_loop)
-    except ImportError as e:
-        # MediaPipe might not be available in test environment
-        pytest.skip(f"Tracker module import failed (expected in CI): {e}")
+    assert hasattr(tracker, "tracking_loop")
+    assert hasattr(tracker, "control_loop")
+    assert callable(tracker.tracking_loop)
+    assert callable(tracker.control_loop)
 
 
 def test_tracking_controller_imports():
     """Verify tracking controller module can be imported."""
-    try:
-        import apps.motion.tracking_controller as controller
+    import apps.motion.tracking_controller as controller
 
-        assert hasattr(controller, "TrackingController")
-        assert hasattr(controller, "main")
-        assert callable(controller.main)
+    assert hasattr(controller, "TrackingController")
+    assert hasattr(controller, "main")
+    assert callable(controller.main)
 
-        # Check controller has expected methods
-        tc = controller.TrackingController()
-        assert hasattr(tc, "on_tracking_offset")
-        assert hasattr(tc, "watchdog_loop")
-        assert callable(tc.on_tracking_offset)
-        assert callable(tc.watchdog_loop)
-    except Exception as e:
-        # XgoAdapter might not be available in test environment
-        pytest.skip(f"Tracking controller import failed (expected in CI): {e}")
+    # Check controller has expected methods
+    tc = controller.TrackingController(bus=Mock())
+    assert hasattr(tc, "on_tracking_offset")
+    assert hasattr(tc, "watchdog_loop")
+    assert callable(tc.on_tracking_offset)
+    assert callable(tc.watchdog_loop)
 
 
 def test_tracking_offset_calculation(detector_sdk):
     """Test offset calculation logic."""
-    try:
-        import apps.vision.tracker_mediapipe as tracker
+    import apps.vision.tracker_mediapipe as tracker
 
-        # Mock detection with bounding box at different positions
-        class MockDetection:
-            class LocationData:
-                class BBox:
-                    def __init__(self, xmin, width):
-                        self.xmin = xmin
-                        self.width = width
-
+    # Mock detection with bounding box at different positions
+    class MockDetection:
+        class LocationData:
+            class BBox:
                 def __init__(self, xmin, width):
-                    self.relative_bounding_box = self.BBox(xmin, width)
-
-                def HasField(self, field):
-                    return field == "relative_bounding_box"
+                    self.xmin = xmin
+                    self.width = width
 
             def __init__(self, xmin, width):
-                self.location_data = self.LocationData(xmin, width)
+                self.relative_bounding_box = self.BBox(xmin, width)
 
-        # Test center position (should be ~0)
-        center_det = MockDetection(0.25, 0.5)  # center at 0.5
-        offset = tracker.calculate_offset_x([center_det], 640)
-        assert abs(offset) < 0.1  # Should be in dead zone
+            def HasField(self, field):
+                return field == "relative_bounding_box"
 
-        # Test left position
-        left_det = MockDetection(0.0, 0.2)  # center at 0.1
-        offset = tracker.calculate_offset_x([left_det], 640)
-        assert offset is not None
-        assert offset < -0.1  # Should be negative (left)
+        def __init__(self, xmin, width):
+            self.location_data = self.LocationData(xmin, width)
 
-        # Test right position
-        right_det = MockDetection(0.7, 0.2)  # center at 0.8
-        offset = tracker.calculate_offset_x([right_det], 640)
-        assert offset is not None
-        assert offset > 0.1  # Should be positive (right)
+    # Test center position (should be ~0)
+    center_det = MockDetection(0.25, 0.5)  # center at 0.5
+    offset = tracker.calculate_offset_x([center_det], 640)
+    assert abs(offset) < 0.1  # Should be in dead zone
 
-        # Test no detections
-        offset = tracker.calculate_offset_x([], 640)
-        assert offset is None
+    # Test left position
+    left_det = MockDetection(0.0, 0.2)  # center at 0.1
+    offset = tracker.calculate_offset_x([left_det], 640)
+    assert offset is not None
+    assert offset < -0.1  # Should be negative (left)
 
-    except ImportError:
-        pytest.skip("Tracker module not available (expected in CI)")
+    # Test right position
+    right_det = MockDetection(0.7, 0.2)  # center at 0.8
+    offset = tracker.calculate_offset_x([right_det], 640)
+    assert offset is not None
+    assert offset > 0.1  # Should be positive (right)
+
+    # Test no detections
+    offset = tracker.calculate_offset_x([], 640)
+    assert offset is None
 
 
 def test_proportional_controller_logic():

@@ -80,3 +80,24 @@ tylko dlatego, że nie należą do minimalnego profilu.
 Zgoda na instalację pakietów WSL, kamerę lub wdrożenie nie uzbraja ruchu.
 Zasady ruchu: [bezpieczeństwo](apps/safety.md). Dwie ścieżki kodu:
 [podgląd lokalnego commita i wydanie przez GH](WDROZENIE.md).
+
+## Wiarygodność sprawdzeń i raporty symulatora
+
+Asercje i konstrukcja obiektu testowanego nie mogą być objęte blokiem, który
+zamienia dowolny wyjątek w `pytest.skip`. W testach kontraktu importy wymaganych
+modułów muszą się udać; opcjonalne SDK sprzętu są jawnymi atrapami. Test
+kontrolera trackingu wstrzykuje atrapę BUS i nie uruchamia wykonawcy ruchu.
+
+`tests/acceptance_criteria.py` i `tests/verify_sim1_acceptance.py` uruchamiają
+sprawdzenia dopiero przez `main()` lub wywołanie skryptu. Wspólny runner
+`tests/acceptance_report.py` zbiera wynik każdego kryterium: kod wyjścia `0`
+oznacza zaliczenie wszystkich, `1` co najmniej jeden błąd, a `2` brak kryteriów.
+Błąd asercji pozostaje porażką, kolejne kryteria nadal są wykonywane. Okno
+symulatora jest zamykane także po błędzie; ustawienie sterownika SDL jest
+przywracane. Raporty uruchamiamy wyłącznie w środowisku programowym z odizolowanym
+BUS; ich testy regresji używają atrap świata, kamery i robota.
+
+Pusta lista usług smoke systemd oznacza jawnie nazwane pominięcie, bez
+wywołania usług. Nie dodajemy usług robota w celu zaliczenia testu. Kod statusu
+`4` (nieznany unit) nie zalicza sprawdzenia istnienia usługi. Operacje start/stop
+i daemon-reload są oznaczone jako sprzętowe i wyłączone z automatycznego pytest.

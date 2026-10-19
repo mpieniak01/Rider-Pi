@@ -48,12 +48,21 @@ def systemd_dir(repo_root):
     return repo_root / "systemd"
 
 
-# Whitelist of services safe to test in smoke tests
-# These are non-critical services that can be started/stopped without breaking the system
-SMOKE_TEST_SERVICES = [
-    # Note: We only test services that are safe to start/stop
-    # Critical services like SSH or network services are excluded
-]
+# Empty by design: automatic tests are not authorized to start robot services.
+SMOKE_TEST_SERVICES = []
+
+
+def smoke_service_cases():
+    """An empty authorization list is an explicit skip, never a passing exercise."""
+    if SMOKE_TEST_SERVICES:
+        return SMOKE_TEST_SERVICES
+    return [
+        pytest.param(
+            None,
+            id="no-authorized-services",
+            marks=pytest.mark.skip(reason="No services authorized for smoke operations"),
+        )
+    ]
 
 
 class TestSystemdSmoke:
@@ -91,7 +100,7 @@ class TestSystemdSmoke:
         os.getenv("SYSTEMD_SMOKE_TESTS") != "1",
         reason="Set SYSTEMD_SMOKE_TESTS=1 to enable smoke tests",
     )
-    @pytest.mark.parametrize("service_name", SMOKE_TEST_SERVICES)
+    @pytest.mark.parametrize("service_name", smoke_service_cases())
     def test_service_can_be_checked(self, service_name):
         """Test that service status can be checked."""
         # Try system-level first, then user-level
@@ -102,7 +111,7 @@ class TestSystemdSmoke:
             )
             # Status check should not fail completely (service may be inactive, that's OK)
             # We just verify the service is known to systemd
-            if result.returncode in (0, 3, 4):  # 0=active, 3=inactive, 4=not found
+            if result.returncode in (0, 3):  # 0=active, 3=inactive; 4 is unknown, not success
                 return
 
         pytest.fail(f"Service {service_name} not found in system or user scope")
@@ -111,7 +120,8 @@ class TestSystemdSmoke:
         os.getenv("SYSTEMD_SMOKE_TESTS") != "1" or os.getenv("SYSTEMD_SMOKE_FULL") != "1",
         reason="Set SYSTEMD_SMOKE_TESTS=1 and SYSTEMD_SMOKE_FULL=1 to enable full smoke tests",
     )
-    @pytest.mark.parametrize("service_name", SMOKE_TEST_SERVICES)
+    @pytest.mark.parametrize("service_name", smoke_service_cases())
+    @pytest.mark.hardware
     def test_service_start_stop(self, service_name):
         """
         Test that service can be started and stopped.
@@ -174,6 +184,7 @@ class TestSystemdSmoke:
 class TestSystemdIntegration:
     """Integration tests that verify systemd configuration without starting services."""
 
+    @pytest.mark.hardware
     def test_daemon_reload_succeeds(self, systemd_dir):
         """Test that systemd daemon-reload succeeds with current service files."""
         if os.getenv("SYSTEMD_SMOKE_TESTS") != "1":
