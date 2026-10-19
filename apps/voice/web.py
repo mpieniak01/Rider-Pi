@@ -288,7 +288,7 @@ def api_tts_test():
 @app.post("/api/tts")
 def api_tts():
     """
-    JSON in: { "text": "...", "backend|provider": "openai|gemini|local|piper", "format": "wav|mp3", "voice": "..." }
+    JSON in: { "text": "...", "backend|provider": "openai|local|piper", "format": "wav|mp3", "voice": "..." }
     Domyślnie zwraca **audio/wav** (surowe bajty).
     Dodaj ?b64=1 aby dostać JSON: { audio_b64: "..." }.
     """
@@ -302,6 +302,9 @@ def api_tts():
         backend = (
             (payload.get("backend") or payload.get("provider") or payload.get("tts") or configured).strip().lower()
         )
+
+        if backend in {"google", "gemini"}:
+            return jsonify({"status": "error", "error": "Google/Gemini SDK integration is disabled"}), 400
 
         # 1) Kanał lokalny (Piper)
         if backend in ("local", "piper"):
@@ -329,7 +332,7 @@ def api_tts():
                 headers={"Content-Disposition": TTS_CONTENT_DISPOSITION},
             )
 
-        # 2) Pozostałe kanały – OpenAI/Gemini
+        # 2) Pozostałe kanały – OpenAI
         from . import config as voice_config
         from .tts import TTSConfig, synthesize
 

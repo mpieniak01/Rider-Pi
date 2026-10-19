@@ -252,7 +252,7 @@ def test_known_self_descriptor_is_allowed_but_power_helper_needs_free(monkeypatc
 
 def test_power_off_uses_installed_xgo_gpio_zero_without_reset(monkeypatch):
     monkeypatch.delenv("FACE_LCD_BL_PIN", raising=False)
-    monkeypatch.setattr("apps.ui.lcd_power.os.geteuid", lambda: 1000)
+    monkeypatch.setattr("apps.ui.lcd_power.os", SimpleNamespace(geteuid=lambda: 1000))
     commands = []
 
     def run(command, **kwargs):

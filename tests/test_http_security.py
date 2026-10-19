@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from flask import Flask, Response, jsonify, request
+from werkzeug.test import EnvironBuilder
 
 from services.api_core import http_security
 
@@ -14,6 +15,7 @@ from services.api_core import http_security
 @pytest.fixture
 def world(monkeypatch):
     monkeypatch.delenv("RIDER_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.delenv("RIDER_TRUSTED_HOSTS", raising=False)
     app = Flask(__name__)
     http_security.install(app)
     effects = []
@@ -300,3 +302,15 @@ def test_operator_can_explicitly_trust_a_reverse_proxy_hostname(world, monkeypat
     response = client.post("/mutate", json={}, headers={"Host": "rider.example", "Origin": "http://rider.example"})
     assert response.status_code == 200
     assert len(effects) == 1
+
+
+@pytest.mark.parametrize("host", ["[::1", "localhost:bad", "user@localhost", "localhost/path"])
+def test_malformed_host_is_rejected_without_handler_effect(world, host):
+    client, effects = world
+    environ = EnvironBuilder(
+        path="/mutate", method="POST", json={}, headers={"Origin": "http://localhost"}
+    ).get_environ()
+    environ["HTTP_HOST"] = host
+    response = Response.from_app(client.application, environ)
+    assert response.status_code == 400
+    assert effects == []

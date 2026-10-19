@@ -46,52 +46,9 @@ _PROVIDER_DEFS: list[dict[str, Any]] = [
         "description": "Chmurowy TTS OpenAI (wymaga OPENAI_API_KEY).",
         "service": None,
     },
-    {
-        "id": "google",
-        "label": "Google Gemini Kore",
-        "backend": "google",
-        "voice": "Kore",
-        "model": "gemini-2.5-flash-preview-tts",
-        "description": "Chmurowy TTS Gemini (wymaga GOOGLE_API_KEY).",
-        "service": None,
-    },
 ]
 
 _PROVIDER_STATUS: dict[str, dict[str, Any]] = {}
-_GOOGLE_ALLOWED_VOICES = {
-    "achernar",
-    "achird",
-    "algenib",
-    "algieba",
-    "alnilam",
-    "aoede",
-    "autonoe",
-    "callirrhoe",
-    "charon",
-    "despina",
-    "enceladus",
-    "erinome",
-    "fenrir",
-    "gacrux",
-    "iapetus",
-    "kore",
-    "laomedeia",
-    "leda",
-    "orus",
-    "puck",
-    "pulcherrima",
-    "rasalgethi",
-    "sadachbia",
-    "sadaltager",
-    "schedar",
-    "sulafat",
-    "umbriel",
-    "vindemiatrix",
-    "zephyr",
-    "zubenelgenubi",
-}
-_GOOGLE_DEFAULT_VOICE = "Kore"
-
 # ──────────────────────────────────────────────────────────────────────────────
 # CORS / preflight
 # ──────────────────────────────────────────────────────────────────────────────
@@ -113,22 +70,10 @@ def _preflight() -> Response:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _normalized_provider(entry: dict[str, Any]) -> dict[str, Any]:
-    data = dict(entry)
-    backend = (data.get("backend") or "").lower()
-    if backend == "google":
-        voice = (data.get("voice") or "").strip()
-        if voice.lower() not in _GOOGLE_ALLOWED_VOICES:
-            voice = _GOOGLE_DEFAULT_VOICE
-        data["voice"] = voice
-        data.setdefault("model", "gemini-2.5-flash-preview-tts")
-    return data
-
-
 def _provider_lookup(provider_id: str) -> dict[str, Any] | None:
     for entry in _PROVIDER_DEFS:
         if entry["id"] == provider_id:
-            return _normalized_provider(entry)
+            return dict(entry)
     return None
 
 
@@ -165,7 +110,7 @@ def _service_status(alias: str | None) -> dict[str, Any] | None:
 
 def _probe_provider(entry: dict[str, Any]) -> dict[str, Any]:
     started = time.time()
-    entry = _normalized_provider(entry)
+    entry = dict(entry)
     payload: dict[str, Any] = {
         "text": PROVIDER_TEST_TEXT,
         "backend": entry["backend"],
@@ -275,7 +220,7 @@ def providers_list_handler():
 
     payload = []
     for entry_raw in _PROVIDER_DEFS:
-        entry = _normalized_provider(entry_raw)
+        entry = dict(entry_raw)
         service_alias = entry.get("service")
         payload.append(
             {
@@ -349,6 +294,9 @@ def tts_local_handler():
         text = (payload.get("text") or "").strip()
         if not text:
             return _cors(jsonify({"ok": False, "error": "missing text"})), 400
+        backend = str(payload.get("backend") or payload.get("provider") or "").strip().lower()
+        if backend in {"google", "gemini"}:
+            return _cors(jsonify({"ok": False, "error": "Google/Gemini SDK integration is disabled"})), 400
         passthrough["text"] = text
 
         data = json.dumps(passthrough).encode("utf-8")

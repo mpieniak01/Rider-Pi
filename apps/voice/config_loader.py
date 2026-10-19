@@ -16,14 +16,14 @@ except Exception:  # py3.9/3.10
 
 
 def _normalize_backends(d: dict[str, Any]) -> dict[str, Any]:
-    """Normalizuje wartości backendów (lower-case, alias 'gemini' -> 'google')."""
+    """Normalizuje backendy i odrzuca wyłączoną integrację Google SDK."""
     out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in d.items()}
     for sec in ("asr", "chat", "tts", "nlu", "playback"):
         secv = out.get(sec)
         if isinstance(secv, dict) and "backend" in secv:
             b = str(secv["backend"]).strip().lower()
-            if b == "gemini":
-                b = "google"
+            if sec in {"asr", "chat", "tts"} and b in {"google", "gemini"}:
+                raise ValidationError("Google/Gemini SDK integration is disabled; select a supported voice backend")
             secv["backend"] = b
     return out
 

@@ -49,7 +49,11 @@ def _origin(value):
 
 def trusted_host():
     """Host is request input; never use an arbitrary DNS name as CSRF authority."""
-    target = _origin(request.host_url.rstrip("/"))
+    # Parse raw authority before Werkzeug normalizes it (invalid ports/brackets may raise).
+    authority = request.headers.get("Host")
+    target = (
+        _origin(f"{request.scheme}://{authority}") if authority is not None else _origin(request.host_url.rstrip("/"))
+    )
     if target is None:
         return False
     host = target[1]

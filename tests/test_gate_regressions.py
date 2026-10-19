@@ -188,3 +188,43 @@ def test_diagnostic_cli_rejects_unapproved_targets(value):
     diagnostic = load("scripts/diag_motion-status.py")
     with pytest.raises(ValueError):
         diagnostic.diagnostic_base(value)
+
+
+def test_invalid_lcd_lease_is_unconfirmed_without_attempting_power_control(tmp_path, monkeypatch):
+    from apps.ui.lcd_power import off_if_free
+
+    path = tmp_path / "lcd.lock"
+    path.symlink_to(tmp_path / "victim")
+    monkeypatch.setenv("RIDER_LCD_OWNER_LOCK", str(path))
+    result = off_if_free(
+        probe=lambda: {"free": True, "holders": []},
+        runner=lambda *a, **kw: pytest.fail("unsafe lease must not actuate"),
+    )
+    assert result["ok"] is False
+    assert result["on"] is None
+    assert result["error"] == "lcd_owned_or_unknown"
+
+
+def test_ssh_payload_keeps_device_path_as_one_quoted_json_argument(tmp_path, monkeypatch):
+    import json
+    import shlex
+
+    deploy = load("scripts/dev_pi-deploy.py")
+    env_file = tmp_path / "ssh.env"
+    env_file.touch(mode=0o600)
+    monkeypatch.setattr(deploy, "run", lambda *a, **kw: SimpleNamespace(stdout="localhost\npi\n22\n"))
+    captured = []
+
+    def fake_ssh(args, **kwargs):
+        captured.append(args)
+        return SimpleNamespace(returncode=0, stdout=b'{"ok":true}', stderr=b"")
+
+    monkeypatch.setattr(deploy.subprocess, "run", fake_ssh)
+    path = str(tmp_path / "device's $(touch must-not-exist)")
+    request = {"action": "status", "repo": path}
+    assert deploy.ssh(env_file, request, b"") == {"ok": True}
+    arguments = shlex.split(captured[0][-1])
+    assert arguments[:2] == ["python3", "-c"]
+    assert arguments[-2] == "_remote"
+    assert json.loads(arguments[-1]) == request
+    assert not (tmp_path / "must-not-exist").exists()

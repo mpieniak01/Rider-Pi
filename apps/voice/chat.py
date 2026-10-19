@@ -45,7 +45,7 @@ _MARKDOWN_CLEANER = re.compile(r"[`*#_~]")
 def _clean_markdown(text: str) -> str:
     """
     Usuwa podstawowe znaki formatujące markdown (jak ```, *, _, #),
-    które mogą być zwracane przez modele Gemini i powodować błędy TTS.
+    które mogą powodować błędy TTS.
     """
     if not text:
         return ""
@@ -101,15 +101,6 @@ class ChatSession:
 
     _build_messages_openai = _build_role_messages
 
-    def _build_history_gemini(self) -> list[dict[str, list[str]]]:
-        history: list[dict[str, list[str]]] = []
-        max_pairs = self._history_pairs_limit()
-        if max_pairs > 0:
-            for item in self._history[-max_pairs * 2 :]:
-                role = "model" if item.role == "assistant" else item.role
-                history.append({"role": role, "parts": [item.content]})
-        return history
-
     _build_messages_local = _build_role_messages
 
     def ask(self, text: str) -> tuple[str, list[Message]]:
@@ -122,8 +113,8 @@ class ChatSession:
 
         if backend == "openai":
             reply = self._ask_openai(cleaned_text)  # Użyj cleaned_text
-        elif backend == "google":
-            reply = self._ask_gemini(cleaned_text)  # Użyj cleaned_text
+        elif backend.strip() in {"google", "gemini"}:
+            raise ChatError("Google/Gemini SDK integration is disabled; select a supported chat backend")
         elif backend == "local":
             reply = self._ask_local_http(cleaned_text)  # Użyj cleaned_text
         else:
@@ -156,6 +147,9 @@ class ChatSession:
         cleaned_text = _clean_markdown(text)
         # === KONIEC POPRAWKI ===
 
+        if backend.strip() in {"google", "gemini"}:
+            raise ChatError("Google/Gemini SDK integration is disabled; select a supported chat backend")
+
         # Dodaj wiadomość użytkownika do historii
         self._history.append(Message(role="user", content=cleaned_text))
 
@@ -163,14 +157,6 @@ class ChatSession:
             # Streamujące wywołanie OpenAI
             full_reply = ""
             async for chunk in self._ask_openai_stream(cleaned_text):  # Użyj cleaned_text
-                full_reply += chunk
-                yield chunk
-            self._history.append(Message(role="assistant", content=_clean_markdown(full_reply)))  # Zapisz wyczyszczoną
-
-        elif backend == "google":
-            # Quasi-streaming dla Google Gemini
-            full_reply = ""
-            async for chunk in self._ask_gemini_stream(cleaned_text):  # Użyj cleaned_text
                 full_reply += chunk
                 yield chunk
             self._history.append(Message(role="assistant", content=_clean_markdown(full_reply)))  # Zapisz wyczyszczoną
@@ -244,63 +230,6 @@ class ChatSession:
         except Exception as exc:
             self._evt("chat.rest.error", error=str(exc))
             raise ChatError(f"OpenAI chat completion failed: {exc}") from exc
-
-    def _ask_gemini(self, text: str) -> str:
-        """
-        REST-owe wywołanie Google Gemini API.
-        W STRICT mode blokujemy REST, jeśli transport="realtime".
-        """
-        # TWARDY BEZPIECZNIK: brak REST, gdy żądany jest realtime
-        if (self.config.transport or "").lower() == "realtime":
-            raise ChatError("Chat REST disabled when transport=realtime")
-
-        # Minimalna walidacja
-        if not self.config.model:
-            raise ChatError("Google model not configured")
-        if not self.config.backend or self.config.backend.lower() != "google":
-            raise ChatError("Google backend not selected")
-
-        # Klucz API – dla REST wymagany
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ChatError("GOOGLE_API_KEY is not set")
-
-        try:
-            import google.generativeai as genai  # type: ignore
-        except Exception as exc:  # pragma: no cover - opcjonalna zależność
-            raise ChatError(f"Google Generative AI SDK unavailable: {exc}") from exc
-
-        # Konfiguruj API
-        genai.configure(api_key=api_key)
-
-        history = self._build_history_gemini()
-
-        # Wywołanie API (REST)
-        try:
-            self._evt("chat.rest.request", model=self.config.model, msg_count=len(history) + 1)
-
-            # Utwórz model z system instruction
-            model = genai.GenerativeModel(
-                model_name=self.config.model,
-                system_instruction=self.config.system_prompt,
-            )
-
-            # Rozpocznij chat z historią
-            chat = model.start_chat(history=history)
-
-            # Wyślij wiadomość
-            response = chat.send_message(text)
-            text_out = (response.text or "").strip()
-
-            # === POCZĄTEK POPRAWKI: Czyszczenie odpowiedzi ===
-            cleaned_text_out = _clean_markdown(text_out)
-            self._evt("chat.rest.ok", chars=len(cleaned_text_out), raw_chars=len(text_out))
-            return cleaned_text_out
-            # === KONIEC POPRAWKI ===
-
-        except Exception as exc:
-            self._evt("chat.rest.error", error=str(exc))
-            raise ChatError(f"Google Gemini chat completion failed: {exc}") from exc
 
     def _ask_local_http(self, text: str, *, realtime_guard: bool = True) -> str:
         """
@@ -414,67 +343,6 @@ class ChatSession:
         except Exception as exc:
             self._evt("chat.stream.error", error=str(exc))
             raise ChatError(f"OpenAI chat streaming failed: {exc}") from exc
-
-    async def _ask_gemini_stream(self, text: str):
-        """
-        Asynchroniczne streamujące wywołanie Google Gemini API.
-        Używane w trybie realtime — nie blokuje jak REST.
-        Zwraca async generator produkujący fragmenty odpowiedzi.
-        """
-        # Minimalna walidacja
-        if not self.config.model:
-            raise ChatError("Google model not configured")
-        if not self.config.backend or self.config.backend.lower() != "google":
-            raise ChatError("Google backend not selected")
-
-        # Klucz API
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ChatError("GOOGLE_API_KEY is not set")
-
-        try:
-            import google.generativeai as genai  # type: ignore
-        except Exception as exc:  # pragma: no cover - opcjonalna zależność
-            raise ChatError(f"Google Generative AI SDK unavailable: {exc}") from exc
-
-        # Konfiguruj API
-        genai.configure(api_key=api_key)
-
-        history = []
-        max_pairs = self._history_pairs_limit()
-        if max_pairs > 0:
-            for item in self._history[:-1][-max_pairs * 2 :]:
-                role = "model" if item.role == "assistant" else item.role
-                history.append({"role": role, "parts": [item.content]})
-
-        # Wywołanie API (streaming)
-        try:
-            self._evt(
-                "chat.stream.request",
-                model=self.config.model,
-                msg_count=len(history) + 1,
-            )
-
-            model = genai.GenerativeModel(
-                model_name=self.config.model,
-                system_instruction=self.config.system_prompt,
-            )
-            chat = model.start_chat(history=history)
-
-            response = await chat.send_message_async(text, stream=True)
-
-            async for chunk in response:
-                if chunk.text:
-                    # === POCZĄTEK POPRAWKI: Czyszczenie strumienia ===
-                    # Czyścimy na bieżąco, ale to może być ryzykowne
-                    # Lepsza strategia: czyścić całą odpowiedź na końcu
-                    yield chunk.text
-                    # === KONIEC POPRAWKI ===
-
-            self._evt("chat.stream.ok")
-        except Exception as exc:
-            self._evt("chat.stream.error", error=str(exc))
-            raise ChatError(f"Google Gemini chat streaming failed: {exc}") from exc
 
     def reset(self) -> None:
         self._history.clear()

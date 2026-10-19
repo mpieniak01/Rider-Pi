@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from apps.google_bridge.config import load_config
+from common.secure_files import atomic_write
 
 # Load configuration (TOML > ENV > defaults)
 _cfg = load_config()
@@ -28,9 +29,6 @@ GOOGLE_POLL_S = _cfg.poll_interval_s
 GOOGLE_ENABLED = _cfg.enabled
 DATA_DIR = Path(_cfg.data_dir)
 GOOGLE_DATA_DIR = DATA_DIR / _cfg.google_data_dir
-
-# Ensure data directory exists
-GOOGLE_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 STATUS_FILE = GOOGLE_DATA_DIR / _cfg.status_file
 LAST_FILE = GOOGLE_DATA_DIR / _cfg.last_file
@@ -69,7 +67,8 @@ def write_status(state: str, timestamp: float, errors_24h: int = 0, requests_24h
         "metrics": {"errors_24h": errors_24h, "requests_24h": requests_24h},
     }
     try:
-        STATUS_FILE.write_text(json.dumps(status, indent=2))
+        payload = json.dumps(status, indent=2).encode("utf-8")
+        atomic_write(STATUS_FILE, lambda stream: stream.write(payload))
         logger.debug(f"Status updated: {state}")
     except Exception as e:
         logger.exception("Failed to write status: %s", e)
@@ -90,7 +89,8 @@ def write_snapshot(data: dict[str, Any] | None = None, error: str | None = None)
         snapshot = {"error": "no_data", "timestamp": time.time()}
 
     try:
-        LAST_FILE.write_text(json.dumps(snapshot, indent=2))
+        payload = json.dumps(snapshot, indent=2).encode("utf-8")
+        atomic_write(LAST_FILE, lambda stream: stream.write(payload))
         logger.debug("Snapshot updated")
     except Exception as e:
         logger.exception("Failed to write snapshot: %s", e)
