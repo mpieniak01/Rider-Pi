@@ -12,6 +12,27 @@ entrypoint internally maps it to the scanner authentication property. Fork pull 
 the workflow fails visibly rather than publishing an unauthenticated result.
 Sonar Automatic Analysis remains off because CI performs explicit analysis.
 
+## One producer for each published analysis
+
+CI owns analysis of published main and same-repository PRs. Runs for the same
+Sonar target share a concurrency group; an active run is allowed to finish,
+including server-side processing and gate evaluation. A newer pending run can
+replace an older pending run under GitHub's concurrency rules.
+
+After merging, wait for the main push workflow and read its exact-SHA report.
+For an explicit main rescan, use **Run workflow** on `Sonar quality gate` with
+branch `main`; it uses the same concurrency group. Do not launch a second local
+scanner to refresh a report while CI owns that target. Concurrent submissions
+can make Sonar reject a report as older even when both use the same commit.
+
+The canonical local launcher checks the configured workflow state before tests
+and again before submission. While CI is active it refuses local submissions;
+`--check` remains read-only and reports the scan owner. Local scanning is a
+fallback when the workflow is disabled, and does not replace a failed CI check.
+If workflow ownership cannot be verified, do not submit another report.
+Automatic Analysis stays off. Coverage reproduction below creates local files
+without publishing an analysis.
+
 ## Reproduce the measured reports
 
 From the repository root, use the existing project virtualenv and Node 22:

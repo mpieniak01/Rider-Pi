@@ -11,6 +11,11 @@ permissions:
   contents: read
   pull-requests: read
 
+# Keep one report producer per Sonar target until server-side processing finishes.
+concurrency:
+  group: sonar-rider-pi-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   sonar:
     runs-on: ubuntu-latest

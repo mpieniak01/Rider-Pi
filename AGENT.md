@@ -194,6 +194,16 @@ ruff format
 
 ---
 
+### Sonar po publikacji i scaleniu
+
+- Workflow `.github/workflows/sonar.yml` jest właścicielem skanów main i PR z tego repozytorium.
+- Po merge czekaj na wynik workflow main dla dokładnego SHA; nie uruchamiaj równolegle lokalnego skanera.
+- Ręczne odświeżenie main wykonuj przez `workflow_dispatch` tego workflow na main; zachowuje wspólną grupę współbieżności.
+- Kanoniczny launcher lokalny odmawia wysyłania analiz przy aktywnym workflow. Tryb `--check` służy tylko do odczytu.
+- Procedura i rozróżnienie raportu Sonara od statusu CI: [bramka jakości](docs_pl/BRAMKA_JAKOSCI.md).
+
+---
+
 ## 9) Bezpieczeństwo i walidacja
 
 - Waliduj aktualny kontrakt `/api/control` i ponownie polecenie u wykonawcy.

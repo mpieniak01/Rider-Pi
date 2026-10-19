@@ -12,6 +12,28 @@ wewnętrznie mapuje go na właściwość uwierzytelniania skanera. PR z forka be
 skanu ręcznego; brak sekretu jest widocznym błędem, a nie pozornym sukcesem.
 Automatic Analysis w Sonarze pozostaje wyłączone; skan uruchamia CI.
 
+## Jeden nadawca raportu dla opublikowanego kodu
+
+Analizy main i PR z tego repozytorium należą do CI. Uruchomienia dla tego samego
+celu Sonara korzystają ze wspólnej grupy współbieżności. Aktywny przebieg kończy
+przetwarzanie raportu i ocenę bramki; nowy oczekujący przebieg może zastąpić
+starszy oczekujący zgodnie z zasadami GitHub Actions.
+
+Po merge czekaj na workflow uruchomiony przez push main i sprawdź raport dla
+jego SHA. Ręczne odświeżenie main uruchamiaj przez **Run workflow** w
+`Sonar quality gate`, wybierając gałąź `main`. Trafia ono do tej samej grupy.
+Nie uruchamiaj drugiego lokalnego skanera, gdy danym celem zarządza CI.
+Równoległe raporty mogą zostać odrzucone przez Sonara jako starsze również
+wtedy, gdy dotyczą identycznego commitu.
+
+Kanoniczny lokalny launcher sprawdza stan workflow przed testami oraz przed
+wysłaniem analizy. Przy aktywnym CI odmawia lokalnego wysyłania; `--check`
+pozostaje odczytem i podaje właściciela skanowania. Lokalny skan jest opcją
+awaryjną przy wyłączonym workflow, nie zastępuje błędnego wyniku CI. Jeśli nie
+można ustalić właściciela skanowania, nie wysyłaj kolejnego raportu.
+Automatic Analysis pozostaje wyłączone. Odtworzenie coverage opisane poniżej
+tworzy lokalne pliki bez publikowania analizy.
+
 ## Odtwarzanie
 
 Polecenia są w [instrukcji EN](../docs/QUALITY_GATE.md). Korzystaj z istniejącego
