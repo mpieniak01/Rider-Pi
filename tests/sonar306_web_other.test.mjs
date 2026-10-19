@@ -27,7 +27,8 @@ async function fixture(file,{globals={},replacements={}}={}) {
     'request-id.js':{requestId:()=> 'fixture-id'},
     'transport.js':{request:async(path,options={})=>{requests.push({path,...options});return {status:202,data:{pending:true,providers:[]}};},
       poll:()=>({refresh(){},stop(){}}),prepareMutation:async()=>{}},
-    'ui.js':{text(){},tr:(_pl,en)=>en,statusLabel:String,showError:error=>{throw error;},el:element},
+    'ui.js':{text(){},tr:(_pl,en)=>en,statusLabel:String,showError:error=>{throw error;},el:element,
+      pill:element,freshPill:element,button:element,kv:element,ageLabel:()=>'',ageStamp:element,rawDetails:element},
     ...replacements,
   };
   const cache=new Map();
@@ -200,4 +201,49 @@ test('Google Home module resolves from either page URL and startup reads never s
   for(const page of ['/google_home','/web/google_home.html']){
     assert.equal(new URL(src,'http://fixture'+page).pathname,'/web/assets/google-home.js');
   }
+});
+
+
+test('task envelope and dispatch stay in one continuation before queued epoch invalidation',async()=>{
+  const events=[];
+  const transport={request:async()=>{events.push('dispatch');return {status:202,data:{pending:true}};},
+    poll:()=>({refresh(){}}),prepareMutation:async()=>{}};
+  const f=await fixture('tasks.js',{replacements:{
+    'transport.js':transport,
+    'model.js':{...model,catalogKnown:()=>true,taskCanStart:()=>true,nowSeconds:()=>1000},
+  }});
+  const tasks=Object.create(f.namespace.Tasks.prototype);
+  Object.assign(tasks,{catalog:{},busy:new Set(),options:new Map(),results:new Map(),render(){},poller:{refresh(){}},
+    safety:{state:{},poller:{refresh(){}},prepare:async()=>{},
+      envelope(){events.push('envelope');Promise.resolve().then(()=>events.push('queued-epoch-change'));
+        return {generation:'fixture',seq:1,source:'manual',ts:1000,ttl_ms:500,request_id:'fixture'};}}});
+  await tasks.change({name:'fixture-task',can_move:true,motion_owner:'manual',option_schema:{field:'mode',default:'fixture',end_value:'stop'}},true);
+  assert.deepEqual(events,['envelope','dispatch','queued-epoch-change']);
+});
+
+test('final safety settings check, envelope and dispatch precede queued STOP epoch change',async()=>{
+  const events=[];
+  const f=await fixture('safety.js',{replacements:{'transport.js':{
+    request:async()=>{events.push('dispatch');return {status:202,data:{pending:true}};},
+    poll:()=>({refresh(){}}),prepareMutation:async()=>{},
+  }}});
+  const panel=safetyOf(f);let pulses=0;
+  panel.state={arming_mode:'lease',generation:'fixture-generation'};
+  panel.prepare=async()=>{};
+  panel.controls={state:{revision:1},refresh:async()=>{},pulse(direction){
+    if(++pulses===2){
+      events.push('settings-confirmed');
+      Promise.resolve().then(()=>{panel.toggleEpoch++;panel.state=null;events.push('queued-stop-epoch');});
+    }
+    return {direction,device_settings:true,settings_revision:1};
+  }};
+  panel.envelope=(action,params)=>{
+    events.push('envelope');
+    assert.equal(panel.toggleEpoch,0);
+    assert.equal(panel.state.generation,'fixture-generation');
+    return {...params,action,request_id:'fixture'};
+  };
+  await panel.send('move',{direction:'forward'});
+  assert.deepEqual(events,['settings-confirmed','envelope','dispatch','queued-stop-epoch']);
+  assert.equal(panel.toggleEpoch,1);
 });

@@ -25,23 +25,26 @@ export class Tasks {
     select.addEventListener('change', () => this.options.set(task.name, { [schema.field]: select.value }));
     label.append(select); return label;
   }
-  async attachMotionEnvelope(task,body) {
-    // Metadata is generated exactly once at the operator's click.
-    this.busy.add(task.name);
-    try {
-      await this.safety.prepare();
-      const envelope = this.safety.envelope('move', {}, task.motion_owner);
-      for (const key of ['generation', 'seq', 'source', 'ts', 'ttl_ms', 'request_id']) body[key] = envelope[key];
-    } catch (error) { this.busy.delete(task.name); this.render(); throw error; }
+  taskOptions(task) {
+    return this.options.get(task.name) || task.options || (task.option_schema ? { [task.option_schema.field]: task.option_schema.default } : {});
+  }
+  attachMotionEnvelope(task,body) {
+    // No await between envelope generation and dispatch in the caller.
+    const envelope = this.safety.envelope('move', {}, task.motion_owner);
+    for (const key of ['generation', 'seq', 'source', 'ts', 'ttl_ms', 'request_id']) body[key] = envelope[key];
   }
   async change(task, enabled) {
     if (this.busy.has(task.name)) return;
     if (!catalogKnown(this.catalog) || (enabled && !taskCanStart(task, this.catalog, this.safety.state))) return;
-    const options = this.options.get(task.name) || task.options || (task.option_schema ? { [task.option_schema.field]: task.option_schema.default } : {});
+    const options = this.taskOptions(task);
     if (enabled && task.option_schema?.end_value === options[task.option_schema.field]) enabled = false;
     const body = { enabled, options };
     if (enabled && task.can_move) {
-      await this.attachMotionEnvelope(task,body);
+      this.busy.add(task.name);
+      try {
+        await this.safety.prepare();
+        this.attachMotionEnvelope(task,body);
+      } catch (error) { this.busy.delete(task.name); this.render(); throw error; }
     }
     this.busy.add(task.name); this.results.set(task.name, { status: 'pending', submitted_at: nowSeconds() }); this.render();
     try {

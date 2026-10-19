@@ -118,18 +118,16 @@ export class SafetyPanel {
     if (action === 'height' && (!Number.isInteger(params.height) || params.height < 75 || params.height > 115)) throw new Error(tr('Wysokość musi być liczbą całkowitą 75–115', 'Height must be an integer 75–115'));
     if (action === 'action' && (!Number.isInteger(params.action_id) || params.action_id < 1 || params.action_id > 255)) throw new Error(tr('ID akcji musi być liczbą całkowitą 1–255', 'Action ID must be an integer 1–255'));
   }
-  async prepareSend(action,params) {
-      this.mutating = true; this.render();
-      try {
-        await this.prepare(action);
-        if (action === 'move' && this.controls) {
-          if (this.state?.arming_mode !== 'operator') await this.controls.refresh();
-          const revision = params.settings_revision;
-          if (this.controls.state.revision !== revision) throw new Error(tr('Ustawienia zmieniły się — sprawdź wartości i kliknij ponownie.', 'Settings changed — review values and click again.'));
-          params = this.controls.pulse(params.direction);
-        }
-      }
-      catch (error) { this.mutating = false; this.render(); throw error; }
+  async prepareSend(action) {
+    await this.prepare(action);
+    if (action === 'move' && this.controls && this.state?.arming_mode !== 'operator') await this.controls.refresh();
+  }
+  confirmSendSettings(action,params) {
+    if (action === 'move' && this.controls) {
+      const revision = params.settings_revision;
+      if (this.controls.state.revision !== revision) throw new Error(tr('Ustawienia zmieniły się — sprawdź wartości i kliknij ponownie.', 'Settings changed — review values and click again.'));
+      return this.controls.pulse(params.direction);
+    }
     return params;
   }
   commandForSend(action,params,owner,exempt) {
@@ -162,7 +160,14 @@ export class SafetyPanel {
     this.validateCommand(action,params);
     if (this.mutating && !exempt) throw new Error(tr('Poczekaj na odpowiedź poprzedniego żądania', 'Wait for the previous request'));
     if (!this.controlsActive() && !['arm', 'clear_estop', 'stop', 'disarm', 'estop'].includes(action)) throw new Error('Motion controls are unavailable on this view');
-    if (!exempt) params=await this.prepareSend(action,params);
+    if (!exempt) {
+      this.mutating = true; this.render();
+      try {
+        await this.prepareSend(action);
+        // Keep revision confirmation, envelope creation and dispatch in this continuation.
+        params=this.confirmSendSettings(action,params);
+      } catch (error) { this.mutating = false; this.render(); throw error; }
+    }
     const command=this.commandForSend(action,params,owner,exempt);
     const entry=this.recordCommand(command,exempt);
     try {
