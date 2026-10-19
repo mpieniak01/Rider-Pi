@@ -127,6 +127,16 @@ SNAP_BASE=/path/to/snapshots # Katalog zapisywania klatek
 - Automatyczne odświeżanie co ~2 sekundy
 - Wyświetlanie wieku klatki i statusu śledzenia
 
+## Publikowanie i błędy inicjalizacji
+
+`dispatcher.pub()` i `tracker_mediapipe.pub()` sprawdzają inicjalizację publikatora
+przed serializacją danych. Brak `PUB` oznacza pominięcie wysyłki i komunikat
+`pub err: publisher not initialized` z prefiksem modułu. Ta kontrola działa także
+w Pythonie uruchomionym z `-O` lub `-OO`. Błędy JSON i socketu są nadal
+raportowane bez przerywania pętli; kolejne wywołanie może ponowić publikowanie.
+Format wiadomości (`topic` i JSON UTF-8) pozostaje taki sam. Testy używają atrap,
+bez inicjalizacji detektorów, rzeczywistego BUS lub urządzenia.
+
 ## Przepływ danych
 
 ```

@@ -174,6 +174,16 @@ python3 apps/vision/dispatcher.py
 - Vision depth bridge provides obstacle distances
 - Mapper fuses pose + obstacle data to build occupancy grid
 
+## Publishing and initialization failures
+
+`dispatcher.pub()` and `tracker_mediapipe.pub()` check publisher initialization
+before serializing data. Missing `PUB` skips sending and emits
+`pub err: publisher not initialized` with the module prefix. This check also
+works under Python `-O` or `-OO`. JSON and socket failures are still reported
+without stopping the loop; a later call can attempt publishing again.
+The message format (`topic` and UTF-8 JSON) is unchanged. Regression tests use
+fakes without initializing detectors, a real BUS connection or the device.
+
 ## Data Flow (Stage 3)
 
 ```
