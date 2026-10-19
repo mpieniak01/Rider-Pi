@@ -164,6 +164,8 @@ TTS i nie uruchamia login shell w celu pobierania niepowiązanych poświadczeń.
 
 Profil `text` uruchamia tylko istniejący worker HTTP z domeną chat. Wymaga skonfigurowanego wykonywalnego lokalnego backendu i jego modelu; źródłowy `stub` jest jawnie niedostępny. Nie importuje ASR/TTS ani nie zajmuje mikrofonu/głośnika. `/api/chat/send` wybiera ten worker według świeżego heartbeat i pasującego PID, gdy nie ustawiono jawnego `CHAT_REMOTE_URL`. Legacy echo nigdy nie stanowi potwierdzenia gotowości AI.
 
+Endpoint wybranego workera jest trasą HTTP na tym samym hoście. Producent i konsument wymagają dosłownego adresu pętli lokalnej, jawnego poprawnego portu oraz stałej ścieżki `/api/chat`; adres nasłuchu wildcard jest mapowany na loopback. Błędny bind publikuje niedostępną domenę chat z kodem `chat_worker_endpoint_requires_loopback_bind`, bez endpointu. Klient wewnętrzny pomija proxy ze środowiska i odrzuca przekierowania. Jawny `CHAT_REMOTE_URL` zachowuje osobny transport skonfigurowanego backendu.
+
 Gotowość ASR/TTS wymaga rzeczywistego skonstruowania i zbuforowania wyłącznie wybranego modelu (`model_loaded: true`), a nie samego importu i obecności plików. Uszkodzony model daje `*_model_load_failed`; ta walidacja nie otwiera urządzenia audio.
 
 `runtime_modules` opisuje wymagane importy jednostek katalogu. Preflight bada
