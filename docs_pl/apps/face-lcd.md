@@ -247,3 +247,24 @@ z zachowaniem kolejności okno → komenda RAMWR → dane i dotychczasowych chun
 Wariant z samym deskryptorem pliku sprawdza zapis pojedynczego bajtu komendy;
 niepełny zapis nie jest potwierdzeniem sukcesu. Parametry SPI i orientacja
 wyświetlacza nie wynikają z tego podziału i pozostają ustawieniami urządzenia.
+
+## Opcje jakości i przejścia nastroju
+
+`draw_face(canvas, cfg, model, guide, quality)` zachowuje dotychczasową sygnaturę.
+Domyślne `quality="fast"` rysuje bez dodatkowego bufora. Jawne `quality="aa2x"`
+rysuje przezroczystą warstwę twarzy w dwukrotnie większej szerokości i wysokości,
+zmniejsza ją filtrem LANCZOS i nakłada na istniejące tło. Rozmiar, tryb obrazu,
+tło poza twarzą i orientacja LCD pozostają zachowane. Ta opcja wymaga czterokrotnie
+większej liczby pikseli warstwy oraz operacji zmniejszenia i kompozycji; nie jest
+włączana automatycznie. Zmiana `FaceRenderer.quality` unieważnia cache obrazu.
+Inne dotychczasowe wartości jakości nadal wybierają ścieżkę `fast`.
+
+`FaceController.set_mood(target, via_neutral=True, dwell_s=None)` realizuje
+przejście `happy` ↔ `sad` przez neutralną pozycję. Wcześniej parametry
+`via_neutral` i `dwell_s` były ignorowane. Przejście składa się z dwóch kroków
+`FACE_TRANS_STEP_S` (domyślnie po 0,35 s) oraz postoju `FACE_TRANS_DWELL_S`
+(domyślnie 0,18 s). Jawne `dwell_s=0` usuwa postój, a `via_neutral=False`
+wybiera bezpośredni pojedynczy krok. Pozostałe zmiany nastroju zachowują pojedynczy
+krok. Postój musi być skończoną nieujemną liczbą mieszczącą się wraz z krokami
+w limicie czasu Animatora. Nowy nastrój zastępuje oczekujące przejście, zamknięcie
+kontrolera usuwa je, a animacja ust sterowana dźwiękiem zachowuje wyższy priorytet.

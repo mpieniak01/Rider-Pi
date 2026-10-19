@@ -173,8 +173,7 @@ def test_web_audio_context_adapters_keep_positional_binding_and_pure_unused_cont
     assert web_audio._append_tail(context, b"\1\0", 1000, 1, 2) == b"\1\0" + b"\0" * 4
 
 
-@pytest.mark.asyncio
-async def test_transport_initialization_retains_coroutine_contract_without_opening_connection(monkeypatch):
+def test_transport_initialization_configures_synchronously_without_opening_connection(monkeypatch):
     created = []
     transport = object()
 
@@ -201,17 +200,16 @@ async def test_transport_initialization_retains_coroutine_contract_without_openi
         send_partials=False,
         barge_in=True,
     )
-    assert asyncio.iscoroutinefunction(service._initialize_transport)
-    assert await service._initialize_transport() is True
+    assert not asyncio.iscoroutinefunction(service._initialize_transport)
+    assert service._initialize_transport() is True
     assert service.transport is transport
     assert created[0]["auth_header"] == "Bearer inert-fixture"
     monkeypatch.setattr(svc_streaming, "ReconnectingTransport", Mock(side_effect=RuntimeError("fixture constructor")))
-    assert await service._initialize_transport() is False
+    assert service._initialize_transport() is False
     service.logger.event.assert_any_call("transport.init.error", error="fixture constructor")
 
 
-@pytest.mark.parametrize("accumulate", [False, True])
-def test_speech_queue_keyword_contract_preserves_forced_nonstreaming_once_behavior(accumulate):
+def test_speech_queue_preserves_forced_nonstreaming_once_behavior():
     service = object.__new__(svc_file.VoiceService)
     service.stop_event = threading.Event()
     seen = []
@@ -223,7 +221,7 @@ def test_speech_queue_keyword_contract_preserves_forced_nonstreaming_once_behavi
         task.ack.set()
 
     service._speech_queue = SimpleNamespace(put=enqueue)
-    assert service._request_speech(" fixture ", source="chat", accumulate=accumulate) is result
+    assert service._request_speech(" fixture ", source="chat") is result
     assert seen[0].text == "fixture"
     assert seen[0].source == "chat"
     assert seen[0].accumulate is False

@@ -209,13 +209,13 @@ def test_simulated_noop_adapter_retains_keyword_contracts():
     assert adapter._moving is False
 
 
-def test_rejected_autonomous_motion_retains_requested_keyword_contract():
+def test_rejected_autonomous_motion_requires_no_requested_axes():
     calls = []
     quality = SimpleNamespace(
         navigation_quality=lambda: {"data_error": None},
         _quality_failure=lambda reason, **options: calls.append((reason, options)),
     )
-    assert NavigationQuality._motion_data_permitted(quality, lx=0.1, az=0.2) is False
+    assert NavigationQuality._motion_data_permitted(quality) is False
     assert calls == [("navigation_traversal_unverified", {"stop": True})]
 
 

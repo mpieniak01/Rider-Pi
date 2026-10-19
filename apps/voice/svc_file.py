@@ -324,7 +324,7 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
     # ─────────────────────────────────────────────
     # Kolejka mówienia
 
-    def _request_speech(self, text: str, *, source: str, accumulate: bool) -> TTSStreamResult | None:
+    def _request_speech(self, text: str, *, source: str) -> TTSStreamResult | None:
         if not text.strip():
             return None
         # KLUCZOWE: tryb ONCE → bez streamingu (accumulate=False)
@@ -586,7 +586,7 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
             if result is not None:
                 return True, result
         if reply_text:
-            return True, self._request_speech(reply_text, source="chat", accumulate=False)
+            return True, self._request_speech(reply_text, source="chat")
         return False, None
 
     def _play_tts_override(self, payload):
@@ -664,7 +664,11 @@ class VoiceService(FileCaptureMixin, BusIntegrationMixin):
 
 
 def run_listen_file(cfg: dict[str, Any], args) -> int:
-    """Run listen mode using file-based pipeline (STRICT file-only)."""
+    """Run listen mode using file-based pipeline (STRICT file-only).
+
+    args is the unused CLI dispatch slot shared with svc_core runners; this
+    runner uses cfg. Retain the args keyword for programmatic callers.
+    """
     from .svc_signals import setup_signals
 
     try:
@@ -682,7 +686,11 @@ def run_listen_file(cfg: dict[str, Any], args) -> int:
 
 
 def run_once_file(cfg: dict[str, Any], args) -> int:
-    """Run once mode using file-based pipeline (STRICT file-only)."""
+    """Run once mode using file-based pipeline (STRICT file-only).
+
+    args is the unused CLI dispatch slot shared with svc_core runners; this
+    runner uses cfg. Retain the args keyword for programmatic callers.
+    """
     from .svc_signals import setup_signals
 
     try:

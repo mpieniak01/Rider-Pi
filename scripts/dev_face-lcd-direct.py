@@ -293,7 +293,7 @@ class LCDDirect:
             return self._canvas
         return img
 
-    def _force_bind(self, img: Image.Image) -> bool:
+    def _force_bind(self) -> bool:
         if not self.force:
             return False
         want = self.force
@@ -389,7 +389,7 @@ class LCDDirect:
     def push(self, pil_img: Image.Image) -> str:
         img = self._prep(pil_img)
 
-        if self._push is None and not self._force_bind(img):
+        if self._push is None and not self._force_bind():
             used = self._scan_bind(img)
             if not used:
                 raise RuntimeError("Nie znalazłem metody pushowania.")

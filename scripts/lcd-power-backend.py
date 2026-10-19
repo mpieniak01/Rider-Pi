@@ -73,7 +73,7 @@ def _set_bl(bl_pin: int, active_high: int, on: bool) -> bool:
     return ok
 
 
-def _spi_cmds(dc_pin: int, rst_pin: int, spi_dev: str, hz: int, cmds: list[int]) -> bool:
+def _spi_cmds(dc_pin: int, spi_dev: str, hz: int, cmds: list[int]) -> bool:
     """Wyślij proste komendy do panelu. Zwraca True jeśli poszło bez wyjątku."""
     if spi_dev.strip() == "" or spi_dev == "none":
         print("[lcdctl] INFO: SPI disabled by spi_dev")
@@ -117,7 +117,7 @@ def do_off(args) -> int:
     # 1) Panel sleep (chyba że --no-spi), 2) BL off
     spi_ok = True
     if not args.no_spi:
-        spi_ok = _spi_cmds(args.dc, args.rst, args.spi, args.hz, [0x28, 0x10])  # DISP_OFF, SLP_IN
+        spi_ok = _spi_cmds(args.dc, args.spi, args.hz, [0x28, 0x10])  # DISP_OFF, SLP_IN
         time.sleep(0.12)
     bl_ok = _set_bl(args.bl, args.bl_ah, on=False)
     print(f"[lcdctl] OFF done (spi_ok={spi_ok}, bl_ok={bl_ok})")
@@ -129,9 +129,9 @@ def do_on(args) -> int:
     bl_ok = _set_bl(args.bl, args.bl_ah, on=True)
     spi_ok = True
     if not args.no_spi:
-        spi_ok &= _spi_cmds(args.dc, args.rst, args.spi, args.hz, [0x11])  # SLP_OUT
+        spi_ok &= _spi_cmds(args.dc, args.spi, args.hz, [0x11])  # SLP_OUT
         time.sleep(0.12)
-        spi_ok &= _spi_cmds(args.dc, args.rst, args.spi, args.hz, [0x29])  # DISP_ON
+        spi_ok &= _spi_cmds(args.dc, args.spi, args.hz, [0x29])  # DISP_ON
         time.sleep(0.02)
     print(f"[lcdctl] ON done (spi_ok={spi_ok}, bl_ok={bl_ok})")
     return 0 if (spi_ok or args.no_spi) and bl_ok else 2

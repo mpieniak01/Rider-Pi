@@ -24,7 +24,7 @@ class FaceRenderer:
         self.render_count = self.encode_count = 0
 
     def _state_key(self, state):
-        values = [self.style, self.skin, self.guide, state.expr]
+        values = [self.style, self.skin, self.guide, self.quality, state.expr]
         for node, fields in (
             ("eyes", ("dx", "dy", "blink")),
             ("brows", ("lift", "tilt")),

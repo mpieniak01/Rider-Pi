@@ -174,7 +174,7 @@ async def test_listen_cancellation_awaits_cleanup_without_calling_blocking_stop(
         started.set()
         await asyncio.Future()
 
-    service._initialize_transport = AsyncMock(return_value=True)
+    service._initialize_transport = Mock(return_value=True)
     service._run_with_reconnect = session
     service.stop = Mock(side_effect=AssertionError("sync stop must not run on event loop"))
     transport = service.transport
@@ -249,7 +249,7 @@ async def test_once_cancellation_drains_workers_before_returning(service):
         started.set()
         await asyncio.Future()
 
-    service._initialize_transport = AsyncMock(return_value=True)
+    service._initialize_transport = Mock(return_value=True)
     service._wait_for_completion = completion
     service._message_handler_loop = waiting
     service._audio_sender_loop = waiting

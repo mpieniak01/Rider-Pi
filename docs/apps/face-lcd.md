@@ -247,3 +247,25 @@ implementation, preserving window → RAMWR command → data ordering and chunk
 sizes. The file-descriptor-only fallback checks the single command-byte write;
 an incomplete write is not success. This split retains existing SPI parameters
 and device display orientation.
+
+## Quality options and mood transitions
+
+`draw_face(canvas, cfg, model, guide, quality)` retains its existing signature.
+The default `quality="fast"` draws without an extra buffer. Explicit
+`quality="aa2x"` draws a transparent face overlay at twice the width and height,
+downsamples it with LANCZOS, and composites it over the existing background.
+Image size and mode, the background outside the face, and LCD orientation are
+preserved. This option uses four times as many overlay pixels plus a resize and
+composition; it is never selected automatically. Changing `FaceRenderer.quality`
+invalidates the image cache. Other existing quality values retain the `fast`
+fallback.
+
+`FaceController.set_mood(target, via_neutral=True, dwell_s=None)` now implements
+`happy` ↔ `sad` transitions through the neutral pose. Previously, `via_neutral`
+and `dwell_s` were ignored. The transition uses two `FACE_TRANS_STEP_S` steps
+(default 0.35 s each) and a `FACE_TRANS_DWELL_S` hold (default 0.18 s). Explicit
+`dwell_s=0` removes the hold, while `via_neutral=False` selects one direct step.
+Other mood changes retain one step. The hold must be a finite nonnegative number
+that fits with both steps within Animator's duration limit. A new mood replaces
+the pending transition, closing the controller clears it, and audio-driven mouth
+animation retains its higher priority.

@@ -67,6 +67,14 @@ class LCDRenderer:
         return getattr(self.lcd, "_bl_pin", None) is not None
 
     def display(self, title: str, lines: list[str], warn: bool = False, *, frame=None) -> None:
+        """Present the existing Device Info composition through the common sink API.
+
+        ``title``, ``lines`` and ``warn`` are intentionally unused compatibility
+        parameters: StatusPanelLifecycle._present_screen supplies them to every
+        sink. This sink preserves the boot Device Info layout from ``frame`` or
+        gather_info(), rather than replacing it with task-summary text. The
+        lifecycle still uses those summary values to detect screen changes.
+        """
         info = frame if isinstance(frame, dict) else self.splash.gather_info()
         img = self.splash.draw_splash_with(info, self.splash.WIDTH, self.splash.HEIGHT)
         img = self.splash.maybe_rotate(img)

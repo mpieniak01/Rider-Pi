@@ -315,8 +315,8 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
     # ──────────────────────────────────────────────────────────────────────────
     # Konfiguracja transportu i sesji
 
-    async def _initialize_transport(self) -> bool:
-        """Initialize WebSocket transport."""
+    def _initialize_transport(self) -> bool:
+        """Configure the transport; connection I/O belongs to the async session."""
         try:
             auth_header = self._get_auth_header()
             self.transport = ReconnectingTransport(
@@ -361,7 +361,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         self._loop = asyncio.get_running_loop()
         self.logger.event("stream.once.start")
 
-        if not await self._initialize_transport():
+        if not self._initialize_transport():
             return None
 
         try:
@@ -391,7 +391,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         self.logger.event("stream.listen.start")
         self._publish_ui_state("idle")
 
-        if not await self._initialize_transport():
+        if not self._initialize_transport():
             return
 
         try:

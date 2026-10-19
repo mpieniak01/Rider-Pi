@@ -49,12 +49,12 @@ def test_power_sequence_and_status_do_not_confuse_observation_with_mutation(back
 def test_hardware_failure_is_reported_and_spi_is_closed(backend):
     module, gpio, spi = backend
     spi.writebytes.side_effect = OSError("injected failure")
-    assert module._spi_cmds(4, 5, "/dev/spidev0.0", 1000000, [0x11]) is False
+    assert module._spi_cmds(4, "/dev/spidev0.0", 1000000, [0x11]) is False
     spi.close.assert_called_once()
     gpio.output.side_effect = OSError("injected failure")
     assert module._set_bl(6, 1, True) is False
     assert module._set_bl(-1, 1, True) is True
-    assert module._spi_cmds(4, 5, "none", 1000, [0x11]) is True
+    assert module._spi_cmds(4, "none", 1000, [0x11]) is True
 
 
 @pytest.mark.parametrize("result,expected", [(0, 0), (2, 1)])

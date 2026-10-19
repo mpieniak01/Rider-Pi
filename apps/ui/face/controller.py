@@ -10,7 +10,7 @@ from .animator import Animator
 from .catalog import CATALOG, MOODS
 from .gestures import GESTURES
 from .renderer import FaceRenderer
-from .schema import prepare
+from .schema import MAX_PLAYBACK_DURATION_S, number, prepare
 
 
 class FaceController:
@@ -43,6 +43,7 @@ class FaceController:
         self._next_blink = self.clock() + self._delay("FACE_IDLE_BLINK_SEC", 3)
         self._next_look = self.clock() + self._delay("FACE_IDLE_LOOK_SEC", 6)
         self._mood_current = "neutral"
+        self._mood_pending = None
 
     def _delay(self, key, default):
         base = float(os.getenv(key, str(default)))
@@ -63,13 +64,7 @@ class FaceController:
             return self.do("blink")
         self.set_mood(expr)
 
-    def set_mood(self, target, via_neutral=True, dwell_s=None):
-        if target not in MOODS:
-            return
-        if self.anim.state.mouth.curve is None:
-            self.anim.state.mouth.curve = self.anim.value("mouth.curve")
-        self.anim.state.expr = target
-        self.anim.state.mouth.shape = target if target in {"neutral", "happy", "sad"} else "neutral"
+    def _mood_values(self, target):
         from .schema import FIELDS
 
         values = dict.fromkeys(FIELDS, 0.0)
@@ -77,8 +72,49 @@ class FaceController:
         values = {key: value * self.intensity for key, value in values.items()}
         if self.renderer.style == "legacy":
             values.pop("mouth.curve", None)
+        return values
+
+    def _mood_pose(self, target):
+        self.anim.state.expr = target
+        self.anim.state.mouth.shape = target if target in {"neutral", "happy", "sad"} else "neutral"
+
+    def _neutral_mood_spec(self, values, duration, dwell_s):
+        dwell = float(os.getenv("FACE_TRANS_DWELL_S", "0.18")) if dwell_s is None else dwell_s
+        dwell = number(dwell, 0, MAX_PLAYBACK_DURATION_S - 2 * duration)
+        neutral = self._mood_values("neutral")
+        tracks = {}
+        for path, value in values.items():
+            resting = neutral[path]
+            segments = [_mood_segment(0, duration, self.anim.value(path), resting)]
+            if dwell:
+                segments.append(_mood_segment(duration, duration + dwell, resting, resting))
+            segments.append(_mood_segment(duration + dwell, 2 * duration + dwell, resting, value))
+            tracks[path] = segments
+        return {"duration": 2 * duration + dwell, "tracks": tracks}, duration + dwell
+
+    def set_mood(self, target, via_neutral=True, dwell_s=None):
+        """Morph a mood, optionally crossing happy/sad through neutral.
+
+        A neutral crossing uses two existing FACE_TRANS_STEP_S steps and a
+        nonnegative dwell (FACE_TRANS_DWELL_S, default 0.18). The whole timeline
+        remains within Animator's maximum duration. Other mood changes retain
+        their single step; via_neutral=False always selects that direct path.
+        """
+        if target not in MOODS:
+            return
         duration = max(0.05, min(1.0, float(os.getenv("FACE_TRANS_STEP_S", "0.35"))))
-        self.anim.start({"duration": duration, "initial": values}, prio=5, owner="emotion")
+        values = self._mood_values(target)
+        crossing = via_neutral and (self.anim.state.expr, target) in (("happy", "sad"), ("sad", "happy"))
+        spec, target_after = (
+            self._neutral_mood_spec(values, duration, dwell_s)
+            if crossing
+            else ({"duration": duration, "initial": values}, None)
+        )
+        if self.anim.state.mouth.curve is None:
+            self.anim.state.mouth.curve = self.anim.value("mouth.curve")
+        self._mood_pose("neutral" if crossing else target)
+        self.anim.start(spec, prio=5, owner="emotion")
+        self._mood_pending = (self.clock() + target_after, target) if crossing else None
         self._mood_current = target
 
     def is_mood_idle(self):
@@ -126,6 +162,7 @@ class FaceController:
                 if segments:
                     segments[-1]["v1"] = self.anim.value(path)
         if not procedural:
+            self._mood_pending = None
             self.anim.state.expr = spec["expr"]
             self.anim.state.mouth.shape = spec["expr"] if spec["expr"] in {"neutral", "happy", "sad"} else "neutral"
         self.anim.start(spec, prio=priority, mode="blend", owner=owner)
@@ -155,8 +192,14 @@ class FaceController:
             owner="audio",
         )
 
+    def _advance_mood_pose(self, now):
+        if self._mood_pending is not None and now >= self._mood_pending[0]:
+            self._mood_pose(self._mood_pending[1])
+            self._mood_pending = None
+
     def _tick(self):
         now = self.clock()
+        self._advance_mood_pose(now)
         if self._speaking and now - self._audio_at > 0.25:
             self._speaking = False
             self._mouth_to(0)
@@ -194,5 +237,10 @@ class FaceController:
             time.sleep(max(0, 1 / max(1, self.fps) - (self.clock() - started)))
 
     def close(self):
+        self._mood_pending = None
         self.anim.cancel()
         self._speaking = False
+
+
+def _mood_segment(start, end, initial, target):
+    return {"t0": start, "t1": end, "v0": initial, "v1": target, "ease": "in_out"}

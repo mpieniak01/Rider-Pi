@@ -39,6 +39,12 @@ class NullPublisher:
         self.sent: list[tuple[str, dict]] = []
 
     def publish(self, topic: str, payload: dict, add_ts: bool = False) -> None:
+        """Record a payload snapshot without transport-generated observations.
+
+        add_ts is accepted for BusPub.publish compatibility, including
+        FeatureManager._publish_tracking_mode's add_ts=True call. This
+        in-memory transport deliberately preserves payload timestamps as given.
+        """
         self.sent.append((topic, dict(payload)))
 
 

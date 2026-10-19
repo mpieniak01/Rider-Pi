@@ -130,7 +130,7 @@ class MotionProducer:
         if not finite_number(lx) or not finite_number(az):
             self._quality_failure("invalid_motion_vector", stop=True)
             return
-        if not self._motion_data_permitted(lx, az):
+        if not self._motion_data_permitted():
             return
         command_duration = duration if duration is not None else CMD_DURATION
         if not finite_number(command_duration) or command_duration <= 0:

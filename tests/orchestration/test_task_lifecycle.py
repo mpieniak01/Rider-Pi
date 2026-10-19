@@ -440,11 +440,15 @@ def test_exception_leaving_operation_discards_observation_cache(tmp_path):
     world = World()
     manager = world.manager(tmp_path)
     unit = "rider-tracker.service"
+    # Construct setup outside raises; only the deliberate cancellation may pass.
+    operation = manager.operation(guard=lambda: None, remaining=lambda: 5.0, stop=world.stop)
+    cancellation = RuntimeError("cancel operation")
     # Catch outside operation so cancellation exercises its error-exit cleanup.
-    with pytest.raises(RuntimeError, match="cancel operation"):
-        with manager.operation(guard=lambda: None, remaining=lambda: 5.0, stop=world.stop):
+    with pytest.raises(RuntimeError, match="cancel operation") as caught:
+        with operation:
             assert manager._status(unit)["active"] == "inactive"
-            raise RuntimeError("cancel operation")
+            raise cancellation
+    assert caught.value is cancellation
     world.active.add(unit)
     assert manager._operation_status_cache is None
     assert manager._status(unit)["active"] == "active"
