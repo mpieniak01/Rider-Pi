@@ -176,3 +176,11 @@ podglądu zmienia wyłącznie `web/`, dokumentację, testy lub sam helper wdroż
 Tryb odrzuca pliki runtime oraz flagi restartu API, ruchu i zasobów. Zachowuje
 wcześniejszą informację o restarcie potrzebnym przy rollbacku. Dzięki temu
 poprawka wykresu nie przerywa działającej kamery ani kolektora pomiarów.
+
+## Usuwanie zależności deweloperskich
+
+Helper wydania dopuszcza usunięcie pakietów i zmianę komentarzy w
+`requirements-dev.txt`; sprawdza zawartość każdego commita podglądu i różnicy
+wydania. Nie instaluje ani nie usuwa pakietów z urządzenia. Dodawanie zależności,
+zmiany wersji oraz usuwanie opcji/constraints pip nadal wymagają osobnego planu
+środowiska. Wymagania runtime pozostają chronione.
