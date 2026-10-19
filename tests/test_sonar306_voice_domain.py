@@ -18,9 +18,7 @@ class WorkerBaseError(BaseException):
     pass
 
 
-@pytest.mark.parametrize(
-    "error_type", [RuntimeError, SystemExit, KeyboardInterrupt, asyncio.CancelledError, WorkerBaseError]
-)
+@pytest.mark.parametrize("error_type", [RuntimeError, SystemExit, KeyboardInterrupt, WorkerBaseError])
 def test_runner_propagates_exact_worker_exception_without_losing_base_errors(error_type):
     error = error_type("worker failed")
 
@@ -30,6 +28,30 @@ def test_runner_propagates_exact_worker_exception_without_losing_base_errors(err
     with pytest.raises(error_type) as caught:
         svc_stream_runner._run_coro_in_thread(failure())
     assert caught.value is error
+
+
+def test_runner_preserves_native_asyncio_cancellation_and_completes_cleanup():
+    direct_cleanup, worker_cleanup = [], []
+
+    async def cancelled(cleanup):
+        try:
+            raise asyncio.CancelledError("worker failed")
+        finally:
+            await asyncio.sleep(0)
+            cleanup.append(asyncio.get_running_loop())
+
+    with pytest.raises(asyncio.CancelledError) as direct:
+        asyncio.run(cancelled(direct_cleanup))
+    with pytest.raises(asyncio.CancelledError) as worker:
+        svc_stream_runner._run_coro_in_thread(cancelled(worker_cleanup))
+    # Python 3.9 creates a new cancellation exception; its identity/message need
+    # not match the raised instance. The runner must preserve native run behavior.
+    assert type(worker.value) is type(direct.value)
+    assert worker.value.args == direct.value.args
+    assert len(direct_cleanup) == 1
+    assert len(worker_cleanup) == 1
+    assert direct_cleanup[0].is_closed()
+    assert worker_cleanup[0].is_closed()
 
 
 @pytest.mark.asyncio

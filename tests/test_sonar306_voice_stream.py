@@ -94,14 +94,26 @@ async def test_transcription_dispatch_trims_task_input_and_ignores_empty(handler
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fallback_async", [False, True])
-async def test_legacy_ui_events_and_fallback_accept_both_handler_kinds(handler, fallback_async):
+@pytest.mark.parametrize("message", ["invalid", '{"type":"unhandled"}'])
+async def test_legacy_ui_events_and_fallback_accept_both_handler_kinds(handler, fallback_async, message):
     handler.ui_publisher = Mock()
-    fallback = AsyncMock() if fallback_async else Mock()
-    handler._handle_message = fallback
+    completed = []
+
+    def sync_fallback(payload):
+        completed.append(payload)
+
+    async def async_fallback(payload):
+        await asyncio.sleep(0)
+        completed.append(payload)
+
+    # Native functions exercise the API on Python 3.9 too: inspect does not
+    # recognize an AsyncMock instance as a coroutine function on that version.
+    handler._handle_message = async_fallback if fallback_async else sync_fallback
     await handler._handle_ws_message('{"type":"input_audio_buffer.speech_started"}')
     handler.ui_publisher.publish.assert_called_once_with("ui.state", {"state": "hearing"})
-    await handler._handle_ws_message("invalid")
-    fallback.assert_called_once_with("invalid")
+    assert completed == []
+    await handler._handle_ws_message(message)
+    assert completed == [message]
 
 
 @pytest.mark.asyncio
