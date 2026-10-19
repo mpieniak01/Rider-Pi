@@ -609,6 +609,9 @@ Pętle audio, PTT i heartbeat propagują `CancelledError`. Rozwiązanie korzysta
 z [mechanizmów asyncio dostępnych w Pythonie 3.9](https://docs.python.org/3.9/library/asyncio-task.html),
 bez wymagania nowszego `TaskGroup`.
 
+Zamykanie socketu kończy sekwencję `close()` i `wait_closed()` przed zwolnieniem
+referencji, także po anulowaniu wywołującego; dopiero potem propaguje anulowanie.
+
 Listener oczekuje asynchronicznego sprzątania na własnej pętli; klient async
 używa `await service.close()`. Odczyt pustej kolejki audio jest przenoszony do
 executora, aby nie blokował pętli. Transport zamyka posiadany socket również po

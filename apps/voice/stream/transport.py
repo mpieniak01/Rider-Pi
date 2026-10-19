@@ -186,11 +186,7 @@ class WebSocketTransport:
                 try:
                     if self.websocket is not None:
                         self.logger.event("ws.closing", session_id=self.session_id)
-                        if self._use_async:
-                            await self.websocket.close(code=1000)
-                            await self.websocket.wait_closed()
-                        else:
-                            await asyncio.to_thread(self.websocket.close, status=1000)
+                        await self._close_socket(self.websocket)
                         self.logger.event("ws.closed", session_id=self.session_id)
                 except Exception as error:
                     self.logger.event("ws.close_error", error=str(error))
@@ -198,6 +194,35 @@ class WebSocketTransport:
                     self.websocket = None
                     self.connected = False
                     self.session_id = ""
+
+    async def _close_socket(self, websocket) -> None:
+        """Complete the owned socket's shutdown before propagating cancellation."""
+
+        async def close_and_wait():
+            """Keep both async close steps, or the sync close thread, together."""
+            if self._use_async:
+                await websocket.close(code=1000)
+                await websocket.wait_closed()
+            else:
+                await asyncio.to_thread(websocket.close, status=1000)
+
+        close_task = asyncio.create_task(close_and_wait(), name="voice-socket-close")
+        cancelled = False
+        while True:
+            try:
+                await asyncio.shield(close_task)
+                break
+            except asyncio.CancelledError:
+                cancelled = True
+                if close_task.cancelled():
+                    break
+            except Exception as error:
+                if not cancelled:
+                    raise
+                self.logger.event("ws.close_error", error=str(error))
+                break
+        if cancelled:
+            raise asyncio.CancelledError
 
     async def _heartbeat_loop(self) -> None:
         """Heartbeat loop to keep connection alive."""

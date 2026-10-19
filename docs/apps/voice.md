@@ -603,6 +603,9 @@ attempts and local worker cleanup run in `finally`. Audio, PTT and heartbeat loo
 propagate `CancelledError`. This uses [Python 3.9 asyncio mechanisms](https://docs.python.org/3.9/library/asyncio-task.html),
 without requiring the newer `TaskGroup`.
 
+Socket shutdown completes `close()` and `wait_closed()` before releasing the
+reference, even when its caller is cancelled; cancellation propagates afterwards.
+
 The listener awaits cleanup on its own event loop; async clients use
 `await service.close()`. Empty audio-queue reads run in an executor so the event
 loop stays responsive. Transport closes its owned socket even after
