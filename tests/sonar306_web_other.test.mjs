@@ -3,6 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {loadSource} from './helpers/source-module.mjs';
+import {domNode} from './helpers/sonar307-dom.mjs';
 
 const assets=new URL('../web/assets/operator/',import.meta.url);
 const model=await loadSource(new URL('model.js',assets));
@@ -173,11 +174,10 @@ test('parent partial-sensor error preserves an independent healthy channel but t
 test('Google Home module resolves from either page URL and startup reads never send commands',async()=>{
   const calls=[],nodes=new Map(),cards=[];
   function node(selector){
-    if(!nodes.has(selector))nodes.set(selector,element());
+    if(!nodes.has(selector))nodes.set(selector,domNode());
     return nodes.get(selector);
   }
   node('#devicesList').appendChild=card=>cards.push(card);
-  const escaped=()=>{const e=element();Object.defineProperty(e,'innerHTML',{get(){return this.html??String(this.textContent||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');},set(value){this.html=value;}});return e;};
   const device={name:'devices/<fixture>',type:'light',traits:{
     'sdm.devices.traits.OnOff':{on:true},'sdm.devices.traits.Brightness':{brightness:0},
     'sdm.devices.traits.ColorSetting':{temperatureK:3000,spectrumRgb:1},
@@ -185,7 +185,7 @@ test('Google Home module resolves from either page URL and startup reads never s
     'sdm.devices.traits.StartStop':{isRunning:true,isPaused:true},
   }};
   await fixture('../google-home.js',{globals:{
-    document:{documentElement:{setAttribute(){}},querySelector:node,querySelectorAll:()=>[],createElement:escaped},
+    document:{documentElement:{setAttribute(){}},querySelector:node,querySelectorAll:()=>[],createElement:domNode},
     localStorage:{getItem:()=>null,setItem(){}},navigator:{language:'en'},location:{search:'',pathname:'/google_home'},
     window:{addEventListener(){},history:{replaceState(){}}},
     fetch:async(path,options={})=>{calls.push({path,...options});return {ok:true,status:200,json:async()=>path.endsWith('/status')?{authenticated:true}:{ok:true,devices:[device]}};},

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
+import {domNode} from './helpers/sonar307-dom.mjs';
 
 const assets=new URL('../web/assets/',import.meta.url);
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
@@ -25,35 +26,6 @@ async function sourceFixture(path,context,replacements){
   return module.namespace;
 }
 
-function domNode(){
-  const listeners=new Map(),classes=new Set(),controls=new Map(),spans=new Map(),attributes=new Map();
-  const node={listeners,classes,controls,spans,attributes,children:[],value:'',textContent:'',
-    classList:{add:value=>classes.add(value),remove:value=>classes.delete(value)},
-    addEventListener:(event,handler)=>listeners.set(event,handler),
-    setAttribute:(key,value)=>attributes.set(key,value),
-    appendChild(child){this.children.push(child);},
-    querySelector:selector=>spans.get(selector)||null,
-    querySelectorAll:selector=>{
-      const action=selector.match(/data-action="([^"]+)"/)?.[1];
-      return controls.has(action)?[controls.get(action)]:[];
-    },
-    fire(event,value){if(value!==undefined)this.value=value;return listeners.get(event)?.({target:this});},
-  };
-  Object.defineProperty(node,'innerHTML',{
-    get(){return this.html??this.textContent.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');},
-    set(html){
-      this.html=html;this.children=[];
-      for(const match of html.matchAll(/data-action="([^"]+)"/g)){
-        const control=domNode();control.parentElement=node;controls.set(match[1],control);
-      }
-      for(const className of ['temp-value','brightness-value','color-temp-value']){
-        const match=html.match(new RegExp('class="'+className+'">([^<]*)'));
-        if(match)spans.set('.'+className,{textContent:match[1]});
-      }
-    },
-  });
-  return node;
-}
 const response=(body,{status=200,badJson=false}={})=>({
   ok:status>=200&&status<300,status,json:async()=>{if(badJson)throw new Error('fixture JSON');return body;},
 });
@@ -342,4 +314,84 @@ test('camera shared resource notes retain stale power uncertainty and task error
   assert.match(message,/process still running/);assert.match(message,/No fresh frames/);
   f.state.catalog.features[0].error='preview fixture failed';f.panel.render();
   assert.match(f.messages.get('camera-power-state'),/Camera error: preview fixture failed/);
+});
+
+test('Google Home remote trait and error payloads stay text or bounded typed DOM values',async()=>{
+  const attack='"><img src=x onerror="globalThis.compromised=true"><svg onload=alert(1)>';
+  const device=richDevice();
+  device.name='devices/'+attack;device.type=attack;
+  device.traits['sdm.devices.traits.Brightness'].brightness=attack;
+  device.traits['sdm.devices.traits.ColorSetting']={temperatureK:attack,spectrumRgb:attack};
+  device.traits['sdm.devices.traits.TemperatureSetting']={
+    thermostatTemperatureSetpoint:attack,thermostatTemperatureAmbient:attack,
+    availableThermostatModes:[attack,'off'],thermostatMode:attack,
+  };
+  const f=await homeFixture({devices:[device]});
+  const card=f.node('#devicesList').children[0];
+  assert.equal(card.querySelector('.device-name').textContent,attack.split('/').at(-1));
+  assert.equal(card.querySelector('.device-type').textContent,attack);
+  assert.equal(card.querySelectorAll('img').length,0);
+  assert.equal(card.querySelectorAll('svg').length,0);
+  assert.equal(card.querySelectorAll('script').length,0);
+  assert.equal(card.controls.get('brightness').value,'0');
+  assert.equal(card.controls.get('color-temp').value,'3000');
+  assert.equal(card.controls.get('color-rgb').value,'#ffffff');
+  assert.equal(card.spans.get('.temp-value').textContent,'20°C');
+  const option=card.controls.get('thermostat-mode').children[0];
+  assert.equal(option.value,attack);assert.equal(option.selected,true);
+  assert.equal(option.textContent,'home.mode_'+attack);
+  for(const node of [card,...card.descendants()]){
+    assert.equal([...node.attributes.keys()].some(name=>name.startsWith('on')),false);
+    assert.equal(node.onclick,undefined);assert.equal(node.onerror,undefined);
+  }
+  assert.equal(f.calls.filter(row=>row.method==='POST').length,0);
+  const bad=await homeFixture({route:path=>path.endsWith('/devices')?response({ok:false,error:attack}):null});
+  assert.equal(bad.node('#devicesList').children[0].textContent,'home.error_load_devices:'+attack);
+  assert.equal(bad.node('#devicesList').querySelectorAll('img').length,0);
+});
+
+test('Google Home bounded controls accept numeric boundaries and reject nonnumeric remote values',async()=>{
+  for(const [raw,brightness,kelvin,rgb] of [[-1,'0','2000','#000000'],[Infinity,'0','3000','#ffffff'],[1e9,'100','6500','#ffffff']]){
+    const device=richDevice();
+    device.traits['sdm.devices.traits.Brightness'].brightness=raw;
+    device.traits['sdm.devices.traits.ColorSetting']={temperatureK:raw,spectrumRgb:raw};
+    const f=await homeFixture({devices:[device]});
+    const controls=f.node('#devicesList').children[0].controls;
+    assert.equal(controls.get('brightness').value,brightness);
+    assert.equal(controls.get('color-temp').value,kelvin);
+    assert.equal(controls.get('color-rgb').value,rgb);
+  }
+});
+
+test('Google Home startup and auth completion do not wait for independent device loading',async()=>{
+  let finish,fixture,started;
+  const requestStarted=new Promise(resolve=>{started=resolve;});
+  const pendingDevices=new Promise(resolve=>{finish=resolve;});
+  const mounting=homeFixture({route:path=>{
+    if(path.endsWith('/devices')){started();return pendingDevices;}
+    return null;
+  }}).then(value=>{fixture=value;return value;});
+  await requestStarted;
+  await settle();await settle();await settle();
+  assert.ok(fixture,'page module remains available while device GET is pending');
+  const auth=fixture.authButton.fire('click');
+  await auth;
+  assert.equal(fixture.authButton.disabled,false);
+  assert.equal(fixture.calls.filter(row=>row.path.endsWith('/devices')).length,2);
+  finish(response({ok:true,devices:[]}));await mounting;await settle();
+});
+
+test('Google Home command handlers dispatch synchronously in event order and expose network rejection',async()=>{
+  const f=await homeFixture({route:path=>{
+    if(path.endsWith('/command'))throw new Error('fixture network rejection');
+    return null;
+  }});
+  const controls=f.node('#devicesList').children[0].controls;
+  const first=controls.get('brightness').fire('change','25');
+  const second=controls.get('brightness').fire('change','75');
+  const requests=f.calls.filter(row=>row.method==='POST');
+  assert.deepEqual(requests.map(row=>JSON.parse(row.body).params.brightness),[25,75]);
+  await Promise.all([first,second]);
+  assert.equal(f.node('#statusMsg').textContent,'home.error_send_command:fixture network rejection');
+  assert.equal([...f.timers.values()].some(row=>row.delay===1500),false);
 });
