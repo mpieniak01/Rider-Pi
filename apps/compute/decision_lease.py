@@ -103,120 +103,146 @@ class DecisionLease:
             if self.deadline is not None and now >= self.deadline and not self._wait_for_feedback(now):
                 self._halt("decision_timeout")
                 return False
-            identity = {
-                "protocol_version": self.config.get("avoidance", {}).get("protocol_version", 2)
-                if self.config.get("avoidance", {}).get("enabled")
-                else 1,
-                "run_id": self.run_id,
-                "frame_id": frame_id,
-                "sequence": sequence,
-                "config_revision": self.config["revision"],
-            }
-            remaining = self.config["decision_budget_ms"] / 1000 - (now - captured_monotonic)
-            if (
-                not isinstance(decision, dict)
-                or any(decision.get(k) != v for k, v in identity.items())
-                or any(type(decision.get(k)) is not int for k in ("protocol_version", "sequence", "config_revision"))
-                or not math.isfinite(captured_monotonic)
-                or now < captured_monotonic
-                or type(sequence) is not int
-                or sequence <= self.last_seq
-                or remaining <= 0
-            ):
-                self._halt("decision_invalid_or_expired")
+            admitted = self._admit_decision(decision, frame_id, sequence, captured_monotonic, now)
+            if admitted is None:
                 return False
-            valid = decision.get("valid_for_ms")
-            if type(valid) is not int or not 0 < valid <= 200:
-                self._halt("decision_invalid_or_expired")
-                return False
-            actions = {"go", "stop"}
-            if identity["protocol_version"] == 2:
-                actions |= {"turn_left", "turn_right"}
-            if identity["protocol_version"] == 3:
-                actions |= {"steer_left", "steer_right"}
-            if decision.get("action") not in actions:
-                self._halt("decision_invalid_action")
-                return False
-            if (
-                identity["protocol_version"] == 3
-                and self.config["avoidance"].get("geometry", {}).get("mode") == "ground"
-                and decision["action"] != "stop"
-                and not self._ground_evidence(decision)
-            ):
-                self._halt("navigation_ground_evidence_invalid")
-                return False
+            identity, remaining = admitted
+            valid = decision["valid_for_ms"]
             self.last_seq = sequence
             self.reason = str(decision.get("reason", "unknown"))[:128]
             if decision["action"] in {"turn_left", "turn_right", "steer_left", "steer_right"}:
                 return self._accept_turn(decision, now, remaining)
             if decision["action"] == "stop":
-                if identity["protocol_version"] == 3 and decision.get("terminal_stop") is True:
-                    self._halt(str(decision.get("motion_reason", "avoidance_no_progress")))
-                    return False
-                if self.pause is None:
-                    # Older callers without scoped zero output retain terminal STOP.
-                    if self.moving or decision.get("state") != "clear":
-                        self._halt(self.reason)
-                    return False
-                if decision.get("state") not in {"clear", "obstacle", "unknown"}:
-                    self._halt("decision_invalid_state")
-                    return False
-                if decision.get("state") == "unknown" and self.reason not in {
-                    "vision_image_quality",
-                    "vision_low_confidence",
-                    "vision_floor_uncertainty",
-                    "depth_ground_orientation",
-                    "ground_reference_uncertain",
-                    "geometry_calibration_missing",
-                    "ground_projection_incomplete",
-                }:
-                    self._halt(self.reason)
-                    return False
-                permit = min(remaining, valid / 1000)
-                duration = min(permit, self.config["max_motion_ms"] / 1000)
-                if duration < 0.05:
-                    return self._defer_short_permit(now)
-                # A fresh visual STOP renews only a zero goal in the original ARM.
-                # The watchdog also expires paused runs; old GO cannot revive them.
-                if self.feedback_wait:
-                    self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
-                self.deadline = now + permit
-                self.moving = False
-                self.reason = str(decision.get("motion_reason", self.reason))[:128]
-                try:
-                    self.pause(duration)
-                    self.paused_for_obstacle = decision.get("state") == "obstacle"
-                except Exception:
-                    self._halt("motion_submission_failed")
-                    raise
-                return False
-            if (
-                decision.get("state") != "clear"
-                or type(decision.get("clear_count")) is not int
-                or decision["clear_count"] < 3
-                or self.config["mode"] != "drive"
-                or self.config["verified"] is not True
-                or decision.get("model_sha256") != self.config["model_sha256"]
-            ):
-                self._halt("decision_not_authorized")
-                return False
-            permit = min(remaining, valid / 1000)
-            duration = min(permit, self.config["max_motion_ms"] / 1000)
-            if duration < 0.05:
-                return self._defer_short_permit(now)
-            # Pulse length is enforced by the executor. The lease tracks freshness,
-            # so a fresh reply after a completed pulse can renew the same run.
-            if self.feedback_wait:
-                self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
-            self.deadline = now + permit
-            self.moving = True
-            self.paused_for_obstacle = False
-            try:
-                self.drive(self.config["speed"], duration)
-            except Exception:
-                self._halt("motion_submission_failed")
-                raise
-            return True
+                return self._accept_stop(decision, identity, now, remaining, valid)
+            return self._accept_go(decision, now, remaining, valid)
+
+    def _accept_go(self, decision, now, remaining, valid):
+        if (
+            decision.get("state") != "clear"
+            or type(decision.get("clear_count")) is not int
+            or decision["clear_count"] < 3
+            or self.config["mode"] != "drive"
+            or self.config["verified"] is not True
+            or decision.get("model_sha256") != self.config["model_sha256"]
+        ):
+            self._halt("decision_not_authorized")
+            return False
+        permit = min(remaining, valid / 1000)
+        duration = min(permit, self.config["max_motion_ms"] / 1000)
+        if duration < 0.05:
+            return self._defer_short_permit(now)
+        # Pulse length is enforced by the executor. The lease tracks freshness,
+        # so a fresh reply after a completed pulse can renew the same run.
+        if self.feedback_wait:
+            self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
+        self.deadline = now + permit
+        self.moving = True
+        self.paused_for_obstacle = False
+        try:
+            self.drive(self.config["speed"], duration)
+        except Exception:
+            self._halt("motion_submission_failed")
+            raise
+        return True
+
+    def _admit_decision(self, decision, frame_id, sequence, captured_monotonic, now):
+        identity = {
+            "protocol_version": self.config.get("avoidance", {}).get("protocol_version", 2)
+            if self.config.get("avoidance", {}).get("enabled")
+            else 1,
+            "run_id": self.run_id,
+            "frame_id": frame_id,
+            "sequence": sequence,
+            "config_revision": self.config["revision"],
+        }
+        remaining = self.config["decision_budget_ms"] / 1000 - (now - captured_monotonic)
+        if (
+            not isinstance(decision, dict)
+            or any(decision.get(k) != v for k, v in identity.items())
+            or any(type(decision.get(k)) is not int for k in ("protocol_version", "sequence", "config_revision"))
+            or not math.isfinite(captured_monotonic)
+            or now < captured_monotonic
+            or type(sequence) is not int
+            or sequence <= self.last_seq
+            or remaining <= 0
+        ):
+            self._halt("decision_invalid_or_expired")
+            return None
+        valid = decision.get("valid_for_ms")
+        if type(valid) is not int or not 0 < valid <= 200:
+            self._halt("decision_invalid_or_expired")
+            return None
+        actions = {"go", "stop"}
+        if identity["protocol_version"] == 2:
+            actions |= {"turn_left", "turn_right"}
+        if identity["protocol_version"] == 3:
+            actions |= {"steer_left", "steer_right"}
+        if decision.get("action") not in actions:
+            self._halt("decision_invalid_action")
+            return None
+        if (
+            identity["protocol_version"] == 3
+            and self.config["avoidance"].get("geometry", {}).get("mode") == "ground"
+            and decision["action"] != "stop"
+            and not self._ground_evidence(decision)
+        ):
+            self._halt("navigation_ground_evidence_invalid")
+            return None
+        return identity, remaining
+
+    def _accept_stop(self, decision, identity, now, remaining, valid):
+        if identity["protocol_version"] == 3 and decision.get("terminal_stop") is True:
+            self._halt(str(decision.get("motion_reason", "avoidance_no_progress")))
+            return False
+        if self.pause is None:
+            # Older callers without scoped zero output retain terminal STOP.
+            if self.moving or decision.get("state") != "clear":
+                self._halt(self.reason)
+            return False
+        if decision.get("state") not in {"clear", "obstacle", "unknown"}:
+            self._halt("decision_invalid_state")
+            return False
+        if decision.get("state") == "unknown" and self.reason not in {
+            "vision_image_quality",
+            "vision_low_confidence",
+            "vision_floor_uncertainty",
+            "depth_ground_orientation",
+            "ground_reference_uncertain",
+            "geometry_calibration_missing",
+            "ground_projection_incomplete",
+        }:
+            self._halt(self.reason)
+            return False
+        permit = min(remaining, valid / 1000)
+        duration = min(permit, self.config["max_motion_ms"] / 1000)
+        if duration < 0.05:
+            return self._defer_short_permit(now)
+        # A fresh visual STOP renews only a zero goal in the original ARM.
+        # The watchdog also expires paused runs; old GO cannot revive them.
+        if self.feedback_wait:
+            self.feedback_deadline = now + self.config["decision_budget_ms"] / 1000
+        self.deadline = now + permit
+        self.moving = False
+        self.reason = str(decision.get("motion_reason", self.reason))[:128]
+        try:
+            self.pause(duration)
+            self.paused_for_obstacle = decision.get("state") == "obstacle"
+        except Exception:
+            self._halt("motion_submission_failed")
+            raise
+        return False
+
+    @staticmethod
+    def _turn_paths_clear(decision, side):
+        paths = decision.get("paths")
+        path = paths.get(side) if isinstance(paths, dict) else None
+        guard = paths.get("guard") if isinstance(paths, dict) else None
+        if any(
+            not isinstance(row, dict) or row.get("state") != "clear" or row.get("coverage_complete") is not True
+            for row in (path, guard)
+        ):
+            return False
+        return True
 
     def _accept_turn(self, decision, now, remaining):
         settings = self.config["avoidance"]
@@ -245,16 +271,9 @@ class DecisionLease:
         ):
             self._halt("avoidance_not_authorized")
             return False
-        if curved:
-            paths = decision.get("paths")
-            path = paths.get(side) if isinstance(paths, dict) else None
-            guard = paths.get("guard") if isinstance(paths, dict) else None
-            if any(
-                not isinstance(row, dict) or row.get("state") != "clear" or row.get("coverage_complete") is not True
-                for row in (path, guard)
-            ):
-                self._halt("avoidance_path_not_clear")
-                return False
+        if curved and not self._turn_paths_clear(decision, side):
+            self._halt("avoidance_path_not_clear")
+            return False
         permit = min(remaining, decision["valid_for_ms"] / 1000)
         duration = min(permit, self.config["max_motion_ms"] / 1000, settings["turn_ms"] / 1000)
         if duration < 0.05:
