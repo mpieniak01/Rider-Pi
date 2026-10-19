@@ -6,8 +6,9 @@ regressions, imports both coverage reports and waits for the Sonar quality gate.
 The existing Tests and Quality Guard workflows remain enabled.
 
 `SONAR_TOKEN` is a repository Actions secret. The scanner receives it only in its
-own step; it is never passed in command arguments or written to a repository
-file. Fork pull requests have no secret and require a trusted manual analysis;
+own step through the container environment; the workflow never writes it to a
+repository file or interpolates it into a shell command. The pinned image
+entrypoint internally maps it to the scanner authentication property. Fork pull requests have no secret and require a trusted manual analysis;
 the workflow fails visibly rather than publishing an unauthenticated result.
 Sonar Automatic Analysis remains off because CI performs explicit analysis.
 

@@ -6,8 +6,9 @@ oraz Node 22, importuje oba raporty pokrycia i czeka na wynik bramki Sonara.
 Istniejące workflow Tests i Quality Guard pozostają aktywne.
 
 Token jest sekretem repozytorium GitHub Actions `SONAR_TOKEN`. Otrzymuje go
-wyłącznie krok skanera, przez środowisko procesu. Nie trafia do argumentów
-polecenia ani plików repozytorium. PR z forka bez sekretu wymaga zaufanego
+wyłącznie krok skanera, przez środowisko kontenera. Workflow nie zapisuje go
+w repozytorium ani nie wstawia do poleceń powłoki. Entrypoint przypiętego obrazu
+wewnętrznie mapuje go na właściwość uwierzytelniania skanera. PR z forka bez sekretu wymaga zaufanego
 skanu ręcznego; brak sekretu jest widocznym błędem, a nie pozornym sukcesem.
 Automatic Analysis w Sonarze pozostaje wyłączone; skan uruchamia CI.
 
