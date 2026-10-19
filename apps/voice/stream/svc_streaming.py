@@ -32,6 +32,7 @@ from ..utils import run_sync
 from .handlers import StreamHandlersMixin
 from .playout import StreamPlayoutMixin
 from .state import PTTEvent, PTTStateMachine
+from .task_lifecycle import SessionTasks
 from .transport import ReconnectingTransport
 
 
@@ -175,6 +176,8 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         self._message_handler_task: asyncio.Task[None] | None = None
         self._audio_sender_task: asyncio.Task[None] | None = None
         self._keyboard_task: asyncio.Task[None] | None = None
+        self._session_tasks = SessionTasks(self.logger)
+        self._cleanup_lock = None
 
         # Session state
         self.session_id: str = ""
@@ -358,8 +361,8 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
 
         try:
             await self._send_session_init()
-            self._message_handler_task = asyncio.create_task(self._message_handler_loop())
-            self._audio_sender_task = asyncio.create_task(self._audio_sender_loop())
+            self._message_handler_task = self._session_tasks.create(self._message_handler_loop(), name="voice-messages")
+            self._audio_sender_task = self._session_tasks.create(self._audio_sender_loop(), name="voice-audio")
             self._start_audio_capture()
             if speak:
                 self._start_tts_player()
@@ -393,7 +396,8 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
         except Exception as e:
             self.logger.event("stream.listen.error", error=str(e))
         finally:
-            self.stop()
+            self.stop_event.set()
+            await self._cleanup()
 
     def stop(self) -> None:
         """Stop the service (safe from sync code)."""
@@ -440,29 +444,35 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
 
     async def _run_session(self) -> None:
         """Run a single WebSocket session."""
-        await self._send_session_init()
-        self._start_audio_capture()
-        self._start_tts_player()
-        self._audio_sender_task = asyncio.create_task(self._audio_sender_loop())
-        self._message_handler_task = asyncio.create_task(self._message_handler_loop())
+        try:
+            await self._send_session_init()
+            self._start_audio_capture()
+            self._start_tts_player()
+            self._audio_sender_task = self._session_tasks.create(self._audio_sender_loop(), name="voice-audio")
+            self._message_handler_task = self._session_tasks.create(self._message_handler_loop(), name="voice-messages")
 
-        # Start PTT keyboard handler if enabled
-        if self.ptt_enabled:
-            self._keyboard_task = asyncio.create_task(self._keyboard_ptt_loop())
+            # Start PTT keyboard handler if enabled
+            if self.ptt_enabled:
+                self._keyboard_task = self._session_tasks.create(self._keyboard_ptt_loop(), name="voice-keyboard")
 
-        # prosty watchdog RX – jeśli nie ma eventów, ostrzegaj
-        async def _rx_watchdog():
-            while not self.stop_event.is_set():
-                await asyncio.sleep(5)
-                delta = time.time() - self._last_rx_ts
-                if delta > 5:
-                    self.logger.event("ws.no_rx", since_s=int(delta))
+            # prosty watchdog RX – jeśli nie ma eventów, ostrzegaj
+            async def _rx_watchdog():
+                while not self.stop_event.is_set():
+                    await asyncio.sleep(5)
+                    delta = time.time() - self._last_rx_ts
+                    if delta > 5:
+                        self.logger.event("ws.no_rx", since_s=int(delta))
 
-        asyncio.create_task(_rx_watchdog())
+            self._session_tasks.create(_rx_watchdog(), name="voice-rx-watchdog")
 
-        # Keep the session alive while other tasks are running.
-        while not self.stop_event.is_set() and self.transport:
-            await asyncio.sleep(0.1)
+            # Keep the session alive while other tasks are running.
+            while not self.stop_event.is_set() and self.transport:
+                if self._message_handler_task.done() or self._audio_sender_task.done():
+                    break
+                await asyncio.sleep(0.1)
+
+        finally:
+            await self._cancel_session_tasks()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Messaging (delegated to StreamHandlersMixin)
@@ -507,7 +517,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
                             pass
 
                 try:
-                    chunk = self.audio_queue.get(timeout=0.1)
+                    chunk = await asyncio.to_thread(self.audio_queue.get, timeout=0.1)
                 except queue.Empty:
                     continue
 
@@ -520,7 +530,7 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
 
                 await self._send_audio_chunk(chunk)
         except asyncio.CancelledError:
-            pass
+            raise
         except Exception as e:
             self.logger.event("audio.sender.error", error=str(e))
         finally:
@@ -645,72 +655,69 @@ class StreamingVoiceService(StreamHandlersMixin, StreamPlayoutMixin):
     # ──────────────────────────────────────────────────────────────────────────
     # Cleanup
 
-    async def _cleanup(self) -> None:
-        """Full cleanup including transport."""
-        if self._audio_sender_task and not self._audio_sender_task.done():
-            self._audio_sender_task.cancel()
-            try:
-                await self._audio_sender_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._audio_sender_task = None
-
-        if self._message_handler_task and not self._message_handler_task.done():
-            self._message_handler_task.cancel()
-            try:
-                await self._message_handler_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._message_handler_task = None
-
-        if self._keyboard_task and not self._keyboard_task.done():
-            self._keyboard_task.cancel()
-            try:
-                await self._keyboard_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._keyboard_task = None
-
-        if self.transport:
-            try:
-                await self.transport.close()
-            except Exception as e:
-                self.logger.event("transport.close.error", error=str(e))
-            finally:
-                self.transport = None
-
-        if self.websocket:
-            try:
-                await self.websocket.close(code=1000)
-                await self.websocket.wait_closed()
-            except Exception as e:
-                self.logger.event("websocket.close.error", error=str(e))
-            finally:
-                self.websocket = None
-                self.connected = False
-
-        # Emit one final bandwidth metric (spełnia wymagania testu)
+    async def _cancel_session_tasks(self) -> None:
+        """Drain all session work and clear the compatibility task references."""
         try:
-            window_s = max(0.001, time.time() - self._bw_started_ts)
-            data = {
-                "tx_bytes": int(self._bw_tx_total),
-                "rx_bytes": int(self._bw_rx_total),
-                "window_s": float(window_s),
-                "tx_bps": float(self._bw_tx_total) / window_s,
-                "rx_bps": float(self._bw_rx_total) / window_s if self._bw_rx_total else 0.0,
-                "phase": "final",
-            }
-            self.logger.event("stream.bw", **data)
-        except Exception:
-            # metryka pomocnicza – ignorujemy błędy przy zamykaniu
-            pass
+            await self._session_tasks.cancel_all()
+        finally:
+            self._audio_sender_task = None
+            self._message_handler_task = None
+            self._keyboard_task = None
 
-        self._cleanup_workers()
-        self.ptt_state.reset()
-        self._publish_ui_state("idle")
+    async def _cleanup(self) -> None:
+        """Always release resources while preserving cancellation of this operation."""
+        if self._cleanup_lock is None:
+            self._cleanup_lock = asyncio.Lock()
+        async with self._cleanup_lock:
+            self.stop_event.set()
+            try:
+                await self._cancel_session_tasks()
+            finally:
+                try:
+                    await self._close_connections()
+                finally:
+                    self.connected = False
+                    self._cleanup_workers()
+                    self.ptt_state.reset()
+                    self._publish_ui_state("idle")
+
+    async def _close_connections(self) -> None:
+        """Close transport/legacy socket and emit the existing final bandwidth metric."""
+        try:
+            if self.transport:
+                try:
+                    await self.transport.close()
+                except Exception as e:
+                    self.logger.event("transport.close.error", error=str(e))
+                finally:
+                    self.transport = None
+
+        finally:
+            if self.websocket:
+                try:
+                    await self.websocket.close(code=1000)
+                    await self.websocket.wait_closed()
+                except Exception as e:
+                    self.logger.event("websocket.close.error", error=str(e))
+                finally:
+                    self.websocket = None
+                    self.connected = False
+
+            # Emit one final bandwidth metric (spełnia wymagania testu)
+            try:
+                window_s = max(0.001, time.time() - self._bw_started_ts)
+                data = {
+                    "tx_bytes": int(self._bw_tx_total),
+                    "rx_bytes": int(self._bw_rx_total),
+                    "window_s": float(window_s),
+                    "tx_bps": float(self._bw_tx_total) / window_s,
+                    "rx_bps": float(self._bw_rx_total) / window_s if self._bw_rx_total else 0.0,
+                    "phase": "final",
+                }
+                self.logger.event("stream.bw", **data)
+            except Exception:
+                # metryka pomocnicza – ignorujemy błędy przy zamykaniu
+                pass
 
     # ──────────────────────────────────────────────────────────────────────────
     # Waiters

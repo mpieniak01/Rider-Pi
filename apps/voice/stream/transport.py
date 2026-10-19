@@ -17,6 +17,7 @@ from typing import Any
 
 from .. import voice_logging
 from ..errors import StreamError
+from .task_lifecycle import cancel_tasks
 
 # ---- Preferred async library: websockets ------------------------------------
 _ws_async = None
@@ -74,6 +75,7 @@ class WebSocketTransport:
         # Heartbeat
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._stop_heartbeat = False
+        self._close_lock = None
 
     async def connect(self, *, max_retries: int = 3) -> bool:
         """Connect to WebSocket endpoint."""
@@ -172,34 +174,55 @@ class WebSocketTransport:
             raise StreamError(f"WebSocket recv failed: {e}") from e
 
     async def close(self) -> None:
-        """Close WebSocket connection cleanly."""
-        # Stop heartbeat first
-        self._stop_heartbeat = True
-        if self._heartbeat_task and not self._heartbeat_task.done():
-            self._heartbeat_task.cancel()
+        """Stop heartbeat and close even a failed/disconnected socket on every exit."""
+        if self._close_lock is None:
+            self._close_lock = asyncio.Lock()
+        async with self._close_lock:
+            self._stop_heartbeat = True
             try:
-                await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
-
-        if self.websocket and self.connected:
-            try:
-                self.logger.event("ws.closing", session_id=self.session_id)
-
-                if self._use_async:
-                    await self.websocket.close(code=1000)
-                    await self.websocket.wait_closed()
-                else:
-                    await asyncio.to_thread(self.websocket.close, status=1000)
-
-                self.logger.event("ws.closed", session_id=self.session_id)
-
-            except Exception as e:
-                self.logger.event("ws.close_error", error=str(e))
+                await cancel_tasks(self._heartbeat_task)
             finally:
-                self.websocket = None
-                self.connected = False
-                self.session_id = ""
+                self._heartbeat_task = None
+                try:
+                    if self.websocket is not None:
+                        self.logger.event("ws.closing", session_id=self.session_id)
+                        await self._close_socket(self.websocket)
+                        self.logger.event("ws.closed", session_id=self.session_id)
+                except Exception as error:
+                    self.logger.event("ws.close_error", error=str(error))
+                finally:
+                    self.websocket = None
+                    self.connected = False
+                    self.session_id = ""
+
+    async def _close_socket(self, websocket) -> None:
+        """Complete the owned socket's shutdown before propagating cancellation."""
+
+        async def close_and_wait():
+            """Keep both async close steps, or the sync close thread, together."""
+            if self._use_async:
+                await websocket.close(code=1000)
+                await websocket.wait_closed()
+            else:
+                await asyncio.to_thread(websocket.close, status=1000)
+
+        close_task = asyncio.create_task(close_and_wait(), name="voice-socket-close")
+        cancelled = False
+        while True:
+            try:
+                await asyncio.shield(close_task)
+                break
+            except asyncio.CancelledError:
+                cancelled = True
+                if close_task.cancelled():
+                    break
+            except Exception as error:
+                if not cancelled:
+                    raise
+                self.logger.event("ws.close_error", error=str(error))
+                break
+        if cancelled:
+            raise asyncio.CancelledError
 
     async def _heartbeat_loop(self) -> None:
         """Heartbeat loop to keep connection alive."""
@@ -226,7 +249,7 @@ class WebSocketTransport:
                     break
 
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 self.logger.event("ws.heartbeat.error", error=str(e))
                 self.connected = False
@@ -314,7 +337,9 @@ class ReconnectingTransport:
 
     async def close(self) -> None:
         """Close transport connection."""
-        if self.transport:
-            await self.transport.close()
+        try:
+            if self.transport:
+                await self.transport.close()
+        finally:
             self.transport = None
-        self.retry_count = 0
+            self.retry_count = 0
