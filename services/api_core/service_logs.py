@@ -12,6 +12,37 @@ MAX_LINES = 50
 TIMEOUT_S = 2.0
 
 
+def _read_ready(selector, buffers, ready):
+    for key, _mask in ready:
+        chunk = os.read(key.fd, 4096)
+        if not chunk:
+            selector.unregister(key.fileobj)
+            continue
+        total = sum(len(value) for value in buffers.values())
+        buffers[key.data].extend(chunk[: MAX_BYTES - total])
+        if total + len(chunk) >= MAX_BYTES:
+            return True
+    return False
+
+
+def _read_streams(process, buffers, deadline):
+    timed_out = truncated = False
+    with selectors.DefaultSelector() as selector:
+        for name in buffers:
+            pipe = getattr(process, name)
+            os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, selectors.EVENT_READ, name)
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            truncated = _read_ready(selector, buffers, selector.select(remaining))
+            if truncated:
+                break
+    return timed_out, truncated
+
+
 def _journal(command: list[str]) -> dict:
     """Bound both time and bytes; never execute a shell or privilege helper."""
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
@@ -19,28 +50,7 @@ def _journal(command: list[str]) -> dict:
     deadline = time.monotonic() + TIMEOUT_S
     timed_out = truncated = False
     try:
-        with selectors.DefaultSelector() as selector:
-            for name in buffers:
-                pipe = getattr(process, name)
-                os.set_blocking(pipe.fileno(), False)
-                selector.register(pipe, selectors.EVENT_READ, name)
-            while selector.get_map():
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    timed_out = True
-                    break
-                for key, _mask in selector.select(remaining):
-                    chunk = os.read(key.fd, 4096)
-                    if not chunk:
-                        selector.unregister(key.fileobj)
-                        continue
-                    total = sum(len(value) for value in buffers.values())
-                    buffers[key.data].extend(chunk[: MAX_BYTES - total])
-                    if total + len(chunk) >= MAX_BYTES:
-                        truncated = True
-                        break
-                if truncated:
-                    break
+        timed_out, truncated = _read_streams(process, buffers, deadline)
         if process.poll() is None:
             if timed_out or truncated:
                 process.kill()

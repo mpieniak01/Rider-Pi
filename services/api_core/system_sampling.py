@@ -40,18 +40,21 @@ class SystemSampler:
         self.latest = None
         self.history = deque(maxlen=60)
 
+    def _sample_cpu(self):
+        idle, total = self.cpu_reader()
+        if total > 0:
+            if self.previous is not None:
+                di, dt = idle - self.previous[0], total - self.previous[1]
+                if dt > 0 and di >= 0:
+                    self.idle_delta += di
+                    self.total_delta += dt
+                    self.peak = max(self.peak, max(0.0, min(100.0, 100 * (1 - di / dt))))
+            self.previous = (idle, total)
+
     def sample(self):
         with self.lock:
             now = self.clock()
-            idle, total = self.cpu_reader()
-            if total > 0:
-                if self.previous is not None:
-                    di, dt = idle - self.previous[0], total - self.previous[1]
-                    if dt > 0 and di >= 0:
-                        self.idle_delta += di
-                        self.total_delta += dt
-                        self.peak = max(self.peak, max(0.0, min(100.0, 100 * (1 - di / dt))))
-                self.previous = (idle, total)
+            self._sample_cpu()
             if self.summary_at is not None and now - self.summary_at < SUMMARY_INTERVAL_S - 0.001:
                 return
             slow = self.disk_at is None or now - self.disk_at >= DISK_INTERVAL_S
