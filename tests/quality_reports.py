@@ -37,7 +37,10 @@ def javascript_report(source, output):
             continue
         path = Path(name)
         if path.is_absolute():
-            path = path.relative_to(ROOT)
+            try:
+                path = path.relative_to(ROOT)
+            except ValueError:
+                raise ValueError("coverage_source_outside_repository: " + str(path)) from None
         if ".." in path.parts or not (ROOT / path).is_file():
             raise ValueError("coverage_source_outside_repository: " + str(path))
         if path.parts[0] != "web":

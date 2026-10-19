@@ -9,7 +9,7 @@ voice_<provider>_<mode>.toml
 ```
 
 Gdzie:
-- **`<provider>`** — dostawca usług AI: `openai`, `gemini`, `local`
+- **`<provider>`** — dostawca usług AI: `openai`, `local`
 - **`<mode>`** — tryb komunikacji: `file` (REST API), `streaming` (WebSocket)
 
 **Dostępne pliki:**
@@ -153,7 +153,7 @@ aplay -l
 |-------|-----|----------|----------|------|
 | `backend` | str | openai, local, echo | `openai` | Wybór dostawcy czatu |
 | `transport` | str | rest, realtime | `rest` | Transport chat |
-| `model` | str | — | — | Identyfikator modelu (np. `gpt-4o-mini` lub `gemini-pro`) |
+| `model` | str | — | — | Identyfikator modelu (np. `gpt-4o-mini`) |
 | `system_prompt` | str | — | — | Prompt systemowy definiujący zachowanie asystenta |
 | `max_history` | int | ≥0 | `4` | Maksymalna liczba par user/assistant w historii |
 | `max_tokens` | int | ≥1 lub None | `None` | Limit tokenów w odpowiedzi (opcjonalny) |

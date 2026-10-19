@@ -21,7 +21,7 @@ JavaScript są importowane jako LCOV. Wszystkie wyniki powstają w ignorowanym
 katalogu `docs_pl/_done/ci-sonar`.
 
 Moduły JavaScript są mierzone pod rzeczywistymi nazwami plików, bez zmiany ich
-kodów źródłowych. Fixture z wstrzykniętymi zależnościami zachowują pozycje znaków
+kodów źródłowych. Fixture ze wstrzykniętymi zależnościami zachowują pozycje znaków
 i linii oryginału. Normalizator zachowuje trafienia linii i warunków, odrzuca
 nieistniejące ścieżki oraz nie uwzględnia końcowego wiązania dodanego przez fixture
 jako kodu produkcyjnego. Testy procesów wdrożenia przypisują wysyłany kod do jego

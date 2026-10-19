@@ -16,9 +16,9 @@ SYSTEMD_SERVICES = $(filter-out rider-splash.service rider-wifi-unblock.service,
 
 # Provider wyboru backendu głosowego:
 # - openai (domyślnie)
-# - google (Gemini)
 # - local  (voice-web na :8092, config/voice_local_file.toml)
-PROVIDER ?= openai  # allowed: openai, google, local
+# Google/Gemini SDK jest wyłączone; wybór google/gemini zwraca błąd.
+PROVIDER ?= openai  # allowed: openai, local
 
 # VOICE (serwer www + CLI; opcjonalne VOICE_ARGS, np. ' --lang pl ')
 VOICE_BIND ?= 127.0.0.1:8092

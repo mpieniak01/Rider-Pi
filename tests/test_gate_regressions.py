@@ -100,7 +100,8 @@ def test_neutral_and_near_neutral_gain_avoid_reencoding_audio():
     assert _maybe_gain(context, b"pcm", 1.0 + 1e-12) == b"pcm"
 
 
-def test_javascript_report_uses_actual_measured_lines_and_rejects_external_paths(tmp_path, monkeypatch):
+@pytest.mark.parametrize("invalid", ["../outside.js", "absolute", "web/missing.js"])
+def test_javascript_report_uses_actual_measured_lines_and_rejects_external_paths(tmp_path, monkeypatch, invalid):
     reports = load("tests/quality_reports.py")
     monkeypatch.setattr(reports, "ROOT", tmp_path)
     (tmp_path / "web").mkdir()
@@ -112,7 +113,8 @@ def test_javascript_report_uses_actual_measured_lines_and_rejects_external_paths
     assert "DA:1,2" in output.read_text()
     assert "DA:2,0" in output.read_text()
     assert "DA:3" not in output.read_text()
-    raw.write_text("SF:../outside.js\nDA:1,1\nend_of_record\n")
+    source = str(tmp_path.parent / "outside.js") if invalid == "absolute" else invalid
+    raw.write_text(f"SF:{source}\nDA:1,1\nend_of_record\n")
     with pytest.raises(ValueError, match="outside_repository"):
         reports.javascript_report(raw, output)
 

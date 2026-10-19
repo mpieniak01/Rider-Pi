@@ -19,9 +19,10 @@ Klienci CLI i połączenia między serwerami bez `Origin` pozostają obsługiwan
 Żądanie zmieniające stan z `Sec-Fetch-Site: cross-site` lub `same-site`, lecz
 bez `Origin`, jest odrzucane. Nie wystawiaj API do niezaufanej sieci: ta granica
 ogranicza żądania przeglądarkowe, nie uwierzytelnia klienta. Autoryzacja bearer
-agentów i odtwarzania audio nadal działa niezależnie. Porównanie z hostem
-żądania nie zastępuje ochrony przed DNS rebinding ani konfiguracji zaufanych
-hostów/proxy. Za proxy TLS dodaj publiczny origin HTTPS do listy; aplikacja
+agentów i odtwarzania audio nadal działa niezależnie. Nazwa hosta wyznacza
+granicę same-origin dopiero po zaufaniu lokalnym lub operatora. Zgodna para
+Host/Origin z niezaufaną nazwą jest odrzucana (ochrona przed DNS rebinding).
+Za proxy TLS dodaj publiczny origin HTTPS do listy; aplikacja
 nie ufa automatycznie `X-Forwarded-Host`.
 
 Niepuste `POST`, `PUT`, `PATCH` i `DELETE` wymagają JSON (`application/json`
