@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+TASKS_CONTRACT = "rider.tasks"
+
 
 @dataclass(frozen=True)
 class Contract:
@@ -25,7 +27,7 @@ _GROUPS = {
     "rider.navigation_loop": (1, ("/api/navigation/config", "/api/navigation/status", "/api/navigation/trial")),
     "rider.compute": (1, ("/api/compute/config", "/api/compute/status", "/api/compute/tasks/<task>")),
     "rider.catalog": (2, ("/api/logic/catalog",)),
-    "rider.tasks": (2, ("/api/logic/features", "/api/logic/state", "/api/logic/summary", "/api/logic/feature/<name>")),
+    TASKS_CONTRACT: (2, ("/api/logic/features", "/api/logic/state", "/api/logic/summary", "/api/logic/feature/<name>")),
     "rider.service_graph": (2, ("/api/services/graph",)),
     "rider.services": (2, ("/svc", "/svc/<name>", "/svc/<name>/status", "/api/services/<unit>/logs")),
     "rider.resources": (1, ("/api/resource/<name>",)),
@@ -152,11 +154,11 @@ for _suffix in (
         _family = (
             "rider.obstacle"
             if _suffix == "obstacle"
-            else "rider.tasks"
+            else TASKS_CONTRACT
             if _suffix in {"tracking/mode", "follow/face", "follow/hand"}
             else "rider.frames"
         )
-        CONTRACTS[_prefix + _suffix] = Contract(_family, 2 if _family == "rider.tasks" else 1)
+        CONTRACTS[_prefix + _suffix] = Contract(_family, 2 if _family == TASKS_CONTRACT else 1)
 
 
 def contract_for(rule: str | None) -> Contract:
@@ -197,6 +199,57 @@ def service_row(row: dict) -> dict:
     return value
 
 
+def _task_row(row):
+    return {
+        **row,
+        "identity": f"{row.get('host', 'pi')}:{row.get('name')}",
+        "services": [service_row(service) for service in row.get("services", [])],
+    }
+
+
+def _graph_projection(data):
+    rows = data.get("nodes", [])
+    identities = {row.get("id"): f"{row.get('host', 'pi')}:{row.get('unit')}" for row in rows}
+    data["nodes"] = [{**service_row(row), "id": identities.get(row.get("id"))} for row in rows]
+    data["edges"] = [
+        {
+            **edge,
+            "from": identities.get(edge.get("from"), edge.get("from")),
+            "to": identities.get(edge.get("to"), edge.get("to")),
+        }
+        for edge in data.get("edges", [])
+    ]
+
+
+def _task_projection(data):
+    # Only observed task members are systemd rows; static catalog units are definitions.
+    if isinstance(data.get("features"), list):
+        data["features"] = [_task_row(row) for row in data["features"]]
+    if isinstance(data.get("summary"), dict):
+        data["summary"] = {
+            **data["summary"],
+            "features": [_task_row(row) for row in data["summary"].get("features", [])],
+        }
+    if isinstance(data.get("state"), dict):
+        data["state"] = {
+            **data["state"],
+            "features": [_task_row(row) for row in data["state"].get("features", [])],
+        }
+    result = data.get("result")
+    if isinstance(result, dict) and isinstance(result.get("task"), dict):
+        data["result"] = {**result, "task": _task_row(result["task"])}
+
+
+def _obstacle_projection(data):
+    for old, new in (("edge_pct", "edge_ratio"), ("edge_pct_raw", "edge_ratio_raw")):
+        if old in data:
+            data[new] = data.pop(old)
+    if isinstance(data.get("diag"), dict):
+        data["diag"] = dict(data["diag"])
+        if "edge_pct_raw" in data["diag"]:
+            data["diag"]["edge_ratio_raw"] = data["diag"].pop("edge_pct_raw")
+
+
 def projection(rule: str | None, payload):
     """Produce a single canonical domain payload, preserving legacy response defaults."""
     if not isinstance(payload, dict):
@@ -207,41 +260,9 @@ def projection(rule: str | None, payload):
     if rule == "/svc":
         data["services"] = [service_row(row) for row in data.get("services", [])]
     if rule == "/api/services/graph":
-        rows = data.get("nodes", [])
-        identities = {row.get("id"): f"{row.get('host', 'pi')}:{row.get('unit')}" for row in rows}
-        data["nodes"] = [{**service_row(row), "id": identities.get(row.get("id"))} for row in rows]
-        data["edges"] = [
-            {
-                **edge,
-                "from": identities.get(edge.get("from"), edge.get("from")),
-                "to": identities.get(edge.get("to"), edge.get("to")),
-            }
-            for edge in data.get("edges", [])
-        ]
+        _graph_projection(data)
     if rule and rule.startswith("/api/logic/"):
-        # Only observed task members are systemd rows; static catalog units are definitions.
-        def task(row):
-            return {
-                **row,
-                "identity": f"{row.get('host', 'pi')}:{row.get('name')}",
-                "services": [service_row(service) for service in row.get("services", [])],
-            }
-
-        if isinstance(data.get("features"), list):
-            data["features"] = [task(row) for row in data["features"]]
-        if isinstance(data.get("summary"), dict):
-            data["summary"] = {
-                **data["summary"],
-                "features": [task(row) for row in data["summary"].get("features", [])],
-            }
-        if isinstance(data.get("state"), dict):
-            data["state"] = {
-                **data["state"],
-                "features": [task(row) for row in data["state"].get("features", [])],
-            }
-        result = data.get("result")
-        if isinstance(result, dict) and isinstance(result.get("task"), dict):
-            data["result"] = {**result, "task": task(result["task"])}
+        _task_projection(data)
     if rule in {"/state", "/healthz"}:
         try:
             from common.observations import canonical_telemetry_payload
@@ -252,11 +273,5 @@ def projection(rule: str | None, payload):
     if rule and rule.startswith("/api/providers/") and "pc_health" in data:
         data["peer_health"] = data.pop("pc_health")
     if rule and rule.endswith("/vision/obstacle"):
-        for old, new in (("edge_pct", "edge_ratio"), ("edge_pct_raw", "edge_ratio_raw")):
-            if old in data:
-                data[new] = data.pop(old)
-        if isinstance(data.get("diag"), dict):
-            data["diag"] = dict(data["diag"])
-            if "edge_pct_raw" in data["diag"]:
-                data["diag"]["edge_ratio_raw"] = data["diag"].pop("edge_pct_raw")
+        _obstacle_projection(data)
     return data

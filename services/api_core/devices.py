@@ -9,6 +9,9 @@ from common.observations import legacy_xgo, normalize_xgo_observation, observati
 
 from . import compat as C
 
+LCD_STATE_TOPIC = "ui.lcd.state"
+CAMERA_HEARTBEAT_TOPIC = "camera.heartbeat"
+
 
 def _json_or_raw(payload: str):
     try:
@@ -17,25 +20,33 @@ def _json_or_raw(payload: str):
         s = (payload or "").strip()
         if s == "":
             return None
-        try:
-            if "." in s or "e" in s.lower():
-                return float(s)
-            return int(s)
-        except Exception:
-            pass
-        if "," in s and not s.startswith("{") and not s.startswith("["):
-            parts = [p.strip() for p in s.split(",")]
-            out = []
-            for p in parts:
-                try:
-                    if "." in p or "e" in p.lower():
-                        out.append(float(p))
-                    else:
-                        out.append(int(p))
-                except Exception:
-                    out.append(p)
-            return out
-        return s
+        return _legacy_scalar_or_list(s)
+
+
+def _legacy_part(p):
+    try:
+        if "." in p or "e" in p.lower():
+            return float(p)
+        else:
+            return int(p)
+    except Exception:
+        return p
+
+
+def _legacy_scalar_or_list(s):
+    try:
+        if "." in s or "e" in s.lower():
+            return float(s)
+        return int(s)
+    except Exception:
+        pass
+    if "," in s and not s.startswith("{") and not s.startswith("["):
+        parts = [p.strip() for p in s.split(",")]
+        out = []
+        for p in parts:
+            out.append(_legacy_part(p))
+        return out
+    return s
 
 
 def _source_time(value):
@@ -170,7 +181,51 @@ def _decode_frames(frames):
     return topic, payload
 
 
-def observe_lcd(data: dict, *, topic="ui.lcd.state", now=None) -> None:
+def _lcd_report_valid(data, lcd, topic, source, at, now, confirmation):
+    return not (
+        topic != LCD_STATE_TOPIC
+        or not isinstance(source, str)
+        or not source.strip()
+        or at is None
+        or type(now) not in (int, float)
+        or not math.isfinite(now)
+        or not 0 <= now - at <= 5
+        or any(data.get(key) is True or lcd.get(key) is True for key in ("stale", "offline", "simulated"))
+        or data.get("error")
+        or lcd.get("error")
+        or not isinstance(confirmation, str)
+        or confirmation not in {"control_write_accepted", "frame_write_accepted"}
+    )
+
+
+def _lcd_frame_details(state, lcd, source, at):
+    if type(lcd.get("rot")) is int and lcd["rot"] in (0, 90, 180, 270):
+        state["rot"] = lcd["rot"]
+    for key in ("frame", "battery"):
+        if isinstance(lcd.get(key), dict):
+            state[key] = dict(lcd[key])  # preserve original frame/measurement times
+    if isinstance(lcd.get("frame"), dict):
+        # Original frame-acceptance report time, not camera capture or receipt.
+        state.update(frame_source=source, frame_observed_at=at)
+    if isinstance(lcd.get("presenting"), bool):
+        state["presenting"] = lcd["presenting"]
+
+
+def _lcd_power_state(state, lcd, source, at, confirmation):
+    known = (
+        lcd.get("power_known") is True and isinstance(lcd.get("on"), bool) and confirmation == "control_write_accepted"
+    )
+    state.update(
+        on=lcd["on"] if known else None,
+        power_known=known,
+        power_source=source if known else None,
+        power_observed_at=at if known else None,
+    )
+    if known and lcd["on"] is False:
+        state["presenting"] = False
+
+
+def observe_lcd(data: dict, *, topic=LCD_STATE_TOPIC, now=None) -> None:
     """Keep accepted LCD reports separate from camera preview configuration.
 
     Headless camera heartbeats describe their own preview settings, not the
@@ -185,7 +240,7 @@ def observe_lcd(data: dict, *, topic="ui.lcd.state", now=None) -> None:
         return
     state = C.LAST_CAMERA["lcd"]
     at = source_time(data.get("observed_at", data.get("ts")))
-    if topic == "camera.heartbeat":
+    if topic == CAMERA_HEARTBEAT_TOPIC:
         state["preview_config"] = {
             **{key: lcd[key] for key in ("enabled_env", "no_draw", "rot", "active") if key in lcd},
             **{key: data[key] for key in ("stale", "offline", "error", "simulated") if key in data},
@@ -196,20 +251,7 @@ def observe_lcd(data: dict, *, topic="ui.lcd.state", now=None) -> None:
     now = time.time() if now is None else now
     source = data.get("source")
     confirmation = lcd.get("confirmation")
-    if (
-        topic != "ui.lcd.state"
-        or not isinstance(source, str)
-        or not source.strip()
-        or at is None
-        or type(now) not in (int, float)
-        or not math.isfinite(now)
-        or not 0 <= now - at <= 5
-        or any(data.get(key) is True or lcd.get(key) is True for key in ("stale", "offline", "simulated"))
-        or data.get("error")
-        or lcd.get("error")
-        or not isinstance(confirmation, str)
-        or confirmation not in {"control_write_accepted", "frame_write_accepted"}
-    ):
+    if not _lcd_report_valid(data, lcd, topic, source, at, now, confirmation):
         return
     previous_at = source_time(state.get("observed_at"))
     if previous_at is not None and at < previous_at:
@@ -222,27 +264,8 @@ def observe_lcd(data: dict, *, topic="ui.lcd.state", now=None) -> None:
     for key in ("physical_validity", "reason", "no_draw"):
         if key in lcd:
             state[key] = lcd[key]
-    if type(lcd.get("rot")) is int and lcd["rot"] in (0, 90, 180, 270):
-        state["rot"] = lcd["rot"]
-    for key in ("frame", "battery"):
-        if isinstance(lcd.get(key), dict):
-            state[key] = dict(lcd[key])  # preserve original frame/measurement times
-    if isinstance(lcd.get("frame"), dict):
-        # Original frame-acceptance report time, not camera capture or receipt.
-        state.update(frame_source=source, frame_observed_at=at)
-    if isinstance(lcd.get("presenting"), bool):
-        state["presenting"] = lcd["presenting"]
-    known = (
-        lcd.get("power_known") is True and isinstance(lcd.get("on"), bool) and confirmation == "control_write_accepted"
-    )
-    state.update(
-        on=lcd["on"] if known else None,
-        power_known=known,
-        power_source=source if known else None,
-        power_observed_at=at if known else None,
-    )
-    if known and lcd["on"] is False:
-        state["presenting"] = False
+    _lcd_frame_details(state, lcd, source, at)
+    _lcd_power_state(state, lcd, source, at, confirmation)
 
 
 def observe_camera_heartbeat(data: object) -> None:
@@ -255,7 +278,102 @@ def observe_camera_heartbeat(data: object) -> None:
             C.LAST_CAMERA[key] = data[key]
     C.LAST_CAMERA["mode"] = data.get("mode")
     C.LAST_CAMERA["fps"] = data.get("fps")
-    observe_lcd(data, topic="camera.heartbeat")
+    observe_lcd(data, topic=CAMERA_HEARTBEAT_TOPIC)
+
+
+def _observe_vision_state(payload):
+    try:
+        data = json.loads(payload) if payload else {}
+        C.LAST_STATE["present"] = bool(data.get("present", C.LAST_STATE["present"]))
+        C.LAST_STATE["confidence"] = float(data.get("confidence", C.LAST_STATE["confidence"]))
+        if "mode" in data:
+            C.LAST_STATE["mode"] = data.get("mode")
+        C.LAST_STATE["ts"] = _source_time(data.get("observed_at", data.get("ts")))
+        for key in ("source", "observed_at", "stale", "offline", "error", "data_ready"):
+            if key in data:
+                C.LAST_STATE[key] = data[key]
+    except Exception:
+        pass
+    return
+
+
+def _observe_tracking_mode(payload):
+    data = _json_or_raw(payload)
+    mode = None
+    if isinstance(data, dict):
+        mode = data.get("mode")
+    elif isinstance(data, str):
+        mode = data
+    mode_str = "none" if mode is None else str(mode)
+    mode_norm = mode_str.strip().lower() or "none"
+    C.LAST_TRACKING_MODE["mode"] = mode_norm
+    C.LAST_TRACKING_MODE["enabled"] = mode_norm in ("face", "hand")
+    C.LAST_TRACKING_MODE["ts"] = (
+        _source_time(data.get("observed_at", data.get("ts"))) if isinstance(data, dict) else None
+    )
+    return
+
+
+def _observe_tracking_offset(payload):
+    data = _json_or_raw(payload)
+    if isinstance(data, dict):
+        offset = data.get("offset_x")
+        try:
+            offset = None if offset is None else float(offset)
+        except Exception:
+            offset = None
+        if offset is not None:
+            C.LAST_TRACKING_OFFSET["offset"] = offset
+        else:
+            C.LAST_TRACKING_OFFSET["offset"] = None
+        if "mode" in data and data.get("mode") is not None:
+            C.LAST_TRACKING_OFFSET["mode"] = data.get("mode")
+        C.LAST_TRACKING_OFFSET["ts"] = _source_time(data.get("observed_at", data.get("ts")))
+    return
+
+
+def _observe_bus_message(topic, payload):
+    C.LAST_MSG_TS = time.time()
+    C.EVENTS.append({"ts": C.LAST_MSG_TS, "topic": topic, "data": payload})
+    if topic == LCD_STATE_TOPIC:
+        observe_lcd(_json_or_raw(payload))
+        return
+    if topic in {"robot.pose", "mapper.map.data", "navigator.path"}:
+        from .navigation_state import observe
+
+        observe(topic, _json_or_raw(payload))
+
+    if topic == "vision.dispatcher.heartbeat":
+        C.LAST_HEARTBEAT_TS = C.LAST_MSG_TS
+        return
+
+    if observe_xgo(topic, _json_or_raw(payload)):
+        return
+
+    if topic == "vision.state":
+        _observe_vision_state(payload)
+        return
+    if topic == CAMERA_HEARTBEAT_TOPIC:
+        try:
+            observe_camera_heartbeat(_json_or_raw(payload))
+        except Exception:
+            pass
+        return
+
+    # Command receipt is an intent, never observed actuator state.
+    # /api/control/state reads actuators from the executor's ACK/state.
+    if topic in {"cmd.balance", "cmd.height"}:
+        return
+
+    if topic == "tracking.mode:set":
+        _observe_tracking_mode(payload)
+        return
+    if topic == "vision.tracking.offset":
+        _observe_tracking_offset(payload)
+        return
+    if topic == "navigator.state":
+        observe_navigator(_json_or_raw(payload))
+        return
 
 
 def bus_sub_loop():
@@ -281,7 +399,7 @@ def bus_sub_loop():
             "robot.pose",
             "mapper.map.data",
             "imu.data",
-            "ui.lcd.state",
+            LCD_STATE_TOPIC,
         ):
             sub.setsockopt_string(zmq.SUBSCRIBE, t)
         try:
@@ -299,86 +417,7 @@ def bus_sub_loop():
                 frames = [p.decode("utf-8", "ignore") for p in parts_bin]
                 topic, payload = _decode_frames(frames)
 
-                C.LAST_MSG_TS = time.time()
-                C.EVENTS.append({"ts": C.LAST_MSG_TS, "topic": topic, "data": payload})
-                if topic == "ui.lcd.state":
-                    observe_lcd(_json_or_raw(payload))
-                    continue
-                if topic in {"robot.pose", "mapper.map.data", "navigator.path"}:
-                    from .navigation_state import observe
-
-                    observe(topic, _json_or_raw(payload))
-
-                if topic == "vision.dispatcher.heartbeat":
-                    C.LAST_HEARTBEAT_TS = C.LAST_MSG_TS
-                    continue
-
-                if observe_xgo(topic, _json_or_raw(payload)):
-                    continue
-
-                if topic == "vision.state":
-                    try:
-                        data = json.loads(payload) if payload else {}
-                        C.LAST_STATE["present"] = bool(data.get("present", C.LAST_STATE["present"]))
-                        C.LAST_STATE["confidence"] = float(data.get("confidence", C.LAST_STATE["confidence"]))
-                        if "mode" in data:
-                            C.LAST_STATE["mode"] = data.get("mode")
-                        C.LAST_STATE["ts"] = _source_time(data.get("observed_at", data.get("ts")))
-                        for key in ("source", "observed_at", "stale", "offline", "error", "data_ready"):
-                            if key in data:
-                                C.LAST_STATE[key] = data[key]
-                    except Exception:
-                        pass
-                    continue
-
-                if topic == "camera.heartbeat":
-                    try:
-                        observe_camera_heartbeat(_json_or_raw(payload))
-                    except Exception:
-                        pass
-                    continue
-
-                # Command receipt is an intent, never observed actuator state.
-                # /api/control/state reads actuators from the executor's ACK/state.
-                if topic in {"cmd.balance", "cmd.height"}:
-                    continue
-
-                if topic == "tracking.mode:set":
-                    data = _json_or_raw(payload)
-                    mode = None
-                    if isinstance(data, dict):
-                        mode = data.get("mode")
-                    elif isinstance(data, str):
-                        mode = data
-                    mode_str = "none" if mode is None else str(mode)
-                    mode_norm = mode_str.strip().lower() or "none"
-                    C.LAST_TRACKING_MODE["mode"] = mode_norm
-                    C.LAST_TRACKING_MODE["enabled"] = mode_norm in ("face", "hand")
-                    C.LAST_TRACKING_MODE["ts"] = (
-                        _source_time(data.get("observed_at", data.get("ts"))) if isinstance(data, dict) else None
-                    )
-                    continue
-
-                if topic == "vision.tracking.offset":
-                    data = _json_or_raw(payload)
-                    if isinstance(data, dict):
-                        offset = data.get("offset_x")
-                        try:
-                            offset = None if offset is None else float(offset)
-                        except Exception:
-                            offset = None
-                        if offset is not None:
-                            C.LAST_TRACKING_OFFSET["offset"] = offset
-                        else:
-                            C.LAST_TRACKING_OFFSET["offset"] = None
-                        if "mode" in data and data.get("mode") is not None:
-                            C.LAST_TRACKING_OFFSET["mode"] = data.get("mode")
-                        C.LAST_TRACKING_OFFSET["ts"] = _source_time(data.get("observed_at", data.get("ts")))
-                    continue
-
-                if topic == "navigator.state":
-                    observe_navigator(_json_or_raw(payload))
-                    continue
+                _observe_bus_message(topic, payload)
 
             except Exception:
                 time.sleep(0.05)
