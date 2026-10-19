@@ -17,8 +17,6 @@ def _detection_outputs(outs):
         shp = tuple(a.shape)
         if len(shp) == 3 and shp[2] == 4:
             boxes = a
-        elif len(shp) == 2 and shp[1] in (10, 25, 100):
-            pass
         elif len(shp) == 2 and shp[1] == 1:
             count = a
     classes, scores = _class_score_outputs(outs)

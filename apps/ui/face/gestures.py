@@ -24,7 +24,9 @@ def ease_in_out(t: float) -> float:
 
 
 def _clamp01(x: float) -> float:
-    return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
+    if x < 0.0:
+        return 0.0
+    return 1.0 if x > 1.0 else x
 
 
 # Spec: prosty, ale czytelny — Animator blenduje „tracks”

@@ -24,6 +24,7 @@ from drivers.xgo.sniffer import install as install_sniffer
 XGO_PORT = os.getenv("XGO_PORT", "/dev/ttyAMA0")
 XGO_VERSION = os.getenv("XGO_VERSION", "xgorider")
 MOTION_ENABLE = False  # compatibility only; ENV never grants a lease
+CONTROL_KINDS = {"height": "position_setpoint", "balance": "mode_setting"}
 
 
 def _inspect_process_uart(process, target, owners, unreadable):
@@ -479,11 +480,7 @@ class XgoAdapter:
                 "verification": "sdk_source"
                 if stop_verified or name in {"height", "balance"}
                 else "manual_characterization_required",
-                "control_kind": "position_setpoint"
-                if name == "height"
-                else "mode_setting"
-                if name == "balance"
-                else "motion",
+                "control_kind": CONTROL_KINDS.get(name, "motion"),
                 "physical_completion": "unverified",
             }
         for name, parameter in posture_parameters().items():
