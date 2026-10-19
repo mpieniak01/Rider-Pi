@@ -15,10 +15,10 @@
 <header class="layout-header" data-dashboard-menu-target></header>
 <main class="layout-main operator-shell">
 <header class="page-header"><h1 class="page-title" data-pl="Rider-Pi — Urządzenia" data-en="Rider-Pi — Devices">Rider-Pi — Urządzenia</h1></header>
-<p id="operator-message" class="operator-message" role="status" aria-live="polite"></p>
+<output id="operator-message" class="operator-message" aria-live="polite" aria-atomic="true"></output>
 <div class="operator-grid"><section class="c-card"><h2 data-pl="Kamera i podgląd" data-en="Camera and preview">Kamera i podgląd</h2>
 <div class="operator-row"><button id="camera-start" type="button" class="c-btn" disabled data-pl="Włącz kamerę i podgląd" data-en="Turn on camera and preview">Włącz kamerę i podgląd</button><button id="camera-stop" type="button" class="c-btn" disabled data-pl="Wyłącz kamerę" data-en="Turn off camera">Wyłącz kamerę</button></div>
-<p id="camera-power-state" role="status" aria-live="polite">Odczytywanie stanu kamery…</p>
+<output id="camera-power-state" aria-live="polite" aria-atomic="true">Odczytywanie stanu kamery…</output>
 <p data-pl="Włączenie kamery uruchamia podgląd RAW. Odświeżanie obrazu można zatrzymać osobno. Wyłączenie kończy zadanie podglądu; kamera pozostaje aktywna, jeśli korzysta z niej inne zadanie." data-en="Turning on the camera starts the RAW preview. Image refresh can be stopped separately. Turning off ends the preview task; the camera remains active if another task uses it.">Włączenie kamery uruchamia podgląd RAW. Odświeżanie obrazu można zatrzymać osobno. Wyłączenie kończy zadanie podglądu; kamera pozostaje aktywna, jeśli korzysta z niej inne zadanie.</p>
 <div class="operator-row"><select id="preview-kind" aria-label="Preview frame"><option value="raw">RAW</option><option value="proc">PROC</option><option value="ssd">SSD</option><option value="tracker">TRACKER</option></select><button id="preview-toggle" type="button" class="c-btn" data-pl="Włącz odświeżanie obrazu" data-en="Enable image refresh">Włącz odświeżanie obrazu</button><button id="preview-refresh" type="button" class="c-btn" data-pl="Pobierz jedną klatkę" data-en="Fetch one frame">Pobierz jedną klatkę</button></div>
 <form id="preview-url-form"><label>URL <input id="preview-url" type="text" placeholder="/vision/cam"></label><button type="submit" class="c-btn" data-pl="Pobierz z URL" data-en="Fetch URL">Pobierz z URL</button></form>

@@ -26,7 +26,7 @@
   align-items: center;
   gap: var(--space-md);
   flex-shrink: 0;
-  margin-right: var(--space-lg);
+  margin-right: 0;
 }
 
 .dashboard-menu .brand img {
@@ -71,6 +71,7 @@
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-pill);
   text-decoration: none;
+  white-space: nowrap;
   color: var(--color-accent);
   font-size: var(--font-size-md);
   border: 1px solid transparent;
@@ -99,7 +100,10 @@
   display: flex;
   gap: var(--space-sm);
   align-items: center;
-  margin-left: auto;
+  margin: 0 0 0 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
 }
 
 .lang-switch button {
@@ -177,8 +181,6 @@
 
 /* Leave space for all operator pages without splitting a single nav item. */
 .dashboard-menu .brand-spacer, .dashboard-menu .flex-spacer { display: none; }
-.dashboard-menu .brand { margin-right: 0; }
-.dashboard-menu a { white-space: nowrap; }
 @media (min-width: 1051px) {
   .dashboard-menu { max-width: 1440px; gap: var(--space-md); padding-inline: var(--space-lg); }
   .dashboard-menu ul { flex-wrap: nowrap; }
