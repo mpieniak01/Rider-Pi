@@ -157,7 +157,7 @@ def restart_api():
             with urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=1) as response:
                 if response.status == 200:
                     return
-        except (OSError, urllib.error.URLError):
+        except OSError:
             time.sleep(0.5)
     raise RuntimeError("API health check failed after restart; restore the recorded previous revision.")
 

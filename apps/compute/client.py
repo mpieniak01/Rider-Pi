@@ -197,7 +197,7 @@ class ComputeClient:
             raise ComputeError('invalid_compute_response_type')
         try:
             result = json.loads(data, parse_constant=lambda _: None)
-        except (ValueError, UnicodeDecodeError):
+        except ValueError:
             raise ComputeError('invalid_compute_response') from None
         if (
             not isinstance(result, dict)

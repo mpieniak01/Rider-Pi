@@ -38,10 +38,12 @@ def test_configuration_is_one_atomic_private_point_without_side_effects():
     assert compute_config.selected_executor() is None
     selected = configured()
     private = compute_config.selected_executor()
-    assert selected["selected_executor"] == "venom" and selected["revision"] == 2
+    assert selected["selected_executor"] == "venom"
+    assert selected["revision"] == 2
     assert private["token"] == "fixture-only"
     public = json.dumps(selected)
-    assert "fixture-only" not in public and "http://" not in public
+    assert "fixture-only" not in public
+    assert "http://" not in public
     assert compute_config.config_path().stat().st_mode & 0o777 == 0o600
     assert not compute_config.status_path().exists()
     compute_config.select(None, selected["revision"])
@@ -123,7 +125,8 @@ def test_new_goals_are_nonmoving_and_do_not_start_pi_ai_models():
     configured()
     vision = DEFAULT_REGISTRY["s12_venom_vision"]
     voice = DEFAULT_REGISTRY["s13_venom_voice"]
-    assert not vision.can_move and not voice.can_move
+    assert not vision.can_move
+    assert not voice.can_move
     assert "rider-voice-web.service" not in task_units(voice)
     assert "rider-obstacle.service" not in task_units(vision)
     assert "rider-vision.service" not in task_units(vision)
@@ -161,7 +164,8 @@ def test_config_api_and_cli_have_same_revision_and_no_secret():
         assert client.get("/config").json == selected
         assert client.post("/config", json={"executor_id": None, "revision": 0}).status_code == 409
         result = client.post("/config", json={"executor_id": None, "revision": selected["revision"]})
-        assert result.status_code == 200 and result.json["selected_executor"] is None
+        assert result.status_code == 200
+        assert result.json["selected_executor"] is None
         assert "fixture-only" not in result.get_data(as_text=True)
 
 
@@ -175,7 +179,8 @@ def test_config_envelope_confirms_the_actual_persisted_selection(executor_id):
         )
         row = response.get_json()
         assert response.status_code == 200
-        assert row["ok"] and row["error"] is None
+        assert row["ok"]
+        assert row["error"] is None
         assert row["data"] == compute_config.snapshot()
         assert row["data"]["selected_executor"] == executor_id
         assert row["data"]["persisted"] is True
@@ -185,7 +190,8 @@ def test_config_envelope_confirms_the_actual_persisted_selection(executor_id):
         assert row["operation"]["ack_kind"] == "configuration_persisted"
         assert row["operation"]["actuation"] is False
         observed = client.get("/api/compute/config", headers=headers).get_json()
-        assert observed["data"] == row["data"] and observed["operation"] is None
+        assert observed["data"] == row["data"]
+        assert observed["operation"] is None
         assert "fixture-only" not in response.get_data(as_text=True)
 
 
@@ -222,7 +228,8 @@ def test_config_envelope_requires_real_successful_persistence(monkeypatch, data,
         )
         assert response.status_code == status
         row = response.get_json()
-        assert not row["ok"] and not row["operation"]["confirmed"]
+        assert not row["ok"]
+        assert not row["operation"]["confirmed"]
 
 
 def test_task_envelope_confirms_a_completed_job_without_changing_legacy_data(monkeypatch):
@@ -252,7 +259,8 @@ def test_task_envelope_confirms_a_completed_job_without_changing_legacy_data(mon
     )
     with app().test_client() as client:
         legacy = client.post("/api/compute/tasks/text.respond", data=b"hello", content_type="text/plain")
-        assert legacy.status_code == 200 and legacy.get_json() == result
+        assert legacy.status_code == 200
+        assert legacy.get_json() == result
         response = client.post(
             "/api/compute/tasks/text.respond",
             data=b"hello",
@@ -260,8 +268,10 @@ def test_task_envelope_confirms_a_completed_job_without_changing_legacy_data(mon
             headers={"Accept": http_contract.MEDIA_TYPE + ";version=1"},
         )
         row = response.get_json()
-        assert response.status_code == 200 and row["ok"]
-        assert row["data"] == result and row["error"] is None
+        assert response.status_code == 200
+        assert row["ok"]
+        assert row["data"] == result
+        assert row["error"] is None
         assert row["operation"]["status"] == "executed"
         assert row["operation"]["confirmed"] is True
         assert row["operation"]["ack_kind"] == "computation_completed"
@@ -286,7 +296,8 @@ def test_task_envelope_preserves_compute_error_status_and_code(monkeypatch, stat
         row = response.get_json()
         assert response.status_code == status
         assert row["error"]["code"] == "fixture_compute_error"
-        assert not row["ok"] and not row["operation"]["confirmed"]
+        assert not row["ok"]
+        assert not row["operation"]["confirmed"]
 
 
 @pytest.mark.parametrize("state", ["running", "failed", "unknown"])
@@ -301,7 +312,8 @@ def test_task_envelope_does_not_confirm_unfinished_or_unproven_jobs(monkeypatch,
         )
         row = response.get_json()
         assert response.status_code == 502
-        assert not row["ok"] and not row["operation"]["confirmed"]
+        assert not row["ok"]
+        assert not row["operation"]["confirmed"]
 
 
 def test_negotiated_compute_wav_stays_binary_and_never_plays_audio(monkeypatch):
@@ -314,8 +326,10 @@ def test_negotiated_compute_wav_stays_binary_and_never_plays_audio(monkeypatch):
             content_type="text/plain",
             headers={"Accept": http_contract.MEDIA_TYPE + ";version=1"},
         )
-        assert response.status_code == 200 and response.mimetype == "audio/wav"
-        assert response.data == output and not response.is_json
+        assert response.status_code == 200
+        assert response.mimetype == "audio/wav"
+        assert response.data == output
+        assert not response.is_json
 
 
 def test_panel_task_and_chat_share_client_close_no_capture_or_play(monkeypatch):
@@ -339,7 +353,8 @@ def test_panel_task_and_chat_share_client_close_no_capture_or_play(monkeypatch):
     result, binary = compute_operations.execute(
         "text.respond", b"hello", "text/plain; charset=utf-8", client_factory=Client
     )
-    assert result["data"]["text"] == "reply" and binary is None
+    assert result["data"]["text"] == "reply"
+    assert binary is None
     assert calls[-1] == ("close",)
     assert calls[0][1]["client_id"] == "panel"
 
@@ -357,7 +372,8 @@ def test_api_task_rejects_invalid_params_and_reports_offline(monkeypatch):
 
         monkeypatch.setattr(compute_api, "execute", unavailable)
         response = client.post("/api/compute/tasks/text.respond", data=b"a", content_type="text/plain")
-        assert response.status_code == 503 and response.json["error"] == "compute_transport_error"
+        assert response.status_code == 503
+        assert response.json["error"] == "compute_transport_error"
 
 
 @pytest.mark.parametrize("available", [True, False])
@@ -390,7 +406,8 @@ def test_chat_uses_compute_and_never_falls_back_to_legacy(monkeypatch, available
         response = client.post("/api/chat/send", json={"text": "hello"})
         assert response.status_code == (200 if available else 503)
         if available:
-            assert response.json["reply"] == "reply" and response.json["source"] == "venom"
+            assert response.json["reply"] == "reply"
+            assert response.json["source"] == "venom"
         else:
             assert response.json["error"] == "compute_transport_error"
 
@@ -491,7 +508,8 @@ def test_provider_reads_runner_envelope_and_actual_r2_r3_response_task(
         assert "tasks" in statuses[-1]["capabilities"]
         result = provider_observation.snapshot()
         voice = result["domains"]["voice"]
-        assert voice["ready"] is response_ready and voice["initialized"] is True
+        assert voice["ready"] is response_ready
+        assert voice["initialized"] is True
         assert voice["effective"] == ("venom" if response_ready else "unavailable")
         assert result["domains"]["text"]["ready"] is client.tasks["text.respond"]["ready"]
         runner.status("off")
@@ -547,7 +565,9 @@ def test_transcription_api_returns_400_for_container_language_without_network(mo
             content_type="audio/wav",
             headers={"X-Rider-Params": json.dumps({"language": language})},
         )
-    assert response.status_code == 400 and response.json["error"] == "invalid_compute_params"
-    assert not transport.calls and transport.closed
+    assert response.status_code == 400
+    assert response.json["error"] == "invalid_compute_params"
+    assert not transport.calls
+    assert transport.closed
     assert compute_operations._panel_lock.acquire(blocking=False)
     compute_operations._panel_lock.release()

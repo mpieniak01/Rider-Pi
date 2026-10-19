@@ -201,3 +201,10 @@ właścicieli. Tryb bez LCD nie zmienia jego zasilania. Błąd odczytu właścic
 pozostawia zasilanie bez zmian i trafia do logu usługi.
 
 Po zatrzymaniu usługi przechwytywania kamery orkiestrator wykonuje pełne LCD OFF (reset panelu, uśpienie i wyłączenie podświetlenia), jeśli odczyt właścicieli LCD wskazuje wolny zasób. Zatrzymaj renderer w ekranie System wyłącza też panel po wcześniej zatrzymanej usłudze i zwraca błąd, gdy wyłączenie nie jest potwierdzone.
+
+## Zamykanie procesu capture
+
+SIGTERM i jawny `SystemExit` przechodzą przez `finally`: zwalniany jest podgląd
+LCD i przywracany poprzedni handler sygnału. `SystemExit` zachowuje swój kod
+lub komunikat; komunikat błędu nie jest zamieniany na sukces. Zwykły błąd
+uruchomienia nadal daje kod 1. Ta obsługa nie wysyła poleceń ruchu.

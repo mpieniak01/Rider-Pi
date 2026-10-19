@@ -550,3 +550,11 @@ Wysyłanie urządzenia do bazy ładującej.
 ## Licencja
 
 Zgodnie z główną licencją projektu Rider-Pi.
+
+## Puller lifecycle
+
+`apps.google_bridge.puller.main()` runs the worker loop and returns no value
+after shutdown is requested. A disabled integration remains idle until signaled.
+Individual polling failures remain visible in status and snapshots and retain
+the existing retry behavior; they are not command acknowledgments. Exception
+logs now include tracebacks. Unhandled startup errors still fail the process.

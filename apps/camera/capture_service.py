@@ -87,8 +87,6 @@ def main() -> int:
         return _run_mode(cfg)
     except KeyboardInterrupt:
         return 0
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 0
     except Exception as exc:  # pragma: no cover - zależne od środowiska kamer
         print(f"[capture] fatal error in mode={mode}: {exc}", file=sys.stderr)
         return 1

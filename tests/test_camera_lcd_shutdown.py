@@ -68,7 +68,9 @@ def test_sigterm_unwinds_mode_and_restores_previous_handler(monkeypatch):
         handlers[0](signal.SIGTERM, None)
 
     monkeypatch.setattr(capture_service, "_run_mode", run)
-    assert capture_service.main() == 0
+    with pytest.raises(SystemExit) as stopped:
+        capture_service.main()
+    assert stopped.value.code == 0
     assert cleaned == [module]
     assert handlers[-1] is previous
 
@@ -82,3 +84,28 @@ def test_startup_failure_still_releases_preview_lcd(monkeypatch):
     monkeypatch.setattr(capture_service, "_run_mode", lambda cfg: (_ for _ in ()).throw(RuntimeError("capture failed")))
     assert capture_service.main() == 1
     assert cleaned == [module]
+
+
+@pytest.mark.parametrize("code", [None, 0, 3, "camera startup failed"])
+def test_explicit_exit_retains_status_and_always_cleans(monkeypatch, code):
+    previous = object()
+    handlers = []
+    cleaned = []
+    module = SimpleNamespace()
+    monkeypatch.setenv("CAPTURE_MODE", "edge")
+    monkeypatch.setitem(sys.modules, "apps.vision.edge_preview", module)
+    monkeypatch.setattr(signal, "getsignal", lambda signum: previous)
+    monkeypatch.setattr(signal, "signal", lambda signum, handler: handlers.append(handler))
+    monkeypatch.setattr(capture_service, "close_preview_lcd", cleaned.append)
+    expected = SystemExit(code)
+
+    def run(cfg):
+        raise expected
+
+    monkeypatch.setattr(capture_service, "_run_mode", run)
+    with pytest.raises(SystemExit) as stopped:
+        capture_service.main()
+    assert stopped.value is expected
+    assert stopped.value.code == code
+    assert cleaned == [module]
+    assert handlers[-1] is previous

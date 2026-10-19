@@ -202,3 +202,10 @@ Headless capture does not change display power. An ownership inspection
 failure leaves power unchanged and is recorded in the service log.
 
 After a camera capture unit stops, orchestration performs a full LCD OFF (panel reset, sleep and backlight off) if the LCD descriptor inventory is free. The System renderer Stop action also powers off an already inactive panel and returns a failure if that cannot be confirmed.
+
+## Capture process shutdown
+
+SIGTERM and explicit `SystemExit` unwind through `finally`, releasing the LCD
+preview and restoring the previous signal handler. `SystemExit` retains its
+code or message; an error message is never converted to successful exit.
+An ordinary startup failure still returns 1. Shutdown sends no motion commands.

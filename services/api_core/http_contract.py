@@ -93,42 +93,31 @@ def _error(payload, code):
     return None
 
 
-def enhance(response):
-    """Binary/SSE MIME and payload are preserved; JSON is negotiated on the same URL."""
-    response.vary.add("Accept")
-    http_security.apply_cors(response)
-    response.headers["Access-Control-Expose-Headers"] = (
-        "X-Rider-Contract,X-Rider-Observed-At,X-Rider-File-Observed-At,X-Rider-Source,"
-        "X-Rider-Frame-Id,X-Rider-Stream,X-Rider-Stale,X-Rider-Placeholder,Last-Modified,"
-        "X-Rider-Source-Json,X-Rider-Frame-Age-Ms,X-Rider-Frame-Age-Source,X-Rider-Sequence,"
-        "X-Rider-Camera-Session,X-Rider-Transport-Epoch,X-Rider-Pipeline-Revision,X-Rider-Captured-Monotonic-Ns"
-    )
-    if request.path.startswith("/web/assets/operator/") and request.path.endswith(".js"):
-        response.headers["Cache-Control"] = "no-cache"
-    if not negotiated() or response.status_code in {204, 304} or not response.is_json:
-        return response
-    payload = response.get_json(silent=True)
-    previous_meta = payload.get("meta") if isinstance(payload, dict) else None
-    if isinstance(previous_meta, dict) and previous_meta.get("envelope_version") == ENVELOPE_VERSION:
-        return response
-    rule = request.url_rule.rule if request.url_rule else None
+def _apply_operation_status(response, result) -> None:
+    """Map unconfirmed success to its HTTP state without replacing domain errors."""
+    if result is None or response.status_code >= 400:
+        return
+    if result["status"] == "pending":
+        response.status_code = 202
+    elif result["status"] == "unknown":
+        response.status_code = 502
+    elif result["status"] == "partial":
+        response.status_code = 409
+
+
+def _build_envelope(response, payload, rule):
+    """Combine domain data and operation evidence after resolving the HTTP status."""
     contract = contract_for(rule)
     body = payload if isinstance(payload, dict) else {}
     submitted = request.get_json(silent=True) if request.is_json else None
     result = getattr(g, "rider_operation", None)
     if result is None:
         result = result_for(rule, body, response.status_code, submitted)
-    if result is not None and response.status_code < 400:
-        if result["status"] == "pending":
-            response.status_code = 202
-        elif result["status"] == "unknown":
-            response.status_code = 502
-        elif result["status"] == "partial":
-            response.status_code = 409
+    _apply_operation_status(response, result)
     error = _error(payload, response.status_code)
     now = time.time()
     data = g.rider_canonical_data if hasattr(g, "rider_canonical_data") else projection(rule, payload)
-    wrapped = {
+    return {
         "meta": {
             "envelope_version": ENVELOPE_VERSION,
             "contract_id": contract.name,
@@ -155,8 +144,12 @@ def enhance(response):
         "error": error,
         "operation": result,
     }
+
+
+def _encode_envelope(response, wrapped):
+    """Keep invalid source values out of JSON and expose a protocol failure."""
     try:
-        encoded = json.dumps(wrapped, ensure_ascii=False, allow_nan=False)
+        return json.dumps(wrapped, ensure_ascii=False, allow_nan=False)
     except (ValueError, TypeError, OverflowError):
         response.status_code = 502
         wrapped.update(
@@ -170,8 +163,30 @@ def enhance(response):
             },
         )
         wrapped["meta"]["partial"] = True
-        encoded = json.dumps(wrapped, ensure_ascii=False, allow_nan=False)
-    response.set_data(encoded)
+        return json.dumps(wrapped, ensure_ascii=False, allow_nan=False)
+
+
+def enhance(response):
+    """Binary/SSE MIME and payload are preserved; JSON is negotiated on the same URL."""
+    response.vary.add("Accept")
+    http_security.apply_cors(response)
+    response.headers["Access-Control-Expose-Headers"] = (
+        "X-Rider-Contract,X-Rider-Observed-At,X-Rider-File-Observed-At,X-Rider-Source,"
+        "X-Rider-Frame-Id,X-Rider-Stream,X-Rider-Stale,X-Rider-Placeholder,Last-Modified,"
+        "X-Rider-Source-Json,X-Rider-Frame-Age-Ms,X-Rider-Frame-Age-Source,X-Rider-Sequence,"
+        "X-Rider-Camera-Session,X-Rider-Transport-Epoch,X-Rider-Pipeline-Revision,X-Rider-Captured-Monotonic-Ns"
+    )
+    if request.path.startswith("/web/assets/operator/") and request.path.endswith(".js"):
+        response.headers["Cache-Control"] = "no-cache"
+    if not negotiated() or response.status_code in {204, 304} or not response.is_json:
+        return response
+    payload = response.get_json(silent=True)
+    previous_meta = payload.get("meta") if isinstance(payload, dict) else None
+    if isinstance(previous_meta, dict) and previous_meta.get("envelope_version") == ENVELOPE_VERSION:
+        return response
+    rule = request.url_rule.rule if request.url_rule else None
+    wrapped = _build_envelope(response, payload, rule)
+    response.set_data(_encode_envelope(response, wrapped))
     response.headers["Content-Type"] = MEDIA_TYPE + ";version=1"
     response.headers["Cache-Control"] = "no-store"
     return response

@@ -397,7 +397,7 @@ def start_stream(
     ownership = own_playback()
     try:
         ownership.__enter__()
-    except (OSError, TimeoutError):
+    except OSError:
         logger.event('playback.resource.busy')
         return None
     try:

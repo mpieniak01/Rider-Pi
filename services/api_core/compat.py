@@ -63,7 +63,7 @@ try:
     RAW_PATH = _camera_cfg.raw_path
     PROC_PATH = _camera_cfg.proc_path
     SSD_PATH = _camera_cfg.ssd_path
-except (ImportError, ModuleNotFoundError):
+except ImportError:
     # Fallback to legacy ENV-based paths if config module unavailable
     SNAP_DIR = os.path.abspath(os.getenv("SNAP_DIR") or os.getenv("SNAP_BASE") or os.path.join(BASE_DIR, "snapshots"))
     RAW_PATH = os.getenv("RAW_PATH") or os.path.join(SNAP_DIR, "raw.jpg")
@@ -494,7 +494,7 @@ def _api_control_proxy_impl():
 
 # Przeregistruj trasę: usuń wszystkie stare /api/control i dodaj jedną POST/OPTIONS
 try:
-    to_remove = [r for r in list(app.url_map.iter_rules()) if r.rule == "/api/control"]
+    to_remove = [r for r in app.url_map.iter_rules() if r.rule == "/api/control"]
     for r in to_remove:
         try:
             app.url_map._rules.remove(r)

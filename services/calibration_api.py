@@ -121,7 +121,7 @@ def _body():
         raise ValueError("request_oversized")
     try:
         row = json.loads(raw, object_pairs_hook=profiles._pairs, parse_constant=profiles._reject_constant)
-    except (UnicodeError, ValueError, RecursionError):
+    except (ValueError, RecursionError):
         raise ValueError("invalid_json") from None
     if not isinstance(row, dict):
         raise ValueError("object_required")

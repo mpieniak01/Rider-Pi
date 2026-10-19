@@ -335,15 +335,18 @@ def get_pc_base_url() -> str:
         return _pc_base_url or DEFAULT_PC_BASE_URL
 
 
+def _peer_url(base_url: str) -> str:
+    """Add the legacy default scheme once, without changing explicit transports."""
+    value = base_url.strip()
+    return value if value.startswith(("http://", "https://")) else "http://" + value
+
+
 def set_pc_base_url(base_url: str, *, reason: str = "manual") -> str:
     reason = _validated_reason(reason)
     normalized = (base_url or "").strip()
     if not normalized:
         raise ValueError("base_url must be non-empty")
-    if normalized.startswith("http://") or normalized.startswith("https://"):
-        target = normalized
-    else:
-        target = f"http://{normalized}"
+    target = _peer_url(normalized)
     global _pc_base_url
     with _state_lock:
         if target == _pc_base_url:
@@ -363,8 +366,7 @@ def record_pc_heartbeat(base_url: str, payload: dict) -> str:
     """Persist address and transport heartbeat as a single transaction."""
     from urllib.parse import urlsplit
 
-    target = base_url.strip().rstrip("/")
-    target = target if target.startswith(("http://", "https://")) else "http://" + target
+    target = _peer_url(base_url.strip().rstrip("/"))
     parsed = urlsplit(target)
     if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("invalid peer base_url")
