@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import time
-from typing import Optional
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -47,50 +46,36 @@ def _pupil_centers(
     return left, right
 
 
-@pytest.mark.timeout(8)
-def test_blink_can_trigger_look_when_coupling_enabled(monkeypatch):
-    """
-    Sprzęgło: przy BLINK_SHIFT_PROB=1.0 i wyłączonym idle-look, w oknie kilku
-    mrugnięć powinien zajść „skok” spojrzenia widoczny w renderze (drift=0).
-    """
-    # Włącz idle, ale wyłącz spontaniczny look – sprzęgło ma go uruchomić
+@pytest.mark.parametrize("enabled", [False, True])
+def test_blink_can_trigger_look_when_coupling_enabled(monkeypatch, enabled):
+    """Observe a complete blink with a fixed clock and horizontal look direction."""
     monkeypatch.setenv("FACE_IDLE_ENABLE", "1")
     monkeypatch.setenv("FACE_IDLE_LOOK_P", "0.0")
     monkeypatch.setenv("FACE_IDLE_LOOK_SEC", "0.0")
-    # Blink często, by mieć kilka prób w krótkim oknie
     monkeypatch.setenv("FACE_IDLE_BLINK_SEC", "0.5")
-    # Sprzęgło: 100% szansy na look przy mrugnięciu
-    monkeypatch.setenv("FACE_BLINK_SHIFT_PROB", "1.0")
-    # Bez driftu, żeby nie mylił pomiaru
+    monkeypatch.setenv("FACE_IDLE_JITTER", "0.0")
+    monkeypatch.setenv("FACE_BLINK_SHIFT_PROB", str(float(enabled)))
     monkeypatch.setenv("FACE_PUPIL_DRIFT_AMP_K", "0.0")
 
-    fc = FaceController(size=240, fps=24, idle=True)
-
-    img0 = fc.frame_image()
-    l0, r0 = _pupil_centers(img0)
-    assert l0 and r0
-
-    # Obserwuj przez kilka mrugnięć
-    thresh = 5.0  # istotna zmiana px
-    t_end = time.time() + 3.5
-    seen_jump = False
-
-    prev = (l0, r0)
-    while time.time() < t_end:
-        img = fc.frame_image()
-        l1, r1 = _pupil_centers(img)
-        if not (l1 and r1 and prev[0] and prev[1]):
-            prev = (l1, r1)
-            continue
-        # Szukamy nagle większej zmiany w osi X (miękki skok „look”)
-        dx_l = abs(l1[0] - prev[0][0])
-        dx_r = abs(r1[0] - prev[1][0])
-        if max(dx_l, dx_r) >= thresh:
-            seen_jump = True
-            break
-        prev = (l1, r1)
-        time.sleep(0.04)
-
-    assert (
-        seen_jump
-    ), "Przy sprzęgle=1.0 i braku idle-look powinien wystąpić „skok” spojrzenia (≥5 px) po którymś mrugnięciu."
+    now = [0.0]
+    # Angle0 points horizontally. The old test chose a random direction but only
+    # measured X, and sampled wall-clock frames with a variable CPU/render delay.
+    rng = SimpleNamespace(random=lambda: 0.0, uniform=lambda low, high: (low + high) / 2)
+    fc = FaceController(size=240, fps=24, idle=True, clock=lambda: now[0], rng=rng)
+    try:
+        left_before, right_before = _pupil_centers(fc.frame_image())
+        assert left_before is not None
+        assert right_before is not None
+        now[0] = 0.5
+        fc.frame_image()  # Start the scheduled blink and optional coupled look.
+        now[0] = 0.7  # Eyes are open again while the look remains active.
+        left_after, right_after = _pupil_centers(fc.frame_image())
+        assert left_after is not None
+        assert right_after is not None
+        distance = max(abs(left_after[0] - left_before[0]), abs(right_after[0] - right_before[0]))
+        if enabled:
+            assert distance >= 5.0
+        else:
+            assert distance < 0.5
+    finally:
+        fc.close()
