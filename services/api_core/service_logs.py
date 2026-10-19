@@ -110,7 +110,11 @@ def service_logs(unit: str):
     from flask import jsonify
 
     result = read_logs(unit)
-    code = 200 if result["ok"] else 404 if result.get("error") == "unit_not_in_catalog" else 503
+    code = 503
+    if result["ok"]:
+        code = 200
+    elif result.get("error") == "unit_not_in_catalog":
+        code = 404
     response = jsonify(result)
     response.headers["Cache-Control"] = "no-store"
     return response, code

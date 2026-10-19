@@ -66,7 +66,8 @@ def _restore_domains() -> None:
         return
 
     restored = set()
-    for domain in list(_fallbacked_domains):
+    # Recovery callbacks can affect the outage set; keep this recovery pass stable.
+    for domain in _fallbacked_domains.copy():
         try:
             state = registry.get_domain_state(domain)
             if state.get("mode") == "pc":

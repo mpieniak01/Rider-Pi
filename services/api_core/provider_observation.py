@@ -45,7 +45,12 @@ def _local_error(names, ready):
 
 
 def _local(domain, worker, unit, now):
-    names = ("asr", "tts") if domain == "voice" else ("chat",) if domain == "text" else ()
+    if domain == "voice":
+        names = ("asr", "tts")
+    elif domain == "text":
+        names = ("chat",)
+    else:
+        names = ()
     capabilities = worker.get("capabilities", {})
     if not isinstance(capabilities, dict):
         capabilities = {}

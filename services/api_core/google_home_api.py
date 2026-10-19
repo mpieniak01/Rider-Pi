@@ -225,7 +225,7 @@ def start_oauth_flow() -> dict[str, Any]:
     except ImportError:
         return {"ok": False, "error": "oauth_dependency_unavailable"}
     except Exception as e:
-        logger.error("OAuth flow error: %s", e, exc_info=True)
+        logger.exception("OAuth flow error: %s", e)
         return {
             "ok": False,
             "error": "OAuth authorization failed",
@@ -273,7 +273,7 @@ def _load_credentials() -> Any | None:
         )
         return creds
     except Exception as e:
-        logger.error("Error loading credentials: %s", e, exc_info=True)
+        logger.exception("Error loading credentials: %s", e)
         return None
 
 
@@ -299,7 +299,7 @@ def refresh_access_token() -> str | None:
         logger.info("Access token refreshed successfully")
         return creds.token
     except Exception as e:
-        logger.error("Error refreshing token: %s", e, exc_info=True)
+        logger.exception("Error refreshing token: %s", e)
         return None
 
 
@@ -342,7 +342,7 @@ def get_devices() -> dict[str, Any]:
         logger.info("Retrieved %d devices", len(devices))
         return {"ok": True, "devices": devices}
     except requests.exceptions.RequestException as e:
-        logger.error("Error getting devices: %s", e, exc_info=True)
+        logger.exception("Error getting devices: %s", e)
         return {"ok": False, "error": str(e)}
 
 
@@ -387,5 +387,5 @@ def send_command(
         logger.info("Command '%s' sent to device %s", command, device_id)
         return {"ok": True, "result": result}
     except requests.exceptions.RequestException as e:
-        logger.error("Error sending command: %s", e, exc_info=True)
+        logger.exception("Error sending command: %s", e)
         return {"ok": False, "error": str(e)}

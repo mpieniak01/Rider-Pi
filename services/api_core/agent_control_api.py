@@ -21,9 +21,12 @@ def pulse():
         command = signed_command(request.get_json(silent=True))
     except ValueError as exc:
         code = str(exc)
-        return jsonify({'ok': False, 'error': code}), (
-            503 if code == 'agent_control_unconfigured' else 401 if code == 'agent_auth_required' else 400
-        )
+        status = 400
+        if code == "agent_control_unconfigured":
+            status = 503
+        elif code == "agent_auth_required":
+            status = 401
+        return jsonify({"ok": False, "error": code}), status
     result, code = submit_control(command, allow_agent=True)
     return jsonify({**result, 'server_time': time.time()}), code
 

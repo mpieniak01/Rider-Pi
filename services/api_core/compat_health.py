@@ -11,11 +11,11 @@ from common.observations import source_time
 JSON_CONTENT_TYPE = "application/json"
 
 
-def lcd_snapshot(C, *, now):
+def lcd_snapshot(context, *, now):
     """Reported LCD I/O and preview settings have different owners and clocks."""
     from drivers.lcd.board import lcd_board
 
-    state = C.LAST_CAMERA.get("lcd", {})
+    state = context.LAST_CAMERA.get("lcd", {})
     at = source_time(state.get("observed_at"))
     source = state.get("source")
     reported = isinstance(source, str) and bool(source.strip()) and at is not None
@@ -51,8 +51,8 @@ def lcd_snapshot(C, *, now):
             )
         },
         "presenting": state.get("presenting"),
-        "configured_on": (not C.ENV_DISABLE_LCD) and (not C.ENV_NO_DRAW),
-        "configured_no_draw": C.ENV_NO_DRAW,
+        "configured_on": (not context.ENV_DISABLE_LCD) and (not context.ENV_NO_DRAW),
+        "configured_no_draw": context.ENV_NO_DRAW,
         "configured_rot": lcd_board().rotate,
         "configured_rot_source": "drivers.lcd.board",
         "preview_config": state.get("preview_config"),
@@ -74,20 +74,20 @@ def lcd_snapshot(C, *, now):
     live = backlight_status()
     result.update(live)
     if live.get("power_known"):
-        result["observed_age_s"] = round(max(0, C.time.time() - live["observed_at"]), 3)
+        result["observed_age_s"] = round(max(0, context.time.time() - live["observed_at"]), 3)
     return result
 
 
-def healthz(C):
-    now = C.time.time()
-    last_msg_age = (now - C.LAST_MSG_TS) if C.LAST_MSG_TS else None
-    last_hb_age = (now - C.LAST_HEARTBEAT_TS) if C.LAST_HEARTBEAT_TS else None
+def healthz(context):
+    now = context.time.time()
+    last_msg_age = (now - context.LAST_MSG_TS) if context.LAST_MSG_TS else None
+    last_hb_age = (now - context.LAST_HEARTBEAT_TS) if context.LAST_HEARTBEAT_TS else None
 
     from services.core.camera_state import snapshot as camera_snapshot
 
-    camera = camera_snapshot(heartbeat=C.LAST_CAMERA, now=now)
+    camera = camera_snapshot(heartbeat=context.LAST_CAMERA, now=now)
 
-    now = C.time.time()
+    now = context.time.time()
     from .devices import xgo_snapshot
 
     xgo = xgo_snapshot(now=now)
@@ -99,61 +99,60 @@ def healthz(C):
 
     devices = {
         "camera": camera,
-        "lcd": lcd_snapshot(C, now=now),
+        "lcd": lcd_snapshot(context, now=now),
         "xgo": {**xgo, "on": xgo_on, "age_s": round(xgo_age, 3) if xgo_age is not None else None},
     }
 
     status = "ok"
-    if C.REQUIRE_VISION_HB:
-        if (last_hb_age is None) or (last_hb_age > 10.0):
-            status = "degraded"
+    if context.REQUIRE_VISION_HB and ((last_hb_age is None) or (last_hb_age > 10.0)):
+        status = "degraded"
 
     payload = {
         "status": status,
-        "uptime_s": round(now - C.START_TS, 3),
+        "uptime_s": round(now - context.START_TS, 3),
         "bus": {
             "last_msg_age_s": (round(last_msg_age, 3) if last_msg_age is not None else None),
             "last_heartbeat_age_s": (round(last_hb_age, 3) if last_hb_age is not None else None),
         },
         "devices": devices,
         "state": {
-            "present": bool(C.LAST_STATE.get("present", False)),
-            "confidence": float(C.LAST_STATE.get("confidence", 0.0)),
-            "mode": C.LAST_STATE.get("mode"),
-            "age_s": (round(now - C.LAST_STATE["ts"], 3) if C.LAST_STATE.get("ts") else None),
+            "present": bool(context.LAST_STATE.get("present", False)),
+            "confidence": float(context.LAST_STATE.get("confidence", 0.0)),
+            "mode": context.LAST_STATE.get("mode"),
+            "age_s": (round(now - context.LAST_STATE["ts"], 3) if context.LAST_STATE.get("ts") else None),
         },
     }
-    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
+    return context.Response(context.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
-def health_alias(C):
-    return C.jsonify({"ok": True}), 200
+def health_alias(context):
+    return context.jsonify({"ok": True}), 200
 
 
-def livez(C):
+def livez(context):
     # prosty „liveness”: proces żyje i podaje uptime
-    up_s = C.time.time() - C.START_TS
-    return C.Response(
-        C.json.dumps({"alive": True, "uptime_s": round(up_s, 3)}),
+    up_s = context.time.time() - context.START_TS
+    return context.Response(
+        context.json.dumps({"alive": True, "uptime_s": round(up_s, 3)}),
         mimetype=JSON_CONTENT_TYPE,
     )
 
 
-def _git_info(C):
+def _git_info(context):
     """Spróbuj wyciągnąć commit/describe z gita (best-effort)."""
     try:
-        desc = C.subprocess.check_output(
+        desc = context.subprocess.check_output(
             ["git", "describe", "--always", "--dirty", "--tags"],
-            cwd=C.BASE_DIR,
+            cwd=context.BASE_DIR,
             text=True,
             timeout=1.0,
         ).strip()
     except Exception:
         desc = None
     try:
-        rev = C.subprocess.check_output(
+        rev = context.subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
-            cwd=C.BASE_DIR,
+            cwd=context.BASE_DIR,
             text=True,
             timeout=1.0,
         ).strip()
@@ -162,36 +161,38 @@ def _git_info(C):
     return {"describe": desc, "commit": rev}
 
 
-def api_version(C):
+def api_version(context):
     """
     /api/version — lekka metryka wersji API/aplikacji.
     Zwraca: { name, api, ts, git: {describe, commit} }
     """
-    info = C._git_info()
+    info = context._git_info()
     payload = {
         "name": "rider-pi",
         "api": "v2",
-        "ts": int(C.time.time()),
+        "ts": int(context.time.time()),
         "git": info,
     }
-    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
+    return context.Response(context.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
-def api_bus_health(C):
+def api_bus_health(context):
     from .bus_health import snapshot
 
-    payload = snapshot(C)
-    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
+    payload = snapshot(context)
+    return context.Response(context.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
-def readyz(C):
+def readyz(context):
     from .bus_health import snapshot
 
-    payload = snapshot(C)
-    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE, status=200 if payload["ready"] else 503)
+    payload = snapshot(context)
+    return context.Response(
+        context.json.dumps(payload), mimetype=JSON_CONTENT_TYPE, status=200 if payload["ready"] else 503
+    )
 
 
-def api_status(C):
+def api_status(context):
     """
     Minimalny payload kompatybilny z dawnym skryptem smoke:
     .system.cpu -> {count, percent}
@@ -199,21 +200,21 @@ def api_status(C):
     """
     from .system_info import get_sysinfo
 
-    si = get_sysinfo(C.HIST_CPU, C.HIST_MEM)
-    flags = C._read_flags()
+    si = get_sysinfo(context.HIST_CPU, context.HIST_MEM)
+    flags = context._read_flags()
     payload = {
         "system": {
             "cpu": {
-                "count": C.os.cpu_count() or 1,
+                "count": context.os.cpu_count() or 1,
                 "percent": si["cpu_pct"],
             }
         },
         "devices": {"summary": {"flags": flags}},
     }
-    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
+    return context.Response(context.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
-def api_metrics_alias(C):
+def api_metrics_alias(context):
     """
     Zwraca JSON zgodny ze starym API:
       { cpu: {count, percent}, mem: {percent, total, used},
@@ -221,11 +222,11 @@ def api_metrics_alias(C):
     """
     from .system_info import get_sysinfo
 
-    si = get_sysinfo(C.HIST_CPU, C.HIST_MEM)
+    si = get_sysinfo(context.HIST_CPU, context.HIST_MEM)
 
     # CPU
     cpu = {
-        "count": C.os.cpu_count() or 1,
+        "count": context.os.cpu_count() or 1,
         "percent": si["cpu_pct"],
     }
 
@@ -248,8 +249,8 @@ def api_metrics_alias(C):
         with open("/proc/uptime") as f:
             up_s = float(f.read().split()[0])
     except Exception:
-        up_s = max(0.0, C.time.time() - C.START_TS)
-    boot_time = int(C.time.time() - up_s)
+        up_s = max(0.0, context.time.time() - context.START_TS)
+    boot_time = int(context.time.time() - up_s)
 
     uptime = {
         "boot_time": boot_time,
@@ -257,21 +258,21 @@ def api_metrics_alias(C):
     }
 
     payload = {"cpu": cpu, "mem": mem, "load": load, "uptime": uptime}
-    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
+    return context.Response(context.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
-def api_devices(C):
+def api_devices(context):
     from services.core.camera_state import snapshot as camera_snapshot
 
-    now = C.time.time()
+    now = context.time.time()
     bus = {
         "broker": "unknown",
-        "last_seen_ts": (now - ((now - C.LAST_MSG_TS) if C.LAST_MSG_TS else 0)),
+        "last_seen_ts": (now - ((now - context.LAST_MSG_TS) if context.LAST_MSG_TS else 0)),
     }
-    lf_exists = C.os.path.isfile(C.RAW_PATH)
-    lf_mtime = int(C.os.stat(C.RAW_PATH).st_mtime) if lf_exists else None
+    lf_exists = context.os.path.isfile(context.RAW_PATH)
+    lf_mtime = int(context.os.stat(context.RAW_PATH).st_mtime) if lf_exists else None
     vision = {
-        "running": camera_snapshot(heartbeat=C.LAST_CAMERA, now=now)["service_running"],
+        "running": camera_snapshot(heartbeat=context.LAST_CAMERA, now=now)["service_running"],
         "last_frame": {
             "exists": bool(lf_exists),
             "mtime": lf_mtime,
@@ -280,21 +281,21 @@ def api_devices(C):
         },
     }
     xgo = {
-        "connected": bool(C.LAST_XGO.get("ts")),
-        "last_telemetry_ts": C.LAST_XGO.get("ts"),
+        "connected": bool(context.LAST_XGO.get("ts")),
+        "last_telemetry_ts": context.LAST_XGO.get("ts"),
     }
-    flags = C._read_flags()
+    flags = context._read_flags()
     out = {"bus": bus, "vision": vision, "xgo": xgo, "flags": flags}
-    return C.Response(C.json.dumps(out), mimetype=JSON_CONTENT_TYPE)
+    return context.Response(context.json.dumps(out), mimetype=JSON_CONTENT_TYPE)
 
 
-def api_last_frame(C):
-    exists = C.os.path.isfile(C.RAW_PATH)
-    mtime = int(C.os.stat(C.RAW_PATH).st_mtime) if exists else None
+def api_last_frame(context):
+    exists = context.os.path.isfile(context.RAW_PATH)
+    mtime = int(context.os.stat(context.RAW_PATH).st_mtime) if exists else None
     # dla zgodności ścieżkę raportujemy tak, jak w dawnym API (data/last_frame.jpg),
     # ale realny plik to snapshots/raw.jpg — aplikacje i tak korzystały z /camera/last.
     payload = {"exists": bool(exists), "mtime": mtime, "path": "data/last_frame.jpg"}
-    return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
+    return context.Response(context.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
 def _event_rows(context, cursor_factory):
@@ -316,10 +317,12 @@ def _event_rows(context, cursor_factory):
             context.time.sleep(0.5)
 
 
-def events(C):
+def events(context):
     from .event_stream import EventCursor
 
-    response = C.Response(C.stream_with_context(_event_rows(C, EventCursor)), mimetype='text/event-stream')
+    response = context.Response(
+        context.stream_with_context(_event_rows(context, EventCursor)), mimetype='text/event-stream'
+    )
     response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Accel-Buffering'] = 'no'
     return response

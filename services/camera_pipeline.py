@@ -88,7 +88,11 @@ class CameraPipeline:
         # Observe the legacy unit directly; RAM status does not exist yet.
         row = self.manager._status(self.manager.PREVIEW_UNIT)
         active = row.get("active") == "active" and not row.get("error") and row.get("stale") is not True
-        state = "active" if active else "failed" if row.get("error") or row.get("active") == "failed" else "stopped"
+        state = "stopped"
+        if active:
+            state = "active"
+        elif row.get("error") or row.get("active") == "failed":
+            state = "failed"
         runtime = {"active_profile": dict(profile) if active else None}
         return active, state, runtime
 

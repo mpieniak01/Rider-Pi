@@ -51,9 +51,7 @@ _PROVIDER_DEFS: list[dict[str, Any]] = [
 ]
 
 _PROVIDER_STATUS: dict[str, dict[str, Any]] = {}
-# ──────────────────────────────────────────────────────────────────────────────
-# CORS / preflight
-# ──────────────────────────────────────────────────────────────────────────────
+# Cross-origin response headers and preflight handling.
 
 
 def _cors(resp: Response) -> Response:

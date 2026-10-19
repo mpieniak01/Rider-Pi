@@ -533,7 +533,9 @@ try:
     app.register_blueprint(_bp)  # /vision/*
     # Explicit aliases also work on Flask 1.1 (before blueprint name overrides).
     prefix = _bp.name + "."
-    for rule in list(app.url_map.iter_rules()):
+    # Adding aliases mutates the map; register from one bounded snapshot.
+    rules_to_alias = tuple(app.url_map.iter_rules())
+    for rule in rules_to_alias:
         if rule.endpoint.startswith(prefix):
             app.add_url_rule(
                 "/api" + rule.rule,

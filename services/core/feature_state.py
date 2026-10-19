@@ -159,17 +159,17 @@ class FeatureStateMixin:
         return error
 
     def _feature_permissions(self, feature, available, installed):
+        allowed = available["start_available"] and installed and self._permission(feature) is None
+        if not available["start_available"]:
+            reason = available["start_unavailable_reason"]
+        elif not installed:
+            reason = "unit_unavailable"
+        elif self._permission(feature) is None:
+            reason = None
+        else:
+            reason = "operator_motion_permission_required"
         return {
-            "start": {
-                "allowed": available["start_available"] and installed and self._permission(feature) is None,
-                "reason": available["start_unavailable_reason"]
-                if not available["start_available"]
-                else "unit_unavailable"
-                if not installed
-                else None
-                if self._permission(feature) is None
-                else "operator_motion_permission_required",
-            },
+            "start": {"allowed": allowed, "reason": reason},
             "stop": {"allowed": True, "reason": None},
         }
 
