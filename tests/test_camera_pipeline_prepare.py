@@ -89,10 +89,13 @@ def test_cold_s15_waits_for_first_native_ram_frame_then_completes_reference_cycl
     assert len(calls) == len(decisions) == 1
     assert calls[0][1].full_url.endswith("/vision/status?stream=true")
     frame, reference, content_type = decisions[0]
-    assert content_type == "application/json" and frame["age_ms"] < frame["deadline_ms"]
+    assert content_type == "application/json"
+    assert frame["age_ms"] < frame["deadline_ms"]
     assert reference["camera_session"] == producer.session
-    assert reference["transport_epoch"] == producer.epoch and reference["pipeline_revision"] == 4
-    assert runner.motion_publisher is None and runner.intent is None
+    assert reference["transport_epoch"] == producer.epoch
+    assert reference["pipeline_revision"] == 4
+    assert runner.motion_publisher is None
+    assert runner.intent is None
 
 
 def test_no_native_frame_times_out_within_same_prepare_budget_without_calling_host(environment):
@@ -139,13 +142,17 @@ def test_failed_warmup_preserves_domain_code_in_runner_status_and_log_without_bl
 
     monkeypatch.setattr(stream_prepare.urllib.request, "build_opener", lambda *_: SimpleNamespace(open=warmup))
     runner = navigation.NavigationRunner(observe_only=True)
-    assert runner.run() == 2 and calls == [True]
+    assert runner.run() == 2
+    assert calls == [True]
     expected = "navigation_stream_prepare_stream_unavailable"
-    assert runner.lease.reason == expected and expected in caplog.text
+    assert runner.lease.reason == expected
+    assert expected in caplog.text
     assert "http_status=503" in caplog.text
-    assert "private-test-token" not in caplog.text and "private-host" not in caplog.text
+    assert "private-test-token" not in caplog.text
+    assert "private-host" not in caplog.text
     status = json.loads((root / "navigation.json").read_text())
-    assert status["stop_reason"] == expected and status["running"] is False
+    assert status["stop_reason"] == expected
+    assert status["running"] is False
 
 
 @pytest.mark.parametrize("value", ["https://host/private?token=secret", "not a code", "x" * 100, None])
@@ -171,10 +178,9 @@ def test_ready_response_after_prepare_deadline_is_not_accepted(environment):
         now[0] = 2.1
         return Response({"stream": {"ready": True, "latest_source": source}})
 
+    opener = SimpleNamespace(open=late_reply)
     with pytest.raises(navigation.ComputeError, match="navigation_stream_prepare_timeout"):
-        stream_prepare.prepare_stream(
-            selection=selection, opener=SimpleNamespace(open=late_reply), clock=lambda: now[0]
-        )
+        stream_prepare.prepare_stream(selection=selection, opener=opener, clock=lambda: now[0])
 
 
 @pytest.mark.parametrize("invalid", ["stale", "revision"])
@@ -186,10 +192,11 @@ def test_local_stale_or_foreign_revision_cannot_begin_host_prepare(environment, 
         source["pipeline_revision"] -= 1
     producer.frames.publish(b"jpeg-source", source)
     now = [0.0]
+    opener = SimpleNamespace(open=lambda *_args, **_kwargs: pytest.fail("invalid local source reached host"))
     with pytest.raises(navigation.ComputeError, match="navigation_stream_prepare_timeout"):
         stream_prepare.prepare_stream(
             selection=selection,
-            opener=SimpleNamespace(open=lambda *_args, **_kwargs: pytest.fail("invalid local source reached host")),
+            opener=opener,
             timeout_s=0.1,
             clock=lambda: now[0],
             sleep=lambda delay: now.__setitem__(0, now[0] + delay),

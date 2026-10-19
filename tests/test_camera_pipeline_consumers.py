@@ -63,7 +63,8 @@ def test_explicit_local_reader_decodes_one_live_native_frame_with_canonical_rota
         assert client.metadata["observed_at"] <= time.time()
         assert client.metadata["sha256"] == hashlib.sha256(data).hexdigest()
         frames.close()
-        assert client.recv(0) is None and client.last_frame is None
+        assert client.recv(0) is None
+        assert client.last_frame is None
     finally:
         client.close()
         server.close()
@@ -80,7 +81,8 @@ def test_ram_reader_rejects_stale_future_or_foreign_revision(age_ms, revision):
         assert ok
         frames.publish(encoded.tobytes(), source(age_ms=age_ms, revision=revision))
         assert client.recv(0) is None
-        assert client.last_frame is None and client.metadata == {}
+        assert client.last_frame is None
+        assert client.metadata == {}
     finally:
         client.close()
         server.close()
@@ -99,7 +101,8 @@ def test_s7_profile_conflict_prevents_all_service_starts(tmp_path):
         dependency_check=lambda *_: [],
     )
     result = manager.set_feature("s7_obstacle_module", True, options={"provider": "local"})
-    assert not result["ok"] and result["error"] == "camera_pipeline_profile_conflict"
+    assert not result["ok"]
+    assert result["error"] == "camera_pipeline_profile_conflict"
     assert calls == []
     assert not unit_availability("rider-obstacle.service")["start_available"]
     store.write(
@@ -181,7 +184,8 @@ def test_status_capabilities_do_not_import_optional_ml_parents(monkeypatch, tmp_
     result = domain.capabilities()
     assert "tflite" in result["local_engines"]
     assert all("." not in name for name in names)
-    assert "tensorflow.lite" not in names and "tflite_runtime.interpreter" not in names
+    assert "tensorflow.lite" not in names
+    assert "tflite_runtime.interpreter" not in names
 
 
 def test_tracking_guard_rejects_replayed_sequence_with_a_different_last_frame():

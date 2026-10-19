@@ -35,7 +35,8 @@ def test_encoder_and_heartbeat_do_not_replace_the_same_temporary_status(monkeypa
             job.result(timeout=3)
     assert len(set(temporary_paths)) == 2
     status = json.loads((tmp_path / "status.json").read_text())
-    assert status["state"] == "active" and status["sequence"] in {1, 2}
+    assert status["state"] == "active"
+    assert status["sequence"] in {1, 2}
     assert status["observed_monotonic_ns"] > 0
     assert sorted(path.name for path in tmp_path.iterdir()) == ["status.json"]
 

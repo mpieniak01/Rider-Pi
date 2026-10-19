@@ -104,10 +104,13 @@ def test_distributor_preserves_capture_and_shape_without_decoding(tmp_path):
     distributor.frame_mode, distributor.frame_id = 'raw', 5
     data, metadata = distributor._load_frame_bytes(str(path))
     assert data == path.read_bytes()
-    assert metadata['id'] == 5 and metadata['frame_id'] == 'source-1'
-    assert metadata['captured_at'] == 990 and metadata['timestamp_source'] == 'capture'
+    assert metadata['id'] == 5
+    assert metadata['frame_id'] == 'source-1'
+    assert metadata['captured_at'] == 990
+    assert metadata['timestamp_source'] == 'capture'
     assert metadata['shape'] == {'width': 320, 'height': 240}
-    assert 'cv2' not in frame_distributor.__dict__ and 'np' not in frame_distributor.__dict__
+    assert 'cv2' not in frame_distributor.__dict__
+    assert 'np' not in frame_distributor.__dict__
 
 
 def test_preview_keeps_read_completion_time_before_encoding(monkeypatch):
@@ -186,8 +189,10 @@ def test_raw_feed_is_faster_than_ui_snapshots_and_keeps_capture_identity(monkeyp
     monkeypatch.setattr(preview_lcd, "save_raw_snapshot", lambda _, **kw: raw.append(kw))
     monkeypatch.setattr(preview_lcd, "hb_publish", lambda **_: None)
     assert preview_lcd.main() == 0
-    assert len(raw) == expected and len(last) == 2
-    assert raw[0] == last[0] and raw[10 // raw_every] == last[1]
+    assert len(raw) == expected
+    assert len(last) == 2
+    assert raw[0] == last[0]
+    assert raw[10 // raw_every] == last[1]
     assert max(b["captured_at"] - a["captured_at"] for a, b in zip(raw, raw[1:])) < 0.15
     assert len({row["frame_id"] for row in raw}) == expected
     assert closed == [True]

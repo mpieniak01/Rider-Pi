@@ -1,34 +1,21 @@
 from __future__ import annotations
 
-# tests/test_vision_dispatcher.py
 import importlib
-import os
 import time
 
-# ustaw progi, żeby test był szybki
-os.environ["VISION_ON_CONSECUTIVE"] = "2"
-os.environ["VISION_OFF_TTL_SEC"] = "0.3"
-os.environ["VISION_MIN_SCORE"] = "0.5"
 
-disp = importlib.import_module("apps.vision.dispatcher")
+def test_presence_hysteresis(monkeypatch):
+    disp = importlib.import_module("apps.vision.dispatcher")
+    monkeypatch.setattr(disp, "P_ON_N", 2)
+    monkeypatch.setattr(disp, "P_OFF_TT", 0.3)
+    monkeypatch.setattr(disp, "MIN_SCORE", 0.5)
+    monkeypatch.setattr(disp, "STATE", disp.PresenceState())
+    published = []
 
-# przechwyć pub()
-published = []
+    def fake_pub(topic, payload):
+        published.append((topic, payload))
 
-
-def fake_pub(topic, payload):
-    published.append((topic, payload))
-
-
-disp.pub = fake_pub  # monkeypatch
-
-
-def test_presence_hysteresis():
-    # reset stanu
-    disp.STATE.present = False
-    disp.STATE.consecutive_pos = 0
-    disp.STATE.confidence = 0.0
-    published.clear()
+    monkeypatch.setattr(disp, "pub", fake_pub)
 
     # 1) pojedynczy pozytyw — nie powinno jeszcze włączyć present
     evt = disp.normalize_event("vision.person", {"present": True, "score": 0.8})

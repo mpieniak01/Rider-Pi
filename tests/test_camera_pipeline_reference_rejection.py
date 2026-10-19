@@ -126,7 +126,8 @@ def test_observe_discards_rejected_reference_and_analyzes_next_capture(environme
 
         monkeypatch.setattr(runner, "_status", capture_status)
         assert runner.run() == 0
-    assert commands == [] and len(requests) == 2
+    assert commands == []
+    assert len(requests) == 2
     assert all(path.endswith("/vision/decision-reference") for path, _, _ in requests)
     first, second = (body for _, body, _ in requests)
     assert first["source"]["frame_id"] != second["source"]["frame_id"]
@@ -137,11 +138,14 @@ def test_observe_discards_rejected_reference_and_analyzes_next_capture(environme
     assert all(len(body["frame"]["frame_id"]) == 64 for body in (first, second))
     assert all(body["frame"]["frame_id"] != body["source"]["frame_id"] for body in (first, second))
     rejected = next(row for row in rows if row["sequence"] == 1)
-    assert rejected["state"] == "unknown" and rejected["action"] == rejected["vision_action"] == "stop"
-    assert rejected["valid_for_ms"] == 0 and rejected["clear_count"] == 0
+    assert rejected["state"] == "unknown"
+    assert rejected["action"] == rejected["vision_action"] == "stop"
+    assert rejected["valid_for_ms"] == 0
+    assert rejected["clear_count"] == 0
     assert rejected["source"] == first["source"]
     assert rejected["frame_id"] == first["frame"]["frame_id"]
-    assert rejected["http_status"] == status and rejected["transport_error"] == rejected["reason"] == code
+    assert rejected["http_status"] == status
+    assert rejected["transport_error"] == rejected["reason"] == code
     assert runner.last_result["source"] == second["source"]
 
 
@@ -162,9 +166,11 @@ def test_active_drive_rejection_latches_in_real_reference_path(environment, monk
         runner.generation = "fixture"
         monkeypatch.setattr(runner, "_authority", lambda: True)
         assert runner.run() == 2
-    assert len(requests) == 1 and runner.lease.latched
+    assert len(requests) == 1
+    assert runner.lease.latched
     assert runner.lease.reason == "navigation_" + code
-    assert commands and all(command["action"] == "stop" for command in commands)
+    assert commands
+    assert all(command["action"] == "stop" for command in commands)
 
 
 def test_observe_still_latches_when_source_epoch_changes(environment, monkeypatch):
@@ -176,5 +182,7 @@ def test_observe_still_latches_when_source_epoch_changes(environment, monkeypatc
         runner = navigation.NavigationRunner(observe_only=True, source_factory=source)
         runtime.runner = runner
         assert runner.run() == 2
-    assert len(requests) == 1 and runner.lease.latched
-    assert runner.lease.reason == "navigation_stream_epoch_changed" and commands == []
+    assert len(requests) == 1
+    assert runner.lease.latched
+    assert runner.lease.reason == "navigation_stream_epoch_changed"
+    assert commands == []

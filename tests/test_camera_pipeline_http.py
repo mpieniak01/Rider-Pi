@@ -90,7 +90,8 @@ def receipt(response, action, request_id, ack_kind):
     assert response.headers["Content-Type"] == ACCEPT["Accept"]
     body = response.get_json()
     assert body["meta"]["contract_id"] == "rider.camera_pipeline"
-    assert body["ok"] is True and body["error"] is None
+    assert body["ok"] is True
+    assert body["error"] is None
     assert body["operation"] == {
         "request_id": request_id,
         "action": action,
@@ -108,10 +109,13 @@ def receipt(response, action, request_id, ack_kind):
 def test_full_app_start_configure_stop_receipts_preserve_real_source_state(client):
     test_client, manager, calls = client
     observed = test_client.get(PATH, headers=ACCEPT)
-    assert observed.status_code == 200 and observed.get_json()["operation"] is None
-    assert calls == [] and not store.enabled()
+    assert observed.status_code == 200
+    assert observed.get_json()["operation"] is None
+    assert calls == []
+    assert not store.enabled()
     started = receipt(post(test_client, command("start", "start")), "start", "start", "camera_goal_accepted")
-    assert started["state"] == "starting" and started["latest_frame"] is None
+    assert started["state"] == "starting"
+    assert started["latest_frame"] is None
     assert started["consumers"] == ["s2_camera_preview"]
     assert manager.resource_consumers()["camera"] == ["s2_camera_preview"]
     profile = dict(store.DEFAULT_PROFILE, remote_transport="mjpeg")
@@ -121,11 +125,14 @@ def test_full_app_start_configure_stop_receipts_preserve_real_source_state(clien
         "configure",
         "configuration_persisted",
     )
-    assert configured["revision"] == 2 and configured["active_profile"] == profile
-    assert configured["state"] == "starting" and configured["latest_frame"] is None
+    assert configured["revision"] == 2
+    assert configured["active_profile"] == profile
+    assert configured["state"] == "starting"
+    assert configured["latest_frame"] is None
     assert configured["camera_session"] != started["camera_session"]
     stopped = receipt(post(test_client, command("stop", "stop", revision=2)), "stop", "stop", "camera_source_released")
-    assert stopped["state"] == "stopped" and stopped["consumers"] == []
+    assert stopped["state"] == "stopped"
+    assert stopped["consumers"] == []
     assert all(unit in {"camera-capture@raw.service", "rider-camera.target"} for unit, _ in calls)
     assert calls.count(("camera-capture@raw.service", "start")) == 2
     assert calls.count(("camera-capture@raw.service", "stop")) == 2
@@ -139,7 +146,8 @@ def test_full_app_identical_retry_preserves_receipt_without_second_transaction(c
     assert first.status_code == 200
     before = list(calls)
     second = post(test_client, body)
-    assert second.status_code == 200 and second.get_json()["ok"] is True
+    assert second.status_code == 200
+    assert second.get_json()["ok"] is True
     assert second.get_json()["operation"] == first.get_json()["operation"]
     assert second.get_json()["data"] == first.get_json()["data"]
     assert calls == before
@@ -156,15 +164,18 @@ def test_full_app_conflicts_remain_409_and_never_claim_execution(client, conflic
     assert body["ok"] is False
     assert body["error"]["code"] == "camera_pipeline_" + conflict + "_conflict"
     assert body["data"]["current_revision"] == 1
-    assert body["operation"]["status"] == "rejected" and body["operation"]["confirmed"] is False
-    assert body["operation"]["target"] == "camera" and body["operation"]["ack_kind"] is None
+    assert body["operation"]["status"] == "rejected"
+    assert body["operation"]["confirmed"] is False
+    assert body["operation"]["target"] == "camera"
+    assert body["operation"]["ack_kind"] is None
     assert calls == before
 
 
 def test_full_app_invalid_request_remains_rejected_without_service_actions(client):
     test_client, _, calls = client
     response = post(test_client, command("start", "bad", profile=dict(store.DEFAULT_PROFILE)))
-    assert response.status_code == 400 and response.get_json()["ok"] is False
+    assert response.status_code == 400
+    assert response.get_json()["ok"] is False
     assert response.get_json()["operation"]["status"] == "rejected"
     assert calls == []
 
@@ -172,8 +183,10 @@ def test_full_app_invalid_request_remains_rejected_without_service_actions(clien
 def test_full_app_legacy_json_keeps_domain_response_and_never_arms(client):
     test_client, _, calls = client
     response = test_client.post(PATH, json=command("start", "legacy"))
-    assert response.status_code == 200 and response.get_json()["ok"] is True
-    assert "meta" not in response.get_json() and response.get_json()["state"] == "starting"
+    assert response.status_code == 200
+    assert response.get_json()["ok"] is True
+    assert "meta" not in response.get_json()
+    assert response.get_json()["state"] == "starting"
     assert all("motion" not in unit and "navigation" not in unit for unit, _ in calls)
 
 
@@ -201,12 +214,14 @@ def test_full_app_pipeline_get_is_available_while_real_feature_start_holds_trans
     try:
         assert starting.wait(1)
         response = test_client.get(PATH, headers=ACCEPT)
-        assert response.status_code == 200 and response.get_json()["meta"]["contract_id"] == "rider.camera_pipeline"
+        assert response.status_code == 200
+        assert response.get_json()["meta"]["contract_id"] == "rider.camera_pipeline"
         assert not finished.is_set()
     finally:
         continue_start.set()
         thread.join(3)
-    assert finished.is_set() and results[0].status_code == 200
+    assert finished.is_set()
+    assert results[0].status_code == 200
 
 
 def test_full_app_off_reconciles_source_that_survived_lost_goal_ownership(client, monkeypatch, tmp_path):
@@ -230,7 +245,8 @@ def test_full_app_off_reconciles_source_that_survived_lost_goal_ownership(client
     path.write_text(json.dumps(row))
     body = command("stop", "orphan-off")
     stopped = receipt(post(test_client, body), "stop", "orphan-off", "camera_source_released")
-    assert stopped["state"] == "stopped" and stopped["consumers"] == []
+    assert stopped["state"] == "stopped"
+    assert stopped["consumers"] == []
     assert calls == [("camera-capture@raw.service", "start"), ("camera-capture@raw.service", "stop")]
     before = list(calls)
     receipt(post(test_client, body), "stop", "orphan-off", "camera_source_released")
