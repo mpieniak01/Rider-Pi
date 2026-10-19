@@ -207,3 +207,27 @@ def test_error_timestamp_retains_utc_z_format():
     assert timestamp.endswith("Z") and "+00:00" not in timestamp
     parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     assert parsed.tzinfo == timezone.utc
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("diagnostic_fails", [False, True])
+async def test_sync_heartbeat_disconnects_before_diagnostic_even_if_logging_fails(diagnostic_fails):
+    instance = transport_module.WebSocketTransport("ws://fake.invalid", "", logger=Mock())
+    instance._use_async = False
+    instance.connected = True
+    instance.websocket = SimpleNamespace(ping=Mock(side_effect=OSError("ping failed")))
+    observed = []
+
+    def diagnostic(name):
+        observed.append((name, instance.connected))
+        if diagnostic_fails:
+            raise ValueError("diagnostic failed")
+
+    instance.logger.event = diagnostic
+    if diagnostic_fails:
+        with pytest.raises(ValueError, match="diagnostic failed"):
+            await instance._heartbeat_connection_alive()
+    else:
+        assert not await instance._heartbeat_connection_alive()
+    assert observed == [("ws.heartbeat.ping_failed", False)]
+    assert not instance.connected

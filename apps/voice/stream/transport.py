@@ -245,6 +245,7 @@ class WebSocketTransport:
             try:
                 await asyncio.to_thread(self.websocket.ping)
             except Exception:
+                self.connected = False
                 self.logger.event("ws.heartbeat.ping_failed")
                 return False
         if self._use_async and self.websocket and self.websocket.closed:
