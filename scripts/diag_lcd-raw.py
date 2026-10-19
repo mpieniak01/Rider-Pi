@@ -94,10 +94,7 @@ def u16be(x):
     return struct.pack(">H", x)
 
 
-def main():
-    # załaduj urządzenie
-    Dev = pick_device_class()
-    dev = Dev()
+def _configure_diag_device(dev):
     # prędkość + tryb SPI (jeśli dostępne)
     spi = getattr(dev, "SPI", None)
     if spi is not None:
@@ -119,6 +116,13 @@ def main():
                 break
             except Exception:
                 pass
+
+
+def main():
+    # załaduj urządzenie
+    Dev = pick_device_class()
+    dev = Dev()
+    _configure_diag_device(dev)
 
     # pełny soft reset/konfiguracja
     wr(dev, 0x28, dt=0.01)  # DISPOFF

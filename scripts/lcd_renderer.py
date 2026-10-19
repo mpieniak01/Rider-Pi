@@ -129,6 +129,22 @@ def load_state() -> dict:
     return {}
 
 
+def _active_feature_lines(active, features):
+    lines, warn = [], False
+    for name in active:
+        entry = next((f for f in features if f.get("name") == name), {})
+        title = entry.get("title") or entry.get("description") or name
+        status = "ostatni zapis: " + str(entry.get("state", "unknown"))
+        services = entry.get("services") or []
+        services = [row for row in services if isinstance(row, dict)] if isinstance(services, list) else []
+        missing = [svc for svc in services if not svc.get("active")]
+        if missing:
+            status = f"brak {len(missing)} usług"
+            warn = True
+        lines.append(f"{title}: {status}")
+    return lines, warn
+
+
 def summarize_state(state: dict) -> tuple[str, list[str], bool]:
     state = state if isinstance(state, dict) else {}
     active = state.get("active") or []
@@ -141,17 +157,7 @@ def summarize_state(state: dict) -> tuple[str, list[str], bool]:
     if not active:
         lines.append("S0 – tylko usługi bazowe")
     else:
-        for name in active:
-            entry = next((f for f in features if f.get("name") == name), {})
-            title = entry.get("title") or entry.get("description") or name
-            status = "ostatni zapis: " + str(entry.get("state", "unknown"))
-            services = entry.get("services") or []
-            services = [row for row in services if isinstance(row, dict)] if isinstance(services, list) else []
-            missing = [svc for svc in services if not svc.get("active")]
-            if missing:
-                status = f"brak {len(missing)} usług"
-                warn = True
-            lines.append(f"{title}: {status}")
+        lines, warn = _active_feature_lines(active, features)
     ts = source_time(state.get("ts"))
     if ts is not None:
         try:

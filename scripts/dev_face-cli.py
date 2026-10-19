@@ -16,6 +16,8 @@ Nowe CLI do renderowania buźki na LCD/mocka.
 """
 
 
+_RAW_RGB565_MODE = "raw:rgb565"
+
 # Przykładowe ekspresje (neutral, happy, sad, blink...)
 EXPR_MAP = {
     "neutral": (200, 200, 200),
@@ -56,8 +58,8 @@ def main():
     parser.add_argument("--fit", choices=["fill", "fit", "stretch"], help="Tryb dopasowania obrazu")
     parser.add_argument(
         "--force",
-        choices=["raw:rgb565", "push_frame:rgb565_3", "png"],
-        default="raw:rgb565",
+        choices=[_RAW_RGB565_MODE, "push_frame:rgb565_3", "png"],
+        default=_RAW_RGB565_MODE,
         help="Tryb wypychania klatki",
     )
     parser.add_argument(
@@ -81,7 +83,7 @@ def main():
     img = fit_strategy(img, fit, PANEL_SIZE)
     img = apply_rotate(img, rotate)
 
-    if args.force == "raw:rgb565":
+    if args.force == _RAW_RGB565_MODE:
         buf = to_rgb565(img)
         driver.push_rgb565(buf, *PANEL_SIZE)
     elif args.force == "push_frame:rgb565_3":

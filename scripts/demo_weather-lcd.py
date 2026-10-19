@@ -258,22 +258,7 @@ def render_card(data: dict[str, Any], place_label: str) -> Image.Image:
 # --- LCD bridge ---
 
 
-def push_to_lcd(img: Image.Image, rotate: int = 270, spi_hz: int | None = None) -> None:
-    import importlib
-
-    mod = importlib.import_module("_apps.ui.face_renderers")
-
-    if rotate in (90, 180, 270):
-        img = img.rotate(rotate, expand=True)
-    if img.size != (240, 320):
-        img = img.resize((240, 320), Image.BICUBIC)
-
-    if spi_hz is not None:
-        try:
-            mod.SPI_HZ = int(spi_hz)
-        except Exception:
-            pass
-
+def _weather_display(mod):
     disp = None
     for attr in ("display", "Display", "lcd", "LCD"):
         disp = getattr(mod, attr, None)
@@ -292,31 +277,42 @@ def push_to_lcd(img: Image.Image, rotate: int = 270, spi_hz: int | None = None) 
     except Exception:
         pass
 
-    did = False
-    for meth in ("ShowImage", "show", "draw", "DisplayImage", "blit"):
-        if hasattr(disp, meth):
+    return disp
+
+
+def _send_weather_image(target, names, img):
+    for name in names:
+        if hasattr(target, name):
             try:
-                getattr(disp, meth)(img)
-                did = True
-                break
+                getattr(target, name)(img)
+                return True
             except Exception:
                 pass
+    return False
 
+
+def push_to_lcd(img: Image.Image, rotate: int = 270, spi_hz: int | None = None) -> None:
+    import importlib
+
+    mod = importlib.import_module("_apps.ui.face_renderers")
+
+    if rotate in (90, 180, 270):
+        img = img.rotate(rotate, expand=True)
+    if img.size != (240, 320):
+        img = img.resize((240, 320), Image.BICUBIC)
+
+    if spi_hz is not None:
+        try:
+            mod.SPI_HZ = int(spi_hz)
+        except Exception:
+            pass
+
+    disp = _weather_display(mod)
+    did = _send_weather_image(disp, ("ShowImage", "show", "draw", "DisplayImage", "blit"), img)
     if not did:
-        for fn in ("ShowImage", "DisplayImage"):
-            if hasattr(mod, fn):
-                try:
-                    getattr(mod, fn)(img)
-                    did = True
-                    break
-                except Exception:
-                    pass
-
+        did = _send_weather_image(mod, ("ShowImage", "DisplayImage"), img)
     if not did:
         raise RuntimeError("Nie udało się wysłać obrazu na LCD (brak ShowImage)")
-
-
-# --- CLI ---
 
 
 def parse_args() -> argparse.Namespace:
@@ -382,20 +378,33 @@ def _self_tests() -> int:
     return 0
 
 
+def _weather_self_test_result():
+    try:
+        rc = _self_tests()
+        _print("[weather] self-test OK")
+        return rc
+    except AssertionError as e:
+        _eprint(f"[weather] self-test FAIL: {e}")
+        return 10
+    except Exception as e:
+        _eprint(f"[weather] self-test ERROR: {e}")
+        return 11
+
+
+def _save_weather_fallback(img):
+    out = "/tmp/weather.png"
+    try:
+        atomic_write(out, lambda stream: img.convert("RGB").save(stream, "PNG"))
+        _print(f"[weather] (awaryjnie) zapisano {out}")
+    except Exception:
+        pass
+
+
 def main() -> int:
     args = parse_args()
 
     if args.self_test:
-        try:
-            rc = _self_tests()
-            _print("[weather] self-test OK")
-            return rc
-        except AssertionError as e:
-            _eprint(f"[weather] self-test FAIL: {e}")
-            return 10
-        except Exception as e:
-            _eprint(f"[weather] self-test ERROR: {e}")
-            return 11
+        return _weather_self_test_result()
 
     try:
         if (args.lat is not None) and (args.lon is not None):
@@ -432,12 +441,7 @@ def main() -> int:
         push_to_lcd(img, rotate=args.rotate, spi_hz=args.spi_hz)
     except Exception as e:
         _eprint(f"[weather] Błąd wyświetlania na LCD: {e}")
-        out = "/tmp/weather.png"
-        try:
-            atomic_write(out, lambda stream: img.convert("RGB").save(stream, "PNG"))
-            _print(f"[weather] (awaryjnie) zapisano {out}")
-        except Exception:
-            pass
+        _save_weather_fallback(img)
         return 5
 
     _print(f"[weather] OK — {label} ({lat:.3f},{lon:.3f})")
