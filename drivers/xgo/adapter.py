@@ -17,6 +17,7 @@ from pathlib import Path
 from apps.safety.gate import MotionGate, finite_number
 from common.actuator_parameters import posture_parameters, valid_height
 from common.motion_mapping import LINEAR_LEVELS, MAPPING_ID, TURN_LEVELS, linear_sdk_value, native_command_byte
+from common.runtime_lock import open_owned
 from drivers.xgo.protocol import bound_serial, read_response
 from drivers.xgo.sniffer import install as install_sniffer
 
@@ -201,7 +202,7 @@ class XgoAdapter:
             if sdk_factory is None and port != "/dev/ttyAMA0":
                 raise RuntimeError("sdk_1_4_2_ignores_custom_serial_port")
             path = Path(lock_path or f"/tmp/rider-motion-uart-{Path(port).name}.lock")
-            self._lock_fd = os.open(str(path), os.O_CREAT | os.O_RDWR, 0o600)
+            self._lock_fd = open_owned(path)
             fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             # Injection exists only for an explicit fake SDK; production uses
             # the exact privileged read-only inventory, never an ENV free flag.

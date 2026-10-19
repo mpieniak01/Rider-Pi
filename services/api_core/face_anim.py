@@ -7,11 +7,11 @@ import os
 import threading
 import time
 from io import BytesIO
-from pathlib import Path
 
 from apps.ui.face.catalog import CATALOG, descriptors, get_settings, settings_path
 from apps.ui.face.controller import FaceController
 from apps.ui.face.schema import EXPRESSIONS, number
+from common.secure_files import atomic_write
 
 OUT_LATEST = os.getenv("FACE_LATEST_PATH", "/tmp/face_latest.png")
 OUT_LEGACY = os.getenv("FACE_LEGACY_PATH", "/tmp/face_runtime.png")
@@ -55,11 +55,7 @@ class FileSink(FaceSink):
     def present(self, image):
         # Legacy artifact is a snapshot; streaming previews use bounded memory.
         if not self._written:
-            path = Path(self.path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = path.with_suffix(".tmp")
-            image.save(temporary, "PNG")
-            os.replace(temporary, path)
+            atomic_write(self.path, lambda stream: image.save(stream, "PNG"))
             self._written = True
 
 
