@@ -54,11 +54,11 @@ from services.api_core.operation_result import result_for
         ),
     ],
 )
-def test_evidence_keeps_domain_and_terminal_priority(rule, code, body, expected):
+def test_evidence_keeps_domain_and_terminal_priority(rule, code, body, expected, monkeypatch):
     """HTTP success, accepted work and confirmed execution must stay distinct."""
     app = Flask(__name__)
-    with app.test_request_context(method="POST"):
-        request.view_args = {"name": "lcd"}
+    with app.test_request_context(method="POST"), monkeypatch.context() as patch:
+        patch.setattr(request, "view_args", {"name": "lcd"})
         result = result_for(rule, body, code, {"action": "on", "request_id": "request"})
     actual = result["status"], result["confirmed"], result["ack_kind"]
     assert actual == expected
