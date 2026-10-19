@@ -125,6 +125,7 @@ def _capability_failure(exc, consecutive_failures, last_health_status, *, unexpe
 
 
 def _capability_cycle(consecutive_failures, last_health_status):
+    observed_health_status = last_health_status
     try:
         base_url = registry.get_pc_base_url()
         if not base_url:
@@ -141,15 +142,14 @@ def _capability_cycle(consecutive_failures, last_health_status):
             observed_at=None,
             received_at=time.time(),
         )
-        last_health_status = "online"
+        observed_health_status = "online"
         _restore_domains()
-        consecutive_failures = 0
 
     except (urllib.error.URLError, TimeoutError) as exc:
-        return _capability_failure(exc, consecutive_failures, last_health_status, unexpected=False)
+        return _capability_failure(exc, consecutive_failures, observed_health_status, unexpected=False)
     except Exception as exc:  # noqa: BLE001
-        return _capability_failure(exc, consecutive_failures, last_health_status, unexpected=True)
-    return consecutive_failures, last_health_status
+        return _capability_failure(exc, consecutive_failures, observed_health_status, unexpected=True)
+    return 0, observed_health_status
 
 
 def _loop() -> None:

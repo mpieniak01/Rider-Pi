@@ -101,10 +101,12 @@ def test_navigator_config_validation_is_atomic_and_requires_disarmed(navigator, 
     monkeypatch.setattr(state, "read_status", lambda: {"state": "DISARMED"})
     before = nav.fwd_speed, nav.turn_speed, nav.strategy
     nav._handle_control_command({"action": "config", "config": {"fwd_speed": 0.1, "turn_speed": True}})
-    assert (nav.fwd_speed, nav.turn_speed, nav.strategy) == before
+    actual = (nav.fwd_speed, nav.turn_speed, nav.strategy)
+    assert actual == before
     monkeypatch.setattr(state, "read_status", lambda: {"state": "ARMED"})
     nav._handle_control_command({"action": "config", "config": {"fwd_speed": 0.1}})
-    assert (nav.fwd_speed, nav.turn_speed, nav.strategy) == before
+    actual = (nav.fwd_speed, nav.turn_speed, nav.strategy)
+    assert actual == before
 
 
 def test_navigator_invalid_pose_clears_plan_without_adopting_new_frame(navigator):
@@ -153,17 +155,20 @@ def test_policy_rejection_order_does_not_modify_input(edits, error):
 
 def test_trial_operator_metadata_precedes_consent_and_age(world):
     payload = world.body(panel_id="", operator_control_version=True, operator_consent=False, ts=0)
+    now = world.trial.wall()
     with pytest.raises(TrialError, match="operator_control_invalid"):
-        validate_request(payload, world.trial.wall())
+        validate_request(payload, now)
     assert world.actions == world.commands == []
 
 
 def test_trial_request_rejection_precedes_service_change_and_reservation(world):
     before = world.gate.generation, world.gate.last_seq
+    payload = world.body(settings_revision=4)
     with pytest.raises(TrialError, match="manual_settings_stale"):
-        world.trial.start(world.body(settings_revision=4))
+        world.trial.start(payload)
     assert world.actions == world.commands == []
-    assert (world.gate.generation, world.gate.last_seq) == before
+    actual = (world.gate.generation, world.gate.last_seq)
+    assert actual == before
     assert not world.manager._state_path.with_name("navigation_trial_requests.json").exists()
 
 

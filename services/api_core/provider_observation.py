@@ -39,7 +39,9 @@ def _worker_fresh(worker, unit, now):
 
 
 def _local_error(names, ready):
-    return None if ready else "backend_not_ready" if names else "provider_observation_unavailable"
+    if ready:
+        return None
+    return "backend_not_ready" if names else "provider_observation_unavailable"
 
 
 def _local(domain, worker, unit, now):
@@ -92,13 +94,12 @@ def _remote_domain(domain, executor, compute):
     response_task = sample.get("response_task", TEXT_RESPONSE_TASK)
     if not isinstance(response_task, str) or response_task not in {TEXT_RESPONSE_TASK, "conversation.respond"}:
         response_task = TEXT_RESPONSE_TASK
-    required = (
-        ("vision.describe",)
-        if domain == "vision"
-        else (TEXT_RESPONSE_TASK,)
-        if domain == "text"
-        else ("audio.transcribe", response_task, "audio.synthesize")
-    )
+    if domain == "vision":
+        required = ("vision.describe",)
+    elif domain == "text":
+        required = (TEXT_RESPONSE_TASK,)
+    else:
+        required = ("audio.transcribe", response_task, "audio.synthesize")
     ready = fresh and all(isinstance(tasks.get(task), dict) and tasks[task].get("ready") is True for task in required)
     return {
         "domain": domain,

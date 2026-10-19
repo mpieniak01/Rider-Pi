@@ -154,7 +154,8 @@ def test_distributor_heartbeat_selects_raw_only_for_raw_topic(monkeypatch, raw_t
     distributor.frame_path = "old"
     distributor.frame_mode = "old"
     distributor._apply_heartbeat({"raw_frame_path": "raw", "last_frame_path": "proc", "mode": "ssd"})
-    assert (distributor.frame_path, distributor.frame_mode) == (("raw", "raw") if raw_topic else ("proc", "ssd"))
+    actual = (distributor.frame_path, distributor.frame_mode)
+    assert actual == (("raw", "raw") if raw_topic else ("proc", "ssd"))
     distributor._apply_heartbeat({"mode": "", "last_frame_path": None})
     assert distributor.frame_path == ("raw" if raw_topic else "proc")
 

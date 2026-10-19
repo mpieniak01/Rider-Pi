@@ -149,7 +149,6 @@ class PathControl:
             self.state_changed = True
         if self.state == NavigatorState.RETURNING_HOME:
             self._quality_failure(status["error"], stop=True)
-        return
 
     def _handle_robot_pose(self, payload):
         previous = self.pose_sample.get("observed_at") if self.pose_sample else None

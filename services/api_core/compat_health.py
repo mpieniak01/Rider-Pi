@@ -297,15 +297,15 @@ def api_last_frame(C):
     return C.Response(C.json.dumps(payload), mimetype=JSON_CONTENT_TYPE)
 
 
-def _event_rows(C, EventCursor):
-    cursor = EventCursor()
+def _event_rows(context, cursor_factory):
+    cursor = cursor_factory()
     idle = 0
     while True:
         try:
-            C.time.sleep(1.0)
-            rows = cursor.drain(list(C.EVENTS))
+            context.time.sleep(1.0)
+            rows = cursor.drain(list(context.EVENTS))
             for ev in rows:
-                yield f'data: {C.json.dumps(ev)}\n\n'
+                yield f'data: {context.json.dumps(ev)}\n\n'
             idle = 0 if rows else idle + 1
             if idle >= 10:
                 yield ': keepalive\n\n'
@@ -313,7 +313,7 @@ def _event_rows(C, EventCursor):
         except GeneratorExit:
             break
         except Exception:
-            C.time.sleep(0.5)
+            context.time.sleep(0.5)
 
 
 def events(C):

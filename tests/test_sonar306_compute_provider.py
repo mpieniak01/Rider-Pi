@@ -90,8 +90,13 @@ def test_stream_timeout_is_stable_without_raw_url_or_token():
     def fail(*_args, **_kwargs):
         raise socket.timeout('private source')
 
+    opener, request = SimpleNamespace(open=fail), object()
+
+    def clock():
+        return 0
+
     with pytest.raises(ComputeError, match="navigation_stream_prepare_timeout") as caught:
-        stream_prepare._read_stream_status(SimpleNamespace(open=fail), object(), 0.2, 1, lambda: 0)
+        stream_prepare._read_stream_status(opener, request, 0.2, 1, clock)
     assert caught.value.status == 504
     assert 'private source' not in str(caught.value)
 
@@ -222,3 +227,135 @@ def test_provider_bad_patch_has_no_registry_mutation(monkeypatch):
     response = app.test_client().patch('/provider/voice', json={"target": True})
     assert response.status_code == 400
     assert response.json['ok'] is False
+
+
+@pytest.mark.parametrize(
+    'failure_stage,exception,expected_status,unexpected',
+    [
+        ('none', None, 'online', None),
+        ('fetch', TimeoutError('timeout'), 'offline', False),
+        ('fetch', RuntimeError('decode failed'), 'offline', True),
+        ('health', RuntimeError('registry failed'), 'offline', True),
+        ('restore', RuntimeError('restore failed'), 'online', True),
+    ],
+)
+def test_watchdog_cycle_preserves_prior_state_until_health_is_observed(
+    monkeypatch, failure_stage, exception, expected_status, unexpected
+):
+    events = []
+
+    def fetch(base_url):
+        events.append(('fetch', base_url))
+        if failure_stage == 'fetch':
+            raise exception
+        return {'version': 'fake-v1'}, 25
+
+    def health(**fields):
+        events.append(('health', fields))
+        if failure_stage == 'health':
+            raise exception
+
+    def restore():
+        events.append(('restore',))
+        if failure_stage == 'restore':
+            raise exception
+
+    def failed(exc, failures, status, **kwargs):
+        events.append(('failure', exc, failures, status, kwargs))
+        return failures + 1, status
+
+    monkeypatch.setattr(
+        provider_watchdog, 'registry', SimpleNamespace(get_pc_base_url=lambda: None, update_pc_health=health)
+    )
+    monkeypatch.setattr(provider_watchdog, '_fetch_pc_capabilities', fetch)
+    monkeypatch.setattr(provider_watchdog, '_restore_domains', restore)
+    monkeypatch.setattr(provider_watchdog, '_capability_failure', failed)
+    monkeypatch.setattr(provider_watchdog, 'time', SimpleNamespace(time=lambda: 1000))
+    result = provider_watchdog._capability_cycle(7, 'offline')
+    assert events[0] == ('fetch', provider_watchdog.DEFAULT_PC_BASE_URL)
+    if exception is None:
+        assert result == (0, 'online')
+        assert [event[0] for event in events] == ['fetch', 'health', 'restore']
+    else:
+        assert result == (8, expected_status)
+        assert events[-1] == ('failure', exception, 7, expected_status, {'unexpected': unexpected})
+        assert [event[0] for event in events] == {
+            'fetch': ['fetch', 'failure'],
+            'health': ['fetch', 'health', 'failure'],
+            'restore': ['fetch', 'health', 'restore', 'failure'],
+        }[failure_stage]
+    if failure_stage != 'fetch':
+        assert events[1][1] == {
+            'reachable': True,
+            'status': 'online',
+            'latency_ms': 25,
+            'reason': 'fake-v1',
+            'capabilities': {'version': 'fake-v1'},
+            'observed_at': None,
+            'received_at': 1000,
+        }
+
+
+@pytest.mark.parametrize(
+    'version,cutoff,phase', [(2, None, 'ready'), (2, 9.7, 'ready'), (2, 9.8, 'turn_settling'), (3, 9.8, 'steer_wait')]
+)
+def test_navigation_frame_metadata_preserves_capture_cutoff_and_motion_phase(version, cutoff, phase):
+    from apps.compute.navigation_cycle import NavigationCycle
+    from services.navigation_config import DEFAULT
+
+    cycle = NavigationCycle.__new__(NavigationCycle)
+    cycle.policy = copy.deepcopy(DEFAULT)
+    cycle.policy['avoidance'].update(enabled=True, protocol_version=version)
+    cycle.clock = lambda: 10
+    cycle.last_frame, cycle.run_id, cycle.sequence = ('input', 999), 'fake-run', 4
+    cycle.turn_capture_after = cutoff
+    captured, metadata = cycle._frame_metadata(200)
+    assert captured == pytest.approx(9.8)
+    assert cycle.started == 10
+    assert cycle.fresh_frame_seen is True
+    assert cycle.sequence == 5
+    assert metadata['sequence'] == 5
+    assert metadata['age_ms'] == 200
+    assert metadata['motion_phase'] == phase
+    assert metadata['protocol_version'] == version
+    assert metadata['run_id'] == 'fake-run'
+    assert metadata['avoidance'] == cycle.policy['avoidance']
+
+
+@pytest.mark.parametrize(
+    'domain,required',
+    [
+        ('vision', ['vision.describe']),
+        ('text', ['text.respond']),
+        ('voice', ['audio.transcribe', 'conversation.respond', 'audio.synthesize']),
+    ],
+)
+def test_remote_provider_requires_only_selected_domain_tasks(domain, required):
+    tasks = {name: {'ready': True} for name in required}
+    sample = {
+        'stale': False,
+        'state': 'running',
+        'response_task': 'conversation.respond',
+        'capabilities': {'tasks': tasks},
+    }
+    compute = {'domains': {'vision': sample, 'voice': sample}}
+    before = copy.deepcopy(compute)
+    assert provider_observation._remote_domain(domain, 'venom', compute)['ready'] is True
+    assert compute == before
+    for task in required:
+        tasks[task]['ready'] = False
+        assert provider_observation._remote_domain(domain, 'venom', compute)['ready'] is False
+        tasks[task]['ready'] = True
+
+
+@pytest.mark.parametrize(
+    'names,ready,error',
+    [
+        ((), True, None),
+        (('chat',), True, None),
+        (('chat',), False, 'backend_not_ready'),
+        ((), False, 'provider_observation_unavailable'),
+    ],
+)
+def test_local_provider_error_keeps_readiness_before_capability_availability(names, ready, error):
+    assert provider_observation._local_error(names, ready) == error

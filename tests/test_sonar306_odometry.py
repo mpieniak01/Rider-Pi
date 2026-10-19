@@ -69,7 +69,8 @@ def test_reference_rejection_is_atomic_for_coordinates_and_continuity(estimator)
     assert not instance.set_reference(
         reference_id="new", operator_consent=True, x=10, home_operator_confirmed=True, home_x=0
     )
-    assert (instance.x, instance.y, instance.theta, instance.reference_id, instance.home) == before
+    actual = (instance.x, instance.y, instance.theta, instance.reference_id, instance.home)
+    assert actual == before
     instance.continuity_error = "old_gap"
     clock.now += 3
     assert not instance.update_imu(float("nan"), observed_at=clock.now)

@@ -34,7 +34,8 @@ def test_controller_invalid_mode_does_not_change_target_or_sdk(executor):
     controller = instance.controller
     before = controller.t_lx, controller.t_az, controller.deadline, list(instance.adapter.calls)
     assert not controller.drive(0.1, 0.0, 0.1, mode="unsupported")
-    assert (controller.t_lx, controller.t_az, controller.deadline, instance.adapter.calls) == before
+    actual = (controller.t_lx, controller.t_az, controller.deadline, instance.adapter.calls)
+    assert actual == before
 
 
 def test_executor_burst_bounds_and_passive_filtering():
@@ -106,8 +107,9 @@ def test_tracking_config_applies_known_fields_then_environment(monkeypatch):
 @pytest.mark.parametrize("method", ["forward", "backward", "left", "right"])
 def test_legacy_direct_actuation_remains_retired_without_adapter(method):
     instance = RiderMotion.__new__(RiderMotion)
+    retired_action = getattr(instance, method)
     with pytest.raises(PermissionError, match=LEGACY_MOTION_RETIRED):
-        getattr(instance, method)()
+        retired_action()
 
 
 @pytest.mark.parametrize(
@@ -194,8 +196,9 @@ def test_decision_callback_failure_latches_and_clears_permit():
         raise OSError("fake submit failure")
 
     lease.drive = fail
+    payload = decision()
     with pytest.raises(OSError, match="fake submit failure"):
-        lease.accept(decision(), "f1", 1, 0)
+        lease.accept(payload, "f1", 1, 0)
     assert lease.reason == 'motion_submission_failed'
     assert lease.latched
     assert lease.deadline is None

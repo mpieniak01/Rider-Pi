@@ -15,7 +15,7 @@ class NavigationCycle:
         if received is None:
             return
         frame, age = received
-        captured, meta = self._frame_metadata(frame, age)
+        captured, meta = self._frame_metadata(age)
         received, decision = self._request_decision(meta, frame, captured)
         if not received:
             return
@@ -58,7 +58,7 @@ class NavigationCycle:
             return False
         return True
 
-    def _frame_metadata(self, frame, age):
+    def _frame_metadata(self, age):
         self.fresh_frame_seen = True
         self.started = self.clock()
         captured = self.clock() - age / 1000
@@ -76,14 +76,15 @@ class NavigationCycle:
         }
         meta["perception"] = self.policy["perception"]
         if self.policy.get("avoidance", {}).get("enabled"):
+            motion_phase = "ready"
+            if self.turn_capture_after is not None and captured <= self.turn_capture_after:
+                motion_phase = (
+                    "steer_wait" if self.policy["avoidance"].get("protocol_version", 2) == 3 else "turn_settling"
+                )
             meta.update(
                 protocol_version=self.policy["avoidance"].get("protocol_version", 2),
                 avoidance=self.policy["avoidance"],
-                motion_phase=(
-                    "steer_wait" if self.policy["avoidance"].get("protocol_version", 2) == 3 else "turn_settling"
-                )
-                if self.turn_capture_after is not None and captured <= self.turn_capture_after
-                else "ready",
+                motion_phase=motion_phase,
             )
         return captured, meta
 

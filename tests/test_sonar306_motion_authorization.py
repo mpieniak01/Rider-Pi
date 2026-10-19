@@ -30,7 +30,8 @@ def test_executor_rejection_precedence_does_not_consume_authority_or_write_sdk(e
     before = instance.gate.generation, instance.gate.last_seq, instance.gate.owner, instance.gate.state
     calls = list(instance.adapter.calls)
     assert instance.apply(command(instance, **fields))["reason"] == reason
-    assert (instance.gate.generation, instance.gate.last_seq, instance.gate.owner, instance.gate.state) == before
+    actual = (instance.gate.generation, instance.gate.last_seq, instance.gate.owner, instance.gate.state)
+    assert actual == before
     assert instance.adapter.calls == calls
     assert instance.pending is None
 
@@ -41,7 +42,8 @@ def test_panel_rejection_precedes_agent_mode_and_settings(executor, monkeypatch)
     monkeypatch.setattr(instance.gate, "panel_rejection", lambda _: "invalid_panel_id")
     ack = instance.apply(command(instance, mode="unsupported", source="agent", settings_revision=-1))
     assert ack["reason"] == "invalid_panel_id"
-    assert (instance.gate.generation, instance.gate.last_seq, instance.adapter.calls) == before
+    actual = (instance.gate.generation, instance.gate.last_seq, instance.adapter.calls)
+    assert actual == before
 
 
 def test_operator_replay_and_conflict_never_authorize_again(executor, monkeypatch):
@@ -52,14 +54,16 @@ def test_operator_replay_and_conflict_never_authorize_again(executor, monkeypatc
     monkeypatch.setattr(instance.gate, "authorize", lambda _: pytest.fail("replay consumed authority"))
     replay = instance.apply(payload)
     assert replay["operator_replay"] is True
-    assert (replay["status"], replay["reason"], replay["generation"]) == (
+    actual = (replay["status"], replay["reason"], replay["generation"])
+    assert actual == (
         first["status"],
         first["reason"],
         first["generation"],
     )
     conflict = instance.apply({**payload, "seq": payload["seq"] + 1})
     assert conflict["reason"] == "operator_request_conflict"
-    assert (instance.gate.generation, instance.gate.last_seq, instance.adapter.calls) == before
+    actual = (instance.gate.generation, instance.gate.last_seq, instance.adapter.calls)
+    assert actual == before
 
 
 def test_pending_goal_completion_and_transport_failure_order(executor, monkeypatch):
@@ -332,3 +336,67 @@ def test_navigation_run_closes_fake_resources_after_startup_rejection(navigation
     assert events == ["status", "source_closed", "publisher_closed"]
     assert runner.closed.is_set()
     assert runner.motion_publisher is None
+
+
+@pytest.mark.parametrize(
+    'authorized,changed,action,stopped',
+    [
+        (False, True, 'move', True),
+        (True, False, 'move', True),
+        (True, True, 'stop', True),
+        (True, True, 'move', True),
+        (True, True, 'move', False),
+    ],
+)
+def test_generation_intervention_requires_successful_authorization_before_stopping(
+    authorized, changed, action, stopped
+):
+    from apps.motion.executor_admission import ExecutorAdmission
+
+    events = []
+    instance = ExecutorAdmission.__new__(ExecutorAdmission)
+    instance.gate = SimpleNamespace(generation='old', disarm=lambda reason: events.append(('disarm', reason)))
+
+    def authorize(payload):
+        events.append(('authorize', payload))
+        if changed:
+            instance.gate.generation = 'new'
+        return authorized, 'armed' if authorized else 'stale_generation'
+
+    def ack(payload, status, reason, **details):
+        events.append(('ack', payload['request_id'], status, reason, details))
+        return reason
+
+    instance.gate.authorize = authorize
+    instance.controller = SimpleNamespace(stop=lambda: events.append(('stop',)) or stopped)
+    instance._ack = ack
+    instance._cancel_invalid_intent = lambda *args: pytest.fail('obsolete failure cancelled a newer intent')
+    previous = {'request_id': 'previous'}
+    instance.pending, instance.intent_source = previous, 'agent'
+    payload = {'request_id': 'current'}
+    reason, rejection = instance._authorize_intent(payload, action, True, False)
+    intervention = authorized and changed and action == 'move'
+    assert reason == ('armed' if authorized else 'stale_generation')
+    if not intervention:
+        assert instance.pending is previous
+        assert instance.intent_source == 'agent'
+        assert events[0][0] == 'authorize'
+        assert ('stop',) not in events
+        assert rejection == (None if authorized else 'stale_generation')
+    else:
+        assert instance.pending is None
+        assert instance.intent_source is None
+        assert events[:3] == [
+            ('authorize', payload),
+            ('stop',),
+            ('ack', 'previous', 'rejected', 'operator_intervention', {'cancelled_by': 'current'}),
+        ]
+        if stopped:
+            assert rejection is None
+            assert len(events) == 3
+        else:
+            assert rejection == 'hardware_stop_unconfirmed'
+            assert events[3:] == [
+                ('disarm', 'hardware_stop_unconfirmed'),
+                ('ack', 'current', 'rejected', 'hardware_stop_unconfirmed', {}),
+            ]

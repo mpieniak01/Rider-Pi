@@ -120,11 +120,7 @@ class ExecutorAdmission:
             if not obsolete:
                 self._cancel_invalid_intent(command, is_actuator, agent)
             return reason, self._ack(command, "rejected", reason)
-        if (
-            authorized
-            and previous_generation != self.gate.generation
-            and action not in {"stop", "disarm", "estop", "clear_estop"}
-        ):
+        if previous_generation != self.gate.generation and action not in {"stop", "disarm", "estop", "clear_estop"}:
             previous, self.pending = self.pending, None
             self.intent_source = None
             stopped = self.controller.stop()
