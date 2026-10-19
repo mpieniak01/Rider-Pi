@@ -62,11 +62,16 @@ function serviceGroup(panel,group,entries,valid) {
   section.append(grid); return section;
 }
 
+function gitVersionLabel(version) {
+  if (!version?.available) return 'unknown';
+  const dirty = version.dirty ? ' · dirty' : '';
+  return (version.branch || '—') + ' · ' + (version.commit || '—') + dirty;
+}
 function renderSystemDetails(panel) {
   document.getElementById('system-details-data')?.replaceChildren(kv([
     ['CPU', displayValue(panel.system?.cpu_pct, '%')], ['RAM', displayValue(panel.system?.mem_pct ?? panel.system?.mem?.pct, '%')],
     [tr('Dysk', 'Disk'), displayValue(panel.system?.disk_pct, '%')], [tr('Temperatura', 'Temperature'), displayValue(panel.system?.temp_c, ' °C')],
-    [tr('Wiek pomiarów', 'Measurement age'), ageStamp(panel.system, 10)], ['Git', panel.version?.available ? `${panel.version.branch || '—'} · ${panel.version.commit || '—'}${panel.version.dirty ? ' · dirty' : ''}` : 'unknown']
+    [tr('Wiek pomiarów', 'Measurement age'), ageStamp(panel.system, 10)], ['Git', gitVersionLabel(panel.version)]
   ]), panel.keepDetails('source:system', rawDetails({ system: panel.system, graph: panel.graph, version: panel.version })));
   const wifi = panel.graph?.network?.wifi;
   text('network-status', wifi ? `${wifi.status || 'unknown'} · ${(wifi.addresses || []).join(', ')} · ${wifi.interface || 'wlan0'}` : 'unknown');

@@ -29,7 +29,10 @@ def _apply_lcd_snapshot(lcd, snapshot):
     lcd["presenting"] = not snapshot["free"] if known else None
     lcd["holders"] = snapshot.get("holders") or []
     lcd["checked_at"] = snapshot.get("checked_at")
-    lcd["ownership_state"] = snapshot.get("state", "unknown" if not known else "free" if snapshot["free"] else "busy")
+    default_state = "unknown"
+    if known:
+        default_state = "free" if snapshot["free"] else "busy"
+    lcd["ownership_state"] = snapshot.get("state", default_state)
     lcd["ownership_error"] = snapshot.get("error")
     if not known:
         lcd["on"] = None

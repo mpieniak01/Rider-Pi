@@ -47,10 +47,12 @@ def test_gesture_segment_boundary_order_and_input_copy():
     assert len(result["tracks"]["brows.tilt"]) == 32
     result["tracks"]["brows.tilt"][0]["v0"] = 0
     assert tracks[0]["v0"] == -1
+    too_many = {**body, "tracks": {"brows.tilt": tracks + [segment()]}}
     with pytest.raises(ValueError, match="invalid_track"):
-        schema.validate({**body, "tracks": {"brows.tilt": tracks + [segment()]}})
+        schema.validate(too_many)
+    overlapping = {**body, "tracks": {"brows.tilt": [segment(t1=0.75), segment(t0=0.5)]}}
     with pytest.raises(ValueError, match="value_out_of_range"):
-        schema.validate({**body, "tracks": {"brows.tilt": [segment(t1=0.75), segment(t0=0.5)]}})
+        schema.validate(overlapping)
     with pytest.raises(KeyError, match="v1"):
         schema.validate({**body, "tracks": {"brows.tilt": [{"t0": 0, "t1": 1, "v0": 0}]}})
 

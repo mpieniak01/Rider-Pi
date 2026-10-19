@@ -223,3 +223,33 @@ test('calibration preserves signed table boundaries and first failure before man
   profile.odometry.turn_rad_s={'181':1};
   assert.equal(calibration.profileError(profile),'invalid_signed_measurement');
 });
+
+test('preview final decoder continuation releases queue ownership before a later microtask offer',async()=>{
+  const f=await screen('camera-pipeline.js'),preview=Object.create(f.namespace.PipelinePreview.prototype);
+  const events=[];let busy=false,pending=true;
+  const ready=vm.runInContext('Promise.resolve()',f.context);
+  preview.display=()=>{
+    events.push('display');
+    ready.then(()=>Promise.resolve().then(()=>events.push(busy?'still-busy':'released')));
+    return ready;
+  };
+  const queue={busy:()=>busy,setBusy:value=>{busy=value;events.push('busy:'+value);},
+    current:()=>true,signal:new AbortController().signal,hasFrame:()=>pending,take:()=>{pending=false;return 'frame';}};
+  const result=preview.drainFrames(queue);
+  assert.deepEqual(events,['busy:true','display']);
+  await result;await Promise.resolve();
+  assert.deepEqual(events,['busy:true','display','busy:false','released']);
+});
+
+test('preview rejected decoder preserves current-only stale reporting and always releases its owner',async()=>{
+  for(const cancelled of [false,true]){
+    const f=await screen('camera-pipeline.js'),preview=Object.create(f.namespace.PipelinePreview.prototype);
+    let busy=false,current=true,pending=true,stale=0;
+    preview.stale=()=>{stale++;};
+    preview.display=()=>{if(cancelled)current=false;return Promise.reject(new Error('fixture decode'));};
+    const queue={busy:()=>busy,setBusy:value=>{busy=value;},current:()=>current,
+      signal:new AbortController().signal,hasFrame:()=>pending,take:()=>{pending=false;return 'frame';}};
+    await preview.drainFrames(queue);
+    assert.equal(busy,false);assert.equal(stale,cancelled?0:1);
+  }
+});

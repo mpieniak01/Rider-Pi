@@ -172,15 +172,27 @@ export class PipelinePreview {
         + ' · ' + source.sequence + ' · ' + Math.round(ageMs + performance.now() - receivedAt) + ' ms';
     } finally { URL.revokeObjectURL(url); }
   }
-  async drainFrames(queue) {
-    if (queue.busy()) return;
+  drainFrames(queue) {
+    if (queue.busy()) return Promise.resolve();
     queue.setBusy(true);
-    try {
-      while (queue.hasFrame() && queue.current()) {
-        await this.display(queue.take(), queue.signal, queue.current);
-      }
-    } catch { if (queue.current()) this.stale(); }
-    finally { queue.setBusy(false); }
+    // One decoder owns the queue. Recheck the latest frame only after its predecessor
+    // settles; finish in that same continuation so a queued offer cannot be stranded.
+    return new Promise((resolve, reject) => {
+      const finish = () => { queue.setBusy(false); resolve(); };
+      const fail = () => {
+        try { if (queue.current()) this.stale(); }
+        catch (error) { reject(error); return; }
+        finally { queue.setBusy(false); }
+        resolve();
+      };
+      const next = () => {
+        try {
+          if (!queue.hasFrame() || !queue.current()) { finish(); return; }
+          this.display(queue.take(), queue.signal, queue.current).then(next, fail);
+        } catch { fail(); }
+      };
+      next();
+    });
   }
   canReadPreview(profile) {
     return profile && this.enabled && !document.hidden && ['active', 'waiting_frame'].includes(profile.state)

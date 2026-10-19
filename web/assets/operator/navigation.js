@@ -163,7 +163,7 @@ export class Navigation {
     this.canvas.width = displayWidth; this.canvas.height = Math.round(this.canvas.width * .6);
     ctx.fillStyle = '#192430'; ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     const grid = mapGrid(this.map);if (!grid) return;
-    const {width,height,data} = grid;
+    const {width,height} = grid;
     const scale = Math.min(this.canvas.width / width, this.canvas.height / height);
     const offsetX = (this.canvas.width - width * scale) / 2, offsetY = (this.canvas.height - height * scale) / 2;
     ctx.save(); ctx.translate(offsetX, offsetY); ctx.globalAlpha = planningPresentationReady(this.map, 3) || presentationReady(this.map, 10) ? 1 : .45;

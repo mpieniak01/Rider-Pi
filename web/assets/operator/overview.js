@@ -73,7 +73,11 @@ function renderVisionFrame(overview,kind,endpoint,active) {
   text(`age_${kind}`, label);
   text(`leg_${name}_txt`, `${kind.toUpperCase()} · ${label}${frame.time_basis === 'file_mtime' ? tr(' · wiek pliku; przechwycenie niepotwierdzone', ' · file age; capture unconfirmed') : ''}`);
   if (!node) return;
-  if (!freshFrame || document.hidden) { node.dataset.frame = ''; if (node.getAttribute('src') !== BLANK) node.src = BLANK; return; }
+  if (!freshFrame || document.hidden) {
+    node.dataset.frame = '';
+    if (node.getAttribute('src') !== BLANK) node.src = BLANK;
+    return;
+  }
   const tag = String(frame.ts);
   if (node.dataset.frame !== tag) {
     node.dataset.frame = tag;

@@ -30,11 +30,15 @@ function measuredAt(parent,row,name,canonical,requireMotion) {
   if (name === 'battery' && Object.hasOwn(parent || {},'battery_observed_at')) return parent.battery_observed_at;
   return Object.hasOwn(parent || {},'observed_at') ? parent.observed_at : parent?.ts;
 }
+function assessmentAt(parent,row,requireMotion) {
+  if (row && Object.hasOwn(row,'assessed_at')) return row.assessed_at;
+  return requireMotion ? parent?.observed_at : null;
+}
 function measuredAge(parent,row,observedAt,now,requireMotion) {
   let age=sourceAge(observedAt,now);
   if (requireMotion && observedAt > now) age=null;
   // Pair age with its explicit assessment, never producer publication time.
-  const assessed=row && Object.hasOwn(row,'assessed_at') ? row.assessed_at : requireMotion ? parent?.observed_at : null;
+  const assessed=assessmentAt(parent,row,requireMotion);
   const published=sourceAge(assessed,now);
   if (finite(row?.age_s) && row.age_s >= 0 && published !== null && age !== null) age=Math.max(age,row.age_s+published);
   if (requireMotion && (!finite(row?.age_s) || row.age_s < 0)) age=null;
@@ -59,7 +63,7 @@ function valueValid(value,unit,expected,name) {
     && (name !== 'work_status' || Number.isInteger(value) && [0,1].includes(value))
     && (name !== 'battery' || value >= 0 && value <= 1);
 }
-function channelState(parent,row,name,age,maxAge,identity,validValue,unavailable) {
+function channelState(parent,row,name,{age,maxAge,identity,validValue,unavailable}) {
   const parentError=typeof parent?.error === 'string' && parent.error.startsWith('sensor_quality:') ? null : parent?.error;
   const error=row?.error || row?.data_error || parentError || parent?.data_error || null;
   const offline=unavailable || parent?.offline === true || row?.offline === true || parent?.meta?.offline === true;
@@ -90,7 +94,7 @@ export function observationChannel(input,name,{now=Date.now()/1000,unavailable=f
   const age=measuredAge(parent,row,observedAt,now,requireMotion);
   const maxAge=Math.min(2.5,finite(row?.max_age_s) && row.max_age_s > 0 ? row.max_age_s : 2.5);
   const identity=motionIdentity(parent,row,now,requireMotion), expected=expectedUnit(name);
-  const state=channelState(parent,row,name,age,maxAge,identity,valueValid(value,unit,expected,name),unavailable);
+  const state=channelState(parent,row,name,{age,maxAge,identity,validValue:valueValid(value,unit,expected,name),unavailable});
   return {...row,observed_at:observedAt ?? null,age_s:age,offline:state.offline,stale:state.stale,
     ready:state.ready,producer_ready:row?.ready === true,status:channelStatus(state.ready,age,maxAge),
     value:displayedValue(state.ready,name,value),raw_value:value,raw_unit:unit,unit:name === 'battery' ? '%' : expected,

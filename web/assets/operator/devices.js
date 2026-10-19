@@ -12,7 +12,9 @@ function resourcePower(card,data) {
   card.append(pill(powerLabel(on), on === true ? 'ok' : on === false ? 'warn' : 'err'));
 }
 function resourceBadge(data,good) {
-  return freshPill(data, good ? data.state : 'unknown', good ? data.state === 'free' ? 'ok' : 'warn' : 'err');
+  let status = 'err';
+  if (good) status = data.state === 'free' ? 'ok' : 'warn';
+  return freshPill(data, good ? data.state : 'unknown', status);
 }
 function resourceDetails(data,good) {
   return kv([[tr('Źródło', 'Source'), data.source || 'unknown'], [tr('Wiek odczytu', 'Observation age'), ageStamp(data, 10)],
