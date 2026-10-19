@@ -84,23 +84,34 @@ class FaceController:
     def is_mood_idle(self):
         return "emotion" not in self.anim.owners.values()
 
-    def do(self, name, *, priority=10, owner="gesture", intensity=None, tempo=None, transition=None, **kwargs):
-        procedural = name in GESTURES
-        if name in GESTURES and kwargs:
+    def _procedural_spec(self, name, kwargs):
+        if kwargs:
             if name == "look":
                 kwargs["rng"] = self.rng
             spec = GESTURES[name](**kwargs)
         elif name == "look":
             spec = GESTURES[name](rng=self.rng)
-        elif name in GESTURES:
+        else:
             spec = GESTURES[name]()
+        return spec
+
+    def _gesture_spec(self, name, kwargs):
+        procedural = name in GESTURES
+        if name in GESTURES:
+            spec = self._procedural_spec(name, kwargs)
         else:
             item = self.catalog.get(name)
             if not item or self.active_gestures is not None and item["id"] not in self.active_gestures:
-                return False
+                return False, None, False
             spec = item
             procedural = item["builtin"] and item["name"] in GESTURES
         if self.active_gestures is not None and name in GESTURES and "builtin:" + name not in self.active_gestures:
+            return False, None, False
+        return True, spec, procedural
+
+    def do(self, name, *, priority=10, owner="gesture", intensity=None, tempo=None, transition=None, **kwargs):
+        accepted, spec, procedural = self._gesture_spec(name, kwargs)
+        if not accepted:
             return False
         spec = prepare(
             spec,

@@ -53,6 +53,10 @@ def draw_professional(canvas, state, style):
         ]
         canvas.line(brow, fill=ink, width=stroke + 1, joint="curve")
 
+    _draw_mouth(canvas, state, size, stroke)
+
+
+def _draw_mouth(canvas, state, size, stroke):
     cx, my, width = size * 0.5, size * 0.75, size * 0.30
     curve = state.mouth.curve
     if curve is None:

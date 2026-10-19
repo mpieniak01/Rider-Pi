@@ -62,18 +62,8 @@ def img_to_rgb565(img: Image.Image) -> bytes:
     return to_rgb565(img)
 
 
-def _load_face_api_module() -> object | None:
-    """
-    Szuka face_api.py w ścieżkach z RIDER_APPS_PATH (preferuje _apps),
-    ładuje moduł BEZPOŚREDNIO z pliku, żeby nie kolidował z nowym 'services'.
-    """
-    try:
-        repo_root = pathlib.Path(__file__).resolve().parents[3]
-    except Exception:
-        repo_root = pathlib.Path.cwd()
-
+def _face_api_candidates(repo_root, env):
     order = []
-    env = os.getenv("RIDER_APPS_PATH", "")
     if env:
         for p in env.split(":"):
             p = p.strip()
@@ -89,6 +79,21 @@ def _load_face_api_module() -> object | None:
         cand = base / "services" / "api_core" / "face_api.py"
         if cand.exists():
             candidates.append(cand)
+
+    return candidates
+
+
+def _load_face_api_module() -> object | None:
+    """
+    Szuka face_api.py w ścieżkach z RIDER_APPS_PATH (preferuje _apps),
+    ładuje moduł BEZPOŚREDNIO z pliku, żeby nie kolidował z nowym 'services'.
+    """
+    try:
+        repo_root = pathlib.Path(__file__).resolve().parents[3]
+    except Exception:
+        repo_root = pathlib.Path.cwd()
+
+    candidates = _face_api_candidates(repo_root, os.getenv("RIDER_APPS_PATH", ""))
 
     for path in candidates:
         try:
@@ -134,6 +139,46 @@ def write_framebuffer(rgb565_bytes: bytes, fb: str) -> bool:
         return False
 
 
+def _face_canvas(face, width, height, debug, rotate):
+    # 2) kanwa pełnoekranowa (żeby przykryć stare piksele)
+    canvas = Image.new("RGB", (width, height), (20, 0, 40) if debug else (8, 36, 70))
+    ox = (width - face.width) // 2
+    oy = (height - face.height) // 2
+    canvas.paste(face, (max(0, ox), max(0, oy)))
+
+    # 3) debug overlay
+    if debug:
+        d = ImageDraw.Draw(canvas)
+        d.line((0, 0, width - 1, height - 1), fill=(255, 0, 255), width=6)
+        d.line((width - 1, 0, 0, height - 1), fill=(255, 0, 255), width=6)
+        d.text((10, 10), "NEW", fill=(255, 0, 255))
+
+    # 4) obrót
+    if rotate:
+        canvas = canvas.rotate(rotate, expand=True)
+
+    return canvas
+
+
+def _present_face(canvas, fc, backend, outfile, use_api, fbdev):
+    sink = ""
+    if backend == "png":
+        atomic_write(outfile, lambda stream, image=canvas: image.save(stream, "PNG"))
+        sink = f"file:{outfile}"
+    else:
+        if use_api and push_via_face_api(fc.renderer.render_png_bytes(fc.anim.state), outfile):
+            sink = "face_api"
+        else:
+            rgb = img_to_rgb565(canvas)
+            if write_framebuffer(rgb, fbdev):
+                sink = f"fb:{fbdev}"
+            else:
+                atomic_write(outfile, lambda stream, image=canvas: image.save(stream, "PNG"))
+                sink = f"file:{outfile}"
+
+    return sink
+
+
 def main():
     backend = os.getenv("FACE_BACKEND", "lcd").lower()
     rotate = int(os.getenv("FACE_LCD_ROTATE", os.getenv("FACE_ROTATE", "0")) or 0)
@@ -176,38 +221,10 @@ def main():
             time.sleep(max(0, 1 / fps - (time.monotonic() - frame_started)))
             continue
 
-        # 2) kanwa pełnoekranowa (żeby przykryć stare piksele)
-        canvas = Image.new("RGB", (fb_w, fb_h), (20, 0, 40) if debug else (8, 36, 70))
-        ox = (fb_w - face.width) // 2
-        oy = (fb_h - face.height) // 2
-        canvas.paste(face, (max(0, ox), max(0, oy)))
-
-        # 3) debug overlay
-        if debug:
-            d = ImageDraw.Draw(canvas)
-            d.line((0, 0, fb_w - 1, fb_h - 1), fill=(255, 0, 255), width=6)
-            d.line((fb_w - 1, 0, 0, fb_h - 1), fill=(255, 0, 255), width=6)
-            d.text((10, 10), "NEW", fill=(255, 0, 255))
-
-        # 4) obrót
-        if rotate:
-            canvas = canvas.rotate(rotate, expand=True)
+        canvas = _face_canvas(face, fb_w, fb_h, debug, rotate)
 
         # 5) wysyłka: face_api (jeśli żądany) -> fb -> plik
-        sink = ""
-        if backend == "png":
-            atomic_write(outfile, lambda stream, image=canvas: image.save(stream, "PNG"))
-            sink = f"file:{outfile}"
-        else:
-            if use_api and push_via_face_api(fc.renderer.render_png_bytes(fc.anim.state), outfile):
-                sink = "face_api"
-            else:
-                rgb = img_to_rgb565(canvas)
-                if write_framebuffer(rgb, fbdev):
-                    sink = f"fb:{fbdev}"
-                else:
-                    atomic_write(outfile, lambda stream, image=canvas: image.save(stream, "PNG"))
-                    sink = f"file:{outfile}"
+        sink = _present_face(canvas, fc, backend, outfile, use_api, fbdev)
 
         if sink != last_sink:
             print(f"[face] sink={sink}")

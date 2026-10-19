@@ -265,6 +265,24 @@ def proposal(message, decision):
     }
 
 
+def _process_transcript(payload):
+    msg = payload if isinstance(payload, dict) else json.loads(payload)
+    if not isinstance(msg, dict):
+        return
+    if not should_process(msg):
+        return
+
+    text = (msg.get("text") or "").strip()
+    if not text:
+        return
+
+    cmd, _ = decide(text)
+    if cmd:
+        out_topic, out = proposal(msg, cmd)
+        _bus_publish(out_topic, out)
+        log(f"NLU → {out_topic}: {out}")
+
+
 def main():
     global SUB
     SUB = BusSub("audio.transcript")
@@ -274,21 +292,7 @@ def main():
         if topic is None:
             continue
         try:
-            msg = payload if isinstance(payload, dict) else json.loads(payload)
-            if not isinstance(msg, dict):
-                continue
-            if not should_process(msg):
-                continue
-
-            text = (msg.get("text") or "").strip()
-            if not text:
-                continue
-
-            cmd, _ = decide(text)
-            if cmd:
-                out_topic, out = proposal(msg, cmd)
-                _bus_publish(out_topic, out)
-                log(f"NLU → {out_topic}: {out}")
+            _process_transcript(payload)
         except KeyboardInterrupt:
             raise
         except Exception as e:
