@@ -36,6 +36,8 @@ import services.api_core.face_api as face_api
 from services.api_core import compat_health
 from services.api_core.services_dashboard_api import bp as services_dashboard_bp
 
+from .http_security import apply_cors, install as install_http_security
+
 # ── Konfiguracja ───────────────────────────────────────────────────────────────
 BUS_PUB_PORT = int(os.getenv("BUS_PUB_PORT", "5555"))
 BUS_SUB_PORT = int(os.getenv("BUS_SUB_PORT", "5556"))
@@ -74,6 +76,9 @@ SYSTEM_HTML = os.path.abspath(os.path.join(BASE_DIR, "web", "system.html"))
 
 # ── Aplikacja Flask ───────────────────────────────────────────────────────────
 app = Flask(__name__)
+
+
+install_http_security(app)
 
 # Flask < 2.0 shim
 if not hasattr(app, "get"):
@@ -525,7 +530,7 @@ def draw_face_route():
     except Exception:
         # fallback gdyby voice_proxy nie miał _corsify
         resp = jsonify(body)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
+        apply_cors(resp)
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
         return resp, code

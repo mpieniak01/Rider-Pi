@@ -128,3 +128,5 @@ Many API endpoints publish commands to the internal ZMQ message bus. See `common
 - [ARCHITECTURE.md](../../ARCHITECTURE.md) - Overall system architecture
 - [common/bus.py](../../common/bus.py) - Bus topic definitions
 - [services/api_server.py](../../services/api_server.py) - API server implementation
+
+- [HTTP boundary and safe PNG exports](security.md) — Origin/CORS, content types and provider reasons.

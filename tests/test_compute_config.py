@@ -31,7 +31,6 @@ def app():
     rider_routes.register_compute(app)
     app.add_url_rule("/config", view_func=compute_api.config_handler, methods=["GET", "POST", "OPTIONS"])
     app.add_url_rule("/status", view_func=compute_api.status_handler)
-    app.add_url_rule("/tasks/<task>", view_func=compute_api.task_handler, methods=["POST"])
     return app
 
 
@@ -348,13 +347,16 @@ def test_panel_task_and_chat_share_client_close_no_capture_or_play(monkeypatch):
 def test_api_task_rejects_invalid_params_and_reports_offline(monkeypatch):
     configured()
     with app().test_client() as client:
-        assert client.post("/tasks/text.respond", data=b"a", headers={"X-Rider-Params": "[]"}).status_code == 400
+        assert (
+            client.post("/api/compute/tasks/text.respond", data=b"a", headers={"X-Rider-Params": "[]"}).status_code
+            == 400
+        )
 
         def unavailable(*_):
             raise ComputeError("compute_transport_error", 503)
 
         monkeypatch.setattr(compute_api, "execute", unavailable)
-        response = client.post("/tasks/text.respond", data=b"a", content_type="text/plain")
+        response = client.post("/api/compute/tasks/text.respond", data=b"a", content_type="text/plain")
         assert response.status_code == 503 and response.json["error"] == "compute_transport_error"
 
 
@@ -540,7 +542,7 @@ def test_transcription_api_returns_400_for_container_language_without_network(mo
     monkeypatch.setattr(compute_api, "execute", execute)
     with app().test_client() as http:
         response = http.post(
-            "/tasks/audio.transcribe",
+            "/api/compute/tasks/audio.transcribe",
             data=wav(),
             content_type="audio/wav",
             headers={"X-Rider-Params": json.dumps({"language": language})},

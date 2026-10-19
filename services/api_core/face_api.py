@@ -5,6 +5,8 @@ import os
 from types import SimpleNamespace
 from typing import Any
 
+from . import face_exports
+
 ALLOWED = {"neutral", "happy", "sad", "blink"}
 ROT_ALLOWED = {0, 90, 180, 270}
 
@@ -169,43 +171,41 @@ def render_face(payload: dict[str, Any]) -> dict[str, Any]:
       - sukces: {"ok": true, "out": "..."} lub {"ok": true, "used": "..."} (dla LCD)
       - błąd:   {"ok": false, "error": "...", "status": 503?}
     """
-    try:
-        b = _norm_backend(payload)
-        ex = _norm_expr(payload.get("expr"))
-        out = payload.get("out")
-        size = int(payload.get("size", 240))
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "invalid_face_preview", "status": 400}
+    b = _norm_backend(payload)
+    ex = _norm_expr(payload.get("expr"))
+    if b == "png":
+        try:
+            size, rot = _png_options(payload)
+            out = face_exports.target(payload.get("out"))
+        except (ValueError, TypeError, OverflowError) as error:
+            code = "invalid_face_output" if str(error) == "invalid_face_output" else "invalid_face_preview"
+            return {"ok": False, "error": code, "status": 400}
+        except OSError:
+            return {"ok": False, "error": "face_export_unavailable", "status": 503}
+        try:
+            png = _rotate_png_bytes(_render_png_bytes(ex, size), rot)
+        except Exception:
+            return {"ok": False, "error": "face_renderer_unavailable", "status": 503}
+        try:
+            face_exports.save(out, png)
+        except OSError:
+            return {"ok": False, "error": "face_export_unavailable", "status": 503}
+        return {"ok": True, "out": str(out)}
+    if b in {"lcd", "raw"}:
+        from services.api_core.face_runtime_api import play
 
-        # normalizacja rotacji: payload → ENV → 0
-        rot = int(payload.get("rotate", payload.get("rotation", _env_int("FACE_LCD_ROTATE", 0))))
+        return play({"expr": ex, "sink": "lcd", "duration_s": payload.get("duration_s", 1)})
+    return {"ok": False, "error": "unknown_face_backend", "status": 400}
 
-        if b == "png":
-            try:
-                png = _render_png_bytes(ex, size)
-                png = _rotate_png_bytes(png, rot)
-            except Exception as e:
-                return {"ok": False, "error": f"renderer-error: {e}"}
 
-            if not out:
-                return {"ok": False, "error": "missing 'out' for file backend"}
-
-            try:
-                os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-                with open(out, "wb") as f:
-                    f.write(png)
-                return {"ok": True, "out": out}
-            except Exception as e:
-                return {"ok": False, "error": f"save-error: {e}"}
-
-        elif b in {"lcd", "raw"}:
-            from services.api_core.face_runtime_api import play
-
-            return play({"expr": ex, "sink": "lcd", "duration_s": payload.get("duration_s", 1)})
-
-        else:
-            return {"ok": False, "error": f"unknown backend: {b or 'none'}"}
-
-    except Exception as e:
-        return {"ok": False, "error": f"unexpected-error: {e}"}
+def _png_options(payload):
+    size = int(payload.get("size", 240))
+    rot = int(payload.get("rotate", payload.get("rotation", _env_int("FACE_LCD_ROTATE", 0))))
+    if not 16 <= size <= 1024 or rot not in ROT_ALLOWED:
+        raise ValueError("invalid_face_preview")
+    return size, rot
 
 
 # ---- Public wrappers / kompatybilność ----------------------------------------
@@ -235,7 +235,7 @@ def draw_face(payload_or_expr=None, backend="png", out=None, **kwargs) -> tuple[
             payload.update(kwargs)
 
     res = render_face(payload)
-    status = 503 if (not res.get("ok") and res.get("status") == 503) else 200
+    status = res.get("status", 200 if res.get("ok") else 400)
     return res, status
 
 
@@ -245,15 +245,10 @@ def png_response(payload):
 
     if not isinstance(payload, dict):
         return jsonify(ok=False, error="invalid_face_preview"), 400
-    if _norm_backend(payload) != "png" or payload.get("out") or "image/png" not in request.headers.get("Accept", ""):
+    if _norm_backend(payload) != "png" or "out" in payload or "image/png" not in request.headers.get("Accept", ""):
         return None
     try:
-        size = int(payload.get("size", 240))
-        if not 16 <= size <= 1024:
-            raise ValueError("invalid_face_size")
-        rot = int(payload.get("rotate", payload.get("rotation", _env_int("FACE_LCD_ROTATE", 0))))
-        if rot not in ROT_ALLOWED:
-            raise ValueError("invalid_face_rotation")
+        size, rot = _png_options(payload)
         png = _rotate_png_bytes(_render_png_bytes(_norm_expr(payload.get("expr")), size), rot)
         return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
     except (ValueError, TypeError, OverflowError):

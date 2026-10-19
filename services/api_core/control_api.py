@@ -11,11 +11,12 @@ from services.control_commands import submit_control
 from services.safety_contract import read_status
 
 from . import compat as C
+from .http_security import apply_cors
 
 
 def _response(body, code=200):
     response = jsonify({**body, "server_time": time.time()})
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    apply_cors(response)
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response, code

@@ -59,6 +59,7 @@ from services.api_core.api_metrics import _update_api_metrics
 from services.api_core.chat_routes import register_chat_endpoints
 from services.api_core.face_api import render_face as face_render_shim
 from services.api_core.home_auth_route import home_auth as home_auth_flow, home_auth_url as home_auth_request
+from services.api_core.http_security import apply_cors
 from services.api_core.resource_api import api_resource
 from services.api_core.service_logs import service_logs
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
@@ -73,7 +74,7 @@ face_studio.register(app)
 # ── CORS global + metryki ────────────────────────────────────────────────────
 @app.after_request
 def _cors_all(resp: Response) -> Response:
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    apply_cors(resp)
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS,HEAD"
 

@@ -13,6 +13,7 @@ from common.bus import TOPIC_NAVIGATOR_RETURN_HOME_START
 from services.safety_contract import read_status, request_stop
 
 from . import compat as C
+from .http_security import apply_cors
 from .navigation_state import snapshot as navigation_snapshot
 
 TOPIC_NAVIGATOR_CONTROL = "navigator.control"
@@ -21,13 +22,7 @@ TOPIC_NAVIGATOR_STATE = "navigator.state"
 
 def _response(body, status=200):
     response = Response(json.dumps(body), status=status, mimetype="application/json")
-    response.headers.update(
-        {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type",
-            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        }
-    )
+    apply_cors(response)
     return response
 
 

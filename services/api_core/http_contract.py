@@ -9,6 +9,7 @@ import time
 from flask import g, jsonify, request
 from werkzeug.exceptions import HTTPException
 
+from . import http_security
 from .contract_registry import contract_for, projection
 from .operation_result import result_for
 
@@ -95,9 +96,7 @@ def _error(payload, code):
 def enhance(response):
     """Binary/SSE MIME and payload are preserved; JSON is negotiated on the same URL."""
     response.vary.add("Accept")
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Accept"
+    http_security.apply_cors(response)
     response.headers["Access-Control-Expose-Headers"] = (
         "X-Rider-Contract,X-Rider-Observed-At,X-Rider-File-Observed-At,X-Rider-Source,"
         "X-Rider-Frame-Id,X-Rider-Stream,X-Rider-Stale,X-Rider-Placeholder,Last-Modified,"
@@ -179,6 +178,7 @@ def enhance(response):
 
 
 def install(app, *, after_request: bool = False) -> None:
+    http_security.install(app)
     if app.extensions.get("rider_http_contract"):
         return
     app.extensions["rider_http_contract"] = True

@@ -19,12 +19,14 @@ from typing import Any
 from flask import Flask, Response, g, jsonify, request
 
 from apps.voice import web_audio
+from services.api_core.http_security import install as install_http_security
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Instancja aplikacji + polyfill dla Flask < 2.0
 # ───────────────────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
+install_http_security(app)
 
 if not hasattr(app, "get"):
 

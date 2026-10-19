@@ -92,7 +92,7 @@ def test_supported_choice_cors_options_and_head(world):
     client, _, effects = world
     headers = {"Accept": "application/vnd.rider.api+json;version=2,application/vnd.rider.api+json;version=1;q=.5"}
     assert client.get("/state", headers=headers).get_json()["meta"]["envelope_version"] == 1
-    response = client.options("/state", headers=VENDOR)
+    response = client.options("/state", headers={**VENDOR, "Origin": "http://localhost"})
     assert response.status_code == 204
     assert "PATCH" in response.headers["Access-Control-Allow-Methods"]
     assert "Accept" in response.headers["Access-Control-Allow-Headers"]

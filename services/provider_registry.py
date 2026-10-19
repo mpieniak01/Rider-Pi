@@ -189,7 +189,14 @@ def get_domain_state(domain: str) -> dict[str, Any]:
         return deepcopy(_domains[domain])
 
 
+def _validated_reason(value: str) -> str:
+    if not isinstance(value, str) or not 1 <= len(value) <= 256 or not value.strip() or not value.isprintable():
+        raise ValueError("invalid_provider_reason")
+    return value
+
+
 def set_domain_mode(domain: str, target: str, *, reason: str = "manual") -> tuple[dict[str, Any], bool]:
+    reason = _validated_reason(reason)
     domain = domain.lower()
     if domain not in DOMAINS:
         raise ValueError(f"Unknown domain: {domain}")
@@ -215,7 +222,7 @@ def set_domain_mode(domain: str, target: str, *, reason: str = "manual") -> tupl
             _domains[domain] = current
             raise
         result = deepcopy(new_state)
-        LOGGER.info("Provider domain %s changed to %s (reason=%s)", domain, target, reason)
+        LOGGER.info("Provider domain %s changed to %s (reason=%r)", domain, target, reason)
     _publish_provider_state_event(domain, result)
     return result, True
 
@@ -329,6 +336,7 @@ def get_pc_base_url() -> str:
 
 
 def set_pc_base_url(base_url: str, *, reason: str = "manual") -> str:
+    reason = _validated_reason(reason)
     normalized = (base_url or "").strip()
     if not normalized:
         raise ValueError("base_url must be non-empty")
@@ -347,7 +355,7 @@ def set_pc_base_url(base_url: str, *, reason: str = "manual") -> str:
         except (OSError, ValueError):
             _pc_base_url = previous
             raise
-    LOGGER.info("PC base URL updated to %s (reason=%s)", _pc_base_url, reason)
+    LOGGER.info("PC base URL updated to %r (reason=%r)", _pc_base_url, reason)
     return _pc_base_url
 
 

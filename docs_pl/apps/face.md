@@ -12,10 +12,10 @@ ls -l /tmp/face_api.png
 ```
 
 - `backend`: `png` (alias: `file`, `image`)
-- `out`: ścieżka do pliku wyjściowego (wymagana)
+- `out`: `face.png` lub `face_<nazwa>.png` bezpośrednio w `FACE_RENDER_DIR` (domyślnie `/tmp`); [ograniczenia eksportu](../api-specs/security.md).
 - `expr`: wyraz buźki (`neutral`, `happy`, `sad`, ...)
 - `rotate`: opcjonalnie obrót (0/90/180/270)
-- `size`: rozmiar (domyślnie 240)
+- `size`: rozmiar 16–1024 (domyślnie 240)
 
 ### 2. Render LCD (bez HW → 503)
 
@@ -30,8 +30,8 @@ curl -s -i -X POST http://127.0.0.1:8080/face/render -H 'Content-Type: applicati
 
 ```bash
 curl -s -X POST http://127.0.0.1:8080/api/draw/face -H 'Content-Type: application/json' \
-	-d '{"expr":"neutral","backend":"png","out":"/tmp/legacy.png"}'
-ls -l /tmp/legacy.png
+	-d '{"expr":"neutral","backend":"png","out":"/tmp/face_legacy.png"}'
+ls -l /tmp/face_legacy.png
 ```
 
 - Z `backend:"lcd"` → HTTP 503
@@ -39,7 +39,7 @@ ls -l /tmp/legacy.png
 ## Port i środowisko
 
 - Domyślny port: **8080** (kontraktowy, można nadpisać `STATUS_API_PORT` lub `API_PORT`)
-- Globalny CORS (`Access-Control-Allow-Origin: *`)
+- Origin/CORS według [wspólnej granicy HTTP](../api-specs/security.md); dodatkowe klienty w `RIDER_ALLOWED_ORIGINS`.
 - ENV: `STATUS_API_PORT`, `API_PORT`, `FACE_*`
 
 ## Zachowanie
