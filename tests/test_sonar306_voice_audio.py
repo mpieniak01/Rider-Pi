@@ -98,8 +98,9 @@ def test_ownership_rejects_invalid_completion_times_without_becoming_idle(ended_
     observer = object.__new__(ownership.PlaybackObserver)
     observer.boot_id = "boot"
     record = {"v": 1, "boot_id": "boot", "generation": "a" * 32, "ended_at": ended_at}
+    encoded_record = json.dumps(record).encode()
     with pytest.raises(ValueError, match="completion time"):
-        observer._state_from_record(json.dumps(record).encode())
+        observer._state_from_record(encoded_record)
 
 
 def test_pc_result_failure_keeps_timeout_timestamp_and_processes_next_transcript(monkeypatch):

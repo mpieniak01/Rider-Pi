@@ -119,7 +119,7 @@ def atomic_write(path, img, quality_jpg=85, compression_png=3):
 _PROC_FRAME_NAME = "proc.jpg"
 
 
-def _draw_ssd_frame(frame, out, net, SCORE, CLW):
+def _draw_ssd_frame(frame, out, net, score_threshold, classes):
     blob = cv2.dnn.blobFromImage(
         cv2.resize(frame, (300, 300)),
         0.007843,
@@ -134,10 +134,10 @@ def _draw_ssd_frame(frame, out, net, SCORE, CLW):
     for i in range(det.shape[2]):
         conf = float(det[0, 0, i, 2])
         cls_id = int(det[0, 0, i, 1])
-        if conf < SCORE:
+        if conf < score_threshold:
             continue
         name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
-        if CLW and (name.lower() not in CLW):
+        if classes and (name.lower() not in classes):
             continue
         x1 = int(det[0, 0, i, 3] * w)
         y1 = int(det[0, 0, i, 4] * h)

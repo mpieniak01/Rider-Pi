@@ -304,7 +304,6 @@ def _save_idle_tracking_frame(frame, pc_mode):
 
 def _detect_tracking(frame, mode, pc_mode, face_detector, hand_detector):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    h, w = rgb_frame.shape[:2]
 
     offset_x = None
     detections = None
@@ -445,7 +444,7 @@ def _tracking_publish_diagnostic(offset_x, can_publish, pc_mode, pc_fallback):
         print(f"[tracker] publish skipped (interval) offset_x={offset_x}", flush=True)
     elif pc_mode and not pc_fallback:
         print(
-            "[tracker] PC mode: waiting for provider; local publish disabled " "(set TRACKING_PUBLISH_IN_PC=1)",
+            "[tracker] PC mode: waiting for provider; local publish disabled (set TRACKING_PUBLISH_IN_PC=1)",
             flush=True,
         )
 

@@ -25,8 +25,9 @@ def test_runner_propagates_exact_worker_exception_without_losing_base_errors(err
     async def failure():
         raise error
 
+    coroutine = failure()
     with pytest.raises(error_type) as caught:
-        svc_stream_runner._run_coro_in_thread(failure())
+        svc_stream_runner._run_coro_in_thread(coroutine)
     assert caught.value is error
 
 
@@ -40,10 +41,12 @@ def test_runner_preserves_native_asyncio_cancellation_and_completes_cleanup():
             await asyncio.sleep(0)
             cleanup.append(asyncio.get_running_loop())
 
+    direct_coroutine = cancelled(direct_cleanup)
     with pytest.raises(asyncio.CancelledError) as direct:
-        asyncio.run(cancelled(direct_cleanup))
+        asyncio.run(direct_coroutine)
+    worker_coroutine = cancelled(worker_cleanup)
     with pytest.raises(asyncio.CancelledError) as worker:
-        svc_stream_runner._run_coro_in_thread(cancelled(worker_cleanup))
+        svc_stream_runner._run_coro_in_thread(worker_coroutine)
     # Python 3.9 creates a new cancellation exception; its identity/message need
     # not match the raised instance. The runner must preserve native run behavior.
     assert type(worker.value) is type(direct.value)

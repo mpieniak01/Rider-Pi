@@ -168,7 +168,7 @@ def _update_hybrid_tracker(out, tracker, track_bbox, track_ok):
     return tracker, track_bbox, track_ok
 
 
-def _hybrid_best_detection(out, net, SCORE):
+def _hybrid_best_detection(out, net, score_threshold):
     h, w = out.shape[:2]
     blob = cv2.dnn.blobFromImage(
         cv2.resize(out, (300, 300)),
@@ -183,7 +183,7 @@ def _hybrid_best_detection(out, net, SCORE):
     best = None
     for i in range(det.shape[2]):
         conf = float(det[0, 0, i, 2])
-        if conf < SCORE:
+        if conf < score_threshold:
             continue
         cls_id = int(det[0, 0, i, 1])
         if cls_id != PERSON_ID:
@@ -276,7 +276,6 @@ def main():
         frame = apply_rotation(frame, ROT, FLIP_H, FLIP_V)
 
         out = frame.copy()
-        h, w = out.shape[:2]
 
         # FPS EMA
         now = time.time()

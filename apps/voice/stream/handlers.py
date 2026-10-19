@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 _AUTH_LOADED = "auth.loaded"
 _SESSION_UPDATE = "session.update"
+_UI_STATE = "ui.state"
 
 
 def _stdin_has_enter():
@@ -264,7 +265,7 @@ class StreamHandlersMixin:
         self._last_ui_state = state
         if self.ui_publisher:
             try:
-                self.ui_publisher.publish("ui.state", {"state": state, "ts": time.time()})
+                self.ui_publisher.publish(_UI_STATE, {"state": state, "ts": time.time()})
             except Exception as e:
                 self.logger.event("ui_state_pub_error", error=str(e))
 
@@ -543,7 +544,7 @@ class StreamHandlersMixin:
                 publisher.publish(topic, payload)
             except Exception:
                 pass
-        elif topic == "ui.state":
+        elif topic == _UI_STATE:
             self._publish_ui_state(payload["state"])
         else:
             self._publish_partial(str(payload["text"]))
@@ -557,7 +558,7 @@ class StreamHandlersMixin:
             return
         msg_type = data.get("type")
         if msg_type == "input_audio_buffer.speech_started":
-            self._publish_compat_message("ui.state", {"state": "hearing"})
+            self._publish_compat_message(_UI_STATE, {"state": "hearing"})
         elif msg_type == "conversation.item.input_audio_transcription.delta":
             self._publish_compat_message("ui.partial", {"text": data.get("delta", "")})
         else:

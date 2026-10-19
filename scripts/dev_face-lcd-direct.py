@@ -317,18 +317,18 @@ class LCDDirect:
         )
         return False
 
-    def _probe_push_variants(self, target, name, fn, img, PNG, RGB, tried):
+    def _probe_push_variants(self, target, name, fn, img, png_bytes, rgb_bytes, tried):
         w, h = img.size
         variants = [
             ("pil", (img,), {}),
             ("pil_kw", (), {"image": img}),
-            ("png", (PNG,), {}),
-            ("png_kw", (), {"png": PNG}),
-            ("png_kw2", (), {"frame_png": PNG}),
-            ("rgb565", (RGB,), {}),
-            ("rgb565_kw", (), {"data": RGB}),
-            ("rgb565_kw2", (), {"buf": RGB}),
-            ("rgb565_3", (w, h, RGB), {}),
+            ("png", (png_bytes,), {}),
+            ("png_kw", (), {"png": png_bytes}),
+            ("png_kw2", (), {"frame_png": png_bytes}),
+            ("rgb565", (rgb_bytes,), {}),
+            ("rgb565_kw", (), {"data": rgb_bytes}),
+            ("rgb565_kw2", (), {"buf": rgb_bytes}),
+            ("rgb565_3", (w, h, rgb_bytes), {}),
         ]
         for tag, a, kw in variants:
             try:
@@ -343,7 +343,6 @@ class LCDDirect:
     def _scan_bind(self, img: Image.Image) -> str | None:
         PNG = to_png_bytes(img)
         RGB = to_rgb565_bytes(img)
-        w, h = img.size
         tried = []
         for target in self._targets():
             for name in dir(target):

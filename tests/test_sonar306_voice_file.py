@@ -73,8 +73,9 @@ def test_only_local_backend_allows_raw_pcm_fallback(monkeypatch, logger, json_pa
     monkeypatch.setattr(tts, "ensure_openai_key", lambda _logger: "fake-test-key")
     monkeypatch.setattr(tts, "time", SimpleNamespace(sleep=Mock()))
     assert tts.synthesize("hello", tts.TTSConfig(backend="local"), logger)[1:] == (48000, 2, "wav")
+    openai_config = tts.TTSConfig()
     with pytest.raises(tts.TTSError, match="OpenAI TTS request failed"):
-        tts.synthesize("hello", tts.TTSConfig(), logger)
+        tts.synthesize("hello", openai_config, logger)
     assert tts.time.sleep.call_args_list == [call(0.6), call(1.2), call(1.7999999999999998)]
 
 
@@ -150,9 +151,8 @@ def test_successful_stream_accumulates_audio_without_second_playback(monkeypatch
     assert result.ok
     assert result.streamed
     assert result.backend == 'fake'
-    assert (result.audio, result.audio_format, result.sample_rate) == (
-        (wav_bytes, "wav", 16000) if decoded else (b"mp3", "mp3", 0)
-    )
+    expected_audio = (wav_bytes, "wav", 16000) if decoded else (b"mp3", "mp3", 0)
+    assert (result.audio, result.audio_format, result.sample_rate) == expected_audio
     assert stream.write.call_args_list == [call(b"one"), call(b"two")]
 
 

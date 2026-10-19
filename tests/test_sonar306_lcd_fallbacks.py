@@ -82,8 +82,9 @@ def test_direct_class_search_and_zero_argument_constructor_fallback():
     assert namespace["_select_direct_lcd_class"](module) is St77Panel
     direct = namespace["LCDDirect"](0, 240, force="pil")
     assert isinstance(direct._construct_lcd(module, St77Panel), St77Panel)
+    invalid_module = SimpleNamespace(LCDValue=5)
     with pytest.raises(RuntimeError, match="Brak klasy"):
-        namespace["_select_direct_lcd_class"](SimpleNamespace(LCDValue=5))
+        namespace["_select_direct_lcd_class"](invalid_module)
 
 
 @pytest.mark.parametrize("forced", [False, True])

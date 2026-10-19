@@ -82,7 +82,7 @@ class _Analysis:
         event.update(index=len(self.timeline), semantic=semantic)
         self.counts[f"{event['direction']}:{semantic['register']}"] += 1
         if semantic['kind'] == 'read_request' and semantic['valid']:
-            self._read_request(event, semantic)
+            self._read_request(event)
         elif semantic['kind'] == 'read_response':
             self._read_response(event, semantic)
         elif semantic['kind'] == 'write_command':
@@ -91,7 +91,7 @@ class _Analysis:
             self.faults['decode_error'] += 1
         self.timeline.append(event)
 
-    def _read_request(self, event, semantic):
+    def _read_request(self, event):
         if len(self.pending) >= 1024:
             self.finish(self.pending.pop(0), 'correlation_capacity_limit')
         self.pending.append(event)

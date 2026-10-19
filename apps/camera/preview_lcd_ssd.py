@@ -238,7 +238,7 @@ def save_raw_and_proc(raw_img, proc_img):
 _JPEG_EXTENSION = ".jpeg"
 
 
-def _ssd_fresh_detections(frame, net, SCORE, CLW):
+def _ssd_fresh_detections(frame, net, score_threshold, classes):
     fresh_detections = []
     blob = cv2.dnn.blobFromImage(
         cv2.resize(frame, (300, 300)),
@@ -253,7 +253,7 @@ def _ssd_fresh_detections(frame, net, SCORE, CLW):
     h, w = frame.shape[:2]
     for i in range(det.shape[2]):
         conf = float(det[0, 0, i, 2])
-        if conf < SCORE:
+        if conf < score_threshold:
             continue
         cls_id = int(det[0, 0, i, 1])
         x1 = int(det[0, 0, i, 3] * w)
@@ -267,7 +267,7 @@ def _ssd_fresh_detections(frame, net, SCORE, CLW):
         if x2 <= x1 or y2 <= y1:
             continue
         name = CLASSES[cls_id] if 0 <= cls_id < len(CLASSES) else str(cls_id)
-        if CLW and (name.lower() not in CLW):
+        if classes and (name.lower() not in classes):
             continue
         tup = (name, conf, (x1, y1, x2, y2))
         fresh_detections.append(tup)
@@ -351,11 +351,11 @@ def _log_ssd_snapshot_sizes(now, last_snap_log):
     return last_snap_log
 
 
-def _log_ssd_frame_rate(frames, t0, EVERY, SCORE):
+def _log_ssd_frame_rate(frames, t0, every, score_threshold):
     if frames % 60 == 0:
         dt_all = time.time() - t0
         fps = frames / dt_all if dt_all > 0 else 0.0
-        print(f"[ssd] fps={fps:.1f} (every={EVERY}, score>={SCORE})", flush=True)
+        print(f"[ssd] fps={fps:.1f} (every={every}, score>={score_threshold})", flush=True)
 
 
 def main():
@@ -399,7 +399,7 @@ def main():
             fps_ema = inst if fps_ema is None else 0.9 * fps_ema + 0.1 * inst
             prev_t = now
 
-            out, fresh_detections = _ssd_preview_frame(frame, net, frame_id, EVERY, SCORE, CLW)
+            out, _ = _ssd_preview_frame(frame, net, frame_id, EVERY, SCORE, CLW)
 
             _save_ssd_snapshots(frame, out)
 

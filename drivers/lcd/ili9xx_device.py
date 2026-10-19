@@ -270,15 +270,14 @@ class LCDRenderer:
             print(f'[face] presenter failed: {error} → fallback RAW')
             return False
 
-    def ShowImage(self, img: Image.Image):
+    def show_image(self, img: Image.Image):
         api = _runtime_namespace()
-        print(
-            '[face] path=RAW (forced)'
-            if bool(int(api['os'].getenv('FACE_FORCE_RAW', '0') or 0))
-            else '[face] path=PRESENTER'
-            if self._present
-            else '[face] path=RAW'
-        )
+        path = '[face] path=RAW'
+        if bool(int(api['os'].getenv('FACE_FORCE_RAW', '0') or 0)):
+            path = '[face] path=RAW (forced)'
+        elif self._present:
+            path = '[face] path=PRESENTER'
+        print(path)
         if img.size != (self.width, self.height):
             img = img.resize((self.width, self.height), api['Image'].BILINEAR)
         force_raw = bool(int(api['os'].getenv('FACE_FORCE_RAW', '0') or 0))
@@ -296,3 +295,6 @@ class LCDRenderer:
         chunk = int(api['os'].getenv('FACE_SPI_CHUNK', '4096') or 4096)
         for off in range(0, len(out), chunk):
             self._data(out[off : off + chunk])
+
+    # Public compatibility name used by xgoscreen integrations.
+    ShowImage = show_image

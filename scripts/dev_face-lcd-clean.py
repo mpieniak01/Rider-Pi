@@ -57,26 +57,26 @@ def _pick_lcd_class(fr, prefer=None):
     return getattr(fr, "LCDRenderer", None) or (_list_lcd_classes(fr)[0])
 
 
-def _clean_face_config(FC, drv_rotate, spi_hz, bl_pin):
+def _clean_face_config(config_class, drv_rotate, spi_hz, bl_pin):
     try:
-        cfg = FC()
+        cfg = config_class()
     except TypeError:
-        cfg = object.__new__(FC)
+        cfg = object.__new__(config_class)
         for n, v in {
             "lcd_do_init": True,
             "lcd_rotate": drv_rotate,
             "lcd_spi_hz": spi_hz,
             "lcd_bl_pin": bl_pin,
         }.items():
-            if any(f.name == n for f in dataclasses.fields(FC)):
+            if any(f.name == n for f in dataclasses.fields(config_class)):
                 setattr(cfg, n, v)
     return cfg
 
 
-def _construct_clean_lcd(cls, FC, drv_rotate, spi_hz, bl_pin):
-    if FC:
+def _construct_clean_lcd(cls, config_class, drv_rotate, spi_hz, bl_pin):
+    if config_class:
         try:
-            cfg = _clean_face_config(FC, drv_rotate, spi_hz, bl_pin)
+            cfg = _clean_face_config(config_class, drv_rotate, spi_hz, bl_pin)
             inst = cls(cfg)
         except Exception:
             inst = None
@@ -224,7 +224,7 @@ def _clean_presenter(inst, dev):
     return show_fn
 
 
-def _prepare_clean_frame(img, rotate, W, H):
+def _prepare_clean_frame(img, rotate, width, height):
     # soft-rotacja
     if rotate:
         from PIL import Image
@@ -237,28 +237,28 @@ def _prepare_clean_frame(img, rotate, W, H):
         op = rot_map.get(rotate)
         img = img.transpose(op) if op else img.rotate(rotate, expand=True)
 
-    if img.size != (W, H):
+    if img.size != (width, height):
         from PIL import Image
 
-        img = img.resize((W, H), Image.BILINEAR)
+        img = img.resize((width, height), Image.BILINEAR)
 
     return img
 
 
-def _write_clean_raw(dev, img, bgr, bsw, W, H):
+def _write_clean_raw(dev, img, bgr, bsw, width, height):
     payload = _to_rgb565(img, bgr=bgr, byteswap=bsw)
-    dev.SetWindows(0, 0, W - 1, H - 1)
+    dev.SetWindows(0, 0, width - 1, height - 1)
     dev.command(0x2C)
     chunk = int(os.getenv("FACE_SPI_CHUNK", "4096") or 4096)
     for off in range(0, len(payload), chunk):
         dev.spi_writebyte(payload[off : off + chunk])
 
 
-def _push_clean_frame(dev, show_fn, has_raw, force_raw, img, bgr, bsw, W, H):
+def _push_clean_frame(dev, show_fn, has_raw, force_raw, img, bgr, bsw, width, height):
     if force_raw or show_fn is None:
         if not has_raw:
             raise RuntimeError("Brak ShowImage i RAW prymitywów w klasie LCD")
-        _write_clean_raw(dev, img, bgr, bsw, W, H)
+        _write_clean_raw(dev, img, bgr, bsw, width, height)
     else:
         _, fn = show_fn
         fn(img)
