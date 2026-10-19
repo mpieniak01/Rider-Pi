@@ -45,10 +45,15 @@ def _submit(overrides=None):
     except ValueError as exc:
         return _response({"ok": False, "error": str(exc)}, 400)
     body, code = submit_control(data)
+    status = "rejected"
+    if body.get("confirmed"):
+        status = "confirmed"
+    elif code == 202:
+        status = "pending"
     C.motion_queue_append(
         {
             "source": data.get("source", "manual"),
-            "status": "confirmed" if body.get("confirmed") else "pending" if code == 202 else "rejected",
+            "status": status,
             "action": data.get("action", data.get("cmd")),
             "request_id": body.get("request_id"),
             "reason": body.get("error"),
@@ -103,7 +108,8 @@ def api_safety():
         data = _payload()
     except ValueError as exc:
         return _response({"ok": False, "error": str(exc)}, 400)
-    if data.get("action") not in {"arm", "disarm", "estop", "clear_estop", "stop"}:
+    action = data.get("action")
+    if not isinstance(action, str) or action not in {"arm", "disarm", "estop", "clear_estop", "stop"}:
         return _response({"ok": False, "error": "invalid safety action"}, 400)
     return _submit()
 

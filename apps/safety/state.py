@@ -21,8 +21,9 @@ def status_path() -> Path:
     return runtime / "status.json" if runtime.is_dir() else root / "data" / "motion" / "status.json"
 
 
-def read_status(max_age_s: float = 3.0) -> dict:
-    unknown = {
+def _unknown_status():
+    """Return a fresh fail-closed result with no inferred executor authority."""
+    return {
         "contract_version": CONTRACT_VERSION,
         "state": "UNKNOWN",
         "ready": False,
@@ -43,53 +44,80 @@ def read_status(max_age_s: float = 3.0) -> dict:
         "last_ack": None,
         "stale": True,
     }
+
+
+def _read_snapshot():
+    """Bound and validate stored observation metadata before projecting permission."""
+    path = status_path()
+    if path.stat().st_size > 65536:
+        raise ValueError("snapshot too large")
+    state = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(state, dict) or type(state.get("contract_version")) is not int:
+        raise ValueError("unsupported contract")
+    if state["contract_version"] != CONTRACT_VERSION:
+        raise ValueError("unsupported contract")
+    if type(state.get("observed_at")) not in (int, float):
+        raise ValueError("invalid observation time")
+    observed = float(state["observed_at"])
+    age = time.time() - observed
+    if not math.isfinite(observed) or age < -0.1:
+        raise ValueError("invalid observation time")
+    if state.get("state") not in {"DISARMED", "ARMED", "ESTOP"}:
+        raise ValueError("unknown executor state")
+    return state, age
+
+
+def _lease_state(state):
+    """Distinguish operator-controlled consent from a finite timed lease."""
+    operator_armed = (
+        state.get("arming_mode") == "operator"
+        and state.get("execution_context") == "panel"
+        and state.get("owner") == "manual"
+    )
+    lease = state.get("lease_remaining_s", 0)
+    if not operator_armed and (
+        isinstance(lease, bool) or not isinstance(lease, (int, float)) or not math.isfinite(lease) or lease < 0
+    ):
+        raise ValueError("invalid consent lease")
+    return operator_armed, lease
+
+
+def _project_snapshot(state, age, max_age_s):
+    """Preserve historical permission while expiring execution readiness and confirmation."""
+    result = dict(state)
+    result.update(stale=False, age_s=max(0.0, age))
+    operator_armed, lease = _lease_state(state)
+    result["can_move"] = bool(
+        state.get("ready") is True
+        and state.get("hardware_ready") is True
+        and state.get("state") == "ARMED"
+        and state.get("can_move") is True
+    )
+    if result["can_move"] and not operator_armed and age >= lease:
+        result["can_move"] = False
+        result["reason"] = "consent_expired_since_snapshot"
+    result["read_only"] = not result["can_move"]
+    context = state.get("execution_context", "panel")
+    result["panel_motion_enabled"] = state.get("state") == "ARMED" and context == "panel"
+    result["test_motion_enabled"] = state.get("state") == "ARMED" and context == "test"
+    if age > max_age_s:
+        result.update(stale=True, ready=False, can_move=False, read_only=True, error="executor_stale")
+    authorization = dict(state.get("authorization") or {})
+    if authorization:
+        authorization["confirmed"] = age <= max_age_s
+        result["authorization"] = authorization
+    return result
+
+
+def read_status(max_age_s: float = 3.0) -> dict:
+    """Project fresh evidence without confusing historical consent with execution."""
     try:
-        path = status_path()
-        if path.stat().st_size > 65536:
-            raise ValueError("snapshot too large")
-        state = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(state, dict) or state.get("contract_version") != CONTRACT_VERSION:
-            raise ValueError("unsupported contract")
-        observed = float(state["observed_at"])
-        age = time.time() - observed
-        if not math.isfinite(observed) or age < -0.1:
-            raise ValueError("invalid observation time")
-        if state.get("state") not in {"DISARMED", "ARMED", "ESTOP"}:
-            raise ValueError("unknown executor state")
-        result = dict(state)
-        result.update(stale=False, age_s=max(0.0, age))
-        operator_armed = (
-            state.get("arming_mode") == "operator"
-            and state.get("execution_context") == "panel"
-            and state.get("owner") == "manual"
-        )
-        lease = state.get("lease_remaining_s", 0)
-        if not operator_armed and (
-            isinstance(lease, bool) or not isinstance(lease, (int, float)) or not math.isfinite(lease) or lease < 0
-        ):
-            raise ValueError("invalid consent lease")
-        result["can_move"] = bool(
-            state.get("ready") is True
-            and state.get("hardware_ready") is True
-            and state.get("state") == "ARMED"
-            and state.get("can_move") is True
-        )
-        if result["can_move"] and not operator_armed and age >= lease:
-            result["can_move"] = False
-            result["reason"] = "consent_expired_since_snapshot"
-        result["read_only"] = not result["can_move"]
-        context = state.get("execution_context", "panel")
-        result["panel_motion_enabled"] = state.get("state") == "ARMED" and context == "panel"
-        result["test_motion_enabled"] = state.get("state") == "ARMED" and context == "test"
-        if age > max_age_s:
-            result.update(stale=True, ready=False, can_move=False, read_only=True, error="executor_stale")
-        authorization = dict(state.get("authorization") or {})
-        if authorization:
-            authorization["confirmed"] = age <= max_age_s
-            result["authorization"] = authorization
-        return result
+        if type(max_age_s) not in (int, float) or not math.isfinite(max_age_s) or max_age_s < 0:
+            raise ValueError("invalid maximum observation age")
+        state, age = _read_snapshot()
+        return _project_snapshot(state, age, max_age_s)
     except (OSError, ValueError, KeyError, TypeError, OverflowError):
-        return unknown
+        return _unknown_status()
 
 
 def write_status(state: dict) -> None:
