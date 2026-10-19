@@ -312,8 +312,6 @@ class AudioCapture:
             self._proc = self._restart_proc(backoff_s)
             backoff_s = min(backoff_max, backoff_s * 2.0)
 
-        return
-
     def _log_process_exit(self, proc):
         err_txt = None
         if proc.stderr:

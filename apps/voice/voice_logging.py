@@ -59,7 +59,8 @@ def setup_json_logging(level=logging.INFO):
     handler.setFormatter(JsonLogFormatter())
     root = logging.getLogger()
     # usuń istniejące handlery, żeby nie dublować
-    for h in list(root.handlers):
+    handlers = root.handlers.copy()  # removeHandler mutates the original list.
+    for h in handlers:
         root.removeHandler(h)
     root.addHandler(handler)
     root.setLevel(level)

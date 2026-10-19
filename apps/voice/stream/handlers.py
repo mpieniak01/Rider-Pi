@@ -525,7 +525,6 @@ class StreamHandlersMixin:
 
                 if _inspect.isawaitable(res):
                     await res
-            return
 
     async def _fallback_ws_message(self, message):
         import inspect

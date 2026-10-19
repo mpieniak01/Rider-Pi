@@ -113,7 +113,11 @@ def _admit_tts_payload(legacy):
 def _admit_domain(legacy, observed_profile):
     if request.path == "/healthz":
         return None
-    domain = "asr" if request.path == "/api/asr" else "chat" if request.path == "/api/chat" else "tts"
+    domain = "tts"
+    if request.path == "/api/asr":
+        domain = "asr"
+    elif request.path == "/api/chat":
+        domain = "chat"
     domains = requested_domains()
     if domain not in domains:
         return jsonify({"ok": False, "error": "voice_domain_inactive", "domain": domain}), 503

@@ -103,7 +103,7 @@ def _voice_processes_from_lsof(output):
             yield pid, command
 
 
-def _kill_processes_using_device(device_pattern: str) -> int:
+def _kill_processes_using_device() -> int:
     """Kill processes that may be using ALSA devices."""
     # Guard pod testy/CI: omijamy lsof, żeby nie wisieć
     if os.getenv("ALSA_SKIP_LSOF") == "1" or os.getenv("PYTEST_CURRENT_TEST"):
@@ -177,11 +177,11 @@ def _raise_alsa_error(msg: str) -> None:
 
         # Test używa: from apps.voice.errors import ALSAError
         pkg = importlib.import_module("apps.voice.errors")
-        ALSAError = pkg.ALSAError  # type: ignore[no-redef]
+        error_type = pkg.ALSAError
     except Exception:
-        from .errors import ALSAError  # type: ignore[no-redef]
+        from .errors import ALSAError as error_type
 
-    raise ALSAError(msg)  # type: ignore[misc]
+    raise error_type(msg)
 
 
 def _check_alsa_access(result, capture, playback):
@@ -219,8 +219,7 @@ def ensure_free(
     devices_blocked = not result["capture_free"] or not result["playback_free"]
 
     if (force or devices_blocked) and (capture_resolved or playback_resolved):
-        device_pattern = "wm8960"
-        result["processes_killed"] = _kill_processes_using_device(device_pattern)
+        result["processes_killed"] = _kill_processes_using_device()
 
         if result["processes_killed"] > 0:
             time.sleep(0.2)
@@ -249,7 +248,7 @@ def ensure_free(
 def reset_streams() -> None:
     """Reset/cleanup after audio streaming operations."""
     try:
-        _kill_processes_using_device("wm8960")
+        _kill_processes_using_device()
         time.sleep(0.2)
         logger.event("alsa.reset_streams.complete")
     except Exception as e:

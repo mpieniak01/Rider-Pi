@@ -65,6 +65,14 @@ class HotwordConfig:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _unit_interval(value):
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
 class HotwordDetector:
     """
     Obsługa PTT oraz hotwordów (Nyumaya / Porcupine).
@@ -92,8 +100,8 @@ class HotwordDetector:
 
     def _sanitize_config(self, cfg: HotwordConfig) -> HotwordConfig:
         # przytnij zakresy i normalizuj
-        s = 0.0 if cfg.sensitivity < 0.0 else (1.0 if cfg.sensitivity > 1.0 else cfg.sensitivity)
-        thr = 0.0 if cfg.threshold < 0.0 else (1.0 if cfg.threshold > 1.0 else cfg.threshold)
+        s = _unit_interval(cfg.sensitivity)
+        thr = _unit_interval(cfg.threshold)
         return HotwordConfig(
             enabled=bool(cfg.enabled),
             engine=(cfg.engine or "off").lower(),
