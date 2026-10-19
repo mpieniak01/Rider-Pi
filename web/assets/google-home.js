@@ -21,13 +21,13 @@ import { initI18n, applyDom, t } from './i18n.js';
 
   // --- Helper functions
   const qs = (s)=>document.querySelector(s);
-  
+
   // Device control constants
   const DEFAULT_COLOR_TEMP_K = 3000;
   const DEFAULT_RGB_COLOR = 0xFFFFFF;
   const DEFAULT_TEMPERATURE_C = 20;
   const TEMP_INCREMENT_C = 0.5;
-  
+
   function showStatus(msg, type='ok'){
     const statusMsg = qs('#statusMsg');
     statusMsg.textContent = msg;
@@ -59,11 +59,11 @@ import { initI18n, applyDom, t } from './i18n.js';
     try{
       const result = await httpGet('/api/home/status');
       const isAuth = result.authenticated;
-      
+
       const authBadge = qs('#authBadge');
       const authSection = qs('#authSection');
       const devicesSection = qs('#devicesSection');
-      
+
       if(isAuth){
         authBadge.textContent = t('home.auth_ok');
         authBadge.className = 'c-pill ok';
@@ -88,24 +88,24 @@ import { initI18n, applyDom, t } from './i18n.js';
   async function loadDevices(){
     const devicesList = qs('#devicesList');
     devicesList.innerHTML = `<div class="muted"><span class="spinner"></span> ${t('meta.loading')}</div>`;
-    
+
     try{
       const result = await httpGet('/api/home/devices');
-      
+
       if(!result.ok){
         throw new Error(result.error || 'Failed to load devices');
       }
-      
+
       const devices = result.devices || [];
-      
+
       if(devices.length === 0){
         devicesList.innerHTML = `<div class="note" data-i18n="home.no_devices">${t('home.no_devices')}</div>`;
         return;
       }
-      
+
       devicesList.innerHTML = '';
       devices.forEach(device => renderDevice(device));
-      
+
     }catch(e){
       devicesList.innerHTML = `<div class="err">${t('home.error_load_devices', {msg: e.message})}</div>`;
     }
@@ -113,7 +113,7 @@ import { initI18n, applyDom, t } from './i18n.js';
 
   function colorControls(device,colorTrait){
     let html = '';
-      
+
       // Color temperature
       if(colorTrait.temperatureK !== undefined){
         const currentTemp = colorTrait.temperatureK || DEFAULT_COLOR_TEMP_K;
@@ -121,14 +121,14 @@ import { initI18n, applyDom, t } from './i18n.js';
           <div class="control-row">
             <label class="control-label">
               <span>${t('home.color_temperature')}:</span>
-              <input type="range" min="2000" max="6500" value="${currentTemp}" 
+              <input type="range" min="2000" max="6500" value="${currentTemp}"
                      data-action="color-temp" data-device="${escapeHtml(device.name)}" />
               <span class="color-temp-value">${currentTemp}K</span>
             </label>
           </div>
         `;
       }
-      
+
       // Color spectrum (RGB)
       if(colorTrait.spectrumRgb !== undefined){
         const rgbValue = colorTrait.spectrumRgb || DEFAULT_RGB_COLOR;
@@ -137,7 +137,7 @@ import { initI18n, applyDom, t } from './i18n.js';
           <div class="control-row">
             <label class="control-label">
               <span>${t('home.color')}:</span>
-              <input type="color" value="${hexColor}" 
+              <input type="color" value="${hexColor}"
                      data-action="color-rgb" data-device="${escapeHtml(device.name)}" />
             </label>
           </div>
@@ -150,7 +150,7 @@ import { initI18n, applyDom, t } from './i18n.js';
     let html = '';
       const currentSetpoint = tempTrait.thermostatTemperatureSetpoint || DEFAULT_TEMPERATURE_C;
       const currentAmbient = tempTrait.thermostatTemperatureAmbient;
-      
+
       html += `
         <div class="control-row">
           <label class="control-label">
@@ -161,7 +161,7 @@ import { initI18n, applyDom, t } from './i18n.js';
           </label>
         </div>
       `;
-      
+
       if(currentAmbient !== undefined){
         html += `
           <div class="control-row">
@@ -169,7 +169,7 @@ import { initI18n, applyDom, t } from './i18n.js';
           </div>
         `;
       }
-      
+
       // Thermostat mode
       const availableModes = tempTrait.availableThermostatModes || [];
       const currentMode = tempTrait.thermostatMode || 'off';
@@ -197,7 +197,7 @@ import { initI18n, applyDom, t } from './i18n.js';
     let html='';
       const isRunning = startStopTrait.isRunning || false;
       const isPaused = startStopTrait.isPaused || false;
-      
+
       html += `
         <div class="control-row">
           <button class="c-btn-sm" data-action="start" data-device="${escapeHtml(device.name)}">
@@ -218,20 +218,20 @@ import { initI18n, applyDom, t } from './i18n.js';
   // --- Render a device
   function renderDevice(device){
     const devicesList = qs('#devicesList');
-    
+
     const name = (device.name || 'Unknown Device').split('/').pop() || 'Unknown Device';
     const type = device.type || 'Unknown';
     const traits = device.traits || {};
-    
+
     const card = document.createElement('div');
     card.className = 'device-card c-card';
-    
+
     let html = `
       <div class="device-name">${escapeHtml(name)}</div>
       <div class="device-type">${escapeHtml(type)}</div>
       <div class="device-controls">
     `;
-    
+
     // OnOff trait
     if(traits['sdm.devices.traits.OnOff']){
       const currentState = traits['sdm.devices.traits.OnOff'].on ? 'ON' : 'OFF';
@@ -247,7 +247,7 @@ import { initI18n, applyDom, t } from './i18n.js';
         </div>
       `;
     }
-    
+
     // Brightness trait
     if(traits['sdm.devices.traits.Brightness']){
       const currentBrightness = traits['sdm.devices.traits.Brightness'].brightness || 0;
@@ -255,14 +255,14 @@ import { initI18n, applyDom, t } from './i18n.js';
         <div class="control-row">
           <label class="control-label">
             <span>${t('home.brightness')}:</span>
-            <input type="range" min="0" max="100" value="${currentBrightness}" 
+            <input type="range" min="0" max="100" value="${currentBrightness}"
                    data-action="brightness" data-device="${escapeHtml(device.name)}" />
             <span class="brightness-value">${currentBrightness}%</span>
           </label>
         </div>
       `;
     }
-    
+
     if(traits['sdm.devices.traits.ColorSetting'])html += colorControls(device,traits['sdm.devices.traits.ColorSetting']);
 
     if(traits['sdm.devices.traits.TemperatureSetting'])html += temperatureControls(device,traits['sdm.devices.traits.TemperatureSetting']);
@@ -279,44 +279,44 @@ import { initI18n, applyDom, t } from './i18n.js';
         </div>
       `;
     }
-    
+
     html += `</div>`;
     card.innerHTML = html;
-    
+
     // Add event listeners
     card.querySelectorAll('[data-action="on"]').forEach(btn => {
       btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.OnOff', {on: true}));
     });
-    
+
     card.querySelectorAll('[data-action="off"]').forEach(btn => {
       btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.OnOff', {on: false}));
     });
-    
+
     card.querySelectorAll('[data-action="brightness"]').forEach(slider => {
       slider.addEventListener('change', (e)=> {
         const brightness = parseInt(e.target.value);
         sendCommand(device.name, 'action.devices.commands.BrightnessAbsolute', {brightness});
       });
-      
+
       slider.addEventListener('input', (e)=> {
         const valueSpan = slider.parentElement.querySelector('.brightness-value');
         if(valueSpan) valueSpan.textContent = e.target.value + '%';
       });
     });
-    
+
     // Color temperature
     card.querySelectorAll('[data-action="color-temp"]').forEach(slider => {
       slider.addEventListener('change', (e)=> {
         const temperatureK = parseInt(e.target.value);
         sendCommand(device.name, 'action.devices.commands.ColorAbsolute', {color: {temperatureK}});
       });
-      
+
       slider.addEventListener('input', (e)=> {
         const valueSpan = slider.parentElement.querySelector('.color-temp-value');
         if(valueSpan) valueSpan.textContent = e.target.value + 'K';
       });
     });
-    
+
     // Color RGB
     card.querySelectorAll('[data-action="color-rgb"]').forEach(picker => {
       picker.addEventListener('change', (e)=> {
@@ -325,7 +325,7 @@ import { initI18n, applyDom, t } from './i18n.js';
         sendCommand(device.name, 'action.devices.commands.ColorAbsolute', {color: {spectrumRgb}});
       });
     });
-    
+
     // Temperature controls
     card.querySelectorAll('[data-action="temp-up"]').forEach(btn => {
       btn.addEventListener('click', ()=> {
@@ -337,7 +337,7 @@ import { initI18n, applyDom, t } from './i18n.js';
         }
       });
     });
-    
+
     card.querySelectorAll('[data-action="temp-down"]').forEach(btn => {
       btn.addEventListener('click', ()=> {
         const valueSpan = btn.parentElement.querySelector('.temp-value');
@@ -348,7 +348,7 @@ import { initI18n, applyDom, t } from './i18n.js';
         }
       });
     });
-    
+
     // Thermostat mode
     card.querySelectorAll('[data-action="thermostat-mode"]').forEach(select => {
       select.addEventListener('change', (e)=> {
@@ -356,25 +356,25 @@ import { initI18n, applyDom, t } from './i18n.js';
         sendCommand(device.name, 'action.devices.commands.ThermostatSetMode', {thermostatMode});
       });
     });
-    
+
     // Start/Stop/Pause
     card.querySelectorAll('[data-action="start"]').forEach(btn => {
       btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.StartStop', {start: true}));
     });
-    
+
     card.querySelectorAll('[data-action="stop"]').forEach(btn => {
       btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.StartStop', {start: false}));
     });
-    
+
     card.querySelectorAll('[data-action="pause"]').forEach(btn => {
       btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.PauseUnpause', {pause: true}));
     });
-    
+
     // Dock
     card.querySelectorAll('[data-action="dock"]').forEach(btn => {
       btn.addEventListener('click', ()=> sendCommand(device.name, 'action.devices.commands.Dock', {}));
     });
-    
+
     devicesList.appendChild(card);
   }
 
@@ -382,22 +382,22 @@ import { initI18n, applyDom, t } from './i18n.js';
   async function sendCommand(deviceId, command, params){
     try{
       showStatus(t('home.sending_command'), 'ok');
-      
+
       const result = await httpPost('/api/home/command', {
         deviceId,
         command,
         params
       });
-      
+
       if(!result.ok){
         throw new Error(result.error || 'Command failed');
       }
-      
+
       showStatus(t('home.command_success'), 'ok');
-      
+
       // Refresh devices after a short delay
       setTimeout(()=> loadDevices(), 1500);
-      
+
     }catch(e){
       showStatus(t('home.error_send_command', {msg: e.message}), 'err');
     }
