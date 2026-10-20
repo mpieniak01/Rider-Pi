@@ -98,17 +98,6 @@ class TrialPreparation:
         )
 
     def guard(self):
-        if self.clock() >= self.context["deadline"] and not (
-            self.context["phase"] in {"start_navigation", "first_status"}
-            and self.started_in_budget(self.matching_run())
-        ):
-            raise TrialError(
-                "navigation_trial_prepare_timeout",
-                504,
-                details={
-                    "preparation": self.progress(self.context["phase"], "failed", "navigation_trial_prepare_timeout")
-                },
-            )
         safety = self.safety()
         if (
             safety.get("generation") != self.context["generation"]
@@ -127,6 +116,17 @@ class TrialPreparation:
             raise TrialError("manual_settings_stale")
         if self.policy().get("revision") != self.context["revision"]:
             raise TrialError("navigation_configuration_conflict")
+        if self.clock() >= self.context["deadline"] and not (
+            self.context["phase"] in {"start_navigation", "first_status"}
+            and self.started_in_budget(self.matching_run())
+        ):
+            raise TrialError(
+                "navigation_trial_prepare_timeout",
+                504,
+                details={
+                    "preparation": self.progress(self.context["phase"], "failed", "navigation_trial_prepare_timeout")
+                },
+            )
         return safety
 
     def stop_old(self, owner):
@@ -356,6 +356,7 @@ class TrialPreparation:
         }
         self.progress("start_navigation")
         result = self.manager.set_feature("s14_venom_navigation", True, control=control)
+        self.guard()
         actual = self.matching_run()
         if actual and actual.get("running") is False:
             raise TrialError(
@@ -405,7 +406,29 @@ class TrialPreparation:
                 }
             self.sleep(min(0.02, max(0.0, self.context["deadline"] - self.clock())))
 
+    def _current_cancellation(self, caught):
+        if not isinstance(caught, TrialError) or caught.code not in {
+            "navigation_trial_prepare_timeout",
+            "navigation_trial_stopped",
+        }:
+            return None
+        try:
+            self.guard()
+        except TrialError as current:
+            return current if current.code == "navigation_trial_cancelled" else None
+        except Exception:
+            return None
+        return None
+
     def _reported_failure(self, caught):
+        # A newer manual/STOP generation has priority even if the blocking
+        # backend operation also overran the preparation budget. Never call
+        # this an infrastructure timeout or replace it with an old run result.
+        if isinstance(caught, TrialError) and caught.code == "navigation_trial_cancelled":
+            return caught
+        cancellation = self._current_cancellation(caught)
+        if cancellation is not None:
+            return cancellation
         error = caught
         # A producer may already have run and stopped while systemd/start
         # bookkeeping was blocking. Its matching outcome is authoritative.

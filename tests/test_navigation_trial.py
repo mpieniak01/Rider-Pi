@@ -669,3 +669,80 @@ def test_public_status_does_not_present_expired_go_as_an_active_motor_permit():
     assert row["decision"]["vision_action"] == "go"
     assert source["decision"]["action"] == "go"
     assert "run_started_monotonic" not in row
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_new_authority_after_budget_expiry_is_cancelled_not_prepare_timeout(world, manual):
+    def intervene(_unit, action):
+        if action != "start":
+            return
+        world.elapsed = 16.0
+        world.gate.authorize({"action": "stop"})
+        if manual:
+            assert world.arm_manual()[0]["ok"]
+
+    world.hook = intervene
+    trial_body = world.body()
+    with pytest.raises(TrialError, match="navigation_trial_cancelled") as caught:
+        world.trial.start(trial_body)
+    assert caught.value.status == 409
+    assert not any(row.get("owner") == "navigation" and row["action"] == "arm" for row in world.commands)
+    assert world.gate.owner == ("manual" if manual else None)
+
+
+@pytest.mark.parametrize("code", ["navigation_trial_prepare_timeout", "navigation_trial_stopped"])
+@pytest.mark.parametrize("manual", [False, True])
+def test_authority_change_during_error_reporting_supersedes_old_outcome(world, code, manual, monkeypatch):
+    from services.navigation_trial_preparation import TrialPreparation
+
+    preparation = TrialPreparation(world.trial, world.body(), world.elapsed, world.elapsed)
+    preparation.context.update(state=world.gate.state, owner=world.gate.owner, producer_not_before=time.time())
+    world.elapsed = 16.0
+    world.gate.authorize({"action": "stop"})
+    if manual:
+        assert world.arm_manual()[0]["ok"]
+
+    def old_outcome():
+        pytest.fail("A cancelled generation must not be replaced by an old producer outcome")
+
+    monkeypatch.setattr(preparation, "matching_run", old_outcome)
+    error = preparation._reported_failure(TrialError(code))
+    assert error.code == "navigation_trial_cancelled"
+    assert world.gate.owner == ("manual" if manual else None)
+    assert not any(row.get("owner") == "navigation" for row in world.commands)
+
+
+@pytest.mark.parametrize("guard_error", [None, TrialError("manual_settings_stale"), OSError("fixture")])
+def test_error_reporting_does_not_invent_cancellation_from_failed_or_unchanged_read(world, guard_error, monkeypatch):
+    from services.navigation_trial_preparation import TrialPreparation
+
+    preparation = TrialPreparation(world.trial, world.body(), world.elapsed, world.elapsed)
+
+    def guard():
+        if guard_error is not None:
+            raise guard_error
+
+    monkeypatch.setattr(preparation, "guard", guard)
+    caught = TrialError("navigation_trial_prepare_timeout")
+    assert preparation._reported_failure(caught) is caught
+    assert not world.commands
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_authority_change_after_navigation_arm_and_deadline_preserves_new_owner(world, manual):
+    def intervene(unit, action):
+        if unit != "rider-venom-navigation.service" or action != "start":
+            return
+        world.elapsed = 16.0
+        world.gate.authorize({"action": "stop"})
+        if manual:
+            assert world.arm_manual()[0]["ok"]
+
+    world.hook = intervene
+    trial_body = world.body()
+    with pytest.raises(TrialError, match="navigation_trial_cancelled") as caught:
+        world.trial.start(trial_body)
+    assert caught.value.status == 409
+    assert world.gate.owner == ("manual" if manual else None)
+    assert len([row for row in world.commands if row.get("owner") == "navigation" and row["action"] == "arm"]) == 1
+    assert not any(row["action"] == "stop" for row in world.commands)

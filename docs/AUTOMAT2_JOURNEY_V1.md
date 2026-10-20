@@ -120,3 +120,14 @@ or credentials.
 This transport optimization changes no consent: original capture/feedback
 deadlines, maximum speed and pulse duration stay unchanged. Acceptance of a real
 camera observation does not replace the operator's physical journey test.
+
+
+### Preparation cancelled by operator intervention
+
+A fresh manual/STOP generation invalidates preparation even when the same
+blocking operation also exceeds its deadline. Report `navigation_trial_cancelled`
+(HTTP 409), rather than `navigation_trial_prepare_timeout` (HTTP 504). Old cleanup
+must neither re-arm nor revoke the new operator's authority or camera choice.
+Without an intervention, exceeding the preparation budget still returns 504.
+Input validation and backend failures retain their own error codes. This changes
+error precedence, not driving speed, pulse duration, TTL or physical clearance.
