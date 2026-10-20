@@ -269,3 +269,13 @@ Other mood changes retain one step. The hold must be a finite nonnegative number
 that fits with both steps within Animator's duration limit. A new mood replaces
 the pending transition, closing the controller clears it, and audio-driven mouth
 animation retains its higher priority.
+
+### Splash before API startup
+
+`rider-boot-splash.service` opens the local `LcdSink` through the boot sequence.
+It does not call `make lcd-on`, which requires the API that is unavailable at
+this early boot stage. The sink checks LCD ownership, opens the driver and enables
+the backlight. Splash handles are released before guarded OFF and the subsequent
+`lcd-renderer.service` startup. Rotation remains 270 degrees.
+
+Offline regression with inert LCD/vendor fixtures: `.venv/bin/python tests/helpers/boot_splash_startup.py`.

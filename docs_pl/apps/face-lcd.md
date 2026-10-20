@@ -268,3 +268,13 @@ wybiera bezpośredni pojedynczy krok. Pozostałe zmiany nastroju zachowują poje
 krok. Postój musi być skończoną nieujemną liczbą mieszczącą się wraz z krokami
 w limicie czasu Animatora. Nowy nastrój zastępuje oczekujące przejście, zamknięcie
 kontrolera usuwa je, a animacja ust sterowana dźwiękiem zachowuje wyższy priorytet.
+
+### Splash przed uruchomieniem API
+
+`rider-boot-splash.service` uruchamia lokalny `LcdSink` przez sekwencję boot.
+Nie wywołuje `make lcd-on`: ten cel korzysta z API, które w tym etapie rozruchu
+nie jest jeszcze dostępne. Sink sprawdza własność LCD, otwiera sterownik i włącza
+podświetlenie; po splashu uchwyty są zwalniane przed kontrolowanym OFF i startem
+`lcd-renderer.service`. Obrót pozostaje 270°.
+
+Regresja offline z atrapami LCD/vendora: `.venv/bin/python tests/helpers/boot_splash_startup.py`.
