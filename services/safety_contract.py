@@ -7,6 +7,7 @@ import time
 import uuid
 from typing import Any
 
+from apps.safety.journey import validate_arm as validate_journey_arm
 from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS
 from common.actuator_parameters import HEIGHT_MAX, HEIGHT_MIN
 from common.agent_control import is_agent, verify_command
@@ -70,12 +71,13 @@ def _validate_arming(payload, command):
     if not isinstance(owner, str) or owner not in OWNERS:
         raise ValueError("invalid owner")
     mode = payload.get("arming_mode", "timed")
-    if not isinstance(mode, str) or mode not in {"timed", "operator"}:
+    if not isinstance(mode, str) or mode not in {"timed", "operator", "journey"}:
         raise ValueError("invalid_arming_mode")
+    validate_journey_arm(payload, owner, payload.get("execution_context", "panel"))
     if mode == "operator":
         if payload.get("execution_context", "panel") != "panel" or owner != "manual" or "lease_s" in payload:
             raise ValueError("operator_arming_panel_only")
-    else:
+    elif mode == "timed":
         command["lease_s"] = _number(payload.get("lease_s", 10), "lease_s", 0.1, 30)
     command["owner"] = owner
 

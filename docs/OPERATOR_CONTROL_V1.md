@@ -1,5 +1,7 @@
 # Operator priority — contract v1
 
+Continuous journeys use the separate explicit [Automat2 v1 contract](AUTOMAT2_JOURNEY_V1.md); the timed lifecycle below still applies to the ten-second trial.
+
 The extension is explicit: `POST /api/navigation/trial` accepts
 `operator_control_version: 1` with a nonblank `panel_id`. Requests omitting both
 fields retain their existing lifecycle. Only motion-executor owns actuation.

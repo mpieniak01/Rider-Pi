@@ -83,14 +83,25 @@ def status_handler():
 
 
 def trial_handler():
-    from services.navigation_trial import NavigationTrial, TrialError
+    from services.navigation_trial import NavigationTrial
+
+    return _start_handler(NavigationTrial, "rider_navigation_trial")
+
+
+def journey_handler():
+    from services.navigation_journey import NavigationJourney
+
+    return _start_handler(NavigationJourney, "rider_navigation_journey")
+
+
+def _start_handler(starter_class, key):
+    from services.navigation_trial import TrialError
 
     from .features_api import feature_manager
 
-    key = "rider_navigation_trial"
     starter = current_app.extensions.get(key)
     if starter is None or starter.manager is not feature_manager:
-        starter = NavigationTrial(feature_manager)
+        starter = starter_class(feature_manager)
         current_app.extensions[key] = starter
     try:
         result = starter.start(request.get_json(silent=True))

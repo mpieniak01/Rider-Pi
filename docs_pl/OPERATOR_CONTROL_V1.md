@@ -1,5 +1,7 @@
 # Priorytet operatora — kontrakt v1
 
+Osobna podróż bez limitu całej sesji ma jawny kontrakt [Automat2 v1](AUTOMAT2_JOURNEY_V1.md); poniższy cykl timed nadal dotyczy trial 10 s.
+
 Rozszerzenie jest jawne: `POST /api/navigation/trial` przyjmuje
 `operator_control_version: 1` i niepusty `panel_id`. Dotychczasowe żądania bez tych
 pól zachowują dotychczasowy cykl. Ruch nadal wykonuje wyłącznie motion-executor.

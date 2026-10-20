@@ -119,6 +119,25 @@ def _stream_setup(selection, opener):
     return selection, opener, base
 
 
+def _status_request(selection, base, *, stream):
+    return urllib.request.Request(
+        base + "/vision/status" + ("?stream=true" if stream else ""),
+        headers={
+            "X-Rider-Device": selection["device_id"],
+            "Authorization": "Bearer " + selection["token"],
+        },
+    )
+
+
+def _require_journey(status, version):
+    if version is not None and (
+        not isinstance(status, dict)
+        or type(status.get("navigation_journey_version")) is not int
+        or status["navigation_journey_version"] != version
+    ):
+        raise ComputeError("navigation_journey_update_required", 409)
+
+
 def prepare_stream(
     *,
     selection=None,
@@ -127,12 +146,25 @@ def prepare_stream(
     opener=None,
     clock=time.monotonic,
     sleep=time.sleep,
+    journey_version=None,
 ):
-    if not native():
+    streaming = native()
+    if not streaming and journey_version is None:
         return None
+    if journey_version is not None and (type(journey_version) is not int or journey_version != 1):
+        raise ComputeError("navigation_journey_update_required", 409)
     config = snapshot()
     selection, opener, base = _stream_setup(selection, opener)
     deadline = clock() + timeout_s
+    if not streaming:
+        req = _status_request(selection, base, stream=False)
+        status = _read_stream_status(opener, req, timeout_s, deadline, clock)
+        _require_journey(status, journey_version)
+        if snapshot() != config:
+            raise ComputeError("navigation_configuration_changed", 409)
+        if clock() >= deadline:
+            raise ComputeError("navigation_stream_prepare_timeout", 504)
+        return None
     while clock() < deadline:
         if snapshot() != config:
             raise ComputeError("navigation_configuration_changed", 409)
@@ -140,17 +172,12 @@ def prepare_stream(
         if local_source is None:
             sleep(min(0.05, max(0, deadline - clock())))
             continue
-        req = urllib.request.Request(
-            base + "/vision/status?stream=true",
-            headers={
-                "X-Rider-Device": selection["device_id"],
-                "Authorization": "Bearer " + selection["token"],
-            },
-        )
+        req = _status_request(selection, base, stream=True)
         remaining = deadline - clock()
         if remaining <= 0:
             break
         status = _read_stream_status(opener, req, remaining, deadline, clock)
+        _require_journey(status, journey_version)
         if clock() >= deadline:
             break
         if snapshot() != config:

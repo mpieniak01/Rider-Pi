@@ -291,7 +291,7 @@ class MotionController:
                 feedback is not None
                 and self.gate.owner == "navigation"
                 and self.gate.execution_context == "panel"
-                and self.gate.arming_mode == "timed"
+                and self.gate.arming_mode in {"timed", "journey"}
             )
             if not waiting:
                 self.gate.disarm("decision_timeout")

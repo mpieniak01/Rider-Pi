@@ -155,6 +155,9 @@ class NavigationRunner(NavigationCycle):
                 self.motion_failure = {"http_status": 504, "reason": "navigation_motion_ack_timeout"}
                 raise ComputeError("navigation_motion_ack_timeout")
 
+    def _live_intent(self, safety):
+        return self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
+
     def _authority(self):
         safety = self._timed("safety_read_ms", read_status)
         if self.operator_lifecycle.enabled:
@@ -164,7 +167,7 @@ class NavigationRunner(NavigationCycle):
         self._check_executor_support(safety)
         self._check_rejected_acks(safety)
         self._check_pending_acks(safety)
-        intent = self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
+        intent = self._live_intent(safety)
         revision, digest = self._check_navigation_intent(safety, intent)
         self.settings_revision, self.calibration_digest = revision, digest
         self.intent = intent
@@ -208,6 +211,11 @@ class NavigationRunner(NavigationCycle):
                 "ttl_ms": 100,
                 "settings_revision": self.settings_revision,
                 **({"operator_operation_id": operation} if self.operator_lifecycle.enabled else {}),
+                **(
+                    {"journey_version": 1, "journey_id": self.lease.journey.context["id"]}
+                    if self.lease.journey is not None
+                    else {}
+                ),
                 "decision_deadline_monotonic": self.lease.deadline,
                 "decision_feedback_deadline_monotonic": self.lease.feedback_deadline,
                 "vx": speed,

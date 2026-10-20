@@ -17,6 +17,12 @@ def register_compute(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/api/navigation/journey",
+        endpoint="navigation_journey_start",
+        view_func=navigation_api.journey_handler,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/api/navigation/status",
         endpoint="navigation_loop_status",
         view_func=navigation_api.status_handler,

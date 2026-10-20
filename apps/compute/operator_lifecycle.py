@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import uuid
 
+from apps.compute.client import ComputeError
 from apps.compute.decision_lease import DecisionLease
+from apps.compute.journey import JourneyProgress
 from apps.compute.qualification import Qualification
 from apps.safety.intent import write_intent_status
 
@@ -13,6 +15,7 @@ class OperatorLifecycle:
     def __init__(self, runner):
         self.runner = runner
         self.enabled = False
+        self.journey_id = None
         self.panel_id = None
         self.claim = None
         self.operation = None
@@ -46,6 +49,17 @@ class OperatorLifecycle:
             self.operation = control.get("operation_id")
             self.qualification = self._qualification()
             self.authorized = True
+            if safety.get("arming_mode") == "journey":
+                journey = safety.get("journey") or {}
+                if (
+                    type(safety.get("navigation_journey_version")) is not int
+                    or safety["navigation_journey_version"] != 1
+                    or journey.get("active") is not True
+                ):
+                    raise ComputeError("navigation_journey_update_required")
+                identity = {"version": 1, "id": journey.get("id"), "maneuver_epoch": 0}
+                self.runner.lease.journey = JourneyProgress(identity, self.runner.clock)
+                self.journey_id = identity["id"]
             epoch = self.runner.run_id
             generation = safety.get("generation")
             self.runner.lease.stop = lambda: self.runner.stop(expected_run_id=epoch, expected_generation=generation)
@@ -66,6 +80,22 @@ class OperatorLifecycle:
             and control.get("state") in {"qualifying", "active"}
             and isinstance(control.get("operation_id"), str)
         )
+        if self.journey_id is not None and (
+            not authorized
+            or runner.generation != safety.get("generation")
+            or control.get("operation_id") != self.operation
+            or safety.get("arming_mode") != "journey"
+            or (safety.get("journey") or {}).get("id") != self.journey_id
+            or (safety.get("journey") or {}).get("active") is not True
+        ):
+            # Terminal mission identity never becomes a warm/resumable trial.
+            # Raising is safe even inside a DecisionLease callback holding its lock.
+            raise ComputeError((safety.get("journey") or {}).get("reason") or "navigation_authority_lost")
+        if self.journey_id is not None:
+            runner._check_executor_support(safety)
+            runner._check_rejected_acks(safety)
+            runner._check_pending_acks(safety)
+            runner._check_navigation_intent(safety, runner._live_intent(safety))
         changed = runner.generation != safety.get("generation") or self.authorized != authorized
         if changed:
             self.pause_reason = None if authorized else safety.get("reason") or control.get("reason")
@@ -113,6 +143,10 @@ class OperatorLifecycle:
     def evidence(self, decision, frame_id, sequence, captured):
         if not self.enabled or not self.authorized:
             return decision
+        journey = self.runner.lease.journey
+        if journey is not None and not journey.validate_reply(decision):
+            self.runner.lease.halt("navigation_journey_identity_mismatch")
+            raise ComputeError("navigation_journey_identity_mismatch")
         if self.qualified:
             if self.qualification.source_context(decision) == self.qualification.source:
                 return decision
@@ -135,4 +169,5 @@ class OperatorLifecycle:
             "qualification_count": count,
             "operation_id": self.operation,
             "operator_pause_reason": self.pause_reason,
+            **({"journey": self.runner.lease.journey.snapshot()} if self.journey_id is not None else {}),
         }

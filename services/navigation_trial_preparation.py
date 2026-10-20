@@ -31,7 +31,9 @@ class TrialPreparation:
             "phase_started": accepted_at,
             "phase_timings_ms": {},
         }
-        self.local_id = "trial-" + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
+        self.is_journey = body.get("journey_version") == 1
+        prefix = "journey-" if self.is_journey else "trial-"
+        self.local_id = prefix + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
         self.start_id = self.local_id + "-start"
 
         self.progress_path = self.manager._state_path.with_name("navigation_trial_prepare.json")
@@ -45,6 +47,7 @@ class TrialPreparation:
         self.context.update(phase=phase, phase_started=now, phase_timings_ms=timings)
         row = {
             "request_id": self.body["request_id"],
+            **({"journey_version": 1} if self.is_journey else {}),
             "phase": phase,
             "state": state,
             "elapsed_ms": round((now - self.context["started"]) * 1000, 2),
@@ -189,6 +192,22 @@ class TrialPreparation:
         policy = self.policy()
         if not policy.get("verified") or not policy.get("calibration_id") or not policy.get("model_sha256"):
             raise TrialError("navigation_validation_required")
+        if self.is_journey:
+            avoidance = policy.get("avoidance") or {}
+            if type(safety.get("navigation_journey_version")) is not int or safety["navigation_journey_version"] != 1:
+                raise TrialError("navigation_journey_update_required")
+            if (
+                avoidance.get("enabled") is not True
+                or avoidance.get("protocol_version") != 3
+                or avoidance.get("sweep_verified") is not True
+            ):
+                raise TrialError("navigation_journey_avoidance_required")
+            from services.navigation_config import validate
+
+            try:
+                validate({**policy, "mode": "drive"})
+            except ValueError as exc:
+                raise TrialError(str(exc)) from exc
         self._reserve(self.body)
 
     def _prepare_sources(self):
@@ -216,6 +235,7 @@ class TrialPreparation:
         prepare_stream(
             timeout_s=min(2.0, max(0.01, self.context["deadline"] - self.clock())),
             max_age_ms=config.get("decision_budget_ms", 300),
+            **({"journey_version": 1} if self.is_journey else {}),
         )
         self.guard()
         return config
@@ -245,8 +265,12 @@ class TrialPreparation:
                 "operator_consent": True,
                 "operator_plan": self.body["operator_plan"],
                 "execution_context": "panel",
-                "arming_mode": "timed",
-                "lease_s": 10.0,
+                "arming_mode": "journey" if self.is_journey else "timed",
+                **(
+                    {"journey_version": 1, "journey_id": self.body["request_id"]}
+                    if self.is_journey
+                    else {"lease_s": 10.0}
+                ),
                 **(
                     {"panel_id": self.body["panel_id"], "operator_control_version": 1}
                     if self.body.get("operator_control_version") == 1
@@ -299,6 +323,13 @@ class TrialPreparation:
                 and row.get("config_revision") == config["revision"]
                 and row.get("generation") == self.context["generation"]
                 and row.get("operator_request_id") == self.start_id
+                and (
+                    not self.is_journey
+                    or (row.get("journey") or {}).get("id") == self.body["request_id"]
+                    and (row.get("journey") or {}).get("active") is True
+                    and type((row.get("journey") or {}).get("version")) is int
+                    and row["journey"]["version"] == 1
+                )
                 and isinstance(row.get("run_id"), str)
                 and row["run_id"]
                 and type(row.get("observed_at")) in (int, float)
@@ -361,6 +392,10 @@ class TrialPreparation:
         if isinstance(error, TrialError):
             error.details = {**(error.details or {}), "preparation": diagnostic}
             raise error from None
+        from apps.compute.client import ComputeError
+
+        if isinstance(error, ComputeError) and error.code == "navigation_journey_update_required":
+            raise TrialError(error.code, 409, details={"preparation": diagnostic}) from error
         known = {
             "compute_stop_goals_first",
             "navigation_stop_goals_first",

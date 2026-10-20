@@ -42,9 +42,14 @@ class OperatorControl:
             or command["operator_control_version"] != 1
             or context != "panel"
             or owner != "navigation"
-            or command.get("arming_mode", "timed") != "timed"
-            or type(command.get("lease_s")) not in (int, float)
-            or not 0 < command["lease_s"] <= 10
+            or (
+                command.get("arming_mode", "timed") != "journey"
+                and (
+                    command.get("arming_mode", "timed") != "timed"
+                    or type(command.get("lease_s")) not in (int, float)
+                    or not 0 < command["lease_s"] <= 10
+                )
+            )
             or not isinstance(command.get("panel_id"), str)
             or not command["panel_id"].strip()
         ):
@@ -88,6 +93,10 @@ class OperatorControl:
         if gate.owner not in {"manual", "navigation"}:
             raise ValueError("owner_mismatch")
         resume = command.get("action") == "navigation_resume"
+        if gate.arming_mode == "journey":
+            if resume:
+                raise ValueError("navigation_journey_new_start_required")
+            return False
         if gate.arming_mode != "timed" or not 0 < gate.lease_deadline - gate.clock() <= 10:
             raise ValueError("navigation_timed_consent_required")
         if resume and self.state in {"qualifying", "active"}:
@@ -97,6 +106,9 @@ class OperatorControl:
     def transfer(self, command):
         resume = self._validate_transfer(command)
         gate = self.gate
+        if gate.arming_mode == "journey":
+            gate.disarm("operator_intervention")
+            return
         # The single executor serializes this change with its output. Preserve
         # consent exactly; timed leases cannot become operator leases here.
         self.origin_generation = gate.generation if resume else None

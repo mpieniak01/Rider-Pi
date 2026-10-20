@@ -105,6 +105,11 @@ class ExecutorAdmission:
         previous_generation = self.gate.generation
         authorized, reason = self.gate.authorize(command)
         if not authorized:
+            if previous_generation != self.gate.generation and reason == "navigation_journey_manual_arm_required":
+                self.pending = None
+                self.intent_source = None
+                self.controller.stop()
+                return reason, self._ack(command, "rejected", reason, hardware_stop_sent=True)
             # Delayed renewals never undo a newer manual intent or release.
             obsolete = reason in {
                 "stale_sequence",
@@ -199,6 +204,7 @@ class ExecutorAdmission:
                 self._ack(previous, 'rejected', 'manual_takeover', cancelled_by=command.get('request_id'))
 
     def _execute_motion(self, command, values, mode):
+        journey = self.gate.arming_mode == "journey"
         try:
             now = self.gate.clock()
             values["duration"] = decision_duration(command, values["duration"], now)
@@ -207,9 +213,12 @@ class ExecutorAdmission:
                 now,
                 timed_navigation=self.gate.owner == "navigation"
                 and self.gate.execution_context == "panel"
-                and self.gate.arming_mode == "timed",
+                and self.gate.arming_mode in {"timed", "journey"},
             )
         except ValueError as exc:
+            if journey:
+                self.gate.disarm(str(exc))
+                self.controller.stop()
             return self._ack(command, "rejected", str(exc))
         if not self.controller.drive(
             values["vx"],
@@ -220,7 +229,16 @@ class ExecutorAdmission:
             remote_decision_deadline=command.get("decision_deadline_monotonic"),
             remote_feedback_deadline=feedback,
         ):
+            if journey:
+                self.gate.disarm("motion_submission_failed")
+                self.controller.stop()
             return self._ack(command, "rejected", "motion_disarmed")
+        try:
+            self.gate.journey.accepted_goal(command, feedback)
+        except ValueError as exc:
+            self.gate.disarm(str(exc))
+            self.controller.stop()
+            return self._ack(command, "rejected", str(exc))
         if values["vx"] != 0 or values["yaw"] != 0:
             self.gate.operator_control.activated(command)
         previous, self.pending = self.pending, None

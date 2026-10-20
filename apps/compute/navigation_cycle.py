@@ -29,6 +29,8 @@ class NavigationCycle:
         frame = self._timed("frame_wait_ms", source.recv, 50)
         if not self._frame_arrived(frame):
             return None
+        if self.lease.journey is not None and not self.lease.journey.validate_capture(frame):
+            raise ComputeError("navigation_journey_source_changed")
         self.last_frame = (frame["input_id"], frame["captured_at"])
         if self.policy["mode"] == "drive" and isinstance(frame["data"], bytes) and len(frame["data"]) <= 512 * 1024:
             self.frame_trace.append(frame)
@@ -75,6 +77,8 @@ class NavigationCycle:
             **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
         }
         meta["perception"] = self.policy["perception"]
+        if self.policy["mode"] == "drive" and self.lease.journey is not None:
+            meta["journey"] = dict(self.lease.journey.context)
         if self.policy.get("avoidance", {}).get("enabled"):
             motion_phase = "ready"
             if self.turn_capture_after is not None and captured <= self.turn_capture_after:
