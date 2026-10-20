@@ -32,6 +32,7 @@ class TrialPreparation:
             "phase_timings_ms": {},
         }
         self.is_journey = body.get("journey_version") == 1
+        self.warm_reused = False
         prefix = "journey-" if self.is_journey else "trial-"
         self.local_id = prefix + hashlib.sha256(body["request_id"].encode()).hexdigest()[:32]
         self.start_id = self.local_id + "-start"
@@ -54,6 +55,7 @@ class TrialPreparation:
             "phase_timings_ms": timings,
             "observed_at": self.wall(),
             "error": error,
+            "warm_reused": self.warm_reused,
         }
         try:
             atomic_write(self.progress_path, row)
@@ -218,6 +220,10 @@ class TrialPreparation:
         result = self.manager.set_feature("s2_camera_preview", True)
         self.guard()
         self._accepted(result)
+        if self.is_journey and self._warm_source_ready():
+            self.warm_reused = True
+            self.progress("warm_producer_reuse")
+            return self.policy()
         self.progress("stop_old_producer")
         for name in ("s14_venom_navigation", "s15_venom_perception"):
             self.guard()
@@ -239,6 +245,38 @@ class TrialPreparation:
         )
         self.guard()
         return config
+
+    def _warm_source_ready(self):
+        row = self.status()
+        sampled = row.get("sampled_monotonic")
+        if not (
+            row.get("warm_navigation_version") == 1
+            and type(row.get("warm_navigation_version")) is int
+            and row.get("warm_ready") is True
+            and row.get("running") is True
+            and row.get("mode") == "observe"
+            and self.policy().get("mode") == "drive"
+            and row.get("config_revision") == self.context["revision"]
+            and type(sampled) in (int, float)
+            and math.isfinite(sampled)
+            and 0 <= self.clock() - sampled <= 1.0
+            and isinstance(row.get("warm_source"), dict)
+        ):
+            return False
+        from apps.compute.stream_prepare import prepare_stream
+
+        self.progress("warm_source_check")
+        prepared = prepare_stream(
+            timeout_s=min(2.0, max(0.01, self.context["deadline"] - self.clock())),
+            max_age_ms=self.policy().get("decision_budget_ms", 300),
+            journey_version=1,
+        )
+        self.guard()
+        source = (prepared or {}).get("latest_source")
+        keys = ("camera_session", "transport_epoch", "pipeline_revision")
+        return isinstance(source, dict) and all(
+            row["warm_source"].get(key) == source.get(key) and source.get(key) is not None for key in keys
+        )
 
     def _arm_navigation(self):
         self.progress("authority_handoff")
@@ -267,7 +305,11 @@ class TrialPreparation:
                 "execution_context": "panel",
                 "arming_mode": "journey" if self.is_journey else "timed",
                 **(
-                    {"journey_version": 1, "journey_id": self.body["request_id"]}
+                    {
+                        "journey_version": 1,
+                        "journey_id": self.body["request_id"],
+                        "operator_origin_generation": self.body["generation"],
+                    }
                     if self.is_journey
                     else {"lease_s": 10.0}
                 ),
@@ -300,6 +342,7 @@ class TrialPreparation:
             "operator_consent": True,
             "operator_plan": self.body["operator_plan"],
             "execution_context": "panel",
+            **({"warm_navigation_version": 1} if self.warm_reused else {}),
         }
         self.progress("start_navigation")
         result = self.manager.set_feature("s14_venom_navigation", True, control=control)
@@ -373,7 +416,14 @@ class TrialPreparation:
             # Each cleanup attempt is independent: a broken service
             # backend must not skip cancellation of a queued ARM.
             try:
-                self.manager.set_feature("s14_venom_navigation", False)
+                current = self.safety()
+                if current.get("generation") != self.context.get("arm_generation"):
+                    return  # New manual/STOP authority also owns its camera choice.
+            except Exception:
+                current = {}
+            try:
+                if not self.warm_reused:
+                    self.manager.set_feature("s14_venom_navigation", False)
             except Exception:
                 pass
             try:

@@ -32,6 +32,12 @@ class NavigationCycle:
         if self.lease.journey is not None and not self.lease.journey.validate_capture(frame):
             raise ComputeError("navigation_journey_source_changed")
         self.last_frame = (frame["input_id"], frame["captured_at"])
+        source = frame.get("source")
+        self.last_source = (
+            {key: source.get(key) for key in ("camera_session", "transport_epoch", "pipeline_revision")}
+            if isinstance(source, dict)
+            else None
+        )
         if self.policy["mode"] == "drive" and isinstance(frame["data"], bytes) and len(frame["data"]) <= 512 * 1024:
             self.frame_trace.append(frame)
         source_mono = frame.get("captured_monotonic_ns")

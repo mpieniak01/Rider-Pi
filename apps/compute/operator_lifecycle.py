@@ -24,6 +24,7 @@ class OperatorLifecycle:
         self.authorized = False
         self.qualified = False
         self.last_claim = float("-inf")
+        self.last_journey = None
 
     def _qualification(self):
         runner = self.runner
@@ -75,22 +76,39 @@ class OperatorLifecycle:
             safety.get("can_move") is True
             and safety.get("owner") == "navigation"
             and safety.get("state") == "ARMED"
-            and (safety.get("panel_control") or {}).get("holder") == self.panel_id
+            and (
+                (safety.get("panel_control") or {}).get("holder") == self.panel_id
+                or self.last_journey is not None
+                and self.journey_id is None
+                and isinstance((safety.get("panel_control") or {}).get("holder"), str)
+                and bool((safety.get("panel_control") or {}).get("holder"))
+            )
             and control.get("version") == 1
             and control.get("state") in {"qualifying", "active"}
             and isinstance(control.get("operation_id"), str)
         )
         if self.journey_id is not None and (
             not authorized
+            or runner.lease.latched
             or runner.generation != safety.get("generation")
             or control.get("operation_id") != self.operation
             or safety.get("arming_mode") != "journey"
             or (safety.get("journey") or {}).get("id") != self.journey_id
             or (safety.get("journey") or {}).get("active") is not True
         ):
-            # Terminal mission identity never becomes a warm/resumable trial.
-            # Raising is safe even inside a DecisionLease callback holding its lock.
-            raise ComputeError((safety.get("journey") or {}).get("reason") or "navigation_authority_lost")
+            self._end_journey((safety.get("journey") or {}).get("reason") or "navigation_authority_lost")
+            authorized = False
+        if self.last_journey is not None and self.journey_id is None and not self.authorized and authorized:
+            # An explicit new Start must first persist its matching service intent.
+            # ARM alone, reconnect and stale old producer claims cannot restart it.
+            intent = runner._live_intent(safety)
+            if not intent or intent.get("generation") != safety.get("generation"):
+                authorized = False
+            elif intent.get("request_id") == (self.claim or {}).get("request_id"):
+                authorized = False
+            elif safety.get("arming_mode") == "journey":
+                self._bind_journey(safety, intent)
+                return True
         if self.journey_id is not None:
             runner._check_executor_support(safety)
             runner._check_rejected_acks(safety)
@@ -140,6 +158,64 @@ class OperatorLifecycle:
             self.last_claim = runner.clock()
         return authorized
 
+    def _reset_lease(self, safety, *, authorized):
+        runner = self.runner
+        runner.generation = safety.get("generation")
+        runner.policy = {**runner.saved_policy, "mode": "drive" if authorized else "observe"}
+        runner.run_id = uuid.uuid4().hex
+        runner.sequence = 0
+        runner.motion_sequence = safety.get("last_seq", -1)
+        runner.pending_motion_acks.clear()
+        runner.motion_started = False
+        runner.motion_failure = None
+        runner.turn_capture_after = None
+        runner.startup_deadline = runner.clock() + 5
+        runner.run_started_monotonic = runner.clock()
+        self.qualified = False
+        runner.lease = DecisionLease(
+            runner.policy,
+            runner.run_id,
+            lambda *args, epoch=runner.run_id, **kwargs: runner.drive(*args, expected_run_id=epoch, **kwargs),
+            lambda epoch=runner.run_id, generation=runner.generation: runner.stop(
+                expected_run_id=epoch, expected_generation=generation
+            ),
+            runner.clock,
+            pause=lambda *args, epoch=runner.run_id: runner.pause(*args, expected_run_id=epoch),
+            feedback_wait=authorized,
+            turn=lambda *args, epoch=runner.run_id: runner.turn(*args, expected_run_id=epoch),
+            steer=lambda *args, epoch=runner.run_id: runner.steer(*args, expected_run_id=epoch),
+        )
+        self.qualification = self._qualification()
+
+    def _end_journey(self, reason):
+        runner = self.runner
+        runner.lease.journey.end(reason)
+        self.last_journey = runner.lease.journey.snapshot()
+        # This STOP is tied to the old generation; a manual gesture is never stopped.
+        runner.stop()
+        runner._status(runner.last_result, terminal=True)
+        self.journey_id = None
+        self.authorized = False
+        self.pause_reason = reason
+        self._reset_lease({"generation": runner.generation, "last_seq": -1}, authorized=False)
+        runner.intent = None
+
+    def _bind_journey(self, safety, intent):
+        runner = self.runner
+        self._reset_lease(safety, authorized=True)
+        runner.intent = intent
+        runner.settings_revision, runner.calibration_digest = runner._check_navigation_intent(safety, intent)
+        self.admit(safety, intent)
+        self.last_claim = float("-inf")
+        write_intent_status(
+            "rider-venom-navigation.service",
+            self.claim,
+            active=True,
+            data_ready=runner.fresh_frame_seen,
+            navigation_ready=runner.fresh_frame_seen,
+            operator_control_version=1,
+        )
+
     def evidence(self, decision, frame_id, sequence, captured):
         if not self.enabled or not self.authorized:
             return decision
@@ -169,5 +245,16 @@ class OperatorLifecycle:
             "qualification_count": count,
             "operation_id": self.operation,
             "operator_pause_reason": self.pause_reason,
-            **({"journey": self.runner.lease.journey.snapshot()} if self.journey_id is not None else {}),
+            **(
+                {"journey": self.runner.lease.journey.snapshot()}
+                if self.journey_id is not None
+                else {"journey": self.last_journey}
+                if self.last_journey
+                else {}
+            ),
+            "warm_navigation_version": 1,
+            "warm_ready": self.runner.policy["mode"] == "observe"
+            and self.runner.fresh_frame_seen
+            and self.runner.last_source is not None,
+            "warm_source": self.runner.last_source,
         }

@@ -11,6 +11,7 @@ class OperatorControl:
     def __init__(self, gate):
         self.gate = gate
         self.origin_generation = None
+        self.preparation_origin_generation = None
         self.origin_sequence = -1
         self.enabled = False
         self.state = "idle"
@@ -19,6 +20,7 @@ class OperatorControl:
 
     def reset(self, reason):
         self.origin_generation = None
+        self.preparation_origin_generation = None
         self.origin_sequence = -1
         self.enabled = False
         self.state = "idle"
@@ -31,6 +33,7 @@ class OperatorControl:
             self.state = "qualifying" if self.gate.owner == "navigation" else "paused"
             self.operation_id = command["request_id"]
             self.origin_generation = self.gate.generation
+            self.preparation_origin_generation = command.get("operator_origin_generation")
             self.origin_sequence = command["seq"]
             self.reason = "awaiting_fresh_qualification" if self.state == "qualifying" else "operator_pause"
 

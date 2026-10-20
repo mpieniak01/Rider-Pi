@@ -27,6 +27,11 @@ def validate_arm(command, owner, context):
         or not isinstance(command.get("panel_id"), str)
         or not 1 <= len(command["panel_id"].strip()) <= 128
         or "lease_s" in command
+        or "operator_origin_generation" in command
+        and (
+            not isinstance(command["operator_origin_generation"], str)
+            or not 1 <= len(command["operator_origin_generation"]) <= 128
+        )
     ):
         raise ValueError("navigation_journey_invalid")
 

@@ -21,8 +21,15 @@ Both `image` and `ground` geometry remain available. Ground requires real
 filled automatically. Existing avoidance limits remain at most 0.1 SDK and
 150 ms per pulse.
 
-Admission reuses the trial preparation transaction: camera, previous producer
-shutdown, configuration, one executor consent, new worker start and confirmation.
+Admission reuses the trial preparation transaction. Cold preparation reserves
+camera, releases the previous producer, configures drive, obtains one consent,
+starts a worker and confirms its exact operation. A compatible warm S14 producer
+instead retains capture, transport and model demand. Reuse requires fresh
+`warm_navigation_version:1`, `warm_ready:true`, matching policy revision and
+native camera session/transport epoch/pipeline revision confirmed by the host.
+Missing or incompatible readiness takes the cold path. `preparation.warm_reused`
+and separate phase timings report which path actually ran.
+
 STOP or a newer generation cancels preparation. Replaying a request ID never
 starts another mission. Preparation progress adds `journey_version:1`.
 
@@ -66,7 +73,18 @@ the mission. Unsuccessful steering ends with STOP; time never resets its budget.
 STOP, ESTOP, lost decisions, configuration changes and manual intervention end
 the journey. `navigation_resume` cannot revive it. Manual correction requires
 new explicit manual consent; journey authority never becomes an unbounded manual
-ARM. The camera may remain a passive preview. Restart cannot restore the mission.
+ARM. A versioned [direction gesture](OPERATOR_CONTROL_V1.md#explicit-direction-intervention)
+carries this new manual consent in the same executor transaction; a separate
+button/ARM round trip is not required. ESTOP is never cleared by it.
+
+A healthy S14 producer remains observation-only after terminal mission STOP,
+manual takeover or transport failure. Its latest mission outcome is archived
+before observation replaces the live row. A new explicit Start must persist a
+new matching service intent, generation and journey ID. The retained process
+creates a new run ID, empty decision lease and three-frame qualification after
+that boundary. Old GO, ACK, intent, ARM or callback cannot revive the old mission.
+Configuration/source changes and explicit camera OFF remain cold lifecycle
+boundaries. Process restart cannot restore a mission.
 
 `GET /api/navigation/status` exposes
 `journey:{version:1,id,active,state,reason,elapsed_s,maneuver_epoch}`. States are

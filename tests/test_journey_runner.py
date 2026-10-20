@@ -1,4 +1,4 @@
-"""Journey runner terminates on changed authority instead of becoming a resumable trial."""
+"""Terminal mission authority ends while its producer can remain observation-only."""
 
 import pytest
 from journey_fakes import policy
@@ -34,17 +34,19 @@ def runner(isolated):
         {"journey": {"version": 1, "id": "other", "active": True}},
     ],
 )
-def test_authority_change_cannot_turn_journey_into_warm_observation_or_resume(isolated, change):
+def test_authority_change_ends_old_journey_but_preserves_observation(isolated, change):
     instance, safety = runner(isolated)
     identity = instance.run_id
     original = instance.lease
     safety.update(change)
-    with pytest.raises(ComputeError):
-        instance._authority()
-    assert instance.policy["mode"] == "drive"
-    assert instance.lease is original
-    assert instance.run_id == identity
-    assert isolated[-1] == []
+    assert instance._authority() is False
+    assert instance.policy["mode"] == "observe"
+    assert instance.lease is not original
+    assert original.journey.active is False
+    assert instance.run_id != identity
+    assert instance.operator_lifecycle.last_journey["id"] == "mission"
+    assert instance._authority() is False  # Same old intent/ARM never resumes.
+    assert all(row["action"] == "stop" for row in isolated[-1])
 
 
 def test_journey_metadata_is_drive_only_and_status_preserves_terminal_result(isolated, monkeypatch, tmp_path):

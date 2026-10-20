@@ -63,6 +63,7 @@ class NavigationRunner(NavigationCycle):
         self.decision_trace = deque(maxlen=12)
         self.frame_trace = deque(maxlen=4)
         self.motion_failure = None
+        self.input_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
         self.run_started_monotonic = None
@@ -80,6 +81,7 @@ class NavigationRunner(NavigationCycle):
         self.settings_revision = None
         self.calibration_digest = None
         self.last_frame = None
+        self.last_source = None
         self.fresh_frame_seen = False
         self.lease = DecisionLease(
             self.policy,
@@ -384,7 +386,7 @@ class NavigationRunner(NavigationCycle):
             return exc.code in {408, 429, 500, 502, 503, 504}
         return isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
 
-    def _status(self, decision):
+    def _status(self, decision, *, terminal=False):
         import os
         from pathlib import Path
 
@@ -422,9 +424,10 @@ class NavigationRunner(NavigationCycle):
             "cycle_elapsed_ms": round((self.clock() - self.cycle_started) * 1000, 2),
             "previous_status_write_ms": self.previous_status_write_ms,
             "visual_pause_supported": True,
-            "running": not self.closed.is_set(),
+            "running": not self.closed.is_set() and not terminal,
             "stop_reason": self.lease.reason,
             "motion_failure": self.motion_failure,
+            "input_failure": self.input_failure,
         }
         status_started = self.clock()
         try:
@@ -434,7 +437,7 @@ class NavigationRunner(NavigationCycle):
             self.previous_status_write_ms = round((self.clock() - status_started) * 1000, 2)
         if self.policy["mode"] == "drive":
             self.decision_trace.append(dict(row))
-            if self.closed.is_set():
+            if self.closed.is_set() or terminal:
                 # Persist only after the drive has stopped; observation never
                 # replaces its outcome or writes to the drive recorder.
                 archive = io.BytesIO()
@@ -533,6 +536,12 @@ class NavigationRunner(NavigationCycle):
             from apps.compute.stream_prepare import http_error_code
 
             failure = ComputeError("navigation_" + http_error_code(exc), exc.code)
+        self.input_failure = {
+            "error_type": type(exc).__name__,
+            "reason_type": type(getattr(exc, "reason", None)).__name__,
+            "code": failure.code if isinstance(failure, ComputeError) else "navigation_transport_or_input_failed",
+            "http_status": getattr(failure, "status", None),
+        }
         logging.getLogger(__name__).warning(
             "[vision] navigation failed type=%s reason_type=%s code=%s http_status=%s",
             type(exc).__name__,
@@ -577,7 +586,24 @@ class NavigationRunner(NavigationCycle):
             self._start_watch()
             watchdog.start()
             while not self.closed.is_set():
-                self._run_cycle(source)
+                try:
+                    self._run_cycle(source)
+                except Exception as exc:
+                    lifecycle = self.operator_lifecycle
+                    incompatible = isinstance(exc, ComputeError) and exc.code in {
+                        "navigation_configuration_changed",
+                        "navigation_journey_source_changed",
+                        "navigation_calibration_changed",
+                        "navigation_settings_stale",
+                    }
+                    if lifecycle.journey_id is None or incompatible:
+                        raise
+                    self._run_failure(exc)
+                    # Failure ends this mission, not its passive source/connection.
+                    # The old lease is latched; sync can only retire it to observe.
+                    self._authority()
+                    self._status(self.last_result)
+
             return 0
         except Exception as exc:
             return self._run_failure(exc)

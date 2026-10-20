@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from apps.safety import estop
 from apps.safety.journey import JourneyConsent, validate_arm as validate_journey_arm
+from apps.safety.manual_intervention import ManualIntervention, validate as validate_intervention
 from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS, OperatorControl
 from common.agent_control import MANUAL_AGENT_GRACE_S, verify_command
 
@@ -61,6 +62,7 @@ class MotionGate:
         self.agent_intents = []
         self.manual_grace_until = 0.0
         self.operator_control = OperatorControl(self)
+        self.manual_intervention = ManualIntervention(self)
         self.journey = JourneyConsent(self)
         self.poll()
 
@@ -129,7 +131,9 @@ class MotionGate:
             raise ValueError("request_id_required")
         if not isinstance(command.get("source"), str) or command["source"] not in OWNERS | {'agent'}:
             raise ValueError("unknown_source")
-        priority_sequence = self.operator_control.priority_sequence(command)
+        priority_sequence = self.manual_intervention.priority_sequence(command)
+        if priority_sequence is None:
+            priority_sequence = self.operator_control.priority_sequence(command)
         if command.get("generation") != self.generation and priority_sequence is None:
             raise ValueError("stale_generation")
         seq = command.get("seq")
@@ -156,6 +160,12 @@ class MotionGate:
         panel = command.get("panel_id")
         if "panel_id" in command and (not isinstance(panel, str) or not panel.strip() or len(panel) > 128):
             return "invalid_panel_id"
+        if self.manual_intervention.requested(command):
+            try:
+                validate_intervention(command)
+            except ValueError as exc:
+                return str(exc)
+            return None
         if self.panel_id is not None and panel != self.panel_id:
             return "stale_generation" if command.get("generation") != self.generation else "panel_owner_mismatch"
         return None
@@ -183,6 +193,7 @@ class MotionGate:
             and self.panel_id is not None
             and command.get("source") == "manual"
             and command.get("panel_id") != self.panel_id
+            and not self.manual_intervention.requested(command)
         ):
             raise ValueError("panel_owner_mismatch")
         if action in ACTUATORS and self.motion_not_before is not None and command["ts"] <= self.motion_not_before:
@@ -306,6 +317,10 @@ class MotionGate:
         """Retain owner, context and navigation-operation checks before consuming a sequence."""
         if action not in ACTUATORS:
             raise ValueError("unknown_action")
+        if self.manual_intervention.requested(command):
+            self.manual_intervention.transfer(command)
+            self.last_seq = command["seq"]
+            return True, "operator_intervention"
         if not self.can_actuate():
             raise ValueError("motion_disarmed" if self.state != "ESTOP" else "estop_latched")
         if context != self.execution_context:
@@ -363,6 +378,7 @@ class MotionGate:
             "panel_control": {"version": 1, "holder": self.panel_id},
             "operator_control": self.operator_control.snapshot(),
             "navigation_journey_version": 1,
+            "operator_intervention_version": 1,
             "journey": self.journey.snapshot(),
             "execution_context": self.execution_context,
             "panel_motion_enabled": self.state == "ARMED" and self.execution_context == "panel",

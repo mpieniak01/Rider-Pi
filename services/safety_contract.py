@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 
 from apps.safety.journey import validate_arm as validate_journey_arm
+from apps.safety.manual_intervention import validate as validate_intervention
 from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS
 from common.actuator_parameters import HEIGHT_MAX, HEIGHT_MIN
 from common.agent_control import is_agent, verify_command
@@ -161,6 +162,7 @@ def command_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     if action not in ACTUATORS | {"arm", "disarm", "estop", "clear_estop", "stop"} | OPERATOR_ACTIONS:
         raise ValueError("unknown action")
     _validate_stop_generation(payload, action)
+    validate_intervention(payload)
     command = dict(payload)
     command.update(
         action=action,
