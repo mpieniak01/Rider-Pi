@@ -55,8 +55,10 @@ def test_lcd_lock_concurrent_creator_is_reopened_and_validated(tmp_path, monkeyp
     with lease.LCDLease():
         assert path.read_bytes() == b"concurrent-creator"
     assert len(attempts) == 3
-    assert attempts[1] & os.O_CREAT and attempts[1] & os.O_EXCL
-    assert not attempts[0] & os.O_CREAT and not attempts[2] & os.O_CREAT
+    assert attempts[1] & os.O_CREAT
+    assert attempts[1] & os.O_EXCL
+    assert not attempts[0] & os.O_CREAT
+    assert not attempts[2] & os.O_CREAT
 
 
 def test_lcd_lock_racing_symlink_never_opens_or_changes_target(tmp_path, monkeypatch):
