@@ -726,3 +726,23 @@ def test_error_reporting_does_not_invent_cancellation_from_failed_or_unchanged_r
     caught = TrialError("navigation_trial_prepare_timeout")
     assert preparation._reported_failure(caught) is caught
     assert not world.commands
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_authority_change_after_navigation_arm_and_deadline_preserves_new_owner(world, manual):
+    def intervene(unit, action):
+        if unit != "rider-venom-navigation.service" or action != "start":
+            return
+        world.elapsed = 16.0
+        world.gate.authorize({"action": "stop"})
+        if manual:
+            assert world.arm_manual()[0]["ok"]
+
+    world.hook = intervene
+    trial_body = world.body()
+    with pytest.raises(TrialError, match="navigation_trial_cancelled") as caught:
+        world.trial.start(trial_body)
+    assert caught.value.status == 409
+    assert world.gate.owner == ("manual" if manual else None)
+    assert len([row for row in world.commands if row.get("owner") == "navigation" and row["action"] == "arm"]) == 1
+    assert not any(row["action"] == "stop" for row in world.commands)
