@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import os
 import platform
 import re
@@ -416,9 +418,14 @@ def _load_logo_for_target(target_size: tuple[int, int]) -> Image.Image | None:
 # ---------------- WYŚWIETLANIE ----------------
 def have_xgo() -> bool:
     try:
-        import xgoscreen.LCD_2inch  # noqa: F401
-
-        return True
+        # Vendor imports may open SPI through module-level defaults. Only look
+        # up specs here; LcdSink imports the backend after ownership is acquired.
+        package = importlib.util.find_spec("xgoscreen")
+        return bool(
+            package
+            and package.submodule_search_locations
+            and importlib.machinery.PathFinder.find_spec("xgoscreen.LCD_2inch", package.submodule_search_locations)
+        )
     except Exception:
         return False
 
