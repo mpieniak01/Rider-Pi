@@ -120,6 +120,20 @@ class ManualIntervention:
         gate.operator_control.operation_id = command["request_id"]
         gate.operator_control.reason = "operator_intervention"
 
+    def supersede(self, command):
+        """A newer ordinary manual goal owns output in this same generation."""
+        operation = self.operation
+        if (
+            operation is not None
+            and command.get("source") == "manual"
+            and command.get("action") in {"move", "turn"}
+            and command.get("generation") == operation["generation"]
+            and command.get("request_id") != operation["request_id"]
+        ):
+            self.operation = None
+            self.gate.operator_control.operation_id = command["request_id"]
+            self.gate.operator_control.reason = "manual_goal_superseded_intervention"
+
     def release(self, command):
         validate(command)
         gate = self.gate

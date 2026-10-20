@@ -337,6 +337,7 @@ class MotionGate:
         self.journey.validate_goal(command)
         self.last_seq = command["seq"]
         if command.get('source') == 'manual':
+            self.manual_intervention.supersede(command)
             self.invalidate_agent(manual=True)
         return True, "authorized"
 

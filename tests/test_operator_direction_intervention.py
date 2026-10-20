@@ -223,3 +223,57 @@ def test_origin_of_different_preparation_cannot_revoke_new_journey(executor):
     assert instance.apply(cancel)["status"] == "rejected"
     assert instance.gate.generation == generation
     assert instance.gate.journey.active is True
+
+
+def test_first_delayed_cancel_of_old_takeover_cannot_zero_new_ordinary_direction(executor):
+    instance, clock = executor
+    original = gesture(instance)
+    assert instance.apply(original)["status"] == "accepted"
+    instance.tick(0.01)
+    # UI has observed manual G1 before A's HTTP ACK; B is a newer ordinary goal.
+    delayed_cancel = release(instance, original)
+    clock.now += 0.01
+    following = command(
+        instance,
+        request_id="ordinary-replacement",
+        panel_id="operator",
+        execution_context="panel",
+        vx=0.0,
+        yaw=0.1,
+    )
+    assert instance.apply(following)["status"] == "accepted"
+    instance.tick(0.01)
+    generation = instance.gate.generation
+    calls = list(instance.adapter.calls)
+    result = instance.apply(delayed_cancel)
+    assert result["status"] == "rejected"
+    assert instance.gate.generation == generation
+    assert instance.adapter.calls == calls
+    assert instance.controller.deadline > clock()
+    assert instance.controller.t_az == 0.1
+
+
+def test_ordinary_hold_renewal_uses_normal_release_after_superseding_takeover(executor):
+    instance, clock = executor
+    original = gesture(instance, mode="hold")
+    assert instance.apply(original)["status"] == "accepted"
+    instance.tick(0.01)
+    clock.now += 0.01
+    renewal = gesture(instance, request_id="ordinary-hold-renewal", mode="hold")
+    for key in ("operator_intervention_version", "intervene", "operator_consent", "operator_plan"):
+        renewal.pop(key)
+    assert instance.apply(renewal)["status"] == "accepted"
+    assert instance.gate.manual_intervention.operation is None
+    assert instance.gate.operator_control.operation_id == renewal["request_id"]
+    assert instance.apply(release(instance, original))["status"] == "rejected"
+    clock.now += 0.01
+    ordinary_release = {
+        **renewal,
+        "request_id": "ordinary-release",
+        "mode": "release",
+        "seq": instance.gate.last_seq + 1,
+        "ts": clock(),
+    }
+    assert instance.apply(ordinary_release)["status"] in {"accepted", "executed"}
+    instance.tick(0.01)
+    assert instance.controller.t_lx == instance.controller.t_az == 0

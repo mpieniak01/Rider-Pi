@@ -125,6 +125,10 @@ generation, holder and this target still match active navigation, cancel retires
 that old navigation too. In the same DISARMED origin a cancel-only generation
 revocation invalidates pending preparations; it cannot grant consent/output.
 Duplicates are checked before changing authority or stopping output. An obsolete release or old scoped journey STOP
-cannot stop a newer gesture, owner or generation. Global STOP/ESTOP retain their
+cannot stop a newer gesture, owner or generation. An authorized ordinary manual
+move/turn also supersedes the previous intervention operation within the same
+generation; its older origin-scoped cancellation cannot zero that newer goal.
+Held-motion renewal is serialized after the initial ACK and uses the existing
+current-generation release path. Global STOP/ESTOP retain their
 independent priority. HTTP confirmation uses the original `command_generation`
 and the new ACK `generation`; it does not establish physical displacement.
