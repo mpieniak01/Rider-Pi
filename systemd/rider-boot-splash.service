@@ -48,8 +48,8 @@ Environment=SDL_FBDEV=
 Environment=SDL_AUDIODRIVER=dummy
 Environment=PYGAME_HIDE_SUPPORT_PROMPT=1
 
-# --- włącz LCD PRZED splashem ---
-ExecStartPre=/usr/bin/make -C /home/pi/robot lcd-on
+# Splash opens the LCD locally through LcdSink. The HTTP resource API is
+# not available at this early boot stage.
 
 StandardOutput=journal
 StandardError=journal
