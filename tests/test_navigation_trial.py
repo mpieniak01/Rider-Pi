@@ -669,3 +669,21 @@ def test_public_status_does_not_present_expired_go_as_an_active_motor_permit():
     assert row["decision"]["vision_action"] == "go"
     assert source["decision"]["action"] == "go"
     assert "run_started_monotonic" not in row
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_new_authority_after_budget_expiry_is_cancelled_not_prepare_timeout(world, manual):
+    def intervene(_unit, action):
+        if action != "start":
+            return
+        world.elapsed = 16.0
+        world.gate.authorize({"action": "stop"})
+        if manual:
+            assert world.arm_manual()[0]["ok"]
+
+    world.hook = intervene
+    with pytest.raises(TrialError, match="navigation_trial_cancelled") as caught:
+        world.trial.start(world.body())
+    assert caught.value.status == 409
+    assert not any(row.get("owner") == "navigation" and row["action"] == "arm" for row in world.commands)
+    assert world.gate.owner == ("manual" if manual else None)

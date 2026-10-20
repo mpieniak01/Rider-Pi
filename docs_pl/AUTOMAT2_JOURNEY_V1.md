@@ -116,3 +116,15 @@ podaje wyłącznie liczniki `connections` i `requests`, bez adresów i poświadc
 To optymalizacja transportu, nie zmiana zgody: oryginalne capture/feedback
 deadlines, maksymalna prędkość i czas impulsu pozostają bez zmian. Odbiór
 obserwacji na prawdziwej kamerze nie zastępuje fizycznego testu podróży operatora.
+
+
+### Anulowanie przygotowania po interwencji operatora
+
+Zmiana generacji lub właściciela przez świeży manual/STOP unieważnia
+przygotowanie także wtedy, gdy równolegle upłynął jego budżet. Taki wynik to
+`navigation_trial_cancelled` (HTTP 409), a nie `navigation_trial_prepare_timeout`
+(HTTP 504). Koniec starej operacji nie może ponownie uzbroić robota, wyłączyć
+kamery wybranej przez nowego właściciela ani odebrać mu sterowania.
+Bez interwencji przekroczenie budżetu nadal jest błędem 504; nie zwiększono
+TTL, prędkości ani czasu impulsu. Błędy walidacji wejścia i backendu zachowują
+własne kody; anulowanie nie maskuje braku wymaganych możliwości wykonawcy.
