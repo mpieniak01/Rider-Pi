@@ -1,11 +1,13 @@
 """Boot/service LCD handover without kernel guard bypass or vendor initialization."""
 
 import ast
+import builtins
 import importlib.machinery
 import importlib.util
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -100,3 +102,39 @@ def test_splash_availability_probe_never_imports_vendor_package(tmp_path, monkey
     finally:
         for name in ["xgoscreen", "xgoscreen.LCD_2inch"]:
             sys.modules.pop(name, None)
+
+
+def test_default_lcd_driver_import_occurs_inside_lease(monkeypatch):
+    from apps.ui import lcd_sink
+
+    events = []
+    ownership = {"held": False}
+
+    class FakeLease:
+        def __init__(self):
+            events.append("lease")
+            ownership["held"] = True
+
+        def close(self):
+            events.append("release")
+            ownership["held"] = False
+
+    def driver(_config):
+        events.append("construct")
+        return SimpleNamespace()
+
+    real_import = builtins.__import__
+
+    def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "drivers.lcd.driver_ili9xx":
+            assert ownership["held"], "vendor import before LCD ownership"
+            events.append("import")
+            return SimpleNamespace(FaceConfig=lambda **kwargs: kwargs, LCDRenderer=driver)
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(lease, "LCDLease", FakeLease)
+    monkeypatch.setattr(lcd_sink, "_CLOSED_SPI", None)
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    sink = lcd_sink.LcdSink(probe=lambda: {"free": True, "holders": [], "error": None})
+    sink.release()
+    assert events == ["lease", "import", "construct", "release"]
