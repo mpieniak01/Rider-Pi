@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import threading
 import uuid
 
+from apps.compute.client import ComputeError
 from apps.compute.decision_lease import DecisionLease
+from apps.compute.journey import JourneyProgress
 from apps.compute.qualification import Qualification
 from apps.safety.intent import write_intent_status
 
 
 class OperatorLifecycle:
     def __init__(self, runner):
+        # Lease callbacks can enter sync while holding DecisionLease.lock.
+        # Lifecycle code must never acquire a lease lock under this mutex.
+        self.lock = threading.RLock()
         self.runner = runner
         self.enabled = False
+        self.journey_id = None
         self.panel_id = None
         self.claim = None
         self.operation = None
@@ -21,6 +28,7 @@ class OperatorLifecycle:
         self.authorized = False
         self.qualified = False
         self.last_claim = float("-inf")
+        self.last_journey = None
 
     def _qualification(self):
         runner = self.runner
@@ -37,6 +45,10 @@ class OperatorLifecycle:
         )
 
     def admit(self, safety, intent):
+        with self.lock:
+            return self._admit(safety, intent)
+
+    def _admit(self, safety, intent):
         control = safety.get("operator_control") or {}
         panel = (safety.get("panel_control") or {}).get("holder")
         if control.get("version") == 1 and control.get("state") in {"qualifying", "active"} and panel and intent:
@@ -46,6 +58,17 @@ class OperatorLifecycle:
             self.operation = control.get("operation_id")
             self.qualification = self._qualification()
             self.authorized = True
+            if safety.get("arming_mode") == "journey":
+                journey = safety.get("journey") or {}
+                if (
+                    type(safety.get("navigation_journey_version")) is not int
+                    or safety["navigation_journey_version"] != 1
+                    or journey.get("active") is not True
+                ):
+                    raise ComputeError("navigation_journey_update_required")
+                identity = {"version": 1, "id": journey.get("id"), "maneuver_epoch": 0}
+                self.runner.lease.journey = JourneyProgress(identity, self.runner.clock)
+                self.journey_id = identity["id"]
             epoch = self.runner.run_id
             generation = safety.get("generation")
             self.runner.lease.stop = lambda: self.runner.stop(expected_run_id=epoch, expected_generation=generation)
@@ -55,17 +78,59 @@ class OperatorLifecycle:
             self.runner.lease.steer = lambda *args: self.runner.steer(*args, expected_run_id=epoch)
 
     def sync(self, safety):
+        with self.lock:
+            return self._sync(safety)
+
+    def _sync(self, safety):
         runner = self.runner
         control = safety.get("operator_control") or {}
         authorized = (
             safety.get("can_move") is True
             and safety.get("owner") == "navigation"
             and safety.get("state") == "ARMED"
-            and (safety.get("panel_control") or {}).get("holder") == self.panel_id
+            and (
+                (safety.get("panel_control") or {}).get("holder") == self.panel_id
+                or self.last_journey is not None
+                and self.journey_id is None
+                and isinstance((safety.get("panel_control") or {}).get("holder"), str)
+                and bool((safety.get("panel_control") or {}).get("holder"))
+            )
             and control.get("version") == 1
             and control.get("state") in {"qualifying", "active"}
             and isinstance(control.get("operation_id"), str)
         )
+        if self.journey_id is not None and (
+            not authorized
+            or runner.lease.latched
+            or runner.generation != safety.get("generation")
+            or control.get("operation_id") != self.operation
+            or safety.get("arming_mode") != "journey"
+            or (safety.get("journey") or {}).get("id") != self.journey_id
+            or (safety.get("journey") or {}).get("active") is not True
+        ):
+            reported = safety.get("journey") or {}
+            reason = reported.get("reason")
+            own_terminal = reported.get("id") == self.journey_id and reported.get("active") is False
+            self._end_journey(
+                reason if own_terminal and isinstance(reason, str) and reason else "navigation_authority_lost"
+            )
+            authorized = False
+        if self.last_journey is not None and self.journey_id is None and not self.authorized and authorized:
+            # An explicit new Start must first persist its matching service intent.
+            # ARM alone, reconnect and stale old producer claims cannot restart it.
+            intent = runner._live_intent(safety)
+            if not intent or intent.get("generation") != safety.get("generation"):
+                authorized = False
+            elif intent.get("request_id") == (self.claim or {}).get("request_id"):
+                authorized = False
+            elif safety.get("arming_mode") == "journey":
+                self._bind_journey(safety, intent)
+                return True
+        if self.journey_id is not None:
+            runner._check_executor_support(safety)
+            runner._check_rejected_acks(safety)
+            runner._check_pending_acks(safety)
+            runner._check_navigation_intent(safety, runner._live_intent(safety))
         changed = runner.generation != safety.get("generation") or self.authorized != authorized
         if changed:
             self.pause_reason = None if authorized else safety.get("reason") or control.get("reason")
@@ -110,9 +175,80 @@ class OperatorLifecycle:
             self.last_claim = runner.clock()
         return authorized
 
+    def _reset_lease(self, safety, *, authorized):
+        runner = self.runner
+        runner.generation = safety.get("generation")
+        runner.policy = {**runner.saved_policy, "mode": "drive" if authorized else "observe"}
+        runner.run_id = uuid.uuid4().hex
+        runner.sequence = 0
+        runner.motion_sequence = safety.get("last_seq", -1)
+        runner.pending_motion_acks.clear()
+        runner.motion_started = False
+        runner.motion_failure = None
+        runner.turn_capture_after = None
+        runner.startup_deadline = runner.clock() + 5
+        runner.run_started_monotonic = runner.clock()
+        self.qualified = False
+        runner.lease = DecisionLease(
+            runner.policy,
+            runner.run_id,
+            lambda *args, epoch=runner.run_id, **kwargs: runner.drive(*args, expected_run_id=epoch, **kwargs),
+            lambda epoch=runner.run_id, generation=runner.generation: runner.stop(
+                expected_run_id=epoch, expected_generation=generation
+            ),
+            runner.clock,
+            pause=lambda *args, epoch=runner.run_id: runner.pause(*args, expected_run_id=epoch),
+            feedback_wait=authorized,
+            turn=lambda *args, epoch=runner.run_id: runner.turn(*args, expected_run_id=epoch),
+            steer=lambda *args, epoch=runner.run_id: runner.steer(*args, expected_run_id=epoch),
+        )
+        self.qualification = self._qualification()
+
+    def _end_journey(self, reason):
+        runner = self.runner
+        lease = runner.lease
+        journey = lease.journey
+        journey.end(reason)
+        self.last_journey = journey.snapshot()
+        # This STOP is tied to the captured epoch/generation, never a new owner.
+        runner.stop(expected_run_id=lease.run_id, expected_generation=runner.generation)
+        runner._status(runner.last_result, terminal=True)
+        self.journey_id = None
+        self.authorized = False
+        self.pause_reason = reason
+        self._reset_lease({"generation": runner.generation, "last_seq": -1}, authorized=False)
+        runner.intent = None
+
+    def _bind_journey(self, safety, intent):
+        runner = self.runner
+        self._reset_lease(safety, authorized=True)
+        runner.intent = intent
+        runner.settings_revision, runner.calibration_digest = runner._check_navigation_intent(safety, intent)
+        self.admit(safety, intent)
+        self.last_claim = float("-inf")
+        write_intent_status(
+            "rider-venom-navigation.service",
+            self.claim,
+            active=True,
+            data_ready=runner.fresh_frame_seen,
+            navigation_ready=runner.fresh_frame_seen,
+            operator_control_version=1,
+        )
+
     def evidence(self, decision, frame_id, sequence, captured):
-        if not self.enabled or not self.authorized:
-            return decision
+        with self.lock:
+            if not self.enabled or not self.authorized:
+                return decision
+            lease = self.runner.lease
+            journey = lease.journey
+            if journey is None or journey.validate_reply(decision):
+                return self._evidence(decision, frame_id, sequence, captured)
+        # Never wait on DecisionLease.lock while owning the lifecycle mutex:
+        # an in-flight lease callback may itself be waiting to enter sync.
+        lease.halt("navigation_journey_identity_mismatch")
+        raise ComputeError("navigation_journey_identity_mismatch")
+
+    def _evidence(self, decision, frame_id, sequence, captured):
         if self.qualified:
             if self.qualification.source_context(decision) == self.qualification.source:
                 return decision
@@ -127,6 +263,10 @@ class OperatorLifecycle:
         return {**decision, "action": "stop", "motion_reason": "awaiting_fresh_qualification"}
 
     def status(self):
+        with self.lock:
+            return self._status()
+
+    def _status(self):
         if not self.enabled:
             return {}
         count = self.qualification.count if self.qualification else 0
@@ -135,4 +275,16 @@ class OperatorLifecycle:
             "qualification_count": count,
             "operation_id": self.operation,
             "operator_pause_reason": self.pause_reason,
+            **(
+                {"journey": self.runner.lease.journey.snapshot()}
+                if self.journey_id is not None
+                else {"journey": self.last_journey}
+                if self.last_journey
+                else {}
+            ),
+            "warm_navigation_version": 1,
+            "warm_ready": self.runner.policy["mode"] == "observe"
+            and self.runner.fresh_frame_seen
+            and self.runner.last_source is not None,
+            "warm_source": self.runner.last_source,
         }

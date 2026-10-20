@@ -448,6 +448,21 @@ class FeatureManager(FeatureStateMixin, FeatureAdminMixin):
             return {"ok": False, "error": "resource_conflict", "consumers": conflicts, "blocked_by": conflicts}
         if canonical in self._requested:
             if (
+                canonical == "s14_venom_navigation"
+                and control is not None
+                and type(control.get("warm_navigation_version")) is int
+                and control["warm_navigation_version"] == 1
+                and self._operation_guard is not None
+                and self._requested[canonical] == options
+                and all(self._running(unit) for unit in units)
+                and self.safety_status().get("arming_mode") == "journey"
+                and (self.safety_status().get("operator_control") or {}).get("state") == "qualifying"
+            ):
+                # Only the guarded preparation transaction can rebind an already
+                # running producer. It validated policy/source before new ARM;
+                # the runner separately requires the exact new service intent.
+                return None
+            if (
                 self._requested[canonical] != options
                 or feature.can_move
                 and self._intents.get(canonical, {}).get("generation") != control.get("generation")

@@ -8,6 +8,27 @@ from common.agent_control import verify_command
 
 
 class ExecutorAdmission:
+    def _release_intervention(self, command):
+        try:
+            matching = self.gate.manual_intervention.release(command)
+        except ValueError as exc:
+            return self._ack(command, "rejected", str(exc))
+        if matching:
+            self.intent_source = None
+            previous, self.pending = self.pending, None
+            stopped = self.controller.stop()
+            if previous is not None:
+                self._ack(
+                    previous, "rejected", "operator_intervention_cancelled", cancelled_by=command.get("request_id")
+                )
+            return self._ack(
+                command,
+                "executed" if stopped else "rejected",
+                "operator_intervention_released" if stopped else "hardware_stop_unconfirmed",
+                hardware_stop_sent=stopped,
+            )
+        return self._ack(command, "executed", "operator_intervention_cancelled", hardware_stop_sent=False)
+
     def _check_agent(self, command, action, agent):
         if agent and action not in {'stop', 'disarm', 'estop'}:
             try:
@@ -26,8 +47,11 @@ class ExecutorAdmission:
                 command.get("device_settings") is True
                 and command.get("source") == "manual"
                 and command.get("execution_context") == "panel"
-                and (self.gate.arming_mode == "operator" or self.gate.operator_control.enabled)
-                and self.gate.execution_context == "panel"
+                and (
+                    command.get("operator_intervention_version") == 1
+                    or (self.gate.arming_mode == "operator" or self.gate.operator_control.enabled)
+                    and self.gate.execution_context == "panel"
+                )
                 and (self.gate.owner == "manual" or command.get("intervene") is True)
             ):
                 return self._ack(command, "rejected", "hold_operator_panel_only")
@@ -105,6 +129,19 @@ class ExecutorAdmission:
         previous_generation = self.gate.generation
         authorized, reason = self.gate.authorize(command)
         if not authorized:
+            if previous_generation != self.gate.generation and reason == "navigation_journey_manual_arm_required":
+                previous, self.pending = self.pending, None
+                self.intent_source = None
+                stopped = self.controller.stop()
+                if previous is not None:
+                    self._ack(previous, "rejected", "operator_intervention", cancelled_by=command.get("request_id"))
+                return reason, self._ack(
+                    command,
+                    "rejected",
+                    reason if stopped else "hardware_stop_unconfirmed",
+                    gate_reason=reason,
+                    hardware_stop_sent=stopped,
+                )
             # Delayed renewals never undo a newer manual intent or release.
             obsolete = reason in {
                 "stale_sequence",
@@ -116,6 +153,8 @@ class ExecutorAdmission:
                 "operator_control_not_available",
                 "operator_panel_required",
                 "navigation_operation_stale",
+                "operator_intervention_cancelled",
+                "operator_intervention_stale",
             }
             if not obsolete:
                 self._cancel_invalid_intent(command, is_actuator, agent)
@@ -175,6 +214,8 @@ class ExecutorAdmission:
         if action not in ACTUATORS:
             return None
         if not self._hardware_ready():
+            if command.get("operator_intervention_version") == 1:
+                self.gate.disarm("hardware_unavailable")
             self.controller.stop()
             return self._ack(command, "rejected", "hardware_unavailable")
         quality = self.samples.quality()
@@ -199,6 +240,7 @@ class ExecutorAdmission:
                 self._ack(previous, 'rejected', 'manual_takeover', cancelled_by=command.get('request_id'))
 
     def _execute_motion(self, command, values, mode):
+        journey = self.gate.arming_mode == "journey"
         try:
             now = self.gate.clock()
             values["duration"] = decision_duration(command, values["duration"], now)
@@ -207,9 +249,12 @@ class ExecutorAdmission:
                 now,
                 timed_navigation=self.gate.owner == "navigation"
                 and self.gate.execution_context == "panel"
-                and self.gate.arming_mode == "timed",
+                and self.gate.arming_mode in {"timed", "journey"},
             )
         except ValueError as exc:
+            if journey:
+                self.gate.disarm(str(exc))
+                self.controller.stop()
             return self._ack(command, "rejected", str(exc))
         if not self.controller.drive(
             values["vx"],
@@ -220,7 +265,16 @@ class ExecutorAdmission:
             remote_decision_deadline=command.get("decision_deadline_monotonic"),
             remote_feedback_deadline=feedback,
         ):
+            if journey:
+                self.gate.disarm("motion_submission_failed")
+                self.controller.stop()
             return self._ack(command, "rejected", "motion_disarmed")
+        try:
+            self.gate.journey.accepted_goal(command, feedback)
+        except ValueError as exc:
+            self.gate.disarm(str(exc))
+            self.controller.stop()
+            return self._ack(command, "rejected", str(exc))
         if values["vx"] != 0 or values["yaw"] != 0:
             self.gate.operator_control.activated(command)
         previous, self.pending = self.pending, None

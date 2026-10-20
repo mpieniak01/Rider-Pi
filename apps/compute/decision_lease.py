@@ -6,6 +6,8 @@ import math
 import threading
 import time
 
+from apps.compute.journey import JourneyProgress
+
 
 class DecisionLease:
     def __init__(
@@ -20,6 +22,7 @@ class DecisionLease:
         feedback_wait=False,
         turn=None,
         steer=None,
+        journey=None,
     ):
         self.config = dict(config)
         self.run_id = run_id
@@ -27,6 +30,7 @@ class DecisionLease:
         self.turn = turn
         self.steer = steer
         self.turn_count = 0
+        self.journey = JourneyProgress(journey, clock) if journey is not None else None
         self.paused_for_obstacle = False
         self.pause = pause
         self.feedback_wait = feedback_wait and pause is not None
@@ -47,6 +51,8 @@ class DecisionLease:
             self.stop()
             return
         self.latched = True
+        if self.journey is not None:
+            self.journey.end(reason)
         self.reason = reason
         self.deadline = None
         self.feedback_deadline = None
@@ -61,6 +67,8 @@ class DecisionLease:
         self.deadline = None
         self.moving = False
         self.reason = "awaiting_fresh_decision"
+        if self.journey is not None:
+            self.journey.waiting(self.reason, reset_clear=False)
         return True
 
     def _defer_short_permit(self, now):
@@ -76,6 +84,8 @@ class DecisionLease:
         self.deadline = now + duration
         self.moving = False
         self.reason = "awaiting_fresh_decision"
+        if self.journey is not None:
+            self.journey.waiting(self.reason, reset_clear=False)
         try:
             self.pause(duration)
         except Exception:
@@ -114,9 +124,9 @@ class DecisionLease:
                 return self._accept_turn(decision, now, remaining)
             if decision["action"] == "stop":
                 return self._accept_stop(decision, identity, now, remaining, valid)
-            return self._accept_go(decision, now, remaining, valid)
+            return self._accept_go(decision, now, remaining, valid, captured_monotonic)
 
-    def _accept_go(self, decision, now, remaining, valid):
+    def _accept_go(self, decision, now, remaining, valid, captured):
         if (
             decision.get("state") != "clear"
             or type(decision.get("clear_count")) is not int
@@ -143,6 +153,8 @@ class DecisionLease:
         except Exception:
             self._halt("motion_submission_failed")
             raise
+        if self.journey is not None and self.journey.clear(captured):
+            self.turn_count = 0
         return True
 
     def _admit_decision(self, decision, frame_id, sequence, captured_monotonic, now):
@@ -167,6 +179,11 @@ class DecisionLease:
             or remaining <= 0
         ):
             self._halt("decision_invalid_or_expired")
+            return None
+        if (self.journey is None and "journey" in decision) or (
+            self.journey is not None and not self.journey.validate_reply(decision)
+        ):
+            self._halt("navigation_journey_identity_mismatch")
             return None
         valid = decision.get("valid_for_ms")
         if type(valid) is not int or not 0 < valid <= 200:
@@ -224,6 +241,8 @@ class DecisionLease:
         self.deadline = now + permit
         self.moving = False
         self.reason = str(decision.get("motion_reason", self.reason))[:128]
+        if self.journey is not None:
+            self.journey.waiting(self.reason)
         try:
             self.pause(duration)
             self.paused_for_obstacle = decision.get("state") == "obstacle"
@@ -286,6 +305,8 @@ class DecisionLease:
         self.paused_for_obstacle = False
         try:
             callback(side, duration)
+            if self.journey is not None:
+                self.journey.corrected(decision["action"], self.deadline)
         except Exception:
             self._halt("motion_submission_failed")
             raise

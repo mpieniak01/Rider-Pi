@@ -141,6 +141,11 @@ class FrameSource:
             'input_id': input_id,
             'content_type': content_type,
             'timestamp_source': timestamp_source,
+            **(
+                {'source': {key: metadata[key] for key in ('camera_session', 'transport_epoch', 'pipeline_revision')}}
+                if all(key in metadata for key in ('camera_session', 'transport_epoch', 'pipeline_revision'))
+                else {}
+            ),
         }
 
     def close(self) -> None:

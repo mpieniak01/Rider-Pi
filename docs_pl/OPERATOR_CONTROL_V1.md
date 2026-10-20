@@ -1,5 +1,7 @@
 # Priorytet operatora — kontrakt v1
 
+Osobna podróż bez limitu całej sesji ma jawny kontrakt [Automat2 v1](AUTOMAT2_JOURNEY_V1.md); poniższy cykl timed nadal dotyczy trial 10 s.
+
 Rozszerzenie jest jawne: `POST /api/navigation/trial` przyjmuje
 `operator_control_version: 1` i niepusty `panel_id`. Dotychczasowe żądania bez tych
 pól zachowują dotychczasowy cykl. Ruch nadal wykonuje wyłącznie motion-executor.
@@ -78,3 +80,53 @@ przed wydaniem. Sam ACK nie potwierdza fizycznego wykonania.
 OFF przy aktywnej jezdzie recznej zwraca camera_pipeline_motion_busy bez STOP.
 Gdy operator stoi w pauzie sesji nawigacji, jawne OFF konczy takze jej zgode.
 Ponowne ON nie przywraca zgody.
+
+
+## Jawna interwencja kierunkowa
+
+Safety ogłasza `operator_intervention_version:1`. To osobne rozszerzenie względem
+starszego transferu timed opisanego wyżej. Panel wysyła jeden świeży gest
+`POST /api/control`, `move` (lub normalizowany `turn`), zawierający:
+
+- `operator_intervention_version:1`, `intervene:true`, `source:manual`,
+  `execution_context:panel`, `panel_id` i zwykłą niezmienioną świeżą kopertę;
+- `operator_consent:true`, konkretny `operator_plan`, `owner:manual`,
+  `arming_mode:operator`, bez `lease_s`;
+- `device_settings:true`, kierunek i bieżącą `settings_revision`, zachowujące
+  zapisane limity impulsu/przytrzymania. Nie przyjmujemy dowolnych wartości napędu.
+
+Wykonawca kończy poprzednią podróż, zeruje jej wyjście, tworzy nową generację
+ręczną operatora i przyjmuje tylko zadany kierunek w jednej operacji. Działa to
+również z normalnego DISARMED po błędzie automatu. Gotowość sieci, czujników,
+sprzętu, rewizja ustawień i ESTOP pozostają sprawdzane. Świeży gest z innego
+panelu odbiera uprawnienie poprzedniemu; stare polecenia nie dziedziczą zgody.
+`ready` opisuje sprzęt/czujniki, a `panel_motion_enabled` istniejące ARM, dlatego
+to drugie nie jest warunkiem poproszenia o nową zgodę.
+
+Podczas przygotowania `supersedes_operation_id` może wskazać dokładny pierwotny
+request ID podróży; podczas nawigacji wskazuje aktualną operację operatora.
+Tylko ten zakres pozwala użyć pierwotnej generacji przy rosnącej sekwencji NAV.
+Wewnętrzne ARM zachowuje `operator_origin_generation` przygotowania, aby gest
+lub cancel dokładnego panelu/misji zadziałał także po scoped STOP i utworzeniu
+nowej generacji nawigacji. Inna misja, panel lub dowolna stara generacja nie
+korzystają z wyjątku. Status ręczny publikuje `operator_control.state:paused`
+i `operation_id` równy request ID gestu bez włączania starego resume. Status
+przed ACK może dzięki temu rozpoznać własne przejęcie.
+
+Zwolnienie/anulowanie przed ACK wysyła `mode:release` z tą samą wersją,
+`intervene`, pierwotną generacją, panelem, świeżą kopertą oraz
+`supersedes_operation_id` równym request ID gestu. Nie wymaga zgody i jej nie
+nadaje. Wykonawca zapisuje ograniczony tombstone anulowania przed nadejściem
+opóźnionego gestu albo zeruje dokładnie pasujące już przyjęte przejęcie.
+`supersedes_navigation_operation_id` dodatkowo wskazuje pierwotną operację
+automatu. Przy zgodnej generacji pochodzenia, właścicielu panelu i celu cancel
+kończy również tę nawigację. Dla tego samego DISARMED unieważnienie generacji
+odwołuje oczekujące przygotowanie, bez zgody i wyjścia napędu.
+
+Duplikaty są sprawdzane przed zmianą zgody lub zerowaniem wyjścia. Nowszy zwykły
+cel ręczny zastępuje zakres poprzedniego przejęcia także w tej samej generacji;
+stary cancel nie zatrzymuje nowego kierunku. Nowszy właściciel i generacja są
+chronione przed opóźnionym release lub scoped STOP poprzedniej podróży.
+Globalne STOP/ESTOP zachowują niezależny priorytet. Potwierdzenie HTTP zawiera
+pierwotne `command_generation` oraz nową generację ACK. Nie dowodzi fizycznego
+przemieszczenia.

@@ -360,6 +360,8 @@ class MotionExecutor(ExecutorAdmission):
             return self._ack(command, "rejected", panel_error)
         agent = is_agent(command)
         mode = command.get("mode", "pulse")
+        if "operator_intervention_version" in command and mode == "release":
+            return self._release_intervention(command)
         rejection = self._check_agent(command, action, agent)
         if rejection is not None:
             return rejection

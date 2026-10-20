@@ -19,6 +19,7 @@ from collections import deque
 from apps.compute.client import ComputeError
 from apps.compute.decision_lease import DecisionLease
 from apps.compute.navigation_cycle import NavigationCycle
+from apps.compute.navigation_transport import NavigationHTTPTransport
 from apps.compute.operator_lifecycle import OperatorLifecycle
 from apps.compute.runners import FrameSource, selected_executor
 from apps.safety.intent import read_service_intent, write_intent_status
@@ -52,6 +53,7 @@ class NavigationRunner(NavigationCycle):
         self.turn_capture_after = None
         self.pending_motion_acks = {}
         self.request = request or self._request
+        self.decision_transport = None
         self.clock = clock
         self.startup_deadline = clock() + 5.0
         self.closed = threading.Event()
@@ -61,6 +63,7 @@ class NavigationRunner(NavigationCycle):
         self.decision_trace = deque(maxlen=12)
         self.frame_trace = deque(maxlen=4)
         self.motion_failure = None
+        self.input_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
         self.run_started_monotonic = None
@@ -78,6 +81,7 @@ class NavigationRunner(NavigationCycle):
         self.settings_revision = None
         self.calibration_digest = None
         self.last_frame = None
+        self.last_source = None
         self.fresh_frame_seen = False
         self.lease = DecisionLease(
             self.policy,
@@ -155,16 +159,23 @@ class NavigationRunner(NavigationCycle):
                 self.motion_failure = {"http_status": 504, "reason": "navigation_motion_ack_timeout"}
                 raise ComputeError("navigation_motion_ack_timeout")
 
+    def _live_intent(self, safety):
+        return self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
+
     def _authority(self):
-        safety = self._timed("safety_read_ms", read_status)
         if self.operator_lifecycle.enabled:
-            return self.operator_lifecycle.sync(safety)
+            # Read authority inside the same transition mutex. A queued old
+            # snapshot must not retire a journey that another thread just bound.
+            with self.operator_lifecycle.lock:
+                safety = self._timed("safety_read_ms", read_status)
+                return self.operator_lifecycle.sync(safety)
+        safety = self._timed("safety_read_ms", read_status)
         if self.policy["mode"] == "observe":
             return False
         self._check_executor_support(safety)
         self._check_rejected_acks(safety)
         self._check_pending_acks(safety)
-        intent = self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
+        intent = self._live_intent(safety)
         revision, digest = self._check_navigation_intent(safety, intent)
         self.settings_revision, self.calibration_digest = revision, digest
         self.intent = intent
@@ -208,6 +219,11 @@ class NavigationRunner(NavigationCycle):
                 "ttl_ms": 100,
                 "settings_revision": self.settings_revision,
                 **({"operator_operation_id": operation} if self.operator_lifecycle.enabled else {}),
+                **(
+                    {"journey_version": 1, "journey_id": self.lease.journey.context["id"]}
+                    if self.lease.journey is not None
+                    else {}
+                ),
                 "decision_deadline_monotonic": self.lease.deadline,
                 "decision_feedback_deadline_monotonic": self.lease.feedback_deadline,
                 "vx": speed,
@@ -327,7 +343,9 @@ class NavigationRunner(NavigationCycle):
         if self.policy["mode"] == "observe":
             # Observation cannot actuate; Wi-Fi jitter must not become a drive permit.
             timeout = max(1.0, timeout)
-        with urllib.request.build_opener(NoRedirect()).open(req, timeout=timeout) as response:
+        if self.decision_transport is None:
+            self.decision_transport = NavigationHTTPTransport(self.selection["url"], clock=self.clock)
+        with self.decision_transport.open(req, timeout=timeout) as response:
             body = response.read(16385)
             if len(body) > 16384:
                 raise ComputeError("navigation_response_bounds")
@@ -372,13 +390,22 @@ class NavigationRunner(NavigationCycle):
             return exc.code in {408, 429, 500, 502, 503, 504}
         return isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
 
-    def _status(self, decision):
+    def _status(self, decision, *, terminal=False):
+        with self.operator_lifecycle.lock:
+            if isinstance(decision, dict) and decision.get("run_id", self.run_id) != self.run_id:
+                decision = None  # An in-flight old reply never labels a new epoch.
+            return self._write_status(decision, terminal=terminal)
+
+    def _write_status(self, decision, *, terminal=False):
         import os
         from pathlib import Path
 
         from services.compute_config import _write
 
         target = Path(os.getenv("RIDER_NAVIGATION_STATUS", "/run/rider-motion/navigation_loop.json"))
+        lease = self.lease
+        deadline, feedback = lease.deadline, lease.feedback_deadline
+        sampled = self.clock()
         row = {
             "observed_at": time.time(),
             **self.operator_lifecycle.status(),
@@ -389,27 +416,27 @@ class NavigationRunner(NavigationCycle):
             "config_revision": self.policy["revision"],
             "decision": decision,
             "request_roundtrip_ms": self.request_roundtrip_ms,
+            "decision_transport": self.decision_transport.status()
+            if callable(getattr(self.decision_transport, "status", None))
+            else None,
             "response_age_ms": self.response_age_ms,
-            "latched": self.lease.latched,
+            "latched": lease.latched,
             "paused": self.policy["mode"] == "drive"
-            and not self.lease.latched
-            and not self.lease.moving
-            and (self.lease.deadline is not None or self.lease.feedback_deadline is not None),
-            "feedback_remaining_ms": max(0, round((self.lease.feedback_deadline - self.clock()) * 1000, 2))
-            if self.lease.feedback_deadline is not None
-            else 0,
-            "permit_remaining_ms": max(0, round((self.lease.deadline - self.clock()) * 1000, 2))
-            if self.lease.deadline is not None
-            else 0,
-            "sampled_monotonic": self.clock(),
+            and not lease.latched
+            and not lease.moving
+            and (deadline is not None or feedback is not None),
+            "feedback_remaining_ms": max(0, round((feedback - sampled) * 1000, 2)) if feedback is not None else 0,
+            "permit_remaining_ms": max(0, round((deadline - sampled) * 1000, 2)) if deadline is not None else 0,
+            "sampled_monotonic": sampled,
             "run_started_monotonic": self.run_started_monotonic,
             "cycle_timings_ms": dict(self.cycle_timings_ms),
             "cycle_elapsed_ms": round((self.clock() - self.cycle_started) * 1000, 2),
             "previous_status_write_ms": self.previous_status_write_ms,
             "visual_pause_supported": True,
-            "running": not self.closed.is_set(),
-            "stop_reason": self.lease.reason,
+            "running": not self.closed.is_set() and not terminal,
+            "stop_reason": lease.reason,
             "motion_failure": self.motion_failure,
+            "input_failure": self.input_failure,
         }
         status_started = self.clock()
         try:
@@ -419,7 +446,7 @@ class NavigationRunner(NavigationCycle):
             self.previous_status_write_ms = round((self.clock() - status_started) * 1000, 2)
         if self.policy["mode"] == "drive":
             self.decision_trace.append(dict(row))
-            if self.closed.is_set():
+            if self.closed.is_set() or terminal:
                 # Persist only after the drive has stopped; observation never
                 # replaces its outcome or writes to the drive recorder.
                 archive = io.BytesIO()
@@ -518,6 +545,12 @@ class NavigationRunner(NavigationCycle):
             from apps.compute.stream_prepare import http_error_code
 
             failure = ComputeError("navigation_" + http_error_code(exc), exc.code)
+        self.input_failure = {
+            "error_type": type(exc).__name__,
+            "reason_type": type(getattr(exc, "reason", None)).__name__,
+            "code": failure.code if isinstance(failure, ComputeError) else "navigation_transport_or_input_failed",
+            "http_status": getattr(failure, "status", None),
+        }
         logging.getLogger(__name__).warning(
             "[vision] navigation failed type=%s reason_type=%s code=%s http_status=%s",
             type(exc).__name__,
@@ -535,6 +568,8 @@ class NavigationRunner(NavigationCycle):
             self._status(self.last_result)
         except OSError:
             pass
+        if self.decision_transport is not None:
+            self.decision_transport.close()
         if source:
             source.close()
         if watchdog.is_alive():
@@ -560,7 +595,24 @@ class NavigationRunner(NavigationCycle):
             self._start_watch()
             watchdog.start()
             while not self.closed.is_set():
-                self._run_cycle(source)
+                try:
+                    self._run_cycle(source)
+                except Exception as exc:
+                    lifecycle = self.operator_lifecycle
+                    incompatible = isinstance(exc, ComputeError) and exc.code in {
+                        "navigation_configuration_changed",
+                        "navigation_journey_source_changed",
+                        "navigation_calibration_changed",
+                        "navigation_settings_stale",
+                    }
+                    if lifecycle.journey_id is None or incompatible:
+                        raise
+                    self._run_failure(exc)
+                    # Failure ends this mission, not its passive source/connection.
+                    # The old lease is latched; sync can only retire it to observe.
+                    self._authority()
+                    self._status(self.last_result)
+
             return 0
         except Exception as exc:
             return self._run_failure(exc)

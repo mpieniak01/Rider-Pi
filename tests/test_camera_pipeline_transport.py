@@ -128,47 +128,67 @@ def test_prepare_timeout_does_not_synthesize_a_clear_verdict(monkeypatch):
         )
 
 
-def test_reference_request_sends_no_jpeg_and_requires_exact_source_echo(monkeypatch):
+def isolated_navigation_transport(monkeypatch, response):
+    """Run production HTTP transport against a memory connection, never a socket."""
+    from apps.compute import navigation_transport
+
+    received = []
+
+    class Connection:
+        sock = None
+
+        def __init__(self, _host, _port, *, timeout):
+            self.timeout = timeout
+
+        def request(self, method, path, *, body, headers):
+            received.append({"method": method, "path": path, "body": body, "headers": headers})
+
+        def getresponse(self):
+            body = json.dumps(response()).encode()
+            return SimpleNamespace(status=200, headers={}, read=lambda limit: body[:limit])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(navigation_transport.http.client, "HTTPConnection", Connection)
     runner = navigation.NavigationRunner.__new__(navigation.NavigationRunner)
     runner.selection, runner.policy = selection(), {"decision_budget_ms": 300, "mode": "observe"}
+    runner.clock, runner.decision_transport = time.monotonic, None
+    return runner, received
+
+
+def test_reference_request_sends_no_jpeg_and_requires_exact_source_echo(monkeypatch):
     reference = {
         k: source()[k]
         for k in ("camera_session", "sequence", "transport_epoch", "pipeline_revision", "frame_id", "sha256")
     }
-    received = []
-
-    def request(req, timeout):
-        received.append((req, timeout))
-        return Response({"source": dict(reference), "action": "stop"})
-
-    monkeypatch.setattr(navigation.urllib.request, "build_opener", lambda *_: SimpleNamespace(open=request))
+    returned_source = dict(reference)
+    runner, received = isolated_navigation_transport(monkeypatch, lambda: {"source": returned_source, "action": "stop"})
     meta = {"frame_id": "decision-1", "sequence": 1}
-    assert runner._request(meta, reference, "application/json")["action"] == "stop"
-    req, _ = received[0]
-    assert req.full_url.endswith("/vision/decision-reference")
-    assert json.loads(req.data) == {"frame": meta, "source": reference}
-    assert b"jpeg" not in req.data
-    monkeypatch.setattr(
-        navigation.urllib.request,
-        "build_opener",
-        lambda *_: SimpleNamespace(open=lambda *_a, **_k: Response({"source": dict(reference, sequence=2)})),
-    )
-    with pytest.raises(navigation.ComputeError, match="navigation_reference_mismatch"):
-        runner._request(meta, reference, "application/json")
+    try:
+        assert runner._request(meta, reference, "application/json")["action"] == "stop"
+        req = received[0]
+        assert req["method"] == "POST"
+        assert req["path"].endswith("/vision/decision-reference")
+        assert json.loads(req["body"]) == {"frame": meta, "source": reference}
+        assert b"jpeg" not in req["body"]
+        returned_source["sequence"] = 2
+        with pytest.raises(navigation.ComputeError, match="navigation_reference_mismatch"):
+            runner._request(meta, reference, "application/json")
+        assert runner.decision_transport.status() == {"connections": 1, "requests": 2}
+    finally:
+        runner.decision_transport.close()
 
 
 def test_snapshot_request_preserves_binary_endpoint(monkeypatch):
-    runner = navigation.NavigationRunner.__new__(navigation.NavigationRunner)
-    runner.selection, runner.policy = selection(), {"decision_budget_ms": 300, "mode": "observe"}
-    calls = []
-    monkeypatch.setattr(
-        navigation.urllib.request,
-        "build_opener",
-        lambda *_: SimpleNamespace(open=lambda req, **kw: calls.append(req) or Response({"action": "stop"})),
-    )
-    runner._request({"frame_id": "fixture"}, b"jpeg", "image/jpeg")
-    assert calls[0].data == b"jpeg"
-    assert calls[0].full_url.endswith("/vision/decision")
+    runner, calls = isolated_navigation_transport(monkeypatch, lambda: {"action": "stop"})
+    try:
+        runner._request({"frame_id": "fixture"}, b"jpeg", "image/jpeg")
+        assert calls[0]["body"] == b"jpeg"
+        assert calls[0]["path"].endswith("/vision/decision")
+        assert runner.decision_transport.status() == {"connections": 1, "requests": 1}
+    finally:
+        runner.decision_transport.close()
 
 
 def test_hardware_adapter_has_one_yuv_capture_and_closes_idempotently(monkeypatch):

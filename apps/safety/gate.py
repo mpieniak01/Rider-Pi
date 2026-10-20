@@ -10,6 +10,8 @@ import uuid
 from collections.abc import Callable
 
 from apps.safety import estop
+from apps.safety.journey import JourneyConsent, validate_arm as validate_journey_arm
+from apps.safety.manual_intervention import ManualIntervention, validate as validate_intervention
 from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS, OperatorControl
 from common.agent_control import MANUAL_AGENT_GRACE_S, verify_command
 
@@ -60,12 +62,15 @@ class MotionGate:
         self.agent_intents = []
         self.manual_grace_until = 0.0
         self.operator_control = OperatorControl(self)
+        self.manual_intervention = ManualIntervention(self)
+        self.journey = JourneyConsent(self)
         self.poll()
 
     def _invalidate(self, state: str, reason: str) -> None:
         logging.getLogger("motion.permission").info(
             "permission %s -> %s reason=%s generation=%s", self.state, state, reason, self.generation
         )
+        self.journey.end(reason)
         self.state = state
         self.reason = reason
         self.owner = None
@@ -112,8 +117,8 @@ class MotionGate:
     def poll(self) -> None:
         if self.blocked():
             self.latch_estop("external_estop")
-        elif self.state == "ARMED" and self.arming_mode == "timed" and self.clock() >= self.lease_deadline:
-            self.disarm("consent_expired")
+        elif self.state == "ARMED" and self.arming_mode in {"timed", "journey"} and self.clock() >= self.lease_deadline:
+            self.disarm("decision_timeout" if self.arming_mode == "journey" else "consent_expired")
         elif self.state == "ARMED" and os.getenv("MOTION_ENABLE") == "0":
             self.disarm("environment_inhibit")
 
@@ -126,7 +131,9 @@ class MotionGate:
             raise ValueError("request_id_required")
         if not isinstance(command.get("source"), str) or command["source"] not in OWNERS | {'agent'}:
             raise ValueError("unknown_source")
-        priority_sequence = self.operator_control.priority_sequence(command)
+        priority_sequence = self.manual_intervention.priority_sequence(command)
+        if priority_sequence is None:
+            priority_sequence = self.operator_control.priority_sequence(command)
         if command.get("generation") != self.generation and priority_sequence is None:
             raise ValueError("stale_generation")
         seq = command.get("seq")
@@ -153,6 +160,12 @@ class MotionGate:
         panel = command.get("panel_id")
         if "panel_id" in command and (not isinstance(panel, str) or not panel.strip() or len(panel) > 128):
             return "invalid_panel_id"
+        if self.manual_intervention.requested(command):
+            try:
+                validate_intervention(command)
+            except ValueError as exc:
+                return str(exc)
+            return None
         if self.panel_id is not None and panel != self.panel_id:
             return "stale_generation" if command.get("generation") != self.generation else "panel_owner_mismatch"
         return None
@@ -180,6 +193,7 @@ class MotionGate:
             and self.panel_id is not None
             and command.get("source") == "manual"
             and command.get("panel_id") != self.panel_id
+            and not self.manual_intervention.requested(command)
         ):
             raise ValueError("panel_owner_mismatch")
         if action in ACTUATORS and self.motion_not_before is not None and command["ts"] <= self.motion_not_before:
@@ -249,13 +263,14 @@ class MotionGate:
         owner = command.get("owner", command.get("source"))
         if not isinstance(owner, str) or owner not in OWNERS:
             raise ValueError("unknown_owner")
+        validate_journey_arm(command, owner, context)
         self.operator_control.validate_arm(command, owner, context)
         mode = command.get("arming_mode", "timed")
-        if not isinstance(mode, str) or mode not in {"timed", "operator"}:
+        if not isinstance(mode, str) or mode not in {"timed", "operator", "journey"}:
             raise ValueError("invalid_arming_mode")
         if mode == "operator" and (context != "panel" or owner != "manual" or "lease_s" in command):
             raise ValueError("operator_arming_panel_only")
-        lease = 0.0 if mode == "operator" else finite_number(command.get("lease_s", 15.0), "invalid_lease")
+        lease = 0.0 if mode in {"operator", "journey"} else finite_number(command.get("lease_s", 15.0), "invalid_lease")
         if mode == "timed" and not 0 < lease <= MAX_LEASE_S:
             raise ValueError("invalid_lease")
         return owner, plan, mode, lease
@@ -272,6 +287,8 @@ class MotionGate:
         owner, plan, mode, lease = self._arming_parameters(command, context)
         requested_panel = self._requested_panel(command, owner, mode)
         if self.state == "ARMED":
+            if mode == "journey" and command.get("journey_id") != self.journey.id:
+                raise ValueError("navigation_journey_active")
             if (self.owner, self.execution_context, self.arming_mode) != (owner, context, mode):
                 raise ValueError("already_armed_disarm_first")
             if self.panel_id != requested_panel:
@@ -293,12 +310,17 @@ class MotionGate:
         self.last_seq = command["seq"]
         self.invalidate_agent(manual=owner == "manual")
         self.operator_control.arm(command)
+        self.journey.arm(command)
         return True, "armed"
 
     def _authorize_actuator(self, command, action, context):
         """Retain owner, context and navigation-operation checks before consuming a sequence."""
         if action not in ACTUATORS:
             raise ValueError("unknown_action")
+        if self.manual_intervention.requested(command):
+            self.manual_intervention.transfer(command)
+            self.last_seq = command["seq"]
+            return True, "operator_intervention"
         if not self.can_actuate():
             raise ValueError("motion_disarmed" if self.state != "ESTOP" else "estop_latched")
         if context != self.execution_context:
@@ -307,11 +329,15 @@ class MotionGate:
             if action not in {"move", "turn"}:
                 raise ValueError("operator_intervention_move_only")
             self.operator_control.transfer(command)
+        if self.state != "ARMED":
+            raise ValueError("navigation_journey_manual_arm_required")
         if command.get("source") != self.owner:
             raise ValueError("owner_mismatch")
         self.operator_control.validate_navigation(command)
+        self.journey.validate_goal(command)
         self.last_seq = command["seq"]
         if command.get('source') == 'manual':
+            self.manual_intervention.supersede(command)
             self.invalidate_agent(manual=True)
         return True, "authorized"
 
@@ -352,6 +378,9 @@ class MotionGate:
             "owner": self.owner,
             "panel_control": {"version": 1, "holder": self.panel_id},
             "operator_control": self.operator_control.snapshot(),
+            "navigation_journey_version": 1,
+            "operator_intervention_version": 1,
+            "journey": self.journey.snapshot(),
             "execution_context": self.execution_context,
             "panel_motion_enabled": self.state == "ARMED" and self.execution_context == "panel",
             "test_motion_enabled": self.state == "ARMED" and self.execution_context == "test",

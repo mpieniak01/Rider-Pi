@@ -535,7 +535,10 @@ def test_native_reference_recorded_delay_retains_original_capture_deadline(
                 ).encode()
             )
 
-    monkeypatch.setattr(module.urllib.request, "build_opener", lambda *_args: Opener())
+        def close(self):
+            pass
+
+    monkeypatch.setattr(module, "NavigationHTTPTransport", lambda *_args, **kw: Opener())
     runner = module.NavigationRunner(source_factory=Source, clock=lambda: now_ns[0] / 1_000_000_000)
     assert runner.run() == (2 if changed_source else 0)
     assert len(requests) == 2
