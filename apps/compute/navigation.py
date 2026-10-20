@@ -19,6 +19,7 @@ from collections import deque
 from apps.compute.client import ComputeError
 from apps.compute.decision_lease import DecisionLease
 from apps.compute.navigation_cycle import NavigationCycle
+from apps.compute.navigation_transport import NavigationHTTPTransport
 from apps.compute.operator_lifecycle import OperatorLifecycle
 from apps.compute.runners import FrameSource, selected_executor
 from apps.safety.intent import read_service_intent, write_intent_status
@@ -52,6 +53,7 @@ class NavigationRunner(NavigationCycle):
         self.turn_capture_after = None
         self.pending_motion_acks = {}
         self.request = request or self._request
+        self.decision_transport = None
         self.clock = clock
         self.startup_deadline = clock() + 5.0
         self.closed = threading.Event()
@@ -335,7 +337,9 @@ class NavigationRunner(NavigationCycle):
         if self.policy["mode"] == "observe":
             # Observation cannot actuate; Wi-Fi jitter must not become a drive permit.
             timeout = max(1.0, timeout)
-        with urllib.request.build_opener(NoRedirect()).open(req, timeout=timeout) as response:
+        if self.decision_transport is None:
+            self.decision_transport = NavigationHTTPTransport(self.selection["url"], clock=self.clock)
+        with self.decision_transport.open(req, timeout=timeout) as response:
             body = response.read(16385)
             if len(body) > 16384:
                 raise ComputeError("navigation_response_bounds")
@@ -397,6 +401,9 @@ class NavigationRunner(NavigationCycle):
             "config_revision": self.policy["revision"],
             "decision": decision,
             "request_roundtrip_ms": self.request_roundtrip_ms,
+            "decision_transport": self.decision_transport.status()
+            if callable(getattr(self.decision_transport, "status", None))
+            else None,
             "response_age_ms": self.response_age_ms,
             "latched": self.lease.latched,
             "paused": self.policy["mode"] == "drive"
@@ -543,6 +550,8 @@ class NavigationRunner(NavigationCycle):
             self._status(self.last_result)
         except OSError:
             pass
+        if self.decision_transport is not None:
+            self.decision_transport.close()
         if source:
             source.close()
         if watchdog.is_alive():

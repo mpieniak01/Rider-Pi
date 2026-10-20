@@ -133,7 +133,7 @@ def test_oversized_response_rejected(isolated, monkeypatch):
             return b"x" * 16385
 
     monkeypatch.setattr(
-        module.urllib.request, "build_opener", lambda *_: SimpleNamespace(open=lambda *a, **kw: Response())
+        module, "NavigationHTTPTransport", lambda *_, **kw: SimpleNamespace(open=lambda *a, **kw: Response())
     )
     with pytest.raises(module.ComputeError):
         runner._request({}, b"fixture", "image/jpeg")
@@ -319,7 +319,7 @@ def test_observation_transport_grace_does_not_extend_drive_deadline(isolated, mo
         calls.append((timeout, json.loads(request.get_header("X-rider-vision"))))
         return Response()
 
-    monkeypatch.setattr(module.urllib.request, "build_opener", lambda *_: SimpleNamespace(open=open_request))
+    monkeypatch.setattr(module, "NavigationHTTPTransport", lambda *_, **kw: SimpleNamespace(open=open_request))
     metadata = {"deadline_ms": runner.policy["decision_budget_ms"], "mode": runner.policy["mode"]}
     assert runner._request(metadata, b"fixture", "image/jpeg") == {"action": "stop"}
     assert calls == [(expected_timeout, metadata)]

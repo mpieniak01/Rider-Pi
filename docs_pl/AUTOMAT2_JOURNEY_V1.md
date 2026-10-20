@@ -77,3 +77,17 @@ To reaktywna jazda z obrazu, bez SLAM, odometrii, gwarancji dotarcia do celu i
 pomiaru centymetrów z pojedynczej kamery. Testy programowe używają wyłącznie
 atrap. Fizyczny odbiór kilku przeszkód, pochylenia, łączności i STOP należy do
 operatora po przygotowaniu przestrzeni i kabla; ACK nie dowodzi przebytej drogi.
+
+## Transport decyzji i odtwarzanie podglądu
+
+Runner utrzymuje jedno połączenie HTTP do wybranego Venom dla kolejnych klatek,
+zarówno JPEG, jak i native reference. Każdy POST jest wysyłany tylko raz. Błąd
+połączenia zamyka socket; obserwacja może ponowić analizę nowego przechwycenia,
+a nie odtworzyć polecenie. Po 2 s bezczynności oraz po zakończeniu runnera
+połączenie jest zamykane. Przekierowania i zmiana originu są odrzucane.
+Odpowiedź pozostaje ograniczona do 16 KiB. `decision_transport` w statusie
+podaje wyłącznie liczniki `connections` i `requests`, bez adresów i poświadczeń.
+
+To optymalizacja transportu, nie zmiana zgody: oryginalne capture/feedback
+deadlines, maksymalna prędkość i czas impulsu pozostają bez zmian. Odbiór
+obserwacji na prawdziwej kamerze nie zastępuje fizycznego testu podróży operatora.
