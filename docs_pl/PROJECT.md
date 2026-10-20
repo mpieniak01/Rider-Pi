@@ -4,7 +4,7 @@
 
 > Rider‑Pi to nazwa urządzenia (sprzętu). Nasz projekt tworzy niezależne oprogramowanie **Rider‑Pi Apps**, które rozwija funkcje autonomii i interakcji ponad to, co dostarcza producent urządzenia.
 
-> Dokument biznesowy (high‑level). Przedstawia **wizję i cele projektu** w języku zrozumiałym biznesowo, z lekkim żargonem technicznym tam, gdzie to ułatwia precyzję. Szczegóły implementacyjne i pełna architektura zostaną opisane w pliku **ARCHITECTURE.md**.
+> Dokument biznesowy (high‑level). Przedstawia **wizję i cele projektu** w języku zrozumiałym biznesowo, z lekkim żargonem technicznym tam, gdzie to ułatwia precyzję. Szczegóły implementacyjne opisuje [architektura](ARCHITECTURE.md).
 
 ## Wizja projektu
 

@@ -5,7 +5,7 @@
 
 > Rider-Pi is the name of the device (hardware). Our project creates independent software **Rider-Pi Apps**, which extends the autonomy and interaction features beyond what the device manufacturer provides.
 
-> Business document (high-level). Presents **project vision and goals** in business-friendly language, with light technical jargon where it aids precision. Implementation details and full architecture will be described in **ARCHITECTURE.md**.
+> Business document (high-level). Presents **project vision and goals** in business-friendly language, with light technical jargon where it aids precision. Implementation details are documented in [architecture](ARCHITECTURE.md).
 
 ## Project Vision
 
