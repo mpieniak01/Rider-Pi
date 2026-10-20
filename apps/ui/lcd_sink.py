@@ -64,9 +64,12 @@ class LcdSink:
         if snapshot.get("free") is not True or not ownership_permits(snapshot):
             raise LcdUnavailable("lcd_owned_or_unknown")
         if factory is None:
-            from drivers.lcd.driver_ili9xx import FaceConfig, LCDRenderer
 
             def factory():
+                # Importing the vendor backend can open SPI. Delay even the
+                # import until the lease and second ownership probe succeeded.
+                from drivers.lcd.driver_ili9xx import FaceConfig, LCDRenderer
+
                 return LCDRenderer(FaceConfig(lcd_bl_pin=board.bl, lcd_spi_hz=board.hz))
 
         from drivers.lcd.lease import LCDLease

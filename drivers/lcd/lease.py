@@ -11,13 +11,25 @@ from pathlib import Path
 from common.secure_files import directory
 
 
+def _open_lock(parent, name):
+    # O_CREAT on an existing file owned by the other trusted UID is denied by
+    # fs.protected_regular in /tmp, even for root. Creation must be exclusive.
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+    try:
+        return os.open(name, flags, dir_fd=parent)
+    except FileNotFoundError:
+        try:
+            return os.open(name, flags | os.O_CREAT | os.O_EXCL, 0o644, dir_fd=parent)
+        except FileExistsError:
+            # A concurrent creator still has to pass the same inode/owner checks.
+            return os.open(name, flags, dir_fd=parent)
+
+
 class LCDLease:
     def __init__(self):
         path = Path(os.getenv("RIDER_LCD_OWNER_LOCK", "/tmp/rider-lcd-owner.lock"))
         with directory(path.parent) as parent:
-            fd = os.open(
-                path.name, os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o644, dir_fd=parent
-            )
+            fd = _open_lock(parent, path.name)
             try:
                 allowed = {0, os.geteuid()}
                 if os.geteuid() == 0:

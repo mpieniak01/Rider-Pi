@@ -279,3 +279,9 @@ the backlight. Splash handles are released before guarded OFF and the subsequent
 `lcd-renderer.service` startup. Rotation remains 270 degrees.
 
 Offline regression with inert LCD/vendor fixtures: `.venv/bin/python tests/helpers/boot_splash_startup.py`.
+
+The LCD lease opens an existing lock without `O_CREAT` and creates a new file
+exclusively with `O_CREAT|O_EXCL`. This permits root boot and pi services to share
+the lock with `fs.protected_regular` enabled, preserving owner, inode, mode and
+no-symlink checks. The xgoscreen availability probe only locates module specs;
+vendor imports that may open SPI occur after the lease is acquired.

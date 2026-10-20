@@ -278,3 +278,10 @@ podświetlenie; po splashu uchwyty są zwalniane przed kontrolowanym OFF i start
 `lcd-renderer.service`. Obrót pozostaje 270°.
 
 Regresja offline z atrapami LCD/vendora: `.venv/bin/python tests/helpers/boot_splash_startup.py`.
+
+Dzierżawa LCD otwiera istniejącą blokadę bez `O_CREAT`; nowy plik tworzy wyłącznie
+przez `O_CREAT|O_EXCL`. Pozwala to przekazywać ekran pomiędzy root podczas boot
+i usługą użytkownika pi przy aktywnym `fs.protected_regular`, zachowując kontrolę
+właściciela, inode, trybu i brak podążania za symlinkami. Sprawdzanie dostępności
+xgoscreen wyszukuje specyfikację modułu, aby import vendora otwierający SPI nastąpił
+dopiero po uzyskaniu dzierżawy.
