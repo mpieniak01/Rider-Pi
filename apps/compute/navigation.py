@@ -163,9 +163,13 @@ class NavigationRunner(NavigationCycle):
         return self._timed("intent_read_ms", read_service_intent, UNIT, safety.get("generation"))
 
     def _authority(self):
-        safety = self._timed("safety_read_ms", read_status)
         if self.operator_lifecycle.enabled:
-            return self.operator_lifecycle.sync(safety)
+            # Read authority inside the same transition mutex. A queued old
+            # snapshot must not retire a journey that another thread just bound.
+            with self.operator_lifecycle.lock:
+                safety = self._timed("safety_read_ms", read_status)
+                return self.operator_lifecycle.sync(safety)
+        safety = self._timed("safety_read_ms", read_status)
         if self.policy["mode"] == "observe":
             return False
         self._check_executor_support(safety)
@@ -387,12 +391,21 @@ class NavigationRunner(NavigationCycle):
         return isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
 
     def _status(self, decision, *, terminal=False):
+        with self.operator_lifecycle.lock:
+            if isinstance(decision, dict) and decision.get("run_id", self.run_id) != self.run_id:
+                decision = None  # An in-flight old reply never labels a new epoch.
+            return self._write_status(decision, terminal=terminal)
+
+    def _write_status(self, decision, *, terminal=False):
         import os
         from pathlib import Path
 
         from services.compute_config import _write
 
         target = Path(os.getenv("RIDER_NAVIGATION_STATUS", "/run/rider-motion/navigation_loop.json"))
+        lease = self.lease
+        deadline, feedback = lease.deadline, lease.feedback_deadline
+        sampled = self.clock()
         row = {
             "observed_at": time.time(),
             **self.operator_lifecycle.status(),
@@ -407,25 +420,21 @@ class NavigationRunner(NavigationCycle):
             if callable(getattr(self.decision_transport, "status", None))
             else None,
             "response_age_ms": self.response_age_ms,
-            "latched": self.lease.latched,
+            "latched": lease.latched,
             "paused": self.policy["mode"] == "drive"
-            and not self.lease.latched
-            and not self.lease.moving
-            and (self.lease.deadline is not None or self.lease.feedback_deadline is not None),
-            "feedback_remaining_ms": max(0, round((self.lease.feedback_deadline - self.clock()) * 1000, 2))
-            if self.lease.feedback_deadline is not None
-            else 0,
-            "permit_remaining_ms": max(0, round((self.lease.deadline - self.clock()) * 1000, 2))
-            if self.lease.deadline is not None
-            else 0,
-            "sampled_monotonic": self.clock(),
+            and not lease.latched
+            and not lease.moving
+            and (deadline is not None or feedback is not None),
+            "feedback_remaining_ms": max(0, round((feedback - sampled) * 1000, 2)) if feedback is not None else 0,
+            "permit_remaining_ms": max(0, round((deadline - sampled) * 1000, 2)) if deadline is not None else 0,
+            "sampled_monotonic": sampled,
             "run_started_monotonic": self.run_started_monotonic,
             "cycle_timings_ms": dict(self.cycle_timings_ms),
             "cycle_elapsed_ms": round((self.clock() - self.cycle_started) * 1000, 2),
             "previous_status_write_ms": self.previous_status_write_ms,
             "visual_pause_supported": True,
             "running": not self.closed.is_set() and not terminal,
-            "stop_reason": self.lease.reason,
+            "stop_reason": lease.reason,
             "motion_failure": self.motion_failure,
             "input_failure": self.input_failure,
         }

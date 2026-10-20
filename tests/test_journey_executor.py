@@ -196,3 +196,32 @@ def test_controller_rejection_finishes_journey_immediately(executor, monkeypatch
     assert instance.gate.state == "DISARMED"
     assert not instance.gate.journey.active
     assert instance.controller.stopped
+
+
+@pytest.mark.parametrize("stop_confirmed", [True, False])
+def test_unversioned_journey_intervention_finishes_previous_goal_and_reports_real_stop(
+    executor, monkeypatch, stop_confirmed
+):
+    instance, clock = executor
+    arm(instance)
+    previous = goal(instance, clock, request_id="pending-navigation-goal")
+    assert instance.apply(previous)["status"] == "accepted"
+    real_stop = instance.controller.stop
+
+    def stop():
+        real_stop()
+        return stop_confirmed
+
+    monkeypatch.setattr(instance.controller, "stop", stop)
+    row = command(instance, panel_id="operator", execution_context="panel", intervene=True, request_id="old-client")
+    result = instance.apply(row)
+    assert result["status"] == "rejected"
+    assert result["hardware_stop_sent"] is stop_confirmed
+    assert result["reason"] == (
+        "navigation_journey_manual_arm_required" if stop_confirmed else "hardware_stop_unconfirmed"
+    )
+    previous_ack = next(ack for ack in instance.recent_acks if ack["request_id"] == previous["request_id"])
+    assert previous_ack["status"] == "rejected"
+    assert previous_ack["cancelled_by"] == row["request_id"]
+    assert instance.pending is None
+    assert instance.gate.state == "DISARMED"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import uuid
 
 from apps.compute.client import ComputeError
@@ -13,6 +14,9 @@ from apps.safety.intent import write_intent_status
 
 class OperatorLifecycle:
     def __init__(self, runner):
+        # Lease callbacks can enter sync while holding DecisionLease.lock.
+        # Lifecycle code must never acquire a lease lock under this mutex.
+        self.lock = threading.RLock()
         self.runner = runner
         self.enabled = False
         self.journey_id = None
@@ -41,6 +45,10 @@ class OperatorLifecycle:
         )
 
     def admit(self, safety, intent):
+        with self.lock:
+            return self._admit(safety, intent)
+
+    def _admit(self, safety, intent):
         control = safety.get("operator_control") or {}
         panel = (safety.get("panel_control") or {}).get("holder")
         if control.get("version") == 1 and control.get("state") in {"qualifying", "active"} and panel and intent:
@@ -70,6 +78,10 @@ class OperatorLifecycle:
             self.runner.lease.steer = lambda *args: self.runner.steer(*args, expected_run_id=epoch)
 
     def sync(self, safety):
+        with self.lock:
+            return self._sync(safety)
+
+    def _sync(self, safety):
         runner = self.runner
         control = safety.get("operator_control") or {}
         authorized = (
@@ -96,7 +108,12 @@ class OperatorLifecycle:
             or (safety.get("journey") or {}).get("id") != self.journey_id
             or (safety.get("journey") or {}).get("active") is not True
         ):
-            self._end_journey((safety.get("journey") or {}).get("reason") or "navigation_authority_lost")
+            reported = safety.get("journey") or {}
+            reason = reported.get("reason")
+            own_terminal = reported.get("id") == self.journey_id and reported.get("active") is False
+            self._end_journey(
+                reason if own_terminal and isinstance(reason, str) and reason else "navigation_authority_lost"
+            )
             authorized = False
         if self.last_journey is not None and self.journey_id is None and not self.authorized and authorized:
             # An explicit new Start must first persist its matching service intent.
@@ -189,10 +206,12 @@ class OperatorLifecycle:
 
     def _end_journey(self, reason):
         runner = self.runner
-        runner.lease.journey.end(reason)
-        self.last_journey = runner.lease.journey.snapshot()
-        # This STOP is tied to the old generation; a manual gesture is never stopped.
-        runner.stop()
+        lease = runner.lease
+        journey = lease.journey
+        journey.end(reason)
+        self.last_journey = journey.snapshot()
+        # This STOP is tied to the captured epoch/generation, never a new owner.
+        runner.stop(expected_run_id=lease.run_id, expected_generation=runner.generation)
         runner._status(runner.last_result, terminal=True)
         self.journey_id = None
         self.authorized = False
@@ -217,12 +236,19 @@ class OperatorLifecycle:
         )
 
     def evidence(self, decision, frame_id, sequence, captured):
-        if not self.enabled or not self.authorized:
-            return decision
-        journey = self.runner.lease.journey
-        if journey is not None and not journey.validate_reply(decision):
-            self.runner.lease.halt("navigation_journey_identity_mismatch")
-            raise ComputeError("navigation_journey_identity_mismatch")
+        with self.lock:
+            if not self.enabled or not self.authorized:
+                return decision
+            lease = self.runner.lease
+            journey = lease.journey
+            if journey is None or journey.validate_reply(decision):
+                return self._evidence(decision, frame_id, sequence, captured)
+        # Never wait on DecisionLease.lock while owning the lifecycle mutex:
+        # an in-flight lease callback may itself be waiting to enter sync.
+        lease.halt("navigation_journey_identity_mismatch")
+        raise ComputeError("navigation_journey_identity_mismatch")
+
+    def _evidence(self, decision, frame_id, sequence, captured):
         if self.qualified:
             if self.qualification.source_context(decision) == self.qualification.source:
                 return decision
@@ -237,6 +263,10 @@ class OperatorLifecycle:
         return {**decision, "action": "stop", "motion_reason": "awaiting_fresh_qualification"}
 
     def status(self):
+        with self.lock:
+            return self._status()
+
+    def _status(self):
         if not self.enabled:
             return {}
         count = self.qualification.count if self.qualification else 0

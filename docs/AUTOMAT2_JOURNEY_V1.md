@@ -86,6 +86,14 @@ that boundary. Old GO, ACK, intent, ARM or callback cannot revive the old missio
 Configuration/source changes and explicit camera OFF remain cold lifecycle
 boundaries. Process restart cannot restore a mission.
 
+Main capture and watchdog serialize lifecycle transitions and status publication
+under one reentrant mutex. Authority is sampled inside this transaction, so a
+queued old sample cannot retire a newly bound mission. The lifecycle never waits
+for a decision-lease mutex while holding its own: callbacks may enter lifecycle
+while holding a lease lock. Identity failures halt their captured lease only
+after releasing the lifecycle mutex. Terminal STOP callbacks retain the original
+run/generation scope; old replies are omitted from a newer epoch status.
+
 `GET /api/navigation/status` exposes
 `journey:{version:1,id,active,state,reason,elapsed_s,maneuver_epoch}`. States are
 `qualifying`, `forward`, `steer_left`, `steer_right`, `waiting`, `blocked`,
@@ -98,3 +106,17 @@ completion guarantee or monocular centimeter measurements. Automated tests use
 in-memory doubles only. Physical acceptance for successive obstacles, pose
 changes, transport loss and STOP is a separate operator procedure after preparing
 the space and cable. An ACK does not prove traveled distance.
+
+## Decision transport and preview recovery
+
+The runner keeps one HTTP connection to its selected Venom across captures, for
+both JPEG and native reference requests. Each POST is sent once. Connection
+failure closes the socket; observation retries a new capture, never a replayed
+command. Two seconds of inactivity and runner shutdown close the connection.
+Redirects and origin changes are rejected. Replies remain bounded to 16 KiB.
+`decision_transport` exposes only `connections` and `requests`, without addresses
+or credentials.
+
+This transport optimization changes no consent: original capture/feedback
+deadlines, maximum speed and pulse duration stay unchanged. Acceptance of a real
+camera observation does not replace the operator's physical journey test.

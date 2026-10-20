@@ -130,10 +130,18 @@ class ExecutorAdmission:
         authorized, reason = self.gate.authorize(command)
         if not authorized:
             if previous_generation != self.gate.generation and reason == "navigation_journey_manual_arm_required":
-                self.pending = None
+                previous, self.pending = self.pending, None
                 self.intent_source = None
-                self.controller.stop()
-                return reason, self._ack(command, "rejected", reason, hardware_stop_sent=True)
+                stopped = self.controller.stop()
+                if previous is not None:
+                    self._ack(previous, "rejected", "operator_intervention", cancelled_by=command.get("request_id"))
+                return reason, self._ack(
+                    command,
+                    "rejected",
+                    reason if stopped else "hardware_stop_unconfirmed",
+                    gate_reason=reason,
+                    hardware_stop_sent=stopped,
+                )
             # Delayed renewals never undo a newer manual intent or release.
             obsolete = reason in {
                 "stale_sequence",

@@ -131,3 +131,19 @@ def test_active_journey_cannot_continue_after_feature_intent_replaced(isolated):
     with pytest.raises(ComputeError, match="navigation_intent_changed"):
         instance._authority()
     assert isolated[-1] == []
+
+
+@pytest.mark.parametrize(
+    "reported,expected",
+    [
+        ({"id": "other", "active": False, "reason": "other_failure"}, "navigation_authority_lost"),
+        ({"id": "mission", "active": True, "reason": "qualified"}, "navigation_authority_lost"),
+        ({"id": "mission", "active": False, "reason": "operator_stop"}, "operator_stop"),
+    ],
+)
+def test_terminal_reason_must_belong_to_own_inactive_journey(isolated, reported, expected):
+    instance, safety = runner(isolated)
+    safety.update(owner="manual", generation="manual", journey=reported)
+    assert instance._authority() is False
+    assert instance.operator_lifecycle.last_journey["id"] == "mission"
+    assert instance.operator_lifecycle.last_journey["reason"] == expected

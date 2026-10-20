@@ -132,3 +132,61 @@ def test_manual_gesture_during_warm_prepare_invalidates_start_without_stopping_n
     assert world.gate.owner == "manual"
     assert world.gate.state == "ARMED"
     assert not any(action == "stop" for _, action in world.actions)
+
+
+@pytest.mark.parametrize("code", ["navigation_stream_source_mismatch", "navigation_stream_prepare_timeout"])
+def test_recoverable_warm_probe_error_takes_cold_path_with_same_guards(journey, monkeypatch, code):
+    from apps.compute.client import ComputeError
+
+    world, starter, body = prepare_warm(journey, monkeypatch)
+    calls = []
+
+    def prepare(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise ComputeError(code, 409)
+        return {"latest_source": SOURCE}
+
+    monkeypatch.setattr(stream_prepare, "prepare_stream", prepare)
+    result = starter.start(body)
+    assert result["ok"] is True
+    assert result["preparation"]["warm_reused"] is False
+    assert len(calls) == 2
+    assert any("venom-navigation.service" in unit for unit, _ in world.actions)
+
+
+@pytest.mark.parametrize("change", ["deadline", "authority"])
+def test_warm_probe_error_never_swallows_preparation_guard(journey, monkeypatch, change):
+    from apps.compute.client import ComputeError
+
+    world, starter, body = prepare_warm(journey, monkeypatch)
+
+    def prepare(**_kwargs):
+        if change == "deadline":
+            from services.navigation_trial import PREPARATION_BUDGET_S
+
+            world.elapsed += PREPARATION_BUDGET_S + 0.01
+        else:
+            world.gate.disarm("operator_stop")
+        raise ComputeError("navigation_stream_prepare_timeout", 504)
+
+    monkeypatch.setattr(stream_prepare, "prepare_stream", prepare)
+    expected = "navigation_trial_prepare_timeout" if change == "deadline" else "navigation_trial_cancelled"
+    with pytest.raises(TrialError, match=expected):
+        starter.start(body)
+    assert not any(row["action"] == "arm" for row in world.commands)
+
+
+def test_host_update_required_during_warm_probe_remains_fatal(journey, monkeypatch):
+    from apps.compute.client import ComputeError
+
+    world, starter, body = prepare_warm(journey, monkeypatch)
+
+    def prepare(**_kwargs):
+        raise ComputeError("navigation_journey_update_required", 409)
+
+    monkeypatch.setattr(stream_prepare, "prepare_stream", prepare)
+    with pytest.raises(TrialError, match="navigation_journey_update_required"):
+        starter.start(body)
+    assert not any(action == "stop" for _, action in world.actions)
+    assert not any(row["action"] == "arm" for row in world.commands)

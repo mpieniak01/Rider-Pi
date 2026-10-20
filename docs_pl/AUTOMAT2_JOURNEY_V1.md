@@ -20,10 +20,17 @@ wymaga rzeczywistych `fx`, `fy`, `radius_ratio` oraz bieżącego potwierdzenia.
 Brak kalibracji nie jest uzupełniany automatycznie. Limity omijania zachowują
 maksymalnie 0,1 SDK i impuls do 150 ms.
 
-Przygotowanie korzysta z tej samej transakcji co trial: kamera, zwolnienie starego
-producenta, konfiguracja, pojedyncza zgoda wykonawcy, start i potwierdzenie nowego
-workera. STOP lub nowsza generacja przerywają przygotowanie. Odtworzenie request_id
-nie uruchamia ponownie misji. Postęp przygotowania dodaje `journey_version:1`.
+Przygotowanie korzysta z tej samej transakcji co trial. Ścieżka zimna rezerwuje
+kamerę, zwalnia starego producenta, konfiguruje jazdę, uzyskuje pojedynczą zgodę
+i potwierdza nowego workera. Zgodny ciepły producent S14 zachowuje capture,
+transport i zapotrzebowanie modelu. Ponowne użycie wymaga świeżych
+`warm_navigation_version:1`, `warm_ready:true`, zgodnej rewizji polityki oraz
+potwierdzonej przez host natywnej sesji kamery, epoki transportu i rewizji pipeline.
+Brak lub niezgodność gotowości prowadzą do ścieżki zimnej.
+`preparation.warm_reused` i osobne czasy faz pokazują faktycznie wybrany tor.
+
+STOP lub nowsza generacja przerywają przygotowanie. Odtworzenie request_id nie
+uruchamia ponownie misji. Postęp przygotowania dodaje `journey_version:1`.
 
 ## Zgoda wykonawcy i świeżość
 
@@ -63,8 +70,26 @@ Nieskuteczne korekty kończą się STOP; nie odnawiają budżetu przez upływ cz
 
 STOP, ESTOP, utrata decyzji, zmiana konfiguracji i ręczne przejęcie kończą podróż.
 `navigation_resume` nie wznawia jej. Ręczna korekta wymaga nowej jawnej ręcznej
-zgody; prawo podróży nie zmienia się w nieograniczone ARM manual. Kamera może
-pozostać jako pasywny podgląd, bez prawa ruchu. Restart nie odtwarza misji.
+zgody; prawo podróży nie zmienia się w nieograniczone ARM manual. Wersjonowany
+[gest kierunku](OPERATOR_CONTROL_V1.md#jawna-interwencja-kierunkowa) wnosi nową
+zgodę ręczną w tej samej transakcji wykonawcy. Osobne kliknięcie przejęcia/ARM
+nie jest wymagane. Gest nie kasuje ESTOP.
+
+Sprawny producent S14 pozostaje obserwatorem po końcu misji, ręcznym przejęciu
+lub błędzie transportu. Wynik misji jest archiwizowany przed zastąpieniem
+bieżącego wiersza obserwacją. Nowy jawny Start musi zapisać nowy zgodny zamiar
+usługi, generację i identyfikator podróży. Zachowany proces tworzy nowy run ID,
+pustą zgodę decyzji i kwalifikację trzech klatek po tej granicy. Stare GO, ACK,
+zamiar, ARM i callback nie wznawiają misji. Zmiana konfiguracji/źródła i jawne
+OFF kamery zachowują zimny cykl. Restart procesu nie odtwarza misji.
+
+Wątek capture i watchdog serializują przejścia lifecycle oraz publikację statusu
+wspólnym mutexem reentrant. Uprawnienie jest odczytywane wewnątrz tej transakcji,
+więc opóźniony stary odczyt nie kończy nowej misji. Lifecycle nie czeka na mutex
+lease, trzymając własny mutex: callback lease może wejść do lifecycle. Błąd
+tożsamości zatrzymuje przechwycony lease dopiero po zwolnieniu mutexa lifecycle.
+Terminalny STOP zachowuje pierwotny run/generation; stara odpowiedź nie opisuje
+statusu nowej epoki.
 
 `GET /api/navigation/status` publikuje `journey`:
 `{version:1,id,active,state,reason,elapsed_s,maneuver_epoch}`.
