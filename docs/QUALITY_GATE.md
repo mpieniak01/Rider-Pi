@@ -90,3 +90,30 @@ Local complexity estimates and passing tests are supporting evidence. CI
 provides the Sonar result for the published SHA. After merging, separately
 verify the main analysis and closed/remaining issue IDs; PR statistics alone
 do not establish that the global backlog has been removed.
+
+## Badges and PR checks
+
+Both READMEs expose available controls with their actual scope:
+
+| Signal | Scope |
+| --- | --- |
+| Tests | `main` push workflow; Python 3.9, API and selected isolated JavaScript fixtures. |
+| Quality Guard | PR workflow; Ruff 0.6.9, changed Python file size, static systemd and API checks. |
+| SonarCloud Quality Gate | Latest `main` analysis, not the currently open PR. |
+| Coverage | Overall `main` coverage, separate from the new-code threshold. |
+| Snyk | External dependency monitoring; **monitored** is not a PR-specific verdict. |
+| GitGuardian | Informational badge; read the secret-scanning result from PR checks. |
+
+Before merging, inspect checks and statuses for the current head SHA. Empty,
+queued and in-progress data do not establish success. Quality Guard runs on PRs;
+it is not presented as a separate `main` push run. A conditionally skipped
+`systemd-smoke` proves neither systemd nor hardware operation. It is separate
+from static unit validation in Quality Guard. Branch protection determines
+merge requirements, rather than the badge count. Optional reviews or rate
+limits do not replace tests and do not require bot retries.
+
+Sonar conditions for new code include reliability/security/maintainability A,
+at least 80% coverage, at most 3% duplication and 100% reviewed hotspots.
+The gate and finding counts come from the live report; no fixed passing badge
+substitutes for that result. Publishing a project version under the
+[versioning policy](VERSIONING.md) does not reset Sonar's baseline.

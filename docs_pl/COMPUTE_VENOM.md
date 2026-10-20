@@ -1,9 +1,12 @@
 # Obliczenia i percepcja w Venomie
 
-Pi pozostaje właścicielem kamery, audio, kalibracji i ruchu. Venom wykonuje
-tekst, STT/TTS i **opis sceny**. Opis nie jest detektorem przeszkód ani zgodą
-na przejazd. Wyniki obliczeń nie trafiają do poleceń ruchu; ARM i STOP pozostają
-niezależne. Opcjonalne narzędzia czatu do sterowania robotem należą do R3.
+Pi pozostaje właścicielem kamery, audio, kalibracji i ruchu. W S12/S13 Venom
+wykonuje tekst, STT/TTS i **opis sceny**. Opis nie jest detektorem przeszkód ani
+zgodą na przejazd. Wyniki tych zadań nie trafiają do poleceń ruchu; ARM i STOP
+pozostają niezależne. S14/S15 korzystają z osobnej ograniczonej pętli nawigacyjnej
+opisanej poniżej. Opcjonalne narzędzia czatu do sterowania robotem należą do R3.
+
+[English guide](../docs/COMPUTE_VENOM.md).
 
 ## Jedno miejsce konfiguracji
 

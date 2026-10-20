@@ -80,3 +80,30 @@ Lokalna ocena złożoności i zaliczone testy są dowodem pomocniczym. Wynik
 Sonara dla opublikowanego SHA dostarcza CI. Po scaleniu sprawdź osobno analizę
 main i identyfikatory zamkniętych oraz pozostałych zgłoszeń; same statystyki
 PR nie potwierdzają usunięcia globalnych zaległości.
+
+## Odznaki i kontrole PR
+
+README PL/EN pokazują dostępne kontrole, zgodnie z ich zakresem:
+
+| Wskaźnik | Zakres |
+| --- | --- |
+| Tests | Workflow push na `main`; Python 3.9, API i wybrane izolowane fixture JavaScript. |
+| Quality Guard | Workflow PR; Ruff 0.6.9, długość zmienianych plików Python, statyczny systemd i API. |
+| SonarCloud Quality Gate | Wynik ostatniej analizy `main`, nie aktualnie otwartego PR. |
+| Coverage | Całkowite pokrycie `main`, odrębne od progu nowego kodu. |
+| Snyk | Zewnętrzny monitoring zależności; odznaka „monitored” nie jest werdyktem konkretnego PR. |
+| GitGuardian | Odznaka informacyjna; wynik wykrywania sekretów odczytujemy z kontroli PR. |
+
+Przy scalaniu sprawdzaj kontrole i statusy bieżącego head SHA. Puste dane,
+queued i in_progress nie oznaczają zaliczenia. Quality Guard działa na PR;
+nie przedstawiamy go jako osobnego przebiegu push `main`. Warunkowo pominięty
+`systemd-smoke` nie potwierdza działania systemd ani sprzętu. Jego zakres jest
+osobny od statycznej walidacji unitów w Quality Guard. Wymagania scalania
+wynikają z aktualnej ochrony gałęzi, a nie liczby odznak. Opcjonalna recenzja
+lub jej limit nie zastępują testów i nie wymagają ponawiania bota.
+
+Warunki Sonara dla nowego kodu obejmują rating A niezawodności, bezpieczeństwa
+i utrzymania, pokrycie co najmniej 80%, duplikację najwyżej 3% i 100% przejrzanych
+hotspotów. Zielona bramka i zerowe liczniki zależą od bieżącego raportu;
+nie zapisujemy ich jako stałych zielonych odznak. Publikacja nowej wersji
+projektu według [zasad wersjonowania](WERSJONOWANIE.md) nie resetuje bazy Sonara.

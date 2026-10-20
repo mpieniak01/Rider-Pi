@@ -43,7 +43,7 @@ apply a global display or boot rotation when changing one screen.
 
 ### 1) HTTP Interface
 
-- `` — REST API (port **8080**).
+- `services/api_server.py` — REST API (port **8080**).
   - Exposes health (`/healthz`), control (`/api/control`), chat, status, serves assets from `data/`, `snapshots/`.
   - Proxies to internal services via bus (ZMQ) and/or local calls.
 

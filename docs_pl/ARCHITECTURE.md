@@ -11,6 +11,12 @@
 
 ## Narzędzia deweloperskie
 
+Panel `/face-studio` udostępnia podgląd buźki i edytor gestów bez sprzętu
+przez `/api/face-studio/*` na istniejącym porcie API. Korzysta z renderera
+i animatora aplikacji, renderuje na żądanie i zapisuje własne gesty w
+ignorowanym `config/local/face-studio.json`. Nie otwiera sprzętu ani nowej usługi.
+Zobacz [Studio buźki](FACE_STUDIO.md).
+
 Jupyter Lab na porcie 8888 pozostaje narzędziem uruchamianym ręcznie.
 `jupyter.service` nie ma targetu instalacji przy starcie, a sprzątanie
 producenta i profil DEV S11 nie uruchamiają go. W razie potrzeby używaj
@@ -38,7 +44,7 @@ uzasadnia globalnego obrotu ekranu ani grafiki startowej.
 
 ### 1) Interfejs HTTP
 
-- `` — REST API (port **8080**).
+- `services/api_server.py` — REST API (port **8080**).
   - Ekspozycja zdrowia (`/healthz`), sterowanie (`/api/control`), chat, statusy, serwowanie assetów z `data/`, `snapshots/`.
   - Proxy do wewnętrznych usług przez bus (ZMQ) i/lub wywołania lokalne.
 

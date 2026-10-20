@@ -4,8 +4,9 @@
 
 
 Rider-Pi wykonuje polecenia na sprzęcie i zachowuje lokalne aplikacje robota.
-Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Venom jest
-planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona.
+Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Opcjonalny
+sparowany moduł Venoma dostarcza obliczenia i ograniczone decyzje nawigacyjne;
+Pi zachowuje wykonanie sprzętowe. Zobacz [obliczenia w Venomie](COMPUTE_VENOM.md).
 
 ## Zacznij tutaj
 
@@ -36,7 +37,8 @@ planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona.
 - [Zadania, usługi i zasoby](ZADANIA_USLUGI_ZASOBY.md), [migracja scenariuszy](UPGRADE_SCENARIOS.md).
 - [Google Gemini](ecosystem-google.md), [Google Home](google-home-integration.md), [API Home command](google/home_command.md).
 - [Kontrole jakości](QUALITY_GUARDS.md), [ustalenia pracy](WORKING-AGREEMENTS.md), [instrukcje agenta](../AGENT.md).
-- Wydania: [v0.6](release-notes/v0.6.md), [v0.5.3](release-notes/v0.5.3.md), [v0.5.2](release-notes/v0.5.2.md).
+- [Bramka jakości i pokrycie](BRAMKA_JAKOSCI.md), [wersjonowanie i tagi](WERSJONOWANIE.md).
+- Wydania: [v1.0.0](release-notes/v1.0.0.md), [v0.6](release-notes/v0.6.md), [v0.5.3](release-notes/v0.5.3.md), [v0.5.2](release-notes/v0.5.2.md).
 
 Publiczne przewodniki opisują projekt i interfejsy. Plany, raporty zadań i wyniki
 sprawdzeń konkretnego urządzenia pozostają w ignorowanych katalogach lokalnych.

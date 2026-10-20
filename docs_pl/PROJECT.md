@@ -1,10 +1,10 @@
 # Rider‑Pi Apps — PROJECT
 
-> Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Venom jest planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
+> Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Opcjonalny sparowany moduł Venoma dostarcza obliczenia i ograniczone decyzje nawigacyjne; Pi waliduje odpowiedzi i zachowuje kontrolę wykonania ruchu. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
 
 > Rider‑Pi to nazwa urządzenia (sprzętu). Nasz projekt tworzy niezależne oprogramowanie **Rider‑Pi Apps**, które rozwija funkcje autonomii i interakcji ponad to, co dostarcza producent urządzenia.
 
-> Dokument biznesowy (high‑level). Przedstawia **wizję i cele projektu** w języku zrozumiałym biznesowo, z lekkim żargonem technicznym tam, gdzie to ułatwia precyzję. Szczegóły implementacyjne i pełna architektura zostaną opisane w pliku **ARCHITECTURE.md**.
+> Dokument biznesowy (high‑level). Przedstawia **wizję i cele projektu** w języku zrozumiałym biznesowo, z lekkim żargonem technicznym tam, gdzie to ułatwia precyzję. Szczegóły implementacyjne opisuje [architektura](ARCHITECTURE.md).
 
 ## Wizja projektu
 

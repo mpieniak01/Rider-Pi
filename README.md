@@ -1,260 +1,137 @@
 <p align="center">
-  <img src="./data/splash_logo.png" width="200">
+  <img src="./data/splash_logo.png" width="200" alt="Rider-Pi logo">
 </p>
 
-<h1 align="center">Rider-Pi</h1>
+# Rider-Pi 1.0.0
 
-<p align="center">
-  <em>
-    This is not an official repository for the Rider-Pi robot.<br>
-    It is a sandbox for practicing robot programming.
-  </em>
-</p>
+[![Release](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/mpieniak01/Rider-Pi/releases/tag/v1.0.0)
+[![Tests — main](https://github.com/mpieniak01/Rider-Pi/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/mpieniak01/Rider-Pi/actions/workflows/tests.yml?query=branch%3Amain)
+[![Quality Guard — PR](https://github.com/mpieniak01/Rider-Pi/actions/workflows/quality-guard.yml/badge.svg?event=pull_request)](https://github.com/mpieniak01/Rider-Pi/actions/workflows/quality-guard.yml)
+[![SonarCloud Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Rider-Pi&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Rider-Pi&branch=main)
+[![Coverage — main](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Rider-Pi&metric=coverage)](https://sonarcloud.io/component_measures?id=mpieniak01_Rider-Pi&branch=main&metric=coverage&view=list)
+[![Snyk monitoring](https://snyk.io/test/github/mpieniak01/Rider-Pi/badge.svg)](https://snyk.io/test/github/mpieniak01/Rider-Pi)
+[![GitGuardian — PR secret scanning](https://img.shields.io/badge/GitGuardian-PR%20secret%20scanning-blue)](https://github.com/mpieniak01/Rider-Pi/pulls)
+
+[Dokumentacja po polsku](README_PL.md) · [Documentation](docs/README.md) · [Release notes](docs/release-notes/v1.0.0.md)
+
+Independent, educational software for the two-wheeled Yahboom Rider-Pi robot.
+It runs local applications, exposes an operator panel and keeps hardware execution
+on the Raspberry Pi. This is a community project, unaffiliated with the manufacturer.
 
 <p align="center">
   <a href="./data/Rider-Pi_01_a64b25c8-2cba-4f4e-b1d8-8cd5d543a9fb_600x.webp">
-    <img src="./data/Rider-Pi_01_a64b25c8-2cba-4f4e-b1d8-8cd5d543a9fb_600x.webp" width="420">
+    <img src="./data/Rider-Pi_01_a64b25c8-2cba-4f4e-b1d8-8cd5d543a9fb_600x.webp" width="420" alt="Two-wheeled Rider-Pi robot">
   </a>
 </p>
 
-## Project documentation
+## Quality signals
 
-Start with [project vision](PROJECT.md), [development](docs/development.md),
-[deployment](docs/DEPLOYMENT.md) and the [documentation policy](docs/DOCUMENTATION_POLICY.md).
-Rider-Pi executes hardware commands and local applications; Rider-PC adds operator
-controls and AI processing. Venom integration is planned for a later stage.
+| Signal | What it reports |
+| --- | --- |
+| Tests | Latest `main` run of the Python 3.9 software and API regressions, including isolated JavaScript fixtures. |
+| Quality Guard | Latest PR workflow: Ruff 0.6.9, changed Python file limits, static systemd validation and API checks. |
+| SonarCloud | Live `main` quality gate; CI imports Python and JavaScript coverage for the analyzed revision. |
+| Coverage | Overall coverage of `main`; the gate separately requires at least 80% coverage of new code. |
+| Snyk | External dependency monitoring. Its badge can say **monitored**; inspect the PR check for its verdict. |
+| GitGuardian | Informational badge identifying PR secret scanning; the actual result is in each PR's checks. |
 
-## Overview
+Workflow badges show their latest scoped run. Before merging, check results for
+the current PR head; after merging, check the new `main` SHA. Software checks do
+not establish physical robot safety. [Quality gate and reproduction](docs/QUALITY_GATE.md).
 
-Rider-Pi is a comprehensive robotics platform built on Raspberry Pi, featuring:
+## Capabilities and boundaries
 
-- **Autonomous Navigation** - Rekonesans (reconnaissance) mode with obstacle avoidance, SLAM mapping, and return-to-home capability
-- **Vision System** - Real-time object detection, face tracking, and depth estimation
-- **Voice Interaction** - Voice commands, text-to-speech, and conversational AI integration
-- **Expressive Face** - Animated LCD display with emotions and reactions
-- **Motion Control** - Two-wheeled movement with balance and height control
-- **Web Interface** - Comprehensive web UI for control and monitoring
-- **Modular Architecture** - Event-driven design using ZMQ message bus
+- **Operator panel and API:** manual controls, service/resource diagnostics, camera
+  preview, calibration profiles and a Git revision footer. HTTP API uses port 8080;
+  the optional motion bridge uses 8081.
+- **Motion authority:** one executor owns the UART. Commands carry identity,
+  generation, sequence and expiry; acknowledgments distinguish accepted commands
+  from physical completion. ARM and clearing E-Stop require operator consent.
+- **LCD:** animated face, device status and boot splash with exclusive ownership,
+  guarded power control and idle sleep. Preserve the installed 270° compensation.
+- **Camera, voice and chat:** optional profiles activated on demand, with explicit
+  backend requirements. Google OAuth/SDK integrations are optional, outside the
+  base software-test dependencies.
+- **Venom integration:** a paired external module provides optional compute and
+  bounded navigation decisions. Pi retains hardware authority and validates
+  replies. Configuration, transport and model availability require their own setup.
+- **Experimental autonomy:** Follow Me, mapping, odometry and navigation modules
+  support development and controlled trials. A map or depth estimate is not a
+  validated collision sensor or a guarantee of autonomous return-to-home.
 
-## Key Features
+Read [motion and safety](docs/apps/safety.md), the
+[directional navigation contract](docs/DIRECTIONAL_NAVIGATION.md) and
+[Venom compute](docs/COMPUTE_VENOM.md) before selecting those profiles.
 
-### 🤖 Autonomous Navigation (Rekonesans Epic)
+## Runtime and setup
 
-Multi-stage autonomous exploration system:
+The supported device baseline is the manufacturer's Raspberry Pi OS / Debian 11
+Bullseye image with **Python 3.9**. A newer WSL Python does not qualify a device
+runtime upgrade. Version 1.0.0 identifies this project, separately from vendor SDK,
+firmware and HTTP contract versions; [VERSION](VERSION) is the release metadata.
 
-- **Stage 1**: Reactive obstacle avoidance (STOP and AVOID strategies)
-- **Stage 2**: Position tracking via odometry (IMU + dead reckoning fusion)
-- **Stage 3**: SLAM mapping with occupancy grid
-- **Stage 4**: Path planning and return-to-home using A* algorithm
+Use [deployment and recovery](docs/DEPLOYMENT.md) for an existing robot and the
+[environment policy](docs/ENVIRONMENT_POLICY.md) to prepare development. Keep Pi,
+Rider-PC and Venom dependencies in their own environments. Install only the
+packages needed by the selected Pi profile; keep dev/test dependencies in WSL/CI.
+Preserve existing local configuration and secrets.
 
-### 👁️ Vision System
+On an already configured Pi, these requests only observe state:
 
-- Face and person detection (HOG, TFLite, SSD)
-- Follow-me tracking (face and hand tracking)
-- Obstacle detection with ROI analysis
-- Depth estimation for mapping
-- Edge TPU (Coral) acceleration support
-
-### 🗣️ Voice & Chat
-
-- Streaming and file-based voice modes
-- ASR (Automatic Speech Recognition)
-- Conversational AI (OpenAI, Google Gemini)
-- TTS (Text-to-Speech) with multiple backends
-- Push-to-Talk (PTT) support
-- Keyword spotting and voice activity detection
-
-### 😊 Animated Face
-
-- LCD display with expressive animations
-- Emotions: happy, sad, neutral, surprised, angry
-- Eye movements and blinking
-- Responsive to events and sentiment
-
-### 🕹️ Web Interface
-
-- Live camera preview
-- Manual movement controls
-- Balance and height adjustment
-- Vision tracking controls
-- Autonomous navigation dashboard
-- Real-time event logging
-- Multi-language support (Polish, English)
-
-### 🏗️ Architecture
-
-- **Modular Design**: Independent services communicating via ZMQ message bus
-- **Event-Driven**: Publish-subscribe pattern for loose coupling
-- **REST API**: Unified HTTP API on port 8080
-- **Systemd Integration**: Managed services for reliability
-- **Simulation Mode**: Development without hardware
-
-### 🔧 Service Control (App Logic Core)
-
-- Single source of truth for feature orchestration in `apps/app_logic_core` (FeatureManager).
-- Systemd operations are wrapped by `common/systemd_ctrl.py`.
-- Thin API `/api/logic/feature/<name>` and CLI `scripts/robot_ctl.py start|stop <feature>`.
-- Web UI calls the API only; business logic stays in the core layer.
-
-## Quick Start
-
-### Prerequisites
-
-- Raspberry Pi 4 (or compatible)
-- Python 3.9+
-- XGO quadruped robot (or simulator mode)
-- Camera module (optional for vision features)
-
-### Installation
-
-```bash
-# Clone repository
-git clone https://github.com/mpieniak01/Rider-Pi.git
-cd Rider-Pi
-
-# Install dependencies
-pip3 install -r requirements-dev.txt
-
-# Initialize configuration files from templates
-make config-init
-
-# Configure environment (copy and edit)
-cp .env.example .env
-
-# Customize configuration files as needed
-nano config/vision.toml      # Vision system paths
-nano config/voice_web.toml   # Voice model paths
+```sh
+curl --fail http://127.0.0.1:8080/healthz
+curl --fail http://127.0.0.1:8080/api/safety
+curl --fail http://127.0.0.1:8080/api/status/version
 ```
 
-### Running Services
-
-```bash
-# Start core services
-sudo systemctl start rider-broker      # Message bus
-sudo systemctl start rider-api         # REST API server
-
-# Start optional services
-sudo systemctl start rider-vision      # Vision system
-sudo systemctl start rider-odometry    # Position tracking
-sudo systemctl start rider-mapper      # SLAM mapping
-sudo systemctl start rider-voice       # Voice interaction
-
-# Start/stop feature stacks via CLI (App Logic Core)
-sudo python3 scripts/robot_ctl.py start s3_follow_me_face
-sudo python3 scripts/robot_ctl.py stop s4_recon
-
-# Check current scenario state snapshot
-sudo python3 scripts/robot_ctl.py status
-```
-
-### Web Interface
-
-Open browser: `http://robot-ip:8080/control.html`
-
-## Project Structure
-
-```
-Rider-Pi/
-├── apps/               # Application modules
-│   ├── camera/         # Camera capture
-│   ├── chat/           # Chat and NLU
-│   ├── mapper/         # SLAM mapping (Stage 3)
-│   ├── motion/         # Movement control
-│   ├── navigator/      # Autonomous navigation (Stages 1 & 4)
-│   ├── odometry/       # Position tracking (Stage 2)
-│   ├── ui/             # Face animations
-│   ├── vision/         # Vision and detection
-│   ├── voice/          # Voice processing
-│   └── app_logic_core/ # FeatureManager façade (App Logic Core)
-├── services/           # System services
-│   ├── api_server.py   # REST API
-│   ├── broker.py       # ZMQ message broker
-│   ├── api_core/       # API endpoints
-│   └── core/           # Core business logic (FeatureManager implementation)
-├── common/             # Shared utilities
-│   ├── bus.py          # Message bus definitions
-│   └── systemd_ctrl.py # Systemd wrapper (start/stop/status)
-├── config/            # Configuration files
-├── docs/              # Documentation
-│   ├── api/           # API documentation
-│   ├── apps/          # Application docs
-│   ├── modules/       # Module documentation
-│   └── ui/            # Web UI documentation
-├── drivers/           # Hardware drivers
-├── scripts/           # Operational scripts
-├── systemd/           # Service definitions
-│   ├── legacy/        # Deprecated/legacy units (manual install)
-├── tests/             # Test suite
-└── web/               # Web interfaces
-```
-
-## Documentation
-
-- [Documentation Index](docs/README.md) - Complete documentation index
-- [Architecture](ARCHITECTURE.md) - System architecture and design
-- [Project Vision](PROJECT.md) - Project goals and roadmap
-- [Configuration](docs/CONFIG.md) - Configuration management with TOML templates
-- [API Documentation](docs/api-specs/README.md) - REST API endpoints
-- [App Logic Core](docs/apps/README.md) - Feature orchestration and FeatureManager
-- [Application Modules](docs/apps/) - Detailed module documentation
-  - [Navigator](docs/apps/navigator.md) - Autonomous navigation
-  - [Odometry](docs/apps/odometry.md) - Position tracking
-  - [Mapper](docs/apps/mapper.md) - SLAM mapping
-  - [Voice](docs/apps/voice.md) - Voice system
-  - [Face](docs/apps/face.md) - Animated face display
-- [Web UI Documentation](docs/ui/README.md) - Web interface guides
-- [Systemd Services](docs/SYSTEMD_SERVICES_MAPPING.md) - Service mappings
-- [Scripts](docs/scripts/README.md) - Operational and development scripts
+Open `http://<robot-ip>:8080/` for the overview and `/control` for the operator
+panel. Loading a page or deploying code does not authorize ARM or movement.
+Physical movement needs a separate operator-approved plan and prepared space.
 
 ## Development
 
-### Running Tests
+From the Rider-Pi checkout, use its existing virtualenv:
 
-```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific module tests
-pytest tests/test_navigator.py -v
-pytest tests/test_odometry.py -v
-pytest tests/test_mapper.py -v
-
-# Skip audio tests (requires ALSA)
-ALSA_SKIP_LSOF=1 pytest tests/ -v
+```sh
+.venv/bin/python --version
+make test-env
+make lint
+make test TEST_ARGS='-q tests/test_version_api.py tests/test_boot_lcd_handover.py'
 ```
 
-### Linting
+These are focused software checks. CI also executes Python 3.9 and the full
+isolated Python/JavaScript coverage suites through the Sonar workflow. Hardware,
+physical-motion and network tests are excluded from that automatic suite.
+See [development](docs/development.md) and [contributor instructions](AGENT.md).
 
-```bash
-# Run ruff linter
-ruff check --fix
+Application delivery uses a local commit and scoped Pi preview, then PR, checks,
+review, merge and release of the exact `main` SHA. Restart only the affected
+service when needed. Documentation-only changes require no hardware restart.
+[Version and tag procedure](docs/VERSIONING.md).
 
-# Format code
-ruff format
-```
+## Project map
 
-### Simulation Mode
+| Directory | Responsibility |
+| --- | --- |
+| `apps/` | Robot applications, safety executor, LCD, camera, voice and navigation. |
+| `services/` | HTTP API, orchestration and service/resource projections. |
+| `common/`, `drivers/` | Shared contracts and validated hardware access. |
+| `web/` | Operator panel and web assets. |
+| `config/`, `systemd/`, `scripts/` | Public configuration templates, units and operational tools. |
+| `tests/` | Isolated software regressions and explicitly marked hardware tests. |
+| `docs_pl/`, `docs/` | Polish and English maintained documentation. |
 
-Run without hardware using simulator:
+## Documentation
 
-```bash
-export RIDER_SIMULATOR=1
-python3 -m apps.navigator.main
-```
+- [Project vision](PROJECT.md), [architecture](ARCHITECTURE.md) and [documentation index](docs/README.md).
+- [API contracts](docs/api-specs/README.md), [operator panel](docs/ui/operator-panel.md) and [calibration](docs/apps/calibration.md).
+- [LCD ownership and startup](docs/apps/face-lcd.md), [camera](docs/apps/camera.md) and [voice](docs/apps/voice.md).
+- [Systemd service mapping](docs/SYSTEMD_SERVICES_MAPPING.md) and [configuration policy](docs/config/POLICY.md).
+- [Release 1.0.0](docs/release-notes/v1.0.0.md), [versioning](docs/VERSIONING.md) and [documentation policy](docs/DOCUMENTATION_POLICY.md).
 
-## Contributing
+## License and contributions
 
-This is a personal learning project. Contributions, suggestions, and feedback are welcome!
+Contributions and feedback are welcome. The project uses the [MIT License](LICENSE).
+Thanks to the Yahboom/XGO platform and the open-source Python, OpenCV and ZMQ ecosystems.
 
-## Acknowledgments
-
-- XGO Robot platform
-- OpenCV, TensorFlow Lite for vision
-- OpenAI, Google Gemini for AI features
-- ZMQ for messaging infrastructure
-
-## 📝 License
-
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
-
-Copyright (c) 2025-2026 Maciej Pieniak
+Copyright (c) 2025–2026 Maciej Pieniak.
