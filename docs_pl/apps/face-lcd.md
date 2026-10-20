@@ -276,3 +276,5 @@ Nie wywołuje `make lcd-on`: ten cel korzysta z API, które w tym etapie rozruch
 nie jest jeszcze dostępne. Sink sprawdza własność LCD, otwiera sterownik i włącza
 podświetlenie; po splashu uchwyty są zwalniane przed kontrolowanym OFF i startem
 `lcd-renderer.service`. Obrót pozostaje 270°.
+
+Regresja offline z atrapami LCD/vendora: `.venv/bin/python tests/helpers/boot_splash_startup.py`.

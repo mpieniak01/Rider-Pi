@@ -277,3 +277,5 @@ It does not call `make lcd-on`, which requires the API that is unavailable at
 this early boot stage. The sink checks LCD ownership, opens the driver and enables
 the backlight. Splash handles are released before guarded OFF and the subsequent
 `lcd-renderer.service` startup. Rotation remains 270 degrees.
+
+Offline regression with inert LCD/vendor fixtures: `.venv/bin/python tests/helpers/boot_splash_startup.py`.
