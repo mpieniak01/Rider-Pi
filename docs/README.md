@@ -3,9 +3,10 @@
 [Unified Pi/PC API contracts](api-specs/contracts.md) — New clients negotiate the v1 envelope through Accept; examples without negotiation describe the legacy projection. Reception time does not replace observation time.
 
 
-Rider-Pi executes robot commands and hosts local robot applications. Rider-PC
-provides the operator interface and additional AI processing. Venom is planned
-for top-level coordination; its integration is deferred.
+Rider-Pi executes robot commands and hosts local applications. Rider-PC provides
+the operator interface and additional AI processing. The optional paired Venom
+module supplies compute and bounded navigation decisions; Pi retains hardware
+authority. See [Venom compute](COMPUTE_VENOM.md).
 
 ## Start here
 
@@ -36,7 +37,8 @@ for top-level coordination; its integration is deferred.
 - [Tasks, services and resources](TASKS_SERVICES_RESOURCES.md), [scenario migration](UPGRADE_SCENARIOS.md).
 - [Google Gemini](ecosystem-google.md), [Google Home](google-home-integration.md), [Home command API](google/home_command.md).
 - [Quality guards](QUALITY_GUARDS.md), [working agreements](../WORKING-AGREEMENTS.md), [agent instructions](../AGENT.md).
-- Releases: [v0.6](release-notes/v0.6.md), [v0.5.3](release-notes/v0.5.3.md), [v0.5.2](release-notes/v0.5.2.md).
+- [Quality gate and coverage](QUALITY_GATE.md), [versioning and tags](VERSIONING.md).
+- Releases: [v1.0.0](release-notes/v1.0.0.md), [v0.6](release-notes/v0.6.md), [v0.5.3](release-notes/v0.5.3.md), [v0.5.2](release-notes/v0.5.2.md).
 
 Public guides describe the project and its interfaces. Plans, task reports and
 results from individual devices remain in ignored local operational directories.

@@ -1,6 +1,6 @@
 # Provider / PC Offload Integration
 
-> Rider-Pi retains hardware execution and local applications. Rider-PC provides operator controls and additional AI processing. Venom is planned for top-level control; integration is deferred. Project milestones describe direction, not verified deployment status.
+> Rider-Pi retains hardware execution and local applications. Rider-PC provides operator controls and additional AI processing. The optional paired Venom module supplies compute and bounded navigation decisions; Pi validates replies and retains motion authority. Project milestones describe direction, not verified deployment status.
 
 Single source of truth for the contract between the Rider-Pi device and the Rider-PC companion stack.  
 This document complements the external design notes that live in the Rider-PC repository (see

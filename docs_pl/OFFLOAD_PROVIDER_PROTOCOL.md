@@ -1,6 +1,6 @@
 # Integracja z providerem PC / Offload
 
-> Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Venom jest planowanym filarem nadrzędnego sterowania; integracja pozostaje odłożona. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
+> Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Opcjonalny sparowany moduł Venoma dostarcza obliczenia i ograniczone decyzje nawigacyjne; Pi waliduje odpowiedzi i zachowuje kontrolę wykonania ruchu. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
 
 Jedyna aktualna referencja kontraktu pomiędzy urządzeniem Rider-Pi a towarzyszącym stosem Rider-PC.  
 Dokument uzupełnia zewnętrzne notatki projektowe w repozytorium Rider-PC (zob.

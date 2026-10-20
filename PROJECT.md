@@ -1,6 +1,6 @@
 # Rider-Pi Apps — PROJECT
 
-> Rider-Pi retains hardware execution and local applications. Rider-PC provides operator controls and additional AI processing. Venom is planned for top-level control; integration is deferred. Project milestones describe direction, not verified deployment status.
+> Rider-Pi retains hardware execution and local applications. Rider-PC provides operator controls and additional AI processing. The optional paired Venom module supplies compute and bounded navigation decisions; Pi validates replies and retains motion authority. Project milestones describe direction, not verified deployment status.
 
 
 > Rider-Pi is the name of the device (hardware). Our project creates independent software **Rider-Pi Apps**, which extends the autonomy and interaction features beyond what the device manufacturer provides.
