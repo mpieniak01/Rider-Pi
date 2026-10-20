@@ -406,23 +406,29 @@ class TrialPreparation:
                 }
             self.sleep(min(0.02, max(0.0, self.context["deadline"] - self.clock())))
 
+    def _current_cancellation(self, caught):
+        if not isinstance(caught, TrialError) or caught.code not in {
+            "navigation_trial_prepare_timeout",
+            "navigation_trial_stopped",
+        }:
+            return None
+        try:
+            self.guard()
+        except TrialError as current:
+            return current if current.code == "navigation_trial_cancelled" else None
+        except Exception:
+            return None
+        return None
+
     def _reported_failure(self, caught):
         # A newer manual/STOP generation has priority even if the blocking
         # backend operation also overran the preparation budget. Never call
         # this an infrastructure timeout or replace it with an old run result.
         if isinstance(caught, TrialError) and caught.code == "navigation_trial_cancelled":
             return caught
-        if isinstance(caught, TrialError) and caught.code in {
-            "navigation_trial_prepare_timeout",
-            "navigation_trial_stopped",
-        }:
-            try:
-                self.guard()
-            except TrialError as current:
-                if current.code == "navigation_trial_cancelled":
-                    return current
-            except Exception:
-                pass
+        cancellation = self._current_cancellation(caught)
+        if cancellation is not None:
+            return cancellation
         error = caught
         # A producer may already have run and stopped while systemd/start
         # bookkeeping was blocking. Its matching outcome is authoritative.
