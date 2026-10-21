@@ -3,6 +3,7 @@ import { ageOf, fresh, presentationReady, cameraFrame, catalogKnown, nowSeconds 
 import { el, text, tr, statusLabel, powerLabel } from './ui.js';
 import { telemetryChannel } from './devices.js?v=extended-telemetry-1';
 import { telemetrySummary, orientationSummary } from './overview-model.js';
+import { systemHistory, systemEvent } from './system-history.js';
 
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const fmt = (value, digits = 1) => finite(value) ? value.toFixed(digits) : '—';
@@ -23,6 +24,36 @@ function historyStatus(history,usable,failed) {
   if (history.count < 2) return tr('Zbieranie historii. Kolektor działa, gdy panel jest widoczny.', 'Collecting history. The sampler runs while the panel is visible.');
   if (history.gaps) return summary + ' · ' + tr('przerwa w pomiarach', 'gap in measurements');
   return (history.count < 55 ? tr('Zbieranie historii: ', 'Collecting history: ') : '') + summary;
+}
+function systemAgeLabel(system, elapsed) {
+  const sourceAge=system?.observation?.age_s;
+  return finite(sourceAge)?fmt(sourceAge+elapsed)+' s':age(system);
+}
+function samplerNotice(system, event) {
+  let suffix='';
+  if(system?.observation?.state==='error')suffix=tr(' · błąd kolektora',' · sampler error');
+  if(system?.observation?.state==='warming')suffix=tr(' · wznawianie pomiaru CPU',' · CPU warming up');
+  const events={
+    hostRestart:tr('restart systemu urządzenia','device OS restart'),
+    apiRestart:tr('restart API','API restart'),
+    samplerResume:tr('wznowienie kolektora po pauzie','sampler resumed after a pause'),
+  };
+  if(event)suffix+=' · '+tr('ostatnie zdarzenie: ','last event: ')+events[event];
+  return suffix;
+}
+function drawSystemLine(ctx,box,points,key,color) {
+  let pen=false;
+  ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=1.5;
+  for(const point of points){
+    const value=point[key];
+    if(!finite(value)){pen=false;continue;}
+    if(point.separated)pen=false;
+    const px=box.x+box.width*(1-point.age/60);
+    const py=box.y+box.height*(1-Math.max(0,Math.min(100,value))/100);
+    if(pen)ctx.lineTo(px,py);else ctx.moveTo(px,py);
+    pen=true;
+  }
+  ctx.stroke();
 }
 function capacitySummary(used,total,percent,unit) {
   return finite(total) && finite(used) ? fmt(used) + ' / ' + fmt(total) + ' ' + unit + ' (' + fmt(percent) + '%)' : '—';
@@ -129,7 +160,11 @@ export class Overview {
       this.render();
     }, { profile: 'services' });
     this.systemPoller = poll(async () => {
-      try { this.system = (await request('/sysinfo')).data; this.systemError = false; }
+      try {
+        const next = (await request('/sysinfo')).data;
+        this.systemEvent = systemEvent(this.system,next) || this.systemEvent;
+        this.system = next; this.systemReceivedAt = performance.now(); this.systemError = false;
+      }
       catch { this.systemError = true; }
       this.renderSystem();
     }, { profile: 'system' });
@@ -177,7 +212,10 @@ export class Overview {
     text('overview-task-status', catalogKnown(this.catalog) ? tr('Stan z katalogu v2', 'State from catalog v2') : unknown());
   }
   renderSystem() {
-    const si = this.system, usable = presentationReady(si, 10);
+    const si = this.system;
+    const elapsed = this.systemReceivedAt === undefined ? 0 : Math.max(0, (performance.now() - this.systemReceivedAt) / 1000);
+    const sourceAge = si?.observation?.age_s;
+    const usable = finite(sourceAge) ? sourceAge + elapsed <= 10 && si?.stale !== true : presentationReady(si, 10);
     const value = key => usable ? si?.[key] : null;
     text('ci_host', si?.host || si?.hostname || location.hostname);
     text('ci_cpu', finite(value('cpu_pct')) ? `${fmt(value('cpu_pct'))}%` : '—');
@@ -189,11 +227,14 @@ export class Overview {
     let suffix='';
     if(this.systemError)suffix=' · '+tr('błąd odczytu','read failed');
     else if(!usable)suffix=' · '+unknown();
-    text('system-age',age(si)+suffix);
+    text('system-age',systemAgeLabel(si,elapsed)+suffix);
     // An HTTP failure is not a deletion of measurements already collected.
     // Keep their original timestamps and let the fixed time window expire them.
-    const history = this.drawHistory(si?.hist_cpu, si?.hist_mem, si?.hist_cpu_peak, si?.hist_ts);
-    if (history) text('history-status',historyStatus(history,usable,this.systemError));
+    const history = this.drawHistory(si, elapsed);
+    if (history) {
+      const status = historyStatus(history,usable,this.systemError);
+      text('history-status',status+samplerNotice(si,this.systemEvent));
+    }
     const cpu = document.getElementById('ci_cpu');
     if (cpu) cpu.title = usable && finite(si.cpu_peak_pct)
       ? tr('Szczyt w ostatniej sekundzie: ', 'Peak in the last second: ') + fmt(si.cpu_peak_pct) + '%' : '';
@@ -257,32 +298,19 @@ export class Overview {
     for (const value of [0, 50, 100]) ctx.fillText(String(value), box.x - 5, box.y + box.height * (1 - value / 100) + 3);
     return { ctx, ...box };
   }
-  drawHistory(cpu = [], mem = [], peaks = [], times = [], now = nowSeconds()) {
+  drawHistory(system, elapsed = 0, now = nowSeconds()) {
     const axis = this.axes('chart'); if (!axis) return null;
     const { ctx, x, y, width, height } = axis;
-    const stamps = Array.isArray(times) ? times.slice(-60) : [];
-    const inWindow = stamp => finite(stamp) && finite(now) && stamp >= now - 60 && stamp <= now + .1;
-    const visible = stamps.filter(inWindow);
-    for (const [values, color] of [[peaks, '#a17fff'], [cpu, '#6db3ff'], [mem, '#ffd36d']]) {
+    const history = systemHistory(system, elapsed, now);
+    for (const [key, color] of [['peak', '#a17fff'], ['cpu', '#6db3ff'], ['mem', '#ffd36d']]) {
+      const values = system?.[{peak:'hist_cpu_peak',cpu:'hist_cpu',mem:'hist_mem'}[key]];
       if (!Array.isArray(values) || !values.length) continue;
-      const samples = values.slice(-60); let pen = false;
-      ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-      samples.forEach((value, i) => {
-        const stamp = stamps[i], previous = stamps[i - 1];
-        if (!finite(value) || !inWindow(stamp)) { pen = false; return; }
-        if (i > 0 && (!finite(previous) || stamp <= previous || stamp - previous > 2)) pen = false;
-        const position = Math.max(0, Math.min(1, 1 - (now - stamp) / 60));
-        const px = x + width * position, py = y + height * (1 - Math.max(0, Math.min(100, value)) / 100);
-        if (pen) ctx.lineTo(px, py);
-        else ctx.moveTo(px, py);
-        pen = true;
-      }); ctx.stroke();
+      drawSystemLine(ctx,{x,y,width,height},history.points,key,color);
     }
     ctx.fillStyle = '#90a4b0'; ctx.font = '10px sans-serif';
     ctx.textAlign = 'left'; ctx.fillText('−60 s', x, y + height + 13);
     ctx.textAlign = 'right'; ctx.fillText('0 s', x + width, y + height + 13);
-    return { count: visible.length, span: visible.length ? visible.at(-1) - visible[0] : 0,
-      gaps: visible.some((stamp, i) => i > 0 && stamp - visible[i - 1] > 2) };
+    return {count:history.count,span:history.span,gaps:history.gaps};
   }
   drawBins(bins, edge) {
     const axis = this.axes('binsCanvas'); if (!axis) return;

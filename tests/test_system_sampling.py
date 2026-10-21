@@ -41,7 +41,7 @@ def test_weighted_one_second_average_retains_short_peak():
         advance(sampler, clock, counters, busy)
     assert sampler.latest["cpu_pct"] == 25
     assert sampler.latest["cpu_peak_pct"] == 100
-    assert sampler.history[-1] == (1001, 25, 25, 100)
+    assert sampler.history[-1][:4] == (1001, 25, 25, 100)
 
 
 def test_http_readers_share_one_sample_and_do_not_advance_counters(monkeypatch):
@@ -59,7 +59,7 @@ def test_http_readers_share_one_sample_and_do_not_advance_counters(monkeypatch):
         assert row["ts"] == row["hist_ts"][-1]
         row["hist_cpu"].append(99)  # Readers cannot corrupt the internal history.
     assert calls == [True, False]
-    assert len(cpu) == len(mem) == 1
+    assert len(cpu) == len(mem) == 2
     advance(sampler, clock, counters, 60)
     assert system_info.cpu_percent() == 0  # No one-second sample yet.
 
@@ -92,10 +92,10 @@ def test_idle_sampler_stops_and_does_not_backfill_history(monkeypatch):
     monkeypatch.setattr("services.api_core.system_sampling.time.sleep", lambda seconds: None)
     sampler._run()
     assert sampler.thread is sampler.previous is sampler.summary_at is None
-    assert len(sampler.history) == 0
+    assert len(sampler.history) == 1
     sampler.sample()
     assert sampler.latest["ts"] == 1031
-    assert len(sampler.history) == 0
+    assert len(sampler.history) == 2
     assert sampler.latest["cpu_pct"] is None
 
 
@@ -132,7 +132,7 @@ def test_summary_phase_does_not_drift_by_a_quarter_second():
         counters[0] += 10
         counters[1] += 25
         sampler.sample()
-    assert [row[0] for row in sampler.history] == [1001.0001, 1002, 1003]
+    assert [row[0] for row in sampler.history] == [1000, 1001.0001, 1002, 1003]
 
 
 def test_first_snapshot_has_other_metrics_but_no_cpu_or_prometheus_sample(monkeypatch):
@@ -149,16 +149,155 @@ def test_first_snapshot_has_other_metrics_but_no_cpu_or_prometheus_sample(monkey
     assert row["mem_pct"] == 25
     assert row["disk_pct"] == 10
     assert row["temp_c"] == 40
-    assert row["hist_cpu"] == row["hist_ts"] == []
+    assert row["hist_cpu"] == [None]
+    assert row["hist_mem"] == [25]
     assert calls == [True]
     assert "rider_cpu_pct" not in metrics
     assert "rider_mem_pct 25" in metrics
 
 
-def test_missing_cpu_delta_does_not_publish_zero_or_history():
+def test_missing_cpu_delta_preserves_independent_memory_history():
     sampler, clock, _, _ = fixture()
     sampler.sample()
     clock[0] = 1
     sampler.sample()
     assert sampler.latest["cpu_pct"] is sampler.latest["cpu_peak_pct"] is None
-    assert not sampler.history
+    assert [row[1] for row in sampler.history] == [None, None]
+    assert [row[2] for row in sampler.history] == [25, 25]
+
+
+def test_failure_is_visible_bounded_and_recovers_without_new_reader():
+    sampler, clock, counters, _ = fixture()
+    collect = sampler.collect
+    attempts = []
+
+    def fail(slow):
+        attempts.append(slow)
+        raise OSError("private diagnostic must not escape")
+
+    sampler.collect = fail
+    sampler._safe_sample()
+    assert sampler.state == "error"
+    assert sampler.error_count == 1
+    assert sampler.last_error_code == "OSError"
+    clock[0] = 0.25
+    sampler._safe_sample()
+    assert len(attempts) == 1
+    sampler.collect = collect
+    clock[0] = 1
+    sampler._safe_sample()
+    assert sampler.state == "warming"
+    for _ in range(4):
+        advance(sampler, clock, counters, 20)
+    assert sampler.state == "collecting"
+    assert sampler.error_count == 1
+    sampler.thread = object()
+    snapshot = sampler.snapshot()
+    assert snapshot["observation"]["last_error_code"] == "OSError"
+    assert snapshot["stale"] is False
+
+
+def test_monotonic_history_survives_wall_clock_correction():
+    sampler, clock, counters, _ = fixture()
+    wall = [1000]
+    sampler.wall_clock = lambda: wall[0]
+    sampler.sample()
+    clock[0] = 1
+    wall[0] = 900
+    counters[0] += 20
+    counters[1] += 100
+    sampler.sample()
+    sampler.thread = object()
+    row = sampler.snapshot()
+    assert row["hist_ts"] == [1000, 900]
+    assert row["hist_mono"] == [0, 1]
+    assert row["hist_seq"] == [1, 2]
+    assert row["observation"]["age_s"] == 0
+    clock[0] = 5
+    assert sampler.snapshot()["observation"]["age_s"] == 4
+
+
+def test_failed_cold_snapshot_is_unknown_not_zero(monkeypatch):
+    from flask import Flask
+
+    sampler, _, _, _ = fixture()
+    sampler.collect = lambda slow: (_ for _ in ()).throw(OSError("fixture"))
+    sampler._safe_sample()
+    sampler.thread = object()
+    monkeypatch.setattr(system_info, "_sampler", sampler)
+    with Flask(__name__).app_context():
+        payload = system_info.sysinfo().get_json()
+        assert payload["cpu_pct"] is payload["mem_pct"] is None
+        assert payload["ts"] is None
+        assert payload["stale"] is True
+        assert payload["observation"]["state"] == "error"
+
+
+def test_restart_generation_keeps_source_identity_without_backfill(monkeypatch):
+    sampler, clock, counters, _ = fixture()
+
+    class Thread:
+        def __init__(self, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr("services.api_core.system_sampling.threading.Thread", Thread)
+    first = sampler.snapshot()
+    sampler.thread = None
+    sampler.previous = sampler.summary_at = None
+    clock[0] = 90
+    second = sampler.snapshot()
+    assert second["observation"]["instance_id"] == first["observation"]["instance_id"]
+    assert second["hist_generation"] == [1, 2]
+    assert second["hist_mono"] == [0, 90]
+
+
+def test_background_failure_recovers_and_still_honors_idle(monkeypatch):
+    sampler, clock, counters, _ = fixture()
+    collect = sampler.collect
+    calls = [0]
+
+    def once(slow):
+        calls[0] += 1
+        if calls[0] == 1:
+            raise OSError("fixture")
+        return collect(slow)
+
+    def tick(seconds):
+        clock[0] += 0.25
+        counters[0] += 5
+        counters[1] += 25
+
+    sampler.collect = once
+    sampler.last_access = 0
+    sampler.thread = object()
+    monkeypatch.setattr("services.api_core.system_sampling.time.sleep", tick)
+    sampler._run()
+    assert sampler.error_count == 1
+    assert len(sampler.history) > 20
+    assert sampler.state == "idle"
+    assert sampler.thread is None
+
+
+def test_unavailable_cpu_counter_resets_delta_without_losing_ram():
+    sampler, clock, counters, _ = fixture()
+    sampler.sample()
+    clock[0] = 1
+    counters[:] = [0, 0]
+    sampler.sample()
+    assert sampler.previous is None
+    assert sampler.history[-1][1] is None
+    assert sampler.history[-1][2] == 25
+
+
+def test_memory_read_failure_remains_unknown(monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("fixture")
+
+    monkeypatch.setattr("builtins.open", fail)
+    assert system_info.mem_info()["pct"] is None
+    monkeypatch.setattr(system_info, "_slow_metrics", {"disk": {"pct": 1}, "os": {}})
+    monkeypatch.setattr(system_info, "temp_c", lambda: 40)
+    assert system_info._collect_system(False)["mem"]["pct"] is None
