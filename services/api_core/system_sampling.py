@@ -61,14 +61,13 @@ class SystemSampler:
             self.previous = None
             self.idle_delta = self.total_delta = self.peak = 0.0
             return
-        if total > 0:
-            if self.previous is not None:
-                di, dt = idle - self.previous[0], total - self.previous[1]
-                if dt > 0 and di >= 0:
-                    self.idle_delta += di
-                    self.total_delta += dt
-                    self.peak = max(self.peak, max(0.0, min(100.0, 100 * (1 - di / dt))))
-            self.previous = (idle, total)
+        if self.previous is not None:
+            di, dt = idle - self.previous[0], total - self.previous[1]
+            if dt > 0 and di >= 0:
+                self.idle_delta += di
+                self.total_delta += dt
+                self.peak = max(self.peak, max(0.0, min(100.0, 100 * (1 - di / dt))))
+        self.previous = (idle, total)
 
     def sample(self):
         with self.lock:

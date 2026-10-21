@@ -25,6 +25,36 @@ function historyStatus(history,usable,failed) {
   if (history.gaps) return summary + ' · ' + tr('przerwa w pomiarach', 'gap in measurements');
   return (history.count < 55 ? tr('Zbieranie historii: ', 'Collecting history: ') : '') + summary;
 }
+function systemAgeLabel(system, elapsed) {
+  const sourceAge=system?.observation?.age_s;
+  return finite(sourceAge)?fmt(sourceAge+elapsed)+' s':age(system);
+}
+function samplerNotice(system, event) {
+  let suffix='';
+  if(system?.observation?.state==='error')suffix=tr(' · błąd kolektora',' · sampler error');
+  if(system?.observation?.state==='warming')suffix=tr(' · wznawianie pomiaru CPU',' · CPU warming up');
+  const events={
+    hostRestart:tr('restart systemu urządzenia','device OS restart'),
+    apiRestart:tr('restart API','API restart'),
+    samplerResume:tr('wznowienie kolektora po pauzie','sampler resumed after a pause'),
+  };
+  if(event)suffix+=' · '+tr('ostatnie zdarzenie: ','last event: ')+events[event];
+  return suffix;
+}
+function drawSystemLine(ctx,box,points,key,color) {
+  let pen=false;
+  ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=1.5;
+  for(const point of points){
+    const value=point[key];
+    if(!finite(value)){pen=false;continue;}
+    if(point.separated)pen=false;
+    const px=box.x+box.width*(1-point.age/60);
+    const py=box.y+box.height*(1-Math.max(0,Math.min(100,value))/100);
+    if(pen)ctx.lineTo(px,py);else ctx.moveTo(px,py);
+    pen=true;
+  }
+  ctx.stroke();
+}
 function capacitySummary(used,total,percent,unit) {
   return finite(total) && finite(used) ? fmt(used) + ' / ' + fmt(total) + ' ' + unit + ' (' + fmt(percent) + '%)' : '—';
 }
@@ -197,21 +227,13 @@ export class Overview {
     let suffix='';
     if(this.systemError)suffix=' · '+tr('błąd odczytu','read failed');
     else if(!usable)suffix=' · '+unknown();
-    text('system-age',age(si)+suffix);
+    text('system-age',systemAgeLabel(si,elapsed)+suffix);
     // An HTTP failure is not a deletion of measurements already collected.
     // Keep their original timestamps and let the fixed time window expire them.
     const history = this.drawHistory(si, elapsed);
     if (history) {
       const status = historyStatus(history,usable,this.systemError);
-      const observation = si?.observation;
-      const suffix = observation?.state === 'error' ? tr(' · błąd kolektora', ' · sampler error')
-        : observation?.state === 'warming' ? tr(' · wznawianie pomiaru CPU', ' · CPU warming up') : '';
-      const events = {
-        hostRestart: tr('restart systemu urządzenia', 'device OS restart'),
-        apiRestart: tr('restart API', 'API restart'),
-        samplerResume: tr('wznowienie kolektora po pauzie', 'sampler resumed after a pause'),
-      };
-      text('history-status',status+suffix+(this.systemEvent?' · '+tr('ostatnie zdarzenie: ','last event: ')+events[this.systemEvent]:''));
+      text('history-status',status+samplerNotice(si,this.systemEvent));
     }
     const cpu = document.getElementById('ci_cpu');
     if (cpu) cpu.title = usable && finite(si.cpu_peak_pct)
@@ -283,18 +305,7 @@ export class Overview {
     for (const [key, color] of [['peak', '#a17fff'], ['cpu', '#6db3ff'], ['mem', '#ffd36d']]) {
       const values = system?.[{peak:'hist_cpu_peak',cpu:'hist_cpu',mem:'hist_mem'}[key]];
       if (!Array.isArray(values) || !values.length) continue;
-      let pen = false;
-      ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-      for (const point of history.points) {
-        const value = point[key];
-        if (!finite(value)) { pen = false; continue; }
-        if (point.separated) pen = false;
-        const px = x + width * (1 - point.age / 60);
-        const py = y + height * (1 - Math.max(0, Math.min(100, value)) / 100);
-        if (pen) ctx.lineTo(px, py); else ctx.moveTo(px, py);
-        pen = true;
-      }
-      ctx.stroke();
+      drawSystemLine(ctx,{x,y,width,height},history.points,key,color);
     }
     ctx.fillStyle = '#90a4b0'; ctx.font = '10px sans-serif';
     ctx.textAlign = 'left'; ctx.fillText('−60 s', x, y + height + 13);

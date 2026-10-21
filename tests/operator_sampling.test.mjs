@@ -223,3 +223,16 @@ test('untimed, future and out-of-window samples never masquerade as current hist
   assert.equal(history.count, 2);
   assert.deepEqual(f.paths[0].map(point => point[0]), ['move', 'line']);
 });
+
+test('producer errors and warmup stay explicit and age uses the monotonic clock',async()=>{
+  const f=await overviewFixture();
+  f.sample.observation={state:'warming',age_s:.5,monotonic_s:1030};
+  await f.polls[1]();
+  assert.match(f.labels['history-status'],/wznawianie pomiaru CPU/);
+  f.clock(1035);f.overview.renderSystem();
+  assert.match(f.labels['system-age'],/5.5 s/);
+  f.sample.observation.state='error';f.sample.stale=true;
+  f.overview.renderSystem();assert.match(f.labels['history-status'],/błąd kolektora/);
+  f.overview.systemEvent='apiRestart';f.overview.renderSystem();
+  assert.match(f.labels['history-status'],/ostatnie zdarzenie: restart API/);
+});
