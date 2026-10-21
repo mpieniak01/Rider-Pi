@@ -82,8 +82,8 @@ class OperatorControl:
             return self.origin_sequence
         return None
 
-    def _validate_transfer(self, command):
-        """Validate panel ownership and remaining consent before changing navigation authority."""
+    def _validate_transfer_owner(self, command):
+        """Preserve admission error order before inspecting journey or lease mode."""
         gate = self.gate
         if not self.enabled:
             raise ValueError("operator_control_not_available")
@@ -95,6 +95,11 @@ class OperatorControl:
             raise ValueError("panel_owner_mismatch")
         if gate.owner not in {"manual", "navigation"}:
             raise ValueError("owner_mismatch")
+
+    def _validate_transfer(self, command):
+        """Validate panel ownership and remaining consent before changing navigation authority."""
+        self._validate_transfer_owner(command)
+        gate = self.gate
         resume = command.get("action") == "navigation_resume"
         if gate.arming_mode == "journey":
             if resume:

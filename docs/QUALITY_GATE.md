@@ -117,3 +117,25 @@ at least 80% coverage, at most 3% duplication and 100% reviewed hotspots.
 The gate and finding counts come from the live report; no fixed passing badge
 substitutes for that result. Publishing a project version under the
 [versioning policy](VERSIONING.md) does not reset Sonar's baseline.
+
+## Navigation refactor regressions
+
+Lifecycle and admission code separates authority checks, journey retirement,
+new explicit-start admission and lease replacement. These stages keep the same
+lifecycle mutex and preserve validation/error order, generation-scoped STOP,
+original consent deadlines and cleanup. HTTP target validation happens before
+connection creation; a closed transport remains the first rejection. Preparation
+keeps one deadline across native-stream and snapshot handshakes.
+
+The isolated regression suite includes concurrent main/watchdog/status access,
+old-generation replies, invalid destinations, replay and unsupported capability
+checks. Exception tests construct requests and fixtures before the raises scope,
+so the assertion verifies the intended operation rather than setup failures.
+Run focused checks in the existing project virtualenv before the full CI/Sonar
+suite; never point these fixtures at physical actuator APIs:
+
+```sh
+PYTHONPATH=. python -m pytest tests/test_journey_lifecycle_concurrency.py \
+  tests/test_journey_preflight.py tests/test_navigation_journey.py \
+  tests/test_navigation_transport.py tests/test_sonar319_admission_boundaries.py
+```

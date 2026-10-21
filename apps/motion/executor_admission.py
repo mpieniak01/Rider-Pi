@@ -125,16 +125,21 @@ class ExecutorAdmission:
             if previous is not None:
                 self._ack(previous, "rejected", "invalid_motion_intent", cancelled_by=command.get("request_id"))
 
+    def _stop_transferred_intent(self, command):
+        """Retire the previous intent and stop before acknowledging new authority."""
+        previous, self.pending = self.pending, None
+        self.intent_source = None
+        stopped = self.controller.stop()
+        if previous is not None:
+            self._ack(previous, "rejected", "operator_intervention", cancelled_by=command.get("request_id"))
+        return stopped
+
     def _authorize_intent(self, command, action, is_actuator, agent):
         previous_generation = self.gate.generation
         authorized, reason = self.gate.authorize(command)
         if not authorized:
             if previous_generation != self.gate.generation and reason == "navigation_journey_manual_arm_required":
-                previous, self.pending = self.pending, None
-                self.intent_source = None
-                stopped = self.controller.stop()
-                if previous is not None:
-                    self._ack(previous, "rejected", "operator_intervention", cancelled_by=command.get("request_id"))
+                stopped = self._stop_transferred_intent(command)
                 return reason, self._ack(
                     command,
                     "rejected",
@@ -160,11 +165,7 @@ class ExecutorAdmission:
                 self._cancel_invalid_intent(command, is_actuator, agent)
             return reason, self._ack(command, "rejected", reason)
         if previous_generation != self.gate.generation and action not in {"stop", "disarm", "estop", "clear_estop"}:
-            previous, self.pending = self.pending, None
-            self.intent_source = None
-            stopped = self.controller.stop()
-            if previous is not None:
-                self._ack(previous, "rejected", "operator_intervention", cancelled_by=command.get("request_id"))
+            stopped = self._stop_transferred_intent(command)
             if not stopped:
                 self.gate.disarm("hardware_stop_unconfirmed")
                 return reason, self._ack(command, "rejected", "hardware_stop_unconfirmed")

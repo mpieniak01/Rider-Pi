@@ -70,8 +70,9 @@ def test_consecutive_frames_share_one_real_http_connection(server):
     finally:
         transport.close()
     assert transport.connection is None
+    pending_request = request(base)
     with pytest.raises(ComputeError, match="navigation_transport_closed"):
-        transport.open(request(base), timeout=0.3)
+        transport.open(pending_request, timeout=0.3)
 
 
 def test_http_error_is_not_replayed_and_next_capture_can_use_connection(server):
@@ -79,13 +80,15 @@ def test_http_error_is_not_replayed_and_next_capture_can_use_connection(server):
     replies.append((429, b'{"detail":{"code":"vision_busy"}}'))
     transport = module.NavigationHTTPTransport(base)
     try:
+        pending_request = request(base)
         with pytest.raises(urllib.error.HTTPError) as caught:
-            transport.open(request(base), timeout=0.3)
+            transport.open(pending_request, timeout=0.3)
         assert caught.value.code == 429
         assert json.load(caught.value)["detail"]["code"] == "vision_busy"
         assert len(received) == 1
         transport.open(request(base, path="decision-reference", payload=b"next-source"), timeout=0.3)
-        assert len(received) == 2 and received[-1][1].endswith("decision-reference")
+        assert len(received) == 2
+        assert received[-1][1].endswith('decision-reference')
         assert transport.connections == 1
     finally:
         transport.close()
@@ -102,9 +105,11 @@ def test_redirect_and_oversized_body_close_without_replay(server, code, payload,
     base, replies, received = server
     replies.append((code, payload))
     transport = module.NavigationHTTPTransport(base)
+    pending_request = request(base)
     with pytest.raises(ComputeError, match=error):
-        transport.open(request(base), timeout=0.3)
-    assert len(received) == 1 and transport.connection is None
+        transport.open(pending_request, timeout=0.3)
+    assert len(received) == 1
+    assert transport.connection is None
     assert all(row[1] != "/forbidden" for row in received)
     transport.close()
 
@@ -117,7 +122,8 @@ def test_idle_connection_is_replaced_before_new_capture(server):
         transport.open(request(base), timeout=0.3)
         now[0] += 2.0
         transport.open(request(base), timeout=0.3)
-        assert transport.connections == 2 and received[0][0] != received[1][0]
+        assert transport.connections == 2
+        assert received[0][0] != received[1][0]
     finally:
         transport.close()
 
@@ -135,9 +141,11 @@ def test_connection_failure_is_once_only_and_discards_socket(monkeypatch, error)
     )
     monkeypatch.setattr(module.http.client, "HTTPConnection", lambda *a, **kw: connection)
     transport = module.NavigationHTTPTransport("http://127.0.0.1")
+    pending_request = request("http://127.0.0.1")
     with pytest.raises((TimeoutError, urllib.error.URLError)):
-        transport.open(request("http://127.0.0.1"), timeout=0.15)
-    assert calls == ["request", "close"] and transport.connection is None
+        transport.open(pending_request, timeout=0.15)
+    assert calls == ['request', 'close']
+    assert transport.connection is None
     assert connection.timeout == 0.15
     transport.close()
 
@@ -145,7 +153,9 @@ def test_connection_failure_is_once_only_and_discards_socket(monkeypatch, error)
 @pytest.mark.parametrize("target", ["http://localhost", "https://127.0.0.1", "http://127.0.0.1:81"])
 def test_credentials_cannot_be_sent_to_a_different_origin(target):
     transport = module.NavigationHTTPTransport("http://127.0.0.1")
+    pending_request = request(target)
     with pytest.raises(ComputeError, match="navigation_transport_target_invalid"):
-        transport.open(request(target), timeout=0.3)
-    assert transport.requests == 0 and transport.connection is None
+        transport.open(pending_request, timeout=0.3)
+    assert transport.requests == 0
+    assert transport.connection is None
     transport.close()

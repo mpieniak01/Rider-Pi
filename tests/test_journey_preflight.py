@@ -34,10 +34,11 @@ def test_snapshot_journey_checks_selected_host_without_starting_stream(monkeypat
 def test_snapshot_journey_rejects_host_missing_exact_capability(monkeypatch, capability):
     monkeypatch.setattr(stream_prepare, "native", lambda: False)
     monkeypatch.setattr(stream_prepare, "snapshot", lambda: {"revision": 1})
+    opener = SimpleNamespace(open=lambda *_args, **_kwargs: Response({"navigation_journey_version": capability}))
     with pytest.raises(ComputeError, match="navigation_journey_update_required"):
         stream_prepare.prepare_stream(
             selection={"url": "http://selected", "device_id": "device", "token": "isolated"},
-            opener=SimpleNamespace(open=lambda *_args, **_kwargs: Response({"navigation_journey_version": capability})),
+            opener=opener,
             journey_version=1,
         )
 
@@ -60,11 +61,12 @@ def test_native_journey_uses_existing_stream_handshake_for_both_capabilities(env
 def test_native_old_host_rejected_even_when_its_stream_is_ready(environment):
     producer, selection, _ = environment
     source = publish(producer)
+    opener = SimpleNamespace(
+        open=lambda *_args, **_kwargs: Response({"stream": {"ready": True, "latest_source": source}})
+    )
     with pytest.raises(ComputeError, match="navigation_journey_update_required"):
         stream_prepare.prepare_stream(
             selection=selection,
-            opener=SimpleNamespace(
-                open=lambda *_args, **_kwargs: Response({"stream": {"ready": True, "latest_source": source}})
-            ),
+            opener=opener,
             journey_version=1,
         )

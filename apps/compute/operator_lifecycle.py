@@ -81,10 +81,9 @@ class OperatorLifecycle:
         with self.lock:
             return self._sync(safety)
 
-    def _sync(self, safety):
-        runner = self.runner
+    def _is_authorized(self, safety):
         control = safety.get("operator_control") or {}
-        authorized = (
+        return (
             safety.get("can_move") is True
             and safety.get("owner") == "navigation"
             and safety.get("state") == "ARMED"
@@ -99,7 +98,10 @@ class OperatorLifecycle:
             and control.get("state") in {"qualifying", "active"}
             and isinstance(control.get("operation_id"), str)
         )
-        if self.journey_id is not None and (
+
+    def _journey_authority_lost(self, safety, control, authorized):
+        runner = self.runner
+        return (
             not authorized
             or runner.lease.latched
             or runner.generation != safety.get("generation")
@@ -107,25 +109,72 @@ class OperatorLifecycle:
             or safety.get("arming_mode") != "journey"
             or (safety.get("journey") or {}).get("id") != self.journey_id
             or (safety.get("journey") or {}).get("active") is not True
-        ):
-            reported = safety.get("journey") or {}
-            reason = reported.get("reason")
-            own_terminal = reported.get("id") == self.journey_id and reported.get("active") is False
-            self._end_journey(
-                reason if own_terminal and isinstance(reason, str) and reason else "navigation_authority_lost"
-            )
+        )
+
+    def _retire_revoked_journey(self, safety):
+        reported = safety.get("journey") or {}
+        reason = reported.get("reason")
+        own_terminal = reported.get("id") == self.journey_id and reported.get("active") is False
+        self._end_journey(
+            reason if own_terminal and isinstance(reason, str) and reason else "navigation_authority_lost"
+        )
+
+    def _restart_authority(self, safety, authorized):
+        if self.last_journey is None or self.journey_id is not None or self.authorized or not authorized:
+            return authorized, False
+        # ARM alone or an old claim cannot restart a completed journey.
+        intent = self.runner._live_intent(safety)
+        if not intent or intent.get("generation") != safety.get("generation"):
+            return False, False
+        if intent.get("request_id") == (self.claim or {}).get("request_id"):
+            return False, False
+        if safety.get("arming_mode") == "journey":
+            self._bind_journey(safety, intent)
+            return True, True
+        return authorized, False
+
+    def _replace_authority(self, safety, control, authorized):
+        runner = self.runner
+        self.pause_reason = None if authorized else safety.get("reason") or control.get("reason")
+        # The previous producer can no longer touch the newer generation.
+        # Replace local freshness state; never reuse an old GO or clear count.
+        runner.generation = safety.get("generation")
+        self.operation = control.get("operation_id")
+        runner.policy = {**runner.saved_policy, "mode": "drive" if authorized else "observe"}
+        runner.run_id = uuid.uuid4().hex
+        runner.sequence = 0
+        runner.motion_sequence = safety.get("last_seq", -1)
+        runner.pending_motion_acks.clear()
+        runner.motion_started = False
+        runner.motion_failure = None
+        runner.turn_capture_after = None
+        runner.startup_deadline = runner.clock() + 5
+        self.qualification = self._qualification()
+        self.qualified = False
+        runner.lease = DecisionLease(
+            runner.policy,
+            runner.run_id,
+            lambda *args, epoch=runner.run_id, **kwargs: runner.drive(*args, expected_run_id=epoch, **kwargs),
+            lambda epoch=runner.run_id, generation=runner.generation: runner.stop(
+                expected_run_id=epoch, expected_generation=generation
+            ),
+            runner.clock,
+            pause=lambda *args, epoch=runner.run_id: runner.pause(*args, expected_run_id=epoch),
+            feedback_wait=authorized,
+            turn=lambda *args, epoch=runner.run_id: runner.turn(*args, expected_run_id=epoch),
+            steer=lambda *args, epoch=runner.run_id: runner.steer(*args, expected_run_id=epoch),
+        )
+
+    def _sync(self, safety):
+        runner = self.runner
+        control = safety.get("operator_control") or {}
+        authorized = self._is_authorized(safety)
+        if self.journey_id is not None and self._journey_authority_lost(safety, control, authorized):
+            self._retire_revoked_journey(safety)
             authorized = False
-        if self.last_journey is not None and self.journey_id is None and not self.authorized and authorized:
-            # An explicit new Start must first persist its matching service intent.
-            # ARM alone, reconnect and stale old producer claims cannot restart it.
-            intent = runner._live_intent(safety)
-            if not intent or intent.get("generation") != safety.get("generation"):
-                authorized = False
-            elif intent.get("request_id") == (self.claim or {}).get("request_id"):
-                authorized = False
-            elif safety.get("arming_mode") == "journey":
-                self._bind_journey(safety, intent)
-                return True
+        authorized, rebound = self._restart_authority(safety, authorized)
+        if rebound:
+            return True
         if self.journey_id is not None:
             runner._check_executor_support(safety)
             runner._check_rejected_acks(safety)
@@ -133,35 +182,7 @@ class OperatorLifecycle:
             runner._check_navigation_intent(safety, runner._live_intent(safety))
         changed = runner.generation != safety.get("generation") or self.authorized != authorized
         if changed:
-            self.pause_reason = None if authorized else safety.get("reason") or control.get("reason")
-            # The previous producer can no longer touch the newer generation.
-            # Replace local freshness state; never reuse an old GO or clear count.
-            runner.generation = safety.get("generation")
-            self.operation = control.get("operation_id")
-            runner.policy = {**runner.saved_policy, "mode": "drive" if authorized else "observe"}
-            runner.run_id = uuid.uuid4().hex
-            runner.sequence = 0
-            runner.motion_sequence = safety.get("last_seq", -1)
-            runner.pending_motion_acks.clear()
-            runner.motion_started = False
-            runner.motion_failure = None
-            runner.turn_capture_after = None
-            runner.startup_deadline = runner.clock() + 5
-            self.qualification = self._qualification()
-            self.qualified = False
-            runner.lease = DecisionLease(
-                runner.policy,
-                runner.run_id,
-                lambda *args, epoch=runner.run_id, **kwargs: runner.drive(*args, expected_run_id=epoch, **kwargs),
-                lambda epoch=runner.run_id, generation=runner.generation: runner.stop(
-                    expected_run_id=epoch, expected_generation=generation
-                ),
-                runner.clock,
-                pause=lambda *args, epoch=runner.run_id: runner.pause(*args, expected_run_id=epoch),
-                feedback_wait=authorized,
-                turn=lambda *args, epoch=runner.run_id: runner.turn(*args, expected_run_id=epoch),
-                steer=lambda *args, epoch=runner.run_id: runner.steer(*args, expected_run_id=epoch),
-            )
+            self._replace_authority(safety, control, authorized)
         self.authorized = authorized
         if runner.clock() - self.last_claim >= 0.2:
             write_intent_status(
@@ -270,18 +291,17 @@ class OperatorLifecycle:
         if not self.enabled:
             return {}
         count = self.qualification.count if self.qualification else 0
+        journey = {}
+        if self.journey_id is not None:
+            journey = {"journey": self.runner.lease.journey.snapshot()}
+        elif self.last_journey:
+            journey = {"journey": self.last_journey}
         return {
             "operator_control_version": 1,
             "qualification_count": count,
             "operation_id": self.operation,
             "operator_pause_reason": self.pause_reason,
-            **(
-                {"journey": self.runner.lease.journey.snapshot()}
-                if self.journey_id is not None
-                else {"journey": self.last_journey}
-                if self.last_journey
-                else {}
-            ),
+            **journey,
             "warm_navigation_version": 1,
             "warm_ready": self.runner.policy["mode"] == "observe"
             and self.runner.fresh_frame_seen
