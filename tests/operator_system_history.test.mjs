@@ -26,3 +26,8 @@ test('restart labels require source identity evidence',()=>{
  assert.equal(systemEvent(previous,{observation:{boot_id:'a',instance_id:'api',generation:2}}),'samplerResume');
  assert.equal(systemEvent(null,row()),null);
 });
+
+test('missing generation cannot prove sampler resumption',()=>{
+ assert.equal(systemEvent({observation:{instance_id:'api'}},{observation:{instance_id:'api',generation:1}}),null);
+ assert.equal(systemEvent({observation:{instance_id:'api',generation:1}},{observation:{instance_id:'api',generation:Infinity}}),null);
+});

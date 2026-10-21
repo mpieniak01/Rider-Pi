@@ -35,6 +35,6 @@ export function systemEvent(previous, next) {
   if(!a || !b)return null;
   if(a.boot_id && b.boot_id && a.boot_id!==b.boot_id)return 'hostRestart';
   if(a.instance_id && b.instance_id && a.instance_id!==b.instance_id)return 'apiRestart';
-  if(a.instance_id && a.instance_id===b.instance_id && a.generation!==b.generation)return 'samplerResume';
+  if(a.instance_id && a.instance_id===b.instance_id && finite(a.generation) && finite(b.generation) && a.generation!==b.generation)return 'samplerResume';
   return null;
 }
